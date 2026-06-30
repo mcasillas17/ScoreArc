@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createDataService } from './service';
+import { createDataService, SCOREBOARD_URL } from './service';
 import { TtlCache } from './cache';
 import scoreboard from './__fixtures__/espn-scoreboard.json';
 import standings from './__fixtures__/espn-standings.json';
@@ -27,5 +27,6 @@ describe('createDataService', () => {
     await svc.getMatches();
     await svc.getMatches();
     expect(fetchJson).toHaveBeenCalledTimes(1);
+    expect(fetchJson).toHaveBeenCalledWith(SCOREBOARD_URL);
   });
 });

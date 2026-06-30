@@ -8,15 +8,17 @@ const PUSH_INTERVAL_MS = 15_000;
 export async function GET() {
   const encoder = new TextEncoder();
   let timer: ReturnType<typeof setInterval>;
+  let closed = false;
 
   const stream = new ReadableStream({
     async start(controller) {
       const push = async () => {
+        if (closed) return;
         try {
           const matches = await dataService.getMatches();
-          controller.enqueue(encoder.encode(formatSse('matches', matches)));
+          if (!closed) controller.enqueue(encoder.encode(formatSse('matches', matches)));
         } catch (err) {
-          controller.enqueue(
+          if (!closed) controller.enqueue(
             encoder.encode(formatSse('error', { message: String(err) })),
           );
         }
@@ -25,6 +27,7 @@ export async function GET() {
       timer = setInterval(push, PUSH_INTERVAL_MS);
     },
     cancel() {
+      closed = true;
       clearInterval(timer);
     },
   });

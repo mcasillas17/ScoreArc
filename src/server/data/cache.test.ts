@@ -22,4 +22,12 @@ describe('TtlCache', () => {
     const c = new TtlCache<number>(() => 0);
     expect(c.get('missing')).toBeUndefined();
   });
+
+  it('returns a value when now() equals expires (boundary)', () => {
+    let t = 0;
+    const c = new TtlCache<number>(() => t);
+    c.set('k', 42, 100);
+    t = 100; // expires = 0 + 100 = 100; now() === expires → NOT expired (impl uses >)
+    expect(c.get('k')).toBe(42);
+  });
 });

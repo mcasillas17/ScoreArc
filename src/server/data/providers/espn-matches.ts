@@ -12,11 +12,12 @@ function mapTeam(t: any): Team {
 
 export function mapScoreboard(raw: unknown): Match[] {
   const events: any[] = (raw as any)?.events ?? [];
-  return events.map((ev) => {
-    const comp = ev.competitions[0];
-    const competitors: any[] = comp.competitors;
+  return events.flatMap((ev) => {
+    const comp = ev.competitions?.[0];
+    const competitors: any[] = comp?.competitors ?? [];
     const home = competitors.find((c) => c.homeAway === 'home');
     const away = competitors.find((c) => c.homeAway === 'away');
+    if (!comp || !home || !away) return [];
     const status = ev.status;
     const state = mapState(status.type.state, status.type.completed);
     const note = comp.notes?.[0]?.text ?? null;

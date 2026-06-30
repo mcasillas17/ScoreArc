@@ -24,13 +24,28 @@ describe('mapScoreboard', () => {
 
   it('captures penalty/advance note when present', () => {
     const withNote = matches.find((m) => m.note);
-    if (withNote) expect(withNote.note).toMatch(/advance|penalties/i);
+    expect(withNote).toBeDefined();
+    expect(withNote!.note).toMatch(/advance|penalties/i);
   });
 
   it('sets winnerId to a competing team id when there is a winner', () => {
     const decided = matches.find((m) => m.winnerId);
-    if (decided) {
-      expect([decided.home.id, decided.away.id]).toContain(decided.winnerId);
-    }
+    expect(decided).toBeDefined();
+    expect([decided!.home.id, decided!.away.id]).toContain(decided!.winnerId);
+  });
+});
+
+describe('mapScoreboard resilience', () => {
+  const malformed = { competitions: [{ competitors: [] }], status: { type: {} } };
+
+  it('skips malformed events mixed with valid ones without throwing', () => {
+    const mixed = { events: [...(raw as any).events, malformed] };
+    const result = mapScoreboard(mixed);
+    expect(result.length).toBe((raw as any).events.length);
+  });
+
+  it('returns [] for an array containing only a malformed event', () => {
+    const result = mapScoreboard({ events: [malformed] });
+    expect(result).toEqual([]);
   });
 });

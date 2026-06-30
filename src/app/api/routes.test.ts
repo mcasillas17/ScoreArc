@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { dataService } from '@/server/data/service';
 
 vi.mock('@/server/data/service', () => ({
   dataService: {
-    getGroups: vi.fn(async () => [{ id: 'A', name: 'Group A', standings: [] }]),
-    getMatches: vi.fn(async () => [{ id: '1' }]),
+    getGroups: vi.fn(),
+    getMatches: vi.fn(),
   },
 }));
 
@@ -11,6 +12,7 @@ beforeEach(() => vi.clearAllMocks());
 
 describe('api routes', () => {
   it('GET /api/groups returns groups json', async () => {
+    vi.mocked(dataService.getGroups).mockResolvedValueOnce([{ id: 'A', name: 'Group A', standings: [] }]);
     const { GET } = await import('./groups/route');
     const res = await GET();
     expect(res.status).toBe(200);
@@ -19,9 +21,29 @@ describe('api routes', () => {
   });
 
   it('GET /api/matches returns matches json', async () => {
+    vi.mocked(dataService.getMatches).mockResolvedValueOnce([{ id: '1' } as any]);
     const { GET } = await import('./matches/route');
     const res = await GET();
+    expect(res.status).toBe(200);
     const body = await res.json();
     expect(body[0].id).toBe('1');
+  });
+
+  it('GET /api/groups returns 502 on upstream error', async () => {
+    vi.mocked(dataService.getGroups).mockRejectedValueOnce(new Error('upstream down'));
+    const { GET } = await import('./groups/route');
+    const res = await GET();
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.error).toBeDefined();
+  });
+
+  it('GET /api/matches returns 502 on upstream error', async () => {
+    vi.mocked(dataService.getMatches).mockRejectedValueOnce(new Error('upstream down'));
+    const { GET } = await import('./matches/route');
+    const res = await GET();
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.error).toBeDefined();
   });
 });
