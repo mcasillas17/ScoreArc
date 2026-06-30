@@ -1,95 +1,63 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+import { dataService } from "@/server/data/service";
+import type { Group, Match } from "@/server/data/types";
+import LiveScores from "@/components/LiveScores";
+import GroupTable from "@/components/GroupTable";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  let groups: Group[] = [];
+  let matches: Match[] = [];
+
+  try {
+    groups = await dataService.getGroups();
+  } catch {
+    // ESPN feed unavailable — render empty state
+  }
+
+  try {
+    matches = await dataService.getMatches();
+  } catch {
+    // ESPN feed unavailable — SSE client will retry live
+  }
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol>
-          <li>
-            Get started by editing <code>src/app/page.tsx</code>.
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.secondary}
-          >
-            Read our docs
-          </a>
+    <>
+      <header className="site-header">
+        <div className="header-inner">
+          <div className="wordmark">
+            <span className="wordmark-ball">⚽</span>
+            <span className="wordmark-text">ScoreArc</span>
+          </div>
+          <p className="header-subtitle">FIFA World Cup 2026 · Live</p>
         </div>
+      </header>
+
+      <main className="main">
+        <section>
+          <h2 className="section-label">Live Scores</h2>
+          <LiveScores initialMatches={matches} />
+        </section>
+
+        {groups.length > 0 ? (
+          <section>
+            <h2 className="section-label">Group Stage</h2>
+            <div className="groups-grid">
+              {groups.map((group) => (
+                <GroupTable key={group.id} group={group} />
+              ))}
+            </div>
+          </section>
+        ) : (
+          <section className="empty-section">
+            <p className="empty-text">Group data is unavailable right now.</p>
+          </section>
+        )}
       </main>
-      <footer className={styles.footer}>
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+
+      <footer className="site-footer">
+        <p>ScoreArc · Data via ESPN · Not affiliated with FIFA</p>
       </footer>
-    </div>
+    </>
   );
 }
