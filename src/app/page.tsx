@@ -3,6 +3,7 @@ import type { Group, Match, BracketRound } from "@/server/data/types";
 import LiveScores from "@/components/LiveScores";
 import GroupTable from "@/components/GroupTable";
 import RadialBracket from "@/components/RadialBracket";
+import Sidebar from "@/components/Sidebar";
 
 export const dynamic = "force-dynamic";
 
@@ -30,20 +31,15 @@ export default async function Home() {
   }
 
   return (
-    <>
-      <header className="site-header">
-        <div className="header-inner">
-          <div className="wordmark">
-            <span className="wordmark-ball">⚽</span>
-            <span className="wordmark-text">ScoreArc</span>
-          </div>
-          <p className="header-subtitle">FIFA World Cup 2026 · Live</p>
-        </div>
-      </header>
+    <div className="app-shell">
+      <Sidebar />
 
       <main className="main">
-        <section className="bracket-section">
-          <h2 className="section-label">Knockout Bracket</h2>
+        <section id="bracket" className="bracket-section">
+          <header className="bracket-head">
+            <p className="bracket-eyebrow">FIFA World Cup 2026</p>
+            <h1 className="bracket-title">Knockout Bracket</h1>
+          </header>
           {bracket.length > 0 ? (
             <RadialBracket rounds={bracket} />
           ) : (
@@ -53,13 +49,13 @@ export default async function Home() {
           )}
         </section>
 
-        <section>
+        <section id="live">
           <h2 className="section-label">Live Scores</h2>
           <LiveScores initialMatches={matches} />
         </section>
 
         {groups.length > 0 ? (
-          <section>
+          <section id="standings">
             <h2 className="section-label">Group Stage</h2>
             <div className="groups-grid">
               {groups.map((group) => (
@@ -68,15 +64,15 @@ export default async function Home() {
             </div>
           </section>
         ) : (
-          <section className="empty-section">
+          <section id="standings" className="empty-section">
             <p className="empty-text">Group data is unavailable right now.</p>
           </section>
         )}
-      </main>
 
-      <footer className="site-footer">
-        <p>ScoreArc · Data via ESPN · Not affiliated with FIFA</p>
-      </footer>
-    </>
+        <footer className="site-footer">
+          <p>ScoreArc · Data via ESPN · Not affiliated with FIFA</p>
+        </footer>
+      </main>
+    </div>
   );
 }

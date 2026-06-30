@@ -1,18 +1,19 @@
 /* ===== ScoreArc — Dark Theme ===== */
 :root {
-  --bg: #0d0d0d;
-  --surface-1: #161616;
-  --surface-2: #1b1b1b;
-  --border: #2a2a2a;
-  --text: #e8e8e8;
-  --text-muted: #9a9a9a;
-  --gold: #ffd34d;
+  --bg: #0b0b0d;
+  --surface-1: #141418;
+  --surface-2: #1a1a20;
+  --border: #26262e;
+  --hairline: #1c1c22;
+  --text: #ececef;
+  --text-muted: #9a9aa4;
+  --gold: #e8b84b;
   --live-red: #ff5c5c;
   --qualify-green: #36c275;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
-  --max-w: 1400px;
+  --sidebar-w: 230px;
 }
 
 /* ===== Reset ===== */
@@ -36,11 +37,6 @@ body {
 
 body {
   background-color: var(--bg);
-  background-image: radial-gradient(
-    ellipse 80% 40% at 50% -5%,
-    rgba(255, 211, 77, 0.07) 0%,
-    transparent 65%
-  );
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
     Arial, sans-serif;
@@ -55,59 +51,146 @@ a {
   text-decoration: none;
 }
 
-/* ===== Header ===== */
-.site-header {
-  position: sticky;
+/* ===== App Shell ===== */
+.app-shell {
+  display: flex;
+  align-items: stretch;
+  min-height: 100vh;
+}
+
+/* ===== Sidebar ===== */
+.sidebar {
+  position: fixed;
   top: 0;
-  z-index: 100;
-  background: rgba(13, 13, 13, 0.88);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-bottom: 1px solid var(--border);
+  left: 0;
+  width: var(--sidebar-w);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 22px 16px;
+  background: #0d0d10;
+  border-right: 1px solid var(--hairline);
+  z-index: 50;
 }
 
-.header-inner {
-  max-width: var(--max-w);
-  margin: 0 auto;
-  padding: 14px 20px;
+.sidebar-brand {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 9px;
+  padding: 4px 8px 2px;
 }
 
-.wordmark {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.wordmark-ball {
+.sidebar-ball {
   font-size: 22px;
   line-height: 1;
 }
 
-.wordmark-text {
-  font-size: 22px;
+.sidebar-wordmark {
+  font-size: 21px;
   font-weight: 800;
-  color: var(--gold);
   letter-spacing: -0.03em;
+  color: var(--text);
 }
 
-.header-subtitle {
-  font-size: 13px;
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  border-radius: 8px;
   color: var(--text-muted);
-  letter-spacing: 0.02em;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.nav-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+.nav-item--active {
+  color: var(--text);
+  background: rgba(232, 184, 75, 0.08);
+}
+
+.nav-item--active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--gold);
+}
+
+.nav-item--active .nav-icon {
+  color: var(--gold);
+}
+
+.nav-icon {
+  display: inline-flex;
+  color: inherit;
+}
+
+.nav-label {
+  flex: 1;
+}
+
+.nav-soon {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 100px;
+  padding: 2px 7px;
+}
+
+.sidebar-credit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--hairline);
+  color: var(--text-muted);
+  font-size: 12px;
+  transition: color 0.15s;
+}
+
+.sidebar-credit:hover {
+  color: var(--gold);
+}
+
+.credit-text strong {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.sidebar-credit:hover .credit-text strong {
+  color: var(--gold);
 }
 
 /* ===== Main ===== */
 .main {
-  max-width: var(--max-w);
-  margin: 0 auto;
-  padding: 28px 20px 60px;
+  flex: 1;
+  margin-left: var(--sidebar-w);
+  padding: 36px 36px 56px;
   display: flex;
   flex-direction: column;
-  gap: 40px;
+  gap: 44px;
+  max-width: 1280px;
 }
 
 /* ===== Section Label ===== */
@@ -118,6 +201,48 @@ a {
   text-transform: uppercase;
   color: var(--text-muted);
   margin-bottom: 14px;
+}
+
+/* ===== Bracket Section ===== */
+.bracket-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.bracket-head {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.bracket-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gold);
+  opacity: 0.85;
+}
+
+.bracket-title {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  margin-top: 4px;
+}
+
+.radial-bracket-wrap {
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 8px 0;
+  display: flex;
+  justify-content: center;
+}
+
+.bracket-live-dot {
+  animation: pulse 1.4s ease infinite;
 }
 
 /* ===== Live Strip ===== */
@@ -165,7 +290,7 @@ a {
 }
 
 .match-card:hover {
-  border-color: #3a3a3a;
+  border-color: #3a3a44;
 }
 
 .match-teams {
@@ -340,23 +465,21 @@ a {
   text-align: center;
   padding: 7px 5px;
   color: var(--text);
-  border-bottom: 1px solid rgba(42, 42, 42, 0.5);
+  border-bottom: 1px solid rgba(38, 38, 46, 0.5);
 }
 
 .standings-table tr:last-child td {
   border-bottom: none;
 }
 
-/* Qualifying row highlight: gold left border via box-shadow on first td */
 .standings-table tr.row-qualify td:first-child {
   box-shadow: inset 3px 0 0 var(--gold);
 }
 
 .standings-table tr.row-qualify td {
-  background: rgba(255, 211, 77, 0.035);
+  background: rgba(232, 184, 75, 0.035);
 }
 
-/* Third-place playoff hint */
 .standings-table tr.row-playoff td:first-child {
   box-shadow: inset 3px 0 0 rgba(54, 194, 117, 0.45);
 }
@@ -405,48 +528,10 @@ a {
   font-size: 14px;
 }
 
-/* ===== Knockout Bracket ===== */
-.bracket-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.radial-bracket-wrap {
-  width: 100%;
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 16px 0 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-
-.bracket-third-place {
-  font-size: 11px;
-  color: var(--text-muted);
-  letter-spacing: 0.04em;
-  text-align: center;
-  padding: 4px 0 8px;
-}
-
-.bracket-third-label {
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 10px;
-  color: #555;
-}
-
-.bracket-third-teams {
-  color: var(--text-muted);
-}
-
 /* ===== Footer ===== */
 .site-footer {
-  border-top: 1px solid var(--border);
-  padding: 20px;
+  border-top: 1px solid var(--hairline);
+  padding: 22px 0 0;
   text-align: center;
 }
 
@@ -456,29 +541,79 @@ a {
   letter-spacing: 0.03em;
 }
 
-/* ===== Responsive ===== */
-@media (max-width: 600px) {
-  .header-inner {
+/* ===== Responsive: sidebar collapses to top bar ===== */
+@media (max-width: 860px) {
+  .app-shell {
     flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
+  }
+
+  .sidebar {
+    position: sticky;
+    width: 100%;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 14px;
     padding: 12px 16px;
+    border-right: none;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .sidebar-brand {
+    padding: 0;
+    flex-shrink: 0;
+  }
+
+  .sidebar-nav {
+    flex-direction: row;
+    flex: 1;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .sidebar-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-item {
+    flex-shrink: 0;
+    padding: 8px 10px;
+  }
+
+  .nav-item--active::before {
+    display: none;
+  }
+
+  .nav-soon {
+    display: none;
+  }
+
+  .sidebar-credit {
+    border-top: none;
+    border-left: 1px solid var(--hairline);
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 
   .main {
-    padding: 20px 12px 40px;
-    gap: 28px;
+    margin-left: 0;
+    padding: 24px 16px 40px;
+    gap: 32px;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  .credit-text {
+    display: none;
+  }
+
+  .bracket-title {
+    font-size: 22px;
   }
 
   .groups-grid {
     grid-template-columns: 1fr;
-  }
-
-  .match-card {
-    min-width: 160px;
-  }
-
-  .match-score {
-    font-size: 20px;
   }
 }
