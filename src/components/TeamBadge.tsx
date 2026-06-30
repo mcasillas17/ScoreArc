@@ -1,4 +1,5 @@
 import type { Team } from "@/server/data/types";
+import { flagUrl } from "@/lib/flags";
 
 function teamFallbackColor(id: string): string {
   let hash = 0;
@@ -36,6 +37,10 @@ export default function TeamBadge({
     letterSpacing: "-0.02em",
   };
 
+  // Prefer a full-bleed flagcdn flag (fills the circle); fall back to ESPN's
+  // padded country logo only if we don't have an ISO mapping for the team.
+  const imgSrc = flagUrl(team.abbr) ?? team.crestUrl;
+
   return (
     <span
       style={{
@@ -46,10 +51,10 @@ export default function TeamBadge({
       }}
     >
       <span style={disc}>
-        {team.crestUrl ? (
+        {imgSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={team.crestUrl}
+            src={imgSrc}
             alt={team.name}
             width={size}
             height={size}
