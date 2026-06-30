@@ -1,0 +1,7 @@
+node_modules/
+.next/
+.superpowers/
+.env*
+.DS_Store
+dist/
+build/
