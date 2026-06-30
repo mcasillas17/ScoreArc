@@ -128,9 +128,10 @@ export default function RadialBracket({ rounds }: Props) {
         </defs>
 
         {/* (a) Warm radial glow behind the centre */}
-        <circle cx={CX} cy={CY} r={150} fill="url(#center-glow)" />
-        <circle cx={CX} cy={CY} r={95} fill="#e8b84b" opacity={0.06} />
-        <circle cx={CX} cy={CY} r={60} fill="#e8b84b" opacity={0.08} />
+        <circle cx={CX} cy={CY} r={185} fill="url(#center-glow)" />
+        <circle cx={CX} cy={CY} r={120} fill="#e8b84b" opacity={0.07} />
+        <circle cx={CX} cy={CY} r={78} fill="#f0c64e" opacity={0.12} />
+        <circle cx={CX} cy={CY} r={46} fill="#f6d873" opacity={0.16} />
 
         {/* (b) Connectors: each node (depth 0..3) -> parent (depth+1, floor(n/2)) */}
         {rings.map((ring, depth) => {
@@ -286,33 +287,36 @@ function TeamDisc({ node }: { node: RingNode }) {
 }
 
 function Trophy() {
-  // Centred silhouette (local origin) translated to canvas centre. ~115px tall.
+  // Iconic FIFA World Cup silhouette: two figures spiralling up to hold a globe,
+  // on a banded base. Local origin at the globe/body join; scaled up at centre.
   const body =
-    'M -10 45 C -26 30 -18 5 -6 -8 C -10 -20 -3 -28 0 -30 C 3 -28 10 -20 6 -8 C 18 5 26 30 10 45 Z';
+    'M -9 40 C -27 22 -23 -4 -11 -16 C -17 -22 -13 -29 -6 -30 C -3 -24 -2 -20 0 -20 C 2 -20 3 -24 6 -30 C 13 -29 17 -22 11 -16 C 23 -4 27 22 9 40 Z';
   return (
-    <g transform={`translate(${CX}, ${CY})`} aria-label="World Cup trophy">
+    <g transform={`translate(${CX}, ${CY}) scale(1.5)`} aria-label="World Cup trophy">
       {/* soft glow copy behind */}
-      <g filter="url(#trophy-blur)" opacity={0.6}>
-        <path d={body} fill="#e8b84b" />
-        <circle cx={0} cy={-40} r={12} fill="#e8b84b" />
+      <g filter="url(#trophy-blur)" opacity={0.8}>
+        <path d={body} fill="#f0c64e" />
+        <circle cx={0} cy={-34} r={13} fill="#f0c64e" />
       </g>
-      {/* stepped base */}
-      <rect x={-26} y={52} width={52} height={9} rx={2.5} fill="url(#trophy-grad)" />
-      <rect x={-21} y={44} width={42} height={8} rx={2} fill="url(#trophy-grad)" />
+      {/* banded base */}
+      <ellipse cx={0} cy={56} rx={23} ry={6} fill="#caa233" />
+      <rect x={-21} y={46} width={42} height={11} rx={3} fill="url(#trophy-grad)" />
+      <rect x={-15} y={40} width={30} height={7} rx={2} fill="#1f6b3a" opacity={0.9} />
+      <rect x={-15} y={40} width={30} height={7} rx={2} fill="url(#trophy-grad)" opacity={0.5} />
       {/* flared body */}
       <path d={body} fill="url(#trophy-grad)" />
       {/* globe on top */}
-      <circle cx={0} cy={-40} r={12} fill="url(#trophy-grad)" />
-      <ellipse cx={0} cy={-40} rx={12} ry={5} fill="none" stroke="#9b7d2e" strokeWidth={0.8} opacity={0.6} />
-      <line x1={0} y1={-52} x2={0} y2={-28} stroke="#9b7d2e" strokeWidth={0.8} opacity={0.5} />
-      {/* subtle highlight on body */}
+      <circle cx={0} cy={-34} r={13} fill="url(#trophy-grad)" />
+      <ellipse cx={0} cy={-34} rx={13} ry={5} fill="none" stroke="#8a6e25" strokeWidth={0.9} opacity={0.7} />
+      <path d="M -13 -34 A 13 13 0 0 1 13 -34" fill="none" stroke="#8a6e25" strokeWidth={0.8} opacity={0.5} />
+      {/* highlight sweep */}
       <path
-        d="M -4 40 C -16 24 -10 4 -2 -6"
+        d="M -5 34 C -18 16 -15 -6 -6 -16"
         fill="none"
-        stroke="#fbe7a6"
-        strokeWidth={1.4}
+        stroke="#fdeeb0"
+        strokeWidth={1.6}
         strokeLinecap="round"
-        opacity={0.45}
+        opacity={0.55}
       />
     </g>
   );
