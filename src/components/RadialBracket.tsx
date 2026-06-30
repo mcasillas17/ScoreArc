@@ -4,17 +4,22 @@ interface Props {
   rounds: BracketRound[];
 }
 
-const CX = 500;
-const CY = 500;
+// Portrait ellipse — center of the SVG canvas.
+const C = { x: 500, y: 625 };
 
-// Outer (depth 0) to inner (depth 4) ring configuration.
-const RING_CONFIG = [
-  { slug: 'round-of-32', radius: 455, discR: 21 },
-  { slug: 'round-of-16', radius: 360, discR: 20 },
-  { slug: 'quarterfinals', radius: 262, discR: 22 },
-  { slug: 'semifinals', radius: 168, discR: 24 },
-  { slug: 'final', radius: 86, discR: 28 },
-] as const;
+// Ellipse radii (Rx, Ry) by depth. Portrait: Ry > Rx.
+// depth 0 = FLAG ring (32 teams), 1 = R16, 2 = QF, 3 = SF, 4 = Final.
+const RINGS: { slug: string; rx: number; ry: number; discR: number }[] = [
+  { slug: 'round-of-32', rx: 388, ry: 500, discR: 30 },
+  { slug: 'round-of-16', rx: 300, ry: 388, discR: 27 },
+  { slug: 'quarterfinals', rx: 212, ry: 274, discR: 27 },
+  { slug: 'semifinals', rx: 128, ry: 165, discR: 29 },
+  { slug: 'final', rx: 62, ry: 80, discR: 33 },
+];
+
+// Outer crest sits 1.135x further out than its flag along the same radial.
+const CREST_SCALE = 1.135;
+const CREST_R = 30;
 
 // FIFA 3-letter code -> ISO 3166-1 alpha-2 (lowercase) for flagcdn.
 const FLAG_MAP: Record<string, string> = {
@@ -30,40 +35,79 @@ const FLAG_MAP: Record<string, string> = {
   BOL: 'bo', TUN: 'tn',
 };
 
+// FIFA 3-letter code -> federation crest URL (outer ring badge).
+const CREST_MAP: Record<string, string> = {
+  RSA: 'https://r2.thesportsdb.com/images/media/team/badge/xjz9j91553368824.png',
+  CAN: 'https://r2.thesportsdb.com/images/media/team/badge/2t631f1595154867.png',
+  BRA: 'https://r2.thesportsdb.com/images/media/team/badge/jl6dip1726167280.png',
+  JPN: 'https://r2.thesportsdb.com/images/media/team/badge/ffsyxz1591989843.png',
+  GER: 'https://r2.thesportsdb.com/images/media/team/badge/1xysi51726167152.png',
+  PAR: 'https://r2.thesportsdb.com/images/media/team/badge/khgav41553419195.png',
+  NED: 'https://r2.thesportsdb.com/images/media/team/badge/1p0hr41593787110.png',
+  MAR: 'https://r2.thesportsdb.com/images/media/team/badge/hbmwkj1731791275.png',
+  CIV: 'https://r2.thesportsdb.com/images/media/team/badge/rwxuuu1455465643.png',
+  NOR: 'https://r2.thesportsdb.com/images/media/team/badge/gyfn811591973155.png',
+  FRA: 'https://r2.thesportsdb.com/images/media/team/badge/p3n0z51726166851.png',
+  SWE: 'https://r2.thesportsdb.com/images/media/team/badge/h5adzg1591981772.png',
+  MEX: 'https://r2.thesportsdb.com/images/media/team/badge/3rmosi1748525208.png',
+  ECU: 'https://r2.thesportsdb.com/images/media/team/badge/47wv2y1591989301.png',
+  ENG: 'https://r2.thesportsdb.com/images/media/team/badge/vf5ttc1726166739.png',
+  COD: 'https://r2.thesportsdb.com/images/media/team/badge/s85jjw1728749022.png',
+  BEL: 'https://r2.thesportsdb.com/images/media/team/badge/8xlvxv1592062265.png',
+  SEN: 'https://r2.thesportsdb.com/images/media/team/badge/slayb01780546342.png',
+  USA: 'https://r2.thesportsdb.com/images/media/team/badge/21f0oi1597948195.png',
+  BIH: 'https://r2.thesportsdb.com/images/media/team/badge/hu9lj21739378200.png',
+  ESP: 'https://r2.thesportsdb.com/images/media/team/badge/ncgqyr1726166942.png',
+  AUT: 'https://r2.thesportsdb.com/images/media/team/badge/874p631628721400.png',
+  POR: 'https://r2.thesportsdb.com/images/media/team/badge/swqvpy1455466083.png',
+  CRO: 'https://r2.thesportsdb.com/images/media/team/badge/vvtsyu1455465317.png',
+  SUI: 'https://r2.thesportsdb.com/images/media/team/badge/mb7yqe1717365808.png',
+  ALG: 'https://r2.thesportsdb.com/images/media/team/badge/rrwpry1455460218.png',
+  AUS: 'https://r2.thesportsdb.com/images/media/team/badge/eylq8x1781926138.png',
+  EGY: 'https://r2.thesportsdb.com/images/media/team/badge/uheyzo1742102234.png',
+  ARG: 'https://r2.thesportsdb.com/images/media/team/badge/3zplhu1726167477.png',
+  CPV: 'https://r2.thesportsdb.com/images/media/team/badge/5jn0o71593280376.png',
+  COL: 'https://r2.thesportsdb.com/images/media/team/badge/4ymyku1691180081.png',
+  GHA: 'https://r2.thesportsdb.com/images/media/team/badge/j589xw1751526124.png',
+};
+
 function flagUrl(abbr: string): string | null {
   const iso = FLAG_MAP[abbr.toUpperCase()];
   return iso ? `https://flagcdn.com/w160/${iso}.png` : null;
+}
+
+function crestSrc(abbr: string): string | null {
+  return CREST_MAP[abbr.toUpperCase()] ?? null;
 }
 
 function toRad(deg: number): number {
   return (deg * Math.PI) / 180;
 }
 
-/**
- * One team slot in the radial bracket. The model is intentionally rich so a
- * future pass can attach click-to-advance interactivity without re-deriving geometry.
- */
 interface RingNode {
   depth: number; // 0 (outer, 32 teams) .. 4 (inner, final pair)
   index: number; // slot index within the ring
-  roundSlug: string;
   match: BracketMatch;
   team: BracketTeam;
   isHome: boolean;
-  x: number;
+  x: number; // flag (or inner disc) position
   y: number;
-  angle: number; // degrees
-  radius: number;
+  crestX: number; // outer crest position (depth 0 only)
+  crestY: number;
   discR: number;
-  isWinner: boolean; // team is the decided winner of its match
+  isWinner: boolean; // team is the decided/effective winner of its match
+}
+
+function ellipse(rx: number, ry: number, angleDeg: number): { x: number; y: number } {
+  const r = toRad(angleDeg);
+  return { x: C.x + rx * Math.cos(r), y: C.y + ry * Math.sin(r) };
 }
 
 function buildRings(rounds: BracketRound[]): RingNode[][] {
-  return RING_CONFIG.map((cfg, depth) => {
+  return RINGS.map((cfg, depth) => {
     const round = rounds.find((r) => r.slug === cfg.slug);
     if (!round) return [];
 
-    // Flatten matches into [home, away, home, away, ...] team slots.
     const slots: { match: BracketMatch; team: BracketTeam; isHome: boolean }[] = [];
     for (const match of round.matches) {
       slots.push({ match, team: match.home, isHome: true });
@@ -73,20 +117,20 @@ function buildRings(rounds: BracketRound[]): RingNode[][] {
     const total = slots.length;
     return slots.map((slot, index) => {
       const angle = -90 + (index + 0.5) * (360 / total);
-      const rad = toRad(angle);
+      const flag = ellipse(cfg.rx, cfg.ry, angle);
+      const crest = ellipse(cfg.rx * CREST_SCALE, cfg.ry * CREST_SCALE, angle);
       const isWinner =
         slot.match.winnerId !== null && slot.match.winnerId === slot.team.id;
       return {
         depth,
         index,
-        roundSlug: cfg.slug,
         match: slot.match,
         team: slot.team,
         isHome: slot.isHome,
-        x: CX + cfg.radius * Math.cos(rad),
-        y: CY + cfg.radius * Math.sin(rad),
-        angle,
-        radius: cfg.radius,
+        x: flag.x,
+        y: flag.y,
+        crestX: crest.x,
+        crestY: crest.y,
         discR: cfg.discR,
         isWinner,
       };
@@ -100,20 +144,20 @@ export default function RadialBracket({ rounds }: Props) {
   return (
     <div className="radial-bracket-wrap">
       <svg
-        viewBox="0 0 1000 1000"
+        viewBox="0 0 1000 1250"
         aria-label="World Cup 2026 knockout bracket"
         role="img"
         style={{
           width: '100%',
           height: 'auto',
-          maxWidth: 880,
+          maxWidth: 820,
           margin: '0 auto',
           display: 'block',
         }}
       >
         <defs>
           <radialGradient id="center-glow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#5a4112" stopOpacity="0.85" />
+            <stop offset="0%" stopColor="#5a4112" stopOpacity="0.9" />
             <stop offset="45%" stopColor="#33260a" stopOpacity="0.45" />
             <stop offset="100%" stopColor="#0b0b0d" stopOpacity="0" />
           </radialGradient>
@@ -122,18 +166,18 @@ export default function RadialBracket({ rounds }: Props) {
             <stop offset="55%" stopColor="#d4af37" />
             <stop offset="100%" stopColor="#9b7d2e" />
           </linearGradient>
-          <filter id="trophy-blur" x="-60%" y="-60%" width="220%" height="220%">
-            <feGaussianBlur stdDeviation="5" />
+          <filter id="trophy-blur" x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur stdDeviation="6" />
           </filter>
         </defs>
 
-        {/* (a) Warm radial glow behind the centre */}
-        <circle cx={CX} cy={CY} r={185} fill="url(#center-glow)" />
-        <circle cx={CX} cy={CY} r={120} fill="#e8b84b" opacity={0.07} />
-        <circle cx={CX} cy={CY} r={78} fill="#f0c64e" opacity={0.12} />
-        <circle cx={CX} cy={CY} r={46} fill="#f6d873" opacity={0.16} />
+        {/* (1) Warm radial glow + trophy at center */}
+        <circle cx={C.x} cy={C.y} r={200} fill="url(#center-glow)" />
+        <circle cx={C.x} cy={C.y} r={120} fill="#e8b84b" opacity={0.08} />
+        <circle cx={C.x} cy={C.y} r={78} fill="#f0c64e" opacity={0.13} />
+        <circle cx={C.x} cy={C.y} r={46} fill="#f6d873" opacity={0.18} />
 
-        {/* (b) Connectors: each node (depth 0..3) -> parent (depth+1, floor(n/2)) */}
+        {/* (2) Connectors: each node (depth 0..3) -> parent (depth+1, floor(n/2)) */}
         {rings.map((ring, depth) => {
           if (depth >= rings.length - 1) return null;
           const parents = rings[depth + 1];
@@ -148,16 +192,16 @@ export default function RadialBracket({ rounds }: Props) {
                 y1={node.y}
                 x2={parent.x}
                 y2={parent.y}
-                stroke={gold ? '#e8b84b' : '#33333a'}
-                strokeWidth={gold ? 2.5 : 1.5}
+                stroke={gold ? '#e8b84b' : '#6b5f3f'}
+                strokeWidth={gold ? 2.4 : 1.4}
                 strokeLinecap="round"
-                opacity={gold ? 0.95 : 0.7}
+                opacity={gold ? 0.95 : 0.55}
               />
             );
           });
         })}
 
-        {/* (c) Junction dots at every node from depth 1 inward */}
+        {/* (2b) Junction dots at every node from depth 1 inward */}
         {rings.map((ring, depth) => {
           if (depth < 1) return null;
           return ring.map((node) => (
@@ -165,144 +209,223 @@ export default function RadialBracket({ rounds }: Props) {
               key={`dot-${depth}-${node.index}`}
               cx={node.x}
               cy={node.y}
-              r={3}
-              fill={node.isWinner ? '#e8b84b' : '#555'}
+              r={3.5}
+              fill={node.isWinner ? '#e8b84b' : '#4a4a52'}
             />
           ));
         })}
 
-        {/* (d) Team flag discs */}
-        {rings.map((ring, depth) =>
-          ring.map((node) => (
-            <TeamDisc key={`disc-${depth}-${node.index}`} node={node} />
-          )),
-        )}
+        {/* (3) Team discs */}
+        {/* Outer ring (depth 0): twin crest + flag per team */}
+        {rings[0]?.map((node) => (
+          <OuterTeam key={`outer-${node.index}`} node={node} />
+        ))}
 
-        {/* Score labels + live pulse (depth 0 & 1 only) — once per match (home slot) */}
-        {rings.map((ring, depth) =>
+        {/* Inner rings (depth 1-4): single flag when decided, else nothing */}
+        {rings.slice(1).map((ring) =>
           ring.map((node) => {
-            if (!node.isHome) return null;
-            const away = ring[node.index + 1];
-            if (!away) return null;
-            const m = node.match;
-            const midX = (node.x + away.x) / 2;
-            const midY = (node.y + away.y) / 2;
-            const dist = Math.hypot(midX - CX, midY - CY) || 1;
-            const push = node.discR + 13;
-            const lx = midX + ((midX - CX) / dist) * push;
-            const ly = midY + ((midY - CY) / dist) * push;
-
-            const showScore =
-              depth <= 1 &&
-              m.homeScore !== null &&
-              m.awayScore !== null &&
-              (m.state === 'finished' || m.state === 'live');
-
-            return (
-              <g key={`meta-${depth}-${node.index}`}>
-                {m.state === 'live' && (
-                  <circle
-                    className="bracket-live-dot"
-                    cx={midX}
-                    cy={midY}
-                    r={3.5}
-                    fill="#ff5c5c"
-                  />
-                )}
-                {showScore && (
-                  <text
-                    x={lx}
-                    y={ly}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fill="#e8b84b"
-                    fontSize={9}
-                    fontWeight={700}
-                    fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-                    opacity={0.92}
-                  >
-                    {m.homeScore}–{m.awayScore}
-                  </text>
-                )}
-              </g>
-            );
+            if (node.team.placeholder) return null;
+            return <InnerFlag key={`inner-${node.depth}-${node.index}`} node={node} />;
           }),
         )}
 
-        {/* (e) Centre trophy */}
+        {/* (1b) Center trophy on top */}
         <Trophy />
       </svg>
     </div>
   );
 }
 
-function TeamDisc({ node }: { node: RingNode }) {
-  const { x, y, discR, team, isWinner } = node;
-  const clipId = `clip-${node.depth}-${node.index}`;
-  const url = team.placeholder ? null : flagUrl(team.abbr);
-
-  const ringStroke = isWinner ? '#e8b84b' : '#2a2a32';
-  const ringWidth = isWinner ? 2.5 : 1;
-
-  if (!url) {
-    return (
-      <g aria-label={team.abbr}>
-        <circle cx={x} cy={y} r={discR} fill="#16161c" stroke={ringStroke} strokeWidth={ringWidth} />
-        <text
-          x={x}
-          y={y}
-          textAnchor="middle"
-          dominantBaseline="central"
-          fill="#666"
-          fontSize={discR > 22 ? 9 : 7}
-          fontWeight={600}
-          fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-        >
-          {team.abbr.slice(0, 4)}
-        </text>
-      </g>
-    );
-  }
-
+/** A circular image disc filling its clip circle. */
+function ImageDisc({
+  id,
+  x,
+  y,
+  r,
+  href,
+  fit,
+  bg,
+  ringStroke,
+  ringWidth,
+}: {
+  id: string;
+  x: number;
+  y: number;
+  r: number;
+  href: string;
+  fit: 'slice' | 'meet';
+  bg: string | null;
+  ringStroke: string;
+  ringWidth: number;
+}) {
   return (
-    <g aria-label={team.name}>
+    <g>
       <defs>
-        <clipPath id={clipId}>
-          <circle cx={x} cy={y} r={discR} />
+        <clipPath id={id}>
+          <circle cx={x} cy={y} r={r} />
         </clipPath>
       </defs>
-      <circle cx={x} cy={y} r={discR} fill="#16161c" />
+      {bg && <circle cx={x} cy={y} r={r} fill={bg} />}
       <image
-        href={url}
-        x={x - discR}
-        y={y - discR}
-        width={discR * 2}
-        height={discR * 2}
-        clipPath={`url(#${clipId})`}
-        preserveAspectRatio="xMidYMid slice"
+        href={href}
+        x={x - r}
+        y={y - r}
+        width={r * 2}
+        height={r * 2}
+        clipPath={`url(#${id})`}
+        preserveAspectRatio={`xMidYMid ${fit}`}
       />
-      <circle cx={x} cy={y} r={discR} fill="none" stroke={ringStroke} strokeWidth={ringWidth} />
+      <circle cx={x} cy={y} r={r} fill="none" stroke={ringStroke} strokeWidth={ringWidth} />
     </g>
   );
 }
 
+/** Plain fallback disc with abbreviation text. */
+function FallbackDisc({
+  x,
+  y,
+  r,
+  abbr,
+  ringStroke,
+  ringWidth,
+}: {
+  x: number;
+  y: number;
+  r: number;
+  abbr: string;
+  ringStroke: string;
+  ringWidth: number;
+}) {
+  return (
+    <g aria-label={abbr}>
+      <circle cx={x} cy={y} r={r} fill="#16161c" stroke={ringStroke} strokeWidth={ringWidth} />
+      <text
+        x={x}
+        y={y}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fill="#777"
+        fontSize={r > 24 ? 9 : 7}
+        fontWeight={600}
+        fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+      >
+        {abbr.slice(0, 4)}
+      </text>
+    </g>
+  );
+}
+
+/** Outer team: federation crest (outside) + flag roundel (inside), touching. */
+function OuterTeam({ node }: { node: RingNode }) {
+  const { team, isWinner } = node;
+  const ringStroke = isWinner ? '#e8b84b' : '#2a2a32';
+  const ringWidth = isWinner ? 2.4 : 1;
+
+  const flag = team.placeholder ? null : flagUrl(team.abbr);
+  const crest = team.placeholder ? null : crestSrc(team.abbr);
+
+  return (
+    <g aria-label={team.name}>
+      {/* Crest (outer) — meet so the badge isn't cropped, on a light disc */}
+      {crest ? (
+        <ImageDisc
+          id={`crest-${node.index}`}
+          x={node.crestX}
+          y={node.crestY}
+          r={CREST_R}
+          href={crest}
+          fit="meet"
+          bg="#f4f4f6"
+          ringStroke={ringStroke}
+          ringWidth={ringWidth}
+        />
+      ) : (
+        <FallbackDisc
+          x={node.crestX}
+          y={node.crestY}
+          r={CREST_R}
+          abbr={team.abbr}
+          ringStroke={ringStroke}
+          ringWidth={ringWidth}
+        />
+      )}
+
+      {/* Flag (inner) — slice so it fills the circle */}
+      {flag ? (
+        <ImageDisc
+          id={`flag-${node.index}`}
+          x={node.x}
+          y={node.y}
+          r={node.discR}
+          href={flag}
+          fit="slice"
+          bg={null}
+          ringStroke={ringStroke}
+          ringWidth={ringWidth}
+        />
+      ) : (
+        <FallbackDisc
+          x={node.x}
+          y={node.y}
+          r={node.discR}
+          abbr={team.abbr}
+          ringStroke={ringStroke}
+          ringWidth={ringWidth}
+        />
+      )}
+    </g>
+  );
+}
+
+/** Inner advanced team: single flag disc (slice-fill). */
+function InnerFlag({ node }: { node: RingNode }) {
+  const { team, isWinner } = node;
+  const ringStroke = isWinner ? '#e8b84b' : '#2a2a32';
+  const ringWidth = isWinner ? 2.4 : 1;
+  const flag = flagUrl(team.abbr);
+
+  if (!flag) {
+    return (
+      <FallbackDisc
+        x={node.x}
+        y={node.y}
+        r={node.discR}
+        abbr={team.abbr}
+        ringStroke={ringStroke}
+        ringWidth={ringWidth}
+      />
+    );
+  }
+
+  return (
+    <ImageDisc
+      id={`inner-${node.depth}-${node.index}`}
+      x={node.x}
+      y={node.y}
+      r={node.discR}
+      href={flag}
+      fit="slice"
+      bg={null}
+      ringStroke={ringStroke}
+      ringWidth={ringWidth}
+    />
+  );
+}
+
 function Trophy() {
-  // Iconic FIFA World Cup silhouette: two figures spiralling up to hold a globe,
-  // on a banded base. Local origin at the globe/body join; scaled up at centre.
   const body =
     'M -9 40 C -27 22 -23 -4 -11 -16 C -17 -22 -13 -29 -6 -30 C -3 -24 -2 -20 0 -20 C 2 -20 3 -24 6 -30 C 13 -29 17 -22 11 -16 C 23 -4 27 22 9 40 Z';
   return (
-    <g transform={`translate(${CX}, ${CY}) scale(1.5)`} aria-label="World Cup trophy">
+    <g transform={`translate(${C.x}, ${C.y}) scale(1.5)`} aria-label="World Cup trophy">
       {/* soft glow copy behind */}
-      <g filter="url(#trophy-blur)" opacity={0.8}>
-        <path d={body} fill="#f0c64e" />
-        <circle cx={0} cy={-34} r={13} fill="#f0c64e" />
+      <g filter="url(#trophy-blur)" opacity={0.85}>
+        <path d={body} fill="#f6d873" />
+        <circle cx={0} cy={-34} r={13} fill="#f6d873" />
       </g>
       {/* banded base */}
       <ellipse cx={0} cy={56} rx={23} ry={6} fill="#caa233" />
       <rect x={-21} y={46} width={42} height={11} rx={3} fill="url(#trophy-grad)" />
-      <rect x={-15} y={40} width={30} height={7} rx={2} fill="#1f6b3a" opacity={0.9} />
-      <rect x={-15} y={40} width={30} height={7} rx={2} fill="url(#trophy-grad)" opacity={0.5} />
+      <rect x={-15} y={40} width={30} height={7} rx={2} fill="url(#trophy-grad)" />
       {/* flared body */}
       <path d={body} fill="url(#trophy-grad)" />
       {/* globe on top */}
@@ -316,7 +439,7 @@ function Trophy() {
         stroke="#fdeeb0"
         strokeWidth={1.6}
         strokeLinecap="round"
-        opacity={0.55}
+        opacity={0.6}
       />
     </g>
   );
