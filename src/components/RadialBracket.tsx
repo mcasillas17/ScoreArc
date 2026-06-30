@@ -201,40 +201,40 @@ interface Slot {
   clickable: boolean; // predict mode: this match can be decided by the user
 }
 
-/**
- * The official outer-ring order of the 32 R32 matches, derived from ESPN's R16
- * placeholder labels so each R16 match's two feeders are adjacent. Returns an
- * array of 16 R32 match indices (into r32.matches) in bracket order; falls back
- * to plain event order if the labels can't be resolved.
- */
-function officialLeafOrder(
-  r32: BracketRound | undefined,
-  r16: BracketRound | undefined,
-): number[] {
-  const fallback = r32 ? r32.matches.map((_, i) => i) : [];
-  if (!r32 || !r16 || r16.matches.length !== 8) return fallback;
+// The FIXED official WC2026 knockout structure: each R32 match identified by its
+// two team abbreviations, listed in bracket LEAF order so adjacent pairs feed the
+// same R16, adjacent R16s feed the same QF, and so on. Verified against ESPN's
+// decided R16 matchups (e.g. R16: Paraguay vs France, Brazil vs Norway) and the
+// official feeder labels. Identity-based, so it's robust to ESPN re-ordering its
+// events and to the official numbering not matching event order.
+const OFFICIAL_R32_ORDER: [string, string][] = [
+  ['RSA', 'CAN'], ['NED', 'MAR'], ['GER', 'PAR'], ['FRA', 'SWE'],
+  ['ESP', 'AUT'], ['POR', 'CRO'], ['BEL', 'SEN'], ['USA', 'BIH'],
+  ['BRA', 'JPN'], ['CIV', 'NOR'], ['MEX', 'ECU'], ['ENG', 'COD'],
+  ['AUS', 'EGY'], ['ARG', 'CPV'], ['SUI', 'ALG'], ['COL', 'GHA'],
+];
 
-  const winnerIdxOf = (team: BracketTeam): number | null => {
-    for (let i = 0; i < r32.matches.length; i++) {
-      if (winnerTeam(r32.matches[i])?.id === team.id) return i;
-    }
-    return null;
-  };
-  const labelIdx = (name: string): number | null => {
-    const m = /Round of 32 (\d+) Winner/i.exec(name || '');
-    if (!m) return null;
-    const n = parseInt(m[1], 10) - 1;
-    return Number.isNaN(n) ? null : n;
-  };
+/**
+ * Outer-ring order of the 32 R32 matches in official bracket order. Maps each
+ * fixed matchup (by team abbreviations) to its index in the ESPN data; falls
+ * back to plain event order if the teams don't match (e.g. data changed).
+ */
+function officialLeafOrder(r32: BracketRound | undefined): number[] {
+  const fallback = r32 ? r32.matches.map((_, i) => i) : [];
+  if (!r32 || r32.matches.length !== 16) return fallback;
+
+  const findPair = (a: string, b: string): number =>
+    r32.matches.findIndex((m) => {
+      const x = (m.home.abbr ?? '').toUpperCase();
+      const y = (m.away.abbr ?? '').toUpperCase();
+      return (x === a && y === b) || (x === b && y === a);
+    });
 
   const order: number[] = [];
-  for (const match of r16.matches) {
-    for (const team of [match.home, match.away]) {
-      let idx = labelIdx(team.name);
-      if (idx === null) idx = winnerIdxOf(team);
-      if (idx === null || idx < 0 || idx >= r32.matches.length) return fallback;
-      order.push(idx);
-    }
+  for (const [a, b] of OFFICIAL_R32_ORDER) {
+    const idx = findPair(a, b);
+    if (idx < 0) return fallback;
+    order.push(idx);
   }
   if (order.length !== 16 || new Set(order).size !== 16) return fallback;
   return order;
@@ -253,14 +253,11 @@ function buildRings(
   mode: BracketMode = 'live',
 ): RingNode[][] {
   const r32 = rounds.find((r) => r.slug === 'round-of-32');
-  const r16 = rounds.find((r) => r.slug === 'round-of-16');
   const ringSlots: Slot[][] = [];
 
-  // OFFICIAL outer order: ESPN encodes each R16 match's two R32 feeders in its
-  // placeholder labels ("Round of 32 N Winner"). The real bracket is NOT adjacent
-  // (e.g. R16 pairs R32 13&15 and 14&16). Reorder the 32 leaves so each R16's two
-  // feeders sit together; fall back to event order if labels are unavailable.
-  const leafOrder = officialLeafOrder(r32, r16);
+  // Position the 32 leaves in official bracket order (identity-based) so every
+  // R16/QF/SF pairing is correct — not adjacent event order.
+  const leafOrder = officialLeafOrder(r32);
 
   const d0: Slot[] = [];
   if (r32) {
