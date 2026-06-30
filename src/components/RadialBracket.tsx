@@ -200,8 +200,47 @@ interface Slot {
 }
 
 /**
+ * The official outer-ring order of the 32 R32 matches, derived from ESPN's R16
+ * placeholder labels so each R16 match's two feeders are adjacent. Returns an
+ * array of 16 R32 match indices (into r32.matches) in bracket order; falls back
+ * to plain event order if the labels can't be resolved.
+ */
+function officialLeafOrder(
+  r32: BracketRound | undefined,
+  r16: BracketRound | undefined,
+): number[] {
+  const fallback = r32 ? r32.matches.map((_, i) => i) : [];
+  if (!r32 || !r16 || r16.matches.length !== 8) return fallback;
+
+  const winnerIdxOf = (team: BracketTeam): number | null => {
+    for (let i = 0; i < r32.matches.length; i++) {
+      if (winnerTeam(r32.matches[i])?.id === team.id) return i;
+    }
+    return null;
+  };
+  const labelIdx = (name: string): number | null => {
+    const m = /Round of 32 (\d+) Winner/i.exec(name || '');
+    if (!m) return null;
+    const n = parseInt(m[1], 10) - 1;
+    return Number.isNaN(n) ? null : n;
+  };
+
+  const order: number[] = [];
+  for (const match of r16.matches) {
+    for (const team of [match.home, match.away]) {
+      let idx = labelIdx(team.name);
+      if (idx === null) idx = winnerIdxOf(team);
+      if (idx === null || idx < 0 || idx >= r32.matches.length) return fallback;
+      order.push(idx);
+    }
+  }
+  if (order.length !== 16 || new Set(order).size !== 16) return fallback;
+  return order;
+}
+
+/**
  * Build the bracket as a real tree so every position is correct:
- * depth 0 = the 32 round-of-32 participants (in match order); each inner depth's
+ * depth 0 = the 32 round-of-32 participants (in bracket order); each inner depth's
  * slot = the actual WINNER of the match directly below it, looked up by team
  * identity in that round. Undecided slots become placeholders (no flag) — so a
  * team never appears in a round that hasn't happened yet.
@@ -212,12 +251,21 @@ function buildRings(
   mode: BracketMode = 'live',
 ): RingNode[][] {
   const r32 = rounds.find((r) => r.slug === 'round-of-32');
+  const r16 = rounds.find((r) => r.slug === 'round-of-16');
   const ringSlots: Slot[][] = [];
+
+  // OFFICIAL outer order: ESPN encodes each R16 match's two R32 feeders in its
+  // placeholder labels ("Round of 32 N Winner"). The real bracket is NOT adjacent
+  // (e.g. R16 pairs R32 13&15 and 14&16). Reorder the 32 leaves so each R16's two
+  // feeders sit together; fall back to event order if labels are unavailable.
+  const leafOrder = officialLeafOrder(r32, r16);
 
   const d0: Slot[] = [];
   if (r32) {
-    r32.matches.forEach((m, i) => {
-      const eff = effectiveWinner(m, 0, i, picks, mode, m.home, m.away);
+    leafOrder.forEach((origIdx, pos) => {
+      const m = r32.matches[origIdx];
+      if (!m) return;
+      const eff = effectiveWinner(m, 0, pos, picks, mode, m.home, m.away);
       const clickable = mode === 'predict' && isDecidable(m, m.home, m.away);
       d0.push({ team: m.home, match: m, isHome: true, isWinner: eff?.id === m.home.id, clickable });
       d0.push({ team: m.away, match: m, isHome: false, isWinner: eff?.id === m.away.id, clickable });
