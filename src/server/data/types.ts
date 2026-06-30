@@ -7,6 +7,19 @@ export interface Team {
   crestUrl: string | null;
 }
 
+export interface Scorer {
+  teamId: string;
+  player: string;
+  minute: string;
+  penalty: boolean;
+  shootout: boolean;
+}
+
+export interface Shootout {
+  homeScore: number;
+  awayScore: number;
+}
+
 export interface Match {
   id: string;
   kickoff: string;          // ISO date string
@@ -19,6 +32,8 @@ export interface Match {
   awayScore: number | null;
   winnerId: string | null;
   note: string | null;      // e.g. "Paraguay advance 4-3 on penalties"
+  scorers: Scorer[];
+  shootout: Shootout | null;
 }
 
 export interface Standing {

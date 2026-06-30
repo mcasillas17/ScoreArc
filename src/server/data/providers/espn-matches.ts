@@ -38,6 +38,8 @@ export function mapScoreboard(raw: unknown): Match[] {
       awayScore: away.score != null && away.score !== '' ? Number(away.score) : null,
       winnerId,
       note,
+      scorers: [],
+      shootout: null,
     };
   });
 }

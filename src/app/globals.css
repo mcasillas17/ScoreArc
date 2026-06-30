@@ -1116,3 +1116,83 @@ a {
 @media (prefers-reduced-motion: reduce) {
   .champ-spark { animation: none; opacity: 0; }
 }
+
+/* ===== Live Scorers (ls- prefix) ===== */
+.ls-scorers {
+  display: flex;
+  width: 100%;
+  gap: 6px;
+  padding: 6px 4px 2px;
+  border-top: 1px solid var(--hairline);
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.ls-scorers-col {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ls-scorers-home {
+  align-items: flex-start;
+  text-align: left;
+}
+
+.ls-scorers-away {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.ls-scorers-divider {
+  width: 1px;
+  background: var(--hairline);
+  align-self: stretch;
+  flex-shrink: 0;
+}
+
+.ls-scorer-line {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.ls-scorer-ball {
+  font-size: 9px;
+  flex-shrink: 0;
+}
+
+.ls-scorer-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 68px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.ls-scorer-minute {
+  white-space: nowrap;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+/* Penalty shootout badge */
+.ls-pens-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gold);
+  background: rgba(232, 184, 75, 0.1);
+  border: 1px solid rgba(232, 184, 75, 0.25);
+  border-radius: 100px;
+  padding: 1px 7px;
+  margin-top: 2px;
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { Match } from "@/server/data/types";
+import type { Match, Scorer } from "@/server/data/types";
 import TeamBadge from "./TeamBadge";
 
 interface LiveScoresProps {
@@ -25,28 +25,45 @@ function formatKickoff(iso: string): string {
   }
 }
 
+function ScorerLine({ scorer }: { scorer: Scorer }) {
+  return (
+    <span className="ls-scorer-line">
+      <span className="ls-scorer-ball">⚽</span>
+      <span className="ls-scorer-name">{scorer.player}</span>
+      <span className="ls-scorer-minute">
+        {scorer.minute}
+        {scorer.penalty && !scorer.shootout ? " (P)" : ""}
+      </span>
+    </span>
+  );
+}
+
 export default function LiveScores({ initialMatches }: LiveScoresProps) {
   const [matches, setMatches] = useState<Match[]>(sortMatches(initialMatches));
 
   useEffect(() => {
-    const es = new EventSource("/api/live");
+    let mounted = true;
 
-    es.addEventListener("matches", (e: Event) => {
-      const msg = e as MessageEvent<string>;
+    async function poll() {
       try {
-        const data = JSON.parse(msg.data) as Match[];
-        setMatches(sortMatches(data));
+        const res = await fetch("/api/matches");
+        if (res.ok) {
+          const data = (await res.json()) as Match[];
+          if (mounted) setMatches(sortMatches(data));
+        }
       } catch {
-        // ignore malformed payloads
+        // ignore network errors — next poll will retry
       }
-    });
+    }
 
-    es.onerror = () => {
-      // silently reconnect — browser handles SSE reconnect automatically
-    };
+    // Kick off initial fetch immediately so data stays fresh even on first render
+    poll();
+
+    const interval = setInterval(poll, 15_000);
 
     return () => {
-      es.close();
+      mounted = false;
+      clearInterval(interval);
     };
   }, []);
 
@@ -62,6 +79,12 @@ export default function LiveScores({ initialMatches }: LiveScoresProps) {
     <div className="live-strip">
       {matches.map((match) => {
         const started = match.state === "live" || match.state === "finished";
+
+        // Exclude shootout goals from the in-play scorers list
+        const inPlayScorers = (match.scorers ?? []).filter((s) => !s.shootout);
+        const homeScorers = inPlayScorers.filter((s) => s.teamId === match.home.id);
+        const awayScorers = inPlayScorers.filter((s) => s.teamId === match.away.id);
+        const hasScorers = inPlayScorers.length > 0;
 
         return (
           <div key={match.id} className="match-card">
@@ -83,6 +106,11 @@ export default function LiveScores({ initialMatches }: LiveScoresProps) {
                     {formatKickoff(match.kickoff)}
                   </span>
                 )}
+                {match.shootout && (
+                  <span className="ls-pens-badge">
+                    Pens {match.shootout.homeScore}–{match.shootout.awayScore}
+                  </span>
+                )}
                 {match.note && (
                   <span className="match-note">{match.note}</span>
                 )}
@@ -93,6 +121,22 @@ export default function LiveScores({ initialMatches }: LiveScoresProps) {
                 <span className="match-abbr">{match.away.abbr}</span>
               </div>
             </div>
+
+            {started && hasScorers && (
+              <div className="ls-scorers">
+                <div className="ls-scorers-col ls-scorers-home">
+                  {homeScorers.map((s, i) => (
+                    <ScorerLine key={i} scorer={s} />
+                  ))}
+                </div>
+                <div className="ls-scorers-divider" />
+                <div className="ls-scorers-col ls-scorers-away">
+                  {awayScorers.map((s, i) => (
+                    <ScorerLine key={i} scorer={s} />
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="match-status">
               {match.state === "live" && (
