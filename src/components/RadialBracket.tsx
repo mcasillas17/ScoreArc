@@ -88,7 +88,8 @@ function toRad(deg: number): number {
 interface RingNode {
   depth: number; // 0 (outer, 32 teams) .. 4 (inner, final pair)
   index: number; // slot index within the ring
-  match: BracketMatch;
+  angle: number; // degrees on the circle
+  match: BracketMatch | null;
   team: BracketTeam;
   isHome: boolean;
   x: number; // flag (or inner disc) position
@@ -104,27 +105,94 @@ function ellipse(rx: number, ry: number, angleDeg: number): { x: number; y: numb
   return { x: C.x + rx * Math.cos(r), y: C.y + ry * Math.sin(r) };
 }
 
+function makePlaceholder(depth: number, slot: number): BracketTeam {
+  return { id: `ph-${depth}-${slot}`, name: '', abbr: '', crestUrl: null, placeholder: true };
+}
+
+// The winning team of a match, or null if the match isn't decided yet.
+function winnerTeam(match: BracketMatch | null): BracketTeam | null {
+  if (!match || !match.winnerId) return null;
+  if (match.home.id === match.winnerId) return match.home;
+  if (match.away.id === match.winnerId) return match.away;
+  return null;
+}
+
+// Find the match in `round` played between two given team ids (either orientation).
+function findMatch(round: BracketRound | undefined, idA: string, idB: string): BracketMatch | null {
+  if (!round) return null;
+  return (
+    round.matches.find(
+      (m) =>
+        (m.home.id === idA && m.away.id === idB) ||
+        (m.home.id === idB && m.away.id === idA),
+    ) ?? null
+  );
+}
+
+interface Slot {
+  team: BracketTeam;
+  match: BracketMatch | null; // the match this team plays at this depth
+  isHome: boolean;
+  isWinner: boolean; // won its match here -> advances inward
+}
+
+/**
+ * Build the bracket as a real tree so every position is correct:
+ * depth 0 = the 32 round-of-32 participants (in match order); each inner depth's
+ * slot = the actual WINNER of the match directly below it, looked up by team
+ * identity in that round. Undecided slots become placeholders (no flag) — so a
+ * team never appears in a round that hasn't happened yet.
+ */
 function buildRings(rounds: BracketRound[]): RingNode[][] {
-  return RINGS.map((cfg, depth) => {
-    const round = rounds.find((r) => r.slug === cfg.slug);
-    if (!round) return [];
+  const r32 = rounds.find((r) => r.slug === 'round-of-32');
+  const ringSlots: Slot[][] = [];
 
-    const slots: { match: BracketMatch; team: BracketTeam; isHome: boolean }[] = [];
-    for (const match of round.matches) {
-      slots.push({ match, team: match.home, isHome: true });
-      slots.push({ match, team: match.away, isHome: false });
+  const d0: Slot[] = [];
+  if (r32) {
+    for (const m of r32.matches) {
+      d0.push({ team: m.home, match: m, isHome: true, isWinner: m.winnerId === m.home.id });
+      d0.push({ team: m.away, match: m, isHome: false, isWinner: m.winnerId === m.away.id });
     }
+  }
+  ringSlots.push(d0);
 
-    const total = slots.length;
+  for (let depth = 1; depth < RINGS.length; depth++) {
+    const round = rounds.find((r) => r.slug === RINGS[depth].slug);
+    const prev = ringSlots[depth - 1];
+    const nSlots = Math.floor(prev.length / 2);
+
+    // Team advancing into slot k = winner of the match prev[2k]/prev[2k+1] played below.
+    const advancing: (BracketTeam | null)[] = [];
+    for (let k = 0; k < nSlots; k++) advancing.push(winnerTeam(prev[2 * k].match));
+
+    const slots: Slot[] = [];
+    for (let k = 0; k < nSlots; k++) {
+      const pair = Math.floor(k / 2);
+      const tA = advancing[2 * pair] ?? null;
+      const tB = advancing[2 * pair + 1] ?? null;
+      const matchR = tA && tB ? findMatch(round, tA.id, tB.id) : null;
+      const team = advancing[k] ?? makePlaceholder(depth, k);
+      slots.push({
+        team,
+        match: matchR,
+        isHome: k % 2 === 0,
+        isWinner: !!(matchR && matchR.winnerId === team.id),
+      });
+    }
+    ringSlots.push(slots);
+  }
+
+  return ringSlots.map((slots, depth) => {
+    const cfg = RINGS[depth];
+    const total = slots.length || 1;
     return slots.map((slot, index) => {
       const angle = -90 + (index + 0.5) * (360 / total);
       const flag = ellipse(cfg.rx, cfg.ry, angle);
       const crest = ellipse(cfg.rx * CREST_SCALE, cfg.ry * CREST_SCALE, angle);
-      const isWinner =
-        slot.match.winnerId !== null && slot.match.winnerId === slot.team.id;
       return {
         depth,
         index,
+        angle,
         match: slot.match,
         team: slot.team,
         isHome: slot.isHome,
@@ -133,7 +201,7 @@ function buildRings(rounds: BracketRound[]): RingNode[][] {
         crestX: crest.x,
         crestY: crest.y,
         discR: cfg.discR,
-        isWinner,
+        isWinner: slot.isWinner,
       };
     });
   });
@@ -178,28 +246,73 @@ export default function RadialBracket({ rounds }: Props) {
         <circle cx={C.x} cy={C.y} r={78} fill="#f0c64e" opacity={0.13} />
         <circle cx={C.x} cy={C.y} r={46} fill="#f6d873" opacity={0.18} />
 
-        {/* (2) Connectors: each node (depth 0..3) -> parent (depth+1, floor(n/2)) */}
-        {rings.map((ring, depth) => {
-          if (depth >= rings.length - 1) return null;
+        {/* (2) Connectors: bracket elbows — radial stub from each team, a
+            tangential arc joining the pair, then a radial stub to the parent. */}
+        {RINGS.slice(0, -1).map((cfg, depth) => {
+          const rc = cfg.rx; // child ring radius
+          const rp = RINGS[depth + 1].rx; // parent ring radius
+          const rj = rp + (rc - rp) * 0.5; // arc (join) radius between them
+          const children = rings[depth];
           const parents = rings[depth + 1];
-          return ring.map((node) => {
-            const parent = parents[Math.floor(node.index / 2)];
-            if (!parent) return null;
-            const gold = node.isWinner;
-            return (
-              <line
-                key={`conn-${depth}-${node.index}`}
-                x1={node.x}
-                y1={node.y}
-                x2={parent.x}
-                y2={parent.y}
-                stroke={gold ? '#e8b84b' : '#6b5f3f'}
-                strokeWidth={gold ? 2.4 : 1.4}
-                strokeLinecap="round"
-                opacity={gold ? 0.95 : 0.55}
+          const GRAY = '#5b5446';
+          const GOLD = '#e8b84b';
+          return parents.map((parent, k) => {
+            const a = children[2 * k];
+            const b = children[2 * k + 1];
+            if (!a || !b) return null;
+            const jA = ellipse(rj, rj, a.angle);
+            const jB = ellipse(rj, rj, b.angle);
+            const jMid = ellipse(rj, rj, parent.angle);
+            const pPar = ellipse(rp, rp, parent.angle);
+            const parentDecided = !parent.team.placeholder;
+            const sweep = b.angle > a.angle ? 1 : 0;
+            const seg = (
+              key: string,
+              d: string,
+              gold: boolean,
+              round = true,
+            ) => (
+              <path
+                key={key}
+                d={d}
+                fill="none"
+                stroke={gold ? GOLD : GRAY}
+                strokeWidth={gold ? 2.2 : 1.3}
+                opacity={gold ? 0.95 : 0.5}
+                strokeLinecap={round ? 'round' : 'butt'}
               />
             );
+            return (
+              <g key={`conn-${depth}-${k}`}>
+                {seg(`a`, `M ${a.x} ${a.y} L ${jA.x} ${jA.y}`, a.isWinner)}
+                {seg(`b`, `M ${b.x} ${b.y} L ${jB.x} ${jB.y}`, b.isWinner)}
+                {seg(
+                  `arc`,
+                  `M ${jA.x} ${jA.y} A ${rj} ${rj} 0 0 ${sweep} ${jB.x} ${jB.y}`,
+                  parentDecided,
+                  false,
+                )}
+                {seg(`s`, `M ${jMid.x} ${jMid.y} L ${pPar.x} ${pPar.y}`, parentDecided)}
+              </g>
+            );
           });
+        })}
+
+        {/* (2c) Finalists -> center */}
+        {rings[RINGS.length - 1]?.map((node) => {
+          const inner = ellipse(30, 30, node.angle);
+          const gold = node.isWinner;
+          return (
+            <path
+              key={`final-${node.index}`}
+              d={`M ${node.x} ${node.y} L ${inner.x} ${inner.y}`}
+              fill="none"
+              stroke={gold ? '#e8b84b' : '#5b5446'}
+              strokeWidth={gold ? 2.2 : 1.3}
+              opacity={gold ? 0.95 : 0.5}
+              strokeLinecap="round"
+            />
+          );
         })}
 
         {/* (2b) Junction dots at every node from depth 1 inward */}
@@ -233,10 +346,10 @@ export default function RadialBracket({ rounds }: Props) {
         {/* (1b) Center trophy on top — real WC2026 trophy image */}
         <image
           href="/trophy.png"
-          x={C.x - 35}
-          y={C.y - 86}
-          width={70}
-          height={172}
+          x={C.x - 26}
+          y={C.y - 64}
+          width={52}
+          height={128}
           preserveAspectRatio="xMidYMid meet"
         />
       </svg>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <circle cx="16" cy="16" r="15" fill="#ffffff" stroke="#0b0b0d" stroke-width="1.5"/>
+  <!-- center pentagon -->
+  <polygon points="16,10 21,13.6 19.1,19.5 12.9,19.5 11,13.6" fill="#0b0b0d"/>
+  <!-- partial outer pentagons (top, and the seams) -->
+  <polygon points="16,3.2 18.2,8 16,9.4 13.8,8" fill="#0b0b0d"/>
+  <polygon points="28,13 23.5,14.2 21.6,12.7 22.6,8.4" fill="#0b0b0d"/>
+  <polygon points="25.6,26 21.2,21.2 22.4,19.4 26.7,21" fill="#0b0b0d"/>
+  <polygon points="6.4,26 10.8,21.2 9.6,19.4 5.3,21" fill="#0b0b0d"/>
+  <polygon points="4,13 8.5,14.2 10.4,12.7 9.4,8.4" fill="#0b0b0d"/>
+  <!-- seams -->
+  <g stroke="#0b0b0d" stroke-width="1.2" fill="none">
+    <path d="M16 9.4V10M21.6 12.7l-.6.9M19.1 19.5l1.1.7M12.9 19.5l-1.1.7M11 13.6l-.6-.9"/>
+  </g>
+</svg>
