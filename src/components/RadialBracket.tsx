@@ -1,7 +1,14 @@
+'use client';
+
 import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/types';
+
+export type BracketMode = 'live' | 'predict';
 
 interface Props {
   rounds: BracketRound[];
+  mode?: BracketMode;
+  picks?: Record<string, string>;
+  onPick?: (depth: number, matchIndex: number, teamId: string) => void;
 }
 
 // True circle — center of the (square) SVG canvas.
@@ -114,6 +121,7 @@ interface RingNode {
   crestY: number;
   discR: number;
   isWinner: boolean; // team is the decided/effective winner of its match
+  clickable: boolean; // predict mode: match undecided + both participants known
 }
 
 function ellipse(rx: number, ry: number, angleDeg: number): { x: number; y: number } {
@@ -125,12 +133,50 @@ function makePlaceholder(depth: number, slot: number): BracketTeam {
   return { id: `ph-${depth}-${slot}`, name: '', abbr: '', crestUrl: null, placeholder: true };
 }
 
-// The winning team of a match, or null if the match isn't decided yet.
+// The winning team of a match, or null if the match isn't decided yet (by ESPN).
 function winnerTeam(match: BracketMatch | null): BracketTeam | null {
   if (!match || !match.winnerId) return null;
   if (match.home.id === match.winnerId) return match.home;
   if (match.away.id === match.winnerId) return match.away;
   return null;
+}
+
+/**
+ * Effective winner of a match between teamA / teamB at (depth, matchIndex):
+ *   real ESPN winner if decided, ELSE (predict mode) the user's pick if it is one
+ *   of the two known participants, ELSE null. This is what advances inward, so a
+ *   user's pick propagates exactly like a real result.
+ */
+function effectiveWinner(
+  match: BracketMatch | null,
+  depth: number,
+  matchIndex: number,
+  picks: Record<string, string>,
+  mode: BracketMode,
+  teamA: BracketTeam | null,
+  teamB: BracketTeam | null,
+): BracketTeam | null {
+  const real = winnerTeam(match);
+  if (real) return real;
+  if (mode !== 'predict') return null;
+  if (!teamA || !teamB || teamA.placeholder || teamB.placeholder) return null;
+  const pickedId = picks[`${depth}:${matchIndex}`];
+  if (!pickedId) return null;
+  if (pickedId === teamA.id) return teamA;
+  if (pickedId === teamB.id) return teamB;
+  return null;
+}
+
+// A match is user-decidable (clickable in predict mode) when both participants
+// are known and the ESPN match has NOT been really decided (real results lock).
+function isDecidable(
+  match: BracketMatch | null,
+  teamA: BracketTeam | null,
+  teamB: BracketTeam | null,
+): boolean {
+  if (!teamA || !teamB || teamA.placeholder || teamB.placeholder) return false;
+  if (match && match.winnerId) return false;
+  return true;
 }
 
 // Find the match in `round` played between two given team ids (either orientation).
@@ -149,7 +195,8 @@ interface Slot {
   team: BracketTeam;
   match: BracketMatch | null; // the match this team plays at this depth
   isHome: boolean;
-  isWinner: boolean; // won its match here -> advances inward
+  isWinner: boolean; // won its match here (real or pick) -> advances inward
+  clickable: boolean; // predict mode: this match can be decided by the user
 }
 
 /**
@@ -159,16 +206,22 @@ interface Slot {
  * identity in that round. Undecided slots become placeholders (no flag) — so a
  * team never appears in a round that hasn't happened yet.
  */
-function buildRings(rounds: BracketRound[]): RingNode[][] {
+function buildRings(
+  rounds: BracketRound[],
+  picks: Record<string, string> = {},
+  mode: BracketMode = 'live',
+): RingNode[][] {
   const r32 = rounds.find((r) => r.slug === 'round-of-32');
   const ringSlots: Slot[][] = [];
 
   const d0: Slot[] = [];
   if (r32) {
-    for (const m of r32.matches) {
-      d0.push({ team: m.home, match: m, isHome: true, isWinner: m.winnerId === m.home.id });
-      d0.push({ team: m.away, match: m, isHome: false, isWinner: m.winnerId === m.away.id });
-    }
+    r32.matches.forEach((m, i) => {
+      const eff = effectiveWinner(m, 0, i, picks, mode, m.home, m.away);
+      const clickable = mode === 'predict' && isDecidable(m, m.home, m.away);
+      d0.push({ team: m.home, match: m, isHome: true, isWinner: eff?.id === m.home.id, clickable });
+      d0.push({ team: m.away, match: m, isHome: false, isWinner: eff?.id === m.away.id, clickable });
+    });
   }
   ringSlots.push(d0);
 
@@ -177,22 +230,29 @@ function buildRings(rounds: BracketRound[]): RingNode[][] {
     const prev = ringSlots[depth - 1];
     const nSlots = Math.floor(prev.length / 2);
 
-    // Team advancing into slot k = winner of the match prev[2k]/prev[2k+1] played below.
+    // Team advancing into slot k = EFFECTIVE winner (real or pick) of the match
+    // prev[2k]/prev[2k+1] played below — encoded on the prev slots' isWinner flag.
     const advancing: (BracketTeam | null)[] = [];
-    for (let k = 0; k < nSlots; k++) advancing.push(winnerTeam(prev[2 * k].match));
+    for (let k = 0; k < nSlots; k++) {
+      const a = prev[2 * k];
+      const b = prev[2 * k + 1];
+      advancing.push(a.isWinner ? a.team : b.isWinner ? b.team : null);
+    }
 
     const slots: Slot[] = [];
     for (let k = 0; k < nSlots; k++) {
-      const pair = Math.floor(k / 2);
+      const pair = Math.floor(k / 2); // match index at this depth
       const tA = advancing[2 * pair] ?? null;
       const tB = advancing[2 * pair + 1] ?? null;
       const matchR = tA && tB ? findMatch(round, tA.id, tB.id) : null;
       const team = advancing[k] ?? makePlaceholder(depth, k);
+      const eff = effectiveWinner(matchR, depth, pair, picks, mode, tA, tB);
       slots.push({
         team,
         match: matchR,
         isHome: k % 2 === 0,
-        isWinner: !!(matchR && matchR.winnerId === team.id),
+        isWinner: eff != null && eff.id === team.id,
+        clickable: mode === 'predict' && isDecidable(matchR, tA, tB),
       });
     }
     ringSlots.push(slots);
@@ -218,13 +278,19 @@ function buildRings(rounds: BracketRound[]): RingNode[][] {
         crestY: crest.y,
         discR: cfg.discR,
         isWinner: slot.isWinner,
+        clickable: slot.clickable,
       };
     });
   });
 }
 
-export default function RadialBracket({ rounds }: Props) {
-  const rings = buildRings(rounds);
+export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick }: Props) {
+  const rings = buildRings(rounds, picks, mode);
+
+  const handleDiscClick = (node: RingNode) => {
+    if (!onPick || !node.clickable) return;
+    onPick(node.depth, Math.floor(node.index / 2), node.team.id);
+  };
 
   return (
     <div className="radial-bracket-wrap">
@@ -359,14 +425,28 @@ export default function RadialBracket({ rounds }: Props) {
         {/* (3) Team discs */}
         {/* Outer ring (depth 0): twin crest + flag per team */}
         {rings[0]?.map((node) => (
-          <OuterTeam key={`outer-${node.index}`} node={node} />
+          <OuterTeam
+            key={`outer-${node.index}`}
+            node={node}
+            mode={mode}
+            clickable={node.clickable}
+            onClick={() => handleDiscClick(node)}
+          />
         ))}
 
         {/* Inner rings (depth 1-4): single flag when decided, else nothing */}
         {rings.slice(1).map((ring) =>
           ring.map((node) => {
             if (node.team.placeholder) return null;
-            return <InnerFlag key={`inner-${node.depth}-${node.index}`} node={node} />;
+            return (
+              <InnerFlag
+                key={`inner-${node.depth}-${node.index}-${node.team.id}`}
+                node={node}
+                mode={mode}
+                clickable={node.clickable}
+                onClick={() => handleDiscClick(node)}
+              />
+            );
           }),
         )}
 
@@ -464,16 +544,32 @@ function FallbackDisc({
 }
 
 /** Outer team: federation crest (outside) + flag roundel (inside), touching. */
-function OuterTeam({ node }: { node: RingNode }) {
+function OuterTeam({
+  node,
+  mode,
+  clickable,
+  onClick,
+}: {
+  node: RingNode;
+  mode: BracketMode;
+  clickable: boolean;
+  onClick: () => void;
+}) {
   const { team, isWinner } = node;
   const ringStroke = isWinner ? '#e8b84b' : '#2a2a32';
   const ringWidth = isWinner ? 2.4 : 1;
 
   const flag = team.placeholder ? null : flagUrl(team.abbr);
   const crest = team.placeholder ? null : crestSrc(team.abbr);
+  const interactive = mode === 'predict' && clickable;
 
   return (
-    <g aria-label={team.name}>
+    <g
+      aria-label={team.name}
+      className={interactive ? 'bracket-disc bracket-disc--clickable' : 'bracket-disc'}
+      onClick={interactive ? onClick : undefined}
+      role={interactive ? 'button' : undefined}
+    >
       {/* Crest (outer) — meet so the badge isn't cropped, on a light disc */}
       {crest ? (
         <ImageDisc
@@ -526,26 +622,35 @@ function OuterTeam({ node }: { node: RingNode }) {
 }
 
 /** Inner advanced team: single flag disc (slice-fill). */
-function InnerFlag({ node }: { node: RingNode }) {
+function InnerFlag({
+  node,
+  mode,
+  clickable,
+  onClick,
+}: {
+  node: RingNode;
+  mode: BracketMode;
+  clickable: boolean;
+  onClick: () => void;
+}) {
   const { team, isWinner } = node;
   const ringStroke = isWinner ? '#e8b84b' : '#2a2a32';
   const ringWidth = isWinner ? 2.4 : 1;
   const flag = flagUrl(team.abbr);
+  const interactive = mode === 'predict' && clickable;
 
-  if (!flag) {
-    return (
-      <FallbackDisc
-        x={node.x}
-        y={node.y}
-        r={node.discR}
-        abbr={team.abbr}
-        ringStroke={ringStroke}
-        ringWidth={ringWidth}
-      />
-    );
-  }
+  const cls = `bracket-disc bracket-inner-disc${interactive ? ' bracket-disc--clickable' : ''}`;
 
-  return (
+  const disc = !flag ? (
+    <FallbackDisc
+      x={node.x}
+      y={node.y}
+      r={node.discR}
+      abbr={team.abbr}
+      ringStroke={ringStroke}
+      ringWidth={ringWidth}
+    />
+  ) : (
     <ImageDisc
       id={`inner-${node.depth}-${node.index}`}
       x={node.x}
@@ -557,6 +662,12 @@ function InnerFlag({ node }: { node: RingNode }) {
       ringStroke={ringStroke}
       ringWidth={ringWidth}
     />
+  );
+
+  return (
+    <g className={cls} onClick={interactive ? onClick : undefined} role={interactive ? 'button' : undefined}>
+      {disc}
+    </g>
   );
 }
 

@@ -2,7 +2,7 @@ import { dataService } from "@/server/data/service";
 import type { Group, Match, BracketRound } from "@/server/data/types";
 import LiveScores from "@/components/LiveScores";
 import GroupTable from "@/components/GroupTable";
-import RadialBracket from "@/components/RadialBracket";
+import BracketInteractive from "@/components/BracketInteractive";
 import Sidebar from "@/components/Sidebar";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +41,7 @@ export default async function Home() {
             <h1 className="bracket-title">Knockout Bracket</h1>
           </header>
           {bracket.length > 0 ? (
-            <RadialBracket rounds={bracket} />
+            <BracketInteractive rounds={bracket} />
           ) : (
             <div className="empty-section">
               <p className="empty-text">Bracket data is unavailable right now.</p>

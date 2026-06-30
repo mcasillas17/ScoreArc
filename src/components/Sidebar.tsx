@@ -58,9 +58,8 @@ const NAV: NavItem[] = [
     ),
   },
   {
-    href: '#predict',
+    href: '#bracket',
     label: 'Predict',
-    soon: true,
     icon: (
       <svg {...ICON_PROPS}>
         <path d="M12 3l2.5 5 5.5.8-4 3.9.9 5.5L12 16.5 7.1 18.2 8 12.7 4 8.8 9.5 8z" />

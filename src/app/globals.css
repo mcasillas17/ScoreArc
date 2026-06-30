@@ -314,6 +314,113 @@ a {
   animation: pulse 1.4s ease infinite;
 }
 
+/* ===== Build-your-bracket toggle + controls ===== */
+.bracket-interactive {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.bracket-modes {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--hairline);
+  border-radius: 100px;
+}
+
+.bracket-mode {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 7px 16px;
+  border-radius: 100px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.bracket-mode:hover {
+  color: var(--text);
+}
+
+.bracket-mode--active {
+  background: var(--gold);
+  color: #1a1408;
+  box-shadow: 0 1px 8px rgba(232, 184, 75, 0.3);
+}
+
+.bracket-mode--active:hover {
+  color: #1a1408;
+}
+
+.bracket-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.bracket-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+}
+
+.bracket-reset {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--hairline);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 4px 12px;
+  border-radius: 100px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.bracket-reset:hover {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+
+/* Clickable team discs (predict mode) */
+.bracket-disc--clickable {
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+
+.bracket-disc--clickable:hover {
+  filter: brightness(1.22);
+}
+
+/* Subtle fade + scale-in when a team newly advances into an inner slot */
+.bracket-inner-disc {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: disc-in 300ms ease;
+}
+
+@keyframes disc-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 /* ===== Live Strip ===== */
 .live-strip {
   display: flex;
