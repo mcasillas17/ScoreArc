@@ -55,7 +55,7 @@ export default function TeamBadge({
             height={size}
             loading="lazy"
             referrerPolicy="no-referrer"
-            style={{ width: size, height: size, objectFit: "contain" }}
+            style={{ width: size, height: size, objectFit: "cover" }}
           />
         ) : (
           team.abbr
