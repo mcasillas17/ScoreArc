@@ -229,8 +229,15 @@ export default function RadialBracket({ rounds }: Props) {
           }),
         )}
 
-        {/* (1b) Center trophy on top */}
-        <Trophy />
+        {/* (1b) Center trophy on top — real WC2026 trophy image */}
+        <image
+          href="/trophy.png"
+          x={C.x - 35}
+          y={C.y - 86}
+          width={70}
+          height={172}
+          preserveAspectRatio="xMidYMid meet"
+        />
       </svg>
     </div>
   );
@@ -412,35 +419,3 @@ function InnerFlag({ node }: { node: RingNode }) {
   );
 }
 
-function Trophy() {
-  const body =
-    'M -9 40 C -27 22 -23 -4 -11 -16 C -17 -22 -13 -29 -6 -30 C -3 -24 -2 -20 0 -20 C 2 -20 3 -24 6 -30 C 13 -29 17 -22 11 -16 C 23 -4 27 22 9 40 Z';
-  return (
-    <g transform={`translate(${C.x}, ${C.y}) scale(1.5)`} aria-label="World Cup trophy">
-      {/* soft glow copy behind */}
-      <g filter="url(#trophy-blur)" opacity={0.85}>
-        <path d={body} fill="#f6d873" />
-        <circle cx={0} cy={-34} r={13} fill="#f6d873" />
-      </g>
-      {/* banded base */}
-      <ellipse cx={0} cy={56} rx={23} ry={6} fill="#caa233" />
-      <rect x={-21} y={46} width={42} height={11} rx={3} fill="url(#trophy-grad)" />
-      <rect x={-15} y={40} width={30} height={7} rx={2} fill="url(#trophy-grad)" />
-      {/* flared body */}
-      <path d={body} fill="url(#trophy-grad)" />
-      {/* globe on top */}
-      <circle cx={0} cy={-34} r={13} fill="url(#trophy-grad)" />
-      <ellipse cx={0} cy={-34} rx={13} ry={5} fill="none" stroke="#8a6e25" strokeWidth={0.9} opacity={0.7} />
-      <path d="M -13 -34 A 13 13 0 0 1 13 -34" fill="none" stroke="#8a6e25" strokeWidth={0.8} opacity={0.5} />
-      {/* highlight sweep */}
-      <path
-        d="M -5 34 C -18 16 -15 -6 -6 -16"
-        fill="none"
-        stroke="#fdeeb0"
-        strokeWidth={1.6}
-        strokeLinecap="round"
-        opacity={0.6}
-      />
-    </g>
-  );
-}
