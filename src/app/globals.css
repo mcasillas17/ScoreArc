@@ -841,3 +841,237 @@ a {
 .groups-collapse[open] .groups-chevron { transform: rotate(180deg); }
 .groups-collapse[open] .groups-summary { border-bottom: 1px solid #1c1c22; }
 .groups-collapse .groups-grid { padding: 18px; }
+
+/* ===== Champion Celebration ===== */
+.champ-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 6, 8, 0.78);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  overflow: hidden;
+  animation: champ-fade-in 0.35s ease both;
+}
+@keyframes champ-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.champ-confetti-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.champ-confetti {
+  position: absolute;
+  top: -10%;
+  border-radius: 1px;
+  opacity: 0.95;
+  will-change: transform;
+  animation-name: champ-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@keyframes champ-fall {
+  0% { transform: translate(0, -10%) rotate(0deg); }
+  100% { transform: translate(var(--champ-drift, 0px), 110vh) rotate(720deg); }
+}
+
+.champ-close {
+  position: absolute;
+  top: 18px;
+  right: 22px;
+  z-index: 2;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid rgba(232, 184, 75, 0.4);
+  background: rgba(20, 20, 24, 0.6);
+  color: #e8b84b;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.champ-close:hover {
+  background: rgba(232, 184, 75, 0.18);
+  transform: scale(1.05);
+}
+
+.champ-card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 40px 32px;
+  max-width: 90vw;
+  animation: champ-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes champ-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Rotating gold rays behind the card, softly faded at the edges */
+.champ-rays {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 680px;
+  height: 680px;
+  max-width: 150vw;
+  max-height: 150vw;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: -1;
+  background: repeating-conic-gradient(
+    from 0deg,
+    rgba(232, 184, 75, 0.16) 0deg 6deg,
+    rgba(232, 184, 75, 0) 6deg 18deg
+  );
+  -webkit-mask: radial-gradient(closest-side, #000 0%, rgba(0, 0, 0, 0.5) 45%, transparent 72%);
+  mask: radial-gradient(closest-side, #000 0%, rgba(0, 0, 0, 0.5) 45%, transparent 72%);
+  animation: champ-spin 18s linear infinite;
+}
+@keyframes champ-spin {
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Pulsing radial gold glow */
+.champ-glow {
+  position: absolute;
+  top: 42%;
+  left: 50%;
+  width: 460px;
+  height: 460px;
+  max-width: 120vw;
+  max-height: 120vw;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: -1;
+  background: radial-gradient(
+    circle,
+    rgba(232, 184, 75, 0.42) 0%,
+    rgba(232, 184, 75, 0.14) 38%,
+    rgba(232, 184, 75, 0) 70%
+  );
+  animation: champ-pulse 2.6s ease-in-out infinite;
+}
+@keyframes champ-pulse {
+  0%, 100% { opacity: 0.55; transform: translate(-50%, -50%) scale(0.92); }
+  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+}
+
+.champ-emblem {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 22px;
+}
+.champ-trophy {
+  width: 120px;
+  height: auto;
+  margin-bottom: -18px;
+  filter: drop-shadow(0 0 18px rgba(232, 184, 75, 0.65));
+  animation: champ-bob 3.2s ease-in-out infinite;
+}
+@keyframes champ-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.champ-disc {
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 4px solid #e8b84b;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4), 0 8px 30px rgba(0, 0, 0, 0.55);
+  background: #16161c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: champ-ring-pulse 2s ease-in-out infinite;
+}
+@keyframes champ-ring-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4), 0 0 14px rgba(232, 184, 75, 0.5); }
+  50% { box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4), 0 0 34px rgba(232, 184, 75, 0.95); }
+}
+.champ-flag {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.champ-flag-fallback {
+  color: #e8b84b;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.champ-title {
+  font-size: clamp(32px, 7vw, 60px);
+  font-weight: 900;
+  letter-spacing: 2px;
+  line-height: 1.05;
+  margin: 4px 0 6px;
+  background: linear-gradient(
+    100deg,
+    #b88a2e 0%,
+    #e8b84b 30%,
+    #fff6d8 48%,
+    #e8b84b 66%,
+    #b88a2e 100%
+  );
+  background-size: 220% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: champ-shine 3s linear infinite;
+}
+@keyframes champ-shine {
+  0% { background-position: 200% center; }
+  100% { background-position: -20% center; }
+}
+
+.champ-subtitle {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--gold);
+  opacity: 0.85;
+}
+.champ-team {
+  font-size: clamp(22px, 4.5vw, 36px);
+  font-weight: 800;
+  color: #ffffff;
+  margin: 2px 0 14px;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.6);
+}
+.champ-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .champ-confetti,
+  .champ-rays,
+  .champ-glow,
+  .champ-trophy,
+  .champ-disc,
+  .champ-title,
+  .champ-card,
+  .champ-overlay {
+    animation: none !important;
+  }
+}

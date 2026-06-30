@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/types';
 
 export type BracketMode = 'live' | 'predict';
@@ -9,6 +10,7 @@ interface Props {
   mode?: BracketMode;
   picks?: Record<string, string>;
   onPick?: (depth: number, matchIndex: number, teamId: string) => void;
+  onChampion?: (team: BracketTeam | null) => void;
 }
 
 // True circle — center of the (square) SVG canvas.
@@ -100,7 +102,7 @@ const TEAM_COLOR: Record<string, string> = {
   COL: '#fcd116', GHA: '#fcd116',
 };
 
-function colorFor(team: BracketTeam): string {
+export function colorFor(team: BracketTeam): string {
   return TEAM_COLOR[(team.abbr ?? '').toUpperCase()] ?? '#e8b84b';
 }
 
@@ -332,8 +334,15 @@ function buildRings(
   });
 }
 
-export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick }: Props) {
+export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion }: Props) {
   const rings = buildRings(rounds, picks, mode);
+
+  // The CHAMPION is the effective winner of the FINAL (depth 4).
+  const champion = rings[4]?.find((n) => n.isWinner)?.team ?? null;
+  useEffect(() => {
+    onChampion?.(champion ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [champion?.id]);
 
   const handleDiscClick = (node: RingNode) => {
     if (!onPick || !node.clickable) return;
