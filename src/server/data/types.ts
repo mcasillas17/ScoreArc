@@ -40,3 +40,33 @@ export interface Group {
   name: string;             // "Group A"
   standings: Standing[];
 }
+
+// ===== Knockout Bracket =====
+
+export interface BracketTeam {
+  id: string;
+  name: string;
+  abbr: string;
+  crestUrl: string | null;
+  placeholder: boolean;     // true when team is not yet determined
+}
+
+export interface BracketMatch {
+  id: string;
+  round: string;            // slug, e.g. "round-of-32"
+  home: BracketTeam;
+  away: BracketTeam;
+  homeScore: number | null;
+  awayScore: number | null;
+  state: MatchState;
+  statusDetail: string;
+  minute: string | null;
+  winnerId: string | null;
+  note: string | null;
+}
+
+export interface BracketRound {
+  slug: string;             // e.g. "round-of-32"
+  name: string;             // e.g. "Round of 32"
+  matches: BracketMatch[];
+}

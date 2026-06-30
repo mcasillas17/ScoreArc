@@ -3,6 +3,7 @@ import { createDataService, SCOREBOARD_URL } from './service';
 import { TtlCache } from './cache';
 import scoreboard from './__fixtures__/espn-scoreboard.json';
 import standings from './__fixtures__/espn-standings.json';
+import bracket from './__fixtures__/espn-bracket.json';
 
 function svcWith(fetchJson: (url: string) => Promise<unknown>) {
   return createDataService({ fetchJson, cache: new TtlCache(() => 0) });
@@ -28,5 +29,11 @@ describe('createDataService', () => {
     await svc.getMatches();
     expect(fetchJson).toHaveBeenCalledTimes(1);
     expect(fetchJson).toHaveBeenCalledWith(SCOREBOARD_URL);
+  });
+
+  it('getBracket returns 6 rounds from fixture', async () => {
+    const svc = svcWith(async () => bracket);
+    const rounds = await svc.getBracket();
+    expect(rounds).toHaveLength(6);
   });
 });

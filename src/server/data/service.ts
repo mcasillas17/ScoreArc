@@ -1,12 +1,15 @@
-import type { Match, Group } from './types';
+import type { Match, Group, BracketRound } from './types';
 import { mapScoreboard } from './providers/espn-matches';
 import { mapStandings } from './providers/espn-standings';
+import { mapBracket } from './providers/espn-bracket';
 import { TtlCache } from './cache';
 
 export const SCOREBOARD_URL =
   'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard';
 export const STANDINGS_URL =
   'https://site.api.espn.com/apis/v2/sports/soccer/fifa.world/standings';
+export const BRACKET_URL =
+  'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=20260628-20260719';
 
 export interface DataDeps {
   fetchJson: (url: string) => Promise<unknown>;
@@ -30,6 +33,14 @@ export function createDataService(deps: DataDeps) {
       const groups = mapStandings(raw);
       deps.cache.set('groups', groups, ttlMs);
       return groups;
+    },
+    async getBracket(ttlMs = 20_000): Promise<BracketRound[]> {
+      const cached = deps.cache.get('bracket') as BracketRound[] | undefined;
+      if (cached) return cached;
+      const raw = await deps.fetchJson(BRACKET_URL);
+      const rounds = mapBracket(raw);
+      deps.cache.set('bracket', rounds, ttlMs);
+      return rounds;
     },
   };
 }
