@@ -81,6 +81,22 @@ function crestSrc(abbr: string): string | null {
   return CREST_MAP[abbr.toUpperCase()] ?? null;
 }
 
+// Representative colour from each team's flag — used to tint a team's advancing
+// connector path (as in the reference: Brazil yellow, Canada red, ...).
+const TEAM_COLOR: Record<string, string> = {
+  RSA: '#007a4d', CAN: '#d52b1e', BRA: '#f5d915', JPN: '#bc002d', GER: '#ffce00',
+  PAR: '#d52b1e', NED: '#f36c21', MAR: '#c1272d', CIV: '#f77f00', NOR: '#ba0c2f',
+  FRA: '#0055a4', SWE: '#fecc00', MEX: '#006847', ECU: '#ffdd00', ENG: '#cf081f',
+  COD: '#2a7fff', BEL: '#fdda24', SEN: '#00853f', USA: '#3c3b6e', BIH: '#1f3c8c',
+  ESP: '#c60b1e', AUT: '#ed2939', POR: '#da291c', CRO: '#ff2a2a', SUI: '#d52b1e',
+  ALG: '#0a8b3e', AUS: '#00843d', EGY: '#ce1126', ARG: '#75aadb', CPV: '#003893',
+  COL: '#fcd116', GHA: '#fcd116',
+};
+
+function colorFor(team: BracketTeam): string {
+  return TEAM_COLOR[(team.abbr ?? '').toUpperCase()] ?? '#e8b84b';
+}
+
 function toRad(deg: number): number {
   return (deg * Math.PI) / 180;
 }
@@ -226,9 +242,34 @@ export default function RadialBracket({ rounds }: Props) {
       >
         <defs>
           <radialGradient id="center-glow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#5a4112" stopOpacity="0.9" />
-            <stop offset="45%" stopColor="#33260a" stopOpacity="0.45" />
+            <stop offset="0%" stopColor="#d59a37" stopOpacity="0.6" />
+            <stop offset="30%" stopColor="#8a5e1f" stopOpacity="0.34" />
+            <stop offset="62%" stopColor="#43300f" stopOpacity="0.14" />
             <stop offset="100%" stopColor="#0b0b0d" stopOpacity="0" />
+          </radialGradient>
+          {/* Connector gradients — bright gold near the trophy, fading outward
+              (userSpaceOnUse so the fade is anchored at the bracket center). */}
+          <radialGradient
+            id="conn-grad"
+            cx={C.x}
+            cy={C.y}
+            r={470}
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop offset="0%" stopColor="#f0c873" stopOpacity="0.95" />
+            <stop offset="42%" stopColor="#b78a3c" stopOpacity="0.7" />
+            <stop offset="100%" stopColor="#544a36" stopOpacity="0.4" />
+          </radialGradient>
+          <radialGradient
+            id="conn-gold"
+            cx={C.x}
+            cy={C.y}
+            r={470}
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop offset="0%" stopColor="#ffe9a8" stopOpacity="1" />
+            <stop offset="55%" stopColor="#eebc54" stopOpacity="0.98" />
+            <stop offset="100%" stopColor="#cf9a36" stopOpacity="0.9" />
           </radialGradient>
           <linearGradient id="trophy-grad" x1="0" y1="-55" x2="0" y2="60" gradientUnits="userSpaceOnUse">
             <stop offset="0%" stopColor="#f6e27a" />
@@ -240,11 +281,8 @@ export default function RadialBracket({ rounds }: Props) {
           </filter>
         </defs>
 
-        {/* (1) Warm radial glow + trophy at center */}
-        <circle cx={C.x} cy={C.y} r={200} fill="url(#center-glow)" />
-        <circle cx={C.x} cy={C.y} r={120} fill="#e8b84b" opacity={0.08} />
-        <circle cx={C.x} cy={C.y} r={78} fill="#f0c64e" opacity={0.13} />
-        <circle cx={C.x} cy={C.y} r={46} fill="#f6d873" opacity={0.18} />
+        {/* (1) Smooth warm radial-gradient glow behind the trophy */}
+        <circle cx={C.x} cy={C.y} r={300} fill="url(#center-glow)" />
 
         {/* (2) Connectors: bracket elbows — radial stub from each team, a
             tangential arc joining the pair, then a radial stub to the parent. */}
@@ -254,8 +292,7 @@ export default function RadialBracket({ rounds }: Props) {
           const rj = rp + (rc - rp) * 0.5; // arc (join) radius between them
           const children = rings[depth];
           const parents = rings[depth + 1];
-          const GRAY = '#5b5446';
-          const GOLD = '#e8b84b';
+          const GRAD = 'url(#conn-grad)';
           return parents.map((parent, k) => {
             const a = children[2 * k];
             const b = children[2 * k + 1];
@@ -264,58 +301,48 @@ export default function RadialBracket({ rounds }: Props) {
             const jB = ellipse(rj, rj, b.angle);
             const jMid = ellipse(rj, rj, parent.angle);
             const pPar = ellipse(rp, rp, parent.angle);
-            const parentDecided = !parent.team.placeholder;
             const sweep = b.angle > a.angle ? 1 : 0;
-            const seg = (
-              key: string,
-              d: string,
-              gold: boolean,
-              round = true,
-            ) => (
-              <path
-                key={key}
-                d={d}
-                fill="none"
-                stroke={gold ? GOLD : GRAY}
-                strokeWidth={gold ? 2.2 : 1.3}
-                opacity={gold ? 0.95 : 0.5}
-                strokeLinecap={round ? 'round' : 'butt'}
-              />
-            );
+            // The team that actually advances from this match (if decided).
+            const win = a.isWinner ? a : b.isWinner ? b : null;
+            const winColor = win ? colorFor(win.team) : null;
+            const jWin = win ? (win === a ? jA : jB) : null;
+            const arcSweep = win && win.angle < parent.angle ? 1 : 0;
             return (
               <g key={`conn-${depth}-${k}`}>
-                {seg(`a`, `M ${a.x} ${a.y} L ${jA.x} ${jA.y}`, a.isWinner)}
-                {seg(`b`, `M ${b.x} ${b.y} L ${jB.x} ${jB.y}`, b.isWinner)}
-                {seg(
-                  `arc`,
-                  `M ${jA.x} ${jA.y} A ${rj} ${rj} 0 0 ${sweep} ${jB.x} ${jB.y}`,
-                  parentDecided,
-                  false,
+                {/* neutral base structure (full elbow) */}
+                <path d={`M ${a.x} ${a.y} L ${jA.x} ${jA.y}`} fill="none" stroke={GRAD} strokeWidth={1.4} strokeLinecap="round" />
+                <path d={`M ${b.x} ${b.y} L ${jB.x} ${jB.y}`} fill="none" stroke={GRAD} strokeWidth={1.4} strokeLinecap="round" />
+                <path d={`M ${jA.x} ${jA.y} A ${rj} ${rj} 0 0 ${sweep} ${jB.x} ${jB.y}`} fill="none" stroke={GRAD} strokeWidth={1.4} />
+                <path d={`M ${jMid.x} ${jMid.y} L ${pPar.x} ${pPar.y}`} fill="none" stroke={GRAD} strokeWidth={1.4} strokeLinecap="round" />
+                {/* winner's route ONLY, tinted with its flag colour */}
+                {win && jWin && winColor && (
+                  <g>
+                    <path d={`M ${win.x} ${win.y} L ${jWin.x} ${jWin.y}`} fill="none" stroke={winColor} strokeWidth={2.9} strokeLinecap="round" />
+                    <path d={`M ${jWin.x} ${jWin.y} A ${rj} ${rj} 0 0 ${arcSweep} ${jMid.x} ${jMid.y}`} fill="none" stroke={winColor} strokeWidth={2.9} />
+                    <path d={`M ${jMid.x} ${jMid.y} L ${pPar.x} ${pPar.y}`} fill="none" stroke={winColor} strokeWidth={2.9} strokeLinecap="round" />
+                  </g>
                 )}
-                {seg(`s`, `M ${jMid.x} ${jMid.y} L ${pPar.x} ${pPar.y}`, parentDecided)}
               </g>
             );
           });
         })}
 
-        {/* (2c) Finalists -> center */}
+        {/* (2c) Finalists -> center (champion's line tinted with its flag colour) */}
         {rings[RINGS.length - 1]?.map((node) => {
           const inner = ellipse(30, 30, node.angle);
-          const gold = node.isWinner;
           return (
             <path
               key={`final-${node.index}`}
               d={`M ${node.x} ${node.y} L ${inner.x} ${inner.y}`}
               fill="none"
-              stroke={gold ? '#e8b84b' : '#5b5446'}
-              strokeWidth={gold ? 2.2 : 1.3}
-              opacity={gold ? 0.95 : 0.5}
+              stroke={node.isWinner ? colorFor(node.team) : 'url(#conn-grad)'}
+              strokeWidth={node.isWinner ? 2.9 : 1.4}
               strokeLinecap="round"
             />
           );
         })}
 
-        {/* (2b) Junction dots at every node from depth 1 inward */}
+        {/* (2b) Junction dots — tinted with the occupying team's flag colour */}
         {rings.map((ring, depth) => {
           if (depth < 1) return null;
           return ring.map((node) => (
@@ -323,8 +350,8 @@ export default function RadialBracket({ rounds }: Props) {
               key={`dot-${depth}-${node.index}`}
               cx={node.x}
               cy={node.y}
-              r={3.5}
-              fill={node.isWinner ? '#e8b84b' : '#4a4a52'}
+              r={3.2}
+              fill={node.team.placeholder ? '#43434c' : colorFor(node.team)}
             />
           ));
         })}
