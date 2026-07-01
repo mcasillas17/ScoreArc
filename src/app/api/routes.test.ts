@@ -49,7 +49,7 @@ describe('api routes', () => {
   });
 
   it('GET /api/match/[id] returns summary json', async () => {
-    const fakeSummary = { scorers: [], cards: [], stats: null, winProbability: null };
+    const fakeSummary = { scorers: [], cards: [], stats: null, winProbability: null, lineups: null };
     vi.mocked(dataService.getMatchSummary).mockResolvedValueOnce(fakeSummary);
     const { GET } = await import('./match/[id]/route');
     const req = new Request('http://localhost/api/match/evt123?home=h1&away=a1');

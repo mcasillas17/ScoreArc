@@ -1545,3 +1545,81 @@ a {
   font-size: 15px; font-weight: 700; color: #ececf1;
   text-align: center; line-height: 1.35; max-width: 150px;
 }
+
+/* ===== Starting Lineups (lu-*) ===== */
+.lu-block { margin-top: 4px; }
+.lu-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: center;
+  margin-bottom: 8px;
+}
+.lu-cols { display: flex; align-items: flex-start; gap: 8px; }
+.lu-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.lu-col-away { text-align: right; }
+.lu-divider { width: 1px; align-self: stretch; background: var(--hairline); }
+.lu-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--hairline);
+}
+.lu-col-away .lu-head { flex-direction: row-reverse; }
+.lu-abbr {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+.lu-formation {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--gold);
+  background: rgba(232, 184, 75, 0.12);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.lu-list { list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.lu-player { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.lu-col-away .lu-player { flex-direction: row-reverse; }
+.lu-num {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.lu-jersey {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+.lu-name {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+.lu-pos {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}

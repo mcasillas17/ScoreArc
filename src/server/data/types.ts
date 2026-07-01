@@ -118,3 +118,7 @@ export interface BracketRound {
   name: string;             // e.g. "Round of 32"
   matches: BracketMatch[];
 }
+
+export interface LineupPlayer { name: string; number: number | null; position: string; jersey: string | null; }
+export interface TeamLineup { formation: string; players: LineupPlayer[] }
+export interface MatchLineups { home: TeamLineup; away: TeamLineup }

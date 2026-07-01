@@ -1,14 +1,15 @@
 'use client';
 
-import type { BracketMatch, Scorer, Card, MatchStats, WinProbability } from '@/server/data/types';
+import type { BracketMatch, Scorer, Card, MatchStats, WinProbability, MatchLineups } from '@/server/data/types';
 import { flagUrl } from '@/lib/flags';
-import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar } from './MatchStats';
+import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar, LineupView } from './MatchStats';
 
 export interface MatchSummary {
   scorers: Scorer[];
   cards: Card[];
   stats: MatchStats | null;
   winProbability: WinProbability | null;
+  lineups: MatchLineups | null;
 }
 
 interface Props {
@@ -154,6 +155,12 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
           {!upcoming && !loading && summary && hasStats && (
             <div className="md-section">
               <MatchStatsBlock stats={summary.stats!} />
+            </div>
+          )}
+
+          {!loading && summary?.lineups && (
+            <div className="md-section">
+              <LineupView lineups={summary.lineups} homeAbbr={home.abbr} awayAbbr={away.abbr} />
             </div>
           )}
         </div>

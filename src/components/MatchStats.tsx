@@ -1,4 +1,4 @@
-import type { Scorer, Card, MatchStats, WinProbability } from '@/server/data/types';
+import type { Scorer, Card, MatchStats, WinProbability, MatchLineups, TeamLineup } from '@/server/data/types';
 
 export function ScorerLine({ scorer }: { scorer: Scorer }) {
   return (
@@ -87,6 +87,58 @@ export function WinProbBar({
         <span>
           {awayAbbr} {prob.away}%
         </span>
+      </div>
+    </div>
+  );
+}
+
+function LineupColumn({ team, abbr, side }: { team: TeamLineup; abbr: string; side: 'home' | 'away' }) {
+  return (
+    <div className={`lu-col lu-col-${side}`}>
+      <div className="lu-head">
+        <span className="lu-abbr">{abbr}</span>
+        {team.formation && <span className="lu-formation">{team.formation}</span>}
+      </div>
+      <ul className="lu-list">
+        {team.players.map((p, i) => (
+          <li key={i} className="lu-player">
+            {p.jersey ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                className="lu-jersey"
+                src={p.jersey}
+                alt=""
+                loading="lazy"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <span className="lu-num">{p.number ?? '–'}</span>
+            )}
+            <span className="lu-name">{p.name}</span>
+            <span className="lu-pos">{p.position}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export function LineupView({
+  lineups,
+  homeAbbr,
+  awayAbbr,
+}: {
+  lineups: MatchLineups;
+  homeAbbr: string;
+  awayAbbr: string;
+}) {
+  return (
+    <div className="lu-block">
+      <div className="lu-title">Starting Lineups</div>
+      <div className="lu-cols">
+        <LineupColumn team={lineups.home} abbr={homeAbbr} side="home" />
+        <div className="lu-divider" />
+        <LineupColumn team={lineups.away} abbr={awayAbbr} side="away" />
       </div>
     </div>
   );

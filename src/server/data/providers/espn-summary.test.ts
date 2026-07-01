@@ -4,6 +4,7 @@ import {
   mapSummaryCards,
   mapSummaryStats,
   mapWinProbability,
+  mapSummaryLineups,
 } from './espn-summary';
 import raw from '../__fixtures__/espn-summary.json';
 
@@ -206,5 +207,49 @@ describe('mapSummaryStats', () => {
 
   it('returns null when team ids do not match', () => {
     expect(mapSummaryStats(raw, 'x', 'y')).toBeNull();
+  });
+});
+
+describe('mapSummaryLineups', () => {
+  it('returns non-null for valid fixture (home=4789, away=464)', () => {
+    const result = mapSummaryLineups(raw, '4789', '464');
+    expect(result).not.toBeNull();
+  });
+
+  it('home formation is a non-empty string', () => {
+    const result = mapSummaryLineups(raw, '4789', '464');
+    expect(result!.home.formation.length).toBeGreaterThan(0);
+  });
+
+  it('home lineup has exactly 11 starters', () => {
+    const result = mapSummaryLineups(raw, '4789', '464');
+    expect(result!.home.players).toHaveLength(11);
+  });
+
+  it('all home starters have a non-empty name', () => {
+    const result = mapSummaryLineups(raw, '4789', '464');
+    expect(result!.home.players.every((p) => p.name.length > 0)).toBe(true);
+  });
+
+  it('away lineup also has 11 starters', () => {
+    const result = mapSummaryLineups(raw, '4789', '464');
+    expect(result!.away.players).toHaveLength(11);
+  });
+
+  it('starters carry a jersey image url when available', () => {
+    const result = mapSummaryLineups(raw, '4789', '464');
+    const withJersey = result!.home.players.filter((p) => p.jersey != null);
+    // Fixture players have jerseyImages; expect at least one mapped, and any
+    // mapped value is an ESPN https url.
+    expect(withJersey.length).toBeGreaterThan(0);
+    expect(withJersey.every((p) => p.jersey!.startsWith('https://'))).toBe(true);
+  });
+
+  it('returns null for empty object (resilience)', () => {
+    expect(mapSummaryLineups({}, '4789', '464')).toBeNull();
+  });
+
+  it('returns null when team ids do not match', () => {
+    expect(mapSummaryLineups(raw, 'x', 'y')).toBeNull();
   });
 });

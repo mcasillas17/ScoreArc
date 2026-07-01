@@ -1,4 +1,4 @@
-import type { Scorer, Card, MatchStats, TeamStats, WinProbability } from '../types';
+import type { Scorer, Card, MatchStats, TeamStats, WinProbability, LineupPlayer, TeamLineup, MatchLineups } from '../types';
 
 function parseStat(stats: any[], name: string): number | null {
   const s = stats.find((x: any) => x.name === name);
@@ -118,4 +118,46 @@ export function mapSummaryCards(raw: unknown): Card[] {
       minute: e.clock?.displayValue ?? '',
       type: /red/i.test(e.type?.text ?? '') ? 'red' : 'yellow',
     }));
+}
+
+// Pick the light-mode player kit image from ESPN's jerseyImages list.
+function jerseyImage(images: any): string | null {
+  if (!Array.isArray(images) || images.length === 0) return null;
+  const light = images.find((im: any) => !(im.rel ?? []).includes('dark'));
+  return (light ?? images[0])?.href ?? null;
+}
+
+export function mapSummaryLineups(
+  raw: unknown,
+  homeId: string,
+  awayId: string
+): MatchLineups | null {
+  try {
+    const rosters: any[] = (raw as any)?.rosters ?? [];
+    const homeEntry = rosters.find((r: any) => String(r.team?.id) === homeId);
+    const awayEntry = rosters.find((r: any) => String(r.team?.id) === awayId);
+    if (!homeEntry || !awayEntry) return null;
+
+    const toTeamLineup = (entry: any): TeamLineup => {
+      const formation: string = entry.formation ?? '';
+      const players: LineupPlayer[] = (entry.roster ?? [])
+        .filter((p: any) => p.starter === true)
+        .map((p: any): LineupPlayer => ({
+          name: p.athlete?.displayName ?? '',
+          number: p.jersey ? Number(p.jersey) : null,
+          position: p.position?.abbreviation ?? '',
+          jersey: jerseyImage(p.athlete?.jerseyImages),
+        }));
+      return { formation, players };
+    };
+
+    const home = toTeamLineup(homeEntry);
+    const away = toTeamLineup(awayEntry);
+    // Rosters can be present before lineups are published (no starters yet) —
+    // treat that as "no lineup" so the UI doesn't render an empty XI.
+    if (!home.players.length || !away.players.length) return null;
+    return { home, away };
+  } catch {
+    return null;
+  }
 }

@@ -1,6 +1,6 @@
-import type { Match, Group, BracketRound, Scorer, Card, Shootout, MatchStats, WinProbability } from './types';
+import type { Match, Group, BracketRound, Scorer, Card, Shootout, MatchStats, WinProbability, MatchLineups } from './types';
 import { mapScoreboard } from './providers/espn-matches';
-import { mapSummaryScorers, mapSummaryCards, mapSummaryStats, mapWinProbability } from './providers/espn-summary';
+import { mapSummaryScorers, mapSummaryCards, mapSummaryStats, mapWinProbability, mapSummaryLineups } from './providers/espn-summary';
 import { mapStandings } from './providers/espn-standings';
 import { mapBracket } from './providers/espn-bracket';
 import { TtlCache } from './cache';
@@ -53,6 +53,7 @@ export function createDataService(deps: DataDeps) {
     cards: Card[];
     stats: MatchStats | null;
     winProbability: WinProbability | null;
+    lineups: MatchLineups | null;
   }> {
     const key = `summary:${eventId}`;
     const cached = deps.cache.get(key) as
@@ -61,6 +62,7 @@ export function createDataService(deps: DataDeps) {
           cards: Card[];
           stats: MatchStats | null;
           winProbability: WinProbability | null;
+          lineups: MatchLineups | null;
         }
       | undefined;
     if (cached) return cached;
@@ -70,6 +72,7 @@ export function createDataService(deps: DataDeps) {
       cards: mapSummaryCards(raw),
       stats: mapSummaryStats(raw, homeId, awayId),
       winProbability: mapWinProbability(raw, homeId, awayId),
+      lineups: mapSummaryLineups(raw, homeId, awayId),
     };
     deps.cache.set(key, summary, ttlMs);
     return summary;
@@ -95,6 +98,7 @@ export function createDataService(deps: DataDeps) {
             cards: [] as Card[],
             stats: null as MatchStats | null,
             winProbability: null as WinProbability | null,
+            lineups: null as MatchLineups | null,
           }))
         )
       );
