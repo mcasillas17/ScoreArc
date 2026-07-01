@@ -182,6 +182,19 @@ function isDecidable(
   return true;
 }
 
+// True when the ISO kickoff falls on the viewer's local calendar day.
+function isTodayLocal(iso: string | undefined): boolean {
+  if (!iso) return false;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return false;
+  const now = new Date();
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  );
+}
+
 // Find the match in `round` played between two given team ids (either orientation).
 function findMatch(round: BracketRound | undefined, idA: string, idB: string): BracketMatch | null {
   if (!round) return null;
@@ -347,6 +360,11 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
   const [summary, setSummary] = useState<MatchSummary | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
+  // Radar-ping cues use the client clock ("is this match today?"), so they only
+  // render after mount to avoid an SSR/hydration mismatch.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   async function handleView(m: BracketMatch) {
     setDetail(m);
     setSummary(null);
@@ -506,30 +524,71 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
               !cB.team.placeholder
                 ? cA.match
                 : null;
+
+            // A live-now or kicks-off-today match gets a radar ping so it's
+            // obvious the dot is tappable. Gated on `mounted` (uses client clock).
+            const rawKind: 'live' | 'today' | null = !upcomingMatch
+              ? null
+              : upcomingMatch.state === 'live'
+              ? 'live'
+              : upcomingMatch.state === 'scheduled' && isTodayLocal(upcomingMatch.kickoff)
+              ? 'today'
+              : null;
+            const kind = mounted ? rawKind : null;
+            const pingColor = kind === 'live' ? '#ff5c5c' : '#e8b84b';
+            const dotFill = !node.team.placeholder
+              ? colorFor(node.team)
+              : !upcomingMatch
+              ? '#43434c'
+              : kind === 'live'
+              ? '#ff5c5c'
+              : kind === 'today'
+              ? '#e8b84b'
+              : '#6a7a95';
+
             return (
-              <circle
-                key={`dot-${depth}-${node.index}`}
-                className={upcomingMatch ? 'bracket-slot-dot' : undefined}
-                cx={node.x}
-                cy={node.y}
-                r={upcomingMatch ? 4.5 : 3.2}
-                fill={
-                  node.team.placeholder
-                    ? upcomingMatch
-                      ? '#6a7a95'
-                      : '#43434c'
-                    : colorFor(node.team)
-                }
-                stroke={upcomingMatch ? '#0b0b0d' : undefined}
-                strokeWidth={upcomingMatch ? 1.2 : undefined}
-                role={upcomingMatch ? 'button' : undefined}
-                aria-label={
-                  upcomingMatch
-                    ? `${cA!.team.abbr} vs ${cB!.team.abbr} preview`
-                    : undefined
-                }
-                onClick={upcomingMatch ? () => handleView(upcomingMatch) : undefined}
-              />
+              <g key={`dot-${depth}-${node.index}`}>
+                {kind && (
+                  <>
+                    <circle
+                      className="bracket-ping"
+                      cx={node.x}
+                      cy={node.y}
+                      r={5}
+                      fill="none"
+                      stroke={pingColor}
+                      strokeWidth={1.4}
+                    />
+                    <circle
+                      className="bracket-ping bracket-ping--delay"
+                      cx={node.x}
+                      cy={node.y}
+                      r={5}
+                      fill="none"
+                      stroke={pingColor}
+                      strokeWidth={1.4}
+                    />
+                  </>
+                )}
+                <circle
+                  className={upcomingMatch ? 'bracket-slot-dot' : undefined}
+                  cx={node.x}
+                  cy={node.y}
+                  r={upcomingMatch ? 4.5 : 3.2}
+                  fill={dotFill}
+                  stroke={upcomingMatch ? '#0b0b0d' : undefined}
+                  strokeWidth={upcomingMatch ? 1.2 : undefined}
+                  role={upcomingMatch ? 'button' : undefined}
+                  aria-label={
+                    upcomingMatch
+                      ? `${cA!.team.abbr} vs ${cB!.team.abbr}${
+                          kind === 'live' ? ' — live' : kind === 'today' ? ' — today' : ''
+                        }`
+                      : undefined
+                  }
+                  onClick={upcomingMatch ? () => handleView(upcomingMatch) : undefined}
+                />
+              </g>
             );
           });
         })}

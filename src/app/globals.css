@@ -1611,6 +1611,40 @@ a {
   cursor: pointer;
   transition: filter 0.12s ease;
 }
+/* Radar ping around a live / today's-match slot dot — a ring expands out and
+   fades on a loop. Two rings, staggered, give a continuous pulse. */
+@keyframes bracket-ping {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.7;
+  }
+  70% {
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.9);
+    opacity: 0;
+  }
+}
+.bracket-ping {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: bracket-ping 1.6s ease-out infinite;
+  pointer-events: none;
+}
+.bracket-ping--delay {
+  animation-delay: 0.8s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bracket-ping {
+    animation: none;
+    opacity: 0.5; /* static ring cue instead of motion */
+  }
+  .bracket-ping--delay {
+    display: none;
+  }
+}
+
 .bracket-slot-dot:hover {
   filter: drop-shadow(0 0 5px #ffe9a8) brightness(1.2);
 }
