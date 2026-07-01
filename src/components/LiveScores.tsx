@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { Match, Scorer, Card } from "@/server/data/types";
-import TeamBadge from "./TeamBadge";
+import type { Match, Scorer, Card, Team } from "@/server/data/types";
+import { flagUrl } from "@/lib/flags";
 
 interface LiveScoresProps {
   initialMatches: Match[];
@@ -39,6 +39,27 @@ function ScorerLine({ scorer }: { scorer: Scorer }) {
   );
 }
 
+function FullFlag({ team }: { team: Team }) {
+  const src = flagUrl(team.abbr) ?? team.crestUrl;
+  return (
+    <div className="ls-team">
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          className="ls-fullflag"
+          src={src}
+          alt={team.name}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+        />
+      ) : (
+        <div className="ls-fullflag ls-fullflag-fallback">{team.abbr}</div>
+      )}
+      <span className="match-abbr">{team.abbr}</span>
+    </div>
+  );
+}
+
 function CardLine({ card }: { card: Card }) {
   return (
     <span className="ls-scorer-line">
@@ -66,10 +87,7 @@ function MatchCard({ match }: { match: Match }) {
   return (
     <div className="match-card">
       <div className="match-teams">
-        <div className="match-team">
-          <TeamBadge team={match.home} size={36} />
-          <span className="match-abbr">{match.home.abbr}</span>
-        </div>
+        <FullFlag team={match.home} />
 
         <div className="match-center">
           {started ? (
@@ -89,10 +107,7 @@ function MatchCard({ match }: { match: Match }) {
           {match.note && <span className="match-note">{match.note}</span>}
         </div>
 
-        <div className="match-team">
-          <TeamBadge team={match.away} size={36} />
-          <span className="match-abbr">{match.away.abbr}</span>
-        </div>
+        <FullFlag team={match.away} />
       </div>
 
       {started && hasScorers && (
