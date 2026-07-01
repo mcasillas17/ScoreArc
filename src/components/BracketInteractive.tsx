@@ -67,7 +67,7 @@ export default function BracketInteractive({ rounds: initialRounds }: Props) {
     let mounted = true;
     async function poll() {
       try {
-        const res = await fetch('/api/bracket');
+        const res = await fetch('/api/bracket', { cache: 'no-store' });
         if (!res.ok) return;
         const data = (await res.json()) as BracketRound[];
         if (mounted && Array.isArray(data) && data.length) {
@@ -77,7 +77,7 @@ export default function BracketInteractive({ rounds: initialRounds }: Props) {
         // ignore — next tick retries
       }
     }
-    const id = setInterval(poll, 15_000);
+    const id = setInterval(poll, 10_000);
     return () => {
       mounted = false;
       clearInterval(id);

@@ -131,7 +131,7 @@ export default function LiveScores({ initialMatches }: LiveScoresProps) {
     let mounted = true;
     async function poll() {
       try {
-        const res = await fetch("/api/matches");
+        const res = await fetch("/api/matches", { cache: "no-store" });
         if (res.ok) {
           const data = (await res.json()) as Match[];
           if (mounted) setMatches(sortMatches(data));

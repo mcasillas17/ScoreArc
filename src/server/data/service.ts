@@ -130,7 +130,7 @@ export function createDataService(deps: DataDeps) {
       return groups;
     },
 
-    async getBracket(ttlMs = 12_000): Promise<BracketRound[]> {
+    async getBracket(ttlMs = 8_000): Promise<BracketRound[]> {
       const cached = deps.cache.get('bracket') as BracketRound[] | undefined;
       if (cached) return cached;
       const raw = await deps.fetchJson(BRACKET_URL);
@@ -151,7 +151,13 @@ export function createDataService(deps: DataDeps) {
 }
 
 async function defaultFetchJson(url: string): Promise<unknown> {
-  const res = await fetch(url, { headers: { 'User-Agent': 'wc2026-bracket' } });
+  // `cache: 'no-store'` opts out of Next.js's fetch Data Cache so we always get
+  // the current ESPN state — our own short-lived TtlCache is the only caching
+  // layer, which keeps live scores/bracket fresh instead of served stale.
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'wc2026-bracket' },
+    cache: 'no-store',
+  });
   if (!res.ok) throw new Error(`fetch ${url} -> ${res.status}`);
   return res.json();
 }
