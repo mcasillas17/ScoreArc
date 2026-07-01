@@ -41,6 +41,7 @@ export function mapScoreboard(raw: unknown): Match[] {
       scorers: [],
       cards: [],
       shootout: null,
+      stats: null,
     };
   });
 }

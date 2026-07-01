@@ -1,6 +1,6 @@
-import type { Match, Group, BracketRound, Scorer, Card, Shootout } from './types';
+import type { Match, Group, BracketRound, Scorer, Card, Shootout, MatchStats } from './types';
 import { mapScoreboard } from './providers/espn-matches';
-import { mapSummaryScorers, mapSummaryCards } from './providers/espn-summary';
+import { mapSummaryScorers, mapSummaryCards, mapSummaryStats } from './providers/espn-summary';
 import { mapStandings } from './providers/espn-standings';
 import { mapBracket } from './providers/espn-bracket';
 import { TtlCache } from './cache';
@@ -45,15 +45,21 @@ function parseShootout(
 export function createDataService(deps: DataDeps) {
   async function getMatchSummary(
     eventId: string,
+    homeId: string,
+    awayId: string,
     ttlMs = 12_000
-  ): Promise<{ scorers: Scorer[]; cards: Card[] }> {
+  ): Promise<{ scorers: Scorer[]; cards: Card[]; stats: MatchStats | null }> {
     const key = `summary:${eventId}`;
     const cached = deps.cache.get(key) as
-      | { scorers: Scorer[]; cards: Card[] }
+      | { scorers: Scorer[]; cards: Card[]; stats: MatchStats | null }
       | undefined;
     if (cached) return cached;
     const raw = await deps.fetchJson(SUMMARY_URL(eventId));
-    const summary = { scorers: mapSummaryScorers(raw), cards: mapSummaryCards(raw) };
+    const summary = {
+      scorers: mapSummaryScorers(raw),
+      cards: mapSummaryCards(raw),
+      stats: mapSummaryStats(raw, homeId, awayId),
+    };
     deps.cache.set(key, summary, ttlMs);
     return summary;
   }
@@ -73,15 +79,17 @@ export function createDataService(deps: DataDeps) {
       );
       const summaries = await Promise.all(
         enrichable.map((m) =>
-          getMatchSummary(m.id).catch(() => ({
+          getMatchSummary(m.id, m.home.id, m.away.id).catch(() => ({
             scorers: [] as Scorer[],
             cards: [] as Card[],
+            stats: null as MatchStats | null,
           }))
         )
       );
       enrichable.forEach((m, i) => {
         m.scorers = summaries[i].scorers;
         m.cards = summaries[i].cards;
+        m.stats = summaries[i].stats;
       });
 
       // Parse penalty shootout from note

@@ -22,6 +22,20 @@ export interface Card {
   type: 'yellow' | 'red';
 }
 
+export interface TeamStats {
+  possession: number | null; // percent, e.g. 47.1
+  shots: number | null;
+  shotsOnTarget: number | null;
+  passes: number | null;
+  corners: number | null;
+  fouls: number | null;
+}
+
+export interface MatchStats {
+  home: TeamStats;
+  away: TeamStats;
+}
+
 export interface Shootout {
   homeScore: number;
   awayScore: number;
@@ -42,6 +56,7 @@ export interface Match {
   scorers: Scorer[];
   cards: Card[];
   shootout: Shootout | null;
+  stats: MatchStats | null;
 }
 
 export interface Standing {

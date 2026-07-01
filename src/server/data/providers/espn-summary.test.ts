@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapSummaryScorers, mapSummaryCards } from './espn-summary';
+import { mapSummaryScorers, mapSummaryCards, mapSummaryStats } from './espn-summary';
 import raw from '../__fixtures__/espn-summary.json';
 
 describe('mapSummaryCards', () => {
@@ -111,5 +111,73 @@ describe('mapSummaryScorers resilience', () => {
     };
     const [s] = mapSummaryScorers(input);
     expect(s.player).toBe('');
+  });
+});
+
+describe('mapSummaryStats', () => {
+  // Fixture: Ivory Coast (4789) is teams[0], Norway (464) is teams[1]
+  // Pass Ivory Coast as home, Norway as away
+  const result = mapSummaryStats(raw, '4789', '464');
+
+  it('returns non-null for valid fixture input', () => {
+    expect(result).not.toBeNull();
+  });
+
+  it('maps home team possession to a number', () => {
+    expect(result!.home.possession).toBe(47.1);
+  });
+
+  it('maps home team shots to a number', () => {
+    expect(result!.home.shots).toBe(14);
+  });
+
+  it('maps home team shotsOnTarget to a number', () => {
+    expect(result!.home.shotsOnTarget).toBe(5);
+  });
+
+  it('maps home team passes to a number', () => {
+    expect(result!.home.passes).toBe(401);
+  });
+
+  it('maps home team corners to a number', () => {
+    expect(result!.home.corners).toBe(14);
+  });
+
+  it('maps home team fouls to a number', () => {
+    expect(result!.home.fouls).toBe(6);
+  });
+
+  it('maps away team possession correctly', () => {
+    expect(result!.away.possession).toBe(52.9);
+  });
+
+  it('maps away team stats correctly', () => {
+    expect(result!.away.shots).toBe(9);
+    expect(result!.away.shotsOnTarget).toBe(4);
+    expect(result!.away.passes).toBe(473);
+    expect(result!.away.corners).toBe(3);
+    expect(result!.away.fouls).toBe(7);
+  });
+
+  it('swaps home/away when ids are reversed', () => {
+    const reversed = mapSummaryStats(raw, '464', '4789');
+    expect(reversed!.home.possession).toBe(52.9); // Norway as home
+    expect(reversed!.away.possession).toBe(47.1); // Ivory Coast as away
+  });
+
+  it('returns null for empty object input', () => {
+    expect(mapSummaryStats({}, 'a', 'b')).toBeNull();
+  });
+
+  it('returns null for null input', () => {
+    expect(mapSummaryStats(null, 'a', 'b')).toBeNull();
+  });
+
+  it('returns null when boxscore.teams is missing', () => {
+    expect(mapSummaryStats({ boxscore: {} }, 'a', 'b')).toBeNull();
+  });
+
+  it('returns null when team ids do not match', () => {
+    expect(mapSummaryStats(raw, 'x', 'y')).toBeNull();
   });
 });
