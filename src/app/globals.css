@@ -405,9 +405,11 @@ a {
 }
 
 /* Clickable team discs (predict mode) */
-/* Eliminated team: greyscale + dim its flag/crest (like the reference art). */
+/* Eliminated team: greyscale + dim its flag/crest (like the reference art).
+   No opacity change — the disc stays fully opaque so connector lines don't
+   show through it. */
 .bracket-disc--eliminated {
-  filter: grayscale(1) brightness(0.72) opacity(0.72);
+  filter: grayscale(1) brightness(0.6);
   transition: filter 0.3s ease;
 }
 
