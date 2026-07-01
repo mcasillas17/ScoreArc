@@ -1351,8 +1351,25 @@ a {
 /* ---- Live scores carousel ---- */
 .live-carousel-wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .live-carousel { display: flex; align-items: stretch; justify-content: center; gap: 14px; width: 100%; }
-.ls-carousel-track { flex: 0 1 400px; max-width: 400px; min-width: 0; }
-.ls-carousel-track .match-card { width: 100%; }
+/* Clipping window for the sliding track; pan-y lets vertical page scroll pass
+   through while we own horizontal swipes. */
+.ls-viewport {
+  flex: 0 1 400px;
+  max-width: 400px;
+  min-width: 0;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+.ls-track {
+  display: flex;
+  will-change: transform;
+}
+.ls-slide {
+  flex: 0 0 100%;
+  min-width: 0;
+  align-self: flex-start;
+}
+.ls-slide .match-card { width: 100%; }
 .ls-arrow {
   flex-shrink: 0; align-self: center;
   width: 42px; height: 42px; border-radius: 50%;

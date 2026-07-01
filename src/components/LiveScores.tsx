@@ -152,7 +152,18 @@ export default function LiveScores({ initialMatches }: LiveScoresProps) {
   const [index, setIndex] = useState(() => firstLiveIndex(sortedInitial));
   // Until the user browses, keep the carousel pinned to the ongoing match.
   const [interacted, setInteracted] = useState(false);
-  const touchStartX = useRef<number | null>(null);
+
+  // Draggable-track state: dragX = live finger offset (px); slideTo = an
+  // in-progress animated advance; animating toggles the CSS transition.
+  const [dragX, setDragX] = useState(0);
+  const [animating, setAnimating] = useState(false);
+  const [slideTo, setSlideTo] = useState<null | "next" | "prev">(null);
+  const startX = useRef<number | null>(null);
+  const startY = useRef<number | null>(null);
+  const axis = useRef<null | "h" | "v">(null);
+  // Mirror the drag offset in a ref so touchend reads the current value
+  // (React state updates from touchmove haven't flushed yet).
+  const dragRef = useRef(0);
 
   // Poll /api/matches every 15s
   useEffect(() => {
@@ -177,20 +188,22 @@ export default function LiveScores({ initialMatches }: LiveScoresProps) {
   }, []);
 
   // Default to (and stay on) the ongoing match until the user navigates.
+  // Never fight an in-progress slide.
   useEffect(() => {
+    if (slideTo) return;
     if (!interacted) setIndex(firstLiveIndex(matches));
     else if (index > matches.length - 1) setIndex(0);
-  }, [matches, interacted, index]);
+  }, [matches, interacted, index, slideTo]);
 
   // Auto-advance every 30s — only once the user has started browsing.
   useEffect(() => {
-    if (!interacted || matches.length <= 1) return;
-    const t = setTimeout(
-      () => setIndex((i) => (i + 1) % matches.length),
-      ROTATE_MS
-    );
+    if (!interacted || matches.length <= 1 || slideTo || dragX !== 0) return;
+    const t = setTimeout(() => {
+      setAnimating(true);
+      setSlideTo("next");
+    }, ROTATE_MS);
     return () => clearTimeout(t);
-  }, [index, matches.length, interacted]);
+  }, [index, matches.length, interacted, slideTo, dragX]);
 
   if (matches.length === 0) {
     return (
@@ -198,27 +211,82 @@ export default function LiveScores({ initialMatches }: LiveScoresProps) {
     );
   }
 
+  const len = matches.length;
+  const multiple = len > 1;
+  const prevIdx = (index - 1 + len) % len;
+  const nextIdx = (index + 1) % len;
+
+  const slide = (dir: number) => {
+    if (!multiple || slideTo) return;
+    setAnimating(true);
+    setSlideTo(dir > 0 ? "next" : "prev");
+  };
   const go = (dir: number) => {
     setInteracted(true);
-    setIndex((i) => (i + dir + matches.length) % matches.length);
+    slide(dir);
   };
   const jumpTo = (i: number) => {
     setInteracted(true);
+    setAnimating(false);
+    setSlideTo(null);
+    dragRef.current = 0;
+    setDragX(0);
     setIndex(i);
   };
 
-  const onTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-  };
-  const onTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX.current == null) return;
-    const dx = e.changedTouches[0].clientX - touchStartX.current;
-    if (Math.abs(dx) > SWIPE_THRESHOLD) go(dx < 0 ? 1 : -1);
-    touchStartX.current = null;
+  // When a slide animation finishes, commit the index and reset seamlessly.
+  const onTransitionEnd = () => {
+    if (!slideTo) {
+      setAnimating(false);
+      return;
+    }
+    setIndex((i) =>
+      slideTo === "next" ? (i + 1) % len : (i - 1 + len) % len
+    );
+    setSlideTo(null);
+    dragRef.current = 0;
+    setDragX(0);
+    setAnimating(false);
   };
 
-  const current = matches[Math.min(index, matches.length - 1)];
-  const multiple = matches.length > 1;
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (!multiple || slideTo) return;
+    startX.current = e.touches[0].clientX;
+    startY.current = e.touches[0].clientY;
+    axis.current = null;
+    setAnimating(false);
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (startX.current == null) return;
+    const dx = e.touches[0].clientX - startX.current;
+    const dy = e.touches[0].clientY - (startY.current ?? 0);
+    if (axis.current == null) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      axis.current = Math.abs(dx) > Math.abs(dy) ? "h" : "v";
+    }
+    if (axis.current === "h") {
+      dragRef.current = dx;
+      setDragX(dx);
+    }
+  };
+  const onTouchEnd = () => {
+    if (startX.current == null) return;
+    const dx = dragRef.current;
+    const horizontal = axis.current === "h";
+    startX.current = null;
+    axis.current = null;
+    if (horizontal && Math.abs(dx) > SWIPE_THRESHOLD) {
+      go(dx < 0 ? 1 : -1);
+    } else {
+      setAnimating(true);
+      dragRef.current = 0;
+      setDragX(0); // snap back
+    }
+  };
+
+  // Track is centered on the current slide (-100%); a slide animates ±100%.
+  const pct = slideTo === "next" ? -200 : slideTo === "prev" ? 0 : -100;
+  const px = slideTo ? 0 : dragX;
 
   return (
     <div className="live-carousel-wrap">
@@ -234,11 +302,29 @@ export default function LiveScores({ initialMatches }: LiveScoresProps) {
         </button>
 
         <div
-          className="ls-carousel-track"
+          className="ls-viewport"
           onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
         >
-          <MatchCard key={current.id} match={current} />
+          <div
+            className="ls-track"
+            style={{
+              transform: `translateX(calc(${pct}% + ${px}px))`,
+              transition: animating ? "transform 0.28s ease-out" : "none",
+            }}
+            onTransitionEnd={onTransitionEnd}
+          >
+            <div className="ls-slide">
+              <MatchCard match={matches[prevIdx]} />
+            </div>
+            <div className="ls-slide">
+              <MatchCard match={matches[index]} />
+            </div>
+            <div className="ls-slide">
+              <MatchCard match={matches[nextIdx]} />
+            </div>
+          </div>
         </div>
 
         <button
