@@ -1336,6 +1336,81 @@ a {
   box-shadow: 0 0 0 2px rgba(255, 92, 92, 0.5);
 }
 
+/* Connection / auto-update indicator under the carousel */
+.ls-conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.ls-conn-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #36c275;
+  animation: pulse 1.6s ease infinite;
+}
+.ls-conn--bad {
+  color: #ffce6a;
+}
+
+/* Third-place match mini card (beneath the radial bracket) */
+.tp-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 6px 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+}
+.tp-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.tp-team {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tp-flag {
+  width: 22px;
+  height: 15px;
+  object-fit: cover;
+  border-radius: 2px;
+}
+.tp-flag-fallback {
+  width: 22px;
+  height: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  border-radius: 2px;
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.tp-abbr {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+.tp-score {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---- Live scores: yellow/red cards ---- */
 .ls-cards { margin-top: 2px; }
 .ls-card-chip {

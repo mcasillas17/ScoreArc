@@ -111,6 +111,16 @@ function toRad(deg: number): number {
   return (deg * Math.PI) / 180;
 }
 
+// Enter/Space activates a role="button" SVG element (keyboard accessibility).
+function activate(handler: () => void) {
+  return (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handler();
+    }
+  };
+}
+
 interface RingNode {
   depth: number; // 0 (outer, 32 teams) .. 4 (inner, final pair)
   index: number; // slot index within the ring
@@ -622,6 +632,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                   stroke={upcomingMatch ? '#0b0b0d' : undefined}
                   strokeWidth={upcomingMatch ? 1.2 : undefined}
                   role={upcomingMatch ? 'button' : undefined}
+                  tabIndex={upcomingMatch ? 0 : undefined}
                   aria-label={
                     upcomingMatch
                       ? `${cA!.team.abbr} vs ${cB!.team.abbr}${
@@ -630,6 +641,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                       : undefined
                   }
                   onClick={upcomingMatch ? () => handleView(upcomingMatch) : undefined}
+                  onKeyDown={upcomingMatch ? activate(() => handleView(upcomingMatch)) : undefined}
                 />
               </g>
             );
@@ -824,6 +836,8 @@ function OuterTeam({
         node.eliminated ? ' bracket-disc--eliminated' : ''
       }`}
       onClick={interactive ? onClick : undefined}
+      onKeyDown={interactive ? activate(onClick) : undefined}
+      tabIndex={interactive ? 0 : undefined}
       role={interactive ? 'button' : undefined}
     >
       {/* Crest (outer) — meet so the badge isn't cropped, on a light disc */}
@@ -943,6 +957,8 @@ function InnerFlag({
       className={`${cls} bracket-advance`}
       style={style}
       onClick={interactive ? onClick : undefined}
+      onKeyDown={interactive ? activate(onClick) : undefined}
+      tabIndex={interactive ? 0 : undefined}
       role={interactive ? 'button' : undefined}
     >
       {disc}

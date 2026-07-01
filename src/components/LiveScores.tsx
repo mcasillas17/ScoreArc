@@ -152,6 +152,7 @@ export default function LiveScores({ initialMatches }: LiveScoresProps) {
   const [index, setIndex] = useState(() => firstLiveIndex(sortedInitial));
   // Until the user browses, keep the carousel pinned to the ongoing match.
   const [interacted, setInteracted] = useState(false);
+  const [connOk, setConnOk] = useState(true);
 
   // Draggable-track state: dragX = live finger offset (px); slideTo = an
   // in-progress animated advance; animating toggles the CSS transition.
@@ -173,10 +174,15 @@ export default function LiveScores({ initialMatches }: LiveScoresProps) {
         const res = await fetch("/api/matches", { cache: "no-store" });
         if (res.ok) {
           const data = (await res.json()) as Match[];
-          if (mounted) setMatches(sortMatches(data));
+          if (mounted) {
+            setMatches(sortMatches(data));
+            setConnOk(true);
+          }
+        } else if (mounted) {
+          setConnOk(false);
         }
       } catch {
-        // ignore — next poll retries
+        if (mounted) setConnOk(false); // next poll retries
       }
     }
     poll();
@@ -336,6 +342,16 @@ export default function LiveScores({ initialMatches }: LiveScoresProps) {
         >
           ›
         </button>
+      </div>
+
+      <div className={`ls-conn${connOk ? "" : " ls-conn--bad"}`} aria-live="polite">
+        {connOk ? (
+          <>
+            <span className="ls-conn-dot" /> Live · auto-updating
+          </>
+        ) : (
+          "Reconnecting…"
+        )}
       </div>
 
       {multiple && (

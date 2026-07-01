@@ -2,11 +2,44 @@
 
 import { useEffect, useState } from 'react';
 import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/types';
+import { flagUrl } from '@/lib/flags';
 import RadialBracket, { type BracketMode } from './RadialBracket';
 import ChampionCelebration from './ChampionCelebration';
 
 interface Props {
   rounds: BracketRound[];
+}
+
+// Compact third-place match card — shown once both semi-final losers are known
+// (the radial ring geometry ends at the final, so this lives beneath it).
+function ThirdPlaceMini({ rounds }: { rounds: BracketRound[] }) {
+  const m = rounds.find((r) => r.slug === '3rd-place-match')?.matches[0];
+  if (!m || m.home.placeholder || m.away.placeholder) return null;
+  const started = m.state === 'live' || m.state === 'finished';
+  const Side = ({ abbr, name }: { abbr: string; name: string }) => {
+    const src = flagUrl(abbr);
+    return (
+      <span className="tp-team">
+        {src ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img className="tp-flag" src={src} alt={name} referrerPolicy="no-referrer" />
+        ) : (
+          <span className="tp-flag tp-flag-fallback">{abbr}</span>
+        )}
+        <span className="tp-abbr">{abbr}</span>
+      </span>
+    );
+  };
+  return (
+    <div className="tp-mini" aria-label="Third-place match">
+      <span className="tp-label">🥉 Third Place</span>
+      <Side abbr={m.home.abbr} name={m.home.name} />
+      <span className="tp-score">
+        {started ? `${m.homeScore ?? 0}–${m.awayScore ?? 0}` : 'vs'}
+      </span>
+      <Side abbr={m.away.abbr} name={m.away.name} />
+    </div>
+  );
 }
 
 /**
@@ -182,6 +215,8 @@ export default function BracketInteractive({ rounds: initialRounds }: Props) {
         onPick={handlePick}
         onChampion={setChampion}
       />
+
+      {mode === 'live' && <ThirdPlaceMini rounds={rounds} />}
 
       {celebrate && (
         <ChampionCelebration

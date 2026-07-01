@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import type { BracketMatch, MatchSummaryData } from '@/server/data/types';
 import { flagUrl } from '@/lib/flags';
 import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar, LineupView, PenaltyShootout, liveStatus } from './MatchStats';
@@ -29,6 +30,22 @@ function formatKickoff(iso: string): string {
 }
 
 export default function MatchDetailPopup({ match, summary, loading, onClose }: Props) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  // Close on Escape; move focus into the dialog on open and restore it on close.
+  useEffect(() => {
+    const prevFocus = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      prevFocus?.focus?.();
+    };
+  }, [onClose]);
+
   const { home, away } = match;
   const homeFlag = flagUrl(home.abbr);
   const awayFlag = flagUrl(away.abbr);
@@ -66,7 +83,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
       aria-label="Match details"
     >
       <div className="md-card" onClick={(e) => e.stopPropagation()}>
-        <button className="md-close" onClick={onClose} aria-label="Close match details">
+        <button ref={closeRef} className="md-close" onClick={onClose} aria-label="Close match details">
           ×
         </button>
 
