@@ -1,6 +1,25 @@
 import { describe, it, expect } from 'vitest';
-import { mapSummaryScorers } from './espn-summary';
+import { mapSummaryScorers, mapSummaryCards } from './espn-summary';
 import raw from '../__fixtures__/espn-summary.json';
+
+describe('mapSummaryCards', () => {
+  const cards = mapSummaryCards(raw);
+
+  it('extracts cards with player, minute, team and yellow/red type', () => {
+    expect(cards.length).toBeGreaterThan(0);
+    for (const c of cards) {
+      expect(c.teamId).toBeTruthy();
+      expect(typeof c.player).toBe('string');
+      expect(typeof c.minute).toBe('string');
+      expect(['yellow', 'red']).toContain(c.type);
+    }
+  });
+
+  it('is resilient to empty/garbage input', () => {
+    expect(mapSummaryCards({})).toEqual([]);
+    expect(mapSummaryCards(null)).toEqual([]);
+  });
+});
 
 describe('mapSummaryScorers', () => {
   const scorers = mapSummaryScorers(raw);

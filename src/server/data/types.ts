@@ -15,6 +15,13 @@ export interface Scorer {
   shootout: boolean;
 }
 
+export interface Card {
+  teamId: string;
+  player: string;
+  minute: string;
+  type: 'yellow' | 'red';
+}
+
 export interface Shootout {
   homeScore: number;
   awayScore: number;
@@ -33,6 +40,7 @@ export interface Match {
   winnerId: string | null;
   note: string | null;      // e.g. "Paraguay advance 4-3 on penalties"
   scorers: Scorer[];
+  cards: Card[];
   shootout: Shootout | null;
 }
 

@@ -39,6 +39,7 @@ export function mapScoreboard(raw: unknown): Match[] {
       winnerId,
       note,
       scorers: [],
+      cards: [],
       shootout: null,
     };
   });

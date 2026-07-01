@@ -1196,3 +1196,15 @@ a {
   padding: 1px 7px;
   margin-top: 2px;
 }
+
+/* ---- Live scores: yellow/red cards ---- */
+.ls-cards { margin-top: 2px; }
+.ls-card-chip {
+  display: inline-block;
+  width: 9px; height: 12px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  flex-shrink: 0;
+}
+.ls-card-yellow { background: #ffcd00; }
+.ls-card-red { background: #e0242b; }

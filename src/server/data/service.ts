@@ -1,6 +1,6 @@
-import type { Match, Group, BracketRound, Scorer, Shootout } from './types';
+import type { Match, Group, BracketRound, Scorer, Card, Shootout } from './types';
 import { mapScoreboard } from './providers/espn-matches';
-import { mapSummaryScorers } from './providers/espn-summary';
+import { mapSummaryScorers, mapSummaryCards } from './providers/espn-summary';
 import { mapStandings } from './providers/espn-standings';
 import { mapBracket } from './providers/espn-bracket';
 import { TtlCache } from './cache';
@@ -43,18 +43,23 @@ function parseShootout(
 }
 
 export function createDataService(deps: DataDeps) {
-  async function getMatchScorers(eventId: string, ttlMs = 12_000): Promise<Scorer[]> {
+  async function getMatchSummary(
+    eventId: string,
+    ttlMs = 12_000
+  ): Promise<{ scorers: Scorer[]; cards: Card[] }> {
     const key = `summary:${eventId}`;
-    const cached = deps.cache.get(key) as Scorer[] | undefined;
+    const cached = deps.cache.get(key) as
+      | { scorers: Scorer[]; cards: Card[] }
+      | undefined;
     if (cached) return cached;
     const raw = await deps.fetchJson(SUMMARY_URL(eventId));
-    const scorers = mapSummaryScorers(raw);
-    deps.cache.set(key, scorers, ttlMs);
-    return scorers;
+    const summary = { scorers: mapSummaryScorers(raw), cards: mapSummaryCards(raw) };
+    deps.cache.set(key, summary, ttlMs);
+    return summary;
   }
 
   return {
-    getMatchScorers,
+    getMatchSummary,
 
     async getMatches(ttlMs = 10_000): Promise<Match[]> {
       const cached = deps.cache.get('matches') as Match[] | undefined;
@@ -66,11 +71,17 @@ export function createDataService(deps: DataDeps) {
       const enrichable = matches.filter(
         (m) => m.state === 'live' || m.state === 'finished'
       );
-      const scorersResults = await Promise.all(
-        enrichable.map((m) => getMatchScorers(m.id).catch((): Scorer[] => []))
+      const summaries = await Promise.all(
+        enrichable.map((m) =>
+          getMatchSummary(m.id).catch(() => ({
+            scorers: [] as Scorer[],
+            cards: [] as Card[],
+          }))
+        )
       );
       enrichable.forEach((m, i) => {
-        m.scorers = scorersResults[i];
+        m.scorers = summaries[i].scorers;
+        m.cards = summaries[i].cards;
       });
 
       // Parse penalty shootout from note

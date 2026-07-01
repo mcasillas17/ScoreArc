@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { Match, Scorer } from "@/server/data/types";
+import type { Match, Scorer, Card } from "@/server/data/types";
 import TeamBadge from "./TeamBadge";
 
 interface LiveScoresProps {
@@ -34,6 +34,16 @@ function ScorerLine({ scorer }: { scorer: Scorer }) {
         {scorer.minute}
         {scorer.penalty && !scorer.shootout ? " (P)" : ""}
       </span>
+    </span>
+  );
+}
+
+function CardLine({ card }: { card: Card }) {
+  return (
+    <span className="ls-scorer-line">
+      <span className={`ls-card-chip ls-card-${card.type}`} />
+      <span className="ls-scorer-name">{card.player}</span>
+      <span className="ls-scorer-minute">{card.minute}</span>
     </span>
   );
 }
@@ -86,6 +96,11 @@ export default function LiveScores({ initialMatches }: LiveScoresProps) {
         const awayScorers = inPlayScorers.filter((s) => s.teamId === match.away.id);
         const hasScorers = inPlayScorers.length > 0;
 
+        const cards = match.cards ?? [];
+        const homeCards = cards.filter((c) => c.teamId === match.home.id);
+        const awayCards = cards.filter((c) => c.teamId === match.away.id);
+        const hasCards = cards.length > 0;
+
         return (
           <div key={match.id} className="match-card">
             <div className="match-teams">
@@ -133,6 +148,22 @@ export default function LiveScores({ initialMatches }: LiveScoresProps) {
                 <div className="ls-scorers-col ls-scorers-away">
                   {awayScorers.map((s, i) => (
                     <ScorerLine key={i} scorer={s} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {started && hasCards && (
+              <div className="ls-scorers ls-cards">
+                <div className="ls-scorers-col ls-scorers-home">
+                  {homeCards.map((c, i) => (
+                    <CardLine key={i} card={c} />
+                  ))}
+                </div>
+                <div className="ls-scorers-divider" />
+                <div className="ls-scorers-col ls-scorers-away">
+                  {awayCards.map((c, i) => (
+                    <CardLine key={i} card={c} />
                   ))}
                 </div>
               </div>
