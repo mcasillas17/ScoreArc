@@ -142,7 +142,10 @@ export default function BracketInteractive({ rounds: initialRounds }: Props) {
       typeof window !== 'undefined'
         ? window.location.origin
         : 'https://www.scorearc.futbol';
-    const url = `${origin}/?b=${encodePicks(picks)}`;
+    const champParam = champion
+      ? `&c=${encodeURIComponent(champion.abbr)}&name=${encodeURIComponent(champion.name)}`
+      : '';
+    const url = `${origin}/?b=${encodePicks(picks)}${champParam}`;
     const text = champion
       ? `My pick to win the 2026 World Cup: ${champion.name} 🏆⚽ — build your bracket on ScoreArc:`
       : `Building my 2026 World Cup bracket on ScoreArc ⚽ — make yours:`;
