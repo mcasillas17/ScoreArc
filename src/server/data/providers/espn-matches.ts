@@ -42,6 +42,7 @@ export function mapScoreboard(raw: unknown): Match[] {
       cards: [],
       shootout: null,
       stats: null,
+      winProbability: null,
     };
   });
 }

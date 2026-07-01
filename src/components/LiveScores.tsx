@@ -161,6 +161,37 @@ function MatchCard({ match }: { match: Match }) {
         <FullFlag team={match.away} />
       </div>
 
+      {match.winProbability && match.state !== "finished" && (
+        <div className="ls-winprob">
+          <div className="ls-winprob-title">Chance to win</div>
+          <div className="ls-winprob-bar">
+            <div
+              className="ls-winprob-home"
+              style={{ width: `${match.winProbability.home}%` }}
+            />
+            <div
+              className="ls-winprob-draw"
+              style={{ width: `${match.winProbability.draw}%` }}
+            />
+            <div
+              className="ls-winprob-away"
+              style={{ width: `${match.winProbability.away}%` }}
+            />
+          </div>
+          <div className="ls-winprob-legend">
+            <span>
+              {match.home.abbr} {match.winProbability.home}%
+            </span>
+            <span className="ls-winprob-draw-label">
+              Draw {match.winProbability.draw}%
+            </span>
+            <span>
+              {match.away.abbr} {match.winProbability.away}%
+            </span>
+          </div>
+        </div>
+      )}
+
       {started && hasScorers && (
         <div className="ls-scorers">
           <div className="ls-scorers-col ls-scorers-home">

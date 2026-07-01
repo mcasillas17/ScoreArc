@@ -1,10 +1,63 @@
-import type { Scorer, Card, MatchStats, TeamStats } from '../types';
+import type { Scorer, Card, MatchStats, TeamStats, WinProbability } from '../types';
 
 function parseStat(stats: any[], name: string): number | null {
   const s = stats.find((x: any) => x.name === name);
   if (s == null) return null;
   const n = parseFloat(s.displayValue);
   return isNaN(n) ? null : n;
+}
+
+// American moneyline -> implied probability (0..1).
+function moneylineToProb(ml: number | null | undefined): number | null {
+  if (ml == null || isNaN(ml)) return null;
+  return ml > 0 ? 100 / (ml + 100) : -ml / (-ml + 100);
+}
+
+function teamIdFromRef(o: any): string | null {
+  const ref: string = o?.team?.$ref ?? '';
+  const m = /\/teams\/(\d+)/.exec(ref);
+  return m ? m[1] : null;
+}
+
+/**
+ * Market-implied win/draw/win probability from the first betting provider's
+ * moneylines, with the bookmaker margin removed (normalised to 100). Mapped to
+ * OUR home/away by team id. Returns null if no usable 3-way moneyline is present.
+ */
+export function mapWinProbability(
+  raw: unknown,
+  homeId: string,
+  awayId: string
+): WinProbability | null {
+  try {
+    const oddsList: any[] = (raw as any)?.odds ?? [];
+    for (const o of oddsList) {
+      const pHome = moneylineToProb(o?.homeTeamOdds?.moneyLine);
+      const pAway = moneylineToProb(o?.awayTeamOdds?.moneyLine);
+      const pDraw = moneylineToProb(o?.drawOdds?.moneyLine);
+      if (pHome == null || pAway == null || pDraw == null) continue;
+
+      // Assign the provider's home/away legs to OUR home/away by team id.
+      const homeLegId = teamIdFromRef(o.homeTeamOdds);
+      let ourHome = pHome;
+      let ourAway = pAway;
+      if (homeLegId && homeLegId === awayId) {
+        ourHome = pAway;
+        ourAway = pHome;
+      }
+
+      const total = ourHome + ourAway + pDraw;
+      if (total <= 0) continue;
+      return {
+        home: Math.round((ourHome / total) * 1000) / 10,
+        draw: Math.round((pDraw / total) * 1000) / 10,
+        away: Math.round((ourAway / total) * 1000) / 10,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 function buildTeamStats(statistics: any[]): TeamStats {

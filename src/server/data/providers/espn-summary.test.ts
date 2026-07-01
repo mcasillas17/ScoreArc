@@ -1,6 +1,33 @@
 import { describe, it, expect } from 'vitest';
-import { mapSummaryScorers, mapSummaryCards, mapSummaryStats } from './espn-summary';
+import {
+  mapSummaryScorers,
+  mapSummaryCards,
+  mapSummaryStats,
+  mapWinProbability,
+} from './espn-summary';
 import raw from '../__fixtures__/espn-summary.json';
+
+describe('mapWinProbability', () => {
+  it('derives normalized win/draw/win % from moneylines (home=4789, away=464)', () => {
+    const wp = mapWinProbability(raw, '4789', '464');
+    expect(wp).not.toBeNull();
+    expect(wp!.home).toBeCloseTo(26.6, 0);
+    expect(wp!.draw).toBeCloseTo(29.0, 0);
+    expect(wp!.away).toBeCloseTo(44.5, 0);
+    expect(wp!.home + wp!.draw + wp!.away).toBeCloseTo(100, 0);
+  });
+
+  it('swaps legs when our home is the odds away team', () => {
+    const wp = mapWinProbability(raw, '464', '4789');
+    expect(wp!.home).toBeCloseTo(44.5, 0);
+    expect(wp!.away).toBeCloseTo(26.6, 0);
+  });
+
+  it('returns null when odds are absent', () => {
+    expect(mapWinProbability({}, 'a', 'b')).toBeNull();
+    expect(mapWinProbability(null, 'a', 'b')).toBeNull();
+  });
+});
 
 describe('mapSummaryCards', () => {
   const cards = mapSummaryCards(raw);

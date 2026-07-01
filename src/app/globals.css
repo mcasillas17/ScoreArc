@@ -1346,3 +1346,19 @@ a {
   color: var(--text);
   font-weight: 600;
 }
+
+/* ---- Live scores: chance-to-win (odds-implied) ---- */
+.ls-winprob { margin-top: 10px; }
+.ls-winprob-title {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: #7a7a86; text-align: center; margin-bottom: 5px;
+}
+.ls-winprob-bar { display: flex; height: 8px; border-radius: 5px; overflow: hidden; }
+.ls-winprob-home { background: #e8b84b; }
+.ls-winprob-draw { background: #45454f; }
+.ls-winprob-away { background: #4cc4ff; }
+.ls-winprob-legend {
+  display: flex; justify-content: space-between;
+  font-size: 11px; color: #c2c2ca; margin-top: 5px; font-weight: 600;
+}
+.ls-winprob-draw-label { color: #8a8a95; }

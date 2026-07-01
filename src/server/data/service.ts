@@ -1,6 +1,6 @@
-import type { Match, Group, BracketRound, Scorer, Card, Shootout, MatchStats } from './types';
+import type { Match, Group, BracketRound, Scorer, Card, Shootout, MatchStats, WinProbability } from './types';
 import { mapScoreboard } from './providers/espn-matches';
-import { mapSummaryScorers, mapSummaryCards, mapSummaryStats } from './providers/espn-summary';
+import { mapSummaryScorers, mapSummaryCards, mapSummaryStats, mapWinProbability } from './providers/espn-summary';
 import { mapStandings } from './providers/espn-standings';
 import { mapBracket } from './providers/espn-bracket';
 import { TtlCache } from './cache';
@@ -48,10 +48,20 @@ export function createDataService(deps: DataDeps) {
     homeId: string,
     awayId: string,
     ttlMs = 12_000
-  ): Promise<{ scorers: Scorer[]; cards: Card[]; stats: MatchStats | null }> {
+  ): Promise<{
+    scorers: Scorer[];
+    cards: Card[];
+    stats: MatchStats | null;
+    winProbability: WinProbability | null;
+  }> {
     const key = `summary:${eventId}`;
     const cached = deps.cache.get(key) as
-      | { scorers: Scorer[]; cards: Card[]; stats: MatchStats | null }
+      | {
+          scorers: Scorer[];
+          cards: Card[];
+          stats: MatchStats | null;
+          winProbability: WinProbability | null;
+        }
       | undefined;
     if (cached) return cached;
     const raw = await deps.fetchJson(SUMMARY_URL(eventId));
@@ -59,6 +69,7 @@ export function createDataService(deps: DataDeps) {
       scorers: mapSummaryScorers(raw),
       cards: mapSummaryCards(raw),
       stats: mapSummaryStats(raw, homeId, awayId),
+      winProbability: mapWinProbability(raw, homeId, awayId),
     };
     deps.cache.set(key, summary, ttlMs);
     return summary;
@@ -83,6 +94,7 @@ export function createDataService(deps: DataDeps) {
             scorers: [] as Scorer[],
             cards: [] as Card[],
             stats: null as MatchStats | null,
+            winProbability: null as WinProbability | null,
           }))
         )
       );
@@ -90,6 +102,7 @@ export function createDataService(deps: DataDeps) {
         m.scorers = summaries[i].scorers;
         m.cards = summaries[i].cards;
         m.stats = summaries[i].stats;
+        m.winProbability = summaries[i].winProbability;
       });
 
       // Parse penalty shootout from note

@@ -36,6 +36,14 @@ export interface MatchStats {
   away: TeamStats;
 }
 
+// Market-implied win/draw/win chance (percent), derived from betting moneylines
+// with the bookmaker margin removed. Sums to ~100.
+export interface WinProbability {
+  home: number;
+  draw: number;
+  away: number;
+}
+
 export interface Shootout {
   homeScore: number;
   awayScore: number;
@@ -57,6 +65,7 @@ export interface Match {
   cards: Card[];
   shootout: Shootout | null;
   stats: MatchStats | null;
+  winProbability: WinProbability | null;
 }
 
 export interface Standing {
