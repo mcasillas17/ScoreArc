@@ -1174,14 +1174,15 @@ a {
 .champ-emblem {
   position: relative;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  margin-bottom: 22px;
+  justify-content: center;
+  gap: 30px;
+  margin-bottom: 24px;
 }
 .champ-trophy {
-  width: 120px;
+  width: 112px;
   height: auto;
-  margin-bottom: -18px;
   filter: drop-shadow(0 0 18px rgba(232, 184, 75, 0.65));
   animation: champ-bob 3.2s ease-in-out infinite;
 }
@@ -1189,33 +1190,64 @@ a {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-8px); }
 }
-.champ-disc {
-  width: 150px;
-  height: 150px;
-  border-radius: 50%;
-  overflow: hidden;
-  border: 4px solid #e8b84b;
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4), 0 8px 30px rgba(0, 0, 0, 0.55);
-  background: #16161c;
+
+/* Waving flag flying from a "pole" on its left edge (nearest the trophy) */
+.champ-flagwrap {
+  position: relative;
+  transform-origin: left center;
+  animation: champ-wave 2.6s ease-in-out infinite;
+  filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.5));
+}
+.champ-wave-flag {
+  display: block;
+  width: 186px;
+  height: 124px;
+  object-fit: cover;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+/* Moving sheen for a cloth-in-the-wind feel */
+.champ-flagwrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  pointer-events: none;
+  background: linear-gradient(
+    105deg,
+    rgba(255, 255, 255, 0) 34%,
+    rgba(255, 255, 255, 0.28) 50%,
+    rgba(255, 255, 255, 0) 66%
+  );
+  background-size: 260% 100%;
+  mix-blend-mode: screen;
+  animation: champ-sheen 2.6s ease-in-out infinite;
+}
+@keyframes champ-wave {
+  0%, 100% { transform: perspective(440px) rotateY(-10deg) skewY(2deg); }
+  25% { transform: perspective(440px) rotateY(6deg) skewY(-1.5deg); }
+  50% { transform: perspective(440px) rotateY(-5deg) skewY(1.5deg); }
+  75% { transform: perspective(440px) rotateY(8deg) skewY(-2deg); }
+}
+@keyframes champ-sheen {
+  0%, 100% { background-position: 135% 0; }
+  50% { background-position: -35% 0; }
+}
+.champ-flag-fallback {
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: champ-ring-pulse 2s ease-in-out infinite;
-}
-@keyframes champ-ring-pulse {
-  0%, 100% { box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4), 0 0 14px rgba(232, 184, 75, 0.5); }
-  50% { box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4), 0 0 34px rgba(232, 184, 75, 0.95); }
-}
-.champ-flag {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.champ-flag-fallback {
+  background: #16161c;
   color: #e8b84b;
-  font-size: 26px;
+  font-size: 34px;
   font-weight: 800;
-  letter-spacing: 1px;
+  letter-spacing: 2px;
+}
+
+@media (max-width: 480px) {
+  .champ-emblem { gap: 18px; }
+  .champ-trophy { width: 84px; }
+  .champ-wave-flag { width: 138px; height: 92px; }
 }
 
 .champ-title {
@@ -1269,7 +1301,8 @@ a {
   .champ-rays,
   .champ-glow,
   .champ-trophy,
-  .champ-disc,
+  .champ-flagwrap,
+  .champ-flagwrap::after,
   .champ-title,
   .champ-card,
   .champ-overlay {

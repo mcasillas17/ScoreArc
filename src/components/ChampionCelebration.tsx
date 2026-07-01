@@ -101,11 +101,11 @@ export default function ChampionCelebration({ team, onClose, onShare }: Props) {
 
         <div className="champ-emblem">
           <img className="champ-trophy" src="/trophy.png" alt="World Cup trophy" />
-          <div className="champ-disc" style={{ borderColor: teamColor }}>
+          <div className="champ-flagwrap">
             {flag ? (
-              <img className="champ-flag" src={flag} alt={`${team.name} flag`} />
+              <img className="champ-wave-flag" src={flag} alt={`${team.name} flag`} />
             ) : (
-              <span className="champ-flag-fallback">{team.abbr}</span>
+              <div className="champ-wave-flag champ-flag-fallback">{team.abbr}</div>
             )}
           </div>
         </div>
