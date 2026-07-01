@@ -63,6 +63,17 @@ const NAV: NavItem[] = [
     ),
   },
   {
+    href: '/news',
+    label: 'News',
+    activePath: '/news',
+    icon: (
+      <svg {...ICON_PROPS}>
+        <path d="M4 5h16v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" />
+        <path d="M8 8h8M8 12h8M8 16h5" />
+      </svg>
+    ),
+  },
+  {
     href: '/#bracket',
     label: 'Predict',
     activePath: '',

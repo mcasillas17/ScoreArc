@@ -469,6 +469,20 @@ a {
   filter: brightness(1.22);
 }
 
+/* No ugly default outline box on click; keyboard focus gets a soft glow instead. */
+.bracket-disc:focus,
+.bracket-slot-dot:focus {
+  outline: none;
+}
+.bracket-disc--clickable:focus-visible {
+  outline: none;
+  filter: brightness(1.28) drop-shadow(0 0 4px rgba(232, 184, 75, 0.9));
+}
+.bracket-slot-dot:focus-visible {
+  outline: none;
+  filter: brightness(1.2) drop-shadow(0 0 4px #ffe9a8);
+}
+
 /* Subtle fade + scale-in when a team newly advances into an inner slot */
 .bracket-inner-disc {
   transform-box: fill-box;
@@ -845,6 +859,78 @@ a {
   border-radius: 2px;
   background: var(--gold);
   flex-shrink: 0;
+}
+
+/* ===== News ===== */
+.nw-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 18px;
+}
+.nw-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.nw-card:hover {
+  border-color: var(--gold);
+  transform: translateY(-2px);
+}
+.nw-img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  display: block;
+  background: var(--surface-2);
+}
+.nw-img-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  opacity: 0.4;
+}
+.nw-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px 16px;
+  flex: 1;
+}
+.nw-headline {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text);
+}
+.nw-desc {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.nw-meta {
+  margin-top: auto;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.nw-time {
+  color: var(--gold);
 }
 
 /* ===== Empty States ===== */

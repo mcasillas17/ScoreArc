@@ -134,6 +134,16 @@ export interface BracketRound {
   matches: BracketMatch[];
 }
 
+export interface NewsArticle {
+  id: string;
+  headline: string;
+  description: string;
+  published: string; // ISO
+  image: string | null;
+  url: string;
+  byline: string;
+}
+
 export interface TopScorer {
   rank: number;
   player: string;
