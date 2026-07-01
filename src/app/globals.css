@@ -1257,7 +1257,7 @@ a {
   100% { transform: translate(0, 0); }
 }
 .bracket-advance {
-  animation: bracket-advance 0.65s ease-in-out both;
+  animation: bracket-advance 0.85s ease-in-out both;
 }
 @media (prefers-reduced-motion: reduce) {
   .bracket-advance { animation: none; }
