@@ -1,8 +1,6 @@
 import { dataService } from "@/server/data/service";
 import type { Group, TopScorer } from "@/server/data/types";
-import GroupTable from "@/components/GroupTable";
-import TopScorersTable from "@/components/TopScorersTable";
-import ThirdPlaceTable from "@/components/ThirdPlaceTable";
+import StandingsLive from "@/components/StandingsLive";
 
 export const dynamic = "force-dynamic";
 
@@ -37,36 +35,7 @@ export default async function StandingsPage() {
           </p>
         </header>
 
-        <div className="std-columns">
-          <div className="std-block">
-            <h2 className="std-block-title">Golden Boot · Top Scorers</h2>
-            <TopScorersTable scorers={scorers} />
-          </div>
-
-          <div className="std-block">
-            <h2 className="std-block-title">Best Third-Placed Teams</h2>
-            {groups.length > 0 ? (
-              <ThirdPlaceTable groups={groups} />
-            ) : (
-              <p className="empty-text">Group data is unavailable right now.</p>
-            )}
-          </div>
-        </div>
-
-        <div className="std-block">
-          <h2 className="std-block-title">Group Stage Results</h2>
-          {groups.length > 0 ? (
-            <div className="groups-grid">
-              {groups.map((group) => (
-                <GroupTable key={group.id} group={group} />
-              ))}
-            </div>
-          ) : (
-            <div className="empty-section">
-              <p className="empty-text">Group data is unavailable right now.</p>
-            </div>
-          )}
-        </div>
+        <StandingsLive initialGroups={groups} initialScorers={scorers} />
       </section>
 
       <footer className="site-footer">

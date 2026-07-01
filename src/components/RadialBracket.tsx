@@ -388,7 +388,9 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
     setSummary(null);
     setLoadingDetail(true);
     try {
-      const res = await fetch(`/api/match/${m.id}?home=${m.home.id}&away=${m.away.id}`);
+      const res = await fetch(`/api/match/${m.id}?home=${m.home.id}&away=${m.away.id}`, {
+        cache: 'no-store',
+      });
       const json = (await res.json()) as MatchSummary;
       setSummary(json);
     } catch {
@@ -397,6 +399,29 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
       setLoadingDetail(false);
     }
   }
+
+  // While the popup is open on a LIVE match, quietly refresh its summary every
+  // 15s so the score / stats / scorers stay current without blanking the card.
+  useEffect(() => {
+    if (!detail || detail.state !== 'live') return;
+    let active = true;
+    const id = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `/api/match/${detail.id}?home=${detail.home.id}&away=${detail.away.id}`,
+          { cache: 'no-store' },
+        );
+        if (res.ok && active) setSummary((await res.json()) as MatchSummary);
+      } catch {
+        // ignore — next tick retries
+      }
+    }, 15_000);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail?.id, detail?.state]);
 
   const handleDiscClick = (node: RingNode) => {
     // Discs only interact in predict mode (pick). Viewing a match's details is
