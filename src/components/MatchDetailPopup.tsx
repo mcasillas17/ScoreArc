@@ -130,10 +130,8 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
             </div>
           )}
 
-          {upcoming && !loading && (
-            <p className="md-empty">
-              Not started yet{wp ? '' : ' — no odds available'}.
-            </p>
+          {upcoming && !loading && !showWinProb && !summary?.lineups && (
+            <p className="md-empty">Not started yet — no preview data available.</p>
           )}
 
           {!upcoming && !loading && summary && !hasContent && (
