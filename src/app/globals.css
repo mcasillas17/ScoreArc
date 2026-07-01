@@ -1532,12 +1532,14 @@ a {
 }
 
 /* ---- Bracket: clickable match "result" dot on the connector ---- */
-.bracket-result-dot {
+/* Clickable "upcoming match" slot dot — the point a winner's flag will
+   travel to once the feeding match is decided. */
+.bracket-slot-dot {
   cursor: pointer;
   transition: filter 0.12s ease;
 }
-.bracket-result-dot:hover {
-  filter: drop-shadow(0 0 5px #ffe9a8) brightness(1.15);
+.bracket-slot-dot:hover {
+  filter: drop-shadow(0 0 5px #ffe9a8) brightness(1.2);
 }
 
 /* ---- Match detail popup: upcoming kickoff time ---- */
