@@ -1,12 +1,33 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { BracketRound, BracketTeam } from '@/server/data/types';
+import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/types';
 import RadialBracket, { type BracketMode } from './RadialBracket';
 import ChampionCelebration from './ChampionCelebration';
 
 interface Props {
   rounds: BracketRound[];
+}
+
+/**
+ * Merge a freshly-polled bracket onto the current one, keeping any match that
+ * has ALREADY been decided locked to its decided result. ESPN's simulated 2026
+ * feed sometimes reverts a finished match back to "scheduled" between requests;
+ * a real knockout never un-finishes a match, so once we've seen a winner we keep
+ * it. Matches still in progress take the fresh data (score/state updates).
+ */
+function mergeRounds(prev: BracketRound[], next: BracketRound[]): BracketRound[] {
+  const decided = new Map<string, BracketMatch>();
+  for (const r of prev) {
+    for (const m of r.matches) {
+      if (m.winnerId) decided.set(m.id, m);
+    }
+  }
+  if (decided.size === 0) return next;
+  return next.map((r) => ({
+    ...r,
+    matches: r.matches.map((m) => decided.get(m.id) ?? m),
+  }));
 }
 
 // Compact, URL-safe encoding of a picks map so a shared link reopens the bracket.
@@ -49,7 +70,9 @@ export default function BracketInteractive({ rounds: initialRounds }: Props) {
         const res = await fetch('/api/bracket');
         if (!res.ok) return;
         const data = (await res.json()) as BracketRound[];
-        if (mounted && Array.isArray(data) && data.length) setRounds(data);
+        if (mounted && Array.isArray(data) && data.length) {
+          setRounds((prev) => mergeRounds(prev, data));
+        }
       } catch {
         // ignore — next tick retries
       }
