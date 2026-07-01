@@ -124,6 +124,7 @@ interface RingNode {
   crestY: number;
   discR: number;
   isWinner: boolean; // team is the decided/effective winner of its match
+  eliminated: boolean; // team lost its match here (decided, not the winner) -> greyed
   clickable: boolean; // predict mode: match undecided + both participants known
 }
 
@@ -212,6 +213,7 @@ interface Slot {
   match: BracketMatch | null; // the match this team plays at this depth
   isHome: boolean;
   isWinner: boolean; // won its match here (real or pick) -> advances inward
+  eliminated: boolean; // lost its match here (decided, not the winner) -> greyed
   clickable: boolean; // predict mode: this match can be decided by the user
 }
 
@@ -280,8 +282,22 @@ function buildRings(
       if (!m) return;
       const eff = effectiveWinner(m, 0, pos, picks, mode, m.home, m.away);
       const clickable = mode === 'predict' && isDecidable(m, m.home, m.away);
-      d0.push({ team: m.home, match: m, isHome: true, isWinner: eff?.id === m.home.id, clickable });
-      d0.push({ team: m.away, match: m, isHome: false, isWinner: eff?.id === m.away.id, clickable });
+      d0.push({
+        team: m.home,
+        match: m,
+        isHome: true,
+        isWinner: eff?.id === m.home.id,
+        eliminated: eff != null && eff.id !== m.home.id,
+        clickable,
+      });
+      d0.push({
+        team: m.away,
+        match: m,
+        isHome: false,
+        isWinner: eff?.id === m.away.id,
+        eliminated: eff != null && eff.id !== m.away.id,
+        clickable,
+      });
     });
   }
   ringSlots.push(d0);
@@ -313,6 +329,7 @@ function buildRings(
         match: matchR,
         isHome: k % 2 === 0,
         isWinner: eff != null && eff.id === team.id,
+        eliminated: !team.placeholder && eff != null && eff.id !== team.id,
         clickable: mode === 'predict' && isDecidable(matchR, tA, tB),
       });
     }
@@ -339,6 +356,7 @@ function buildRings(
         crestY: crest.y,
         discR: cfg.discR,
         isWinner: slot.isWinner,
+        eliminated: slot.eliminated,
         clickable: slot.clickable,
       };
     });
@@ -777,7 +795,9 @@ function OuterTeam({
   return (
     <g
       aria-label={team.name}
-      className={interactive ? 'bracket-disc bracket-disc--clickable' : 'bracket-disc'}
+      className={`${interactive ? 'bracket-disc bracket-disc--clickable' : 'bracket-disc'}${
+        node.eliminated ? ' bracket-disc--eliminated' : ''
+      }`}
       onClick={interactive ? onClick : undefined}
       role={interactive ? 'button' : undefined}
     >
@@ -860,7 +880,9 @@ function InnerFlag({
   const flag = flagUrl(team.abbr);
   const interactive = (mode === 'predict' && clickable) || viewable;
 
-  const cls = `bracket-disc bracket-inner-disc${interactive ? ' bracket-disc--clickable' : ''}`;
+  const cls = `bracket-disc bracket-inner-disc${interactive ? ' bracket-disc--clickable' : ''}${
+    node.eliminated ? ' bracket-disc--eliminated' : ''
+  }`;
 
   const disc = !flag ? (
     <FallbackDisc

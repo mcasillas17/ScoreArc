@@ -405,6 +405,12 @@ a {
 }
 
 /* Clickable team discs (predict mode) */
+/* Eliminated team: greyscale + dim its flag/crest (like the reference art). */
+.bracket-disc--eliminated {
+  filter: grayscale(1) brightness(0.72) opacity(0.72);
+  transition: filter 0.3s ease;
+}
+
 .bracket-disc--clickable {
   cursor: pointer;
   transition: filter 0.12s ease;
