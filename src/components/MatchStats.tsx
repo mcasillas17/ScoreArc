@@ -1,4 +1,4 @@
-import type { Scorer, Card, MatchStats } from '@/server/data/types';
+import type { Scorer, Card, MatchStats, WinProbability } from '@/server/data/types';
 
 export function ScorerLine({ scorer }: { scorer: Scorer }) {
   return (
@@ -20,6 +20,75 @@ export function CardLine({ card }: { card: Card }) {
       <span className="ls-scorer-name">{card.player}</span>
       <span className="ls-scorer-minute">{card.minute}</span>
     </span>
+  );
+}
+
+// Two-column (home | away) list of goal scorers.
+export function ScorersRow({ home, away }: { home: Scorer[]; away: Scorer[] }) {
+  return (
+    <div className="ls-scorers">
+      <div className="ls-scorers-col ls-scorers-home">
+        {home.map((s, i) => (
+          <ScorerLine key={i} scorer={s} />
+        ))}
+      </div>
+      <div className="ls-scorers-divider" />
+      <div className="ls-scorers-col ls-scorers-away">
+        {away.map((s, i) => (
+          <ScorerLine key={i} scorer={s} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Two-column (home | away) list of cards.
+export function CardsRow({ home, away }: { home: Card[]; away: Card[] }) {
+  return (
+    <div className="ls-scorers ls-cards">
+      <div className="ls-scorers-col ls-scorers-home">
+        {home.map((c, i) => (
+          <CardLine key={i} card={c} />
+        ))}
+      </div>
+      <div className="ls-scorers-divider" />
+      <div className="ls-scorers-col ls-scorers-away">
+        {away.map((c, i) => (
+          <CardLine key={i} card={c} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Odds-implied "chance to win" split bar (home / draw / away).
+export function WinProbBar({
+  prob,
+  homeAbbr,
+  awayAbbr,
+}: {
+  prob: WinProbability;
+  homeAbbr: string;
+  awayAbbr: string;
+}) {
+  return (
+    <div className="ls-winprob">
+      <div className="ls-winprob-title">Chance to win</div>
+      <div className="ls-winprob-bar">
+        <div className="ls-winprob-home" style={{ width: `${prob.home}%` }} />
+        <div className="ls-winprob-draw" style={{ width: `${prob.draw}%` }} />
+        <div className="ls-winprob-away" style={{ width: `${prob.away}%` }} />
+      </div>
+      <div className="ls-winprob-legend">
+        <span>
+          {homeAbbr} {prob.home}%
+        </span>
+        <span className="ls-winprob-draw-label">Draw {prob.draw}%</span>
+        <span>
+          {awayAbbr} {prob.away}%
+        </span>
+      </div>
+    </div>
   );
 }
 

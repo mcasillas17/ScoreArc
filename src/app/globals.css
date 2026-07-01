@@ -1530,3 +1530,18 @@ a {
   text-align: center;
   padding: 12px 0;
 }
+
+/* ---- Bracket: clickable match "result" dot on the connector ---- */
+.bracket-result-dot {
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+.bracket-result-dot:hover {
+  filter: drop-shadow(0 0 5px #ffe9a8) brightness(1.15);
+}
+
+/* ---- Match detail popup: upcoming kickoff time ---- */
+.md-kickoff {
+  font-size: 15px; font-weight: 700; color: #ececf1;
+  text-align: center; line-height: 1.35; max-width: 150px;
+}

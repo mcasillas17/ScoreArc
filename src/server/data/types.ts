@@ -101,6 +101,7 @@ export interface BracketTeam {
 export interface BracketMatch {
   id: string;
   round: string;            // slug, e.g. "round-of-32"
+  kickoff: string;          // ISO date string
   home: BracketTeam;
   away: BracketTeam;
   homeScore: number | null;

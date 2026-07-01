@@ -51,6 +51,7 @@ function mapBracketMatch(ev: any): BracketMatch | null {
   return {
     id: String(ev.id),
     round: ev.season?.slug ?? '',
+    kickoff: ev.date ?? '',
     home: mapBracketTeam(home.team),
     away: mapBracketTeam(away.team),
     homeScore: home.score != null && home.score !== '' ? Number(home.score) : null,

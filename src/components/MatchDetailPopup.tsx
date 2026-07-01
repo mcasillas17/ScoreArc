@@ -2,7 +2,7 @@
 
 import type { BracketMatch, Scorer, Card, MatchStats, WinProbability } from '@/server/data/types';
 import { flagUrl } from '@/lib/flags';
-import { ScorerLine, CardLine, MatchStatsBlock } from './MatchStats';
+import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar } from './MatchStats';
 
 export interface MatchSummary {
   scorers: Scorer[];
@@ -18,10 +18,25 @@ interface Props {
   onClose: () => void;
 }
 
+function formatKickoff(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString([], {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return '';
+  }
+}
+
 export default function MatchDetailPopup({ match, summary, loading, onClose }: Props) {
   const { home, away } = match;
   const homeFlag = flagUrl(home.abbr);
   const awayFlag = flagUrl(away.abbr);
+  const upcoming = match.state === 'scheduled';
 
   const inPlayScorers = (summary?.scorers ?? []).filter((s) => !s.shootout);
   const homeScorers = inPlayScorers.filter((s) => s.teamId === home.id);
@@ -35,6 +50,10 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
   const hasCards = cards.length > 0;
   const hasStats = summary?.stats != null;
   const hasContent = hasScorers || hasCards || hasStats;
+
+  // Win probability (from odds) — shown for upcoming/live, not finished.
+  const wp = summary?.winProbability ?? null;
+  const showWinProb = !loading && wp != null && match.state !== 'finished';
 
   const statusLabel = match.statusDetail || match.state.toUpperCase();
 
@@ -70,12 +89,16 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
           </div>
 
           <div className="md-score-col">
-            <span className="md-score">
-              {match.homeScore ?? '–'}
-              <span className="md-score-sep">–</span>
-              {match.awayScore ?? '–'}
-            </span>
-            <span className="md-status">{statusLabel}</span>
+            {upcoming ? (
+              <span className="md-kickoff">{formatKickoff(match.kickoff)}</span>
+            ) : (
+              <span className="md-score">
+                {match.homeScore ?? '–'}
+                <span className="md-score-sep">–</span>
+                {match.awayScore ?? '–'}
+              </span>
+            )}
+            <span className="md-status">{upcoming ? 'Upcoming' : statusLabel}</span>
             {match.note && <span className="md-note">{match.note}</span>}
           </div>
 
@@ -100,47 +123,35 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
         <div className="md-body">
           {loading && <p className="md-loading">Loading match details…</p>}
 
-          {!loading && summary && !hasContent && (
+          {showWinProb && wp && (
+            <div className="md-section">
+              <WinProbBar prob={wp} homeAbbr={home.abbr} awayAbbr={away.abbr} />
+            </div>
+          )}
+
+          {upcoming && !loading && (
+            <p className="md-empty">
+              Not started yet{wp ? '' : ' — no odds available'}.
+            </p>
+          )}
+
+          {!upcoming && !loading && summary && !hasContent && (
             <p className="md-empty">No detailed stats available for this match.</p>
           )}
 
-          {!loading && summary && hasScorers && (
+          {!upcoming && !loading && summary && hasScorers && (
             <div className="md-section">
-              <div className="ls-scorers">
-                <div className="ls-scorers-col ls-scorers-home">
-                  {homeScorers.map((s, i) => (
-                    <ScorerLine key={i} scorer={s} />
-                  ))}
-                </div>
-                <div className="ls-scorers-divider" />
-                <div className="ls-scorers-col ls-scorers-away">
-                  {awayScorers.map((s, i) => (
-                    <ScorerLine key={i} scorer={s} />
-                  ))}
-                </div>
-              </div>
+              <ScorersRow home={homeScorers} away={awayScorers} />
             </div>
           )}
 
-          {!loading && summary && hasCards && (
+          {!upcoming && !loading && summary && hasCards && (
             <div className="md-section">
-              <div className="ls-scorers ls-cards">
-                <div className="ls-scorers-col ls-scorers-home">
-                  {homeCards.map((c, i) => (
-                    <CardLine key={i} card={c} />
-                  ))}
-                </div>
-                <div className="ls-scorers-divider" />
-                <div className="ls-scorers-col ls-scorers-away">
-                  {awayCards.map((c, i) => (
-                    <CardLine key={i} card={c} />
-                  ))}
-                </div>
-              </div>
+              <CardsRow home={homeCards} away={awayCards} />
             </div>
           )}
 
-          {!loading && summary && hasStats && (
+          {!upcoming && !loading && summary && hasStats && (
             <div className="md-section">
               <MatchStatsBlock stats={summary.stats!} />
             </div>

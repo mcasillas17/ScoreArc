@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import type { Match, Team } from "@/server/data/types";
 import { flagUrl } from "@/lib/flags";
-import { ScorerLine, CardLine, MatchStatsBlock } from "./MatchStats";
+import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar } from "./MatchStats";
 
 interface LiveScoresProps {
   initialMatches: Match[];
@@ -89,71 +89,20 @@ function MatchCard({ match }: { match: Match }) {
       </div>
 
       {match.winProbability && match.state !== "finished" && (
-        <div className="ls-winprob">
-          <div className="ls-winprob-title">Chance to win</div>
-          <div className="ls-winprob-bar">
-            <div
-              className="ls-winprob-home"
-              style={{ width: `${match.winProbability.home}%` }}
-            />
-            <div
-              className="ls-winprob-draw"
-              style={{ width: `${match.winProbability.draw}%` }}
-            />
-            <div
-              className="ls-winprob-away"
-              style={{ width: `${match.winProbability.away}%` }}
-            />
-          </div>
-          <div className="ls-winprob-legend">
-            <span>
-              {match.home.abbr} {match.winProbability.home}%
-            </span>
-            <span className="ls-winprob-draw-label">
-              Draw {match.winProbability.draw}%
-            </span>
-            <span>
-              {match.away.abbr} {match.winProbability.away}%
-            </span>
-          </div>
-        </div>
+        <WinProbBar
+          prob={match.winProbability}
+          homeAbbr={match.home.abbr}
+          awayAbbr={match.away.abbr}
+        />
       )}
 
       {started && hasScorers && (
-        <div className="ls-scorers">
-          <div className="ls-scorers-col ls-scorers-home">
-            {homeScorers.map((s, i) => (
-              <ScorerLine key={i} scorer={s} />
-            ))}
-          </div>
-          <div className="ls-scorers-divider" />
-          <div className="ls-scorers-col ls-scorers-away">
-            {awayScorers.map((s, i) => (
-              <ScorerLine key={i} scorer={s} />
-            ))}
-          </div>
-        </div>
+        <ScorersRow home={homeScorers} away={awayScorers} />
       )}
 
-      {started && hasCards && (
-        <div className="ls-scorers ls-cards">
-          <div className="ls-scorers-col ls-scorers-home">
-            {homeCards.map((c, i) => (
-              <CardLine key={i} card={c} />
-            ))}
-          </div>
-          <div className="ls-scorers-divider" />
-          <div className="ls-scorers-col ls-scorers-away">
-            {awayCards.map((c, i) => (
-              <CardLine key={i} card={c} />
-            ))}
-          </div>
-        </div>
-      )}
+      {started && hasCards && <CardsRow home={homeCards} away={awayCards} />}
 
-      {started && match.stats && (
-        <MatchStatsBlock stats={match.stats} />
-      )}
+      {started && match.stats && <MatchStatsBlock stats={match.stats} />}
 
       <div className="match-status">
         {match.state === "live" && (

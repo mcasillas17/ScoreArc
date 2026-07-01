@@ -362,21 +362,11 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
     }
   }
 
-  function isViewable(node: RingNode): boolean {
-    return (
-      mode !== 'predict' &&
-      !node.team.placeholder &&
-      node.match !== null &&
-      (node.match.state === 'finished' || node.match.state === 'live')
-    );
-  }
-
   const handleDiscClick = (node: RingNode) => {
-    if (mode === 'predict' && node.clickable) {
-      if (!onPick) return;
+    // Discs only interact in predict mode (pick). Viewing a match's details is
+    // done by clicking the RESULT DOT on the connector, not a country's flag.
+    if (mode === 'predict' && node.clickable && onPick) {
       onPick(node.depth, Math.floor(node.index / 2), node.team.id);
-    } else if (isViewable(node) && node.match) {
-      handleView(node.match);
     }
   };
 
@@ -461,6 +451,22 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             const winColor = win ? colorFor(win.team) : null;
             const jWin = win ? (win === a ? jA : jB) : null;
             const arcSweep = win && win.angle < parent.angle ? 1 : 0;
+            // The match these two teams play — clickable dot at the join (live
+            // mode, real teams known). Finished/live show results; scheduled show
+            // the pre-match preview.
+            const viewMatch =
+              mode !== 'predict' &&
+              a.match &&
+              !a.team.placeholder &&
+              !b.team.placeholder
+                ? a.match
+                : null;
+            const dotColor =
+              viewMatch?.state === 'live'
+                ? '#ff5c5c'
+                : viewMatch?.state === 'scheduled'
+                ? '#6a7a95'
+                : '#e8b84b';
             return (
               <g key={`conn-${depth}-${k}`}>
                 {/* neutral base structure (full elbow) */}
@@ -475,6 +481,21 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                     <path d={`M ${jWin.x} ${jWin.y} A ${rj} ${rj} 0 0 ${arcSweep} ${jMid.x} ${jMid.y}`} fill="none" stroke={winColor} strokeWidth={2.9} />
                     <path d={`M ${jMid.x} ${jMid.y} L ${pPar.x} ${pPar.y}`} fill="none" stroke={winColor} strokeWidth={2.9} strokeLinecap="round" />
                   </g>
+                )}
+                {/* clickable RESULT dot — opens that match's detail card */}
+                {viewMatch && (
+                  <circle
+                    className="bracket-result-dot"
+                    cx={jMid.x}
+                    cy={jMid.y}
+                    r={5.5}
+                    fill={dotColor}
+                    stroke="#0b0b0d"
+                    strokeWidth={1.5}
+                    role="button"
+                    aria-label={`${a.team.abbr} vs ${b.team.abbr} result`}
+                    onClick={() => handleView(viewMatch)}
+                  />
                 )}
               </g>
             );
@@ -518,7 +539,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             node={node}
             mode={mode}
             clickable={node.clickable}
-            viewable={isViewable(node)}
+            viewable={false}
             onClick={() => handleDiscClick(node)}
           />
         ))}
@@ -552,7 +573,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                 node={node}
                 mode={mode}
                 clickable={node.clickable}
-                viewable={isViewable(node)}
+                viewable={false}
                 onClick={() => handleDiscClick(node)}
                 path={path}
               />
