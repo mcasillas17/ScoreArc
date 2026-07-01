@@ -6,6 +6,7 @@ import {
   mapWinProbability,
   mapSummaryLineups,
   mapSummaryVideos,
+  mapSummaryShootout,
 } from './espn-summary';
 import raw from '../__fixtures__/espn-summary.json';
 
@@ -281,5 +282,39 @@ describe('mapSummaryVideos', () => {
   it('returns [] for a malformed payload', () => {
     expect(mapSummaryVideos({})).toEqual([]);
     expect(mapSummaryVideos(null)).toEqual([]);
+  });
+});
+
+describe('mapSummaryShootout', () => {
+  const synthetic = {
+    shootout: [
+      {
+        id: 'H',
+        team: 'Home',
+        shots: [
+          { shotNumber: 1, player: 'A', didScore: true },
+          { shotNumber: 2, player: 'B', didScore: false },
+        ],
+      },
+      { id: 'A', team: 'Away', shots: [{ shotNumber: 1, player: 'C', didScore: true }] },
+    ],
+  };
+
+  it('maps kicks per team by id, with scored flags', () => {
+    const r = mapSummaryShootout(synthetic, 'H', 'A')!;
+    expect(r.home).toHaveLength(2);
+    expect(r.home[0].scored).toBe(true);
+    expect(r.home[1].scored).toBe(false);
+    expect(r.home[1].order).toBe(2);
+    expect(r.away[0].player).toBe('C');
+  });
+
+  it('returns null when the two ids are not present', () => {
+    expect(mapSummaryShootout(synthetic, 'X', 'Y')).toBeNull();
+  });
+
+  it('returns null when there is no shootout', () => {
+    expect(mapSummaryShootout({}, 'H', 'A')).toBeNull();
+    expect(mapSummaryShootout(raw, '4789', '464')).toBeNull();
   });
 });

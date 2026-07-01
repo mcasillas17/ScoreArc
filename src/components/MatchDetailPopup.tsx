@@ -2,7 +2,7 @@
 
 import type { BracketMatch, MatchSummaryData } from '@/server/data/types';
 import { flagUrl } from '@/lib/flags';
-import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar, LineupView } from './MatchStats';
+import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar, LineupView, PenaltyShootout, liveStatus } from './MatchStats';
 import MatchHighlights from './MatchHighlights';
 
 export type MatchSummary = MatchSummaryData;
@@ -46,13 +46,16 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
   const hasCards = cards.length > 0;
   const hasStats = summary?.stats != null;
   const hasVideos = (summary?.videos?.length ?? 0) > 0;
-  const hasContent = hasScorers || hasCards || hasStats || hasVideos;
+  const shootout = summary?.shootoutDetail ?? null;
+  const hasContent = hasScorers || hasCards || hasStats || hasVideos || shootout != null;
 
   // Win probability (from odds) — shown for upcoming/live, not finished.
   const wp = summary?.winProbability ?? null;
   const showWinProb = !loading && wp != null && match.state !== 'finished';
 
-  const statusLabel = match.statusDetail || match.state.toUpperCase();
+  // Live status shows HT / ET / Penalties; otherwise the short detail.
+  const ls = liveStatus(match);
+  const statusLabel = ls?.text ?? match.statusDetail ?? match.state.toUpperCase();
 
   return (
     <div
@@ -137,6 +140,12 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
           {!upcoming && !loading && summary && hasScorers && (
             <div className="md-section">
               <ScorersRow home={homeScorers} away={awayScorers} />
+            </div>
+          )}
+
+          {!upcoming && !loading && shootout && (
+            <div className="md-section">
+              <PenaltyShootout shootout={shootout} homeAbbr={home.abbr} awayAbbr={away.abbr} />
             </div>
           )}
 

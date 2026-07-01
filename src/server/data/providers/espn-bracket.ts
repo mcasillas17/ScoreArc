@@ -58,6 +58,7 @@ function mapBracketMatch(ev: any): BracketMatch | null {
     awayScore: away.score != null && away.score !== '' ? Number(away.score) : null,
     state,
     statusDetail: status.type.shortDetail ?? '',
+    statusName: status.type.name ?? '',
     minute: state === 'live' ? (status.displayClock ?? null) : null,
     winnerId,
     note,

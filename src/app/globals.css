@@ -584,6 +584,19 @@ a {
   50% { opacity: 0.4; transform: scale(0.75); }
 }
 
+/* Half time (amber) and penalties (orange) reuse the live chip with a different
+   accent — no pulsing dot since play is paused. */
+.status-live.status-break {
+  color: #ffce6a;
+  background: rgba(255, 206, 106, 0.1);
+  border-color: rgba(255, 206, 106, 0.25);
+}
+.status-live.status-pens {
+  color: #ff9d5c;
+  background: rgba(255, 157, 92, 0.12);
+  border-color: rgba(255, 157, 92, 0.28);
+}
+
 .status-finished {
   font-size: 11px;
   font-weight: 600;
@@ -1250,6 +1263,77 @@ a {
   border-radius: 100px;
   padding: 1px 7px;
   margin-top: 2px;
+}
+
+/* TV-style penalty shootout dots (green scored / red missed / empty pending) */
+.pk-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.pk-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: center;
+}
+.pk-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pk-team {
+  width: 36px;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.04em;
+}
+.pk-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  flex: 1;
+}
+.pk-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid;
+  box-sizing: border-box;
+}
+.pk-scored {
+  background: #36c275;
+  border-color: #36c275;
+}
+.pk-missed {
+  background: #ff5c5c;
+  border-color: #ff5c5c;
+}
+.pk-empty {
+  background: transparent;
+  border-color: #4a4a55;
+}
+.pk-score {
+  width: 16px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Highlight the carousel dot for a live match */
+.ls-dot-live {
+  box-shadow: 0 0 0 2px rgba(255, 92, 92, 0.5);
 }
 
 /* ---- Live scores: yellow/red cards ---- */

@@ -1,4 +1,32 @@
-import type { Scorer, Card, MatchStats, TeamStats, WinProbability, LineupPlayer, TeamLineup, MatchLineups, MatchVideo } from '../types';
+import type { Scorer, Card, MatchStats, TeamStats, WinProbability, LineupPlayer, TeamLineup, MatchLineups, MatchVideo, PenaltyKick, ShootoutDetail } from '../types';
+
+// Kick-by-kick penalty shootout from summary.shootout (per-team `shots` with
+// `didScore`), mapped to OUR home/away by team id. null when no shootout.
+export function mapSummaryShootout(
+  raw: unknown,
+  homeId: string,
+  awayId: string
+): ShootoutDetail | null {
+  try {
+    const teams: any[] = (raw as any)?.shootout ?? [];
+    if (!Array.isArray(teams) || teams.length < 2) return null;
+    const kicks = (entry: any): PenaltyKick[] =>
+      (entry?.shots ?? []).map((s: any): PenaltyKick => ({
+        order: Number(s?.shotNumber ?? 0),
+        player: s?.player ?? '',
+        scored: s?.didScore === true,
+      }));
+    const homeEntry = teams.find((t: any) => String(t?.id) === homeId);
+    const awayEntry = teams.find((t: any) => String(t?.id) === awayId);
+    if (!homeEntry || !awayEntry) return null;
+    const home = kicks(homeEntry);
+    const away = kicks(awayEntry);
+    if (home.length === 0 && away.length === 0) return null;
+    return { home, away };
+  } catch {
+    return null;
+  }
+}
 
 // A clip is a "goal" clip (vs. analysis/interview/presser) when the headline
 // mentions scoring. Keeps goal highlights sortable to the front.

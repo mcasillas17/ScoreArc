@@ -1,6 +1,6 @@
-import type { Match, Group, BracketRound, Scorer, Card, Shootout, MatchStats, WinProbability, MatchLineups, MatchSummaryData, TopScorer } from './types';
+import type { Match, Group, BracketRound, Shootout, MatchSummaryData, TopScorer } from './types';
 import { mapScoreboard } from './providers/espn-matches';
-import { mapSummaryScorers, mapSummaryCards, mapSummaryStats, mapWinProbability, mapSummaryLineups, mapSummaryVideos } from './providers/espn-summary';
+import { mapSummaryScorers, mapSummaryCards, mapSummaryStats, mapWinProbability, mapSummaryLineups, mapSummaryVideos, mapSummaryShootout } from './providers/espn-summary';
 import { mapStandings } from './providers/espn-standings';
 import { mapBracket } from './providers/espn-bracket';
 import { mapTopScorers } from './providers/espn-stats';
@@ -63,6 +63,7 @@ export function createDataService(deps: DataDeps) {
       winProbability: mapWinProbability(raw, homeId, awayId),
       lineups: mapSummaryLineups(raw, homeId, awayId),
       videos: mapSummaryVideos(raw),
+      shootoutDetail: mapSummaryShootout(raw, homeId, awayId),
     };
     deps.cache.set(key, summary, ttlMs);
     return summary;
@@ -77,26 +78,29 @@ export function createDataService(deps: DataDeps) {
       const raw = await deps.fetchJson(SCOREBOARD_URL);
       const matches = mapScoreboard(raw);
 
-      // Enrich live and finished matches with scorer data in parallel
-      const enrichable = matches.filter(
-        (m) => m.state === 'live' || m.state === 'finished'
-      );
+      // Enrich EVERY match in the live window: live/finished get scorers,
+      // cards, stats and the shootout; scheduled matches still get the
+      // odds-implied win probability for the pre-match card.
+      const emptySummary: MatchSummaryData = {
+        scorers: [],
+        cards: [],
+        stats: null,
+        winProbability: null,
+        lineups: null,
+        videos: [],
+        shootoutDetail: null,
+      };
       const summaries = await Promise.all(
-        enrichable.map((m) =>
-          getMatchSummary(m.id, m.home.id, m.away.id).catch(() => ({
-            scorers: [] as Scorer[],
-            cards: [] as Card[],
-            stats: null as MatchStats | null,
-            winProbability: null as WinProbability | null,
-            lineups: null as MatchLineups | null,
-          }))
+        matches.map((m) =>
+          getMatchSummary(m.id, m.home.id, m.away.id).catch(() => emptySummary)
         )
       );
-      enrichable.forEach((m, i) => {
+      matches.forEach((m, i) => {
         m.scorers = summaries[i].scorers;
         m.cards = summaries[i].cards;
         m.stats = summaries[i].stats;
         m.winProbability = summaries[i].winProbability;
+        m.shootoutDetail = summaries[i].shootoutDetail;
       });
 
       // Parse penalty shootout from note

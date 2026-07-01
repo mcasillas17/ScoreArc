@@ -32,6 +32,7 @@ export function mapScoreboard(raw: unknown): Match[] {
       state,
       minute: state === 'live' ? status.displayClock : null,
       statusDetail: status.type.shortDetail,
+      statusName: status.type.name ?? '',
       home: mapTeam(home.team),
       away: mapTeam(away.team),
       homeScore: home.score != null && home.score !== '' ? Number(home.score) : null,
@@ -41,6 +42,7 @@ export function mapScoreboard(raw: unknown): Match[] {
       scorers: [],
       cards: [],
       shootout: null,
+      shootoutDetail: null,
       stats: null,
       winProbability: null,
     };

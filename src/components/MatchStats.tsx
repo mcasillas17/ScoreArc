@@ -1,4 +1,66 @@
-import type { Scorer, Card, MatchStats, WinProbability, MatchLineups, TeamLineup } from '@/server/data/types';
+import type { Scorer, Card, MatchStats, WinProbability, MatchLineups, TeamLineup, ShootoutDetail, PenaltyKick } from '@/server/data/types';
+
+// TV-style live status: distinguish half time / extra time / penalties from the
+// running clock. Returns null for non-live matches.
+export function liveStatus(match: {
+  state: string;
+  statusName: string;
+  minute: string | null;
+}): { text: string; tone: 'live' | 'break' | 'pens' } | null {
+  if (match.state !== 'live') return null;
+  const n = match.statusName || '';
+  const clk = match.minute || '';
+  const isHalf = /HALFTIME/.test(n);
+  const isEt = /EXTRA|OVERTIME|_ET/.test(n);
+  const isPens = /SHOOTOUT|PENALT/.test(n);
+  if (isPens) return { text: 'Penalties', tone: 'pens' };
+  if (isHalf) return { text: isEt ? 'ET · Half Time' : 'Half Time', tone: 'break' };
+  if (isEt) return { text: clk ? `ET ${clk}` : 'Extra Time', tone: 'live' };
+  return { text: clk || 'LIVE', tone: 'live' };
+}
+
+// TV-style penalty shootout: a row of dots per team — green scored, red missed,
+// empty = not yet taken (padded to at least 5, more in sudden death).
+export function PenaltyShootout({
+  shootout,
+  homeAbbr,
+  awayAbbr,
+}: {
+  shootout: ShootoutDetail;
+  homeAbbr: string;
+  awayAbbr: string;
+}) {
+  const slots = Math.max(5, shootout.home.length, shootout.away.length);
+  const tally = (kicks: PenaltyKick[]) => kicks.filter((k) => k.scored).length;
+
+  const Row = ({ abbr, kicks }: { abbr: string; kicks: PenaltyKick[] }) => (
+    <div className="pk-row">
+      <span className="pk-team">{abbr}</span>
+      <span className="pk-dots">
+        {Array.from({ length: slots }).map((_, i) => {
+          const k = kicks[i];
+          const cls = !k ? 'pk-empty' : k.scored ? 'pk-scored' : 'pk-missed';
+          return (
+            <span
+              key={i}
+              className={`pk-dot ${cls}`}
+              title={k ? `${k.order}. ${k.player} — ${k.scored ? 'scored' : 'missed'}` : undefined}
+            />
+          );
+        })}
+      </span>
+      <span className="pk-score">{tally(kicks)}</span>
+    </div>
+  );
+
+  return (
+    <div className="pk-block">
+      <div className="pk-title">Penalty Shootout</div>
+      <Row abbr={homeAbbr} kicks={shootout.home} />
+      <Row abbr={awayAbbr} kicks={shootout.away} />
+    </div>
+  );
+}
 
 export function ScorerLine({ scorer }: { scorer: Scorer }) {
   return (

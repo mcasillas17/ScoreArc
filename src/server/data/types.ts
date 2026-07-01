@@ -49,12 +49,25 @@ export interface Shootout {
   awayScore: number;
 }
 
+// One penalty in a shootout, for TV-style dot rows.
+export interface PenaltyKick {
+  order: number;   // shot number (1-based)
+  player: string;
+  scored: boolean; // true = scored (green), false = missed/saved (red)
+}
+
+export interface ShootoutDetail {
+  home: PenaltyKick[];
+  away: PenaltyKick[];
+}
+
 export interface Match {
   id: string;
   kickoff: string;          // ISO date string
   state: MatchState;
   minute: string | null;    // displayClock while live, else null
   statusDetail: string;     // e.g. "FT", "90'+11'"
+  statusName: string;       // ESPN status.type.name, e.g. "STATUS_HALFTIME"
   home: Team;
   away: Team;
   homeScore: number | null;
@@ -64,6 +77,7 @@ export interface Match {
   scorers: Scorer[];
   cards: Card[];
   shootout: Shootout | null;
+  shootoutDetail: ShootoutDetail | null;
   stats: MatchStats | null;
   winProbability: WinProbability | null;
 }
@@ -108,6 +122,7 @@ export interface BracketMatch {
   awayScore: number | null;
   state: MatchState;
   statusDetail: string;
+  statusName: string;       // ESPN status.type.name, e.g. "STATUS_HALFTIME"
   minute: string | null;
   winnerId: string | null;
   note: string | null;
@@ -149,4 +164,5 @@ export interface MatchSummaryData {
   winProbability: WinProbability | null;
   lineups: MatchLineups | null;
   videos: MatchVideo[];
+  shootoutDetail: ShootoutDetail | null;
 }
