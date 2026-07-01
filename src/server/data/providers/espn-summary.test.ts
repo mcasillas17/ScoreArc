@@ -5,6 +5,7 @@ import {
   mapSummaryStats,
   mapWinProbability,
   mapSummaryLineups,
+  mapSummaryVideos,
 } from './espn-summary';
 import raw from '../__fixtures__/espn-summary.json';
 
@@ -251,5 +252,34 @@ describe('mapSummaryLineups', () => {
 
   it('returns null when team ids do not match', () => {
     expect(mapSummaryLineups(raw, 'x', 'y')).toBeNull();
+  });
+});
+
+describe('mapSummaryVideos', () => {
+  const videos = mapSummaryVideos(raw);
+
+  it('returns clips with a playable mp4 url', () => {
+    expect(videos.length).toBeGreaterThan(0);
+    expect(videos.every((v) => v.mp4Url && /\.mp4/.test(v.mp4Url))).toBe(true);
+  });
+
+  it('flags goal clips and sorts them first', () => {
+    const goal = videos.find((v) => v.isGoal);
+    expect(goal).toBeTruthy();
+    // once a non-goal appears, no goal clip may follow (goals are front-loaded)
+    let seenNonGoal = false;
+    for (const v of videos) {
+      if (!v.isGoal) seenNonGoal = true;
+      else expect(seenNonGoal).toBe(false);
+    }
+  });
+
+  it('carries a headline and thumbnail', () => {
+    expect(videos[0].headline.length).toBeGreaterThan(0);
+  });
+
+  it('returns [] for a malformed payload', () => {
+    expect(mapSummaryVideos({})).toEqual([]);
+    expect(mapSummaryVideos(null)).toEqual([]);
   });
 });

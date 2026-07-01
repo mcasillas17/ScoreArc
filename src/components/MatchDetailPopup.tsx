@@ -1,16 +1,11 @@
 'use client';
 
-import type { BracketMatch, Scorer, Card, MatchStats, WinProbability, MatchLineups } from '@/server/data/types';
+import type { BracketMatch, MatchSummaryData } from '@/server/data/types';
 import { flagUrl } from '@/lib/flags';
 import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar, LineupView } from './MatchStats';
+import MatchHighlights from './MatchHighlights';
 
-export interface MatchSummary {
-  scorers: Scorer[];
-  cards: Card[];
-  stats: MatchStats | null;
-  winProbability: WinProbability | null;
-  lineups: MatchLineups | null;
-}
+export type MatchSummary = MatchSummaryData;
 
 interface Props {
   match: BracketMatch;
@@ -50,7 +45,8 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
   const hasScorers = inPlayScorers.length > 0;
   const hasCards = cards.length > 0;
   const hasStats = summary?.stats != null;
-  const hasContent = hasScorers || hasCards || hasStats;
+  const hasVideos = (summary?.videos?.length ?? 0) > 0;
+  const hasContent = hasScorers || hasCards || hasStats || hasVideos;
 
   // Win probability (from odds) — shown for upcoming/live, not finished.
   const wp = summary?.winProbability ?? null;
@@ -141,6 +137,12 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
           {!upcoming && !loading && summary && hasScorers && (
             <div className="md-section">
               <ScorersRow home={homeScorers} away={awayScorers} />
+            </div>
+          )}
+
+          {!upcoming && !loading && summary && hasVideos && (
+            <div className="md-section">
+              <MatchHighlights videos={summary.videos} />
             </div>
           )}
 

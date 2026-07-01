@@ -131,3 +131,22 @@ export interface TopScorer {
 export interface LineupPlayer { name: string; number: number | null; position: string; jersey: string | null; }
 export interface TeamLineup { formation: string; players: LineupPlayer[] }
 export interface MatchLineups { home: TeamLineup; away: TeamLineup }
+
+export interface MatchVideo {
+  id: string;
+  headline: string;
+  duration: number | null; // seconds
+  thumbnail: string | null;
+  mp4Url: string | null;
+  isGoal: boolean; // headline looks like a goal clip (vs. analysis/interview)
+}
+
+// The on-demand detail we fetch for one match (shared by service + popup).
+export interface MatchSummaryData {
+  scorers: Scorer[];
+  cards: Card[];
+  stats: MatchStats | null;
+  winProbability: WinProbability | null;
+  lineups: MatchLineups | null;
+  videos: MatchVideo[];
+}

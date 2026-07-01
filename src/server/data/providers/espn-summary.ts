@@ -1,4 +1,52 @@
-import type { Scorer, Card, MatchStats, TeamStats, WinProbability, LineupPlayer, TeamLineup, MatchLineups } from '../types';
+import type { Scorer, Card, MatchStats, TeamStats, WinProbability, LineupPlayer, TeamLineup, MatchLineups, MatchVideo } from '../types';
+
+// A clip is a "goal" clip (vs. analysis/interview/presser) when the headline
+// mentions scoring. Keeps goal highlights sortable to the front.
+const GOAL_RE = /\b(goals?|scores?|scored|winner|equali[sz]er|penalt|hat[- ]?trick|brace|strike)\b/i;
+
+// Pick a progressive MP4 that plays directly in an HTML5 <video> (prefer 720p,
+// then any .mp4). ESPN nests candidate URLs across links/source, so we scan the
+// whole video object.
+function pickMp4(video: any): string | null {
+  const urls: string[] = [];
+  const walk = (v: any) => {
+    if (typeof v === 'string') {
+      if (/^https?:\/\/[^"']+\.mp4(\?|$)/i.test(v)) urls.push(v);
+      return;
+    }
+    if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === 'object') Object.values(v).forEach(walk);
+  };
+  walk(video);
+  if (urls.length === 0) return null;
+  return urls.find((u) => /720p/i.test(u)) ?? urls.find((u) => /540p|360p/i.test(u)) ?? urls[0];
+}
+
+export function mapSummaryVideos(raw: unknown): MatchVideo[] {
+  try {
+    const videos: any[] = (raw as any)?.videos ?? [];
+    const mapped: MatchVideo[] = videos
+      .map((v: any): MatchVideo => {
+        const headline: string = v?.headline ?? '';
+        return {
+          id: String(v?.id ?? v?.cerebroId ?? headline),
+          headline,
+          duration: typeof v?.duration === 'number' ? v.duration : null,
+          thumbnail: v?.thumbnail ?? null,
+          mp4Url: pickMp4(v),
+          isGoal: GOAL_RE.test(headline),
+        };
+      })
+      .filter((v) => v.mp4Url != null);
+    // Goal clips first, otherwise keep ESPN's order.
+    return mapped
+      .map((v, i) => ({ v, i }))
+      .sort((a, b) => Number(b.v.isGoal) - Number(a.v.isGoal) || a.i - b.i)
+      .map(({ v }) => v);
+  } catch {
+    return [];
+  }
+}
 
 function parseStat(stats: any[], name: string): number | null {
   const s = stats.find((x: any) => x.name === name);

@@ -1,6 +1,6 @@
-import type { Match, Group, BracketRound, Scorer, Card, Shootout, MatchStats, WinProbability, MatchLineups, TopScorer } from './types';
+import type { Match, Group, BracketRound, Scorer, Card, Shootout, MatchStats, WinProbability, MatchLineups, MatchSummaryData, TopScorer } from './types';
 import { mapScoreboard } from './providers/espn-matches';
-import { mapSummaryScorers, mapSummaryCards, mapSummaryStats, mapWinProbability, mapSummaryLineups } from './providers/espn-summary';
+import { mapSummaryScorers, mapSummaryCards, mapSummaryStats, mapWinProbability, mapSummaryLineups, mapSummaryVideos } from './providers/espn-summary';
 import { mapStandings } from './providers/espn-standings';
 import { mapBracket } from './providers/espn-bracket';
 import { mapTopScorers } from './providers/espn-stats';
@@ -51,31 +51,18 @@ export function createDataService(deps: DataDeps) {
     homeId: string,
     awayId: string,
     ttlMs = 12_000
-  ): Promise<{
-    scorers: Scorer[];
-    cards: Card[];
-    stats: MatchStats | null;
-    winProbability: WinProbability | null;
-    lineups: MatchLineups | null;
-  }> {
+  ): Promise<MatchSummaryData> {
     const key = `summary:${eventId}`;
-    const cached = deps.cache.get(key) as
-      | {
-          scorers: Scorer[];
-          cards: Card[];
-          stats: MatchStats | null;
-          winProbability: WinProbability | null;
-          lineups: MatchLineups | null;
-        }
-      | undefined;
+    const cached = deps.cache.get(key) as MatchSummaryData | undefined;
     if (cached) return cached;
     const raw = await deps.fetchJson(SUMMARY_URL(eventId));
-    const summary = {
+    const summary: MatchSummaryData = {
       scorers: mapSummaryScorers(raw),
       cards: mapSummaryCards(raw),
       stats: mapSummaryStats(raw, homeId, awayId),
       winProbability: mapWinProbability(raw, homeId, awayId),
       lineups: mapSummaryLineups(raw, homeId, awayId),
+      videos: mapSummaryVideos(raw),
     };
     deps.cache.set(key, summary, ttlMs);
     return summary;
