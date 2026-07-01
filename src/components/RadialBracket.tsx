@@ -3,6 +3,7 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/types';
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
+import BracketZoom from './BracketZoom';
 
 export type BracketMode = 'live' | 'predict';
 
@@ -443,6 +444,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
 
   return (
     <div className="radial-bracket-wrap">
+      <BracketZoom>
       <svg
         viewBox="0 0 1000 1000"
         aria-label="World Cup 2026 knockout bracket"
@@ -715,6 +717,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           preserveAspectRatio="xMidYMid meet"
         />
       </svg>
+      </BracketZoom>
 
       {detail && (
         <MatchDetailPopup

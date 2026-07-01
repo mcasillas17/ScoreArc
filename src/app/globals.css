@@ -321,6 +321,53 @@ a {
   justify-content: center;
 }
 
+/* Pinch/drag zoom wrapper for the bracket */
+.bz-outer {
+  position: relative;
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto;
+}
+.bz-viewport {
+  width: 100%;
+  overflow: hidden;
+}
+.bz-content {
+  width: 100%;
+}
+.bz-controls {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  z-index: 5;
+}
+.bz-controls button {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: rgba(18, 18, 24, 0.82);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+  transition: border-color 0.15s, opacity 0.15s;
+}
+.bz-controls button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.bz-controls button:hover:not(:disabled) {
+  border-color: var(--gold);
+}
+
 .bracket-live-dot {
   animation: pulse 1.4s ease infinite;
 }
