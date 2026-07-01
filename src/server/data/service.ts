@@ -130,7 +130,7 @@ export function createDataService(deps: DataDeps) {
       return groups;
     },
 
-    async getBracket(ttlMs = 20_000): Promise<BracketRound[]> {
+    async getBracket(ttlMs = 12_000): Promise<BracketRound[]> {
       const cached = deps.cache.get('bracket') as BracketRound[] | undefined;
       if (cached) return cached;
       const raw = await deps.fetchJson(BRACKET_URL);

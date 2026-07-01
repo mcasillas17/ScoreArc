@@ -31,11 +31,35 @@ function decodePicks(s: string): Record<string, string> {
   return {};
 }
 
-export default function BracketInteractive({ rounds }: Props) {
+export default function BracketInteractive({ rounds: initialRounds }: Props) {
   const [mode, setMode] = useState<BracketMode>('live');
+  const [rounds, setRounds] = useState<BracketRound[]>(initialRounds);
   const [picks, setPicks] = useState<Record<string, string>>({});
   const [champion, setChampion] = useState<BracketTeam | null>(null);
   const [celebrate, setCelebrate] = useState<BracketTeam | null>(null);
+
+  // Poll the bracket every 15s so finished matches advance in real time (the
+  // server snapshot from page load would otherwise go stale). Predict-mode
+  // picks live in separate state and are untouched; RadialBracket already
+  // prefers a real result over a pick, so newly-decided matches just take over.
+  useEffect(() => {
+    let mounted = true;
+    async function poll() {
+      try {
+        const res = await fetch('/api/bracket');
+        if (!res.ok) return;
+        const data = (await res.json()) as BracketRound[];
+        if (mounted && Array.isArray(data) && data.length) setRounds(data);
+      } catch {
+        // ignore — next tick retries
+      }
+    }
+    const id = setInterval(poll, 15_000);
+    return () => {
+      mounted = false;
+      clearInterval(id);
+    };
+  }, []);
 
   // Finishing your bracket in predict mode triggers the celebration; clearing /
   // Reset removes it; re-picking a different champion re-triggers it.
