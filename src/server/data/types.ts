@@ -119,6 +119,15 @@ export interface BracketRound {
   matches: BracketMatch[];
 }
 
+export interface TopScorer {
+  rank: number;
+  player: string;
+  teamAbbr: string;
+  teamName: string;
+  goals: number;
+  matches: number | null;
+}
+
 export interface LineupPlayer { name: string; number: number | null; position: string; jersey: string | null; }
 export interface TeamLineup { formation: string; players: LineupPlayer[] }
 export interface MatchLineups { home: TeamLineup; away: TeamLineup }

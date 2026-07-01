@@ -1,8 +1,9 @@
-import type { Match, Group, BracketRound, Scorer, Card, Shootout, MatchStats, WinProbability, MatchLineups } from './types';
+import type { Match, Group, BracketRound, Scorer, Card, Shootout, MatchStats, WinProbability, MatchLineups, TopScorer } from './types';
 import { mapScoreboard } from './providers/espn-matches';
 import { mapSummaryScorers, mapSummaryCards, mapSummaryStats, mapWinProbability, mapSummaryLineups } from './providers/espn-summary';
 import { mapStandings } from './providers/espn-standings';
 import { mapBracket } from './providers/espn-bracket';
+import { mapTopScorers } from './providers/espn-stats';
 import { TtlCache } from './cache';
 
 export const SCOREBOARD_URL =
@@ -11,6 +12,8 @@ export const STANDINGS_URL =
   'https://site.api.espn.com/apis/v2/sports/soccer/fifa.world/standings';
 export const BRACKET_URL =
   'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=20260628-20260719';
+export const STATISTICS_URL =
+  'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/statistics';
 export const SUMMARY_URL = (id: string) =>
   `https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/summary?event=${id}`;
 
@@ -134,6 +137,15 @@ export function createDataService(deps: DataDeps) {
       const rounds = mapBracket(raw);
       deps.cache.set('bracket', rounds, ttlMs);
       return rounds;
+    },
+
+    async getTopScorers(ttlMs = 60_000): Promise<TopScorer[]> {
+      const cached = deps.cache.get('topscorers') as TopScorer[] | undefined;
+      if (cached) return cached;
+      const raw = await deps.fetchJson(STATISTICS_URL);
+      const scorers = mapTopScorers(raw);
+      deps.cache.set('topscorers', scorers, ttlMs);
+      return scorers;
     },
   };
 }

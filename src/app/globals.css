@@ -704,6 +704,81 @@ a {
   font-weight: 700;
 }
 
+/* ===== Standings page: blocks, columns, standalone tables ===== */
+.std-block {
+  margin-bottom: 34px;
+}
+.std-block:last-child {
+  margin-bottom: 0;
+}
+.std-block-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 12px;
+}
+/* Top scorers + third-place race sit side-by-side on wide screens; the flex
+   wrap collapses them to a single column on narrow screens. */
+.std-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px;
+}
+.std-columns > .std-block {
+  flex: 1 1 420px;
+  min-width: 0;
+}
+/* Card wrapper for a standalone standings table. */
+.std-panel {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+.std-panel .standings-table th,
+.std-panel .standings-table td {
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+.std-panel .standings-table th:first-child,
+.std-panel .standings-table td:first-child {
+  padding-left: 12px;
+}
+.std-panel .standings-table th:last-child,
+.std-panel .standings-table td:last-child {
+  padding-right: 12px;
+}
+/* Player / team names get more room than the 110px group-table cells. */
+.std-wide .team-name {
+  max-width: 200px;
+}
+.std-muted {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.row-out td {
+  opacity: 0.5;
+}
+.std-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+}
+.std-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--gold);
+  flex-shrink: 0;
+}
+
 /* ===== Empty States ===== */
 .empty-section {
   text-align: center;
