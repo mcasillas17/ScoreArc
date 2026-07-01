@@ -1381,8 +1381,8 @@ a {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   width: 100%;
-  max-width: 360px;
-  max-height: 80vh;
+  max-width: 560px;
+  max-height: 86vh;
   overflow-y: auto;
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(232, 184, 75, 0.1);
   scrollbar-width: thin;
@@ -1392,30 +1392,37 @@ a {
 .md-close {
   position: absolute;
   top: 10px;
-  right: 12px;
-  background: none;
-  border: none;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
   color: var(--text-muted);
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1;
   cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 4px;
-  transition: color 0.15s, background 0.15s;
-  z-index: 1;
+  border-radius: 50%;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  z-index: 3;
 }
 
 .md-close:hover {
   color: var(--text);
-  background: var(--surface-1);
+  background: var(--surface-2);
+  border-color: var(--gold);
 }
 
+/* Header: home flag | score | away flag. Top padding reserves a clear strip
+   for the close button so it never overlaps the away flag. */
 .md-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 20px 16px 14px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 44px 20px 16px;
   border-bottom: 1px solid var(--hairline);
 }
 
@@ -1502,19 +1509,38 @@ a {
 }
 
 .md-body {
-  padding: 12px 16px 16px;
+  padding: 6px 22px 20px;
   display: flex;
   flex-direction: column;
   gap: 0;
 }
 
 .md-section {
-  padding: 6px 0;
+  padding: 12px 0;
   border-top: 1px solid var(--hairline);
 }
 
 .md-section:first-child {
   border-top: none;
+}
+
+/* Phones: tighter paddings, smaller flags/score so nothing crowds. */
+@media (max-width: 460px) {
+  .md-header {
+    padding: 40px 14px 14px;
+    gap: 8px;
+  }
+  .md-body {
+    padding: 4px 14px 16px;
+  }
+  .md-flag,
+  .md-flag-fallback {
+    width: 54px;
+    height: 36px;
+  }
+  .md-score {
+    font-size: 24px;
+  }
 }
 
 .md-loading {
