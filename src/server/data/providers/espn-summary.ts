@@ -1,4 +1,95 @@
-import type { Scorer, Card, MatchStats, TeamStats, WinProbability, LineupPlayer, TeamLineup, MatchLineups, MatchVideo, PenaltyKick, ShootoutDetail } from '../types';
+import type { Scorer, Card, MatchStats, TeamStats, WinProbability, LineupPlayer, TeamLineup, MatchLineups, MatchVideo, PenaltyKick, ShootoutDetail, MatchInfo, FormResult, MatchForm, CommentaryItem, H2HMeeting } from '../types';
+
+// Venue, city, referee and attendance from summary.gameInfo.
+export function mapSummaryInfo(raw: unknown): MatchInfo | null {
+  try {
+    const gi = (raw as any)?.gameInfo;
+    if (!gi) return null;
+    const v = gi.venue ?? {};
+    const addr = v.address ?? {};
+    const ref = (gi.officials ?? []).find((o: any) =>
+      /referee/i.test(o?.position?.displayName ?? o?.position?.name ?? '')
+    );
+    const info: MatchInfo = {
+      venue: v.fullName ?? null,
+      city: addr.city ?? null,
+      referee: ref?.displayName ?? null,
+      attendance: typeof gi.attendance === 'number' ? gi.attendance : null,
+    };
+    if (!info.venue && !info.referee && info.attendance == null) return null;
+    return info;
+  } catch {
+    return null;
+  }
+}
+
+function mapFormEvents(entry: any): FormResult[] {
+  const teamId = String(entry?.team?.id ?? '');
+  return (entry?.events ?? []).slice(0, 5).map((e: any): FormResult => {
+    const home = String(e?.homeTeamId ?? '') === teamId;
+    const gf = home ? e?.homeTeamScore : e?.awayTeamScore;
+    const ga = home ? e?.awayTeamScore : e?.homeTeamScore;
+    const res: 'W' | 'L' | 'D' =
+      e?.gameResult === 'W' ? 'W' : e?.gameResult === 'L' ? 'L' : 'D';
+    return {
+      result: res,
+      opponent: e?.opponent?.abbreviation ?? '',
+      score: `${gf ?? 0}-${ga ?? 0}`,
+    };
+  });
+}
+
+// Each team's last-5 form from summary.lastFiveGames, mapped to home/away by id.
+export function mapSummaryForm(raw: unknown, homeId: string, awayId: string): MatchForm | null {
+  try {
+    const l5: any[] = (raw as any)?.lastFiveGames ?? [];
+    const homeEntry = l5.find((t: any) => String(t?.team?.id) === homeId);
+    const awayEntry = l5.find((t: any) => String(t?.team?.id) === awayId);
+    if (!homeEntry && !awayEntry) return null;
+    return {
+      home: homeEntry ? mapFormEvents(homeEntry) : [],
+      away: awayEntry ? mapFormEvents(awayEntry) : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Minute-by-minute commentary from summary.commentary.
+export function mapSummaryCommentary(raw: unknown): CommentaryItem[] {
+  try {
+    const com: any[] = (raw as any)?.commentary ?? [];
+    return com
+      .map((c: any): CommentaryItem => ({
+        minute: c?.time?.displayValue ?? '',
+        text: c?.text ?? '',
+      }))
+      .filter((c) => c.text.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+// Recent head-to-head meetings from summary.headToHeadGames. Each group is
+// keyed on a reference `team`; events carry home/away ids + the `opponent`.
+export function mapSummaryH2H(raw: unknown): H2HMeeting[] {
+  try {
+    const group = ((raw as any)?.headToHeadGames ?? [])[0];
+    if (!group) return [];
+    const refId = String(group.team?.id ?? '');
+    const refAbbr = group.team?.abbreviation ?? '';
+    return (group.events ?? []).slice(0, 5).map((e: any): H2HMeeting => {
+      const oppAbbr = e?.opponent?.abbreviation ?? '';
+      const homeIsRef = String(e?.homeTeamId ?? '') === refId;
+      const homeAbbr = homeIsRef ? refAbbr : oppAbbr;
+      const awayAbbr = homeIsRef ? oppAbbr : refAbbr;
+      const score = `${e?.homeTeamScore ?? 0}-${e?.awayTeamScore ?? 0}`;
+      return { date: e?.gameDate ?? '', label: `${homeAbbr} ${score} ${awayAbbr}`.trim() };
+    });
+  } catch {
+    return [];
+  }
+}
 
 // Kick-by-kick penalty shootout from summary.shootout (per-team `shots` with
 // `didScore`), mapped to OUR home/away by team id. null when no shootout.

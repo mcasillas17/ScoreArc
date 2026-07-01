@@ -7,6 +7,10 @@ import {
   mapSummaryLineups,
   mapSummaryVideos,
   mapSummaryShootout,
+  mapSummaryInfo,
+  mapSummaryForm,
+  mapSummaryCommentary,
+  mapSummaryH2H,
 } from './espn-summary';
 import raw from '../__fixtures__/espn-summary.json';
 
@@ -316,5 +320,34 @@ describe('mapSummaryShootout', () => {
   it('returns null when there is no shootout', () => {
     expect(mapSummaryShootout({}, 'H', 'A')).toBeNull();
     expect(mapSummaryShootout(raw, '4789', '464')).toBeNull();
+  });
+});
+
+describe('match extras mappers', () => {
+  it('mapSummaryCommentary returns non-empty items with text', () => {
+    const c = mapSummaryCommentary(raw);
+    expect(c.length).toBeGreaterThan(0);
+    expect(c.every((x) => x.text.length > 0)).toBe(true);
+  });
+
+  it('mapSummaryForm maps last-5 as W/L/D per team', () => {
+    const f = mapSummaryForm(raw, '4789', '464');
+    if (f) {
+      expect(f.home.every((r) => ['W', 'L', 'D'].includes(r.result))).toBe(true);
+      expect(f.home.length).toBeLessThanOrEqual(5);
+    }
+    expect(mapSummaryForm({}, 'a', 'b')).toBeNull();
+  });
+
+  it('mapSummaryInfo returns null on empty and a shaped object otherwise', () => {
+    expect(mapSummaryInfo({})).toBeNull();
+    const info = mapSummaryInfo(raw);
+    if (info) expect('venue' in info && 'referee' in info).toBe(true);
+  });
+
+  it('mapSummaryH2H labels carry a score when meetings exist', () => {
+    const h = mapSummaryH2H(raw);
+    expect(mapSummaryH2H({})).toEqual([]);
+    if (h.length) expect(h[0].label).toMatch(/\d+-\d+/);
   });
 });

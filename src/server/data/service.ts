@@ -1,6 +1,6 @@
 import type { Match, Group, BracketRound, Shootout, MatchSummaryData, TopScorer } from './types';
 import { mapScoreboard } from './providers/espn-matches';
-import { mapSummaryScorers, mapSummaryCards, mapSummaryStats, mapWinProbability, mapSummaryLineups, mapSummaryVideos, mapSummaryShootout } from './providers/espn-summary';
+import { mapSummaryScorers, mapSummaryCards, mapSummaryStats, mapWinProbability, mapSummaryLineups, mapSummaryVideos, mapSummaryShootout, mapSummaryInfo, mapSummaryForm, mapSummaryCommentary, mapSummaryH2H } from './providers/espn-summary';
 import { mapStandings } from './providers/espn-standings';
 import { mapBracket } from './providers/espn-bracket';
 import { mapTopScorers } from './providers/espn-stats';
@@ -64,6 +64,10 @@ export function createDataService(deps: DataDeps) {
       lineups: mapSummaryLineups(raw, homeId, awayId),
       videos: mapSummaryVideos(raw),
       shootoutDetail: mapSummaryShootout(raw, homeId, awayId),
+      info: mapSummaryInfo(raw),
+      form: mapSummaryForm(raw, homeId, awayId),
+      commentary: mapSummaryCommentary(raw),
+      h2h: mapSummaryH2H(raw),
     };
     deps.cache.set(key, summary, ttlMs);
     return summary;
@@ -89,6 +93,10 @@ export function createDataService(deps: DataDeps) {
         lineups: null,
         videos: [],
         shootoutDetail: null,
+        info: null,
+        form: null,
+        commentary: [],
+        h2h: [],
       };
       const summaries = await Promise.all(
         matches.map((m) =>

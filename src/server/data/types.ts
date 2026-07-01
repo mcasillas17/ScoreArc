@@ -156,6 +156,34 @@ export interface MatchVideo {
   isGoal: boolean; // headline looks like a goal clip (vs. analysis/interview)
 }
 
+export interface MatchInfo {
+  venue: string | null;
+  city: string | null;
+  referee: string | null;
+  attendance: number | null;
+}
+
+export interface FormResult {
+  result: 'W' | 'L' | 'D';
+  opponent: string; // opponent abbreviation
+  score: string;    // e.g. "2-1"
+}
+
+export interface MatchForm {
+  home: FormResult[];
+  away: FormResult[];
+}
+
+export interface CommentaryItem {
+  minute: string;
+  text: string;
+}
+
+export interface H2HMeeting {
+  date: string;      // ISO
+  label: string;     // "GER 2-1 PAR"
+}
+
 // The on-demand detail we fetch for one match (shared by service + popup).
 export interface MatchSummaryData {
   scorers: Scorer[];
@@ -165,4 +193,8 @@ export interface MatchSummaryData {
   lineups: MatchLineups | null;
   videos: MatchVideo[];
   shootoutDetail: ShootoutDetail | null;
+  info: MatchInfo | null;
+  form: MatchForm | null;
+  commentary: CommentaryItem[];
+  h2h: H2HMeeting[];
 }

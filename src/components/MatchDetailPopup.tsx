@@ -5,6 +5,7 @@ import type { BracketMatch, MatchSummaryData } from '@/server/data/types';
 import { flagUrl } from '@/lib/flags';
 import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar, LineupView, PenaltyShootout, liveStatus } from './MatchStats';
 import MatchHighlights from './MatchHighlights';
+import { MatchInfoRow, FormRow, H2HRow, CommentaryFeed } from './MatchExtras';
 
 export type MatchSummary = MatchSummaryData;
 
@@ -64,7 +65,14 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
   const hasStats = summary?.stats != null;
   const hasVideos = (summary?.videos?.length ?? 0) > 0;
   const shootout = summary?.shootoutDetail ?? null;
-  const hasContent = hasScorers || hasCards || hasStats || hasVideos || shootout != null;
+  const info = summary?.info ?? null;
+  const form = summary?.form ?? null;
+  const h2h = summary?.h2h ?? [];
+  const commentary = summary?.commentary ?? [];
+  const hasContent =
+    hasScorers || hasCards || hasStats || hasVideos || shootout != null ||
+    info != null || (form != null && (form.home.length > 0 || form.away.length > 0)) ||
+    commentary.length > 0;
 
   // Win probability (from odds) — shown for upcoming/live, not finished.
   const wp = summary?.winProbability ?? null;
@@ -140,9 +148,27 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
         <div className="md-body">
           {loading && <p className="md-loading">Loading match details…</p>}
 
+          {!loading && info && (
+            <div className="md-section">
+              <MatchInfoRow info={info} />
+            </div>
+          )}
+
           {showWinProb && wp && (
             <div className="md-section">
               <WinProbBar prob={wp} homeAbbr={home.abbr} awayAbbr={away.abbr} />
+            </div>
+          )}
+
+          {!loading && form && (form.home.length > 0 || form.away.length > 0) && (
+            <div className="md-section">
+              <FormRow form={form} homeAbbr={home.abbr} awayAbbr={away.abbr} />
+            </div>
+          )}
+
+          {!loading && h2h.length > 0 && (
+            <div className="md-section">
+              <H2HRow meetings={h2h} />
             </div>
           )}
 
@@ -187,6 +213,12 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
           {!loading && summary?.lineups && (
             <div className="md-section">
               <LineupView lineups={summary.lineups} homeAbbr={home.abbr} awayAbbr={away.abbr} />
+            </div>
+          )}
+
+          {!upcoming && !loading && commentary.length > 0 && (
+            <div className="md-section">
+              <CommentaryFeed items={commentary} />
             </div>
           )}
         </div>
