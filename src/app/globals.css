@@ -1251,11 +1251,13 @@ a {
 
 /* ---- Predictor: traveling-flag advance animation ---- */
 @keyframes bracket-advance {
-  from { transform: translate(var(--fx, 0), var(--fy, 0)); }
-  to   { transform: translate(0, 0); }
+  0%   { transform: translate(var(--x0, 0), var(--y0, 0)); }
+  40%  { transform: translate(var(--x1, 0), var(--y1, 0)); }
+  70%  { transform: translate(var(--x2, 0), var(--y2, 0)); }
+  100% { transform: translate(0, 0); }
 }
 .bracket-advance {
-  animation: bracket-advance 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: bracket-advance 0.65s ease-in-out both;
 }
 @media (prefers-reduced-motion: reduce) {
   .bracket-advance { animation: none; }

@@ -488,15 +488,29 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           />
         ))}
 
-        {/* Inner rings (depth 1-4): single flag when decided, else nothing.
-            Each advancing flag travels in from the winner's position one ring out. */}
+        {/* Inner rings (depth 1-4): single flag when decided, else nothing. Each
+            advancing flag travels in ALONG THE CONNECTOR ELBOW (child -> arc join
+            at the winner's angle -> arc join at the parent's angle -> slot). */}
         {rings.slice(1).map((ring, ri) => {
           const childRing = rings[ri]; // depth (ri+1) - 1 = ri
+          const rc = RINGS[ri].rx; // child ring radius
+          const rp = RINGS[ri + 1].rx; // this (parent) ring radius
+          const rj = rp + (rc - rp) * 0.5; // arc-join radius (same as connector)
           return ring.map((node) => {
             if (node.team.placeholder) return null;
             const cA = childRing[2 * node.index];
             const cB = childRing[2 * node.index + 1];
             const src = cA?.isWinner ? cA : cB?.isWinner ? cB : null;
+            let path: TravelPath = { x0: 0, y0: 0, x1: 0, y1: 0, x2: 0, y2: 0 };
+            if (src) {
+              const jWin = ellipse(rj, rj, src.angle);
+              const jMid = ellipse(rj, rj, node.angle);
+              path = {
+                x0: src.x - node.x, y0: src.y - node.y, // child (winner)
+                x1: jWin.x - node.x, y1: jWin.y - node.y, // radial-in at winner angle
+                x2: jMid.x - node.x, y2: jMid.y - node.y, // along arc to parent angle
+              };
+            }
             return (
               <InnerFlag
                 key={`inner-${node.depth}-${node.index}-${node.team.id}`}
@@ -504,8 +518,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                 mode={mode}
                 clickable={node.clickable}
                 onClick={() => handleDiscClick(node)}
-                fromX={src ? src.x - node.x : 0}
-                fromY={src ? src.y - node.y : 0}
+                path={path}
               />
             );
           });
@@ -683,20 +696,24 @@ function OuterTeam({
 }
 
 /** Inner advanced team: single flag disc (slice-fill). */
+interface TravelPath {
+  x0: number; y0: number; // child (winner) position
+  x1: number; y1: number; // arc join at winner's angle
+  x2: number; y2: number; // arc join at parent's angle
+}
+
 function InnerFlag({
   node,
   mode,
   clickable,
   onClick,
-  fromX,
-  fromY,
+  path,
 }: {
   node: RingNode;
   mode: BracketMode;
   clickable: boolean;
   onClick: () => void;
-  fromX: number;
-  fromY: number;
+  path: TravelPath;
 }) {
   const { team, isWinner } = node;
   const ringStroke = isWinner ? '#e8b84b' : '#2a2a32';
@@ -730,8 +747,9 @@ function InnerFlag({
   );
 
   const style = {
-    '--fx': `${fromX}px`,
-    '--fy': `${fromY}px`,
+    '--x0': `${path.x0}px`, '--y0': `${path.y0}px`,
+    '--x1': `${path.x1}px`, '--y1': `${path.y1}px`,
+    '--x2': `${path.x2}px`, '--y2': `${path.y2}px`,
   } as CSSProperties;
 
   return (
