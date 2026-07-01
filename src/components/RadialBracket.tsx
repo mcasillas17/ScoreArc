@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, type CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/types';
+import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
 
 export type BracketMode = 'live' | 'predict';
 
@@ -341,9 +342,42 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [champion?.id]);
 
+  // Match-detail popup state (live/finished mode only)
+  const [detail, setDetail] = useState<BracketMatch | null>(null);
+  const [summary, setSummary] = useState<MatchSummary | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  async function handleView(m: BracketMatch) {
+    setDetail(m);
+    setSummary(null);
+    setLoadingDetail(true);
+    try {
+      const res = await fetch(`/api/match/${m.id}?home=${m.home.id}&away=${m.away.id}`);
+      const json = (await res.json()) as MatchSummary;
+      setSummary(json);
+    } catch {
+      // leave summary null — popup will show empty state
+    } finally {
+      setLoadingDetail(false);
+    }
+  }
+
+  function isViewable(node: RingNode): boolean {
+    return (
+      mode !== 'predict' &&
+      !node.team.placeholder &&
+      node.match !== null &&
+      (node.match.state === 'finished' || node.match.state === 'live')
+    );
+  }
+
   const handleDiscClick = (node: RingNode) => {
-    if (!onPick || !node.clickable) return;
-    onPick(node.depth, Math.floor(node.index / 2), node.team.id);
+    if (mode === 'predict' && node.clickable) {
+      if (!onPick) return;
+      onPick(node.depth, Math.floor(node.index / 2), node.team.id);
+    } else if (isViewable(node) && node.match) {
+      handleView(node.match);
+    }
   };
 
   return (
@@ -484,6 +518,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             node={node}
             mode={mode}
             clickable={node.clickable}
+            viewable={isViewable(node)}
             onClick={() => handleDiscClick(node)}
           />
         ))}
@@ -517,6 +552,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                 node={node}
                 mode={mode}
                 clickable={node.clickable}
+                viewable={isViewable(node)}
                 onClick={() => handleDiscClick(node)}
                 path={path}
               />
@@ -534,6 +570,15 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           preserveAspectRatio="xMidYMid meet"
         />
       </svg>
+
+      {detail && (
+        <MatchDetailPopup
+          match={detail}
+          summary={summary}
+          loading={loadingDetail}
+          onClose={() => { setDetail(null); setSummary(null); }}
+        />
+      )}
     </div>
   );
 }
@@ -622,11 +667,13 @@ function OuterTeam({
   node,
   mode,
   clickable,
+  viewable,
   onClick,
 }: {
   node: RingNode;
   mode: BracketMode;
   clickable: boolean;
+  viewable: boolean;
   onClick: () => void;
 }) {
   const { team, isWinner } = node;
@@ -635,7 +682,7 @@ function OuterTeam({
 
   const flag = team.placeholder ? null : flagUrl(team.abbr);
   const crest = team.placeholder ? null : crestSrc(team.abbr);
-  const interactive = mode === 'predict' && clickable;
+  const interactive = (mode === 'predict' && clickable) || viewable;
 
   return (
     <g
@@ -706,12 +753,14 @@ function InnerFlag({
   node,
   mode,
   clickable,
+  viewable,
   onClick,
   path,
 }: {
   node: RingNode;
   mode: BracketMode;
   clickable: boolean;
+  viewable: boolean;
   onClick: () => void;
   path: TravelPath;
 }) {
@@ -719,7 +768,7 @@ function InnerFlag({
   const ringStroke = isWinner ? '#e8b84b' : '#2a2a32';
   const ringWidth = isWinner ? 2.4 : 1;
   const flag = flagUrl(team.abbr);
-  const interactive = mode === 'predict' && clickable;
+  const interactive = (mode === 'predict' && clickable) || viewable;
 
   const cls = `bracket-disc bracket-inner-disc${interactive ? ' bracket-disc--clickable' : ''}`;
 

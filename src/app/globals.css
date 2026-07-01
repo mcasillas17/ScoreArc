@@ -1362,3 +1362,171 @@ a {
   font-size: 11px; color: #c2c2ca; margin-top: 5px; font-weight: 600;
 }
 .ls-winprob-draw-label { color: #8a8a95; }
+
+/* ===== Match Detail Popup (md-*) ===== */
+.md-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 16px;
+}
+
+.md-card {
+  position: relative;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 360px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(232, 184, 75, 0.1);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.md-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+  z-index: 1;
+}
+
+.md-close:hover {
+  color: var(--text);
+  background: var(--surface-1);
+}
+
+.md-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 20px 16px 14px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.md-team {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 64px;
+}
+
+.md-team-away {
+  align-items: center;
+}
+
+.md-flag {
+  width: 64px;
+  height: 43px;
+  object-fit: cover;
+  border-radius: 3px;
+  display: block;
+}
+
+.md-flag-fallback {
+  width: 64px;
+  height: 43px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-1);
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.md-abbr {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.md-score-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  padding-top: 4px;
+}
+
+.md-score {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.md-score-sep {
+  color: var(--text-muted);
+  margin: 0 3px;
+  font-weight: 400;
+}
+
+.md-status {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.md-note {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.4;
+  max-width: 140px;
+}
+
+.md-body {
+  padding: 12px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.md-section {
+  padding: 6px 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.md-section:first-child {
+  border-top: none;
+}
+
+.md-loading {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 12px 0;
+}
+
+.md-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 12px 0;
+}
