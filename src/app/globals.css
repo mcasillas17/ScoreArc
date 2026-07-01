@@ -301,6 +301,17 @@ a {
   margin-top: 4px;
 }
 
+/* ===== Standalone page header (e.g. Standings) ===== */
+.page-head {
+  margin-bottom: 24px;
+}
+
+.page-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
 .radial-bracket-wrap {
   width: 100%;
   max-width: 880px;
@@ -802,45 +813,6 @@ a {
     grid-template-columns: 1fr;
   }
 }
-
-/* Collapsible group-stage section */
-.groups-collapse {
-  border: 1px solid #1c1c22;
-  border-radius: 14px;
-  background: #101015;
-  overflow: hidden;
-}
-.groups-summary {
-  list-style: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 20px;
-  user-select: none;
-  transition: background 0.15s ease;
-}
-.groups-summary::-webkit-details-marker { display: none; }
-.groups-summary:hover { background: #15151c; }
-.groups-summary-label {
-  font-size: 15px;
-  font-weight: 650;
-  color: #ececf1;
-  letter-spacing: 0.2px;
-}
-.groups-summary-meta {
-  font-size: 12px;
-  color: #6a6a76;
-  margin-left: 2px;
-}
-.groups-chevron {
-  margin-left: auto;
-  color: #8a8a96;
-  transition: transform 0.2s ease;
-}
-.groups-collapse[open] .groups-chevron { transform: rotate(180deg); }
-.groups-collapse[open] .groups-summary { border-bottom: 1px solid #1c1c22; }
-.groups-collapse .groups-grid { padding: 18px; }
 
 /* ===== Champion Celebration ===== */
 .champ-overlay {

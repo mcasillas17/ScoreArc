@@ -1,13 +1,16 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
 interface NavItem {
   href: string;
   label: string;
   icon: React.ReactNode;
-  active?: boolean;
   soon?: boolean;
+  // Route this item highlights as active (hash targets live on '/').
+  activePath: string;
 }
 
 const ICON_PROPS = {
@@ -23,9 +26,9 @@ const ICON_PROPS = {
 
 const NAV: NavItem[] = [
   {
-    href: '#bracket',
+    href: '/#bracket',
     label: 'Bracket',
-    active: true,
+    activePath: '/',
     icon: (
       <svg {...ICON_PROPS}>
         <path d="M6 4v4a3 3 0 0 0 3 3h2" />
@@ -38,8 +41,9 @@ const NAV: NavItem[] = [
     ),
   },
   {
-    href: '#standings',
+    href: '/standings',
     label: 'Standings',
+    activePath: '/standings',
     icon: (
       <svg {...ICON_PROPS}>
         <line x1="4" y1="6" x2="20" y2="6" />
@@ -49,8 +53,9 @@ const NAV: NavItem[] = [
     ),
   },
   {
-    href: '#live',
+    href: '/#live',
     label: 'Live Scores',
+    activePath: '',
     icon: (
       <svg {...ICON_PROPS}>
         <path d="M3 12h3l2 5 4-12 2 7h7" />
@@ -58,8 +63,9 @@ const NAV: NavItem[] = [
     ),
   },
   {
-    href: '#bracket',
+    href: '/#bracket',
     label: 'Predict',
+    activePath: '',
     icon: (
       <svg {...ICON_PROPS}>
         <path d="M12 3l2.5 5 5.5.8-4 3.9.9 5.5L12 16.5 7.1 18.2 8 12.7 4 8.8 9.5 8z" />
@@ -78,6 +84,7 @@ function GithubIcon() {
 
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
+  const pathname = usePathname();
 
   return (
     <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`}>
@@ -103,18 +110,21 @@ export default function Sidebar() {
       </div>
 
       <nav className="sidebar-nav" aria-label="Primary">
-        {NAV.map((item) => (
-          <a
-            key={item.href}
-            href={item.href}
-            className={`nav-item${item.active ? ' nav-item--active' : ''}`}
-            title={collapsed ? item.label : undefined}
-          >
-            <span className="nav-icon">{item.icon}</span>
-            <span className="nav-label">{item.label}</span>
-            {item.soon && <span className="nav-soon">soon</span>}
-          </a>
-        ))}
+        {NAV.map((item) => {
+          const active = item.activePath !== '' && pathname === item.activePath;
+          return (
+            <Link
+              key={item.label}
+              href={item.href}
+              className={`nav-item${active ? ' nav-item--active' : ''}`}
+              title={collapsed ? item.label : undefined}
+            >
+              <span className="nav-icon">{item.icon}</span>
+              <span className="nav-label">{item.label}</span>
+              {item.soon && <span className="nav-soon">soon</span>}
+            </Link>
+          );
+        })}
       </nav>
 
       <a
