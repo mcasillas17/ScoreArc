@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, type CSSProperties } from 'react';
 import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/types';
 
 export type BracketMode = 'live' | 'predict';
@@ -488,10 +488,15 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           />
         ))}
 
-        {/* Inner rings (depth 1-4): single flag when decided, else nothing */}
-        {rings.slice(1).map((ring) =>
-          ring.map((node) => {
+        {/* Inner rings (depth 1-4): single flag when decided, else nothing.
+            Each advancing flag travels in from the winner's position one ring out. */}
+        {rings.slice(1).map((ring, ri) => {
+          const childRing = rings[ri]; // depth (ri+1) - 1 = ri
+          return ring.map((node) => {
             if (node.team.placeholder) return null;
+            const cA = childRing[2 * node.index];
+            const cB = childRing[2 * node.index + 1];
+            const src = cA?.isWinner ? cA : cB?.isWinner ? cB : null;
             return (
               <InnerFlag
                 key={`inner-${node.depth}-${node.index}-${node.team.id}`}
@@ -499,10 +504,12 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                 mode={mode}
                 clickable={node.clickable}
                 onClick={() => handleDiscClick(node)}
+                fromX={src ? src.x - node.x : 0}
+                fromY={src ? src.y - node.y : 0}
               />
             );
-          }),
-        )}
+          });
+        })}
 
         {/* (1b) Center trophy on top — real WC2026 trophy image */}
         <image
@@ -681,11 +688,15 @@ function InnerFlag({
   mode,
   clickable,
   onClick,
+  fromX,
+  fromY,
 }: {
   node: RingNode;
   mode: BracketMode;
   clickable: boolean;
   onClick: () => void;
+  fromX: number;
+  fromY: number;
 }) {
   const { team, isWinner } = node;
   const ringStroke = isWinner ? '#e8b84b' : '#2a2a32';
@@ -718,8 +729,18 @@ function InnerFlag({
     />
   );
 
+  const style = {
+    '--fx': `${fromX}px`,
+    '--fy': `${fromY}px`,
+  } as CSSProperties;
+
   return (
-    <g className={cls} onClick={interactive ? onClick : undefined} role={interactive ? 'button' : undefined}>
+    <g
+      className={`${cls} bracket-advance`}
+      style={style}
+      onClick={interactive ? onClick : undefined}
+      role={interactive ? 'button' : undefined}
+    >
       {disc}
     </g>
   );

@@ -1248,3 +1248,15 @@ a {
   display: flex; align-items: center; justify-content: center;
   background: #1b1b22; color: #9a9a9a; font-size: 12px; font-weight: 700;
 }
+
+/* ---- Predictor: traveling-flag advance animation ---- */
+@keyframes bracket-advance {
+  from { transform: translate(var(--fx, 0), var(--fy, 0)); }
+  to   { transform: translate(0, 0); }
+}
+.bracket-advance {
+  animation: bracket-advance 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bracket-advance { animation: none; }
+}
