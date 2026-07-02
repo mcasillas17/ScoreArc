@@ -1,4 +1,5 @@
-import { dataService } from "@/server/data/service";
+import { dataStore } from "@/server/data/store";
+import { getCompetition } from "@/server/data/competitions";
 import type { Group, TopScorer } from "@/server/data/types";
 import StandingsLive from "@/components/StandingsLive";
 
@@ -11,15 +12,16 @@ export const metadata = {
 };
 
 export default async function StandingsPage() {
+  const WC = getCompetition('world-cup-2026')!;
   let groups: Group[] = [];
   let scorers: TopScorer[] = [];
   try {
-    groups = await dataService.getGroups();
+    groups = await dataStore.getStandings(WC);
   } catch {
     // ESPN feed unavailable — render empty state
   }
   try {
-    scorers = await dataService.getTopScorers();
+    scorers = await dataStore.getTopScorers(WC);
   } catch {
     // ESPN stats unavailable — table renders its own empty state
   }

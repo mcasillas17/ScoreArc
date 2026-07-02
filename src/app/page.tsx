@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { dataService } from "@/server/data/service";
+import { dataStore } from "@/server/data/store";
+import { getCompetition } from "@/server/data/competitions";
 import type { Match, BracketRound } from "@/server/data/types";
 import LiveScores from "@/components/LiveScores";
 import BracketInteractive from "@/components/BracketInteractive";
@@ -25,17 +26,18 @@ export async function generateMetadata({
 }
 
 export default async function Home() {
+  const WC = getCompetition('world-cup-2026')!;
   let matches: Match[] = [];
   let bracket: BracketRound[] = [];
 
   try {
-    matches = await dataService.getMatches();
+    matches = await dataStore.getMatches(WC);
   } catch {
     // ESPN feed unavailable — SSE client will retry live
   }
 
   try {
-    bracket = await dataService.getBracket();
+    bracket = await dataStore.getBracket(WC);
   } catch {
     // ESPN bracket unavailable — render empty state
   }

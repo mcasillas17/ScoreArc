@@ -1,4 +1,5 @@
-import { dataService } from "@/server/data/service";
+import { dataStore } from "@/server/data/store";
+import { getCompetition } from "@/server/data/competitions";
 import type { NewsArticle } from "@/server/data/types";
 import NewsLive from "@/components/NewsLive";
 
@@ -10,9 +11,10 @@ export const metadata = {
 };
 
 export default async function NewsPage() {
+  const WC = getCompetition('world-cup-2026')!;
   let news: NewsArticle[] = [];
   try {
-    news = await dataService.getNews();
+    news = await dataStore.getNews(WC);
   } catch {
     // ESPN feed unavailable — render empty state
   }
