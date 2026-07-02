@@ -27,7 +27,7 @@ export default async function NewsPage({ params }: { params: { comp: string; sea
         </header>
 
         {news.length > 0 ? (
-          <NewsLive initial={news} apiBase={apiBase} teamStyle={rc.competition.teamStyle} />
+          <NewsLive initial={news} apiBase={apiBase} />
         ) : (
           <div className="empty-section">
             <p className="empty-text">News is unavailable right now.</p>

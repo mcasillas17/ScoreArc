@@ -8,7 +8,6 @@ import NewsList from './NewsList';
 interface Props {
   initial: NewsArticle[];
   apiBase: string;
-  teamStyle?: 'flag' | 'crest';
 }
 
 export default function NewsLive({ initial, apiBase }: Props) {

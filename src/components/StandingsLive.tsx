@@ -15,7 +15,7 @@ interface Props {
 
 const REFRESH_MS = 30_000;
 
-export default function StandingsLive({ initialGroups, initialScorers, apiBase }: Props) {
+export default function StandingsLive({ initialGroups, initialScorers, apiBase, teamStyle = 'flag' }: Props) {
   const [groups, setGroups] = useState<Group[]>(initialGroups);
   const [scorers, setScorers] = useState<TopScorer[]>(initialScorers);
 
@@ -48,13 +48,13 @@ export default function StandingsLive({ initialGroups, initialScorers, apiBase }
       <div className="std-columns">
         <div className="std-block">
           <h2 className="std-block-title">Golden Boot · Top Scorers</h2>
-          <TopScorersTable scorers={scorers} />
+          <TopScorersTable scorers={scorers} teamStyle={teamStyle} />
         </div>
 
         <div className="std-block">
           <h2 className="std-block-title">Best Third-Placed Teams</h2>
           {groups.length > 0 ? (
-            <ThirdPlaceTable groups={groups} />
+            <ThirdPlaceTable groups={groups} teamStyle={teamStyle} />
           ) : (
             <p className="empty-text">Group data is unavailable right now.</p>
           )}
@@ -66,7 +66,7 @@ export default function StandingsLive({ initialGroups, initialScorers, apiBase }
         {groups.length > 0 ? (
           <div className="groups-grid">
             {groups.map((group) => (
-              <GroupTable key={group.id} group={group} />
+              <GroupTable key={group.id} group={group} teamStyle={teamStyle} />
             ))}
           </div>
         ) : (

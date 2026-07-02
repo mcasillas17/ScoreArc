@@ -1,7 +1,13 @@
 import type { TopScorer } from "@/server/data/types";
 import TeamBadge from "./TeamBadge";
 
-export default function TopScorersTable({ scorers }: { scorers: TopScorer[] }) {
+export default function TopScorersTable({
+  scorers,
+  teamStyle = 'flag',
+}: {
+  scorers: TopScorer[];
+  teamStyle?: 'flag' | 'crest';
+}) {
   if (scorers.length === 0) {
     return <p className="empty-text">Scorer data is unavailable right now.</p>;
   }
@@ -29,8 +35,9 @@ export default function TopScorersTable({ scorers }: { scorers: TopScorer[] }) {
               <td className="team-cell">
                 <div className="team-cell-inner">
                   <TeamBadge
-                    team={{ id: s.teamAbbr, name: s.teamName, abbr: s.teamAbbr, crestUrl: null }}
+                    team={{ id: s.teamAbbr, name: s.teamName, abbr: s.teamAbbr, crestUrl: s.teamCrestUrl }}
                     size={20}
+                    style={teamStyle}
                   />
                   <span className="team-name std-muted">{s.teamAbbr}</span>
                 </div>

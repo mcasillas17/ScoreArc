@@ -26,6 +26,7 @@ export function mapTopScorers(raw: unknown, limit = 20): TopScorer[] {
         player: athlete.displayName ?? '',
         teamAbbr: team.abbreviation ?? '',
         teamName: team.displayName ?? '',
+        teamCrestUrl: team.logo ?? team.logos?.[0]?.href ?? null,
         goals: Number(l?.value ?? 0),
         matches: parseMatches(l?.displayValue),
       };
