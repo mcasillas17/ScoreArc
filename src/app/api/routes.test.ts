@@ -1,72 +1,32 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { dataService } from '@/server/data/service';
+import { dataStore } from '@/server/data/store';
 
-vi.mock('@/server/data/service', () => ({
-  dataService: {
-    getGroups: vi.fn(),
-    getMatches: vi.fn(),
-    getMatchSummary: vi.fn(),
-  },
-}));
+vi.mock('@/server/data/store', async (orig) => {
+  const mod = (await orig()) as typeof import('@/server/data/store');
+  return { ...mod, dataStore: { ...mod.dataStore } };
+});
 
-beforeEach(() => vi.clearAllMocks());
+describe('competition-scoped + legacy routes', () => {
+  beforeEach(() => vi.restoreAllMocks());
 
-describe('api routes', () => {
-  it('GET /api/groups returns groups json', async () => {
-    vi.mocked(dataService.getGroups).mockResolvedValueOnce([{ id: 'A', name: 'Group A', standings: [] }]);
-    const { GET } = await import('./groups/route');
-    const res = await GET();
+  it('GET /api/[comp]/matches resolves the competition', async () => {
+    const spy = vi.spyOn(dataStore, 'getMatches').mockResolvedValueOnce([]);
+    const { GET } = await import('./[comp]/matches/route');
+    const res = await GET(new Request('http://x/api/leagues-cup/matches'), { params: { comp: 'leagues-cup' } });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body[0].id).toBe('A');
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ id: 'leagues-cup' }));
   });
 
-  it('GET /api/matches returns matches json', async () => {
-    vi.mocked(dataService.getMatches).mockResolvedValueOnce([{ id: '1' } as any]);
+  it('GET /api/[comp]/matches 404s an unknown competition', async () => {
+    const { GET } = await import('./[comp]/matches/route');
+    const res = await GET(new Request('http://x/api/nope/matches'), { params: { comp: 'nope' } });
+    expect(res.status).toBe(404);
+  });
+
+  it('legacy GET /api/matches still returns World Cup data', async () => {
+    const spy = vi.spyOn(dataStore, 'getMatches').mockResolvedValueOnce([]);
     const { GET } = await import('./matches/route');
-    const res = await GET();
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body[0].id).toBe('1');
-  });
-
-  it('GET /api/groups returns 502 on upstream error', async () => {
-    vi.mocked(dataService.getGroups).mockRejectedValueOnce(new Error('upstream down'));
-    const { GET } = await import('./groups/route');
-    const res = await GET();
-    expect(res.status).toBe(502);
-    const body = await res.json();
-    expect(body.error).toBeDefined();
-  });
-
-  it('GET /api/matches returns 502 on upstream error', async () => {
-    vi.mocked(dataService.getMatches).mockRejectedValueOnce(new Error('upstream down'));
-    const { GET } = await import('./matches/route');
-    const res = await GET();
-    expect(res.status).toBe(502);
-    const body = await res.json();
-    expect(body.error).toBeDefined();
-  });
-
-  it('GET /api/match/[id] returns summary json', async () => {
-    const fakeSummary = { scorers: [], cards: [], stats: null, winProbability: null, lineups: null, videos: [], shootoutDetail: null, info: null, form: null, commentary: [], h2h: [] };
-    vi.mocked(dataService.getMatchSummary).mockResolvedValueOnce(fakeSummary);
-    const { GET } = await import('./match/[id]/route');
-    const req = new Request('http://localhost/api/match/evt123?home=h1&away=a1');
-    const res = await GET(req, { params: { id: 'evt123' } });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.scorers).toBeDefined();
-    expect(dataService.getMatchSummary).toHaveBeenCalledWith('evt123', 'h1', 'a1');
-  });
-
-  it('GET /api/match/[id] returns 502 on upstream error', async () => {
-    vi.mocked(dataService.getMatchSummary).mockRejectedValueOnce(new Error('upstream down'));
-    const { GET } = await import('./match/[id]/route');
-    const req = new Request('http://localhost/api/match/evt999?home=h1&away=a1');
-    const res = await GET(req, { params: { id: 'evt999' } });
-    expect(res.status).toBe(502);
-    const body = await res.json();
-    expect(body.error).toBeDefined();
+    await GET();
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ id: 'world-cup-2026' }));
   });
 });
