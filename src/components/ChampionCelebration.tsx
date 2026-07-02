@@ -103,49 +103,7 @@ export default function ChampionCelebration({ team, onClose, onShare }: Props) {
           <img className="champ-trophy" src="/trophy.png" alt="World Cup trophy" />
           <div className="champ-flagwrap">
             {flag ? (
-              <svg
-                className="champ-wave-flag"
-                viewBox="0 0 300 200"
-                preserveAspectRatio="none"
-                role="img"
-                aria-label={`${team.name} flag`}
-              >
-                <defs>
-                  <filter id="champ-wave-filter" x="-15%" y="-15%" width="130%" height="130%">
-                    <feTurbulence
-                      type="fractalNoise"
-                      baseFrequency="0.011 0.02"
-                      numOctaves={2}
-                      seed={7}
-                      result="turb"
-                    >
-                      <animate
-                        attributeName="baseFrequency"
-                        dur="6s"
-                        values="0.011 0.02;0.016 0.026;0.011 0.02"
-                        repeatCount="indefinite"
-                      />
-                    </feTurbulence>
-                    <feDisplacementMap
-                      in="SourceGraphic"
-                      in2="turb"
-                      scale="17"
-                      xChannelSelector="R"
-                      yChannelSelector="G"
-                    />
-                  </filter>
-                </defs>
-                {/* Oversized so displacement never samples past the flag edge */}
-                <image
-                  href={flag}
-                  x="-16"
-                  y="-12"
-                  width="332"
-                  height="224"
-                  preserveAspectRatio="none"
-                  filter="url(#champ-wave-filter)"
-                />
-              </svg>
+              <img className="champ-wave-flag" src={flag} alt={`${team.name} flag`} />
             ) : (
               <div className="champ-wave-flag champ-flag-fallback">{team.abbr}</div>
             )}
