@@ -38,41 +38,54 @@ Replace the hardcoded-`fifa.world` data layer with a **competition-parameterized
 
 ## Architecture
 
-### 1. Competition registry — `src/server/data/competitions.ts`
+### 1. Competition + Season registry — `src/server/data/competitions.ts`
 
-The single source of truth describing each competition; drives the data layer now and the UI later.
+A **durable Competition** (one ESPN league) owns one or more **Seasons** (editions). This split is required because recurring competitions run many editions — and some, like **Liga MX (Torneo Apertura / Clausura)**, run **two per calendar year** — so a single flat id can't identify an edition. ESPN confirms this: its feed reports `season.year` + `season.type.name` (literally `"Torneo Apertura"` for Liga MX).
 
 ```ts
 export type CompetitionKind = 'national' | 'club';
 export type TeamStyle = 'flag' | 'crest';
 export type Section = 'bracket' | 'standings' | 'scores' | 'news';
 
-export interface Competition {
-  id: string;              // 'world-cup-2026'  (our slug, used in URLs + cache keys)
-  name: string;            // 'World Cup 2026'
-  shortName: string;       // 'World Cup'
-  espnSlug: string;        // 'fifa.world'  (ESPN's league slug)
-  kind: CompetitionKind;
-  teamStyle: TeamStyle;    // flags for national, crests for club
-  emblem: string;          // hub tile glyph (emoji for now)
-  sections: Section[];     // which workspace sections apply
-  format: {
-    hasBracket: boolean;
-    hasGroups: boolean;
-    hasThirdPlaceRace: boolean; // WC true (8 best 3rd-placed advance); Leagues Cup false
-  };
-  bracketDatesRange?: string;     // for the date-range scoreboard bracket fetch (e.g. WC '20260628-20260719')
-  bracketOrder?: [string, string][]; // identity-based leaf order override (WC); omitted = derive (sub-project #3)
+// A specific edition. The season `id` is the URL slug within its competition:
+//   '2026' (one-off editions) · '2025-26' (cross-year leagues) ·
+//   '2026-apertura' / '2026-clausura' (split leagues like Liga MX).
+export interface Season {
+  id: string;
+  label: string;
+  sections: Section[];
+  format: { hasBracket: boolean; hasGroups: boolean; hasThirdPlaceRace: boolean };
+  bracketDatesRange?: string;         // date-range scoreboard bracket fetch (e.g. '20260628-20260719')
+  bracketOrder?: [string, string][];  // identity-based leaf-order override (WC); omitted = derive (sub-project #3)
 }
 
-export const COMPETITIONS: Record<string, Competition> = { /* world-cup-2026, leagues-cup */ };
+// A durable competition = one ESPN league, across seasons.
+export interface Competition {
+  id: string;              // 'world-cup', 'leagues-cup', 'liga-mx'  (durable slug)
+  name: string;
+  shortName: string;
+  espnSlug: string;        // ESPN league slug — durable ('fifa.world', 'mex.1')
+  kind: CompetitionKind;
+  teamStyle: TeamStyle;    // flags for national, crests for club
+  emblem: string;          // hub tile glyph
+  currentSeasonId: string; // season a hub tile / bare URL resolves to
+  seasons: Record<string, Season>;
+}
+
+// A resolved (competition, season) pair — what the data store consumes.
+export interface CompetitionSeason { competition: Competition; season: Season; }
+
+export const COMPETITIONS: Record<string, Competition> = { /* world-cup, leagues-cup */ };
 export function getCompetition(id: string): Competition | undefined;
 export function listCompetitions(): Competition[];
+// Resolves a (competition, season) pair; seasonId defaults to the current season.
+export function resolveSeason(compId: string, seasonId?: string): CompetitionSeason | undefined;
 ```
 
-- `world-cup-2026`: `espnSlug: 'fifa.world'`, `national`, `teamStyle: 'flag'`, `hasThirdPlaceRace: true`, `bracketDatesRange: '20260628-20260719'`, `bracketOrder: OFFICIAL_R32_ORDER`.
-- `leagues-cup`: `espnSlug: 'concacaf.leagues.cup'`, `club`, `teamStyle: 'crest'`, `hasThirdPlaceRace: false`, no `bracketOrder` (derive later).
-- **`OFFICIAL_R32_ORDER` moves here** from `RadialBracket.tsx` (it is data, not UI). The bracket component will receive the order via props/config in later sub-projects; for now it can import from the registry.
+- `world-cup` → season `2026`: `espnSlug: 'fifa.world'`, `national`, `teamStyle: 'flag'`, `hasThirdPlaceRace: true`, `bracketDatesRange: '20260628-20260719'`, `bracketOrder: OFFICIAL_R32_ORDER`.
+- `leagues-cup` → season `2026`: `espnSlug: 'concacaf.leagues.cup'`, `club`, `teamStyle: 'crest'`, `hasThirdPlaceRace: false`, no `bracketOrder` (derive later).
+- **Launch wires *current* seasons only.** ESPN serves the current season by default; historical/other seasons (`?season=`/date-range params) are a later capability.
+- **`OFFICIAL_R32_ORDER` moves here** from `RadialBracket.tsx` (data, not UI); the season carries it. `RadialBracket` imports it from the registry.
 
 ### 2. Parameterized ESPN endpoints + providers
 
@@ -92,41 +105,42 @@ The **mappers are unchanged in logic** (`espn-matches`, `-standings`, `-bracket`
 
 ### 3. The `DataStore` seam — `src/server/data/store.ts`
 
-The one interface the rest of the app consumes. Consumers pass a `Competition`; they never see ESPN slugs, URLs, or caches.
+The one interface the rest of the app consumes. Consumers pass a resolved `CompetitionSeason`; they never see ESPN slugs, URLs, or caches.
 
 ```ts
 export interface DataStore {
-  getMatches(comp: Competition): Promise<Match[]>;
-  getStandings(comp: Competition): Promise<Group[]>;
-  getBracket(comp: Competition): Promise<BracketRound[]>;
-  getMatchSummary(comp: Competition, eventId: string, homeId: string, awayId: string): Promise<MatchSummaryData>;
-  getTopScorers(comp: Competition): Promise<TopScorer[]>;
-  getNews(comp: Competition): Promise<NewsArticle[]>;
+  getMatches(rc: CompetitionSeason): Promise<Match[]>;
+  getStandings(rc: CompetitionSeason): Promise<Group[]>;
+  getBracket(rc: CompetitionSeason): Promise<BracketRound[]>;
+  getMatchSummary(rc: CompetitionSeason, eventId: string, homeId: string, awayId: string): Promise<MatchSummaryData>;
+  getTopScorers(rc: CompetitionSeason): Promise<TopScorer[]>;
+  getNews(rc: CompetitionSeason): Promise<NewsArticle[]>;
 }
 ```
 
 **Launch implementation — `EspnReadThroughStore`:** the current `service.ts` logic, generalized:
-- Every fetch uses `comp.espnSlug` via the URL builders; bracket uses `comp.bracketDatesRange`.
-- Cache keys are **competition-scoped**: `${comp.id}:matches`, `${comp.id}:bracket`, `${comp.id}:summary:${eventId}`, etc. — so competitions cache independently in the existing in-memory `TtlCache` (TTLs unchanged). `cache: 'no-store'` ESPN fetch retained.
-- Match enrichment (summary → scorers/cards/stats/winProb/shootout) and the `matches`/`bracket`/`groups`/`topscorers`/`news` methods carry over verbatim, now `comp`-scoped.
+- Every fetch uses `rc.competition.espnSlug` via the URL builders; bracket uses `rc.season.bracketDatesRange`.
+- Cache keys are **competition + season scoped**: `${comp.id}:${season.id}:matches`, `…:bracket`, `…:summary:${eventId}`, etc. — so editions cache independently in the existing in-memory `TtlCache` (TTLs unchanged). `cache: 'no-store'` ESPN fetch retained.
+- Match enrichment (summary → scorers/cards/stats/winProb/shootout) carries over verbatim, now `rc`-scoped. `parseShootout` is exported and directly tested; `emptySummary()` returns a fresh object per call.
 
-`export const dataStore: DataStore = new EspnReadThroughStore(new TtlCache());`
+`export const dataStore: DataStore = createDataStore({ fetchJson, cache: new TtlCache() });`
 
-### 4. API routes — competition-scoped, back-compat kept
+### 4. API routes — competition/season-scoped, back-compat kept
 
-- Add competition-scoped routes: `/api/[comp]/matches`, `/api/[comp]/bracket`, `/api/[comp]/standings`, `/api/[comp]/top-scorers`, `/api/[comp]/news`, `/api/[comp]/match/[id]`. Each resolves `getCompetition(params.comp)` (404 on unknown) and calls the store. `dynamic='force-dynamic'` + `Cache-Control: no-store` retained.
-- **Keep the existing routes** (`/api/matches`, …) working by delegating to the store with the `world-cup-2026` competition, so the current UI keeps functioning on the branch until sub-project #2 rewires callers to the scoped routes. (Old routes get removed in #2.)
+- Scoped routes: **`/api/[comp]/[season]/{matches,bracket,standings,top-scorers,news}`** and `/api/[comp]/[season]/match/[id]`. Each resolves `resolveSeason(params.comp, params.season)` (**404** on unknown competition *or* season) and calls the store. `dynamic='force-dynamic'` + `Cache-Control: no-store` retained.
+- **Keep the existing routes** (`/api/matches`, …) working by delegating to the store with `resolveSeason('world-cup')` (current WC season), so the current UI keeps functioning on the branch until sub-project #2 rewires callers. (Old routes get removed in #2.)
+- The public UI URL scheme (sub-project #2) mirrors this: **`/c/<competition>/<season>`**, with `/c/<competition>` resolving to the current season.
 
 ### 5. Consumers this sub-project touches
 
-- Server components (`app/page.tsx`, `app/standings/page.tsx`, `app/news/page.tsx`) call `dataStore.<method>(worldCup)` instead of `dataService.<method>()`. No visual change.
+- Server components (`app/page.tsx`, `app/standings/page.tsx`, `app/news/page.tsx`) call `dataStore.<method>(resolveSeason('world-cup')!)` instead of `dataService.<method>()`. No visual change.
 - Client pollers keep hitting the existing (WC-defaulted) routes for now.
 
 ---
 
 ## Data flow
 
-`page/route → dataStore.getX(competition) → EspnReadThroughStore → (comp-scoped TtlCache | ESPN via slug URL) → mapper → typed domain object`.
+`page/route → resolveSeason(comp, season) → dataStore.getX(rc) → EspnReadThroughStore → (comp+season-scoped TtlCache | ESPN via slug URL) → mapper → typed domain object`.
 
 Later (sub-project #5): swap `EspnReadThroughStore` for a KV/ingestion-backed store implementing the same `DataStore` — consumers unchanged.
 
