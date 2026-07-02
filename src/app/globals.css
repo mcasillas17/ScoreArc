@@ -684,9 +684,17 @@ a {
 
 /* ===== Groups Grid ===== */
 .groups-grid {
+  /* auto-FIT + 1fr so a few tables share the row and fill it (two conference
+     tables split it in half; a dozen WC groups wrap to several columns) instead
+     of being cramped in narrow tracks. The per-card max-width below then keeps a
+     single league table from stretching so wide its columns look sparse. */
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  justify-content: start;
   gap: 14px;
+}
+.groups-grid > .group-card {
+  max-width: 640px;
 }
 
 /* ===== Group Card ===== */
