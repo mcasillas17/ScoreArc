@@ -24,11 +24,14 @@ const GROUPS: { status: HubStatus; label: string; labelClass: string }[] = [
 
 function badge(status: HubStatus): { text: string; className: string } {
   switch (status) {
-    case 'live':     return { text: '● LIVE',       className: 'hub-badge--live' };
+    case 'live':     return { text: 'LIVE',         className: 'hub-badge--live' };
     case 'upcoming': return { text: 'SOON',          className: 'hub-badge--upcoming' };
     case 'ongoing':  return { text: 'IN PROGRESS',  className: 'hub-badge--ongoing' };
   }
 }
+
+// live + ongoing are "active" states that get an animated status dot.
+const isActive = (s: HubStatus) => s === 'live' || s === 'ongoing';
 
 function subLine(tile: Tile): string {
   switch (tile.status) {
@@ -50,7 +53,7 @@ export default function HubTiles({ tiles }: Props) {
         return (
           <section key={status} className="hub-group">
             <div className={`hub-group-label ${labelClass}`}>
-              {status === 'live' && <span className="hub-live-dot" />}
+              {isActive(status) && <span className={`hub-ping hub-ping--${status}`} aria-hidden />}
               {label}
             </div>
             <div className="hub-grid">
@@ -64,7 +67,10 @@ export default function HubTiles({ tiles }: Props) {
                   >
                     <div className="hub-tile-top">
                       <span className="hub-emblem">{tile.comp.emblem}</span>
-                      <span className={`hub-badge ${b.className}`}>{b.text}</span>
+                      <span className={`hub-badge ${b.className}`}>
+                        {isActive(tile.status) && <span className={`hub-bdot hub-bdot--${tile.status}`} aria-hidden />}
+                        {b.text}
+                      </span>
                     </div>
                     <div className="hub-name">{tile.comp.name}</div>
                     <div className="hub-sub">{subLine(tile)}</div>
