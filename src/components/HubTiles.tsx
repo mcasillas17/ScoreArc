@@ -14,10 +14,12 @@ interface Props {
   tiles: Tile[];
 }
 
+// Ordered by relevance: matches in play first, then tournaments already
+// underway, then ones yet to start.
 const GROUPS: { status: HubStatus; label: string; labelClass: string }[] = [
   { status: 'live',     label: 'Live now',      labelClass: 'hub-group-label--live' },
-  { status: 'upcoming', label: 'Starting soon', labelClass: 'hub-group-label--upcoming' },
   { status: 'ongoing',  label: 'Ongoing',       labelClass: 'hub-group-label--ongoing' },
+  { status: 'upcoming', label: 'Starting soon', labelClass: 'hub-group-label--upcoming' },
 ];
 
 function badge(status: HubStatus): { text: string; className: string } {
