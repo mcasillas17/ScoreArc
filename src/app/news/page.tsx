@@ -1,5 +1,5 @@
 import { dataStore } from "@/server/data/store";
-import { getCompetition } from "@/server/data/competitions";
+import { resolveSeason } from "@/server/data/competitions";
 import type { NewsArticle } from "@/server/data/types";
 import NewsLive from "@/components/NewsLive";
 
@@ -11,7 +11,7 @@ export const metadata = {
 };
 
 export default async function NewsPage() {
-  const WC = getCompetition('world-cup-2026')!;
+  const WC = resolveSeason('world-cup')!;
   let news: NewsArticle[] = [];
   try {
     news = await dataStore.getNews(WC);

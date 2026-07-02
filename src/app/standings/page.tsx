@@ -1,5 +1,5 @@
 import { dataStore } from "@/server/data/store";
-import { getCompetition } from "@/server/data/competitions";
+import { resolveSeason } from "@/server/data/competitions";
 import type { Group, TopScorer } from "@/server/data/types";
 import StandingsLive from "@/components/StandingsLive";
 
@@ -12,7 +12,7 @@ export const metadata = {
 };
 
 export default async function StandingsPage() {
-  const WC = getCompetition('world-cup-2026')!;
+  const WC = resolveSeason('world-cup')!;
   let groups: Group[] = [];
   let scorers: TopScorer[] = [];
   try {

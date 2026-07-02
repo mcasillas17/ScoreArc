@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { dataStore } from "@/server/data/store";
-import { getCompetition } from "@/server/data/competitions";
+import { resolveSeason } from "@/server/data/competitions";
 import type { Match, BracketRound } from "@/server/data/types";
 import LiveScores from "@/components/LiveScores";
 import BracketInteractive from "@/components/BracketInteractive";
@@ -26,7 +26,7 @@ export async function generateMetadata({
 }
 
 export default async function Home() {
-  const WC = getCompetition('world-cup-2026')!;
+  const WC = resolveSeason('world-cup')!;
   let matches: Match[] = [];
   let bracket: BracketRound[] = [];
 

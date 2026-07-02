@@ -1,10 +1,10 @@
 import { dataStore } from '@/server/data/store';
-import { getCompetition } from '@/server/data/competitions';
+import { resolveSeason } from '@/server/data/competitions';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const WC = getCompetition('world-cup-2026')!;
+const WC = resolveSeason('world-cup')!;
 
 export async function GET() {
   try {
