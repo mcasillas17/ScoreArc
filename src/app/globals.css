@@ -88,6 +88,12 @@ a {
   gap: 9px;
   padding: 4px 8px 2px;
 }
+.sidebar-brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  text-decoration: none;
+}
 
 .sidebar-toggle {
   margin-left: auto;
@@ -2294,26 +2300,28 @@ a {
 .hub {
   min-height: 100vh;
   background: var(--bg);
-  padding: 32px 20px 48px;
-  max-width: 860px;
+  padding: 44px 24px 64px;
+  max-width: 1040px;
   margin: 0 auto;
 }
 
 .hub-head {
-  margin-bottom: 28px;
+  margin-bottom: 34px;
 }
 
 .hub-brand {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+  width: fit-content;
+  text-decoration: none;
 }
 
 .hub-word {
   color: var(--gold);
   font-weight: 800;
-  font-size: 22px;
+  font-size: 26px;
   letter-spacing: -0.5px;
 }
 
@@ -2353,34 +2361,32 @@ a {
 }
 
 .hub-grid {
+  /* auto-FILL (not auto-fit) keeps empty tracks so a lone tile stays a card
+     width instead of stretching across the whole row. */
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-}
-
-@media (min-width: 600px) {
-  .hub-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 18px;
 }
 
 .hub-tile {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 14px;
+  gap: 12px;
+  padding: 22px 22px 20px;
+  min-height: 148px;
   border: 1px solid #3a3a44;
-  border-radius: 12px;
+  border-radius: 14px;
   background: linear-gradient(135deg, #17171e, #101014);
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
   text-decoration: none;
   color: var(--text);
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
 }
 
 .hub-tile:hover {
   border-color: var(--gold);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  transform: translateY(-2px);
 }
 
 .hub-tile-top {
@@ -2390,7 +2396,7 @@ a {
 }
 
 .hub-emblem {
-  font-size: 28px;
+  font-size: 40px;
   line-height: 1;
 }
 
@@ -2423,13 +2429,14 @@ a {
 
 .hub-name {
   font-weight: 800;
-  font-size: 15px;
+  font-size: 20px;
   color: var(--text);
   line-height: 1.25;
 }
 
 .hub-sub {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text-muted);
   line-height: 1.4;
+  margin-top: auto;
 }

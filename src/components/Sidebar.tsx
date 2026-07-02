@@ -34,8 +34,10 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
   return (
     <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`}>
       <div className="sidebar-brand">
-        <span className="sidebar-ball" aria-hidden>⚽</span>
-        <span className="sidebar-wordmark">ScoreArc</span>
+        <Link href="/" className="sidebar-brand-link" aria-label="ScoreArc home">
+          <span className="sidebar-ball" aria-hidden>⚽</span>
+          <span className="sidebar-wordmark">ScoreArc</span>
+        </Link>
         <button type="button" className="sidebar-toggle" onClick={() => setCollapsed((v) => !v)} aria-label={collapsed ? 'Expand' : 'Collapse'} aria-expanded={!collapsed}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             {collapsed ? <polyline points="9 6 15 12 9 18" /> : <polyline points="15 6 9 12 15 18" />}
