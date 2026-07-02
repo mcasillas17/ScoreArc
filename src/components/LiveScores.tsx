@@ -14,6 +14,8 @@ import {
 
 interface LiveScoresProps {
   initialMatches: Match[];
+  apiBase?: string;
+  teamStyle?: 'flag' | 'crest';
 }
 
 const STATE_ORDER: Record<string, number> = { live: 0, finished: 1, scheduled: 2 };

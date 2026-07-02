@@ -8,6 +8,8 @@ import ChampionCelebration from './ChampionCelebration';
 
 interface Props {
   rounds: BracketRound[];
+  apiBase?: string;
+  teamStyle?: 'flag' | 'crest';
 }
 
 // Compact third-place match card — shown once both semi-final losers are known

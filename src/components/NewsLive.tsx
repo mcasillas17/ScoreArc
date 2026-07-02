@@ -5,7 +5,7 @@ import type { NewsArticle } from '@/server/data/types';
 import NewsList from './NewsList';
 
 // Refresh headlines periodically (news changes slowly, so a gentle cadence).
-export default function NewsLive({ initial }: { initial: NewsArticle[] }) {
+export default function NewsLive({ initial }: { initial: NewsArticle[]; apiBase?: string; teamStyle?: 'flag' | 'crest' }) {
   const [news, setNews] = useState<NewsArticle[]>(initial);
 
   useEffect(() => {

@@ -9,6 +9,8 @@ import ThirdPlaceTable from './ThirdPlaceTable';
 interface Props {
   initialGroups: Group[];
   initialScorers: TopScorer[];
+  apiBase?: string;
+  teamStyle?: 'flag' | 'crest';
 }
 
 const REFRESH_MS = 30_000;
