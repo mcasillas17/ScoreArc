@@ -157,9 +157,15 @@ export default function BracketInteractive({ rounds: initialRounds }: Props) {
 
   function handlePick(depth: number, matchIndex: number, teamId: string) {
     setPicks((prev) => {
-      const next = { ...prev, [`${depth}:${matchIndex}`]: teamId };
-      // Changing a result invalidates every prediction that depended on it —
-      // clear only the inward descendant chain of this match.
+      const key = `${depth}:${matchIndex}`;
+      const next = { ...prev };
+      if (next[key] === teamId) {
+        delete next[key];
+      } else {
+        next[key] = teamId;
+      }
+      // Changing or clearing a result invalidates every prediction that
+      // depended on it. Clear only the inward descendant chain of this match.
       for (let dd = depth + 1; dd <= 4; dd++) {
         const idx = Math.floor(matchIndex / 2 ** (dd - depth));
         delete next[`${dd}:${idx}`];
@@ -193,7 +199,7 @@ export default function BracketInteractive({ rounds: initialRounds }: Props) {
 
       {mode === 'predict' && (
         <div className="bracket-controls">
-          <span className="bracket-hint">Tap a team to send them through</span>
+          <span className="bracket-hint">Tap a team to send them through. Tap again to clear.</span>
           <button
             type="button"
             className="bracket-share"

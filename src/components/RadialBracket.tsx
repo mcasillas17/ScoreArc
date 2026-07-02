@@ -810,6 +810,25 @@ function FallbackDisc({
   );
 }
 
+function TeamLabel({ node }: { node: RingNode }) {
+  if (node.team.placeholder || !node.team.name) return null;
+  const y = node.y > C.y ? node.y - node.discR - 13 : node.y + node.discR + 18;
+  return (
+    <text
+      className="bracket-team-label"
+      x={node.x}
+      y={y}
+      textAnchor="middle"
+      dominantBaseline="central"
+      fontSize={13}
+      fontWeight={700}
+      fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+    >
+      {node.team.name}
+    </text>
+  );
+}
+
 /** Outer team: federation crest (outside) + flag roundel (inside), touching. */
 function OuterTeam({
   node,
@@ -843,6 +862,7 @@ function OuterTeam({
       tabIndex={interactive ? 0 : undefined}
       role={interactive ? 'button' : undefined}
     >
+      <title>{team.name}</title>
       {/* Crest (outer) — meet so the badge isn't cropped, on a light disc */}
       {crest ? (
         <ImageDisc
@@ -890,6 +910,7 @@ function OuterTeam({
           ringWidth={ringWidth}
         />
       )}
+      <TeamLabel node={node} />
     </g>
   );
 }
@@ -964,8 +985,9 @@ function InnerFlag({
       tabIndex={interactive ? 0 : undefined}
       role={interactive ? 'button' : undefined}
     >
+      <title>{team.name}</title>
       {disc}
+      <TeamLabel node={node} />
     </g>
   );
 }
-

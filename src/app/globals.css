@@ -469,6 +469,21 @@ a {
   filter: brightness(1.22);
 }
 
+.bracket-team-label {
+  pointer-events: none;
+  opacity: 0;
+  fill: var(--text);
+  stroke: rgba(11, 11, 13, 0.92);
+  stroke-width: 7px;
+  paint-order: stroke fill;
+  transition: opacity 0.12s ease;
+}
+
+.bracket-disc:hover .bracket-team-label,
+.bracket-disc:focus-visible .bracket-team-label {
+  opacity: 1;
+}
+
 /* No ugly default outline box on click; keyboard focus gets a soft glow instead. */
 .bracket-disc:focus,
 .bracket-slot-dot:focus {
