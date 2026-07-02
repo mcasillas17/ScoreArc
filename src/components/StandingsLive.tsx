@@ -11,11 +11,13 @@ interface Props {
   initialScorers: TopScorer[];
   apiBase: string;
   teamStyle?: 'flag' | 'crest';
+  // Group-stage tournaments race for best third place; leagues don't.
+  showThirdPlace?: boolean;
 }
 
 const REFRESH_MS = 30_000;
 
-export default function StandingsLive({ initialGroups, initialScorers, apiBase, teamStyle = 'flag' }: Props) {
+export default function StandingsLive({ initialGroups, initialScorers, apiBase, teamStyle = 'flag', showThirdPlace = true }: Props) {
   const [groups, setGroups] = useState<Group[]>(initialGroups);
   const [scorers, setScorers] = useState<TopScorer[]>(initialScorers);
 
@@ -45,24 +47,31 @@ export default function StandingsLive({ initialGroups, initialScorers, apiBase, 
 
   return (
     <>
-      <div className="std-columns">
+      {showThirdPlace ? (
+        <div className="std-columns">
+          <div className="std-block">
+            <h2 className="std-block-title">Golden Boot · Top Scorers</h2>
+            <TopScorersTable scorers={scorers} teamStyle={teamStyle} />
+          </div>
+
+          <div className="std-block">
+            <h2 className="std-block-title">Best Third-Placed Teams</h2>
+            {groups.length > 0 ? (
+              <ThirdPlaceTable groups={groups} teamStyle={teamStyle} />
+            ) : (
+              <p className="empty-text">Group data is unavailable right now.</p>
+            )}
+          </div>
+        </div>
+      ) : (
         <div className="std-block">
           <h2 className="std-block-title">Golden Boot · Top Scorers</h2>
           <TopScorersTable scorers={scorers} teamStyle={teamStyle} />
         </div>
-
-        <div className="std-block">
-          <h2 className="std-block-title">Best Third-Placed Teams</h2>
-          {groups.length > 0 ? (
-            <ThirdPlaceTable groups={groups} teamStyle={teamStyle} />
-          ) : (
-            <p className="empty-text">Group data is unavailable right now.</p>
-          )}
-        </div>
-      </div>
+      )}
 
       <div className="std-block">
-        <h2 className="std-block-title">Group Stage Results</h2>
+        <h2 className="std-block-title">{showThirdPlace ? 'Group Stage Results' : 'Standings'}</h2>
         {groups.length > 0 ? (
           <div className="groups-grid">
             {groups.map((group) => (

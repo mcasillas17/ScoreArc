@@ -30,11 +30,13 @@ export default async function StandingsPage({ params }: { params: { comp: string
           <p className="bracket-eyebrow">{rc.competition.name}</p>
           <h1 className="bracket-title">Standings</h1>
           <p className="page-subtitle">
-            Top scorers, the third-place race, and full group tables.
+            {rc.season.format.hasBracket
+              ? 'Top scorers, the third-place race, and full group tables.'
+              : 'Top scorers and the full league table.'}
           </p>
         </header>
 
-        <StandingsLive initialGroups={groups} initialScorers={scorers} apiBase={apiBase} teamStyle={rc.competition.teamStyle} />
+        <StandingsLive initialGroups={groups} initialScorers={scorers} apiBase={apiBase} teamStyle={rc.competition.teamStyle} showThirdPlace={rc.season.format.hasBracket} />
       </section>
 
       <footer className="site-footer">

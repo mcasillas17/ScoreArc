@@ -82,7 +82,48 @@ export const COMPETITIONS: Record<string, Competition> = {
       },
     },
   },
+  ...leagueCompetition('premier-league', 'Premier League', 'Premier League', 'eng.1', '🦁', '2026-27', '2026-27'),
+  ...leagueCompetition('laliga', 'LaLiga', 'LaLiga', 'esp.1', '🇪🇸', '2026-27', '2026-27'),
+  ...leagueCompetition('serie-a', 'Serie A', 'Serie A', 'ita.1', '🇮🇹', '2026-27', '2026-27'),
+  ...leagueCompetition('bundesliga', 'Bundesliga', 'Bundesliga', 'ger.1', '🇩🇪', '2026-27', '2026-27'),
+  ...leagueCompetition('ligue-1', 'Ligue 1', 'Ligue 1', 'fra.1', '🇫🇷', '2026-27', '2026-27'),
+  ...leagueCompetition('mls', 'MLS', 'MLS', 'usa.1', '🇺🇸', '2026', '2026'),
+  ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', '2026-apertura', 'Apertura 2026'),
 };
+
+// A domestic-league competition: club crests, a single (or conference-split)
+// standings table, no knockout bracket. Returns a one-entry record so it can be
+// spread into COMPETITIONS.
+function leagueCompetition(
+  id: string,
+  name: string,
+  shortName: string,
+  espnSlug: string,
+  emblem: string,
+  seasonId: string,
+  seasonLabel: string,
+): Record<string, Competition> {
+  return {
+    [id]: {
+      id,
+      name,
+      shortName,
+      espnSlug,
+      kind: 'club',
+      teamStyle: 'crest',
+      emblem,
+      currentSeasonId: seasonId,
+      seasons: {
+        [seasonId]: {
+          id: seasonId,
+          label: seasonLabel,
+          sections: ['standings', 'scores', 'news'],
+          format: { hasBracket: false, hasGroups: true, hasThirdPlaceRace: false },
+        },
+      },
+    },
+  };
+}
 
 export function getCompetition(id: string): Competition | undefined {
   return COMPETITIONS[id];

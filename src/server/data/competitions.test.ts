@@ -52,4 +52,32 @@ describe('competition registry', () => {
     expect(OFFICIAL_R32_ORDER).toHaveLength(16);
     expect(OFFICIAL_R32_ORDER[0]).toEqual(['RSA', 'CAN']);
   });
+
+  it('registers the domestic leagues with their ESPN slugs, as no-bracket club competitions', () => {
+    const leagues: Record<string, string> = {
+      'premier-league': 'eng.1',
+      laliga: 'esp.1',
+      'serie-a': 'ita.1',
+      bundesliga: 'ger.1',
+      'ligue-1': 'fra.1',
+      mls: 'usa.1',
+      'liga-mx': 'mex.1',
+    };
+    for (const [id, slug] of Object.entries(leagues)) {
+      const comp = COMPETITIONS[id];
+      expect(comp, id).toBeDefined();
+      expect(comp.espnSlug).toBe(slug);
+      expect(comp.kind).toBe('club');
+      expect(comp.teamStyle).toBe('crest');
+      const season = comp.seasons[comp.currentSeasonId];
+      expect(season, `${id} current season`).toBeDefined();
+      expect(season.format.hasBracket).toBe(false);
+      expect(season.bracketOrder).toBeUndefined();
+    }
+  });
+
+  it('Liga MX exercises the split-season model (Apertura)', () => {
+    expect(COMPETITIONS['liga-mx'].currentSeasonId).toBe('2026-apertura');
+    expect(COMPETITIONS['liga-mx'].seasons['2026-apertura'].label).toBe('Apertura 2026');
+  });
 });
