@@ -13,10 +13,22 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
   const pathname = usePathname();
   const base = `/c/${comp.id}/${seasonId}`;
   const items = [
-    { href: base, label: 'Bracket', match: (p: string) => p === base },
-    { href: `${base}/standings`, label: 'Standings', match: (p: string) => p.startsWith(`${base}/standings`) },
-    { href: `${base}#live`, label: 'Live Scores', match: () => false },
-    { href: `${base}/news`, label: 'News', match: (p: string) => p.startsWith(`${base}/news`) },
+    {
+      href: base, label: 'Bracket', match: (p: string) => p === base,
+      icon: <svg {...ICON}><path d="M6 4v4a3 3 0 0 0 3 3h2" /><path d="M6 20v-4a3 3 0 0 1 3-3h2" /><circle cx="18" cy="12" r="2" /><path d="M11 12h5" /><circle cx="5" cy="4" r="1.5" /><circle cx="5" cy="20" r="1.5" /></svg>,
+    },
+    {
+      href: `${base}/standings`, label: 'Standings', match: (p: string) => p.startsWith(`${base}/standings`),
+      icon: <svg {...ICON}><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="14" y2="18" /></svg>,
+    },
+    {
+      href: `${base}#live`, label: 'Live Scores', match: () => false,
+      icon: <svg {...ICON}><path d="M3 12h3l2 5 4-12 2 7h7" /></svg>,
+    },
+    {
+      href: `${base}/news`, label: 'News', match: (p: string) => p.startsWith(`${base}/news`),
+      icon: <svg {...ICON}><path d="M4 5h16v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>,
+    },
   ];
 
   return (
@@ -32,7 +44,7 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
       </div>
 
       <div className="sidebar-switcher">
-        <button type="button" className="cs-current" onClick={() => setSwitcherOpen((v) => !v)} aria-expanded={switcherOpen}>
+        <button type="button" className="cs-current" onClick={() => setSwitcherOpen((v) => !v)} aria-expanded={switcherOpen} aria-label="Switch competition">
           <span className="cs-label">Competition</span>
           <span className="cs-name"><span className="cs-emblem">{comp.emblem}</span>{comp.shortName}</span>
           <span className="cs-season">{comp.seasons[seasonId]?.label ?? seasonId} season</span>
@@ -51,7 +63,7 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
       <nav className="sidebar-nav" aria-label="Sections">
         {items.map((item) => (
           <Link key={item.label} href={item.href} className={`nav-item${item.match(pathname) ? ' nav-item--active' : ''}`} title={collapsed ? item.label : undefined}>
-            <span className="nav-icon"><svg {...ICON}><circle cx="12" cy="12" r="9" /></svg></span>
+            <span className="nav-icon">{item.icon}</span>
             <span className="nav-label">{item.label}</span>
           </Link>
         ))}
