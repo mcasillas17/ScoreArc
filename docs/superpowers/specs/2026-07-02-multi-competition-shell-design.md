@@ -111,6 +111,6 @@ Threaded via a single `apiBase: /api/${comp}/${season}` prop (or the `{comp, sea
 4. All data flows through `/api/<comp>/<season>/*`; legacy routes/pages gone.
 5. Predictions + share + OG work per competition.
 
-## Open decision for review
+## Resolved decisions
 
-- **Club bracket rendering:** for club competitions the outer teams show a **single crest disc** (no twin flag), since clubs have no country flag. Confirm this is the desired look (vs. e.g. crest + a small league/city marker).
+- **Club bracket rendering (resolved 2026-07-02):** club competitions render a **single crest/logo/shield disc** per team (no twin flag). National competitions keep the twin federation-crest + country-flag discs.
