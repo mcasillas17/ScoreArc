@@ -4,6 +4,7 @@ import { createDataStore } from './store';
 import { COMPETITIONS } from './competitions';
 import { TtlCache } from './cache';
 import sb from './__fixtures__/espn-scoreboard.json';
+import lcFixture from './__fixtures__/espn-leagues-cup-scoreboard.json';
 
 const wc = COMPETITIONS['world-cup-2026'];
 const lc = COMPETITIONS['leagues-cup'];
@@ -45,5 +46,18 @@ describe('EspnReadThroughStore', () => {
     urls.length = 0;
     await store.getBracket(lc);
     expect(urls.some((u) => u.includes('concacaf.leagues.cup/scoreboard') && !u.includes('?dates'))).toBe(true);
+  });
+});
+
+describe('Leagues Cup through the store', () => {
+  it('maps club matches from the Leagues Cup fixture', async () => {
+    const deps = { fetchJson: async () => lcFixture, cache: new TtlCache<unknown>() };
+    const store = createDataStore(deps);
+    const matches = await store.getMatches(COMPETITIONS['leagues-cup']);
+    expect(Array.isArray(matches)).toBe(true);
+    for (const m of matches) {
+      expect(typeof m.home.abbr).toBe('string');
+      expect(m.home.abbr.length).toBeGreaterThan(0);
+    }
   });
 });
