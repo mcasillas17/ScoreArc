@@ -15,9 +15,9 @@ interface Props {
 }
 
 const GROUPS: { status: HubStatus; label: string; labelClass: string }[] = [
-  { status: 'live',     label: 'LIVE NOW',      labelClass: 'hub-group-label--live' },
-  { status: 'upcoming', label: 'STARTING SOON', labelClass: 'hub-group-label--upcoming' },
-  { status: 'ongoing',  label: 'ONGOING',       labelClass: 'hub-group-label--ongoing' },
+  { status: 'live',     label: 'Live now',      labelClass: 'hub-group-label--live' },
+  { status: 'upcoming', label: 'Starting soon', labelClass: 'hub-group-label--upcoming' },
+  { status: 'ongoing',  label: 'Ongoing',       labelClass: 'hub-group-label--ongoing' },
 ];
 
 function badge(status: HubStatus): { text: string; className: string } {
