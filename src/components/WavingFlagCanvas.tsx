@@ -24,7 +24,7 @@ export default function WavingFlagCanvas({ src }: { src: string }) {
     let ready = false;
 
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    const COLS = 90;
+    const COLS = 220; // thin slices → smoother, more fluid cloth
     const colW = W / COLS;
     const amp = H * 0.05; // vertical wave height
     let t = reduce ? 0.6 : 0;
