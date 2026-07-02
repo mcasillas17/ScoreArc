@@ -4,6 +4,7 @@ import type { CSSProperties } from 'react';
 import type { BracketTeam } from '@/server/data/types';
 import { colorFor } from './RadialBracket';
 import { flagUrl } from '@/lib/flags';
+import WavingFlagCanvas from './WavingFlagCanvas';
 
 interface Props {
   team: BracketTeam;
@@ -103,7 +104,7 @@ export default function ChampionCelebration({ team, onClose, onShare }: Props) {
           <img className="champ-trophy" src="/trophy.png" alt="World Cup trophy" />
           <div className="champ-flagwrap">
             {flag ? (
-              <img className="champ-wave-flag" src={flag} alt={`${team.name} flag`} />
+              <WavingFlagCanvas src={flag} />
             ) : (
               <div className="champ-wave-flag champ-flag-fallback">{team.abbr}</div>
             )}

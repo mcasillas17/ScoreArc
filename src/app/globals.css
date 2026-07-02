@@ -1191,49 +1191,17 @@ a {
   50% { transform: translateY(-8px); }
 }
 
-/* Champion flag: crisp, undistorted, gently swaying in 3D like it's catching a
-   light breeze, with a soft sheen sweep. Anchored on the left (pole) edge. */
+/* Champion flag: a real (pseudo-)3D waving flag rendered on a <canvas>
+   (WavingFlagCanvas). The canvas does the cloth motion + shading; the wrapper
+   just adds depth. */
 .champ-flagwrap {
   position: relative;
-  transform-origin: left center;
-  animation: champ-billow 3s ease-in-out infinite;
   filter: drop-shadow(0 12px 22px rgba(0, 0, 0, 0.5));
 }
 .champ-wave-flag {
   display: block;
-  width: 190px;
-  height: 126px;
-  object-fit: cover;
-  border-radius: 4px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
-}
-.champ-flagwrap::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 4px;
-  pointer-events: none;
-  background: linear-gradient(
-    105deg,
-    rgba(255, 255, 255, 0) 40%,
-    rgba(255, 255, 255, 0.16) 50%,
-    rgba(255, 255, 255, 0) 60%
-  );
-  background-size: 280% 100%;
-  mix-blend-mode: screen;
-  animation: champ-sheen 3s ease-in-out infinite;
-}
-/* More flap: a couple of oscillations per cycle with a touch of skew, still
-   crisp (no image distortion). */
-@keyframes champ-billow {
-  0%, 100% { transform: perspective(600px) rotateY(-14deg) skewY(1.6deg); }
-  25% { transform: perspective(600px) rotateY(10deg) skewY(-1.2deg); }
-  50% { transform: perspective(600px) rotateY(-7deg) skewY(1.2deg); }
-  75% { transform: perspective(600px) rotateY(13deg) skewY(-1.6deg); }
-}
-@keyframes champ-sheen {
-  0%, 100% { background-position: 140% 0; }
-  50% { background-position: -40% 0; }
+  width: 200px;
+  height: 132px;
 }
 .champ-flag-fallback {
   display: flex;
@@ -1244,12 +1212,13 @@ a {
   font-size: 34px;
   font-weight: 800;
   letter-spacing: 2px;
+  border-radius: 4px;
 }
 
 @media (max-width: 480px) {
   .champ-emblem { gap: 18px; }
   .champ-trophy { width: 84px; }
-  .champ-wave-flag { width: 140px; height: 94px; }
+  .champ-wave-flag { width: 148px; height: 98px; }
 }
 
 .champ-title {
