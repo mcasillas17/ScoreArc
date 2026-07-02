@@ -28,6 +28,8 @@ const RINGS: { slug: string; rx: number; ry: number; discR: number }[] = [
   { slug: 'final', rx: 66, ry: 66, discR: 33 },
 ];
 
+const ROUND_LABELS = ['Round of 32', 'Round of 16', 'Quarterfinals', 'Semifinals', 'Final'];
+
 // Outer crest sits just beyond its flag along the same radial, and is SMALLER
 // than the flag (as in the reference: federation logo smaller than the flag).
 const CREST_SCALE = 1.155;
@@ -374,8 +376,44 @@ function buildRings(
   });
 }
 
+interface PickableMatch {
+  key: string;
+  depth: number;
+  matchIndex: number;
+  round: string;
+  teamA: BracketTeam;
+  teamB: BracketTeam;
+  selectedId: string | null;
+}
+
+function pickableMatches(rings: RingNode[][], picks: Record<string, string>): PickableMatch[] {
+  const matches: PickableMatch[] = [];
+  rings.forEach((ring, depth) => {
+    for (let i = 0; i < ring.length; i += 2) {
+      const a = ring[i];
+      const b = ring[i + 1];
+      if (!a || !b || !a.clickable || !b.clickable || a.team.placeholder || b.team.placeholder) {
+        continue;
+      }
+      const matchIndex = Math.floor(i / 2);
+      const key = `${depth}:${matchIndex}`;
+      matches.push({
+        key,
+        depth,
+        matchIndex,
+        round: ROUND_LABELS[depth] ?? `Round ${depth + 1}`,
+        teamA: a.team,
+        teamB: b.team,
+        selectedId: picks[key] ?? null,
+      });
+    }
+  });
+  return matches;
+}
+
 export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion }: Props) {
   const rings = buildRings(rounds, picks, mode);
+  const mobileMatches = mode === 'predict' ? pickableMatches(rings, picks) : [];
 
   // The CHAMPION is the effective winner of the FINAL (depth 4).
   const champion = rings[4]?.find((n) => n.isWinner)?.team ?? null;
@@ -727,7 +765,85 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           onClose={() => { setDetail(null); setSummary(null); }}
         />
       )}
+
+      {mode === 'predict' && mobileMatches.length > 0 && (
+        <MobilePickSheet
+          matches={mobileMatches}
+          onPick={(depth, matchIndex, teamId) => onPick?.(depth, matchIndex, teamId)}
+        />
+      )}
     </div>
+  );
+}
+
+function MobilePickSheet({
+  matches,
+  onPick,
+}: {
+  matches: PickableMatch[];
+  onPick: (depth: number, matchIndex: number, teamId: string) => void;
+}) {
+  return (
+    <div className="mobile-pick-sheet" aria-label="Mobile prediction picker">
+      <div className="mobile-pick-sheet__head">
+        <span>Pick by matchup</span>
+        <strong>{matches.filter((m) => m.selectedId).length}/{matches.length}</strong>
+      </div>
+      <div className="mobile-pick-list">
+        {matches.map((match, index) => (
+          <div className="mobile-pick-match" key={match.key}>
+            <div className="mobile-pick-match__meta">
+              <span>{match.round}</span>
+              <span>Match {index + 1}</span>
+            </div>
+            <div className="mobile-pick-options">
+              <MobileTeamPick
+                team={match.teamA}
+                selected={match.selectedId === match.teamA.id}
+                onClick={() => onPick(match.depth, match.matchIndex, match.teamA.id)}
+              />
+              <span className="mobile-pick-vs">vs</span>
+              <MobileTeamPick
+                team={match.teamB}
+                selected={match.selectedId === match.teamB.id}
+                onClick={() => onPick(match.depth, match.matchIndex, match.teamB.id)}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MobileTeamPick({
+  team,
+  selected,
+  onClick,
+}: {
+  team: BracketTeam;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const flag = flagUrl(team.abbr);
+  return (
+    <button
+      type="button"
+      className={`mobile-team-pick${selected ? ' mobile-team-pick--selected' : ''}`}
+      onClick={onClick}
+      aria-pressed={selected}
+    >
+      {flag ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={flag} alt="" className="mobile-team-pick__flag" referrerPolicy="no-referrer" />
+      ) : (
+        <span className="mobile-team-pick__flag mobile-team-pick__flag--fallback">{team.abbr}</span>
+      )}
+      <span className="mobile-team-pick__text">
+        <strong>{team.name}</strong>
+        <span>{selected ? 'Tap to clear' : 'Advance'}</span>
+      </span>
+    </button>
   );
 }
 
