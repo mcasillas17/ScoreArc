@@ -1196,7 +1196,7 @@ a {
 .champ-flagwrap {
   position: relative;
   transform-origin: left center;
-  animation: champ-billow 4.4s ease-in-out infinite;
+  animation: champ-billow 3s ease-in-out infinite;
   filter: drop-shadow(0 12px 22px rgba(0, 0, 0, 0.5));
 }
 .champ-wave-flag {
@@ -1221,11 +1221,15 @@ a {
   );
   background-size: 280% 100%;
   mix-blend-mode: screen;
-  animation: champ-sheen 4.4s ease-in-out infinite;
+  animation: champ-sheen 3s ease-in-out infinite;
 }
+/* More flap: a couple of oscillations per cycle with a touch of skew, still
+   crisp (no image distortion). */
 @keyframes champ-billow {
-  0%, 100% { transform: perspective(600px) rotateY(-8deg); }
-  50% { transform: perspective(600px) rotateY(6deg); }
+  0%, 100% { transform: perspective(600px) rotateY(-14deg) skewY(1.6deg); }
+  25% { transform: perspective(600px) rotateY(10deg) skewY(-1.2deg); }
+  50% { transform: perspective(600px) rotateY(-7deg) skewY(1.2deg); }
+  75% { transform: perspective(600px) rotateY(13deg) skewY(-1.6deg); }
 }
 @keyframes champ-sheen {
   0%, 100% { background-position: 140% 0; }
