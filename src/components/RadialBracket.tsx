@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type CSSProperties } from 'react';
 import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/types';
+import { OFFICIAL_R32_ORDER } from '@/server/data/competitions';
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
 import BracketZoom from './BracketZoom';
 
@@ -227,19 +228,6 @@ interface Slot {
   eliminated: boolean; // lost its match here (decided, not the winner) -> greyed
   clickable: boolean; // predict mode: this match can be decided by the user
 }
-
-// The FIXED official WC2026 knockout structure: each R32 match identified by its
-// two team abbreviations, listed in bracket LEAF order so adjacent pairs feed the
-// same R16, adjacent R16s feed the same QF, and so on. Verified against ESPN's
-// decided R16 matchups (e.g. R16: Paraguay vs France, Brazil vs Norway) and the
-// official feeder labels. Identity-based, so it's robust to ESPN re-ordering its
-// events and to the official numbering not matching event order.
-const OFFICIAL_R32_ORDER: [string, string][] = [
-  ['RSA', 'CAN'], ['NED', 'MAR'], ['GER', 'PAR'], ['FRA', 'SWE'],
-  ['ESP', 'AUT'], ['POR', 'CRO'], ['BEL', 'SEN'], ['USA', 'BIH'],
-  ['BRA', 'JPN'], ['CIV', 'NOR'], ['MEX', 'ECU'], ['ENG', 'COD'],
-  ['AUS', 'EGY'], ['ARG', 'CPV'], ['SUI', 'ALG'], ['COL', 'GHA'],
-];
 
 /**
  * Outer-ring order of the 32 R32 matches in official bracket order. Maps each
