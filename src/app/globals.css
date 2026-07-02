@@ -2289,3 +2289,149 @@ a {
 .cs-opt--active { color: var(--gold); }
 .sidebar-allcomps { display: block; margin-top: 6px; font-size: 12px; color: var(--text-muted); text-decoration: none; }
 .sidebar-allcomps:hover { color: var(--gold); }
+
+/* ===== Competition Hub ===== */
+.hub {
+  min-height: 100vh;
+  background: var(--bg);
+  padding: 32px 20px 48px;
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.hub-head {
+  margin-bottom: 28px;
+}
+
+.hub-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.hub-word {
+  color: var(--gold);
+  font-weight: 800;
+  font-size: 22px;
+  letter-spacing: -0.5px;
+}
+
+.hub-tag {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.hub-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.hub-group {}
+
+.hub-group-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.hub-group-label--live   { color: var(--live-red); }
+.hub-group-label--upcoming { color: var(--gold); }
+.hub-group-label--ongoing  { color: var(--text-muted); }
+
+.hub-live-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--live-red);
+  flex-shrink: 0;
+}
+
+.hub-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+@media (min-width: 600px) {
+  .hub-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.hub-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid #3a3a44;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #17171e, #101014);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.hub-tile:hover {
+  border-color: var(--gold);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+}
+
+.hub-tile-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.hub-emblem {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.hub-badge {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border-radius: 100px;
+  white-space: nowrap;
+}
+
+.hub-badge--live {
+  background: rgba(255, 92, 92, 0.16);
+  color: var(--live-red);
+  border: 1px solid rgba(255, 92, 92, 0.3);
+}
+
+.hub-badge--upcoming {
+  background: rgba(232, 184, 75, 0.14);
+  color: var(--gold);
+  border: 1px solid rgba(232, 184, 75, 0.3);
+}
+
+.hub-badge--ongoing {
+  background: rgba(154, 154, 164, 0.14);
+  color: var(--text-muted);
+  border: 1px solid rgba(154, 154, 164, 0.3);
+}
+
+.hub-name {
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--text);
+  line-height: 1.25;
+}
+
+.hub-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}

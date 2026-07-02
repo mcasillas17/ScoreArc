@@ -1,71 +1,36 @@
-import type { Metadata } from "next";
-import { dataStore } from "@/server/data/store";
-import { resolveSeason } from "@/server/data/competitions";
-import type { Match, BracketRound } from "@/server/data/types";
-import LiveScores from "@/components/LiveScores";
-import BracketInteractive from "@/components/BracketInteractive";
+import { listCompetitions, resolveSeason } from '@/server/data/competitions';
+import { dataStore } from '@/server/data/store';
+import { hubStatus } from '@/lib/hubStatus';
+import HubTiles from '@/components/HubTiles';
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
-// A shared bracket link (?c=ABR&name=Team) gets a champion-specific OG card.
-export async function generateMetadata({
-  searchParams,
-}: {
-  searchParams: { c?: string; name?: string };
-}): Promise<Metadata> {
-  const champ = searchParams.c;
-  if (!champ) return {};
-  const name = searchParams.name ?? champ;
-  const og = `/api/og?champ=${encodeURIComponent(champ)}&name=${encodeURIComponent(name)}`;
-  const title = `My 2026 World Cup champion: ${name} 🏆`;
-  return {
-    title,
-    openGraph: { title, images: [{ url: og, width: 1200, height: 630 }] },
-    twitter: { card: "summary_large_image", title, images: [og] },
-  };
-}
+export const metadata = { title: 'ScoreArc · Live Football' };
 
-export default async function Home() {
-  const WC = resolveSeason('world-cup')!;
-  let matches: Match[] = [];
-  let bracket: BracketRound[] = [];
-
-  try {
-    matches = await dataStore.getMatches(WC);
-  } catch {
-    // ESPN feed unavailable — SSE client will retry live
-  }
-
-  try {
-    bracket = await dataStore.getBracket(WC);
-  } catch {
-    // ESPN bracket unavailable — render empty state
-  }
-
+export default async function Hub() {
+  const tiles = await Promise.all(
+    listCompetitions().map(async (comp) => {
+      const rc = resolveSeason(comp.id)!;
+      let matches: Awaited<ReturnType<typeof dataStore.getMatches>> = [];
+      try {
+        matches = await dataStore.getMatches(rc);
+      } catch {
+        // ESPN feed unavailable — show best-effort status
+      }
+      const live = matches.filter((m) => m.state === 'live').length;
+      return { comp, season: rc.season, status: hubStatus(matches), count: matches.length, live };
+    }),
+  );
   return (
-    <main className="main">
-      <section id="bracket" className="bracket-section">
-        <header className="bracket-head">
-          <p className="bracket-eyebrow">FIFA World Cup 2026</p>
-          <h1 className="bracket-title">Knockout Bracket</h1>
-        </header>
-        {bracket.length > 0 ? (
-          <BracketInteractive rounds={bracket} />
-        ) : (
-          <div className="empty-section">
-            <p className="empty-text">Bracket data is unavailable right now.</p>
-          </div>
-        )}
-      </section>
-
-      <section id="live">
-        <h2 className="section-label">Live Scores</h2>
-        <LiveScores initialMatches={matches} />
-      </section>
-
-      <footer className="site-footer">
-        <p>ScoreArc · Data via ESPN · Not affiliated with FIFA</p>
-      </footer>
+    <main className="hub">
+      <header className="hub-head">
+        <div className="hub-brand">
+          <span>⚽</span>
+          <span className="hub-word">ScoreArc</span>
+        </div>
+        <p className="hub-tag">Live football — brackets, scores &amp; standings, every arc.</p>
+      </header>
+      <HubTiles tiles={tiles} />
     </main>
   );
 }
