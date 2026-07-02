@@ -11,10 +11,15 @@ export const dynamic = 'force-dynamic';
 export async function generateMetadata({ params, searchParams }: { params: { comp: string; season: string }; searchParams: { c?: string; name?: string } }): Promise<Metadata> {
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) return {};
+  const label = `${rc.competition.shortName} ${rc.season.label}`;
   const champ = searchParams.c;
-  if (!champ) return { title: `ScoreArc · ${rc.competition.name}` };
+  if (!champ) {
+    const og = `/api/og?comp=${encodeURIComponent(label)}`;
+    const title = `ScoreArc · ${rc.competition.name}`;
+    return { title, openGraph: { title, images: [{ url: og, width: 1200, height: 630 }] }, twitter: { card: 'summary_large_image', title, images: [og] } };
+  }
   const name = searchParams.name ?? champ;
-  const og = `/api/og?champ=${encodeURIComponent(champ)}&name=${encodeURIComponent(name)}`;
+  const og = `/api/og?champ=${encodeURIComponent(champ)}&name=${encodeURIComponent(name)}&comp=${encodeURIComponent(label)}`;
   const title = `My ${rc.competition.shortName} champion: ${name} 🏆`;
   return { title, openGraph: { title, images: [{ url: og, width: 1200, height: 630 }] }, twitter: { card: 'summary_large_image', title, images: [og] } };
 }
@@ -36,7 +41,7 @@ export default async function Workspace({ params }: { params: { comp: string; se
           <h1 className="bracket-title">Knockout Bracket</h1>
         </header>
         {bracket.length > 0
-          ? <BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={rc.competition.teamStyle} />
+          ? <BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={rc.competition.teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} />
           : <div className="empty-section"><p className="empty-text">Bracket data is unavailable right now.</p></div>}
       </section>
       <section id="live">
