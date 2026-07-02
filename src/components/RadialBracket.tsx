@@ -15,6 +15,7 @@ interface Props {
   onPick?: (depth: number, matchIndex: number, teamId: string) => void;
   onChampion?: (team: BracketTeam | null) => void;
   teamStyle: TeamStyle;
+  apiBase: string;
 }
 
 // True circle — center of the (square) SVG canvas.
@@ -363,7 +364,7 @@ function buildRings(
   });
 }
 
-export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle }: Props) {
+export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle, apiBase }: Props) {
   const rings = buildRings(rounds, picks, mode);
 
   // The CHAMPION is the effective winner of the FINAL (depth 4).
@@ -388,7 +389,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
     setSummary(null);
     setLoadingDetail(true);
     try {
-      const res = await fetch(`/api/match/${m.id}?home=${m.home.id}&away=${m.away.id}`, {
+      const res = await fetch(`${apiBase}/match/${m.id}?home=${m.home.id}&away=${m.away.id}`, {
         cache: 'no-store',
       });
       const json = (await res.json()) as MatchSummary;
@@ -408,7 +409,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
     const id = setInterval(async () => {
       try {
         const res = await fetch(
-          `/api/match/${detail.id}?home=${detail.home.id}&away=${detail.away.id}`,
+          `${apiBase}/match/${detail.id}?home=${detail.home.id}&away=${detail.away.id}`,
           { cache: 'no-store' },
         );
         if (res.ok && active) setSummary((await res.json()) as MatchSummary);

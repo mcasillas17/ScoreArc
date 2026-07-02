@@ -8,7 +8,7 @@ import ChampionCelebration from './ChampionCelebration';
 
 interface Props {
   rounds: BracketRound[];
-  apiBase?: string;
+  apiBase: string;
   teamStyle?: 'flag' | 'crest';
 }
 
@@ -87,7 +87,7 @@ function decodePicks(s: string): Record<string, string> {
   return {};
 }
 
-export default function BracketInteractive({ rounds: initialRounds, teamStyle = 'flag' }: Props) {
+export default function BracketInteractive({ rounds: initialRounds, apiBase, teamStyle = 'flag' }: Props) {
   const [mode, setMode] = useState<BracketMode>('live');
   const [rounds, setRounds] = useState<BracketRound[]>(initialRounds);
   const [picks, setPicks] = useState<Record<string, string>>({});
@@ -102,7 +102,7 @@ export default function BracketInteractive({ rounds: initialRounds, teamStyle = 
     let mounted = true;
     async function poll() {
       try {
-        const res = await fetch('/api/bracket', { cache: 'no-store' });
+        const res = await fetch(`${apiBase}/bracket`, { cache: 'no-store' });
         if (!res.ok) return;
         const data = (await res.json()) as BracketRound[];
         if (mounted && Array.isArray(data) && data.length) {
@@ -220,6 +220,7 @@ export default function BracketInteractive({ rounds: initialRounds, teamStyle = 
         onPick={handlePick}
         onChampion={setChampion}
         teamStyle={teamStyle}
+        apiBase={apiBase}
       />
 
       {mode === 'live' && <ThirdPlaceMini rounds={rounds} />}

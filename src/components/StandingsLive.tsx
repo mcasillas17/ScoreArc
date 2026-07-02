@@ -9,13 +9,13 @@ import ThirdPlaceTable from './ThirdPlaceTable';
 interface Props {
   initialGroups: Group[];
   initialScorers: TopScorer[];
-  apiBase?: string;
+  apiBase: string;
   teamStyle?: 'flag' | 'crest';
 }
 
 const REFRESH_MS = 30_000;
 
-export default function StandingsLive({ initialGroups, initialScorers }: Props) {
+export default function StandingsLive({ initialGroups, initialScorers, apiBase }: Props) {
   const [groups, setGroups] = useState<Group[]>(initialGroups);
   const [scorers, setScorers] = useState<TopScorer[]>(initialScorers);
 
@@ -26,8 +26,8 @@ export default function StandingsLive({ initialGroups, initialScorers }: Props) 
     async function poll() {
       try {
         const [g, s] = await Promise.all([
-          fetch('/api/groups', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)),
-          fetch('/api/top-scorers', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)),
+          fetch(`${apiBase}/standings`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)),
+          fetch(`${apiBase}/top-scorers`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)),
         ]);
         if (!mounted) return;
         if (Array.isArray(g) && g.length) setGroups(g);

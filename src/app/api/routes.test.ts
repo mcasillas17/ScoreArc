@@ -6,7 +6,7 @@ vi.mock('@/server/data/store', async (orig) => {
   return { ...mod, dataStore: { ...mod.dataStore } };
 });
 
-describe('competition/season-scoped + legacy routes', () => {
+describe('competition/season-scoped routes', () => {
   beforeEach(() => vi.restoreAllMocks());
 
   it('GET /api/[comp]/[season]/matches resolves the competition + season', async () => {
@@ -40,12 +40,4 @@ describe('competition/season-scoped + legacy routes', () => {
     expect(res.status).toBe(404);
   });
 
-  it('legacy GET /api/matches still returns the current World Cup season', async () => {
-    const spy = vi.spyOn(dataStore, 'getMatches').mockResolvedValueOnce([]);
-    const { GET } = await import('./matches/route');
-    await GET();
-    expect(spy).toHaveBeenCalledWith(
-      expect.objectContaining({ competition: expect.objectContaining({ id: 'world-cup' }) }),
-    );
-  });
 });

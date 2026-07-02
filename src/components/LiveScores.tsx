@@ -15,7 +15,7 @@ import {
 
 interface LiveScoresProps {
   initialMatches: Match[];
-  apiBase?: string;
+  apiBase: string;
   teamStyle?: 'flag' | 'crest';
 }
 
@@ -151,7 +151,7 @@ function MatchCard({ match, teamStyle }: { match: Match; teamStyle: TeamStyle })
   );
 }
 
-export default function LiveScores({ initialMatches, teamStyle = 'flag' }: LiveScoresProps) {
+export default function LiveScores({ initialMatches, apiBase, teamStyle = 'flag' }: LiveScoresProps) {
   const sortedInitial = sortMatches(initialMatches);
   const [matches, setMatches] = useState<Match[]>(sortedInitial);
   const [index, setIndex] = useState(() => firstLiveIndex(sortedInitial));
@@ -171,12 +171,12 @@ export default function LiveScores({ initialMatches, teamStyle = 'flag' }: LiveS
   // (React state updates from touchmove haven't flushed yet).
   const dragRef = useRef(0);
 
-  // Poll /api/matches every 15s
+  // Poll matches endpoint every 15s
   useEffect(() => {
     let mounted = true;
     async function poll() {
       try {
-        const res = await fetch("/api/matches", { cache: "no-store" });
+        const res = await fetch(`${apiBase}/matches`, { cache: "no-store" });
         if (res.ok) {
           const data = (await res.json()) as Match[];
           if (mounted) {
