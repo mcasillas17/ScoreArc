@@ -8,6 +8,12 @@ import ChampionCelebration from './ChampionCelebration';
 
 interface Props {
   rounds: BracketRound[];
+  apiBase: string;
+  teamStyle?: 'flag' | 'crest';
+  compId: string;
+  seasonId: string;
+  compShortName: string;
+  seasonLabel: string;
 }
 
 // Compact third-place match card — shown once both semi-final losers are known
@@ -85,7 +91,7 @@ function decodePicks(s: string): Record<string, string> {
   return {};
 }
 
-export default function BracketInteractive({ rounds: initialRounds }: Props) {
+export default function BracketInteractive({ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, seasonId, compShortName, seasonLabel }: Props) {
   const [mode, setMode] = useState<BracketMode>('live');
   const [rounds, setRounds] = useState<BracketRound[]>(initialRounds);
   const [picks, setPicks] = useState<Record<string, string>>({});
@@ -100,7 +106,7 @@ export default function BracketInteractive({ rounds: initialRounds }: Props) {
     let mounted = true;
     async function poll() {
       try {
-        const res = await fetch('/api/bracket', { cache: 'no-store' });
+        const res = await fetch(`${apiBase}/bracket`, { cache: 'no-store' });
         if (!res.ok) return;
         const data = (await res.json()) as BracketRound[];
         if (mounted && Array.isArray(data) && data.length) {
@@ -145,13 +151,13 @@ export default function BracketInteractive({ rounds: initialRounds }: Props) {
     const champParam = champion
       ? `&c=${encodeURIComponent(champion.abbr)}&name=${encodeURIComponent(champion.name)}`
       : '';
-    const url = `${origin}/?b=${encodePicks(picks)}${champParam}`;
+    const label = `${compShortName} ${seasonLabel}`; // e.g. "World Cup 2026" / "Leagues Cup 2026"
+    const url = `${origin}/c/${compId}/${seasonId}?b=${encodePicks(picks)}${champParam}`;
     const text = champion
-      ? `My pick to win the 2026 World Cup: ${champion.name} 🏆⚽ — build your bracket on ScoreArc:`
-      : `Building my 2026 World Cup bracket on ScoreArc ⚽ — make yours:`;
-    const tweet = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
-      text,
-    )}&url=${encodeURIComponent(url)}&hashtags=WorldCup2026`;
+      ? `My pick to win the ${label}: ${champion.name} 🏆⚽ — build your bracket on ScoreArc:`
+      : `Building my ${label} bracket on ScoreArc ⚽ — make yours:`;
+    const hashtag = `${compShortName.replace(/\s+/g, '')}${seasonLabel}`; // "WorldCup2026" / "LeaguesCup2026"
+    const tweet = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}&hashtags=${hashtag}`;
     window.open(tweet, '_blank', 'noopener,noreferrer');
   }
 
@@ -217,6 +223,8 @@ export default function BracketInteractive({ rounds: initialRounds }: Props) {
         picks={picks}
         onPick={handlePick}
         onChampion={setChampion}
+        teamStyle={teamStyle}
+        apiBase={apiBase}
       />
 
       {mode === 'live' && <ThirdPlaceMini rounds={rounds} />}

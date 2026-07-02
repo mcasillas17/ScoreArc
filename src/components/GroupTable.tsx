@@ -3,6 +3,7 @@ import TeamBadge from "./TeamBadge";
 
 interface GroupTableProps {
   group: Group;
+  teamStyle?: 'flag' | 'crest';
 }
 
 function rowClass(s: Standing): string {
@@ -15,7 +16,7 @@ function fmtGD(gd: number): string {
   return gd > 0 ? `+${gd}` : String(gd);
 }
 
-export default function GroupTable({ group }: GroupTableProps) {
+export default function GroupTable({ group, teamStyle }: GroupTableProps) {
   return (
     <div className="group-card">
       <h2 className="group-name">{group.name}</h2>
@@ -40,7 +41,7 @@ export default function GroupTable({ group }: GroupTableProps) {
               <td className="rank-cell">{s.rank}</td>
               <td className="team-cell">
                 <div className="team-cell-inner">
-                  <TeamBadge team={s.team} size={22} />
+                  <TeamBadge team={s.team} size={22} style={teamStyle} />
                   <span className="team-name">{s.team.name}</span>
                 </div>
               </td>

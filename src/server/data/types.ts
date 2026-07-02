@@ -149,6 +149,7 @@ export interface TopScorer {
   player: string;
   teamAbbr: string;
   teamName: string;
+  teamCrestUrl: string | null;
   goals: number;
   matches: number | null;
 }

@@ -6,7 +6,13 @@ function fmtGD(gd: number): string {
   return gd > 0 ? `+${gd}` : String(gd);
 }
 
-export default function ThirdPlaceTable({ groups }: { groups: Group[] }) {
+export default function ThirdPlaceTable({
+  groups,
+  teamStyle,
+}: {
+  groups: Group[];
+  teamStyle?: 'flag' | 'crest';
+}) {
   const rows = thirdPlacedRanking(groups);
   if (rows.length === 0) {
     return <p className="empty-text">Third-place data is unavailable right now.</p>;
@@ -35,7 +41,7 @@ export default function ThirdPlaceTable({ groups }: { groups: Group[] }) {
               <td className="rank-cell">{r.rank}</td>
               <td className="team-cell">
                 <div className="team-cell-inner">
-                  <TeamBadge team={r.team} size={22} />
+                  <TeamBadge team={r.team} size={22} style={teamStyle} />
                   <span className="team-name">{r.team.name}</span>
                 </div>
               </td>

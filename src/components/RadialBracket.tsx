@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type CSSProperties } from 'react';
 import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/types';
+import { OFFICIAL_R32_ORDER, type TeamStyle } from '@/server/data/competitions';
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
 import BracketZoom from './BracketZoom';
 
@@ -13,6 +14,8 @@ interface Props {
   picks?: Record<string, string>;
   onPick?: (depth: number, matchIndex: number, teamId: string) => void;
   onChampion?: (team: BracketTeam | null) => void;
+  teamStyle: TeamStyle;
+  apiBase: string;
 }
 
 // True circle — center of the (square) SVG canvas.
@@ -228,19 +231,6 @@ interface Slot {
   clickable: boolean; // predict mode: this match can be decided by the user
 }
 
-// The FIXED official WC2026 knockout structure: each R32 match identified by its
-// two team abbreviations, listed in bracket LEAF order so adjacent pairs feed the
-// same R16, adjacent R16s feed the same QF, and so on. Verified against ESPN's
-// decided R16 matchups (e.g. R16: Paraguay vs France, Brazil vs Norway) and the
-// official feeder labels. Identity-based, so it's robust to ESPN re-ordering its
-// events and to the official numbering not matching event order.
-const OFFICIAL_R32_ORDER: [string, string][] = [
-  ['RSA', 'CAN'], ['NED', 'MAR'], ['GER', 'PAR'], ['FRA', 'SWE'],
-  ['ESP', 'AUT'], ['POR', 'CRO'], ['BEL', 'SEN'], ['USA', 'BIH'],
-  ['BRA', 'JPN'], ['CIV', 'NOR'], ['MEX', 'ECU'], ['ENG', 'COD'],
-  ['AUS', 'EGY'], ['ARG', 'CPV'], ['SUI', 'ALG'], ['COL', 'GHA'],
-];
-
 /**
  * Outer-ring order of the 32 R32 matches in official bracket order. Maps each
  * fixed matchup (by team abbreviations) to its index in the ESPN data; falls
@@ -374,7 +364,7 @@ function buildRings(
   });
 }
 
-export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion }: Props) {
+export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle, apiBase }: Props) {
   const rings = buildRings(rounds, picks, mode);
 
   // The CHAMPION is the effective winner of the FINAL (depth 4).
@@ -399,7 +389,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
     setSummary(null);
     setLoadingDetail(true);
     try {
-      const res = await fetch(`/api/match/${m.id}?home=${m.home.id}&away=${m.away.id}`, {
+      const res = await fetch(`${apiBase}/match/${m.id}?home=${m.home.id}&away=${m.away.id}`, {
         cache: 'no-store',
       });
       const json = (await res.json()) as MatchSummary;
@@ -419,7 +409,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
     const id = setInterval(async () => {
       try {
         const res = await fetch(
-          `/api/match/${detail.id}?home=${detail.home.id}&away=${detail.away.id}`,
+          `${apiBase}/match/${detail.id}?home=${detail.home.id}&away=${detail.away.id}`,
           { cache: 'no-store' },
         );
         if (res.ok && active) setSummary((await res.json()) as MatchSummary);
@@ -660,6 +650,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             clickable={node.clickable}
             viewable={false}
             onClick={() => handleDiscClick(node)}
+            teamStyle={teamStyle}
           />
         ))}
 
@@ -702,6 +693,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                   else if (wonMatch) handleView(wonMatch);
                 }}
                 path={path}
+                teamStyle={teamStyle}
               />
             );
           });
@@ -810,19 +802,22 @@ function FallbackDisc({
   );
 }
 
-/** Outer team: federation crest (outside) + flag roundel (inside), touching. */
+/** Outer team: federation crest (outside) + flag roundel (inside), touching.
+ *  For club style, renders a single crest disc only (no outer federation badge). */
 function OuterTeam({
   node,
   mode,
   clickable,
   viewable,
   onClick,
+  teamStyle,
 }: {
   node: RingNode;
   mode: BracketMode;
   clickable: boolean;
   viewable: boolean;
   onClick: () => void;
+  teamStyle: TeamStyle;
 }) {
   const { team, isWinner } = node;
   const ringStroke = isWinner ? '#e8b84b' : '#2a2a32';
@@ -843,52 +838,84 @@ function OuterTeam({
       tabIndex={interactive ? 0 : undefined}
       role={interactive ? 'button' : undefined}
     >
-      {/* Crest (outer) — meet so the badge isn't cropped, on a light disc */}
-      {crest ? (
-        <ImageDisc
-          id={`crest-${node.index}`}
-          x={node.crestX}
-          y={node.crestY}
-          r={CREST_R}
-          href={crest}
-          fit="meet"
-          bg="#f4f4f6"
-          ringStroke={ringStroke}
-          ringWidth={ringWidth}
-        />
+      {teamStyle === 'crest' ? (
+        /* Club style: single crest disc — meet fit on a light background */
+        (() => {
+          const clubCrest = team.placeholder ? null : (team.crestUrl ?? crestSrc(team.abbr));
+          return clubCrest ? (
+            <ImageDisc
+              id={`flag-${node.index}`}
+              x={node.x}
+              y={node.y}
+              r={node.discR}
+              href={clubCrest}
+              fit="meet"
+              bg="#f4f4f6"
+              ringStroke={ringStroke}
+              ringWidth={ringWidth}
+            />
+          ) : (
+            <FallbackDisc
+              x={node.x}
+              y={node.y}
+              r={node.discR}
+              abbr={team.abbr}
+              ringStroke={ringStroke}
+              ringWidth={ringWidth}
+            />
+          );
+        })()
       ) : (
-        <FallbackDisc
-          x={node.crestX}
-          y={node.crestY}
-          r={CREST_R}
-          abbr={team.abbr}
-          ringStroke={ringStroke}
-          ringWidth={ringWidth}
-        />
-      )}
+        /* National style: twin crest (outer) + flag (inner) — unchanged */
+        <>
+          {/* Crest (outer) — meet so the badge isn't cropped, on a light disc */}
+          {crest ? (
+            <ImageDisc
+              id={`crest-${node.index}`}
+              x={node.crestX}
+              y={node.crestY}
+              r={CREST_R}
+              href={crest}
+              fit="meet"
+              bg="#f4f4f6"
+              ringStroke={ringStroke}
+              ringWidth={ringWidth}
+            />
+          ) : (
+            <FallbackDisc
+              x={node.crestX}
+              y={node.crestY}
+              r={CREST_R}
+              abbr={team.abbr}
+              ringStroke={ringStroke}
+              ringWidth={ringWidth}
+            />
+          )}
 
-      {/* Flag (inner) — slice so it fills the circle */}
-      {flag ? (
-        <ImageDisc
-          id={`flag-${node.index}`}
-          x={node.x}
-          y={node.y}
-          r={node.discR}
-          href={flag}
-          fit="slice"
-          bg={null}
-          ringStroke={ringStroke}
-          ringWidth={ringWidth}
-        />
-      ) : (
-        <FallbackDisc
-          x={node.x}
-          y={node.y}
-          r={node.discR}
-          abbr={team.abbr}
-          ringStroke={ringStroke}
-          ringWidth={ringWidth}
-        />
+          {/* Flag (inner) — slice so it fills the circle */}
+          {flag ? (
+            <ImageDisc
+              id={`flag-${node.index}`}
+              x={node.x}
+              y={node.y}
+              r={node.discR}
+              href={flag}
+              fit="slice"
+              bg={null}
+              ringStroke={ringStroke}
+              ringWidth={ringWidth}
+            />
+          ) : (
+            <FallbackDisc
+              x={node.x}
+              y={node.y}
+              r={node.discR}
+              abbr={team.abbr}
+              ringStroke={ringStroke}
+              ringWidth={ringWidth}
+            />
+          )}
+        </>
       )}
     </g>
   );
@@ -908,6 +935,7 @@ function InnerFlag({
   viewable,
   onClick,
   path,
+  teamStyle,
 }: {
   node: RingNode;
   mode: BracketMode;
@@ -915,39 +943,67 @@ function InnerFlag({
   viewable: boolean;
   onClick: () => void;
   path: TravelPath;
+  teamStyle: TeamStyle;
 }) {
   const { team, isWinner } = node;
   const ringStroke = isWinner ? '#e8b84b' : '#2a2a32';
   const ringWidth = isWinner ? 2.4 : 1;
-  const flag = flagUrl(team.abbr);
   const interactive = (mode === 'predict' && clickable) || viewable;
 
   const cls = `bracket-disc bracket-inner-disc${interactive ? ' bracket-disc--clickable' : ''}${
     node.eliminated ? ' bracket-disc--eliminated' : ''
   }`;
 
-  const disc = !flag ? (
-    <FallbackDisc
-      x={node.x}
-      y={node.y}
-      r={node.discR}
-      abbr={team.abbr}
-      ringStroke={ringStroke}
-      ringWidth={ringWidth}
-    />
-  ) : (
-    <ImageDisc
-      id={`inner-${node.depth}-${node.index}`}
-      x={node.x}
-      y={node.y}
-      r={node.discR}
-      href={flag}
-      fit="slice"
-      bg={null}
-      ringStroke={ringStroke}
-      ringWidth={ringWidth}
-    />
-  );
+  let disc: React.ReactNode;
+  if (teamStyle === 'crest') {
+    const img = team.crestUrl ?? crestSrc(team.abbr);
+    disc = img ? (
+      <ImageDisc
+        id={`inner-${node.depth}-${node.index}`}
+        x={node.x}
+        y={node.y}
+        r={node.discR}
+        href={img}
+        fit="meet"
+        bg="#f4f4f6"
+        ringStroke={ringStroke}
+        ringWidth={ringWidth}
+      />
+    ) : (
+      <FallbackDisc
+        x={node.x}
+        y={node.y}
+        r={node.discR}
+        abbr={team.abbr}
+        ringStroke={ringStroke}
+        ringWidth={ringWidth}
+      />
+    );
+  } else {
+    const flag = flagUrl(team.abbr);
+    disc = !flag ? (
+      <FallbackDisc
+        x={node.x}
+        y={node.y}
+        r={node.discR}
+        abbr={team.abbr}
+        ringStroke={ringStroke}
+        ringWidth={ringWidth}
+      />
+    ) : (
+      <ImageDisc
+        id={`inner-${node.depth}-${node.index}`}
+        x={node.x}
+        y={node.y}
+        r={node.discR}
+        href={flag}
+        fit="slice"
+        bg={null}
+        ringStroke={ringStroke}
+        ringWidth={ringWidth}
+      />
+    );
+  }
 
   const style = {
     '--x0': `${path.x0}px`, '--y0': `${path.y0}px`,

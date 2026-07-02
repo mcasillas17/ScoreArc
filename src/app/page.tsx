@@ -1,69 +1,62 @@
-import type { Metadata } from "next";
-import { dataService } from "@/server/data/service";
-import type { Match, BracketRound } from "@/server/data/types";
-import LiveScores from "@/components/LiveScores";
-import BracketInteractive from "@/components/BracketInteractive";
+import Link from 'next/link';
+import { listCompetitions, resolveSeason } from '@/server/data/competitions';
+import { dataStore } from '@/server/data/store';
+import { hubStatus } from '@/lib/hubStatus';
+import HubTiles from '@/components/HubTiles';
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
-// A shared bracket link (?c=ABR&name=Team) gets a champion-specific OG card.
-export async function generateMetadata({
-  searchParams,
-}: {
-  searchParams: { c?: string; name?: string };
-}): Promise<Metadata> {
-  const champ = searchParams.c;
-  if (!champ) return {};
-  const name = searchParams.name ?? champ;
-  const og = `/api/og?champ=${encodeURIComponent(champ)}&name=${encodeURIComponent(name)}`;
-  const title = `My 2026 World Cup champion: ${name} 🏆`;
-  return {
-    title,
-    openGraph: { title, images: [{ url: og, width: 1200, height: 630 }] },
-    twitter: { card: "summary_large_image", title, images: [og] },
-  };
-}
+export const metadata = { title: 'ScoreArc · Live Football' };
 
-export default async function Home() {
-  let matches: Match[] = [];
-  let bracket: BracketRound[] = [];
-
-  try {
-    matches = await dataService.getMatches();
-  } catch {
-    // ESPN feed unavailable — SSE client will retry live
-  }
-
-  try {
-    bracket = await dataService.getBracket();
-  } catch {
-    // ESPN bracket unavailable — render empty state
-  }
-
+export default async function Hub() {
+  const tiles = await Promise.all(
+    listCompetitions().map(async (comp) => {
+      const rc = resolveSeason(comp.id)!;
+      const hasBracket = rc.season.format.hasBracket;
+      let matches: Awaited<ReturnType<typeof dataStore.getMatches>> = [];
+      let bracket: Awaited<ReturnType<typeof dataStore.getBracket>> = [];
+      let standings: Awaited<ReturnType<typeof dataStore.getStandings>> = [];
+      try {
+        matches = await dataStore.getMatches(rc);
+      } catch {
+        // ESPN feed unavailable — show best-effort status
+      }
+      // A knockout competition proves it's underway via a decided bracket match;
+      // a league proves it via games already played in its table.
+      if (hasBracket) {
+        try {
+          bracket = await dataStore.getBracket(rc);
+        } catch {
+          // no bracket yet (e.g. pre-knockout) — not fatal for status
+        }
+      } else {
+        try {
+          standings = await dataStore.getStandings(rc);
+        } catch {
+          // standings unavailable — fall back to scoreboard-only status
+        }
+      }
+      const live = matches.filter((m) => m.state === 'live').length;
+      // Underway if any fixture has finished, any knockout match is decided, or
+      // the league table shows games played — so a mid-season competition isn't
+      // mislabelled "Starting soon" just because today's fixtures are scheduled.
+      const started =
+        matches.some((m) => m.state === 'finished') ||
+        bracket.some((r) => r.matches.some((m) => m.winnerId)) ||
+        standings.some((g) => g.standings.some((s) => s.played > 0));
+      return { comp, season: rc.season, status: hubStatus(matches, started), count: matches.length, live };
+    }),
+  );
   return (
-    <main className="main">
-      <section id="bracket" className="bracket-section">
-        <header className="bracket-head">
-          <p className="bracket-eyebrow">FIFA World Cup 2026</p>
-          <h1 className="bracket-title">Knockout Bracket</h1>
-        </header>
-        {bracket.length > 0 ? (
-          <BracketInteractive rounds={bracket} />
-        ) : (
-          <div className="empty-section">
-            <p className="empty-text">Bracket data is unavailable right now.</p>
-          </div>
-        )}
-      </section>
-
-      <section id="live">
-        <h2 className="section-label">Live Scores</h2>
-        <LiveScores initialMatches={matches} />
-      </section>
-
-      <footer className="site-footer">
-        <p>ScoreArc · Data via ESPN · Not affiliated with FIFA</p>
-      </footer>
+    <main className="hub">
+      <header className="hub-head">
+        <Link href="/" className="hub-brand" aria-label="ScoreArc home">
+          <span>⚽</span>
+          <span className="hub-word">ScoreArc</span>
+        </Link>
+        <p className="hub-tag">Live football — brackets, scores &amp; standings, every arc.</p>
+      </header>
+      <HubTiles tiles={tiles} />
     </main>
   );
 }

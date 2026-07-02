@@ -9,6 +9,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const champ = searchParams.get('champ')?.toUpperCase() ?? '';
   const name = searchParams.get('name') ?? '';
+  const comp = searchParams.get('comp') || 'World Cup 2026';
   const flag = champ ? flagUrl(champ) : null;
 
   return new ImageResponse(
@@ -62,7 +63,7 @@ export async function GET(req: Request) {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-            <div style={{ fontSize: 40, fontWeight: 700 }}>World Cup 2026</div>
+            <div style={{ fontSize: 40, fontWeight: 700 }}>{comp}</div>
             <div style={{ fontSize: 26, color: '#b9b9c2' }}>
               Live radial bracket · scores · build your own
             </div>

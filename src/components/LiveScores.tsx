@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import type { Match, Team } from "@/server/data/types";
+import type { TeamStyle } from "@/server/data/competitions";
 import { flagUrl } from "@/lib/flags";
 import {
   ScorersRow,
@@ -14,6 +15,8 @@ import {
 
 interface LiveScoresProps {
   initialMatches: Match[];
+  apiBase: string;
+  teamStyle?: 'flag' | 'crest';
 }
 
 const STATE_ORDER: Record<string, number> = { live: 0, finished: 1, scheduled: 2 };
@@ -41,8 +44,10 @@ function formatKickoff(iso: string): string {
   }
 }
 
-function FullFlag({ team }: { team: Team }) {
-  const src = flagUrl(team.abbr) ?? team.crestUrl;
+function FullFlag({ team, style }: { team: Team; style: TeamStyle }) {
+  const src = style === 'crest'
+    ? (team.crestUrl ?? flagUrl(team.abbr))
+    : (flagUrl(team.abbr) ?? team.crestUrl);
   return (
     <div className="ls-team">
       {src ? (
@@ -62,7 +67,7 @@ function FullFlag({ team }: { team: Team }) {
   );
 }
 
-function MatchCard({ match }: { match: Match }) {
+function MatchCard({ match, teamStyle }: { match: Match; teamStyle: TeamStyle }) {
   const started = match.state === "live" || match.state === "finished";
   const ls = liveStatus(match);
 
@@ -80,7 +85,7 @@ function MatchCard({ match }: { match: Match }) {
   return (
     <div className="match-card">
       <div className="match-teams">
-        <FullFlag team={match.home} />
+        <FullFlag team={match.home} style={teamStyle} />
 
         <div className="match-center">
           {started ? (
@@ -101,7 +106,7 @@ function MatchCard({ match }: { match: Match }) {
           {match.note && <span className="match-note">{match.note}</span>}
         </div>
 
-        <FullFlag team={match.away} />
+        <FullFlag team={match.away} style={teamStyle} />
       </div>
 
       {match.shootoutDetail && (
@@ -146,7 +151,7 @@ function MatchCard({ match }: { match: Match }) {
   );
 }
 
-export default function LiveScores({ initialMatches }: LiveScoresProps) {
+export default function LiveScores({ initialMatches, apiBase, teamStyle = 'flag' }: LiveScoresProps) {
   const sortedInitial = sortMatches(initialMatches);
   const [matches, setMatches] = useState<Match[]>(sortedInitial);
   const [index, setIndex] = useState(() => firstLiveIndex(sortedInitial));
@@ -166,12 +171,12 @@ export default function LiveScores({ initialMatches }: LiveScoresProps) {
   // (React state updates from touchmove haven't flushed yet).
   const dragRef = useRef(0);
 
-  // Poll /api/matches every 15s
+  // Poll matches endpoint every 15s
   useEffect(() => {
     let mounted = true;
     async function poll() {
       try {
-        const res = await fetch("/api/matches", { cache: "no-store" });
+        const res = await fetch(`${apiBase}/matches`, { cache: "no-store" });
         if (res.ok) {
           const data = (await res.json()) as Match[];
           if (mounted) {
@@ -322,13 +327,13 @@ export default function LiveScores({ initialMatches }: LiveScoresProps) {
             onTransitionEnd={onTransitionEnd}
           >
             <div className="ls-slide">
-              <MatchCard match={matches[prevIdx]} />
+              <MatchCard match={matches[prevIdx]} teamStyle={teamStyle} />
             </div>
             <div className="ls-slide">
-              <MatchCard match={matches[index]} />
+              <MatchCard match={matches[index]} teamStyle={teamStyle} />
             </div>
             <div className="ls-slide">
-              <MatchCard match={matches[nextIdx]} />
+              <MatchCard match={matches[nextIdx]} teamStyle={teamStyle} />
             </div>
           </div>
         </div>

@@ -88,6 +88,12 @@ a {
   gap: 9px;
   padding: 4px 8px 2px;
 }
+.sidebar-brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  text-decoration: none;
+}
 
 .sidebar-toggle {
   margin-left: auto;
@@ -678,9 +684,17 @@ a {
 
 /* ===== Groups Grid ===== */
 .groups-grid {
+  /* auto-FIT + 1fr so a few tables share the row and fill it (two conference
+     tables split it in half; a dozen WC groups wrap to several columns) instead
+     of being cramped in narrow tracks. The per-card max-width below then keeps a
+     single league table from stretching so wide its columns look sparse. */
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  justify-content: start;
   gap: 14px;
+}
+.groups-grid > .group-card {
+  max-width: 640px;
 }
 
 /* ===== Group Card ===== */
@@ -957,6 +971,40 @@ a {
   letter-spacing: 0.03em;
 }
 
+/* Mobile bottom tab bar for section nav — hidden on desktop, shown under the
+   860px breakpoint below (where the sidebar becomes a slim top bar). */
+.mobile-tabbar {
+  display: none;
+}
+.mtab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 4px;
+  min-width: 0;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.mtab-icon {
+  display: inline-flex;
+}
+.mtab-icon svg {
+  width: 21px;
+  height: 21px;
+}
+.mtab-label {
+  white-space: nowrap;
+}
+.mtab--active {
+  color: var(--gold);
+}
+
 /* ===== Responsive: sidebar collapses to top bar ===== */
 @media (max-width: 860px) {
   .app-shell {
@@ -989,16 +1037,22 @@ a {
     flex-shrink: 0;
   }
 
+  /* Sections move to the fixed bottom tab bar; hide the top-bar nav. */
   .sidebar-nav {
-    flex-direction: row;
-    flex: 1;
-    gap: 4px;
-    overflow-x: auto;
-    scrollbar-width: none;
+    display: none;
   }
 
-  .sidebar-nav::-webkit-scrollbar {
-    display: none;
+  .mobile-tabbar {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    background: var(--surface-1);
+    border-top: 1px solid var(--hairline);
+    padding-bottom: env(safe-area-inset-bottom);
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.35);
   }
 
   .nav-item {
@@ -1023,7 +1077,7 @@ a {
 
   .main {
     margin-left: 0;
-    padding: 24px 16px 40px;
+    padding: 24px 16px calc(84px + env(safe-area-inset-bottom));
     gap: 32px;
     max-width: 100%;
   }
@@ -2273,4 +2327,202 @@ a {
   font-weight: 600;
   color: var(--text-muted);
   letter-spacing: 0.04em;
+}
+
+/* ===== Competition Switcher ===== */
+.sidebar-switcher { position: relative; margin: 4px 0 8px; }
+.cs-current { width: 100%; text-align: left; background: var(--surface-1); border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; }
+.cs-current:hover { border-color: var(--gold); }
+.cs-label { font-size: 8px; letter-spacing: 0.12em; color: var(--text-muted); text-transform: uppercase; }
+.cs-name { display: flex; align-items: center; gap: 7px; font-weight: 700; font-size: 13px; color: var(--text); }
+.cs-emblem { font-size: 15px; }
+.cs-season { font-size: 10px; color: var(--text-muted); }
+.cs-menu { position: absolute; z-index: 20; left: 0; right: 0; margin-top: 4px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+.cs-opt { display: flex; align-items: center; gap: 8px; padding: 9px 11px; font-size: 13px; color: var(--text); text-decoration: none; }
+.cs-opt:hover { background: var(--surface-1); }
+.cs-opt--active { color: var(--gold); }
+.sidebar-allcomps { display: block; margin-top: 6px; font-size: 12px; color: var(--text-muted); text-decoration: none; }
+.sidebar-allcomps:hover { color: var(--gold); }
+
+/* ===== Competition Hub ===== */
+.hub {
+  min-height: 100vh;
+  background: var(--bg);
+  padding: 44px 24px 64px;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.hub-head {
+  margin-bottom: 34px;
+}
+
+.hub-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  width: fit-content;
+  text-decoration: none;
+}
+
+.hub-word {
+  color: var(--gold);
+  font-weight: 800;
+  font-size: 26px;
+  letter-spacing: -0.5px;
+}
+
+.hub-tag {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.hub-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.hub-group-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.hub-group-label--live   { color: var(--live-red); }
+.hub-group-label--upcoming { color: var(--gold); }
+.hub-group-label--ongoing  { color: #34d399; }
+
+/* Animated status cue for active competitions (live / ongoing). The section
+   label gets a radar "ping" (expanding ring); the tile badge gets a contained
+   pulsing dot — same family as the Live Scores live indicator. */
+.hub-ping {
+  position: relative;
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.hub-ping::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: currentColor;
+  animation: hub-ping 1.8s ease-out infinite;
+}
+.hub-ping--live    { color: var(--live-red); }
+.hub-ping--ongoing { color: #34d399; }
+
+@keyframes hub-ping {
+  0%   { transform: scale(1);   opacity: 0.55; }
+  70%  { opacity: 0; }
+  100% { transform: scale(2.8); opacity: 0; }
+}
+
+.hub-bdot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+  animation: pulse 1.4s ease infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-ping::after { animation: none; opacity: 0.4; }
+  .hub-bdot { animation: none; }
+}
+
+.hub-grid {
+  /* auto-FILL (not auto-fit) keeps empty tracks so a lone tile stays a card
+     width instead of stretching across the whole row. */
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 18px;
+}
+
+.hub-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px 22px 20px;
+  min-height: 148px;
+  border: 1px solid #3a3a44;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #17171e, #101014);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+.hub-tile:hover {
+  border-color: var(--gold);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  transform: translateY(-2px);
+}
+
+.hub-tile-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.hub-emblem {
+  font-size: 40px;
+  line-height: 1;
+}
+
+.hub-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 3px 9px;
+  border-radius: 100px;
+  white-space: nowrap;
+}
+
+.hub-badge--live {
+  background: rgba(255, 92, 92, 0.16);
+  color: var(--live-red);
+  border: 1px solid rgba(255, 92, 92, 0.3);
+}
+
+.hub-badge--upcoming {
+  background: rgba(232, 184, 75, 0.14);
+  color: var(--gold);
+  border: 1px solid rgba(232, 184, 75, 0.3);
+}
+
+.hub-badge--ongoing {
+  background: rgba(52, 211, 153, 0.13);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.32);
+}
+
+.hub-name {
+  font-weight: 800;
+  font-size: 20px;
+  color: var(--text);
+  line-height: 1.25;
+}
+
+.hub-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-top: auto;
 }

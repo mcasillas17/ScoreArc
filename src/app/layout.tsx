@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
-import Sidebar from "@/components/Sidebar";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -16,23 +15,23 @@ const geistMono = localFont({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.scorearc.futbol"),
-  title: "ScoreArc · World Cup 2026 Live",
+  title: "ScoreArc · Live Football",
   description:
-    "Live FIFA World Cup 2026 scores, group standings, and match updates — powered by ScoreArc.",
+    "Live football brackets, scores, and standings — every arc.",
   openGraph: {
-    title: "ScoreArc · World Cup 2026 Live",
+    title: "ScoreArc · Live Football",
     description:
-      "Live radial knockout bracket, scores, top scorers, and build-your-own predictions for the 2026 World Cup.",
+      "Live football brackets, scores, and standings — every arc.",
     url: "https://www.scorearc.futbol",
     siteName: "ScoreArc",
     type: "website",
-    images: [{ url: "/api/og", width: 1200, height: 630, alt: "ScoreArc — World Cup 2026" }],
+    images: [{ url: "/api/og", width: 1200, height: 630, alt: "ScoreArc — Live Football" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "ScoreArc · World Cup 2026 Live",
+    title: "ScoreArc · Live Football",
     description:
-      "Live radial knockout bracket, scores, and build-your-own predictions for the 2026 World Cup.",
+      "Live football brackets, scores, and standings — every arc.",
     images: ["/api/og"],
   },
 };
@@ -45,10 +44,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        <div className="app-shell">
-          <Sidebar />
-          {children}
-        </div>
+        {children}
       </body>
     </html>
   );
