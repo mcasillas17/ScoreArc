@@ -39,6 +39,7 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
       ];
 
   return (
+    <>
     <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`}>
       <div className="sidebar-brand">
         <Link href="/" className="sidebar-brand-link" aria-label="ScoreArc home">
@@ -85,5 +86,16 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
         <span className="credit-text">Built by <strong>elOpenMike</strong></span>
       </a>
     </aside>
+
+      {/* Fixed bottom tab bar — mobile only (CSS hides it on desktop). */}
+      <nav className="mobile-tabbar" aria-label="Sections">
+        {items.map((item) => (
+          <Link key={item.label} href={item.href} className={`mtab${item.match(pathname) ? ' mtab--active' : ''}`}>
+            <span className="mtab-icon">{item.icon}</span>
+            <span className="mtab-label">{item.label}</span>
+          </Link>
+        ))}
+      </nav>
+    </>
   );
 }

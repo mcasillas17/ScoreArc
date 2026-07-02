@@ -971,6 +971,40 @@ a {
   letter-spacing: 0.03em;
 }
 
+/* Mobile bottom tab bar for section nav — hidden on desktop, shown under the
+   860px breakpoint below (where the sidebar becomes a slim top bar). */
+.mobile-tabbar {
+  display: none;
+}
+.mtab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 4px;
+  min-width: 0;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.mtab-icon {
+  display: inline-flex;
+}
+.mtab-icon svg {
+  width: 21px;
+  height: 21px;
+}
+.mtab-label {
+  white-space: nowrap;
+}
+.mtab--active {
+  color: var(--gold);
+}
+
 /* ===== Responsive: sidebar collapses to top bar ===== */
 @media (max-width: 860px) {
   .app-shell {
@@ -1003,16 +1037,22 @@ a {
     flex-shrink: 0;
   }
 
+  /* Sections move to the fixed bottom tab bar; hide the top-bar nav. */
   .sidebar-nav {
-    flex-direction: row;
-    flex: 1;
-    gap: 4px;
-    overflow-x: auto;
-    scrollbar-width: none;
+    display: none;
   }
 
-  .sidebar-nav::-webkit-scrollbar {
-    display: none;
+  .mobile-tabbar {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    background: var(--surface-1);
+    border-top: 1px solid var(--hairline);
+    padding-bottom: env(safe-area-inset-bottom);
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.35);
   }
 
   .nav-item {
@@ -1037,7 +1077,7 @@ a {
 
   .main {
     margin-left: 0;
-    padding: 24px 16px 40px;
+    padding: 24px 16px calc(84px + env(safe-area-inset-bottom));
     gap: 32px;
     max-width: 100%;
   }
