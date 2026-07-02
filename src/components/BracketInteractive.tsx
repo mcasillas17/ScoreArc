@@ -87,7 +87,7 @@ function decodePicks(s: string): Record<string, string> {
   return {};
 }
 
-export default function BracketInteractive({ rounds: initialRounds }: Props) {
+export default function BracketInteractive({ rounds: initialRounds, teamStyle = 'flag' }: Props) {
   const [mode, setMode] = useState<BracketMode>('live');
   const [rounds, setRounds] = useState<BracketRound[]>(initialRounds);
   const [picks, setPicks] = useState<Record<string, string>>({});
@@ -219,6 +219,7 @@ export default function BracketInteractive({ rounds: initialRounds }: Props) {
         picks={picks}
         onPick={handlePick}
         onChampion={setChampion}
+        teamStyle={teamStyle}
       />
 
       {mode === 'live' && <ThirdPlaceMini rounds={rounds} />}

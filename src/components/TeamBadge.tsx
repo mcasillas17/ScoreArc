@@ -1,4 +1,5 @@
 import type { Team } from "@/server/data/types";
+import type { TeamStyle } from "@/server/data/competitions";
 import { flagUrl } from "@/lib/flags";
 
 function teamFallbackColor(id: string): string {
@@ -14,12 +15,14 @@ interface TeamBadgeProps {
   team: Team;
   size?: number;
   label?: boolean;
+  style?: TeamStyle;
 }
 
 export default function TeamBadge({
   team,
   size = 32,
   label = false,
+  style = 'flag',
 }: TeamBadgeProps) {
   const disc: React.CSSProperties = {
     width: size,
@@ -37,9 +40,11 @@ export default function TeamBadge({
     letterSpacing: "-0.02em",
   };
 
-  // Prefer a full-bleed flagcdn flag (fills the circle); fall back to ESPN's
-  // padded country logo only if we don't have an ISO mapping for the team.
-  const imgSrc = flagUrl(team.abbr) ?? team.crestUrl;
+  // For national style, prefer a full-bleed flagcdn flag; for club style,
+  // prefer the ESPN crest and fall back to flag if no crest is available.
+  const imgSrc = style === 'crest'
+    ? (team.crestUrl ?? flagUrl(team.abbr))
+    : (flagUrl(team.abbr) ?? team.crestUrl);
 
   return (
     <span
