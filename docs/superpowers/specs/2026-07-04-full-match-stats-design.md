@@ -71,13 +71,24 @@ they pass `MatchStats` through opaquely.
 
 ## Presentation
 
-`MatchStatsBlock` (in `src/components/MatchStats.tsx`) is rewritten to render:
+**Progressive disclosure** — the block must not become a wall of 23 rows. It renders in
+two tiers:
 
-1. The possession bar at top (as today).
-2. A list of **category sections**. Each section has a header (`Attacking`, etc.) and
-   its stat rows. A stat row is:
-   `[home value]  [diverging bar]  [away value]`, with the stat label centered above
-   or beside the bar.
+1. **Possession bar** at top (as today).
+2. **Headline stats (always visible):** a curated short set — `Shots` (`totalShots`),
+   `On Target` (`shotsOnTarget`), `Pass Accuracy` (`passPct`), `Fouls` (`foulsCommitted`).
+   These are the marquee stats people scan for. Rendered as diverging-bar rows.
+3. **Full match stats (collapsed):** a `<details>` expander labeled "Full match stats"
+   (same pattern as `CommentaryFeed`), closed by default. Inside are the four **category
+   sections** (`Attacking · Passing · Defending · Discipline`), each a header + its stat
+   rows — the complete grouped set from the table above. The headline stats appear again
+   in their natural categories inside the expander (canonical full view); the top tier is
+   a curated preview, so light duplication is intentional and acceptable.
+
+The expander only renders if it would contain ≥1 visible row beyond the headline set —
+so a preseason match with only a few stats shows just the headline tier, no empty toggle.
+
+A stat row is `[home value]  [diverging bar]  [away value]`, stat label beside/above the bar.
 
 **Bar semantics (consistent for all rows):** each side's fill width = its share of the
 two teams' combined value, i.e. `homeWidth = home / (home + away)`. This is the standard
@@ -91,12 +102,16 @@ model so the rendering rule is uniform.
 - The higher side's value keeps the existing `ls-stat-higher` emphasis.
 - A category section renders only if it has ≥1 visible row (so preseason/limited-data
   matches don't show empty "Defending" headers).
+- The "Full match stats" `<details>` renders only if at least one category section is
+  visible; otherwise only the headline tier shows.
 - Percent-type values display with a `%` suffix.
 
 **Styling:** new CSS in `globals.css` under the existing `ls-stat-*` namespace —
 `ls-stat-group` (header), `ls-stat-row`, `ls-stat-bar` (track), `ls-stat-bar-home` /
-`ls-stat-bar-away` (fills, reusing the possession bar's home/away colors). Reuses the
-existing color tokens; mobile-safe (bars are `%`-width, values fixed-width columns).
+`ls-stat-bar-away` (fills, reusing the possession bar's home/away colors), and a
+`ls-stat-more` style for the `<details>` expander summary (matching the `cm-summary`
+Commentary toggle). Reuses the existing color tokens; mobile-safe (bars are `%`-width,
+values fixed-width columns).
 
 ## Testing
 
