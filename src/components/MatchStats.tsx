@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { Scorer, Card, MatchStats, WinProbability, MatchLineups, TeamLineup, ShootoutDetail, PenaltyKick } from '@/server/data/types';
+import { CollapsibleSection } from './Collapsible';
 
 // TV-style live status: distinguish half time / extra time / penalties from the
 // running clock. Returns null for non-live matches.
@@ -246,7 +247,9 @@ function StatGroup({ title, rows, tone }: { title: string; rows: StatRowData[]; 
   return (
     <div className="ls-stat-group" style={{ ['--bar-color']: tone } as CSSProperties}>
       <div className="ls-stat-group-title">{title}</div>
-      <StatRows rows={rows} />
+      <div className="ls-stat-group-rows">
+        <StatRows rows={rows} />
+      </div>
     </div>
   );
 }
@@ -311,25 +314,19 @@ export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
 
   return (
     <div className="ls-stat-block">
-      <details className="ls-stat-more">
-        <summary className="ls-stat-more-summary">
-          <span className="ls-stat-more-label">Match stats</span>
-          <span className="ls-stat-more-caret" aria-hidden />
-        </summary>
-        <div className="ls-stat-groups">
-          {hasPossession && (
-            <div className="ls-stat-poss-bar-wrap">
-              <span className="ls-stat-poss-label">{homePct.toFixed(0)}%</span>
-              <div className="ls-stat-poss-bar">
-                <div className="ls-stat-poss-home" style={{ width: `${homePct}%` }} />
-                <div className="ls-stat-poss-away" />
-              </div>
-              <span className="ls-stat-poss-label">{awayPct.toFixed(0)}%</span>
+      <CollapsibleSection title="Match stats">
+        {hasPossession && (
+          <div className="ls-stat-poss-bar-wrap">
+            <span className="ls-stat-poss-label">{homePct.toFixed(0)}%</span>
+            <div className="ls-stat-poss-bar">
+              <div className="ls-stat-poss-home" style={{ width: `${homePct}%` }} />
+              <div className="ls-stat-poss-away" />
             </div>
-          )}
-          {groups.map((g) => <StatGroup key={g.title} title={g.title} tone={g.tone} rows={g.rows} />)}
-        </div>
-      </details>
+            <span className="ls-stat-poss-label">{awayPct.toFixed(0)}%</span>
+          </div>
+        )}
+        {groups.map((g) => <StatGroup key={g.title} title={g.title} tone={g.tone} rows={g.rows} />)}
+      </CollapsibleSection>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { flagUrl } from '@/lib/flags';
 import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar, LineupView, PenaltyShootout, liveStatus } from './MatchStats';
 import MatchHighlights from './MatchHighlights';
 import { MatchInfoRow, FormRow, H2HRow, CommentaryFeed } from './MatchExtras';
+import { CollapsibleSection } from './Collapsible';
 
 export type MatchSummary = MatchSummaryData;
 
@@ -160,18 +161,6 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
             </div>
           )}
 
-          {!loading && form && (form.home.length > 0 || form.away.length > 0) && (
-            <div className="md-section">
-              <FormRow form={form} homeAbbr={home.abbr} awayAbbr={away.abbr} />
-            </div>
-          )}
-
-          {!loading && h2h.length > 0 && (
-            <div className="md-section">
-              <H2HRow meetings={h2h} />
-            </div>
-          )}
-
           {upcoming && !loading && !showWinProb && !summary?.lineups && (
             <p className="md-empty">Not started yet — no preview data available.</p>
           )}
@@ -221,6 +210,23 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
           {!upcoming && !loading && commentary.length > 0 && (
             <div className="md-section">
               <CommentaryFeed items={commentary} />
+            </div>
+          )}
+
+          {/* Pre-match context lives at the bottom, collapsed by default. */}
+          {!loading && form && (form.home.length > 0 || form.away.length > 0) && (
+            <div className="md-section">
+              <CollapsibleSection title="Recent form">
+                <FormRow form={form} homeAbbr={home.abbr} awayAbbr={away.abbr} hideTitle />
+              </CollapsibleSection>
+            </div>
+          )}
+
+          {!loading && h2h.length > 0 && (
+            <div className="md-section">
+              <CollapsibleSection title="Head to head">
+                <H2HRow meetings={h2h} hideTitle />
+              </CollapsibleSection>
             </div>
           )}
         </div>

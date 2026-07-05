@@ -1749,13 +1749,22 @@ a {
   font-weight: 600;
 }
 
-/* Grouped diverging stat bars */
+/* Grouped diverging stat bars.
+   Rows flow into 2 columns when the container is wide enough (match popup) and
+   collapse to 1 column when narrow (inline live card) — keeps the expanded view
+   from getting tall. */
+.ls-stat-group-rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  column-gap: 16px;
+}
+
 .ls-stat-row {
   display: grid;
-  grid-template-columns: 34px 1fr 34px;
+  grid-template-columns: 30px 1fr 30px;
   align-items: center;
   gap: 8px;
-  padding: 5px 4px;
+  padding: 3px 2px;
   border-top: 1px solid var(--hairline);
   font-size: 11px;
 }
@@ -1763,7 +1772,7 @@ a {
 .ls-stat-mid {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
 }
 
 .ls-stat-name {
@@ -1795,13 +1804,14 @@ a {
   height: 100%;
 }
 
-.ls-stat-more {
+/* ---- Shared collapsible section (match stats, recent form, head-to-head) ---- */
+.collapsible {
   margin-top: 8px;
 }
 
 /* Pill button so it clearly reads as tappable — fit-content + auto margins
    center the pill; the summary IS the pill. */
-.ls-stat-more-summary {
+.collapsible-toggle {
   cursor: pointer;
   list-style: none;
   display: flex;
@@ -1820,17 +1830,17 @@ a {
   transition: background-color 0.15s, border-color 0.15s;
 }
 
-.ls-stat-more-summary::-webkit-details-marker {
+.collapsible-toggle::-webkit-details-marker {
   display: none;
 }
 
-.ls-stat-more-summary:hover {
+.collapsible-toggle:hover {
   background: rgba(232, 184, 75, 0.16);
   border-color: rgba(232, 184, 75, 0.5);
 }
 
 /* chevron that flips when open */
-.ls-stat-more-caret {
+.collapsible-caret {
   width: 6px;
   height: 6px;
   border-right: 2px solid currentColor;
@@ -1839,12 +1849,12 @@ a {
   transition: transform 0.2s ease;
 }
 
-.ls-stat-more[open] .ls-stat-more-caret {
+.collapsible[open] .collapsible-caret {
   transform: translateY(1px) rotate(-135deg);
 }
 
-.ls-stat-more[open] .ls-stat-more-summary {
-  margin-bottom: 4px;
+.collapsible[open] .collapsible-toggle {
+  margin-bottom: 6px;
 }
 
 .ls-stat-group {

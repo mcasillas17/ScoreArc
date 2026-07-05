@@ -41,15 +41,17 @@ export function FormRow({
   form,
   homeAbbr,
   awayAbbr,
+  hideTitle = false,
 }: {
   form: MatchForm;
   homeAbbr: string;
   awayAbbr: string;
+  hideTitle?: boolean;
 }) {
   if (!form.home.length && !form.away.length) return null;
   return (
     <div className="fm-block">
-      <div className="fm-title">Recent form</div>
+      {!hideTitle && <div className="fm-title">Recent form</div>}
       <div className="fm-team">
         <span className="fm-abbr">{homeAbbr}</span>
         <FormPills form={form.home} />
@@ -62,11 +64,11 @@ export function FormRow({
   );
 }
 
-export function H2HRow({ meetings }: { meetings: H2HMeeting[] }) {
+export function H2HRow({ meetings, hideTitle = false }: { meetings: H2HMeeting[]; hideTitle?: boolean }) {
   if (!meetings.length) return null;
   return (
     <div className="fm-block">
-      <div className="fm-title">Head to head</div>
+      {!hideTitle && <div className="fm-title">Head to head</div>}
       <ul className="h2h-list">
         {meetings.map((m, i) => (
           <li key={i} className="h2h-item">
