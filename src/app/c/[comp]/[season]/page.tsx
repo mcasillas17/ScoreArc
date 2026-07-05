@@ -48,16 +48,24 @@ export default async function Workspace({ params }: { params: { comp: string; se
     let scorers: TopScorer[] = [];
     try { groups = await dataStore.getStandings(rc); } catch {}
     try { scorers = await dataStore.getTopScorers(rc); } catch {}
+    // Leagues lead with live scores — the timeliest content on a matchday — with
+    // the (reference) table below. Off-season (no matches) keeps the table on top
+    // so we don't open with an empty Live Scores section.
+    const hasMatches = matches.length > 0;
+    const table = (
+      <section id="table">
+        <header className="bracket-head">
+          <p className="bracket-eyebrow">{rc.competition.name}</p>
+          <h1 className="bracket-title">League Table</h1>
+        </header>
+        <StandingsLive initialGroups={groups} initialScorers={scorers} apiBase={apiBase} teamStyle={teamStyle} showThirdPlace={false} />
+      </section>
+    );
     return (
       <main className="main">
-        <section id="table">
-          <header className="bracket-head">
-            <p className="bracket-eyebrow">{rc.competition.name}</p>
-            <h1 className="bracket-title">League Table</h1>
-          </header>
-          <StandingsLive initialGroups={groups} initialScorers={scorers} apiBase={apiBase} teamStyle={teamStyle} showThirdPlace={false} />
-        </section>
-        {liveSection}
+        {hasMatches ? liveSection : null}
+        {table}
+        {hasMatches ? null : liveSection}
         {footer}
       </main>
     );
