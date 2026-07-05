@@ -170,23 +170,11 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
             <p className="md-empty">No detailed stats available for this match.</p>
           )}
 
+          {/* Always-visible match facts first: goals, then cards right below,
+              then the shootout and highlights. */}
           {!upcoming && !loading && summary && hasScorers && (
             <div className="md-section">
               <ScorersRow home={homeScorers} away={awayScorers} />
-            </div>
-          )}
-
-          {!upcoming && !loading && shootout && (
-            <div className="md-section">
-              <PenaltyShootout shootout={shootout} homeAbbr={home.abbr} awayAbbr={away.abbr} />
-            </div>
-          )}
-
-          {/* Match stats sit right after the scoreline events (goals/shootout),
-              above highlights/lineups, so the key numbers aren't buried. */}
-          {!upcoming && !loading && summary && hasStats && (
-            <div className="md-section">
-              <MatchStatsBlock stats={summary.stats!} />
             </div>
           )}
 
@@ -196,9 +184,22 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
             </div>
           )}
 
+          {!upcoming && !loading && shootout && (
+            <div className="md-section">
+              <PenaltyShootout shootout={shootout} homeAbbr={home.abbr} awayAbbr={away.abbr} />
+            </div>
+          )}
+
           {!upcoming && !loading && summary && hasVideos && (
             <div className="md-section">
               <MatchHighlights videos={summary.videos} />
+            </div>
+          )}
+
+          {/* All collapsible detail sections grouped at the bottom, commentary last. */}
+          {!upcoming && !loading && summary && hasStats && (
+            <div className="md-section">
+              <MatchStatsBlock stats={summary.stats!} />
             </div>
           )}
 
@@ -210,14 +211,6 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
             </div>
           )}
 
-          {!upcoming && !loading && commentary.length > 0 && (
-            <div className="md-section">
-              <CommentaryFeed items={commentary} />
-            </div>
-          )}
-
-          {/* Pre-match context lives at the bottom, collapsed by default, form
-              and head-to-head side by side under one toggle. */}
           {!loading && ((form && (form.home.length > 0 || form.away.length > 0)) || h2h.length > 0) && (
             <div className="md-section">
               <CollapsibleSection title="Form & head-to-head">
@@ -228,6 +221,12 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
                   {h2h.length > 0 && <H2HRow meetings={h2h} />}
                 </div>
               </CollapsibleSection>
+            </div>
+          )}
+
+          {!upcoming && !loading && commentary.length > 0 && (
+            <div className="md-section">
+              <CommentaryFeed items={commentary} />
             </div>
           )}
         </div>
