@@ -192,9 +192,11 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
             </div>
           )}
 
-          {!upcoming && !loading && summary && hasVideos && (
+          {/* Match stats sit right after the scoreline events (goals/shootout),
+              above highlights/lineups, so the key numbers aren't buried. */}
+          {!upcoming && !loading && summary && hasStats && (
             <div className="md-section">
-              <MatchHighlights videos={summary.videos} />
+              <MatchStatsBlock stats={summary.stats!} />
             </div>
           )}
 
@@ -204,9 +206,9 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
             </div>
           )}
 
-          {!upcoming && !loading && summary && hasStats && (
+          {!upcoming && !loading && summary && hasVideos && (
             <div className="md-section">
-              <MatchStatsBlock stats={summary.stats!} />
+              <MatchHighlights videos={summary.videos} />
             </div>
           )}
 
