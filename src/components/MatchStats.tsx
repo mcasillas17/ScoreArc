@@ -2,6 +2,13 @@ import type { CSSProperties } from 'react';
 import type { Scorer, Card, MatchStats, WinProbability, MatchLineups, TeamLineup, ShootoutDetail, PenaltyKick } from '@/server/data/types';
 import { CollapsibleSection } from './Collapsible';
 
+// Win probability is a pre-match prediction (derived from pre-match odds), so it
+// only makes sense before kickoff — not for live or finished/past matches.
+export function isBeforeKickoff(kickoff: string): boolean {
+  const t = new Date(kickoff).getTime();
+  return !Number.isNaN(t) && t > Date.now();
+}
+
 // TV-style live status: distinguish half time / extra time / penalties from the
 // running clock. Returns null for non-live matches.
 export function liveStatus(match: {
@@ -198,7 +205,6 @@ export function LineupView({
 }) {
   return (
     <div className="lu-block">
-      <div className="lu-title">Starting Lineups</div>
       <div className="lu-cols">
         <LineupColumn team={lineups.home} abbr={homeAbbr} side="home" />
         <div className="lu-divider" />

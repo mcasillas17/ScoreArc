@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import type { BracketMatch, MatchSummaryData } from '@/server/data/types';
 import { flagUrl } from '@/lib/flags';
-import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar, LineupView, PenaltyShootout, liveStatus } from './MatchStats';
+import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar, LineupView, PenaltyShootout, liveStatus, isBeforeKickoff } from './MatchStats';
 import MatchHighlights from './MatchHighlights';
 import { MatchInfoRow, FormRow, H2HRow, CommentaryFeed } from './MatchExtras';
 import { CollapsibleSection } from './Collapsible';
@@ -77,7 +77,8 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
 
   // Win probability (from odds) — shown for upcoming/live, not finished.
   const wp = summary?.winProbability ?? null;
-  const showWinProb = !loading && wp != null && match.state !== 'finished';
+  // Only a pre-match prediction — hide once the match has kicked off (live/past).
+  const showWinProb = !loading && wp != null && isBeforeKickoff(match.kickoff);
 
   // Live status shows HT / ET / Penalties; otherwise the short detail.
   const ls = liveStatus(match);
@@ -203,7 +204,9 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
 
           {!loading && summary?.lineups && (
             <div className="md-section">
-              <LineupView lineups={summary.lineups} homeAbbr={home.abbr} awayAbbr={away.abbr} />
+              <CollapsibleSection title="Lineups">
+                <LineupView lineups={summary.lineups} homeAbbr={home.abbr} awayAbbr={away.abbr} />
+              </CollapsibleSection>
             </div>
           )}
 

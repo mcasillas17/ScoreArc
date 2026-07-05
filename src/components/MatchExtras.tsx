@@ -13,7 +13,27 @@ export function MatchInfoRow({ info }: { info: MatchInfo }) {
   return (
     <div className="mi-row">
       {place && <span className="mi-item">📍 {place}</span>}
-      {info.referee && <span className="mi-item">🗒️ {info.referee}</span>}
+      {info.referee && (
+        <span className="mi-item mi-ref">
+          <svg
+            className="mi-ref-icon"
+            viewBox="0 0 24 24"
+            width="13"
+            height="13"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <circle cx="9" cy="14" r="5.2" />
+            <path d="M13.8 11.5 21 9.8v3.4l-7.2-1.5" />
+            <path d="M9 8.8V6.2h2.4" />
+          </svg>
+          {info.referee}
+        </span>
+      )}
       {info.attendance != null && (
         <span className="mi-item">👥 {info.attendance.toLocaleString()}</span>
       )}
