@@ -2251,6 +2251,14 @@ a {
 }
 .mi-item { white-space: nowrap; }
 
+/* Form + head-to-head sit side by side under one toggle; collapses to a single
+   column when the container is narrow. */
+.fm-h2h-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px 20px;
+}
+
 .fm-block {
   display: flex;
   flex-direction: column;

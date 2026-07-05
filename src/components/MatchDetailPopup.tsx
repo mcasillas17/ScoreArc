@@ -213,19 +213,17 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
             </div>
           )}
 
-          {/* Pre-match context lives at the bottom, collapsed by default. */}
-          {!loading && form && (form.home.length > 0 || form.away.length > 0) && (
+          {/* Pre-match context lives at the bottom, collapsed by default, form
+              and head-to-head side by side under one toggle. */}
+          {!loading && ((form && (form.home.length > 0 || form.away.length > 0)) || h2h.length > 0) && (
             <div className="md-section">
-              <CollapsibleSection title="Recent form">
-                <FormRow form={form} homeAbbr={home.abbr} awayAbbr={away.abbr} hideTitle />
-              </CollapsibleSection>
-            </div>
-          )}
-
-          {!loading && h2h.length > 0 && (
-            <div className="md-section">
-              <CollapsibleSection title="Head to head">
-                <H2HRow meetings={h2h} hideTitle />
+              <CollapsibleSection title="Form & head-to-head">
+                <div className="fm-h2h-grid">
+                  {form && (form.home.length > 0 || form.away.length > 0) && (
+                    <FormRow form={form} homeAbbr={home.abbr} awayAbbr={away.abbr} />
+                  )}
+                  {h2h.length > 0 && <H2HRow meetings={h2h} />}
+                </div>
               </CollapsibleSection>
             </div>
           )}
