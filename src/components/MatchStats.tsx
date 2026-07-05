@@ -206,18 +206,105 @@ export function LineupView({
   );
 }
 
-export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
-  const homePct = stats.home.possession ?? 50;
-  const awayPct = stats.away.possession ?? 50;
+type StatRowData = { label: string; home: number | null; away: number | null; pct?: boolean };
 
-  type StatRow = { label: string; home: number | null; away: number | null };
-  const rows: StatRow[] = [
-    { label: 'Shots', home: stats.home.shots, away: stats.away.shots },
-    { label: 'On Target', home: stats.home.shotsOnTarget, away: stats.away.shotsOnTarget },
-    { label: 'Passes', home: stats.home.passes, away: stats.away.passes },
-    { label: 'Corners', home: stats.home.corners, away: stats.away.corners },
-    { label: 'Fouls', home: stats.home.fouls, away: stats.away.fouls },
+function StatRow({ row }: { row: StatRowData }) {
+  const { home, away } = row;
+  if (home == null && away == null) return null;
+  const hv = home ?? 0;
+  const av = away ?? 0;
+  const total = hv + av;
+  const homeShare = total > 0 ? (hv / total) * 100 : 50;
+  const fmt = (v: number | null) => (v == null ? '–' : row.pct ? `${v}%` : `${v}`);
+  return (
+    <div className="ls-stat-row">
+      <span className={`ls-stat-val-home${hv > av ? ' ls-stat-higher' : ''}`}>{fmt(home)}</span>
+      <div className="ls-stat-mid">
+        <span className="ls-stat-name">{row.label}</span>
+        <div className="ls-stat-bar">
+          <div className="ls-stat-bar-home" style={{ width: `${homeShare}%` }} />
+          <div className="ls-stat-bar-away" />
+        </div>
+      </div>
+      <span className={`ls-stat-val-away${av > hv ? ' ls-stat-higher' : ''}`}>{fmt(away)}</span>
+    </div>
+  );
+}
+
+function hasData(rows: StatRowData[]) {
+  return rows.some((r) => r.home != null || r.away != null);
+}
+
+function StatRows({ rows }: { rows: StatRowData[] }) {
+  return <>{rows.map((r) => <StatRow key={r.label} row={r} />)}</>;
+}
+
+function StatGroup({ title, rows }: { title: string; rows: StatRowData[] }) {
+  if (!hasData(rows)) return null;
+  return (
+    <div className="ls-stat-group">
+      <div className="ls-stat-group-title">{title}</div>
+      <StatRows rows={rows} />
+    </div>
+  );
+}
+
+export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
+  const h = stats.home;
+  const a = stats.away;
+  const homePct = h.possession ?? 50;
+  const awayPct = a.possession ?? 50;
+
+  const headline: StatRowData[] = [
+    { label: 'Shots', home: h.shots, away: a.shots },
+    { label: 'On Target', home: h.shotsOnTarget, away: a.shotsOnTarget },
+    { label: 'Pass Accuracy', home: h.passAccuracy, away: a.passAccuracy, pct: true },
+    { label: 'Fouls', home: h.fouls, away: a.fouls },
   ];
+
+  const groups: { title: string; rows: StatRowData[] }[] = [
+    {
+      title: 'Attacking',
+      rows: [
+        { label: 'Shots', home: h.shots, away: a.shots },
+        { label: 'On Target', home: h.shotsOnTarget, away: a.shotsOnTarget },
+        { label: 'Shot Accuracy', home: h.shotAccuracy, away: a.shotAccuracy, pct: true },
+        { label: 'Corners', home: h.corners, away: a.corners },
+        { label: 'Offsides', home: h.offsides, away: a.offsides },
+      ],
+    },
+    {
+      title: 'Passing',
+      rows: [
+        { label: 'Passes', home: h.passes, away: a.passes },
+        { label: 'Pass Accuracy', home: h.passAccuracy, away: a.passAccuracy, pct: true },
+        { label: 'Crosses', home: h.crosses, away: a.crosses },
+        { label: 'Cross Accuracy', home: h.crossAccuracy, away: a.crossAccuracy, pct: true },
+        { label: 'Long Balls', home: h.longBalls, away: a.longBalls },
+      ],
+    },
+    {
+      title: 'Defending',
+      rows: [
+        { label: 'Tackles', home: h.tackles, away: a.tackles },
+        { label: 'Tackle %', home: h.tackleAccuracy, away: a.tackleAccuracy, pct: true },
+        { label: 'Interceptions', home: h.interceptions, away: a.interceptions },
+        { label: 'Clearances', home: h.clearances, away: a.clearances },
+        { label: 'Blocked Shots', home: h.blockedShots, away: a.blockedShots },
+        { label: 'Saves', home: h.saves, away: a.saves },
+      ],
+    },
+    {
+      title: 'Discipline',
+      rows: [
+        { label: 'Fouls', home: h.fouls, away: a.fouls },
+        { label: 'Yellow Cards', home: h.yellowCards, away: a.yellowCards },
+        { label: 'Red Cards', home: h.redCards, away: a.redCards },
+      ],
+    },
+  ];
+
+  const hasMore = groups.some((g) => hasData(g.rows));
 
   return (
     <div className="ls-stat-block">
@@ -229,27 +316,17 @@ export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
         </div>
         <span className="ls-stat-poss-label">{awayPct.toFixed(0)}%</span>
       </div>
-      <table className="ls-stat-table">
-        <tbody>
-          {rows.map((row) => {
-            const hVal = row.home ?? 0;
-            const aVal = row.away ?? 0;
-            const homeHigher = hVal > aVal;
-            const awayHigher = aVal > hVal;
-            return (
-              <tr key={row.label}>
-                <td className={`ls-stat-val-home${homeHigher ? ' ls-stat-higher' : ''}`}>
-                  {row.home ?? '–'}
-                </td>
-                <td className="ls-stat-label-cell">{row.label}</td>
-                <td className={`ls-stat-val-away${awayHigher ? ' ls-stat-higher' : ''}`}>
-                  {row.away ?? '–'}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+
+      <StatRows rows={headline} />
+
+      {hasMore && (
+        <details className="ls-stat-more">
+          <summary className="ls-stat-more-summary">Full match stats</summary>
+          <div className="ls-stat-groups">
+            {groups.map((g) => <StatGroup key={g.title} title={g.title} rows={g.rows} />)}
+          </div>
+        </details>
+      )}
     </div>
   );
 }

@@ -1728,21 +1728,6 @@ a {
   opacity: 0.55;
 }
 
-.ls-stat-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 11px;
-}
-
-.ls-stat-table tr {
-  border-top: 1px solid var(--hairline);
-}
-
-.ls-stat-table td {
-  padding: 3px 4px;
-  color: var(--text-muted);
-}
-
 .ls-stat-val-home {
   text-align: right;
   width: 30%;
@@ -1767,6 +1752,87 @@ a {
 .ls-stat-val-away.ls-stat-higher {
   color: var(--text);
   font-weight: 600;
+}
+
+/* Grouped diverging stat bars */
+.ls-stat-row {
+  display: grid;
+  grid-template-columns: 34px 1fr 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 4px;
+  border-top: 1px solid var(--hairline);
+  font-size: 11px;
+}
+
+.ls-stat-mid {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ls-stat-name {
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.ls-stat-bar {
+  height: 5px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--surface-2);
+  display: flex;
+}
+
+.ls-stat-bar-home {
+  background: var(--gold);
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.ls-stat-bar-away {
+  flex: 1;
+  background: var(--text-muted);
+  opacity: 0.55;
+  height: 100%;
+}
+
+.ls-stat-more {
+  margin-top: 6px;
+}
+
+.ls-stat-more-summary {
+  cursor: pointer;
+  list-style: none;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 7px 4px;
+  border-top: 1px solid var(--hairline);
+}
+
+.ls-stat-more-summary::-webkit-details-marker {
+  display: none;
+}
+
+.ls-stat-more-summary:hover {
+  color: var(--text);
+}
+
+.ls-stat-group {
+  margin-top: 8px;
+}
+
+.ls-stat-group-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+  padding: 4px;
 }
 
 /* ---- Live scores: chance-to-win (odds-implied) ---- */
