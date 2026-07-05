@@ -1,0 +1,119 @@
+# Full Match Stats — Design
+
+**Date:** 2026-07-04
+**Branch:** `feat/full-match-stats`
+
+## Problem
+
+ESPN's match `summary` response returns **28 team statistics** per side, but ScoreArc
+maps and displays only **6** of them (possession, shots, on-target, passes, corners,
+fouls) in `MatchStatsBlock`. We already fetch the full payload — the other 22 stats
+are free, we just discard them. The current presentation is also a bare number table
+(winner bolded), which doesn't visualize the comparison.
+
+## Goal
+
+Surface the high-value subset of the remaining stats and present every stat as a
+**diverging comparison bar** (home fills from the left, away from the right,
+proportional to each side's share of the combined value), grouped under category
+headers. No new data source, no new API call — all additive to the existing mapper,
+type, and component.
+
+## Non-Goals
+
+- No positional / heat-map / xG data (ESPN's free API has no x,y coordinates — verified).
+- No new endpoints or providers.
+- No changes to the LiveScores inline stat rendering beyond what the shared component gives.
+- Penalty-kick count stats (`penaltyKickGoals/Shots`) are excluded — already covered by
+  the scorers/shootout sections.
+
+## Stats & Grouping
+
+All source names are exact ESPN `boxscore.teams[].statistics[].name` keys (verified
+against a live World Cup match). Percentage stats keep ESPN's own computed value.
+
+**Possession** — stays as the top full-width bar (unchanged behavior), from `possessionPct`.
+
+| Group | Label | ESPN stat name | Type |
+|-------|-------|----------------|------|
+| Attacking | Shots | `totalShots` | count |
+| Attacking | On Target | `shotsOnTarget` | count |
+| Attacking | Shot Accuracy | `shotPct` | percent |
+| Attacking | Corners | `wonCorners` | count |
+| Attacking | Offsides | `offsides` | count |
+| Passing | Passes | `totalPasses` | count |
+| Passing | Pass Accuracy | `passPct` | percent |
+| Passing | Crosses | `totalCrosses` | count |
+| Passing | Cross Accuracy | `crossPct` | percent |
+| Passing | Long Balls | `totalLongBalls` | count |
+| Defending | Tackles | `totalTackles` | count |
+| Defending | Tackle % | `tacklePct` | percent |
+| Defending | Interceptions | `interceptions` | count |
+| Defending | Clearances | `totalClearance` | count |
+| Defending | Blocked Shots | `blockedShots` | count |
+| Defending | Saves | `saves` | count |
+| Discipline | Fouls | `foulsCommitted` | count |
+| Discipline | Yellow Cards | `yellowCards` | count |
+| Discipline | Red Cards | `redCards` | count |
+
+That's 19 grouped stats + possession = the full high-value set. `shotPct`, `passPct`,
+etc. are already computed by ESPN so we don't derive them.
+
+## Data Layer
+
+`TeamStats` (in `src/server/data/types.ts`) grows from 6 fields to hold all of the
+above. Every field stays `number | null`. `buildTeamStats` in
+`src/server/data/providers/espn-summary.ts` adds one `parseStat(statistics, '<name>')`
+line per new field — `parseStat` already handles missing/NaN by returning `null`.
+
+No change to `mapSummaryStats`, the `/api/match` route, `service.ts`, or the store —
+they pass `MatchStats` through opaquely.
+
+## Presentation
+
+`MatchStatsBlock` (in `src/components/MatchStats.tsx`) is rewritten to render:
+
+1. The possession bar at top (as today).
+2. A list of **category sections**. Each section has a header (`Attacking`, etc.) and
+   its stat rows. A stat row is:
+   `[home value]  [diverging bar]  [away value]`, with the stat label centered above
+   or beside the bar.
+
+**Bar semantics (consistent for all rows):** each side's fill width = its share of the
+two teams' combined value, i.e. `homeWidth = home / (home + away)`. This is the standard
+"who dominated this stat" view (FotMob/ESPN style). Percentage stats use the same share
+model so the rendering rule is uniform.
+
+**Rendering rules:**
+- A row renders only if at least one side has a non-null value. If both are null → skip.
+- If `home + away === 0` (both zero, e.g. no cards) → render a neutral 50/50 bar and
+  show `0 / 0`. Guard against divide-by-zero.
+- The higher side's value keeps the existing `ls-stat-higher` emphasis.
+- A category section renders only if it has ≥1 visible row (so preseason/limited-data
+  matches don't show empty "Defending" headers).
+- Percent-type values display with a `%` suffix.
+
+**Styling:** new CSS in `globals.css` under the existing `ls-stat-*` namespace —
+`ls-stat-group` (header), `ls-stat-row`, `ls-stat-bar` (track), `ls-stat-bar-home` /
+`ls-stat-bar-away` (fills, reusing the possession bar's home/away colors). Reuses the
+existing color tokens; mobile-safe (bars are `%`-width, values fixed-width columns).
+
+## Testing
+
+- **`espn-summary.test.ts`**: extend the existing `buildTeamStats`/`mapSummaryStats`
+  assertions to cover several new fields (e.g. `passPct`, `offsides`, `saves`,
+  `totalTackles`) from the fixture. Add a case asserting a stat absent from the fixture
+  maps to `null`. May need to enrich `__fixtures__/espn-summary.json` if it lacks the
+  new stat names.
+- **Component**: `MatchStatsBlock` is presentational; verify manually in the running app
+  (a finished World Cup match in the popup) that groups render, bars are proportional,
+  empty groups are hidden, and mobile layout holds.
+
+## Files Touched
+
+- `src/server/data/types.ts` — expand `TeamStats`.
+- `src/server/data/providers/espn-summary.ts` — expand `buildTeamStats`.
+- `src/server/data/providers/espn-summary.test.ts` — extend assertions.
+- `src/server/data/__fixtures__/espn-summary.json` — enrich stats if needed.
+- `src/components/MatchStats.tsx` — rewrite `MatchStatsBlock`.
+- `src/app/globals.css` — grouped diverging-bar styles.
