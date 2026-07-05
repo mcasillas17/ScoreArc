@@ -257,13 +257,6 @@ export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
   const homePct = h.possession ?? 50;
   const awayPct = a.possession ?? 50;
 
-  const headline: StatRowData[] = [
-    { label: 'Shots', home: h.shots, away: a.shots },
-    { label: 'On Target', home: h.shotsOnTarget, away: a.shotsOnTarget },
-    { label: 'Pass Accuracy', home: h.passAccuracy, away: a.passAccuracy, pct: true },
-    { label: 'Fouls', home: h.fouls, away: a.fouls },
-  ];
-
   const groups: { title: string; tone: string; rows: StatRowData[] }[] = [
     {
       title: 'Attacking',
@@ -310,29 +303,33 @@ export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
     },
   ];
 
-  const hasMore = groups.some((g) => hasData(g.rows));
+  const hasGroups = groups.some((g) => hasData(g.rows));
+  const hasPossession = h.possession != null || a.possession != null;
+  // Everything is collapsed by default — the only thing shown pre-expand is the
+  // win-probability bar (a sibling component, live/upcoming matches only).
+  if (!hasGroups && !hasPossession) return null;
 
   return (
     <div className="ls-stat-block">
-      <div className="ls-stat-poss-bar-wrap">
-        <span className="ls-stat-poss-label">{homePct.toFixed(0)}%</span>
-        <div className="ls-stat-poss-bar">
-          <div className="ls-stat-poss-home" style={{ width: `${homePct}%` }} />
-          <div className="ls-stat-poss-away" />
+      <details className="ls-stat-more">
+        <summary className="ls-stat-more-summary">
+          <span className="ls-stat-more-label">Match stats</span>
+          <span className="ls-stat-more-caret" aria-hidden />
+        </summary>
+        <div className="ls-stat-groups">
+          {hasPossession && (
+            <div className="ls-stat-poss-bar-wrap">
+              <span className="ls-stat-poss-label">{homePct.toFixed(0)}%</span>
+              <div className="ls-stat-poss-bar">
+                <div className="ls-stat-poss-home" style={{ width: `${homePct}%` }} />
+                <div className="ls-stat-poss-away" />
+              </div>
+              <span className="ls-stat-poss-label">{awayPct.toFixed(0)}%</span>
+            </div>
+          )}
+          {groups.map((g) => <StatGroup key={g.title} title={g.title} tone={g.tone} rows={g.rows} />)}
         </div>
-        <span className="ls-stat-poss-label">{awayPct.toFixed(0)}%</span>
-      </div>
-
-      <StatRows rows={headline} />
-
-      {hasMore && (
-        <details className="ls-stat-more">
-          <summary className="ls-stat-more-summary">Full match stats</summary>
-          <div className="ls-stat-groups">
-            {groups.map((g) => <StatGroup key={g.title} title={g.title} tone={g.tone} rows={g.rows} />)}
-          </div>
-        </details>
-      )}
+      </details>
     </div>
   );
 }

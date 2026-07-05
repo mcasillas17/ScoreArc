@@ -1796,17 +1796,28 @@ a {
 }
 
 .ls-stat-more {
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
+/* Pill button so it clearly reads as tappable — fit-content + auto margins
+   center the pill; the summary IS the pill. */
 .ls-stat-more-summary {
   cursor: pointer;
   list-style: none;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  margin: 0 auto;
+  padding: 6px 14px;
   font-size: 11px;
-  color: var(--text-muted);
-  padding: 7px 4px;
-  border-top: 1px solid var(--hairline);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--gold);
+  background: rgba(232, 184, 75, 0.08);
+  border: 1px solid rgba(232, 184, 75, 0.28);
+  border-radius: 100px;
+  transition: background-color 0.15s, border-color 0.15s;
 }
 
 .ls-stat-more-summary::-webkit-details-marker {
@@ -1814,7 +1825,26 @@ a {
 }
 
 .ls-stat-more-summary:hover {
-  color: var(--text);
+  background: rgba(232, 184, 75, 0.16);
+  border-color: rgba(232, 184, 75, 0.5);
+}
+
+/* chevron that flips when open */
+.ls-stat-more-caret {
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-1px) rotate(45deg);
+  transition: transform 0.2s ease;
+}
+
+.ls-stat-more[open] .ls-stat-more-caret {
+  transform: translateY(1px) rotate(-135deg);
+}
+
+.ls-stat-more[open] .ls-stat-more-summary {
+  margin-bottom: 4px;
 }
 
 .ls-stat-group {
