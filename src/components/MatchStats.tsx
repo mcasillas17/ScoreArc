@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import type { Scorer, Card, MatchStats, WinProbability, MatchLineups, TeamLineup, ShootoutDetail, PenaltyKick } from '@/server/data/types';
 
 // TV-style live status: distinguish half time / extra time / penalties from the
@@ -239,10 +240,11 @@ function StatRows({ rows }: { rows: StatRowData[] }) {
   return <>{rows.map((r) => <StatRow key={r.label} row={r} />)}</>;
 }
 
-function StatGroup({ title, rows }: { title: string; rows: StatRowData[] }) {
+function StatGroup({ title, rows, tone }: { title: string; rows: StatRowData[]; tone: string }) {
   if (!hasData(rows)) return null;
+  // Each category tints its bars via a scoped CSS var the bar fill reads.
   return (
-    <div className="ls-stat-group">
+    <div className="ls-stat-group" style={{ ['--bar-color']: tone } as CSSProperties}>
       <div className="ls-stat-group-title">{title}</div>
       <StatRows rows={rows} />
     </div>
@@ -262,9 +264,10 @@ export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
     { label: 'Fouls', home: h.fouls, away: a.fouls },
   ];
 
-  const groups: { title: string; rows: StatRowData[] }[] = [
+  const groups: { title: string; tone: string; rows: StatRowData[] }[] = [
     {
       title: 'Attacking',
+      tone: 'var(--stat-attack)',
       rows: [
         { label: 'Shots', home: h.shots, away: a.shots },
         { label: 'On Target', home: h.shotsOnTarget, away: a.shotsOnTarget },
@@ -275,6 +278,7 @@ export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
     },
     {
       title: 'Passing',
+      tone: 'var(--stat-pass)',
       rows: [
         { label: 'Passes', home: h.passes, away: a.passes },
         { label: 'Pass Accuracy', home: h.passAccuracy, away: a.passAccuracy, pct: true },
@@ -285,6 +289,7 @@ export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
     },
     {
       title: 'Defending',
+      tone: 'var(--stat-defend)',
       rows: [
         { label: 'Tackles', home: h.tackles, away: a.tackles },
         { label: 'Tackle %', home: h.tackleAccuracy, away: a.tackleAccuracy, pct: true },
@@ -296,6 +301,7 @@ export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
     },
     {
       title: 'Discipline',
+      tone: 'var(--stat-discipline)',
       rows: [
         { label: 'Fouls', home: h.fouls, away: a.fouls },
         { label: 'Yellow Cards', home: h.yellowCards, away: a.yellowCards },
@@ -323,7 +329,7 @@ export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
         <details className="ls-stat-more">
           <summary className="ls-stat-more-summary">Full match stats</summary>
           <div className="ls-stat-groups">
-            {groups.map((g) => <StatGroup key={g.title} title={g.title} rows={g.rows} />)}
+            {groups.map((g) => <StatGroup key={g.title} title={g.title} tone={g.tone} rows={g.rows} />)}
           </div>
         </details>
       )}

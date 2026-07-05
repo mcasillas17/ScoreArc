@@ -10,6 +10,11 @@
   --gold: #e8b84b;
   --live-red: #ff5c5c;
   --qualify-green: #36c275;
+  /* Per-category match-stat bar colors */
+  --stat-attack: #ff6b6b;
+  --stat-pass: #5aa2ff;
+  --stat-defend: #36c275;
+  --stat-discipline: #e8b84b;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
@@ -1778,7 +1783,7 @@ a {
 }
 
 .ls-stat-bar-home {
-  background: var(--gold);
+  background: var(--bar-color, var(--gold));
   height: 100%;
   transition: width 0.3s ease;
 }
@@ -1818,10 +1823,10 @@ a {
 
 .ls-stat-group-title {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text);
+  color: var(--bar-color, var(--text));
   padding: 4px;
 }
 
