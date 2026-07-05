@@ -11,6 +11,7 @@ import {
   WinProbBar,
   PenaltyShootout,
   liveStatus,
+  isBeforeKickoff,
 } from "./MatchStats";
 
 interface LiveScoresProps {
@@ -117,7 +118,7 @@ function MatchCard({ match, teamStyle }: { match: Match; teamStyle: TeamStyle })
         />
       )}
 
-      {match.winProbability && match.state !== "finished" && (
+      {match.winProbability && isBeforeKickoff(match.kickoff) && (
         <WinProbBar
           prob={match.winProbability}
           homeAbbr={match.home.abbr}

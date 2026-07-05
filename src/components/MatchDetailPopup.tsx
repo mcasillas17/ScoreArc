@@ -3,9 +3,10 @@
 import { useEffect, useRef } from 'react';
 import type { BracketMatch, MatchSummaryData } from '@/server/data/types';
 import { flagUrl } from '@/lib/flags';
-import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar, LineupView, PenaltyShootout, liveStatus } from './MatchStats';
+import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar, LineupView, PenaltyShootout, liveStatus, isBeforeKickoff } from './MatchStats';
 import MatchHighlights from './MatchHighlights';
 import { MatchInfoRow, FormRow, H2HRow, CommentaryFeed } from './MatchExtras';
+import { CollapsibleSection } from './Collapsible';
 
 export type MatchSummary = MatchSummaryData;
 
@@ -76,7 +77,8 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
 
   // Win probability (from odds) — shown for upcoming/live, not finished.
   const wp = summary?.winProbability ?? null;
-  const showWinProb = !loading && wp != null && match.state !== 'finished';
+  // Only a pre-match prediction — hide once the match has kicked off (live/past).
+  const showWinProb = !loading && wp != null && isBeforeKickoff(match.kickoff);
 
   // Live status shows HT / ET / Penalties; otherwise the short detail.
   const ls = liveStatus(match);
@@ -160,18 +162,6 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
             </div>
           )}
 
-          {!loading && form && (form.home.length > 0 || form.away.length > 0) && (
-            <div className="md-section">
-              <FormRow form={form} homeAbbr={home.abbr} awayAbbr={away.abbr} />
-            </div>
-          )}
-
-          {!loading && h2h.length > 0 && (
-            <div className="md-section">
-              <H2HRow meetings={h2h} />
-            </div>
-          )}
-
           {upcoming && !loading && !showWinProb && !summary?.lineups && (
             <p className="md-empty">Not started yet — no preview data available.</p>
           )}
@@ -180,9 +170,17 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
             <p className="md-empty">No detailed stats available for this match.</p>
           )}
 
+          {/* Always-visible match facts first: goals, then cards right below,
+              then the shootout and highlights. */}
           {!upcoming && !loading && summary && hasScorers && (
             <div className="md-section">
               <ScorersRow home={homeScorers} away={awayScorers} />
+            </div>
+          )}
+
+          {!upcoming && !loading && summary && hasCards && (
+            <div className="md-section">
+              <CardsRow home={homeCards} away={awayCards} />
             </div>
           )}
 
@@ -198,12 +196,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
             </div>
           )}
 
-          {!upcoming && !loading && summary && hasCards && (
-            <div className="md-section">
-              <CardsRow home={homeCards} away={awayCards} />
-            </div>
-          )}
-
+          {/* All collapsible detail sections grouped at the bottom, commentary last. */}
           {!upcoming && !loading && summary && hasStats && (
             <div className="md-section">
               <MatchStatsBlock stats={summary.stats!} />
@@ -212,7 +205,22 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
 
           {!loading && summary?.lineups && (
             <div className="md-section">
-              <LineupView lineups={summary.lineups} homeAbbr={home.abbr} awayAbbr={away.abbr} />
+              <CollapsibleSection title="Lineups" tone="#2dd4bf">
+                <LineupView lineups={summary.lineups} homeAbbr={home.abbr} awayAbbr={away.abbr} />
+              </CollapsibleSection>
+            </div>
+          )}
+
+          {!loading && ((form && (form.home.length > 0 || form.away.length > 0)) || h2h.length > 0) && (
+            <div className="md-section">
+              <CollapsibleSection title="Form & head-to-head" tone="#f472b6">
+                <div className="fm-h2h-grid">
+                  {form && (form.home.length > 0 || form.away.length > 0) && (
+                    <FormRow form={form} homeAbbr={home.abbr} awayAbbr={away.abbr} />
+                  )}
+                  {h2h.length > 0 && <H2HRow meetings={h2h} />}
+                </div>
+              </CollapsibleSection>
             </div>
           )}
 

@@ -1,4 +1,13 @@
+import type { CSSProperties } from 'react';
 import type { Scorer, Card, MatchStats, WinProbability, MatchLineups, TeamLineup, ShootoutDetail, PenaltyKick } from '@/server/data/types';
+import { CollapsibleSection } from './Collapsible';
+
+// Win probability is a pre-match prediction (derived from pre-match odds), so it
+// only makes sense before kickoff — not for live or finished/past matches.
+export function isBeforeKickoff(kickoff: string): boolean {
+  const t = new Date(kickoff).getTime();
+  return !Number.isNaN(t) && t > Date.now();
+}
 
 // TV-style live status: distinguish half time / extra time / penalties from the
 // running clock. Returns null for non-live matches.
@@ -196,7 +205,6 @@ export function LineupView({
 }) {
   return (
     <div className="lu-block">
-      <div className="lu-title">Starting Lineups</div>
       <div className="lu-cols">
         <LineupColumn team={lineups.home} abbr={homeAbbr} side="home" />
         <div className="lu-divider" />
@@ -206,50 +214,125 @@ export function LineupView({
   );
 }
 
-export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
-  const homePct = stats.home.possession ?? 50;
-  const awayPct = stats.away.possession ?? 50;
+type StatRowData = { label: string; home: number | null; away: number | null; pct?: boolean };
 
-  type StatRow = { label: string; home: number | null; away: number | null };
-  const rows: StatRow[] = [
-    { label: 'Shots', home: stats.home.shots, away: stats.away.shots },
-    { label: 'On Target', home: stats.home.shotsOnTarget, away: stats.away.shotsOnTarget },
-    { label: 'Passes', home: stats.home.passes, away: stats.away.passes },
-    { label: 'Corners', home: stats.home.corners, away: stats.away.corners },
-    { label: 'Fouls', home: stats.home.fouls, away: stats.away.fouls },
+function StatRow({ row }: { row: StatRowData }) {
+  const { home, away } = row;
+  if (home == null && away == null) return null;
+  const hv = home ?? 0;
+  const av = away ?? 0;
+  const total = hv + av;
+  const homeShare = total > 0 ? (hv / total) * 100 : 50;
+  const fmt = (v: number | null) => (v == null ? '–' : row.pct ? `${v}%` : `${v}`);
+  return (
+    <div className="ls-stat-row">
+      <span className={`ls-stat-val-home${hv > av ? ' ls-stat-higher' : ''}`}>{fmt(home)}</span>
+      <div className="ls-stat-mid">
+        <span className="ls-stat-name">{row.label}</span>
+        <div className="ls-stat-bar">
+          <div className="ls-stat-bar-home" style={{ width: `${homeShare}%` }} />
+          <div className="ls-stat-bar-away" />
+        </div>
+      </div>
+      <span className={`ls-stat-val-away${av > hv ? ' ls-stat-higher' : ''}`}>{fmt(away)}</span>
+    </div>
+  );
+}
+
+function hasData(rows: StatRowData[]) {
+  return rows.some((r) => r.home != null || r.away != null);
+}
+
+function StatRows({ rows }: { rows: StatRowData[] }) {
+  return <>{rows.map((r) => <StatRow key={r.label} row={r} />)}</>;
+}
+
+function StatGroup({ title, rows, tone }: { title: string; rows: StatRowData[]; tone: string }) {
+  if (!hasData(rows)) return null;
+  // Each category tints its bars via a scoped CSS var the bar fill reads.
+  return (
+    <div className="ls-stat-group" style={{ ['--bar-color']: tone } as CSSProperties}>
+      <div className="ls-stat-group-title">{title}</div>
+      <div className="ls-stat-group-rows">
+        <StatRows rows={rows} />
+      </div>
+    </div>
+  );
+}
+
+export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
+  const h = stats.home;
+  const a = stats.away;
+  const homePct = h.possession ?? 50;
+  const awayPct = a.possession ?? 50;
+
+  const groups: { title: string; tone: string; rows: StatRowData[] }[] = [
+    {
+      title: 'Attacking',
+      tone: 'var(--stat-attack)',
+      rows: [
+        { label: 'Shots', home: h.shots, away: a.shots },
+        { label: 'On Target', home: h.shotsOnTarget, away: a.shotsOnTarget },
+        { label: 'Shot Accuracy', home: h.shotAccuracy, away: a.shotAccuracy, pct: true },
+        { label: 'Corners', home: h.corners, away: a.corners },
+        { label: 'Offsides', home: h.offsides, away: a.offsides },
+      ],
+    },
+    {
+      title: 'Passing',
+      tone: 'var(--stat-pass)',
+      rows: [
+        { label: 'Passes', home: h.passes, away: a.passes },
+        { label: 'Pass Accuracy', home: h.passAccuracy, away: a.passAccuracy, pct: true },
+        { label: 'Crosses', home: h.crosses, away: a.crosses },
+        { label: 'Cross Accuracy', home: h.crossAccuracy, away: a.crossAccuracy, pct: true },
+        { label: 'Long Balls', home: h.longBalls, away: a.longBalls },
+      ],
+    },
+    {
+      title: 'Defending',
+      tone: 'var(--stat-defend)',
+      rows: [
+        { label: 'Tackles', home: h.tackles, away: a.tackles },
+        { label: 'Tackle %', home: h.tackleAccuracy, away: a.tackleAccuracy, pct: true },
+        { label: 'Interceptions', home: h.interceptions, away: a.interceptions },
+        { label: 'Clearances', home: h.clearances, away: a.clearances },
+        { label: 'Blocked Shots', home: h.blockedShots, away: a.blockedShots },
+        { label: 'Saves', home: h.saves, away: a.saves },
+      ],
+    },
+    {
+      title: 'Discipline',
+      tone: 'var(--stat-discipline)',
+      rows: [
+        { label: 'Fouls', home: h.fouls, away: a.fouls },
+        { label: 'Yellow Cards', home: h.yellowCards, away: a.yellowCards },
+        { label: 'Red Cards', home: h.redCards, away: a.redCards },
+      ],
+    },
   ];
+
+  const hasGroups = groups.some((g) => hasData(g.rows));
+  const hasPossession = h.possession != null || a.possession != null;
+  // Everything is collapsed by default — the only thing shown pre-expand is the
+  // win-probability bar (a sibling component, live/upcoming matches only).
+  if (!hasGroups && !hasPossession) return null;
 
   return (
     <div className="ls-stat-block">
-      <div className="ls-stat-poss-bar-wrap">
-        <span className="ls-stat-poss-label">{homePct.toFixed(0)}%</span>
-        <div className="ls-stat-poss-bar">
-          <div className="ls-stat-poss-home" style={{ width: `${homePct}%` }} />
-          <div className="ls-stat-poss-away" />
-        </div>
-        <span className="ls-stat-poss-label">{awayPct.toFixed(0)}%</span>
-      </div>
-      <table className="ls-stat-table">
-        <tbody>
-          {rows.map((row) => {
-            const hVal = row.home ?? 0;
-            const aVal = row.away ?? 0;
-            const homeHigher = hVal > aVal;
-            const awayHigher = aVal > hVal;
-            return (
-              <tr key={row.label}>
-                <td className={`ls-stat-val-home${homeHigher ? ' ls-stat-higher' : ''}`}>
-                  {row.home ?? '–'}
-                </td>
-                <td className="ls-stat-label-cell">{row.label}</td>
-                <td className={`ls-stat-val-away${awayHigher ? ' ls-stat-higher' : ''}`}>
-                  {row.away ?? '–'}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <CollapsibleSection title="Match stats">
+        {hasPossession && (
+          <div className="ls-stat-poss-bar-wrap">
+            <span className="ls-stat-poss-label">{homePct.toFixed(0)}%</span>
+            <div className="ls-stat-poss-bar">
+              <div className="ls-stat-poss-home" style={{ width: `${homePct}%` }} />
+              <div className="ls-stat-poss-away" />
+            </div>
+            <span className="ls-stat-poss-label">{awayPct.toFixed(0)}%</span>
+          </div>
+        )}
+        {groups.map((g) => <StatGroup key={g.title} title={g.title} tone={g.tone} rows={g.rows} />)}
+      </CollapsibleSection>
     </div>
   );
 }

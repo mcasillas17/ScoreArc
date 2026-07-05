@@ -23,12 +23,26 @@ export interface Card {
 }
 
 export interface TeamStats {
-  possession: number | null; // percent, e.g. 47.1
+  possession: number | null; // percent 0-100
   shots: number | null;
   shotsOnTarget: number | null;
-  passes: number | null;
+  shotAccuracy: number | null; // percent 0-100
   corners: number | null;
+  offsides: number | null;
+  passes: number | null;
+  passAccuracy: number | null; // percent 0-100
+  crosses: number | null;
+  crossAccuracy: number | null; // percent 0-100
+  longBalls: number | null;
+  tackles: number | null;
+  tackleAccuracy: number | null; // percent 0-100
+  interceptions: number | null;
+  clearances: number | null;
+  blockedShots: number | null;
+  saves: number | null;
   fouls: number | null;
+  yellowCards: number | null;
+  redCards: number | null;
 }
 
 export interface MatchStats {

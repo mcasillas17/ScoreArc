@@ -351,3 +351,43 @@ describe('match extras mappers', () => {
     if (h.length) expect(h[0].label).toMatch(/\d+-\d+/);
   });
 });
+
+describe('mapSummaryStats — full stat set', () => {
+  const stats = mapSummaryStats(raw, '4789', '464');
+
+  it('maps count stats for both teams', () => {
+    expect(stats).not.toBeNull();
+    expect(stats!.home.shots).toBe(14);
+    expect(stats!.away.shots).toBe(9);
+    expect(stats!.home.offsides).toBe(2);
+    expect(stats!.home.saves).toBe(1);
+    expect(stats!.away.saves).toBe(4);
+    expect(stats!.home.tackles).toBe(24);
+    expect(stats!.away.tackles).toBe(19);
+  });
+
+  it('normalizes fraction-scale accuracy pcts to 0-100', () => {
+    expect(stats!.home.passAccuracy).toBe(80); // 0.8 -> 80
+    expect(stats!.away.passAccuracy).toBe(90); // 0.9 -> 90
+  });
+
+  it('keeps possession on the 0-100 scale', () => {
+    expect(stats!.home.possession).toBeCloseTo(47.1, 1);
+    expect(stats!.away.possession).toBeCloseTo(52.9, 1);
+  });
+
+  it('maps a stat missing from the payload to null (never 0)', () => {
+    const partial = {
+      boxscore: {
+        teams: [
+          { team: { id: '4789' }, statistics: [{ name: 'totalShots', displayValue: '5' }] },
+          { team: { id: '464' }, statistics: [{ name: 'totalShots', displayValue: '3' }] },
+        ],
+      },
+    };
+    const s = mapSummaryStats(partial, '4789', '464');
+    expect(s!.home.shots).toBe(5);
+    expect(s!.home.saves).toBeNull();
+    expect(s!.home.passAccuracy).toBeNull();
+  });
+});
