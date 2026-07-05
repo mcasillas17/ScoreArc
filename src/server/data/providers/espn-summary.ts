@@ -174,6 +174,13 @@ function parseStat(stats: any[], name: string): number | null {
   return isNaN(n) ? null : n;
 }
 
+// Accuracy stats (passPct, shotPct, …) arrive as 0–1 fractions from ESPN,
+// unlike possessionPct which is already 0–100. Normalize to a 0–100 percent.
+function parsePct(stats: any[], name: string): number | null {
+  const v = parseStat(stats, name);
+  return v == null ? null : Math.round(v * 100);
+}
+
 // American moneyline -> implied probability (0..1).
 function moneylineToProb(ml: number | null | undefined): number | null {
   if (ml == null || isNaN(ml)) return null;
@@ -232,9 +239,23 @@ function buildTeamStats(statistics: any[]): TeamStats {
     possession: parseStat(statistics, 'possessionPct'),
     shots: parseStat(statistics, 'totalShots'),
     shotsOnTarget: parseStat(statistics, 'shotsOnTarget'),
-    passes: parseStat(statistics, 'totalPasses'),
+    shotAccuracy: parsePct(statistics, 'shotPct'),
     corners: parseStat(statistics, 'wonCorners'),
+    offsides: parseStat(statistics, 'offsides'),
+    passes: parseStat(statistics, 'totalPasses'),
+    passAccuracy: parsePct(statistics, 'passPct'),
+    crosses: parseStat(statistics, 'totalCrosses'),
+    crossAccuracy: parsePct(statistics, 'crossPct'),
+    longBalls: parseStat(statistics, 'totalLongBalls'),
+    tackles: parseStat(statistics, 'totalTackles'),
+    tackleAccuracy: parsePct(statistics, 'tacklePct'),
+    interceptions: parseStat(statistics, 'interceptions'),
+    clearances: parseStat(statistics, 'totalClearance'),
+    blockedShots: parseStat(statistics, 'blockedShots'),
+    saves: parseStat(statistics, 'saves'),
     fouls: parseStat(statistics, 'foulsCommitted'),
+    yellowCards: parseStat(statistics, 'yellowCards'),
+    redCards: parseStat(statistics, 'redCards'),
   };
 }
 
