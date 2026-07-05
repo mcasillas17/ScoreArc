@@ -205,7 +205,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
 
           {!loading && summary?.lineups && (
             <div className="md-section">
-              <CollapsibleSection title="Lineups">
+              <CollapsibleSection title="Lineups" tone="#2dd4bf">
                 <LineupView lineups={summary.lineups} homeAbbr={home.abbr} awayAbbr={away.abbr} />
               </CollapsibleSection>
             </div>
@@ -213,7 +213,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
 
           {!loading && ((form && (form.home.length > 0 || form.away.length > 0)) || h2h.length > 0) && (
             <div className="md-section">
-              <CollapsibleSection title="Form & head-to-head">
+              <CollapsibleSection title="Form & head-to-head" tone="#f472b6">
                 <div className="fm-h2h-grid">
                   {form && (form.home.length > 0 || form.away.length > 0) && (
                     <FormRow form={form} homeAbbr={home.abbr} awayAbbr={away.abbr} />

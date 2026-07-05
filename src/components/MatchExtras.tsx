@@ -1,4 +1,5 @@
 import type { MatchInfo, MatchForm, FormResult, CommentaryItem, H2HMeeting } from '@/server/data/types';
+import { CollapsibleSection } from './Collapsible';
 
 function fmtYear(iso: string): string {
   try {
@@ -104,10 +105,7 @@ export function CommentaryFeed({ items }: { items: CommentaryItem[] }) {
   // Latest first — most useful during a live match.
   const feed = [...items].reverse();
   return (
-    <details className="cm-block">
-      <summary className="cm-summary">
-        Commentary <span className="cm-count">{items.length}</span>
-      </summary>
+    <CollapsibleSection title={`Commentary · ${items.length}`} tone="#a78bfa">
       <ul className="cm-list">
         {feed.map((c, i) => (
           <li key={i} className="cm-item">
@@ -116,6 +114,6 @@ export function CommentaryFeed({ items }: { items: CommentaryItem[] }) {
           </li>
         ))}
       </ul>
-    </details>
+    </CollapsibleSection>
   );
 }

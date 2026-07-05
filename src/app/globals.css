@@ -1823,9 +1823,9 @@ a {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.03em;
-  color: var(--gold);
-  background: rgba(232, 184, 75, 0.08);
-  border: 1px solid rgba(232, 184, 75, 0.28);
+  color: var(--pill-color, var(--gold));
+  background: color-mix(in srgb, var(--pill-color, var(--gold)) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pill-color, var(--gold)) 30%, transparent);
   border-radius: 100px;
   transition: background-color 0.15s, border-color 0.15s;
 }
@@ -1835,8 +1835,8 @@ a {
 }
 
 .collapsible-toggle:hover {
-  background: rgba(232, 184, 75, 0.16);
-  border-color: rgba(232, 184, 75, 0.5);
+  background: color-mix(in srgb, var(--pill-color, var(--gold)) 18%, transparent);
+  border-color: color-mix(in srgb, var(--pill-color, var(--gold)) 55%, transparent);
 }
 
 /* chevron that flips when open */
@@ -2310,31 +2310,6 @@ a {
 }
 .h2h-date { color: var(--text-muted); font-size: 11px; }
 
-.cm-block { border-radius: 8px; }
-.cm-summary {
-  cursor: pointer;
-  list-style: none;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 0;
-}
-.cm-summary::-webkit-details-marker { display: none; }
-.cm-summary::before { content: '▸'; transition: transform 0.15s; }
-.cm-block[open] .cm-summary::before { transform: rotate(90deg); }
-.cm-count {
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: 100px;
-  padding: 0 7px;
-  font-size: 10px;
-  color: var(--text);
-}
 .cm-list {
   list-style: none;
   margin-top: 8px;
