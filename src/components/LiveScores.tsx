@@ -7,7 +7,6 @@ import { flagUrl } from "@/lib/flags";
 import {
   ScorersRow,
   CardsRow,
-  MatchStatsBlock,
   WinProbBar,
   PenaltyShootout,
   liveStatus,
@@ -131,8 +130,6 @@ function MatchCard({ match, teamStyle }: { match: Match; teamStyle: TeamStyle })
       )}
 
       {started && hasCards && <CardsRow home={homeCards} away={awayCards} />}
-
-      {started && match.stats && <MatchStatsBlock stats={match.stats} />}
 
       <div className="match-status">
         {ls && (
