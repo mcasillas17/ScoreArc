@@ -1730,21 +1730,11 @@ a {
 
 .ls-stat-val-home {
   text-align: right;
-  width: 30%;
   font-variant-numeric: tabular-nums;
-}
-
-.ls-stat-label-cell {
-  text-align: center;
-  width: 40%;
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .ls-stat-val-away {
   text-align: left;
-  width: 30%;
   font-variant-numeric: tabular-nums;
 }
 
