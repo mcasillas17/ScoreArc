@@ -383,7 +383,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
         clearInterval(id);
         initDone.current = true;
       }
-    }, 820);
+    }, 1400);
     return () => clearInterval(id);
     // mount only
     // eslint-disable-next-line react-hooks/exhaustive-deps

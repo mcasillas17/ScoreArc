@@ -483,7 +483,7 @@ a {
 }
 .bracket-hop {
   offset-distance: 100%;
-  animation: bracket-hop 0.75s ease both;
+  animation: bracket-hop 1.25s ease both;
 }
 @media (prefers-reduced-motion: reduce) {
   .bracket-hop {
