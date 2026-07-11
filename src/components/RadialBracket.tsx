@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/types';
 import { OFFICIAL_R32_ORDER, type TeamStyle } from '@/server/data/competitions';
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
 import BracketZoom from './BracketZoom';
+import { teamJourney, type RingNode, type JourneyStop } from './radialBracketModel';
 
 export type BracketMode = 'live' | 'predict';
 
@@ -123,23 +124,6 @@ function activate(handler: () => void) {
       handler();
     }
   };
-}
-
-interface RingNode {
-  depth: number; // 0 (outer, 32 teams) .. 4 (inner, final pair)
-  index: number; // slot index within the ring
-  angle: number; // degrees on the circle
-  match: BracketMatch | null;
-  team: BracketTeam;
-  isHome: boolean;
-  x: number; // flag (or inner disc) position
-  y: number;
-  crestX: number; // outer crest position (depth 0 only)
-  crestY: number;
-  discR: number;
-  isWinner: boolean; // team is the decided/effective winner of its match
-  eliminated: boolean; // team lost its match here (decided, not the winner) -> greyed
-  clickable: boolean; // predict mode: match undecided + both participants known
 }
 
 function ellipse(rx: number, ry: number, angleDeg: number): { x: number; y: number } {
@@ -367,6 +351,48 @@ function buildRings(
 export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle, apiBase }: Props) {
   const rings = buildRings(rounds, picks, mode);
 
+  const journeys = teamJourney(rings);
+  // Deepest ring any team reached, and the sim end-point. simRound counts ROUNDS
+  // played: a team's flag at depth d appears at simRound >= d (it hopped in) and
+  // greys at simRound >= d+1 (it then lost that round) — so +1 lets the last
+  // completed round's result resolve. The whole tournament plays forward on load.
+  const maxDepth = journeys.reduce((m, j) => Math.max(m, j.positions.length - 1), 0);
+  const simTarget = maxDepth + 1;
+  const targetRef = useRef(simTarget);
+  targetRef.current = simTarget;
+
+  const [simRound, setSimRound] = useState(0);
+  const initDone = useRef(false);
+  useEffect(() => {
+    const reduce =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    // reduced-motion: snap to the final resolved state, no round-by-round play.
+    if (reduce) {
+      setSimRound(targetRef.current);
+      initDone.current = true;
+      return;
+    }
+    setSimRound(0);
+    let d = 0;
+    const id = setInterval(() => {
+      d += 1;
+      setSimRound(d);
+      // read the LIVE target so a mid-intro deepening extends the play (no stall)
+      if (d >= targetRef.current) {
+        clearInterval(id);
+        initDone.current = true;
+      }
+    }, 1400);
+    return () => clearInterval(id);
+    // mount only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // After the intro, keep up with newly-decided rounds (advance, don't replay).
+  useEffect(() => {
+    if (initDone.current) setSimRound((s) => Math.max(s, simTarget));
+  }, [simTarget]);
+
   // The CHAMPION is the effective winner of the FINAL (depth 4).
   const champion = rings[4]?.find((n) => n.isWinner)?.team ?? null;
   useEffect(() => {
@@ -521,13 +547,20 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                 <path d={`M ${b.x} ${b.y} L ${jB.x} ${jB.y}`} fill="none" stroke={GRAD} strokeWidth={1.4} strokeLinecap="round" />
                 <path d={`M ${jA.x} ${jA.y} A ${rj} ${rj} 0 0 ${sweep} ${jB.x} ${jB.y}`} fill="none" stroke={GRAD} strokeWidth={1.4} />
                 <path d={`M ${jMid.x} ${jMid.y} L ${pPar.x} ${pPar.y}`} fill="none" stroke={GRAD} strokeWidth={1.4} strokeLinecap="round" />
-                {/* winner's route ONLY, tinted with its flag colour */}
-                {win && jWin && winColor && (
-                  <g>
-                    <path d={`M ${win.x} ${win.y} L ${jWin.x} ${jWin.y}`} fill="none" stroke={winColor} strokeWidth={2.9} strokeLinecap="round" />
-                    <path d={`M ${jWin.x} ${jWin.y} A ${rj} ${rj} 0 0 ${arcSweep} ${jMid.x} ${jMid.y}`} fill="none" stroke={winColor} strokeWidth={2.9} />
-                    <path d={`M ${jMid.x} ${jMid.y} L ${pPar.x} ${pPar.y}`} fill="none" stroke={winColor} strokeWidth={2.9} strokeLinecap="round" />
-                  </g>
+                {/* winner's route ONLY, tinted with its flag colour. It draws
+                    in from child to parent as the winner's flag hops through it
+                    — same path + 1.25s ease as the flag's offset-path, so the
+                    flag appears to paint the line. Gated on the round playing. */}
+                {win && jWin && winColor && simRound >= depth + 1 && (
+                  <path
+                    className="bracket-conn-draw"
+                    d={`M ${win.x} ${win.y} L ${jWin.x} ${jWin.y} A ${rj} ${rj} 0 0 ${arcSweep} ${jMid.x} ${jMid.y} L ${pPar.x} ${pPar.y}`}
+                    fill="none"
+                    stroke={winColor}
+                    strokeWidth={2.9}
+                    strokeLinecap="round"
+                    pathLength={1}
+                  />
                 )}
               </g>
             );
@@ -537,15 +570,29 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
         {/* (2c) Finalists -> center (champion's line tinted with its flag colour) */}
         {rings[RINGS.length - 1]?.map((node) => {
           const inner = ellipse(30, 30, node.angle);
+          // Champion's line to the trophy colours in once the final has played.
+          const championLine = node.isWinner && simRound >= RINGS.length;
           return (
-            <path
-              key={`final-${node.index}`}
-              d={`M ${node.x} ${node.y} L ${inner.x} ${inner.y}`}
-              fill="none"
-              stroke={node.isWinner ? colorFor(node.team) : 'url(#conn-grad)'}
-              strokeWidth={node.isWinner ? 2.9 : 1.4}
-              strokeLinecap="round"
-            />
+            <g key={`final-${node.index}`}>
+              <path
+                d={`M ${node.x} ${node.y} L ${inner.x} ${inner.y}`}
+                fill="none"
+                stroke="url(#conn-grad)"
+                strokeWidth={1.4}
+                strokeLinecap="round"
+              />
+              {championLine && (
+                <path
+                  className="bracket-conn-draw"
+                  d={`M ${node.x} ${node.y} L ${inner.x} ${inner.y}`}
+                  fill="none"
+                  stroke={colorFor(node.team)}
+                  strokeWidth={2.9}
+                  strokeLinecap="round"
+                  pathLength={1}
+                />
+              )}
+            </g>
           );
         })}
 
@@ -649,55 +696,36 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             mode={mode}
             clickable={node.clickable}
             viewable={false}
+            // R32 badges start colored; losers grey once round 1 has played.
+            greyed={node.eliminated && simRound >= 1}
             onClick={() => handleDiscClick(node)}
             teamStyle={teamStyle}
           />
         ))}
 
-        {/* Inner rings (depth 1-4): single flag when decided, else nothing. Each
-            advancing flag travels in ALONG THE CONNECTOR ELBOW (child -> arc join
-            at the winner's angle -> arc join at the parent's angle -> slot). */}
-        {rings.slice(1).map((ring, ri) => {
-          const childRing = rings[ri]; // depth (ri+1) - 1 = ri
-          const rc = RINGS[ri].rx; // child ring radius
-          const rp = RINGS[ri + 1].rx; // this (parent) ring radius
-          const rj = rp + (rc - rp) * 0.5; // arc-join radius (same as connector)
-          return ring.map((node) => {
-            if (node.team.placeholder) return null;
-            const cA = childRing[2 * node.index];
-            const cB = childRing[2 * node.index + 1];
-            const src = cA?.isWinner ? cA : cB?.isWinner ? cB : null;
-            // The match this flag WON to reach this slot — clicking the flag (the
-            // point it travelled to) opens that match's detail card.
-            const wonMatch = cA?.match ?? null;
-            const flagViewable = mode !== 'predict' && wonMatch != null;
-            let path: TravelPath = { x0: 0, y0: 0, x1: 0, y1: 0, x2: 0, y2: 0 };
-            if (src) {
-              const jWin = ellipse(rj, rj, src.angle);
-              const jMid = ellipse(rj, rj, node.angle);
-              path = {
-                x0: src.x - node.x, y0: src.y - node.y, // child (winner)
-                x1: jWin.x - node.x, y1: jWin.y - node.y, // radial-in at winner angle
-                x2: jMid.x - node.x, y2: jMid.y - node.y, // along arc to parent angle
-              };
-            }
+        {/* Trail of flags: one per level each team reached (the bracket path).
+            The tournament plays forward level by level — a team's flag hops one
+            ring inward from its previous spot (following the connector) when its
+            round is reached, then stays; it greys the round it loses. */}
+        {journeys.flatMap((j) =>
+          j.positions.slice(1).map((stop, i) => {
+            if (simRound < stop.depth) return null; // round not yet played
+            const from = j.positions[i]; // previous stop (one ring out)
+            const greyed = stop.node.eliminated && simRound >= stop.depth + 1;
             return (
-              <InnerFlag
-                key={`inner-${node.depth}-${node.index}-${node.team.id}`}
-                node={node}
+              <InnerHop
+                key={`hop-${j.teamId}-${stop.depth}`}
+                stop={stop}
+                from={from}
+                greyed={greyed}
                 mode={mode}
-                clickable={node.clickable}
-                viewable={flagViewable}
-                onClick={() => {
-                  if (mode === 'predict' && node.clickable) handleDiscClick(node);
-                  else if (wonMatch) handleView(wonMatch);
-                }}
-                path={path}
                 teamStyle={teamStyle}
+                onView={(m) => handleView(m)}
+                onPick={(node) => handleDiscClick(node)}
               />
             );
-          });
-        })}
+          }),
+        )}
 
         {/* (1b) Center trophy on top — real WC2026 trophy image */}
         <image
@@ -809,6 +837,7 @@ function OuterTeam({
   mode,
   clickable,
   viewable,
+  greyed,
   onClick,
   teamStyle,
 }: {
@@ -816,6 +845,7 @@ function OuterTeam({
   mode: BracketMode;
   clickable: boolean;
   viewable: boolean;
+  greyed: boolean;
   onClick: () => void;
   teamStyle: TeamStyle;
 }) {
@@ -831,7 +861,7 @@ function OuterTeam({
     <g
       aria-label={team.name}
       className={`${interactive ? 'bracket-disc bracket-disc--clickable' : 'bracket-disc'}${
-        node.eliminated ? ' bracket-disc--eliminated' : ''
+        greyed ? ' bracket-disc--eliminated' : ''
       }`}
       onClick={interactive ? onClick : undefined}
       onKeyDown={interactive ? activate(onClick) : undefined}
@@ -921,102 +951,85 @@ function OuterTeam({
   );
 }
 
-/** Inner advanced team: single flag disc (slice-fill). */
-interface TravelPath {
-  x0: number; y0: number; // child (winner) position
-  x1: number; y1: number; // arc join at winner's angle
-  x2: number; y2: number; // arc join at parent's angle
-}
-
-function InnerFlag({
-  node,
+/**
+ * One inner-ring flag on a team's path. When its round plays it travels in from
+ * the previous ring ALONG the connector elbow (radial stub -> tangential arc ->
+ * radial stub — the same path the connector line draws) and comes to rest on its
+ * node. Greys once its team has lost the round (`greyed`).
+ */
+function InnerHop({
+  stop,
+  from,
+  greyed,
   mode,
-  clickable,
-  viewable,
-  onClick,
-  path,
   teamStyle,
+  onView,
+  onPick,
 }: {
-  node: RingNode;
+  stop: JourneyStop;
+  from: JourneyStop;
+  greyed: boolean;
   mode: BracketMode;
-  clickable: boolean;
-  viewable: boolean;
-  onClick: () => void;
-  path: TravelPath;
   teamStyle: TeamStyle;
+  onView: (m: BracketMatch) => void;
+  onPick: (node: RingNode) => void;
 }) {
-  const { team, isWinner } = node;
+  const { node } = stop;
+  const { team, isWinner, discR: r } = node;
   const ringStroke = isWinner ? '#e8b84b' : '#2a2a32';
   const ringWidth = isWinner ? 2.4 : 1;
-  const interactive = (mode === 'predict' && clickable) || viewable;
 
-  const cls = `bracket-disc bracket-inner-disc${interactive ? ' bracket-disc--clickable' : ''}${
-    node.eliminated ? ' bracket-disc--eliminated' : ''
-  }`;
+  const viewable = mode !== 'predict' && node.match != null;
+  const clickable = mode === 'predict' && node.clickable;
+  const interactive = viewable || clickable;
+
+  // Motion path = the connector's winner route between the two rings: radial
+  // stub in to the join radius, tangential arc to the node's angle, radial stub
+  // in to the node. Identical geometry to the drawn connector (see section 2).
+  const rc = RINGS[stop.depth - 1].rx;
+  const rp = RINGS[stop.depth].rx;
+  const rj = rp + (rc - rp) * 0.5;
+  const j0 = ellipse(rj, rj, from.node.angle);
+  const j1 = ellipse(rj, rj, node.angle);
+  const sweep = node.angle > from.node.angle ? 1 : 0;
+  const motionPath = `M ${from.x} ${from.y} L ${j0.x} ${j0.y} A ${rj} ${rj} 0 0 ${sweep} ${j1.x} ${j1.y} L ${stop.x} ${stop.y}`;
 
   let disc: React.ReactNode;
   if (teamStyle === 'crest') {
     const img = team.crestUrl ?? crestSrc(team.abbr);
     disc = img ? (
-      <ImageDisc
-        id={`inner-${node.depth}-${node.index}`}
-        x={node.x}
-        y={node.y}
-        r={node.discR}
-        href={img}
-        fit="meet"
-        bg="#f4f4f6"
-        ringStroke={ringStroke}
-        ringWidth={ringWidth}
-      />
+      <ImageDisc id={`hop-${team.id}-${node.depth}`} x={0} y={0} r={r} href={img} fit="meet" bg="#f4f4f6" ringStroke={ringStroke} ringWidth={ringWidth} />
     ) : (
-      <FallbackDisc
-        x={node.x}
-        y={node.y}
-        r={node.discR}
-        abbr={team.abbr}
-        ringStroke={ringStroke}
-        ringWidth={ringWidth}
-      />
+      <FallbackDisc x={0} y={0} r={r} abbr={team.abbr} ringStroke={ringStroke} ringWidth={ringWidth} />
     );
   } else {
     const flag = flagUrl(team.abbr);
-    disc = !flag ? (
-      <FallbackDisc
-        x={node.x}
-        y={node.y}
-        r={node.discR}
-        abbr={team.abbr}
-        ringStroke={ringStroke}
-        ringWidth={ringWidth}
-      />
+    disc = flag ? (
+      <ImageDisc id={`hop-${team.id}-${node.depth}`} x={0} y={0} r={r} href={flag} fit="slice" bg={null} ringStroke={ringStroke} ringWidth={ringWidth} />
     ) : (
-      <ImageDisc
-        id={`inner-${node.depth}-${node.index}`}
-        x={node.x}
-        y={node.y}
-        r={node.discR}
-        href={flag}
-        fit="slice"
-        bg={null}
-        ringStroke={ringStroke}
-        ringWidth={ringWidth}
-      />
+      <FallbackDisc x={0} y={0} r={r} abbr={team.abbr} ringStroke={ringStroke} ringWidth={ringWidth} />
     );
   }
 
-  const style = {
-    '--x0': `${path.x0}px`, '--y0': `${path.y0}px`,
-    '--x1': `${path.x1}px`, '--y1': `${path.y1}px`,
-    '--x2': `${path.x2}px`, '--y2': `${path.y2}px`,
+  // offset-path drives the disc along the elbow; offset-distance animates 0->100%.
+  const motionStyle = {
+    offsetPath: `path('${motionPath}')`,
+    offsetRotate: '0deg',
   } as CSSProperties;
+  const cls = `bracket-disc bracket-hop${interactive ? ' bracket-disc--clickable' : ''}${greyed ? ' bracket-disc--eliminated' : ''}`;
+
+  const handleClick = () => {
+    if (clickable) onPick(node);
+    else if (viewable && node.match) onView(node.match);
+  };
 
   return (
     <g
-      className={`${cls} bracket-advance`}
-      style={style}
-      onClick={interactive ? onClick : undefined}
-      onKeyDown={interactive ? activate(onClick) : undefined}
+      className={cls}
+      style={motionStyle}
+      aria-label={team.name}
+      onClick={interactive ? handleClick : undefined}
+      onKeyDown={interactive ? activate(handleClick) : undefined}
       tabIndex={interactive ? 0 : undefined}
       role={interactive ? 'button' : undefined}
     >

@@ -467,8 +467,50 @@ a {
    No opacity change — the disc stays fully opaque so connector lines don't
    show through it. */
 .bracket-disc--eliminated {
-  filter: grayscale(1) brightness(0.6);
+  filter: grayscale(0.75) brightness(0.7);
   transition: filter 0.3s ease;
+}
+
+/* Trail flag: travels in along its connector elbow (offset-path is set inline
+   to the same path the connector draws), then rests on its node. */
+@keyframes bracket-hop {
+  from {
+    offset-distance: 0%;
+  }
+  to {
+    offset-distance: 100%;
+  }
+}
+.bracket-hop {
+  offset-distance: 100%;
+  animation: bracket-hop 1.25s ease both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bracket-hop {
+    animation: none;
+    offset-distance: 100%;
+  }
+}
+
+/* Connector winner route: draws in from child to parent in lock-step with the
+   flag hopping through it (pathLength 1 -> normalized dash reveal). */
+@keyframes bracket-conn-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.bracket-conn-draw {
+  stroke-dasharray: 1;
+  animation: bracket-conn-draw 1.25s ease both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bracket-conn-draw {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
 }
 
 .bracket-disc--clickable {
@@ -492,24 +534,6 @@ a {
 .bracket-slot-dot:focus-visible {
   outline: none;
   filter: brightness(1.2) drop-shadow(0 0 4px #ffe9a8);
-}
-
-/* Subtle fade + scale-in when a team newly advances into an inner slot */
-.bracket-inner-disc {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: disc-in 300ms ease;
-}
-
-@keyframes disc-in {
-  from {
-    opacity: 0;
-    transform: scale(0.6);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
 }
 
 /* ===== Live Strip ===== */
@@ -1674,20 +1698,6 @@ a {
 .ls-fullflag-fallback {
   display: flex; align-items: center; justify-content: center;
   background: #1b1b22; color: #9a9a9a; font-size: 12px; font-weight: 700;
-}
-
-/* ---- Predictor: traveling-flag advance animation ---- */
-@keyframes bracket-advance {
-  0%   { transform: translate(var(--x0, 0), var(--y0, 0)); }
-  40%  { transform: translate(var(--x1, 0), var(--y1, 0)); }
-  70%  { transform: translate(var(--x2, 0), var(--y2, 0)); }
-  100% { transform: translate(0, 0); }
-}
-.bracket-advance {
-  animation: bracket-advance 0.85s ease-in-out both;
-}
-@media (prefers-reduced-motion: reduce) {
-  .bracket-advance { animation: none; }
 }
 
 /* ===== Match Stats (ls-stat-*) ===== */
