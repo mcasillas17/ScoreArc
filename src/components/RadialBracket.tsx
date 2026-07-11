@@ -365,8 +365,11 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
     const reduce =
       typeof window !== 'undefined' &&
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    // reduced-motion: snap to final, no walk. maxReached === 0 (pre-tournament):
+    // nothing decided yet, so there's no 0->N walk to play — go straight to the
+    // incremental path so flags glide in one ring at a time as results arrive.
     if (reduce || maxReached === 0) {
-      setSimRound(maxRef.current);
+      setSimRound(maxReached);
       initDone.current = true;
       return;
     }
