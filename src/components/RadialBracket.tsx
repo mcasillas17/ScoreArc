@@ -5,6 +5,7 @@ import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/type
 import { OFFICIAL_R32_ORDER, type TeamStyle } from '@/server/data/competitions';
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
 import BracketZoom from './BracketZoom';
+import { type RingNode } from './radialBracketModel';
 
 export type BracketMode = 'live' | 'predict';
 
@@ -123,23 +124,6 @@ function activate(handler: () => void) {
       handler();
     }
   };
-}
-
-interface RingNode {
-  depth: number; // 0 (outer, 32 teams) .. 4 (inner, final pair)
-  index: number; // slot index within the ring
-  angle: number; // degrees on the circle
-  match: BracketMatch | null;
-  team: BracketTeam;
-  isHome: boolean;
-  x: number; // flag (or inner disc) position
-  y: number;
-  crestX: number; // outer crest position (depth 0 only)
-  crestY: number;
-  discR: number;
-  isWinner: boolean; // team is the decided/effective winner of its match
-  eliminated: boolean; // team lost its match here (decided, not the winner) -> greyed
-  clickable: boolean; // predict mode: match undecided + both participants known
 }
 
 function ellipse(rx: number, ry: number, angleDeg: number): { x: number; y: number } {
