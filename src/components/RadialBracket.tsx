@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/types';
 import { OFFICIAL_R32_ORDER, type TeamStyle } from '@/server/data/competitions';
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
 import BracketZoom from './BracketZoom';
-import { type RingNode } from './radialBracketModel';
+import { teamJourney, type RingNode, type TeamJourney } from './radialBracketModel';
 
 export type BracketMode = 'live' | 'predict';
 
@@ -351,6 +351,42 @@ function buildRings(
 export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle, apiBase }: Props) {
   const rings = buildRings(rounds, picks, mode);
 
+  const journeys = teamJourney(rings);
+  const maxReached = journeys.reduce((m, j) => Math.max(m, j.positions.length - 1), 0);
+
+  // simRound walks the tournament inward: 0 -> maxReached on first mount, then
+  // stays pinned so live refreshes / predict picks only glide the newly-deepened
+  // flag one ring further (never a full replay).
+  const [simRound, setSimRound] = useState(0);
+  const initDone = useRef(false);
+  useEffect(() => {
+    const reduce =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || maxReached === 0) {
+      setSimRound(maxReached);
+      initDone.current = true;
+      return;
+    }
+    setSimRound(0);
+    let d = 0;
+    const id = setInterval(() => {
+      d += 1;
+      setSimRound(d);
+      if (d >= maxReached) {
+        clearInterval(id);
+        initDone.current = true;
+      }
+    }, 650);
+    return () => clearInterval(id);
+    // mount only — captures the initial maxReached
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // After the intro, keep up with newly-decided rounds (glide, don't replay).
+  useEffect(() => {
+    if (initDone.current) setSimRound((s) => Math.max(s, maxReached));
+  }, [maxReached]);
+
   // The CHAMPION is the effective winner of the FINAL (depth 4).
   const champion = rings[4]?.find((n) => n.isWinner)?.team ?? null;
   useEffect(() => {
@@ -638,50 +674,21 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           />
         ))}
 
-        {/* Inner rings (depth 1-4): single flag when decided, else nothing. Each
-            advancing flag travels in ALONG THE CONNECTOR ELBOW (child -> arc join
-            at the winner's angle -> arc join at the parent's angle -> slot). */}
-        {rings.slice(1).map((ring, ri) => {
-          const childRing = rings[ri]; // depth (ri+1) - 1 = ri
-          const rc = RINGS[ri].rx; // child ring radius
-          const rp = RINGS[ri + 1].rx; // this (parent) ring radius
-          const rj = rp + (rc - rp) * 0.5; // arc-join radius (same as connector)
-          return ring.map((node) => {
-            if (node.team.placeholder) return null;
-            const cA = childRing[2 * node.index];
-            const cB = childRing[2 * node.index + 1];
-            const src = cA?.isWinner ? cA : cB?.isWinner ? cB : null;
-            // The match this flag WON to reach this slot — clicking the flag (the
-            // point it travelled to) opens that match's detail card.
-            const wonMatch = cA?.match ?? null;
-            const flagViewable = mode !== 'predict' && wonMatch != null;
-            let path: TravelPath = { x0: 0, y0: 0, x1: 0, y1: 0, x2: 0, y2: 0 };
-            if (src) {
-              const jWin = ellipse(rj, rj, src.angle);
-              const jMid = ellipse(rj, rj, node.angle);
-              path = {
-                x0: src.x - node.x, y0: src.y - node.y, // child (winner)
-                x1: jWin.x - node.x, y1: jWin.y - node.y, // radial-in at winner angle
-                x2: jMid.x - node.x, y2: jMid.y - node.y, // along arc to parent angle
-              };
-            }
-            return (
-              <InnerFlag
-                key={`inner-${node.depth}-${node.index}-${node.team.id}`}
-                node={node}
-                mode={mode}
-                clickable={node.clickable}
-                viewable={flagViewable}
-                onClick={() => {
-                  if (mode === 'predict' && node.clickable) handleDiscClick(node);
-                  else if (wonMatch) handleView(wonMatch);
-                }}
-                path={path}
-                teamStyle={teamStyle}
-              />
-            );
-          });
-        })}
+        {/* Traveling flags: one per team, gliding inward as simRound advances.
+            The R32 twin badge stays put; this is the only MOVING element. */}
+        {journeys
+          .filter((j) => j.positions.length > 1)
+          .map((j) => (
+            <TravelingFlag
+              key={`travel-${j.teamId}`}
+              journey={j}
+              simRound={simRound}
+              mode={mode}
+              teamStyle={teamStyle}
+              onView={(m) => handleView(m)}
+              onPick={(node) => handleDiscClick(node)}
+            />
+          ))}
 
         {/* (1b) Center trophy on top — real WC2026 trophy image */}
         <image
@@ -905,102 +912,70 @@ function OuterTeam({
   );
 }
 
-/** Inner advanced team: single flag disc (slice-fill). */
-interface TravelPath {
-  x0: number; y0: number; // child (winner) position
-  x1: number; y1: number; // arc join at winner's angle
-  x2: number; y2: number; // arc join at parent's angle
-}
-
-function InnerFlag({
-  node,
+/** One flag per team that glides inward along its journey as simRound advances. */
+function TravelingFlag({
+  journey,
+  simRound,
   mode,
-  clickable,
-  viewable,
-  onClick,
-  path,
   teamStyle,
+  onView,
+  onPick,
 }: {
-  node: RingNode;
+  journey: TeamJourney;
+  simRound: number;
   mode: BracketMode;
-  clickable: boolean;
-  viewable: boolean;
-  onClick: () => void;
-  path: TravelPath;
   teamStyle: TeamStyle;
+  onView: (m: BracketMatch) => void;
+  onPick: (node: RingNode) => void;
 }) {
-  const { team, isWinner } = node;
-  const ringStroke = isWinner ? '#e8b84b' : '#2a2a32';
-  const ringWidth = isWinner ? 2.4 : 1;
-  const interactive = (mode === 'predict' && clickable) || viewable;
+  const deep = journey.positions.length - 1;
+  const stop = journey.positions[Math.min(simRound, deep)];
+  const node = journey.deepestNode;
+  const arrived = simRound >= deep;
+  const greyed = journey.eliminatedAtDepth != null && simRound >= journey.eliminatedAtDepth;
 
-  const cls = `bracket-disc bracket-inner-disc${interactive ? ' bracket-disc--clickable' : ''}${
-    node.eliminated ? ' bracket-disc--eliminated' : ''
-  }`;
+  // Only interactive once it has arrived at its resting ring.
+  const viewable = arrived && mode !== 'predict' && node.match != null;
+  const clickable = arrived && mode === 'predict' && node.clickable;
+  const interactive = viewable || clickable;
+
+  const r = node.discR;
+  const ringStroke = node.isWinner ? '#e8b84b' : '#2a2a32';
+  const ringWidth = node.isWinner ? 2.4 : 1;
+  const { team } = journey.deepestNode;
 
   let disc: React.ReactNode;
   if (teamStyle === 'crest') {
     const img = team.crestUrl ?? crestSrc(team.abbr);
     disc = img ? (
-      <ImageDisc
-        id={`inner-${node.depth}-${node.index}`}
-        x={node.x}
-        y={node.y}
-        r={node.discR}
-        href={img}
-        fit="meet"
-        bg="#f4f4f6"
-        ringStroke={ringStroke}
-        ringWidth={ringWidth}
-      />
+      <ImageDisc id={`travel-${journey.teamId}`} x={0} y={0} r={r} href={img} fit="meet" bg="#f4f4f6" ringStroke={ringStroke} ringWidth={ringWidth} />
     ) : (
-      <FallbackDisc
-        x={node.x}
-        y={node.y}
-        r={node.discR}
-        abbr={team.abbr}
-        ringStroke={ringStroke}
-        ringWidth={ringWidth}
-      />
+      <FallbackDisc x={0} y={0} r={r} abbr={team.abbr} ringStroke={ringStroke} ringWidth={ringWidth} />
     );
   } else {
     const flag = flagUrl(team.abbr);
-    disc = !flag ? (
-      <FallbackDisc
-        x={node.x}
-        y={node.y}
-        r={node.discR}
-        abbr={team.abbr}
-        ringStroke={ringStroke}
-        ringWidth={ringWidth}
-      />
+    disc = flag ? (
+      <ImageDisc id={`travel-${journey.teamId}`} x={0} y={0} r={r} href={flag} fit="slice" bg={null} ringStroke={ringStroke} ringWidth={ringWidth} />
     ) : (
-      <ImageDisc
-        id={`inner-${node.depth}-${node.index}`}
-        x={node.x}
-        y={node.y}
-        r={node.discR}
-        href={flag}
-        fit="slice"
-        bg={null}
-        ringStroke={ringStroke}
-        ringWidth={ringWidth}
-      />
+      <FallbackDisc x={0} y={0} r={r} abbr={team.abbr} ringStroke={ringStroke} ringWidth={ringWidth} />
     );
   }
 
-  const style = {
-    '--x0': `${path.x0}px`, '--y0': `${path.y0}px`,
-    '--x1': `${path.x1}px`, '--y1': `${path.y1}px`,
-    '--x2': `${path.x2}px`, '--y2': `${path.y2}px`,
-  } as CSSProperties;
+  const style = { transform: `translate(${stop.x}px, ${stop.y}px)` } as CSSProperties;
+  const cls = `bracket-disc bracket-travel${interactive ? ' bracket-disc--clickable' : ''}${greyed ? ' bracket-disc--eliminated' : ''}`;
+
+  const handleClick = () => {
+    if (clickable) onPick(node);
+    else if (viewable && node.match) onView(node.match);
+  };
 
   return (
     <g
-      className={`${cls} bracket-advance`}
+      className={cls}
       style={style}
-      onClick={interactive ? onClick : undefined}
-      onKeyDown={interactive ? activate(onClick) : undefined}
+      aria-label={team.name}
+      onClick={interactive ? handleClick : undefined}
+      onKeyDown={interactive ? activate(handleClick) : undefined}
       tabIndex={interactive ? 0 : undefined}
       role={interactive ? 'button' : undefined}
     >

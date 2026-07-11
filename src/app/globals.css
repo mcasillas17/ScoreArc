@@ -471,6 +471,16 @@ a {
   transition: filter 0.3s ease;
 }
 
+/* Traveling flag: glides between ring positions via a transform transition. */
+.bracket-travel {
+  transition: transform 0.5s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bracket-travel {
+    transition: none;
+  }
+}
+
 .bracket-disc--clickable {
   cursor: pointer;
   transition: filter 0.12s ease;
@@ -1674,20 +1684,6 @@ a {
 .ls-fullflag-fallback {
   display: flex; align-items: center; justify-content: center;
   background: #1b1b22; color: #9a9a9a; font-size: 12px; font-weight: 700;
-}
-
-/* ---- Predictor: traveling-flag advance animation ---- */
-@keyframes bracket-advance {
-  0%   { transform: translate(var(--x0, 0), var(--y0, 0)); }
-  40%  { transform: translate(var(--x1, 0), var(--y1, 0)); }
-  70%  { transform: translate(var(--x2, 0), var(--y2, 0)); }
-  100% { transform: translate(0, 0); }
-}
-.bracket-advance {
-  animation: bracket-advance 0.85s ease-in-out both;
-}
-@media (prefers-reduced-motion: reduce) {
-  .bracket-advance { animation: none; }
 }
 
 /* ===== Match Stats (ls-stat-*) ===== */
