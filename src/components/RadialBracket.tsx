@@ -353,6 +353,8 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
 
   const journeys = teamJourney(rings);
   const maxReached = journeys.reduce((m, j) => Math.max(m, j.positions.length - 1), 0);
+  const maxRef = useRef(maxReached);
+  maxRef.current = maxReached;
 
   // simRound walks the tournament inward: 0 -> maxReached on first mount, then
   // stays pinned so live refreshes / predict picks only glide the newly-deepened
@@ -364,7 +366,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
       typeof window !== 'undefined' &&
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     if (reduce || maxReached === 0) {
-      setSimRound(maxReached);
+      setSimRound(maxRef.current);
       initDone.current = true;
       return;
     }
@@ -373,7 +375,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
     const id = setInterval(() => {
       d += 1;
       setSimRound(d);
-      if (d >= maxReached) {
+      if (d >= maxRef.current) {
         clearInterval(id);
         initDone.current = true;
       }
@@ -942,7 +944,7 @@ function TravelingFlag({
   const r = node.discR;
   const ringStroke = node.isWinner ? '#e8b84b' : '#2a2a32';
   const ringWidth = node.isWinner ? 2.4 : 1;
-  const { team } = journey.deepestNode;
+  const { team } = node;
 
   let disc: React.ReactNode;
   if (teamStyle === 'crest') {

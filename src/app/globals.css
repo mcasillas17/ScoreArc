@@ -504,24 +504,6 @@ a {
   filter: brightness(1.2) drop-shadow(0 0 4px #ffe9a8);
 }
 
-/* Subtle fade + scale-in when a team newly advances into an inner slot */
-.bracket-inner-disc {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: disc-in 300ms ease;
-}
-
-@keyframes disc-in {
-  from {
-    opacity: 0;
-    transform: scale(0.6);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
 /* ===== Live Strip ===== */
 .live-strip {
   display: flex;
