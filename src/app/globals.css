@@ -471,22 +471,24 @@ a {
   transition: filter 0.3s ease;
 }
 
-/* Trail flag: hops one ring inward from its previous position, then rests.
-   --hop-x/--hop-y is the parent-minus-self offset it enters from. */
+/* Trail flag: travels in along its connector elbow (offset-path is set inline
+   to the same path the connector draws), then rests on its node. */
 @keyframes bracket-hop {
   from {
-    transform: translate(var(--hop-x, 0px), var(--hop-y, 0px));
+    offset-distance: 0%;
   }
   to {
-    transform: translate(0px, 0px);
+    offset-distance: 100%;
   }
 }
 .bracket-hop {
-  animation: bracket-hop 0.55s ease both;
+  offset-distance: 100%;
+  animation: bracket-hop 0.6s ease both;
 }
 @media (prefers-reduced-motion: reduce) {
   .bracket-hop {
     animation: none;
+    offset-distance: 100%;
   }
 }
 

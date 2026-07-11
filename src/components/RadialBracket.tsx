@@ -689,14 +689,13 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
         {journeys.flatMap((j) =>
           j.positions.slice(1).map((stop, i) => {
             if (simRound < stop.depth) return null; // round not yet played
-            const from = j.positions[i]; // parent stop (one ring out)
+            const from = j.positions[i]; // previous stop (one ring out)
             const greyed = stop.node.eliminated && simRound >= stop.depth + 1;
             return (
               <InnerHop
                 key={`hop-${j.teamId}-${stop.depth}`}
                 stop={stop}
-                fromX={from.x}
-                fromY={from.y}
+                from={from}
                 greyed={greyed}
                 mode={mode}
                 teamStyle={teamStyle}
@@ -932,14 +931,14 @@ function OuterTeam({
 }
 
 /**
- * One inner-ring flag on a team's path. It sits at its own ring node (on the
- * connector) and hops in from `from` (its previous ring) when its round plays,
- * then stays. Greys once its team has lost the round (`greyed`).
+ * One inner-ring flag on a team's path. When its round plays it travels in from
+ * the previous ring ALONG the connector elbow (radial stub -> tangential arc ->
+ * radial stub — the same path the connector line draws) and comes to rest on its
+ * node. Greys once its team has lost the round (`greyed`).
  */
 function InnerHop({
   stop,
-  fromX,
-  fromY,
+  from,
   greyed,
   mode,
   teamStyle,
@@ -947,8 +946,7 @@ function InnerHop({
   onPick,
 }: {
   stop: JourneyStop;
-  fromX: number;
-  fromY: number;
+  from: JourneyStop;
   greyed: boolean;
   mode: BracketMode;
   teamStyle: TeamStyle;
@@ -963,6 +961,17 @@ function InnerHop({
   const viewable = mode !== 'predict' && node.match != null;
   const clickable = mode === 'predict' && node.clickable;
   const interactive = viewable || clickable;
+
+  // Motion path = the connector's winner route between the two rings: radial
+  // stub in to the join radius, tangential arc to the node's angle, radial stub
+  // in to the node. Identical geometry to the drawn connector (see section 2).
+  const rc = RINGS[stop.depth - 1].rx;
+  const rp = RINGS[stop.depth].rx;
+  const rj = rp + (rc - rp) * 0.5;
+  const j0 = ellipse(rj, rj, from.node.angle);
+  const j1 = ellipse(rj, rj, node.angle);
+  const sweep = node.angle > from.node.angle ? 1 : 0;
+  const motionPath = `M ${from.x} ${from.y} L ${j0.x} ${j0.y} A ${rj} ${rj} 0 0 ${sweep} ${j1.x} ${j1.y} L ${stop.x} ${stop.y}`;
 
   let disc: React.ReactNode;
   if (teamStyle === 'crest') {
@@ -981,10 +990,10 @@ function InnerHop({
     );
   }
 
-  // Entry hop: the inner <g> animates from the parent ring's offset to (0,0).
-  const hopStyle = {
-    ['--hop-x' as string]: `${fromX - stop.x}px`,
-    ['--hop-y' as string]: `${fromY - stop.y}px`,
+  // offset-path drives the disc along the elbow; offset-distance animates 0->100%.
+  const motionStyle = {
+    offsetPath: `path('${motionPath}')`,
+    offsetRotate: '0deg',
   } as CSSProperties;
   const cls = `bracket-disc bracket-hop${interactive ? ' bracket-disc--clickable' : ''}${greyed ? ' bracket-disc--eliminated' : ''}`;
 
@@ -994,18 +1003,16 @@ function InnerHop({
   };
 
   return (
-    <g transform={`translate(${stop.x} ${stop.y})`}>
-      <g
-        className={cls}
-        style={hopStyle}
-        aria-label={team.name}
-        onClick={interactive ? handleClick : undefined}
-        onKeyDown={interactive ? activate(handleClick) : undefined}
-        tabIndex={interactive ? 0 : undefined}
-        role={interactive ? 'button' : undefined}
-      >
-        {disc}
-      </g>
+    <g
+      className={cls}
+      style={motionStyle}
+      aria-label={team.name}
+      onClick={interactive ? handleClick : undefined}
+      onKeyDown={interactive ? activate(handleClick) : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      role={interactive ? 'button' : undefined}
+    >
+      {disc}
     </g>
   );
 }
