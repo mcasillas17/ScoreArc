@@ -467,7 +467,7 @@ a {
    No opacity change — the disc stays fully opaque so connector lines don't
    show through it. */
 .bracket-disc--eliminated {
-  filter: grayscale(0.72) brightness(0.62);
+  filter: grayscale(0.65) brightness(0.55);
   transition: filter 0.3s ease;
 }
 
