@@ -463,13 +463,11 @@ a {
 }
 
 /* Clickable team discs (predict mode) */
-/* Eliminated team: desaturate + mute the flag/crest, but keep it readable as a
-   greyed FLAG (not a near-black blank). contrast(<1) pulls dark solid-colour
-   flags (e.g. Morocco's red) up toward mid-grey so they don't crush to black and
-   read as an empty slot. No opacity change — the disc stays fully opaque so
-   connector lines don't show through it. */
+/* Eliminated team: greyscale + dim its flag/crest (like the reference art).
+   No opacity change — the disc stays fully opaque so connector lines don't
+   show through it. */
 .bracket-disc--eliminated {
-  filter: grayscale(1) brightness(1.05) contrast(0.55);
+  filter: grayscale(0.72) brightness(0.62);
   transition: filter 0.3s ease;
 }
 
