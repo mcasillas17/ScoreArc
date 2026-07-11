@@ -23,6 +23,7 @@ export interface JourneyStop {
   depth: number;
   x: number;
   y: number;
+  node: RingNode; // the ring node at this stop (for disc render, greyscale, click)
 }
 
 export interface TeamJourney {
@@ -53,7 +54,7 @@ export function teamJourney(rings: RingNode[][]): TeamJourney[] {
     const lost = nodes.find((n) => n.eliminated);
     journeys.push({
       teamId,
-      positions: nodes.map((n) => ({ depth: n.depth, x: n.x, y: n.y })),
+      positions: nodes.map((n) => ({ depth: n.depth, x: n.x, y: n.y, node: n })),
       eliminatedAtDepth: lost ? lost.depth : null,
       deepestNode: nodes[nodes.length - 1],
     });

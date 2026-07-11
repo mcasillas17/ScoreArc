@@ -22,6 +22,9 @@ describe('teamJourney', () => {
     ];
     const j = teamJourney(rings).find((t) => t.teamId === 'CHA')!;
     expect(j.positions.map((p) => p.depth)).toEqual([0, 1, 2, 3, 4]);
+    // each stop carries its own ring node (for disc render + greyscale + click)
+    expect(j.positions.map((p) => p.node.depth)).toEqual([0, 1, 2, 3, 4]);
+    expect(j.positions.every((p) => p.node.team.id === 'CHA')).toBe(true);
     expect(j.eliminatedAtDepth).toBeNull();
     expect(j.deepestNode.depth).toBe(4);
   });

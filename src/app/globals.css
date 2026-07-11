@@ -471,13 +471,22 @@ a {
   transition: filter 0.3s ease;
 }
 
-/* Traveling flag: glides between ring positions via a transform transition. */
-.bracket-travel {
-  transition: transform 0.5s ease;
+/* Trail flag: hops one ring inward from its previous position, then rests.
+   --hop-x/--hop-y is the parent-minus-self offset it enters from. */
+@keyframes bracket-hop {
+  from {
+    transform: translate(var(--hop-x, 0px), var(--hop-y, 0px));
+  }
+  to {
+    transform: translate(0px, 0px);
+  }
+}
+.bracket-hop {
+  animation: bracket-hop 0.55s ease both;
 }
 @media (prefers-reduced-motion: reduce) {
-  .bracket-travel {
-    transition: none;
+  .bracket-hop {
+    animation: none;
   }
 }
 
