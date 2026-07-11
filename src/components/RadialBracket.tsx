@@ -547,13 +547,20 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                 <path d={`M ${b.x} ${b.y} L ${jB.x} ${jB.y}`} fill="none" stroke={GRAD} strokeWidth={1.4} strokeLinecap="round" />
                 <path d={`M ${jA.x} ${jA.y} A ${rj} ${rj} 0 0 ${sweep} ${jB.x} ${jB.y}`} fill="none" stroke={GRAD} strokeWidth={1.4} />
                 <path d={`M ${jMid.x} ${jMid.y} L ${pPar.x} ${pPar.y}`} fill="none" stroke={GRAD} strokeWidth={1.4} strokeLinecap="round" />
-                {/* winner's route ONLY, tinted with its flag colour */}
-                {win && jWin && winColor && (
-                  <g>
-                    <path d={`M ${win.x} ${win.y} L ${jWin.x} ${jWin.y}`} fill="none" stroke={winColor} strokeWidth={2.9} strokeLinecap="round" />
-                    <path d={`M ${jWin.x} ${jWin.y} A ${rj} ${rj} 0 0 ${arcSweep} ${jMid.x} ${jMid.y}`} fill="none" stroke={winColor} strokeWidth={2.9} />
-                    <path d={`M ${jMid.x} ${jMid.y} L ${pPar.x} ${pPar.y}`} fill="none" stroke={winColor} strokeWidth={2.9} strokeLinecap="round" />
-                  </g>
+                {/* winner's route ONLY, tinted with its flag colour. It draws
+                    in from child to parent as the winner's flag hops through it
+                    — same path + 1.25s ease as the flag's offset-path, so the
+                    flag appears to paint the line. Gated on the round playing. */}
+                {win && jWin && winColor && simRound >= depth + 1 && (
+                  <path
+                    className="bracket-conn-draw"
+                    d={`M ${win.x} ${win.y} L ${jWin.x} ${jWin.y} A ${rj} ${rj} 0 0 ${arcSweep} ${jMid.x} ${jMid.y} L ${pPar.x} ${pPar.y}`}
+                    fill="none"
+                    stroke={winColor}
+                    strokeWidth={2.9}
+                    strokeLinecap="round"
+                    pathLength={1}
+                  />
                 )}
               </g>
             );
@@ -563,15 +570,29 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
         {/* (2c) Finalists -> center (champion's line tinted with its flag colour) */}
         {rings[RINGS.length - 1]?.map((node) => {
           const inner = ellipse(30, 30, node.angle);
+          // Champion's line to the trophy colours in once the final has played.
+          const championLine = node.isWinner && simRound >= RINGS.length;
           return (
-            <path
-              key={`final-${node.index}`}
-              d={`M ${node.x} ${node.y} L ${inner.x} ${inner.y}`}
-              fill="none"
-              stroke={node.isWinner ? colorFor(node.team) : 'url(#conn-grad)'}
-              strokeWidth={node.isWinner ? 2.9 : 1.4}
-              strokeLinecap="round"
-            />
+            <g key={`final-${node.index}`}>
+              <path
+                d={`M ${node.x} ${node.y} L ${inner.x} ${inner.y}`}
+                fill="none"
+                stroke="url(#conn-grad)"
+                strokeWidth={1.4}
+                strokeLinecap="round"
+              />
+              {championLine && (
+                <path
+                  className="bracket-conn-draw"
+                  d={`M ${node.x} ${node.y} L ${inner.x} ${inner.y}`}
+                  fill="none"
+                  stroke={colorFor(node.team)}
+                  strokeWidth={2.9}
+                  strokeLinecap="round"
+                  pathLength={1}
+                />
+              )}
+            </g>
           );
         })}
 

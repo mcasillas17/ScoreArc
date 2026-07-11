@@ -492,6 +492,27 @@ a {
   }
 }
 
+/* Connector winner route: draws in from child to parent in lock-step with the
+   flag hopping through it (pathLength 1 -> normalized dash reveal). */
+@keyframes bracket-conn-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.bracket-conn-draw {
+  stroke-dasharray: 1;
+  animation: bracket-conn-draw 1.25s ease both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bracket-conn-draw {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}
+
 .bracket-disc--clickable {
   cursor: pointer;
   transition: filter 0.12s ease;
