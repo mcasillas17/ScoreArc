@@ -74,16 +74,6 @@ export type BracketMode = 'live' | 'predict';
 // True circle — center of the (square) SVG canvas.
 export const C = { x: 500, y: 500 };
 
-// Concentric CIRCLE radii (rx === ry) by depth.
-// depth 0 = FLAG ring (32 teams), 1 = R16, 2 = QF, 3 = SF, 4 = Final.
-export const RINGS: { slug: string; rx: number; ry: number; discR: number }[] = [
-  { slug: 'round-of-32', rx: 400, ry: 400, discR: 30 },
-  { slug: 'round-of-16', rx: 312, ry: 312, discR: 26 },
-  { slug: 'quarterfinals', rx: 224, ry: 224, discR: 27 },
-  { slug: 'semifinals', rx: 138, ry: 138, discR: 29 },
-  { slug: 'final', rx: 66, ry: 66, discR: 33 },
-];
-
 // Outer crest sits just beyond its flag along the same radial.
 const CREST_SCALE = 1.155;
 

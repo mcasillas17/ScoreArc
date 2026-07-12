@@ -234,7 +234,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
       <BracketZoom>
       <svg
         viewBox="0 0 1000 1000"
-        aria-label="World Cup 2026 knockout bracket"
+        aria-label="Knockout bracket"
         role="img"
         style={{
           width: '100%',
