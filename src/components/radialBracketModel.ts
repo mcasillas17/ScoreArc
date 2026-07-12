@@ -290,3 +290,53 @@ export function buildRings(
     });
   });
 }
+
+/**
+ * Reconstruct the leaf-round match order for a FINISHED bracket by unfolding the
+ * tree from the final outward: a match at depth d has home/away teams that each
+ * WON a match one round below; recurse and emit leaf indices left-to-right.
+ * `knockoutRounds` is outer->inner (leaf first, final last). Falls back to plain
+ * event order (0,1,2,...) if the bracket isn't fully/consistently decided.
+ */
+export function deriveLeafOrder(rounds: BracketRound[], knockoutRounds: string[]): number[] {
+  const N = knockoutRounds.length;
+  const leaf = rounds.find((r) => r.slug === knockoutRounds[0]);
+  const fallback = leaf ? leaf.matches.map((_, i) => i) : [];
+  const finalRound = rounds.find((r) => r.slug === knockoutRounds[N - 1]);
+  if (!leaf || N < 1 || !finalRound || finalRound.matches.length !== 1) return fallback;
+
+  const key = (m: BracketMatch) => [m.home.id, m.away.id].sort().join('|');
+  const leafIndex = new Map<string, number>();
+  leaf.matches.forEach((m, i) => leafIndex.set(key(m), i));
+
+  const winnerOf = (m: BracketMatch): string | null =>
+    m.winnerId === m.home.id ? m.home.id : m.winnerId === m.away.id ? m.away.id : null;
+
+  const childWinnerMatch = (depth: number, teamId: string): BracketMatch | null => {
+    const r = rounds.find((x) => x.slug === knockoutRounds[depth]);
+    return r ? r.matches.find((mm) => winnerOf(mm) === teamId) ?? null : null;
+  };
+
+  const order: number[] = [];
+  let ok = true;
+  const unfold = (match: BracketMatch, depth: number): void => {
+    if (!ok) return;
+    if (depth === 0) {
+      const idx = leafIndex.get(key(match));
+      if (idx === undefined) { ok = false; return; }
+      order.push(idx);
+      return;
+    }
+    [match.home, match.away].forEach((team) => {
+      const child = childWinnerMatch(depth - 1, team.id);
+      if (!child) { ok = false; return; }
+      unfold(child, depth - 1);
+    });
+  };
+  unfold(finalRound.matches[0], N - 1);
+
+  if (!ok || order.length !== leaf.matches.length || new Set(order).size !== leaf.matches.length) {
+    return fallback;
+  }
+  return order;
+}

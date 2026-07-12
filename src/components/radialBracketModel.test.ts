@@ -64,3 +64,42 @@ describe('teamJourney', () => {
     expect(teamJourney(rings)).toHaveLength(0);
   });
 });
+
+import { deriveLeafOrder } from './radialBracketModel';
+import type { BracketRound, BracketMatch } from '@/server/data/types';
+
+function dm(id: string, home: string, away: string, winner: string): BracketMatch {
+  const team = (a: string) => ({ id: a, name: a, abbr: a, crestUrl: null, placeholder: false });
+  return {
+    id, round: '', kickoff: '', home: team(home), away: team(away),
+    homeScore: null, awayScore: null, state: 'finished', statusDetail: 'FT',
+    statusName: '', minute: null, winnerId: winner || null, note: null,
+  };
+}
+
+describe('deriveLeafOrder', () => {
+  it('orders leaf matches so adjacent pairs feed the parent, from results', () => {
+    const rounds: BracketRound[] = [
+      { slug: 'round-of-16', name: '', matches: [dm('l0', 'A', 'B', 'A'), dm('l1', 'C', 'D', 'C')] },
+      { slug: 'final', name: '', matches: [dm('f', 'A', 'C', 'A')] },
+    ];
+    expect(deriveLeafOrder(rounds, ['round-of-16', 'final'])).toEqual([0, 1]);
+  });
+
+  it('reverses when the final home team came from the second leaf match', () => {
+    const rounds: BracketRound[] = [
+      { slug: 'round-of-16', name: '', matches: [dm('l0', 'A', 'B', 'A'), dm('l1', 'C', 'D', 'C')] },
+      { slug: 'final', name: '', matches: [dm('f', 'C', 'A', 'C')] },
+    ];
+    expect(deriveLeafOrder(rounds, ['round-of-16', 'final'])).toEqual([1, 0]);
+  });
+
+  it('falls back to event order when a winner is missing', () => {
+    const bad = dm('f', 'A', 'C', ''); bad.winnerId = null;
+    const rounds: BracketRound[] = [
+      { slug: 'round-of-16', name: '', matches: [dm('l0', 'A', 'B', 'A'), dm('l1', 'C', 'D', 'C')] },
+      { slug: 'final', name: '', matches: [bad] },
+    ];
+    expect(deriveLeafOrder(rounds, ['round-of-16', 'final'])).toEqual([0, 1]);
+  });
+});
