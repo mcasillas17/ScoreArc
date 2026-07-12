@@ -2614,86 +2614,90 @@ a {
   margin-top: auto;
 }
 
-/* Season / edition picker — dropdown next to the competition name. */
-.bracket-eyebrow-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
+/* Season / edition picker — a horizontal year timeline (oldest -> newest). */
+.season-timeline {
+  overflow-x: auto;
+  margin: 10px 0 18px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.season-timeline::-webkit-scrollbar {
+  display: none;
+}
+.season-tl-track {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 4px;
+  position: relative;
+  list-style: none;
+  margin: 0 auto;
+  padding: 0 6px;
+  width: max-content;
+  min-width: min(540px, 100%);
+  max-width: 640px;
+}
+/* connecting line, behind the dots, at the dots' vertical centre */
+.season-tl-track::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  left: 26px;
+  right: 26px;
+  height: 2px;
+  background: var(--hairline);
+  z-index: 0;
+}
+.season-tl-item {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  display: flex;
   justify-content: center;
 }
-.season-picker {
-  position: relative;
-  display: inline-block;
-  text-align: left;
-}
-.season-picker-btn {
-  display: inline-flex;
+.season-tl-node {
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 0.82rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--hairline);
-  cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  gap: 7px;
+  padding: 0 6px;
+  text-decoration: none;
 }
-.season-picker-btn:hover {
-  border-color: var(--gold);
-}
-.season-caret {
-  color: var(--text-muted);
-  transition: transform 0.18s ease;
-}
-.season-caret--open {
-  transform: rotate(180deg);
-}
-.season-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 30;
-  margin: 0;
-  padding: 5px;
-  list-style: none;
-  min-width: 120px;
-  max-height: 320px;
-  overflow-y: auto;
-  background: var(--surface-2);
-  border: 1px solid var(--hairline);
-  border-radius: 12px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
-}
-.season-item {
+.season-tl-dotwrap {
+  height: 16px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 7px 12px;
-  border-radius: 8px;
-  font-size: 0.86rem;
+  justify-content: center;
+}
+.season-tl-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 2px solid var(--text-muted);
+  transition: width 0.15s ease, height 0.15s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.season-tl-year {
+  font-size: 0.8rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
-  text-decoration: none;
-  white-space: nowrap;
+  transition: color 0.15s ease;
 }
-.season-item:hover {
+.season-tl-node:hover .season-tl-dot {
+  border-color: var(--gold);
+}
+.season-tl-node:hover .season-tl-year {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.05);
 }
-.season-item--active {
-  color: #0b0b0d;
+.season-tl-node--active .season-tl-dot {
+  width: 15px;
+  height: 15px;
   background: var(--gold);
+  border-color: var(--gold);
+  box-shadow: 0 0 0 4px rgba(232, 184, 75, 0.18);
 }
-.season-item--active:hover {
-  color: #0b0b0d;
-  background: var(--gold);
-}
-.season-item-check {
-  font-size: 0.8rem;
+.season-tl-node--active .season-tl-year {
+  color: var(--gold);
+  font-weight: 800;
 }

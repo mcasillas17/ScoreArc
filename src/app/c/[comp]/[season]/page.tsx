@@ -81,11 +81,9 @@ export default async function Workspace({ params }: { params: { comp: string; se
     <main className="main">
       <section id="bracket" className="bracket-section">
         <header className="bracket-head">
-          <div className="bracket-eyebrow-row">
-            <p className="bracket-eyebrow">{rc.competition.shortName}</p>
-            <SeasonSwitcher competition={rc.competition} activeSeasonId={rc.season.id} />
-          </div>
+          <p className="bracket-eyebrow">{rc.competition.shortName}</p>
           <h1 className="bracket-title">Knockout Bracket</h1>
+          <SeasonSwitcher competition={rc.competition} activeSeasonId={rc.season.id} />
         </header>
         {bracket.length > 0
           ? <BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} shape={bracketShapeFor(rc.season)} readOnly={readOnly} />
