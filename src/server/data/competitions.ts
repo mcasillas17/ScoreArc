@@ -22,6 +22,10 @@ export interface Season {
   format: { hasBracket: boolean; hasGroups: boolean; hasThirdPlaceRace: boolean };
   bracketDatesRange?: string; // ESPN date-range for the bracket scoreboard
   bracketOrder?: [string, string][];
+  // Knockout round slugs, outer->inner (leaf first, final last). Drives the
+  // bracket's ring count + geometry. 2026 starts at round-of-32; 1998-2022 at
+  // round-of-16.
+  knockoutRounds?: string[];
 }
 
 // A durable competition = one ESPN league, with one or more seasons.
@@ -61,7 +65,15 @@ export const COMPETITIONS: Record<string, Competition> = {
         format: { hasBracket: true, hasGroups: true, hasThirdPlaceRace: true },
         bracketDatesRange: '20260628-20260719',
         bracketOrder: OFFICIAL_R32_ORDER,
+        knockoutRounds: ['round-of-32', 'round-of-16', 'quarterfinals', 'semifinals', 'final'],
       },
+      '2022': pastWcSeason('2022', '20221203-20221218'),
+      '2018': pastWcSeason('2018', '20180630-20180715'),
+      '2014': pastWcSeason('2014', '20140628-20140713'),
+      '2010': pastWcSeason('2010', '20100626-20100711'),
+      '2006': pastWcSeason('2006', '20060624-20060709'),
+      '2002': pastWcSeason('2002', '20020615-20020630'),
+      '1998': pastWcSeason('1998', '19980627-19980712'),
     },
   },
   'leagues-cup': {
@@ -90,6 +102,20 @@ export const COMPETITIONS: Record<string, Competition> = {
   ...leagueCompetition('mls', 'MLS', 'MLS', 'usa.1', '🇺🇸', '2026', '2026'),
   ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', '2026-apertura', 'Apertura 2026'),
 };
+
+// A past 32-team WC edition — R16 knockout, view-only, no seed order -> derived
+// from finished results rather than a hardcoded bracket.
+function pastWcSeason(id: string, bracketDatesRange: string): Season {
+  return {
+    id,
+    label: id,
+    sections: ['bracket', 'scores'],
+    format: { hasBracket: true, hasGroups: true, hasThirdPlaceRace: true },
+    bracketDatesRange,
+    knockoutRounds: ['round-of-16', 'quarterfinals', 'semifinals', 'final'],
+    // bracketOrder intentionally omitted -> derived from finished results
+  };
+}
 
 // A domestic-league competition: club crests, a single (or conference-split)
 // standings table, no knockout bracket. Returns a one-entry record so it can be
