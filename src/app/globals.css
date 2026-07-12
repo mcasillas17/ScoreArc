@@ -2613,3 +2613,31 @@ a {
   line-height: 1.4;
   margin-top: auto;
 }
+
+/* Season / edition switcher (World Cup: 2026, 2022, 2018, ...) */
+.season-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin: 4px 0 14px;
+}
+.season-chip {
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  border: 1px solid var(--hairline);
+  text-decoration: none;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.season-chip:hover {
+  color: var(--text);
+  border-color: var(--gold);
+}
+.season-chip--active {
+  color: #0b0b0d;
+  background: var(--gold);
+  border-color: var(--gold);
+}

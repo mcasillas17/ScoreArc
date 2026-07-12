@@ -6,6 +6,8 @@ import type { Match, BracketRound, Group, TopScorer } from '@/server/data/types'
 import LiveScores from '@/components/LiveScores';
 import BracketInteractive from '@/components/BracketInteractive';
 import StandingsLive from '@/components/StandingsLive';
+import SeasonSwitcher from '@/components/SeasonSwitcher';
+import { bracketShapeFor } from '@/components/bracketShape';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +32,8 @@ export default async function Workspace({ params }: { params: { comp: string; se
   if (!rc) notFound();
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
   const { teamStyle } = rc.competition;
+  // A finished (non-current) edition is view-only.
+  const readOnly = rc.season.id !== rc.competition.currentSeasonId;
 
   let matches: Match[] = [];
   try { matches = await dataStore.getMatches(rc); } catch {}
@@ -79,9 +83,10 @@ export default async function Workspace({ params }: { params: { comp: string; se
         <header className="bracket-head">
           <p className="bracket-eyebrow">{rc.competition.name}</p>
           <h1 className="bracket-title">Knockout Bracket</h1>
+          <SeasonSwitcher competition={rc.competition} activeSeasonId={rc.season.id} />
         </header>
         {bracket.length > 0
-          ? <BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} />
+          ? <BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} shape={bracketShapeFor(rc.season)} readOnly={readOnly} />
           : <div className="empty-section"><p className="empty-text">Bracket data is unavailable right now.</p></div>}
       </section>
       {liveSection}
