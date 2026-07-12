@@ -70,8 +70,9 @@ export const COMPETITIONS: Record<string, Competition> = {
       '2022': pastWcSeason('2022', '20221203-20221218'),
       '2018': pastWcSeason('2018', '20180630-20180715'),
       '2014': pastWcSeason('2014', '20140628-20140713'),
-      // 2010 omitted: ESPN mis-tags one quarterfinal as `group-stage`, so only 3
-      // QFs come through and the bracket can't reconstruct. Re-add if ESPN fixes it.
+      // 2010's PAR–ESP quarterfinal is mis-tagged `group-stage` by ESPN; the
+      // bracket mapper corrects it by event id (see EVENT_SLUG_OVERRIDE).
+      '2010': pastWcSeason('2010', '20100626-20100711'),
       '2006': pastWcSeason('2006', '20060624-20060709'),
       '2002': pastWcSeason('2002', '20020615-20020630'),
       '1998': pastWcSeason('1998', '19980627-19980712'),

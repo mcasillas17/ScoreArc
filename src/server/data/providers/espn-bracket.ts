@@ -19,6 +19,19 @@ const SLUG_ALIAS: Record<string, string> = {
 };
 const normSlug = (slug: string): string => SLUG_ALIAS[slug] ?? slug;
 
+// ESPN mis-tags a few specific historical knockout matches. These are finished,
+// immutable records, so correct them precisely by ESPN event id.
+const EVENT_SLUG_OVERRIDE: Record<string, string> = {
+  // 2010 WC quarterfinal Paraguay 0–1 Spain is tagged `group-stage` by ESPN,
+  // which would drop it and leave only 3 QFs. It's the fourth quarterfinal.
+  '264118': 'quarterfinals',
+};
+
+// Canonical round slug for an event: a per-event correction wins over the
+// season-slug alias mapping.
+const roundSlug = (ev: any): string =>
+  EVENT_SLUG_OVERRIDE[String(ev?.id)] ?? normSlug(ev?.season?.slug ?? '');
+
 const ROUND_NAMES: Record<string, string> = {
   'round-of-32': 'Round of 32',
   'round-of-16': 'Round of 16',
@@ -51,23 +64,27 @@ function mapBracketMatch(ev: any): BracketMatch | null {
 
   const state = mapState(status.type.state, status.type.completed);
   const note = comp.notes?.[0]?.text ?? null;
-  // Some editions (e.g. 1998) don't set `winner` on penalty-shootout matches, but
-  // DO carry `shootoutScore` — fall back to that so the winner still propagates.
+  // A decisive penalty shootout IS the result, so its score decides the winner
+  // ahead of the `winner` flag — ESPN sets that flag inconsistently on shootout
+  // matches: sometimes it's missing (1998), sometimes it's plain wrong (2010's
+  // R16 marks Japan, not Paraguay, despite Paraguay winning the shootout 5–3).
   const hs = Number(home.shootoutScore);
   const as = Number(away.shootoutScore);
   const shootoutWinnerId =
     Number.isFinite(hs) && Number.isFinite(as) && hs !== as
       ? String((hs > as ? home : away).team.id)
       : null;
-  const winnerId = home.winner
+  const winnerId = shootoutWinnerId
+    ? shootoutWinnerId
+    : home.winner
     ? String(home.team.id)
     : away.winner
     ? String(away.team.id)
-    : shootoutWinnerId;
+    : null;
 
   return {
     id: String(ev.id),
-    round: normSlug(ev.season?.slug ?? ''),
+    round: roundSlug(ev),
     kickoff: ev.date ?? '',
     home: mapBracketTeam(home.team),
     away: mapBracketTeam(away.team),
@@ -88,7 +105,7 @@ export function mapBracket(raw: unknown): BracketRound[] {
   // group events by round slug, preserving bracket order within each round
   const bySlug = new Map<string, BracketMatch[]>();
   for (const ev of events) {
-    const slug: string = normSlug(ev.season?.slug ?? '');
+    const slug: string = roundSlug(ev);
     if (!slug) continue;
     const match = mapBracketMatch(ev);
     if (!match) continue;
