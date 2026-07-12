@@ -753,7 +753,11 @@ function InnerHop({
   const ringStroke = isWinner ? '#e8b84b' : '#2a2a32';
   const ringWidth = isWinner ? 2.4 : 1;
 
-  const viewable = mode !== 'predict' && node.match != null;
+  // Clicking a flag views the match it WON to reach this ring — the pairing
+  // "beneath" it in the tree (the previous ring's match), not the match at its
+  // current ring. E.g. a team's R16 flag opens its R32 win, not its R16 tie.
+  const wonMatch = from.node.match;
+  const viewable = mode !== 'predict' && wonMatch != null;
   const clickable = mode === 'predict' && node.clickable;
   const interactive = viewable || clickable;
 
@@ -794,7 +798,7 @@ function InnerHop({
 
   const handleClick = () => {
     if (clickable) onPick(node);
-    else if (viewable && node.match) onView(node.match);
+    else if (viewable && wonMatch) onView(wonMatch);
   };
 
   return (
