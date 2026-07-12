@@ -24,7 +24,8 @@ export default function SeasonSwitcher({
   const min = editions.length ? editions[0].year : 0;
   const max = editions.length ? editions[editions.length - 1].year : 1;
   const span = max - min || 1;
-  const pos = (year: number) => ((year - min) / span) * 100;
+  // Newest edition on the LEFT: the max year maps to 0%, the min to 100%.
+  const pos = (year: number) => ((max - year) / span) * 100;
   const activeYear = editions.find((e) => e.id === activeSeasonId)?.year ?? max;
   const currentPos = pos(activeYear);
 

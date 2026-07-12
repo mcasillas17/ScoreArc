@@ -291,6 +291,9 @@ a {
 }
 
 .bracket-head {
+  /* full width (text stays centered) so the season timeline inside can span the
+     bracket's width instead of shrink-wrapping to the title */
+  width: 100%;
   text-align: center;
   margin-bottom: 8px;
 }
@@ -2135,6 +2138,51 @@ a {
   filter: drop-shadow(0 0 5px #ffe9a8) brightness(1.2);
 }
 
+/* ---- Champion crown at the bracket center (finished editions) ---- */
+.champ-halo {
+  animation: champHalo 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
+.champ-laurel {
+  animation: champLaurel 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
+.champ-caption {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  paint-order: stroke;
+  stroke: #0b0b0d;
+  stroke-width: 2.4px;
+}
+@keyframes champHalo {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+@keyframes champLaurel {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .champ-halo, .champ-laurel { animation: none; opacity: 0.9; }
+}
+.champ-trophy-btn {
+  cursor: pointer;
+}
+.champ-trophy-btn image {
+  transition: filter 0.15s ease;
+}
+.champ-trophy-btn:hover image,
+.champ-trophy-btn:focus-visible image {
+  filter: drop-shadow(0 0 6px #ffe9a8);
+}
+/* No default UA outline (the blue box); keyboard focus is cued by the gold
+   drop-shadow on :focus-visible above. */
+.champ-trophy-btn:focus {
+  outline: none;
+}
+
 /* ---- Match detail popup: goal / highlight clips ---- */
 .mh-title {
   font-size: 11px;
@@ -2619,6 +2667,9 @@ a {
    absolutely positioned by their year on a continuous axis; a missing edition
    (e.g. 2010) shows as a faint gap. Current edition = the glowing playhead. */
 .wc-timeline {
+  /* full width so the centered track can span the bracket's width instead of
+     shrinking to its (absolutely-positioned) content as a flex item */
+  width: 100%;
   padding: 22px 34px 8px;
   overflow-x: auto;
   scrollbar-width: none;
@@ -2628,7 +2679,7 @@ a {
   position: relative;
   height: 44px;
   min-width: 320px;
-  max-width: 620px;
+  max-width: 820px; /* match the bracket SVG's max width */
   margin: 0 auto;
 }
 .wc-tl-axis {
@@ -2727,6 +2778,9 @@ a {
   to { opacity: 1; transform: none; }
 }
 .edition-fade {
+  /* full width so it doesn't shrink-to-fit as a centered flex item (which
+     collapsed the bracket SVG). */
+  width: 100%;
   animation: editionFadeIn 0.5s ease both;
 }
 @media (prefers-reduced-motion: reduce) {

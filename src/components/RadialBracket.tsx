@@ -117,6 +117,21 @@ function isTodayLocal(iso: string | undefined): boolean {
 }
 
 
+/** SVG arc path for text on a circle. Angles are degrees from +x, clockwise in
+ *  SVG's y-down space; going from a larger to a smaller angle draws the short
+ *  bottom arc left-to-right so a caption reads upright beneath the center. */
+function arcTextPath(cx: number, cy: number, r: number, startDeg: number, endDeg: number): string {
+  const pt = (deg: number): [number, number] => {
+    const a = (deg * Math.PI) / 180;
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  };
+  const [x1, y1] = pt(startDeg);
+  const [x2, y2] = pt(endDeg);
+  const large = Math.abs(endDeg - startDeg) > 180 ? 1 : 0;
+  const sweep = endDeg > startDeg ? 1 : 0;
+  return `M ${x1} ${y1} A ${r} ${r} 0 ${large} ${sweep} ${x2} ${y2}`;
+}
+
 export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle, apiBase, shape: shapeProp }: Props) {
   const shape = shapeProp ?? DEFAULT_SHAPE;
   const geom = shape.ringGeometry;
@@ -165,11 +180,19 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
   }, [simTarget]);
 
   // The CHAMPION is the effective winner of the FINAL (the innermost ring).
-  const champion = rings[geom.length - 1]?.find((n) => n.isWinner)?.team ?? null;
+  const championNode = rings[geom.length - 1]?.find((n) => n.isWinner) ?? null;
+  const champion = championNode?.team ?? null;
   useEffect(() => {
     onChampion?.(champion ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [champion?.id]);
+
+  // Once the final has actually resolved — past editions on load, or the live
+  // 2026 final — crown the winner at the center with a halo, laurel ring and a
+  // curved "CHAMPIONS" caption, all within the empty middle so the bracket
+  // stays uncovered. Predict mode keeps its full-screen ChampionCelebration.
+  const champNode =
+    mode === 'live' && simRound >= geom.length ? championNode : null;
 
   // Match-detail popup state (live/finished mode only)
   const [detail, setDetail] = useState<BracketMatch | null>(null);
@@ -283,10 +306,28 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           <filter id="trophy-blur" x="-80%" y="-80%" width="260%" height="260%">
             <feGaussianBlur stdDeviation="6" />
           </filter>
+          {/* Localized golden halo behind the winning finalist disc. */}
+          <radialGradient id="champ-halo" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#ffe9a8" stopOpacity="0.9" />
+            <stop offset="45%" stopColor="#f0c873" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="#f0c873" stopOpacity="0" />
+          </radialGradient>
         </defs>
 
         {/* (1) Smooth warm radial-gradient glow behind the trophy */}
         <circle cx={C.x} cy={C.y} r={300} fill="url(#center-glow)" />
+
+        {/* (1a) Champion halo — localized golden glow behind the winning
+            finalist disc, drawn before the discs so it reads as a glow ring. */}
+        {champNode && (
+          <circle
+            className="champ-halo"
+            cx={champNode.x}
+            cy={champNode.y}
+            r={champNode.discR + 30}
+            fill="url(#champ-halo)"
+          />
+        )}
 
         {/* (2) Connectors: bracket elbows — radial stub from each team, a
             tangential arc joining the pair, then a radial stub to the parent. */}
@@ -499,15 +540,60 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           }),
         )}
 
-        {/* (1b) Center trophy on top — real WC2026 trophy image */}
-        <image
-          href="/trophy.png"
-          x={C.x - 26}
-          y={C.y - 64}
-          width={52}
-          height={128}
-          preserveAspectRatio="xMidYMid meet"
-        />
+        {/* (1b) Center trophy on top — real WC2026 trophy image. Once a finished
+            edition's final has resolved, the trophy becomes a button that opens
+            the final match's details (same popup as a result dot). */}
+        {(() => {
+          const finalMatch = champNode?.match ?? null;
+          const trophyImg = (
+            <image
+              href="/trophy.png"
+              x={C.x - 26}
+              y={C.y - 64}
+              width={52}
+              height={128}
+              preserveAspectRatio="xMidYMid meet"
+            />
+          );
+          if (!finalMatch) return trophyImg;
+          return (
+            <g
+              className="champ-trophy-btn"
+              role="button"
+              tabIndex={0}
+              aria-label={`View the final: ${finalMatch.home.name} vs ${finalMatch.away.name}`}
+              onClick={() => handleView(finalMatch)}
+              onKeyDown={activate(() => handleView(finalMatch))}
+            >
+              {/* transparent hit target over the trophy (narrower than the gap to
+                  the finalist discs, so it never steals their clicks) */}
+              <rect x={C.x - 26} y={C.y - 64} width={52} height={128} fill="transparent" />
+              {trophyImg}
+            </g>
+          );
+        })()}
+
+        {/* (1c) Champion crown: a laurel ring around the winning disc plus a
+            curved "CHAMPIONS" caption arced beneath the trophy (empty space). */}
+        {champNode && (
+          <g className="champ-crown" role="img" aria-label={`${champNode.team.name} — Champions`}>
+            <circle
+              className="champ-laurel"
+              cx={champNode.x}
+              cy={champNode.y}
+              r={champNode.discR + 5}
+              fill="none"
+              stroke="#f0c873"
+              strokeWidth={1.4}
+            />
+            <path id="champ-arc" d={arcTextPath(C.x, C.y, 100, 124, 56)} fill="none" />
+            <text className="champ-caption" fill="#f0c873">
+              <textPath href="#champ-arc" startOffset="50%" textAnchor="middle">
+                CHAMPIONS
+              </textPath>
+            </text>
+          </g>
+        )}
       </svg>
       </BracketZoom>
 

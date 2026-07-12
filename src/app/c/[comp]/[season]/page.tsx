@@ -89,7 +89,7 @@ export default async function Workspace({ params }: { params: { comp: string; se
           ? <div key={rc.season.id} className="edition-fade"><BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} shape={bracketShapeFor(rc.season)} readOnly={readOnly} /></div>
           : <div className="empty-section"><p className="empty-text">Bracket data is unavailable right now.</p></div>}
       </section>
-      {liveSection}
+      {!readOnly && liveSection}
       {footer}
     </main>
   );
