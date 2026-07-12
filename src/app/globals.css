@@ -2669,21 +2669,31 @@ a {
 }
 .wc-tl-node:hover .wc-tl-dot { border-color: var(--gold); }
 .wc-tl-node:hover .wc-tl-year { color: var(--text); }
-/* playhead: the active edition */
 .wc-tl-node--active {
   z-index: 2;
 }
-.wc-tl-node--active .wc-tl-dot {
-  width: 16px;
-  height: 16px;
-  margin-top: -2.5px;
-  background: var(--gold);
-  border-color: var(--gold);
-  box-shadow: 0 0 0 5px rgba(232, 184, 75, 0.16), 0 0 12px 2px rgba(232, 184, 75, 0.35);
-}
+/* the active dot stays neutral — the sliding playhead carries the gold glow */
 .wc-tl-node--active .wc-tl-year {
   color: var(--gold);
   font-weight: 800;
+}
+/* gold playhead — glides between editions on switch */
+.wc-tl-playhead {
+  position: absolute;
+  top: 8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--gold);
+  box-shadow: 0 0 0 5px rgba(232, 184, 75, 0.16), 0 0 12px 2px rgba(232, 184, 75, 0.4);
+  z-index: 3;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wc-tl-playhead {
+    transition: none !important;
+  }
 }
 /* missing-edition gap marker (faint, non-interactive) */
 .wc-tl-gap {
@@ -2708,4 +2718,17 @@ a {
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   color: color-mix(in srgb, var(--text-muted) 45%, transparent);
+}
+
+/* Edition switch: the new bracket fades/rises in (the timeline above it doesn't
+   fade, so the playhead slide stays visible). */
+@keyframes editionFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.edition-fade {
+  animation: editionFadeIn 0.5s ease both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .edition-fade { animation: none; }
 }
