@@ -2614,30 +2614,86 @@ a {
   margin-top: auto;
 }
 
-/* Season / edition switcher (World Cup: 2026, 2022, 2018, ...) */
-.season-switcher {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+/* Season / edition picker — dropdown next to the competition name. */
+.bracket-eyebrow-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   justify-content: center;
-  margin: 4px 0 14px;
 }
-.season-chip {
-  padding: 5px 12px;
+.season-picker {
+  position: relative;
+  display: inline-block;
+  text-align: left;
+}
+.season-picker-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
   border-radius: 999px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  border: 1px solid var(--hairline);
-  text-decoration: none;
-  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
-}
-.season-chip:hover {
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.season-picker-btn:hover {
   border-color: var(--gold);
 }
-.season-chip--active {
+.season-caret {
+  color: var(--text-muted);
+  transition: transform 0.18s ease;
+}
+.season-caret--open {
+  transform: rotate(180deg);
+}
+.season-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  margin: 0;
+  padding: 5px;
+  list-style: none;
+  min-width: 120px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+}
+.season-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.season-item:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+.season-item--active {
   color: #0b0b0d;
   background: var(--gold);
-  border-color: var(--gold);
+}
+.season-item--active:hover {
+  color: #0b0b0d;
+  background: var(--gold);
+}
+.season-item-check {
+  font-size: 0.8rem;
 }
