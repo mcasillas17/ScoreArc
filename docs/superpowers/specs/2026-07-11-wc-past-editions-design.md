@@ -63,9 +63,10 @@ Extend the `Season` interface with an explicit, ordered knockout description:
 - `knockoutRounds: string[]` — round slugs outer→inner, e.g.
   `['round-of-16','quarterfinals','semifinals','final']` (past) or
   `['round-of-32','round-of-16','quarterfinals','semifinals','final']` (2026).
-- `bracketOrder: [string,string][]` — the leaf-round seed pairings by team abbr, in bracket
-  (angular) order. 2026 = the existing 16-pair `OFFICIAL_R32_ORDER`; past editions = 8 R16 pairs,
-  hardcoded per edition from the known bracket.
+- `bracketOrder?: [string,string][]` — **optional** leaf-round seed pairings by team abbr, in
+  bracket (angular) order. The **current/live** season (2026) provides it (the existing 16-pair
+  `OFFICIAL_R32_ORDER`) because its tree isn't determined yet. **Past (finished) editions omit it**;
+  their bracket order is **derived from the completed results** (see §2a) — no per-edition data entry.
 - `bracketDatesRange` — the edition's knockout window (already exists on the interface).
 - `sections` — past editions use `['bracket','scores']`.
 
@@ -75,8 +76,25 @@ Read-only is **derived**, not a new field: a season is view-only when
 Add the seven past seasons to `COMPETITIONS['world-cup'].seasons`. `OFFICIAL_R32_ORDER` moves into
 2026's `bracketOrder`; past editions each get a `BRACKET_ORDER_<year>` constant (8 pairs).
 
-**Sourcing note:** each edition's `bracketOrder` + `bracketDatesRange` is verified data entry from
-the known bracket during implementation, not derived at runtime.
+**Sourcing note:** only each edition's `bracketDatesRange` is data entry (verified against the
+edition's knockout window). Seed order is derived at runtime (§2a), not hardcoded.
+
+### 2a. Derive leaf order from finished results (past editions)
+
+ESPN does **not** return past-edition matches in bracket order (verified: 2022 R16 matches 1+2's
+winners feed QF *2*, not QF 1). Since a past edition is fully decided, reconstruct the tree from
+results with a pure helper `deriveLeafOrder(rounds, knockoutRounds) → number[]` (indices into the
+leaf round's `matches`):
+
+- Unfold from the final inward-out: a match at depth `d` has `home`/`away` teams, each of which
+  **won** a match in round `d-1`; find those two child matches by winner identity and recurse,
+  emitting leaf-round match indices left-to-right.
+- Requires the bracket decided (all `winnerId`s present) — true for finished editions. If a child
+  can't be resolved (incomplete/inconsistent data), **fall back to plain event order** (same
+  degraded-but-safe behavior as today's `officialLeafOrder`).
+
+`buildRings` uses `shape.bracketOrder` (via the existing `officialLeafOrder`) when present (2026),
+else `deriveLeafOrder` (past editions).
 
 ### 2. Bracket-shape helper (new, pure)
 
