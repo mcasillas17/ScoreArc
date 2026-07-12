@@ -64,3 +64,77 @@ describe('teamJourney', () => {
     expect(teamJourney(rings)).toHaveLength(0);
   });
 });
+
+import { deriveLeafOrder } from './radialBracketModel';
+import type { BracketRound, BracketMatch } from '@/server/data/types';
+
+function dm(id: string, home: string, away: string, winner: string): BracketMatch {
+  const team = (a: string) => ({ id: a, name: a, abbr: a, crestUrl: null, placeholder: false });
+  return {
+    id, round: '', kickoff: '', home: team(home), away: team(away),
+    homeScore: null, awayScore: null, state: 'finished', statusDetail: 'FT',
+    statusName: '', minute: null, winnerId: winner || null, note: null,
+  };
+}
+
+describe('deriveLeafOrder', () => {
+  it('orders leaf matches so adjacent pairs feed the parent, from results', () => {
+    const rounds: BracketRound[] = [
+      { slug: 'round-of-16', name: '', matches: [dm('l0', 'A', 'B', 'A'), dm('l1', 'C', 'D', 'C')] },
+      { slug: 'final', name: '', matches: [dm('f', 'A', 'C', 'A')] },
+    ];
+    expect(deriveLeafOrder(rounds, ['round-of-16', 'final'])).toEqual([0, 1]);
+  });
+
+  it('reverses when the final home team came from the second leaf match', () => {
+    const rounds: BracketRound[] = [
+      { slug: 'round-of-16', name: '', matches: [dm('l0', 'A', 'B', 'A'), dm('l1', 'C', 'D', 'C')] },
+      { slug: 'final', name: '', matches: [dm('f', 'C', 'A', 'C')] },
+    ];
+    expect(deriveLeafOrder(rounds, ['round-of-16', 'final'])).toEqual([1, 0]);
+  });
+
+  it('falls back to event order when a winner is missing', () => {
+    const bad = dm('f', 'A', 'C', ''); bad.winnerId = null;
+    const rounds: BracketRound[] = [
+      { slug: 'round-of-16', name: '', matches: [dm('l0', 'A', 'B', 'A'), dm('l1', 'C', 'D', 'C')] },
+      { slug: 'final', name: '', matches: [bad] },
+    ];
+    expect(deriveLeafOrder(rounds, ['round-of-16', 'final'])).toEqual([0, 1]);
+  });
+});
+
+import { buildRings } from './radialBracketModel';
+import { bracketShapeFor } from './bracketShape';
+import { mapBracket } from '@/server/data/providers/espn-bracket';
+import raw2022 from '@/server/data/__fixtures__/espn-bracket-2022.json';
+
+describe('buildRings — 2022 (4 rings, derived order)', () => {
+  const rounds = mapBracket(raw2022);
+  const shape = bracketShapeFor({
+    id: '2022', label: '2022', sections: ['bracket'],
+    format: { hasBracket: true, hasGroups: true, hasThirdPlaceRace: true },
+    knockoutRounds: ['round-of-16', 'quarterfinals', 'semifinals', 'final'],
+  });
+
+  it('builds 4 rings: 16 leaves -> 8 -> 4 -> 2', () => {
+    const rings = buildRings(rounds, shape);
+    expect(rings).toHaveLength(4);
+    expect(rings[0]).toHaveLength(16);
+    expect(rings[3]).toHaveLength(2);
+  });
+
+  it('crowns Argentina (2022 champion) in the final ring', () => {
+    const rings = buildRings(rounds, shape);
+    const champ = rings[3].find((n) => n.isWinner)?.team.abbr;
+    expect(champ).toBe('ARG');
+  });
+
+  it('reconstructs the QF pairings from results (NED-ARG, ENG-FRA)', () => {
+    const rings = buildRings(rounds, shape);
+    // rings[1] = the 8 QF participants; two adjacent nodes (2k, 2k+1) = one QF.
+    const qf = (abbr: string) => Math.floor(rings[1].findIndex((n) => n.team.abbr === abbr) / 2);
+    expect(qf('NED')).toBe(qf('ARG')); // 2022 QF: Netherlands v Argentina
+    expect(qf('ENG')).toBe(qf('FRA')); // 2022 QF: England v France
+  });
+});

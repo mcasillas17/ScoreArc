@@ -2,12 +2,16 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/types';
-import { OFFICIAL_R32_ORDER, type TeamStyle } from '@/server/data/competitions';
+import { type TeamStyle } from '@/server/data/competitions';
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
 import BracketZoom from './BracketZoom';
-import { teamJourney, type RingNode, type JourneyStop } from './radialBracketModel';
+import {
+  teamJourney, buildRings, ellipse, colorFor, C,
+  type RingNode, type JourneyStop, type BracketMode,
+} from './radialBracketModel';
+import { DEFAULT_SHAPE, type BracketShape, type RingGeom } from './bracketShape';
 
-export type BracketMode = 'live' | 'predict';
+export type { BracketMode };
 
 interface Props {
   rounds: BracketRound[];
@@ -17,24 +21,14 @@ interface Props {
   onChampion?: (team: BracketTeam | null) => void;
   teamStyle: TeamStyle;
   apiBase: string;
+  // Bracket shape (ring geometry + rounds + seed order). Defaults to the 2026
+  // 5-ring shape so existing callers keep working unchanged.
+  shape?: BracketShape;
 }
 
-// True circle — center of the (square) SVG canvas.
-const C = { x: 500, y: 500 };
-
-// Concentric CIRCLE radii (rx === ry) by depth.
-// depth 0 = FLAG ring (32 teams), 1 = R16, 2 = QF, 3 = SF, 4 = Final.
-const RINGS: { slug: string; rx: number; ry: number; discR: number }[] = [
-  { slug: 'round-of-32', rx: 400, ry: 400, discR: 30 },
-  { slug: 'round-of-16', rx: 312, ry: 312, discR: 26 },
-  { slug: 'quarterfinals', rx: 224, ry: 224, discR: 27 },
-  { slug: 'semifinals', rx: 138, ry: 138, discR: 29 },
-  { slug: 'final', rx: 66, ry: 66, discR: 33 },
-];
 
 // Outer crest sits just beyond its flag along the same radial, and is SMALLER
 // than the flag (as in the reference: federation logo smaller than the flag).
-const CREST_SCALE = 1.155;
 const CREST_R = 19;
 
 // FIFA 3-letter code -> ISO 3166-1 alpha-2 (lowercase) for flagcdn.
@@ -96,25 +90,6 @@ function crestSrc(abbr: string): string | null {
   return CREST_MAP[abbr.toUpperCase()] ?? null;
 }
 
-// Representative colour from each team's flag — used to tint a team's advancing
-// connector path (as in the reference: Brazil yellow, Canada red, ...).
-const TEAM_COLOR: Record<string, string> = {
-  RSA: '#007a4d', CAN: '#d52b1e', BRA: '#f5d915', JPN: '#bc002d', GER: '#ffce00',
-  PAR: '#d52b1e', NED: '#f36c21', MAR: '#c1272d', CIV: '#f77f00', NOR: '#ba0c2f',
-  FRA: '#0055a4', SWE: '#fecc00', MEX: '#006847', ECU: '#ffdd00', ENG: '#cf081f',
-  COD: '#2a7fff', BEL: '#fdda24', SEN: '#00853f', USA: '#3c3b6e', BIH: '#1f3c8c',
-  ESP: '#c60b1e', AUT: '#ed2939', POR: '#da291c', CRO: '#ff2a2a', SUI: '#d52b1e',
-  ALG: '#0a8b3e', AUS: '#00843d', EGY: '#ce1126', ARG: '#75aadb', CPV: '#003893',
-  COL: '#fcd116', GHA: '#fcd116',
-};
-
-export function colorFor(team: BracketTeam): string {
-  return TEAM_COLOR[(team.abbr ?? '').toUpperCase()] ?? '#e8b84b';
-}
-
-function toRad(deg: number): number {
-  return (deg * Math.PI) / 180;
-}
 
 // Enter/Space activates a role="button" SVG element (keyboard accessibility).
 function activate(handler: () => void) {
@@ -126,60 +101,7 @@ function activate(handler: () => void) {
   };
 }
 
-function ellipse(rx: number, ry: number, angleDeg: number): { x: number; y: number } {
-  const r = toRad(angleDeg);
-  return { x: C.x + rx * Math.cos(r), y: C.y + ry * Math.sin(r) };
-}
 
-function makePlaceholder(depth: number, slot: number): BracketTeam {
-  return { id: `ph-${depth}-${slot}`, name: '', abbr: '', crestUrl: null, placeholder: true };
-}
-
-// The winning team of a match, or null if the match isn't decided yet (by ESPN).
-function winnerTeam(match: BracketMatch | null): BracketTeam | null {
-  if (!match || !match.winnerId) return null;
-  if (match.home.id === match.winnerId) return match.home;
-  if (match.away.id === match.winnerId) return match.away;
-  return null;
-}
-
-/**
- * Effective winner of a match between teamA / teamB at (depth, matchIndex):
- *   real ESPN winner if decided, ELSE (predict mode) the user's pick if it is one
- *   of the two known participants, ELSE null. This is what advances inward, so a
- *   user's pick propagates exactly like a real result.
- */
-function effectiveWinner(
-  match: BracketMatch | null,
-  depth: number,
-  matchIndex: number,
-  picks: Record<string, string>,
-  mode: BracketMode,
-  teamA: BracketTeam | null,
-  teamB: BracketTeam | null,
-): BracketTeam | null {
-  const real = winnerTeam(match);
-  if (real) return real;
-  if (mode !== 'predict') return null;
-  if (!teamA || !teamB || teamA.placeholder || teamB.placeholder) return null;
-  const pickedId = picks[`${depth}:${matchIndex}`];
-  if (!pickedId) return null;
-  if (pickedId === teamA.id) return teamA;
-  if (pickedId === teamB.id) return teamB;
-  return null;
-}
-
-// A match is user-decidable (clickable in predict mode) when both participants
-// are known and the ESPN match has NOT been really decided (real results lock).
-function isDecidable(
-  match: BracketMatch | null,
-  teamA: BracketTeam | null,
-  teamB: BracketTeam | null,
-): boolean {
-  if (!teamA || !teamB || teamA.placeholder || teamB.placeholder) return false;
-  if (match && match.winnerId) return false;
-  return true;
-}
 
 // True when the ISO kickoff falls on the viewer's local calendar day.
 function isTodayLocal(iso: string | undefined): boolean {
@@ -194,162 +116,26 @@ function isTodayLocal(iso: string | undefined): boolean {
   );
 }
 
-// Find the match in `round` played between two given team ids (either orientation).
-function findMatch(round: BracketRound | undefined, idA: string, idB: string): BracketMatch | null {
-  if (!round) return null;
-  return (
-    round.matches.find(
-      (m) =>
-        (m.home.id === idA && m.away.id === idB) ||
-        (m.home.id === idB && m.away.id === idA),
-    ) ?? null
-  );
+
+/** SVG arc path for text on a circle. Angles are degrees from +x, clockwise in
+ *  SVG's y-down space; going from a larger to a smaller angle draws the short
+ *  bottom arc left-to-right so a caption reads upright beneath the center. */
+function arcTextPath(cx: number, cy: number, r: number, startDeg: number, endDeg: number): string {
+  const pt = (deg: number): [number, number] => {
+    const a = (deg * Math.PI) / 180;
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  };
+  const [x1, y1] = pt(startDeg);
+  const [x2, y2] = pt(endDeg);
+  const large = Math.abs(endDeg - startDeg) > 180 ? 1 : 0;
+  const sweep = endDeg > startDeg ? 1 : 0;
+  return `M ${x1} ${y1} A ${r} ${r} 0 ${large} ${sweep} ${x2} ${y2}`;
 }
 
-interface Slot {
-  team: BracketTeam;
-  match: BracketMatch | null; // the match this team plays at this depth
-  isHome: boolean;
-  isWinner: boolean; // won its match here (real or pick) -> advances inward
-  eliminated: boolean; // lost its match here (decided, not the winner) -> greyed
-  clickable: boolean; // predict mode: this match can be decided by the user
-}
-
-/**
- * Outer-ring order of the 32 R32 matches in official bracket order. Maps each
- * fixed matchup (by team abbreviations) to its index in the ESPN data; falls
- * back to plain event order if the teams don't match (e.g. data changed).
- */
-function officialLeafOrder(r32: BracketRound | undefined): number[] {
-  const fallback = r32 ? r32.matches.map((_, i) => i) : [];
-  if (!r32 || r32.matches.length !== 16) return fallback;
-
-  const findPair = (a: string, b: string): number =>
-    r32.matches.findIndex((m) => {
-      const x = (m.home.abbr ?? '').toUpperCase();
-      const y = (m.away.abbr ?? '').toUpperCase();
-      return (x === a && y === b) || (x === b && y === a);
-    });
-
-  const order: number[] = [];
-  for (const [a, b] of OFFICIAL_R32_ORDER) {
-    const idx = findPair(a, b);
-    if (idx < 0) return fallback;
-    order.push(idx);
-  }
-  if (order.length !== 16 || new Set(order).size !== 16) return fallback;
-  return order;
-}
-
-/**
- * Build the bracket as a real tree so every position is correct:
- * depth 0 = the 32 round-of-32 participants (in bracket order); each inner depth's
- * slot = the actual WINNER of the match directly below it, looked up by team
- * identity in that round. Undecided slots become placeholders (no flag) — so a
- * team never appears in a round that hasn't happened yet.
- */
-function buildRings(
-  rounds: BracketRound[],
-  picks: Record<string, string> = {},
-  mode: BracketMode = 'live',
-): RingNode[][] {
-  const r32 = rounds.find((r) => r.slug === 'round-of-32');
-  const ringSlots: Slot[][] = [];
-
-  // Position the 32 leaves in official bracket order (identity-based) so every
-  // R16/QF/SF pairing is correct — not adjacent event order.
-  const leafOrder = officialLeafOrder(r32);
-
-  const d0: Slot[] = [];
-  if (r32) {
-    leafOrder.forEach((origIdx, pos) => {
-      const m = r32.matches[origIdx];
-      if (!m) return;
-      const eff = effectiveWinner(m, 0, pos, picks, mode, m.home, m.away);
-      const clickable = mode === 'predict' && isDecidable(m, m.home, m.away);
-      d0.push({
-        team: m.home,
-        match: m,
-        isHome: true,
-        isWinner: eff?.id === m.home.id,
-        eliminated: eff != null && eff.id !== m.home.id,
-        clickable,
-      });
-      d0.push({
-        team: m.away,
-        match: m,
-        isHome: false,
-        isWinner: eff?.id === m.away.id,
-        eliminated: eff != null && eff.id !== m.away.id,
-        clickable,
-      });
-    });
-  }
-  ringSlots.push(d0);
-
-  for (let depth = 1; depth < RINGS.length; depth++) {
-    const round = rounds.find((r) => r.slug === RINGS[depth].slug);
-    const prev = ringSlots[depth - 1];
-    const nSlots = Math.floor(prev.length / 2);
-
-    // Team advancing into slot k = EFFECTIVE winner (real or pick) of the match
-    // prev[2k]/prev[2k+1] played below — encoded on the prev slots' isWinner flag.
-    const advancing: (BracketTeam | null)[] = [];
-    for (let k = 0; k < nSlots; k++) {
-      const a = prev[2 * k];
-      const b = prev[2 * k + 1];
-      advancing.push(a.isWinner ? a.team : b.isWinner ? b.team : null);
-    }
-
-    const slots: Slot[] = [];
-    for (let k = 0; k < nSlots; k++) {
-      const pair = Math.floor(k / 2); // match index at this depth
-      const tA = advancing[2 * pair] ?? null;
-      const tB = advancing[2 * pair + 1] ?? null;
-      const matchR = tA && tB ? findMatch(round, tA.id, tB.id) : null;
-      const team = advancing[k] ?? makePlaceholder(depth, k);
-      const eff = effectiveWinner(matchR, depth, pair, picks, mode, tA, tB);
-      slots.push({
-        team,
-        match: matchR,
-        isHome: k % 2 === 0,
-        isWinner: eff != null && eff.id === team.id,
-        eliminated: !team.placeholder && eff != null && eff.id !== team.id,
-        clickable: mode === 'predict' && isDecidable(matchR, tA, tB),
-      });
-    }
-    ringSlots.push(slots);
-  }
-
-  return ringSlots.map((slots, depth) => {
-    const cfg = RINGS[depth];
-    const total = slots.length || 1;
-    return slots.map((slot, index) => {
-      const angle = -90 + (index + 0.5) * (360 / total);
-      const flag = ellipse(cfg.rx, cfg.ry, angle);
-      const crest = ellipse(cfg.rx * CREST_SCALE, cfg.ry * CREST_SCALE, angle);
-      return {
-        depth,
-        index,
-        angle,
-        match: slot.match,
-        team: slot.team,
-        isHome: slot.isHome,
-        x: flag.x,
-        y: flag.y,
-        crestX: crest.x,
-        crestY: crest.y,
-        discR: cfg.discR,
-        isWinner: slot.isWinner,
-        eliminated: slot.eliminated,
-        clickable: slot.clickable,
-      };
-    });
-  });
-}
-
-export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle, apiBase }: Props) {
-  const rings = buildRings(rounds, picks, mode);
+export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle, apiBase, shape: shapeProp }: Props) {
+  const shape = shapeProp ?? DEFAULT_SHAPE;
+  const geom = shape.ringGeometry;
+  const rings = buildRings(rounds, shape, picks, mode);
 
   const journeys = teamJourney(rings);
   // Deepest ring any team reached, and the sim end-point. simRound counts ROUNDS
@@ -393,12 +179,20 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
     if (initDone.current) setSimRound((s) => Math.max(s, simTarget));
   }, [simTarget]);
 
-  // The CHAMPION is the effective winner of the FINAL (depth 4).
-  const champion = rings[4]?.find((n) => n.isWinner)?.team ?? null;
+  // The CHAMPION is the effective winner of the FINAL (the innermost ring).
+  const championNode = rings[geom.length - 1]?.find((n) => n.isWinner) ?? null;
+  const champion = championNode?.team ?? null;
   useEffect(() => {
     onChampion?.(champion ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [champion?.id]);
+
+  // Once the final has actually resolved — past editions on load, or the live
+  // 2026 final — crown the winner at the center with a halo, laurel ring and a
+  // curved "CHAMPIONS" caption, all within the empty middle so the bracket
+  // stays uncovered. Predict mode keeps its full-screen ChampionCelebration.
+  const champNode =
+    mode === 'live' && simRound >= geom.length ? championNode : null;
 
   // Match-detail popup state (live/finished mode only)
   const [detail, setDetail] = useState<BracketMatch | null>(null);
@@ -463,7 +257,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
       <BracketZoom>
       <svg
         viewBox="0 0 1000 1000"
-        aria-label="World Cup 2026 knockout bracket"
+        aria-label="Knockout bracket"
         role="img"
         style={{
           width: '100%',
@@ -512,16 +306,34 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           <filter id="trophy-blur" x="-80%" y="-80%" width="260%" height="260%">
             <feGaussianBlur stdDeviation="6" />
           </filter>
+          {/* Localized golden halo behind the winning finalist disc. */}
+          <radialGradient id="champ-halo" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#ffe9a8" stopOpacity="0.9" />
+            <stop offset="45%" stopColor="#f0c873" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="#f0c873" stopOpacity="0" />
+          </radialGradient>
         </defs>
 
         {/* (1) Smooth warm radial-gradient glow behind the trophy */}
         <circle cx={C.x} cy={C.y} r={300} fill="url(#center-glow)" />
 
+        {/* (1a) Champion halo — localized golden glow behind the winning
+            finalist disc, drawn before the discs so it reads as a glow ring. */}
+        {champNode && (
+          <circle
+            className="champ-halo"
+            cx={champNode.x}
+            cy={champNode.y}
+            r={champNode.discR + 30}
+            fill="url(#champ-halo)"
+          />
+        )}
+
         {/* (2) Connectors: bracket elbows — radial stub from each team, a
             tangential arc joining the pair, then a radial stub to the parent. */}
-        {RINGS.slice(0, -1).map((cfg, depth) => {
+        {geom.slice(0, -1).map((cfg, depth) => {
           const rc = cfg.rx; // child ring radius
-          const rp = RINGS[depth + 1].rx; // parent ring radius
+          const rp = geom[depth + 1].rx; // parent ring radius
           const rj = rp + (rc - rp) * 0.5; // arc (join) radius between them
           const children = rings[depth];
           const parents = rings[depth + 1];
@@ -568,10 +380,10 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
         })}
 
         {/* (2c) Finalists -> center (champion's line tinted with its flag colour) */}
-        {rings[RINGS.length - 1]?.map((node) => {
+        {rings[geom.length - 1]?.map((node) => {
           const inner = ellipse(30, 30, node.angle);
           // Champion's line to the trophy colours in once the final has played.
-          const championLine = node.isWinner && simRound >= RINGS.length;
+          const championLine = node.isWinner && simRound >= geom.length;
           return (
             <g key={`final-${node.index}`}>
               <path
@@ -717,6 +529,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                 key={`hop-${j.teamId}-${stop.depth}`}
                 stop={stop}
                 from={from}
+                geom={geom}
                 greyed={greyed}
                 mode={mode}
                 teamStyle={teamStyle}
@@ -727,15 +540,60 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           }),
         )}
 
-        {/* (1b) Center trophy on top — real WC2026 trophy image */}
-        <image
-          href="/trophy.png"
-          x={C.x - 26}
-          y={C.y - 64}
-          width={52}
-          height={128}
-          preserveAspectRatio="xMidYMid meet"
-        />
+        {/* (1b) Center trophy on top — real WC2026 trophy image. Once a finished
+            edition's final has resolved, the trophy becomes a button that opens
+            the final match's details (same popup as a result dot). */}
+        {(() => {
+          const finalMatch = champNode?.match ?? null;
+          const trophyImg = (
+            <image
+              href="/trophy.png"
+              x={C.x - 26}
+              y={C.y - 64}
+              width={52}
+              height={128}
+              preserveAspectRatio="xMidYMid meet"
+            />
+          );
+          if (!finalMatch) return trophyImg;
+          return (
+            <g
+              className="champ-trophy-btn"
+              role="button"
+              tabIndex={0}
+              aria-label={`View the final: ${finalMatch.home.name} vs ${finalMatch.away.name}`}
+              onClick={() => handleView(finalMatch)}
+              onKeyDown={activate(() => handleView(finalMatch))}
+            >
+              {/* transparent hit target over the trophy (narrower than the gap to
+                  the finalist discs, so it never steals their clicks) */}
+              <rect x={C.x - 26} y={C.y - 64} width={52} height={128} fill="transparent" />
+              {trophyImg}
+            </g>
+          );
+        })()}
+
+        {/* (1c) Champion crown: a laurel ring around the winning disc plus a
+            curved "CHAMPIONS" caption arced beneath the trophy (empty space). */}
+        {champNode && (
+          <g className="champ-crown" role="img" aria-label={`${champNode.team.name} — Champions`}>
+            <circle
+              className="champ-laurel"
+              cx={champNode.x}
+              cy={champNode.y}
+              r={champNode.discR + 5}
+              fill="none"
+              stroke="#f0c873"
+              strokeWidth={1.4}
+            />
+            <path id="champ-arc" d={arcTextPath(C.x, C.y, 100, 124, 56)} fill="none" />
+            <text className="champ-caption" fill="#f0c873">
+              <textPath href="#champ-arc" startOffset="50%" textAnchor="middle">
+                CHAMPIONS
+              </textPath>
+            </text>
+          </g>
+        )}
       </svg>
       </BracketZoom>
 
@@ -960,6 +818,7 @@ function OuterTeam({
 function InnerHop({
   stop,
   from,
+  geom,
   greyed,
   mode,
   teamStyle,
@@ -968,6 +827,7 @@ function InnerHop({
 }: {
   stop: JourneyStop;
   from: JourneyStop;
+  geom: RingGeom[];
   greyed: boolean;
   mode: BracketMode;
   teamStyle: TeamStyle;
@@ -991,8 +851,8 @@ function InnerHop({
   // Motion path = the connector's winner route between the two rings: radial
   // stub in to the join radius, tangential arc to the node's angle, radial stub
   // in to the node. Identical geometry to the drawn connector (see section 2).
-  const rc = RINGS[stop.depth - 1].rx;
-  const rp = RINGS[stop.depth].rx;
+  const rc = geom[stop.depth - 1].rx;
+  const rp = geom[stop.depth].rx;
   const rj = rp + (rc - rp) * 0.5;
   const j0 = ellipse(rj, rj, from.node.angle);
   const j1 = ellipse(rj, rj, node.angle);

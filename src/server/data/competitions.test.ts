@@ -81,3 +81,29 @@ describe('competition registry', () => {
     expect(COMPETITIONS['liga-mx'].seasons['2026-apertura'].label).toBe('Apertura 2026');
   });
 });
+
+describe('world-cup seasons', () => {
+  it('resolves 2022 as a 4-round knockout without a hardcoded bracketOrder', () => {
+    const rc = resolveSeason('world-cup', '2022');
+    expect(rc).toBeTruthy();
+    expect(rc!.season.knockoutRounds).toEqual([
+      'round-of-16', 'quarterfinals', 'semifinals', 'final',
+    ]);
+    expect(rc!.season.bracketOrder).toBeUndefined();
+    expect(rc!.season.bracketDatesRange).toBeTruthy();
+    expect(rc!.season.sections).toEqual(['bracket', 'scores']);
+  });
+
+  it('keeps 2026 as a 5-round knockout with its hardcoded order', () => {
+    const rc = resolveSeason('world-cup', '2026')!;
+    expect(rc.season.knockoutRounds).toEqual([
+      'round-of-32', 'round-of-16', 'quarterfinals', 'semifinals', 'final',
+    ]);
+    expect(rc.season.bracketOrder?.length).toBe(16);
+  });
+
+  it('exposes all eight editions (seven past + 2026)', () => {
+    const ids = Object.keys(COMPETITIONS['world-cup'].seasons).sort();
+    expect(ids).toEqual(['1998','2002','2006','2010','2014','2018','2022','2026']);
+  });
+});

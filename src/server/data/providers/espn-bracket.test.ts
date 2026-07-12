@@ -88,3 +88,45 @@ describe('mapBracket resilience', () => {
     expect(mapBracket(null)).toEqual([]);
   });
 });
+
+describe('mapBracket — slug normalization (older editions)', () => {
+  const ev = (slug: string, id: string) => ({
+    id, date: '2010-06-27T00:00Z', season: { slug },
+    status: { type: { state: 'post', completed: true, shortDetail: 'FT', name: 'STATUS_FULL_TIME' } },
+    competitions: [{
+      notes: [], competitors: [
+        { homeAway: 'home', winner: true, score: '2', team: { id: '1', abbreviation: 'AAA', displayName: 'Aaa', logo: 'x/countries/aaa.png' } },
+        { homeAway: 'away', winner: false, score: '1', team: { id: '2', abbreviation: 'BBB', displayName: 'Bbb', logo: 'x/countries/bbb.png' } },
+      ],
+    }],
+  });
+
+  it('maps `second-round` to round-of-16 and `third-place` to 3rd-place-match', () => {
+    const rounds = mapBracket({ events: [ev('second-round', 'a'), ev('third-place', 'b')] });
+    const slugs = rounds.map((r) => r.slug);
+    expect(slugs).toContain('round-of-16');
+    expect(slugs).toContain('3rd-place-match');
+    expect(slugs).not.toContain('second-round');
+    expect(slugs).not.toContain('third-place');
+  });
+});
+
+describe('mapBracket — penalty-shootout winner fallback', () => {
+  const pensEvent = {
+    id: 'p1', date: '1998-06-30T00:00Z', season: { slug: 'quarterfinals' },
+    status: { type: { state: 'post', completed: true, shortDetail: 'FT (pens)', name: 'STATUS_FINAL_PEN' } },
+    competitions: [{
+      notes: [], competitors: [
+        // regulation draw; winner flag unset; shootoutScore decides it (home wins pens)
+        { homeAway: 'home', winner: false, score: '2', shootoutScore: '4', team: { id: '10', abbreviation: 'ARG', displayName: 'Argentina', logo: 'x/countries/arg.png' } },
+        { homeAway: 'away', winner: false, score: '2', shootoutScore: '3', team: { id: '11', abbreviation: 'ENG', displayName: 'England', logo: 'x/countries/eng.png' } },
+      ],
+    }],
+  };
+
+  it('derives the winner from shootoutScore when winner flags are unset', () => {
+    const rounds = mapBracket({ events: [pensEvent] });
+    const m = rounds.find((r) => r.slug === 'quarterfinals')!.matches[0];
+    expect(m.winnerId).toBe('10'); // Argentina (higher shootoutScore)
+  });
+});

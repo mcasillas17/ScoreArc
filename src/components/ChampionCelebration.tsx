@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from 'react';
 import type { BracketTeam } from '@/server/data/types';
-import { colorFor } from './RadialBracket';
+import { colorFor } from './radialBracketModel';
 import { flagUrl } from '@/lib/flags';
 import WavingFlagCanvas from './WavingFlagCanvas';
 

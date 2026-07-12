@@ -5,6 +5,7 @@ import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/type
 import { flagUrl } from '@/lib/flags';
 import RadialBracket, { type BracketMode } from './RadialBracket';
 import ChampionCelebration from './ChampionCelebration';
+import type { BracketShape } from './bracketShape';
 
 interface Props {
   rounds: BracketRound[];
@@ -14,6 +15,9 @@ interface Props {
   seasonId: string;
   compShortName: string;
   seasonLabel: string;
+  shape: BracketShape;
+  // Finished (past) editions are view-only: no predict tab, no live poll.
+  readOnly?: boolean;
 }
 
 // Compact third-place match card — shown once both semi-final losers are known
@@ -91,7 +95,7 @@ function decodePicks(s: string): Record<string, string> {
   return {};
 }
 
-export default function BracketInteractive({ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, seasonId, compShortName, seasonLabel }: Props) {
+export default function BracketInteractive({ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, seasonId, compShortName, seasonLabel, shape, readOnly = false }: Props) {
   const [mode, setMode] = useState<BracketMode>('live');
   const [rounds, setRounds] = useState<BracketRound[]>(initialRounds);
   const [picks, setPicks] = useState<Record<string, string>>({});
@@ -103,6 +107,7 @@ export default function BracketInteractive({ rounds: initialRounds, apiBase, tea
   // picks live in separate state and are untouched; RadialBracket already
   // prefers a real result over a pick, so newly-decided matches just take over.
   useEffect(() => {
+    if (readOnly) return; // finished editions never change — no polling
     let mounted = true;
     async function poll() {
       try {
@@ -176,26 +181,29 @@ export default function BracketInteractive({ rounds: initialRounds, apiBase, tea
 
   return (
     <div className="bracket-interactive">
-      <div className="bracket-modes" role="tablist" aria-label="Bracket mode">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === 'live'}
-          className={`bracket-mode${mode === 'live' ? ' bracket-mode--active' : ''}`}
-          onClick={() => setMode('live')}
-        >
-          Live results
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === 'predict'}
-          className={`bracket-mode${mode === 'predict' ? ' bracket-mode--active' : ''}`}
-          onClick={() => setMode('predict')}
-        >
-          Build your bracket
-        </button>
-      </div>
+      {/* Past (finished) editions are view-only — no Live/Predict tabs. */}
+      {!readOnly && (
+        <div className="bracket-modes" role="tablist" aria-label="Bracket mode">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'live'}
+            className={`bracket-mode${mode === 'live' ? ' bracket-mode--active' : ''}`}
+            onClick={() => setMode('live')}
+          >
+            Live results
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'predict'}
+            className={`bracket-mode${mode === 'predict' ? ' bracket-mode--active' : ''}`}
+            onClick={() => setMode('predict')}
+          >
+            Build your bracket
+          </button>
+        </div>
+      )}
 
       {mode === 'predict' && (
         <div className="bracket-controls">
@@ -225,6 +233,7 @@ export default function BracketInteractive({ rounds: initialRounds, apiBase, tea
         onChampion={setChampion}
         teamStyle={teamStyle}
         apiBase={apiBase}
+        shape={shape}
       />
 
       {mode === 'live' && <ThirdPlaceMini rounds={rounds} />}
