@@ -1,5 +1,5 @@
 import type { BracketMatch, BracketTeam, BracketRound } from '@/server/data/types';
-import { OFFICIAL_R32_ORDER } from '@/server/data/competitions';
+import type { BracketShape } from './bracketShape';
 
 // Moved out of RadialBracket.tsx so the pure model logic is unit-testable
 // without pulling the React component tree into the test.
@@ -183,28 +183,31 @@ interface Slot {
 }
 
 /**
- * Outer-ring order of the 32 R32 matches in official bracket order. Maps each
- * fixed matchup (by team abbreviations) to its index in the ESPN data; falls
- * back to plain event order if the teams don't match (e.g. data changed).
+ * Leaf-round order from a hardcoded seed list: maps each fixed matchup (by team
+ * abbreviations, in bracket order) to its index in the ESPN data. Used for the
+ * live/current edition whose tree isn't determined yet. Falls back to plain
+ * event order if the pairings don't match. Works for any leaf size (8 or 16).
  */
-function officialLeafOrder(r32: BracketRound | undefined): number[] {
-  const fallback = r32 ? r32.matches.map((_, i) => i) : [];
-  if (!r32 || r32.matches.length !== 16) return fallback;
+export function leafOrderFromSeeds(
+  leaf: BracketRound | undefined,
+  seeds: [string, string][],
+): number[] {
+  const fallback = leaf ? leaf.matches.map((_, i) => i) : [];
+  if (!leaf || leaf.matches.length !== seeds.length) return fallback;
 
   const findPair = (a: string, b: string): number =>
-    r32.matches.findIndex((m) => {
+    leaf.matches.findIndex((m) => {
       const x = (m.home.abbr ?? '').toUpperCase();
       const y = (m.away.abbr ?? '').toUpperCase();
       return (x === a && y === b) || (x === b && y === a);
     });
 
   const order: number[] = [];
-  for (const [a, b] of OFFICIAL_R32_ORDER) {
-    const idx = findPair(a, b);
-    if (idx < 0) return fallback;
-    order.push(idx);
-  }
-  if (order.length !== 16 || new Set(order).size !== 16) return fallback;
+  seeds.forEach(([a, b]) => {
+    const idx = findPair(a.toUpperCase(), b.toUpperCase());
+    if (idx >= 0) order.push(idx);
+  });
+  if (order.length !== seeds.length || new Set(order).size !== seeds.length) return fallback;
   return order;
 }
 
@@ -216,18 +219,22 @@ function officialLeafOrder(r32: BracketRound | undefined): number[] {
  */
 export function buildRings(
   rounds: BracketRound[],
+  shape: BracketShape,
   picks: Record<string, string> = {},
   mode: BracketMode = 'live',
 ): RingNode[][] {
-  const r32 = rounds.find((r) => r.slug === 'round-of-32');
+  const geom = shape.ringGeometry;
+  const leaf = rounds.find((r) => r.slug === shape.knockoutRounds[0]);
+  // Live/current edition provides a seed order; finished editions derive it.
+  const leafOrder = shape.bracketOrder
+    ? leafOrderFromSeeds(leaf, shape.bracketOrder)
+    : deriveLeafOrder(rounds, shape.knockoutRounds);
   const ringSlots: Slot[][] = [];
 
-  const leafOrder = officialLeafOrder(r32);
-
   const d0: Slot[] = [];
-  if (r32) {
+  if (leaf) {
     leafOrder.forEach((origIdx, pos) => {
-      const m = r32.matches[origIdx];
+      const m = leaf.matches[origIdx];
       if (!m) return;
       const eff = effectiveWinner(m, 0, pos, picks, mode, m.home, m.away);
       const clickable = mode === 'predict' && isDecidable(m, m.home, m.away);
@@ -245,8 +252,8 @@ export function buildRings(
   }
   ringSlots.push(d0);
 
-  for (let depth = 1; depth < RINGS.length; depth++) {
-    const round = rounds.find((r) => r.slug === RINGS[depth].slug);
+  for (let depth = 1; depth < geom.length; depth++) {
+    const round = rounds.find((r) => r.slug === shape.knockoutRounds[depth]);
     const prev = ringSlots[depth - 1];
     const nSlots = Math.floor(prev.length / 2);
 
@@ -276,7 +283,7 @@ export function buildRings(
   }
 
   return ringSlots.map((slots, depth) => {
-    const cfg = RINGS[depth];
+    const cfg = geom[depth];
     const total = slots.length || 1;
     return slots.map((slot, index) => {
       const angle = -90 + (index + 0.5) * (360 / total);

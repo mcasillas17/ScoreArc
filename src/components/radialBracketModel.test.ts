@@ -103,3 +103,38 @@ describe('deriveLeafOrder', () => {
     expect(deriveLeafOrder(rounds, ['round-of-16', 'final'])).toEqual([0, 1]);
   });
 });
+
+import { buildRings } from './radialBracketModel';
+import { bracketShapeFor } from './bracketShape';
+import { mapBracket } from '@/server/data/providers/espn-bracket';
+import raw2022 from '@/server/data/__fixtures__/espn-bracket-2022.json';
+
+describe('buildRings — 2022 (4 rings, derived order)', () => {
+  const rounds = mapBracket(raw2022);
+  const shape = bracketShapeFor({
+    id: '2022', label: '2022', sections: ['bracket'],
+    format: { hasBracket: true, hasGroups: true, hasThirdPlaceRace: true },
+    knockoutRounds: ['round-of-16', 'quarterfinals', 'semifinals', 'final'],
+  });
+
+  it('builds 4 rings: 16 leaves -> 8 -> 4 -> 2', () => {
+    const rings = buildRings(rounds, shape);
+    expect(rings).toHaveLength(4);
+    expect(rings[0]).toHaveLength(16);
+    expect(rings[3]).toHaveLength(2);
+  });
+
+  it('crowns Argentina (2022 champion) in the final ring', () => {
+    const rings = buildRings(rounds, shape);
+    const champ = rings[3].find((n) => n.isWinner)?.team.abbr;
+    expect(champ).toBe('ARG');
+  });
+
+  it('reconstructs the QF pairings from results (NED-ARG, ENG-FRA)', () => {
+    const rings = buildRings(rounds, shape);
+    // rings[1] = the 8 QF participants; two adjacent nodes (2k, 2k+1) = one QF.
+    const qf = (abbr: string) => Math.floor(rings[1].findIndex((n) => n.team.abbr === abbr) / 2);
+    expect(qf('NED')).toBe(qf('ARG')); // 2022 QF: Netherlands v Argentina
+    expect(qf('ENG')).toBe(qf('FRA')); // 2022 QF: England v France
+  });
+});

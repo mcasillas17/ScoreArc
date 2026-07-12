@@ -6,9 +6,10 @@ import { type TeamStyle } from '@/server/data/competitions';
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
 import BracketZoom from './BracketZoom';
 import {
-  teamJourney, buildRings, ellipse, colorFor, C, RINGS,
+  teamJourney, buildRings, ellipse, colorFor, C,
   type RingNode, type JourneyStop, type BracketMode,
 } from './radialBracketModel';
+import { DEFAULT_SHAPE, type BracketShape, type RingGeom } from './bracketShape';
 
 export type { BracketMode };
 
@@ -20,6 +21,9 @@ interface Props {
   onChampion?: (team: BracketTeam | null) => void;
   teamStyle: TeamStyle;
   apiBase: string;
+  // Bracket shape (ring geometry + rounds + seed order). Defaults to the 2026
+  // 5-ring shape so existing callers keep working unchanged.
+  shape?: BracketShape;
 }
 
 
@@ -113,8 +117,10 @@ function isTodayLocal(iso: string | undefined): boolean {
 }
 
 
-export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle, apiBase }: Props) {
-  const rings = buildRings(rounds, picks, mode);
+export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle, apiBase, shape: shapeProp }: Props) {
+  const shape = shapeProp ?? DEFAULT_SHAPE;
+  const geom = shape.ringGeometry;
+  const rings = buildRings(rounds, shape, picks, mode);
 
   const journeys = teamJourney(rings);
   // Deepest ring any team reached, and the sim end-point. simRound counts ROUNDS
@@ -158,8 +164,8 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
     if (initDone.current) setSimRound((s) => Math.max(s, simTarget));
   }, [simTarget]);
 
-  // The CHAMPION is the effective winner of the FINAL (depth 4).
-  const champion = rings[4]?.find((n) => n.isWinner)?.team ?? null;
+  // The CHAMPION is the effective winner of the FINAL (the innermost ring).
+  const champion = rings[geom.length - 1]?.find((n) => n.isWinner)?.team ?? null;
   useEffect(() => {
     onChampion?.(champion ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -284,9 +290,9 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
 
         {/* (2) Connectors: bracket elbows — radial stub from each team, a
             tangential arc joining the pair, then a radial stub to the parent. */}
-        {RINGS.slice(0, -1).map((cfg, depth) => {
+        {geom.slice(0, -1).map((cfg, depth) => {
           const rc = cfg.rx; // child ring radius
-          const rp = RINGS[depth + 1].rx; // parent ring radius
+          const rp = geom[depth + 1].rx; // parent ring radius
           const rj = rp + (rc - rp) * 0.5; // arc (join) radius between them
           const children = rings[depth];
           const parents = rings[depth + 1];
@@ -333,10 +339,10 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
         })}
 
         {/* (2c) Finalists -> center (champion's line tinted with its flag colour) */}
-        {rings[RINGS.length - 1]?.map((node) => {
+        {rings[geom.length - 1]?.map((node) => {
           const inner = ellipse(30, 30, node.angle);
           // Champion's line to the trophy colours in once the final has played.
-          const championLine = node.isWinner && simRound >= RINGS.length;
+          const championLine = node.isWinner && simRound >= geom.length;
           return (
             <g key={`final-${node.index}`}>
               <path
@@ -482,6 +488,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                 key={`hop-${j.teamId}-${stop.depth}`}
                 stop={stop}
                 from={from}
+                geom={geom}
                 greyed={greyed}
                 mode={mode}
                 teamStyle={teamStyle}
@@ -725,6 +732,7 @@ function OuterTeam({
 function InnerHop({
   stop,
   from,
+  geom,
   greyed,
   mode,
   teamStyle,
@@ -733,6 +741,7 @@ function InnerHop({
 }: {
   stop: JourneyStop;
   from: JourneyStop;
+  geom: RingGeom[];
   greyed: boolean;
   mode: BracketMode;
   teamStyle: TeamStyle;
@@ -751,8 +760,8 @@ function InnerHop({
   // Motion path = the connector's winner route between the two rings: radial
   // stub in to the join radius, tangential arc to the node's angle, radial stub
   // in to the node. Identical geometry to the drawn connector (see section 2).
-  const rc = RINGS[stop.depth - 1].rx;
-  const rp = RINGS[stop.depth].rx;
+  const rc = geom[stop.depth - 1].rx;
+  const rp = geom[stop.depth].rx;
   const rj = rp + (rc - rp) * 0.5;
   const j0 = ellipse(rj, rj, from.node.angle);
   const j1 = ellipse(rj, rj, node.angle);
