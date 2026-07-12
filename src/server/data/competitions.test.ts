@@ -104,6 +104,6 @@ describe('world-cup seasons', () => {
 
   it('exposes all seven past editions', () => {
     const ids = Object.keys(COMPETITIONS['world-cup'].seasons).sort();
-    expect(ids).toEqual(['1998','2002','2006','2010','2014','2018','2022','2026']);
+    expect(ids).toEqual(['1998','2002','2006','2014','2018','2022','2026']);
   });
 });

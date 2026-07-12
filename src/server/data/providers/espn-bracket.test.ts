@@ -88,3 +88,25 @@ describe('mapBracket resilience', () => {
     expect(mapBracket(null)).toEqual([]);
   });
 });
+
+describe('mapBracket — slug normalization (older editions)', () => {
+  const ev = (slug: string, id: string) => ({
+    id, date: '2010-06-27T00:00Z', season: { slug },
+    status: { type: { state: 'post', completed: true, shortDetail: 'FT', name: 'STATUS_FULL_TIME' } },
+    competitions: [{
+      notes: [], competitors: [
+        { homeAway: 'home', winner: true, score: '2', team: { id: '1', abbreviation: 'AAA', displayName: 'Aaa', logo: 'x/countries/aaa.png' } },
+        { homeAway: 'away', winner: false, score: '1', team: { id: '2', abbreviation: 'BBB', displayName: 'Bbb', logo: 'x/countries/bbb.png' } },
+      ],
+    }],
+  });
+
+  it('maps `second-round` to round-of-16 and `third-place` to 3rd-place-match', () => {
+    const rounds = mapBracket({ events: [ev('second-round', 'a'), ev('third-place', 'b')] });
+    const slugs = rounds.map((r) => r.slug);
+    expect(slugs).toContain('round-of-16');
+    expect(slugs).toContain('3rd-place-match');
+    expect(slugs).not.toContain('second-round');
+    expect(slugs).not.toContain('third-place');
+  });
+});

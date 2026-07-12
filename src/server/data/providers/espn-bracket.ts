@@ -10,6 +10,15 @@ const ROUND_ORDER = [
   '3rd-place-match',
 ] as const;
 
+// ESPN renamed some rounds across editions: older World Cups (1998-2010) tag the
+// Round of 16 as `second-round`, and 2002 uses `third-place`. Normalize so every
+// edition buckets into the same canonical slugs the bracket builder expects.
+const SLUG_ALIAS: Record<string, string> = {
+  'second-round': 'round-of-16',
+  'third-place': '3rd-place-match',
+};
+const normSlug = (slug: string): string => SLUG_ALIAS[slug] ?? slug;
+
 const ROUND_NAMES: Record<string, string> = {
   'round-of-32': 'Round of 32',
   'round-of-16': 'Round of 16',
@@ -50,7 +59,7 @@ function mapBracketMatch(ev: any): BracketMatch | null {
 
   return {
     id: String(ev.id),
-    round: ev.season?.slug ?? '',
+    round: normSlug(ev.season?.slug ?? ''),
     kickoff: ev.date ?? '',
     home: mapBracketTeam(home.team),
     away: mapBracketTeam(away.team),
@@ -71,7 +80,7 @@ export function mapBracket(raw: unknown): BracketRound[] {
   // group events by round slug, preserving bracket order within each round
   const bySlug = new Map<string, BracketMatch[]>();
   for (const ev of events) {
-    const slug: string = ev.season?.slug ?? '';
+    const slug: string = normSlug(ev.season?.slug ?? '');
     if (!slug) continue;
     const match = mapBracketMatch(ev);
     if (!match) continue;
