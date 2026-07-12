@@ -110,3 +110,23 @@ describe('mapBracket — slug normalization (older editions)', () => {
     expect(slugs).not.toContain('third-place');
   });
 });
+
+describe('mapBracket — penalty-shootout winner fallback', () => {
+  const pensEvent = {
+    id: 'p1', date: '1998-06-30T00:00Z', season: { slug: 'quarterfinals' },
+    status: { type: { state: 'post', completed: true, shortDetail: 'FT (pens)', name: 'STATUS_FINAL_PEN' } },
+    competitions: [{
+      notes: [], competitors: [
+        // regulation draw; winner flag unset; shootoutScore decides it (home wins pens)
+        { homeAway: 'home', winner: false, score: '2', shootoutScore: '4', team: { id: '10', abbreviation: 'ARG', displayName: 'Argentina', logo: 'x/countries/arg.png' } },
+        { homeAway: 'away', winner: false, score: '2', shootoutScore: '3', team: { id: '11', abbreviation: 'ENG', displayName: 'England', logo: 'x/countries/eng.png' } },
+      ],
+    }],
+  };
+
+  it('derives the winner from shootoutScore when winner flags are unset', () => {
+    const rounds = mapBracket({ events: [pensEvent] });
+    const m = rounds.find((r) => r.slug === 'quarterfinals')!.matches[0];
+    expect(m.winnerId).toBe('10'); // Argentina (higher shootoutScore)
+  });
+});

@@ -51,11 +51,19 @@ function mapBracketMatch(ev: any): BracketMatch | null {
 
   const state = mapState(status.type.state, status.type.completed);
   const note = comp.notes?.[0]?.text ?? null;
+  // Some editions (e.g. 1998) don't set `winner` on penalty-shootout matches, but
+  // DO carry `shootoutScore` — fall back to that so the winner still propagates.
+  const hs = Number(home.shootoutScore);
+  const as = Number(away.shootoutScore);
+  const shootoutWinnerId =
+    Number.isFinite(hs) && Number.isFinite(as) && hs !== as
+      ? String((hs > as ? home : away).team.id)
+      : null;
   const winnerId = home.winner
     ? String(home.team.id)
     : away.winner
     ? String(away.team.id)
-    : null;
+    : shootoutWinnerId;
 
   return {
     id: String(ev.id),
