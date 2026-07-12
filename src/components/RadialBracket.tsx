@@ -754,8 +754,9 @@ function InnerHop({
   const ringWidth = isWinner ? 2.4 : 1;
 
   // Clicking a flag views the match it WON to reach this ring — the pairing
-  // "beneath" it in the tree (the previous ring's match), not the match at its
-  // current ring. E.g. a team's R16 flag opens its R32 win, not its R16 tie.
+  // "beneath" it in the tree (i.e. the previous ring's match this team played),
+  // not the match at its current ring. E.g. Mexico's R16 flag opens Mex v Ecu
+  // (the R32 win), not Mex v Eng (its R16 tie).
   const wonMatch = from.node.match;
   const viewable = mode !== 'predict' && wonMatch != null;
   const clickable = mode === 'predict' && node.clickable;
