@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { BracketMatch, MatchSummaryData } from '@/server/data/types';
 import { flagUrl } from '@/lib/flags';
 import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar, LineupView, PenaltyShootout, liveStatus, isBeforeKickoff } from './MatchStats';
@@ -33,6 +34,12 @@ function formatKickoff(iso: string): string {
 
 export default function MatchDetailPopup({ match, summary, loading, onClose }: Props) {
   const closeRef = useRef<HTMLButtonElement>(null);
+
+  // Portal to <body> so the fixed backdrop escapes the bracket's transformed
+  // zoom container (a transform ancestor traps position:fixed, which otherwise
+  // confines the modal to the bracket box and lets the timeline paint over it).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // Close on Escape; move focus into the dialog on open and restore it on close.
   useEffect(() => {
@@ -84,7 +91,9 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
   const ls = liveStatus(match);
   const statusLabel = ls?.text ?? match.statusDetail ?? match.state.toUpperCase();
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div
       className="md-backdrop"
       onClick={onClose}
@@ -231,6 +240,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
