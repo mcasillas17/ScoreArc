@@ -74,8 +74,9 @@ export type BracketMode = 'live' | 'predict';
 // True circle — center of the (square) SVG canvas.
 export const C = { x: 500, y: 500 };
 
-// Outer crest sits just beyond its flag along the same radial.
-const CREST_SCALE = 1.155;
+// Outer crest sits beyond its flag along the same radial — pushed out a bit so
+// the outward tail clearly runs from the flag out to the crest.
+const CREST_SCALE = 1.235;
 
 // Representative colour from each team's flag — used to tint a team's advancing
 // connector path (as in the reference: Brazil yellow, Canada red, ...).
