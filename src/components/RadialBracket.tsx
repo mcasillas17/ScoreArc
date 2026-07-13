@@ -206,7 +206,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
         clearInterval(id);
         initDone.current = true;
       }
-    }, 1400);
+    }, 2000); // 2s between ring jumps — a calmer level-by-level play-through
     return () => clearInterval(id);
     // mount only
     // eslint-disable-next-line react-hooks/exhaustive-deps
