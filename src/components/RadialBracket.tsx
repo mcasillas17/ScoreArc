@@ -29,7 +29,7 @@ interface Props {
 
 // Outer crest sits just beyond its flag along the same radial, and is SMALLER
 // than the flag (as in the reference: federation logo smaller than the flag).
-const CREST_R = 19;
+const CREST_R = 25;
 
 // FIFA 3-letter code -> ISO 3166-1 alpha-2 (lowercase) for flagcdn.
 const FLAG_MAP: Record<string, string> = {
@@ -554,10 +554,9 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                       d={`M ${x0} ${y0} L ${x1} ${y1}`}
                       fill="none"
                       stroke={`url(#${gid})`}
-                      strokeWidth={9}
+                      strokeWidth={13}
                       strokeLinecap="round"
-                      opacity={0.5}
-                      filter="url(#conn-glow)"
+                      opacity={0.32}
                       pathLength={1}
                     />
                     <path
@@ -565,7 +564,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                       d={`M ${x0} ${y0} L ${x1} ${y1}`}
                       fill="none"
                       stroke={`url(#${gid})`}
-                      strokeWidth={4.2}
+                      strokeWidth={5.6}
                       strokeLinecap="round"
                       pathLength={1}
                     />
