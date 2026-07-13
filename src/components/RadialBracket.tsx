@@ -760,8 +760,11 @@ function OuterTeam({
   teamStyle: TeamStyle;
 }) {
   const { team, isWinner } = node;
-  const ringStroke = isWinner ? '#e8b84b' : '#2a2a32';
-  const ringWidth = isWinner ? 2.4 : 1;
+  // Clean disc: a thin gold ring marks a winner, a quiet dark hairline otherwise.
+  // The national colour lives in the connector PATHS, not the discs (keeping the
+  // discs clean is what reads as premium — matches the reference art).
+  const ringStroke = isWinner && !greyed ? '#e8b84b' : '#2a2a32';
+  const ringWidth = isWinner && !greyed ? 2.4 : 1;
 
   const flag = team.placeholder ? null : flagUrl(team.abbr);
   const crest = team.placeholder ? null : crestSrc(team.abbr);
@@ -806,30 +809,32 @@ function OuterTeam({
           );
         })()
       ) : (
-        /* National style: twin crest (outer) + flag (inner) — unchanged */
+        /* National style: bare federation crest (outer) + flag roundel (inner).
+           The crest floats as a plain logo — no disc, no ring — like the
+           reference art; only the flag is a circle. */
         <>
-          {/* Crest (outer) — meet so the badge isn't cropped, on a light disc */}
           {crest ? (
-            <ImageDisc
-              id={`crest-${node.index}`}
-              x={node.crestX}
-              y={node.crestY}
-              r={CREST_R}
+            <image
               href={crest}
-              fit="meet"
-              bg="#f4f4f6"
-              ringStroke={ringStroke}
-              ringWidth={ringWidth}
+              x={node.crestX - CREST_R}
+              y={node.crestY - CREST_R}
+              width={CREST_R * 2}
+              height={CREST_R * 2}
+              preserveAspectRatio="xMidYMid meet"
             />
           ) : (
-            <FallbackDisc
+            <text
               x={node.crestX}
               y={node.crestY}
-              r={CREST_R}
-              abbr={team.abbr}
-              ringStroke={ringStroke}
-              ringWidth={ringWidth}
-            />
+              textAnchor="middle"
+              dominantBaseline="central"
+              fill="#8a8a92"
+              fontSize={9}
+              fontWeight={600}
+              fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+            >
+              {team.abbr}
+            </text>
           )}
 
           {/* Flag (inner) — slice so it fills the circle */}
@@ -888,8 +893,10 @@ function InnerHop({
 }) {
   const { node } = stop;
   const { team, isWinner, discR: r } = node;
-  const ringStroke = isWinner ? '#e8b84b' : '#2a2a32';
-  const ringWidth = isWinner ? 2.4 : 1;
+  // Clean disc — thin gold ring for a winner, dark hairline otherwise. Colour
+  // lives in the paths, not the discs.
+  const ringStroke = isWinner && !greyed ? '#e8b84b' : '#2a2a32';
+  const ringWidth = isWinner && !greyed ? 2.4 : 1;
 
   // Clicking a flag views the match it WON to reach this ring — the pairing
   // "beneath" it in the tree (i.e. the previous ring's match this team played),
