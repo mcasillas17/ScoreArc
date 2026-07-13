@@ -556,8 +556,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                       stroke={`url(#${gid})`}
                       strokeWidth={13}
                       strokeLinecap="round"
-                      opacity={0.5}
-                      filter="url(#conn-glow)"
+                      opacity={0.32}
                       pathLength={1}
                     />
                     <path
