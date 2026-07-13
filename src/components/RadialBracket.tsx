@@ -668,19 +668,29 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
 
         {/* (3) Team discs */}
         {/* Outer ring (depth 0): twin crest + flag per team */}
-        {rings[0]?.map((node) => (
-          <OuterTeam
-            key={`outer-${node.index}`}
-            node={node}
-            mode={mode}
-            clickable={node.clickable}
-            viewable={false}
-            // R32 badges start colored; losers grey once round 1 has played.
-            greyed={node.eliminated && simRound >= 1}
-            onClick={() => handleDiscClick(node)}
-            teamStyle={teamStyle}
-          />
-        ))}
+        {rings[0]?.map((node) => {
+          // The flag stays lit as the R32 winning-path marker (greys only on a
+          // round-1 loss). The CREST is a team-level badge, so it greys once the
+          // team is knocked out in ANY round — in lock-step with its tail
+          // retracting — instead of staying bright for a team that's long out.
+          const cj = journeyByTeam.get(node.team.id);
+          const crestGreyed =
+            !!cj && cj.eliminatedAtDepth != null && simRound > cj.eliminatedAtDepth;
+          return (
+            <OuterTeam
+              key={`outer-${node.index}`}
+              node={node}
+              mode={mode}
+              clickable={node.clickable}
+              viewable={false}
+              // R32 badges start colored; losers grey once round 1 has played.
+              greyed={node.eliminated && simRound >= 1}
+              crestGreyed={crestGreyed}
+              onClick={() => handleDiscClick(node)}
+              teamStyle={teamStyle}
+            />
+          );
+        })}
 
         {/* Trail of flags: one per level each team reached (the bracket path).
             The tournament plays forward level by level — a team's flag hops one
@@ -863,6 +873,7 @@ function OuterTeam({
   clickable,
   viewable,
   greyed,
+  crestGreyed,
   onClick,
   teamStyle,
 }: {
@@ -871,6 +882,7 @@ function OuterTeam({
   clickable: boolean;
   viewable: boolean;
   greyed: boolean;
+  crestGreyed: boolean;
   onClick: () => void;
   teamStyle: TeamStyle;
 }) {
@@ -926,31 +938,36 @@ function OuterTeam({
       ) : (
         /* National style: bare federation crest (outer) + flag roundel (inner).
            The crest floats as a plain logo — no disc, no ring — like the
-           reference art; only the flag is a circle. */
+           reference art; only the flag is a circle. The crest greys once the
+           team is knocked out (via crestGreyed); the parent already greys it on
+           a round-1 loss, so only apply the extra dimming when the flag hasn't
+           already greyed, to avoid double-darkening. */
         <>
-          {crest ? (
-            <image
-              href={crest}
-              x={node.crestX - CREST_R}
-              y={node.crestY - CREST_R}
-              width={CREST_R * 2}
-              height={CREST_R * 2}
-              preserveAspectRatio="xMidYMid meet"
-            />
-          ) : (
-            <text
-              x={node.crestX}
-              y={node.crestY}
-              textAnchor="middle"
-              dominantBaseline="central"
-              fill="#8a8a92"
-              fontSize={9}
-              fontWeight={600}
-              fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-            >
-              {team.abbr}
-            </text>
-          )}
+          <g className={crestGreyed && !greyed ? 'bracket-disc--eliminated' : undefined}>
+            {crest ? (
+              <image
+                href={crest}
+                x={node.crestX - CREST_R}
+                y={node.crestY - CREST_R}
+                width={CREST_R * 2}
+                height={CREST_R * 2}
+                preserveAspectRatio="xMidYMid meet"
+              />
+            ) : (
+              <text
+                x={node.crestX}
+                y={node.crestY}
+                textAnchor="middle"
+                dominantBaseline="central"
+                fill="#8a8a92"
+                fontSize={9}
+                fontWeight={600}
+                fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+              >
+                {team.abbr}
+              </text>
+            )}
+          </g>
 
           {/* Flag (inner) — slice so it fills the circle */}
           {flag ? (
