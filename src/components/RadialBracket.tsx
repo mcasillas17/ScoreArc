@@ -498,11 +498,12 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
         })}
 
         {/* (2d) Outward "still in it" tails — a bold fading national-colour line
-            that reaches OUT of the bracket to the canvas edge from each STILL-
-            ALIVE team's outer flag, through its crest, marking who's left at a
-            glance (as in the reference art). Every team starts with a tail; a
-            team drops its tail the round it's knocked out — so the tails thin as
-            the animation plays and a finished edition leaves just the champion's. */}
+            that reaches OUT of the bracket to the canvas edge from each team's
+            outer flag, through its crest, marking who's left at a glance (as in
+            the reference art). Every team starts with a tail; each breathes with
+            a gentle pulse to look alive, and retracts (scale + fade into the
+            flag) the round its team is knocked out — so the tails thin as the
+            animation plays and a finished edition leaves just the champion's. */}
         {(() => {
           const outerR = geom[0].rx;
           return (rings[0] ?? []).map((node) => {
@@ -510,9 +511,8 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             const j = journeyByTeam.get(node.team.id);
             if (!j) return null;
             // Still alive = champion (never eliminated) or not yet beaten in the
-            // play-through. Losers drop their tail the round they go out.
+            // play-through. Kept mounted when out so it can retract, not vanish.
             const aliveNow = j.eliminatedAtDepth == null || simRound <= j.eliminatedAtDepth;
-            if (!aliveNow) return null;
 
             const col = colorFor(node.team);
             const ux = (node.x - C.x) / outerR;
@@ -526,6 +526,10 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             const x0 = C.x + ux * r0, y0 = C.y + uy * r0;
             const x1 = C.x + ux * r1, y1 = C.y + uy * r1;
             const gid = `tail-grad-${node.index}`;
+            // Scale about the flag anchor: with transform-box: fill-box the
+            // origin is the bbox corner nearest the flag (depends on direction).
+            const origin = `${ux >= 0 ? 0 : 100}% ${uy >= 0 ? 0 : 100}%`;
+            const pulseDelay = `${((node.index * 0.29) % 2.4).toFixed(2)}s`;
             return (
               <g key={`tail-${node.index}`}>
                 <linearGradient id={gid} gradientUnits="userSpaceOnUse" x1={x0} y1={y0} x2={x1} y2={y1}>
@@ -533,26 +537,40 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                   <stop offset="50%" stopColor={col} stopOpacity="0.85" />
                   <stop offset="100%" stopColor={col} stopOpacity="0" />
                 </linearGradient>
-                <path
-                  className="bracket-conn-draw"
-                  d={`M ${x0} ${y0} L ${x1} ${y1}`}
-                  fill="none"
-                  stroke={`url(#${gid})`}
-                  strokeWidth={9}
-                  strokeLinecap="round"
-                  opacity={0.5}
-                  filter="url(#conn-glow)"
-                  pathLength={1}
-                />
-                <path
-                  className="bracket-conn-draw"
-                  d={`M ${x0} ${y0} L ${x1} ${y1}`}
-                  fill="none"
-                  stroke={`url(#${gid})`}
-                  strokeWidth={4.2}
-                  strokeLinecap="round"
-                  pathLength={1}
-                />
+                <g
+                  className="bracket-tail-retract"
+                  style={{
+                    transformOrigin: origin,
+                    transform: aliveNow ? 'scale(1)' : 'scale(0)',
+                    opacity: aliveNow ? 1 : 0,
+                  }}
+                >
+                  <g
+                    className="bracket-tail-pulse"
+                    style={{ transformOrigin: origin, animationDelay: pulseDelay }}
+                  >
+                    <path
+                      className="bracket-conn-draw"
+                      d={`M ${x0} ${y0} L ${x1} ${y1}`}
+                      fill="none"
+                      stroke={`url(#${gid})`}
+                      strokeWidth={9}
+                      strokeLinecap="round"
+                      opacity={0.5}
+                      filter="url(#conn-glow)"
+                      pathLength={1}
+                    />
+                    <path
+                      className="bracket-conn-draw"
+                      d={`M ${x0} ${y0} L ${x1} ${y1}`}
+                      fill="none"
+                      stroke={`url(#${gid})`}
+                      strokeWidth={4.2}
+                      strokeLinecap="round"
+                      pathLength={1}
+                    />
+                  </g>
+                </g>
               </g>
             );
           });
