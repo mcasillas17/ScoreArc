@@ -517,6 +517,28 @@ a {
   }
 }
 
+/* Outward "still in it" tails: a gentle continuous breathing pulse so they look
+   alive, plus a smooth retract (scale + fade toward the flag) when a team is
+   knocked out. Two nested groups so the pulse (animation) and the retract
+   (transition) don't fight over `transform`. Both scale about the flag anchor
+   via transform-box: fill-box + a per-tail corner transform-origin. */
+@keyframes tailPulse {
+  0%, 100% { transform: scale(0.96); opacity: 0.78; }
+  50%      { transform: scale(1.05); opacity: 1; }
+}
+.bracket-tail-pulse {
+  transform-box: fill-box;
+  animation: tailPulse 2.6s ease-in-out infinite;
+}
+.bracket-tail-retract {
+  transform-box: fill-box;
+  transition: transform 0.6s ease, opacity 0.6s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bracket-tail-pulse { animation: none; }
+  .bracket-tail-retract { transition: none; }
+}
+
 .bracket-disc--clickable {
   cursor: pointer;
   transition: filter 0.12s ease;
