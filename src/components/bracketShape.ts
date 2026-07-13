@@ -18,12 +18,12 @@ export interface BracketShape {
 // spacing; only 4 and 5 occur). rx===ry (true circles). Outer is always 400.
 const RADII: Record<number, { rx: number; discR: number }[]> = {
   5: [
-    { rx: 400, discR: 30 }, { rx: 312, discR: 26 }, { rx: 224, discR: 27 },
-    { rx: 138, discR: 29 }, { rx: 66, discR: 33 },
+    { rx: 400, discR: 26 }, { rx: 312, discR: 22 }, { rx: 224, discR: 23 },
+    { rx: 138, discR: 25 }, { rx: 66, discR: 29 },
   ],
   4: [
-    { rx: 400, discR: 32 }, { rx: 288, discR: 30 }, { rx: 176, discR: 31 },
-    { rx: 74, discR: 34 },
+    { rx: 400, discR: 28 }, { rx: 288, discR: 26 }, { rx: 176, discR: 27 },
+    { rx: 74, discR: 30 },
   ],
 };
 

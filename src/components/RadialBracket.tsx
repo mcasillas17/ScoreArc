@@ -79,6 +79,39 @@ const CREST_MAP: Record<string, string> = {
   CPV: 'https://r2.thesportsdb.com/images/media/team/badge/5jn0o71593280376.png',
   COL: 'https://r2.thesportsdb.com/images/media/team/badge/4ymyku1691180081.png',
   GHA: 'https://r2.thesportsdb.com/images/media/team/badge/j589xw1751526124.png',
+  // Historical WC knockout teams (1998–2022) not in the 2026 field, so past
+  // editions render bare federation crests too (badges via thesportsdb).
+  ITA: 'https://r2.thesportsdb.com/images/media/team/badge/fxijcp1726167035.png',
+  URU: 'https://r2.thesportsdb.com/images/media/team/badge/6vjbr11726167756.png',
+  CHI: 'https://r2.thesportsdb.com/images/media/team/badge/5xjsy41591988732.png',
+  PER: 'https://r2.thesportsdb.com/images/media/team/badge/unszat1529144812.png',
+  KOR: 'https://r2.thesportsdb.com/images/media/team/badge/a8nqfs1589564916.png',
+  IRN: 'https://r2.thesportsdb.com/images/media/team/badge/uttpvw1455465617.png',
+  KSA: 'https://r2.thesportsdb.com/images/media/team/badge/24xwpq1594125742.png',
+  QAT: 'https://r2.thesportsdb.com/images/media/team/badge/rs3ir31642708685.png',
+  SRB: 'https://r2.thesportsdb.com/images/media/team/badge/oxvynb1689195538.png',
+  DEN: 'https://r2.thesportsdb.com/images/media/team/badge/e13arj1717365623.png',
+  POL: 'https://r2.thesportsdb.com/images/media/team/badge/ttvrxy1455466076.png',
+  WAL: 'https://r2.thesportsdb.com/images/media/team/badge/pdayn21591983222.png',
+  SCO: 'https://r2.thesportsdb.com/images/media/team/badge/3691i11552945146.png',
+  TUR: 'https://r2.thesportsdb.com/images/media/team/badge/70c4oo1591982459.png',
+  UKR: 'https://r2.thesportsdb.com/images/media/team/badge/k36g2e1591982718.png',
+  CZE: 'https://r2.thesportsdb.com/images/media/team/badge/1o0cx31654205806.png',
+  RUS: 'https://r2.thesportsdb.com/images/media/team/badge/nz50i51689197440.png',
+  GRE: 'https://r2.thesportsdb.com/images/media/team/badge/xtxtts1455465601.png',
+  ROU: 'https://r2.thesportsdb.com/images/media/team/badge/w903wb1689198300.png',
+  HUN: 'https://r2.thesportsdb.com/images/media/team/badge/ihaoit1717365719.png',
+  NZL: 'https://r2.thesportsdb.com/images/media/team/badge/91xpk81742982935.png',
+  CRC: 'https://r2.thesportsdb.com/images/media/team/badge/bss90a1637840151.png',
+  PAN: 'https://r2.thesportsdb.com/images/media/team/badge/asp2ck1715849700.png',
+  HON: 'https://r2.thesportsdb.com/images/media/team/badge/wuu4fp1718413719.png',
+  JAM: 'https://r2.thesportsdb.com/images/media/team/badge/v6mk4r1594321722.png',
+  HAI: 'https://r2.thesportsdb.com/images/media/team/badge/gml8wx1598135302.png',
+  VEN: 'https://r2.thesportsdb.com/images/media/team/badge/x167yg1690791367.png',
+  BOL: 'https://r2.thesportsdb.com/images/media/team/badge/4q6qfm1736571383.png',
+  TUN: 'https://r2.thesportsdb.com/images/media/team/badge/7r89rg1526727277.png',
+  NGA: 'https://r2.thesportsdb.com/images/media/team/badge/qruyxr1455466056.png',
+  CMR: 'https://r2.thesportsdb.com/images/media/team/badge/txqspw1455463989.png',
 };
 
 function flagUrl(abbr: string): string | null {
@@ -138,6 +171,10 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
   const rings = buildRings(rounds, shape, picks, mode);
 
   const journeys = teamJourney(rings);
+  // Per-team journey lookup — drives the outward "still in it" tails: how deep a
+  // team reached, and the ring where it was eliminated (null = champion).
+  const journeyByTeam = new Map<string, (typeof journeys)[number]>();
+  for (const j of journeys) journeyByTeam.set(j.teamId, j);
   // Deepest ring any team reached, and the sim end-point. simRound counts ROUNDS
   // played: a team's flag at depth d appears at simRound >= d (it hopped in) and
   // greys at simRound >= d+1 (it then lost that round) — so +1 lets the last
@@ -256,7 +293,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
     <div className="radial-bracket-wrap">
       <BracketZoom>
       <svg
-        viewBox="0 0 1000 1000"
+        viewBox="-70 -70 1140 1140"
         aria-label="Knockout bracket"
         role="img"
         style={{
@@ -306,6 +343,18 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           <filter id="trophy-blur" x="-80%" y="-80%" width="260%" height="260%">
             <feGaussianBlur stdDeviation="6" />
           </filter>
+          {/* Soft glow for a winner's national-colour route — a blurred, fatter
+              copy of the line drawn under the crisp stroke makes the path read
+              as luminous (as in the reference art). */}
+          <filter id="conn-glow" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="3.2" />
+          </filter>
+          {/* Tighter, brighter warm halo hugging the trophy itself. */}
+          <radialGradient id="trophy-halo" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#ffe9a8" stopOpacity="0.55" />
+            <stop offset="42%" stopColor="#e9b859" stopOpacity="0.34" />
+            <stop offset="100%" stopColor="#e9b859" stopOpacity="0" />
+          </radialGradient>
           {/* Localized golden halo behind the winning finalist disc. */}
           <radialGradient id="champ-halo" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#ffe9a8" stopOpacity="0.9" />
@@ -314,8 +363,17 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           </radialGradient>
         </defs>
 
-        {/* (1) Smooth warm radial-gradient glow behind the trophy */}
-        <circle cx={C.x} cy={C.y} r={300} fill="url(#center-glow)" />
+        {/* (1) Smooth warm radial-gradient glow behind the trophy — a broad
+            ambient wash plus a tighter bright halo hugging the trophy. */}
+        <circle cx={C.x} cy={C.y} r={320} fill="url(#center-glow)" />
+        <circle cx={C.x} cy={C.y} r={86} fill="url(#trophy-halo)" />
+
+        {/* (1·) Decorative center bar: a faint hairline through the trophy with
+            a small gold end-cap dot on each side (as in the reference art). */}
+        <line x1={C.x - 92} y1={C.y} x2={C.x + 92} y2={C.y}
+          stroke="#e9b859" strokeOpacity={0.28} strokeWidth={1} />
+        <circle cx={C.x - 92} cy={C.y} r={2.4} fill="#f0c873" />
+        <circle cx={C.x + 92} cy={C.y} r={2.4} fill="#f0c873" />
 
         {/* (1a) Champion halo — localized golden glow behind the winning
             finalist disc, drawn before the discs so it reads as a glow ring. */}
@@ -363,17 +421,35 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                     in from child to parent as the winner's flag hops through it
                     — same path + 1.25s ease as the flag's offset-path, so the
                     flag appears to paint the line. Gated on the round playing. */}
-                {win && jWin && winColor && simRound >= depth + 1 && (
-                  <path
-                    className="bracket-conn-draw"
-                    d={`M ${win.x} ${win.y} L ${jWin.x} ${jWin.y} A ${rj} ${rj} 0 0 ${arcSweep} ${jMid.x} ${jMid.y} L ${pPar.x} ${pPar.y}`}
-                    fill="none"
-                    stroke={winColor}
-                    strokeWidth={2.9}
-                    strokeLinecap="round"
-                    pathLength={1}
-                  />
-                )}
+                {win && jWin && winColor && simRound >= depth + 1 && (() => {
+                  const d = `M ${win.x} ${win.y} L ${jWin.x} ${jWin.y} A ${rj} ${rj} 0 0 ${arcSweep} ${jMid.x} ${jMid.y} L ${pPar.x} ${pPar.y}`;
+                  return (
+                    <>
+                      {/* luminous underlay */}
+                      <path
+                        className="bracket-conn-draw"
+                        d={d}
+                        fill="none"
+                        stroke={winColor}
+                        strokeWidth={6}
+                        strokeLinecap="round"
+                        opacity={0.5}
+                        filter="url(#conn-glow)"
+                        pathLength={1}
+                      />
+                      {/* crisp national-colour line */}
+                      <path
+                        className="bracket-conn-draw"
+                        d={d}
+                        fill="none"
+                        stroke={winColor}
+                        strokeWidth={3.8}
+                        strokeLinecap="round"
+                        pathLength={1}
+                      />
+                    </>
+                  );
+                })()}
               </g>
             );
           });
@@ -394,19 +470,95 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                 strokeLinecap="round"
               />
               {championLine && (
-                <path
-                  className="bracket-conn-draw"
-                  d={`M ${node.x} ${node.y} L ${inner.x} ${inner.y}`}
-                  fill="none"
-                  stroke={colorFor(node.team)}
-                  strokeWidth={2.9}
-                  strokeLinecap="round"
-                  pathLength={1}
-                />
+                <>
+                  <path
+                    className="bracket-conn-draw"
+                    d={`M ${node.x} ${node.y} L ${inner.x} ${inner.y}`}
+                    fill="none"
+                    stroke={colorFor(node.team)}
+                    strokeWidth={6}
+                    strokeLinecap="round"
+                    opacity={0.5}
+                    filter="url(#conn-glow)"
+                    pathLength={1}
+                  />
+                  <path
+                    className="bracket-conn-draw"
+                    d={`M ${node.x} ${node.y} L ${inner.x} ${inner.y}`}
+                    fill="none"
+                    stroke={colorFor(node.team)}
+                    strokeWidth={3.8}
+                    strokeLinecap="round"
+                    pathLength={1}
+                  />
+                </>
               )}
             </g>
           );
         })}
+
+        {/* (2d) Outward "still in it" tails — a bold fading national-colour line
+            that reaches OUT of the bracket to the canvas edge from each STILL-
+            ALIVE team's outer flag, through its crest, marking who's left at a
+            glance (as in the reference art). A team qualifies once it reaches the
+            semifinals and keeps its tail only while unbeaten — so a finished
+            edition leaves just the champion's tail. */}
+        {(() => {
+          const sfDepth = geom.length - 2; // semifinal ring index
+          if (simRound < sfDepth) return null;
+          const outerR = geom[0].rx;
+          return (rings[0] ?? []).map((node) => {
+            if (node.team.placeholder) return null;
+            const j = journeyByTeam.get(node.team.id);
+            if (!j || j.deepestNode.depth < sfDepth) return null;
+            // Still alive = champion (never eliminated) or not yet beaten in the
+            // play-through. Losers drop their tail the round they go out.
+            const aliveNow = j.eliminatedAtDepth == null || simRound <= j.eliminatedAtDepth;
+            if (!aliveNow) return null;
+
+            const col = colorFor(node.team);
+            const ux = (node.x - C.x) / outerR;
+            const uy = (node.y - C.y) / outerR;
+            // Reach out toward the (margin-expanded) canvas edge in this
+            // direction so the tail is long and runs off-frame (the fade hides
+            // the cut). Half-extent from centre is 570 with the -70..1070 viewBox.
+            const tEdge = Math.min(570 / Math.abs(ux || 1e-6), 570 / Math.abs(uy || 1e-6));
+            const r0 = outerR + node.discR + 1; // just outside the flag
+            const r1 = Math.min(outerR + 210, tEdge - 6);
+            const x0 = C.x + ux * r0, y0 = C.y + uy * r0;
+            const x1 = C.x + ux * r1, y1 = C.y + uy * r1;
+            const gid = `tail-grad-${node.index}`;
+            return (
+              <g key={`tail-${node.index}`}>
+                <linearGradient id={gid} gradientUnits="userSpaceOnUse" x1={x0} y1={y0} x2={x1} y2={y1}>
+                  <stop offset="0%" stopColor={col} stopOpacity="1" />
+                  <stop offset="50%" stopColor={col} stopOpacity="0.85" />
+                  <stop offset="100%" stopColor={col} stopOpacity="0" />
+                </linearGradient>
+                <path
+                  className="bracket-conn-draw"
+                  d={`M ${x0} ${y0} L ${x1} ${y1}`}
+                  fill="none"
+                  stroke={`url(#${gid})`}
+                  strokeWidth={9}
+                  strokeLinecap="round"
+                  opacity={0.5}
+                  filter="url(#conn-glow)"
+                  pathLength={1}
+                />
+                <path
+                  className="bracket-conn-draw"
+                  d={`M ${x0} ${y0} L ${x1} ${y1}`}
+                  fill="none"
+                  stroke={`url(#${gid})`}
+                  strokeWidth={4.2}
+                  strokeLinecap="round"
+                  pathLength={1}
+                />
+              </g>
+            );
+          });
+        })()}
 
         {/* (2b) Junction dots. A DECIDED slot shows the winner's flag (see the
             inner-ring discs below), so its dot is just a small colour marker. An
@@ -708,8 +860,11 @@ function OuterTeam({
   teamStyle: TeamStyle;
 }) {
   const { team, isWinner } = node;
-  const ringStroke = isWinner ? '#e8b84b' : '#2a2a32';
-  const ringWidth = isWinner ? 2.4 : 1;
+  // Clean disc: a thin gold ring marks a winner, a quiet dark hairline otherwise.
+  // The national colour lives in the connector PATHS, not the discs (keeping the
+  // discs clean is what reads as premium — matches the reference art).
+  const ringStroke = isWinner && !greyed ? '#e8b84b' : '#2a2a32';
+  const ringWidth = isWinner && !greyed ? 2.4 : 1;
 
   const flag = team.placeholder ? null : flagUrl(team.abbr);
   const crest = team.placeholder ? null : crestSrc(team.abbr);
@@ -754,30 +909,32 @@ function OuterTeam({
           );
         })()
       ) : (
-        /* National style: twin crest (outer) + flag (inner) — unchanged */
+        /* National style: bare federation crest (outer) + flag roundel (inner).
+           The crest floats as a plain logo — no disc, no ring — like the
+           reference art; only the flag is a circle. */
         <>
-          {/* Crest (outer) — meet so the badge isn't cropped, on a light disc */}
           {crest ? (
-            <ImageDisc
-              id={`crest-${node.index}`}
-              x={node.crestX}
-              y={node.crestY}
-              r={CREST_R}
+            <image
               href={crest}
-              fit="meet"
-              bg="#f4f4f6"
-              ringStroke={ringStroke}
-              ringWidth={ringWidth}
+              x={node.crestX - CREST_R}
+              y={node.crestY - CREST_R}
+              width={CREST_R * 2}
+              height={CREST_R * 2}
+              preserveAspectRatio="xMidYMid meet"
             />
           ) : (
-            <FallbackDisc
+            <text
               x={node.crestX}
               y={node.crestY}
-              r={CREST_R}
-              abbr={team.abbr}
-              ringStroke={ringStroke}
-              ringWidth={ringWidth}
-            />
+              textAnchor="middle"
+              dominantBaseline="central"
+              fill="#8a8a92"
+              fontSize={9}
+              fontWeight={600}
+              fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+            >
+              {team.abbr}
+            </text>
           )}
 
           {/* Flag (inner) — slice so it fills the circle */}
@@ -836,8 +993,10 @@ function InnerHop({
 }) {
   const { node } = stop;
   const { team, isWinner, discR: r } = node;
-  const ringStroke = isWinner ? '#e8b84b' : '#2a2a32';
-  const ringWidth = isWinner ? 2.4 : 1;
+  // Clean disc — thin gold ring for a winner, dark hairline otherwise. Colour
+  // lives in the paths, not the discs.
+  const ringStroke = isWinner && !greyed ? '#e8b84b' : '#2a2a32';
+  const ringWidth = isWinner && !greyed ? 2.4 : 1;
 
   // Clicking a flag views the match it WON to reach this ring — the pairing
   // "beneath" it in the tree (i.e. the previous ring's match this team played),
