@@ -500,17 +500,15 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
         {/* (2d) Outward "still in it" tails — a bold fading national-colour line
             that reaches OUT of the bracket to the canvas edge from each STILL-
             ALIVE team's outer flag, through its crest, marking who's left at a
-            glance (as in the reference art). A team qualifies once it reaches the
-            semifinals and keeps its tail only while unbeaten — so a finished
-            edition leaves just the champion's tail. */}
+            glance (as in the reference art). Every team starts with a tail; a
+            team drops its tail the round it's knocked out — so the tails thin as
+            the animation plays and a finished edition leaves just the champion's. */}
         {(() => {
-          const sfDepth = geom.length - 2; // semifinal ring index
-          if (simRound < sfDepth) return null;
           const outerR = geom[0].rx;
           return (rings[0] ?? []).map((node) => {
             if (node.team.placeholder) return null;
             const j = journeyByTeam.get(node.team.id);
-            if (!j || j.deepestNode.depth < sfDepth) return null;
+            if (!j) return null;
             // Still alive = champion (never eliminated) or not yet beaten in the
             // play-through. Losers drop their tail the round they go out.
             const aliveNow = j.eliminatedAtDepth == null || simRound <= j.eliminatedAtDepth;
