@@ -171,6 +171,10 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
   const rings = buildRings(rounds, shape, picks, mode);
 
   const journeys = teamJourney(rings);
+  // Per-team journey lookup — drives the outward "still in it" tails: how deep a
+  // team reached, and the ring where it was eliminated (null = champion).
+  const journeyByTeam = new Map<string, (typeof journeys)[number]>();
+  for (const j of journeys) journeyByTeam.set(j.teamId, j);
   // Deepest ring any team reached, and the sim end-point. simRound counts ROUNDS
   // played: a team's flag at depth d appears at simRound >= d (it hopped in) and
   // greys at simRound >= d+1 (it then lost that round) — so +1 lets the last
@@ -289,7 +293,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
     <div className="radial-bracket-wrap">
       <BracketZoom>
       <svg
-        viewBox="0 0 1000 1000"
+        viewBox="-70 -70 1140 1140"
         aria-label="Knockout bracket"
         role="img"
         style={{
@@ -492,6 +496,69 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             </g>
           );
         })}
+
+        {/* (2d) Outward "still in it" tails — a bold fading national-colour line
+            that reaches OUT of the bracket to the canvas edge from each STILL-
+            ALIVE team's outer flag, through its crest, marking who's left at a
+            glance (as in the reference art). A team qualifies once it reaches the
+            semifinals and keeps its tail only while unbeaten — so a finished
+            edition leaves just the champion's tail. */}
+        {(() => {
+          const sfDepth = geom.length - 2; // semifinal ring index
+          if (simRound < sfDepth) return null;
+          const outerR = geom[0].rx;
+          return (rings[0] ?? []).map((node) => {
+            if (node.team.placeholder) return null;
+            const j = journeyByTeam.get(node.team.id);
+            if (!j || j.deepestNode.depth < sfDepth) return null;
+            // Still alive = champion (never eliminated) or not yet beaten in the
+            // play-through. Losers drop their tail the round they go out.
+            const aliveNow = j.eliminatedAtDepth == null || simRound <= j.eliminatedAtDepth;
+            if (!aliveNow) return null;
+
+            const col = colorFor(node.team);
+            const ux = (node.x - C.x) / outerR;
+            const uy = (node.y - C.y) / outerR;
+            // Reach out toward the (margin-expanded) canvas edge in this
+            // direction so the tail is long and runs off-frame (the fade hides
+            // the cut). Half-extent from centre is 570 with the -70..1070 viewBox.
+            const tEdge = Math.min(570 / Math.abs(ux || 1e-6), 570 / Math.abs(uy || 1e-6));
+            const r0 = outerR + node.discR + 1; // just outside the flag
+            const r1 = Math.min(outerR + 210, tEdge - 6);
+            const x0 = C.x + ux * r0, y0 = C.y + uy * r0;
+            const x1 = C.x + ux * r1, y1 = C.y + uy * r1;
+            const gid = `tail-grad-${node.index}`;
+            return (
+              <g key={`tail-${node.index}`}>
+                <linearGradient id={gid} gradientUnits="userSpaceOnUse" x1={x0} y1={y0} x2={x1} y2={y1}>
+                  <stop offset="0%" stopColor={col} stopOpacity="1" />
+                  <stop offset="50%" stopColor={col} stopOpacity="0.85" />
+                  <stop offset="100%" stopColor={col} stopOpacity="0" />
+                </linearGradient>
+                <path
+                  className="bracket-conn-draw"
+                  d={`M ${x0} ${y0} L ${x1} ${y1}`}
+                  fill="none"
+                  stroke={`url(#${gid})`}
+                  strokeWidth={9}
+                  strokeLinecap="round"
+                  opacity={0.5}
+                  filter="url(#conn-glow)"
+                  pathLength={1}
+                />
+                <path
+                  className="bracket-conn-draw"
+                  d={`M ${x0} ${y0} L ${x1} ${y1}`}
+                  fill="none"
+                  stroke={`url(#${gid})`}
+                  strokeWidth={4.2}
+                  strokeLinecap="round"
+                  pathLength={1}
+                />
+              </g>
+            );
+          });
+        })()}
 
         {/* (2b) Junction dots. A DECIDED slot shows the winner's flag (see the
             inner-ring discs below), so its dot is just a small colour marker. An
