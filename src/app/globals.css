@@ -466,12 +466,13 @@ a {
 }
 
 /* Clickable team discs (predict mode) */
-/* Eliminated team: greyscale + dim its flag/crest (like the reference art).
-   No opacity change — the disc stays fully opaque so connector lines don't
-   show through it. */
+/* Eliminated team: sink it almost into the black background (like the reference
+   art) so the surviving national-colour paths and their flags pop. Fully
+   desaturated and darkened hard, but kept opaque so connector lines don't show
+   through it. */
 .bracket-disc--eliminated {
-  filter: grayscale(0.75) brightness(0.7);
-  transition: filter 0.3s ease;
+  filter: grayscale(1) brightness(0.34) contrast(0.9);
+  transition: filter 0.4s ease;
 }
 
 /* Trail flag: travels in along its connector elbow (offset-path is set inline

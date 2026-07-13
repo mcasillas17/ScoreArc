@@ -306,6 +306,18 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           <filter id="trophy-blur" x="-80%" y="-80%" width="260%" height="260%">
             <feGaussianBlur stdDeviation="6" />
           </filter>
+          {/* Soft glow for a winner's national-colour route — a blurred, fatter
+              copy of the line drawn under the crisp stroke makes the path read
+              as luminous (as in the reference art). */}
+          <filter id="conn-glow" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="3.2" />
+          </filter>
+          {/* Tighter, brighter warm halo hugging the trophy itself. */}
+          <radialGradient id="trophy-halo" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#ffe9a8" stopOpacity="0.55" />
+            <stop offset="42%" stopColor="#e9b859" stopOpacity="0.34" />
+            <stop offset="100%" stopColor="#e9b859" stopOpacity="0" />
+          </radialGradient>
           {/* Localized golden halo behind the winning finalist disc. */}
           <radialGradient id="champ-halo" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#ffe9a8" stopOpacity="0.9" />
@@ -314,8 +326,17 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           </radialGradient>
         </defs>
 
-        {/* (1) Smooth warm radial-gradient glow behind the trophy */}
-        <circle cx={C.x} cy={C.y} r={300} fill="url(#center-glow)" />
+        {/* (1) Smooth warm radial-gradient glow behind the trophy — a broad
+            ambient wash plus a tighter bright halo hugging the trophy. */}
+        <circle cx={C.x} cy={C.y} r={320} fill="url(#center-glow)" />
+        <circle cx={C.x} cy={C.y} r={86} fill="url(#trophy-halo)" />
+
+        {/* (1·) Decorative center bar: a faint hairline through the trophy with
+            a small gold end-cap dot on each side (as in the reference art). */}
+        <line x1={C.x - 92} y1={C.y} x2={C.x + 92} y2={C.y}
+          stroke="#e9b859" strokeOpacity={0.28} strokeWidth={1} />
+        <circle cx={C.x - 92} cy={C.y} r={2.4} fill="#f0c873" />
+        <circle cx={C.x + 92} cy={C.y} r={2.4} fill="#f0c873" />
 
         {/* (1a) Champion halo — localized golden glow behind the winning
             finalist disc, drawn before the discs so it reads as a glow ring. */}
@@ -363,17 +384,35 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                     in from child to parent as the winner's flag hops through it
                     — same path + 1.25s ease as the flag's offset-path, so the
                     flag appears to paint the line. Gated on the round playing. */}
-                {win && jWin && winColor && simRound >= depth + 1 && (
-                  <path
-                    className="bracket-conn-draw"
-                    d={`M ${win.x} ${win.y} L ${jWin.x} ${jWin.y} A ${rj} ${rj} 0 0 ${arcSweep} ${jMid.x} ${jMid.y} L ${pPar.x} ${pPar.y}`}
-                    fill="none"
-                    stroke={winColor}
-                    strokeWidth={2.9}
-                    strokeLinecap="round"
-                    pathLength={1}
-                  />
-                )}
+                {win && jWin && winColor && simRound >= depth + 1 && (() => {
+                  const d = `M ${win.x} ${win.y} L ${jWin.x} ${jWin.y} A ${rj} ${rj} 0 0 ${arcSweep} ${jMid.x} ${jMid.y} L ${pPar.x} ${pPar.y}`;
+                  return (
+                    <>
+                      {/* luminous underlay */}
+                      <path
+                        className="bracket-conn-draw"
+                        d={d}
+                        fill="none"
+                        stroke={winColor}
+                        strokeWidth={6}
+                        strokeLinecap="round"
+                        opacity={0.5}
+                        filter="url(#conn-glow)"
+                        pathLength={1}
+                      />
+                      {/* crisp national-colour line */}
+                      <path
+                        className="bracket-conn-draw"
+                        d={d}
+                        fill="none"
+                        stroke={winColor}
+                        strokeWidth={3.8}
+                        strokeLinecap="round"
+                        pathLength={1}
+                      />
+                    </>
+                  );
+                })()}
               </g>
             );
           });
@@ -394,15 +433,28 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                 strokeLinecap="round"
               />
               {championLine && (
-                <path
-                  className="bracket-conn-draw"
-                  d={`M ${node.x} ${node.y} L ${inner.x} ${inner.y}`}
-                  fill="none"
-                  stroke={colorFor(node.team)}
-                  strokeWidth={2.9}
-                  strokeLinecap="round"
-                  pathLength={1}
-                />
+                <>
+                  <path
+                    className="bracket-conn-draw"
+                    d={`M ${node.x} ${node.y} L ${inner.x} ${inner.y}`}
+                    fill="none"
+                    stroke={colorFor(node.team)}
+                    strokeWidth={6}
+                    strokeLinecap="round"
+                    opacity={0.5}
+                    filter="url(#conn-glow)"
+                    pathLength={1}
+                  />
+                  <path
+                    className="bracket-conn-draw"
+                    d={`M ${node.x} ${node.y} L ${inner.x} ${inner.y}`}
+                    fill="none"
+                    stroke={colorFor(node.team)}
+                    strokeWidth={3.8}
+                    strokeLinecap="round"
+                    pathLength={1}
+                  />
+                </>
               )}
             </g>
           );

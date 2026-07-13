@@ -80,6 +80,7 @@ const CREST_SCALE = 1.155;
 // Representative colour from each team's flag — used to tint a team's advancing
 // connector path (as in the reference: Brazil yellow, Canada red, ...).
 const TEAM_COLOR: Record<string, string> = {
+  // 2026 field
   RSA: '#007a4d', CAN: '#d52b1e', BRA: '#f5d915', JPN: '#bc002d', GER: '#ffce00',
   PAR: '#d52b1e', NED: '#f36c21', MAR: '#c1272d', CIV: '#f77f00', NOR: '#ba0c2f',
   FRA: '#0055a4', SWE: '#fecc00', MEX: '#006847', ECU: '#ffdd00', ENG: '#cf081f',
@@ -87,6 +88,14 @@ const TEAM_COLOR: Record<string, string> = {
   ESP: '#c60b1e', AUT: '#ed2939', POR: '#da291c', CRO: '#ff2a2a', SUI: '#d52b1e',
   ALG: '#0a8b3e', AUS: '#00843d', EGY: '#ce1126', ARG: '#75aadb', CPV: '#003893',
   COL: '#fcd116', GHA: '#fcd116',
+  // Historical WC teams (1998–2022) so past editions read in national colours too
+  ITA: '#1a5fb4', URU: '#4a90d9', CHI: '#d52b1e', PER: '#d91023', KOR: '#c60c30',
+  IRN: '#239f40', KSA: '#006c35', QAT: '#8a1538', SRB: '#c6363c', DEN: '#c60c30',
+  POL: '#dc143c', WAL: '#c8102e', SCO: '#0065bf', TUR: '#e30a17', UKR: '#ffd500',
+  CZE: '#11457e', RUS: '#0039a6', GRE: '#0d5eaf', ROU: '#ffce00', HUN: '#436f4d',
+  NZL: '#00247d', CRC: '#c8102e', PAN: '#da121a', HON: '#0073cf', JAM: '#009b3a',
+  HAI: '#00209f', VEN: '#cf142b', BOL: '#d52b1e', TUN: '#e70013', NGA: '#008751',
+  CMR: '#007a5e',
 };
 
 export function colorFor(team: BracketTeam): string {
