@@ -23,15 +23,15 @@ function pt(rank: number, n: number, radius: number): { x: number; y: number } {
 
 // A crest clipped into a circle, with a fallback coloured disc + abbreviation.
 function CrestDisc({
-  s, teamStyle, x, y, r, ring, ringWidth, dim,
+  s, teamStyle, x, y, r, ring, ringWidth, dim, idSuffix,
 }: {
   s: Standing; teamStyle: TeamStyle; x: number; y: number; r: number;
-  ring: string; ringWidth: number; dim: boolean;
+  ring: string; ringWidth: number; dim: boolean; idSuffix?: string;
 }) {
   const src = teamStyle === 'crest'
     ? (s.team.crestUrl ?? flagUrl(s.team.abbr))
     : (flagUrl(s.team.abbr) ?? s.team.crestUrl);
-  const clip = `lld-clip-${s.team.id}`;
+  const clip = `lld-clip-${s.team.id}${idSuffix ? '-' + idSuffix : ''}`;
   return (
     <g opacity={dim ? 0.4 : 1}>
       <defs>
@@ -116,7 +116,7 @@ export default function LeagueDial({
       {/* centre hub: leader */}
       <text x={C} y={C - 30} fill="var(--text-muted)" fontSize={10} letterSpacing={3} textAnchor="middle">LEADER</text>
       <CrestDisc s={leader} teamStyle={teamStyle} x={C} y={C + 2} r={HUB_R}
-        ring="var(--gold-bright)" ringWidth={2.5} dim={false} />
+        ring="var(--gold-bright)" ringWidth={2.5} dim={false} idSuffix="hub" />
       <text x={C} y={C + 44} fill="var(--text)" fontSize={13} fontWeight={700} textAnchor="middle">
         {leader.team.name}
       </text>
