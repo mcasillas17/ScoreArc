@@ -2,6 +2,7 @@
 
 import type { Standing } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
+import { flagUrl } from '@/lib/flags';
 
 // Full-ring standings dial: rank 1 at 12 o'clock, clockwise; a glowing gold arc
 // sweeps over the teams inside the qualification cut; the leader is crowned in
@@ -27,7 +28,9 @@ function CrestDisc({
   s: Standing; teamStyle: TeamStyle; x: number; y: number; r: number;
   ring: string; ringWidth: number; dim: boolean;
 }) {
-  const src = teamStyle === 'crest' ? s.team.crestUrl : s.team.crestUrl; // ESPN crest
+  const src = teamStyle === 'crest'
+    ? (s.team.crestUrl ?? flagUrl(s.team.abbr))
+    : (flagUrl(s.team.abbr) ?? s.team.crestUrl);
   const clip = `lld-clip-${s.team.id}`;
   return (
     <g opacity={dim ? 0.4 : 1}>
