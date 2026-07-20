@@ -9,7 +9,8 @@ import { flagUrl } from '@/lib/flags';
 // the centre hub. Geometry is self-contained (fixed 500x500 viewBox).
 const C = 250;
 const R = 192;      // team-chip ring radius
-const CHIP = 19;    // team-chip radius
+const CHIP_MAX = 22; // rank 1 (top of table) — chips taper down the standings
+const CHIP_MIN = 15; // rank n (bottom)
 const ARC_R = R + 26;
 const HUB_R = 26;
 
@@ -19,6 +20,13 @@ function angleRad(rank: number, n: number): number {
 function pt(rank: number, n: number, radius: number): { x: number; y: number } {
   const a = angleRad(rank, n);
   return { x: C + radius * Math.cos(a), y: C + radius * Math.sin(a) };
+}
+// Chip radius tapers from CHIP_MAX (rank 1) to CHIP_MIN (rank n) so the
+// higher a team sits in the table, the larger its crest reads.
+function chipRadius(rank: number, n: number): number {
+  if (n <= 1) return CHIP_MAX;
+  const t = (rank - 1) / (n - 1);
+  return CHIP_MAX - t * (CHIP_MAX - CHIP_MIN);
 }
 
 // A crest clipped into a circle, with a fallback coloured disc + abbreviation.
@@ -101,13 +109,14 @@ export default function LeagueDial({
       {standings.map((s) => {
         const p = pt(s.rank, n, R);
         const inner = pt(s.rank, n, 150);
-        const outerStub = pt(s.rank, n, R - CHIP - 3);
+        const r = chipRadius(s.rank, n);
+        const outerStub = pt(s.rank, n, R - r - 3);
         const lig = inCut(s.rank);
         return (
           <g key={s.team.id}>
             <line x1={inner.x} y1={inner.y} x2={outerStub.x} y2={outerStub.y}
               stroke={lig ? '#5a4a22' : '#20202a'} strokeWidth={1} />
-            <CrestDisc s={s} teamStyle={teamStyle} x={p.x} y={p.y} r={CHIP}
+            <CrestDisc s={s} teamStyle={teamStyle} x={p.x} y={p.y} r={r}
               ring={lig ? 'var(--gold-bright)' : '#33333d'} ringWidth={lig ? 2 : 1} dim={!lig} />
           </g>
         );
