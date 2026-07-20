@@ -7,6 +7,12 @@ import RadialBracket, { type BracketMode } from './RadialBracket';
 import ChampionCelebration from './ChampionCelebration';
 import type { BracketShape } from './bracketShape';
 
+// "Build your bracket" (predict mode) is disabled now that the 2026 World Cup is
+// finished — the knockout is decided, so there's nothing left to predict. The
+// feature is kept intact and can be re-enabled for the next tournament by
+// flipping this to true. Hides the mode tabs and ignores shared ?b= brackets.
+const PREDICT_ENABLED = false;
+
 interface Props {
   rounds: BracketRound[];
   apiBase: string;
@@ -138,6 +144,7 @@ export default function BracketInteractive({ rounds: initialRounds, apiBase, tea
 
   // Hydrate a shared bracket from ?b=... on first load.
   useEffect(() => {
+    if (!PREDICT_ENABLED) return; // predict mode disabled — ignore shared brackets
     const code = new URLSearchParams(window.location.search).get('b');
     if (!code) return;
     const shared = decodePicks(code);
@@ -181,8 +188,10 @@ export default function BracketInteractive({ rounds: initialRounds, apiBase, tea
 
   return (
     <div className="bracket-interactive">
-      {/* Past (finished) editions are view-only — no Live/Predict tabs. */}
-      {!readOnly && (
+      {/* Past (finished) editions are view-only — no Live/Predict tabs. The
+          "Build your bracket" predict mode is also disabled once the tournament
+          is over (see PREDICT_ENABLED). */}
+      {!readOnly && PREDICT_ENABLED && (
         <div className="bracket-modes" role="tablist" aria-label="Bracket mode">
           <button
             type="button"
