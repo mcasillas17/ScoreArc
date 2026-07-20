@@ -2846,3 +2846,7 @@ a {
 .ll-pts { font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; }
 .ll-cutline { display: flex; align-items: center; gap: 10px; margin: 8px 2px; color: var(--gold); font-size: 10px; letter-spacing: 2.5px; text-transform: uppercase; font-weight: 800; }
 .ll-cutline .ll-rule { border-top: 1.5px dashed rgba(232,184,75,0.5); height: 0; background: none; }
+
+/* Standings with a qualification ladder opt into a wider canvas on desktop so
+   the dial + tier split has room; it still stacks below the split breakpoint. */
+.std-wide { width: 100%; max-width: 960px; }

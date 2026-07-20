@@ -4,7 +4,7 @@ import type { Standing } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
 import TeamBadge from './TeamBadge';
 import LeagueDial from './LeagueDial';
-import { splitByCut } from './leagueLadder';
+import { splitByCut } from './splitByCut';
 
 function fmtGD(gd: number): string {
   return gd > 0 ? `+${gd}` : String(gd);

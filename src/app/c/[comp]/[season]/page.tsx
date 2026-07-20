@@ -57,12 +57,12 @@ export default async function Workspace({ params }: { params: { comp: string; se
     // so we don't open with an empty Live Scores section.
     const hasMatches = matches.length > 0;
     const table = (
-      <section id="table">
+      <section id="table" className={rc.season.qualification ? 'std-wide' : undefined}>
         <header className="bracket-head">
           <p className="bracket-eyebrow">{rc.competition.name}</p>
           <h1 className="bracket-title">League Table</h1>
         </header>
-        <StandingsLive initialGroups={groups} initialScorers={scorers} apiBase={apiBase} teamStyle={teamStyle} showThirdPlace={false} />
+        <StandingsLive initialGroups={groups} initialScorers={scorers} apiBase={apiBase} teamStyle={teamStyle} showThirdPlace={false} qualification={rc.season.qualification} />
       </section>
     );
     return (

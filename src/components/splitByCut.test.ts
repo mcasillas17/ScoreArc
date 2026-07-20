@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitByCut } from './leagueLadder';
+import { splitByCut } from './splitByCut';
 import type { Standing } from '@/server/data/types';
 
 function s(rank: number, points: number, gd = 0): Standing {
