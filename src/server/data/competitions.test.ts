@@ -80,6 +80,15 @@ describe('competition registry', () => {
     expect(COMPETITIONS['liga-mx'].currentSeasonId).toBe('2026-apertura');
     expect(COMPETITIONS['liga-mx'].seasons['2026-apertura'].label).toBe('Apertura 2026');
   });
+
+  it('Liga MX Apertura carries the Liguilla qualification cut; other leagues do not', () => {
+    const ligaMx = COMPETITIONS['liga-mx'];
+    const season = ligaMx.seasons[ligaMx.currentSeasonId];
+    expect(season.qualification).toEqual({ cut: 8, label: 'Liguilla' });
+
+    const pl = COMPETITIONS['premier-league'];
+    expect(pl.seasons[pl.currentSeasonId].qualification).toBeUndefined();
+  });
 });
 
 describe('world-cup seasons', () => {

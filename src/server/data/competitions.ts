@@ -26,6 +26,9 @@ export interface Season {
   // bracket's ring count + geometry. 2026 starts at round-of-32; 1998-2022 at
   // round-of-16.
   knockoutRounds?: string[];
+  // Leagues only: highlight the top-N qualification cut in the standings view
+  // (e.g. Liga MX top 8 → Liguilla). Absent for leagues with no such cut.
+  qualification?: { cut: number; label: string };
 }
 
 // A durable competition = one ESPN league, with one or more seasons.
@@ -102,7 +105,7 @@ export const COMPETITIONS: Record<string, Competition> = {
   ...leagueCompetition('bundesliga', 'Bundesliga', 'Bundesliga', 'ger.1', '🇩🇪', '2026-27', '2026-27'),
   ...leagueCompetition('ligue-1', 'Ligue 1', 'Ligue 1', 'fra.1', '🇫🇷', '2026-27', '2026-27'),
   ...leagueCompetition('mls', 'MLS', 'MLS', 'usa.1', '🇺🇸', '2026', '2026'),
-  ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', '2026-apertura', 'Apertura 2026'),
+  ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', '2026-apertura', 'Apertura 2026', { cut: 8, label: 'Liguilla' }),
 };
 
 // A past 32-team WC edition — R16 knockout, view-only, no seed order -> derived
@@ -130,6 +133,7 @@ function leagueCompetition(
   emblem: string,
   seasonId: string,
   seasonLabel: string,
+  qualification?: { cut: number; label: string },
 ): Record<string, Competition> {
   return {
     [id]: {
@@ -147,6 +151,7 @@ function leagueCompetition(
           label: seasonLabel,
           sections: ['standings', 'scores', 'news'],
           format: { hasBracket: false, hasGroups: true, hasThirdPlaceRace: false },
+          ...(qualification ? { qualification } : {}),
         },
       },
     },
