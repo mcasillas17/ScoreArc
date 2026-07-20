@@ -5,6 +5,7 @@ import type { Group, TopScorer } from '@/server/data/types';
 import GroupTable from './GroupTable';
 import TopScorersTable from './TopScorersTable';
 import ThirdPlaceTable from './ThirdPlaceTable';
+import LeagueLadder from './LeagueLadder';
 
 interface Props {
   initialGroups: Group[];
@@ -13,11 +14,14 @@ interface Props {
   teamStyle?: 'flag' | 'crest';
   // Group-stage tournaments race for best third place; leagues don't.
   showThirdPlace?: boolean;
+  // League qualification cut (e.g. Liga MX top 8 → Liguilla). When set, the
+  // standings render as the split dial+tier ladder instead of a plain table.
+  qualification?: { cut: number; label: string };
 }
 
 const REFRESH_MS = 30_000;
 
-export default function StandingsLive({ initialGroups, initialScorers, apiBase, teamStyle = 'flag', showThirdPlace = true }: Props) {
+export default function StandingsLive({ initialGroups, initialScorers, apiBase, teamStyle = 'flag', showThirdPlace = true, qualification }: Props) {
   const [groups, setGroups] = useState<Group[]>(initialGroups);
   const [scorers, setScorers] = useState<TopScorer[]>(initialScorers);
 
@@ -45,15 +49,44 @@ export default function StandingsLive({ initialGroups, initialScorers, apiBase, 
     };
   }, []);
 
-  return (
-    <>
-      {showThirdPlace ? (
-        <div className="std-columns">
-          <div className="std-block">
-            <h2 className="std-block-title">Golden Boot · Top Scorers</h2>
-            <TopScorersTable scorers={scorers} teamStyle={teamStyle} />
-          </div>
+  const topScorersBlock = (
+    <div className="std-block">
+      <h2 className="std-block-title">Golden Boot · Top Scorers</h2>
+      <TopScorersTable scorers={scorers} teamStyle={teamStyle} />
+    </div>
+  );
 
+  const standingsBlock = (
+    <div className="std-block">
+      <h2 className="std-block-title">{showThirdPlace ? 'Group Stage Results' : 'Standings'}</h2>
+      {qualification && !showThirdPlace ? (
+        <LeagueLadder
+          standings={groups[0]?.standings ?? []}
+          qualification={qualification}
+          teamStyle={teamStyle}
+        />
+      ) : groups.length > 0 ? (
+        <div className="groups-grid">
+          {groups.map((group) => (
+            <GroupTable key={group.id} group={group} teamStyle={teamStyle} />
+          ))}
+        </div>
+      ) : (
+        <div className="empty-section">
+          <p className="empty-text">Group data is unavailable right now.</p>
+        </div>
+      )}
+    </div>
+  );
+
+  // Group-stage tournaments (World Cup) lead with the scorers + best-third
+  // columns, then the group results below. Leagues lead with the standings —
+  // the headline table — and put the Golden Boot beneath it.
+  if (showThirdPlace) {
+    return (
+      <>
+        <div className="std-columns">
+          {topScorersBlock}
           <div className="std-block">
             <h2 className="std-block-title">Best Third-Placed Teams</h2>
             {groups.length > 0 ? (
@@ -63,27 +96,15 @@ export default function StandingsLive({ initialGroups, initialScorers, apiBase, 
             )}
           </div>
         </div>
-      ) : (
-        <div className="std-block">
-          <h2 className="std-block-title">Golden Boot · Top Scorers</h2>
-          <TopScorersTable scorers={scorers} teamStyle={teamStyle} />
-        </div>
-      )}
+        {standingsBlock}
+      </>
+    );
+  }
 
-      <div className="std-block">
-        <h2 className="std-block-title">{showThirdPlace ? 'Group Stage Results' : 'Standings'}</h2>
-        {groups.length > 0 ? (
-          <div className="groups-grid">
-            {groups.map((group) => (
-              <GroupTable key={group.id} group={group} teamStyle={teamStyle} />
-            ))}
-          </div>
-        ) : (
-          <div className="empty-section">
-            <p className="empty-text">Group data is unavailable right now.</p>
-          </div>
-        )}
-      </div>
+  return (
+    <>
+      {standingsBlock}
+      {topScorersBlock}
     </>
   );
 }
