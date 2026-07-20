@@ -2809,3 +2809,10 @@ a {
 @media (prefers-reduced-motion: reduce) {
   .edition-fade { animation: none; }
 }
+
+/* ===== League standings dial (Liga MX Liguilla) ===== */
+.lld { width: 100%; height: auto; display: block; }
+/* Arc draw-in on first paint (transform/opacity only — no filter animation). */
+@keyframes lld-arc-in { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.lld-arc { stroke-dasharray: 1; pathLength: 1; animation: lld-arc-in 0.9s ease both; }
+@media (prefers-reduced-motion: reduce) { .lld-arc { animation: none; stroke-dashoffset: 0; } }
