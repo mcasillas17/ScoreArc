@@ -2817,3 +2817,32 @@ a {
 @keyframes lld-arc-in { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 .lld-arc { stroke-dasharray: 1; pathLength: 1; animation: lld-arc-in 0.9s ease both; }
 @media (prefers-reduced-motion: reduce) { .lld-arc { animation: none; stroke-dashoffset: 0; } }
+
+/* ===== League standings ladder (split: dial + tier table) ===== */
+.ll-card { background: var(--surface); border: 1px solid var(--hairline); border-radius: 16px; overflow: hidden; }
+.ll-split { display: grid; grid-template-columns: 44% 1fr; align-items: stretch; }
+.ll-left { border-right: 1px solid var(--hairline); padding: 16px 14px; display: flex; flex-direction: column; justify-content: center; }
+.ll-right { padding: 14px 16px 16px; }
+@media (max-width: 720px) {
+  .ll-split { grid-template-columns: 1fr; }
+  .ll-left { border-right: none; border-bottom: 1px solid var(--hairline); }
+}
+.ll-legend { display: flex; gap: 18px; justify-content: center; margin-top: 8px; font-size: 12px; color: var(--text-muted); }
+.ll-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.ll-dot--in { background: var(--gold); }
+.ll-dot--out { background: #3a3a44; }
+
+.ll-band-label { display: flex; align-items: center; gap: 10px; font-size: 10.5px; letter-spacing: 2.5px; text-transform: uppercase; font-weight: 700; margin: 8px 2px; color: var(--text-muted); }
+.ll-band-label--in { color: var(--gold-bright); }
+.ll-band-n { color: var(--text-muted); letter-spacing: 1px; font-weight: 600; }
+.ll-rule { flex: 1; height: 1px; background: var(--hairline); }
+
+.ll-row { display: grid; grid-template-columns: 20px 26px 1fr auto 22px; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 9px; }
+.ll-row--in { background: linear-gradient(90deg, rgba(232,184,75,0.10), rgba(232,184,75,0.02)); box-shadow: inset 2px 0 0 var(--gold); margin-bottom: 3px; }
+.ll-band--out .ll-row { opacity: 0.5; }
+.ll-rank { color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; font-size: 12.5px; }
+.ll-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ll-gd { color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: 12.5px; text-align: right; }
+.ll-pts { font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; }
+.ll-cutline { display: flex; align-items: center; gap: 10px; margin: 8px 2px; color: var(--gold); font-size: 10px; letter-spacing: 2.5px; text-transform: uppercase; font-weight: 800; }
+.ll-cutline .ll-rule { border-top: 1.5px dashed rgba(232,184,75,0.5); height: 0; background: none; }
