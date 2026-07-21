@@ -2894,15 +2894,17 @@ a {
 .tick-vs { font-size: 11px; font-weight: 700; color: var(--text-muted); padding: 0 2px; }
 .tick-ko { font-size: 13px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; margin-left: 2px; }
 
+/* Opens BELOW the chip: the ticker sits at the top of the page, so a card that
+   rose above would be clipped by the viewport top. Arrow points up at the chip. */
 .tick-pop {
-  position: absolute; bottom: calc(100% + 12px); left: 50%; transform: translateX(-50%);
+  position: absolute; top: calc(100% + 12px); left: 50%; transform: translateX(-50%);
   width: 244px; background: var(--surface-2); border: 1px solid var(--hairline);
   border-radius: 12px; padding: 13px 14px; z-index: 10; white-space: normal; text-align: left;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5); cursor: default;
 }
 .tick-pop::after {
-  content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
-  border: 7px solid transparent; border-top-color: var(--surface-2);
+  content: ""; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+  border: 7px solid transparent; border-bottom-color: var(--surface-2);
 }
 .tick-pop-teams { font-size: 13px; font-weight: 800; color: var(--text); margin-bottom: 2px; }
 .tick-pop-when { font-size: 11.5px; color: var(--text-muted); margin-bottom: 11px; }
