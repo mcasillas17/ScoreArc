@@ -49,9 +49,9 @@ function TeamMark({ team, style }: { team: Team; style: TeamStyle }) {
 }
 
 function Chip({
-  m, teamStyle, active, onEnter, onLeave, onOpen, onDetails,
+  m, teamStyle, active, duplicate, onEnter, onLeave, onOpen, onDetails,
 }: {
-  m: Match; teamStyle: TeamStyle; active: boolean;
+  m: Match; teamStyle: TeamStyle; active: boolean; duplicate: boolean;
   onEnter: () => void; onLeave: () => void; onOpen: () => void; onDetails: () => void;
 }) {
   const wp = m.winProbability;
@@ -59,9 +59,21 @@ function Chip({
     <div
       className="tick-chip"
       data-chip
+      role="button"
+      tabIndex={duplicate ? -1 : 0}
+      aria-hidden={duplicate || undefined}
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
       onClick={onOpen}
+      onFocus={onEnter}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen();
+        } else if (e.key === 'Escape') {
+          onLeave();
+        }
+      }}
     >
       <span className="tick-day">{dayTag(m.kickoff)}</span>
       <span className="tick-side">
@@ -110,10 +122,21 @@ export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'f
   const [detail, setDetail] = useState<Match | null>(null);
   const [summary, setSummary] = useState<MatchSummary | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [reduced, setReduced] = useState(false);
 
   // Time-derived filtering must run on the client clock to avoid an SSR/client
   // hydration mismatch (server TZ ≠ viewer TZ); render the band only after mount.
   useEffect(() => setMounted(true), []);
+
+  // Detect prefers-reduced-motion so the reduced-motion strip can render the
+  // real fixture list once instead of the duplicated marquee blocks.
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setReduced(mq.matches);
+    const on = () => setReduced(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
 
   // Poll upcoming fixtures every 15s.
   useEffect(() => {
@@ -126,6 +149,7 @@ export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'f
         // next tick retries
       }
     }
+    poll();
     const id = setInterval(poll, POLL_MS);
     return () => { on = false; clearInterval(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -159,10 +183,6 @@ export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'f
 
   const upcoming = mounted ? upcomingThisWeek(matches, new Date()) : [];
 
-  if (mounted && upcoming.length === 0) {
-    return <p className="tick-empty">No matches scheduled this week.</p>;
-  }
-
   // Repeat the list until we have enough chips to fill a wide band, then render
   // the block twice so the -50% marquee loops seamlessly. Constant pace via a
   // duration proportional to chip count.
@@ -170,31 +190,37 @@ export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'f
   const half = Array.from({ length: reps }).flatMap(() => upcoming);
   const full = [...half, ...half];
   const durationS = Math.max(1, half.length) * SEC_PER_CHIP;
+  const chips = reduced ? upcoming : full;
 
   return (
     <>
-      <div className="tick-band" data-testid="ticker">
-        <div
-          className="tick-track"
-          style={{ animationDuration: `${durationS}s`, animationPlayState: activeKey ? 'paused' : 'running' }}
-        >
-          {full.map((m, i) => {
-            const key = `${m.id}-${i}`;
-            return (
-              <Chip
-                key={key}
-                m={m}
-                teamStyle={teamStyle}
-                active={activeKey === key}
-                onEnter={() => setActiveKey(key)}
-                onLeave={() => setActiveKey((k) => (k === key ? null : k))}
-                onOpen={() => setActiveKey(key)}
-                onDetails={() => openDetails(m)}
-              />
-            );
-          })}
+      {mounted && upcoming.length === 0 ? (
+        <p className="tick-empty">No matches scheduled this week.</p>
+      ) : (
+        <div className="tick-band" data-testid="ticker">
+          <div
+            className="tick-track"
+            style={{ animationDuration: `${durationS}s`, animationPlayState: activeKey ? 'paused' : 'running' }}
+          >
+            {chips.map((m, i) => {
+              const key = `${m.id}-${i}`;
+              return (
+                <Chip
+                  key={key}
+                  m={m}
+                  teamStyle={teamStyle}
+                  active={activeKey === key}
+                  duplicate={reduced ? false : i >= half.length}
+                  onEnter={() => setActiveKey(key)}
+                  onLeave={() => setActiveKey((k) => (k === key ? null : k))}
+                  onOpen={() => setActiveKey(key)}
+                  onDetails={() => openDetails(m)}
+                />
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {detail && (
         <MatchDetailPopup

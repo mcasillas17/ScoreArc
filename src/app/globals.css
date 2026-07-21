@@ -2906,6 +2906,9 @@ a {
   content: ""; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
   border: 7px solid transparent; border-bottom-color: var(--surface-2);
 }
+.tick-pop::before {
+  content: ""; position: absolute; bottom: 100%; left: 0; right: 0; height: 12px;
+}
 .tick-pop-teams { font-size: 13px; font-weight: 800; color: var(--text); margin-bottom: 2px; }
 .tick-pop-when { font-size: 11.5px; color: var(--text-muted); margin-bottom: 11px; }
 .tick-wp-cap { font-size: 9.5px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-bottom: 6px; }
