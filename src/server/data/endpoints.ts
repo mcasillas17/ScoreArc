@@ -1,6 +1,7 @@
 const site = (slug: string) => `https://site.api.espn.com/apis/site/v2/sports/soccer/${slug}`;
 
-export const scoreboardUrl = (slug: string) => `${site(slug)}/scoreboard`;
+export const scoreboardUrl = (slug: string, range?: string) =>
+  `${site(slug)}/scoreboard${range ? `?dates=${range}` : ''}`;
 export const standingsUrl = (slug: string) =>
   `https://site.api.espn.com/apis/v2/sports/soccer/${slug}/standings`;
 export const summaryUrl = (slug: string, event: string) => `${site(slug)}/summary?event=${event}`;

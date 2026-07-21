@@ -52,7 +52,7 @@ describe('EspnReadThroughStore', () => {
     const store = createDataStore(deps);
     await store.getMatches(wc);
     await store.getMatches(wc);
-    expect(urls.filter((u) => u.endsWith('/scoreboard')).length).toBe(1);
+    expect(urls.filter((u) => u.includes('/scoreboard')).length).toBe(1);
   });
 
   it('enriches matches with scorers from the summary feed', async () => {

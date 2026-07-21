@@ -1,17 +1,18 @@
 import type { Match, BracketMatch, BracketTeam, Team } from '@/server/data/types';
 
-// True when the kickoff is still upcoming (>= now) and falls on or before the
-// end of the current week — the upcoming Sunday at 23:59:59.999 local. If today
-// is Sunday, the window ends tonight.
+// True when the kickoff falls within the Monday→Sunday calendar week that
+// contains `now` (local time) — Monday 00:00 through Sunday 23:59:59.999.
 export function isThisWeek(kickoffIso: string, now: Date): boolean {
   const ko = new Date(kickoffIso);
   if (isNaN(ko.getTime())) return false;
-  if (ko.getTime() < now.getTime()) return false;
-  const daysUntilSunday = (7 - now.getDay()) % 7; // getDay(): 0=Sun..6=Sat
-  const endOfWeek = new Date(now);
-  endOfWeek.setDate(now.getDate() + daysUntilSunday);
-  endOfWeek.setHours(23, 59, 59, 999);
-  return ko.getTime() <= endOfWeek.getTime();
+  const mondayOffset = (now.getDay() + 6) % 7; // getDay(): 0=Sun..6=Sat → days since Monday
+  const mon = new Date(now);
+  mon.setDate(now.getDate() - mondayOffset);
+  mon.setHours(0, 0, 0, 0);
+  const sun = new Date(mon);
+  sun.setDate(mon.getDate() + 6);
+  sun.setHours(23, 59, 59, 999);
+  return ko.getTime() >= mon.getTime() && ko.getTime() <= sun.getTime();
 }
 
 // Adapt a league Match to the BracketMatch shape MatchDetailPopup consumes.
