@@ -2870,17 +2870,24 @@ a {
 
 .tick-track { display: flex; width: max-content; }
 .tick-group { display: flex; }
-/* Animation only when the fixtures overflow (added via tick-track--scroll). */
+/* Two animation modes (never duplicates a fixture to fill):
+   --scroll: many matches, seamless two-copy loop.
+   --cross:  few matches, one row scrolls across the band and cycles. */
 .tick-track--scroll { animation: tick-scroll linear infinite; }
+.tick-track--cross { animation: tick-cross linear infinite; }
 @keyframes tick-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes tick-cross {
+  from { transform: translateX(var(--tick-from, 100%)); }
+  to { transform: translateX(var(--tick-to, -100%)); }
+}
 @media (prefers-reduced-motion: reduce) {
-  .tick-track--scroll { animation: none; }
+  .tick-track--scroll, .tick-track--cross { animation: none; }
   .tick-band { overflow-x: auto; }
 }
 
 .tick-chip {
   display: flex; align-items: center; gap: 11px;
-  padding: 12px 20px;
+  padding: 12px 34px;
   white-space: nowrap; cursor: pointer; position: relative;
   transition: background 0.15s ease;
 }
@@ -2890,8 +2897,6 @@ a {
   content: ""; position: absolute; right: 0; top: 50%; transform: translateY(-50%);
   width: 1px; height: 30px; background: #3a3a44;
 }
-/* No trailing divider after the last match when the band is static (not looping). */
-.tick-track:not(.tick-track--scroll) .tick-chip:last-child::after { display: none; }
 .tick-day { font-size: 10px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--gold); }
 .tick-side { display: flex; align-items: center; gap: 6px; }
 .tick-side--away { flex-direction: row-reverse; }

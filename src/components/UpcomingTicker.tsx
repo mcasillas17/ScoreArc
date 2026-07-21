@@ -14,7 +14,7 @@ interface Props {
 }
 
 const POLL_MS = 15_000;
-const SEC_PER_CHIP = 3.2; // marquee pace — constant speed regardless of match count
+const PX_PER_SEC = 55; // marquee scroll speed (constant regardless of match count)
 
 function upcomingThisWeek(matches: Match[], now: Date): Match[] {
   return matches
@@ -182,25 +182,45 @@ export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'f
 
   const upcoming = mounted ? upcomingThisWeek(matches, new Date()) : [];
 
-  // Only scroll when the fixtures actually overflow the band — with just a few
-  // matches, show them once, static (no repetition). When they overflow, render
-  // the list twice so the -50% marquee loops seamlessly.
+  // Never duplicate a fixture to "fill" the band. Measure whether one copy of
+  // the fixtures overflows the band:
+  //  - overflows (many matches) → seamless two-copy loop (translateX 0→-50%);
+  //    the copy at the seam is off-screen, so distinct matches fill the view.
+  //  - fits (few matches) → scroll the single row across the band and cycle
+  //    (translateX from band-width to -content-width); each match shows once.
   const bandRef = useRef<HTMLDivElement>(null);
   const groupRef = useRef<HTMLDivElement>(null);
-  const [overflowing, setOverflowing] = useState(false);
+  const [dims, setDims] = useState({ band: 0, group: 0 });
   useEffect(() => {
     if (!mounted) return;
     const measure = () => {
       const band = bandRef.current, group = groupRef.current;
-      if (band && group) setOverflowing(group.scrollWidth > band.clientWidth + 1);
+      if (band && group) setDims({ band: band.clientWidth, group: group.scrollWidth });
     };
     measure();
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
   }, [mounted, upcoming.length, reduced]);
 
-  const animate = overflowing && !reduced;
-  const durationS = Math.max(1, upcoming.length) * SEC_PER_CHIP;
+  const overflowing = dims.group > dims.band + 1;
+  const animate = !reduced && upcoming.length > 0 && dims.band > 0;
+  const mode: 'scroll' | 'cross' = overflowing ? 'scroll' : 'cross';
+
+  // Constant-speed durations from measured widths.
+  const scrollDur = Math.max(1, dims.group / PX_PER_SEC);          // one group-width of travel
+  const crossDur = Math.max(1, (dims.band + dims.group) / PX_PER_SEC); // enter-right → exit-left
+
+  const trackStyle: React.CSSProperties = !animate
+    ? {}
+    : mode === 'scroll'
+    ? { animationDuration: `${scrollDur}s`, animationPlayState: activeKey ? 'paused' : 'running' }
+    : {
+        animationDuration: `${crossDur}s`,
+        animationPlayState: activeKey ? 'paused' : 'running',
+        // keyframe endpoints for the cross scroll (resolved per-element)
+        ['--tick-from' as string]: `${dims.band}px`,
+        ['--tick-to' as string]: `${-dims.group}px`,
+      };
 
   const renderGroup = (groupIdx: number, hidden: boolean) => (
     <div className="tick-group" ref={groupIdx === 0 ? groupRef : undefined} aria-hidden={hidden || undefined}>
@@ -230,11 +250,11 @@ export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'f
       ) : (
         <div className="tick-band" data-testid="ticker" ref={bandRef}>
           <div
-            className={`tick-track${animate ? ' tick-track--scroll' : ''}`}
-            style={animate ? { animationDuration: `${durationS}s`, animationPlayState: activeKey ? 'paused' : 'running' } : undefined}
+            className={`tick-track${animate ? ` tick-track--${mode}` : ''}`}
+            style={trackStyle}
           >
             {renderGroup(0, false)}
-            {animate && renderGroup(1, true)}
+            {animate && mode === 'scroll' && renderGroup(1, true)}
           </div>
         </div>
       )}
