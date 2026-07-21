@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Match, Team } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
 import { flagUrl } from '@/lib/flags';
@@ -14,7 +14,6 @@ interface Props {
 }
 
 const POLL_MS = 15_000;
-const MIN_CHIPS = 14;    // repeat chips until at least this many, so the band fills wide screens
 const SEC_PER_CHIP = 3.2; // marquee pace — constant speed regardless of match count
 
 function upcomingThisWeek(matches: Match[], now: Date): Match[] {
@@ -183,41 +182,59 @@ export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'f
 
   const upcoming = mounted ? upcomingThisWeek(matches, new Date()) : [];
 
-  // Repeat the list until we have enough chips to fill a wide band, then render
-  // the block twice so the -50% marquee loops seamlessly. Constant pace via a
-  // duration proportional to chip count.
-  const reps = upcoming.length > 0 ? Math.max(1, Math.ceil(MIN_CHIPS / upcoming.length)) : 1;
-  const half = Array.from({ length: reps }).flatMap(() => upcoming);
-  const full = [...half, ...half];
-  const durationS = Math.max(1, half.length) * SEC_PER_CHIP;
-  const chips = reduced ? upcoming : full;
+  // Only scroll when the fixtures actually overflow the band — with just a few
+  // matches, show them once, static (no repetition). When they overflow, render
+  // the list twice so the -50% marquee loops seamlessly.
+  const bandRef = useRef<HTMLDivElement>(null);
+  const groupRef = useRef<HTMLDivElement>(null);
+  const [overflowing, setOverflowing] = useState(false);
+  useEffect(() => {
+    if (!mounted) return;
+    const measure = () => {
+      const band = bandRef.current, group = groupRef.current;
+      if (band && group) setOverflowing(group.scrollWidth > band.clientWidth + 1);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [mounted, upcoming.length, reduced]);
+
+  const animate = overflowing && !reduced;
+  const durationS = Math.max(1, upcoming.length) * SEC_PER_CHIP;
+
+  const renderGroup = (groupIdx: number, hidden: boolean) => (
+    <div className="tick-group" ref={groupIdx === 0 ? groupRef : undefined} aria-hidden={hidden || undefined}>
+      {upcoming.map((m, i) => {
+        const key = `${m.id}-${groupIdx}-${i}`;
+        return (
+          <Chip
+            key={key}
+            m={m}
+            teamStyle={teamStyle}
+            active={activeKey === key}
+            duplicate={hidden}
+            onEnter={() => setActiveKey(key)}
+            onLeave={() => setActiveKey((k) => (k === key ? null : k))}
+            onOpen={() => setActiveKey(key)}
+            onDetails={() => openDetails(m)}
+          />
+        );
+      })}
+    </div>
+  );
 
   return (
     <>
       {mounted && upcoming.length === 0 ? (
         <p className="tick-empty">No matches scheduled this week.</p>
       ) : (
-        <div className="tick-band" data-testid="ticker">
+        <div className="tick-band" data-testid="ticker" ref={bandRef}>
           <div
-            className="tick-track"
-            style={{ animationDuration: `${durationS}s`, animationPlayState: activeKey ? 'paused' : 'running' }}
+            className={`tick-track${animate ? ' tick-track--scroll' : ''}`}
+            style={animate ? { animationDuration: `${durationS}s`, animationPlayState: activeKey ? 'paused' : 'running' } : undefined}
           >
-            {chips.map((m, i) => {
-              const key = `${m.id}-${i}`;
-              return (
-                <Chip
-                  key={key}
-                  m={m}
-                  teamStyle={teamStyle}
-                  active={activeKey === key}
-                  duplicate={reduced ? false : i >= half.length}
-                  onEnter={() => setActiveKey(key)}
-                  onLeave={() => setActiveKey((k) => (k === key ? null : k))}
-                  onOpen={() => setActiveKey(key)}
-                  onDetails={() => openDetails(m)}
-                />
-              );
-            })}
+            {renderGroup(0, false)}
+            {animate && renderGroup(1, true)}
           </div>
         </div>
       )}
