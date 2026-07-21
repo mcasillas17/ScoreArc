@@ -1078,6 +1078,19 @@ a {
     padding: 12px 16px;
     border-right: none;
     border-bottom: 1px solid var(--hairline);
+    /* The desktop sidebar clips content during its collapse transition, but on
+       this short horizontal bar that overflow:hidden chops off the competition
+       dropdown (it drops below the bar). Let it escape on mobile. */
+    overflow: visible;
+  }
+
+  /* The switcher button is narrow in the top-bar flex row, so pin the dropdown
+     to a readable width and anchor it to the button's left edge instead of
+     stretching to the button width. */
+  .cs-menu {
+    right: auto;
+    min-width: 200px;
+    max-width: calc(100vw - 32px);
   }
 
   .sidebar-toggle {
