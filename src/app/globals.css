@@ -2850,3 +2850,95 @@ a {
 /* Standings with a qualification ladder opt into a wider canvas on desktop so
    the dial + tier split has room; it still stacks below the split breakpoint. */
 .std-wide { width: 100%; max-width: 960px; }
+
+/* ===== Upcoming-this-week ticker ===== */
+.tick-band {
+  position: relative;
+  width: 100%;
+  background: linear-gradient(180deg, var(--surface-1), var(--surface-2));
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  /* clip the marquee sideways, but let the hover-card rise above the band */
+  overflow-x: clip;
+  overflow-y: visible;
+}
+.tick-band::before, .tick-band::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 54px; z-index: 3; pointer-events: none;
+}
+.tick-band::before { left: 0; background: linear-gradient(90deg, var(--surface-1), transparent); }
+.tick-band::after { right: 0; background: linear-gradient(270deg, var(--surface-2), transparent); }
+
+.tick-track { display: flex; width: max-content; }
+.tick-group { display: flex; }
+/* Two animation modes (never duplicates a fixture to fill):
+   --scroll: many matches, seamless two-copy loop.
+   --cross:  few matches, one row scrolls across the band and cycles. */
+.tick-track--scroll { animation: tick-scroll linear infinite; }
+.tick-track--cross { animation: tick-cross linear infinite; }
+@keyframes tick-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes tick-cross {
+  from { transform: translateX(var(--tick-from, 100%)); }
+  to { transform: translateX(var(--tick-to, -100%)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tick-track--scroll, .tick-track--cross { animation: none; }
+  .tick-band { overflow-x: auto; }
+}
+
+.tick-chip {
+  display: flex; align-items: center; gap: 11px;
+  padding: 12px 34px;
+  white-space: nowrap; cursor: pointer; position: relative;
+  transition: background 0.15s ease;
+}
+.tick-chip:hover { background: rgba(255, 255, 255, 0.04); }
+/* Clear vertical divider between matches (centred rule). */
+.tick-chip::after {
+  content: ""; position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+  width: 1px; height: 30px; background: #3a3a44;
+}
+.tick-day { font-size: 10px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--gold); }
+.tick-side { display: flex; align-items: center; gap: 6px; }
+.tick-side--away { flex-direction: row-reverse; }
+.tick-crest { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex: none; background: #f4f4f6; }
+.tick-crest--fallback {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface-2); color: var(--text-muted); font-size: 8px; font-weight: 800;
+}
+.tick-abbr { font-size: 13px; font-weight: 700; letter-spacing: 0.2px; color: var(--text); }
+.tick-vs { font-size: 11px; font-weight: 700; color: var(--text-muted); padding: 0 2px; }
+.tick-ko { font-size: 13px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; margin-left: 2px; }
+
+/* Opens BELOW the chip: the ticker sits at the top of the page, so a card that
+   rose above would be clipped by the viewport top. Arrow points up at the chip. */
+.tick-pop {
+  position: absolute; top: calc(100% + 12px); left: 50%; transform: translateX(-50%);
+  width: 244px; background: var(--surface-2); border: 1px solid var(--hairline);
+  border-radius: 12px; padding: 13px 14px; z-index: 10; white-space: normal; text-align: left;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5); cursor: default;
+}
+.tick-pop::after {
+  content: ""; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+  border: 7px solid transparent; border-bottom-color: var(--surface-2);
+}
+.tick-pop::before {
+  content: ""; position: absolute; bottom: 100%; left: 0; right: 0; height: 12px;
+}
+.tick-pop-teams { font-size: 13px; font-weight: 800; color: var(--text); margin-bottom: 2px; }
+.tick-pop-when { font-size: 11.5px; color: var(--text-muted); margin-bottom: 11px; }
+.tick-wp-cap { font-size: 9.5px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-bottom: 6px; }
+.tick-wp-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; }
+.tick-wp-h { background: var(--gold); }
+.tick-wp-d { background: #3a3a44; }
+.tick-wp-a { background: #4a90d9; }
+.tick-wp-legend { display: flex; justify-content: space-between; font-size: 11px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.tick-wp-legend .l { color: var(--gold-bright); font-weight: 700; }
+.tick-wp-legend .m { color: var(--text-muted); }
+.tick-wp-legend .r { color: #7fb3e6; font-weight: 700; }
+.tick-pop-more {
+  margin-top: 11px; padding-top: 9px; border-top: 1px solid var(--hairline);
+  font-size: 11px; color: var(--gold-bright); font-weight: 700; letter-spacing: 0.4px;
+  background: none; border-left: none; border-right: none; border-bottom: none;
+  width: 100%; text-align: left; cursor: pointer;
+}
+.tick-empty { color: var(--text-muted); font-size: 13.5px; padding: 8px 2px; }

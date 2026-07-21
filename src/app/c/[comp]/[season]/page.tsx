@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import type { Match, BracketRound, Group, TopScorer } from '@/server/data/types';
-import LiveScores from '@/components/LiveScores';
+import UpcomingTicker from '@/components/UpcomingTicker';
 import BracketInteractive from '@/components/BracketInteractive';
 import StandingsLive from '@/components/StandingsLive';
 import SeasonSwitcher from '@/components/SeasonSwitcher';
@@ -40,8 +40,8 @@ export default async function Workspace({ params }: { params: { comp: string; se
 
   const liveSection = (
     <section id="live">
-      <h2 className="section-label">Live Scores</h2>
-      <LiveScores initialMatches={matches} apiBase={apiBase} teamStyle={teamStyle} />
+      <h2 className="section-label">Upcoming This Week</h2>
+      <UpcomingTicker initialMatches={matches} apiBase={apiBase} teamStyle={teamStyle} />
     </section>
   );
   const footer = <footer className="site-footer"><p>ScoreArc · Data via ESPN · Not affiliated with FIFA</p></footer>;

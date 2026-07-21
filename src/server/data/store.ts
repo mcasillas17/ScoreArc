@@ -29,6 +29,20 @@ export interface DataDeps {
   cache: TtlCache<unknown>;
 }
 
+// ESPN scoreboard `dates` range (YYYYMMDD-YYYYMMDD) covering the Monday→Sunday
+// calendar week that contains `now` (local time). Used so the matches feed
+// returns the whole current week's fixtures, not just ESPN's default (today).
+export function currentWeekRange(now: Date): string {
+  const mondayOffset = (now.getDay() + 6) % 7; // getDay(): 0=Sun..6=Sat → days since Monday
+  const mon = new Date(now);
+  mon.setDate(now.getDate() - mondayOffset);
+  const sun = new Date(mon);
+  sun.setDate(mon.getDate() + 6);
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  return `${fmt(mon)}-${fmt(sun)}`;
+}
+
 // Penalty shootout aggregate parsed from a match note, e.g.
 // "Paraguay advance 4-3 on penalties".
 export function parseShootout(note: string | null, homeName: string, awayName: string): Shootout | null {
@@ -90,7 +104,9 @@ export function createDataStore(deps: DataDeps): DataStore {
       const k = key(rc, 'matches');
       const cached = deps.cache.get(k) as Match[] | undefined;
       if (cached) return cached;
-      const raw = await deps.fetchJson(scoreboardUrl(slug(rc)));
+      // Fetch the whole current week (Mon→Sun) so the ticker sees every fixture,
+      // not just ESPN's default single-day scoreboard.
+      const raw = await deps.fetchJson(scoreboardUrl(slug(rc), currentWeekRange(new Date())));
       const matches = mapScoreboard(raw);
       const summaries = await Promise.all(
         matches.map((m) => getMatchSummary(rc, m.id, m.home.id, m.away.id).catch(() => emptySummary())),
