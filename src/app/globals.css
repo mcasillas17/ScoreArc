@@ -825,7 +825,7 @@ a {
 }
 
 .standings-table tr.row-qualify td:first-child {
-  box-shadow: inset 3px 0 0 var(--gold);
+  box-shadow: inset 3px 0 0 var(--qual, var(--gold));
 }
 
 .standings-table tr.row-qualify td {
@@ -940,7 +940,7 @@ a {
   width: 10px;
   height: 10px;
   border-radius: 2px;
-  background: var(--gold);
+  background: var(--qual, var(--gold));
   flex-shrink: 0;
 }
 
@@ -1375,7 +1375,7 @@ a {
   font-weight: 700;
   letter-spacing: 2px;
   text-transform: uppercase;
-  color: var(--gold);
+  color: var(--qual, var(--gold));
   opacity: 0.85;
 }
 .champ-team {
@@ -2842,22 +2842,22 @@ a {
 }
 .ll-legend { display: flex; gap: 18px; justify-content: center; margin-top: 8px; font-size: 12px; color: var(--text-muted); }
 .ll-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
-.ll-dot--in { background: var(--gold); }
+.ll-dot--in { background: var(--qual, var(--gold)); }
 .ll-dot--out { background: #3a3a44; }
 
 .ll-band-label { display: flex; align-items: center; gap: 10px; font-size: 10.5px; letter-spacing: 2.5px; text-transform: uppercase; font-weight: 700; margin: 8px 2px; color: var(--text-muted); }
-.ll-band-label--in { color: var(--gold-bright); }
+.ll-band-label--in { color: var(--qual-bright, var(--gold-bright)); }
 .ll-band-n { color: var(--text-muted); letter-spacing: 1px; font-weight: 600; }
 .ll-rule { flex: 1; height: 1px; background: var(--hairline); }
 
 .ll-row { display: grid; grid-template-columns: 20px 26px 1fr auto 22px; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 9px; }
-.ll-row--in { background: linear-gradient(90deg, rgba(232,184,75,0.10), rgba(232,184,75,0.02)); box-shadow: inset 2px 0 0 var(--gold); margin-bottom: 3px; }
+.ll-row--in { background: linear-gradient(90deg, rgba(232,184,75,0.10), rgba(232,184,75,0.02)); box-shadow: inset 2px 0 0 var(--qual, var(--gold)); margin-bottom: 3px; }
 .ll-band--out .ll-row { opacity: 0.5; }
 .ll-rank { color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; font-size: 12.5px; }
 .ll-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ll-gd { color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: 12.5px; text-align: right; }
 .ll-pts { font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; }
-.ll-cutline { display: flex; align-items: center; gap: 10px; margin: 8px 2px; color: var(--gold); font-size: 10px; letter-spacing: 2.5px; text-transform: uppercase; font-weight: 800; }
+.ll-cutline { display: flex; align-items: center; gap: 10px; margin: 8px 2px; color: var(--qual, var(--gold)); font-size: 10px; letter-spacing: 2.5px; text-transform: uppercase; font-weight: 800; }
 .ll-cutline .ll-rule { border-top: 1.5px dashed rgba(232,184,75,0.5); height: 0; background: none; }
 
 /* Standings with a qualification ladder opt into a wider canvas on desktop so
@@ -2950,7 +2950,7 @@ a {
 .tick-wp-legend .r { color: #7fb3e6; font-weight: 700; }
 .tick-pop-more {
   margin-top: 11px; padding-top: 9px; border-top: 1px solid var(--hairline);
-  font-size: 11px; color: var(--gold-bright); font-weight: 700; letter-spacing: 0.4px;
+  font-size: 11px; color: var(--info-bright); font-weight: 700; letter-spacing: 0.4px;
   background: none; border-left: none; border-right: none; border-bottom: none;
   width: 100%; text-align: left; cursor: pointer;
 }

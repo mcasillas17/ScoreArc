@@ -98,12 +98,12 @@ export default function LeagueDial({
       {/* Liguilla arc: a soft wide underlay (no blur filter) + a crisp line. */}
       <path className="lld-arc-glow"
         d={`M ${a0.x} ${a0.y} A ${ARC_R} ${ARC_R} 0 0 1 ${a1.x} ${a1.y}`}
-        fill="none" stroke="var(--gold)" strokeWidth={9} strokeLinecap="round" opacity={0.28} />
+        fill="none" stroke="var(--qual, var(--gold))" strokeWidth={9} strokeLinecap="round" opacity={0.28} />
       <path className="lld-arc"
         d={`M ${a0.x} ${a0.y} A ${ARC_R} ${ARC_R} 0 0 1 ${a1.x} ${a1.y}`}
-        fill="none" stroke="var(--gold-bright)" strokeWidth={2.5} strokeLinecap="round" pathLength={1} />
-      <circle cx={a0.x} cy={a0.y} r={3.2} fill="var(--gold-bright)" />
-      <circle cx={a1.x} cy={a1.y} r={3.2} fill="var(--gold-bright)" />
+        fill="none" stroke="var(--qual-bright, var(--gold-bright))" strokeWidth={2.5} strokeLinecap="round" pathLength={1} />
+      <circle cx={a0.x} cy={a0.y} r={3.2} fill="var(--qual-bright, var(--gold-bright))" />
+      <circle cx={a1.x} cy={a1.y} r={3.2} fill="var(--qual-bright, var(--gold-bright))" />
 
       {/* spokes + team chips */}
       {standings.map((s) => {
@@ -117,7 +117,7 @@ export default function LeagueDial({
             <line x1={inner.x} y1={inner.y} x2={outerStub.x} y2={outerStub.y}
               stroke={lig ? '#5a4a22' : '#20202a'} strokeWidth={1} />
             <CrestDisc s={s} teamStyle={teamStyle} x={p.x} y={p.y} r={r}
-              ring={lig ? 'var(--gold-bright)' : '#33333d'} ringWidth={lig ? 2 : 1} dim={!lig} />
+              ring={lig ? 'var(--qual-bright, var(--gold-bright))' : '#33333d'} ringWidth={lig ? 2 : 1} dim={!lig} />
           </g>
         );
       })}
@@ -125,7 +125,7 @@ export default function LeagueDial({
       {/* centre hub: leader */}
       <text x={C} y={C - 30} fill="var(--text-muted)" fontSize={10} letterSpacing={3} textAnchor="middle">LEADER</text>
       <CrestDisc s={leader} teamStyle={teamStyle} x={C} y={C + 2} r={HUB_R}
-        ring="var(--gold-bright)" ringWidth={2.5} dim={false} idSuffix="hub" />
+        ring="var(--qual-bright, var(--gold-bright))" ringWidth={2.5} dim={false} idSuffix="hub" />
       <text x={C} y={C + 44} fill="var(--text)" fontSize={13} fontWeight={700} textAnchor="middle">
         {leader.team.name}
       </text>
