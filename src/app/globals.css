@@ -2583,6 +2583,7 @@ a {
 .hub-group-label--live   { color: var(--live-red); }
 .hub-group-label--upcoming { color: var(--gold); }
 .hub-group-label--ongoing  { color: #34d399; }
+.hub-group-label--finished { color: var(--gold-bright); }
 
 /* Animated status cue for active competitions (live / ongoing). The section
    label gets a radar "ping" (expanding ring); the tile badge gets a contained
@@ -2696,6 +2697,13 @@ a {
   background: rgba(52, 211, 153, 0.13);
   color: #34d399;
   border: 1px solid rgba(52, 211, 153, 0.32);
+}
+
+/* Finished tournament — crown the champion in gold (the prize colour). */
+.hub-badge--finished {
+  background: rgba(232, 184, 75, 0.14);
+  color: var(--gold-bright);
+  border: 1px solid rgba(232, 184, 75, 0.34);
 }
 
 .hub-name {
