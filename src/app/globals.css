@@ -1927,7 +1927,7 @@ a {
   color: #7a7a86; text-align: center; margin-bottom: 5px;
 }
 .ls-winprob-bar { display: flex; height: 8px; border-radius: 5px; overflow: hidden; }
-.ls-winprob-home { background: #e8b84b; }
+.ls-winprob-home { background: var(--accent); }
 .ls-winprob-draw { background: #45454f; }
 .ls-winprob-away { background: #4cc4ff; }
 .ls-winprob-legend {
