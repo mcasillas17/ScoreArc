@@ -23,4 +23,12 @@ describe('hubStatus', () => {
     expect(hubStatus([m('finished'), m('scheduled')])).toBe('ongoing');
     expect(hubStatus([])).toBe('ongoing');
   });
+  it('is finished when the tournament is complete (final decided, no live)', () => {
+    // World Cup done: no current fixtures, bracket final decided.
+    expect(hubStatus([], true, true)).toBe('finished');
+    expect(hubStatus([m('scheduled')], true, true)).toBe('finished');
+  });
+  it('reports live over finished (a stray live match wins)', () => {
+    expect(hubStatus([m('live')], true, true)).toBe('live');
+  });
 });

@@ -44,7 +44,14 @@ export default async function Hub() {
         matches.some((m) => m.state === 'finished') ||
         bracket.some((r) => r.matches.some((m) => m.winnerId)) ||
         standings.some((g) => g.standings.some((s) => s.played > 0));
-      return { comp, season: rc.season, status: hubStatus(matches, started), count: matches.length, live };
+      // A knockout tournament is finished once its FINAL is decided. Grab the
+      // champion (the final's winner) so the tile can crown them.
+      const finalMatch = bracket.find((r) => r.slug === 'final')?.matches.find((m) => m.winnerId);
+      const finished = !!finalMatch;
+      const champion = finalMatch
+        ? (finalMatch.winnerId === finalMatch.home.id ? finalMatch.home.name : finalMatch.away.name)
+        : null;
+      return { comp, season: rc.season, status: hubStatus(matches, started, finished), count: matches.length, live, champion };
     }),
   );
   return (

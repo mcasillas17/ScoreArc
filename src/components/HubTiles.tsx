@@ -8,6 +8,7 @@ interface Tile {
   status: HubStatus;
   count: number;
   live: number;
+  champion?: string | null;
 }
 
 interface Props {
@@ -20,13 +21,15 @@ const GROUPS: { status: HubStatus; label: string; labelClass: string }[] = [
   { status: 'live',     label: 'Live now',      labelClass: 'hub-group-label--live' },
   { status: 'ongoing',  label: 'Ongoing',       labelClass: 'hub-group-label--ongoing' },
   { status: 'upcoming', label: 'Starting soon', labelClass: 'hub-group-label--upcoming' },
+  { status: 'finished', label: 'Finished',      labelClass: 'hub-group-label--finished' },
 ];
 
-function badge(status: HubStatus): { text: string; className: string } {
-  switch (status) {
+function badge(tile: Tile): { text: string; className: string } {
+  switch (tile.status) {
     case 'live':     return { text: 'LIVE',         className: 'hub-badge--live' };
     case 'upcoming': return { text: 'SOON',          className: 'hub-badge--upcoming' };
     case 'ongoing':  return { text: 'IN PROGRESS',  className: 'hub-badge--ongoing' };
+    case 'finished': return { text: tile.champion ? `🏆 ${tile.champion}` : 'FINISHED', className: 'hub-badge--finished' };
   }
 }
 
@@ -41,6 +44,8 @@ function subLine(tile: Tile): string {
       return `${tile.comp.shortName} · ${tile.season.label} season`;
     case 'ongoing':
       return `${tile.count} matches`;
+    case 'finished':
+      return tile.champion ? `${tile.champion} — champions` : `${tile.season.label} · complete`;
   }
 }
 
@@ -58,7 +63,7 @@ export default function HubTiles({ tiles }: Props) {
             </div>
             <div className="hub-grid">
               {group.map((tile) => {
-                const b = badge(tile.status);
+                const b = badge(tile);
                 return (
                   <Link
                     key={tile.comp.id}
