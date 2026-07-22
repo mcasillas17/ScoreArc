@@ -25,8 +25,16 @@ export async function generateMetadata({ params }: { params: { comp: string; sea
 export default function WorkspaceLayout({ children, params }: { children: React.ReactNode; params: { comp: string; season: string } }) {
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) notFound();
+  const a = rc.competition.accent;
   return (
-    <div className="app-shell">
+    <div
+      className="app-shell"
+      style={{
+        ['--accent' as string]: a.base,
+        ['--accent-bright' as string]: a.bright,
+        ['--accent-soft' as string]: a.soft,
+      }}
+    >
       <Sidebar comp={rc.competition} seasonId={rc.season.id} />
       {children}
     </div>

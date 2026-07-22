@@ -40,6 +40,10 @@ export interface Competition {
   kind: CompetitionKind;
   teamStyle: TeamStyle;
   emblem: string;
+  // Per-competition identity accent. base = primary, bright = hover/emphasis,
+  // soft = low-alpha tint for borders/backgrounds. Injected as CSS custom
+  // properties on the app-shell; :root falls back to gold.
+  accent: { base: string; bright: string; soft: string };
   currentSeasonId: string; // the season a hub tile / bare URL resolves to
   seasons: Record<string, Season>;
 }
@@ -59,6 +63,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     kind: 'national',
     teamStyle: 'flag',
     emblem: '🌍',
+    accent: { base: '#e8b84b', bright: '#f0c873', soft: 'rgba(232,184,75,0.16)' },
     currentSeasonId: '2026',
     seasons: {
       '2026': {
@@ -89,6 +94,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     kind: 'club',
     teamStyle: 'crest',
     emblem: '🏆',
+    accent: { base: '#0d9488', bright: '#2dd4bf', soft: 'rgba(13,148,136,0.16)' },
     currentSeasonId: '2026',
     seasons: {
       '2026': {
@@ -99,13 +105,13 @@ export const COMPETITIONS: Record<string, Competition> = {
       },
     },
   },
-  ...leagueCompetition('premier-league', 'Premier League', 'Premier League', 'eng.1', '🦁', '2026-27', '2026-27'),
-  ...leagueCompetition('laliga', 'LaLiga', 'LaLiga', 'esp.1', '🇪🇸', '2026-27', '2026-27'),
-  ...leagueCompetition('serie-a', 'Serie A', 'Serie A', 'ita.1', '🇮🇹', '2026-27', '2026-27'),
-  ...leagueCompetition('bundesliga', 'Bundesliga', 'Bundesliga', 'ger.1', '🇩🇪', '2026-27', '2026-27'),
-  ...leagueCompetition('ligue-1', 'Ligue 1', 'Ligue 1', 'fra.1', '🇫🇷', '2026-27', '2026-27'),
-  ...leagueCompetition('mls', 'MLS', 'MLS', 'usa.1', '🇺🇸', '2026', '2026'),
-  ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', '2026-apertura', 'Apertura 2026', { cut: 8, label: 'Liguilla' }),
+  ...leagueCompetition('premier-league', 'Premier League', 'Premier League', 'eng.1', '🦁', '2026-27', '2026-27', { base: '#8b5cf6', bright: '#b18bff', soft: 'rgba(139,92,246,0.16)' }),
+  ...leagueCompetition('laliga', 'LaLiga', 'LaLiga', 'esp.1', '🇪🇸', '2026-27', '2026-27', { base: '#e5484d', bright: '#ff6b6b', soft: 'rgba(229,72,77,0.16)' }),
+  ...leagueCompetition('serie-a', 'Serie A', 'Serie A', 'ita.1', '🇮🇹', '2026-27', '2026-27', { base: '#3b82f6', bright: '#6ba7ff', soft: 'rgba(59,130,246,0.16)' }),
+  ...leagueCompetition('bundesliga', 'Bundesliga', 'Bundesliga', 'ger.1', '🇩🇪', '2026-27', '2026-27', { base: '#d20515', bright: '#ff5a4d', soft: 'rgba(210,5,21,0.16)' }),
+  ...leagueCompetition('ligue-1', 'Ligue 1', 'Ligue 1', 'fra.1', '🇫🇷', '2026-27', '2026-27', { base: '#1e40af', bright: '#5b7fe0', soft: 'rgba(30,64,175,0.16)' }),
+  ...leagueCompetition('mls', 'MLS', 'MLS', 'usa.1', '🇺🇸', '2026', '2026', { base: '#2c5282', bright: '#5b8fd0', soft: 'rgba(44,82,130,0.16)' }),
+  ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', '2026-apertura', 'Apertura 2026', { base: '#22a95e', bright: '#3ed07f', soft: 'rgba(34,169,94,0.16)' }, { cut: 8, label: 'Liguilla' }),
 };
 
 // A past 32-team WC edition — R16 knockout, view-only, no seed order -> derived
@@ -133,6 +139,7 @@ function leagueCompetition(
   emblem: string,
   seasonId: string,
   seasonLabel: string,
+  accent: { base: string; bright: string; soft: string },
   qualification?: { cut: number; label: string },
 ): Record<string, Competition> {
   return {
@@ -144,6 +151,7 @@ function leagueCompetition(
       kind: 'club',
       teamStyle: 'crest',
       emblem,
+      accent,
       currentSeasonId: seasonId,
       seasons: {
         [seasonId]: {
