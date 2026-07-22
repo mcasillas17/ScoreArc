@@ -89,6 +89,19 @@ describe('competition registry', () => {
     const pl = COMPETITIONS['premier-league'];
     expect(pl.seasons[pl.currentSeasonId].qualification).toBeUndefined();
   });
+
+  it('every competition defines a valid accent (base/bright/soft), world-cup = gold', () => {
+    for (const comp of listCompetitions()) {
+      expect(comp.accent, comp.id).toBeDefined();
+      expect(typeof comp.accent.base).toBe('string');
+      expect(typeof comp.accent.bright).toBe('string');
+      expect(typeof comp.accent.soft).toBe('string');
+      expect(comp.accent.base).toMatch(/^#|rgba?\(/);
+    }
+    expect(COMPETITIONS['world-cup'].accent.base.toLowerCase()).toBe('#e8b84b');
+    expect(COMPETITIONS['liga-mx'].accent.base).toBe('#22a95e');
+    expect(COMPETITIONS['premier-league'].accent.base).toBe('#8b5cf6');
+  });
 });
 
 describe('world-cup seasons', () => {

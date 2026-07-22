@@ -9,6 +9,19 @@
   --text-muted: #9a9aa4;
   --gold: #e8b84b;
   --gold-bright: #f0c873;
+  /* Per-competition accent — overridden on .app-shell; falls back to gold. */
+  --accent: var(--gold);
+  --accent-bright: var(--gold-bright);
+  --accent-soft: rgba(232,184,75,0.16);
+  /* Prize / qualification — gold by default. */
+  --qual: var(--gold);
+  --qual-bright: var(--gold-bright);
+  /* Semantic palette (global; --live-red already defined above). */
+  --win: #35c17b;
+  --loss: #e5533d;
+  --draw: #55555f;
+  --info: #4a90d9;
+  --info-bright: #8fbdec;
   --live-red: #ff5c5c;
   --qualify-green: #36c275;
   /* Per-category match-stat bar colors */
