@@ -1,0 +1,7 @@
+DROP TABLE IF EXISTS top_scorer;
+DROP TABLE IF EXISTS standing;
+DROP TABLE IF EXISTS match_detail;
+DROP TABLE IF EXISTS match;
+DROP TABLE IF EXISTS team;
+DROP ROLE IF EXISTS scorearc_ingester;
+DROP ROLE IF EXISTS scorearc_reader;
