@@ -1,0 +1,236 @@
+[
+  {
+    "id": "world-cup",
+    "name": "World Cup 2026",
+    "shortName": "World Cup",
+    "espnSlug": "fifa.world",
+    "currentSeasonId": "2026",
+    "seasons": {
+      "1998": {
+        "id": "1998",
+        "label": "1998",
+        "hasBracket": true,
+        "bracketDatesRange": "19980627-19980712",
+        "knockoutRounds": [
+          "round-of-16",
+          "quarterfinals",
+          "semifinals",
+          "final"
+        ]
+      },
+      "2002": {
+        "id": "2002",
+        "label": "2002",
+        "hasBracket": true,
+        "bracketDatesRange": "20020615-20020630",
+        "knockoutRounds": [
+          "round-of-16",
+          "quarterfinals",
+          "semifinals",
+          "final"
+        ]
+      },
+      "2006": {
+        "id": "2006",
+        "label": "2006",
+        "hasBracket": true,
+        "bracketDatesRange": "20060624-20060709",
+        "knockoutRounds": [
+          "round-of-16",
+          "quarterfinals",
+          "semifinals",
+          "final"
+        ]
+      },
+      "2010": {
+        "id": "2010",
+        "label": "2010",
+        "hasBracket": true,
+        "bracketDatesRange": "20100626-20100711",
+        "knockoutRounds": [
+          "round-of-16",
+          "quarterfinals",
+          "semifinals",
+          "final"
+        ]
+      },
+      "2014": {
+        "id": "2014",
+        "label": "2014",
+        "hasBracket": true,
+        "bracketDatesRange": "20140628-20140713",
+        "knockoutRounds": [
+          "round-of-16",
+          "quarterfinals",
+          "semifinals",
+          "final"
+        ]
+      },
+      "2018": {
+        "id": "2018",
+        "label": "2018",
+        "hasBracket": true,
+        "bracketDatesRange": "20180630-20180715",
+        "knockoutRounds": [
+          "round-of-16",
+          "quarterfinals",
+          "semifinals",
+          "final"
+        ]
+      },
+      "2022": {
+        "id": "2022",
+        "label": "2022",
+        "hasBracket": true,
+        "bracketDatesRange": "20221203-20221218",
+        "knockoutRounds": [
+          "round-of-16",
+          "quarterfinals",
+          "semifinals",
+          "final"
+        ]
+      },
+      "2026": {
+        "id": "2026",
+        "label": "2026",
+        "hasBracket": true,
+        "bracketDatesRange": "20260628-20260719",
+        "knockoutRounds": [
+          "round-of-32",
+          "round-of-16",
+          "quarterfinals",
+          "semifinals",
+          "final"
+        ]
+      }
+    }
+  },
+  {
+    "id": "leagues-cup",
+    "name": "Leagues Cup",
+    "shortName": "Leagues Cup",
+    "espnSlug": "concacaf.leagues.cup",
+    "currentSeasonId": "2026",
+    "seasons": {
+      "2026": {
+        "id": "2026",
+        "label": "2026",
+        "hasBracket": true,
+        "bracketDatesRange": null,
+        "knockoutRounds": null
+      }
+    }
+  },
+  {
+    "id": "premier-league",
+    "name": "Premier League",
+    "shortName": "Premier League",
+    "espnSlug": "eng.1",
+    "currentSeasonId": "2026-27",
+    "seasons": {
+      "2026-27": {
+        "id": "2026-27",
+        "label": "2026-27",
+        "hasBracket": false,
+        "bracketDatesRange": null,
+        "knockoutRounds": null
+      }
+    }
+  },
+  {
+    "id": "laliga",
+    "name": "LaLiga",
+    "shortName": "LaLiga",
+    "espnSlug": "esp.1",
+    "currentSeasonId": "2026-27",
+    "seasons": {
+      "2026-27": {
+        "id": "2026-27",
+        "label": "2026-27",
+        "hasBracket": false,
+        "bracketDatesRange": null,
+        "knockoutRounds": null
+      }
+    }
+  },
+  {
+    "id": "serie-a",
+    "name": "Serie A",
+    "shortName": "Serie A",
+    "espnSlug": "ita.1",
+    "currentSeasonId": "2026-27",
+    "seasons": {
+      "2026-27": {
+        "id": "2026-27",
+        "label": "2026-27",
+        "hasBracket": false,
+        "bracketDatesRange": null,
+        "knockoutRounds": null
+      }
+    }
+  },
+  {
+    "id": "bundesliga",
+    "name": "Bundesliga",
+    "shortName": "Bundesliga",
+    "espnSlug": "ger.1",
+    "currentSeasonId": "2026-27",
+    "seasons": {
+      "2026-27": {
+        "id": "2026-27",
+        "label": "2026-27",
+        "hasBracket": false,
+        "bracketDatesRange": null,
+        "knockoutRounds": null
+      }
+    }
+  },
+  {
+    "id": "ligue-1",
+    "name": "Ligue 1",
+    "shortName": "Ligue 1",
+    "espnSlug": "fra.1",
+    "currentSeasonId": "2026-27",
+    "seasons": {
+      "2026-27": {
+        "id": "2026-27",
+        "label": "2026-27",
+        "hasBracket": false,
+        "bracketDatesRange": null,
+        "knockoutRounds": null
+      }
+    }
+  },
+  {
+    "id": "mls",
+    "name": "MLS",
+    "shortName": "MLS",
+    "espnSlug": "usa.1",
+    "currentSeasonId": "2026",
+    "seasons": {
+      "2026": {
+        "id": "2026",
+        "label": "2026",
+        "hasBracket": false,
+        "bracketDatesRange": null,
+        "knockoutRounds": null
+      }
+    }
+  },
+  {
+    "id": "liga-mx",
+    "name": "Liga MX",
+    "shortName": "Liga MX",
+    "espnSlug": "mex.1",
+    "currentSeasonId": "2026-apertura",
+    "seasons": {
+      "2026-apertura": {
+        "id": "2026-apertura",
+        "label": "Apertura 2026",
+        "hasBracket": false,
+        "bracketDatesRange": null,
+        "knockoutRounds": null
+      }
+    }
+  }
+]
