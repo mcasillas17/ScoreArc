@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "export:competitions": "tsx scripts/export-competitions.mjs"
   },
   "dependencies": {
     "next": "14.2.35",
