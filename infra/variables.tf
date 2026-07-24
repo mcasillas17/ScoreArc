@@ -1,6 +1,13 @@
 variable "project_id" { type = string }
-variable "region"     { type = string, default = "us-central1" }
-variable "db_tier"    { type = string, default = "db-f1-micro" }
+variable "region" {
+  type    = string
+  default = "us-central1"
+}
+
+variable "db_tier" {
+  type    = string
+  default = "db-f1-micro"
+}
 variable "github_repo" {
   type        = string
   description = "owner/name of the GitHub repo allowed to deploy via WIF, e.g. mcasillas17/ScoreArc"

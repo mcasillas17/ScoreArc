@@ -43,8 +43,15 @@ resource "google_sql_database" "app" {
 }
 
 # Login users mapped to the least-privilege roles created by the migrations.
-resource "random_password" "reader"   { length = 24, special = false }
-resource "random_password" "ingester" { length = 24, special = false }
+resource "random_password" "reader" {
+  length  = 24
+  special = false
+}
+
+resource "random_password" "ingester" {
+  length  = 24
+  special = false
+}
 
 resource "google_sql_user" "reader" {
   name     = "scorearc_reader_user"
