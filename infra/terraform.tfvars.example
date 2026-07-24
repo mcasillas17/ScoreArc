@@ -1,0 +1,4 @@
+project_id    = "scorearc-prod"
+region        = "us-central1"
+github_repo   = "mcasillas17/ScoreArc"
+assets_domain = "cdn.scorearc.futbol"
