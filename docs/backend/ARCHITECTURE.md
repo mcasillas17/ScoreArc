@@ -60,10 +60,23 @@ reader's JSON must deserialize into the existing types in
 
 `comp_id`/`season_id` are the **text config keys** from `competitions.ts` (config
 stays the source of truth — no season table). `team.id`/`match.id` are **ESPN
-ids** (idempotent upserts). `BracketRound[]` is a **computed read-model** from
-`match` rows (round + winners) — no bracket table. Rich per-match detail is
-**jsonb** (lossless, serves the existing frontend types verbatim). **No `news`
-table** (proxied live). `team.crest_url` holds **our R2/CDN URL**.
+ids** (idempotent upserts). Rich per-match detail is **jsonb** (lossless, serves
+the existing frontend types verbatim). **No `news` table** (proxied live).
+`team.crest_url` holds **our R2/CDN URL**.
+
+> **Bracket note (important — the frontend does NOT derive brackets from the
+> matches feed today).** Currently `DataStore.getBracket` fetches a *separate*
+> ESPN bracket scoreboard (`bracketUrl(slug, season.bracketDatesRange)`) and runs
+> `mapBracket` (`providers/espn-bracket.ts`), which has non-trivial winner +
+> shootout logic. In our backend there is **no bracket table** — the reader
+> rebuilds `BracketRound[]` from `match` rows — but that only works if the
+> **ingester persists knockout matches with `match.round` set to the slug
+> vocabulary in each season's `knockoutRounds`** (`round-of-32 … final`) plus
+> `winner_id` and shootout. So: port `mapBracket` to Go, **fixture-test it against
+> `src/server/data/__fixtures__/espn-bracket*.json`**, and have the reader group
+> `match` rows by `round` into `BracketRound[]`. (Leaf ordering lives in
+> `competitions.ts`/`radialBracketModel.ts` on the frontend — correctly not in
+> the backend.) See §10.
 
 Migrations: `backend/migrations/0001_init.*.sql` (Tier-1 + roles),
 `0002_snapshots.*.sql` (Tier-3 + ops).
@@ -188,3 +201,52 @@ Migrations: `backend/migrations/0001_init.*.sql` (Tier-1 + roles),
   "matches like this" via embeddings + pgvector). Don't train an LLM.
 - **LED board** — a physical scoreboard (Adafruit Matrix Portal S3 + HUB75
   panels) that just polls a compact `/v1/…` endpoint when built.
+
+---
+
+## 10. Contracts to pin BEFORE writing the 1b/1c/1d plans
+
+The prose above is not enough to implement directly — nail these down (in each
+slice's plan) so the Go output matches the frontend verbatim. The **source of
+truth is the TS**: `src/server/data/types.ts` (shapes), `providers/espn-*.ts`
+(mapping), `endpoints.ts` (ESPN URLs), `store.ts` (how each method is assembled),
+`__fixtures__/` (recorded ESPN JSON to test against).
+
+**1b — Ingester**
+- **Mapper → table map:** `espn-matches.ts` → `match`; `espn-summary.ts`
+  (scorers/cards/stats/winProb/lineups/videos/info/form/h2h/commentary/shootout) →
+  `match_detail` **jsonb** columns; `espn-standings.ts` → `standing`;
+  `espn-stats.ts` → `top_scorer`; `espn-bracket.ts` → knockout `match` rows (see
+  the bracket note in §3). `espn-news.ts` is **not** ingested (reader proxies it).
+- **ESPN URLs to port:** `endpoints.ts` — `scoreboardUrl(slug, datesRange)`,
+  `standingsUrl`, `summaryUrl`, `bracketUrl`, `statisticsUrl`, `newsUrl`. Which
+  comps/seasons + date ranges to poll come from `backend/config/competitions.json`.
+- **jsonb payloads must equal the `types.ts` shapes** so the reader can hand them
+  back unchanged — fixture-test the Go mappers against `__fixtures__/`.
+- **`emitSnapshots()`** — define now as a no-op method,
+  `func (i *Ingester) emitSnapshots(ctx context.Context, tick Snapshot) error { return nil }`,
+  called once per tick. Phase 2 fills it.
+- **"Live" detection** for the fast/slow cadence: any polled `match.state == 'live'`.
+- **Freeze predicate:** on `state → finished`, write finals, set `finalized_at`,
+  and skip re-upsert while `finalized_at IS NOT NULL`.
+- **Asset idempotency:** skip the download if the object already exists in R2
+  (HEAD) or `team.crest_url` already points at our CDN.
+
+**1c — Reader**
+- **Endpoint → type map:** each `/v1/…` response must deserialize into exactly
+  `Match[]` / `Group[]` / `BracketRound[]` / `MatchSummaryData` / `TopScorer[]` /
+  `NewsArticle[]` from `types.ts`. Write a field-by-field map in the plan.
+- **`/news` drops season:** `newsUrl(slug)` is comp-only; the endpoint is
+  `/v1/competitions/{comp}/news` and `apiStore.getNews` builds it from
+  `rc.competition`, ignoring season.
+- **Query layer:** pick **sqlc** (recommended — compile-checked, parameterized) or
+  `pgx` placeholders; either way, no string-built SQL.
+- Add a `/healthz` route (used by the deploy check in SETUP §7).
+
+**1d — Cutover**
+- `apiStore` lives at `src/server/data/apiStore.ts`, implementing `DataStore`.
+- Selection happens where the concrete store is chosen in `src/server/data/store.ts`
+  (find where the ESPN store is instantiated); switch on `process.env.DATA_SOURCE`
+  (`espn` default | `api`), reading the reader base from `SCOREARC_API_BASE`.
+- `apiStore` wraps each call in try/catch and **falls back to the ESPN store on
+  error** during rollout.
