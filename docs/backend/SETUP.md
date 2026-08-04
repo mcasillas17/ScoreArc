@@ -6,6 +6,13 @@ working dev + deploy environment for the ScoreArc backend. Copy-paste friendly.
 Target OS: **macOS** (Apple Silicon or Intel). If on Linux, swap `brew` for your
 package manager; all the CLIs below have Linux builds.
 
+> ⚠️ **Needs a human (an unattended agent cannot do these):** creating the
+> accounts in §0; the browser OAuth logins `gh auth login` / `fly auth login` /
+> `vercel login` / `wrangler login` (§1–§2); adding a card to Fly; creating the
+> **R2 API token** in the Cloudflare dashboard (§6); and pointing
+> `scorearc.futbol` DNS at Cloudflare for the CDN (§6). Do these first (or hand
+> back to the human when you reach one); everything else an agent can run.
+
 ---
 
 ## 0. Accounts you need (free tiers are fine to start)
@@ -50,7 +57,7 @@ The repo uses `tsx` (via `npx`) for the `export-competitions` script — no glob
 ```bash
 brew install libpq
 brew link --force libpq     # puts psql on PATH
-psql --version              # expect psql (PostgreSQL) 16.x
+psql --version              # expect psql (PostgreSQL) 16.x or newer (matches Neon)
 ```
 
 ### 1.6 golang-migrate (`migrate`) — applies the SQL migrations
@@ -131,7 +138,10 @@ the connection strings to Fly.
 
 1. In the **Vercel dashboard** → your ScoreArc project → **Storage** → **Create
    Database** → **Postgres (Neon)**. Pick a **region close to where you'll run
-   Fly** (see §6). Name it e.g. `scorearc-db`.
+   Fly** (§7) — Neon uses AWS-style regions, Fly uses 3-letter codes, so match
+   them: `us-east-1 ↔ iad`, `us-east-2 ↔ ord`, `us-west-2 ↔ sea`,
+   `eu-central-1 ↔ fra`, `eu-west-2 ↔ lhr`, `ap-southeast-1 ↔ sin`. (Decide the
+   region once here and reuse it for the Fly apps in §7.) Name it e.g. `scorearc-db`.
 2. Vercel creates a Neon database and shows connection strings. You need **two**:
    - **Pooled** (has `-pooler` in the host, or a "pooled connection" tab) — for
      the long-running Go services (avoids exhausting connections).
@@ -236,9 +246,16 @@ The Go ingester talks to R2 with the **AWS S3 SDK** pointed at the R2 endpoint
 Each Go service is its own Fly app. Do this after slice 1b (ingester) / 1c
 (reader) are built — the `fly.toml` + Dockerfile come from slice **1a-rev**.
 
+The `fly.toml` + `Dockerfile` for each service are **hand-authored and committed**
+in slice 1a-rev (infra as reviewable code) — do **not** let `fly launch` generate
+and overwrite them. Use `fly launch` only to create the app *record*, then deploy
+the committed config.
+
 ```bash
 cd backend/reader        # (and separately backend/ingester)
-fly launch --no-deploy   # creates the app + fly.toml (pick the SAME region as Neon)
+# create the Fly app WITHOUT generating a fly.toml (keep the committed one);
+# pick the SAME region you chose for Neon in §4:
+fly launch --no-deploy --copy-config --name scorearc-reader --region <same-as-neon>
 
 # set secrets (never commit these):
 fly secrets set DATABASE_URL="$READER_DSN"          # reader app
@@ -256,6 +273,14 @@ fly deploy
 - **Ingester**: always-on worker — set `min_machines_running = 1` (no scale to
   zero) so its live-polling ticker keeps running. It needs **no public HTTP
   service** (it only makes outbound calls + writes the DB/R2).
+
+**Verify the deploy:**
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://scorearc-reader.fly.dev/healthz
+# expect: 200   (add a /healthz route in the reader, slice 1c)
+fly status --app scorearc-ingester
+# expect: 1 machine in "started" state (the always-on worker)
+```
 
 CI/CD: GitHub Actions deploys on push to `main` (path-filtered to `/backend`)
 using a `FLY_API_TOKEN` repo secret (`fly tokens create deploy`). Workflows are
@@ -294,7 +319,9 @@ for t in git gh go node npm psql migrate sqlc docker fly vercel wrangler; do
   command -v "$t" >/dev/null 2>&1 && echo "OK   $t" || echo "MISSING $t"
 done
 ```
-Everything should say `OK`. `go` must be **>= 1.26**; `psql` **16.x**.
+Everything should say `OK`. `go` must be **>= 1.26**; `psql` **16.x or newer**.
+(The four `*login`/OAuth tools also need a human to authenticate once — see the
+"Needs a human" callout at the top.)
 
 ---
 

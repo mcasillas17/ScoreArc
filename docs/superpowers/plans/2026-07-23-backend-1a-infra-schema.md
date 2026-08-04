@@ -1,5 +1,20 @@
 # Backend Slice 1a — Infra + Schema — Implementation Plan
 
+> 🛑 **STATUS (read first):**
+> - **Tasks 1–3 are DONE and committed** (Go module scaffold, config export,
+>   Postgres migrations) — they are host-neutral and still valid.
+> - **Tasks 4–5 (GCP Terraform + GCP provisioning runbook) are SUPERSEDED — DO
+>   NOT EXECUTE.** The project switched off GCP to **Fly + Neon + Cloudflare R2**
+>   (see `BACKEND_HANDOFF.md`). The infra is redone in a new slice **1a-rev**
+>   (write its plan; replace `/infra` with Fly `fly.toml`s + Dockerfiles + a
+>   GitHub Actions `flyctl deploy` workflow; provision Neon-via-Vercel + R2 per
+>   `docs/backend/SETUP.md`).
+>
+> **Executing this (or any) plan without Superpowers:** the `REQUIRED SUB-SKILL`
+> line below just names the tool the humans used to author it. Any agent can
+> execute the plan directly — work the tasks top-to-bottom, run each step's
+> command, confirm its `expect:` output, commit at the commit step.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. **This slice mixes [local] code (verifiable in-session with Go) and [you-run] infra (Terraform/gcloud/psql applied by the human against their GCP project). Do NOT attempt to run `terraform`/`gcloud`/`psql` — they are not installed; author the files and hand the human the exact commands.**
 
 **Goal:** Stand up the monorepo backend scaffold, a shared competition-config export the Go services read, the Postgres schema migrations, and the Terraform that provisions the private Cloud SQL + GCS/CDN + Artifact Registry + Workload Identity Federation on GCP.

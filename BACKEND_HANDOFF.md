@@ -5,6 +5,19 @@ written so an agent (or engineer) with **no prior context** can pick this up on 
 fresh machine and continue. Read this file first, then `docs/backend/SETUP.md`
 (tools + cloud setup) and `docs/backend/ARCHITECTURE.md` (the design).
 
+> **Canonical branch:** `feat/backend-handoff` — do all backend work here (or
+> branch off it). A local-only `feat/backend-api-phase1` has the same code minus
+> the handoff docs; ignore/delete it.
+
+> ⚠️ **Some steps need a human at a browser — an unattended agent cannot do
+> them.** Account creation + these OAuth logins each open a browser:
+> `gh auth login`, `fly auth login`, `vercel login`, `wrangler login`. Also human-only:
+> putting a card on Fly, creating the **Cloudflare R2 API token** in the
+> dashboard, and pointing `scorearc.futbol` DNS at Cloudflare for the logo CDN.
+> When you hit one of these, **pause and hand back to the human** rather than
+> getting stuck. Everything else (writing code, migrations, `fly deploy`, tests)
+> an agent can do once those credentials exist.
+
 ---
 
 ## 1. What we're building (one paragraph)
@@ -43,7 +56,7 @@ are host-specific.
 ## 3. Repository layout
 
 This is a **monorepo**. The frontend and backend live together; Vercel ignores
-`/backend` and `/infra` (via `.vercelignore`).
+`/backend`, `/infra`, and `/docs` (via `.vercelignore`).
 
 ```
 /                         Next.js frontend (unchanged; deploys to Vercel)
@@ -81,7 +94,11 @@ All committed on this branch. Verified: `cd backend && go build ./... && go test
 
 Each slice is its own spec-lite → plan → build cycle (see §6 for how we work).
 
-- **1a-rev — Replace `/infra` for Fly + Neon + R2.** Delete the GCP Terraform; add:
+- **1a-rev — Replace `/infra` for Fly + Neon + R2** ("-rev" = the revised infra
+  for the new host). The existing plan `docs/superpowers/plans/2026-07-23-backend-1a-infra-schema.md`
+  has 5 tasks: **tasks 1–3 (Go scaffold, config export, migrations) are DONE and
+  stand; tasks 4–5 (GCP Terraform + GCP runbook) are SUPERSEDED — do not
+  execute.** This slice writes a *new* plan and replaces the GCP Terraform:
   - `backend/reader/fly.toml` + `backend/ingester/fly.toml` + Dockerfiles.
   - Neon provisioning notes (provision via Vercel Storage; capture pooled + direct connection strings; create the `scorearc_reader`/`scorearc_ingester` roles + login users per the migrations).
   - Cloudflare R2 bucket + access keys for the logo mirror.
@@ -92,19 +109,32 @@ Each slice is its own spec-lite → plan → build cycle (see §6 for how we wor
 - **1d — Frontend cutover**: add an `apiStore` implementation of `DataStore` (in `src/server/data/`) that calls the reader; select it via a `DATA_SOURCE=api|espn` env flag with ESPN fallback; verify parity; flip to `api`.
 - **Phase 2+** (later): time-series snapshot writes + an analytics store (BigQuery cross-cloud, or R2+DuckDB, or defer and use Neon); historical/xG backfill; own ML; Claude language layer; the LED board consumer.
 
-## 6. How we work (the workflow these docs assume)
+## 6. How we work
 
-This project is built with the **Superpowers** agent workflow. For each slice:
+These docs were **produced** with the "Superpowers" Claude-Code workflow (brainstorm
+→ spec → plan → subagent-driven execution). **You do not need Superpowers to
+execute them** — and Codex / Copilot don't have it. The artifacts are plain markdown:
 
-1. **Brainstorm** the slice → a short **spec** in `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`.
-2. **Write a plan** → `docs/superpowers/plans/YYYY-MM-DD-<topic>.md` — bite-sized, TDD, exact code.
-3. **Execute** via subagent-driven development — a fresh subagent per task, a spec+quality review after each, a whole-branch review at the end.
+- A **spec** (`docs/superpowers/specs/…-design.md`) describes the *what*.
+- A **plan** (`docs/superpowers/plans/…-<slice>.md`) is a task-by-task, TDD,
+  checkbox checklist with **exact code and `expect:` outputs**.
 
-Hard rules (from `AGENTS.md` at the repo root — read it):
-- **`main` auto-deploys the frontend to production. Never commit/merge to `main`.** Branch for all work (`feat/…`, `fix/…`).
-- **Test before a PR:** `npx tsc --noEmit`, `npm test`, and for the backend `cd backend && go build ./... && go test ./...`. Merging is the human's decision.
-- Conventional commit prefixes (`feat:`/`fix:`/`docs:`/`chore:`). End commit messages with:
-  `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`
+**Workflow-agnostic execution (do this):**
+1. If the slice has **no plan yet** (1a-rev, 1b, 1c, 1d don't — only 1a does),
+   first **write one** as a markdown file in `docs/superpowers/plans/` following
+   the 1a plan's shape (tasks → steps → code → `expect:` → commit). Pin the
+   contracts in `docs/backend/ARCHITECTURE.md §10` before coding.
+2. Execute the plan **top-to-bottom**: for each step run its command, confirm the
+   stated `expect:` output, and commit at the task's commit step.
+3. If you *do* have a subagent/task primitive, one-subagent-per-task + a review
+   between tasks is nice-to-have, not required.
+4. Ignore any `REQUIRED SUB-SKILL` header in a plan — it only names the tool the
+   humans used to author it.
+
+Hard rules (also in `AGENTS.md` — read it; Codex auto-loads it):
+- **`main` auto-deploys the frontend to production. Never commit/merge to `main`.** Branch for all work (`feat/…`, `fix/…`). **Canonical backend branch: `feat/backend-handoff`.**
+- **Test before a PR:** `npx tsc --noEmit`, `npm test`, and for the backend `cd backend && go build ./... && go test ./...` (Docker running for testcontainers). Merging is the human's decision.
+- Conventional commit prefixes (`feat:`/`fix:`/`docs:`/`chore:`). End commit messages with a `Co-Authored-By:` trailer using **your own** agent identity — e.g. `Co-Authored-By: Codex <noreply@openai.com>` or `Co-Authored-By: Copilot <noreply@github.com>`. Do **not** attribute commits to another agent.
 - TypeScript strict; no `any`. Go: idiomatic, tested.
 
 ## 7. Key facts an agent needs
