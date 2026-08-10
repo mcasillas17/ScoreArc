@@ -41,6 +41,7 @@ type rawCompetitor struct {
 type rawTeam struct {
 	ID           string    `json:"id"`
 	DisplayName  string    `json:"displayName"`
+	Name         string    `json:"name"` // used by the bracket mapper's displayName ?? name ?? abbreviation fallback
 	Abbreviation string    `json:"abbreviation"`
 	Logo         *string   `json:"logo"`
 	Logos        []rawLogo `json:"logos"`

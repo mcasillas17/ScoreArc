@@ -51,6 +51,40 @@ type Match struct {
 	Note         *string    `json:"note"`
 }
 
+// BracketTeam mirrors types.ts's BracketTeam. It is distinct from Team
+// because knockout brackets can name a not-yet-determined slot ("Round of 32
+// Winner 5") before the feeding match resolves; Placeholder flags that case
+// so the reader can render a TBD slot instead of a real crest.
+type BracketTeam struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Abbr        string  `json:"abbr"`
+	CrestURL    *string `json:"crestUrl"`
+	Placeholder bool    `json:"placeholder"`
+}
+
+// BracketMatch mirrors types.ts's BracketMatch field-for-field. It is the
+// bracket mapper's (Task 5) output: a knockout match tagged with its round
+// slug, alongside BracketTeam legs that may still be placeholders. These
+// rows are upserted into the same `match` table as scoreboard matches
+// (Task 6); the reader reconstructs BracketRound[] (name + ordered matches)
+// from them in slice 1c.
+type BracketMatch struct {
+	ID           string      `json:"id"`
+	Round        string      `json:"round"` // knockout round slug, e.g. "round-of-16"
+	Kickoff      string      `json:"kickoff"`
+	Home         BracketTeam `json:"home"`
+	Away         BracketTeam `json:"away"`
+	HomeScore    *int        `json:"homeScore"`
+	AwayScore    *int        `json:"awayScore"`
+	State        MatchState  `json:"state"`
+	StatusDetail string      `json:"statusDetail"`
+	StatusName   string      `json:"statusName"`
+	Minute       *string     `json:"minute"`
+	WinnerID     *string     `json:"winnerId"`
+	Note         *string     `json:"note"`
+}
+
 // Standing mirrors types.ts's Standing.
 type Standing struct {
 	Team           Team `json:"team"`
