@@ -66,13 +66,15 @@ CREATE TABLE standing (
 );
 
 CREATE TABLE top_scorer (
-  comp_id   text NOT NULL,
-  season_id text NOT NULL,
-  rank      int  NOT NULL,
-  player    text NOT NULL,
-  team_id   text REFERENCES team(id),
-  goals     int  NOT NULL,
-  matches   int,
+  comp_id        text NOT NULL,
+  season_id      text NOT NULL,
+  rank           int  NOT NULL,
+  player         text NOT NULL,
+  team_abbr      text,               -- ESPN stats give the scorer's team as
+  team_name      text,               -- abbr/name/crest (no team id), so we
+  team_crest_url text,               -- denormalize to match the TopScorer type
+  goals          int  NOT NULL,
+  matches        int,
   PRIMARY KEY (comp_id, season_id, rank)
 );
 

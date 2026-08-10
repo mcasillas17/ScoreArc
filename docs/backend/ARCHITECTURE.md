@@ -86,7 +86,7 @@ Migrations: `backend/migrations/0001_init.*.sql` (Tier-1 + roles),
 - **match**(id PK, comp_id, season_id, round, kickoff, state[`scheduled|live|finished`], home_team_id→team, away_team_id→team, home_score, away_score, minute, status_detail, status_name, winner_id, note, **finalized_at**, updated_at) — indexes on `(comp_id,season_id,kickoff)` and `state`.
 - **match_detail**(match_id PK→match, scorers jsonb, cards jsonb, stats jsonb, win_probability jsonb, shootout jsonb, shootout_detail jsonb, lineups jsonb, videos jsonb, info jsonb, form jsonb, h2h jsonb, commentary jsonb, updated_at)
 - **standing**(PK (comp_id,season_id,team_id), group_id, group_name, rank, played, wins, draws, losses, goals_for, goals_against, goal_difference, points, advanced, updated_at) — `group_id`/`group_name` (e.g. "A"/"Group A") are nullable: populated for multi-group competitions (e.g. World Cup group stage), null for single-table leagues.
-- **top_scorer**(PK (comp_id,season_id,rank), player, team_id→team, goals, matches)
+- **top_scorer**(PK (comp_id,season_id,rank), player, team_abbr, team_name, team_crest_url, goals, matches) — team is denormalized (ESPN stats give abbr/name/crest, no id), matching the frontend `TopScorer` type.
 
 ### Tier 3 — time-series (created now, WRITTEN in Phase 2 via `emitSnapshots()`)
 - **standing_snapshot**(id bigserial, comp_id, season_id, team_id, captured_at, rank, points, goal_difference, played) — append-only.
