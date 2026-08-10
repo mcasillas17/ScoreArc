@@ -49,6 +49,8 @@ CREATE TABLE standing (
   comp_id          text NOT NULL,
   season_id        text NOT NULL,
   team_id          text NOT NULL REFERENCES team(id),
+  group_id         text,
+  group_name       text,
   rank             int  NOT NULL,
   played           int  NOT NULL DEFAULT 0,
   wins             int  NOT NULL DEFAULT 0,

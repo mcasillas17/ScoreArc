@@ -85,19 +85,25 @@ type BracketMatch struct {
 	Note         *string     `json:"note"`
 }
 
-// Standing mirrors types.ts's Standing.
+// Standing mirrors types.ts's Standing, plus GroupID/GroupName: the ESPN
+// group ("Group A") a row was ranked within, not present on the TS Standing
+// type itself (the TS side carries it one level up, on Group.id/Group.name)
+// but persisted here per-row since the `standing` table has no nested
+// group concept. Nil for single-table competitions with no ESPN grouping.
 type Standing struct {
-	Team           Team `json:"team"`
-	Rank           int  `json:"rank"`
-	Played         int  `json:"played"`
-	Wins           int  `json:"wins"`
-	Draws          int  `json:"draws"`
-	Losses         int  `json:"losses"`
-	GoalsFor       int  `json:"goalsFor"`
-	GoalsAgainst   int  `json:"goalsAgainst"`
-	GoalDifference int  `json:"goalDifference"`
-	Points         int  `json:"points"`
-	Advanced       bool `json:"advanced"`
+	Team           Team    `json:"team"`
+	GroupID        *string `json:"groupId"`
+	GroupName      *string `json:"groupName"`
+	Rank           int     `json:"rank"`
+	Played         int     `json:"played"`
+	Wins           int     `json:"wins"`
+	Draws          int     `json:"draws"`
+	Losses         int     `json:"losses"`
+	GoalsFor       int     `json:"goalsFor"`
+	GoalsAgainst   int     `json:"goalsAgainst"`
+	GoalDifference int     `json:"goalDifference"`
+	Points         int     `json:"points"`
+	Advanced       bool    `json:"advanced"`
 }
 
 // TopScorer mirrors types.ts's TopScorer.
