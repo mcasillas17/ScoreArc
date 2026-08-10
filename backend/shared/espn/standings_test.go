@@ -84,6 +84,27 @@ func TestMapStandings(t *testing.T) {
 		}
 	})
 
+	t.Run("carries group id/name onto each row", func(t *testing.T) {
+		s := standings[0]
+		if s.GroupName == nil || *s.GroupName != "Group A" {
+			t.Fatalf("GroupName = %v, want \"Group A\"", s.GroupName)
+		}
+		if s.GroupID == nil || *s.GroupID != "A" {
+			t.Fatalf("GroupID = %v, want \"A\"", s.GroupID)
+		}
+
+		// Second group's rows should carry that group's own id/name, not
+		// bleed over from the first.
+		secondGroupStart := len(doc.Children[0].Standings.Entries)
+		s2 := standings[secondGroupStart]
+		if s2.GroupName == nil || *s2.GroupName != "Group B" {
+			t.Fatalf("second group GroupName = %v, want \"Group B\"", s2.GroupName)
+		}
+		if s2.GroupID == nil || *s2.GroupID != "B" {
+			t.Fatalf("second group GroupID = %v, want \"B\"", s2.GroupID)
+		}
+	})
+
 	t.Run("returns [] for a malformed payload", func(t *testing.T) {
 		got, err := MapStandings([]byte(`{}`))
 		if err != nil {

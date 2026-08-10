@@ -1,16 +1,20 @@
 package espn
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // Port of src/server/data/providers/espn-standings.ts's mapStandings.
 //
 // The TS mapper returns Group[] (id/name/standings per ESPN "children"
 // group, e.g. "Group A"). The Go port flattens that into a single
-// []Standing — the `standing` table (backend/migrations/0001_init.up.sql)
-// has no group column, keyed only by (comp_id, season_id, team_id) — so
-// group membership isn't persisted. Rank stays group-relative (1..n within
-// each group, matching the TS `entries.map((entry, i) => ({ rank: i + 1 })`
-// behavior), it's just that groups are concatenated rather than nested.
+// []Standing, carrying the group id/name onto each row (GroupID/GroupName
+// on Standing) so the `standing` table — keyed only by (comp_id, season_id,
+// team_id), one group per team per season — doesn't lose which group a
+// team belongs to. Rank stays group-relative (1..n within each group,
+// matching the TS `entries.map((entry, i) => ({ rank: i + 1 })` behavior),
+// it's just that groups are concatenated rather than nested.
 
 type rawStandingsDoc struct {
 	Children []rawStandingsGroup `json:"children"`
@@ -61,6 +65,19 @@ func MapStandings(raw []byte) ([]Standing, error) {
 	standings := make([]Standing, 0)
 	for _, grp := range doc.Children {
 		entries := grp.Standings.Entries
+
+		// Mirror the TS mapper's `grp.name.replace('Group ', '')` for the
+		// id, e.g. "Group A" -> "A". A group with no name (single-table,
+		// ungrouped competition) carries nil GroupID/GroupName rather than
+		// empty-string placeholders.
+		var groupID, groupName *string
+		if grp.Name != "" {
+			name := grp.Name
+			id := strings.Replace(grp.Name, "Group ", "", 1)
+			groupName = &name
+			groupID = &id
+		}
+
 		for i, entry := range entries {
 			s := standingStatMap(entry.Stats)
 
@@ -77,6 +94,8 @@ func MapStandings(raw []byte) ([]Standing, error) {
 					Abbr:     entry.Team.Abbreviation,
 					CrestURL: crest,
 				},
+				GroupID:        groupID,
+				GroupName:      groupName,
 				Rank:           i + 1,
 				Played:         int(s["gamesPlayed"]),
 				Wins:           int(s["wins"]),
