@@ -10,7 +10,8 @@
 
 - **Never commit or push to `main`** — it auto-deploys production. Work on a
   feature branch (`feat/…`, `fix/…`). Merging is the human's decision.
-- **Backend canonical branch: `feat/backend-handoff`.**
+- **Backend branches:** start each slice from latest `origin/main` on its own
+  feature branch.
 - **Test before opening a PR:**
   - Frontend: `npx tsc --noEmit` and `npm test`.
   - Backend: `cd backend && go build ./... && go test ./...` (Docker running for
@@ -27,5 +28,5 @@ An ESPN **ingester** + a public **reader** API (Go) on Fly.io, backed by Neon
 Postgres (provisioned via Vercel) with logos self-hosted on Cloudflare R2. The
 frontend swaps its `DataStore` seam to read from the reader. Slices in order:
 **1a-rev** (replace the old GCP `/infra` with Fly/Neon/R2 configs) → **1b**
-(ingester) → **1c** (reader) → **1d** (cutover). Details + contracts in
+(ingester service completion) → **1c** (reader, implemented) → **1d** (cutover). Details + contracts in
 `BACKEND_HANDOFF.md` and `docs/backend/ARCHITECTURE.md`.

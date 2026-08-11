@@ -8,7 +8,7 @@ to serve that data instead.
 
 > **Working on the backend / API?** Read **`BACKEND_HANDOFF.md`** (repo root) FIRST
 > — it's the self-contained onboarding (stack, current state, what's next, setup).
-> The canonical branch for the backend build is **`feat/backend-handoff`**.
+> Start each backend slice from the latest `origin/main` on its own feature branch.
 > This AGENTS.md's rules (never push to `main`, feature-branch, test before PR,
 > conventional commits) apply to backend work too; the backend-specific commands
 > and commit-trailer note are under **"Backend (Go)"** below.
@@ -45,7 +45,8 @@ Neon Postgres (provisioned via Vercel) + Cloudflare R2**. Full detail:
 `docs/backend/ARCHITECTURE.md` (schema/endpoints/security).
 
 - Go module: `github.com/mcasillas17/scorearc-backend` under `/backend` (Go 1.26+).
-- `cd backend && go build ./...` — build. `cd backend && go test ./...` — test
+- `cd backend && go build ./...` — build. `cd backend && go test ./...` — test;
+  `cd backend && go vet ./...` — static checks
   (some packages use testcontainers → **Docker must be running**).
 - `npm run export:competitions` — regenerate `backend/config/competitions.json`
   from `src/server/data/competitions.ts` (the single source of truth — never
@@ -66,7 +67,7 @@ Neon Postgres (provisioned via Vercel) + Cloudflare R2**. Full detail:
 - `src/app/` — Next.js App Router (pages, `layout.tsx`, `api/` routes, `globals.css`).
 - `src/components/` — React components (one `.tsx` each).
 - `src/server/data/` — the data layer. ESPN read-through lives behind a `DataStore`
-  seam: `service.ts` (public API), `providers/` (ESPN mappers, e.g. `espn-summary.ts`),
+  seam: `store.ts` (public API), `providers/` (ESPN mappers, e.g. `espn-summary.ts`),
   `cache.ts`, `types.ts`, and `__fixtures__/` (recorded ESPN JSON for tests).
   **Add data by extending a mapper + type + component through this seam — don't add new
   fetch call sites in components.**

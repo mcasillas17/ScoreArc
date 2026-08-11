@@ -68,11 +68,14 @@ migrate -version
 (Alternative: apply the `.sql` files directly with `psql -f` — see §5.3. `migrate`
 is nicer for versioned up/down.)
 
-### 1.7 sqlc — generates type-safe Go from SQL (used by the reader/ingester in 1b/1c)
+### 1.7 sqlc — optional for future generated query layers
 ```bash
 brew install sqlc
 sqlc version
 ```
+
+The implemented reader uses compile-checked Go scan targets and pgx placeholders
+directly; it does not currently require generated sqlc output.
 
 ### 1.8 Docker — build Go container images + run testcontainers for repo tests
 ```bash
@@ -118,14 +121,16 @@ wrangler whoami
 cd ~/build   # or wherever you keep projects
 git clone https://github.com/mcasillas17/ScoreArc.git
 cd ScoreArc
-git checkout feat/backend-handoff     # this handoff branch (has backend + these docs)
+git checkout main
+git pull --ff-only
+git checkout -b feat/<your-backend-slice>
 
 # frontend deps (needed for the config export + tsc/tests)
 npm install
 
 # backend builds + tests
-cd backend && go build ./... && go test ./... && cd ..
-# expect: config test PASS, no build errors
+cd backend && go build ./... && go test ./... && go vet ./... && cd ..
+# expect: config/shared/reader tests PASS, no build or vet errors
 ```
 
 ---
@@ -241,10 +246,11 @@ The Go ingester talks to R2 with the **AWS S3 SDK** pointed at the R2 endpoint
 
 ---
 
-## 7. Deploy the Go services to Fly (once 1b/1c exist)
+## 7. Deploy the Go services to Fly
 
-Each Go service is its own Fly app. Do this after slice 1b (ingester) / 1c
-(reader) are built — the `fly.toml` + Dockerfile come from slice **1a-rev**.
+Each Go service is its own Fly app. The reader application is implemented; the
+ingester executable and both services' `fly.toml`/Dockerfile deployment assets
+remain part of the 1b/1a-rev work.
 
 The `fly.toml` + `Dockerfile` for each service are **hand-authored and committed**
 in slice 1a-rev (infra as reviewable code) — do **not** let `fly launch` generate
@@ -277,7 +283,7 @@ fly deploy
 **Verify the deploy:**
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' https://scorearc-reader.fly.dev/healthz
-# expect: 200   (add a /healthz route in the reader, slice 1c)
+# expect: 200
 fly status --app scorearc-ingester
 # expect: 1 machine in "started" state (the always-on worker)
 ```
@@ -298,7 +304,7 @@ npm run export:competitions        # writes backend/config/competitions.json
 cd backend && go build ./... && go test ./...
 
 # run a Go service locally against Neon (uses the pooled DSN):
-cd backend/reader && DATABASE_URL="$READER_DSN" go run .    # once reader exists
+cd backend/reader && DATABASE_URL="$READER_DSN" PORT=8080 go run .
 
 # frontend (unchanged):
 npm run dev            # http://localhost:3000 (or the port it prints)
@@ -308,6 +314,18 @@ npx tsc --noEmit && npm test
 Repository/integration tests for the ingester/reader use **testcontainers** to
 spin up a throwaway Postgres in Docker — so make sure Docker Desktop is running
 before `go test ./...` in those packages.
+
+If Docker is provided by Colima, Testcontainers needs both the host-side socket
+and the in-VM socket used by its resource reaper:
+
+```bash
+export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
+export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
+cd backend && go test ./...
+```
+
+The reader is implemented. Its exact routes and runtime behavior are documented
+in `backend/reader/README.md`; its contract is `backend/reader/openapi.yaml`.
 
 ---
 
@@ -329,7 +347,8 @@ Everything should say `OK`. `go` must be **>= 1.26**; `psql` **16.x or newer**.
 
 | Var | Where | Value |
 |---|---|---|
-| `DATABASE_URL` (reader app) | Fly secret on the reader | `READER_DSN` (pooled, SELECT-only user) |
+| `DATABASE_URL` (reader app) | local env / Fly secret on the reader | `READER_DSN` (pooled, SELECT-only user) |
+| `PORT` | reader environment | optional listen port, default `8080` |
 | `DATABASE_URL` (ingester app) | Fly secret on the ingester | `INGESTER_DSN` (pooled, write user) |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` | Fly secret on the ingester | from Cloudflare R2 token |
 | `DATA_SOURCE` | Vercel env (frontend) | `espn` until parity, then `api` (slice 1d) |

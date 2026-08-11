@@ -1,6 +1,6 @@
 # ScoreArc Public Reader API — Implementation Plan (slice 1c)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. This plan is turnkey: every file has COMPLETE code, every command has an `expect:` output. Do NOT improvise SQL or invent columns — the schema is fixed by `backend/migrations/*.up.sql`.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. Do NOT improvise SQL or invent columns — the schema is fixed by `backend/migrations/*.up.sql`. The implementation amendments below supersede conflicting code snippets in the original draft.
 
 **Goal:** Build the ScoreArc **public reader API** — a Go REST/JSON service at `backend/reader/` that serves football data from Neon Postgres (via the SELECT-only `scorearc_reader` role) to the website, an LED board, and third parties. It exposes six `/v1` endpoints whose JSON deserializes **exactly** into the frontend types in `src/server/data/types.ts` (`Match[]`, `Group[]`, `BracketRound[]`, `MatchSummaryData`, `TopScorer[]`, `NewsArticle[]`), plus `/healthz`. News is a **live ESPN proxy** (not DB-served). Reads are parameterized (injection-proof), rate-limited per IP, CORS-open, and `Cache-Control`-tagged.
 
@@ -14,17 +14,61 @@
 
 The reader reuses the domain structs already defined in `backend/shared/espn/types.go` (`Team`, `Scorer`, `Card`, `MatchStats`, `WinProbability`, `Shootout`, `ShootoutDetail`, `BracketMatch`, `BracketTeam`, `TopScorer`, and the `MatchDetail` sub-shapes) so JSON tags match `types.ts` field-for-field. Response wrapper types (`Match`, `Group`, `Standing`, `BracketRound`, `MatchSummary`) are defined in the reader package and compose those structs.
 
-**Tech Stack:** Go 1.26; `github.com/jackc/pgx/v5` (+ `pgxpool`); `github.com/go-chi/chi/v5` (+ `/middleware`); `github.com/go-chi/cors`; `golang.org/x/time/rate`; tests via `github.com/testcontainers/testcontainers-go` (+ `/modules/postgres`). Module root: `backend/go.mod` (`module github.com/mcasillas17/scorearc-backend`, `go 1.26`).
+**Tech Stack:** Go 1.26; `github.com/jackc/pgx/v5` (+ `pgxpool`); `github.com/go-chi/chi/v5` (+ `/middleware`); `github.com/go-chi/cors`; `golang.org/x/time/rate`; `golang.org/x/sync/singleflight`; OpenAPI validation via `github.com/getkin/kin-openapi`; tests via `github.com/testcontainers/testcontainers-go` (+ `/modules/postgres`). Module root: `backend/go.mod` (`module github.com/mcasillas17/scorearc-backend`, `go 1.26`).
 
 ## Global Constraints
 
-- **`main` auto-deploys to production. Work on `feat/backend-handoff` only; never commit/merge to `main`.** (This worktree is already on `feat/backend-handoff`.)
+- **`main` auto-deploys to production. Work on `feat/public-reader-api` only; never commit/merge to `main`.** The isolated worktree is forked from the latest `origin/main`; the prerequisite backend commits are replayed on top.
 - **Injection-proof by construction:** every query uses pgx placeholders (`$1`, `$2`, …). There is **no** string-concatenated SQL anywhere. `comp`/`season` are whitelisted against `config.Registry` (loaded from the embedded `competitions.json`) before any query runs; match `id` is an opaque `$1` parameter only.
 - **SELECT-only in production:** the reader connects with `DATABASE_URL` = the `scorearc_reader_user` DSN. A test asserts that role physically cannot write.
 - **Response shapes are the contract.** Each endpoint's JSON MUST deserialize into the named `types.ts` interface, field-for-field. The committed `openapi.yaml` is the shared contract.
 - **No placeholders / no TODOs in code.** Every file compiles. `cd backend && go build ./... && go vet ./...` clean; `go test ./...` green (Docker running for testcontainers).
 - **Slices/maps that the frontend iterates are never `null`.** Empty collections serialize as `[]`/`{}` (initialize before scanning).
 - Commit messages use conventional prefixes and end with the trailer `Co-Authored-By: Copilot <noreply@github.com>` (the implementing agent's own identity).
+
+## Implementation amendments from the 2026-08-10 repository audit
+
+The original draft was reviewed against every application, data-layer, backend,
+migration, test, and documentation file before implementation. These amendments
+are part of the approved execution plan:
+
+- **Keep every red/green cycle compilable.** Tests for configuration, response
+  types, store behavior, news mapping/cache behavior, middleware, and handlers
+  are written before their corresponding production code. The draft's scaffold
+  no longer temporarily references files that do not exist.
+- **Depend on narrow interfaces.** HTTP handlers depend on a reader-store
+  interface and news interface; the news cache depends on the existing ESPN
+  client's `GetJSON` capability. This permits deterministic unit tests while
+  `pgxpool.Pool` remains the production implementation.
+- **Do not trust arbitrary `X-Forwarded-For`.** Rate limiting uses Fly's
+  platform-provided `Fly-Client-IP` when it is a valid address and otherwise
+  falls back to the TCP peer address. Malformed or client-controlled forwarding
+  chains do not select the limiter key.
+- **Avoid middleware lifecycle leaks.** The per-IP limiter performs bounded,
+  opportunistic eviction rather than starting an unowned `time.Tick` goroutine.
+- **Coalesce news cache misses.** A keyed `singleflight.Group` prevents a burst
+  from stampeding ESPN; the 90-second cache uses an injectable clock and is
+  covered for hits, expiry, failures, cancellation isolation, and concurrent
+  misses.
+- **Bound public-pressure state and dependency work.** The per-IP LRU is capped
+  at 10,000 entries, every `/v1` request carries a ten-second dependency
+  deadline, and coalesced health pings are cached for two seconds while their
+  HTTP responses remain `no-store`.
+- **Make the OpenAPI file executable contract documentation.** All serialized
+  fields are declared and required (nullable where appropriate), every route
+  documents success/error/rate-limit responses and cache headers, and tests load
+  the document and validate representative JSON for every public response type.
+- **Test both layers.** Fast tests cover routing, validation, CORS, rate limiting,
+  health behavior, cache headers, collection non-nullability, mapper edge cases,
+  and error handling. Testcontainers tests cover real migrations, every SQL
+  shape, injection-shaped inputs, and SELECT-only role enforcement including
+  INSERT, UPDATE, DELETE, and DDL denial.
+- **Harden process lifecycle.** The HTTP server has explicit read, header, write,
+  and idle timeouts plus graceful signal-driven shutdown.
+- **Update operator and consumer documentation.** The repository README,
+  backend handoff, setup guide, and architecture diagrams describe the reader's
+  implemented routes, trust boundary, local workflow, and current deployment
+  boundary.
 
 ## Current state (what exists on this branch)
 
@@ -69,7 +113,7 @@ backend/
 
 **Files:** create `backend/reader/main.go`, `backend/reader/config.go`, `backend/reader/server.go`; edit `backend/go.mod` (via `go get`).
 
-- [ ] **Step 1: Add dependencies** (run from `backend/`, the module root):
+- [x] **Step 1: Add dependencies** (run from `backend/`, the module root):
 
 ```bash
 cd backend
@@ -81,7 +125,7 @@ go get golang.org/x/time@latest
 
 `expect:` each `go get` prints a `go: added github.com/... vX.Y.Z` line and updates `go.mod`/`go.sum`. (Testcontainers deps are added in Task 5.)
 
-- [ ] **Step 2: Create `backend/reader/config.go`**
+- [x] **Step 2: Create `backend/reader/config.go`**
 
 ```go
 package main
@@ -113,7 +157,7 @@ func loadConfig() (Config, error) {
 }
 ```
 
-- [ ] **Step 3: Create `backend/reader/server.go`** (App wiring, router, `/healthz`, `resolve`; the `rateLimit` middleware referenced here is added in Task 4, and the `handle*` endpoint methods in Task 4 — this file compiles once those exist, so create `handlers.go`/`ratelimit.go` in the same branch before building):
+- [x] **Step 3: Create `backend/reader/server.go`** (App wiring, router, `/healthz`, `resolve`; the `rateLimit` middleware referenced here is added in Task 4, and the `handle*` endpoint methods in Task 4 — this file compiles once those exist, so create `handlers.go`/`ratelimit.go` in the same branch before building):
 
 ```go
 package main
@@ -194,7 +238,7 @@ func (a *App) handleHealthz(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-- [ ] **Step 4: Create `backend/reader/main.go`**
+- [x] **Step 4: Create `backend/reader/main.go`**
 
 ```go
 // Command reader is the ScoreArc public read-only REST/JSON API. It serves
@@ -287,7 +331,7 @@ func main() {
 }
 ```
 
-- [ ] **Step 5: Build** (won't fully build until Tasks 2–4 add `Store`, `newsService`, `ipRateLimiter`, and the handlers — that's expected. Build after Task 4). For now sanity-check the module resolves:
+- [x] **Step 5: Build** (won't fully build until Tasks 2–4 add `Store`, `newsService`, `ipRateLimiter`, and the handlers — that's expected. Build after Task 4). For now sanity-check the module resolves:
 
 ```bash
 cd backend && go mod tidy
@@ -320,7 +364,7 @@ Co-Authored-By: Copilot <noreply@github.com>"
 | `/v1/matches/{id}` | `MatchSummaryData` | `match_detail` | the jsonb columns for one id (no `shootout` aggregate — that field is not in `MatchSummaryData`) |
 | `/v1/competitions/{comp}/{season}/top-scorers` | `TopScorer[]` | `top_scorer` | rank/player/goals/matches + team_abbr/team_name/team_crest_url, all from `top_scorer` (team denormalized) |
 
-- [ ] **Step 1: Create `backend/reader/types.go`** (response wrappers; scalar sub-shapes reuse `espn.*` so JSON tags already match `types.ts`):
+- [x] **Step 1: Create `backend/reader/types.go`** (response wrappers; scalar sub-shapes reuse `espn.*` so JSON tags already match `types.ts`):
 
 ```go
 package main
@@ -399,7 +443,7 @@ type MatchSummary struct {
 }
 ```
 
-- [ ] **Step 2: Create `backend/reader/store.go`** (all reads; parameterized only):
+- [x] **Step 2: Create `backend/reader/store.go`** (all reads; parameterized only):
 
 ```go
 package main
@@ -737,7 +781,7 @@ func (s *Store) TopScorers(ctx context.Context, comp, season string) ([]espn.Top
 
 > Note on the `MatchSummary` range-over-map: iteration order is irrelevant (each entry unmarshals into a distinct field), so the non-deterministic map order is safe here.
 
-- [ ] **Step 3: Vet the package compiles in isolation** (handlers/news/ratelimit still pending — build the whole reader in Task 4):
+- [x] **Step 3: Vet the package compiles in isolation** (handlers/news/ratelimit still pending — build the whole reader in Task 4):
 
 ```bash
 cd backend && go build ./shared/... && go vet ./config/...
@@ -760,7 +804,7 @@ Co-Authored-By: Copilot <noreply@github.com>"
 
 **Files:** create `backend/shared/espn/news.go`, `backend/shared/espn/news_test.go`, copy fixture `backend/shared/espn/testdata/espn-news.json`; create `backend/reader/news.go`.
 
-- [ ] **Step 1: Copy the recorded news fixture into the espn testdata dir**
+- [x] **Step 1: Copy the recorded news fixture into the espn testdata dir**
 
 ```bash
 cp src/server/data/__fixtures__/espn-news.json backend/shared/espn/testdata/espn-news.json
@@ -768,7 +812,7 @@ cp src/server/data/__fixtures__/espn-news.json backend/shared/espn/testdata/espn
 
 `expect:` no output; `ls backend/shared/espn/testdata/espn-news.json` now succeeds.
 
-- [ ] **Step 2: Create `backend/shared/espn/news.go`** (port of `providers/espn-news.ts` + `endpoints.ts` `newsUrl`; reuses the package-private `site` const and `jsonScalarToString` helper already in `client.go`/`summary.go`):
+- [x] **Step 2: Create `backend/shared/espn/news.go`** (port of `providers/espn-news.ts` + `endpoints.ts` `newsUrl`; reuses the package-private `site` const and `jsonScalarToString` helper already in `client.go`/`summary.go`):
 
 ```go
 package espn
@@ -850,7 +894,7 @@ func MapNews(raw []byte) ([]NewsArticle, error) {
 }
 ```
 
-- [ ] **Step 3: Create `backend/shared/espn/news_test.go`**
+- [x] **Step 3: Create `backend/shared/espn/news_test.go`**
 
 ```go
 package espn
@@ -893,7 +937,7 @@ func TestMapNews(t *testing.T) {
 }
 ```
 
-- [ ] **Step 4: Create `backend/reader/news.go`** (TTL cache; mirrors `store.ts` `getNews` 90 s TTL, keyed by ESPN slug):
+- [x] **Step 4: Create `backend/reader/news.go`** (TTL cache; mirrors `store.ts` `getNews` 90 s TTL, keyed by ESPN slug):
 
 ```go
 package main
@@ -955,7 +999,7 @@ func (n *newsService) get(ctx context.Context, slug string) ([]espn.NewsArticle,
 }
 ```
 
-- [ ] **Step 5: Run the news mapper test**
+- [x] **Step 5: Run the news mapper test**
 
 ```bash
 cd backend && go test ./shared/espn/ -run TestMapNews -v
@@ -978,7 +1022,7 @@ Co-Authored-By: Copilot <noreply@github.com>"
 
 **Files:** create `backend/reader/ratelimit.go`, `backend/reader/handlers.go`. (CORS is already wired in `server.go` Task 1.)
 
-- [ ] **Step 1: Create `backend/reader/ratelimit.go`** (per-IP token bucket with idle eviction):
+- [x] **Step 1: Create `backend/reader/ratelimit.go`** (per-IP token bucket with idle eviction):
 
 ```go
 package main
@@ -1075,7 +1119,7 @@ func (a *App) rateLimit(next http.Handler) http.Handler {
 }
 ```
 
-- [ ] **Step 2: Create `backend/reader/handlers.go`** (the six handlers + JSON helpers + Cache-Control policy):
+- [x] **Step 2: Create `backend/reader/handlers.go`** (the six handlers + JSON helpers + Cache-Control policy):
 
 ```go
 package main
@@ -1238,7 +1282,7 @@ func (a *App) handleMatchSummary(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-- [ ] **Step 3: Build + vet the whole backend** (now everything is present):
+- [x] **Step 3: Build + vet the whole backend** (now everything is present):
 
 ```bash
 cd backend && go build ./... && go vet ./...
@@ -1261,7 +1305,7 @@ Co-Authored-By: Copilot <noreply@github.com>"
 
 **Files:** create `backend/reader/store_test.go`, `backend/reader/security_test.go`. Docker must be running.
 
-- [ ] **Step 1: Add test dependencies** (from `backend/`):
+- [x] **Step 1: Add test dependencies** (from `backend/`):
 
 ```bash
 cd backend
@@ -1271,7 +1315,7 @@ go get github.com/testcontainers/testcontainers-go/modules/postgres@latest
 
 `expect:` `go: added github.com/testcontainers/...` lines; deps land in `go.mod` (test-only).
 
-- [ ] **Step 2: Create `backend/reader/store_test.go`** (shared container in `TestMain`, applies the real migrations, seeds rows, exercises every handler through the router):
+- [x] **Step 2: Create `backend/reader/store_test.go`** (shared container in `TestMain`, applies the real migrations, seeds rows, exercises every handler through the router):
 
 ```go
 package main
@@ -1584,7 +1628,7 @@ func TestHealthz(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Create `backend/reader/security_test.go`** (validation/injection rejection + the SELECT-only guarantee):
+- [x] **Step 3: Create `backend/reader/security_test.go`** (validation/injection rejection + the SELECT-only guarantee):
 
 ```go
 package main
@@ -1680,7 +1724,7 @@ func TestReaderRoleIsSelectOnly(t *testing.T) {
 }
 ```
 
-- [ ] **Step 4: Run the tests** (Docker running):
+- [x] **Step 4: Run the tests** (Docker running):
 
 ```bash
 cd backend && go test ./reader/ ./shared/espn/ -v
@@ -1719,7 +1763,7 @@ Co-Authored-By: Copilot <noreply@github.com>"
 
 **Files:** create `backend/reader/openapi.yaml`.
 
-- [ ] **Step 1: Create `backend/reader/openapi.yaml`** (the shared contract; schemas mirror `types.ts`):
+- [x] **Step 1: Create `backend/reader/openapi.yaml`** (the shared contract; schemas mirror `types.ts`):
 
 ```yaml
 openapi: 3.1.0
@@ -2052,7 +2096,7 @@ components:
         h2h: { type: array, items: { $ref: "#/components/schemas/H2HMeeting" } }
 ```
 
-- [ ] **Step 2: Local end-to-end run** against a real Postgres. Fastest local DB is a throwaway Docker container (mirrors the tests). Run the migrations + a seed row, then boot the reader as the SELECT-only user:
+- [x] **Step 2: Local end-to-end run** against a real Postgres. Fastest local DB is a throwaway Docker container (mirrors the tests). Run the migrations + a seed row, then boot the reader as the SELECT-only user:
 
 ```bash
 # 1) throwaway Postgres
@@ -2082,7 +2126,7 @@ sleep 2
 
 `expect:` a log line `{"level":"INFO","msg":"reader listening","addr":":8080"}`.
 
-- [ ] **Step 3: Curl each endpoint**
+- [x] **Step 3: Curl each endpoint**
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/healthz
@@ -2109,14 +2153,14 @@ curl -s http://localhost:8080/v1/competitions/world-cup/news | head -c 120
 ```
 `expect:` a JSON array of `{"id":...,"headline":...}` fetched live from ESPN (requires network).
 
-- [ ] **Step 4: Tear down the local DB**
+- [x] **Step 4: Tear down the local DB**
 
 ```bash
 kill %1 2>/dev/null; docker rm -f scorearc-localdb
 ```
 `expect:` `scorearc-localdb` removed.
 
-- [ ] **Step 5: Full backend gate**
+- [x] **Step 5: Full backend gate**
 
 ```bash
 cd backend && go build ./... && go vet ./... && go test ./...
@@ -2132,6 +2176,11 @@ git commit -m "docs(reader): OpenAPI 3.1 contract for the /v1 endpoints
 Co-Authored-By: Copilot <noreply@github.com>"
 ```
 
+> **Delivery note (2026-08-11):** The task-level commit checkpoints above were
+> intentionally consolidated into the final reviewed feature commit. Their
+> unchecked state records that those exact intermediate commits were not made;
+> all implementation and verification steps are complete.
+
 ---
 
 ## Self-review (must all be true before opening the PR)
@@ -2142,16 +2191,16 @@ Co-Authored-By: Copilot <noreply@github.com>"
 - `GET /.../standings` → `Group[]`. `store.Standings` groups by `group_id`/`group_name`; null group → one `Group` named after the competition (`id` = name minus `"Group "`, matching `espn-standings.ts`). `Standing` omits group fields (they live on `Group`, per `types.ts`).
 - `GET /.../bracket` → `BracketRound[]`. Knockout `match` rows (`round IS NOT NULL`) grouped by slug, ordered by the ported `ROUND_ORDER`; matches are `espn.BracketMatch` (mirrors `types.ts` `BracketMatch`); `placeholder` = null crest. Round names from the ported `ROUND_NAMES`.
 - `GET /v1/matches/{id}` → `MatchSummaryData`. `store.MatchSummary` reads the `match_detail` jsonb columns into `reader.MatchSummary` (exactly the 11 `MatchSummaryData` fields — **no** `shootout` aggregate). Missing row → 404.
-- `GET /.../top-scorers` → `TopScorer[]`. `store.TopScorers` uses `espn.TopScorer`; team fields via LEFT JOIN (empty when unknown).
+- `GET /.../top-scorers` → `TopScorer[]`. `store.TopScorers` uses `espn.TopScorer`; team abbreviation/name/crest are read directly from the denormalized `top_scorer` columns (empty when unknown).
 - `GET /v1/competitions/{comp}/news` → `NewsArticle[]`. **Live ESPN** via `espn.NewsURL` + `espn.MapNews` (ported from `espn-news.ts`), season ignored, 90 s TTL cache. Never queries the DB.
 
-**Injection-proof:** all five DB queries are `const` strings with `$1`/`$2` placeholders only — no `fmt.Sprintf`/string concatenation into SQL anywhere in `store.go`. `comp`/`season` are whitelisted against the registry in every handler *before* the query; `TestValidationRejectsInjectionAttempt` proves a malicious `comp` is 400'd and the table survives. Match `id` is a bare `$1` parameter.
+**Injection-proof:** all five DB queries are `const` strings with `$1`/`$2` placeholders only — no `fmt.Sprintf`/string concatenation into SQL anywhere in `store.go`. `comp`/`season` are whitelisted against the registry in every handler *before* the query; `TestValidationStopsBeforeDependencies` proves invalid identifiers never reach the store, while `TestStoreIntegration/parameter-looking_input_stays_data` exercises injection-shaped text through real pgx parameters. Match `id` is a bare `$1` parameter.
 
-**SELECT-only:** production `DATABASE_URL` is the `scorearc_reader_user` DSN; `TestReaderRoleIsSelectOnly` connects as that role, confirms `SELECT` works and `INSERT` fails with `permission denied`.
+**SELECT-only:** production `DATABASE_URL` is the `scorearc_reader_user` DSN; `TestStoreIntegration` runs every successful read through a login granted only `scorearc_reader`, then verifies INSERT, UPDATE, DELETE, and DDL are denied.
 
-**Empty-collection safety:** `Scorers`, `Cards`, `Videos`, `Commentary`, `H2H`, and every `[]Group/[]Match/[]BracketRound/[]TopScorer/[]Standing` are initialized with `make(..., 0)`/`[]T{}` so JSON is `[]`, never `null`.
+**Empty-collection safety:** `normalizeMatch` and `normalizeMatchSummary` protect top-level and nested arrays, stores build non-nil list responses, and handlers normalize any nil dependency list. `TestNormalizeCollectionFields`, `TestNilListDependenciesStillEncodeArrays`, and the real store tests prove JSON collections are `[]`, never `null`.
 
-**Caching:** matches/bracket set `max-age=10` when any leg is live else `60`; standings/top-scorers/news `60`; match summary `30`; `/healthz` uncached and rate-limit-exempt.
+**Caching:** matches/bracket set `max-age=10` when any leg is live else `60`; standings/top-scorers/news HTTP responses use `60`; match summary uses `30`; ESPN news has a separate 90-second internal TTL. `/healthz` is rate-limit-exempt, coalesces and caches DB pings for two seconds, and always returns `Cache-Control: no-store`.
 
 **No placeholders:** every file above is complete and compiles; `go build ./... && go vet ./... && go test ./...` is the gate. `/healthz` exists (SETUP §7). OpenAPI committed as the shared contract.
 

@@ -8,21 +8,24 @@ section is superseded by the Fly+Neon+R2 pivot; everything else here matches).
 
 ## 1. System diagram
 
-```
- ESPN (upstream) ───▶ Ingester (Go, Fly, always-on, NO public HTTP)
-                        poll ESPN → map → upsert current state;
-                        freeze matches on finish; mirror logos → R2;
-                        emitSnapshots()  [no-op in Phase 1]
-                              │ writes (ingester DB user)
-                              ▼
-                        Neon Postgres  (pooled conn for apps; direct for migrations)
-                              ▲ reads (reader DB user — SELECT-only)
-                        Reader (Go, Fly, PUBLIC) ──/v1/…──▶ public consumers
-                          REST/JSON; news = live ESPN proxy;         (frontend, LED board, 3rd parties)
-                          parameterized queries; rate-limited; CDN-cacheable
-                        Cloudflare R2 (scorearc-assets) + CDN  →  logos
+```mermaid
+flowchart LR
+  ESPN["ESPN keyless public API"]
+  Ingester["Go ingester<br/>private worker"]
+  DB[("Neon Postgres")]
+  Reader["Go reader<br/>public /v1 API"]
+  R2["Cloudflare R2 + CDN"]
+  Web["Next.js on Vercel"]
+  Other["LED boards + third parties"]
 
- Next.js on Vercel ── DataStore(apiStore) ──▶ Reader /v1/…   (server-side; ESPN fallback via flag)
+  ESPN -->|"matches · standings · bracket · detail · scorers"| Ingester
+  Ingester -->|"upsert with writer role"| DB
+  Ingester -->|"mirror crests"| R2
+  DB -->|"SELECT-only role"| Reader
+  ESPN -->|"news only"| Reader
+  Reader --> Web
+  Reader --> Other
+  R2 --> Web
 ```
 
 - **Live vs historical is a first-class axis.** Current state is hot/mutable
@@ -123,7 +126,7 @@ Migrations: `backend/migrations/0001_init.*.sql` (Tier-1 + roles),
 
 ---
 
-## 5. Reader (slice 1c — public Go REST API on Fly)
+## 5. Reader (slice 1c — implemented public Go REST API)
 
 - Public, autoscaling, scale-to-zero. Versioned under `/v1`.
 - Endpoints mirror the 6 `DataStore` methods:
@@ -134,11 +137,49 @@ Migrations: `backend/migrations/0001_init.*.sql` (Tier-1 + roles),
   - `GET /v1/matches/{id}`  (summary/detail)
   - `GET /v1/competitions/{comp}/news`  → **live proxy to ESPN** (short TTL cache), NOT DB-served.
 - **Response shapes match the frontend types.** Publish an **OpenAPI** doc as the
-  shared contract.
+  shared contract. The implementation and OpenAPI 3.1 document live in
+  `backend/reader/`; contract tests load the document and validate every public
+  response model.
 - **Cacheable:** `Cache-Control` (short TTL for live, longer for finished/static)
-  so Cloudflare/consumers cache and shield the DB.
+  so consumers—and an optional future API CDN—can cache and shield the DB.
 - **Rate-limited** per IP (app-level to start). Open read tier now; API
   keys/quotas deferred until a consumer needs them.
+- The limiter tracks at most 10,000 clients with LRU eviction. `/v1` dependency
+  work has a ten-second context deadline. Health checks are rate-limit-exempt
+  but DB pings are coalesced and cached for two seconds; health and all error
+  responses are explicitly `no-store`.
+
+### Reader request flow
+
+```mermaid
+sequenceDiagram
+  participant C as Consumer
+  participant F as Fly HTTP proxy
+  participant R as Reader
+  participant G as Competition registry
+  participant D as Neon Postgres
+  participant E as ESPN news
+
+  C->>F: GET /v1/...
+  F->>R: request + Fly-Client-IP
+  R->>R: CORS · security headers · rate limit
+  alt competition/season endpoint
+    R->>G: whitelist comp + season
+    G-->>R: canonical config
+    R->>D: parameterized SELECT
+    D-->>R: typed rows/jsonb
+  else news endpoint
+    R->>G: whitelist competition
+    R->>R: 90 s TTL cache + singleflight
+    R->>E: fetch on cache miss
+    E-->>R: ESPN JSON
+  end
+  R-->>C: exact frontend JSON + Cache-Control
+```
+
+The process has explicit read/header/write/idle timeouts and graceful signal
+shutdown. Empty public collections are normalized to `[]` at both top-level and
+nested response locations.
 
 ---
 
@@ -155,7 +196,13 @@ Migrations: `backend/migrations/0001_init.*.sql` (Tier-1 + roles),
 - **Secrets** (DB DSNs, R2 keys) live in **Fly secrets** / GitHub Actions
   secrets — never in code.
 - **TLS everywhere** (Fly HTTPS; Neon requires `sslmode=require`).
-- **Rate limiting + CDN caching** in front of the reader as defense-in-depth/scale.
+- **App rate limiting now; optional future API CDN caching** as
+  defense-in-depth/scale. Cloudflare currently fronts R2 assets, not the Fly
+  reader origin.
+- **Client IP trust boundary:** the direct Fly HTTP deployment uses a valid
+  `Fly-Client-IP` value and otherwise the TCP peer. The reader deliberately
+  ignores `X-Forwarded-For`. Adding another proxy in front of Fly requires a
+  reviewed trusted-proxy policy before rollout.
 
 ---
 
@@ -175,11 +222,17 @@ Migrations: `backend/migrations/0001_init.*.sql` (Tier-1 + roles),
 
 - **Go mappers:** unit tests against the recorded ESPN JSON fixtures (parity with
   the TS mappers) — copy/reference `src/server/data/__fixtures__/`.
-- **Repository layer:** Go tests against ephemeral Postgres via **testcontainers**
-  (Docker) — upsert, freeze-on-finish, asset-skip-if-present.
-- **Reader handlers:** table-driven (DB rows → expected JSON).
-- **Contract:** the `apiStore` (TS) parses real reader output into the TS types;
-  OpenAPI as the shared contract.
+- **Repository layer:** reader tests apply the real migrations to ephemeral
+  Postgres 16 via **Testcontainers**, seed representative data, exercise every
+  SQL read model, and prove the reader role cannot INSERT/UPDATE/DELETE/DDL.
+- **Reader handlers/middleware:** fast fakes cover all routes, registry
+  validation, sanitized dependency failures, CORS, cache headers, health, client
+  IP selection, rate limiting, and server timeout configuration.
+- **News:** mapper edge cases plus deterministic TTL, failure, defensive-copy,
+  race, and concurrent singleflight coverage.
+- **Contract:** tests load and validate `backend/reader/openapi.yaml`, require
+  exact object fields, and validate representative JSON for every endpoint
+  response. Slice 1d will additionally parse real reader output in `apiStore`.
 - **Frontend:** `apiStore` unit test against a mocked reader response.
 
 ---
@@ -204,7 +257,7 @@ Migrations: `backend/migrations/0001_init.*.sql` (Tier-1 + roles),
 
 ---
 
-## 10. Contracts to pin BEFORE writing the 1b/1c/1d plans
+## 10. Pinned contracts and remaining slice boundaries
 
 The prose above is not enough to implement directly — nail these down (in each
 slice's plan) so the Go output matches the frontend verbatim. The **source of
@@ -232,7 +285,7 @@ truth is the TS**: `src/server/data/types.ts` (shapes), `providers/espn-*.ts`
 - **Asset idempotency:** skip the download if the object already exists in R2
   (HEAD) or `team.crest_url` already points at our CDN.
 
-**1c — Reader**
+**1c — Reader (implemented)**
 - **Endpoint → type map:** each `/v1/…` response must deserialize into exactly
   `Match[]` / `Group[]` / `BracketRound[]` / `MatchSummaryData` / `TopScorer[]` /
   `NewsArticle[]` from `types.ts`. Write a field-by-field map in the plan.
@@ -242,6 +295,8 @@ truth is the TS**: `src/server/data/types.ts` (shapes), `providers/espn-*.ts`
 - **Query layer:** pick **sqlc** (recommended — compile-checked, parameterized) or
   `pgx` placeholders; either way, no string-built SQL.
 - Add a `/healthz` route (used by the deploy check in SETUP §7).
+- The machine-readable contract is `backend/reader/openapi.yaml`; behavior and
+  local-operation notes are in `backend/reader/README.md`.
 
 **1d — Cutover**
 - `apiStore` lives at `src/server/data/apiStore.ts`, implementing `DataStore`.

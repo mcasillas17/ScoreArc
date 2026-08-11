@@ -52,6 +52,11 @@ func StatisticsURL(slug string) string {
 // Client is a minimal keyless HTTP client for ESPN's public soccer API.
 type Client struct{ HTTP *http.Client }
 
+const (
+	maxJSONResponseBytes int64 = 16 << 20
+	maxErrorBodyBytes    int64 = 200
+)
+
 // New returns a Client with a sane default timeout.
 func New() *Client {
 	return &Client{HTTP: &http.Client{Timeout: 15 * time.Second}}
@@ -63,15 +68,27 @@ func (c *Client) GetJSON(ctx context.Context, url string, out any) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "scorearc-ingester")
 	res, err := c.HTTP.Do(req)
 	if err != nil {
 		return err
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(res.Body)
-		return fmt.Errorf("espn %s: %d %s", url, res.StatusCode, string(b[:min(200, len(b))]))
+		b, _ := io.ReadAll(io.LimitReader(res.Body, maxErrorBodyBytes))
+		return fmt.Errorf("espn %s: %d %s", url, res.StatusCode, string(b))
 	}
-	return json.NewDecoder(res.Body).Decode(out)
+	if res.ContentLength > maxJSONResponseBytes {
+		return fmt.Errorf("espn %s: response exceeds %d-byte limit", url, maxJSONResponseBytes)
+	}
+	body, err := io.ReadAll(io.LimitReader(res.Body, maxJSONResponseBytes+1))
+	if err != nil {
+		return fmt.Errorf("espn %s: read response: %w", url, err)
+	}
+	if int64(len(body)) > maxJSONResponseBytes {
+		return fmt.Errorf("espn %s: response exceeds %d-byte limit", url, maxJSONResponseBytes)
+	}
+	if err := json.Unmarshal(body, out); err != nil {
+		return fmt.Errorf("espn %s: decode response: %w", url, err)
+	}
+	return nil
 }

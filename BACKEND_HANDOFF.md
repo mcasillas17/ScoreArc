@@ -5,9 +5,10 @@ written so an agent (or engineer) with **no prior context** can pick this up on 
 fresh machine and continue. Read this file first, then `docs/backend/SETUP.md`
 (tools + cloud setup) and `docs/backend/ARCHITECTURE.md` (the design).
 
-> **Canonical branch:** `feat/backend-handoff` — do all backend work here (or
-> branch off it). A local-only `feat/backend-api-phase1` has the same code minus
-> the handoff docs; ignore/delete it.
+> **Branching:** `main` is the integration baseline and auto-deploys. Start each
+> backend slice on its own feature branch and merge only through a reviewed PR.
+> The public reader implementation was developed on `feat/public-reader-api`
+> from `origin/main`, with its prerequisite backend commits replayed on top.
 
 > ⚠️ **Some steps need a human at a browser — an unattended agent cannot do
 > them.** Account creation + these OAuth logins each open a browser:
@@ -65,9 +66,9 @@ This is a **monorepo**. The frontend and backend live together; Vercel ignores
 /backend/                 the Go backend (module github.com/mcasillas17/scorearc-backend)
   config/                 loads competitions.json (generated from competitions.ts) → shared config
   migrations/             Postgres schema migrations (0001_init, 0002_snapshots)
-  ingester/               [NOT YET BUILT — slice 1b] Go worker: poll ESPN → upsert → freeze → mirror logos
-  reader/                 [NOT YET BUILT — slice 1c] Go public REST API serving the 6 shapes
-  shared/                 [NOT YET BUILT] ESPN mappers (Go port) + db repo layer
+  ingester/               [SERVICE WIRING PENDING] worker executable/store/cadence/assets
+  reader/                 [IMPLEMENTED — slice 1c] public REST API serving the 6 shapes
+  shared/espn/            tested Go ESPN client, domain types, and mappers
 /infra/                   [SUPERSEDED — GCP Terraform; replace with Fly+Neon+R2, slice 1a-rev]
 /docs/
   backend/                THIS handoff package (SETUP.md, ARCHITECTURE.md)
@@ -79,7 +80,7 @@ This is a **monorepo**. The frontend and backend live together; Vercel ignores
 The authoritative design detail is `docs/superpowers/specs/2026-07-22-backend-api-phase1-design.md`
 (read it — only its GCP *infra* section is outdated; schema/endpoints/security stand).
 
-## 4. What's already done ✅ (slice 1a, tasks 1–4)
+## 4. What's already done ✅
 
 All committed on this branch. Verified: `cd backend && go build ./... && go test ./...` pass.
 
@@ -87,6 +88,13 @@ All committed on this branch. Verified: `cd backend && go build ./... && go test
 2. **Config export** — `scripts/export-competitions.mjs` generates `backend/config/competitions.json` from the frontend's `src/server/data/competitions.ts` (single source of truth); `backend/config/config.go` loads it (`//go:embed`), with tests. Run `npm run export:competitions` to regenerate.
 3. **Postgres migrations** — `backend/migrations/000{1,2}_*.sql`: the schema (Tier-1 current-state + Tier-3 snapshot skeleton + ops) and the **least-privilege roles** (`scorearc_reader` = SELECT-only; `scorearc_ingester` = SELECT/INSERT/UPDATE). See ARCHITECTURE.md for the full schema.
 4. **Infra (GCP Terraform)** — `infra/*.tf`. ⚠️ **Superseded** by the Fly+Neon+R2 pivot; keep for reference but the next task replaces it.
+5. **Shared ESPN layer** — Go endpoint builders, response models, and fixture-tested
+   mappers for scoreboard, standings, bracket, summary, statistics, and news.
+6. **Public reader API (slice 1c)** — six versioned `/v1` routes plus `/healthz`,
+   parameterized pgx read models, registry validation, SELECT-only role
+   enforcement, CORS, per-client limiting, defensive process timeouts, a
+   stampede-safe news cache, OpenAPI 3.1, unit tests, and real-Postgres
+   Testcontainers coverage. See `backend/reader/README.md`.
 
 **Known minor follow-up:** Go struct field `config.Competition.CurrentSeasonId` should be renamed `CurrentSeasonID` (Go initialism lint, ST1003) when a linter is added.
 
@@ -104,8 +112,11 @@ Each slice is its own spec-lite → plan → build cycle (see §6 for how we wor
   - Cloudflare R2 bucket + access keys for the logo mirror.
   - GitHub Actions workflows to deploy each Go service to Fly (`flyctl deploy`), path-filtered to `/backend`.
   - `docs/backend/SETUP.md` already contains the exact provisioning steps.
-- **1b — Ingester** (`backend/ingester/`): port the ESPN mappers to Go (test against the recorded fixtures in `src/server/data/__fixtures__/`), poll ESPN on an always-on ticker (fast while matches are live), upsert current state, freeze finished matches (`finalized_at`), mirror logos to R2, and stub `emitSnapshots()` (no-op in Phase 1).
-- **1c — Reader** (`backend/reader/`): a public REST/JSON API under `/v1` serving the 6 shapes from Postgres (+ a live ESPN **proxy** for `/news`, which is NOT persisted). Injection-proof: parameterized queries only, typed/whitelisted inputs, SELECT-only DB role. Publish an OpenAPI doc.
+- **1b — Ingester service completion** (`backend/ingester/`): the shared ESPN
+  mappers exist; add the worker store, polling cadence, freeze behavior, R2 logo
+  mirror, executable wiring, and `emitSnapshots()` no-op.
+- **1c — Reader**: **implemented.** Deployment configuration remains part of
+  1a-rev; production rollout must use the SELECT-only reader DSN.
 - **1d — Frontend cutover**: add an `apiStore` implementation of `DataStore` (in `src/server/data/`) that calls the reader; select it via a `DATA_SOURCE=api|espn` env flag with ESPN fallback; verify parity; flip to `api`.
 - **Phase 2+** (later): time-series snapshot writes + an analytics store (BigQuery cross-cloud, or R2+DuckDB, or defer and use Neon); historical/xG backfill; own ML; Claude language layer; the LED board consumer.
 
@@ -120,7 +131,8 @@ execute them** — and Codex / Copilot don't have it. The artifacts are plain ma
   checkbox checklist with **exact code and `expect:` outputs**.
 
 **Workflow-agnostic execution (do this):**
-1. If the slice has **no plan yet** (1a-rev, 1b, 1c, 1d don't — only 1a does),
+1. If the slice has **no plan yet**, first check `docs/superpowers/plans/` (1b and
+   1c now have plans). If none exists,
    first **write one** as a markdown file in `docs/superpowers/plans/` following
    the 1a plan's shape (tasks → steps → code → `expect:` → commit). Pin the
    contracts in `docs/backend/ARCHITECTURE.md §10` before coding.
@@ -132,7 +144,7 @@ execute them** — and Codex / Copilot don't have it. The artifacts are plain ma
    humans used to author it.
 
 Hard rules (also in `AGENTS.md` — read it; Codex auto-loads it):
-- **`main` auto-deploys the frontend to production. Never commit/merge to `main`.** Branch for all work (`feat/…`, `fix/…`). **Canonical backend branch: `feat/backend-handoff`.**
+- **`main` auto-deploys the frontend to production. Never commit/merge to `main`.** Branch for all work (`feat/…`, `fix/…`).
 - **Test before a PR:** `npx tsc --noEmit`, `npm test`, and for the backend `cd backend && go build ./... && go test ./...` (Docker running for testcontainers). Merging is the human's decision.
 - Conventional commit prefixes (`feat:`/`fix:`/`docs:`/`chore:`). End commit messages with a `Co-Authored-By:` trailer using **your own** agent identity — e.g. `Co-Authored-By: Codex <noreply@openai.com>` or `Co-Authored-By: Copilot <noreply@github.com>`. Do **not** attribute commits to another agent.
 - TypeScript strict; no `any`. Go: idiomatic, tested.
@@ -148,5 +160,5 @@ Hard rules (also in `AGENTS.md` — read it; Codex auto-loads it):
 ---
 
 **Start here:** read `docs/backend/SETUP.md` to install tools + provision the
-cloud, then `docs/backend/ARCHITECTURE.md` for the schema/endpoints/security, then
-pick up **slice 1a-rev** (replace `/infra` for Fly+Neon+R2).
+cloud, then `docs/backend/ARCHITECTURE.md` for the schema/endpoints/security.
+For API work, also read `backend/reader/README.md` and its `openapi.yaml`.
