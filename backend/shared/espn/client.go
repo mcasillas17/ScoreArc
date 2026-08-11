@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -28,10 +29,23 @@ func ScoreboardURL(slug, datesRange string) string {
 	return fmt.Sprintf("%s/%s/scoreboard", site, slug)
 }
 
+func ScoreboardURLWithLimit(slug, datesRange string, limit int) string {
+	base := ScoreboardURL(slug, datesRange)
+	separator := "?"
+	if strings.Contains(base, "?") {
+		separator = "&"
+	}
+	return fmt.Sprintf("%s%slimit=%d", base, separator, limit)
+}
+
 // StandingsURL mirrors endpoints.ts's standingsUrl(slug). Standings live on
 // the v2 (non-site) API host, unlike the other endpoints.
-func StandingsURL(slug string) string {
-	return fmt.Sprintf("https://site.api.espn.com/apis/v2/sports/soccer/%s/standings", slug)
+func StandingsURL(slug string, seasonYear ...int) string {
+	base := fmt.Sprintf("https://site.api.espn.com/apis/v2/sports/soccer/%s/standings", slug)
+	if len(seasonYear) > 0 {
+		return fmt.Sprintf("%s?season=%d", base, seasonYear[0])
+	}
+	return base
 }
 
 // SummaryURL mirrors endpoints.ts's summaryUrl(slug, event).
@@ -45,9 +59,17 @@ func BracketURL(slug, datesRange string) string {
 	return ScoreboardURL(slug, datesRange)
 }
 
+func BracketURLWithLimit(slug, datesRange string, limit int) string {
+	return ScoreboardURLWithLimit(slug, datesRange, limit)
+}
+
 // StatisticsURL mirrors endpoints.ts's statisticsUrl(slug) (top scorers).
-func StatisticsURL(slug string) string {
-	return fmt.Sprintf("%s/%s/statistics", site, slug)
+func StatisticsURL(slug string, seasonYear ...int) string {
+	base := fmt.Sprintf("%s/%s/statistics", site, slug)
+	if len(seasonYear) > 0 {
+		return fmt.Sprintf("%s?season=%d", base, seasonYear[0])
+	}
+	return base
 }
 
 const (
@@ -125,7 +147,6 @@ func (c *Client) getJSONOnce(ctx context.Context, url string, out any) (time.Dur
 	if err != nil {
 		return 0, false, err
 	}
-	req.Header.Set("User-Agent", "scorearc-ingester")
 	res, err := c.HTTP.Do(req)
 	if err != nil {
 		return 0, true, err
@@ -142,12 +163,20 @@ func (c *Client) getJSONOnce(ctx context.Context, url string, out any) (time.Dur
 	if res.StatusCode != http.StatusOK {
 		retry := res.StatusCode == http.StatusTooManyRequests || res.StatusCode >= 500
 		return parseRetryAfter(res.Header.Get("Retry-After"), time.Now()), retry,
-			fmt.Errorf("espn %s: %d %s", url, res.StatusCode, string(body[:min(200, len(body))]))
+			fmt.Errorf("espn %s: %d %s", url, res.StatusCode, validUTF8Prefix(body, 200))
 	}
+
 	if err := json.Unmarshal(body, out); err != nil {
 		return 0, false, err
 	}
 	return 0, false, nil
+}
+
+func validUTF8Prefix(raw []byte, limit int) string {
+	if len(raw) > limit {
+		raw = raw[:limit]
+	}
+	return strings.ToValidUTF8(string(raw), "")
 }
 
 func parseRetryAfter(value string, now time.Time) time.Duration {

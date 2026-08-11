@@ -28,6 +28,7 @@ func (r *runner) processMatches(
 	existing map[string]store.MatchRow,
 	slowTick bool,
 	backfill bool,
+	finalizationAllowed bool,
 ) (matchResult, error) {
 	var result matchResult
 	var operationErrors []error
@@ -37,6 +38,7 @@ func (r *runner) processMatches(
 			break
 		}
 		current, found := existing[match.ID]
+		skipMatchUpsert := false
 		var currentPtr *store.MatchRow
 		if found {
 			currentPtr = &current
@@ -47,6 +49,11 @@ func (r *runner) processMatches(
 				r.mirrorCrest(ctx, match.Away)
 				continue
 			}
+			if matchStateRank(current.State) > matchStateRank(match.State) &&
+				!isPostponedTransition(current.State, match) {
+				match.State = current.State
+				skipMatchUpsert = true
+			}
 		}
 
 		matchActive := false
@@ -55,7 +62,7 @@ func (r *runner) processMatches(
 			result.live = true
 			matchActive = true
 		case model.MatchStateScheduled:
-			matchActive = true
+			matchActive = candidateIsActive(match, backfill, time.Now())
 		case model.MatchStateFinished:
 			matchActive = currentPtr == nil || !currentPtr.FinalizedAt.Valid
 		}
@@ -65,15 +72,41 @@ func (r *runner) processMatches(
 			result.active = result.active || matchActive
 			continue
 		}
-		if err := r.repo.UpsertMatch(ctx, comp.ID, season.ID, match); err != nil {
-			operationErrors = append(operationErrors, fmt.Errorf("match %s row: %w", match.ID, err))
+		if !skipMatchUpsert {
+			if err := r.repo.UpsertMatch(ctx, comp.ID, season.ID, match); err != nil {
+				operationErrors = append(operationErrors, fmt.Errorf("match %s row: %w", match.ID, err))
+				result.active = result.active || matchActive
+				continue
+			}
+		}
+		if skipMatchUpsert {
+			r.mirrorCrest(ctx, match.Home)
+			r.mirrorCrest(ctx, match.Away)
+			result.active = result.active || matchActive
+			continue
+		}
+		canFinalize := finalizationAllowed && hasRequiredBracketMetadata(match, season)
+
+		if match.State == model.MatchStateFinished && isTerminalWithoutSummary(match) && canFinalize {
+			didFinalize, err := r.repo.FinalizeMatch(
+				ctx, comp.ID, season.ID, match, model.MatchDetail{},
+			)
+			if err != nil {
+				operationErrors = append(operationErrors, fmt.Errorf("match %s finalize terminal status: %w", match.ID, err))
+			} else if didFinalize {
+				result.finalized = true
+				matchActive = false
+			}
+			r.mirrorCrest(ctx, match.Home)
+			r.mirrorCrest(ctx, match.Away)
 			result.active = result.active || matchActive
 			continue
 		}
 
 		if !(backfill && match.State == model.MatchStateScheduled) &&
+			(match.State != model.MatchStateFinished || canFinalize) &&
 			needsSummary(match, currentPtr, slowTick) {
-			detail, err := r.source.Summary(ctx, comp, match)
+			summary, err := r.source.Summary(ctx, comp, match)
 			if err != nil {
 				operationErrors = append(operationErrors, fmt.Errorf("match %s summary: %w", match.ID, err))
 				r.mirrorCrest(ctx, match.Home)
@@ -81,7 +114,11 @@ func (r *runner) processMatches(
 				result.active = result.active || matchActive
 				continue
 			}
+
+			detail := summary.Detail
 			if match.State == model.MatchStateFinished {
+				match.HomeScore = summary.HomeScore
+				match.AwayScore = summary.AwayScore
 				didFinalize, err := r.repo.FinalizeMatch(ctx, comp.ID, season.ID, match, detail)
 				if err != nil {
 					operationErrors = append(operationErrors, fmt.Errorf("match %s finalize: %w", match.ID, err))
@@ -110,6 +147,45 @@ func (r *runner) processMatches(
 		result.active = result.active || matchActive
 	}
 	return result, errorsJoin(operationErrors)
+}
+
+func isTerminalWithoutSummary(match model.Match) bool {
+	switch match.StatusName {
+	case "STATUS_CANCELED", "STATUS_ABANDONED", "STATUS_FORFEIT":
+		return true
+	default:
+		return false
+	}
+}
+
+func isPostponedTransition(current model.MatchState, incoming model.Match) bool {
+	return current == model.MatchStateLive &&
+		incoming.State == model.MatchStateScheduled &&
+		incoming.StatusName == "STATUS_POSTPONED"
+}
+
+func hasRequiredBracketMetadata(match model.Match, season config.Season) bool {
+	if !season.HasBracket || match.Round != "" {
+		return true
+	}
+	if match.BracketRequired != nil {
+		return !*match.BracketRequired
+	}
+	if season.BracketDatesRange == nil {
+		return false
+	}
+	parts := strings.SplitN(*season.BracketDatesRange, "-", 2)
+	if len(parts) != 2 {
+		return false
+	}
+	start, startErr := time.Parse("20060102", parts[0])
+	end, endErr := time.Parse("20060102", parts[1])
+	kickoff, kickoffErr := time.Parse(time.RFC3339, match.Kickoff)
+	if startErr != nil || endErr != nil || kickoffErr != nil {
+		return false
+	}
+	kickoff = kickoff.UTC()
+	return kickoff.Before(start) || kickoff.After(end.Add(24*time.Hour-time.Nanosecond))
 }
 
 func (r *runner) mirrorCrest(ctx context.Context, team model.Team) {
@@ -158,6 +234,7 @@ func isMirroredURL(candidate, base string) bool {
 }
 
 func bracketMatch(match model.BracketMatch) model.Match {
+	bracketRequired := true
 	return model.Match{
 		ID: match.ID, Kickoff: match.Kickoff, State: match.State,
 		Round: match.Round, Minute: match.Minute,
@@ -174,6 +251,7 @@ func bracketMatch(match model.BracketMatch) model.Match {
 		WinnerID: match.WinnerID, Note: match.Note,
 		HomePlaceholder: match.Home.Placeholder,
 		AwayPlaceholder: match.Away.Placeholder,
+		BracketRequired: &bracketRequired,
 	}
 }
 

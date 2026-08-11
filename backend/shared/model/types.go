@@ -51,6 +51,7 @@ type Match struct {
 	Note            *string    `json:"note"`
 	HomePlaceholder bool       `json:"-"`
 	AwayPlaceholder bool       `json:"-"`
+	BracketRequired *bool      `json:"-"`
 }
 
 // BracketTeam mirrors types.ts's BracketTeam. It is distinct from Team

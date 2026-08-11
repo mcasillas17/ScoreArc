@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"sort"
 
 	"github.com/jackc/pgx/v5"
 
@@ -24,11 +25,20 @@ func (s *Store) UpsertTeams(ctx context.Context, teams []model.Team) error {
 	if len(teams) == 0 {
 		return nil
 	}
+	teams = teamsByID(teams)
 	batch := &pgx.Batch{}
 	for _, team := range teams {
 		batch.Queue(teamUpsertSQL, team.ID, team.Name, team.Abbr, team.CrestURL)
 	}
 	return s.pool.SendBatch(ctx, batch).Close()
+}
+
+func teamsByID(teams []model.Team) []model.Team {
+	sorted := append([]model.Team(nil), teams...)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].ID < sorted[j].ID
+	})
+	return sorted
 }
 
 func (s *Store) SetTeamCrest(ctx context.Context, teamID, cdnURL string) error {

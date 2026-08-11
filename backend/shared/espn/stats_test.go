@@ -12,6 +12,13 @@ func TestMapTopScorersRejectsMalformedLeaders(t *testing.T) {
 	}
 }
 
+func TestMapTopScorersRejectsFractionalGoals(t *testing.T) {
+	raw := []byte(`{"stats":[{"name":"goalsLeaders","leaders":[{"value":1.5,"athlete":{"displayName":"Player"}}]}]}`)
+	if _, err := MapTopScorers(raw, 20); err == nil {
+		t.Fatal("expected fractional goal count error")
+	}
+}
+
 func loadStatisticsFixture(t *testing.T) []byte {
 	t.Helper()
 	b, err := os.ReadFile("testdata/espn-statistics.json")
@@ -87,12 +94,12 @@ func TestMapTopScorers(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects a malformed payload", func(t *testing.T) {
-		if _, err := MapTopScorers([]byte(`{}`), 20); err == nil {
-			t.Fatal("expected malformed statistics error")
-		}
-		if _, err := MapTopScorers([]byte(`null`), 20); err == nil {
-			t.Fatal("expected null statistics error")
+	t.Run("treats an absent pre-season dataset as empty", func(t *testing.T) {
+		for _, raw := range [][]byte{[]byte(`{}`), []byte(`null`)} {
+			got, err := MapTopScorers(raw, 20)
+			if err != nil || len(got) != 0 {
+				t.Fatalf("scorers=%v err=%v", got, err)
+			}
 		}
 	})
 

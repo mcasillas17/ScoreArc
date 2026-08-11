@@ -3,6 +3,7 @@ package espn
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -83,6 +84,9 @@ func MapStandings(raw []byte) ([]Standing, error) {
 	standings := make([]Standing, 0)
 	for _, grp := range doc.Children {
 		entries := grp.Standings.Entries
+		if len(entries) == 0 {
+			return nil, fmt.Errorf("standings group %q contains no teams", grp.Name)
+		}
 
 		// Mirror the TS mapper's `grp.name.replace('Group ', '')` for the
 		// id, e.g. "Group A" -> "A". A group with no name (single-table,
@@ -101,6 +105,16 @@ func MapStandings(raw []byte) ([]Standing, error) {
 				return nil, fmt.Errorf("standing row %d in %q missing team identity", i, grp.Name)
 			}
 			s := standingStatMap(entry.Stats)
+			for _, name := range []string{
+				"gamesPlayed", "wins", "ties", "losses", "pointsFor",
+				"pointsAgainst", "pointDifferential", "points",
+			} {
+				value, ok := s[name]
+				if !ok || math.Trunc(value) != value ||
+					(name != "pointDifferential" && value < 0) {
+					return nil, fmt.Errorf("standing row %d in %q has invalid %s", i, grp.Name, name)
+				}
+			}
 
 			var crest *string
 			if len(entry.Team.Logos) > 0 && entry.Team.Logos[0].Href != "" {

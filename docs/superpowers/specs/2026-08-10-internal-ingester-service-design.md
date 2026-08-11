@@ -102,12 +102,14 @@ incomplete immutable record.
 
 - Use a 20-second interval while any current match is live.
 - Use a five-minute interval otherwise.
-- Backfill the configured current season once on process start, then use the
-  current-week feed. Historical configured seasons are a later backfill slice.
+- Reconcile the configured current season on process start and every 24 hours;
+  use a rolling 30-day lookback and seven-day lookahead between reconciliations.
+  Retry failed reconciliations after 30 minutes. Historical configured seasons
+  are a later backfill slice.
 - Recheck dormant competition-seasons only on slow ticks.
 - Fetch live summaries every cycle.
 - Fetch a scheduled summary when first seen and on slow ticks thereafter, except
-  during the bulk season backfill; the following weekly slow tick enriches it.
+  during the bulk season backfill; a following slow tick enriches it.
 - Fetch a finished summary until atomic finalization succeeds.
 - Never update a finalized match or its final detail.
 - Refresh standings and scorers after a newly finalized match or on slow ticks.
@@ -115,7 +117,9 @@ incomplete immutable record.
   malformed response cannot erase previously valid standings or scorers.
 - Mirror each crest once and skip URLs already using the configured CDN base.
 
-Failure to poll a competition preserves its previous active/dormant state.
+Failure to poll a competition preserves its previous active/dormant state. One
+successful but empty poll preserves active state while clearing live cadence; a
+second consecutive empty poll marks the competition dormant.
 
 ## Database Integrity
 

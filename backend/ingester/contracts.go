@@ -19,7 +19,7 @@ type repository interface {
 	ReplaceStandings(context.Context, string, string, []model.Standing) error
 	ReplaceTopScorers(context.Context, string, string, []model.TopScorer) error
 	LogIngestRun(context.Context, *string, string, time.Time, time.Time, bool, string) error
-	PruneIngestRuns(context.Context, time.Time) error
+	PruneIngestRuns(context.Context, time.Time) (int64, error)
 }
 
 type crestMirror interface {

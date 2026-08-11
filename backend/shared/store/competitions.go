@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"sort"
 
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
@@ -20,11 +21,30 @@ func (s *Store) ReplaceStandings(
 	}
 	defer tx.Rollback(ctx)
 
+	teams := make(map[string]model.Team, len(standings))
+	teamIDs := make([]string, 0, len(standings))
 	for _, standing := range standings {
-		team := standing.Team
+		if _, exists := teams[standing.Team.ID]; !exists {
+			teamIDs = append(teamIDs, standing.Team.ID)
+		}
+		teams[standing.Team.ID] = standing.Team
+	}
+	sort.Strings(teamIDs)
+	for _, teamID := range teamIDs {
+		team := teams[teamID]
 		if _, err := tx.Exec(ctx, teamUpsertSQL, team.ID, team.Name, team.Abbr, team.CrestURL); err != nil {
 			return err
 		}
+	}
+	var existingCount int
+	if err := tx.QueryRow(ctx,
+		`SELECT count(*) FROM standing WHERE comp_id=$1 AND season_id=$2`,
+		compID, seasonID,
+	).Scan(&existingCount); err != nil {
+		return err
+	}
+	if existingCount > len(standings) {
+		return ErrPartialReplacement
 	}
 	if _, err := tx.Exec(ctx,
 		`DELETE FROM standing WHERE comp_id=$1 AND season_id=$2`,

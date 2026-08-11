@@ -3,6 +3,7 @@ package espn
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 )
 
@@ -63,6 +64,14 @@ type rawScorerTeam struct {
 // statistics JSON (stats[].name === "goalsLeaders") into a ranked
 // []TopScorer, capped at limit.
 func MapTopScorers(raw []byte, limit int) ([]TopScorer, error) {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return nil, err
+	}
+	stats, exists := envelope["stats"]
+	if !exists || string(stats) == "null" {
+		return []TopScorer{}, nil
+	}
 	if err := validateArrayEnvelope(raw, "stats"); err != nil {
 		return nil, err
 	}
@@ -88,6 +97,9 @@ func MapTopScorers(raw []byte, limit int) ([]TopScorer, error) {
 		team := l.Athlete.Team
 		if l.Athlete.DisplayName == "" {
 			return nil, fmt.Errorf("top scorer row %d missing player identity", i)
+		}
+		if l.Value < 0 || math.Trunc(l.Value) != l.Value {
+			return nil, fmt.Errorf("top scorer row %d has invalid goal count", i)
 		}
 
 		var crest *string

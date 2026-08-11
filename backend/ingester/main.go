@@ -27,8 +27,9 @@ func run() int {
 
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	dsn := os.Getenv("POOLED_DSN")
-	if dsn == "" {
-		log.Error("POOLED_DSN not set")
+	leaseDSN := os.Getenv("INGESTER_LEASE_DSN")
+	if dsn == "" || leaseDSN == "" {
+		log.Error("POOLED_DSN and INGESTER_LEASE_DSN are required")
 		return 1
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -39,13 +40,16 @@ func run() int {
 		log.Error("load config", "err", err)
 		return 1
 	}
-	repo, err := store.New(ctx, dsn)
+	startupCtx, cancelStartup := context.WithTimeout(ctx, 15*time.Second)
+	repo, err := store.New(startupCtx, dsn)
 	if err != nil {
+		cancelStartup()
 		log.Error("connect store", "err", err)
 		return 1
 	}
 	defer repo.Close()
-	releaseLease, acquired, err := repo.AcquireIngesterLease(ctx)
+	lease, acquired, err := store.AcquireIngesterLease(startupCtx, leaseDSN)
+	cancelStartup()
 	if err != nil {
 		log.Error("acquire ingester lease", "err", err)
 		return 1
@@ -57,33 +61,39 @@ func run() int {
 	defer func() {
 		releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
-		if err := releaseLease(releaseCtx); err != nil {
+		if err := lease.Release(releaseCtx); err != nil {
 			log.Error("release ingester lease", "err", err)
 		}
 	}()
 
 	var mirror crestMirror
-	if configured, ok := assets.FromEnv(); ok {
+	if configured, ok, err := assets.FromEnv(); err != nil {
+		log.Error("configure R2 mirror", "err", err)
+		return 1
+	} else if ok {
 		mirror = configured
 	} else {
 		log.Warn("R2 mirror disabled; incomplete R2 configuration")
 	}
 	worker := &runner{
-		competitions:  registry.List(),
-		source:        source.NewESPN(espn.New()),
-		repo:          repo,
-		mirror:        mirror,
-		log:           log,
-		maxConcurrent: 3,
-		active:        make(map[string]activity),
-		mirrored:      make(map[string]string),
-		backfilled:    make(map[string]bool),
+		competitions:      registry.List(),
+		source:            source.NewESPN(espn.New()),
+		repo:              repo,
+		mirror:            mirror,
+		log:               log,
+		maxConcurrent:     3,
+		active:            make(map[string]activity),
+		mirrored:          make(map[string]string),
+		backfilled:        make(map[string]time.Time),
+		backfillAttempted: make(map[string]time.Time),
 	}
 
 	if *once {
-		cycleCtx, cancel := context.WithTimeout(ctx, cycleTimeout(true))
-		result := worker.runCycle(cycleCtx, true)
-		cancel()
+		result, err := runLeasedCycle(ctx, lease, worker, true)
+		if err != nil {
+			log.Error("check ingester lease", "err", err)
+			return 1
+		}
 		if code := onceExitCode(result); code != 0 {
 			log.Error("single cycle failed", "failures", result.failures)
 			return code
@@ -95,14 +105,25 @@ func run() int {
 
 	lastSlow := time.Time{}
 	for {
+		if ctx.Err() != nil {
+			log.Info("shutdown complete")
+			return 0
+		}
+		if err := checkLease(ctx, lease); err != nil {
+			log.Error("check ingester lease", "err", err)
+			return 1
+		}
 		slowTick := time.Since(lastSlow) >= slowInterval
 		if slowTick {
 			lastSlow = time.Now()
 		}
+
 		cycleStarted := time.Now()
-		cycleCtx, cancel := context.WithTimeout(ctx, cycleTimeout(slowTick))
-		result := worker.runCycle(cycleCtx, slowTick)
-		cancel()
+		result, err := runLeasedCycle(ctx, lease, worker, slowTick)
+		if err != nil {
+			log.Error("ingester lease lost", "err", err)
+			return 1
+		}
 		delay := nextInterval(result.anyLive)
 		if elapsed := time.Since(cycleStarted); elapsed < delay {
 			delay -= elapsed
@@ -111,16 +132,80 @@ func run() int {
 		}
 		log.Info("cycle complete", "live", result.anyLive, "failures", result.failures, "slowTick", slowTick, "sleep", delay)
 
-		timer := time.NewTimer(delay)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
+		if !waitForNextCycle(ctx, delay) {
 			log.Info("shutdown complete")
 			return 0
-		case <-timer.C:
 		}
 	}
 
+}
+
+func waitForNextCycle(ctx context.Context, delay time.Duration) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+func checkLease(ctx context.Context, lease *store.IngesterLease) error {
+	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	return lease.Check(checkCtx)
+}
+
+func runLeasedCycle(
+	ctx context.Context,
+	lease *store.IngesterLease,
+	worker *runner,
+	slowTick bool,
+) (cycleResult, error) {
+	if err := checkLease(ctx, lease); err != nil {
+		return cycleResult{}, err
+	}
+	cycleCtx, cancel := context.WithTimeout(ctx, cycleTimeout(slowTick))
+	defer cancel()
+	leaseErr := make(chan error, 1)
+	monitorDone := make(chan struct{})
+	monitorStop := make(chan struct{})
+	go func() {
+		defer close(monitorDone)
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-monitorStop:
+				return
+			case <-ticker.C:
+				checkCtx, cancelCheck := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+				err := lease.Check(checkCtx)
+				cancelCheck()
+				if err != nil {
+					if cycleCtx.Err() == nil {
+						leaseErr <- err
+						cancel()
+					}
+					return
+				}
+			}
+		}
+	}()
+	result := worker.runCycle(cycleCtx, slowTick)
+	close(monitorStop)
+	<-monitorDone
+	cancel()
+	select {
+	case err := <-leaseErr:
+		return result, err
+	default:
+		return result, nil
+	}
 }
 
 func onceExitCode(result cycleResult) int {

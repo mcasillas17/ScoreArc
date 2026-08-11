@@ -285,6 +285,7 @@ func ValidateSummary(
 	if err := parseRawSummary(raw, &rs); err != nil {
 		return err
 	}
+
 	if string(rs.Header.ID) != expectedMatchID || len(rs.Header.Competitions) == 0 ||
 		string(rs.Header.Competitions[0].ID) != expectedMatchID {
 		return fmt.Errorf("summary event identity does not match %q", expectedMatchID)
@@ -294,6 +295,9 @@ func ValidateSummary(
 		return fmt.Errorf("summary teams do not match event %q", expectedMatchID)
 	}
 	if requireFinal {
+		if !hasSummaryDetail(rs) {
+			return fmt.Errorf("final summary contains no detail sections")
+		}
 		competition := rs.Header.Competitions[0]
 		if competition.Status == nil || !competition.Status.Type.Completed {
 			return fmt.Errorf("summary event %q is not complete", expectedMatchID)
@@ -312,6 +316,45 @@ func ValidateSummary(
 		}
 	}
 	return nil
+}
+
+func hasSummaryDetail(summary rawSummary) bool {
+	gameInfoPresent := summary.GameInfo != nil &&
+		(summary.GameInfo.Venue != nil || len(summary.GameInfo.Officials) > 0 ||
+			(len(summary.GameInfo.Attendance) > 0 &&
+				string(summary.GameInfo.Attendance) != "null"))
+	return gameInfoPresent ||
+		len(summary.Boxscore.Teams) > 0 ||
+		len(summary.KeyEvents) > 0 ||
+		len(summary.Rosters) > 0 ||
+		len(summary.Videos) > 0 ||
+		len(summary.Commentary) > 0 ||
+		len(summary.HeadToHeadGames) > 0 ||
+		len(summary.LastFiveGames) > 0 ||
+		len(summary.Shootout) > 0
+}
+
+func SummaryFinalScores(raw []byte) (*int, *int, error) {
+	var summary rawSummary
+	if err := parseRawSummary(raw, &summary); err != nil {
+		return nil, nil, err
+	}
+	if len(summary.Header.Competitions) == 0 {
+		return nil, nil, fmt.Errorf("summary missing competition")
+	}
+	var homeScore, awayScore *int
+	for _, competitor := range summary.Header.Competitions[0].Competitors {
+		switch competitor.HomeAway {
+		case "home":
+			homeScore = scoreOf(competitor.Score)
+		case "away":
+			awayScore = scoreOf(competitor.Score)
+		}
+	}
+	if homeScore == nil || awayScore == nil {
+		return nil, nil, fmt.Errorf("summary missing final scores")
+	}
+	return homeScore, awayScore, nil
 }
 
 func ParseShootoutNote(note, homeName, awayName string) *Shootout {

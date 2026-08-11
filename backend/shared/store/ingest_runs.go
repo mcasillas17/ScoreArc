@@ -24,8 +24,8 @@ VALUES ($1,$2,$3,$4,$5,$6)`,
 	return err
 }
 
-func (s *Store) PruneIngestRuns(ctx context.Context, before time.Time) error {
-	_, err := s.pool.Exec(ctx, `
+func (s *Store) PruneIngestRuns(ctx context.Context, before time.Time) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `
 WITH expired AS (
 	SELECT ctid
 	FROM ingest_run
@@ -36,5 +36,5 @@ WITH expired AS (
 DELETE FROM ingest_run
 USING expired
 WHERE ingest_run.ctid = expired.ctid`, before)
-	return err
+	return tag.RowsAffected(), err
 }

@@ -50,7 +50,7 @@ type Mirror struct {
 	http    httpDoer
 }
 
-func FromEnv() (*Mirror, bool) {
+func FromEnv() (*Mirror, bool, error) {
 	config := Config{
 		AccountID:       os.Getenv("R2_ACCOUNT_ID"),
 		AccessKeyID:     os.Getenv("R2_ACCESS_KEY_ID"),
@@ -61,12 +61,22 @@ func FromEnv() (*Mirror, bool) {
 	if config.AccountID == "" || config.AccessKeyID == "" ||
 		config.SecretAccessKey == "" || config.Bucket == "" ||
 		config.PublicBaseURL == "" {
-		return nil, false
+		return nil, false, nil
 	}
-	return New(config), true
+	mirror, err := New(config)
+	return mirror, true, err
 }
 
-func New(config Config) *Mirror {
+func New(config Config) (*Mirror, error) {
+	publicBase, err := url.Parse(config.PublicBaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse R2 public base URL: %w", err)
+	}
+	if publicBase.Scheme != "https" || publicBase.Host == "" ||
+		publicBase.User != nil || publicBase.RawQuery != "" || publicBase.Fragment != "" ||
+		(publicBase.Port() != "" && publicBase.Port() != "443") {
+		return nil, fmt.Errorf("R2 public base URL must be a plain HTTPS origin/path")
+	}
 	endpoint := fmt.Sprintf("https://%s.r2.cloudflarestorage.com", config.AccountID)
 	client := s3.New(s3.Options{
 		Region:       "auto",
@@ -90,7 +100,7 @@ func New(config Config) *Mirror {
 		bucket:  config.Bucket,
 		baseURL: strings.TrimRight(config.PublicBaseURL, "/"),
 		http:    httpClient,
-	}
+	}, nil
 }
 
 func (m *Mirror) BaseURL() string {
@@ -121,7 +131,9 @@ func (m *Mirror) Mirror(ctx context.Context, kind, id, sourceURL string) (string
 	if err := validateAssetURL(parsedSource); err != nil {
 		return "", err
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, parsedSource.String(), nil)
+	downloadCtx, cancelDownload := context.WithTimeout(ctx, assetOperationTimeout)
+	defer cancelDownload()
+	request, err := http.NewRequestWithContext(downloadCtx, http.MethodGet, parsedSource.String(), nil)
 	if err != nil {
 		return "", err
 	}
@@ -168,6 +180,9 @@ func validateAssetURL(candidate *url.URL) error {
 		return fmt.Errorf("asset URL must use HTTPS")
 	}
 	host := strings.ToLower(candidate.Hostname())
+	if candidate.User != nil || (candidate.Port() != "" && candidate.Port() != "443") {
+		return fmt.Errorf("asset URL credentials and non-HTTPS ports are not allowed")
+	}
 	if ip := net.ParseIP(host); ip != nil {
 		return fmt.Errorf("asset URL IP hosts are not allowed")
 	}

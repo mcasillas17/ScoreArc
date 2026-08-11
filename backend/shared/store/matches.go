@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -38,17 +39,30 @@ ON CONFLICT (id) DO UPDATE SET
 	state = EXCLUDED.state,
 	home_team_id = EXCLUDED.home_team_id,
 	away_team_id = EXCLUDED.away_team_id,
-	home_score = EXCLUDED.home_score,
-	away_score = EXCLUDED.away_score,
+	home_score = COALESCE(EXCLUDED.home_score, match.home_score),
+	away_score = COALESCE(EXCLUDED.away_score, match.away_score),
 	minute = EXCLUDED.minute,
 	status_detail = EXCLUDED.status_detail,
 	status_name = EXCLUDED.status_name,
-	winner_id = EXCLUDED.winner_id,
+	winner_id = COALESCE(EXCLUDED.winner_id, match.winner_id),
 	note = EXCLUDED.note,
-	home_placeholder = EXCLUDED.home_placeholder,
-	away_placeholder = EXCLUDED.away_placeholder,
+	home_placeholder = CASE
+		WHEN EXCLUDED.round IS NULL AND match.home_team_id = EXCLUDED.home_team_id
+		THEN match.home_placeholder
+		ELSE EXCLUDED.home_placeholder
+	END,
+	away_placeholder = CASE
+		WHEN EXCLUDED.round IS NULL AND match.away_team_id = EXCLUDED.away_team_id
+		THEN match.away_placeholder
+		ELSE EXCLUDED.away_placeholder
+	END,
 	updated_at = now()
-WHERE match.finalized_at IS NULL`
+WHERE match.finalized_at IS NULL
+	AND NOT (
+		(match.state = 'live' AND EXCLUDED.state = 'scheduled'
+			AND EXCLUDED.status_name <> 'STATUS_POSTPONED')
+		OR (match.state = 'finished' AND EXCLUDED.state <> 'finished')
+	)`
 
 func (s *Store) UpsertMatch(ctx context.Context, compID, seasonID string, match model.Match) error {
 	_, err := s.pool.Exec(ctx, matchUpsertSQL, matchArgs(compID, seasonID, match)...)
@@ -74,18 +88,18 @@ INSERT INTO match_detail (
 	shootout_detail, lineups, videos, info, form, h2h, commentary, updated_at)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now())
 ON CONFLICT (match_id) DO UPDATE SET
-	scorers=EXCLUDED.scorers,
-	cards=EXCLUDED.cards,
-	stats=EXCLUDED.stats,
-	win_probability=EXCLUDED.win_probability,
-	shootout=EXCLUDED.shootout,
-	shootout_detail=EXCLUDED.shootout_detail,
-	lineups=EXCLUDED.lineups,
-	videos=EXCLUDED.videos,
-	info=EXCLUDED.info,
-	form=EXCLUDED.form,
-	h2h=EXCLUDED.h2h,
-	commentary=EXCLUDED.commentary,
+	scorers=CASE WHEN EXCLUDED.scorers='[]'::jsonb THEN match_detail.scorers ELSE EXCLUDED.scorers END,
+	cards=CASE WHEN EXCLUDED.cards='[]'::jsonb THEN match_detail.cards ELSE EXCLUDED.cards END,
+	stats=COALESCE(EXCLUDED.stats, match_detail.stats),
+	win_probability=COALESCE(EXCLUDED.win_probability, match_detail.win_probability),
+	shootout=COALESCE(EXCLUDED.shootout, match_detail.shootout),
+	shootout_detail=COALESCE(EXCLUDED.shootout_detail, match_detail.shootout_detail),
+	lineups=COALESCE(EXCLUDED.lineups, match_detail.lineups),
+	videos=CASE WHEN EXCLUDED.videos='[]'::jsonb THEN match_detail.videos ELSE EXCLUDED.videos END,
+	info=COALESCE(EXCLUDED.info, match_detail.info),
+	form=COALESCE(EXCLUDED.form, match_detail.form),
+	h2h=CASE WHEN EXCLUDED.h2h='[]'::jsonb THEN match_detail.h2h ELSE EXCLUDED.h2h END,
+	commentary=CASE WHEN EXCLUDED.commentary='[]'::jsonb THEN match_detail.commentary ELSE EXCLUDED.commentary END,
 	updated_at=now()`
 
 type execer interface {
@@ -213,9 +227,12 @@ func (s *Store) FinalizeMatch(
 UPDATE match SET
 	comp_id=$1, season_id=$2, round=COALESCE(NULLIF($3, ''), round),
 	kickoff=$4::timestamptz, state=$5, home_team_id=$6, away_team_id=$7,
-	home_score=$8, away_score=$9, minute=$10, status_detail=$11,
-	status_name=$12, winner_id=$13, note=$14, home_placeholder=$15,
-	away_placeholder=$16, finalized_at=now(), updated_at=now()
+	home_score=COALESCE($8, home_score), away_score=COALESCE($9, away_score),
+	minute=$10, status_detail=$11, status_name=$12,
+	winner_id=COALESCE($13, winner_id), note=$14,
+	home_placeholder=CASE WHEN $3 IS NULL THEN home_placeholder ELSE $15 END,
+	away_placeholder=CASE WHEN $3 IS NULL THEN away_placeholder ELSE $16 END,
+	finalized_at=now(), updated_at=now()
 WHERE id=$17 AND comp_id=$1 AND season_id=$2
 	AND state='finished' AND finalized_at IS NULL`, args...)
 	if err != nil {
@@ -265,7 +282,7 @@ WHERE m.comp_id=$1 AND m.season_id=$2 AND m.id=ANY($3)`,
 
 func (s *Store) UnfinalizedMatches(ctx context.Context, compID, seasonID string) ([]model.Match, error) {
 	rows, err := s.pool.Query(ctx, `
-SELECT m.id, m.kickoff::text, m.state, COALESCE(m.round, ''), m.minute,
+SELECT m.id, m.kickoff, m.state, COALESCE(m.round, ''), m.minute,
 	m.status_detail, m.status_name, m.home_score, m.away_score, m.winner_id,
 	m.note, m.home_placeholder, m.away_placeholder,
 	home.id, home.name, home.abbr, home.crest_url,
@@ -283,8 +300,9 @@ WHERE m.comp_id=$1 AND m.season_id=$2
 	var matches []model.Match
 	for rows.Next() {
 		var match model.Match
+		var kickoff time.Time
 		if err := rows.Scan(
-			&match.ID, &match.Kickoff, &match.State, &match.Round, &match.Minute,
+			&match.ID, &kickoff, &match.State, &match.Round, &match.Minute,
 			&match.StatusDetail, &match.StatusName, &match.HomeScore, &match.AwayScore,
 			&match.WinnerID, &match.Note, &match.HomePlaceholder, &match.AwayPlaceholder,
 			&match.Home.ID, &match.Home.Name, &match.Home.Abbr, &match.Home.CrestURL,
@@ -292,6 +310,7 @@ WHERE m.comp_id=$1 AND m.season_id=$2
 		); err != nil {
 			return nil, err
 		}
+		match.Kickoff = kickoff.UTC().Format(time.RFC3339)
 		matches = append(matches, match)
 	}
 	return matches, rows.Err()

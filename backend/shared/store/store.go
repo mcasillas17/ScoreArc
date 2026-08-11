@@ -10,6 +10,7 @@ import (
 )
 
 var ErrEmptyReplacement = errors.New("refusing to replace with an empty dataset")
+var ErrPartialReplacement = errors.New("refusing to replace standings with fewer rows")
 var ErrMatchFinalized = errors.New("match is finalized")
 
 type Store struct {
@@ -17,7 +18,14 @@ type Store struct {
 }
 
 func New(ctx context.Context, dsn string) (*Store, error) {
-	pool, err := pgxpool.New(ctx, dsn)
+	config, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("parse postgres pool config: %w", err)
+	}
+	if config.MaxConns < 8 {
+		config.MaxConns = 8
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("create postgres pool: %w", err)
 	}

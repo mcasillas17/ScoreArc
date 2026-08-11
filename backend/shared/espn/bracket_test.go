@@ -313,3 +313,30 @@ func TestMapBracketTeamDoesNotTreatClubCrestAsPlaceholder(t *testing.T) {
 		t.Fatal("real club marked as placeholder")
 	}
 }
+
+func TestValidateBracketSeasonRejectsMismatch(t *testing.T) {
+	raw := []byte(`{"events":[{"season":{"year":2022}}]}`)
+	if err := ValidateBracketSeason(raw, 2026); err == nil {
+		t.Fatal("expected bracket season mismatch")
+	}
+}
+
+func TestValidateBracketSeasonRejectsMissingYear(t *testing.T) {
+	raw := []byte(`{"events":[{"season":{"slug":"final"}}]}`)
+	if err := ValidateBracketSeason(raw, 2026); err == nil {
+		t.Fatal("expected missing bracket season year")
+	}
+}
+
+func TestMapBracketRejectsUnknownStatusState(t *testing.T) {
+	raw := []byte(`{"events":[{"id":"1","date":"2026-07-01T12:00Z",
+		"season":{"slug":"quarterfinals"},
+		"status":{"type":{"state":"mystery"}},
+		"competitions":[{"competitors":[
+			{"homeAway":"home","team":{"id":"1","displayName":"Home","abbreviation":"HOM"}},
+			{"homeAway":"away","team":{"id":"2","displayName":"Away","abbreviation":"AWY"}}
+		]}]}]}`)
+	if _, err := MapBracket(raw); err == nil {
+		t.Fatal("expected unknown bracket state error")
+	}
+}

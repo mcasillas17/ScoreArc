@@ -40,6 +40,8 @@ jobs:
         run: git diff --exit-code -- backend/config/competitions.json
       - run: npm test
       - run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npm run build
       - name: Apply database migrations
         run: for migration in backend/migrations/*.up.sql; do psql "$DIRECT_DSN" -v ON_ERROR_STOP=1 -f "$migration"; done
       - name: Test Go backend
@@ -48,3 +50,5 @@ jobs:
       - name: Vet Go backend
         working-directory: backend
         run: go vet ./...
+      - name: Verify database migration rollback
+        run: for migration in $(find backend/migrations -name '*.down.sql' | sort -r); do psql "$DIRECT_DSN" -v ON_ERROR_STOP=1 -f "$migration"; done

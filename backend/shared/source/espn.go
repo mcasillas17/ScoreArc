@@ -17,6 +17,8 @@ import (
 // ESPN implements Source with ESPN's keyless public API.
 type ESPN struct{ client *espn.Client }
 
+const scoreboardEventLimit = 1000
+
 func NewESPN(client *espn.Client) *ESPN {
 	if client == nil {
 		client = espn.New()
@@ -41,7 +43,7 @@ func (e *ESPN) Scoreboard(
 	season config.Season,
 	backfill bool,
 ) ([]model.Match, error) {
-	datesRange := currentWeekRange(time.Now())
+	datesRange := rollingScoreboardRange(time.Now())
 	if backfill {
 		var err error
 		datesRange, err = fullSeasonRange(season.ID)
@@ -49,7 +51,8 @@ func (e *ESPN) Scoreboard(
 			return nil, err
 		}
 	}
-	raw, err := e.get(ctx, espn.ScoreboardURL(comp.ESPNSlug, datesRange))
+	scoreboardURL := espn.ScoreboardURLWithLimit(comp.ESPNSlug, datesRange, scoreboardEventLimit)
+	raw, err := e.get(ctx, scoreboardURL)
 	if err != nil {
 		return nil, err
 	}
@@ -61,34 +64,44 @@ func (e *ESPN) Scoreboard(
 	if err := espn.ValidateScoreboardSeason(raw, expectedYear); err != nil {
 		return nil, err
 	}
+	if err := espn.ValidateBackfillCompleteness(raw, scoreboardEventLimit); err != nil {
+		return nil, err
+	}
 	return espn.MapScoreboard(raw)
 }
 
-func (e *ESPN) Summary(ctx context.Context, comp config.Competition, match model.Match) (model.MatchDetail, error) {
+func (e *ESPN) Summary(ctx context.Context, comp config.Competition, match model.Match) (SummaryResult, error) {
 	raw, err := e.get(ctx, espn.SummaryURL(comp.ESPNSlug, match.ID))
 	if err != nil {
-		return model.MatchDetail{}, err
+		return SummaryResult{}, err
 	}
 	if err := espn.ValidateSummary(raw, match.ID, match.Home.ID, match.Away.ID,
 		match.State == model.MatchStateFinished); err != nil {
-		return model.MatchDetail{}, err
+		return SummaryResult{}, err
 	}
 	detail, err := espn.MapSummary(raw)
 	if err != nil {
-		return model.MatchDetail{}, err
+		return SummaryResult{}, err
 	}
 	if detail.Shootout == nil && match.Note != nil {
 		detail.Shootout = espn.ParseShootoutNote(*match.Note, match.Home.Name, match.Away.Name)
 	}
-	return detail, nil
+	result := SummaryResult{Detail: detail}
+	if match.State == model.MatchStateFinished {
+		result.HomeScore, result.AwayScore, err = espn.SummaryFinalScores(raw)
+		if err != nil {
+			return SummaryResult{}, err
+		}
+	}
+	return result, nil
 }
 
 func (e *ESPN) Standings(ctx context.Context, comp config.Competition, season config.Season) ([]model.Standing, error) {
-	raw, err := e.get(ctx, espn.StandingsURL(comp.ESPNSlug))
+	expectedYear, err := seasonStartYear(season.ID)
 	if err != nil {
 		return nil, err
 	}
-	expectedYear, err := seasonStartYear(season.ID)
+	raw, err := e.get(ctx, espn.StandingsURL(comp.ESPNSlug, expectedYear))
 	if err != nil {
 		return nil, err
 	}
@@ -98,8 +111,12 @@ func (e *ESPN) Standings(ctx context.Context, comp config.Competition, season co
 	return espn.MapStandings(raw)
 }
 
-func (e *ESPN) TopScorers(ctx context.Context, comp config.Competition, _ config.Season, limit int) ([]model.TopScorer, error) {
-	raw, err := e.get(ctx, espn.StatisticsURL(comp.ESPNSlug))
+func (e *ESPN) TopScorers(ctx context.Context, comp config.Competition, season config.Season, limit int) ([]model.TopScorer, error) {
+	expectedYear, err := seasonStartYear(season.ID)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := e.get(ctx, espn.StatisticsURL(comp.ESPNSlug, expectedYear))
 	if err != nil {
 		return nil, err
 	}
@@ -111,8 +128,18 @@ func (e *ESPN) Bracket(ctx context.Context, comp config.Competition, season conf
 	if season.BracketDatesRange != nil {
 		dates = *season.BracketDatesRange
 	}
-	raw, err := e.get(ctx, espn.BracketURL(comp.ESPNSlug, dates))
+	raw, err := e.get(ctx, espn.BracketURLWithLimit(comp.ESPNSlug, dates, scoreboardEventLimit))
 	if err != nil {
+		return nil, err
+	}
+	if err := espn.ValidateBackfillCompleteness(raw, scoreboardEventLimit); err != nil {
+		return nil, err
+	}
+	expectedYear, err := seasonStartYear(season.ID)
+	if err != nil {
+		return nil, err
+	}
+	if err := espn.ValidateBracketSeason(raw, expectedYear); err != nil {
 		return nil, err
 	}
 	return espn.MapBracket(raw)
@@ -120,12 +147,11 @@ func (e *ESPN) Bracket(ctx context.Context, comp config.Competition, season conf
 
 var _ Source = (*ESPN)(nil)
 
-func currentWeekRange(now time.Time) string {
+func rollingScoreboardRange(now time.Time) string {
 	now = now.UTC()
-	mondayOffset := (int(now.Weekday()) + 6) % 7
-	monday := now.AddDate(0, 0, -mondayOffset)
-	sunday := monday.AddDate(0, 0, 6)
-	return monday.Format("20060102") + "-" + sunday.Format("20060102")
+	start := now.AddDate(0, 0, -30)
+	end := now.AddDate(0, 0, 7)
+	return start.Format("20060102") + "-" + end.Format("20060102")
 }
 
 var seasonYearRe = regexp.MustCompile(`^(\d{4})(?:-(\d{2}|apertura|clausura))?$`)
@@ -164,6 +190,9 @@ func seasonStartYear(seasonID string) (int, error) {
 	year, err := strconv.Atoi(match[1])
 	if err != nil {
 		return 0, fmt.Errorf("parse season year %q: %w", seasonID, err)
+	}
+	if strings.EqualFold(match[2], "clausura") {
+		year--
 	}
 	return year, nil
 }

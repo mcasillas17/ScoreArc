@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
@@ -16,12 +17,17 @@ import (
 	"github.com/mcasillas17/scorearc-backend/shared/store"
 )
 
-const ingestRunRetention = 30 * 24 * time.Hour
+const (
+	ingestRunRetention      = 30 * 24 * time.Hour
+	backfillRefreshInterval = 24 * time.Hour
+	backfillRetryInterval   = 30 * time.Minute
+)
 
 type activity struct {
-	known  bool
-	active bool
-	live   bool
+	known      bool
+	active     bool
+	live       bool
+	emptyPolls int
 }
 
 type runner struct {
@@ -32,10 +38,11 @@ type runner struct {
 	log           *slog.Logger
 	maxConcurrent int
 
-	mu         sync.Mutex
-	active     map[string]activity
-	mirrored   map[string]string
-	backfilled map[string]bool
+	mu                sync.Mutex
+	active            map[string]activity
+	mirrored          map[string]string
+	backfilled        map[string]time.Time
+	backfillAttempted map[string]time.Time
 }
 
 type cycleResult struct {
@@ -48,6 +55,7 @@ type competitionResult struct {
 	active        bool
 	stateReliable bool
 	backfillDone  bool
+	empty         bool
 	err           error
 }
 
@@ -83,6 +91,15 @@ func (r *runner) runCycle(ctx context.Context, slowTick bool) cycleResult {
 		wg.Add(1)
 		go func(comp config.Competition, season config.Season, key string, previous activity) {
 			defer wg.Done()
+			started := false
+			defer func() {
+				if !started {
+					resultMu.Lock()
+					cycle.failures++
+					cycle.anyLive = cycle.anyLive || previous.live
+					resultMu.Unlock()
+				}
+			}()
 			if ctx.Err() != nil {
 				return
 			}
@@ -97,19 +114,35 @@ func (r *runner) runCycle(ctx context.Context, slowTick bool) cycleResult {
 			}
 
 			r.mu.Lock()
-			backfill := slowTick && !r.backfilled[key]
+			lastBackfill := r.backfilled[key]
+			lastAttempt := r.backfillAttempted[key]
+			backfillInterval := backfillRefreshInterval
+			if lastBackfill.IsZero() || lastAttempt.After(lastBackfill) {
+				backfillInterval = backfillRetryInterval
+			}
+			backfill := slowTick &&
+				(lastAttempt.IsZero() || time.Since(lastAttempt) >= backfillInterval)
+			if backfill {
+				r.backfillAttempted[key] = time.Now()
+			}
 			r.mu.Unlock()
+			started = true
 			result := r.ingestCompSeason(ctx, comp, season, previous, slowTick, backfill)
 			if result.stateReliable {
 				r.mu.Lock()
-				r.active[key] = activity{
+				next := activity{
 					known: true, active: result.active, live: result.live,
 				}
+				if result.empty && previous.active && previous.emptyPolls == 0 {
+					next.active = true
+					next.emptyPolls = 1
+				}
+				r.active[key] = next
 				r.mu.Unlock()
 			}
 			if backfill && result.backfillDone {
 				r.mu.Lock()
-				r.backfilled[key] = true
+				r.backfilled[key] = time.Now()
 				r.mu.Unlock()
 			}
 
@@ -125,11 +158,18 @@ func (r *runner) runCycle(ctx context.Context, slowTick bool) cycleResult {
 	}
 	wg.Wait()
 
-	if slowTick {
+	if slowTick && ctx.Err() == nil {
 		pruneCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		if err := r.repo.PruneIngestRuns(pruneCtx, time.Now().Add(-ingestRunRetention)); err != nil {
-			r.log.Warn("prune ingest runs", "err", err)
-			cycle.failures++
+		for {
+			pruned, err := r.repo.PruneIngestRuns(pruneCtx, time.Now().Add(-ingestRunRetention))
+			if err != nil {
+				r.log.Warn("prune ingest runs", "err", err)
+				cycle.failures++
+				break
+			}
+			if pruned < 10000 {
+				break
+			}
 		}
 		cancel()
 	}
@@ -157,26 +197,24 @@ func (r *runner) ingestCompSeason(
 	liveCandidate := false
 	for _, match := range scoreboard {
 		candidates[match.ID] = mergeCandidate(candidates[match.ID], match)
-		activeCandidate = activeCandidate ||
-			match.State == model.MatchStateLive ||
-			match.State == model.MatchStateScheduled
+		activeCandidate = activeCandidate || candidateIsActive(match, backfill, time.Now())
 		liveCandidate = liveCandidate || match.State == model.MatchStateLive
 	}
 
 	var bracketErr error
-	if season.HasBracket && (activeCandidate || previous.active || slowTick) && ctx.Err() == nil {
+	if season.HasBracket && (len(scoreboard) > 0 || previous.active || slowTick) && ctx.Err() == nil {
 		start := time.Now()
 		var bracket []model.BracketMatch
 		bracket, bracketErr = r.source.Bracket(ctx, comp, season)
 		if bracketErr == nil {
 			for _, match := range bracket {
 				candidate := bracketMatch(match)
-				candidates[match.ID] = mergeCandidate(candidates[match.ID], candidate)
+				candidates[match.ID] = mergeBracketCandidate(candidates[match.ID], candidate)
 				activeCandidate = activeCandidate ||
-					candidate.State == model.MatchStateLive ||
-					candidate.State == model.MatchStateScheduled
+					candidateIsActive(candidate, backfill, time.Now())
 				liveCandidate = liveCandidate || candidate.State == model.MatchStateLive
 			}
+
 		}
 		r.recordRun(ctx, comp.ID, "bracket", start, bracketErr)
 	}
@@ -200,12 +238,14 @@ func (r *runner) ingestCompSeason(
 		ids = append(ids, id)
 		matches = append(matches, match)
 	}
+	existingStart := time.Now()
 	existing, existingErr := r.repo.ExistingMatches(ctx, comp.ID, season.ID, ids)
+	r.recordRun(ctx, comp.ID, "existing_matches", existingStart, existingErr)
 	if existingErr != nil {
-		r.recordRun(ctx, comp.ID, "existing_matches", scoreboardStart, existingErr)
 		return competitionResult{
 			live: liveCandidate, active: activeCandidate,
-			stateReliable: bracketErr == nil,
+			stateReliable: false,
+			empty:         len(scoreboard) == 0 && !activeCandidate,
 			err:           errors.Join(bracketErr, backlogErr, existingErr),
 		}
 	}
@@ -213,6 +253,7 @@ func (r *runner) ingestCompSeason(
 	matchStart := time.Now()
 	matchResult, processErr := r.processMatches(
 		ctx, comp, season, matches, existing, slowTick, backfill,
+		!season.HasBracket || bracketErr == nil,
 	)
 	r.recordRun(ctx, comp.ID, "matches", matchStart, processErr)
 
@@ -223,12 +264,21 @@ func (r *runner) ingestCompSeason(
 			r.refreshTopScorers(ctx, comp, season),
 		)
 	}
+	combinedErr := errors.Join(bracketErr, backlogErr, processErr, errors.Join(refreshErrors...))
+	processCanceled := errors.Is(processErr, context.Canceled) ||
+		errors.Is(processErr, context.DeadlineExceeded)
+	live, active := matchResult.live, matchResult.active
+	if processCanceled {
+		live = live || liveCandidate
+		active = active || activeCandidate
+	}
 	return competitionResult{
-		live:          matchResult.live,
-		active:        matchResult.active,
-		stateReliable: bracketErr == nil,
-		backfillDone:  processErr == nil,
-		err:           errors.Join(bracketErr, backlogErr, processErr, errors.Join(refreshErrors...)),
+		live:          live,
+		active:        active,
+		stateReliable: bracketErr == nil && backlogErr == nil && !processCanceled,
+		backfillDone:  combinedErr == nil && len(scoreboard) > 0,
+		empty:         len(scoreboard) == 0 && !activeCandidate,
+		err:           combinedErr,
 	}
 }
 
@@ -242,11 +292,30 @@ func mergeCandidate(current, incoming model.Match) model.Match {
 	if incoming.Round == "" {
 		incoming.Round = current.Round
 	}
+	if incoming.BracketRequired == nil {
+		incoming.BracketRequired = current.BracketRequired
+	}
 	incoming.HomePlaceholder = (incoming.HomePlaceholder || current.HomePlaceholder) &&
 		isUnresolvedTeam(incoming.Home)
 	incoming.AwayPlaceholder = (incoming.AwayPlaceholder || current.AwayPlaceholder) &&
 		isUnresolvedTeam(incoming.Away)
 	return incoming
+}
+
+func mergeBracketCandidate(scoreboard, bracket model.Match) model.Match {
+	merged := mergeCandidate(scoreboard, bracket)
+	if bracket.Round != "" {
+		merged.Round = bracket.Round
+	}
+	if bracket.WinnerID != nil {
+		merged.WinnerID = bracket.WinnerID
+	}
+	if bracket.Note != nil {
+		merged.Note = bracket.Note
+	}
+	merged.HomePlaceholder = bracket.HomePlaceholder && isUnresolvedTeam(merged.Home)
+	merged.AwayPlaceholder = bracket.AwayPlaceholder && isUnresolvedTeam(merged.Away)
+	return merged
 }
 
 func isUnresolvedTeam(team model.Team) bool {
@@ -272,6 +341,23 @@ func matchStateRank(state model.MatchState) int {
 	}
 }
 
+func candidateIsActive(match model.Match, backfill bool, now time.Time) bool {
+	if match.State == model.MatchStateLive {
+		return true
+	}
+	if match.State != model.MatchStateScheduled {
+		return false
+	}
+	if match.StatusName == "STATUS_POSTPONED" {
+		return false
+	}
+	if !backfill {
+		return true
+	}
+	kickoff, err := time.Parse(time.RFC3339, match.Kickoff)
+	return err == nil && !kickoff.After(now.Add(7*24*time.Hour))
+}
+
 func (r *runner) refreshStandings(
 	ctx context.Context,
 	comp config.Competition,
@@ -287,6 +373,8 @@ func (r *runner) refreshStandings(
 	}
 	if errors.Is(err, store.ErrEmptyReplacement) {
 		r.log.Info("standings unavailable; preserving existing rows", "comp", comp.ID)
+		r.recordRun(ctx, comp.ID, "standings_preserved", start, nil)
+		return nil
 	}
 	if err == nil {
 		for _, row := range rows {
@@ -315,6 +403,8 @@ func (r *runner) refreshTopScorers(
 	}
 	if errors.Is(err, store.ErrEmptyReplacement) {
 		r.log.Info("top scorers unavailable; preserving existing rows", "comp", comp.ID)
+		r.recordRun(ctx, comp.ID, "top_scorers_preserved", start, nil)
+		return nil
 	}
 	r.recordRun(ctx, comp.ID, "top_scorers", start, err)
 	return err
@@ -360,6 +450,9 @@ func (r *runner) recordRun(
 		message = operationErr.Error()
 		if len(message) > 2048 {
 			message = message[:2048]
+			for !utf8.ValidString(message) {
+				message = message[:len(message)-1]
+			}
 		}
 		r.log.Warn("ingest operation", "comp", compID, "kind", kind, "err", operationErr)
 	}

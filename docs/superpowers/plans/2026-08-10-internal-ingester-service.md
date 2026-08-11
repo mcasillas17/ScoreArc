@@ -233,8 +233,8 @@ Expected: FAIL because options, retries, limits, and the source package are abse
 ```go
 type Source interface {
 	Name() string
-	Scoreboard(context.Context, config.Competition, config.Season) ([]model.Match, error)
-	Summary(context.Context, config.Competition, string) (model.MatchDetail, error)
+	Scoreboard(context.Context, config.Competition, config.Season, bool) ([]model.Match, error)
+	Summary(context.Context, config.Competition, model.Match) (SummaryResult, error)
 	Standings(context.Context, config.Competition, config.Season) ([]model.Standing, error)
 	TopScorers(context.Context, config.Competition, config.Season, int) ([]model.TopScorer, error)
 	Bracket(context.Context, config.Competition, config.Season) ([]model.BracketMatch, error)
@@ -461,9 +461,10 @@ result-dependent refreshes.
 
 - [x] **Step 5: Wire main and graceful shutdown**
 
-Load config and `POOLED_DSN`, construct production dependencies, support
-`-once`, and use `signal.NotifyContext`. Use a context-aware timer instead of
-`time.Sleep`. R2 remains optional when its environment is incomplete.
+Load config, `POOLED_DSN`, and the dedicated direct/unpooled
+`INGESTER_LEASE_DSN`; construct production dependencies, support `-once`, and
+use `signal.NotifyContext`. Use a context-aware timer instead of `time.Sleep`.
+R2 remains optional when its environment is incomplete.
 
 - [x] **Step 6: Run focused tests and commit**
 
@@ -540,11 +541,11 @@ Expected: every command exits 0.
 cd backend
 set -a; [ ! -f .env ] || . ./.env; set +a
 go test ./shared/store
-if [ -n "${POOLED_DSN:-}" ]; then go run ./ingester -once; fi
+if [ -n "${POOLED_DSN:-}" ] && [ -n "${INGESTER_LEASE_DSN:-}" ]; then go run ./ingester -once; fi
 ```
 
 Expected: integration tests pass when credentials exist and otherwise report
-explicit skips; the one-cycle run completes when `POOLED_DSN` exists.
+explicit skips; the one-cycle run completes when both database DSNs exist.
 
 - [x] **Step 3: Inspect the complete branch**
 

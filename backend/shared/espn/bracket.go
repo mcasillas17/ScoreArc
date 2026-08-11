@@ -3,9 +3,11 @@ package espn
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Port of src/server/data/providers/espn-bracket.ts. Brackets come from a
@@ -91,6 +93,20 @@ type rawBracketEvent struct {
 
 type rawBracketSeason struct {
 	Slug string `json:"slug"`
+	Year int    `json:"year"`
+}
+
+func ValidateBracketSeason(raw []byte, expectedYear int) error {
+	var scoreboard rawBracketScoreboard
+	if err := json.Unmarshal(raw, &scoreboard); err != nil {
+		return err
+	}
+	for _, event := range scoreboard.Events {
+		if event.Season.Year != expectedYear {
+			return fmt.Errorf("bracket season %d does not match %d", event.Season.Year, expectedYear)
+		}
+	}
+	return nil
 }
 
 type rawBracketCompetition struct {
@@ -121,7 +137,7 @@ func jsNumber(raw json.RawMessage) (value float64, finite bool) {
 	}
 	var f float64
 	if err := json.Unmarshal(raw, &f); err == nil {
-		return f, true
+		return f, f >= 0 && math.Trunc(f) == f
 	}
 	var s string
 	if err := json.Unmarshal(raw, &s); err == nil {
@@ -130,7 +146,7 @@ func jsNumber(raw json.RawMessage) (value float64, finite bool) {
 			return 0, true
 		}
 		if fv, err := strconv.ParseFloat(s, 64); err == nil {
-			return fv, true
+			return fv, fv >= 0 && math.Trunc(fv) == fv
 		}
 	}
 	return 0, false
@@ -215,9 +231,17 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, bool) {
 	if ev.Status == nil {
 		return BracketMatch{}, false
 	}
+	if ev.Status.Type.State != "pre" && ev.Status.Type.State != "in" &&
+		ev.Status.Type.State != "post" {
+		return BracketMatch{}, false
+	}
+	kickoff, err := parseESPNDate(ev.Date)
+	if err != nil {
+		return BracketMatch{}, false
+	}
 	status := ev.Status
 
-	state := mapState(status.Type.State, status.Type.Completed)
+	state := mapState(status.Type.State, status.Type.Completed, status.Type.Name)
 
 	var note *string
 	if len(comp.Notes) > 0 && comp.Notes[0].Text != "" {
@@ -234,7 +258,7 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, bool) {
 	return BracketMatch{
 		ID:           string(ev.ID),
 		Round:        bracketRoundSlug(string(ev.ID), ev.Season.Slug),
-		Kickoff:      ev.Date,
+		Kickoff:      kickoff.Format(time.RFC3339),
 		Home:         mapBracketTeam(home.Team),
 		Away:         mapBracketTeam(away.Team),
 		HomeScore:    scoreOf(home.Score),
@@ -253,8 +277,8 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, bool) {
 // grouped by round slug internally (preserving each round's original event
 // order) then flattened in canonical knockoutRoundOrder, dropping any round
 // whose slug isn't in that vocabulary — mirroring the TS mapper's grouping
-// and `ROUND_ORDER.filter(...)` behavior. Malformed events are skipped
-// rather than erroring.
+// and `ROUND_ORDER.filter(...)` behavior. Malformed knockout events reject the
+// payload so partial bracket metadata cannot be persisted.
 func MapBracket(raw []byte) ([]BracketMatch, error) {
 	if err := validateArrayEnvelope(raw, "events"); err != nil {
 		return nil, err
@@ -274,7 +298,7 @@ func MapBracket(raw []byte) ([]BracketMatch, error) {
 		eligibleEvents++
 		match, ok := mapBracketMatch(ev)
 		if !ok {
-			continue
+			return nil, fmt.Errorf("ESPN bracket event %q is incomplete", ev.ID)
 		}
 		byRound[slug] = append(byRound[slug], match)
 	}

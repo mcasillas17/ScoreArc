@@ -368,7 +368,7 @@ func TestMapSummaryStatsNilOnMismatch(t *testing.T) {
 }
 
 func TestValidateSummaryAcceptsNumericIdentityAndScores(t *testing.T) {
-	raw := []byte(`{"header":{"id":123,"competitions":[{
+	raw := []byte(`{"gameInfo":{"venue":{"fullName":"Venue"}},"header":{"id":123,"competitions":[{
 		"id":123,
 		"status":{"type":{"completed":true}},
 		"competitors":[
@@ -378,6 +378,20 @@ func TestValidateSummaryAcceptsNumericIdentityAndScores(t *testing.T) {
 	}]}}`)
 	if err := ValidateSummary(raw, "123", "1", "2", true); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestValidateSummaryRejectsSparseFinalPayload(t *testing.T) {
+	raw := []byte(`{"header":{"id":"123","competitions":[{
+		"id":"123",
+		"status":{"type":{"completed":true}},
+		"competitors":[
+			{"homeAway":"home","team":{"id":"1"},"score":"2"},
+			{"homeAway":"away","team":{"id":"2"},"score":"1"}
+		]
+	}]}}`)
+	if err := ValidateSummary(raw, "123", "1", "2", true); err == nil {
+		t.Fatal("expected sparse final summary error")
 	}
 }
 

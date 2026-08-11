@@ -13,6 +13,23 @@ func TestMapStandingsRejectsMalformedRows(t *testing.T) {
 	}
 }
 
+func TestMapStandingsRejectsEmptyGroup(t *testing.T) {
+	raw := []byte(`{"children":[{"name":"Group A","standings":{"entries":[]}}]}`)
+	if _, err := MapStandings(raw); err == nil {
+		t.Fatal("expected empty standings group error")
+	}
+}
+
+func TestMapStandingsRejectsMissingRequiredStats(t *testing.T) {
+	raw := []byte(`{"children":[{"name":"League","standings":{"entries":[{
+		"team":{"id":"1","displayName":"Team","abbreviation":"TST"},
+		"stats":[{"name":"gamesPlayed","value":1}]
+	}]}}]}`)
+	if _, err := MapStandings(raw); err == nil {
+		t.Fatal("expected incomplete standing stats error")
+	}
+}
+
 func loadStandingsFixture(t *testing.T) []byte {
 	t.Helper()
 	b, err := os.ReadFile("testdata/espn-standings.json")

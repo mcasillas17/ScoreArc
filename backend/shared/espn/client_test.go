@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -95,5 +96,33 @@ func TestParseRetryAfterCapsFarFutureDelay(t *testing.T) {
 	now := time.Date(2026, time.June, 1, 12, 0, 0, 0, time.UTC)
 	if got := parseRetryAfter("3600", now); got != maxRetryDelay {
 		t.Fatalf("delay=%v", got)
+	}
+}
+
+func TestGetJSONDoesNotSetBlockedCustomUserAgent(t *testing.T) {
+	var userAgent string
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		userAgent = request.Header.Get("User-Agent")
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+	client := NewWithOptions(Options{
+		HTTP:        server.Client(),
+		MaxAttempts: 1,
+	})
+	var got map[string]any
+	if err := client.GetJSON(context.Background(), server.URL, &got); err != nil {
+		t.Fatal(err)
+	}
+	if userAgent == "" || userAgent == "scorearc-ingester" {
+		t.Fatalf("user agent=%q", userAgent)
+	}
+}
+
+func TestScoreboardURLWithLimit(t *testing.T) {
+	got := ScoreboardURLWithLimit("eng.1", "20260701-20270630", 1000)
+	if !strings.Contains(got, "dates=20260701-20270630&limit=1000") {
+		t.Fatalf("url=%q", got)
 	}
 }

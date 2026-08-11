@@ -217,11 +217,16 @@ func TestMirrorRejectsUntrustedAssetURLs(t *testing.T) {
 }
 
 func TestMirrorRedirectPolicyRevalidatesDestination(t *testing.T) {
-	mirror := New(Config{})
+	mirror, err := New(Config{PublicBaseURL: "https://cdn.example"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	client, ok := mirror.http.(*http.Client)
 	if !ok {
 		t.Fatal("expected HTTP client")
 	}
+
 	request, err := http.NewRequest(http.MethodGet, "https://127.0.0.1/logo.png", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -232,5 +237,18 @@ func TestMirrorRedirectPolicyRevalidatesDestination(t *testing.T) {
 	}
 	if err := client.CheckRedirect(request, []*http.Request{via}); err == nil {
 		t.Fatal("expected redirect destination rejection")
+	}
+}
+
+func TestNewRejectsUnsafePublicBaseURL(t *testing.T) {
+	for _, baseURL := range []string{
+		"http://cdn.example",
+		"https://user@cdn.example",
+		"https://cdn.example?query=1",
+		"https://cdn.example:8443",
+	} {
+		if _, err := New(Config{PublicBaseURL: baseURL}); err == nil {
+			t.Fatalf("expected invalid base URL error for %q", baseURL)
+		}
 	}
 }
