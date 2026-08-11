@@ -589,7 +589,7 @@ last review correction.
 
 ### Task 10: Push and open the pull request
 
-- [ ] **Step 1: Push the feature branch**
+- [x] **Step 1: Push the feature branch**
 
 ```bash
 git push -u origin mcasillas17-internal-ingester-service
