@@ -8,6 +8,10 @@
 
 **Tech Stack:** Go 1.26, pgx v5/pgxpool, AWS SDK for Go v2 S3 client, Postgres/Neon, Cloudflare R2, `log/slog`, Go `testing`, Vitest, TypeScript.
 
+**Implementation status (2026-08-10):** Tasks 1-8 are implemented. Live Neon/R2
+smoke checks remain conditional on local credentials. Task 9 is the required
+two-model review loop; Task 10 is push and pull-request delivery.
+
 ---
 
 ## File Map
@@ -595,4 +599,3 @@ Expected: the remote branch is created and tracking is configured.
 Create a PR against `main` summarizing the foundation import, ingester
 architecture, atomic finalization, reliability behavior, test coverage, docs,
 and optional cloud validation status. Do not merge it.
-
