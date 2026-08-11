@@ -82,11 +82,18 @@ the existing frontend types verbatim). **No `news` table** (proxied live).
 > the backend.) See §10.
 
 Migrations: `backend/migrations/0001_init.*.sql` (Tier-1 + roles),
-`0002_snapshots.*.sql` (Tier-3 + ops).
+`0002_snapshots.*.sql` (Tier-3 + ops), `0003_ingester_delete_grant.*.sql`
+(replacement permissions), and `0004_ingester_hardening.*.sql` (durability
+columns, indexes, and history guards).
+
+Data backfills must run before finalized-history protection triggers are enabled.
+A future migration that intentionally rewrites finalized matches or details must
+disable the relevant trigger only for the bounded rewrite and re-enable it in the
+same transaction.
 
 ### Tier 1 — current state (hot, upserted by the ingester)
 - **team**(id PK, name, abbr, crest_url, updated_at)
-- **match**(id PK, comp_id, season_id, round, kickoff, state[`scheduled|live|finished`], home_team_id→team, away_team_id→team, home_score, away_score, minute, status_detail, status_name, winner_id, note, **finalized_at**, updated_at) — indexes on `(comp_id,season_id,kickoff)` and `state`.
+- **match**(id PK, comp_id, season_id, round, kickoff, state[`scheduled|live|finished`], home_team_id→team, away_team_id→team, home_score, away_score, minute, status_detail, status_name, winner_id, note, home_placeholder, away_placeholder, bracket_required, **finalized_at**, updated_at) — indexes on `(comp_id,season_id,kickoff)`, `state`, and unfinalized history.
 - **match_detail**(match_id PK→match, scorers jsonb, cards jsonb, stats jsonb, win_probability jsonb, shootout jsonb, shootout_detail jsonb, lineups jsonb, videos jsonb, info jsonb, form jsonb, h2h jsonb, commentary jsonb, updated_at)
 - **standing**(PK (comp_id,season_id,team_id), group_id, group_name, rank, played, wins, draws, losses, goals_for, goals_against, goal_difference, points, advanced, updated_at) — `group_id`/`group_name` (e.g. "A"/"Group A") are nullable: populated for multi-group competitions (e.g. World Cup group stage), null for single-table leagues.
 - **top_scorer**(PK (comp_id,season_id,rank), player, team_abbr, team_name, team_crest_url, goals, matches) — team is denormalized (ESPN stats give abbr/name/crest, no id), matching the frontend `TopScorer` type.
@@ -100,29 +107,78 @@ Migrations: `backend/migrations/0001_init.*.sql` (Tier-1 + roles),
 
 ### Roles (least privilege — enforces the read-only public path)
 - `scorearc_reader` → **SELECT only** (the public reader connects as this).
-- `scorearc_ingester` → SELECT/INSERT/UPDATE (only it writes).
+- `scorearc_ingester` → SELECT/INSERT/UPDATE plus narrowly scoped DELETE for
+  atomic standings/scorer replacement and audit retention (only it writes).
 - `ALTER DEFAULT PRIVILEGES` mirrors these so future tables inherit them.
 
 ---
 
-## 4. Ingester (slice 1b — Go worker on Fly)
+## 4. Ingester (slice 1b — implemented Go worker)
 
 - Always-on (Fly `min_machines_running = 1`), **no public HTTP**.
-- **Cadence:** internal ticker — fast (~15–30 s) while any match in the current
-  window is live; slow (minutes) otherwise. Which comps/seasons to poll comes from
-  `backend/config/competitions.json`.
-- **Mappers:** port the ESPN→domain mapping from `src/server/data/providers/espn-*.ts`
-  to Go, and **test against the recorded fixtures** in
-  `src/server/data/__fixtures__/` so the Go output matches the TS mappers.
-- **Upsert** current state into Tier-1 tables (idempotent by ESPN id).
-- **Freeze:** on `state → finished`, write finals + set `finalized_at`; stop
-  upserting that match (immutable history).
-- **Assets:** on first sight of a team/flag/emblem, download the image once →
-  R2 (`teams/{id}.png` etc.) → set `crest_url` to the CDN URL. Skip if present.
-  Use the AWS S3 SDK pointed at the R2 endpoint.
-- **`emitSnapshots()`** — hook called each tick; **no-op in Phase 1** (Phase 2
-  writes the snapshot tables and/or streams to the analytics store).
-- Writes `ingest_run` rows; structured logs.
+- A dedicated direct/unpooled pgx connection holds a PostgreSQL advisory lock.
+  Normal writes use `POOLED_DSN`; lease health is checked independently during
+  each cycle so losing the singleton session cancels work and terminates.
+- Active competitions poll every 20 seconds while any match is live and every
+  five minutes otherwise. Slow cycles reconcile the current season, retry
+  failed reconciliation after 30 minutes, and refresh successful reconciliation
+  daily. Normal scoreboards use a rolling `-30d/+7d` window with foreign-season
+  events filtered; full-season backfills reject season mismatches.
+- Work is bounded to three competitions concurrently. Two successful empty
+  polls are required before a competition becomes dormant; failed polls reset
+  that sequence and preserve known live cadence.
+- Current state is idempotently upserted. State cannot regress except
+  live→scheduled for ESPN's explicit postponed or suspended status. Sparse payloads preserve
+  known scores, winners, detail arrays, and bracket placeholders.
+- Unlike the frontend's legacy `post → finished` mapping, the ingester keeps
+  unknown incomplete `post` statuses mutable (`live`) and maps postponed or
+  suspended matches to `scheduled`; only provider-confirmed or explicitly
+  terminal statuses become immutable history.
+- Final match and detail data commit in one transaction. Database triggers make
+  finalized rows immutable. Failed finals remain queryable through the
+  unfinalized backlog; persisted `bracket_required` classification prevents a
+  restart from losing knockout safety.
+- Bracket metadata is authoritative for knockout round, placeholders, and
+  shootout winner. A bracket outage blocks only candidates still requiring that
+  metadata; group-stage matches continue finalizing, while knockout candidates
+  require confirmation from the current successful bracket response before
+  immutable finalization.
+- Standings and scorer replacements are transactional. Empty or suspiciously
+  partial standings payloads preserve the prior snapshot rather than deleting
+  valid rows and remain retryable failures. ESPN statistics responses carry
+  unreliable season metadata, so top-scorer season scoping relies on the
+  requested statistics URL rather than rejecting the payload's reported year.
+- Crest downloads allow only validated public HTTP(S) sources, enforce
+  redirects/content type/size/deadline limits, and upload deterministic R2 keys.
+- Every provider/store operation and global audit-pruning pass records an
+  `ingest_run`. Old audit rows are pruned in bounded batches.
+- `go run ./ingester -once` performs one complete slow reconciliation without a
+  fixed whole-cycle deadline; individual operations remain bounded.
+
+```mermaid
+sequenceDiagram
+  participant S as Scheduler
+  participant L as Direct lease
+  participant E as ESPN
+  participant P as Neon Postgres
+  participant R as Cloudflare R2
+
+  S->>L: acquire/check advisory lock
+  loop active competitions (max 3)
+    S->>E: rolling or full-season scoreboard
+    opt bracket season
+      S->>E: bracket feed
+    end
+    S->>P: load durable unfinalized backlog
+    S->>P: monotonic match/team upserts
+    S->>E: summary for live/final candidates
+    S->>P: atomic detail + final freeze
+    S->>E: standings + top scorers
+    S->>P: guarded transactional replacements
+    S->>R: validated crest mirror
+    S->>P: ingest_run audit
+  end
+```
 
 ---
 
@@ -257,7 +313,7 @@ nested response locations.
 
 ---
 
-## 10. Pinned contracts and remaining slice boundaries
+## 10. Pinned contracts and slice boundaries
 
 The prose above is not enough to implement directly — nail these down (in each
 slice's plan) so the Go output matches the frontend verbatim. The **source of
@@ -265,7 +321,7 @@ truth is the TS**: `src/server/data/types.ts` (shapes), `providers/espn-*.ts`
 (mapping), `endpoints.ts` (ESPN URLs), `store.ts` (how each method is assembled),
 `__fixtures__/` (recorded ESPN JSON to test against).
 
-**1b — Ingester**
+**1b — Ingester (implemented)**
 - **Mapper → table map:** `espn-matches.ts` → `match`; `espn-summary.ts`
   (scorers/cards/stats/winProb/lineups/videos/info/form/h2h/commentary/shootout) →
   `match_detail` **jsonb** columns; `espn-standings.ts` → `standing`;
@@ -276,14 +332,14 @@ truth is the TS**: `src/server/data/types.ts` (shapes), `providers/espn-*.ts`
   comps/seasons + date ranges to poll come from `backend/config/competitions.json`.
 - **jsonb payloads must equal the `types.ts` shapes** so the reader can hand them
   back unchanged — fixture-test the Go mappers against `__fixtures__/`.
-- **`emitSnapshots()`** — define now as a no-op method,
-  `func (i *Ingester) emitSnapshots(ctx context.Context, tick Snapshot) error { return nil }`,
-  called once per tick. Phase 2 fills it.
 - **"Live" detection** for the fast/slow cadence: any polled `match.state == 'live'`.
 - **Freeze predicate:** on `state → finished`, write finals, set `finalized_at`,
   and skip re-upsert while `finalized_at IS NOT NULL`.
 - **Asset idempotency:** skip the download if the object already exists in R2
   (HEAD) or `team.crest_url` already points at our CDN.
+- Governing implementation details and validation evidence live in
+  `docs/superpowers/specs/2026-08-10-internal-ingester-service-design.md` and
+  `docs/superpowers/plans/2026-08-10-internal-ingester-service.md`.
 
 **1c — Reader (implemented)**
 - **Endpoint → type map:** each `/v1/…` response must deserialize into exactly

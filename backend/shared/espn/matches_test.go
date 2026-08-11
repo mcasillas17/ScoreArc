@@ -7,6 +7,18 @@ import (
 	"testing"
 )
 
+func TestMapScoreboardRejectsBlankTeamIDs(t *testing.T) {
+	raw := []byte(`{"events":[{"id":"m","date":"2026-01-01T00:00:00Z",
+		"status":{"type":{"state":"pre"}},
+		"competitions":[{"competitors":[
+			{"homeAway":"home","team":{"id":"","displayName":"Unknown"}},
+			{"homeAway":"away","team":{"id":"2","displayName":"Away"}}
+		]}]}]}`)
+	if _, err := MapScoreboard(raw); err == nil {
+		t.Fatal("expected blank team identity error")
+	}
+}
+
 func loadScoreboardFixture(t *testing.T) []byte {
 	t.Helper()
 	b, err := os.ReadFile("testdata/espn-scoreboard.json")
@@ -132,28 +144,152 @@ func TestMapScoreboardResilience(t *testing.T) {
 		var rawEvents struct {
 			Events []struct{} `json:"events"`
 		}
+
 		if err := json.Unmarshal(raw, &rawEvents); err != nil {
 			t.Fatalf("unmarshal fixture: %v", err)
 		}
 
 		mixed := buildMixedEventsPayload(t, raw, malformed)
-		result, err := MapScoreboard(mixed)
-		if err != nil {
-			t.Fatalf("MapScoreboard returned error: %v", err)
-		}
-		if len(result) != len(rawEvents.Events) {
-			t.Fatalf("got %d matches, want %d (malformed event should be skipped)", len(result), len(rawEvents.Events))
+		if _, err := MapScoreboard(mixed); err == nil {
+			t.Fatal("expected mixed malformed scoreboard error")
 		}
 	})
 
-	t.Run("returns [] for an array containing only a malformed event", func(t *testing.T) {
+	t.Run("rejects an array containing only a malformed event", func(t *testing.T) {
 		onlyMalformed := []byte(`{"events":[` + string(malformed) + `]}`)
-		result, err := MapScoreboard(onlyMalformed)
-		if err != nil {
-			t.Fatalf("MapScoreboard returned error: %v", err)
-		}
-		if len(result) != 0 {
-			t.Fatalf("got %d matches, want 0", len(result))
+		if _, err := MapScoreboard(onlyMalformed); err == nil {
+			t.Fatal("expected malformed scoreboard error")
 		}
 	})
+}
+
+func TestMapScoreboardAcceptsNumericIdentityAndScores(t *testing.T) {
+	raw := []byte(`{"events":[{"id":123,"date":"2026-01-01T00:00:00Z",
+		"season":{"year":2026},
+		"status":{"type":{"state":"post","completed":true}},
+		"competitions":[{"competitors":[
+			{"homeAway":"home","score":2,"team":{"id":1,"displayName":"Home","abbreviation":"HOM"}},
+			{"homeAway":"away","score":1,"team":{"id":2,"displayName":"Away","abbreviation":"AWY"}}
+		]}]}]}`)
+	matches, err := MapScoreboard(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if matches[0].ID != "123" || matches[0].Home.ID != "1" ||
+		matches[0].HomeScore == nil || *matches[0].HomeScore != 2 {
+		t.Fatalf("match=%+v", matches[0])
+	}
+
+}
+
+func TestBackfillCompletenessRejectsLimitSizedResponse(t *testing.T) {
+	raw := []byte(`{"events":[{},{}]}`)
+	if err := ValidateBackfillCompleteness(raw, 2); err == nil {
+		t.Fatal("expected truncated backfill error")
+	}
+}
+
+func TestMapScoreboardNormalizesSecondlessKickoff(t *testing.T) {
+	raw := []byte(`{"events":[{"id":"1","date":"2026-06-29T17:00Z",
+		"season":{"slug":"group-stage"},
+		"status":{"type":{"state":"pre","completed":false}},
+		"competitions":[{"competitors":[
+			{"homeAway":"home","team":{"id":"1","displayName":"Home","abbreviation":"HOM"}},
+			{"homeAway":"away","team":{"id":"2","displayName":"Away","abbreviation":"AWY"}}
+		]}]}]}`)
+	matches, err := MapScoreboard(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if matches[0].Kickoff != "2026-06-29T17:00:00Z" {
+		t.Fatalf("kickoff=%q", matches[0].Kickoff)
+	}
+	if matches[0].BracketRequired == nil || *matches[0].BracketRequired {
+		t.Fatalf("bracket required=%v", matches[0].BracketRequired)
+	}
+}
+
+func TestFilterScoreboardSeasonRemovesForeignEvents(t *testing.T) {
+	raw := []byte(`{"events":[
+		{"id":"old","season":{"year":2025}},
+		{"id":"current","season":{"year":2026}},
+		{"id":"unknown"}
+	]}`)
+	filtered, err := FilterScoreboardSeason(raw, 2026)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var scoreboard rawScoreboard
+	if err := json.Unmarshal(filtered, &scoreboard); err != nil {
+		t.Fatal(err)
+	}
+	if len(scoreboard.Events) != 2 ||
+		string(scoreboard.Events[0].ID) != "current" ||
+		string(scoreboard.Events[1].ID) != "unknown" {
+		t.Fatalf("filtered events=%+v", scoreboard.Events)
+	}
+}
+
+func TestScoreboardClassificationUsesHistoricalRoundOverride(t *testing.T) {
+	raw := []byte(`{"events":[{"id":"264118","date":"2010-07-03T18:30:00Z",
+		"season":{"year":2010,"slug":"group-stage"},
+		"status":{"type":{"state":"post","completed":true}},
+		"competitions":[{"competitors":[
+			{"homeAway":"home","team":{"id":"1","displayName":"Home","abbreviation":"HOM"}},
+			{"homeAway":"away","team":{"id":"2","displayName":"Away","abbreviation":"AWY"}}
+		]}]}]}`)
+	matches, err := MapScoreboard(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 || matches[0].BracketRequired == nil ||
+		!*matches[0].BracketRequired {
+		t.Fatalf("matches=%+v", matches)
+	}
+}
+
+func TestMapStateHandlesIncompletePostStatuses(t *testing.T) {
+	if got := mapState("post", false, "STATUS_CANCELED"); got != MatchStateFinished {
+		t.Fatalf("canceled state=%q", got)
+	}
+	if got := mapState("post", false, "STATUS_POSTPONED"); got != MatchStateScheduled {
+		t.Fatalf("postponed state=%q", got)
+	}
+	if got := mapState("post", false, "STATUS_FULL_TIME"); got != MatchStateFinished {
+		t.Fatalf("incomplete post state=%q", got)
+	}
+	if got := mapState("post", false, "STATUS_SUSPENDED"); got != MatchStateScheduled {
+		t.Fatalf("suspended state=%q", got)
+	}
+	if got := mapState("post", false, "STATUS_PROVIDER_NEW"); got != MatchStateLive {
+		t.Fatalf("unknown post state=%q", got)
+	}
+}
+
+func TestScoreboardUnknownRoundRequiresBracketClassification(t *testing.T) {
+	raw := []byte(`{"events":[{"id":"unknown-round","date":"2026-06-29T17:00Z",
+		"season":{"year":2026,"slug":"provider-new-round"},
+		"status":{"type":{"state":"post","completed":true}},
+		"competitions":[{"competitors":[
+			{"homeAway":"home","team":{"id":"1","displayName":"Home","abbreviation":"HOM"}},
+			{"homeAway":"away","team":{"id":"2","displayName":"Away","abbreviation":"AWY"}}
+		]}]}]}`)
+	matches, err := MapScoreboard(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(matches) != 1 || matches[0].BracketRequired == nil ||
+		!*matches[0].BracketRequired {
+		t.Fatalf("matches=%+v", matches)
+	}
+}
+
+func TestGroupStageDoesNotRequireBracketClassification(t *testing.T) {
+	required := bracketRequirement("group", "group-stage")
+	if required == nil || *required {
+		t.Fatalf("required=%v", required)
+	}
 }

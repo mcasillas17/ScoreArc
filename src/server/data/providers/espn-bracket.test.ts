@@ -21,6 +21,13 @@ describe('mapBracket', () => {
     expect(final!.matches).toHaveLength(1);
   });
 
+  it('classifies third-place loser slots as placeholders', () => {
+    const thirdPlace = rounds.find((r) => r.slug === '3rd-place-match');
+    expect(thirdPlace).toBeDefined();
+    expect(thirdPlace!.matches[0].home.placeholder).toBe(true);
+    expect(thirdPlace!.matches[0].away.placeholder).toBe(true);
+  });
+
   it('rounds are in fixed bracket order', () => {
     const order = rounds.map((r) => r.slug);
     expect(order).toEqual([
@@ -128,5 +135,27 @@ describe('mapBracket — penalty-shootout winner fallback', () => {
     const rounds = mapBracket({ events: [pensEvent] });
     const m = rounds.find((r) => r.slug === 'quarterfinals')!.matches[0];
     expect(m.winnerId).toBe('10'); // Argentina (higher shootoutScore)
+  });
+});
+
+describe('mapBracket — club placeholders', () => {
+  it('does not classify real club crests as placeholders', () => {
+    const event = {
+      id: 'club-1',
+      date: '2026-08-01T00:00Z',
+      season: { slug: 'quarterfinals' },
+      status: { type: { state: 'pre', completed: false, shortDetail: '', name: 'STATUS_SCHEDULED' } },
+      competitions: [{
+        notes: [],
+        competitors: [
+          { homeAway: 'home', winner: false, team: { id: '1', abbreviation: 'SEA', displayName: 'Seattle', logo: 'https://a.espncdn.com/i/teamlogos/soccer/500/9726.png' } },
+          { homeAway: 'away', winner: false, team: { id: '2', abbreviation: 'MIA', displayName: 'Miami', logo: 'https://a.espncdn.com/i/teamlogos/soccer/500/20232.png' } },
+        ],
+      }],
+    };
+
+    const match = mapBracket({ events: [event] })[0].matches[0];
+    expect(match.home.placeholder).toBe(false);
+    expect(match.away.placeholder).toBe(false);
   });
 });

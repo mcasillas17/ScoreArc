@@ -5,6 +5,20 @@ import (
 	"testing"
 )
 
+func TestMapTopScorersRejectsMalformedLeaders(t *testing.T) {
+	raw := []byte(`{"stats":[{"name":"goalsLeaders","leaders":[{"value":3,"athlete":{}}]}]}`)
+	if _, err := MapTopScorers(raw, 10); err == nil {
+		t.Fatal("expected malformed scorer error")
+	}
+}
+
+func TestMapTopScorersRejectsFractionalGoals(t *testing.T) {
+	raw := []byte(`{"stats":[{"name":"goalsLeaders","leaders":[{"value":1.5,"athlete":{"displayName":"Player"}}]}]}`)
+	if _, err := MapTopScorers(raw, 20); err == nil {
+		t.Fatal("expected fractional goal count error")
+	}
+}
+
 func loadStatisticsFixture(t *testing.T) []byte {
 	t.Helper()
 	b, err := os.ReadFile("testdata/espn-statistics.json")
@@ -80,21 +94,12 @@ func TestMapTopScorers(t *testing.T) {
 		}
 	})
 
-	t.Run("returns [] for a malformed payload", func(t *testing.T) {
-		got, err := MapTopScorers([]byte(`{}`), 20)
-		if err != nil {
-			t.Fatalf("MapTopScorers({}) returned error: %v", err)
-		}
-		if len(got) != 0 {
-			t.Errorf("got %d scorers, want 0", len(got))
-		}
-
-		got, err = MapTopScorers([]byte(`null`), 20)
-		if err != nil {
-			t.Fatalf("MapTopScorers(null) returned error: %v", err)
-		}
-		if len(got) != 0 {
-			t.Errorf("got %d scorers, want 0", len(got))
+	t.Run("treats an absent pre-season dataset as empty", func(t *testing.T) {
+		for _, raw := range [][]byte{[]byte(`{}`), []byte(`null`)} {
+			got, err := MapTopScorers(raw, 20)
+			if err != nil || len(got) != 0 {
+				t.Fatalf("scorers=%v err=%v", got, err)
+			}
 		}
 	})
 

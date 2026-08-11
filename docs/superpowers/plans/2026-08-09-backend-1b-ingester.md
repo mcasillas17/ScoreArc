@@ -1,5 +1,9 @@
 # Backend Slice 1b — Ingester — Implementation Plan
 
+> **Superseded:** Do not execute this plan. The current implementation and
+> operational requirements are defined by
+> [`2026-08-10-internal-ingester-service.md`](2026-08-10-internal-ingester-service.md).
+
 > **Executing without Superpowers:** this is a plain TDD checklist — work tasks
 > top-to-bottom, run each step's command, confirm its `expect:`, commit per task.
 > Ignore the "sub-skill" convention; any agent can follow it.

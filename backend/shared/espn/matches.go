@@ -1,6 +1,13 @@
 package espn
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+)
 
 // Port of src/server/data/providers/espn-matches.ts's mapScoreboard +
 // src/server/data/state.ts's mapState. Reads ESPN's scoreboard shape
@@ -16,10 +23,64 @@ type rawScoreboard struct {
 }
 
 type rawEvent struct {
-	ID           string           `json:"id"`
+	ID           flexibleString   `json:"id"`
 	Date         string           `json:"date"`
 	Status       *rawStatus       `json:"status"`
 	Competitions []rawCompetition `json:"competitions"`
+	Season       struct {
+		Year int    `json:"year"`
+		Slug string `json:"slug"`
+	} `json:"season"`
+}
+
+func ValidateScoreboardSeason(raw []byte, expectedYear int) error {
+	var scoreboard rawScoreboard
+	if err := json.Unmarshal(raw, &scoreboard); err != nil {
+		return err
+	}
+
+	for _, event := range scoreboard.Events {
+		if event.Season.Year != 0 && event.Season.Year != expectedYear {
+			return fmt.Errorf("scoreboard season %d does not match %d", event.Season.Year, expectedYear)
+		}
+	}
+	return nil
+}
+
+func FilterScoreboardSeason(raw []byte, expectedYear int) ([]byte, error) {
+	var scoreboard struct {
+		Events []json.RawMessage `json:"events"`
+	}
+	if err := json.Unmarshal(raw, &scoreboard); err != nil {
+		return nil, err
+	}
+	filtered := scoreboard.Events[:0]
+	for _, event := range scoreboard.Events {
+		var envelope struct {
+			Season struct {
+				Year int `json:"year"`
+			} `json:"season"`
+		}
+		if err := json.Unmarshal(event, &envelope); err != nil {
+			return nil, err
+		}
+		if envelope.Season.Year == 0 || envelope.Season.Year == expectedYear {
+			filtered = append(filtered, event)
+		}
+	}
+	scoreboard.Events = filtered
+	return json.Marshal(scoreboard)
+}
+
+func ValidateBackfillCompleteness(raw []byte, limit int) error {
+	var scoreboard rawScoreboard
+	if err := json.Unmarshal(raw, &scoreboard); err != nil {
+		return err
+	}
+	if len(scoreboard.Events) >= limit {
+		return fmt.Errorf("scoreboard backfill reached limit %d", limit)
+	}
+	return nil
 }
 
 type rawCompetition struct {
@@ -32,19 +93,43 @@ type rawNote struct {
 }
 
 type rawCompetitor struct {
-	HomeAway string  `json:"homeAway"`
-	Winner   bool    `json:"winner"`
-	Score    *string `json:"score"`
-	Team     rawTeam `json:"team"`
+	HomeAway string          `json:"homeAway"`
+	Winner   bool            `json:"winner"`
+	Score    *flexibleString `json:"score"`
+	Team     rawTeam         `json:"team"`
 }
 
 type rawTeam struct {
-	ID           string    `json:"id"`
-	DisplayName  string    `json:"displayName"`
-	Name         string    `json:"name"` // used by the bracket mapper's displayName ?? name ?? abbreviation fallback
-	Abbreviation string    `json:"abbreviation"`
-	Logo         *string   `json:"logo"`
-	Logos        []rawLogo `json:"logos"`
+	ID           flexibleString `json:"id"`
+	DisplayName  string         `json:"displayName"`
+	Name         string         `json:"name"` // used by the bracket mapper's displayName ?? name ?? abbreviation fallback
+	Abbreviation string         `json:"abbreviation"`
+	Logo         *string        `json:"logo"`
+	Logos        []rawLogo      `json:"logos"`
+}
+
+type flexibleString string
+
+func (value *flexibleString) UnmarshalJSON(raw []byte) error {
+	raw = bytes.TrimSpace(raw)
+	if bytes.Equal(raw, []byte("null")) {
+		*value = ""
+		return nil
+	}
+	var text string
+	if len(raw) > 0 && raw[0] == '"' {
+		if err := json.Unmarshal(raw, &text); err != nil {
+			return err
+		}
+		*value = flexibleString(text)
+		return nil
+	}
+	var number json.Number
+	if err := json.Unmarshal(raw, &number); err != nil {
+		return fmt.Errorf("expected string or number: %w", err)
+	}
+	*value = flexibleString(number.String())
+	return nil
 }
 
 type rawLogo struct {
@@ -63,16 +148,26 @@ type rawStatusType struct {
 	ShortDetail string `json:"shortDetail"`
 }
 
-// mapState ports state.ts's mapState.
-func mapState(espnState string, completed bool) MatchState {
+// mapState follows the frontend state mapping except that ESPN statuses not yet
+// confirmed final remain mutable instead of being frozen as finished.
+func mapState(espnState string, completed bool, statusName string) MatchState {
 	if completed {
 		return MatchStateFinished
 	}
+	if espnState == "post" {
+		switch statusName {
+		case "STATUS_ABANDONED", "STATUS_CANCELED", "STATUS_FINAL",
+			"STATUS_FINAL_AET", "STATUS_FINAL_PEN", "STATUS_FORFEIT",
+			"STATUS_FULL_TIME":
+			return MatchStateFinished
+		case "STATUS_POSTPONED", "STATUS_SUSPENDED":
+			return MatchStateScheduled
+		default:
+			return MatchStateLive
+		}
+	}
 	if espnState == "pre" {
 		return MatchStateScheduled
-	}
-	if espnState == "post" {
-		return MatchStateFinished
 	}
 	return MatchStateLive
 }
@@ -86,9 +181,16 @@ func mapTeam(t rawTeam) Team {
 		href := t.Logos[0].Href
 		crest = &href
 	}
+	name := strings.TrimSpace(t.DisplayName)
+	if name == "" {
+		name = strings.TrimSpace(t.Name)
+	}
+	if name == "" {
+		name = strings.TrimSpace(t.Abbreviation)
+	}
 	return Team{
-		ID:       t.ID,
-		Name:     t.DisplayName,
+		ID:       string(t.ID),
+		Name:     name,
 		Abbr:     t.Abbreviation,
 		CrestURL: crest,
 	}
@@ -96,23 +198,24 @@ func mapTeam(t rawTeam) Team {
 
 // scoreOf ports espn-matches.ts's score parsing:
 // home.score != null && home.score !== "" ? Number(home.score) : null
-func scoreOf(raw *string) *int {
+func scoreOf(raw *flexibleString) *int {
 	if raw == nil || *raw == "" {
 		return nil
 	}
-	var f float64
-	if err := json.Unmarshal([]byte(*raw), &f); err != nil {
+	n, err := strconv.Atoi(string(*raw))
+	if err != nil || n < 0 {
 		return nil
 	}
-	n := int(f)
 	return &n
 }
 
 // MapScoreboard ports espn-matches.ts's mapScoreboard: maps ESPN's raw
-// scoreboard JSON into our domain []Match. Events without a competition or
-// without both a home and away competitor are skipped (mirrors the TS
-// `flatMap` returning `[]` for those events) rather than causing an error.
+// scoreboard JSON into our domain []Match. Structurally incomplete events reject
+// the payload so a partial provider response cannot silently erase or stale data.
 func MapScoreboard(raw []byte) ([]Match, error) {
+	if err := validateArrayEnvelope(raw, "events"); err != nil {
+		return nil, err
+	}
 	var sb rawScoreboard
 	if err := json.Unmarshal(raw, &sb); err != nil {
 		return nil, err
@@ -121,7 +224,7 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 	matches := make([]Match, 0, len(sb.Events))
 	for _, ev := range sb.Events {
 		if len(ev.Competitions) == 0 {
-			continue
+			return nil, fmt.Errorf("scoreboard event %q missing competition", ev.ID)
 		}
 		comp := ev.Competitions[0]
 
@@ -135,15 +238,28 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 				away = c
 			}
 		}
-		if home == nil || away == nil {
-			continue
+		if ev.ID == "" || ev.Date == "" || home == nil || away == nil ||
+			home.Team.ID == "" || away.Team.ID == "" {
+			return nil, fmt.Errorf("scoreboard contains event with incomplete identity")
 		}
 		if ev.Status == nil {
-			continue
+			return nil, fmt.Errorf("scoreboard event %q missing status", ev.ID)
+		}
+		kickoff, err := parseESPNDate(ev.Date)
+		if err != nil {
+			return nil, fmt.Errorf("scoreboard event %q has invalid date: %w", ev.ID, err)
+		}
+
+		if mapTeam(home.Team).Name == "" || mapTeam(away.Team).Name == "" {
+			return nil, fmt.Errorf("scoreboard event %q has unnamed team", ev.ID)
 		}
 		status := ev.Status
+		if status.Type.State != "pre" && status.Type.State != "in" && status.Type.State != "post" {
+			return nil, fmt.Errorf("scoreboard event %q has unknown state %q", ev.ID, status.Type.State)
+		}
 
-		state := mapState(status.Type.State, status.Type.Completed)
+		state := mapState(status.Type.State, status.Type.Completed, status.Type.Name)
+		bracketRequired := bracketRequirement(string(ev.ID), ev.Season.Slug)
 
 		var note *string
 		if len(comp.Notes) > 0 && comp.Notes[0].Text != "" {
@@ -153,10 +269,10 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 
 		var winnerID *string
 		if home.Winner {
-			id := home.Team.ID
+			id := string(home.Team.ID)
 			winnerID = &id
 		} else if away.Winner {
-			id := away.Team.ID
+			id := string(away.Team.ID)
 			winnerID = &id
 		}
 
@@ -166,21 +282,38 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 			minute = &clock
 		}
 
+		homeScore, awayScore := scoreOf(home.Score), scoreOf(away.Score)
+		if (home.Score != nil && *home.Score != "" && homeScore == nil) ||
+			(away.Score != nil && *away.Score != "" && awayScore == nil) {
+			return nil, fmt.Errorf("scoreboard event %q has invalid score", ev.ID)
+		}
 		matches = append(matches, Match{
-			ID:           ev.ID,
-			Kickoff:      ev.Date,
-			State:        state,
-			Minute:       minute,
-			StatusDetail: status.Type.ShortDetail,
-			StatusName:   status.Type.Name,
-			Home:         mapTeam(home.Team),
-			Away:         mapTeam(away.Team),
-			HomeScore:    scoreOf(home.Score),
-			AwayScore:    scoreOf(away.Score),
-			WinnerID:     winnerID,
-			Note:         note,
+			ID:              string(ev.ID),
+			Kickoff:         kickoff.Format(time.RFC3339),
+			State:           state,
+			Minute:          minute,
+			StatusDetail:    status.Type.ShortDetail,
+			StatusName:      status.Type.Name,
+			Home:            mapTeam(home.Team),
+			Away:            mapTeam(away.Team),
+			HomeScore:       homeScore,
+			AwayScore:       awayScore,
+			WinnerID:        winnerID,
+			Note:            note,
+			BracketRequired: bracketRequired,
 		})
 	}
-
+	if len(sb.Events) > 0 && len(matches) == 0 {
+		return nil, fmt.Errorf("ESPN scoreboard contained no valid events")
+	}
 	return matches, nil
+}
+
+func parseESPNDate(value string) (time.Time, error) {
+	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04Z07:00"} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unsupported ESPN timestamp %q", value)
 }

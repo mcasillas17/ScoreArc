@@ -2,6 +2,8 @@ package espn
 
 import (
 	"encoding/json"
+	"fmt"
+	"math"
 	"strings"
 )
 
@@ -18,6 +20,20 @@ import (
 
 type rawStandingsDoc struct {
 	Children []rawStandingsGroup `json:"children"`
+	Season   struct {
+		Year int `json:"year"`
+	} `json:"season"`
+}
+
+func ValidateStandingsSeason(raw []byte, expectedYear int) error {
+	var standings rawStandingsDoc
+	if err := json.Unmarshal(raw, &standings); err != nil {
+		return err
+	}
+	if standings.Season.Year != 0 && standings.Season.Year != expectedYear {
+		return fmt.Errorf("standings season %d does not match %d", standings.Season.Year, expectedYear)
+	}
+	return nil
 }
 
 type rawStandingsGroup struct {
@@ -33,10 +49,10 @@ type rawStandingEntry struct {
 }
 
 type rawStandingTeam struct {
-	ID           string    `json:"id"`
-	DisplayName  string    `json:"displayName"`
-	Abbreviation string    `json:"abbreviation"`
-	Logos        []rawLogo `json:"logos"`
+	ID           flexibleString `json:"id"`
+	DisplayName  string         `json:"displayName"`
+	Abbreviation string         `json:"abbreviation"`
+	Logos        []rawLogo      `json:"logos"`
 }
 
 type rawStat struct {
@@ -57,6 +73,9 @@ func standingStatMap(stats []rawStat) map[string]float64 {
 // standings JSON (children[].standings.entries[]) into a flat []Standing,
 // rank restarting at 1 for each group in fixture order.
 func MapStandings(raw []byte) ([]Standing, error) {
+	if err := validateArrayEnvelope(raw, "children"); err != nil {
+		return nil, err
+	}
 	var doc rawStandingsDoc
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return nil, err
@@ -65,6 +84,9 @@ func MapStandings(raw []byte) ([]Standing, error) {
 	standings := make([]Standing, 0)
 	for _, grp := range doc.Children {
 		entries := grp.Standings.Entries
+		if len(entries) == 0 {
+			return nil, fmt.Errorf("standings group %q contains no teams", grp.Name)
+		}
 
 		// Mirror the TS mapper's `grp.name.replace('Group ', '')` for the
 		// id, e.g. "Group A" -> "A". A group with no name (single-table,
@@ -79,7 +101,20 @@ func MapStandings(raw []byte) ([]Standing, error) {
 		}
 
 		for i, entry := range entries {
+			if entry.Team.ID == "" || entry.Team.DisplayName == "" || entry.Team.Abbreviation == "" {
+				return nil, fmt.Errorf("standing row %d in %q missing team identity", i, grp.Name)
+			}
 			s := standingStatMap(entry.Stats)
+			for _, name := range []string{
+				"gamesPlayed", "wins", "ties", "losses", "pointsFor",
+				"pointsAgainst", "pointDifferential", "points",
+			} {
+				value, ok := s[name]
+				if !ok || math.Trunc(value) != value ||
+					(name != "pointDifferential" && value < 0) {
+					return nil, fmt.Errorf("standing row %d in %q has invalid %s", i, grp.Name, name)
+				}
+			}
 
 			var crest *string
 			if len(entry.Team.Logos) > 0 && entry.Team.Logos[0].Href != "" {
@@ -89,7 +124,7 @@ func MapStandings(raw []byte) ([]Standing, error) {
 
 			standings = append(standings, Standing{
 				Team: Team{
-					ID:       entry.Team.ID,
+					ID:       string(entry.Team.ID),
 					Name:     entry.Team.DisplayName,
 					Abbr:     entry.Team.Abbreviation,
 					CrestURL: crest,

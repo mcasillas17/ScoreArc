@@ -160,6 +160,7 @@ var bracketRoundNames = map[string]string{
 const bracketSQL = `
 SELECT m.id, m.round, m.kickoff, m.state, m.minute, m.status_detail, m.status_name,
        m.home_score, m.away_score, m.winner_id, m.note,
+       m.home_placeholder, m.away_placeholder,
        ht.id, ht.name, ht.abbr, ht.crest_url,
        at.id, at.name, at.abbr, at.crest_url
 FROM match m
@@ -184,9 +185,11 @@ func (s *Store) Bracket(ctx context.Context, competition, season string) ([]Brac
 		var homeCrest *string
 		var awayID, awayName, awayAbbr string
 		var awayCrest *string
+		var homePlaceholder, awayPlaceholder bool
 		if err := rows.Scan(
 			&match.ID, &match.Round, &kickoff, &state, &match.Minute, &match.StatusDetail,
 			&match.StatusName, &match.HomeScore, &match.AwayScore, &match.WinnerID, &match.Note,
+			&homePlaceholder, &awayPlaceholder,
 			&homeID, &homeName, &homeAbbr, &homeCrest,
 			&awayID, &awayName, &awayAbbr, &awayCrest,
 		); err != nil {
@@ -194,8 +197,8 @@ func (s *Store) Bracket(ctx context.Context, competition, season string) ([]Brac
 		}
 		match.Kickoff = isoTime(kickoff)
 		match.State = espn.MatchState(state)
-		match.Home = espn.BracketTeam{ID: homeID, Name: homeName, Abbr: homeAbbr, CrestURL: homeCrest, Placeholder: homeCrest == nil}
-		match.Away = espn.BracketTeam{ID: awayID, Name: awayName, Abbr: awayAbbr, CrestURL: awayCrest, Placeholder: awayCrest == nil}
+		match.Home = espn.BracketTeam{ID: homeID, Name: homeName, Abbr: homeAbbr, CrestURL: homeCrest, Placeholder: homePlaceholder}
+		match.Away = espn.BracketTeam{ID: awayID, Name: awayName, Abbr: awayAbbr, CrestURL: awayCrest, Placeholder: awayPlaceholder}
 		bySlug[match.Round] = append(bySlug[match.Round], match)
 	}
 	if err := rows.Err(); err != nil {

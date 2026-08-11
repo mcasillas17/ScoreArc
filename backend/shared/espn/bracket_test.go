@@ -146,6 +146,16 @@ func TestMapBracket(t *testing.T) {
 			t.Error("away.placeholder = false, want true")
 		}
 	})
+
+	t.Run("third-place loser slots are placeholders", func(t *testing.T) {
+		thirdPlace := byRound("3rd-place-match")
+		if len(thirdPlace) != 1 {
+			t.Fatalf("got %d third-place matches, want 1", len(thirdPlace))
+		}
+		if !thirdPlace[0].Home.Placeholder || !thirdPlace[0].Away.Placeholder {
+			t.Fatalf("third-place placeholders=%+v", thirdPlace[0])
+		}
+	})
 }
 
 // TestMapBracket2022 sanity-checks parity against the 2022 fixture, which
@@ -184,14 +194,10 @@ func TestMapBracket2022(t *testing.T) {
 }
 
 func TestMapBracketResilience(t *testing.T) {
-	t.Run("skips malformed events without throwing", func(t *testing.T) {
+	t.Run("rejects entirely malformed events", func(t *testing.T) {
 		malformed := []byte(`{"events":[{"season":{"slug":"round-of-32"},"competitions":[]}]}`)
-		got, err := MapBracket(malformed)
-		if err != nil {
-			t.Fatalf("MapBracket returned error: %v", err)
-		}
-		if len(got) != 0 {
-			t.Errorf("got %d matches, want 0", len(got))
+		if _, err := MapBracket(malformed); err == nil {
+			t.Fatal("expected malformed bracket error")
 		}
 	})
 
@@ -205,13 +211,9 @@ func TestMapBracketResilience(t *testing.T) {
 		}
 	})
 
-	t.Run("handles an empty payload gracefully", func(t *testing.T) {
-		got, err := MapBracket([]byte(`{}`))
-		if err != nil {
-			t.Fatalf("MapBracket returned error: %v", err)
-		}
-		if len(got) != 0 {
-			t.Errorf("got %d matches, want 0", len(got))
+	t.Run("rejects a missing events envelope", func(t *testing.T) {
+		if _, err := MapBracket([]byte(`{}`)); err == nil {
+			t.Fatal("expected malformed bracket error")
 		}
 	})
 
@@ -303,10 +305,54 @@ func TestMapBracketEventOverride(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MapBracket returned error: %v", err)
 	}
+
 	if len(matches) != 1 {
 		t.Fatalf("got %d matches, want 1 (event override should rescue this from being dropped as group-stage)", len(matches))
 	}
 	if matches[0].Round != "quarterfinals" {
 		t.Errorf("round = %q, want quarterfinals (EVENT_SLUG_OVERRIDE for event 264118)", matches[0].Round)
+	}
+}
+
+func TestMapBracketTeamDoesNotTreatClubCrestAsPlaceholder(t *testing.T) {
+	crest := "https://example.test/clubs/123.png"
+	team := mapBracketTeam(rawTeam{
+		ID: "123", DisplayName: "Club FC", Abbreviation: "CLB", Logo: &crest,
+	})
+	if team.Placeholder {
+		t.Fatal("real club marked as placeholder")
+	}
+}
+
+func TestValidateBracketSeasonRejectsMismatch(t *testing.T) {
+	raw := []byte(`{"events":[{"season":{"year":2022}}]}`)
+	if err := ValidateBracketSeason(raw, 2026); err == nil {
+		t.Fatal("expected bracket season mismatch")
+	}
+}
+
+func TestMapBracketRejectsUnknownStatusState(t *testing.T) {
+	raw := []byte(`{"events":[{"id":"1","date":"2026-07-01T12:00Z",
+		"season":{"slug":"quarterfinals"},
+		"status":{"type":{"state":"mystery"}},
+		"competitions":[{"competitors":[
+			{"homeAway":"home","team":{"id":"1","displayName":"Home","abbreviation":"HOM"}},
+			{"homeAway":"away","team":{"id":"2","displayName":"Away","abbreviation":"AWY"}}
+		]}]}]}`)
+	if _, err := MapBracket(raw); err == nil {
+		t.Fatal("expected unknown bracket state error")
+	}
+}
+
+func TestMapBracketRejectsFinishedMatchWithoutWinner(t *testing.T) {
+	raw := []byte(`{"events":[{"id":"1","date":"2026-07-01T12:00Z",
+		"season":{"slug":"quarterfinals"},
+		"status":{"type":{"state":"post","completed":true,"name":"STATUS_FULL_TIME"}},
+		"competitions":[{"competitors":[
+			{"homeAway":"home","score":"1","team":{"id":"1","displayName":"Home","abbreviation":"HOM"}},
+			{"homeAway":"away","score":"1","team":{"id":"2","displayName":"Away","abbreviation":"AWY"}}
+		]}]}]}`)
+	if _, err := MapBracket(raw); err == nil {
+		t.Fatal("accepted finished knockout match without winner")
 	}
 }

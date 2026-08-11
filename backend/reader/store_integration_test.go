@@ -44,7 +44,12 @@ func newIntegrationStore(t *testing.T) (*Store, *pgxpool.Pool) {
 	}
 	t.Cleanup(pool.Close)
 
-	for _, migration := range []string{"../migrations/0001_init.up.sql", "../migrations/0002_snapshots.up.sql"} {
+	for _, migration := range []string{
+		"../migrations/0001_init.up.sql",
+		"../migrations/0002_snapshots.up.sql",
+		"../migrations/0003_ingester_delete_grant.up.sql",
+		"../migrations/0004_ingester_hardening.up.sql",
+	} {
 		sql, err := os.ReadFile(migration)
 		if err != nil {
 			t.Fatalf("read migration %s: %v", migration, err)
@@ -85,14 +90,16 @@ func seedIntegrationData(t *testing.T, pool *pgxpool.Pool) {
 		`INSERT INTO team (id, name, abbr, crest_url) VALUES
 			('arg', 'Argentina', 'ARG', 'https://cdn.scorearc.futbol/arg.png'),
 			('fra', 'France', 'FRA', 'https://cdn.scorearc.futbol/fra.png'),
-			('tbd', 'Semifinal Winner', 'TBD', NULL)`,
+			('tbd', 'Semifinal Winner', 'TBD', NULL),
+			('crestless', 'Crestless FC', 'CLF', NULL)`,
 		`INSERT INTO match
 			(id, comp_id, season_id, round, kickoff, state, home_team_id, away_team_id,
-			 home_score, away_score, minute, status_detail, status_name, winner_id, note)
+			 home_score, away_score, minute, status_detail, status_name, winner_id, note,
+			 home_placeholder, away_placeholder)
 		 VALUES
-			('match-final', 'world-cup', '2026', 'final', '2026-07-19T19:00:00Z', 'live', 'arg', 'fra', 2, 2, '84''', '84''', 'STATUS_IN_PROGRESS', NULL, NULL),
-			('match-semi', 'world-cup', '2026', 'semifinals', '2026-07-15T19:00:00Z', 'scheduled', 'tbd', 'arg', NULL, NULL, NULL, 'TBD', 'STATUS_SCHEDULED', NULL, NULL),
-			('other-comp', 'premier-league', '2026-27', NULL, '2026-08-15T14:00:00Z', 'scheduled', 'arg', 'fra', NULL, NULL, NULL, 'Scheduled', 'STATUS_SCHEDULED', NULL, NULL)`,
+			('match-final', 'world-cup', '2026', 'final', '2026-07-19T19:00:00Z', 'live', 'arg', 'fra', 2, 2, '84''', '84''', 'STATUS_IN_PROGRESS', NULL, NULL, true, false),
+			('match-semi', 'world-cup', '2026', 'semifinals', '2026-07-15T19:00:00Z', 'scheduled', 'tbd', 'crestless', NULL, NULL, NULL, 'TBD', 'STATUS_SCHEDULED', NULL, NULL, true, false),
+			('other-comp', 'premier-league', '2026-27', NULL, '2026-08-15T14:00:00Z', 'scheduled', 'arg', 'fra', NULL, NULL, NULL, 'Scheduled', 'STATUS_SCHEDULED', NULL, NULL, false, false)`,
 		`INSERT INTO match_detail
 			(match_id, scorers, cards, stats, win_probability, shootout, shootout_detail,
 			 lineups, videos, info, form, commentary, h2h)
@@ -175,6 +182,9 @@ func TestStoreIntegration(t *testing.T) {
 		}
 		if !rounds[0].Matches[0].Home.Placeholder || rounds[0].Matches[0].Away.Placeholder {
 			t.Fatalf("placeholder legs = %+v", rounds[0].Matches[0])
+		}
+		if !rounds[1].Matches[0].Home.Placeholder {
+			t.Fatalf("persisted placeholder ignored for crested team: %+v", rounds[1].Matches[0])
 		}
 	})
 

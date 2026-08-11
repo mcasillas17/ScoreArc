@@ -177,14 +177,24 @@ export DIRECT_DSN='postgres://<user>:<pass>@<direct-host>/<db>?sslmode=require'
 ```bash
 cd backend
 migrate -path migrations -database "$DIRECT_DSN" up
-# expect: applied 0001_init, 0002_snapshots
+# expect: applied 0001_init through 0004_ingester_hardening
 ```
 
-### 5.3 (Option B) with psql directly
+Apply migrations through `0004_ingester_hardening` before deploying reader or
+ingester binaries from this release. The reader selects columns added by `0004`;
+do not roll that migration back while this reader version is serving traffic.
+
+### 5.3 (Option B) with psql directly — fresh database bootstrap only
+
+This path has no migration ledger and the SQL files are intentionally versioned,
+not re-runnable. Use it only on a fresh database. Use `golang-migrate` for every
+existing environment.
+
 ```bash
 cd backend
-psql "$DIRECT_DSN" -f migrations/0001_init.up.sql
-psql "$DIRECT_DSN" -f migrations/0002_snapshots.up.sql
+for migration in migrations/*.up.sql; do
+  psql "$DIRECT_DSN" -v ON_ERROR_STOP=1 -f "$migration"
+done
 ```
 
 ### 5.4 Create the least-privilege login users and grant them their roles
@@ -202,7 +212,12 @@ Build the two service connection strings using the **pooled** host:
 ```
 READER_DSN   = postgres://scorearc_reader_user:<pass>@<pooled-host>/<db>?sslmode=require
 INGESTER_DSN = postgres://scorearc_ingester_user:<pass>@<pooled-host>/<db>?sslmode=require
+INGESTER_LEASE_DSN = postgres://scorearc_ingester_user:<pass>@<direct-host>/<db>?sslmode=require
 ```
+
+The singleton lease is session-scoped and therefore **must not** use Neon's
+transaction-pooled endpoint. Both ingester DSNs use the least-privilege login,
+never the owner/admin account.
 
 ### 5.5 Verify the schema + the read-only guarantee
 ```bash
@@ -238,8 +253,9 @@ wrangler r2 bucket create scorearc-assets
 Public access + custom domain (so logos serve from `cdn.scorearc.futbol`):
 - Cloudflare dashboard → R2 → the bucket → **Settings** → enable **Public
   access** (or connect a **custom domain**; recommended: `cdn.scorearc.futbol`).
-- The ingester writes objects at `teams/{id}.png`, `flags/{code}.png`,
-  `emblems/{compId}.png`; the reader returns `https://cdn.scorearc.futbol/teams/{id}.png`.
+- The ingester writes extensionless objects at `teams/{id}` and returns URLs such
+  as `https://cdn.scorearc.futbol/teams/{id}`. The validated upstream content
+  type remains object metadata; callers must not infer format from a suffix.
 
 The Go ingester talks to R2 with the **AWS S3 SDK** pointed at the R2 endpoint
 `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com` (R2 is S3-compatible).
@@ -248,9 +264,12 @@ The Go ingester talks to R2 with the **AWS S3 SDK** pointed at the R2 endpoint
 
 ## 7. Deploy the Go services to Fly
 
-Each Go service is its own Fly app. The reader application is implemented; the
-ingester executable and both services' `fly.toml`/Dockerfile deployment assets
-remain part of the 1b/1a-rev work.
+Each Go service is its own Fly app. The reader and ingester applications are
+implemented; both services' `fly.toml`/Dockerfile deployment assets remain part
+of the 1a-rev work.
+
+Complete the database migration in §5 before either deploy. During rollback,
+replace the reader with a pre-`0004` binary before reverting migration `0004`.
 
 The `fly.toml` + `Dockerfile` for each service are **hand-authored and committed**
 in slice 1a-rev (infra as reviewable code) — do **not** let `fly launch` generate
@@ -266,11 +285,13 @@ fly launch --no-deploy --copy-config --name scorearc-reader --region <same-as-ne
 # set secrets (never commit these):
 fly secrets set DATABASE_URL="$READER_DSN"          # reader app
 # ingester app:
-fly secrets set DATABASE_URL="$INGESTER_DSN" \
+fly secrets set POOLED_DSN="$INGESTER_DSN" \
+                INGESTER_LEASE_DSN="$INGESTER_LEASE_DSN" \
                 R2_ACCOUNT_ID="..." \
                 R2_ACCESS_KEY_ID="..." \
                 R2_SECRET_ACCESS_KEY="..." \
-                R2_BUCKET="scorearc-assets"
+                R2_BUCKET="scorearc-assets" \
+                R2_PUBLIC_BASE_URL="https://cdn.scorearc.futbol"
 
 fly deploy
 ```
@@ -288,9 +309,10 @@ fly status --app scorearc-ingester
 # expect: 1 machine in "started" state (the always-on worker)
 ```
 
-CI/CD: GitHub Actions deploys on push to `main` (path-filtered to `/backend`)
-using a `FLY_API_TOKEN` repo secret (`fly tokens create deploy`). Workflows are
-authored in slice 1a-rev.
+Deployment automation is not implemented yet. The current GitHub Actions
+workflow validates frontend and backend changes but does not deploy to Fly;
+use the manual `fly deploy` procedure above until a reviewed deployment
+workflow and `FLY_API_TOKEN` secret are added.
 
 ---
 
@@ -305,6 +327,11 @@ cd backend && go build ./... && go test ./...
 
 # run a Go service locally against Neon (uses the pooled DSN):
 cd backend/reader && DATABASE_URL="$READER_DSN" PORT=8080 go run .
+
+# run one complete ingester reconciliation:
+cd backend
+POOLED_DSN="$INGESTER_DSN" INGESTER_LEASE_DSN="$INGESTER_LEASE_DSN" \
+  go run ./ingester -once
 
 # frontend (unchanged):
 npm run dev            # http://localhost:3000 (or the port it prints)
@@ -349,8 +376,11 @@ Everything should say `OK`. `go` must be **>= 1.26**; `psql` **16.x or newer**.
 |---|---|---|
 | `DATABASE_URL` (reader app) | local env / Fly secret on the reader | `READER_DSN` (pooled, SELECT-only user) |
 | `PORT` | reader environment | optional listen port, default `8080` |
-| `DATABASE_URL` (ingester app) | Fly secret on the ingester | `INGESTER_DSN` (pooled, write user) |
+| `POOLED_DSN` | Fly secret on the ingester | `INGESTER_DSN` (pooled, write user) |
+| `INGESTER_LEASE_DSN` | Fly secret on the ingester | direct/unpooled DSN using the same write user |
+| `DIRECT_DSN` | local/CI tests and migrations | owner direct DSN for migration/role integration checks |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` | Fly secret on the ingester | from Cloudflare R2 token |
+| `R2_PUBLIC_BASE_URL` | Fly secret on the ingester | public bucket/custom-domain base, e.g. `https://cdn.scorearc.futbol` |
 | `DATA_SOURCE` | Vercel env (frontend) | `espn` until parity, then `api` (slice 1d) |
 | `SCOREARC_API_BASE` | Vercel env (frontend) | the reader's public URL, e.g. `https://scorearc-reader.fly.dev` (slice 1d) |
 | `FLY_API_TOKEN` | GitHub Actions secret | `fly tokens create deploy` (CI) |

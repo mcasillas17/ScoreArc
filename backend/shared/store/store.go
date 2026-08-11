@@ -1,0 +1,50 @@
+// Package store persists canonical ScoreArc data in Postgres.
+package store
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+var ErrEmptyReplacement = errors.New("refusing to replace with an empty dataset")
+var ErrPartialReplacement = errors.New("refusing to replace standings with fewer rows")
+var ErrMatchFinalized = errors.New("match is finalized")
+
+type Store struct {
+	pool *pgxpool.Pool
+}
+
+const operationTimeout = 15 * time.Second
+
+func boundedContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, operationTimeout)
+}
+
+func New(ctx context.Context, dsn string) (*Store, error) {
+	config, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("parse postgres pool config: %w", err)
+	}
+	if config.MaxConns < 8 {
+		config.MaxConns = 8
+	}
+	connectCtx, cancel := boundedContext(ctx)
+	defer cancel()
+	pool, err := pgxpool.NewWithConfig(connectCtx, config)
+	if err != nil {
+		return nil, fmt.Errorf("create postgres pool: %w", err)
+	}
+	if err := pool.Ping(connectCtx); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("ping postgres: %w", err)
+	}
+	return &Store{pool: pool}, nil
+}
+
+func (s *Store) Close() {
+	s.pool.Close()
+}

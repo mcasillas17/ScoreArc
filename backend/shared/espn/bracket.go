@@ -2,8 +2,12 @@ package espn
 
 import (
 	"encoding/json"
+	"fmt"
+	"math"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Port of src/server/data/providers/espn-bracket.ts. Brackets come from a
@@ -45,6 +49,16 @@ var roundSlugAlias = map[string]string{
 	"third-place":  "3rd-place-match",
 }
 
+var nonKnockoutRound = map[string]struct{}{
+	"group-stage":       {},
+	"league-phase":      {},
+	"league-stage":      {},
+	"preliminary-round": {},
+	"qualification":     {},
+	"qualifying":        {},
+	"regular-season":    {},
+}
+
 func normRoundSlug(slug string) string {
 	if v, ok := roundSlugAlias[slug]; ok {
 		return v
@@ -62,6 +76,8 @@ var eventRoundSlugOverride = map[string]string{
 	"264118": "quarterfinals",
 }
 
+var placeholderNameRe = regexp.MustCompile(`(?i)\b(winner|loser|tbd|to be determined)\b`)
+
 // bracketRoundSlug ports espn-bracket.ts's roundSlug: a per-event correction
 // wins over the season-slug alias mapping.
 func bracketRoundSlug(eventID, seasonSlug string) string {
@@ -71,6 +87,23 @@ func bracketRoundSlug(eventID, seasonSlug string) string {
 	return normRoundSlug(seasonSlug)
 }
 
+func bracketRequirement(eventID, seasonSlug string) *bool {
+	if seasonSlug == "" {
+		return nil
+	}
+	slug := bracketRoundSlug(eventID, seasonSlug)
+	if isKnockoutRound(slug) {
+		required := true
+		return &required
+	}
+	if _, ok := nonKnockoutRound[slug]; ok {
+		required := false
+		return &required
+	}
+	required := true
+	return &required
+}
+
 // rawBracketScoreboard mirrors the subset of ESPN's (knockout-filtered)
 // scoreboard JSON the bracket mapper reads.
 type rawBracketScoreboard struct {
@@ -78,7 +111,7 @@ type rawBracketScoreboard struct {
 }
 
 type rawBracketEvent struct {
-	ID           string                  `json:"id"`
+	ID           flexibleString          `json:"id"`
 	Date         string                  `json:"date"`
 	Season       rawBracketSeason        `json:"season"`
 	Status       *rawStatus              `json:"status"`
@@ -87,6 +120,20 @@ type rawBracketEvent struct {
 
 type rawBracketSeason struct {
 	Slug string `json:"slug"`
+	Year int    `json:"year"`
+}
+
+func ValidateBracketSeason(raw []byte, expectedYear int) error {
+	var scoreboard rawBracketScoreboard
+	if err := json.Unmarshal(raw, &scoreboard); err != nil {
+		return err
+	}
+	for _, event := range scoreboard.Events {
+		if event.Season.Year != 0 && event.Season.Year != expectedYear {
+			return fmt.Errorf("bracket season %d does not match %d", event.Season.Year, expectedYear)
+		}
+	}
+	return nil
 }
 
 type rawBracketCompetition struct {
@@ -95,9 +142,9 @@ type rawBracketCompetition struct {
 }
 
 type rawBracketCompetitor struct {
-	HomeAway string  `json:"homeAway"`
-	Winner   bool    `json:"winner"`
-	Score    *string `json:"score"`
+	HomeAway string          `json:"homeAway"`
+	Winner   bool            `json:"winner"`
+	Score    *flexibleString `json:"score"`
 	// ShootoutScore is deliberately raw JSON: ESPN sends it as a bare number
 	// on modern payloads but the TS mapper (and older payloads) treat it as
 	// `any` and coerce via `Number(...)`, so it must accept a JSON number, a
@@ -117,7 +164,7 @@ func jsNumber(raw json.RawMessage) (value float64, finite bool) {
 	}
 	var f float64
 	if err := json.Unmarshal(raw, &f); err == nil {
-		return f, true
+		return f, f >= 0 && math.Trunc(f) == f
 	}
 	var s string
 	if err := json.Unmarshal(raw, &s); err == nil {
@@ -126,7 +173,7 @@ func jsNumber(raw json.RawMessage) (value float64, finite bool) {
 			return 0, true
 		}
 		if fv, err := strconv.ParseFloat(s, 64); err == nil {
-			return fv, true
+			return fv, fv >= 0 && math.Trunc(fv) == fv
 		}
 	}
 	return 0, false
@@ -151,11 +198,11 @@ func mapBracketTeam(t rawTeam) BracketTeam {
 	}
 
 	return BracketTeam{
-		ID:          t.ID,
+		ID:          string(t.ID),
 		Name:        name,
 		Abbr:        t.Abbreviation,
 		CrestURL:    crest,
-		Placeholder: !(crest != nil && strings.Contains(*crest, "/countries/")),
+		Placeholder: crest == nil && placeholderNameRe.MatchString(name),
 	}
 }
 
@@ -168,18 +215,18 @@ func bracketWinnerID(home, away rawBracketCompetitor) *string {
 	as, aFinite := jsNumber(away.ShootoutScore)
 	if hFinite && aFinite && hs != as {
 		if hs > as {
-			id := home.Team.ID
+			id := string(home.Team.ID)
 			return &id
 		}
-		id := away.Team.ID
+		id := string(away.Team.ID)
 		return &id
 	}
 	if home.Winner {
-		id := home.Team.ID
+		id := string(home.Team.ID)
 		return &id
 	}
 	if away.Winner {
-		id := away.Team.ID
+		id := string(away.Team.ID)
 		return &id
 	}
 	return nil
@@ -204,15 +251,31 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, bool) {
 			away = c
 		}
 	}
-	if home == nil || away == nil {
+	if ev.ID == "" || ev.Date == "" || home == nil || away == nil ||
+		home.Team.ID == "" || away.Team.ID == "" {
 		return BracketMatch{}, false
 	}
 	if ev.Status == nil {
 		return BracketMatch{}, false
 	}
+	if ev.Status.Type.State != "pre" && ev.Status.Type.State != "in" &&
+		ev.Status.Type.State != "post" {
+		return BracketMatch{}, false
+	}
+	kickoff, err := parseESPNDate(ev.Date)
+	if err != nil {
+		return BracketMatch{}, false
+	}
 	status := ev.Status
 
-	state := mapState(status.Type.State, status.Type.Completed)
+	state := mapState(status.Type.State, status.Type.Completed, status.Type.Name)
+	winnerID := bracketWinnerID(*home, *away)
+	if state == MatchStateFinished && winnerID == nil &&
+		status.Type.Name != "STATUS_CANCELED" &&
+		status.Type.Name != "STATUS_ABANDONED" &&
+		status.Type.Name != "STATUS_FORFEIT" {
+		return BracketMatch{}, false
+	}
 
 	var note *string
 	if len(comp.Notes) > 0 && comp.Notes[0].Text != "" {
@@ -227,9 +290,9 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, bool) {
 	}
 
 	return BracketMatch{
-		ID:           ev.ID,
-		Round:        bracketRoundSlug(ev.ID, ev.Season.Slug),
-		Kickoff:      ev.Date,
+		ID:           string(ev.ID),
+		Round:        bracketRoundSlug(string(ev.ID), ev.Season.Slug),
+		Kickoff:      kickoff.Format(time.RFC3339),
 		Home:         mapBracketTeam(home.Team),
 		Away:         mapBracketTeam(away.Team),
 		HomeScore:    scoreOf(home.Score),
@@ -238,7 +301,7 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, bool) {
 		StatusDetail: status.Type.ShortDetail,
 		StatusName:   status.Type.Name,
 		Minute:       minute,
-		WinnerID:     bracketWinnerID(*home, *away),
+		WinnerID:     winnerID,
 		Note:         note,
 	}, true
 }
@@ -248,23 +311,28 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, bool) {
 // grouped by round slug internally (preserving each round's original event
 // order) then flattened in canonical knockoutRoundOrder, dropping any round
 // whose slug isn't in that vocabulary — mirroring the TS mapper's grouping
-// and `ROUND_ORDER.filter(...)` behavior. Malformed events are skipped
-// rather than erroring.
+// and `ROUND_ORDER.filter(...)` behavior. Malformed knockout events reject the
+// payload so partial bracket metadata cannot be persisted.
 func MapBracket(raw []byte) ([]BracketMatch, error) {
+	if err := validateArrayEnvelope(raw, "events"); err != nil {
+		return nil, err
+	}
 	var sb rawBracketScoreboard
 	if err := json.Unmarshal(raw, &sb); err != nil {
 		return nil, err
 	}
 
 	byRound := make(map[string][]BracketMatch, len(knockoutRoundOrder))
+	eligibleEvents := 0
 	for _, ev := range sb.Events {
-		slug := bracketRoundSlug(ev.ID, ev.Season.Slug)
-		if slug == "" {
+		slug := bracketRoundSlug(string(ev.ID), ev.Season.Slug)
+		if !isKnockoutRound(slug) {
 			continue
 		}
+		eligibleEvents++
 		match, ok := mapBracketMatch(ev)
 		if !ok {
-			continue
+			return nil, fmt.Errorf("ESPN bracket event %q is incomplete", ev.ID)
 		}
 		byRound[slug] = append(byRound[slug], match)
 	}
@@ -273,5 +341,18 @@ func MapBracket(raw []byte) ([]BracketMatch, error) {
 	for _, slug := range knockoutRoundOrder {
 		matches = append(matches, byRound[slug]...)
 	}
+	if eligibleEvents > 0 && len(matches) == 0 {
+		return nil, fmt.Errorf("ESPN bracket contained no valid events")
+	}
+
 	return matches, nil
+}
+
+func isKnockoutRound(slug string) bool {
+	for _, candidate := range knockoutRoundOrder {
+		if slug == candidate {
+			return true
+		}
+	}
+	return false
 }
