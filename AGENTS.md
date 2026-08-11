@@ -6,6 +6,10 @@ platform (Next.js on Vercel, deployed at scorearc.futbol). The frontend gets dat
 from ESPN's **keyless** public API today; we are building **our own Go backend**
 to serve that data instead.
 
+> **New to the project?** Read **`VISION.md`** (repo root) first — the vision, the
+> signature arc-bracket identity, the roadmap (own the data → history → AI-powered
+> stats), and fútbol domain knowledge future agents need.
+
 > **Working on the backend / API?** Read **`BACKEND_HANDOFF.md`** (repo root) FIRST
 > — it's the self-contained onboarding (stack, current state, what's next, setup).
 > Start each backend slice from the latest `origin/main` on its own feature branch.
