@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -49,46 +50,104 @@ func StatisticsURL(slug string) string {
 	return fmt.Sprintf("%s/%s/statistics", site, slug)
 }
 
-// Client is a minimal keyless HTTP client for ESPN's public soccer API.
-type Client struct{ HTTP *http.Client }
+const maxResponseBytes = 16 << 20
 
-const (
-	maxJSONResponseBytes int64 = 16 << 20
-	maxErrorBodyBytes    int64 = 200
-)
+// Options configures the ESPN client.
+type Options struct {
+	HTTP        *http.Client
+	MaxAttempts int
+	BaseDelay   time.Duration
+}
+
+// Client is a bounded, retrying keyless HTTP client for ESPN's public API.
+type Client struct {
+	HTTP        *http.Client
+	maxAttempts int
+	baseDelay   time.Duration
+}
 
 // New returns a Client with a sane default timeout.
 func New() *Client {
-	return &Client{HTTP: &http.Client{Timeout: 15 * time.Second}}
+	return NewWithOptions(Options{})
+}
+
+// NewWithOptions returns a client with explicit testable transport settings.
+func NewWithOptions(opts Options) *Client {
+	if opts.HTTP == nil {
+		opts.HTTP = &http.Client{Timeout: 15 * time.Second}
+	}
+	if opts.MaxAttempts <= 0 {
+		opts.MaxAttempts = 3
+	}
+	if opts.BaseDelay <= 0 {
+		opts.BaseDelay = 250 * time.Millisecond
+	}
+	return &Client{
+		HTTP:        opts.HTTP,
+		maxAttempts: opts.MaxAttempts,
+		baseDelay:   opts.BaseDelay,
+	}
 }
 
 // GetJSON fetches url and decodes the JSON body into out.
 func (c *Client) GetJSON(ctx context.Context, url string, out any) error {
+	for attempt := 1; attempt <= c.maxAttempts; attempt++ {
+		retryAfter, retry, err := c.getJSONOnce(ctx, url, out)
+		if err == nil {
+			return nil
+		}
+		if !retry || attempt == c.maxAttempts {
+			return err
+		}
+		delay := c.baseDelay << (attempt - 1)
+		if retryAfter > delay {
+			delay = retryAfter
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return fmt.Errorf("espn %s: attempts exhausted", url)
+}
+
+func (c *Client) getJSONOnce(ctx context.Context, url string, out any) (time.Duration, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return err
+		return 0, false, err
 	}
+	req.Header.Set("User-Agent", "scorearc-ingester")
 	res, err := c.HTTP.Do(req)
 	if err != nil {
-		return err
+		return 0, true, err
 	}
 	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(io.LimitReader(res.Body, maxErrorBodyBytes))
-		return fmt.Errorf("espn %s: %d %s", url, res.StatusCode, string(b))
-	}
-	if res.ContentLength > maxJSONResponseBytes {
-		return fmt.Errorf("espn %s: response exceeds %d-byte limit", url, maxJSONResponseBytes)
-	}
-	body, err := io.ReadAll(io.LimitReader(res.Body, maxJSONResponseBytes+1))
+
+	body, err := io.ReadAll(io.LimitReader(res.Body, maxResponseBytes+1))
 	if err != nil {
-		return fmt.Errorf("espn %s: read response: %w", url, err)
+		return 0, true, err
 	}
-	if int64(len(body)) > maxJSONResponseBytes {
-		return fmt.Errorf("espn %s: response exceeds %d-byte limit", url, maxJSONResponseBytes)
+	if len(body) > maxResponseBytes {
+		return 0, false, fmt.Errorf("espn response exceeds %d bytes", maxResponseBytes)
+	}
+	if res.StatusCode != http.StatusOK {
+		retry := res.StatusCode == http.StatusTooManyRequests || res.StatusCode >= 500
+		return parseRetryAfter(res.Header.Get("Retry-After")), retry,
+			fmt.Errorf("espn %s: %d %s", url, res.StatusCode, string(body[:min(200, len(body))]))
 	}
 	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("espn %s: decode response: %w", url, err)
+		return 0, false, err
 	}
-	return nil
+	return 0, false, nil
+}
+
+func parseRetryAfter(value string) time.Duration {
+	seconds, err := strconv.Atoi(value)
+	if err != nil || seconds <= 0 {
+		return 0
+	}
+	return time.Duration(seconds) * time.Second
 }
