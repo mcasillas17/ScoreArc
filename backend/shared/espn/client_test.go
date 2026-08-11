@@ -81,3 +81,19 @@ func TestGetJSONRejectsOversizedResponse(t *testing.T) {
 		t.Fatalf("expected response limit error, got %v", err)
 	}
 }
+
+func TestParseRetryAfterHTTPDate(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	delay := parseRetryAfter(now.Add(10*time.Second).Format(http.TimeFormat), now)
+	if delay != 10*time.Second {
+		t.Fatalf("delay=%v", delay)
+	}
+
+}
+
+func TestParseRetryAfterCapsFarFutureDelay(t *testing.T) {
+	now := time.Date(2026, time.June, 1, 12, 0, 0, 0, time.UTC)
+	if got := parseRetryAfter("3600", now); got != maxRetryDelay {
+		t.Fatalf("delay=%v", got)
+	}
+}

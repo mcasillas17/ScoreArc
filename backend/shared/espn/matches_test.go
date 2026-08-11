@@ -7,6 +7,18 @@ import (
 	"testing"
 )
 
+func TestMapScoreboardRejectsBlankTeamIDs(t *testing.T) {
+	raw := []byte(`{"events":[{"id":"m","date":"2026-01-01T00:00:00Z",
+		"status":{"type":{"state":"pre"}},
+		"competitions":[{"competitors":[
+			{"homeAway":"home","team":{"id":"","displayName":"Unknown"}},
+			{"homeAway":"away","team":{"id":"2","displayName":"Away"}}
+		]}]}]}`)
+	if _, err := MapScoreboard(raw); err == nil {
+		t.Fatal("expected blank team identity error")
+	}
+}
+
 func loadScoreboardFixture(t *testing.T) []byte {
 	t.Helper()
 	b, err := os.ReadFile("testdata/espn-scoreboard.json")
@@ -132,6 +144,7 @@ func TestMapScoreboardResilience(t *testing.T) {
 		var rawEvents struct {
 			Events []struct{} `json:"events"`
 		}
+
 		if err := json.Unmarshal(raw, &rawEvents); err != nil {
 			t.Fatalf("unmarshal fixture: %v", err)
 		}
@@ -146,14 +159,28 @@ func TestMapScoreboardResilience(t *testing.T) {
 		}
 	})
 
-	t.Run("returns [] for an array containing only a malformed event", func(t *testing.T) {
+	t.Run("rejects an array containing only a malformed event", func(t *testing.T) {
 		onlyMalformed := []byte(`{"events":[` + string(malformed) + `]}`)
-		result, err := MapScoreboard(onlyMalformed)
-		if err != nil {
-			t.Fatalf("MapScoreboard returned error: %v", err)
-		}
-		if len(result) != 0 {
-			t.Fatalf("got %d matches, want 0", len(result))
+		if _, err := MapScoreboard(onlyMalformed); err == nil {
+			t.Fatal("expected malformed scoreboard error")
 		}
 	})
+}
+
+func TestMapScoreboardAcceptsNumericIdentityAndScores(t *testing.T) {
+	raw := []byte(`{"events":[{"id":123,"date":"2026-01-01T00:00:00Z",
+		"season":{"year":2026},
+		"status":{"type":{"state":"post","completed":true}},
+		"competitions":[{"competitors":[
+			{"homeAway":"home","score":2,"team":{"id":1,"displayName":"Home","abbreviation":"HOM"}},
+			{"homeAway":"away","score":1,"team":{"id":2,"displayName":"Away","abbreviation":"AWY"}}
+		]}]}]}`)
+	matches, err := MapScoreboard(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if matches[0].ID != "123" || matches[0].Home.ID != "1" ||
+		matches[0].HomeScore == nil || *matches[0].HomeScore != 2 {
+		t.Fatalf("match=%+v", matches[0])
+	}
 }

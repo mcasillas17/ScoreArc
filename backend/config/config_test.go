@@ -7,6 +7,7 @@ func TestLoadRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
+
 	if got := len(r.List()); got != 9 {
 		t.Fatalf("competitions = %d, want 9", got)
 	}
@@ -24,5 +25,20 @@ func TestLoadRegistry(t *testing.T) {
 	s := wc.Seasons["2026"]
 	if !s.HasBracket {
 		t.Error("world-cup 2026 should have a bracket")
+	}
+}
+
+func TestParseRegistryRejectsInvalidConfiguration(t *testing.T) {
+	for _, input := range []string{
+		`[]`,
+		`[{"id":"x","espnSlug":"x","currentSeasonId":"2026","seasons":{}}]`,
+		`[
+			{"id":"x","espnSlug":"x","currentSeasonId":"2026","seasons":{"2026":{"id":"2026"}}},
+			{"id":"x","espnSlug":"y","currentSeasonId":"2026","seasons":{"2026":{"id":"2026"}}}
+		]`,
+	} {
+		if _, err := parseRegistry([]byte(input)); err == nil {
+			t.Fatalf("expected invalid registry error for %s", input)
+		}
 	}
 }

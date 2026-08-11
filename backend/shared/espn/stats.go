@@ -2,6 +2,7 @@ package espn
 
 import (
 	"encoding/json"
+	"fmt"
 	"regexp"
 )
 
@@ -60,14 +61,14 @@ type rawScorerTeam struct {
 
 // MapTopScorers ports espn-stats.ts's mapTopScorers: maps ESPN's raw
 // statistics JSON (stats[].name === "goalsLeaders") into a ranked
-// []TopScorer, capped at limit. Resilient: returns ([], nil) if the shape is
-// missing or malformed, matching the TS mapper's try/catch -> [].
+// []TopScorer, capped at limit.
 func MapTopScorers(raw []byte, limit int) ([]TopScorer, error) {
+	if err := validateArrayEnvelope(raw, "stats"); err != nil {
+		return nil, err
+	}
 	var doc rawStatistics
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		// TS mapper swallows any error from a malformed payload and
-		// returns [] rather than propagating.
-		return []TopScorer{}, nil
+		return nil, err
 	}
 
 	var leaders []rawLeader
@@ -85,6 +86,9 @@ func MapTopScorers(raw []byte, limit int) ([]TopScorer, error) {
 	scorers := make([]TopScorer, 0, len(leaders))
 	for i, l := range leaders {
 		team := l.Athlete.Team
+		if l.Athlete.DisplayName == "" {
+			return nil, fmt.Errorf("top scorer row %d missing player identity", i)
+		}
 
 		var crest *string
 		if team.Logo != nil && *team.Logo != "" {

@@ -50,7 +50,10 @@ func StatisticsURL(slug string) string {
 	return fmt.Sprintf("%s/%s/statistics", site, slug)
 }
 
-const maxResponseBytes = 16 << 20
+const (
+	maxResponseBytes = 16 << 20
+	maxRetryDelay    = 30 * time.Second
+)
 
 // Options configures the ESPN client.
 type Options struct {
@@ -103,6 +106,9 @@ func (c *Client) GetJSON(ctx context.Context, url string, out any) error {
 		if retryAfter > delay {
 			delay = retryAfter
 		}
+		if delay > maxRetryDelay {
+			delay = maxRetryDelay
+		}
 		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
@@ -135,7 +141,7 @@ func (c *Client) getJSONOnce(ctx context.Context, url string, out any) (time.Dur
 	}
 	if res.StatusCode != http.StatusOK {
 		retry := res.StatusCode == http.StatusTooManyRequests || res.StatusCode >= 500
-		return parseRetryAfter(res.Header.Get("Retry-After")), retry,
+		return parseRetryAfter(res.Header.Get("Retry-After"), time.Now()), retry,
 			fmt.Errorf("espn %s: %d %s", url, res.StatusCode, string(body[:min(200, len(body))]))
 	}
 	if err := json.Unmarshal(body, out); err != nil {
@@ -144,10 +150,14 @@ func (c *Client) getJSONOnce(ctx context.Context, url string, out any) (time.Dur
 	return 0, false, nil
 }
 
-func parseRetryAfter(value string) time.Duration {
+func parseRetryAfter(value string, now time.Time) time.Duration {
 	seconds, err := strconv.Atoi(value)
-	if err != nil || seconds <= 0 {
+	if err == nil && seconds > 0 {
+		return min(time.Duration(seconds)*time.Second, maxRetryDelay)
+	}
+	retryAt, err := http.ParseTime(value)
+	if err != nil || !retryAt.After(now) {
 		return 0
 	}
-	return time.Duration(seconds) * time.Second
+	return min(retryAt.Sub(now), maxRetryDelay)
 }

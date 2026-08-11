@@ -33,12 +33,29 @@ type Registry struct {
 
 // Load parses the embedded competitions.json (generated from competitions.ts).
 func Load() (*Registry, error) {
+	return parseRegistry(raw)
+}
+
+func parseRegistry(input []byte) (*Registry, error) {
 	var comps []Competition
-	if err := json.Unmarshal(raw, &comps); err != nil {
+	if err := json.Unmarshal(input, &comps); err != nil {
 		return nil, fmt.Errorf("parse competitions.json: %w", err)
+	}
+	if len(comps) == 0 {
+		return nil, fmt.Errorf("competition registry is empty")
 	}
 	byID := make(map[string]Competition, len(comps))
 	for _, c := range comps {
+		if c.ID == "" || c.ESPNSlug == "" || c.CurrentSeasonId == "" {
+			return nil, fmt.Errorf("competition has incomplete identity")
+		}
+		if _, exists := byID[c.ID]; exists {
+			return nil, fmt.Errorf("duplicate competition id %q", c.ID)
+		}
+		season, exists := c.Seasons[c.CurrentSeasonId]
+		if !exists || season.ID != c.CurrentSeasonId {
+			return nil, fmt.Errorf("competition %q has invalid current season %q", c.ID, c.CurrentSeasonId)
+		}
 		byID[c.ID] = c
 	}
 	return &Registry{comps: comps, byID: byID}, nil

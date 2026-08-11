@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,9 +18,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-const maxAsset = 8 << 20
+const (
+	maxAsset              = 8 << 20
+	assetOperationTimeout = 15 * time.Second
+)
 
 type Config struct {
 	AccountID       string
@@ -73,11 +78,18 @@ func New(config Config) *Mirror {
 		),
 		UsePathStyle: true,
 	})
+	httpClient := &http.Client{Timeout: 20 * time.Second}
+	httpClient.CheckRedirect = func(request *http.Request, via []*http.Request) error {
+		if len(via) >= 5 {
+			return fmt.Errorf("asset redirect limit exceeded")
+		}
+		return validateAssetURL(request.URL)
+	}
 	return &Mirror{
 		client:  client,
 		bucket:  config.Bucket,
 		baseURL: strings.TrimRight(config.PublicBaseURL, "/"),
-		http:    &http.Client{Timeout: 20 * time.Second},
+		http:    httpClient,
 	}
 }
 
@@ -89,10 +101,12 @@ func (m *Mirror) Mirror(ctx context.Context, kind, id, sourceURL string) (string
 	key := url.PathEscape(kind) + "/" + url.PathEscape(id)
 	cdnURL := m.baseURL + "/" + key
 
-	_, err := m.client.HeadObject(ctx, &s3.HeadObjectInput{
+	headCtx, cancelHead := context.WithTimeout(ctx, assetOperationTimeout)
+	_, err := m.client.HeadObject(headCtx, &s3.HeadObjectInput{
 		Bucket: aws.String(m.bucket),
 		Key:    aws.String(key),
 	})
+	cancelHead()
 	if err == nil {
 		return cdnURL, nil
 	}
@@ -100,7 +114,14 @@ func (m *Mirror) Mirror(ctx context.Context, kind, id, sourceURL string) (string
 		return "", fmt.Errorf("head R2 object: %w", err)
 	}
 
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
+	parsedSource, err := url.Parse(sourceURL)
+	if err != nil {
+		return "", fmt.Errorf("parse asset URL: %w", err)
+	}
+	if err := validateAssetURL(parsedSource); err != nil {
+		return "", err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, parsedSource.String(), nil)
 	if err != nil {
 		return "", err
 	}
@@ -113,7 +134,9 @@ func (m *Mirror) Mirror(ctx context.Context, kind, id, sourceURL string) (string
 		return "", fmt.Errorf("download asset: status %d", response.StatusCode)
 	}
 	contentType := strings.ToLower(strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0]))
-	if !strings.HasPrefix(contentType, "image/") {
+	switch contentType {
+	case "image/png", "image/jpeg", "image/webp", "image/gif":
+	default:
 		return "", fmt.Errorf("download asset: unsupported content type %q", contentType)
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxAsset+1))
@@ -124,20 +147,41 @@ func (m *Mirror) Mirror(ctx context.Context, kind, id, sourceURL string) (string
 		return "", fmt.Errorf("download asset exceeds %d bytes", maxAsset)
 	}
 
-	_, err = m.client.PutObject(ctx, &s3.PutObjectInput{
+	putCtx, cancelPut := context.WithTimeout(ctx, assetOperationTimeout)
+	_, err = m.client.PutObject(putCtx, &s3.PutObjectInput{
 		Bucket:       aws.String(m.bucket),
 		Key:          aws.String(key),
 		Body:         bytes.NewReader(body),
 		ContentType:  aws.String(contentType),
 		CacheControl: aws.String("public, max-age=31536000, immutable"),
 	})
+	cancelPut()
 	if err != nil {
 		return "", fmt.Errorf("put R2 object: %w", err)
 	}
+
 	return cdnURL, nil
 }
 
+func validateAssetURL(candidate *url.URL) error {
+	if candidate.Scheme != "https" {
+		return fmt.Errorf("asset URL must use HTTPS")
+	}
+	host := strings.ToLower(candidate.Hostname())
+	if ip := net.ParseIP(host); ip != nil {
+		return fmt.Errorf("asset URL IP hosts are not allowed")
+	}
+	if host != "espncdn.com" && !strings.HasSuffix(host, ".espncdn.com") {
+		return fmt.Errorf("asset URL host %q is not allowed", host)
+	}
+	return nil
+}
+
 func isNotFound(err error) bool {
+	var responseError *smithyhttp.ResponseError
+	if errors.As(err, &responseError) && responseError.HTTPStatusCode() == http.StatusNotFound {
+		return true
+	}
 	var apiError smithy.APIError
 	if !errors.As(err, &apiError) {
 		return false

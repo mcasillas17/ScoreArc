@@ -43,12 +43,13 @@ const ROUND_NAMES: Record<string, string> = {
 
 function mapBracketTeam(t: any): BracketTeam {
   const crestUrl: string | null = t.logo ?? t.logos?.[0]?.href ?? null;
+  const name = t.displayName ?? t.name ?? t.abbreviation;
   return {
     id: String(t.id),
-    name: t.displayName ?? t.name ?? t.abbreviation,
+    name,
     abbr: t.abbreviation,
     crestUrl,
-    placeholder: !(crestUrl && crestUrl.includes('/countries/')),
+    placeholder: !crestUrl && /\b(winner|tbd|to be determined)\b/i.test(name),
   };
 }
 

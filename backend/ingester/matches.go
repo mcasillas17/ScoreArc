@@ -27,14 +27,26 @@ func (r *runner) processMatches(
 	matches []model.Match,
 	existing map[string]store.MatchRow,
 	slowTick bool,
+	backfill bool,
 ) (matchResult, error) {
 	var result matchResult
 	var operationErrors []error
 	for _, match := range matches {
+		if err := ctx.Err(); err != nil {
+			operationErrors = append(operationErrors, err)
+			break
+		}
 		current, found := existing[match.ID]
 		var currentPtr *store.MatchRow
 		if found {
 			currentPtr = &current
+			r.markExistingCrest(match.Home.ID, current.HomeCrestURL)
+			r.markExistingCrest(match.Away.ID, current.AwayCrestURL)
+			if current.FinalizedAt.Valid {
+				r.mirrorCrest(ctx, match.Home)
+				r.mirrorCrest(ctx, match.Away)
+				continue
+			}
 		}
 
 		matchActive := false
@@ -59,8 +71,9 @@ func (r *runner) processMatches(
 			continue
 		}
 
-		if needsSummary(match, currentPtr, slowTick) {
-			detail, err := r.source.Summary(ctx, comp, match.ID)
+		if !(backfill && match.State == model.MatchStateScheduled) &&
+			needsSummary(match, currentPtr, slowTick) {
+			detail, err := r.source.Summary(ctx, comp, match)
 			if err != nil {
 				operationErrors = append(operationErrors, fmt.Errorf("match %s summary: %w", match.ID, err))
 				r.mirrorCrest(ctx, match.Home)
@@ -83,7 +96,8 @@ func (r *runner) processMatches(
 						HasDetail: true,
 					}
 				}
-			} else if err := r.repo.UpsertMatchDetail(ctx, match.ID, detail); err != nil {
+			} else if err := r.repo.UpsertMatchDetail(ctx, match.ID, detail); err != nil &&
+				!errors.Is(err, store.ErrMatchFinalized) {
 				operationErrors = append(operationErrors, fmt.Errorf("match %s detail: %w", match.ID, err))
 			} else {
 				current.State = match.State
@@ -102,12 +116,12 @@ func (r *runner) mirrorCrest(ctx context.Context, team model.Team) {
 	if r.mirror == nil || team.CrestURL == nil || *team.CrestURL == "" {
 		return
 	}
-	if strings.HasPrefix(*team.CrestURL, r.mirror.BaseURL()) {
+	if isMirroredURL(*team.CrestURL, r.mirror.BaseURL()) {
 		return
 	}
 
 	r.mu.Lock()
-	if r.mirrored[team.ID] {
+	if r.mirrored[team.ID] != "" {
 		r.mu.Unlock()
 		return
 	}
@@ -123,8 +137,24 @@ func (r *runner) mirrorCrest(ctx context.Context, team model.Team) {
 		return
 	}
 	r.mu.Lock()
-	r.mirrored[team.ID] = true
+	r.mirrored[team.ID] = cdnURL
 	r.mu.Unlock()
+}
+
+func (r *runner) markExistingCrest(teamID string, crestURL *string) {
+	if r.mirror == nil || crestURL == nil ||
+		!isMirroredURL(*crestURL, r.mirror.BaseURL()) {
+		return
+	}
+
+	r.mu.Lock()
+	r.mirrored[teamID] = *crestURL
+	r.mu.Unlock()
+}
+
+func isMirroredURL(candidate, base string) bool {
+	base = strings.TrimRight(base, "/")
+	return candidate == base || strings.HasPrefix(candidate, base+"/")
 }
 
 func bracketMatch(match model.BracketMatch) model.Match {
@@ -142,6 +172,8 @@ func bracketMatch(match model.BracketMatch) model.Match {
 		},
 		HomeScore: match.HomeScore, AwayScore: match.AwayScore,
 		WinnerID: match.WinnerID, Note: match.Note,
+		HomePlaceholder: match.Home.Placeholder,
+		AwayPlaceholder: match.Away.Placeholder,
 	}
 }
 

@@ -130,3 +130,25 @@ describe('mapBracket — penalty-shootout winner fallback', () => {
     expect(m.winnerId).toBe('10'); // Argentina (higher shootoutScore)
   });
 });
+
+describe('mapBracket — club placeholders', () => {
+  it('does not classify real club crests as placeholders', () => {
+    const event = {
+      id: 'club-1',
+      date: '2026-08-01T00:00Z',
+      season: { slug: 'quarterfinals' },
+      status: { type: { state: 'pre', completed: false, shortDetail: '', name: 'STATUS_SCHEDULED' } },
+      competitions: [{
+        notes: [],
+        competitors: [
+          { homeAway: 'home', winner: false, team: { id: '1', abbreviation: 'SEA', displayName: 'Seattle', logo: 'https://a.espncdn.com/i/teamlogos/soccer/500/9726.png' } },
+          { homeAway: 'away', winner: false, team: { id: '2', abbreviation: 'MIA', displayName: 'Miami', logo: 'https://a.espncdn.com/i/teamlogos/soccer/500/20232.png' } },
+        ],
+      }],
+    };
+
+    const match = mapBracket({ events: [event] })[0].matches[0];
+    expect(match.home.placeholder).toBe(false);
+    expect(match.away.placeholder).toBe(false);
+  });
+});

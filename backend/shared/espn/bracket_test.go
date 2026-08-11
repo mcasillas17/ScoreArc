@@ -184,14 +184,10 @@ func TestMapBracket2022(t *testing.T) {
 }
 
 func TestMapBracketResilience(t *testing.T) {
-	t.Run("skips malformed events without throwing", func(t *testing.T) {
+	t.Run("rejects entirely malformed events", func(t *testing.T) {
 		malformed := []byte(`{"events":[{"season":{"slug":"round-of-32"},"competitions":[]}]}`)
-		got, err := MapBracket(malformed)
-		if err != nil {
-			t.Fatalf("MapBracket returned error: %v", err)
-		}
-		if len(got) != 0 {
-			t.Errorf("got %d matches, want 0", len(got))
+		if _, err := MapBracket(malformed); err == nil {
+			t.Fatal("expected malformed bracket error")
 		}
 	})
 
@@ -205,13 +201,9 @@ func TestMapBracketResilience(t *testing.T) {
 		}
 	})
 
-	t.Run("handles an empty payload gracefully", func(t *testing.T) {
-		got, err := MapBracket([]byte(`{}`))
-		if err != nil {
-			t.Fatalf("MapBracket returned error: %v", err)
-		}
-		if len(got) != 0 {
-			t.Errorf("got %d matches, want 0", len(got))
+	t.Run("rejects a missing events envelope", func(t *testing.T) {
+		if _, err := MapBracket([]byte(`{}`)); err == nil {
+			t.Fatal("expected malformed bracket error")
 		}
 	})
 
@@ -303,10 +295,21 @@ func TestMapBracketEventOverride(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MapBracket returned error: %v", err)
 	}
+
 	if len(matches) != 1 {
 		t.Fatalf("got %d matches, want 1 (event override should rescue this from being dropped as group-stage)", len(matches))
 	}
 	if matches[0].Round != "quarterfinals" {
 		t.Errorf("round = %q, want quarterfinals (EVENT_SLUG_OVERRIDE for event 264118)", matches[0].Round)
+	}
+}
+
+func TestMapBracketTeamDoesNotTreatClubCrestAsPlaceholder(t *testing.T) {
+	crest := "https://example.test/clubs/123.png"
+	team := mapBracketTeam(rawTeam{
+		ID: "123", DisplayName: "Club FC", Abbreviation: "CLB", Logo: &crest,
+	})
+	if team.Placeholder {
+		t.Fatal("real club marked as placeholder")
 	}
 }

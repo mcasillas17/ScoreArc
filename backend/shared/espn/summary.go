@@ -2,6 +2,7 @@ package espn
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"regexp"
 	"sort"
@@ -40,22 +41,27 @@ type rawSummary struct {
 }
 
 type rawSummaryHeader struct {
+	ID           flexibleString         `json:"id"`
 	Competitions []rawHeaderCompetition `json:"competitions"`
 }
 
 type rawHeaderCompetition struct {
 	Competitors []rawHeaderCompetitor `json:"competitors"`
+	ID          flexibleString        `json:"id"`
+	Status      *rawStatus            `json:"status"`
 }
 
 type rawHeaderCompetitor struct {
-	HomeAway string       `json:"homeAway"`
-	Team     rawTeamIDRef `json:"team"`
+	HomeAway      string          `json:"homeAway"`
+	Team          rawTeamIDRef    `json:"team"`
+	Score         *flexibleString `json:"score"`
+	ShootoutScore json.RawMessage `json:"shootoutScore"`
 }
 
 // rawTeamIDRef is the recurring `{ team: { id: "..." } }` shape used across
 // boxscore, rosters, lastFiveGames, and the header competitors.
 type rawTeamIDRef struct {
-	ID string `json:"id"`
+	ID flexibleString `json:"id"`
 }
 
 type rawGameInfo struct {
@@ -256,7 +262,7 @@ func MapSummary(raw []byte) (MatchDetail, error) {
 	return MatchDetail{
 		Scorers:        mapSummaryScorers(rs),
 		Cards:          mapSummaryCards(rs),
-		Shootout:       nil, // aggregate shootout score is set by the bracket mapper (Task 5), not summary
+		Shootout:       mapSummaryShootout(rs),
 		ShootoutDetail: mapSummaryShootoutDetail(rs, homeID, awayID),
 		Stats:          mapSummaryStats(rs, homeID, awayID),
 		WinProbability: mapWinProbability(rs, homeID, awayID),
@@ -269,6 +275,88 @@ func MapSummary(raw []byte) (MatchDetail, error) {
 	}, nil
 }
 
+// ValidateSummary rejects structurally incomplete payloads before persistence.
+func ValidateSummary(
+	raw []byte,
+	expectedMatchID, expectedHomeID, expectedAwayID string,
+	requireFinal bool,
+) error {
+	var rs rawSummary
+	if err := parseRawSummary(raw, &rs); err != nil {
+		return err
+	}
+	if string(rs.Header.ID) != expectedMatchID || len(rs.Header.Competitions) == 0 ||
+		string(rs.Header.Competitions[0].ID) != expectedMatchID {
+		return fmt.Errorf("summary event identity does not match %q", expectedMatchID)
+	}
+	homeID, awayID := headerTeamIDs(rs)
+	if homeID != expectedHomeID || awayID != expectedAwayID {
+		return fmt.Errorf("summary teams do not match event %q", expectedMatchID)
+	}
+	if requireFinal {
+		competition := rs.Header.Competitions[0]
+		if competition.Status == nil || !competition.Status.Type.Completed {
+			return fmt.Errorf("summary event %q is not complete", expectedMatchID)
+		}
+		var homeScore, awayScore *flexibleString
+		for _, competitor := range competition.Competitors {
+			switch competitor.HomeAway {
+			case "home":
+				homeScore = competitor.Score
+			case "away":
+				awayScore = competitor.Score
+			}
+		}
+		if scoreOf(homeScore) == nil || scoreOf(awayScore) == nil {
+			return fmt.Errorf("summary event %q lacks final scores", expectedMatchID)
+		}
+	}
+	return nil
+}
+
+func ParseShootoutNote(note, homeName, awayName string) *Shootout {
+	match := shootoutNoteRe.FindStringSubmatch(note)
+	if match == nil {
+		return nil
+	}
+	first, firstErr := strconv.Atoi(match[1])
+	second, secondErr := strconv.Atoi(match[2])
+	if firstErr != nil || secondErr != nil {
+		return nil
+	}
+	winner, loser := max(first, second), min(first, second)
+	lowerNote := strings.ToLower(note)
+	switch {
+	case homeName != "" && strings.Contains(lowerNote, strings.ToLower(homeName)):
+		return &Shootout{HomeScore: winner, AwayScore: loser}
+	case awayName != "" && strings.Contains(lowerNote, strings.ToLower(awayName)):
+		return &Shootout{HomeScore: loser, AwayScore: winner}
+	default:
+		return &Shootout{HomeScore: first, AwayScore: second}
+	}
+}
+
+func mapSummaryShootout(rs rawSummary) *Shootout {
+	if len(rs.Header.Competitions) == 0 {
+		return nil
+	}
+	var home, away float64
+	var homeOK, awayOK bool
+	for _, competitor := range rs.Header.Competitions[0].Competitors {
+		score, ok := jsNumber(competitor.ShootoutScore)
+		switch competitor.HomeAway {
+		case "home":
+			home, homeOK = score, ok
+		case "away":
+			away, awayOK = score, ok
+		}
+	}
+	if !homeOK || !awayOK || (home == 0 && away == 0) {
+		return nil
+	}
+	return &Shootout{HomeScore: int(home), AwayScore: int(away)}
+}
+
 // headerTeamIDs reads OUR home/away team ids off
 // header.competitions[0].competitors, the same homeAway tagging
 // espn-matches.ts's mapScoreboard reads off the scoreboard payload.
@@ -279,15 +367,16 @@ func headerTeamIDs(rs rawSummary) (homeID, awayID string) {
 	for _, c := range rs.Header.Competitions[0].Competitors {
 		switch c.HomeAway {
 		case "home":
-			homeID = c.Team.ID
+			homeID = string(c.Team.ID)
 		case "away":
-			awayID = c.Team.ID
+			awayID = string(c.Team.ID)
 		}
 	}
 	return homeID, awayID
 }
 
 var refereeRe = regexp.MustCompile(`(?i)referee`)
+var shootoutNoteRe = regexp.MustCompile(`(?i)(\d+)\s*[-–]\s*(\d+)\s+on penalties`)
 
 // mapSummaryInfo ports mapSummaryInfo: venue, city, referee and attendance
 // from summary.gameInfo.
@@ -337,7 +426,7 @@ func mapSummaryInfo(rs rawSummary) *MatchInfo {
 // mapFormEvents ports mapFormEvents: a team's last 5 results as W/L/D +
 // opponent + score, oriented to that team (not necessarily OUR home/away).
 func mapFormEvents(entry rawFormGroup) []FormResult {
-	teamID := entry.Team.ID
+	teamID := string(entry.Team.ID)
 	events := entry.Events
 	if len(events) > 5 {
 		events = events[:5]
@@ -367,10 +456,10 @@ func mapFormEvents(entry rawFormGroup) []FormResult {
 func mapSummaryForm(rs rawSummary, homeID, awayID string) *MatchForm {
 	var homeEntry, awayEntry *rawFormGroup
 	for i := range rs.LastFiveGames {
-		if rs.LastFiveGames[i].Team.ID == homeID {
+		if string(rs.LastFiveGames[i].Team.ID) == homeID {
 			homeEntry = &rs.LastFiveGames[i]
 		}
-		if rs.LastFiveGames[i].Team.ID == awayID {
+		if string(rs.LastFiveGames[i].Team.ID) == awayID {
 			awayEntry = &rs.LastFiveGames[i]
 		}
 	}
@@ -706,10 +795,10 @@ func mapSummaryStats(rs rawSummary, homeID, awayID string) *MatchStats {
 	}
 	var homeEntry, awayEntry *rawBoxscoreTeam
 	for i := range teams {
-		if teams[i].Team.ID == homeID {
+		if string(teams[i].Team.ID) == homeID {
 			homeEntry = &teams[i]
 		}
-		if teams[i].Team.ID == awayID {
+		if string(teams[i].Team.ID) == awayID {
 			awayEntry = &teams[i]
 		}
 	}
@@ -731,7 +820,7 @@ func mapSummaryScorers(rs rawSummary) []Scorer {
 			continue
 		}
 		out = append(out, Scorer{
-			TeamID:   e.Team.ID,
+			TeamID:   string(e.Team.ID),
 			Player:   participantName(e.Participants),
 			Minute:   e.Clock.DisplayValue,
 			Penalty:  e.PenaltyKick,
@@ -760,7 +849,7 @@ func mapSummaryCards(rs rawSummary) []Card {
 			cardType = "red"
 		}
 		out = append(out, Card{
-			TeamID: e.Team.ID,
+			TeamID: string(e.Team.ID),
 			Player: participantName(e.Participants),
 			Minute: e.Clock.DisplayValue,
 			Type:   cardType,
@@ -810,10 +899,10 @@ func jerseyImage(images []rawJerseyImage) *string {
 func mapSummaryLineups(rs rawSummary, homeID, awayID string) *MatchLineups {
 	var homeEntry, awayEntry *rawRosterEntry
 	for i := range rs.Rosters {
-		if rs.Rosters[i].Team.ID == homeID {
+		if string(rs.Rosters[i].Team.ID) == homeID {
 			homeEntry = &rs.Rosters[i]
 		}
-		if rs.Rosters[i].Team.ID == awayID {
+		if string(rs.Rosters[i].Team.ID) == awayID {
 			awayEntry = &rs.Rosters[i]
 		}
 	}

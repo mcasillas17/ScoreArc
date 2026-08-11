@@ -1,6 +1,10 @@
 package espn
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+)
 
 // Port of src/server/data/providers/espn-matches.ts's mapScoreboard +
 // src/server/data/state.ts's mapState. Reads ESPN's scoreboard shape
@@ -16,10 +20,26 @@ type rawScoreboard struct {
 }
 
 type rawEvent struct {
-	ID           string           `json:"id"`
+	ID           flexibleString   `json:"id"`
 	Date         string           `json:"date"`
 	Status       *rawStatus       `json:"status"`
 	Competitions []rawCompetition `json:"competitions"`
+	Season       struct {
+		Year int `json:"year"`
+	} `json:"season"`
+}
+
+func ValidateScoreboardSeason(raw []byte, expectedYear int) error {
+	var scoreboard rawScoreboard
+	if err := json.Unmarshal(raw, &scoreboard); err != nil {
+		return err
+	}
+	for _, event := range scoreboard.Events {
+		if event.Season.Year != 0 && event.Season.Year != expectedYear {
+			return fmt.Errorf("scoreboard season %d does not match %d", event.Season.Year, expectedYear)
+		}
+	}
+	return nil
 }
 
 type rawCompetition struct {
@@ -32,19 +52,43 @@ type rawNote struct {
 }
 
 type rawCompetitor struct {
-	HomeAway string  `json:"homeAway"`
-	Winner   bool    `json:"winner"`
-	Score    *string `json:"score"`
-	Team     rawTeam `json:"team"`
+	HomeAway string          `json:"homeAway"`
+	Winner   bool            `json:"winner"`
+	Score    *flexibleString `json:"score"`
+	Team     rawTeam         `json:"team"`
 }
 
 type rawTeam struct {
-	ID           string    `json:"id"`
-	DisplayName  string    `json:"displayName"`
-	Name         string    `json:"name"` // used by the bracket mapper's displayName ?? name ?? abbreviation fallback
-	Abbreviation string    `json:"abbreviation"`
-	Logo         *string   `json:"logo"`
-	Logos        []rawLogo `json:"logos"`
+	ID           flexibleString `json:"id"`
+	DisplayName  string         `json:"displayName"`
+	Name         string         `json:"name"` // used by the bracket mapper's displayName ?? name ?? abbreviation fallback
+	Abbreviation string         `json:"abbreviation"`
+	Logo         *string        `json:"logo"`
+	Logos        []rawLogo      `json:"logos"`
+}
+
+type flexibleString string
+
+func (value *flexibleString) UnmarshalJSON(raw []byte) error {
+	raw = bytes.TrimSpace(raw)
+	if bytes.Equal(raw, []byte("null")) {
+		*value = ""
+		return nil
+	}
+	var text string
+	if len(raw) > 0 && raw[0] == '"' {
+		if err := json.Unmarshal(raw, &text); err != nil {
+			return err
+		}
+		*value = flexibleString(text)
+		return nil
+	}
+	var number json.Number
+	if err := json.Unmarshal(raw, &number); err != nil {
+		return fmt.Errorf("expected string or number: %w", err)
+	}
+	*value = flexibleString(number.String())
+	return nil
 }
 
 type rawLogo struct {
@@ -87,7 +131,7 @@ func mapTeam(t rawTeam) Team {
 		crest = &href
 	}
 	return Team{
-		ID:       t.ID,
+		ID:       string(t.ID),
 		Name:     t.DisplayName,
 		Abbr:     t.Abbreviation,
 		CrestURL: crest,
@@ -96,12 +140,12 @@ func mapTeam(t rawTeam) Team {
 
 // scoreOf ports espn-matches.ts's score parsing:
 // home.score != null && home.score !== "" ? Number(home.score) : null
-func scoreOf(raw *string) *int {
+func scoreOf(raw *flexibleString) *int {
 	if raw == nil || *raw == "" {
 		return nil
 	}
 	var f float64
-	if err := json.Unmarshal([]byte(*raw), &f); err != nil {
+	if err := json.Unmarshal([]byte(string(*raw)), &f); err != nil {
 		return nil
 	}
 	n := int(f)
@@ -113,6 +157,9 @@ func scoreOf(raw *string) *int {
 // without both a home and away competitor are skipped (mirrors the TS
 // `flatMap` returning `[]` for those events) rather than causing an error.
 func MapScoreboard(raw []byte) ([]Match, error) {
+	if err := validateArrayEnvelope(raw, "events"); err != nil {
+		return nil, err
+	}
 	var sb rawScoreboard
 	if err := json.Unmarshal(raw, &sb); err != nil {
 		return nil, err
@@ -135,7 +182,8 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 				away = c
 			}
 		}
-		if home == nil || away == nil {
+		if ev.ID == "" || ev.Date == "" || home == nil || away == nil ||
+			home.Team.ID == "" || away.Team.ID == "" {
 			continue
 		}
 		if ev.Status == nil {
@@ -153,10 +201,10 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 
 		var winnerID *string
 		if home.Winner {
-			id := home.Team.ID
+			id := string(home.Team.ID)
 			winnerID = &id
 		} else if away.Winner {
-			id := away.Team.ID
+			id := string(away.Team.ID)
 			winnerID = &id
 		}
 
@@ -167,7 +215,7 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 		}
 
 		matches = append(matches, Match{
-			ID:           ev.ID,
+			ID:           string(ev.ID),
 			Kickoff:      ev.Date,
 			State:        state,
 			Minute:       minute,
@@ -181,6 +229,8 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 			Note:         note,
 		})
 	}
-
+	if len(sb.Events) > 0 && len(matches) == 0 {
+		return nil, fmt.Errorf("ESPN scoreboard contained no valid events")
+	}
 	return matches, nil
 }

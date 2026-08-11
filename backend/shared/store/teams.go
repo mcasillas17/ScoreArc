@@ -15,7 +15,10 @@ ON CONFLICT (id) DO UPDATE SET
 	name = EXCLUDED.name,
 	abbr = EXCLUDED.abbr,
 	crest_url = COALESCE(team.crest_url, EXCLUDED.crest_url),
-	updated_at = now()`
+	updated_at = now()
+WHERE team.name IS DISTINCT FROM EXCLUDED.name
+	OR team.abbr IS DISTINCT FROM EXCLUDED.abbr
+	OR (team.crest_url IS NULL AND EXCLUDED.crest_url IS NOT NULL)`
 
 func (s *Store) UpsertTeams(ctx context.Context, teams []model.Team) error {
 	if len(teams) == 0 {

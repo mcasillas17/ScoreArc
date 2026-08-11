@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: scorearc
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d scorearc"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DIRECT_DSN: postgres://postgres:postgres@localhost:5432/scorearc?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - run: npm ci
+      - run: npm run export:competitions
+      - name: Verify generated competition registry
+        run: git diff --exit-code -- backend/config/competitions.json
+      - run: npm test
+      - run: npx tsc --noEmit
+      - name: Apply database migrations
+        run: for migration in backend/migrations/*.up.sql; do psql "$DIRECT_DSN" -v ON_ERROR_STOP=1 -f "$migration"; done
+      - name: Test Go backend
+        working-directory: backend
+        run: go test -race ./...
+      - name: Vet Go backend
+        working-directory: backend
+        run: go vet ./...

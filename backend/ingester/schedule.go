@@ -28,7 +28,7 @@ func needsSummary(match model.Match, existing *store.MatchRow, slowTick bool) bo
 	case model.MatchStateLive, model.MatchStateFinished:
 		return true
 	case model.MatchStateScheduled:
-		return existing == nil || !existing.HasDetail || slowTick
+		return existing == nil || slowTick
 	default:
 		return false
 	}

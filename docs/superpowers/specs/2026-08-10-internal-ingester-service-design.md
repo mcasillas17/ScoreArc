@@ -53,7 +53,9 @@ The implementation has five boundaries:
 
 The scheduler does not start a new cycle until the previous cycle completes.
 Competition-season pipelines use bounded concurrency so one slow endpoint does
-not serialize every competition or create an unbounded request burst.
+not serialize every competition or create an unbounded request burst. A
+Postgres advisory lease enforces the same singleton guarantee across processes,
+and cycle deadlines bound dependency stalls.
 
 ## Data Flow
 
@@ -100,9 +102,12 @@ incomplete immutable record.
 
 - Use a 20-second interval while any current match is live.
 - Use a five-minute interval otherwise.
+- Backfill the configured current season once on process start, then use the
+  current-week feed. Historical configured seasons are a later backfill slice.
 - Recheck dormant competition-seasons only on slow ticks.
 - Fetch live summaries every cycle.
-- Fetch a scheduled summary when first seen and on slow ticks thereafter.
+- Fetch a scheduled summary when first seen and on slow ticks thereafter, except
+  during the bulk season backfill; the following weekly slow tick enriches it.
 - Fetch a finished summary until atomic finalization succeeds.
 - Never update a finalized match or its final detail.
 - Refresh standings and scorers after a newly finalized match or on slow ticks.
@@ -116,8 +121,8 @@ Failure to poll a competition preserves its previous active/dormant state.
 
 All SQL is parameterized. Team and mutable match writes are idempotent.
 Standings and scorers use delete-and-insert transactions. A new migration grants
-the ingester role the `DELETE` privilege those replacements require; changing
-an already-applied migration is not sufficient.
+the ingester role the `DELETE` privileges those replacements and bounded
+`ingest_run` retention require.
 
 Finalization locks the match row in a transaction, rechecks `finalized_at`,
 stores final detail, writes final score/state fields, and sets
@@ -136,8 +141,9 @@ Permanent HTTP errors and invalid payloads fail the operation explicitly.
 R2 mirroring performs PUT only after a confirmed not-found response. Permission,
 service, and network failures are returned rather than treated as cache misses.
 Downloaded assets must have a successful response, an image content type, and a
-size within the configured maximum. Asset failures are logged but do not fail
-football-data persistence.
+size within the configured maximum. Source and redirect URLs must use HTTPS on
+the ESPN CDN allowlist, and S3 operations have deadlines. Asset failures are
+logged but do not fail football-data persistence.
 
 Cancellation interrupts HTTP calls, retry backoff, cycle work, and scheduler
 sleep. The service exits cleanly on SIGINT or SIGTERM.
@@ -153,7 +159,8 @@ Tests are layered:
   skip clearly otherwise;
 - R2 tests use fake S3 and HTTP clients to cover hit, miss, authorization
   failure, invalid content type, oversize payload, and PUT failure;
-- ingester tests use fake source, repository, mirror, and clock dependencies to
+- ingester tests use fake source, repository, and mirror dependencies plus pure
+  interval policies to
   cover cadence, dormant recovery, retryable finalization, shared
   scoreboard/bracket processing, partial failures, cancellation, and refresh
   triggers; and

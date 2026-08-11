@@ -40,6 +40,8 @@ two-model review loop; Task 10 is push and pull-request delivery.
 - `backend/shared/assets/r2_test.go`: deterministic fake S3/HTTP tests.
 - `backend/migrations/0003_ingester_delete_grant.up.sql`: replacement privilege.
 - `backend/migrations/0003_ingester_delete_grant.down.sql`: privilege rollback.
+- `backend/migrations/0004_ingester_hardening.*.sql`: placeholder persistence,
+  durable finalization/audit indexes, and ingest-run retention privilege.
 - `backend/ingester/main.go`: dependency wiring and signal handling.
 - `backend/ingester/runner.go`: cycle and competition orchestration.
 - `backend/ingester/matches.go`: shared scoreboard/bracket match pipeline.
@@ -63,7 +65,7 @@ two-model review loop; Task 10 is push and pull-request delivery.
 **Files:** Import commits `e036778` through `5550598` from
 `origin/feature/agents/ingester-service`.
 
-- [ ] **Step 1: Replay the prerequisite commits**
+- [x] **Step 1: Replay the prerequisite commits**
 
 Run:
 
@@ -74,7 +76,7 @@ git cherry-pick e036778^..5550598
 Expected: the backend, infra, handoff, and prerequisite plan commits apply
 without conflicts; the new design and this plan remain present.
 
-- [ ] **Step 2: Verify imported TypeScript and Go baselines**
+- [x] **Step 2: Verify imported TypeScript and Go baselines**
 
 Run:
 
@@ -86,7 +88,7 @@ npx tsc --noEmit
 
 Expected: all Vitest and Go tests pass and TypeScript reports no errors.
 
-- [ ] **Step 3: Commit only if conflict resolution changed files**
+- [x] **Step 3: Commit only if conflict resolution changed files**
 
 If cherry-pick conflict resolution produced an uncommitted change:
 
@@ -102,7 +104,7 @@ git commit -m "chore: reconcile backend foundation with latest main"
 - Modify: `backend/shared/espn/types.go`
 - Test: `backend/shared/espn/*_test.go`
 
-- [ ] **Step 1: Add a compile-time consumer test**
+- [x] **Step 1: Add a compile-time consumer test**
 
 Create `backend/shared/model/types_test.go`:
 
@@ -127,13 +129,13 @@ func TestMatchJSONContract(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Confirm the package is absent**
+- [x] **Step 2: Confirm the package is absent**
 
 Run: `cd backend && go test ./shared/model`
 
 Expected: FAIL because `shared/model` does not exist.
 
-- [ ] **Step 3: Move canonical definitions and preserve compatibility**
+- [x] **Step 3: Move canonical definitions and preserve compatibility**
 
 Move all domain structs and `MatchState` constants from
 `backend/shared/espn/types.go` into `backend/shared/model/types.go`, changing
@@ -178,13 +180,13 @@ type CommentaryItem = model.CommentaryItem
 type H2HMeeting = model.H2HMeeting
 ```
 
-- [ ] **Step 4: Run mapper parity tests**
+- [x] **Step 4: Run mapper parity tests**
 
 Run: `cd backend && go test ./shared/model ./shared/espn`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/shared/model backend/shared/espn/types.go
@@ -199,7 +201,7 @@ git commit -m "refactor(backend): extract canonical football model"
 - Create: `backend/shared/source/espn.go`
 - Create: `backend/shared/source/espn_test.go`
 
-- [ ] **Step 1: Write failing transient-retry and response-limit tests**
+- [x] **Step 1: Write failing transient-retry and response-limit tests**
 
 Use `httptest.Server` and an injected `*espn.Client`. Assert that a 503 followed
 by 200 succeeds after two calls, a 400 is attempted once, and a response larger
@@ -220,13 +222,13 @@ src := source.NewESPN(client)
 and asserts Scoreboard, Summary, Standings, TopScorers, and Bracket use the
 expected paths and query parameters.
 
-- [ ] **Step 2: Run tests and confirm failure**
+- [x] **Step 2: Run tests and confirm failure**
 
 Run: `cd backend && go test ./shared/espn ./shared/source`
 
 Expected: FAIL because options, retries, limits, and the source package are absent.
 
-- [ ] **Step 3: Implement the source contract**
+- [x] **Step 3: Implement the source contract**
 
 ```go
 type Source interface {
@@ -244,13 +246,13 @@ Implement `source.ESPN` as the thin URL-builder/mapper adapter. Add
 context-aware retry for network errors, 429, and 5xx. Honor `Retry-After` when
 present. Do not retry other 4xx responses or JSON decode failures.
 
-- [ ] **Step 4: Run focused tests**
+- [x] **Step 4: Run focused tests**
 
 Run: `cd backend && go test ./shared/espn ./shared/source`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/shared/espn/client.go backend/shared/source
@@ -264,7 +266,7 @@ git commit -m "feat(backend): add resilient ESPN source adapter"
 - Create: `backend/shared/store/*.go`
 - Test: `backend/shared/store/store_test.go`
 
-- [ ] **Step 1: Write migration tests and live repository tests**
+- [x] **Step 1: Write migration tests and live repository tests**
 
 Extend the migration fixture check to assert:
 
@@ -282,13 +284,13 @@ Add integration tests that skip only when `DIRECT_DSN` is empty. Cover:
 6. non-empty replacement removes stale rows transactionally; and
 7. ingest-run success and error values round-trip.
 
-- [ ] **Step 2: Confirm tests fail**
+- [x] **Step 2: Confirm tests fail**
 
 Run: `cd backend && go test ./shared/store ./...`
 
 Expected: FAIL because store and migration 0003 are absent.
 
-- [ ] **Step 3: Implement store contracts and transactions**
+- [x] **Step 3: Implement store contracts and transactions**
 
 Expose:
 
@@ -318,7 +320,7 @@ when already finalized, upserts detail, writes final match fields, sets
 `finalized_at`, and commits. JSON marshal errors must be returned rather than
 converted to SQL null.
 
-- [ ] **Step 4: Run store tests**
+- [x] **Step 4: Run store tests**
 
 Run:
 
@@ -331,7 +333,7 @@ go test ./shared/store
 
 Expected: deterministic tests pass; live tests either pass or report explicit skips.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/migrations/0003_* backend/shared/store backend/go.mod backend/go.sum
@@ -345,7 +347,7 @@ git commit -m "feat(backend): add transactional ingester store"
 - Create: `backend/shared/assets/r2_test.go`
 - Modify: `backend/.env.example`
 
-- [ ] **Step 1: Write failing fake-client tests**
+- [x] **Step 1: Write failing fake-client tests**
 
 Define small internal `headPutter` and `httpDoer` interfaces. Test:
 
@@ -356,13 +358,13 @@ Define small internal `headPutter` and `httpDoer` interfaces. Test:
 - PUT errors propagate; and
 - missing environment fields disable mirroring.
 
-- [ ] **Step 2: Confirm tests fail**
+- [x] **Step 2: Confirm tests fail**
 
 Run: `cd backend && go test ./shared/assets`
 
 Expected: FAIL because the package is absent.
 
-- [ ] **Step 3: Implement the mirror**
+- [x] **Step 3: Implement the mirror**
 
 Use AWS SDK v2's typed API error code to accept only `NotFound`,
 `NoSuchKey`, or HTTP 404 as a cache miss. Read at most `maxAsset+1` bytes and
@@ -370,7 +372,7 @@ reject when the result exceeds `maxAsset`. Accept only `image/*`. Use the
 response content type and a stable `teams/<url.PathEscape(id)>` object key.
 Return errors to the caller; orchestration decides they are non-fatal.
 
-- [ ] **Step 4: Run tests and commit**
+- [x] **Step 4: Run tests and commit**
 
 Run: `cd backend && go test ./shared/assets`
 
@@ -391,7 +393,7 @@ git commit -m "feat(backend): add validated R2 asset mirror"
 - Create: `backend/ingester/main.go`
 - Test: `backend/ingester/*_test.go`
 
-- [ ] **Step 1: Write failing scheduling and match-policy tests**
+- [x] **Step 1: Write failing scheduling and match-policy tests**
 
 Table-test:
 
@@ -406,7 +408,7 @@ needsSummary(scheduled, existingWithDetail, false) == false
 needsSummary(scheduled, existingWithDetail, true) == true
 ```
 
-- [ ] **Step 2: Write failing orchestration tests**
+- [x] **Step 2: Write failing orchestration tests**
 
 Use in-memory fakes implementing the exact source, repository, mirror, and clock
 interfaces. Cover:
@@ -423,13 +425,13 @@ interfaces. Cover:
 10. cancellation stops work and sleep; and
 11. operation failures are never logged as success.
 
-- [ ] **Step 3: Confirm tests fail**
+- [x] **Step 3: Confirm tests fail**
 
 Run: `cd backend && go test ./ingester`
 
 Expected: FAIL because ingester code is absent.
 
-- [ ] **Step 4: Implement the contracts and runner**
+- [x] **Step 4: Implement the contracts and runner**
 
 Use these narrow dependencies:
 
@@ -457,13 +459,13 @@ matches through `processMatch`, not a separate persistence shortcut. A newly
 finalized match, rather than merely a newly observed finished state, triggers
 result-dependent refreshes.
 
-- [ ] **Step 5: Wire main and graceful shutdown**
+- [x] **Step 5: Wire main and graceful shutdown**
 
 Load config and `POOLED_DSN`, construct production dependencies, support
 `-once`, and use `signal.NotifyContext`. Use a context-aware timer instead of
 `time.Sleep`. R2 remains optional when its environment is incomplete.
 
-- [ ] **Step 6: Run focused tests and commit**
+- [x] **Step 6: Run focused tests and commit**
 
 Run: `cd backend && go test -race ./ingester`
 
@@ -484,21 +486,22 @@ git commit -m "feat(backend): implement resilient ingester worker"
 - Modify: `AGENTS.md`
 - Modify: `docs/superpowers/plans/2026-08-10-internal-ingester-service.md`
 
-- [ ] **Step 1: Update documentation**
+- [x] **Step 1: Update documentation**
 
-Document the final package map, environment variables, migrations through 0003,
+Document the final package map, environment variables, migrations through 0004,
 all validation commands, `go run ./ingester -once`, and cloud-test skip
 behavior. Add Mermaid component and sequence diagrams matching the design spec.
 Mark every completed plan checkbox and remove stale claims that tasks 6-9 remain
 unimplemented.
 
-- [ ] **Step 2: Validate documentation references**
+- [x] **Step 2: Validate documentation references**
 
 Run:
 
 ```bash
 test -f backend/ingester/main.go
 test -f backend/migrations/0003_ingester_delete_grant.up.sql
+test -f backend/migrations/0004_ingester_hardening.up.sql
 grep -q 'go run ./ingester -once' README.md docs/backend/SETUP.md
 grep -q '```mermaid' docs/backend/ARCHITECTURE.md
 git diff --check
@@ -506,7 +509,7 @@ git diff --check
 
 Expected: every command exits 0.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add README.md BACKEND_HANDOFF.md AGENTS.md docs/backend docs/superpowers/plans/2026-08-10-internal-ingester-service.md
@@ -517,7 +520,7 @@ git commit -m "docs: document internal ingester operations"
 
 **Files:** No new files unless validation exposes a defect.
 
-- [ ] **Step 1: Run all deterministic validation**
+- [x] **Step 1: Run all deterministic validation**
 
 ```bash
 (cd backend && gofmt -w .)
@@ -531,7 +534,7 @@ npm run build
 
 Expected: every command exits 0.
 
-- [ ] **Step 2: Run optional cloud integration**
+- [x] **Step 2: Run optional cloud integration**
 
 ```bash
 cd backend
@@ -543,7 +546,7 @@ if [ -n "${POOLED_DSN:-}" ]; then go run ./ingester -once; fi
 Expected: integration tests pass when credentials exist and otherwise report
 explicit skips; the one-cycle run completes when `POOLED_DSN` exists.
 
-- [ ] **Step 3: Inspect the complete branch**
+- [x] **Step 3: Inspect the complete branch**
 
 ```bash
 git status --short

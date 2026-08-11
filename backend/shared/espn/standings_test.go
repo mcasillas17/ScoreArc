@@ -6,6 +6,13 @@ import (
 	"testing"
 )
 
+func TestMapStandingsRejectsMalformedRows(t *testing.T) {
+	raw := []byte(`{"children":[{"name":"League","standings":{"entries":[{"team":{"id":""}}]}}]}`)
+	if _, err := MapStandings(raw); err == nil {
+		t.Fatal("expected malformed standing error")
+	}
+}
+
 func loadStandingsFixture(t *testing.T) []byte {
 	t.Helper()
 	b, err := os.ReadFile("testdata/espn-standings.json")
@@ -105,13 +112,9 @@ func TestMapStandings(t *testing.T) {
 		}
 	})
 
-	t.Run("returns [] for a malformed payload", func(t *testing.T) {
-		got, err := MapStandings([]byte(`{}`))
-		if err != nil {
-			t.Fatalf("MapStandings({}) returned error: %v", err)
-		}
-		if len(got) != 0 {
-			t.Errorf("got %d standings, want 0", len(got))
+	t.Run("rejects a malformed payload", func(t *testing.T) {
+		if _, err := MapStandings([]byte(`{}`)); err == nil {
+			t.Fatal("expected malformed standings error")
 		}
 	})
 }

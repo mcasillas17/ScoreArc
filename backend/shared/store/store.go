@@ -10,6 +10,7 @@ import (
 )
 
 var ErrEmptyReplacement = errors.New("refusing to replace with an empty dataset")
+var ErrMatchFinalized = errors.New("match is finalized")
 
 type Store struct {
 	pool *pgxpool.Pool

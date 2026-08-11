@@ -6,6 +6,48 @@ import (
 	"testing"
 )
 
+func TestMapSummaryRejectsMissingTeams(t *testing.T) {
+	if err := ValidateSummary([]byte(`{}`), "m1", "home", "away", true); err == nil {
+		t.Fatal("expected missing-team error")
+	}
+
+}
+
+func TestValidateSummaryChecksRequestedFinalEvent(t *testing.T) {
+	raw := loadSummaryFixture(t)
+	if err := ValidateSummary(raw, "760490", "4789", "464", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateSummary(raw, "wrong", "4789", "464", true); err == nil {
+		t.Fatal("expected event identity error")
+	}
+	if err := ValidateSummary(raw, "760490", "464", "4789", true); err == nil {
+		t.Fatal("expected team identity error")
+	}
+}
+
+func TestMapSummaryMapsShootoutAggregate(t *testing.T) {
+	raw := []byte(`{"header":{"competitions":[{"competitors":[
+		{"homeAway":"home","team":{"id":"1"},"shootoutScore":"5"},
+		{"homeAway":"away","team":{"id":"2"},"shootoutScore":"4"}
+	]}]}}`)
+	detail, err := MapSummary(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if detail.Shootout == nil || detail.Shootout.HomeScore != 5 || detail.Shootout.AwayScore != 4 {
+		t.Fatalf("shootout=%+v", detail.Shootout)
+	}
+}
+
+func TestParseShootoutNoteUsesNamedWinner(t *testing.T) {
+	got := ParseShootoutNote("Paraguay advance 4-3 on penalties", "Spain", "Paraguay")
+	if got == nil || got.HomeScore != 3 || got.AwayScore != 4 {
+		t.Fatalf("shootout=%+v", got)
+	}
+}
+
 // loadSummaryFixture loads the recorded ESPN summary payload shared with the
 // TS test (src/server/data/__fixtures__/espn-summary.json): Ivory Coast
 // (home, id 4789) vs Norway (away, id 464), 2026 World Cup Round of 32.
@@ -322,6 +364,20 @@ func TestMapSummaryStatsNilOnMismatch(t *testing.T) {
 	raw := loadSummaryFixture(t)
 	if s := mapSummaryStats(mustParseRawSummary(t, raw), "x", "y"); s != nil {
 		t.Errorf("expected nil for unmatched team ids, got %+v", s)
+	}
+}
+
+func TestValidateSummaryAcceptsNumericIdentityAndScores(t *testing.T) {
+	raw := []byte(`{"header":{"id":123,"competitions":[{
+		"id":123,
+		"status":{"type":{"completed":true}},
+		"competitors":[
+			{"homeAway":"home","team":{"id":1},"score":2},
+			{"homeAway":"away","team":{"id":2},"score":1}
+		]
+	}]}}`)
+	if err := ValidateSummary(raw, "123", "1", "2", true); err != nil {
+		t.Fatal(err)
 	}
 }
 
