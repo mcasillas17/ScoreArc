@@ -6,6 +6,11 @@ World Cup. The Next.js application is deployed at
 public data contract for the website, physical scoreboards, and third-party
 consumers.
 
+> **New here?** Read [`VISION.md`](VISION.md) first — the north star: what we're
+> building, the signature **arc-bracket** identity, the roadmap (own the data →
+> history → AI-powered stats), and fútbol domain knowledge. Then [`AGENTS.md`](AGENTS.md)
+> for the working rules and [`BACKEND_HANDOFF.md`](BACKEND_HANDOFF.md) for the backend.
+
 ```mermaid
 flowchart LR
   ESPN["ESPN keyless public API"] --> Web["Next.js data layer"]
