@@ -597,7 +597,7 @@ git push -u origin mcasillas17-internal-ingester-service
 
 Expected: the remote branch is created and tracking is configured.
 
-- [ ] **Step 2: Open the PR**
+- [x] **Step 2: Open the PR**
 
 Create a PR against `main` summarizing the foundation import, ingester
 architecture, atomic finalization, reliability behavior, test coverage, docs,
