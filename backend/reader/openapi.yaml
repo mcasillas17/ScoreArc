@@ -1,0 +1,523 @@
+openapi: 3.1.0
+info:
+  title: ScoreArc Reader API
+  version: "1.0.0"
+  description: Public, read-only football data for ScoreArc consumers.
+servers:
+  - url: https://scorearc-reader.fly.dev
+    description: Planned Fly.io reader origin; deployment assets are tracked separately.
+paths:
+  /healthz:
+    get:
+      operationId: health
+      summary: Check process and database readiness
+      responses:
+        "200":
+          description: Reader and database are healthy
+          headers:
+            Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: Database is unavailable
+          headers:
+            Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+  /v1/competitions/{comp}/{season}/matches:
+    get:
+      operationId: listMatches
+      summary: List matches for a competition season
+      parameters:
+        - { $ref: "#/components/parameters/Comp" }
+        - { $ref: "#/components/parameters/Season" }
+      responses:
+        "200":
+          description: Matches ordered by kickoff
+          headers:
+            Cache-Control: { $ref: "#/components/headers/LiveCacheControl" }
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Match" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+  /v1/competitions/{comp}/{season}/standings:
+    get:
+      operationId: listStandings
+      summary: List standings grouped for display
+      parameters:
+        - { $ref: "#/components/parameters/Comp" }
+        - { $ref: "#/components/parameters/Season" }
+      responses:
+        "200":
+          description: Competition standings
+          headers:
+            Cache-Control: { $ref: "#/components/headers/StandardCacheControl" }
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Group" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+  /v1/competitions/{comp}/{season}/bracket:
+    get:
+      operationId: getBracket
+      summary: Get the reconstructed knockout bracket
+      parameters:
+        - { $ref: "#/components/parameters/Comp" }
+        - { $ref: "#/components/parameters/Season" }
+      responses:
+        "200":
+          description: Canonically ordered knockout rounds
+          headers:
+            Cache-Control: { $ref: "#/components/headers/LiveCacheControl" }
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/BracketRound" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+  /v1/competitions/{comp}/{season}/top-scorers:
+    get:
+      operationId: listTopScorers
+      summary: List the goal-scoring leaderboard
+      parameters:
+        - { $ref: "#/components/parameters/Comp" }
+        - { $ref: "#/components/parameters/Season" }
+      responses:
+        "200":
+          description: Players ordered by rank
+          headers:
+            Cache-Control: { $ref: "#/components/headers/StandardCacheControl" }
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/TopScorer" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+  /v1/competitions/{comp}/news:
+    get:
+      operationId: listNews
+      summary: List live ESPN news for a competition
+      parameters:
+        - { $ref: "#/components/parameters/Comp" }
+      responses:
+        "200":
+          description: Recent news articles
+          headers:
+            Cache-Control: { $ref: "#/components/headers/StandardCacheControl" }
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/NewsArticle" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { $ref: "#/components/responses/UpstreamError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+  /v1/matches/{id}:
+    get:
+      operationId: getMatchSummary
+      summary: Get on-demand details for one match
+      parameters:
+        - $ref: "#/components/parameters/MatchID"
+      responses:
+        "200":
+          description: Match summary
+          headers:
+            Cache-Control: { $ref: "#/components/headers/DetailCacheControl" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MatchSummary" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+components:
+  parameters:
+    Comp:
+      name: comp
+      in: path
+      required: true
+      description: Whitelisted competition identifier, such as world-cup.
+      schema: { type: string, minLength: 1 }
+    Season:
+      name: season
+      in: path
+      required: true
+      description: Whitelisted season identifier within the competition.
+      schema: { type: string, minLength: 1 }
+    MatchID:
+      name: id
+      in: path
+      required: true
+      description: Opaque ESPN match identifier used only as a SQL parameter.
+      schema: { type: string, minLength: 1 }
+  headers:
+    LiveCacheControl:
+      description: public, max-age=10 when any result is live; otherwise public, max-age=60.
+      schema: { type: string }
+    StandardCacheControl:
+      description: public, max-age=60.
+      schema: { type: string }
+    DetailCacheControl:
+      description: public, max-age=30.
+      schema: { type: string }
+    NoStoreCacheControl:
+      description: no-store.
+      schema: { type: string, example: no-store }
+  responses:
+    BadRequest:
+      description: Unknown competition or season
+      headers:
+        Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Match not found
+      headers:
+        Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    MethodNotAllowed:
+      description: HTTP method is not supported for this route
+      headers:
+        Allow:
+          description: Supported method.
+          schema: { type: string, example: GET }
+        Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: Per-client request budget exhausted
+      headers:
+        Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
+        Retry-After:
+          description: Seconds before retrying.
+          schema: { type: string, example: "1" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    InternalError:
+      description: Internal database or serialization error
+      headers:
+        Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    UpstreamError:
+      description: ESPN news request failed
+      headers:
+        Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Health:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: { type: string, enum: [ok, unhealthy] }
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: { type: string }
+    Team:
+      type: object
+      additionalProperties: false
+      required: [id, name, abbr, crestUrl]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        abbr: { type: string }
+        crestUrl: { type: [string, "null"] }
+    Scorer:
+      type: object
+      additionalProperties: false
+      required: [teamId, player, minute, penalty, shootout]
+      properties:
+        teamId: { type: string }
+        player: { type: string }
+        minute: { type: string }
+        penalty: { type: boolean }
+        shootout: { type: boolean }
+    Card:
+      type: object
+      additionalProperties: false
+      required: [teamId, player, minute, type]
+      properties:
+        teamId: { type: string }
+        player: { type: string }
+        minute: { type: string }
+        type: { type: string, enum: [yellow, red] }
+    WinProbability:
+      type: object
+      additionalProperties: false
+      required: [home, draw, away]
+      properties:
+        home: { type: number }
+        draw: { type: number }
+        away: { type: number }
+    Shootout:
+      type: object
+      additionalProperties: false
+      required: [homeScore, awayScore]
+      properties:
+        homeScore: { type: integer }
+        awayScore: { type: integer }
+    PenaltyKick:
+      type: object
+      additionalProperties: false
+      required: [order, player, scored]
+      properties:
+        order: { type: integer }
+        player: { type: string }
+        scored: { type: boolean }
+    ShootoutDetail:
+      type: object
+      additionalProperties: false
+      required: [home, away]
+      properties:
+        home: { type: array, items: { $ref: "#/components/schemas/PenaltyKick" } }
+        away: { type: array, items: { $ref: "#/components/schemas/PenaltyKick" } }
+    TeamStats:
+      type: object
+      additionalProperties: false
+      required: [possession, shots, shotsOnTarget, shotAccuracy, corners, offsides, passes, passAccuracy, crosses, crossAccuracy, longBalls, tackles, tackleAccuracy, interceptions, clearances, blockedShots, saves, fouls, yellowCards, redCards]
+      properties:
+        possession: { type: [number, "null"] }
+        shots: { type: [number, "null"] }
+        shotsOnTarget: { type: [number, "null"] }
+        shotAccuracy: { type: [number, "null"] }
+        corners: { type: [number, "null"] }
+        offsides: { type: [number, "null"] }
+        passes: { type: [number, "null"] }
+        passAccuracy: { type: [number, "null"] }
+        crosses: { type: [number, "null"] }
+        crossAccuracy: { type: [number, "null"] }
+        longBalls: { type: [number, "null"] }
+        tackles: { type: [number, "null"] }
+        tackleAccuracy: { type: [number, "null"] }
+        interceptions: { type: [number, "null"] }
+        clearances: { type: [number, "null"] }
+        blockedShots: { type: [number, "null"] }
+        saves: { type: [number, "null"] }
+        fouls: { type: [number, "null"] }
+        yellowCards: { type: [number, "null"] }
+        redCards: { type: [number, "null"] }
+    MatchStats:
+      type: object
+      additionalProperties: false
+      required: [home, away]
+      properties:
+        home: { $ref: "#/components/schemas/TeamStats" }
+        away: { $ref: "#/components/schemas/TeamStats" }
+    Match:
+      type: object
+      additionalProperties: false
+      required: [id, kickoff, state, minute, statusDetail, statusName, home, away, homeScore, awayScore, winnerId, note, scorers, cards, shootout, shootoutDetail, stats, winProbability]
+      properties:
+        id: { type: string }
+        kickoff: { type: string, format: date-time }
+        state: { type: string, enum: [scheduled, live, finished] }
+        minute: { type: [string, "null"] }
+        statusDetail: { type: string }
+        statusName: { type: string }
+        home: { $ref: "#/components/schemas/Team" }
+        away: { $ref: "#/components/schemas/Team" }
+        homeScore: { type: [integer, "null"] }
+        awayScore: { type: [integer, "null"] }
+        winnerId: { type: [string, "null"] }
+        note: { type: [string, "null"] }
+        scorers: { type: array, items: { $ref: "#/components/schemas/Scorer" } }
+        cards: { type: array, items: { $ref: "#/components/schemas/Card" } }
+        shootout: { oneOf: [{ $ref: "#/components/schemas/Shootout" }, { type: "null" }] }
+        shootoutDetail: { oneOf: [{ $ref: "#/components/schemas/ShootoutDetail" }, { type: "null" }] }
+        stats: { oneOf: [{ $ref: "#/components/schemas/MatchStats" }, { type: "null" }] }
+        winProbability: { oneOf: [{ $ref: "#/components/schemas/WinProbability" }, { type: "null" }] }
+    Standing:
+      type: object
+      additionalProperties: false
+      required: [team, rank, played, wins, draws, losses, goalsFor, goalsAgainst, goalDifference, points, advanced]
+      properties:
+        team: { $ref: "#/components/schemas/Team" }
+        rank: { type: integer }
+        played: { type: integer }
+        wins: { type: integer }
+        draws: { type: integer }
+        losses: { type: integer }
+        goalsFor: { type: integer }
+        goalsAgainst: { type: integer }
+        goalDifference: { type: integer }
+        points: { type: integer }
+        advanced: { type: boolean }
+    Group:
+      type: object
+      additionalProperties: false
+      required: [id, name, standings]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        standings: { type: array, items: { $ref: "#/components/schemas/Standing" } }
+    BracketTeam:
+      type: object
+      additionalProperties: false
+      required: [id, name, abbr, crestUrl, placeholder]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        abbr: { type: string }
+        crestUrl: { type: [string, "null"] }
+        placeholder: { type: boolean }
+    BracketMatch:
+      type: object
+      additionalProperties: false
+      required: [id, round, kickoff, home, away, homeScore, awayScore, state, statusDetail, statusName, minute, winnerId, note]
+      properties:
+        id: { type: string }
+        round: { type: string }
+        kickoff: { type: string, format: date-time }
+        home: { $ref: "#/components/schemas/BracketTeam" }
+        away: { $ref: "#/components/schemas/BracketTeam" }
+        homeScore: { type: [integer, "null"] }
+        awayScore: { type: [integer, "null"] }
+        state: { type: string, enum: [scheduled, live, finished] }
+        statusDetail: { type: string }
+        statusName: { type: string }
+        minute: { type: [string, "null"] }
+        winnerId: { type: [string, "null"] }
+        note: { type: [string, "null"] }
+    BracketRound:
+      type: object
+      additionalProperties: false
+      required: [slug, name, matches]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        matches: { type: array, items: { $ref: "#/components/schemas/BracketMatch" } }
+    TopScorer:
+      type: object
+      additionalProperties: false
+      required: [rank, player, teamAbbr, teamName, teamCrestUrl, goals, matches]
+      properties:
+        rank: { type: integer }
+        player: { type: string }
+        teamAbbr: { type: string }
+        teamName: { type: string }
+        teamCrestUrl: { type: [string, "null"] }
+        goals: { type: integer }
+        matches: { type: [integer, "null"] }
+    NewsArticle:
+      type: object
+      additionalProperties: false
+      required: [id, headline, description, published, image, url, byline]
+      properties:
+        id: { type: string }
+        headline: { type: string }
+        description: { type: string }
+        published: { type: string, description: "ISO timestamp when ESPN supplies one; otherwise empty." }
+        image: { type: [string, "null"] }
+        url: { type: string }
+        byline: { type: string }
+    LineupPlayer:
+      type: object
+      additionalProperties: false
+      required: [name, number, position, jersey]
+      properties:
+        name: { type: string }
+        number: { type: [integer, "null"] }
+        position: { type: string }
+        jersey: { type: [string, "null"] }
+    TeamLineup:
+      type: object
+      additionalProperties: false
+      required: [formation, players]
+      properties:
+        formation: { type: string }
+        players: { type: array, items: { $ref: "#/components/schemas/LineupPlayer" } }
+    MatchLineups:
+      type: object
+      additionalProperties: false
+      required: [home, away]
+      properties:
+        home: { $ref: "#/components/schemas/TeamLineup" }
+        away: { $ref: "#/components/schemas/TeamLineup" }
+    MatchVideo:
+      type: object
+      additionalProperties: false
+      required: [id, headline, duration, thumbnail, mp4Url, isGoal]
+      properties:
+        id: { type: string }
+        headline: { type: string }
+        duration: { type: [integer, "null"] }
+        thumbnail: { type: [string, "null"] }
+        mp4Url: { type: [string, "null"] }
+        isGoal: { type: boolean }
+    MatchInfo:
+      type: object
+      additionalProperties: false
+      required: [venue, city, referee, attendance]
+      properties:
+        venue: { type: [string, "null"] }
+        city: { type: [string, "null"] }
+        referee: { type: [string, "null"] }
+        attendance: { type: [integer, "null"] }
+    FormResult:
+      type: object
+      additionalProperties: false
+      required: [result, opponent, score]
+      properties:
+        result: { type: string, enum: [W, L, D] }
+        opponent: { type: string }
+        score: { type: string }
+    MatchForm:
+      type: object
+      additionalProperties: false
+      required: [home, away]
+      properties:
+        home: { type: array, items: { $ref: "#/components/schemas/FormResult" } }
+        away: { type: array, items: { $ref: "#/components/schemas/FormResult" } }
+    CommentaryItem:
+      type: object
+      additionalProperties: false
+      required: [minute, text]
+      properties:
+        minute: { type: string }
+        text: { type: string }
+    H2HMeeting:
+      type: object
+      additionalProperties: false
+      required: [date, label]
+      properties:
+        date: { type: string, description: "ISO timestamp when ESPN supplies one; otherwise empty." }
+        label: { type: string }
+    MatchSummary:
+      type: object
+      additionalProperties: false
+      required: [scorers, cards, stats, winProbability, lineups, videos, shootoutDetail, info, form, commentary, h2h]
+      properties:
+        scorers: { type: array, items: { $ref: "#/components/schemas/Scorer" } }
+        cards: { type: array, items: { $ref: "#/components/schemas/Card" } }
+        stats: { oneOf: [{ $ref: "#/components/schemas/MatchStats" }, { type: "null" }] }
+        winProbability: { oneOf: [{ $ref: "#/components/schemas/WinProbability" }, { type: "null" }] }
+        lineups: { oneOf: [{ $ref: "#/components/schemas/MatchLineups" }, { type: "null" }] }
+        videos: { type: array, items: { $ref: "#/components/schemas/MatchVideo" } }
+        shootoutDetail: { oneOf: [{ $ref: "#/components/schemas/ShootoutDetail" }, { type: "null" }] }
+        info: { oneOf: [{ $ref: "#/components/schemas/MatchInfo" }, { type: "null" }] }
+        form: { oneOf: [{ $ref: "#/components/schemas/MatchForm" }, { type: "null" }] }
+        commentary: { type: array, items: { $ref: "#/components/schemas/CommentaryItem" } }
+        h2h: { type: array, items: { $ref: "#/components/schemas/H2HMeeting" } }

@@ -1,36 +1,96 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ScoreArc
 
-## Getting Started
+ScoreArc is a live, multi-competition fútbol platform built around the 2026
+World Cup. The Next.js application is deployed at
+[scorearc.futbol](https://scorearc.futbol); the Go backend owns the emerging
+public data contract for the website, physical scoreboards, and third-party
+consumers.
 
-First, run the development server:
-
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```mermaid
+flowchart LR
+  ESPN["ESPN keyless public API"] --> Web["Next.js data layer"]
+  ESPN --> Ingester["Go ingester (planned service wiring)"]
+  Ingester --> DB[("Neon Postgres")]
+  DB --> Reader["Go public reader API"]
+  ESPN -->|"news only, 90 s internal TTL"| Reader
+  Reader --> Consumers["Website cutover · LED boards · third parties"]
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The frontend still uses the ESPN-backed `DataStore`. The reader API is now
+implemented; switching the frontend seam to it is the next integration slice.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Public reader API
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The reader lives in `backend/reader`, uses a SELECT-only Postgres role, and
+publishes its complete OpenAPI 3.1 contract at
+[`backend/reader/openapi.yaml`](backend/reader/openapi.yaml).
 
-## Learn More
+| Route | Source | Cache policy |
+|---|---|---|
+| `GET /healthz` | coalesced Postgres ping | `no-store`, rate-limit exempt |
+| `GET /v1/competitions/{comp}/{season}/matches` | Postgres | 10 s live, otherwise 60 s |
+| `GET /v1/competitions/{comp}/{season}/standings` | Postgres | 60 s |
+| `GET /v1/competitions/{comp}/{season}/bracket` | Postgres read model | 10 s live, otherwise 60 s |
+| `GET /v1/competitions/{comp}/{season}/top-scorers` | Postgres | 60 s |
+| `GET /v1/competitions/{comp}/news` | live ESPN proxy, 90 s internal TTL | 60 s |
+| `GET /v1/matches/{id}` | Postgres | 30 s |
 
-To learn more about Next.js, take a look at the following resources:
+Responses match the TypeScript models in `src/server/data/types.ts`. Empty
+collections are JSON arrays, never `null`. Competition and season identifiers
+are checked against the embedded registry before a query runs; every SQL value
+uses a pgx parameter.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Local development
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Requirements: Node.js 20+, Go 1.26+, and Docker for the Postgres integration
+tests.
 
-## Deploy on Vercel
+```bash
+npm install
+npm run dev
+npm test
+npx tsc --noEmit
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+cd backend
+go test ./...
+go build ./...
+go vet ./...
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Run the reader against a migrated database using the SELECT-only login:
+
+```bash
+cd backend/reader
+DATABASE_URL='postgres://scorearc_reader_user:…@…/scorearc?sslmode=require' \
+PORT=8080 go run .
+```
+
+If Docker uses Colima, expose its active socket to Testcontainers:
+
+```bash
+export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
+export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
+```
+
+See [`backend/reader/README.md`](backend/reader/README.md) for API behavior and
+[`docs/backend/SETUP.md`](docs/backend/SETUP.md) for database provisioning.
+
+## Repository map
+
+- `src/app` — Next.js App Router pages and server routes.
+- `src/components` — shared UI and colocated pure-logic tests.
+- `src/server/data` — the `DataStore` seam, competition registry, ESPN mappers,
+  fixtures, and frontend data contracts.
+- `backend/config` — generated competition configuration embedded in Go.
+- `backend/migrations` — current-state, snapshot, operations, and role schema.
+- `backend/shared/espn` — tested Go ESPN clients, domain types, and mappers.
+- `backend/reader` — public Go REST API, SQL read models, middleware, OpenAPI,
+  unit tests, and Testcontainers integration tests.
+- `docs/backend` — system architecture and operator setup.
+- `docs/superpowers/specs` / `plans` — design history and implementation plans.
+
+## Delivery workflow
+
+`main` auto-deploys the frontend to production. Work on a feature branch, run
+the frontend and backend gates locally, and integrate through a pull request.
+Merging remains a human decision.

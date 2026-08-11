@@ -1,0 +1,4 @@
+/bin/
+*.env
+# but DO commit the placeholder template (re-includes it despite root .gitignore's .env*)
+!.env.example

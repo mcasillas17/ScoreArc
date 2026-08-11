@@ -1,8 +1,17 @@
 # AGENTS.md
 
-Guidance for AI coding agents (Claude Code, Codex, Cursor, etc.) working in this repo.
-ScoreArc is a live World Cup 2026 → multi-competition fútbol platform (Next.js on
-Vercel, deployed at scorearc.futbol). Data comes from ESPN's **keyless** public API.
+Guidance for AI coding agents (Claude Code, Codex, GitHub Copilot, Cursor, etc.)
+working in this repo. ScoreArc is a live World Cup 2026 → multi-competition fútbol
+platform (Next.js on Vercel, deployed at scorearc.futbol). The frontend gets data
+from ESPN's **keyless** public API today; we are building **our own Go backend**
+to serve that data instead.
+
+> **Working on the backend / API?** Read **`BACKEND_HANDOFF.md`** (repo root) FIRST
+> — it's the self-contained onboarding (stack, current state, what's next, setup).
+> Start each backend slice from the latest `origin/main` on its own feature branch.
+> This AGENTS.md's rules (never push to `main`, feature-branch, test before PR,
+> conventional commits) apply to backend work too; the backend-specific commands
+> and commit-trailer note are under **"Backend (Go)"** below.
 
 ## Workflow — non-negotiable
 
@@ -28,12 +37,37 @@ Vercel, deployed at scorearc.futbol). Data comes from ESPN's **keyless** public 
 After hot-editing components/CSS, HMR can corrupt (`__webpack_require__.n is not a
 function`). Fix: kill dev server, `rm -rf .next`, restart.
 
+## Backend (Go) — the `/backend` API build
+
+We are building a Go backend (an ESPN ingester + a public read API) on **Fly.io +
+Neon Postgres (provisioned via Vercel) + Cloudflare R2**. Full detail:
+**`BACKEND_HANDOFF.md`** → `docs/backend/SETUP.md` (tools + cloud setup) +
+`docs/backend/ARCHITECTURE.md` (schema/endpoints/security).
+
+- Go module: `github.com/mcasillas17/scorearc-backend` under `/backend` (Go 1.26+).
+- `cd backend && go build ./...` — build. `cd backend && go test ./...` — test;
+  `cd backend && go vet ./...` — static checks
+  (some packages use testcontainers → **Docker must be running**).
+- `npm run export:competitions` — regenerate `backend/config/competitions.json`
+  from `src/server/data/competitions.ts` (the single source of truth — never
+  hand-edit the JSON).
+- Vercel ignores `/backend`, `/infra`, and `/docs` (`.vercelignore`).
+- **Agent identity in commits:** this repo's history uses a `Co-Authored-By:`
+  trailer. Substitute **your own** agent identity — e.g. Codex:
+  `Co-Authored-By: Codex <noreply@openai.com>`; Copilot:
+  `Co-Authored-By: Copilot <noreply@github.com>`. Do **not** attribute commits to
+  another agent.
+- **No Superpowers?** The `docs/superpowers/plans/*.md` are plain, bite-sized TDD
+  checklists — execute them top-to-bottom (run each step's command, confirm its
+  "expect:" output, commit at the commit step). Ignore any "REQUIRED SUB-SKILL"
+  header; it only names the tool the humans used to *produce* the plan.
+
 ## Architecture
 
 - `src/app/` — Next.js App Router (pages, `layout.tsx`, `api/` routes, `globals.css`).
 - `src/components/` — React components (one `.tsx` each).
 - `src/server/data/` — the data layer. ESPN read-through lives behind a `DataStore`
-  seam: `service.ts` (public API), `providers/` (ESPN mappers, e.g. `espn-summary.ts`),
+  seam: `store.ts` (public API), `providers/` (ESPN mappers, e.g. `espn-summary.ts`),
   `cache.ts`, `types.ts`, and `__fixtures__/` (recorded ESPN JSON for tests).
   **Add data by extending a mapper + type + component through this seam — don't add new
   fetch call sites in components.**
@@ -60,4 +94,8 @@ function`). Fix: kill dev server, `rm -rf .next`, restart.
 ## Specs & plans
 
 Design specs live in `docs/superpowers/specs/`, implementation plans in
-`docs/superpowers/plans/`. For non-trivial features, write the spec → plan first.
+`docs/superpowers/plans/`. For non-trivial features, write a spec → plan first as
+plain markdown files (the "Superpowers" skill names are just how these were
+authored — any agent can write the same markdown by hand). A plan is a
+task-by-task, TDD, checkbox checklist with exact code and `expect:` outputs;
+execute it linearly and commit per task.
