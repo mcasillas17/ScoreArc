@@ -7,8 +7,8 @@ fresh machine and continue. Read this file first, then `docs/backend/SETUP.md`
 
 > **Branching:** `main` is the integration baseline and auto-deploys. Start each
 > backend slice on its own feature branch and merge only through a reviewed PR.
-> The public reader implementation was developed on `feat/public-reader-api`
-> from `origin/main`, with its prerequisite backend commits replayed on top.
+> Every backend slice starts from the latest `origin/main`; the reader and
+> ingester now coexist on the same shared backend foundation.
 
 > ⚠️ **Some steps need a human at a browser — an unattended agent cannot do
 > them.** Account creation + these OAuth logins each open a browser:
@@ -65,8 +65,8 @@ This is a **monorepo**. The frontend and backend live together; Vercel ignores
   src/app/                Next.js App Router pages + /api routes (all data-fetching is SERVER-SIDE)
 /backend/                 the Go backend (module github.com/mcasillas17/scorearc-backend)
   config/                 loads competitions.json (generated from competitions.ts) → shared config
-  migrations/             Postgres schema migrations (0001_init, 0002_snapshots)
-  ingester/               [SERVICE WIRING PENDING] worker executable/store/cadence/assets
+  migrations/             Postgres schema, hardening, roles, and rollback files
+  ingester/               [IMPLEMENTED] private worker/store/cadence/assets
   reader/                 [IMPLEMENTED — slice 1c] public REST API serving the 6 shapes
   shared/espn/            tested Go ESPN client, domain types, and mappers
 /infra/                   [SUPERSEDED — GCP Terraform; replace with Fly+Neon+R2, slice 1a-rev]
@@ -86,7 +86,11 @@ All committed on this branch. Verified: `cd backend && go build ./... && go test
 
 1. **Go module scaffold** — `backend/go.mod` (module `github.com/mcasillas17/scorearc-backend`, Go 1.26), `.vercelignore` excludes `/backend` `/infra` `/docs`.
 2. **Config export** — `scripts/export-competitions.mjs` generates `backend/config/competitions.json` from the frontend's `src/server/data/competitions.ts` (single source of truth); `backend/config/config.go` loads it (`//go:embed`), with tests. Run `npm run export:competitions` to regenerate.
-3. **Postgres migrations** — `backend/migrations/000{1,2}_*.sql`: the schema (Tier-1 current-state + Tier-3 snapshot skeleton + ops) and the **least-privilege roles** (`scorearc_reader` = SELECT-only; `scorearc_ingester` = SELECT/INSERT/UPDATE). See ARCHITECTURE.md for the full schema.
+3. **Postgres migrations** — `backend/migrations/000{1..4}_*.sql`: current
+   state, snapshot skeleton, operations tables, replacement/retention grants,
+   finalization guards, and the **least-privilege roles**
+   (`scorearc_reader` = SELECT-only; `scorearc_ingester` = writer with narrowly
+   scoped replacement deletes). See ARCHITECTURE.md for the full schema.
 4. **Infra (GCP Terraform)** — `infra/*.tf`. ⚠️ **Superseded** by the Fly+Neon+R2 pivot; keep for reference but the next task replaces it.
 5. **Shared ESPN layer** — Go endpoint builders, response models, and fixture-tested
    mappers for scoreboard, standings, bracket, summary, statistics, and news.
@@ -95,6 +99,11 @@ All committed on this branch. Verified: `cd backend && go build ./... && go test
    enforcement, CORS, per-client limiting, defensive process timeouts, a
    stampede-safe news cache, OpenAPI 3.1, unit tests, and real-Postgres
    Testcontainers coverage. See `backend/reader/README.md`.
+7. **Internal ingester (slice 1b)** — production wiring, bounded ESPN client,
+   canonical mappers, transactional pgx writes, durable finalization backlog,
+   monotonic state guards, bracket reconciliation, strict replacement safety,
+   R2 crest mirroring, advisory-lock singleton lease, audit retention,
+   graceful shutdown, and `-once` operation.
 
 **Known minor follow-up:** Go struct field `config.Competition.CurrentSeasonId` should be renamed `CurrentSeasonID` (Go initialism lint, ST1003) when a linter is added.
 
@@ -112,9 +121,9 @@ Each slice is its own spec-lite → plan → build cycle (see §6 for how we wor
   - Cloudflare R2 bucket + access keys for the logo mirror.
   - GitHub Actions workflows to deploy each Go service to Fly (`flyctl deploy`), path-filtered to `/backend`.
   - `docs/backend/SETUP.md` already contains the exact provisioning steps.
-- **1b — Ingester service completion** (`backend/ingester/`): the shared ESPN
-  mappers exist; add the worker store, polling cadence, freeze behavior, R2 logo
-  mirror, executable wiring, and `emitSnapshots()` no-op.
+- **1b — Ingester**: **implemented.** Deployment configuration remains part of
+  1a-rev. Production requires a pooled writer DSN and a direct/unpooled lease
+  DSN using the same least-privilege login.
 - **1c — Reader**: **implemented.** Deployment configuration remains part of
   1a-rev; production rollout must use the SELECT-only reader DSN.
 - **1d — Frontend cutover**: add an `apiStore` implementation of `DataStore` (in `src/server/data/`) that calls the reader; select it via a `DATA_SOURCE=api|espn` env flag with ESPN fallback; verify parity; flip to `api`.
@@ -153,6 +162,10 @@ Hard rules (also in `AGENTS.md` — read it; Codex auto-loads it):
 
 - **The seam:** the frontend reads everything through `DataStore` (6 methods) in `src/server/data/store.ts`. Phase 1 adds a second implementation (`apiStore`) that calls our reader. Nothing else in the frontend changes.
 - **The 6 methods / shapes:** `getMatches`, `getStandings`, `getBracket`, `getMatchSummary`, `getTopScorers`, `getNews`. Types are in `src/server/data/types.ts` — the reader's JSON must deserialize into these.
+- **Ingester durability:** final match/detail writes are atomic; finalized rows
+  are database-protected from mutation; unresolved finals remain in a durable
+  backlog; bracket classification is persisted so retries remain safe after a
+  restart.
 - **ESPN mapping already exists in TS** under `src/server/data/providers/espn-*.ts`, tested against recorded JSON in `src/server/data/__fixtures__/`. The Go ingester re-implements these; **test the Go port against the same fixtures** for parity.
 - **All frontend data-fetching is server-side** (Next.js server components + `/api` routes) — so the reader can be public without the browser ever holding a DB credential.
 - **Competitions/seasons** are config in `src/server/data/competitions.ts` (9 competitions). The Go side reads the generated `backend/config/competitions.json` — never hand-edit it; run `npm run export:competitions`.

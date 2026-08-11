@@ -41,8 +41,15 @@ type runner struct {
 	mu                sync.Mutex
 	active            map[string]activity
 	mirrored          map[string]string
+	rejectedAssets    map[string]struct{}
 	backfilled        map[string]time.Time
 	backfillAttempted map[string]time.Time
+	mirrorUnavailable time.Time
+	mirrorTimeout     time.Duration
+}
+
+func assetCacheKey(kind, id, sourceURL string) string {
+	return kind + "\x00" + id + "\x00" + sourceURL
 }
 
 type cycleResult struct {
@@ -133,11 +140,21 @@ func (r *runner) runCycle(ctx context.Context, slowTick bool) cycleResult {
 				next := activity{
 					known: true, active: result.active, live: result.live,
 				}
-				if result.empty && previous.active && previous.emptyPolls == 0 {
-					next.active = true
-					next.emptyPolls = 1
+				if result.empty {
+					next.emptyPolls = previous.emptyPolls + 1
+					if next.emptyPolls < 2 {
+						next.active = true
+					}
 				}
 				r.active[key] = next
+				r.mu.Unlock()
+			} else if result.active || result.live || previous.emptyPolls > 0 {
+				r.mu.Lock()
+				previous.known = previous.known || result.active || result.live
+				previous.active = previous.active || result.active
+				previous.live = previous.live || result.live
+				previous.emptyPolls = 0
+				r.active[key] = previous
 				r.mu.Unlock()
 			}
 			if backfill && result.backfillDone {
@@ -159,19 +176,29 @@ func (r *runner) runCycle(ctx context.Context, slowTick bool) cycleResult {
 	wg.Wait()
 
 	if slowTick && ctx.Err() == nil {
-		pruneCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		for {
+		start := time.Now()
+		var pruneErr error
+		for range 10 {
+			if ctx.Err() != nil {
+				pruneErr = ctx.Err()
+				break
+			}
+			pruneCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			pruned, err := r.repo.PruneIngestRuns(pruneCtx, time.Now().Add(-ingestRunRetention))
+			cancel()
 			if err != nil {
 				r.log.Warn("prune ingest runs", "err", err)
-				cycle.failures++
+				pruneErr = err
 				break
 			}
 			if pruned < 10000 {
 				break
 			}
 		}
-		cancel()
+		if pruneErr != nil {
+			cycle.failures++
+		}
+		r.recordGlobalRun(ctx, "prune_ingest_runs", start, pruneErr)
 	}
 	return cycle
 }
@@ -185,12 +212,16 @@ func (r *runner) ingestCompSeason(
 	backfill bool,
 ) competitionResult {
 	scoreboardStart := time.Now()
-	scoreboard, err := r.source.Scoreboard(ctx, comp, season, backfill)
-	if err != nil {
-		r.recordRun(ctx, comp.ID, "scoreboard_fetch", scoreboardStart, err)
-		return competitionResult{err: err}
+	scoreboard, scoreboardErr := r.source.Scoreboard(ctx, comp, season, backfill)
+	if scoreboardErr != nil {
+		r.recordRun(ctx, comp.ID, "scoreboard_fetch", scoreboardStart, scoreboardErr)
+		if !slowTick {
+			return competitionResult{err: scoreboardErr}
+		}
+		scoreboard = nil
+	} else {
+		r.recordRun(ctx, comp.ID, "scoreboard_fetch", scoreboardStart, nil)
 	}
-	r.recordRun(ctx, comp.ID, "scoreboard_fetch", scoreboardStart, nil)
 
 	candidates := make(map[string]model.Match, len(scoreboard))
 	activeCandidate := false
@@ -202,10 +233,11 @@ func (r *runner) ingestCompSeason(
 	}
 
 	var bracketErr error
+	var bracketStart time.Time
 	if season.HasBracket && (len(scoreboard) > 0 || previous.active || slowTick) && ctx.Err() == nil {
-		start := time.Now()
+		bracketStart = time.Now()
 		var bracket []model.BracketMatch
-		bracket, bracketErr = r.source.Bracket(ctx, comp, season)
+		bracket, bracketErr = r.source.Bracket(ctx, comp, season, backfill)
 		if bracketErr == nil {
 			for _, match := range bracket {
 				candidate := bracketMatch(match)
@@ -216,7 +248,6 @@ func (r *runner) ingestCompSeason(
 			}
 
 		}
-		r.recordRun(ctx, comp.ID, "bracket", start, bracketErr)
 	}
 
 	var backlogErr error
@@ -230,6 +261,17 @@ func (r *runner) ingestCompSeason(
 			}
 		}
 		r.recordRun(ctx, comp.ID, "finalization_backlog", start, backlogErr)
+	}
+	if season.HasBracket && backfill && bracketErr == nil {
+		for _, match := range candidates {
+			if requiresBracketConfirmation(match, season) && !match.BracketConfirmed {
+				bracketErr = fmt.Errorf("bracket response missing knockout match %q", match.ID)
+				break
+			}
+		}
+	}
+	if !bracketStart.IsZero() {
+		r.recordRun(ctx, comp.ID, "bracket", bracketStart, bracketErr)
 	}
 
 	ids := make([]string, 0, len(candidates))
@@ -253,7 +295,6 @@ func (r *runner) ingestCompSeason(
 	matchStart := time.Now()
 	matchResult, processErr := r.processMatches(
 		ctx, comp, season, matches, existing, slowTick, backfill,
-		!season.HasBracket || bracketErr == nil,
 	)
 	r.recordRun(ctx, comp.ID, "matches", matchStart, processErr)
 
@@ -264,7 +305,8 @@ func (r *runner) ingestCompSeason(
 			r.refreshTopScorers(ctx, comp, season),
 		)
 	}
-	combinedErr := errors.Join(bracketErr, backlogErr, processErr, errors.Join(refreshErrors...))
+	coreErr := errors.Join(scoreboardErr, bracketErr, backlogErr, processErr)
+	combinedErr := errors.Join(coreErr, errors.Join(refreshErrors...))
 	processCanceled := errors.Is(processErr, context.Canceled) ||
 		errors.Is(processErr, context.DeadlineExceeded)
 	live, active := matchResult.live, matchResult.active
@@ -273,12 +315,13 @@ func (r *runner) ingestCompSeason(
 		active = active || activeCandidate
 	}
 	return competitionResult{
-		live:          live,
-		active:        active,
-		stateReliable: bracketErr == nil && backlogErr == nil && !processCanceled,
-		backfillDone:  combinedErr == nil && len(scoreboard) > 0,
-		empty:         len(scoreboard) == 0 && !activeCandidate,
-		err:           combinedErr,
+		live:   live,
+		active: active,
+		stateReliable: scoreboardErr == nil && bracketErr == nil &&
+			backlogErr == nil && !processCanceled,
+		backfillDone: coreErr == nil,
+		empty:        scoreboardErr == nil && len(scoreboard) == 0 && !activeCandidate,
+		err:          combinedErr,
 	}
 }
 
@@ -286,6 +329,7 @@ func mergeCandidate(current, incoming model.Match) model.Match {
 	if current.ID == "" {
 		return incoming
 	}
+	sameStateRank := matchStateRank(current.State) == matchStateRank(incoming.State)
 	if matchStateRank(current.State) >= matchStateRank(incoming.State) {
 		incoming, current = current, incoming
 	}
@@ -294,6 +338,13 @@ func mergeCandidate(current, incoming model.Match) model.Match {
 	}
 	if incoming.BracketRequired == nil {
 		incoming.BracketRequired = current.BracketRequired
+	}
+	if incoming.Note == nil {
+		incoming.Note = current.Note
+	}
+	if sameStateRank {
+		incoming.BracketConfirmed =
+			incoming.BracketConfirmed || current.BracketConfirmed
 	}
 	incoming.HomePlaceholder = (incoming.HomePlaceholder || current.HomePlaceholder) &&
 		isUnresolvedTeam(incoming.Home)
@@ -304,10 +355,17 @@ func mergeCandidate(current, incoming model.Match) model.Match {
 
 func mergeBracketCandidate(scoreboard, bracket model.Match) model.Match {
 	merged := mergeCandidate(scoreboard, bracket)
+	merged.BracketRequired = bracket.BracketRequired
+	merged.BracketConfirmed =
+		matchStateRank(bracket.State) >= matchStateRank(merged.State)
+	if merged.BracketConfirmed {
+		merged.Home = bracket.Home
+		merged.Away = bracket.Away
+	}
 	if bracket.Round != "" {
 		merged.Round = bracket.Round
 	}
-	if bracket.WinnerID != nil {
+	if merged.BracketConfirmed {
 		merged.WinnerID = bracket.WinnerID
 	}
 	if bracket.Note != nil {
@@ -324,6 +382,7 @@ func isUnresolvedTeam(team model.Team) bool {
 	}
 	name := strings.ToLower(team.Name)
 	return strings.Contains(name, "winner") ||
+		strings.Contains(name, "loser") ||
 		strings.Contains(name, "tbd") ||
 		strings.Contains(name, "to be determined")
 }
@@ -371,10 +430,11 @@ func (r *runner) refreshStandings(
 	if err == nil {
 		err = r.repo.ReplaceStandings(ctx, comp.ID, season.ID, rows)
 	}
-	if errors.Is(err, store.ErrEmptyReplacement) {
-		r.log.Info("standings unavailable; preserving existing rows", "comp", comp.ID)
-		r.recordRun(ctx, comp.ID, "standings_preserved", start, nil)
-		return nil
+	if errors.Is(err, store.ErrEmptyReplacement) || errors.Is(err, store.ErrPartialReplacement) {
+		r.log.Info("standings replacement rejected; preserving existing rows",
+			"comp", comp.ID, "reason", err)
+		r.recordRun(ctx, comp.ID, "standings_preserved", start, err)
+		return err
 	}
 	if err == nil {
 		for _, row := range rows {
@@ -396,9 +456,6 @@ func (r *runner) refreshTopScorers(
 	start := time.Now()
 	rows, err := r.source.TopScorers(ctx, comp, season, topScorerLimit)
 	if err == nil {
-		for index := range rows {
-			rows[index] = r.mirrorTopScorer(ctx, rows[index])
-		}
 		err = r.repo.ReplaceTopScorers(ctx, comp.ID, season.ID, rows)
 	}
 	if errors.Is(err, store.ErrEmptyReplacement) {
@@ -406,8 +463,55 @@ func (r *runner) refreshTopScorers(
 		r.recordRun(ctx, comp.ID, "top_scorers_preserved", start, nil)
 		return nil
 	}
+	if err == nil {
+		mirrored := r.mirrorTopScorers(ctx, rows)
+		if topScorerCrestsChanged(rows, mirrored) {
+			err = r.repo.ReplaceTopScorers(ctx, comp.ID, season.ID, mirrored)
+		}
+	}
 	r.recordRun(ctx, comp.ID, "top_scorers", start, err)
 	return err
+}
+
+func (r *runner) mirrorTopScorers(
+	ctx context.Context,
+	rows []model.TopScorer,
+) []model.TopScorer {
+	mirrored := append([]model.TopScorer(nil), rows...)
+	semaphore := make(chan struct{}, 5)
+	var wg sync.WaitGroup
+	for index := range mirrored {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			select {
+			case semaphore <- struct{}{}:
+				defer func() { <-semaphore }()
+			case <-ctx.Done():
+				return
+			}
+			mirrored[index] = r.mirrorTopScorer(ctx, mirrored[index])
+		}(index)
+	}
+	wg.Wait()
+	return mirrored
+}
+
+func topScorerCrestsChanged(before, after []model.TopScorer) bool {
+	for index := range before {
+		if index >= len(after) || stringValue(before[index].TeamCrestURL) !=
+			stringValue(after[index].TeamCrestURL) {
+			return true
+		}
+	}
+	return len(before) != len(after)
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func (r *runner) mirrorTopScorer(ctx context.Context, scorer model.TopScorer) model.TopScorer {
@@ -426,7 +530,10 @@ func (r *runner) mirrorTopScorer(ctx context.Context, scorer model.TopScorer) mo
 		scorer.TeamCrestURL = &cachedURL
 		return scorer
 	}
-	cdnURL, err := r.mirror.Mirror(ctx, "teams", assetID, *scorer.TeamCrestURL)
+	cdnURL, err := r.mirrorAsset(ctx, "teams", assetID, *scorer.TeamCrestURL)
+	if errors.Is(err, errMirrorUnavailable) {
+		return scorer
+	}
 	if err != nil {
 		r.log.Warn("mirror scorer crest", "team", scorer.TeamAbbr, "err", err)
 		return scorer
@@ -441,6 +548,25 @@ func (r *runner) mirrorTopScorer(ctx context.Context, scorer model.TopScorer) mo
 func (r *runner) recordRun(
 	ctx context.Context,
 	compID, kind string,
+	started time.Time,
+	operationErr error,
+) {
+	r.recordRunFor(ctx, &compID, kind, started, operationErr)
+}
+
+func (r *runner) recordGlobalRun(
+	ctx context.Context,
+	kind string,
+	started time.Time,
+	operationErr error,
+) {
+	r.recordRunFor(ctx, nil, kind, started, operationErr)
+}
+
+func (r *runner) recordRunFor(
+	ctx context.Context,
+	compID *string,
+	kind string,
 	started time.Time,
 	operationErr error,
 ) {
@@ -459,7 +585,7 @@ func (r *runner) recordRun(
 	logCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 	defer cancel()
 	if err := r.repo.LogIngestRun(
-		logCtx, &compID, kind, started, time.Now(), ok, message,
+		logCtx, compID, kind, started, time.Now(), ok, message,
 	); err != nil {
 		r.log.Warn("record ingest run", "comp", compID, "kind", kind, "err", err)
 	}

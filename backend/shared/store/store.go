@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -17,6 +18,12 @@ type Store struct {
 	pool *pgxpool.Pool
 }
 
+const operationTimeout = 15 * time.Second
+
+func boundedContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, operationTimeout)
+}
+
 func New(ctx context.Context, dsn string) (*Store, error) {
 	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
@@ -25,11 +32,13 @@ func New(ctx context.Context, dsn string) (*Store, error) {
 	if config.MaxConns < 8 {
 		config.MaxConns = 8
 	}
-	pool, err := pgxpool.NewWithConfig(ctx, config)
+	connectCtx, cancel := boundedContext(ctx)
+	defer cancel()
+	pool, err := pgxpool.NewWithConfig(connectCtx, config)
 	if err != nil {
 		return nil, fmt.Errorf("create postgres pool: %w", err)
 	}
-	if err := pool.Ping(ctx); err != nil {
+	if err := pool.Ping(connectCtx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}

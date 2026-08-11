@@ -211,9 +211,7 @@ The source adapter test constructs:
 
 ```go
 client := espn.NewWithOptions(espn.Options{
-	HTTP:       server.Client(),
-	SiteBase:   server.URL,
-	StandingsBase: server.URL,
+	HTTP:        testClient,
 	MaxAttempts: 2,
 })
 src := source.NewESPN(client)
@@ -237,14 +235,15 @@ type Source interface {
 	Summary(context.Context, config.Competition, model.Match) (SummaryResult, error)
 	Standings(context.Context, config.Competition, config.Season) ([]model.Standing, error)
 	TopScorers(context.Context, config.Competition, config.Season, int) ([]model.TopScorer, error)
-	Bracket(context.Context, config.Competition, config.Season) ([]model.BracketMatch, error)
+	Bracket(context.Context, config.Competition, config.Season, bool) ([]model.BracketMatch, error)
 }
 ```
 
 Implement `source.ESPN` as the thin URL-builder/mapper adapter. Add
-`espn.Options`, injectable endpoint bases, a 16 MiB read cap, and exponential
-context-aware retry for network errors, 429, and 5xx. Honor `Retry-After` when
-present. Do not retry other 4xx responses or JSON decode failures.
+`espn.Options` with an injectable HTTP client, a 16 MiB read cap, and exponential
+context-aware retry for network errors, 429, and 5xx. Source tests use a custom
+transport to intercept ESPN hosts. Honor `Retry-After` when present. Do not retry
+other 4xx responses or JSON decode failures.
 
 - [x] **Step 4: Run focused tests**
 
@@ -561,14 +560,14 @@ Expected: clean worktree, no whitespace errors, and a coherent commit series.
 
 **Files:** Any implementation or test file identified by reviewers.
 
-- [ ] **Step 1: Dispatch both reviewers in parallel**
+- [x] **Step 1: Dispatch both reviewers in parallel**
 
 Ask one Opus 5 reviewer and one GPT-5.6 Luna reviewer to inspect the complete
 `origin/main...HEAD` diff for correctness, design gaps, operational risks,
 documentation accuracy, and missing test coverage. Require actionable findings
 only, or the exact response `NO ISSUES`.
 
-- [ ] **Step 2: Implement every valid finding**
+- [x] **Step 2: Implement every valid finding**
 
 Add a regression test first for each behavioral defect, confirm failure, make
 the smallest complete correction, rerun focused tests, and commit:
@@ -578,12 +577,12 @@ git add <changed-files>
 git commit -m "fix: address ingester review findings"
 ```
 
-- [ ] **Step 3: Repeat until both reviewers return `NO ISSUES`**
+- [x] **Step 3: Repeat until both reviewers return `NO ISSUES`**
 
 Re-dispatch both models against the new complete diff after each correction
 round. Do not stop when only one reviewer is clean.
 
-- [ ] **Step 4: Rerun Task 8**
+- [x] **Step 4: Rerun Task 8**
 
 Expected: all deterministic and available cloud validation passes after the
 last review correction.

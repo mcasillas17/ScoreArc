@@ -10,9 +10,12 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/mcasillas17/scorearc-backend/config"
+	"github.com/mcasillas17/scorearc-backend/shared/assets"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 	"github.com/mcasillas17/scorearc-backend/shared/store"
 )
+
+var errMirrorUnavailable = errors.New("asset mirror temporarily unavailable")
 
 type matchResult struct {
 	live      bool
@@ -28,7 +31,6 @@ func (r *runner) processMatches(
 	existing map[string]store.MatchRow,
 	slowTick bool,
 	backfill bool,
-	finalizationAllowed bool,
 ) (matchResult, error) {
 	var result matchResult
 	var operationErrors []error
@@ -37,13 +39,40 @@ func (r *runner) processMatches(
 			operationErrors = append(operationErrors, err)
 			break
 		}
+		providerHome, providerAway := match.Home, match.Away
 		current, found := existing[match.ID]
 		skipMatchUpsert := false
 		var currentPtr *store.MatchRow
 		if found {
 			currentPtr = &current
-			r.markExistingCrest(match.Home.ID, current.HomeCrestURL)
-			r.markExistingCrest(match.Away.ID, current.AwayCrestURL)
+			if match.Note == nil {
+				match.Note = current.Note
+			}
+			if season.HasBracket &&
+				current.BracketRequired != nil && *current.BracketRequired &&
+				!match.BracketConfirmed {
+				match.Round = current.Round
+				match.BracketRequired = current.BracketRequired
+				match.WinnerID = current.WinnerID
+				match.Home = current.Home
+				match.Away = current.Away
+				match.HomePlaceholder = current.HomePlaceholder
+				match.AwayPlaceholder = current.AwayPlaceholder
+			} else {
+				if !match.BracketConfirmed &&
+					current.Round != "" && match.Round == "" {
+					match.Round = current.Round
+				}
+				if !match.BracketConfirmed && current.BracketRequired != nil &&
+					(match.BracketRequired == nil || *current.BracketRequired) {
+					match.BracketRequired = current.BracketRequired
+				}
+				if !match.BracketConfirmed && match.WinnerID == nil {
+					match.WinnerID = current.WinnerID
+				}
+			}
+			r.markExistingCrest(match.Home.ID, current.Home.ID, current.Home.CrestURL)
+			r.markExistingCrest(match.Away.ID, current.Away.ID, current.Away.CrestURL)
 			if current.FinalizedAt.Valid {
 				r.mirrorCrest(ctx, match.Home)
 				r.mirrorCrest(ctx, match.Away)
@@ -83,9 +112,11 @@ func (r *runner) processMatches(
 			r.mirrorCrest(ctx, match.Home)
 			r.mirrorCrest(ctx, match.Away)
 			result.active = result.active || matchActive
-			continue
+			if current.State == model.MatchStateFinished {
+				continue
+			}
 		}
-		canFinalize := finalizationAllowed && hasRequiredBracketMetadata(match, season)
+		canFinalize := !requiresBracketConfirmation(match, season) || match.BracketConfirmed
 
 		if match.State == model.MatchStateFinished && isTerminalWithoutSummary(match) && canFinalize {
 			didFinalize, err := r.repo.FinalizeMatch(
@@ -106,7 +137,9 @@ func (r *runner) processMatches(
 		if !(backfill && match.State == model.MatchStateScheduled) &&
 			(match.State != model.MatchStateFinished || canFinalize) &&
 			needsSummary(match, currentPtr, slowTick) {
-			summary, err := r.source.Summary(ctx, comp, match)
+			summaryMatch := match
+			summaryMatch.Home, summaryMatch.Away = providerHome, providerAway
+			summary, err := r.source.Summary(ctx, comp, summaryMatch)
 			if err != nil {
 				operationErrors = append(operationErrors, fmt.Errorf("match %s summary: %w", match.ID, err))
 				r.mirrorCrest(ctx, match.Home)
@@ -161,31 +194,35 @@ func isTerminalWithoutSummary(match model.Match) bool {
 func isPostponedTransition(current model.MatchState, incoming model.Match) bool {
 	return current == model.MatchStateLive &&
 		incoming.State == model.MatchStateScheduled &&
-		incoming.StatusName == "STATUS_POSTPONED"
+		(incoming.StatusName == "STATUS_POSTPONED" ||
+			incoming.StatusName == "STATUS_SUSPENDED")
 }
 
-func hasRequiredBracketMetadata(match model.Match, season config.Season) bool {
-	if !season.HasBracket || match.Round != "" {
-		return true
+func requiresBracketConfirmation(match model.Match, season config.Season) bool {
+	if !season.HasBracket {
+		return false
+	}
+	if match.Round != "" {
+		return match.BracketRequired == nil || *match.BracketRequired
 	}
 	if match.BracketRequired != nil {
-		return !*match.BracketRequired
+		return *match.BracketRequired
 	}
 	if season.BracketDatesRange == nil {
-		return false
+		return true
 	}
 	parts := strings.SplitN(*season.BracketDatesRange, "-", 2)
 	if len(parts) != 2 {
-		return false
+		return true
 	}
 	start, startErr := time.Parse("20060102", parts[0])
 	end, endErr := time.Parse("20060102", parts[1])
 	kickoff, kickoffErr := time.Parse(time.RFC3339, match.Kickoff)
 	if startErr != nil || endErr != nil || kickoffErr != nil {
-		return false
+		return true
 	}
 	kickoff = kickoff.UTC()
-	return kickoff.Before(start) || kickoff.After(end.Add(24*time.Hour-time.Nanosecond))
+	return !kickoff.Before(start) && !kickoff.After(end.Add(24*time.Hour-time.Nanosecond))
 }
 
 func (r *runner) mirrorCrest(ctx context.Context, team model.Team) {
@@ -203,7 +240,10 @@ func (r *runner) mirrorCrest(ctx context.Context, team model.Team) {
 	}
 	r.mu.Unlock()
 
-	cdnURL, err := r.mirror.Mirror(ctx, "teams", team.ID, *team.CrestURL)
+	cdnURL, err := r.mirrorAsset(ctx, "teams", team.ID, *team.CrestURL)
+	if errors.Is(err, errMirrorUnavailable) {
+		return
+	}
 	if err != nil {
 		r.log.Warn("mirror crest", "team", team.ID, "err", err)
 		return
@@ -217,14 +257,60 @@ func (r *runner) mirrorCrest(ctx context.Context, team model.Team) {
 	r.mu.Unlock()
 }
 
-func (r *runner) markExistingCrest(teamID string, crestURL *string) {
-	if r.mirror == nil || crestURL == nil ||
+func (r *runner) mirrorAsset(
+	ctx context.Context,
+	kind, id, sourceURL string,
+) (string, error) {
+	cacheKey := assetCacheKey(kind, id, sourceURL)
+	r.mu.Lock()
+	if _, rejected := r.rejectedAssets[cacheKey]; rejected {
+		r.mu.Unlock()
+		return "", assets.ErrAssetRejected
+	}
+	if time.Now().Before(r.mirrorUnavailable) {
+		r.mu.Unlock()
+		return "", errMirrorUnavailable
+	}
+	r.mu.Unlock()
+
+	timeout := r.mirrorTimeout
+	if timeout <= 0 {
+		timeout = 2 * time.Second
+	}
+	mirrorCtx, cancel := context.WithTimeout(ctx, timeout)
+	cdnURL, err := r.mirror.Mirror(mirrorCtx, kind, id, sourceURL)
+	cancel()
+	if err != nil {
+		if errors.Is(err, assets.ErrAssetRejected) {
+			r.mu.Lock()
+			if r.rejectedAssets == nil {
+				r.rejectedAssets = make(map[string]struct{})
+			}
+			r.rejectedAssets[cacheKey] = struct{}{}
+			r.mu.Unlock()
+			return "", err
+		}
+		if ctx.Err() == nil {
+			r.mu.Lock()
+			r.mirrorUnavailable = time.Now().Add(time.Minute)
+			r.mu.Unlock()
+		}
+		return "", err
+	}
+	r.mu.Lock()
+	r.mirrorUnavailable = time.Time{}
+	r.mu.Unlock()
+	return cdnURL, nil
+}
+
+func (r *runner) markExistingCrest(incomingTeamID, storedTeamID string, crestURL *string) {
+	if incomingTeamID != storedTeamID || r.mirror == nil || crestURL == nil ||
 		!isMirroredURL(*crestURL, r.mirror.BaseURL()) {
 		return
 	}
 
 	r.mu.Lock()
-	r.mirrored[teamID] = *crestURL
+	r.mirrored[incomingTeamID] = *crestURL
 	r.mu.Unlock()
 }
 
@@ -249,9 +335,10 @@ func bracketMatch(match model.BracketMatch) model.Match {
 		},
 		HomeScore: match.HomeScore, AwayScore: match.AwayScore,
 		WinnerID: match.WinnerID, Note: match.Note,
-		HomePlaceholder: match.Home.Placeholder,
-		AwayPlaceholder: match.Away.Placeholder,
-		BracketRequired: &bracketRequired,
+		HomePlaceholder:  match.Home.Placeholder,
+		AwayPlaceholder:  match.Away.Placeholder,
+		BracketRequired:  &bracketRequired,
+		BracketConfirmed: true,
 	}
 }
 

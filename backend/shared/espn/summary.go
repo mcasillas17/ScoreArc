@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -295,7 +296,11 @@ func ValidateSummary(
 		return fmt.Errorf("summary teams do not match event %q", expectedMatchID)
 	}
 	if requireFinal {
-		if !hasSummaryDetail(rs) {
+		detail, err := MapSummary(raw)
+		if err != nil {
+			return err
+		}
+		if !hasSummaryDetail(detail) {
 			return fmt.Errorf("final summary contains no detail sections")
 		}
 		competition := rs.Header.Competitions[0]
@@ -318,20 +323,22 @@ func ValidateSummary(
 	return nil
 }
 
-func hasSummaryDetail(summary rawSummary) bool {
-	gameInfoPresent := summary.GameInfo != nil &&
-		(summary.GameInfo.Venue != nil || len(summary.GameInfo.Officials) > 0 ||
-			(len(summary.GameInfo.Attendance) > 0 &&
-				string(summary.GameInfo.Attendance) != "null"))
-	return gameInfoPresent ||
-		len(summary.Boxscore.Teams) > 0 ||
-		len(summary.KeyEvents) > 0 ||
-		len(summary.Rosters) > 0 ||
-		len(summary.Videos) > 0 ||
-		len(summary.Commentary) > 0 ||
-		len(summary.HeadToHeadGames) > 0 ||
-		len(summary.LastFiveGames) > 0 ||
-		len(summary.Shootout) > 0
+func hasSummaryDetail(detail MatchDetail) bool {
+	return len(detail.Scorers) > 0 ||
+		len(detail.Cards) > 0 ||
+		detail.Shootout != nil ||
+		(detail.ShootoutDetail != nil &&
+			(len(detail.ShootoutDetail.Home) > 0 || len(detail.ShootoutDetail.Away) > 0)) ||
+		(detail.Stats != nil && !reflect.DeepEqual(*detail.Stats, MatchStats{})) ||
+		(detail.WinProbability != nil &&
+			!reflect.DeepEqual(*detail.WinProbability, WinProbability{})) ||
+		(detail.Lineups != nil && !reflect.DeepEqual(*detail.Lineups, MatchLineups{})) ||
+		len(detail.Videos) > 0 ||
+		(detail.Info != nil && !reflect.DeepEqual(*detail.Info, MatchInfo{})) ||
+		(detail.Form != nil &&
+			(len(detail.Form.Home) > 0 || len(detail.Form.Away) > 0)) ||
+		len(detail.Commentary) > 0 ||
+		len(detail.H2H) > 0
 }
 
 func SummaryFinalScores(raw []byte) (*int, *int, error) {
@@ -368,14 +375,18 @@ func ParseShootoutNote(note, homeName, awayName string) *Shootout {
 		return nil
 	}
 	winner, loser := max(first, second), min(first, second)
-	lowerNote := strings.ToLower(note)
+	winnerMatch := shootoutWinnerRe.FindStringSubmatch(note)
+	if winnerMatch == nil {
+		return nil
+	}
+	winnerName := strings.TrimSpace(winnerMatch[1])
 	switch {
-	case homeName != "" && strings.Contains(lowerNote, strings.ToLower(homeName)):
+	case homeName != "" && strings.EqualFold(winnerName, strings.TrimSpace(homeName)):
 		return &Shootout{HomeScore: winner, AwayScore: loser}
-	case awayName != "" && strings.Contains(lowerNote, strings.ToLower(awayName)):
+	case awayName != "" && strings.EqualFold(winnerName, strings.TrimSpace(awayName)):
 		return &Shootout{HomeScore: loser, AwayScore: winner}
 	default:
-		return &Shootout{HomeScore: first, AwayScore: second}
+		return nil
 	}
 }
 
@@ -420,6 +431,7 @@ func headerTeamIDs(rs rawSummary) (homeID, awayID string) {
 
 var refereeRe = regexp.MustCompile(`(?i)referee`)
 var shootoutNoteRe = regexp.MustCompile(`(?i)(\d+)\s*[-–]\s*(\d+)\s+on penalties`)
+var shootoutWinnerRe = regexp.MustCompile(`(?i)^\s*(.+?)\s+(?:advances?|wins?)\b`)
 
 // mapSummaryInfo ports mapSummaryInfo: venue, city, referee and attendance
 // from summary.gameInfo.
@@ -848,10 +860,14 @@ func mapSummaryStats(rs rawSummary, homeID, awayID string) *MatchStats {
 	if homeEntry == nil || awayEntry == nil {
 		return nil
 	}
-	return &MatchStats{
+	stats := &MatchStats{
 		Home: buildTeamStats(homeEntry.Statistics),
 		Away: buildTeamStats(awayEntry.Statistics),
 	}
+	if reflect.DeepEqual(*stats, MatchStats{}) {
+		return nil
+	}
+	return stats
 }
 
 // mapSummaryScorers ports mapSummaryScorers: goal events from

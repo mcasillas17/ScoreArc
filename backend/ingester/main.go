@@ -44,6 +44,10 @@ func run() int {
 	repo, err := store.New(startupCtx, dsn)
 	if err != nil {
 		cancelStartup()
+		if leaseErrorExitCode(ctx, err) == 0 {
+			log.Info("shutdown complete")
+			return 0
+		}
 		log.Error("connect store", "err", err)
 		return 1
 	}
@@ -51,6 +55,10 @@ func run() int {
 	lease, acquired, err := store.AcquireIngesterLease(startupCtx, leaseDSN)
 	cancelStartup()
 	if err != nil {
+		if leaseErrorExitCode(ctx, err) == 0 {
+			log.Info("shutdown complete")
+			return 0
+		}
 		log.Error("acquire ingester lease", "err", err)
 		return 1
 	}
@@ -84,17 +92,22 @@ func run() int {
 		maxConcurrent:     3,
 		active:            make(map[string]activity),
 		mirrored:          make(map[string]string),
+		rejectedAssets:    make(map[string]struct{}),
 		backfilled:        make(map[string]time.Time),
 		backfillAttempted: make(map[string]time.Time),
 	}
 
 	if *once {
-		result, err := runLeasedCycle(ctx, lease, worker, true)
+		result, err := runLeasedCycleWithTimeout(ctx, lease, worker, true, 0)
 		if err != nil {
+			if leaseErrorExitCode(ctx, err) == 0 {
+				log.Info("shutdown complete")
+				return 0
+			}
 			log.Error("check ingester lease", "err", err)
 			return 1
 		}
-		if code := onceExitCode(result); code != 0 {
+		if code := onceExitCodeForContext(ctx, result); code != 0 {
 			log.Error("single cycle failed", "failures", result.failures)
 			return code
 		}
@@ -110,6 +123,10 @@ func run() int {
 			return 0
 		}
 		if err := checkLease(ctx, lease); err != nil {
+			if leaseErrorExitCode(ctx, err) == 0 {
+				log.Info("shutdown complete")
+				return 0
+			}
 			log.Error("check ingester lease", "err", err)
 			return 1
 		}
@@ -121,6 +138,10 @@ func run() int {
 		cycleStarted := time.Now()
 		result, err := runLeasedCycle(ctx, lease, worker, slowTick)
 		if err != nil {
+			if leaseErrorExitCode(ctx, err) == 0 {
+				log.Info("shutdown complete")
+				return 0
+			}
 			log.Error("ingester lease lost", "err", err)
 			return 1
 		}
@@ -138,6 +159,20 @@ func run() int {
 		}
 	}
 
+}
+
+func onceExitCodeForContext(ctx context.Context, result cycleResult) int {
+	if ctx.Err() != nil {
+		return 0
+	}
+	return onceExitCode(result)
+}
+
+func leaseErrorExitCode(ctx context.Context, err error) int {
+	if err == nil || ctx.Err() != nil {
+		return 0
+	}
+	return 1
 }
 
 func waitForNextCycle(ctx context.Context, delay time.Duration) bool {
@@ -166,10 +201,26 @@ func runLeasedCycle(
 	worker *runner,
 	slowTick bool,
 ) (cycleResult, error) {
+	return runLeasedCycleWithTimeout(ctx, lease, worker, slowTick, cycleTimeout(slowTick))
+}
+
+func runLeasedCycleWithTimeout(
+	ctx context.Context,
+	lease *store.IngesterLease,
+	worker *runner,
+	slowTick bool,
+	timeout time.Duration,
+) (cycleResult, error) {
 	if err := checkLease(ctx, lease); err != nil {
 		return cycleResult{}, err
 	}
-	cycleCtx, cancel := context.WithTimeout(ctx, cycleTimeout(slowTick))
+	var cycleCtx context.Context
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		cycleCtx, cancel = context.WithTimeout(ctx, timeout)
+	} else {
+		cycleCtx, cancel = context.WithCancel(ctx)
+	}
 	defer cancel()
 	leaseErr := make(chan error, 1)
 	monitorDone := make(chan struct{})

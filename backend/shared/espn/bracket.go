@@ -49,6 +49,16 @@ var roundSlugAlias = map[string]string{
 	"third-place":  "3rd-place-match",
 }
 
+var nonKnockoutRound = map[string]struct{}{
+	"group-stage":       {},
+	"league-phase":      {},
+	"league-stage":      {},
+	"preliminary-round": {},
+	"qualification":     {},
+	"qualifying":        {},
+	"regular-season":    {},
+}
+
 func normRoundSlug(slug string) string {
 	if v, ok := roundSlugAlias[slug]; ok {
 		return v
@@ -66,7 +76,7 @@ var eventRoundSlugOverride = map[string]string{
 	"264118": "quarterfinals",
 }
 
-var placeholderNameRe = regexp.MustCompile(`(?i)\b(winner|tbd|to be determined)\b`)
+var placeholderNameRe = regexp.MustCompile(`(?i)\b(winner|loser|tbd|to be determined)\b`)
 
 // bracketRoundSlug ports espn-bracket.ts's roundSlug: a per-event correction
 // wins over the season-slug alias mapping.
@@ -75,6 +85,23 @@ func bracketRoundSlug(eventID, seasonSlug string) string {
 		return v
 	}
 	return normRoundSlug(seasonSlug)
+}
+
+func bracketRequirement(eventID, seasonSlug string) *bool {
+	if seasonSlug == "" {
+		return nil
+	}
+	slug := bracketRoundSlug(eventID, seasonSlug)
+	if isKnockoutRound(slug) {
+		required := true
+		return &required
+	}
+	if _, ok := nonKnockoutRound[slug]; ok {
+		required := false
+		return &required
+	}
+	required := true
+	return &required
 }
 
 // rawBracketScoreboard mirrors the subset of ESPN's (knockout-filtered)
@@ -102,7 +129,7 @@ func ValidateBracketSeason(raw []byte, expectedYear int) error {
 		return err
 	}
 	for _, event := range scoreboard.Events {
-		if event.Season.Year != expectedYear {
+		if event.Season.Year != 0 && event.Season.Year != expectedYear {
 			return fmt.Errorf("bracket season %d does not match %d", event.Season.Year, expectedYear)
 		}
 	}
@@ -242,6 +269,13 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, bool) {
 	status := ev.Status
 
 	state := mapState(status.Type.State, status.Type.Completed, status.Type.Name)
+	winnerID := bracketWinnerID(*home, *away)
+	if state == MatchStateFinished && winnerID == nil &&
+		status.Type.Name != "STATUS_CANCELED" &&
+		status.Type.Name != "STATUS_ABANDONED" &&
+		status.Type.Name != "STATUS_FORFEIT" {
+		return BracketMatch{}, false
+	}
 
 	var note *string
 	if len(comp.Notes) > 0 && comp.Notes[0].Text != "" {
@@ -267,7 +301,7 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, bool) {
 		StatusDetail: status.Type.ShortDetail,
 		StatusName:   status.Type.Name,
 		Minute:       minute,
-		WinnerID:     bracketWinnerID(*home, *away),
+		WinnerID:     winnerID,
 		Note:         note,
 	}, true
 }

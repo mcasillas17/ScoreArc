@@ -18,11 +18,27 @@ func TestValidateSummaryChecksRequestedFinalEvent(t *testing.T) {
 	if err := ValidateSummary(raw, "760490", "4789", "464", true); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := ValidateSummary(raw, "wrong", "4789", "464", true); err == nil {
 		t.Fatal("expected event identity error")
 	}
 	if err := ValidateSummary(raw, "760490", "464", "4789", true); err == nil {
 		t.Fatal("expected team identity error")
+	}
+}
+
+func TestValidateSummaryRejectsEmptyDetailShell(t *testing.T) {
+	raw := []byte(`{
+		"header":{"id":"m1","competitions":[{"id":"m1",
+			"status":{"type":{"completed":true}},
+			"competitors":[
+				{"homeAway":"home","score":"1","team":{"id":"home"}},
+				{"homeAway":"away","score":"0","team":{"id":"away"}}
+			]}]},
+		"gameInfo":{"venue":{}}
+	}`)
+	if err := ValidateSummary(raw, "m1", "home", "away", true); err == nil {
+		t.Fatal("accepted empty detail shell")
 	}
 }
 
@@ -45,6 +61,34 @@ func TestParseShootoutNoteUsesNamedWinner(t *testing.T) {
 	got := ParseShootoutNote("Paraguay advance 4-3 on penalties", "Spain", "Paraguay")
 	if got == nil || got.HomeScore != 3 || got.AwayScore != 4 {
 		t.Fatalf("shootout=%+v", got)
+	}
+}
+
+func TestParseShootoutNoteUsesFinalWinner(t *testing.T) {
+	got := ParseShootoutNote(
+		"Argentina win 4-2 on penalties",
+		"Argentina",
+		"France",
+	)
+	if got == nil || got.HomeScore != 4 || got.AwayScore != 2 {
+		t.Fatalf("shootout=%+v", got)
+	}
+}
+
+func TestParseShootoutNoteRejectsUnknownOrSubstringWinner(t *testing.T) {
+	if got := ParseShootoutNote(
+		"Minnesota advance 4-3 on penalties",
+		"FC Cincinnati",
+		"Minnesota United FC",
+	); got != nil {
+		t.Fatalf("guessed mismatched winner: %+v", got)
+	}
+	if got := ParseShootoutNote(
+		"Nigeria advance 4-3 on penalties",
+		"Niger",
+		"Ghana",
+	); got != nil {
+		t.Fatalf("accepted substring winner: %+v", got)
 	}
 }
 
@@ -364,6 +408,20 @@ func TestMapSummaryStatsNilOnMismatch(t *testing.T) {
 	raw := loadSummaryFixture(t)
 	if s := mapSummaryStats(mustParseRawSummary(t, raw), "x", "y"); s != nil {
 		t.Errorf("expected nil for unmatched team ids, got %+v", s)
+	}
+}
+
+func TestMapSummaryStatsNilWhenEntriesAreEmpty(t *testing.T) {
+	raw := []byte(`{"boxscore":{"teams":[
+		{"team":{"id":"home"},"statistics":[]},
+		{"team":{"id":"away"},"statistics":[]}
+	]}}`)
+	if stats := mapSummaryStats(
+		mustParseRawSummary(t, raw),
+		"home",
+		"away",
+	); stats != nil {
+		t.Fatalf("empty stats=%+v", stats)
 	}
 }
 

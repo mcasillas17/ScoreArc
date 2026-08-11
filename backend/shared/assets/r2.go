@@ -26,6 +26,8 @@ const (
 	assetOperationTimeout = 15 * time.Second
 )
 
+var ErrAssetRejected = errors.New("asset rejected")
+
 type Config struct {
 	AccountID       string
 	AccessKeyID     string
@@ -91,7 +93,7 @@ func New(config Config) (*Mirror, error) {
 	httpClient := &http.Client{Timeout: 20 * time.Second}
 	httpClient.CheckRedirect = func(request *http.Request, via []*http.Request) error {
 		if len(via) >= 5 {
-			return fmt.Errorf("asset redirect limit exceeded")
+			return fmt.Errorf("%w: redirect limit exceeded", ErrAssetRejected)
 		}
 		return validateAssetURL(request.URL)
 	}
@@ -126,7 +128,7 @@ func (m *Mirror) Mirror(ctx context.Context, kind, id, sourceURL string) (string
 
 	parsedSource, err := url.Parse(sourceURL)
 	if err != nil {
-		return "", fmt.Errorf("parse asset URL: %w", err)
+		return "", fmt.Errorf("%w: parse asset URL: %v", ErrAssetRejected, err)
 	}
 	if err := validateAssetURL(parsedSource); err != nil {
 		return "", err
@@ -143,20 +145,34 @@ func (m *Mirror) Mirror(ctx context.Context, kind, id, sourceURL string) (string
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		if response.StatusCode >= 400 && response.StatusCode < 500 &&
+			response.StatusCode != http.StatusRequestTimeout &&
+			response.StatusCode != http.StatusTooEarly &&
+			response.StatusCode != http.StatusTooManyRequests {
+			return "", fmt.Errorf(
+				"%w: download asset: status %d",
+				ErrAssetRejected,
+				response.StatusCode,
+			)
+		}
 		return "", fmt.Errorf("download asset: status %d", response.StatusCode)
 	}
 	contentType := strings.ToLower(strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0]))
 	switch contentType {
 	case "image/png", "image/jpeg", "image/webp", "image/gif":
 	default:
-		return "", fmt.Errorf("download asset: unsupported content type %q", contentType)
+		return "", fmt.Errorf(
+			"%w: download asset: unsupported content type %q",
+			ErrAssetRejected,
+			contentType,
+		)
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxAsset+1))
 	if err != nil {
 		return "", fmt.Errorf("read asset: %w", err)
 	}
 	if len(body) > maxAsset {
-		return "", fmt.Errorf("download asset exceeds %d bytes", maxAsset)
+		return "", fmt.Errorf("%w: download asset exceeds %d bytes", ErrAssetRejected, maxAsset)
 	}
 
 	putCtx, cancelPut := context.WithTimeout(ctx, assetOperationTimeout)
@@ -177,17 +193,20 @@ func (m *Mirror) Mirror(ctx context.Context, kind, id, sourceURL string) (string
 
 func validateAssetURL(candidate *url.URL) error {
 	if candidate.Scheme != "https" {
-		return fmt.Errorf("asset URL must use HTTPS")
+		return fmt.Errorf("%w: asset URL must use HTTPS", ErrAssetRejected)
 	}
 	host := strings.ToLower(candidate.Hostname())
 	if candidate.User != nil || (candidate.Port() != "" && candidate.Port() != "443") {
-		return fmt.Errorf("asset URL credentials and non-HTTPS ports are not allowed")
+		return fmt.Errorf(
+			"%w: asset URL credentials and non-HTTPS ports are not allowed",
+			ErrAssetRejected,
+		)
 	}
 	if ip := net.ParseIP(host); ip != nil {
-		return fmt.Errorf("asset URL IP hosts are not allowed")
+		return fmt.Errorf("%w: asset URL IP hosts are not allowed", ErrAssetRejected)
 	}
 	if host != "espncdn.com" && !strings.HasSuffix(host, ".espncdn.com") {
-		return fmt.Errorf("asset URL host %q is not allowed", host)
+		return fmt.Errorf("%w: asset URL host %q is not allowed", ErrAssetRejected, host)
 	}
 	return nil
 }

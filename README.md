@@ -9,8 +9,9 @@ consumers.
 ```mermaid
 flowchart LR
   ESPN["ESPN keyless public API"] --> Web["Next.js data layer"]
-  ESPN --> Ingester["Go ingester (planned service wiring)"]
+  ESPN --> Ingester["Go ingester (always-on private worker)"]
   Ingester --> DB[("Neon Postgres")]
+  Ingester --> R2["Cloudflare R2 crest CDN"]
   DB --> Reader["Go public reader API"]
   ESPN -->|"news only, 90 s internal TTL"| Reader
   Reader --> Consumers["Website cutover · LED boards · third parties"]
@@ -18,6 +19,28 @@ flowchart LR
 
 The frontend still uses the ESPN-backed `DataStore`. The reader API is now
 implemented; switching the frontend seam to it is the next integration slice.
+
+## Internal ingester
+
+`backend/ingester` continuously reconciles the configured competitions from
+ESPN into Postgres. It uses rolling scoreboard windows for normal polling,
+daily full-season reconciliation, durable retries for unfinished finalization,
+bracket-authoritative knockout metadata, and immutable final match history.
+Team crests are validated and mirrored to R2.
+
+The process uses a pooled writer DSN for normal work and a dedicated direct
+connection for its singleton advisory lease. Run a complete one-shot
+reconciliation with:
+
+```bash
+cd backend
+set -a; . ./.env; set +a
+go run ./ingester -once
+```
+
+`-once` has no fixed whole-cycle deadline; individual network and database
+operations remain bounded. See `backend/.env.example` and
+[`docs/backend/SETUP.md`](docs/backend/SETUP.md) for required variables.
 
 ## Public reader API
 
@@ -52,7 +75,7 @@ npm test
 npx tsc --noEmit
 
 cd backend
-go test ./...
+go test -race ./...
 go build ./...
 go vet ./...
 ```
@@ -83,6 +106,7 @@ See [`backend/reader/README.md`](backend/reader/README.md) for API behavior and
   fixtures, and frontend data contracts.
 - `backend/config` — generated competition configuration embedded in Go.
 - `backend/migrations` — current-state, snapshot, operations, and role schema.
+- `backend/ingester` — private reconciliation worker, scheduler, and finalizer.
 - `backend/shared/espn` — tested Go ESPN clients, domain types, and mappers.
 - `backend/reader` — public Go REST API, SQL read models, middleware, OpenAPI,
   unit tests, and Testcontainers integration tests.

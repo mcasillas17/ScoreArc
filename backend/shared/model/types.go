@@ -36,22 +36,23 @@ type Team struct {
 // and bracket mappers (Tasks 2, 5) produce; comp/season are attached by the
 // ingester's store layer (Task 6), not by these mappers.
 type Match struct {
-	ID              string     `json:"id"`
-	Kickoff         string     `json:"kickoff"` // ISO date string
-	State           MatchState `json:"state"`
-	Round           string     `json:"round"` // knockout round slug, e.g. "round-of-16"; "" for group stage
-	Minute          *string    `json:"minute"`
-	StatusDetail    string     `json:"statusDetail"`
-	StatusName      string     `json:"statusName"`
-	Home            Team       `json:"home"`
-	Away            Team       `json:"away"`
-	HomeScore       *int       `json:"homeScore"`
-	AwayScore       *int       `json:"awayScore"`
-	WinnerID        *string    `json:"winnerId"`
-	Note            *string    `json:"note"`
-	HomePlaceholder bool       `json:"-"`
-	AwayPlaceholder bool       `json:"-"`
-	BracketRequired *bool      `json:"-"`
+	ID               string     `json:"id"`
+	Kickoff          string     `json:"kickoff"` // ISO date string
+	State            MatchState `json:"state"`
+	Round            string     `json:"round"` // knockout round slug, e.g. "round-of-16"; "" for group stage
+	Minute           *string    `json:"minute"`
+	StatusDetail     string     `json:"statusDetail"`
+	StatusName       string     `json:"statusName"`
+	Home             Team       `json:"home"`
+	Away             Team       `json:"away"`
+	HomeScore        *int       `json:"homeScore"`
+	AwayScore        *int       `json:"awayScore"`
+	WinnerID         *string    `json:"winnerId"`
+	Note             *string    `json:"note"`
+	HomePlaceholder  bool       `json:"-"`
+	AwayPlaceholder  bool       `json:"-"`
+	BracketRequired  *bool      `json:"-"`
+	BracketConfirmed bool       `json:"-"`
 }
 
 // BracketTeam mirrors types.ts's BracketTeam. It is distinct from Team

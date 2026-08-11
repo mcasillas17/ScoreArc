@@ -46,8 +46,12 @@ Neon Postgres (provisioned via Vercel) + Cloudflare R2**. Full detail:
 
 - Go module: `github.com/mcasillas17/scorearc-backend` under `/backend` (Go 1.26+).
 - `cd backend && go build ./...` — build. `cd backend && go test ./...` — test;
+  use `cd backend && go test -race ./...` for the full backend gate, then
   `cd backend && go vet ./...` — static checks
   (some packages use testcontainers → **Docker must be running**).
+- The ingester requires `POOLED_DSN` for normal writes and
+  `INGESTER_LEASE_DSN` for a dedicated direct/unpooled advisory-lock session.
+  Both must use the least-privilege ingester login; never use the DB owner.
 - `npm run export:competitions` — regenerate `backend/config/competitions.json`
   from `src/server/data/competitions.ts` (the single source of truth — never
   hand-edit the JSON).

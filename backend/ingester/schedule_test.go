@@ -37,7 +37,7 @@ func TestNeedsSummary(t *testing.T) {
 		{"finished retries", model.Match{State: model.MatchStateFinished}, &store.MatchRow{}, false, true},
 		{"finalized never", model.Match{State: model.MatchStateFinished}, finalized, true, false},
 		{"new scheduled", model.Match{State: model.MatchStateScheduled}, nil, false, true},
-		{"scheduled missing detail fast", model.Match{State: model.MatchStateScheduled}, &store.MatchRow{}, false, false},
+		{"scheduled missing detail fast", model.Match{State: model.MatchStateScheduled}, &store.MatchRow{}, false, true},
 		{"scheduled missing detail slow", model.Match{State: model.MatchStateScheduled}, &store.MatchRow{}, true, true},
 		{"scheduled detail fast", model.Match{State: model.MatchStateScheduled}, &store.MatchRow{HasDetail: true}, false, false},
 		{"scheduled detail slow", model.Match{State: model.MatchStateScheduled}, &store.MatchRow{HasDetail: true}, true, true},

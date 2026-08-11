@@ -21,6 +21,13 @@ describe('mapBracket', () => {
     expect(final!.matches).toHaveLength(1);
   });
 
+  it('classifies third-place loser slots as placeholders', () => {
+    const thirdPlace = rounds.find((r) => r.slug === '3rd-place-match');
+    expect(thirdPlace).toBeDefined();
+    expect(thirdPlace!.matches[0].home.placeholder).toBe(true);
+    expect(thirdPlace!.matches[0].away.placeholder).toBe(true);
+  });
+
   it('rounds are in fixed bracket order', () => {
     const order = rounds.map((r) => r.slug);
     expect(order).toEqual([

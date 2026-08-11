@@ -47,6 +47,31 @@ func ValidateScoreboardSeason(raw []byte, expectedYear int) error {
 	return nil
 }
 
+func FilterScoreboardSeason(raw []byte, expectedYear int) ([]byte, error) {
+	var scoreboard struct {
+		Events []json.RawMessage `json:"events"`
+	}
+	if err := json.Unmarshal(raw, &scoreboard); err != nil {
+		return nil, err
+	}
+	filtered := scoreboard.Events[:0]
+	for _, event := range scoreboard.Events {
+		var envelope struct {
+			Season struct {
+				Year int `json:"year"`
+			} `json:"season"`
+		}
+		if err := json.Unmarshal(event, &envelope); err != nil {
+			return nil, err
+		}
+		if envelope.Season.Year == 0 || envelope.Season.Year == expectedYear {
+			filtered = append(filtered, event)
+		}
+	}
+	scoreboard.Events = filtered
+	return json.Marshal(scoreboard)
+}
+
 func ValidateBackfillCompleteness(raw []byte, limit int) error {
 	var scoreboard rawScoreboard
 	if err := json.Unmarshal(raw, &scoreboard); err != nil {
@@ -123,17 +148,22 @@ type rawStatusType struct {
 	ShortDetail string `json:"shortDetail"`
 }
 
-// mapState ports state.ts's mapState.
+// mapState follows the frontend state mapping except that ESPN statuses not yet
+// confirmed final remain mutable instead of being frozen as finished.
 func mapState(espnState string, completed bool, statusName string) MatchState {
 	if completed {
 		return MatchStateFinished
 	}
 	if espnState == "post" {
 		switch statusName {
-		case "STATUS_CANCELED", "STATUS_ABANDONED", "STATUS_FORFEIT":
+		case "STATUS_ABANDONED", "STATUS_CANCELED", "STATUS_FINAL",
+			"STATUS_FINAL_AET", "STATUS_FINAL_PEN", "STATUS_FORFEIT",
+			"STATUS_FULL_TIME":
 			return MatchStateFinished
-		default:
+		case "STATUS_POSTPONED", "STATUS_SUSPENDED":
 			return MatchStateScheduled
+		default:
+			return MatchStateLive
 		}
 	}
 	if espnState == "pre" {
@@ -229,11 +259,7 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 		}
 
 		state := mapState(status.Type.State, status.Type.Completed, status.Type.Name)
-		var bracketRequired *bool
-		if ev.Season.Slug != "" {
-			required := isKnockoutRound(normRoundSlug(ev.Season.Slug))
-			bracketRequired = &required
-		}
+		bracketRequired := bracketRequirement(string(ev.ID), ev.Season.Slug)
 
 		var note *string
 		if len(comp.Notes) > 0 && comp.Notes[0].Text != "" {

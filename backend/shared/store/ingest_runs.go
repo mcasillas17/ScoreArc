@@ -13,6 +13,8 @@ func (s *Store) LogIngestRun(
 	ok bool,
 	errorMessage string,
 ) error {
+	ctx, cancel := boundedContext(ctx)
+	defer cancel()
 	var storedError any
 	if errorMessage != "" {
 		storedError = errorMessage
@@ -25,6 +27,8 @@ VALUES ($1,$2,$3,$4,$5,$6)`,
 }
 
 func (s *Store) PruneIngestRuns(ctx context.Context, before time.Time) (int64, error) {
+	ctx, cancel := boundedContext(ctx)
+	defer cancel()
 	tag, err := s.pool.Exec(ctx, `
 WITH expired AS (
 	SELECT ctid

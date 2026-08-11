@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/mcasillas17/scorearc-backend/config"
+	"github.com/mcasillas17/scorearc-backend/shared/assets"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 	"github.com/mcasillas17/scorearc-backend/shared/source"
 	"github.com/mcasillas17/scorearc-backend/shared/store"
@@ -25,6 +27,7 @@ type fakeSource struct {
 	scoreboardErr   error
 	summaryErrors   []error
 	summaryCalls    int
+	summaryMatch    model.Match
 	summaryHome     *int
 	summaryAway     *int
 	scoreboardCall  int
@@ -62,11 +65,16 @@ func (f *fakeSource) Scoreboard(ctx context.Context, _ config.Competition, _ con
 	f.mu.Unlock()
 	return matches, err
 }
-func (f *fakeSource) Summary(context.Context, config.Competition, model.Match) (source.SummaryResult, error) {
+func (f *fakeSource) Summary(
+	_ context.Context,
+	_ config.Competition,
+	match model.Match,
+) (source.SummaryResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	call := f.summaryCalls
 	f.summaryCalls++
+	f.summaryMatch = match
 	if call < len(f.summaryErrors) && f.summaryErrors[call] != nil {
 		return source.SummaryResult{}, f.summaryErrors[call]
 	}
@@ -85,7 +93,7 @@ func (f *fakeSource) TopScorers(context.Context, config.Competition, config.Seas
 	}
 	return []model.TopScorer{{Rank: 1, Player: "Winner"}}, nil
 }
-func (f *fakeSource) Bracket(context.Context, config.Competition, config.Season) ([]model.BracketMatch, error) {
+func (f *fakeSource) Bracket(context.Context, config.Competition, config.Season, bool) ([]model.BracketMatch, error) {
 	return f.bracket, f.bracketErr
 }
 
@@ -97,19 +105,31 @@ type fakeRepository struct {
 	pruneErr        error
 	pruneRows       []int64
 	pruneCalls      int
+	pruneHook       func()
 	matchCalls      int
 	finalizeCalls   int
 	lastFinalized   model.Match
 	lastUpsert      model.Match
 	standingsCalls  int
+	standingsErr    error
 	topScorersCalls int
 	unfinalized     []model.Match
+	unfinalizedErr  error
 	logged          []loggedRun
 }
 
 type loggedRun struct {
 	kind string
 	ok   bool
+}
+
+func hasLoggedKind(runs []loggedRun, kind string) bool {
+	for _, run := range runs {
+		if run.kind == kind {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *fakeRepository) UpsertTeams(context.Context, []model.Team) error { return nil }
@@ -148,13 +168,13 @@ func (f *fakeRepository) ExistingMatches(context.Context, string, string, []stri
 	return f.existing, f.existingErr
 }
 func (f *fakeRepository) UnfinalizedMatches(context.Context, string, string) ([]model.Match, error) {
-	return f.unfinalized, nil
+	return f.unfinalized, f.unfinalizedErr
 }
 func (f *fakeRepository) ReplaceStandings(context.Context, string, string, []model.Standing) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.standingsCalls++
-	return nil
+	return f.standingsErr
 }
 func (f *fakeRepository) ReplaceTopScorers(
 	_ context.Context,
@@ -176,6 +196,9 @@ func (f *fakeRepository) LogIngestRun(_ context.Context, _ *string, kind string,
 	return nil
 }
 func (f *fakeRepository) PruneIngestRuns(context.Context, time.Time) (int64, error) {
+	if f.pruneHook != nil {
+		f.pruneHook()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.pruneCalls++
@@ -188,17 +211,30 @@ func (f *fakeRepository) PruneIngestRuns(context.Context, time.Time) (int64, err
 }
 
 type fakeMirror struct {
-	mu    sync.Mutex
-	err   error
-	calls int
+	mu      sync.Mutex
+	err     error
+	errors  map[string]error
+	calls   int
+	callIDs []string
+	block   bool
 }
 
 func (f *fakeMirror) BaseURL() string { return "https://cdn.example" }
-func (f *fakeMirror) Mirror(context.Context, string, string, string) (string, error) {
+func (f *fakeMirror) Mirror(ctx context.Context, _, id, _ string) (string, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.calls++
-	return "https://cdn.example/teams/team", f.err
+	f.callIDs = append(f.callIDs, id)
+	block := f.block
+	err := f.err
+	if idErr := f.errors[id]; idErr != nil {
+		err = idErr
+	}
+	f.mu.Unlock()
+	if block {
+		<-ctx.Done()
+		return "", ctx.Err()
+	}
+	return "https://cdn.example/teams/" + id, err
 }
 
 func testRunner(src *fakeSource, repo *fakeRepository, comp config.Competition) *runner {
@@ -209,6 +245,7 @@ func testRunner(src *fakeSource, repo *fakeRepository, comp config.Competition) 
 		log:               slog.New(slog.NewTextHandler(io.Discard, nil)),
 		active:            make(map[string]activity),
 		mirrored:          make(map[string]string),
+		rejectedAssets:    make(map[string]struct{}),
 		backfilled:        make(map[string]time.Time),
 		backfillAttempted: make(map[string]time.Time),
 		maxConcurrent:     3,
@@ -351,6 +388,27 @@ func TestSlowTickRetriesDurableUnfinalizedBacklog(t *testing.T) {
 	}
 }
 
+func TestSlowTickRetriesBacklogDuringScoreboardFailure(t *testing.T) {
+	src := &fakeSource{scoreboardErr: errors.New("scoreboard unavailable")}
+	repo := &fakeRepository{
+		existing:    map[string]store.MatchRow{"m1": {}},
+		unfinalized: []model.Match{finishedMatch()},
+	}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+
+	result := testRunner(src, repo, comp).runCycle(context.Background(), true)
+
+	if result.failures == 0 || repo.finalizeCalls != 1 || src.summaryCalls != 1 {
+		t.Fatalf(
+			"result=%+v finalize=%d summaries=%d",
+			result, repo.finalizeCalls, src.summaryCalls,
+		)
+	}
+}
+
 func TestDuplicateScoreboardAndBracketMatchProcessesOnce(t *testing.T) {
 	match := finishedMatch()
 	src := &fakeSource{
@@ -433,23 +491,62 @@ func TestCanceledCycleDoesNotStartProviderWork(t *testing.T) {
 	}
 }
 
-func TestCrestFailureDoesNotBlockMatchPersistence(t *testing.T) {
+func TestCrestOutageCircuitDoesNotBlockMatchPersistence(t *testing.T) {
 	crest := "https://source.example/crest.png"
 	match := finishedMatch()
 	match.State = model.MatchStateScheduled
 	match.Home.CrestURL = &crest
-	src := &fakeSource{matches: []model.Match{match}}
+	match.Away.CrestURL = &crest
+	second := match
+	second.ID = "m2"
+	src := &fakeSource{matches: []model.Match{match, second}}
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
 		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
 	}
 	runner := testRunner(src, repo, comp)
-	runner.mirror = &fakeMirror{err: errors.New("r2 unavailable")}
+	mirror := &fakeMirror{block: true}
+	runner.mirror = mirror
+	runner.mirrorTimeout = time.Millisecond
 
 	result := runner.runCycle(context.Background(), false)
-	if result.failures != 0 || repo.matchCalls != 1 {
+	if result.failures != 0 || repo.matchCalls != 2 || mirror.calls != 1 {
 		t.Fatalf("result=%+v match calls=%d", result, repo.matchCalls)
+	}
+}
+
+func TestRejectedCrestDoesNotOpenMirrorOutageCircuit(t *testing.T) {
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	runner := testRunner(
+		&fakeSource{},
+		&fakeRepository{existing: map[string]store.MatchRow{}},
+		comp,
+	)
+	mirror := &fakeMirror{errors: map[string]error{
+		"bad": fmt.Errorf("%w: unsupported content type", assets.ErrAssetRejected),
+	}}
+	runner.mirror = mirror
+	badURL := "https://a.espncdn.com/bad.svg"
+	goodURL := "https://a.espncdn.com/good.png"
+
+	runner.mirrorCrest(context.Background(), model.Team{ID: "bad", CrestURL: &badURL})
+	runner.mirrorCrest(context.Background(), model.Team{ID: "good", CrestURL: &goodURL})
+	runner.mirrorCrest(context.Background(), model.Team{ID: "bad", CrestURL: &badURL})
+
+	if mirror.calls != 2 || len(mirror.callIDs) != 2 ||
+		mirror.callIDs[0] != "bad" || mirror.callIDs[1] != "good" {
+		t.Fatalf("calls=%d ids=%v", mirror.calls, mirror.callIDs)
+	}
+	if runner.mirrored["good"] == "" || !runner.mirrorUnavailable.IsZero() {
+		t.Fatalf(
+			"good crest=%q mirror unavailable=%v",
+			runner.mirrored["good"],
+			runner.mirrorUnavailable,
+		)
 	}
 }
 
@@ -516,6 +613,7 @@ func TestPruneFailureFailsSlowCycle(t *testing.T) {
 		existing: map[string]store.MatchRow{},
 		pruneErr: errors.New("permission denied"),
 	}
+
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
 		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
@@ -525,6 +623,35 @@ func TestPruneFailureFailsSlowCycle(t *testing.T) {
 	if result := runner.runCycle(context.Background(), true); result.failures == 0 {
 		t.Fatalf("result=%+v", result)
 	}
+}
+
+func TestCanceledPruneIsAuditedAsFailure(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	repo := &fakeRepository{
+		existing:  map[string]store.MatchRow{},
+		pruneRows: []int64{10000},
+		pruneHook: cancel,
+	}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	runner := testRunner(&fakeSource{}, repo, comp)
+
+	result := runner.runCycle(ctx, true)
+
+	if result.failures != 1 {
+		t.Fatalf("failures=%d", result.failures)
+	}
+	for _, run := range repo.logged {
+		if run.kind == "prune_ingest_runs" {
+			if run.ok {
+				t.Fatal("canceled prune was audited as successful")
+			}
+			return
+		}
+	}
+	t.Fatal("canceled prune was not audited")
 }
 
 func TestFinalizedMatchRetriesUnmirroredCrest(t *testing.T) {
@@ -610,6 +737,37 @@ func TestTopScorerCrestMirrorsOnceAcrossRefreshes(t *testing.T) {
 	}
 }
 
+func TestTopScorerCrestOutageUsesSharedCircuit(t *testing.T) {
+	scorers := make([]model.TopScorer, 10)
+	for index := range scorers {
+		crest := fmt.Sprintf("https://source.example/%d.png", index)
+		scorers[index] = model.TopScorer{
+			Rank: index + 1, Player: fmt.Sprintf("Player %d", index),
+			TeamAbbr: fmt.Sprintf("T%d", index), TeamCrestURL: &crest,
+		}
+	}
+	src := &fakeSource{topScorers: scorers}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	runner := testRunner(src, repo, comp)
+	mirror := &fakeMirror{block: true}
+	runner.mirror = mirror
+	runner.mirrorTimeout = time.Millisecond
+
+	result := runner.runCycle(context.Background(), true)
+
+	if result.failures != 0 || repo.topScorersCalls != 1 ||
+		mirror.calls > 5 {
+		t.Fatalf(
+			"result=%+v replacements=%d mirror calls=%d",
+			result, repo.topScorersCalls, mirror.calls,
+		)
+	}
+}
+
 func TestSeasonBackfillSkipsScheduledSummaries(t *testing.T) {
 	match := finishedMatch()
 	match.State = model.MatchStateScheduled
@@ -627,7 +785,7 @@ func TestSeasonBackfillSkipsScheduledSummaries(t *testing.T) {
 	}
 }
 
-func TestEmptyTopScorersPreserveRowsWithoutFailingCycle(t *testing.T) {
+func TestEmptyTopScorersPreserveRowsAndRemainRetryable(t *testing.T) {
 	src := &fakeSource{topScorers: []model.TopScorer{}}
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
@@ -638,12 +796,17 @@ func TestEmptyTopScorersPreserveRowsWithoutFailingCycle(t *testing.T) {
 	runner := testRunner(src, repo, comp)
 
 	result := runner.runCycle(context.Background(), true)
-	if result.failures != 0 {
+	if result.failures != 0 || runner.backfilled["test/2026"].IsZero() {
 		t.Fatalf("result=%+v", result)
+	}
+	runner.runCycle(context.Background(), true)
+	if len(src.backfillCalls) < 2 || src.backfillCalls[len(src.backfillCalls)-1] {
+		t.Fatalf("backfill calls=%v", src.backfillCalls)
 	}
 	foundPreserved := false
 	for _, run := range repo.logged {
-		foundPreserved = foundPreserved || run.kind == "top_scorers_preserved"
+		foundPreserved = foundPreserved ||
+			(run.kind == "top_scorers_preserved" && run.ok)
 	}
 	if !foundPreserved {
 		t.Fatal("missing preserved audit outcome")
@@ -662,6 +825,61 @@ func TestBracketWinnerOverridesConflictingScoreboardFlag(t *testing.T) {
 	merged := mergeBracketCandidate(scoreboard, bracket)
 	if merged.WinnerID == nil || *merged.WinnerID != correct ||
 		merged.Round != "quarterfinals" {
+		t.Fatalf("merged=%+v", merged)
+	}
+}
+
+func TestConfirmedBracketNoWinnerClearsScoreboardWinner(t *testing.T) {
+	scoreboardWinner := "home"
+	scoreboard := finishedMatch()
+	scoreboard.WinnerID = &scoreboardWinner
+	bracket := bracketMatch(model.BracketMatch{
+		ID: scoreboard.ID, Round: "final", State: model.MatchStateFinished,
+		Home: model.BracketTeam{ID: scoreboard.Home.ID, Name: scoreboard.Home.Name},
+		Away: model.BracketTeam{ID: scoreboard.Away.ID, Name: scoreboard.Away.Name},
+	})
+
+	merged := mergeBracketCandidate(scoreboard, bracket)
+
+	if merged.WinnerID != nil {
+		t.Fatalf("winner=%v", merged.WinnerID)
+	}
+}
+
+func TestLaggingBracketDoesNotClearFinishedScoreboardWinner(t *testing.T) {
+	scoreboardWinner := "home"
+	scoreboard := finishedMatch()
+	scoreboard.WinnerID = &scoreboardWinner
+	bracket := bracketMatch(model.BracketMatch{
+		ID: scoreboard.ID, Round: "final", State: model.MatchStateLive,
+		Home: model.BracketTeam{ID: "stale-home", Name: "Stale Home"},
+		Away: model.BracketTeam{ID: "stale-away", Name: "Stale Away"},
+	})
+
+	merged := mergeBracketCandidate(scoreboard, bracket)
+
+	if merged.WinnerID == nil || *merged.WinnerID != scoreboardWinner ||
+		merged.BracketConfirmed ||
+		merged.Home.ID != scoreboard.Home.ID ||
+		merged.Away.ID != scoreboard.Away.ID {
+		t.Fatalf("merged=%+v", merged)
+	}
+}
+
+func TestLaggingBracketConfirmationDoesNotPropagateToFinishedBacklog(t *testing.T) {
+	scoreboard := finishedMatch()
+	scoreboard.State = model.MatchStateLive
+	bracket := bracketMatch(model.BracketMatch{
+		ID: scoreboard.ID, Round: "final", State: model.MatchStateLive,
+		Home: model.BracketTeam{ID: scoreboard.Home.ID, Name: scoreboard.Home.Name},
+		Away: model.BracketTeam{ID: scoreboard.Away.ID, Name: scoreboard.Away.Name},
+	})
+	provider := mergeBracketCandidate(scoreboard, bracket)
+	backlog := finishedMatch()
+
+	merged := mergeCandidate(provider, backlog)
+
+	if merged.BracketConfirmed {
 		t.Fatalf("merged=%+v", merged)
 	}
 }
@@ -706,7 +924,7 @@ func TestStoredFinishedStateCannotRegressToScheduled(t *testing.T) {
 	}
 }
 
-func TestEmptyScoreboardPreservesKnownActiveStateAndRetriesBackfill(t *testing.T) {
+func TestEmptyScoreboardPreservesKnownActiveStateAndCompletesBackfill(t *testing.T) {
 	src := &fakeSource{}
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
@@ -725,8 +943,8 @@ func TestEmptyScoreboardPreservesKnownActiveStateAndRetriesBackfill(t *testing.T
 	if first.anyLive {
 		t.Fatal("successful empty feed preserved stale live cadence")
 	}
-	if !runner.backfilled[key].IsZero() {
-		t.Fatal("empty feed marked full-season backfill complete")
+	if runner.backfilled[key].IsZero() {
+		t.Fatal("successful empty feed did not complete full-season backfill")
 	}
 
 	runner.runCycle(context.Background(), false)
@@ -755,6 +973,7 @@ func TestSlowCycleDrainsFullPruneBatches(t *testing.T) {
 		existing:  map[string]store.MatchRow{},
 		pruneRows: []int64{10000, 10000, 3},
 	}
+
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
 		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
@@ -764,6 +983,31 @@ func TestSlowCycleDrainsFullPruneBatches(t *testing.T) {
 
 	if repo.pruneCalls != 3 {
 		t.Fatalf("prune calls=%d", repo.pruneCalls)
+	}
+	if !hasLoggedKind(repo.logged, "prune_ingest_runs") {
+		t.Fatal("prune operation was not audited")
+	}
+}
+
+func TestBracketFailureDoesNotAdvanceDormancy(t *testing.T) {
+	src := &fakeSource{bracketErr: errors.New("provider unavailable")}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	season := comp.Seasons[comp.CurrentSeasonId]
+	season.HasBracket = true
+	comp.Seasons[comp.CurrentSeasonId] = season
+	runner := testRunner(src, repo, comp)
+	key := comp.ID + "/" + comp.CurrentSeasonId
+	runner.active[key] = activity{known: true, active: true, emptyPolls: 1}
+
+	runner.runCycle(context.Background(), true)
+
+	state := runner.active[key]
+	if !state.active || state.emptyPolls != 0 {
+		t.Fatalf("activity after bracket failure=%+v", state)
 	}
 }
 
@@ -835,6 +1079,373 @@ func TestStoredLiveStateCannotRegressToScheduled(t *testing.T) {
 	}
 	if !result.anyLive {
 		t.Fatal("stored live state did not preserve live cadence")
+	}
+	if src.summaryCalls != 1 {
+		t.Fatalf("stored live match summary calls=%d", src.summaryCalls)
+	}
+}
+
+func TestBracketFailureStillFinalizesNonKnockoutMatch(t *testing.T) {
+	match := finishedMatch()
+	bracketRequired := false
+	match.BracketRequired = &bracketRequired
+	src := &fakeSource{
+		matches:    []model.Match{match},
+		bracketErr: errors.New("bracket unavailable"),
+	}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{"m1": {}}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{
+			"2026": {ID: "2026", HasBracket: true},
+		},
+	}
+
+	testRunner(src, repo, comp).runCycle(context.Background(), false)
+
+	if repo.finalizeCalls != 1 {
+		t.Fatalf("non-knockout finalizations=%d", repo.finalizeCalls)
+	}
+}
+
+func TestBracketFailureDefersPersistedKnockoutFinalization(t *testing.T) {
+	match := finishedMatch()
+	notRequired := false
+	required := true
+	match.Round = ""
+	match.BracketRequired = &notRequired
+	src := &fakeSource{
+		matches:    []model.Match{match},
+		bracketErr: errors.New("bracket unavailable"),
+	}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{
+		"m1": {
+			State:           model.MatchStateFinished,
+			Round:           "final",
+			BracketRequired: &required,
+		},
+	}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{
+			"2026": {ID: "2026", HasBracket: true},
+		},
+	}
+
+	testRunner(src, repo, comp).runCycle(context.Background(), false)
+
+	if repo.finalizeCalls != 0 {
+		t.Fatalf("persisted knockout finalizations=%d", repo.finalizeCalls)
+	}
+}
+
+func TestBracketCandidateOwnsTeamsAndClassification(t *testing.T) {
+	notRequired := false
+	scoreboard := finishedMatch()
+	scoreboard.BracketRequired = &notRequired
+	scoreboard.Home = model.Team{ID: "scoreboard-home", Name: "Scoreboard Home"}
+	bracket := bracketMatch(model.BracketMatch{
+		ID: scoreboard.ID, Round: "final", State: model.MatchStateFinished,
+		Home: model.BracketTeam{ID: "bracket-home", Name: "Bracket Home"},
+		Away: model.BracketTeam{ID: "bracket-away", Name: "Bracket Away"},
+	})
+
+	merged := mergeBracketCandidate(scoreboard, bracket)
+
+	if merged.Home.ID != "bracket-home" || merged.Away.ID != "bracket-away" ||
+		merged.BracketRequired == nil || !*merged.BracketRequired ||
+		!merged.BracketConfirmed {
+		t.Fatalf("merged bracket candidate=%+v", merged)
+	}
+}
+
+func TestBracketOutagePreservesStoredFieldsButUsesProviderTeamsForSummary(t *testing.T) {
+	required := true
+	winner := "stored-home"
+	match := finishedMatch()
+	match.State = model.MatchStateLive
+	match.Home = model.Team{ID: "scoreboard-home", Name: "Scoreboard Home"}
+	match.Away = model.Team{ID: "scoreboard-away", Name: "Scoreboard Away"}
+	scoreboardWinner := "scoreboard-away"
+	match.WinnerID = &scoreboardWinner
+	match.BracketRequired = &required
+	src := &fakeSource{
+		matches:    []model.Match{match},
+		bracketErr: errors.New("bracket unavailable"),
+	}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{
+		"m1": {
+			State:           model.MatchStateLive,
+			Round:           "final",
+			BracketRequired: &required,
+			WinnerID:        &winner,
+			Home:            model.Team{ID: "stored-home", Name: "Stored Home"},
+			Away:            model.Team{ID: "stored-away", Name: "Stored Away"},
+			HomePlaceholder: true,
+		},
+	}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{
+			"2026": {ID: "2026", HasBracket: true},
+		},
+	}
+
+	testRunner(src, repo, comp).runCycle(context.Background(), false)
+
+	if repo.lastUpsert.Home.ID != "stored-home" ||
+		repo.lastUpsert.Away.ID != "stored-away" ||
+		!repo.lastUpsert.HomePlaceholder ||
+		repo.lastUpsert.WinnerID == nil || *repo.lastUpsert.WinnerID != winner {
+		t.Fatalf("scoreboard overwrote stored bracket fields: %+v", repo.lastUpsert)
+	}
+	if src.summaryMatch.Home.ID != "scoreboard-home" ||
+		src.summaryMatch.Away.ID != "scoreboard-away" {
+		t.Fatalf("summary used stale bracket teams: %+v", src.summaryMatch)
+	}
+}
+
+func TestChangedTeamDoesNotReuseStoredTeamCrestCache(t *testing.T) {
+	incomingCrest := "https://source.example/new.png"
+	storedCrest := "https://cdn.example/teams/old"
+	match := finishedMatch()
+	match.State = model.MatchStateScheduled
+	match.Home = model.Team{ID: "new-home", Name: "New Home", CrestURL: &incomingCrest}
+	src := &fakeSource{matches: []model.Match{match}}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{
+		"m1": {
+			State: model.MatchStateScheduled,
+			Home:  model.Team{ID: "old-home", CrestURL: &storedCrest},
+			Away:  match.Away,
+		},
+	}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	runner := testRunner(src, repo, comp)
+	mirror := &fakeMirror{}
+	runner.mirror = mirror
+
+	runner.runCycle(context.Background(), false)
+
+	if mirror.calls != 1 {
+		t.Fatalf("mirror calls=%d", mirror.calls)
+	}
+}
+
+func TestBracketFailureDoesNotHideNewLiveActivity(t *testing.T) {
+	match := finishedMatch()
+	match.State = model.MatchStateLive
+	src := &fakeSource{
+		matches:    []model.Match{match},
+		bracketErr: errors.New("bracket unavailable"),
+	}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{
+			"2026": {ID: "2026", HasBracket: true},
+		},
+	}
+	runner := testRunner(src, repo, comp)
+
+	result := runner.runCycle(context.Background(), true)
+
+	if !result.anyLive || !runner.active["test/2026"].active {
+		t.Fatalf("result=%+v activity=%+v", result, runner.active["test/2026"])
+	}
+}
+
+func TestBacklogFailureDoesNotAdvanceEmptyDormancy(t *testing.T) {
+	src := &fakeSource{}
+	repo := &fakeRepository{
+		existing:       map[string]store.MatchRow{},
+		unfinalizedErr: errors.New("backlog unavailable"),
+	}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	runner := testRunner(src, repo, comp)
+	key := "test/2026"
+	runner.active[key] = activity{known: true, active: true, emptyPolls: 1}
+
+	runner.runCycle(context.Background(), true)
+
+	if !runner.active[key].active || runner.active[key].emptyPolls != 0 {
+		t.Fatalf("activity after backlog failure=%+v", runner.active[key])
+	}
+}
+
+func TestBackfillMissingKnockoutBracketRemainsRetryable(t *testing.T) {
+	match := finishedMatch()
+	required := true
+	match.BracketRequired = &required
+	src := &fakeSource{}
+	repo := &fakeRepository{
+		existing:    map[string]store.MatchRow{"m1": {}},
+		unfinalized: []model.Match{match},
+	}
+
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{
+			"2026": {ID: "2026", HasBracket: true},
+		},
+	}
+	runner := testRunner(src, repo, comp)
+
+	result := runner.runCycle(context.Background(), true)
+
+	if result.failures != 1 || !runner.backfilled["test/2026"].IsZero() {
+		t.Fatalf("result=%+v backfilled=%v", result, runner.backfilled["test/2026"])
+	}
+}
+
+func TestBackfillUnresolvedBracketClassificationRemainsRetryable(t *testing.T) {
+	match := finishedMatch()
+	match.BracketRequired = nil
+	src := &fakeSource{matches: []model.Match{match}}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{"m1": {}}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{
+			"2026": {ID: "2026", HasBracket: true},
+		},
+	}
+	runner := testRunner(src, repo, comp)
+
+	result := runner.runCycle(context.Background(), true)
+
+	if result.failures == 0 || !runner.backfilled["test/2026"].IsZero() {
+		t.Fatalf("result=%+v backfilled=%v", result, runner.backfilled["test/2026"])
+	}
+}
+
+func TestNonBracketSeasonIgnoresProviderKnockoutClassification(t *testing.T) {
+	match := finishedMatch()
+	required := false
+	match.BracketRequired = &required
+	match.BracketConfirmed = true
+	storedRequired := true
+	winner := match.Home.ID
+	match.WinnerID = &winner
+	match.Home.Name = "Fresh Home"
+	src := &fakeSource{matches: []model.Match{match}}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{"m1": {
+		Round:           "final",
+		BracketRequired: &storedRequired,
+		Home:            model.Team{ID: match.Home.ID, Name: "Stale Home"},
+		Away:            match.Away,
+	}}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	runner := testRunner(src, repo, comp)
+
+	result := runner.runCycle(context.Background(), true)
+
+	if result.failures != 0 || runner.backfilled["test/2026"].IsZero() {
+		t.Fatalf("result=%+v backfilled=%v", result, runner.backfilled["test/2026"])
+	}
+	if repo.lastFinalized.WinnerID == nil || *repo.lastFinalized.WinnerID != winner ||
+		repo.lastFinalized.Home.Name != "Fresh Home" ||
+		repo.lastFinalized.Round != "" ||
+		repo.lastFinalized.BracketRequired == nil ||
+		*repo.lastFinalized.BracketRequired {
+		t.Fatalf("finalized match=%+v", repo.lastFinalized)
+	}
+}
+
+func TestStoredNoteIsRestoredBeforeSummary(t *testing.T) {
+	match := finishedMatch()
+	note := "Home advances 5-4 on penalties"
+	src := &fakeSource{matches: []model.Match{match}}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{
+		match.ID: {Note: &note},
+	}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+
+	testRunner(src, repo, comp).runCycle(context.Background(), false)
+
+	if src.summaryMatch.Note == nil || *src.summaryMatch.Note != note {
+		t.Fatalf("summary match note=%v", src.summaryMatch.Note)
+	}
+}
+
+func TestAuthoritativeNoWinnerClearsStoredWinner(t *testing.T) {
+	match := finishedMatch()
+	required := false
+	match.BracketRequired = &required
+	match.BracketConfirmed = true
+	staleWinner := match.Home.ID
+	src := &fakeSource{matches: []model.Match{match}}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{
+		match.ID: {WinnerID: &staleWinner},
+	}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+
+	testRunner(src, repo, comp).runCycle(context.Background(), false)
+
+	if repo.lastFinalized.WinnerID != nil {
+		t.Fatalf("stale winner preserved: %+v", repo.lastFinalized.WinnerID)
+	}
+}
+
+func TestFailedPollResetsConsecutiveEmptyCount(t *testing.T) {
+	src := &fakeSource{}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{
+			"2026": {ID: "2026", HasBracket: true},
+		},
+	}
+	runner := testRunner(src, repo, comp)
+	key := "test/2026"
+
+	runner.runCycle(context.Background(), true)
+	src.scoreboardErr = errors.New("scoreboard unavailable")
+	runner.runCycle(context.Background(), true)
+	src.scoreboardErr = nil
+	runner.runCycle(context.Background(), true)
+
+	state := runner.active[key]
+	if !state.active || state.emptyPolls != 1 {
+		t.Fatalf("activity after interrupted empty sequence=%+v", state)
+	}
+}
+
+func TestPartialStandingsReplacementIsPreservedAndRemainsRetryable(t *testing.T) {
+	src := &fakeSource{}
+	repo := &fakeRepository{
+		existing:     map[string]store.MatchRow{},
+		standingsErr: store.ErrPartialReplacement,
+	}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+
+	runner := testRunner(src, repo, comp)
+	result := runner.runCycle(context.Background(), true)
+
+	preservedFailure := false
+	for _, run := range repo.logged {
+		preservedFailure = preservedFailure ||
+			(run.kind == "standings_preserved" && !run.ok)
+	}
+	if result.failures == 0 || runner.backfilled["test/2026"].IsZero() ||
+		!preservedFailure {
+		t.Fatalf("result=%+v logs=%+v", result, repo.logged)
 	}
 }
 
@@ -950,5 +1561,41 @@ func TestLiveMatchCanTransitionToPostponed(t *testing.T) {
 	}
 	if result.anyLive {
 		t.Fatal("postponed match preserved live cadence")
+	}
+}
+
+func TestLiveMatchCanTransitionToSuspended(t *testing.T) {
+	match := finishedMatch()
+	match.State = model.MatchStateScheduled
+	match.StatusName = "STATUS_SUSPENDED"
+	src := &fakeSource{matches: []model.Match{match}}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{
+		"m1": {State: model.MatchStateLive},
+	}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+
+	result := testRunner(src, repo, comp).runCycle(context.Background(), false)
+
+	if repo.matchCalls != 1 || repo.lastUpsert.State != model.MatchStateScheduled {
+		t.Fatalf("upsert calls=%d match=%+v", repo.matchCalls, repo.lastUpsert)
+	}
+	if result.anyLive {
+		t.Fatal("suspended match preserved live cadence")
+	}
+}
+
+func TestMergeCandidatePreservesStoredNote(t *testing.T) {
+	note := "Home advances on penalties"
+	current := finishedMatch()
+	current.Note = &note
+	incoming := finishedMatch()
+
+	merged := mergeCandidate(current, incoming)
+
+	if merged.Note == nil || *merged.Note != note {
+		t.Fatalf("note=%v", merged.Note)
 	}
 }

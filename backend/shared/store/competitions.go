@@ -15,6 +15,8 @@ func (s *Store) ReplaceStandings(
 	if len(standings) == 0 {
 		return ErrEmptyReplacement
 	}
+	ctx, cancel := boundedContext(ctx)
+	defer cancel()
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -77,6 +79,8 @@ func (s *Store) ReplaceTopScorers(
 	if len(scorers) == 0 {
 		return ErrEmptyReplacement
 	}
+	ctx, cancel := boundedContext(ctx)
+	defer cancel()
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err

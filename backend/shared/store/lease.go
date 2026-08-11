@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -24,6 +25,9 @@ func AcquireIngesterLease(
 	}
 	if strings.Contains(strings.ToLower(config.Host), "-pooler") {
 		return nil, false, fmt.Errorf("ingester lease requires an unpooled DSN")
+	}
+	if config.ConnectTimeout == 0 || config.ConnectTimeout > 10*time.Second {
+		config.ConnectTimeout = 10 * time.Second
 	}
 	conn, err := pgx.ConnectConfig(ctx, config)
 	if err != nil {

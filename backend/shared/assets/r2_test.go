@@ -185,8 +185,8 @@ func TestMirrorRejectsInvalidOrOversizedContent(t *testing.T) {
 				status: http.StatusOK, contentType: test.contentType, body: test.body,
 			}
 			mirror := testMirror(objects, httpClient)
-			if _, err := mirror.Mirror(context.Background(), "teams", "123", "https://a.espncdn.com/logo"); err == nil {
-				t.Fatal("expected error")
+			if _, err := mirror.Mirror(context.Background(), "teams", "123", "https://a.espncdn.com/logo"); !errors.Is(err, ErrAssetRejected) {
+				t.Fatalf("error=%v", err)
 			}
 
 			if objects.puts != 0 {
@@ -209,8 +209,8 @@ func TestMirrorRejectsUntrustedAssetURLs(t *testing.T) {
 			}
 
 			mirror := testMirror(objects, &fakeHTTP{})
-			if _, err := mirror.Mirror(context.Background(), "teams", "123", sourceURL); err == nil {
-				t.Fatal("expected URL validation error")
+			if _, err := mirror.Mirror(context.Background(), "teams", "123", sourceURL); !errors.Is(err, ErrAssetRejected) {
+				t.Fatalf("error=%v", err)
 			}
 		})
 	}

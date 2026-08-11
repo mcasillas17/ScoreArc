@@ -49,7 +49,7 @@ function mapBracketTeam(t: any): BracketTeam {
     name,
     abbr: t.abbreviation,
     crestUrl,
-    placeholder: !crestUrl && /\b(winner|tbd|to be determined)\b/i.test(name),
+    placeholder: !crestUrl && /\b(winner|loser|tbd|to be determined)\b/i.test(name),
   };
 }
 

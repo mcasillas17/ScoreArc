@@ -146,6 +146,16 @@ func TestMapBracket(t *testing.T) {
 			t.Error("away.placeholder = false, want true")
 		}
 	})
+
+	t.Run("third-place loser slots are placeholders", func(t *testing.T) {
+		thirdPlace := byRound("3rd-place-match")
+		if len(thirdPlace) != 1 {
+			t.Fatalf("got %d third-place matches, want 1", len(thirdPlace))
+		}
+		if !thirdPlace[0].Home.Placeholder || !thirdPlace[0].Away.Placeholder {
+			t.Fatalf("third-place placeholders=%+v", thirdPlace[0])
+		}
+	})
 }
 
 // TestMapBracket2022 sanity-checks parity against the 2022 fixture, which
@@ -321,13 +331,6 @@ func TestValidateBracketSeasonRejectsMismatch(t *testing.T) {
 	}
 }
 
-func TestValidateBracketSeasonRejectsMissingYear(t *testing.T) {
-	raw := []byte(`{"events":[{"season":{"slug":"final"}}]}`)
-	if err := ValidateBracketSeason(raw, 2026); err == nil {
-		t.Fatal("expected missing bracket season year")
-	}
-}
-
 func TestMapBracketRejectsUnknownStatusState(t *testing.T) {
 	raw := []byte(`{"events":[{"id":"1","date":"2026-07-01T12:00Z",
 		"season":{"slug":"quarterfinals"},
@@ -338,5 +341,18 @@ func TestMapBracketRejectsUnknownStatusState(t *testing.T) {
 		]}]}]}`)
 	if _, err := MapBracket(raw); err == nil {
 		t.Fatal("expected unknown bracket state error")
+	}
+}
+
+func TestMapBracketRejectsFinishedMatchWithoutWinner(t *testing.T) {
+	raw := []byte(`{"events":[{"id":"1","date":"2026-07-01T12:00Z",
+		"season":{"slug":"quarterfinals"},
+		"status":{"type":{"state":"post","completed":true,"name":"STATUS_FULL_TIME"}},
+		"competitions":[{"competitors":[
+			{"homeAway":"home","score":"1","team":{"id":"1","displayName":"Home","abbreviation":"HOM"}},
+			{"homeAway":"away","score":"1","team":{"id":"2","displayName":"Away","abbreviation":"AWY"}}
+		]}]}]}`)
+	if _, err := MapBracket(raw); err == nil {
+		t.Fatal("accepted finished knockout match without winner")
 	}
 }

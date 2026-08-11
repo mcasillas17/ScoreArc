@@ -26,6 +26,7 @@ func TestIngesterHardeningMigration(t *testing.T) {
 	for _, required := range []string{
 		"home_placeholder",
 		"away_placeholder",
+		"bracket_required",
 		"match_unfinalized_idx",
 		"ingest_run_started_idx",
 		"GRANT DELETE ON ingest_run TO scorearc_ingester",
