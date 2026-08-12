@@ -1,0 +1,30 @@
+# Reader — public, autoscaling, scale-to-zero Go HTTP API.
+# Deploy from the repo root with the backend/ build context:
+#   flyctl deploy backend --config backend/reader/fly.toml \
+#     --dockerfile backend/reader/Dockerfile --remote-only
+# Secrets (DATABASE_URL) are set with `fly secrets set`, never here.
+
+app = "scorearc-reader"
+primary_region = "iad"   # MUST match the Neon region (see SETUP §4/§7)
+
+[env]
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/healthz"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

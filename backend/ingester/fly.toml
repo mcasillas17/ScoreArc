@@ -1,0 +1,39 @@
+# Ingester — always-on PRIVATE worker. Outbound only: ESPN -> Neon + R2.
+#
+# NO [http_service] block: the worker makes only outbound calls, so there is
+# nothing to auto-stop and the machine runs continuously. (Fly's
+# auto_stop_machines / min_machines_running knobs live ONLY inside an
+# [http_service]/[[services]] block, so "always-on" is expressed by omitting
+# that block.) After the FIRST deploy, pin exactly one machine:
+#   fly scale count 1 --app scorearc-ingester
+#
+# Deploy from the repo root with the backend/ build context:
+#   flyctl deploy backend --config backend/ingester/fly.toml \
+#     --dockerfile backend/ingester/Dockerfile --remote-only
+#
+# Secrets (POOLED_DSN, INGESTER_LEASE_DSN, R2_*) are set with `fly secrets set`,
+# never here. INGESTER_LEASE_DSN must be an UNPOOLED Neon DSN — the process
+# rejects any host containing "-pooler" (shared/store/lease.go).
+
+app = "scorearc-ingester"
+primary_region = "iad"   # MUST match the Neon region (same as the reader)
+
+# SINGLETON: the ingester holds a Postgres advisory lock
+# (pg_try_advisory_lock, shared/store/lease.go). The call is non-blocking — a
+# second live instance does NOT wait, it logs "another ingester instance holds
+# the database lease" and exits 1. A strategy that runs old and new machines
+# concurrently (canary/bluegreen) therefore guarantees a failed deploy, so stop
+# the old machine before starting the new one.
+[deploy]
+  strategy = "immediate"
+
+# The lease is released on SIGINT/SIGTERM through a 5s shutdown context
+# (ingester/main.go). Fly's default kill_timeout of 5s races that, which would
+# strand the advisory lock until Postgres reaps the connection and make the
+# NEXT deploy fail to acquire it. Give the release room to finish.
+kill_signal = "SIGTERM"
+kill_timeout = "15s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
