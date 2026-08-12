@@ -612,3 +612,21 @@ func TestSparseUpsertsPreserveTeamIdentityAndMatchNote(t *testing.T) {
 		t.Fatalf("finalized match note=%v", storedNote)
 	}
 }
+
+// A Store built as a bare struct literal must still resolve: the identity cache
+// is created on first use, not only by New.
+func TestZeroValueStoreHasALazyIdentityCache(t *testing.T) {
+	var st Store
+	cache := st.cache()
+	if cache == nil {
+		t.Fatal("cache() returned nil on a zero-value Store")
+	}
+	cache.putTeam(cacheKey("espn", "359"), "eng-arsenal")
+	if id, ok := st.cache().getTeam(cacheKey("espn", "359")); !ok || id != "eng-arsenal" {
+		t.Fatalf("cache did not persist: id=%q ok=%v", id, ok)
+	}
+	st.cache().reset()
+	if _, ok := st.cache().getTeam(cacheKey("espn", "359")); ok {
+		t.Fatal("reset did not clear the cache")
+	}
+}

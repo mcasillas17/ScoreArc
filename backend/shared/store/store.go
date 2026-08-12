@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,8 +16,11 @@ var ErrPartialReplacement = errors.New("refusing to replace standings with fewer
 var ErrMatchFinalized = errors.New("match is finalized")
 
 type Store struct {
-	pool     *pgxpool.Pool
-	identity *identityCache
+	pool *pgxpool.Pool
+	// identity is reachable only through s.cache(), which initialises it on
+	// first use so a bare &Store{pool: ...} literal cannot nil-panic.
+	identity     *identityCache
+	identityOnce sync.Once
 }
 
 const operationTimeout = 15 * time.Second

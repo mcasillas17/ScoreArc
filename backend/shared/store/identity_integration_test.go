@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -373,5 +375,259 @@ func TestResolvePlayerRequiresSourceID(t *testing.T) {
 	store, _ := newIntegrationStore(t)
 	if _, err := store.Player(context.Background(), "espn", PlayerRef{FullName: "No Id"}); err == nil {
 		t.Fatal("expected an error when the player ref has no source id")
+	}
+}
+
+// A canonical player must never be split by concurrency. Every goroutine
+// resolving one provider player must get ONE id, leave ONE player row, and
+// leave no orphan player rows the crosswalk cannot name.
+func TestResolvePlayerIsSafeForConcurrentUse(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+
+	const goroutines = 8
+	var group sync.WaitGroup
+	ids := make([]uuid.UUID, goroutines)
+	errs := make([]error, goroutines)
+	start := make(chan struct{})
+	for worker := range goroutines {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			ids[worker], errs[worker] = store.Player(ctx, "espn",
+				PlayerRef{SourceID: "253989", FullName: "Erling Haaland"})
+		}()
+	}
+	close(start)
+	group.Wait()
+
+	distinct := make(map[uuid.UUID]struct{}, goroutines)
+	for worker, err := range errs {
+		if err != nil {
+			t.Fatalf("worker %d: %v", worker, err)
+		}
+		distinct[ids[worker]] = struct{}{}
+	}
+
+	var players, orphans int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM player`).Scan(&players); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `
+SELECT count(*) FROM player p
+WHERE NOT EXISTS (SELECT 1 FROM player_external_ref r WHERE r.player_id = p.id)`,
+	).Scan(&orphans); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("callers=%d  distinct ids returned=%d  player rows=%d  orphan player rows=%d",
+		goroutines, len(distinct), players, orphans)
+	if len(distinct) != 1 || players != 1 || orphans != 0 {
+		t.Fatalf("canonical identity split: distinct=%d players=%d orphans=%d, want 1/1/0",
+			len(distinct), players, orphans)
+	}
+}
+
+// waitForBlockedBackend polls until a backend is parked on a lock, which is how
+// this file proves an interleaving actually happened rather than hoping the Go
+// scheduler produced one.
+func waitForBlockedBackend(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	ctx := context.Background()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		var blocked int
+		if err := pool.QueryRow(ctx, `
+SELECT count(*) FROM pg_stat_activity
+WHERE wait_event_type = 'Lock' AND state = 'active'`).Scan(&blocked); err != nil {
+			t.Fatal(err)
+		}
+		if blocked > 0 {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("no backend ever blocked; the interleaving under test did not happen")
+}
+
+// The losing writer in a player race must ADOPT the winner rather than repoint
+// the crosswalk at itself. Releasing N goroutines at once does not reliably
+// interleave them, so this drives the exact interleaving: a transaction holds
+// an uncommitted crosswalk row for the player, Player() blocks behind it, and
+// the holder then commits.
+func TestResolvePlayerAdoptsTheWinnerOfARace(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+
+	// The winner: a player already claimed by an in-flight transaction.
+	winner := uuid.MustParse("01890000-0000-7000-8000-000000000001")
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO player (id, full_name) VALUES ($1,'Erling Haaland')`, winner); err != nil {
+		t.Fatal(err)
+	}
+	holder, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := holder.Exec(ctx, `
+INSERT INTO player_external_ref (source, source_id, player_id)
+VALUES ('espn','253989',$1)`, winner); err != nil {
+		t.Fatal(err)
+	}
+
+	// The loser starts now, misses the crosswalk (the holder is uncommitted),
+	// mints its own player, and then blocks on the crosswalk insert.
+	type result struct {
+		id  uuid.UUID
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		id, err := store.Player(ctx, "espn", PlayerRef{SourceID: "253989", FullName: "Erling Haaland"})
+		done <- result{id, err}
+	}()
+	waitForBlockedBackend(t, pool)
+
+	if err := holder.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got := <-done
+	if got.err != nil {
+		t.Fatalf("loser returned an error: %v", got.err)
+	}
+
+	var players, orphans int
+	var crosswalk uuid.UUID
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM player`).Scan(&players); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `
+SELECT count(*) FROM player p
+WHERE NOT EXISTS (SELECT 1 FROM player_external_ref r WHERE r.player_id = p.id)`,
+	).Scan(&orphans); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx,
+		`SELECT player_id FROM player_external_ref WHERE source='espn' AND source_id='253989'`,
+	).Scan(&crosswalk); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("returned=%v winner=%v crosswalk=%v player rows=%d orphan player rows=%d",
+		got.id, winner, crosswalk, players, orphans)
+
+	if got.id != winner {
+		t.Fatalf("loser returned its own id %v, want the winner %v", got.id, winner)
+	}
+	if crosswalk != winner {
+		t.Fatalf("crosswalk was repointed to %v, want it left at the winner %v", crosswalk, winner)
+	}
+	if players != 1 || orphans != 0 {
+		t.Fatalf("player rows=%d orphans=%d, want 1 and 0", players, orphans)
+	}
+}
+
+// Two writers can both miss the adopt-read and race to insert the same
+// fixture. The natural key lets exactly one win; the loser must retry and adopt
+// rather than surfacing a raw constraint violation. Driven as an explicit
+// interleaving because releasing goroutines does not reliably produce one.
+func TestResolveMatchAdoptsTheWinnerOfANaturalKeyRace(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	mustSeedTwoTeams(t, store)
+	mustSeedSeason(t, pool)
+
+	kickoff := time.Date(2026, 8, 21, 19, 0, 0, 0, time.UTC)
+	winner := uuid.MustParse("01890000-0000-7000-8000-0000000000aa")
+
+	// The winner holds the natural key in an uncommitted transaction.
+	holder, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := holder.Exec(ctx, `
+INSERT INTO match (id, competition_id, season_id, home_team_id, away_team_id,
+	kickoff, state, source)
+VALUES ($1,'premier-league','2026-27','eng-arsenal','eng-chelsea',$2,'scheduled','espn')`,
+		winner, kickoff); err != nil {
+		t.Fatal(err)
+	}
+
+	// The loser misses the crosswalk AND the adopt-read, then blocks on insert.
+	type result struct {
+		id  uuid.UUID
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		id, err := store.Match(ctx, "football-data-uk", MatchRef{
+			SourceID: "E0-2026-08-21-ARS-CHE", CompetitionID: "premier-league",
+			SeasonID: "2026-27", HomeTeamID: "eng-arsenal", AwayTeamID: "eng-chelsea",
+			Kickoff: kickoff.Add(15 * time.Minute),
+		})
+		done <- result{id, err}
+	}()
+	waitForBlockedBackend(t, pool)
+
+	if err := holder.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got := <-done
+
+	var matches int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM match`).Scan(&matches); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("loser returned=%v err=%v winner=%v match rows=%d", got.id, got.err, winner, matches)
+	if got.err != nil {
+		t.Fatalf("loser surfaced a constraint violation instead of adopting: %v", got.err)
+	}
+	if got.id != winner {
+		t.Fatalf("loser returned %v, want the winner %v", got.id, winner)
+	}
+	if matches != 1 {
+		t.Fatalf("match rows = %d, want 1", matches)
+	}
+}
+
+// Competitions are a closed, configured set, so a miss is a configuration bug
+// and must be reported as one rather than auto-created.
+func TestResolveCompetitionMissIsAnError(t *testing.T) {
+	store, _ := newIntegrationStore(t)
+	id, err := store.Competition(context.Background(), "espn", "not.a.league")
+	if !errors.Is(err, ErrUnknownCompetition) {
+		t.Fatalf("err = %v, want ErrUnknownCompetition", err)
+	}
+	if id != "" {
+		t.Fatalf("id = %q, want empty on a miss", id)
+	}
+	if !strings.Contains(err.Error(), "not.a.league") {
+		t.Fatalf("error %q does not name the offending source id", err)
+	}
+}
+
+// Spec §5.3: team AND competition lookups are cached.
+func TestResolveCompetitionCachesLookups(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	mustSeedSeason(t, pool)
+	if _, err := pool.Exec(ctx, `
+INSERT INTO competition_external_ref (source, source_id, competition_id)
+VALUES ('espn','eng.1','premier-league')`); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.Competition(ctx, "espn", "eng.1"); err != nil {
+		t.Fatal(err)
+	}
+	// Deleting the crosswalk row proves the second lookup came from cache.
+	if _, err := pool.Exec(ctx, `DELETE FROM competition_external_ref`); err != nil {
+		t.Fatal(err)
+	}
+	id, err := store.Competition(ctx, "espn", "eng.1")
+	if err != nil {
+		t.Fatalf("cached lookup failed: %v", err)
+	}
+	if id != "premier-league" {
+		t.Fatalf("cached resolve = %q, want premier-league", id)
 	}
 }
