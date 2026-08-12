@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -169,15 +170,30 @@ func exerciseCanonicalSchema(ctx context.Context, t *testing.T, pool *pgxpool.Po
 	`, triggerMatchID); err != nil {
 		t.Fatalf("finalize match: %v", err)
 	}
+	// A write that changes nothing must pass. This is the regression guard for
+	// the STORED GENERATED kickoff_date: in a BEFORE UPDATE trigger NEW.kickoff_date
+	// is still NULL, so a bare `NEW IS DISTINCT FROM OLD` would reject even this.
 	if _, err := pool.Exec(ctx, `
-		UPDATE match SET home_score=1 WHERE id=$1
-	`, triggerMatchID); err == nil {
+		UPDATE match SET home_score=home_score, state=state WHERE id=$1
+	`, triggerMatchID); err != nil {
+		t.Fatalf("no-op update on a finalized match was rejected: %v", err)
+	}
+	// A write that changes a fact must still be refused, by that exact message.
+	_, err := pool.Exec(ctx, `UPDATE match SET home_score=1 WHERE id=$1`, triggerMatchID)
+	if err == nil {
 		t.Fatal("finalized match update was accepted")
 	}
-	if _, err := pool.Exec(ctx, `
+	if !strings.Contains(err.Error(), "finalized match history is immutable") {
+		t.Fatalf("finalized match update failed for the wrong reason: %v", err)
+	}
+	_, err = pool.Exec(ctx, `
 		UPDATE match_detail SET scorers='[{"athlete":"late"}]' WHERE match_id=$1
-	`, triggerMatchID); err == nil {
+	`, triggerMatchID)
+	if err == nil {
 		t.Fatal("finalized detail update was accepted")
+	}
+	if !strings.Contains(err.Error(), "finalized match detail is immutable") {
+		t.Fatalf("finalized detail update failed for the wrong reason: %v", err)
 	}
 
 	// The snapshot tables from 0002 must accept the canonical keys.

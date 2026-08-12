@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"sort"
 	"testing"
 	"time"
 
@@ -44,12 +46,12 @@ func newIntegrationStore(t *testing.T) (*Store, *pgxpool.Pool) {
 	}
 	t.Cleanup(pool.Close)
 
-	for _, migration := range []string{
-		"../migrations/0001_init.up.sql",
-		"../migrations/0002_snapshots.up.sql",
-		"../migrations/0003_ingester_delete_grant.up.sql",
-		"../migrations/0004_ingester_hardening.up.sql",
-	} {
+	migrations, err := filepath.Glob("../migrations/*.up.sql")
+	if err != nil {
+		t.Fatalf("list migrations: %v", err)
+	}
+	sort.Strings(migrations)
+	for _, migration := range migrations {
 		sql, err := os.ReadFile(migration)
 		if err != nil {
 			t.Fatalf("read migration %s: %v", migration, err)
@@ -83,6 +85,9 @@ func newIntegrationStore(t *testing.T) (*Store, *pgxpool.Pool) {
 	return NewStore(readerPool), pool
 }
 
+// TODO(Task 11): seed data still uses the pre-canonical shape — provider ids as
+// primary keys, no team.kind, text match ids. Re-key it onto minted ids and the
+// *_external_ref crosswalk.
 func seedIntegrationData(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	ctx := context.Background()

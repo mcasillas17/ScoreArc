@@ -204,7 +204,14 @@ BEGIN
      OR (OLD.state = 'finished' AND NEW.state <> 'finished') THEN
     RAISE EXCEPTION 'match state cannot regress';
   END IF;
-  IF OLD.finalized_at IS NOT NULL AND NEW IS DISTINCT FROM OLD THEN
+  -- kickoff_date is STORED GENERATED, and in a BEFORE UPDATE trigger Postgres
+  -- has not computed it yet: NEW.kickoff_date is always NULL here while
+  -- OLD.kickoff_date is populated. A bare `NEW IS DISTINCT FROM OLD` would
+  -- therefore be true for EVERY update, turning this guard into "reject all
+  -- writes" instead of "reject writes that change something". Compare the rows
+  -- with that one column projected out. Do not "simplify" this back.
+  IF OLD.finalized_at IS NOT NULL
+     AND (to_jsonb(NEW) - 'kickoff_date') IS DISTINCT FROM (to_jsonb(OLD) - 'kickoff_date') THEN
     RAISE EXCEPTION 'finalized match history is immutable';
   END IF;
   RETURN NEW;
