@@ -154,11 +154,25 @@ func (s *Store) Team(ctx context.Context, source string, ref TeamRef) (string, e
 	return teamID, nil
 }
 
+// teamRefClaimSQL is the RESOLVER's crosswalk write. Unlike the seed's
+// teamRefRepointSQL it LOSES the conflict on purpose: DO UPDATE (rather than DO
+// NOTHING) so the statement always returns a row, and it returns the team_id
+// that actually holds (source, source_id) — which may be a curated team put
+// there by the seed, or another writer's row, not the provisional slug we are
+// offering. Repointing here would revert curation to a placeholder we minted
+// ourselves, with no error raised anywhere.
+const teamRefClaimSQL = `
+INSERT INTO team_external_ref (source, source_id, team_id, first_seen_at, last_seen_at)
+VALUES ($1, $2, $3, now(), now())
+ON CONFLICT (source, source_id) DO UPDATE SET last_seen_at = now()
+RETURNING team_id`
+
 // createProvisionalTeam mints a deterministic slug for an uncurated team. The
 // slug encodes the source and its id so the same unknown team always lands on
 // the same row, and so the review list shows where it came from. That
-// determinism is also what makes this race-safe without a retry: two writers
-// racing here aim at the SAME id, so the ON CONFLICT converges them.
+// determinism is what converges two writers racing to create the SAME unknown
+// team; the crosswalk's RETURNING is what arbitrates against a writer aiming
+// somewhere else entirely, such as a seed curating this source id right now.
 func (s *Store) createProvisionalTeam(ctx context.Context, source string, ref TeamRef) (string, error) {
 	kind := ref.Kind
 	if kind != "national" {
@@ -184,8 +198,15 @@ ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, updated_at = now()`,
 	); err != nil {
 		return "", err
 	}
-	if _, err := tx.Exec(ctx, teamRefUpsertSQL, source, ref.SourceID, slug); err != nil {
+	var holder string
+	if err := tx.QueryRow(ctx, teamRefClaimSQL, source, ref.SourceID, slug).Scan(&holder); err != nil {
 		return "", err
+	}
+	if holder != slug {
+		// Somebody — most likely the seed curating this club — already owns this
+		// source id. Roll back, discarding the provisional row we were about to
+		// create, and adopt theirs.
+		return holder, nil
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return "", err

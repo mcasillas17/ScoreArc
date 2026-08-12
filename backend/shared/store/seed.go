@@ -56,7 +56,15 @@ ON CONFLICT (id) DO UPDATE SET
 	provisional = false,
 	updated_at = now()`
 
-const teamRefUpsertSQL = `
+// teamRefRepointSQL is the SEED's crosswalk write, and it deliberately WINS the
+// conflict: the curated seed is the identity authority, so claiming a source id
+// that currently points at a provisional row is the whole mechanism by which
+// curation takes effect.
+//
+// It is not shared with the resolver, which must do the opposite (see
+// teamRefClaimSQL): a resolver that repointed the crosswalk would silently
+// revert curation to the provisional slug it had just minted.
+const teamRefRepointSQL = `
 INSERT INTO team_external_ref (source, source_id, team_id, first_seen_at, last_seen_at)
 VALUES ($1, $2, $3, now(), now())
 ON CONFLICT (source, source_id) DO UPDATE SET
@@ -141,7 +149,7 @@ func (s *Store) ApplyTeamSeed(ctx context.Context, seed []config.SeedTeam) error
 		if _, held := promoting[cacheKey(ref.source, ref.sourceID)]; held {
 			continue
 		}
-		refBatch.Queue(teamRefUpsertSQL, ref.source, ref.sourceID, ref.teamID)
+		refBatch.Queue(teamRefRepointSQL, ref.source, ref.sourceID, ref.teamID)
 	}
 	if err := s.pool.SendBatch(ctx, refBatch).Close(); err != nil {
 		return fmt.Errorf("upsert seeded team refs: %w", err)
@@ -207,7 +215,7 @@ func (s *Store) applyPromotion(ctx context.Context, p promotion) error {
 	defer rollback(ctx, tx)
 
 	for _, ref := range p.refs {
-		if _, err := tx.Exec(ctx, teamRefUpsertSQL, ref.source, ref.sourceID, ref.teamID); err != nil {
+		if _, err := tx.Exec(ctx, teamRefRepointSQL, ref.source, ref.sourceID, ref.teamID); err != nil {
 			return err
 		}
 	}

@@ -218,6 +218,77 @@ func TestResolveTeamIsSafeForConcurrentUse(t *testing.T) {
 	}
 }
 
+// A resolver that misses the crosswalk must never take the mapping FROM whoever
+// already holds it. The seed claiming espn/359 for eng-arsenal while the
+// resolver is mid-miss is the live case: repointing would hand the club its own
+// provisional placeholder back and silently revert curation. Driven as an
+// explicit interleaving, like the player race, because releasing goroutines does
+// not reliably produce one.
+func TestResolveTeamAdoptsTheCuratedIncumbentInsteadOfRepointing(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+
+	// The incumbent: a curated team claiming espn/359 in an in-flight
+	// transaction, so the resolver's crosswalk SELECT still misses.
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO team (id, kind, name, abbr) VALUES ('eng-arsenal','club','Arsenal','ARS')`,
+	); err != nil {
+		t.Fatal(err)
+	}
+	holder, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := holder.Exec(ctx, `
+INSERT INTO team_external_ref (source, source_id, team_id)
+VALUES ('espn','359','eng-arsenal')`); err != nil {
+		t.Fatal(err)
+	}
+
+	type result struct {
+		id  string
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		id, err := store.Team(ctx, "espn", TeamRef{SourceID: "359", Name: "Arsenal", Abbr: "ARS"})
+		done <- result{id, err}
+	}()
+	waitForBlockedBackend(t, pool)
+
+	if err := holder.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got := <-done
+	if got.err != nil {
+		t.Fatalf("resolver returned an error: %v", got.err)
+	}
+
+	var crosswalk string
+	var provisionalRows int
+	if err := pool.QueryRow(ctx,
+		`SELECT team_id FROM team_external_ref WHERE source='espn' AND source_id='359'`,
+	).Scan(&crosswalk); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM team WHERE provisional`).Scan(&provisionalRows); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("resolver returned=%s crosswalk=%s provisional rows left=%d",
+		got.id, crosswalk, provisionalRows)
+
+	if got.id != "eng-arsenal" {
+		t.Fatalf("resolver returned its own %q, want the curated eng-arsenal", got.id)
+	}
+	if crosswalk != "eng-arsenal" {
+		t.Fatalf("crosswalk was repointed to %q, want it left at eng-arsenal", crosswalk)
+	}
+	if provisionalRows != 0 {
+		t.Fatalf("%d provisional row(s) left behind, want the minted one rolled back", provisionalRows)
+	}
+}
+
 // The property this whole design exists to provide: the same fixture arriving
 // from two different sources, with different provider ids and kickoff times
 // minutes apart, must resolve to exactly ONE canonical match.
