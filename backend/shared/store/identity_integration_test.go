@@ -25,6 +25,14 @@ import (
 // order, and returns a Store plus an admin pool for assertions.
 func newIntegrationStore(t *testing.T) (*Store, *pgxpool.Pool) {
 	t.Helper()
+	store, pool, _ := newIntegrationStoreDSN(t)
+	return store, pool
+}
+
+// newIntegrationStoreDSN is newIntegrationStore plus the container's DSN, which
+// the least-privilege role tests need in order to connect as somebody else.
+func newIntegrationStoreDSN(t *testing.T) (*Store, *pgxpool.Pool, string) {
+	t.Helper()
 	ctx := context.Background()
 	container, err := postgres.Run(ctx, "postgres:16-alpine",
 		postgres.WithDatabase("scorearc"),
@@ -69,7 +77,7 @@ func newIntegrationStore(t *testing.T) (*Store, *pgxpool.Pool) {
 		t.Fatal(err)
 	}
 	t.Cleanup(store.Close)
-	return store, pool
+	return store, pool, dsn
 }
 
 func mustSeed(t *testing.T, store *Store) {

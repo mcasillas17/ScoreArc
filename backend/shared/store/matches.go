@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -14,6 +15,21 @@ import (
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
 
+// MatchIdentity is the canonical identity a resolver produced for one provider
+// match. It travels alongside model.Match, which stays provider-shaped: the
+// store never reads an id out of the model, only out of this struct.
+type MatchIdentity struct {
+	MatchID       uuid.UUID
+	CompetitionID string
+	SeasonID      string
+	HomeTeamID    string
+	AwayTeamID    string
+	WinnerTeamID  *string
+	Source        string
+}
+
+// MatchRow is the stored state of a match, in canonical space: every id on it
+// is a ScoreArc id, never a provider one.
 type MatchRow struct {
 	State           model.MatchState
 	FinalizedAt     pgtype.Timestamptz
@@ -28,77 +44,80 @@ type MatchRow struct {
 	AwayPlaceholder bool
 }
 
+// matchUpsertSQL is an UPDATE, not an upsert: the resolver INSERTs the row when
+// it mints the canonical id, so by the time facts are written the row exists.
+// The WHERE clause carries the same two guards the old ON CONFLICT ... WHERE
+// did — a finalized match is immutable, and state never regresses — and, as
+// before, a blocked write affects zero rows rather than raising.
 const matchUpsertSQL = `
-INSERT INTO match (
-	id, comp_id, season_id, round, kickoff, state,
-	home_team_id, away_team_id, home_score, away_score,
-	minute, status_detail, status_name, winner_id, note,
-	home_placeholder, away_placeholder, bracket_required, updated_at)
-VALUES (
-	$1, $2, $3, $4, $5::timestamptz, $6,
-	$7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, now())
-ON CONFLICT (id) DO UPDATE SET
-	comp_id = EXCLUDED.comp_id,
-	season_id = EXCLUDED.season_id,
+UPDATE match SET
 	round = CASE
-		WHEN $19 AND EXCLUDED.bracket_required IS FALSE THEN NULL
-		ELSE COALESCE(NULLIF(EXCLUDED.round, ''), match.round)
+		WHEN $16 AND $15 IS FALSE THEN NULL
+		ELSE COALESCE(NULLIF($2, ''), match.round)
 	END,
-	kickoff = EXCLUDED.kickoff,
-	state = EXCLUDED.state,
-	home_team_id = EXCLUDED.home_team_id,
-	away_team_id = EXCLUDED.away_team_id,
-	home_score = COALESCE(EXCLUDED.home_score, match.home_score),
-	away_score = COALESCE(EXCLUDED.away_score, match.away_score),
-	minute = EXCLUDED.minute,
-	status_detail = EXCLUDED.status_detail,
-	status_name = EXCLUDED.status_name,
-	winner_id = CASE
-		WHEN $19 THEN EXCLUDED.winner_id
-		ELSE COALESCE(EXCLUDED.winner_id, match.winner_id)
-	END,
-	note = COALESCE(EXCLUDED.note, match.note),
+	kickoff = $3::timestamptz,
+	state = $4,
+	home_team_id = $5,
+	away_team_id = $6,
+	home_score = COALESCE($7, match.home_score),
+	away_score = COALESCE($8, match.away_score),
+	minute = $9,
+	status_detail = $10,
+	status_name = $11,
+	winner_id = CASE WHEN $16 THEN $12 ELSE COALESCE($12, match.winner_id) END,
+	note = COALESCE($13, match.note),
+	-- A payload that is not bracket-confirmed may SET a placeholder but never
+	-- CLEAR one for the same team: the scoreboard has no idea a leg is still
+	-- unresolved, so its silence is not evidence. Preserving the stored value
+	-- unconditionally would be wrong now that the resolver INSERTs the row
+	-- first — the very first fact write is an UPDATE against a default of
+	-- false, and would drop the flag permanently.
 	home_placeholder = CASE
-		WHEN NOT $19 AND match.home_team_id = EXCLUDED.home_team_id
-		THEN match.home_placeholder
-		ELSE EXCLUDED.home_placeholder
+		WHEN NOT $16 AND match.home_team_id = $5 AND match.home_placeholder THEN true
+		ELSE $14
 	END,
 	away_placeholder = CASE
-		WHEN NOT $19 AND match.away_team_id = EXCLUDED.away_team_id
-		THEN match.away_placeholder
-		ELSE EXCLUDED.away_placeholder
+		WHEN NOT $16 AND match.away_team_id = $6 AND match.away_placeholder THEN true
+		ELSE $17
 	END,
 	bracket_required = CASE
-		WHEN $19 THEN EXCLUDED.bracket_required
+		WHEN $16 THEN $15
 		WHEN match.bracket_required IS TRUE THEN true
-		ELSE COALESCE(EXCLUDED.bracket_required, match.bracket_required)
+		ELSE COALESCE($15, match.bracket_required)
 	END,
+	source = $18,
 	updated_at = now()
-WHERE match.finalized_at IS NULL
+WHERE match.id = $1
+	AND match.finalized_at IS NULL
 	AND NOT (
-		(match.state = 'live' AND EXCLUDED.state = 'scheduled'
-			AND EXCLUDED.status_name NOT IN ('STATUS_POSTPONED', 'STATUS_SUSPENDED'))
-		OR (match.state = 'finished' AND EXCLUDED.state <> 'finished')
+		(match.state = 'live' AND $4 = 'scheduled'
+			AND $11 NOT IN ('STATUS_POSTPONED', 'STATUS_SUSPENDED'))
+		OR (match.state = 'finished' AND $4 <> 'finished')
 	)`
 
-func (s *Store) UpsertMatch(ctx context.Context, compID, seasonID string, match model.Match) error {
+// UpsertMatch writes the current facts onto the canonical match the resolver
+// already created. Every id it writes comes from identity; model.Match's own
+// Home.ID/Away.ID/WinnerID are ignored precisely because they may be provider
+// ids.
+func (s *Store) UpsertMatch(ctx context.Context, identity MatchIdentity, match model.Match) error {
 	ctx, cancel := boundedContext(ctx)
 	defer cancel()
-	_, err := s.pool.Exec(ctx, matchUpsertSQL, matchArgs(compID, seasonID, match)...)
+	_, err := s.pool.Exec(ctx, matchUpsertSQL, matchArgs(identity, match)...)
 	return err
 }
 
-func matchArgs(compID, seasonID string, match model.Match) []any {
+func matchArgs(identity MatchIdentity, match model.Match) []any {
 	var round any
 	if match.Round != "" {
 		round = match.Round
 	}
 	return []any{
-		match.ID, compID, seasonID, round, match.Kickoff, string(match.State),
-		match.Home.ID, match.Away.ID, match.HomeScore, match.AwayScore,
-		match.Minute, match.StatusDetail, match.StatusName, match.WinnerID, match.Note,
-		match.HomePlaceholder, match.AwayPlaceholder, match.BracketRequired,
-		match.BracketConfirmed,
+		identity.MatchID, round, match.Kickoff, string(match.State),
+		identity.HomeTeamID, identity.AwayTeamID,
+		match.HomeScore, match.AwayScore, match.Minute,
+		match.StatusDetail, match.StatusName, identity.WinnerTeamID, match.Note,
+		match.HomePlaceholder, match.BracketRequired, match.BracketConfirmed,
+		match.AwayPlaceholder, identity.Source,
 	}
 }
 
@@ -126,7 +145,7 @@ type execer interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }
 
-func (s *Store) UpsertMatchDetail(ctx context.Context, matchID string, detail model.MatchDetail) error {
+func (s *Store) UpsertMatchDetail(ctx context.Context, matchID uuid.UUID, detail model.MatchDetail) error {
 	ctx, cancel := boundedContext(ctx)
 	defer cancel()
 	tx, err := s.pool.Begin(ctx)
@@ -149,7 +168,7 @@ func (s *Store) UpsertMatchDetail(ctx context.Context, matchID string, detail mo
 	return tx.Commit(ctx)
 }
 
-func upsertMatchDetail(ctx context.Context, db execer, matchID string, detail model.MatchDetail) error {
+func upsertMatchDetail(ctx context.Context, db execer, matchID uuid.UUID, detail model.MatchDetail) error {
 	values, err := detailArgs(matchID, detail)
 	if err != nil {
 		return err
@@ -158,7 +177,7 @@ func upsertMatchDetail(ctx context.Context, db execer, matchID string, detail mo
 	return err
 }
 
-func detailArgs(matchID string, detail model.MatchDetail) ([]any, error) {
+func detailArgs(matchID uuid.UUID, detail model.MatchDetail) ([]any, error) {
 	values := []any{matchID}
 	for _, value := range []struct {
 		value any
@@ -204,9 +223,12 @@ func jsonValue(value any, array bool) (any, error) {
 	return string(raw), nil
 }
 
+// FinalizeMatch freezes a finished match and its detail in one transaction.
+// competition and season are NOT written here: the resolver owns them, and a
+// match cannot change competition without becoming a different match.
 func (s *Store) FinalizeMatch(
 	ctx context.Context,
-	compID, seasonID string,
+	identity MatchIdentity,
 	match model.Match,
 	detail model.MatchDetail,
 ) (bool, error) {
@@ -223,17 +245,15 @@ func (s *Store) FinalizeMatch(
 
 	var finalizedAt pgtype.Timestamptz
 	if err := tx.QueryRow(ctx,
-		`SELECT finalized_at FROM match
-		 WHERE id=$1 AND comp_id=$2 AND season_id=$3
-		 FOR UPDATE`,
-		match.ID, compID, seasonID,
+		`SELECT finalized_at FROM match WHERE id=$1 FOR UPDATE`,
+		identity.MatchID,
 	).Scan(&finalizedAt); err != nil {
 		return false, err
 	}
 	if finalizedAt.Valid {
 		return false, nil
 	}
-	if err := upsertMatchDetail(ctx, tx, match.ID, detail); err != nil {
+	if err := upsertMatchDetail(ctx, tx, identity.MatchID, detail); err != nil {
 		return false, err
 	}
 
@@ -242,35 +262,34 @@ func (s *Store) FinalizeMatch(
 		round = match.Round
 	}
 	args := []any{
-		compID, seasonID, round, match.Kickoff, string(match.State),
-		match.Home.ID, match.Away.ID, match.HomeScore, match.AwayScore,
-		match.Minute, match.StatusDetail, match.StatusName, match.WinnerID,
-		match.Note, match.HomePlaceholder, match.AwayPlaceholder, match.BracketRequired,
-		match.ID, match.BracketConfirmed,
+		identity.MatchID, round, match.Kickoff, string(match.State),
+		identity.HomeTeamID, identity.AwayTeamID, match.HomeScore, match.AwayScore,
+		match.Minute, match.StatusDetail, match.StatusName, identity.WinnerTeamID,
+		match.Note, match.HomePlaceholder, match.BracketRequired, match.BracketConfirmed,
+		match.AwayPlaceholder, identity.Source,
 	}
 	command, err := tx.Exec(ctx, `
 UPDATE match SET
-	comp_id=$1, season_id=$2, round=CASE
-		WHEN $19 AND $17 IS FALSE THEN NULL
-		ELSE COALESCE(NULLIF($3, ''), round)
+	round=CASE
+		WHEN $16 AND $15 IS FALSE THEN NULL
+		ELSE COALESCE(NULLIF($2, ''), round)
 	END,
-	kickoff=$4::timestamptz, state=$5, home_team_id=$6, away_team_id=$7,
-	home_score=COALESCE($8, home_score), away_score=COALESCE($9, away_score),
-	minute=$10, status_detail=$11, status_name=$12,
-	winner_id=CASE WHEN $19 THEN $13 ELSE COALESCE($13, winner_id) END,
-	note=COALESCE($14, note),
+	kickoff=$3::timestamptz, state=$4, home_team_id=$5, away_team_id=$6,
+	home_score=COALESCE($7, home_score), away_score=COALESCE($8, away_score),
+	minute=$9, status_detail=$10, status_name=$11,
+	winner_id=CASE WHEN $16 THEN $12 ELSE COALESCE($12, winner_id) END,
+	note=COALESCE($13, note),
 	home_placeholder=CASE
-		WHEN NOT $19 AND home_team_id=$6 THEN home_placeholder ELSE $15 END,
+		WHEN NOT $16 AND home_team_id=$5 AND home_placeholder THEN true ELSE $14 END,
 	away_placeholder=CASE
-		WHEN NOT $19 AND away_team_id=$7 THEN away_placeholder ELSE $16 END,
+		WHEN NOT $16 AND away_team_id=$6 AND away_placeholder THEN true ELSE $17 END,
 	bracket_required=CASE
-		WHEN $19 THEN $17
+		WHEN $16 THEN $15
 		WHEN bracket_required IS TRUE THEN true
-		ELSE COALESCE($17, bracket_required)
+		ELSE COALESCE($15, bracket_required)
 	END,
-	finalized_at=now(), updated_at=now()
-WHERE id=$18 AND comp_id=$1 AND season_id=$2
-	AND state='finished' AND finalized_at IS NULL`, args...)
+	source=$18, finalized_at=now(), updated_at=now()
+WHERE id=$1 AND state='finished' AND finalized_at IS NULL`, args...)
 	if err != nil {
 		return false, err
 	}
@@ -283,9 +302,15 @@ WHERE id=$18 AND comp_id=$1 AND season_id=$2
 	return true, nil
 }
 
-func (s *Store) ExistingMatches(ctx context.Context, compID, seasonID string, ids []string) (map[string]MatchRow, error) {
+// ExistingMatches reads the stored state of the given canonical matches. Both
+// the ids passed in and the map returned are canonical.
+func (s *Store) ExistingMatches(
+	ctx context.Context,
+	competitionID, seasonID string,
+	ids []uuid.UUID,
+) (map[uuid.UUID]MatchRow, error) {
 	if len(ids) == 0 {
-		return map[string]MatchRow{}, nil
+		return map[uuid.UUID]MatchRow{}, nil
 	}
 	ctx, cancel := boundedContext(ctx)
 	defer cancel()
@@ -299,16 +324,16 @@ FROM match m
 LEFT JOIN match_detail d ON d.match_id=m.id
 JOIN team home ON home.id=m.home_team_id
 JOIN team away ON away.id=m.away_team_id
-WHERE m.comp_id=$1 AND m.season_id=$2 AND m.id=ANY($3)`,
-		compID, seasonID, ids)
+WHERE m.competition_id=$1 AND m.season_id=$2 AND m.id=ANY($3)`,
+		competitionID, seasonID, ids)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	result := make(map[string]MatchRow)
+	result := make(map[uuid.UUID]MatchRow)
 	for rows.Next() {
-		var id string
+		var id uuid.UUID
 		var row MatchRow
 		if err := rows.Scan(
 			&id, &row.State, &row.FinalizedAt, &row.HasDetail,
@@ -324,23 +349,57 @@ WHERE m.comp_id=$1 AND m.season_id=$2 AND m.id=ANY($3)`,
 	return result, rows.Err()
 }
 
-func (s *Store) UnfinalizedMatches(ctx context.Context, compID, seasonID string) ([]model.Match, error) {
-	ctx, cancel := boundedContext(ctx)
-	defer cancel()
-	rows, err := s.pool.Query(ctx, `
-SELECT m.id, m.kickoff, m.state, COALESCE(m.round, ''), m.minute,
-	m.status_detail, m.status_name, m.home_score, m.away_score, m.winner_id,
+// unfinalizedMatchesSQL reads the finalization backlog back out in the SHAPE A
+// PROVIDER WOULD HAVE SENT IT: provider match id, provider team ids, provider
+// winner id. That is deliberate. These rows re-enter the ingest pipeline beside
+// live scoreboard rows — they are merged with them by id, and the summary fetch
+// that finalizes them addresses the provider's API. Returning canonical ids here
+// would fork every backlog match into a second candidate and then ask ESPN for a
+// match id ESPN has never heard of.
+//
+// Each crosswalk lookup is a LATERAL ... LIMIT 1 rather than a plain join
+// because (source, source_id) is the crosswalk's key: MANY source ids may point
+// at one canonical entity once duplicates are merged, and a plain join would
+// multiply the result set by that many.
+const unfinalizedMatchesSQL = `
+SELECT ref.source_id, m.kickoff, m.state, COALESCE(m.round, ''), m.minute,
+	m.status_detail, m.status_name, m.home_score, m.away_score, winner_ref.source_id,
 	m.note, m.home_placeholder, m.away_placeholder, m.bracket_required,
-	home.id, home.name, home.abbr, home.crest_url,
-	away.id, away.name, away.abbr, away.crest_url
+	home_ref.source_id, home.name, home.abbr, home.crest_url,
+	away_ref.source_id, away.name, away.abbr, away.crest_url
 FROM match m
 JOIN team home ON home.id=m.home_team_id
 JOIN team away ON away.id=m.away_team_id
-WHERE m.comp_id=$1 AND m.season_id=$2
+JOIN LATERAL (
+	SELECT r.source_id FROM match_external_ref r
+	WHERE r.match_id=m.id AND r.source=$3
+	ORDER BY r.first_seen_at, r.source_id LIMIT 1) ref ON true
+JOIN LATERAL (
+	SELECT r.source_id FROM team_external_ref r
+	WHERE r.team_id=m.home_team_id AND r.source=$3
+	ORDER BY r.first_seen_at, r.source_id LIMIT 1) home_ref ON true
+JOIN LATERAL (
+	SELECT r.source_id FROM team_external_ref r
+	WHERE r.team_id=m.away_team_id AND r.source=$3
+	ORDER BY r.first_seen_at, r.source_id LIMIT 1) away_ref ON true
+LEFT JOIN LATERAL (
+	SELECT r.source_id FROM team_external_ref r
+	WHERE r.team_id=m.winner_id AND r.source=$3
+	ORDER BY r.first_seen_at, r.source_id LIMIT 1) winner_ref ON true
+WHERE m.competition_id=$1 AND m.season_id=$2
 	AND m.state='finished' AND m.finalized_at IS NULL
 ORDER BY m.updated_at, m.id
-LIMIT 500`,
-		compID, seasonID)
+LIMIT 500`
+
+// UnfinalizedMatches returns the given source's view of matches that finished
+// but were never frozen, so a later cycle can retry the summary fetch.
+func (s *Store) UnfinalizedMatches(
+	ctx context.Context,
+	competitionID, seasonID, source string,
+) ([]model.Match, error) {
+	ctx, cancel := boundedContext(ctx)
+	defer cancel()
+	rows, err := s.pool.Query(ctx, unfinalizedMatchesSQL, competitionID, seasonID, source)
 	if err != nil {
 		return nil, err
 	}
