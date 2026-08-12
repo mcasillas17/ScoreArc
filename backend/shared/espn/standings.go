@@ -82,6 +82,17 @@ func MapStandings(raw []byte) ([]Standing, error) {
 	}
 
 	standings := make([]Standing, 0)
+	// The `standing` table is keyed (comp_id, season_id, team_id) — one row per
+	// team per season — and ReplaceStandings INSERTs each row, so a team
+	// appearing in two ESPN groups would abort the whole replacement
+	// transaction and freeze that competition's standings indefinitely. ESPN
+	// normally partitions teams across children, but it also publishes
+	// overlapping tables for some competitions (an "Overall" table alongside
+	// conference tables). Keep the first occurrence — groups are emitted in
+	// fixture order, so the first is the primary table — and drop later
+	// repeats. Ranks are per-entry-index, so dropping a row does not shift
+	// any other row's rank.
+	seenTeams := make(map[string]struct{})
 	for _, grp := range doc.Children {
 		entries := grp.Standings.Entries
 		if len(entries) == 0 {
@@ -115,6 +126,12 @@ func MapStandings(raw []byte) ([]Standing, error) {
 					return nil, fmt.Errorf("standing row %d in %q has invalid %s", i, grp.Name, name)
 				}
 			}
+
+			teamID := string(entry.Team.ID)
+			if _, duplicate := seenTeams[teamID]; duplicate {
+				continue
+			}
+			seenTeams[teamID] = struct{}{}
 
 			var crest *string
 			if len(entry.Team.Logos) > 0 && entry.Team.Logos[0].Href != "" {
