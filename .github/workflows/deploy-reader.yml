@@ -1,0 +1,33 @@
+name: Deploy reader
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/reader/**"
+      - "backend/shared/**"
+      - "backend/config/**"
+      - "backend/go.mod"
+      - "backend/go.sum"
+      - ".github/workflows/deploy-reader.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-reader
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: flyctl deploy (reader)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy reader to Fly
+        run: >-
+          flyctl deploy backend
+          --config backend/reader/fly.toml
+          --dockerfile backend/reader/Dockerfile
+          --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
