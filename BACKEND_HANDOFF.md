@@ -86,9 +86,10 @@ All committed on this branch. Verified: `cd backend && go build ./... && go test
 
 1. **Go module scaffold** — `backend/go.mod` (module `github.com/mcasillas17/scorearc-backend`, Go 1.26), `.vercelignore` excludes `/backend` `/infra` `/docs`.
 2. **Config export** — `scripts/export-competitions.mjs` generates `backend/config/competitions.json` from the frontend's `src/server/data/competitions.ts` (single source of truth); `backend/config/config.go` loads it (`//go:embed`), with tests. Run `npm run export:competitions` to regenerate.
-3. **Postgres migrations** — `backend/migrations/000{1..4}_*.sql`: current
-   state, snapshot skeleton, operations tables, replacement/retention grants,
-   finalization guards, and the **least-privilege roles**
+3. **Postgres migrations** — `backend/migrations/000{1,2}_*.sql`: the canonical
+   schema (entities, `*_external_ref` crosswalk, current state, operations
+   tables, replacement/retention grants, finalization guards) plus the snapshot
+   skeleton, and the **least-privilege roles**
    (`scorearc_reader` = SELECT-only; `scorearc_ingester` = writer with narrowly
    scoped replacement deletes). See ARCHITECTURE.md for the full schema.
 4. **Infra (GCP Terraform)** — `infra/*.tf`. ⚠️ **Superseded** by the Fly+Neon+R2 pivot; keep for reference but the next task replaces it.
@@ -104,6 +105,13 @@ All committed on this branch. Verified: `cd backend && go build ./... && go test
    monotonic state guards, bracket reconciliation, strict replacement safety,
    R2 crest mirroring, advisory-lock singleton lease, audit retention,
    graceful shutdown, and `-once` operation.
+8. **Canonical identity** — ScoreArc mints its own entity ids (slugs for the
+   curated sets, UUIDv7 for `match`/`player`); provider ids live in per-source
+   `*_external_ref` crosswalk tables. `match` carries a natural-key unique
+   constraint so the same fixture from a second source resolves to one row.
+   Team identity is curated in `backend/config/teams.seed.json`; an unseeded
+   team becomes a `provisional` row instead of blocking ingestion. See
+   `docs/superpowers/specs/2026-08-12-canonical-identity-design.md`.
 
 **Known minor follow-up:** Go struct field `config.Competition.CurrentSeasonId` should be renamed `CurrentSeasonID` (Go initialism lint, ST1003) when a linter is added.
 
