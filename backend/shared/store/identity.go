@@ -17,6 +17,19 @@ import (
 // is a configuration bug rather than upstream drift.
 var ErrUnknownCompetition = errors.New("unknown competition for source")
 
+// ErrMatchScopeConflict means a provider match id already maps to a canonical
+// match in a DIFFERENT competition or season than the one now claiming it.
+// (source, source_id) is globally unique in the crosswalk, but provider event
+// ids are only unique within a provider's own scope, so two competitions can in
+// principle reuse one id.
+//
+// Re-resolving under the new scope would be worse than failing: the caller
+// reads existing state by (competition, season, id), so it would find nothing,
+// skip every preservation rule, and write competition A's facts over
+// competition B's match with no error anywhere. One reported match beats one
+// silently corrupted one.
+var ErrMatchScopeConflict = errors.New("provider match id already belongs to another competition or season")
+
 // uniqueViolation is Postgres' SQLSTATE for a unique constraint breach. Two
 // writers resolving the same entity at once is a normal, expected race here,
 // not a fault: the loser re-reads and adopts the winner.
@@ -282,12 +295,26 @@ func (s *Store) Match(ctx context.Context, source string, ref MatchRef) (uuid.UU
 }
 
 func (s *Store) resolveMatch(ctx context.Context, source string, ref MatchRef) (uuid.UUID, error) {
+	// The crosswalk row is read together with the match's own scope. The key is
+	// (source, source_id) alone, so a hit is not by itself proof that the row
+	// belongs to the competition and season being ingested — see
+	// ErrMatchScopeConflict.
 	var matchID uuid.UUID
-	err := s.pool.QueryRow(ctx,
-		`SELECT match_id FROM match_external_ref WHERE source=$1 AND source_id=$2`,
+	var competitionID, seasonID string
+	err := s.pool.QueryRow(ctx, `
+SELECT r.match_id, m.competition_id, m.season_id
+FROM match_external_ref r
+JOIN match m ON m.id = r.match_id
+WHERE r.source=$1 AND r.source_id=$2`,
 		source, ref.SourceID,
-	).Scan(&matchID)
+	).Scan(&matchID, &competitionID, &seasonID)
 	if err == nil {
+		if competitionID != ref.CompetitionID || seasonID != ref.SeasonID {
+			return uuid.Nil, fmt.Errorf(
+				"%w: %s/%s maps to match %s in %s/%s, but is being ingested as %s/%s",
+				ErrMatchScopeConflict, source, ref.SourceID, matchID,
+				competitionID, seasonID, ref.CompetitionID, ref.SeasonID)
+		}
 		return matchID, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {

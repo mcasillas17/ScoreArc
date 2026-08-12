@@ -352,6 +352,61 @@ VALUES (gen_random_uuid(),'premier-league','2026-27','eng-arsenal','eng-chelsea'
 	}
 }
 
+// A provider event id is unique to the provider, not to a competition. If one
+// ever turns up under a second competition the crosswalk hit alone would return
+// the FIRST competition's match — and the caller, which reads existing state by
+// (competition, season, id), would then find nothing, skip every preservation
+// rule, and overwrite that match with the other competition's facts. Silence is
+// the failure mode, so the mismatch must be an error.
+func TestResolveMatchRefusesACrosswalkHitFromAnotherCompetition(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	mustSeedTwoTeams(t, store)
+	mustSeedSeason(t, pool)
+
+	kickoff := time.Date(2026, 8, 21, 19, 0, 0, 0, time.UTC)
+	original, err := store.Match(ctx, "espn", MatchRef{
+		SourceID: "401", CompetitionID: "premier-league", SeasonID: "2026-27",
+		HomeTeamID: "eng-arsenal", AwayTeamID: "eng-chelsea", Kickoff: kickoff,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The same ESPN event id arriving while ingesting a different competition.
+	got, err := store.Match(ctx, "espn", MatchRef{
+		SourceID: "401", CompetitionID: "mls", SeasonID: "2026",
+		HomeTeamID: "eng-arsenal", AwayTeamID: "eng-chelsea", Kickoff: kickoff,
+	})
+	t.Logf("cross-competition resolve returned id=%v err=%v", got, err)
+	if !errors.Is(err, ErrMatchScopeConflict) {
+		t.Fatalf("err = %v, want ErrMatchScopeConflict", err)
+	}
+	if got != uuid.Nil {
+		t.Fatalf("returned %v, want no id at all", got)
+	}
+	for _, want := range []string{"premier-league", "mls", "401"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q does not name %q", err, want)
+		}
+	}
+
+	// Nothing was re-resolved or written behind the error.
+	var matches int
+	var stored string
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM match`).Scan(&matches); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx,
+		`SELECT match_id::text FROM match_external_ref WHERE source='espn' AND source_id='401'`,
+	).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if matches != 1 || stored != original.String() {
+		t.Fatalf("crosswalk moved or a match was created: matches=%d ref=%s", matches, stored)
+	}
+}
+
 // Reversing home and away is a DIFFERENT fixture (the return leg), so it must
 // resolve to its own match.
 func TestResolveMatchTreatsReversedLegsAsDistinct(t *testing.T) {
