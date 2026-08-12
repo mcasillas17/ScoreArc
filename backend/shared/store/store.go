@@ -15,7 +15,8 @@ var ErrPartialReplacement = errors.New("refusing to replace standings with fewer
 var ErrMatchFinalized = errors.New("match is finalized")
 
 type Store struct {
-	pool *pgxpool.Pool
+	pool     *pgxpool.Pool
+	identity *identityCache
 }
 
 const operationTimeout = 15 * time.Second
@@ -42,7 +43,7 @@ func New(ctx context.Context, dsn string) (*Store, error) {
 		pool.Close()
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
-	return &Store{pool: pool}, nil
+	return &Store{pool: pool, identity: newIdentityCache()}, nil
 }
 
 func (s *Store) Close() {
