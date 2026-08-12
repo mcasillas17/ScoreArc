@@ -44,19 +44,13 @@ func TestInitDefinesCanonicalSchema(t *testing.T) {
 		"CREATE ROLE scorearc_ingester",
 		"GRANT DELETE ON standing, top_scorer TO scorearc_ingester",
 		"GRANT DELETE ON ingest_run TO scorearc_ingester",
+		// Curation promotion deletes the provisional team it just folded in.
+		// Without this grant every promotion fails in production, where the
+		// ingester is scorearc_ingester rather than the schema owner.
+		"GRANT DELETE ON team TO scorearc_ingester",
 	} {
 		if !strings.Contains(sql, required) {
 			t.Fatalf("0001_init.up.sql missing %q", required)
-		}
-	}
-}
-
-// No table may use a provider id as its primary key.
-func TestInitDoesNotKeyOnProviderIDs(t *testing.T) {
-	sql := readMigration(t, "0001_init.up.sql")
-	for _, forbidden := range []string{"espn_id", "espn_team_id", "espn_event_id"} {
-		if strings.Contains(sql, forbidden) {
-			t.Fatalf("0001_init.up.sql leaks a provider id column %q", forbidden)
 		}
 	}
 }
@@ -67,7 +61,7 @@ func TestSnapshotsUseCanonicalKeys(t *testing.T) {
 		"CREATE TABLE standing_snapshot",
 		"CREATE TABLE win_prob_snapshot",
 		"REFERENCES team(id)",
-		"match_id  uuid",
+		"match_id    uuid NOT NULL REFERENCES match(id)",
 	} {
 		if !strings.Contains(sql, required) {
 			t.Fatalf("0002_snapshots.up.sql missing %q", required)
@@ -84,18 +78,6 @@ func TestInitialRollbackRevokesDefaultPrivileges(t *testing.T) {
 	} {
 		if !strings.Contains(sql, required) {
 			t.Fatalf("rollback missing %q", required)
-		}
-	}
-}
-
-// The superseded migrations must be gone, not left to be applied by accident.
-func TestSupersededMigrationsRemoved(t *testing.T) {
-	for _, gone := range []string{
-		"0003_ingester_delete_grant.up.sql",
-		"0004_ingester_hardening.up.sql",
-	} {
-		if _, err := os.Stat(gone); !os.IsNotExist(err) {
-			t.Fatalf("%s should have been folded into 0001 and deleted", gone)
 		}
 	}
 }

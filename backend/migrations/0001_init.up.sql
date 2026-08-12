@@ -184,13 +184,13 @@ CREATE TABLE top_scorer (
 );
 
 CREATE TABLE ingest_run (
-  id          bigserial PRIMARY KEY,
-  comp_id     text,
-  kind        text NOT NULL,
-  started_at  timestamptz NOT NULL DEFAULT now(),
-  finished_at timestamptz,
-  ok          bool,
-  error       text
+  id             bigserial PRIMARY KEY,
+  competition_id text,
+  kind           text NOT NULL,
+  started_at     timestamptz NOT NULL DEFAULT now(),
+  finished_at    timestamptz,
+  ok             bool,
+  error          text
 );
 CREATE INDEX ingest_run_started_idx ON ingest_run (started_at);
 
@@ -298,6 +298,11 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO scorearc_ingester;
 -- Replacement writes need DELETE on exactly these tables and no others.
 GRANT DELETE ON standing, top_scorer TO scorearc_ingester;
 GRANT DELETE ON ingest_run TO scorearc_ingester;
+-- Curation promotion (spec §5.4) ends by deleting the provisional team whose
+-- history has just been moved onto its curated row. Without this the ingester's
+-- seed silently leaves every promoted club resolving to `prov-espn-*` forever.
+-- Narrow on purpose: `team` only, never a blanket DELETE.
+GRANT DELETE ON team TO scorearc_ingester;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO scorearc_reader;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE ON TABLES TO scorearc_ingester;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE ON SEQUENCES TO scorearc_ingester;

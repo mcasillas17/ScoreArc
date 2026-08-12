@@ -14,10 +14,10 @@ CREATE INDEX standing_snapshot_key_idx
 
 CREATE TABLE win_prob_snapshot (
   id          bigserial PRIMARY KEY,
-  match_id  uuid NOT NULL REFERENCES match(id) ON DELETE CASCADE,
+  match_id    uuid NOT NULL REFERENCES match(id) ON DELETE CASCADE,
   captured_at timestamptz NOT NULL,
-  home numeric(5,2) NOT NULL,
-  draw numeric(5,2) NOT NULL,
-  away numeric(5,2) NOT NULL
+  home        numeric(5,2) NOT NULL,
+  draw        numeric(5,2) NOT NULL,
+  away        numeric(5,2) NOT NULL
 );
 CREATE INDEX win_prob_snapshot_match_idx ON win_prob_snapshot (match_id, captured_at);

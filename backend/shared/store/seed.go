@@ -17,9 +17,16 @@ import (
 // ErrPromotionBlocked means a provisional team could not be folded into the
 // curated team that took over its source ids. The rest of the seed still
 // applies; that one team keeps resolving through its provisional row until a
-// human resolves the conflict. Callers that care can test for it with
-// errors.Is on the error logged by ApplyTeamSeed.
+// human resolves the conflict.
+//
+// ApplyTeamSeed does NOT return this — a blocked promotion is one degraded club,
+// not a reason to refuse to start. It is reported instead: a warning log AND a
+// failed `ingest_run` row per blocked team, so the failure is visible to
+// monitoring rather than only to whoever is tailing logs.
 var ErrPromotionBlocked = errors.New("provisional team promotion blocked")
+
+// promotionRunKind is the ingest_run kind a blocked promotion is recorded under.
+const promotionRunKind = "team_promotion"
 
 // seedTimeout bounds a whole seed apply. Seeding is bulk work — ~200 teams and
 // their crosswalk rows — so it must NOT borrow the generic per-operation
@@ -70,10 +77,13 @@ type seedRef struct {
 // key, and a second source then forks a duplicate match.
 //
 // A promotion that cannot complete — say the curated team already holds a row
-// the provisional team's history would collide with — does NOT fail the seed.
-// That team is left pointing at its provisional row and the rest of the seed is
-// applied: the affected club keeps working, degraded rather than down, and the
-// next seed run retries. Each failure is logged with both ids and the reason.
+// the provisional team's history would collide with, or the role is missing the
+// DELETE grant this needs — does NOT fail the seed. That team is left pointing
+// at its provisional row and the rest of the seed is applied: the affected club
+// keeps working, degraded rather than down, and the next seed run retries. Each
+// failure is logged with both ids and the reason AND written to `ingest_run` as
+// a failed run, because a degradation nobody can see is indistinguishable from
+// the feature never having worked.
 func (s *Store) ApplyTeamSeed(ctx context.Context, seed []config.SeedTeam) error {
 	ctx, cancel := seedContext(ctx)
 	defer cancel()
@@ -135,12 +145,14 @@ func (s *Store) ApplyTeamSeed(ctx context.Context, seed []config.SeedTeam) error
 
 	var deferred []string
 	for _, promotion := range promotions {
+		started := time.Now()
 		if err := s.applyPromotion(ctx, promotion); err != nil {
 			deferred = append(deferred, promotion.provisionalID)
 			slog.Warn("team curation deferred: the provisional row keeps its history",
 				"provisional", promotion.provisionalID,
 				"curated", promotion.curatedID,
 				"error", err)
+			s.recordBlockedPromotion(ctx, promotion, started, err)
 			continue
 		}
 	}
@@ -157,6 +169,27 @@ type promotion struct {
 	provisionalID string
 	curatedID     string
 	refs          []seedRef
+}
+
+// recordBlockedPromotion writes the failed promotion to the ingest audit log.
+// It is best-effort by design: it runs on a context detached from the seed's,
+// so a seed that has just run out of time still leaves the record behind, and a
+// failure to record is itself only logged — the seed must still finish.
+func (s *Store) recordBlockedPromotion(
+	ctx context.Context,
+	p promotion,
+	started time.Time,
+	cause error,
+) {
+	logCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	message := fmt.Sprintf("promote %s -> %s: %v", p.provisionalID, p.curatedID, cause)
+	if err := s.LogIngestRun(
+		logCtx, nil, promotionRunKind, started, time.Now(), false, message,
+	); err != nil {
+		slog.Warn("record blocked team promotion",
+			"provisional", p.provisionalID, "curated", p.curatedID, "error", err)
+	}
 }
 
 // applyPromotion moves one provisional team's source ids and history onto its

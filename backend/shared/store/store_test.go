@@ -539,16 +539,15 @@ func TestSparseUpsertsPreserveMatchNoteRoundAndWinner(t *testing.T) {
 	}
 }
 
-// The ingester runs as a least-privilege role. Everything it does in a cycle —
-// resolving identities, writing facts, replacing tables, pruning its own audit
-// log, holding the singleton lease — must be reachable with exactly the grants
-// the migration hands out, and nothing more.
-func TestIngesterRoleCanRunAFullCycleAndHoldsASingletonLease(t *testing.T) {
-	owner, pool, dsn := newIntegrationStoreDSN(t)
+// newIngesterRoleStore returns a Store connected as a member of
+// scorearc_ingester rather than as the schema owner. Every test that claims
+// "the ingester can do X" must go through this: the owner bypasses the grants,
+// so a superuser-pool test proves nothing about production, where the ingester
+// is this role. It returns the role's name too, for tests that also need to log
+// in with it directly.
+func newIngesterRoleStore(t *testing.T, pool *pgxpool.Pool, dsn string) (*Store, string) {
+	t.Helper()
 	ctx := context.Background()
-	mustSeedTwoTeams(t, owner)
-	mustSeedSeason(t, pool)
-
 	roleName := fmt.Sprintf("scorearc_ingester_test_%d", time.Now().UnixNano())
 	identifier := pgx.Identifier{roleName}.Sanitize()
 	if _, err := pool.Exec(ctx, fmt.Sprintf(
@@ -556,7 +555,6 @@ func TestIngesterRoleCanRunAFullCycleAndHoldsASingletonLease(t *testing.T) {
 	)); err != nil {
 		t.Fatal(err)
 	}
-
 	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		t.Fatal(err)
@@ -568,7 +566,20 @@ func TestIngesterRoleCanRunAFullCycleAndHoldsASingletonLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(rolePool.Close)
-	roleStore := &Store{pool: rolePool}
+	return &Store{pool: rolePool}, roleName
+}
+
+// The ingester runs as a least-privilege role. Everything it does in a cycle —
+// resolving identities, writing facts, replacing tables, pruning its own audit
+// log, holding the singleton lease — must be reachable with exactly the grants
+// the migration hands out, and nothing more.
+func TestIngesterRoleCanRunAFullCycleAndHoldsASingletonLease(t *testing.T) {
+	owner, pool, dsn := newIntegrationStoreDSN(t)
+	ctx := context.Background()
+	mustSeedTwoTeams(t, owner)
+	mustSeedSeason(t, pool)
+
+	roleStore, roleName := newIngesterRoleStore(t, pool, dsn)
 
 	now := time.Now()
 	if err := roleStore.LogIngestRun(ctx, nil, "permission_test", now, now, true, ""); err != nil {

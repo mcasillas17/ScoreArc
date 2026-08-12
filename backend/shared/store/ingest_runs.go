@@ -20,7 +20,7 @@ func (s *Store) LogIngestRun(
 		storedError = errorMessage
 	}
 	_, err := s.pool.Exec(ctx, `
-INSERT INTO ingest_run (comp_id, kind, started_at, finished_at, ok, error)
+INSERT INTO ingest_run (competition_id, kind, started_at, finished_at, ok, error)
 VALUES ($1,$2,$3,$4,$5,$6)`,
 		compID, kind, startedAt, finishedAt, ok, storedError)
 	return err

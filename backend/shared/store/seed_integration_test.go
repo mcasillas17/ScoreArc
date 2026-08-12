@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -232,6 +233,69 @@ func TestApplyTeamSeedPromotesProvisionalTeam(t *testing.T) {
 	}
 }
 
+// The seed runs in the ingester, and in production the ingester is
+// scorearc_ingester — NOT the schema owner every other test here uses. Promotion
+// ends by DELETEing the provisional team, so a missing DELETE grant makes
+// curation permanently dead while ApplyTeamSeed still returns nil. Run the exact
+// same promotion as that role: without `GRANT DELETE ON team`, this fails.
+func TestApplyTeamSeedPromotesProvisionalTeamAsTheIngesterRole(t *testing.T) {
+	owner, pool, dsn := newIntegrationStoreDSN(t)
+	ctx := context.Background()
+	mustProvisionalWithHistory(t, owner, pool)
+	roleStore, roleName := newIngesterRoleStore(t, pool, dsn)
+
+	if err := roleStore.ApplyTeamSeed(ctx, lutonSeed); err != nil {
+		t.Fatalf("ApplyTeamSeed as %s: %v", roleName, err)
+	}
+
+	var provisionalLeft int
+	var crosswalk, home string
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM team WHERE provisional`).Scan(&provisionalLeft); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx,
+		`SELECT team_id FROM team_external_ref WHERE source='espn' AND source_id='9999'`,
+	).Scan(&crosswalk); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT home_team_id FROM match`).Scan(&home); err != nil {
+		t.Fatal(err)
+	}
+
+	// A promotion that could not complete must have left a failed ingest_run
+	// row; a successful one must not.
+	var failures int
+	var recorded string
+	if err := pool.QueryRow(ctx, `
+SELECT count(*), COALESCE(max(error), '') FROM ingest_run
+WHERE kind='team_promotion' AND ok IS FALSE`).Scan(&failures, &recorded); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("as role %s: provisional rows left=%d crosswalk=%s match.home_team_id=%s blocked ingest_run rows=%d %s",
+		roleName, provisionalLeft, crosswalk, home, failures, recorded)
+
+	if provisionalLeft != 0 {
+		t.Fatalf("provisional row survived curation run as %s: %d left (recorded failure: %s)",
+			roleName, provisionalLeft, recorded)
+	}
+	if crosswalk != "eng-luton-town" || home != "eng-luton-town" {
+		t.Fatalf("crosswalk=%s match.home_team_id=%s, want eng-luton-town", crosswalk, home)
+	}
+	if failures != 0 {
+		t.Fatalf("a successful promotion recorded %d failures: %v", failures, recorded)
+	}
+
+	// The resolver in that same process must now hand out the curated id.
+	id, err := roleStore.Team(ctx, "espn", TeamRef{SourceID: "9999", Name: "Luton Town", Abbr: "LUT"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "eng-luton-town" {
+		t.Fatalf("resolve after promotion = %q, want eng-luton-town", id)
+	}
+}
+
 // Curating a club that has already played finished matches is the NORMAL
 // lifecycle, not an exception: it is auto-created in August and curated in a
 // later pass. The trigger carve-out exists so that promotion still works.
@@ -352,6 +416,24 @@ VALUES (gen_random_uuid(),'premier-league','2026-27',$1,'eng-chelsea',$2,'schedu
 	}
 	if provisionalLeft != 1 {
 		t.Fatalf("provisional teams = %d, want exactly the blocked one", provisionalLeft)
+	}
+
+	// Degraded rather than down is the right call — but it must not be
+	// invisible. The blocked promotion is an auditable failed run, not just a
+	// log line nobody reads.
+	var failures int
+	var recorded string
+	if err := pool.QueryRow(ctx, `
+SELECT count(*), COALESCE(max(error), '') FROM ingest_run
+WHERE kind='team_promotion' AND ok IS FALSE`).Scan(&failures, &recorded); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("blocked promotion recorded %d failed ingest_run row(s): %s", failures, recorded)
+	if failures != 1 {
+		t.Fatalf("blocked promotions recorded = %d, want 1", failures)
+	}
+	if !strings.Contains(recorded, blocked) || !strings.Contains(recorded, "eng-luton-town") {
+		t.Fatalf("recorded failure %q names neither end of the promotion", recorded)
 	}
 }
 
