@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -137,4 +139,84 @@ func (s *Store) Competition(ctx context.Context, source, sourceID string) (strin
 		return "", fmt.Errorf("%w: %s/%s", ErrUnknownCompetition, source, sourceID)
 	}
 	return id, err
+}
+
+// MatchRef is a provider-scoped match identity. The canonical natural key is
+// (competition, season, home, away, kickoff DATE) — deliberately date-grained,
+// because sources routinely disagree on kickoff time by minutes.
+type MatchRef struct {
+	SourceID      string
+	CompetitionID string
+	SeasonID      string
+	HomeTeamID    string
+	AwayTeamID    string
+	Kickoff       time.Time
+}
+
+// Match resolves a provider match to a canonical match id. On a crosswalk miss
+// it upserts against the natural key, so a fixture already ingested from
+// another source is adopted rather than duplicated.
+func (s *Store) Match(ctx context.Context, source string, ref MatchRef) (uuid.UUID, error) {
+	if ref.SourceID == "" {
+		return uuid.Nil, fmt.Errorf("match ref has no source id")
+	}
+	opCtx, cancel := boundedContext(ctx)
+	defer cancel()
+
+	var matchID uuid.UUID
+	err := s.pool.QueryRow(opCtx,
+		`SELECT match_id FROM match_external_ref WHERE source=$1 AND source_id=$2`,
+		source, ref.SourceID,
+	).Scan(&matchID)
+	if err == nil {
+		return matchID, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, err
+	}
+
+	tx, err := s.pool.Begin(opCtx)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	defer tx.Rollback(opCtx)
+
+	// Adopt an existing match on the natural key if one is already there.
+	err = tx.QueryRow(opCtx, `
+SELECT id FROM match
+WHERE competition_id=$1 AND season_id=$2 AND home_team_id=$3 AND away_team_id=$4
+	AND kickoff_date=($5 AT TIME ZONE 'UTC')::date`,
+		ref.CompetitionID, ref.SeasonID, ref.HomeTeamID, ref.AwayTeamID, ref.Kickoff,
+	).Scan(&matchID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		matchID, err = uuid.NewV7()
+		if err != nil {
+			return uuid.Nil, err
+		}
+		if _, err := tx.Exec(opCtx, `
+INSERT INTO match (id, competition_id, season_id, home_team_id, away_team_id,
+	kickoff, state, source, updated_at)
+VALUES ($1,$2,$3,$4,$5,$6,'scheduled',$7,now())`,
+			matchID, ref.CompetitionID, ref.SeasonID, ref.HomeTeamID, ref.AwayTeamID,
+			ref.Kickoff, source,
+		); err != nil {
+			return uuid.Nil, err
+		}
+	} else if err != nil {
+		return uuid.Nil, err
+	}
+
+	if _, err := tx.Exec(opCtx, `
+INSERT INTO match_external_ref (source, source_id, match_id, first_seen_at, last_seen_at)
+VALUES ($1,$2,$3,now(),now())
+ON CONFLICT (source, source_id) DO UPDATE SET
+	match_id = EXCLUDED.match_id, last_seen_at = now()`,
+		source, ref.SourceID, matchID,
+	); err != nil {
+		return uuid.Nil, err
+	}
+	if err := tx.Commit(opCtx); err != nil {
+		return uuid.Nil, err
+	}
+	return matchID, nil
 }
