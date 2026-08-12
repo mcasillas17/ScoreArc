@@ -1,0 +1,20 @@
+[
+  {
+    "id": "nat-mex",
+    "kind": "national",
+    "name": "Mexico",
+    "shortName": "Mexico",
+    "abbr": "MEX",
+    "country": "mex",
+    "refs": { "espn": "203" }
+  },
+  {
+    "id": "mex-cruz-azul",
+    "kind": "club",
+    "name": "Cruz Azul",
+    "shortName": "Cruz Azul",
+    "abbr": "CAZ",
+    "country": "mex",
+    "refs": { "espn": "230" }
+  }
+]
