@@ -15,6 +15,13 @@ var ErrEmptyReplacement = errors.New("refusing to replace with an empty dataset"
 var ErrPartialReplacement = errors.New("refusing to replace standings with fewer rows")
 var ErrMatchFinalized = errors.New("match is finalized")
 
+// ErrMatchMissing means a fact write addressed a canonical match id that has no
+// row. The resolver creates the row before any fact write, so this is a broken
+// invariant — a lost row, or an id that never came from the resolver — and is
+// deliberately distinct from a write the immutability or state-regression
+// guards intentionally rejected, which is normal and reported as success.
+var ErrMatchMissing = errors.New("no match row for the canonical id")
+
 type Store struct {
 	pool *pgxpool.Pool
 	// identity is reachable only through s.cache(), which initialises it on

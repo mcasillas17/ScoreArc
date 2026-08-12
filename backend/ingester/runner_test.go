@@ -130,6 +130,8 @@ type fakeRepository struct {
 	lastIdentity    store.MatchIdentity
 	teamKinds       map[string]string
 	standingTeamIDs map[string]string
+	matchAlias      map[string]string
+	upserted        []string
 }
 
 type loggedRun struct {
@@ -156,7 +158,15 @@ func (f *fakeRepository) Team(_ context.Context, _ string, ref store.TeamRef) (s
 	return fakeTeamID(ref.SourceID), nil
 }
 func (f *fakeRepository) Match(_ context.Context, _ string, ref store.MatchRef) (uuid.UUID, error) {
-	return fakeMatchID(ref.SourceID), nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// matchAlias is how a test makes two provider ids resolve to ONE canonical
+	// match — exactly what the crosswalk permits once duplicates are merged.
+	sourceID := ref.SourceID
+	if aliased, ok := f.matchAlias[sourceID]; ok {
+		sourceID = aliased
+	}
+	return fakeMatchID(sourceID), nil
 }
 func (f *fakeRepository) ApplyTeamSeed(context.Context, []config.SeedTeam) error { return nil }
 func (f *fakeRepository) ApplyCompetitionSeed(context.Context, []config.Competition) error {
@@ -175,6 +185,7 @@ func (f *fakeRepository) UpsertMatch(
 	f.matchCalls++
 	f.lastUpsert = match
 	f.lastIdentity = identity
+	f.upserted = append(f.upserted, match.ID)
 	return nil
 }
 func (f *fakeRepository) UpsertMatchDetail(context.Context, uuid.UUID, model.MatchDetail) error {
@@ -338,6 +349,53 @@ func TestFinishedMatchRetriesSummaryBeforeFinalizing(t *testing.T) {
 	}
 	if repo.standingsCalls != 1 || repo.topScorersCalls != 1 {
 		t.Fatalf("refreshes standings=%d scorers=%d", repo.standingsCalls, repo.topScorersCalls)
+	}
+}
+
+// Two provider ids can resolve to ONE canonical match — the crosswalk exists to
+// allow it. As separate candidates they raced for the same row, shared and
+// mutated the same `existing` entry, and (Go map order being randomised) which
+// payload won flapped from cycle to cycle. They must be merged into one
+// candidate, deterministically.
+func TestDuplicateProviderIDsForOneMatchBecomeOneCandidate(t *testing.T) {
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	round := "Matchday 1"
+	for attempt := range 20 { // map order is randomised per run, so repeat
+		scoreboard := finishedMatch()
+		scoreboard.State = model.MatchStateScheduled
+		duplicate := scoreboard
+		duplicate.ID = "m1-duplicate"
+		duplicate.Round = round
+
+		src := &fakeSource{matches: []model.Match{scoreboard, duplicate}}
+		repo := &fakeRepository{
+			existing:   map[string]store.MatchRow{},
+			matchAlias: map[string]string{"m1-duplicate": "m1"},
+		}
+		runner := testRunner(src, repo, comp)
+		runner.runCycle(context.Background(), false)
+
+		if repo.matchCalls != 1 {
+			t.Fatalf("attempt %d: match writes=%d (%v), want exactly one per canonical match",
+				attempt, repo.matchCalls, repo.upserted)
+		}
+		// Deterministic, not whichever the map handed over first — and the
+		// merge keeps what only one of the two payloads carried.
+		if repo.lastUpsert.ID != "m1" {
+			t.Fatalf("attempt %d: kept candidate %q, want the stable choice m1",
+				attempt, repo.lastUpsert.ID)
+		}
+		if repo.lastUpsert.Round != round {
+			t.Fatalf("attempt %d: merged candidate lost the duplicate's round: %q",
+				attempt, repo.lastUpsert.Round)
+		}
+		if repo.lastIdentity.MatchID != fakeMatchID("m1") {
+			t.Fatalf("attempt %d: wrote against %v, want the canonical id",
+				attempt, repo.lastIdentity.MatchID)
+		}
 	}
 }
 

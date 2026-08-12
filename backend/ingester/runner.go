@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -281,18 +282,47 @@ func (r *runner) ingestCompSeason(
 	// natural key as needed — before anything is read or written about it. A
 	// candidate that cannot be resolved is dropped from this cycle and reported;
 	// the rest still ingest.
+	//
+	// Candidates arrive keyed by PROVIDER id, and two provider ids can resolve
+	// to one canonical match — the crosswalk allows exactly that, and it is what
+	// merging a duplicate produces. Both must not survive as separate
+	// candidates: they would race for the same row, share and mutate the same
+	// `existing` entry, and if the first finalized the second's write would
+	// silently match zero rows. They are merged here instead, the same way two
+	// payloads for one provider id already are.
+	//
+	// The iteration order is sorted rather than Go's randomised map order so the
+	// merge is reproducible: which payload wins must not flap from cycle to
+	// cycle.
 	resolveStart := time.Now()
+	providerIDs := make([]string, 0, len(candidates))
+	for id := range candidates {
+		providerIDs = append(providerIDs, id)
+	}
+	sort.Strings(providerIDs)
+
 	ids := make([]uuid.UUID, 0, len(candidates))
 	matches := make([]model.Match, 0, len(candidates))
 	identities := make(map[string]store.MatchIdentity, len(candidates))
+	positions := make(map[uuid.UUID]int, len(candidates))
 	var resolveErrors []error
-	for id, match := range candidates {
+	for _, id := range providerIDs {
+		match := candidates[id]
 		identity, err := r.resolveMatch(ctx, comp, season.ID, match)
 		if err != nil {
 			resolveErrors = append(resolveErrors, fmt.Errorf("match %s: %w", id, err))
 			continue
 		}
 		identities[id] = identity
+		if at, duplicate := positions[identity.MatchID]; duplicate {
+			merged := mergeCandidate(matches[at], match)
+			r.log.Warn("two provider ids resolve to one match; merging",
+				"comp", comp.ID, "season", season.ID, "match", identity.MatchID,
+				"ids", matches[at].ID+","+id, "kept", merged.ID)
+			matches[at] = merged
+			continue
+		}
+		positions[identity.MatchID] = len(matches)
 		ids = append(ids, identity.MatchID)
 		matches = append(matches, match)
 	}

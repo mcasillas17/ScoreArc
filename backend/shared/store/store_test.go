@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -536,6 +537,53 @@ func TestSparseUpsertsPreserveMatchNoteRoundAndWinner(t *testing.T) {
 	}
 	if storedNote == nil || *storedNote != note {
 		t.Fatalf("finalized match note=%v", storedNote)
+	}
+}
+
+// A write that changes no row is not automatically a success. The two reasons
+// it can happen are opposites: the guards rejecting the write (normal — the
+// match is finalized, or the state would regress) versus the row not existing
+// at all (a broken invariant, since the resolver creates it first). Treating
+// them alike is what let a duplicate candidate's write vanish silently.
+func TestUpsertMatchSeparatesAGuardRejectionFromAMissingRow(t *testing.T) {
+	store, _ := newSeededStore(t)
+	ctx := context.Background()
+	kickoff := time.Date(2026, 8, 21, 19, 0, 0, 0, time.UTC)
+
+	identity := resolveFixture(t, store, "rows-1", kickoff)
+	match := fixtureMatch(identity, "rows-1", kickoff)
+	if err := store.UpsertMatch(ctx, identity, match); err != nil {
+		t.Fatalf("first write: %v", err)
+	}
+
+	// Guard rejection: finalize, then write again. Zero rows, still a success.
+	if finalized, err := store.FinalizeMatch(ctx, identity, match, model.MatchDetail{}); err != nil || !finalized {
+		t.Fatalf("FinalizeMatch finalized=%v err=%v", finalized, err)
+	}
+	if err := store.UpsertMatch(ctx, identity, match); err != nil {
+		t.Fatalf("a write the finalized guard rejected must not be an error: %v", err)
+	}
+
+	// State regression is the other guard, on a match that is NOT finalized.
+	live := resolveFixture(t, store, "rows-2", kickoff.Add(48*time.Hour))
+	liveMatch := fixtureMatch(live, "rows-2", kickoff.Add(48*time.Hour))
+	liveMatch.State = model.MatchStateLive
+	if err := store.UpsertMatch(ctx, live, liveMatch); err != nil {
+		t.Fatal(err)
+	}
+	liveMatch.State = model.MatchStateScheduled
+	if err := store.UpsertMatch(ctx, live, liveMatch); err != nil {
+		t.Fatalf("a write the regression guard rejected must not be an error: %v", err)
+	}
+
+	// Missing row: an id nothing owns. Nothing can be preserved here, so
+	// reporting success would be reporting a write that went nowhere.
+	missing := identity
+	missing.MatchID = uuid.MustParse("01890000-0000-7000-8000-00000000dead")
+	err := store.UpsertMatch(ctx, missing, match)
+	t.Logf("write against an unknown match id returned: %v", err)
+	if !errors.Is(err, ErrMatchMissing) {
+		t.Fatalf("err = %v, want ErrMatchMissing", err)
 	}
 }
 

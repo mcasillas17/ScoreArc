@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"time"
@@ -99,10 +100,30 @@ WHERE match.id = $1
 // already created. Every id it writes comes from identity; model.Match's own
 // Home.ID/Away.ID/WinnerID are ignored precisely because they may be provider
 // ids.
+//
+// Zero rows updated has two very different meanings and they must not be
+// conflated. A GUARD rejection — the match is finalized, or the write would
+// regress its state — is normal operation and returns nil: that is the WHERE
+// clause doing its job, and the caller has nothing to fix. A MISSING row is a
+// fault: the resolver inserts the match before any fact write, so an id nothing
+// owns means the write went nowhere and reporting success would hide it.
 func (s *Store) UpsertMatch(ctx context.Context, identity MatchIdentity, match model.Match) error {
 	ctx, cancel := boundedContext(ctx)
 	defer cancel()
-	_, err := s.pool.Exec(ctx, matchUpsertSQL, matchArgs(identity, match)...)
+	command, err := s.pool.Exec(ctx, matchUpsertSQL, matchArgs(identity, match)...)
+	if err != nil {
+		return err
+	}
+	if command.RowsAffected() > 0 {
+		return nil
+	}
+	// Only reached when nothing was written, so the extra round trip costs
+	// nothing in the normal path.
+	var exists bool
+	err = s.pool.QueryRow(ctx, `SELECT true FROM match WHERE id=$1`, identity.MatchID).Scan(&exists)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("%w: %s", ErrMatchMissing, identity.MatchID)
+	}
 	return err
 }
 
