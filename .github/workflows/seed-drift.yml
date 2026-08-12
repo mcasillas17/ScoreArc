@@ -1,0 +1,57 @@
+name: Team seed drift
+
+# Reports teams ESPN currently knows that backend/config/teams.seed.json does
+# not carry. Scheduled rather than run on pull requests: curating a team is a
+# human decision and must never block unrelated work. Runtime provisional team
+# creation is the availability backstop, so drift is a review nudge, not an
+# outage.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    name: report teams missing from the seed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Compare live ESPN against teams.seed.json
+        working-directory: backend
+        run: |
+          # The seed is the generator's embedded merge base, so the proposal
+          # must go to a temp file — never redirected onto the seed itself.
+          go run ./cmd/seed-teams > /tmp/proposed.json
+          python3 - <<'PY'
+          import json, sys
+
+
+          def espn_ids(path):
+              """ESPN source ids in a seed file. `refs` maps source name -> source id."""
+              with open(path) as handle:
+                  teams = json.load(handle)
+              return {team["refs"]["espn"] for team in teams if "espn" in team.get("refs", {})}
+
+
+          missing = espn_ids("/tmp/proposed.json") - espn_ids("config/teams.seed.json")
+          if missing:
+              print(f"{len(missing)} team(s) known to ESPN are absent from teams.seed.json:")
+              for espn_id in sorted(missing):
+                  print("  espn id", espn_id)
+              print("\nRegenerate the proposal through a temp file, then review and commit:")
+              print("  cd backend && go run ./cmd/seed-teams > /tmp/teams.seed.json && "
+                    "mv /tmp/teams.seed.json config/teams.seed.json")
+              print("\nDo NOT redirect stdout onto config/teams.seed.json: the seed is embedded")
+              print("as the generator's merge base, so the shell would truncate it before the")
+              print("command compiled, and the generator refuses to run without that base.")
+              sys.exit(1)
+          print("teams.seed.json covers every team ESPN currently reports")
+          PY
