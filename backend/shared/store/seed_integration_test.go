@@ -59,3 +59,44 @@ func TestApplyTeamSeedIsIdempotent(t *testing.T) {
 		t.Fatalf("name = %q, want the re-seeded value", name)
 	}
 }
+
+func TestApplyCompetitionSeedPopulatesSeasonsAndRefs(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+
+	registry, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 { // idempotent
+		if err := store.ApplyCompetitionSeed(ctx, registry.List()); err != nil {
+			t.Fatalf("ApplyCompetitionSeed: %v", err)
+		}
+	}
+
+	var comps, seasons, refs int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM competition`).Scan(&comps); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM season`).Scan(&seasons); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM competition_external_ref`).Scan(&refs); err != nil {
+		t.Fatal(err)
+	}
+	if comps != len(registry.List()) || refs != len(registry.List()) {
+		t.Fatalf("comps=%d refs=%d, want %d each", comps, refs, len(registry.List()))
+	}
+	if seasons < comps {
+		t.Fatalf("seasons = %d, want at least one per competition (%d)", seasons, comps)
+	}
+
+	// The ESPN slug must resolve to our canonical competition id.
+	id, err := store.Competition(ctx, "espn", "eng.1")
+	if err != nil {
+		t.Fatalf("Competition: %v", err)
+	}
+	if id != "premier-league" {
+		t.Fatalf("resolved %q, want premier-league", id)
+	}
+}
