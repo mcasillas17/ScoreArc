@@ -67,9 +67,10 @@ This is a **monorepo**. The frontend and backend live together; Vercel ignores
   config/                 loads competitions.json (generated from competitions.ts) → shared config
   migrations/             Postgres schema, hardening, roles, and rollback files
   ingester/               [IMPLEMENTED] private worker/store/cadence/assets
+                          + Dockerfile/fly.toml (always-on singleton worker)
   reader/                 [IMPLEMENTED — slice 1c] public REST API serving the 6 shapes
+                          + Dockerfile/fly.toml (public, scale-to-zero)
   shared/espn/            tested Go ESPN client, domain types, and mappers
-/infra/                   [SUPERSEDED — GCP Terraform; replace with Fly+Neon+R2, slice 1a-rev]
 /docs/
   backend/                THIS handoff package (SETUP.md, ARCHITECTURE.md)
   superpowers/specs/      the full design spec (GCP-flavoured infra; app design still valid)
@@ -92,7 +93,7 @@ All committed on this branch. Verified: `cd backend && go build ./... && go test
    skeleton, and the **least-privilege roles**
    (`scorearc_reader` = SELECT-only; `scorearc_ingester` = writer with narrowly
    scoped replacement deletes). See ARCHITECTURE.md for the full schema.
-4. **Infra (GCP Terraform)** — `infra/*.tf`. ⚠️ **Superseded** by the Fly+Neon+R2 pivot; keep for reference but the next task replaces it.
+4. **Deploy assets (Fly)** — `backend/{reader,ingester}/Dockerfile` + `fly.toml`, path-filtered GitHub Actions deploy workflows, and `backend/.dockerignore`. Both images are validated by a real `docker build`. The old GCP Terraform under `/infra` was **deleted** by this slice (Fly+Neon+R2 supersedes it); recover it from history at `c6d382e` if ever needed.
 5. **Shared ESPN layer** — Go endpoint builders, response models, and fixture-tested
    mappers for scoreboard, standings, bracket, summary, statistics, and news.
 6. **Public reader API (slice 1c)** — six versioned `/v1` routes plus `/healthz`,
