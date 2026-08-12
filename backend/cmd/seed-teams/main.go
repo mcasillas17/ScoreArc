@@ -212,10 +212,7 @@ func run(bootstrap bool) error {
 		if !ok {
 			continue
 		}
-		kind := "club"
-		if comp.ESPNSlug == "fifa.world" {
-			kind = "national"
-		}
+		kind := config.TeamKind(comp)
 		prefix := countryPrefix(comp.ESPNSlug)
 
 		var teams []model.Team

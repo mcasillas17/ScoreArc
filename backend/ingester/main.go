@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -52,6 +53,15 @@ func run() int {
 		return 1
 	}
 	defer repo.Close()
+	if err := applySeeds(ctx, repo, registry); err != nil {
+		cancelStartup()
+		if leaseErrorExitCode(ctx, err) == 0 {
+			log.Info("shutdown complete")
+			return 0
+		}
+		log.Error("seed registries", "err", err)
+		return 1
+	}
 	lease, acquired, err := store.AcquireIngesterLease(startupCtx, leaseDSN)
 	cancelStartup()
 	if err != nil {
@@ -159,6 +169,31 @@ func run() int {
 		}
 	}
 
+}
+
+// applySeeds writes the curated registries before any ingest, and returns a
+// non-zero exit code if it could not.
+//
+// Competition seeding is fatal because `match` has a foreign key to `season`:
+// with no competitions there is nothing to ingest into. Team seeding is fatal
+// for the same class of reason — a seed that could not be applied AT ALL means
+// no team registry — but NOT for a single club it could not curate. That one
+// keeps resolving through its provisional row, ApplyTeamSeed logs it and
+// returns nil, and the site stays up with one club degraded rather than down.
+func applySeeds(ctx context.Context, repo *store.Store, registry *config.Registry) error {
+	seedCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if err := repo.ApplyCompetitionSeed(seedCtx, registry.List()); err != nil {
+		return fmt.Errorf("apply competition seed: %w", err)
+	}
+	teams, err := config.LoadTeams()
+	if err != nil {
+		return fmt.Errorf("load team seed: %w", err)
+	}
+	if err := repo.ApplyTeamSeed(seedCtx, teams); err != nil {
+		return fmt.Errorf("apply team seed: %w", err)
+	}
+	return nil
 }
 
 func onceExitCodeForContext(ctx context.Context, result cycleResult) int {

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/mcasillas17/scorearc-backend/config"
@@ -97,6 +98,16 @@ func (f *fakeSource) Bracket(context.Context, config.Competition, config.Season,
 	return f.bracket, f.bracketErr
 }
 
+// fakeTeamID and fakeMatchID are the fake resolver's crosswalk. They are
+// deliberately NOT the identity function: a test that asserts on a provider id
+// where a canonical one belongs (or the reverse) has to fail loudly, because
+// the whole point of this layer is that the two are different namespaces.
+func fakeTeamID(sourceID string) string { return "team-" + sourceID }
+
+func fakeMatchID(sourceID string) uuid.UUID {
+	return uuid.NewSHA1(uuid.NameSpaceOID, []byte(sourceID))
+}
+
 type fakeRepository struct {
 	mu              sync.Mutex
 	existing        map[string]store.MatchRow
@@ -116,6 +127,9 @@ type fakeRepository struct {
 	unfinalized     []model.Match
 	unfinalizedErr  error
 	logged          []loggedRun
+	lastIdentity    store.MatchIdentity
+	teamKinds       map[string]string
+	standingTeamIDs map[string]string
 }
 
 type loggedRun struct {
@@ -132,23 +146,43 @@ func hasLoggedKind(runs []loggedRun, kind string) bool {
 	return false
 }
 
-func (f *fakeRepository) UpsertTeams(context.Context, []model.Team) error { return nil }
+func (f *fakeRepository) Team(_ context.Context, _ string, ref store.TeamRef) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.teamKinds == nil {
+		f.teamKinds = map[string]string{}
+	}
+	f.teamKinds[ref.SourceID] = ref.Kind
+	return fakeTeamID(ref.SourceID), nil
+}
+func (f *fakeRepository) Match(_ context.Context, _ string, ref store.MatchRef) (uuid.UUID, error) {
+	return fakeMatchID(ref.SourceID), nil
+}
+func (f *fakeRepository) ApplyTeamSeed(context.Context, []config.SeedTeam) error { return nil }
+func (f *fakeRepository) ApplyCompetitionSeed(context.Context, []config.Competition) error {
+	return nil
+}
 func (f *fakeRepository) SetTeamCrest(context.Context, string, string) error {
 	return nil
 }
-func (f *fakeRepository) UpsertMatch(_ context.Context, _, _ string, match model.Match) error {
+func (f *fakeRepository) UpsertMatch(
+	_ context.Context,
+	identity store.MatchIdentity,
+	match model.Match,
+) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.matchCalls++
 	f.lastUpsert = match
+	f.lastIdentity = identity
 	return nil
 }
-func (f *fakeRepository) UpsertMatchDetail(context.Context, string, model.MatchDetail) error {
+func (f *fakeRepository) UpsertMatchDetail(context.Context, uuid.UUID, model.MatchDetail) error {
 	return nil
 }
 func (f *fakeRepository) FinalizeMatch(
 	_ context.Context,
-	_, _ string,
+	identity store.MatchIdentity,
 	match model.Match,
 	_ model.MatchDetail,
 ) (bool, error) {
@@ -156,29 +190,50 @@ func (f *fakeRepository) FinalizeMatch(
 	defer f.mu.Unlock()
 	f.finalizeCalls++
 	f.lastFinalized = match
+	f.lastIdentity = identity
 	if row, ok := f.existing[match.ID]; ok && row.FinalizedAt.Valid {
 		return false, nil
 	}
 	return true, nil
 }
-func (f *fakeRepository) ExistingMatches(context.Context, string, string, []string) (map[string]store.MatchRow, error) {
+
+// ExistingMatches re-keys the fixture onto canonical ids on every call, so a
+// test can still write `existing: map[string]store.MatchRow{"m1": {...}}` in
+// provider terms and can still swap a row in between cycles.
+func (f *fakeRepository) ExistingMatches(
+	_ context.Context,
+	_, _ string,
+	_ []uuid.UUID,
+) (map[uuid.UUID]store.MatchRow, error) {
 	if f.existingHook != nil {
 		f.existingHook()
 	}
-	return f.existing, f.existingErr
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	byMatchID := make(map[uuid.UUID]store.MatchRow, len(f.existing))
+	for sourceID, row := range f.existing {
+		byMatchID[fakeMatchID(sourceID)] = row
+	}
+	return byMatchID, f.existingErr
 }
-func (f *fakeRepository) UnfinalizedMatches(context.Context, string, string) ([]model.Match, error) {
+func (f *fakeRepository) UnfinalizedMatches(context.Context, string, string, string) ([]model.Match, error) {
 	return f.unfinalized, f.unfinalizedErr
 }
-func (f *fakeRepository) ReplaceStandings(context.Context, string, string, []model.Standing) error {
+func (f *fakeRepository) ReplaceStandings(
+	_ context.Context,
+	_, _, _ string,
+	_ []model.Standing,
+	teamIDs map[string]string,
+) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.standingsCalls++
+	f.standingTeamIDs = teamIDs
 	return f.standingsErr
 }
 func (f *fakeRepository) ReplaceTopScorers(
 	_ context.Context,
-	_, _ string,
+	_, _, _ string,
 	rows []model.TopScorer,
 ) error {
 	f.mu.Lock()
@@ -1350,7 +1405,8 @@ func TestNonBracketSeasonIgnoresProviderKnockoutClassification(t *testing.T) {
 	if result.failures != 0 || runner.backfilled["test/2026"].IsZero() {
 		t.Fatalf("result=%+v backfilled=%v", result, runner.backfilled["test/2026"])
 	}
-	if repo.lastFinalized.WinnerID == nil || *repo.lastFinalized.WinnerID != winner ||
+	if repo.lastFinalized.WinnerID == nil ||
+		*repo.lastFinalized.WinnerID != fakeTeamID(winner) ||
 		repo.lastFinalized.Home.Name != "Fresh Home" ||
 		repo.lastFinalized.Round != "" ||
 		repo.lastFinalized.BracketRequired == nil ||
@@ -1584,6 +1640,93 @@ func TestLiveMatchCanTransitionToSuspended(t *testing.T) {
 	}
 	if result.anyLive {
 		t.Fatal("suspended match preserved live cadence")
+	}
+}
+
+// winnerId arrives as a PROVIDER team id inside a payload that is otherwise all
+// canonical by the time it is written. Nothing catches a mistake here: a
+// provider id in winner_id either fails a foreign key or, worse, names some
+// other club, and the site then shows the wrong team winning.
+func TestWinnerIsTranslatedToACanonicalTeamID(t *testing.T) {
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	cases := []struct {
+		name   string
+		winner *string
+		want   *string
+	}{
+		{name: "home wins", winner: ptr("home"), want: ptr(fakeTeamID("home"))},
+		{name: "away wins", winner: ptr("away"), want: ptr(fakeTeamID("away"))},
+		{name: "no winner", winner: nil, want: nil},
+		// A winner that is neither team cannot be translated, and writing it
+		// through would point the row at some third club.
+		{name: "winner is not a team in this match", winner: ptr("elsewhere"), want: nil},
+		// Already-canonical looking input is still a provider id here, and must
+		// not be smuggled through untranslated.
+		{name: "canonical-looking id", winner: ptr(fakeTeamID("home")), want: nil},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			match := finishedMatch()
+			match.StatusName = "STATUS_CANCELED" // finalize without a summary
+			match.WinnerID = testCase.winner
+			repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+			runner := testRunner(&fakeSource{matches: []model.Match{match}}, repo, comp)
+
+			runner.runCycle(context.Background(), false)
+
+			got := repo.lastIdentity.WinnerTeamID
+			switch {
+			case testCase.want == nil && got != nil:
+				t.Fatalf("winner = %q, want none", *got)
+			case testCase.want != nil && (got == nil || *got != *testCase.want):
+				t.Fatalf("winner = %v, want %q", got, *testCase.want)
+			}
+			if repo.lastIdentity.HomeTeamID != fakeTeamID("home") ||
+				repo.lastIdentity.AwayTeamID != fakeTeamID("away") {
+				t.Fatalf("teams were not translated: %+v", repo.lastIdentity)
+			}
+		})
+	}
+}
+
+func ptr(value string) *string { return &value }
+
+// The World Cup fields national teams; everything else we ingest is contested
+// by clubs. The kind decides which canonical team a provider id can resolve to,
+// so it has to reach the resolver.
+func TestCompetitionDecidesTeamKind(t *testing.T) {
+	for slug, want := range map[string]string{"fifa.world": "national", "eng.1": "club"} {
+		repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+		comp := config.Competition{
+			ID: "test", ESPNSlug: slug, CurrentSeasonId: "2026",
+			Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		}
+		runner := testRunner(&fakeSource{matches: []model.Match{finishedMatch()}}, repo, comp)
+
+		runner.runCycle(context.Background(), false)
+
+		if got := repo.teamKinds["home"]; got != want {
+			t.Fatalf("%s resolved teams as kind %q, want %q", slug, got, want)
+		}
+	}
+}
+
+// Standings are written against canonical team ids the runner resolves, never
+// against the provider ids the rows arrive with.
+func TestStandingsAreWrittenWithResolvedTeamIDs(t *testing.T) {
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+
+	testRunner(&fakeSource{}, repo, comp).runCycle(context.Background(), true)
+
+	if repo.standingTeamIDs["home"] != fakeTeamID("home") {
+		t.Fatalf("standings team ids = %v", repo.standingTeamIDs)
 	}
 }
 

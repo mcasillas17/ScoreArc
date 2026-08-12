@@ -61,6 +61,20 @@ func parseRegistry(input []byte) (*Registry, error) {
 	return &Registry{comps: comps, byID: byID}, nil
 }
 
+// TeamKind reports whether a competition fields national teams or clubs. Only
+// the World Cup fields national teams; Leagues Cup has a bracket but is
+// contested by clubs, so bracket presence is NOT the right signal.
+//
+// It lives here because it is part of team IDENTITY — it decides which canonical
+// team a provider id resolves to — and both the seed generator and the ingester
+// have to answer it the same way, forever.
+func TeamKind(comp Competition) string {
+	if comp.ESPNSlug == "fifa.world" {
+		return "national"
+	}
+	return "club"
+}
+
 func (r *Registry) List() []Competition { return r.comps }
 
 func (r *Registry) Get(id string) (Competition, bool) {
