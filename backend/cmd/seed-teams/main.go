@@ -4,12 +4,20 @@
 // because the seed is the curated identity spine and must not change without
 // review.
 //
-// It MERGES rather than replaces: any ESPN id the seed already carries is
-// emitted with its curated identity intact, and only genuinely new teams get a
-// machine-derived slug. Without that, a regenerate would silently revert every
-// hand-made correction, because the competition a team is first seen in decides
-// its proposed namespace and the multi-country Leagues Cup is iterated before
-// the domestic leagues.
+// It MERGES rather than replaces, in both directions. Any ESPN id the seed
+// already carries is emitted with its curated identity intact, and only
+// genuinely new teams get a machine-derived slug — without that, a regenerate
+// would silently revert every hand-made correction, because the competition a
+// team is first seen in decides its proposed namespace and the multi-country
+// Leagues Cup is iterated before the domestic leagues. And the output starts
+// from the whole committed seed rather than from what this run happened to
+// fetch, so a team is never DELETED just because ESPN did not mention it: one
+// transient 500 on a competition would otherwise drop every club that only
+// appears there.
+//
+// A competition whose scoreboard AND standings both failed makes the run
+// non-authoritative, so it refuses to emit a seed at all rather than emit one
+// that is merely stale in a place nobody can see.
 //
 // The merge base is the embedded seed, so redirecting stdout straight onto it
 // destroys that base before this command is compiled. Regenerate with:
@@ -25,6 +33,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"sort"
@@ -180,6 +189,110 @@ func mergeBase(seed []config.SeedTeam, loadErr error, bootstrap bool) (map[strin
 		reason, safeRegenerate)
 }
 
+// competitionFetch is one competition's contribution to a regenerate: the teams
+// ESPN named, and whether each of the two fetches that could name them worked.
+type competitionFetch struct {
+	compID        string
+	prefix        string
+	kind          string
+	teams         []model.Team
+	scoreboardErr error
+	standingsErr  error
+}
+
+// blind reports that this competition told us nothing at all. One failed fetch
+// is survivable — a club in a league's standings is normally in its scoreboard
+// too — but both failing means the run has no idea what is in the competition.
+func (f competitionFetch) blind() bool {
+	return f.scoreboardErr != nil && f.standingsErr != nil
+}
+
+// buildSeed produces the proposed seed by OVERLAYING what was fetched onto the
+// committed seed, never by rebuilding from the fetch alone. That ordering is
+// the safety property the command's doc comment promises: a competition ESPN
+// failed to serve leaves its clubs exactly as they were rather than deleting
+// them. A single transient 500 on esp.1 used to emit a perfectly valid seed
+// with ~20 curated clubs missing, at exit 0, and the `len(seed) >= 150` guard
+// waved it through.
+func buildSeed(
+	curated map[string]config.SeedTeam,
+	fetches []competitionFetch,
+	warn io.Writer,
+) ([]config.SeedTeam, error) {
+	// Keyed by ESPN team id, starting from every curated row so nothing this
+	// run did not happen to see can fall out.
+	rows := make(map[string]config.SeedTeam, len(curated))
+	for sourceID, team := range curated {
+		rows[sourceID] = team
+	}
+	// A club appearing in two competitions (a Liga MX side also in Leagues Cup)
+	// is proposed once, by the first competition to name it.
+	proposed := make(map[string]struct{}, len(curated))
+
+	var blind []string
+	for _, fetch := range fetches {
+		if fetch.blind() {
+			blind = append(blind, fetch.compID)
+		}
+		for _, team := range fetch.teams {
+			if team.ID == "" || team.Name == "" {
+				continue
+			}
+			// The loader requires an abbreviation, so emitting a team without
+			// one would produce a seed the command's own validation rejects.
+			if strings.TrimSpace(team.Abbr) == "" {
+				fmt.Fprintf(warn,
+					"warn: skipping espn:%s (%q) — no abbreviation\n", team.ID, team.Name)
+				continue
+			}
+			if _, exists := proposed[team.ID]; exists {
+				continue
+			}
+			row := proposeTeam(curated, fetch.prefix, fetch.kind, team)
+			if isProvisional(row.ID) {
+				fmt.Fprintf(warn,
+					"warn: espn:%s (%q) has no slug-able name — emitted as %q, name it by hand\n",
+					team.ID, team.Name, row.ID)
+			}
+			proposed[team.ID] = struct{}{}
+			rows[team.ID] = row
+		}
+	}
+
+	out := make([]config.SeedTeam, 0, len(rows))
+	for _, team := range rows {
+		out = append(out, team)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+
+	// Slug collisions must be resolved by a human, not silently renamed — and
+	// not written over the seed either, so this fails instead of printing.
+	slugs := make(map[string]string, len(out))
+	collisions := 0
+	for _, team := range out {
+		if existing, dup := slugs[team.ID]; dup {
+			collisions++
+			fmt.Fprintf(warn,
+				"COLLISION: slug %q proposed for espn:%s and espn:%s — disambiguate by hand\n",
+				team.ID, existing, team.Refs[sourceName])
+		}
+		slugs[team.ID] = team.Refs[sourceName]
+	}
+	if collisions > 0 {
+		return nil, fmt.Errorf("%d slug collision(s); refusing to emit a seed", collisions)
+	}
+	// A blind competition can no longer delete anything, but it does mean this
+	// run cannot see new or renamed clubs there. Emitting anyway would present a
+	// partial regenerate as a complete one, so it exits non-zero instead.
+	if len(blind) > 0 {
+		return nil, fmt.Errorf(
+			"neither scoreboard nor standings could be fetched for %s; refusing to "+
+				"emit a seed that cannot see those competitions — rerun when the "+
+				"provider is healthy", strings.Join(blind, ", "))
+	}
+	return out, nil
+}
+
 func main() {
 	bootstrap := flag.Bool("bootstrap", false,
 		"propose every team from scratch instead of merging with the committed seed")
@@ -204,85 +317,45 @@ func run(bootstrap bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	// Keyed by ESPN team id so a club appearing in two competitions (e.g. a
-	// Liga MX side also in Leagues Cup) is collected exactly once.
-	seen := map[string]config.SeedTeam{}
-
+	fetches := make([]competitionFetch, 0, len(registry.List()))
 	for _, comp := range registry.List() {
 		season, ok := comp.Seasons[comp.CurrentSeasonId]
 		if !ok {
 			continue
 		}
-		kind := config.TeamKind(comp)
-		prefix := countryPrefix(comp.ESPNSlug)
-
-		var teams []model.Team
+		fetch := competitionFetch{
+			compID: comp.ID,
+			prefix: countryPrefix(comp.ESPNSlug),
+			kind:   config.TeamKind(comp),
+		}
 		matches, err := src.Scoreboard(ctx, comp, season, true)
 		if err != nil {
+			fetch.scoreboardErr = err
 			fmt.Fprintf(os.Stderr, "warn: scoreboard %s: %v\n", comp.ID, err)
 		}
 		for _, match := range matches {
-			teams = append(teams, match.Home, match.Away)
+			fetch.teams = append(fetch.teams, match.Home, match.Away)
 		}
 		standings, err := src.Standings(ctx, comp, season)
 		if err != nil {
+			fetch.standingsErr = err
 			fmt.Fprintf(os.Stderr, "warn: standings %s: %v\n", comp.ID, err)
 		}
 		for _, standing := range standings {
-			teams = append(teams, standing.Team)
+			fetch.teams = append(fetch.teams, standing.Team)
 		}
-
-		for _, team := range teams {
-			if team.ID == "" || team.Name == "" {
-				continue
-			}
-			// The loader requires an abbreviation, so emitting a team without
-			// one would produce a seed the command's own validation rejects.
-			if strings.TrimSpace(team.Abbr) == "" {
-				fmt.Fprintf(os.Stderr,
-					"warn: skipping espn:%s (%q) — no abbreviation\n", team.ID, team.Name)
-				continue
-			}
-			if _, exists := seen[team.ID]; exists {
-				continue
-			}
-			row := proposeTeam(curated, prefix, kind, team)
-			if isProvisional(row.ID) {
-				fmt.Fprintf(os.Stderr,
-					"warn: espn:%s (%q) has no slug-able name — emitted as %q, name it by hand\n",
-					team.ID, team.Name, row.ID)
-			}
-			seen[team.ID] = row
-		}
+		fetches = append(fetches, fetch)
 	}
 
-	out := make([]config.SeedTeam, 0, len(seen))
-	for _, team := range seen {
-		out = append(out, team)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-
-	// Slug collisions must be resolved by a human, not silently renamed — and
-	// not written over the seed either, so this fails instead of printing.
-	slugs := make(map[string]string, len(out))
-	collisions := 0
-	for _, team := range out {
-		if existing, dup := slugs[team.ID]; dup {
-			collisions++
-			fmt.Fprintf(os.Stderr,
-				"COLLISION: slug %q proposed for espn:%s and espn:%s — disambiguate by hand\n",
-				team.ID, existing, team.Refs[sourceName])
-		}
-		slugs[team.ID] = team.Refs[sourceName]
-	}
-	if collisions > 0 {
-		return fmt.Errorf("%d slug collision(s); refusing to emit a seed", collisions)
+	out, err := buildSeed(curated, fetches, os.Stderr)
+	if err != nil {
+		return err
 	}
 
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	// The seed is read by humans; "Brighton & Hove Albion" should not be
-	// escaped into & just because the default encoder assumes HTML.
+	// escaped into &amp; just because the default encoder assumes HTML.
 	encoder.SetEscapeHTML(false)
 	return encoder.Encode(out)
 }

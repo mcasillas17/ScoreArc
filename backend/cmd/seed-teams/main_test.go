@@ -254,6 +254,118 @@ func TestCommittedSeedCarriesNoProviderCrests(t *testing.T) {
 	}
 }
 
+func curatedFixture() map[string]config.SeedTeam {
+	return map[string]config.SeedTeam{
+		"359": {ID: "eng-arsenal", Kind: "club", Name: "Arsenal", Abbr: "ARS",
+			Country: "eng", Refs: map[string]string{"espn": "359"}},
+		"86": {ID: "esp-real-madrid", Kind: "club", Name: "Real Madrid", Abbr: "RMA",
+			Country: "esp", Refs: map[string]string{"espn": "86"}},
+		"243": {ID: "esp-getafe", Kind: "club", Name: "Getafe", Abbr: "GET",
+			Country: "esp", Refs: map[string]string{"espn": "243"}},
+	}
+}
+
+func seedIDs(seed []config.SeedTeam) []string {
+	ids := make([]string, 0, len(seed))
+	for _, team := range seed {
+		ids = append(ids, team.ID)
+	}
+	return ids
+}
+
+// The regenerate must never DELETE a curated club just because this run could
+// not see it. One transient ESPN 500 on esp.1 used to emit a valid-looking seed
+// with every Spanish club missing, at exit 0 — and `len(seed) >= 150` passed it
+// (194 -> 173), because the drift check only ever computed additions.
+func TestBuildSeedKeepsCuratedTeamsFromACompetitionThatFailed(t *testing.T) {
+	var warnings strings.Builder
+	seed, err := buildSeed(curatedFixture(), []competitionFetch{
+		{
+			compID: "premier-league", prefix: "eng", kind: "club",
+			teams: []model.Team{{ID: "359", Name: "Arsenal", Abbr: "ARS"}},
+		},
+		{
+			// Scoreboard down; standings answered but empty, which is exactly
+			// how a partial outage looks.
+			compID: "laliga", prefix: "esp", kind: "club",
+			scoreboardErr: errors.New("espn: 500"),
+		},
+	}, &warnings)
+	if err != nil {
+		t.Fatalf("buildSeed: %v", err)
+	}
+	got := seedIDs(seed)
+	t.Logf("emitted seed: %v", got)
+	want := []string{"eng-arsenal", "esp-getafe", "esp-real-madrid"}
+	if len(got) != len(want) {
+		t.Fatalf("emitted %v, want the full curated set %v — a failed fetch deleted teams", got, want)
+	}
+	for index, id := range want {
+		if got[index] != id {
+			t.Fatalf("emitted %v, want %v", got, want)
+		}
+	}
+}
+
+// Both fetches failing means the run cannot see that competition at all. It no
+// longer deletes anything, but it must not pass itself off as a complete
+// regenerate either.
+func TestBuildSeedRefusesWhenACompetitionIsCompletelyBlind(t *testing.T) {
+	var warnings strings.Builder
+	seed, err := buildSeed(curatedFixture(), []competitionFetch{
+		{
+			compID: "premier-league", prefix: "eng", kind: "club",
+			teams: []model.Team{{ID: "359", Name: "Arsenal", Abbr: "ARS"}},
+		},
+		{
+			compID:        "laliga",
+			prefix:        "esp",
+			kind:          "club",
+			scoreboardErr: errors.New("espn: 500"),
+			standingsErr:  errors.New("espn: 500"),
+		},
+	}, &warnings)
+	t.Logf("err = %v", err)
+	if err == nil {
+		t.Fatal("a competition with no scoreboard and no standings emitted a seed anyway")
+	}
+	if !strings.Contains(err.Error(), "laliga") {
+		t.Fatalf("error %q does not name the blind competition", err)
+	}
+	if seed != nil {
+		t.Fatalf("a refused run still returned %d rows", len(seed))
+	}
+}
+
+// New teams are still picked up, and a curated row still wins over a derived
+// slug for the same ESPN id.
+func TestBuildSeedOverlaysFetchedTeamsOntoTheBase(t *testing.T) {
+	var warnings strings.Builder
+	seed, err := buildSeed(curatedFixture(), []competitionFetch{{
+		compID: "laliga", prefix: "esp", kind: "club",
+		teams: []model.Team{
+			{ID: "86", Name: "Real Madrid CF", Abbr: "RMA"},
+			{ID: "9812", Name: "Elche", Abbr: "ELC"},
+		},
+	}}, &warnings)
+	if err != nil {
+		t.Fatalf("buildSeed: %v", err)
+	}
+	byID := make(map[string]config.SeedTeam, len(seed))
+	for _, team := range seed {
+		byID[team.ID] = team
+	}
+	if _, promoted := byID["esp-elche"]; !promoted {
+		t.Fatalf("newly seen team not proposed: %v", seedIDs(seed))
+	}
+	if byID["esp-real-madrid"].Name != "Real Madrid CF" {
+		t.Fatalf("curated row did not refresh its display name: %+v", byID["esp-real-madrid"])
+	}
+	if len(seed) != 4 {
+		t.Fatalf("emitted %v, want the 3 curated rows plus Elche", seedIDs(seed))
+	}
+}
+
 // The committed seed is the merge base, so every row in it must be reachable
 // by ESPN id — otherwise a regenerate would propose a duplicate of it.
 func TestCommittedSeedIsMergeable(t *testing.T) {

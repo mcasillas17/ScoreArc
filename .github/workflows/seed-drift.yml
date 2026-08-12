@@ -5,6 +5,10 @@ name: Team seed drift
 # human decision and must never block unrelated work. Runtime provisional team
 # creation is the availability backstop, so drift is a review nudge, not an
 # outage.
+#
+# The generator itself exits non-zero when a competition served neither a
+# scoreboard nor standings, so a provider outage fails this job outright instead
+# of being reported as (or hidden behind) drift.
 
 on:
   schedule:
