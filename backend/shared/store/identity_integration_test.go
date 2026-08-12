@@ -130,6 +130,21 @@ func TestResolveTeamCreatesProvisionalOnMiss(t *testing.T) {
 		t.Fatalf("name=%q provisional=%v, want the real name and provisional=true", name, provisional)
 	}
 
+	// Spec §5.4/§10: a team nobody has curated must not be silent. The site
+	// keeps working, but the gap is recorded where a human can find it.
+	var reported int
+	var recorded string
+	if err := pool.QueryRow(ctx, `
+SELECT count(*), COALESCE(max(error), '') FROM ingest_run
+WHERE kind='provisional_team' AND ok IS FALSE`).Scan(&reported, &recorded); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("provisional creation recorded %d ingest_run row(s): %s", reported, recorded)
+	if reported != 1 || !strings.Contains(recorded, id) {
+		t.Fatalf("provisional creation recorded %d rows (%q), want 1 naming %s",
+			reported, recorded, id)
+	}
+
 	// Resolving the same unknown team again must reuse the row, not create another.
 	again, err := store.Team(ctx, "espn", TeamRef{SourceID: "99999", Name: "Newly Promoted FC", Abbr: "NPF"})
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -159,12 +160,40 @@ func (s *Store) Team(ctx context.Context, source string, ref TeamRef) (string, e
 		return "", err
 	}
 
-	teamID, err = s.createProvisionalTeam(opCtx, source, ref)
+	teamID, minted, err := s.createProvisionalTeam(opCtx, source, ref)
 	if err != nil {
 		return "", err
 	}
+	if minted {
+		s.reportProvisionalTeam(ctx, source, ref, teamID)
+	}
 	s.cache().putTeam(key, teamID)
 	return teamID, nil
+}
+
+// provisionalRunKind is the ingest_run kind a provisional team is recorded
+// under (spec §5.4, §10).
+const provisionalRunKind = "provisional_team"
+
+// reportProvisionalTeam makes an uncurated team visible. Ingestion deliberately
+// does not block on curation, so without this the only trace of a club we could
+// not name would be a row in a table nobody queries. It is recorded as NOT ok:
+// the site keeps working, but a human has to name the team, and its own kind
+// keeps it distinguishable from a real ingest failure.
+//
+// Best-effort and detached from the caller's context, exactly like
+// recordBlockedPromotion: failing to record must never fail the resolve.
+func (s *Store) reportProvisionalTeam(ctx context.Context, source string, ref TeamRef, teamID string) {
+	slog.Warn("created a provisional team; it needs curating",
+		"team", teamID, "source", source, "sourceId", ref.SourceID, "name", ref.Name)
+	logCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	message := fmt.Sprintf("created provisional team %s for %s/%s (%q)",
+		teamID, source, ref.SourceID, ref.Name)
+	now := time.Now()
+	if err := s.LogIngestRun(logCtx, nil, provisionalRunKind, now, now, false, message); err != nil {
+		slog.Warn("record provisional team", "team", teamID, "error", err)
+	}
 }
 
 // teamRefClaimSQL is the RESOLVER's crosswalk write. Unlike the seed's
@@ -186,7 +215,15 @@ RETURNING team_id`
 // determinism is what converges two writers racing to create the SAME unknown
 // team; the crosswalk's RETURNING is what arbitrates against a writer aiming
 // somewhere else entirely, such as a seed curating this source id right now.
-func (s *Store) createProvisionalTeam(ctx context.Context, source string, ref TeamRef) (string, error) {
+//
+// The bool reports whether this call actually minted the provisional row, as
+// opposed to adopting whatever already held the source id. Only a real minting
+// is worth reporting to a human.
+func (s *Store) createProvisionalTeam(
+	ctx context.Context,
+	source string,
+	ref TeamRef,
+) (string, bool, error) {
 	kind := ref.Kind
 	if kind != "national" {
 		kind = "club"
@@ -199,7 +236,7 @@ func (s *Store) createProvisionalTeam(ctx context.Context, source string, ref Te
 
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	defer rollback(ctx, tx)
 
@@ -209,22 +246,22 @@ VALUES ($1, $2, $3, $4, true, now())
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, updated_at = now()`,
 		slug, kind, name, ref.Abbr,
 	); err != nil {
-		return "", err
+		return "", false, err
 	}
 	var holder string
 	if err := tx.QueryRow(ctx, teamRefClaimSQL, source, ref.SourceID, slug).Scan(&holder); err != nil {
-		return "", err
+		return "", false, err
 	}
 	if holder != slug {
 		// Somebody — most likely the seed curating this club — already owns this
 		// source id. Roll back, discarding the provisional row we were about to
 		// create, and adopt theirs.
-		return holder, nil
+		return holder, false, nil
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return "", err
+		return "", false, err
 	}
-	return slug, nil
+	return slug, true, nil
 }
 
 // Competition resolves a provider competition id via the crosswalk. Unlike

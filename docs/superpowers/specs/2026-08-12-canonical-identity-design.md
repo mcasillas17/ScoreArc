@@ -165,11 +165,11 @@ re-key their team references onto canonical ids:
 | Table | Change |
 |---|---|
 | `match_detail` | Unchanged shape; `match_id` becomes `uuid` referencing `match(id)` |
-| `standing` | `team_id` → canonical `team.id`; PK stays `(comp_id, season_id, team_id)` |
+| `standing` | `team_id` → canonical `team.id`; PK stays `(competition_id, season_id, team_id)` |
 | `top_scorer` | Unchanged (denormalised abbr/name/crest — ESPN gives no team id here) |
 | `standing_snapshot` | `team_id` → canonical |
 | `win_prob_snapshot` | `match_id` → `uuid` |
-| `ingest_run` | Unchanged |
+| `ingest_run` | Unchanged in shape; its `comp_id` column is named `competition_id` like every other table |
 
 `standing` keeps its plain-`INSERT` replacement semantics, so the mapper-level dedup fix
 on branch `fix/ingester-hardening` remains required — a team appearing twice still aborts
@@ -279,7 +279,16 @@ the curated team, repoint foreign keys, delete the provisional row. That is trac
 precisely because we own the ids — which is the argument for this whole design in
 miniature. The review list is `SELECT * FROM team WHERE provisional`.
 
-Every provisional creation emits a warning log and an `ingest_run` record.
+Every provisional creation emits a warning log and an `ingest_run` record (kind
+`provisional_team`, `ok = false` — the site is serving, but a human has to name the
+team). A curation that cannot complete is reported the same way (kind
+`team_promotion`): the club keeps resolving through its provisional row, which is
+degraded rather than down, and the distinction is worth nothing if it is invisible.
+
+**As implemented:** promotion ends by deleting the provisional row, so the ingester's
+role needs `DELETE ON team` — narrowly, and only that table. Without it every promotion
+fails while the seed still reports success, which is how this was missed until it was
+tested as the role rather than as the schema owner.
 
 ## 6. The team seed
 
@@ -315,8 +324,11 @@ Nothing is deployed, so this is a rewrite rather than a migration.
 
 - **Migrations** — rewrite `0001`–`0004` into a clean canonical set. There is no data to
   preserve and no reason to carry the archaeology of a schema that has never run.
-- **`shared/model`** — `Team` gains `Kind`; ids become canonical. Provider-shaped types
-  keep provider ids until resolution.
+- **`shared/model`** — ids become canonical; provider-shaped types keep provider ids
+  until resolution. *(Amended in implementation: `Team` did NOT gain `Kind`. Kind is a
+  property of the COMPETITION being ingested, not of a provider payload, so it is
+  derived at the call site via `config.TeamKind(comp)` and passed on `TeamRef`. Putting
+  it on `model.Team` would have added a field every mapper had to invent a value for.)*
 - **`shared/store`** — writes canonical ids; the `match` upsert keys on the natural key.
 - **`shared/espn`** — mappers unchanged in shape; the `rawAthlete` / `rawParticipant`
   structs gain the `id` field they currently omit, so player identity stops being lost

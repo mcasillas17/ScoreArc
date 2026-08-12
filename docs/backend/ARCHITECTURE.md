@@ -71,7 +71,9 @@ config keys** from `competitions.ts` (config stays the source of truth), but
 they are now materialised as real `competition`/`season` rows that the other
 tables reference. Rich per-match detail is **jsonb** (lossless, serves the
 existing frontend types verbatim). **No `news` table** (proxied live).
-`team.crest_url` holds **our R2/CDN URL**. Full rationale:
+`team.crest_url` holds **our R2/CDN URL**, and the team seed never overwrites a
+stored crest — it only fills an empty one, so re-seeding on every start cannot
+revert a mirrored crest to a provider hotlink. Full rationale:
 `docs/superpowers/specs/2026-08-12-canonical-identity-design.md`.
 
 > **Bracket note (important — the frontend does NOT derive brackets from the
@@ -120,7 +122,7 @@ same transaction.
 - **win_prob_snapshot**(id bigserial, match_id, captured_at, home, draw, away) — append-only.
 
 ### Ops
-- **ingest_run**(id bigserial, comp_id, kind, started_at, finished_at, ok, error) — observability.
+- **ingest_run**(id bigserial, competition_id, kind, started_at, finished_at, ok, error) — observability. Beyond per-operation runs it also records the two identity events a human has to act on: `provisional_team` (a club nobody has curated) and `team_promotion` (a curation that could not complete).
 
 ### Roles (least privilege — enforces the read-only public path)
 - `scorearc_reader` → **SELECT only** (the public reader connects as this).
@@ -145,11 +147,16 @@ same transaction.
   polls are required before a competition becomes dormant; failed polls reset
   that sequence and preserve known live cadence.
 - Provider ids are **resolved to canonical ids before anything is written**
-  (`Store.Competition`/`Team`/`Match`/`Player` in `backend/shared/store/identity.go`):
-  each looks `(source, source_id)` up in the crosswalk, falling back to the curated
-  team seed, the `match` natural key, or a freshly minted UUID. A team the seed does
-  not carry becomes a `provisional` row rather than failing the poll, and curating it
-  later repoints the existing rows instead of creating a duplicate. The ESPN mappers
+  (`backend/shared/store/identity.go`). The ingester calls `Store.Team` and
+  `Store.Match`: each looks `(source, source_id)` up in the crosswalk, falling back
+  to the curated team seed or the `match` natural key. A team the seed does not carry
+  becomes a `provisional` row rather than failing the poll — logged and recorded in
+  `ingest_run` — and curating it later repoints the existing rows instead of creating
+  a duplicate. A match crosswalk hit is verified against the competition and season
+  being ingested, so one provider event id cannot carry facts across competitions.
+  `Store.Competition` and `Store.Player` exist for the same crosswalk but have no
+  production caller yet: the ingester takes the competition from its own config
+  (`comp.ID`), and player identity is written by the follow-on slice. The ESPN mappers
   still speak ESPN ids; nothing downstream of the resolver does.
 - Current state is idempotently upserted. State cannot regress except
   live→scheduled for ESPN's explicit postponed or suspended status. Sparse payloads preserve
