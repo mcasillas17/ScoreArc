@@ -6,7 +6,7 @@
     "shortName": "Liga MX All-Stars",
     "abbr": "LMX",
     "country": "mex",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/20279.png",
     "refs": {
       "espn": "20279"
     }
@@ -18,7 +18,7 @@
     "shortName": "MLS All-Stars",
     "abbr": "MLS",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/9817.png",
     "refs": {
       "espn": "9817"
     }
@@ -30,7 +30,7 @@
     "shortName": "CF Montréal",
     "abbr": "MTL",
     "country": "can",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/9720.png",
     "refs": {
       "espn": "9720"
     }
@@ -42,7 +42,7 @@
     "shortName": "Toronto FC",
     "abbr": "TOR",
     "country": "can",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/7318.png",
     "refs": {
       "espn": "7318"
     }
@@ -54,7 +54,7 @@
     "shortName": "Vancouver Whitecaps",
     "abbr": "VAN",
     "country": "can",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/9727.png",
     "refs": {
       "espn": "9727"
     }
@@ -66,7 +66,7 @@
     "shortName": "AFC Bournemouth",
     "abbr": "BOU",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/349.png",
     "refs": {
       "espn": "349"
     }
@@ -78,7 +78,7 @@
     "shortName": "Arsenal",
     "abbr": "ARS",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/359.png",
     "refs": {
       "espn": "359"
     }
@@ -90,7 +90,7 @@
     "shortName": "Aston Villa",
     "abbr": "AVL",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/362.png",
     "refs": {
       "espn": "362"
     }
@@ -102,7 +102,7 @@
     "shortName": "Brentford",
     "abbr": "BRE",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/337.png",
     "refs": {
       "espn": "337"
     }
@@ -114,7 +114,7 @@
     "shortName": "Brighton & Hove Albion",
     "abbr": "BHA",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/331.png",
     "refs": {
       "espn": "331"
     }
@@ -126,7 +126,7 @@
     "shortName": "Chelsea",
     "abbr": "CHE",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/363.png",
     "refs": {
       "espn": "363"
     }
@@ -138,7 +138,7 @@
     "shortName": "Coventry City",
     "abbr": "COV",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/388.png",
     "refs": {
       "espn": "388"
     }
@@ -150,7 +150,7 @@
     "shortName": "Crystal Palace",
     "abbr": "CRY",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/384.png",
     "refs": {
       "espn": "384"
     }
@@ -162,7 +162,7 @@
     "shortName": "Everton",
     "abbr": "EVE",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/368.png",
     "refs": {
       "espn": "368"
     }
@@ -174,7 +174,7 @@
     "shortName": "Fulham",
     "abbr": "FUL",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/370.png",
     "refs": {
       "espn": "370"
     }
@@ -186,7 +186,7 @@
     "shortName": "Hull City",
     "abbr": "HUL",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/306.png",
     "refs": {
       "espn": "306"
     }
@@ -198,7 +198,7 @@
     "shortName": "Ipswich Town",
     "abbr": "IPS",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/373.png",
     "refs": {
       "espn": "373"
     }
@@ -210,7 +210,7 @@
     "shortName": "Leeds United",
     "abbr": "LEE",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/357.png",
     "refs": {
       "espn": "357"
     }
@@ -222,7 +222,7 @@
     "shortName": "Liverpool",
     "abbr": "LIV",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/364.png",
     "refs": {
       "espn": "364"
     }
@@ -234,7 +234,7 @@
     "shortName": "Manchester City",
     "abbr": "MNC",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/382.png",
     "refs": {
       "espn": "382"
     }
@@ -246,7 +246,7 @@
     "shortName": "Manchester United",
     "abbr": "MAN",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/360.png",
     "refs": {
       "espn": "360"
     }
@@ -258,7 +258,7 @@
     "shortName": "Newcastle United",
     "abbr": "NEW",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/361.png",
     "refs": {
       "espn": "361"
     }
@@ -270,7 +270,7 @@
     "shortName": "Nottingham Forest",
     "abbr": "NFO",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/393.png",
     "refs": {
       "espn": "393"
     }
@@ -282,7 +282,7 @@
     "shortName": "Sunderland",
     "abbr": "SUN",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/366.png",
     "refs": {
       "espn": "366"
     }
@@ -294,7 +294,7 @@
     "shortName": "Tottenham Hotspur",
     "abbr": "TOT",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/367.png",
     "refs": {
       "espn": "367"
     }
@@ -306,7 +306,7 @@
     "shortName": "Alavés",
     "abbr": "ALA",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/96.png",
     "refs": {
       "espn": "96"
     }
@@ -318,7 +318,7 @@
     "shortName": "Athletic Club",
     "abbr": "ATH",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/93.png",
     "refs": {
       "espn": "93"
     }
@@ -330,7 +330,7 @@
     "shortName": "Atlético Madrid",
     "abbr": "ATM",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/1068.png",
     "refs": {
       "espn": "1068"
     }
@@ -342,7 +342,7 @@
     "shortName": "Barcelona",
     "abbr": "BAR",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/83.png",
     "refs": {
       "espn": "83"
     }
@@ -354,7 +354,7 @@
     "shortName": "Celta Vigo",
     "abbr": "CEL",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/85.png",
     "refs": {
       "espn": "85"
     }
@@ -366,7 +366,7 @@
     "shortName": "Deportivo",
     "abbr": "DEP",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/90.png",
     "refs": {
       "espn": "90"
     }
@@ -378,7 +378,7 @@
     "shortName": "Elche",
     "abbr": "ELC",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/3751.png",
     "refs": {
       "espn": "3751"
     }
@@ -390,7 +390,7 @@
     "shortName": "Espanyol",
     "abbr": "ESP",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/88.png",
     "refs": {
       "espn": "88"
     }
@@ -402,7 +402,7 @@
     "shortName": "Getafe",
     "abbr": "GET",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/2922.png",
     "refs": {
       "espn": "2922"
     }
@@ -414,7 +414,7 @@
     "shortName": "Levante",
     "abbr": "LEV",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/1538.png",
     "refs": {
       "espn": "1538"
     }
@@ -426,7 +426,7 @@
     "shortName": "Málaga",
     "abbr": "MCF",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/99.png",
     "refs": {
       "espn": "99"
     }
@@ -438,7 +438,7 @@
     "shortName": "Osasuna",
     "abbr": "OSA",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/97.png",
     "refs": {
       "espn": "97"
     }
@@ -450,7 +450,7 @@
     "shortName": "Racing Santander",
     "abbr": "RAC",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/87.png",
     "refs": {
       "espn": "87"
     }
@@ -462,7 +462,7 @@
     "shortName": "Rayo Vallecano",
     "abbr": "RAY",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/101.png",
     "refs": {
       "espn": "101"
     }
@@ -474,7 +474,7 @@
     "shortName": "Real Betis",
     "abbr": "BET",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/244.png",
     "refs": {
       "espn": "244"
     }
@@ -486,7 +486,7 @@
     "shortName": "Real Madrid",
     "abbr": "RMA",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/86.png",
     "refs": {
       "espn": "86"
     }
@@ -498,7 +498,7 @@
     "shortName": "Real Sociedad",
     "abbr": "RSO",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/89.png",
     "refs": {
       "espn": "89"
     }
@@ -510,7 +510,7 @@
     "shortName": "Sevilla",
     "abbr": "SEV",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/243.png",
     "refs": {
       "espn": "243"
     }
@@ -522,7 +522,7 @@
     "shortName": "Valencia",
     "abbr": "VAL",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/94.png",
     "refs": {
       "espn": "94"
     }
@@ -534,7 +534,7 @@
     "shortName": "Villarreal",
     "abbr": "VIL",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/102.png",
     "refs": {
       "espn": "102"
     }
@@ -546,7 +546,7 @@
     "shortName": "AJ Auxerre",
     "abbr": "AUX",
     "country": "fra",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/172.png",
     "refs": {
       "espn": "172"
     }
@@ -558,7 +558,7 @@
     "shortName": "Angers",
     "abbr": "ANG",
     "country": "fra",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/7868.png",
     "refs": {
       "espn": "7868"
     }
@@ -570,7 +570,7 @@
     "shortName": "AS Monaco",
     "abbr": "MON",
     "country": "fra",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/174.png",
     "refs": {
       "espn": "174"
     }
@@ -582,7 +582,7 @@
     "shortName": "Brest",
     "abbr": "BRE",
     "country": "fra",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/6997.png",
     "refs": {
       "espn": "6997"
     }
@@ -594,7 +594,7 @@
     "shortName": "Le Havre AC",
     "abbr": "HAC",
     "country": "fra",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/3236.png",
     "refs": {
       "espn": "3236"
     }
@@ -606,7 +606,7 @@
     "shortName": "Le Mans",
     "abbr": "MNS",
     "country": "fra",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/2697.png",
     "refs": {
       "espn": "2697"
     }
@@ -618,7 +618,7 @@
     "shortName": "Lens",
     "abbr": "RCL",
     "country": "fra",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/175.png",
     "refs": {
       "espn": "175"
     }
@@ -630,7 +630,7 @@
     "shortName": "Lille",
     "abbr": "LILL",
     "country": "fra",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/166.png",
     "refs": {
       "espn": "166"
     }
@@ -642,7 +642,7 @@
     "shortName": "Lorient",
     "abbr": "LOR",
     "country": "fra",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/273.png",
     "refs": {
       "espn": "273"
     }
@@ -654,7 +654,7 @@
     "shortName": "Lyon",
     "abbr": "LYON",
     "country": "fra",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/167.png",
     "refs": {
       "espn": "167"
     }
@@ -666,7 +666,7 @@
     "shortName": "Marseille",
     "abbr": "OLM",
     "country": "fra",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/176.png",
     "refs": {
       "espn": "176"
     }
@@ -678,7 +678,7 @@
     "shortName": "Nice",
     "abbr": "NICE",
     "country": "fra",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/2502.png",
     "refs": {
       "espn": "2502"
     }
@@ -690,7 +690,7 @@
     "shortName": "Paris FC",
     "abbr": "PAR",
     "country": "fra",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/6851.png",
     "refs": {
       "espn": "6851"
     }
@@ -702,7 +702,7 @@
     "shortName": "Paris Saint-Germain",
     "abbr": "PSG",
     "country": "fra",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/160.png",
     "refs": {
       "espn": "160"
     }
@@ -714,7 +714,7 @@
     "shortName": "Stade Rennais",
     "abbr": "REN",
     "country": "fra",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/169.png",
     "refs": {
       "espn": "169"
     }
@@ -726,7 +726,7 @@
     "shortName": "Strasbourg",
     "abbr": "STR",
     "country": "fra",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/180.png",
     "refs": {
       "espn": "180"
     }
@@ -738,7 +738,7 @@
     "shortName": "Toulouse",
     "abbr": "TOU",
     "country": "fra",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/179.png",
     "refs": {
       "espn": "179"
     }
@@ -750,7 +750,7 @@
     "shortName": "Troyes",
     "abbr": "TRY",
     "country": "fra",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/170.png",
     "refs": {
       "espn": "170"
     }
@@ -762,7 +762,7 @@
     "shortName": "Bayer Leverkusen",
     "abbr": "B04",
     "country": "ger",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/131.png",
     "refs": {
       "espn": "131"
     }
@@ -774,7 +774,7 @@
     "shortName": "Bayern Munich",
     "abbr": "MUN",
     "country": "ger",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/132.png",
     "refs": {
       "espn": "132"
     }
@@ -786,7 +786,7 @@
     "shortName": "Borussia Dortmund",
     "abbr": "DOR",
     "country": "ger",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/124.png",
     "refs": {
       "espn": "124"
     }
@@ -798,7 +798,7 @@
     "shortName": "Borussia Mönchengladbach",
     "abbr": "BMG",
     "country": "ger",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/268.png",
     "refs": {
       "espn": "268"
     }
@@ -810,7 +810,7 @@
     "shortName": "Eintracht Frankfurt",
     "abbr": "SGE",
     "country": "ger",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/125.png",
     "refs": {
       "espn": "125"
     }
@@ -822,7 +822,7 @@
     "shortName": "FC Augsburg",
     "abbr": "FCA",
     "country": "ger",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/3841.png",
     "refs": {
       "espn": "3841"
     }
@@ -834,7 +834,7 @@
     "shortName": "FC Cologne",
     "abbr": "KOE",
     "country": "ger",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/122.png",
     "refs": {
       "espn": "122"
     }
@@ -846,7 +846,7 @@
     "shortName": "Hamburg SV",
     "abbr": "HSV",
     "country": "ger",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/127.png",
     "refs": {
       "espn": "127"
     }
@@ -858,7 +858,7 @@
     "shortName": "Mainz",
     "abbr": "M05",
     "country": "ger",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/2950.png",
     "refs": {
       "espn": "2950"
     }
@@ -870,7 +870,7 @@
     "shortName": "RB Leipzig",
     "abbr": "RBL",
     "country": "ger",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/11420.png",
     "refs": {
       "espn": "11420"
     }
@@ -882,7 +882,7 @@
     "shortName": "SC Freiburg",
     "abbr": "SCF",
     "country": "ger",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/126.png",
     "refs": {
       "espn": "126"
     }
@@ -894,7 +894,7 @@
     "shortName": "SC Paderborn 07",
     "abbr": "SCP",
     "country": "ger",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/3307.png",
     "refs": {
       "espn": "3307"
     }
@@ -906,7 +906,7 @@
     "shortName": "Schalke 04",
     "abbr": "S04",
     "country": "ger",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/133.png",
     "refs": {
       "espn": "133"
     }
@@ -918,7 +918,7 @@
     "shortName": "SV Elversberg",
     "abbr": "ELV",
     "country": "ger",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/10388.png",
     "refs": {
       "espn": "10388"
     }
@@ -930,7 +930,7 @@
     "shortName": "TSG Hoffenheim",
     "abbr": "TSG",
     "country": "ger",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/7911.png",
     "refs": {
       "espn": "7911"
     }
@@ -942,7 +942,7 @@
     "shortName": "1. FC Union Berlin",
     "abbr": "FCU",
     "country": "ger",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/598.png",
     "refs": {
       "espn": "598"
     }
@@ -954,7 +954,7 @@
     "shortName": "VfB Stuttgart",
     "abbr": "VFB",
     "country": "ger",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/134.png",
     "refs": {
       "espn": "134"
     }
@@ -966,7 +966,7 @@
     "shortName": "Werder Bremen",
     "abbr": "SVW",
     "country": "ger",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/137.png",
     "refs": {
       "espn": "137"
     }
@@ -978,7 +978,7 @@
     "shortName": "AC Milan",
     "abbr": "MIL",
     "country": "ita",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/103.png",
     "refs": {
       "espn": "103"
     }
@@ -990,7 +990,7 @@
     "shortName": "AS Roma",
     "abbr": "ROMA",
     "country": "ita",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/104.png",
     "refs": {
       "espn": "104"
     }
@@ -1002,7 +1002,7 @@
     "shortName": "Atalanta",
     "abbr": "ATA",
     "country": "ita",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/105.png",
     "refs": {
       "espn": "105"
     }
@@ -1014,7 +1014,7 @@
     "shortName": "Bologna",
     "abbr": "BOL",
     "country": "ita",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/107.png",
     "refs": {
       "espn": "107"
     }
@@ -1026,7 +1026,7 @@
     "shortName": "Cagliari",
     "abbr": "CAG",
     "country": "ita",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/2925.png",
     "refs": {
       "espn": "2925"
     }
@@ -1038,7 +1038,7 @@
     "shortName": "Como",
     "abbr": "COMO",
     "country": "ita",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/2572.png",
     "refs": {
       "espn": "2572"
     }
@@ -1050,7 +1050,7 @@
     "shortName": "Fiorentina",
     "abbr": "FIO",
     "country": "ita",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/109.png",
     "refs": {
       "espn": "109"
     }
@@ -1062,7 +1062,7 @@
     "shortName": "Frosinone",
     "abbr": "FRO",
     "country": "ita",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/4057.png",
     "refs": {
       "espn": "4057"
     }
@@ -1074,7 +1074,7 @@
     "shortName": "Genoa",
     "abbr": "GEN",
     "country": "ita",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/3263.png",
     "refs": {
       "espn": "3263"
     }
@@ -1086,7 +1086,7 @@
     "shortName": "Internazionale",
     "abbr": "INT",
     "country": "ita",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/110.png",
     "refs": {
       "espn": "110"
     }
@@ -1098,7 +1098,7 @@
     "shortName": "Juventus",
     "abbr": "JUV",
     "country": "ita",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/111.png",
     "refs": {
       "espn": "111"
     }
@@ -1110,7 +1110,7 @@
     "shortName": "Lazio",
     "abbr": "LAZ",
     "country": "ita",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/112.png",
     "refs": {
       "espn": "112"
     }
@@ -1122,7 +1122,7 @@
     "shortName": "Lecce",
     "abbr": "LEC",
     "country": "ita",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/113.png",
     "refs": {
       "espn": "113"
     }
@@ -1134,7 +1134,7 @@
     "shortName": "Monza",
     "abbr": "MON",
     "country": "ita",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/4007.png",
     "refs": {
       "espn": "4007"
     }
@@ -1146,7 +1146,7 @@
     "shortName": "Napoli",
     "abbr": "NAP",
     "country": "ita",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/114.png",
     "refs": {
       "espn": "114"
     }
@@ -1158,7 +1158,7 @@
     "shortName": "Parma",
     "abbr": "PAR",
     "country": "ita",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/115.png",
     "refs": {
       "espn": "115"
     }
@@ -1170,7 +1170,7 @@
     "shortName": "Sassuolo",
     "abbr": "SAS",
     "country": "ita",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/3997.png",
     "refs": {
       "espn": "3997"
     }
@@ -1182,7 +1182,7 @@
     "shortName": "Torino",
     "abbr": "TOR",
     "country": "ita",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/239.png",
     "refs": {
       "espn": "239"
     }
@@ -1194,7 +1194,7 @@
     "shortName": "Udinese",
     "abbr": "UDI",
     "country": "ita",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/118.png",
     "refs": {
       "espn": "118"
     }
@@ -1206,7 +1206,7 @@
     "shortName": "Venezia",
     "abbr": "VEN",
     "country": "ita",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/17530.png",
     "refs": {
       "espn": "17530"
     }
@@ -1218,7 +1218,7 @@
     "shortName": "América",
     "abbr": "AME",
     "country": "mex",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/227.png",
     "refs": {
       "espn": "227"
     }
@@ -1230,7 +1230,7 @@
     "shortName": "Atlante",
     "abbr": "ATL",
     "country": "mex",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/226.png",
     "refs": {
       "espn": "226"
     }
@@ -1242,7 +1242,7 @@
     "shortName": "Atlas",
     "abbr": "ATS",
     "country": "mex",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/216.png",
     "refs": {
       "espn": "216"
     }
@@ -1254,7 +1254,7 @@
     "shortName": "Atlético de San Luis",
     "abbr": "ASL",
     "country": "mex",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/15720.png",
     "refs": {
       "espn": "15720"
     }
@@ -1266,7 +1266,7 @@
     "shortName": "Cruz Azul",
     "abbr": "CAZ",
     "country": "mex",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/218.png",
     "refs": {
       "espn": "218"
     }
@@ -1278,7 +1278,7 @@
     "shortName": "FC Juarez",
     "abbr": "JUA",
     "country": "mex",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/17851.png",
     "refs": {
       "espn": "17851"
     }
@@ -1290,7 +1290,7 @@
     "shortName": "Guadalajara",
     "abbr": "GDL",
     "country": "mex",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/219.png",
     "refs": {
       "espn": "219"
     }
@@ -1302,7 +1302,7 @@
     "shortName": "León",
     "abbr": "LEO",
     "country": "mex",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/228.png",
     "refs": {
       "espn": "228"
     }
@@ -1314,7 +1314,7 @@
     "shortName": "Monterrey",
     "abbr": "MTY",
     "country": "mex",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/220.png",
     "refs": {
       "espn": "220"
     }
@@ -1326,7 +1326,7 @@
     "shortName": "Necaxa",
     "abbr": "NCX",
     "country": "mex",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/229.png",
     "refs": {
       "espn": "229"
     }
@@ -1338,7 +1338,7 @@
     "shortName": "Pachuca",
     "abbr": "PAC",
     "country": "mex",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/234.png",
     "refs": {
       "espn": "234"
     }
@@ -1350,7 +1350,7 @@
     "shortName": "Puebla",
     "abbr": "PUE",
     "country": "mex",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/231.png",
     "refs": {
       "espn": "231"
     }
@@ -1362,7 +1362,7 @@
     "shortName": "Pumas UNAM",
     "abbr": "UNAM",
     "country": "mex",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/233.png",
     "refs": {
       "espn": "233"
     }
@@ -1374,7 +1374,7 @@
     "shortName": "Querétaro",
     "abbr": "QRO",
     "country": "mex",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/222.png",
     "refs": {
       "espn": "222"
     }
@@ -1386,7 +1386,7 @@
     "shortName": "Santos",
     "abbr": "SAN",
     "country": "mex",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/225.png",
     "refs": {
       "espn": "225"
     }
@@ -1398,7 +1398,7 @@
     "shortName": "Tigres UANL",
     "abbr": "UANL",
     "country": "mex",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/232.png",
     "refs": {
       "espn": "232"
     }
@@ -1410,7 +1410,7 @@
     "shortName": "Tijuana",
     "abbr": "TIJ",
     "country": "mex",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/10125.png",
     "refs": {
       "espn": "10125"
     }
@@ -1422,7 +1422,7 @@
     "shortName": "Toluca",
     "abbr": "TOL",
     "country": "mex",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/223.png",
     "refs": {
       "espn": "223"
     }
@@ -1434,7 +1434,7 @@
     "shortName": "Algeria",
     "abbr": "ALG",
     "country": "alg",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/alg.png",
     "refs": {
       "espn": "624"
     }
@@ -1446,7 +1446,7 @@
     "shortName": "Argentina",
     "abbr": "ARG",
     "country": "arg",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/arg.png",
     "refs": {
       "espn": "202"
     }
@@ -1458,7 +1458,7 @@
     "shortName": "Australia",
     "abbr": "AUS",
     "country": "aus",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/aus.png",
     "refs": {
       "espn": "628"
     }
@@ -1470,7 +1470,7 @@
     "shortName": "Austria",
     "abbr": "AUT",
     "country": "aut",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/aut.png",
     "refs": {
       "espn": "474"
     }
@@ -1482,7 +1482,7 @@
     "shortName": "Belgium",
     "abbr": "BEL",
     "country": "bel",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/bel.png",
     "refs": {
       "espn": "459"
     }
@@ -1494,7 +1494,7 @@
     "shortName": "Bosnia-Herzegovina",
     "abbr": "BIH",
     "country": "bih",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/bih.png",
     "refs": {
       "espn": "452"
     }
@@ -1506,7 +1506,7 @@
     "shortName": "Brazil",
     "abbr": "BRA",
     "country": "bra",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/bra.png",
     "refs": {
       "espn": "205"
     }
@@ -1518,7 +1518,7 @@
     "shortName": "Canada",
     "abbr": "CAN",
     "country": "can",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/can.png",
     "refs": {
       "espn": "206"
     }
@@ -1530,7 +1530,7 @@
     "shortName": "Ivory Coast",
     "abbr": "CIV",
     "country": "civ",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/civ.png",
     "refs": {
       "espn": "4789"
     }
@@ -1542,7 +1542,7 @@
     "shortName": "Congo DR",
     "abbr": "COD",
     "country": "cod",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/rdc.png",
     "refs": {
       "espn": "2850"
     }
@@ -1554,7 +1554,7 @@
     "shortName": "Colombia",
     "abbr": "COL",
     "country": "col",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/col.png",
     "refs": {
       "espn": "208"
     }
@@ -1566,7 +1566,7 @@
     "shortName": "Cape Verde",
     "abbr": "CPV",
     "country": "cpv",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/cpv.png",
     "refs": {
       "espn": "2597"
     }
@@ -1578,7 +1578,7 @@
     "shortName": "Croatia",
     "abbr": "CRO",
     "country": "cro",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/cro.png",
     "refs": {
       "espn": "477"
     }
@@ -1590,7 +1590,7 @@
     "shortName": "Curaçao",
     "abbr": "CUW",
     "country": "cuw",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/11678.png",
     "refs": {
       "espn": "11678"
     }
@@ -1602,7 +1602,7 @@
     "shortName": "Czechia",
     "abbr": "CZE",
     "country": "cze",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/cze.png",
     "refs": {
       "espn": "450"
     }
@@ -1614,7 +1614,7 @@
     "shortName": "Ecuador",
     "abbr": "ECU",
     "country": "ecu",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/ecu.png",
     "refs": {
       "espn": "209"
     }
@@ -1626,7 +1626,7 @@
     "shortName": "Egypt",
     "abbr": "EGY",
     "country": "egy",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/egy.png",
     "refs": {
       "espn": "2620"
     }
@@ -1638,7 +1638,7 @@
     "shortName": "England",
     "abbr": "ENG",
     "country": "eng",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/eng.png",
     "refs": {
       "espn": "448"
     }
@@ -1650,7 +1650,7 @@
     "shortName": "Spain",
     "abbr": "ESP",
     "country": "esp",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/esp.png",
     "refs": {
       "espn": "164"
     }
@@ -1662,7 +1662,7 @@
     "shortName": "France",
     "abbr": "FRA",
     "country": "fra",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/fra.png",
     "refs": {
       "espn": "478"
     }
@@ -1674,7 +1674,7 @@
     "shortName": "Germany",
     "abbr": "GER",
     "country": "ger",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/ger.png",
     "refs": {
       "espn": "481"
     }
@@ -1686,7 +1686,7 @@
     "shortName": "Ghana",
     "abbr": "GHA",
     "country": "gha",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/gha.png",
     "refs": {
       "espn": "4469"
     }
@@ -1698,7 +1698,7 @@
     "shortName": "Haiti",
     "abbr": "HAI",
     "country": "hai",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/hai.png",
     "refs": {
       "espn": "2654"
     }
@@ -1710,7 +1710,7 @@
     "shortName": "Iran",
     "abbr": "IRN",
     "country": "irn",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/irn.png",
     "refs": {
       "espn": "469"
     }
@@ -1722,7 +1722,7 @@
     "shortName": "Iraq",
     "abbr": "IRQ",
     "country": "irq",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/irq.png",
     "refs": {
       "espn": "4375"
     }
@@ -1734,7 +1734,7 @@
     "shortName": "Jordan",
     "abbr": "JOR",
     "country": "jor",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/jor.png",
     "refs": {
       "espn": "2917"
     }
@@ -1746,7 +1746,7 @@
     "shortName": "Japan",
     "abbr": "JPN",
     "country": "jpn",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/jpn.png",
     "refs": {
       "espn": "627"
     }
@@ -1758,7 +1758,7 @@
     "shortName": "South Korea",
     "abbr": "KOR",
     "country": "kor",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/kors.png",
     "refs": {
       "espn": "451"
     }
@@ -1770,7 +1770,7 @@
     "shortName": "Saudi Arabia",
     "abbr": "KSA",
     "country": "ksa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/ksa.png",
     "refs": {
       "espn": "655"
     }
@@ -1782,7 +1782,7 @@
     "shortName": "Morocco",
     "abbr": "MAR",
     "country": "mar",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/mar.png",
     "refs": {
       "espn": "2869"
     }
@@ -1794,7 +1794,7 @@
     "shortName": "Mexico",
     "abbr": "MEX",
     "country": "mex",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/mex.png",
     "refs": {
       "espn": "203"
     }
@@ -1806,7 +1806,7 @@
     "shortName": "Netherlands",
     "abbr": "NED",
     "country": "ned",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/ned.png",
     "refs": {
       "espn": "449"
     }
@@ -1818,7 +1818,7 @@
     "shortName": "Norway",
     "abbr": "NOR",
     "country": "nor",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/nor.png",
     "refs": {
       "espn": "464"
     }
@@ -1830,7 +1830,7 @@
     "shortName": "New Zealand",
     "abbr": "NZL",
     "country": "nzl",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/nzl.png",
     "refs": {
       "espn": "2666"
     }
@@ -1842,7 +1842,7 @@
     "shortName": "Panama",
     "abbr": "PAN",
     "country": "pan",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/pan.png",
     "refs": {
       "espn": "2659"
     }
@@ -1854,7 +1854,7 @@
     "shortName": "Paraguay",
     "abbr": "PAR",
     "country": "par",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/par.png",
     "refs": {
       "espn": "210"
     }
@@ -1866,7 +1866,7 @@
     "shortName": "Portugal",
     "abbr": "POR",
     "country": "por",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/por.png",
     "refs": {
       "espn": "482"
     }
@@ -1878,7 +1878,7 @@
     "shortName": "Qatar",
     "abbr": "QAT",
     "country": "qat",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/qat.png",
     "refs": {
       "espn": "4398"
     }
@@ -1890,7 +1890,7 @@
     "shortName": "South Africa",
     "abbr": "RSA",
     "country": "rsa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/rsa.png",
     "refs": {
       "espn": "467"
     }
@@ -1902,7 +1902,7 @@
     "shortName": "Scotland",
     "abbr": "SCO",
     "country": "sco",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/sco.png",
     "refs": {
       "espn": "580"
     }
@@ -1914,7 +1914,7 @@
     "shortName": "Senegal",
     "abbr": "SEN",
     "country": "sen",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/sen.png",
     "refs": {
       "espn": "654"
     }
@@ -1926,7 +1926,7 @@
     "shortName": "Switzerland",
     "abbr": "SUI",
     "country": "sui",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/sui.png",
     "refs": {
       "espn": "475"
     }
@@ -1938,7 +1938,7 @@
     "shortName": "Sweden",
     "abbr": "SWE",
     "country": "swe",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/swe.png",
     "refs": {
       "espn": "466"
     }
@@ -1950,7 +1950,7 @@
     "shortName": "Tunisia",
     "abbr": "TUN",
     "country": "tun",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/tun.png",
     "refs": {
       "espn": "659"
     }
@@ -1962,7 +1962,7 @@
     "shortName": "Türkiye",
     "abbr": "TUR",
     "country": "tur",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/tur.png",
     "refs": {
       "espn": "465"
     }
@@ -1974,7 +1974,7 @@
     "shortName": "Uruguay",
     "abbr": "URU",
     "country": "uru",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/uru.png",
     "refs": {
       "espn": "212"
     }
@@ -1986,7 +1986,7 @@
     "shortName": "United States",
     "abbr": "USA",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/usa.png",
     "refs": {
       "espn": "660"
     }
@@ -1998,7 +1998,7 @@
     "shortName": "Uzbekistan",
     "abbr": "UZB",
     "country": "uzb",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/uzb.png",
     "refs": {
       "espn": "2570"
     }
@@ -2010,7 +2010,7 @@
     "shortName": "Atlanta United FC",
     "abbr": "ATL",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/18418.png",
     "refs": {
       "espn": "18418"
     }
@@ -2022,7 +2022,7 @@
     "shortName": "Austin FC",
     "abbr": "ATX",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/20906.png",
     "refs": {
       "espn": "20906"
     }
@@ -2034,7 +2034,7 @@
     "shortName": "Charlotte FC",
     "abbr": "CLT",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/21300.png",
     "refs": {
       "espn": "21300"
     }
@@ -2046,7 +2046,7 @@
     "shortName": "Chicago Fire FC",
     "abbr": "CHI",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/182.png",
     "refs": {
       "espn": "182"
     }
@@ -2058,7 +2058,7 @@
     "shortName": "Colorado Rapids",
     "abbr": "COL",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/184.png",
     "refs": {
       "espn": "184"
     }
@@ -2070,7 +2070,7 @@
     "shortName": "Columbus Crew",
     "abbr": "CLB",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/183.png",
     "refs": {
       "espn": "183"
     }
@@ -2082,7 +2082,7 @@
     "shortName": "D.C. United",
     "abbr": "DC",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/193.png",
     "refs": {
       "espn": "193"
     }
@@ -2094,7 +2094,7 @@
     "shortName": "FC Cincinnati",
     "abbr": "CIN",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/18267.png",
     "refs": {
       "espn": "18267"
     }
@@ -2106,7 +2106,7 @@
     "shortName": "FC Dallas",
     "abbr": "DAL",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/185.png",
     "refs": {
       "espn": "185"
     }
@@ -2118,7 +2118,7 @@
     "shortName": "Houston Dynamo FC",
     "abbr": "HOU",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/6077.png",
     "refs": {
       "espn": "6077"
     }
@@ -2130,7 +2130,7 @@
     "shortName": "Inter Miami CF",
     "abbr": "MIA",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/20232.png",
     "refs": {
       "espn": "20232"
     }
@@ -2142,7 +2142,7 @@
     "shortName": "LA Galaxy",
     "abbr": "LA",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/187.png",
     "refs": {
       "espn": "187"
     }
@@ -2154,7 +2154,7 @@
     "shortName": "LAFC",
     "abbr": "LAFC",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/18966.png",
     "refs": {
       "espn": "18966"
     }
@@ -2166,7 +2166,7 @@
     "shortName": "Minnesota United FC",
     "abbr": "MIN",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/17362.png",
     "refs": {
       "espn": "17362"
     }
@@ -2178,7 +2178,7 @@
     "shortName": "Nashville SC",
     "abbr": "NSH",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/18986.png",
     "refs": {
       "espn": "18986"
     }
@@ -2190,7 +2190,7 @@
     "shortName": "New England Revolution",
     "abbr": "NE",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/189.png",
     "refs": {
       "espn": "189"
     }
@@ -2202,7 +2202,7 @@
     "shortName": "New York City FC",
     "abbr": "NYC",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/17606.png",
     "refs": {
       "espn": "17606"
     }
@@ -2214,7 +2214,7 @@
     "shortName": "Orlando City SC",
     "abbr": "ORL",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/12011.png",
     "refs": {
       "espn": "12011"
     }
@@ -2226,7 +2226,7 @@
     "shortName": "Philadelphia Union",
     "abbr": "PHI",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/10739.png",
     "refs": {
       "espn": "10739"
     }
@@ -2238,7 +2238,7 @@
     "shortName": "Portland Timbers",
     "abbr": "POR",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/9723.png",
     "refs": {
       "espn": "9723"
     }
@@ -2250,7 +2250,7 @@
     "shortName": "Real Salt Lake",
     "abbr": "RSL",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/4771.png",
     "refs": {
       "espn": "4771"
     }
@@ -2262,7 +2262,7 @@
     "shortName": "Red Bull New York",
     "abbr": "RBNY",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/190.png",
     "refs": {
       "espn": "190"
     }
@@ -2274,7 +2274,7 @@
     "shortName": "San Diego FC",
     "abbr": "SD",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/22529.png",
     "refs": {
       "espn": "22529"
     }
@@ -2286,7 +2286,7 @@
     "shortName": "San Jose Earthquakes",
     "abbr": "SJ",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/191.png",
     "refs": {
       "espn": "191"
     }
@@ -2298,7 +2298,7 @@
     "shortName": "Seattle Sounders FC",
     "abbr": "SEA",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/9726.png",
     "refs": {
       "espn": "9726"
     }
@@ -2310,7 +2310,7 @@
     "shortName": "Sporting Kansas City",
     "abbr": "SKC",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/186.png",
     "refs": {
       "espn": "186"
     }
@@ -2322,7 +2322,7 @@
     "shortName": "St. Louis CITY SC",
     "abbr": "STL",
     "country": "usa",
-    "crestUrl": null,
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/21812.png",
     "refs": {
       "espn": "21812"
     }
