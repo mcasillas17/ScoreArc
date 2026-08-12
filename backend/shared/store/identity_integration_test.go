@@ -333,3 +333,45 @@ ON CONFLICT DO NOTHING`); err != nil {
 		t.Fatal(err)
 	}
 }
+
+func TestResolvePlayerCreatesOnceAndReuses(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+
+	first, err := store.Player(ctx, "espn", PlayerRef{SourceID: "253989", FullName: "Erling Haaland"})
+	if err != nil {
+		t.Fatalf("Player: %v", err)
+	}
+	second, err := store.Player(ctx, "espn", PlayerRef{SourceID: "253989", FullName: "Erling Haaland"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatalf("same source player resolved to %s then %s", first, second)
+	}
+
+	var players int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM player`).Scan(&players); err != nil {
+		t.Fatal(err)
+	}
+	if players != 1 {
+		t.Fatalf("players = %d, want 1", players)
+	}
+
+	// A different source id is a different player until cross-source merging
+	// exists — it must NOT be guessed by name.
+	other, err := store.Player(ctx, "statsbomb", PlayerRef{SourceID: "sb-1", FullName: "Erling Haaland"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other == first {
+		t.Fatal("players from different sources were merged by name; merging is out of scope")
+	}
+}
+
+func TestResolvePlayerRequiresSourceID(t *testing.T) {
+	store, _ := newIntegrationStore(t)
+	if _, err := store.Player(context.Background(), "espn", PlayerRef{FullName: "No Id"}); err == nil {
+		t.Fatal("expected an error when the player ref has no source id")
+	}
+}

@@ -220,3 +220,72 @@ ON CONFLICT (source, source_id) DO UPDATE SET
 	}
 	return matchID, nil
 }
+
+// PlayerRef is a provider-scoped player identity. Cross-source merging (the
+// same human from two providers) is deliberately NOT attempted here: names
+// collide, change with accents, and follow transfers. Two sources yield two
+// canonical players until a merge step exists.
+type PlayerRef struct {
+	SourceID    string
+	FullName    string
+	KnownAs     string
+	Nationality string
+	Position    string
+}
+
+// Player resolves a provider player id to a canonical player id, creating the
+// player on a miss.
+func (s *Store) Player(ctx context.Context, source string, ref PlayerRef) (uuid.UUID, error) {
+	if ref.SourceID == "" {
+		return uuid.Nil, fmt.Errorf("player ref has no source id")
+	}
+	if ref.FullName == "" {
+		return uuid.Nil, fmt.Errorf("player ref %s/%s has no name", source, ref.SourceID)
+	}
+	opCtx, cancel := boundedContext(ctx)
+	defer cancel()
+
+	var playerID uuid.UUID
+	err := s.pool.QueryRow(opCtx,
+		`SELECT player_id FROM player_external_ref WHERE source=$1 AND source_id=$2`,
+		source, ref.SourceID,
+	).Scan(&playerID)
+	if err == nil {
+		return playerID, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, err
+	}
+
+	tx, err := s.pool.Begin(opCtx)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	defer tx.Rollback(opCtx)
+
+	playerID, err = uuid.NewV7()
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if _, err := tx.Exec(opCtx, `
+INSERT INTO player (id, full_name, known_as, nationality, position, updated_at)
+VALUES ($1,$2,$3,$4,$5,now())`,
+		playerID, ref.FullName, nullIfEmpty(ref.KnownAs),
+		nullIfEmpty(ref.Nationality), nullIfEmpty(ref.Position),
+	); err != nil {
+		return uuid.Nil, err
+	}
+	if _, err := tx.Exec(opCtx, `
+INSERT INTO player_external_ref (source, source_id, player_id, first_seen_at, last_seen_at)
+VALUES ($1,$2,$3,now(),now())
+ON CONFLICT (source, source_id) DO UPDATE SET
+	player_id = EXCLUDED.player_id, last_seen_at = now()`,
+		source, ref.SourceID, playerID,
+	); err != nil {
+		return uuid.Nil, err
+	}
+	if err := tx.Commit(opCtx); err != nil {
+		return uuid.Nil, err
+	}
+	return playerID, nil
+}
