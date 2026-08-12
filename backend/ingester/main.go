@@ -53,15 +53,6 @@ func run() int {
 		return 1
 	}
 	defer repo.Close()
-	if err := applySeeds(ctx, repo, registry); err != nil {
-		cancelStartup()
-		if leaseErrorExitCode(ctx, err) == 0 {
-			log.Info("shutdown complete")
-			return 0
-		}
-		log.Error("seed registries", "err", err)
-		return 1
-	}
 	lease, acquired, err := store.AcquireIngesterLease(startupCtx, leaseDSN)
 	cancelStartup()
 	if err != nil {
@@ -83,6 +74,23 @@ func run() int {
 			log.Error("release ingester lease", "err", err)
 		}
 	}()
+
+	// Seeding happens INSIDE the lease. It is not read-only setup: it repoints
+	// crosswalk rows and promotes provisional teams, moving identities the lease
+	// holder is mid-cycle on. A second process — a rolling deploy, a `-once`
+	// job, a restart overlapping the old instance — that seeded before taking
+	// the lease would do all of that concurrently with the holder's writes,
+	// including repointing a ref for a team created after the holder read which
+	// teams needed promoting. The lease is what makes ingest single-writer, and
+	// seeding is an ingest write.
+	if err := applySeeds(ctx, repo, registry); err != nil {
+		if leaseErrorExitCode(ctx, err) == 0 {
+			log.Info("shutdown complete")
+			return 0
+		}
+		log.Error("seed registries", "err", err)
+		return 1
+	}
 
 	var mirror crestMirror
 	if configured, ok, err := assets.FromEnv(); err != nil {
