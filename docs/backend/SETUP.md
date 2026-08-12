@@ -312,56 +312,137 @@ The Go ingester talks to R2 with the **AWS S3 SDK** pointed at the R2 endpoint
 
 ## 7. Deploy the Go services to Fly
 
-Each Go service is its own Fly app. The reader and ingester applications are
-implemented; both services' `fly.toml`/Dockerfile deployment assets remain part
-of the 1a-rev work.
+Each Go service is its own Fly app. The deploy assets are **hand-authored and
+committed** (infra as reviewable code), so **never let `fly launch` generate or
+overwrite them** — use `fly launch` only to create the app *record*, then deploy
+the committed config:
+
+- Reader: `backend/reader/Dockerfile` + `backend/reader/fly.toml`
+  (public HTTP, scale-to-zero, `/healthz` check).
+- Ingester: `backend/ingester/Dockerfile` + `backend/ingester/fly.toml`
+  (always-on singleton, no public HTTP).
 
 Complete the database migration in §5 before either deploy. During rollback,
 replace the reader with a pre-`0004` binary before reverting migration `0004`.
 
-The `fly.toml` + `Dockerfile` for each service are **hand-authored and committed**
-in slice 1a-rev (infra as reviewable code) — do **not** let `fly launch` generate
-and overwrite them. Use `fly launch` only to create the app *record*, then deploy
-the committed config.
+### 7.1 Build context (read this first)
+
+Both services live in one Go module (`backend/`) and import sibling packages
+(`config/`, `shared/`), so the **Docker build context must be `backend/`** — not
+the service directory. Every deploy uses:
 
 ```bash
-cd backend/reader        # (and separately backend/ingester)
-# create the Fly app WITHOUT generating a fly.toml (keep the committed one);
-# pick the SAME region you chose for Neon in §4:
-fly launch --no-deploy --copy-config --name scorearc-reader --region <same-as-neon>
-
-# set secrets (never commit these):
-fly secrets set DATABASE_URL="$READER_DSN"          # reader app
-# ingester app:
-fly secrets set POOLED_DSN="$INGESTER_DSN" \
-                INGESTER_LEASE_DSN="$INGESTER_LEASE_DSN" \
-                R2_ACCOUNT_ID="..." \
-                R2_ACCESS_KEY_ID="..." \
-                R2_SECRET_ACCESS_KEY="..." \
-                R2_BUCKET="scorearc-assets" \
-                R2_PUBLIC_BASE_URL="https://cdn.scorearc.futbol" \
-                R2_RAW_BUCKET="scorearc-espn-historic"
-
-fly deploy
+flyctl deploy backend \
+  --config backend/<svc>/fly.toml \
+  --dockerfile backend/<svc>/Dockerfile \
+  --remote-only
 ```
-- **Reader**: public HTTP, autoscaling, can scale to zero. `fly.toml` exposes the
-  HTTP service on the internal port the Go reader listens on.
-- **Ingester**: always-on worker — set `min_machines_running = 1` (no scale to
-  zero) so its live-polling ticker keeps running. It needs **no public HTTP
-  service** (it only makes outbound calls + writes the DB/R2).
 
-**Verify the deploy:**
+`backend` (positional) is the build context; `--config`/`--dockerfile` are paths
+from the repo root. `--remote-only` builds on Fly's builders, so no local Docker
+is needed to deploy. `competitions.json` is `//go:embed`-ed, so the runtime
+images carry only the binary (~20 MB each).
+
+### 7.2 Create the app records (once)
+
+Pick the **same region as Neon** (§4) — it must match `primary_region` in both
+`fly.toml`s (committed as `iad`; edit both files if Neon is elsewhere).
+
+```bash
+fly apps create scorearc-reader
+fly apps create scorearc-ingester
+```
+
+### 7.3 Set secrets (never commit these)
+
+```bash
+# reader — the pooled, SELECT-only reader DSN
+fly secrets set --app scorearc-reader DATABASE_URL="$READER_DSN"
+
+# ingester — pooled writer DSN + UNPOOLED lease DSN + R2
+fly secrets set --app scorearc-ingester \
+  POOLED_DSN="$INGESTER_DSN" \
+  INGESTER_LEASE_DSN="$INGESTER_LEASE_DSN" \
+  R2_ACCOUNT_ID="..." \
+  R2_ACCESS_KEY_ID="..." \
+  R2_SECRET_ACCESS_KEY="..." \
+  R2_BUCKET="scorearc-assets" \
+  R2_PUBLIC_BASE_URL="https://cdn.scorearc.futbol" \
+  R2_RAW_BUCKET="scorearc-espn-historic"
+```
+
+⚠️ `INGESTER_LEASE_DSN` **must be the unpooled (direct) Neon host.** The process
+rejects any host containing `-pooler` at startup, because the singleton lease is
+a session-scoped advisory lock that a pooled connection cannot hold reliably.
+
+⚠️ The five `R2_*` values are all-or-nothing: if any one is empty the ingester
+logs `R2 mirror disabled; incomplete R2 configuration` and runs **without** logo
+mirroring rather than failing. Check that log line after the first deploy.
+
+### 7.4 First deploy
+
+```bash
+flyctl deploy backend \
+  --config backend/reader/fly.toml \
+  --dockerfile backend/reader/Dockerfile --remote-only
+
+flyctl deploy backend \
+  --config backend/ingester/fly.toml \
+  --dockerfile backend/ingester/Dockerfile --remote-only
+
+# the ingester has no [http_service], so pin exactly one always-on machine:
+fly scale count 1 --app scorearc-ingester
+```
+
+- **Reader**: public HTTP on 8080, scales to zero when idle
+  (`min_machines_running = 0`), woken by requests; Fly runs the `/healthz` check.
+- **Ingester**: always-on worker (no `[http_service]` → nothing auto-stops it);
+  `fly scale count 1` keeps its live-polling ticker running. No public port.
+
+⚠️ **The ingester is a singleton — never run two machines.** It holds a Postgres
+advisory lock via `pg_try_advisory_lock`, which is non-blocking: a second
+instance does not queue, it logs `another ingester instance holds the database
+lease` and exits 1. Its `fly.toml` therefore pins `strategy = "immediate"` so
+the old machine stops before the new one starts, and `kill_timeout = "15s"` so
+the 5s lease-release path finishes on shutdown. If a deploy ever leaves the lock
+stranded, the machine holding it is gone and Postgres reaps the session — wait
+for the connection to drop, then redeploy.
+
+### 7.5 Verify
+
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' https://scorearc-reader.fly.dev/healthz
 # expect: 200
+
 fly status --app scorearc-ingester
 # expect: 1 machine in "started" state (the always-on worker)
+
+fly logs --app scorearc-ingester | head
+# expect: no "another ingester instance holds the database lease"
 ```
 
-Deployment automation is not implemented yet. The current GitHub Actions
-workflow validates frontend and backend changes but does not deploy to Fly;
-use the manual `fly deploy` procedure above until a reviewed deployment
-workflow and `FLY_API_TOKEN` secret are added.
+Every reader response carries an `X-Request-Id`, and each request is logged as
+one structured JSON line on stdout (`fly logs --app scorearc-reader`).
+Successful `/healthz` probes are deliberately not logged — Fly polls it every
+15s — but failing ones are.
+
+### 7.6 CI/CD (automated after the first manual deploy)
+
+Push to `main` auto-deploys via GitHub Actions, **path-filtered per service** so
+a reader-only change never redeploys the ingester:
+`.github/workflows/deploy-reader.yml` and `.github/workflows/deploy-ingester.yml`.
+Both authenticate with the `FLY_API_TOKEN` repo secret. Create it with a
+deploy-scoped token and add it under GitHub → repo → Settings → Secrets and
+variables → Actions:
+
+```bash
+fly tokens create deploy --app scorearc-reader
+# paste the output as the FLY_API_TOKEN GitHub Actions secret
+```
+
+Note that `ci.yml` runs on pull requests and on pushes to every branch **except**
+`main`, so the PR is the test gate — a push to `main` deploys without re-running
+the suite. Keep merges gated on a green PR.
 
 ---
 
