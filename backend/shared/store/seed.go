@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -14,8 +15,10 @@ import (
 )
 
 // ErrPromotionBlocked means a provisional team could not be folded into the
-// curated team that took over its source ids, so the seed was rolled back
-// rather than left half-applied.
+// curated team that took over its source ids. The rest of the seed still
+// applies; that one team keeps resolving through its provisional row until a
+// human resolves the conflict. Callers that care can test for it with
+// errors.Is on the error logged by ApplyTeamSeed.
 var ErrPromotionBlocked = errors.New("provisional team promotion blocked")
 
 // seedTimeout bounds a whole seed apply. Seeding is bulk work — ~200 teams and
@@ -66,9 +69,11 @@ type seedRef struct {
 // Anything less leaves matches keyed to the dead team, invisible to the natural
 // key, and a second source then forks a duplicate match.
 //
-// Promotion refuses, and rolls the whole seed back, if a FINALIZED match
-// references the provisional team: that history is immutable by trigger, so a
-// human has to intervene. See ErrPromotionBlocked.
+// A promotion that cannot complete — say the curated team already holds a row
+// the provisional team's history would collide with — does NOT fail the seed.
+// That team is left pointing at its provisional row and the rest of the seed is
+// applied: the affected club keeps working, degraded rather than down, and the
+// next seed run retries. Each failure is logged with both ids and the reason.
 func (s *Store) ApplyTeamSeed(ctx context.Context, seed []config.SeedTeam) error {
 	ctx, cancel := seedContext(ctx)
 	defer cancel()
@@ -91,58 +96,94 @@ func (s *Store) ApplyTeamSeed(ctx context.Context, seed []config.SeedTeam) error
 		return refs[i].sourceID < refs[j].sourceID
 	})
 
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer rollback(ctx, tx)
-
-	// Read the provisional teams currently holding these source ids BEFORE the
-	// crosswalk upsert below repoints them at the curated rows.
-	promotions, err := provisionalHolders(ctx, tx, refs)
-	if err != nil {
-		return err
-	}
-
 	teamBatch := &pgx.Batch{}
 	for _, team := range teams {
 		teamBatch.Queue(teamSeedUpsertSQL,
 			team.ID, team.Kind, team.Name, nullIfEmpty(team.ShortName),
 			team.Abbr, nullIfEmpty(team.Country), team.CrestURL)
 	}
-	if err := tx.SendBatch(ctx, teamBatch).Close(); err != nil {
+	if err := s.pool.SendBatch(ctx, teamBatch).Close(); err != nil {
 		return fmt.Errorf("upsert seeded teams: %w", err)
 	}
 
+	// Read the provisional teams currently holding these source ids BEFORE any
+	// crosswalk upsert repoints them at the curated rows.
+	promotions, err := s.provisionalHolders(ctx, refs)
+	if err != nil {
+		return err
+	}
+
+	// Crosswalk rows that need no promotion go in one batch. The rest move
+	// inside their own promotion transaction, so a promotion that fails leaves
+	// its source ids pointing at the provisional row that still owns the history.
+	promoting := make(map[string]struct{})
+	for _, promotion := range promotions {
+		for _, ref := range promotion.refs {
+			promoting[cacheKey(ref.source, ref.sourceID)] = struct{}{}
+		}
+	}
 	refBatch := &pgx.Batch{}
 	for _, ref := range refs {
+		if _, held := promoting[cacheKey(ref.source, ref.sourceID)]; held {
+			continue
+		}
 		refBatch.Queue(teamRefUpsertSQL, ref.source, ref.sourceID, ref.teamID)
 	}
-	if err := tx.SendBatch(ctx, refBatch).Close(); err != nil {
+	if err := s.pool.SendBatch(ctx, refBatch).Close(); err != nil {
 		return fmt.Errorf("upsert seeded team refs: %w", err)
 	}
 
+	var deferred []string
 	for _, promotion := range promotions {
-		if err := promoteProvisionalTeam(ctx, tx, promotion.provisionalID, promotion.curatedID); err != nil {
-			return err
+		if err := s.applyPromotion(ctx, promotion); err != nil {
+			deferred = append(deferred, promotion.provisionalID)
+			slog.Warn("team curation deferred: the provisional row keeps its history",
+				"provisional", promotion.provisionalID,
+				"curated", promotion.curatedID,
+				"error", err)
+			continue
 		}
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return err
 	}
 	// The crosswalk moved under any warm mapping this process holds.
 	s.cache().reset()
+	if len(deferred) > 0 {
+		slog.Warn("team seed applied with deferred promotions",
+			"deferred", len(deferred), "teams", strings.Join(deferred, ", "))
+	}
 	return nil
 }
 
 type promotion struct {
 	provisionalID string
 	curatedID     string
+	refs          []seedRef
+}
+
+// applyPromotion moves one provisional team's source ids and history onto its
+// curated row, atomically. On failure nothing moves: the source ids still
+// resolve to the provisional team, which still holds the matches.
+func (s *Store) applyPromotion(ctx context.Context, p promotion) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer rollback(ctx, tx)
+
+	for _, ref := range p.refs {
+		if _, err := tx.Exec(ctx, teamRefUpsertSQL, ref.source, ref.sourceID, ref.teamID); err != nil {
+			return err
+		}
+	}
+	if err := promoteProvisionalTeam(ctx, tx, p.provisionalID, p.curatedID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // provisionalHolders finds source ids the seed is claiming that currently point
-// at a provisional team, returning each (provisional -> curated) pair once.
-func provisionalHolders(ctx context.Context, tx pgx.Tx, refs []seedRef) ([]promotion, error) {
+// at a provisional team, grouping the crosswalk rows that move with each
+// (provisional -> curated) pair.
+func (s *Store) provisionalHolders(ctx context.Context, refs []seedRef) ([]promotion, error) {
 	if len(refs) == 0 {
 		return nil, nil
 	}
@@ -155,19 +196,20 @@ func provisionalHolders(ctx context.Context, tx pgx.Tx, refs []seedRef) ([]promo
 		curatedFor[cacheKey(ref.source, ref.sourceID)] = ref.teamID
 	}
 
-	rows, err := tx.Query(ctx, `
+	rows, err := s.pool.Query(ctx, `
 SELECT r.source, r.source_id, r.team_id
 FROM team_external_ref r
 JOIN team t ON t.id = r.team_id
 JOIN unnest($1::text[], $2::text[]) AS k(source, source_id)
 	ON k.source = r.source AND k.source_id = r.source_id
-WHERE t.provisional`, sources, sourceIDs)
+WHERE t.provisional
+ORDER BY r.team_id, r.source, r.source_id`, sources, sourceIDs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	seen := make(map[promotion]struct{})
+	index := make(map[string]int)
 	var promotions []promotion
 	for rows.Next() {
 		var source, sourceID, provisionalID string
@@ -178,12 +220,15 @@ WHERE t.provisional`, sources, sourceIDs)
 		if curated == "" || curated == provisionalID {
 			continue
 		}
-		pair := promotion{provisionalID: provisionalID, curatedID: curated}
-		if _, dup := seen[pair]; dup {
-			continue
+		key := provisionalID + "\x00" + curated
+		at, exists := index[key]
+		if !exists {
+			at = len(promotions)
+			index[key] = at
+			promotions = append(promotions, promotion{provisionalID: provisionalID, curatedID: curated})
 		}
-		seen[pair] = struct{}{}
-		promotions = append(promotions, pair)
+		promotions[at].refs = append(promotions[at].refs,
+			seedRef{source: source, sourceID: sourceID, teamID: curated})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -198,18 +243,11 @@ WHERE t.provisional`, sources, sourceIDs)
 // curated team that has adopted its source ids, then deletes the provisional
 // row. This is the "rename and merge inside our own system" of spec §5.4, and
 // it is tractable precisely because we own the ids.
+// FINALIZED matches are repointed like any other. scorearc_protect_match_history
+// carves identity columns out of its immutability comparison for exactly this,
+// because a provisional id is a placeholder WE minted, not a recorded result —
+// see the comment on that trigger in 0001_init.up.sql.
 func promoteProvisionalTeam(ctx context.Context, tx pgx.Tx, provisionalID, curatedID string) error {
-	blocking, err := finalizedMatchesFor(ctx, tx, provisionalID)
-	if err != nil {
-		return err
-	}
-	if len(blocking) > 0 {
-		return fmt.Errorf(
-			"%w: %s -> %s is referenced by %d finalized match(es), whose history is immutable; "+
-				"repoint them manually before curating this team: %s",
-			ErrPromotionBlocked, provisionalID, curatedID, len(blocking), strings.Join(blocking, ", "))
-	}
-
 	// The team_external_ref repoint must come first: rows the seed did not
 	// itself claim would otherwise be destroyed by the ON DELETE CASCADE when
 	// the provisional row is deleted.
@@ -236,26 +274,6 @@ func promoteProvisionalTeam(ctx context.Context, tx pgx.Tx, provisionalID, curat
 		return fmt.Errorf("delete provisional team %s: %w", provisionalID, err)
 	}
 	return nil
-}
-
-func finalizedMatchesFor(ctx context.Context, tx pgx.Tx, teamID string) ([]string, error) {
-	rows, err := tx.Query(ctx, `
-SELECT id::text FROM match
-WHERE (home_team_id=$1 OR away_team_id=$1 OR winner_id=$1) AND finalized_at IS NOT NULL
-ORDER BY id`, teamID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
 }
 
 func nullIfEmpty(value string) any {

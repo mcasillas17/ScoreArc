@@ -2476,12 +2476,22 @@ acquired, add:
 		return 1
 	}
 	if err := repo.ApplyTeamSeed(seedCtx, teams); err != nil {
+		// The seed does NOT fail on a single team it could not curate: that
+		// team keeps resolving through its provisional row and ApplyTeamSeed
+		// logs it. An error here means the seed could not be applied AT ALL
+		// (connection, malformed registry), so continuing would ingest against
+		// a schema with no teams in it.
 		cancelSeed()
 		log.Error("apply team seed", "err", err)
 		return 1
 	}
 	cancelSeed()
 ```
+
+Competition seeding stays fatal for the same reason it always was: `match` has a foreign
+key to `season`, so with no competitions there is nothing to ingest into. A team that
+could not be curated is different in kind — it degrades one club, not the process — so
+`ApplyTeamSeed` reports those through the log and returns nil.
 
 - [ ] **Step 7: Build and run the ingester tests**
 

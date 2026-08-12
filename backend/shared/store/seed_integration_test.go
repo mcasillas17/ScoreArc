@@ -2,8 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -234,38 +232,126 @@ func TestApplyTeamSeedPromotesProvisionalTeam(t *testing.T) {
 	}
 }
 
-// Repointing a finalized match would breach the immutability guard, so
-// promotion refuses loudly and names the rows a human has to deal with.
-func TestApplyTeamSeedRefusesToPromoteAcrossFinalizedMatches(t *testing.T) {
+// Curating a club that has already played finished matches is the NORMAL
+// lifecycle, not an exception: it is auto-created in August and curated in a
+// later pass. The trigger carve-out exists so that promotion still works.
+func TestApplyTeamSeedPromotesAcrossFinalizedMatches(t *testing.T) {
 	store, pool := newIntegrationStore(t)
 	ctx := context.Background()
 	provisional := mustProvisionalWithHistory(t, store, pool)
-	if _, err := pool.Exec(ctx,
-		`UPDATE match SET state='finished', finalized_at=now() WHERE home_team_id=$1`,
-		provisional); err != nil {
+	if _, err := pool.Exec(ctx, `
+UPDATE match SET state='finished', home_score=2, away_score=1, finalized_at=now()
+WHERE home_team_id=$1`, provisional); err != nil {
 		t.Fatal(err)
 	}
 
-	err := store.ApplyTeamSeed(ctx, lutonSeed)
-	t.Logf("ApplyTeamSeed error: %v", err)
-	if !errors.Is(err, ErrPromotionBlocked) {
-		t.Fatalf("error = %v, want ErrPromotionBlocked", err)
+	if err := store.ApplyTeamSeed(ctx, lutonSeed); err != nil {
+		t.Fatalf("ApplyTeamSeed refused to curate across a finalized match: %v", err)
 	}
-	var matchID string
-	if err := pool.QueryRow(ctx, `SELECT id::text FROM match`).Scan(&matchID); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(err.Error(), matchID) {
-		t.Fatalf("error %q does not name the blocking match %s", err, matchID)
-	}
-	// The whole seed rolls back, so nothing is half-applied.
-	var curated int
+
+	var home, winner string
+	var homeScore, awayScore int
+	var provisionalLeft int
 	if err := pool.QueryRow(ctx,
-		`SELECT count(*) FROM team WHERE id='eng-luton-town'`).Scan(&curated); err != nil {
+		`SELECT home_team_id, winner_id, home_score, away_score FROM match`,
+	).Scan(&home, &winner, &homeScore, &awayScore); err != nil {
 		t.Fatal(err)
 	}
-	if curated != 0 {
-		t.Fatal("seed was partially applied despite the blocked promotion")
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM team WHERE provisional`).Scan(&provisionalLeft); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("finalized match after curation: home=%s winner=%s score=%d-%d provisional left=%d",
+		home, winner, homeScore, awayScore, provisionalLeft)
+	if home != "eng-luton-town" || winner != "eng-luton-town" || provisionalLeft != 0 {
+		t.Fatalf("finalized match not repointed: home=%s winner=%s provisional=%d",
+			home, winner, provisionalLeft)
+	}
+	// The RESULT is untouched — the carve-out moves pointers, not history.
+	if homeScore != 2 || awayScore != 1 {
+		t.Fatalf("score changed to %d-%d, want 2-1", homeScore, awayScore)
+	}
+}
+
+// One team whose promotion cannot complete must not take the rest of the seed
+// down with it. It keeps resolving through its provisional row — degraded, not
+// down — and the next seed run retries.
+func TestApplyTeamSeedIsolatesAFailedPromotion(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	mustSeedTwoTeams(t, store)
+	mustSeedSeason(t, pool)
+
+	// Blocked: the curated team ALREADY has the fixture the provisional team's
+	// match would collide with on the natural key.
+	blocked, err := store.Team(ctx, "espn", TeamRef{SourceID: "9999", Name: "Luton Town", Abbr: "LUT"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+INSERT INTO team (id, kind, name, abbr) VALUES ('eng-luton-town','club','Luton Town','LUT')`); err != nil {
+		t.Fatal(err)
+	}
+	kickoff := time.Date(2026, 9, 12, 14, 0, 0, 0, time.UTC)
+	for _, home := range []string{blocked, "eng-luton-town"} {
+		if _, err := pool.Exec(ctx, `
+INSERT INTO match (id, competition_id, season_id, home_team_id, away_team_id, kickoff, state, source)
+VALUES (gen_random_uuid(),'premier-league','2026-27',$1,'eng-chelsea',$2,'scheduled','espn')`,
+			home, kickoff); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Promotable: an ordinary provisional team with no conflict.
+	promotable, err := store.Team(ctx, "espn", TeamRef{SourceID: "8888", Name: "Burnley", Abbr: "BUR"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = store.ApplyTeamSeed(ctx, []config.SeedTeam{
+		{ID: "eng-luton-town", Kind: "club", Name: "Luton Town", Abbr: "LUT",
+			Country: "eng", Refs: map[string]string{"espn": "9999"}},
+		{ID: "eng-burnley", Kind: "club", Name: "Burnley", Abbr: "BUR",
+			Country: "eng", Refs: map[string]string{"espn": "8888"}},
+	})
+	if err != nil {
+		t.Fatalf("one blocked promotion failed the whole seed: %v", err)
+	}
+
+	var blockedRows, promotableRows, provisionalLeft int
+	var blockedCrosswalk, promotableCrosswalk string
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM team WHERE id=$1`, blocked).Scan(&blockedRows); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM team WHERE id=$1`, promotable).Scan(&promotableRows); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM team WHERE provisional`).Scan(&provisionalLeft); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx,
+		`SELECT team_id FROM team_external_ref WHERE source='espn' AND source_id='9999'`).Scan(&blockedCrosswalk); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx,
+		`SELECT team_id FROM team_external_ref WHERE source='espn' AND source_id='8888'`).Scan(&promotableCrosswalk); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("blocked: rows=%d crosswalk=%s | promotable: rows=%d crosswalk=%s | provisional left=%d",
+		blockedRows, blockedCrosswalk, promotableRows, promotableCrosswalk, provisionalLeft)
+
+	// The blocked team is untouched and still serving.
+	if blockedRows != 1 || blockedCrosswalk != blocked {
+		t.Fatalf("blocked team was disturbed: rows=%d crosswalk=%s want 1 and %s",
+			blockedRows, blockedCrosswalk, blocked)
+	}
+	// The promotable one went through.
+	if promotableRows != 0 || promotableCrosswalk != "eng-burnley" {
+		t.Fatalf("promotable team did not promote: rows=%d crosswalk=%s",
+			promotableRows, promotableCrosswalk)
+	}
+	if provisionalLeft != 1 {
+		t.Fatalf("provisional teams = %d, want exactly the blocked one", provisionalLeft)
 	}
 }
 
