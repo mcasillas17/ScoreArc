@@ -198,22 +198,72 @@ CREATE INDEX ingest_run_started_idx ON ingest_run (started_at);
 
 CREATE FUNCTION scorearc_protect_match_history() RETURNS trigger
 LANGUAGE plpgsql AS $$
+DECLARE
+  old_facts jsonb;
+  new_facts jsonb;
 BEGIN
   IF (OLD.state = 'live' AND NEW.state = 'scheduled'
      AND NEW.status_name NOT IN ('STATUS_POSTPONED', 'STATUS_SUSPENDED'))
      OR (OLD.state = 'finished' AND NEW.state <> 'finished') THEN
     RAISE EXCEPTION 'match state cannot regress';
   END IF;
-  -- kickoff_date is STORED GENERATED, and in a BEFORE UPDATE trigger Postgres
-  -- has not computed it yet: NEW.kickoff_date is always NULL here while
-  -- OLD.kickoff_date is populated. A bare `NEW IS DISTINCT FROM OLD` would
-  -- therefore be true for EVERY update, turning this guard into "reject all
-  -- writes" instead of "reject writes that change something". Compare the rows
-  -- with that one column projected out. Do not "simplify" this back.
-  IF OLD.finalized_at IS NOT NULL
-     AND (to_jsonb(NEW) - 'kickoff_date') IS DISTINCT FROM (to_jsonb(OLD) - 'kickoff_date') THEN
+
+  IF OLD.finalized_at IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  -- What this guard protects is the RESULT: scores, state, kickoff, minute,
+  -- status, round, note, finalized_at. It compares the whole row rather than
+  -- listing those columns, so a column added later is protected by default.
+  -- Four keys are projected out of that comparison, each for its own reason:
+  --
+  --   kickoff_date  STORED GENERATED, and in a BEFORE UPDATE trigger Postgres
+  --                 has not computed it yet: NEW.kickoff_date is always NULL
+  --                 here while OLD.kickoff_date is populated. A bare
+  --                 `NEW IS DISTINCT FROM OLD` would therefore be true for
+  --                 EVERY update, turning this guard into "reject all writes"
+  --                 instead of "reject writes that change something". Do not
+  --                 "simplify" this back. kickoff itself is still compared, and
+  --                 kickoff_date is derived from it, so nothing is lost.
+  --
+  --   home_team_id  Identity repointing. These hold ids WE mint, and a
+  --   away_team_id  provisional team (`prov-espn-9999`) is a placeholder we
+  --   winner_id     created ourselves for a club that had not been curated yet.
+  --                 Folding it into its curated row is not rewriting history —
+  --                 it is correcting a pointer to the same real-world team.
+  --                 Blocking it would make routine curation fail against any
+  --                 team that has already played a finished match, which is the
+  --                 normal lifecycle, not an exception. The carve-out is
+  --                 narrowed below so it CANNOT be used to rewrite a result.
+  --
+  --   updated_at    Bookkeeping. Carries no history of its own.
+  new_facts := to_jsonb(NEW)
+    - 'kickoff_date' - 'home_team_id' - 'away_team_id' - 'winner_id' - 'updated_at';
+  old_facts := to_jsonb(OLD)
+    - 'kickoff_date' - 'home_team_id' - 'away_team_id' - 'winner_id' - 'updated_at';
+  IF new_facts IS DISTINCT FROM old_facts THEN
     RAISE EXCEPTION 'finalized match history is immutable';
   END IF;
+
+  -- The carve-out above applies ONLY to folding a provisional team into its
+  -- curated one. Without this, projecting winner_id out of the comparison would
+  -- let anyone rewrite who won a finished match — a result, not a pointer. A
+  -- changed team id is therefore accepted only when the id being REPLACED
+  -- belongs to a provisional team. Merging two curated teams stays blocked, and
+  -- so does setting a winner on a match that had none (NULL is not provisional).
+  IF NEW.home_team_id IS DISTINCT FROM OLD.home_team_id
+     AND NOT EXISTS (SELECT 1 FROM team WHERE id = OLD.home_team_id AND provisional) THEN
+    RAISE EXCEPTION 'finalized match history is immutable';
+  END IF;
+  IF NEW.away_team_id IS DISTINCT FROM OLD.away_team_id
+     AND NOT EXISTS (SELECT 1 FROM team WHERE id = OLD.away_team_id AND provisional) THEN
+    RAISE EXCEPTION 'finalized match history is immutable';
+  END IF;
+  IF NEW.winner_id IS DISTINCT FROM OLD.winner_id
+     AND NOT EXISTS (SELECT 1 FROM team WHERE id = OLD.winner_id AND provisional) THEN
+    RAISE EXCEPTION 'finalized match history is immutable';
+  END IF;
+
   RETURN NEW;
 END
 $$;
