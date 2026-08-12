@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/mcasillas17/scorearc-backend/config"
@@ -165,12 +167,36 @@ func TestProposeTeamRefreshesProviderFields(t *testing.T) {
 	if got.Name != "Cruz Azul" || got.Abbr != "CAZ" {
 		t.Errorf("provider fields not refreshed: name=%q abbr=%q", got.Name, got.Abbr)
 	}
-	if got.CrestURL == nil || *got.CrestURL != crest {
-		t.Errorf("crest not carried through: %v", got.CrestURL)
+	// The crest is the CDN mirror's to own at runtime, not the seed's.
+	if got.CrestURL != nil {
+		t.Errorf("provider crest leaked into the seed: %v", got.CrestURL)
 	}
 	// kind is a curated decision even though ESPN could imply one.
 	if got.Kind != "club" {
 		t.Errorf("kind = %q", got.Kind)
+	}
+}
+
+// A hand-set crest or short name is a human decision like any other, so a
+// regenerate must carry it through rather than blanking it.
+func TestProposeTeamPreservesHandSetCrestAndShortName(t *testing.T) {
+	handSet := "https://cdn.scorearc.futbol/teams/mex-cruz-azul.png"
+	espnCrest := "https://a.espncdn.com/i/teamlogos/soccer/500/218.png"
+	curated := map[string]config.SeedTeam{
+		"218": {
+			ID: "mex-cruz-azul", Kind: "club", Name: "Cruz Azul", ShortName: "La Máquina",
+			Abbr: "CAZ", Country: "mex", CrestURL: &handSet,
+			Refs: map[string]string{"espn": "218"},
+		},
+	}
+	got := proposeTeam(curated, "concacaf", "club",
+		model.Team{ID: "218", Name: "Cruz Azul", Abbr: "CAZ", CrestURL: &espnCrest})
+
+	if got.CrestURL == nil || *got.CrestURL != handSet {
+		t.Errorf("hand-set crest = %v, want %q", got.CrestURL, handSet)
+	}
+	if got.ShortName != "La Máquina" {
+		t.Errorf("hand-set short name = %q", got.ShortName)
 	}
 }
 
@@ -186,14 +212,45 @@ func TestProposeTeamDerivesUnseenTeams(t *testing.T) {
 	if got.Country != "concacaf" || got.Kind != "club" {
 		t.Errorf("country=%q kind=%q", got.Country, got.Kind)
 	}
-	if got.ShortName != "América" {
-		t.Errorf("short name = %q", got.ShortName)
+	// Neither of these is proposed: a short name duplicating the name is noise,
+	// and the crest belongs to the runtime mirror.
+	if got.ShortName != "" {
+		t.Errorf("short name = %q, want it left unset", got.ShortName)
 	}
-	if got.CrestURL == nil || *got.CrestURL != crest {
-		t.Errorf("crest not proposed: %v", got.CrestURL)
+	if got.CrestURL != nil {
+		t.Errorf("crest = %v, want it left unset", got.CrestURL)
 	}
 	if got.Refs["espn"] != "227" {
 		t.Errorf("refs = %v", got.Refs)
+	}
+}
+
+// The generator's output is a file humans read diffs of. Once the fields stop
+// being proposed they must not reappear as `"crestUrl": null` noise either.
+func TestProposedSeedOmitsUnsetDisplayFields(t *testing.T) {
+	encoded, err := json.Marshal([]config.SeedTeam{
+		proposeTeam(map[string]config.SeedTeam{}, "eng", "club",
+			model.Team{ID: "359", Name: "Arsenal", Abbr: "ARS"}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "crestUrl") ||
+		strings.Contains(string(encoded), "shortName") {
+		t.Fatalf("proposed row still emits the dropped fields: %s", encoded)
+	}
+}
+
+// The committed seed is the same shape the generator now emits.
+func TestCommittedSeedCarriesNoProviderCrests(t *testing.T) {
+	seed, err := config.LoadTeams()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, team := range seed {
+		if team.CrestURL != nil {
+			t.Fatalf("team %q still carries a seeded crest %q", team.ID, *team.CrestURL)
+		}
 	}
 }
 

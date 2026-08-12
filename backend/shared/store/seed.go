@@ -47,8 +47,12 @@ ON CONFLICT (id) DO UPDATE SET
 	short_name = EXCLUDED.short_name,
 	abbr = EXCLUDED.abbr,
 	country = EXCLUDED.country,
-	-- Never clobber a mirrored crest with a null from the seed.
-	crest_url = COALESCE(EXCLUDED.crest_url, team.crest_url),
+	-- The seed crest seeds ONLY. Crests are mirrored to our own CDN at runtime
+	-- (SetTeamCrest), and the seed's value is a provider hotlink, so preferring
+	-- EXCLUDED here would replace every mirrored URL with an ESPN one on every
+	-- restart — and then re-upload to R2 to undo it. The stored value wins
+	-- whenever there is one.
+	crest_url = COALESCE(team.crest_url, EXCLUDED.crest_url),
 	provisional = false,
 	updated_at = now()`
 

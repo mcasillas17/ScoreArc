@@ -64,6 +64,52 @@ func TestApplyTeamSeedIsIdempotent(t *testing.T) {
 	}
 }
 
+// Crests are mirrored to our own CDN at runtime. The seed must not undo that:
+// it carries provider hotlinks, it runs on every ingester start, and losing this
+// means every restart reverts every crest to ESPN and then re-uploads to R2 to
+// heal — but only for the teams that happen to be seen that cycle.
+func TestApplyTeamSeedDoesNotOverwriteAMirroredCrest(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+
+	hotlink := "https://a.espncdn.com/i/teamlogos/soccer/500/359.png"
+	seed := []config.SeedTeam{
+		{ID: "eng-arsenal", Kind: "club", Name: "Arsenal", Abbr: "ARS",
+			Country: "eng", CrestURL: &hotlink, Refs: map[string]string{"espn": "359"}},
+	}
+	if err := store.ApplyTeamSeed(ctx, seed); err != nil {
+		t.Fatal(err)
+	}
+
+	// A seed crest still seeds: the first insert has nothing to preserve.
+	var crest string
+	if err := pool.QueryRow(ctx,
+		`SELECT crest_url FROM team WHERE id='eng-arsenal'`).Scan(&crest); err != nil {
+		t.Fatal(err)
+	}
+	if crest != hotlink {
+		t.Fatalf("initial crest = %q, want the seeded %q", crest, hotlink)
+	}
+
+	const mirrored = "https://cdn.scorearc.futbol/teams/eng-arsenal.png"
+	if err := store.SetTeamCrest(ctx, "eng-arsenal", mirrored); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 { // every restart re-applies the seed
+		if err := store.ApplyTeamSeed(ctx, seed); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := pool.QueryRow(ctx,
+		`SELECT crest_url FROM team WHERE id='eng-arsenal'`).Scan(&crest); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("crest after two re-seeds = %s", crest)
+	if crest != mirrored {
+		t.Fatalf("re-seeding reverted the mirrored crest to %q, want %q", crest, mirrored)
+	}
+}
+
 func TestApplyCompetitionSeedPopulatesSeasonsAndRefs(t *testing.T) {
 	store, pool := newIntegrationStore(t)
 	ctx := context.Background()

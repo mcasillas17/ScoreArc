@@ -121,24 +121,25 @@ func deriveSlug(prefix, kind string, team model.Team) string {
 // already carries this source id, that row wins: its id, country and kind are
 // human decisions and are never re-derived. Only the provider-owned display
 // fields are refreshed from ESPN.
+//
+// Neither shortName nor crestUrl is proposed. A short name that merely repeats
+// the name says nothing, and the crest is mirrored to our own CDN at runtime —
+// emitting the provider hotlink here only put 194 URLs in front of every human
+// reading a diff of the seed. A hand-set value of either is preserved, because
+// the curated row is returned whole.
 func proposeTeam(curated map[string]config.SeedTeam, prefix, kind string, team model.Team) config.SeedTeam {
 	if row, found := curated[team.ID]; found {
 		row.Name = team.Name
 		row.Abbr = team.Abbr
-		if team.CrestURL != nil {
-			row.CrestURL = team.CrestURL
-		}
 		return row
 	}
 	return config.SeedTeam{
-		ID:        deriveSlug(prefix, kind, team),
-		Kind:      kind,
-		Name:      team.Name,
-		ShortName: team.Name,
-		Abbr:      team.Abbr,
-		Country:   prefix,
-		CrestURL:  team.CrestURL,
-		Refs:      map[string]string{sourceName: team.ID},
+		ID:      deriveSlug(prefix, kind, team),
+		Kind:    kind,
+		Name:    team.Name,
+		Abbr:    team.Abbr,
+		Country: prefix,
+		Refs:    map[string]string{sourceName: team.ID},
 	}
 }
 

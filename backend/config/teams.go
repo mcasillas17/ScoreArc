@@ -12,14 +12,20 @@ var rawTeams []byte
 // SeedTeam is one row of the authored team registry. Refs maps a source name
 // ("espn") to that source's id for this team, which is what the crosswalk is
 // populated from. A team with no refs can never be resolved, so it is rejected.
+//
+// ShortName and CrestURL are still READ — a human may set either by hand — but
+// they are omitempty and the generator no longer proposes them. The seed is a
+// file humans read diffs of, and 194 duplicated names plus 194 provider URLs
+// drowned the identity decisions that actually matter. crest_url in particular
+// is owned at runtime by the CDN mirror, not by this file.
 type SeedTeam struct {
 	ID        string            `json:"id"`
 	Kind      string            `json:"kind"`
 	Name      string            `json:"name"`
-	ShortName string            `json:"shortName"`
+	ShortName string            `json:"shortName,omitempty"`
 	Abbr      string            `json:"abbr"`
 	Country   string            `json:"country"`
-	CrestURL  *string           `json:"crestUrl"`
+	CrestURL  *string           `json:"crestUrl,omitempty"`
 	Refs      map[string]string `json:"refs"`
 }
 
