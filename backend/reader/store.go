@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
@@ -46,7 +47,7 @@ FROM match m
 JOIN team ht ON ht.id = m.home_team_id
 JOIN team at ON at.id = m.away_team_id
 LEFT JOIN match_detail d ON d.match_id = m.id
-WHERE m.comp_id = $1 AND m.season_id = $2
+WHERE m.competition_id = $1 AND m.season_id = $2
 ORDER BY m.kickoff, m.id`
 
 func (s *Store) Matches(ctx context.Context, competition, season string) ([]Match, error) {
@@ -59,11 +60,12 @@ func (s *Store) Matches(ctx context.Context, competition, season string) ([]Matc
 	matches := make([]Match, 0)
 	for rows.Next() {
 		match := Match{Scorers: []espn.Scorer{}, Cards: []espn.Card{}}
+		var id uuid.UUID
 		var kickoff time.Time
 		var state string
 		var scorers, cards, stats, winProbability, shootout, shootoutDetail []byte
 		if err := rows.Scan(
-			&match.ID, &kickoff, &state, &match.Minute, &match.StatusDetail, &match.StatusName,
+			&id, &kickoff, &state, &match.Minute, &match.StatusDetail, &match.StatusName,
 			&match.HomeScore, &match.AwayScore, &match.WinnerID, &match.Note,
 			&match.Home.ID, &match.Home.Name, &match.Home.Abbr, &match.Home.CrestURL,
 			&match.Away.ID, &match.Away.Name, &match.Away.Abbr, &match.Away.CrestURL,
@@ -71,6 +73,7 @@ func (s *Store) Matches(ctx context.Context, competition, season string) ([]Matc
 		); err != nil {
 			return nil, err
 		}
+		match.ID = id.String()
 		match.Kickoff = isoTime(kickoff)
 		match.State = espn.MatchState(state)
 		for _, item := range []struct {
@@ -100,7 +103,7 @@ SELECT s.group_id, s.group_name, s.rank, s.played, s.wins, s.draws, s.losses,
        t.id, t.name, t.abbr, t.crest_url
 FROM standing s
 JOIN team t ON t.id = s.team_id
-WHERE s.comp_id = $1 AND s.season_id = $2
+WHERE s.competition_id = $1 AND s.season_id = $2
 ORDER BY COALESCE(s.group_name, ''), s.rank, t.id`
 
 func (s *Store) Standings(ctx context.Context, competition, season, defaultGroupName string) ([]Group, error) {
@@ -166,7 +169,7 @@ SELECT m.id, m.round, m.kickoff, m.state, m.minute, m.status_detail, m.status_na
 FROM match m
 JOIN team ht ON ht.id = m.home_team_id
 JOIN team at ON at.id = m.away_team_id
-WHERE m.comp_id = $1 AND m.season_id = $2 AND m.round IS NOT NULL AND m.round <> ''
+WHERE m.competition_id = $1 AND m.season_id = $2 AND m.round IS NOT NULL AND m.round <> ''
 ORDER BY m.kickoff, m.id`
 
 func (s *Store) Bracket(ctx context.Context, competition, season string) ([]BracketRound, error) {
@@ -179,6 +182,7 @@ func (s *Store) Bracket(ctx context.Context, competition, season string) ([]Brac
 	bySlug := make(map[string][]espn.BracketMatch)
 	for rows.Next() {
 		var match espn.BracketMatch
+		var id uuid.UUID
 		var kickoff time.Time
 		var state string
 		var homeID, homeName, homeAbbr string
@@ -187,7 +191,7 @@ func (s *Store) Bracket(ctx context.Context, competition, season string) ([]Brac
 		var awayCrest *string
 		var homePlaceholder, awayPlaceholder bool
 		if err := rows.Scan(
-			&match.ID, &match.Round, &kickoff, &state, &match.Minute, &match.StatusDetail,
+			&id, &match.Round, &kickoff, &state, &match.Minute, &match.StatusDetail,
 			&match.StatusName, &match.HomeScore, &match.AwayScore, &match.WinnerID, &match.Note,
 			&homePlaceholder, &awayPlaceholder,
 			&homeID, &homeName, &homeAbbr, &homeCrest,
@@ -195,6 +199,7 @@ func (s *Store) Bracket(ctx context.Context, competition, season string) ([]Brac
 		); err != nil {
 			return nil, err
 		}
+		match.ID = id.String()
 		match.Kickoff = isoTime(kickoff)
 		match.State = espn.MatchState(state)
 		match.Home = espn.BracketTeam{ID: homeID, Name: homeName, Abbr: homeAbbr, CrestURL: homeCrest, Placeholder: homePlaceholder}
@@ -222,10 +227,18 @@ SELECT scorers, cards, stats, win_probability, shootout_detail,
 FROM match_detail
 WHERE match_id = $1`
 
+// MatchSummary keeps a string parameter because the route parameter is one.
+// It is parsed rather than handed to Postgres: match_id is a uuid column, so an
+// arbitrary path segment would be a type error from the database instead of the
+// 404 it plainly is.
 func (s *Store) MatchSummary(ctx context.Context, id string) (*MatchSummary, error) {
+	matchID, err := uuid.Parse(id)
+	if err != nil {
+		return nil, ErrNotFound
+	}
 	var scorers, cards, stats, winProbability, shootoutDetail []byte
 	var lineups, videos, info, form, commentary, h2h []byte
-	if err := s.db.QueryRow(ctx, summarySQL, id).Scan(
+	if err := s.db.QueryRow(ctx, summarySQL, matchID).Scan(
 		&scorers, &cards, &stats, &winProbability, &shootoutDetail,
 		&lineups, &videos, &info, &form, &commentary, &h2h,
 	); err != nil {
@@ -270,7 +283,7 @@ func (s *Store) MatchSummary(ctx context.Context, id string) (*MatchSummary, err
 const topScorersSQL = `
 SELECT rank, player, goals, matches, team_abbr, team_name, team_crest_url
 FROM top_scorer
-WHERE comp_id = $1 AND season_id = $2
+WHERE competition_id = $1 AND season_id = $2
 ORDER BY rank`
 
 func (s *Store) TopScorers(ctx context.Context, competition, season string) ([]espn.TopScorer, error) {
