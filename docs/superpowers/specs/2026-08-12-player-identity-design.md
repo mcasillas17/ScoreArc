@@ -101,14 +101,20 @@ CREATE TABLE match_event (
   seq       int  NOT NULL,               -- ordinal within the match, mapper order
   player_id uuid          REFERENCES player(id) ON DELETE SET NULL,
   team_id   text NOT NULL REFERENCES team(id),
-  type      text NOT NULL,               -- goal | own_goal | penalty | yellow | red
+  type      text NOT NULL,  -- goal | own_goal | yellow | red | sub_on | sub_off
   minute    text NOT NULL,
+  penalty   bool NOT NULL DEFAULT false,
   shootout  bool NOT NULL DEFAULT false,
+  detail    text NOT NULL DEFAULT '',    -- the provider's own label, verbatim
   PRIMARY KEY (match_id, seq)
 );
 ```
 
-Two deliberate choices:
+`penalty` is a flag rather than a type, because a penalty is a goal that also happens to
+be a penalty. Making it a distinct type would exclude it from `type = 'goal'` and
+silently undercount every scorer.
+
+Two further deliberate choices:
 
 - **`match_event.player_id` is nullable.** An event ESPN reports without an athlete id
   still happened, and dropping it would silently understate a scoreline. We record the
@@ -116,6 +122,19 @@ Two deliberate choices:
   appearance with no player is meaningless.
 - **The key is `(match_id, seq)`, not a surrogate uuid.** Events have no stable provider
   id, so a surrogate key would make re-ingestion produce duplicates. See §3.4.
+
+### 3.3b Substitutions
+
+`type.type` (ESPN's stable machine value, which the raw structs also weren't declaring)
+identifies a substitution, and its two participants are the players coming on and going
+off. Verified against the recorded fixture that `participants[0]` is ON and
+`participants[1]` is OFF, 8/8, cross-checked against the event's own "X replaces Y" prose.
+
+A substitution becomes **two** events (`sub_on`, `sub_off`) rather than one event with two
+players, so every row is one player-action and minutes-played is a group-by rather than a
+parse of prose. Any participant count other than two is skipped rather than guessed — an
+inverted substitution credits minutes to the wrong player, which is worse than a missing
+one.
 
 ### 3.4 Idempotent re-ingestion — the part that will bite
 
@@ -164,8 +183,26 @@ workstreams, and invisible to production until something queries the new tables.
 
 ### 5.1 ESPN omits the athlete id
 
-Observed present on lineups and key events in sampled payloads, but not guaranteed
-across all nine competitions, and near-certainly absent for some historic seasons.
+**Measured against live ESPN, 2026-08-12 — all nine competitions, 100% coverage.** One
+finished match per competition, squad and event athlete ids present on every row:
+
+| Competition | Squad (with id) | Starters | Events (with id) |
+|---|---|---|---|
+| World Cup | 52 / 52 | 22 | 31 / 31 |
+| Leagues Cup | 46 / 46 | 22 | 30 / 30 |
+| Premier League | 40 / 40 | 22 | 26 / 26 |
+| LaLiga | 46 / 46 | 22 | 22 / 22 |
+| Serie A | 49 / 49 | 22 | 19 / 19 |
+| Bundesliga | 40 / 40 | 22 | 28 / 28 |
+| Ligue 1 | 40 / 40 | 22 | 25 / 25 |
+| MLS | 40 / 40 | 22 | 23 / 23 |
+| Liga MX | 42 / 42 | 22 | 28 / 28 |
+
+Note the squad column against the 22 starters: between 18 and 30 players per match were
+being discarded before this slice.
+
+Coverage is still not *guaranteed* — this is nine matches on one day, and historic
+seasons are untested — so the degradation path below is real code, not a formality.
 
 **Degrade, don't block** — the same philosophy as provisional teams. A missing id means:
 no appearance row for that player, and a `match_event` with `player_id IS NULL`. The
