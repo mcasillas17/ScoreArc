@@ -162,7 +162,13 @@ func (e *ESPN) Summary(ctx context.Context, comp config.Competition, match model
 	if detail.Shootout == nil && match.Note != nil {
 		detail.Shootout = espn.ParseShootoutNote(*match.Note, match.Home.Name, match.Away.Name)
 	}
-	result := SummaryResult{Detail: detail}
+	// match here is the caller's provider-shaped copy, so its team ids are the
+	// ones the payload's rosters and events are keyed on.
+	participation, err := espn.MapParticipation(raw, match.Home.ID, match.Away.ID)
+	if err != nil {
+		return SummaryResult{}, err
+	}
+	result := SummaryResult{Detail: detail, Participation: participation}
 	if match.State == model.MatchStateFinished {
 		result.HomeScore, result.AwayScore, err = espn.SummaryFinalScores(raw)
 		if err != nil {
