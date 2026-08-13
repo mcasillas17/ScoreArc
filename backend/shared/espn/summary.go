@@ -162,6 +162,10 @@ type rawRosterPlayer struct {
 }
 
 type rawAthlete struct {
+	// ID is what makes a player a person rather than a string. ESPN sends it on
+	// every roster entry; before it was declared here encoding/json discarded it
+	// silently, which is why nothing downstream could identify a player.
+	ID           flexibleString   `json:"id"`
 	DisplayName  string           `json:"displayName"`
 	JerseyImages []rawJerseyImage `json:"jerseyImages"`
 }
@@ -187,6 +191,10 @@ type rawKeyEvent struct {
 
 type rawEventType struct {
 	Text string `json:"text"`
+	// Type is ESPN's stable machine value ("goal", "yellow-card",
+	// "substitution"). The legacy scorer/card mappers below classify by regex
+	// over Text, which is English display prose; new code should prefer this.
+	Type string `json:"type"`
 }
 
 type rawClock struct {
@@ -198,7 +206,8 @@ type rawParticipant struct {
 }
 
 type rawAthleteName struct {
-	DisplayName string `json:"displayName"`
+	ID          flexibleString `json:"id"`
+	DisplayName string         `json:"displayName"`
 }
 
 type rawCommentaryItem struct {
