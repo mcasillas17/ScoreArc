@@ -62,7 +62,12 @@ type PlayerEvent struct {
 // MatchParticipation is everything about a match that concerns people rather
 // than teams.
 type MatchParticipation struct {
-	Home   []SquadPlayer
-	Away   []SquadPlayer
-	Events []PlayerEvent
+	// The provider ids the squads were matched on, echoed back so the ingester
+	// can map an event's TeamSourceID onto a canonical side without re-deriving
+	// which team was home.
+	HomeTeamSourceID string
+	AwayTeamSourceID string
+	Home             []SquadPlayer
+	Away             []SquadPlayer
+	Events           []PlayerEvent
 }

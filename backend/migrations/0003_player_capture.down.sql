@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS match_event;
+DROP TABLE IF EXISTS appearance;

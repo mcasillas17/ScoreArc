@@ -23,9 +23,11 @@ func MapParticipation(raw []byte, homeSourceID, awaySourceID string) (*MatchPart
 	}
 
 	part := &MatchParticipation{
-		Home:   make([]SquadPlayer, 0),
-		Away:   make([]SquadPlayer, 0),
-		Events: make([]PlayerEvent, 0),
+		HomeTeamSourceID: homeSourceID,
+		AwayTeamSourceID: awaySourceID,
+		Home:             make([]SquadPlayer, 0),
+		Away:             make([]SquadPlayer, 0),
+		Events:           make([]PlayerEvent, 0),
 	}
 
 	for i := range rs.Rosters {
