@@ -9,3 +9,7 @@ export const bracketUrl = (slug: string, range?: string) =>
   `${site(slug)}/scoreboard${range ? `?dates=${range}` : ''}`;
 export const statisticsUrl = (slug: string) => `${site(slug)}/statistics`;
 export const newsUrl = (slug: string) => `${site(slug)}/news`;
+// Every club in a league. Used to decide which of a cross-league cup's two
+// tables a club belongs to, since the cup's own payload carries no league
+// membership on the team object.
+export const teamsUrl = (slug: string) => `${site(slug)}/teams`;
