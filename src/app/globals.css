@@ -2872,7 +2872,7 @@ a {
 .ll-rule { flex: 1; height: 1px; background: var(--hairline); }
 
 .ll-row { display: grid; grid-template-columns: 20px 26px 1fr auto 22px; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 9px; }
-.ll-row--in { background: linear-gradient(90deg, rgba(232,184,75,0.10), rgba(232,184,75,0.02)); box-shadow: inset 2px 0 0 var(--qual, var(--gold)); margin-bottom: 3px; }
+.ll-row--in { background: linear-gradient(90deg, var(--qual-tint, rgba(232,184,75,0.10)), transparent); box-shadow: inset 2px 0 0 var(--qual, var(--gold)); margin-bottom: 3px; }
 .ll-band--out .ll-row { opacity: 0.5; }
 .ll-rank { color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; font-size: 12.5px; }
 .ll-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -3103,3 +3103,29 @@ a {
    Give the banner section its own stacking context above later content.
    Stays below the sidebar (50) and the match modal (200/9999). */
 #live { position: relative; z-index: 30; }
+
+/* ---- Per-table palettes for a cross-league cup ---- */
+/* The Leagues Cup runs two parallel tables that never play each other, so they
+   should not share one accent. Each takes its league's flag: MLS red/white/blue,
+   Liga MX green/white/red. Everything downstream already reads --qual and
+   --qual-bright, so scoping them here re-themes the dial, the arc, the cut line
+   and the qualifying rows at once. Colours are shifted off the literal flag
+   values where those are too dark to read on the dark ground. */
+.std-ladder[data-group="mls"] {
+  --qual: #b31942;                       /* Old Glory Red */
+  --qual-bright: #dce6ff;                /* white, cooled toward Old Glory Blue */
+  --qual-tint: rgba(10, 49, 97, 0.22);   /* blue wash behind qualifying rows */
+  --qual-dim: #4a2333;
+  --qual-glow: #3d1220;                  /* hub glow behind the leader crest */
+  --qual-glow-outer: #16090f;
+}
+.std-ladder[data-group="liga-mx"] {
+  --qual: #00875a;                       /* verde bandera, lifted for contrast */
+  --qual-bright: #f2fff8;                /* blanco */
+  --qual-tint: rgba(206, 17, 38, 0.16);  /* rojo wash behind qualifying rows */
+  --qual-dim: #14503a;
+  --qual-glow: #0c3826;                  /* hub glow behind the leader crest */
+  --qual-glow-outer: #06170f;
+}
+/* The heading above each ladder wears its own accent too. */
+.std-ladder[data-group] .std-ladder-title { color: var(--qual-bright); }

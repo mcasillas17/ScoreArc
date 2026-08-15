@@ -66,7 +66,7 @@ export default function StandingsLive({ initialGroups, initialScorers, apiBase, 
       <h2 className="std-block-title">{showThirdPlace ? 'Group Stage Results' : 'Standings'}</h2>
       {zones && zones.length > 0 && !showThirdPlace ? (
         groups.map((group) => (
-          <div key={group.id} className="std-ladder">
+          <div key={group.id} className="std-ladder" data-group={group.id}>
             {groups.length > 1 ? <h3 className="std-ladder-title">{group.name}</h3> : null}
             {/* A table may carry its own zones. Almost none do — one league, one
                 set of outcomes — but MLS's Supporters' Shield table is ranked
@@ -80,7 +80,7 @@ export default function StandingsLive({ initialGroups, initialScorers, apiBase, 
         // has two parallel tables racing for the same knockout, and rendering
         // only the first would silently drop half the competition.
         groups.map((group) => (
-          <div key={group.id} className="std-ladder">
+          <div key={group.id} className="std-ladder" data-group={group.id}>
             {groups.length > 1 ? <h3 className="std-ladder-title">{group.name}</h3> : null}
             <LeagueLadder
               standings={group.standings}
