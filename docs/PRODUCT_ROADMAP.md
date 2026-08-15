@@ -115,18 +115,39 @@ Branch `feat/team-pages`. Every crest on the site is currently a dead end.
 - **T4.2** Team route and page
 - **T4.3** Make crests clickable everywhere
 
+Verified 2026-08-15: `/teams/{id}/roster` returns all 35 players **with their
+season statistics inline** — so a complete, sortable squad stat table costs one
+request, not 35. The scope here is larger than a squad list for the same effort.
+
+Each athlete also carries an `injuries` array that is **empty for all 35**. The
+field existing is not the data existing; no injuries feature is built on it.
+
 ### E5 · Player pages
-Branch `feat/player-pages`. Unblocked by the keyless athlete endpoint.
+Branch `feat/player-pages`. Unblocked by three keyless athlete endpoints.
 
 - **T5.1** Athlete provider + mapper
 - **T5.2** Player route and page, with its ceiling stated on the page
 - **T5.3** Link players from scorers, assists, lineups and match popups
+
+Verified 2026-08-15: `/athletes/{id}` (200), `/athletes/{id}/overview` (200) and
+`/athletes/{id}/bio` (200) — while `/gamelog` (500), `/splits` (404) and `/stats`
+(404) are dead. **`/overview` carries a populated game log**, so the "no game log"
+limit stated in the first draft of this roadmap was wrong; a last-five log ships
+in E5. What genuinely needs E7 is a *full-season* log, cross-season history and
+percentiles.
 
 ### E6 · Shot log — *not* an xG model
 - **T6.1** Per-competition coverage probe, **before any parser is written**
 - **T6.2** Commentary shot parser
 - **T6.3** Reconcile parsed shots against `rosters[].totalShots`
 - **T6.4** Shot map rendering
+
+Coverage sampled 2026-08-15: LaLiga 129 commentary lines (15 "Assisted by"),
+CONCACAF Champions Cup 175 (22); earlier sampling gave 112 / 96 / 122 / 173 across
+the Premier League, Liga MX, LaLiga and Serie A. One competition-event combination
+returned **zero** during review, which is exactly why T6.1 blocks the parser:
+sampling two competitions and generalising is how you ship an empty feature to a
+third.
 
 ### E7 · History & trends — the real gate
 - **T7.1** Daily standings snapshot writer — **start immediately**

@@ -10,6 +10,12 @@ to serve that data instead.
 > signature arc-bracket identity, the roadmap (own the data → history → AI-powered
 > stats), and fútbol domain knowledge future agents need.
 
+> **Picking up feature work?** Read **`docs/PRODUCT_ROADMAP.md`** — the epic and
+> task index (E0–E8), what is gated on the backend and what is not, and what we
+> have decided *not* to build. Every epic links to its design spec and, where the
+> work is ready to execute, a task-by-task implementation plan. Work is assigned
+> by task id (`T0.1`, `T3.2`, …).
+
 > **Working on the backend / API?** Read **`BACKEND_HANDOFF.md`** (repo root) FIRST
 > — it's the self-contained onboarding (stack, current state, what's next, setup).
 > Start each backend slice from the latest `origin/main` on its own feature branch.
