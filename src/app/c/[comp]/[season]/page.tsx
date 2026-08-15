@@ -39,12 +39,33 @@ export default async function Workspace({ params }: { params: { comp: string; se
   let matches: Match[] = [];
   try { matches = await dataStore.getMatches(rc); } catch {}
 
-  const liveSection = (
+  // The fixture banner leads every competition page.
+  //
+  // getMatches only sees the current Monday→Sunday week, which is right on a
+  // matchday and wrong the rest of the time: a season whose next fixture falls
+  // next week has fixtures, and showing an empty band says otherwise. Five of
+  // nine competitions were in exactly that state — between them holding 132
+  // scheduled fixtures and displaying none. Fall back to the forward feed.
+  const scheduledThisWeek = matches.some((m) => m.state === 'scheduled');
+  let upcoming: Match[] = [];
+  if (!scheduledThisWeek) {
+    try { upcoming = await dataStore.getUpcoming(rc); } catch {}
+  }
+  const bannerMatches = scheduledThisWeek ? matches : upcoming;
+  // Null rather than an empty section: a competition that really has no
+  // fixtures left (a finished edition) should show no band at all, not a
+  // heading over nothing.
+  const liveSection = bannerMatches.length > 0 ? (
     <section id="live">
-      <h2 className="section-label">Upcoming This Week</h2>
-      <UpcomingTicker initialMatches={matches} apiBase={apiBase} teamStyle={teamStyle} />
+      <h2 className="section-label">{scheduledThisWeek ? 'Upcoming This Week' : 'Next Up'}</h2>
+      <UpcomingTicker
+        initialMatches={bannerMatches}
+        apiBase={apiBase}
+        teamStyle={teamStyle}
+        weekOnly={scheduledThisWeek}
+      />
     </section>
-  );
+  ) : null;
   const footer = <footer className="site-footer"><p>ScoreArc · Data via ESPN · Not affiliated with FIFA</p></footer>;
 
   // League competitions have no knockout bracket — lead with the table.
@@ -53,10 +74,6 @@ export default async function Workspace({ params }: { params: { comp: string; se
     let scorers: TopScorer[] = [];
     try { groups = await dataStore.getStandings(rc); } catch {}
     try { scorers = await dataStore.getTopScorers(rc); } catch {}
-    // Leagues lead with live scores — the timeliest content on a matchday — with
-    // the (reference) table below. Off-season (no matches) keeps the table on top
-    // so we don't open with an empty Live Scores section.
-    const hasMatches = matches.length > 0;
     const table = (
       <section id="table" className={rc.season.qualification ? 'std-wide' : undefined}>
         <header className="bracket-head">
@@ -66,11 +83,13 @@ export default async function Workspace({ params }: { params: { comp: string; se
         <StandingsLive initialGroups={groups} initialScorers={scorers} apiBase={apiBase} teamStyle={teamStyle} showThirdPlace={false} qualification={rc.season.qualification} />
       </section>
     );
+    // The banner always leads. It is null when there is genuinely nothing to
+    // show, so the old shuffle that moved an empty band below the table is no
+    // longer needed.
     return (
       <main className="main">
-        {hasMatches ? liveSection : null}
+        {liveSection}
         {table}
-        {hasMatches ? null : liveSection}
         {footer}
       </main>
     );
@@ -89,14 +108,12 @@ export default async function Workspace({ params }: { params: { comp: string; se
     try { phaseGroups = await dataStore.getStandings(rc); } catch {}
   }
   if (computed && phaseGroups.length > 0 && bracket.length === 0) {
-    // The banner leads the page, as it does for a league. Between the phase
-    // ending and the first knockout kickoff there is no scheduled match to
-    // put in it — the provider has published none — so it carries the ties we
-    // derived instead of an empty ticker.
-    const anyScheduled = matches.some((m) => m.state === 'scheduled');
-    const banner = anyScheduled ? (
-      liveSection
-    ) : (
+    // Real fixtures win. The derived ties existed because the provider had
+    // published none — now that it has, they carry the actual kickoff times
+    // and the actual venue, which the seeded pairing cannot know: seeding
+    // fixes who plays whom, not who hosts. Fall back to the derived ties only
+    // while nothing is published.
+    const banner = liveSection ?? (
       <section id="live">
         <h2 className="section-label">Next Up</h2>
         <div className="lcq-banner">
