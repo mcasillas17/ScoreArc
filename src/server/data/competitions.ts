@@ -176,7 +176,36 @@ export const COMPETITIONS: Record<string, Competition> = {
   ]),
   ...leagueCompetition('laliga', 'LaLiga', 'LaLiga', 'esp.1', '🇪🇸', '2026-27', '2026-27', { base: '#e5484d', bright: '#ff6b6b', soft: 'rgba(229,72,77,0.16)' }),
   ...leagueCompetition('serie-a', 'Serie A', 'Serie A', 'ita.1', '🇮🇹', '2026-27', '2026-27', { base: '#3b82f6', bright: '#6ba7ff', soft: 'rgba(59,130,246,0.16)' }),
-  ...leagueCompetition('bundesliga', 'Bundesliga', 'Bundesliga', 'ger.1', '🇩🇪', '2026-27', '2026-27', { base: '#d20515', bright: '#ff5a4d', soft: 'rgba(210,5,21,0.16)' }),
+  ...leagueCompetition('bundesliga', 'Bundesliga', 'Bundesliga', 'ger.1', '🇩🇪', '2026-27', '2026-27', { base: '#d20515', bright: '#ff5a4d', soft: 'rgba(210,5,21,0.16)' }, undefined, [
+    // 2026-27 Bundesliga (28 Aug 2026 – 22 May 2027). 18 clubs, 34 matchdays.
+    //
+    // Europe: Germany is 4th in the association ranking used to allocate the
+    // 2027–28 Champions League (2026 coefficient, 92.902), so associations 1–5
+    // rule applies -> four berths, taken by 1st–4th. Germany did NOT take a
+    // European Performance Spot this cycle — England and Spain did — so the
+    // fifth place people remember from recent seasons is gone.
+    // 5th enters the Europa League league phase, 6th the Conference League
+    // play-off round.
+    //
+    // Down: the Bundesliga's distinctive boundary. 17th and 18th go down
+    // automatically; 16th does NOT — it plays the Relegationsspiele, a two-leg
+    // tie against the 3rd-placed 2. Bundesliga club (27 and 31 May 2027, second
+    // leg at home, no away-goals rule). Survival is still on the table, which is
+    // why it is a different kind from relegation and must not read as one.
+    //
+    // NOT expressible as rank ranges (see report): the DFB-Pokal winner takes a
+    // Europa League place, and if they finish in the top five the league's
+    // Europa place slides to 6th and the Conference place to 7th (exactly what
+    // happened in 2025-26, when Bayern won the cup). Likewise a German club
+    // winning the UCL/UEL can add a fifth Champions League entrant. Both are
+    // decided in May, so the table is drawn at its baseline until then.
+    { from: 1, to: 1, kind: 'champion', label: 'Meister' },
+    { from: 2, to: 4, kind: 'ucl', label: 'Champions League' },
+    { from: 5, to: 5, kind: 'uel', label: 'Europa League' },
+    { from: 6, to: 6, kind: 'uecl', label: 'Conference League' },
+    { from: 16, to: 16, kind: 'relegation-playoff', label: 'Relegationsspiele — playoff' },
+    { from: 17, to: 18, kind: 'relegation', label: 'Relegation' },
+  ]),
   ...leagueCompetition('ligue-1', 'Ligue 1', 'Ligue 1', 'fra.1', '🇫🇷', '2026-27', '2026-27', { base: '#1e40af', bright: '#5b7fe0', soft: 'rgba(30,64,175,0.16)' }),
   ...leagueCompetition('mls', 'MLS', 'MLS', 'usa.1', '🇺🇸', '2026', '2026', { base: '#2c5282', bright: '#5b8fd0', soft: 'rgba(44,82,130,0.16)' }),
   ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', '2026-apertura', 'Apertura 2026', { base: '#22a95e', bright: '#3ed07f', soft: 'rgba(34,169,94,0.16)' }, { cut: 8, label: 'Liguilla' }),
