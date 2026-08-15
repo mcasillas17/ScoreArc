@@ -19,6 +19,7 @@ import { TtlCache } from './cache';
 // date range) live on the season.
 export interface DataStore {
   getMatches(rc: CompetitionSeason): Promise<Match[]>;
+  getUpcoming(rc: CompetitionSeason, limit?: number): Promise<Match[]>;
   getStandings(rc: CompetitionSeason): Promise<Group[]>;
   getBracket(rc: CompetitionSeason): Promise<BracketRound[]>;
   getMatchSummary(rc: CompetitionSeason, eventId: string, homeId: string, awayId: string): Promise<MatchSummaryData>;
@@ -43,6 +44,18 @@ export function currentWeekRange(now: Date): string {
   const fmt = (d: Date) =>
     `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
   return `${fmt(mon)}-${fmt(sun)}`;
+}
+
+// ESPN scoreboard `dates` range covering today through `days` ahead. Used by
+// the fixture banner, which must see past the end of the current week: a
+// season starting next Friday has fixtures, and a banner that says otherwise
+// is wrong rather than merely empty.
+export function forwardRange(now: Date, days = 28): string {
+  const end = new Date(now);
+  end.setDate(now.getDate() + days);
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  return `${fmt(now)}-${fmt(end)}`;
 }
 
 // Penalty shootout aggregate parsed from a match note, e.g.
@@ -147,6 +160,30 @@ export function createDataStore(deps: DataDeps): DataStore {
       for (const m of matches) m.shootout = parseShootout(m.note, m.home.name, m.away.name);
       deps.cache.set(k, matches, ttlMs);
       return matches;
+    },
+
+    // The next fixtures, however far out they are.
+    //
+    // getMatches deliberately looks only at the current Monday→Sunday week and
+    // enriches every match with its full summary. That is right for a live
+    // matchday and wrong for a fixture banner: a league whose next match falls
+    // next week returns nothing, which is why five of nine competitions showed
+    // an empty banner while between them holding 132 scheduled fixtures.
+    //
+    // This fetches a forward window and does NO summary enrichment — a banner
+    // needs kickoff, teams and state, and pulling a summary per match would
+    // turn one request into thirty.
+    async getUpcoming(rc, limit = 12, ttlMs = 60_000): Promise<Match[]> {
+      const k = key(rc, `upcoming:${limit}`);
+      const cached = deps.cache.get(k) as Match[] | undefined;
+      if (cached) return cached;
+      const raw = await deps.fetchJson(scoreboardUrl(slug(rc), forwardRange(new Date())));
+      const upcoming = mapScoreboard(raw)
+        .filter((m) => m.state === 'scheduled')
+        .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime())
+        .slice(0, limit);
+      deps.cache.set(k, upcoming, ttlMs);
+      return upcoming;
     },
 
     async getStandings(rc, ttlMs = 60_000): Promise<Group[]> {

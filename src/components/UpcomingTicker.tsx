@@ -11,14 +11,19 @@ interface Props {
   initialMatches: Match[];
   apiBase: string;
   teamStyle?: TeamStyle;
+  // Restrict to the current Monday→Sunday week. True on a matchday, when the
+  // week IS the story. False when the next fixture falls outside it — a league
+  // starting next Friday has fixtures, and filtering them out shows an empty
+  // band rather than the truth.
+  weekOnly?: boolean;
 }
 
 const POLL_MS = 15_000;
 const PX_PER_SEC = 55; // marquee scroll speed (constant regardless of match count)
 
-function upcomingThisWeek(matches: Match[], now: Date): Match[] {
+function upcomingFixtures(matches: Match[], now: Date, weekOnly: boolean): Match[] {
   return matches
-    .filter((m) => m.state === 'scheduled' && isThisWeek(m.kickoff, now))
+    .filter((m) => m.state === 'scheduled' && (!weekOnly || isThisWeek(m.kickoff, now)))
     .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
 }
 
@@ -112,7 +117,7 @@ function Chip({
   );
 }
 
-export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'flag' }: Props) {
+export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'flag', weekOnly = true }: Props) {
   const [matches, setMatches] = useState<Match[]>(initialMatches);
   const [mounted, setMounted] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
@@ -142,7 +147,9 @@ export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'f
     let on = true;
     async function poll() {
       try {
-        const res = await fetch(`${apiBase}/matches`, { cache: 'no-store' });
+        // Poll the same feed the band was rendered from, or the first poll would
+        // replace next week's fixtures with an empty current week.
+        const res = await fetch(`${apiBase}/${weekOnly ? 'matches' : 'upcoming'}`, { cache: 'no-store' });
         if (res.ok && on) setMatches((await res.json()) as Match[]);
       } catch {
         // next tick retries
@@ -180,7 +187,7 @@ export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'f
     }
   }
 
-  const upcoming = mounted ? upcomingThisWeek(matches, new Date()) : [];
+  const upcoming = mounted ? upcomingFixtures(matches, new Date(), weekOnly) : [];
 
   // Never duplicate a fixture to "fill" the band. Measure whether one copy of
   // the fixtures overflows the band:
@@ -246,7 +253,7 @@ export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'f
   return (
     <>
       {mounted && upcoming.length === 0 ? (
-        <p className="tick-empty">No matches scheduled this week.</p>
+        <p className="tick-empty">{weekOnly ? 'No matches scheduled this week.' : 'No upcoming fixtures.'}</p>
       ) : (
         <div className="tick-band" data-testid="ticker" ref={bandRef}>
           <div
