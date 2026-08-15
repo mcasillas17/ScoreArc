@@ -3044,7 +3044,11 @@ a {
    Serie A and LaLiga. Tuned against the dark ground; --zone-mid is deliberately
    near-invisible so unmarked mid-table reads as neither prize nor punishment. */
 :root {
-  --zone-champion: var(--gold);
+  /* The domestic title is national, so it wears the competition's own accent
+     — which is now flag-derived. The UEFA zones below deliberately do NOT
+     vary by country: a Champions League place should read the same in Serie A
+     as in LaLiga, which is the whole point of a shared vocabulary. */
+  --zone-champion: var(--accent, var(--gold));
   --zone-ucl: #4f8cff;
   --zone-uel: #ff9f45;
   --zone-uecl: #35c98c;
