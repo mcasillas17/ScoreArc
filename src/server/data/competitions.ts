@@ -177,7 +177,38 @@ export const COMPETITIONS: Record<string, Competition> = {
   ...leagueCompetition('laliga', 'LaLiga', 'LaLiga', 'esp.1', '🇪🇸', '2026-27', '2026-27', { base: '#e5484d', bright: '#ff6b6b', soft: 'rgba(229,72,77,0.16)' }),
   ...leagueCompetition('serie-a', 'Serie A', 'Serie A', 'ita.1', '🇮🇹', '2026-27', '2026-27', { base: '#3b82f6', bright: '#6ba7ff', soft: 'rgba(59,130,246,0.16)' }),
   ...leagueCompetition('bundesliga', 'Bundesliga', 'Bundesliga', 'ger.1', '🇩🇪', '2026-27', '2026-27', { base: '#d20515', bright: '#ff5a4d', soft: 'rgba(210,5,21,0.16)' }),
-  ...leagueCompetition('ligue-1', 'Ligue 1', 'Ligue 1', 'fra.1', '🇫🇷', '2026-27', '2026-27', { base: '#1e40af', bright: '#5b7fe0', soft: 'rgba(30,64,175,0.16)' }),
+  ...leagueCompetition('ligue-1', 'Ligue 1', 'Ligue 1', 'fra.1', '🇫🇷', '2026-27', '2026-27', { base: '#1e40af', bright: '#5b7fe0', soft: 'rgba(30,64,175,0.16)' }, undefined, [
+    // 2026-27 Ligue 1: 18 clubs (down from 20 since 2023-24), 34 rounds.
+    // Sources: Wikipedia "2026-27 Ligue 1" + its table template
+    // (Template:2026–27 Ligue 1 table, res_col_header definitions), the
+    // 2027-28 UEFA Champions League access list (France 5th on the 2026
+    // association coefficient -> four berths), and ligue1.com on the barrage.
+    //
+    // What a 2026-27 finish earns (in 2027-28 UEFA competitions):
+    //   1-3  Champions League league phase
+    //   4    Champions League third qualifying round (League Path) — France is
+    //        the 5th-ranked association, so its fourth club must qualify; it is
+    //        a Champions League place, not a guaranteed league-phase seat.
+    //   5    Europa League league phase
+    //   6    Conference League play-off round
+    //   16   barrage: two legs against the Ligue 2 play-off winner
+    //   17-18 straight down to Ligue 2
+    //
+    // Not encodable as a rank range: the Coupe de France winner also takes a
+    // Europa League league-phase place, and if it has already finished top five
+    // that place slides to 6th and the Conference League place to 7th. Likewise
+    // the European Performance Spot — if France finishes the 2026-27 season in
+    // UEFA's top two by season coefficient, a fifth Champions League berth would
+    // pass to 5th. Both are decided in-season, so the table below is the base
+    // allocation and 6-7 can shift once the cup is won.
+    { from: 1, to: 1, kind: 'champion', label: 'Champion' },
+    { from: 2, to: 3, kind: 'ucl', label: 'Champions League' },
+    { from: 4, to: 4, kind: 'ucl', label: 'Champions League qualifying' },
+    { from: 5, to: 5, kind: 'uel', label: 'Europa League' },
+    { from: 6, to: 6, kind: 'uecl', label: 'Conference League' },
+    { from: 16, to: 16, kind: 'relegation-playoff', label: 'Relegation play-off' },
+    { from: 17, to: 18, kind: 'relegation', label: 'Relegation' },
+  ]),
   ...leagueCompetition('mls', 'MLS', 'MLS', 'usa.1', '🇺🇸', '2026', '2026', { base: '#2c5282', bright: '#5b8fd0', soft: 'rgba(44,82,130,0.16)' }),
   ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', '2026-apertura', 'Apertura 2026', { base: '#22a95e', bright: '#3ed07f', soft: 'rgba(34,169,94,0.16)' }, { cut: 8, label: 'Liguilla' }),
 };
