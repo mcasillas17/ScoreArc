@@ -2946,7 +2946,9 @@ a {
 /* Opens BELOW the chip: the ticker sits at the top of the page, so a card that
    rose above would be clipped by the viewport top. Arrow points up at the chip. */
 .tick-pop {
-  position: absolute; top: calc(100% + 12px); left: 50%; transform: translateX(-50%);
+  position: absolute; top: calc(100% + 12px); left: 50%;
+  /* --pop-shift keeps the card inside the band; see UpcomingTicker. */
+  transform: translateX(calc(-50% + var(--pop-shift, 0px)));
   width: 244px; background: var(--surface-2); border: 1px solid var(--hairline);
   border-radius: 12px; padding: 13px 14px; z-index: 10; white-space: normal; text-align: left;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5); cursor: default;
@@ -3091,3 +3093,13 @@ a {
 .lz-band--relegation-playoff::before,
 .lz-band--wildcard::before { background: repeating-linear-gradient(
   to bottom, var(--zone) 0 6px, transparent 6px 11px); }
+
+/* The fixture banner must sit above the sections beneath it.
+   .tick-track animates `transform` for the marquee, and a transform creates a
+   stacking context — so .tick-pop's own z-index is trapped inside the track and
+   cannot lift the hover card above anything outside it. The band and the
+   section are both z-index:auto, so the next section in the DOM (the league
+   table, with its competition heading) painted over the popup.
+   Give the banner section its own stacking context above later content.
+   Stays below the sidebar (50) and the match modal (200/9999). */
+#live { position: relative; z-index: 30; }

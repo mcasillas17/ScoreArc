@@ -27,6 +27,9 @@ export interface DataStore {
   getNews(rc: CompetitionSeason): Promise<NewsArticle[]>;
 }
 
+// How many scorers the Golden Boot table shows.
+export const TOP_SCORERS_SHOWN = 10;
+
 export interface DataDeps {
   fetchJson: (url: string) => Promise<unknown>;
   cache: TtlCache<unknown>;
@@ -192,7 +195,9 @@ export function createDataStore(deps: DataDeps): DataStore {
       const cached = deps.cache.get(k) as TopScorer[] | undefined;
       if (cached) return cached;
       const raw = await deps.fetchJson(statisticsUrl(slug(rc)));
-      const scorers = mapTopScorers(raw);
+      // Ten is the Golden Boot race; twenty is a list nobody scrolls. The
+      // mapper keeps its wider default for any caller that wants the tail.
+      const scorers = mapTopScorers(raw, TOP_SCORERS_SHOWN);
       deps.cache.set(k, scorers, ttlMs);
       return scorers;
     },
