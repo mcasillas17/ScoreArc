@@ -175,7 +175,40 @@ export const COMPETITIONS: Record<string, Competition> = {
     { from: 18, to: 20, kind: 'relegation', label: 'Relegation' },
   ]),
   ...leagueCompetition('laliga', 'LaLiga', 'LaLiga', 'esp.1', '🇪🇸', '2026-27', '2026-27', { base: '#e5484d', bright: '#ff6b6b', soft: 'rgba(229,72,77,0.16)' }),
-  ...leagueCompetition('serie-a', 'Serie A', 'Serie A', 'ita.1', '🇮🇹', '2026-27', '2026-27', { base: '#3b82f6', bright: '#6ba7ff', soft: 'rgba(59,130,246,0.16)' }),
+  ...leagueCompetition('serie-a', 'Serie A', 'Serie A', 'ita.1', '🇮🇹', '2026-27', '2026-27', { base: '#3b82f6', bright: '#6ba7ff', soft: 'rgba(59,130,246,0.16)' }, undefined, [
+    // Serie A 2026-27: 20 clubs, three down to Serie B. Europe below is what
+    // the 2026-27 table earns for 2027-28. Italy is 2nd in the 2026 UEFA
+    // association coefficients (99.946), so it holds four Champions League
+    // league-phase places outright; 5th takes a Europa League place and 6th
+    // the Conference League play-off round.
+    //
+    // Two conditionals cannot be expressed as a fixed rank range, so the
+    // baseline below is the unconditional allocation and both shifts are
+    // deliberately left unencoded:
+    //  1. The Coppa Italia winner holds the other Europa League berth. If they
+    //     finish in the top five they are already qualified, and the berth
+    //     falls through: 6th moves up to the Europa League and 7th takes the
+    //     Conference League place. Unknown until the 2027 final.
+    //  2. European Performance Spot — if Italy is one of the two associations
+    //     with the best club coefficient over 2026-27, 5th also enters the
+    //     Champions League and every place below shifts down one. Decided in
+    //     May 2027. (England and Spain took the two spots for 2026-27.)
+    //
+    // Italy also keeps a conditional spareggio that no rank range can carry: a
+    // single match decides the Scudetto if exactly two clubs finish level on
+    // points in 1st, and a two-legged tie decides the last relegation place if
+    // exactly two finish level on points in 17th/18th. New for 2026-27, either
+    // playoff is cancelled when a club involved is contesting a UEFA final, and
+    // the classifica avulsa (head-to-head, then GD, then goals) decides
+    // instead. It triggers only on equal points, so 18th is marked plain
+    // relegation rather than 'relegation-playoff' — that kind would wrongly
+    // promise a survival tie in every season.
+    { from: 1, to: 1, kind: 'champion', label: 'Scudetto' },
+    { from: 2, to: 4, kind: 'ucl', label: 'Champions League' },
+    { from: 5, to: 5, kind: 'uel', label: 'Europa League' },
+    { from: 6, to: 6, kind: 'uecl', label: 'Conference League' },
+    { from: 18, to: 20, kind: 'relegation', label: 'Relegation' },
+  ]),
   ...leagueCompetition('bundesliga', 'Bundesliga', 'Bundesliga', 'ger.1', '🇩🇪', '2026-27', '2026-27', { base: '#d20515', bright: '#ff5a4d', soft: 'rgba(210,5,21,0.16)' }),
   ...leagueCompetition('ligue-1', 'Ligue 1', 'Ligue 1', 'fra.1', '🇫🇷', '2026-27', '2026-27', { base: '#1e40af', bright: '#5b7fe0', soft: 'rgba(30,64,175,0.16)' }),
   ...leagueCompetition('mls', 'MLS', 'MLS', 'usa.1', '🇺🇸', '2026', '2026', { base: '#2c5282', bright: '#5b8fd0', soft: 'rgba(44,82,130,0.16)' }),
