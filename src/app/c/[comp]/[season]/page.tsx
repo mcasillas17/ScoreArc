@@ -6,6 +6,7 @@ import type { Match, BracketRound, Group, TopScorer } from '@/server/data/types'
 import UpcomingTicker from '@/components/UpcomingTicker';
 import BracketInteractive from '@/components/BracketInteractive';
 import StandingsLive from '@/components/StandingsLive';
+import PhaseQualifiers from '@/components/PhaseQualifiers';
 import SeasonSwitcher from '@/components/SeasonSwitcher';
 import { bracketShapeFor } from '@/components/bracketShape';
 
@@ -77,6 +78,59 @@ export default async function Workspace({ params }: { params: { comp: string; se
 
   let bracket: BracketRound[] = [];
   try { bracket = await dataStore.getBracket(rc); } catch {}
+
+  // A cross-league cup whose table the provider never publishes (Leagues Cup).
+  // Its phase-one tables ARE the competition until the knockout starts, and
+  // they also determine the knockout, so they lead the page rather than
+  // sitting under an empty bracket.
+  const computed = rc.season.computedTables;
+  let phaseGroups: Group[] = [];
+  if (computed) {
+    try { phaseGroups = await dataStore.getStandings(rc); } catch {}
+  }
+  if (computed && phaseGroups.length > 0 && bracket.length === 0) {
+    // The banner leads the page, as it does for a league. Between the phase
+    // ending and the first knockout kickoff there is no scheduled match to
+    // put in it — the provider has published none — so it carries the ties we
+    // derived instead of an empty ticker.
+    const anyScheduled = matches.some((m) => m.state === 'scheduled');
+    const banner = anyScheduled ? (
+      liveSection
+    ) : (
+      <section id="live">
+        <h2 className="section-label">Next Up</h2>
+        <div className="lcq-banner">
+          <PhaseQualifiers
+            groups={phaseGroups}
+            cut={computed.cut}
+            teamStyle={teamStyle}
+            round={computed.nextRound}
+          />
+        </div>
+      </section>
+    );
+    return (
+      <main className="main">
+        {!readOnly && banner}
+        <section id="phase" className="std-wide">
+          <header className="bracket-head">
+            <p className="bracket-eyebrow">{rc.competition.name} · {rc.season.label}</p>
+            <h1 className="bracket-title">Qualified for the {computed.label}</h1>
+          </header>
+          <StandingsLive
+            initialGroups={phaseGroups}
+            initialScorers={[]}
+            apiBase={apiBase}
+            teamStyle={teamStyle}
+            showThirdPlace={false}
+            qualification={{ cut: computed.cut, label: computed.label }}
+          />
+        </section>
+        {footer}
+      </main>
+    );
+  }
+
   return (
     <main className="main">
       <section id="bracket" className="bracket-section">

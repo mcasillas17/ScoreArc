@@ -2976,3 +2976,63 @@ a {
   width: 100%; text-align: left; cursor: pointer;
 }
 .tick-empty { color: var(--text-muted); font-size: 13.5px; padding: 8px 2px; }
+
+/* ---- Cross-league cup: derived knockout ties (Leagues Cup) ---- */
+/* The pairings are computed from the two phase tables, not fetched — the
+   bracket is fixed and pre-seeded, so results alone determine them. */
+.lcq { margin: 0 0 22px; }
+.lcq-note {
+  color: var(--text-muted); font-size: 12.5px; line-height: 1.5;
+  margin: 0 0 12px; max-width: 62ch;
+}
+.lcq-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.lcq-tie {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px;
+  padding: 10px 14px; background: var(--surface-2);
+  border: 1px solid var(--hairline); border-radius: 10px;
+}
+.lcq-side { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.lcq-side-away { justify-content: flex-end; }
+.lcq-name {
+  font-size: 13.5px; font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.lcq-seed {
+  flex: none; width: 20px; height: 20px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 11px; font-weight: 700; color: var(--qual);
+  border: 1px solid var(--qual); opacity: 0.85;
+}
+.lcq-v {
+  font-size: 11px; font-weight: 700; letter-spacing: 1px;
+  color: var(--text-muted); text-transform: uppercase;
+}
+@media (max-width: 560px) {
+  .lcq-tie { grid-template-columns: 1fr auto 1fr; gap: 6px; padding: 9px 10px; }
+  .lcq-name { font-size: 12px; }
+}
+
+/* One ladder per table — a cross-league cup runs two in parallel. */
+.std-ladder + .std-ladder { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--hairline); }
+.std-ladder-title {
+  margin: 0 0 12px; font-size: 12px; font-weight: 700; letter-spacing: 1.2px;
+  text-transform: uppercase; color: var(--accent-bright);
+}
+
+/* Top banner variant of the derived ties — sits where a league's ticker sits. */
+.lcq-banner {
+  background: var(--surface-2); border: 1px solid var(--hairline);
+  border-radius: 12px; padding: 14px 16px;
+}
+.lcq-banner .lcq { margin: 0; }
+.lcq-banner .lcq-tie { background: transparent; border-color: transparent; padding: 7px 0; }
+.lcq-banner .lcq-tie + .lcq-tie { border-top: 1px solid var(--hairline); }
+.lcq-when {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 8px;
+  font-size: 12px; color: var(--text-muted);
+}
+.lcq-round {
+  font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--accent-bright);
+}
+.lcq-dot { opacity: 0.5; }

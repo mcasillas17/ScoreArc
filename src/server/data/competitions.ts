@@ -29,6 +29,28 @@ export interface Season {
   // Leagues only: highlight the top-N qualification cut in the standings view
   // (e.g. Liga MX top 8 → Liguilla). Absent for leagues with no such cut.
   qualification?: { cut: number; label: string };
+  // Competitions whose tables the provider does not publish at all, so we
+  // compute them from results instead. ESPN's /standings returns `{}` for the
+  // Leagues Cup — for the current season AND for seasons that ended a year
+  // ago — so this is permanent, not a stopgap.
+  //
+  // `datesRange` is the phase's full ESPN date range: the phase spans two
+  // calendar weeks, so the normal current-week matches feed cannot see all of
+  // it. `splitLeagueSlug` is the ESPN league whose clubs form the second
+  // table — membership is looked up rather than inferred, because splitting on
+  // country would drop Vancouver Whitecaps, a Canadian club playing in MLS.
+  computedTables?: {
+    datesRange: string;
+    splitLeagueSlug: string;
+    cut: number;
+    label: string;
+    groupLabels: { primary: string; split: string };
+    // What the top banner says between the phase ending and the first
+    // knockout kickoff. The provider has published no knockout fixture, so
+    // there is no scheduled match to show and no kickoff time to quote — only
+    // the round and its window, both of which are tournament configuration.
+    nextRound?: { label: string; when: string };
+  };
 }
 
 // A durable competition = one ESPN league, with one or more seasons.
@@ -102,6 +124,15 @@ export const COMPETITIONS: Record<string, Competition> = {
         label: '2026',
         sections: ['bracket', 'standings', 'scores', 'news'],
         format: { hasBracket: true, hasGroups: true, hasThirdPlaceRace: false },
+        computedTables: {
+          // Phase one: 4–13 August 2026, 54 matches, every club plays three.
+          datesRange: '20260804-20260813',
+          splitLeagueSlug: 'mex.1',
+          cut: 4,
+          label: 'Knockout',
+          groupLabels: { primary: 'MLS', split: 'Liga MX' },
+          nextRound: { label: 'Quarterfinals', when: '25–27 August' },
+        },
       },
     },
   },

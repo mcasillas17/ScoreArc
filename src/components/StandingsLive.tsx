@@ -60,11 +60,19 @@ export default function StandingsLive({ initialGroups, initialScorers, apiBase, 
     <div className="std-block">
       <h2 className="std-block-title">{showThirdPlace ? 'Group Stage Results' : 'Standings'}</h2>
       {qualification && !showThirdPlace ? (
-        <LeagueLadder
-          standings={groups[0]?.standings ?? []}
-          qualification={qualification}
-          teamStyle={teamStyle}
-        />
+        // One ladder per table. A league has exactly one; a cross-league cup
+        // has two parallel tables racing for the same knockout, and rendering
+        // only the first would silently drop half the competition.
+        groups.map((group) => (
+          <div key={group.id} className="std-ladder">
+            {groups.length > 1 ? <h3 className="std-ladder-title">{group.name}</h3> : null}
+            <LeagueLadder
+              standings={group.standings}
+              qualification={qualification}
+              teamStyle={teamStyle}
+            />
+          </div>
+        ))
       ) : groups.length > 0 ? (
         <div className="groups-grid">
           {groups.map((group) => (
@@ -104,7 +112,9 @@ export default function StandingsLive({ initialGroups, initialScorers, apiBase, 
   return (
     <>
       {standingsBlock}
-      {topScorersBlock}
+      {/* No scorers is a real state for competitions the provider gives no
+          statistics for — render nothing rather than an empty table. */}
+      {scorers.length > 0 ? topScorersBlock : null}
     </>
   );
 }

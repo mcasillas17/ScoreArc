@@ -1,7 +1,9 @@
 import type { Match, BracketRound, Shootout, MatchSummaryData, TopScorer, NewsArticle, Group } from './types';
 import type { CompetitionSeason } from './competitions';
-import { scoreboardUrl, standingsUrl, summaryUrl, bracketUrl, statisticsUrl, newsUrl } from './endpoints';
+import { scoreboardUrl, standingsUrl, summaryUrl, bracketUrl, statisticsUrl, newsUrl, teamsUrl } from './endpoints';
 import { mapScoreboard } from './providers/espn-matches';
+import { splitLeagueTeamIds } from './providers/espn-teams';
+import { computePhaseTables } from './leaguesCupTables';
 import { mapNews } from './providers/espn-news';
 import { mapStandings } from './providers/espn-standings';
 import { mapBracket } from './providers/espn-bracket';
@@ -73,6 +75,30 @@ export function createDataStore(deps: DataDeps): DataStore {
   const key = (rc: CompetitionSeason, k: string) => `${rc.competition.id}:${rc.season.id}:${k}`;
   const slug = (rc: CompetitionSeason) => rc.competition.espnSlug;
 
+  // Build a cross-league cup's tables from its results. Two fetches: the
+  // phase's full date range (it spans more than one calendar week, so the
+  // current-week matches feed cannot see all of it), and the club list of the
+  // league that forms the second table.
+  async function computeTables(
+    rc: CompetitionSeason,
+    config: NonNullable<CompetitionSeason['season']['computedTables']>,
+  ): Promise<Group[]> {
+    const [rawPhase, rawSplit] = await Promise.all([
+      deps.fetchJson(scoreboardUrl(slug(rc), config.datesRange)),
+      deps.fetchJson(teamsUrl(config.splitLeagueSlug)),
+    ]);
+    const matches = mapScoreboard(rawPhase).map((m) => ({
+      ...m,
+      shootout: parseShootout(m.note, m.home.name, m.away.name),
+    }));
+    const groups = computePhaseTables(matches, splitLeagueTeamIds(rawSplit), config.cut);
+    // Carry the configured display names so the view doesn't hardcode them.
+    for (const g of groups) {
+      g.name = g.id === 'liga-mx' ? config.groupLabels.split : config.groupLabels.primary;
+    }
+    return groups;
+  }
+
   async function getMatchSummary(
     rc: CompetitionSeason, eventId: string, homeId: string, awayId: string, ttlMs = 12_000,
   ): Promise<MatchSummaryData> {
@@ -127,6 +153,15 @@ export function createDataStore(deps: DataDeps): DataStore {
       const k = key(rc, 'standings');
       const cached = deps.cache.get(k) as Group[] | undefined;
       if (cached) return cached;
+      // Some competitions have no published table at all — ESPN's /standings
+      // returns `{}` for the Leagues Cup even for finished seasons. Compute it
+      // from results instead of returning nothing.
+      const computed = rc.season.computedTables;
+      if (computed) {
+        const groups = await computeTables(rc, computed);
+        deps.cache.set(k, groups, ttlMs);
+        return groups;
+      }
       const raw = await deps.fetchJson(standingsUrl(slug(rc)));
       const groups = mapStandings(raw);
       deps.cache.set(k, groups, ttlMs);
