@@ -3036,3 +3036,33 @@ a {
   color: var(--accent-bright);
 }
 .lcq-dot { opacity: 0.5; }
+
+/* ---- League outcome zones ---- */
+/* One accent per outcome so a Champions League place reads identically in
+   Serie A and LaLiga. Tuned against the dark ground; --zone-mid is deliberately
+   near-invisible so unmarked mid-table reads as neither prize nor punishment. */
+:root {
+  --zone-champion: var(--gold);
+  --zone-ucl: #4f8cff;
+  --zone-uel: #ff9f45;
+  --zone-uecl: #35c98c;
+  --zone-playoff: var(--gold);
+  --zone-promotion: #35c98c;
+  --zone-releg-playoff: #e8a33d;
+  --zone-relegation: #e5484d;
+  --zone-mid: var(--hairline);
+}
+.lz-band { position: relative; padding-left: 10px; }
+.lz-band::before {
+  content: ''; position: absolute; left: 0; top: 2px; bottom: 2px;
+  width: 2px; border-radius: 2px; background: var(--zone); opacity: 0.75;
+}
+.lz-band--mid::before { opacity: 0.25; }
+.lz-band-label span:first-child { color: var(--zone); font-weight: 700; }
+.lz-row--marked .ll-rank { color: var(--zone); font-weight: 700; }
+.lz-pl { font-variant-numeric: tabular-nums; color: var(--text-muted); font-size: 12px; min-width: 22px; text-align: right; }
+.lz-legend { flex-wrap: wrap; gap: 6px 14px; }
+.lz-preseason {
+  margin: 8px 0 0; font-size: 12px; color: var(--text-muted); text-align: center;
+}
+.lzr image { filter: saturate(1.05); }

@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import type { Group, TopScorer } from '@/server/data/types';
+import type { Zone } from '@/server/data/competitions';
 import GroupTable from './GroupTable';
 import TopScorersTable from './TopScorersTable';
 import ThirdPlaceTable from './ThirdPlaceTable';
 import LeagueLadder from './LeagueLadder';
+import LeagueZoneTable from './LeagueZoneTable';
 
 interface Props {
   initialGroups: Group[];
@@ -17,11 +19,14 @@ interface Props {
   // League qualification cut (e.g. Liga MX top 8 → Liguilla). When set, the
   // standings render as the split dial+tier ladder instead of a plain table.
   qualification?: { cut: number; label: string };
+  // Multi-outcome table (European leagues: UCL / UEL / UECL / relegation).
+  // Takes precedence over `qualification`, which models a single cut.
+  zones?: Zone[];
 }
 
 const REFRESH_MS = 30_000;
 
-export default function StandingsLive({ initialGroups, initialScorers, apiBase, teamStyle = 'flag', showThirdPlace = true, qualification }: Props) {
+export default function StandingsLive({ initialGroups, initialScorers, apiBase, teamStyle = 'flag', showThirdPlace = true, qualification, zones }: Props) {
   const [groups, setGroups] = useState<Group[]>(initialGroups);
   const [scorers, setScorers] = useState<TopScorer[]>(initialScorers);
 
@@ -59,7 +64,14 @@ export default function StandingsLive({ initialGroups, initialScorers, apiBase, 
   const standingsBlock = (
     <div className="std-block">
       <h2 className="std-block-title">{showThirdPlace ? 'Group Stage Results' : 'Standings'}</h2>
-      {qualification && !showThirdPlace ? (
+      {zones && zones.length > 0 && !showThirdPlace ? (
+        groups.map((group) => (
+          <div key={group.id} className="std-ladder">
+            {groups.length > 1 ? <h3 className="std-ladder-title">{group.name}</h3> : null}
+            <LeagueZoneTable standings={group.standings} zones={zones} teamStyle={teamStyle} />
+          </div>
+        ))
+      ) : qualification && !showThirdPlace ? (
         // One ladder per table. A league has exactly one; a cross-league cup
         // has two parallel tables racing for the same knockout, and rendering
         // only the first would silently drop half the competition.

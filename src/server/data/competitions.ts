@@ -11,6 +11,27 @@ export const OFFICIAL_R32_ORDER: [string, string][] = [
   ['AUS', 'EGY'], ['ARG', 'CPV'], ['SUI', 'ALG'], ['COL', 'GHA'],
 ];
 
+// What finishing in a given range of the table earns you. One vocabulary
+// across every competition, so a Champions League place reads the same in
+// Serie A as in LaLiga, and a relegation playoff reads the same in the
+// Bundesliga as in Ligue 1.
+export type ZoneKind =
+  | 'champion'            // title / Supporters' Shield
+  | 'ucl'                 // Champions League group stage
+  | 'uel'                 // Europa League
+  | 'uecl'                // Conference League
+  | 'playoff'             // domestic post-season (MLS Cup, Liguilla)
+  | 'promotion'
+  | 'relegation-playoff'  // a tie to survive (Bundesliga 16th, Ligue 1)
+  | 'relegation';
+
+export interface Zone {
+  from: number; // 1-based rank, inclusive
+  to: number;   // 1-based rank, inclusive
+  kind: ZoneKind;
+  label: string;
+}
+
 // A specific edition of a competition — World Cup 2026, Liga MX Apertura 2026.
 // The season `id` is the URL slug within its competition: '2026' for one-off
 // editions, '2025-26' for cross-year leagues, '2026-apertura' / '2026-clausura'
@@ -28,7 +49,14 @@ export interface Season {
   knockoutRounds?: string[];
   // Leagues only: highlight the top-N qualification cut in the standings view
   // (e.g. Liga MX top 8 → Liguilla). Absent for leagues with no such cut.
+  //
+  // This models exactly ONE boundary. A European league has four or five —
+  // Champions League, Europa, Conference, relegation playoff, relegation — so
+  // those use `zones` below instead. Both are supported; `zones` wins when set.
   qualification?: { cut: number; label: string };
+  // What each range of the table earns. Ranges are 1-based and inclusive, and
+  // anything not covered renders as unmarked mid-table.
+  zones?: Zone[];
   // Competitions whose tables the provider does not publish at all, so we
   // compute them from results instead. ESPN's /standings returns `{}` for the
   // Leagues Cup — for the current season AND for seasons that ended a year
@@ -136,7 +164,16 @@ export const COMPETITIONS: Record<string, Competition> = {
       },
     },
   },
-  ...leagueCompetition('premier-league', 'Premier League', 'Premier League', 'eng.1', '🦁', '2026-27', '2026-27', { base: '#8b5cf6', bright: '#b18bff', soft: 'rgba(139,92,246,0.16)' }),
+  ...leagueCompetition('premier-league', 'Premier League', 'Premier League', 'eng.1', '🦁', '2026-27', '2026-27', { base: '#8b5cf6', bright: '#b18bff', soft: 'rgba(139,92,246,0.16)' }, undefined, [
+    // PROVISIONAL — reference config proving the zones mechanism renders.
+    // UEFA slots move year to year with the country coefficient; this must be
+    // researched and corrected per season before it is trusted.
+    { from: 1, to: 1, kind: 'champion', label: 'Champion' },
+    { from: 2, to: 4, kind: 'ucl', label: 'Champions League' },
+    { from: 5, to: 5, kind: 'uel', label: 'Europa League' },
+    { from: 6, to: 6, kind: 'uecl', label: 'Conference League' },
+    { from: 18, to: 20, kind: 'relegation', label: 'Relegation' },
+  ]),
   ...leagueCompetition('laliga', 'LaLiga', 'LaLiga', 'esp.1', '🇪🇸', '2026-27', '2026-27', { base: '#e5484d', bright: '#ff6b6b', soft: 'rgba(229,72,77,0.16)' }),
   ...leagueCompetition('serie-a', 'Serie A', 'Serie A', 'ita.1', '🇮🇹', '2026-27', '2026-27', { base: '#3b82f6', bright: '#6ba7ff', soft: 'rgba(59,130,246,0.16)' }),
   ...leagueCompetition('bundesliga', 'Bundesliga', 'Bundesliga', 'ger.1', '🇩🇪', '2026-27', '2026-27', { base: '#d20515', bright: '#ff5a4d', soft: 'rgba(210,5,21,0.16)' }),
@@ -172,6 +209,7 @@ function leagueCompetition(
   seasonLabel: string,
   accent: { base: string; bright: string; soft: string },
   qualification?: { cut: number; label: string },
+  zones?: Zone[],
 ): Record<string, Competition> {
   return {
     [id]: {
@@ -191,6 +229,7 @@ function leagueCompetition(
           sections: ['standings', 'scores', 'news'],
           format: { hasBracket: false, hasGroups: true, hasThirdPlaceRace: false },
           ...(qualification ? { qualification } : {}),
+          ...(zones ? { zones } : {}),
         },
       },
     },
