@@ -89,14 +89,34 @@ export default async function Workspace({ params }: { params: { comp: string; se
     try { phaseGroups = await dataStore.getStandings(rc); } catch {}
   }
   if (computed && phaseGroups.length > 0 && bracket.length === 0) {
+    // The banner leads the page, as it does for a league. Between the phase
+    // ending and the first knockout kickoff there is no scheduled match to
+    // put in it — the provider has published none — so it carries the ties we
+    // derived instead of an empty ticker.
+    const anyScheduled = matches.some((m) => m.state === 'scheduled');
+    const banner = anyScheduled ? (
+      liveSection
+    ) : (
+      <section id="live">
+        <h2 className="section-label">Next Up</h2>
+        <div className="lcq-banner">
+          <PhaseQualifiers
+            groups={phaseGroups}
+            cut={computed.cut}
+            teamStyle={teamStyle}
+            round={computed.nextRound}
+          />
+        </div>
+      </section>
+    );
     return (
       <main className="main">
+        {!readOnly && banner}
         <section id="phase" className="std-wide">
           <header className="bracket-head">
             <p className="bracket-eyebrow">{rc.competition.name} · {rc.season.label}</p>
             <h1 className="bracket-title">Qualified for the {computed.label}</h1>
           </header>
-          <PhaseQualifiers groups={phaseGroups} cut={computed.cut} teamStyle={teamStyle} />
           <StandingsLive
             initialGroups={phaseGroups}
             initialScorers={[]}
@@ -106,7 +126,6 @@ export default async function Workspace({ params }: { params: { comp: string; se
             qualification={{ cut: computed.cut, label: computed.label }}
           />
         </section>
-        {!readOnly && liveSection}
         {footer}
       </main>
     );

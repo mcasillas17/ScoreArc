@@ -3018,3 +3018,21 @@ a {
   margin: 0 0 12px; font-size: 12px; font-weight: 700; letter-spacing: 1.2px;
   text-transform: uppercase; color: var(--accent-bright);
 }
+
+/* Top banner variant of the derived ties — sits where a league's ticker sits. */
+.lcq-banner {
+  background: var(--surface-2); border: 1px solid var(--hairline);
+  border-radius: 12px; padding: 14px 16px;
+}
+.lcq-banner .lcq { margin: 0; }
+.lcq-banner .lcq-tie { background: transparent; border-color: transparent; padding: 7px 0; }
+.lcq-banner .lcq-tie + .lcq-tie { border-top: 1px solid var(--hairline); }
+.lcq-when {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 8px;
+  font-size: 12px; color: var(--text-muted);
+}
+.lcq-round {
+  font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--accent-bright);
+}
+.lcq-dot { opacity: 0.5; }

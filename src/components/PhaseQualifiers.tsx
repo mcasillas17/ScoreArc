@@ -6,6 +6,10 @@ interface Props {
   groups: Group[];
   cut: number;
   teamStyle?: 'flag' | 'crest';
+  // Round name and window, e.g. "Quarterfinals" / "25–27 August". Shown when
+  // this renders as the page's top banner, standing in for the fixtures the
+  // provider has not published.
+  round?: { label: string; when: string };
 }
 
 // The knockout ties for a cross-league cup, derived rather than fetched.
@@ -14,12 +18,19 @@ interface Props {
 // on — so once both tables are final the pairings follow from results alone.
 // That is why this renders while the provider still has no knockout fixture
 // published: there is nothing left to find out.
-export default function PhaseQualifiers({ groups, cut, teamStyle = 'crest' }: Props) {
+export default function PhaseQualifiers({ groups, cut, teamStyle = 'crest', round }: Props) {
   const ties = computeQuarterfinals(groups, cut);
   if (ties.length === 0) return null;
 
   return (
     <div className="lcq">
+      {round ? (
+        <p className="lcq-when">
+          <span className="lcq-round">{round.label}</span>
+          <span className="lcq-dot" aria-hidden="true">·</span>
+          <span>{round.when}</span>
+        </p>
+      ) : null}
       <p className="lcq-note">
         Seeded pairings — the bracket is fixed, so no two clubs from the same league can
         meet before the semifinal.

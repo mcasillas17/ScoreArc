@@ -45,6 +45,11 @@ export interface Season {
     cut: number;
     label: string;
     groupLabels: { primary: string; split: string };
+    // What the top banner says between the phase ending and the first
+    // knockout kickoff. The provider has published no knockout fixture, so
+    // there is no scheduled match to show and no kickoff time to quote — only
+    // the round and its window, both of which are tournament configuration.
+    nextRound?: { label: string; when: string };
   };
 }
 
@@ -126,6 +131,7 @@ export const COMPETITIONS: Record<string, Competition> = {
           cut: 4,
           label: 'Knockout',
           groupLabels: { primary: 'MLS', split: 'Liga MX' },
+          nextRound: { label: 'Quarterfinals', when: '25–27 August' },
         },
       },
     },
