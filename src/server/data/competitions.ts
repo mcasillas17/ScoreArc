@@ -165,13 +165,35 @@ export const COMPETITIONS: Record<string, Competition> = {
     },
   },
   ...leagueCompetition('premier-league', 'Premier League', 'Premier League', 'eng.1', '🦁', '2026-27', '2026-27', { base: '#8b5cf6', bright: '#b18bff', soft: 'rgba(139,92,246,0.16)' }, undefined, [
-    // PROVISIONAL — reference config proving the zones mechanism renders.
-    // UEFA slots move year to year with the country coefficient; this must be
-    // researched and corrected per season before it is trusted.
+    // 2026-27: 20 clubs, bottom three relegated to the Championship. These
+    // ranges are what a finishing position earns *by itself* — England's other
+    // European berths are decided by cup results and a coefficient race that no
+    // static rank range can express, so they are deliberately left unmarked
+    // rather than guessed at. Sources: Wikipedia "2026-27 Premier League"
+    // (qualification notes) and UEFA's 2026-27 access list.
+    //
+    // Guaranteed by rank: 1-4 enter the Champions League league phase (England
+    // is a top-4 association, so it gets the champions + runners-up + third +
+    // fourth berths); 5th enters the Europa League; 18-20 go down.
+    //
+    // Left unencoded, and why:
+    //  - A FIFTH Champions League place is possible. UEFA gives a "European
+    //    Performance Spot" to the two associations with the best coefficient in
+    //    the *current* season, and it falls to the best-placed club not already
+    //    in the UCL — i.e. 5th, pushing every other berth down one. England took
+    //    one in 2024-25 and again in 2026-27 (Liverpool, 5th). Whether it takes
+    //    one off the back of 2026-27 is not settled until May 2027, so we do not
+    //    pre-award 5th a UCL place it may not get.
+    //  - England's second Europa League berth is the FA CUP winner's. It only
+    //    reaches the table (at 6th) if that winner already qualified via the
+    //    league — common, but a cup result, not a rank.
+    //  - The Conference League play-off berth is the EFL CUP winner's, and
+    //    likewise only falls to the league if the winner is already qualified.
+    //    Which rank catches it varies with everything above it: 7th in 2024-25,
+    //    8th in 2025-26. No fixed rank earns it, so no `uecl` band is drawn.
     { from: 1, to: 1, kind: 'champion', label: 'Champion' },
     { from: 2, to: 4, kind: 'ucl', label: 'Champions League' },
     { from: 5, to: 5, kind: 'uel', label: 'Europa League' },
-    { from: 6, to: 6, kind: 'uecl', label: 'Conference League' },
     { from: 18, to: 20, kind: 'relegation', label: 'Relegation' },
   ]),
   ...leagueCompetition('laliga', 'LaLiga', 'LaLiga', 'esp.1', '🇪🇸', '2026-27', '2026-27', { base: '#e5484d', bright: '#ff6b6b', soft: 'rgba(229,72,77,0.16)' }),
