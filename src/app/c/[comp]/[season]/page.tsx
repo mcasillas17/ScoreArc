@@ -75,12 +75,12 @@ export default async function Workspace({ params }: { params: { comp: string; se
     try { groups = await dataStore.getStandings(rc); } catch {}
     try { scorers = await dataStore.getTopScorers(rc); } catch {}
     const table = (
-      <section id="table" className={rc.season.qualification ? 'std-wide' : undefined}>
+      <section id="table" className={rc.season.qualification || rc.season.zones ? 'std-wide' : undefined}>
         <header className="bracket-head">
           <p className="bracket-eyebrow">{rc.competition.name}</p>
           <h1 className="bracket-title">League Table</h1>
         </header>
-        <StandingsLive initialGroups={groups} initialScorers={scorers} apiBase={apiBase} teamStyle={teamStyle} showThirdPlace={false} qualification={rc.season.qualification} />
+        <StandingsLive initialGroups={groups} initialScorers={scorers} apiBase={apiBase} teamStyle={teamStyle} showThirdPlace={false} qualification={rc.season.qualification} zones={rc.season.zones} />
       </section>
     );
     // The banner always leads. It is null when there is genuinely nothing to

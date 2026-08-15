@@ -1,0 +1,1771 @@
+{
+ "id": "8675309",
+ "name": "MLS",
+ "abbreviation": "MLS",
+ "season": {
+  "year": 2026,
+  "startDate": "2026-01-01T10:00Z",
+  "endDate": "2026-12-31T04:59Z",
+  "displayName": "2026 MLS"
+ },
+ "children": [
+  {
+   "id": "1",
+   "name": "Eastern Conference",
+   "abbreviation": "East",
+   "standings": {
+    "entries": [
+     {
+      "team": {
+       "id": "182",
+       "displayName": "Chicago Fire FC",
+       "abbreviation": "CHI",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/182.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 17.0
+       },
+       {
+        "name": "losses",
+        "value": 6.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 9.0
+       },
+       {
+        "name": "points",
+        "value": 29.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 23.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 32.0
+       },
+       {
+        "name": "ties",
+        "value": 2.0
+       },
+       {
+        "name": "wins",
+        "value": 9.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 4.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "183",
+       "displayName": "Columbus Crew",
+       "abbreviation": "CLB",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/183.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 8.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -2.0
+       },
+       {
+        "name": "points",
+        "value": 20.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 28.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 26.0
+       },
+       {
+        "name": "ties",
+        "value": 5.0
+       },
+       {
+        "name": "wins",
+        "value": 5.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 11.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "189",
+       "displayName": "New England Revolution",
+       "abbreviation": "NE",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/189.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 6.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 5.0
+       },
+       {
+        "name": "points",
+        "value": 30.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 23.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 28.0
+       },
+       {
+        "name": "ties",
+        "value": 3.0
+       },
+       {
+        "name": "wins",
+        "value": 9.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 3.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "190",
+       "displayName": "Red Bull New York",
+       "abbreviation": "RBNY",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/190.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 7.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -10.0
+       },
+       {
+        "name": "points",
+        "value": 25.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 39.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 29.0
+       },
+       {
+        "name": "ties",
+        "value": 4.0
+       },
+       {
+        "name": "wins",
+        "value": 7.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 8.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "193",
+       "displayName": "D.C. United",
+       "abbreviation": "DC",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/193.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 5.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -3.0
+       },
+       {
+        "name": "points",
+        "value": 23.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 29.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 26.0
+       },
+       {
+        "name": "ties",
+        "value": 8.0
+       },
+       {
+        "name": "wins",
+        "value": 5.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 9.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "7318",
+       "displayName": "Toronto FC",
+       "abbreviation": "TOR",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/7318.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 7.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -8.0
+       },
+       {
+        "name": "points",
+        "value": 17.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 32.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 24.0
+       },
+       {
+        "name": "ties",
+        "value": 8.0
+       },
+       {
+        "name": "wins",
+        "value": 3.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 12.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "9720",
+       "displayName": "CF Montréal",
+       "abbreviation": "MTL",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/9720.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 10.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -11.0
+       },
+       {
+        "name": "points",
+        "value": 16.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 35.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 24.0
+       },
+       {
+        "name": "ties",
+        "value": 4.0
+       },
+       {
+        "name": "wins",
+        "value": 4.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 14.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "10739",
+       "displayName": "Philadelphia Union",
+       "abbreviation": "PHI",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/10739.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 10.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -8.0
+       },
+       {
+        "name": "points",
+        "value": 16.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 33.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 25.0
+       },
+       {
+        "name": "ties",
+        "value": 4.0
+       },
+       {
+        "name": "wins",
+        "value": 4.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 13.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "12011",
+       "displayName": "Orlando City SC",
+       "abbreviation": "ORL",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/12011.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 10.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -17.0
+       },
+       {
+        "name": "points",
+        "value": 20.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 47.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 30.0
+       },
+       {
+        "name": "ties",
+        "value": 2.0
+       },
+       {
+        "name": "wins",
+        "value": 6.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 10.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "17606",
+       "displayName": "New York City FC",
+       "abbreviation": "NYC",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/17606.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 6.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 7.0
+       },
+       {
+        "name": "points",
+        "value": 26.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 24.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 31.0
+       },
+       {
+        "name": "ties",
+        "value": 5.0
+       },
+       {
+        "name": "wins",
+        "value": 7.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 5.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "18267",
+       "displayName": "FC Cincinnati",
+       "abbreviation": "CIN",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/18267.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 6.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 1.0
+       },
+       {
+        "name": "points",
+        "value": 26.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 44.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 45.0
+       },
+       {
+        "name": "ties",
+        "value": 5.0
+       },
+       {
+        "name": "wins",
+        "value": 7.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 6.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "18418",
+       "displayName": "Atlanta United FC",
+       "abbreviation": "ATL",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/18418.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 12.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -14.0
+       },
+       {
+        "name": "points",
+        "value": 12.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 33.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 19.0
+       },
+       {
+        "name": "ties",
+        "value": 3.0
+       },
+       {
+        "name": "wins",
+        "value": 3.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 15.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "18986",
+       "displayName": "Nashville SC",
+       "abbreviation": "NSH",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/18986.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 2.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 21.0
+       },
+       {
+        "name": "points",
+        "value": 40.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 14.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 35.0
+       },
+       {
+        "name": "ties",
+        "value": 4.0
+       },
+       {
+        "name": "wins",
+        "value": 12.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 1.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "20232",
+       "displayName": "Inter Miami CF",
+       "abbreviation": "MIA",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/20232.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 2.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 13.0
+       },
+       {
+        "name": "points",
+        "value": 38.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 32.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 45.0
+       },
+       {
+        "name": "ties",
+        "value": 5.0
+       },
+       {
+        "name": "wins",
+        "value": 11.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 2.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "21300",
+       "displayName": "Charlotte FC",
+       "abbreviation": "CLT",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/21300.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 7.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 2.0
+       },
+       {
+        "name": "points",
+        "value": 25.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 27.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 29.0
+       },
+       {
+        "name": "ties",
+        "value": 4.0
+       },
+       {
+        "name": "wins",
+        "value": 7.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 7.0
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "2",
+   "name": "Western Conference",
+   "abbreviation": "West",
+   "standings": {
+    "entries": [
+     {
+      "team": {
+       "id": "184",
+       "displayName": "Colorado Rapids",
+       "abbreviation": "COL",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/184.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 10.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 2.0
+       },
+       {
+        "name": "points",
+        "value": 22.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 25.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 27.0
+       },
+       {
+        "name": "ties",
+        "value": 1.0
+       },
+       {
+        "name": "wins",
+        "value": 7.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 11.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "185",
+       "displayName": "FC Dallas",
+       "abbreviation": "DAL",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/185.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 5.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 7.0
+       },
+       {
+        "name": "points",
+        "value": 27.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 25.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 32.0
+       },
+       {
+        "name": "ties",
+        "value": 6.0
+       },
+       {
+        "name": "wins",
+        "value": 7.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 6.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "186",
+       "displayName": "Sporting Kansas City",
+       "abbreviation": "SKC",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/186.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 12.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -28.0
+       },
+       {
+        "name": "points",
+        "value": 14.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 46.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 18.0
+       },
+       {
+        "name": "ties",
+        "value": 2.0
+       },
+       {
+        "name": "wins",
+        "value": 4.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 15.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "187",
+       "displayName": "LA Galaxy",
+       "abbreviation": "LA",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/187.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 19.0
+       },
+       {
+        "name": "losses",
+        "value": 7.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -5.0
+       },
+       {
+        "name": "points",
+        "value": 22.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 29.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 24.0
+       },
+       {
+        "name": "ties",
+        "value": 7.0
+       },
+       {
+        "name": "wins",
+        "value": 5.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 12.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "191",
+       "displayName": "San Jose Earthquakes",
+       "abbreviation": "SJ",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/191.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 5.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 13.0
+       },
+       {
+        "name": "points",
+        "value": 33.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 24.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 37.0
+       },
+       {
+        "name": "ties",
+        "value": 3.0
+       },
+       {
+        "name": "wins",
+        "value": 10.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 3.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "4771",
+       "displayName": "Real Salt Lake",
+       "abbreviation": "RSL",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/4771.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 17.0
+       },
+       {
+        "name": "losses",
+        "value": 6.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 4.0
+       },
+       {
+        "name": "points",
+        "value": 27.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 25.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 29.0
+       },
+       {
+        "name": "ties",
+        "value": 3.0
+       },
+       {
+        "name": "wins",
+        "value": 8.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 5.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "6077",
+       "displayName": "Houston Dynamo FC",
+       "abbreviation": "HOU",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/6077.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 6.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 3.0
+       },
+       {
+        "name": "points",
+        "value": 32.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 24.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 27.0
+       },
+       {
+        "name": "ties",
+        "value": 2.0
+       },
+       {
+        "name": "wins",
+        "value": 10.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 4.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "9723",
+       "displayName": "Portland Timbers",
+       "abbreviation": "POR",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/9723.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 8.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 0.0
+       },
+       {
+        "name": "points",
+        "value": 24.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 33.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 33.0
+       },
+       {
+        "name": "ties",
+        "value": 3.0
+       },
+       {
+        "name": "wins",
+        "value": 7.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 8.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "9726",
+       "displayName": "Seattle Sounders FC",
+       "abbreviation": "SEA",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/9726.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 17.0
+       },
+       {
+        "name": "losses",
+        "value": 7.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -2.0
+       },
+       {
+        "name": "points",
+        "value": 24.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 22.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 20.0
+       },
+       {
+        "name": "ties",
+        "value": 3.0
+       },
+       {
+        "name": "wins",
+        "value": 7.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 9.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "9727",
+       "displayName": "Vancouver Whitecaps",
+       "abbreviation": "VAN",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/9727.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 17.0
+       },
+       {
+        "name": "losses",
+        "value": 3.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 21.0
+       },
+       {
+        "name": "points",
+        "value": 34.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 17.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 38.0
+       },
+       {
+        "name": "ties",
+        "value": 4.0
+       },
+       {
+        "name": "wins",
+        "value": 10.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 1.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "17362",
+       "displayName": "Minnesota United FC",
+       "abbreviation": "MIN",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/17362.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 6.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -5.0
+       },
+       {
+        "name": "points",
+        "value": 24.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 25.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 20.0
+       },
+       {
+        "name": "ties",
+        "value": 6.0
+       },
+       {
+        "name": "wins",
+        "value": 6.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 10.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "18966",
+       "displayName": "LAFC",
+       "abbreviation": "LAFC",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/18966.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 19.0
+       },
+       {
+        "name": "losses",
+        "value": 5.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 16.0
+       },
+       {
+        "name": "points",
+        "value": 34.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 19.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 35.0
+       },
+       {
+        "name": "ties",
+        "value": 4.0
+       },
+       {
+        "name": "wins",
+        "value": 10.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 2.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "20906",
+       "displayName": "Austin FC",
+       "abbreviation": "ATX",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/20906.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 9.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": -14.0
+       },
+       {
+        "name": "points",
+        "value": 17.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 36.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 22.0
+       },
+       {
+        "name": "ties",
+        "value": 5.0
+       },
+       {
+        "name": "wins",
+        "value": 4.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 14.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "21812",
+       "displayName": "St. Louis CITY SC",
+       "abbreviation": "STL",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/21812.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 6.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 0.0
+       },
+       {
+        "name": "points",
+        "value": 26.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 24.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 24.0
+       },
+       {
+        "name": "ties",
+        "value": 5.0
+       },
+       {
+        "name": "wins",
+        "value": 7.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 7.0
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "22529",
+       "displayName": "San Diego FC",
+       "abbreviation": "SD",
+       "logos": [
+        {
+         "href": "https://a.espncdn.com/i/teamlogos/soccer/500/22529.png"
+        }
+       ]
+      },
+      "stats": [
+       {
+        "name": "gamesPlayed",
+        "value": 18.0
+       },
+       {
+        "name": "losses",
+        "value": 7.0
+       },
+       {
+        "name": "pointDifferential",
+        "value": 3.0
+       },
+       {
+        "name": "points",
+        "value": 21.0
+       },
+       {
+        "name": "pointsAgainst",
+        "value": 29.0
+       },
+       {
+        "name": "pointsFor",
+        "value": 32.0
+       },
+       {
+        "name": "ties",
+        "value": 6.0
+       },
+       {
+        "name": "wins",
+        "value": 5.0
+       },
+       {
+        "name": "advanced",
+        "value": 0.0
+       },
+       {
+        "name": "ppg",
+        "value": 0.0
+       },
+       {
+        "name": "rank",
+        "value": 13.0
+       }
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

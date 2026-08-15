@@ -1,5 +1,6 @@
 'use client';
 
+import { useId } from 'react';
 import type { Standing } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
 import { flagUrl } from '@/lib/flags';
@@ -74,6 +75,11 @@ export default function LeagueDial({
   cut: number;
   teamStyle: TeamStyle;
 }) {
+  // SVG ids are document-global. A cross-league cup draws two dials on one
+  // page, and a shared gradient id meant the second dial silently reused the
+  // first one's gradient — so both hubs glowed in whichever palette rendered
+  // first. Namespace it per instance.
+  const hubId = `lld-hub-${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const n = standings.length;
   if (n === 0) return null;
   const leader = standings[0];
@@ -86,14 +92,14 @@ export default function LeagueDial({
   return (
     <svg className="lld" viewBox="0 0 500 500" role="img" aria-label="Standings dial">
       <defs>
-        <radialGradient id="lld-hub" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="#40340f" />
-          <stop offset="70%" stopColor="#1a1408" stopOpacity="0.5" />
+        <radialGradient id={hubId} cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="var(--qual-glow, #40340f)" />
+          <stop offset="70%" stopColor="var(--qual-glow-outer, #1a1408)" stopOpacity="0.5" />
           <stop offset="100%" stopColor="#0b0b0d" stopOpacity="0" />
         </radialGradient>
       </defs>
 
-      <circle cx={C} cy={C} r={150} fill="url(#lld-hub)" />
+      <circle cx={C} cy={C} r={150} fill={`url(#${hubId})`} />
 
       {/* Liguilla arc: a soft wide underlay (no blur filter) + a crisp line. */}
       <path className="lld-arc-glow"
@@ -115,7 +121,7 @@ export default function LeagueDial({
         return (
           <g key={s.team.id}>
             <line x1={inner.x} y1={inner.y} x2={outerStub.x} y2={outerStub.y}
-              stroke={lig ? '#5a4a22' : '#20202a'} strokeWidth={1} />
+              stroke={lig ? 'var(--qual-dim, #5a4a22)' : '#20202a'} strokeWidth={1} />
             <CrestDisc s={s} teamStyle={teamStyle} x={p.x} y={p.y} r={r}
               ring={lig ? 'var(--qual-bright, var(--gold-bright))' : '#33333d'} ringWidth={lig ? 2 : 1} dim={!lig} />
           </g>

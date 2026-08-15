@@ -98,9 +98,32 @@ describe('competition registry', () => {
       expect(typeof comp.accent.soft).toBe('string');
       expect(comp.accent.base).toMatch(/^#|rgba?\(/);
     }
+    // The World Cup keeps gold — it is the one competition that belongs to no
+    // country. Every club league takes a colour from its own flag, so the
+    // domestic title band and the competition chrome read as national.
     expect(COMPETITIONS['world-cup'].accent.base.toLowerCase()).toBe('#e8b84b');
-    expect(COMPETITIONS['liga-mx'].accent.base).toBe('#22a95e');
-    expect(COMPETITIONS['premier-league'].accent.base).toBe('#8b5cf6');
+    expect(COMPETITIONS['liga-mx'].accent.base).toBe('#22a95e');      // verde
+    expect(COMPETITIONS['premier-league'].accent.base).toBe('#d4344a'); // St George red
+    expect(COMPETITIONS['serie-a'].accent.base).toBe('#0a9b52');       // tricolore green
+    expect(COMPETITIONS['bundesliga'].accent.base).toBe('#d20515');    // rot
+    expect(COMPETITIONS['bundesliga'].accent.bright).toBe('#f5c518');  // gold
+    expect(COMPETITIONS['ligue-1'].accent.base).toBe('#3b7fd4');       // bleu
+  });
+
+  // The flag palette must not leak into the UEFA zones. A Champions League
+  // place is the same outcome in every country, so it keeps one colour across
+  // all of them; only the domestic title follows the flag.
+  it('keeps European qualification colours shared across leagues', () => {
+    const leagues = ['premier-league', 'laliga', 'serie-a', 'bundesliga', 'ligue-1'];
+    for (const id of leagues) {
+      const comp = COMPETITIONS[id];
+      const season = comp.seasons[comp.currentSeasonId];
+      const ucl = season.zones?.filter((z) => z.kind === 'ucl') ?? [];
+      expect(ucl.length, `${id} should define a Champions League zone`).toBeGreaterThan(0);
+      // `kind` is the whole contract: the colour comes from --zone-ucl, which
+      // is defined once globally and never per competition.
+      for (const z of ucl) expect(z.kind).toBe('ucl');
+    }
   });
 });
 

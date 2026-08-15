@@ -2872,7 +2872,7 @@ a {
 .ll-rule { flex: 1; height: 1px; background: var(--hairline); }
 
 .ll-row { display: grid; grid-template-columns: 20px 26px 1fr auto 22px; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 9px; }
-.ll-row--in { background: linear-gradient(90deg, rgba(232,184,75,0.10), rgba(232,184,75,0.02)); box-shadow: inset 2px 0 0 var(--qual, var(--gold)); margin-bottom: 3px; }
+.ll-row--in { background: linear-gradient(90deg, var(--qual-tint, rgba(232,184,75,0.10)), transparent); box-shadow: inset 2px 0 0 var(--qual, var(--gold)); margin-bottom: 3px; }
 .ll-band--out .ll-row { opacity: 0.5; }
 .ll-rank { color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; font-size: 12.5px; }
 .ll-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2946,7 +2946,9 @@ a {
 /* Opens BELOW the chip: the ticker sits at the top of the page, so a card that
    rose above would be clipped by the viewport top. Arrow points up at the chip. */
 .tick-pop {
-  position: absolute; top: calc(100% + 12px); left: 50%; transform: translateX(-50%);
+  position: absolute; top: calc(100% + 12px); left: 50%;
+  /* --pop-shift keeps the card inside the band; see UpcomingTicker. */
+  transform: translateX(calc(-50% + var(--pop-shift, 0px)));
   width: 244px; background: var(--surface-2); border: 1px solid var(--hairline);
   border-radius: 12px; padding: 13px 14px; z-index: 10; white-space: normal; text-align: left;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5); cursor: default;
@@ -3036,3 +3038,98 @@ a {
   color: var(--accent-bright);
 }
 .lcq-dot { opacity: 0.5; }
+
+/* ---- League outcome zones ---- */
+/* One accent per outcome so a Champions League place reads identically in
+   Serie A and LaLiga. Tuned against the dark ground; --zone-mid is deliberately
+   near-invisible so unmarked mid-table reads as neither prize nor punishment. */
+:root {
+  /* The domestic title is national, so it wears the competition's own accent
+     — which is now flag-derived. The UEFA zones below deliberately do NOT
+     vary by country: a Champions League place should read the same in Serie A
+     as in LaLiga, which is the whole point of a shared vocabulary. */
+  --zone-champion: var(--accent, var(--gold));
+  --zone-ucl: #4f8cff;
+  --zone-uel: #ff9f45;
+  --zone-uecl: #35c98c;
+  --zone-playoff: var(--gold);
+  /* A play-in tie is not a place in the post-season, it is a chance at one, so
+     it wears --zone-playoff's gold drained of its saturation: MLS's 8th and 9th
+     read as "nearly in" beside the solid gold above them, and stay clearly
+     distinct from it in the legend. */
+  --zone-wildcard: #cfc09a;
+  --zone-promotion: #35c98c;
+  --zone-releg-playoff: #e8a33d;
+  --zone-relegation: #e5484d;
+  --zone-mid: var(--hairline);
+}
+.lz-band { position: relative; padding-left: 10px; }
+.lz-band::before {
+  content: ''; position: absolute; left: 0; top: 2px; bottom: 2px;
+  width: 2px; border-radius: 2px; background: var(--zone); opacity: 0.75;
+}
+.lz-band--mid::before { opacity: 0.25; }
+.lz-band-label span:first-child { color: var(--zone); font-weight: 700; }
+.lz-row--marked .ll-rank { color: var(--zone); font-weight: 700; }
+.lz-pl { font-variant-numeric: tabular-nums; color: var(--text-muted); font-size: 12px; min-width: 22px; text-align: right; }
+.lz-legend { flex-wrap: wrap; gap: 6px 14px; }
+.lz-preseason {
+  margin: 8px 0 0; font-size: 12px; color: var(--text-muted); text-align: center;
+}
+.lzr image { filter: saturate(1.05); }
+
+/* ---- Zone table fixes (found during integration) ---- */
+/* .ll-row is a five-column grid; the zone row renders a sixth child (played),
+   which wrapped onto its own line under the club name on every zones league.
+   Give it its own column rather than widening the shared ladder's grid. */
+.lz-row { grid-template-columns: 20px 26px 1fr 26px auto 22px; }
+
+/* The ring was vertically centred against a 20-row table, leaving several
+   hundred pixels of dead space beneath it. Align it to the top of its column
+   so the arc sits beside the head of the table it describes. */
+.ll-card .ll-left { justify-content: flex-start; }
+
+/* A zone whose outcome is a tie rather than a placing — a relegation playoff,
+   a wild card — is drawn dashed. It reads as "not settled" without needing a
+   colour of its own, which is what made the amber playoff accent collide with
+   Europa orange. */
+.lzr-dashed { stroke-dasharray: 10 7; }
+.lz-band--relegation-playoff::before,
+.lz-band--wildcard::before { background: repeating-linear-gradient(
+  to bottom, var(--zone) 0 6px, transparent 6px 11px); }
+
+/* The fixture banner must sit above the sections beneath it.
+   .tick-track animates `transform` for the marquee, and a transform creates a
+   stacking context — so .tick-pop's own z-index is trapped inside the track and
+   cannot lift the hover card above anything outside it. The band and the
+   section are both z-index:auto, so the next section in the DOM (the league
+   table, with its competition heading) painted over the popup.
+   Give the banner section its own stacking context above later content.
+   Stays below the sidebar (50) and the match modal (200/9999). */
+#live { position: relative; z-index: 30; }
+
+/* ---- Per-table palettes for a cross-league cup ---- */
+/* The Leagues Cup runs two parallel tables that never play each other, so they
+   should not share one accent. Each takes its league's flag: MLS red/white/blue,
+   Liga MX green/white/red. Everything downstream already reads --qual and
+   --qual-bright, so scoping them here re-themes the dial, the arc, the cut line
+   and the qualifying rows at once. Colours are shifted off the literal flag
+   values where those are too dark to read on the dark ground. */
+.std-ladder[data-group="mls"] {
+  --qual: #b31942;                       /* Old Glory Red */
+  --qual-bright: #dce6ff;                /* white, cooled toward Old Glory Blue */
+  --qual-tint: rgba(10, 49, 97, 0.22);   /* blue wash behind qualifying rows */
+  --qual-dim: #4a2333;
+  --qual-glow: #3d1220;                  /* hub glow behind the leader crest */
+  --qual-glow-outer: #16090f;
+}
+.std-ladder[data-group="liga-mx"] {
+  --qual: #00875a;                       /* verde bandera, lifted for contrast */
+  --qual-bright: #f2fff8;                /* blanco */
+  --qual-tint: rgba(206, 17, 38, 0.16);  /* rojo wash behind qualifying rows */
+  --qual-dim: #14503a;
+  --qual-glow: #0c3826;                  /* hub glow behind the leader crest */
+  --qual-glow-outer: #06170f;
+}
+/* The heading above each ladder wears its own accent too. */
+.std-ladder[data-group] .std-ladder-title { color: var(--qual-bright); }

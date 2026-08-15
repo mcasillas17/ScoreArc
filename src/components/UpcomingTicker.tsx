@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import type { Match, Team } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
 import { flagUrl } from '@/lib/flags';
@@ -59,6 +59,27 @@ function Chip({
   onEnter: () => void; onLeave: () => void; onOpen: () => void; onDetails: () => void;
 }) {
   const wp = m.winProbability;
+  const popRef = useRef<HTMLDivElement | null>(null);
+
+  // The card is centred on its chip, so a chip near either end of the band
+  // pushes it outside — and on the left that means underneath the fixed
+  // sidebar, which sits above the banner and covers it. (Raising the banner
+  // instead is wrong: on mobile the sidebar is a sticky top bar, and the card
+  // would then scroll over the navigation.) Nudge it back inside the band.
+  useLayoutEffect(() => {
+    const pop = popRef.current;
+    if (!active || !pop) return;
+    pop.style.setProperty('--pop-shift', '0px');
+    const band = pop.closest('.tick-band');
+    if (!band) return;
+    const b = band.getBoundingClientRect();
+    const r = pop.getBoundingClientRect();
+    const margin = 8;
+    let shift = 0;
+    if (r.left < b.left + margin) shift = b.left + margin - r.left;
+    else if (r.right > b.right - margin) shift = b.right - margin - r.right;
+    if (shift !== 0) pop.style.setProperty('--pop-shift', `${Math.round(shift)}px`);
+  }, [active]);
   return (
     <div
       className="tick-chip"
@@ -92,7 +113,7 @@ function Chip({
       <span className="tick-ko">{kickoffTime(m.kickoff)}</span>
 
       {active && (
-        <div className="tick-pop" data-pop onClick={(e) => e.stopPropagation()}>
+        <div className="tick-pop" data-pop ref={popRef} onClick={(e) => e.stopPropagation()}>
           <div className="tick-pop-teams">{m.home.abbr}<span className="tick-vs">vs</span>{m.away.abbr}</div>
           <div className="tick-pop-when">{weekdayLong(m.kickoff)} · {kickoffTime(m.kickoff)}</div>
           {wp && (
