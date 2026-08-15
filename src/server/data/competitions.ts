@@ -203,7 +203,44 @@ export const COMPETITIONS: Record<string, Competition> = {
     { from: 5, to: 5, kind: 'uel', label: 'Europa League' },
     { from: 18, to: 20, kind: 'relegation', label: 'Relegation' },
   ]),
-  ...leagueCompetition('laliga', 'LaLiga', 'LaLiga', 'esp.1', '🇪🇸', '2026-27', '2026-27', { base: '#e5484d', bright: '#ff6b6b', soft: 'rgba(229,72,77,0.16)' }),
+  ...leagueCompetition('laliga', 'LaLiga', 'LaLiga', 'esp.1', '🇪🇸', '2026-27', '2026-27', { base: '#e5484d', bright: '#ff6b6b', soft: 'rgba(229,72,77,0.16)' }, undefined, [
+    // LaLiga EA Sports 2026-27 — 20 clubs, 38 rounds, bottom three down to
+    // Segunda División with no relegation play-off (Spain has never had the
+    // Bundesliga's survival tie). Researched Aug 2026 against Wikipedia's
+    // 2026-27 La Liga table (result1–4 CLLS, result5 ELLS, result6 ECLPO,
+    // result18–20 REL, sourced to laliga.com's own standings) and the UEFA
+    // Champions League 2027-28 access list.
+    //
+    // These ranges are what the 2026-27 table earns in 2027-28, which is the
+    // season the table itself is about — not Spain's 2026-27 European entry
+    // (that was settled by the 2025-26 table, where a European Performance
+    // Spot made it five Champions League places, 5th-placed Betis included).
+    //
+    // Two things genuinely are not decided yet, and both would push places
+    // DOWN the table rather than change their shape:
+    //
+    // 1. European Performance Spot. UEFA gives one extra league-phase berth to
+    //    each of the two associations with the best coefficient in the season
+    //    just played, so Spain's fifth Champions League place for 2027-28
+    //    depends on how Spanish clubs do in Europe THIS season — unknowable in
+    //    August. Spain took one for both 2025-26 and 2026-27, so a third is
+    //    likely, but likely is not earned. Encoded as the baseline four; if
+    //    Spain finishes top two again, 5 becomes 'ucl', 6 'uel', 7 'uecl'.
+    //
+    // 2. Copa del Rey. The winner enters the Europa League league phase. If it
+    //    has already qualified through the league (top five here), its berth
+    //    does not vanish — it passes to the best-placed club not yet qualified,
+    //    so 6th moves up to the Europa League and 7th takes the Conference
+    //    League play-off place. Undecidable until the final in spring, and it
+    //    is the more common outcome: a big club usually wins the cup. Encoded
+    //    as the cup winner coming from OUTSIDE the top five, which is the only
+    //    reading that does not assume a result.
+    { from: 1, to: 1, kind: 'champion', label: 'Campeón' },
+    { from: 2, to: 4, kind: 'ucl', label: 'Champions League' },
+    { from: 5, to: 5, kind: 'uel', label: 'Europa League' },
+    { from: 6, to: 6, kind: 'uecl', label: 'Conference League' },
+    { from: 18, to: 20, kind: 'relegation', label: 'Descenso' },
+  ]),
   ...leagueCompetition('serie-a', 'Serie A', 'Serie A', 'ita.1', '🇮🇹', '2026-27', '2026-27', { base: '#3b82f6', bright: '#6ba7ff', soft: 'rgba(59,130,246,0.16)' }),
   ...leagueCompetition('bundesliga', 'Bundesliga', 'Bundesliga', 'ger.1', '🇩🇪', '2026-27', '2026-27', { base: '#d20515', bright: '#ff5a4d', soft: 'rgba(210,5,21,0.16)' }),
   ...leagueCompetition('ligue-1', 'Ligue 1', 'Ligue 1', 'fra.1', '🇫🇷', '2026-27', '2026-27', { base: '#1e40af', bright: '#5b7fe0', soft: 'rgba(30,64,175,0.16)' }),
