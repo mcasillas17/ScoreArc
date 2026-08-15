@@ -21,6 +21,7 @@ export type ZoneKind =
   | 'uel'                 // Europa League
   | 'uecl'                // Conference League
   | 'playoff'             // domestic post-season (MLS Cup, Liguilla)
+  | 'wildcard'            // a play-in tie to reach the post-season (MLS 8th/9th)
   | 'promotion'
   | 'relegation-playoff'  // a tie to survive (Bundesliga 16th, Ligue 1)
   | 'relegation';
@@ -57,6 +58,12 @@ export interface Season {
   // What each range of the table earns. Ranges are 1-based and inclusive, and
   // anything not covered renders as unmarked mid-table.
   zones?: Zone[];
+  // Competitions split into parallel tables that ALSO crown something
+  // league-wide. MLS is the case: the Eastern and Western Conference tables
+  // decide the playoffs, but the Supporters' Shield is the best record across
+  // both, and no provider publishes that combined table — so it is merged from
+  // the conference tables and appended as one more table with its own zones.
+  overallTable?: { id: string; label: string; zones?: Zone[] };
   // Competitions whose tables the provider does not publish at all, so we
   // compute them from results instead. ESPN's /standings returns `{}` for the
   // Leagues Cup — for the current season AND for seasons that ended a year
@@ -178,7 +185,35 @@ export const COMPETITIONS: Record<string, Competition> = {
   ...leagueCompetition('serie-a', 'Serie A', 'Serie A', 'ita.1', '🇮🇹', '2026-27', '2026-27', { base: '#3b82f6', bright: '#6ba7ff', soft: 'rgba(59,130,246,0.16)' }),
   ...leagueCompetition('bundesliga', 'Bundesliga', 'Bundesliga', 'ger.1', '🇩🇪', '2026-27', '2026-27', { base: '#d20515', bright: '#ff5a4d', soft: 'rgba(210,5,21,0.16)' }),
   ...leagueCompetition('ligue-1', 'Ligue 1', 'Ligue 1', 'fra.1', '🇫🇷', '2026-27', '2026-27', { base: '#1e40af', bright: '#5b7fe0', soft: 'rgba(30,64,175,0.16)' }),
-  ...leagueCompetition('mls', 'MLS', 'MLS', 'usa.1', '🇺🇸', '2026', '2026', { base: '#2c5282', bright: '#5b8fd0', soft: 'rgba(44,82,130,0.16)' }),
+  // MLS is not one table. Thirty clubs play in two conferences of fifteen, and
+  // ESPN publishes them as two children — so both conference tables arrive for
+  // free and are rendered as two ladders, exactly like the Leagues Cup's two.
+  //
+  // Each conference sends NINE clubs to the Audi 2026 MLS Cup Playoffs: 1–7 go
+  // straight into the best-of-3 Round One, and 8th and 9th meet in a
+  // single-elimination Wild Card match for the last place in it. The conference
+  // winner also takes a 2027 CONCACAF Champions Cup berth — the confederation's
+  // premier club competition, so it wears the same accent a Champions League
+  // place wears in Europe.
+  //
+  // The third prize, the Supporters' Shield, belongs to no conference: it is the
+  // best record in the league. `overallTable` merges the two conferences into
+  // that one 30-club table (see mlsTables.ts) and marks its single gold place.
+  ...leagueCompetition(
+    'mls', 'MLS', 'MLS', 'usa.1', '🇺🇸', '2026', '2026',
+    { base: '#2c5282', bright: '#5b8fd0', soft: 'rgba(44,82,130,0.16)' },
+    undefined,
+    [
+      { from: 1, to: 1, kind: 'ucl', label: 'Round One · Champions Cup' },
+      { from: 2, to: 7, kind: 'playoff', label: 'Round One (best-of-3)' },
+      { from: 8, to: 9, kind: 'wildcard', label: 'Wild Card' },
+    ],
+    {
+      id: 'supporters-shield',
+      label: "Supporters' Shield · Overall",
+      zones: [{ from: 1, to: 1, kind: 'champion', label: "Supporters' Shield" }],
+    },
+  ),
   ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', '2026-apertura', 'Apertura 2026', { base: '#22a95e', bright: '#3ed07f', soft: 'rgba(34,169,94,0.16)' }, { cut: 8, label: 'Liguilla' }),
 };
 
@@ -210,6 +245,7 @@ function leagueCompetition(
   accent: { base: string; bright: string; soft: string },
   qualification?: { cut: number; label: string },
   zones?: Zone[],
+  overallTable?: { id: string; label: string; zones?: Zone[] },
 ): Record<string, Competition> {
   return {
     [id]: {
@@ -230,6 +266,7 @@ function leagueCompetition(
           format: { hasBracket: false, hasGroups: true, hasThirdPlaceRace: false },
           ...(qualification ? { qualification } : {}),
           ...(zones ? { zones } : {}),
+          ...(overallTable ? { overallTable } : {}),
         },
       },
     },

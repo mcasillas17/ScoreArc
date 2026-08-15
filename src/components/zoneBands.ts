@@ -71,6 +71,7 @@ export const ZONE_VAR: Record<ZoneKind | 'mid', string> = {
   uel: '--zone-uel',
   uecl: '--zone-uecl',
   playoff: '--zone-playoff',
+  wildcard: '--zone-wildcard',
   promotion: '--zone-promotion',
   'relegation-playoff': '--zone-releg-playoff',
   relegation: '--zone-relegation',

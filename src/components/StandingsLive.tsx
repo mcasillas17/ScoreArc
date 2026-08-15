@@ -68,7 +68,11 @@ export default function StandingsLive({ initialGroups, initialScorers, apiBase, 
         groups.map((group) => (
           <div key={group.id} className="std-ladder">
             {groups.length > 1 ? <h3 className="std-ladder-title">{group.name}</h3> : null}
-            <LeagueZoneTable standings={group.standings} zones={zones} teamStyle={teamStyle} />
+            {/* A table may carry its own zones. Almost none do — one league, one
+                set of outcomes — but MLS's Supporters' Shield table is ranked
+                across both conferences, so the conference playoff cut means
+                nothing in it. */}
+            <LeagueZoneTable standings={group.standings} zones={group.zones ?? zones} teamStyle={teamStyle} />
           </div>
         ))
       ) : qualification && !showThirdPlace ? (

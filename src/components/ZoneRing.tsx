@@ -1,5 +1,6 @@
 'use client';
 
+import { useId } from 'react';
 import type { Standing } from '@/server/data/types';
 import type { TeamStyle, Zone } from '@/server/data/competitions';
 import { toBands, ZONE_VAR } from './zoneBands';
@@ -37,6 +38,14 @@ export default function ZoneRing({
   zones: Zone[];
   teamStyle: TeamStyle;
 }) {
+  // SVG ids are document-global. A club can appear in more than one ring on the
+  // same page — MLS draws every club twice, once in its conference and once in
+  // the league-wide Supporters' Shield ring — so a clip path keyed on team id
+  // alone collides, and the second ring's crests get clipped to the first
+  // ring's geometry and vanish. Namespace them per ring instance.
+  // useId's value contains colons; strip them so the id is a plain token in
+  // `url(#...)`.
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
   const n = standings.length;
   if (n === 0) return null;
   const step = 360 / n;
@@ -78,7 +87,7 @@ export default function ZoneRing({
         const zone = bands.find((b) => s.rank >= b.from && s.rank <= b.to);
         const stroke = zone ? `var(${ZONE_VAR[zone.kind]})` : 'var(--hairline)';
         const src = teamStyle === 'crest' ? s.team.crestUrl : s.team.crestUrl;
-        const clip = `lzr-clip-${s.team.id}`;
+        const clip = `lzr-clip-${uid}-${s.team.id}`;
         return (
           <g key={s.team.id}>
             <circle cx={p.x} cy={p.y} r={15} fill="#f4f4f6" stroke={stroke} strokeWidth={zone ? 2 : 1} />

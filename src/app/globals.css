@@ -3047,6 +3047,11 @@ a {
   --zone-uel: #ff9f45;
   --zone-uecl: #35c98c;
   --zone-playoff: var(--gold);
+  /* A play-in tie is not a place in the post-season, it is a chance at one, so
+     it wears --zone-playoff's gold drained of its saturation: MLS's 8th and 9th
+     read as "nearly in" beside the solid gold above them, and stay clearly
+     distinct from it in the legend. */
+  --zone-wildcard: #cfc09a;
   --zone-promotion: #35c98c;
   --zone-releg-playoff: #e8a33d;
   --zone-relegation: #e5484d;

@@ -4,6 +4,7 @@ import { scoreboardUrl, standingsUrl, summaryUrl, bracketUrl, statisticsUrl, new
 import { mapScoreboard } from './providers/espn-matches';
 import { splitLeagueTeamIds } from './providers/espn-teams';
 import { computePhaseTables } from './leaguesCupTables';
+import { computeOverallTable } from './mlsTables';
 import { mapNews } from './providers/espn-news';
 import { mapStandings } from './providers/espn-standings';
 import { mapBracket } from './providers/espn-bracket';
@@ -164,6 +165,14 @@ export function createDataStore(deps: DataDeps): DataStore {
       }
       const raw = await deps.fetchJson(standingsUrl(slug(rc)));
       const groups = mapStandings(raw);
+      // A conference-split league also races for something league-wide that no
+      // provider tabulates — MLS's Supporters' Shield. Merge it here so the view
+      // receives it as one more table and needs no special case.
+      const overall = rc.season.overallTable;
+      if (overall) {
+        const merged = computeOverallTable(groups, overall);
+        if (merged) groups.push(merged);
+      }
       deps.cache.set(k, groups, ttlMs);
       return groups;
     },

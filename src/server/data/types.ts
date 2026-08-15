@@ -1,3 +1,5 @@
+import type { Zone } from './competitions';
+
 export type MatchState = 'scheduled' | 'live' | 'finished';
 
 export interface Team {
@@ -114,6 +116,11 @@ export interface Group {
   id: string;               // "A".."L"
   name: string;             // "Group A"
   standings: Standing[];
+  // Per-table outcome zones, overriding the competition-wide ones. Almost every
+  // competition wants one set of zones for every table it publishes; MLS does
+  // not, because its Supporters' Shield table is ranked league-wide and so
+  // rewards entirely different positions than a conference table does.
+  zones?: Zone[];
 }
 
 // ===== Knockout Bracket =====
