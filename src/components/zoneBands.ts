@@ -77,3 +77,9 @@ export const ZONE_VAR: Record<ZoneKind | 'mid', string> = {
   relegation: '--zone-relegation',
   mid: '--zone-mid',
 };
+
+// Outcomes that are a tie to be played rather than a placing already earned.
+// Drawn dashed so they read as unsettled — which also removes the need to give
+// a relegation playoff a colour of its own, the thing that collided with the
+// Europa League accent.
+export const DASHED_KINDS: ReadonlySet<string> = new Set(['relegation-playoff', 'wildcard']);

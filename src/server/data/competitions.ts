@@ -241,7 +241,40 @@ export const COMPETITIONS: Record<string, Competition> = {
     { from: 6, to: 6, kind: 'uecl', label: 'Conference League' },
     { from: 18, to: 20, kind: 'relegation', label: 'Descenso' },
   ]),
-  ...leagueCompetition('serie-a', 'Serie A', 'Serie A', 'ita.1', '🇮🇹', '2026-27', '2026-27', { base: '#3b82f6', bright: '#6ba7ff', soft: 'rgba(59,130,246,0.16)' }),
+  ...leagueCompetition('serie-a', 'Serie A', 'Serie A', 'ita.1', '🇮🇹', '2026-27', '2026-27', { base: '#3b82f6', bright: '#6ba7ff', soft: 'rgba(59,130,246,0.16)' }, undefined, [
+    // Serie A 2026-27: 20 clubs, three down to Serie B. Europe below is what
+    // the 2026-27 table earns for 2027-28. Italy is 2nd in the 2026 UEFA
+    // association coefficients (99.946), so it holds four Champions League
+    // league-phase places outright; 5th takes a Europa League place and 6th
+    // the Conference League play-off round.
+    //
+    // Two conditionals cannot be expressed as a fixed rank range, so the
+    // baseline below is the unconditional allocation and both shifts are
+    // deliberately left unencoded:
+    //  1. The Coppa Italia winner holds the other Europa League berth. If they
+    //     finish in the top five they are already qualified, and the berth
+    //     falls through: 6th moves up to the Europa League and 7th takes the
+    //     Conference League place. Unknown until the 2027 final.
+    //  2. European Performance Spot — if Italy is one of the two associations
+    //     with the best club coefficient over 2026-27, 5th also enters the
+    //     Champions League and every place below shifts down one. Decided in
+    //     May 2027. (England and Spain took the two spots for 2026-27.)
+    //
+    // Italy also keeps a conditional spareggio that no rank range can carry: a
+    // single match decides the Scudetto if exactly two clubs finish level on
+    // points in 1st, and a two-legged tie decides the last relegation place if
+    // exactly two finish level on points in 17th/18th. New for 2026-27, either
+    // playoff is cancelled when a club involved is contesting a UEFA final, and
+    // the classifica avulsa (head-to-head, then GD, then goals) decides
+    // instead. It triggers only on equal points, so 18th is marked plain
+    // relegation rather than 'relegation-playoff' — that kind would wrongly
+    // promise a survival tie in every season.
+    { from: 1, to: 1, kind: 'champion', label: 'Scudetto' },
+    { from: 2, to: 4, kind: 'ucl', label: 'Champions League' },
+    { from: 5, to: 5, kind: 'uel', label: 'Europa League' },
+    { from: 6, to: 6, kind: 'uecl', label: 'Conference League' },
+    { from: 18, to: 20, kind: 'relegation', label: 'Relegation' },
+  ]),
   ...leagueCompetition('bundesliga', 'Bundesliga', 'Bundesliga', 'ger.1', '🇩🇪', '2026-27', '2026-27', { base: '#d20515', bright: '#ff5a4d', soft: 'rgba(210,5,21,0.16)' }, undefined, [
     // 2026-27 Bundesliga (28 Aug 2026 – 22 May 2027). 18 clubs, 34 matchdays.
     //
@@ -272,7 +305,38 @@ export const COMPETITIONS: Record<string, Competition> = {
     { from: 16, to: 16, kind: 'relegation-playoff', label: 'Relegationsspiele — playoff' },
     { from: 17, to: 18, kind: 'relegation', label: 'Relegation' },
   ]),
-  ...leagueCompetition('ligue-1', 'Ligue 1', 'Ligue 1', 'fra.1', '🇫🇷', '2026-27', '2026-27', { base: '#1e40af', bright: '#5b7fe0', soft: 'rgba(30,64,175,0.16)' }),
+  ...leagueCompetition('ligue-1', 'Ligue 1', 'Ligue 1', 'fra.1', '🇫🇷', '2026-27', '2026-27', { base: '#1e40af', bright: '#5b7fe0', soft: 'rgba(30,64,175,0.16)' }, undefined, [
+    // 2026-27 Ligue 1: 18 clubs (down from 20 since 2023-24), 34 rounds.
+    // Sources: Wikipedia "2026-27 Ligue 1" + its table template
+    // (Template:2026–27 Ligue 1 table, res_col_header definitions), the
+    // 2027-28 UEFA Champions League access list (France 5th on the 2026
+    // association coefficient -> four berths), and ligue1.com on the barrage.
+    //
+    // What a 2026-27 finish earns (in 2027-28 UEFA competitions):
+    //   1-3  Champions League league phase
+    //   4    Champions League third qualifying round (League Path) — France is
+    //        the 5th-ranked association, so its fourth club must qualify; it is
+    //        a Champions League place, not a guaranteed league-phase seat.
+    //   5    Europa League league phase
+    //   6    Conference League play-off round
+    //   16   barrage: two legs against the Ligue 2 play-off winner
+    //   17-18 straight down to Ligue 2
+    //
+    // Not encodable as a rank range: the Coupe de France winner also takes a
+    // Europa League league-phase place, and if it has already finished top five
+    // that place slides to 6th and the Conference League place to 7th. Likewise
+    // the European Performance Spot — if France finishes the 2026-27 season in
+    // UEFA's top two by season coefficient, a fifth Champions League berth would
+    // pass to 5th. Both are decided in-season, so the table below is the base
+    // allocation and 6-7 can shift once the cup is won.
+    { from: 1, to: 1, kind: 'champion', label: 'Champion' },
+    { from: 2, to: 3, kind: 'ucl', label: 'Champions League' },
+    { from: 4, to: 4, kind: 'ucl', label: 'Champions League qualifying' },
+    { from: 5, to: 5, kind: 'uel', label: 'Europa League' },
+    { from: 6, to: 6, kind: 'uecl', label: 'Conference League' },
+    { from: 16, to: 16, kind: 'relegation-playoff', label: 'Relegation play-off' },
+    { from: 17, to: 18, kind: 'relegation', label: 'Relegation' },
+  ]),
   // MLS is not one table. Thirty clubs play in two conferences of fifteen, and
   // ESPN publishes them as two children — so both conference tables arrive for
   // free and are rendered as two ladders, exactly like the Leagues Cup's two.

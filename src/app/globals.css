@@ -3071,3 +3071,23 @@ a {
   margin: 8px 0 0; font-size: 12px; color: var(--text-muted); text-align: center;
 }
 .lzr image { filter: saturate(1.05); }
+
+/* ---- Zone table fixes (found during integration) ---- */
+/* .ll-row is a five-column grid; the zone row renders a sixth child (played),
+   which wrapped onto its own line under the club name on every zones league.
+   Give it its own column rather than widening the shared ladder's grid. */
+.lz-row { grid-template-columns: 20px 26px 1fr 26px auto 22px; }
+
+/* The ring was vertically centred against a 20-row table, leaving several
+   hundred pixels of dead space beneath it. Align it to the top of its column
+   so the arc sits beside the head of the table it describes. */
+.ll-card .ll-left { justify-content: flex-start; }
+
+/* A zone whose outcome is a tie rather than a placing — a relegation playoff,
+   a wild card — is drawn dashed. It reads as "not settled" without needing a
+   colour of its own, which is what made the amber playoff accent collide with
+   Europa orange. */
+.lzr-dashed { stroke-dasharray: 10 7; }
+.lz-band--relegation-playoff::before,
+.lz-band--wildcard::before { background: repeating-linear-gradient(
+  to bottom, var(--zone) 0 6px, transparent 6px 11px); }

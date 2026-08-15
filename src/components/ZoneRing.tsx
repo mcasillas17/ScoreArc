@@ -3,7 +3,8 @@
 import { useId } from 'react';
 import type { Standing } from '@/server/data/types';
 import type { TeamStyle, Zone } from '@/server/data/competitions';
-import { toBands, ZONE_VAR } from './zoneBands';
+import { toBands, ZONE_VAR, DASHED_KINDS } from './zoneBands';
+import { flagUrl } from '@/lib/flags';
 
 // The league analog of the arc bracket: the whole table laid around a ring,
 // with each outcome drawn as an arc over the clubs it claims. Rank 1 sits at
@@ -29,6 +30,16 @@ function arcPath(startDeg: number, endDeg: number, radius: number): string {
   const e = pointAt(endDeg, radius);
   const large = endDeg - startDeg > 180 ? 1 : 0;
   return `M ${s.x.toFixed(2)} ${s.y.toFixed(2)} A ${radius} ${radius} 0 ${large} 1 ${e.x.toFixed(2)} ${e.y.toFixed(2)}`;
+}
+
+// Clubs in the same table can have played different numbers of matches — MLS
+// runs 17-19 mid-season — so quoting the leader's count alone misreports the
+// league. Show the range when it is not uniform.
+function playedLabel(standings: Standing[]): string {
+  const counts = standings.map((s) => s.played);
+  const lo = Math.min(...counts);
+  const hi = Math.max(...counts);
+  return lo === hi ? `${hi} played` : `${lo}\u2013${hi} played`;
 }
 
 export default function ZoneRing({
@@ -77,6 +88,7 @@ export default function ZoneRing({
               stroke={`var(${ZONE_VAR[b.kind]})`}
               strokeWidth={2.5}
               strokeLinecap="round"
+              className={DASHED_KINDS.has(b.kind) ? 'lzr-dashed' : undefined}
             />
           </g>
         );
@@ -86,7 +98,9 @@ export default function ZoneRing({
         const p = pointAt(i * step, R_CREST);
         const zone = bands.find((b) => s.rank >= b.from && s.rank <= b.to);
         const stroke = zone ? `var(${ZONE_VAR[zone.kind]})` : 'var(--hairline)';
-        const src = teamStyle === 'crest' ? s.team.crestUrl : s.team.crestUrl;
+        // Both branches used to read crestUrl, so a flag competition silently
+        // fell back to a crest it does not have. Flags win for national sides.
+        const src = teamStyle === 'flag' ? (flagUrl(s.team.abbr) ?? s.team.crestUrl) : s.team.crestUrl;
         const clip = `lzr-clip-${uid}-${s.team.id}`;
         return (
           <g key={s.team.id}>
@@ -122,7 +136,7 @@ export default function ZoneRing({
         {n} clubs
       </text>
       <text x={CX} y={CY + 16} textAnchor="middle" fontSize={13} fill="var(--text-muted)">
-        {standings[0]?.played ?? 0} played
+        {playedLabel(standings)}
       </text>
     </svg>
   );
