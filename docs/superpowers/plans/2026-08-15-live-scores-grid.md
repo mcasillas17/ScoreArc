@@ -12,6 +12,20 @@
 **Epic:** E2 in `docs/PRODUCT_ROADMAP.md`
 **Branch:** `feat/live-scores` off latest `origin/main`
 
+> ⚠️ **`main` has moved since this plan was written (2026-08-15).** PRs #33–#35
+> added Vercel analytics and telemetry across the API routes and several
+> components. Code quoted below is accurate **as of the plan's date**, not
+> necessarily as of today.
+>
+> **Before replacing any block, open the file and diff it against the quote.**
+> Where they differ, apply the plan's *intent* to the current code rather than
+> pasting the quoted block — pasting would silently delete the telemetry calls
+> (`trackAPIRequestFailure`, `trackFeedFailure`, `trackFeedRecovery`) that now
+> live in these files. Deleting telemetry is invisible in review and only
+> discovered when a dashboard goes quiet.
+> **Specific to this plan:** `LiveScores.tsx` now imports `trackFeedFailure` / `trackFeedRecovery` and holds a `feedFailed` ref alongside `connOk`. That telemetry is part of the polling logic this plan says to KEEP — it is not carousel machinery. Carry it into the rewrite.
+
+
 ## Global Constraints
 
 - TypeScript strict; no `any` in new code.

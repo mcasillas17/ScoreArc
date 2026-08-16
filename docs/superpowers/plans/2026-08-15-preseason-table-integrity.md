@@ -12,6 +12,18 @@
 **Epic:** E0 in `docs/PRODUCT_ROADMAP.md`
 **Branch:** `fix/pre-season-tables` off latest `origin/main`
 
+> ⚠️ **`main` has moved since this plan was written (2026-08-15).** PRs #33–#35
+> added Vercel analytics and telemetry across the API routes and several
+> components. Code quoted below is accurate **as of the plan's date**, not
+> necessarily as of today.
+>
+> **Before replacing any block, open the file and diff it against the quote.**
+> Where they differ, apply the plan's *intent* to the current code rather than
+> pasting the quoted block — pasting would silently delete the telemetry calls
+> (`trackAPIRequestFailure`, `trackFeedFailure`, `trackFeedRecovery`) that now
+> live in these files. Deleting telemetry is invisible in review and only
+> discovered when a dashboard goes quiet.
+
 ## Global Constraints
 
 - TypeScript strict; no `any` in new code, except inside the ESPN mappers where
