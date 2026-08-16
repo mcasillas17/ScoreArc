@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/mcasillas17/scorearc-backend/shared/model"
@@ -259,5 +260,164 @@ GRANT scorearc_ingester TO snapshot_writer;`); err != nil {
 	// Append-only is a grant, not a convention.
 	if _, err := asIngester.pool.Exec(ctx, `DELETE FROM standing_snapshot`); err == nil {
 		t.Fatal("scorearc_ingester can DELETE standing_snapshot; history is not append-only")
+	}
+}
+
+// mustSeedMatch inserts the minimum row win_prob_snapshot's foreign key needs.
+// It goes through the resolver rather than raw SQL so the test exercises the
+// same id-minting path production does.
+func mustSeedMatch(t *testing.T, store *Store) uuid.UUID {
+	t.Helper()
+	matchID, err := store.Match(context.Background(), "espn", MatchRef{
+		SourceID:      "401863609",
+		CompetitionID: "premier-league",
+		SeasonID:      "2026-27",
+		HomeTeamID:    "eng-arsenal",
+		AwayTeamID:    "eng-chelsea",
+		Kickoff:       time.Date(2026, 8, 15, 19, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("resolve match: %v", err)
+	}
+	return matchID
+}
+
+func winProbRows(t *testing.T, pool *pgxpool.Pool) int {
+	t.Helper()
+	var rows int
+	if err := pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM win_prob_snapshot`).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	return rows
+}
+
+// Three polls land inside one minute -- that is the 20s live cadence -- and
+// must produce one row carrying the last of them.
+func TestWinProbSnapshotCollapsesAMinute(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	mustSeedTwoTeams(t, store)
+	mustSeedSeason(t, pool)
+	matchID := mustSeedMatch(t, store)
+
+	base := time.Date(2026, 8, 15, 19, 42, 0, 0, time.UTC)
+	observations := []struct {
+		offset int
+		value  model.WinProbability
+	}{
+		{offset: 3, value: model.WinProbability{Home: 50, Draw: 26, Away: 24}},
+		{offset: 23, value: model.WinProbability{Home: 55, Draw: 24, Away: 21}},
+		{offset: 47, value: model.WinProbability{Home: 61, Draw: 21, Away: 18}},
+	}
+	for _, observation := range observations {
+		if err := store.WriteWinProbSnapshot(ctx, matchID, observation.value,
+			base.Add(time.Duration(observation.offset)*time.Second)); err != nil {
+			t.Fatalf("write at +%ds: %v", observation.offset, err)
+		}
+	}
+	if got := winProbRows(t, pool); got != 1 {
+		t.Fatalf("stored %d rows for one minute of polling, want 1", got)
+	}
+
+	var home float64
+	var capturedAt time.Time
+	if err := pool.QueryRow(ctx,
+		`SELECT home, captured_at FROM win_prob_snapshot WHERE match_id=$1`,
+		matchID).Scan(&home, &capturedAt); err != nil {
+		t.Fatal(err)
+	}
+	if home != 61 {
+		t.Fatalf("home = %v, want the last observation in the minute, 61", home)
+	}
+	// The stored instant is the bucket, not the poll: a curve plotted against
+	// captured_at must have evenly spaced x values.
+	if !capturedAt.UTC().Equal(base) {
+		t.Fatalf("captured_at = %s, want it truncated to %s", capturedAt.UTC(), base)
+	}
+}
+
+// The other half: consecutive minutes are the curve.
+func TestWinProbSnapshotKeepsEachMinute(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	mustSeedTwoTeams(t, store)
+	mustSeedSeason(t, pool)
+	matchID := mustSeedMatch(t, store)
+
+	base := time.Date(2026, 8, 15, 19, 42, 0, 0, time.UTC)
+	for minute := range 5 {
+		if err := store.WriteWinProbSnapshot(ctx, matchID,
+			model.WinProbability{Home: 40 + float64(minute), Draw: 30, Away: 30 - float64(minute)},
+			base.Add(time.Duration(minute)*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := winProbRows(t, pool); got != 5 {
+		t.Fatalf("stored %d rows across five minutes, want 5", got)
+	}
+}
+
+// numeric(5,2) has two decimal places. A normalised probability like 33.333…
+// must round rather than raise, or a three-way market that does not divide
+// evenly would take down the write.
+func TestWinProbSnapshotRoundsToTheColumnScale(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	mustSeedTwoTeams(t, store)
+	mustSeedSeason(t, pool)
+	matchID := mustSeedMatch(t, store)
+
+	if err := store.WriteWinProbSnapshot(ctx, matchID,
+		model.WinProbability{Home: 33.333333, Draw: 33.333333, Away: 33.333334},
+		time.Date(2026, 8, 15, 19, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("WriteWinProbSnapshot: %v", err)
+	}
+	var home, draw, away float64
+	if err := pool.QueryRow(ctx,
+		`SELECT home, draw, away FROM win_prob_snapshot WHERE match_id=$1`,
+		matchID).Scan(&home, &draw, &away); err != nil {
+		t.Fatal(err)
+	}
+	if home != 33.33 || draw != 33.33 || away != 33.33 {
+		t.Fatalf("stored %v/%v/%v, want 33.33 each", home, draw, away)
+	}
+}
+
+// Production writes as scorearc_ingester. A missing grant is a 42501 inside
+// the ingester, not a failing test, unless a test connects as that role.
+func TestWriteWinProbSnapshotAsTheIngesterRole(t *testing.T) {
+	owner, pool, dsn := newIntegrationStoreDSN(t)
+	ctx := context.Background()
+	mustSeedTwoTeams(t, owner)
+	mustSeedSeason(t, pool)
+	matchID := mustSeedMatch(t, owner)
+
+	if _, err := pool.Exec(ctx, `
+CREATE ROLE winprob_writer LOGIN PASSWORD 'winprob_writer';
+GRANT scorearc_ingester TO winprob_writer;`); err != nil {
+		t.Fatal(err)
+	}
+	asIngester, err := New(ctx,
+		strings.Replace(dsn, "postgres:postgres@", "winprob_writer:winprob_writer@", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(asIngester.Close)
+
+	at := time.Date(2026, 8, 15, 19, 42, 0, 0, time.UTC)
+	if err := asIngester.WriteWinProbSnapshot(ctx, matchID,
+		model.WinProbability{Home: 50, Draw: 25, Away: 25}, at); err != nil {
+		t.Fatalf("insert as scorearc_ingester: %v", err)
+	}
+	if err := asIngester.WriteWinProbSnapshot(ctx, matchID,
+		model.WinProbability{Home: 60, Draw: 22, Away: 18}, at.Add(30*time.Second)); err != nil {
+		t.Fatalf("same-minute update as scorearc_ingester: %v", err)
+	}
+	if got := winProbRows(t, pool); got != 1 {
+		t.Fatalf("stored %d rows, want 1", got)
+	}
+	if _, err := asIngester.pool.Exec(ctx, `DELETE FROM win_prob_snapshot`); err == nil {
+		t.Fatal("scorearc_ingester can DELETE win_prob_snapshot; history is not append-only")
 	}
 }
