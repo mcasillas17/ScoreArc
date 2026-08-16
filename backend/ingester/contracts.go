@@ -35,6 +35,12 @@ type repository interface {
 	ExistingMatches(context.Context, string, string, []uuid.UUID) (map[uuid.UUID]store.MatchRow, error)
 	UnfinalizedMatches(context.Context, string, string, string) ([]model.Match, error)
 	ReplaceStandings(context.Context, string, string, string, []model.Standing, map[string]string) error
+	// WriteStandingSnapshot is the only write here whose absence is
+	// irreversible: ESPN publishes the current table, not yesterday's, so a day
+	// this does not record is gone. It is deliberately separate from
+	// ReplaceStandings so it can only ever be called with rows that
+	// replacement actually accepted.
+	WriteStandingSnapshot(context.Context, string, string, []model.Standing, map[string]string, time.Time) (int, error)
 	ReplaceTopScorers(context.Context, string, string, string, []model.TopScorer) error
 	ReplaceSquad(context.Context, string, string, string, string, []model.SquadMember, map[string]uuid.UUID) error
 	PlayersNeedingBio(context.Context, string, time.Time, int) (map[string]uuid.UUID, error)

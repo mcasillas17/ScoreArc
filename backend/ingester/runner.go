@@ -24,6 +24,7 @@ const (
 	ingestRunRetention      = 30 * 24 * time.Hour
 	backfillRefreshInterval = 24 * time.Hour
 	backfillRetryInterval   = 30 * time.Minute
+	standingSnapshotRunKind = "standings_snapshot"
 )
 
 type activity struct {
@@ -49,6 +50,12 @@ type runner struct {
 	backfillAttempted map[string]time.Time
 	squadsRefreshed   map[string]time.Time
 	squadAttempted    map[string]time.Time
+	// snapshotted is the UTC day each competition's standings snapshot has
+	// already been written for IN THIS PROCESS. It is a cost gate, not the
+	// idempotency guarantee -- that is the unique index in migration 0004. A
+	// restart empties this map and the next cycle re-writes the day, which the
+	// store upserts.
+	snapshotted       map[string]time.Time
 	mirrorUnavailable time.Time
 	mirrorTimeout     time.Duration
 }
@@ -357,7 +364,7 @@ func (r *runner) ingestCompSeason(
 	var refreshErrors []error
 	if matchResult.finalized || slowTick {
 		refreshErrors = append(refreshErrors,
-			r.refreshStandings(ctx, comp, season, slowTick),
+			r.refreshStandings(ctx, comp, season, slowTick, matchResult.finalized),
 			r.refreshTopScorers(ctx, comp, season),
 		)
 	}
@@ -478,11 +485,16 @@ func (r *runner) refreshStandings(
 	comp config.Competition,
 	season config.Season,
 	slowTick bool,
+	tableChanged bool,
 ) error {
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
 	start := time.Now()
+	if err := ctx.Err(); err != nil {
+		if tableChanged {
+			r.markStandingsSnapshotPending(comp.ID, season.ID)
+			r.recordRun(ctx, comp.ID, standingSnapshotRunKind, start, err)
+		}
+		return err
+	}
 	rows, err := r.source.Standings(ctx, comp, season)
 	teamIDs := make(map[string]string, len(rows))
 	if err == nil {
@@ -502,6 +514,11 @@ func (r *runner) refreshStandings(
 	if err == nil {
 		err = r.repo.ReplaceStandings(ctx, comp.ID, season.ID, sourceESPN, rows, teamIDs)
 	}
+	if err != nil && tableChanged {
+		// Finalization is a one-cycle edge. If its refresh fails, remove the
+		// completed-day marker so a later slow tick retries the settled table.
+		r.markStandingsSnapshotPending(comp.ID, season.ID)
+	}
 	if errors.Is(err, store.ErrEmptyReplacement) || errors.Is(err, store.ErrPartialReplacement) {
 		r.log.Info("standings replacement rejected; preserving existing rows",
 			"comp", comp.ID, "reason", err)
@@ -518,10 +535,87 @@ func (r *runner) refreshStandings(
 		}
 	}
 	r.recordRun(ctx, comp.ID, "standings", start, err)
-	if err != nil || !slowTick {
+	if err != nil {
+		// Only rows the replacement accepted get snapshotted. ReplaceStandings
+		// rejects an empty or shrinking table because it is probably an
+		// upstream blip; recording the blip as a day of history would bake it
+		// in permanently, and unlike `standing` this table is never rewritten.
 		return err
 	}
-	return r.refreshSquads(ctx, comp, season, teamIDs)
+	snapshotErr := r.snapshotStandings(ctx, comp, season, rows, teamIDs, tableChanged)
+	if !slowTick {
+		return snapshotErr
+	}
+	return errors.Join(snapshotErr, r.refreshSquads(ctx, comp, season, teamIDs))
+}
+
+// utcDay is the snapshot bucket: midnight UTC. Fixing the boundary in UTC for
+// every competition is what lets a Liga MX series and a Premier League series
+// share one x-axis. time.Truncate is deliberately not used -- it rounds
+// relative to the zero time, not to a calendar day.
+func utcDay(at time.Time) time.Time {
+	at = at.UTC()
+	return time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+func (r *runner) markStandingsSnapshotPending(competitionID, seasonID string) {
+	r.mu.Lock()
+	delete(r.snapshotted, competitionID+"/"+seasonID)
+	r.mu.Unlock()
+}
+
+// snapshotStandings records the day's table. It is called only after
+// ReplaceStandings committed, so the snapshot and the live table always agree.
+//
+// The error is RETURNED rather than swallowed. Player capture is additive and
+// a failure there costs a re-fetch; a snapshot not retried before day-end loses
+// history no provider can give back, so it must count towards the cycle's
+// failures, stay pending, and show up in ingest_run.
+func (r *runner) snapshotStandings(
+	ctx context.Context,
+	comp config.Competition,
+	season config.Season,
+	rows []model.Standing,
+	teamIDs map[string]string,
+	tableChanged bool,
+) error {
+	if ctx.Err() != nil {
+		if tableChanged {
+			r.markStandingsSnapshotPending(comp.ID, season.ID)
+		}
+		return ctx.Err()
+	}
+	now := time.Now().UTC()
+	day := utcDay(now)
+	key := comp.ID + "/" + season.ID
+
+	r.mu.Lock()
+	recorded, seen := r.snapshotted[key]
+	r.mu.Unlock()
+	// A day already recorded is re-recorded only when a match finalized this
+	// cycle, because that is the only thing that moves a table. Everything else
+	// would be ~52k upserts a day to produce nine rows.
+	if seen && recorded.Equal(day) && !tableChanged {
+		return nil
+	}
+
+	start := time.Now()
+	written, err := r.repo.WriteStandingSnapshot(
+		ctx, comp.ID, season.ID, rows, teamIDs, now)
+	r.recordRun(ctx, comp.ID, standingSnapshotRunKind, start, err)
+	if err != nil {
+		r.markStandingsSnapshotPending(comp.ID, season.ID)
+		r.log.Error("standings snapshot failed; retry remains pending",
+			"comp", comp.ID, "season", season.ID, "day", day.Format(time.DateOnly),
+			"err", err)
+		return err
+	}
+	r.mu.Lock()
+	r.snapshotted[key] = day
+	r.mu.Unlock()
+	r.log.Info("standings snapshot", "comp", comp.ID, "season", season.ID,
+		"day", day.Format(time.DateOnly), "rows", written)
+	return nil
 }
 
 func (r *runner) refreshTopScorers(
