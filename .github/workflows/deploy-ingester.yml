@@ -1,0 +1,36 @@
+name: Deploy ingester
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/ingester/**"
+      - "backend/shared/**"
+      - "backend/config/**"
+      - "backend/go.mod"
+      - "backend/go.sum"
+      - ".github/workflows/deploy-ingester.yml"
+  workflow_dispatch: {}
+
+# The ingester is a singleton guarded by a Postgres advisory lock. Two
+# concurrent deploys would race to replace the machine holding it, so never
+# cancel a run in flight — queue behind it.
+concurrency:
+  group: deploy-ingester
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: flyctl deploy (ingester)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy ingester to Fly
+        run: >-
+          flyctl deploy backend
+          --config backend/ingester/fly.toml
+          --dockerfile backend/ingester/Dockerfile
+          --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
