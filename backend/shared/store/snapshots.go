@@ -69,11 +69,14 @@ func (s *Store) WriteStandingSnapshot(
 			standing.Rank, standing.Points, standing.GoalDifference, standing.Played)
 	}
 	results := tx.SendBatch(ctx, batch)
+	written := 0
 	for index := range standings {
-		if _, err := results.Exec(); err != nil {
+		tag, err := results.Exec()
+		if err != nil {
 			_ = results.Close()
 			return 0, fmt.Errorf("snapshot row %d: %w", index, err)
 		}
+		written += int(tag.RowsAffected())
 	}
 	if err := results.Close(); err != nil {
 		return 0, err
@@ -81,7 +84,7 @@ func (s *Store) WriteStandingSnapshot(
 	if err := tx.Commit(ctx); err != nil {
 		return 0, err
 	}
-	return len(standings), nil
+	return written, nil
 }
 
 // The conflict target is the generated captured_on, not captured_at: two
@@ -97,4 +100,5 @@ ON CONFLICT (competition_id, season_id, team_id, captured_on) DO UPDATE SET
 	rank            = EXCLUDED.rank,
 	points          = EXCLUDED.points,
 	goal_difference = EXCLUDED.goal_difference,
-	played          = EXCLUDED.played`
+	played          = EXCLUDED.played
+WHERE standing_snapshot.captured_at <= EXCLUDED.captured_at`

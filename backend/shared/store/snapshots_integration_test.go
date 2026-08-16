@@ -87,6 +87,43 @@ WHERE competition_id='premier-league' AND season_id='2026-27' AND team_id='eng-a
 	}
 }
 
+// A delayed response or a clock correction must not replace a newer table with
+// an older observation from the same day. The database owns this guard because
+// callers other than today's single leased runner may reuse the store method.
+func TestStandingSnapshotRejectsAnOlderSameDayObservation(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	mustSeedTwoTeams(t, store)
+	mustSeedSeason(t, pool)
+
+	newer := time.Date(2026, 8, 15, 23, 0, 0, 0, time.UTC)
+	older := time.Date(2026, 8, 15, 22, 30, 0, 0, time.UTC)
+	if _, err := store.WriteStandingSnapshot(ctx,
+		"premier-league", "2026-27", standingsFor(15, 9), snapshotTeamIDs, newer); err != nil {
+		t.Fatalf("newer write: %v", err)
+	}
+	written, err := store.WriteStandingSnapshot(ctx,
+		"premier-league", "2026-27", standingsFor(12, 6), snapshotTeamIDs, older)
+	if err != nil {
+		t.Fatalf("older write: %v", err)
+	}
+	if written != 0 {
+		t.Fatalf("older write reported %d rows, want 0", written)
+	}
+
+	var points int
+	var capturedAt time.Time
+	if err := pool.QueryRow(ctx, `
+SELECT points, captured_at FROM standing_snapshot
+WHERE competition_id='premier-league' AND season_id='2026-27' AND team_id='eng-arsenal'`,
+	).Scan(&points, &capturedAt); err != nil {
+		t.Fatal(err)
+	}
+	if points != 15 || !capturedAt.UTC().Equal(newer) {
+		t.Fatalf("stored points/time = %d/%s, want 15/%s", points, capturedAt.UTC(), newer)
+	}
+}
+
 // The other half: a NEW day is a new row, or there is no series at all.
 func TestStandingSnapshotAddsARowPerDay(t *testing.T) {
 	store, pool := newIntegrationStore(t)
