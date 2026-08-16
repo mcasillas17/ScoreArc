@@ -138,10 +138,21 @@ Built in vertical slices; each is its own spec → plan → build.
 |---|---|---|
 | **1 — Own the contract** | Ingester + reader on Fly/Neon/R2; swap the site's `DataStore` to read from us | **In progress** (see §7) |
 | **2 — History** | Time-series snapshot *writes* + an analytics store (the schema + `emitSnapshots()` hook already exist) | Designed, deferred |
-| **3 — Backfill** | Historical results + xG from open data / scraping | Planned |
-| **4 — Own ML** | xG, odds (Dixon-Coles), season sim (Monte Carlo), similarity → precomputed | Planned |
+| **3 — Backfill** | Historical results; **shot geometry from ESPN's own `/plays`** (no scraping or open data needed — see note) | Planned |
+| **4 — Own ML** | xG (**epic E9**, from our own persisted geometry), odds (Dixon-Coles), season sim (Monte Carlo), similarity → precomputed | Planned |
 | **5 — Language layer** | Claude: auto summaries + Q&A via tool-use over our API | Planned |
 | **Board** | Repurpose an LED matrix scoreboard that polls a compact `/v1/board/…` | Planned |
+
+> **Note added 2026-08-15 — Phases 3 and 4 got cheaper.** These rows previously assumed
+> xG had to come from scraping or open data (StatsBomb, FBref, Understat) because ESPN
+> exposed no coordinates. **That was false.** ESPN's *core* host
+> (`sports.core.api.espn.com`) serves a touch-level play stream with pitch coordinates on
+> ~97% of events and goal-mouth placement on most shots. We ingest and archive it
+> ourselves (T7.12/T7.13) and xG is now a committed epic, **E9**, trained on our own data.
+>
+> One real constraint replaces the false one: ESPN keeps the full stream for the
+> **current season only**, so the backfill is bounded and has a deadline. See
+> `docs/PRODUCT_ROADMAP.md` → *"The capability this roadmap was written without"*.
 
 ## 7. Current status (2026-08)
 

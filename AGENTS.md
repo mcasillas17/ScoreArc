@@ -10,6 +10,12 @@ to serve that data instead.
 > signature arc-bracket identity, the roadmap (own the data → history → AI-powered
 > stats), and fútbol domain knowledge future agents need.
 
+> **Picking up feature work?** Read **`docs/PRODUCT_ROADMAP.md`** — the epic and
+> task index (E0–E8), what is gated on the backend and what is not, and what we
+> have decided *not* to build. Every epic links to its design spec and, where the
+> work is ready to execute, a task-by-task implementation plan. Work is assigned
+> by task id (`T0.1`, `T3.2`, …).
+
 > **Working on the backend / API?** Read **`BACKEND_HANDOFF.md`** (repo root) FIRST
 > — it's the self-contained onboarding (stack, current state, what's next, setup).
 > Start each backend slice from the latest `origin/main` on its own feature branch.
@@ -53,6 +59,29 @@ Neon Postgres (provisioned via Vercel) + Cloudflare R2**. Full detail:
   use `cd backend && go test -race ./...` for the full backend gate, then
   `cd backend && go vet ./...` — static checks
   (some packages use testcontainers → **Docker must be running**).
+- **On Colima, `docker info` succeeding is not enough.** testcontainers looks for
+  the socket at Docker Desktop's path and fails with
+  `rootless Docker not found, failed to create Docker provider` — which looks like
+  eleven test failures rather than a misconfigured environment. Export these first:
+
+  ```bash
+  export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
+  export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
+  ```
+
+  Check which runtime you have with `docker context ls`.
+- **PRs here are squash-merged, which breaks stacked branches.** After a base
+  branch merges, the branch stacked on it still shows every one of the base's
+  commits as unmerged — the content is in `main` but the SHAs are not. Do not
+  open that PR; rebase off the already-merged commits first:
+
+  ```bash
+  git fetch origin
+  git rebase --onto origin/main <merged-base-branch> <your-branch>
+  ```
+
+  Verify with `git rev-list --count origin/main..<your-branch>` — it should equal
+  the number of commits that are genuinely yours.
 - The ingester requires `POOLED_DSN` for normal writes and
   `INGESTER_LEASE_DSN` for a dedicated direct/unpooled advisory-lock session.
   Both must use the least-privilege ingester login; never use the DB owner.

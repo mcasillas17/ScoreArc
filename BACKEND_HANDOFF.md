@@ -126,7 +126,10 @@ Each slice is its own spec-lite → plan → build cycle (see §6 for how we wor
   execute.** This slice writes a *new* plan and replaces the GCP Terraform:
   - `backend/reader/fly.toml` + `backend/ingester/fly.toml` + Dockerfiles.
   - Neon provisioning notes (provision via Vercel Storage; capture pooled + direct connection strings; create the `scorearc_reader`/`scorearc_ingester` roles + login users per the migrations).
-  - Cloudflare R2 bucket + access keys for the logo mirror.
+  - Cloudflare R2: **two** buckets + one access key pair scoped to both —
+    `scorearc-assets` (public, logo mirror, `cdn.scorearc.futbol`) and
+    `scorearc-espn-historic` (**private**, raw ESPN payload archive; never
+    public). See `docs/backend/SETUP.md` §6.
   - GitHub Actions workflows to deploy each Go service to Fly (`flyctl deploy`), path-filtered to `/backend`.
   - `docs/backend/SETUP.md` already contains the exact provisioning steps.
 - **1b — Ingester**: **implemented.** Deployment configuration remains part of
