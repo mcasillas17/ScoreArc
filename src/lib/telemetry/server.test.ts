@@ -9,6 +9,7 @@ describe('trackAPIRequestFailure', () => {
 
   it('records only stable request failure dimensions', async () => {
     trackAPIRequestFailure('matches', 502, 'world-cup', '2026');
+    trackAPIRequestFailure('matches', 502, 'world-cup', '2026');
 
     expect(track).toHaveBeenCalledWith('API request failed', {
       endpoint: 'matches',
@@ -16,5 +17,19 @@ describe('trackAPIRequestFailure', () => {
       competition: 'world-cup',
       season: '2026',
     }, { headers: {} });
+    expect(track).toHaveBeenCalledTimes(1);
+  });
+
+  it('tracks a new failure after the throttle window', () => {
+    vi.useFakeTimers();
+    try {
+      trackAPIRequestFailure('upcoming', 502, 'world-cup', '2026');
+      vi.advanceTimersByTime(60_000);
+      trackAPIRequestFailure('upcoming', 502, 'world-cup', '2026');
+
+      expect(track).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
