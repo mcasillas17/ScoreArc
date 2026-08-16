@@ -45,6 +45,9 @@ type fakeSource struct {
 	rosterDelay     time.Duration
 	rosterCurrent   int
 	rosterMax       int
+	bios            map[string][]model.TeamHistoryEntry
+	bioErrors       map[string]error
+	bioCalls        []string
 	currentCalls    int
 	maxCalls        int
 }
@@ -169,6 +172,26 @@ func (f *fakeSource) Roster(
 	}
 	return squad, nil
 }
+func (f *fakeSource) AthleteBio(
+	_ context.Context,
+	_ config.Competition,
+	athleteSourceID string,
+) ([]model.TeamHistoryEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.bioCalls = append(f.bioCalls, athleteSourceID)
+	if err := f.bioErrors[athleteSourceID]; err != nil {
+		return nil, err
+	}
+	if entries, ok := f.bios[athleteSourceID]; ok {
+		return entries, nil
+	}
+	return []model.TeamHistoryEntry{{
+		TeamSourceID: "team-" + athleteSourceID,
+		TeamName:     "Team " + athleteSourceID,
+		Seasons:      "2025-CURRENT",
+	}}, nil
+}
 
 // fakeTeamID and fakeMatchID are the fake resolver's crosswalk. They are
 // deliberately NOT the identity function: a test that asserts on a provider id
@@ -199,6 +222,13 @@ type fakeRepository struct {
 	squadCalls       int
 	squadTeams       []string
 	squadErrors      map[string]error
+	bioCandidates    map[string]uuid.UUID
+	bioQueryCalls    int
+	bioQueryLimits   []int
+	bioStaleBefore   []time.Time
+	bioIgnoreLimit   bool
+	bioWriteCalls    int
+	bioWriteErrors   map[uuid.UUID]error
 	unfinalized      []model.Match
 	unfinalizedErr   error
 	logged           []loggedRun
@@ -361,6 +391,45 @@ func (f *fakeRepository) ReplaceSquad(
 	f.squadCalls++
 	f.squadTeams = append(f.squadTeams, teamID)
 	return f.squadErrors[teamID]
+}
+func (f *fakeRepository) PlayersNeedingBio(
+	_ context.Context,
+	_ string,
+	staleBefore time.Time,
+	limit int,
+) (map[string]uuid.UUID, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.bioQueryCalls++
+	f.bioQueryLimits = append(f.bioQueryLimits, limit)
+	f.bioStaleBefore = append(f.bioStaleBefore, staleBefore)
+	selected := make(map[string]uuid.UUID)
+	for sourceID, playerID := range f.bioCandidates {
+		if !f.bioIgnoreLimit && len(selected) == limit {
+			break
+		}
+		selected[sourceID] = playerID
+	}
+	return selected, nil
+}
+func (f *fakeRepository) ReplaceTeamHistory(
+	_ context.Context,
+	playerID uuid.UUID,
+	_ string,
+	_ []model.TeamHistoryEntry,
+) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.bioWriteCalls++
+	if err := f.bioWriteErrors[playerID]; err != nil {
+		return err
+	}
+	for sourceID, candidateID := range f.bioCandidates {
+		if candidateID == playerID {
+			delete(f.bioCandidates, sourceID)
+		}
+	}
+	return nil
 }
 func (f *fakeRepository) LogIngestRun(_ context.Context, _ *string, kind string, _ time.Time, _ time.Time, ok bool, _ string) error {
 	f.mu.Lock()
@@ -2063,6 +2132,132 @@ func TestSquadRefreshBoundsConcurrencyAtFive(t *testing.T) {
 	}
 	if src.rosterMax < 2 {
 		t.Fatalf("concurrent roster requests = %d, expected bounded parallelism", src.rosterMax)
+	}
+}
+
+func fakeBioCandidates(count int) map[string]uuid.UUID {
+	candidates := make(map[string]uuid.UUID, count)
+	for index := range count {
+		sourceID := fmt.Sprintf("athlete-%02d", index)
+		candidates[sourceID] = fakeMatchID(sourceID)
+	}
+	return candidates
+}
+
+func TestBioRefreshNeverExceedsBatchSize(t *testing.T) {
+	src := &fakeSource{}
+	repo := &fakeRepository{
+		existing:       map[string]store.MatchRow{},
+		bioCandidates:  fakeBioCandidates(bioBatchSize + 5),
+		bioIgnoreLimit: true,
+	}
+	worker := testRunner(src, repo, squadTestCompetition())
+	if err := worker.refreshBios(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	src.mu.Lock()
+	calls := len(src.bioCalls)
+	src.mu.Unlock()
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if len(repo.bioQueryLimits) != 1 || repo.bioQueryLimits[0] != bioBatchSize {
+		t.Fatalf("bio query limits = %v, want [%d]", repo.bioQueryLimits, bioBatchSize)
+	}
+	if calls != bioBatchSize || repo.bioWriteCalls != bioBatchSize {
+		t.Fatalf("bio fetches/writes = %d/%d, want %d/%d",
+			calls, repo.bioWriteCalls, bioBatchSize, bioBatchSize)
+	}
+}
+
+func TestBioRefreshUsesThirtyDayCutoff(t *testing.T) {
+	repo := &fakeRepository{
+		existing:      map[string]store.MatchRow{},
+		bioCandidates: fakeBioCandidates(1),
+	}
+	worker := testRunner(&fakeSource{}, repo, squadTestCompetition())
+	before := time.Now().Add(-bioTTL)
+	if err := worker.refreshBios(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	after := time.Now().Add(-bioTTL)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if len(repo.bioStaleBefore) != 1 ||
+		repo.bioStaleBefore[0].Before(before) || repo.bioStaleBefore[0].After(after) {
+		t.Fatalf("bio stale cutoff = %v, want between %v and %v",
+			repo.bioStaleBefore, before, after)
+	}
+}
+
+func TestBioRefreshRunsOnlyOnSlowTicksAndOnceGlobally(t *testing.T) {
+	repo := &fakeRepository{
+		existing:      map[string]store.MatchRow{},
+		bioCandidates: fakeBioCandidates(1),
+	}
+	first := squadTestCompetition()
+	first.ID = "first"
+	second := squadTestCompetition()
+	second.ID = "second"
+	worker := testRunner(&fakeSource{}, repo, first)
+	worker.competitions = []config.Competition{first, second}
+
+	worker.runCycle(context.Background(), false)
+	repo.mu.Lock()
+	if repo.bioQueryCalls != 0 {
+		repo.mu.Unlock()
+		t.Fatalf("fast tick bio queries = %d, want 0", repo.bioQueryCalls)
+	}
+	repo.mu.Unlock()
+
+	worker.runCycle(context.Background(), true)
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.bioQueryCalls != 1 {
+		t.Fatalf("two-competition slow tick bio queries = %d, want one global query",
+			repo.bioQueryCalls)
+	}
+}
+
+func TestBioRefreshContinuesPastOnePlayerFailure(t *testing.T) {
+	candidates := fakeBioCandidates(2)
+	var failedSourceID string
+	var failedPlayerID uuid.UUID
+	for sourceID, playerID := range candidates {
+		failedSourceID = sourceID
+		failedPlayerID = playerID
+		break
+	}
+	src := &fakeSource{bioErrors: map[string]error{
+		failedSourceID: errors.New("bio unavailable"),
+	}}
+	repo := &fakeRepository{
+		existing:      map[string]store.MatchRow{},
+		bioCandidates: candidates,
+	}
+	worker := testRunner(src, repo, squadTestCompetition())
+	if err := worker.refreshBios(context.Background()); err == nil {
+		t.Fatal("expected partial bio failure")
+	}
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.bioWriteCalls != 1 {
+		t.Fatalf("bio writes after one fetch failure = %d, want 1", repo.bioWriteCalls)
+	}
+	if _, remains := repo.bioCandidates[failedSourceID]; !remains {
+		t.Fatal("failed player was incorrectly marked refreshed")
+	}
+	if repo.bioCandidates[failedSourceID] != failedPlayerID {
+		t.Fatal("failed player's candidate identity changed")
+	}
+	failedRun := false
+	for _, run := range repo.logged {
+		failedRun = failedRun || run.kind == "player_bios" && !run.ok
+	}
+	if !failedRun {
+		t.Fatal("partial bio failure was not recorded")
 	}
 }
 

@@ -152,3 +152,32 @@ func TestSquadAndSeasonStatsRollbackDropsOwnedTablesInReverseOrder(t *testing.T)
 		}
 	}
 }
+
+func TestPlayerBioMigrationDefinesHistoryAndDurableTTL(t *testing.T) {
+	sql := readMigration(t, "0012_player_bio.up.sql")
+	for _, required := range []string{
+		"CREATE TABLE player_team_history",
+		"PRIMARY KEY (player_id, team_source_id, seasons)",
+		"ALTER TABLE player ADD COLUMN IF NOT EXISTS bio_fetched_at timestamptz",
+		"CREATE INDEX player_bio_stale_idx ON player (bio_fetched_at NULLS FIRST)",
+		"GRANT SELECT, INSERT, UPDATE ON player_team_history TO scorearc_ingester",
+		"GRANT DELETE ON player_team_history TO scorearc_ingester",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("0012_player_bio.up.sql missing %q", required)
+		}
+	}
+}
+
+func TestPlayerBioRollbackRemovesEveryOwnedObject(t *testing.T) {
+	sql := readMigration(t, "0012_player_bio.down.sql")
+	history := strings.Index(sql, "DROP TABLE IF EXISTS player_team_history")
+	index := strings.Index(sql, "DROP INDEX IF EXISTS player_bio_stale_idx")
+	column := strings.Index(sql, "ALTER TABLE player DROP COLUMN IF EXISTS bio_fetched_at")
+	if history < 0 || index < 0 || column < 0 {
+		t.Fatal("0012 rollback must remove history, TTL index, and TTL column")
+	}
+	if !(history < index && index < column) {
+		t.Fatal("0012 rollback statements must stay in dependency-safe order")
+	}
+}

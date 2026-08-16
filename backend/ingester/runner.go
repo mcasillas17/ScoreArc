@@ -180,6 +180,9 @@ func (r *runner) runCycle(ctx context.Context, slowTick bool) cycleResult {
 	wg.Wait()
 
 	if slowTick && ctx.Err() == nil {
+		if err := r.refreshBios(ctx); err != nil {
+			cycle.failures++
+		}
 		start := time.Now()
 		var pruneErr error
 		for range 10 {

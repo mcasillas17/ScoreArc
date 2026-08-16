@@ -29,4 +29,5 @@ type Source interface {
 	TopScorers(context.Context, config.Competition, config.Season, int) ([]model.TopScorer, error)
 	Bracket(context.Context, config.Competition, config.Season, bool) ([]model.BracketMatch, error)
 	Roster(context.Context, config.Competition, string) (model.Squad, error)
+	AthleteBio(context.Context, config.Competition, string) ([]model.TeamHistoryEntry, error)
 }

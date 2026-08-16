@@ -227,6 +227,18 @@ func (e *ESPN) Roster(
 	return squad, nil
 }
 
+func (e *ESPN) AthleteBio(
+	ctx context.Context,
+	comp config.Competition,
+	athleteSourceID string,
+) ([]model.TeamHistoryEntry, error) {
+	raw, err := e.get(ctx, espn.AthleteBioURL(comp.ESPNSlug, athleteSourceID))
+	if err != nil {
+		return nil, err
+	}
+	return espn.MapAthleteBio(raw)
+}
+
 func (e *ESPN) Bracket(
 	ctx context.Context,
 	comp config.Competition,

@@ -34,3 +34,9 @@ type PlayerSeasonStats struct {
 	GoalsConceded  *int
 	ShotsFaced     *int
 }
+
+type TeamHistoryEntry struct {
+	TeamSourceID string
+	TeamName     string
+	Seasons      string
+}
