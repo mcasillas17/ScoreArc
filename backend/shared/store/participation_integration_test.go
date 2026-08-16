@@ -274,3 +274,138 @@ func TestWriteParticipationAsTheIngesterRole(t *testing.T) {
 		t.Errorf("as %s: dropped squad member survived, got %d want 2", roleName, appearances)
 	}
 }
+
+// The numbers land on the row that already says the player was there.
+func TestWriteParticipationStoresTheBoxScore(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	matchID := mustParticipationMatch(t, store, pool)
+
+	goals, shots, saves := 2, 5, 0
+	part := &model.MatchParticipation{
+		HomeTeamSourceID: "359", AwayTeamSourceID: "363",
+		Home: []model.SquadPlayer{{
+			SourceID: "77", Name: "Striker", Position: "F", Starter: true,
+			Stats: &model.PlayerMatchStats{Goals: &goals, Shots: &shots},
+		}, {
+			SourceID: "88", Name: "Keeper", Position: "G", Starter: true,
+			Stats: &model.PlayerMatchStats{Saves: &saves},
+		}},
+	}
+	if _, err := store.WriteParticipation(ctx, "espn", matchID,
+		"eng-arsenal", "eng-chelsea", part); err != nil {
+		t.Fatalf("WriteParticipation: %v", err)
+	}
+
+	var storedGoals, storedShots *int
+	var storedOffsides, storedSaves *int
+	if err := pool.QueryRow(ctx, `
+SELECT a.goals, a.shots, a.offsides, a.saves
+FROM appearance a
+JOIN player_external_ref r ON r.player_id = a.player_id
+WHERE a.match_id=$1 AND r.source='espn' AND r.source_id='77'`,
+		matchID).Scan(&storedGoals, &storedShots, &storedOffsides, &storedSaves); err != nil {
+		t.Fatal(err)
+	}
+	if storedGoals == nil || *storedGoals != 2 {
+		t.Fatalf("goals = %v, want 2", storedGoals)
+	}
+	if storedShots == nil || *storedShots != 5 {
+		t.Fatalf("shots = %v, want 5", storedShots)
+	}
+	// The whole rule: not measured stays NULL, and never becomes 0.
+	if storedOffsides != nil {
+		t.Fatalf("offsides = %d, want NULL -- it was never measured", *storedOffsides)
+	}
+	if storedSaves != nil {
+		t.Fatalf("saves = %d on an outfielder, want NULL", *storedSaves)
+	}
+
+	var keeperSaves *int
+	if err := pool.QueryRow(ctx, `
+SELECT a.saves FROM appearance a
+JOIN player_external_ref r ON r.player_id = a.player_id
+WHERE a.match_id=$1 AND r.source='espn' AND r.source_id='88'`,
+		matchID).Scan(&keeperSaves); err != nil {
+		t.Fatal(err)
+	}
+	// A measured zero is a measurement.
+	if keeperSaves == nil || *keeperSaves != 0 {
+		t.Fatalf("keeper saves = %v, want a measured 0", keeperSaves)
+	}
+}
+
+// A live match is re-polled every 20 seconds and the numbers climb. Later must
+// win, or the box score freezes at the first minute of the match.
+func TestWriteParticipationUpdatesAClimbingBoxScore(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	matchID := mustParticipationMatch(t, store, pool)
+
+	write := func(goals int) {
+		t.Helper()
+		g := goals
+		if _, err := store.WriteParticipation(ctx, "espn", matchID,
+			"eng-arsenal", "eng-chelsea", &model.MatchParticipation{
+				HomeTeamSourceID: "359", AwayTeamSourceID: "363",
+				Home: []model.SquadPlayer{{
+					SourceID: "77", Name: "Striker", Position: "F", Starter: true,
+					Stats: &model.PlayerMatchStats{Goals: &g},
+				}},
+			}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(1)
+	write(3)
+
+	var goals *int
+	if err := pool.QueryRow(ctx,
+		`SELECT goals FROM appearance WHERE match_id=$1`, matchID).Scan(&goals); err != nil {
+		t.Fatal(err)
+	}
+	if goals == nil || *goals != 3 {
+		t.Fatalf("goals = %v, want the later observation 3", goals)
+	}
+}
+
+// A poll that comes back with a roster but NO stats block must not erase
+// numbers an earlier poll established. Absence of evidence only -- the same
+// rule WriteParticipation already applies to an empty payload.
+func TestWriteParticipationKeepsStatsWhenAPollOmitsThem(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	matchID := mustParticipationMatch(t, store, pool)
+
+	goals := 2
+	withStats := &model.MatchParticipation{
+		HomeTeamSourceID: "359", AwayTeamSourceID: "363",
+		Home: []model.SquadPlayer{{
+			SourceID: "77", Name: "Striker", Position: "F", Starter: true,
+			Stats: &model.PlayerMatchStats{Goals: &goals},
+		}},
+	}
+	withoutStats := &model.MatchParticipation{
+		HomeTeamSourceID: "359", AwayTeamSourceID: "363",
+		Home: []model.SquadPlayer{{
+			SourceID: "77", Name: "Striker", Position: "F", Starter: true,
+		}},
+	}
+	if _, err := store.WriteParticipation(ctx, "espn", matchID,
+		"eng-arsenal", "eng-chelsea", withStats); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.WriteParticipation(ctx, "espn", matchID,
+		"eng-arsenal", "eng-chelsea", withoutStats); err != nil {
+		t.Fatal(err)
+	}
+
+	var stored *int
+	if err := pool.QueryRow(ctx,
+		`SELECT goals FROM appearance WHERE match_id=$1`, matchID).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored == nil || *stored != 2 {
+		t.Fatalf("goals = %v after a statless poll, want the earlier 2 preserved", stored)
+	}
+}
