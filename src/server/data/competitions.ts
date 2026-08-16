@@ -439,7 +439,7 @@ export function resolveSeason(compId: string, seasonId?: string): CompetitionSea
   const competition = getCompetition(compId);
   if (!competition) return undefined;
   const sid = seasonId ?? competition.currentSeasonId;
-  const season = competition.seasons[sid];
+  const season = Object.hasOwn(competition.seasons, sid) ? competition.seasons[sid] : undefined;
   if (!season) return undefined;
   return { competition, season };
 }
