@@ -305,3 +305,34 @@ func TestMatchCommentaryKeepsTheStructureTheJsonbDrops(t *testing.T) {
 		t.Fatal("0013_match_commentary.down.sql must fully remove the additive table")
 	}
 }
+
+// The play stream is keyed on ESPN's own play id, not on an ordinal. A live
+// match is re-fetched every 20s and plays are appended mid-match; an ordinal
+// key would renumber on any insertion upstream and rewrite the wrong rows.
+func TestPlayStreamKeysOnTheProviderPlayID(t *testing.T) {
+	sql := readMigration(t, "0007_play_stream.up.sql")
+	for _, required := range []string{
+		"CREATE TABLE match_play",
+		"PRIMARY KEY (match_id, source_id)",
+		"start_x numeric(5,2)",
+		"goal_z  numeric(5,2)",
+		"CREATE TABLE match_play_archive",
+		"touch_tier bool",
+		"GRANT SELECT ON match_play, match_play_archive TO scorearc_reader",
+		"GRANT SELECT, INSERT, UPDATE ON match_play, match_play_archive TO scorearc_ingester",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("0007_play_stream.up.sql missing %q", required)
+		}
+	}
+	// Coordinates are the reason this table exists at all. A NOT NULL default
+	// would put every unlocated play at the corner flag.
+	if strings.Contains(sql, "start_x numeric(5,2) NOT NULL") {
+		t.Fatal("coordinates must be nullable")
+	}
+	// A play retracted upstream is vanishingly rare and a DELETE grant here
+	// would let a bug erase a stream ESPN will not serve again.
+	if strings.Contains(sql, "GRANT DELETE ON match_play") {
+		t.Fatal("match_play must not be deletable by the ingester")
+	}
+}
