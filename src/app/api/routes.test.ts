@@ -33,7 +33,7 @@ describe('competition/season-scoped routes', () => {
       params: { comp: 'nope', season: '2026' },
     });
     expect(res.status).toBe(404);
-    expect(trackAPIRequestFailure).toHaveBeenCalledWith('matches', 404);
+    expect(trackAPIRequestFailure).not.toHaveBeenCalled();
   });
 
   it('GET /api/[comp]/[season]/matches 404s an unknown season', async () => {
@@ -42,7 +42,7 @@ describe('competition/season-scoped routes', () => {
       params: { comp: 'world-cup', season: '1999' },
     });
     expect(res.status).toBe(404);
-    expect(trackAPIRequestFailure).toHaveBeenCalledWith('matches', 404);
+    expect(trackAPIRequestFailure).not.toHaveBeenCalled();
   });
 
   it('GET /api/[comp]/[season]/matches tracks an upstream failure', async () => {

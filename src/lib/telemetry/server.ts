@@ -9,37 +9,16 @@ type APIEndpoint =
   | 'top-scorers'
   | 'upcoming';
 
-const eventIntervalMs = 60_000;
-const eventTimeoutMs = 250;
-const lastTrackedAt = new Map<string, number>();
-
-export async function trackAPIRequestFailure(
+export function trackAPIRequestFailure(
   endpoint: APIEndpoint,
   status: number,
   competition?: string,
   season?: string,
 ) {
-  const key = `${endpoint}:${status}:${competition ?? ''}:${season ?? ''}`;
-  const now = Date.now();
-  if ((lastTrackedAt.get(key) ?? 0) + eventIntervalMs > now) return;
-  lastTrackedAt.set(key, now);
-
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await Promise.race([
-      track('API request failed', {
-        endpoint,
-        status,
-        competition,
-        season,
-      }, { headers: {} }),
-      new Promise<void>((resolve) => {
-        timeout = setTimeout(resolve, eventTimeoutMs);
-      }),
-    ]);
-  } catch {
-    // Analytics must never affect an API response.
-  } finally {
-    if (timeout) clearTimeout(timeout);
-  }
+  void track('API request failed', {
+    endpoint,
+    status,
+    competition,
+    season,
+  }, { headers: {} });
 }

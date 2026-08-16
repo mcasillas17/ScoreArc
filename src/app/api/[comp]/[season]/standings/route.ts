@@ -8,7 +8,6 @@ export const revalidate = 0;
 export async function GET(_req: Request, { params }: { params: { comp: string; season: string } }) {
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) {
-    await trackAPIRequestFailure('standings', 404);
     return Response.json({ error: 'unknown competition or season' }, { status: 404 });
   }
   try {
