@@ -30,6 +30,52 @@ func TestMapStandingsRejectsMissingRequiredStats(t *testing.T) {
 	}
 }
 
+// A team ESPN lists in two groups (e.g. an "Overall" table alongside
+// conference tables) must not produce two Standing rows: the `standing` table
+// is keyed (comp_id, season_id, team_id) and ReplaceStandings INSERTs every
+// row, so a duplicate would abort the replacement transaction and freeze that
+// competition's standings permanently.
+func TestMapStandingsDropsTeamsRepeatedAcrossGroups(t *testing.T) {
+	row := func(id, name, abbr string) string {
+		return `{"team":{"id":"` + id + `","displayName":"` + name + `","abbreviation":"` + abbr + `"},
+			"stats":[{"name":"gamesPlayed","value":1},{"name":"wins","value":1},
+			{"name":"ties","value":0},{"name":"losses","value":0},
+			{"name":"pointsFor","value":2},{"name":"pointsAgainst","value":1},
+			{"name":"pointDifferential","value":1},{"name":"points","value":3}]}`
+	}
+	raw := []byte(`{"children":[
+		{"name":"Eastern Conference","standings":{"entries":[` + row("1", "Miami", "MIA") + `,` + row("2", "Orlando", "ORL") + `]}},
+		{"name":"Overall","standings":{"entries":[` + row("1", "Miami", "MIA") + `,` + row("3", "Portland", "POR") + `]}}
+	]}`)
+
+	standings, err := MapStandings(raw)
+	if err != nil {
+		t.Fatalf("MapStandings: %v", err)
+	}
+	if len(standings) != 3 {
+		t.Fatalf("len(standings) = %d, want 3 (the repeat of team 1 dropped): %+v", len(standings), standings)
+	}
+	seen := map[string]int{}
+	for _, s := range standings {
+		seen[s.Team.ID]++
+	}
+	for id, count := range seen {
+		if count != 1 {
+			t.Fatalf("team %s appears %d times, want exactly 1", id, count)
+		}
+	}
+	// The first occurrence wins, so team 1 keeps its Eastern Conference group
+	// and its rank there; the later duplicate is what gets dropped.
+	if standings[0].Team.ID != "1" || standings[0].Rank != 1 ||
+		standings[0].GroupName == nil || *standings[0].GroupName != "Eastern Conference" {
+		t.Fatalf("standings[0] = %+v, want team 1 rank 1 in Eastern Conference", standings[0])
+	}
+	// Dropping a row must not shift the ranks of rows kept from a later group.
+	if standings[2].Team.ID != "3" || standings[2].Rank != 2 {
+		t.Fatalf("standings[2] = %+v, want team 3 keeping its rank 2 in Overall", standings[2])
+	}
+}
+
 func loadStandingsFixture(t *testing.T) []byte {
 	t.Helper()
 	b, err := os.ReadFile("testdata/espn-standings.json")
