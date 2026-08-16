@@ -266,6 +266,15 @@ func (r *runner) processMatches(
 				operationErrors = append(operationErrors,
 					fmt.Errorf("match %s participation: %w", match.ID, err))
 			}
+
+			// Structured commentary is additive, like participation: scoreline
+			// and detail writes above remain authoritative. Empty coverage is a
+			// repository no-op; actual write failures are recorded without
+			// blocking the match.
+			if _, err := r.repo.WriteCommentary(ctx, identity.MatchID, summary.Commentary); err != nil {
+				operationErrors = append(operationErrors,
+					fmt.Errorf("match %s commentary: %w", match.ID, err))
+			}
 		}
 		r.mirrorCrest(ctx, match.Home)
 		r.mirrorCrest(ctx, match.Away)
