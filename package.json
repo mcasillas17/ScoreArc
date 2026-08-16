@@ -12,6 +12,7 @@
     "export:competitions": "tsx scripts/export-competitions.mjs"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "next": "14.2.35",
     "react": "^18",
     "react-dom": "^18"
