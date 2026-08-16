@@ -28,6 +28,8 @@ import (
 //
 // teamIDs maps provider team id -> canonical team id. The store does not
 // resolve identity; the caller does, exactly as ReplaceStandings requires.
+// The returned count is the number of rows inserted or updated; an older
+// same-day observation is ignored and contributes zero.
 func (s *Store) WriteStandingSnapshot(
 	ctx context.Context,
 	competitionID, seasonID string,
