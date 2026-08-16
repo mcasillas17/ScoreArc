@@ -238,24 +238,72 @@ psql "$READER_DSN" -c "INSERT INTO team(id,name,abbr) VALUES('x','x','x');"
 
 ## 6. Object storage + CDN (Cloudflare R2)
 
-R2 holds the mirrored logos (team crests, national flags, competition emblems).
-Zero egress makes it ideal for a public image CDN.
+We use **two R2 buckets with deliberately different access postures.** They share
+one account, one API token and one S3 endpoint — only the bucket name differs.
+
+| Bucket | Env var | Access | Holds |
+|---|---|---|---|
+| `scorearc-assets` | `R2_BUCKET` | **public**, via `cdn.scorearc.futbol` | mirrored team crests, national flags, competition emblems |
+| `scorearc-espn-historic` | `R2_RAW_BUCKET` | **private** — no public access, no custom domain | raw ESPN JSON payloads (play streams) archived for reprocessing |
+
+Env var names describe the **role**; the values name the **resource**. Never
+hardcode a bucket name in Go — a rename must be a secret change, not a code change.
+
+### 6.1 Create the buckets
 
 ```bash
-# create the bucket
+wrangler login --use-keyring    # keychain, not a plaintext token file
 wrangler r2 bucket create scorearc-assets
-
-# create an R2 API token (S3-compatible) for the ingester to write objects.
-# Cloudflare dashboard → R2 → Manage R2 API Tokens → Create (Object Read & Write,
-# scoped to the scorearc-assets bucket). Save:
-#   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
+wrangler r2 bucket create scorearc-espn-historic
 ```
-Public access + custom domain (so logos serve from `cdn.scorearc.futbol`):
-- Cloudflare dashboard → R2 → the bucket → **Settings** → enable **Public
-  access** (or connect a **custom domain**; recommended: `cdn.scorearc.futbol`).
-- The ingester writes extensionless objects at `teams/{id}` and returns URLs such
-  as `https://cdn.scorearc.futbol/teams/{id}`. The validated upstream content
-  type remains object metadata; callers must not infer format from a suffix.
+
+### 6.2 Create the API token (dashboard only)
+
+There is no `wrangler` subcommand for this — `wrangler r2 bucket` covers buckets,
+domains, lifecycle, CORS and locks, but not credentials.
+
+Cloudflare dashboard → **R2** → **Manage R2 API Tokens** → **Create**:
+- Permission **Object Read & Write** — *not* Admin. Least privilege applies here
+  exactly as it does to the Postgres roles.
+- Scope it to **both** buckets.
+
+Save `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`. **The secret is
+shown once and cannot be retrieved again.** Put it in a password manager, then set
+it with `fly secrets` (§7). Never in a file, never in the repo.
+
+### 6.3 Public access — the assets bucket ONLY
+
+```bash
+wrangler r2 bucket domain add scorearc-assets \
+  --domain cdn.scorearc.futbol --zone-id <zone-id>
+```
+
+`scorearc.futbol` is already on Cloudflare nameservers, so this is additive and
+does not touch the apex record serving the live site from Vercel.
+
+Prefer the custom domain over the `r2.dev` URL. Per Cloudflare's docs, `r2.dev` is
+"rate-limited and should only be used for development purposes" and is "intended
+for non-production traffic".
+
+The ingester writes extensionless objects at `teams/{id}` and returns URLs such as
+`https://cdn.scorearc.futbol/teams/{id}`. The validated upstream content type
+remains object metadata; callers must not infer format from a suffix.
+
+### 6.4 The historic bucket stays private
+
+**Never** enable public access, an `r2.dev` URL or a custom domain on
+`scorearc-espn-historic`.
+
+It is an internal reprocessing asset, not a served resource — the public reader API
+serves normalized rows from Postgres, never objects from this bucket. It exists
+because ESPN **prunes the touch-level play tier from older matches** (a match from
+the previous season returns only key events — no Pass, Tackle, Take On or
+Interception), so raw payloads we do not archive on ingest are unrecoverable. It is
+the one asset money cannot buy back, which is also why it is not on the internet.
+
+Note that `newR2Config()` in `backend/shared/assets/r2.go` currently *requires*
+`R2_PUBLIC_BASE_URL`. A private-bucket client must not inherit that requirement —
+do not satisfy the validator with a dummy URL.
 
 The Go ingester talks to R2 with the **AWS S3 SDK** pointed at the R2 endpoint
 `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com` (R2 is S3-compatible).
@@ -291,7 +339,8 @@ fly secrets set POOLED_DSN="$INGESTER_DSN" \
                 R2_ACCESS_KEY_ID="..." \
                 R2_SECRET_ACCESS_KEY="..." \
                 R2_BUCKET="scorearc-assets" \
-                R2_PUBLIC_BASE_URL="https://cdn.scorearc.futbol"
+                R2_PUBLIC_BASE_URL="https://cdn.scorearc.futbol" \
+                R2_RAW_BUCKET="scorearc-espn-historic"
 
 fly deploy
 ```
@@ -379,8 +428,10 @@ Everything should say `OK`. `go` must be **>= 1.26**; `psql` **16.x or newer**.
 | `POOLED_DSN` | Fly secret on the ingester | `INGESTER_DSN` (pooled, write user) |
 | `INGESTER_LEASE_DSN` | Fly secret on the ingester | direct/unpooled DSN using the same write user |
 | `DIRECT_DSN` | local/CI tests and migrations | owner direct DSN for migration/role integration checks |
-| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` | Fly secret on the ingester | from Cloudflare R2 token |
-| `R2_PUBLIC_BASE_URL` | Fly secret on the ingester | public bucket/custom-domain base, e.g. `https://cdn.scorearc.futbol` |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Fly secret on the ingester | from the Cloudflare R2 token (§6.2), scoped to both buckets |
+| `R2_BUCKET` | Fly secret on the ingester | **public** logo/CDN bucket, `scorearc-assets` |
+| `R2_PUBLIC_BASE_URL` | Fly secret on the ingester | custom-domain base for `R2_BUCKET`, e.g. `https://cdn.scorearc.futbol` |
+| `R2_RAW_BUCKET` | Fly secret on the ingester | **private** raw-payload archive, `scorearc-espn-historic`. Has no public base URL by design |
 | `DATA_SOURCE` | Vercel env (frontend) | `espn` until parity, then `api` (slice 1d) |
 | `SCOREARC_API_BASE` | Vercel env (frontend) | the reader's public URL, e.g. `https://scorearc-reader.fly.dev` (slice 1d) |
 | `FLY_API_TOKEN` | GitHub Actions secret | `fly tokens create deploy` (CI) |
