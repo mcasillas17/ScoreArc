@@ -7,3 +7,6 @@ dist/
 build/
 *.tsbuildinfo
 .worktrees/
+
+# Claude Code agent worktrees — embedded git repos, never commit
+.claude/worktrees/
