@@ -10,7 +10,7 @@
 
 **Spec:** none. This slice comes from a live capability probe on 2026-08-15, not from a design document — the probe's numbers are quoted in full below and are the requirements.
 **Epic:** E6 in `docs/PRODUCT_ROADMAP.md` is the nearest relative, and this **supersedes its "parse shots out of prose" framing** — see "What this changes about E6".
-**New roadmap task:** **T9.8** (Epic **E9 · Public API read surface**)
+**New roadmap task:** **T10.8** (Epic **E10 · Public API read surface**)
 **Branch:** `feat/api-play-stream` off latest `origin/main`
 **Prerequisites:** the `api-match-reads` plan (it creates `backend/reader/params.go`). Player names on action rows come from the `api-players` plan's `player` table via a LEFT JOIN and are null without it — a soft dependency, not a blocker.
 
@@ -106,7 +106,7 @@ This is not a debug field. It is the difference between a thin result and a fals
 The E6 spec was written to extract shots by parsing commentary prose, because prose was the only shot source we had. It no longer is: shots now arrive **typed**, with athlete ids, as `Shot On Target` / `Shot Off Target` / `Shot Blocked` / `Goal` plays.
 
 - **Shot discovery moves here.** A shot list is a filter on `match_play`, not a regex over sentences.
-- **Prose still earns its plan.** Body part, pitch zone and assist type are in the sentence and nowhere else. The sibling `api-commentary-and-shots` plan (**T9.6**) keeps its parser, narrowed to enriching a shot the play stream already found.
+- **Prose still earns its plan.** Body part, pitch zone and assist type are in the sentence and nowhere else. The sibling `api-commentary-and-shots` plan (**T10.6**) keeps its parser, narrowed to enriching a shot the play stream already found.
 - **Reconciliation gets stronger.** The play stream is a second independent ground truth alongside `rosters[].totalShots`. A parsed shot with no matching typed play is over-matching, which the E6 spec already says must fail loudly.
 
 ## The raw archive is not part of this surface
@@ -1588,7 +1588,7 @@ EOF
   `competition_coverage`. Retention honesty → `PlayFidelity` on every
   play-derived response.
 - **Referees and odds are not here.** Officials are the `api-officials` plan
-  (**T9.9**); odds are the `api-history` plan's Task 7, because line movement is
+  (**T10.9**); odds are the `api-history` plan's Task 7, because line movement is
   snapshot-shaped time series and belongs beside the win-probability series.
 - **Deliberately not built.** No unpaginated plays endpoint. No pass network or
   possession-chain derivation — both are real and both need a design pass on

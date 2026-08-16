@@ -70,6 +70,7 @@ gates history, trends, percentiles and simulation — nothing else.
 | **E7** | History & trends | backend Phase 1 | [spec](superpowers/specs/2026-08-15-history-and-trends-design.md) | after T7.1 |
 | **E8** | AI recaps & digest | T1.3 / T7.1 | [spec](superpowers/specs/2026-08-15-ai-recaps-design.md) | after E1 |
 | **E9** | Expected goals (xG) | T7.12 / T7.13 | [spec](superpowers/specs/2026-08-15-expected-goals-design.md) | after T9.1 |
+| **E10** | Public API read surface | E7 write path | — (serves E1–E8) | T10.1–T10.9, see task index |
 
 E6, E8 and E9 deliberately stop at a spec, and E7 now has plans for its whole
 task set. E6's extractor is determined by what the coverage probe (T6.1) finds;
@@ -81,6 +82,15 @@ explicitly forbids.
 
 **E7's plans exist** and are listed under the task index below: eight ingester
 plans covering T7.1 and T7.6–T7.15.
+
+**E10 has no spec of its own by design.** It is the read path for work already
+specified elsewhere — every endpoint exists to serve an E1–E8 feature, and those
+specs are its requirements. Its nine plans are listed in the task index.
+
+> **Numbering note.** E10/T10.x was originally drafted as E9/T9.x by a parallel
+> session, colliding with xG. The API epic was renumbered; **xG keeps E9**. If you
+> find a `T9.x` reference that clearly means an API endpoint rather than an xG
+> modelling step, it is a stale reference — fix it to `T10.x`.
 
 ---
 
@@ -307,6 +317,26 @@ Gated on **T7.12/T7.13**, not on a provider. T9.1 blocks T9.2 for exactly the
 reason T6.1 blocks T6.2: an unmeasured sample is an assumption, and a model built
 on one is discovered to be wrong by a user. Detail: the
 [E9 spec](superpowers/specs/2026-08-15-expected-goals-design.md).
+
+### E10 · Public API read surface
+
+The read path for everything E7's ingester writes. 42 endpoints — the 7 that exist
+today (paths unchanged) plus 35 new. No spec of its own: each endpoint serves an
+E1–E8 feature, and those specs are the requirements.
+
+- **T10.1** Match reads — fixtures/results by range, calendar (E3, E2) · [plan](superpowers/plans/2026-08-15-api-match-reads.md)
+- **T10.2** Leaders & box scores (E1) · [plan](superpowers/plans/2026-08-15-api-leaders-and-box-scores.md)
+- **T10.3** Teams (E4) · [plan](superpowers/plans/2026-08-15-api-teams.md)
+- **T10.4** Players (E5) · [plan](superpowers/plans/2026-08-15-api-players.md)
+- **T10.5** History & trends (E7, E8) · [plan](superpowers/plans/2026-08-15-api-history.md)
+- **T10.6** Commentary & shots (E6) · [plan](superpowers/plans/2026-08-15-api-commentary-and-shots.md)
+- **T10.7** Generated content (E8) · [plan](superpowers/plans/2026-08-15-api-generated-content.md)
+- **T10.8** Play stream · [plan](superpowers/plans/2026-08-15-api-play-stream.md)
+- **T10.9** Officials · [plan](superpowers/plans/2026-08-15-api-officials.md)
+
+**T10.1 lands first.** It creates `params.go`, the single validation choke-point
+the other eight import — so building any of them before it means writing eight
+copies of the same validator and reconciling them later.
 
 ---
 

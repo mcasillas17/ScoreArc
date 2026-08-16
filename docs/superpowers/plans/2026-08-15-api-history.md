@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-15-history-and-trends-design.md`
 **Epic:** E7 in `docs/PRODUCT_ROADMAP.md` — the read half of **T7.1**, **T7.3**, **T7.4** and **T7.5**, and the fact-finding half of E8's **T8.2**
-**New roadmap task:** **T9.5** (Epic **E9 · Public API read surface**)
+**New roadmap task:** **T10.5** (Epic **E10 · Public API read surface**)
 **Branch:** `feat/api-history` off latest `origin/main`
 **Prerequisites:** the `api-match-reads` plan (it creates `backend/reader/params.go`). The percentile endpoint additionally needs the `api-players` plan's `player_season_stat` and `player` tables; that endpoint is deliberately the last task so the rest of this plan lands without it.
 

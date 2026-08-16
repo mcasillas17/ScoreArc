@@ -6,7 +6,7 @@
 
 **Architecture:** Four routes, one migration, one new idea. The idea is that the shot log is an **envelope, not an array**. `available` plus a `reason` distinguishes "this match had no shots" from "we cannot parse this competition" — a bare `[]` cannot, and the E6 spec forbids the silent empty section that a bare `[]` produces. Commentary needs no schema at all: `match_detail.commentary` is already a populated `jsonb` column, so that endpoint ships first and alone. Coverage and the shot log ride on one new migration that adds `match_shot`, `match_shot_parse` and `competition_coverage`. The reader only reads those three tables; **this plan does not specify how they are filled.**
 
-**Revised 2026-08-15, mid-plan: the shot list is not discovered from prose any more.** ESPN's core host (`sports.core.api.espn.com`) returns a **typed** play stream — 1,235–1,542 plays per match on Liga MX, MLS, Leagues Cup and LaLiga, with `type.text` values including `Shot On Target`, `Shot Off Target`, `Shot Blocked`, `Save`, `Assist` and `Goal`, carrying athlete and team ids. A sibling plan, **`2026-08-15-ingester-play-stream.md` (ingest) and its reader-side sibling (T9.8)**, owns `match_play` and the timeline endpoint. That stream, not a regex over sentences, is where a shot's existence, shooter, team, minute and outcome come from.
+**Revised 2026-08-15, mid-plan: the shot list is not discovered from prose any more.** ESPN's core host (`sports.core.api.espn.com`) returns a **typed** play stream — 1,235–1,542 plays per match on Liga MX, MLS, Leagues Cup and LaLiga, with `type.text` values including `Shot On Target`, `Shot Off Target`, `Shot Blocked`, `Save`, `Assist` and `Goal`, carrying athlete and team ids. A sibling plan, **`2026-08-15-ingester-play-stream.md` (ingest) and its reader-side sibling (T10.8)**, owns `match_play` and the timeline endpoint. That stream, not a regex over sentences, is where a shot's existence, shooter, team, minute and outcome come from.
 
 **Commentary prose still earns its plan, with a narrower job.** It remains the only source for the qualifiers a typed play does not carry: **body part, pitch zone, and assist type** ("Assisted by …", 15–22 lines per match). So `match_shot` survives the revision, reframed: it is a **qualifier row keyed to a typed play**, and the parser's job narrows from *discovering* a shot to *enriching* one that is already known. That narrowing is why this plan can still refuse to specify the parser — the E6 spec gates it behind T6.1, and T6.1's output is what says whether a competition's prose carries qualifiers at all.
 
@@ -60,7 +60,7 @@ not, to at least ~10 months.
 
 **Spec:** `docs/superpowers/specs/2026-08-15-shot-log-design.md`
 **Epic:** E6 in `docs/PRODUCT_ROADMAP.md` — this is the backend read half of **T6.1**, **T6.3** and **T6.4**
-**New roadmap task:** **T9.6** (Epic **E9 · Public API read surface**)
+**New roadmap task:** **T10.6** (Epic **E10 · Public API read surface**)
 **Branch:** `feat/api-commentary-and-shots` off latest `origin/main`
 
 ## Global Constraints
@@ -81,7 +81,7 @@ The reader is agnostic to how these rows were produced, but it cannot invent the
 | Roadmap task | Must persist | Read by |
 |---|---|---|
 | **T6.1** coverage probe (blocking, per the E6 spec) | one `competition_coverage` row per (comp, season, capability) for **all nine competitions**, across all four capabilities including `play-stream` | `/v1/competitions/{comp}/coverage`, and the gate in `/v1/matches/{id}/shots` |
-| **T9.8** play stream (`2026-08-15-ingester-play-stream.md` ingests `match_play`; a reader-side sibling serves it) | `match_play` — the typed plays a shot's existence, shooter, team, minute and outcome come from. `match_shot.play_id` holds its `source_id`. | joined upstream by the parser; this plan reads the join's result, never `match_play` itself |
+| **T10.8** play stream (`2026-08-15-ingester-play-stream.md` ingests `match_play`; a reader-side sibling serves it) | `match_play` — the typed plays a shot's existence, shooter, team, minute and outcome come from. `match_shot.play_id` holds its `source_id`. | joined upstream by the parser; this plan reads the join's result, never `match_play` itself |
 | **T6.2** qualifier parser | `match_shot` rows — one per typed shot play it could enrich, carrying body part, zone and assist — plus one `match_shot_parse` row per match, written in one transaction | `/v1/matches/{id}/shots` |
 | **T6.3** reconciliation | `match_shot_parse.reported` from `rosters[].totalShots` — the provider's own per-match shot count, which the `api-leaders-and-box-scores` plan also persists per player in `match_player_stat` | `delta` in the shot-log envelope |
 

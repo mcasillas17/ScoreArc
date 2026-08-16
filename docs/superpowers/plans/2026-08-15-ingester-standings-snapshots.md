@@ -82,11 +82,21 @@ this order — the numbering assumes it:
 | 7 | `0011_squad_and_season_stats`, `0012_player_bio` | `2026-08-15-ingester-squad-and-athletes.md` | T7.9, T7.10 |
 | 8 | `0013_match_commentary` | `2026-08-15-ingester-commentary.md` | T7.11 |
 
-**Urgency, which is not the same as the numbering.** This plan is first because a
-standings day not written is gone. **T7.12/T7.13 (the play stream) is a close second and
-should be started in parallel by a second agent** — ESPN prunes the touch-level tier of
-its play stream for older matches, so this season's early fixtures are losing it now.
-Everything from row 5 down can wait weeks at no cost.
+**Urgency, which is not the same as the numbering.** Two plans have a cost for waiting
+and they should run **in parallel, by two agents**:
+
+- **This plan (T7.1)** — a standings day not written is gone. The deadline is **daily**.
+- **T7.12/T7.13 (the play stream)** — ESPN serves the full touch-level stream, with pitch
+  coordinates, for the **current season only**. Measured 2026-08-15: a 30-day-old
+  current-season match returns 1,491 plays with 610 passes on a 0–100 coordinate scale;
+  a previous-season match returns ~200 key events with **no passes**, coordinates on a
+  **0–1** scale, and goal-mouth placement zeroed. The deadline is **season end** — one
+  cliff rather than daily erosion, which makes it schedulable and very easy to let slip.
+  It is also **epic E9's (xG) hard prerequisite**.
+
+The two touch disjoint files (`competitions.go`/standings here, a new `plays.go` and a new
+R2 bucket there), so they parallelise cleanly. Everything from row 5 down can wait weeks
+at no cost.
 
 ---
 

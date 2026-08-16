@@ -36,10 +36,10 @@ points at that date instead.
 > `api-commentary-and-shots` plans' subject, not this one's. It is noted here only so the
 > withdrawn claim is not quoted onward from this file.
 
-**Epic:** **E9 · Public API read surface** (new capability; it has no existing product epic
+**Epic:** **E10 · Public API read surface** (new capability; it has no existing product epic
 because the roadmap was written before the probe. It feeds E5 · Player pages and E7 ·
 History & trends once the aggregates have a season behind them.)
-**New roadmap task:** **T9.9** (Epic **E9 · Public API read surface**)
+**New roadmap task:** **T10.9** (Epic **E10 · Public API read surface**)
 **Branch:** `feat/api-officials` off latest `origin/main`
 
 **Prerequisites — both, in this order:**
@@ -48,7 +48,7 @@ History & trends once the aggregates have a season behind them.)
    It creates `0008_match_officials`, which is the entire schema this plan reads. Until it
    lands there is nothing to read and **this plan cannot start**. Task 1 is the verification
    gate for that.
-2. **`docs/superpowers/plans/2026-08-15-api-match-reads.md` (T9.1) must have landed.** It
+2. **`docs/superpowers/plans/2026-08-15-api-match-reads.md` (T10.1) must have landed.** It
    creates `backend/reader/params.go` — `parseDateRange`, `parseLimit`, `parseOrder`,
    `parseState`, `parseEntityID`, `maxRangeDays`, `maxMatchLimit` — and the `MatchFilter`
    struct and `parseMatchFilter` helper this plan extends. This plan appends `parseUUID` to
@@ -67,7 +67,7 @@ History & trends once the aggregates have a season behind them.)
 - **No string-built SQL.** Every value is a pgx placeholder. Nothing in this plan needs a
   dynamic fragment: each new query has one fixed `ORDER BY`, and the one shared statement
   this plan touches (`matchesSQL`) keeps the existing two-entry constant `ORDER BY` map
-  from T9.1.
+  from T10.1.
 - **Reject, never silently fall back.** A malformed id is a 400 before any query runs. A
   `?season=` without a `?comp=` is a 400, not a guess at which competition was meant.
 - **400 messages are built only from string constants in our own code.** Never
@@ -190,7 +190,7 @@ was quietly picked for us is not.
 | `?comp=` on `/officials/{id}/matches` | must resolve in `a.registry` | 400 |
 | `?season=` on `/officials/{id}/matches` | must resolve within `?comp=`; **`?season=` without `?comp=` is a 400** | 400 |
 | `?range=` on `/officials/{id}/matches` | `YYYYMMDD-YYYYMMDD`, UTC, ordered, ≤ 92 days | 400 |
-| `?state=`, `?order=` on `/officials/{id}/matches` | the T9.1 enums | 400 |
+| `?state=`, `?order=` on `/officials/{id}/matches` | the T10.1 enums | 400 |
 | `?limit=` on `/officials/{id}/matches` | integer `1..500`; **absent defaults to 500**, it does not mean "unlimited" | 400 |
 | `/matches/{id}/officials` payload | one match's crew — one row on Liga MX, four on the competitions that publish a full crew | — |
 | `/officials/{id}` payload | one row per (competition, season) we hold an appearance in — bounded by our own registry | — |
@@ -348,7 +348,7 @@ mirrors the up list in reverse and the ingester plan owns both halves of its ent
 > so this seed survives whatever id form the surrounding `seedIntegrationData` is using.
 
 > **Do not add matches to `world-cup` / `2026`.** `TestStoreIntegration`,
-> `TestStoreMatchFilter` (T9.1) and `TestStoreSeasonCalendar` (T9.1) all assert **exact
+> `TestStoreMatchFilter` (T10.1) and `TestStoreSeasonCalendar` (T10.1) all assert **exact
 > counts** on that competition-season. This seed adds matches to `laliga` / `2026-27` and
 > `liga-mx` / `2026-apertura`, which no current test touches, and adds only a single
 > `match_official` row against world-cup — which changes no match count. If a sibling plan
@@ -521,7 +521,7 @@ uuid reaches Postgres, raises `invalid input syntax for type uuid`, and becomes 
 client error reported as a server error. `parseUUID` is the narrower guard those columns
 actually need.
 
-> **Observation, not a change this plan makes.** T9.1's `handleMatchSummary` validates
+> **Observation, not a change this plan makes.** T10.1's `handleMatchSummary` validates
 > `/v1/matches/{id}` with `parseEntityID` and queries `match_detail.match_id`. If
 > canonical-identity re-keyed that column to `uuid`, that route has the same
 > 500-instead-of-400 defect today. It is out of scope here — it belongs to whoever owns
@@ -1567,8 +1567,8 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 > **PLACEHOLDER NUMBERING — READ THIS BEFORE EDITING `matchesSQL`.**
 >
-> T9.1 left `matchesSQL` with `$1` comp, `$2` season, `$3` from, `$4` to, `$5` state, and
-> `LIMIT $6` inside `matchOrderSQL`. The **`api-teams` plan (T9.2) also extends this
+> T10.1 left `matchesSQL` with `$1` comp, `$2` season, `$3` from, `$4` to, `$5` state, and
+> `LIMIT $6` inside `matchOrderSQL`. The **`api-teams` plan (T10.2) also extends this
 > statement**: it inserts a `TeamID` predicate at `$6` and moves `LIMIT` to `$7`.
 >
 > This plan inserts an `OfficialID` predicate and moves `LIMIT` one further along. **Which
@@ -2072,7 +2072,7 @@ and the path:
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
 ```
 
-> `Range`, `MatchStateFilter`, `Order` and `Limit` are T9.1's parameter components, reused
+> `Range`, `MatchStateFilter`, `Order` and `Limit` are T10.1's parameter components, reused
 > verbatim. `state` is documented even though the original task brief listed only `comp`,
 > `season`, `range`, `order` and `limit`: this handler calls the shared `parseMatchFilter`,
 > which parses `state` too, so `?state=finished` **works**. Documenting a parameter that
@@ -2092,7 +2092,7 @@ The fake's existing `matches` seed already makes this response non-trivial.
 cd backend && go build ./... && go test ./reader -run "TestStoreMatchFilter|TestOfficialMatches|TestMatches|TestNilList|TestOpenAPI"
 ```
 
-Expected: `ok`. `TestStoreMatchFilter` and `TestMatchesQueryParameters` from T9.1 are the
+Expected: `ok`. `TestStoreMatchFilter` and `TestMatchesQueryParameters` from T10.1 are the
 guard that the placeholder renumbering did not break the existing limit and window
 behaviour — if either fails, `LIMIT` and the official predicate are bound to each other's
 positions.
@@ -2700,7 +2700,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 - [ ] **Step 1: Document the endpoints**
 
-In `backend/reader/README.md`, append after the "Query parameters" section that T9.1 added:
+In `backend/reader/README.md`, append after the "Query parameters" section that T10.1 added:
 
 ```markdown
 ## Match officials
@@ -2938,7 +2938,7 @@ whole table.
   whose type differs from its target's will not create. The plan's Task 1 makes the executor
   check `match.id`'s real type and **stop** if it is still `text`, rather than working around
   it.
-- **Also raised, not resolved:** if `match.id` is `uuid`, T9.1's `/v1/matches/{id}` validates
+- **Also raised, not resolved:** if `match.id` is `uuid`, T10.1's `/v1/matches/{id}` validates
   with `parseEntityID` against a `uuid` column and has the same 500-instead-of-400 defect.
   That belongs to canonical-identity's read-side sweep.
 - **Known limitation, documented not hidden:** `match_official` has no `DELETE` grant, so a
@@ -3001,7 +3001,7 @@ EOF
   The ingester plan's prerequisite chain starts at `feat/canonical-identity-impl`, which is
   presumably where the re-keying happens, but this plan has not verified that and refuses to
   assume it. Task 1 Step 1 checks and stops.
-- **Also raised, not fixed:** if `match.id` is `uuid`, then T9.1's `/v1/matches/{id}` route
+- **Also raised, not fixed:** if `match.id` is `uuid`, then T10.1's `/v1/matches/{id}` route
   validates with `parseEntityID` and queries a `uuid` column, so it has the same
   500-instead-of-400 defect this plan fixes on its own routes. Fixing one route and leaving
   its neighbour broken in the same file would be worse than naming it; it belongs to

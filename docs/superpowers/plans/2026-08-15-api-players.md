@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-15-player-pages-design.md` (E5). Context on what E7 gates: `docs/superpowers/specs/2026-08-15-history-and-trends-design.md`.
 **Epic:** E5 in `docs/PRODUCT_ROADMAP.md` — this is the backend half of **T5.1** and **T5.2**, and it is what eventually lifts the ceiling E5's page declares (**T7.4**'s game-log half).
-**New roadmap task:** **T9.4** (Epic **E9 · Public API read surface**)
+**New roadmap task:** **T10.4** (Epic **E10 · Public API read surface**)
 **Branch:** `feat/api-players` off latest `origin/main`
 
 ## Why this endpoint set is the payoff, not a port
@@ -52,7 +52,7 @@ Everything else in this plan — the three endpoints, the wire shapes, the null-
 ## Global Constraints
 
 - **Depends on two sibling plans.** `params.go` comes from `api-match-reads`
-  (**T9.1**); the `match_player_stat` table comes from `api-leaders-and-box-scores`.
+  (**T10.1**); the `match_player_stat` table comes from `api-leaders-and-box-scores`.
   Verify both before Task 1 — see *Prerequisites* below.
 - Extend the existing layering. Routes register in `App.router()` under `/v1`;
   handlers live in `handlers_players.go`; SQL lives in `store_players.go`; the
@@ -100,7 +100,7 @@ grep -n "PlayerMatchStats:" backend/reader/openapi.yaml
 
 Expected:
 
-1. Four function definitions in `params.go` (from `api-match-reads`, **T9.1**).
+1. Four function definitions in `params.go` (from `api-match-reads`, **T10.1**).
 2. Exactly one `type PlayerMatchStats` declaration, in package `main` under
    `backend/reader/`. This plan's code refers to it **unqualified**. It is the
    sibling's type and this plan does not touch it.

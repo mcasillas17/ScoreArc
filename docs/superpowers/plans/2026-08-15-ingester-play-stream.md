@@ -3012,15 +3012,25 @@ they were measured on 2026-08-15 and the behaviour may move. **Never ship this s
 with an unmeasured claim in it**; a wrong window in a doc is worse than no section,
 because the next reader will believe it.
 
-- [ ] **Step 2: Correct the roadmap's rejection table**
+- [ ] **Step 2: Confirm the roadmap and specs are already correct — do not re-edit them**
 
-In `docs/PRODUCT_ROADMAP.md`, under "Not building, and why", replace the **xG** and
-**Heat maps** rows:
+The coordinate discovery was acted on **before** this plan was executed. Verify rather
+than repeat:
 
-```markdown
-| **xG** | **Reason superseded 2026-08-15.** Shot coordinates *do* exist, on ESPN's core API (`fieldPositionX/Y`, `fieldPosition2X/Y`, `goalPositionY/Z`), and are persisted by T7.12. The original rejection ("not in the ESPN payload") was true of the site host and false of the core host. Still not building it *yet* — an xG model needs a validation story, not just coordinates — but the blocker is now modelling effort, not missing data. |
-| **Heat maps** | Coordinates exist, so this is now a product judgement rather than a data limit: touch-level plays are archived to R2 in full but deliberately not rowed in Postgres (~35M rows/season). A heat map still describes a match without explaining one; revisit only with a named use case. |
+```bash
+grep -n "xG" docs/PRODUCT_ROADMAP.md | head -20
+ls docs/superpowers/specs/2026-08-15-expected-goals-design.md
 ```
+
+Expected: **no `| **xG** |` row** in the "Not building, and why" table — xG is committed
+epic **E9** — a rewritten **Heat maps** row that gives a product reason rather than "no
+coordinates exist", a `### E9 · Expected goals` task block, and the E9 spec file present.
+
+If any of that is missing, the correction was lost in a merge. **Stop and say so** rather
+than re-deriving it here; the roadmap is the index every future agent reads first, and two
+agents independently editing it is how a correction gets half-applied.
+
+This plan's own contribution to the docs is `ARCHITECTURE.md` only (Step 1).
 
 - [ ] **Step 3: Full gate**
 

@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-15-fixtures-results-design.md` and `docs/superpowers/specs/2026-08-15-live-scores-grid-design.md`
 **Epic:** E3 and E2 in `docs/PRODUCT_ROADMAP.md` — this is the backend half of **T3.1**, **T3.2** and **T2.1**
-**New roadmap task:** **T9.1** (Epic **E9 · Public API read surface**)
+**New roadmap task:** **T10.1** (Epic **E10 · Public API read surface**)
 **Branch:** `feat/api-match-reads` off latest `origin/main`
 
 ## Global Constraints

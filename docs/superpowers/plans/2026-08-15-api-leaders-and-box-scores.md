@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-15-assists-and-box-score-design.md`
 **Epic:** E1 in `docs/PRODUCT_ROADMAP.md` — this is the backend half of **T1.1**, **T1.2** and **T1.3**
-**New roadmap task:** **T9.2** (Epic **E9 · Public API read surface**)
+**New roadmap task:** **T10.2** (Epic **E10 · Public API read surface**)
 **Branch:** `feat/api-leaders-and-box-scores` off latest `origin/main`
 
 ## Global Constraints
@@ -19,7 +19,7 @@
   The concurrent `2026-08-15-ingester-*.md` plans reserve migrations that model
   these same two datasets under a different schema, and which shape survives is
   the user's call, not this plan's.
-- **`docs/superpowers/plans/2026-08-15-api-match-reads.md` (T9.1) must land first.** This plan appends to the `backend/reader/params.go` that T9.1 creates and calls its `parseLimit` and `parseEntityID`. Do not start until `params.go` exists on `origin/main`.
+- **`docs/superpowers/plans/2026-08-15-api-match-reads.md` (T10.1) must land first.** This plan appends to the `backend/reader/params.go` that T10.1 creates and calls its `parseLimit` and `parseEntityID`. Do not start until `params.go` exists on `origin/main`.
 - Extend the existing layering. Routes register in `App.router()`; handlers live in `handlers.go` or a sibling `handlers_*.go`; SQL lives in `store.go` or a sibling `store_*.go`; the `readerStore` interface in `server.go` is the seam and `fakeReaderStore` in `server_test.go` implements it. **Adding or changing a store method means editing all three.**
 - **No string-built SQL.** Every value is a pgx placeholder, including `metric` and `LIMIT`.
 - **Reject, never silently fall back.** `?metric=shots` is a 400, not a quiet substitution of goals.
@@ -1871,7 +1871,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 - [ ] **Step 1: Document the new parameters and the two 404s**
 
-In `backend/reader/README.md`, extend the "Query parameters" table that T9.1
+In `backend/reader/README.md`, extend the "Query parameters" table that T10.1
 added with the two new rows, and append the paragraph below it:
 
 ```markdown

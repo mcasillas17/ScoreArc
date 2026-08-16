@@ -929,7 +929,195 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 4: Doc, gate, and a real run
+### Task 4: Record a real own goal and test the Go mapper against it
+
+**Files:**
+- Create: `backend/shared/espn/testdata/espn-summary-own-goal.json`
+- Test: `backend/shared/espn/participation_test.go`
+
+**Why this is in this plan.** `mapPlayerEvents` in `shared/espn/participation.go` — the
+file Task 2 just edited — classifies own goals with `strings.Contains(kind, "own")`, and
+its own comment admits the problem:
+
+```go
+// Unverified: no own goal appears in any recorded fixture. Detail keeps
+// ESPN's own label, so if this guess is wrong it is fixable from stored
+// rows rather than by re-fetching a finished match.
+```
+
+An untested branch that decides which team a goal belongs to is not a small gap. E0 is
+fixing the identical defect on the TypeScript side and **records a fixture to do it**;
+the Go side should test against the **same match**, or the two paths can diverge on the
+one event type where divergence changes a scoreline.
+
+This also matters for T7.7 specifically: `appearance.own_goals` counts own goals the
+player put into their **own** net, while `match_event` follows ESPN's convention of
+crediting the **beneficiary** team. Those two attributions are only safely different if
+the event classification underneath them is right.
+
+- [ ] **Step 1: Record the fixture**
+
+```bash
+cd backend
+curl -s "https://site.api.espn.com/apis/site/v2/sports/soccer/concacaf.leagues.cup/summary?event=401863609" \
+  -o shared/espn/testdata/espn-summary-own-goal.json
+```
+
+- [ ] **Step 2: Verify it captured the event we need**
+
+```bash
+cd backend && node -e "
+const d = require('./shared/espn/testdata/espn-summary-own-goal.json');
+for (const e of d.keyEvents.filter(e => e.scoringPlay)) {
+  console.log(e.team.id, JSON.stringify(e.type.type), e.participants[0].athlete.displayName, e.clock.displayValue);
+}
+console.log('teams:', d.rosters.map(r => r.team.id + '=' + r.team.displayName).join(', '));
+"
+```
+
+Expected, exactly:
+
+```
+226 "own-goal" Devin Padelford 32'
+17362 "goal" Mauricio Gonzalez 59'
+17362 "goal" Joaquín Pereyra 75'
+17362 "goal" Joaquín Pereyra 87'
+teams: 17362=Minnesota United FC, 226=Atlante
+```
+
+Read that carefully — it is the whole defect. The 32' goal is credited to **Atlante
+(226)**, and the player named is **Devin Padelford, who plays for Minnesota**. ESPN
+credits the team that benefits and names the opposition player who put it in. There is
+**no `ownGoal` boolean** on the key event; `type.type` is the only signal.
+
+- [ ] **Step 3: Write the failing test**
+
+Append to `backend/shared/espn/participation_test.go`:
+
+```go
+// The own-goal branch in mapPlayerEvents has never been executed against real
+// data -- its own comment says so. It decides which TEAM a goal is attributed
+// to, so an untested guess here is a wrong scoreline, and the TypeScript side
+// (E0) is being fixed against this exact match. The two must agree or the same
+// event reports differently depending on which path served it.
+func TestMapParticipationClassifiesARealOwnGoal(t *testing.T) {
+	raw, err := os.ReadFile("testdata/espn-summary-own-goal.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Minnesota United (17362) at home, Atlante (226) away.
+	part, err := MapParticipation(raw, "17362", "226")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var ownGoals, goals []PlayerEvent
+	for _, e := range part.Events {
+		switch e.Type {
+		case PlayerEventOwnGoal:
+			ownGoals = append(ownGoals, e)
+		case PlayerEventGoal:
+			goals = append(goals, e)
+		}
+	}
+
+	if len(ownGoals) != 1 {
+		t.Fatalf("own goals = %d, want exactly 1", len(ownGoals))
+	}
+	og := ownGoals[0]
+	if og.PlayerName != "Devin Padelford" {
+		t.Fatalf("own-goal scorer = %q, want Devin Padelford", og.PlayerName)
+	}
+	// ESPN's convention, preserved deliberately: the event belongs to the team
+	// that BENEFITED. Re-attributing it to Padelford's own side here would be
+	// "helpful" and wrong -- it would credit Minnesota with a goal they did not
+	// score, and the site would show a 4-0 as 3-1.
+	if og.TeamSourceID != "226" {
+		t.Fatalf("own goal attributed to team %q, want 226 (Atlante, the beneficiary)",
+			og.TeamSourceID)
+	}
+	if og.Minute != "32'" {
+		t.Fatalf("minute = %q, want 32'", og.Minute)
+	}
+	// The provider's own label, kept verbatim, is what makes a future
+	// misclassification fixable from stored rows.
+	if og.Detail == "" {
+		t.Fatal("Detail is empty; ESPN's own label must be preserved")
+	}
+
+	// And the ordinary goals must NOT be swept up by the own-goal branch.
+	if len(goals) != 3 {
+		t.Fatalf("ordinary goals = %d, want 3", len(goals))
+	}
+	for _, g := range goals {
+		if g.TeamSourceID != "17362" {
+			t.Fatalf("goal by %s attributed to %q, want 17362", g.PlayerName, g.TeamSourceID)
+		}
+	}
+}
+
+// The classifier keys on type.type, not on the English label, because the label
+// is locale-dependent prose and the machine value is not. A fixture cannot
+// prove that on its own, so assert it directly.
+func TestOwnGoalIsClassifiedFromTheMachineValue(t *testing.T) {
+	raw := []byte(`{"keyEvents":[{
+	  "type":{"id":"97","text":"Gol en propia puerta","type":"own-goal"},
+	  "scoringPlay":true,"team":{"id":"226"},
+	  "clock":{"displayValue":"32'"},
+	  "participants":[{"athlete":{"id":"1","displayName":"Defender"}}]}]}`)
+	part, err := MapParticipation(raw, "17362", "226")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(part.Events) != 1 || part.Events[0].Type != PlayerEventOwnGoal {
+		t.Fatalf("events = %#v, want one own_goal classified from type.type despite "+
+			"non-English display text", part.Events)
+	}
+}
+```
+
+- [ ] **Step 4: Run**
+
+```bash
+cd backend && go test ./shared/espn/ -run "OwnGoal" -v
+```
+
+Expected: both cases `--- PASS`. If `TestMapParticipationClassifiesARealOwnGoal` fails on
+the team id, **do not "fix" it by re-attributing the goal to the other side** — read the
+Step 2 output again. ESPN's convention is the beneficiary, the TypeScript side keeps it,
+and the `(OG)` suffix is how the UI makes it legible rather than by moving the goal.
+
+If it fails because the event was classified as an ordinary `goal`, the
+`strings.Contains(kind, "own")` branch is being shadowed by the `e.ScoringPlay` case
+above it — check the ordering in `mapPlayerEvents`, since an own goal is *also* a scoring
+play and the switch is first-match-wins.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add backend/shared/espn/testdata/espn-summary-own-goal.json \
+        backend/shared/espn/participation_test.go
+git commit -m "test: cover the own-goal branch against a real own goal
+
+mapPlayerEvents classified own goals with strings.Contains(kind, \"own\")
+and its own comment admitted no own goal appeared in any recorded fixture.
+That branch decides which TEAM a goal belongs to, so an untested guess is
+a wrong scoreline.
+
+Uses the same match E0 records on the TypeScript side (Leagues Cup
+401863609): the 32' own goal is credited to Atlante with Minnesota's Devin
+Padelford named. The two paths must agree or the same event reports
+differently depending on which served it.
+
+Also asserts the classification keys on type.type rather than the English
+label, which is locale-dependent.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
+### Task 5: Doc, gate, and a real run
 
 - [ ] **Step 1: Update the architecture doc**
 

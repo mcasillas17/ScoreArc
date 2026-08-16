@@ -22,7 +22,7 @@ the ingester/worker and is out of this plan's scope.
 **Spec:** `docs/superpowers/specs/2026-08-15-ai-recaps-design.md`
 **Epic:** E8 in `docs/PRODUCT_ROADMAP.md` — this is the backend read half of **T8.1**,
 **T8.2** and **T8.3**
-**New roadmap task:** **T9.7** (Epic **E9 · Public API read surface**)
+**New roadmap task:** **T10.7** (Epic **E10 · Public API read surface**)
 **Branch:** `feat/api-generated-content` off latest `origin/main`
 
 **Depends on:** `docs/superpowers/plans/2026-08-15-api-match-reads.md`, which creates
