@@ -6,46 +6,71 @@ import (
 	"testing"
 )
 
-func TestIngesterCanDeleteReplacementRows(t *testing.T) {
-	raw, err := os.ReadFile("0003_ingester_delete_grant.up.sql")
+func readMigration(t *testing.T, name string) string {
+	t.Helper()
+	raw, err := os.ReadFile(name)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sql := string(raw)
-	if !strings.Contains(sql, "GRANT DELETE ON standing, top_scorer TO scorearc_ingester") {
-		t.Fatalf("missing least-privilege DELETE grant:\n%s", sql)
+	return string(raw)
+}
+
+// The canonical schema must key every entity on ids we mint, expose a
+// per-source crosswalk with real foreign keys, and keep the hardening that
+// used to live in 0004.
+func TestInitDefinesCanonicalSchema(t *testing.T) {
+	sql := readMigration(t, "0001_init.up.sql")
+	for _, required := range []string{
+		"CREATE TABLE competition",
+		"CREATE TABLE season",
+		"CREATE TABLE team",
+		"CREATE TABLE player",
+		"CREATE TABLE match",
+		"CREATE TABLE team_external_ref",
+		"CREATE TABLE player_external_ref",
+		"CREATE TABLE match_external_ref",
+		"CREATE TABLE competition_external_ref",
+		// The natural key that makes match identity deterministic.
+		"UNIQUE (competition_id, season_id, home_team_id, away_team_id, kickoff_date)",
+		"kickoff_date date GENERATED ALWAYS AS",
+		"provisional",
+		// Hardening folded in from the old 0004.
+		"protect_match_history",
+		"protect_finalized_detail",
+		"match_unfinalized_idx",
+		"ingest_run_started_idx",
+		// Least-privilege roles and grants, folded in from 0001/0003/0004.
+		"CREATE ROLE scorearc_reader",
+		"CREATE ROLE scorearc_ingester",
+		"GRANT DELETE ON standing, top_scorer TO scorearc_ingester",
+		"GRANT DELETE ON ingest_run TO scorearc_ingester",
+		// Curation promotion deletes the provisional team it just folded in.
+		// Without this grant every promotion fails in production, where the
+		// ingester is scorearc_ingester rather than the schema owner.
+		"GRANT DELETE ON team TO scorearc_ingester",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("0001_init.up.sql missing %q", required)
+		}
 	}
 }
 
-func TestIngesterHardeningMigration(t *testing.T) {
-	raw, err := os.ReadFile("0004_ingester_hardening.up.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	sql := string(raw)
+func TestSnapshotsUseCanonicalKeys(t *testing.T) {
+	sql := readMigration(t, "0002_snapshots.up.sql")
 	for _, required := range []string{
-		"home_placeholder",
-		"away_placeholder",
-		"bracket_required",
-		"match_unfinalized_idx",
-		"ingest_run_started_idx",
-		"GRANT DELETE ON ingest_run TO scorearc_ingester",
-		"protect_match_history",
-		"protect_finalized_detail",
+		"CREATE TABLE standing_snapshot",
+		"CREATE TABLE win_prob_snapshot",
+		"REFERENCES team(id)",
+		"match_id    uuid NOT NULL REFERENCES match(id)",
 	} {
 		if !strings.Contains(sql, required) {
-			t.Fatalf("migration missing %q", required)
+			t.Fatalf("0002_snapshots.up.sql missing %q", required)
 		}
 	}
-
 }
 
 func TestInitialRollbackRevokesDefaultPrivileges(t *testing.T) {
-	raw, err := os.ReadFile("0001_init.down.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	sql := string(raw)
+	sql := readMigration(t, "0001_init.down.sql")
 	for _, required := range []string{
 		"ALTER DEFAULT PRIVILEGES",
 		"FROM scorearc_reader",

@@ -59,6 +59,24 @@ Neon Postgres (provisioned via Vercel) + Cloudflare R2**. Full detail:
 - `npm run export:competitions` — regenerate `backend/config/competitions.json`
   from `src/server/data/competitions.ts` (the single source of truth — never
   hand-edit the JSON).
+- **Team identity is curated, not generated.** `backend/config/teams.seed.json` is
+  **hand-authored and reviewed** — the opposite of `competitions.json`. It assigns each
+  team its canonical id (`eng-manchester-united`, `nat-mex`) plus the provider ids that
+  map to it. `cd backend && go run ./cmd/seed-teams` proposes an updated seed on stdout;
+  it merges with the committed file so curated slugs and countries survive. Regenerate
+  **only** through a temp file:
+
+  ```bash
+  cd backend && go run ./cmd/seed-teams > /tmp/teams.seed.json && \
+    mv /tmp/teams.seed.json config/teams.seed.json
+  ```
+
+  Never `> config/teams.seed.json`: the seed is embedded (`//go:embed`) as the
+  generator's own merge base, so the shell truncates it before the command compiles —
+  the generator refuses to run rather than reverting every hand-made correction. Review
+  the diff before committing. An unseeded team does **not** break ingestion: it becomes
+  a `provisional` row (`SELECT * FROM team WHERE provisional`) until curated. The weekly
+  `.github/workflows/seed-drift.yml` reports teams ESPN knows that the seed lacks.
 - Vercel ignores `/backend`, `/infra`, and `/docs` (`.vercelignore`).
 - **Agent identity in commits:** this repo's history uses a `Co-Authored-By:`
   trailer. Substitute **your own** agent identity — e.g. Codex:

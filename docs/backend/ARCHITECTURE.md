@@ -61,11 +61,20 @@ reader's JSON must deserialize into the existing types in
 
 ## 3. Database schema (Neon Postgres)
 
-`comp_id`/`season_id` are the **text config keys** from `competitions.ts` (config
-stays the source of truth — no season table). `team.id`/`match.id` are **ESPN
-ids** (idempotent upserts). Rich per-match detail is **jsonb** (lossless, serves
-the existing frontend types verbatim). **No `news` table** (proxied live).
-`team.crest_url` holds **our R2/CDN URL**.
+**Every id in this schema is one ScoreArc mints — no provider is the identity
+authority.** Curated sets are slugs (`competition.id` = `premier-league`,
+`team.id` = `eng-manchester-united` | `nat-mex`), machine-generated sets are
+UUIDv7 (`match.id`, `player.id`). Provider ids live **only** in the
+`*_external_ref` crosswalk tables, so a second source describes the same entity
+instead of duplicating it. `competition_id`/`season_id` are still the **text
+config keys** from `competitions.ts` (config stays the source of truth), but
+they are now materialised as real `competition`/`season` rows that the other
+tables reference. Rich per-match detail is **jsonb** (lossless, serves the
+existing frontend types verbatim). **No `news` table** (proxied live).
+`team.crest_url` holds **our R2/CDN URL**, and the team seed never overwrites a
+stored crest — it only fills an empty one, so re-seeding on every start cannot
+revert a mirrored crest to a provider hotlink. Full rationale:
+`docs/superpowers/specs/2026-08-12-canonical-identity-design.md`.
 
 > **Bracket note (important — the frontend does NOT derive brackets from the
 > matches feed today).** Currently `DataStore.getBracket` fetches a *separate*
@@ -81,29 +90,39 @@ the existing frontend types verbatim). **No `news` table** (proxied live).
 > `competitions.ts`/`radialBracketModel.ts` on the frontend — correctly not in
 > the backend.) See §10.
 
-Migrations: `backend/migrations/0001_init.*.sql` (Tier-1 + roles),
-`0002_snapshots.*.sql` (Tier-3 + ops), `0003_ingester_delete_grant.*.sql`
-(replacement permissions), and `0004_ingester_hardening.*.sql` (durability
-columns, indexes, and history guards).
+Migrations: `backend/migrations/0001_init.*.sql` (canonical entities, the
+crosswalk, Tier-1, ops, roles/grants, durability columns, indexes, and history
+guards) and `0002_snapshots.*.sql` (Tier-3). The pre-launch `0003`/`0004`
+migrations were folded into `0001` when the schema was re-keyed onto canonical
+ids; there is no deployed database to migrate forward from them.
 
 Data backfills must run before finalized-history protection triggers are enabled.
 A future migration that intentionally rewrites finalized matches or details must
 disable the relevant trigger only for the bounded rewrite and re-enable it in the
 same transaction.
 
+### Canonical entities (ids ScoreArc mints)
+- **competition**(id PK `text` slug, name, short_name, kind[`league|cup`], country, updated_at)
+- **season**(PK (competition_id→competition, id `text` e.g. `2026-27`), label, has_bracket)
+- **team**(id PK `text` slug, kind[`club|national`], name, short_name, abbr, country, crest_url, **provisional**, updated_at) — identity is curated in `backend/config/teams.seed.json`; a team the seed does not carry is minted `provisional` (`prov-espn-<id>`) so ingestion never blocks, and a partial index lists those awaiting curation.
+- **player**(id PK `uuid` v7, full_name, known_as, birth_date, nationality, position, updated_at) — resolved and stored; relational `appearance`/`match_event` tables are a later slice.
+
+### Source crosswalk (the only place provider ids live)
+- **competition_external_ref** / **team_external_ref** / **player_external_ref** /
+  **match_external_ref**(PK (source, source_id), *canonical id*→entity ON DELETE CASCADE, first_seen_at, last_seen_at) — the PK is `(source, source_id)`, not the canonical id, so **many** provider ids may map to **one** entity, which is exactly what merging duplicates produces. Each has an index on the canonical id for the reverse lookup.
+
 ### Tier 1 — current state (hot, upserted by the ingester)
-- **team**(id PK, name, abbr, crest_url, updated_at)
-- **match**(id PK, comp_id, season_id, round, kickoff, state[`scheduled|live|finished`], home_team_id→team, away_team_id→team, home_score, away_score, minute, status_detail, status_name, winner_id, note, home_placeholder, away_placeholder, bracket_required, **finalized_at**, updated_at) — indexes on `(comp_id,season_id,kickoff)`, `state`, and unfinalized history.
+- **match**(id PK `uuid` v7, competition_id, season_id, round, kickoff, **kickoff_date** (generated, UTC date), state[`scheduled|live|finished`], home_team_id→team, away_team_id→team, home_score, away_score, minute, status_detail, status_name, winner_id→team, note, home_placeholder, away_placeholder, bracket_required, **finalized_at**, source, updated_at) — FK to `season(competition_id,id)`; **UNIQUE (competition_id, season_id, home_team_id, away_team_id, kickoff_date)** is the natural key that makes the same fixture from a second source resolve to one row; indexes on `(competition_id,season_id,kickoff)`, `state`, and unfinalized history.
 - **match_detail**(match_id PK→match, scorers jsonb, cards jsonb, stats jsonb, win_probability jsonb, shootout jsonb, shootout_detail jsonb, lineups jsonb, videos jsonb, info jsonb, form jsonb, h2h jsonb, commentary jsonb, updated_at)
-- **standing**(PK (comp_id,season_id,team_id), group_id, group_name, rank, played, wins, draws, losses, goals_for, goals_against, goal_difference, points, advanced, updated_at) — `group_id`/`group_name` (e.g. "A"/"Group A") are nullable: populated for multi-group competitions (e.g. World Cup group stage), null for single-table leagues.
-- **top_scorer**(PK (comp_id,season_id,rank), player, team_abbr, team_name, team_crest_url, goals, matches) — team is denormalized (ESPN stats give abbr/name/crest, no id), matching the frontend `TopScorer` type.
+- **standing**(PK (competition_id,season_id,team_id→team), group_id, group_name, rank, played, wins, draws, losses, goals_for, goals_against, goal_difference, points, advanced, source, updated_at) — `group_id`/`group_name` (e.g. "A"/"Group A") are nullable: populated for multi-group competitions (e.g. World Cup group stage), null for single-table leagues.
+- **top_scorer**(PK (competition_id,season_id,rank), player, team_abbr, team_name, team_crest_url, goals, matches, source) — team is denormalized (ESPN stats give abbr/name/crest, no id), matching the frontend `TopScorer` type.
 
 ### Tier 3 — time-series (created now, WRITTEN in Phase 2 via `emitSnapshots()`)
-- **standing_snapshot**(id bigserial, comp_id, season_id, team_id, captured_at, rank, points, goal_difference, played) — append-only.
+- **standing_snapshot**(id bigserial, competition_id, season_id, team_id→team, captured_at, rank, points, goal_difference, played) — append-only.
 - **win_prob_snapshot**(id bigserial, match_id, captured_at, home, draw, away) — append-only.
 
 ### Ops
-- **ingest_run**(id bigserial, comp_id, kind, started_at, finished_at, ok, error) — observability.
+- **ingest_run**(id bigserial, competition_id, kind, started_at, finished_at, ok, error) — observability. Beyond per-operation runs it also records the two identity events a human has to act on: `provisional_team` (a club nobody has curated) and `team_promotion` (a curation that could not complete).
 
 ### Roles (least privilege — enforces the read-only public path)
 - `scorearc_reader` → **SELECT only** (the public reader connects as this).
@@ -127,6 +146,18 @@ same transaction.
 - Work is bounded to three competitions concurrently. Two successful empty
   polls are required before a competition becomes dormant; failed polls reset
   that sequence and preserve known live cadence.
+- Provider ids are **resolved to canonical ids before anything is written**
+  (`backend/shared/store/identity.go`). The ingester calls `Store.Team` and
+  `Store.Match`: each looks `(source, source_id)` up in the crosswalk, falling back
+  to the curated team seed or the `match` natural key. A team the seed does not carry
+  becomes a `provisional` row rather than failing the poll — logged and recorded in
+  `ingest_run` — and curating it later repoints the existing rows instead of creating
+  a duplicate. A match crosswalk hit is verified against the competition and season
+  being ingested, so one provider event id cannot carry facts across competitions.
+  `Store.Competition` and `Store.Player` exist for the same crosswalk but have no
+  production caller yet: the ingester takes the competition from its own config
+  (`comp.ID`), and player identity is written by the follow-on slice. The ESPN mappers
+  still speak ESPN ids; nothing downstream of the resolver does.
 - Current state is idempotently upserted. State cannot regress except
   live→scheduled for ESPN's explicit postponed or suspended status. Sparse payloads preserve
   known scores, winners, detail arrays, and bracket placeholders.

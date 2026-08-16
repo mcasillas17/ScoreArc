@@ -1,0 +1,1942 @@
+[
+  {
+    "id": "all-star-liga-mx",
+    "kind": "club",
+    "name": "Liga MX All-Stars",
+    "abbr": "LMX",
+    "country": "mex",
+    "refs": {
+      "espn": "20279"
+    }
+  },
+  {
+    "id": "all-star-mls",
+    "kind": "club",
+    "name": "MLS All-Stars",
+    "abbr": "MLS",
+    "country": "usa",
+    "refs": {
+      "espn": "9817"
+    }
+  },
+  {
+    "id": "can-cf-montreal",
+    "kind": "club",
+    "name": "CF Montréal",
+    "abbr": "MTL",
+    "country": "can",
+    "refs": {
+      "espn": "9720"
+    }
+  },
+  {
+    "id": "can-toronto-fc",
+    "kind": "club",
+    "name": "Toronto FC",
+    "abbr": "TOR",
+    "country": "can",
+    "refs": {
+      "espn": "7318"
+    }
+  },
+  {
+    "id": "can-vancouver-whitecaps",
+    "kind": "club",
+    "name": "Vancouver Whitecaps",
+    "abbr": "VAN",
+    "country": "can",
+    "refs": {
+      "espn": "9727"
+    }
+  },
+  {
+    "id": "eng-afc-bournemouth",
+    "kind": "club",
+    "name": "AFC Bournemouth",
+    "abbr": "BOU",
+    "country": "eng",
+    "refs": {
+      "espn": "349"
+    }
+  },
+  {
+    "id": "eng-arsenal",
+    "kind": "club",
+    "name": "Arsenal",
+    "abbr": "ARS",
+    "country": "eng",
+    "refs": {
+      "espn": "359"
+    }
+  },
+  {
+    "id": "eng-aston-villa",
+    "kind": "club",
+    "name": "Aston Villa",
+    "abbr": "AVL",
+    "country": "eng",
+    "refs": {
+      "espn": "362"
+    }
+  },
+  {
+    "id": "eng-brentford",
+    "kind": "club",
+    "name": "Brentford",
+    "abbr": "BRE",
+    "country": "eng",
+    "refs": {
+      "espn": "337"
+    }
+  },
+  {
+    "id": "eng-brighton-hove-albion",
+    "kind": "club",
+    "name": "Brighton & Hove Albion",
+    "abbr": "BHA",
+    "country": "eng",
+    "refs": {
+      "espn": "331"
+    }
+  },
+  {
+    "id": "eng-chelsea",
+    "kind": "club",
+    "name": "Chelsea",
+    "abbr": "CHE",
+    "country": "eng",
+    "refs": {
+      "espn": "363"
+    }
+  },
+  {
+    "id": "eng-coventry-city",
+    "kind": "club",
+    "name": "Coventry City",
+    "abbr": "COV",
+    "country": "eng",
+    "refs": {
+      "espn": "388"
+    }
+  },
+  {
+    "id": "eng-crystal-palace",
+    "kind": "club",
+    "name": "Crystal Palace",
+    "abbr": "CRY",
+    "country": "eng",
+    "refs": {
+      "espn": "384"
+    }
+  },
+  {
+    "id": "eng-everton",
+    "kind": "club",
+    "name": "Everton",
+    "abbr": "EVE",
+    "country": "eng",
+    "refs": {
+      "espn": "368"
+    }
+  },
+  {
+    "id": "eng-fulham",
+    "kind": "club",
+    "name": "Fulham",
+    "abbr": "FUL",
+    "country": "eng",
+    "refs": {
+      "espn": "370"
+    }
+  },
+  {
+    "id": "eng-hull-city",
+    "kind": "club",
+    "name": "Hull City",
+    "abbr": "HUL",
+    "country": "eng",
+    "refs": {
+      "espn": "306"
+    }
+  },
+  {
+    "id": "eng-ipswich-town",
+    "kind": "club",
+    "name": "Ipswich Town",
+    "abbr": "IPS",
+    "country": "eng",
+    "refs": {
+      "espn": "373"
+    }
+  },
+  {
+    "id": "eng-leeds-united",
+    "kind": "club",
+    "name": "Leeds United",
+    "abbr": "LEE",
+    "country": "eng",
+    "refs": {
+      "espn": "357"
+    }
+  },
+  {
+    "id": "eng-liverpool",
+    "kind": "club",
+    "name": "Liverpool",
+    "abbr": "LIV",
+    "country": "eng",
+    "refs": {
+      "espn": "364"
+    }
+  },
+  {
+    "id": "eng-manchester-city",
+    "kind": "club",
+    "name": "Manchester City",
+    "abbr": "MNC",
+    "country": "eng",
+    "refs": {
+      "espn": "382"
+    }
+  },
+  {
+    "id": "eng-manchester-united",
+    "kind": "club",
+    "name": "Manchester United",
+    "abbr": "MAN",
+    "country": "eng",
+    "refs": {
+      "espn": "360"
+    }
+  },
+  {
+    "id": "eng-newcastle-united",
+    "kind": "club",
+    "name": "Newcastle United",
+    "abbr": "NEW",
+    "country": "eng",
+    "refs": {
+      "espn": "361"
+    }
+  },
+  {
+    "id": "eng-nottingham-forest",
+    "kind": "club",
+    "name": "Nottingham Forest",
+    "abbr": "NFO",
+    "country": "eng",
+    "refs": {
+      "espn": "393"
+    }
+  },
+  {
+    "id": "eng-sunderland",
+    "kind": "club",
+    "name": "Sunderland",
+    "abbr": "SUN",
+    "country": "eng",
+    "refs": {
+      "espn": "366"
+    }
+  },
+  {
+    "id": "eng-tottenham-hotspur",
+    "kind": "club",
+    "name": "Tottenham Hotspur",
+    "abbr": "TOT",
+    "country": "eng",
+    "refs": {
+      "espn": "367"
+    }
+  },
+  {
+    "id": "esp-alaves",
+    "kind": "club",
+    "name": "Alavés",
+    "abbr": "ALA",
+    "country": "esp",
+    "refs": {
+      "espn": "96"
+    }
+  },
+  {
+    "id": "esp-athletic-club",
+    "kind": "club",
+    "name": "Athletic Club",
+    "abbr": "ATH",
+    "country": "esp",
+    "refs": {
+      "espn": "93"
+    }
+  },
+  {
+    "id": "esp-atletico-madrid",
+    "kind": "club",
+    "name": "Atlético Madrid",
+    "abbr": "ATM",
+    "country": "esp",
+    "refs": {
+      "espn": "1068"
+    }
+  },
+  {
+    "id": "esp-barcelona",
+    "kind": "club",
+    "name": "Barcelona",
+    "abbr": "BAR",
+    "country": "esp",
+    "refs": {
+      "espn": "83"
+    }
+  },
+  {
+    "id": "esp-celta-vigo",
+    "kind": "club",
+    "name": "Celta Vigo",
+    "abbr": "CEL",
+    "country": "esp",
+    "refs": {
+      "espn": "85"
+    }
+  },
+  {
+    "id": "esp-deportivo",
+    "kind": "club",
+    "name": "Deportivo",
+    "abbr": "DEP",
+    "country": "esp",
+    "refs": {
+      "espn": "90"
+    }
+  },
+  {
+    "id": "esp-elche",
+    "kind": "club",
+    "name": "Elche",
+    "abbr": "ELC",
+    "country": "esp",
+    "refs": {
+      "espn": "3751"
+    }
+  },
+  {
+    "id": "esp-espanyol",
+    "kind": "club",
+    "name": "Espanyol",
+    "abbr": "ESP",
+    "country": "esp",
+    "refs": {
+      "espn": "88"
+    }
+  },
+  {
+    "id": "esp-getafe",
+    "kind": "club",
+    "name": "Getafe",
+    "abbr": "GET",
+    "country": "esp",
+    "refs": {
+      "espn": "2922"
+    }
+  },
+  {
+    "id": "esp-levante",
+    "kind": "club",
+    "name": "Levante",
+    "abbr": "LEV",
+    "country": "esp",
+    "refs": {
+      "espn": "1538"
+    }
+  },
+  {
+    "id": "esp-malaga",
+    "kind": "club",
+    "name": "Málaga",
+    "abbr": "MCF",
+    "country": "esp",
+    "refs": {
+      "espn": "99"
+    }
+  },
+  {
+    "id": "esp-osasuna",
+    "kind": "club",
+    "name": "Osasuna",
+    "abbr": "OSA",
+    "country": "esp",
+    "refs": {
+      "espn": "97"
+    }
+  },
+  {
+    "id": "esp-racing-santander",
+    "kind": "club",
+    "name": "Racing Santander",
+    "abbr": "RAC",
+    "country": "esp",
+    "refs": {
+      "espn": "87"
+    }
+  },
+  {
+    "id": "esp-rayo-vallecano",
+    "kind": "club",
+    "name": "Rayo Vallecano",
+    "abbr": "RAY",
+    "country": "esp",
+    "refs": {
+      "espn": "101"
+    }
+  },
+  {
+    "id": "esp-real-betis",
+    "kind": "club",
+    "name": "Real Betis",
+    "abbr": "BET",
+    "country": "esp",
+    "refs": {
+      "espn": "244"
+    }
+  },
+  {
+    "id": "esp-real-madrid",
+    "kind": "club",
+    "name": "Real Madrid",
+    "abbr": "RMA",
+    "country": "esp",
+    "refs": {
+      "espn": "86"
+    }
+  },
+  {
+    "id": "esp-real-sociedad",
+    "kind": "club",
+    "name": "Real Sociedad",
+    "abbr": "RSO",
+    "country": "esp",
+    "refs": {
+      "espn": "89"
+    }
+  },
+  {
+    "id": "esp-sevilla",
+    "kind": "club",
+    "name": "Sevilla",
+    "abbr": "SEV",
+    "country": "esp",
+    "refs": {
+      "espn": "243"
+    }
+  },
+  {
+    "id": "esp-valencia",
+    "kind": "club",
+    "name": "Valencia",
+    "abbr": "VAL",
+    "country": "esp",
+    "refs": {
+      "espn": "94"
+    }
+  },
+  {
+    "id": "esp-villarreal",
+    "kind": "club",
+    "name": "Villarreal",
+    "abbr": "VIL",
+    "country": "esp",
+    "refs": {
+      "espn": "102"
+    }
+  },
+  {
+    "id": "fra-aj-auxerre",
+    "kind": "club",
+    "name": "AJ Auxerre",
+    "abbr": "AUX",
+    "country": "fra",
+    "refs": {
+      "espn": "172"
+    }
+  },
+  {
+    "id": "fra-angers",
+    "kind": "club",
+    "name": "Angers",
+    "abbr": "ANG",
+    "country": "fra",
+    "refs": {
+      "espn": "7868"
+    }
+  },
+  {
+    "id": "fra-as-monaco",
+    "kind": "club",
+    "name": "AS Monaco",
+    "abbr": "MON",
+    "country": "fra",
+    "refs": {
+      "espn": "174"
+    }
+  },
+  {
+    "id": "fra-brest",
+    "kind": "club",
+    "name": "Brest",
+    "abbr": "BRE",
+    "country": "fra",
+    "refs": {
+      "espn": "6997"
+    }
+  },
+  {
+    "id": "fra-le-havre-ac",
+    "kind": "club",
+    "name": "Le Havre AC",
+    "abbr": "HAC",
+    "country": "fra",
+    "refs": {
+      "espn": "3236"
+    }
+  },
+  {
+    "id": "fra-le-mans",
+    "kind": "club",
+    "name": "Le Mans",
+    "abbr": "MNS",
+    "country": "fra",
+    "refs": {
+      "espn": "2697"
+    }
+  },
+  {
+    "id": "fra-lens",
+    "kind": "club",
+    "name": "Lens",
+    "abbr": "RCL",
+    "country": "fra",
+    "refs": {
+      "espn": "175"
+    }
+  },
+  {
+    "id": "fra-lille",
+    "kind": "club",
+    "name": "Lille",
+    "abbr": "LILL",
+    "country": "fra",
+    "refs": {
+      "espn": "166"
+    }
+  },
+  {
+    "id": "fra-lorient",
+    "kind": "club",
+    "name": "Lorient",
+    "abbr": "LOR",
+    "country": "fra",
+    "refs": {
+      "espn": "273"
+    }
+  },
+  {
+    "id": "fra-lyon",
+    "kind": "club",
+    "name": "Lyon",
+    "abbr": "LYON",
+    "country": "fra",
+    "refs": {
+      "espn": "167"
+    }
+  },
+  {
+    "id": "fra-marseille",
+    "kind": "club",
+    "name": "Marseille",
+    "abbr": "OLM",
+    "country": "fra",
+    "refs": {
+      "espn": "176"
+    }
+  },
+  {
+    "id": "fra-nice",
+    "kind": "club",
+    "name": "Nice",
+    "abbr": "NICE",
+    "country": "fra",
+    "refs": {
+      "espn": "2502"
+    }
+  },
+  {
+    "id": "fra-paris-fc",
+    "kind": "club",
+    "name": "Paris FC",
+    "abbr": "PAR",
+    "country": "fra",
+    "refs": {
+      "espn": "6851"
+    }
+  },
+  {
+    "id": "fra-paris-saint-germain",
+    "kind": "club",
+    "name": "Paris Saint-Germain",
+    "abbr": "PSG",
+    "country": "fra",
+    "refs": {
+      "espn": "160"
+    }
+  },
+  {
+    "id": "fra-stade-rennais",
+    "kind": "club",
+    "name": "Stade Rennais",
+    "abbr": "REN",
+    "country": "fra",
+    "refs": {
+      "espn": "169"
+    }
+  },
+  {
+    "id": "fra-strasbourg",
+    "kind": "club",
+    "name": "Strasbourg",
+    "abbr": "STR",
+    "country": "fra",
+    "refs": {
+      "espn": "180"
+    }
+  },
+  {
+    "id": "fra-toulouse",
+    "kind": "club",
+    "name": "Toulouse",
+    "abbr": "TOU",
+    "country": "fra",
+    "refs": {
+      "espn": "179"
+    }
+  },
+  {
+    "id": "fra-troyes",
+    "kind": "club",
+    "name": "Troyes",
+    "abbr": "TRY",
+    "country": "fra",
+    "refs": {
+      "espn": "170"
+    }
+  },
+  {
+    "id": "ger-bayer-leverkusen",
+    "kind": "club",
+    "name": "Bayer Leverkusen",
+    "abbr": "B04",
+    "country": "ger",
+    "refs": {
+      "espn": "131"
+    }
+  },
+  {
+    "id": "ger-bayern-munich",
+    "kind": "club",
+    "name": "Bayern Munich",
+    "abbr": "MUN",
+    "country": "ger",
+    "refs": {
+      "espn": "132"
+    }
+  },
+  {
+    "id": "ger-borussia-dortmund",
+    "kind": "club",
+    "name": "Borussia Dortmund",
+    "abbr": "DOR",
+    "country": "ger",
+    "refs": {
+      "espn": "124"
+    }
+  },
+  {
+    "id": "ger-borussia-monchengladbach",
+    "kind": "club",
+    "name": "Borussia Mönchengladbach",
+    "abbr": "BMG",
+    "country": "ger",
+    "refs": {
+      "espn": "268"
+    }
+  },
+  {
+    "id": "ger-eintracht-frankfurt",
+    "kind": "club",
+    "name": "Eintracht Frankfurt",
+    "abbr": "SGE",
+    "country": "ger",
+    "refs": {
+      "espn": "125"
+    }
+  },
+  {
+    "id": "ger-fc-augsburg",
+    "kind": "club",
+    "name": "FC Augsburg",
+    "abbr": "FCA",
+    "country": "ger",
+    "refs": {
+      "espn": "3841"
+    }
+  },
+  {
+    "id": "ger-fc-cologne",
+    "kind": "club",
+    "name": "FC Cologne",
+    "abbr": "KOE",
+    "country": "ger",
+    "refs": {
+      "espn": "122"
+    }
+  },
+  {
+    "id": "ger-hamburg-sv",
+    "kind": "club",
+    "name": "Hamburg SV",
+    "abbr": "HSV",
+    "country": "ger",
+    "refs": {
+      "espn": "127"
+    }
+  },
+  {
+    "id": "ger-mainz",
+    "kind": "club",
+    "name": "Mainz",
+    "abbr": "M05",
+    "country": "ger",
+    "refs": {
+      "espn": "2950"
+    }
+  },
+  {
+    "id": "ger-rb-leipzig",
+    "kind": "club",
+    "name": "RB Leipzig",
+    "abbr": "RBL",
+    "country": "ger",
+    "refs": {
+      "espn": "11420"
+    }
+  },
+  {
+    "id": "ger-sc-freiburg",
+    "kind": "club",
+    "name": "SC Freiburg",
+    "abbr": "SCF",
+    "country": "ger",
+    "refs": {
+      "espn": "126"
+    }
+  },
+  {
+    "id": "ger-sc-paderborn-07",
+    "kind": "club",
+    "name": "SC Paderborn 07",
+    "abbr": "SCP",
+    "country": "ger",
+    "refs": {
+      "espn": "3307"
+    }
+  },
+  {
+    "id": "ger-schalke-04",
+    "kind": "club",
+    "name": "Schalke 04",
+    "abbr": "S04",
+    "country": "ger",
+    "refs": {
+      "espn": "133"
+    }
+  },
+  {
+    "id": "ger-sv-elversberg",
+    "kind": "club",
+    "name": "SV Elversberg",
+    "abbr": "ELV",
+    "country": "ger",
+    "refs": {
+      "espn": "10388"
+    }
+  },
+  {
+    "id": "ger-tsg-hoffenheim",
+    "kind": "club",
+    "name": "TSG Hoffenheim",
+    "abbr": "TSG",
+    "country": "ger",
+    "refs": {
+      "espn": "7911"
+    }
+  },
+  {
+    "id": "ger-union-berlin",
+    "kind": "club",
+    "name": "1. FC Union Berlin",
+    "abbr": "FCU",
+    "country": "ger",
+    "refs": {
+      "espn": "598"
+    }
+  },
+  {
+    "id": "ger-vfb-stuttgart",
+    "kind": "club",
+    "name": "VfB Stuttgart",
+    "abbr": "VFB",
+    "country": "ger",
+    "refs": {
+      "espn": "134"
+    }
+  },
+  {
+    "id": "ger-werder-bremen",
+    "kind": "club",
+    "name": "Werder Bremen",
+    "abbr": "SVW",
+    "country": "ger",
+    "refs": {
+      "espn": "137"
+    }
+  },
+  {
+    "id": "ita-ac-milan",
+    "kind": "club",
+    "name": "AC Milan",
+    "abbr": "MIL",
+    "country": "ita",
+    "refs": {
+      "espn": "103"
+    }
+  },
+  {
+    "id": "ita-as-roma",
+    "kind": "club",
+    "name": "AS Roma",
+    "abbr": "ROMA",
+    "country": "ita",
+    "refs": {
+      "espn": "104"
+    }
+  },
+  {
+    "id": "ita-atalanta",
+    "kind": "club",
+    "name": "Atalanta",
+    "abbr": "ATA",
+    "country": "ita",
+    "refs": {
+      "espn": "105"
+    }
+  },
+  {
+    "id": "ita-bologna",
+    "kind": "club",
+    "name": "Bologna",
+    "abbr": "BOL",
+    "country": "ita",
+    "refs": {
+      "espn": "107"
+    }
+  },
+  {
+    "id": "ita-cagliari",
+    "kind": "club",
+    "name": "Cagliari",
+    "abbr": "CAG",
+    "country": "ita",
+    "refs": {
+      "espn": "2925"
+    }
+  },
+  {
+    "id": "ita-como",
+    "kind": "club",
+    "name": "Como",
+    "abbr": "COMO",
+    "country": "ita",
+    "refs": {
+      "espn": "2572"
+    }
+  },
+  {
+    "id": "ita-fiorentina",
+    "kind": "club",
+    "name": "Fiorentina",
+    "abbr": "FIO",
+    "country": "ita",
+    "refs": {
+      "espn": "109"
+    }
+  },
+  {
+    "id": "ita-frosinone",
+    "kind": "club",
+    "name": "Frosinone",
+    "abbr": "FRO",
+    "country": "ita",
+    "refs": {
+      "espn": "4057"
+    }
+  },
+  {
+    "id": "ita-genoa",
+    "kind": "club",
+    "name": "Genoa",
+    "abbr": "GEN",
+    "country": "ita",
+    "refs": {
+      "espn": "3263"
+    }
+  },
+  {
+    "id": "ita-internazionale",
+    "kind": "club",
+    "name": "Internazionale",
+    "abbr": "INT",
+    "country": "ita",
+    "refs": {
+      "espn": "110"
+    }
+  },
+  {
+    "id": "ita-juventus",
+    "kind": "club",
+    "name": "Juventus",
+    "abbr": "JUV",
+    "country": "ita",
+    "refs": {
+      "espn": "111"
+    }
+  },
+  {
+    "id": "ita-lazio",
+    "kind": "club",
+    "name": "Lazio",
+    "abbr": "LAZ",
+    "country": "ita",
+    "refs": {
+      "espn": "112"
+    }
+  },
+  {
+    "id": "ita-lecce",
+    "kind": "club",
+    "name": "Lecce",
+    "abbr": "LEC",
+    "country": "ita",
+    "refs": {
+      "espn": "113"
+    }
+  },
+  {
+    "id": "ita-monza",
+    "kind": "club",
+    "name": "Monza",
+    "abbr": "MON",
+    "country": "ita",
+    "refs": {
+      "espn": "4007"
+    }
+  },
+  {
+    "id": "ita-napoli",
+    "kind": "club",
+    "name": "Napoli",
+    "abbr": "NAP",
+    "country": "ita",
+    "refs": {
+      "espn": "114"
+    }
+  },
+  {
+    "id": "ita-parma",
+    "kind": "club",
+    "name": "Parma",
+    "abbr": "PAR",
+    "country": "ita",
+    "refs": {
+      "espn": "115"
+    }
+  },
+  {
+    "id": "ita-sassuolo",
+    "kind": "club",
+    "name": "Sassuolo",
+    "abbr": "SAS",
+    "country": "ita",
+    "refs": {
+      "espn": "3997"
+    }
+  },
+  {
+    "id": "ita-torino",
+    "kind": "club",
+    "name": "Torino",
+    "abbr": "TOR",
+    "country": "ita",
+    "refs": {
+      "espn": "239"
+    }
+  },
+  {
+    "id": "ita-udinese",
+    "kind": "club",
+    "name": "Udinese",
+    "abbr": "UDI",
+    "country": "ita",
+    "refs": {
+      "espn": "118"
+    }
+  },
+  {
+    "id": "ita-venezia",
+    "kind": "club",
+    "name": "Venezia",
+    "abbr": "VEN",
+    "country": "ita",
+    "refs": {
+      "espn": "17530"
+    }
+  },
+  {
+    "id": "mex-america",
+    "kind": "club",
+    "name": "América",
+    "abbr": "AME",
+    "country": "mex",
+    "refs": {
+      "espn": "227"
+    }
+  },
+  {
+    "id": "mex-atlante",
+    "kind": "club",
+    "name": "Atlante",
+    "abbr": "ATL",
+    "country": "mex",
+    "refs": {
+      "espn": "226"
+    }
+  },
+  {
+    "id": "mex-atlas",
+    "kind": "club",
+    "name": "Atlas",
+    "abbr": "ATS",
+    "country": "mex",
+    "refs": {
+      "espn": "216"
+    }
+  },
+  {
+    "id": "mex-atletico-de-san-luis",
+    "kind": "club",
+    "name": "Atlético de San Luis",
+    "abbr": "ASL",
+    "country": "mex",
+    "refs": {
+      "espn": "15720"
+    }
+  },
+  {
+    "id": "mex-cruz-azul",
+    "kind": "club",
+    "name": "Cruz Azul",
+    "abbr": "CAZ",
+    "country": "mex",
+    "refs": {
+      "espn": "218"
+    }
+  },
+  {
+    "id": "mex-fc-juarez",
+    "kind": "club",
+    "name": "FC Juarez",
+    "abbr": "JUA",
+    "country": "mex",
+    "refs": {
+      "espn": "17851"
+    }
+  },
+  {
+    "id": "mex-guadalajara",
+    "kind": "club",
+    "name": "Guadalajara",
+    "abbr": "GDL",
+    "country": "mex",
+    "refs": {
+      "espn": "219"
+    }
+  },
+  {
+    "id": "mex-leon",
+    "kind": "club",
+    "name": "León",
+    "abbr": "LEO",
+    "country": "mex",
+    "refs": {
+      "espn": "228"
+    }
+  },
+  {
+    "id": "mex-monterrey",
+    "kind": "club",
+    "name": "Monterrey",
+    "abbr": "MTY",
+    "country": "mex",
+    "refs": {
+      "espn": "220"
+    }
+  },
+  {
+    "id": "mex-necaxa",
+    "kind": "club",
+    "name": "Necaxa",
+    "abbr": "NCX",
+    "country": "mex",
+    "refs": {
+      "espn": "229"
+    }
+  },
+  {
+    "id": "mex-pachuca",
+    "kind": "club",
+    "name": "Pachuca",
+    "abbr": "PAC",
+    "country": "mex",
+    "refs": {
+      "espn": "234"
+    }
+  },
+  {
+    "id": "mex-puebla",
+    "kind": "club",
+    "name": "Puebla",
+    "abbr": "PUE",
+    "country": "mex",
+    "refs": {
+      "espn": "231"
+    }
+  },
+  {
+    "id": "mex-pumas-unam",
+    "kind": "club",
+    "name": "Pumas UNAM",
+    "abbr": "UNAM",
+    "country": "mex",
+    "refs": {
+      "espn": "233"
+    }
+  },
+  {
+    "id": "mex-queretaro",
+    "kind": "club",
+    "name": "Querétaro",
+    "abbr": "QRO",
+    "country": "mex",
+    "refs": {
+      "espn": "222"
+    }
+  },
+  {
+    "id": "mex-santos",
+    "kind": "club",
+    "name": "Santos",
+    "abbr": "SAN",
+    "country": "mex",
+    "refs": {
+      "espn": "225"
+    }
+  },
+  {
+    "id": "mex-tigres-uanl",
+    "kind": "club",
+    "name": "Tigres UANL",
+    "abbr": "UANL",
+    "country": "mex",
+    "refs": {
+      "espn": "232"
+    }
+  },
+  {
+    "id": "mex-tijuana",
+    "kind": "club",
+    "name": "Tijuana",
+    "abbr": "TIJ",
+    "country": "mex",
+    "refs": {
+      "espn": "10125"
+    }
+  },
+  {
+    "id": "mex-toluca",
+    "kind": "club",
+    "name": "Toluca",
+    "abbr": "TOL",
+    "country": "mex",
+    "refs": {
+      "espn": "223"
+    }
+  },
+  {
+    "id": "nat-alg",
+    "kind": "national",
+    "name": "Algeria",
+    "abbr": "ALG",
+    "country": "alg",
+    "refs": {
+      "espn": "624"
+    }
+  },
+  {
+    "id": "nat-arg",
+    "kind": "national",
+    "name": "Argentina",
+    "abbr": "ARG",
+    "country": "arg",
+    "refs": {
+      "espn": "202"
+    }
+  },
+  {
+    "id": "nat-aus",
+    "kind": "national",
+    "name": "Australia",
+    "abbr": "AUS",
+    "country": "aus",
+    "refs": {
+      "espn": "628"
+    }
+  },
+  {
+    "id": "nat-aut",
+    "kind": "national",
+    "name": "Austria",
+    "abbr": "AUT",
+    "country": "aut",
+    "refs": {
+      "espn": "474"
+    }
+  },
+  {
+    "id": "nat-bel",
+    "kind": "national",
+    "name": "Belgium",
+    "abbr": "BEL",
+    "country": "bel",
+    "refs": {
+      "espn": "459"
+    }
+  },
+  {
+    "id": "nat-bih",
+    "kind": "national",
+    "name": "Bosnia-Herzegovina",
+    "abbr": "BIH",
+    "country": "bih",
+    "refs": {
+      "espn": "452"
+    }
+  },
+  {
+    "id": "nat-bra",
+    "kind": "national",
+    "name": "Brazil",
+    "abbr": "BRA",
+    "country": "bra",
+    "refs": {
+      "espn": "205"
+    }
+  },
+  {
+    "id": "nat-can",
+    "kind": "national",
+    "name": "Canada",
+    "abbr": "CAN",
+    "country": "can",
+    "refs": {
+      "espn": "206"
+    }
+  },
+  {
+    "id": "nat-civ",
+    "kind": "national",
+    "name": "Ivory Coast",
+    "abbr": "CIV",
+    "country": "civ",
+    "refs": {
+      "espn": "4789"
+    }
+  },
+  {
+    "id": "nat-cod",
+    "kind": "national",
+    "name": "Congo DR",
+    "abbr": "COD",
+    "country": "cod",
+    "refs": {
+      "espn": "2850"
+    }
+  },
+  {
+    "id": "nat-col",
+    "kind": "national",
+    "name": "Colombia",
+    "abbr": "COL",
+    "country": "col",
+    "refs": {
+      "espn": "208"
+    }
+  },
+  {
+    "id": "nat-cpv",
+    "kind": "national",
+    "name": "Cape Verde",
+    "abbr": "CPV",
+    "country": "cpv",
+    "refs": {
+      "espn": "2597"
+    }
+  },
+  {
+    "id": "nat-cro",
+    "kind": "national",
+    "name": "Croatia",
+    "abbr": "CRO",
+    "country": "cro",
+    "refs": {
+      "espn": "477"
+    }
+  },
+  {
+    "id": "nat-cuw",
+    "kind": "national",
+    "name": "Curaçao",
+    "abbr": "CUW",
+    "country": "cuw",
+    "refs": {
+      "espn": "11678"
+    }
+  },
+  {
+    "id": "nat-cze",
+    "kind": "national",
+    "name": "Czechia",
+    "abbr": "CZE",
+    "country": "cze",
+    "refs": {
+      "espn": "450"
+    }
+  },
+  {
+    "id": "nat-ecu",
+    "kind": "national",
+    "name": "Ecuador",
+    "abbr": "ECU",
+    "country": "ecu",
+    "refs": {
+      "espn": "209"
+    }
+  },
+  {
+    "id": "nat-egy",
+    "kind": "national",
+    "name": "Egypt",
+    "abbr": "EGY",
+    "country": "egy",
+    "refs": {
+      "espn": "2620"
+    }
+  },
+  {
+    "id": "nat-eng",
+    "kind": "national",
+    "name": "England",
+    "abbr": "ENG",
+    "country": "eng",
+    "refs": {
+      "espn": "448"
+    }
+  },
+  {
+    "id": "nat-esp",
+    "kind": "national",
+    "name": "Spain",
+    "abbr": "ESP",
+    "country": "esp",
+    "refs": {
+      "espn": "164"
+    }
+  },
+  {
+    "id": "nat-fra",
+    "kind": "national",
+    "name": "France",
+    "abbr": "FRA",
+    "country": "fra",
+    "refs": {
+      "espn": "478"
+    }
+  },
+  {
+    "id": "nat-ger",
+    "kind": "national",
+    "name": "Germany",
+    "abbr": "GER",
+    "country": "ger",
+    "refs": {
+      "espn": "481"
+    }
+  },
+  {
+    "id": "nat-gha",
+    "kind": "national",
+    "name": "Ghana",
+    "abbr": "GHA",
+    "country": "gha",
+    "refs": {
+      "espn": "4469"
+    }
+  },
+  {
+    "id": "nat-hai",
+    "kind": "national",
+    "name": "Haiti",
+    "abbr": "HAI",
+    "country": "hai",
+    "refs": {
+      "espn": "2654"
+    }
+  },
+  {
+    "id": "nat-irn",
+    "kind": "national",
+    "name": "Iran",
+    "abbr": "IRN",
+    "country": "irn",
+    "refs": {
+      "espn": "469"
+    }
+  },
+  {
+    "id": "nat-irq",
+    "kind": "national",
+    "name": "Iraq",
+    "abbr": "IRQ",
+    "country": "irq",
+    "refs": {
+      "espn": "4375"
+    }
+  },
+  {
+    "id": "nat-jor",
+    "kind": "national",
+    "name": "Jordan",
+    "abbr": "JOR",
+    "country": "jor",
+    "refs": {
+      "espn": "2917"
+    }
+  },
+  {
+    "id": "nat-jpn",
+    "kind": "national",
+    "name": "Japan",
+    "abbr": "JPN",
+    "country": "jpn",
+    "refs": {
+      "espn": "627"
+    }
+  },
+  {
+    "id": "nat-kor",
+    "kind": "national",
+    "name": "South Korea",
+    "abbr": "KOR",
+    "country": "kor",
+    "refs": {
+      "espn": "451"
+    }
+  },
+  {
+    "id": "nat-ksa",
+    "kind": "national",
+    "name": "Saudi Arabia",
+    "abbr": "KSA",
+    "country": "ksa",
+    "refs": {
+      "espn": "655"
+    }
+  },
+  {
+    "id": "nat-mar",
+    "kind": "national",
+    "name": "Morocco",
+    "abbr": "MAR",
+    "country": "mar",
+    "refs": {
+      "espn": "2869"
+    }
+  },
+  {
+    "id": "nat-mex",
+    "kind": "national",
+    "name": "Mexico",
+    "abbr": "MEX",
+    "country": "mex",
+    "refs": {
+      "espn": "203"
+    }
+  },
+  {
+    "id": "nat-ned",
+    "kind": "national",
+    "name": "Netherlands",
+    "abbr": "NED",
+    "country": "ned",
+    "refs": {
+      "espn": "449"
+    }
+  },
+  {
+    "id": "nat-nor",
+    "kind": "national",
+    "name": "Norway",
+    "abbr": "NOR",
+    "country": "nor",
+    "refs": {
+      "espn": "464"
+    }
+  },
+  {
+    "id": "nat-nzl",
+    "kind": "national",
+    "name": "New Zealand",
+    "abbr": "NZL",
+    "country": "nzl",
+    "refs": {
+      "espn": "2666"
+    }
+  },
+  {
+    "id": "nat-pan",
+    "kind": "national",
+    "name": "Panama",
+    "abbr": "PAN",
+    "country": "pan",
+    "refs": {
+      "espn": "2659"
+    }
+  },
+  {
+    "id": "nat-par",
+    "kind": "national",
+    "name": "Paraguay",
+    "abbr": "PAR",
+    "country": "par",
+    "refs": {
+      "espn": "210"
+    }
+  },
+  {
+    "id": "nat-por",
+    "kind": "national",
+    "name": "Portugal",
+    "abbr": "POR",
+    "country": "por",
+    "refs": {
+      "espn": "482"
+    }
+  },
+  {
+    "id": "nat-qat",
+    "kind": "national",
+    "name": "Qatar",
+    "abbr": "QAT",
+    "country": "qat",
+    "refs": {
+      "espn": "4398"
+    }
+  },
+  {
+    "id": "nat-rsa",
+    "kind": "national",
+    "name": "South Africa",
+    "abbr": "RSA",
+    "country": "rsa",
+    "refs": {
+      "espn": "467"
+    }
+  },
+  {
+    "id": "nat-sco",
+    "kind": "national",
+    "name": "Scotland",
+    "abbr": "SCO",
+    "country": "sco",
+    "refs": {
+      "espn": "580"
+    }
+  },
+  {
+    "id": "nat-sen",
+    "kind": "national",
+    "name": "Senegal",
+    "abbr": "SEN",
+    "country": "sen",
+    "refs": {
+      "espn": "654"
+    }
+  },
+  {
+    "id": "nat-sui",
+    "kind": "national",
+    "name": "Switzerland",
+    "abbr": "SUI",
+    "country": "sui",
+    "refs": {
+      "espn": "475"
+    }
+  },
+  {
+    "id": "nat-swe",
+    "kind": "national",
+    "name": "Sweden",
+    "abbr": "SWE",
+    "country": "swe",
+    "refs": {
+      "espn": "466"
+    }
+  },
+  {
+    "id": "nat-tun",
+    "kind": "national",
+    "name": "Tunisia",
+    "abbr": "TUN",
+    "country": "tun",
+    "refs": {
+      "espn": "659"
+    }
+  },
+  {
+    "id": "nat-tur",
+    "kind": "national",
+    "name": "Türkiye",
+    "abbr": "TUR",
+    "country": "tur",
+    "refs": {
+      "espn": "465"
+    }
+  },
+  {
+    "id": "nat-uru",
+    "kind": "national",
+    "name": "Uruguay",
+    "abbr": "URU",
+    "country": "uru",
+    "refs": {
+      "espn": "212"
+    }
+  },
+  {
+    "id": "nat-usa",
+    "kind": "national",
+    "name": "United States",
+    "abbr": "USA",
+    "country": "usa",
+    "refs": {
+      "espn": "660"
+    }
+  },
+  {
+    "id": "nat-uzb",
+    "kind": "national",
+    "name": "Uzbekistan",
+    "abbr": "UZB",
+    "country": "uzb",
+    "refs": {
+      "espn": "2570"
+    }
+  },
+  {
+    "id": "usa-atlanta-united-fc",
+    "kind": "club",
+    "name": "Atlanta United FC",
+    "abbr": "ATL",
+    "country": "usa",
+    "refs": {
+      "espn": "18418"
+    }
+  },
+  {
+    "id": "usa-austin-fc",
+    "kind": "club",
+    "name": "Austin FC",
+    "abbr": "ATX",
+    "country": "usa",
+    "refs": {
+      "espn": "20906"
+    }
+  },
+  {
+    "id": "usa-charlotte-fc",
+    "kind": "club",
+    "name": "Charlotte FC",
+    "abbr": "CLT",
+    "country": "usa",
+    "refs": {
+      "espn": "21300"
+    }
+  },
+  {
+    "id": "usa-chicago-fire-fc",
+    "kind": "club",
+    "name": "Chicago Fire FC",
+    "abbr": "CHI",
+    "country": "usa",
+    "refs": {
+      "espn": "182"
+    }
+  },
+  {
+    "id": "usa-colorado-rapids",
+    "kind": "club",
+    "name": "Colorado Rapids",
+    "abbr": "COL",
+    "country": "usa",
+    "refs": {
+      "espn": "184"
+    }
+  },
+  {
+    "id": "usa-columbus-crew",
+    "kind": "club",
+    "name": "Columbus Crew",
+    "abbr": "CLB",
+    "country": "usa",
+    "refs": {
+      "espn": "183"
+    }
+  },
+  {
+    "id": "usa-dc-united",
+    "kind": "club",
+    "name": "D.C. United",
+    "abbr": "DC",
+    "country": "usa",
+    "refs": {
+      "espn": "193"
+    }
+  },
+  {
+    "id": "usa-fc-cincinnati",
+    "kind": "club",
+    "name": "FC Cincinnati",
+    "abbr": "CIN",
+    "country": "usa",
+    "refs": {
+      "espn": "18267"
+    }
+  },
+  {
+    "id": "usa-fc-dallas",
+    "kind": "club",
+    "name": "FC Dallas",
+    "abbr": "DAL",
+    "country": "usa",
+    "refs": {
+      "espn": "185"
+    }
+  },
+  {
+    "id": "usa-houston-dynamo-fc",
+    "kind": "club",
+    "name": "Houston Dynamo FC",
+    "abbr": "HOU",
+    "country": "usa",
+    "refs": {
+      "espn": "6077"
+    }
+  },
+  {
+    "id": "usa-inter-miami-cf",
+    "kind": "club",
+    "name": "Inter Miami CF",
+    "abbr": "MIA",
+    "country": "usa",
+    "refs": {
+      "espn": "20232"
+    }
+  },
+  {
+    "id": "usa-la-galaxy",
+    "kind": "club",
+    "name": "LA Galaxy",
+    "abbr": "LA",
+    "country": "usa",
+    "refs": {
+      "espn": "187"
+    }
+  },
+  {
+    "id": "usa-lafc",
+    "kind": "club",
+    "name": "LAFC",
+    "abbr": "LAFC",
+    "country": "usa",
+    "refs": {
+      "espn": "18966"
+    }
+  },
+  {
+    "id": "usa-minnesota-united-fc",
+    "kind": "club",
+    "name": "Minnesota United FC",
+    "abbr": "MIN",
+    "country": "usa",
+    "refs": {
+      "espn": "17362"
+    }
+  },
+  {
+    "id": "usa-nashville-sc",
+    "kind": "club",
+    "name": "Nashville SC",
+    "abbr": "NSH",
+    "country": "usa",
+    "refs": {
+      "espn": "18986"
+    }
+  },
+  {
+    "id": "usa-new-england-revolution",
+    "kind": "club",
+    "name": "New England Revolution",
+    "abbr": "NE",
+    "country": "usa",
+    "refs": {
+      "espn": "189"
+    }
+  },
+  {
+    "id": "usa-new-york-city-fc",
+    "kind": "club",
+    "name": "New York City FC",
+    "abbr": "NYC",
+    "country": "usa",
+    "refs": {
+      "espn": "17606"
+    }
+  },
+  {
+    "id": "usa-orlando-city-sc",
+    "kind": "club",
+    "name": "Orlando City SC",
+    "abbr": "ORL",
+    "country": "usa",
+    "refs": {
+      "espn": "12011"
+    }
+  },
+  {
+    "id": "usa-philadelphia-union",
+    "kind": "club",
+    "name": "Philadelphia Union",
+    "abbr": "PHI",
+    "country": "usa",
+    "refs": {
+      "espn": "10739"
+    }
+  },
+  {
+    "id": "usa-portland-timbers",
+    "kind": "club",
+    "name": "Portland Timbers",
+    "abbr": "POR",
+    "country": "usa",
+    "refs": {
+      "espn": "9723"
+    }
+  },
+  {
+    "id": "usa-real-salt-lake",
+    "kind": "club",
+    "name": "Real Salt Lake",
+    "abbr": "RSL",
+    "country": "usa",
+    "refs": {
+      "espn": "4771"
+    }
+  },
+  {
+    "id": "usa-red-bull-new-york",
+    "kind": "club",
+    "name": "Red Bull New York",
+    "abbr": "RBNY",
+    "country": "usa",
+    "refs": {
+      "espn": "190"
+    }
+  },
+  {
+    "id": "usa-san-diego-fc",
+    "kind": "club",
+    "name": "San Diego FC",
+    "abbr": "SD",
+    "country": "usa",
+    "refs": {
+      "espn": "22529"
+    }
+  },
+  {
+    "id": "usa-san-jose-earthquakes",
+    "kind": "club",
+    "name": "San Jose Earthquakes",
+    "abbr": "SJ",
+    "country": "usa",
+    "refs": {
+      "espn": "191"
+    }
+  },
+  {
+    "id": "usa-seattle-sounders-fc",
+    "kind": "club",
+    "name": "Seattle Sounders FC",
+    "abbr": "SEA",
+    "country": "usa",
+    "refs": {
+      "espn": "9726"
+    }
+  },
+  {
+    "id": "usa-sporting-kansas-city",
+    "kind": "club",
+    "name": "Sporting Kansas City",
+    "abbr": "SKC",
+    "country": "usa",
+    "refs": {
+      "espn": "186"
+    }
+  },
+  {
+    "id": "usa-st-louis-city-sc",
+    "kind": "club",
+    "name": "St. Louis CITY SC",
+    "abbr": "STL",
+    "country": "usa",
+    "refs": {
+      "espn": "21812"
+    }
+  }
+]

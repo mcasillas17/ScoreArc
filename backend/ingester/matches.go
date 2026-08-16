@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/mcasillas17/scorearc-backend/config"
@@ -17,10 +18,77 @@ import (
 
 var errMirrorUnavailable = errors.New("asset mirror temporarily unavailable")
 
+// sourceESPN names the provider every id in this process arrives from. It is
+// the crosswalk key, so it must match the seed's ref key exactly.
+const sourceESPN = "espn"
+
 type matchResult struct {
 	live      bool
 	active    bool
 	finalized bool
+}
+
+// resolveMatch turns a provider-shaped match into its canonical identity,
+// resolving both teams — creating provisional rows on a miss, so ingestion
+// never blocks on curation — and then the match itself, which adopts an
+// existing row on the natural key rather than duplicating it.
+func (r *runner) resolveMatch(
+	ctx context.Context,
+	comp config.Competition,
+	seasonID string,
+	match model.Match,
+) (store.MatchIdentity, error) {
+	kind := config.TeamKind(comp)
+	homeID, err := r.repo.Team(ctx, sourceESPN, store.TeamRef{
+		SourceID: match.Home.ID, Name: match.Home.Name, Abbr: match.Home.Abbr, Kind: kind,
+	})
+	if err != nil {
+		return store.MatchIdentity{}, fmt.Errorf("resolve home team: %w", err)
+	}
+	awayID, err := r.repo.Team(ctx, sourceESPN, store.TeamRef{
+		SourceID: match.Away.ID, Name: match.Away.Name, Abbr: match.Away.Abbr, Kind: kind,
+	})
+	if err != nil {
+		return store.MatchIdentity{}, fmt.Errorf("resolve away team: %w", err)
+	}
+	kickoff, err := time.Parse(time.RFC3339, match.Kickoff)
+	if err != nil {
+		return store.MatchIdentity{}, fmt.Errorf(
+			"match %s has unparseable kickoff %q", match.ID, match.Kickoff)
+	}
+	matchID, err := r.repo.Match(ctx, sourceESPN, store.MatchRef{
+		SourceID: match.ID, CompetitionID: comp.ID, SeasonID: seasonID,
+		HomeTeamID: homeID, AwayTeamID: awayID, Kickoff: kickoff,
+	})
+	if err != nil {
+		return store.MatchIdentity{}, fmt.Errorf("resolve match: %w", err)
+	}
+
+	return store.MatchIdentity{
+		MatchID: matchID, CompetitionID: comp.ID, SeasonID: seasonID,
+		HomeTeamID: homeID, AwayTeamID: awayID,
+		WinnerTeamID: canonicalWinner(match, homeID, awayID),
+		Source:       sourceESPN,
+	}, nil
+}
+
+// canonicalWinner translates the provider team id in winnerId. Nothing else in
+// the payload has to be translated by value like this, and getting it wrong
+// mislabels who won without ever raising an error, so it is done by matching
+// against the two teams the match actually has. A winner that is neither is not
+// a winner: it would fail the foreign key, or worse, point at some other club.
+func canonicalWinner(match model.Match, homeID, awayID string) *string {
+	if match.WinnerID == nil {
+		return nil
+	}
+	switch *match.WinnerID {
+	case match.Home.ID:
+		return &homeID
+	case match.Away.ID:
+		return &awayID
+	default:
+		return nil
+	}
 }
 
 func (r *runner) processMatches(
@@ -28,7 +96,8 @@ func (r *runner) processMatches(
 	comp config.Competition,
 	season config.Season,
 	matches []model.Match,
-	existing map[string]store.MatchRow,
+	identities map[string]store.MatchIdentity,
+	existing map[uuid.UUID]store.MatchRow,
 	slowTick bool,
 	backfill bool,
 ) (matchResult, error) {
@@ -39,8 +108,21 @@ func (r *runner) processMatches(
 			operationErrors = append(operationErrors, err)
 			break
 		}
+		identity, resolved := identities[match.ID]
+		if !resolved {
+			// Its resolution failure was already reported by the caller.
+			continue
+		}
 		providerHome, providerAway := match.Home, match.Away
-		current, found := existing[match.ID]
+		// Past this point the match is in CANONICAL space — the same space the
+		// stored row is in — so the two can be compared and merged. The summary
+		// fetch below is the one thing that still needs provider ids, which is
+		// what providerHome/providerAway are held back for.
+		match.Home.ID = identity.HomeTeamID
+		match.Away.ID = identity.AwayTeamID
+		match.WinnerID = identity.WinnerTeamID
+
+		current, found := existing[identity.MatchID]
 		skipMatchUpsert := false
 		var currentPtr *store.MatchRow
 		if found {
@@ -85,6 +167,13 @@ func (r *runner) processMatches(
 			}
 		}
 
+		// The preservation rules above can hand the match back its STORED teams
+		// and winner, which are canonical too. What gets written follows the
+		// match, not the provider payload that started the loop.
+		identity.HomeTeamID = match.Home.ID
+		identity.AwayTeamID = match.Away.ID
+		identity.WinnerTeamID = match.WinnerID
+
 		matchActive := false
 		switch match.State {
 		case model.MatchStateLive:
@@ -96,13 +185,8 @@ func (r *runner) processMatches(
 			matchActive = currentPtr == nil || !currentPtr.FinalizedAt.Valid
 		}
 
-		if err := r.repo.UpsertTeams(ctx, []model.Team{match.Home, match.Away}); err != nil {
-			operationErrors = append(operationErrors, fmt.Errorf("match %s teams: %w", match.ID, err))
-			result.active = result.active || matchActive
-			continue
-		}
 		if !skipMatchUpsert {
-			if err := r.repo.UpsertMatch(ctx, comp.ID, season.ID, match); err != nil {
+			if err := r.repo.UpsertMatch(ctx, identity, match); err != nil {
 				operationErrors = append(operationErrors, fmt.Errorf("match %s row: %w", match.ID, err))
 				result.active = result.active || matchActive
 				continue
@@ -119,9 +203,7 @@ func (r *runner) processMatches(
 		canFinalize := !requiresBracketConfirmation(match, season) || match.BracketConfirmed
 
 		if match.State == model.MatchStateFinished && isTerminalWithoutSummary(match) && canFinalize {
-			didFinalize, err := r.repo.FinalizeMatch(
-				ctx, comp.ID, season.ID, match, model.MatchDetail{},
-			)
+			didFinalize, err := r.repo.FinalizeMatch(ctx, identity, match, model.MatchDetail{})
 			if err != nil {
 				operationErrors = append(operationErrors, fmt.Errorf("match %s finalize terminal status: %w", match.ID, err))
 			} else if didFinalize {
@@ -152,13 +234,13 @@ func (r *runner) processMatches(
 			if match.State == model.MatchStateFinished {
 				match.HomeScore = summary.HomeScore
 				match.AwayScore = summary.AwayScore
-				didFinalize, err := r.repo.FinalizeMatch(ctx, comp.ID, season.ID, match, detail)
+				didFinalize, err := r.repo.FinalizeMatch(ctx, identity, match, detail)
 				if err != nil {
 					operationErrors = append(operationErrors, fmt.Errorf("match %s finalize: %w", match.ID, err))
 				} else if didFinalize {
 					result.finalized = true
 					matchActive = false
-					existing[match.ID] = store.MatchRow{
+					existing[identity.MatchID] = store.MatchRow{
 						State: match.State,
 						FinalizedAt: pgtype.Timestamptz{
 							Time: time.Now(), Valid: true,
@@ -166,13 +248,13 @@ func (r *runner) processMatches(
 						HasDetail: true,
 					}
 				}
-			} else if err := r.repo.UpsertMatchDetail(ctx, match.ID, detail); err != nil &&
+			} else if err := r.repo.UpsertMatchDetail(ctx, identity.MatchID, detail); err != nil &&
 				!errors.Is(err, store.ErrMatchFinalized) {
 				operationErrors = append(operationErrors, fmt.Errorf("match %s detail: %w", match.ID, err))
 			} else {
 				current.State = match.State
 				current.HasDetail = true
-				existing[match.ID] = current
+				existing[identity.MatchID] = current
 			}
 		}
 		r.mirrorCrest(ctx, match.Home)

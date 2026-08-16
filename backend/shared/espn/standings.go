@@ -12,8 +12,8 @@ import (
 // The TS mapper returns Group[] (id/name/standings per ESPN "children"
 // group, e.g. "Group A"). The Go port flattens that into a single
 // []Standing, carrying the group id/name onto each row (GroupID/GroupName
-// on Standing) so the `standing` table — keyed only by (comp_id, season_id,
-// team_id), one group per team per season — doesn't lose which group a
+// on Standing) so the `standing` table — keyed only by (competition_id,
+// season_id, team_id), one group per team per season — doesn't lose which group a
 // team belongs to. Rank stays group-relative (1..n within each group,
 // matching the TS `entries.map((entry, i) => ({ rank: i + 1 })` behavior),
 // it's just that groups are concatenated rather than nested.

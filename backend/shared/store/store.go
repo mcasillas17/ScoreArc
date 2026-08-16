@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -14,8 +15,19 @@ var ErrEmptyReplacement = errors.New("refusing to replace with an empty dataset"
 var ErrPartialReplacement = errors.New("refusing to replace standings with fewer rows")
 var ErrMatchFinalized = errors.New("match is finalized")
 
+// ErrMatchMissing means a fact write addressed a canonical match id that has no
+// row. The resolver creates the row before any fact write, so this is a broken
+// invariant — a lost row, or an id that never came from the resolver — and is
+// deliberately distinct from a write the immutability or state-regression
+// guards intentionally rejected, which is normal and reported as success.
+var ErrMatchMissing = errors.New("no match row for the canonical id")
+
 type Store struct {
 	pool *pgxpool.Pool
+	// identity is reachable only through s.cache(), which initialises it on
+	// first use so a bare &Store{pool: ...} literal cannot nil-panic.
+	identity     *identityCache
+	identityOnce sync.Once
 }
 
 const operationTimeout = 15 * time.Second
@@ -42,7 +54,7 @@ func New(ctx context.Context, dsn string) (*Store, error) {
 		pool.Close()
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
-	return &Store{pool: pool}, nil
+	return &Store{pool: pool, identity: newIdentityCache()}, nil
 }
 
 func (s *Store) Close() {

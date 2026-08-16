@@ -219,8 +219,10 @@ scoring probability; the core of the Phase-4 models).
 
 **Data source nuance:** ESPN's keyless API keys competitions by **slug**
 (`fifa.world`, `mex.1`, `eng.1`, `esp.1`, …); those slugs live on each competition
-in `competitions.ts`. IDs for teams/matches are ESPN's own ids (we reuse them as
-primary keys for idempotent ingestion).
+in `competitions.ts`. IDs for teams/matches are **ours**, not ESPN's. ESPN's ids live
+only in the `*_external_ref` crosswalk tables, which map `(source, source_id)` to a
+canonical id — so a second source describes the same entity instead of duplicating it.
+See `docs/superpowers/specs/2026-08-12-canonical-identity-design.md`.
 
 ## 10. Where everything lives (the map)
 

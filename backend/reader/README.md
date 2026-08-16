@@ -5,6 +5,11 @@ frontend's existing JSON models from Postgres, except news, which remains a
 short-lived ESPN proxy. The authoritative machine-readable contract is
 [`openapi.yaml`](openapi.yaml).
 
+Every id it serves is a **canonical ScoreArc id** — slugs for competitions,
+seasons, and teams; UUIDs for matches — not a provider's. Provider ids live only
+in the `*_external_ref` crosswalk tables, which the reader never joins. Ids stay
+opaque strings to consumers.
+
 ## Runtime configuration
 
 | Variable | Required | Meaning |

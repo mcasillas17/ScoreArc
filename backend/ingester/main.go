@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -73,6 +74,23 @@ func run() int {
 			log.Error("release ingester lease", "err", err)
 		}
 	}()
+
+	// Seeding happens INSIDE the lease. It is not read-only setup: it repoints
+	// crosswalk rows and promotes provisional teams, moving identities the lease
+	// holder is mid-cycle on. A second process — a rolling deploy, a `-once`
+	// job, a restart overlapping the old instance — that seeded before taking
+	// the lease would do all of that concurrently with the holder's writes,
+	// including repointing a ref for a team created after the holder read which
+	// teams needed promoting. The lease is what makes ingest single-writer, and
+	// seeding is an ingest write.
+	if err := applySeeds(ctx, repo, registry); err != nil {
+		if leaseErrorExitCode(ctx, err) == 0 {
+			log.Info("shutdown complete")
+			return 0
+		}
+		log.Error("seed registries", "err", err)
+		return 1
+	}
 
 	var mirror crestMirror
 	if configured, ok, err := assets.FromEnv(); err != nil {
@@ -159,6 +177,31 @@ func run() int {
 		}
 	}
 
+}
+
+// applySeeds writes the curated registries before any ingest, and returns a
+// non-zero exit code if it could not.
+//
+// Competition seeding is fatal because `match` has a foreign key to `season`:
+// with no competitions there is nothing to ingest into. Team seeding is fatal
+// for the same class of reason — a seed that could not be applied AT ALL means
+// no team registry — but NOT for a single club it could not curate. That one
+// keeps resolving through its provisional row, ApplyTeamSeed logs it and
+// returns nil, and the site stays up with one club degraded rather than down.
+func applySeeds(ctx context.Context, repo *store.Store, registry *config.Registry) error {
+	seedCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if err := repo.ApplyCompetitionSeed(seedCtx, registry.List()); err != nil {
+		return fmt.Errorf("apply competition seed: %w", err)
+	}
+	teams, err := config.LoadTeams()
+	if err != nil {
+		return fmt.Errorf("load team seed: %w", err)
+	}
+	if err := repo.ApplyTeamSeed(seedCtx, teams); err != nil {
+		return fmt.Errorf("apply team seed: %w", err)
+	}
+	return nil
 }
 
 func onceExitCodeForContext(ctx context.Context, result cycleResult) int {

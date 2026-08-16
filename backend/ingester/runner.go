@@ -6,10 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/google/uuid"
 
 	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
@@ -254,7 +257,7 @@ func (r *runner) ingestCompSeason(
 	if slowTick && ctx.Err() == nil {
 		start := time.Now()
 		var backlog []model.Match
-		backlog, backlogErr = r.repo.UnfinalizedMatches(ctx, comp.ID, season.ID)
+		backlog, backlogErr = r.repo.UnfinalizedMatches(ctx, comp.ID, season.ID, sourceESPN)
 		if backlogErr == nil {
 			for _, match := range backlog {
 				candidates[match.ID] = mergeCandidate(candidates[match.ID], match)
@@ -274,12 +277,60 @@ func (r *runner) ingestCompSeason(
 		r.recordRun(ctx, comp.ID, "bracket", bracketStart, bracketErr)
 	}
 
-	ids := make([]string, 0, len(candidates))
+	// Identity before facts: every candidate is resolved to a canonical match
+	// id — minting provisional teams and adopting an existing fixture on the
+	// natural key as needed — before anything is read or written about it. A
+	// candidate that cannot be resolved is dropped from this cycle and reported;
+	// the rest still ingest.
+	//
+	// Candidates arrive keyed by PROVIDER id, and two provider ids can resolve
+	// to one canonical match — the crosswalk allows exactly that, and it is what
+	// merging a duplicate produces. Both must not survive as separate
+	// candidates: they would race for the same row, share and mutate the same
+	// `existing` entry, and if the first finalized the second's write would
+	// silently match zero rows. They are merged here instead, the same way two
+	// payloads for one provider id already are.
+	//
+	// The iteration order is sorted rather than Go's randomised map order so the
+	// merge is reproducible: which payload wins must not flap from cycle to
+	// cycle.
+	resolveStart := time.Now()
+	providerIDs := make([]string, 0, len(candidates))
+	for id := range candidates {
+		providerIDs = append(providerIDs, id)
+	}
+	sort.Strings(providerIDs)
+
+	ids := make([]uuid.UUID, 0, len(candidates))
 	matches := make([]model.Match, 0, len(candidates))
-	for id, match := range candidates {
-		ids = append(ids, id)
+	identities := make(map[string]store.MatchIdentity, len(candidates))
+	positions := make(map[uuid.UUID]int, len(candidates))
+	var resolveErrors []error
+	for _, id := range providerIDs {
+		match := candidates[id]
+		identity, err := r.resolveMatch(ctx, comp, season.ID, match)
+		if err != nil {
+			resolveErrors = append(resolveErrors, fmt.Errorf("match %s: %w", id, err))
+			continue
+		}
+		identities[id] = identity
+		if at, duplicate := positions[identity.MatchID]; duplicate {
+			merged := mergeCandidate(matches[at], match)
+			r.log.Warn("two provider ids resolve to one match; merging",
+				"comp", comp.ID, "season", season.ID, "match", identity.MatchID,
+				"ids", matches[at].ID+","+id, "kept", merged.ID)
+			matches[at] = merged
+			continue
+		}
+		positions[identity.MatchID] = len(matches)
+		ids = append(ids, identity.MatchID)
 		matches = append(matches, match)
 	}
+	resolveErr := errors.Join(resolveErrors...)
+	if len(candidates) > 0 {
+		r.recordRun(ctx, comp.ID, "resolve_identity", resolveStart, resolveErr)
+	}
+
 	existingStart := time.Now()
 	existing, existingErr := r.repo.ExistingMatches(ctx, comp.ID, season.ID, ids)
 	r.recordRun(ctx, comp.ID, "existing_matches", existingStart, existingErr)
@@ -288,13 +339,13 @@ func (r *runner) ingestCompSeason(
 			live: liveCandidate, active: activeCandidate,
 			stateReliable: false,
 			empty:         len(scoreboard) == 0 && !activeCandidate,
-			err:           errors.Join(bracketErr, backlogErr, existingErr),
+			err:           errors.Join(bracketErr, backlogErr, resolveErr, existingErr),
 		}
 	}
 
 	matchStart := time.Now()
 	matchResult, processErr := r.processMatches(
-		ctx, comp, season, matches, existing, slowTick, backfill,
+		ctx, comp, season, matches, identities, existing, slowTick, backfill,
 	)
 	r.recordRun(ctx, comp.ID, "matches", matchStart, processErr)
 
@@ -305,7 +356,7 @@ func (r *runner) ingestCompSeason(
 			r.refreshTopScorers(ctx, comp, season),
 		)
 	}
-	coreErr := errors.Join(scoreboardErr, bracketErr, backlogErr, processErr)
+	coreErr := errors.Join(scoreboardErr, bracketErr, backlogErr, resolveErr, processErr)
 	combinedErr := errors.Join(coreErr, errors.Join(refreshErrors...))
 	processCanceled := errors.Is(processErr, context.Canceled) ||
 		errors.Is(processErr, context.DeadlineExceeded)
@@ -318,7 +369,7 @@ func (r *runner) ingestCompSeason(
 		live:   live,
 		active: active,
 		stateReliable: scoreboardErr == nil && bracketErr == nil &&
-			backlogErr == nil && !processCanceled,
+			backlogErr == nil && resolveErr == nil && !processCanceled,
 		backfillDone: coreErr == nil,
 		empty:        scoreboardErr == nil && len(scoreboard) == 0 && !activeCandidate,
 		err:          combinedErr,
@@ -427,8 +478,23 @@ func (r *runner) refreshStandings(
 	}
 	start := time.Now()
 	rows, err := r.source.Standings(ctx, comp, season)
+	teamIDs := make(map[string]string, len(rows))
 	if err == nil {
-		err = r.repo.ReplaceStandings(ctx, comp.ID, season.ID, rows)
+		kind := config.TeamKind(comp)
+		for _, row := range rows {
+			canonical, resolveErr := r.repo.Team(ctx, sourceESPN, store.TeamRef{
+				SourceID: row.Team.ID, Name: row.Team.Name,
+				Abbr: row.Team.Abbr, Kind: kind,
+			})
+			if resolveErr != nil {
+				err = fmt.Errorf("resolve standings team %s: %w", row.Team.ID, resolveErr)
+				break
+			}
+			teamIDs[row.Team.ID] = canonical
+		}
+	}
+	if err == nil {
+		err = r.repo.ReplaceStandings(ctx, comp.ID, season.ID, sourceESPN, rows, teamIDs)
 	}
 	if errors.Is(err, store.ErrEmptyReplacement) || errors.Is(err, store.ErrPartialReplacement) {
 		r.log.Info("standings replacement rejected; preserving existing rows",
@@ -438,7 +504,11 @@ func (r *runner) refreshStandings(
 	}
 	if err == nil {
 		for _, row := range rows {
-			r.mirrorCrest(ctx, row.Team)
+			// The mirror keys crests by canonical team id, because that is what
+			// SetTeamCrest writes against.
+			team := row.Team
+			team.ID = teamIDs[row.Team.ID]
+			r.mirrorCrest(ctx, team)
 		}
 	}
 	r.recordRun(ctx, comp.ID, "standings", start, err)
@@ -456,7 +526,7 @@ func (r *runner) refreshTopScorers(
 	start := time.Now()
 	rows, err := r.source.TopScorers(ctx, comp, season, topScorerLimit)
 	if err == nil {
-		err = r.repo.ReplaceTopScorers(ctx, comp.ID, season.ID, rows)
+		err = r.repo.ReplaceTopScorers(ctx, comp.ID, season.ID, sourceESPN, rows)
 	}
 	if errors.Is(err, store.ErrEmptyReplacement) {
 		r.log.Info("top scorers unavailable; preserving existing rows", "comp", comp.ID)
@@ -466,7 +536,7 @@ func (r *runner) refreshTopScorers(
 	if err == nil {
 		mirrored := r.mirrorTopScorers(ctx, rows)
 		if topScorerCrestsChanged(rows, mirrored) {
-			err = r.repo.ReplaceTopScorers(ctx, comp.ID, season.ID, mirrored)
+			err = r.repo.ReplaceTopScorers(ctx, comp.ID, season.ID, sourceESPN, mirrored)
 		}
 	}
 	r.recordRun(ctx, comp.ID, "top_scorers", start, err)

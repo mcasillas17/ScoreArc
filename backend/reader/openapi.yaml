@@ -159,7 +159,10 @@ components:
       name: id
       in: path
       required: true
-      description: Opaque ESPN match identifier used only as a SQL parameter.
+      description: >-
+        Canonical ScoreArc match identifier — a UUID carried as a string, opaque to
+        consumers. Provider ids are not accepted here; they live in the
+        match_external_ref crosswalk.
       schema: { type: string, minLength: 1 }
   headers:
     LiveCacheControl:

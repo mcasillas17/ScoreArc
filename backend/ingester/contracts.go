@@ -4,20 +4,37 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 	"github.com/mcasillas17/scorearc-backend/shared/store"
 )
 
+// repository is the ingester's whole view of persistence, in two halves:
+// identity, which turns provider ids into ScoreArc ids, and facts, which are
+// only ever written against ids identity produced.
+//
+// There is deliberately no UpsertTeams. Team rows belong to the curated seed
+// and, on a miss, to the resolver; if the ingester could mint them as a side
+// effect of writing a match, every unrecognised provider id would quietly
+// become a second copy of a club we already have.
 type repository interface {
-	UpsertTeams(context.Context, []model.Team) error
+	// identity
+	Team(context.Context, string, store.TeamRef) (string, error)
+	Match(context.Context, string, store.MatchRef) (uuid.UUID, error)
+	ApplyTeamSeed(context.Context, []config.SeedTeam) error
+	ApplyCompetitionSeed(context.Context, []config.Competition) error
+
+	// facts
 	SetTeamCrest(context.Context, string, string) error
-	UpsertMatch(context.Context, string, string, model.Match) error
-	UpsertMatchDetail(context.Context, string, model.MatchDetail) error
-	FinalizeMatch(context.Context, string, string, model.Match, model.MatchDetail) (bool, error)
-	ExistingMatches(context.Context, string, string, []string) (map[string]store.MatchRow, error)
-	UnfinalizedMatches(context.Context, string, string) ([]model.Match, error)
-	ReplaceStandings(context.Context, string, string, []model.Standing) error
-	ReplaceTopScorers(context.Context, string, string, []model.TopScorer) error
+	UpsertMatch(context.Context, store.MatchIdentity, model.Match) error
+	UpsertMatchDetail(context.Context, uuid.UUID, model.MatchDetail) error
+	FinalizeMatch(context.Context, store.MatchIdentity, model.Match, model.MatchDetail) (bool, error)
+	ExistingMatches(context.Context, string, string, []uuid.UUID) (map[uuid.UUID]store.MatchRow, error)
+	UnfinalizedMatches(context.Context, string, string, string) ([]model.Match, error)
+	ReplaceStandings(context.Context, string, string, string, []model.Standing, map[string]string) error
+	ReplaceTopScorers(context.Context, string, string, string, []model.TopScorer) error
 	LogIngestRun(context.Context, *string, string, time.Time, time.Time, bool, string) error
 	PruneIngestRuns(context.Context, time.Time) (int64, error)
 }
