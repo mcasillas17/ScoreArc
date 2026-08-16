@@ -491,6 +491,7 @@ func testRunner(src *fakeSource, repo *fakeRepository, comp config.Competition) 
 		backfilled:        make(map[string]time.Time),
 		backfillAttempted: make(map[string]time.Time),
 		squadsRefreshed:   make(map[string]time.Time),
+		squadAttempted:    make(map[string]time.Time),
 		maxConcurrent:     3,
 	}
 }
@@ -2075,7 +2076,7 @@ func TestSquadRefreshContinuesPastOneFailure(t *testing.T) {
 	}
 }
 
-func TestSquadRefreshRetriesWholeCompetitionAfterOneFailure(t *testing.T) {
+func TestSquadRefreshRetriesOnlyFailedTeamAfterBackoff(t *testing.T) {
 	src := &fakeSource{
 		standings:    squadTestStandings("one", "two"),
 		rosterErrors: map[string]error{"two": errors.New("temporary")},
@@ -2088,13 +2089,27 @@ func TestSquadRefreshRetriesWholeCompetitionAfterOneFailure(t *testing.T) {
 	delete(src.rosterErrors, "two")
 	src.mu.Unlock()
 	worker.runCycle(context.Background(), true)
+	worker.squadAttempted["test/2026/two"] = time.Now().Add(-squadRetryInterval)
+	worker.runCycle(context.Background(), true)
 	worker.runCycle(context.Background(), true)
 
 	src.mu.Lock()
 	defer src.mu.Unlock()
-	if len(src.rosterCalls) != 4 {
-		t.Fatalf("roster calls = %d, want 4 (two failed-cycle calls, two retry calls)",
+	if len(src.rosterCalls) != 3 {
+		t.Fatalf("roster calls = %d, want 3 (two initial calls, one failed-team retry)",
 			len(src.rosterCalls))
+	}
+	var oneCalls, twoCalls int
+	for _, teamID := range src.rosterCalls {
+		switch teamID {
+		case "one":
+			oneCalls++
+		case "two":
+			twoCalls++
+		}
+	}
+	if oneCalls != 1 || twoCalls != 2 {
+		t.Fatalf("roster calls by team = one:%d two:%d, want 1/2", oneCalls, twoCalls)
 	}
 }
 

@@ -107,6 +107,7 @@ func TestMapRosterReadsIsoBirthDate(t *testing.T) {
 
 func TestMapRosterLeavesProviderOmissionsNilInsteadOfZero(t *testing.T) {
 	squad, err := MapRoster([]byte(`{
+		"status":"success",
 		"team":{"id":"227"},
 		"athletes":[{
 			"id":"p1",
@@ -130,6 +131,7 @@ func TestMapRosterLeavesProviderOmissionsNilInsteadOfZero(t *testing.T) {
 
 func TestMapRosterRejectsMalformedBirthDate(t *testing.T) {
 	_, err := MapRoster([]byte(`{
+		"status":"success",
 		"team":{"id":"227"},
 		"athletes":[{"id":"p1","fullName":"Bad Date","dateOfBirth":"03/09/2003"}]
 	}`))
@@ -139,7 +141,17 @@ func TestMapRosterRejectsMalformedBirthDate(t *testing.T) {
 }
 
 func TestMapRosterRejectsMissingAthletesArray(t *testing.T) {
-	if _, err := MapRoster([]byte(`{"team":{"id":"227"}}`)); err == nil {
+	if _, err := MapRoster([]byte(`{"status":"success","team":{"id":"227"}}`)); err == nil {
 		t.Fatal("expected missing athletes array to fail")
+	}
+}
+
+func TestMapRosterRejectsFailedEnvelope(t *testing.T) {
+	if _, err := MapRoster([]byte(`{
+		"status":"error",
+		"team":{"id":"227"},
+		"athletes":[]
+	}`)); err == nil {
+		t.Fatal("expected non-success roster envelope to fail")
 	}
 }

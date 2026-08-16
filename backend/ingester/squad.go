@@ -18,6 +18,10 @@ const (
 	// complete daily refresh. Bound fan-out at five so one competition never
 	// sends all 20 roster requests at once.
 	squadRefreshConcurrency = 5
+	// A failed club retries at most twice an hour. One permanent failure then
+	// adds at most 48 logical fetches per day instead of refetching all ~180
+	// squads on each of the 288 slow ticks.
+	squadRetryInterval = 30 * time.Minute
 )
 
 func (r *runner) refreshSquads(
@@ -30,16 +34,8 @@ func (r *runner) refreshSquads(
 		return ctx.Err()
 	}
 	start := time.Now()
-	key := comp.ID + "/" + season.ID
 	now := time.Now().UTC()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-
-	r.mu.Lock()
-	lastRefresh := r.squadsRefreshed[key]
-	r.mu.Unlock()
-	if lastRefresh.Equal(today) {
-		return nil
-	}
 
 	if len(teamIDs) == 0 {
 		err := fmt.Errorf("no standings teams available for squad refresh")
@@ -48,10 +44,30 @@ func (r *runner) refreshSquads(
 	}
 
 	providerTeamIDs := make([]string, 0, len(teamIDs))
+	r.mu.Lock()
+	if r.squadsRefreshed == nil {
+		r.squadsRefreshed = make(map[string]time.Time)
+	}
+	if r.squadAttempted == nil {
+		r.squadAttempted = make(map[string]time.Time)
+	}
 	for providerTeamID := range teamIDs {
+		key := comp.ID + "/" + season.ID + "/" + providerTeamID
+		if r.squadsRefreshed[key].Equal(today) {
+			continue
+		}
+		if attempted := r.squadAttempted[key]; !attempted.IsZero() &&
+			now.Sub(attempted) < squadRetryInterval {
+			continue
+		}
+		r.squadAttempted[key] = now
 		providerTeamIDs = append(providerTeamIDs, providerTeamID)
 	}
+	r.mu.Unlock()
 	sort.Strings(providerTeamIDs)
+	if len(providerTeamIDs) == 0 {
+		return nil
+	}
 
 	semaphore := make(chan struct{}, squadRefreshConcurrency)
 	var wg sync.WaitGroup
@@ -86,22 +102,16 @@ func (r *runner) refreshSquads(
 				squad.Players, make(map[string]uuid.UUID),
 			); err != nil {
 				recordError(fmt.Errorf("team %s squad write: %w", providerTeamID, err))
+				return
 			}
+			r.mu.Lock()
+			r.squadsRefreshed[comp.ID+"/"+season.ID+"/"+providerTeamID] = today
+			r.mu.Unlock()
 		}()
 	}
 	wg.Wait()
 
 	refreshErr := errors.Join(refreshErrors...)
 	r.recordRun(ctx, comp.ID, "squads", start, refreshErr)
-	if refreshErr != nil {
-		return refreshErr
-	}
-
-	r.mu.Lock()
-	if r.squadsRefreshed == nil {
-		r.squadsRefreshed = make(map[string]time.Time)
-	}
-	r.squadsRefreshed[key] = today
-	r.mu.Unlock()
-	return nil
+	return refreshErr
 }

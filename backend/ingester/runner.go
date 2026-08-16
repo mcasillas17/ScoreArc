@@ -48,6 +48,7 @@ type runner struct {
 	backfilled        map[string]time.Time
 	backfillAttempted map[string]time.Time
 	squadsRefreshed   map[string]time.Time
+	squadAttempted    map[string]time.Time
 	mirrorUnavailable time.Time
 	mirrorTimeout     time.Duration
 }

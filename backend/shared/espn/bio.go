@@ -1,11 +1,40 @@
 package espn
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
+
+func ValidateAthleteBioEnvelope(raw []byte) error {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return fmt.Errorf("decode athlete bio envelope: %w", err)
+	}
+	if rawCode, exists := envelope["code"]; exists {
+		var code int
+		if err := json.Unmarshal(rawCode, &code); err != nil {
+			return fmt.Errorf("decode athlete bio code: %w", err)
+		}
+		if code == 404 {
+			return nil
+		}
+		if code != 0 {
+			return fmt.Errorf("athlete bio returned code %d", code)
+		}
+	}
+	rawHistory, exists := envelope["teamHistory"]
+	if !exists || bytes.Equal(bytes.TrimSpace(rawHistory), []byte("null")) {
+		return fmt.Errorf("athlete bio missing teamHistory array")
+	}
+	var history []json.RawMessage
+	if err := json.Unmarshal(rawHistory, &history); err != nil {
+		return fmt.Errorf("decode athlete bio teamHistory: %w", err)
+	}
+	return nil
+}
 
 type rawAthleteBio struct {
 	Code        int `json:"code"`

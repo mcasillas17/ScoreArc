@@ -11,7 +11,8 @@ import (
 )
 
 type rawRosterDocument struct {
-	Team struct {
+	Status string `json:"status"`
+	Team   struct {
 		ID flexibleString `json:"id"`
 	} `json:"team"`
 	Athletes []rawRosterAthlete `json:"athletes"`
@@ -48,6 +49,9 @@ func MapRoster(raw []byte) (model.Squad, error) {
 	var document rawRosterDocument
 	if err := json.Unmarshal(raw, &document); err != nil {
 		return model.Squad{}, fmt.Errorf("decode roster: %w", err)
+	}
+	if document.Status != "success" {
+		return model.Squad{}, fmt.Errorf("roster status is not success")
 	}
 	if document.Team.ID == "" {
 		return model.Squad{}, fmt.Errorf("roster missing team identity")

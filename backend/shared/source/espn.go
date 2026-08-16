@@ -33,6 +33,9 @@ type cachedResponse struct {
 const (
 	scoreboardEventLimit = 1000
 	scoreboardCacheTTL   = 5 * time.Second
+	// A successful first-team roster must contain at least a starting XI.
+	// Shorter payloads are not authoritative enough for replacement deletion.
+	minimumRosterPlayers = 11
 )
 
 func NewESPN(client *espn.Client) *ESPN {
@@ -224,6 +227,10 @@ func (e *ESPN) Roster(
 		return model.Squad{}, fmt.Errorf(
 			"roster team %q does not match %q", squad.TeamSourceID, teamSourceID)
 	}
+	if len(squad.Players) < minimumRosterPlayers {
+		return model.Squad{}, fmt.Errorf(
+			"roster team %q has only %d players", teamSourceID, len(squad.Players))
+	}
 	return squad, nil
 }
 
@@ -234,6 +241,9 @@ func (e *ESPN) AthleteBio(
 ) ([]model.TeamHistoryEntry, error) {
 	raw, err := e.get(ctx, espn.AthleteBioURL(comp.ESPNSlug, athleteSourceID))
 	if err != nil {
+		return nil, err
+	}
+	if err := espn.ValidateAthleteBioEnvelope(raw); err != nil {
 		return nil, err
 	}
 	return espn.MapAthleteBio(raw)

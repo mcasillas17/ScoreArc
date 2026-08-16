@@ -548,6 +548,11 @@ Implement:
   `player.birth_date` / `player.nationality` with `COALESCE` so a later payload without them
   cannot blank an earlier one.
 
+> **Review hardening:** the source accepts only a `status:"success"` roster with at least a
+> starting XI, and the store rejects a shrink of more than five players as partial. This
+> preserves the deliberate one-player transfer tail-delete while preventing a truncated
+> response from erasing most of a previously complete squad.
+
 - [x] **Step 3: Run**
 
 ```bash
@@ -638,7 +643,9 @@ Create `backend/ingester/squad.go` with `refreshSquads(ctx, comp, season, teamID
 following `snapshotStandings`'s shape from T7.1: check the in-process day gate, iterate the
 teams from the standings refresh (which already has provider→canonical ids in hand), call
 `r.source.Roster` then `r.repo.ReplaceSquad` per team, join the errors, record one
-`ingest_run` of kind `squads`, and set the day only on overall success.
+`ingest_run` of kind `squads`, remember successful teams independently for the UTC day, and
+retry only failed teams after a 30-minute backoff. The original all-or-nothing day marker
+would have refetched all ~180 successful squads every five minutes when one club stayed down.
 
 Bound the concurrency the way `mirrorTopScorers` already does — a `chan struct{}` semaphore
 of 5 — so twenty roster fetches do not go out at once.
@@ -757,6 +764,11 @@ the exact URL, because pointing it at the site host produces a silent 404.
 returning an empty slice — not an error — for `{"code":404}` or an absent `teamHistory`.
 **Test that 404 case explicitly**; it is the shape a mistyped slug produces and it must not
 look like success with data.
+
+> **Review hardening:** `MapAthleteBio` retains that standalone mapper contract, while the
+> production source validates the transport envelope first. Only an explicit `teamHistory`
+> array or `code:404` is authoritative; a missing/null envelope fails before replacement, so
+> malformed success-shaped JSON cannot erase stored career rows and stamp the 30-day TTL.
 
 - [x] **Step 3: The bounded refresher**
 
@@ -898,6 +910,9 @@ slow tick by design. That is correct; say so in the PR rather than treating it a
 > with zero failures, and wrote nine competitions: 6,903 memberships, 3,519 season-stat
 > rows, 5,299 players (5,101 dated / 5,083 nationalities), and 66 history rows. The stat-row
 > count is strictly below membership, as required.
+>
+> Round-one review also added a real least-privilege test proving provisional-team promotion
+> repoints `squad_membership` and `player_season_stat` before deleting the provisional team.
 
 - [ ] **Step 3: PR**
 

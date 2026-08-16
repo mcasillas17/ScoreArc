@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -157,6 +158,31 @@ func TestReplaceSquadEmptyPayloadPreservesExistingRows(t *testing.T) {
 	}
 	if got := countRows(t, pool, `SELECT count(*) FROM squad_membership`); got != 2 {
 		t.Fatalf("empty payload changed memberships: got %d, want 2", got)
+	}
+}
+
+func TestReplaceSquadRejectsImplausiblePartialPayload(t *testing.T) {
+	squadStore, pool := newIntegrationStore(t)
+	mustSeedTwoTeams(t, squadStore)
+	mustSeedSeason(t, pool)
+
+	members := make([]model.SquadMember, 12)
+	for index := range members {
+		members[index] = model.SquadMember{
+			SourceID: fmt.Sprintf("player-%02d", index),
+			FullName: fmt.Sprintf("Player %02d", index),
+		}
+	}
+	replaceTestSquad(t, squadStore, members)
+	err := squadStore.ReplaceSquad(
+		context.Background(), "premier-league", "2026-27", "eng-arsenal",
+		"espn", members[:6], make(map[string]uuid.UUID),
+	)
+	if !errors.Is(err, ErrPartialReplacement) {
+		t.Fatalf("partial replacement error = %v, want ErrPartialReplacement", err)
+	}
+	if got := countRows(t, pool, `SELECT count(*) FROM squad_membership`); got != 12 {
+		t.Fatalf("partial payload changed memberships: got %d, want 12", got)
 	}
 }
 

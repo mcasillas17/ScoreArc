@@ -114,6 +114,7 @@ func run() int {
 		backfilled:        make(map[string]time.Time),
 		backfillAttempted: make(map[string]time.Time),
 		squadsRefreshed:   make(map[string]time.Time),
+		squadAttempted:    make(map[string]time.Time),
 	}
 
 	if *once {

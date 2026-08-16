@@ -14,6 +14,11 @@ type resolvedSquadMember struct {
 	member   model.SquadMember
 }
 
+// Daily roster corrections can remove a few departed players, but losing more
+// than five at once is treated as a truncated upstream response and preserves
+// the last complete squad.
+const maxSquadMembershipShrink = 5
+
 func (s *Store) ReplaceSquad(
 	ctx context.Context,
 	competitionID, seasonID, teamID, source string,
@@ -53,6 +58,19 @@ func (s *Store) ReplaceSquad(
 		return err
 	}
 	defer rollback(opCtx, tx)
+
+	var existingCount int
+	if err := tx.QueryRow(opCtx, `
+SELECT count(*) FROM squad_membership
+WHERE competition_id=$1 AND season_id=$2 AND team_id=$3`,
+		competitionID, seasonID, teamID,
+	).Scan(&existingCount); err != nil {
+		return fmt.Errorf("count existing squad membership: %w", err)
+	}
+	if existingCount > len(resolved)+maxSquadMembershipShrink {
+		return fmt.Errorf("%w: squad shrank from %d to %d players",
+			ErrPartialReplacement, existingCount, len(resolved))
+	}
 
 	keep := make([]uuid.UUID, 0, len(resolved))
 	for _, row := range resolved {
