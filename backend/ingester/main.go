@@ -113,6 +113,7 @@ func run() int {
 		rejectedAssets:    make(map[string]struct{}),
 		backfilled:        make(map[string]time.Time),
 		backfillAttempted: make(map[string]time.Time),
+		snapshotted:       make(map[string]time.Time),
 	}
 
 	if *once {

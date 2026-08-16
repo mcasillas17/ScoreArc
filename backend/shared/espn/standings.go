@@ -56,13 +56,14 @@ type rawStandingTeam struct {
 }
 
 type rawStat struct {
-	Name  string  `json:"name"`
-	Value float64 `json:"value"`
+	Name  string   `json:"name"`
+	Value *float64 `json:"value"`
 }
 
-// standingStatMap ports the TS mapper's statMap: stats[].name -> value.
-func standingStatMap(stats []rawStat) map[string]float64 {
-	out := make(map[string]float64, len(stats))
+// standingStatMap ports the TS mapper's statMap while preserving JSON null as
+// nil so a missing provider value cannot become a valid-looking numeric zero.
+func standingStatMap(stats []rawStat) map[string]*float64 {
+	out := make(map[string]*float64, len(stats))
 	for _, st := range stats {
 		out[st.Name] = st.Value
 	}
@@ -121,8 +122,8 @@ func MapStandings(raw []byte) ([]Standing, error) {
 				"pointsAgainst", "pointDifferential", "points",
 			} {
 				value, ok := s[name]
-				if !ok || math.Trunc(value) != value ||
-					(name != "pointDifferential" && value < 0) {
+				if !ok || value == nil || math.Trunc(*value) != *value ||
+					(name != "pointDifferential" && *value < 0) {
 					return nil, fmt.Errorf("standing row %d in %q has invalid %s", i, grp.Name, name)
 				}
 			}
@@ -149,15 +150,15 @@ func MapStandings(raw []byte) ([]Standing, error) {
 				GroupID:        groupID,
 				GroupName:      groupName,
 				Rank:           i + 1,
-				Played:         int(s["gamesPlayed"]),
-				Wins:           int(s["wins"]),
-				Draws:          int(s["ties"]),
-				Losses:         int(s["losses"]),
-				GoalsFor:       int(s["pointsFor"]),
-				GoalsAgainst:   int(s["pointsAgainst"]),
-				GoalDifference: int(s["pointDifferential"]),
-				Points:         int(s["points"]),
-				Advanced:       s["advanced"] == 1,
+				Played:         int(*s["gamesPlayed"]),
+				Wins:           int(*s["wins"]),
+				Draws:          int(*s["ties"]),
+				Losses:         int(*s["losses"]),
+				GoalsFor:       int(*s["pointsFor"]),
+				GoalsAgainst:   int(*s["pointsAgainst"]),
+				GoalDifference: int(*s["pointDifferential"]),
+				Points:         int(*s["points"]),
+				Advanced:       s["advanced"] != nil && *s["advanced"] == 1,
 			})
 		}
 	}
