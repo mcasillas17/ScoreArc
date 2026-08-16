@@ -27,7 +27,7 @@ import (
 var touchTier = map[string]bool{
 	"Pass": true, "Ball touch": true, "Tackle": true, "Take On": true,
 	"Aerial": true, "Interception": true, "Dispossessed": true,
-	"Blocked Pass": true, "Clear": true, "Cross": true,
+	"Clear": true, "Cross": true,
 	"Attempted tackle": true,
 }
 
