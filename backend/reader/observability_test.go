@@ -85,6 +85,9 @@ func TestAccessLogRecordsRequestDetail(t *testing.T) {
 	if got := record["method"]; got != http.MethodGet {
 		t.Fatalf("method = %v, want GET", got)
 	}
+	if got := record["path"]; got != "/v1/competitions/world-cup/2026/matches" {
+		t.Fatalf("path = %v", got)
+	}
 	if got := record["route"]; got != "/v1/competitions/{comp}/{season}/matches" {
 		t.Fatalf("route = %v", got)
 	}
@@ -125,6 +128,26 @@ func TestAccessLogCapturesNonOKStatus(t *testing.T) {
 	}
 	if got := records[0]["outcome"]; got != "client_error" {
 		t.Fatalf("outcome = %v, want client_error", got)
+	}
+}
+
+func TestAccessLogRetainsUnmatchedPath(t *testing.T) {
+	t.Parallel()
+	app, buf := newObservedApp(t, &fakeReaderStore{})
+
+	if recorder := performRequest(app.router(), http.MethodGet, "/v1/not-a-route"); recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", recorder.Code)
+	}
+
+	records := logRecords(t, buf)
+	if len(records) != 1 {
+		t.Fatalf("access-log records = %d, want 1: %s", len(records), buf)
+	}
+	if got := records[0]["path"]; got != "/v1/not-a-route" {
+		t.Fatalf("path = %v, want unmatched path", got)
+	}
+	if got := records[0]["route"]; got != "/v1/*" {
+		t.Fatalf("route = %v, want /v1/*", got)
 	}
 }
 

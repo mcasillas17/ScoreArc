@@ -48,10 +48,8 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
           <span className="sidebar-wordmark">ScoreArc</span>
         </Link>
         <button type="button" className="sidebar-toggle" onClick={() => {
-          setCollapsed((value) => {
-            trackEvent('Sidebar toggled', { collapsed: !value });
-            return !value;
-          });
+          trackEvent('Sidebar toggled', { collapsed: !collapsed });
+          setCollapsed(!collapsed);
         }} aria-label={collapsed ? 'Expand' : 'Collapse'} aria-expanded={!collapsed}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             {collapsed ? <polyline points="9 6 15 12 9 18" /> : <polyline points="15 6 9 12 15 18" />}

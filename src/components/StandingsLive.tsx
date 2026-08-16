@@ -37,39 +37,44 @@ export default function StandingsLive({ initialGroups, initialScorers, apiBase, 
   useEffect(() => {
     let mounted = true;
     async function poll() {
-      try {
-        const [groupsResponse, scorersResponse] = await Promise.all([
+      const [groupsResult, scorersResult] = await Promise.allSettled([
           fetch(`${apiBase}/standings`, { cache: 'no-store' }),
           fetch(`${apiBase}/top-scorers`, { cache: 'no-store' }),
-        ]);
-        if (!mounted) return;
-        const responses = [
-          { feed: 'standings', response: groupsResponse, failed: 'standings' as const },
-          { feed: 'top-scorers', response: scorersResponse, failed: 'topScorers' as const },
-        ];
-        for (const { feed, response, failed } of responses) {
-          if (response.ok && feedFailures.current[failed]) {
-            trackFeedRecovery(feed);
-            feedFailures.current[failed] = false;
-          } else if (!response.ok && !feedFailures.current[failed]) {
-            trackFeedFailure(feed, response.status);
-            feedFailures.current[failed] = true;
-          }
-        }
-        const [g, s] = await Promise.all([
-          groupsResponse.ok ? groupsResponse.json() : null,
-          scorersResponse.ok ? scorersResponse.json() : null,
-        ]);
-        if (Array.isArray(g) && g.length) setGroups(g);
-        if (Array.isArray(s)) setScorers(s);
-      } catch {
-        for (const [feed, failed] of [['standings', 'standings'], ['top-scorers', 'topScorers']] as const) {
+      ]);
+      if (!mounted) return;
+      const results = [
+        { feed: 'standings', result: groupsResult, failed: 'standings' as const },
+        { feed: 'top-scorers', result: scorersResult, failed: 'topScorers' as const },
+      ];
+      for (const { feed, result, failed } of results) {
+        if (result.status === 'rejected') {
           if (!feedFailures.current[failed]) {
             trackFeedFailure(feed);
             feedFailures.current[failed] = true;
           }
+          continue;
+        }
+        if (result.value.ok && feedFailures.current[failed]) {
+          trackFeedRecovery(feed);
+          feedFailures.current[failed] = false;
+        } else if (!result.value.ok && !feedFailures.current[failed]) {
+          trackFeedFailure(feed, result.value.status);
+          feedFailures.current[failed] = true;
         }
       }
+      const [groupsJSON, scorersJSON] = await Promise.allSettled([
+        groupsResult.status === 'fulfilled' && groupsResult.value.ok
+          ? groupsResult.value.json()
+          : null,
+        scorersResult.status === 'fulfilled' && scorersResult.value.ok
+          ? scorersResult.value.json()
+          : null,
+      ]);
+      if (!mounted) return;
+      const g = groupsJSON.status === 'fulfilled' ? groupsJSON.value : null;
+      const s = scorersJSON.status === 'fulfilled' ? scorersJSON.value : null;
+      if (Array.isArray(g) && g.length) setGroups(g);
+      if (Array.isArray(s)) setScorers(s);
     }
     const id = setInterval(poll, REFRESH_MS);
     return () => {

@@ -90,6 +90,7 @@ func (a *App) requestLogging(next http.Handler) http.Handler {
 		a.logger.Info("request",
 			"request_id", id,
 			"method", request.Method,
+			"path", request.URL.Path,
 			"route", route,
 			"status", status,
 			"outcome", requestOutcome(status),

@@ -236,7 +236,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
   const [detail, setDetail] = useState<BracketMatch | null>(null);
   const [summary, setSummary] = useState<MatchSummary | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
-  const summaryFeedFailed = useRef(false);
+  const summaryFeedFailedFor = useRef<string | null>(null);
 
   // Radar-ping cues use the client clock ("is this match today?"), so they only
   // render after mount to avoid an SSR/hydration mismatch.
@@ -269,6 +269,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
   // 15s so the score / stats / scorers stay current without blanking the card.
   useEffect(() => {
     if (!detail || detail.state !== 'live') return;
+    summaryFeedFailedFor.current = null;
     let active = true;
     const id = setInterval(async () => {
       try {
@@ -278,18 +279,18 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
         );
         if (res.ok) {
           if (active) setSummary((await res.json()) as MatchSummary);
-          if (summaryFeedFailed.current) {
+          if (active && summaryFeedFailedFor.current === detail.id) {
             trackFeedRecovery('match-summary');
-            summaryFeedFailed.current = false;
+            summaryFeedFailedFor.current = null;
           }
-        } else if (!summaryFeedFailed.current) {
+        } else if (active && summaryFeedFailedFor.current !== detail.id) {
           trackFeedFailure('match-summary', res.status);
-          summaryFeedFailed.current = true;
+          summaryFeedFailedFor.current = detail.id;
         }
       } catch {
-        if (!summaryFeedFailed.current) {
+        if (active && summaryFeedFailedFor.current !== detail.id) {
           trackFeedFailure('match-summary');
-          summaryFeedFailed.current = true;
+          summaryFeedFailedFor.current = detail.id;
         }
       }
     }, 15_000);

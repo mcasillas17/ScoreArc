@@ -8,7 +8,7 @@ export const revalidate = 0;
 export async function GET(req: Request, { params }: { params: { comp: string; season: string; id: string } }) {
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) {
-    await trackAPIRequestFailure('match-summary', 404);
+    await trackAPIRequestFailure(req, 'match-summary', 404);
     return Response.json({ error: 'unknown competition or season' }, { status: 404 });
   }
   try {
@@ -18,7 +18,7 @@ export async function GET(req: Request, { params }: { params: { comp: string; se
     const summary = await dataStore.getMatchSummary(rc, params.id, home, away);
     return Response.json(summary, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
   } catch (err) {
-    await trackAPIRequestFailure('match-summary', 502, params.comp, params.season);
+    await trackAPIRequestFailure(req, 'match-summary', 502, params.comp, params.season);
     return Response.json({ error: String(err) }, { status: 502 });
   }
 }

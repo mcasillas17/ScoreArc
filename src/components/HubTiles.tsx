@@ -1,9 +1,6 @@
-'use client';
-
-import Link from 'next/link';
 import type { Competition, Season } from '@/server/data/competitions';
 import type { HubStatus } from '@/lib/hubStatus';
-import { trackEvent } from '@/lib/telemetry/client';
+import TrackedCompetitionLink from './TrackedCompetitionLink';
 
 interface Tile {
   comp: Competition;
@@ -68,17 +65,12 @@ export default function HubTiles({ tiles }: Props) {
               {group.map((tile) => {
                 const b = badge(tile);
                 return (
-                  <Link
+                  <TrackedCompetitionLink
                     key={tile.comp.id}
-                    href={`/c/${tile.comp.id}/${tile.season.id}`}
+                    competition={tile.comp.id}
+                    season={tile.season.id}
+                    source="hub"
                     className="hub-tile"
-                    onClick={() =>
-                      trackEvent('Competition opened', {
-                        competition: tile.comp.id,
-                        season: tile.season.id,
-                        source: 'hub',
-                      })
-                    }
                   >
                     <div className="hub-tile-top">
                       <span className="hub-emblem">{tile.comp.emblem}</span>
@@ -89,7 +81,7 @@ export default function HubTiles({ tiles }: Props) {
                     </div>
                     <div className="hub-name">{tile.comp.name}</div>
                     <div className="hub-sub">{subLine(tile)}</div>
-                  </Link>
+                  </TrackedCompetitionLink>
                 );
               })}
             </div>
