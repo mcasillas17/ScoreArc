@@ -137,6 +137,9 @@ type fakeRepository struct {
 	lastUpsert       model.Match
 	standingsCalls   int
 	standingsErr     error
+	snapshotCalls    int
+	snapshotDays     []time.Time
+	snapshotErr      error
 	topScorersCalls  int
 	unfinalized      []model.Match
 	unfinalizedErr   error
@@ -276,6 +279,22 @@ func (f *fakeRepository) ReplaceStandings(
 	f.standingTeamIDs = teamIDs
 	return f.standingsErr
 }
+func (f *fakeRepository) WriteStandingSnapshot(
+	_ context.Context,
+	_, _ string,
+	standings []model.Standing,
+	_ map[string]string,
+	capturedAt time.Time,
+) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.snapshotCalls++
+	f.snapshotDays = append(f.snapshotDays, utcDay(capturedAt))
+	if f.snapshotErr != nil {
+		return 0, f.snapshotErr
+	}
+	return len(standings), nil
+}
 func (f *fakeRepository) ReplaceTopScorers(
 	_ context.Context,
 	_, _, _ string,
@@ -348,6 +367,7 @@ func testRunner(src *fakeSource, repo *fakeRepository, comp config.Competition) 
 		rejectedAssets:    make(map[string]struct{}),
 		backfilled:        make(map[string]time.Time),
 		backfillAttempted: make(map[string]time.Time),
+		snapshotted:       make(map[string]time.Time),
 		maxConcurrent:     3,
 	}
 }
@@ -1884,5 +1904,247 @@ func TestMergeCandidatePreservesStoredNote(t *testing.T) {
 
 	if merged.Note == nil || *merged.Note != note {
 		t.Fatalf("note=%v", merged.Note)
+	}
+}
+
+func newSnapshotTestRunner(repo *fakeRepository) *runner {
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	return testRunner(&fakeSource{}, repo, comp)
+}
+
+// The cadence contract. refreshStandings runs every slow tick; snapshotting
+// every one of those is ~52k upserts/day for nine rows of value. Once per UTC
+// day is the floor.
+func TestStandingsSnapshotWritesOncePerDay(t *testing.T) {
+	repo := &fakeRepository{}
+	worker := newSnapshotTestRunner(repo)
+
+	worker.runCycle(context.Background(), true)
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.snapshotCalls != 1 {
+		t.Fatalf("snapshot calls = %d across two slow ticks in one day, want 1", repo.snapshotCalls)
+	}
+	if !hasLoggedKind(repo.logged, "standings_snapshot") {
+		t.Fatal("the snapshot was not recorded in ingest_run")
+	}
+}
+
+// A finished match is the only thing that moves a table, so it is the only
+// reason to re-record a day already recorded. The store's day key makes the
+// rewrite an update, not a duplicate.
+func TestStandingsSnapshotRewritesTheDayWhenAMatchFinalizes(t *testing.T) {
+	repo := &fakeRepository{}
+	worker := newSnapshotTestRunner(repo)
+
+	worker.runCycle(context.Background(), true)
+	repo.mu.Lock()
+	before := repo.snapshotCalls
+	repo.mu.Unlock()
+
+	// The fake source's match finishes, so the next cycle finalizes it.
+	source := worker.source.(*fakeSource)
+	source.mu.Lock()
+	source.matches = []model.Match{finishedMatch()}
+	source.mu.Unlock()
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.snapshotCalls <= before {
+		t.Fatalf("snapshot calls = %d after a finalization, want more than %d",
+			repo.snapshotCalls, before)
+	}
+}
+
+// A restart empties the in-process day gate. The series must survive that --
+// and it does, because the gate is an optimisation and the database holds the
+// guarantee. A fresh runner re-writes today, and the store upserts it.
+func TestStandingsSnapshotSurvivesARestart(t *testing.T) {
+	repo := &fakeRepository{}
+	newSnapshotTestRunner(repo).runCycle(context.Background(), true)
+	newSnapshotTestRunner(repo).runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.snapshotCalls != 2 {
+		t.Fatalf("snapshot calls = %d across two processes, want 2", repo.snapshotCalls)
+	}
+	// The day the second process wrote must be the same day, so the store's
+	// ON CONFLICT collapses them rather than appending a second table.
+	if len(repo.snapshotDays) != 2 || !repo.snapshotDays[0].Equal(repo.snapshotDays[1]) {
+		t.Fatalf("snapshot days = %v, want the same UTC day twice", repo.snapshotDays)
+	}
+}
+
+// A rejected standings replacement must not be snapshotted. ReplaceStandings
+// refuses an empty or shrinking table precisely because it is probably an
+// upstream blip; recording that blip as a day of history would bake the blip
+// in permanently.
+func TestStandingsSnapshotSkipsARejectedReplacement(t *testing.T) {
+	repo := &fakeRepository{standingsErr: store.ErrPartialReplacement}
+	newSnapshotTestRunner(repo).runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.snapshotCalls != 0 {
+		t.Fatalf("snapshot calls = %d after a rejected replacement, want 0", repo.snapshotCalls)
+	}
+}
+
+// A failed snapshot must fail the cycle and leave the day gate open so the next
+// slow tick retries the irreversible write.
+func TestStandingsSnapshotRetriesAfterWriteFailure(t *testing.T) {
+	repo := &fakeRepository{snapshotErr: errors.New("snapshot unavailable")}
+	worker := newSnapshotTestRunner(repo)
+
+	first := worker.runCycle(context.Background(), true)
+	if first.failures == 0 {
+		t.Fatal("snapshot failure did not fail the cycle")
+	}
+
+	repo.mu.Lock()
+	repo.snapshotErr = nil
+	repo.mu.Unlock()
+	second := worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if second.failures != 0 || repo.snapshotCalls != 2 {
+		t.Fatalf("second cycle = %+v, snapshot calls = %d; want a successful retry",
+			second, repo.snapshotCalls)
+	}
+}
+
+func TestStandingsSnapshotRetriesAFailedFinalizationRewrite(t *testing.T) {
+	repo := &fakeRepository{}
+	worker := newSnapshotTestRunner(repo)
+	worker.runCycle(context.Background(), true)
+
+	source := worker.source.(*fakeSource)
+	source.mu.Lock()
+	source.matches = []model.Match{finishedMatch()}
+	source.mu.Unlock()
+	repo.mu.Lock()
+	repo.snapshotErr = errors.New("snapshot unavailable")
+	repo.mu.Unlock()
+	failed := worker.runCycle(context.Background(), true)
+	if failed.failures == 0 {
+		t.Fatal("failed finalization snapshot did not fail the cycle")
+	}
+
+	// The finalization edge is one cycle only. The next slow tick must retry
+	// without tableChanged carrying the attempt.
+	source.mu.Lock()
+	source.matches = nil
+	source.mu.Unlock()
+	repo.mu.Lock()
+	repo.snapshotErr = nil
+	repo.mu.Unlock()
+	retried := worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if retried.failures != 0 || repo.snapshotCalls != 3 {
+		t.Fatalf("retry cycle = %+v, snapshot calls = %d; want successful third write",
+			retried, repo.snapshotCalls)
+	}
+}
+
+func TestStandingsSnapshotRetriesAfterFinalizationReplacementIsRejected(t *testing.T) {
+	repo := &fakeRepository{}
+	worker := newSnapshotTestRunner(repo)
+	worker.runCycle(context.Background(), true)
+
+	source := worker.source.(*fakeSource)
+	source.mu.Lock()
+	source.matches = []model.Match{finishedMatch()}
+	source.mu.Unlock()
+	repo.mu.Lock()
+	repo.standingsErr = store.ErrPartialReplacement
+	repo.mu.Unlock()
+	failed := worker.runCycle(context.Background(), true)
+	if failed.failures == 0 {
+		t.Fatal("rejected post-finalization replacement did not fail the cycle")
+	}
+
+	source.mu.Lock()
+	source.matches = nil
+	source.mu.Unlock()
+	repo.mu.Lock()
+	repo.standingsErr = nil
+	repo.mu.Unlock()
+	retried := worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if retried.failures != 0 || repo.snapshotCalls != 2 {
+		t.Fatalf("retry cycle = %+v, snapshot calls = %d; want one successful retry",
+			retried, repo.snapshotCalls)
+	}
+}
+
+func TestStandingsSnapshotRetriesACanceledFinalizationRewrite(t *testing.T) {
+	repo := &fakeRepository{}
+	worker := newSnapshotTestRunner(repo)
+	worker.runCycle(context.Background(), true)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	comp := worker.competitions[0]
+	season := comp.Seasons[comp.CurrentSeasonId]
+	err := worker.snapshotStandings(
+		ctx,
+		comp,
+		season,
+		[]model.Standing{{Rank: 1, Team: model.Team{ID: "home"}}},
+		map[string]string{"home": fakeTeamID("home")},
+		true,
+	)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled rewrite error = %v, want context.Canceled", err)
+	}
+
+	retried := worker.runCycle(context.Background(), true)
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if retried.failures != 0 || repo.snapshotCalls != 2 {
+		t.Fatalf("retry cycle = %+v, snapshot calls = %d; want one successful retry",
+			retried, repo.snapshotCalls)
+	}
+}
+
+func TestStandingsSnapshotRetriesWhenFinalizationRefreshStartsCanceled(t *testing.T) {
+	repo := &fakeRepository{}
+	worker := newSnapshotTestRunner(repo)
+	worker.runCycle(context.Background(), true)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	comp := worker.competitions[0]
+	season := comp.Seasons[comp.CurrentSeasonId]
+	if err := worker.refreshStandings(ctx, comp, season, true); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled refresh error = %v, want context.Canceled", err)
+	}
+
+	retried := worker.runCycle(context.Background(), true)
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	failedRunLogged := false
+	for _, run := range repo.logged {
+		failedRunLogged = failedRunLogged ||
+			(run.kind == standingSnapshotRunKind && !run.ok)
+	}
+	if !failedRunLogged {
+		t.Fatal("canceled finalization snapshot was not audited as failed")
+	}
+	if retried.failures != 0 || repo.snapshotCalls != 2 {
+		t.Fatalf("retry cycle = %+v, snapshot calls = %d; want one successful retry",
+			retried, repo.snapshotCalls)
 	}
 }

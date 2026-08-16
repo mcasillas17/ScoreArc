@@ -196,6 +196,29 @@ at no cost.
   new cases.
 - `docs/backend/ARCHITECTURE.md` — move `standing_snapshot` out of "WRITTEN in Phase 2".
 
+## Execution record — 2026-08-16
+
+- Migration `0004` was free on the execution baseline and was used exactly as assigned.
+- Task 1's test requires the contiguous substring
+  `captured_on date GENERATED ALWAYS AS`, while the quoted migration split it across two
+  lines. The migration keeps the planned expression but places that phrase on one line.
+- Task 3's predicted RED error could not occur in the listed order because Step 1 adds
+  the fake method before Step 3 adds the interface method. The observed RED error was
+  `undefined: utcDay`, which still proved the production path was absent.
+- Current tests use `testRunner` and mutable fake-source matches rather than the quoted
+  `newTestRunner`/`finished` helpers. The four planned behaviors were preserved against
+  those current seams.
+- Review added four correctness requirements that the original plan missed: older
+  same-day observations cannot overwrite newer ones; a failed finalization rewrite must
+  remain pending for the next slow tick; cancellation before refresh begins must both
+  reopen and audit that pending write; and JSON `null` required ESPN stats must be
+  rejected rather than decoded as zero.
+- Task 4 remains intentionally unchecked. The coordinator required exactly one
+  implementation PR and directed shared `ARCHITECTURE.md` changes to separate
+  coordination; PR #53 records the exact required correction.
+- Task 5 ran the issue's expanded full CI gate in addition to the plan's backend gate.
+  The implementation PR is open and is deliberately unmerged.
+
 ---
 
 ### Task 1: The idempotency key
@@ -211,7 +234,7 @@ because the process restarted, because a deploy rolled, because a slow tick fire
 — appends a second full table and every downstream `GROUP BY captured_at` silently
 double-counts. The key has to exist before the writer does.
 
-- [ ] **Step 1: Write the failing migration test**
+- [x] **Step 1: Write the failing migration test**
 
 Append to `backend/migrations/migrations_test.go`, after
 `TestPlayerCaptureKeysOnCanonicalPlayers`:
@@ -259,7 +282,7 @@ func TestStandingSnapshotRollbackDropsOnlyWhatItAdded(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 ```bash
 cd backend && go test ./migrations/ -run StandingSnapshot
@@ -269,7 +292,7 @@ Expected: FAIL, twice, with
 `open 0004_standing_snapshot_idempotency.up.sql: no such file or directory` — the
 `readMigration` helper calls `t.Fatal` on the read error.
 
-- [ ] **Step 3: Write the up migration**
+- [x] **Step 3: Write the up migration**
 
 Create `backend/migrations/0004_standing_snapshot_idempotency.up.sql`:
 
@@ -307,7 +330,7 @@ CREATE INDEX standing_snapshot_day_idx
   ON standing_snapshot (competition_id, season_id, captured_on);
 ```
 
-- [ ] **Step 4: Write the down migration**
+- [x] **Step 4: Write the down migration**
 
 Create `backend/migrations/0004_standing_snapshot_idempotency.down.sql`:
 
@@ -320,7 +343,7 @@ DROP INDEX IF EXISTS standing_snapshot_day_key;
 ALTER TABLE standing_snapshot DROP COLUMN IF EXISTS captured_on;
 ```
 
-- [ ] **Step 5: Run the migration tests**
+- [x] **Step 5: Run the migration tests**
 
 ```bash
 cd backend && go test ./migrations/
@@ -330,7 +353,7 @@ Expected: `ok  	github.com/mcasillas17/scorearc-backend/migrations` — all case
 including the pre-existing `TestInitDefinesCanonicalSchema`,
 `TestSnapshotsUseCanonicalKeys` and `TestPlayerCaptureKeysOnCanonicalPlayers`.
 
-- [ ] **Step 6: Prove the migration actually applies to a real Postgres**
+- [x] **Step 6: Prove the migration actually applies to a real Postgres**
 
 The tests above are string assertions. The integration harness in
 `backend/shared/store/identity_integration_test.go` globs `../../migrations/*.up.sql`,
@@ -349,7 +372,7 @@ the test body ran. In particular, a `PASS` here is the proof that Postgres accep
 Docker must be running. If it is not, this fails with a container-runtime error rather
 than a SQL error — start Docker and re-run before concluding anything.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add backend/migrations/0004_standing_snapshot_idempotency.up.sql \
@@ -387,7 +410,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
   `ReplaceStandings` already takes it, because `standing_snapshot.team_id` carries a
   real `REFERENCES team(id)` after the canonical-identity merge.
 
-- [ ] **Step 1: Write the failing integration test**
+- [x] **Step 1: Write the failing integration test**
 
 Create `backend/shared/store/snapshots_integration_test.go`:
 
@@ -577,7 +600,7 @@ func TestStandingSnapshotRefusesAnUnresolvedTeam(t *testing.T) {
 
 Add `"strings"` to that file's imports.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 ```bash
 cd backend && go test ./shared/store/ -run StandingSnapshot
@@ -586,7 +609,7 @@ cd backend && go test ./shared/store/ -run StandingSnapshot
 Expected: FAIL to **compile**, with
 `store.WriteStandingSnapshot undefined (type *Store has no field or method WriteStandingSnapshot)`.
 
-- [ ] **Step 3: Implement the writer**
+- [x] **Step 3: Implement the writer**
 
 Create `backend/shared/store/snapshots.go`:
 
@@ -693,7 +716,7 @@ ON CONFLICT (competition_id, season_id, team_id, captured_on) DO UPDATE SET
 	played          = EXCLUDED.played`
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 ```bash
 cd backend && go test ./shared/store/ -run StandingSnapshot -v
@@ -706,7 +729,7 @@ Expected: five `--- PASS` lines —
 `TestStandingSnapshotRefusesAnEmptyTable`,
 `TestStandingSnapshotRefusesAnUnresolvedTeam`.
 
-- [ ] **Step 5: Prove the least-privilege login can actually do this**
+- [x] **Step 5: Prove the least-privilege login can actually do this**
 
 Every other store test runs as the schema owner. Production does not. A missing grant
 surfaces as SQLSTATE `42501` **inside the ingester**, which is exactly how curation once
@@ -766,7 +789,7 @@ cd backend && go test ./shared/store/ -run WriteStandingSnapshotAsTheIngesterRol
 
 Expected: `--- PASS: TestWriteStandingSnapshotAsTheIngesterRole`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/shared/store/snapshots.go backend/shared/store/snapshots_integration_test.go
@@ -813,7 +836,7 @@ any of that day's matches. So: **write on the first standings refresh of a new U
 and again whenever a match finalized in this cycle.** The day key makes the extra writes
 free of duplicates, and the day ends holding the table as it settled.
 
-- [ ] **Step 1: Write the failing runner tests**
+- [x] **Step 1: Write the failing runner tests**
 
 Append to `backend/ingester/runner_test.go`:
 
@@ -934,7 +957,7 @@ extract it into a helper first so the three tests above can share it — includi
 `snapshotted: make(map[string]time.Time)` field, which a `runner` literal that omits it
 will nil-map-panic on write.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 ```bash
 cd backend && go test ./ingester/ -run StandingsSnapshot
@@ -944,7 +967,7 @@ Expected: FAIL to compile —
 `cannot use repo (variable of type *fakeRepository) as repository value ... missing method WriteStandingSnapshot`
 and `undefined: utcDay`.
 
-- [ ] **Step 3: Add the method to the repository contract**
+- [x] **Step 3: Add the method to the repository contract**
 
 In `backend/ingester/contracts.go`, inside the `// facts` half of the `repository`
 interface, immediately after the `ReplaceStandings` line:
@@ -958,7 +981,7 @@ interface, immediately after the `ReplaceStandings` line:
 	WriteStandingSnapshot(context.Context, string, string, []model.Standing, map[string]string, time.Time) (int, error)
 ```
 
-- [ ] **Step 4: Add the day gate and the snapshot call**
+- [x] **Step 4: Add the day gate and the snapshot call**
 
 In `backend/ingester/runner.go`, add to the `runner` struct, after
 `backfillAttempted map[string]time.Time`:
@@ -1111,7 +1134,7 @@ Update the one call site, in `ingestCompSeason`:
 	}
 ```
 
-- [ ] **Step 5: Initialise the map in production**
+- [x] **Step 5: Initialise the map in production**
 
 In `backend/ingester/main.go`, in the `worker := &runner{...}` literal, after
 `backfillAttempted: make(map[string]time.Time),`:
@@ -1123,7 +1146,7 @@ In `backend/ingester/main.go`, in the `worker := &runner{...}` literal, after
 Omitting this is a nil-map assignment panic on the first successful snapshot — in
 production, on the one write that matters. `go vet` will not catch it.
 
-- [ ] **Step 6: Run the ingester suite**
+- [x] **Step 6: Run the ingester suite**
 
 ```bash
 cd backend && go test -race ./ingester/ -v -run StandingsSnapshot
@@ -1146,7 +1169,7 @@ tests that call `refreshStandings` directly will fail to compile until you add t
 `tableChanged` argument to those call sites — pass `false`, which is what a plain slow
 tick means.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add backend/ingester/contracts.go backend/ingester/runner.go \
@@ -1219,7 +1242,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ### Task 5: Full gate, a real run, and the PR
 
-- [ ] **Step 1: The three-command gate**
+- [x] **Step 1: The three-command gate**
 
 ```bash
 cd backend && go build ./... && go test -race ./... && go vet ./...
@@ -1227,7 +1250,7 @@ cd backend && go build ./... && go test -race ./... && go vet ./...
 
 Expected: build silent, every package `ok` (Docker running), vet silent.
 
-- [ ] **Step 2: Prove it against a real database, once**
+- [x] **Step 2: Prove it against a real database, once**
 
 `-once` runs one complete ingest cycle and exits. Point it at a scratch Postgres, not at
 production, and connect as the least-privilege login — the same one production uses.
@@ -1273,7 +1296,7 @@ Tear down:
 docker rm -f scorearc-snap
 ```
 
-- [ ] **Step 3: Confirm the DSN discipline**
+- [x] **Step 3: Confirm the DSN discipline**
 
 ```bash
 grep -rn "POOLED_DSN\|INGESTER_LEASE_DSN" backend/ingester/main.go
@@ -1285,7 +1308,7 @@ Expected: `main.go` reads both from the environment, and the second grep prints
 **nothing**. A DSN in a tracked file is a leaked credential; production values arrive
 only via `fly secrets`.
 
-- [ ] **Step 4: Open the PR**
+- [x] **Step 4: Open the PR**
 
 ```bash
 git push -u origin feat/ingester-standings-snapshots
@@ -1345,7 +1368,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 5: Stop**
+- [x] **Step 5: Stop**
 
 Do **not** merge. Merging is the user's decision — see `AGENTS.md`.
 
