@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -35,7 +36,9 @@ type fakeSource struct {
 	backfillCalls   []bool
 	scoreboardDelay time.Duration
 	scoreboardBlock bool
-	topScorers      []model.TopScorer
+	statistics      []byte
+	statisticsErr   error
+	statisticsCalls int
 	currentCalls    int
 	maxCalls        int
 }
@@ -102,14 +105,86 @@ func (f *fakeSource) Summary(
 func (f *fakeSource) Standings(context.Context, config.Competition, config.Season) ([]model.Standing, error) {
 	return []model.Standing{{Rank: 1, Team: model.Team{ID: "home"}}}, nil
 }
-func (f *fakeSource) TopScorers(context.Context, config.Competition, config.Season, int) ([]model.TopScorer, error) {
-	if f.topScorers != nil {
-		return f.topScorers, nil
+func (f *fakeSource) Statistics(context.Context, config.Competition, config.Season) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.statisticsCalls++
+	if f.statisticsErr != nil {
+		return nil, f.statisticsErr
 	}
-	return []model.TopScorer{{Rank: 1, Player: "Winner"}}, nil
+	if f.statistics != nil {
+		return append([]byte(nil), f.statistics...), nil
+	}
+	return []byte(`{"stats":[
+		{"name":"goalsLeaders","leaders":[
+			{"value":1,"displayValue":"Matches: 1, Goals: 1","athlete":{"displayName":"Winner","team":{}}}
+		]},
+		{"name":"assistsLeaders","leaders":[
+			{"value":1,"displayValue":"Matches: 1, Assists: 1","athlete":{"displayName":"Helper","team":{}}}
+		]}
+	]}`), nil
 }
 func (f *fakeSource) Bracket(context.Context, config.Competition, config.Season, bool) ([]model.BracketMatch, error) {
 	return f.bracket, f.bracketErr
+}
+
+func statisticsPayload(
+	t *testing.T,
+	goals, assists []model.StatLeader,
+) []byte {
+	t.Helper()
+	type fixtureTeam struct {
+		Abbreviation string  `json:"abbreviation"`
+		DisplayName  string  `json:"displayName"`
+		Logo         *string `json:"logo,omitempty"`
+	}
+	type fixtureAthlete struct {
+		DisplayName string      `json:"displayName"`
+		Team        fixtureTeam `json:"team"`
+	}
+	type fixtureLeader struct {
+		Value        int            `json:"value"`
+		DisplayValue string         `json:"displayValue,omitempty"`
+		Athlete      fixtureAthlete `json:"athlete"`
+	}
+	type fixtureBlock struct {
+		Name    string          `json:"name"`
+		Leaders []fixtureLeader `json:"leaders"`
+	}
+
+	mapRows := func(rows []model.StatLeader) []fixtureLeader {
+		mapped := make([]fixtureLeader, 0, len(rows))
+		for _, row := range rows {
+			displayValue := ""
+			if row.Matches != nil {
+				displayValue = fmt.Sprintf("Matches: %d", *row.Matches)
+			}
+			mapped = append(mapped, fixtureLeader{
+				Value:        row.Value,
+				DisplayValue: displayValue,
+				Athlete: fixtureAthlete{
+					DisplayName: row.Player,
+					Team: fixtureTeam{
+						Abbreviation: row.TeamAbbr,
+						DisplayName:  row.TeamName,
+						Logo:         row.TeamCrestURL,
+					},
+				},
+			})
+		}
+		return mapped
+	}
+
+	raw, err := json.Marshal(struct {
+		Stats []fixtureBlock `json:"stats"`
+	}{Stats: []fixtureBlock{
+		{Name: "goalsLeaders", Leaders: mapRows(goals)},
+		{Name: "assistsLeaders", Leaders: mapRows(assists)},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }
 
 // fakeTeamID and fakeMatchID are the fake resolver's crosswalk. They are
@@ -137,7 +212,7 @@ type fakeRepository struct {
 	lastUpsert       model.Match
 	standingsCalls   int
 	standingsErr     error
-	topScorersCalls  int
+	leaderCategories []string
 	unfinalized      []model.Match
 	unfinalizedErr   error
 	logged           []loggedRun
@@ -276,17 +351,17 @@ func (f *fakeRepository) ReplaceStandings(
 	f.standingTeamIDs = teamIDs
 	return f.standingsErr
 }
-func (f *fakeRepository) ReplaceTopScorers(
+func (f *fakeRepository) ReplaceLeaders(
 	_ context.Context,
-	_, _, _ string,
-	rows []model.TopScorer,
+	_, _, _, category string,
+	rows []model.StatLeader,
 ) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.topScorersCalls++
 	if len(rows) == 0 {
 		return store.ErrEmptyReplacement
 	}
+	f.leaderCategories = append(f.leaderCategories, category)
 	return nil
 }
 func (f *fakeRepository) LogIngestRun(_ context.Context, _ *string, kind string, _ time.Time, _ time.Time, ok bool, _ string) error {
@@ -381,8 +456,12 @@ func TestFinishedMatchRetriesSummaryBeforeFinalizing(t *testing.T) {
 	if repo.finalizeCalls != 1 {
 		t.Fatalf("finalize calls after retry=%d", repo.finalizeCalls)
 	}
-	if repo.standingsCalls != 1 || repo.topScorersCalls != 1 {
-		t.Fatalf("refreshes standings=%d scorers=%d", repo.standingsCalls, repo.topScorersCalls)
+	if repo.standingsCalls != 1 || src.statisticsCalls != 1 ||
+		len(repo.leaderCategories) != 2 {
+		t.Fatalf(
+			"refreshes standings=%d statistics=%d leaders=%v",
+			repo.standingsCalls, src.statisticsCalls, repo.leaderCategories,
+		)
 	}
 }
 
@@ -915,11 +994,16 @@ func TestCycleHonorsContextDeadline(t *testing.T) {
 	}
 }
 
-func TestTopScorerCrestMirrorsOnceAcrossRefreshes(t *testing.T) {
+func TestLeaderCrestMirrorsOnceAcrossRefreshes(t *testing.T) {
 	crest := "https://a.espncdn.com/crest.png"
-	src := &fakeSource{topScorers: []model.TopScorer{{
-		Rank: 1, Player: "Winner", TeamAbbr: "WIN", TeamCrestURL: &crest,
-	}}}
+	src := &fakeSource{statistics: statisticsPayload(
+		t,
+		[]model.StatLeader{{
+			Rank: 1, Player: "Winner", TeamAbbr: "WIN",
+			TeamCrestURL: &crest, Value: 1,
+		}},
+		[]model.StatLeader{{Rank: 1, Player: "Helper", Value: 1}},
+	)}
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
@@ -936,16 +1020,20 @@ func TestTopScorerCrestMirrorsOnceAcrossRefreshes(t *testing.T) {
 	}
 }
 
-func TestTopScorerCrestOutageUsesSharedCircuit(t *testing.T) {
-	scorers := make([]model.TopScorer, 10)
-	for index := range scorers {
+func TestLeaderCrestOutageUsesSharedCircuit(t *testing.T) {
+	leaders := make([]model.StatLeader, 10)
+	for index := range leaders {
 		crest := fmt.Sprintf("https://source.example/%d.png", index)
-		scorers[index] = model.TopScorer{
+		leaders[index] = model.StatLeader{
 			Rank: index + 1, Player: fmt.Sprintf("Player %d", index),
-			TeamAbbr: fmt.Sprintf("T%d", index), TeamCrestURL: &crest,
+			TeamAbbr: fmt.Sprintf("T%d", index), TeamCrestURL: &crest, Value: 1,
 		}
 	}
-	src := &fakeSource{topScorers: scorers}
+	src := &fakeSource{statistics: statisticsPayload(
+		t,
+		leaders,
+		[]model.StatLeader{{Rank: 1, Player: "Helper", Value: 1}},
+	)}
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
@@ -958,12 +1046,66 @@ func TestTopScorerCrestOutageUsesSharedCircuit(t *testing.T) {
 
 	result := runner.runCycle(context.Background(), true)
 
-	if result.failures != 0 || repo.topScorersCalls != 1 ||
+	if result.failures != 0 || len(repo.leaderCategories) != 2 ||
 		mirror.calls > 5 {
 		t.Fatalf(
-			"result=%+v replacements=%d mirror calls=%d",
-			result, repo.topScorersCalls, mirror.calls,
+			"result=%+v categories=%v mirror calls=%d",
+			result, repo.leaderCategories, mirror.calls,
 		)
+	}
+}
+
+// One fetch, two boards. Fetching /statistics twice would double the request
+// count for a payload that already contains both.
+func TestRefreshLeadersFetchesOnceAndWritesBoth(t *testing.T) {
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	src := &fakeSource{}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+
+	result := testRunner(src, repo, comp).runCycle(context.Background(), true)
+	if result.failures != 0 {
+		t.Fatalf("result=%+v", result)
+	}
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if src.statisticsCalls != 1 {
+		t.Fatalf("/statistics fetched %d times, want 1", src.statisticsCalls)
+	}
+	if len(repo.leaderCategories) != 2 {
+		t.Fatalf("categories written = %v, want goals and assists", repo.leaderCategories)
+	}
+	seen := make(map[string]bool, len(repo.leaderCategories))
+	for _, category := range repo.leaderCategories {
+		seen[category] = true
+	}
+	if !seen["goals"] || !seen["assists"] {
+		t.Fatalf("categories written = %v, want goals and assists", repo.leaderCategories)
+	}
+}
+
+// An empty assists board must not take down the goals board. ErrEmptyReplacement
+// is already the "preserve what we have" signal for top scorers; it stays that,
+// per category.
+func TestEmptyAssistsBoardDoesNotFailTheCycle(t *testing.T) {
+	src := &fakeSource{statistics: statisticsPayload(
+		t,
+		[]model.StatLeader{{Rank: 1, Player: "Striker", Value: 1}},
+		nil,
+	)}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+
+	if result := testRunner(src, repo, comp).runCycle(
+		context.Background(), true,
+	); result.failures != 0 {
+		t.Fatalf("failures = %d, want 0 -- an absent assists board is normal", result.failures)
 	}
 }
 
@@ -984,8 +1126,8 @@ func TestSeasonBackfillSkipsScheduledSummaries(t *testing.T) {
 	}
 }
 
-func TestEmptyTopScorersPreserveRowsAndRemainRetryable(t *testing.T) {
-	src := &fakeSource{topScorers: []model.TopScorer{}}
+func TestEmptyLeaderBoardsPreserveRowsAndRemainRetryable(t *testing.T) {
+	src := &fakeSource{statistics: statisticsPayload(t, nil, nil)}
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
@@ -1005,7 +1147,7 @@ func TestEmptyTopScorersPreserveRowsAndRemainRetryable(t *testing.T) {
 	foundPreserved := false
 	for _, run := range repo.logged {
 		foundPreserved = foundPreserved ||
-			(run.kind == "top_scorers_preserved" && run.ok)
+			(run.kind == "leaders_preserved" && run.ok)
 	}
 	if !foundPreserved {
 		t.Fatal("missing preserved audit outcome")

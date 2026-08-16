@@ -283,7 +283,7 @@ func (s *Store) MatchSummary(ctx context.Context, id string) (*MatchSummary, err
 const topScorersSQL = `
 SELECT rank, player, goals, matches, team_abbr, team_name, team_crest_url
 FROM top_scorer
-WHERE competition_id = $1 AND season_id = $2
+WHERE competition_id = $1 AND season_id = $2 AND category = 'goals'
 ORDER BY rank`
 
 func (s *Store) TopScorers(ctx context.Context, competition, season string) ([]espn.TopScorer, error) {

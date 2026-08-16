@@ -139,13 +139,31 @@ func seedIntegrationData(t *testing.T, pool *pgxpool.Pool) {
 			('world-cup', '2026', 'nat-fra', 'A', 'Group A', 2, 3, 2, 0, 1, 5, 2, 3, 6, true, 'espn'),
 			('premier-league', '2026-27', 'nat-arg', NULL, NULL, 1, 1, 1, 0, 0, 2, 0, 2, 3, false, 'espn')`,
 		`INSERT INTO top_scorer
-			(competition_id, season_id, rank, player, team_abbr, team_name, team_crest_url, goals, matches, source)
-		 VALUES ('world-cup', '2026', 1, 'Lionel Messi', 'ARG', 'Argentina', 'https://cdn.scorearc.futbol/arg.png', 7, 6, 'espn'),
-		        ('world-cup', '2026', 2, 'Mystery Player', NULL, NULL, NULL, 5, NULL, 'espn')`,
+			(competition_id, season_id, category, rank, player, team_abbr, team_name, team_crest_url, goals, matches, source)
+		 VALUES ('world-cup', '2026', 'goals', 1, 'Lionel Messi', 'ARG', 'Argentina', 'https://cdn.scorearc.futbol/arg.png', 7, 6, 'espn'),
+		        ('world-cup', '2026', 'goals', 2, 'Mystery Player', NULL, NULL, NULL, 5, NULL, 'espn'),
+		        ('world-cup', '2026', 'assists', 1, 'Playmaker', 'FRA', 'France', 'https://cdn.scorearc.futbol/fra.png', 6, 6, 'espn')`,
 	}
 	for _, statement := range statements {
 		if _, err := pool.Exec(ctx, statement); err != nil {
 			t.Fatalf("seed database: %v\nSQL: %s", err, statement)
+		}
+	}
+}
+
+// The reader's contract does not change: /top-scorers is still goals.
+func TestReaderTopScorersFiltersToGoals(t *testing.T) {
+	store, _ := newIntegrationStore(t)
+	scorers, err := store.TopScorers(context.Background(), "world-cup", "2026")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(scorers) != 2 {
+		t.Fatalf("top scorers = %+v, want exactly the two goals rows", scorers)
+	}
+	for _, scorer := range scorers {
+		if scorer.Player == "Playmaker" {
+			t.Fatalf("top scorers included assists row: %+v", scorers)
 		}
 	}
 }
