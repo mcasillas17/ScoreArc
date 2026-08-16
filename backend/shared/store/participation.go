@@ -141,15 +141,41 @@ func (s *Store) WriteParticipation(
 		keep := make([]uuid.UUID, 0, len(rows))
 		for _, r := range rows {
 			if _, err := tx.Exec(opCtx, `
-INSERT INTO appearance (match_id, player_id, team_id, starter, shirt_number, position)
-VALUES ($1,$2,$3,$4,$5,$6)
+INSERT INTO appearance (
+  match_id, player_id, team_id, starter, shirt_number, position,
+  goals, assists, shots, shots_on_target, offsides,
+  fouls_committed, fouls_suffered, own_goals,
+  yellow_cards, red_cards, saves, goals_conceded, shots_faced)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
 ON CONFLICT (match_id, player_id) DO UPDATE SET
   team_id      = EXCLUDED.team_id,
   starter      = EXCLUDED.starter,
   shirt_number = EXCLUDED.shirt_number,
-  position     = EXCLUDED.position`,
-				matchID, r.playerID, r.teamID, r.player.Starter,
-				r.player.Number, nullIfEmpty(r.player.Position),
+  position     = EXCLUDED.position,
+  -- COALESCE, not a bare EXCLUDED. A live match is re-polled every 20s and a
+  -- poll that comes back without a stats block -- which happens -- would
+  -- otherwise NULL out numbers an earlier poll established. Absence of
+  -- evidence only, the same rule the empty-payload guard above applies. A
+  -- stat can therefore never go from a number back to unknown, which is the
+  -- correct trade: nothing upstream retracts a measurement, it only revises
+  -- it, and a revision arrives as a number.
+  goals           = COALESCE(EXCLUDED.goals,           appearance.goals),
+  assists         = COALESCE(EXCLUDED.assists,         appearance.assists),
+  shots           = COALESCE(EXCLUDED.shots,           appearance.shots),
+  shots_on_target = COALESCE(EXCLUDED.shots_on_target, appearance.shots_on_target),
+  offsides        = COALESCE(EXCLUDED.offsides,        appearance.offsides),
+  fouls_committed = COALESCE(EXCLUDED.fouls_committed, appearance.fouls_committed),
+  fouls_suffered  = COALESCE(EXCLUDED.fouls_suffered,  appearance.fouls_suffered),
+  own_goals       = COALESCE(EXCLUDED.own_goals,       appearance.own_goals),
+  yellow_cards    = COALESCE(EXCLUDED.yellow_cards,    appearance.yellow_cards),
+  red_cards       = COALESCE(EXCLUDED.red_cards,       appearance.red_cards),
+  saves           = COALESCE(EXCLUDED.saves,           appearance.saves),
+  goals_conceded  = COALESCE(EXCLUDED.goals_conceded,  appearance.goals_conceded),
+  shots_faced     = COALESCE(EXCLUDED.shots_faced,     appearance.shots_faced)`,
+				append([]any{
+					matchID, r.playerID, r.teamID, r.player.Starter,
+					r.player.Number, nullIfEmpty(r.player.Position),
+				}, boxScoreArgs(r.player.Stats)...)...,
 			); err != nil {
 				return stats, fmt.Errorf("upsert appearance: %w", err)
 			}
@@ -202,6 +228,26 @@ ON CONFLICT (match_id, seq) DO UPDATE SET
 
 	s.reportParticipation(ctx, matchID, stats)
 	return stats, nil
+}
+
+// boxScoreArgs flattens the thirteen box-score columns in the exact order the
+// INSERT lists them. A nil PlayerMatchStats yields thirteen nils, which the
+// COALESCE in the upsert turns into "change nothing" -- so a poll with no
+// stats block is a no-op on the numbers rather than an erasure.
+//
+// The columns are listed here in one place, in one order, so adding a
+// fourteenth stat is one edit to the INSERT and one to this slice rather than
+// a hunt through positional placeholders.
+func boxScoreArgs(stats *model.PlayerMatchStats) []any {
+	if stats == nil {
+		return make([]any, 13)
+	}
+	return []any{
+		stats.Goals, stats.Assists, stats.Shots, stats.ShotsOnTarget,
+		stats.Offsides, stats.FoulsCommitted, stats.FoulsSuffered,
+		stats.OwnGoals, stats.YellowCards, stats.RedCards,
+		stats.Saves, stats.GoalsConceded, stats.ShotsFaced,
+	}
 }
 
 // reportParticipation records a per-match coverage row when anything went
