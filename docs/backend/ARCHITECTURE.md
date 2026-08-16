@@ -121,7 +121,7 @@ same transaction.
 
 ### Tier 3 — time-series (created now, WRITTEN in Phase 2 via `emitSnapshots()`)
 - **standing_snapshot**(id bigserial, competition_id, season_id, team_id→team, captured_at, rank, points, goal_difference, played) — append-only.
-- **win_prob_snapshot**(id bigserial, match_id, captured_at, home, draw, away) — append-only.
+- **win_prob_snapshot**(id bigserial, match_id→match ON DELETE CASCADE, captured_at (truncated to the minute, UTC), home, draw, away numeric(5,2)) — append-only, **WRITTEN** by the ingester since T7.6, for matches in state `live` only. `UNIQUE (match_id, captured_at)` collapses the 20-second live poll to one row per minute. The values are **market-implied** — the first betting provider's three-way moneyline with the margin removed, per `mapWinProbability` — and are not a ScoreArc forecast. Pre-match line movement is deliberately not recorded: a scheduled fixture is polled on slow ticks all season and would produce ~288 rows a day describing a market nobody is watching yet.
 
 ### Ops
 - **ingest_run**(id bigserial, competition_id, kind, started_at, finished_at, ok, error) — observability. Beyond per-operation runs it also records the identity events a human has to act on: `provisional_team` (a club nobody has curated), `team_promotion` (a curation that could not complete), and `player_capture` (a match where the provider sent no athlete ids — without this, total capture failure and a match where nothing happened are the same empty table).
