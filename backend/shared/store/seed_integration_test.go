@@ -342,6 +342,42 @@ WHERE kind='team_promotion' AND ok IS FALSE`).Scan(&failures, &recorded); err !=
 	}
 }
 
+func TestApplyTeamSeedPromotesSquadFactsAsTheIngesterRole(t *testing.T) {
+	owner, pool, dsn := newIntegrationStoreDSN(t)
+	ctx := context.Background()
+	provisional := mustProvisionalWithHistory(t, owner, pool)
+	if err := owner.ReplaceSquad(
+		ctx, "premier-league", "2026-27", provisional, "espn",
+		sampleSquadMembers(), nil,
+	); err != nil {
+		t.Fatal(err)
+	}
+	roleStore, roleName := newIngesterRoleStore(t, pool, dsn)
+
+	if err := roleStore.ApplyTeamSeed(ctx, lutonSeed); err != nil {
+		t.Fatalf("ApplyTeamSeed as %s: %v", roleName, err)
+	}
+
+	var membershipTeam, seasonStatTeam string
+	if err := pool.QueryRow(ctx,
+		`SELECT DISTINCT team_id FROM squad_membership`,
+	).Scan(&membershipTeam); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx,
+		`SELECT DISTINCT team_id FROM player_season_stat`,
+	).Scan(&seasonStatTeam); err != nil {
+		t.Fatal(err)
+	}
+	if membershipTeam != "eng-luton-town" || seasonStatTeam != "eng-luton-town" {
+		t.Fatalf("as %s: squad=%s season stats=%s, want curated team",
+			roleName, membershipTeam, seasonStatTeam)
+	}
+	if got := countRows(t, pool, `SELECT count(*) FROM team WHERE id=$1`, provisional); got != 0 {
+		t.Fatalf("as %s: provisional team survived squad promotion", roleName)
+	}
+}
+
 // Curating a club that has already played finished matches is the NORMAL
 // lifecycle, not an exception: it is auto-created in August and curated in a
 // later pass. The trigger carve-out exists so that promotion still works.

@@ -87,6 +87,77 @@ func TestESPNScoreboardRejectsLimitSizedRollingResponse(t *testing.T) {
 	}
 }
 
+func TestESPNRosterRejectsImplausiblyShortSuccess(t *testing.T) {
+	client := espnprovider.NewWithOptions(espnprovider.Options{
+		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body: io.NopCloser(strings.NewReader(`{
+					"status":"success",
+					"team":{"id":"227"},
+					"athletes":[{"id":"p1","fullName":"Only Player"}]
+				}`)),
+			}, nil
+		})},
+		MaxAttempts: 1,
+	})
+
+	if _, err := NewESPN(client).Roster(
+		context.Background(),
+		config.Competition{ESPNSlug: "mex.1"},
+		"227",
+	); err == nil {
+		t.Fatal("expected implausibly short roster to fail")
+	}
+}
+
+func TestESPNAthleteBioRejectsMissingHistoryEnvelope(t *testing.T) {
+	client := espnprovider.NewWithOptions(espnprovider.Options{
+		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{}`)),
+			}, nil
+		})},
+		MaxAttempts: 1,
+	})
+
+	if _, err := NewESPN(client).AthleteBio(
+		context.Background(),
+		config.Competition{ESPNSlug: "mex.1"},
+		"297287",
+	); err == nil {
+		t.Fatal("expected missing teamHistory envelope to fail")
+	}
+}
+
+func TestESPNAthleteBioAcceptsExplicitEmptyHistory(t *testing.T) {
+	client := espnprovider.NewWithOptions(espnprovider.Options{
+		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"teamHistory":[]}`)),
+			}, nil
+		})},
+		MaxAttempts: 1,
+	})
+
+	entries, err := NewESPN(client).AthleteBio(
+		context.Background(),
+		config.Competition{ESPNSlug: "mex.1"},
+		"297287",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entries == nil || len(entries) != 0 {
+		t.Fatalf("explicit empty history = %#v, want non-nil empty slice", entries)
+	}
+}
+
 func TestESPNRollingScoreboardFiltersForeignSeason(t *testing.T) {
 	body := `{"events":[
 		{"id":"old","date":"2025-12-31T12:00:00Z","season":{"year":2025,"slug":"regular-season"},

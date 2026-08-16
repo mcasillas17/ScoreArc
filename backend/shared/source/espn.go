@@ -33,6 +33,9 @@ type cachedResponse struct {
 const (
 	scoreboardEventLimit = 1000
 	scoreboardCacheTTL   = 5 * time.Second
+	// A successful first-team roster must contain at least a starting XI.
+	// Shorter payloads are not authoritative enough for replacement deletion.
+	minimumRosterPlayers = 11
 )
 
 func NewESPN(client *espn.Client) *ESPN {
@@ -217,6 +220,45 @@ func (e *ESPN) Statistics(
 	// ESPN's statistics season metadata is not reliably tied to the requested
 	// league year; the season-scoped URL is the only stable provider contract.
 	return raw, nil
+}
+
+func (e *ESPN) Roster(
+	ctx context.Context,
+	comp config.Competition,
+	teamSourceID string,
+) (model.Squad, error) {
+	raw, err := e.get(ctx, espn.TeamRosterURL(comp.ESPNSlug, teamSourceID))
+	if err != nil {
+		return model.Squad{}, err
+	}
+	squad, err := espn.MapRoster(raw)
+	if err != nil {
+		return model.Squad{}, err
+	}
+	if squad.TeamSourceID != teamSourceID {
+		return model.Squad{}, fmt.Errorf(
+			"roster team %q does not match %q", squad.TeamSourceID, teamSourceID)
+	}
+	if len(squad.Players) < minimumRosterPlayers {
+		return model.Squad{}, fmt.Errorf(
+			"roster team %q has only %d players", teamSourceID, len(squad.Players))
+	}
+	return squad, nil
+}
+
+func (e *ESPN) AthleteBio(
+	ctx context.Context,
+	comp config.Competition,
+	athleteSourceID string,
+) ([]model.TeamHistoryEntry, error) {
+	raw, err := e.get(ctx, espn.AthleteBioURL(comp.ESPNSlug, athleteSourceID))
+	if err != nil {
+		return nil, err
+	}
+	if err := espn.ValidateAthleteBioEnvelope(raw); err != nil {
+		return nil, err
+	}
+	return espn.MapAthleteBio(raw)
 }
 
 func (e *ESPN) Bracket(
