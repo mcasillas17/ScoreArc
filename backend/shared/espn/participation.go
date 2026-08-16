@@ -2,9 +2,12 @@ package espn
 
 import (
 	"encoding/json"
+	"math"
 	"strconv"
 	"strings"
 )
+
+const maxPostgresInt4 = 1<<31 - 1
 
 // MapParticipation extracts the people from an ESPN match summary: the full
 // squads (starters AND substitutes) and one event per player-action.
@@ -63,9 +66,69 @@ func mapSquad(entry *rawRosterEntry) []SquadPlayer {
 			Number:   number,
 			Position: p.Position.Abbreviation,
 			Starter:  p.Starter,
+			Stats:    mapPlayerStats(p.Stats),
 		})
 	}
 	return out
+}
+
+// mapPlayerStats reads the per-match numbers BY NAME.
+//
+// By name, never by index: the array order is ESPN's, it has no documented
+// stability, and an index read would mis-attribute a value rather than fail --
+// three goals reported as three yellow cards, with nothing anywhere to notice.
+//
+// Returns nil when the provider sent no stat entries, so the store can tell
+// "nothing was said" from "some measurements were sent and others were absent".
+func mapPlayerStats(entries []rawPlayerStat) *PlayerMatchStats {
+	if len(entries) == 0 {
+		return nil
+	}
+	stats := &PlayerMatchStats{}
+	targets := map[string]**int{
+		"totalGoals":     &stats.Goals,
+		"goalAssists":    &stats.Assists,
+		"totalShots":     &stats.Shots,
+		"shotsOnTarget":  &stats.ShotsOnTarget,
+		"offsides":       &stats.Offsides,
+		"foulsCommitted": &stats.FoulsCommitted,
+		"foulsSuffered":  &stats.FoulsSuffered,
+		"ownGoals":       &stats.OwnGoals,
+		"yellowCards":    &stats.YellowCards,
+		"redCards":       &stats.RedCards,
+		"saves":          &stats.Saves,
+		"goalsConceded":  &stats.GoalsConceded,
+		"shotsFaced":     &stats.ShotsFaced,
+	}
+	// `appearances` is always 1 on a row that exists, and `subIns` is
+	// derivable from Starter plus the sub_on events. Both are dropped rather
+	// than stored a second and third time.
+	for _, entry := range entries {
+		target, wanted := targets[entry.Name]
+		if !wanted {
+			continue
+		}
+		count, ok := wholeCount(entry.Value)
+		if !ok {
+			// A fractional, negative, or PostgreSQL-int4-out-of-range count
+			// is a payload we do not understand. Leaving it nil records
+			// "unknown"; converting it would record a plausible-looking
+			// number that is not a measurement. One bad entry never discards
+			// the rest of the row.
+			continue
+		}
+		*target = &count
+	}
+	return stats
+}
+
+func wholeCount(value *float64) (int, bool) {
+	if value == nil || *value < 0 ||
+		*value > maxPostgresInt4 ||
+		math.Trunc(*value) != *value {
+		return 0, false
+	}
+	return int(*value), true
 }
 
 // mapPlayerEvents turns one ESPN key event into zero or more player-actions.
@@ -114,9 +177,9 @@ func mapPlayerEvents(e rawKeyEvent) []PlayerEvent {
 		}
 
 	case strings.Contains(kind, "own"):
-		// Unverified: no own goal appears in any recorded fixture. Detail keeps
-		// ESPN's own label, so if this guess is wrong it is fixable from stored
-		// rows rather than by re-fetching a finished match.
+		// Verified against Leagues Cup event 401863609: ESPN credits the team
+		// that benefits and names the opposition player who put the ball into
+		// their own net. Detail keeps ESPN's label for auditability.
 		return []PlayerEvent{base(PlayerEventOwnGoal, firstAthlete(e.Participants))}
 
 	case e.ScoringPlay:

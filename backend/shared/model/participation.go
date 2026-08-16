@@ -15,6 +15,39 @@ package model
 // belongs to the ingester, where the Store lives — the same seam TeamRef and
 // MatchRef already sit on.
 
+// PlayerMatchStats is what one player did in one match, as the provider
+// measured it.
+//
+// Every field is a POINTER, and that is the entire design. ESPN's stat set
+// varies by position: a goalkeeper's row carries saves, goalsConceded and
+// shotsFaced but no offsides; an outfielder's carries offsides and no saves.
+// nil means "the provider did not measure this", zero means "the provider
+// measured this and it was zero", and collapsing the two would put an
+// invention into every per-position percentile computed downstream.
+//
+// The field names are ScoreArc's; the ESPN names they are read from are on the
+// right. They are looked up by name in the stats array, never by index -- the
+// order is ESPN's and an index read would mis-attribute silently.
+type PlayerMatchStats struct {
+	Goals          *int // totalGoals
+	Assists        *int // goalAssists
+	Shots          *int // totalShots
+	ShotsOnTarget  *int // shotsOnTarget
+	Offsides       *int // offsides       -- absent for goalkeepers
+	FoulsCommitted *int // foulsCommitted
+	FoulsSuffered  *int // foulsSuffered
+	// OwnGoals counts own goals THIS PLAYER put into their own net. It is a
+	// different attribution from match_event, where ESPN credits an own goal to
+	// the team that BENEFITS and names the opposition player. Both are correct;
+	// they answer different questions.
+	OwnGoals      *int // ownGoals
+	YellowCards   *int // yellowCards
+	RedCards      *int // redCards
+	Saves         *int // saves         -- absent for outfielders
+	GoalsConceded *int // goalsConceded
+	ShotsFaced    *int // shotsFaced
+}
+
 // SquadPlayer is one roster entry as the provider reported it.
 //
 // Unlike LineupPlayer this includes substitutes. The lineups blob keeps
@@ -26,6 +59,11 @@ type SquadPlayer struct {
 	Number   *int
 	Position string
 	Starter  bool
+	// Stats is nil when the payload carried no stat entries for this player --
+	// which is NOT the same as an array containing only some stat names. The
+	// store relies on the difference: nil must never overwrite numbers an
+	// earlier poll established.
+	Stats *PlayerMatchStats
 }
 
 // Player event types. These are ScoreArc's own vocabulary, not the provider's —
