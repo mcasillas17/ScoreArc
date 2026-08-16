@@ -110,3 +110,45 @@ func TestInitialRollbackRevokesDefaultPrivileges(t *testing.T) {
 		}
 	}
 }
+
+// Squad membership is per season, not per player: a player belongs to a club
+// in a season, and a transfer is a second row rather than an overwrite -- the
+// same reason `appearance` records the team per match instead of on `player`.
+func TestSquadAndSeasonStatsAreSeasonScoped(t *testing.T) {
+	sql := readMigration(t, "0011_squad_and_season_stats.up.sql")
+	for _, required := range []string{
+		"CREATE TABLE squad_membership",
+		"PRIMARY KEY (competition_id, season_id, team_id, player_id)",
+		"CREATE TABLE player_season_stat",
+		"PRIMARY KEY (competition_id, season_id, player_id)",
+		"ALTER TABLE player",
+		"GRANT SELECT, INSERT, UPDATE ON squad_membership, player_season_stat TO scorearc_ingester",
+		"GRANT DELETE ON squad_membership TO scorearc_ingester",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("0011_squad_and_season_stats.up.sql missing %q", required)
+		}
+	}
+	// Eight of 35 roster athletes had no statistics block at all. NOT NULL
+	// would force a zero onto a player who has not played.
+	if strings.Contains(sql, "appearances int NOT NULL") {
+		t.Fatal("season stat columns must be nullable")
+	}
+}
+
+func TestSquadAndSeasonStatsRollbackDropsOwnedTablesInReverseOrder(t *testing.T) {
+	sql := readMigration(t, "0011_squad_and_season_stats.down.sql")
+	stats := strings.Index(sql, "DROP TABLE IF EXISTS player_season_stat")
+	squad := strings.Index(sql, "DROP TABLE IF EXISTS squad_membership")
+	if stats < 0 || squad < 0 {
+		t.Fatal("0011 rollback must drop both owned tables")
+	}
+	if stats > squad {
+		t.Fatal("0011 rollback must drop player_season_stat before squad_membership")
+	}
+	for _, existingColumn := range []string{"birth_date", "nationality"} {
+		if strings.Contains(sql, "DROP COLUMN IF EXISTS "+existingColumn) {
+			t.Fatalf("0011 rollback must not drop pre-existing player.%s", existingColumn)
+		}
+	}
+}
