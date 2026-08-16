@@ -7,10 +7,13 @@ coordinates — before ESPN deletes it, and make the analysable subset queryable
 
 **Architecture:** A new provider against ESPN's **core** API host
 (`sports.core.api.espn.com`), which the codebase does not currently use. Two
-destinations, split on a rule: **every byte goes to R2 as an immutable gzipped archive**,
-and **the analysable event tier goes to Postgres as rows**. R2 holds what we cannot
-re-fetch; Postgres holds what we query today. When the parser improves, R2 is re-processed
-into more rows — which is only possible because the raw bytes were kept.
+destinations, split on a rule: **every byte goes to a private R2 bucket as an immutable
+gzipped archive**, and **the analysable event tier goes to Postgres as rows**. R2 holds
+what we cannot re-fetch; Postgres holds what we query today. When the parser improves, R2
+is re-processed into more rows — which is only possible because the raw bytes were kept.
+The archive uses a **second** R2 bucket and a **second** client: the existing
+`assets.Mirror` is bound to the public CDN bucket and requires a public base URL that a
+private bucket does not have.
 
 **Tech Stack:** Go 1.26, pgx v5, Postgres 16 (Neon), Cloudflare R2 via the existing
 `shared/assets` S3 client, testcontainers-go.
@@ -74,24 +77,47 @@ Above 1000 the API does not error — it silently falls back to the default page
 assert the returned `pageSize` matches what was asked**, or a future default change turns
 one ingest cycle into 62× the requests with nothing in the logs.
 
-### 3. A refinement to the perishability finding
+### 3. The retention boundary is the SEASON, and what survives is not what you would assume
 
-The pruning is real and confirmed. Event `740722` (Liga MX, 2025-11-30) returns **175**
-plays with **zero** Pass / Ball touch / Tackle / Take On / Aerial / Interception /
-Dispossessed events. Event `401877018` (2026-08-15) returns **1,542** with all of them.
+**Measured 2026-08-15, and this supersedes every earlier guess** (the briefing offered
+"somewhere between ~1 week and ~10 months, plausibly season-boundary, NOT verified"):
 
-But the tiers age differently, and the difference matters for prioritisation:
+| Match | Plays | Passes | Coord scale | Goal-mouth |
+|---|---|---|---|---|
+| Liga MX `401877018`, 2026-08-15 (today) | 1,542 | 549 | 0–100 | present |
+| Liga MX `401877043`, 2026-07-17 (**30 days old, this season**) | 1,491 | 610 | 0–100 | present |
+| Liga MX `401870615`, 2026-05-10 (**last season**) | 199 | **0** | **0–1** | **all zero** |
+| Premier League `740921`, 2026-04-18 | 189 | **0** | **0–1** | **all zero** |
+| MLS `727172`, 2025-08-09 | 198 | **0** | **0–1** | **all zero** |
+| CONCACAF CC `401865469`, 2026-04-08 | 164 | **0** | **0–1** | **all zero** |
 
-- **The touch tier is perishable.** Passes, ball touches, tackles, take-ons, aerials,
-  interceptions, dispossessions — gone from the November match.
-- **The key-event tier and its coordinates survive.** The November match still returns
-  149 of 175 plays **with non-zero pitch coordinates**, including its shots.
+Three conclusions, each of which changes a design decision in this plan:
 
-So a shot map and an xG model for a past season are probably still recoverable; a pass
-network is not. That does **not** reduce the urgency — the touch tier is still the most
-perishable data we have — but it does mean Task 1 measures the window rather than assuming
-it, and the backfill in Task 7 is scoped to the current season where the whole stream is
-still intact.
+**(a) The boundary is the season, not an age.** A 30-day-old current-season match is
+fully intact; a four-month-old previous-season match is not. So the backfill deadline is
+**the end of this season** — urgent and schedulable, rather than a rolling daily loss.
+Task 1's probe therefore samples *across the season boundary*, not across a sliding
+window of days.
+
+**(b) Historical geometry is in a DIFFERENT FRAME, not a rescale.** Prior-season shots
+keep a pitch location, which looks like a free backfill and is not:
+
+- the scale is **0–1**, not 0–100;
+- `goalPositionY/Z` are **zero on every historical match sampled** (n=194 on `740685`,
+  zero non-zero values) — goal-mouth placement does not survive at all;
+- the frame appears **inverted** — historical shots cluster at low x (0.02–0.49) while
+  current-season shots cluster high (69–95 on 0–100), so a `×100` puts every historical
+  shot in the wrong half of the pitch.
+
+**(c) Therefore the earlier claim that "a shot map and an xG model for a past season are
+probably still recoverable" was too optimistic and has been removed.** Past-season shots
+have a location in an unvalidated frame and no goal-mouth placement. Whether that frame
+can be reconciled is a **measurement** — E9's T9.1 owns it — and until it reports, nothing
+downstream may mix the two eras.
+
+What this does **not** change: the touch tier is still the most perishable data we have,
+and this season's is intact today. Task 7's backfill is scoped to the current season and
+deliberately does not attempt prior ones.
 
 ---
 
@@ -99,13 +125,41 @@ still intact.
 
 | Tier | Destination | Volume | Rationale |
 |---|---|---|---|
-| **Every play, raw JSON** | R2, gzipped, immutable | ~2 MB/match raw; JSON of this shape compresses ~10:1, so ~200 KB/match. At ~2,500 matches/season across nine competitions that is roughly **4.5 GB/season**. | This is the tier ESPN deletes. R2 has **zero egress** and is already in the stack. Keeping the bytes is what makes every future parser improvement a re-process instead of an impossibility. |
+| **Every play, raw JSON** | **R2 private raw bucket** (`R2_RAW_BUCKET`), gzipped, immutable | ~2 MB/match raw; JSON of this shape compresses ~10:1, so ~200 KB/match. At ~2,500 matches/season across nine competitions that is roughly **4.5 GB/season**. | This is the tier ESPN deletes. R2 has **zero egress** and is already in the stack. Keeping the bytes is what makes every future parser improvement a re-process instead of an impossibility. |
 | **Analysable events** | Postgres `match_play` | ~180 rows/match → roughly **4 M rows/season**, order 600 MB. | Shots, goals, saves, assists, cards, subs, offsides, fouls and set pieces — the rows a shot map, an xG model, a game log and a recap actually read. |
 | **Touch events** (pass, ball touch, tackle, take-on, aerial, clear, dispossessed, blocked pass, cross, attempted tackle, interception, out) | **R2 only** | The remaining ~1,350/match | Storing them in Postgres is ~35 M rows and ~5 GB per season of billed Neon storage to serve pass networks and heat maps — and the roadmap explicitly rejects heat maps, on the grounds that "it describes a match; it does not explain one". Keep the bytes, skip the rows, promote later if a real feature needs them. |
 
 The split has a pleasing property worth stating: **the Postgres tier is almost exactly the
 tier ESPN itself retains**, and R2 holds the tier it discards. If R2 were ever lost, we
 would still hold what ESPN would still give us.
+
+### Two R2 buckets, and why the existing client cannot serve both
+
+`backend/shared/assets/r2.go` today assumes **one** bucket that is **public**. Its
+`FromEnv` requires `R2_PUBLIC_BASE_URL` to be set, and `New` rejects anything that is not a
+plain HTTPS origin. That is correct for what it does — mirror crests to a CDN — and wrong
+for what this plan needs.
+
+| | Public assets bucket | Private raw archive |
+|---|---|---|
+| Env | `R2_BUCKET` | `R2_RAW_BUCKET` |
+| Contents | team crests, national flags, competition emblems | raw ESPN play-stream payloads |
+| Public access | yes, `https://cdn.scorearc.futbol` via `R2_PUBLIC_BASE_URL` | **none** — no public access, no `r2.dev` URL, no custom domain |
+| Client | `assets.Mirror` (existing) | `assets.Archive` (**new**, Task 5) |
+
+Both share one account id, one S3 endpoint (`https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`)
+and one API token with **Object Read & Write** scoped to both buckets. Only the bucket name
+differs. Setup steps live in `docs/backend/SETUP.md` §6 and are **not** restated here.
+
+**Do not satisfy the existing validator with a dummy URL.** A private bucket has no public
+base URL *by design*, and inventing `https://example.invalid/` to get past a check would
+leave a plausible-looking CDN origin in the config that a later reader would try to serve
+from. Task 5 splits client construction from the public-URL concern instead.
+
+**Never hardcode a bucket name.** The env var names the **role** (`R2_RAW_BUCKET`); the
+secret names the **resource** (`scorearc-espn-historic`). That way renaming a bucket is a
+`fly secrets set`, not a code change and a redeploy. There is a grep in Task 8's gate that
+fails if a bucket name appears in Go source.
 
 ---
 
@@ -141,6 +195,12 @@ Numbers reserved by sibling plans: `0008_match_officials` and `0009_odds_snapsho
 - Ingester connects with the **least-privilege login, never the DB owner**:
   `POOLED_DSN`, `INGESTER_LEASE_DSN`. R2 credentials and DSNs via `fly secrets`, never in
   a file.
+- **Two R2 buckets.** `R2_BUCKET` is the existing **public** CDN bucket for crests;
+  `R2_RAW_BUCKET` is the **private** archive bucket this plan writes to. One account, one
+  API token with Object Read & Write scoped to both, one S3 endpoint — only the bucket name
+  differs. Setup: `docs/backend/SETUP.md` §6.
+- **Never hardcode a bucket name** in Go, in a `fly.toml`, or in a step of this plan. The
+  env var names the role; the secret names the resource.
 - **Never resolve a `$ref` by fetching it.** See Task 3 — this is the single most
   important implementation constraint in the plan.
 - `match_play` is append-and-correct, not append-only: a play can be revised upstream
@@ -163,7 +223,9 @@ Numbers reserved by sibling plans: `0008_match_officials` and `0009_odds_snapsho
 - `backend/shared/espn/testdata/espn-plays-pruned.json` — recorded old match.
 - `backend/shared/model/plays.go` — `Play`, `PlayCoordinates`, `PlayStream`.
 - `backend/shared/source/espn.go` — `Plays(...)` on the `Source` interface.
-- `backend/shared/assets/r2.go` — `Archive` (raw object put).
+- `backend/shared/assets/r2.go` — split client construction from the public-URL concern.
+- `backend/shared/assets/archive.go` — the **private raw bucket** client. New file.
+- `backend/shared/assets/archive_test.go`
 - `backend/shared/store/plays.go` — `WritePlays`, `RecordPlayArchive`, `MatchesMissingPlays`.
 - `backend/shared/store/plays_integration_test.go`
 - `backend/ingester/contracts.go`, `backend/ingester/matches.go`, `backend/ingester/plays.go`
@@ -177,14 +239,25 @@ Numbers reserved by sibling plans: `0008_match_officials` and `0009_odds_snapsho
 **Files:**
 - Create: `backend/cmd/play-retention/main.go`
 
-The briefing says the window is "somewhere between ~1 week and ~10 months; plausibly
-season-boundary, **NOT verified**". Everything downstream — how often the ingester must
-run, whether a backfill is worth writing, what we promise about historical coverage —
-depends on that number. Guessing it and building an SLA on the guess is how you discover
-the real number from a user.
+The boundary has now been measured (see correction 3 above): it is the **season**, not an
+age. Current-season matches are intact at 30 days; previous-season matches are pruned
+regardless of how recently they were played.
 
-This is a **probe**, exactly like E6's T6.1, and it comes first for the same reason:
-sampling two matches and generalising is how you ship an empty feature to a third.
+**So why keep the probe?** Because that measurement is a single sweep across two
+competitions on one day, and three things it cannot tell us matter:
+
+1. **Whether the boundary is uniform across all nine competitions.** Liga MX and the
+   Premier League agreed; Leagues Cup and the CONCACAF Champions Cup have different
+   season shapes and were not tested at the boundary.
+2. **Whether it is the season or a fixed horizon that merely looks like the season.**
+   Liga MX's off-season gap (no finished matches in June) means the nearest samples
+   either side of the cliff are ~10 weeks apart. A 60-day horizon and a season boundary
+   are indistinguishable from that alone.
+3. **Whether it moves.** This is provider behaviour, not a contract.
+
+The probe is therefore a **standing instrument**, not a one-off: re-run it when coverage
+looks wrong. It comes first for the same reason E6's T6.1 does — sampling two competitions
+and generalising is how you ship an empty feature to a third.
 
 - [ ] **Step 1: Write the probe**
 
@@ -403,12 +476,18 @@ Create `backend/migrations/0007_play_stream.up.sql`:
 -- explaining one. The bytes are kept; promoting them to rows later is a
 -- re-process, which is only possible because they were kept.
 --
--- ESPN PRUNES THE TOUCH TIER FOR OLDER MATCHES. Verified 2026-08-15: event
--- 740722 (2025-11-30) returns 175 plays with zero Pass/Ball touch/Tackle/Take
--- On/Aerial/Interception/Dispossessed; event 401877018 (2026-08-15) returns
--- 1542 with all of them. The key-event tier and its coordinates survive -- the
--- November match still has 149/175 plays with non-zero coordinates -- so this
--- table backfills further than the R2 archive does.
+-- ESPN PRUNES THE TOUCH TIER AT THE SEASON BOUNDARY. Verified 2026-08-15: a
+-- 30-day-old CURRENT-season match (401877043, 2026-07-17) returns 1491 plays
+-- including 610 passes on a 0-100 coordinate scale with goal-mouth placement;
+-- a PREVIOUS-season match (401870615, 2026-05-10) returns 199 plays with ZERO
+-- passes, coordinates on a 0-1 scale, and goalPositionY/Z entirely zeroed.
+-- Same result for eng.1, usa.1 and concacaf.champions.
+--
+-- So this table backfills further than a pass network does -- prior-season
+-- SHOTS survive -- but NOT on comparable terms: their coordinates are in a
+-- different, apparently inverted frame with no goal-mouth placement. Nothing
+-- downstream may mix eras until E9's T9.1 reports whether the frames can be
+-- reconciled. Task 7's backfill is scoped to the current season only.
 CREATE TABLE match_play (
   match_id  uuid NOT NULL REFERENCES match(id) ON DELETE CASCADE,
   -- ESPN's own play id. Keyed on it rather than on an ordinal because a live
@@ -934,8 +1013,11 @@ func TestMapPlaysDetectsAPrunedStream(t *testing.T) {
 	if pruned.HasTouchTier() {
 		t.Fatal("the pruned fixture must not report a touch tier")
 	}
-	// But its shots and their coordinates are still there, which is why a
-	// shot map backfills further than a pass network does.
+	// But its shots and their coordinates are still there -- which is why a
+	// shot map backfills further than a pass network does, though NOT on
+	// comparable terms: a pruned match's coordinates are on a 0-1 scale with
+	// goal-mouth placement zeroed, so they cannot be plotted or trained on
+	// alongside current-season shots until the frames are reconciled.
 	var located int
 	for _, play := range pruned.Plays {
 		if play.Coordinates != nil {
@@ -1373,8 +1455,11 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
   — the merged stream **and** the concatenated raw pages, because the raw bytes are the
   archive and re-serialising our own structs would archive our parser's blind spots
   instead of ESPN's data.
-- `assets.Archive(ctx, key string, body []byte) (int, error)` — gzip and put; returns
-  bytes written.
+- `assets.Credentials` + `assets.NewArchive(creds, bucket)` + `assets.ArchiveFromEnv()` —
+  a **second, private** R2 client that does not require a public base URL.
+- `(*assets.Archive).Put(ctx, key string, body []byte) (int, error)` — gzip and put;
+  returns the compressed size.
+- `assets.PlayArchiveKey(source, competitionID, seasonID, providerEventID string) string`
 
 - [ ] **Step 1: Write the failing source test**
 
@@ -1565,23 +1650,272 @@ The archive body is the pages joined by newlines — **JSON Lines, one page obje
 line** — rather than a synthesised single document. It is trivially streamable, appending a
 late-arriving page is a concatenation, and nothing is reshaped on the way in.
 
-- [ ] **Step 4: Add the R2 archive put**
+- [ ] **Step 4a: Write the failing archive tests**
 
-Append to `backend/shared/assets/r2.go`:
+Create `backend/shared/assets/archive_test.go`:
 
 ```go
-// Archive stores an immutable, gzipped payload and returns the compressed size.
+package assets
+
+import (
+	"compress/gzip"
+	"context"
+	"errors"
+	"io"
+	"strings"
+	"testing"
+
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+)
+
+type recordingPutter struct {
+	bucket, key      string
+	body             []byte
+	contentEncoding  string
+	calls            int
+}
+
+func (r *recordingPutter) HeadObject(context.Context, *s3.HeadObjectInput, ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
+	return nil, errors.New("archive must not HEAD; it always overwrites")
+}
+
+func (r *recordingPutter) PutObject(_ context.Context, in *s3.PutObjectInput, _ ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+	r.calls++
+	r.bucket, r.key = *in.Bucket, *in.Key
+	if in.ContentEncoding != nil {
+		r.contentEncoding = *in.ContentEncoding
+	}
+	body, err := io.ReadAll(in.Body)
+	if err != nil {
+		return nil, err
+	}
+	r.body = body
+	return &s3.PutObjectOutput{}, nil
+}
+
+// The requirement this whole refactor exists for: a PRIVATE bucket has no
+// public base URL, and constructing its client must not demand one. Before the
+// split, the only way to build an R2 client at all was assets.New, which
+// rejects an empty or non-HTTPS R2_PUBLIC_BASE_URL.
+func TestArchiveNeedsNoPublicBaseURL(t *testing.T) {
+	archive, err := NewArchive(Credentials{
+		AccountID: "acct", AccessKeyID: "key", SecretAccessKey: "secret",
+	}, "some-private-bucket")
+	if err != nil {
+		t.Fatalf("NewArchive: %v", err)
+	}
+	if archive == nil {
+		t.Fatal("NewArchive returned nil")
+	}
+}
+
+func TestNewArchiveRequiresABucket(t *testing.T) {
+	if _, err := NewArchive(Credentials{
+		AccountID: "acct", AccessKeyID: "key", SecretAccessKey: "secret",
+	}, ""); err == nil {
+		t.Fatal("want an error when no bucket is named")
+	}
+}
+
+func TestArchivePutsGzippedBytesUnderTheGivenKey(t *testing.T) {
+	putter := &recordingPutter{}
+	archive := &Archive{client: putter, bucket: "raw-bucket"}
+
+	payload := []byte(`{"count":1542}` + "\n" + `{"count":1542}`)
+	size, err := archive.Put(context.Background(), "plays/espn/mex/2026/1.ndjson.gz", payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if putter.bucket != "raw-bucket" {
+		t.Fatalf("bucket = %q, want the raw bucket", putter.bucket)
+	}
+	if putter.key != "plays/espn/mex/2026/1.ndjson.gz" {
+		t.Fatalf("key = %q", putter.key)
+	}
+	if putter.contentEncoding != "gzip" {
+		t.Fatalf("contentEncoding = %q, want gzip", putter.contentEncoding)
+	}
+	if size != len(putter.body) {
+		t.Fatalf("reported size %d, actually wrote %d", size, len(putter.body))
+	}
+	// Round-trip: an archive we cannot read back is not an archive.
+	reader, err := gzip.NewReader(strings.NewReader(string(putter.body)))
+	if err != nil {
+		t.Fatalf("stored bytes are not gzip: %v", err)
+	}
+	restored, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(restored) != string(payload) {
+		t.Fatal("round-trip changed the payload")
+	}
+}
+
+// The key must be derivable from ESPN's own ids alone, so an object is
+// identifiable without the database that indexed it.
+func TestPlayArchiveKeyLayout(t *testing.T) {
+	got := PlayArchiveKey("espn", "premier-league", "2026-27", "401877018")
+	want := "plays/espn/premier-league/2026-27/401877018.ndjson.gz"
+	if got != want {
+		t.Fatalf("PlayArchiveKey = %q, want %q", got, want)
+	}
+	// A competition or season id with a slash in it would silently create a
+	// nested prefix and break the one-prefix-per-season listing.
+	if strings.Contains(PlayArchiveKey("espn", "a/b", "c", "1"), "a/b") {
+		t.Fatal("path separators in an id must be escaped, not interpolated")
+	}
+}
+```
+
+```bash
+cd backend && go test ./shared/assets/ -run "Archive|PlayArchiveKey"
+```
+
+Expected: FAIL to compile — `undefined: NewArchive`, `undefined: Credentials`,
+`undefined: Archive`, `undefined: PlayArchiveKey`.
+
+- [ ] **Step 4b: Split client construction out of the public-URL concern**
+
+In `backend/shared/assets/r2.go`, extract the credentials and the S3 client so that
+building a client no longer implies having a CDN in front of it. Replace the `Config`
+declaration and add:
+
+```go
+// Credentials are the parts shared by every R2 bucket: one account, one API
+// token with Object Read & Write scoped to both buckets, one S3 endpoint. Only
+// the bucket name differs between them.
+type Credentials struct {
+	AccountID       string
+	AccessKeyID     string
+	SecretAccessKey string
+}
+
+// Config is a PUBLIC bucket: one that is served from a CDN origin. The public
+// base URL is required here and only here.
+type Config struct {
+	Credentials
+	Bucket        string
+	PublicBaseURL string
+}
+
+func (c Credentials) complete() bool {
+	return c.AccountID != "" && c.AccessKeyID != "" && c.SecretAccessKey != ""
+}
+
+// newS3Client builds the R2 client. It knows nothing about public URLs, which
+// is the point: the raw archive bucket is private -- no public access, no
+// r2.dev URL, no custom domain -- and before this split the only way to
+// construct a client was assets.New, whose validator rejects an empty
+// PublicBaseURL. Passing a dummy URL to get past that would leave a
+// plausible-looking CDN origin in the config for someone to later serve from.
+func newS3Client(creds Credentials) *s3.Client {
+	return s3.New(s3.Options{
+		Region:       "auto",
+		BaseEndpoint: aws.String(fmt.Sprintf("https://%s.r2.cloudflarestorage.com", creds.AccountID)),
+		Credentials: credentials.NewStaticCredentialsProvider(
+			creds.AccessKeyID, creds.SecretAccessKey, ""),
+		UsePathStyle: true,
+	})
+}
+
+func credentialsFromEnv() Credentials {
+	return Credentials{
+		AccountID:       os.Getenv("R2_ACCOUNT_ID"),
+		AccessKeyID:     os.Getenv("R2_ACCESS_KEY_ID"),
+		SecretAccessKey: os.Getenv("R2_SECRET_ACCESS_KEY"),
+	}
+}
+```
+
+Then rewrite `New` to keep its existing public-URL validation verbatim and call
+`newS3Client(config.Credentials)` in place of its inline `s3.New(...)`, and rewrite
+`FromEnv` to build `Config{Credentials: credentialsFromEnv(), Bucket: os.Getenv("R2_BUCKET"), PublicBaseURL: os.Getenv("R2_PUBLIC_BASE_URL")}`
+and gate on `config.Credentials.complete() && config.Bucket != "" && config.PublicBaseURL != ""`.
+
+**The public path's behaviour must not change.** Run its existing suite before moving on:
+
+```bash
+cd backend && go test ./shared/assets/ -run "Mirror|FromEnv" -v
+```
+
+Expected: every pre-existing case still `--- PASS`. If `FromEnv` now returns a mirror where
+it used to return `(nil, false, nil)`, the completeness gate lost a condition.
+
+- [ ] **Step 4c: Add the private archive client**
+
+Create `backend/shared/assets/archive.go`:
+
+```go
+package assets
+
+import (
+	"bytes"
+	"compress/gzip"
+	"context"
+	"fmt"
+	"net/url"
+	"os"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+)
+
+const archiveOperationTimeout = 60 * time.Second
+
+// Archive writes immutable raw payloads to the PRIVATE R2 bucket.
 //
-// It is deliberately separate from Mirror: Mirror exists to serve a crest to a
-// browser and cares about content type, caching and rejection rules. This
-// exists to keep bytes we can never fetch again, and its only requirements are
-// that the write is durable and that nothing reshapes the payload on the way
-// in.
+// It is a separate type from Mirror, not a method on it, because the two have
+// opposite requirements. Mirror exists to put an image where a browser can
+// fetch it: it needs a public base URL, it validates content types, it refuses
+// hosts outside espncdn.com, and it HEADs first so an asset already mirrored is
+// not downloaded twice. Archive exists to keep bytes nobody can fetch again: it
+// has no public URL by design, it reshapes nothing, and it always overwrites,
+// because a re-archive of a live match is a LONGER stream and skipping it would
+// freeze the object at first-half length.
 //
-// Idempotent by key. A re-archive of the same match overwrites with an
-// identical or longer stream, which is what a live match being re-fetched
-// produces.
-func (m *Mirror) Archive(ctx context.Context, key string, body []byte) (int, error) {
+// The bucket name arrives from the environment and is never a literal in this
+// package. R2_RAW_BUCKET names the ROLE; the secret names the RESOURCE. A
+// bucket rename is then `fly secrets set`, not a code change and a redeploy.
+type Archive struct {
+	client objectClient
+	bucket string
+}
+
+// ArchiveFromEnv builds the raw-archive client, or reports that it is not
+// configured.
+//
+// Deliberately does NOT read R2_PUBLIC_BASE_URL. The raw bucket has no public
+// access, no r2.dev URL and no custom domain; requiring one would be requiring
+// a value that does not and should not exist.
+func ArchiveFromEnv() (*Archive, bool, error) {
+	creds := credentialsFromEnv()
+	bucket := os.Getenv("R2_RAW_BUCKET")
+	if !creds.complete() || bucket == "" {
+		return nil, false, nil
+	}
+	archive, err := NewArchive(creds, bucket)
+	return archive, true, err
+}
+
+func NewArchive(creds Credentials, bucket string) (*Archive, error) {
+	if bucket == "" {
+		return nil, fmt.Errorf("R2 archive requires a bucket name")
+	}
+	if !creds.complete() {
+		return nil, fmt.Errorf("R2 archive requires account id, access key and secret")
+	}
+	return &Archive{client: newS3Client(creds), bucket: bucket}, nil
+}
+
+// Put stores a gzipped payload and returns the COMPRESSED size, which is what
+// gets billed and what match_play_archive.bytes records.
+//
+// Nothing here inspects or reshapes the body. The entire value of the archive
+// is that a better parser can be run over it later, and a parser can only
+// improve on bytes that were stored exactly as they arrived.
+func (a *Archive) Put(ctx context.Context, key string, body []byte) (int, error) {
 	var buffer bytes.Buffer
 	writer := gzip.NewWriter(&buffer)
 	if _, err := writer.Write(body); err != nil {
@@ -1591,8 +1925,13 @@ func (m *Mirror) Archive(ctx context.Context, key string, body []byte) (int, err
 		return 0, fmt.Errorf("gzip archive %s: %w", key, err)
 	}
 	compressed := buffer.Bytes()
-	if _, err := m.client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket:          aws.String(m.bucket),
+
+	// A longer timeout than the asset mirror's 15s: a full match is ~2 MB raw
+	// and the write happens once, not on a request path.
+	putCtx, cancel := context.WithTimeout(ctx, archiveOperationTimeout)
+	defer cancel()
+	if _, err := a.client.PutObject(putCtx, &s3.PutObjectInput{
+		Bucket:          aws.String(a.bucket),
 		Key:             aws.String(key),
 		Body:            bytes.NewReader(compressed),
 		ContentType:     aws.String("application/x-ndjson"),
@@ -1603,24 +1942,91 @@ func (m *Mirror) Archive(ctx context.Context, key string, body []byte) (int, err
 	return len(compressed), nil
 }
 
-// PlayArchiveKey is the object layout. Competition and season first so a
-// season can be listed, expired or re-processed with one prefix scan.
-func PlayArchiveKey(competitionID, seasonID string, matchID uuid.UUID) string {
-	return fmt.Sprintf("plays/%s/%s/%s.ndjson.gz", competitionID, seasonID, matchID)
+// PlayArchiveKey is the object layout:
+//
+//	plays/{source}/{competition}/{season}/{providerEventID}.ndjson.gz
+//
+// Four decisions, each on purpose:
+//
+//   - SOURCE first, under `plays/`. A second provider one day writes the same
+//     match and must not collide with ESPN's copy of it.
+//   - COMPETITION then SEASON, so an entire season is one prefix — listable,
+//     re-processable and expirable with a single scan, which is the only
+//     lifecycle operation this data will ever need.
+//   - The PROVIDER'S event id, not our canonical match uuid. The object is then
+//     identifiable from ESPN's own ids alone: if the database were lost, or
+//     while comparing an object against the live API, the key still says which
+//     event it is. match_play_archive.object_key stores the full key, so the
+//     join back to a canonical match is one column and costs nothing.
+//   - ONE OBJECT PER MATCH, not per page. A match is the unit of reprocessing;
+//     pages are an artefact of whatever `limit` we happened to send, and the
+//     same match is 2 objects at limit=1000 and 62 at the default. The pages
+//     are joined as NDJSON, one page object per line, so nothing is reshaped
+//     and appending a late page is a concatenation.
+//
+// Every segment is escaped: an id containing a slash would silently create a
+// nested prefix and break the one-prefix-per-season listing.
+func PlayArchiveKey(source, competitionID, seasonID, providerEventID string) string {
+	return fmt.Sprintf("plays/%s/%s/%s/%s.ndjson.gz",
+		url.PathEscape(source), url.PathEscape(competitionID),
+		url.PathEscape(seasonID), url.PathEscape(providerEventID))
 }
 ```
 
-Match the surrounding file's existing field names for the S3 client and bucket — read them
-before writing this, do not assume `m.client` and `m.bucket`.
+- [ ] **Step 4d: Wire the archive into the ingester's dependencies**
 
-- [ ] **Step 5: Run**
+`Archive` is **not** a `crestMirror`. Add a separate narrow interface to
+`backend/ingester/contracts.go`:
+
+```go
+// rawArchive is the PRIVATE bucket. Deliberately not folded into crestMirror:
+// that interface exposes BaseURL(), which the raw bucket does not have and
+// must not be given a plausible-looking value for.
+type rawArchive interface {
+	Put(context.Context, string, []byte) (int, error)
+}
+```
+
+Add `archive rawArchive` to the `runner` struct, and in `backend/ingester/main.go`, beside
+the existing mirror wiring:
+
+```go
+	var archive rawArchive
+	if configured, ok, err := assets.ArchiveFromEnv(); err != nil {
+		log.Error("configure R2 raw archive", "err", err)
+		return 1
+	} else if ok {
+		archive = configured
+	} else {
+		// Not fatal, and loud on purpose. The ingester keeps working without
+		// it -- but the touch tier it is failing to keep is the most
+		// perishable data in the system, and a silent Warn here is a season
+		// quietly not being archived.
+		log.Warn("R2 raw archive disabled; the play stream will NOT be kept",
+			"hint", "set R2_RAW_BUCKET and the R2 credentials via `fly secrets`")
+	}
+```
+
+and pass `archive: archive` into the `worker := &runner{...}` literal.
+
+- [ ] **Step 4e: Run the assets tests**
 
 ```bash
-cd backend && go test ./shared/source/ ./shared/assets/ -v -run "Plays|Archive"
+cd backend && go test ./shared/assets/ -v
+```
+
+Expected: the four new archive cases pass **and** every pre-existing mirror case still
+passes. The split is only correct if the public path is untouched.
+
+- [ ] **Step 5: Run both packages**
+
+```bash
+cd backend && go test ./shared/source/ ./shared/assets/ -v
 ```
 
 Expected: `TestPlaysFollowsEveryPage`, `TestPlaysRefusesAnUnexpectedPageSize`,
-`TestPlaysAcceptsAnEmptyStream` and the archive cases all `--- PASS`.
+`TestPlaysAcceptsAnEmptyStream`, the four archive cases, **and every pre-existing mirror
+case** all `--- PASS`.
 
 - [ ] **Step 6: Run the retention probe and record the answer**
 
@@ -1644,7 +2050,9 @@ returned 1,542, so coverage varies by competition and the retention window may t
 git add backend/shared/source/source.go backend/shared/source/espn.go \
         backend/shared/source/espn_test.go backend/shared/espn/plays.go \
         backend/shared/assets/r2.go backend/shared/assets/r2_test.go
-git commit -m "feat: fetch the full play stream and archive it to R2
+git add backend/shared/assets/archive.go backend/shared/assets/archive_test.go \
+        backend/ingester/main.go backend/ingester/contracts.go
+git commit -m "feat: fetch the full play stream and archive it to the private R2 bucket
 
 Paginates: a fresh match is 1,542 plays at a hard cap of 1,000, so a
 single-request fetch silently loses most of the second half. Errors if the
@@ -1656,6 +2064,13 @@ The RAW pages are archived, joined as JSON Lines, not our re-serialised
 structs: the point of the archive is that a better parser can be run over
 it later, and archiving our own output would preserve our blind spots
 instead of ESPN's data.
+
+Adds a SECOND R2 client for the private raw bucket (R2_RAW_BUCKET). It
+cannot be assets.Mirror: that requires R2_PUBLIC_BASE_URL and validates it
+as an HTTPS origin, and the raw bucket has no public URL by design.
+Rather than pass a dummy value past that validator -- which would leave a
+plausible-looking CDN origin in the config -- client construction is split
+out of the public-URL concern.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
@@ -2142,16 +2557,26 @@ func (r *runner) capturePlays(
 		return
 	}
 
-	// Archive first. The bytes are the irreplaceable part; rows can be rebuilt
-	// from them, and they cannot be rebuilt from rows.
-	if r.mirror != nil {
-		key := assets.PlayArchiveKey(comp.ID, season.ID, identity.MatchID)
-		if size, archiveErr := r.mirror.Archive(ctx, key, raw); archiveErr != nil {
+	// Archive first, to the PRIVATE raw bucket. The bytes are the
+	// irreplaceable part; rows can be rebuilt from them, and they cannot be
+	// rebuilt from rows.
+	//
+	// r.archive is the raw bucket, NOT r.mirror. The mirror is the public
+	// CDN bucket for crests and has a public base URL; this one has none by
+	// design.
+	if r.archive != nil {
+		key := assets.PlayArchiveKey(r.source.Name(), comp.ID, season.ID, providerEventID)
+		if size, archiveErr := r.archive.Put(ctx, key, raw); archiveErr != nil {
 			r.log.Warn("archive play stream", "match", providerEventID, "err", archiveErr)
 		} else if recordErr := r.repo.RecordPlayArchive(ctx, identity.MatchID, key,
 			len(stream.Plays), size, stream.HasTouchTier()); recordErr != nil {
 			r.log.Warn("record play archive", "match", providerEventID, "err", recordErr)
 		}
+	} else {
+		// Loud, because this is the perishable tier. A silent skip here is a
+		// season of touch data quietly not being kept.
+		r.log.Warn("no raw archive configured; play stream not kept",
+			"match", providerEventID, "plays", len(stream.Plays))
 	}
 
 	analysable := make([]model.Play, 0, len(stream.Plays)/8)
@@ -2384,9 +2809,17 @@ func run() int {
 		return 1
 	}
 	defer repo.Close()
-	mirror, ok, err := assets.FromEnv()
+	// The PRIVATE raw bucket, via R2_RAW_BUCKET. Not assets.FromEnv(), which
+	// builds the public CDN mirror for crests and demands a public base URL
+	// the raw bucket does not have.
+	//
+	// Fatal here, unlike in the ingester: a backfill whose whole purpose is to
+	// keep bytes, running without anywhere to keep them, would report success
+	// while saving nothing.
+	archive, ok, err := assets.ArchiveFromEnv()
 	if err != nil || !ok {
-		log.Error("R2 is required for a backfill; the archive is the point", "err", err)
+		log.Error("R2_RAW_BUCKET and R2 credentials are required; the archive is the point",
+			"err", err)
 		return 1
 	}
 	provider := source.NewESPN(espn.New())
@@ -2419,8 +2852,8 @@ func run() int {
 				time.Sleep(*pause)
 				continue
 			}
-			key := assets.PlayArchiveKey(comp.ID, season.ID, matchID)
-			size, err := mirror.Archive(ctx, key, raw)
+			key := assets.PlayArchiveKey(provider.Name(), comp.ID, season.ID, eventID)
+			size, err := archive.Put(ctx, key, raw)
 			if err != nil {
 				log.Warn("archive", "match", eventID, "err", err)
 				failures++
@@ -2458,7 +2891,12 @@ A follow-up pass over `match_play_archive` populates the rows whenever convenien
 
 ```bash
 cd backend
-export POOLED_DSN='<the least-privilege ingester DSN>'   # from `fly secrets`, never a file
+# All five from `fly secrets`, never from a file. R2_RAW_BUCKET is the PRIVATE
+# archive bucket; R2_BUCKET (the public CDN one) is not needed here and is not
+# read by this command.
+export POOLED_DSN='<the least-privilege ingester DSN>'
+export R2_ACCOUNT_ID='<...>' R2_ACCESS_KEY_ID='<...>' R2_SECRET_ACCESS_KEY='<...>'
+export R2_RAW_BUCKET='<the private raw bucket name>'
 go run ./cmd/play-backfill -all -batch 50 2>&1 | tee /tmp/backfill-1.log
 grep -c '"touchTier":true'  /tmp/backfill-1.log
 grep -c '"touchTier":false' /tmp/backfill-1.log
@@ -2502,29 +2940,77 @@ In `docs/backend/ARCHITECTURE.md`, add under `### Tier 1`:
 
 ```markdown
 - **match_play**(PK (match_id→match, **source_id** = ESPN's play id), seq, type_id, type_key, type_text, team_id→team NULL, player_id→player NULL, period, clock_value, clock_display, wallclock, home_score, away_score, scoring_play, score_value, own_goal, penalty_kick, yellow_card, red_card, substitution, shootout, **start_x, start_y, end_x, end_y, goal_y, goal_z**, text) — the analysable tier of ESPN's touch-level stream, from the **core** host (`sports.core.api.espn.com`), fetched once on the transition to finished (T7.12). Keyed on the provider's play id, not an ordinal: a live match is re-fetched every 20s and an ordinal renumbers on upstream insertion. `team`/`athlete` arrive as `$ref` URLs and the id is **parsed, never fetched** — a match has ~1,500 plays with 2–3 refs each, so following them is ~4,500 requests per match. **Pitch coordinates exist** (0–100 per axis; `goal_*` is shot placement in the goal mouth) and are nullable, with the provider's `(0,0)` unset sentinel stored as NULL.
-- **match_play_archive**(match_id PK→match, object_key, plays, bytes, **touch_tier**, archived_at) — the ledger of what went to R2. `touch_tier` records whether the archived payload still contained passes/touches/tackles, because a later re-processing run cannot re-derive it: it would find none and conclude the parser is broken.
+- **match_play_archive**(match_id PK→match, object_key, plays, bytes, **touch_tier**, archived_at) — the ledger of what went to R2. `touch_tier` records whether the archived payload still contained passes/touches/tackles, because a later re-processing run cannot re-derive it: it would find none and conclude the parser is broken. `bytes` is the **compressed** size, which is what is billed.
+```
+
+and a note on the two buckets:
+
+```markdown
+### R2 buckets
+
+Two buckets, one account, one API token with **Object Read & Write** scoped to both, one
+S3 endpoint. Only the bucket name differs. Setup: `docs/backend/SETUP.md` §6.
+
+| Env | Access | Contents | Client |
+|---|---|---|---|
+| `R2_BUCKET` | **public**, served from `R2_PUBLIC_BASE_URL` (`https://cdn.scorearc.futbol`) | team crests, national flags, competition emblems | `assets.Mirror` |
+| `R2_RAW_BUCKET` | **private** — no public access, no `r2.dev` URL, no custom domain | raw ESPN play-stream payloads, gzipped NDJSON | `assets.Archive` |
+
+`assets.Archive` deliberately does **not** read `R2_PUBLIC_BASE_URL`: a private bucket has
+no public URL by design, and passing a dummy value to satisfy `assets.New`'s validator
+would leave a plausible-looking CDN origin in the config for someone to later serve from.
+Client construction (`newS3Client`) is therefore separate from the public-URL concern.
+
+Archive key layout, one object per match:
+
+```
+plays/{source}/{competition}/{season}/{providerEventID}.ndjson.gz
+```
+
+Source first so a second provider cannot collide with ESPN's copy; competition and season
+next so a whole season is one listable, re-processable, expirable prefix; the **provider's**
+event id last so an object is identifiable from ESPN's own ids without the database that
+indexed it (`match_play_archive.object_key` carries the full key for the join back).
+One object per match rather than per page, because a match is the unit of reprocessing and
+pages are an artefact of whichever `limit` was sent — the same match is 2 pages at
+`limit=1000` and 62 at the default.
+
+Bucket names never appear in Go source, `fly.toml` or a plan step: the env var names the
+role, the secret names the resource, so a rename is `fly secrets set` rather than a
+redeploy.
 ```
 
 and add a short subsection recording the probe's answer:
 
 ```markdown
-### Play-stream retention (measured, T7.13)
+### Play-stream retention (measured 2026-08-15, T7.13)
 
-ESPN prunes the **touch tier** of the play stream for older matches. The **key-event tier
-and its coordinates survive** — a 2025-11-30 match still returned 149 of 175 plays with
-coordinates.
+ESPN serves the full play stream for the **current season only**. The boundary is the
+season, **not** an age.
 
-Measured by `go run ./cmd/play-retention`: **touch tier present up to <N> days; absent
-beyond <M> days.** Re-run the probe if coverage looks wrong; the number is a provider
-behaviour, not a contract.
+| Match | Plays | Passes | Coord scale | Goal-mouth |
+|---|---|---|---|---|
+| Liga MX, 2026-07-17 (this season, 30 days old) | 1,491 | 610 | 0–100 | present |
+| Liga MX, 2026-05-10 (last season) | 199 | 0 | **0–1** | **all zero** |
+| Premier League, 2026-04-18 | 189 | 0 | **0–1** | **all zero** |
+| MLS, 2025-08-09 | 198 | 0 | **0–1** | **all zero** |
 
-Consequences: prior-season touch data is **unrecoverable**; current-season backfill is
-possible and is `cmd/play-backfill`; ingestion must stay close to real time.
+Consequences:
+
+- **Prior-season touch data is unrecoverable.** Passes, tackles, take-ons: gone.
+- **Prior-season shots survive, but not on comparable terms** — a 0–1 coordinate frame
+  that appears inverted relative to the current one, with goal-mouth placement zeroed.
+  Reconciling the frames is E9's T9.1; until it reports, **no consumer may mix eras**.
+- **The backfill deadline is the end of this season**, not a rolling window.
+  `cmd/play-backfill` covers the current season and deliberately attempts nothing older.
+- `cmd/play-retention` is a **standing instrument**: re-run it when coverage looks wrong,
+  and at each season rollover. This is provider behaviour, not a contract.
 ```
 
-Replace `<N>` and `<M>` with the numbers Task 5 Step 6 produced. **Do not ship this
-section with the placeholders in it** — an unmeasured window in a doc is worse than no
-section, because the next reader will believe it.
+Fill the table above from the probe's own output if it disagrees with these figures —
+they were measured on 2026-08-15 and the behaviour may move. **Never ship this section
+with an unmeasured claim in it**; a wrong window in a doc is worse than no section,
+because the next reader will believe it.
 
 - [ ] **Step 2: Correct the roadmap's rejection table**
 
@@ -2557,19 +3043,32 @@ the plays paging loop, and nothing per-play. If a `$ref` reaches `GetJSON`, stop
 the 4,500-requests-per-match failure and it will not show up in tests, only in production
 rate limits.
 
-- [ ] **Step 5: Confirm secret discipline**
+- [ ] **Step 5: Confirm secret and bucket-name discipline**
 
 ```bash
 grep -rn "postgres://\|R2_\|ACCESS_KEY" backend/ --include=*.go --include=*.toml --include=*.yml | grep -v _test.go
 ```
 
-Expected: environment-variable *names* only, never values.
+Expected: environment-variable *names* only, never values. `R2_RAW_BUCKET` should appear
+exactly once in non-test Go source — in `assets.ArchiveFromEnv`.
+
+```bash
+grep -rn "scorearc-espn-historic\|scorearc-assets" backend/ docs/superpowers/plans/
+```
+
+Expected: **nothing**. The env var names the role; the secret names the resource. A bucket
+name in Go source, in a `fly.toml`, or in a plan step means renaming a bucket becomes a code
+change and a redeploy instead of a `fly secrets set`. Setup steps for both buckets live in
+`docs/backend/SETUP.md` §6 and are not restated in code or plans.
 
 - [ ] **Step 6: Open the PR**
 
 ```bash
-git add docs/backend/ARCHITECTURE.md docs/PRODUCT_ROADMAP.md
-git commit -m "docs: record the play stream, its retention window, and the xG correction
+# NOTE: docs/PRODUCT_ROADMAP.md and the E6/E7/E9 specs were ALREADY corrected on
+# 2026-08-15, before this plan was executed. Do not re-correct them here; only
+# ARCHITECTURE.md needs the schema and retention sections this plan adds.
+git add docs/backend/ARCHITECTURE.md
+git commit -m "docs: record the play stream schema and its measured retention window
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 git push -u origin feat/ingester-play-stream
@@ -2577,8 +3076,9 @@ gh pr create --title "feat: capture ESPN's touch-level play stream before it is 
 ## What
 
 Ingests ESPN's **core**-host play stream — ~1,540 events per match, down to individual
-passes and tackles, **with pitch coordinates**. Two destinations: every byte to R2 as an
-immutable gzipped archive, and the ~180-row analysable tier to Postgres.
+passes and tackles, **with pitch coordinates**. Two destinations: every byte to the
+**private** R2 archive bucket (`R2_RAW_BUCKET`) as an immutable gzipped object, and the
+~180-row analysable tier to Postgres.
 
 ## 🔴 Two facts in the briefing were wrong. Please read this section.
 
@@ -2593,10 +3093,12 @@ Shot On Target: fieldPositionX 77.2  fieldPositionY 25
                 goalPositionY 51.2   goalPositionZ 5.1
 ```
 
-546 of 567 sampled plays carried non-zero coordinates. This PR **persists** them and
-**updates the roadmap's rejection table**; it does not build xG. The blocker for xG is now
-modelling and validation effort, not missing data — that is a different and much better
-argument, and someone should make it deliberately.
+979 of 1,000 sampled plays on that match carried non-zero coordinates; 955 of 1,000 on
+LaLiga `401882926`. **This has since been acted on**: the roadmap's rejection table no
+longer contains xG, which is now committed epic **E9**
+(`docs/superpowers/specs/2026-08-15-expected-goals-design.md`), and E6 has been rescoped.
+This PR **persists** the geometry — it does not build the model. E9 is gated on this PR
+landing, because a model cannot be trained on data we did not keep.
 
 **2. `limit` caps at 1000 and degrades silently above it.** `limit=1000` → `pageSize=1000`,
 `pageCount=2`. `limit=1001` → `pageSize=25`, `pageCount=62`, **no error**. The briefing
@@ -2605,19 +3107,31 @@ clamps to 1000 and **errors** if the returned page size is not what it asked for
 otherwise a provider default change turns one ingest cycle into 62× the requests with
 nothing in the logs.
 
-**3. A refinement on perishability.** The pruning is confirmed — event `740722`
-(2025-11-30) returns 175 plays with zero Pass/Ball touch/Tackle where a same-day match
-returns 1,542 with all of them. But **the key-event tier and its coordinates survive**: the
-November match still has 149/175 plays with coordinates. So a shot map and an xG model
-backfill much further than a pass network does. The urgency stands; the scope of what is
-already lost is smaller than feared.
+**3. The retention boundary is the SEASON, not an age — and what survives is not what you
+would assume.** Measured across dates and competitions:
+
+| Match | Plays | Passes | Coord scale | Goal-mouth |
+|---|---|---|---|---|
+| Liga MX, 2026-07-17 (this season, 30 days old) | 1,491 | 610 | 0–100 | present |
+| Liga MX, 2026-05-10 (last season) | 199 | 0 | **0–1** | **all zero** |
+| Premier League, 2026-04-18 | 189 | 0 | **0–1** | **all zero** |
+| MLS, 2025-08-09 | 198 | 0 | **0–1** | **all zero** |
+
+A 30-day-old current-season match is intact; a four-month-old previous-season match is
+not. So the deadline is **season end**, not a rolling window — urgent but schedulable.
+
+And prior-season shots are **not** a free backfill: their coordinates are on a 0–1 scale
+that appears **inverted** relative to the current frame (historical shots cluster at
+x 0.02–0.49, current-season shots at 69–95 on 0–100), with `goalPositionY/Z` **zeroed on
+every historical match sampled**. An earlier draft of this plan claimed past-season xG was
+"probably still recoverable"; that was too optimistic and has been corrected. Whether the
+frames reconcile is E9's T9.1.
 
 ## The measured retention window
 
-`cmd/play-retention` samples one finished match per month per competition and counts
-touch-tier events. Result: **touch tier present up to <N> days, absent beyond <M>**.
-(Fill from `/tmp/retention-mex1.json` and `/tmp/retention-eng1.json`; do not merge with
-placeholders.)
+Filled from `cmd/play-retention`'s output — see the table above and the
+`ARCHITECTURE.md` section this PR adds. Re-run the probe at each season rollover; this is
+provider behaviour, not a contract.
 
 ## Backfill (T7.13) — done, with numbers
 
@@ -2625,8 +3139,8 @@ placeholders.)
 `touchTier:true` on **<X>** matches, `touchTier:false` on **<Y>**. The second number is
 exactly how much touch-level data was already gone before this shipped.
 
-Prior seasons are not attempted: their touch tier is unrecoverable. Their *shots and
-coordinates* survive and are worth a separate pass — filed as follow-up, not done here.
+Prior seasons are deliberately not attempted: their touch tier is unrecoverable and their
+shot geometry is in a frame we have not yet reconciled.
 
 ## Design decisions worth reviewing
 
@@ -2645,6 +3159,29 @@ coordinates* survive and are worth a separate pass — filed as follow-up, not d
   the tier ESPN itself retains.
 - **R2 is written before Postgres.** The bytes are irreplaceable; rows can be rebuilt from
   them and they cannot be rebuilt from rows.
+- **A second R2 client, for the second bucket.** The archive goes to the **private**
+  `R2_RAW_BUCKET`, not the public CDN bucket. It could not reuse `assets.Mirror`:
+  `FromEnv`/`New` require `R2_PUBLIC_BASE_URL` and validate it as a plain HTTPS origin, and
+  a private bucket has no public URL *by design*. Rather than feed the validator a dummy
+  value — which would leave a plausible-looking CDN origin in the config for someone to
+  later serve from — client construction is split out of the public-URL concern and
+  `assets.Archive` is its own type. The public mirror's behaviour is unchanged and its
+  existing suite is part of the gate.
+- **Archive key: `plays/{source}/{competition}/{season}/{providerEventID}.ndjson.gz`, one
+  object per match.** Source first so a second provider cannot collide with ESPN's copy;
+  competition and season next so a season is one listable/expirable prefix; **the provider's
+  event id, not our canonical uuid**, so an object is identifiable from ESPN's own ids
+  without the database that indexed it. One object per match because a match is the unit of
+  reprocessing and pages are an artefact of whichever `limit` we sent — the same match is 2
+  pages at `limit=1000` and 62 at the default. Gzipped NDJSON, one page object per line, so
+  nothing is reshaped and a late page is a concatenation.
+- **No bucket name appears in code or in the plan.** The env var names the role, the secret
+  names the resource; there is a grep in the gate that fails otherwise.
+- **A missing archive is a loud `Warn`, not a silent skip.** In the ingester it is
+  non-fatal — a scoreline still beats an archive — but the log says the play stream is not
+  being kept, because the alternative is a season quietly not being archived. In the
+  **backfill** it is fatal: a tool whose entire purpose is keeping bytes must not report
+  success with nowhere to keep them.
 - **Fetched once, on the transition to finished.** A live match's stream is two pages every
   20 seconds — eighteen requests a minute per live match. The stream is complete at full
   time and ESPN keeps it for weeks.
@@ -2695,6 +3232,16 @@ EOF
   Task 6 Step 5. Every construction site of that struct — in the resolver and in
   `runner_test.go` — must set them, or plays will resolve to no team at all and the
   `team_id` column will be uniformly NULL with every test still green.
+- **Second ordering hazard.** Task 5 Step 4b refactors `assets.New`/`assets.FromEnv`, which
+  the **already-shipped crest mirror** depends on. Its existing suite must pass unchanged
+  before Step 4c is written; the split is only correct if the public path is untouched. A
+  `FromEnv` that returns a mirror where it used to return `(nil, false, nil)` has lost a
+  condition from the completeness gate, and the ingester would then try to mirror crests to
+  a CDN origin it does not have.
+- **Global constraint added late, worth repeating.** The archive bucket is **private**. No
+  code path may derive a URL for an object in it, and `assets.Archive` deliberately has no
+  `BaseURL()` — which is also why it is not folded into the ingester's `crestMirror`
+  interface.
 - **The thing most likely to be got wrong.** Calling `Store.Player` instead of
   `ResolveKnownPlayers`. It compiles, it passes a naive test, and it quietly creates tens of
   thousands of nameless player rows while making ~1,500 round trips per match.

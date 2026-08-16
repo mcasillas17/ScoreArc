@@ -2106,6 +2106,13 @@ EOF
   endpoints that return `[]` forever. (b) A team-level aggregate over
   `match_player_stat` — `match_detail.stats` already holds ESPN's team totals,
   and summing player rows would produce a second, quietly different number for
-  the same question. (c) Anything involving xG, shot coordinates or injuries:
-  those were probed and are **not** in ESPN's payloads, so there is nothing to
-  model. (d) Pagination on `/leaders` — the whole board is 50 rows.
+  the same question. (c) Injuries — probed and empty for all 35 players on a
+  roster, so there is nothing to serve. **(c-corrected, 2026-08-15)** an earlier
+  draft grouped *xG and shot coordinates* into that same clause as "not in
+  ESPN's payloads". **Coordinates are in the payloads** — the typed play stream
+  carries `fieldPositionX/Y`, `fieldPosition2X/Y` and `goalPositionY/Z` on ~96%
+  of plays. They are out of scope for *this* plan because a leaderboard row and a
+  box-score row are per-player aggregates, not per-shot geometry; that lives in
+  the `api-commentary-and-shots` and `api-play-stream` plans. xG stays unbuilt
+  because no model has been specified, which is a decision rather than a data
+  limit. (d) Pagination on `/leaders` — the whole board is 50 rows.

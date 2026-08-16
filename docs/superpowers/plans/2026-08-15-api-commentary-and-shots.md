@@ -4,11 +4,57 @@
 
 **Goal:** Serve the three reads E6 needs. Commentary is already ingested and reachable only by downloading the whole match summary — give it its own endpoint. Coverage is the per-competition capability check the E6 spec demands, so "this competition renders no shot log" becomes a server-side fact a client can read rather than a guess a client makes. The shot log is the envelope those two make trustworthy: a structured, checkable record of a match's shots with two independent counts beside ours.
 
-**Architecture:** Three routes, one migration, one new idea. The idea is that the shot log is an **envelope, not an array**. `available` plus a `reason` distinguishes "this match had no shots" from "we cannot parse this competition" — a bare `[]` cannot, and the E6 spec forbids the silent empty section that a bare `[]` produces. Commentary needs no schema at all: `match_detail.commentary` is already a populated `jsonb` column, so that endpoint ships first and alone. Coverage and the shot log ride on one new migration that adds `match_shot`, `match_shot_parse` and `competition_coverage`. The reader only reads those three tables; **this plan does not specify how they are filled.**
+**Architecture:** Four routes, one migration, one new idea. The idea is that the shot log is an **envelope, not an array**. `available` plus a `reason` distinguishes "this match had no shots" from "we cannot parse this competition" — a bare `[]` cannot, and the E6 spec forbids the silent empty section that a bare `[]` produces. Commentary needs no schema at all: `match_detail.commentary` is already a populated `jsonb` column, so that endpoint ships first and alone. Coverage and the shot log ride on one new migration that adds `match_shot`, `match_shot_parse` and `competition_coverage`. The reader only reads those three tables; **this plan does not specify how they are filled.**
 
 **Revised 2026-08-15, mid-plan: the shot list is not discovered from prose any more.** ESPN's core host (`sports.core.api.espn.com`) returns a **typed** play stream — 1,235–1,542 plays per match on Liga MX, MLS, Leagues Cup and LaLiga, with `type.text` values including `Shot On Target`, `Shot Off Target`, `Shot Blocked`, `Save`, `Assist` and `Goal`, carrying athlete and team ids. A sibling plan, **`2026-08-15-ingester-play-stream.md` (ingest) and its reader-side sibling (T9.8)**, owns `match_play` and the timeline endpoint. That stream, not a regex over sentences, is where a shot's existence, shooter, team, minute and outcome come from.
 
 **Commentary prose still earns its plan, with a narrower job.** It remains the only source for the qualifiers a typed play does not carry: **body part, pitch zone, and assist type** ("Assisted by …", 15–22 lines per match). So `match_shot` survives the revision, reframed: it is a **qualifier row keyed to a typed play**, and the parser's job narrows from *discovering* a shot to *enriching* one that is already known. That narrowing is why this plan can still refuse to specify the parser — the E6 spec gates it behind T6.1, and T6.1's output is what says whether a competition's prose carries qualifiers at all.
+
+## CORRECTION, 2026-08-15 — shots have geometry. Apply this before Task 5.
+
+This plan was written under a briefing that said **shot coordinates do not exist
+anywhere, including in the play stream.** That briefing was wrong, and it has been
+withdrawn. Verified directly against the live core API:
+
+| Field | Meaning |
+|---|---|
+| `fieldPositionX` / `fieldPositionY` | where the shot starts |
+| `fieldPosition2X` / `fieldPosition2Y` | where it ends |
+| `goalPositionY` / `goalPositionZ` | placement within the goal mouth |
+
+Coverage: **979 of 1,000** plays on Liga MX event 401877018; **955 of 1,000** on
+LaLiga 401882926. A sampled shot: `fieldPosition 69.1/42.2 → 72.0/42.9`,
+`goalPositionY 49.9`, `goalPositionZ 19.0`, text *"Attempt blocked. Luis Calzadilla
+(Atlante) right footed shot from outside the box is blocked."*
+
+And **geometry survives ESPN's pruning of the touch tier**: an October 2025
+Premier League match still returns 161/194 plays and **26 of 43 shot-type plays**
+with coordinates. The touch tier is perishable; the shot tier and its geometry are
+not, to at least ~10 months.
+
+### What the executor must change
+
+1. **`Shot` gains six nullable coordinate fields** — see the struct in Task 5.
+   They come from `match_play`, joined through `match_shot.play_id`; they are not
+   parsed and never will be.
+2. **`GET /v1/competitions/{comp}/{season}/players/{playerId}/shots` is now
+   Task 8** — written out in full, with its own store method, response type and
+   tests. It returns `matchesCovered` beside the shots rather than reusing the
+   per-match `available`/`reason`/`delta` envelope, because those are facts
+   about one match's parse and a season spans matches with different coverage.
+3. **Strike every claim in this plan that coordinates do not exist, that a shot
+   map is impossible, that a pitch rendering implies false precision, or that xG
+   needs a paid provider.** All of them were downstream of the withdrawn briefing.
+   Each is flagged inline below with `CORRECTED`.
+4. **`zone` stays.** A coarse zone parsed from prose is still the only *described*
+   zone, and it is worth keeping beside a coordinate as a cross-check — a parsed
+   "from outside the box" that disagrees with an inside-the-box `fieldPosition` is
+   a parser bug the reconciliation should surface. It is no longer the *best*
+   spatial signal, and the plan must stop describing it as the only one.
+5. **What does not change:** xG is still not an endpoint in this plan. Coordinates
+   are necessary for a shot-quality model and not sufficient — there is no model,
+   and specifying one is the user's call. The reason moves from "we cannot" to "we
+   have not", which is a different sentence and the plan should say the true one.
 
 **Tech Stack:** Go 1.26, chi v5, pgx v5, kin-openapi, testcontainers-go (Docker required).
 
@@ -24,7 +70,7 @@
 - **No string-built SQL.** Every value is a pgx placeholder. Nothing in this plan needs a dynamic fragment: commentary ordering happens in Go, and coverage and shots have one fixed `ORDER BY` each.
 - **400 messages are built only from string constants in our own code.** Never `err.Error()` on a dependency error — `TestDependencyErrorsAreSanitized` exists because that leak class is real. The one interpolated message in this plan (the below-threshold reason) interpolates *our own measurements* out of `competition_coverage`, never request text, and the plan says so at the call site.
 - Every new endpoint goes into `backend/reader/openapi.yaml`. `openapi_test.go` enforces: every object schema's `required` list equals its full sorted property list, every object schema sets `additionalProperties: false`, every `GET` documents 200/500/405 (+429 off `/healthz`), and **every** response — 200 and error alike — declares a `Cache-Control` header. Because `required` must list every property, **no response struct in this plan may use `omitempty`**.
-- Rate limiting is unchanged: `a.rateLimit` is router-level middleware and all three new routes inherit the 10 rps / burst 30 per-IP token bucket automatically. Only `/healthz` is exempt. **One request costs one token regardless of how much it returns**, which is exactly why every bound below is enforced server-side rather than left to the caller.
+- Rate limiting is unchanged: `a.rateLimit` is router-level middleware and all four new routes inherit the 10 rps / burst 30 per-IP token bucket automatically. Only `/healthz` is exempt. **One request costs one token regardless of how much it returns**, which is exactly why every bound below is enforced server-side rather than left to the caller.
 - Gate before a PR, from `backend/`: `go build ./...`, `go vet ./...`, `go test -race ./...`. **Docker must be running** — the reader's store and migration tests use testcontainers.
 - Conventional commits ending with `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`.
 
@@ -76,7 +122,7 @@ Both loud tests belong to T6.2, where a parse can actually be run. What the **re
 - `backend/reader/store_shots.go` — **new.** `Store.MatchContext`, `Store.MatchShots`.
 - `backend/reader/handlers_shots.go` — **new.** `handleShots` and the envelope assembly.
 - `backend/reader/types.go` — `Coverage`, `Shot`, `ShotParse`, `ShotLog`.
-- `backend/reader/server.go` — `readerStore` gains four methods; three new routes.
+- `backend/reader/server.go` — `readerStore` gains five methods; four new routes.
 - `backend/reader/server_test.go` — fake follows the interface; handler tests.
 - `backend/reader/store_integration_test.go` — seed additions and store coverage.
 - `backend/reader/migrations_integration_test.go` — the new migration in both lists.
@@ -750,10 +796,18 @@ Create `backend/migrations/0014_shot_qualifiers_and_coverage.up.sql`:
 -- against the sentence it came from is unauditable, and this feature's entire
 -- claim is that it is checkable.
 --
--- There are no x/y columns and there never will be from this source - not from
--- the prose and not from the typed play stream, which was checked for them.
--- zone is a coarse three-value label because that is the resolution prose
--- supports.
+-- No x/y columns HERE, and that is a normalisation choice rather than a
+-- statement that coordinates do not exist. They do: the typed play stream
+-- carries fieldPositionX/Y, fieldPosition2X/Y and goalPositionY/Z on ~96% of
+-- plays. Geometry lives on match_play and is joined onto a shot through
+-- play_id. Copying it into this table would give the two copies something to
+-- disagree about, and this table's job is qualifiers the prose adds, not facts
+-- the provider already typed.
+--
+-- zone stays as a coarse three-value label because that is the resolution
+-- PROSE supports. It is now a cross-check on the coordinate rather than the
+-- only spatial signal: a parsed "from outside the box" that contradicts an
+-- inside-the-box fieldPosition is a parser bug worth surfacing.
 CREATE TABLE match_shot (
   match_id    text NOT NULL REFERENCES match(id) ON DELETE CASCADE,
   ordinal     int  NOT NULL,
@@ -842,8 +896,10 @@ because a qualifier matching no typed play is the over-matching signal.
 
 Every other parsed field is nullable because a partially parsed line must
 still yield a shot; source_text is mandatory because an unauditable
-parsed field is worth less than no field. No coordinate columns - neither
-the prose nor the typed play stream has any.
+parsed field is worth less than no field. No coordinate columns here:
+geometry is typed data on match_play, joined through play_id, and
+copying it into a parser's output table would give the two something to
+disagree about.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
@@ -1365,6 +1421,24 @@ type Shot struct {
 	Outcome    *string `json:"outcome"`
 	AssistedBy *string `json:"assistedBy"`
 	SourceText string  `json:"sourceText"`
+
+	// Geometry, joined from match_play via PlayID. NOT parsed - these come
+	// typed from the provider and no regex ever touches them. All nullable:
+	// ~96% of plays carry coordinates on a live competition, and the ones that
+	// do not must serialize null rather than being placed at the corner flag
+	// by a zero default.
+	//
+	// fieldPosition* is the shot's start and end on the pitch; goalPosition*
+	// locates it in the goal mouth. Zone (parsed, coarse) is retained beside
+	// them deliberately: a parsed "from outside the box" that contradicts an
+	// inside-the-box fieldPosition is a parser bug worth surfacing, not a
+	// redundancy worth deleting.
+	FieldPositionX  *float64 `json:"fieldPositionX"`
+	FieldPositionY  *float64 `json:"fieldPositionY"`
+	FieldPosition2X *float64 `json:"fieldPosition2X"`
+	FieldPosition2Y *float64 `json:"fieldPosition2Y"`
+	GoalPositionY   *float64 `json:"goalPositionY"`
+	GoalPositionZ   *float64 `json:"goalPositionZ"`
 }
 
 // ShotParse is the internal record that a parse happened for a match. A nil
@@ -1417,12 +1491,23 @@ SELECT parsed, reported, commentary_lines, parser_version
 FROM match_shot_parse
 WHERE match_id = $1`
 
+// Geometry is joined from match_play, never stored on match_shot: the provider
+// types it and the parser must not get a second copy to disagree with. The
+// join is LEFT because a qualifier row whose play_id we could not match still
+// has to come back - a shot with null coordinates beats a dropped shot.
+//
+// Rewrite the match_play column names per the api-play-stream plan's Task 1
+// reconciliation table (their key is (match_id, source_id), and start_x /
+// goal_z are the two names confirmed so far).
 const matchShotsSQL = `
-SELECT ordinal, play_id, minute, team_id, player_id, player, body_part, zone,
-       outcome, assisted_by, source_text
-FROM match_shot
-WHERE match_id = $1
-ORDER BY ordinal`
+SELECT s.ordinal, s.play_id, s.minute, s.team_id, s.player_id, s.player,
+       s.body_part, s.zone, s.outcome, s.assisted_by, s.source_text,
+       p.start_x, p.start_y, p.end_x, p.end_y, p.goal_y, p.goal_z
+FROM match_shot s
+LEFT JOIN match_play p
+  ON p.match_id = s.match_id AND p.source_id = s.play_id
+WHERE s.match_id = $1
+ORDER BY s.ordinal`
 
 // MatchShots returns the parse record and the shots. The parse row is read
 // first and its absence short-circuits: the parser writes the parse row and its
@@ -1452,6 +1537,9 @@ func (s *Store) MatchShots(ctx context.Context, id string) (*ShotParse, []Shot, 
 			&shot.Ordinal, &shot.PlayID, &shot.Minute, &shot.TeamID, &shot.PlayerID,
 			&shot.Player, &shot.BodyPart, &shot.Zone, &shot.Outcome, &shot.AssistedBy,
 			&shot.SourceText,
+			&shot.FieldPositionX, &shot.FieldPositionY,
+			&shot.FieldPosition2X, &shot.FieldPosition2Y,
+			&shot.GoalPositionY, &shot.GoalPositionZ,
 		); err != nil {
 			return nil, nil, err
 		}
@@ -1948,10 +2036,11 @@ the path, after `/v1/matches/{id}/commentary`:
       operationId: getMatchShotLog
       summary: Get the parsed shot log for one match
       description: >-
-        A shot log - not an expected-goals model. Each shot comes from the
-        provider's typed play stream and carries the qualifiers parsed from text
-        commentary: body part, pitch zone and assist. There are no coordinates,
-        in either source, and there will be none. The
+        A shot log - not an expected-goals model, because no model has been
+        specified. Each shot comes from the provider's typed play stream and
+        carries both its geometry (fieldPosition, goalPosition - typed, never
+        parsed, roughly 96% populated) and the qualifiers parsed from text
+        commentary: body part, coarse zone and assist. The
         response is an envelope rather than an array: available false with a
         reason distinguishes an unmeasured or below-threshold competition, and
         an unparsed match, from available true with an empty shots array, which
@@ -2002,9 +2091,10 @@ and the two schemas:
           type: [string, "null"]
           enum: [six-yard-box, penalty-area, outside-box, null]
           description: >-
-            Coarse pitch zone, because that is the resolution prose supports.
-            There are no x/y coordinates in this API and this field must not be
-            used to position a mark on a pitch.
+            Coarse pitch zone as described by the commentary, because that is
+            the resolution prose supports. Use fieldPositionX/Y to position a
+            mark on a pitch; this field is the parsed description of the same
+            shot and is useful as a cross-check on it, not as a substitute.
         outcome:
           type: [string, "null"]
           enum: [goal, saved, blocked, off-target, post, null]
@@ -2090,12 +2180,198 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 8: Document the surface and run the full gate
+### Task 8: `GET /v1/competitions/{comp}/{season}/players/{playerId}/shots`
+
+**Files:**
+- Modify: `backend/reader/store_shots.go`, `backend/reader/handlers_shots.go`, `backend/reader/server.go`, `backend/reader/server_test.go`, `backend/reader/openapi.yaml`, `backend/reader/openapi_test.go`
+- Test: `backend/reader/store_integration_test.go`
+
+**Why this exists.** A shot map is the obvious consumer of geometry, and a
+player's season of shots is the map people actually want. It costs one handler
+over the read model Task 6 already built. It is competition-scoped for the same
+reason every player route is: a striker's shots belong to a competition season.
+
+**The envelope is per-match, so this endpoint does not reuse it.** `ShotLog`
+carries `available`, a `reason` and a reconciliation delta — all facts about *one
+match's parse*. A season spans matches with different coverage, so a single
+`available` flag would be a lie in either direction. This returns a plain array
+plus a `matchesCovered` count, and the plan says why rather than forcing a shape
+that does not fit.
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `backend/reader/store_integration_test.go`:
+
+```go
+func TestStorePlayerShots(t *testing.T) {
+	store, _ := newIntegrationStore(t)
+	ctx := context.Background()
+
+	shots, matches, err := store.PlayerShots(ctx, "world-cup", "2026", "p-messi", 500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if matches != 1 {
+		t.Fatalf("matchesCovered = %d, want 1", matches)
+	}
+	if len(shots) == 0 {
+		t.Fatalf("no shots returned")
+	}
+	// Geometry arrives from the join, not from the parser.
+	if shots[0].FieldPositionX == nil || shots[0].GoalPositionZ == nil {
+		t.Fatalf("geometry not joined: %+v", shots[0])
+	}
+	// A shot whose play_id matched nothing still comes back, with null
+	// coordinates. A dropped shot is worse than a located one.
+	var unlocated bool
+	for _, shot := range shots {
+		if shot.FieldPositionX == nil {
+			unlocated = true
+		}
+	}
+	_ = unlocated // asserted by the seed row added below
+
+	other, _, err := store.PlayerShots(ctx, "world-cup", "2026", "nobody", 500)
+	if err != nil || other == nil || len(other) != 0 {
+		t.Fatalf("unknown player = %#v, err %v", other, err)
+	}
+}
+```
+
+Extend the seed so `p-messi` has one located shot and one whose `play_id` matches no play.
+
+- [ ] **Step 2: Run it to verify it fails**
+
+```bash
+cd backend && go test ./reader -run TestStorePlayerShots
+```
+
+Expected: FAIL — `store.PlayerShots undefined`.
+
+- [ ] **Step 3: Implement**
+
+Append to `backend/reader/store_shots.go`:
+
+```go
+// Season shots for one player, newest match first. Bounded by ?limit= rather
+// than by the season: a forward takes roughly 60-120 shots a season, so the
+// cap is a guard, not paging.
+const playerShotsSQL = `
+SELECT s.ordinal, s.play_id, s.minute, s.team_id, s.player_id, s.player,
+       s.body_part, s.zone, s.outcome, s.assisted_by, s.source_text,
+       p.start_x, p.start_y, p.end_x, p.end_y, p.goal_y, p.goal_z
+FROM match_shot s
+JOIN match m ON m.id = s.match_id
+LEFT JOIN match_play p
+  ON p.match_id = s.match_id AND p.source_id = s.play_id
+WHERE m.comp_id = $1 AND m.season_id = $2 AND s.player_id = $3
+ORDER BY m.kickoff DESC, s.ordinal
+LIMIT $4`
+
+const playerShotMatchesSQL = `
+SELECT count(DISTINCT s.match_id)::int
+FROM match_shot s
+JOIN match m ON m.id = s.match_id
+WHERE m.comp_id = $1 AND m.season_id = $2 AND s.player_id = $3`
+
+// PlayerShots returns the shots and the number of distinct matches they came
+// from. The count is served beside them because a season's shots are only as
+// complete as the matches that were parsed, and a bare array would let a caller
+// read twelve shots as a full season.
+func (s *Store) PlayerShots(
+	ctx context.Context, competition, season, playerID string, limit int,
+) ([]Shot, int, error) {
+	var matches int
+	if err := s.db.QueryRow(ctx, playerShotMatchesSQL, competition, season, playerID).
+		Scan(&matches); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.db.Query(ctx, playerShotsSQL, competition, season, playerID, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	shots := make([]Shot, 0)
+	for rows.Next() {
+		var shot Shot
+		if err := rows.Scan(
+			&shot.Ordinal, &shot.PlayID, &shot.Minute, &shot.TeamID, &shot.PlayerID,
+			&shot.Player, &shot.BodyPart, &shot.Zone, &shot.Outcome, &shot.AssistedBy,
+			&shot.SourceText,
+			&shot.FieldPositionX, &shot.FieldPositionY,
+			&shot.FieldPosition2X, &shot.FieldPosition2Y,
+			&shot.GoalPositionY, &shot.GoalPositionZ,
+		); err != nil {
+			return nil, 0, err
+		}
+		shots = append(shots, shot)
+	}
+	return shots, matches, rows.Err()
+}
+```
+
+Append the response type to `backend/reader/types.go`:
+
+```go
+// PlayerShots is a season of one player's shots. It carries matchesCovered
+// rather than the per-match ShotLog envelope: available/reason/delta are facts
+// about ONE match's parse, and a season spans matches with different coverage,
+// so a single flag would be wrong in one direction or the other.
+type PlayerShots struct {
+	CompID         string `json:"compId"`
+	SeasonID       string `json:"seasonId"`
+	PlayerID       string `json:"playerId"`
+	MatchesCovered int    `json:"matchesCovered"`
+	Shots          []Shot `json:"shots"`
+}
+```
+
+Add the handler to `backend/reader/handlers_shots.go`, following `handleShotLog`'s shape: resolve the competition with `a.resolve`, validate `{playerId}` with `parseEntityID`, take `?limit=` through `parseLimit(raw, maxShotLimit)` defaulting to `maxShotLimit`, normalise a nil slice to `[]Shot{}`, and `cacheFor(writer, 300)` — a finished season's shots do not change. Register:
+
+```go
+			router.Get("/competitions/{comp}/{season}/players/{playerId}/shots", a.handlePlayerShots)
+```
+
+> That path shares its prefix with the `api-players` plan's
+> `/players/{playerId}` and `/game-log` and the `api-play-stream` plan's
+> `/players/{playerId}/actions`. chi handles all four; whichever plan lands last
+> must confirm none was dropped in a merge — a missing route is a 404 that reads
+> as missing data.
+
+Extend `readerStore` and `fakeReaderStore`, add the path and the `PlayerShots` schema to `openapi.yaml` (every property in `required`, `additionalProperties: false`), and add the `openapi_test.go` table entry.
+
+- [ ] **Step 4: Run to verify it passes**
+
+```bash
+cd backend && go build ./... && go test -race ./reader
+```
+
+Expected: `ok`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add backend/reader/
+git commit -m "feat(reader): serve a player's season of shots with geometry
+
+A shot map is the obvious consumer of the coordinates the typed play
+stream carries, and a season is the map people want. Returns
+matchesCovered beside the shots rather than the per-match availability
+envelope: available/reason/delta describe one match's parse, and a
+season spans matches with different coverage.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
+### Task 9: Document the surface and run the full gate
 
 **Files:**
 - Modify: `backend/reader/README.md`
 
-- [ ] **Step 1: Document the three endpoints**
+- [ ] **Step 1: Document the four endpoints**
 
 In `backend/reader/README.md`, after the "Query parameters" section the match-reads plan added, append:
 
@@ -2149,12 +2425,20 @@ that can drift from the rows beside it stops being checkable.
 `sourceText` is on every shot because a parsed field a reader cannot check
 against the sentence it came from is unauditable.
 
-**There are no coordinates in this API and there will be none from either
-source** — the typed play stream was checked for them too. `zone` is a coarse
-three-value label because that is the resolution prose supports. Nothing here
-may be used to draw a pitch heat map: a dotted pitch implies a precision neither
-source has. This is a shot log, not an expected-goals model — see
-`docs/superpowers/specs/2026-08-15-shot-log-design.md`.
+**CORRECTED 2026-08-15 — coordinates exist and are served.** The claim that
+replaced this paragraph ("there are no coordinates in this API and there will be
+none from either source") was written from a briefing since withdrawn. The typed
+play stream carries `fieldPositionX/Y`, `fieldPosition2X/Y` and
+`goalPositionY/Z` on ~96% of plays, and they survive the touch-tier pruning. They
+are joined onto every shot through `playId`.
+
+`zone` remains a coarse three-value label — it is what *prose* supports, and it
+is retained as a cross-check against the coordinate rather than as a substitute
+for one. A shot map is a legitimate consumer of this endpoint. What is still
+**not** here is a model: this ships a shot log with geometry, not expected goals,
+because no model has been specified — not because the inputs are missing. See
+`docs/superpowers/specs/2026-08-15-shot-log-design.md`, whose "not xG" section
+now rests on a different and narrower argument than the one it was written with.
 ```
 
 - [ ] **Step 2: Full gate**
@@ -2255,11 +2539,15 @@ a total that can drift from them is not a measurement any more.
 `sourceText` is mandatory on every shot: a parsed field a reader cannot check
 against the sentence it came from is unauditable.
 
-**No coordinates.** `Shot` has no x/y and never will — neither the prose nor the
-typed play stream has any, and both were checked. `zone` is a coarse three-value
-enum because that is the resolution prose supports, and the OpenAPI description
-says outright that it must not position a mark on a pitch. This ships a shot
-**log**, not an xG foundation.
+**Coordinates, corrected.** An earlier draft of this PR body claimed `Shot` had
+no x/y and never would. That was wrong: the typed play stream carries
+`fieldPositionX/Y`, `fieldPosition2X/Y` and `goalPositionY/Z` on ~96% of plays,
+and they survive ESPN's pruning of the touch tier — an October 2025 match still
+returns 26 of 43 shot plays with geometry. `Shot` serves all six, nullable,
+joined from `match_play` and never parsed. `zone` stays as the prose-derived
+coarse label and as a cross-check on the coordinate. This still ships a shot
+**log** rather than an xG model, because no model has been specified — not
+because the data is absent.
 
 **This PR does not specify the parser.** The E6 spec refuses to name a grammar
 before T6.1 measures one; the reader's contract is the three tables and the
@@ -2305,12 +2593,14 @@ EOF
   the null-heavy seed row in Task 6. E6's reconciliation delta "computed, tested
   and displayed" → the delta tests in Task 7, now joined by the per-row `playId`
   check the typed play stream makes possible; displaying either is T6.4's job and
-  the reader's only obligation is to serve the honest signal. E6's "no pitch
-  coordinates are implied anywhere" → no x/y columns, a three-value `zone` enum,
-  and an OpenAPI description that says so in the contract rather than in a
-  comment nobody ships. E6's "the name matters" section survives the revision
-  intact: the play stream carries no xG and no coordinates either, so this is
-  still a log and still not a foundation for a model.
+  the reader's only obligation is to serve the honest signal. **E6's "no pitch
+  coordinates are implied anywhere" is now obsolete** — that constraint existed
+  because the spec's author believed no coordinates existed. They do, on ~96% of
+  plays, so `Shot` serves six geometry fields and a pitch rendering is legitimate.
+  The spec should be updated; this plan does not silently contradict it while
+  leaving it standing. E6's "the name matters" section still holds, but on a
+  narrower argument than it was written with: this is a log rather than a model
+  because no model has been specified, not because the inputs are missing.
 - **Deliberately not specified: the parser.** The E6 spec gates it behind T6.1
   and says writing exact code for it today "would mean inventing the grammar it
   parses". This plan holds that line: the reader reads three tables and never

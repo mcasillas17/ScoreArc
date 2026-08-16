@@ -359,6 +359,18 @@ var entityIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 // player id. These only ever reach SQL as bound parameters, so this is not the
 // thing standing between us and injection; it bounds the input and turns a
 // nonsense id into a 400 instead of a full-table probe.
+//
+// IMPORTANT, and check this before shipping: parseEntityID is correct only for
+// a column whose type is `text`. If the canonical-identity re-keying has landed
+// and the target column is `uuid`, this function accepts values like "off-webb"
+// or "9078" that Postgres then rejects when binding to a uuid - producing a 500
+// where the caller should have got a 400. The api-officials plan hit exactly
+// this and added `parseUUID` alongside; see its params.go additions.
+//
+// So: for every id route, match the validator to the COLUMN TYPE, not to the
+// habit. On `main` today match.id, team.id and player.id are all `text` and
+// this is right. After the re-keying, /v1/matches/{id} and every route below
+// that binds a re-keyed id must switch to parseUUID.
 func parseEntityID(raw string) (string, error) {
 	if !entityIDPattern.MatchString(raw) {
 		return "", errEntityID

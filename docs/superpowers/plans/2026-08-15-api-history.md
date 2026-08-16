@@ -1893,12 +1893,59 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ### Task 7: The odds series — line movement is time series, not a field
 
 **Files:**
-- Create: `backend/migrations/0011_match_odds.up.sql` / `.down.sql`
+- **Creates no migration** — the ingester's `0009_odds_snapshot` owns the storage. See the STOP note below.
 - Modify: `backend/reader/store_history.go`, `backend/reader/handlers_history.go`, `backend/reader/types.go`, `backend/reader/params.go`, `backend/reader/server.go`, `backend/reader/server_test.go`, `backend/reader/openapi.yaml`, `backend/reader/openapi_test.go`, `backend/reader/migrations_integration_test.go`, `backend/reader/store_integration_test.go`
 
 **Verified live 2026-08-15.** ESPN's core host returns `/odds` for a match, carrying **DraftKings and Bet 365** with `open`, `close` and `current` blocks, plus `overUnder`, `spread` and `propBets`.
 
-**Why this belongs in the history plan rather than on the match object.** `open`, `current` and `close` are three readings of one moving quantity. Modelled as three fields on a match, a consumer can see that a line moved but never *when* or *how fast* — and "the line moved two goals in the hour before kickoff" is the interesting fact, not the endpoints of the move. So the reader stores and serves readings, and `open`/`close` become a `phase` label on a reading rather than a column. This is the same shape as `win_prob_snapshot` and it sits beside it deliberately.
+**Why this belongs in the history plan rather than on the match object.** Line movement is the interesting fact — "the total moved a goal in the hour before kickoff" — and a movement chart is time series, which is what this plan is for.
+
+> ## Correction: `open`, `current` and `close` are not three readings of one series
+>
+> An earlier draft of this task asserted they were, and modelled them as one
+> table with both a `phase` column and a `captured_at`. **That was wrong**, and
+> the sibling ingester plan's reasoning is the one to follow:
+>
+> - `open` and `close` are **facts about the match** that ESPN computes. They do
+>   not move. ESPN does not even say *when* the line opened or closed, which is
+>   why their column is honestly named `observed_at` — our observation time, not
+>   the market's.
+> - `current` is **the only one that moves**, and a series exists only because
+>   *we* sample it on a cadence.
+>
+> A single table keyed on `(match, provider, phase, captured_at)` is idempotent
+> on neither: a re-poll appends a second "open" row that never changed, and the
+> resulting "line movement" chart has three points on it. Their split is correct
+> — `match_odds` (open/close, upserted on `(match_id, provider_id, phase)`) plus
+> `odds_snapshot` (current, append-only, minute-truncated exactly as
+> `win_prob_snapshot` is).
+>
+> **The wire shape changes with it.** A flat `OddsPoint[]` with a `phase` field
+> conflates a fixed fact with a sampled series. Serve the distinction instead:
+>
+> ```json
+> { "matchId": "401863609",
+>   "providers": [ { "providerId": "40", "providerName": "DraftKings",
+>                    "open": { … } , "close": null,
+>                    "current": [ { "capturedAt": "…", … } ] } ] }
+> ```
+>
+> `open` and `close` are nullable single objects; `current` is an array that may
+> be empty. Rewrite `OddsPoint`, `matchOddsSQL` and the Step 1 tests below
+> against that shape — the tests as written assert the flat one and will need
+> reworking, not just renaming.
+>
+> **Two more things their DDL carries that this draft missed:** `provider_id`
+> alongside `provider_name` (so `?provider=` filters on a stable id rather than
+> on the display string `"Bet 365"` — the same mistake `typeKey`/`typeText`
+> avoids elsewhere in this API), and `over_odds` / `under_odds` beside the
+> total. Serve all four.
+>
+> **And one thing worth stating so nobody "deduplicates" it:** this is not a
+> duplicate of `win_prob_snapshot`. That stores the normalised three-way
+> probability with the bookmaker margin removed; this stores the raw moneylines
+> that derivation is computed *from* — which is what you need to audit it, or to
+> compute a closing-line value.
 
 > ## STOP — the ingester owns this schema too
 >
@@ -2315,11 +2362,14 @@ a missing key does not break this read — it silently doubles it.
 > `competition_id` while `main` says `comp_id`; whichever lands second must make
 > the reader's SQL consistent.
 
-**Line movement is a series, not three fields.** ESPN returns `open`, `current`
-and `close` per provider. As columns, a consumer can see that a line moved but
-never when or how fast — and the speed of the move before kickoff is the
-interesting part. `match_odds_snapshot` is shaped like `win_prob_snapshot` and
-sits beside it on purpose. `propBets` is deliberately not stored.
+**Line movement is a series; `open` and `close` are not part of it.** ESPN
+returns all three per provider, but only `current` moves — `open` and `close`
+are fixed facts it computes, and ESPN never says when either happened. The
+response therefore serves `open` and `close` as nullable single readings and
+`current` as a sampled array, rather than flattening all three into one list
+with a phase label. An earlier draft of this task got that wrong; the correction
+is recorded in the plan rather than quietly applied. `propBets` is deliberately
+not stored.
 
 **Form and streaks need no snapshots.** The roadmap lists form under E7's gate,
 which is true of the frontend but not of the reader: we already hold every

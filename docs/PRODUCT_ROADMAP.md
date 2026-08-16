@@ -9,6 +9,18 @@ This is the index. Every epic below links to a design spec and, where the work i
 ready to execute, a task-by-task implementation plan. Task IDs (`T0.1`, `T3.2`, …)
 are stable and are how work gets assigned across sessions.
 
+> **Revised 2026-08-15 — a factual error was found and corrected.** Earlier
+> versions of this document asserted that ESPN exposes no pitch coordinates and
+> that xG was therefore impossible without a paid provider. **Both claims were
+> false.** They were true of ESPN's `site` host and false of its `core` host,
+> which serves a full touch-level play stream with coordinates. As a result:
+> **xG has been removed from "Not building" and is now epic E9**; the heat-map
+> rejection has been rewritten onto honest grounds; **E6 has been rescoped**; and
+> a new section, *"The capability this roadmap was written without"*, documents
+> what `/plays` actually provides — including a retention deadline nobody knew
+> about. Corrections are marked in place rather than silently applied, so that a
+> future reader can see the constraint was lifted and does not reinstate it.
+
 ---
 
 ## Where ScoreArc actually is
@@ -57,12 +69,101 @@ gates history, trends, percentiles and simulation — nothing else.
 | **E6** | Shot log | coverage probe | [spec](superpowers/specs/2026-08-15-shot-log-design.md) | after T6.1 |
 | **E7** | History & trends | backend Phase 1 | [spec](superpowers/specs/2026-08-15-history-and-trends-design.md) | after T7.1 |
 | **E8** | AI recaps & digest | T1.3 / T7.1 | [spec](superpowers/specs/2026-08-15-ai-recaps-design.md) | after E1 |
+| **E9** | Expected goals (xG) | T7.12 / T7.13 | [spec](superpowers/specs/2026-08-15-expected-goals-design.md) | after T9.1 |
 
-E6, E7 and E8 deliberately stop at a spec. E6's parser is determined by what the
-coverage probe (T6.1) finds; E7 is backend work whose schema lives in
-`docs/backend/ARCHITECTURE.md`; E8's prompt design depends on the box-score shape
-E1 lands. Writing exact-code plans for them today would be inventing detail we do
-not have, which the plan format explicitly forbids.
+E6, E8 and E9 deliberately stop at a spec, and E7 now has plans for its whole
+task set. E6's extractor is determined by what the coverage probe (T6.1) finds;
+E8's prompt design depends on the box-score shape E1 lands; E9's model is
+determined by what its training-set probe (T9.1) finds — the same
+measure-before-you-build rule, for the same reason. Writing exact-code plans for
+them today would be inventing detail we do not have, which the plan format
+explicitly forbids.
+
+**E7's plans exist** and are listed under the task index below: eight ingester
+plans covering T7.1 and T7.6–T7.15.
+
+---
+
+## The capability this roadmap was written without: ESPN's `/plays`
+
+Every version of this document before 2026-08-15 stated that ScoreArc could not
+reach pitch coordinates. **That was wrong**, and it was wrong in a way that
+rejected two features and mis-scoped a third. The correction is here rather than
+in a footnote because it is the largest single change to what this product can be.
+
+`sports.core.api.espn.com` — a **different host** from the `site.api.espn.com` one
+every existing mapper uses — serves a per-match play stream:
+
+```
+/v2/sports/soccer/leagues/{slug}/events/{id}/competitions/{id}/plays?limit=1000
+```
+
+**What it carries** (verified 2026-08-15 against live responses):
+
+- **Touch-level events** — every pass, tackle, take-on, aerial, clearance and
+  interception, not just the ~20 key events the summary endpoint returns.
+- **Pitch coordinates on almost everything.** `fieldPositionX/Y` (where the action
+  started), `fieldPosition2X/Y` (where it ended), on a 0–100 scale per axis.
+  Liga MX event `401877018`: **979 of 1,000** returned plays carry them. LaLiga
+  `401882926`: **955 of 1,000**.
+- **Goal-mouth placement on shots.** `goalPositionY/Z` — where in the goal the
+  shot went. Current-season sample: field position on ~100% of shots, goal-mouth
+  placement on ~55–75% (a blocked shot never reaches the goal line).
+- **Athlete and team ids**, as `$ref` URLs. The id is parsed out of the URL and
+  **never fetched** — a match has ~1,500 plays with 2–3 refs each, so following
+  them is ~4,500 requests per match.
+
+**Per-competition volume, current season** (finished matches, sampled 2026-08-15):
+
+| Competition | Plays | Passes |
+|---|---|---|
+| Liga MX | 1,183–1,544 | 486–610 |
+| MLS | 1,437 | 593 |
+| Leagues Cup | 1,358 | 652 |
+| LaLiga | 1,235 | 542 |
+
+Coverage is **not** uniform, which is why per-competition gating is mandatory for
+both E6 and E9. The CONCACAF Champions Cup is currently between seasons and its
+live volume is therefore **unmeasured** — that unknown is the argument for T6.1
+and T9.1, not an argument against the feature.
+
+### ⏳ The deadline, and it is a real one
+
+**ESPN keeps the full stream for the current season only.** Measured
+2026-08-15 by sampling across dates and competitions:
+
+| Match | Plays | Passes | Coordinate scale | Goal-mouth placement |
+|---|---|---|---|---|
+| Liga MX, 2026-07-17 (this season, 30 days old) | 1,297 | 486 | 0–100 | present |
+| Liga MX, 2026-05-10 (last season) | 199 | **0** | **0–1** | **all zero** |
+| Premier League, 2026-04-18 | 189 | **0** | **0–1** | **all zero** |
+| MLS, 2025-08-09 | 198 | **0** | **0–1** | **all zero** |
+| CONCACAF CC, 2026-04-08 | 164 | **0** | **0–1** | **all zero** |
+
+Read that carefully, because two things in it are easy to get wrong:
+
+1. **The boundary is the season, not an age.** A 30-day-old match from the current
+   season is intact; a match from the previous season is not, however recent. So
+   the deadline for T7.13's backfill is **the end of this season**, not "within a
+   week" — urgent, but schedulable.
+2. **What survives is not what you would assume.** Prior seasons keep a ~200-play
+   key-event tier *and* pitch coordinates — but on a **0–1 scale**, and with
+   `goalPositionY/Z` **zeroed out entirely**. Historical shots therefore have a
+   location in a different, unvalidated frame and **no goal-mouth placement at
+   all**. Reconciling those frames is a measurement task (T9.1), not a `×100`.
+
+Practical consequence: **prior-season touch data is unrecoverable, and prior-season
+shot geometry is not directly comparable to this season's.** T7.13 backfills the
+current season and nothing else.
+
+Two more operational facts worth not rediscovering:
+
+- **`?limit` caps at 1000, and fails silently above it.** `limit=1000` returns
+  `pageSize=1000, pageCount=2`; `limit=1001` returns `pageSize=25, pageCount=62`
+  with **no error**, turning a 2-request fetch into a 62-request one.
+- **Pagination is mandatory.** `count` is 1,542 while `items` is 1,000. Reading
+  `count` and assuming you have the stream is the easiest mistake here to make,
+  and it is silent.
 
 ---
 
@@ -136,40 +237,92 @@ limit stated in the first draft of this roadmap was wrong; a last-five log ships
 in E5. What genuinely needs E7 is a *full-season* log, cross-season history and
 percentiles.
 
-### E6 · Shot log — *not* an xG model
+### E6 · Shot log
 - **T6.1** Per-competition coverage probe, **before any parser is written**
-- **T6.2** Commentary shot parser
-- **T6.3** Reconcile parsed shots against `rosters[].totalShots`
+- **T6.2** Shot extraction from the play stream (with commentary as the fallback)
+- **T6.3** Reconcile extracted shots against `rosters[].totalShots`
 - **T6.4** Shot map rendering
 
-Coverage sampled 2026-08-15: LaLiga 129 commentary lines (15 "Assisted by"),
-CONCACAF Champions Cup 175 (22); earlier sampling gave 112 / 96 / 122 / 173 across
-the Premier League, Liga MX, LaLiga and Serie A. One competition-event combination
-returned **zero** during review, which is exactly why T6.1 blocks the parser:
-sampling two competitions and generalising is how you ship an empty feature to a
-third.
+> **Rescoped 2026-08-15 (was "Shot log — *not* an xG model").** The old title and
+> the epic's whole justification rested on a claim that turned out to be false:
+> that no shot coordinates exist. They do — see **E9** and the capability note
+> below. The shot log is still worth building and still ships first, but it is no
+> longer a consolation prize for a model we could not build. **E6 renders shots;
+> E9 scores them.** One pipeline, two consumers — the extraction and the
+> `totalShots` reconciliation are written once, in E6, and E9 reads the same rows.
+
+What changes in practice: **zone no longer has to be parsed out of English prose.**
+It can be computed from `fieldPositionX/Y`, which means a real shot map is a
+`SELECT` rather than a regex, and the "coarse zones only" constraint is lifted.
+
+What does **not** change: **T6.1 still blocks.** Coverage varies per competition
+and the probe is still the only thing standing between us and shipping an empty
+feature to a tenth of the site. Nor does T6.3 change — reconciling against the
+provider's own `rosters[].totalShots` is what makes the log trustworthy, and it is
+now doubly load-bearing because E9 trains on those same rows.
 
 ### E7 · History & trends — the real gate
-- **T7.1** Daily standings snapshot writer — **start immediately**
-- **T7.2** Match + participation history
+
+**Render tasks** (need the writers below to have run first):
+
+- **T7.1** Daily standings snapshot writer — **start immediately** · [plan](superpowers/plans/2026-08-15-ingester-standings-snapshots.md)
+- **T7.2** Match + participation history — on `feat/player-identity`, unmerged
 - **T7.3** Form column (last five) in every table
 - **T7.4** Player game log and per-position percentiles
 - **T7.5** Previous seasons
+
+**Ingester write tasks.** The backend had no memory: `standing_snapshot` and
+`win_prob_snapshot` existed since migration `0002` and **nothing had ever written
+to either**. These are the writers, each with an exact-code plan.
+
+| Task | What it writes | Plan |
+|---|---|---|
+| **T7.6** | Win probability snapshots, per live minute | [plan](superpowers/plans/2026-08-15-ingester-win-probability-snapshots.md) |
+| **T7.7** | Per-match player box score onto `appearance` | [plan](superpowers/plans/2026-08-15-ingester-box-score.md) |
+| **T7.8** | Season leaderboards beyond goals (assists) | [plan](superpowers/plans/2026-08-15-ingester-season-leaders.md) |
+| **T7.9** | Squad membership + provider season stats | [plan](superpowers/plans/2026-08-15-ingester-squad-and-athletes.md) |
+| **T7.10** | Athlete demographics + career club history | same plan as T7.9 |
+| **T7.11** | Relational match commentary | [plan](superpowers/plans/2026-08-15-ingester-commentary.md) |
+| **T7.12** | **Touch-level play stream + R2 raw archive** | [plan](superpowers/plans/2026-08-15-ingester-play-stream.md) |
+| **T7.13** | **Retention probe + current-season play backfill** | same plan as T7.12 |
+| **T7.14** | Match officials as canonical people | [plan](superpowers/plans/2026-08-15-ingester-officials-and-odds.md) |
+| **T7.15** | Odds line-movement snapshots | same plan as T7.14 |
+
+**T7.12/T7.13 carry a deadline** — see the capability note below. They are also
+**E9's hard prerequisite**: a model cannot be trained on data we did not persist.
 
 ### E8 · AI
 - **T8.1** Auto-generated match recaps
 - **T8.2** Anomaly digest
 - **T8.3** Match previews
 
+### E9 · Expected goals — committed, and gated on a measurement
+- **T9.1** Training-set probe — **blocking, before any modelling**
+- **T9.2** Shot-feature extraction from `match_play`
+- **T9.3** Model fit + calibration
+- **T9.4** Published validation (Brier score + reliability curve, on the page)
+- **T9.5** Per-competition gating and rendering
+
+Gated on **T7.12/T7.13**, not on a provider. T9.1 blocks T9.2 for exactly the
+reason T6.1 blocks T6.2: an unmeasured sample is an assumption, and a model built
+on one is discovered to be wrong by a user. Detail: the
+[E9 spec](superpowers/specs/2026-08-15-expected-goals-design.md).
+
 ---
 
 ## Not building, and why
 
+> **Two rows were removed or rewritten on 2026-08-15 because their stated reason
+> was factually wrong.** The claim "no pass or touch coordinates exist in any
+> response we can reach" was true of ESPN's **site** host and false of its
+> **core** host. **xG has left this table entirely — it is now E9.** Heat maps
+> stay, but on honest grounds. This note exists so nobody re-adds either
+> rejection by citing a constraint that has been lifted.
+
 | Rejected | Reason |
 |---|---|
-| **xG** | Not in the ESPN payload and not anywhere in `src/`. StatsBomb's free data has **no Liga MX** and one MLS season — it misses our North American core entirely. Revisit only as a paid-provider decision, with a named budget. |
-| **Heat maps** | No pass or touch coordinates exist in any response we can reach. |
-| **Match simulation** | Gated on **E7**, not on xG. Dixon–Coles runs on goals and results alone. The real gate is a Brier score and reliability curve we can publish *on the page*; until we can, it is a toy that will be screenshotted and held against us. |
+| **Heat maps** | **Not a data limit any more — a product judgement.** Touch-level coordinates exist and are archived in full (T7.12), so this is buildable. It stays unbuilt because a heat map describes a match without explaining one, and because rowing the touch tier into Postgres is ~35M rows and ~5GB of billed storage per season to serve it. Unblocked but unscheduled; revisit with a named use case, not with a "now we have coordinates". |
+| **Match simulation** | Gated on **E7**, not on xG. Dixon–Coles runs on goals and results alone. The real gate is a Brier score and reliability curve we can publish *on the page*; until we can, it is a toy that will be screenshotted and held against us. E9 now holds the same standard for xG, and the two should share one validation story rather than inventing two. |
 | **Chatbot** | Capped by an API with no player granularity. E8's push features beat it at zero user effort. |
 | **A tenth competition** | Nine competitions one week deep are worth less than three with five years of history. |
 | **Possession as a hero stat** | Unanimous across all three reviews. It describes a match; it does not explain one. |
@@ -183,11 +336,26 @@ third.
 **Next** — E3, E4, E5. Mutually independent and touching largely disjoint files:
 the natural three-way split across parallel sessions.
 
-**Parallel track, starting immediately** — **T7.1**. It is the only task on this
-roadmap with a cost for waiting: a standings snapshot not written today is gone
-forever, and every trend, form and history feature depends on the series existing.
+**Parallel track, starting immediately** — **T7.1 and T7.12/T7.13**, by two
+different agents. These are the tasks with a **cost for waiting**, and until
+2026-08-15 this document claimed there was only one of them:
+
+- **T7.1** — a standings snapshot not written today is gone forever. ESPN
+  publishes the current table, not yesterday's.
+- **T7.12/T7.13** — ESPN keeps the full play stream for the **current season
+  only**. Every match this season still has its touch tier and its 0–100 geometry
+  today; at season end all of it collapses to a ~200-play summary on a different
+  coordinate scale with goal-mouth placement zeroed. This is a deadline measured
+  in months rather than days, which makes it schedulable — and makes it very easy
+  to let slip.
+
+They touch disjoint files (`competitions.go` / standings vs a new `plays.go` and a
+new R2 bucket) and are the natural two-way split.
 
 **Then** — E6, then E8.
+
+**E9 follows T7.12/T7.13**, and cannot start before them: T9.1's training-set
+probe measures rows that only exist once the play stream is being persisted.
 
 ## Rules that apply to every epic
 

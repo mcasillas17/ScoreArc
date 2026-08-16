@@ -99,8 +99,17 @@ persist for these endpoints to return anything but a 404.
     reintroduces E0's bug in prose, where it is far harder to spot than in a scorer
     list — nobody diffs a paragraph against a fixture.
   - A stat we do not hold is not mentioned. No "dominated possession" when
-    `stats.home.possession` is null. Verified NOT available anywhere in this codebase:
-    xG, shot coordinates, populated injuries. A recap must not reach for them.
+    `stats.home.possession` is null. Verified NOT available: populated injuries,
+    transfers, tracking data. A recap must not reach for them.
+  - **Corrected 2026-08-15:** an earlier draft listed *shot coordinates* here as
+    unavailable. They are available — the typed play stream carries
+    `fieldPositionX/Y`, `fieldPosition2X/Y` and `goalPositionY/Z` on roughly 96%
+    of plays. That does not change what a recap may say: **xG is still not a
+    field we hold**, because no model has been specified, so a recap must never
+    mention or imply one. The rule is unchanged; only the reason is. A recap may
+    describe a shot's *location* if the generator is given it, since that is a
+    measured value; it may not describe its *quality*, which would be a number
+    nobody computed.
   - T8.1's generator depends on E1's box-score shape, which is precisely why the E8
     spec deferred its prompt design. This plan specifies only the read path, which is
     stable regardless of how the prose is produced.

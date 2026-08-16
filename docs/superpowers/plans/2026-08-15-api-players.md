@@ -152,9 +152,19 @@ returns 404.** All three verified dead on 2026-08-15. Never call them, never bui
 a fallback chain around them, never retry them on a schedule. `/athletes/{id}`,
 `/athletes/{id}/overview` and `/athletes/{id}/bio` are the whole athlete surface.
 
-**Also verified unavailable anywhere in the athlete surface:** xG, shot
-coordinates, and populated injuries. No column in this migration is reserved for
-them.
+**Also verified unavailable anywhere in the athlete surface:** populated
+injuries, transfers and market values. No column in this migration is reserved
+for them.
+
+> **Corrected 2026-08-15.** An earlier draft also listed *shot coordinates* as
+> unavailable. They are not: the typed play stream carries `fieldPositionX/Y`,
+> `fieldPosition2X/Y` and `goalPositionY/Z` on ~96% of plays, and they survive
+> ESPN's pruning of the touch tier. They are simply not on the **athlete**
+> surface — they are per-play, and a player's shots are served by the
+> `api-commentary-and-shots` plan's
+> `/v1/competitions/{comp}/{season}/players/{playerId}/shots`, not from here.
+> Nothing in this plan should be read as saying a player shot map is impossible.
+> xG remains absent because no model exists, not because the inputs do.
 
 ## What is capped, and to what
 

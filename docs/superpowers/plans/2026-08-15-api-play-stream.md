@@ -32,33 +32,64 @@ Each play carries `id`, `type` `{id, text, type}`, `text`, `clock` `{value, disp
 
 **Verified absent even in the play stream, so do not design for them:** injuries, transfers, and physical or tracking data.
 
-> ## Unresolved: do shot coordinates exist?
->
-> The capability probe this plan was briefed on states that **shot coordinates
-> are absent even in the play stream** — the standing reason there is no xG
-> anywhere in this roadmap. But
-> `docs/superpowers/plans/2026-08-15-ingester-play-stream.md` writes
-> `start_x numeric(5,2)` and `goal_z numeric(5,2)` into `match_play`, which only
-> makes sense if they do exist.
->
-> **One of the two is wrong, and it is not a cosmetic difference.**
->
-> - If coordinates exist, several "not building xG" entries in
->   `docs/PRODUCT_ROADMAP.md` were decided on a false premise and deserve
->   re-examination — though note that xG needs a *training set* as well as
->   coordinates, so this reopens the question rather than settling it.
-> - If they do not, the ingester is about to add two columns that will be null
->   forever, and a nullable coordinate column is exactly the kind of thing a
->   later feature builds a pitch map on before anyone checks how often it is
->   populated.
->
-> **This plan's response shapes carry no coordinates and will not until the
-> question is settled by a fresh probe.** Adding a field the API cannot reliably
-> populate is worse than omitting one it could.
+## Plays carry geometry — verified 2026-08-15
+
+An earlier draft of this plan said coordinates were absent and flagged the
+ingester's `start_x` / `goal_z` columns as a contradiction to be resolved. **The
+ingester was right and the draft was wrong.** Measured directly against the live
+API:
+
+| Field | Meaning |
+|---|---|
+| `fieldPositionX` / `fieldPositionY` | where the action starts |
+| `fieldPosition2X` / `fieldPosition2Y` | where it ends |
+| `goalPositionY` / `goalPositionZ` | placement within the goal mouth (shots only) |
+
+Coverage: Liga MX event 401877018 → **979 of 1,000** plays carry non-zero
+coordinates. LaLiga event 401882926 → **955 of 1,000**. A sampled shot reads
+`fieldPosition 69.1/42.2 → 72.0/42.9`, `goalPositionY 49.9`, `goalPositionZ 19.0`,
+against the text *"Attempt blocked. Luis Calzadilla (Atlante) right footed shot
+from outside the box is blocked."*
+
+**So `Play` carries the six coordinate fields, all nullable.** A shot map is now a
+`SELECT`, not a prose parse.
+
+Three consequences, stated because each one reverses something previously written
+down:
+
+1. **The E6 shot-log plan changes shape, not just emphasis.** Its `Shot` wire
+   type gains geometry and its parser narrows further — see that plan's own
+   correction block.
+2. **Pass and carry geometry exists too** (start→end on non-shot plays), so pass
+   maps and territory aggregates are *possible*. This plan does not design them:
+   possible is not the same as specified, and a pass-network endpoint needs a
+   design pass on what a "chain" is before it claims to serve one. But nothing
+   downstream may refuse them on the grounds that the data does not exist.
+3. **xG is no longer blocked by missing data.** It is a modelling decision now,
+   not a data-availability one. **This plan still specifies no xG endpoint** —
+   that is the user's call, no model exists, and coordinates are a necessary but
+   not sufficient input. Any surviving claim elsewhere that xG is impossible, or
+   that it requires a paid provider, is now false and should be struck.
 
 ## The retention fact that shapes every response
 
-ESPN **prunes the touch-level tier for older matches.** An October 2025 fixture returns only key events — zero Pass, zero Tackle, zero Take On. So our store will hold full-fidelity plays only from the day we start ingesting forward, plus whatever a partial current-season backfill catches.
+ESPN **prunes the touch-level tier for older matches, but not the shot tier and
+not the geometry.** This is a sharper finding than the earlier draft's, and the
+difference decides what is backfillable:
+
+- **Perishable — the touch tier.** An October 2025 fixture returns zero Pass,
+  zero Tackle, zero Take On. Full-fidelity touch data exists only from the day
+  ingestion starts forward, plus whatever a current-season backfill catches.
+- **Durable — shots and their coordinates.** That same October 2025 Premier
+  League match still returns **161 of 194** plays with coordinates and **26 of 43
+  shot-type plays** with coordinates. The shot tier and its geometry survive to at
+  least ~10 months.
+
+**So a history endpoint must not assume shot geometry begins at our ingest date.**
+Past-season shot maps are very likely backfillable, and any read model that
+hard-codes "geometry starts when we started" would foreclose that. The fidelity
+tier describes the *touch* tier's completeness; it is not a statement about
+whether shots are present.
 
 An endpoint that quietly returns 40 key events where another match returns 1,542 plays is telling a user that one match had less football in it. Every play-derived response therefore carries:
 
@@ -122,6 +153,17 @@ nothing — see the `api-match-reads` plan's Global Constraints.
 | `match_play` | **ingester `0007_play_stream`** | the core host's plays feed, one row per play | `$ref` team and athlete URLs resolved by parsing the trailing id, never by fetching — ~1,500 plays × 2–3 refs is 4,500 round trips per match. |
 | `match_play_archive` / `touch_tier` | **ingester `0007_play_stream`** | one row per match, written at ingest time | The fidelity signal. Decided from what actually arrived, not from the match date. |
 | `player_action_count` | **this plan, `0012`** | a per-season roll-up of `match_play` | Recomputed per competition season, not per request. Confirm no ingester plan claims it before creating it. |
+
+> **Upstream paging has a silent failure mode the ingester must handle.** The
+> core API's `?limit` caps at **1000**, and `limit=1001` does not error — it
+> silently degrades to `pageSize=25`. A single unpaged fetch therefore returns
+> 1,000 of a 1,542-play match and looks complete, and an over-limit fetch returns
+> 25 and looks like a quiet match. The ingester must paginate **and assert the
+> returned `pageSize` matches what was requested**, failing the ingest rather
+> than writing a short stream. This is a write-path concern, but it lands on the
+> read side as a `fidelity.playCount` that is confidently wrong, which is the one
+> failure this plan's fidelity block cannot detect — it reports what we hold, not
+> what we should have held.
 
 > **The play stream is distinct from `match_event`.** The unmerged `feat/player-identity` branch adds `0003_player_capture` with `appearance` and `match_event` — **key** events (goals, cards, substitutions) supporting participation. `match_play` is the **touch** stream: 1,500 rows where `match_event` holds 40. Both are correct, they answer different questions, and nothing here reconciles them. Do not fold one into the other; the roll-up would be a table of two different grains.
 
@@ -201,16 +243,23 @@ nothing — see the `api-match-reads` plan's Global Constraints.
 > the ingester plan's `uuid` columns are written against a future schema. Do not
 > paper over it here — raise it.
 >
-> **2. The ingester plan's `match_play` carries `start_x numeric(5,2)` and
-> `goal_z numeric(5,2)`.** That directly contradicts the capability finding this
-> plan was briefed on, which states that **shot coordinates are absent even in
-> the play stream** — the reason there is still no xG anywhere in this roadmap.
-> One of the two is wrong and the difference is not cosmetic: if coordinates
-> genuinely exist, several "not building xG" decisions across the roadmap deserve
-> re-examination; if they do not, the ingester is about to add two columns that
-> will be null forever and invite a shot map that implies a precision we do not
-> have. **Resolve this before either plan is executed.** This plan's response
-> shapes contain no coordinates and will not until the question is settled.
+> **2. ~~Do coordinates exist?~~ RESOLVED — they do.** An earlier draft flagged
+> the ingester's `start_x` / `goal_z` columns as contradicting a "no coordinates"
+> capability finding. **The finding was wrong; the ingester is right.** Verified
+> 2026-08-15: `fieldPositionX/Y`, `fieldPosition2X/Y` and `goalPositionY/Z` are
+> present on ~96% of plays. What remains for the executor is only a **naming**
+> reconciliation, not an existence question:
+>
+> | This plan's wire field | Ingester column | Note |
+> |---|---|---|
+> | `fieldPositionX` / `fieldPositionY` | `start_x` / `start_y` | confirm the `_y` name; only `start_x` was quoted in their test |
+> | `fieldPosition2X` / `fieldPosition2Y` | their end-position pair | find the actual names |
+> | `goalPositionY` / `goalPositionZ` | `goal_y` / `goal_z` | `goal_z` confirmed |
+>
+> Their migration test asserts coordinates are **nullable** and fails if any is
+> declared `NOT NULL` — for the reason this plan gives in the `Play` struct: a
+> `NOT NULL DEFAULT 0` puts every unlocated play at the corner flag. Keep that
+> property; do not "tidy" it away.
 
 - [ ] **Step 1: Confirm the schema you are reading against**
 
@@ -576,6 +625,23 @@ type Play struct {
 	AwayScore      *int    `json:"awayScore"`
 	ScoringPlay    bool    `json:"scoringPlay"`
 	ScoreValue     int     `json:"scoreValue"`
+
+	// Geometry. All six are nullable and roughly 96% populated on a live
+	// competition (979/1000 on Liga MX event 401877018, 955/1000 on LaLiga
+	// 401882926, measured 2026-08-15). Serve null when absent - a play we could
+	// not locate must not be placed at the corner flag, which is exactly what a
+	// zero default would do.
+	//
+	// fieldPosition* are pitch coordinates: 1 and 2 are where the action starts
+	// and ends. goalPosition* locate a shot within the goal mouth and are
+	// present on shot-type plays only.
+	FieldPositionX  *float64 `json:"fieldPositionX"`
+	FieldPositionY  *float64 `json:"fieldPositionY"`
+	FieldPosition2X *float64 `json:"fieldPosition2X"`
+	FieldPosition2Y *float64 `json:"fieldPosition2Y"`
+	GoalPositionY   *float64 `json:"goalPositionY"`
+	GoalPositionZ   *float64 `json:"goalPositionZ"`
+
 	OwnGoal        bool    `json:"ownGoal"`
 	PenaltyKick    bool    `json:"penaltyKick"`
 	RedCard        bool    `json:"redCard"`
@@ -669,6 +735,11 @@ func (s *Store) Plays(ctx context.Context, matchID string, filter PlayFilter) ([
 	return plays, rows.Err()
 }
 
+// Reads the ingester's fidelity representation, NOT a table this plan creates.
+// 0007_play_stream expresses it as match_play_archive plus a touch_tier bool;
+// rewrite this statement against those columns per Task 1's reconciliation
+// table, and map their representation onto PlayFidelity, which is a wire
+// contract and does not change.
 const playFidelitySQL = `
 SELECT tier, play_count, distinct_types, source_pruned, ingested_at
 FROM match_play_fidelity
@@ -1261,13 +1332,13 @@ const playCoverageSQL = `
 SELECT count(*)::int AS season_matches,
        count(*) FILTER (WHERE f.match_id IS NULL)::int AS unmeasured
 FROM match m
-LEFT JOIN match_play_fidelity f ON f.match_id = m.id
+LEFT JOIN match_play_fidelity f ON f.match_id = m.id -- rewrite: see Task 1
 WHERE m.comp_id = $1 AND m.season_id = $2`
 
 const playCoverageTiersSQL = `
 SELECT f.tier, count(*)::int
 FROM match m
-JOIN match_play_fidelity f ON f.match_id = m.id
+JOIN match_play_fidelity f ON f.match_id = m.id -- rewrite: see Task 1
 WHERE m.comp_id = $1 AND m.season_id = $2
 GROUP BY f.tier
 ORDER BY f.tier`
@@ -1439,12 +1510,23 @@ cursor must survive the provider renumbering — capped at 500 rows, with
 `nextAfter` null on the last page so a caller walks rather than counts.
 
 **Fidelity is a response field, not a footnote.** ESPN prunes the touch tier for
-older matches: an October 2025 fixture returns only key events, zero Pass and
-zero Tackle. Our store will therefore hold full plays from the ingestion start
-date forward and thinner data behind it. Without `fidelity`, a pruned match and
-a quiet match are the same 40-row response, and the API would be telling users
-one match had less football in it. Every play-derived response carries the tier,
-the counts and a sentence a consumer can show verbatim.
+older matches: an October 2025 fixture returns zero Pass and zero Tackle. Without
+`fidelity`, a pruned match and a quiet match are the same 40-row response, and
+the API would be telling users one match had less football in it. Every
+play-derived response carries the tier, the counts and a sentence a consumer can
+show verbatim.
+
+**But the shot tier and its geometry are durable.** That same October 2025 match
+still returns 161/194 plays and 26/43 shot plays with coordinates. So plays carry
+`fieldPositionX/Y`, `fieldPosition2X/Y` and `goalPositionY/Z` — all nullable,
+~96% populated on a live competition — and **past-season shot maps are very
+likely backfillable.** Nothing here assumes geometry begins at our ingest date.
+
+**A shot map is now a SELECT.** An earlier draft of this plan asserted the play
+stream carried no coordinates and that xG was therefore impossible. That was
+wrong on the facts. xG remains unbuilt because nobody has specified a model, not
+because the inputs are missing — a materially different reason, and the plan says
+so rather than leaving a stale impossibility claim standing.
 
 **Absence stays absence.** `counts` omits a play type the player did not
 perform. A zero would turn "not recorded" into a measurement — the same rule the
@@ -1464,10 +1546,18 @@ parser, narrowed to the qualifiers only prose carries (body part, zone, assist
 type). Reconciliation gets stronger: the play stream is now a second independent
 ground truth alongside `rosters[].totalShots`.
 
-## Still not available, and still not designed for
+## Still not available
 
-Shot coordinates (so still no xG), injuries, transfers, tracking data. All
-verified absent in the play stream too.
+Injuries, transfers and tracking data — all verified absent in the play stream.
+
+## Available, and deliberately not designed here
+
+Pass and carry geometry (start→end on non-shot plays) is present, so pass maps
+and territory aggregates are possible. This plan does not specify them: possible
+is not specified, and a pass-network endpoint needs a design pass on what a
+"chain" is first. Nothing downstream should refuse them on data-availability
+grounds. Likewise xG — coordinates exist, no model does, and choosing to build
+one is the user's call.
 
 ## Testing
 
@@ -1502,9 +1592,9 @@ EOF
   snapshot-shaped time series and belongs beside the win-probability series.
 - **Deliberately not built.** No unpaginated plays endpoint. No pass network or
   possession-chain derivation — both are real and both need a design pass on
-  what a "chain" is before an endpoint claims to serve one. No xG-adjacent
-  anything: coordinates are absent from this feed too, which is now confirmed
-  twice rather than assumed once.
+  what a "chain" is before an endpoint claims to serve one. No xG endpoint —
+  **not** because the data is missing (coordinates are present on ~96% of plays)
+  but because no model exists and specifying one is the user's decision.
 - **Type consistency.** `PlayFilter`, `Play`, `PlayPage`, `PlayFidelity`,
   `PlayTypeCount`, `PlayerActionCounts`, `MatchActions`, `PlayerSeasonActions`,
   `ActionLeader`, `PlayCoverageTier` and `PlayCoverage` are each declared once
@@ -1518,10 +1608,12 @@ EOF
   four-line fixes if this lands first.
 - **One hard dependency and two unresolved questions, all in Task 1.** The hard
   dependency is the ingester's `0007_play_stream`, without which there is
-  nothing to read. The questions are `match.id`'s type (`text` on `main`,
-  `uuid` in the ingester plans) and whether shot coordinates exist at all. Both
-  are stated as blockers rather than assumed away, because a wrong answer to
-  either produces a plan that looks correct and does not run.
+  nothing to read. One question remains open — `match.id`'s type (`text` on
+  `main`, `uuid` in the ingester plans) — and is stated as a blocker rather than
+  assumed away, because a wrong answer produces a plan that looks correct and
+  does not run. The second question, whether coordinates exist, is **resolved:
+  they do**, and the draft that said otherwise was working from a briefing that
+  turned out to be false.
 - **The draft this replaced created `match_play` itself.** That was caught by
   reading the sibling plans rather than by a test, which is worth saying out
   loud: migration ownership is not something the Go test suite can enforce
