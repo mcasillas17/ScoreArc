@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -70,6 +71,11 @@ func StatisticsURL(slug string, seasonYear ...int) string {
 		return fmt.Sprintf("%s?season=%d", base, seasonYear[0])
 	}
 	return base
+}
+
+func TeamRosterURL(slug, teamID string) string {
+	return fmt.Sprintf("%s/%s/teams/%s/roster",
+		site, url.PathEscape(slug), url.PathEscape(teamID))
 }
 
 const (

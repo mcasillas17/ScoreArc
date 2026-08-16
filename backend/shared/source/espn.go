@@ -207,6 +207,26 @@ func (e *ESPN) TopScorers(ctx context.Context, comp config.Competition, season c
 	return espn.MapTopScorers(raw, limit)
 }
 
+func (e *ESPN) Roster(
+	ctx context.Context,
+	comp config.Competition,
+	teamSourceID string,
+) (model.Squad, error) {
+	raw, err := e.get(ctx, espn.TeamRosterURL(comp.ESPNSlug, teamSourceID))
+	if err != nil {
+		return model.Squad{}, err
+	}
+	squad, err := espn.MapRoster(raw)
+	if err != nil {
+		return model.Squad{}, err
+	}
+	if squad.TeamSourceID != teamSourceID {
+		return model.Squad{}, fmt.Errorf(
+			"roster team %q does not match %q", squad.TeamSourceID, teamSourceID)
+	}
+	return squad, nil
+}
+
 func (e *ESPN) Bracket(
 	ctx context.Context,
 	comp config.Competition,
