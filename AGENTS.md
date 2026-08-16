@@ -11,7 +11,7 @@ to serve that data instead.
 > stats), and fútbol domain knowledge future agents need.
 
 > **Picking up feature work?** Read **`docs/PRODUCT_ROADMAP.md`** — the epic and
-> task index (E0–E8), what is gated on the backend and what is not, and what we
+> task index (E0–E10), what is gated on the backend and what is not, and what we
 > have decided *not* to build. Every epic links to its design spec and, where the
 > work is ready to execute, a task-by-task implementation plan. Work is assigned
 > by task id (`T0.1`, `T3.2`, …).
@@ -116,6 +116,22 @@ Neon Postgres (provisioned via Vercel) + Cloudflare R2**. Full detail:
   checklists — execute them top-to-bottom (run each step's command, confirm its
   "expect:" output, commit at the commit step). Ignore any "REQUIRED SUB-SKILL"
   header; it only names the tool the humans used to *produce* the plan.
+
+## Plans quote code as of the day they were written
+
+A plan under `docs/superpowers/plans/` shows exact "replace this with that" blocks.
+Those quotes are a snapshot, and `main` moves. **Open the file and diff it against
+the quote before replacing anything.** Where they differ, apply the plan's
+*intent* to the current code instead of pasting the quoted block.
+
+This is not hypothetical: within a day of the 2026-08-15 plans being written,
+telemetry was added across the API routes and several components. An agent
+pasting a quoted block would have silently deleted `trackAPIRequestFailure` /
+`trackFeedFailure` calls — a deletion that is invisible in review and only shows
+up when a dashboard goes quiet.
+
+If a plan's *premise* has changed (not just its quoted code), stop and say so
+rather than improvising around it.
 
 ## Architecture
 
