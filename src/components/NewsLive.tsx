@@ -20,6 +20,7 @@ export default function NewsLive({ initial, apiBase }: Props) {
     async function poll() {
       try {
         const res = await fetch(`${apiBase}/news`, { cache: 'no-store' });
+        if (!mounted) return;
         if (res.ok) {
           const data = (await res.json()) as NewsArticle[];
           if (mounted && Array.isArray(data) && data.length) setNews(data);
@@ -32,6 +33,7 @@ export default function NewsLive({ initial, apiBase }: Props) {
           feedFailed.current = true;
         }
       } catch {
+        if (!mounted) return;
         if (!feedFailed.current) {
           trackFeedFailure('news');
           feedFailed.current = true;

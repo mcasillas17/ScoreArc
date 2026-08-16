@@ -8,14 +8,14 @@ export const revalidate = 0;
 export async function GET(_req: Request, { params }: { params: { comp: string; season: string } }) {
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) {
-    await trackAPIRequestFailure(_req, 'matches', 404);
+    await trackAPIRequestFailure('matches', 404);
     return Response.json({ error: 'unknown competition or season' }, { status: 404 });
   }
   try {
     const matches = await dataStore.getMatches(rc);
     return Response.json(matches, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
   } catch (err) {
-    await trackAPIRequestFailure(_req, 'matches', 502, params.comp, params.season);
+    await trackAPIRequestFailure('matches', 502, params.comp, params.season);
     return Response.json({ error: String(err) }, { status: 502 });
   }
 }

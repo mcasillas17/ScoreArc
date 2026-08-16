@@ -14,13 +14,12 @@ const eventTimeoutMs = 250;
 const lastTrackedAt = new Map<string, number>();
 
 export async function trackAPIRequestFailure(
-  request: Request,
   endpoint: APIEndpoint,
   status: number,
   competition?: string,
   season?: string,
 ) {
-  const key = `${endpoint}:${status}`;
+  const key = `${endpoint}:${status}:${competition ?? ''}:${season ?? ''}`;
   const now = Date.now();
   if ((lastTrackedAt.get(key) ?? 0) + eventIntervalMs > now) return;
   lastTrackedAt.set(key, now);
@@ -33,7 +32,7 @@ export async function trackAPIRequestFailure(
         status,
         competition,
         season,
-      }, { request }),
+      }, { headers: {} }),
       new Promise<void>((resolve) => {
         timeout = setTimeout(resolve, eventTimeoutMs);
       }),

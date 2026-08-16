@@ -54,10 +54,7 @@ export default function StandingsLive({ initialGroups, initialScorers, apiBase, 
           }
           continue;
         }
-        if (result.value.ok && feedFailures.current[failed]) {
-          trackFeedRecovery(feed);
-          feedFailures.current[failed] = false;
-        } else if (!result.value.ok && !feedFailures.current[failed]) {
+        if (!result.value.ok && !feedFailures.current[failed]) {
           trackFeedFailure(feed, result.value.status);
           feedFailures.current[failed] = true;
         }
@@ -73,6 +70,19 @@ export default function StandingsLive({ initialGroups, initialScorers, apiBase, 
       if (!mounted) return;
       const g = groupsJSON.status === 'fulfilled' ? groupsJSON.value : null;
       const s = scorersJSON.status === 'fulfilled' ? scorersJSON.value : null;
+      const parsedFeeds = [
+        { feed: 'standings', value: g, failed: 'standings' as const },
+        { feed: 'top-scorers', value: s, failed: 'topScorers' as const },
+      ];
+      for (const { feed, value, failed } of parsedFeeds) {
+        if (Array.isArray(value) && feedFailures.current[failed]) {
+          trackFeedRecovery(feed);
+          feedFailures.current[failed] = false;
+        } else if (!Array.isArray(value) && !feedFailures.current[failed]) {
+          trackFeedFailure(feed);
+          feedFailures.current[failed] = true;
+        }
+      }
       if (Array.isArray(g) && g.length) setGroups(g);
       if (Array.isArray(s)) setScorers(s);
     }

@@ -126,15 +126,19 @@ func run() int {
 			log.Error("check ingester lease", "err", err)
 			return 1
 		}
+		if code := onceExitCodeForContext(ctx, result); code != 0 {
+			log.Error("single cycle failed",
+				"live", result.anyLive,
+				"failures", result.failures,
+				"duration_ms", time.Since(cycleStarted).Milliseconds(),
+			)
+			return code
+		}
 		log.Info("single cycle complete",
 			"live", result.anyLive,
 			"failures", result.failures,
 			"duration_ms", time.Since(cycleStarted).Milliseconds(),
 		)
-		if code := onceExitCodeForContext(ctx, result); code != 0 {
-			log.Error("single cycle failed", "failures", result.failures)
-			return code
-		}
 
 		return 0
 	}

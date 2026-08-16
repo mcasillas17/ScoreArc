@@ -151,6 +151,33 @@ func TestAccessLogRetainsUnmatchedPath(t *testing.T) {
 	}
 }
 
+func TestRecoveredPanicLogsRequestContext(t *testing.T) {
+	t.Parallel()
+	app, buf := newObservedApp(t, &fakeReaderStore{})
+	handler := app.requestID(app.recoverJSON(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("boom")
+	})))
+
+	recorder := performRequest(handler, http.MethodGet, "/v1/not-a-route")
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", recorder.Code)
+	}
+
+	var record map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &record); err != nil {
+		t.Fatalf("panic log is not JSON: %s (%v)", buf, err)
+	}
+	if got := record["request_id"]; got != recorder.Header().Get("X-Request-Id") {
+		t.Fatalf("request_id = %v, want %q", got, recorder.Header().Get("X-Request-Id"))
+	}
+	if got := record["method"]; got != http.MethodGet {
+		t.Fatalf("method = %v, want GET", got)
+	}
+	if got := record["path"]; got != "/v1/not-a-route" {
+		t.Fatalf("path = %v", got)
+	}
+}
+
 func TestRequestOutcome(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {

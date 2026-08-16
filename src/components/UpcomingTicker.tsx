@@ -173,6 +173,7 @@ export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'f
         // Poll the same feed the band was rendered from, or the first poll would
         // replace next week's fixtures with an empty current week.
         const res = await fetch(`${apiBase}/${weekOnly ? 'matches' : 'upcoming'}`, { cache: 'no-store' });
+        if (!on) return;
         if (res.ok) {
           if (on) setMatches((await res.json()) as Match[]);
           if (feedFailed.current) {
@@ -184,6 +185,7 @@ export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'f
           feedFailed.current = true;
         }
       } catch {
+        if (!on) return;
         if (!feedFailed.current) {
           trackFeedFailure('upcoming');
           feedFailed.current = true;

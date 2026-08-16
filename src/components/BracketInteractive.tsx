@@ -120,6 +120,7 @@ export default function BracketInteractive({ rounds: initialRounds, apiBase, tea
     async function poll() {
       try {
         const res = await fetch(`${apiBase}/bracket`, { cache: 'no-store' });
+        if (!mounted) return;
         if (!res.ok) {
           if (!feedFailed.current) {
             trackFeedFailure('bracket', res.status);
@@ -136,6 +137,7 @@ export default function BracketInteractive({ rounds: initialRounds, apiBase, tea
           feedFailed.current = false;
         }
       } catch {
+        if (!mounted) return;
         if (!feedFailed.current) {
           trackFeedFailure('bracket');
           feedFailed.current = true;
