@@ -50,6 +50,16 @@ curl -i http://localhost:8080/v1/competitions/world-cup/2026/matches
 - All failures, unknown routes, unsupported methods, and recovered panics use a
   sanitized JSON error with `Cache-Control: no-store`.
 
+## Observability
+
+Reader logs are JSON on stdout for Fly to collect. Every non-successful health
+check and every non-health request emits an access record with `request_id`,
+`method`, concrete `path`, normalized `route`, `status`, `outcome`, response
+`bytes`, `duration_ms`, and `client_ip`. A recovered panic also includes its
+request id, method, path, route, and stack trace. Healthy `/healthz` probes are
+intentionally omitted to keep application traffic visible. Ingester logs
+similarly record each cycle's live state, failure count, duration, and sleep.
+
 ## Verification
 
 From `backend/`:
