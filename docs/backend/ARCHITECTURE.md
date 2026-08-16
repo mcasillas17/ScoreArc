@@ -105,7 +105,7 @@ same transaction.
 - **competition**(id PK `text` slug, name, short_name, kind[`league|cup`], country, updated_at)
 - **season**(PK (competition_id→competition, id `text` e.g. `2026-27`), label, has_bracket)
 - **team**(id PK `text` slug, kind[`club|national`], name, short_name, abbr, country, crest_url, **provisional**, updated_at) — identity is curated in `backend/config/teams.seed.json`; a team the seed does not carry is minted `provisional` (`prov-espn-<id>`) so ingestion never blocks, and a partial index lists those awaiting curation.
-- **player**(id PK `uuid` v7, full_name, known_as, birth_date, nationality, position, updated_at) — resolved and stored; relational `appearance`/`match_event` tables are a later slice.
+- **player**(id PK `uuid` v7, full_name, known_as, birth_date, nationality, position, updated_at) — resolved from the provider's athlete id via `player_external_ref`, never from a display name: two players who share a name must not become one person. Note there is deliberately **no `team_id`** — a player's club is recorded per `appearance`, so a transfer needs no special handling.
 
 ### Source crosswalk (the only place provider ids live)
 - **competition_external_ref** / **team_external_ref** / **player_external_ref** /
@@ -116,18 +116,25 @@ same transaction.
 - **match_detail**(match_id PK→match, scorers jsonb, cards jsonb, stats jsonb, win_probability jsonb, shootout jsonb, shootout_detail jsonb, lineups jsonb, videos jsonb, info jsonb, form jsonb, h2h jsonb, commentary jsonb, updated_at)
 - **standing**(PK (competition_id,season_id,team_id→team), group_id, group_name, rank, played, wins, draws, losses, goals_for, goals_against, goal_difference, points, advanced, source, updated_at) — `group_id`/`group_name` (e.g. "A"/"Group A") are nullable: populated for multi-group competitions (e.g. World Cup group stage), null for single-table leagues.
 - **top_scorer**(PK (competition_id,season_id,rank), player, team_abbr, team_name, team_crest_url, goals, matches, source) — team is denormalized (ESPN stats give abbr/name/crest, no id), matching the frontend `TopScorer` type.
+- **appearance**(PK (match_id→match, player_id→player), team_id→team, starter, shirt_number, position) — who was in the squad, **including substitutes**; the `lineups` jsonb above keeps starters only because that is what the site renders. This is the table that makes "minutes played" computable.
+- **match_event**(PK (match_id→match, **seq**), player_id→player NULL, team_id→team, type[`goal|own_goal|yellow|red|sub_on|sub_off`], minute, penalty, shootout, detail) — one row per player-action, so a substitution is two rows rather than one row with two players. `seq` is a deterministic ordinal, **not** a surrogate uuid: a live summary is re-fetched every 20s and a surrogate key would duplicate every goal on every poll. `player_id` is nullable because an event the provider reports without an athlete id still happened — we record it unattributed rather than inventing a player. `penalty` is a flag, not a type, so penalties stay inside `type = 'goal'`.
 
 ### Tier 3 — time-series (created now, WRITTEN in Phase 2 via `emitSnapshots()`)
 - **standing_snapshot**(id bigserial, competition_id, season_id, team_id→team, captured_at, rank, points, goal_difference, played) — append-only.
 - **win_prob_snapshot**(id bigserial, match_id, captured_at, home, draw, away) — append-only.
 
 ### Ops
-- **ingest_run**(id bigserial, competition_id, kind, started_at, finished_at, ok, error) — observability. Beyond per-operation runs it also records the two identity events a human has to act on: `provisional_team` (a club nobody has curated) and `team_promotion` (a curation that could not complete).
+- **ingest_run**(id bigserial, competition_id, kind, started_at, finished_at, ok, error) — observability. Beyond per-operation runs it also records the identity events a human has to act on: `provisional_team` (a club nobody has curated), `team_promotion` (a curation that could not complete), and `player_capture` (a match where the provider sent no athlete ids — without this, total capture failure and a match where nothing happened are the same empty table).
 
 ### Roles (least privilege — enforces the read-only public path)
 - `scorearc_reader` → **SELECT only** (the public reader connects as this).
 - `scorearc_ingester` → SELECT/INSERT/UPDATE plus narrowly scoped DELETE for
-  atomic standings/scorer replacement and audit retention (only it writes).
+  atomic standings/scorer replacement, curation promotion, participation
+  replacement, and audit retention (only it writes). Every DELETE grant is
+  named table-by-table; `ALTER DEFAULT PRIVILEGES` deliberately does **not**
+  include DELETE, so a new table that needs it must say so — a missing grant
+  surfaces as a 42501 inside the ingester, which is how curation once shipped
+  permanently broken.
 - `ALTER DEFAULT PRIVILEGES` mirrors these so future tables inherit them.
 
 ---

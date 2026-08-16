@@ -9,9 +9,15 @@ import (
 )
 
 type SummaryResult struct {
-	Detail    model.MatchDetail
-	HomeScore *int
-	AwayScore *int
+	Detail model.MatchDetail
+	// Participation is the people in the match — squads and per-player events —
+	// in provider shape. Nil when the source can't supply it. It is separate
+	// from Detail because Detail is serialized wholesale into match_detail's
+	// jsonb and served to the site, whereas this is resolved to canonical
+	// player ids and never leaves the ingester.
+	Participation *model.MatchParticipation
+	HomeScore     *int
+	AwayScore     *int
 }
 
 // Source returns canonical ScoreArc models independent of provider payloads.

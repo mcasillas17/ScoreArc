@@ -256,6 +256,16 @@ func (r *runner) processMatches(
 				current.HasDetail = true
 				existing[identity.MatchID] = current
 			}
+
+			// Player capture is additive: a match's scoreline and detail are
+			// already written above. Record the failure, but never let it stop
+			// a match from ingesting — the site does not read these tables yet,
+			// and a scoreline is worth more than an appearance row.
+			if _, err := r.repo.WriteParticipation(ctx, r.source.Name(), identity.MatchID,
+				match.Home.ID, match.Away.ID, summary.Participation); err != nil {
+				operationErrors = append(operationErrors,
+					fmt.Errorf("match %s participation: %w", match.ID, err))
+			}
 		}
 		r.mirrorCrest(ctx, match.Home)
 		r.mirrorCrest(ctx, match.Away)

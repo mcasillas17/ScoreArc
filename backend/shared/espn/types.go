@@ -34,3 +34,17 @@ type MatchForm = model.MatchForm
 type CommentaryItem = model.CommentaryItem
 type H2HMeeting = model.H2HMeeting
 type MatchDetail = model.MatchDetail
+
+// Ingester-internal participation shapes (never serialized to the reader).
+type SquadPlayer = model.SquadPlayer
+type PlayerEvent = model.PlayerEvent
+type MatchParticipation = model.MatchParticipation
+
+const (
+	PlayerEventGoal    = model.PlayerEventGoal
+	PlayerEventOwnGoal = model.PlayerEventOwnGoal
+	PlayerEventYellow  = model.PlayerEventYellow
+	PlayerEventRed     = model.PlayerEventRed
+	PlayerEventSubOn   = model.PlayerEventSubOn
+	PlayerEventSubOff  = model.PlayerEventSubOff
+)

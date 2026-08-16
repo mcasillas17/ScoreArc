@@ -80,7 +80,21 @@ func (f *fakeSource) Summary(
 		return source.SummaryResult{}, f.summaryErrors[call]
 	}
 	return source.SummaryResult{
-		Detail:    model.MatchDetail{Scorers: []model.Scorer{{Player: "Winner"}}},
+		Detail: model.MatchDetail{Scorers: []model.Scorer{{Player: "Winner"}}},
+		// Provider-shaped, exactly as a real source returns it: the team ids
+		// here are the provider's, and the ingester is responsible for handing
+		// the store canonical ones instead.
+		Participation: &model.MatchParticipation{
+			HomeTeamSourceID: match.Home.ID,
+			AwayTeamSourceID: match.Away.ID,
+			Home: []model.SquadPlayer{
+				{SourceID: "a1", Name: "Winner", Starter: true},
+			},
+			Events: []model.PlayerEvent{
+				{TeamSourceID: match.Home.ID, PlayerSourceID: "a1",
+					PlayerName: "Winner", Type: model.PlayerEventGoal, Minute: "1'"},
+			},
+		},
 		HomeScore: f.summaryHome,
 		AwayScore: f.summaryAway,
 	}, nil
@@ -109,29 +123,32 @@ func fakeMatchID(sourceID string) uuid.UUID {
 }
 
 type fakeRepository struct {
-	mu              sync.Mutex
-	existing        map[string]store.MatchRow
-	existingErr     error
-	existingHook    func()
-	pruneErr        error
-	pruneRows       []int64
-	pruneCalls      int
-	pruneHook       func()
-	matchCalls      int
-	finalizeCalls   int
-	lastFinalized   model.Match
-	lastUpsert      model.Match
-	standingsCalls  int
-	standingsErr    error
-	topScorersCalls int
-	unfinalized     []model.Match
-	unfinalizedErr  error
-	logged          []loggedRun
-	lastIdentity    store.MatchIdentity
-	teamKinds       map[string]string
-	standingTeamIDs map[string]string
-	matchAlias      map[string]string
-	upserted        []string
+	mu               sync.Mutex
+	existing         map[string]store.MatchRow
+	existingErr      error
+	existingHook     func()
+	pruneErr         error
+	pruneRows        []int64
+	pruneCalls       int
+	pruneHook        func()
+	matchCalls       int
+	finalizeCalls    int
+	lastFinalized    model.Match
+	lastUpsert       model.Match
+	standingsCalls   int
+	standingsErr     error
+	topScorersCalls  int
+	unfinalized      []model.Match
+	unfinalizedErr   error
+	logged           []loggedRun
+	lastIdentity     store.MatchIdentity
+	teamKinds        map[string]string
+	standingTeamIDs  map[string]string
+	matchAlias       map[string]string
+	upserted         []string
+	participation    []*model.MatchParticipation
+	participationTo  []string
+	participationErr error
 }
 
 type loggedRun struct {
@@ -191,6 +208,23 @@ func (f *fakeRepository) UpsertMatch(
 func (f *fakeRepository) UpsertMatchDetail(context.Context, uuid.UUID, model.MatchDetail) error {
 	return nil
 }
+func (f *fakeRepository) WriteParticipation(
+	_ context.Context,
+	_ string,
+	_ uuid.UUID,
+	homeTeamID, awayTeamID string,
+	part *model.MatchParticipation,
+) (store.ParticipationStats, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.participation = append(f.participation, part)
+	f.participationTo = append(f.participationTo, homeTeamID+"/"+awayTeamID)
+	if f.participationErr != nil {
+		return store.ParticipationStats{}, f.participationErr
+	}
+	return store.ParticipationStats{}, nil
+}
+
 func (f *fakeRepository) FinalizeMatch(
 	_ context.Context,
 	identity store.MatchIdentity,
@@ -419,6 +453,58 @@ func TestInitialCycleRunsAndPollingFailurePreservesActivity(t *testing.T) {
 	runner.runCycle(context.Background(), false)
 	if !runner.active[key].active {
 		t.Fatal("polling failure marked active competition dormant")
+	}
+}
+
+// The store resolves players against provider ids, but appearances key on
+// canonical TEAM ids. Handing it the provider's ids instead would violate the
+// team foreign key — or worse, match a canonical id that happens to collide.
+func TestParticipationIsWrittenWithCanonicalTeamIDs(t *testing.T) {
+	match := finishedMatch()
+	src := &fakeSource{matches: []model.Match{match}}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	runner := testRunner(src, repo, config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	})
+
+	runner.runCycle(context.Background(), true)
+
+	if len(repo.participation) != 1 {
+		t.Fatalf("expected 1 participation write, got %d", len(repo.participation))
+	}
+	want := fakeTeamID(match.Home.ID) + "/" + fakeTeamID(match.Away.ID)
+	if got := repo.participationTo[0]; got != want {
+		t.Errorf("participation written for %q, want canonical %q", got, want)
+	}
+	// The payload itself must stay in provider shape — the store maps it.
+	if got := repo.participation[0].HomeTeamSourceID; got != match.Home.ID {
+		t.Errorf("participation payload home source id = %q, want %q", got, match.Home.ID)
+	}
+}
+
+// Player capture is additive. A match's scoreline is already written by the
+// time it runs, so a participation failure must be reported without stopping
+// the match from ingesting.
+func TestParticipationFailureDoesNotBlockTheMatch(t *testing.T) {
+	match := finishedMatch()
+	src := &fakeSource{matches: []model.Match{match}}
+	repo := &fakeRepository{
+		existing:         map[string]store.MatchRow{},
+		participationErr: errors.New("boom"),
+	}
+	runner := testRunner(src, repo, config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	})
+
+	result := runner.runCycle(context.Background(), true)
+
+	if repo.finalizeCalls != 1 {
+		t.Errorf("participation failure blocked finalization: finalize=%d", repo.finalizeCalls)
+	}
+	if result.failures == 0 {
+		t.Error("participation failure was swallowed instead of reported")
 	}
 }
 
