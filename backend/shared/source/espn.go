@@ -168,7 +168,13 @@ func (e *ESPN) Summary(ctx context.Context, comp config.Competition, match model
 	if err != nil {
 		return SummaryResult{}, err
 	}
-	result := SummaryResult{Detail: detail, Participation: participation}
+	commentary, err := espn.MapCommentaryLines(raw)
+	if err != nil {
+		return SummaryResult{}, fmt.Errorf("map commentary: %w", err)
+	}
+	result := SummaryResult{
+		Detail: detail, Participation: participation, Commentary: commentary,
+	}
 	if match.State == model.MatchStateFinished {
 		result.HomeScore, result.AwayScore, err = espn.SummaryFinalScores(raw)
 		if err != nil {

@@ -33,6 +33,7 @@ type MatchInfo = model.MatchInfo
 type FormResult = model.FormResult
 type MatchForm = model.MatchForm
 type CommentaryItem = model.CommentaryItem
+type CommentaryLine = model.CommentaryLine
 type H2HMeeting = model.H2HMeeting
 type MatchDetail = model.MatchDetail
 
