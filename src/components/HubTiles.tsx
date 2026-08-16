@@ -1,6 +1,9 @@
+'use client';
+
 import Link from 'next/link';
 import type { Competition, Season } from '@/server/data/competitions';
 import type { HubStatus } from '@/lib/hubStatus';
+import { trackEvent } from '@/lib/telemetry/client';
 
 interface Tile {
   comp: Competition;
@@ -69,6 +72,13 @@ export default function HubTiles({ tiles }: Props) {
                     key={tile.comp.id}
                     href={`/c/${tile.comp.id}/${tile.season.id}`}
                     className="hub-tile"
+                    onClick={() =>
+                      trackEvent('Competition opened', {
+                        competition: tile.comp.id,
+                        season: tile.season.id,
+                        source: 'hub',
+                      })
+                    }
                   >
                     <div className="hub-tile-top">
                       <span className="hub-emblem">{tile.comp.emblem}</span>

@@ -116,6 +116,7 @@ func run() int {
 	}
 
 	if *once {
+		cycleStarted := time.Now()
 		result, err := runLeasedCycleWithTimeout(ctx, lease, worker, true, 0)
 		if err != nil {
 			if leaseErrorExitCode(ctx, err) == 0 {
@@ -130,7 +131,11 @@ func run() int {
 			return code
 		}
 
-		log.Info("single cycle complete")
+		log.Info("single cycle complete",
+			"live", result.anyLive,
+			"failures", result.failures,
+			"duration_ms", time.Since(cycleStarted).Milliseconds(),
+		)
 		return 0
 	}
 
@@ -169,7 +174,13 @@ func run() int {
 		} else {
 			delay = 0
 		}
-		log.Info("cycle complete", "live", result.anyLive, "failures", result.failures, "slowTick", slowTick, "sleep", delay)
+		log.Info("cycle complete",
+			"live", result.anyLive,
+			"failures", result.failures,
+			"slow_tick", slowTick,
+			"duration_ms", time.Since(cycleStarted).Milliseconds(),
+			"sleep_ms", delay.Milliseconds(),
+		)
 
 		if !waitForNextCycle(ctx, delay) {
 			log.Info("shutdown complete")

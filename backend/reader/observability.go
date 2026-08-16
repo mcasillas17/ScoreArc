@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"net/http"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type contextKey string
@@ -81,14 +83,30 @@ func (a *App) requestLogging(next http.Handler) http.Handler {
 			return
 		}
 		id, _ := request.Context().Value(requestIDKey).(string)
+		route := request.URL.Path
+		if pattern := chi.RouteContext(request.Context()).RoutePattern(); pattern != "" {
+			route = pattern
+		}
 		a.logger.Info("request",
 			"request_id", id,
 			"method", request.Method,
-			"path", request.URL.Path,
+			"route", route,
 			"status", status,
+			"outcome", requestOutcome(status),
 			"bytes", recorder.bytes,
 			"duration_ms", time.Since(start).Milliseconds(),
 			"client_ip", clientIP(request),
 		)
 	})
+}
+
+func requestOutcome(status int) string {
+	switch {
+	case status >= http.StatusInternalServerError:
+		return "server_error"
+	case status >= http.StatusBadRequest:
+		return "client_error"
+	default:
+		return "success"
+	}
 }

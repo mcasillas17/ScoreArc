@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { Competition } from '@/server/data/competitions';
 import { listCompetitions } from '@/server/data/competitions';
+import { trackEvent } from '@/lib/telemetry/client';
 
 const ICON = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
 
@@ -46,7 +47,12 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
           <span className="sidebar-ball" aria-hidden>⚽</span>
           <span className="sidebar-wordmark">ScoreArc</span>
         </Link>
-        <button type="button" className="sidebar-toggle" onClick={() => setCollapsed((v) => !v)} aria-label={collapsed ? 'Expand' : 'Collapse'} aria-expanded={!collapsed}>
+        <button type="button" className="sidebar-toggle" onClick={() => {
+          setCollapsed((value) => {
+            trackEvent('Sidebar toggled', { collapsed: !value });
+            return !value;
+          });
+        }} aria-label={collapsed ? 'Expand' : 'Collapse'} aria-expanded={!collapsed}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             {collapsed ? <polyline points="9 6 15 12 9 18" /> : <polyline points="15 6 9 12 15 18" />}
           </svg>
@@ -62,7 +68,14 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
         {switcherOpen && (
           <div className="cs-menu">
             {listCompetitions().map((c) => (
-              <Link key={c.id} href={`/c/${c.id}/${c.currentSeasonId}`} className={`cs-opt${c.id === comp.id ? ' cs-opt--active' : ''}`} onClick={() => setSwitcherOpen(false)}>
+              <Link key={c.id} href={`/c/${c.id}/${c.currentSeasonId}`} className={`cs-opt${c.id === comp.id ? ' cs-opt--active' : ''}`} onClick={() => {
+                trackEvent('Competition opened', {
+                  competition: c.id,
+                  season: c.currentSeasonId,
+                  source: 'switcher',
+                });
+                setSwitcherOpen(false);
+              }}>
                 <span className="cs-emblem">{c.emblem}</span>{c.shortName}
               </Link>
             ))}
@@ -72,7 +85,7 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
 
       <nav className="sidebar-nav" aria-label="Sections">
         {items.map((item) => (
-          <Link key={item.label} href={item.href} className={`nav-item${item.match(pathname) ? ' nav-item--active' : ''}`} title={collapsed ? item.label : undefined}>
+          <Link key={item.label} href={item.href} className={`nav-item${item.match(pathname) ? ' nav-item--active' : ''}`} title={collapsed ? item.label : undefined} onClick={() => trackEvent('Section opened', { section: item.label, surface: 'sidebar' })}>
             <span className="nav-icon">{item.icon}</span>
             <span className="nav-label">{item.label}</span>
           </Link>
@@ -90,7 +103,7 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
       {/* Fixed bottom tab bar — mobile only (CSS hides it on desktop). */}
       <nav className="mobile-tabbar" aria-label="Sections">
         {items.map((item) => (
-          <Link key={item.label} href={item.href} className={`mtab${item.match(pathname) ? ' mtab--active' : ''}`}>
+          <Link key={item.label} href={item.href} className={`mtab${item.match(pathname) ? ' mtab--active' : ''}`} onClick={() => trackEvent('Section opened', { section: item.label, surface: 'mobile-tabs' })}>
             <span className="mtab-icon">{item.icon}</span>
             <span className="mtab-label">{item.label}</span>
           </Link>

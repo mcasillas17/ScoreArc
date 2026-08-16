@@ -6,6 +6,7 @@ import { flagUrl } from '@/lib/flags';
 import RadialBracket, { type BracketMode } from './RadialBracket';
 import ChampionCelebration from './ChampionCelebration';
 import type { BracketShape } from './bracketShape';
+import { trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
 
 // "Build your bracket" (predict mode) is disabled now that the 2026 World Cup is
 // finished — the knockout is decided, so there's nothing left to predict. The
@@ -107,6 +108,7 @@ export default function BracketInteractive({ rounds: initialRounds, apiBase, tea
   const [picks, setPicks] = useState<Record<string, string>>({});
   const [champion, setChampion] = useState<BracketTeam | null>(null);
   const [celebrate, setCelebrate] = useState<BracketTeam | null>(null);
+  const feedFailed = useRef(false);
 
   // Poll the bracket every 15s so finished matches advance in real time (the
   // server snapshot from page load would otherwise go stale). Predict-mode
@@ -118,13 +120,26 @@ export default function BracketInteractive({ rounds: initialRounds, apiBase, tea
     async function poll() {
       try {
         const res = await fetch(`${apiBase}/bracket`, { cache: 'no-store' });
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (!feedFailed.current) {
+            trackFeedFailure('bracket', res.status);
+            feedFailed.current = true;
+          }
+          return;
+        }
         const data = (await res.json()) as BracketRound[];
         if (mounted && Array.isArray(data) && data.length) {
           setRounds((prev) => mergeRounds(prev, data));
         }
+        if (feedFailed.current) {
+          trackFeedRecovery('bracket');
+          feedFailed.current = false;
+        }
       } catch {
-        // ignore — next tick retries
+        if (!feedFailed.current) {
+          trackFeedFailure('bracket');
+          feedFailed.current = true;
+        }
       }
     }
     const id = setInterval(poll, 10_000);

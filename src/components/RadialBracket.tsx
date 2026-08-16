@@ -10,6 +10,7 @@ import {
   type RingNode, type JourneyStop, type BracketMode,
 } from './radialBracketModel';
 import { DEFAULT_SHAPE, type BracketShape, type RingGeom } from './bracketShape';
+import { trackEvent, trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
 
 export type { BracketMode };
 
@@ -235,6 +236,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
   const [detail, setDetail] = useState<BracketMatch | null>(null);
   const [summary, setSummary] = useState<MatchSummary | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const summaryFeedFailed = useRef(false);
 
   // Radar-ping cues use the client clock ("is this match today?"), so they only
   // render after mount to avoid an SSR/hydration mismatch.
@@ -242,6 +244,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
   useEffect(() => setMounted(true), []);
 
   async function handleView(m: BracketMatch) {
+    trackEvent('Match details opened', { surface: 'bracket' });
     setDetail(m);
     setSummary(null);
     setLoadingDetail(true);
@@ -249,10 +252,14 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
       const res = await fetch(`${apiBase}/match/${m.id}?home=${m.home.id}&away=${m.away.id}`, {
         cache: 'no-store',
       });
+      if (!res.ok) {
+        trackEvent('Match details unavailable', { surface: 'bracket', status: res.status });
+        return;
+      }
       const json = (await res.json()) as MatchSummary;
       setSummary(json);
     } catch {
-      // leave summary null — popup will show empty state
+      trackEvent('Match details unavailable', { surface: 'bracket' });
     } finally {
       setLoadingDetail(false);
     }
@@ -269,9 +276,21 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           `${apiBase}/match/${detail.id}?home=${detail.home.id}&away=${detail.away.id}`,
           { cache: 'no-store' },
         );
-        if (res.ok && active) setSummary((await res.json()) as MatchSummary);
+        if (res.ok) {
+          if (active) setSummary((await res.json()) as MatchSummary);
+          if (summaryFeedFailed.current) {
+            trackFeedRecovery('match-summary');
+            summaryFeedFailed.current = false;
+          }
+        } else if (!summaryFeedFailed.current) {
+          trackFeedFailure('match-summary', res.status);
+          summaryFeedFailed.current = true;
+        }
       } catch {
-        // ignore — next tick retries
+        if (!summaryFeedFailed.current) {
+          trackFeedFailure('match-summary');
+          summaryFeedFailed.current = true;
+        }
       }
     }, 15_000);
     return () => {
@@ -1093,4 +1112,3 @@ function InnerHop({
     </g>
   );
 }
-

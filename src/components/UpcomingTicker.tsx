@@ -6,6 +6,7 @@ import type { TeamStyle } from '@/server/data/competitions';
 import { flagUrl } from '@/lib/flags';
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
 import { isThisWeek, matchToBracketMatch } from './upcomingWindow';
+import { trackEvent, trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
 
 interface Props {
   initialMatches: Match[];
@@ -148,6 +149,7 @@ export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'f
   const [summary, setSummary] = useState<MatchSummary | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [reduced, setReduced] = useState(false);
+  const feedFailed = useRef(false);
 
   // Time-derived filtering must run on the client clock to avoid an SSR/client
   // hydration mismatch (server TZ ≠ viewer TZ); render the band only after mount.
@@ -171,9 +173,21 @@ export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'f
         // Poll the same feed the band was rendered from, or the first poll would
         // replace next week's fixtures with an empty current week.
         const res = await fetch(`${apiBase}/${weekOnly ? 'matches' : 'upcoming'}`, { cache: 'no-store' });
-        if (res.ok && on) setMatches((await res.json()) as Match[]);
+        if (res.ok) {
+          if (on) setMatches((await res.json()) as Match[]);
+          if (feedFailed.current) {
+            trackFeedRecovery('upcoming');
+            feedFailed.current = false;
+          }
+        } else if (!feedFailed.current) {
+          trackFeedFailure('upcoming', res.status);
+          feedFailed.current = true;
+        }
       } catch {
-        // next tick retries
+        if (!feedFailed.current) {
+          trackFeedFailure('upcoming');
+          feedFailed.current = true;
+        }
       }
     }
     poll();
@@ -194,15 +208,20 @@ export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'f
   }, [activeKey]);
 
   async function openDetails(m: Match) {
+    trackEvent('Match details opened', { surface: 'upcoming-ticker' });
     setActiveKey(null);
     setDetail(m);
     setSummary(null);
     setLoadingDetail(true);
     try {
       const res = await fetch(`${apiBase}/match/${m.id}?home=${m.home.id}&away=${m.away.id}`, { cache: 'no-store' });
+      if (!res.ok) {
+        trackEvent('Match details unavailable', { surface: 'upcoming-ticker', status: res.status });
+        return;
+      }
       setSummary((await res.json()) as MatchSummary);
     } catch {
-      // leave summary null — popup shows its empty state
+      trackEvent('Match details unavailable', { surface: 'upcoming-ticker' });
     } finally {
       setLoadingDetail(false);
     }

@@ -1,4 +1,7 @@
+'use client';
+
 import type { NewsArticle } from '@/server/data/types';
+import { trackEvent } from '@/lib/telemetry/client';
 
 function relTime(iso: string): string {
   const t = new Date(iso).getTime();
@@ -12,7 +15,7 @@ function relTime(iso: string): string {
 
 function NewsCard({ a }: { a: NewsArticle }) {
   return (
-    <a className="nw-card" href={a.url} target="_blank" rel="noreferrer">
+    <a className="nw-card" href={a.url} target="_blank" rel="noreferrer" onClick={() => trackEvent('News article opened')}>
       {a.image ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img className="nw-img" src={a.image} alt="" loading="lazy" referrerPolicy="no-referrer" />
