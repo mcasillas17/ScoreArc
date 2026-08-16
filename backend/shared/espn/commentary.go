@@ -1,6 +1,7 @@
 package espn
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"time"
@@ -69,16 +70,12 @@ func MapCommentaryLines(raw []byte) ([]model.CommentaryLine, error) {
 		if item.Play != nil {
 			line.PlayType = item.Play.Type.Type
 			line.PlayTypeText = item.Play.Type.Text
-			if item.Play.Period.Number != nil {
-				line.Period = normalizeCommentaryInteger(item.Play.Period.Number)
+			line.Period = normalizeCommentaryInteger(item.Play.Period.Number)
+			if playClock := normalizeCommentaryInteger(item.Play.Clock.Value); playClock != nil {
+				line.ClockValue = playClock
 			}
-			if item.Play.Clock.Value != nil {
-				if playClock := normalizeCommentaryInteger(item.Play.Clock.Value); playClock != nil {
-					line.ClockValue = playClock
-				}
-			}
-			if item.Play.Wallclock != "" {
-				at, err := time.Parse(time.RFC3339, item.Play.Wallclock)
+			if wallclock := normalizeCommentaryString(item.Play.Wallclock); wallclock != "" {
+				at, err := time.Parse(time.RFC3339, wallclock)
 				if err == nil {
 					line.Wallclock = &at
 				}
@@ -115,8 +112,9 @@ func nextCommentarySequence(
 	return 0, false
 }
 
-func normalizeCommentaryInteger(value *float64) *int {
-	if value == nil {
+func normalizeCommentaryInteger(raw json.RawMessage) *int {
+	var value *float64
+	if err := json.Unmarshal(raw, &value); err != nil || value == nil {
 		return nil
 	}
 	if math.IsNaN(*value) || math.IsInf(*value, 0) ||
@@ -125,4 +123,12 @@ func normalizeCommentaryInteger(value *float64) *int {
 	}
 	integer := int(*value)
 	return &integer
+}
+
+func normalizeCommentaryString(raw json.RawMessage) string {
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return ""
+	}
+	return value
 }

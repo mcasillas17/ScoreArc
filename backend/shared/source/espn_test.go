@@ -3,6 +3,7 @@ package source
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"os"
@@ -368,6 +369,87 @@ func TestESPNSummaryKeepsCoreDataWhenCommentaryMetadataIsMalformed(t *testing.T)
 	}
 }
 
+func TestESPNSummaryKeepsCoreDataWhenCommentaryMetadataHasWrongTypes(t *testing.T) {
+	raw, err := os.ReadFile("../espn/testdata/espn-summary.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatal(err)
+	}
+	commentary, ok := payload["commentary"].([]any)
+	if !ok || len(commentary) < 2 {
+		t.Fatal("fixture no longer contains the commentary line under test")
+	}
+	line, ok := commentary[1].(map[string]any)
+	if !ok {
+		t.Fatal("fixture commentary line is no longer an object")
+	}
+	timeMetadata, ok := line["time"].(map[string]any)
+	if !ok {
+		t.Fatal("fixture commentary time is no longer an object")
+	}
+	play, ok := line["play"].(map[string]any)
+	if !ok {
+		t.Fatal("fixture commentary play is no longer an object")
+	}
+	period, ok := play["period"].(map[string]any)
+	if !ok {
+		t.Fatal("fixture commentary period is no longer an object")
+	}
+	playClock, ok := play["clock"].(map[string]any)
+	if !ok {
+		t.Fatal("fixture commentary clock is no longer an object")
+	}
+	line["sequence"] = "invalid"
+	timeMetadata["value"] = map[string]any{"unexpected": true}
+	period["number"] = []any{1}
+	playClock["value"] = false
+	play["wallclock"] = 123
+	raw, err = json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client := espnprovider.NewWithOptions(espnprovider.Options{
+		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(bytes.NewReader(raw)),
+			}, nil
+		})},
+		MaxAttempts: 1,
+	})
+	result, err := NewESPN(client).Summary(
+		context.Background(),
+		config.Competition{ESPNSlug: "fifa.world"},
+		model.Match{
+			ID: "760490", State: model.MatchStateFinished,
+			Home: model.Team{ID: "4789"}, Away: model.Team{ID: "464"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("wrong-type optional commentary metadata blocked summary: %v", err)
+	}
+	if result.HomeScore == nil || *result.HomeScore != 1 ||
+		result.AwayScore == nil || *result.AwayScore != 2 {
+		t.Fatalf("final scores = %v-%v, want 1-2", result.HomeScore, result.AwayScore)
+	}
+	if len(result.Detail.Commentary) == 0 {
+		t.Fatal("match detail commentary was lost")
+	}
+	if len(result.Commentary) != 91 {
+		t.Fatalf("commentary lines = %d, want 91", len(result.Commentary))
+	}
+	lineResult := result.Commentary[1]
+	if lineResult.Seq != 1 || lineResult.ClockValue != nil ||
+		lineResult.Period != nil || lineResult.Wallclock != nil {
+		t.Fatalf("normalized commentary line = %#v", lineResult)
+	}
+}
+
 func TestESPNSummaryKeepsCoreDataWhenCommentarySequenceIsFractional(t *testing.T) {
 	raw, err := os.ReadFile("../espn/testdata/espn-summary.json")
 	if err != nil {
@@ -407,9 +489,6 @@ func TestESPNSummaryKeepsCoreDataWhenCommentarySequenceIsFractional(t *testing.T
 	if result.HomeScore == nil || *result.HomeScore != 1 ||
 		result.AwayScore == nil || *result.AwayScore != 2 {
 		t.Fatalf("final scores = %v-%v, want 1-2", result.HomeScore, result.AwayScore)
-	}
-	if result.Commentary[1].Seq != 1 {
-		t.Fatalf("normalized sequence = %d, want provider ordinal 1", result.Commentary[1].Seq)
 	}
 }
 

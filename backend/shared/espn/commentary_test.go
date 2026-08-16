@@ -165,6 +165,36 @@ func TestMapCommentaryLinesKeepsLineWithFractionalClockValue(t *testing.T) {
 	}
 }
 
+func TestMapCommentaryLinesNormalizesWrongTypeOptionalMetadata(t *testing.T) {
+	raw := []byte(`{"commentary":[{
+	  "sequence":"invalid",
+	  "time":{"value":{"unexpected":true},"displayValue":"12'"},
+	  "text":"Wrong-type metadata.",
+	  "play":{
+	    "period":{"number":[1]},
+	    "clock":{"value":false},
+	    "wallclock":123
+	  }
+	}]}`)
+	lines, err := MapCommentaryLines(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 1 {
+		t.Fatalf("lines = %d, want 1", len(lines))
+	}
+	line := lines[0]
+	if line.Seq != 0 || line.ClockValue != nil || line.Period != nil || line.Wallclock != nil {
+		t.Fatalf("line = %#v, want ordinal sequence and nil invalid metadata", line)
+	}
+}
+
+func TestMapCommentaryLinesRejectsMalformedJSON(t *testing.T) {
+	if _, err := MapCommentaryLines([]byte(`{"commentary":[`)); err == nil {
+		t.Fatal("structurally malformed JSON must remain an error")
+	}
+}
+
 func TestMapCommentaryLinesNormalizesNumbersPostgresCannotRepresent(t *testing.T) {
 	tests := map[string]struct {
 		item       string
@@ -281,14 +311,14 @@ func TestMapCommentaryLinesDuplicateProviderSequenceGetsUniqueFallback(t *testin
 func TestMapCommentaryLinesFallbackDoesNotClaimFutureProviderSequence(t *testing.T) {
 	raw := []byte(`{"commentary":[
 	  {"time":{"value":1},"text":"Missing sequence"},
-	  {"sequence":1,"time":{"value":2},"text":"Provider sequence"}
+	  {"sequence":0,"time":{"value":2},"text":"Provider sequence"}
 	]}`)
 	lines, err := MapCommentaryLines(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if lines[0].Seq != 0 || lines[1].Seq != 1 {
-		t.Fatalf("sequences = %d, %d; want collision-free 0, 1",
+	if lines[0].Seq != 1 || lines[1].Seq != 0 {
+		t.Fatalf("sequences = %d, %d; want collision-free 1, 0",
 			lines[0].Seq, lines[1].Seq)
 	}
 }
