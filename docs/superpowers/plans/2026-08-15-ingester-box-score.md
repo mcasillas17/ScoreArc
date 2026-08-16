@@ -129,7 +129,7 @@ Thirteen become columns. Two do not:
   `0003_player_capture` already writes. Storing it a third time invites the three copies
   to disagree.
 
-- [ ] **Step 1: Write the failing migration test**
+- [x] **Step 1: Write the failing migration test**
 
 Append to `backend/migrations/migrations_test.go`:
 
@@ -179,7 +179,7 @@ func TestAppearanceBoxScoreRollbackDropsOnlyTheColumns(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run and watch it fail**
+- [x] **Step 2: Run and watch it fail**
 
 ```bash
 cd backend && go test ./migrations/ -run AppearanceBoxScore
@@ -187,7 +187,7 @@ cd backend && go test ./migrations/ -run AppearanceBoxScore
 
 Expected: FAIL — `open 0006_appearance_box_score.up.sql: no such file or directory`.
 
-- [ ] **Step 3: Write the up migration**
+- [x] **Step 3: Write the up migration**
 
 Create `backend/migrations/0006_appearance_box_score.up.sql`:
 
@@ -236,7 +236,7 @@ ALTER TABLE appearance
 -- can remove.
 ```
 
-- [ ] **Step 4: Write the down migration**
+- [x] **Step 4: Write the down migration**
 
 Create `backend/migrations/0006_appearance_box_score.down.sql`:
 
@@ -260,7 +260,7 @@ ALTER TABLE appearance
   DROP COLUMN IF EXISTS goals;
 ```
 
-- [ ] **Step 5: Run and prove the SQL applies**
+- [x] **Step 5: Run and prove the SQL applies**
 
 ```bash
 cd backend && go test ./migrations/ && go test ./shared/store/ -run TestResolveTeamHitsTheCrosswalk
@@ -268,7 +268,7 @@ cd backend && go test ./migrations/ && go test ./shared/store/ -run TestResolveT
 
 Expected: both `ok`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/migrations/0006_appearance_box_score.up.sql \
@@ -305,7 +305,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - `model.SquadPlayer` gains `Stats *PlayerMatchStats` — `nil` when the provider sent no
   `stats` array at all, which is different from an array whose entries are missing.
 
-- [ ] **Step 1: Write the failing mapper tests**
+- [x] **Step 1: Write the failing mapper tests**
 
 Append to `backend/shared/espn/participation_test.go`:
 
@@ -453,7 +453,7 @@ func TestMapParticipationRejectsImpossibleCounts(t *testing.T) {
 
 Add `"os"` to that file's imports if it is not already there.
 
-- [ ] **Step 2: Run and watch it fail**
+- [x] **Step 2: Run and watch it fail**
 
 ```bash
 cd backend && go test ./shared/espn/ -run MapParticipation
@@ -461,7 +461,7 @@ cd backend && go test ./shared/espn/ -run MapParticipation
 
 Expected: FAIL to compile — `p.Stats undefined (type SquadPlayer has no field or method Stats)`.
 
-- [ ] **Step 3: Add the model type**
+- [x] **Step 3: Add the model type**
 
 Append to `backend/shared/model/participation.go`:
 
@@ -524,7 +524,7 @@ aliases:
 type PlayerMatchStats = model.PlayerMatchStats
 ```
 
-- [ ] **Step 4: Decode the array**
+- [x] **Step 4: Decode the array**
 
 In `backend/shared/espn/summary.go`, extend `rawRosterPlayer` and add the entry type:
 
@@ -548,7 +548,7 @@ type rawPlayerStat struct {
 }
 ```
 
-- [ ] **Step 5: Map it**
+- [x] **Step 5: Map it**
 
 In `backend/shared/espn/participation.go`, replace `mapSquad`:
 
@@ -631,7 +631,7 @@ func wholeCount(value *float64) (int, bool) {
 
 Add `"math"` to that file's imports.
 
-- [ ] **Step 6: Run the mapper tests**
+- [x] **Step 6: Run the mapper tests**
 
 ```bash
 cd backend && go test ./shared/espn/ -run MapParticipation -v
@@ -643,7 +643,7 @@ Expected: the four new cases pass alongside the ones `feat/player-identity` alre
 `TestMapParticipationLeavesStatsNilWhenAbsent`,
 `TestMapParticipationRejectsImpossibleCounts`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add backend/shared/model/participation.go backend/shared/espn/types.go \
@@ -673,7 +673,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Modify: `backend/shared/store/participation.go`
 - Test: `backend/shared/store/participation_integration_test.go`
 
-- [ ] **Step 1: Write the failing integration tests**
+- [x] **Step 1: Write the failing integration tests**
 
 Append to `backend/shared/store/participation_integration_test.go`:
 
@@ -823,7 +823,7 @@ func TestWriteParticipationKeepsStatsWhenAPollOmitsThem(t *testing.T) {
 `mustSeedMatch` is the helper T7.6 added to `snapshots_integration_test.go`; it is in the
 same package, so it is already in scope.
 
-- [ ] **Step 2: Run and watch it fail**
+- [x] **Step 2: Run and watch it fail**
 
 ```bash
 cd backend && go test ./shared/store/ -run WriteParticipation
@@ -834,7 +834,7 @@ Expected: FAIL to compile —
 after Task 2, so the failure is at the assertions:
 `goals = <nil>, want 2` — the column exists but nothing writes it.
 
-- [ ] **Step 3: Extend the upsert**
+- [x] **Step 3: Extend the upsert**
 
 In `backend/shared/store/participation.go`, replace the appearance `tx.Exec` inside the
 `if squadPresent {` block:
@@ -905,7 +905,7 @@ func boxScoreArgs(stats *model.PlayerMatchStats) []any {
 }
 ```
 
-- [ ] **Step 4: Run the store tests**
+- [x] **Step 4: Run the store tests**
 
 ```bash
 cd backend && go test ./shared/store/ -run WriteParticipation -v
@@ -916,7 +916,7 @@ including `TestWriteParticipationAsTheIngesterRole` — which now also proves th
 least-privilege role can write the new columns, because they are on a table it already
 had `INSERT, UPDATE` on. No new grant is needed and none should be added.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/shared/store/participation.go \
@@ -963,7 +963,7 @@ player put into their **own** net, while `match_event` follows ESPN's convention
 crediting the **beneficiary** team. Those two attributions are only safely different if
 the event classification underneath them is right.
 
-- [ ] **Step 1: Record the fixture**
+- [x] **Step 1: Record the fixture**
 
 ```bash
 cd backend
@@ -971,7 +971,7 @@ curl -s "https://site.api.espn.com/apis/site/v2/sports/soccer/concacaf.leagues.c
   -o shared/espn/testdata/espn-summary-own-goal.json
 ```
 
-- [ ] **Step 2: Verify it captured the event we need**
+- [x] **Step 2: Verify it captured the event we need**
 
 ```bash
 cd backend && node -e "
@@ -998,7 +998,7 @@ Read that carefully — it is the whole defect. The 32' goal is credited to **At
 credits the team that benefits and names the opposition player who put it in. There is
 **no `ownGoal` boolean** on the key event; `type.type` is the only signal.
 
-- [ ] **Step 3: Write the failing test**
+- [x] **Step 3: Write the failing test**
 
 Append to `backend/shared/espn/participation_test.go`:
 
@@ -1084,7 +1084,7 @@ func TestOwnGoalIsClassifiedFromTheMachineValue(t *testing.T) {
 }
 ```
 
-- [ ] **Step 4: Run**
+- [x] **Step 4: Run**
 
 ```bash
 cd backend && go test ./shared/espn/ -run "OwnGoal" -v
@@ -1100,7 +1100,7 @@ If it fails because the event was classified as an ordinary `goal`, the
 above it — check the ordering in `mapPlayerEvents`, since an own goal is *also* a scoring
 play and the switch is first-match-wins.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/shared/espn/testdata/espn-summary-own-goal.json \
@@ -1129,13 +1129,17 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 - [ ] **Step 1: Update the architecture doc**
 
+> **Deferred for shared-doc coordination.** The fleet coordinator directed this
+> implementation branch not to edit shared docs or open a separate docs PR. PR
+> #56 records the exact `appearance` schema and roadmap updates still needed.
+
 In `docs/backend/ARCHITECTURE.md`, replace the `appearance` bullet under `### Tier 1`:
 
 ```markdown
 - **appearance**(PK (match_id→match, player_id→player), team_id→team, starter, shirt_number, position, **goals, assists, shots, shots_on_target, offsides, fouls_committed, fouls_suffered, own_goals, yellow_cards, red_cards, saves, goals_conceded, shots_faced**) — who was in the squad, **including substitutes**, and what they did. The box-score columns come from `rosters[].roster[].stats[]` on the summary the ingester already fetches (T7.7) and are **all nullable**: ESPN's stat set varies by position — a goalkeeper's row has no `offsides` entry, an outfielder's has no `saves` — so `NULL` means "not measured" and `0` means "measured as zero". They are upserted with `COALESCE` so a poll that omits the stats block cannot erase an earlier one. `own_goals` here counts own goals the player put into their own net, which is a *different attribution* from `match_event`, where ESPN credits the own goal to the team that benefits and names the opposition player.
 ```
 
-- [ ] **Step 2: Full gate**
+- [x] **Step 2: Full gate**
 
 ```bash
 cd backend && go build ./... && go test -race ./... && go vet ./...
@@ -1143,7 +1147,7 @@ cd backend && go build ./... && go test -race ./... && go vet ./...
 
 Expected: build silent, every package `ok`, vet silent.
 
-- [ ] **Step 3: Prove it against a real finished match**
+- [x] **Step 3: Prove it against a real finished match**
 
 ```bash
 cd backend
@@ -1179,7 +1183,7 @@ the assertion that matters — **`keepers_with_offsides` is `0`** while `keepers
 If `keepers_with_offsides` equals `keepers`, something is writing a default zero and
 Task 2's `mapPlayerStats` is not returning nil for absent names.
 
-- [ ] **Step 4: Open the PR**
+- [x] **Step 4: Open the PR**
 
 ```bash
 git add docs/backend/ARCHITECTURE.md
@@ -1251,7 +1255,84 @@ EOF
 )"
 ```
 
-- [ ] **Step 5: Stop.** Do not merge — that is the user's call.
+- [x] **Step 5: Stop.** Do not merge — that is the user's call.
+
+---
+
+## Execution record (2026-08-16)
+
+### Plan corrections and current-tree adaptations
+
+- Issue #40 reserved migration `0006` while sibling fleet PRs own `0004` and
+  `0005`; the fetched baseline therefore had `0001` through `0003`, not the
+  plan's expected contiguous sequence. `0006` was unused and retained exactly.
+- The prescribed nullability test searched SQL comments as well as executable
+  SQL, so it rejected the migration's own `NOT NULL DEFAULT 0` explanation.
+  The test now strips `--` comment lines before checking executable SQL.
+- The current store tests expose `mustParticipationMatch`, not the stale
+  `mustSeedMatch` name in Task 3. The existing equivalent helper was reused.
+- `backend/ingester/contracts.go` already contained the exact
+  `WriteParticipation` method. It was neither duplicated nor refactored.
+- A `*float64` cannot distinguish JSON `null` from a missing key; both decode to
+  nil. The stale `rawPlayerStat` comment was corrected to document the useful
+  distinction: measured zero versus null/missing.
+- Task 4's new own-goal tests passed immediately because the classifier ordering
+  was already correct. The missing coverage was added, and the now-false
+  "Unverified" production comment was replaced with the recorded fixture fact.
+- The scratch DSN in Task 5 was redacted and not runnable. The real run used an
+  uncommitted local `ingest_local` URI whose login inherited only
+  `scorearc_ingester`; no credential was written to the repository.
+- Testcontainers initially reported `rootless Docker not found` under Colima.
+  The documented `DOCKER_HOST` and
+  `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE` values made the real-Postgres tests
+  available; no test was skipped.
+- Luna review round 1 found that the mapper bounded values to the host Go `int`,
+  while PostgreSQL `int` is signed int4. Commit `4b436b3` now rejects values
+  above `2,147,483,647`; the new test first reproduced `3,000,000,000` being
+  accepted, then passed after the fix.
+- Commit trailers use this session's required Copilot identity rather than the
+  stale Claude identity quoted in the plan.
+- After PR #57 merged, `origin/main` was integrated with a normal merge commit
+  (`c145b59`), not a rebase; the merged `vercel.json` is present.
+
+### Verification
+
+- Migration rollback on Postgres 16: 13 box-score columns after `up`, zero after
+  `down`, with the `appearance` table and its original six columns preserved.
+- Mapper/store targeted suites passed, including real-Postgres writes as the
+  least-privilege role.
+- A real `-once` ingest completed with zero cycle failures: 20,453 appearances,
+  2,199 non-null saves, 948 keepers, and zero keepers with non-null offsides.
+- Full local gate passed after the blocker fix and main merge:
+  `npm ci`, competition export/no-diff, 25 Vitest files and 210 tests,
+  TypeScript, lint, production build, `go test -race ./...`, and `go vet ./...`.
+  Lint/build retain six pre-existing frontend warnings; `npm ci` reports eight
+  pre-existing high-severity audit findings.
+- GitHub CI: both `test` jobs passed at PR head `c145b59`. Vercel remains an
+  external remote blocker: `BUILD_FAILED`, resource provisioning failed before
+  build, `buildCount=0`; the coordinator directed this plan not to mutate or
+  diagnose Vercel.
+
+### Review closure and follow-ups
+
+- **Luna:** round 1 — one BLOCKING int4-range finding, fixed in `4b436b3`; round
+  2 — **zero blockers**.
+- **Opus:** round 1 — **zero blockers**.
+- NON-BLOCKING follow-ups recorded for coordination:
+  1. assert all 13 positional store mappings end-to-end;
+  2. assert exact max-int4 acceptance;
+  3. tolerate a future string-valued provider stat without rejecting the whole
+     summary;
+  4. update shared `docs/backend/ARCHITECTURE.md` and
+     `docs/PRODUCT_ROADMAP.md`.
+- Luna's round-1 least-privilege coverage concern is closed: PostgreSQL checks
+  privileges on listed columns regardless of nil argument values, Opus verified
+  all 13 column privileges independently, and the role-path integration test
+  exercises both INSERT and `ON CONFLICT DO UPDATE`.
+- Owned package documentation was updated in the migration, model, raw payload,
+  mapper, store helper, and own-goal classifier comments. The touched packages
+  have no `README.md` or `doc.go`; no new shared package document was created
+  during the fleet run.
 
 ---
 
