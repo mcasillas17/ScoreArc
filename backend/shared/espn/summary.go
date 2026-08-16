@@ -155,10 +155,21 @@ type rawRosterEntry struct {
 }
 
 type rawRosterPlayer struct {
-	Starter  bool        `json:"starter"`
-	Jersey   string      `json:"jersey"`
-	Athlete  rawAthlete  `json:"athlete"`
-	Position rawPosition `json:"position"`
+	Starter  bool            `json:"starter"`
+	Jersey   string          `json:"jersey"`
+	Athlete  rawAthlete      `json:"athlete"`
+	Position rawPosition     `json:"position"`
+	Stats    []rawPlayerStat `json:"stats"`
+}
+
+// rawPlayerStat is deliberately NOT rawStatEntry: that type carries only
+// name+displayValue (it serves the team boxscore, which is string-formatted),
+// whereas a player's stat carries a numeric `value`. Value is a pointer so a
+// measured zero stays distinct from JSON null or a missing value, both of
+// which map to an unknown column.
+type rawPlayerStat struct {
+	Name  string   `json:"name"`
+	Value *float64 `json:"value"`
 }
 
 type rawAthlete struct {

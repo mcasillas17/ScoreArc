@@ -1,6 +1,9 @@
 package espn
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 // The fixture's home roster is 4789, away 464 — the same ids TestMapSummary uses.
 const (
@@ -209,5 +212,153 @@ func TestMapParticipationAcceptsNumericAthleteIDs(t *testing.T) {
 	}
 	if got := part.Home[0].SourceID; got != "12345" {
 		t.Errorf("expected source id 12345, got %q", got)
+	}
+}
+
+// The core rule, against the recorded fixture. A goalkeeper's row carries
+// saves/goalsConceded/shotsFaced and NO offsides; an outfielder's carries
+// offsides and NO saves. Both absences must arrive as nil, because the
+// alternative is recording an unmeasured stat as a measured zero.
+func TestMapParticipationReadsPerPositionStats(t *testing.T) {
+	raw, err := os.ReadFile("testdata/espn-summary.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	part, err := MapParticipation(raw, "4789", "464")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var keeper, outfielder *SquadPlayer
+	for i := range part.Home {
+		p := &part.Home[i]
+		if p.Stats == nil {
+			continue
+		}
+		if p.Position == "G" && keeper == nil {
+			keeper = p
+		}
+		if p.Position != "G" && p.Position != "SUB" && outfielder == nil {
+			outfielder = p
+		}
+	}
+	if keeper == nil || outfielder == nil {
+		t.Fatalf("fixture gave keeper=%v outfielder=%v; both are needed", keeper, outfielder)
+	}
+
+	if keeper.Stats.Saves == nil {
+		t.Fatal("keeper Saves is nil; the fixture carries a saves entry for G")
+	}
+	if keeper.Stats.Offsides != nil {
+		t.Fatalf("keeper Offsides = %d, want nil -- ESPN sends no offsides for G",
+			*keeper.Stats.Offsides)
+	}
+	if outfielder.Stats.Offsides == nil {
+		t.Fatal("outfielder Offsides is nil; the fixture carries an offsides entry")
+	}
+	if outfielder.Stats.Saves != nil {
+		t.Fatalf("outfielder Saves = %d, want nil -- ESPN sends no saves for outfielders",
+			*outfielder.Stats.Saves)
+	}
+}
+
+// Lookup is by name. The array order is ESPN's and has changed between
+// payloads before; an index-based read is a silent mis-attribution rather than
+// an error, which is the worst failure mode available here.
+func TestMapParticipationLooksStatsUpByName(t *testing.T) {
+	raw := []byte(`{
+	  "rosters": [{
+	    "team": {"id": "1"},
+	    "roster": [{
+	      "starter": true, "jersey": "9",
+	      "athlete": {"id": "77", "displayName": "Striker"},
+	      "position": {"abbreviation": "F"},
+	      "stats": [
+	        {"name": "yellowCards",  "value": 1},
+	        {"name": "totalShots",   "value": 5},
+	        {"name": "totalGoals",   "value": 2},
+	        {"name": "goalAssists",  "value": 1},
+	        {"name": "shotsOnTarget","value": 3},
+	        {"name": "ownGoals",     "value": 0}
+	      ]
+	    }]
+	  }]
+	}`)
+	part, err := MapParticipation(raw, "1", "2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(part.Home) != 1 || part.Home[0].Stats == nil {
+		t.Fatalf("home = %#v, want one player with stats", part.Home)
+	}
+	s := part.Home[0].Stats
+	// Shuffled on purpose: read positionally, totalGoals would come back as 5.
+	if s.Goals == nil || *s.Goals != 2 {
+		t.Fatalf("Goals = %v, want 2", s.Goals)
+	}
+	if s.Shots == nil || *s.Shots != 5 {
+		t.Fatalf("Shots = %v, want 5", s.Shots)
+	}
+	if s.Assists == nil || *s.Assists != 1 {
+		t.Fatalf("Assists = %v, want 1", s.Assists)
+	}
+	if s.ShotsOnTarget == nil || *s.ShotsOnTarget != 3 {
+		t.Fatalf("ShotsOnTarget = %v, want 3", s.ShotsOnTarget)
+	}
+	// A stat the provider DID send as zero is a measurement and stays zero.
+	if s.OwnGoals == nil || *s.OwnGoals != 0 {
+		t.Fatalf("OwnGoals = %v, want a measured 0", s.OwnGoals)
+	}
+	// A stat the provider never sent stays nil.
+	if s.Saves != nil {
+		t.Fatalf("Saves = %v, want nil", s.Saves)
+	}
+}
+
+// No stats array at all is a different thing from an array with gaps, and the
+// store relies on the difference: nil means "the provider said nothing", which
+// must never overwrite numbers a previous poll established.
+func TestMapParticipationLeavesStatsNilWhenAbsent(t *testing.T) {
+	raw := []byte(`{"rosters":[{"team":{"id":"1"},"roster":[
+	  {"starter":true,"jersey":"9","athlete":{"id":"77","displayName":"Striker"},
+	   "position":{"abbreviation":"F"}}]}]}`)
+	part, err := MapParticipation(raw, "1", "2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if part.Home[0].Stats != nil {
+		t.Fatalf("Stats = %#v, want nil when the payload has no stats array", part.Home[0].Stats)
+	}
+}
+
+// A non-integral, negative, null, or out-of-range count is a payload we do not
+// understand. Record nothing rather than converting it into a plausible-looking
+// number.
+func TestMapParticipationRejectsImpossibleCounts(t *testing.T) {
+	raw := []byte(`{"rosters":[{"team":{"id":"1"},"roster":[
+	  {"starter":true,"jersey":"9","athlete":{"id":"77","displayName":"Striker"},
+	   "position":{"abbreviation":"F"},
+	   "stats":[{"name":"totalGoals","value":1.5},{"name":"totalShots","value":-3},
+	            {"name":"shotsOnTarget","value":1e20},{"name":"redCards","value":null},
+	            {"name":"goalAssists","value":2}]}]}]}`)
+	part, err := MapParticipation(raw, "1", "2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := part.Home[0].Stats
+	if s.Goals != nil {
+		t.Fatalf("Goals = %d from value 1.5, want nil", *s.Goals)
+	}
+	if s.Shots != nil {
+		t.Fatalf("Shots = %d from value -3, want nil", *s.Shots)
+	}
+	if s.ShotsOnTarget != nil {
+		t.Fatalf("ShotsOnTarget = %d from value 1e20, want nil", *s.ShotsOnTarget)
+	}
+	if s.RedCards != nil {
+		t.Fatalf("RedCards = %d from value null, want nil", *s.RedCards)
+	}
+	if s.Assists == nil || *s.Assists != 2 {
+		t.Fatalf("Assists = %v, want 2 -- one bad entry must not discard the row", s.Assists)
 	}
 }
