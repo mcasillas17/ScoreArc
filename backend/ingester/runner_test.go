@@ -550,9 +550,10 @@ func TestCommentaryIsWrittenWithTheCanonicalMatchID(t *testing.T) {
 	}
 }
 
-// Commentary is additive. A match's scoreline and detail are already written
-// before it runs, so a row-write failure is reported without blocking the match.
-func TestCommentaryFailureDoesNotBlockTheMatch(t *testing.T) {
+// Commentary is additive to the scoreline, but a finished match must not freeze
+// before its relational rows are durable. Otherwise a transient write failure
+// becomes permanent because finalized matches skip future summary fetches.
+func TestCommentaryFailureLeavesTheFinishedMatchRetryable(t *testing.T) {
 	match := finishedMatch()
 	src := &fakeSource{matches: []model.Match{match}}
 	repo := &fakeRepository{
@@ -566,11 +567,29 @@ func TestCommentaryFailureDoesNotBlockTheMatch(t *testing.T) {
 
 	result := runner.runCycle(context.Background(), true)
 
-	if repo.finalizeCalls != 1 {
-		t.Errorf("commentary failure blocked finalization: finalize=%d", repo.finalizeCalls)
+	if repo.matchCalls != 1 {
+		t.Errorf("commentary failure blocked the scoreline row: match writes=%d", repo.matchCalls)
+	}
+	if repo.finalizeCalls != 0 {
+		t.Errorf("commentary failure froze the match before rows were durable: finalize=%d",
+			repo.finalizeCalls)
 	}
 	if result.failures == 0 {
 		t.Error("commentary failure was swallowed instead of reported")
+	}
+
+	repo.commentaryErr = nil
+	result = runner.runCycle(context.Background(), true)
+	if repo.finalizeCalls != 1 {
+		t.Errorf("finished match did not finalize after commentary recovered: finalize=%d",
+			repo.finalizeCalls)
+	}
+	if len(repo.commentary) != 2 {
+		t.Errorf("commentary attempts=%d, want the failed write plus one retry",
+			len(repo.commentary))
+	}
+	if result.failures != 0 {
+		t.Errorf("recovery cycle failures=%d, want 0", result.failures)
 	}
 }
 
