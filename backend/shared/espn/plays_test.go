@@ -1,6 +1,9 @@
 package espn
 
 import (
+	"context"
+	"io"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -237,5 +240,25 @@ func TestMapPlaysRejectsInvalidPagination(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "pageIndex") {
 		t.Fatalf("err = %v, want pageIndex context", err)
+	}
+}
+
+func TestFetchPlaysPageRefusesAnUnexpectedPageSize(t *testing.T) {
+	client := NewWithOptions(Options{
+		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body: io.NopCloser(strings.NewReader(
+					`{"count":1542,"pageIndex":1,"pageSize":25,"pageCount":62,"items":[]}`,
+				)),
+			}, nil
+		})},
+		MaxAttempts: 1,
+	})
+
+	_, err := FetchPlaysPage(context.Background(), client, "mex.1", "401877018", 1)
+	if err == nil || !strings.Contains(err.Error(), "page size") {
+		t.Fatalf("err = %v, want page size mismatch", err)
 	}
 }

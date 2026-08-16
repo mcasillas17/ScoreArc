@@ -39,6 +39,7 @@ type runner struct {
 	source        source.Source
 	repo          repository
 	mirror        crestMirror
+	archive       rawArchive
 	log           *slog.Logger
 	maxConcurrent int
 

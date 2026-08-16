@@ -1,12 +1,60 @@
 package espn
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
+
+// FetchPlaysPage retrieves one page. Exported so the retention probe can ask
+// for page one without pulling the whole stream.
+func FetchPlaysPage(
+	ctx context.Context,
+	client *Client,
+	slug, eventID string,
+	page int,
+) (model.PlayStream, error) {
+	if client == nil {
+		return model.PlayStream{}, fmt.Errorf("fetch plays page: client is required")
+	}
+	if slug == "" {
+		return model.PlayStream{}, fmt.Errorf("fetch plays page: competition slug is required")
+	}
+	if eventID == "" {
+		return model.PlayStream{}, fmt.Errorf("fetch plays page: event id is required")
+	}
+	if page < 1 {
+		return model.PlayStream{}, fmt.Errorf("fetch plays page: page must be at least 1")
+	}
+	var raw json.RawMessage
+	if err := client.GetJSON(
+		ctx,
+		CorePlaysURL(slug, eventID, page, corePlayPageLimit),
+		&raw,
+	); err != nil {
+		return model.PlayStream{}, fmt.Errorf(
+			"fetch plays event %s page %d: %w", eventID, page, err)
+	}
+	stream, err := MapPlays(raw)
+	if err != nil {
+		return model.PlayStream{}, fmt.Errorf(
+			"map plays event %s page %d: %w", eventID, page, err)
+	}
+	if stream.PageSize != corePlayPageLimit {
+		return model.PlayStream{}, fmt.Errorf(
+			"espn plays %s: requested page size %d, provider returned %d",
+			eventID, corePlayPageLimit, stream.PageSize)
+	}
+	if stream.PageIndex != page {
+		return model.PlayStream{}, fmt.Errorf(
+			"espn plays %s: requested page index %d, provider returned %d",
+			eventID, page, stream.PageIndex)
+	}
+	return stream, nil
+}
 
 type rawPlayPage struct {
 	Count     int       `json:"count"`

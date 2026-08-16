@@ -252,3 +252,42 @@ func TestNewRejectsUnsafePublicBaseURL(t *testing.T) {
 		}
 	}
 }
+
+func TestFromEnvRequiresCompletePublicConfiguration(t *testing.T) {
+	keys := []string{
+		"R2_ACCOUNT_ID",
+		"R2_ACCESS_KEY_ID",
+		"R2_SECRET_ACCESS_KEY",
+		"R2_BUCKET",
+		"R2_PUBLIC_BASE_URL",
+	}
+	for _, missing := range keys {
+		t.Run(missing, func(t *testing.T) {
+			for _, key := range keys {
+				t.Setenv(key, "configured")
+			}
+			t.Setenv("R2_PUBLIC_BASE_URL", "https://cdn.example")
+			t.Setenv(missing, "")
+			mirror, ok, err := FromEnv()
+			if err != nil || ok || mirror != nil {
+				t.Fatalf("mirror=%v ok=%v err=%v, want unconfigured", mirror, ok, err)
+			}
+		})
+	}
+}
+
+func TestFromEnvBuildsConfiguredPublicMirror(t *testing.T) {
+	t.Setenv("R2_ACCOUNT_ID", "account")
+	t.Setenv("R2_ACCESS_KEY_ID", "access")
+	t.Setenv("R2_SECRET_ACCESS_KEY", "secret")
+	t.Setenv("R2_BUCKET", "assets")
+	t.Setenv("R2_PUBLIC_BASE_URL", "https://cdn.example")
+
+	mirror, ok, err := FromEnv()
+	if err != nil || !ok || mirror == nil {
+		t.Fatalf("mirror=%v ok=%v err=%v", mirror, ok, err)
+	}
+	if mirror.bucket != "assets" || mirror.BaseURL() != "https://cdn.example" {
+		t.Fatalf("mirror bucket/base = %q/%q", mirror.bucket, mirror.BaseURL())
+	}
+}

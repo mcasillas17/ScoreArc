@@ -4,12 +4,17 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"strings"
 )
 
 // core is ESPN's "core" API host. It is a DIFFERENT host from `site` at the
 // top of client.go, serves a different shape, and is the only place the
 // touch-level play stream, the officials list and the full odds ladder live.
 const core = "http://sports.core.api.espn.com/v2/sports/soccer/leagues"
+
+// CorePlaysBase is exposed for providers that need a test-only base override
+// while keeping the production host in one place.
+const CorePlaysBase = core
 
 // corePlayPageLimit is the provider's real page cap.
 //
@@ -26,12 +31,21 @@ const core = "http://sports.core.api.espn.com/v2/sports/soccer/leagues"
 // in the logs. Clamp here, and assert the returned pageSize at the call site.
 const corePlayPageLimit = 1000
 
+// CorePlayPageLimit is the page size callers must request and verify.
+const CorePlayPageLimit = corePlayPageLimit
+
 // CorePlaysURL builds one page of a match's play stream.
 //
 // The event id appears twice, as the event and as the competition. In soccer
 // they are always the same value, but the path distinguishes them and
 // collapsing that here would break the first time they diverge.
 func CorePlaysURL(slug, eventID string, page, limit int) string {
+	return CorePlaysURLOn(core, slug, eventID, page, limit)
+}
+
+// CorePlaysURLOn builds a plays URL against an explicit base. Production calls
+// use CorePlaysURL; the override lets source tests use an httptest server.
+func CorePlaysURLOn(base, slug, eventID string, page, limit int) string {
 	if limit <= 0 || limit > corePlayPageLimit {
 		limit = corePlayPageLimit
 	}
@@ -40,7 +54,7 @@ func CorePlaysURL(slug, eventID string, page, limit int) string {
 	}
 	event := url.PathEscape(eventID)
 	return fmt.Sprintf("%s/%s/events/%s/competitions/%s/plays?limit=%d&page=%d",
-		core, url.PathEscape(slug), event, event, limit, page)
+		strings.TrimRight(base, "/"), url.PathEscape(slug), event, event, limit, page)
 }
 
 // refIDRe pulls the last path segment before the query string, requiring it to

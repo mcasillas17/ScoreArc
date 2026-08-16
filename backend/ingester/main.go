@@ -101,11 +101,25 @@ func run() int {
 	} else {
 		log.Warn("R2 mirror disabled; incomplete R2 configuration")
 	}
+	var archive rawArchive
+	if configured, ok, err := assets.ArchiveFromEnv(); err != nil {
+		log.Error("configure R2 raw archive", "err", err)
+		return 1
+	} else if ok {
+		archive = configured
+	} else {
+		// Not fatal, and loud on purpose. The ingester keeps working without
+		// it -- but the touch tier it is failing to keep is the most
+		// perishable data in the system.
+		log.Warn("R2 raw archive disabled; the play stream will NOT be kept",
+			"hint", "set R2_RAW_BUCKET and the R2 credentials via fly secrets")
+	}
 	worker := &runner{
 		competitions:      registry.List(),
 		source:            source.NewESPN(espn.New()),
 		repo:              repo,
 		mirror:            mirror,
+		archive:           archive,
 		log:               log,
 		maxConcurrent:     3,
 		active:            make(map[string]activity),

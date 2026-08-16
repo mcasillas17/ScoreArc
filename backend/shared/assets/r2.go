@@ -28,12 +28,49 @@ const (
 
 var ErrAssetRejected = errors.New("asset rejected")
 
-type Config struct {
+// Credentials are the parts shared by every R2 bucket: one account, one API
+// token with Object Read & Write scoped to both buckets, one S3 endpoint. Only
+// the bucket name differs between them.
+type Credentials struct {
 	AccountID       string
 	AccessKeyID     string
 	SecretAccessKey string
-	Bucket          string
-	PublicBaseURL   string
+}
+
+// Config is a PUBLIC bucket: one that is served from a CDN origin. The public
+// base URL is required here and only here.
+type Config struct {
+	Credentials
+	Bucket        string
+	PublicBaseURL string
+}
+
+func (c Credentials) complete() bool {
+	return c.AccountID != "" && c.AccessKeyID != "" && c.SecretAccessKey != ""
+}
+
+// newS3Client builds the R2 client. It knows nothing about public URLs, which
+// is the point: the raw archive bucket is private -- no public access, no
+// r2.dev URL, no custom domain -- and before this split the only way to
+// construct a client was assets.New, whose validator rejects an empty
+// PublicBaseURL. Passing a dummy URL to get past that would leave a
+// plausible-looking CDN origin in the config for someone to later serve from.
+func newS3Client(creds Credentials) *s3.Client {
+	return s3.New(s3.Options{
+		Region:       "auto",
+		BaseEndpoint: aws.String(fmt.Sprintf("https://%s.r2.cloudflarestorage.com", creds.AccountID)),
+		Credentials: credentials.NewStaticCredentialsProvider(
+			creds.AccessKeyID, creds.SecretAccessKey, ""),
+		UsePathStyle: true,
+	})
+}
+
+func credentialsFromEnv() Credentials {
+	return Credentials{
+		AccountID:       os.Getenv("R2_ACCOUNT_ID"),
+		AccessKeyID:     os.Getenv("R2_ACCESS_KEY_ID"),
+		SecretAccessKey: os.Getenv("R2_SECRET_ACCESS_KEY"),
+	}
 }
 
 type objectClient interface {
@@ -54,14 +91,11 @@ type Mirror struct {
 
 func FromEnv() (*Mirror, bool, error) {
 	config := Config{
-		AccountID:       os.Getenv("R2_ACCOUNT_ID"),
-		AccessKeyID:     os.Getenv("R2_ACCESS_KEY_ID"),
-		SecretAccessKey: os.Getenv("R2_SECRET_ACCESS_KEY"),
-		Bucket:          os.Getenv("R2_BUCKET"),
-		PublicBaseURL:   os.Getenv("R2_PUBLIC_BASE_URL"),
+		Credentials:   credentialsFromEnv(),
+		Bucket:        os.Getenv("R2_BUCKET"),
+		PublicBaseURL: os.Getenv("R2_PUBLIC_BASE_URL"),
 	}
-	if config.AccountID == "" || config.AccessKeyID == "" ||
-		config.SecretAccessKey == "" || config.Bucket == "" ||
+	if !config.Credentials.complete() || config.Bucket == "" ||
 		config.PublicBaseURL == "" {
 		return nil, false, nil
 	}
@@ -79,17 +113,7 @@ func New(config Config) (*Mirror, error) {
 		(publicBase.Port() != "" && publicBase.Port() != "443") {
 		return nil, fmt.Errorf("R2 public base URL must be a plain HTTPS origin/path")
 	}
-	endpoint := fmt.Sprintf("https://%s.r2.cloudflarestorage.com", config.AccountID)
-	client := s3.New(s3.Options{
-		Region:       "auto",
-		BaseEndpoint: aws.String(endpoint),
-		Credentials: credentials.NewStaticCredentialsProvider(
-			config.AccessKeyID,
-			config.SecretAccessKey,
-			"",
-		),
-		UsePathStyle: true,
-	})
+	client := newS3Client(config.Credentials)
 	httpClient := &http.Client{Timeout: 20 * time.Second}
 	httpClient.CheckRedirect = func(request *http.Request, via []*http.Request) error {
 		if len(via) >= 5 {

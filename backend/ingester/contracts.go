@@ -54,3 +54,10 @@ type crestMirror interface {
 	BaseURL() string
 	Mirror(context.Context, string, string, string) (string, error)
 }
+
+// rawArchive is the PRIVATE bucket. Deliberately not folded into crestMirror:
+// that interface exposes BaseURL(), which the raw bucket does not have and
+// must not be given a plausible-looking value for.
+type rawArchive interface {
+	Put(context.Context, string, []byte) (int, error)
+}

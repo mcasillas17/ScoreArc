@@ -49,7 +49,7 @@ func main() {
 	ctx := context.Background()
 	now := time.Now().UTC()
 
-	var results []probeResult
+	results := make([]probeResult, 0, *months)
 	// One match per month back. Monthly resolution is enough to find a
 	// season-boundary cliff; if the cliff turns out to be sharp, re-run with a
 	// narrower window around it.
@@ -58,8 +58,8 @@ func main() {
 		window := day.AddDate(0, 0, -6).Format("20060102") + "-" + day.Format("20060102")
 		var board struct {
 			Events []struct {
-				ID     string    `json:"id"`
-				Date   time.Time `json:"date"`
+				ID     string `json:"id"`
+				Date   string `json:"date"`
 				Status struct {
 					Type struct {
 						Completed bool `json:"completed"`
@@ -76,7 +76,12 @@ func main() {
 		var kickoff time.Time
 		for _, event := range board.Events {
 			if event.Status.Type.Completed {
-				eventID, kickoff = event.ID, event.Date
+				parsed, err := parseKickoff(event.Date)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "scoreboard event %s kickoff: %v\n", event.ID, err)
+					continue
+				}
+				eventID, kickoff = event.ID, parsed
 				break
 			}
 		}
@@ -112,4 +117,19 @@ func main() {
 		fmt.Fprintf(os.Stderr, "encode probe results: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func parseKickoff(value string) (time.Time, error) {
+	var lastErr error
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		"2006-01-02T15:04Z07:00",
+	} {
+		parsed, err := time.Parse(layout, value)
+		if err == nil {
+			return parsed, nil
+		}
+		lastErr = err
+	}
+	return time.Time{}, fmt.Errorf("parse ESPN kickoff: %w", lastErr)
 }
