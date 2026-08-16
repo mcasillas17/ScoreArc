@@ -49,6 +49,8 @@ type runner struct {
 	rejectedAssets    map[string]struct{}
 	backfilled        map[string]time.Time
 	backfillAttempted map[string]time.Time
+	squadsRefreshed   map[string]time.Time
+	squadAttempted    map[string]time.Time
 	// snapshotted is the UTC day each competition's standings snapshot has
 	// already been written for IN THIS PROCESS. It is a cost gate, not the
 	// idempotency guarantee -- that is the unique index in migration 0004. A
@@ -187,6 +189,9 @@ func (r *runner) runCycle(ctx context.Context, slowTick bool) cycleResult {
 	wg.Wait()
 
 	if slowTick && ctx.Err() == nil {
+		if err := r.refreshBios(ctx); err != nil {
+			cycle.failures++
+		}
 		start := time.Now()
 		var pruneErr error
 		for range 10 {
@@ -360,7 +365,7 @@ func (r *runner) ingestCompSeason(
 	var refreshErrors []error
 	if matchResult.finalized || slowTick {
 		refreshErrors = append(refreshErrors,
-			r.refreshStandings(ctx, comp, season, matchResult.finalized),
+			r.refreshStandings(ctx, comp, season, slowTick, matchResult.finalized),
 			r.refreshTopScorers(ctx, comp, season),
 		)
 	}
@@ -480,6 +485,7 @@ func (r *runner) refreshStandings(
 	ctx context.Context,
 	comp config.Competition,
 	season config.Season,
+	slowTick bool,
 	tableChanged bool,
 ) error {
 	start := time.Now()
@@ -537,7 +543,11 @@ func (r *runner) refreshStandings(
 		// in permanently, and unlike `standing` this table is never rewritten.
 		return err
 	}
-	return r.snapshotStandings(ctx, comp, season, rows, teamIDs, tableChanged)
+	snapshotErr := r.snapshotStandings(ctx, comp, season, rows, teamIDs, tableChanged)
+	if !slowTick {
+		return snapshotErr
+	}
+	return errors.Join(snapshotErr, r.refreshSquads(ctx, comp, season, teamIDs))
 }
 
 // utcDay is the snapshot bucket: midnight UTC. Fixing the boundary in UTC for

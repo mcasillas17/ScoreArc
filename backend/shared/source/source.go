@@ -16,8 +16,12 @@ type SummaryResult struct {
 	// jsonb and served to the site, whereas this is resolved to canonical
 	// player ids and never leaves the ingester.
 	Participation *model.MatchParticipation
-	HomeScore     *int
-	AwayScore     *int
+	// Commentary preserves the provider sequence, numeric clock and play shape
+	// for relational storage. Detail.Commentary remains the reader's jsonb
+	// contract and is intentionally independent.
+	Commentary []model.CommentaryLine
+	HomeScore  *int
+	AwayScore  *int
 }
 
 // Source returns canonical ScoreArc models independent of provider payloads.
@@ -28,4 +32,6 @@ type Source interface {
 	Standings(context.Context, config.Competition, config.Season) ([]model.Standing, error)
 	TopScorers(context.Context, config.Competition, config.Season, int) ([]model.TopScorer, error)
 	Bracket(context.Context, config.Competition, config.Season, bool) ([]model.BracketMatch, error)
+	Roster(context.Context, config.Competition, string) (model.Squad, error)
+	AthleteBio(context.Context, config.Competition, string) ([]model.TeamHistoryEntry, error)
 }

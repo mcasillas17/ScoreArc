@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +19,7 @@ import (
 // summary, statistics). Standings live on a different host — see
 // StandingsURL. Ported from endpoints.ts's `site(slug)`.
 const site = "https://site.api.espn.com/apis/site/v2/sports/soccer"
+const webCommonBase = "https://site.web.api.espn.com/apis/common/v3/sports/soccer"
 
 // ScoreboardURL mirrors endpoints.ts's scoreboardUrl(slug, range?).
 // datesRange is ESPN's `dates` query param (e.g. "20260611-20260712");
@@ -70,6 +72,20 @@ func StatisticsURL(slug string, seasonYear ...int) string {
 		return fmt.Sprintf("%s?season=%d", base, seasonYear[0])
 	}
 	return base
+}
+
+func TeamRosterURL(slug, teamID string) string {
+	return fmt.Sprintf("%s/%s/teams/%s/roster",
+		site, url.PathEscape(slug), url.PathEscape(teamID))
+}
+
+func webCommon(slug string) string {
+	return fmt.Sprintf("%s/%s", webCommonBase, url.PathEscape(slug))
+}
+
+func AthleteBioURL(slug, athleteID string) string {
+	return fmt.Sprintf("%s/athletes/%s/bio",
+		webCommon(slug), url.PathEscape(athleteID))
 }
 
 const (

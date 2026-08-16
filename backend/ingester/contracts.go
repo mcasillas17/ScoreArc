@@ -36,6 +36,7 @@ type repository interface {
 	// curve. Like WriteParticipation it is additive: a failure is recorded and
 	// never blocks a scoreline.
 	WriteWinProbSnapshot(context.Context, uuid.UUID, model.WinProbability, time.Time) error
+	WriteCommentary(context.Context, uuid.UUID, []model.CommentaryLine) (int, error)
 	ExistingMatches(context.Context, string, string, []uuid.UUID) (map[uuid.UUID]store.MatchRow, error)
 	UnfinalizedMatches(context.Context, string, string, string) ([]model.Match, error)
 	ReplaceStandings(context.Context, string, string, string, []model.Standing, map[string]string) error
@@ -46,6 +47,9 @@ type repository interface {
 	// replacement actually accepted.
 	WriteStandingSnapshot(context.Context, string, string, []model.Standing, map[string]string, time.Time) (int, error)
 	ReplaceTopScorers(context.Context, string, string, string, []model.TopScorer) error
+	ReplaceSquad(context.Context, string, string, string, string, []model.SquadMember, map[string]uuid.UUID) error
+	PlayersNeedingBio(context.Context, string, time.Time, int) (map[string]uuid.UUID, error)
+	ReplaceTeamHistory(context.Context, uuid.UUID, string, []model.TeamHistoryEntry) error
 	LogIngestRun(context.Context, *string, string, time.Time, time.Time, bool, string) error
 	PruneIngestRuns(context.Context, time.Time) (int64, error)
 }

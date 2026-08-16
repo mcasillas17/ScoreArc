@@ -114,10 +114,15 @@ same transaction.
 ### Tier 1 — current state (hot, upserted by the ingester)
 - **match**(id PK `uuid` v7, competition_id, season_id, round, kickoff, **kickoff_date** (generated, UTC date), state[`scheduled|live|finished`], home_team_id→team, away_team_id→team, home_score, away_score, minute, status_detail, status_name, winner_id→team, note, home_placeholder, away_placeholder, bracket_required, **finalized_at**, source, updated_at) — FK to `season(competition_id,id)`; **UNIQUE (competition_id, season_id, home_team_id, away_team_id, kickoff_date)** is the natural key that makes the same fixture from a second source resolve to one row; indexes on `(competition_id,season_id,kickoff)`, `state`, and unfinalized history.
 - **match_detail**(match_id PK→match, scorers jsonb, cards jsonb, stats jsonb, win_probability jsonb, shootout jsonb, shootout_detail jsonb, lineups jsonb, videos jsonb, info jsonb, form jsonb, h2h jsonb, commentary jsonb, updated_at)
+- **match_commentary**(PK (match_id→match, **seq** = ESPN's `sequence`), period, clock_value, clock_display, play_type, play_type_text, wallclock, text) — minute-by-minute commentary **with the structure `match_detail.commentary` drops** (T7.11). That jsonb column is unchanged and remains the reader's `MatchSummaryData.commentary` contract; it keeps `{minute, text}` only. This table adds guaranteed order (`sequence`), a numeric clock (`play.clock.value`, falling back to `time.value`; the recorded pre-match, kickoff, and match-end entries have an empty `time.displayValue`), the machine play type (`play.type.type`, so consumers need not regex English prose), and mutability (`match_detail` is frozen by `protect_finalized_detail` once a match finalizes). Rows are upserted and then tail-pruned like `match_event`; an **empty payload is a no-op, not a delete**, because commentary coverage varies by competition and has been observed at zero. Missing numeric provider fields remain SQL `NULL`, distinct from a measured zero. A failed write leaves a finished match unfinalized so the next cycle retries before freezing its detail. **Nothing here is parsed** — E6's shot-log parser is downstream and gated on T6.1's coverage probe.
 - **standing**(PK (competition_id,season_id,team_id→team), group_id, group_name, rank, played, wins, draws, losses, goals_for, goals_against, goal_difference, points, advanced, source, updated_at) — `group_id`/`group_name` (e.g. "A"/"Group A") are nullable: populated for multi-group competitions (e.g. World Cup group stage), null for single-table leagues.
 - **top_scorer**(PK (competition_id,season_id,rank), player, team_abbr, team_name, team_crest_url, goals, matches, source) — team is denormalized (ESPN stats give abbr/name/crest, no id), matching the frontend `TopScorer` type.
 - **appearance**(PK (match_id→match, player_id→player), team_id→team, starter, shirt_number, position) — who was in the squad, **including substitutes**; the `lineups` jsonb above keeps starters only because that is what the site renders. This is the table that makes "minutes played" computable.
 - **match_event**(PK (match_id→match, **seq**), player_id→player NULL, team_id→team, type[`goal|own_goal|yellow|red|sub_on|sub_off`], minute, penalty, shootout, detail) — one row per player-action, so a substitution is two rows rather than one row with two players. `seq` is a deterministic ordinal, **not** a surrogate uuid: a live summary is re-fetched every 20s and a surrogate key would duplicate every goal on every poll. `player_id` is nullable because an event the provider reports without an athlete id still happened — we record it unattributed rather than inventing a player. `penalty` is a flag, not a type, so penalties stay inside `type = 'goal'`.
+- **squad_membership**(PK (competition_id, season_id, team_id→team, player_id→player), shirt_number, position, source, updated_at) — who is in a squad, per season (T7.9). Season-scoped so a transfer is a second row rather than an overwrite. Refreshed **once per UTC day** from `/teams/{id}/roster`: nine competitions × ~20 clubs = ~180 requests, against ~52,000 if it ran on every slow tick. Successful teams are remembered independently; a failed team alone retries after 30 minutes. The team list comes from `standing`.
+- **player_season_stat**(PK (competition_id, season_id, player_id→player), team_id→team, appearances, sub_ins, goals, assists, shots, shots_on_target, offsides, fouls_committed, fouls_suffered, own_goals, yellow_cards, red_cards, saves, goals_conceded, shots_faced, source, updated_at) — **the provider's** season aggregate, deliberately not derived from summing `appearance`. The two will disagree: ours covers only matches the ingester has seen, ESPN's covers the whole season and competitions we do not ingest. Keeping both makes the disagreement visible. All nullable — 8 of 35 roster athletes carry no statistics block at all.
+- **player_team_history**(PK (player_id→player, team_source_id, seasons), team_name, ord, source) — career clubs from `/athletes/{id}/bio` (T7.10), on the **common/v3 host**. `team_source_id` is the provider's id and **not** a FK to `team`: a career spans competitions we will never curate. `seasons` is ESPN's own string (`"2025-CURRENT"`), stored verbatim because the vocabulary is undocumented. Fetched on a budget — only players with an `appearance`, 20 per slow tick, 30-day TTL via `player.bio_fetched_at`.
+- **player** additionally carries **birth_date** and **nationality**, filled from the roster payload's ISO `dateOfBirth`/`citizenship`. Never from the per-athlete endpoint's `displayDOB` (`"23/9/2003"`), which is locale-formatted and ambiguous below the 13th.
 
 ### Tier 3 — time-series (created now, WRITTEN in Phase 2 via `emitSnapshots()`)
 - **standing_snapshot**(id bigserial, competition_id, season_id, team_id→team, captured_at, rank, points, goal_difference, played) — append-only.
@@ -129,12 +134,12 @@ same transaction.
 ### Roles (least privilege — enforces the read-only public path)
 - `scorearc_reader` → **SELECT only** (the public reader connects as this).
 - `scorearc_ingester` → SELECT/INSERT/UPDATE plus narrowly scoped DELETE for
-  atomic standings/scorer replacement, curation promotion, participation
-  replacement, and audit retention (only it writes). Every DELETE grant is
-  named table-by-table; `ALTER DEFAULT PRIVILEGES` deliberately does **not**
-  include DELETE, so a new table that needs it must say so — a missing grant
-  surfaces as a 42501 inside the ingester, which is how curation once shipped
-  permanently broken.
+  atomic standings/scorer replacement, curation promotion, participation,
+  squad and career-history replacement, and audit retention (only it writes).
+  Every DELETE grant is named table-by-table; `ALTER DEFAULT PRIVILEGES`
+  deliberately does **not** include DELETE, so a new table that needs it must
+  say so — a missing grant surfaces as a 42501 inside the ingester, which is how
+  curation once shipped permanently broken.
 - `ALTER DEFAULT PRIVILEGES` mirrors these so future tables inherit them.
 
 ---
@@ -333,6 +338,11 @@ nested response locations.
 
 ## 9. Deferred to later phases (do NOT build in Phase 1)
 
+- **Athlete `/overview` game logs** — not ingested. It returns the last five matches per
+  athlete; `appearance` + the T7.7 box score already give a full season log for every match
+  the ingester sees, so this would be ~6,000 requests to duplicate a subset of what we hold.
+- **Injuries** — not ingested. The `injuries` array is present on every roster athlete and
+  **empty on all 35**. The field existing is not the data existing.
 - **Phase 2** — time-series *writes* + an analytics store. Options when we get
   there: **BigQuery** (usable cross-cloud via API even off GCP), **R2 + DuckDB /
   MotherDuck** (data-lake on the object storage we already have — natural fit),

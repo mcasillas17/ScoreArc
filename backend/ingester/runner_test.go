@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -36,6 +37,18 @@ type fakeSource struct {
 	scoreboardDelay time.Duration
 	scoreboardBlock bool
 	topScorers      []model.TopScorer
+	standings       []model.Standing
+	standingsErr    error
+	rosters         map[string]model.Squad
+	rosterErrors    map[string]error
+	rosterCalls     []string
+	rosterDelay     time.Duration
+	rosterCurrent   int
+	rosterMax       int
+	bios            map[string][]model.TeamHistoryEntry
+	bioErrors       map[string]error
+	bioCalls        []string
+	commentary      []model.CommentaryLine
 	currentCalls    int
 	maxCalls        int
 	live            bool
@@ -100,11 +113,17 @@ func (f *fakeSource) Summary(
 					PlayerName: "Winner", Type: model.PlayerEventGoal, Minute: "1'"},
 			},
 		},
-		HomeScore: f.summaryHome,
-		AwayScore: f.summaryAway,
+		Commentary: f.commentary,
+		HomeScore:  f.summaryHome,
+		AwayScore:  f.summaryAway,
 	}, nil
 }
 func (f *fakeSource) Standings(context.Context, config.Competition, config.Season) ([]model.Standing, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.standings != nil || f.standingsErr != nil {
+		return f.standings, f.standingsErr
+	}
 	return []model.Standing{{Rank: 1, Team: model.Team{ID: "home"}}}, nil
 }
 func (f *fakeSource) TopScorers(context.Context, config.Competition, config.Season, int) ([]model.TopScorer, error) {
@@ -115,6 +134,70 @@ func (f *fakeSource) TopScorers(context.Context, config.Competition, config.Seas
 }
 func (f *fakeSource) Bracket(context.Context, config.Competition, config.Season, bool) ([]model.BracketMatch, error) {
 	return f.bracket, f.bracketErr
+}
+func (f *fakeSource) Roster(
+	ctx context.Context,
+	_ config.Competition,
+	teamSourceID string,
+) (model.Squad, error) {
+	f.mu.Lock()
+	f.rosterCalls = append(f.rosterCalls, teamSourceID)
+	f.rosterCurrent++
+	if f.rosterCurrent > f.rosterMax {
+		f.rosterMax = f.rosterCurrent
+	}
+	delay := f.rosterDelay
+	err := f.rosterErrors[teamSourceID]
+	squad, exists := f.rosters[teamSourceID]
+	f.mu.Unlock()
+	defer func() {
+		f.mu.Lock()
+		f.rosterCurrent--
+		f.mu.Unlock()
+	}()
+
+	if delay > 0 {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return model.Squad{}, ctx.Err()
+		case <-timer.C:
+		}
+	}
+	if err != nil {
+		return model.Squad{}, err
+	}
+	if !exists {
+		squad = model.Squad{
+			TeamSourceID: teamSourceID,
+			Players: []model.SquadMember{{
+				SourceID: teamSourceID + "-player",
+				FullName: teamSourceID + " Player",
+			}},
+		}
+	}
+	return squad, nil
+}
+func (f *fakeSource) AthleteBio(
+	_ context.Context,
+	_ config.Competition,
+	athleteSourceID string,
+) ([]model.TeamHistoryEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.bioCalls = append(f.bioCalls, athleteSourceID)
+	if err := f.bioErrors[athleteSourceID]; err != nil {
+		return nil, err
+	}
+	if entries, ok := f.bios[athleteSourceID]; ok {
+		return entries, nil
+	}
+	return []model.TeamHistoryEntry{{
+		TeamSourceID: "team-" + athleteSourceID,
+		TeamName:     "Team " + athleteSourceID,
+		Seasons:      "2025-CURRENT",
+	}}, nil
 }
 
 // fakeTeamID and fakeMatchID are the fake resolver's crosswalk. They are
@@ -146,6 +229,16 @@ type fakeRepository struct {
 	snapshotDays     []time.Time
 	snapshotErr      error
 	topScorersCalls  int
+	squadCalls       int
+	squadTeams       []string
+	squadErrors      map[string]error
+	bioCandidates    map[string]uuid.UUID
+	bioQueryCalls    int
+	bioQueryLimits   []int
+	bioStaleBefore   []time.Time
+	bioIgnoreLimit   bool
+	bioWriteCalls    int
+	bioWriteErrors   map[uuid.UUID]error
 	unfinalized      []model.Match
 	unfinalizedErr   error
 	logged           []loggedRun
@@ -159,6 +252,9 @@ type fakeRepository struct {
 	participationErr error
 	winProb          []model.WinProbability
 	winProbErr       error
+	commentary       [][]model.CommentaryLine
+	commentaryTo     []uuid.UUID
+	commentaryErr    error
 }
 
 type loggedRun struct {
@@ -233,6 +329,20 @@ func (f *fakeRepository) WriteParticipation(
 		return store.ParticipationStats{}, f.participationErr
 	}
 	return store.ParticipationStats{}, nil
+}
+func (f *fakeRepository) WriteCommentary(
+	_ context.Context,
+	matchID uuid.UUID,
+	lines []model.CommentaryLine,
+) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.commentary = append(f.commentary, lines)
+	f.commentaryTo = append(f.commentaryTo, matchID)
+	if f.commentaryErr != nil {
+		return 0, f.commentaryErr
+	}
+	return len(lines), nil
 }
 
 func (f *fakeRepository) WriteWinProbSnapshot(
@@ -330,6 +440,57 @@ func (f *fakeRepository) ReplaceTopScorers(
 	}
 	return nil
 }
+func (f *fakeRepository) ReplaceSquad(
+	_ context.Context,
+	_, _, teamID, _ string,
+	_ []model.SquadMember,
+	_ map[string]uuid.UUID,
+) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.squadCalls++
+	f.squadTeams = append(f.squadTeams, teamID)
+	return f.squadErrors[teamID]
+}
+func (f *fakeRepository) PlayersNeedingBio(
+	_ context.Context,
+	_ string,
+	staleBefore time.Time,
+	limit int,
+) (map[string]uuid.UUID, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.bioQueryCalls++
+	f.bioQueryLimits = append(f.bioQueryLimits, limit)
+	f.bioStaleBefore = append(f.bioStaleBefore, staleBefore)
+	selected := make(map[string]uuid.UUID)
+	for sourceID, playerID := range f.bioCandidates {
+		if !f.bioIgnoreLimit && len(selected) == limit {
+			break
+		}
+		selected[sourceID] = playerID
+	}
+	return selected, nil
+}
+func (f *fakeRepository) ReplaceTeamHistory(
+	_ context.Context,
+	playerID uuid.UUID,
+	_ string,
+	_ []model.TeamHistoryEntry,
+) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.bioWriteCalls++
+	if err := f.bioWriteErrors[playerID]; err != nil {
+		return err
+	}
+	for sourceID, candidateID := range f.bioCandidates {
+		if candidateID == playerID {
+			delete(f.bioCandidates, sourceID)
+		}
+	}
+	return nil
+}
 func (f *fakeRepository) LogIngestRun(_ context.Context, _ *string, kind string, _ time.Time, _ time.Time, ok bool, _ string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -389,6 +550,8 @@ func testRunner(src *fakeSource, repo *fakeRepository, comp config.Competition) 
 		rejectedAssets:    make(map[string]struct{}),
 		backfilled:        make(map[string]time.Time),
 		backfillAttempted: make(map[string]time.Time),
+		squadsRefreshed:   make(map[string]time.Time),
+		squadAttempted:    make(map[string]time.Time),
 		snapshotted:       make(map[string]time.Time),
 		maxConcurrent:     3,
 	}
@@ -561,6 +724,72 @@ func TestParticipationFailureDoesNotBlockTheMatch(t *testing.T) {
 	}
 	if result.failures == 0 {
 		t.Error("participation failure was swallowed instead of reported")
+	}
+}
+
+func TestCommentaryIsWrittenWithTheCanonicalMatchID(t *testing.T) {
+	match := finishedMatch()
+	line := model.CommentaryLine{Seq: 1, PlayType: "kickoff", Text: "First Half begins."}
+	src := &fakeSource{matches: []model.Match{match}, commentary: []model.CommentaryLine{line}}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	runner := testRunner(src, repo, config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	})
+
+	runner.runCycle(context.Background(), true)
+
+	if len(repo.commentary) != 1 {
+		t.Fatalf("expected 1 commentary write, got %d", len(repo.commentary))
+	}
+	if got, want := repo.commentaryTo[0], fakeMatchID(match.ID); got != want {
+		t.Fatalf("commentary written for %s, want canonical match %s", got, want)
+	}
+	if len(repo.commentary[0]) != 1 || repo.commentary[0][0] != line {
+		t.Fatalf("commentary = %#v, want %#v", repo.commentary[0], line)
+	}
+}
+
+// Commentary is additive to the scoreline, but a finished match must not freeze
+// before its relational rows are durable. Otherwise a transient write failure
+// becomes permanent because finalized matches skip future summary fetches.
+func TestCommentaryFailureLeavesTheFinishedMatchRetryable(t *testing.T) {
+	match := finishedMatch()
+	src := &fakeSource{matches: []model.Match{match}}
+	repo := &fakeRepository{
+		existing:      map[string]store.MatchRow{},
+		commentaryErr: errors.New("boom"),
+	}
+	runner := testRunner(src, repo, config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	})
+
+	result := runner.runCycle(context.Background(), true)
+
+	if repo.matchCalls != 1 {
+		t.Errorf("commentary failure blocked the scoreline row: match writes=%d", repo.matchCalls)
+	}
+	if repo.finalizeCalls != 0 {
+		t.Errorf("commentary failure froze the match before rows were durable: finalize=%d",
+			repo.finalizeCalls)
+	}
+	if result.failures == 0 {
+		t.Error("commentary failure was swallowed instead of reported")
+	}
+
+	repo.commentaryErr = nil
+	result = runner.runCycle(context.Background(), true)
+	if repo.finalizeCalls != 1 {
+		t.Errorf("finished match did not finalize after commentary recovered: finalize=%d",
+			repo.finalizeCalls)
+	}
+	if len(repo.commentary) != 2 {
+		t.Errorf("commentary attempts=%d, want the failed write plus one retry",
+			len(repo.commentary))
+	}
+	if result.failures != 0 {
+		t.Errorf("recovery cycle failures=%d, want 0", result.failures)
 	}
 }
 
@@ -1930,6 +2159,264 @@ func TestStandingsAreWrittenWithResolvedTeamIDs(t *testing.T) {
 	}
 }
 
+func squadTestCompetition() config.Competition {
+	return config.Competition{
+		ID: "test", ESPNSlug: "mex.1", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+}
+
+func squadTestStandings(teamIDs ...string) []model.Standing {
+	rows := make([]model.Standing, 0, len(teamIDs))
+	for index, teamID := range teamIDs {
+		rows = append(rows, model.Standing{
+			Rank: index + 1,
+			Team: model.Team{ID: teamID, Name: teamID, Abbr: strings.ToUpper(teamID)},
+		})
+	}
+	return rows
+}
+
+// ~180 requests once a day is negligible; on every slow tick it is ~52,000.
+func TestSquadRefreshRunsOncePerDay(t *testing.T) {
+	src := &fakeSource{standings: squadTestStandings("one", "two", "three")}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	worker := testRunner(src, repo, squadTestCompetition())
+	worker.runCycle(context.Background(), true)
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.squadCalls != len(repo.standingTeamIDs) {
+		t.Fatalf("squad refreshes = %d across two slow ticks, want one per team (%d)",
+			repo.squadCalls, len(repo.standingTeamIDs))
+	}
+}
+
+// One club's roster failing must not stop the other nineteen.
+func TestSquadRefreshContinuesPastOneFailure(t *testing.T) {
+	src := &fakeSource{
+		standings:    squadTestStandings("one", "two", "three"),
+		rosterErrors: map[string]error{"two": errors.New("roster unavailable")},
+	}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	result := testRunner(src, repo, squadTestCompetition()).runCycle(context.Background(), true)
+
+	src.mu.Lock()
+	rosterCalls := len(src.rosterCalls)
+	src.mu.Unlock()
+	repo.mu.Lock()
+	squadCalls := repo.squadCalls
+	failedRun := hasLoggedKind(repo.logged, "squads") && result.failures > 0
+	repo.mu.Unlock()
+	if rosterCalls != 3 || squadCalls != 2 {
+		t.Fatalf("roster calls = %d, squad writes = %d; want 3 and 2", rosterCalls, squadCalls)
+	}
+	if !failedRun {
+		t.Fatal("partial squad failure was not surfaced in cycle/run telemetry")
+	}
+}
+
+func TestSquadRefreshRetriesOnlyFailedTeamAfterBackoff(t *testing.T) {
+	src := &fakeSource{
+		standings:    squadTestStandings("one", "two"),
+		rosterErrors: map[string]error{"two": errors.New("temporary")},
+	}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	worker := testRunner(src, repo, squadTestCompetition())
+	worker.runCycle(context.Background(), true)
+
+	src.mu.Lock()
+	delete(src.rosterErrors, "two")
+	src.mu.Unlock()
+	worker.runCycle(context.Background(), true)
+	worker.squadAttempted["test/2026/two"] = time.Now().Add(-squadRetryInterval)
+	worker.runCycle(context.Background(), true)
+	worker.runCycle(context.Background(), true)
+
+	src.mu.Lock()
+	defer src.mu.Unlock()
+	if len(src.rosterCalls) != 3 {
+		t.Fatalf("roster calls = %d, want 3 (two initial calls, one failed-team retry)",
+			len(src.rosterCalls))
+	}
+	var oneCalls, twoCalls int
+	for _, teamID := range src.rosterCalls {
+		switch teamID {
+		case "one":
+			oneCalls++
+		case "two":
+			twoCalls++
+		}
+	}
+	if oneCalls != 1 || twoCalls != 2 {
+		t.Fatalf("roster calls by team = one:%d two:%d, want 1/2", oneCalls, twoCalls)
+	}
+}
+
+// A fast tick must never trigger it. The fast interval is 20s.
+func TestSquadRefreshSkipsFastTicks(t *testing.T) {
+	src := &fakeSource{standings: squadTestStandings("one", "two")}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	testRunner(src, repo, squadTestCompetition()).runCycle(context.Background(), false)
+
+	src.mu.Lock()
+	rosterCalls := len(src.rosterCalls)
+	src.mu.Unlock()
+	repo.mu.Lock()
+	squadCalls := repo.squadCalls
+	repo.mu.Unlock()
+	if rosterCalls != 0 || squadCalls != 0 {
+		t.Fatalf("fast tick made %d roster calls and %d squad writes, want 0/0",
+			rosterCalls, squadCalls)
+	}
+}
+
+func TestSquadRefreshBoundsConcurrencyAtFive(t *testing.T) {
+	teamIDs := []string{"one", "two", "three", "four", "five", "six", "seven", "eight"}
+	src := &fakeSource{
+		standings:   squadTestStandings(teamIDs...),
+		rosterDelay: 20 * time.Millisecond,
+	}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	testRunner(src, repo, squadTestCompetition()).runCycle(context.Background(), true)
+
+	src.mu.Lock()
+	defer src.mu.Unlock()
+	if src.rosterMax > 5 {
+		t.Fatalf("concurrent roster requests = %d, want at most 5", src.rosterMax)
+	}
+	if src.rosterMax < 2 {
+		t.Fatalf("concurrent roster requests = %d, expected bounded parallelism", src.rosterMax)
+	}
+}
+
+func fakeBioCandidates(count int) map[string]uuid.UUID {
+	candidates := make(map[string]uuid.UUID, count)
+	for index := range count {
+		sourceID := fmt.Sprintf("athlete-%02d", index)
+		candidates[sourceID] = fakeMatchID(sourceID)
+	}
+	return candidates
+}
+
+func TestBioRefreshNeverExceedsBatchSize(t *testing.T) {
+	src := &fakeSource{}
+	repo := &fakeRepository{
+		existing:       map[string]store.MatchRow{},
+		bioCandidates:  fakeBioCandidates(bioBatchSize + 5),
+		bioIgnoreLimit: true,
+	}
+	worker := testRunner(src, repo, squadTestCompetition())
+	if err := worker.refreshBios(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	src.mu.Lock()
+	calls := len(src.bioCalls)
+	src.mu.Unlock()
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if len(repo.bioQueryLimits) != 1 || repo.bioQueryLimits[0] != bioBatchSize {
+		t.Fatalf("bio query limits = %v, want [%d]", repo.bioQueryLimits, bioBatchSize)
+	}
+	if calls != bioBatchSize || repo.bioWriteCalls != bioBatchSize {
+		t.Fatalf("bio fetches/writes = %d/%d, want %d/%d",
+			calls, repo.bioWriteCalls, bioBatchSize, bioBatchSize)
+	}
+}
+
+func TestBioRefreshUsesThirtyDayCutoff(t *testing.T) {
+	repo := &fakeRepository{
+		existing:      map[string]store.MatchRow{},
+		bioCandidates: fakeBioCandidates(1),
+	}
+	worker := testRunner(&fakeSource{}, repo, squadTestCompetition())
+	before := time.Now().Add(-bioTTL)
+	if err := worker.refreshBios(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	after := time.Now().Add(-bioTTL)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if len(repo.bioStaleBefore) != 1 ||
+		repo.bioStaleBefore[0].Before(before) || repo.bioStaleBefore[0].After(after) {
+		t.Fatalf("bio stale cutoff = %v, want between %v and %v",
+			repo.bioStaleBefore, before, after)
+	}
+}
+
+func TestBioRefreshRunsOnlyOnSlowTicksAndOnceGlobally(t *testing.T) {
+	repo := &fakeRepository{
+		existing:      map[string]store.MatchRow{},
+		bioCandidates: fakeBioCandidates(1),
+	}
+	first := squadTestCompetition()
+	first.ID = "first"
+	second := squadTestCompetition()
+	second.ID = "second"
+	worker := testRunner(&fakeSource{}, repo, first)
+	worker.competitions = []config.Competition{first, second}
+
+	worker.runCycle(context.Background(), false)
+	repo.mu.Lock()
+	if repo.bioQueryCalls != 0 {
+		repo.mu.Unlock()
+		t.Fatalf("fast tick bio queries = %d, want 0", repo.bioQueryCalls)
+	}
+	repo.mu.Unlock()
+
+	worker.runCycle(context.Background(), true)
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.bioQueryCalls != 1 {
+		t.Fatalf("two-competition slow tick bio queries = %d, want one global query",
+			repo.bioQueryCalls)
+	}
+}
+
+func TestBioRefreshContinuesPastOnePlayerFailure(t *testing.T) {
+	candidates := fakeBioCandidates(2)
+	var failedSourceID string
+	var failedPlayerID uuid.UUID
+	for sourceID, playerID := range candidates {
+		failedSourceID = sourceID
+		failedPlayerID = playerID
+		break
+	}
+	src := &fakeSource{bioErrors: map[string]error{
+		failedSourceID: errors.New("bio unavailable"),
+	}}
+	repo := &fakeRepository{
+		existing:      map[string]store.MatchRow{},
+		bioCandidates: candidates,
+	}
+	worker := testRunner(src, repo, squadTestCompetition())
+	if err := worker.refreshBios(context.Background()); err == nil {
+		t.Fatal("expected partial bio failure")
+	}
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.bioWriteCalls != 1 {
+		t.Fatalf("bio writes after one fetch failure = %d, want 1", repo.bioWriteCalls)
+	}
+	if _, remains := repo.bioCandidates[failedSourceID]; !remains {
+		t.Fatal("failed player was incorrectly marked refreshed")
+	}
+	if repo.bioCandidates[failedSourceID] != failedPlayerID {
+		t.Fatal("failed player's candidate identity changed")
+	}
+	failedRun := false
+	for _, run := range repo.logged {
+		failedRun = failedRun || run.kind == "player_bios" && !run.ok
+	}
+	if !failedRun {
+		t.Fatal("partial bio failure was not recorded")
+	}
+}
+
 func TestMergeCandidatePreservesStoredNote(t *testing.T) {
 	note := "Home advances on penalties"
 	current := finishedMatch()
@@ -2164,7 +2651,7 @@ func TestStandingsSnapshotRetriesWhenFinalizationRefreshStartsCanceled(t *testin
 	cancel()
 	comp := worker.competitions[0]
 	season := comp.Seasons[comp.CurrentSeasonId]
-	if err := worker.refreshStandings(ctx, comp, season, true); !errors.Is(err, context.Canceled) {
+	if err := worker.refreshStandings(ctx, comp, season, false, true); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled refresh error = %v, want context.Canceled", err)
 	}
 

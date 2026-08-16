@@ -1,9 +1,11 @@
 package source
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -82,6 +84,77 @@ func TestESPNScoreboardRejectsLimitSizedRollingResponse(t *testing.T) {
 		false,
 	); err == nil {
 		t.Fatal("expected truncated rolling scoreboard error")
+	}
+}
+
+func TestESPNRosterRejectsImplausiblyShortSuccess(t *testing.T) {
+	client := espnprovider.NewWithOptions(espnprovider.Options{
+		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body: io.NopCloser(strings.NewReader(`{
+					"status":"success",
+					"team":{"id":"227"},
+					"athletes":[{"id":"p1","fullName":"Only Player"}]
+				}`)),
+			}, nil
+		})},
+		MaxAttempts: 1,
+	})
+
+	if _, err := NewESPN(client).Roster(
+		context.Background(),
+		config.Competition{ESPNSlug: "mex.1"},
+		"227",
+	); err == nil {
+		t.Fatal("expected implausibly short roster to fail")
+	}
+}
+
+func TestESPNAthleteBioRejectsMissingHistoryEnvelope(t *testing.T) {
+	client := espnprovider.NewWithOptions(espnprovider.Options{
+		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{}`)),
+			}, nil
+		})},
+		MaxAttempts: 1,
+	})
+
+	if _, err := NewESPN(client).AthleteBio(
+		context.Background(),
+		config.Competition{ESPNSlug: "mex.1"},
+		"297287",
+	); err == nil {
+		t.Fatal("expected missing teamHistory envelope to fail")
+	}
+}
+
+func TestESPNAthleteBioAcceptsExplicitEmptyHistory(t *testing.T) {
+	client := espnprovider.NewWithOptions(espnprovider.Options{
+		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"teamHistory":[]}`)),
+			}, nil
+		})},
+		MaxAttempts: 1,
+	})
+
+	entries, err := NewESPN(client).AthleteBio(
+		context.Background(),
+		config.Competition{ESPNSlug: "mex.1"},
+		"297287",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entries == nil || len(entries) != 0 {
+		t.Fatalf("explicit empty history = %#v, want non-nil empty slice", entries)
 	}
 }
 
@@ -210,6 +283,41 @@ func TestESPNSummaryRejectsPayloadWithoutTeams(t *testing.T) {
 	)
 	if err == nil {
 		t.Fatal("expected malformed summary error")
+	}
+}
+
+func TestESPNSummaryReturnsStructuredCommentary(t *testing.T) {
+	raw, err := os.ReadFile("../espn/testdata/espn-summary.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := espnprovider.NewWithOptions(espnprovider.Options{
+		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(bytes.NewReader(raw)),
+			}, nil
+		})},
+		MaxAttempts: 1,
+	})
+
+	result, err := NewESPN(client).Summary(
+		context.Background(),
+		config.Competition{ESPNSlug: "fifa.world"},
+		model.Match{
+			ID: "760490", State: model.MatchStateFinished,
+			Home: model.Team{ID: "4789"}, Away: model.Team{ID: "464"},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Commentary) != 91 {
+		t.Fatalf("commentary lines = %d, want 91", len(result.Commentary))
+	}
+	if result.Commentary[0].Seq != 0 || result.Commentary[1].PlayType != "kickoff" {
+		t.Fatalf("first structured lines = %#v, %#v", result.Commentary[0], result.Commentary[1])
 	}
 }
 
