@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import type { Match, Team } from "@/server/data/types";
 import type { TeamStyle } from "@/server/data/competitions";
 import { flagUrl } from "@/lib/flags";
+import { trackFeedFailure, trackFeedRecovery } from "@/lib/telemetry/client";
 import {
   ScorersRow,
   CardsRow,
@@ -162,6 +163,7 @@ export default function LiveScores({ initialMatches, apiBase, teamStyle = 'flag'
   const [dragX, setDragX] = useState(0);
   const [animating, setAnimating] = useState(false);
   const [slideTo, setSlideTo] = useState<null | "next" | "prev">(null);
+  const feedFailed = useRef(false);
   const startX = useRef<number | null>(null);
   const startY = useRef<number | null>(null);
   const axis = useRef<null | "h" | "v">(null);
@@ -180,12 +182,26 @@ export default function LiveScores({ initialMatches, apiBase, teamStyle = 'flag'
           if (mounted) {
             setMatches(sortMatches(data));
             setConnOk(true);
+            if (feedFailed.current) {
+              trackFeedRecovery('matches');
+              feedFailed.current = false;
+            }
           }
         } else if (mounted) {
           setConnOk(false);
+          if (!feedFailed.current) {
+            trackFeedFailure('matches', res.status);
+            feedFailed.current = true;
+          }
         }
       } catch {
-        if (mounted) setConnOk(false); // next poll retries
+        if (mounted) {
+          setConnOk(false);
+          if (!feedFailed.current) {
+            trackFeedFailure('matches');
+            feedFailed.current = true;
+          }
+        }
       }
     }
     poll();

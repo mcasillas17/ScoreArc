@@ -38,8 +38,8 @@ type App struct {
 
 func (a *App) router() http.Handler {
 	router := chi.NewRouter()
-	router.Use(a.recoverJSON)
 	router.Use(a.requestID)
+	router.Use(a.recoverJSON)
 	router.Use(a.requestLogging)
 	router.Use(cors.Handler(cors.Options{
 		AllowedOrigins: []string{"*"},
@@ -96,7 +96,19 @@ func (a *App) recoverJSON(next http.Handler) http.Handler {
 				if recovered == http.ErrAbortHandler {
 					panic(recovered)
 				}
-				a.logger.Error("panic recovered", "panic", recovered, "stack", string(debug.Stack()))
+				id, _ := request.Context().Value(requestIDKey).(string)
+				route := request.URL.Path
+				if pattern := chi.RouteContext(request.Context()).RoutePattern(); pattern != "" {
+					route = pattern
+				}
+				a.logger.Error("panic recovered",
+					"request_id", id,
+					"method", request.Method,
+					"path", request.URL.Path,
+					"route", route,
+					"panic", recovered,
+					"stack", string(debug.Stack()),
+				)
 				writeError(writer, http.StatusInternalServerError, "internal error")
 			}
 		}()

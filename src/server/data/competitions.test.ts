@@ -46,6 +46,10 @@ describe('competition registry', () => {
     expect(resolveSeason('world-cup', '2026')?.season.id).toBe('2026');
     expect(resolveSeason('nope')).toBeUndefined();
     expect(resolveSeason('world-cup', '1999')).toBeUndefined();
+    expect(resolveSeason('constructor', '2026')).toBeUndefined();
+    expect(resolveSeason('__proto__', '2026')).toBeUndefined();
+    expect(resolveSeason('world-cup', 'constructor')).toBeUndefined();
+    expect(resolveSeason('world-cup', '__proto__')).toBeUndefined();
   });
 
   it('OFFICIAL_R32_ORDER lists 16 team pairs', () => {

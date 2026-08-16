@@ -25,6 +25,23 @@ flowchart LR
 The frontend still uses the ESPN-backed `DataStore`. The reader API is now
 implemented; switching the frontend seam to it is the next integration slice.
 
+## Observability
+
+- Vercel Web Analytics automatically records page views, while custom events
+  capture competition and section navigation, match-detail and news opens, and
+  live-feed outage/recovery transitions. Vercel Speed Insights records web
+  vitals for every page.
+- Frontend route handlers send a nonblocking `API request failed` event only
+  for validated upstream `502` failures. Events contain endpoint, competition,
+  and season identifiers; no client headers or cookies are forwarded. A
+  process-local, per-dimension one-minute limit prevents an upstream outage
+  from exhausting the analytics event allowance. Invalid-route `404`s remain
+  visible in Vercel function logs but do not create custom events.
+- Fly services emit JSON logs to stdout. Reader access records include request
+  id, method, concrete path, route template, status, outcome, response size,
+  duration, and client IP. Ingester cycle records include live state, failures,
+  duration, and the next sleep interval.
+
 ## Internal ingester
 
 `backend/ingester` continuously reconciles the configured competitions from

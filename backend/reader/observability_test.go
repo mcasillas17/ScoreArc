@@ -88,6 +88,9 @@ func TestAccessLogRecordsRequestDetail(t *testing.T) {
 	if got := record["path"]; got != "/v1/competitions/world-cup/2026/matches" {
 		t.Fatalf("path = %v", got)
 	}
+	if got := record["route"]; got != "/v1/competitions/{comp}/{season}/matches" {
+		t.Fatalf("route = %v", got)
+	}
 	if got := record["status"]; got != float64(http.StatusOK) {
 		t.Fatalf("status = %v, want 200", got)
 	}
@@ -100,6 +103,9 @@ func TestAccessLogRecordsRequestDetail(t *testing.T) {
 	}
 	if _, ok := record["duration_ms"].(float64); !ok {
 		t.Fatalf("duration_ms = %v, want a number", record["duration_ms"])
+	}
+	if got := record["outcome"]; got != "success" {
+		t.Fatalf("outcome = %v, want success", got)
 	}
 }
 
@@ -119,6 +125,72 @@ func TestAccessLogCapturesNonOKStatus(t *testing.T) {
 	}
 	if got := records[0]["status"]; got != float64(http.StatusBadRequest) {
 		t.Fatalf("logged status = %v, want 400", got)
+	}
+	if got := records[0]["outcome"]; got != "client_error" {
+		t.Fatalf("outcome = %v, want client_error", got)
+	}
+}
+
+func TestAccessLogRetainsUnmatchedPath(t *testing.T) {
+	t.Parallel()
+	app, buf := newObservedApp(t, &fakeReaderStore{})
+
+	if recorder := performRequest(app.router(), http.MethodGet, "/v1/not-a-route"); recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", recorder.Code)
+	}
+
+	records := logRecords(t, buf)
+	if len(records) != 1 {
+		t.Fatalf("access-log records = %d, want 1: %s", len(records), buf)
+	}
+	if got := records[0]["path"]; got != "/v1/not-a-route" {
+		t.Fatalf("path = %v, want unmatched path", got)
+	}
+	if got := records[0]["route"]; got != "/v1/*" {
+		t.Fatalf("route = %v, want /v1/*", got)
+	}
+}
+
+func TestRecoveredPanicLogsRequestContext(t *testing.T) {
+	t.Parallel()
+	app, buf := newObservedApp(t, &fakeReaderStore{})
+	handler := app.requestID(app.recoverJSON(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("boom")
+	})))
+
+	recorder := performRequest(handler, http.MethodGet, "/v1/not-a-route")
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", recorder.Code)
+	}
+
+	var record map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &record); err != nil {
+		t.Fatalf("panic log is not JSON: %s (%v)", buf, err)
+	}
+	if got := record["request_id"]; got != recorder.Header().Get("X-Request-Id") {
+		t.Fatalf("request_id = %v, want %q", got, recorder.Header().Get("X-Request-Id"))
+	}
+	if got := record["method"]; got != http.MethodGet {
+		t.Fatalf("method = %v, want GET", got)
+	}
+	if got := record["path"]; got != "/v1/not-a-route" {
+		t.Fatalf("path = %v", got)
+	}
+}
+
+func TestRequestOutcome(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		status int
+		want   string
+	}{
+		{status: http.StatusOK, want: "success"},
+		{status: http.StatusBadRequest, want: "client_error"},
+		{status: http.StatusInternalServerError, want: "server_error"},
+	} {
+		if got := requestOutcome(test.status); got != test.want {
+			t.Errorf("requestOutcome(%d) = %q, want %q", test.status, got, test.want)
+		}
 	}
 }
 

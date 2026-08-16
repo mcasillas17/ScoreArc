@@ -1,6 +1,6 @@
-import Link from 'next/link';
 import type { Competition, Season } from '@/server/data/competitions';
 import type { HubStatus } from '@/lib/hubStatus';
+import TrackedCompetitionLink from './TrackedCompetitionLink';
 
 interface Tile {
   comp: Competition;
@@ -65,9 +65,11 @@ export default function HubTiles({ tiles }: Props) {
               {group.map((tile) => {
                 const b = badge(tile);
                 return (
-                  <Link
+                  <TrackedCompetitionLink
                     key={tile.comp.id}
-                    href={`/c/${tile.comp.id}/${tile.season.id}`}
+                    competition={tile.comp.id}
+                    season={tile.season.id}
+                    source="hub"
                     className="hub-tile"
                   >
                     <div className="hub-tile-top">
@@ -79,7 +81,7 @@ export default function HubTiles({ tiles }: Props) {
                     </div>
                     <div className="hub-name">{tile.comp.name}</div>
                     <div className="hub-sub">{subLine(tile)}</div>
-                  </Link>
+                  </TrackedCompetitionLink>
                 );
               })}
             </div>
