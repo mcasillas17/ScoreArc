@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
@@ -323,5 +324,92 @@ func TestWritePlaysAsTheIngesterRoleWithoutDelete(t *testing.T) {
 	}
 	if _, err := asIngester.pool.Exec(ctx, `DELETE FROM match_play`); err == nil {
 		t.Fatal("scorearc_ingester can DELETE match_play")
+	}
+}
+
+func seedPlayBackfillMatch(
+	t *testing.T,
+	store *Store,
+	pool *pgxpool.Pool,
+	eventID string,
+	kickoff time.Time,
+	state model.MatchState,
+) uuid.UUID {
+	t.Helper()
+	matchID, err := store.Match(context.Background(), "espn", MatchRef{
+		SourceID:      eventID,
+		CompetitionID: "premier-league",
+		SeasonID:      "2026-27",
+		HomeTeamID:    "eng-arsenal",
+		AwayTeamID:    "eng-chelsea",
+		Kickoff:       kickoff,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(context.Background(),
+		`UPDATE match SET state=$2 WHERE id=$1`, matchID, state); err != nil {
+		t.Fatal(err)
+	}
+	return matchID
+}
+
+func TestMatchesMissingPlaysReturnsOldestFinishedMatchesInOrder(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	mustSeedTwoTeams(t, store)
+	mustSeedSeason(t, pool)
+
+	archived := seedPlayBackfillMatch(t, store, pool, "archived",
+		time.Date(2026, 7, 1, 18, 0, 0, 0, time.UTC), model.MatchStateFinished)
+	oldest := seedPlayBackfillMatch(t, store, pool, "oldest",
+		time.Date(2026, 7, 8, 18, 0, 0, 0, time.UTC), model.MatchStateFinished)
+	newest := seedPlayBackfillMatch(t, store, pool, "newest",
+		time.Date(2026, 8, 1, 18, 0, 0, 0, time.UTC), model.MatchStateFinished)
+	seedPlayBackfillMatch(t, store, pool, "scheduled",
+		time.Date(2026, 6, 1, 18, 0, 0, 0, time.UTC), model.MatchStateScheduled)
+	if err := store.RecordPlayArchive(ctx, archived, "plays/archived", 1, 1, true); err != nil {
+		t.Fatal(err)
+	}
+
+	pending, err := store.MatchesMissingPlays(
+		ctx, "premier-league", "2026-27", "espn", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 2 {
+		t.Fatalf("pending = %#v, want two unarchived finished matches", pending)
+	}
+	if pending[0].MatchID != oldest || pending[0].SourceID != "oldest" ||
+		pending[1].MatchID != newest || pending[1].SourceID != "newest" {
+		t.Fatalf("pending order = %#v, want oldest then newest", pending)
+	}
+
+	limited, err := store.MatchesMissingPlays(
+		ctx, "premier-league", "2026-27", "espn", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(limited) != 1 || limited[0].MatchID != oldest {
+		t.Fatalf("limited pending = %#v, want oldest only", limited)
+	}
+}
+
+func TestMatchesMissingPlaysRunsAsTheIngesterRole(t *testing.T) {
+	owner, pool, dsn := newIntegrationStoreDSN(t)
+	ctx := context.Background()
+	mustSeedTwoTeams(t, owner)
+	mustSeedSeason(t, pool)
+	matchID := seedPlayBackfillMatch(t, owner, pool, "oldest",
+		time.Date(2026, 7, 8, 18, 0, 0, 0, time.UTC), model.MatchStateFinished)
+	asIngester, _ := newIngesterRoleStore(t, pool, dsn)
+
+	pending, err := asIngester.MatchesMissingPlays(
+		ctx, "premier-league", "2026-27", "espn", 10)
+	if err != nil {
+		t.Fatalf("list pending as scorearc_ingester: %v", err)
+	}
+	if len(pending) != 1 || pending[0].MatchID != matchID {
+		t.Fatalf("pending = %#v, want match %s", pending, matchID)
 	}
 }

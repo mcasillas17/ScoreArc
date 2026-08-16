@@ -241,3 +241,61 @@ ON CONFLICT (match_id) DO UPDATE SET
 	}
 	return nil
 }
+
+// MissingPlayMatch identifies one finished match whose stream has not been
+// archived.
+type MissingPlayMatch struct {
+	MatchID  uuid.UUID
+	SourceID string
+}
+
+// MatchesMissingPlays lists finished matches in a season whose stream has
+// never been archived, oldest first.
+//
+// Oldest first is the whole point: the oldest match is the one closest to
+// being pruned, so an interrupted backfill has still saved the most perishable
+// end of the range. The ordered SQL result remains an ordered slice; returning
+// a map here would silently discard that guarantee.
+func (s *Store) MatchesMissingPlays(
+	ctx context.Context,
+	competitionID, seasonID, source string,
+	limit int,
+) ([]MissingPlayMatch, error) {
+	if competitionID == "" || seasonID == "" || source == "" {
+		return nil, fmt.Errorf(
+			"list matches missing plays: competition, season and source are required")
+	}
+	if limit < 1 {
+		return nil, fmt.Errorf("list matches missing plays: limit must be positive")
+	}
+
+	opCtx, cancel := boundedContext(ctx)
+	defer cancel()
+	rows, err := s.pool.Query(opCtx, `
+SELECT m.id, r.source_id
+FROM match m
+JOIN match_external_ref r ON r.match_id = m.id AND r.source = $3
+LEFT JOIN match_play_archive a ON a.match_id = m.id
+WHERE m.competition_id = $1 AND m.season_id = $2
+  AND m.state = 'finished'
+  AND a.match_id IS NULL
+ORDER BY m.kickoff, m.id
+LIMIT $4`, competitionID, seasonID, source, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list matches missing plays: %w", err)
+	}
+	defer rows.Close()
+
+	pending := make([]MissingPlayMatch, 0)
+	for rows.Next() {
+		var match MissingPlayMatch
+		if err := rows.Scan(&match.MatchID, &match.SourceID); err != nil {
+			return nil, fmt.Errorf("scan match missing plays: %w", err)
+		}
+		pending = append(pending, match)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read matches missing plays: %w", err)
+	}
+	return pending, nil
+}
