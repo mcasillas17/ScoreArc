@@ -504,6 +504,11 @@ func (r *runner) refreshStandings(
 	if err == nil {
 		err = r.repo.ReplaceStandings(ctx, comp.ID, season.ID, sourceESPN, rows, teamIDs)
 	}
+	if err != nil && tableChanged {
+		// Finalization is a one-cycle edge. If its refresh fails, remove the
+		// completed-day marker so a later slow tick retries the settled table.
+		r.markStandingsSnapshotPending(comp.ID, season.ID)
+	}
 	if errors.Is(err, store.ErrEmptyReplacement) || errors.Is(err, store.ErrPartialReplacement) {
 		r.log.Info("standings replacement rejected; preserving existing rows",
 			"comp", comp.ID, "reason", err)
@@ -539,13 +544,19 @@ func utcDay(at time.Time) time.Time {
 	return time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, time.UTC)
 }
 
+func (r *runner) markStandingsSnapshotPending(competitionID, seasonID string) {
+	r.mu.Lock()
+	delete(r.snapshotted, competitionID+"/"+seasonID)
+	r.mu.Unlock()
+}
+
 // snapshotStandings records the day's table. It is called only after
 // ReplaceStandings committed, so the snapshot and the live table always agree.
 //
 // The error is RETURNED rather than swallowed. Player capture is additive and
-// a failure there costs a re-fetch; a snapshot this cycle drops is a day of
-// history that no provider can give back, so it must count towards the cycle's
-// failures and show up in ingest_run.
+// a failure there costs a re-fetch; a snapshot not retried before day-end loses
+// history no provider can give back, so it must count towards the cycle's
+// failures, stay pending, and show up in ingest_run.
 func (r *runner) snapshotStandings(
 	ctx context.Context,
 	comp config.Competition,
@@ -555,6 +566,9 @@ func (r *runner) snapshotStandings(
 	tableChanged bool,
 ) error {
 	if ctx.Err() != nil {
+		if tableChanged {
+			r.markStandingsSnapshotPending(comp.ID, season.ID)
+		}
 		return ctx.Err()
 	}
 	now := time.Now().UTC()
@@ -576,7 +590,8 @@ func (r *runner) snapshotStandings(
 		ctx, comp.ID, season.ID, rows, teamIDs, now)
 	r.recordRun(ctx, comp.ID, standingSnapshotRunKind, start, err)
 	if err != nil {
-		r.log.Error("standings snapshot failed; this day cannot be recovered",
+		r.markStandingsSnapshotPending(comp.ID, season.ID)
+		r.log.Error("standings snapshot failed; retry remains pending",
 			"comp", comp.ID, "season", season.ID, "day", day.Format(time.DateOnly),
 			"err", err)
 		return err
