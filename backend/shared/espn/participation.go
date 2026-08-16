@@ -174,9 +174,9 @@ func mapPlayerEvents(e rawKeyEvent) []PlayerEvent {
 		}
 
 	case strings.Contains(kind, "own"):
-		// Unverified: no own goal appears in any recorded fixture. Detail keeps
-		// ESPN's own label, so if this guess is wrong it is fixable from stored
-		// rows rather than by re-fetching a finished match.
+		// Verified against Leagues Cup event 401863609: ESPN credits the team
+		// that benefits and names the opposition player who put the ball into
+		// their own net. Detail keeps ESPN's label for auditability.
 		return []PlayerEvent{base(PlayerEventOwnGoal, firstAthlete(e.Participants))}
 
 	case e.ScoringPlay:

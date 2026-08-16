@@ -362,3 +362,81 @@ func TestMapParticipationRejectsImpossibleCounts(t *testing.T) {
 		t.Fatalf("Assists = %v, want 2 -- one bad entry must not discard the row", s.Assists)
 	}
 }
+
+// This real event locks down which TEAM receives an own goal. The TypeScript
+// side (E0) uses this exact match too; the two paths must agree or the same
+// event reports differently depending on which path served it.
+func TestMapParticipationClassifiesARealOwnGoal(t *testing.T) {
+	raw, err := os.ReadFile("testdata/espn-summary-own-goal.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Minnesota United (17362) at home, Atlante (226) away.
+	part, err := MapParticipation(raw, "17362", "226")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var ownGoals, goals []PlayerEvent
+	for _, e := range part.Events {
+		switch e.Type {
+		case PlayerEventOwnGoal:
+			ownGoals = append(ownGoals, e)
+		case PlayerEventGoal:
+			goals = append(goals, e)
+		}
+	}
+
+	if len(ownGoals) != 1 {
+		t.Fatalf("own goals = %d, want exactly 1", len(ownGoals))
+	}
+	og := ownGoals[0]
+	if og.PlayerName != "Devin Padelford" {
+		t.Fatalf("own-goal scorer = %q, want Devin Padelford", og.PlayerName)
+	}
+	// ESPN's convention, preserved deliberately: the event belongs to the team
+	// that BENEFITED. Re-attributing it to Padelford's own side here would be
+	// "helpful" and wrong -- it would credit Minnesota with a goal they did not
+	// score, and the site would show a 4-0 as 3-1.
+	if og.TeamSourceID != "226" {
+		t.Fatalf("own goal attributed to team %q, want 226 (Atlante, the beneficiary)",
+			og.TeamSourceID)
+	}
+	if og.Minute != "32'" {
+		t.Fatalf("minute = %q, want 32'", og.Minute)
+	}
+	// The provider's own label, kept verbatim, is what makes a future
+	// misclassification fixable from stored rows.
+	if og.Detail == "" {
+		t.Fatal("Detail is empty; ESPN's own label must be preserved")
+	}
+
+	// And the ordinary goals must NOT be swept up by the own-goal branch.
+	if len(goals) != 3 {
+		t.Fatalf("ordinary goals = %d, want 3", len(goals))
+	}
+	for _, g := range goals {
+		if g.TeamSourceID != "17362" {
+			t.Fatalf("goal by %s attributed to %q, want 17362", g.PlayerName, g.TeamSourceID)
+		}
+	}
+}
+
+// The classifier keys on type.type, not on the English label, because the label
+// is locale-dependent prose and the machine value is not. A fixture cannot
+// prove that on its own, so assert it directly.
+func TestOwnGoalIsClassifiedFromTheMachineValue(t *testing.T) {
+	raw := []byte(`{"keyEvents":[{
+	  "type":{"id":"97","text":"Gol en propia puerta","type":"own-goal"},
+	  "scoringPlay":true,"team":{"id":"226"},
+	  "clock":{"displayValue":"32'"},
+	  "participants":[{"athlete":{"id":"1","displayName":"Defender"}}]}]}`)
+	part, err := MapParticipation(raw, "17362", "226")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(part.Events) != 1 || part.Events[0].Type != PlayerEventOwnGoal {
+		t.Fatalf("events = %#v, want one own_goal classified from type.type despite "+
+			"non-English display text", part.Events)
+	}
+}
