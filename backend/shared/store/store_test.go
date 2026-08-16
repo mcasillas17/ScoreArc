@@ -37,21 +37,22 @@ func TestReplacementRejectsEmptyPayload(t *testing.T) {
 // the goals board every time the assists board is written, leaving whichever
 // ran last.
 func TestReplaceLeadersDoesNotWipeTheOtherBoard(t *testing.T) {
-	store, pool := newIntegrationStore(t)
+	_, pool, dsn := newIntegrationStoreDSN(t)
 	ctx := context.Background()
 	mustSeedSeason(t, pool)
+	roleStore, roleName := newIngesterRoleStore(t, pool, dsn)
 
 	goals := []model.StatLeader{{Rank: 1, Player: "Striker", Value: 12}}
 	assists := []model.StatLeader{{Rank: 1, Player: "Playmaker", Value: 9}}
-	if err := store.ReplaceLeaders(
+	if err := roleStore.ReplaceLeaders(
 		ctx, "premier-league", "2026-27", "espn", "goals", goals,
 	); err != nil {
-		t.Fatal(err)
+		t.Fatalf("replace goals as %s: %v", roleName, err)
 	}
-	if err := store.ReplaceLeaders(
+	if err := roleStore.ReplaceLeaders(
 		ctx, "premier-league", "2026-27", "espn", "assists", assists,
 	); err != nil {
-		t.Fatal(err)
+		t.Fatalf("replace assists as %s: %v", roleName, err)
 	}
 
 	var rows int
