@@ -88,6 +88,14 @@ ls backend/migrations/
 
 Expected: `0001` … `0010_leader_category.*`.
 
+> **Numbering and `match.id` type both assume the post-merge tree.** On `main`,
+> `0003_ingester_delete_grant` / `0004_ingester_hardening` still exist and `match.id` is
+> still `text`; `feat/canonical-identity-impl` deletes those two and re-keys `match.id` to
+> `uuid`. `ls backend/migrations` at execution time is the only trustworthy source — if
+> the numbers have shifted, take the next free one and shift the remaining sequence by the
+> same offset, then update the shared registry in
+> `2026-08-15-ingester-standings-snapshots.md`, which the other seven plans read.
+
 ---
 
 ## Global Constraints

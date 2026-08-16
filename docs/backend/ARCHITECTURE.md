@@ -301,10 +301,16 @@ nested response locations.
   **ClickHouse Cloud**, or just partitioned Neon/Postgres until it outgrows it.
   The `emitSnapshots()` hook + snapshot tables are the seam; whatever we pick
   attaches there without reshaping Phase 1.
-- **Phase 3** — historical + xG backfill (scraping / open data: football-data.co.uk,
-  StatsBomb open data; FBref/Understat are ToS-gray, rate-limit).
-- **Phase 4** — own ML precomputed into the DB (xG=gradient boosting,
-  odds=Dixon-Coles, season sim=Monte Carlo, similarity=clustering→pgvector).
+- **Phase 3** — historical backfill. **Revised 2026-08-15:** xG no longer needs an
+  external source. ESPN's *core* host serves shot geometry directly and T7.12/T7.13
+  persist it, so scraping and open data (football-data.co.uk, StatsBomb; FBref/Understat
+  are ToS-gray and rate-limited) are **not** on the critical path for xG. They remain
+  options for pre-2026 *results*, which our own ingestion cannot reach.
+- **Phase 4** — own ML precomputed into the DB (**xG = epic E9**, trained on our own
+  persisted `match_play` geometry; odds=Dixon-Coles, season sim=Monte Carlo,
+  similarity=clustering→pgvector). E9's spec is
+  `docs/superpowers/specs/2026-08-15-expected-goals-design.md`; note its hard
+  prerequisite is T7.12/T7.13, because a model cannot be trained on data we did not keep.
 - **Phase 5** — Claude language layer (auto match summaries via Haiku + Batch API;
   conversational Q&A via **tool-use over our own endpoints**, not text-to-SQL;
   "matches like this" via embeddings + pgvector). Don't train an LLM.

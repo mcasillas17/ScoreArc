@@ -97,10 +97,20 @@ T7.9/T7.10 (`0011`, `0012`).
 
 ```bash
 ls backend/migrations/
+git show feat/canonical-identity-impl:backend/migrations/0001_init.up.sql | grep -A2 "^CREATE TABLE match ("
 ```
 
-Expected: `0001` … `0012_player_bio.*`. If any are missing, take the next free number and
-adjust every filename and test reference in this plan consistently.
+Expected: `0001` … `0012_player_bio.*`, and `id             uuid PRIMARY KEY`. If numbers
+have shifted, take the next free one and adjust every filename and test reference in this
+plan consistently. If you still see `0003_ingester_delete_grant` /
+`0004_ingester_hardening`, the prerequisites have not merged — stop.
+
+> **`match_commentary.match_id` is `uuid` on purpose — do not "correct" it to `text`.**
+> On `main` `match.id` is `text` (the ESPN event id); `feat/canonical-identity-impl`
+> re-keys it to `uuid`, which is the tree this plan is typed against — and
+> `match_detail`, whose `commentary` jsonb this table sits beside, is re-keyed with it.
+> Full reasoning: `2026-08-15-ingester-standings-snapshots.md` → "Two things reviewers
+> have already got wrong twice".
 
 **Consider whether T7.12 made this redundant before starting.** The core API's play stream
 carries the same events with `type.type`, `period`, `clock`, `wallclock` **and pitch

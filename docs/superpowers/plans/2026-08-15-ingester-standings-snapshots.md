@@ -68,6 +68,58 @@ not merged; **stop and say so** rather than writing a migration against a schema
 about to be replaced. If `0004_*` already exists, take the next free number and adjust
 every filename and test reference in this plan consistently.
 
+### 🔴 Two things reviewers have already got wrong twice — read before filing a bug
+
+**(a) `match.id` is `uuid` in these plans, and that is deliberate.** On `main` it is
+`text` holding the ESPN event id, and every sibling plan's `match_id uuid REFERENCES
+match(id)` therefore looks like a type error that cannot apply. It is not — it is a
+statement about *when* these plans run.
+
+`feat/canonical-identity-impl` rewrites `0001_init.up.sql` to mint canonical ids:
+
+```sql
+-- feat/canonical-identity-impl:backend/migrations/0001_init.up.sql
+CREATE TABLE match (
+  id             uuid PRIMARY KEY,        -- was: text, the ESPN event id
+  ...
+CREATE TABLE match_detail (
+  match_id        uuid PRIMARY KEY REFERENCES match(id) ON DELETE CASCADE,
+```
+
+and it re-keys `match_external_ref.match_id` and `win_prob_snapshot.match_id` to `uuid`
+too. `feat/player-identity` then adds `appearance.match_id uuid` and
+`match_event.match_id uuid` on top. Verify it yourself in ten seconds rather than
+trusting this paragraph:
+
+```bash
+git show feat/canonical-identity-impl:backend/migrations/0001_init.up.sql | grep -A2 "^CREATE TABLE match ("
+```
+
+Expected: `id             uuid PRIMARY KEY`.
+
+So **do not "fix" these plans to `match_id text`.** That would apply cleanly against
+today's `main` and then break the moment canonical identity lands — which is a hard
+prerequisite of every one of these plans and is stated at the top of each. The provider's
+event id still exists; it lives in `match_external_ref`, which is the entire point of the
+crosswalk.
+
+**(b) The migration numbers assume that same post-merge tree.** On `main` right now
+`0003_ingester_delete_grant` and `0004_ingester_hardening` exist and are **not** deleted
+until canonical identity lands. So `ls backend/migrations` today shows `0004` taken, and
+this plan claims `0004`.
+
+**`ls backend/migrations` at execution time is the only trustworthy source.** The table
+below is an *intended* allocation, not a guarantee:
+
+- If you see `0003_ingester_delete_grant` / `0004_ingester_hardening`, **stop** — the
+  prerequisite branches have not merged and no plan in this set is safe to execute yet.
+- If the numbers have shifted for any other reason, **take the next free number and shift
+  the whole remaining sequence by the same offset**, keeping the order below intact. Then
+  update this table, since it is the shared registry the other seven plans read.
+- Never reuse a number, and never leave a gap — the store integration harness globs
+  `../../migrations/*.up.sql` and applies them in sorted order, so a gap is silent and a
+  duplicate is a hard failure at a confusing place.
+
 **Migration numbers reserved by the sibling ingester plans** (do not reuse). Execute in
 this order — the numbering assumes it:
 

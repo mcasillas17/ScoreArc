@@ -175,9 +175,24 @@ through `player_external_ref`, which only carries ESPN athlete ids because
 
 ```bash
 ls backend/migrations/
+git show feat/canonical-identity-impl:backend/migrations/0001_init.up.sql | grep -A2 "^CREATE TABLE match ("
 ```
 
-Expected: `0001` … `0006_appearance_box_score.*`. If `0006` is missing, stop.
+Expected: `0001` … `0006_appearance_box_score.*`, and `id             uuid PRIMARY KEY`.
+If `0006` is missing, or if you still see `0003_ingester_delete_grant` /
+`0004_ingester_hardening`, **stop** — the prerequisites have not merged.
+
+> **`match_id` is `uuid` here on purpose — do not "correct" it to `text`.** On `main`
+> `match.id` is `text` (the ESPN event id), so `match_id uuid REFERENCES match(id)` reads
+> like a type error that cannot apply. It applies against the **post-merge** tree:
+> `feat/canonical-identity-impl` re-keys `match.id` to `uuid` and rewrites
+> `match_detail`, `match_external_ref` and `win_prob_snapshot` to match, and
+> `feat/player-identity` adds `appearance`/`match_event` on `uuid` too. Changing these
+> tables to `text` would apply today and break the day canonical identity lands. The
+> provider's event id is not lost — it lives in `match_external_ref`, which is what the
+> crosswalk is for, and this plan's archive key deliberately uses it. Full reasoning:
+> `2026-08-15-ingester-standings-snapshots.md` → "Two things reviewers have already got
+> wrong twice".
 
 Numbers reserved by sibling plans: `0008_match_officials` and `0009_odds_snapshot`
 (`2026-08-15-ingester-officials-and-odds.md`), `0010_leader_category`,

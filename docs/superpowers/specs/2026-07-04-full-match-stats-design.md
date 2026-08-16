@@ -21,7 +21,18 @@ type, and component.
 
 ## Non-Goals
 
-- No positional / heat-map / xG data (ESPN's free API has no x,y coordinates — verified).
+- No positional / heat-map / xG data.
+
+  > **Correction, 2026-08-15.** This bullet originally read "ESPN's free API has no x,y
+  > coordinates — verified". That was **wrong**, and the "verified" made it more
+  > damaging: it was verified of `site.api.espn.com`, which is the host this spec's
+  > feature uses, and is false of `sports.core.api.espn.com`, whose play stream carries
+  > pitch coordinates on ~97% of events.
+  >
+  > The non-goal itself **still stands for this feature** — team-level match stats have
+  > no business rendering a heat map — but the *reason* is scope, not absence.
+  > Coordinates are persisted by T7.12; the shot map is E6 and xG is E9. Do not cite
+  > this line as evidence that coordinates are unavailable.
 - No new endpoints or providers.
 - No changes to the LiveScores inline stat rendering beyond what the shared component gives.
 - Penalty-kick count stats (`penaltyKickGoals/Shots`) are excluded — already covered by

@@ -90,10 +90,21 @@ the `CorePlaysURL`-style builders it introduced.
 ```bash
 ls backend/migrations/
 grep -c "func RefID" backend/shared/espn/core.go
+git show feat/canonical-identity-impl:backend/migrations/0001_init.up.sql | grep -A2 "^CREATE TABLE match ("
 ```
 
-Expected: `0001` … `0007_play_stream.*`, and the grep prints `1`. If `core.go` does not
-exist, stop.
+Expected: `0001` … `0007_play_stream.*`, the grep prints `1`, and
+`id             uuid PRIMARY KEY`. If `core.go` does not exist, stop. If you still see
+`0003_ingester_delete_grant` / `0004_ingester_hardening`, the prerequisites have not
+merged — also stop.
+
+> **`match_id` is `uuid` here on purpose — do not "correct" it to `text`.** On `main`
+> `match.id` is `text` (the ESPN event id); `feat/canonical-identity-impl` re-keys it to
+> `uuid`, which is the tree these plans are numbered and typed against. Changing
+> `match_official`, `match_odds` and `odds_snapshot` to `text` would apply today and
+> break when canonical identity lands. Full reasoning:
+> `2026-08-15-ingester-standings-snapshots.md` → "Two things reviewers have already got
+> wrong twice".
 
 Numbers reserved after these: `0010_leader_category`, `0011_squad_and_season_stats`,
 `0012_player_bio`, `0013_match_commentary`.
