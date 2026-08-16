@@ -321,6 +321,98 @@ func TestESPNSummaryReturnsStructuredCommentary(t *testing.T) {
 	}
 }
 
+func TestESPNSummaryKeepsCoreDataWhenCommentaryMetadataIsMalformed(t *testing.T) {
+	raw, err := os.ReadFile("../espn/testdata/espn-summary.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutated := bytes.ReplaceAll(raw,
+		[]byte("2026-06-30T17:00:27Z"),
+		[]byte("not-a-time"),
+	)
+	if bytes.Equal(mutated, raw) {
+		t.Fatal("fixture no longer contains the commentary wallclock under test")
+	}
+	raw = mutated
+	client := espnprovider.NewWithOptions(espnprovider.Options{
+		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(bytes.NewReader(raw)),
+			}, nil
+		})},
+		MaxAttempts: 1,
+	})
+
+	result, err := NewESPN(client).Summary(
+		context.Background(),
+		config.Competition{ESPNSlug: "fifa.world"},
+		model.Match{
+			ID: "760490", State: model.MatchStateFinished,
+			Home: model.Team{ID: "4789"}, Away: model.Team{ID: "464"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("malformed optional commentary metadata blocked summary: %v", err)
+	}
+	if result.HomeScore == nil || *result.HomeScore != 1 ||
+		result.AwayScore == nil || *result.AwayScore != 2 {
+		t.Fatalf("final scores = %v-%v, want 1-2", result.HomeScore, result.AwayScore)
+	}
+	if len(result.Commentary) != 91 {
+		t.Fatalf("commentary lines = %d, want 91", len(result.Commentary))
+	}
+	if result.Commentary[1].Wallclock != nil {
+		t.Fatalf("malformed wallclock = %v, want nil", result.Commentary[1].Wallclock)
+	}
+}
+
+func TestESPNSummaryKeepsCoreDataWhenCommentarySequenceIsFractional(t *testing.T) {
+	raw, err := os.ReadFile("../espn/testdata/espn-summary.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutated := bytes.Replace(raw,
+		[]byte(`"sequence":1,`),
+		[]byte(`"sequence":1.5,`),
+		1,
+	)
+	if bytes.Equal(mutated, raw) {
+		t.Fatal("fixture no longer contains the commentary sequence under test")
+	}
+	raw = mutated
+	client := espnprovider.NewWithOptions(espnprovider.Options{
+		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(bytes.NewReader(raw)),
+			}, nil
+		})},
+		MaxAttempts: 1,
+	})
+
+	result, err := NewESPN(client).Summary(
+		context.Background(),
+		config.Competition{ESPNSlug: "fifa.world"},
+		model.Match{
+			ID: "760490", State: model.MatchStateFinished,
+			Home: model.Team{ID: "4789"}, Away: model.Team{ID: "464"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("fractional optional commentary sequence blocked summary: %v", err)
+	}
+	if result.HomeScore == nil || *result.HomeScore != 1 ||
+		result.AwayScore == nil || *result.AwayScore != 2 {
+		t.Fatalf("final scores = %v-%v, want 1-2", result.HomeScore, result.AwayScore)
+	}
+	if result.Commentary[1].Seq != 1 {
+		t.Fatalf("normalized sequence = %d, want provider ordinal 1", result.Commentary[1].Seq)
+	}
+}
+
 func TestESPNBracketUsesExplicitLimit(t *testing.T) {
 	var gotURL string
 	client := espnprovider.NewWithOptions(espnprovider.Options{

@@ -2,7 +2,6 @@ package espn
 
 import (
 	"os"
-	"strings"
 	"testing"
 )
 
@@ -135,43 +134,88 @@ func TestMapCommentaryLinesKeepsMissingNumbersNull(t *testing.T) {
 	}
 }
 
-func TestMapCommentaryLinesRejectsMalformedWallclock(t *testing.T) {
+func TestMapCommentaryLinesKeepsLineWithMalformedWallclock(t *testing.T) {
 	raw := []byte(`{"commentary":[{
 	  "sequence":7,
 	  "time":{"value":12,"displayValue":"12'"},
 	  "text":"Malformed timestamp.",
 	  "play":{"period":{"number":1},"clock":{"value":12},"wallclock":"not-a-time"}
 	}]}`)
-	if _, err := MapCommentaryLines(raw); err == nil || !strings.Contains(err.Error(), "wallclock") {
-		t.Fatalf("err = %v, want a contextual wallclock error", err)
+	lines, err := MapCommentaryLines(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 1 || lines[0].Wallclock != nil {
+		t.Fatalf("lines = %#v, want one line with a nil wallclock", lines)
 	}
 }
 
-func TestMapCommentaryLinesRejectsFractionalClockValue(t *testing.T) {
+func TestMapCommentaryLinesKeepsLineWithFractionalClockValue(t *testing.T) {
 	raw := []byte(`{"commentary":[{
 	  "sequence":7,
 	  "time":{"value":12.5,"displayValue":"12'"},
 	  "text":"Malformed clock."
 	}]}`)
-	if _, err := MapCommentaryLines(raw); err == nil || !strings.Contains(err.Error(), "clock") {
-		t.Fatalf("err = %v, want a contextual clock error", err)
+	lines, err := MapCommentaryLines(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 1 || lines[0].ClockValue != nil {
+		t.Fatalf("lines = %#v, want one line with a nil clock", lines)
 	}
 }
 
-func TestMapCommentaryLinesRejectsNumbersPostgresCannotRepresent(t *testing.T) {
-	tests := map[string]string{
-		"negative sequence": `{"sequence":-1,"time":{"value":1},"text":"Bad sequence."}`,
-		"negative clock":    `{"sequence":1,"time":{"value":-1},"text":"Bad clock."}`,
-		"oversized period":  `{"sequence":1,"time":{"value":1},"text":"Bad period.","play":{"period":{"number":2147483648}}}`,
+func TestMapCommentaryLinesNormalizesNumbersPostgresCannotRepresent(t *testing.T) {
+	tests := map[string]struct {
+		item       string
+		wantSeq    int
+		wantClock  *int
+		wantPeriod *int
+	}{
+		"negative sequence": {
+			item:      `{"sequence":-1,"time":{"value":1},"text":"Bad sequence."}`,
+			wantSeq:   0,
+			wantClock: intPointer(1),
+		},
+		"negative clock": {
+			item:    `{"sequence":1,"time":{"value":-1},"text":"Bad clock."}`,
+			wantSeq: 1,
+		},
+		"oversized period": {
+			item:      `{"sequence":1,"time":{"value":1},"text":"Bad period.","play":{"period":{"number":2147483648}}}`,
+			wantSeq:   1,
+			wantClock: intPointer(1),
+		},
 	}
-	for name, item := range tests {
+	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			raw := []byte(`{"commentary":[` + item + `]}`)
-			if _, err := MapCommentaryLines(raw); err == nil {
-				t.Fatal("expected an error before an invalid number reaches PostgreSQL")
+			raw := []byte(`{"commentary":[` + test.item + `]}`)
+			lines, err := MapCommentaryLines(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(lines) != 1 {
+				t.Fatalf("lines = %d, want 1", len(lines))
+			}
+			if lines[0].Seq != test.wantSeq ||
+				!equalIntPointers(lines[0].ClockValue, test.wantClock) ||
+				!equalIntPointers(lines[0].Period, test.wantPeriod) {
+				t.Fatalf("line = %#v, want seq=%d clock=%v period=%v",
+					lines[0], test.wantSeq, test.wantClock, test.wantPeriod)
 			}
 		})
 	}
+}
+
+func intPointer(value int) *int {
+	return &value
+}
+
+func equalIntPointers(left, right *int) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	return *left == *right
 }
 
 func TestMapCommentaryLinesSynthesizesMissingSequences(t *testing.T) {
@@ -183,8 +227,69 @@ func TestMapCommentaryLinesSynthesizesMissingSequences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if lines[0].Seq != 0 || lines[1].Seq != 1 {
+		t.Fatalf("sequences = %d, %d; want provider-order fallbacks 0, 1", lines[0].Seq, lines[1].Seq)
+	}
+}
+
+func TestMapCommentaryLinesMissingSequenceDoesNotCollideWithItsNeighbor(t *testing.T) {
+	raw := []byte(`{"commentary":[
+	  {"sequence":0,"time":{"value":1},"text":"First"},
+	  {"time":{"value":2},"text":"Missing sequence"},
+	  {"sequence":2,"time":{"value":3},"text":"Third"}
+	]}`)
+	lines, err := MapCommentaryLines(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lines[0].Seq != 0 || lines[1].Seq != 1 || lines[2].Seq != 2 {
+		t.Fatalf("sequences = %d, %d, %d; want 0, 1, 2",
+			lines[0].Seq, lines[1].Seq, lines[2].Seq)
+	}
+}
+
+func TestMapCommentaryLinesInvalidSequenceDoesNotCollideWithProviderSequence(t *testing.T) {
+	raw := []byte(`{"commentary":[
+	  {"sequence":1,"time":{"value":1},"text":"Provider sequence"},
+	  {"sequence":1.5,"time":{"value":2},"text":"Invalid sequence"}
+	]}`)
+	lines, err := MapCommentaryLines(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if lines[0].Seq != 1 || lines[1].Seq != 2 {
-		t.Fatalf("sequences = %d, %d; want array-order fallbacks 1, 2", lines[0].Seq, lines[1].Seq)
+		t.Fatalf("sequences = %d, %d; want collision-free 1, 2",
+			lines[0].Seq, lines[1].Seq)
+	}
+}
+
+func TestMapCommentaryLinesDuplicateProviderSequenceGetsUniqueFallback(t *testing.T) {
+	raw := []byte(`{"commentary":[
+	  {"sequence":5,"time":{"value":1},"text":"First provider sequence"},
+	  {"sequence":5,"time":{"value":2},"text":"Duplicate provider sequence"}
+	]}`)
+	lines, err := MapCommentaryLines(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lines[0].Seq != 5 || lines[1].Seq != 1 {
+		t.Fatalf("sequences = %d, %d; want collision-free 5, 1",
+			lines[0].Seq, lines[1].Seq)
+	}
+}
+
+func TestMapCommentaryLinesFallbackDoesNotClaimFutureProviderSequence(t *testing.T) {
+	raw := []byte(`{"commentary":[
+	  {"time":{"value":1},"text":"Missing sequence"},
+	  {"sequence":1,"time":{"value":2},"text":"Provider sequence"}
+	]}`)
+	lines, err := MapCommentaryLines(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lines[0].Seq != 0 || lines[1].Seq != 1 {
+		t.Fatalf("sequences = %d, %d; want collision-free 0, 1",
+			lines[0].Seq, lines[1].Seq)
 	}
 }
 

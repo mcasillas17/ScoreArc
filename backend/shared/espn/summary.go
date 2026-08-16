@@ -215,7 +215,7 @@ type rawAthleteName struct {
 
 type rawCommentaryItem struct {
 	// A pointer distinguishes ESPN's real sequence 0 from a missing sequence.
-	Sequence *int               `json:"sequence"`
+	Sequence *float64           `json:"sequence"`
 	Time     rawClock           `json:"time"`
 	Text     string             `json:"text"`
 	Play     *rawCommentaryPlay `json:"play"`
@@ -231,7 +231,7 @@ type rawPlayType struct {
 }
 
 type rawPeriod struct {
-	Number *int `json:"number"`
+	Number *float64 `json:"number"`
 }
 
 // rawCommentaryPlay is the structure attached to 86 of the recorded fixture's
