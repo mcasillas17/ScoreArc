@@ -121,6 +121,25 @@ type TopScorer struct {
 	Matches      *int    `json:"matches"`
 }
 
+// StatLeader is one row of any season leaderboard.
+//
+// It mirrors the TypeScript StatLeader that E1 introduces in
+// src/server/data/types.ts, field for field. The metric-specific `Goals` on
+// TopScorer becomes `Value`, because a field called Goals holding an assist
+// count is a lie that every reader of this struct then has to remember.
+//
+// TopScorer stays for now: it is the shape the reader serializes today, and
+// removing it belongs to slice 1d's cutover, not here.
+type StatLeader struct {
+	Rank         int     `json:"rank"`
+	Player       string  `json:"player"`
+	TeamAbbr     string  `json:"teamAbbr"`
+	TeamName     string  `json:"teamName"`
+	TeamCrestURL *string `json:"teamCrestUrl"`
+	Value        int     `json:"value"`
+	Matches      *int    `json:"matches"`
+}
+
 // ===== MatchDetail sub-shapes (stored as jsonb) =====
 // These mirror types.ts's MatchSummaryData plus the goal/card/shootout
 // fields that live inline on the TS Match type. Port of providers/espn-summary.ts.
