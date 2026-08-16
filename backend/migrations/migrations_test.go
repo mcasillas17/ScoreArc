@@ -110,3 +110,54 @@ func TestInitialRollbackRevokesDefaultPrivileges(t *testing.T) {
 		}
 	}
 }
+
+// The stat set VARIES BY POSITION -- verified in espn-summary.json, where a
+// goalkeeper has no `offsides` entry and an outfielder has no `saves` entry.
+// A NOT NULL DEFAULT 0 column would record "the keeper was onside all match"
+// and "the centre-back made no saves" as measurements, and T7.4's per-position
+// percentiles would then average those inventions.
+func TestAppearanceBoxScoreColumnsAreNullable(t *testing.T) {
+	sql := readMigration(t, "0006_appearance_box_score.up.sql")
+	for _, required := range []string{
+		"ALTER TABLE appearance",
+		"goals            int",
+		"assists          int",
+		"shots            int",
+		"shots_on_target  int",
+		"offsides         int",
+		"fouls_committed  int",
+		"fouls_suffered   int",
+		"own_goals        int",
+		"yellow_cards     int",
+		"red_cards        int",
+		"saves            int",
+		"goals_conceded   int",
+		"shots_faced      int",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("0006_appearance_box_score.up.sql missing %q", required)
+		}
+	}
+	var statements []string
+	for _, line := range strings.Split(sql, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "--") {
+			statements = append(statements, line)
+		}
+	}
+	executableSQL := strings.Join(statements, "\n")
+	for _, forbidden := range []string{"NOT NULL", "DEFAULT 0"} {
+		if strings.Contains(executableSQL, forbidden) {
+			t.Fatalf("box score columns must be nullable; found %q", forbidden)
+		}
+	}
+}
+
+func TestAppearanceBoxScoreRollbackDropsOnlyTheColumns(t *testing.T) {
+	sql := readMigration(t, "0006_appearance_box_score.down.sql")
+	if !strings.Contains(sql, "DROP COLUMN IF EXISTS goals_conceded") {
+		t.Fatalf("rollback missing a column drop:\n%s", sql)
+	}
+	if strings.Contains(sql, "DROP TABLE") {
+		t.Fatal("the rollback must not drop appearance itself")
+	}
+}
