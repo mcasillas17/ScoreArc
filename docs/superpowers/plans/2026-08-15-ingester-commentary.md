@@ -161,7 +161,7 @@ building on in the PR.
 - Create: `backend/migrations/0013_match_commentary.{up,down}.sql`
 - Test: `backend/migrations/migrations_test.go`
 
-- [ ] **Step 1: Write the failing migration test**
+- [x] **Step 1: Write the failing migration test**
 
 Append to `backend/migrations/migrations_test.go`:
 
@@ -194,7 +194,7 @@ func TestMatchCommentaryKeepsTheStructureTheJsonbDrops(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run and watch it fail**
+- [x] **Step 2: Run and watch it fail**
 
 ```bash
 cd backend && go test ./migrations/ -run MatchCommentary
@@ -202,7 +202,7 @@ cd backend && go test ./migrations/ -run MatchCommentary
 
 Expected: FAIL — `open 0013_match_commentary.up.sql: no such file or directory`.
 
-- [ ] **Step 3: Write the migrations**
+- [x] **Step 3: Write the migrations**
 
 Create `backend/migrations/0013_match_commentary.up.sql`:
 
@@ -297,7 +297,7 @@ Create `backend/migrations/0013_match_commentary.down.sql`:
 DROP TABLE IF EXISTS match_commentary;
 ```
 
-- [ ] **Step 4: Run and prove it applies**
+- [x] **Step 4: Run and prove it applies**
 
 ```bash
 cd backend && go test ./migrations/ && go test ./shared/store/ -run TestResolveTeamHitsTheCrosswalk
@@ -305,7 +305,7 @@ cd backend && go test ./migrations/ && go test ./shared/store/ -run TestResolveT
 
 Expected: both `ok`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/migrations/0013_match_commentary.*.sql backend/migrations/migrations_test.go
@@ -345,7 +345,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
   `mapSummaryCommentary`, not a replacement. The existing mapper keeps producing the jsonb
   the reader serves; this one produces the rows.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `backend/shared/espn/commentary_test.go`:
 
@@ -503,7 +503,7 @@ func TestMapSummaryCommentaryIsUnchanged(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run and watch it fail**
+- [x] **Step 2: Run and watch it fail**
 
 ```bash
 cd backend && go test ./shared/espn/ -run Commentary
@@ -512,7 +512,7 @@ cd backend && go test ./shared/espn/ -run Commentary
 Expected: FAIL to compile — `undefined: MapCommentaryLines`. `TestMapSummaryCommentaryIsUnchanged`
 compiles but is in the same file, so the package will not build until Step 4.
 
-- [ ] **Step 3: Extend the raw type**
+- [x] **Step 3: Extend the raw type**
 
 In `backend/shared/espn/summary.go`, replace `rawCommentaryItem` and add the play shape:
 
@@ -542,7 +542,7 @@ type rawCommentaryPlay struct {
 `backend/shared/espn/plays.go`, in this same package. **Do not redeclare them.** If T7.12
 has not landed, declare them here instead and delete the duplicates when it does.
 
-- [ ] **Step 4: Write the mapper**
+- [x] **Step 4: Write the mapper**
 
 Create `backend/shared/espn/commentary.go`:
 
@@ -666,7 +666,7 @@ type CommentaryLine struct {
 
 Add `type CommentaryLine = model.CommentaryLine` to `backend/shared/espn/types.go`.
 
-- [ ] **Step 5: Run**
+- [x] **Step 5: Run**
 
 ```bash
 cd backend && go test ./shared/espn/ -run "Commentary|MapSummary" -v
@@ -676,7 +676,7 @@ Expected: the five new cases pass **and** every pre-existing `MapSummary` case s
 passes. Two mappers over one payload is only safe if the one the reader depends on has not
 moved.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/shared/model/commentary.go backend/shared/espn/commentary.go \
@@ -712,7 +712,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
   for the same reason: it is resolved and written separately and never reaches the reader.
 - `func (s *Store) WriteCommentary(ctx context.Context, matchID uuid.UUID, lines []model.CommentaryLine) (int, error)`
 
-- [ ] **Step 1: Write the failing integration tests**
+- [x] **Step 1: Write the failing integration tests**
 
 Create `backend/shared/store/commentary_integration_test.go`:
 
@@ -856,7 +856,7 @@ func TestWriteCommentaryAsTheIngesterRole(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run and watch it fail**
+- [x] **Step 2: Run and watch it fail**
 
 ```bash
 cd backend && go test ./shared/store/ -run WriteCommentary
@@ -864,7 +864,7 @@ cd backend && go test ./shared/store/ -run WriteCommentary
 
 Expected: FAIL to compile — `store.WriteCommentary undefined`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Create `backend/shared/store/commentary.go` following `WriteParticipation`'s structure
 exactly:
@@ -914,7 +914,7 @@ ingester's `repository` interface, and call it in `matches.go` **immediately aft
 			}
 ```
 
-- [ ] **Step 4: Run the whole suite**
+- [x] **Step 4: Run the whole suite**
 
 ```bash
 cd backend && go test -race ./...
@@ -922,7 +922,7 @@ cd backend && go test -race ./...
 
 Expected: every package `ok`. `fakeRepository` needs `WriteCommentary`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/shared/store/commentary.go \
@@ -950,7 +950,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ### Task 4: Doc, gate and PR
 
-- [ ] **Step 1: Document**
+- [x] **Step 1: Document**
 
 Add to `docs/backend/ARCHITECTURE.md` under `### Tier 1`:
 
@@ -958,7 +958,7 @@ Add to `docs/backend/ARCHITECTURE.md` under `### Tier 1`:
 - **match_commentary**(PK (match_id→match, **seq** = ESPN's `sequence`), period, clock_value, clock_display, play_type, play_type_text, wallclock, text) — minute-by-minute commentary **with the structure `match_detail.commentary` drops** (T7.11). That jsonb column is unchanged and is still what the reader serves as `MatchSummaryData.commentary`; it keeps `{minute, text}` only. This table adds the four things that loses: order (`sequence`), a numeric clock (`time.displayValue` is the **empty string** on kickoff, halftime and full-time lines), the machine play type (`play.type.type`, so a parser need not regex English prose), and mutability (`match_detail` is frozen by `protect_finalized_detail` once a match finalizes). Upserted then tail-deleted, like `match_event`; an **empty payload is a no-op, not a delete**, because commentary coverage varies by competition and has been observed at zero. **Nothing here is parsed** — E6's shot-log parser is downstream and gated on T6.1's coverage probe.
 ```
 
-- [ ] **Step 2: Full gate**
+- [x] **Step 2: Full gate**
 
 ```bash
 cd backend && go build ./... && go test -race ./... && go vet ./...
@@ -966,7 +966,7 @@ cd backend && go build ./... && go test -race ./... && go vet ./...
 
 Expected: build silent, every package `ok`, vet silent.
 
-- [ ] **Step 3: Prove it, and measure coverage while you are there**
+- [x] **Step 3: Prove it, and measure coverage while you are there**
 
 ```bash
 cd backend
@@ -1005,7 +1005,7 @@ entirely** — which is the documented behaviour, not a failure. Running twice m
 **Put this table in the PR.** It is the per-competition coverage measurement E6's T6.1 needs
 and it costs nothing to produce here.
 
-- [ ] **Step 4: Open the PR**
+- [x] **Step 4: Open the PR**
 
 ```bash
 git add docs/backend/ARCHITECTURE.md
@@ -1102,7 +1102,60 @@ EOF
 )"
 ```
 
-- [ ] **Step 5: Stop.** Do not merge — that is the user's call.
+- [x] **Step 5: Stop.** Do not merge — that is the user's call.
+
+## Execution record — 2026-08-16
+
+- **Branch / PR:** `mcasillas17-ingester-commentary` / #55. The branch was
+  created from fetched `origin/main`, later merged `origin/main` normally after
+  #57, and was never rebased or force-pushed. It remains unmerged.
+- **Migration reservation:** the starting tree contained `0001` through `0003`
+  and no `0013`; canonical `match.id` was already `uuid`. The user explicitly
+  reserved `0013`, so the missing `0004`–`0012` files remain merge-order
+  coordination rather than a renumbering trigger.
+- **Fixture correction:** the recorded 91-line fixture starts with sequence `0`
+  ("Lineups are announced..."). The kickoff is sequence `1`, not array element
+  zero as the quoted test says. The implemented structural test locates
+  sequence `1` and preserves provider sequence `0`.
+- **NULL correction:** the quoted raw shapes use zero-valued numeric fields,
+  which would turn absent provider data into measured zero. The implementation
+  uses pointers for missing numbers, accepts ESPN's integral JSON decimals, and
+  rejects fractional, negative, or out-of-Postgres-range values. Real Postgres
+  tests prove missing values stay `NULL` while kickoff remains `0`.
+- **Least privilege:** the plan's placeholder role test was implemented in full.
+  It writes 25 rows, shrinks to 20, and proves the narrow
+  `scorearc_ingester` DELETE grant under a non-owner login.
+- **Retry correction:** review found that finalizing before
+  `WriteCommentary` made a transient write failure permanent because finalized
+  matches skip later summaries. Commit `5972492` writes commentary before
+  freezing a finished match; failure preserves the scoreline row, remains
+  visible, and retries next cycle. The RED/GREEN recovery test covers both
+  cycles.
+- **Local proof:** the disposable Postgres run produced 53,717 rows across MLS,
+  World Cup, Leagues Cup, Liga MX, and LaLiga; another one-shot run left the
+  count at 53,717. Applying the down migration made
+  `to_regclass('public.match_commentary') IS NULL`.
+- **Environment correction:** the first Testcontainers run failed with
+  `rootless Docker not found, failed to create Docker provider`. The documented
+  Colima socket variables resolved it; every later real-Postgres gate ran.
+  The plan's masked DSN placeholder was replaced only at runtime with an
+  ephemeral local login.
+- **Commit identity:** the quoted Claude trailer was not copied. Commits use the
+  executing Copilot identity required by `AGENTS.md`.
+- **Independent review:** round 1 was Luna 1 blocking / 1 non-blocking and Opus
+  0 blocking / 4 non-blocking. After the retry fix, round 2 was Luna 0 blocking
+  / 1 non-blocking and Opus 0 blocking / 1 non-blocking.
+
+### Non-blocking follow-ups
+
+- Decide whether a payload mixing present and absent `sequence` values should
+  be rejected or assigned collision-free synthetic values.
+- Make commentary wallclock parsing tolerant or report parse failures out of
+  band so an additive timestamp cannot withhold the whole summary.
+- Remove `match_commentary_order_idx` if measurement confirms the primary-key
+  index serves the same order queries.
+- Correct the quoted fixture prose in a future plan-cleanup pass: the recorded
+  blank displays are pre-match, kickoff, and match-end entries, not halftime.
 
 ---
 

@@ -234,20 +234,6 @@ func (r *runner) processMatches(
 			if match.State == model.MatchStateFinished {
 				match.HomeScore = summary.HomeScore
 				match.AwayScore = summary.AwayScore
-				didFinalize, err := r.repo.FinalizeMatch(ctx, identity, match, detail)
-				if err != nil {
-					operationErrors = append(operationErrors, fmt.Errorf("match %s finalize: %w", match.ID, err))
-				} else if didFinalize {
-					result.finalized = true
-					matchActive = false
-					existing[identity.MatchID] = store.MatchRow{
-						State: match.State,
-						FinalizedAt: pgtype.Timestamptz{
-							Time: time.Now(), Valid: true,
-						},
-						HasDetail: true,
-					}
-				}
 			} else if err := r.repo.UpsertMatchDetail(ctx, identity.MatchID, detail); err != nil &&
 				!errors.Is(err, store.ErrMatchFinalized) {
 				operationErrors = append(operationErrors, fmt.Errorf("match %s detail: %w", match.ID, err))
@@ -265,6 +251,34 @@ func (r *runner) processMatches(
 				match.Home.ID, match.Away.ID, summary.Participation); err != nil {
 				operationErrors = append(operationErrors,
 					fmt.Errorf("match %s participation: %w", match.ID, err))
+			}
+
+			// Structured commentary is additive to the scoreline row already
+			// written above. Empty coverage is a successful repository no-op.
+			// A real write failure leaves a finished match unfinalized so the
+			// next cycle retries instead of freezing a permanent data gap.
+			commentaryWriteSucceeded := true
+			if _, err := r.repo.WriteCommentary(ctx, identity.MatchID, summary.Commentary); err != nil {
+				commentaryWriteSucceeded = false
+				operationErrors = append(operationErrors,
+					fmt.Errorf("match %s commentary: %w", match.ID, err))
+			}
+
+			if match.State == model.MatchStateFinished && commentaryWriteSucceeded {
+				didFinalize, err := r.repo.FinalizeMatch(ctx, identity, match, detail)
+				if err != nil {
+					operationErrors = append(operationErrors, fmt.Errorf("match %s finalize: %w", match.ID, err))
+				} else if didFinalize {
+					result.finalized = true
+					matchActive = false
+					existing[identity.MatchID] = store.MatchRow{
+						State: match.State,
+						FinalizedAt: pgtype.Timestamptz{
+							Time: time.Now(), Valid: true,
+						},
+						HasDetail: true,
+					}
+				}
 			}
 		}
 		r.mirrorCrest(ctx, match.Home)

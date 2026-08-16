@@ -32,6 +32,7 @@ type repository interface {
 	UpsertMatchDetail(context.Context, uuid.UUID, model.MatchDetail) error
 	FinalizeMatch(context.Context, store.MatchIdentity, model.Match, model.MatchDetail) (bool, error)
 	WriteParticipation(context.Context, string, uuid.UUID, string, string, *model.MatchParticipation) (store.ParticipationStats, error)
+	WriteCommentary(context.Context, uuid.UUID, []model.CommentaryLine) (int, error)
 	ExistingMatches(context.Context, string, string, []uuid.UUID) (map[uuid.UUID]store.MatchRow, error)
 	UnfinalizedMatches(context.Context, string, string, string) ([]model.Match, error)
 	ReplaceStandings(context.Context, string, string, string, []model.Standing, map[string]string) error
