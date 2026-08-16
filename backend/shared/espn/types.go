@@ -38,6 +38,7 @@ type MatchDetail = model.MatchDetail
 
 // Ingester-internal participation shapes (never serialized to the reader).
 type SquadPlayer = model.SquadPlayer
+type PlayerMatchStats = model.PlayerMatchStats
 type PlayerEvent = model.PlayerEvent
 type MatchParticipation = model.MatchParticipation
 
