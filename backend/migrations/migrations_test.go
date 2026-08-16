@@ -98,6 +98,47 @@ func TestPlayerCaptureKeysOnCanonicalPlayers(t *testing.T) {
 	}
 }
 
+// A snapshot series is only a series if a day appears once. standing_snapshot
+// shipped in 0002 with a bigserial primary key and no uniqueness at all, so a
+// writer that ran twice on one day would append a second full table and every
+// downstream aggregate would double-count it. The generated date column is the
+// bucket; the unique index over it is the guarantee.
+func TestStandingSnapshotIsIdempotentPerDay(t *testing.T) {
+	sql := readMigration(t, "0004_standing_snapshot_idempotency.up.sql")
+	for _, required := range []string{
+		"captured_on date GENERATED ALWAYS AS",
+		"CREATE UNIQUE INDEX standing_snapshot_day_key",
+		"(competition_id, season_id, team_id, captured_on)",
+		"standing_snapshot_day_idx",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("0004_standing_snapshot_idempotency.up.sql missing %q", required)
+		}
+	}
+	// Snapshots are append-only. A DELETE grant here would let a bug erase
+	// history that cannot be re-fetched from any provider.
+	if strings.Contains(sql, "GRANT DELETE ON standing_snapshot") {
+		t.Fatal("standing_snapshot must stay append-only for the ingester")
+	}
+}
+
+func TestStandingSnapshotRollbackDropsOnlyWhatItAdded(t *testing.T) {
+	sql := readMigration(t, "0004_standing_snapshot_idempotency.down.sql")
+	for _, required := range []string{
+		"DROP INDEX IF EXISTS standing_snapshot_day_key",
+		"DROP INDEX IF EXISTS standing_snapshot_day_idx",
+		"DROP COLUMN IF EXISTS captured_on",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("rollback missing %q", required)
+		}
+	}
+	// Rolling back an index must not roll back the data it indexed.
+	if strings.Contains(sql, "DROP TABLE") {
+		t.Fatal("the rollback must not drop standing_snapshot itself")
+	}
+}
+
 func TestInitialRollbackRevokesDefaultPrivileges(t *testing.T) {
 	sql := readMigration(t, "0001_init.down.sql")
 	for _, required := range []string{
