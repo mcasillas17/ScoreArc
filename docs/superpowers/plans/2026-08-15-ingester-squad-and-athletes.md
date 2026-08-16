@@ -88,6 +88,14 @@ ls backend/migrations/
 
 Expected: `0001` … `0010_leader_category.*`.
 
+> **Execution note (2026-08-16):** latest `origin/main` had consolidated the prerequisite
+> schema into `0001_init`, `0002_snapshots`, and `0003_player_capture`; the projected
+> intermediate migration filenames were never published. The required canonical UUID player
+> crosswalk, UUID matches, appearances, standings, and `Store.Player` were present. Exact and
+> repo-wide searches plus the migration-directory listing confirmed that `0011` and `0012`
+> were free, so the coordinator's explicit reservation of those numbers was used without
+> renumbering.
+
 > **Numbering and `match.id` type both assume the post-merge tree.** On `main`,
 > `0003_ingester_delete_grant` / `0004_ingester_hardening` still exist and `match.id` is
 > still `text`; `feat/canonical-identity-impl` deletes those two and re-keys `match.id` to
@@ -134,7 +142,7 @@ Expected: `0001` … `0010_leader_category.*`.
 
 ### Task 1: Record both fixtures and read what is really in them
 
-- [ ] **Step 1: Record**
+- [x] **Step 1: Record**
 
 ```bash
 cd backend
@@ -149,7 +157,7 @@ Note the two different hosts. The roster is on `site.api.espn.com`; the bio is o
 `{"code":404}` — verified, and it is a silent-looking 404 rather than an error, so a
 misdirected URL presents as "this player has no history".
 
-- [ ] **Step 2: Verify**
+- [x] **Step 2: Verify**
 
 ```bash
 cd backend && node -e "
@@ -185,12 +193,16 @@ bio keys: teamHistory
 teamHistory: 222=Querétaro (2025-CURRENT)
 ```
 
+> **Recorded-payload note (2026-08-16):** ESPN enriched athlete `297287` after this plan was
+> written. The committed fixture now has four ordered history entries: Querétaro, Pumas UNAM,
+> Monterrey, and Mexico U17. The endpoint shape and mapping contract are unchanged.
+
 Two readings. **`with statistics: 27` of 35** — eight squad members have not played, and a
 mapper that assumes `statistics` is present will nil-panic on the ninth. **`injuries
 populated anywhere: false`** — the field is there and the data is not; this is the same
 trap the E4 team-pages plan calls out, and it is checked here for the same reason.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add backend/shared/espn/testdata/espn-team-roster.json \
@@ -215,7 +227,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Create: `backend/migrations/0011_squad_and_season_stats.{up,down}.sql`
 - Test: `backend/migrations/migrations_test.go`
 
-- [ ] **Step 1: Write the failing migration test**
+- [x] **Step 1: Write the failing migration test**
 
 ```go
 // Squad membership is per season, not per player: a player belongs to a club
@@ -244,7 +256,7 @@ func TestSquadAndSeasonStatsAreSeasonScoped(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run, watch it fail, then write the migration**
+- [x] **Step 2: Run, watch it fail, then write the migration**
 
 ```bash
 cd backend && go test ./migrations/ -run SquadAndSeasonStats
@@ -350,7 +362,7 @@ DROP TABLE IF EXISTS squad_membership;
 -- demographics for every player already resolved.
 ```
 
-- [ ] **Step 3: Run and prove it applies**
+- [x] **Step 3: Run and prove it applies**
 
 ```bash
 cd backend && go test ./migrations/ && go test ./shared/store/ -run TestResolveTeamHitsTheCrosswalk
@@ -358,7 +370,7 @@ cd backend && go test ./migrations/ && go test ./shared/store/ -run TestResolveT
 
 Expected: both `ok`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/migrations/0011_squad_and_season_stats.*.sql backend/migrations/migrations_test.go
@@ -397,7 +409,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
   `Stats *model.PlayerSeasonStats`.
 - `func (s *Store) ReplaceSquad(ctx, competitionID, seasonID, teamID, source string, members []model.SquadMember, playerIDs map[string]uuid.UUID) error`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `backend/shared/espn/roster_test.go` with, at minimum:
 
@@ -511,7 +523,7 @@ Write these in the style of `participation_integration_test.go`, reusing
 `newIntegrationStore`, `mustSeedTwoTeams`, `mustSeedSeason` and the
 `strings.Replace` DSN trick.
 
-- [ ] **Step 2: Run, watch them fail, then implement**
+- [x] **Step 2: Run, watch them fail, then implement**
 
 ```bash
 cd backend && go test ./shared/espn/ ./shared/store/ -run "Roster|ReplaceSquad"
@@ -536,7 +548,7 @@ Implement:
   `player.birth_date` / `player.nationality` with `COALESCE` so a later payload without them
   cannot blank an earlier one.
 
-- [ ] **Step 3: Run**
+- [x] **Step 3: Run**
 
 ```bash
 cd backend && go test -race ./shared/espn/ ./shared/store/ -run "Roster|ReplaceSquad" -v
@@ -544,7 +556,7 @@ cd backend && go test -race ./shared/espn/ ./shared/store/ -run "Roster|ReplaceS
 
 Expected: every case `--- PASS`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/shared/espn/client.go backend/shared/espn/roster.go \
@@ -587,7 +599,7 @@ refreshed, keyed `comp/season`, re-earned after a restart.
 Which teams? The ones in `standing` for that competition and season, which the ingester
 already writes and which is the definitive list of who is in the competition.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```go
 // ~180 requests once a day is negligible; on every slow tick it is ~52,000.
@@ -620,7 +632,7 @@ func TestSquadRefreshSkipsFastTicks(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Implement**
+- [x] **Step 2: Implement**
 
 Create `backend/ingester/squad.go` with `refreshSquads(ctx, comp, season, teamIDs map[string]string) error`,
 following `snapshotStandings`'s shape from T7.1: check the in-process day gate, iterate the
@@ -635,7 +647,7 @@ Call it from `refreshStandings` after the snapshot, on `slowTick` only, and add
 `squadsRefreshed map[string]time.Time` to the `runner` struct **and to `main.go`'s literal**
 (the same nil-map trap T7.1 flags).
 
-- [ ] **Step 3: Run**
+- [x] **Step 3: Run**
 
 ```bash
 cd backend && go test -race ./ingester/ -v -run Squad
@@ -644,7 +656,7 @@ cd backend && go test -race ./...
 
 Expected: the three cases pass, then every package `ok`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add backend/ingester/squad.go backend/ingester/contracts.go \
@@ -683,7 +695,7 @@ would be a denial-of-service against a keyless public API we do not pay for. So:
   `player.bio_fetched_at` drives it, so the work is self-limiting and survives restarts
   because the state is in the database rather than in the process.
 
-- [ ] **Step 1: Migration**
+- [x] **Step 1: Migration**
 
 `0012_player_bio.up.sql`:
 
@@ -733,7 +745,7 @@ DROP INDEX IF EXISTS player_bio_stale_idx;
 ALTER TABLE player DROP COLUMN IF EXISTS bio_fetched_at;
 ```
 
-- [ ] **Step 2: Mapper**
+- [x] **Step 2: Mapper**
 
 `AthleteBioURL(slug, athleteID)` on the **common/v3 host** — add a
 `webCommon(slug)` helper mirroring the E5 plan's TypeScript
@@ -746,7 +758,7 @@ returning an empty slice — not an error — for `{"code":404}` or an absent `t
 **Test that 404 case explicitly**; it is the shape a mistyped slug produces and it must not
 look like success with data.
 
-- [ ] **Step 3: The bounded refresher**
+- [x] **Step 3: The bounded refresher**
 
 `Store.PlayersNeedingBio(ctx, source string, staleBefore time.Time, limit int) (map[string]uuid.UUID, error)`:
 
@@ -783,13 +795,18 @@ const (
 )
 ```
 
-- [ ] **Step 4: Test, run, commit**
+- [x] **Step 4: Test, run, commit**
 
 ```bash
 cd backend && go test -race ./... && go vet ./...
 ```
 
 Expected: every package `ok`, vet silent.
+
+> **Rollback evidence (2026-08-16):** a Testcontainers PostgreSQL 16 test applies every up
+> migration, runs `0012.down` then `0011.down`, proves all three owned tables and
+> `player.bio_fetched_at` are gone while the pre-existing demographic columns remain, then
+> reapplies both up migrations successfully.
 
 Cover, at minimum: the batch never exceeds `bioBatchSize`; a player with no `appearance`
 row is never selected; a player whose bio came back empty is **not** re-selected on the next
@@ -826,7 +843,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ### Task 6: Doc, gate and PR
 
-- [ ] **Step 1: Document**
+- [x] **Step 1: Document**
 
 Add to `docs/backend/ARCHITECTURE.md` under `### Tier 1`:
 
@@ -847,7 +864,7 @@ Add a short note under "Deferred":
   **empty on all 35**. The field existing is not the data existing.
 ```
 
-- [ ] **Step 2: Full gate and a real run**
+- [x] **Step 2: Full gate and a real run**
 
 ```bash
 cd backend && go build ./... && go test -race ./... && go vet ./...
@@ -871,6 +888,16 @@ unplayed athletes and Task 3's rule did not land.
 
 `player_team_history` will be near-empty after one `-once` run — the bio sweep does 20 per
 slow tick by design. That is correct; say so in the PR rather than treating it as a failure.
+
+> **Execution evidence (2026-08-16):** the post-sync full gate completed in the required
+> order: locked dependency install, nine-competition export with no diff, 25 Vitest files /
+> 210 tests, strict TypeScript, lint, production build, Go build, full race suite, and vet.
+> Lint/build retained six warnings in untouched frontend components, and `npm ci` reported
+> eight audit findings in the unchanged lockfile. A scratch PostgreSQL 16 run connected as
+> non-superuser `ingest_local` inheriting `scorearc_ingester`, completed `-once` in 52.7s
+> with zero failures, and wrote nine competitions: 6,903 memberships, 3,519 season-stat
+> rows, 5,299 players (5,101 dated / 5,083 nationalities), and 66 history rows. The stat-row
+> count is strictly below membership, as required.
 
 - [ ] **Step 3: PR**
 
