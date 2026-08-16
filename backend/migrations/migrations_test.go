@@ -193,6 +193,48 @@ func TestAppearanceBoxScoreColumnsAreNullable(t *testing.T) {
 	}
 }
 
+// Squad membership is per season, not per player: a player belongs to a club
+// in a season, and a transfer is a second row rather than an overwrite -- the
+// same reason `appearance` records the team per match instead of on `player`.
+func TestSquadAndSeasonStatsAreSeasonScoped(t *testing.T) {
+	sql := readMigration(t, "0011_squad_and_season_stats.up.sql")
+	for _, required := range []string{
+		"CREATE TABLE squad_membership",
+		"PRIMARY KEY (competition_id, season_id, team_id, player_id)",
+		"CREATE TABLE player_season_stat",
+		"PRIMARY KEY (competition_id, season_id, player_id)",
+		"ALTER TABLE player",
+		"GRANT SELECT, INSERT, UPDATE ON squad_membership, player_season_stat TO scorearc_ingester",
+		"GRANT DELETE ON squad_membership TO scorearc_ingester",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("0011_squad_and_season_stats.up.sql missing %q", required)
+		}
+	}
+	// Eight of 35 roster athletes had no statistics block at all. NOT NULL
+	// would force a zero onto a player who has not played.
+	if strings.Contains(sql, "appearances int NOT NULL") {
+		t.Fatal("season stat columns must be nullable")
+	}
+}
+
+func TestSquadAndSeasonStatsRollbackDropsOwnedTablesInReverseOrder(t *testing.T) {
+	sql := readMigration(t, "0011_squad_and_season_stats.down.sql")
+	stats := strings.Index(sql, "DROP TABLE IF EXISTS player_season_stat")
+	squad := strings.Index(sql, "DROP TABLE IF EXISTS squad_membership")
+	if stats < 0 || squad < 0 {
+		t.Fatal("0011 rollback must drop both owned tables")
+	}
+	if stats > squad {
+		t.Fatal("0011 rollback must drop player_season_stat before squad_membership")
+	}
+	for _, existingColumn := range []string{"birth_date", "nationality"} {
+		if strings.Contains(sql, "DROP COLUMN IF EXISTS "+existingColumn) {
+			t.Fatalf("0011 rollback must not drop pre-existing player.%s", existingColumn)
+		}
+	}
+}
+
 func TestAppearanceBoxScoreRollbackDropsOnlyTheColumns(t *testing.T) {
 	sql := readMigration(t, "0006_appearance_box_score.down.sql")
 	if !strings.Contains(sql, "DROP COLUMN IF EXISTS goals_conceded") {
@@ -200,6 +242,35 @@ func TestAppearanceBoxScoreRollbackDropsOnlyTheColumns(t *testing.T) {
 	}
 	if strings.Contains(sql, "DROP TABLE") {
 		t.Fatal("the rollback must not drop appearance itself")
+	}
+}
+
+func TestPlayerBioMigrationDefinesHistoryAndDurableTTL(t *testing.T) {
+	sql := readMigration(t, "0012_player_bio.up.sql")
+	for _, required := range []string{
+		"CREATE TABLE player_team_history",
+		"PRIMARY KEY (player_id, team_source_id, seasons)",
+		"ALTER TABLE player ADD COLUMN IF NOT EXISTS bio_fetched_at timestamptz",
+		"CREATE INDEX player_bio_stale_idx ON player (bio_fetched_at NULLS FIRST)",
+		"GRANT SELECT, INSERT, UPDATE ON player_team_history TO scorearc_ingester",
+		"GRANT DELETE ON player_team_history TO scorearc_ingester",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("0012_player_bio.up.sql missing %q", required)
+		}
+	}
+}
+
+func TestPlayerBioRollbackRemovesEveryOwnedObject(t *testing.T) {
+	sql := readMigration(t, "0012_player_bio.down.sql")
+	history := strings.Index(sql, "DROP TABLE IF EXISTS player_team_history")
+	index := strings.Index(sql, "DROP INDEX IF EXISTS player_bio_stale_idx")
+	column := strings.Index(sql, "ALTER TABLE player DROP COLUMN IF EXISTS bio_fetched_at")
+	if history < 0 || index < 0 || column < 0 {
+		t.Fatal("0012 rollback must remove history, TTL index, and TTL column")
+	}
+	if !(history < index && index < column) {
+		t.Fatal("0012 rollback statements must stay in dependency-safe order")
 	}
 }
 
