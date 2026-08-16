@@ -339,6 +339,7 @@ func TestMapParticipationRejectsImpossibleCounts(t *testing.T) {
 	  {"starter":true,"jersey":"9","athlete":{"id":"77","displayName":"Striker"},
 	   "position":{"abbreviation":"F"},
 	   "stats":[{"name":"totalGoals","value":1.5},{"name":"totalShots","value":-3},
+	            {"name":"offsides","value":3000000000},
 	            {"name":"shotsOnTarget","value":1e20},{"name":"redCards","value":null},
 	            {"name":"goalAssists","value":2}]}]}]}`)
 	part, err := MapParticipation(raw, "1", "2")
@@ -351,6 +352,9 @@ func TestMapParticipationRejectsImpossibleCounts(t *testing.T) {
 	}
 	if s.Shots != nil {
 		t.Fatalf("Shots = %d from value -3, want nil", *s.Shots)
+	}
+	if s.Offsides != nil {
+		t.Fatalf("Offsides = %d from value 3000000000, want nil", *s.Offsides)
 	}
 	if s.ShotsOnTarget != nil {
 		t.Fatalf("ShotsOnTarget = %d from value 1e20, want nil", *s.ShotsOnTarget)

@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+const maxPostgresInt4 = 1<<31 - 1
+
 // MapParticipation extracts the people from an ESPN match summary: the full
 // squads (starters AND substitutes) and one event per player-action.
 //
@@ -108,10 +110,11 @@ func mapPlayerStats(entries []rawPlayerStat) *PlayerMatchStats {
 		}
 		count, ok := wholeCount(entry.Value)
 		if !ok {
-			// A fractional, negative, or out-of-range count is a payload we
-			// do not understand. Leaving it nil records "unknown"; converting
-			// it would record a plausible-looking number that is not a
-			// measurement. One bad entry never discards the rest of the row.
+			// A fractional, negative, or PostgreSQL-int4-out-of-range count
+			// is a payload we do not understand. Leaving it nil records
+			// "unknown"; converting it would record a plausible-looking
+			// number that is not a measurement. One bad entry never discards
+			// the rest of the row.
 			continue
 		}
 		*target = &count
@@ -121,7 +124,7 @@ func mapPlayerStats(entries []rawPlayerStat) *PlayerMatchStats {
 
 func wholeCount(value *float64) (int, bool) {
 	if value == nil || *value < 0 ||
-		*value >= math.Ldexp(1, strconv.IntSize-1) ||
+		*value > maxPostgresInt4 ||
 		math.Trunc(*value) != *value {
 		return 0, false
 	}
