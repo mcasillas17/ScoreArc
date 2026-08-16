@@ -129,6 +129,7 @@ export default function BracketInteractive({ rounds: initialRounds, apiBase, tea
           return;
         }
         const data = (await res.json()) as BracketRound[];
+        if (!mounted) return;
         if (mounted && Array.isArray(data) && data.length) {
           setRounds((prev) => mergeRounds(prev, data));
         }

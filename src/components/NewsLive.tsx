@@ -23,6 +23,7 @@ export default function NewsLive({ initial, apiBase }: Props) {
         if (!mounted) return;
         if (res.ok) {
           const data = (await res.json()) as NewsArticle[];
+          if (!mounted) return;
           if (mounted && Array.isArray(data) && data.length) setNews(data);
           if (feedFailed.current) {
             trackFeedRecovery('news');

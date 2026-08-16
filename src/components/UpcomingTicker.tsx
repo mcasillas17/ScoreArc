@@ -175,7 +175,9 @@ export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'f
         const res = await fetch(`${apiBase}/${weekOnly ? 'matches' : 'upcoming'}`, { cache: 'no-store' });
         if (!on) return;
         if (res.ok) {
-          if (on) setMatches((await res.json()) as Match[]);
+          const data = (await res.json()) as Match[];
+          if (!on) return;
+          setMatches(data);
           if (feedFailed.current) {
             trackFeedRecovery('upcoming');
             feedFailed.current = false;

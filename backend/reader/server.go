@@ -38,8 +38,8 @@ type App struct {
 
 func (a *App) router() http.Handler {
 	router := chi.NewRouter()
-	router.Use(a.recoverJSON)
 	router.Use(a.requestID)
+	router.Use(a.recoverJSON)
 	router.Use(a.requestLogging)
 	router.Use(cors.Handler(cors.Options{
 		AllowedOrigins: []string{"*"},

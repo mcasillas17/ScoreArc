@@ -426,7 +426,7 @@ function leagueCompetition(
 }
 
 export function getCompetition(id: string): Competition | undefined {
-  return COMPETITIONS[id];
+  return Object.hasOwn(COMPETITIONS, id) ? COMPETITIONS[id] : undefined;
 }
 
 export function listCompetitions(): Competition[] {
@@ -436,7 +436,7 @@ export function listCompetitions(): Competition[] {
 // Resolve a (competition, season) pair. `seasonId` defaults to the competition's
 // current season. Returns undefined for an unknown competition or season.
 export function resolveSeason(compId: string, seasonId?: string): CompetitionSeason | undefined {
-  const competition = COMPETITIONS[compId];
+  const competition = getCompetition(compId);
   if (!competition) return undefined;
   const sid = seasonId ?? competition.currentSeasonId;
   const season = competition.seasons[sid];
