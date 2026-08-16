@@ -12,7 +12,7 @@ import (
 )
 
 var ErrEmptyReplacement = errors.New("refusing to replace with an empty dataset")
-var ErrPartialReplacement = errors.New("refusing to replace standings with fewer rows")
+var ErrPartialReplacement = errors.New("refusing to replace with a partial dataset")
 var ErrMatchFinalized = errors.New("match is finalized")
 
 // ErrMatchMissing means a fact write addressed a canonical match id that has no
