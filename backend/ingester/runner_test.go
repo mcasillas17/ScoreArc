@@ -2118,3 +2118,33 @@ func TestStandingsSnapshotRetriesACanceledFinalizationRewrite(t *testing.T) {
 			retried, repo.snapshotCalls)
 	}
 }
+
+func TestStandingsSnapshotRetriesWhenFinalizationRefreshStartsCanceled(t *testing.T) {
+	repo := &fakeRepository{}
+	worker := newSnapshotTestRunner(repo)
+	worker.runCycle(context.Background(), true)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	comp := worker.competitions[0]
+	season := comp.Seasons[comp.CurrentSeasonId]
+	if err := worker.refreshStandings(ctx, comp, season, true); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled refresh error = %v, want context.Canceled", err)
+	}
+
+	retried := worker.runCycle(context.Background(), true)
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	failedRunLogged := false
+	for _, run := range repo.logged {
+		failedRunLogged = failedRunLogged ||
+			(run.kind == standingSnapshotRunKind && !run.ok)
+	}
+	if !failedRunLogged {
+		t.Fatal("canceled finalization snapshot was not audited as failed")
+	}
+	if retried.failures != 0 || repo.snapshotCalls != 2 {
+		t.Fatalf("retry cycle = %+v, snapshot calls = %d; want one successful retry",
+			retried, repo.snapshotCalls)
+	}
+}

@@ -3,6 +3,7 @@ package espn
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -27,6 +28,31 @@ func TestMapStandingsRejectsMissingRequiredStats(t *testing.T) {
 	}]}}]}`)
 	if _, err := MapStandings(raw); err == nil {
 		t.Fatal("expected incomplete standing stats error")
+	}
+}
+
+func TestMapStandingsRejectsNullRequiredStats(t *testing.T) {
+	valid := `{"children":[{"name":"League","standings":{"entries":[{
+		"team":{"id":"1","displayName":"Team","abbreviation":"TST"},
+		"stats":[
+			{"name":"gamesPlayed","value":1},{"name":"wins","value":1},
+			{"name":"ties","value":1},{"name":"losses","value":1},
+			{"name":"pointsFor","value":1},{"name":"pointsAgainst","value":1},
+			{"name":"pointDifferential","value":1},{"name":"points","value":1}
+		]
+	}]}}]}`
+	for _, name := range []string{
+		"gamesPlayed", "wins", "ties", "losses",
+		"pointsFor", "pointsAgainst", "pointDifferential", "points",
+	} {
+		t.Run(name, func(t *testing.T) {
+			present := `"name":"` + name + `","value":1`
+			nullValue := `"name":"` + name + `","value":null`
+			raw := []byte(strings.Replace(valid, present, nullValue, 1))
+			if _, err := MapStandings(raw); err == nil {
+				t.Fatalf("expected null %s to be rejected", name)
+			}
+		})
 	}
 }
 

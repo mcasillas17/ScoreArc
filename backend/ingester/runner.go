@@ -481,10 +481,14 @@ func (r *runner) refreshStandings(
 	season config.Season,
 	tableChanged bool,
 ) error {
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
 	start := time.Now()
+	if err := ctx.Err(); err != nil {
+		if tableChanged {
+			r.markStandingsSnapshotPending(comp.ID, season.ID)
+			r.recordRun(ctx, comp.ID, standingSnapshotRunKind, start, err)
+		}
+		return err
+	}
 	rows, err := r.source.Standings(ctx, comp, season)
 	teamIDs := make(map[string]string, len(rows))
 	if err == nil {
