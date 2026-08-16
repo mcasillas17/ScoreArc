@@ -47,6 +47,7 @@ type runner struct {
 	rejectedAssets    map[string]struct{}
 	backfilled        map[string]time.Time
 	backfillAttempted map[string]time.Time
+	squadsRefreshed   map[string]time.Time
 	mirrorUnavailable time.Time
 	mirrorTimeout     time.Duration
 }
@@ -352,7 +353,7 @@ func (r *runner) ingestCompSeason(
 	var refreshErrors []error
 	if matchResult.finalized || slowTick {
 		refreshErrors = append(refreshErrors,
-			r.refreshStandings(ctx, comp, season),
+			r.refreshStandings(ctx, comp, season, slowTick),
 			r.refreshTopScorers(ctx, comp, season),
 		)
 	}
@@ -472,6 +473,7 @@ func (r *runner) refreshStandings(
 	ctx context.Context,
 	comp config.Competition,
 	season config.Season,
+	slowTick bool,
 ) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -512,7 +514,10 @@ func (r *runner) refreshStandings(
 		}
 	}
 	r.recordRun(ctx, comp.ID, "standings", start, err)
-	return err
+	if err != nil || !slowTick {
+		return err
+	}
+	return r.refreshSquads(ctx, comp, season, teamIDs)
 }
 
 func (r *runner) refreshTopScorers(

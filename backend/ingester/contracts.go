@@ -36,6 +36,7 @@ type repository interface {
 	UnfinalizedMatches(context.Context, string, string, string) ([]model.Match, error)
 	ReplaceStandings(context.Context, string, string, string, []model.Standing, map[string]string) error
 	ReplaceTopScorers(context.Context, string, string, string, []model.TopScorer) error
+	ReplaceSquad(context.Context, string, string, string, string, []model.SquadMember, map[string]uuid.UUID) error
 	LogIngestRun(context.Context, *string, string, time.Time, time.Time, bool, string) error
 	PruneIngestRuns(context.Context, time.Time) (int64, error)
 }

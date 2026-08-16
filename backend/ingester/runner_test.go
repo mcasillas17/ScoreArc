@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -36,6 +37,14 @@ type fakeSource struct {
 	scoreboardDelay time.Duration
 	scoreboardBlock bool
 	topScorers      []model.TopScorer
+	standings       []model.Standing
+	standingsErr    error
+	rosters         map[string]model.Squad
+	rosterErrors    map[string]error
+	rosterCalls     []string
+	rosterDelay     time.Duration
+	rosterCurrent   int
+	rosterMax       int
 	currentCalls    int
 	maxCalls        int
 }
@@ -100,6 +109,11 @@ func (f *fakeSource) Summary(
 	}, nil
 }
 func (f *fakeSource) Standings(context.Context, config.Competition, config.Season) ([]model.Standing, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.standings != nil || f.standingsErr != nil {
+		return f.standings, f.standingsErr
+	}
 	return []model.Standing{{Rank: 1, Team: model.Team{ID: "home"}}}, nil
 }
 func (f *fakeSource) TopScorers(context.Context, config.Competition, config.Season, int) ([]model.TopScorer, error) {
@@ -110,6 +124,50 @@ func (f *fakeSource) TopScorers(context.Context, config.Competition, config.Seas
 }
 func (f *fakeSource) Bracket(context.Context, config.Competition, config.Season, bool) ([]model.BracketMatch, error) {
 	return f.bracket, f.bracketErr
+}
+func (f *fakeSource) Roster(
+	ctx context.Context,
+	_ config.Competition,
+	teamSourceID string,
+) (model.Squad, error) {
+	f.mu.Lock()
+	f.rosterCalls = append(f.rosterCalls, teamSourceID)
+	f.rosterCurrent++
+	if f.rosterCurrent > f.rosterMax {
+		f.rosterMax = f.rosterCurrent
+	}
+	delay := f.rosterDelay
+	err := f.rosterErrors[teamSourceID]
+	squad, exists := f.rosters[teamSourceID]
+	f.mu.Unlock()
+	defer func() {
+		f.mu.Lock()
+		f.rosterCurrent--
+		f.mu.Unlock()
+	}()
+
+	if delay > 0 {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return model.Squad{}, ctx.Err()
+		case <-timer.C:
+		}
+	}
+	if err != nil {
+		return model.Squad{}, err
+	}
+	if !exists {
+		squad = model.Squad{
+			TeamSourceID: teamSourceID,
+			Players: []model.SquadMember{{
+				SourceID: teamSourceID + "-player",
+				FullName: teamSourceID + " Player",
+			}},
+		}
+	}
+	return squad, nil
 }
 
 // fakeTeamID and fakeMatchID are the fake resolver's crosswalk. They are
@@ -138,6 +196,9 @@ type fakeRepository struct {
 	standingsCalls   int
 	standingsErr     error
 	topScorersCalls  int
+	squadCalls       int
+	squadTeams       []string
+	squadErrors      map[string]error
 	unfinalized      []model.Match
 	unfinalizedErr   error
 	logged           []loggedRun
@@ -289,6 +350,18 @@ func (f *fakeRepository) ReplaceTopScorers(
 	}
 	return nil
 }
+func (f *fakeRepository) ReplaceSquad(
+	_ context.Context,
+	_, _, teamID, _ string,
+	_ []model.SquadMember,
+	_ map[string]uuid.UUID,
+) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.squadCalls++
+	f.squadTeams = append(f.squadTeams, teamID)
+	return f.squadErrors[teamID]
+}
 func (f *fakeRepository) LogIngestRun(_ context.Context, _ *string, kind string, _ time.Time, _ time.Time, ok bool, _ string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -348,6 +421,7 @@ func testRunner(src *fakeSource, repo *fakeRepository, comp config.Competition) 
 		rejectedAssets:    make(map[string]struct{}),
 		backfilled:        make(map[string]time.Time),
 		backfillAttempted: make(map[string]time.Time),
+		squadsRefreshed:   make(map[string]time.Time),
 		maxConcurrent:     3,
 	}
 }
@@ -1871,6 +1945,124 @@ func TestStandingsAreWrittenWithResolvedTeamIDs(t *testing.T) {
 
 	if repo.standingTeamIDs["home"] != fakeTeamID("home") {
 		t.Fatalf("standings team ids = %v", repo.standingTeamIDs)
+	}
+}
+
+func squadTestCompetition() config.Competition {
+	return config.Competition{
+		ID: "test", ESPNSlug: "mex.1", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+}
+
+func squadTestStandings(teamIDs ...string) []model.Standing {
+	rows := make([]model.Standing, 0, len(teamIDs))
+	for index, teamID := range teamIDs {
+		rows = append(rows, model.Standing{
+			Rank: index + 1,
+			Team: model.Team{ID: teamID, Name: teamID, Abbr: strings.ToUpper(teamID)},
+		})
+	}
+	return rows
+}
+
+// ~180 requests once a day is negligible; on every slow tick it is ~52,000.
+func TestSquadRefreshRunsOncePerDay(t *testing.T) {
+	src := &fakeSource{standings: squadTestStandings("one", "two", "three")}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	worker := testRunner(src, repo, squadTestCompetition())
+	worker.runCycle(context.Background(), true)
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.squadCalls != len(repo.standingTeamIDs) {
+		t.Fatalf("squad refreshes = %d across two slow ticks, want one per team (%d)",
+			repo.squadCalls, len(repo.standingTeamIDs))
+	}
+}
+
+// One club's roster failing must not stop the other nineteen.
+func TestSquadRefreshContinuesPastOneFailure(t *testing.T) {
+	src := &fakeSource{
+		standings:    squadTestStandings("one", "two", "three"),
+		rosterErrors: map[string]error{"two": errors.New("roster unavailable")},
+	}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	result := testRunner(src, repo, squadTestCompetition()).runCycle(context.Background(), true)
+
+	src.mu.Lock()
+	rosterCalls := len(src.rosterCalls)
+	src.mu.Unlock()
+	repo.mu.Lock()
+	squadCalls := repo.squadCalls
+	failedRun := hasLoggedKind(repo.logged, "squads") && result.failures > 0
+	repo.mu.Unlock()
+	if rosterCalls != 3 || squadCalls != 2 {
+		t.Fatalf("roster calls = %d, squad writes = %d; want 3 and 2", rosterCalls, squadCalls)
+	}
+	if !failedRun {
+		t.Fatal("partial squad failure was not surfaced in cycle/run telemetry")
+	}
+}
+
+func TestSquadRefreshRetriesWholeCompetitionAfterOneFailure(t *testing.T) {
+	src := &fakeSource{
+		standings:    squadTestStandings("one", "two"),
+		rosterErrors: map[string]error{"two": errors.New("temporary")},
+	}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	worker := testRunner(src, repo, squadTestCompetition())
+	worker.runCycle(context.Background(), true)
+
+	src.mu.Lock()
+	delete(src.rosterErrors, "two")
+	src.mu.Unlock()
+	worker.runCycle(context.Background(), true)
+	worker.runCycle(context.Background(), true)
+
+	src.mu.Lock()
+	defer src.mu.Unlock()
+	if len(src.rosterCalls) != 4 {
+		t.Fatalf("roster calls = %d, want 4 (two failed-cycle calls, two retry calls)",
+			len(src.rosterCalls))
+	}
+}
+
+// A fast tick must never trigger it. The fast interval is 20s.
+func TestSquadRefreshSkipsFastTicks(t *testing.T) {
+	src := &fakeSource{standings: squadTestStandings("one", "two")}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	testRunner(src, repo, squadTestCompetition()).runCycle(context.Background(), false)
+
+	src.mu.Lock()
+	rosterCalls := len(src.rosterCalls)
+	src.mu.Unlock()
+	repo.mu.Lock()
+	squadCalls := repo.squadCalls
+	repo.mu.Unlock()
+	if rosterCalls != 0 || squadCalls != 0 {
+		t.Fatalf("fast tick made %d roster calls and %d squad writes, want 0/0",
+			rosterCalls, squadCalls)
+	}
+}
+
+func TestSquadRefreshBoundsConcurrencyAtFive(t *testing.T) {
+	teamIDs := []string{"one", "two", "three", "four", "five", "six", "seven", "eight"}
+	src := &fakeSource{
+		standings:   squadTestStandings(teamIDs...),
+		rosterDelay: 20 * time.Millisecond,
+	}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	testRunner(src, repo, squadTestCompetition()).runCycle(context.Background(), true)
+
+	src.mu.Lock()
+	defer src.mu.Unlock()
+	if src.rosterMax > 5 {
+		t.Fatalf("concurrent roster requests = %d, want at most 5", src.rosterMax)
+	}
+	if src.rosterMax < 2 {
+		t.Fatalf("concurrent roster requests = %d, expected bounded parallelism", src.rosterMax)
 	}
 }
 
