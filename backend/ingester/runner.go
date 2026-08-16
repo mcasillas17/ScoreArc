@@ -25,6 +25,7 @@ const (
 	backfillRefreshInterval = 24 * time.Hour
 	backfillRetryInterval   = 30 * time.Minute
 	standingSnapshotRunKind = "standings_snapshot"
+	winProbSnapshotRunKind  = "win_prob_snapshot"
 )
 
 type activity struct {

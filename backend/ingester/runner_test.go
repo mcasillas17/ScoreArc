@@ -38,6 +38,8 @@ type fakeSource struct {
 	topScorers      []model.TopScorer
 	currentCalls    int
 	maxCalls        int
+	live            bool
+	winProbability  *model.WinProbability
 }
 
 func (f *fakeSource) Name() string { return "fake" }
@@ -80,7 +82,10 @@ func (f *fakeSource) Summary(
 		return source.SummaryResult{}, f.summaryErrors[call]
 	}
 	return source.SummaryResult{
-		Detail: model.MatchDetail{Scorers: []model.Scorer{{Player: "Winner"}}},
+		Detail: model.MatchDetail{
+			Scorers:        []model.Scorer{{Player: "Winner"}},
+			WinProbability: f.winProbability,
+		},
 		// Provider-shaped, exactly as a real source returns it: the team ids
 		// here are the provider's, and the ingester is responsible for handing
 		// the store canonical ones instead.
@@ -152,6 +157,8 @@ type fakeRepository struct {
 	participation    []*model.MatchParticipation
 	participationTo  []string
 	participationErr error
+	winProb          []model.WinProbability
+	winProbErr       error
 }
 
 type loggedRun struct {
@@ -226,6 +233,21 @@ func (f *fakeRepository) WriteParticipation(
 		return store.ParticipationStats{}, f.participationErr
 	}
 	return store.ParticipationStats{}, nil
+}
+
+func (f *fakeRepository) WriteWinProbSnapshot(
+	_ context.Context,
+	_ uuid.UUID,
+	probability model.WinProbability,
+	_ time.Time,
+) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.winProbErr != nil {
+		return f.winProbErr
+	}
+	f.winProb = append(f.winProb, probability)
+	return nil
 }
 
 func (f *fakeRepository) FinalizeMatch(
@@ -370,6 +392,20 @@ func testRunner(src *fakeSource, repo *fakeRepository, comp config.Competition) 
 		snapshotted:       make(map[string]time.Time),
 		maxConcurrent:     3,
 	}
+}
+
+func newTestRunnerWithSource(repo *fakeRepository, source *fakeSource) *runner {
+	match := finishedMatch()
+	match.State = model.MatchStateScheduled
+	if source.live {
+		match.State = model.MatchStateLive
+	}
+	source.matches = []model.Match{match}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	return testRunner(source, repo, comp)
 }
 
 func finishedMatch() model.Match {
@@ -2146,5 +2182,81 @@ func TestStandingsSnapshotRetriesWhenFinalizationRefreshStartsCanceled(t *testin
 	if retried.failures != 0 || repo.snapshotCalls != 2 {
 		t.Fatalf("retry cycle = %+v, snapshot calls = %d; want one successful retry",
 			retried, repo.snapshotCalls)
+	}
+}
+
+// A live match's probability is the whole point: it is the only state in which
+// the market moves fast enough for a curve to mean anything.
+func TestWinProbSnapshotWrittenForALiveMatch(t *testing.T) {
+	repo := &fakeRepository{}
+	source := &fakeSource{live: true, winProbability: &model.WinProbability{
+		Home: 52, Draw: 25, Away: 23,
+	}}
+	worker := newTestRunnerWithSource(repo, source)
+
+	worker.runCycle(context.Background(), false)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if len(repo.winProb) != 1 {
+		t.Fatalf("win prob writes = %d, want 1", len(repo.winProb))
+	}
+	if repo.winProb[0].Home != 52 {
+		t.Fatalf("home = %v, want 52", repo.winProb[0].Home)
+	}
+}
+
+// A scheduled match is polled on slow ticks all season. Snapshotting those
+// would write ~288 rows a day for every fixture on the calendar to describe a
+// market nobody is watching yet. Pre-match drift is a separate feature with a
+// separate cadence.
+func TestWinProbSnapshotSkippedForAScheduledMatch(t *testing.T) {
+	repo := &fakeRepository{}
+	source := &fakeSource{winProbability: &model.WinProbability{Home: 40, Draw: 30, Away: 30}}
+	worker := newTestRunnerWithSource(repo, source)
+
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if len(repo.winProb) != 0 {
+		t.Fatalf("win prob writes = %d for a scheduled match, want 0", len(repo.winProb))
+	}
+}
+
+// Not every competition has a betting market, and mapWinProbability returns
+// nil when there is no usable three-way moneyline. Writing 0/0/0 for those
+// would be inventing a market -- worse than an empty curve, because a reader
+// cannot tell the difference.
+func TestWinProbSnapshotSkippedWhenTheMarketIsAbsent(t *testing.T) {
+	repo := &fakeRepository{}
+	worker := newTestRunnerWithSource(repo, &fakeSource{live: true, winProbability: nil})
+
+	worker.runCycle(context.Background(), false)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if len(repo.winProb) != 0 {
+		t.Fatalf("win prob writes = %d with no market, want 0", len(repo.winProb))
+	}
+}
+
+// The snapshot is additive. A failure here must be recorded and must not stop
+// a scoreline from ingesting -- unlike the standings snapshot, a lost minute
+// of a market curve is not a lost day of league history.
+func TestWinProbSnapshotFailureDoesNotStopTheMatch(t *testing.T) {
+	repo := &fakeRepository{winProbErr: errors.New("boom")}
+	source := &fakeSource{live: true, winProbability: &model.WinProbability{Home: 52, Draw: 25, Away: 23}}
+	worker := newTestRunnerWithSource(repo, source)
+
+	worker.runCycle(context.Background(), false)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.matchCalls == 0 {
+		t.Fatal("the match was not upserted; an additive write blocked a scoreline")
+	}
+	if !hasLoggedKind(repo.logged, "win_prob_snapshot") {
+		t.Fatal("the failure was not recorded in ingest_run")
 	}
 }

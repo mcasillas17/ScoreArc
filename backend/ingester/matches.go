@@ -266,6 +266,22 @@ func (r *runner) processMatches(
 				operationErrors = append(operationErrors,
 					fmt.Errorf("match %s participation: %w", match.ID, err))
 			}
+
+			// The market only moves fast enough to be worth a curve while the
+			// match is live. A scheduled match is polled on slow ticks all
+			// season, and mapWinProbability returns nil for competitions with
+			// no usable three-way moneyline -- writing 0/0/0 for those would
+			// invent a market a reader could not distinguish from a real one.
+			if match.State == model.MatchStateLive && detail.WinProbability != nil {
+				start := time.Now()
+				err := r.repo.WriteWinProbSnapshot(
+					ctx, identity.MatchID, *detail.WinProbability, time.Now())
+				r.recordRun(ctx, comp.ID, winProbSnapshotRunKind, start, err)
+				if err != nil {
+					r.log.Warn("win probability snapshot",
+						"match", match.ID, "err", err)
+				}
+			}
 		}
 		r.mirrorCrest(ctx, match.Home)
 		r.mirrorCrest(ctx, match.Away)
