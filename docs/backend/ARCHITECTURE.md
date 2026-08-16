@@ -181,10 +181,11 @@ same transaction.
   metadata; group-stage matches continue finalizing, while knockout candidates
   require confirmation from the current successful bracket response before
   immutable finalization.
-- Standings and scorer replacements are transactional. Empty or suspiciously
-  partial standings payloads preserve the prior snapshot rather than deleting
-  valid rows and remain retryable failures. ESPN statistics responses carry
-  unreliable season metadata, so top-scorer season scoping relies on the
+- Standings and season-leader replacements are transactional. Empty leader
+  categories preserve their existing rows; empty or suspiciously partial
+  standings payloads preserve the prior snapshot rather than deleting valid
+  rows and remain retryable failures. ESPN statistics responses carry
+  unreliable season metadata, so leaderboard season scoping relies on the
   requested statistics URL rather than rejecting the payload's reported year.
 - Crest downloads allow only validated public HTTP(S) sources, enforce
   redirects/content type/size/deadline limits, and upload deterministic R2 keys.
@@ -211,7 +212,7 @@ sequenceDiagram
     S->>P: monotonic match/team upserts
     S->>E: summary for live/final candidates
     S->>P: atomic detail + final freeze
-    S->>E: standings + top scorers
+    S->>E: standings + goals/assists leaders (one statistics fetch)
     S->>P: guarded transactional replacements
     S->>R: validated crest mirror
     S->>P: ingest_run audit

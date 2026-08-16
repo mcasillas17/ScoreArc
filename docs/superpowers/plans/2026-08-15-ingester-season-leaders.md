@@ -109,7 +109,7 @@ differently" — and it forces a third table the day ESPN's `cleanSheetsLeaders`
 interesting. One `category` column in the primary key costs one migration and no new code
 path.
 
-- [ ] **Step 1: Write the failing migration test**
+- [x] **Step 1: Write the failing migration test**
 
 Append to `backend/migrations/migrations_test.go`:
 
@@ -146,7 +146,7 @@ func TestLeaderCategoryRollbackRestoresTheOldKey(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run and watch it fail**
+- [x] **Step 2: Run and watch it fail**
 
 ```bash
 cd backend && go test ./migrations/ -run LeaderCategory
@@ -154,7 +154,7 @@ cd backend && go test ./migrations/ -run LeaderCategory
 
 Expected: FAIL — `open 0010_leader_category.up.sql: no such file or directory`.
 
-- [ ] **Step 3: Write the migrations**
+- [x] **Step 3: Write the migrations**
 
 Create `backend/migrations/0010_leader_category.up.sql`:
 
@@ -203,7 +203,7 @@ ALTER TABLE top_scorer
 ALTER TABLE top_scorer DROP COLUMN IF EXISTS category;
 ```
 
-- [ ] **Step 4: Run and prove it applies**
+- [x] **Step 4: Run and prove it applies**
 
 ```bash
 cd backend && go test ./migrations/ && go test ./shared/store/ -run TestResolveTeamHitsTheCrosswalk
@@ -211,7 +211,7 @@ cd backend && go test ./migrations/ && go test ./shared/store/ -run TestResolveT
 
 Expected: both `ok`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/migrations/0010_leader_category.*.sql backend/migrations/migrations_test.go
@@ -245,7 +245,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - `func MapLeaders(raw []byte, category string, limit int) ([]model.StatLeader, error)`
   — `category` is an ESPN `stats[].name`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Replace the body of the existing `MapTopScorers` tests in
 `backend/shared/espn/stats_test.go` and append:
@@ -313,7 +313,7 @@ func TestMapLeadersStillRejectsAnImpossibleRow(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run and watch it fail**
+- [x] **Step 2: Run and watch it fail**
 
 ```bash
 cd backend && go test ./shared/espn/ -run MapLeaders
@@ -321,7 +321,7 @@ cd backend && go test ./shared/espn/ -run MapLeaders
 
 Expected: FAIL to compile — `undefined: MapLeaders`.
 
-- [ ] **Step 3: Add `StatLeader` and rewrite the mapper**
+- [x] **Step 3: Add `StatLeader` and rewrite the mapper**
 
 In `backend/shared/model/types.go`, add beside `TopScorer`:
 
@@ -440,7 +440,7 @@ for (const name of ['goalsLeaders','assistsLeaders']) {
 Expected: both print a string beginning `"Matches: `. If the assists board uses a different
 prefix, `parseMatches` needs a second pattern and this plan understated the work — say so.
 
-- [ ] **Step 4: Run**
+- [x] **Step 4: Run**
 
 ```bash
 cd backend && go test ./shared/espn/ -run "MapLeaders|MapTopScorers" -v
@@ -450,7 +450,7 @@ Expected: the three new cases pass. The old `MapTopScorers` cases will not compi
 they are renamed to call `MapLeaders(raw, "goalsLeaders", …)` and read `.Value` instead of
 `.Goals` — do that rather than keeping a shim, since there is exactly one production caller.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/shared/model/types.go backend/shared/espn/types.go \
@@ -486,7 +486,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - `Source.Leaders(ctx, comp, season, category string, limit int) ([]model.StatLeader, error)`
   — replaces `TopScorers`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `backend/shared/store/store_test.go` (or the relevant integration file):
 
@@ -565,7 +565,7 @@ func TestEmptyAssistsBoardDoesNotFailTheCycle(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run and watch it fail**
+- [x] **Step 2: Run and watch it fail**
 
 ```bash
 cd backend && go test ./shared/store/ ./ingester/ -run "Leaders"
@@ -573,7 +573,7 @@ cd backend && go test ./shared/store/ ./ingester/ -run "Leaders"
 
 Expected: FAIL to compile — `store.ReplaceLeaders undefined`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `backend/shared/store/competitions.go`, replace `ReplaceTopScorers` with
 `ReplaceLeaders`. The only substantive changes are the extra `category` parameter, the
@@ -677,7 +677,7 @@ WHERE competition_id = $1 AND season_id = $2 AND category = 'goals'
 returns 100 rows — both boards interleaved by rank — and the Golden Boot table shows
 assists totals as goals.
 
-- [ ] **Step 4: Run the whole suite**
+- [x] **Step 4: Run the whole suite**
 
 ```bash
 cd backend && go test -race ./...
@@ -685,7 +685,7 @@ cd backend && go test -race ./...
 
 Expected: every package `ok`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/shared/store/competitions.go backend/shared/source/source.go \
@@ -711,7 +711,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ### Task 4: Doc, gate and PR
 
-- [ ] **Step 1: Update the architecture doc**
+- [x] **Step 1: Update the architecture doc**
 
 In `docs/backend/ARCHITECTURE.md`, replace the `top_scorer` bullet:
 
@@ -719,7 +719,7 @@ In `docs/backend/ARCHITECTURE.md`, replace the `top_scorer` bullet:
 - **top_scorer**(PK (competition_id, season_id, **category**, rank), player, team_abbr, team_name, team_crest_url, goals, matches, source) — any season leaderboard, not only goals. `category` is `goals` | `assists`, both written from a **single** `/statistics` fetch (T7.8): `assistsLeaders` ships in the same response as `goalsLeaders`, 50 rows each, and was previously discarded. `category` is in the primary key because rank is only unique within a board. The reader's `/top-scorers` filters `category = 'goals'` to keep its existing contract. Team is denormalized (ESPN's stats give abbr/name/crest, no id). The table keeps its name deliberately — renaming it to `season_leader` would rewrite the reader's query, its OpenAPI schema and its fixtures for no behavioural gain.
 ```
 
-- [ ] **Step 2: Full gate**
+- [x] **Step 2: Full gate**
 
 ```bash
 cd backend && go build ./... && go test -race ./... && go vet ./...
@@ -727,7 +727,7 @@ cd backend && go build ./... && go test -race ./... && go vet ./...
 
 Expected: build silent, every package `ok`, vet silent.
 
-- [ ] **Step 3: Prove it end to end**
+- [x] **Step 3: Prove it end to end**
 
 ```bash
 cd backend
@@ -753,7 +753,7 @@ Expected: two rows per competition, `goals` and `assists`, each capped at
 `topScorerLimit` (30). **Run twice on purpose** — if the second run leaves only one
 category per competition, the `DELETE` is not scoped and Task 3's fix did not land.
 
-- [ ] **Step 4: Open the PR**
+- [x] **Step 4: Open the PR**
 
 ```bash
 git add docs/backend/ARCHITECTURE.md
@@ -810,7 +810,37 @@ EOF
 )"
 ```
 
-- [ ] **Step 5: Stop.** Do not merge — that is the user's call.
+- [x] **Step 5: Stop.** Do not merge — that is the user's call.
+
+---
+
+## Plan execution/error notes
+
+- The numbering preflight expected migrations `0001` through `0009`, but the fetched
+  `origin/main` contained only `0001` through `0003`. The coordinated migration registry
+  reserved this slice at `0010`; the explicit execution directive therefore overrode the
+  plan's "take the next free number" fallback. `0010` was absent on `origin/main` before
+  implementation and remained absent after the required `main` merges.
+- Task 3's interface summary proposed category-specific `Source.Leaders` calls, while its
+  later implementation step correctly required one raw `Source.Statistics` fetch mapped
+  twice. The implementation follows that later one-fetch contract, which the runner test
+  verifies with an exact request count.
+- Task 3's reader test was pseudocode, and its commit staging list omitted
+  `backend/reader/store_integration_test.go`. The real Postgres goals-only reader test was
+  implemented and committed in that file.
+- The live end-to-end expected output said every competition would return both boards.
+  At execution time, five current ESPN feeds returned `goals` and `assists` at the
+  30-row cap; four returned neither. Both ingester runs completed with zero failures, and
+  the empty feeds exercised the plan's required per-category preservation behavior.
+- Colima required the repository-documented `DOCKER_HOST` and
+  `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE` variables for testcontainers to reach the
+  already-running Docker daemon.
+- Commit trailers use the executing agent's required Copilot App identity rather than the
+  stale Claude identity quoted in the plan.
+- Review round 1 found two blocking test gaps. Real Postgres coverage now executes the
+  `0010` upgrade and rollback, and category isolation now runs through a login in
+  `scorearc_ingester`. Claude Opus 5 and GPT-5.6 Luna independently reran the full gate
+  on the remediated branch and both reported zero blockers.
 
 ---
 
