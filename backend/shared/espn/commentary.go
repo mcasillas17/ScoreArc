@@ -17,6 +17,9 @@ const maxPostgresInteger = 1<<31 - 1
 // produces the jsonb contract returned by the reader; this function produces
 // ingester-only relational rows. It deliberately keeps empty-text lines because
 // a sequence, period and play type remain useful without display prose.
+// Optional metadata that PostgreSQL cannot represent is normalized to its
+// existing unknown value (nil, or the array ordinal for sequence): relational
+// enrichment must never make the core score and detail unavailable.
 //
 // Nothing here parses the prose. E6 owns the shot parser and is gated on T6.1's
 // per-competition coverage probe.
@@ -26,23 +29,39 @@ func MapCommentaryLines(raw []byte) ([]model.CommentaryLine, error) {
 		return nil, fmt.Errorf("decode commentary: %w", err)
 	}
 
+	reservedSequences := make(map[int]struct{}, len(summary.Commentary))
+	for _, item := range summary.Commentary {
+		if seq := mapCommentaryClock(item.Sequence); seq != nil {
+			reservedSequences[*seq] = struct{}{}
+		}
+	}
+	usedSequences := make(map[int]struct{}, len(summary.Commentary))
 	lines := make([]model.CommentaryLine, 0, len(summary.Commentary))
 	for index, item := range summary.Commentary {
-		seq := index + 1
-		if item.Sequence != nil {
-			seq = *item.Sequence
+		seq := 0
+		providerSeq := mapCommentaryClock(item.Sequence)
+		if providerSeq != nil {
+			if _, duplicate := usedSequences[*providerSeq]; !duplicate {
+				seq = *providerSeq
+			} else {
+				var available bool
+				seq, available = nextCommentarySequence(index, reservedSequences, usedSequences)
+				if !available {
+					continue
+				}
+			}
+		} else {
+			var available bool
+			seq, available = nextCommentarySequence(index, reservedSequences, usedSequences)
+			if !available {
+				continue
+			}
 		}
-		if err := validateCommentaryInteger(seq); err != nil {
-			return nil, fmt.Errorf("commentary sequence: %w", err)
-		}
+		usedSequences[seq] = struct{}{}
 
-		clockValue, err := mapCommentaryClock(item.Time.Value)
-		if err != nil {
-			return nil, fmt.Errorf("commentary sequence %d time clock: %w", seq, err)
-		}
 		line := model.CommentaryLine{
 			Seq:          seq,
-			ClockValue:   clockValue,
+			ClockValue:   mapCommentaryClock(item.Time.Value),
 			ClockDisplay: item.Time.DisplayValue,
 			Text:         item.Text,
 		}
@@ -51,25 +70,18 @@ func MapCommentaryLines(raw []byte) ([]model.CommentaryLine, error) {
 			line.PlayType = item.Play.Type.Type
 			line.PlayTypeText = item.Play.Type.Text
 			if item.Play.Period.Number != nil {
-				period := *item.Play.Period.Number
-				if err := validateCommentaryInteger(period); err != nil {
-					return nil, fmt.Errorf("commentary sequence %d period: %w", seq, err)
-				}
-				line.Period = &period
+				line.Period = mapCommentaryClock(item.Play.Period.Number)
 			}
 			if item.Play.Clock.Value != nil {
-				playClock, err := mapCommentaryClock(item.Play.Clock.Value)
-				if err != nil {
-					return nil, fmt.Errorf("commentary sequence %d play clock: %w", seq, err)
+				if playClock := mapCommentaryClock(item.Play.Clock.Value); playClock != nil {
+					line.ClockValue = playClock
 				}
-				line.ClockValue = playClock
 			}
 			if item.Play.Wallclock != "" {
 				at, err := time.Parse(time.RFC3339, item.Play.Wallclock)
-				if err != nil {
-					return nil, fmt.Errorf("commentary sequence %d wallclock: %w", seq, err)
+				if err == nil {
+					line.Wallclock = &at
 				}
-				line.Wallclock = &at
 			}
 		}
 		lines = append(lines, line)
@@ -77,21 +89,40 @@ func MapCommentaryLines(raw []byte) ([]model.CommentaryLine, error) {
 	return lines, nil
 }
 
-func mapCommentaryClock(value *float64) (*int, error) {
+func nextCommentarySequence(
+	preferred int,
+	reserved, used map[int]struct{},
+) (int, bool) {
+	if preferred < 0 || preferred > maxPostgresInteger {
+		preferred = 0
+	}
+	for candidate := preferred; candidate <= maxPostgresInteger; candidate++ {
+		if _, reserved := reserved[candidate]; reserved {
+			continue
+		}
+		if _, used := used[candidate]; !used {
+			return candidate, true
+		}
+	}
+	for candidate := 0; candidate < preferred; candidate++ {
+		if _, reserved := reserved[candidate]; reserved {
+			continue
+		}
+		if _, used := used[candidate]; !used {
+			return candidate, true
+		}
+	}
+	return 0, false
+}
+
+func mapCommentaryClock(value *float64) *int {
 	if value == nil {
-		return nil, nil
+		return nil
 	}
 	if math.IsNaN(*value) || math.IsInf(*value, 0) ||
 		*value < 0 || *value > maxPostgresInteger || math.Trunc(*value) != *value {
-		return nil, fmt.Errorf("must be a whole non-negative PostgreSQL integer")
+		return nil
 	}
 	clock := int(*value)
-	return &clock, nil
-}
-
-func validateCommentaryInteger(value int) error {
-	if value < 0 || int64(value) > maxPostgresInteger {
-		return fmt.Errorf("must be a non-negative PostgreSQL integer")
-	}
-	return nil
+	return &clock
 }
