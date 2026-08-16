@@ -33,6 +33,9 @@ type repository interface {
 	FinalizeMatch(context.Context, store.MatchIdentity, model.Match, model.MatchDetail) (bool, error)
 	WriteParticipation(context.Context, string, uuid.UUID, string, string, *model.MatchParticipation) (store.ParticipationStats, error)
 	WriteCommentary(context.Context, uuid.UUID, []model.CommentaryLine) (int, error)
+	WritePlays(context.Context, uuid.UUID, []model.Play, map[string]string, map[string]uuid.UUID) (int, error)
+	ResolveKnownPlayers(context.Context, string, []string) (map[string]uuid.UUID, error)
+	RecordPlayArchive(context.Context, uuid.UUID, string, int, int, bool) error
 	ExistingMatches(context.Context, string, string, []uuid.UUID) (map[uuid.UUID]store.MatchRow, error)
 	UnfinalizedMatches(context.Context, string, string, string) ([]model.Match, error)
 	ReplaceStandings(context.Context, string, string, string, []model.Standing, map[string]string) error

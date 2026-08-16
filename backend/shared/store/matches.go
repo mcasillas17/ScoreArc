@@ -20,13 +20,15 @@ import (
 // match. It travels alongside model.Match, which stays provider-shaped: the
 // store never reads an id out of the model, only out of this struct.
 type MatchIdentity struct {
-	MatchID       uuid.UUID
-	CompetitionID string
-	SeasonID      string
-	HomeTeamID    string
-	AwayTeamID    string
-	WinnerTeamID  *string
-	Source        string
+	MatchID          uuid.UUID
+	CompetitionID    string
+	SeasonID         string
+	HomeTeamID       string
+	AwayTeamID       string
+	HomeTeamSourceID string
+	AwayTeamSourceID string
+	WinnerTeamID     *string
+	Source           string
 }
 
 // MatchRow is the stored state of a match, in canonical space: every id on it
