@@ -33,8 +33,8 @@ All checked against the live API on 2026-08-15, `mex.1` team `227` and athlete `
 - `athletes[]` — **35** entries; **27** of them carry `statistics`. The other 8 have not
   played, and their absence is a fact, not an error.
 - Each athlete carries `id`, `displayName`, `fullName`, `jersey`, `position.abbreviation`,
-  `age`, **`dateOfBirth`** (`"2001-06-17T07:00Z"` — real ISO), `citizenship`
-  (`"Mexico"`), `citizenshipCountry`.
+  `age`, `citizenship` (`"Mexico"`), and `citizenshipCountry`. **31 of 35** carry
+  **`dateOfBirth`** (`"2001-06-17T07:00Z"` — real ISO); four omit it.
 - `statistics.splits.categories[]` — `general[7]`, `offensive[5]`, `goalKeeping[3]`.
   **Unlike the match summary, every position carries all fifteen names**, including
   goalkeeping stats for outfielders (zeroed) and offensive stats for keepers. Verified
@@ -914,7 +914,7 @@ slow tick by design. That is correct; say so in the PR rather than treating it a
 > Round-one review also added a real least-privilege test proving provisional-team promotion
 > repoints `squad_membership` and `player_season_stat` before deleting the provisional team.
 
-- [ ] **Step 3: PR**
+- [x] **Step 3: PR**
 
 ```bash
 git push -u origin feat/ingester-squad-and-athletes
@@ -982,22 +982,32 @@ EOF
 )"
 ```
 
-- [ ] **Step 4: Stop.** Do not merge — that is the user's call.
+> **PR and review evidence (2026-08-16):** PR
+> [#58](https://github.com/mcasillas17/ScoreArc/pull/58) is open and unmerged. Luna round 1
+> found four blockers; fix `a3c6d6f` addressed all four, and Luna round 2 independently
+> reran the full gate plus an uncached race suite with `blocking=0, non-blocking=0`.
+> Claude Opus 5 round 1 independently ran the full gate and uncached PostgreSQL suites with
+> `blocking=0, non-blocking=2`. GitHub Actions tests pass. Vercel remains a separately
+> verified external resource-provisioning failure before build (`buildCount=0`); no Vercel
+> fix or deployment was attempted in this plan.
+
+- [x] **Step 4: Stop.** Do not merge — that is the user's call.
 
 ---
 
 ## Self-review notes
 
-- **This plan is mostly about request budget.** Two numbers govern it: **180/day** for
-  rosters and **6,300 total** for bios. Both appear in a code comment next to the constant
-  that enforces them, not only here.
+- **This plan is mostly about request budget.** A complete roster pass is about **180/day**;
+  one persistently failed team adds at most 48 logical retries/day rather than refetching all
+  180 teams every slow tick. The bio population is about **6,300 total**. These bounds appear
+  in code comments next to the constants that enforce them, not only here.
 - **Naming consistency.** `PlayerSeasonStats` (T7.9) is the season aggregate and is distinct
   from T7.7's `PlayerMatchStats`; they share thirteen field names deliberately and
   `PlayerSeasonStats` adds `Appearances` and `SubIns`, which are meaningful over a season and
   redundant within a match.
-- **Ordering hazard.** Task 4 adds `squadsRefreshed` to the `runner` struct; `main.go`'s
-  literal must initialise it or the first successful refresh nil-map-panics in production.
-  `go vet` will not catch it. Same trap as T7.1's `snapshotted`.
+- **Ordering hazard.** Task 4 adds `squadsRefreshed` and `squadAttempted` to the `runner`
+  struct; `main.go`'s literal must initialise them or the first refresh nil-map-panics in
+  production. `go vet` will not catch it. Same trap as T7.1's `snapshotted`.
 - **The thing most likely to be got wrong.** Reading `statistics.splits.categories[0]` and
   stopping. It compiles, it returns data, and it silently drops eight of fifteen stats
   including every goalkeeping number. `TestMapRosterReadsStatsAcrossCategoriesByName` exists
