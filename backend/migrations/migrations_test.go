@@ -202,3 +202,35 @@ func TestAppearanceBoxScoreRollbackDropsOnlyTheColumns(t *testing.T) {
 		t.Fatal("the rollback must not drop appearance itself")
 	}
 }
+
+// Commentary is ALREADY stored, as {minute, text} in match_detail.commentary
+// jsonb. What is missing is everything else ESPN sends: the sequence, the
+// period, the clock value, the play type and the wallclock. This table carries
+// those; the jsonb stays, because the reader serves it verbatim.
+func TestMatchCommentaryKeepsTheStructureTheJsonbDrops(t *testing.T) {
+	sql := readMigration(t, "0013_match_commentary.up.sql")
+	for _, required := range []string{
+		"CREATE TABLE match_commentary",
+		"PRIMARY KEY (match_id, seq)",
+		"period",
+		"clock_value",
+		"play_type",
+		"wallclock",
+		"GRANT SELECT, INSERT, UPDATE ON match_commentary TO scorearc_ingester",
+		"GRANT DELETE ON match_commentary TO scorearc_ingester",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("0013_match_commentary.up.sql missing %q", required)
+		}
+	}
+	// The jsonb column is the reader's contract. Dropping it here would break
+	// MatchSummaryData and slice 1d's cutover.
+	if strings.Contains(sql, "match_detail DROP COLUMN") {
+		t.Fatal("match_detail.commentary must stay; this table is additive")
+	}
+
+	down := readMigration(t, "0013_match_commentary.down.sql")
+	if !strings.Contains(down, "DROP TABLE IF EXISTS match_commentary") {
+		t.Fatal("0013_match_commentary.down.sql must fully remove the additive table")
+	}
+}

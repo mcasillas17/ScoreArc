@@ -36,6 +36,7 @@ type fakeSource struct {
 	scoreboardDelay time.Duration
 	scoreboardBlock bool
 	topScorers      []model.TopScorer
+	commentary      []model.CommentaryLine
 	currentCalls    int
 	maxCalls        int
 }
@@ -95,8 +96,9 @@ func (f *fakeSource) Summary(
 					PlayerName: "Winner", Type: model.PlayerEventGoal, Minute: "1'"},
 			},
 		},
-		HomeScore: f.summaryHome,
-		AwayScore: f.summaryAway,
+		Commentary: f.commentary,
+		HomeScore:  f.summaryHome,
+		AwayScore:  f.summaryAway,
 	}, nil
 }
 func (f *fakeSource) Standings(context.Context, config.Competition, config.Season) ([]model.Standing, error) {
@@ -152,6 +154,9 @@ type fakeRepository struct {
 	participation    []*model.MatchParticipation
 	participationTo  []string
 	participationErr error
+	commentary       [][]model.CommentaryLine
+	commentaryTo     []uuid.UUID
+	commentaryErr    error
 }
 
 type loggedRun struct {
@@ -226,6 +231,20 @@ func (f *fakeRepository) WriteParticipation(
 		return store.ParticipationStats{}, f.participationErr
 	}
 	return store.ParticipationStats{}, nil
+}
+func (f *fakeRepository) WriteCommentary(
+	_ context.Context,
+	matchID uuid.UUID,
+	lines []model.CommentaryLine,
+) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.commentary = append(f.commentary, lines)
+	f.commentaryTo = append(f.commentaryTo, matchID)
+	if f.commentaryErr != nil {
+		return 0, f.commentaryErr
+	}
+	return len(lines), nil
 }
 
 func (f *fakeRepository) FinalizeMatch(
@@ -525,6 +544,72 @@ func TestParticipationFailureDoesNotBlockTheMatch(t *testing.T) {
 	}
 	if result.failures == 0 {
 		t.Error("participation failure was swallowed instead of reported")
+	}
+}
+
+func TestCommentaryIsWrittenWithTheCanonicalMatchID(t *testing.T) {
+	match := finishedMatch()
+	line := model.CommentaryLine{Seq: 1, PlayType: "kickoff", Text: "First Half begins."}
+	src := &fakeSource{matches: []model.Match{match}, commentary: []model.CommentaryLine{line}}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	runner := testRunner(src, repo, config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	})
+
+	runner.runCycle(context.Background(), true)
+
+	if len(repo.commentary) != 1 {
+		t.Fatalf("expected 1 commentary write, got %d", len(repo.commentary))
+	}
+	if got, want := repo.commentaryTo[0], fakeMatchID(match.ID); got != want {
+		t.Fatalf("commentary written for %s, want canonical match %s", got, want)
+	}
+	if len(repo.commentary[0]) != 1 || repo.commentary[0][0] != line {
+		t.Fatalf("commentary = %#v, want %#v", repo.commentary[0], line)
+	}
+}
+
+// Commentary is additive to the scoreline, but a finished match must not freeze
+// before its relational rows are durable. Otherwise a transient write failure
+// becomes permanent because finalized matches skip future summary fetches.
+func TestCommentaryFailureLeavesTheFinishedMatchRetryable(t *testing.T) {
+	match := finishedMatch()
+	src := &fakeSource{matches: []model.Match{match}}
+	repo := &fakeRepository{
+		existing:      map[string]store.MatchRow{},
+		commentaryErr: errors.New("boom"),
+	}
+	runner := testRunner(src, repo, config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	})
+
+	result := runner.runCycle(context.Background(), true)
+
+	if repo.matchCalls != 1 {
+		t.Errorf("commentary failure blocked the scoreline row: match writes=%d", repo.matchCalls)
+	}
+	if repo.finalizeCalls != 0 {
+		t.Errorf("commentary failure froze the match before rows were durable: finalize=%d",
+			repo.finalizeCalls)
+	}
+	if result.failures == 0 {
+		t.Error("commentary failure was swallowed instead of reported")
+	}
+
+	repo.commentaryErr = nil
+	result = runner.runCycle(context.Background(), true)
+	if repo.finalizeCalls != 1 {
+		t.Errorf("finished match did not finalize after commentary recovered: finalize=%d",
+			repo.finalizeCalls)
+	}
+	if len(repo.commentary) != 2 {
+		t.Errorf("commentary attempts=%d, want the failed write plus one retry",
+			len(repo.commentary))
+	}
+	if result.failures != 0 {
+		t.Errorf("recovery cycle failures=%d, want 0", result.failures)
 	}
 }
 

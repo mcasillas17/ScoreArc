@@ -209,7 +209,10 @@ type rawEventType struct {
 }
 
 type rawClock struct {
-	DisplayValue string `json:"displayValue"`
+	// ESPN serializes whole-second values as JSON decimals (for example 0.0).
+	// A pointer preserves a missing measurement instead of inventing zero.
+	Value        *float64 `json:"value"`
+	DisplayValue string   `json:"displayValue"`
 }
 
 type rawParticipant struct {
@@ -222,8 +225,35 @@ type rawAthleteName struct {
 }
 
 type rawCommentaryItem struct {
-	Time rawClock `json:"time"`
-	Text string   `json:"text"`
+	// A pointer distinguishes ESPN's real sequence 0 from a missing sequence.
+	Sequence *int               `json:"sequence"`
+	Time     rawClock           `json:"time"`
+	Text     string             `json:"text"`
+	Play     *rawCommentaryPlay `json:"play"`
+}
+
+// T7.12's play-stream branch will share these two provider shapes once it
+// lands. They live here meanwhile because this branch starts from main and must
+// preserve missing numeric fields as NULL rather than zero.
+type rawPlayType struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
+	Type string `json:"type"`
+}
+
+type rawPeriod struct {
+	Number *int `json:"number"`
+}
+
+// rawCommentaryPlay is the structure attached to 86 of the recorded fixture's
+// 91 lines. A pointer on rawCommentaryItem keeps the other 5 distinguishable
+// from a measured period or clock of zero.
+type rawCommentaryPlay struct {
+	ID        string      `json:"id"`
+	Type      rawPlayType `json:"type"`
+	Period    rawPeriod   `json:"period"`
+	Clock     rawClock    `json:"clock"`
+	Wallclock string      `json:"wallclock"`
 }
 
 type rawBoxscore struct {
