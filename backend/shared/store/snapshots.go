@@ -108,11 +108,11 @@ WHERE standing_snapshot.captured_at <= EXCLUDED.captured_at`
 
 // WriteWinProbSnapshot appends one point of a match's probability curve.
 //
-// The instant is truncated to the minute in UTC before it is stored, so the
-// 20-second live poll produces one row per minute rather than three, and so a
-// curve plotted against captured_at has evenly spaced x values. A second write
-// inside the same minute replaces the first: later is fresher, and the curve
-// should read as "where the market was at the end of minute N".
+// observedAt is the poll-start time. Its minute bucket is stored in captured_at
+// so the 20-second live poll produces one evenly spaced row per minute.
+// observed_at keeps the untruncated ordering value: requests may complete out
+// of order, and a delayed older response must not replace a fresher observation
+// in the same bucket.
 //
 // This is a MARKET-implied probability -- the first betting provider's
 // three-way moneyline with the margin removed, per mapWinProbability. It is
@@ -121,12 +121,13 @@ func (s *Store) WriteWinProbSnapshot(
 	ctx context.Context,
 	matchID uuid.UUID,
 	probability model.WinProbability,
-	capturedAt time.Time,
+	observedAt time.Time,
 ) error {
 	ctx, cancel := boundedContext(ctx)
 	defer cancel()
+	observedAt = observedAt.UTC()
 	_, err := s.pool.Exec(ctx, winProbSnapshotSQL,
-		matchID, capturedAt.UTC().Truncate(time.Minute),
+		matchID, observedAt.Truncate(time.Minute), observedAt,
 		probability.Home, probability.Draw, probability.Away)
 	return err
 }
@@ -135,9 +136,11 @@ func (s *Store) WriteWinProbSnapshot(
 // casts document that and keep a float64 like 33.333333 from depending on
 // implicit-cast behaviour.
 const winProbSnapshotSQL = `
-INSERT INTO win_prob_snapshot (match_id, captured_at, home, draw, away)
-VALUES ($1,$2,$3::numeric(5,2),$4::numeric(5,2),$5::numeric(5,2))
+INSERT INTO win_prob_snapshot (match_id, captured_at, observed_at, home, draw, away)
+VALUES ($1,$2,$3,$4::numeric(5,2),$5::numeric(5,2),$6::numeric(5,2))
 ON CONFLICT (match_id, captured_at) DO UPDATE SET
+	observed_at = EXCLUDED.observed_at,
 	home = EXCLUDED.home,
 	draw = EXCLUDED.draw,
-	away = EXCLUDED.away`
+	away = EXCLUDED.away
+WHERE win_prob_snapshot.observed_at <= EXCLUDED.observed_at`

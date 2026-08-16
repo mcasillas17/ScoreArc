@@ -12,6 +12,16 @@
 -- 0002 already created a NON-unique (match_id, captured_at) index for range
 -- reads. Postgres will happily keep both; drop the redundant one, since a
 -- unique index serves every query the plain one did.
+--
+-- Keep the untruncated poll-start time separately. Requests can complete out
+-- of order, so the writer needs a durable ordering value to prevent a delayed
+-- older response from replacing the fresher observation in the same bucket.
+ALTER TABLE win_prob_snapshot
+  ADD COLUMN observed_at timestamptz;
+UPDATE win_prob_snapshot SET observed_at = captured_at;
+ALTER TABLE win_prob_snapshot
+  ALTER COLUMN observed_at SET NOT NULL;
+
 DROP INDEX IF EXISTS win_prob_snapshot_match_idx;
 
 CREATE UNIQUE INDEX win_prob_snapshot_minute_key

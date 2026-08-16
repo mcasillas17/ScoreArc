@@ -322,9 +322,10 @@ func TestWinProbSnapshotCollapsesAMinute(t *testing.T) {
 
 	var home float64
 	var capturedAt time.Time
+	var observedAt time.Time
 	if err := pool.QueryRow(ctx,
-		`SELECT home, captured_at FROM win_prob_snapshot WHERE match_id=$1`,
-		matchID).Scan(&home, &capturedAt); err != nil {
+		`SELECT home, captured_at, observed_at FROM win_prob_snapshot WHERE match_id=$1`,
+		matchID).Scan(&home, &capturedAt, &observedAt); err != nil {
 		t.Fatal(err)
 	}
 	if home != 61 {
@@ -334,6 +335,42 @@ func TestWinProbSnapshotCollapsesAMinute(t *testing.T) {
 	// captured_at must have evenly spaced x values.
 	if !capturedAt.UTC().Equal(base) {
 		t.Fatalf("captured_at = %s, want it truncated to %s", capturedAt.UTC(), base)
+	}
+	if want := base.Add(47 * time.Second); !observedAt.UTC().Equal(want) {
+		t.Fatalf("observed_at = %s, want the latest poll time %s", observedAt.UTC(), want)
+	}
+}
+
+// Network responses can complete out of order. The minute bucket must keep the
+// observation with the latest poll timestamp, not whichever write arrived
+// last at Postgres.
+func TestWinProbSnapshotRejectsAnOlderSameMinuteObservation(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	mustSeedTwoTeams(t, store)
+	mustSeedSeason(t, pool)
+	matchID := mustSeedMatch(t, store)
+
+	base := time.Date(2026, 8, 15, 19, 42, 0, 0, time.UTC)
+	if err := store.WriteWinProbSnapshot(ctx, matchID,
+		model.WinProbability{Home: 61, Draw: 21, Away: 18},
+		base.Add(47*time.Second)); err != nil {
+		t.Fatalf("newer observation: %v", err)
+	}
+	if err := store.WriteWinProbSnapshot(ctx, matchID,
+		model.WinProbability{Home: 50, Draw: 26, Away: 24},
+		base.Add(3*time.Second)); err != nil {
+		t.Fatalf("delayed older observation: %v", err)
+	}
+
+	var home float64
+	if err := pool.QueryRow(ctx,
+		`SELECT home FROM win_prob_snapshot WHERE match_id=$1`,
+		matchID).Scan(&home); err != nil {
+		t.Fatal(err)
+	}
+	if home != 61 {
+		t.Fatalf("home = %v after delayed older write, want newer observation 61", home)
 	}
 }
 

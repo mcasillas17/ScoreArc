@@ -221,6 +221,7 @@ func (r *runner) processMatches(
 			needsSummary(match, currentPtr, slowTick) {
 			summaryMatch := match
 			summaryMatch.Home, summaryMatch.Away = providerHome, providerAway
+			summaryStartedAt := time.Now()
 			summary, err := r.source.Summary(ctx, comp, summaryMatch)
 			if err != nil {
 				operationErrors = append(operationErrors, fmt.Errorf("match %s summary: %w", match.ID, err))
@@ -261,7 +262,7 @@ func (r *runner) processMatches(
 			if match.State == model.MatchStateLive && detail.WinProbability != nil {
 				start := time.Now()
 				err := r.repo.WriteWinProbSnapshot(
-					ctx, identity.MatchID, *detail.WinProbability, time.Now())
+					ctx, identity.MatchID, *detail.WinProbability, summaryStartedAt)
 				r.recordRun(ctx, comp.ID, winProbSnapshotRunKind, start, err)
 				if err != nil {
 					r.log.Warn("win probability snapshot",

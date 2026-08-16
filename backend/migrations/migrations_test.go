@@ -146,6 +146,8 @@ func TestStandingSnapshotRollbackDropsOnlyWhatItAdded(t *testing.T) {
 func TestWinProbSnapshotIsIdempotentPerMinute(t *testing.T) {
 	sql := readMigration(t, "0005_win_prob_snapshot_idempotency.up.sql")
 	for _, required := range []string{
+		"ADD COLUMN observed_at timestamptz",
+		"ALTER COLUMN observed_at SET NOT NULL",
 		"CREATE UNIQUE INDEX win_prob_snapshot_minute_key",
 		"(match_id, captured_at)",
 	} {
@@ -162,6 +164,9 @@ func TestWinProbSnapshotRollbackKeepsTheData(t *testing.T) {
 	sql := readMigration(t, "0005_win_prob_snapshot_idempotency.down.sql")
 	if !strings.Contains(sql, "DROP INDEX IF EXISTS win_prob_snapshot_minute_key") {
 		t.Fatalf("rollback missing the index drop:\n%s", sql)
+	}
+	if !strings.Contains(sql, "DROP COLUMN IF EXISTS observed_at") {
+		t.Fatalf("rollback missing the observation timestamp drop:\n%s", sql)
 	}
 	if strings.Contains(sql, "DROP TABLE") {
 		t.Fatal("the rollback must not drop win_prob_snapshot itself")

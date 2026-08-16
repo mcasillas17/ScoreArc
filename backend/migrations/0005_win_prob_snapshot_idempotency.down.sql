@@ -2,5 +2,7 @@
 -- probability curve is sampled from a live market that no longer exists once
 -- the match ends, so it cannot be re-fetched.
 DROP INDEX IF EXISTS win_prob_snapshot_minute_key;
+ALTER TABLE win_prob_snapshot
+  DROP COLUMN IF EXISTS observed_at;
 CREATE INDEX IF NOT EXISTS win_prob_snapshot_match_idx
   ON win_prob_snapshot (match_id, captured_at);
