@@ -360,6 +360,8 @@ type fakeRepository struct {
 	pruneHook         func()
 	matchCalls        int
 	finalizeCalls     int
+	finalizeResult    *bool
+	finalizeErr       error
 	lastFinalized     model.Match
 	lastUpsert        model.Match
 	standingsCalls    int
@@ -446,8 +448,31 @@ func cloneUUIDMap(values map[string]uuid.UUID) map[string]uuid.UUID {
 }
 
 type loggedRun struct {
-	kind string
-	ok   bool
+	kind    string
+	ok      bool
+	message string
+}
+
+func loggedRunsForKind(runs []loggedRun, kind string) []loggedRun {
+	var selected []loggedRun
+	for _, run := range runs {
+		if run.kind == kind {
+			selected = append(selected, run)
+		}
+	}
+	return selected
+}
+
+func assertOneLoggedRun(t *testing.T, runs []loggedRun, kind string, ok bool, message string) {
+	t.Helper()
+	selected := loggedRunsForKind(runs, kind)
+	if len(selected) != 1 {
+		t.Fatalf("%s audit rows = %#v, want exactly one", kind, selected)
+	}
+	if selected[0].ok != ok || selected[0].message != message {
+		t.Fatalf("%s audit row = %#v, want ok=%v message=%q",
+			kind, selected[0], ok, message)
+	}
 }
 
 func hasLoggedKind(runs []loggedRun, kind string) bool {
@@ -700,8 +725,14 @@ func (f *fakeRepository) FinalizeMatch(
 	f.finalizeCalls++
 	f.lastFinalized = match
 	f.lastIdentity = identity
+	if f.finalizeErr != nil {
+		return false, f.finalizeErr
+	}
 	if row, ok := f.existing[match.ID]; ok && row.FinalizedAt.Valid {
 		return false, nil
+	}
+	if f.finalizeResult != nil {
+		return *f.finalizeResult, nil
 	}
 	return true, nil
 }
@@ -820,10 +851,10 @@ func (f *fakeRepository) ReplaceTeamHistory(
 	}
 	return nil
 }
-func (f *fakeRepository) LogIngestRun(_ context.Context, _ *string, kind string, _ time.Time, _ time.Time, ok bool, _ string) error {
+func (f *fakeRepository) LogIngestRun(_ context.Context, _ *string, kind string, _ time.Time, _ time.Time, ok bool, message string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.logged = append(f.logged, loggedRun{kind: kind, ok: ok})
+	f.logged = append(f.logged, loggedRun{kind: kind, ok: ok, message: message})
 	return nil
 }
 func (f *fakeRepository) PruneIngestRuns(context.Context, time.Time) (int64, error) {
@@ -3464,6 +3495,7 @@ func TestCaptureOfficialsResolvesEveryCrewMemberAndWritesOnce(t *testing.T) {
 	if hasLoggedFailure(repo.logged, "officials") {
 		t.Fatal("a successful crew capture was audited as a failure")
 	}
+	assertOneLoggedRun(t, repo.logged, "officials", true, "")
 }
 
 // Plenty of competitions publish no crew at all. That is not a failure, and it
@@ -3483,6 +3515,7 @@ func TestCaptureOfficialsEmptyCrewIsASuccessfulNoOp(t *testing.T) {
 	if hasLoggedFailure(repo.logged, "officials") {
 		t.Fatal("an empty crew was audited as a failure")
 	}
+	assertOneLoggedRun(t, repo.logged, "officials", true, "")
 }
 
 func TestCaptureOfficialsRecordsEveryBoundaryFailure(t *testing.T) {
@@ -3560,6 +3593,7 @@ func TestCaptureOddsSamplesOnlyTheCurrentLineWhileLive(t *testing.T) {
 	if hasLoggedFailure(repo.logged, "odds") {
 		t.Fatal("a successful odds capture was audited as a failure")
 	}
+	assertOneLoggedRun(t, repo.logged, "odds", true, "")
 }
 
 func TestCaptureOddsRecordsFixedLinesOnceFinalized(t *testing.T) {
@@ -3583,6 +3617,7 @@ func TestCaptureOddsRecordsFixedLinesOnceFinalized(t *testing.T) {
 		t.Fatalf("snapshots = %d at finalization, want the closing sample too",
 			len(repo.oddsSnapshots))
 	}
+	assertOneLoggedRun(t, repo.logged, "odds", true, "")
 }
 
 func TestCaptureOddsWithNoProvidersIsASuccessfulNoOp(t *testing.T) {
@@ -3600,6 +3635,7 @@ func TestCaptureOddsWithNoProvidersIsASuccessfulNoOp(t *testing.T) {
 	if hasLoggedFailure(repo.logged, "odds") {
 		t.Fatal("a match no book priced was audited as a failure")
 	}
+	assertOneLoggedRun(t, repo.logged, "odds", true, "")
 }
 
 func TestCaptureOddsRecordsAFetchFailureWithoutWriting(t *testing.T) {
@@ -3623,15 +3659,25 @@ func TestCaptureOddsRecordsAFetchFailureWithoutWriting(t *testing.T) {
 // actually happened rather than the last call's return value.
 func TestCaptureOddsAttemptsBothWritesAndRecordsTheCombinedFailure(t *testing.T) {
 	for _, test := range []struct {
-		name string
-		repo *fakeRepository
+		name             string
+		repo             *fakeRepository
+		wantMessage      string
+		wantMessageParts []string
 	}{
-		{name: "snapshot", repo: &fakeRepository{oddsSnapshotErr: errors.New("boom")}},
-		{name: "fixed", repo: &fakeRepository{fixedOddsErr: errors.New("boom")}},
+		{
+			name:        "snapshot",
+			repo:        &fakeRepository{oddsSnapshotErr: errors.New("boom")},
+			wantMessage: "odds snapshot: boom",
+		},
+		{
+			name:        "fixed",
+			repo:        &fakeRepository{fixedOddsErr: errors.New("boom")},
+			wantMessage: "fixed odds: boom",
+		},
 		{name: "both", repo: &fakeRepository{
 			oddsSnapshotErr: errors.New("snapshot boom"),
 			fixedOddsErr:    errors.New("fixed boom"),
-		}},
+		}, wantMessageParts: []string{"snapshot boom", "fixed boom"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			src := &fakeSource{odds: oddsFixture()}
@@ -3646,6 +3692,20 @@ func TestCaptureOddsAttemptsBothWritesAndRecordsTheCombinedFailure(t *testing.T)
 			}
 			if !hasLoggedFailure(test.repo.logged, "odds") {
 				t.Fatalf("the %s failure was recorded as a success", test.name)
+			}
+			runs := loggedRunsForKind(test.repo.logged, "odds")
+			if len(runs) != 1 || runs[0].ok {
+				t.Fatalf("odds audit rows = %#v, want one failed row", runs)
+			}
+			if test.wantMessage != "" && runs[0].message != test.wantMessage {
+				t.Fatalf("odds failure message = %q, want %q",
+					runs[0].message, test.wantMessage)
+			}
+			for _, wantMessage := range test.wantMessageParts {
+				if !strings.Contains(runs[0].message, wantMessage) {
+					t.Fatalf("odds failure message %q does not contain %q",
+						runs[0].message, wantMessage)
+				}
 			}
 		})
 	}
@@ -3755,6 +3815,71 @@ func TestFinalizedMatchCapturesOfficialsAndFixedOddsAfterFinalization(t *testing
 	if src.playsCalls != 1 {
 		t.Fatalf("play stream fetches = %d, want the existing capture preserved",
 			src.playsCalls)
+	}
+}
+
+func TestFinishedMatchSkipsFinalCapturesWhenFinalizeMatchDoesNotClaimRow(t *testing.T) {
+	finalized := false
+	repo := &fakeRepository{
+		existing:       map[string]store.MatchRow{},
+		finalizeResult: &finalized,
+	}
+	src := &fakeSource{
+		matches:   []model.Match{finishedMatch()},
+		officials: crewFixture(),
+		odds:      oddsFixture(),
+	}
+	worker := testRunner(src, repo, config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	})
+
+	worker.runCycle(context.Background(), true)
+
+	if repo.finalizeCalls != 1 {
+		t.Fatalf("finalizations = %d, want 1", repo.finalizeCalls)
+	}
+	if src.officialsCalls != 0 || src.oddsCalls != 0 || src.playsCalls != 0 {
+		t.Fatalf("officials=%d odds=%d plays=%d after unclaimed finalization, want 0/0/0",
+			src.officialsCalls, src.oddsCalls, src.playsCalls)
+	}
+	if len(repo.crewWrites) != 0 || len(repo.fixedOdds) != 0 || len(repo.oddsSnapshots) != 0 {
+		t.Fatalf("crew=%d fixed=%d snapshots=%d after unclaimed finalization, want 0/0/0",
+			len(repo.crewWrites), len(repo.fixedOdds), len(repo.oddsSnapshots))
+	}
+}
+
+func TestFinishedMatchSkipsFinalCapturesWhenFinalizeMatchFails(t *testing.T) {
+	repo := &fakeRepository{
+		existing:    map[string]store.MatchRow{},
+		finalizeErr: errors.New("finalize boom"),
+	}
+	src := &fakeSource{
+		matches:   []model.Match{finishedMatch()},
+		officials: crewFixture(),
+		odds:      oddsFixture(),
+	}
+	worker := testRunner(src, repo, config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	})
+
+	result := worker.runCycle(context.Background(), true)
+
+	if repo.finalizeCalls != 1 {
+		t.Fatalf("finalizations = %d, want 1", repo.finalizeCalls)
+	}
+	if src.officialsCalls != 0 || src.oddsCalls != 0 || src.playsCalls != 0 {
+		t.Fatalf("officials=%d odds=%d plays=%d after failed finalization, want 0/0/0",
+			src.officialsCalls, src.oddsCalls, src.playsCalls)
+	}
+	if len(repo.crewWrites) != 0 || len(repo.fixedOdds) != 0 || len(repo.oddsSnapshots) != 0 {
+		t.Fatalf("crew=%d fixed=%d snapshots=%d after failed finalization, want 0/0/0",
+			len(repo.crewWrites), len(repo.fixedOdds), len(repo.oddsSnapshots))
+	}
+	if result.failures == 0 || !hasLoggedFailure(repo.logged, "matches") {
+		t.Fatalf("failed finalization was not recorded through the match path: result=%+v runs=%#v",
+			result, repo.logged)
 	}
 }
 
