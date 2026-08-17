@@ -40,4 +40,11 @@ type Source interface {
 	// and the entire point of the archive is that a better parser can be run
 	// over it later.
 	Plays(context.Context, config.Competition, string) (model.PlayStream, []byte, error)
+	// Officials returns a match's officiating crew in provider identity space.
+	// Canonical resolution belongs to the ingester, which owns the crosswalk.
+	Officials(context.Context, config.Competition, string) ([]model.MatchOfficial, error)
+	// Odds returns every bookmaker's fixed opening and closing lines plus the
+	// current line, as published. Prices are kept as the provider quotes them;
+	// nothing here converts them into probabilities.
+	Odds(context.Context, config.Competition, string) ([]model.ProviderOdds, error)
 }

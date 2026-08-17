@@ -24,6 +24,7 @@ type repository interface {
 	// identity
 	Team(context.Context, string, store.TeamRef) (string, error)
 	Match(context.Context, string, store.MatchRef) (uuid.UUID, error)
+	Official(context.Context, string, store.OfficialRef) (uuid.UUID, error)
 	ApplyTeamSeed(context.Context, []config.SeedTeam) error
 	ApplyCompetitionSeed(context.Context, []config.Competition) error
 
@@ -38,6 +39,16 @@ type repository interface {
 	// never blocks a scoreline.
 	WriteWinProbSnapshot(context.Context, uuid.UUID, model.WinProbability, time.Time) error
 	WriteCommentary(context.Context, uuid.UUID, []model.CommentaryLine) (int, error)
+	// WriteMatchOfficials records a full-time officiating crew. Additive like
+	// participation: a failure is audited and never blocks a scoreline.
+	WriteMatchOfficials(context.Context, uuid.UUID, []model.MatchOfficial, map[string]uuid.UUID) error
+	// WriteMatchOdds records the FIXED opening and closing lines, which are
+	// only settled once the match is.
+	WriteMatchOdds(context.Context, uuid.UUID, []model.ProviderOdds) error
+	// WriteOddsSnapshot appends one sampled point of each bookmaker's current
+	// line. These are raw prices and are deliberately separate from
+	// WriteWinProbSnapshot's normalized probabilities.
+	WriteOddsSnapshot(context.Context, uuid.UUID, []model.ProviderOdds, time.Time) error
 	WritePlays(context.Context, uuid.UUID, []model.Play, map[string]string, map[string]uuid.UUID) (int, error)
 	ResolveKnownPlayers(context.Context, string, []string) (map[string]uuid.UUID, error)
 	RecordPlayArchive(context.Context, uuid.UUID, string, int, int, bool) error

@@ -362,6 +362,59 @@ func (e *ESPN) Plays(
 	return merged, bytes.Join(pages, []byte("\n")), nil
 }
 
+// Officials fetches a match's officiating crew from the CORE host.
+//
+// The crew is one small page, so unlike the play stream there is nothing to
+// paginate and no $ref to follow: a crew member's identity is the id already in
+// this payload, and following its $ref would spend a request per official to
+// learn nothing the ingester's crosswalk does not already resolve.
+func (e *ESPN) Officials(
+	ctx context.Context,
+	comp config.Competition,
+	eventID string,
+) ([]model.MatchOfficial, error) {
+	if comp.ESPNSlug == "" {
+		return nil, fmt.Errorf("espn officials: competition slug is required")
+	}
+	if eventID == "" {
+		return nil, fmt.Errorf("espn officials: event id is required")
+	}
+	raw, err := e.get(ctx, espn.CoreOfficialsURLOn(e.coreBase, comp.ESPNSlug, eventID))
+	if err != nil {
+		return nil, fmt.Errorf("espn officials %s: %w", eventID, err)
+	}
+	crew, err := espn.MapOfficials(raw)
+	if err != nil {
+		return nil, fmt.Errorf("espn officials %s: %w", eventID, err)
+	}
+	return crew, nil
+}
+
+// Odds fetches every bookmaker's line for a match from the CORE host. Prop-bet
+// refs inside the payload are deliberately not followed: they are a separate
+// endpoint per provider per match, and nothing reads them.
+func (e *ESPN) Odds(
+	ctx context.Context,
+	comp config.Competition,
+	eventID string,
+) ([]model.ProviderOdds, error) {
+	if comp.ESPNSlug == "" {
+		return nil, fmt.Errorf("espn odds: competition slug is required")
+	}
+	if eventID == "" {
+		return nil, fmt.Errorf("espn odds: event id is required")
+	}
+	raw, err := e.get(ctx, espn.CoreOddsURLOn(e.coreBase, comp.ESPNSlug, eventID))
+	if err != nil {
+		return nil, fmt.Errorf("espn odds %s: %w", eventID, err)
+	}
+	providers, err := espn.MapOdds(raw)
+	if err != nil {
+		return nil, fmt.Errorf("espn odds %s: %w", eventID, err)
+	}
+	return providers, nil
+}
+
 func (e *ESPN) Bracket(
 	ctx context.Context,
 	comp config.Competition,

@@ -58,6 +58,16 @@ type fakeSource struct {
 	playsCalls      int
 	playsEventID    string
 	playsHook       func()
+	officials       []model.MatchOfficial
+	officialsErr    error
+	officialsCalls  int
+	officialsEvent  string
+	officialsHook   func()
+	odds            []model.ProviderOdds
+	oddsErr         error
+	oddsCalls       int
+	oddsEvent       string
+	oddsHook        func()
 	currentCalls    int
 	maxCalls        int
 	live            bool
@@ -235,6 +245,40 @@ func (f *fakeSource) Plays(
 	}
 	return f.plays, append([]byte(nil), f.playsRaw...), f.playsErr
 }
+func (f *fakeSource) Officials(
+	_ context.Context,
+	_ config.Competition,
+	eventID string,
+) ([]model.MatchOfficial, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.officialsCalls++
+	f.officialsEvent = eventID
+	if f.officialsHook != nil {
+		f.officialsHook()
+	}
+	if f.officialsErr != nil {
+		return nil, f.officialsErr
+	}
+	return append([]model.MatchOfficial(nil), f.officials...), nil
+}
+func (f *fakeSource) Odds(
+	_ context.Context,
+	_ config.Competition,
+	eventID string,
+) ([]model.ProviderOdds, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.oddsCalls++
+	f.oddsEvent = eventID
+	if f.oddsHook != nil {
+		f.oddsHook()
+	}
+	if f.oddsErr != nil {
+		return nil, f.oddsErr
+	}
+	return append([]model.ProviderOdds(nil), f.odds...), nil
+}
 
 func statisticsPayload(
 	t *testing.T,
@@ -316,6 +360,8 @@ type fakeRepository struct {
 	pruneHook         func()
 	matchCalls        int
 	finalizeCalls     int
+	finalizeResult    *bool
+	finalizeErr       error
 	lastFinalized     model.Match
 	lastUpsert        model.Match
 	standingsCalls    int
@@ -363,6 +409,18 @@ type fakeRepository struct {
 	missingPlays      []store.MissingPlayMatch
 	missingPlaysErr   error
 	missingPlaysCalls int
+	officialRefs      []store.OfficialRef
+	officialErr       error
+	crewWrites        [][]model.MatchOfficial
+	crewIDs           []map[string]uuid.UUID
+	crewMatches       []uuid.UUID
+	crewWriteErr      error
+	fixedOdds         [][]model.ProviderOdds
+	fixedOddsMatches  []uuid.UUID
+	fixedOddsErr      error
+	oddsSnapshots     [][]model.ProviderOdds
+	oddsSnapshotAt    []time.Time
+	oddsSnapshotErr   error
 }
 
 type fakePlayArchiveRecord struct {
@@ -390,13 +448,48 @@ func cloneUUIDMap(values map[string]uuid.UUID) map[string]uuid.UUID {
 }
 
 type loggedRun struct {
-	kind string
-	ok   bool
+	kind    string
+	ok      bool
+	message string
+}
+
+func loggedRunsForKind(runs []loggedRun, kind string) []loggedRun {
+	var selected []loggedRun
+	for _, run := range runs {
+		if run.kind == kind {
+			selected = append(selected, run)
+		}
+	}
+	return selected
+}
+
+func assertOneLoggedRun(t *testing.T, runs []loggedRun, kind string, ok bool, message string) {
+	t.Helper()
+	selected := loggedRunsForKind(runs, kind)
+	if len(selected) != 1 {
+		t.Fatalf("%s audit rows = %#v, want exactly one", kind, selected)
+	}
+	if selected[0].ok != ok || selected[0].message != message {
+		t.Fatalf("%s audit row = %#v, want ok=%v message=%q",
+			kind, selected[0], ok, message)
+	}
 }
 
 func hasLoggedKind(runs []loggedRun, kind string) bool {
 	for _, run := range runs {
 		if run.kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// hasLoggedFailure distinguishes "the capture was audited" from "the capture
+// was audited as having failed". An additive capture that swallows its own
+// error would still log a run, so presence alone proves nothing.
+func hasLoggedFailure(runs []loggedRun, kind string) bool {
+	for _, run := range runs {
+		if run.kind == kind && !run.ok {
 			return true
 		}
 	}
@@ -546,6 +639,66 @@ func (f *fakeRepository) MatchesMissingPlays(
 	return append([]store.MissingPlayMatch(nil), f.missingPlays...), f.missingPlaysErr
 }
 
+// fakeOfficialID is the fake resolver's official crosswalk. Like fakeTeamID it
+// is deliberately NOT the identity function: a test that asserts on a provider
+// id where a canonical one belongs has to fail loudly.
+func fakeOfficialID(sourceID string) uuid.UUID {
+	return uuid.NewSHA1(uuid.NameSpaceOID, []byte("official-"+sourceID))
+}
+
+func (f *fakeRepository) Official(
+	_ context.Context,
+	_ string,
+	ref store.OfficialRef,
+) (uuid.UUID, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.officialRefs = append(f.officialRefs, ref)
+	if f.officialErr != nil {
+		return uuid.Nil, f.officialErr
+	}
+	return fakeOfficialID(ref.SourceID), nil
+}
+
+func (f *fakeRepository) WriteMatchOfficials(
+	_ context.Context,
+	matchID uuid.UUID,
+	crew []model.MatchOfficial,
+	officialIDs map[string]uuid.UUID,
+) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.crewWrites = append(f.crewWrites, append([]model.MatchOfficial(nil), crew...))
+	f.crewIDs = append(f.crewIDs, cloneUUIDMap(officialIDs))
+	f.crewMatches = append(f.crewMatches, matchID)
+	return f.crewWriteErr
+}
+
+func (f *fakeRepository) WriteMatchOdds(
+	_ context.Context,
+	matchID uuid.UUID,
+	providers []model.ProviderOdds,
+) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.fixedOdds = append(f.fixedOdds, append([]model.ProviderOdds(nil), providers...))
+	f.fixedOddsMatches = append(f.fixedOddsMatches, matchID)
+	return f.fixedOddsErr
+}
+
+func (f *fakeRepository) WriteOddsSnapshot(
+	_ context.Context,
+	_ uuid.UUID,
+	providers []model.ProviderOdds,
+	capturedAt time.Time,
+) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.oddsSnapshots = append(f.oddsSnapshots, append([]model.ProviderOdds(nil), providers...))
+	f.oddsSnapshotAt = append(f.oddsSnapshotAt, capturedAt)
+	return f.oddsSnapshotErr
+}
+
 func (f *fakeRepository) WriteWinProbSnapshot(
 	_ context.Context,
 	_ uuid.UUID,
@@ -572,8 +725,14 @@ func (f *fakeRepository) FinalizeMatch(
 	f.finalizeCalls++
 	f.lastFinalized = match
 	f.lastIdentity = identity
+	if f.finalizeErr != nil {
+		return false, f.finalizeErr
+	}
 	if row, ok := f.existing[match.ID]; ok && row.FinalizedAt.Valid {
 		return false, nil
+	}
+	if f.finalizeResult != nil {
+		return *f.finalizeResult, nil
 	}
 	return true, nil
 }
@@ -692,10 +851,10 @@ func (f *fakeRepository) ReplaceTeamHistory(
 	}
 	return nil
 }
-func (f *fakeRepository) LogIngestRun(_ context.Context, _ *string, kind string, _ time.Time, _ time.Time, ok bool, _ string) error {
+func (f *fakeRepository) LogIngestRun(_ context.Context, _ *string, kind string, _ time.Time, _ time.Time, ok bool, message string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.logged = append(f.logged, loggedRun{kind: kind, ok: ok})
+	f.logged = append(f.logged, loggedRun{kind: kind, ok: ok, message: message})
 	return nil
 }
 func (f *fakeRepository) PruneIngestRuns(context.Context, time.Time) (int64, error) {
@@ -3274,5 +3433,542 @@ func TestWinProbSnapshotFailureDoesNotStopTheMatch(t *testing.T) {
 	}
 	if !hasLoggedKind(repo.logged, "win_prob_snapshot") {
 		t.Fatal("the failure was not recorded in ingest_run")
+	}
+}
+
+func crewFixture() []model.MatchOfficial {
+	return []model.MatchOfficial{
+		{SourceID: "9078", FullName: "Salvador Pérez Villalobos",
+			Role: "Referee", RoleID: "1", Order: 1},
+		{SourceID: "9079", FullName: "Michel Espinosa",
+			Role: "Assistant Referee 1", RoleID: "2", Order: 2},
+	}
+}
+
+func oddsFixture() []model.ProviderOdds {
+	homeMoneyline := -170
+	opening := model.OddsLine{HomeMoneyline: &homeMoneyline}
+	current := model.OddsLine{HomeMoneyline: &homeMoneyline}
+	return []model.ProviderOdds{{
+		ProviderID: "100", ProviderName: "DraftKings",
+		Open: &opening, Current: &current,
+	}}
+}
+
+func captureIdentity() store.MatchIdentity {
+	return store.MatchIdentity{
+		MatchID:    fakeMatchID("m1"),
+		HomeTeamID: "team-home", AwayTeamID: "team-away",
+		HomeTeamSourceID: "home", AwayTeamSourceID: "away",
+	}
+}
+
+// Every crew member has to be resolved to a canonical official before the crew
+// is written, so "which matches did this referee take" is answerable across
+// seasons rather than per match.
+func TestCaptureOfficialsResolvesEveryCrewMemberAndWritesOnce(t *testing.T) {
+	src := &fakeSource{officials: crewFixture()}
+	repo := &fakeRepository{}
+	worker := testRunner(src, repo, config.Competition{ID: "test"})
+
+	worker.captureOfficials(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1")
+
+	if src.officialsCalls != 1 || src.officialsEvent != "m1" {
+		t.Fatalf("officials fetches=%d event=%q, want 1/m1", src.officialsCalls, src.officialsEvent)
+	}
+	if len(repo.officialRefs) != 2 ||
+		repo.officialRefs[0].SourceID != "9078" || repo.officialRefs[0].FullName == "" ||
+		repo.officialRefs[1].SourceID != "9079" {
+		t.Fatalf("resolved refs = %#v, want both crew members", repo.officialRefs)
+	}
+	if len(repo.crewWrites) != 1 || len(repo.crewWrites[0]) != 2 {
+		t.Fatalf("crew writes = %#v, want one write of two officials", repo.crewWrites)
+	}
+	if repo.crewMatches[0] != fakeMatchID("m1") {
+		t.Fatalf("crew written against %s, want the canonical match id", repo.crewMatches[0])
+	}
+	if got := repo.crewIDs[0]; got["9078"] != fakeOfficialID("9078") ||
+		got["9079"] != fakeOfficialID("9079") {
+		t.Fatalf("official crosswalk = %v, want canonical ids", got)
+	}
+	if hasLoggedFailure(repo.logged, "officials") {
+		t.Fatal("a successful crew capture was audited as a failure")
+	}
+	assertOneLoggedRun(t, repo.logged, "officials", true, "")
+}
+
+// Plenty of competitions publish no crew at all. That is not a failure, and it
+// must not write an empty crew either.
+func TestCaptureOfficialsEmptyCrewIsASuccessfulNoOp(t *testing.T) {
+	src := &fakeSource{officials: nil}
+	repo := &fakeRepository{}
+	worker := testRunner(src, repo, config.Competition{ID: "test"})
+
+	worker.captureOfficials(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1")
+
+	if len(repo.officialRefs) != 0 || len(repo.crewWrites) != 0 {
+		t.Fatalf("empty crew resolved %d refs and wrote %d crews",
+			len(repo.officialRefs), len(repo.crewWrites))
+	}
+	if hasLoggedFailure(repo.logged, "officials") {
+		t.Fatal("an empty crew was audited as a failure")
+	}
+	assertOneLoggedRun(t, repo.logged, "officials", true, "")
+}
+
+func TestCaptureOfficialsRecordsEveryBoundaryFailure(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		src         *fakeSource
+		repo        *fakeRepository
+		wantResolve bool
+		wantWrite   bool
+	}{
+		{
+			name: "fetch",
+			src:  &fakeSource{officialsErr: errors.New("core api down")},
+			repo: &fakeRepository{},
+		},
+		{
+			name:        "resolve",
+			src:         &fakeSource{officials: crewFixture()},
+			repo:        &fakeRepository{officialErr: errors.New("identity down")},
+			wantResolve: true,
+		},
+		{
+			name:        "write",
+			src:         &fakeSource{officials: crewFixture()},
+			repo:        &fakeRepository{crewWriteErr: errors.New("write down")},
+			wantResolve: true,
+			wantWrite:   true,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			worker := testRunner(test.src, test.repo, config.Competition{ID: "test"})
+
+			worker.captureOfficials(context.Background(),
+				config.Competition{ID: "test"}, captureIdentity(), "m1")
+
+			if !hasLoggedFailure(test.repo.logged, "officials") {
+				t.Fatalf("%s failure was not recorded in ingest_run", test.name)
+			}
+			if gotResolve := len(test.repo.officialRefs) > 0; gotResolve != test.wantResolve {
+				t.Fatalf("resolve attempted=%v, want %v", gotResolve, test.wantResolve)
+			}
+			if gotWrite := len(test.repo.crewWrites) > 0; gotWrite != test.wantWrite {
+				t.Fatalf("crew write attempted=%v, want %v", gotWrite, test.wantWrite)
+			}
+		})
+	}
+}
+
+// While a match is live only the CURRENT line is sampled. Opening and closing
+// prices are fixed facts that are not final until the match is, so writing them
+// from a live poll would keep overwriting them with an in-play price.
+func TestCaptureOddsSamplesOnlyTheCurrentLineWhileLive(t *testing.T) {
+	src := &fakeSource{odds: oddsFixture()}
+	repo := &fakeRepository{}
+	worker := testRunner(src, repo, config.Competition{ID: "test"})
+	before := time.Now()
+
+	worker.captureOdds(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1", false)
+
+	if src.oddsCalls != 1 || src.oddsEvent != "m1" {
+		t.Fatalf("odds fetches=%d event=%q, want 1/m1", src.oddsCalls, src.oddsEvent)
+	}
+	if len(repo.oddsSnapshots) != 1 || len(repo.oddsSnapshots[0]) != 1 ||
+		repo.oddsSnapshots[0][0].ProviderID != "100" {
+		t.Fatalf("snapshots = %#v, want one sampled provider", repo.oddsSnapshots)
+	}
+	if len(repo.fixedOdds) != 0 {
+		t.Fatalf("a live poll wrote fixed lines: %#v", repo.fixedOdds)
+	}
+	if repo.oddsSnapshotAt[0].Before(before) || repo.oddsSnapshotAt[0].After(time.Now()) {
+		t.Fatalf("captured at %s, want the observation time of this poll",
+			repo.oddsSnapshotAt[0])
+	}
+	if hasLoggedFailure(repo.logged, "odds") {
+		t.Fatal("a successful odds capture was audited as a failure")
+	}
+	assertOneLoggedRun(t, repo.logged, "odds", true, "")
+}
+
+func TestCaptureOddsRecordsFixedLinesOnceFinalized(t *testing.T) {
+	src := &fakeSource{odds: oddsFixture()}
+	repo := &fakeRepository{}
+	worker := testRunner(src, repo, config.Competition{ID: "test"})
+
+	worker.captureOdds(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1", true)
+
+	if len(repo.fixedOdds) != 1 || len(repo.fixedOdds[0]) != 1 ||
+		repo.fixedOdds[0][0].ProviderID != "100" {
+		t.Fatalf("fixed odds = %#v, want the finalized open/close write", repo.fixedOdds)
+	}
+	if repo.fixedOddsMatches[0] != fakeMatchID("m1") {
+		t.Fatalf("fixed odds written against %s, want the canonical match id",
+			repo.fixedOddsMatches[0])
+	}
+	// The last sampled point of the curve is still worth keeping.
+	if len(repo.oddsSnapshots) != 1 {
+		t.Fatalf("snapshots = %d at finalization, want the closing sample too",
+			len(repo.oddsSnapshots))
+	}
+	assertOneLoggedRun(t, repo.logged, "odds", true, "")
+}
+
+func TestCaptureOddsWithNoProvidersIsASuccessfulNoOp(t *testing.T) {
+	src := &fakeSource{odds: nil}
+	repo := &fakeRepository{}
+	worker := testRunner(src, repo, config.Competition{ID: "test"})
+
+	worker.captureOdds(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1", true)
+
+	if len(repo.oddsSnapshots) != 0 || len(repo.fixedOdds) != 0 {
+		t.Fatalf("no providers wrote %d snapshots and %d fixed rows",
+			len(repo.oddsSnapshots), len(repo.fixedOdds))
+	}
+	if hasLoggedFailure(repo.logged, "odds") {
+		t.Fatal("a match no book priced was audited as a failure")
+	}
+	assertOneLoggedRun(t, repo.logged, "odds", true, "")
+}
+
+func TestCaptureOddsRecordsAFetchFailureWithoutWriting(t *testing.T) {
+	src := &fakeSource{oddsErr: errors.New("core api down")}
+	repo := &fakeRepository{}
+	worker := testRunner(src, repo, config.Competition{ID: "test"})
+
+	worker.captureOdds(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1", true)
+
+	if len(repo.oddsSnapshots) != 0 || len(repo.fixedOdds) != 0 {
+		t.Fatal("a failed fetch still wrote odds rows")
+	}
+	if !hasLoggedFailure(repo.logged, "odds") {
+		t.Fatal("the fetch failure was not recorded in ingest_run")
+	}
+}
+
+// The two writes are independent: a failing snapshot must not cost the
+// finalized match its fixed lines, and the recorded run must reflect what
+// actually happened rather than the last call's return value.
+func TestCaptureOddsAttemptsBothWritesAndRecordsTheCombinedFailure(t *testing.T) {
+	for _, test := range []struct {
+		name             string
+		repo             *fakeRepository
+		wantMessage      string
+		wantMessageParts []string
+	}{
+		{
+			name:        "snapshot",
+			repo:        &fakeRepository{oddsSnapshotErr: errors.New("boom")},
+			wantMessage: "odds snapshot: boom",
+		},
+		{
+			name:        "fixed",
+			repo:        &fakeRepository{fixedOddsErr: errors.New("boom")},
+			wantMessage: "fixed odds: boom",
+		},
+		{name: "both", repo: &fakeRepository{
+			oddsSnapshotErr: errors.New("snapshot boom"),
+			fixedOddsErr:    errors.New("fixed boom"),
+		}, wantMessageParts: []string{"snapshot boom", "fixed boom"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			src := &fakeSource{odds: oddsFixture()}
+			worker := testRunner(src, test.repo, config.Competition{ID: "test"})
+
+			worker.captureOdds(context.Background(),
+				config.Competition{ID: "test"}, captureIdentity(), "m1", true)
+
+			if len(test.repo.oddsSnapshots) != 1 || len(test.repo.fixedOdds) != 1 {
+				t.Fatalf("snapshots=%d fixed=%d, want both writes attempted",
+					len(test.repo.oddsSnapshots), len(test.repo.fixedOdds))
+			}
+			if !hasLoggedFailure(test.repo.logged, "odds") {
+				t.Fatalf("the %s failure was recorded as a success", test.name)
+			}
+			runs := loggedRunsForKind(test.repo.logged, "odds")
+			if len(runs) != 1 || runs[0].ok {
+				t.Fatalf("odds audit rows = %#v, want one failed row", runs)
+			}
+			if test.wantMessage != "" && runs[0].message != test.wantMessage {
+				t.Fatalf("odds failure message = %q, want %q",
+					runs[0].message, test.wantMessage)
+			}
+			for _, wantMessage := range test.wantMessageParts {
+				if !strings.Contains(runs[0].message, wantMessage) {
+					t.Fatalf("odds failure message %q does not contain %q",
+						runs[0].message, wantMessage)
+				}
+			}
+		})
+	}
+}
+
+// Raw bookmaker prices are not the same thing as the normalized win
+// probability, and mapWinProbability returns nil for competitions with no
+// usable three-way moneyline. Suppressing the odds sample in that case would
+// lose the market for exactly the competitions whose market we cannot map.
+func TestLiveMatchSamplesOddsEvenWithoutAWinProbability(t *testing.T) {
+	repo := &fakeRepository{}
+	src := &fakeSource{live: true, winProbability: nil, odds: oddsFixture()}
+	worker := newTestRunnerWithSource(repo, src)
+
+	worker.runCycle(context.Background(), false)
+
+	if src.oddsCalls != 1 || len(repo.oddsSnapshots) != 1 {
+		t.Fatalf("odds fetches=%d snapshots=%d for a live match with no mapped market, want 1/1",
+			src.oddsCalls, len(repo.oddsSnapshots))
+	}
+	if len(repo.winProb) != 0 {
+		t.Fatalf("win prob writes = %d with no mapped market, want 0", len(repo.winProb))
+	}
+	if len(repo.fixedOdds) != 0 {
+		t.Fatalf("a live match wrote fixed lines: %#v", repo.fixedOdds)
+	}
+	if src.officialsCalls != 0 {
+		t.Fatalf("officials fetched %d times for a live match, want 0", src.officialsCalls)
+	}
+}
+
+// A scheduled match is polled on slow ticks all season. Sampling those would
+// write a market curve for every fixture on the calendar months in advance.
+func TestScheduledMatchDoesNotSampleOdds(t *testing.T) {
+	repo := &fakeRepository{}
+	src := &fakeSource{odds: oddsFixture()}
+	src.matches = []model.Match{{
+		ID: "m1", Kickoff: time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
+		State: model.MatchStateScheduled,
+		Home:  model.Team{ID: "home", Name: "Home", Abbr: "HOM"},
+		Away:  model.Team{ID: "away", Name: "Away", Abbr: "AWY"},
+	}}
+	worker := testRunner(src, repo, config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	})
+
+	// A fast tick, because the first slow tick of a season is a backfill and a
+	// backfill deliberately never polls a scheduled fixture at all.
+	worker.runCycle(context.Background(), false)
+
+	if src.summaryCalls == 0 {
+		t.Fatal("the scheduled match was never polled; the test proves nothing")
+	}
+	if src.oddsCalls != 0 || len(repo.oddsSnapshots) != 0 {
+		t.Fatalf("scheduled odds fetches=%d snapshots=%d, want 0/0",
+			src.oddsCalls, len(repo.oddsSnapshots))
+	}
+}
+
+// The crew and the fixed lines are full-time facts. Fetching them before the
+// match is finalized would re-fetch them on every poll and record an opening
+// line that is still moving.
+func TestFinalizedMatchCapturesOfficialsAndFixedOddsAfterFinalization(t *testing.T) {
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	officialsBeforeFinalize, oddsBeforeFinalize := false, false
+	src := &fakeSource{
+		matches:   []model.Match{finishedMatch()},
+		officials: crewFixture(),
+		odds:      oddsFixture(),
+	}
+	src.officialsHook = func() {
+		repo.mu.Lock()
+		defer repo.mu.Unlock()
+		officialsBeforeFinalize = repo.finalizeCalls == 0
+	}
+	src.oddsHook = func() {
+		repo.mu.Lock()
+		defer repo.mu.Unlock()
+		oddsBeforeFinalize = repo.finalizeCalls == 0
+	}
+	worker := testRunner(src, repo, config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	})
+
+	worker.runCycle(context.Background(), true)
+
+	if officialsBeforeFinalize || oddsBeforeFinalize {
+		t.Fatal("a full-time capture ran before the match was finalized")
+	}
+	if repo.finalizeCalls != 1 || src.officialsCalls != 1 || src.oddsCalls != 1 {
+		t.Fatalf("finalize=%d officials=%d odds=%d, want 1/1/1",
+			repo.finalizeCalls, src.officialsCalls, src.oddsCalls)
+	}
+	if src.officialsEvent != "m1" || src.oddsEvent != "m1" {
+		t.Fatalf("captured provider events %q/%q, want the provider id m1",
+			src.officialsEvent, src.oddsEvent)
+	}
+	if len(repo.crewWrites) != 1 || len(repo.fixedOdds) != 1 ||
+		len(repo.oddsSnapshots) != 1 {
+		t.Fatalf("crew=%d fixed=%d snapshots=%d at full time, want 1/1/1",
+			len(repo.crewWrites), len(repo.fixedOdds), len(repo.oddsSnapshots))
+	}
+	// The play stream is still captured; the new captures are additions to
+	// that branch, not a replacement for it.
+	if src.playsCalls != 1 {
+		t.Fatalf("play stream fetches = %d, want the existing capture preserved",
+			src.playsCalls)
+	}
+}
+
+func TestFinishedMatchSkipsFinalCapturesWhenFinalizeMatchDoesNotClaimRow(t *testing.T) {
+	finalized := false
+	repo := &fakeRepository{
+		existing:       map[string]store.MatchRow{},
+		finalizeResult: &finalized,
+	}
+	src := &fakeSource{
+		matches:   []model.Match{finishedMatch()},
+		officials: crewFixture(),
+		odds:      oddsFixture(),
+	}
+	worker := testRunner(src, repo, config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	})
+
+	worker.runCycle(context.Background(), true)
+
+	if repo.finalizeCalls != 1 {
+		t.Fatalf("finalizations = %d, want 1", repo.finalizeCalls)
+	}
+	if src.officialsCalls != 0 || src.oddsCalls != 0 || src.playsCalls != 0 {
+		t.Fatalf("officials=%d odds=%d plays=%d after unclaimed finalization, want 0/0/0",
+			src.officialsCalls, src.oddsCalls, src.playsCalls)
+	}
+	if len(repo.crewWrites) != 0 || len(repo.fixedOdds) != 0 || len(repo.oddsSnapshots) != 0 {
+		t.Fatalf("crew=%d fixed=%d snapshots=%d after unclaimed finalization, want 0/0/0",
+			len(repo.crewWrites), len(repo.fixedOdds), len(repo.oddsSnapshots))
+	}
+}
+
+func TestFinishedMatchSkipsFinalCapturesWhenFinalizeMatchFails(t *testing.T) {
+	repo := &fakeRepository{
+		existing:    map[string]store.MatchRow{},
+		finalizeErr: errors.New("finalize boom"),
+	}
+	src := &fakeSource{
+		matches:   []model.Match{finishedMatch()},
+		officials: crewFixture(),
+		odds:      oddsFixture(),
+	}
+	worker := testRunner(src, repo, config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	})
+
+	result := worker.runCycle(context.Background(), true)
+
+	if repo.finalizeCalls != 1 {
+		t.Fatalf("finalizations = %d, want 1", repo.finalizeCalls)
+	}
+	if src.officialsCalls != 0 || src.oddsCalls != 0 || src.playsCalls != 0 {
+		t.Fatalf("officials=%d odds=%d plays=%d after failed finalization, want 0/0/0",
+			src.officialsCalls, src.oddsCalls, src.playsCalls)
+	}
+	if len(repo.crewWrites) != 0 || len(repo.fixedOdds) != 0 || len(repo.oddsSnapshots) != 0 {
+		t.Fatalf("crew=%d fixed=%d snapshots=%d after failed finalization, want 0/0/0",
+			len(repo.crewWrites), len(repo.fixedOdds), len(repo.oddsSnapshots))
+	}
+	if result.failures == 0 || !hasLoggedFailure(repo.logged, "matches") {
+		t.Fatalf("failed finalization was not recorded through the match path: result=%+v runs=%#v",
+			result, repo.logged)
+	}
+}
+
+// Officials and odds are additive. Their failures are recorded in their own
+// ingest_run kinds and must not join the match's operation errors, or a
+// bookmaker outage would report the whole competition as failing.
+func TestOfficialsAndOddsFailuresDoNotBlockFinalization(t *testing.T) {
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	src := &fakeSource{
+		matches:      []model.Match{finishedMatch()},
+		officialsErr: errors.New("crew down"),
+		oddsErr:      errors.New("odds down"),
+	}
+	worker := testRunner(src, repo, config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	})
+
+	result := worker.runCycle(context.Background(), true)
+
+	if repo.matchCalls != 1 || repo.finalizeCalls != 1 {
+		t.Fatalf("match writes=%d finalizations=%d; an additive capture blocked the scoreline",
+			repo.matchCalls, repo.finalizeCalls)
+	}
+	if result.failures != 0 {
+		t.Fatalf("cycle failures = %d, want the additive failures kept off the scoreline path",
+			result.failures)
+	}
+	if hasLoggedFailure(repo.logged, "matches") {
+		t.Fatal("an additive capture failure was appended to the match operation errors")
+	}
+	if !hasLoggedFailure(repo.logged, "officials") ||
+		!hasLoggedFailure(repo.logged, "odds") {
+		t.Fatalf("additive failures were swallowed instead of audited: %#v", repo.logged)
+	}
+}
+
+// The commentary gate still decides whether a finished match finalizes at all.
+// No finalization means no full-time captures.
+func TestCommentaryGateAlsoDefersOfficialsAndFixedOdds(t *testing.T) {
+	repo := &fakeRepository{
+		existing:      map[string]store.MatchRow{},
+		commentaryErr: errors.New("boom"),
+	}
+	src := &fakeSource{
+		matches:   []model.Match{finishedMatch()},
+		officials: crewFixture(),
+		odds:      oddsFixture(),
+	}
+	worker := testRunner(src, repo, config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	})
+
+	worker.runCycle(context.Background(), true)
+
+	if repo.finalizeCalls != 0 {
+		t.Fatalf("finalizations = %d; the commentary gate was bypassed", repo.finalizeCalls)
+	}
+	if src.officialsCalls != 0 || src.oddsCalls != 0 {
+		t.Fatalf("officials=%d odds=%d captured for an unfinalized match, want 0/0",
+			src.officialsCalls, src.oddsCalls)
+	}
+}
+
+// A canceled match finalizes without a summary. There is no crew and no
+// settled market for a match that was never played, and the branch has no
+// summary to hang the captures off.
+func TestCanceledMatchCapturesNoOfficialsOrOdds(t *testing.T) {
+	match := finishedMatch()
+	match.StatusName = "STATUS_CANCELED"
+	src := &fakeSource{
+		matches:   []model.Match{match},
+		officials: crewFixture(),
+		odds:      oddsFixture(),
+	}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{"m1": {}}}
+	worker := testRunner(src, repo, config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	})
+
+	worker.runCycle(context.Background(), false)
+
+	if repo.finalizeCalls != 1 {
+		t.Fatalf("finalizations = %d, want the terminal match finalized", repo.finalizeCalls)
+	}
+	if src.officialsCalls != 0 || src.oddsCalls != 0 {
+		t.Fatalf("officials=%d odds=%d for a canceled match, want 0/0",
+			src.officialsCalls, src.oddsCalls)
 	}
 }

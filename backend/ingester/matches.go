@@ -260,15 +260,22 @@ func (r *runner) processMatches(
 			// season, and mapWinProbability returns nil for competitions with
 			// no usable three-way moneyline -- writing 0/0/0 for those would
 			// invent a market a reader could not distinguish from a real one.
-			if match.State == model.MatchStateLive && detail.WinProbability != nil {
-				start := time.Now()
-				err := r.repo.WriteWinProbSnapshot(
-					ctx, identity.MatchID, *detail.WinProbability, summaryStartedAt)
-				r.recordRun(ctx, comp.ID, winProbSnapshotRunKind, start, err)
-				if err != nil {
-					r.log.Warn("win probability snapshot",
-						"match", match.ID, "err", err)
+			if match.State == model.MatchStateLive {
+				if detail.WinProbability != nil {
+					start := time.Now()
+					err := r.repo.WriteWinProbSnapshot(
+						ctx, identity.MatchID, *detail.WinProbability, summaryStartedAt)
+					r.recordRun(ctx, comp.ID, winProbSnapshotRunKind, start, err)
+					if err != nil {
+						r.log.Warn("win probability snapshot",
+							"match", match.ID, "err", err)
+					}
 				}
+				// Deliberately OUTSIDE the win-probability condition. These are
+				// the books' raw prices, and the competitions whose market
+				// mapWinProbability cannot normalize are exactly the ones whose
+				// market would otherwise never be recorded at all.
+				r.captureOdds(ctx, comp, identity, match.ID, false)
 			}
 
 			// Structured commentary is additive to the scoreline row already
@@ -296,6 +303,13 @@ func (r *runner) processMatches(
 						operationErrors = append(operationErrors,
 							fmt.Errorf("match %s play stream: %w", match.ID, err))
 					}
+					// The crew and the settled lines are full-time facts too.
+					// Both are additive and audit their own failures, so
+					// neither is appended to operationErrors: a core-API or
+					// bookmaker outage must not report a match that finished as
+					// having failed to ingest.
+					r.captureOfficials(ctx, comp, identity, match.ID)
+					r.captureOdds(ctx, comp, identity, match.ID, true)
 					existing[identity.MatchID] = store.MatchRow{
 						State: match.State,
 						FinalizedAt: pgtype.Timestamptz{
