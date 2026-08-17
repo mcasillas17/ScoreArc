@@ -29,9 +29,9 @@ const finalCaptureRetryInterval = 30 * time.Minute
 
 // finalCaptureSchedulePersistTimeout bounds the detached context used to
 // schedule a retry when the caller's own context is already canceled or
-// deadline-exceeded. It mirrors the real Store's operationTimeout so a
-// canceled-context failure is scheduled durably on the same kind of budget
-// a healthy request would have gotten, not left to run unbounded.
+// deadline-exceeded. It deliberately gives this single shutdown-time upsert a
+// shorter budget than a normal store operation, so retry state gets a chance to
+// become durable without delaying shutdown for the full operation timeout.
 const finalCaptureSchedulePersistTimeout = 5 * time.Second
 
 // persistFinalCaptureAttempt durably records the outcome of one officials or
