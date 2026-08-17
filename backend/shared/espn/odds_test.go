@@ -34,9 +34,9 @@ func TestMapOddsMapsRecordedLadder(t *testing.T) {
 		t.Fatalf("ladder = %#v, want open, close, and current", provider)
 	}
 
-	assertOddsLine(t, "open", provider.Open, 500, 340, -225, 1.5, 2.5, -175, 120)
-	assertOddsLine(t, "close", provider.Close, 425, 320, -170, 0.5, 2.5, -150, 110)
-	assertOddsLine(t, "current", provider.Current, 425, 320, -170, 0.5, 2.5, -150, 110)
+	assertOddsLine(t, "open", provider.Open, 500, 340, -225, 1.5, -175, 115, 2.5, -175, 120)
+	assertOddsLine(t, "close", provider.Close, 425, 320, -170, 0.5, 130, -180, 2.5, -150, 110)
+	assertOddsLine(t, "current", provider.Current, 425, 320, -170, 0.5, 130, -180, 2.5, -150, 110)
 }
 
 func assertOddsLine(
@@ -44,14 +44,19 @@ func assertOddsLine(
 	phase string,
 	odds *model.OddsLine,
 	home, draw, away int,
-	spread, overUnder float64,
+	spread float64,
+	homeSpreadOdds, awaySpreadOdds int,
+	overUnder float64,
 	over, under int,
 ) {
 	t.Helper()
 	if odds.HomeMoneyline == nil || *odds.HomeMoneyline != home ||
 		odds.DrawMoneyline == nil || *odds.DrawMoneyline != draw ||
 		odds.AwayMoneyline == nil || *odds.AwayMoneyline != away ||
+		// pointSpread is the line; spread is the American price for that line.
 		odds.Spread == nil || *odds.Spread != spread ||
+		odds.HomeSpreadOdds == nil || *odds.HomeSpreadOdds != homeSpreadOdds ||
+		odds.AwaySpreadOdds == nil || *odds.AwaySpreadOdds != awaySpreadOdds ||
 		odds.OverUnder == nil || *odds.OverUnder != overUnder ||
 		odds.OverOdds == nil || *odds.OverOdds != over ||
 		odds.UnderOdds == nil || *odds.UnderOdds != under {

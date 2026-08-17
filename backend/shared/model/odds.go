@@ -6,10 +6,15 @@ type OddsLine struct {
 	HomeMoneyline *int
 	DrawMoneyline *int
 	AwayMoneyline *int
-	Spread        *float64
-	OverUnder     *float64
-	OverOdds      *int
-	UnderOdds     *int
+	// Spread is the home team's point-spread line, not its American price.
+	Spread *float64
+	// HomeSpreadOdds is the American price for the home team's point-spread line.
+	HomeSpreadOdds *int
+	// AwaySpreadOdds is the American price for the away team's point-spread line.
+	AwaySpreadOdds *int
+	OverUnder      *float64
+	OverOdds       *int
+	UnderOdds      *int
 }
 
 // ProviderOdds is one sportsbook's fixed opening and closing lines plus a

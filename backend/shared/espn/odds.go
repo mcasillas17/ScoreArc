@@ -95,13 +95,15 @@ func MapOdds(raw []byte) ([]model.ProviderOdds, error) {
 
 func mapOddsPhase(phase rawOddsPhase, home, away rawTeamOddsPhase) *model.OddsLine {
 	line := model.OddsLine{
-		HomeMoneyline: parseAmericanInt(home.MoneyLine.American),
-		DrawMoneyline: parseAmericanInt(phase.Draw.American),
-		AwayMoneyline: parseAmericanInt(away.MoneyLine.American),
-		Spread:        parseOddsDecimal(home.PointSpread.American),
-		OverUnder:     parseOddsDecimal(phase.Total.American),
-		OverOdds:      parseAmericanInt(phase.Over.American),
-		UnderOdds:     parseAmericanInt(phase.Under.American),
+		HomeMoneyline:  parseAmericanInt(home.MoneyLine.American),
+		DrawMoneyline:  parseAmericanInt(phase.Draw.American),
+		AwayMoneyline:  parseAmericanInt(away.MoneyLine.American),
+		Spread:         parseOddsDecimal(home.PointSpread.American),
+		HomeSpreadOdds: parseAmericanInt(home.Spread.American),
+		AwaySpreadOdds: parseAmericanInt(away.Spread.American),
+		OverUnder:      parseOddsDecimal(phase.Total.American),
+		OverOdds:       parseAmericanInt(phase.Over.American),
+		UnderOdds:      parseAmericanInt(phase.Under.American),
 	}
 	if oddsLineEmpty(line) {
 		return nil
@@ -120,9 +122,12 @@ func mapCurrentOdds(item rawProviderOdds) *model.OddsLine {
 		DrawMoneyline: firstInt(floatToInt(item.DrawOdds.MoneyLine), phase.DrawMoneyline),
 		AwayMoneyline: firstInt(floatToInt(item.AwayTeamOdds.MoneyLine), phase.AwayMoneyline),
 		Spread:        phase.Spread,
-		OverUnder:     firstFloat(item.OverUnder, phase.OverUnder),
-		OverOdds:      firstInt(floatToInt(item.OverOdds), phase.OverOdds),
-		UnderOdds:     firstInt(floatToInt(item.UnderOdds), phase.UnderOdds),
+		// Core's flattened current object has no side-specific spread prices.
+		HomeSpreadOdds: phase.HomeSpreadOdds,
+		AwaySpreadOdds: phase.AwaySpreadOdds,
+		OverUnder:      firstFloat(item.OverUnder, phase.OverUnder),
+		OverOdds:       firstInt(floatToInt(item.OverOdds), phase.OverOdds),
+		UnderOdds:      firstInt(floatToInt(item.UnderOdds), phase.UnderOdds),
 	}
 	if oddsLineEmpty(line) {
 		return nil
@@ -179,5 +184,6 @@ func firstFloat(values ...*float64) *float64 {
 func oddsLineEmpty(line model.OddsLine) bool {
 	return line.HomeMoneyline == nil && line.DrawMoneyline == nil &&
 		line.AwayMoneyline == nil && line.Spread == nil &&
+		line.HomeSpreadOdds == nil && line.AwaySpreadOdds == nil &&
 		line.OverUnder == nil && line.OverOdds == nil && line.UnderOdds == nil
 }

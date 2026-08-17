@@ -463,6 +463,63 @@ func TestOddsSeparatesFixedLinesFromSamples(t *testing.T) {
 	}
 }
 
+func TestOddsTablesUseExplicitNullableMarketColumns(t *testing.T) {
+	sql := readMigration(t, "0009_odds_snapshot.up.sql")
+	marketColumns := []string{
+		"home_moneyline",
+		"draw_moneyline",
+		"away_moneyline",
+		"spread",
+		"home_spread_odds",
+		"away_spread_odds",
+		"over_under",
+		"over_odds",
+		"under_odds",
+	}
+
+	for _, table := range []string{"match_odds", "odds_snapshot"} {
+		tableSQL := oddsTableSQL(t, sql, table)
+		for _, column := range marketColumns {
+			columnSQL := oddsColumnSQL(t, tableSQL, column)
+			if strings.Contains(columnSQL, "NOT NULL") || strings.Contains(columnSQL, "DEFAULT 0") {
+				t.Fatalf("%s.%s must be nullable without DEFAULT 0: %q", table, column, columnSQL)
+			}
+		}
+	}
+
+	if !strings.Contains(oddsTableSQL(t, sql, "match_odds"), "provider_name text NOT NULL") {
+		t.Fatal("match_odds must retain provider_name")
+	}
+	if strings.Contains(oddsTableSQL(t, sql, "odds_snapshot"), "provider_name") {
+		t.Fatal("odds_snapshot must not duplicate provider_name")
+	}
+}
+
+func oddsTableSQL(t *testing.T, sql, table string) string {
+	t.Helper()
+	start := strings.Index(sql, "CREATE TABLE "+table+" (")
+	if start < 0 {
+		t.Fatalf("missing CREATE TABLE %s", table)
+	}
+	end := strings.Index(sql[start:], "\n);")
+	if end < 0 {
+		t.Fatalf("missing end of CREATE TABLE %s", table)
+	}
+	return sql[start : start+end]
+}
+
+func oddsColumnSQL(t *testing.T, tableSQL, column string) string {
+	t.Helper()
+	for _, line := range strings.Split(tableSQL, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, column+" ") {
+			return line
+		}
+	}
+	t.Fatalf("missing explicit odds column %q in:\n%s", column, tableSQL)
+	return ""
+}
+
 func TestOddsRollbackDropsOnlyOwnedTablesInReverseOrder(t *testing.T) {
 	sql := readMigration(t, "0009_odds_snapshot.down.sql")
 	snapshot := strings.Index(sql, "DROP TABLE IF EXISTS odds_snapshot")
