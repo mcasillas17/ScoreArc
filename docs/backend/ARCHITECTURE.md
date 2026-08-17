@@ -130,6 +130,7 @@ same transaction.
 
 ### Ops
 - **ingest_run**(id bigserial, competition_id, kind, started_at, finished_at, ok, error) — observability. Beyond per-operation runs it also records the identity events a human has to act on: `provisional_team` (a club nobody has curated), `team_promotion` (a curation that could not complete), and `player_capture` (a match where the provider sent no athlete ids — without this, total capture failure and a match where nothing happened are the same empty table).
+- **match_final_capture_status**(PK (match_id→match, kind[`officials|fixed_odds`]), attempt_count, last_attempted_at, retry_at NULL, completed_at NULL, last_error) — internal post-finalization capture ledger for additive enrichment that can succeed or fail independently of score/detail finalization. Officials and fixed odds each get one row per match; valid empty crews and no-market odds write **completed** rows with no fact rows, while failures persist the next retry time and last error. This table is operational only: the public reader is explicitly denied access, and the ingester gets `SELECT`/`INSERT`/`UPDATE` only — never `DELETE`.
 
 ### Roles (least privilege — enforces the read-only public path)
 - `scorearc_reader` → **SELECT only** (the public reader connects as this).
@@ -173,6 +174,10 @@ same transaction.
 - Current state is idempotently upserted. State cannot regress except
   live→scheduled for ESPN's explicit postponed or suspended status. Sparse payloads preserve
   known scores, winners, detail arrays, and bracket placeholders.
+- Odds mapping is field-local at the PostgreSQL boundary: nested-string and
+  flattened numeric spread/total values that would overflow `numeric(5,2)` after
+  PostgreSQL-equivalent two-decimal rounding become SQL `NULL` only for that one
+  field, so one malformed book cannot roll back another provider's rows.
 - Unlike the frontend's legacy `post → finished` mapping, the ingester keeps
   unknown incomplete `post` statuses mutable (`live`) and maps postponed or
   suspended matches to `scheduled`; only provider-confirmed or explicitly
@@ -181,6 +186,9 @@ same transaction.
   finalized rows immutable. Failed finals remain queryable through the
   unfinalized backlog; persisted `bracket_required` classification prevents a
   restart from losing knockout safety.
+- Once a match finalizes, the ingester immediately attempts both additive
+  full-time captures: officials and fixed odds. An explicit empty crew or a
+  no-market odds response is a durable completion, not a missing row to retry.
 - Bracket metadata is authoritative for knockout round, placeholders, and
   shootout winner. A bracket outage blocks only candidates still requiring that
   metadata; group-stage matches continue finalizing, while knockout candidates
@@ -196,6 +204,15 @@ same transaction.
   redirects/content type/size/deadline limits, and upload deterministic R2 keys.
 - Every provider/store operation and global audit-pruning pass records an
   `ingest_run`. Old audit rows are pruned in bounded batches.
+- Every slow tick also sweeps the durable final-capture backlog: at most 10 due
+  officials/fixed-odds tasks per competition, each retried no more than once
+  every 30 minutes. Because the backlog lives in Postgres, retries survive
+  process restarts; once a kind completes it is never selected again. Officials
+  retries refetch only officials. Fixed-odds retries refetch and rewrite only
+  fixed open/close rows — they do **not** create a post-match current-line
+  sample. These failures remain additive: they keep their own `officials`,
+  `odds`, and `final_capture_backlog` telemetry, never block score/detail
+  finalization, and do not change the existing live CURRENT-price sampling.
 - `go run ./ingester -once` performs one complete slow reconciliation without a
   fixed whole-cycle deadline; individual operations remain bounded.
 
