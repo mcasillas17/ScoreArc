@@ -169,7 +169,7 @@ git add backend/shared/espn/odds.go \
   backend/shared/store/odds_integration_test.go
 git commit -m "fix: reject odds decimals outside postgres range
 
-Co-authored-by: <your own agent identity from AGENTS.md>
+Co-authored-by: <your own agent identity from AGENTS.md>"
 ```
 
 ---
@@ -554,7 +554,7 @@ git add backend/ingester/contracts.go \
   backend/ingester/runner_test.go
 git commit -m "fix: retry finalized officials and fixed odds
 
-Co-authored-by: <your own agent identity from AGENTS.md>
+Co-authored-by: <your own agent identity from AGENTS.md>"
 ```
 
 ---
@@ -636,7 +636,7 @@ git add docs/backend/ARCHITECTURE.md \
   docs/superpowers/plans/2026-08-17-finalized-officials-odds-retry.md
 git commit -m "docs: record durable finalized capture retries
 
-Co-authored-by: <your own agent identity from AGENTS.md>
+Co-authored-by: <your own agent identity from AGENTS.md>"
 ```
 
 Commit any blocker fixes separately with a conventional `fix:` message and the
