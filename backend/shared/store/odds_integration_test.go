@@ -379,6 +379,113 @@ WHERE match_id=$1 AND provider_id='200' AND phase='open'`, matchID).Scan(&provid
 	}
 }
 
+func TestMappedOddsDecimalMatchesPostgresRoundingBoundary(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	mustSeedTwoTeams(t, store)
+	mustSeedSeason(t, pool)
+	matchID := seedOddsMatch(t, store)
+
+	providers, err := espn.MapOdds([]byte(`{"items":[
+		{
+			"provider":{"id":"100","name":"DraftKings"},
+			"homeTeamOdds":{
+				"open":{"moneyLine":{"american":"+120"}},
+				"moneyLine":125
+			},
+			"open":{"total":{"american":"999.994"}},
+			"overUnder":-999.994
+		},
+		{
+			"provider":{"id":"200","name":"Caesars"},
+			"homeTeamOdds":{
+				"open":{"moneyLine":{"american":"+130"}},
+				"moneyLine":-140
+			},
+			"open":{"total":{"american":"999.995"}},
+			"overUnder":-999.995
+		}
+	]}`))
+	if err != nil {
+		t.Fatalf("MapOdds: %v", err)
+	}
+
+	if err := store.WriteMatchOdds(ctx, matchID, providers); err != nil {
+		t.Fatalf("WriteMatchOdds: %v", err)
+	}
+	capturedAt := time.Date(2026, time.August, 15, 18, 30, 0, 0, time.UTC)
+	if err := store.WriteOddsSnapshot(ctx, matchID, providers, capturedAt); err != nil {
+		t.Fatalf("WriteOddsSnapshot: %v", err)
+	}
+
+	formatFloat := func(value *float64) any {
+		if value == nil {
+			return "NULL"
+		}
+		return *value
+	}
+
+	var fixedAcceptedMoneyline *int
+	var fixedAcceptedTotal *float64
+	if err := pool.QueryRow(ctx, `
+SELECT home_moneyline, over_under FROM match_odds
+WHERE match_id=$1 AND provider_id='100' AND phase='open'`, matchID).
+		Scan(&fixedAcceptedMoneyline, &fixedAcceptedTotal); err != nil {
+		t.Fatal(err)
+	}
+	if fixedAcceptedMoneyline == nil || *fixedAcceptedMoneyline != 120 {
+		t.Fatalf("provider 100 fixed home_moneyline = %v, want 120", fixedAcceptedMoneyline)
+	}
+	if fixedAcceptedTotal == nil || *fixedAcceptedTotal != 999.99 {
+		t.Fatalf("provider 100 fixed over_under = %v, want 999.99", formatFloat(fixedAcceptedTotal))
+	}
+
+	var fixedRejectedMoneyline *int
+	var fixedRejectedTotal *float64
+	if err := pool.QueryRow(ctx, `
+SELECT home_moneyline, over_under FROM match_odds
+WHERE match_id=$1 AND provider_id='200' AND phase='open'`, matchID).
+		Scan(&fixedRejectedMoneyline, &fixedRejectedTotal); err != nil {
+		t.Fatal(err)
+	}
+	if fixedRejectedMoneyline == nil || *fixedRejectedMoneyline != 130 {
+		t.Fatalf("provider 200 fixed home_moneyline = %v, want 130", fixedRejectedMoneyline)
+	}
+	if fixedRejectedTotal != nil {
+		t.Fatalf("provider 200 fixed over_under = %v, want NULL", *fixedRejectedTotal)
+	}
+
+	var sampledAcceptedMoneyline *int
+	var sampledAcceptedTotal *float64
+	if err := pool.QueryRow(ctx, `
+SELECT home_moneyline, over_under FROM odds_snapshot
+WHERE match_id=$1 AND provider_id='100' AND captured_at=$2`, matchID, capturedAt).
+		Scan(&sampledAcceptedMoneyline, &sampledAcceptedTotal); err != nil {
+		t.Fatal(err)
+	}
+	if sampledAcceptedMoneyline == nil || *sampledAcceptedMoneyline != 125 {
+		t.Fatalf("provider 100 sampled home_moneyline = %v, want 125", sampledAcceptedMoneyline)
+	}
+	if sampledAcceptedTotal == nil || *sampledAcceptedTotal != -999.99 {
+		t.Fatalf("provider 100 sampled over_under = %v, want -999.99", formatFloat(sampledAcceptedTotal))
+	}
+
+	var sampledRejectedMoneyline *int
+	var sampledRejectedTotal *float64
+	if err := pool.QueryRow(ctx, `
+SELECT home_moneyline, over_under FROM odds_snapshot
+WHERE match_id=$1 AND provider_id='200' AND captured_at=$2`, matchID, capturedAt).
+		Scan(&sampledRejectedMoneyline, &sampledRejectedTotal); err != nil {
+		t.Fatal(err)
+	}
+	if sampledRejectedMoneyline == nil || *sampledRejectedMoneyline != -140 {
+		t.Fatalf("provider 200 sampled home_moneyline = %v, want -140", sampledRejectedMoneyline)
+	}
+	if sampledRejectedTotal != nil {
+		t.Fatalf("provider 200 sampled over_under = %v, want NULL", *sampledRejectedTotal)
+	}
+}
+
 // The sampled current line is market movement: one row per minute per book,
 // accumulating for the life of the match. ESPN publishes the current price, not
 // yesterday's, so a minute nobody records is gone.
