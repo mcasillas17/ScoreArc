@@ -10,7 +10,7 @@ import (
 // core is ESPN's "core" API host. It is a DIFFERENT host from `site` at the
 // top of client.go, serves a different shape, and is the only place the
 // touch-level play stream, the officials list and the full odds ladder live.
-const core = "http://sports.core.api.espn.com/v2/sports/soccer/leagues"
+const core = "https://sports.core.api.espn.com/v2/sports/soccer/leagues"
 
 // CorePlaysBase is exposed for providers that need a test-only base override
 // while keeping the production host in one place.

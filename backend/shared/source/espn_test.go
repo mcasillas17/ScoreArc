@@ -590,7 +590,9 @@ func TestPlaysRefusesAnUnexpectedPageSize(t *testing.T) {
 // some will return zero.
 func TestPlaysAcceptsAnEmptyStream(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprint(w, `{"count":0,"pageIndex":1,"pageSize":1000,"pageCount":0,"items":[]}`)
+		// This is the provider's real empty envelope, recorded from canceled
+		// MLS event 760078 on 2026-08-16.
+		fmt.Fprint(w, `{"count":0,"pageIndex":0,"pageSize":25,"pageCount":0,"items":[]}`)
 	}))
 	defer server.Close()
 
@@ -601,6 +603,43 @@ func TestPlaysAcceptsAnEmptyStream(t *testing.T) {
 	}
 	if len(stream.Plays) != 0 {
 		t.Fatalf("plays = %d, want 0", len(stream.Plays))
+	}
+}
+
+func TestPlaysRejectsATruncatedAggregate(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("page")
+		items := `{"id":"a","type":{"id":"1","text":"Pass","type":"pass"}}`
+		if page == "2" {
+			items = ""
+		}
+		fmt.Fprintf(w,
+			`{"count":2,"pageIndex":%s,"pageSize":1000,"pageCount":2,"items":[%s]}`,
+			page, items)
+	}))
+	defer server.Close()
+
+	_, _, err := NewESPNWithBase(espnprovider.New(), server.URL).Plays(
+		context.Background(), config.Competition{ESPNSlug: "mex.1"}, "1")
+	if err == nil || !strings.Contains(err.Error(), "expected 2 plays") {
+		t.Fatalf("err = %v, want aggregate truncation", err)
+	}
+}
+
+func TestPlaysRejectsDuplicateProviderIDsAcrossPages(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("page")
+		fmt.Fprintf(w,
+			`{"count":2,"pageIndex":%s,"pageSize":1000,"pageCount":2,"items":[`+
+				`{"id":"duplicate","type":{"id":"1","text":"Pass","type":"pass"}}]}`,
+			page)
+	}))
+	defer server.Close()
+
+	_, _, err := NewESPNWithBase(espnprovider.New(), server.URL).Plays(
+		context.Background(), config.Competition{ESPNSlug: "mex.1"}, "1")
+	if err == nil || !strings.Contains(err.Error(), "duplicate play id") {
+		t.Fatalf("err = %v, want duplicate provider id", err)
 	}
 }
 

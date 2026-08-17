@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
 
@@ -411,5 +412,54 @@ func TestMatchesMissingPlaysRunsAsTheIngesterRole(t *testing.T) {
 	}
 	if len(pending) != 1 || pending[0].MatchID != matchID {
 		t.Fatalf("pending = %#v, want match %s", pending, matchID)
+	}
+}
+
+func TestTeamSeedPromotionRepointsCapturedPlays(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	mustSeedSeason(t, pool)
+	if err := store.ApplyTeamSeed(ctx, []config.SeedTeam{{
+		ID: "eng-chelsea", Kind: "club", Name: "Chelsea", Abbr: "CHE",
+		Country: "eng", Refs: map[string]string{"espn": "363"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	provisionalID, err := store.Team(ctx, "espn", TeamRef{
+		SourceID: "999", Name: "Luton Town", Abbr: "LUT", Kind: "club",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	matchID, err := store.Match(ctx, "espn", MatchRef{
+		SourceID: "promotion-match", CompetitionID: "premier-league",
+		SeasonID: "2026-27", HomeTeamID: provisionalID,
+		AwayTeamID: "eng-chelsea",
+		Kickoff:    time.Date(2026, 8, 9, 18, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.WritePlays(ctx, matchID, []model.Play{{
+		SourceID: "play-1", TypeKey: "goal", TypeText: "Goal",
+		TeamSourceID: "999", ScoringPlay: true,
+	}}, map[string]string{"999": provisionalID}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.ApplyTeamSeed(ctx, []config.SeedTeam{{
+		ID: "eng-luton-town", Kind: "club", Name: "Luton Town", Abbr: "LUT",
+		Country: "eng", Refs: map[string]string{"espn": "999"},
+	}}); err != nil {
+		t.Fatalf("promote provisional team with captured play: %v", err)
+	}
+	var teamID string
+	if err := pool.QueryRow(ctx,
+		`SELECT team_id FROM match_play WHERE match_id=$1 AND source_id='play-1'`,
+		matchID).Scan(&teamID); err != nil {
+		t.Fatal(err)
+	}
+	if teamID != "eng-luton-town" {
+		t.Fatalf("captured play team = %q, want curated team", teamID)
 	}
 }

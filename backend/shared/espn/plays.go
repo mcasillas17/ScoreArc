@@ -43,6 +43,9 @@ func FetchPlaysPage(
 		return model.PlayStream{}, fmt.Errorf(
 			"map plays event %s page %d: %w", eventID, page, err)
 	}
+	if stream.Total == 0 && stream.PageCount == 0 && len(stream.Plays) == 0 {
+		return stream, nil
+	}
 	if stream.PageSize != corePlayPageLimit {
 		return model.PlayStream{}, fmt.Errorf(
 			"espn plays %s: requested page size %d, provider returned %d",
@@ -194,6 +197,15 @@ func MapPlays(raw []byte) (model.PlayStream, error) {
 func validatePlayPage(page rawPlayPage) error {
 	if page.Count < 0 {
 		return fmt.Errorf("play stream count must be non-negative")
+	}
+	// ESPN's real empty envelope ignores the requested page controls and
+	// returns pageIndex=0/pageSize=25/pageCount=0. It is a successful, explicit
+	// empty result, not the silent page-size degradation guarded below.
+	if page.Count == 0 && page.PageCount == 0 {
+		if len(page.Items) != 0 {
+			return fmt.Errorf("play stream count is zero with non-empty items")
+		}
+		return nil
 	}
 	if page.PageIndex < 1 {
 		return fmt.Errorf("play stream pageIndex must be at least 1")

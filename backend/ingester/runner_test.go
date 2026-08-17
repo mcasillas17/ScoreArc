@@ -277,6 +277,9 @@ type fakeRepository struct {
 	playWriteHook     func()
 	playArchives      []fakePlayArchiveRecord
 	playArchiveErr    error
+	missingPlays      []store.MissingPlayMatch
+	missingPlaysErr   error
+	missingPlaysCalls int
 }
 
 type fakePlayArchiveRecord struct {
@@ -438,7 +441,26 @@ func (f *fakeRepository) RecordPlayArchive(
 	f.playArchives = append(f.playArchives, fakePlayArchiveRecord{
 		matchID: matchID, key: key, plays: plays, bytes: bytes, touchTier: touchTier,
 	})
-	return f.playArchiveErr
+	if f.playArchiveErr != nil {
+		return f.playArchiveErr
+	}
+	for index, pending := range f.missingPlays {
+		if pending.MatchID == matchID {
+			f.missingPlays = append(f.missingPlays[:index], f.missingPlays[index+1:]...)
+			break
+		}
+	}
+	return nil
+}
+func (f *fakeRepository) MatchesMissingPlays(
+	_ context.Context,
+	_, _, _ string,
+	_ int,
+) ([]store.MissingPlayMatch, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.missingPlaysCalls++
+	return append([]store.MissingPlayMatch(nil), f.missingPlays...), f.missingPlaysErr
 }
 
 func (f *fakeRepository) FinalizeMatch(
@@ -1015,7 +1037,7 @@ func TestCapturePlaysAuditsArchiveFailureButStillStoresRows(t *testing.T) {
 	runner := testRunner(src, repo, config.Competition{ID: "test"})
 	runner.archive = &fakeArchive{err: errors.New("R2 unavailable")}
 
-	runner.capturePlays(
+	err := runner.capturePlays(
 		context.Background(),
 		config.Competition{ID: "test"},
 		config.Season{ID: "2026"},
@@ -1023,6 +1045,9 @@ func TestCapturePlaysAuditsArchiveFailureButStillStoresRows(t *testing.T) {
 		"m1",
 	)
 
+	if err == nil {
+		t.Fatal("archive failure was not returned to the cycle")
+	}
 	if len(repo.playWrites) != 1 {
 		t.Fatalf("archive failure blocked rebuildable rows: writes=%d", len(repo.playWrites))
 	}
@@ -1032,6 +1057,82 @@ func TestCapturePlaysAuditsArchiveFailureButStillStoresRows(t *testing.T) {
 	}
 	if !failed {
 		t.Fatal("archive failure was not audited as a failed play_stream run")
+	}
+}
+
+func TestCapturePlaysDoesNotLedgerUntilRowsAreDurable(t *testing.T) {
+	src := &fakeSource{
+		plays: model.PlayStream{Plays: []model.Play{{
+			SourceID: "goal", TypeKey: "goal", ScoringPlay: true,
+		}}},
+		playsRaw: []byte(`{"page":1}`),
+	}
+	repo := &fakeRepository{
+		existing:     map[string]store.MatchRow{},
+		playWriteErr: errors.New("database unavailable"),
+	}
+	runner := testRunner(src, repo, config.Competition{ID: "test"})
+	runner.archive = &fakeArchive{size: 23}
+
+	err := runner.capturePlays(
+		context.Background(),
+		config.Competition{ID: "test"},
+		config.Season{ID: "2026"},
+		store.MatchIdentity{MatchID: fakeMatchID("m1")},
+		"m1",
+	)
+
+	if err == nil {
+		t.Fatal("want row failure returned")
+	}
+	if len(repo.playArchives) != 0 {
+		t.Fatalf("ledger recorded before rows were durable: %#v", repo.playArchives)
+	}
+}
+
+func TestSlowTickRetriesFinalizedMatchMissingPlayArchive(t *testing.T) {
+	match := finishedMatch()
+	matchID := fakeMatchID(match.ID)
+	src := &fakeSource{
+		matches:  []model.Match{match},
+		playsErr: errors.New("temporary core failure"),
+		playsRaw: []byte(`{"count":0,"items":[]}`),
+	}
+	repo := &fakeRepository{
+		existing: map[string]store.MatchRow{},
+		missingPlays: []store.MissingPlayMatch{{
+			MatchID: matchID, SourceID: match.ID,
+			HomeTeamID: fakeTeamID(match.Home.ID), AwayTeamID: fakeTeamID(match.Away.ID),
+			HomeTeamSourceID: match.Home.ID, AwayTeamSourceID: match.Away.ID,
+		}},
+	}
+	runner := testRunner(src, repo, config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	})
+	runner.archive = &fakeArchive{size: 23}
+
+	first := runner.runCycle(context.Background(), false)
+	if first.failures == 0 || repo.finalizeCalls != 1 || src.playsCalls != 1 {
+		t.Fatalf("first cycle = %+v finalize/plays=%d/%d",
+			first, repo.finalizeCalls, src.playsCalls)
+	}
+
+	repo.existing[match.ID] = store.MatchRow{
+		State: model.MatchStateFinished,
+		FinalizedAt: pgtype.Timestamptz{
+			Time: time.Now(), Valid: true,
+		},
+	}
+	src.playsErr = nil
+	second := runner.runCycle(context.Background(), true)
+	if second.failures != 0 {
+		t.Fatalf("retry cycle = %+v", second)
+	}
+	if src.playsCalls != 2 || len(repo.playArchives) != 1 ||
+		repo.missingPlaysCalls != 1 {
+		t.Fatalf("plays/archives/backlog calls = %d/%d/%d",
+			src.playsCalls, len(repo.playArchives), repo.missingPlaysCalls)
 	}
 }
 

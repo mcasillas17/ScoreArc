@@ -11,7 +11,7 @@ func TestCorePlaysURL(t *testing.T) {
 	// competition. For soccer they are the same value; hard-coding one of them
 	// would break the first time they are not.
 	got := CorePlaysURL("mex.1", "401877018", 1, 1000)
-	want := "http://sports.core.api.espn.com/v2/sports/soccer/leagues/mex.1" +
+	want := "https://sports.core.api.espn.com/v2/sports/soccer/leagues/mex.1" +
 		"/events/401877018/competitions/401877018/plays?limit=1000&page=1"
 	if got != want {
 		t.Fatalf("CorePlaysURL =\n%s\nwant\n%s", got, want)

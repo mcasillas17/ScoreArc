@@ -245,8 +245,12 @@ ON CONFLICT (match_id) DO UPDATE SET
 // MissingPlayMatch identifies one finished match whose stream has not been
 // archived.
 type MissingPlayMatch struct {
-	MatchID  uuid.UUID
-	SourceID string
+	MatchID          uuid.UUID
+	SourceID         string
+	HomeTeamID       string
+	AwayTeamID       string
+	HomeTeamSourceID string
+	AwayTeamSourceID string
 }
 
 // MatchesMissingPlays lists finished matches in a season whose stream has
@@ -272,7 +276,21 @@ func (s *Store) MatchesMissingPlays(
 	opCtx, cancel := boundedContext(ctx)
 	defer cancel()
 	rows, err := s.pool.Query(opCtx, `
-SELECT m.id, r.source_id
+SELECT m.id, r.source_id, m.home_team_id, m.away_team_id,
+  COALESCE((
+    SELECT home_ref.source_id
+    FROM team_external_ref home_ref
+    WHERE home_ref.source = $3 AND home_ref.team_id = m.home_team_id
+    ORDER BY home_ref.last_seen_at DESC, home_ref.source_id
+    LIMIT 1
+  ), ''),
+  COALESCE((
+    SELECT away_ref.source_id
+    FROM team_external_ref away_ref
+    WHERE away_ref.source = $3 AND away_ref.team_id = m.away_team_id
+    ORDER BY away_ref.last_seen_at DESC, away_ref.source_id
+    LIMIT 1
+  ), '')
 FROM match m
 JOIN match_external_ref r ON r.match_id = m.id AND r.source = $3
 LEFT JOIN match_play_archive a ON a.match_id = m.id
@@ -289,7 +307,14 @@ LIMIT $4`, competitionID, seasonID, source, limit)
 	pending := make([]MissingPlayMatch, 0)
 	for rows.Next() {
 		var match MissingPlayMatch
-		if err := rows.Scan(&match.MatchID, &match.SourceID); err != nil {
+		if err := rows.Scan(
+			&match.MatchID,
+			&match.SourceID,
+			&match.HomeTeamID,
+			&match.AwayTeamID,
+			&match.HomeTeamSourceID,
+			&match.AwayTeamSourceID,
+		); err != nil {
 			return nil, fmt.Errorf("scan match missing plays: %w", err)
 		}
 		pending = append(pending, match)

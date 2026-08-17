@@ -282,6 +282,7 @@ func (e *ESPN) Plays(
 
 	var merged model.PlayStream
 	var pages [][]byte
+	seenPlayIDs := make(map[string]struct{})
 	for page := 1; ; page++ {
 		playsURL := espn.CorePlaysURLOn(
 			e.coreBase, comp.ESPNSlug, eventID, page, espn.CorePlayPageLimit)
@@ -294,6 +295,11 @@ func (e *ESPN) Plays(
 		if err != nil {
 			return model.PlayStream{}, nil, fmt.Errorf(
 				"espn plays %s page %d: %w", eventID, page, err)
+		}
+		if stream.Total == 0 && stream.PageCount == 0 && len(stream.Plays) == 0 {
+			pages = append(pages, raw)
+			merged = stream
+			break
 		}
 		// A provider that quietly hands back its default page size instead of
 		// the one asked for turns a 2-request fetch into 62. It has a documented
@@ -314,6 +320,13 @@ func (e *ESPN) Plays(
 				"espn plays %s: pageCount %d exceeds the sane bound",
 				eventID, stream.PageCount)
 		}
+		for _, play := range stream.Plays {
+			if _, duplicate := seenPlayIDs[play.SourceID]; duplicate {
+				return model.PlayStream{}, nil, fmt.Errorf(
+					"espn plays %s: duplicate play id %s", eventID, play.SourceID)
+			}
+			seenPlayIDs[play.SourceID] = struct{}{}
+		}
 
 		pages = append(pages, raw)
 		if page == 1 {
@@ -329,6 +342,11 @@ func (e *ESPN) Plays(
 		if stream.PageCount == 0 || page >= stream.PageCount {
 			break
 		}
+	}
+	if len(merged.Plays) != merged.Total {
+		return model.PlayStream{}, nil, fmt.Errorf(
+			"espn plays %s: expected %d plays, received %d",
+			eventID, merged.Total, len(merged.Plays))
 	}
 	return merged, bytes.Join(pages, []byte("\n")), nil
 }

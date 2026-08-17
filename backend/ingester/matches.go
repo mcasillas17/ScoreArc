@@ -275,7 +275,10 @@ func (r *runner) processMatches(
 					// The stream is complete at full time. Fetching it once
 					// here, rather than on every live poll, bounds the core API
 					// to roughly two requests per match.
-					r.capturePlays(ctx, comp, season, identity, match.ID)
+					if err := r.capturePlays(ctx, comp, season, identity, match.ID); err != nil {
+						operationErrors = append(operationErrors,
+							fmt.Errorf("match %s play stream: %w", match.ID, err))
+					}
 					existing[identity.MatchID] = store.MatchRow{
 						State: match.State,
 						FinalizedAt: pgtype.Timestamptz{
