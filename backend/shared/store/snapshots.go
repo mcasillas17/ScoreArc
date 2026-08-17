@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/mcasillas17/scorearc-backend/shared/model"
@@ -104,3 +105,42 @@ ON CONFLICT (competition_id, season_id, team_id, captured_on) DO UPDATE SET
 	goal_difference = EXCLUDED.goal_difference,
 	played          = EXCLUDED.played
 WHERE standing_snapshot.captured_at <= EXCLUDED.captured_at`
+
+// WriteWinProbSnapshot appends one point of a match's probability curve.
+//
+// observedAt is the poll-start time. Its minute bucket is stored in captured_at
+// so the 20-second live poll produces one evenly spaced row per minute.
+// observed_at keeps the untruncated ordering value: requests may complete out
+// of order, and a delayed older response must not replace a fresher observation
+// in the same bucket.
+//
+// This is a MARKET-implied probability -- the first betting provider's
+// three-way moneyline with the margin removed, per mapWinProbability. It is
+// not a ScoreArc forecast and nothing downstream may present it as one.
+func (s *Store) WriteWinProbSnapshot(
+	ctx context.Context,
+	matchID uuid.UUID,
+	probability model.WinProbability,
+	observedAt time.Time,
+) error {
+	ctx, cancel := boundedContext(ctx)
+	defer cancel()
+	observedAt = observedAt.UTC()
+	_, err := s.pool.Exec(ctx, winProbSnapshotSQL,
+		matchID, observedAt.Truncate(time.Minute), observedAt,
+		probability.Home, probability.Draw, probability.Away)
+	return err
+}
+
+// The numeric(5,2) columns round on their own; the explicit ::numeric(5,2)
+// casts document that and keep a float64 like 33.333333 from depending on
+// implicit-cast behaviour.
+const winProbSnapshotSQL = `
+INSERT INTO win_prob_snapshot (match_id, captured_at, observed_at, home, draw, away)
+VALUES ($1,$2,$3,$4::numeric(5,2),$5::numeric(5,2),$6::numeric(5,2))
+ON CONFLICT (match_id, captured_at) DO UPDATE SET
+	observed_at = EXCLUDED.observed_at,
+	home = EXCLUDED.home,
+	draw = EXCLUDED.draw,
+	away = EXCLUDED.away
+WHERE win_prob_snapshot.observed_at <= EXCLUDED.observed_at`

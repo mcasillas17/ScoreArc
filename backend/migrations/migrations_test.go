@@ -139,6 +139,40 @@ func TestStandingSnapshotRollbackDropsOnlyWhatItAdded(t *testing.T) {
 	}
 }
 
+// A live match is polled every 20s. Without a key, one match produces ~300
+// rows for ~100 distinct states, and a retried cycle appends another 300. The
+// writer truncates captured_at to the minute; this index is what makes that
+// truncation binding rather than a convention.
+func TestWinProbSnapshotIsIdempotentPerMinute(t *testing.T) {
+	sql := readMigration(t, "0005_win_prob_snapshot_idempotency.up.sql")
+	for _, required := range []string{
+		"ADD COLUMN observed_at timestamptz",
+		"ALTER COLUMN observed_at SET NOT NULL",
+		"CREATE UNIQUE INDEX win_prob_snapshot_minute_key",
+		"(match_id, captured_at)",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("0005_win_prob_snapshot_idempotency.up.sql missing %q", required)
+		}
+	}
+	if strings.Contains(sql, "GRANT DELETE ON win_prob_snapshot") {
+		t.Fatal("win_prob_snapshot must stay append-only for the ingester")
+	}
+}
+
+func TestWinProbSnapshotRollbackKeepsTheData(t *testing.T) {
+	sql := readMigration(t, "0005_win_prob_snapshot_idempotency.down.sql")
+	if !strings.Contains(sql, "DROP INDEX IF EXISTS win_prob_snapshot_minute_key") {
+		t.Fatalf("rollback missing the index drop:\n%s", sql)
+	}
+	if !strings.Contains(sql, "DROP COLUMN IF EXISTS observed_at") {
+		t.Fatalf("rollback missing the observation timestamp drop:\n%s", sql)
+	}
+	if strings.Contains(sql, "DROP TABLE") {
+		t.Fatal("the rollback must not drop win_prob_snapshot itself")
+	}
+}
+
 func TestInitialRollbackRevokesDefaultPrivileges(t *testing.T) {
 	sql := readMigration(t, "0001_init.down.sql")
 	for _, required := range []string{
