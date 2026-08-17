@@ -52,9 +52,34 @@ func CorePlaysURLOn(base, slug, eventID string, page, limit int) string {
 	if page < 1 {
 		page = 1
 	}
+	return fmt.Sprintf("%s/plays?limit=%d&page=%d",
+		coreCompetitionURLOn(base, slug, eventID), limit, page)
+}
+
+// CoreOfficialsURL builds the core API URL for a match's officiating crew.
+func CoreOfficialsURL(slug, eventID string) string {
+	return CoreOfficialsURLOn(core, slug, eventID)
+}
+
+// CoreOfficialsURLOn builds an officials URL against an explicit base.
+func CoreOfficialsURLOn(base, slug, eventID string) string {
+	return coreCompetitionURLOn(base, slug, eventID) + "/officials"
+}
+
+// CoreOddsURL builds the core API URL for a match's provider odds.
+func CoreOddsURL(slug, eventID string) string {
+	return CoreOddsURLOn(core, slug, eventID)
+}
+
+// CoreOddsURLOn builds an odds URL against an explicit base.
+func CoreOddsURLOn(base, slug, eventID string) string {
+	return coreCompetitionURLOn(base, slug, eventID) + "/odds"
+}
+
+func coreCompetitionURLOn(base, slug, eventID string) string {
 	event := url.PathEscape(eventID)
-	return fmt.Sprintf("%s/%s/events/%s/competitions/%s/plays?limit=%d&page=%d",
-		strings.TrimRight(base, "/"), url.PathEscape(slug), event, event, limit, page)
+	return fmt.Sprintf("%s/%s/events/%s/competitions/%s",
+		strings.TrimRight(base, "/"), url.PathEscape(slug), event, event)
 }
 
 // refIDRe pulls the last path segment before the query string, requiring it to
