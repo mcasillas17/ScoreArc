@@ -61,11 +61,16 @@ func (m oddsCaptureMode) String() string {
 // retried. The FIXED rows are durable: a failure is recorded under its own
 // ingest_run kind so it is visible without being counted against the
 // competition's cycle, and scheduled for retry so it survives a restart. Both
-// writes are attempted when both apply, and the recorded run carries whatever
-// actually went wrong rather than the last call's return value. Only the
-// FIXED outcome drives the returned error: a CURRENT-only failure fails the
-// audit but must never leave an already-written FIXED row stuck pending, and
-// a FIXED failure always retries even when the CURRENT sample succeeded.
+// writes are attempted when both apply. In every non-live mode, the retry
+// ledger is persisted BEFORE that ingest_run row is recorded, and the
+// recorded row reflects the ledger's effective outcome (not just the
+// captures' own success/failure): a caller may discard the returned error
+// entirely (a full-time capture is additive), so the audit row is the only
+// place a completion/retry-ledger failure at exactly this moment could ever
+// be seen. Only the FIXED outcome drives the returned error: a CURRENT-only
+// failure fails the audit but must never leave an already-written FIXED row
+// stuck pending, and a FIXED failure always retries even when the CURRENT
+// sample succeeded.
 func (r *runner) captureOdds(
 	ctx context.Context,
 	comp config.Competition,
@@ -76,20 +81,24 @@ func (r *runner) captureOdds(
 	started := time.Now()
 	providers, err := r.source.Odds(ctx, comp, providerEventID)
 	if err != nil {
-		r.recordRun(ctx, comp.ID, oddsRunKind, started, err)
 		r.log.Warn("fetch match odds", "match", providerEventID, "err", err)
 		if mode == oddsCaptureLive {
+			r.recordRun(ctx, comp.ID, oddsRunKind, started, err)
 			return nil
 		}
-		return r.persistFinalCaptureAttempt(ctx, identity.MatchID, store.FinalCaptureFixedOdds, started, err)
+		effectiveErr := r.persistFinalCaptureAttempt(ctx, identity.MatchID, store.FinalCaptureFixedOdds, started, err)
+		r.recordRun(ctx, comp.ID, oddsRunKind, started, effectiveErr)
+		return effectiveErr
 	}
 	// A match no book priced is an answer, not a failure.
 	if len(providers) == 0 {
-		r.recordRun(ctx, comp.ID, oddsRunKind, started, nil)
 		if mode == oddsCaptureLive {
+			r.recordRun(ctx, comp.ID, oddsRunKind, started, nil)
 			return nil
 		}
-		return r.persistFinalCaptureAttempt(ctx, identity.MatchID, store.FinalCaptureFixedOdds, started, nil)
+		effectiveErr := r.persistFinalCaptureAttempt(ctx, identity.MatchID, store.FinalCaptureFixedOdds, started, nil)
+		r.recordRun(ctx, comp.ID, oddsRunKind, started, effectiveErr)
+		return effectiveErr
 	}
 
 	var snapshotErr, fixedErr error
@@ -107,15 +116,26 @@ func (r *runner) captureOdds(
 		}
 	}
 
-	operationErr := errors.Join(snapshotErr, fixedErr)
+	if mode == oddsCaptureLive {
+		r.recordRun(ctx, comp.ID, oddsRunKind, started, snapshotErr)
+		if snapshotErr == nil {
+			r.log.Info("match odds",
+				"match", providerEventID, "providers", len(providers), "mode", mode.String())
+		}
+		return nil
+	}
+
+	// Persist the fixed outcome to the retry ledger first, so the "odds"
+	// audit row below reflects whatever the ledger actually recorded --
+	// including a ledger failure of its own -- rather than just this
+	// capture's own write outcome.
+	persistedFixedOutcome := r.persistFinalCaptureAttempt(
+		ctx, identity.MatchID, store.FinalCaptureFixedOdds, started, fixedErr)
+	operationErr := errors.Join(snapshotErr, persistedFixedOutcome)
 	r.recordRun(ctx, comp.ID, oddsRunKind, started, operationErr)
 	if operationErr == nil {
 		r.log.Info("match odds",
 			"match", providerEventID, "providers", len(providers), "mode", mode.String())
 	}
-	if mode == oddsCaptureLive {
-		return nil
-	}
-	return errors.Join(snapshotErr, r.persistFinalCaptureAttempt(
-		ctx, identity.MatchID, store.FinalCaptureFixedOdds, started, fixedErr))
+	return operationErr
 }

@@ -4571,8 +4571,24 @@ func TestCaptureOfficialsPreservesOriginalCauseWhenStatusPersistenceAlsoFails(t 
 	if !strings.Contains(err.Error(), "ledger down") {
 		t.Fatalf("error = %q, want it to also mention the status write failure %q", err.Error(), "ledger down")
 	}
-	if !hasLoggedFailure(repo.logged, "officials") {
+	// The individual "officials" ingest_run row -- not just the (often
+	// discarded) returned error -- must itself carry both causes. A caller
+	// that ignores the return value (like the full-time path) must still be
+	// able to see the whole story from the audit row alone.
+	runs := loggedRunsForKind(repo.logged, "officials")
+	if len(runs) != 1 {
+		t.Fatalf("officials audit rows = %#v, want exactly one", runs)
+	}
+	if runs[0].ok {
 		t.Fatal("the combined failure was not audited under the officials ingest_run kind")
+	}
+	if !strings.Contains(runs[0].message, "write down") {
+		t.Fatalf("officials audit message = %q, want it to still mention the original capture cause %q",
+			runs[0].message, "write down")
+	}
+	if !strings.Contains(runs[0].message, "ledger down") {
+		t.Fatalf("officials audit message = %q, want it to also mention the retry ledger cause %q",
+			runs[0].message, "ledger down")
 	}
 }
 
@@ -4598,16 +4614,42 @@ func TestCaptureOddsPreservesOriginalCauseWhenStatusPersistenceAlsoFails(t *test
 	if !strings.Contains(err.Error(), "ledger down") {
 		t.Fatalf("error = %q, want it to also mention the status write failure %q", err.Error(), "ledger down")
 	}
-	if !hasLoggedFailure(repo.logged, "odds") {
+	// The CURRENT-price snapshot is independent of the FIXED write/ledger
+	// outcome: it must still have been attempted even though the fixed side
+	// failed twice over.
+	if len(repo.oddsSnapshots) != 1 {
+		t.Fatalf("snapshot writes = %d, want the CURRENT sample still attempted independently",
+			len(repo.oddsSnapshots))
+	}
+	// The individual "odds" ingest_run row -- not just the (often discarded)
+	// returned error -- must itself carry both causes. A caller that ignores
+	// the return value (like the full-time path) must still be able to see
+	// the whole story from the audit row alone.
+	runs := loggedRunsForKind(repo.logged, "odds")
+	if len(runs) != 1 {
+		t.Fatalf("odds audit rows = %#v, want exactly one", runs)
+	}
+	if runs[0].ok {
 		t.Fatal("the combined failure was not audited under the odds ingest_run kind")
+	}
+	if !strings.Contains(runs[0].message, "write down") {
+		t.Fatalf("odds audit message = %q, want it to still mention the original capture cause %q",
+			runs[0].message, "write down")
+	}
+	if !strings.Contains(runs[0].message, "ledger down") {
+		t.Fatalf("odds audit message = %q, want it to also mention the retry ledger cause %q",
+			runs[0].message, "ledger down")
 	}
 }
 
 // A completion write can fail even though the capture itself succeeded. That
 // must still be surfaced to the caller -- otherwise a durable ledger outage
 // at exactly the wrong moment would silently keep retrying a crew that was
-// already written. The existing officials audit reflects the capture's own
-// (successful) outcome; only the returned error carries the ledger problem.
+// already written. Critically, the individual "officials" ingest_run row
+// itself must also read as a failure: the full-time caller discards
+// captureOfficials' returned error (crews are additive and must never block
+// finalization), so the audit row is the ONLY place a ledger outage can be
+// seen without following the retry ledger.
 func TestCaptureOfficialsAuditsACompletionLedgerFailure(t *testing.T) {
 	repo := &fakeRepository{completeFinalCaptureErr: errors.New("ledger down")}
 	src := &fakeSource{officials: crewFixture()}
@@ -4622,7 +4664,52 @@ func TestCaptureOfficialsAuditsACompletionLedgerFailure(t *testing.T) {
 	if len(repo.crewWrites) != 1 {
 		t.Fatalf("crew writes = %d, want the crew itself still durably written", len(repo.crewWrites))
 	}
-	assertOneLoggedRun(t, repo.logged, "officials", true, "")
+	runs := loggedRunsForKind(repo.logged, "officials")
+	if len(runs) != 1 {
+		t.Fatalf("officials audit rows = %#v, want exactly one", runs)
+	}
+	if runs[0].ok {
+		t.Fatalf("officials audit row = %#v, want it audited as a failure: a completion-ledger "+
+			"outage must not read as a successful capture", runs[0])
+	}
+	if !strings.Contains(runs[0].message, "ledger down") {
+		t.Fatalf("officials audit message = %q, want it to contain the completion ledger cause",
+			runs[0].message)
+	}
+}
+
+// The odds equivalent of the completion-ledger gap above: the FIXED write
+// itself succeeds, but the completion write to the retry ledger fails. The
+// odds ingest_run row must audit that as a failure too, not just the
+// returned error, for the same reason -- a live-mode/backlog caller's return
+// value is not always inspected, but the audit row always is.
+func TestCaptureOddsAuditsACompletionLedgerFailure(t *testing.T) {
+	repo := &fakeRepository{completeFinalCaptureErr: errors.New("ledger down")}
+	src := &fakeSource{odds: oddsFixture()}
+	worker := testRunner(src, repo, config.Competition{ID: "test"})
+
+	err := worker.captureOdds(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureFinal)
+
+	if err == nil || !strings.Contains(err.Error(), "ledger down") {
+		t.Fatalf("captureOdds error = %v, want it to surface the completion ledger failure", err)
+	}
+	if len(repo.fixedOdds) != 1 || len(repo.oddsSnapshots) != 1 {
+		t.Fatalf("fixed writes=%d snapshot writes=%d, want both still durably written",
+			len(repo.fixedOdds), len(repo.oddsSnapshots))
+	}
+	runs := loggedRunsForKind(repo.logged, "odds")
+	if len(runs) != 1 {
+		t.Fatalf("odds audit rows = %#v, want exactly one", runs)
+	}
+	if runs[0].ok {
+		t.Fatalf("odds audit row = %#v, want it audited as a failure: a completion-ledger "+
+			"outage must not read as a successful capture", runs[0])
+	}
+	if !strings.Contains(runs[0].message, "ledger down") {
+		t.Fatalf("odds audit message = %q, want it to contain the completion ledger cause",
+			runs[0].message)
+	}
 }
 
 // A snapshot failure and the fixed-odds outcome are independent durability
