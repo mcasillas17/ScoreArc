@@ -222,6 +222,7 @@ func (r *runner) processMatches(
 			needsSummary(match, currentPtr, slowTick) {
 			summaryMatch := match
 			summaryMatch.Home, summaryMatch.Away = providerHome, providerAway
+			summaryStartedAt := time.Now()
 			summary, err := r.source.Summary(ctx, comp, summaryMatch)
 			if err != nil {
 				operationErrors = append(operationErrors, fmt.Errorf("match %s summary: %w", match.ID, err))
@@ -252,6 +253,22 @@ func (r *runner) processMatches(
 				match.Home.ID, match.Away.ID, summary.Participation); err != nil {
 				operationErrors = append(operationErrors,
 					fmt.Errorf("match %s participation: %w", match.ID, err))
+			}
+
+			// The market only moves fast enough to be worth a curve while the
+			// match is live. A scheduled match is polled on slow ticks all
+			// season, and mapWinProbability returns nil for competitions with
+			// no usable three-way moneyline -- writing 0/0/0 for those would
+			// invent a market a reader could not distinguish from a real one.
+			if match.State == model.MatchStateLive && detail.WinProbability != nil {
+				start := time.Now()
+				err := r.repo.WriteWinProbSnapshot(
+					ctx, identity.MatchID, *detail.WinProbability, summaryStartedAt)
+				r.recordRun(ctx, comp.ID, winProbSnapshotRunKind, start, err)
+				if err != nil {
+					r.log.Warn("win probability snapshot",
+						"match", match.ID, "err", err)
+				}
 			}
 
 			// Structured commentary is additive to the scoreline row already

@@ -38,6 +38,8 @@ func TestMigrationsRoundTrip(t *testing.T) {
 	files := []string{
 		"../migrations/0001_init.up.sql",
 		"../migrations/0002_snapshots.up.sql",
+		"../migrations/0010_leader_category.up.sql",
+		"../migrations/0010_leader_category.down.sql",
 		"../migrations/0002_snapshots.down.sql",
 		"../migrations/0001_init.down.sql",
 	}
@@ -49,10 +51,15 @@ func TestMigrationsRoundTrip(t *testing.T) {
 		if _, err := pool.Exec(ctx, string(sql)); err != nil {
 			t.Fatalf("apply %s: %v", file, err)
 		}
-		if file != "../migrations/0002_snapshots.up.sql" {
-			continue
+		switch file {
+		case "../migrations/0002_snapshots.up.sql":
+			exerciseCanonicalSchema(ctx, t, pool)
+			seedLegacyLeaderRow(ctx, t, pool)
+		case "../migrations/0010_leader_category.up.sql":
+			exerciseLeaderCategoryUpgrade(ctx, t, pool)
+		case "../migrations/0010_leader_category.down.sql":
+			exerciseLeaderCategoryRollback(ctx, t, pool)
 		}
-		exerciseCanonicalSchema(ctx, t, pool)
 	}
 
 	var tableCount, roleCount int
@@ -64,6 +71,95 @@ func TestMigrationsRoundTrip(t *testing.T) {
 	}
 	if tableCount != 0 || roleCount != 0 {
 		t.Fatalf("rollback left tables=%d roles=%d", tableCount, roleCount)
+	}
+}
+
+func seedLegacyLeaderRow(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO top_scorer (
+			competition_id, season_id, rank, player, goals, source
+		) VALUES ('world-cup', '2026', 1, 'Striker', 12, 'espn')
+	`); err != nil {
+		t.Fatalf("seed pre-0010 leader row: %v", err)
+	}
+}
+
+func exerciseLeaderCategoryUpgrade(
+	ctx context.Context,
+	t *testing.T,
+	pool *pgxpool.Pool,
+) {
+	t.Helper()
+
+	var category string
+	if err := pool.QueryRow(ctx, `
+		SELECT category FROM top_scorer
+		WHERE competition_id='world-cup' AND season_id='2026' AND rank=1
+	`).Scan(&category); err != nil {
+		t.Fatalf("read migrated legacy leader: %v", err)
+	}
+	if category != "goals" {
+		t.Fatalf("legacy leader category = %q, want goals", category)
+	}
+
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO top_scorer (
+			competition_id, season_id, category, rank, player, goals, source
+		) VALUES ('world-cup', '2026', 'assists', 1, 'Playmaker', 9, 'espn')
+	`); err != nil {
+		t.Fatalf("insert same-rank assists leader: %v", err)
+	}
+
+	var goals, assists int
+	if err := pool.QueryRow(ctx, `
+		SELECT
+			count(*) FILTER (WHERE category='goals'),
+			count(*) FILTER (WHERE category='assists')
+		FROM top_scorer
+	`).Scan(&goals, &assists); err != nil {
+		t.Fatalf("count upgraded leader boards: %v", err)
+	}
+	if goals != 1 || assists != 1 {
+		t.Fatalf("upgraded boards goals=%d assists=%d, want 1/1", goals, assists)
+	}
+}
+
+func exerciseLeaderCategoryRollback(
+	ctx context.Context,
+	t *testing.T,
+	pool *pgxpool.Pool,
+) {
+	t.Helper()
+
+	var categoryColumns int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM information_schema.columns
+		WHERE table_schema='public' AND table_name='top_scorer' AND column_name='category'
+	`).Scan(&categoryColumns); err != nil {
+		t.Fatalf("inspect rolled-back category column: %v", err)
+	}
+	if categoryColumns != 0 {
+		t.Fatalf("rollback left %d category columns, want 0", categoryColumns)
+	}
+
+	var rows int
+	var player string
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*), min(player) FROM top_scorer
+	`).Scan(&rows, &player); err != nil {
+		t.Fatalf("read rolled-back leaders: %v", err)
+	}
+	if rows != 1 || player != "Striker" {
+		t.Fatalf("rollback left rows=%d player=%q, want one Striker goals row", rows, player)
+	}
+
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO top_scorer (
+			competition_id, season_id, rank, player, goals, source
+		) VALUES ('world-cup', '2026', 1, 'Duplicate', 1, 'espn')
+	`); err == nil {
+		t.Fatal("rollback did not restore the old competition/season/rank primary key")
 	}
 }
 

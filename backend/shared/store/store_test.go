@@ -28,8 +28,51 @@ func TestReplacementRejectsEmptyPayload(t *testing.T) {
 	if err := st.ReplaceStandings(ctx, "comp", "season", testSource, nil, nil); err != ErrEmptyReplacement {
 		t.Fatalf("standings error=%v", err)
 	}
-	if err := st.ReplaceTopScorers(ctx, "comp", "season", testSource, nil); err != ErrEmptyReplacement {
-		t.Fatalf("top scorers error=%v", err)
+	if err := st.ReplaceLeaders(ctx, "comp", "season", testSource, "goals", nil); err != ErrEmptyReplacement {
+		t.Fatalf("leaders error=%v", err)
+	}
+}
+
+// The failure this test exists to prevent: a category-blind DELETE that wipes
+// the goals board every time the assists board is written, leaving whichever
+// ran last.
+func TestReplaceLeadersDoesNotWipeTheOtherBoard(t *testing.T) {
+	_, pool, dsn := newIntegrationStoreDSN(t)
+	ctx := context.Background()
+	mustSeedSeason(t, pool)
+	roleStore, roleName := newIngesterRoleStore(t, pool, dsn)
+
+	goals := []model.StatLeader{{Rank: 1, Player: "Striker", Value: 12}}
+	assists := []model.StatLeader{{Rank: 1, Player: "Playmaker", Value: 9}}
+	if err := roleStore.ReplaceLeaders(
+		ctx, "premier-league", "2026-27", "espn", "goals", goals,
+	); err != nil {
+		t.Fatalf("replace goals as %s: %v", roleName, err)
+	}
+	if err := roleStore.ReplaceLeaders(
+		ctx, "premier-league", "2026-27", "espn", "assists", assists,
+	); err != nil {
+		t.Fatalf("replace assists as %s: %v", roleName, err)
+	}
+
+	var rows int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM top_scorer`).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 2 {
+		t.Fatalf(
+			"rows = %d after writing two boards, want 2 -- the DELETE is not scoped by category",
+			rows,
+		)
+	}
+	var player string
+	if err := pool.QueryRow(ctx,
+		`SELECT player FROM top_scorer WHERE category='goals' AND rank=1`,
+	).Scan(&player); err != nil {
+		t.Fatal(err)
+	}
+	if player != "Striker" {
+		t.Fatalf("goals rank 1 = %q, want Striker", player)
 	}
 }
 
@@ -443,8 +486,8 @@ func TestEmptyReplacementPreservesStoredRows(t *testing.T) {
 		[]model.Standing{{Rank: 1, Team: model.Team{ID: "359"}}}, teamIDs); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ReplaceTopScorers(ctx, testCompetition, testSeason, testSource,
-		[]model.TopScorer{{Rank: 1, Player: "Player", TeamAbbr: "ARS"}}); err != nil {
+	if err := store.ReplaceLeaders(ctx, testCompetition, testSeason, testSource, "goals",
+		[]model.StatLeader{{Rank: 1, Player: "Player", TeamAbbr: "ARS"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.ReplaceStandings(
@@ -452,10 +495,10 @@ func TestEmptyReplacementPreservesStoredRows(t *testing.T) {
 	); err != ErrEmptyReplacement {
 		t.Fatalf("standings error=%v", err)
 	}
-	if err := store.ReplaceTopScorers(
-		ctx, testCompetition, testSeason, testSource, nil,
+	if err := store.ReplaceLeaders(
+		ctx, testCompetition, testSeason, testSource, "goals", nil,
 	); err != ErrEmptyReplacement {
-		t.Fatalf("top scorers error=%v", err)
+		t.Fatalf("leaders error=%v", err)
 	}
 	var standings, scorers int
 	if err := pool.QueryRow(ctx,
@@ -656,13 +699,13 @@ func TestIngesterRoleCanRunAFullCycleAndHoldsASingletonLease(t *testing.T) {
 			t.Fatalf("replace standings as ingester: %v", err)
 		}
 	}
-	if err := roleStore.ReplaceTopScorers(ctx, testCompetition, testSeason, testSource,
-		[]model.TopScorer{{Rank: 1, Player: "One"}, {Rank: 2, Player: "Two"}}); err != nil {
-		t.Fatalf("seed top scorers as ingester: %v", err)
+	if err := roleStore.ReplaceLeaders(ctx, testCompetition, testSeason, testSource, "goals",
+		[]model.StatLeader{{Rank: 1, Player: "One"}, {Rank: 2, Player: "Two"}}); err != nil {
+		t.Fatalf("seed leaders as ingester: %v", err)
 	}
-	if err := roleStore.ReplaceTopScorers(ctx, testCompetition, testSeason, testSource,
-		[]model.TopScorer{{Rank: 1, Player: "One"}}); err != nil {
-		t.Fatalf("replace top scorers as ingester: %v", err)
+	if err := roleStore.ReplaceLeaders(ctx, testCompetition, testSeason, testSource, "goals",
+		[]model.StatLeader{{Rank: 1, Player: "One"}}); err != nil {
+		t.Fatalf("replace leaders as ingester: %v", err)
 	}
 
 	roleURL, err := url.Parse(dsn)

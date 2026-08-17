@@ -112,7 +112,7 @@ minute times a 100-minute match is 300 rows per match to describe about 100 dist
 states, and a retried cycle would add 300 more. The bucket is a minute, and the key
 enforces it.
 
-- [ ] **Step 1: Write the failing migration test**
+- [x] **Step 1: Write the failing migration test**
 
 Append to `backend/migrations/migrations_test.go`:
 
@@ -147,7 +147,7 @@ func TestWinProbSnapshotRollbackKeepsTheData(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 ```bash
 cd backend && go test ./migrations/ -run WinProbSnapshot
@@ -156,7 +156,7 @@ cd backend && go test ./migrations/ -run WinProbSnapshot
 Expected: FAIL —
 `open 0005_win_prob_snapshot_idempotency.up.sql: no such file or directory`.
 
-- [ ] **Step 3: Write the migrations**
+- [x] **Step 3: Write the migrations**
 
 Create `backend/migrations/0005_win_prob_snapshot_idempotency.up.sql`:
 
@@ -192,7 +192,7 @@ CREATE INDEX IF NOT EXISTS win_prob_snapshot_match_idx
   ON win_prob_snapshot (match_id, captured_at);
 ```
 
-- [ ] **Step 4: Run the migration tests and prove the SQL applies**
+- [x] **Step 4: Run the migration tests and prove the SQL applies**
 
 ```bash
 cd backend && go test ./migrations/ && go test ./shared/store/ -run TestResolveTeamHitsTheCrosswalk
@@ -202,7 +202,7 @@ Expected: both `ok`. The second command is the real check — the store integrat
 globs and applies every `*.up.sql` in order, so invalid SQL in `0005` aborts it with
 `apply 0005_win_prob_snapshot_idempotency.up.sql: ...`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/migrations/0005_win_prob_snapshot_idempotency.up.sql \
@@ -234,7 +234,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
   — one row, truncated to the minute in UTC. A `nil` probability never reaches here; the
   caller checks.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `backend/shared/store/snapshots_integration_test.go`:
 
@@ -397,7 +397,7 @@ GRANT scorearc_ingester TO winprob_writer;`); err != nil {
 
 Add `"github.com/google/uuid"` to the file's imports.
 
-- [ ] **Step 2: Run and watch it fail**
+- [x] **Step 2: Run and watch it fail**
 
 ```bash
 cd backend && go test ./shared/store/ -run WinProbSnapshot
@@ -406,7 +406,7 @@ cd backend && go test ./shared/store/ -run WinProbSnapshot
 Expected: FAIL to compile —
 `store.WriteWinProbSnapshot undefined (type *Store has no field or method WriteWinProbSnapshot)`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Append to `backend/shared/store/snapshots.go` (and add `"github.com/google/uuid"` to its
 imports):
@@ -453,7 +453,7 @@ Note `time.Time.Truncate(time.Minute)` is correct here in a way it is **not** fo
 truncation is relative to the zero time, and minutes divide that boundary evenly while
 calendar days do not. T7.1's `utcDay` builds a date explicitly for exactly that reason.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 ```bash
 cd backend && go test ./shared/store/ -run WinProbSnapshot -v
@@ -463,7 +463,7 @@ Expected: four `--- PASS` lines — `TestWinProbSnapshotCollapsesAMinute`,
 `TestWinProbSnapshotKeepsEachMinute`, `TestWinProbSnapshotRoundsToTheColumnScale`,
 `TestWriteWinProbSnapshotAsTheIngesterRole`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/shared/store/snapshots.go backend/shared/store/snapshots_integration_test.go
@@ -492,7 +492,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Modify: `backend/ingester/matches.go`
 - Test: `backend/ingester/runner_test.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `backend/ingester/runner_test.go`:
 
@@ -604,7 +604,7 @@ func (f *fakeRepository) WriteWinProbSnapshot(
 `newTestRunnerWithSource(repo, source)` is `newTestRunner` with the source injected;
 extract it if the file does not already have it.
 
-- [ ] **Step 2: Run and watch it fail**
+- [x] **Step 2: Run and watch it fail**
 
 ```bash
 cd backend && go test ./ingester/ -run WinProbSnapshot
@@ -613,7 +613,7 @@ cd backend && go test ./ingester/ -run WinProbSnapshot
 Expected: FAIL to compile —
 `*fakeRepository does not implement repository (missing method WriteWinProbSnapshot)`.
 
-- [ ] **Step 3: Add the contract**
+- [x] **Step 3: Add the contract**
 
 In `backend/ingester/contracts.go`, immediately after the `WriteParticipation` line:
 
@@ -624,7 +624,7 @@ In `backend/ingester/contracts.go`, immediately after the `WriteParticipation` l
 	WriteWinProbSnapshot(context.Context, uuid.UUID, model.WinProbability, time.Time) error
 ```
 
-- [ ] **Step 4: Call it beside the participation write**
+- [x] **Step 4: Call it beside the participation write**
 
 In `backend/ingester/matches.go`, inside the summary block, immediately after the
 `WriteParticipation` call and before its closing brace:
@@ -658,7 +658,7 @@ standings snapshot, and deliberately so: a standings day is irrecoverable league
 whereas a missed minute of a market curve is one point on a line that is still being
 drawn every twenty seconds.
 
-- [ ] **Step 5: Run the suite**
+- [x] **Step 5: Run the suite**
 
 ```bash
 cd backend && go test -race ./ingester/ -v -run WinProbSnapshot
@@ -668,7 +668,7 @@ cd backend && go test -race ./ingester/
 Expected: four `--- PASS` lines, then
 `ok  	github.com/mcasillas17/scorearc-backend/ingester`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/ingester/contracts.go backend/ingester/matches.go backend/ingester/runner_test.go
@@ -691,7 +691,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ### Task 4: Doc and gate
 
-- [ ] **Step 1: Re-file the table in the architecture doc**
+- [x] **Step 1: Re-file the table in the architecture doc**
 
 In `docs/backend/ARCHITECTURE.md`, under `### Tier 3`, replace the `win_prob_snapshot`
 bullet:
@@ -700,7 +700,7 @@ bullet:
 - **win_prob_snapshot**(id bigserial, match_id→match ON DELETE CASCADE, captured_at (truncated to the minute, UTC), home, draw, away numeric(5,2)) — append-only, **WRITTEN** by the ingester since T7.6, for matches in state `live` only. `UNIQUE (match_id, captured_at)` collapses the 20-second live poll to one row per minute. The values are **market-implied** — the first betting provider's three-way moneyline with the margin removed, per `mapWinProbability` — and are not a ScoreArc forecast. Pre-match line movement is deliberately not recorded: a scheduled fixture is polled on slow ticks all season and would produce ~288 rows a day describing a market nobody is watching yet.
 ```
 
-- [ ] **Step 2: Full gate**
+- [x] **Step 2: Full gate**
 
 ```bash
 cd backend && go build ./... && go test -race ./... && go vet ./...
@@ -708,7 +708,7 @@ cd backend && go build ./... && go test -race ./... && go vet ./...
 
 Expected: build silent, every package `ok`, vet silent.
 
-- [ ] **Step 3: Prove it on a real live match**
+- [x] **Step 3: Prove it on a real live match**
 
 This one needs a competition with a match actually in play. Find one:
 
@@ -739,7 +739,7 @@ live**, zero rows, which is the correct result and not a failure; say so explici
 PR rather than claiming coverage you did not get. In that case
 `TestWinProbSnapshotWrittenForALiveMatch` is the evidence.
 
-- [ ] **Step 4: Open the PR**
+- [x] **Step 4: Open the PR**
 
 ```bash
 git add docs/backend/ARCHITECTURE.md
@@ -790,7 +790,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 5: Stop.** Do not merge — that is the user's call.
+- [x] **Step 5: Stop.** Do not merge — that is the user's call.
 
 ---
 
@@ -811,4 +811,73 @@ EOF
 - **Ordering hazard.** Task 1 drops `win_prob_snapshot_match_idx`, which `0002` created. If
   a future migration is written against that name it will silently no-op; the rollback
   restores it.
+
+---
+
+## Implementation record — 2026-08-16
+
+All checkboxes above reflect commands that were run and verified. The final implementation
+is on PR #59; this worker did not merge it.
+
+### Discrepancies from the quoted plan
+
+- The plan says verbatim: **“In: a probability row per minute for every match while its
+  state is `live`, plus the final observation carried by the summary that finalizes it.”**
+  The linked spec says “Per live minute,” and every prescribed test, state condition,
+  architecture edit, and PR contract is live-only. The coordinator explicitly chose that
+  consistent live-only contract; no finished-state write was added.
+- Task 2's same-minute test used a Go map while asserting which observation ran last.
+  The implementation uses an ordered slice so the freshness assertion is deterministic.
+- Task 3's red step expected a missing-interface-method compile error after the same step
+  had already added the fake method. The actual red evidence was behavioral: zero live
+  writes and no failed-write audit.
+- Task 3's commit list omitted `backend/ingester/runner.go`, although Step 4 adds
+  `winProbSnapshotRunKind` there. The file was included in the Task 3 commit.
+- Repository instructions require the executing worker's identity, so commit trailers use
+  Copilot rather than the plan author's Claude identity.
+- Colima required the documented `DOCKER_HOST` and
+  `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE` exports before real-Postgres tests could run.
+- Review found that the plan's unconditional same-minute upsert could let a delayed older
+  response overwrite a fresher one. Migration `0005` therefore also adds and backfills
+  `observed_at timestamptz NOT NULL`; the ingester captures it before the summary request,
+  and the conflict update applies only when the incoming poll is at least as recent.
+  A real-Postgres out-of-order test covers the guard. The down migration removes
+  `observed_at`, restores 0002's index, and retains populated snapshot rows.
+- While the PR was open, current `origin/main` was merged normally twice: first
+  `db64f3c` (squad, athlete bio, and commentary integration), then `1c8c786` (T7.7 box
+  score / migration `0006`). Conflict and adjacency tests preserved all features; no
+  rebase, stack, or history rewrite was used.
+
+### Verification evidence
+
+- Required frontend gate: `npm ci`; competition export with a clean generated diff;
+  25 Vitest files / 210 tests; TypeScript; lint; and production build all passed.
+  Lint/build retained six pre-existing component warnings.
+- Required backend gate: `go test -race ./...`, `go vet ./...`, and `go build ./...`
+  passed with Docker-backed Postgres integration tests.
+- Real live-provider proof reported `live=true`; two live matches produced one point each
+  at `2026-08-16 22:41:00+00` across two runs in the same minute.
+- Populated migration rollback proof retained the row, removed `observed_at` and the unique
+  key, and restored `win_prob_snapshot_match_idx`.
+- GitHub's push and pull-request CI runs passed on final reviewed head `b5b6fa3`.
+
+### Independent review rounds
+
+- A pre-integration Luna review on `eaefe23` was obsoleted when `origin/main` advanced and
+  is not counted.
+- Round 1 on `26ec478`: GPT-5.6 Luna reported one blocker — stale same-minute responses
+  could overwrite fresher values. The `observed_at` guard and Postgres regression test
+  resolved it.
+- Round 2 on final head `b5b6fa3`: GPT-5.6 Luna and Claude Opus 5 each independently ran
+  the full gate and reported **NO BLOCKERS**.
+
+### Non-blocking follow-ups
+
+- Shared-doc coordination should reconcile the stale Tier 3 heading and
+  `standing_snapshot` bullet in `docs/backend/ARCHITECTURE.md`; this PR updates only the
+  T7.6-owned `win_prob_snapshot` entry.
+- Automated populated-down-migration coverage would strengthen the current SQL-text and
+  whole-schema rollback checks. Both independent reviewers verified the populated `0005`
+  rollback directly against Postgres, so this is coverage hardening rather than a known
+  defect.
 </content>

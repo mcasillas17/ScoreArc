@@ -30,7 +30,7 @@ type Source interface {
 	Scoreboard(context.Context, config.Competition, config.Season, bool) ([]model.Match, error)
 	Summary(context.Context, config.Competition, model.Match) (SummaryResult, error)
 	Standings(context.Context, config.Competition, config.Season) ([]model.Standing, error)
-	TopScorers(context.Context, config.Competition, config.Season, int) ([]model.TopScorer, error)
+	Statistics(context.Context, config.Competition, config.Season) ([]byte, error)
 	Bracket(context.Context, config.Competition, config.Season, bool) ([]model.BracketMatch, error)
 	Roster(context.Context, config.Competition, string) (model.Squad, error)
 	AthleteBio(context.Context, config.Competition, string) ([]model.TeamHistoryEntry, error)

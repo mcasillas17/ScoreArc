@@ -139,6 +139,40 @@ func TestStandingSnapshotRollbackDropsOnlyWhatItAdded(t *testing.T) {
 	}
 }
 
+// A live match is polled every 20s. Without a key, one match produces ~300
+// rows for ~100 distinct states, and a retried cycle appends another 300. The
+// writer truncates captured_at to the minute; this index is what makes that
+// truncation binding rather than a convention.
+func TestWinProbSnapshotIsIdempotentPerMinute(t *testing.T) {
+	sql := readMigration(t, "0005_win_prob_snapshot_idempotency.up.sql")
+	for _, required := range []string{
+		"ADD COLUMN observed_at timestamptz",
+		"ALTER COLUMN observed_at SET NOT NULL",
+		"CREATE UNIQUE INDEX win_prob_snapshot_minute_key",
+		"(match_id, captured_at)",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("0005_win_prob_snapshot_idempotency.up.sql missing %q", required)
+		}
+	}
+	if strings.Contains(sql, "GRANT DELETE ON win_prob_snapshot") {
+		t.Fatal("win_prob_snapshot must stay append-only for the ingester")
+	}
+}
+
+func TestWinProbSnapshotRollbackKeepsTheData(t *testing.T) {
+	sql := readMigration(t, "0005_win_prob_snapshot_idempotency.down.sql")
+	if !strings.Contains(sql, "DROP INDEX IF EXISTS win_prob_snapshot_minute_key") {
+		t.Fatalf("rollback missing the index drop:\n%s", sql)
+	}
+	if !strings.Contains(sql, "DROP COLUMN IF EXISTS observed_at") {
+		t.Fatalf("rollback missing the observation timestamp drop:\n%s", sql)
+	}
+	if strings.Contains(sql, "DROP TABLE") {
+		t.Fatal("the rollback must not drop win_prob_snapshot itself")
+	}
+}
+
 func TestInitialRollbackRevokesDefaultPrivileges(t *testing.T) {
 	sql := readMigration(t, "0001_init.down.sql")
 	for _, required := range []string{
@@ -189,6 +223,37 @@ func TestAppearanceBoxScoreColumnsAreNullable(t *testing.T) {
 	for _, forbidden := range []string{"NOT NULL", "DEFAULT 0"} {
 		if strings.Contains(executableSQL, forbidden) {
 			t.Fatalf("box score columns must be nullable; found %q", forbidden)
+		}
+	}
+}
+
+// assistsLeaders arrives in the SAME /statistics response as goalsLeaders --
+// 50 rows each in the repo's own recorded fixture -- and MapTopScorers threw it
+// away. A category column costs one migration; a sibling top_assist table costs
+// seven duplicated columns and a third table the day cleanSheetsLeaders matters.
+func TestLeaderCategoryIsPartOfTheKey(t *testing.T) {
+	sql := readMigration(t, "0010_leader_category.up.sql")
+	for _, required := range []string{
+		"ALTER TABLE top_scorer",
+		"ADD COLUMN category text NOT NULL DEFAULT 'goals'",
+		"DROP CONSTRAINT top_scorer_pkey",
+		"PRIMARY KEY (competition_id, season_id, category, rank)",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("0010_leader_category.up.sql missing %q", required)
+		}
+	}
+}
+
+func TestLeaderCategoryRollbackRestoresTheOldKey(t *testing.T) {
+	sql := readMigration(t, "0010_leader_category.down.sql")
+	for _, required := range []string{
+		"DELETE FROM top_scorer WHERE category <> 'goals'",
+		"PRIMARY KEY (competition_id, season_id, rank)",
+		"DROP COLUMN IF EXISTS category",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("rollback missing %q", required)
 		}
 	}
 }

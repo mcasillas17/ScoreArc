@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -36,7 +37,9 @@ type fakeSource struct {
 	backfillCalls   []bool
 	scoreboardDelay time.Duration
 	scoreboardBlock bool
-	topScorers      []model.TopScorer
+	statistics      []byte
+	statisticsErr   error
+	statisticsCalls int
 	standings       []model.Standing
 	standingsErr    error
 	rosters         map[string]model.Squad
@@ -57,6 +60,8 @@ type fakeSource struct {
 	playsHook       func()
 	currentCalls    int
 	maxCalls        int
+	live            bool
+	winProbability  *model.WinProbability
 }
 
 func (f *fakeSource) Name() string { return "fake" }
@@ -99,7 +104,10 @@ func (f *fakeSource) Summary(
 		return source.SummaryResult{}, f.summaryErrors[call]
 	}
 	return source.SummaryResult{
-		Detail: model.MatchDetail{Scorers: []model.Scorer{{Player: "Winner"}}},
+		Detail: model.MatchDetail{
+			Scorers:        []model.Scorer{{Player: "Winner"}},
+			WinProbability: f.winProbability,
+		},
 		// Provider-shaped, exactly as a real source returns it: the team ids
 		// here are the provider's, and the ingester is responsible for handing
 		// the store canonical ones instead.
@@ -127,11 +135,24 @@ func (f *fakeSource) Standings(context.Context, config.Competition, config.Seaso
 	}
 	return []model.Standing{{Rank: 1, Team: model.Team{ID: "home"}}}, nil
 }
-func (f *fakeSource) TopScorers(context.Context, config.Competition, config.Season, int) ([]model.TopScorer, error) {
-	if f.topScorers != nil {
-		return f.topScorers, nil
+func (f *fakeSource) Statistics(context.Context, config.Competition, config.Season) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.statisticsCalls++
+	if f.statisticsErr != nil {
+		return nil, f.statisticsErr
 	}
-	return []model.TopScorer{{Rank: 1, Player: "Winner"}}, nil
+	if f.statistics != nil {
+		return append([]byte(nil), f.statistics...), nil
+	}
+	return []byte(`{"stats":[
+		{"name":"goalsLeaders","leaders":[
+			{"value":1,"displayValue":"Matches: 1, Goals: 1","athlete":{"displayName":"Winner","team":{}}}
+		]},
+		{"name":"assistsLeaders","leaders":[
+			{"value":1,"displayValue":"Matches: 1, Assists: 1","athlete":{"displayName":"Helper","team":{}}}
+		]}
+	]}`), nil
 }
 func (f *fakeSource) Bracket(context.Context, config.Competition, config.Season, bool) ([]model.BracketMatch, error) {
 	return f.bracket, f.bracketErr
@@ -215,6 +236,65 @@ func (f *fakeSource) Plays(
 	return f.plays, append([]byte(nil), f.playsRaw...), f.playsErr
 }
 
+func statisticsPayload(
+	t *testing.T,
+	goals, assists []model.StatLeader,
+) []byte {
+	t.Helper()
+	type fixtureTeam struct {
+		Abbreviation string  `json:"abbreviation"`
+		DisplayName  string  `json:"displayName"`
+		Logo         *string `json:"logo,omitempty"`
+	}
+	type fixtureAthlete struct {
+		DisplayName string      `json:"displayName"`
+		Team        fixtureTeam `json:"team"`
+	}
+	type fixtureLeader struct {
+		Value        int            `json:"value"`
+		DisplayValue string         `json:"displayValue,omitempty"`
+		Athlete      fixtureAthlete `json:"athlete"`
+	}
+	type fixtureBlock struct {
+		Name    string          `json:"name"`
+		Leaders []fixtureLeader `json:"leaders"`
+	}
+
+	mapRows := func(rows []model.StatLeader) []fixtureLeader {
+		mapped := make([]fixtureLeader, 0, len(rows))
+		for _, row := range rows {
+			displayValue := ""
+			if row.Matches != nil {
+				displayValue = fmt.Sprintf("Matches: %d", *row.Matches)
+			}
+			mapped = append(mapped, fixtureLeader{
+				Value:        row.Value,
+				DisplayValue: displayValue,
+				Athlete: fixtureAthlete{
+					DisplayName: row.Player,
+					Team: fixtureTeam{
+						Abbreviation: row.TeamAbbr,
+						DisplayName:  row.TeamName,
+						Logo:         row.TeamCrestURL,
+					},
+				},
+			})
+		}
+		return mapped
+	}
+
+	raw, err := json.Marshal(struct {
+		Stats []fixtureBlock `json:"stats"`
+	}{Stats: []fixtureBlock{
+		{Name: "goalsLeaders", Leaders: mapRows(goals)},
+		{Name: "assistsLeaders", Leaders: mapRows(assists)},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
 // fakeTeamID and fakeMatchID are the fake resolver's crosswalk. They are
 // deliberately NOT the identity function: a test that asserts on a provider id
 // where a canonical one belongs (or the reverse) has to fail loudly, because
@@ -240,6 +320,7 @@ type fakeRepository struct {
 	lastUpsert        model.Match
 	standingsCalls    int
 	standingsErr      error
+	leaderCategories  []string
 	snapshotCalls     int
 	snapshotDays      []time.Time
 	snapshotErr       error
@@ -265,6 +346,8 @@ type fakeRepository struct {
 	participation     []*model.MatchParticipation
 	participationTo   []string
 	participationErr  error
+	winProb           []model.WinProbability
+	winProbErr        error
 	commentary        [][]model.CommentaryLine
 	commentaryTo      []uuid.UUID
 	commentaryErr     error
@@ -463,6 +546,21 @@ func (f *fakeRepository) MatchesMissingPlays(
 	return append([]store.MissingPlayMatch(nil), f.missingPlays...), f.missingPlaysErr
 }
 
+func (f *fakeRepository) WriteWinProbSnapshot(
+	_ context.Context,
+	_ uuid.UUID,
+	probability model.WinProbability,
+	_ time.Time,
+) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.winProbErr != nil {
+		return f.winProbErr
+	}
+	f.winProb = append(f.winProb, probability)
+	return nil
+}
+
 func (f *fakeRepository) FinalizeMatch(
 	_ context.Context,
 	identity store.MatchIdentity,
@@ -530,17 +628,17 @@ func (f *fakeRepository) WriteStandingSnapshot(
 	}
 	return len(standings), nil
 }
-func (f *fakeRepository) ReplaceTopScorers(
+func (f *fakeRepository) ReplaceLeaders(
 	_ context.Context,
-	_, _, _ string,
-	rows []model.TopScorer,
+	_, _, _, category string,
+	rows []model.StatLeader,
 ) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.topScorersCalls++
 	if len(rows) == 0 {
 		return store.ErrEmptyReplacement
 	}
+	f.leaderCategories = append(f.leaderCategories, category)
 	return nil
 }
 func (f *fakeRepository) ReplaceSquad(
@@ -688,6 +786,20 @@ func testRunner(src *fakeSource, repo *fakeRepository, comp config.Competition) 
 	}
 }
 
+func newTestRunnerWithSource(repo *fakeRepository, source *fakeSource) *runner {
+	match := finishedMatch()
+	match.State = model.MatchStateScheduled
+	if source.live {
+		match.State = model.MatchStateLive
+	}
+	source.matches = []model.Match{match}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	return testRunner(source, repo, comp)
+}
+
 func finishedMatch() model.Match {
 	return model.Match{
 		ID: "m1", Kickoff: "2026-06-11T18:00:00Z",
@@ -717,8 +829,12 @@ func TestFinishedMatchRetriesSummaryBeforeFinalizing(t *testing.T) {
 	if repo.finalizeCalls != 1 {
 		t.Fatalf("finalize calls after retry=%d", repo.finalizeCalls)
 	}
-	if repo.standingsCalls != 1 || repo.topScorersCalls != 1 {
-		t.Fatalf("refreshes standings=%d scorers=%d", repo.standingsCalls, repo.topScorersCalls)
+	if repo.standingsCalls != 1 || src.statisticsCalls != 1 ||
+		len(repo.leaderCategories) != 2 {
+		t.Fatalf(
+			"refreshes standings=%d statistics=%d leaders=%v",
+			repo.standingsCalls, src.statisticsCalls, repo.leaderCategories,
+		)
 	}
 }
 
@@ -1550,11 +1666,16 @@ func TestCycleHonorsContextDeadline(t *testing.T) {
 	}
 }
 
-func TestTopScorerCrestMirrorsOnceAcrossRefreshes(t *testing.T) {
+func TestLeaderCrestMirrorsOnceAcrossRefreshes(t *testing.T) {
 	crest := "https://a.espncdn.com/crest.png"
-	src := &fakeSource{topScorers: []model.TopScorer{{
-		Rank: 1, Player: "Winner", TeamAbbr: "WIN", TeamCrestURL: &crest,
-	}}}
+	src := &fakeSource{statistics: statisticsPayload(
+		t,
+		[]model.StatLeader{{
+			Rank: 1, Player: "Winner", TeamAbbr: "WIN",
+			TeamCrestURL: &crest, Value: 1,
+		}},
+		[]model.StatLeader{{Rank: 1, Player: "Helper", Value: 1}},
+	)}
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
@@ -1571,16 +1692,20 @@ func TestTopScorerCrestMirrorsOnceAcrossRefreshes(t *testing.T) {
 	}
 }
 
-func TestTopScorerCrestOutageUsesSharedCircuit(t *testing.T) {
-	scorers := make([]model.TopScorer, 10)
-	for index := range scorers {
+func TestLeaderCrestOutageUsesSharedCircuit(t *testing.T) {
+	leaders := make([]model.StatLeader, 10)
+	for index := range leaders {
 		crest := fmt.Sprintf("https://source.example/%d.png", index)
-		scorers[index] = model.TopScorer{
+		leaders[index] = model.StatLeader{
 			Rank: index + 1, Player: fmt.Sprintf("Player %d", index),
-			TeamAbbr: fmt.Sprintf("T%d", index), TeamCrestURL: &crest,
+			TeamAbbr: fmt.Sprintf("T%d", index), TeamCrestURL: &crest, Value: 1,
 		}
 	}
-	src := &fakeSource{topScorers: scorers}
+	src := &fakeSource{statistics: statisticsPayload(
+		t,
+		leaders,
+		[]model.StatLeader{{Rank: 1, Player: "Helper", Value: 1}},
+	)}
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
@@ -1593,12 +1718,66 @@ func TestTopScorerCrestOutageUsesSharedCircuit(t *testing.T) {
 
 	result := runner.runCycle(context.Background(), true)
 
-	if result.failures != 0 || repo.topScorersCalls != 1 ||
+	if result.failures != 0 || len(repo.leaderCategories) != 2 ||
 		mirror.calls > 5 {
 		t.Fatalf(
-			"result=%+v replacements=%d mirror calls=%d",
-			result, repo.topScorersCalls, mirror.calls,
+			"result=%+v categories=%v mirror calls=%d",
+			result, repo.leaderCategories, mirror.calls,
 		)
+	}
+}
+
+// One fetch, two boards. Fetching /statistics twice would double the request
+// count for a payload that already contains both.
+func TestRefreshLeadersFetchesOnceAndWritesBoth(t *testing.T) {
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	src := &fakeSource{}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+
+	result := testRunner(src, repo, comp).runCycle(context.Background(), true)
+	if result.failures != 0 {
+		t.Fatalf("result=%+v", result)
+	}
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if src.statisticsCalls != 1 {
+		t.Fatalf("/statistics fetched %d times, want 1", src.statisticsCalls)
+	}
+	if len(repo.leaderCategories) != 2 {
+		t.Fatalf("categories written = %v, want goals and assists", repo.leaderCategories)
+	}
+	seen := make(map[string]bool, len(repo.leaderCategories))
+	for _, category := range repo.leaderCategories {
+		seen[category] = true
+	}
+	if !seen["goals"] || !seen["assists"] {
+		t.Fatalf("categories written = %v, want goals and assists", repo.leaderCategories)
+	}
+}
+
+// An empty assists board must not take down the goals board. ErrEmptyReplacement
+// is already the "preserve what we have" signal for top scorers; it stays that,
+// per category.
+func TestEmptyAssistsBoardDoesNotFailTheCycle(t *testing.T) {
+	src := &fakeSource{statistics: statisticsPayload(
+		t,
+		[]model.StatLeader{{Rank: 1, Player: "Striker", Value: 1}},
+		nil,
+	)}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+
+	if result := testRunner(src, repo, comp).runCycle(
+		context.Background(), true,
+	); result.failures != 0 {
+		t.Fatalf("failures = %d, want 0 -- an absent assists board is normal", result.failures)
 	}
 }
 
@@ -1619,8 +1798,8 @@ func TestSeasonBackfillSkipsScheduledSummaries(t *testing.T) {
 	}
 }
 
-func TestEmptyTopScorersPreserveRowsAndRemainRetryable(t *testing.T) {
-	src := &fakeSource{topScorers: []model.TopScorer{}}
+func TestEmptyLeaderBoardsPreserveRowsAndRemainRetryable(t *testing.T) {
+	src := &fakeSource{statistics: statisticsPayload(t, nil, nil)}
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
@@ -1640,7 +1819,7 @@ func TestEmptyTopScorersPreserveRowsAndRemainRetryable(t *testing.T) {
 	foundPreserved := false
 	for _, run := range repo.logged {
 		foundPreserved = foundPreserved ||
-			(run.kind == "top_scorers_preserved" && run.ok)
+			(run.kind == "leaders_preserved" && run.ok)
 	}
 	if !foundPreserved {
 		t.Fatal("missing preserved audit outcome")
@@ -3019,5 +3198,81 @@ func TestStandingsSnapshotRetriesWhenFinalizationRefreshStartsCanceled(t *testin
 	if retried.failures != 0 || repo.snapshotCalls != 2 {
 		t.Fatalf("retry cycle = %+v, snapshot calls = %d; want one successful retry",
 			retried, repo.snapshotCalls)
+	}
+}
+
+// A live match's probability is the whole point: it is the only state in which
+// the market moves fast enough for a curve to mean anything.
+func TestWinProbSnapshotWrittenForALiveMatch(t *testing.T) {
+	repo := &fakeRepository{}
+	source := &fakeSource{live: true, winProbability: &model.WinProbability{
+		Home: 52, Draw: 25, Away: 23,
+	}}
+	worker := newTestRunnerWithSource(repo, source)
+
+	worker.runCycle(context.Background(), false)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if len(repo.winProb) != 1 {
+		t.Fatalf("win prob writes = %d, want 1", len(repo.winProb))
+	}
+	if repo.winProb[0].Home != 52 {
+		t.Fatalf("home = %v, want 52", repo.winProb[0].Home)
+	}
+}
+
+// A scheduled match is polled on slow ticks all season. Snapshotting those
+// would write ~288 rows a day for every fixture on the calendar to describe a
+// market nobody is watching yet. Pre-match drift is a separate feature with a
+// separate cadence.
+func TestWinProbSnapshotSkippedForAScheduledMatch(t *testing.T) {
+	repo := &fakeRepository{}
+	source := &fakeSource{winProbability: &model.WinProbability{Home: 40, Draw: 30, Away: 30}}
+	worker := newTestRunnerWithSource(repo, source)
+
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if len(repo.winProb) != 0 {
+		t.Fatalf("win prob writes = %d for a scheduled match, want 0", len(repo.winProb))
+	}
+}
+
+// Not every competition has a betting market, and mapWinProbability returns
+// nil when there is no usable three-way moneyline. Writing 0/0/0 for those
+// would be inventing a market -- worse than an empty curve, because a reader
+// cannot tell the difference.
+func TestWinProbSnapshotSkippedWhenTheMarketIsAbsent(t *testing.T) {
+	repo := &fakeRepository{}
+	worker := newTestRunnerWithSource(repo, &fakeSource{live: true, winProbability: nil})
+
+	worker.runCycle(context.Background(), false)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if len(repo.winProb) != 0 {
+		t.Fatalf("win prob writes = %d with no market, want 0", len(repo.winProb))
+	}
+}
+
+// The snapshot is additive. A failure here must be recorded and must not stop
+// a scoreline from ingesting -- unlike the standings snapshot, a lost minute
+// of a market curve is not a lost day of league history.
+func TestWinProbSnapshotFailureDoesNotStopTheMatch(t *testing.T) {
+	repo := &fakeRepository{winProbErr: errors.New("boom")}
+	source := &fakeSource{live: true, winProbability: &model.WinProbability{Home: 52, Draw: 25, Away: 23}}
+	worker := newTestRunnerWithSource(repo, source)
+
+	worker.runCycle(context.Background(), false)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.matchCalls == 0 {
+		t.Fatal("the match was not upserted; an additive write blocked a scoreline")
+	}
+	if !hasLoggedKind(repo.logged, "win_prob_snapshot") {
+		t.Fatal("the failure was not recorded in ingest_run")
 	}
 }

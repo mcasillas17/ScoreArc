@@ -33,6 +33,10 @@ type repository interface {
 	UpsertMatchDetail(context.Context, uuid.UUID, model.MatchDetail) error
 	FinalizeMatch(context.Context, store.MatchIdentity, model.Match, model.MatchDetail) (bool, error)
 	WriteParticipation(context.Context, string, uuid.UUID, string, string, *model.MatchParticipation) (store.ParticipationStats, error)
+	// WriteWinProbSnapshot appends one point of a live match's probability
+	// curve. Like WriteParticipation it is additive: a failure is recorded and
+	// never blocks a scoreline.
+	WriteWinProbSnapshot(context.Context, uuid.UUID, model.WinProbability, time.Time) error
 	WriteCommentary(context.Context, uuid.UUID, []model.CommentaryLine) (int, error)
 	WritePlays(context.Context, uuid.UUID, []model.Play, map[string]string, map[string]uuid.UUID) (int, error)
 	ResolveKnownPlayers(context.Context, string, []string) (map[string]uuid.UUID, error)
@@ -47,7 +51,7 @@ type repository interface {
 	// ReplaceStandings so it can only ever be called with rows that
 	// replacement actually accepted.
 	WriteStandingSnapshot(context.Context, string, string, []model.Standing, map[string]string, time.Time) (int, error)
-	ReplaceTopScorers(context.Context, string, string, string, []model.TopScorer) error
+	ReplaceLeaders(context.Context, string, string, string, string, []model.StatLeader) error
 	ReplaceSquad(context.Context, string, string, string, string, []model.SquadMember, map[string]uuid.UUID) error
 	PlayersNeedingBio(context.Context, string, time.Time, int) (map[string]uuid.UUID, error)
 	ReplaceTeamHistory(context.Context, uuid.UUID, string, []model.TeamHistoryEntry) error

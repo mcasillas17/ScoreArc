@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/mcasillas17/scorearc-backend/shared/model"
@@ -144,7 +145,7 @@ func MapPlays(raw []byte) (model.PlayStream, error) {
 		if err != nil {
 			return model.PlayStream{}, fmt.Errorf("play %s period: %w", item.ID, err)
 		}
-		clockValue, err := mapCommentaryClock(item.Clock.Value)
+		clockValue, err := mapPlayClock(item.Clock.Value)
 		if err != nil {
 			return model.PlayStream{}, fmt.Errorf("play %s clock: %w", item.ID, err)
 		}
@@ -225,15 +226,31 @@ func validatePlayPage(page rawPlayPage) error {
 	return nil
 }
 
-func mapPlayPeriod(value *int) (*int, error) {
+func mapPlayPeriod(raw json.RawMessage) (*int, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var value *float64
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil, fmt.Errorf("must be a number or null: %w", err)
+	}
+	return mapPlayInteger(value)
+}
+
+func mapPlayClock(value *float64) (*int, error) {
+	return mapPlayInteger(value)
+}
+
+func mapPlayInteger(value *float64) (*int, error) {
 	if value == nil {
 		return nil, nil
 	}
-	if err := validateCommentaryInteger(*value); err != nil {
-		return nil, err
+	if math.IsNaN(*value) || math.IsInf(*value, 0) ||
+		*value < 0 || *value > maxPostgresInteger || math.Trunc(*value) != *value {
+		return nil, fmt.Errorf("must be a whole non-negative PostgreSQL integer")
 	}
-	period := *value
-	return &period, nil
+	integer := int(*value)
+	return &integer, nil
 }
 
 // mapPlayCoordinates returns nil when nothing was located.

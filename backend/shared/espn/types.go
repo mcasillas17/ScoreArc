@@ -16,6 +16,7 @@ type BracketTeam = model.BracketTeam
 type BracketMatch = model.BracketMatch
 type Standing = model.Standing
 type TopScorer = model.TopScorer
+type StatLeader = model.StatLeader
 type Scorer = model.Scorer
 type Card = model.Card
 type TeamStats = model.TeamStats

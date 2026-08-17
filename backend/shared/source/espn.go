@@ -215,7 +215,13 @@ func (e *ESPN) Standings(ctx context.Context, comp config.Competition, season co
 	return espn.MapStandings(raw)
 }
 
-func (e *ESPN) TopScorers(ctx context.Context, comp config.Competition, season config.Season, limit int) ([]model.TopScorer, error) {
+// Statistics returns the raw season response so one fetch can feed every
+// leaderboard mapper.
+func (e *ESPN) Statistics(
+	ctx context.Context,
+	comp config.Competition,
+	season config.Season,
+) ([]byte, error) {
 	expectedYear, err := seasonStartYear(season.ID)
 	if err != nil {
 		return nil, err
@@ -226,7 +232,7 @@ func (e *ESPN) TopScorers(ctx context.Context, comp config.Competition, season c
 	}
 	// ESPN's statistics season metadata is not reliably tied to the requested
 	// league year; the season-scoped URL is the only stable provider contract.
-	return espn.MapTopScorers(raw, limit)
+	return raw, nil
 }
 
 func (e *ESPN) Roster(
