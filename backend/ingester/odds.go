@@ -31,6 +31,19 @@ const (
 	oddsCaptureFixedRetry
 )
 
+func (m oddsCaptureMode) String() string {
+	switch m {
+	case oddsCaptureLive:
+		return "live"
+	case oddsCaptureFinal:
+		return "final"
+	case oddsCaptureFixedRetry:
+		return "fixed_retry"
+	default:
+		return fmt.Sprintf("unknown(%d)", m)
+	}
+}
+
 // captureOdds records a match's raw bookmaker prices.
 //
 // The CURRENT line is sampled on every live poll, because market movement only
@@ -98,7 +111,7 @@ func (r *runner) captureOdds(
 	r.recordRun(ctx, comp.ID, oddsRunKind, started, operationErr)
 	if operationErr == nil {
 		r.log.Info("match odds",
-			"match", providerEventID, "providers", len(providers), "mode", mode)
+			"match", providerEventID, "providers", len(providers), "mode", mode.String())
 	}
 	if mode == oddsCaptureLive {
 		return nil

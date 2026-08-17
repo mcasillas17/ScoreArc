@@ -3781,6 +3781,25 @@ func TestCaptureOfficialsRecordsEveryBoundaryFailure(t *testing.T) {
 // While a match is live only the CURRENT line is sampled. Opening and closing
 // prices are fixed facts that are not final until the match is, so writing them
 // from a live poll would keep overwriting them with an in-play price.
+func TestOddsCaptureModeString(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		mode oddsCaptureMode
+		want string
+	}{
+		{name: "live", mode: oddsCaptureLive, want: "live"},
+		{name: "final", mode: oddsCaptureFinal, want: "final"},
+		{name: "fixed retry", mode: oddsCaptureFixedRetry, want: "fixed_retry"},
+		{name: "unknown fallback", mode: oddsCaptureMode(99), want: "unknown(99)"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := test.mode.String(); got != test.want {
+				t.Fatalf("mode %d label = %q, want %q", test.mode, got, test.want)
+			}
+		})
+	}
+}
+
 func TestCaptureOddsSamplesOnlyTheCurrentLineWhileLive(t *testing.T) {
 	src := &fakeSource{odds: oddsFixture()}
 	repo := &fakeRepository{}
