@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/mcasillas17/scorearc-backend/shared/espn"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
 
@@ -324,6 +325,57 @@ func TestWriteMatchOddsRollsBackEveryProvider(t *testing.T) {
 	if fixed != 0 || sampled != 0 {
 		t.Fatalf("failed batches left %d fixed and %d sampled rows, want atomic rollback",
 			fixed, sampled)
+	}
+}
+
+func TestMappedMalformedBookDoesNotRollbackValidBooks(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	mustSeedTwoTeams(t, store)
+	mustSeedSeason(t, pool)
+	matchID := seedOddsMatch(t, store)
+
+	providers, err := espn.MapOdds([]byte(`{"items":[
+		{
+			"provider":{"id":"100","name":"DraftKings"},
+			"open":{"total":{"american":"2.5"}}
+		},
+		{
+			"provider":{"id":"200","name":"Caesars"},
+			"homeTeamOdds":{"open":{"moneyLine":{"american":"+120"}}},
+			"open":{"total":{"american":"1000"}}
+		}
+	]}`))
+	if err != nil {
+		t.Fatalf("MapOdds: %v", err)
+	}
+
+	if err := store.WriteMatchOdds(ctx, matchID, providers); err != nil {
+		t.Fatalf("WriteMatchOdds: %v", err)
+	}
+
+	var provider100Total *float64
+	if err := pool.QueryRow(ctx, `
+SELECT over_under FROM match_odds
+WHERE match_id=$1 AND provider_id='100' AND phase='open'`, matchID).Scan(&provider100Total); err != nil {
+		t.Fatal(err)
+	}
+	if provider100Total == nil || *provider100Total != 2.5 {
+		t.Fatalf("provider 100 over_under = %v, want 2.5", provider100Total)
+	}
+
+	var provider200Moneyline *int
+	var provider200Total *float64
+	if err := pool.QueryRow(ctx, `
+SELECT home_moneyline, over_under FROM match_odds
+WHERE match_id=$1 AND provider_id='200' AND phase='open'`, matchID).Scan(&provider200Moneyline, &provider200Total); err != nil {
+		t.Fatal(err)
+	}
+	if provider200Moneyline == nil || *provider200Moneyline != 120 {
+		t.Fatalf("provider 200 home_moneyline = %v, want 120", provider200Moneyline)
+	}
+	if provider200Total != nil {
+		t.Fatalf("provider 200 over_under = %v, want nil", *provider200Total)
 	}
 }
 
