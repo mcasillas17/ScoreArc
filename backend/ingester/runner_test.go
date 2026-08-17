@@ -52,6 +52,12 @@ type fakeSource struct {
 	bioErrors       map[string]error
 	bioCalls        []string
 	commentary      []model.CommentaryLine
+	plays           model.PlayStream
+	playsRaw        []byte
+	playsErr        error
+	playsCalls      int
+	playsEventID    string
+	playsHook       func()
 	currentCalls    int
 	maxCalls        int
 	live            bool
@@ -215,6 +221,20 @@ func (f *fakeSource) AthleteBio(
 		Seasons:      "2025-CURRENT",
 	}}, nil
 }
+func (f *fakeSource) Plays(
+	_ context.Context,
+	_ config.Competition,
+	eventID string,
+) (model.PlayStream, []byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.playsCalls++
+	f.playsEventID = eventID
+	if f.playsHook != nil {
+		f.playsHook()
+	}
+	return f.plays, append([]byte(nil), f.playsRaw...), f.playsErr
+}
 
 func statisticsPayload(
 	t *testing.T,
@@ -286,50 +306,87 @@ func fakeMatchID(sourceID string) uuid.UUID {
 }
 
 type fakeRepository struct {
-	mu               sync.Mutex
-	existing         map[string]store.MatchRow
-	existingErr      error
-	existingHook     func()
-	pruneErr         error
-	pruneRows        []int64
-	pruneCalls       int
-	pruneHook        func()
-	matchCalls       int
-	finalizeCalls    int
-	lastFinalized    model.Match
-	lastUpsert       model.Match
-	standingsCalls   int
-	standingsErr     error
-	leaderCategories []string
-	snapshotCalls    int
-	snapshotDays     []time.Time
-	snapshotErr      error
-	squadCalls       int
-	squadTeams       []string
-	squadErrors      map[string]error
-	bioCandidates    map[string]uuid.UUID
-	bioQueryCalls    int
-	bioQueryLimits   []int
-	bioStaleBefore   []time.Time
-	bioIgnoreLimit   bool
-	bioWriteCalls    int
-	bioWriteErrors   map[uuid.UUID]error
-	unfinalized      []model.Match
-	unfinalizedErr   error
-	logged           []loggedRun
-	lastIdentity     store.MatchIdentity
-	teamKinds        map[string]string
-	standingTeamIDs  map[string]string
-	matchAlias       map[string]string
-	upserted         []string
-	participation    []*model.MatchParticipation
-	participationTo  []string
-	participationErr error
-	winProb          []model.WinProbability
-	winProbErr       error
-	commentary       [][]model.CommentaryLine
-	commentaryTo     []uuid.UUID
-	commentaryErr    error
+	mu                sync.Mutex
+	existing          map[string]store.MatchRow
+	existingErr       error
+	existingHook      func()
+	pruneErr          error
+	pruneRows         []int64
+	pruneCalls        int
+	pruneHook         func()
+	matchCalls        int
+	finalizeCalls     int
+	lastFinalized     model.Match
+	lastUpsert        model.Match
+	standingsCalls    int
+	standingsErr      error
+	leaderCategories  []string
+	snapshotCalls     int
+	snapshotDays      []time.Time
+	snapshotErr       error
+	topScorersCalls   int
+	squadCalls        int
+	squadTeams        []string
+	squadErrors       map[string]error
+	bioCandidates     map[string]uuid.UUID
+	bioQueryCalls     int
+	bioQueryLimits    []int
+	bioStaleBefore    []time.Time
+	bioIgnoreLimit    bool
+	bioWriteCalls     int
+	bioWriteErrors    map[uuid.UUID]error
+	unfinalized       []model.Match
+	unfinalizedErr    error
+	logged            []loggedRun
+	lastIdentity      store.MatchIdentity
+	teamKinds         map[string]string
+	standingTeamIDs   map[string]string
+	matchAlias        map[string]string
+	upserted          []string
+	participation     []*model.MatchParticipation
+	participationTo   []string
+	participationErr  error
+	winProb           []model.WinProbability
+	winProbErr        error
+	commentary        [][]model.CommentaryLine
+	commentaryTo      []uuid.UUID
+	commentaryErr     error
+	resolvedPlayers   map[string]uuid.UUID
+	resolvePlayersErr error
+	playWrites        [][]model.Play
+	playTeamIDs       []map[string]string
+	playPlayerIDs     []map[string]uuid.UUID
+	playWriteErr      error
+	playWriteHook     func()
+	playArchives      []fakePlayArchiveRecord
+	playArchiveErr    error
+	missingPlays      []store.MissingPlayMatch
+	missingPlaysErr   error
+	missingPlaysCalls int
+}
+
+type fakePlayArchiveRecord struct {
+	matchID   uuid.UUID
+	key       string
+	plays     int
+	bytes     int
+	touchTier bool
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	cloned := make(map[string]string, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func cloneUUIDMap(values map[string]uuid.UUID) map[string]uuid.UUID {
+	cloned := make(map[string]uuid.UUID, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 type loggedRun struct {
@@ -418,6 +475,75 @@ func (f *fakeRepository) WriteCommentary(
 		return 0, f.commentaryErr
 	}
 	return len(lines), nil
+}
+func (f *fakeRepository) ResolveKnownPlayers(
+	_ context.Context,
+	_ string,
+	_ []string,
+) (map[string]uuid.UUID, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.resolvePlayersErr != nil {
+		return nil, f.resolvePlayersErr
+	}
+	resolved := make(map[string]uuid.UUID, len(f.resolvedPlayers))
+	for sourceID, playerID := range f.resolvedPlayers {
+		resolved[sourceID] = playerID
+	}
+	return resolved, nil
+}
+func (f *fakeRepository) WritePlays(
+	_ context.Context,
+	_ uuid.UUID,
+	plays []model.Play,
+	teamIDs map[string]string,
+	playerIDs map[string]uuid.UUID,
+) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.playWriteHook != nil {
+		f.playWriteHook()
+	}
+	f.playWrites = append(f.playWrites, append([]model.Play(nil), plays...))
+	f.playTeamIDs = append(f.playTeamIDs, cloneStringMap(teamIDs))
+	f.playPlayerIDs = append(f.playPlayerIDs, cloneUUIDMap(playerIDs))
+	if f.playWriteErr != nil {
+		return 0, f.playWriteErr
+	}
+	return len(plays), nil
+}
+func (f *fakeRepository) RecordPlayArchive(
+	_ context.Context,
+	matchID uuid.UUID,
+	key string,
+	plays, bytes int,
+	touchTier bool,
+) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.playArchives = append(f.playArchives, fakePlayArchiveRecord{
+		matchID: matchID, key: key, plays: plays, bytes: bytes, touchTier: touchTier,
+	})
+	if f.playArchiveErr != nil {
+		return f.playArchiveErr
+	}
+	for index, pending := range f.missingPlays {
+		if pending.MatchID == matchID {
+			f.missingPlays = append(f.missingPlays[:index], f.missingPlays[index+1:]...)
+			break
+		}
+	}
+	return nil
+}
+func (f *fakeRepository) MatchesMissingPlays(
+	_ context.Context,
+	_, _, _ string,
+	_ int,
+) ([]store.MissingPlayMatch, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.missingPlaysCalls++
+	return append([]store.MissingPlayMatch(nil), f.missingPlays...), f.missingPlaysErr
 }
 
 func (f *fakeRepository) WriteWinProbSnapshot(
@@ -594,6 +720,34 @@ type fakeMirror struct {
 	calls   int
 	callIDs []string
 	block   bool
+}
+
+type fakeArchive struct {
+	mu     sync.Mutex
+	err    error
+	size   int
+	calls  int
+	keys   []string
+	bodies [][]byte
+}
+
+func (f *fakeArchive) Put(
+	_ context.Context,
+	key string,
+	body []byte,
+	metadata assets.PlayArchiveMetadata,
+) (assets.ArchivePutResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	f.keys = append(f.keys, key)
+	f.bodies = append(f.bodies, append([]byte(nil), body...))
+	if f.err != nil {
+		return assets.ArchivePutResult{}, f.err
+	}
+	return assets.ArchivePutResult{
+		Bytes: f.size, Metadata: metadata, Created: true,
+	}, nil
 }
 
 func (f *fakeMirror) BaseURL() string { return "https://cdn.example" }
@@ -869,6 +1023,239 @@ func TestCommentaryFailureLeavesTheFinishedMatchRetryable(t *testing.T) {
 	}
 	if result.failures != 0 {
 		t.Errorf("recovery cycle failures=%d, want 0", result.failures)
+	}
+}
+
+func TestCapturePlaysArchivesBeforeWritingTheAnalysableTier(t *testing.T) {
+	playerID := uuid.New()
+	src := &fakeSource{
+		plays: model.PlayStream{Plays: []model.Play{
+			{
+				SourceID: "goal", TypeKey: "goal", ScoringPlay: true,
+				TeamSourceID: "home", PlayerSourceID: "athlete",
+			},
+			{SourceID: "pass", TypeKey: "pass", TeamSourceID: "away"},
+		}},
+		playsRaw: []byte(`{"page":1}`),
+	}
+	repo := &fakeRepository{
+		existing:        map[string]store.MatchRow{},
+		resolvedPlayers: map[string]uuid.UUID{"athlete": playerID},
+	}
+	archive := &fakeArchive{size: 37}
+	writeBeforeArchive := false
+	repo.playWriteHook = func() {
+		archive.mu.Lock()
+		defer archive.mu.Unlock()
+		writeBeforeArchive = archive.calls == 0
+	}
+	runner := testRunner(src, repo, config.Competition{ID: "test"})
+	runner.archive = archive
+	identity := store.MatchIdentity{
+		MatchID:    fakeMatchID("m1"),
+		HomeTeamID: "team-home", AwayTeamID: "team-away",
+		HomeTeamSourceID: "home", AwayTeamSourceID: "away",
+	}
+
+	runner.capturePlays(
+		context.Background(),
+		config.Competition{ID: "test"},
+		config.Season{ID: "2026"},
+		identity,
+		"m1",
+	)
+
+	if writeBeforeArchive {
+		t.Fatal("Postgres rows were written before the irreplaceable archive")
+	}
+	if archive.calls != 1 || len(repo.playArchives) != 1 {
+		t.Fatalf("archive calls/ledger rows = %d/%d, want 1/1",
+			archive.calls, len(repo.playArchives))
+	}
+	if len(repo.playWrites) != 1 || len(repo.playWrites[0]) != 1 ||
+		repo.playWrites[0][0].SourceID != "goal" {
+		t.Fatalf("stored plays = %#v, want only the analysable goal", repo.playWrites)
+	}
+	if got := repo.playTeamIDs[0]; got["home"] != "team-home" || got["away"] != "team-away" {
+		t.Fatalf("team crosswalk = %v", got)
+	}
+	if got := repo.playPlayerIDs[0]["athlete"]; got != playerID {
+		t.Fatalf("player crosswalk = %s, want %s", got, playerID)
+	}
+	record := repo.playArchives[0]
+	if record.matchID != identity.MatchID || record.plays != 2 ||
+		record.bytes != 37 || !record.touchTier {
+		t.Fatalf("archive record = %+v", record)
+	}
+}
+
+func TestCapturePlaysArchivesAnEmptyStreamSoBackfillConverges(t *testing.T) {
+	src := &fakeSource{
+		plays:    model.PlayStream{Plays: []model.Play{}},
+		playsRaw: []byte(`{"count":0,"items":[]}`),
+	}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	archive := &fakeArchive{size: 23}
+	runner := testRunner(src, repo, config.Competition{ID: "test"})
+	runner.archive = archive
+
+	runner.capturePlays(
+		context.Background(),
+		config.Competition{ID: "test"},
+		config.Season{ID: "2026"},
+		store.MatchIdentity{MatchID: fakeMatchID("m1")},
+		"m1",
+	)
+
+	if archive.calls != 1 || len(repo.playArchives) != 1 {
+		t.Fatalf("empty stream archive/ledger = %d/%d, want 1/1",
+			archive.calls, len(repo.playArchives))
+	}
+	if len(repo.playWrites) != 0 {
+		t.Fatalf("empty stream wrote rows: %#v", repo.playWrites)
+	}
+	if repo.playArchives[0].plays != 0 || repo.playArchives[0].touchTier {
+		t.Fatalf("empty archive record = %+v", repo.playArchives[0])
+	}
+}
+
+func TestFinishedMatchCapturesPlaysOnlyAfterFinalization(t *testing.T) {
+	match := finishedMatch()
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	capturedBeforeFinalize := false
+	src := &fakeSource{
+		matches:  []model.Match{match},
+		playsRaw: []byte(`{"count":0,"items":[]}`),
+		playsHook: func() {
+			repo.mu.Lock()
+			defer repo.mu.Unlock()
+			capturedBeforeFinalize = repo.finalizeCalls == 0
+		},
+	}
+	runner := testRunner(src, repo, config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	})
+	runner.archive = &fakeArchive{size: 23}
+
+	runner.runCycle(context.Background(), true)
+
+	if capturedBeforeFinalize {
+		t.Fatal("play capture ran before match finalization")
+	}
+	if repo.finalizeCalls != 1 || src.playsCalls != 1 || src.playsEventID != match.ID {
+		t.Fatalf("finalize/plays/event = %d/%d/%q",
+			repo.finalizeCalls, src.playsCalls, src.playsEventID)
+	}
+}
+
+func TestCapturePlaysAuditsArchiveFailureButStillStoresRows(t *testing.T) {
+	src := &fakeSource{
+		plays: model.PlayStream{Plays: []model.Play{{
+			SourceID: "goal", TypeKey: "goal", ScoringPlay: true,
+		}}},
+		playsRaw: []byte(`{"page":1}`),
+	}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	runner := testRunner(src, repo, config.Competition{ID: "test"})
+	runner.archive = &fakeArchive{err: errors.New("R2 unavailable")}
+
+	err := runner.capturePlays(
+		context.Background(),
+		config.Competition{ID: "test"},
+		config.Season{ID: "2026"},
+		store.MatchIdentity{MatchID: fakeMatchID("m1")},
+		"m1",
+	)
+
+	if err == nil {
+		t.Fatal("archive failure was not returned to the cycle")
+	}
+	if len(repo.playWrites) != 1 {
+		t.Fatalf("archive failure blocked rebuildable rows: writes=%d", len(repo.playWrites))
+	}
+	failed := false
+	for _, run := range repo.logged {
+		failed = failed || (run.kind == playStreamRunKind && !run.ok)
+	}
+	if !failed {
+		t.Fatal("archive failure was not audited as a failed play_stream run")
+	}
+}
+
+func TestCapturePlaysDoesNotLedgerUntilRowsAreDurable(t *testing.T) {
+	src := &fakeSource{
+		plays: model.PlayStream{Plays: []model.Play{{
+			SourceID: "goal", TypeKey: "goal", ScoringPlay: true,
+		}}},
+		playsRaw: []byte(`{"page":1}`),
+	}
+	repo := &fakeRepository{
+		existing:     map[string]store.MatchRow{},
+		playWriteErr: errors.New("database unavailable"),
+	}
+	runner := testRunner(src, repo, config.Competition{ID: "test"})
+	runner.archive = &fakeArchive{size: 23}
+
+	err := runner.capturePlays(
+		context.Background(),
+		config.Competition{ID: "test"},
+		config.Season{ID: "2026"},
+		store.MatchIdentity{MatchID: fakeMatchID("m1")},
+		"m1",
+	)
+
+	if err == nil {
+		t.Fatal("want row failure returned")
+	}
+	if len(repo.playArchives) != 0 {
+		t.Fatalf("ledger recorded before rows were durable: %#v", repo.playArchives)
+	}
+}
+
+func TestSlowTickRetriesFinalizedMatchMissingPlayArchive(t *testing.T) {
+	match := finishedMatch()
+	matchID := fakeMatchID(match.ID)
+	src := &fakeSource{
+		matches:  []model.Match{match},
+		playsErr: errors.New("temporary core failure"),
+		playsRaw: []byte(`{"count":0,"items":[]}`),
+	}
+	repo := &fakeRepository{
+		existing: map[string]store.MatchRow{},
+		missingPlays: []store.MissingPlayMatch{{
+			MatchID: matchID, SourceID: match.ID,
+			HomeTeamID: fakeTeamID(match.Home.ID), AwayTeamID: fakeTeamID(match.Away.ID),
+			HomeTeamSourceID: match.Home.ID, AwayTeamSourceID: match.Away.ID,
+		}},
+	}
+	runner := testRunner(src, repo, config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	})
+	runner.archive = &fakeArchive{size: 23}
+
+	first := runner.runCycle(context.Background(), false)
+	if first.failures == 0 || repo.finalizeCalls != 1 || src.playsCalls != 1 {
+		t.Fatalf("first cycle = %+v finalize/plays=%d/%d",
+			first, repo.finalizeCalls, src.playsCalls)
+	}
+
+	repo.existing[match.ID] = store.MatchRow{
+		State: model.MatchStateFinished,
+		FinalizedAt: pgtype.Timestamptz{
+			Time: time.Now(), Valid: true,
+		},
+	}
+	src.playsErr = nil
+	second := runner.runCycle(context.Background(), true)
+	if second.failures != 0 {
+		t.Fatalf("retry cycle = %+v", second)
+	}
+	if src.playsCalls != 2 || len(repo.playArchives) != 1 ||
+		repo.missingPlaysCalls != 1 {
+		t.Fatalf("plays/archives/backlog calls = %d/%d/%d",
+			src.playsCalls, len(repo.playArchives), repo.missingPlaysCalls)
 	}
 }
 

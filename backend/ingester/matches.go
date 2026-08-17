@@ -67,6 +67,7 @@ func (r *runner) resolveMatch(
 	return store.MatchIdentity{
 		MatchID: matchID, CompetitionID: comp.ID, SeasonID: seasonID,
 		HomeTeamID: homeID, AwayTeamID: awayID,
+		HomeTeamSourceID: match.Home.ID, AwayTeamSourceID: match.Away.ID,
 		WinnerTeamID: canonicalWinner(match, homeID, awayID),
 		Source:       sourceESPN,
 	}, nil
@@ -288,6 +289,13 @@ func (r *runner) processMatches(
 				} else if didFinalize {
 					result.finalized = true
 					matchActive = false
+					// The stream is complete at full time. Fetching it once
+					// here, rather than on every live poll, bounds the core API
+					// to roughly two requests per match.
+					if err := r.capturePlays(ctx, comp, season, identity, match.ID); err != nil {
+						operationErrors = append(operationErrors,
+							fmt.Errorf("match %s play stream: %w", match.ID, err))
+					}
 					existing[identity.MatchID] = store.MatchRow{
 						State: match.State,
 						FinalizedAt: pgtype.Timestamptz{

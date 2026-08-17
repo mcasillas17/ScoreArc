@@ -41,6 +41,7 @@ type runner struct {
 	source        source.Source
 	repo          repository
 	mirror        crestMirror
+	archive       rawArchive
 	log           *slog.Logger
 	maxConcurrent int
 
@@ -364,13 +365,18 @@ func (r *runner) ingestCompSeason(
 	r.recordRun(ctx, comp.ID, "matches", matchStart, processErr)
 
 	var refreshErrors []error
+	var playBacklogErr error
+	if slowTick && ctx.Err() == nil {
+		playBacklogErr = r.retryMissingPlayStreams(ctx, comp, season)
+	}
 	if matchResult.finalized || slowTick {
 		refreshErrors = append(refreshErrors,
 			r.refreshStandings(ctx, comp, season, slowTick, matchResult.finalized),
 			r.refreshLeaders(ctx, comp, season),
 		)
 	}
-	coreErr := errors.Join(scoreboardErr, bracketErr, backlogErr, resolveErr, processErr)
+	coreErr := errors.Join(
+		scoreboardErr, bracketErr, backlogErr, resolveErr, processErr, playBacklogErr)
 	combinedErr := errors.Join(coreErr, errors.Join(refreshErrors...))
 	processCanceled := errors.Is(processErr, context.Canceled) ||
 		errors.Is(processErr, context.DeadlineExceeded)

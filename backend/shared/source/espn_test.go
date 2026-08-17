@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -694,5 +696,197 @@ func TestESPNBracketRejectsWrongSeason(t *testing.T) {
 		true,
 	); err == nil {
 		t.Fatal("expected wrong-season bracket error")
+	}
+}
+
+// A fresh match is 1,542 plays at a 1,000 cap. A fetcher that stops after page
+// one loses 542 of them -- including, since the stream is chronological, most
+// of the second half.
+func TestPlaysFollowsEveryPage(t *testing.T) {
+	var requested []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requested = append(requested, r.URL.Query().Get("page"))
+		page := r.URL.Query().Get("page")
+		items := `{"id":"a","type":{"id":"1","text":"Pass","type":"pass"},"period":{"number":1},"clock":{"value":0,"displayValue":""}}`
+		if page == "2" {
+			items = `{"id":"b","type":{"id":"2","text":"Goal","type":"goal"},"period":{"number":2},"clock":{"value":60,"displayValue":"60'"},"scoringPlay":true}`
+		}
+		fmt.Fprintf(w, `{"count":2,"pageIndex":%s,"pageSize":1000,"pageCount":2,"items":[%s]}`, page, items)
+	}))
+	defer server.Close()
+
+	source := NewESPNWithBase(espnprovider.New(), server.URL)
+	stream, raw, err := source.Plays(context.Background(),
+		config.Competition{ESPNSlug: "mex.1"}, "401877018")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(requested) != 2 || requested[0] != "1" || requested[1] != "2" {
+		t.Fatalf("requested pages %v, want [1 2]", requested)
+	}
+	if len(stream.Plays) != 2 {
+		t.Fatalf("plays = %d, want 2 -- page two was dropped", len(stream.Plays))
+	}
+	// Sequence must continue across the page boundary, not restart.
+	if stream.Plays[1].Seq <= stream.Plays[0].Seq {
+		t.Fatalf("seq = %d then %d; page two restarted the ordinal",
+			stream.Plays[0].Seq, stream.Plays[1].Seq)
+	}
+	if len(raw) == 0 {
+		t.Fatal("no raw bytes returned; there would be nothing to archive")
+	}
+}
+
+// The silent-degradation guard. If ESPN ever changes its default page size,
+// asking for 1000 and being handed 25 turns one cycle into 62x the requests
+// with nothing in the logs. Fail loudly instead.
+func TestPlaysRefusesAnUnexpectedPageSize(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"count":1542,"pageIndex":1,"pageSize":25,"pageCount":62,"items":[]}`)
+	}))
+	defer server.Close()
+
+	_, _, err := NewESPNWithBase(espnprovider.New(), server.URL).Plays(context.Background(),
+		config.Competition{ESPNSlug: "mex.1"}, "401877018")
+	if err == nil {
+		t.Fatal("want an error when the provider ignores the requested page size")
+	}
+	if !strings.Contains(err.Error(), "page size") {
+		t.Fatalf("err = %v, want it to name the page size", err)
+	}
+}
+
+// A match with no stream is not an error. Plenty of competitions have none --
+// CONCACAF Champions Cup returned 55 plays where Liga MX returned 1,542, and
+// some will return zero.
+func TestPlaysAcceptsAnEmptyStream(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// This is the provider's real empty envelope, recorded from canceled
+		// MLS event 760078 on 2026-08-16.
+		fmt.Fprint(w, `{"count":0,"pageIndex":0,"pageSize":25,"pageCount":0,"items":[]}`)
+	}))
+	defer server.Close()
+
+	stream, _, err := NewESPNWithBase(espnprovider.New(), server.URL).Plays(context.Background(),
+		config.Competition{ESPNSlug: "concacaf.champions"}, "1")
+	if err != nil {
+		t.Fatalf("an empty stream must not be an error: %v", err)
+	}
+	if len(stream.Plays) != 0 {
+		t.Fatalf("plays = %d, want 0", len(stream.Plays))
+	}
+}
+
+func TestPlaysRejectsATruncatedAggregate(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("page")
+		items := `{"id":"a","type":{"id":"1","text":"Pass","type":"pass"}}`
+		if page == "2" {
+			items = ""
+		}
+		fmt.Fprintf(w,
+			`{"count":2,"pageIndex":%s,"pageSize":1000,"pageCount":2,"items":[%s]}`,
+			page, items)
+	}))
+	defer server.Close()
+
+	_, _, err := NewESPNWithBase(espnprovider.New(), server.URL).Plays(
+		context.Background(), config.Competition{ESPNSlug: "mex.1"}, "1")
+	if err == nil || !strings.Contains(err.Error(), "expected 2 plays") {
+		t.Fatalf("err = %v, want aggregate truncation", err)
+	}
+}
+
+func TestPlaysRejectsDuplicateProviderIDsAcrossPages(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("page")
+		fmt.Fprintf(w,
+			`{"count":2,"pageIndex":%s,"pageSize":1000,"pageCount":2,"items":[`+
+				`{"id":"duplicate","type":{"id":"1","text":"Pass","type":"pass"}}]}`,
+			page)
+	}))
+	defer server.Close()
+
+	_, _, err := NewESPNWithBase(espnprovider.New(), server.URL).Plays(
+		context.Background(), config.Competition{ESPNSlug: "mex.1"}, "1")
+	if err == nil || !strings.Contains(err.Error(), "duplicate play id") {
+		t.Fatalf("err = %v, want duplicate provider id", err)
+	}
+}
+
+func TestPlaysRejectsAnEmptyEnvelopeAfterPaginationStarts(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("page") == "1" {
+			fmt.Fprint(w, `{"count":2,"pageIndex":1,"pageSize":1000,"pageCount":2,"items":[
+				{"id":"a","type":{"id":"1","text":"Pass","type":"pass"}}]}`)
+			return
+		}
+		fmt.Fprint(w, `{"count":0,"pageIndex":0,"pageSize":25,"pageCount":0,"items":[]}`)
+	}))
+	defer server.Close()
+
+	_, _, err := NewESPNWithBase(espnprovider.New(), server.URL).Plays(
+		context.Background(), config.Competition{ESPNSlug: "mex.1"}, "1")
+	if err == nil || !strings.Contains(err.Error(), "empty envelope") {
+		t.Fatalf("err = %v, want later-page empty envelope rejected", err)
+	}
+}
+
+func TestPlaysRefusesAMismatchedPageIndex(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"count":1,"pageIndex":2,"pageSize":1000,"pageCount":2,"items":[]}`)
+	}))
+	defer server.Close()
+
+	_, _, err := NewESPNWithBase(espnprovider.New(), server.URL).Plays(context.Background(),
+		config.Competition{ESPNSlug: "mex.1"}, "1")
+	if err == nil || !strings.Contains(err.Error(), "page index") {
+		t.Fatalf("err = %v, want page index mismatch", err)
+	}
+}
+
+func TestPlaysRefusesARunawayPageCountBeforeFollowingIt(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		fmt.Fprint(w, `{"count":11000,"pageIndex":1,"pageSize":1000,"pageCount":11,"items":[]}`)
+	}))
+	defer server.Close()
+
+	_, _, err := NewESPNWithBase(espnprovider.New(), server.URL).Plays(context.Background(),
+		config.Competition{ESPNSlug: "mex.1"}, "1")
+	if err == nil || !strings.Contains(err.Error(), "sane bound") {
+		t.Fatalf("err = %v, want page-count bound", err)
+	}
+	if requests != 1 {
+		t.Fatalf("requests = %d, want 1 before rejecting runaway pagination", requests)
+	}
+}
+
+func TestPlaysRejectsMissingIdentifiersWithoutARequest(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests++
+	}))
+	defer server.Close()
+
+	source := NewESPNWithBase(espnprovider.New(), server.URL)
+	for _, test := range []struct {
+		name    string
+		comp    config.Competition
+		eventID string
+	}{
+		{name: "competition slug", eventID: "1"},
+		{name: "event id", comp: config.Competition{ESPNSlug: "mex.1"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, _, err := source.Plays(context.Background(), test.comp, test.eventID)
+			if err == nil {
+				t.Fatal("want missing identifier to fail")
+			}
+		})
+	}
+	if requests != 0 {
+		t.Fatalf("requests = %d, want no request for invalid identifiers", requests)
 	}
 }

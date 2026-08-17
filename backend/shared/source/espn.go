@@ -1,6 +1,7 @@
 package source
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -19,10 +20,11 @@ import (
 
 // ESPN implements Source with ESPN's keyless public API.
 type ESPN struct {
-	client *espn.Client
-	group  singleflight.Group
-	mu     sync.Mutex
-	recent map[string]cachedResponse
+	client   *espn.Client
+	coreBase string
+	group    singleflight.Group
+	mu       sync.Mutex
+	recent   map[string]cachedResponse
 }
 
 type cachedResponse struct {
@@ -33,6 +35,7 @@ type cachedResponse struct {
 const (
 	scoreboardEventLimit = 1000
 	scoreboardCacheTTL   = 5 * time.Second
+	maxPlayPages         = 10
 	// A successful first-team roster must contain at least a starting XI.
 	// Shorter payloads are not authoritative enough for replacement deletion.
 	minimumRosterPlayers = 11
@@ -43,7 +46,17 @@ func NewESPN(client *espn.Client) *ESPN {
 		client = espn.New()
 	}
 
-	return &ESPN{client: client, recent: make(map[string]cachedResponse)}
+	return &ESPN{
+		client: client, coreBase: espn.CorePlaysBase,
+		recent: make(map[string]cachedResponse),
+	}
+}
+
+// NewESPNWithBase overrides the core-host base for tests.
+func NewESPNWithBase(client *espn.Client, coreBase string) *ESPN {
+	provider := NewESPN(client)
+	provider.coreBase = coreBase
+	return provider
 }
 
 func (e *ESPN) Name() string { return "espn" }
@@ -259,6 +272,94 @@ func (e *ESPN) AthleteBio(
 		return nil, err
 	}
 	return espn.MapAthleteBio(raw)
+}
+
+func (e *ESPN) Plays(
+	ctx context.Context,
+	comp config.Competition,
+	eventID string,
+) (model.PlayStream, []byte, error) {
+	if comp.ESPNSlug == "" {
+		return model.PlayStream{}, nil, fmt.Errorf("espn plays: competition slug is required")
+	}
+	if eventID == "" {
+		return model.PlayStream{}, nil, fmt.Errorf("espn plays: event id is required")
+	}
+
+	var merged model.PlayStream
+	var pages [][]byte
+	seenPlayIDs := make(map[string]struct{})
+	for page := 1; ; page++ {
+		playsURL := espn.CorePlaysURLOn(
+			e.coreBase, comp.ESPNSlug, eventID, page, espn.CorePlayPageLimit)
+		raw, err := e.get(ctx, playsURL)
+		if err != nil {
+			return model.PlayStream{}, nil, fmt.Errorf(
+				"espn plays %s page %d: %w", eventID, page, err)
+		}
+		stream, err := espn.MapPlays(raw)
+		if err != nil {
+			return model.PlayStream{}, nil, fmt.Errorf(
+				"espn plays %s page %d: %w", eventID, page, err)
+		}
+		if stream.Total == 0 && stream.PageCount == 0 && len(stream.Plays) == 0 {
+			if page != 1 {
+				return model.PlayStream{}, nil, fmt.Errorf(
+					"espn plays %s: empty envelope returned on page %d after pagination started",
+					eventID, page)
+			}
+			pages = append(pages, raw)
+			merged = stream
+			break
+		}
+		// A provider that quietly hands back its default page size instead of
+		// the one asked for turns a 2-request fetch into 62. It has a documented
+		// cliff at limit>1000 and no error, so this is the only place it can be
+		// caught.
+		if stream.PageSize != espn.CorePlayPageLimit {
+			return model.PlayStream{}, nil, fmt.Errorf(
+				"espn plays %s: requested page size %d, provider returned %d",
+				eventID, espn.CorePlayPageLimit, stream.PageSize)
+		}
+		if stream.PageIndex != page {
+			return model.PlayStream{}, nil, fmt.Errorf(
+				"espn plays %s: requested page index %d, provider returned %d",
+				eventID, page, stream.PageIndex)
+		}
+		if stream.PageCount > maxPlayPages {
+			return model.PlayStream{}, nil, fmt.Errorf(
+				"espn plays %s: pageCount %d exceeds the sane bound",
+				eventID, stream.PageCount)
+		}
+		for _, play := range stream.Plays {
+			if _, duplicate := seenPlayIDs[play.SourceID]; duplicate {
+				return model.PlayStream{}, nil, fmt.Errorf(
+					"espn plays %s: duplicate play id %s", eventID, play.SourceID)
+			}
+			seenPlayIDs[play.SourceID] = struct{}{}
+		}
+
+		pages = append(pages, raw)
+		if page == 1 {
+			merged = stream
+		} else {
+			if stream.Total != merged.Total || stream.PageCount != merged.PageCount {
+				return model.PlayStream{}, nil, fmt.Errorf(
+					"espn plays %s: pagination metadata changed at page %d",
+					eventID, page)
+			}
+			merged.Plays = append(merged.Plays, stream.Plays...)
+		}
+		if stream.PageCount == 0 || page >= stream.PageCount {
+			break
+		}
+	}
+	if len(merged.Plays) != merged.Total {
+		return model.PlayStream{}, nil, fmt.Errorf(
+			"espn plays %s: expected %d plays, received %d",
+			eventID, merged.Total, len(merged.Plays))
+	}
+	return merged, bytes.Join(pages, []byte("\n")), nil
 }
 
 func (e *ESPN) Bracket(

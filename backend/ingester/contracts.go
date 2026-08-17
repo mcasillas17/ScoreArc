@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/mcasillas17/scorearc-backend/config"
+	"github.com/mcasillas17/scorearc-backend/shared/assets"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 	"github.com/mcasillas17/scorearc-backend/shared/store"
 )
@@ -37,6 +38,10 @@ type repository interface {
 	// never blocks a scoreline.
 	WriteWinProbSnapshot(context.Context, uuid.UUID, model.WinProbability, time.Time) error
 	WriteCommentary(context.Context, uuid.UUID, []model.CommentaryLine) (int, error)
+	WritePlays(context.Context, uuid.UUID, []model.Play, map[string]string, map[string]uuid.UUID) (int, error)
+	ResolveKnownPlayers(context.Context, string, []string) (map[string]uuid.UUID, error)
+	RecordPlayArchive(context.Context, uuid.UUID, string, int, int, bool) error
+	MatchesMissingPlays(context.Context, string, string, string, int) ([]store.MissingPlayMatch, error)
 	ExistingMatches(context.Context, string, string, []uuid.UUID) (map[uuid.UUID]store.MatchRow, error)
 	UnfinalizedMatches(context.Context, string, string, string) ([]model.Match, error)
 	ReplaceStandings(context.Context, string, string, string, []model.Standing, map[string]string) error
@@ -57,4 +62,16 @@ type repository interface {
 type crestMirror interface {
 	BaseURL() string
 	Mirror(context.Context, string, string, string) (string, error)
+}
+
+// rawArchive is the PRIVATE bucket. Deliberately not folded into crestMirror:
+// that interface exposes BaseURL(), which the raw bucket does not have and
+// must not be given a plausible-looking value for.
+type rawArchive interface {
+	Put(
+		context.Context,
+		string,
+		[]byte,
+		assets.PlayArchiveMetadata,
+	) (assets.ArchivePutResult, error)
 }

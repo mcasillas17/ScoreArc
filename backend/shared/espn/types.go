@@ -43,6 +43,10 @@ type PlayerMatchStats = model.PlayerMatchStats
 type PlayerEvent = model.PlayerEvent
 type MatchParticipation = model.MatchParticipation
 
+type Play = model.Play
+type PlayStream = model.PlayStream
+type PlayCoordinates = model.PlayCoordinates
+
 const (
 	PlayerEventGoal    = model.PlayerEventGoal
 	PlayerEventOwnGoal = model.PlayerEventOwnGoal
