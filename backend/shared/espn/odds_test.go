@@ -100,6 +100,23 @@ func TestMapOddsSkipsProviderWithoutID(t *testing.T) {
 	}
 }
 
+func TestMapOddsSkipsProvidersWithoutIDOrName(t *testing.T) {
+	providers, err := MapOdds([]byte(`{"items":[
+		{"provider":{"name":"No id"}},
+		{"provider":{"id":"200","name":"   "}},
+		{"provider":{"id":"100","name":"DraftKings"}}
+	]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(providers) != 1 {
+		t.Fatalf("providers = %#v, want only DraftKings", providers)
+	}
+	if providers[0].ProviderID != "100" || providers[0].ProviderName != "DraftKings" {
+		t.Fatalf("providers = %#v, want only DraftKings", providers)
+	}
+}
+
 func TestMapOddsRejectsMalformedJSON(t *testing.T) {
 	_, err := MapOdds([]byte(`{"items":[}`))
 	if err == nil {

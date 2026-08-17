@@ -80,7 +80,7 @@ func MapOdds(raw []byte) ([]model.ProviderOdds, error) {
 
 	providers := make([]model.ProviderOdds, 0, len(page.Items))
 	for _, item := range page.Items {
-		if item.Provider.ID == "" {
+		if item.Provider.ID == "" || strings.TrimSpace(item.Provider.Name) == "" {
 			continue
 		}
 		providers = append(providers, model.ProviderOdds{
