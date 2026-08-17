@@ -269,6 +269,67 @@ func TestFinalCaptureCompletionAndRetryLifecycle(t *testing.T) {
 	}
 }
 
+// An out-of-order failure -- a slow retry that lands after a newer one --
+// must not make last_error describe an attempt other than the one recorded
+// in last_attempted_at/retry_at. GREATEST already protects the timestamps
+// and cadence from regressing; last_error must stay in lockstep with them
+// rather than being overwritten unconditionally by whichever call lands
+// last.
+func TestScheduleFinalCaptureRetryPreservesNewestFailureError(t *testing.T) {
+	store, pool := newSeededStore(t)
+	ctx := context.Background()
+	identity := finalizeFixture(t, store, "out-of-order-1",
+		time.Date(2026, 8, 14, 18, 0, 0, 0, time.UTC), "STATUS_FULL_TIME")
+
+	newerAttempt := time.Date(2026, 8, 14, 21, 0, 0, 0, time.UTC)
+	newerRetry := newerAttempt.Add(30 * time.Minute)
+	if err := store.ScheduleFinalCaptureRetry(
+		ctx, identity.MatchID, FinalCaptureFixedOdds, newerAttempt, newerRetry,
+		errors.New("newer failure: espn summary 503"),
+	); err != nil {
+		t.Fatalf("ScheduleFinalCaptureRetry (newer): %v", err)
+	}
+
+	// A stale, slower attempt that started before the newer one but whose
+	// response (and thus this call) arrives after it -- attempted_at and
+	// retry_at both strictly earlier than the newer call's.
+	olderAttempt := newerAttempt.Add(-time.Hour)
+	olderRetry := olderAttempt.Add(10 * time.Minute)
+	if err := store.ScheduleFinalCaptureRetry(
+		ctx, identity.MatchID, FinalCaptureFixedOdds, olderAttempt, olderRetry,
+		errors.New("older failure: dns lookup timed out"),
+	); err != nil {
+		t.Fatalf("ScheduleFinalCaptureRetry (older, out of order): %v", err)
+	}
+
+	var attemptCount int
+	var lastAttemptedAt, retryAt time.Time
+	var lastError string
+	if err := pool.QueryRow(ctx,
+		`SELECT attempt_count, last_attempted_at, retry_at, last_error
+		 FROM match_final_capture_status WHERE match_id=$1 AND kind=$2`,
+		identity.MatchID, string(FinalCaptureFixedOdds),
+	).Scan(&attemptCount, &lastAttemptedAt, &retryAt, &lastError); err != nil {
+		t.Fatal(err)
+	}
+
+	if attemptCount != 2 {
+		t.Fatalf("attempt_count=%d, want 2 (both attempts counted)", attemptCount)
+	}
+	if !lastAttemptedAt.Equal(newerAttempt) {
+		t.Fatalf("last_attempted_at=%v, want the newer attempt %v (GREATEST keeps the later one)",
+			lastAttemptedAt, newerAttempt)
+	}
+	if !retryAt.Equal(newerRetry) {
+		t.Fatalf("retry_at=%v, want the newer retry %v (GREATEST keeps cadence from regressing)",
+			retryAt, newerRetry)
+	}
+	if lastError != "newer failure: espn summary 503" {
+		t.Fatalf("last_error=%q, want the newer failure's error to match last_attempted_at/retry_at "+
+			"(the stale out-of-order attempt must not overwrite it)", lastError)
+	}
+}
+
 // Production writes as a member of scorearc_ingester, never as the schema
 // owner. And even though 0001's default privilege grants scorearc_reader
 // SELECT on every new table, this one is internal ingest bookkeeping, not

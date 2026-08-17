@@ -94,7 +94,11 @@ ON CONFLICT (match_id, kind) DO UPDATE SET
 	attempt_count     = match_final_capture_status.attempt_count + 1,
 	last_attempted_at = GREATEST(match_final_capture_status.last_attempted_at, EXCLUDED.last_attempted_at),
 	retry_at          = GREATEST(match_final_capture_status.retry_at, EXCLUDED.retry_at),
-	last_error        = EXCLUDED.last_error
+	last_error        = CASE
+		WHEN EXCLUDED.last_attempted_at >= match_final_capture_status.last_attempted_at
+			THEN EXCLUDED.last_error
+			ELSE match_final_capture_status.last_error
+		END
 WHERE match_final_capture_status.completed_at IS NULL`
 
 // ScheduleFinalCaptureRetry records a failed capture attempt and when to try
@@ -104,6 +108,12 @@ WHERE match_final_capture_status.completed_at IS NULL`
 // arrives out of order -- a slow retry racing a newer one -- can only push
 // the next attempt later or leave it alone, never pull it earlier: cadence
 // must not regress just because failures did not resolve in order.
+//
+// last_error follows the same rule rather than being overwritten
+// unconditionally: it only updates when EXCLUDED.last_attempted_at is at
+// least the stored last_attempted_at, so an out-of-order failure's error
+// text can never describe an attempt other than the one last_attempted_at
+// and retry_at already record.
 //
 // The UPDATE's WHERE completed_at IS NULL guard means a failure that arrives
 // after the capture already completed is a no-op that returns nil rather
