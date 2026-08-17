@@ -80,7 +80,7 @@ value. They answer different questions and both are worth keeping.
 
 ## ⚠️ Merge order and migration numbering
 
-Adds migrations **`0008_match_officials`** and **`0009_odds_snapshot`**. Prerequisites, in
+Adds migrations **`0014_match_officials`** and **`0015_odds_snapshot`**. Prerequisites, in
 order: `feat/canonical-identity-impl` → `feat/player-identity` → T7.1 (`0004`) → T7.6
 (`0005`) → T7.7 (`0006`) → T7.12 (`0007`).
 
@@ -132,8 +132,8 @@ Numbers reserved after these: `0010_leader_category`, `0011_squad_and_season_sta
 
 ## File Structure
 
-- `backend/migrations/0008_match_officials.{up,down}.sql`
-- `backend/migrations/0009_odds_snapshot.{up,down}.sql`
+- `backend/migrations/0014_match_officials.{up,down}.sql`
+- `backend/migrations/0015_odds_snapshot.{up,down}.sql`
 - `backend/migrations/migrations_test.go`
 - `backend/shared/espn/core.go` — two more URL builders.
 - `backend/shared/espn/officials.go`, `officials_test.go`
@@ -220,8 +220,8 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ### Task 2: The schema
 
 **Files:**
-- Create: `backend/migrations/0008_match_officials.{up,down}.sql`
-- Create: `backend/migrations/0009_odds_snapshot.{up,down}.sql`
+- Create: `backend/migrations/0014_match_officials.{up,down}.sql`
+- Create: `backend/migrations/0015_odds_snapshot.{up,down}.sql`
 - Test: `backend/migrations/migrations_test.go`
 
 - [ ] **Step 1: Write the failing migration tests**
@@ -233,7 +233,7 @@ Append to `backend/migrations/migrations_test.go`:
 // provider id lives only in the crosswalk -- the same rule player follows, and
 // the rule the whole canonical-identity schema exists to enforce.
 func TestOfficialsUseCanonicalIdentity(t *testing.T) {
-	sql := readMigration(t, "0008_match_officials.up.sql")
+	sql := readMigration(t, "0014_match_officials.up.sql")
 	for _, required := range []string{
 		"CREATE TABLE official",
 		"id        uuid PRIMARY KEY",
@@ -244,7 +244,7 @@ func TestOfficialsUseCanonicalIdentity(t *testing.T) {
 		"GRANT SELECT, INSERT, UPDATE ON official, official_external_ref, match_official TO scorearc_ingester",
 	} {
 		if !strings.Contains(sql, required) {
-			t.Fatalf("0008_match_officials.up.sql missing %q", required)
+			t.Fatalf("0014_match_officials.up.sql missing %q", required)
 		}
 	}
 	// The whole point of the crosswalk is that the provider id is not the key.
@@ -257,7 +257,7 @@ func TestOfficialsUseCanonicalIdentity(t *testing.T) {
 // moves. They are two tables because they are idempotent on different keys,
 // and one table with a phase column plus captured_at is idempotent on neither.
 func TestOddsSeparatesFixedLinesFromSamples(t *testing.T) {
-	sql := readMigration(t, "0009_odds_snapshot.up.sql")
+	sql := readMigration(t, "0015_odds_snapshot.up.sql")
 	for _, required := range []string{
 		"CREATE TABLE match_odds",
 		"PRIMARY KEY (match_id, provider_id, phase)",
@@ -266,7 +266,7 @@ func TestOddsSeparatesFixedLinesFromSamples(t *testing.T) {
 		"PRIMARY KEY (match_id, provider_id, captured_at)",
 	} {
 		if !strings.Contains(sql, required) {
-			t.Fatalf("0009_odds_snapshot.up.sql missing %q", required)
+			t.Fatalf("0015_odds_snapshot.up.sql missing %q", required)
 		}
 	}
 	if strings.Contains(sql, "GRANT DELETE ON odds_snapshot") {
@@ -283,7 +283,7 @@ cd backend && go test ./migrations/ -run "Officials|Odds"
 
 Expected: FAIL — both files missing.
 
-- [ ] **Step 3: Write `0008_match_officials.up.sql`**
+- [ ] **Step 3: Write `0014_match_officials.up.sql`**
 
 ```sql
 -- Referees become people.
@@ -339,7 +339,7 @@ GRANT SELECT, INSERT, UPDATE ON official, official_external_ref, match_official 
 -- from a sheet is rare enough not to justify the grant.
 ```
 
-`0008_match_officials.down.sql`:
+`0014_match_officials.down.sql`:
 
 ```sql
 DROP TABLE IF EXISTS match_official;
@@ -347,7 +347,7 @@ DROP TABLE IF EXISTS official_external_ref;
 DROP TABLE IF EXISTS official;
 ```
 
-- [ ] **Step 4: Write `0009_odds_snapshot.up.sql`**
+- [ ] **Step 4: Write `0015_odds_snapshot.up.sql`**
 
 ```sql
 -- The raw betting market, in two tables because it is two different things.
@@ -418,7 +418,7 @@ GRANT SELECT, INSERT, UPDATE ON match_odds, odds_snapshot TO scorearc_ingester;
 -- No DELETE on odds_snapshot: a market that has closed cannot be re-sampled.
 ```
 
-`0009_odds_snapshot.down.sql`:
+`0015_odds_snapshot.down.sql`:
 
 ```sql
 DROP TABLE IF EXISTS odds_snapshot;
@@ -436,8 +436,8 @@ Expected: both `ok`.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add backend/migrations/0008_match_officials.*.sql \
-        backend/migrations/0009_odds_snapshot.*.sql \
+git add backend/migrations/0014_match_officials.*.sql \
+        backend/migrations/0015_odds_snapshot.*.sql \
         backend/migrations/migrations_test.go
 git commit -m "feat: add official identity and the two odds tables
 
