@@ -124,10 +124,10 @@ func mapCurrentOdds(item rawProviderOdds) *model.OddsLine {
 		HomeMoneyline:  firstInt(floatToInt(item.HomeTeamOdds.MoneyLine), phase.HomeMoneyline),
 		DrawMoneyline:  firstInt(floatToInt(item.DrawOdds.MoneyLine), phase.DrawMoneyline),
 		AwayMoneyline:  firstInt(floatToInt(item.AwayTeamOdds.MoneyLine), phase.AwayMoneyline),
-		Spread:         firstFloat(oddsDecimalInRange(item.Spread), phase.Spread),
+		Spread:         firstFloat(oddsDecimalFitsPostgresNumeric52(item.Spread), phase.Spread),
 		HomeSpreadOdds: firstInt(floatToInt(item.HomeTeamOdds.SpreadOdds), phase.HomeSpreadOdds),
 		AwaySpreadOdds: firstInt(floatToInt(item.AwayTeamOdds.SpreadOdds), phase.AwaySpreadOdds),
-		OverUnder:      firstFloat(oddsDecimalInRange(item.OverUnder), phase.OverUnder),
+		OverUnder:      firstFloat(oddsDecimalFitsPostgresNumeric52(item.OverUnder), phase.OverUnder),
 		OverOdds:       firstInt(floatToInt(item.OverOdds), phase.OverOdds),
 		UnderOdds:      firstInt(floatToInt(item.UnderOdds), phase.UnderOdds),
 	}
@@ -156,14 +156,15 @@ func parseOddsDecimal(raw string) *float64 {
 	if err != nil {
 		return nil
 	}
-	return oddsDecimalInRange(&value)
+	return oddsDecimalFitsPostgresNumeric52(&value)
 }
 
-func oddsDecimalInRange(value *float64) *float64 {
+func oddsDecimalFitsPostgresNumeric52(value *float64) *float64 {
 	if value == nil || math.IsNaN(*value) || math.IsInf(*value, 0) {
 		return nil
 	}
-	if *value < -maxOddsDecimal || *value > maxOddsDecimal {
+	rounded := math.Round(*value*100) / 100
+	if rounded < -maxOddsDecimal || rounded > maxOddsDecimal {
 		return nil
 	}
 	return value
