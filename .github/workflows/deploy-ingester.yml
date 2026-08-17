@@ -27,7 +27,7 @@ jobs:
       - name: Skip unless Fly credentials exist
         id: guard
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_INGESTER }}
         run: |
           if [ -z "$FLY_API_TOKEN" ]; then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
@@ -47,4 +47,4 @@ jobs:
           --dockerfile backend/ingester/Dockerfile
           --remote-only
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_INGESTER }}
