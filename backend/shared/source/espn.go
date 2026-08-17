@@ -297,6 +297,11 @@ func (e *ESPN) Plays(
 				"espn plays %s page %d: %w", eventID, page, err)
 		}
 		if stream.Total == 0 && stream.PageCount == 0 && len(stream.Plays) == 0 {
+			if page != 1 {
+				return model.PlayStream{}, nil, fmt.Errorf(
+					"espn plays %s: empty envelope returned on page %d after pagination started",
+					eventID, page)
+			}
 			pages = append(pages, raw)
 			merged = stream
 			break

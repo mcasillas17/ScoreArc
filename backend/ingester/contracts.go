@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/mcasillas17/scorearc-backend/config"
+	"github.com/mcasillas17/scorearc-backend/shared/assets"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 	"github.com/mcasillas17/scorearc-backend/shared/store"
 )
@@ -63,5 +64,10 @@ type crestMirror interface {
 // that interface exposes BaseURL(), which the raw bucket does not have and
 // must not be given a plausible-looking value for.
 type rawArchive interface {
-	Put(context.Context, string, []byte) (int, error)
+	Put(
+		context.Context,
+		string,
+		[]byte,
+		assets.PlayArchiveMetadata,
+	) (assets.ArchivePutResult, error)
 }

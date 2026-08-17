@@ -251,3 +251,21 @@ func isNotFound(err error) bool {
 		return false
 	}
 }
+
+func isPreconditionFailed(err error) bool {
+	var responseError *smithyhttp.ResponseError
+	if errors.As(err, &responseError) &&
+		responseError.HTTPStatusCode() == http.StatusPreconditionFailed {
+		return true
+	}
+	var apiError smithy.APIError
+	if !errors.As(err, &apiError) {
+		return false
+	}
+	switch apiError.ErrorCode() {
+	case "PreconditionFailed", "412":
+		return true
+	default:
+		return false
+	}
+}

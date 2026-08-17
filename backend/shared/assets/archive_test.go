@@ -10,14 +10,20 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/smithy-go"
 )
 
 type recordingPutter struct {
 	bucket, key     string
 	body            []byte
 	contentEncoding string
+	ifNoneMatch     string
+	metadata        map[string]string
 	calls           int
 	putErr          error
+	headCalls       int
+	headOutput      *s3.HeadObjectOutput
+	headErr         error
 }
 
 func (r *recordingPutter) HeadObject(
@@ -25,7 +31,8 @@ func (r *recordingPutter) HeadObject(
 	*s3.HeadObjectInput,
 	...func(*s3.Options),
 ) (*s3.HeadObjectOutput, error) {
-	return nil, errors.New("archive must not HEAD; it always overwrites")
+	r.headCalls++
+	return r.headOutput, r.headErr
 }
 
 func (r *recordingPutter) PutObject(
@@ -38,6 +45,10 @@ func (r *recordingPutter) PutObject(
 	if in.ContentEncoding != nil {
 		r.contentEncoding = *in.ContentEncoding
 	}
+	if in.IfNoneMatch != nil {
+		r.ifNoneMatch = *in.IfNoneMatch
+	}
+	r.metadata = in.Metadata
 	body, err := io.ReadAll(in.Body)
 	if err != nil {
 		return nil, err
@@ -119,7 +130,9 @@ func TestArchivePutsGzippedBytesUnderTheGivenKey(t *testing.T) {
 	archive := &Archive{client: putter, bucket: "raw-bucket"}
 
 	payload := []byte(`{"count":1542}` + "\n" + `{"count":1542}`)
-	size, err := archive.Put(context.Background(), "plays/espn/mex/2026/1.ndjson.gz", payload)
+	metadata := PlayArchiveMetadata{Plays: 1542, TouchTier: true}
+	result, err := archive.Put(
+		context.Background(), "plays/espn/mex/2026/1.ndjson.gz", payload, metadata)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,8 +145,11 @@ func TestArchivePutsGzippedBytesUnderTheGivenKey(t *testing.T) {
 	if putter.contentEncoding != "gzip" {
 		t.Fatalf("contentEncoding = %q, want gzip", putter.contentEncoding)
 	}
-	if size != len(putter.body) {
-		t.Fatalf("reported size %d, actually wrote %d", size, len(putter.body))
+	if putter.ifNoneMatch != "*" {
+		t.Fatalf("IfNoneMatch = %q, want immutable create-only put", putter.ifNoneMatch)
+	}
+	if result.Bytes != len(putter.body) || result.Metadata != metadata || !result.Created {
+		t.Fatalf("result = %+v, wrote %d bytes", result, len(putter.body))
 	}
 	// Round-trip: an archive we cannot read back is not an archive.
 	reader, err := gzip.NewReader(bytes.NewReader(putter.body))
@@ -152,7 +168,8 @@ func TestArchivePutsGzippedBytesUnderTheGivenKey(t *testing.T) {
 
 func TestArchivePutRejectsAnEmptyKey(t *testing.T) {
 	archive := &Archive{client: &recordingPutter{}, bucket: "raw-bucket"}
-	if _, err := archive.Put(context.Background(), "", []byte(`{}`)); err == nil {
+	if _, err := archive.Put(
+		context.Background(), "", []byte(`{}`), PlayArchiveMetadata{}); err == nil {
 		t.Fatal("want an empty object key to fail")
 	}
 }
@@ -164,10 +181,47 @@ func TestArchivePutPropagatesUploadFailure(t *testing.T) {
 		context.Background(),
 		"plays/espn/mex/2026/1.ndjson.gz",
 		[]byte(`{}`),
+		PlayArchiveMetadata{Plays: 1},
 	); err == nil || !strings.Contains(err.Error(), "put archive") {
 		t.Fatalf("err = %v, want upload context", err)
 	}
 }
+
+func TestArchivePreservesExistingObjectAndReturnsItsMetadata(t *testing.T) {
+	putter := &recordingPutter{
+		putErr: &smithy.GenericAPIError{Code: "PreconditionFailed"},
+		headOutput: &s3.HeadObjectOutput{
+			ContentLength: int64Pointer(321),
+			Metadata: map[string]string{
+				archivePlaysMetadataKey:     "1542",
+				archiveTouchTierMetadataKey: "true",
+			},
+		},
+	}
+	archive := &Archive{client: putter, bucket: "raw-bucket"}
+
+	result, err := archive.Put(
+		context.Background(),
+		"plays/espn/mex/2026/1.ndjson.gz",
+		[]byte(`{"count":175}`),
+		PlayArchiveMetadata{Plays: 175, TouchTier: false},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Created {
+		t.Fatal("existing object reported as newly created")
+	}
+	if result.Bytes != 321 ||
+		result.Metadata != (PlayArchiveMetadata{Plays: 1542, TouchTier: true}) {
+		t.Fatalf("existing result = %+v", result)
+	}
+	if putter.headCalls != 1 || putter.ifNoneMatch != "*" {
+		t.Fatalf("head calls / condition = %d / %q", putter.headCalls, putter.ifNoneMatch)
+	}
+}
+
+func int64Pointer(value int64) *int64 { return &value }
 
 // The key must be derivable from ESPN's own ids alone, so an object is
 // identifiable without the database that indexed it.

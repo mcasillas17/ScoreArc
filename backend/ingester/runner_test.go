@@ -633,16 +633,23 @@ type fakeArchive struct {
 	bodies [][]byte
 }
 
-func (f *fakeArchive) Put(_ context.Context, key string, body []byte) (int, error) {
+func (f *fakeArchive) Put(
+	_ context.Context,
+	key string,
+	body []byte,
+	metadata assets.PlayArchiveMetadata,
+) (assets.ArchivePutResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
 	f.keys = append(f.keys, key)
 	f.bodies = append(f.bodies, append([]byte(nil), body...))
 	if f.err != nil {
-		return 0, f.err
+		return assets.ArchivePutResult{}, f.err
 	}
-	return f.size, nil
+	return assets.ArchivePutResult{
+		Bytes: f.size, Metadata: metadata, Created: true,
+	}, nil
 }
 
 func (f *fakeMirror) BaseURL() string { return "https://cdn.example" }

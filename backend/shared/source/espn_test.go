@@ -643,6 +643,24 @@ func TestPlaysRejectsDuplicateProviderIDsAcrossPages(t *testing.T) {
 	}
 }
 
+func TestPlaysRejectsAnEmptyEnvelopeAfterPaginationStarts(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("page") == "1" {
+			fmt.Fprint(w, `{"count":2,"pageIndex":1,"pageSize":1000,"pageCount":2,"items":[
+				{"id":"a","type":{"id":"1","text":"Pass","type":"pass"}}]}`)
+			return
+		}
+		fmt.Fprint(w, `{"count":0,"pageIndex":0,"pageSize":25,"pageCount":0,"items":[]}`)
+	}))
+	defer server.Close()
+
+	_, _, err := NewESPNWithBase(espnprovider.New(), server.URL).Plays(
+		context.Background(), config.Competition{ESPNSlug: "mex.1"}, "1")
+	if err == nil || !strings.Contains(err.Error(), "empty envelope") {
+		t.Fatalf("err = %v, want later-page empty envelope rejected", err)
+	}
+}
+
 func TestPlaysRefusesAMismatchedPageIndex(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, `{"count":1,"pageIndex":2,"pageSize":1000,"pageCount":2,"items":[]}`)

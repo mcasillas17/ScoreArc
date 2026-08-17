@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -15,6 +17,26 @@ import (
 
 const archiveOperationTimeout = 60 * time.Second
 
+const (
+	archivePlaysMetadataKey     = "plays"
+	archiveTouchTierMetadataKey = "touch-tier"
+)
+
+// PlayArchiveMetadata is the stream truth stored with an immutable object.
+type PlayArchiveMetadata struct {
+	Plays     int
+	TouchTier bool
+}
+
+// ArchivePutResult describes the object that now exists. On a conditional-put
+// conflict, Metadata and Bytes describe the existing object, not the retry
+// payload that was refused.
+type ArchivePutResult struct {
+	Bytes    int
+	Metadata PlayArchiveMetadata
+	Created  bool
+}
+
 // Archive writes raw payloads to the PRIVATE R2 bucket.
 //
 // It is a separate type from Mirror, not a method on it, because the two have
@@ -22,9 +44,9 @@ const archiveOperationTimeout = 60 * time.Second
 // fetch it: it needs a public base URL, it validates content types, it refuses
 // hosts outside espncdn.com, and it HEADs first so an asset already mirrored is
 // not downloaded twice. Archive exists to keep bytes nobody can fetch again: it
-// has no public URL by design, it reshapes nothing, and it always overwrites,
-// because a re-archive of a live match is a LONGER stream and skipping it would
-// freeze the object at first-half length.
+// has no public URL by design, it reshapes nothing, and it uses an atomic
+// create-only put so a retry can never replace a complete stream with a later
+// pruned or empty response.
 //
 // The bucket name arrives from the environment and is never a literal in this
 // package. R2_RAW_BUCKET names the ROLE; the secret names the RESOURCE. A
@@ -66,21 +88,29 @@ func NewArchive(creds Credentials, bucket string) (*Archive, error) {
 // Nothing here inspects or reshapes the body. The entire value of the archive
 // is that a better parser can be run over it later, and a parser can only
 // improve on bytes that were stored exactly as they arrived.
-func (a *Archive) Put(ctx context.Context, key string, body []byte) (int, error) {
+func (a *Archive) Put(
+	ctx context.Context,
+	key string,
+	body []byte,
+	metadata PlayArchiveMetadata,
+) (ArchivePutResult, error) {
 	if a == nil || a.client == nil || a.bucket == "" {
-		return 0, fmt.Errorf("put archive: client is not configured")
+		return ArchivePutResult{}, fmt.Errorf("put archive: client is not configured")
 	}
 	if key == "" {
-		return 0, fmt.Errorf("put archive: object key is required")
+		return ArchivePutResult{}, fmt.Errorf("put archive: object key is required")
+	}
+	if metadata.Plays < 0 {
+		return ArchivePutResult{}, fmt.Errorf("put archive: play count must be non-negative")
 	}
 
 	var buffer bytes.Buffer
 	writer := gzip.NewWriter(&buffer)
 	if _, err := writer.Write(body); err != nil {
-		return 0, fmt.Errorf("gzip archive %s: %w", key, err)
+		return ArchivePutResult{}, fmt.Errorf("gzip archive %s: %w", key, err)
 	}
 	if err := writer.Close(); err != nil {
-		return 0, fmt.Errorf("gzip archive %s: %w", key, err)
+		return ArchivePutResult{}, fmt.Errorf("gzip archive %s: %w", key, err)
 	}
 	compressed := buffer.Bytes()
 
@@ -94,10 +124,78 @@ func (a *Archive) Put(ctx context.Context, key string, body []byte) (int, error)
 		Body:            bytes.NewReader(compressed),
 		ContentType:     aws.String("application/x-ndjson"),
 		ContentEncoding: aws.String("gzip"),
+		IfNoneMatch:     aws.String("*"),
+		Metadata: map[string]string{
+			archivePlaysMetadataKey:     strconv.Itoa(metadata.Plays),
+			archiveTouchTierMetadataKey: strconv.FormatBool(metadata.TouchTier),
+		},
 	}); err != nil {
-		return 0, fmt.Errorf("put archive %s: %w", key, err)
+		if !isPreconditionFailed(err) {
+			return ArchivePutResult{}, fmt.Errorf("put archive %s: %w", key, err)
+		}
+		return a.existing(ctx, key, err)
 	}
-	return len(compressed), nil
+	return ArchivePutResult{
+		Bytes: len(compressed), Metadata: metadata, Created: true,
+	}, nil
+}
+
+func (a *Archive) existing(
+	ctx context.Context,
+	key string,
+	putErr error,
+) (ArchivePutResult, error) {
+	headCtx, cancel := context.WithTimeout(ctx, archiveOperationTimeout)
+	defer cancel()
+	output, err := a.client.HeadObject(headCtx, &s3.HeadObjectInput{
+		Bucket: aws.String(a.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return ArchivePutResult{}, fmt.Errorf(
+			"read existing archive %s after conditional put: %w",
+			key, errors.Join(putErr, err))
+	}
+	if output == nil || output.ContentLength == nil || *output.ContentLength < 0 {
+		return ArchivePutResult{}, fmt.Errorf(
+			"read existing archive %s: missing content length", key)
+	}
+	maxInt := int64(^uint(0) >> 1)
+	if *output.ContentLength > maxInt {
+		return ArchivePutResult{}, fmt.Errorf(
+			"read existing archive %s: content length exceeds int", key)
+	}
+	metadata, err := parsePlayArchiveMetadata(output.Metadata)
+	if err != nil {
+		return ArchivePutResult{}, fmt.Errorf(
+			"read existing archive %s metadata: %w", key, err)
+	}
+	return ArchivePutResult{
+		Bytes: int(*output.ContentLength), Metadata: metadata, Created: false,
+	}, nil
+}
+
+func parsePlayArchiveMetadata(values map[string]string) (PlayArchiveMetadata, error) {
+	playsValue, ok := values[archivePlaysMetadataKey]
+	if !ok {
+		return PlayArchiveMetadata{}, fmt.Errorf("missing %q", archivePlaysMetadataKey)
+	}
+	plays, err := strconv.Atoi(playsValue)
+	if err != nil || plays < 0 {
+		return PlayArchiveMetadata{}, fmt.Errorf(
+			"invalid %q metadata", archivePlaysMetadataKey)
+	}
+	touchValue, ok := values[archiveTouchTierMetadataKey]
+	if !ok {
+		return PlayArchiveMetadata{}, fmt.Errorf(
+			"missing %q", archiveTouchTierMetadataKey)
+	}
+	touchTier, err := strconv.ParseBool(touchValue)
+	if err != nil {
+		return PlayArchiveMetadata{}, fmt.Errorf(
+			"invalid %q metadata", archiveTouchTierMetadataKey)
+	}
+	return PlayArchiveMetadata{Plays: plays, TouchTier: touchTier}, nil
 }
 
 // PlayArchiveKey is the object layout:

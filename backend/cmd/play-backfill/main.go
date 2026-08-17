@@ -89,7 +89,12 @@ type backfillSource interface {
 }
 
 type backfillArchive interface {
-	Put(context.Context, string, []byte) (int, error)
+	Put(
+		context.Context,
+		string,
+		[]byte,
+		assets.PlayArchiveMetadata,
+	) (assets.ArchivePutResult, error)
 }
 
 func main() { os.Exit(run(os.Args[1:])) }
@@ -205,7 +210,14 @@ func backfillPlayStreams(
 			} else {
 				key := assets.PlayArchiveKey(
 					provider.Name(), comp.ID, season.ID, match.SourceID)
-				size, archiveErr := archive.Put(ctx, key, raw)
+				archiveResult, archiveErr := archive.Put(
+					ctx,
+					key,
+					raw,
+					assets.PlayArchiveMetadata{
+						Plays: len(stream.Plays), TouchTier: stream.HasTouchTier(),
+					},
+				)
 				if archiveErr != nil {
 					log.Warn("archive", "match", match.SourceID, "err", archiveErr)
 					failures++
@@ -213,9 +225,9 @@ func backfillPlayStreams(
 					ctx,
 					match.MatchID,
 					key,
-					len(stream.Plays),
-					size,
-					stream.HasTouchTier(),
+					archiveResult.Metadata.Plays,
+					archiveResult.Bytes,
+					archiveResult.Metadata.TouchTier,
 				); recordErr != nil {
 					log.Warn("record", "match", match.SourceID, "err", recordErr)
 					failures++
@@ -223,9 +235,9 @@ func backfillPlayStreams(
 					log.Info("backfilled",
 						"comp", comp.ID,
 						"match", match.SourceID,
-						"plays", len(stream.Plays),
-						"touchTier", stream.HasTouchTier(),
-						"bytes", size,
+						"plays", archiveResult.Metadata.Plays,
+						"touchTier", archiveResult.Metadata.TouchTier,
+						"bytes", archiveResult.Bytes,
 					)
 				}
 			}

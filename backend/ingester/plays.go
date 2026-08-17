@@ -43,13 +43,20 @@ func (r *runner) capturePlays(
 	// Archive first, to the PRIVATE raw bucket. The bytes are irreplaceable;
 	// rows can be rebuilt from them, and they cannot be rebuilt from rows.
 	var archiveKey string
-	var archiveSize int
+	var archiveResult assets.ArchivePutResult
 	var archived bool
 	var archiveErr error
 	if r.archive != nil {
 		archiveKey = assets.PlayArchiveKey(
 			r.source.Name(), comp.ID, season.ID, providerEventID)
-		archiveSize, err = r.archive.Put(ctx, archiveKey, raw)
+		archiveResult, err = r.archive.Put(
+			ctx,
+			archiveKey,
+			raw,
+			assets.PlayArchiveMetadata{
+				Plays: len(stream.Plays), TouchTier: stream.HasTouchTier(),
+			},
+		)
 		if err != nil {
 			archiveErr = err
 			r.log.Warn("archive play stream", "match", providerEventID, "err", err)
@@ -71,9 +78,9 @@ func (r *runner) capturePlays(
 			ctx,
 			identity.MatchID,
 			archiveKey,
-			len(stream.Plays),
-			archiveSize,
-			stream.HasTouchTier(),
+			archiveResult.Metadata.Plays,
+			archiveResult.Bytes,
+			archiveResult.Metadata.TouchTier,
 		)
 		if err != nil {
 			r.log.Warn("record play archive", "match", providerEventID, "err", err)

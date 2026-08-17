@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/mcasillas17/scorearc-backend/config"
+	"github.com/mcasillas17/scorearc-backend/shared/assets"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 	"github.com/mcasillas17/scorearc-backend/shared/store"
 )
@@ -105,9 +106,16 @@ type fakeBackfillArchive struct {
 	keys []string
 }
 
-func (f *fakeBackfillArchive) Put(_ context.Context, key string, _ []byte) (int, error) {
+func (f *fakeBackfillArchive) Put(
+	_ context.Context,
+	key string,
+	_ []byte,
+	metadata assets.PlayArchiveMetadata,
+) (assets.ArchivePutResult, error) {
 	f.keys = append(f.keys, key)
-	return len(key), nil
+	return assets.ArchivePutResult{
+		Bytes: len(key), Metadata: metadata, Created: true,
+	}, nil
 }
 
 func backfillTestCompetition() config.Competition {
