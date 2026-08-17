@@ -1,7 +1,7 @@
 # Reader — public, autoscaling, scale-to-zero Go HTTP API.
 # Deploy from the repo root with the backend/ build context:
-#   flyctl deploy backend --config backend/reader/fly.toml \
-#     --dockerfile backend/reader/Dockerfile --remote-only
+#   flyctl deploy backend --config reader/fly.toml \
+#     --dockerfile reader/Dockerfile --remote-only
 # Secrets (DATABASE_URL) are set with `fly secrets set`, never here.
 
 app = "scorearc-reader"
