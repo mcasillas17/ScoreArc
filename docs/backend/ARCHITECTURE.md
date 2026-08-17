@@ -116,7 +116,7 @@ same transaction.
 - **match_detail**(match_id PK→match, scorers jsonb, cards jsonb, stats jsonb, win_probability jsonb, shootout jsonb, shootout_detail jsonb, lineups jsonb, videos jsonb, info jsonb, form jsonb, h2h jsonb, commentary jsonb, updated_at)
 - **match_commentary**(PK (match_id→match, **seq** = ESPN's `sequence`), period, clock_value, clock_display, play_type, play_type_text, wallclock, text) — minute-by-minute commentary **with the structure `match_detail.commentary` drops** (T7.11). That jsonb column is unchanged and remains the reader's `MatchSummaryData.commentary` contract; it keeps `{minute, text}` only. This table adds guaranteed order (`sequence`), a numeric clock (`play.clock.value`, falling back to `time.value`; the recorded pre-match, kickoff, and match-end entries have an empty `time.displayValue`), the machine play type (`play.type.type`, so consumers need not regex English prose), and mutability (`match_detail` is frozen by `protect_finalized_detail` once a match finalizes). Rows are upserted and then tail-pruned like `match_event`; an **empty payload is a no-op, not a delete**, because commentary coverage varies by competition and has been observed at zero. Missing numeric provider fields remain SQL `NULL`, distinct from a measured zero. A failed write leaves a finished match unfinalized so the next cycle retries before freezing its detail. **Nothing here is parsed** — E6's shot-log parser is downstream and gated on T6.1's coverage probe.
 - **standing**(PK (competition_id,season_id,team_id→team), group_id, group_name, rank, played, wins, draws, losses, goals_for, goals_against, goal_difference, points, advanced, source, updated_at) — `group_id`/`group_name` (e.g. "A"/"Group A") are nullable: populated for multi-group competitions (e.g. World Cup group stage), null for single-table leagues.
-- **top_scorer**(PK (competition_id,season_id,rank), player, team_abbr, team_name, team_crest_url, goals, matches, source) — team is denormalized (ESPN stats give abbr/name/crest, no id), matching the frontend `TopScorer` type.
+- **top_scorer**(PK (competition_id, season_id, **category**, rank), player, team_abbr, team_name, team_crest_url, goals, matches, source) — any season leaderboard, not only goals. `category` is `goals` | `assists`, both written from a **single** `/statistics` fetch (T7.8): `assistsLeaders` ships in the same response as `goalsLeaders`, 50 rows each, and was previously discarded. `category` is in the primary key because rank is only unique within a board. The reader's `/top-scorers` filters `category = 'goals'` to keep its existing contract. Team is denormalized (ESPN's stats give abbr/name/crest, no id). The table keeps its name deliberately — renaming it to `season_leader` would rewrite the reader's query, its OpenAPI schema and its fixtures for no behavioural gain.
 - **appearance**(PK (match_id→match, player_id→player), team_id→team, starter, shirt_number, position) — who was in the squad, **including substitutes**; the `lineups` jsonb above keeps starters only because that is what the site renders. This is the table that makes "minutes played" computable.
 - **match_event**(PK (match_id→match, **seq**), player_id→player NULL, team_id→team, type[`goal|own_goal|yellow|red|sub_on|sub_off`], minute, penalty, shootout, detail) — one row per player-action, so a substitution is two rows rather than one row with two players. `seq` is a deterministic ordinal, **not** a surrogate uuid: a live summary is re-fetched every 20s and a surrogate key would duplicate every goal on every poll. `player_id` is nullable because an event the provider reports without an athlete id still happened — we record it unattributed rather than inventing a player. `penalty` is a flag, not a type, so penalties stay inside `type = 'goal'`.
 - **squad_membership**(PK (competition_id, season_id, team_id→team, player_id→player), shirt_number, position, source, updated_at) — who is in a squad, per season (T7.9). Season-scoped so a transfer is a second row rather than an overwrite. Refreshed **once per UTC day** from `/teams/{id}/roster`: nine competitions × ~20 clubs = ~180 requests, against ~52,000 if it ran on every slow tick. Successful teams are remembered independently; a failed team alone retries after 30 minutes. The team list comes from `standing`.
@@ -186,10 +186,11 @@ same transaction.
   metadata; group-stage matches continue finalizing, while knockout candidates
   require confirmation from the current successful bracket response before
   immutable finalization.
-- Standings and scorer replacements are transactional. Empty or suspiciously
-  partial standings payloads preserve the prior snapshot rather than deleting
-  valid rows and remain retryable failures. ESPN statistics responses carry
-  unreliable season metadata, so top-scorer season scoping relies on the
+- Standings and season-leader replacements are transactional. Empty leader
+  categories preserve their existing rows; empty or suspiciously partial
+  standings payloads preserve the prior snapshot rather than deleting valid
+  rows and remain retryable failures. ESPN statistics responses carry
+  unreliable season metadata, so leaderboard season scoping relies on the
   requested statistics URL rather than rejecting the payload's reported year.
 - Crest downloads allow only validated public HTTP(S) sources, enforce
   redirects/content type/size/deadline limits, and upload deterministic R2 keys.
@@ -216,7 +217,7 @@ sequenceDiagram
     S->>P: monotonic match/team upserts
     S->>E: summary for live/final candidates
     S->>P: atomic detail + final freeze
-    S->>E: standings + top scorers
+    S->>E: standings + goals/assists leaders (one statistics fetch)
     S->>P: guarded transactional replacements
     S->>R: validated crest mirror
     S->>P: ingest_run audit

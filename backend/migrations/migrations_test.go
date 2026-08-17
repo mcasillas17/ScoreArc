@@ -193,6 +193,37 @@ func TestAppearanceBoxScoreColumnsAreNullable(t *testing.T) {
 	}
 }
 
+// assistsLeaders arrives in the SAME /statistics response as goalsLeaders --
+// 50 rows each in the repo's own recorded fixture -- and MapTopScorers threw it
+// away. A category column costs one migration; a sibling top_assist table costs
+// seven duplicated columns and a third table the day cleanSheetsLeaders matters.
+func TestLeaderCategoryIsPartOfTheKey(t *testing.T) {
+	sql := readMigration(t, "0010_leader_category.up.sql")
+	for _, required := range []string{
+		"ALTER TABLE top_scorer",
+		"ADD COLUMN category text NOT NULL DEFAULT 'goals'",
+		"DROP CONSTRAINT top_scorer_pkey",
+		"PRIMARY KEY (competition_id, season_id, category, rank)",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("0010_leader_category.up.sql missing %q", required)
+		}
+	}
+}
+
+func TestLeaderCategoryRollbackRestoresTheOldKey(t *testing.T) {
+	sql := readMigration(t, "0010_leader_category.down.sql")
+	for _, required := range []string{
+		"DELETE FROM top_scorer WHERE category <> 'goals'",
+		"PRIMARY KEY (competition_id, season_id, rank)",
+		"DROP COLUMN IF EXISTS category",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("rollback missing %q", required)
+		}
+	}
+}
+
 // Squad membership is per season, not per player: a player belongs to a club
 // in a season, and a transfer is a second row rather than an overwrite -- the
 // same reason `appearance` records the team per match instead of on `player`.

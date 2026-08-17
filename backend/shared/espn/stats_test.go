@@ -5,17 +5,17 @@ import (
 	"testing"
 )
 
-func TestMapTopScorersRejectsMalformedLeaders(t *testing.T) {
+func TestMapLeadersRejectsMalformedLeaders(t *testing.T) {
 	raw := []byte(`{"stats":[{"name":"goalsLeaders","leaders":[{"value":3,"athlete":{}}]}]}`)
-	if _, err := MapTopScorers(raw, 10); err == nil {
+	if _, err := MapLeaders(raw, "goalsLeaders", 10); err == nil {
 		t.Fatal("expected malformed scorer error")
 	}
 }
 
-func TestMapTopScorersRejectsFractionalGoals(t *testing.T) {
+func TestMapLeadersRejectsFractionalCounts(t *testing.T) {
 	raw := []byte(`{"stats":[{"name":"goalsLeaders","leaders":[{"value":1.5,"athlete":{"displayName":"Player"}}]}]}`)
-	if _, err := MapTopScorers(raw, 20); err == nil {
-		t.Fatal("expected fractional goal count error")
+	if _, err := MapLeaders(raw, "goalsLeaders", 20); err == nil {
+		t.Fatal("expected fractional count error")
 	}
 }
 
@@ -28,12 +28,12 @@ func loadStatisticsFixture(t *testing.T) []byte {
 	return b
 }
 
-func TestMapTopScorers(t *testing.T) {
+func TestMapLeadersGoals(t *testing.T) {
 	raw := loadStatisticsFixture(t)
 
-	scorers, err := MapTopScorers(raw, 20)
+	scorers, err := MapLeaders(raw, "goalsLeaders", 20)
 	if err != nil {
-		t.Fatalf("MapTopScorers returned error: %v", err)
+		t.Fatalf("MapLeaders returned error: %v", err)
 	}
 
 	t.Run("returns a ranked list starting at 1", func(t *testing.T) {
@@ -50,8 +50,8 @@ func TestMapTopScorers(t *testing.T) {
 
 	t.Run("is sorted by goals descending", func(t *testing.T) {
 		for i := 1; i < len(scorers); i++ {
-			if scorers[i-1].Goals < scorers[i].Goals {
-				t.Errorf("scorers[%d].Goals=%d < scorers[%d].Goals=%d, want non-increasing", i-1, scorers[i-1].Goals, i, scorers[i].Goals)
+			if scorers[i-1].Value < scorers[i].Value {
+				t.Errorf("scorers[%d].Value=%d < scorers[%d].Value=%d, want non-increasing", i-1, scorers[i-1].Value, i, scorers[i].Value)
 			}
 		}
 	})
@@ -64,8 +64,8 @@ func TestMapTopScorers(t *testing.T) {
 		if top.TeamAbbr == "" {
 			t.Error("TeamAbbr is empty")
 		}
-		if top.Goals <= 0 {
-			t.Errorf("Goals = %d, want > 0", top.Goals)
+		if top.Value <= 0 {
+			t.Errorf("Value = %d, want > 0", top.Value)
 		}
 	})
 
@@ -85,9 +85,9 @@ func TestMapTopScorers(t *testing.T) {
 	})
 
 	t.Run("caps the list at the requested limit", func(t *testing.T) {
-		capped, err := MapTopScorers(raw, 5)
+		capped, err := MapLeaders(raw, "goalsLeaders", 5)
 		if err != nil {
-			t.Fatalf("MapTopScorers returned error: %v", err)
+			t.Fatalf("MapLeaders returned error: %v", err)
 		}
 		if len(capped) != 5 {
 			t.Errorf("got %d scorers, want 5", len(capped))
@@ -96,7 +96,7 @@ func TestMapTopScorers(t *testing.T) {
 
 	t.Run("treats an absent pre-season dataset as empty", func(t *testing.T) {
 		for _, raw := range [][]byte{[]byte(`{}`), []byte(`null`)} {
-			got, err := MapTopScorers(raw, 20)
+			got, err := MapLeaders(raw, "goalsLeaders", 20)
 			if err != nil || len(got) != 0 {
 				t.Fatalf("scorers=%v err=%v", got, err)
 			}
@@ -128,9 +128,9 @@ func TestMapTopScorers(t *testing.T) {
 				}]
 			}]
 		}`)
-		result, err := MapTopScorers(payload, 20)
+		result, err := MapLeaders(payload, "goalsLeaders", 20)
 		if err != nil {
-			t.Fatalf("MapTopScorers returned error: %v", err)
+			t.Fatalf("MapLeaders returned error: %v", err)
 		}
 		if len(result) != 1 || result[0].TeamCrestURL == nil || *result[0].TeamCrestURL != "https://a.espncdn.com/test.png" {
 			t.Errorf("got %+v, want TeamCrestURL=https://a.espncdn.com/test.png", result)
@@ -155,12 +155,73 @@ func TestMapTopScorers(t *testing.T) {
 				}]
 			}]
 		}`)
-		result, err := MapTopScorers(payload, 20)
+		result, err := MapLeaders(payload, "goalsLeaders", 20)
 		if err != nil {
-			t.Fatalf("MapTopScorers returned error: %v", err)
+			t.Fatalf("MapLeaders returned error: %v", err)
 		}
 		if len(result) != 1 || result[0].TeamCrestURL == nil || *result[0].TeamCrestURL != "https://a.espncdn.com/logos/team.png" {
 			t.Errorf("got %+v, want TeamCrestURL=https://a.espncdn.com/logos/team.png", result)
 		}
 	})
+}
+
+// The point of the generalisation, against the fixture already in the repo.
+func TestMapLeadersReadsBothBoardsFromOneResponse(t *testing.T) {
+	raw, err := os.ReadFile("testdata/espn-statistics.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	goals, err := MapLeaders(raw, "goalsLeaders", 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assists, err := MapLeaders(raw, "assistsLeaders", 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(goals) != 50 {
+		t.Fatalf("goals = %d, want 50", len(goals))
+	}
+	if len(assists) != 50 {
+		t.Fatalf("assists = %d, want 50 -- this board was in the payload all along",
+			len(assists))
+	}
+	// Ranks are per board. Both start at 1, and that is exactly why category
+	// had to join the primary key.
+	if goals[0].Rank != 1 || assists[0].Rank != 1 {
+		t.Fatalf("ranks = %d/%d, want 1 and 1", goals[0].Rank, assists[0].Rank)
+	}
+}
+
+// A category ESPN does not publish for this competition is an empty board, not
+// an error. Coverage varies, and a hard failure here would take down the whole
+// competition's ingest over a leaderboard nobody asked for.
+func TestMapLeadersReturnsEmptyForAnAbsentCategory(t *testing.T) {
+	raw, err := os.ReadFile("testdata/espn-statistics.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	board, err := MapLeaders(raw, "cleanSheetsLeaders", 20)
+	if err != nil {
+		t.Fatalf("an absent category must not be an error: %v", err)
+	}
+	if len(board) != 0 {
+		t.Fatalf("board = %d, want 0", len(board))
+	}
+}
+
+// The validation MapTopScorers already had must survive the generalisation: a
+// leaderboard row with no player, or a fractional count, is a payload we do not
+// understand and publishing it would put a wrong number on the front page.
+func TestMapLeadersStillRejectsAnImpossibleRow(t *testing.T) {
+	raw := []byte(`{"stats":[{"name":"goalsLeaders","leaders":[
+	  {"value":1.5,"displayValue":"Matches: 3","athlete":{"displayName":"Striker","team":{}}}]}]}`)
+	if _, err := MapLeaders(raw, "goalsLeaders", 20); err == nil {
+		t.Fatal("want an error for a fractional goal count")
+	}
+	raw = []byte(`{"stats":[{"name":"goalsLeaders","leaders":[
+	  {"value":3,"displayValue":"Matches: 3","athlete":{"team":{}}}]}]}`)
+	if _, err := MapLeaders(raw, "goalsLeaders", 20); err == nil {
+		t.Fatal("want an error for a row with no player identity")
+	}
 }

@@ -7,13 +7,6 @@ import (
 	"regexp"
 )
 
-// Port of src/server/data/providers/espn-stats.ts's mapTopScorers.
-//
-// The TS signature is `mapTopScorers(raw, limit = 20)`; Go has no default
-// arguments, so MapTopScorers takes limit explicitly (callers wanting the TS
-// default pass 20) — parity with the TS test suite's "caps the list at the
-// requested limit" case requires the parameter to exist at all.
-
 var matchesDisplayRe = regexp.MustCompile(`(?i)Matches:\s*(\d+)`)
 
 // parseMatches ports the TS mapper's parseMatches: pulls the matches-played
@@ -60,17 +53,24 @@ type rawScorerTeam struct {
 	Logos        []rawLogo `json:"logos"`
 }
 
-// MapTopScorers ports espn-stats.ts's mapTopScorers: maps ESPN's raw
-// statistics JSON (stats[].name === "goalsLeaders") into a ranked
-// []TopScorer, capped at limit.
-func MapTopScorers(raw []byte, limit int) ([]TopScorer, error) {
+// MapLeaders maps one board out of ESPN's /statistics response.
+//
+// category is an entry in stats[].name: "goalsLeaders", "assistsLeaders". The
+// old MapTopScorers hardcoded the first of those and discarded the rest of the
+// array -- including assistsLeaders, which arrives in the SAME response with
+// the same 50 rows. Generalising costs one parameter.
+//
+// An absent category returns an empty board rather than an error. Coverage
+// varies by competition, and failing here would take the whole competition's
+// ingest down over a leaderboard nobody requested.
+func MapLeaders(raw []byte, category string, limit int) ([]StatLeader, error) {
 	var envelope map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return nil, err
 	}
 	stats, exists := envelope["stats"]
 	if !exists || string(stats) == "null" {
-		return []TopScorer{}, nil
+		return []StatLeader{}, nil
 	}
 	if err := validateArrayEnvelope(raw, "stats"); err != nil {
 		return nil, err
@@ -82,24 +82,26 @@ func MapTopScorers(raw []byte, limit int) ([]TopScorer, error) {
 
 	var leaders []rawLeader
 	for _, block := range doc.Stats {
-		if block.Name == "goalsLeaders" {
+		if block.Name == category {
 			leaders = block.Leaders
 			break
 		}
 	}
-
 	if limit >= 0 && len(leaders) > limit {
 		leaders = leaders[:limit]
 	}
 
-	scorers := make([]TopScorer, 0, len(leaders))
+	board := make([]StatLeader, 0, len(leaders))
 	for i, l := range leaders {
 		team := l.Athlete.Team
+		// The two validations MapTopScorers already had, kept verbatim: a
+		// leaderboard is the most visible number on the site, and a row we do
+		// not understand must not be published as if we did.
 		if l.Athlete.DisplayName == "" {
-			return nil, fmt.Errorf("top scorer row %d missing player identity", i)
+			return nil, fmt.Errorf("%s row %d missing player identity", category, i)
 		}
 		if l.Value < 0 || math.Trunc(l.Value) != l.Value {
-			return nil, fmt.Errorf("top scorer row %d has invalid goal count", i)
+			return nil, fmt.Errorf("%s row %d has an invalid count", category, i)
 		}
 
 		var crest *string
@@ -109,17 +111,15 @@ func MapTopScorers(raw []byte, limit int) ([]TopScorer, error) {
 			href := team.Logos[0].Href
 			crest = &href
 		}
-
-		scorers = append(scorers, TopScorer{
+		board = append(board, StatLeader{
 			Rank:         i + 1,
 			Player:       l.Athlete.DisplayName,
 			TeamAbbr:     team.Abbreviation,
 			TeamName:     team.DisplayName,
 			TeamCrestURL: crest,
-			Goals:        int(l.Value),
+			Value:        int(l.Value),
 			Matches:      parseMatches(l.DisplayValue),
 		})
 	}
-
-	return scorers, nil
+	return board, nil
 }

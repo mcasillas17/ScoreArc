@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/mcasillas17/scorearc-backend/config"
+	"github.com/mcasillas17/scorearc-backend/shared/espn"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 	"github.com/mcasillas17/scorearc-backend/shared/source"
 	"github.com/mcasillas17/scorearc-backend/shared/store"
@@ -365,7 +366,7 @@ func (r *runner) ingestCompSeason(
 	if matchResult.finalized || slowTick {
 		refreshErrors = append(refreshErrors,
 			r.refreshStandings(ctx, comp, season, slowTick, matchResult.finalized),
-			r.refreshTopScorers(ctx, comp, season),
+			r.refreshLeaders(ctx, comp, season),
 		)
 	}
 	coreErr := errors.Join(scoreboardErr, bracketErr, backlogErr, resolveErr, processErr)
@@ -618,7 +619,18 @@ func (r *runner) snapshotStandings(
 	return nil
 }
 
-func (r *runner) refreshTopScorers(
+// leaderCategories are the boards written from each /statistics response.
+//
+// ESPN's names on the left, ours on the right. Ours are what goes in the
+// database and what the reader's ?category= will eventually accept, so they are
+// short and provider-neutral -- if a second source ever supplies leaderboards,
+// only this map changes.
+var leaderCategories = map[string]string{
+	"goalsLeaders":   "goals",
+	"assistsLeaders": "assists",
+}
+
+func (r *runner) refreshLeaders(
 	ctx context.Context,
 	comp config.Competition,
 	season config.Season,
@@ -627,30 +639,54 @@ func (r *runner) refreshTopScorers(
 		return ctx.Err()
 	}
 	start := time.Now()
-	rows, err := r.source.TopScorers(ctx, comp, season, topScorerLimit)
-	if err == nil {
-		err = r.repo.ReplaceTopScorers(ctx, comp.ID, season.ID, sourceESPN, rows)
+	// Both boards come out of ONE response. Fetching per category would double
+	// the request count for a payload that already contains both.
+	raw, err := r.source.Statistics(ctx, comp, season)
+	if err != nil {
+		r.recordRun(ctx, comp.ID, "leaders_fetch", start, err)
+		return err
 	}
-	if errors.Is(err, store.ErrEmptyReplacement) {
-		r.log.Info("top scorers unavailable; preserving existing rows", "comp", comp.ID)
-		r.recordRun(ctx, comp.ID, "top_scorers_preserved", start, nil)
-		return nil
-	}
-	if err == nil {
-		mirrored := r.mirrorTopScorers(ctx, rows)
-		if topScorerCrestsChanged(rows, mirrored) {
-			err = r.repo.ReplaceTopScorers(ctx, comp.ID, season.ID, sourceESPN, mirrored)
+	var errs []error
+	for espnName, category := range leaderCategories {
+		board, mapErr := espn.MapLeaders(raw, espnName, topScorerLimit)
+		if mapErr != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", category, mapErr))
+			continue
+		}
+		writeErr := r.repo.ReplaceLeaders(
+			ctx, comp.ID, season.ID, sourceESPN, category, board,
+		)
+		if errors.Is(writeErr, store.ErrEmptyReplacement) {
+			// Normal. Not every competition publishes every board, and an
+			// absent assists table must not take the Golden Boot down with it.
+			r.log.Info("leader board unavailable; preserving existing rows",
+				"comp", comp.ID, "category", category)
+			r.recordRun(ctx, comp.ID, "leaders_preserved", start, nil)
+			continue
+		}
+		if writeErr != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", category, writeErr))
+			continue
+		}
+		mirrored := r.mirrorLeaders(ctx, board)
+		if leaderCrestsChanged(board, mirrored) {
+			if err := r.repo.ReplaceLeaders(
+				ctx, comp.ID, season.ID, sourceESPN, category, mirrored,
+			); err != nil {
+				errs = append(errs, fmt.Errorf("%s crests: %w", category, err))
+			}
 		}
 	}
-	r.recordRun(ctx, comp.ID, "top_scorers", start, err)
-	return err
+	joined := errors.Join(errs...)
+	r.recordRun(ctx, comp.ID, "leaders", start, joined)
+	return joined
 }
 
-func (r *runner) mirrorTopScorers(
+func (r *runner) mirrorLeaders(
 	ctx context.Context,
-	rows []model.TopScorer,
-) []model.TopScorer {
-	mirrored := append([]model.TopScorer(nil), rows...)
+	rows []model.StatLeader,
+) []model.StatLeader {
+	mirrored := append([]model.StatLeader(nil), rows...)
 	semaphore := make(chan struct{}, 5)
 	var wg sync.WaitGroup
 	for index := range mirrored {
@@ -663,14 +699,14 @@ func (r *runner) mirrorTopScorers(
 			case <-ctx.Done():
 				return
 			}
-			mirrored[index] = r.mirrorTopScorer(ctx, mirrored[index])
+			mirrored[index] = r.mirrorLeader(ctx, mirrored[index])
 		}(index)
 	}
 	wg.Wait()
 	return mirrored
 }
 
-func topScorerCrestsChanged(before, after []model.TopScorer) bool {
+func leaderCrestsChanged(before, after []model.StatLeader) bool {
 	for index := range before {
 		if index >= len(after) || stringValue(before[index].TeamCrestURL) !=
 			stringValue(after[index].TeamCrestURL) {
@@ -687,35 +723,35 @@ func stringValue(value *string) string {
 	return *value
 }
 
-func (r *runner) mirrorTopScorer(ctx context.Context, scorer model.TopScorer) model.TopScorer {
-	if r.mirror == nil || scorer.TeamCrestURL == nil || *scorer.TeamCrestURL == "" {
-		return scorer
+func (r *runner) mirrorLeader(ctx context.Context, leader model.StatLeader) model.StatLeader {
+	if r.mirror == nil || leader.TeamCrestURL == nil || *leader.TeamCrestURL == "" {
+		return leader
 	}
-	if isMirroredURL(*scorer.TeamCrestURL, r.mirror.BaseURL()) {
-		return scorer
+	if isMirroredURL(*leader.TeamCrestURL, r.mirror.BaseURL()) {
+		return leader
 	}
-	assetHash := sha256.Sum256([]byte(*scorer.TeamCrestURL))
+	assetHash := sha256.Sum256([]byte(*leader.TeamCrestURL))
 	assetID := fmt.Sprintf("scorer-%x", assetHash[:8])
 	r.mu.Lock()
 	cachedURL := r.mirrored[assetID]
 	r.mu.Unlock()
 	if cachedURL != "" {
-		scorer.TeamCrestURL = &cachedURL
-		return scorer
+		leader.TeamCrestURL = &cachedURL
+		return leader
 	}
-	cdnURL, err := r.mirrorAsset(ctx, "teams", assetID, *scorer.TeamCrestURL)
+	cdnURL, err := r.mirrorAsset(ctx, "teams", assetID, *leader.TeamCrestURL)
 	if errors.Is(err, errMirrorUnavailable) {
-		return scorer
+		return leader
 	}
 	if err != nil {
-		r.log.Warn("mirror scorer crest", "team", scorer.TeamAbbr, "err", err)
-		return scorer
+		r.log.Warn("mirror leader crest", "team", leader.TeamAbbr, "err", err)
+		return leader
 	}
 	r.mu.Lock()
 	r.mirrored[assetID] = cdnURL
 	r.mu.Unlock()
-	scorer.TeamCrestURL = &cdnURL
-	return scorer
+	leader.TeamCrestURL = &cdnURL
+	return leader
 }
 
 func (r *runner) recordRun(

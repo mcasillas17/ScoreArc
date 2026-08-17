@@ -75,12 +75,12 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,now())`,
 	return tx.Commit(ctx)
 }
 
-func (s *Store) ReplaceTopScorers(
+func (s *Store) ReplaceLeaders(
 	ctx context.Context,
-	competitionID, seasonID, source string,
-	scorers []model.TopScorer,
+	competitionID, seasonID, source, category string,
+	leaders []model.StatLeader,
 ) error {
-	if len(scorers) == 0 {
+	if len(leaders) == 0 {
 		return ErrEmptyReplacement
 	}
 	ctx, cancel := boundedContext(ctx)
@@ -92,18 +92,21 @@ func (s *Store) ReplaceTopScorers(
 	defer tx.Rollback(ctx)
 
 	if _, err := tx.Exec(ctx,
-		`DELETE FROM top_scorer WHERE competition_id=$1 AND season_id=$2`,
-		competitionID, seasonID); err != nil {
+		// Scoped by category. A category-blind DELETE here would wipe the goals
+		// board every time the assists board is written, leaving whichever ran
+		// last, with no error and a silently half-empty page.
+		`DELETE FROM top_scorer WHERE competition_id=$1 AND season_id=$2 AND category=$3`,
+		competitionID, seasonID, category); err != nil {
 		return err
 	}
-	for _, scorer := range scorers {
+	for _, leader := range leaders {
 		if _, err := tx.Exec(ctx, `
 INSERT INTO top_scorer (
-	competition_id, season_id, rank, player, team_abbr, team_name,
+	competition_id, season_id, category, rank, player, team_abbr, team_name,
 	team_crest_url, goals, matches, source)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-			competitionID, seasonID, scorer.Rank, scorer.Player, scorer.TeamAbbr,
-			scorer.TeamName, scorer.TeamCrestURL, scorer.Goals, scorer.Matches, source,
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+			competitionID, seasonID, category, leader.Rank, leader.Player, leader.TeamAbbr,
+			leader.TeamName, leader.TeamCrestURL, leader.Value, leader.Matches, source,
 		); err != nil {
 			return err
 		}

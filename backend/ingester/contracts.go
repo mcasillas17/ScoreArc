@@ -42,7 +42,7 @@ type repository interface {
 	// ReplaceStandings so it can only ever be called with rows that
 	// replacement actually accepted.
 	WriteStandingSnapshot(context.Context, string, string, []model.Standing, map[string]string, time.Time) (int, error)
-	ReplaceTopScorers(context.Context, string, string, string, []model.TopScorer) error
+	ReplaceLeaders(context.Context, string, string, string, string, []model.StatLeader) error
 	ReplaceSquad(context.Context, string, string, string, string, []model.SquadMember, map[string]uuid.UUID) error
 	PlayersNeedingBio(context.Context, string, time.Time, int) (map[string]uuid.UUID, error)
 	ReplaceTeamHistory(context.Context, uuid.UUID, string, []model.TeamHistoryEntry) error
