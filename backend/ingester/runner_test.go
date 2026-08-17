@@ -776,7 +776,7 @@ func (f *fakeRepository) CompleteFinalCapture(
 }
 
 func (f *fakeRepository) ScheduleFinalCaptureRetry(
-	_ context.Context,
+	ctx context.Context,
 	matchID uuid.UUID,
 	kind store.FinalCaptureKind,
 	attemptedAt, retryAt time.Time,
@@ -785,6 +785,14 @@ func (f *fakeRepository) ScheduleFinalCaptureRetry(
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.scheduleFinalCaptureRetryCalls++
+	// The real store derives a bounded DB context from ctx (context.WithTimeout),
+	// so an already-canceled/deadline-exceeded ctx fails the write immediately,
+	// before ever reaching Postgres. Honoring ctx.Err() here first is what makes
+	// this fake catch a caller that schedules a retry with a context it knows is
+	// already done: it must not "persist" a row a real Store call could not.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if f.scheduleFinalCaptureRetryErr != nil {
 		return f.scheduleFinalCaptureRetryErr
 	}
@@ -801,8 +809,11 @@ func (f *fakeRepository) ScheduleFinalCaptureRetry(
 	row.attempts++
 	// Monotonic like the real GREATEST: an attempt that arrives out of order
 	// can only push last_attempted_at/retry_at later, never pull them
-	// earlier, and last_error only follows the newest attempt.
-	if attemptedAt.After(row.lastAttemptedAt) {
+	// earlier, and last_error only follows the newest attempt. The real
+	// SQL's tie-breaker is `EXCLUDED.last_attempted_at >= ...last_attempted_at`
+	// (a same-instant attempt still updates last_error), so this must be
+	// !attemptedAt.Before(...), not the stricter attemptedAt.After(...).
+	if !attemptedAt.Before(row.lastAttemptedAt) {
 		row.lastAttemptedAt = attemptedAt
 		row.lastError = cause.Error()
 	}
@@ -4655,11 +4666,15 @@ func TestPersistFinalCaptureAttemptTreatsContextCancellationAsFailureNotCompleti
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
+	attemptedAt := time.Now()
 	err := worker.persistFinalCaptureAttempt(
-		ctx, fakeMatchID("m1"), store.FinalCaptureOfficials, time.Now(), nil)
+		ctx, fakeMatchID("m1"), store.FinalCaptureOfficials, attemptedAt, nil)
 
 	if err == nil {
 		t.Fatal("want a non-nil error for a canceled context, even with a nil capture error")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want it to still surface the original context.Canceled cause", err)
 	}
 	if repo.completeFinalCaptureCalls != 0 {
 		t.Fatalf("CompleteFinalCapture calls = %d, want 0: a canceled context must not complete",
@@ -4667,5 +4682,25 @@ func TestPersistFinalCaptureAttemptTreatsContextCancellationAsFailureNotCompleti
 	}
 	if repo.scheduleFinalCaptureRetryCalls != 1 {
 		t.Fatalf("ScheduleFinalCaptureRetry calls = %d, want 1", repo.scheduleFinalCaptureRetryCalls)
+	}
+	// A method call alone is not durability: the real Store derives its bounded
+	// DB context from the same ctx it was handed (context.WithTimeout(ctx, ...)),
+	// so a canceled parent must not silently prevent the retry row from ever
+	// existing. Assert the fake's row actually landed, not merely that the
+	// method was invoked with a context it could ignore.
+	row, ok := repo.finalCaptureStatus[finalCaptureStatusKey{
+		matchID: fakeMatchID("m1"), kind: store.FinalCaptureOfficials,
+	}]
+	if !ok {
+		t.Fatal("want a durable pending retry row after a canceled context, not silently dropped")
+	}
+	if !row.completedAt.IsZero() {
+		t.Fatalf("row = %#v, want it NOT completed after a canceled context", row)
+	}
+	if row.retryAt.IsZero() {
+		t.Fatalf("row = %#v, want retry_at scheduled despite the canceled context", row)
+	}
+	if !row.retryAt.After(attemptedAt) {
+		t.Fatalf("row.retryAt = %s, want it strictly after attemptedAt %s", row.retryAt, attemptedAt)
 	}
 }

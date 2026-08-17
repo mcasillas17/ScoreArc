@@ -27,15 +27,33 @@ const finalCaptureRetryBatch = 10
 // the backlog will offer it again.
 const finalCaptureRetryInterval = 30 * time.Minute
 
+// finalCaptureSchedulePersistTimeout bounds the detached context used to
+// schedule a retry when the caller's own context is already canceled or
+// deadline-exceeded. It mirrors the real Store's operationTimeout so a
+// canceled-context failure is scheduled durably on the same kind of budget
+// a healthy request would have gotten, not left to run unbounded.
+const finalCaptureSchedulePersistTimeout = 5 * time.Second
+
 // persistFinalCaptureAttempt durably records the outcome of one officials or
 // fixed-odds capture attempt, so a future restart or backlog sweep knows
 // whether to retry it.
 //
 // A canceled context is treated as a failure even when the capture itself
 // returned nil: the attempt did not actually run to completion, so marking it
-// complete would durably hide work that still needs to happen. If the status
-// write itself also fails, the original capture cause is never lost: it is
-// joined with a contextual error describing the status failure.
+// complete would durably hide work that still needs to happen. Because the
+// real Store derives its bounded DB context from the ctx it is given
+// (context.WithTimeout(ctx, ...)), scheduling that retry with the very ctx
+// whose cancellation triggered it would fail before ever reaching Postgres --
+// the 30-minute retry would never become durable. So when (and only when)
+// the ctx itself is why this is a failure, the retry is scheduled on a
+// short, bounded context derived from context.WithoutCancel(ctx): the
+// original cancellation/deadline is deliberately not propagated to this one
+// write, but the write still cannot run unbounded. A capture-returned error
+// on an otherwise-live ctx, and a successful completion, are untouched.
+//
+// If the status write itself also fails, the original capture cause is
+// never lost: it is joined with a contextual error describing the status
+// failure.
 func (r *runner) persistFinalCaptureAttempt(
 	ctx context.Context,
 	matchID uuid.UUID,
@@ -44,8 +62,9 @@ func (r *runner) persistFinalCaptureAttempt(
 	captureErr error,
 ) error {
 	effectiveErr := captureErr
+	ctxErr := ctx.Err()
 	if effectiveErr == nil {
-		effectiveErr = ctx.Err()
+		effectiveErr = ctxErr
 	}
 	if effectiveErr == nil {
 		if err := r.repo.CompleteFinalCapture(ctx, matchID, kind, time.Now()); err != nil {
@@ -53,9 +72,15 @@ func (r *runner) persistFinalCaptureAttempt(
 		}
 		return effectiveErr
 	}
+	scheduleCtx := ctx
+	if ctxErr != nil {
+		var cancel context.CancelFunc
+		scheduleCtx, cancel = context.WithTimeout(context.WithoutCancel(ctx), finalCaptureSchedulePersistTimeout)
+		defer cancel()
+	}
 	retryAt := time.Now().Add(finalCaptureRetryInterval)
 	if err := r.repo.ScheduleFinalCaptureRetry(
-		ctx, matchID, kind, attemptedAt, retryAt, effectiveErr); err != nil {
+		scheduleCtx, matchID, kind, attemptedAt, retryAt, effectiveErr); err != nil {
 		return errors.Join(effectiveErr, fmt.Errorf("persist %s retry for match %s: %w", kind, matchID, err))
 	}
 	return effectiveErr
