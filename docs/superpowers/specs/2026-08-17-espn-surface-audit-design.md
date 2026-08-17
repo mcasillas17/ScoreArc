@@ -6,14 +6,23 @@
 ## Why this exists
 
 Before adding a data dependency, the question is whether we have exhausted the one
-we already have. This audit probed every reachable ESPN surface across all three
-hosts and records what is left.
+we already have.
 
-**Conclusion: ESPN is close to exhausted.** What remains unconsumed is thin, and
-the gaps we care about are **structurally absent** rather than merely unfound —
-the endpoints exist and return `count=0`. That converts "should we add a second
-provider" from a preference into a requirement for any feature depending on
-injuries, transfers, or history.
+> **Revised 2026-08-17 — the first version of this document was under-researched.**
+> It concluded "ESPN is close to exhausted" from endpoints I *guessed at*. ESPN
+> publishes a **WADL** — a machine-readable description of its own API — at
+> `sports.core.api.espn.com/v2/application.wadl` (1.6 MB, **373 paths**) and
+> `/v3/application.wadl`. Enumerating it found populated surfaces the guesswork
+> missed, most importantly **per-team match statistics** carrying advanced
+> defensive metrics and ratings we do not ingest at all.
+>
+> **Corrected conclusion:** ESPN is *not* exhausted for match statistics. It *is*
+> exhausted for injuries, transfers, full-season game logs and history — those
+> endpoints exist and return `count=0`, which is a stronger negative than a 404.
+
+**Method matters here.** Probing paths you can think of tells you what you already
+imagined. The WADL is authoritative. Any future "is there more?" question should
+start there, not with a list of guesses.
 
 ## What we already consume
 
@@ -23,11 +32,41 @@ injuries, transfers, or history.
 
 ## Reachable and populated, not yet consumed
 
+### The one that matters: per-team match statistics
+
+```
+/events/{event}/competitions/{competition}/competitors/{competitor}/statistics
+```
+
+Four categories — `defensive`, `general`, `goalKeeping`, `offensive` — carrying
+metrics **we do not ingest anywhere**:
+
+- **Defensive:** `effectiveTackles`, `inneffectiveTackles`, `tacklePct`,
+  `effectiveClearance`, `totalClearance`, `interceptions`, `blockedShots`,
+  **`possWonAtt3rd`**, **`possWonDef3rd`**
+- **General:** `avgRatingFromCorrespondent`, `avgRatingFromDataFeed`,
+  `avgRatingFromEditor`, `avgRatingFromUser` — **match ratings**, from four
+  distinct sources
+- Plus `goalKeeping` and `offensive` categories not yet enumerated in full
+
+Possession won in the attacking and defensive thirds is genuinely analytical data
+— it is the kind of thing paid providers charge for. The ratings are a fan-facing
+feature on their own.
+
+Sibling resources also returning 200 and unexplored: `/competitors/{id}/roster`,
+`/leaders`, `/records`, `/score`, `/linescores`.
+
+### Reference data — cheap, useful for correctness
+
 | Endpoint | Count | Verdict |
 |---|---|---|
-| `/calendar` | 4 | **Worth taking.** Season phase boundaries — when a season, a group stage or a knockout actually starts and ends. |
+| `/positions` | 42 | Position taxonomy. Would replace string-matching on abbreviations. |
+| `/countries` | 238 | Country reference. Useful for nationality normalisation. |
+| `/providers` | 42 | Odds provider registry — pairs with the odds we already ingest. |
+| `/media` | 1,316 | Broadcast/media entries. Unassessed. |
+| `/calendar` | 4 | **Worth taking.** Season and phase boundaries — currently the Leagues Cup phase dates are hardcoded in `competitions.ts` because we infer them. |
 | `/venues` | 9,221 | **Low value as-is.** `fullName` and `address.country` only; `capacity`, `grass`, `indoor` all null. |
-| `/franchises` | 20 | Marginal. Club franchise records. |
+| `/franchises` | 20 | Marginal. |
 | event `/status`, `/situation`, `/broadcasts`, `/notes` | 200 | Small. `situation` is useful only in-play. |
 
 ## Reachable but EMPTY for soccer — the confirmed gaps
@@ -45,6 +84,11 @@ not appear later by us looking harder.
 | `/seasons/{y}/corrections` | 0 | No provider errata feed. |
 | athlete `/injuries` | 0 | **No injuries** — matches the empty arrays on the roster payload. Confirmed at the core API too, so this is not a host problem. |
 | athlete `/eventlog` | self-referential `$ref` | **No full-season game log.** E5's last-five ceiling stands. |
+| v3 athlete `/statisticslog` | 0 | No season-by-season history. (v2 404s; v3 exists and is empty.) |
+| `/seasons/{y}/freeagents` | error | No free-agent/transfer feed. |
+| `/seasons/{y}/draft` | error | No draft — including for MLS, which has one. |
+| `/rankings` | 0 | Empty for soccer. |
+| `/tournaments` | error | Not available for soccer. |
 
 ## Dead endpoints — do not call
 
@@ -75,13 +119,28 @@ valuable for backfilling history we will otherwise never have. It is *not* neede
 for xG, shot locations, odds, officials, play-by-play, or anything else we already
 ingest.
 
-## Recommended ESPN follow-ups (small)
+## Recommended ESPN follow-ups
 
-- **Consume `/calendar`** — season and phase boundaries currently have to be
-  inferred from fixtures, which is why the Leagues Cup phase dates are hardcoded
-  in `competitions.ts`.
-- **Skip venues and franchises** until they carry capacity or geography.
-- **Record the dead list** (above) so future agents stop re-probing.
+**1. Ingest per-team match statistics — the largest single win available.**
+`competitors/{id}/statistics` gives tackles, clearances, interceptions,
+possession won by third, and four rating sources, per team per match. This is
+analytical data we currently have no equivalent of, and it costs one request per
+competitor per match — the same match we already fetch a summary for.
+
+**2. Explore the competitor siblings** — `/roster`, `/leaders`, `/records`,
+`/score`, `/linescores` all return 200 and are unexamined.
+
+**3. Consume `/calendar`** — season and phase boundaries currently have to be
+inferred, which is why the Leagues Cup phase dates are hardcoded in
+`competitions.ts`.
+
+**4. Adopt `/positions` and `/countries`** as reference data, replacing string
+matching on abbreviations.
+
+**5. Skip** venues and franchises until they carry capacity or geography.
+
+**6. Record the dead list** (above) so future agents stop re-probing — and start
+any future exploration from the **WADL**, not from guesses.
 
 ## Out of scope
 
