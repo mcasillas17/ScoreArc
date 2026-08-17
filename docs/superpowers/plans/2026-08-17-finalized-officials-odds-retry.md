@@ -106,7 +106,7 @@ PostgreSQL.
 Run:
 
 ```bash
-export DOCKER_HOST="unix://$HOME/.colima/scorearc-pr64-audit/docker.sock"
+export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
 export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
 cd backend
 go test ./shared/espn -run 'OddsDecimal|Flattened.*Decimal' -count=1
@@ -114,6 +114,9 @@ go test ./shared/store -run \
   'MalformedBookDoesNotRollbackValidBooks|OddsDecimalMatchesPostgresRoundingBoundary' \
   -count=1
 ```
+
+If your active Colima profile is not `default`, substitute its socket path in
+`DOCKER_HOST` instead of this example.
 
 Expected: the mapper test reports non-nil `999.995`/`-999.995`, and the new
 rounded-edge integration regression still shows the accepted/rejected cases
@@ -166,7 +169,7 @@ git add backend/shared/espn/odds.go \
   backend/shared/store/odds_integration_test.go
 git commit -m "fix: reject odds decimals outside postgres range
 
-Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>"
+Co-authored-by: <your own agent identity from AGENTS.md>
 ```
 
 ---
@@ -239,7 +242,7 @@ The tests must:
 Run:
 
 ```bash
-export DOCKER_HOST="unix://$HOME/.colima/scorearc-pr64-audit/docker.sock"
+export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
 export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
 cd backend
 go test ./migrations -run 'FinalCapture' -count=1
@@ -367,7 +370,7 @@ git add backend/migrations/0016_final_capture_status.*.sql \
   backend/shared/store/final_captures_integration_test.go
 git commit -m "fix: persist finalized capture completion and retries
 
-Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>"
+Co-authored-by: <your own agent identity from AGENTS.md>"
 ```
 
 ---
@@ -393,9 +396,9 @@ Add these tests:
 
 ```text
 TestFinalCaptureFetchFailuresRetryAfterRestartAndCadence
-TestFinalCaptureWriteFailuresRetryWithoutAnotherOddsSample
+TestFinalCaptureWriteFailuresRetryWithoutAnotherOddsSnapshot
 TestFinalCaptureEmptyResponsesCompleteAndNeverReprocess
-TestFinalCaptureBacklogFindsAMatchWithNoStatusRows
+TestFinalCaptureBacklogFindsMatchWithNoStatusRows
 ```
 
 For the restart test:
@@ -551,7 +554,7 @@ git add backend/ingester/contracts.go \
   backend/ingester/runner_test.go
 git commit -m "fix: retry finalized officials and fixed odds
 
-Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>"
+Co-authored-by: <your own agent identity from AGENTS.md>
 ```
 
 ---
@@ -573,7 +576,7 @@ and fixed retries do not create post-match current samples.
 - [ ] **Step 2: Run migration unit and focused integration tests**
 
 ```bash
-export DOCKER_HOST="unix://$HOME/.colima/scorearc-pr64-audit/docker.sock"
+export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
 export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
 cd backend
 go test ./migrations ./shared/espn ./shared/store ./ingester -count=1
@@ -604,7 +607,7 @@ On a second fresh database:
 - [ ] **Step 5: Run the exact full repository gate**
 
 ```bash
-export DOCKER_HOST="unix://$HOME/.colima/scorearc-pr64-audit/docker.sock"
+export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
 export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
 cd backend
 go build ./...
@@ -633,7 +636,7 @@ git add docs/backend/ARCHITECTURE.md \
   docs/superpowers/plans/2026-08-17-finalized-officials-odds-retry.md
 git commit -m "docs: record durable finalized capture retries
 
-Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>"
+Co-authored-by: <your own agent identity from AGENTS.md>
 ```
 
 Commit any blocker fixes separately with a conventional `fix:` message and the
