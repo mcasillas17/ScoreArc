@@ -130,3 +130,76 @@ func TestMapOddsLeavesInvalidAmericanMoneylinesUnknown(t *testing.T) {
 		t.Fatalf("open = %#v, want invalid American moneylines nil", open)
 	}
 }
+
+func TestMapOddsUsesFlattenedCurrentSpreadWhenNestedCurrentIsAbsent(t *testing.T) {
+	raw := []byte(`{"items":[{
+		"provider":{"id":"100","name":"DraftKings"},
+		"spread":0.5,
+		"homeTeamOdds":{"spreadOdds":130},
+		"awayTeamOdds":{"spreadOdds":-180}
+	}]}`)
+
+	providers, err := MapOdds(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(providers) != 1 || providers[0].Current == nil {
+		t.Fatalf("providers = %#v, want one current phase", providers)
+	}
+	current := providers[0].Current
+	if current.Spread == nil || *current.Spread != 0.5 ||
+		current.HomeSpreadOdds == nil || *current.HomeSpreadOdds != 130 ||
+		current.AwaySpreadOdds == nil || *current.AwaySpreadOdds != -180 {
+		t.Fatalf("current = %#v, want flattened spread line and prices", current)
+	}
+}
+
+func TestParseAmericanIntAcceptsPostgresInt4Bounds(t *testing.T) {
+	tests := []struct {
+		raw  string
+		want int
+	}{
+		{raw: " +2147483647 ", want: 2147483647},
+		{raw: "-2147483648", want: -2147483648},
+	}
+
+	for _, test := range tests {
+		t.Run(test.raw, func(t *testing.T) {
+			got := parseAmericanInt(test.raw)
+			if got == nil || *got != test.want {
+				t.Fatalf("parseAmericanInt(%q) = %v, want %d", test.raw, got, test.want)
+			}
+		})
+	}
+}
+
+func TestParseAmericanIntRejectsValuesOutsidePostgresInt4(t *testing.T) {
+	for _, raw := range []string{"2147483648", "-2147483649"} {
+		t.Run(raw, func(t *testing.T) {
+			if got := parseAmericanInt(raw); got != nil {
+				t.Fatalf("parseAmericanInt(%q) = %d, want nil", raw, *got)
+			}
+		})
+	}
+}
+
+func TestMapOddsRejectsInvalidFlattenedAmericanValues(t *testing.T) {
+	raw := []byte(`{"items":[{
+		"provider":{"id":"100","name":"DraftKings"},
+		"homeTeamOdds":{"moneyLine":2147483648,"spreadOdds":130.5},
+		"awayTeamOdds":{"moneyLine":-2147483649,"spreadOdds":-180.5},
+		"overOdds":2147483648,
+		"underOdds":-2147483649
+	}]}`)
+
+	providers, err := MapOdds(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(providers) != 1 {
+		t.Fatalf("providers = %#v, want one provider", providers)
+	}
+	if providers[0].Current != nil {
+		t.Fatalf("current = %#v, want nil for invalid flattened American values", providers[0].Current)
+	}
+}

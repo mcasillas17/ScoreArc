@@ -41,10 +41,11 @@ type rawOddsProvider struct {
 }
 
 type rawCoreTeamOdds struct {
-	MoneyLine *float64         `json:"moneyLine"`
-	Open      rawTeamOddsPhase `json:"open"`
-	Close     rawTeamOddsPhase `json:"close"`
-	Current   rawTeamOddsPhase `json:"current"`
+	MoneyLine  *float64         `json:"moneyLine"`
+	SpreadOdds *float64         `json:"spreadOdds"`
+	Open       rawTeamOddsPhase `json:"open"`
+	Close      rawTeamOddsPhase `json:"close"`
+	Current    rawTeamOddsPhase `json:"current"`
 }
 
 type rawTeamOddsPhase struct {
@@ -118,13 +119,12 @@ func mapCurrentOdds(item rawProviderOdds) *model.OddsLine {
 	}
 
 	line := model.OddsLine{
-		HomeMoneyline: firstInt(floatToInt(item.HomeTeamOdds.MoneyLine), phase.HomeMoneyline),
-		DrawMoneyline: firstInt(floatToInt(item.DrawOdds.MoneyLine), phase.DrawMoneyline),
-		AwayMoneyline: firstInt(floatToInt(item.AwayTeamOdds.MoneyLine), phase.AwayMoneyline),
-		Spread:        phase.Spread,
-		// Core's flattened current object has no side-specific spread prices.
-		HomeSpreadOdds: phase.HomeSpreadOdds,
-		AwaySpreadOdds: phase.AwaySpreadOdds,
+		HomeMoneyline:  firstInt(floatToInt(item.HomeTeamOdds.MoneyLine), phase.HomeMoneyline),
+		DrawMoneyline:  firstInt(floatToInt(item.DrawOdds.MoneyLine), phase.DrawMoneyline),
+		AwayMoneyline:  firstInt(floatToInt(item.AwayTeamOdds.MoneyLine), phase.AwayMoneyline),
+		Spread:         firstFloat(item.Spread, phase.Spread),
+		HomeSpreadOdds: firstInt(floatToInt(item.HomeTeamOdds.SpreadOdds), phase.HomeSpreadOdds),
+		AwaySpreadOdds: firstInt(floatToInt(item.AwayTeamOdds.SpreadOdds), phase.AwaySpreadOdds),
 		OverUnder:      firstFloat(item.OverUnder, phase.OverUnder),
 		OverOdds:       firstInt(floatToInt(item.OverOdds), phase.OverOdds),
 		UnderOdds:      firstInt(floatToInt(item.UnderOdds), phase.UnderOdds),
@@ -136,7 +136,13 @@ func mapCurrentOdds(item rawProviderOdds) *model.OddsLine {
 }
 
 func parseAmericanInt(raw string) *int {
-	return floatToInt(parseOddsDecimal(raw))
+	raw = strings.TrimPrefix(strings.TrimSpace(raw), "+")
+	value, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil {
+		return nil
+	}
+	integer := int(value)
+	return &integer
 }
 
 func parseOddsDecimal(raw string) *float64 {
@@ -155,8 +161,7 @@ func floatToInt(value *float64) *int {
 	if value == nil || math.Trunc(*value) != *value {
 		return nil
 	}
-	maxInt := float64(^uint(0) >> 1)
-	if *value < -maxInt-1 || *value > maxInt {
+	if *value < -2147483648 || *value > 2147483647 {
 		return nil
 	}
 	integer := int(*value)
