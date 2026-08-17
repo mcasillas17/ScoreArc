@@ -40,8 +40,8 @@ jobs:
         if: steps.guard.outputs.enabled == 'true'
         run: >-
           flyctl deploy backend
-          --config backend/reader/fly.toml
-          --dockerfile backend/reader/Dockerfile
+          --config reader/fly.toml
+          --dockerfile reader/Dockerfile
           --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_READER }}

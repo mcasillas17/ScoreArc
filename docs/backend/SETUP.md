@@ -333,8 +333,8 @@ the service directory. Every deploy uses:
 
 ```bash
 flyctl deploy backend \
-  --config backend/<svc>/fly.toml \
-  --dockerfile backend/<svc>/Dockerfile \
+  --config <svc>/fly.toml \
+  --dockerfile <svc>/Dockerfile \
   --remote-only
 ```
 
@@ -383,12 +383,12 @@ mirroring rather than failing. Check that log line after the first deploy.
 
 ```bash
 flyctl deploy backend \
-  --config backend/reader/fly.toml \
-  --dockerfile backend/reader/Dockerfile --remote-only
+  --config reader/fly.toml \
+  --dockerfile reader/Dockerfile --remote-only
 
 flyctl deploy backend \
-  --config backend/ingester/fly.toml \
-  --dockerfile backend/ingester/Dockerfile --remote-only
+  --config ingester/fly.toml \
+  --dockerfile ingester/Dockerfile --remote-only
 
 # the ingester has no [http_service], so pin exactly one always-on machine:
 fly scale count 1 --app scorearc-ingester

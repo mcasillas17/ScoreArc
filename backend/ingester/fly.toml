@@ -8,8 +8,8 @@
 #   fly scale count 1 --app scorearc-ingester
 #
 # Deploy from the repo root with the backend/ build context:
-#   flyctl deploy backend --config backend/ingester/fly.toml \
-#     --dockerfile backend/ingester/Dockerfile --remote-only
+#   flyctl deploy backend --config ingester/fly.toml \
+#     --dockerfile ingester/Dockerfile --remote-only
 #
 # Secrets (POOLED_DSN, INGESTER_LEASE_DSN, R2_*) are set with `fly secrets set`,
 # never here. INGESTER_LEASE_DSN must be an UNPOOLED Neon DSN — the process
