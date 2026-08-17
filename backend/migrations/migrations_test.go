@@ -404,7 +404,7 @@ func TestPlayStreamKeysOnTheProviderPlayID(t *testing.T) {
 }
 
 func TestOfficialsUseCanonicalIdentity(t *testing.T) {
-	sql := readMigration(t, "0008_match_officials.up.sql")
+	sql := readMigration(t, "0014_match_officials.up.sql")
 	for _, required := range []string{
 		"CREATE TABLE official",
 		"id        uuid PRIMARY KEY",
@@ -415,7 +415,7 @@ func TestOfficialsUseCanonicalIdentity(t *testing.T) {
 		"GRANT SELECT, INSERT, UPDATE ON official, official_external_ref, match_official TO scorearc_ingester",
 	} {
 		if !strings.Contains(sql, required) {
-			t.Fatalf("0008_match_officials.up.sql missing %q", required)
+			t.Fatalf("0014_match_officials.up.sql missing %q", required)
 		}
 	}
 	if strings.Contains(sql, "id text PRIMARY KEY") {
@@ -424,12 +424,12 @@ func TestOfficialsUseCanonicalIdentity(t *testing.T) {
 }
 
 func TestOfficialsRollbackDropsOnlyOwnedTablesInReverseOrder(t *testing.T) {
-	sql := readMigration(t, "0008_match_officials.down.sql")
+	sql := readMigration(t, "0014_match_officials.down.sql")
 	matchOfficial := strings.Index(sql, "DROP TABLE IF EXISTS match_official")
 	externalRef := strings.Index(sql, "DROP TABLE IF EXISTS official_external_ref")
 	official := strings.Index(sql, "DROP TABLE IF EXISTS official;")
 	if matchOfficial < 0 || externalRef < 0 || official < 0 {
-		t.Fatal("0008_match_officials.down.sql must drop every owned table")
+		t.Fatal("0014_match_officials.down.sql must drop every owned table")
 	}
 	if !(matchOfficial < externalRef && externalRef < official) {
 		t.Fatal("0008 rollback must drop match_official, official_external_ref, then official")
@@ -446,7 +446,7 @@ func TestOfficialsRollbackDropsOnlyOwnedTablesInReverseOrder(t *testing.T) {
 }
 
 func TestOddsSeparatesFixedLinesFromSamples(t *testing.T) {
-	sql := readMigration(t, "0009_odds_snapshot.up.sql")
+	sql := readMigration(t, "0015_odds_snapshot.up.sql")
 	for _, required := range []string{
 		"CREATE TABLE match_odds",
 		"PRIMARY KEY (match_id, provider_id, phase)",
@@ -455,7 +455,7 @@ func TestOddsSeparatesFixedLinesFromSamples(t *testing.T) {
 		"PRIMARY KEY (match_id, provider_id, captured_at)",
 	} {
 		if !strings.Contains(sql, required) {
-			t.Fatalf("0009_odds_snapshot.up.sql missing %q", required)
+			t.Fatalf("0015_odds_snapshot.up.sql missing %q", required)
 		}
 	}
 	if strings.Contains(sql, "GRANT DELETE ON odds_snapshot") {
@@ -464,7 +464,7 @@ func TestOddsSeparatesFixedLinesFromSamples(t *testing.T) {
 }
 
 func TestOddsTablesUseExplicitNullableMarketColumns(t *testing.T) {
-	sql := readMigration(t, "0009_odds_snapshot.up.sql")
+	sql := readMigration(t, "0015_odds_snapshot.up.sql")
 	marketColumns := []string{
 		"home_moneyline",
 		"draw_moneyline",
@@ -521,11 +521,11 @@ func oddsColumnSQL(t *testing.T, tableSQL, column string) string {
 }
 
 func TestOddsRollbackDropsOnlyOwnedTablesInReverseOrder(t *testing.T) {
-	sql := readMigration(t, "0009_odds_snapshot.down.sql")
+	sql := readMigration(t, "0015_odds_snapshot.down.sql")
 	snapshot := strings.Index(sql, "DROP TABLE IF EXISTS odds_snapshot")
 	odds := strings.Index(sql, "DROP TABLE IF EXISTS match_odds")
 	if snapshot < 0 || odds < 0 {
-		t.Fatal("0009_odds_snapshot.down.sql must drop every owned table")
+		t.Fatal("0015_odds_snapshot.down.sql must drop every owned table")
 	}
 	if snapshot > odds {
 		t.Fatal("0009 rollback must drop odds_snapshot before match_odds")
