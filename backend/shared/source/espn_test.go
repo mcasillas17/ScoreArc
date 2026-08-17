@@ -890,3 +890,174 @@ func TestPlaysRejectsMissingIdentifiersWithoutARequest(t *testing.T) {
 		t.Fatalf("requests = %d, want no request for invalid identifiers", requests)
 	}
 }
+
+// The officiating crew and the odds ladder live on the CORE host, under the
+// competition path, and nowhere else. A wrong path returns a plausible-looking
+// 404 body rather than an obvious failure, so the exact escaped path is
+// asserted here.
+func TestOfficialsRequestsTheCoreCrewEndpointOnce(t *testing.T) {
+	var requested []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requested = append(requested, r.URL.EscapedPath())
+		fmt.Fprint(w, `{"count":1,"items":[{"id":"9078",`+
+			`"fullName":"Salvador P\u00e9rez Villalobos",`+
+			`"position":{"name":"Referee","id":"1"},"order":1}]}`)
+	}))
+	defer server.Close()
+
+	crew, err := NewESPNWithBase(espnprovider.New(), server.URL).Officials(
+		context.Background(), config.Competition{ESPNSlug: "mex.1"}, "401877018")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPath := "/mex.1/events/401877018/competitions/401877018/officials"
+	if len(requested) != 1 || requested[0] != wantPath {
+		t.Fatalf("requested %v, want exactly [%s]", requested, wantPath)
+	}
+	if len(crew) != 1 {
+		t.Fatalf("crew = %#v, want one official", crew)
+	}
+	if crew[0].SourceID != "9078" || crew[0].FullName != "Salvador Pérez Villalobos" ||
+		crew[0].Role != "Referee" || crew[0].RoleID != "1" || crew[0].Order != 1 {
+		t.Fatalf("official = %#v", crew[0])
+	}
+}
+
+func TestOddsRequestsTheCoreOddsEndpointOnce(t *testing.T) {
+	var requested []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requested = append(requested, r.URL.EscapedPath())
+		fmt.Fprint(w, `{"count":1,"items":[{`+
+			`"provider":{"id":"100","name":"DraftKings"},`+
+			`"overUnder":2.5,"spread":0.5,"overOdds":-150.0,"underOdds":110.0,`+
+			`"homeTeamOdds":{"moneyLine":-170,"spreadOdds":-180.0,`+
+			`"open":{"moneyLine":{"american":"-225"},"pointSpread":{"american":"-1.5"},`+
+			`"spread":{"american":"+115"}}},`+
+			`"awayTeamOdds":{"moneyLine":430},`+
+			`"drawOdds":{"moneyLine":240}}]}`)
+	}))
+	defer server.Close()
+
+	providers, err := NewESPNWithBase(espnprovider.New(), server.URL).Odds(
+		context.Background(), config.Competition{ESPNSlug: "mex.1"}, "401877018")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPath := "/mex.1/events/401877018/competitions/401877018/odds"
+	if len(requested) != 1 || requested[0] != wantPath {
+		t.Fatalf("requested %v, want exactly [%s]", requested, wantPath)
+	}
+	if len(providers) != 1 || providers[0].ProviderID != "100" ||
+		providers[0].ProviderName != "DraftKings" {
+		t.Fatalf("providers = %#v", providers)
+	}
+	if providers[0].Open == nil || providers[0].Open.HomeMoneyline == nil ||
+		*providers[0].Open.HomeMoneyline != -225 {
+		t.Fatalf("open line = %#v, want the provider's opening home price", providers[0].Open)
+	}
+	if providers[0].Current == nil || providers[0].Current.HomeSpreadOdds == nil ||
+		*providers[0].Current.HomeSpreadOdds != -180 {
+		t.Fatalf("current line = %#v, want the flattened spread price", providers[0].Current)
+	}
+}
+
+func TestOfficialsAndOddsRejectMissingIdentifiersWithoutARequest(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests++
+	}))
+	defer server.Close()
+
+	provider := NewESPNWithBase(espnprovider.New(), server.URL)
+	for _, test := range []struct {
+		name    string
+		comp    config.Competition
+		eventID string
+	}{
+		{name: "competition slug", eventID: "1"},
+		{name: "event id", comp: config.Competition{ESPNSlug: "mex.1"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := provider.Officials(
+				context.Background(), test.comp, test.eventID); err == nil {
+				t.Fatal("want missing identifier to fail the officials fetch")
+			}
+			if _, err := provider.Odds(
+				context.Background(), test.comp, test.eventID); err == nil {
+				t.Fatal("want missing identifier to fail the odds fetch")
+			}
+		})
+	}
+	if requests != 0 {
+		t.Fatalf("requests = %d, want no request for invalid identifiers", requests)
+	}
+}
+
+// A failure has to name the endpoint and the event, and keep the original
+// cause: these are additive captures whose only trace is an ingest_run message.
+func TestOfficialsAndOddsWrapFailuresWithEventContext(t *testing.T) {
+	notFound := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "no such competition", http.StatusNotFound)
+	}))
+	defer notFound.Close()
+	malformed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Valid JSON the mapper cannot read: the failure is in mapping, not
+		// transport, and must still arrive with the event on it.
+		fmt.Fprint(w, `{"items":"not-a-list"}`)
+	}))
+	defer malformed.Close()
+	offline := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	offline.Close()
+
+	comp := config.Competition{ESPNSlug: "mex.1"}
+	single := espnprovider.NewWithOptions(espnprovider.Options{MaxAttempts: 1})
+	for _, test := range []struct {
+		name string
+		call func() error
+		want string
+	}{
+		{name: "officials status", want: "404", call: func() error {
+			_, err := NewESPNWithBase(espnprovider.New(), notFound.URL).
+				Officials(context.Background(), comp, "401877018")
+			return err
+		}},
+		{name: "odds status", want: "404", call: func() error {
+			_, err := NewESPNWithBase(espnprovider.New(), notFound.URL).
+				Odds(context.Background(), comp, "401877018")
+			return err
+		}},
+		{name: "officials mapping", want: "decode officials", call: func() error {
+			_, err := NewESPNWithBase(espnprovider.New(), malformed.URL).
+				Officials(context.Background(), comp, "401877018")
+			return err
+		}},
+		{name: "odds mapping", want: "decode odds", call: func() error {
+			_, err := NewESPNWithBase(espnprovider.New(), malformed.URL).
+				Odds(context.Background(), comp, "401877018")
+			return err
+		}},
+		{name: "officials transport", want: "connect", call: func() error {
+			_, err := NewESPNWithBase(single, offline.URL).
+				Officials(context.Background(), comp, "401877018")
+			return err
+		}},
+		{name: "odds transport", want: "connect", call: func() error {
+			_, err := NewESPNWithBase(single, offline.URL).
+				Odds(context.Background(), comp, "401877018")
+			return err
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.call()
+			if err == nil {
+				t.Fatal("want an error")
+			}
+			if !strings.Contains(err.Error(), "401877018") {
+				t.Fatalf("err = %v, want the event id in the message", err)
+			}
+			if !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("err = %v, want the original cause (%s) preserved", err, test.want)
+			}
+		})
+	}
+}

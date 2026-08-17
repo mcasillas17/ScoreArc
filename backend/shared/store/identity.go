@@ -490,3 +490,85 @@ RETURNING player_id`,
 	}
 	return minted, nil
 }
+
+// OfficialRef is a provider-scoped match-official identity. Like PlayerRef it
+// deliberately does NOT attempt cross-source merging: a referee's name is a
+// label, not an identity, and two sources yield two canonical officials until a
+// merge step exists.
+type OfficialRef struct {
+	SourceID string
+	FullName string
+}
+
+// Official resolves a provider official id to a canonical official id, creating
+// the official on a miss.
+//
+// This is Player's race, with the same resolution. The id is minted fresh, so
+// two racing writers aim at DIFFERENT ids and nothing converges them; the
+// crosswalk upsert RETURNS the id that actually holds (source, source_id), and
+// a loser that finds someone else's id there abandons the official it just
+// minted and adopts the winner. Repointing the mapping at the loser instead
+// would split one referee into N canonical people — the exact failure that
+// makes "every match this official took" unanswerable.
+func (s *Store) Official(ctx context.Context, source string, ref OfficialRef) (uuid.UUID, error) {
+	if ref.SourceID == "" {
+		return uuid.Nil, fmt.Errorf("official ref has no source id")
+	}
+	if ref.FullName == "" {
+		return uuid.Nil, fmt.Errorf("official ref %s/%s has no name", source, ref.SourceID)
+	}
+	opCtx, cancel := boundedContext(ctx)
+	defer cancel()
+
+	var officialID uuid.UUID
+	err := s.pool.QueryRow(opCtx,
+		`SELECT official_id FROM official_external_ref WHERE source=$1 AND source_id=$2`,
+		source, ref.SourceID,
+	).Scan(&officialID)
+	if err == nil {
+		return officialID, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, err
+	}
+
+	tx, err := s.pool.Begin(opCtx)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	defer rollback(opCtx, tx)
+
+	minted, err := uuid.NewV7()
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if _, err := tx.Exec(opCtx, `
+INSERT INTO official (id, full_name, updated_at)
+VALUES ($1,$2,now())`,
+		minted, ref.FullName,
+	); err != nil {
+		return uuid.Nil, err
+	}
+
+	// DO UPDATE (not DO NOTHING) so the statement always returns a row: on a
+	// conflict it returns the incumbent official_id rather than ours.
+	var holder uuid.UUID
+	if err := tx.QueryRow(opCtx, `
+INSERT INTO official_external_ref (source, source_id, official_id, first_seen_at, last_seen_at)
+VALUES ($1,$2,$3,now(),now())
+ON CONFLICT (source, source_id) DO UPDATE SET last_seen_at = now()
+RETURNING official_id`,
+		source, ref.SourceID, minted,
+	).Scan(&holder); err != nil {
+		return uuid.Nil, err
+	}
+	if holder != minted {
+		// Someone else got there first. Roll back, discarding the official we
+		// minted, and adopt theirs.
+		return holder, nil
+	}
+	if err := tx.Commit(opCtx); err != nil {
+		return uuid.Nil, err
+	}
+	return minted, nil
+}
