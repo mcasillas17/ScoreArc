@@ -3807,6 +3807,56 @@ func TestAbsentLeaderBoardIsNeverMemoised(t *testing.T) {
 	}
 }
 
+// T10.10's /v1/ingest-freshness reads ingest_run per competition per kind, with
+// a 20-minute threshold for `standings` and `leaders` -- three missed slow
+// ticks. A tick whose write the content memo skipped is a HEALTHY tick, so it
+// must still record its run under the same kind. Recording nothing, or
+// recording a new "..._unchanged" kind, would report every settled competition as
+// stale within twenty minutes and trade a write-amplification bug for a
+// monitoring one.
+func TestSkippedReplacementsStillRecordFreshness(t *testing.T) {
+	src := &fakeSource{}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	worker.runCycle(context.Background(), true)
+	repo.mu.Lock()
+	standingsBefore := len(loggedRunsForKind(repo.logged, "standings"))
+	leadersBefore := len(loggedRunsForKind(repo.logged, "leaders"))
+	repo.mu.Unlock()
+
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.standingsCalls != 1 || len(repo.leaderCategories) != 2 {
+		t.Fatalf("the second tick wrote: standings=%d leaders=%v",
+			repo.standingsCalls, repo.leaderCategories)
+	}
+	standings := loggedRunsForKind(repo.logged, "standings")
+	leaders := loggedRunsForKind(repo.logged, "leaders")
+	if len(standings) != standingsBefore+1 || !standings[len(standings)-1].ok {
+		t.Fatalf("standings runs = %v; a skipped tick must still record a successful run",
+			standings)
+	}
+	if len(leaders) != leadersBefore+1 || !leaders[len(leaders)-1].ok {
+		t.Fatalf("leaders runs = %v; a skipped tick must still record a successful run",
+			leaders)
+	}
+	// And no new kind was invented for it: ingest_run is C5 and gets coarser,
+	// never finer.
+	for _, run := range repo.logged {
+		if strings.HasSuffix(run.kind, "_unchanged") || strings.HasSuffix(run.kind, "_skipped") {
+			t.Fatalf("a skip invented the ingest_run kind %q; T10.10 reads kinds by name",
+				run.kind)
+		}
+	}
+}
+
 // A live match's probability is the whole point: it is the only state in which
 // the market moves fast enough for a curve to mean anything.
 func TestWinProbSnapshotWrittenForALiveMatch(t *testing.T) {
