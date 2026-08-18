@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -31,6 +32,34 @@ type Store struct {
 }
 
 const operationTimeout = 15 * time.Second
+
+// finalizedImmutable is the SQLSTATE migration 0021 raises when a write would
+// mutate a record that is already sealed as history: a finalized match's
+// appearances, events or commentary, an archived play stream, or a finished
+// match's crew and settled lines.
+//
+// It is in a user-definable class. The SQL standard reserves classes beginning
+// with 0-4 and A-H for itself, and Postgres uses P0, XX, HV, F0, 72 and the
+// numeric classes, so nothing the server generates can ever collide with a class
+// starting 'S'. That is the whole point: this must be distinguishable from a
+// connection failure, because a rejected write is a bug in the writer and
+// retrying it forever is the wrong response.
+const finalizedImmutable = "SA001"
+
+// IsImmutableViolation reports a write the schema refused because its target is
+// already recorded history.
+//
+// Exported, unlike isUniqueViolation, because the caller that needs to act on it
+// is the ingester rather than the store: a unique violation is a normal race the
+// store resolves by itself, while this one is a defect the store cannot fix and
+// must surface. Log it, count it, page on it -- do not retry it.
+//
+// It works through the writers' existing error wrapping without any change,
+// because every one of them wraps with %w.
+func IsImmutableViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == finalizedImmutable
+}
 
 func boundedContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, operationTimeout)
