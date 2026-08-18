@@ -795,3 +795,45 @@ func TestZeroValueStoreHasALazyIdentityCache(t *testing.T) {
 		t.Fatal("reset did not clear the cache")
 	}
 }
+
+// schedule.go's needsSummary needs to know HOW STALE match_detail is, not just
+// whether it exists -- without this column every scheduled fixture looks
+// equally fresh forever and a TTL can never fire. match_detail.updated_at has
+// existed since 0001_init; this only teaches Go to read it back.
+func TestExistingMatchesReportsDetailFreshness(t *testing.T) {
+	store, _ := newSeededStore(t)
+	ctx := context.Background()
+	kickoff := time.Date(2026, 9, 10, 19, 0, 0, 0, time.UTC)
+	identity := resolveFixture(t, store, "detail-age-1", kickoff)
+	match := fixtureMatch(identity, "detail-age-1", kickoff)
+	match.State = model.MatchStateScheduled
+
+	if err := store.UpsertMatch(ctx, identity, match); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := store.ExistingMatches(ctx, testCompetition, testSeason, []uuid.UUID{identity.MatchID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows[identity.MatchID].DetailUpdatedAt.Valid {
+		t.Fatal("no match_detail row exists yet -- DetailUpdatedAt must be invalid, not a zero timestamp")
+	}
+
+	before := time.Now().UTC()
+	if err := store.UpsertMatchDetail(ctx, identity.MatchID, model.MatchDetail{
+		Scorers: []model.Scorer{{Player: "Nobody yet"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = store.ExistingMatches(ctx, testCompetition, testSeason, []uuid.UUID{identity.MatchID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := rows[identity.MatchID]
+	if !row.HasDetail {
+		t.Fatal("HasDetail false after UpsertMatchDetail")
+	}
+	if !row.DetailUpdatedAt.Valid || row.DetailUpdatedAt.Time.Before(before) {
+		t.Fatalf("DetailUpdatedAt = %v, want a timestamp at/after %v", row.DetailUpdatedAt, before)
+	}
+}

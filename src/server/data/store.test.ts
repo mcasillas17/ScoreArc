@@ -8,6 +8,7 @@ import lcFixture from './__fixtures__/espn-leagues-cup-scoreboard.json';
 
 const wc = resolveSeason('world-cup')!;
 const lc = resolveSeason('leagues-cup')!;
+const SCOREBOARD_TWO_EVENTS = { ...sb, events: sb.events.slice(0, 2) };
 
 function fakeDeps() {
   const urls: string[] = [];
@@ -31,10 +32,11 @@ describe('EspnReadThroughStore', () => {
   it('scopes cache keys per competition + season (no cross-contamination)', async () => {
     const { deps } = fakeDeps();
     const store = createDataStore(deps);
-    await store.getMatches(wc);
-    await store.getMatches(lc);
-    expect(deps.cache.get('world-cup:2026:matches')).toBeDefined();
-    expect(deps.cache.get('leagues-cup:2026:matches')).toBeDefined();
+    const range = '20260801-20260831';
+    await store.getMatches(wc, range);
+    await store.getMatches(lc, range);
+    expect(deps.cache.get(`world-cup:2026:matches:${range}`)).toBeDefined();
+    expect(deps.cache.get(`leagues-cup:2026:matches:${range}`)).toBeDefined();
   });
 
   it('getBracket applies the season date range when present, omits it otherwise', async () => {
@@ -105,5 +107,71 @@ describe('Leagues Cup through the store', () => {
     const matches = await createDataStore(deps).getMatches(lc);
     expect(Array.isArray(matches)).toBe(true);
     for (const m of matches) expect(m.home.abbr.length).toBeGreaterThan(0);
+  });
+});
+
+describe('range-aware match reads', () => {
+  // Adding a range parameter without adding it to the cache key means the
+  // first range fetched is served for every later one -- August's results
+  // returned for a September request. That reads as a provider bug for a week.
+  it('does not serve one range from another range cache entry', async () => {
+    const urls: string[] = [];
+    const store = createDataStore({
+      cache: new TtlCache<unknown>(),
+      fetchJson: async (url: string) => {
+        urls.push(url);
+        return { events: [] };
+      },
+    });
+
+    await store.getFixtures(wc, '20260801-20260831');
+    await store.getFixtures(wc, '20260901-20260930');
+
+    expect(urls.filter((u) => u.includes('20260801-20260831'))).toHaveLength(1);
+    expect(urls.filter((u) => u.includes('20260901-20260930'))).toHaveLength(1);
+  });
+
+  it('serves a repeated range from cache', async () => {
+    const urls: string[] = [];
+    const store = createDataStore({
+      cache: new TtlCache<unknown>(),
+      fetchJson: async (url: string) => {
+        urls.push(url);
+        return { events: [] };
+      },
+    });
+    await store.getFixtures(wc, '20260801-20260831');
+    await store.getFixtures(wc, '20260801-20260831');
+    expect(urls).toHaveLength(1);
+  });
+
+  // The calendar must cost one request per month, not one per match.
+  it('fetches no per-match summaries for a fixtures range', async () => {
+    const urls: string[] = [];
+    const store = createDataStore({
+      cache: new TtlCache<unknown>(),
+      fetchJson: async (url: string) => {
+        urls.push(url);
+        // Two events, so a summary-enriching implementation would betray
+        // itself with two extra /summary calls.
+        return SCOREBOARD_TWO_EVENTS;
+      },
+    });
+    await store.getFixtures(wc, '20260801-20260831');
+    expect(urls.filter((u) => u.includes('/summary'))).toHaveLength(0);
+    expect(urls).toHaveLength(1);
+  });
+
+  it('defaults getMatches to the current week when no range is given', async () => {
+    const urls: string[] = [];
+    const store = createDataStore({
+      cache: new TtlCache<unknown>(),
+      fetchJson: async (url: string) => {
+        urls.push(url);
+        return { events: [] };
+      },
+    });
+    await store.getMatches(wc);
+    expect(urls[0]).toMatch(/dates=\d{8}-\d{8}/);
   });
 });

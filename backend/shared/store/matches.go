@@ -34,9 +34,14 @@ type MatchIdentity struct {
 // MatchRow is the stored state of a match, in canonical space: every id on it
 // is a ScoreArc id, never a provider one.
 type MatchRow struct {
-	State           model.MatchState
-	FinalizedAt     pgtype.Timestamptz
-	HasDetail       bool
+	State       model.MatchState
+	FinalizedAt pgtype.Timestamptz
+	HasDetail   bool
+	// DetailUpdatedAt is match_detail.updated_at -- invalid (zero pgtype) when
+	// HasDetail is false. schedule.go's needsSummary uses this, and only this,
+	// to decide whether a SCHEDULED match's stored detail is stale enough to
+	// be worth re-fetching; it is not read for any other match state.
+	DetailUpdatedAt pgtype.Timestamptz
 	Round           string
 	BracketRequired *bool
 	WinnerID        *string
@@ -349,7 +354,7 @@ func (s *Store) ExistingMatches(
 	ctx, cancel := boundedContext(ctx)
 	defer cancel()
 	rows, err := s.pool.Query(ctx, `
-SELECT m.id, m.state, m.finalized_at, d.match_id IS NOT NULL,
+SELECT m.id, m.state, m.finalized_at, d.match_id IS NOT NULL, d.updated_at,
 	COALESCE(m.round, ''), m.bracket_required, m.winner_id, m.note,
 	home.id, home.name, home.abbr, home.crest_url,
 	away.id, away.name, away.abbr, away.crest_url,
@@ -371,7 +376,7 @@ WHERE m.competition_id=$1 AND m.season_id=$2 AND m.id=ANY($3)`,
 		var id uuid.UUID
 		var row MatchRow
 		if err := rows.Scan(
-			&id, &row.State, &row.FinalizedAt, &row.HasDetail,
+			&id, &row.State, &row.FinalizedAt, &row.HasDetail, &row.DetailUpdatedAt,
 			&row.Round, &row.BracketRequired, &row.WinnerID, &row.Note,
 			&row.Home.ID, &row.Home.Name, &row.Home.Abbr, &row.Home.CrestURL,
 			&row.Away.ID, &row.Away.Name, &row.Away.Abbr, &row.Away.CrestURL,
