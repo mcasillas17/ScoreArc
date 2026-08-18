@@ -27,7 +27,20 @@ const (
 	backfillRetryInterval   = 30 * time.Minute
 	standingSnapshotRunKind = "standings_snapshot"
 	winProbSnapshotRunKind  = "win_prob_snapshot"
+	// sampleAuditWindow bounds how often a SUCCESSFUL per-match sampling operation
+	// writes an ingest_run row. It has to stay far inside the freshness endpoint's
+	// thresholds (T10.10 gives `odds` 24 hours) and short enough that a sampler
+	// that stopped is visible while a match is still being played.
+	sampleAuditWindow = 5 * time.Minute
 )
+
+// auditWindow is one (competition, kind) throttle. A restart empties it and the
+// next sample writes a row, which is correct and cheap.
+type auditWindow struct {
+	windowStart  time.Time
+	lastRecorded time.Time
+	suppressed   int
+}
 
 type activity struct {
 	known      bool
@@ -61,6 +74,14 @@ type runner struct {
 	snapshotted       map[string]time.Time
 	mirrorUnavailable time.Time
 	mirrorTimeout     time.Duration
+	// now is the runner's clock. Only the live-path audit and sampling
+	// decisions read it, so tests can drive a tick sequence without sleeping;
+	// nil means time.Now.
+	now func() time.Time
+
+	// sampleAudit throttles the audit rows of the two per-match-per-poll
+	// sampling kinds. Successes only -- failures are never suppressed.
+	sampleAudit map[string]auditWindow
 }
 
 func assetCacheKey(kind, id, sourceURL string) string {
@@ -773,6 +794,62 @@ func (r *runner) recordRun(
 	r.recordRunFor(ctx, &compID, kind, started, operationErr)
 }
 
+func (r *runner) clock() time.Time {
+	if r.now != nil {
+		return r.now()
+	}
+	return time.Now()
+}
+
+// recordSample audits a per-match, per-poll sampling operation.
+//
+// These are the only two writes in the system whose audit row would otherwise
+// scale with matches x polls: 720 rows per match per two hours for
+// win_prob_snapshot and odds together, before a Saturday multiplies it by the
+// number of simultaneous matches. A SUCCESS is therefore recorded at most once
+// per (competition, kind) per sampleAuditWindow, with the suppressed count
+// logged and the recorded row's started_at backdated so it spans the window it
+// stands for. A FAILURE is never suppressed.
+//
+// What is deliberately lost: the database no longer counts samples, only that
+// sampling ran and last succeeded. ingest_run is operational (spec §2, C5) and
+// a per-poll counter is not something anyone would miss in ninety days.
+func (r *runner) recordSample(
+	ctx context.Context,
+	compID, kind string,
+	started time.Time,
+	operationErr error,
+) {
+	now := r.clock()
+	key := compID + "\x00" + kind
+
+	r.mu.Lock()
+	window := r.sampleAudit[key]
+	if operationErr == nil && !window.lastRecorded.IsZero() &&
+		now.Sub(window.lastRecorded) < sampleAuditWindow {
+		if window.suppressed == 0 {
+			window.windowStart = started
+		}
+		window.suppressed++
+		r.sampleAudit[key] = window
+		r.mu.Unlock()
+		return
+	}
+	from := started
+	if window.suppressed > 0 && !window.windowStart.IsZero() {
+		from = window.windowStart
+	}
+	suppressed := window.suppressed
+	r.sampleAudit[key] = auditWindow{lastRecorded: now}
+	r.mu.Unlock()
+
+	if suppressed > 0 {
+		r.log.Info("live sample window",
+			"comp", compID, "kind", kind, "suppressed", suppressed, "since", from)
+	}
+	r.recordRun(ctx, compID, kind, from, operationErr)
+}
+
 func (r *runner) recordGlobalRun(
 	ctx context.Context,
 	kind string,
@@ -804,7 +881,7 @@ func (r *runner) recordRunFor(
 	logCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 	defer cancel()
 	if err := r.repo.LogIngestRun(
-		logCtx, compID, kind, started, time.Now(), ok, message,
+		logCtx, compID, kind, started, r.clock(), ok, message,
 	); err != nil {
 		r.log.Warn("record ingest run", "comp", compID, "kind", kind, "err", err)
 	}

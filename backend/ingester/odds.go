@@ -79,25 +79,32 @@ func (r *runner) captureOdds(
 	mode oddsCaptureMode,
 ) error {
 	started := time.Now()
+	// Final and fixed-retry captures are once-per-match operations and must
+	// never be throttled; the live sample is the one that repeats every 20
+	// seconds.
+	record := r.recordSample
+	if mode != oddsCaptureLive {
+		record = r.recordRun
+	}
 	providers, err := r.source.Odds(ctx, comp, providerEventID)
 	if err != nil {
 		r.log.Warn("fetch match odds", "match", providerEventID, "err", err)
 		if mode == oddsCaptureLive {
-			r.recordRun(ctx, comp.ID, oddsRunKind, started, err)
+			record(ctx, comp.ID, oddsRunKind, started, err)
 			return nil
 		}
 		effectiveErr := r.persistFinalCaptureAttempt(ctx, identity.MatchID, store.FinalCaptureFixedOdds, started, err)
-		r.recordRun(ctx, comp.ID, oddsRunKind, started, effectiveErr)
+		record(ctx, comp.ID, oddsRunKind, started, effectiveErr)
 		return effectiveErr
 	}
 	// A match no book priced is an answer, not a failure.
 	if len(providers) == 0 {
 		if mode == oddsCaptureLive {
-			r.recordRun(ctx, comp.ID, oddsRunKind, started, nil)
+			record(ctx, comp.ID, oddsRunKind, started, nil)
 			return nil
 		}
 		effectiveErr := r.persistFinalCaptureAttempt(ctx, identity.MatchID, store.FinalCaptureFixedOdds, started, nil)
-		r.recordRun(ctx, comp.ID, oddsRunKind, started, effectiveErr)
+		record(ctx, comp.ID, oddsRunKind, started, effectiveErr)
 		return effectiveErr
 	}
 
@@ -117,7 +124,7 @@ func (r *runner) captureOdds(
 	}
 
 	if mode == oddsCaptureLive {
-		r.recordRun(ctx, comp.ID, oddsRunKind, started, snapshotErr)
+		record(ctx, comp.ID, oddsRunKind, started, snapshotErr)
 		if snapshotErr == nil {
 			r.log.Info("match odds",
 				"match", providerEventID, "providers", len(providers), "mode", mode.String())
@@ -132,7 +139,7 @@ func (r *runner) captureOdds(
 	persistedFixedOutcome := r.persistFinalCaptureAttempt(
 		ctx, identity.MatchID, store.FinalCaptureFixedOdds, started, fixedErr)
 	operationErr := errors.Join(snapshotErr, persistedFixedOutcome)
-	r.recordRun(ctx, comp.ID, oddsRunKind, started, operationErr)
+	record(ctx, comp.ID, oddsRunKind, started, operationErr)
 	if operationErr == nil {
 		r.log.Info("match odds",
 			"match", providerEventID, "providers", len(providers), "mode", mode.String())

@@ -265,7 +265,7 @@ func (r *runner) processMatches(
 					start := time.Now()
 					err := r.repo.WriteWinProbSnapshot(
 						ctx, identity.MatchID, *detail.WinProbability, summaryStartedAt)
-					r.recordRun(ctx, comp.ID, winProbSnapshotRunKind, start, err)
+					r.recordSample(ctx, comp.ID, winProbSnapshotRunKind, start, err)
 					if err != nil {
 						r.log.Warn("win probability snapshot",
 							"match", match.ID, "err", err)
