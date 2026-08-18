@@ -73,10 +73,17 @@ func scheduledDetailTTL(timeToKickoff time.Duration) time.Duration {
 }
 
 // needsSummary decides whether match's summary is worth fetching this cycle.
-// now is passed in and never read internally (no time.Now() in this
-// function), so the TTL boundaries above are testable without a wall clock --
-// the same pattern candidateIsActive (runner.go) already uses.
-func needsSummary(match model.Match, existing *store.MatchRow, now time.Time) bool {
+// now is passed in and never read internally (no time.Now() in this function),
+// so the TTL boundaries above are testable without a wall clock. slowTick
+// preserves the existing every-slow-tick behavior inside the final hour,
+// where an age check equal to slowInterval would otherwise skip the next tick
+// because match_detail.updated_at is stamped after the provider fetch.
+func needsSummary(
+	match model.Match,
+	existing *store.MatchRow,
+	now time.Time,
+	slowTick bool,
+) bool {
 	if existing != nil && existing.FinalizedAt.Valid {
 		return false
 	}
@@ -105,6 +112,9 @@ func needsSummary(match model.Match, existing *store.MatchRow, now time.Time) bo
 		// gets rescheduled is picked up on the very next check because
 		// there is nothing stale to leave behind.
 		ttl := scheduledDetailTTL(kickoff.Sub(now))
+		if ttl == slowInterval {
+			return slowTick
+		}
 		return now.Sub(existing.DetailUpdatedAt.Time) >= ttl
 	default:
 		return false

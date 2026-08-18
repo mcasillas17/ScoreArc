@@ -77,58 +77,60 @@ func TestNeedsSummary(t *testing.T) {
 		name     string
 		match    model.Match
 		existing *store.MatchRow
+		slow     bool
 		want     bool
 	}{
-		{"live always refetches", model.Match{State: model.MatchStateLive}, nil, true},
+		{"live always refetches", model.Match{State: model.MatchStateLive}, nil, false, true},
 		{
 			"live refetches even with a maximally fresh detail row -- the " +
 				"scheduled->live transition always refreshes immediately, " +
 				"not via a TTL check",
-			model.Match{State: model.MatchStateLive}, withDetail(true, fixedNow), true,
+			model.Match{State: model.MatchStateLive}, withDetail(true, fixedNow), false, true,
 		},
 		{"finished always retries", model.Match{State: model.MatchStateFinished},
-			&store.MatchRow{}, true},
+			&store.MatchRow{}, false, true},
 		{"finalized never refetches, any state", model.Match{State: model.MatchStateFinished},
-			finalized, false},
-		{"new scheduled match, no stored row", scheduledIn10Days, nil, true},
+			finalized, true, false},
+		{"new scheduled match, no stored row", scheduledIn10Days, nil, false, true},
 		{"scheduled with no detail row yet", scheduledIn10Days,
-			withDetail(false, time.Time{}), true},
+			withDetail(false, time.Time{}), false, true},
 		{
 			"far scheduled (10d out), refreshed 1h ago -- within the 6h TTL, skip",
-			scheduledIn10Days, withDetail(true, fixedNow.Add(-time.Hour)), false,
+			scheduledIn10Days, withDetail(true, fixedNow.Add(-time.Hour)), false, false,
 		},
 		{
 			"far scheduled (10d out), refreshed 7h ago -- past the 6h TTL, refetch",
-			scheduledIn10Days, withDetail(true, fixedNow.Add(-7*time.Hour)), true,
+			scheduledIn10Days, withDetail(true, fixedNow.Add(-7*time.Hour)), false, true,
 		},
 		{
 			"mid-band (12h out), refreshed 30m ago -- within the 1h TTL, skip",
-			scheduledIn12Hours, withDetail(true, fixedNow.Add(-30*time.Minute)), false,
+			scheduledIn12Hours, withDetail(true, fixedNow.Add(-30*time.Minute)), false, false,
 		},
 		{
 			"mid-band (12h out), refreshed 90m ago -- past the 1h TTL, refetch",
-			scheduledIn12Hours, withDetail(true, fixedNow.Add(-90*time.Minute)), true,
+			scheduledIn12Hours, withDetail(true, fixedNow.Add(-90*time.Minute)), false, true,
 		},
 		{
-			"near kickoff (30m out), refreshed 2m ago -- within the 5m TTL, skip",
-			scheduledIn30Minutes, withDetail(true, fixedNow.Add(-2*time.Minute)), false,
+			"near kickoff on a fast tick waits for the slow tick",
+			scheduledIn30Minutes, withDetail(true, fixedNow.Add(-6*time.Minute)), false, false,
 		},
 		{
-			"near kickoff (30m out), refreshed 6m ago -- past the 5m TTL, refetch " +
-				"(same cadence as before this change)",
-			scheduledIn30Minutes, withDetail(true, fixedNow.Add(-6*time.Minute)), true,
+			"near kickoff on the next slow tick refetches even when fetch latency " +
+				"makes the stored detail 1s younger than slowInterval",
+			scheduledIn30Minutes,
+			withDetail(true, fixedNow.Add(-slowInterval+time.Second)), true, true,
 		},
 		{
 			"unparseable kickoff fails open rather than freezing the fixture " +
 				"forever -- defensive only, resolveMatch already validated this " +
 				"upstream before the match could reach here",
 			model.Match{State: model.MatchStateScheduled, Kickoff: "not-a-time"},
-			withDetail(true, fixedNow), true,
+			withDetail(true, fixedNow), false, true,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := needsSummary(test.match, test.existing, fixedNow); got != test.want {
+			if got := needsSummary(test.match, test.existing, fixedNow, test.slow); got != test.want {
 				t.Fatalf("got %v, want %v", got, test.want)
 			}
 		})
@@ -149,7 +151,7 @@ func TestNeedsSummaryReschedulingTightensTheBandImmediately(t *testing.T) {
 		State:   model.MatchStateScheduled,
 		Kickoff: fixedNow.Add(10 * 24 * time.Hour).Format(time.RFC3339),
 	}
-	if needsSummary(farOut, existing, fixedNow) {
+	if needsSummary(farOut, existing, fixedNow, false) {
 		t.Fatal("2h-old detail is fresh for a 10-day-out fixture (6h TTL); should not refetch")
 	}
 
@@ -157,7 +159,7 @@ func TestNeedsSummaryReschedulingTightensTheBandImmediately(t *testing.T) {
 	// kickoff to 12 hours out -- the 24h/1h band, TTL 1h. 2h old is now stale.
 	rescheduledCloser := farOut
 	rescheduledCloser.Kickoff = fixedNow.Add(12 * time.Hour).Format(time.RFC3339)
-	if !needsSummary(rescheduledCloser, existing, fixedNow) {
+	if !needsSummary(rescheduledCloser, existing, fixedNow, false) {
 		t.Fatal("rescheduling closer must tighten the TTL immediately, " +
 			"not leave the fixture stuck in the old 6h band")
 	}

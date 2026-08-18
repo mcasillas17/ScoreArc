@@ -219,7 +219,7 @@ func (r *runner) processMatches(
 
 		if !(backfill && match.State == model.MatchStateScheduled) &&
 			(match.State != model.MatchStateFinished || canFinalize) &&
-			needsSummary(match, currentPtr, time.Now()) {
+			needsSummary(match, currentPtr, time.Now(), slowTick) {
 			summaryMatch := match
 			summaryMatch.Home, summaryMatch.Away = providerHome, providerAway
 			summaryStartedAt := time.Now()
