@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { groupRowClass } from './GroupTable';
+import { groupRowClass } from './groupRowClass';
 import type { Standing } from '@/server/data/types';
 
 function row(rank: number, played = 3, advanced = false): Standing {

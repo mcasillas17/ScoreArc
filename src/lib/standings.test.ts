@@ -74,4 +74,30 @@ describe('thirdPlacedRanking', () => {
     ];
     expect(thirdPlacedRanking(groups)).toEqual([]);
   });
+
+  // Before a ball is kicked every numeric tiebreaker ties, so compareThird
+  // falls through to `groupId.localeCompare` and the ranking becomes
+  // alphabetical by group. Marking the first eight as qualifying then states
+  // that Groups A-H are through on no evidence whatsoever.
+  it('flags nobody as qualifying before any group has kicked off', () => {
+    const thirds = Array.from({ length: 12 }, () => ({ pts: 0, gd: 0, gf: 0 }));
+    const groups = groupsWithThirds(thirds).map((g) => ({
+      ...g,
+      standings: g.standings.map((s) => ({ ...s, played: 0 })),
+    }));
+    const ranked = thirdPlacedRanking(groups);
+    expect(ranked).toHaveLength(12);
+    expect(ranked.filter((r) => r.qualifies)).toHaveLength(0);
+  });
+
+  // One group kicking off is enough for the race to be real, even though the
+  // rest are still level. Same "every, not any" boundary as the league tables.
+  it('resumes flagging once a single group has played', () => {
+    const thirds = Array.from({ length: 12 }, () => ({ pts: 0, gd: 0, gf: 0 }));
+    const groups = groupsWithThirds(thirds).map((g, i) => ({
+      ...g,
+      standings: g.standings.map((s) => ({ ...s, played: i === 0 ? 1 : 0 })),
+    }));
+    expect(thirdPlacedRanking(groups).filter((r) => r.qualifies)).toHaveLength(QUALIFYING_THIRDS);
+  });
 });

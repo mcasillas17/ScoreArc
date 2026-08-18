@@ -1,21 +1,10 @@
-import type { Group, Standing } from "@/server/data/types";
+import type { Group } from "@/server/data/types";
 import TeamBadge from "./TeamBadge";
+import { groupRowClass } from "./groupRowClass";
 
 interface GroupTableProps {
   group: Group;
   teamStyle?: 'flag' | 'crest';
-}
-
-// Before a group has kicked off, the provider ranks it alphabetically and
-// still emits rank 1..n. Marking rows 1-2 as qualifying then states that the
-// two clubs whose names sort first are through — the same defect the league
-// tables carried, in a second code path. `started` is threaded in rather than
-// derived per row because the question is about the group, not the team.
-export function groupRowClass(s: Standing, started: boolean): string {
-  if (!started) return "";
-  if (s.advanced || s.rank <= 2) return "row-qualify";
-  if (s.rank === 3) return "row-playoff";
-  return "";
 }
 
 function fmtGD(gd: number): string {
@@ -27,6 +16,9 @@ export default function GroupTable({ group, teamStyle }: GroupTableProps) {
   return (
     <div className="group-card">
       <h2 className="group-name">{group.name}</h2>
+      {!started ? (
+        <p className="lz-preseason">Season not started — no matches played yet.</p>
+      ) : null}
       <table className="standings-table">
         <thead>
           <tr>

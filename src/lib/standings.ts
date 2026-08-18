@@ -52,10 +52,17 @@ export function thirdPlacedRanking(groups: Group[]): ThirdPlaceRow[] {
       qualifies: false,
     });
   }
+  // Before a ball is kicked every numeric tiebreaker ties, so compareThird
+  // falls all the way through to `groupId.localeCompare` and this ranking
+  // becomes alphabetical by group. Flagging the first eight then states that
+  // Groups A-H have qualified, on no evidence at all — the same false claim
+  // the league tables made by painting zones over an alphabetical order.
+  const started = rows.some((row) => row.played > 0);
+
   rows.sort(compareThird);
   return rows.map((row, i) => ({
     ...row,
     rank: i + 1,
-    qualifies: i < QUALIFYING_THIRDS,
+    qualifies: started && i < QUALIFYING_THIRDS,
   }));
 }
