@@ -360,6 +360,7 @@ type fakeRepository struct {
 	pruneCalls        int
 	pruneHook         func()
 	matchCalls        int
+	detailCalls       int
 	finalizeCalls     int
 	finalizeResult    *bool
 	finalizeErr       error
@@ -584,6 +585,9 @@ func (f *fakeRepository) UpsertMatch(
 	return nil
 }
 func (f *fakeRepository) UpsertMatchDetail(context.Context, uuid.UUID, model.MatchDetail) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.detailCalls++
 	return nil
 }
 func (f *fakeRepository) WriteParticipation(
@@ -1140,6 +1144,8 @@ func testRunner(src *fakeSource, repo *fakeRepository, comp config.Competition) 
 		squadsRefreshed:   make(map[string]time.Time),
 		squadAttempted:    make(map[string]time.Time),
 		snapshotted:       make(map[string]time.Time),
+		sampleAudit:       make(map[string]auditWindow),
+		liveSamples:       make(map[string]liveSample),
 		maxConcurrent:     3,
 	}
 }
@@ -4905,5 +4911,171 @@ func TestPersistFinalCaptureAttemptTreatsContextCancellationAsFailureNotCompleti
 	}
 	if !row.retryAt.After(attemptedAt) {
 		t.Fatalf("row.retryAt = %s, want it strictly after attemptedAt %s", row.retryAt, attemptedAt)
+	}
+}
+
+// A live match is polled every 20 seconds. Writing an ingest_run row per match
+// per poll for the two sampling kinds is 720 rows per match per two hours, to
+// say the same thing 720 times.
+func TestLiveSampleAuditIsThrottledToOneRowPerWindow(t *testing.T) {
+	repo := &fakeRepository{}
+	src := &fakeSource{odds: oddsFixture()}
+	worker := testRunner(src, repo, config.Competition{ID: "test"})
+	clock := time.Date(2026, 8, 22, 19, 0, 0, 0, time.UTC)
+	worker.now = func() time.Time { return clock }
+
+	// Fifteen polls inside one five-minute window: 20s apart.
+	for range 15 {
+		worker.captureOdds(context.Background(),
+			config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureLive)
+		clock = clock.Add(20 * time.Second)
+	}
+	if runs := loggedRunsForKind(repo.logged, "odds"); len(runs) != 1 {
+		t.Fatalf("odds audit rows = %d over five minutes of polling, want 1", len(runs))
+	}
+
+	// Past the window, one more row.
+	clock = clock.Add(5 * time.Minute)
+	worker.captureOdds(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureLive)
+	if runs := loggedRunsForKind(repo.logged, "odds"); len(runs) != 2 {
+		t.Fatalf("odds audit rows = %d after the window elapsed, want 2", len(runs))
+	}
+}
+
+// Throttling successes must never throttle failures: a bookmaker feed going
+// dark is exactly what the audit trail exists to show, and it must show up on
+// the poll it happens rather than up to five minutes later.
+func TestLiveSampleAuditNeverSuppressesAFailure(t *testing.T) {
+	repo := &fakeRepository{}
+	src := &fakeSource{odds: oddsFixture()}
+	worker := testRunner(src, repo, config.Competition{ID: "test"})
+	clock := time.Date(2026, 8, 22, 19, 0, 0, 0, time.UTC)
+	worker.now = func() time.Time { return clock }
+
+	worker.captureOdds(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureLive)
+	clock = clock.Add(20 * time.Second)
+	src.oddsErr = errors.New("core api down")
+	worker.captureOdds(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureLive)
+
+	runs := loggedRunsForKind(repo.logged, "odds")
+	if len(runs) != 2 || runs[1].ok {
+		t.Fatalf("odds audit rows = %#v, want the failure recorded immediately", runs)
+	}
+}
+
+// Migration 0005 buckets the curve to the minute. Three polls inside one
+// minute with the same prices must therefore produce one write, not three
+// conflict updates rewriting the row they just wrote.
+func TestLiveSamplesSkipAnUnchangedMinuteBucket(t *testing.T) {
+	repo := &fakeRepository{}
+	src := &fakeSource{odds: oddsFixture()}
+	worker := testRunner(src, repo, config.Competition{ID: "test"})
+	clock := time.Date(2026, 8, 22, 19, 0, 0, 0, time.UTC)
+	worker.now = func() time.Time { return clock }
+
+	for range 3 {
+		worker.captureOdds(context.Background(),
+			config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureLive)
+		clock = clock.Add(20 * time.Second)
+	}
+	if len(repo.oddsSnapshots) != 1 {
+		t.Fatalf("odds snapshot writes = %d within one minute, want 1", len(repo.oddsSnapshots))
+	}
+
+	// The next minute is a new bucket and must be sampled, even though the
+	// prices are identical -- a flat curve is a real observation.
+	worker.captureOdds(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureLive)
+	if len(repo.oddsSnapshots) != 2 {
+		t.Fatalf("odds snapshot writes = %d after the bucket rolled, want 2",
+			len(repo.oddsSnapshots))
+	}
+
+	// A price move inside the same bucket is written immediately: the bucket is
+	// a floor on resolution, not a ceiling on truth.
+	moved := oddsFixture()
+	price := 250
+	moved[0].Current.HomeMoneyline = &price
+	src.odds = moved
+	clock = clock.Add(10 * time.Second)
+	worker.captureOdds(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureLive)
+	if len(repo.oddsSnapshots) != 3 {
+		t.Fatalf("odds snapshot writes = %d after the line moved, want 3",
+			len(repo.oddsSnapshots))
+	}
+}
+
+func TestLiveSamplesRetryAFailedWriteWithinTheSameMinute(t *testing.T) {
+	repo := &fakeRepository{oddsSnapshotErr: errors.New("database unavailable")}
+	src := &fakeSource{odds: oddsFixture()}
+	worker := testRunner(src, repo, config.Competition{ID: "test"})
+	clock := time.Date(2026, 8, 22, 19, 0, 0, 0, time.UTC)
+	worker.now = func() time.Time { return clock }
+
+	worker.captureOdds(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureLive)
+	repo.oddsSnapshotErr = nil
+	clock = clock.Add(20 * time.Second)
+	worker.captureOdds(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureLive)
+
+	if len(repo.oddsSnapshots) != 2 {
+		t.Fatalf("odds snapshot writes = %d after a failed write, want the next poll to retry",
+			len(repo.oddsSnapshots))
+	}
+}
+
+// The touch-level stream is ~1,500 plays over two pages. capturePlays is called
+// only when a match finalizes and from the slow-tick backlog, never on a live
+// poll -- eighteen requests a minute per live match against a keyless API is
+// the failure mode this guards.
+func TestLiveCycleNeverCapturesThePlayStream(t *testing.T) {
+	repo := &fakeRepository{}
+	src := &fakeSource{
+		live:           true,
+		winProbability: &model.WinProbability{Home: 50, Draw: 25, Away: 25},
+	}
+	worker := newTestRunnerWithSource(repo, src)
+
+	for range 3 {
+		worker.runCycle(context.Background(), false)
+	}
+
+	src.mu.Lock()
+	playsCalls := src.playsCalls
+	src.mu.Unlock()
+	repo.mu.Lock()
+	playWrites := len(repo.playWrites)
+	repo.mu.Unlock()
+	if playsCalls != 0 || playWrites != 0 {
+		t.Fatalf("a live match fetched the play stream %d times and wrote %d batches, want 0/0",
+			playsCalls, playWrites)
+	}
+}
+
+// match_detail is deliberately NOT content-guarded on the live path: its
+// content genuinely moves every poll (running stats, the growing commentary
+// array). What must stay true is that it costs ONE write per match per poll --
+// if it ever becomes one per row of anything, it joins the tables Tasks 2-4
+// fixed.
+func TestLiveCycleWritesMatchDetailOncePerPoll(t *testing.T) {
+	repo := &fakeRepository{}
+	src := &fakeSource{live: true}
+	worker := newTestRunnerWithSource(repo, src)
+
+	const polls = 3
+	for range polls {
+		worker.runCycle(context.Background(), false)
+	}
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.detailCalls != polls {
+		t.Fatalf("match_detail writes = %d over %d polls of one match, want %d",
+			repo.detailCalls, polls, polls)
 	}
 }

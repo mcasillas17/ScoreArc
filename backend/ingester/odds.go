@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/shared/store"
@@ -78,27 +77,46 @@ func (r *runner) captureOdds(
 	providerEventID string,
 	mode oddsCaptureMode,
 ) error {
-	started := time.Now()
+	started := r.clock()
+	// Final and fixed-retry captures are once-per-match operations and must
+	// never be throttled; the live sample is the one that repeats every 20
+	// seconds.
+	record := r.recordSample
+	if mode != oddsCaptureLive {
+		record = r.recordRun
+	}
 	providers, err := r.source.Odds(ctx, comp, providerEventID)
 	if err != nil {
 		r.log.Warn("fetch match odds", "match", providerEventID, "err", err)
 		if mode == oddsCaptureLive {
-			r.recordRun(ctx, comp.ID, oddsRunKind, started, err)
+			record(ctx, comp.ID, oddsRunKind, started, err)
 			return nil
 		}
 		effectiveErr := r.persistFinalCaptureAttempt(ctx, identity.MatchID, store.FinalCaptureFixedOdds, started, err)
-		r.recordRun(ctx, comp.ID, oddsRunKind, started, effectiveErr)
+		record(ctx, comp.ID, oddsRunKind, started, effectiveErr)
 		return effectiveErr
 	}
 	// A match no book priced is an answer, not a failure.
 	if len(providers) == 0 {
 		if mode == oddsCaptureLive {
-			r.recordRun(ctx, comp.ID, oddsRunKind, started, nil)
+			record(ctx, comp.ID, oddsRunKind, started, nil)
 			return nil
 		}
 		effectiveErr := r.persistFinalCaptureAttempt(ctx, identity.MatchID, store.FinalCaptureFixedOdds, started, nil)
-		r.recordRun(ctx, comp.ID, oddsRunKind, started, effectiveErr)
+		record(ctx, comp.ID, oddsRunKind, started, effectiveErr)
 		return effectiveErr
+	}
+
+	// The bucket is a minute (WriteOddsSnapshot truncates), so two of every
+	// three live polls would otherwise rewrite the row they just wrote. A
+	// finalized capture always writes: it is the closing sample and the fixed
+	// lines, not a point on a curve.
+	liveSampleReserved := false
+	if mode == oddsCaptureLive {
+		if r.sampleUnchanged(identity.MatchID, oddsRunKind, started, oddsDigest(providers)) {
+			return nil
+		}
+		liveSampleReserved = true
 	}
 
 	var snapshotErr, fixedErr error
@@ -106,6 +124,9 @@ func (r *runner) captureOdds(
 		if err := r.repo.WriteOddsSnapshot(
 			ctx, identity.MatchID, providers, started); err != nil {
 			snapshotErr = fmt.Errorf("odds snapshot: %w", err)
+			if liveSampleReserved {
+				r.forgetSample(identity.MatchID, oddsRunKind)
+			}
 			r.log.Warn("write odds snapshot", "match", providerEventID, "err", err)
 		}
 	}
@@ -117,7 +138,7 @@ func (r *runner) captureOdds(
 	}
 
 	if mode == oddsCaptureLive {
-		r.recordRun(ctx, comp.ID, oddsRunKind, started, snapshotErr)
+		record(ctx, comp.ID, oddsRunKind, started, snapshotErr)
 		if snapshotErr == nil {
 			r.log.Info("match odds",
 				"match", providerEventID, "providers", len(providers), "mode", mode.String())
@@ -132,7 +153,7 @@ func (r *runner) captureOdds(
 	persistedFixedOutcome := r.persistFinalCaptureAttempt(
 		ctx, identity.MatchID, store.FinalCaptureFixedOdds, started, fixedErr)
 	operationErr := errors.Join(snapshotErr, persistedFixedOutcome)
-	r.recordRun(ctx, comp.ID, oddsRunKind, started, operationErr)
+	record(ctx, comp.ID, oddsRunKind, started, operationErr)
 	if operationErr == nil {
 		r.log.Info("match odds",
 			"match", providerEventID, "providers", len(providers), "mode", mode.String())

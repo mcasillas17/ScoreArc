@@ -54,8 +54,11 @@ func TestWriteCommentaryUpsertsAsTheMatchGrows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if written != 25 {
-		t.Fatalf("written = %d, want 25", written)
+	// 25 lines arrived; 10 of them were already stored, byte for byte. The
+	// return value is what was WRITTEN, which is the only number that says
+	// whether a 20-second poll cost anything.
+	if written != 15 {
+		t.Fatalf("written = %d, want the 15 new lines only", written)
 	}
 	var rows int
 	if err := pool.QueryRow(ctx,
@@ -187,5 +190,97 @@ func TestWriteCommentaryAsTheIngesterRole(t *testing.T) {
 	}
 	if rows != 20 {
 		t.Fatalf("as %s: rows = %d after tail prune, want 20", roleName, rows)
+	}
+}
+
+// A poll that brings nothing new must cost nothing. This is the whole live
+// path in one assertion.
+func TestWriteCommentaryIsANoOpWhenNothingChanged(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	matchID := mustCommentaryMatch(t, store, pool)
+
+	if _, err := store.WriteCommentary(ctx, matchID, commentaryFixture(30)); err != nil {
+		t.Fatal(err)
+	}
+	var before []string
+	rows, err := pool.Query(ctx,
+		`SELECT xmin::text FROM match_commentary WHERE match_id=$1 ORDER BY seq`, matchID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var version string
+		if err := rows.Scan(&version); err != nil {
+			t.Fatal(err)
+		}
+		before = append(before, version)
+	}
+	rows.Close()
+
+	written, err := store.WriteCommentary(ctx, matchID, commentaryFixture(30))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if written != 0 {
+		t.Fatalf("re-writing an unchanged transcript wrote %d rows, want 0", written)
+	}
+
+	// xmin is the proof. A row whose tuple version changed was rewritten, even
+	// if its contents are identical -- and that is what costs WAL and vacuum.
+	after, index := make([]string, 0, len(before)), 0
+	rows, err = pool.Query(ctx,
+		`SELECT xmin::text FROM match_commentary WHERE match_id=$1 ORDER BY seq`, matchID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var version string
+		if err := rows.Scan(&version); err != nil {
+			t.Fatal(err)
+		}
+		after = append(after, version)
+		index++
+	}
+	if len(after) != len(before) {
+		t.Fatalf("rows = %d, want %d", len(after), len(before))
+	}
+	for i := range before {
+		if before[i] != after[i] {
+			t.Fatalf("line %d was rewritten (xmin %s -> %s) despite identical content",
+				i+1, before[i], after[i])
+		}
+	}
+}
+
+// ESPN's `sequence` is not guaranteed unique within one payload, and a
+// duplicate in the source rows of a set-based upsert raises SQLSTATE 21000 --
+// which would fail the ENTIRE write, not one line. Last occurrence wins,
+// matching the old row-at-a-time loop's behaviour.
+func TestWriteCommentaryToleratesADuplicateSequence(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	matchID := mustCommentaryMatch(t, store, pool)
+
+	lines := commentaryFixture(3)
+	corrected := lines[1]
+	corrected.Text = "Corrected."
+	lines = append(lines, corrected)
+
+	written, err := store.WriteCommentary(ctx, matchID, lines)
+	if err != nil {
+		t.Fatalf("a duplicate sequence failed the whole write: %v", err)
+	}
+	if written != 3 {
+		t.Fatalf("written = %d, want 3 distinct lines", written)
+	}
+	var text string
+	if err := pool.QueryRow(ctx,
+		`SELECT text FROM match_commentary WHERE match_id=$1 AND seq=2`, matchID).Scan(&text); err != nil {
+		t.Fatal(err)
+	}
+	if text != "Corrected." {
+		t.Fatalf("seq 2 = %q, want the last occurrence to win", text)
 	}
 }

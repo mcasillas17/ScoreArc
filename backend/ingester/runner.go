@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"log/slog"
 	"sort"
 	"strings"
@@ -27,7 +28,32 @@ const (
 	backfillRetryInterval   = 30 * time.Minute
 	standingSnapshotRunKind = "standings_snapshot"
 	winProbSnapshotRunKind  = "win_prob_snapshot"
+	// sampleAuditWindow bounds how often a SUCCESSFUL per-match sampling operation
+	// writes an ingest_run row. It has to stay far inside the freshness endpoint's
+	// thresholds (T10.10 gives `odds` 24 hours) and short enough that a sampler
+	// that stopped is visible while a match is still being played.
+	sampleAuditWindow = 5 * time.Minute
 )
+
+// auditWindow is one (competition, kind) throttle. A restart empties it and the
+// next sample writes a row, which is correct and cheap.
+type auditWindow struct {
+	windowStart  time.Time
+	lastRecorded time.Time
+	suppressed   int
+}
+
+// liveSample is the last (bucket, value) this process wrote for one match and
+// one sampling kind.
+//
+// It is a COST GATE, not the idempotency guarantee -- that is the unique index
+// in migrations 0004 and 0005, the same relationship `snapshotted` has with the
+// standings snapshot. A restart empties it and the next poll writes one extra
+// row into a bucket it already holds, which the store upserts.
+type liveSample struct {
+	bucket time.Time
+	digest uint64
+}
 
 type activity struct {
 	known      bool
@@ -61,6 +87,18 @@ type runner struct {
 	snapshotted       map[string]time.Time
 	mirrorUnavailable time.Time
 	mirrorTimeout     time.Duration
+	// now is the runner's clock. Only the live-path audit and sampling
+	// decisions read it, so tests can drive a tick sequence without sleeping;
+	// nil means time.Now.
+	now func() time.Time
+
+	// sampleAudit throttles the audit rows of the two per-match-per-poll
+	// sampling kinds. Successes only -- failures are never suppressed.
+	sampleAudit map[string]auditWindow
+
+	// liveSamples gates the two per-poll time-series writes. Keyed by
+	// match id + kind; dropped when the match finalizes.
+	liveSamples map[string]liveSample
 }
 
 func assetCacheKey(kind, id, sourceURL string) string {
@@ -752,6 +790,155 @@ func (r *runner) recordRun(
 	r.recordRunFor(ctx, &compID, kind, started, operationErr)
 }
 
+func (r *runner) clock() time.Time {
+	if r.now != nil {
+		return r.now()
+	}
+	return time.Now()
+}
+
+// sampleUnchanged reports whether this match's sample for `kind` would land in
+// the same minute bucket with the same value as the last one written.
+//
+// Both conditions, not either: spec §5. A flat probability curve is a finding
+// and an even one-row-per-minute axis is what makes two matches comparable, so
+// an unchanged VALUE in a new BUCKET is still written. What is skipped is only
+// the second and third poll of the same minute, which the unique index would
+// collapse anyway -- at the cost of a statement and a tuple version each.
+func (r *runner) sampleUnchanged(matchID uuid.UUID, kind string, at time.Time, digest uint64) bool {
+	bucket := at.UTC().Truncate(time.Minute)
+	key := matchID.String() + "\x00" + kind
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	last, seen := r.liveSamples[key]
+	if seen && last.bucket.Equal(bucket) && last.digest == digest {
+		return true
+	}
+	r.liveSamples[key] = liveSample{bucket: bucket, digest: digest}
+	return false
+}
+
+// forgetSample clears a reservation after a failed write. The memo describes
+// what reached Postgres, so retaining a failed value would suppress its retry.
+func (r *runner) forgetSample(matchID uuid.UUID, kind string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.liveSamples, matchID.String()+"\x00"+kind)
+}
+
+// forgetSamples drops a finalized match's gates. The match will never be polled
+// live again, and leaving the entries would grow the map for the life of the
+// process.
+func (r *runner) forgetSamples(matchID uuid.UUID) {
+	for _, kind := range []string{winProbSnapshotRunKind, oddsRunKind} {
+		r.forgetSample(matchID, kind)
+	}
+}
+
+// sampleDigest fingerprints a value so an unchanged one can be recognised
+// without keeping the value itself. Collisions cost one skipped sample in a
+// bucket that will be re-sampled a minute later, which is why FNV is enough and
+// a cryptographic hash would be theatre.
+func sampleDigest(parts ...any) uint64 {
+	hash := fnv.New64a()
+	for _, part := range parts {
+		fmt.Fprintf(hash, "%v\x1f", sampleValue(part))
+	}
+	return hash.Sum64()
+}
+
+// sampleValue renders a nullable market value by its CONTENT.
+//
+// This is not defensive tidiness. fmt's %v on a pointer prints its ADDRESS,
+// which differs on every poll because the mapper allocates a fresh OddsLine --
+// so digesting the pointers directly would make every fingerprint unique, the
+// gate would never fire, and the bug would present as "the optimisation does
+// nothing" rather than as a failure.
+func sampleValue(value any) any {
+	switch typed := value.(type) {
+	case *int:
+		if typed == nil {
+			return "nil"
+		}
+		return *typed
+	case *float64:
+		if typed == nil {
+			return "nil"
+		}
+		return *typed
+	default:
+		return value
+	}
+}
+
+// oddsDigest covers every current-line field of every book, in provider order,
+// so a move in any one of them is a change.
+func oddsDigest(providers []model.ProviderOdds) uint64 {
+	parts := make([]any, 0, len(providers)*10)
+	for _, provider := range providers {
+		parts = append(parts, provider.ProviderID)
+		line := provider.Current
+		if line == nil {
+			parts = append(parts, "nil")
+			continue
+		}
+		parts = append(parts,
+			line.HomeMoneyline, line.DrawMoneyline, line.AwayMoneyline,
+			line.Spread, line.HomeSpreadOdds, line.AwaySpreadOdds,
+			line.OverUnder, line.OverOdds, line.UnderOdds)
+	}
+	return sampleDigest(parts...)
+}
+
+// recordSample audits a per-match, per-poll sampling operation.
+//
+// These are the only two writes in the system whose audit row would otherwise
+// scale with matches x polls: 720 rows per match per two hours for
+// win_prob_snapshot and odds together, before a Saturday multiplies it by the
+// number of simultaneous matches. A SUCCESS is therefore recorded at most once
+// per (competition, kind) per sampleAuditWindow, with the suppressed count
+// logged and the recorded row's started_at backdated so it spans the window it
+// stands for. A FAILURE is never suppressed.
+//
+// What is deliberately lost: the database no longer counts samples, only that
+// sampling ran and last succeeded. ingest_run is operational (spec §2, C5) and
+// a per-poll counter is not something anyone would miss in ninety days.
+func (r *runner) recordSample(
+	ctx context.Context,
+	compID, kind string,
+	started time.Time,
+	operationErr error,
+) {
+	now := r.clock()
+	key := compID + "\x00" + kind
+
+	r.mu.Lock()
+	window := r.sampleAudit[key]
+	if operationErr == nil && !window.lastRecorded.IsZero() &&
+		now.Sub(window.lastRecorded) < sampleAuditWindow {
+		if window.suppressed == 0 {
+			window.windowStart = started
+		}
+		window.suppressed++
+		r.sampleAudit[key] = window
+		r.mu.Unlock()
+		return
+	}
+	from := started
+	if window.suppressed > 0 && !window.windowStart.IsZero() {
+		from = window.windowStart
+	}
+	suppressed := window.suppressed
+	r.sampleAudit[key] = auditWindow{lastRecorded: now}
+	r.mu.Unlock()
+
+	if suppressed > 0 {
+		r.log.Info("live sample window",
+			"comp", compID, "kind", kind, "suppressed", suppressed, "since", from)
+	}
+	r.recordRun(ctx, compID, kind, from, operationErr)
+}
+
 func (r *runner) recordGlobalRun(
 	ctx context.Context,
 	kind string,
@@ -783,7 +970,7 @@ func (r *runner) recordRunFor(
 	logCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 	defer cancel()
 	if err := r.repo.LogIngestRun(
-		logCtx, compID, kind, started, time.Now(), ok, message,
+		logCtx, compID, kind, started, r.clock(), ok, message,
 	); err != nil {
 		r.log.Warn("record ingest run", "comp", compID, "kind", kind, "err", err)
 	}
