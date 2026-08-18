@@ -531,10 +531,16 @@ migration number or expanding the code scope:
    only difference is `observed_at` as an idempotent retry, returns `OLD`, and
    preserves the original observation time. Changed facts, provider metadata,
    enrichment, and deletes still raise `SA001`.
+6. **The one-pair cost assertion was sensitive to runner scheduling.** Two CI
+   runs of the same commit finished at the same time: one passed, while the
+   other measured 32.409 µs per row because its single guarded sample stalled.
+   The 25 µs budget is unchanged. The test now takes the median of three
+   interleaved guarded/bare pairs, truncating between samples so table growth
+   cannot favor either side.
 
-The final post-cleanup hot-path measurement was **3.134 µs per guarded row**
-over 50,000 rows (560 ms guarded versus 403 ms unguarded), below the 25 µs
-budget.
+The final post-CI-correction hot-path measurement was **5.633 µs per guarded
+row** over three 50,000-row pairs (guarded: 585/617/581 ms; unguarded:
+306/317/299 ms), below the unchanged 25 µs budget.
 
 Shared architecture, roadmap, and backend handoff documentation is isolated in
 [PR #73](https://github.com/mcasillas17/ScoreArc/pull/73), based directly on

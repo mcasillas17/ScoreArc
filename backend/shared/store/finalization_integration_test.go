@@ -640,37 +640,78 @@ func TestFinalizationGuardCostOnTheHotPath(t *testing.T) {
 	id := f.unfinalized(t, "eng-arsenal")
 
 	const rows = 50_000
-	insert := func(base int) time.Duration {
+	insert := func() time.Duration {
 		t.Helper()
 		start := time.Now()
 		if _, err := f.pool.Exec(ctx, `
 INSERT INTO match_commentary (match_id, seq, clock_display, text)
-SELECT $1, $2 + g, '45''', 'commentary line ' || g
-FROM generate_series(1, $3) g`, id, base, rows); err != nil {
+SELECT $1, g, '45''', 'commentary line ' || g
+FROM generate_series(1, $2) g`, id, rows); err != nil {
 			t.Fatal(err)
 		}
 		return time.Since(start)
 	}
 
-	insert(0) // warm the plan cache, the buffers and the WAL segment
-	guarded := insert(10_000_000)
-
-	if _, err := f.pool.Exec(ctx,
-		`ALTER TABLE match_commentary DISABLE TRIGGER protect_final_match_commentary`,
-	); err != nil {
-		t.Fatal(err)
+	measure := func(guarded bool) time.Duration {
+		t.Helper()
+		if _, err := f.pool.Exec(ctx, `TRUNCATE match_commentary`); err != nil {
+			t.Fatal(err)
+		}
+		triggerState := "ENABLE"
+		if !guarded {
+			triggerState = "DISABLE"
+		}
+		if _, err := f.pool.Exec(ctx, fmt.Sprintf(
+			`ALTER TABLE match_commentary %s TRIGGER protect_final_match_commentary`,
+			triggerState,
+		)); err != nil {
+			t.Fatal(err)
+		}
+		return insert()
 	}
-	insert(20_000_000)
-	bare := insert(30_000_000)
 
-	overhead := (guarded - bare) / rows
-	t.Logf("guard cost: %d rows guarded in %v, unguarded in %v -> %v per row",
-		rows, guarded.Round(time.Millisecond), bare.Round(time.Millisecond), overhead)
+	measure(true)  // warm the plan cache, buffers and WAL with the guard
+	measure(false) // warm the same path without the guard
+
+	var overheadSamples [3]time.Duration
+	var guardedSamples [3]time.Duration
+	var bareSamples [3]time.Duration
+	for i := range overheadSamples {
+		// Alternate order so a rising or falling runner load does not always favor
+		// the same side. Truncating first gives every sample the same table size.
+		if i%2 == 0 {
+			guardedSamples[i] = measure(true)
+			bareSamples[i] = measure(false)
+		} else {
+			bareSamples[i] = measure(false)
+			guardedSamples[i] = measure(true)
+		}
+		overheadSamples[i] = (guardedSamples[i] - bareSamples[i]) / rows
+	}
+	median := func(values [3]time.Duration) time.Duration {
+		if values[0] > values[1] {
+			values[0], values[1] = values[1], values[0]
+		}
+		if values[1] > values[2] {
+			values[1], values[2] = values[2], values[1]
+		}
+		if values[0] > values[1] {
+			values[0], values[1] = values[1], values[0]
+		}
+		return values[1]
+	}
+
+	overhead := median(overheadSamples)
+	t.Logf(
+		"guard cost: %d rows per sample, guarded=%v, unguarded=%v -> median %v per row",
+		rows, guardedSamples, bareSamples, overhead,
+	)
 
 	// The heaviest real burst this system has produced is 4,181 guarded rows in
 	// a 271-second window (spec Section 0). At this ceiling that burst costs about
-	// 105 ms. The ceiling is absolute rather than a ratio because a ratio is
-	// unstable on a loaded CI runner.
+	// 105 ms. The ceiling is absolute rather than a ratio, and the median of three
+	// adjacent pairs rejects a sustained regression without promoting one runner
+	// scheduling stall into a product-performance finding.
 	if overhead > 25*time.Microsecond {
 		t.Fatalf("guard costs %v per row, over the 25us budget -- "+
 			"the seal is doing more work than one primary-key probe", overhead)
