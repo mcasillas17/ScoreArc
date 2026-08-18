@@ -130,6 +130,7 @@ func run() int {
 		squadsRefreshed:   make(map[string]time.Time),
 		squadAttempted:    make(map[string]time.Time),
 		snapshotted:       make(map[string]time.Time),
+		written:           make(map[string]uint64, 32),
 	}
 
 	if *once {

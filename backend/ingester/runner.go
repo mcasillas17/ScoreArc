@@ -58,7 +58,16 @@ type runner struct {
 	// idempotency guarantee -- that is the unique index in migration 0004. A
 	// restart empties this map and the next cycle re-writes the day, which the
 	// store upserts.
-	snapshotted       map[string]time.Time
+	snapshotted map[string]time.Time
+	// written maps a write scope -- one per (competition, season) for `standing`
+	// and one per (competition, season, category) for `top_scorer` -- to the
+	// fingerprint of the row set last COMMITTED for it IN THIS PROCESS. Like
+	// `snapshotted` above it is purely a cost gate: the tables' primary keys
+	// remain the guarantee, and a restart empties the map and rewrites each
+	// scope once, which is correct and costs ~530 tuples per deploy. Bounded by
+	// the registry at three entries per competition, so it cannot grow with
+	// matches, players or seasons. See memo.go.
+	written           map[string]uint64
 	mirrorUnavailable time.Time
 	mirrorTimeout     time.Duration
 }
