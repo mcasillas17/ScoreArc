@@ -242,6 +242,35 @@ same transaction.
 - `go run ./ingester -once` performs one complete slow reconciliation without a
   fixed whole-cycle deadline; individual operations remain bounded.
 
+### Live write reduction policy
+- `commentary`, `appearance`, and `event` tables converge the whole latest
+  non-empty set in one set-based statement, write only changed rows, and prune
+  retracted rows where the table contract allows it.
+- Late commentary edits are caught because every keyed row is content-compared,
+  not just the tail. Duplicate commentary sequences and duplicate canonical
+  players are deduplicated before the set upsert, with the last occurrence
+  winning, so SQLSTATE 21000 does not surface.
+- Unmeasured provider stats stay SQL NULL. Appearance change detection compares
+  the stored row to the effective post-COALESCE value, so missing stats neither
+  erase known values nor trigger rewrites.
+- Time-series sample writes are skipped only when both the minute bucket and the
+  value repeat. A new minute with the same value, or a changed value in the same
+  minute, still writes.
+- Successful live sample audits are limited to once per (competition, kind) per
+  five minutes; failures are recorded immediately.
+- `player_capture` is emitted only when a participation write actually changes
+  stored rows and there is an unidentified participant or event. A first payload
+  with only unidentified participants that resolves to zero writable rows can
+  produce no `player_capture` row.
+- Measured regression baseline: 246 commentary statements for 36 lines over 12
+  simulated ticks. Projected whole-match reduction: about 47,000 to about 2,090
+  statements, and about 46,000 to about 1,400 tuple versions. These are
+  projections, not production measurements.
+- No migration was needed: no column, table, index, constraint, or grant changed,
+  and the existing table keys and grants already support this.
+- Provider in-play behavior remains unmeasured; these projections need
+  validation on the first live match.
+
 ```mermaid
 sequenceDiagram
   participant S as Scheduler
