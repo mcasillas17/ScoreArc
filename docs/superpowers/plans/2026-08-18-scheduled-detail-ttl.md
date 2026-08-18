@@ -59,7 +59,7 @@ directly by the write-classification design doc, not a numbered product feature.
 `docs/PRODUCT_ROADMAP.md` already assigns **T7.14**/**T7.15** to match officials and odds
 snapshots — do not reuse those numbers for this work, regardless of what any sibling plan
 does.)
-**Branch:** `fix/scheduled-detail-ttl` off latest `origin/main`
+**Branch:** `mcasillas17-scheduled-detail-ttl` off latest `origin/main`
 
 ---
 
@@ -1063,10 +1063,10 @@ npm test && npx tsc --noEmit && npm run lint && npm run build
 Expected: all four pass unchanged — this plan does not touch any frontend file, so this is
 a confirmation step, not expected to surface anything.
 
-- [ ] **Step 5: Open the PR**
+- [x] **Step 5: Open the PR**
 
 ```bash
-git push -u origin fix/scheduled-detail-ttl
+git push -u origin mcasillas17-scheduled-detail-ttl
 gh pr create --title "fix: put scheduled-match detail on a TTL" --body "$(cat <<'EOF'
 ## Summary
 - Replaces `needsSummary`'s `|| slowTick` (rewrote every scheduled fixture's
@@ -1095,5 +1095,7 @@ gh pr create --title "fix: put scheduled-match detail on a TTL" --body "$(cat <<
 EOF
 )"
 ```
+
+Opened as implementation [PR #80](https://github.com/mcasillas17/ScoreArc/pull/80).
 
 Merging is the user's call, not yours — stop here and hand back the PR URL.
