@@ -81,7 +81,8 @@ them today would be inventing detail we do not have, which the plan format
 explicitly forbids.
 
 **E7's plans exist** and are listed under the task index below: ten ingester
-plans covering T7.1 and T7.6–T7.18.
+plans cover T7.1, T7.6–T7.17 and T7.19; completed T7.18 records the
+cross-cutting finalization-invariant slice.
 
 **E10 has no spec of its own by design.** It is the read path for work already
 specified elsewhere — every endpoint exists to serve an E1–E8 feature, and those
@@ -312,7 +313,8 @@ to either**. These are the writers, each with an exact-code plan.
 | **T7.15** | Odds line-movement snapshots | same plan as T7.14 |
 | **T7.16** | Live-path set convergence/write reduction | [plan](superpowers/plans/2026-08-18-live-path-write-reduction.md) |
 | **T7.17** | Live sample/audit cadence reduction | same plan as T7.16 |
-| **T7.18** | Content-memo write guard for `standing` / `top_scorer` | [plan](superpowers/plans/2026-08-18-content-memo-write-guard.md) |
+| **T7.18** | **Finalization invariants** — database-enforced C1 protection for every finalized-fact table (migration 0021) | **completed** |
+| **T7.19** | Content-memo write guard for `standing` / `top_scorer` | [plan](superpowers/plans/2026-08-18-content-memo-write-guard.md) |
 
 **T7.12/T7.13 carry a deadline** — see the capability note below. They are also
 **E9's hard prerequisite**: a model cannot be trained on data we did not persist.
