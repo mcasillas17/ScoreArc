@@ -182,3 +182,95 @@ func TestCommentaryTickCostDoesNotGrowWithTheTranscript(t *testing.T) {
 		t.Fatalf("stored rows = %d, want %d", got, ticks*3)
 	}
 }
+
+// livePoll is what one 20-second poll of a match in progress hands the store.
+// Everything grows the way a real match grows: the transcript gains three
+// lines a tick, a substitute appears at tick 6, and a goal is scored at tick 8.
+func livePoll(tick int) *model.MatchParticipation {
+	part := &model.MatchParticipation{
+		HomeTeamSourceID: "359",
+		AwayTeamSourceID: "363",
+		Home: []model.SquadPlayer{
+			{SourceID: "p1", Name: "Bukayo Saka", Position: "F", Starter: true},
+			{SourceID: "p2", Name: "Reserve Keeper", Position: "G", Starter: false},
+		},
+		Away: []model.SquadPlayer{
+			{SourceID: "p3", Name: "Cole Palmer", Position: "M", Starter: true},
+		},
+		Events: []model.PlayerEvent{
+			{TeamSourceID: "359", PlayerSourceID: "p1", PlayerName: "Bukayo Saka",
+				Type: model.PlayerEventYellow, Minute: "12'", Detail: "Yellow Card"},
+		},
+	}
+	if tick >= 6 {
+		part.Away = append(part.Away, model.SquadPlayer{
+			SourceID: "p4", Name: "Late Substitute", Position: "F", Starter: false,
+		})
+		part.Events = append(part.Events, model.PlayerEvent{
+			TeamSourceID: "363", PlayerSourceID: "p4", PlayerName: "Late Substitute",
+			Type: model.PlayerEventSubOn, Minute: "60'", Detail: "Substitution",
+		})
+	}
+	if tick >= 8 {
+		scored := 1
+		part.Home[0].Stats = &model.PlayerMatchStats{Goals: &scored}
+		part.Events = append(part.Events, model.PlayerEvent{
+			TeamSourceID: "359", PlayerSourceID: "p1", PlayerName: "Bukayo Saka",
+			Type: model.PlayerEventGoal, Minute: "71'", Detail: "Goal",
+		})
+	}
+	return part
+}
+
+// The claim this whole plan makes, stated as a test: a live match's cost is a
+// function of the number of polls and of what actually changed, never of how
+// much has already happened.
+func TestLivePathStatementsScaleWithNewRowsNotAccumulatedOnes(t *testing.T) {
+	store, pool, counter := newTracedStore(t)
+	ctx := context.Background()
+	matchID := mustParticipationMatch(t, store, pool)
+
+	const ticks = 12
+	counter.reset()
+	for tick := 1; tick <= ticks; tick++ {
+		if _, err := store.WriteParticipation(ctx, "espn", matchID,
+			"eng-arsenal", "eng-chelsea", livePoll(tick)); err != nil {
+			t.Fatalf("tick %d participation: %v", tick, err)
+		}
+		if _, err := store.WriteCommentary(ctx, matchID, growingTranscript(tick)); err != nil {
+			t.Fatalf("tick %d commentary: %v", tick, err)
+		}
+	}
+
+	// One statement per table per tick. Not one per row.
+	for _, table := range countedTables {
+		if got := counter.count(table); got != ticks {
+			t.Fatalf("%s took %d statements over %d ticks, want exactly %d "+
+				"(one per poll, independent of accumulated rows)", table, got, ticks, ticks)
+		}
+	}
+
+	// And what those statements produced is the football, not a rewrite of it.
+	if got := countRows(t, pool,
+		`SELECT count(*) FROM match_commentary WHERE match_id=$1`, matchID); got != ticks*3 {
+		t.Fatalf("commentary rows = %d, want %d", got, ticks*3)
+	}
+	if got := countRows(t, pool,
+		`SELECT count(*) FROM appearance WHERE match_id=$1`, matchID); got != 4 {
+		t.Fatalf("appearances = %d, want 4 (three from kickoff, one substitute)", got)
+	}
+	if got := countRows(t, pool,
+		`SELECT count(*) FROM match_event WHERE match_id=$1`, matchID); got != 3 {
+		t.Fatalf("events = %d, want 3", got)
+	}
+
+	// Tuple versions are the real cost. Four appearances polled twelve times
+	// must not be forty-eight tuple versions: p1 changes once (the goal at tick
+	// 8), p4 is inserted once (tick 6), p2 and p3 never change at all.
+	versions := tupleVersions(t, pool,
+		`SELECT DISTINCT xmin::text FROM appearance WHERE match_id=$1`, matchID)
+	if len(versions) > 3 {
+		t.Fatalf("appearance tuple versions = %d, want at most 3 "+
+			"(kickoff insert, the substitute, the goal)", len(versions))
+	}
+}
