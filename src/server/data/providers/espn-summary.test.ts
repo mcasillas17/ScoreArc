@@ -13,6 +13,7 @@ import {
   mapSummaryH2H,
 } from './espn-summary';
 import raw from '../__fixtures__/espn-summary.json';
+import ownGoalFixture from '../__fixtures__/espn-summary-own-goal.json';
 
 describe('mapWinProbability', () => {
   it('derives normalized win/draw/win % from moneylines (home=4789, away=464)', () => {
@@ -389,5 +390,28 @@ describe('mapSummaryStats — full stat set', () => {
     expect(s!.home.shots).toBe(5);
     expect(s!.home.saves).toBeNull();
     expect(s!.home.passAccuracy).toBeNull();
+  });
+});
+
+// ESPN credits an own goal to the team that BENEFITS and names the OPPOSITION
+// player who scored it. Reading team + participant alone therefore prints an
+// opposition defender as one of your own goalscorers. Verified live: Leagues
+// Cup 401863609, Minnesota United (17362) v Atlante (226) — the 32' own goal
+// is credited to Atlante with Minnesota's Devin Padelford named.
+describe('mapSummaryScorers own goals', () => {
+  it('flags an own goal without moving it off the benefiting team', () => {
+    const scorers = mapSummaryScorers(ownGoalFixture);
+    const og = scorers.find((s) => s.player === 'Devin Padelford');
+    expect(og).toBeDefined();
+    expect(og!.ownGoal).toBe(true);
+    expect(og!.teamId).toBe('226'); // Atlante — the beneficiary, as ESPN sends it
+    expect(og!.minute).toBe("32'");
+  });
+
+  it('leaves ordinary goals unflagged', () => {
+    const scorers = mapSummaryScorers(ownGoalFixture);
+    const normal = scorers.filter((s) => s.teamId === '17362');
+    expect(normal).toHaveLength(3);
+    expect(normal.every((s) => s.ownGoal === false)).toBe(true);
   });
 });
