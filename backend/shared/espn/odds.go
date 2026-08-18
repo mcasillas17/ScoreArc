@@ -69,6 +69,8 @@ type rawOddsValue struct {
 	American string `json:"american"`
 }
 
+const maxOddsDecimal = 999.99
+
 // MapOdds maps every provider in the core odds envelope. It keeps opening and
 // closing lines as supplied, and prefers flattened current values while falling
 // back to their equivalent nested current phase. Prop-bet refs are not fetched.
@@ -122,10 +124,10 @@ func mapCurrentOdds(item rawProviderOdds) *model.OddsLine {
 		HomeMoneyline:  firstInt(floatToInt(item.HomeTeamOdds.MoneyLine), phase.HomeMoneyline),
 		DrawMoneyline:  firstInt(floatToInt(item.DrawOdds.MoneyLine), phase.DrawMoneyline),
 		AwayMoneyline:  firstInt(floatToInt(item.AwayTeamOdds.MoneyLine), phase.AwayMoneyline),
-		Spread:         firstFloat(item.Spread, phase.Spread),
+		Spread:         firstFloat(oddsDecimalFitsPostgresNumeric52(item.Spread), phase.Spread),
 		HomeSpreadOdds: firstInt(floatToInt(item.HomeTeamOdds.SpreadOdds), phase.HomeSpreadOdds),
 		AwaySpreadOdds: firstInt(floatToInt(item.AwayTeamOdds.SpreadOdds), phase.AwaySpreadOdds),
-		OverUnder:      firstFloat(item.OverUnder, phase.OverUnder),
+		OverUnder:      firstFloat(oddsDecimalFitsPostgresNumeric52(item.OverUnder), phase.OverUnder),
 		OverOdds:       firstInt(floatToInt(item.OverOdds), phase.OverOdds),
 		UnderOdds:      firstInt(floatToInt(item.UnderOdds), phase.UnderOdds),
 	}
@@ -151,10 +153,21 @@ func parseOddsDecimal(raw string) *float64 {
 		return nil
 	}
 	value, err := strconv.ParseFloat(raw, 64)
-	if err != nil || math.IsNaN(value) || math.IsInf(value, 0) {
+	if err != nil {
 		return nil
 	}
-	return &value
+	return oddsDecimalFitsPostgresNumeric52(&value)
+}
+
+func oddsDecimalFitsPostgresNumeric52(value *float64) *float64 {
+	if value == nil || math.IsNaN(*value) || math.IsInf(*value, 0) {
+		return nil
+	}
+	rounded := math.Round(*value*100) / 100
+	if rounded < -maxOddsDecimal || rounded > maxOddsDecimal {
+		return nil
+	}
+	return value
 }
 
 func floatToInt(value *float64) *int {

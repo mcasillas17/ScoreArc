@@ -275,7 +275,7 @@ func (r *runner) processMatches(
 				// the books' raw prices, and the competitions whose market
 				// mapWinProbability cannot normalize are exactly the ones whose
 				// market would otherwise never be recorded at all.
-				r.captureOdds(ctx, comp, identity, match.ID, false)
+				r.captureOdds(ctx, comp, identity, match.ID, oddsCaptureLive)
 			}
 
 			// Structured commentary is additive to the scoreline row already
@@ -309,7 +309,7 @@ func (r *runner) processMatches(
 					// bookmaker outage must not report a match that finished as
 					// having failed to ingest.
 					r.captureOfficials(ctx, comp, identity, match.ID)
-					r.captureOdds(ctx, comp, identity, match.ID, true)
+					r.captureOdds(ctx, comp, identity, match.ID, oddsCaptureFinal)
 					existing[identity.MatchID] = store.MatchRow{
 						State: match.State,
 						FinalizedAt: pgtype.Timestamptz{

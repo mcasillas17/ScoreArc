@@ -49,6 +49,17 @@ type repository interface {
 	// line. These are raw prices and are deliberately separate from
 	// WriteWinProbSnapshot's normalized probabilities.
 	WriteOddsSnapshot(context.Context, uuid.UUID, []model.ProviderOdds, time.Time) error
+	// CompleteFinalCapture durably marks one full-time officials or
+	// fixed-odds capture as done, so a restart or a later backlog sweep never
+	// repeats it.
+	CompleteFinalCapture(context.Context, uuid.UUID, store.FinalCaptureKind, time.Time) error
+	// ScheduleFinalCaptureRetry durably records that a full-time capture
+	// attempt failed and when it should be retried, so the failure survives a
+	// restart instead of being lost with the process that observed it.
+	ScheduleFinalCaptureRetry(context.Context, uuid.UUID, store.FinalCaptureKind, time.Time, time.Time, error) error
+	// PendingFinalCaptures returns the oldest-due officials/fixed-odds
+	// captures still outstanding for a competition/season, bounded by limit.
+	PendingFinalCaptures(context.Context, string, string, string, time.Time, int) ([]store.PendingFinalCapture, error)
 	WritePlays(context.Context, uuid.UUID, []model.Play, map[string]string, map[string]uuid.UUID) (int, error)
 	ResolveKnownPlayers(context.Context, string, []string) (map[string]uuid.UUID, error)
 	RecordPlayArchive(context.Context, uuid.UUID, string, int, int, bool) error

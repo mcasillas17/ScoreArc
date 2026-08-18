@@ -8,6 +8,8 @@ import (
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
 
+func oddsFloat(value float64) *float64 { return &value }
+
 func loadOdds(t *testing.T) []byte {
 	t.Helper()
 	raw, err := os.ReadFile("testdata/espn-odds.json")
@@ -218,5 +220,114 @@ func TestMapOddsRejectsInvalidFlattenedAmericanValues(t *testing.T) {
 	}
 	if providers[0].Current != nil {
 		t.Fatalf("current = %#v, want nil for invalid flattened American values", providers[0].Current)
+	}
+}
+
+func TestParseOddsDecimalBoundsPostgresNumeric52(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want *float64
+	}{
+		{name: "accepts exact positive bound", raw: " +999.99 ", want: oddsFloat(999.99)},
+		{name: "accepts exact negative bound", raw: "-999.99", want: oddsFloat(-999.99)},
+		{name: "accepts positive value that rounds into bound", raw: "999.994", want: oddsFloat(999.994)},
+		{name: "accepts negative value that rounds into bound", raw: "-999.994", want: oddsFloat(-999.994)},
+		{name: "rejects positive value that rounds above bound", raw: "999.995"},
+		{name: "rejects negative value that rounds below bound", raw: "-999.995"},
+		{name: "rejects value above positive bound", raw: "1000"},
+		{name: "rejects value below negative bound", raw: "-1000"},
+		{name: "rejects nan", raw: "NaN"},
+		{name: "rejects positive infinity", raw: "+Inf"},
+		{name: "rejects negative infinity", raw: "-Inf"},
+		{name: "rejects empty string", raw: "   "},
+		{name: "rejects malformed string", raw: "not-a-number"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := parseOddsDecimal(test.raw)
+			if test.want == nil {
+				if got != nil {
+					t.Fatalf("parseOddsDecimal(%q) = %v, want nil", test.raw, *got)
+				}
+				return
+			}
+			if got == nil || *got != *test.want {
+				t.Fatalf("parseOddsDecimal(%q) = %v, want %v", test.raw, got, *test.want)
+			}
+		})
+	}
+}
+
+func TestMapOddsRejectsOutOfRangeFlattenedCurrentDecimals(t *testing.T) {
+	raw := []byte(`{"items":[{
+		"provider":{"id":"100","name":"DraftKings"},
+		"spread":1000,
+		"overUnder":-1000,
+		"homeTeamOdds":{"moneyLine":125}
+	}]}`)
+
+	providers, err := MapOdds(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(providers) != 1 || providers[0].Current == nil {
+		t.Fatalf("providers = %#v, want one current phase", providers)
+	}
+
+	current := providers[0].Current
+	if current.HomeMoneyline == nil || *current.HomeMoneyline != 125 {
+		t.Fatalf("current = %#v, want the valid moneyline to survive", current)
+	}
+	if current.Spread != nil || current.OverUnder != nil {
+		t.Fatalf("current = %#v, want out-of-range flattened decimals nil", current)
+	}
+}
+
+func TestMapOddsAcceptsFlattenedCurrentDecimalsThatRoundIntoNumeric52(t *testing.T) {
+	raw := []byte(`{"items":[{
+		"provider":{"id":"100","name":"DraftKings"},
+		"spread":999.994,
+		"overUnder":-999.994,
+		"homeTeamOdds":{"moneyLine":125}
+	}]}`)
+
+	providers, err := MapOdds(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(providers) != 1 || providers[0].Current == nil {
+		t.Fatalf("providers = %#v, want one current phase", providers)
+	}
+
+	current := providers[0].Current
+	if current.Spread == nil || *current.Spread != 999.994 {
+		t.Fatalf("current spread = %v, want 999.994", current.Spread)
+	}
+	if current.OverUnder == nil || *current.OverUnder != -999.994 {
+		t.Fatalf("current overUnder = %v, want -999.994", current.OverUnder)
+	}
+}
+
+func TestMapOddsRejectsFlattenedCurrentDecimalsThatRoundOutsideNumeric52(t *testing.T) {
+	raw := []byte(`{"items":[{
+		"provider":{"id":"100","name":"DraftKings"},
+		"spread":999.995,
+		"overUnder":-999.995,
+		"homeTeamOdds":{"moneyLine":125}
+	}]}`)
+
+	providers, err := MapOdds(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(providers) != 1 || providers[0].Current == nil {
+		t.Fatalf("providers = %#v, want one current phase", providers)
+	}
+
+	current := providers[0].Current
+	if current.Spread != nil || current.OverUnder != nil {
+		t.Fatalf("current = %#v, want rounded-overflow flattened decimals nil", current)
 	}
 }

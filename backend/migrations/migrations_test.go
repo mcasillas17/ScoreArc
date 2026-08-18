@@ -539,3 +539,64 @@ func TestOddsRollbackDropsOnlyOwnedTablesInReverseOrder(t *testing.T) {
 		}
 	}
 }
+
+// ESPN's officials crew and fixed-odds lines are fetched in a follow-up call
+// AFTER a match finalizes, and either can fail or the process can die before
+// it succeeds. This table is the durable record of that: one row per
+// (match, capture kind) that says whether it is done, and if not, when to
+// retry and why the last attempt failed. It is internal ingest bookkeeping,
+// not published data, so it must not inherit 0001's default SELECT grant to
+// scorearc_reader, and it must never be deletable by the ingester.
+func TestFinalCaptureStatusDefinesSchema(t *testing.T) {
+	sql := readMigration(t, "0016_final_capture_status.up.sql")
+	for _, required := range []string{
+		"CREATE TABLE match_final_capture_status",
+		"match_id          uuid NOT NULL REFERENCES match(id) ON DELETE CASCADE",
+		"kind              text NOT NULL CHECK (kind IN ('officials','fixed_odds'))",
+		"attempt_count     int NOT NULL CHECK (attempt_count >= 1)",
+		"last_attempted_at timestamptz NOT NULL",
+		"retry_at          timestamptz",
+		"completed_at      timestamptz",
+		"last_error        text NOT NULL DEFAULT ''",
+		"PRIMARY KEY (match_id, kind)",
+		// Exactly one of retry_at/completed_at is ever set: a row that is
+		// neither would be a capture nobody is tracking, and one that is both
+		// would not say whether it is done or still pending.
+		"CHECK ((retry_at IS NULL) <> (completed_at IS NULL))",
+		// A completed row's last_error would misreport why a done capture
+		// "failed" once a later cycle reads it.
+		"CHECK (completed_at IS NULL OR last_error = '')",
+		// The retry scanner only ever looks at incomplete rows ordered by
+		// when they are next due; a full index would carry finished history
+		// it never reads.
+		"CREATE INDEX match_final_capture_status_retry_idx",
+		"ON match_final_capture_status (retry_at, match_id)",
+		"WHERE completed_at IS NULL",
+		"REVOKE ALL ON match_final_capture_status FROM scorearc_reader",
+		"GRANT SELECT, INSERT, UPDATE ON match_final_capture_status TO scorearc_ingester",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("0016_final_capture_status.up.sql missing %q", required)
+		}
+	}
+	if strings.Contains(sql, "GRANT DELETE ON match_final_capture_status") {
+		t.Fatal("match_final_capture_status must not be deletable by the ingester")
+	}
+	if strings.Contains(sql, "GRANT SELECT ON match_final_capture_status TO scorearc_reader") {
+		t.Fatal("match_final_capture_status is internal ingest bookkeeping and must not grant scorearc_reader SELECT")
+	}
+}
+
+func TestFinalCaptureStatusRollbackDropsOnlyOwnedTable(t *testing.T) {
+	sql := readMigration(t, "0016_final_capture_status.down.sql")
+	if !strings.Contains(sql, "DROP TABLE IF EXISTS match_final_capture_status") {
+		t.Fatal("0016_final_capture_status.down.sql must drop match_final_capture_status")
+	}
+	for _, drop := range strings.Split(sql, ";") {
+		drop = strings.TrimSpace(drop)
+		if strings.HasPrefix(drop, "DROP TABLE") &&
+			drop != "DROP TABLE IF EXISTS match_final_capture_status" {
+			t.Fatalf("0016_final_capture_status.down.sql must not drop unrelated tables: %q", drop)
+		}
+	}
+}

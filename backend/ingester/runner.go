@@ -368,6 +368,9 @@ func (r *runner) ingestCompSeason(
 	var playBacklogErr error
 	if slowTick && ctx.Err() == nil {
 		playBacklogErr = r.retryMissingPlayStreams(ctx, comp, season)
+		// Additive: failures are recorded under finalCaptureBacklogRunKind and
+		// must never affect coreErr/combinedErr or the play backlog above.
+		r.retryPendingFinalCaptures(ctx, comp, season)
 	}
 	if matchResult.finalized || slowTick {
 		refreshErrors = append(refreshErrors,

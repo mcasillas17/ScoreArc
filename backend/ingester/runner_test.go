@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -421,6 +422,52 @@ type fakeRepository struct {
 	oddsSnapshots     [][]model.ProviderOdds
 	oddsSnapshotAt    []time.Time
 	oddsSnapshotErr   error
+
+	// finalCaptureCandidates is the fake's stand-in for the store's real,
+	// SQL-driven candidate set: every match FinalizeMatch claimed that is
+	// eligible for a post-finalization capture (i.e. not terminal-without-
+	// summary). PendingFinalCaptures cross-joins this against both capture
+	// kinds, exactly like the real query cross-joins the match table.
+	finalCaptureCandidates         []finalCaptureCandidate
+	finalCaptureStatus             map[finalCaptureStatusKey]finalCaptureStatusRow
+	completeFinalCaptureErr        error
+	completeFinalCaptureCalls      int
+	scheduleFinalCaptureRetryErr   error
+	scheduleFinalCaptureRetryCalls int
+	pendingFinalCapturesErr        error
+	pendingFinalCapturesCalls      int
+	pendingFinalCapturesLimits     []int
+	pendingFinalCapturesDueAt      []time.Time
+	// pendingFinalCapturesOverride bypasses the candidate/status simulation
+	// entirely, for constructing edge cases (like an unrecognised kind) that
+	// the real store could return but the fake's own bookkeeping never would.
+	pendingFinalCapturesOverride []store.PendingFinalCapture
+}
+
+// finalCaptureCandidate is one match/provider-id pair the fake's FinalizeMatch
+// has claimed as finalized-with-a-summary. It is intentionally NOT a
+// map[uuid.UUID]string: a slice mirrors the store's row-oriented candidate
+// set, in claim order, without pretending finalization is keyed uniquely per
+// match id ahead of time.
+type finalCaptureCandidate struct {
+	matchID  uuid.UUID
+	sourceID string
+}
+
+type finalCaptureStatusKey struct {
+	matchID uuid.UUID
+	kind    store.FinalCaptureKind
+}
+
+// finalCaptureStatusRow is the fake's mirror of one match_final_capture_status
+// row. A zero completedAt/retryAt means "unset", matching the real columns'
+// NULL.
+type finalCaptureStatusRow struct {
+	attempts        int
+	lastAttemptedAt time.Time
+	retryAt         time.Time
+	completedAt     time.Time
+	lastError       string
 }
 
 type fakePlayArchiveRecord struct {
@@ -699,6 +746,150 @@ func (f *fakeRepository) WriteOddsSnapshot(
 	return f.oddsSnapshotErr
 }
 
+func (f *fakeRepository) CompleteFinalCapture(
+	_ context.Context,
+	matchID uuid.UUID,
+	kind store.FinalCaptureKind,
+	completedAt time.Time,
+) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.completeFinalCaptureCalls++
+	if f.completeFinalCaptureErr != nil {
+		return f.completeFinalCaptureErr
+	}
+	if f.finalCaptureStatus == nil {
+		f.finalCaptureStatus = make(map[finalCaptureStatusKey]finalCaptureStatusRow)
+	}
+	key := finalCaptureStatusKey{matchID: matchID, kind: kind}
+	row := f.finalCaptureStatus[key]
+	row.attempts++
+	// Completion is monotonic: the earliest completedAt wins, matching the
+	// real store's COALESCE rather than overwriting a prior completion.
+	if row.completedAt.IsZero() || completedAt.Before(row.completedAt) {
+		row.completedAt = completedAt
+	}
+	row.retryAt = time.Time{}
+	row.lastError = ""
+	f.finalCaptureStatus[key] = row
+	return nil
+}
+
+func (f *fakeRepository) ScheduleFinalCaptureRetry(
+	ctx context.Context,
+	matchID uuid.UUID,
+	kind store.FinalCaptureKind,
+	attemptedAt, retryAt time.Time,
+	cause error,
+) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.scheduleFinalCaptureRetryCalls++
+	// The real store derives a bounded DB context from ctx (context.WithTimeout),
+	// so an already-canceled/deadline-exceeded ctx fails the write immediately,
+	// before ever reaching Postgres. Honoring ctx.Err() here first is what makes
+	// this fake catch a caller that schedules a retry with a context it knows is
+	// already done: it must not "persist" a row a real Store call could not.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if f.scheduleFinalCaptureRetryErr != nil {
+		return f.scheduleFinalCaptureRetryErr
+	}
+	if f.finalCaptureStatus == nil {
+		f.finalCaptureStatus = make(map[finalCaptureStatusKey]finalCaptureStatusRow)
+	}
+	key := finalCaptureStatusKey{matchID: matchID, kind: kind}
+	row := f.finalCaptureStatus[key]
+	// A late retry racing a completion must lose gracefully, matching the
+	// real store's `WHERE completed_at IS NULL`.
+	if !row.completedAt.IsZero() {
+		return nil
+	}
+	row.attempts++
+	// Monotonic like the real GREATEST: an attempt that arrives out of order
+	// can only push last_attempted_at/retry_at later, never pull them
+	// earlier, and last_error only follows the newest attempt. The real
+	// SQL's tie-breaker is `EXCLUDED.last_attempted_at >= ...last_attempted_at`
+	// (a same-instant attempt still updates last_error), so this must be
+	// !attemptedAt.Before(...), not the stricter attemptedAt.After(...).
+	if !attemptedAt.Before(row.lastAttemptedAt) {
+		row.lastAttemptedAt = attemptedAt
+		row.lastError = cause.Error()
+	}
+	if retryAt.After(row.retryAt) {
+		row.retryAt = retryAt
+	}
+	f.finalCaptureStatus[key] = row
+	return nil
+}
+
+// pendingFinalCaptureDue pairs one candidate capture with the sort key
+// PendingFinalCaptures orders by: a candidate with no status row at all sorts
+// as due immediately (the zero time), matching the real query's oldest-due
+// first ordering closely enough for these tests, which never assert an exact
+// interleaving across a mix of ages.
+type pendingFinalCaptureDue struct {
+	capture store.PendingFinalCapture
+	sortKey time.Time
+}
+
+func (f *fakeRepository) PendingFinalCaptures(
+	_ context.Context,
+	_, _, _ string,
+	dueAt time.Time,
+	limit int,
+) ([]store.PendingFinalCapture, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pendingFinalCapturesCalls++
+	f.pendingFinalCapturesLimits = append(f.pendingFinalCapturesLimits, limit)
+	f.pendingFinalCapturesDueAt = append(f.pendingFinalCapturesDueAt, dueAt)
+	if f.pendingFinalCapturesErr != nil {
+		return nil, f.pendingFinalCapturesErr
+	}
+	if f.pendingFinalCapturesOverride != nil {
+		pending := append([]store.PendingFinalCapture(nil), f.pendingFinalCapturesOverride...)
+		if len(pending) > limit {
+			pending = pending[:limit]
+		}
+		return pending, nil
+	}
+
+	var due []pendingFinalCaptureDue
+	for _, candidate := range f.finalCaptureCandidates {
+		for _, kind := range [...]store.FinalCaptureKind{
+			store.FinalCaptureOfficials, store.FinalCaptureFixedOdds,
+		} {
+			key := finalCaptureStatusKey{matchID: candidate.matchID, kind: kind}
+			row, hasStatus := f.finalCaptureStatus[key]
+			if hasStatus && !row.completedAt.IsZero() {
+				continue // already durably complete
+			}
+			if hasStatus && row.retryAt.After(dueAt) {
+				continue // scheduled, but not due yet
+			}
+			due = append(due, pendingFinalCaptureDue{
+				capture: store.PendingFinalCapture{
+					MatchID: candidate.matchID, SourceID: candidate.sourceID, Kind: kind,
+				},
+				sortKey: row.retryAt,
+			})
+		}
+	}
+	sort.SliceStable(due, func(i, j int) bool {
+		return due[i].sortKey.Before(due[j].sortKey)
+	})
+	if len(due) > limit {
+		due = due[:limit]
+	}
+	pending := make([]store.PendingFinalCapture, len(due))
+	for i, d := range due {
+		pending[i] = d.capture
+	}
+	return pending, nil
+}
+
 func (f *fakeRepository) WriteWinProbSnapshot(
 	_ context.Context,
 	_ uuid.UUID,
@@ -731,10 +922,18 @@ func (f *fakeRepository) FinalizeMatch(
 	if row, ok := f.existing[match.ID]; ok && row.FinalizedAt.Valid {
 		return false, nil
 	}
+	claimed := true
 	if f.finalizeResult != nil {
-		return *f.finalizeResult, nil
+		claimed = *f.finalizeResult
 	}
-	return true, nil
+	// A terminal match (canceled/abandoned/forfeit) finalizes with no summary
+	// and never becomes owed an officials or fixed-odds capture, exactly like
+	// the real backlog query's status_name exclusion.
+	if claimed && !isTerminalWithoutSummary(match) {
+		f.finalCaptureCandidates = append(f.finalCaptureCandidates,
+			finalCaptureCandidate{matchID: identity.MatchID, sourceID: match.ID})
+	}
+	return claimed, nil
 }
 
 // ExistingMatches re-keys the fixture onto canonical ids on every call, so a
@@ -3463,6 +3662,21 @@ func captureIdentity() store.MatchIdentity {
 	}
 }
 
+// forceFinalCaptureRetryDue rewinds every tracked, not-yet-completed final
+// capture's retry into the past, so the next backlog sweep treats it as due
+// without a test having to wait out the real finalCaptureRetryInterval
+// cadence.
+func forceFinalCaptureRetryDue(repo *fakeRepository) {
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	for key, row := range repo.finalCaptureStatus {
+		if row.completedAt.IsZero() {
+			row.retryAt = time.Now().Add(-time.Minute)
+			repo.finalCaptureStatus[key] = row
+		}
+	}
+}
+
 // Every crew member has to be resolved to a canonical official before the crew
 // is written, so "which matches did this referee take" is answerable across
 // seasons rather than per match.
@@ -3567,6 +3781,25 @@ func TestCaptureOfficialsRecordsEveryBoundaryFailure(t *testing.T) {
 // While a match is live only the CURRENT line is sampled. Opening and closing
 // prices are fixed facts that are not final until the match is, so writing them
 // from a live poll would keep overwriting them with an in-play price.
+func TestOddsCaptureModeString(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		mode oddsCaptureMode
+		want string
+	}{
+		{name: "live", mode: oddsCaptureLive, want: "live"},
+		{name: "final", mode: oddsCaptureFinal, want: "final"},
+		{name: "fixed retry", mode: oddsCaptureFixedRetry, want: "fixed_retry"},
+		{name: "unknown fallback", mode: oddsCaptureMode(99), want: "unknown(99)"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := test.mode.String(); got != test.want {
+				t.Fatalf("mode %d label = %q, want %q", test.mode, got, test.want)
+			}
+		})
+	}
+}
+
 func TestCaptureOddsSamplesOnlyTheCurrentLineWhileLive(t *testing.T) {
 	src := &fakeSource{odds: oddsFixture()}
 	repo := &fakeRepository{}
@@ -3574,7 +3807,7 @@ func TestCaptureOddsSamplesOnlyTheCurrentLineWhileLive(t *testing.T) {
 	before := time.Now()
 
 	worker.captureOdds(context.Background(),
-		config.Competition{ID: "test"}, captureIdentity(), "m1", false)
+		config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureLive)
 
 	if src.oddsCalls != 1 || src.oddsEvent != "m1" {
 		t.Fatalf("odds fetches=%d event=%q, want 1/m1", src.oddsCalls, src.oddsEvent)
@@ -3602,7 +3835,7 @@ func TestCaptureOddsRecordsFixedLinesOnceFinalized(t *testing.T) {
 	worker := testRunner(src, repo, config.Competition{ID: "test"})
 
 	worker.captureOdds(context.Background(),
-		config.Competition{ID: "test"}, captureIdentity(), "m1", true)
+		config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureFinal)
 
 	if len(repo.fixedOdds) != 1 || len(repo.fixedOdds[0]) != 1 ||
 		repo.fixedOdds[0][0].ProviderID != "100" {
@@ -3626,7 +3859,7 @@ func TestCaptureOddsWithNoProvidersIsASuccessfulNoOp(t *testing.T) {
 	worker := testRunner(src, repo, config.Competition{ID: "test"})
 
 	worker.captureOdds(context.Background(),
-		config.Competition{ID: "test"}, captureIdentity(), "m1", true)
+		config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureFinal)
 
 	if len(repo.oddsSnapshots) != 0 || len(repo.fixedOdds) != 0 {
 		t.Fatalf("no providers wrote %d snapshots and %d fixed rows",
@@ -3644,7 +3877,7 @@ func TestCaptureOddsRecordsAFetchFailureWithoutWriting(t *testing.T) {
 	worker := testRunner(src, repo, config.Competition{ID: "test"})
 
 	worker.captureOdds(context.Background(),
-		config.Competition{ID: "test"}, captureIdentity(), "m1", true)
+		config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureFinal)
 
 	if len(repo.oddsSnapshots) != 0 || len(repo.fixedOdds) != 0 {
 		t.Fatal("a failed fetch still wrote odds rows")
@@ -3684,7 +3917,7 @@ func TestCaptureOddsAttemptsBothWritesAndRecordsTheCombinedFailure(t *testing.T)
 			worker := testRunner(src, test.repo, config.Competition{ID: "test"})
 
 			worker.captureOdds(context.Background(),
-				config.Competition{ID: "test"}, captureIdentity(), "m1", true)
+				config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureFinal)
 
 			if len(test.repo.oddsSnapshots) != 1 || len(test.repo.fixedOdds) != 1 {
 				t.Fatalf("snapshots=%d fixed=%d, want both writes attempted",
@@ -3970,5 +4203,610 @@ func TestCanceledMatchCapturesNoOfficialsOrOdds(t *testing.T) {
 	if src.officialsCalls != 0 || src.oddsCalls != 0 {
 		t.Fatalf("officials=%d odds=%d for a canceled match, want 0/0",
 			src.officialsCalls, src.oddsCalls)
+	}
+}
+
+// A finalized match's officials and fixed-odds captures are durable in their
+// own right: a fetch failure at full time must survive a process restart,
+// wait out the retry cadence, and then actually complete once the feed
+// recovers -- all without ever blocking or failing the match itself.
+func TestFinalCaptureFetchFailuresRetryAfterRestartAndCadence(t *testing.T) {
+	match := finishedMatch()
+	src := &fakeSource{
+		matches:      []model.Match{match},
+		officialsErr: errors.New("crew feed down"),
+		oddsErr:      errors.New("odds feed down"),
+	}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	first := worker.runCycle(context.Background(), true)
+
+	if first.failures != 0 {
+		t.Fatalf("cycle failures = %d, want the additive fetch failures kept off the cycle", first.failures)
+	}
+	if repo.finalizeCalls != 1 {
+		t.Fatalf("finalizations = %d, want 1", repo.finalizeCalls)
+	}
+	if src.officialsCalls != 1 || src.oddsCalls != 1 {
+		t.Fatalf("initial fetches officials=%d odds=%d, want 1/1", src.officialsCalls, src.oddsCalls)
+	}
+	if !hasLoggedFailure(repo.logged, "officials") || !hasLoggedFailure(repo.logged, "odds") {
+		t.Fatal("the existing officials/odds failure audit was not preserved")
+	}
+	matchID := fakeMatchID(match.ID)
+	officialsKey := finalCaptureStatusKey{matchID: matchID, kind: store.FinalCaptureOfficials}
+	oddsKey := finalCaptureStatusKey{matchID: matchID, kind: store.FinalCaptureFixedOdds}
+	if !repo.finalCaptureStatus[officialsKey].completedAt.IsZero() ||
+		!repo.finalCaptureStatus[oddsKey].completedAt.IsZero() {
+		t.Fatalf("a failed fetch was recorded as completed: officials=%#v odds=%#v",
+			repo.finalCaptureStatus[officialsKey], repo.finalCaptureStatus[oddsKey])
+	}
+	if repo.finalCaptureStatus[officialsKey].retryAt.IsZero() ||
+		repo.finalCaptureStatus[oddsKey].retryAt.IsZero() {
+		t.Fatal("a failed fetch did not schedule a retry")
+	}
+
+	// Simulate a restart: a fresh runner over the same durable repository, on
+	// a later slow tick, must not retry before the cadence is due.
+	repo.existing[match.ID] = store.MatchRow{
+		State: model.MatchStateFinished,
+		FinalizedAt: pgtype.Timestamptz{
+			Time: time.Now(), Valid: true,
+		},
+	}
+	fresh := testRunner(src, repo, comp)
+	fresh.runCycle(context.Background(), true)
+
+	if src.officialsCalls != 1 || src.oddsCalls != 1 {
+		t.Fatalf("fetches after a not-yet-due restart officials=%d odds=%d, want unchanged at 1/1",
+			src.officialsCalls, src.oddsCalls)
+	}
+
+	// Move the retry cadence into the past and let the feed recover.
+	forceFinalCaptureRetryDue(repo)
+	src.officialsErr = nil
+	src.oddsErr = nil
+
+	fresh.runCycle(context.Background(), true)
+
+	if src.officialsCalls != 2 || src.oddsCalls != 2 {
+		t.Fatalf("fetches once due officials=%d odds=%d, want 2/2", src.officialsCalls, src.oddsCalls)
+	}
+	if repo.finalCaptureStatus[officialsKey].completedAt.IsZero() ||
+		repo.finalCaptureStatus[oddsKey].completedAt.IsZero() {
+		t.Fatal("the recovered retry did not complete either capture")
+	}
+
+	fresh.runCycle(context.Background(), true)
+
+	if src.officialsCalls != 2 || src.oddsCalls != 2 {
+		t.Fatalf("fetches after completion officials=%d odds=%d, want unchanged at 2/2 (never reprocessed)",
+			src.officialsCalls, src.oddsCalls)
+	}
+}
+
+// A write failure at full time (not a fetch failure) still leaves the crew
+// and fixed odds retryable, and the retry must not re-sample a CURRENT line
+// that is long since closed.
+func TestFinalCaptureWriteFailuresRetryWithoutAnotherOddsSnapshot(t *testing.T) {
+	match := finishedMatch()
+	src := &fakeSource{
+		matches:   []model.Match{match},
+		officials: crewFixture(),
+		odds:      oddsFixture(),
+	}
+	repo := &fakeRepository{
+		existing:     map[string]store.MatchRow{},
+		crewWriteErr: errors.New("crew write down"),
+		fixedOddsErr: errors.New("fixed write down"),
+	}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	worker.runCycle(context.Background(), true)
+
+	if src.officialsCalls != 1 || src.oddsCalls != 1 {
+		t.Fatalf("initial fetches officials=%d odds=%d, want 1/1", src.officialsCalls, src.oddsCalls)
+	}
+	if len(repo.crewWrites) != 1 || len(repo.fixedOdds) != 1 {
+		t.Fatalf("initial writes crew=%d fixed=%d, want both attempted once even though both failed",
+			len(repo.crewWrites), len(repo.fixedOdds))
+	}
+	if len(repo.oddsSnapshots) != 1 {
+		t.Fatalf("initial current snapshot count = %d, want 1", len(repo.oddsSnapshots))
+	}
+
+	matchID := fakeMatchID(match.ID)
+	officialsKey := finalCaptureStatusKey{matchID: matchID, kind: store.FinalCaptureOfficials}
+	oddsKey := finalCaptureStatusKey{matchID: matchID, kind: store.FinalCaptureFixedOdds}
+	if !repo.finalCaptureStatus[officialsKey].completedAt.IsZero() ||
+		!repo.finalCaptureStatus[oddsKey].completedAt.IsZero() {
+		t.Fatal("a failed write was recorded as completed")
+	}
+
+	repo.existing[match.ID] = store.MatchRow{
+		State: model.MatchStateFinished,
+		FinalizedAt: pgtype.Timestamptz{
+			Time: time.Now(), Valid: true,
+		},
+	}
+	forceFinalCaptureRetryDue(repo)
+	repo.crewWriteErr = nil
+	repo.fixedOddsErr = nil
+
+	worker.runCycle(context.Background(), true)
+
+	if src.officialsCalls != 2 || src.oddsCalls != 2 {
+		t.Fatalf("fetches after retry officials=%d odds=%d, want 2/2", src.officialsCalls, src.oddsCalls)
+	}
+	if len(repo.crewWrites) != 2 || len(repo.fixedOdds) != 2 {
+		t.Fatalf("writes after retry crew=%d fixed=%d, want 2/2", len(repo.crewWrites), len(repo.fixedOdds))
+	}
+	// The fixed retry must not sample another CURRENT line: that market
+	// closed at full time and there is nothing new to observe.
+	if len(repo.oddsSnapshots) != 1 {
+		t.Fatalf("snapshots after the fixed retry = %d, want still 1", len(repo.oddsSnapshots))
+	}
+	if repo.finalCaptureStatus[officialsKey].completedAt.IsZero() ||
+		repo.finalCaptureStatus[oddsKey].completedAt.IsZero() {
+		t.Fatalf("not completed after recovery: officials=%#v odds=%#v",
+			repo.finalCaptureStatus[officialsKey], repo.finalCaptureStatus[oddsKey])
+	}
+}
+
+// An explicit empty crew or no-market answer is a real completion, not a gap
+// to keep probing: a fresh runner on a later slow tick must never re-fetch
+// either one.
+func TestFinalCaptureEmptyResponsesCompleteAndNeverReprocess(t *testing.T) {
+	match := finishedMatch()
+	src := &fakeSource{matches: []model.Match{match}}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	worker.runCycle(context.Background(), true)
+
+	if src.officialsCalls != 1 || src.oddsCalls != 1 {
+		t.Fatalf("initial fetches officials=%d odds=%d, want 1/1", src.officialsCalls, src.oddsCalls)
+	}
+	matchID := fakeMatchID(match.ID)
+	officialsKey := finalCaptureStatusKey{matchID: matchID, kind: store.FinalCaptureOfficials}
+	oddsKey := finalCaptureStatusKey{matchID: matchID, kind: store.FinalCaptureFixedOdds}
+	if repo.finalCaptureStatus[officialsKey].completedAt.IsZero() ||
+		repo.finalCaptureStatus[oddsKey].completedAt.IsZero() {
+		t.Fatalf("empty responses were not completed: officials=%#v odds=%#v",
+			repo.finalCaptureStatus[officialsKey], repo.finalCaptureStatus[oddsKey])
+	}
+
+	repo.existing[match.ID] = store.MatchRow{
+		State: model.MatchStateFinished,
+		FinalizedAt: pgtype.Timestamptz{
+			Time: time.Now(), Valid: true,
+		},
+	}
+	fresh := testRunner(src, repo, comp)
+	fresh.runCycle(context.Background(), true)
+
+	if src.officialsCalls != 1 || src.oddsCalls != 1 {
+		t.Fatalf("officials=%d odds=%d after a fresh runner's slow tick, want unchanged at 1/1 (never reprocessed)",
+			src.officialsCalls, src.oddsCalls)
+	}
+}
+
+// A process can crash after FinalizeMatch commits but before either capture
+// is even attempted once. The backlog sweep must still find that match from
+// the candidate rows alone -- there is no status row yet, only a finalized
+// match with nothing captured.
+func TestFinalCaptureBacklogFindsMatchWithNoStatusRows(t *testing.T) {
+	matchID := fakeMatchID("m1")
+	repo := &fakeRepository{
+		existing: map[string]store.MatchRow{},
+		finalCaptureCandidates: []finalCaptureCandidate{
+			{matchID: matchID, sourceID: "m1"},
+		},
+	}
+	src := &fakeSource{officials: crewFixture(), odds: oddsFixture()}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	worker.runCycle(context.Background(), true)
+
+	if src.officialsCalls != 1 || src.officialsEvent != "m1" {
+		t.Fatalf("officials backlog fetch=%d event=%q, want 1/m1", src.officialsCalls, src.officialsEvent)
+	}
+	if src.oddsCalls != 1 || src.oddsEvent != "m1" {
+		t.Fatalf("odds backlog fetch=%d event=%q, want 1/m1", src.oddsCalls, src.oddsEvent)
+	}
+	officialsRow := repo.finalCaptureStatus[finalCaptureStatusKey{matchID: matchID, kind: store.FinalCaptureOfficials}]
+	oddsRow := repo.finalCaptureStatus[finalCaptureStatusKey{matchID: matchID, kind: store.FinalCaptureFixedOdds}]
+	if officialsRow.completedAt.IsZero() || oddsRow.completedAt.IsZero() {
+		t.Fatalf("backlog capture was not completed: officials=%#v odds=%#v", officialsRow, oddsRow)
+	}
+	if hasLoggedFailure(repo.logged, finalCaptureBacklogRunKind) {
+		t.Fatalf("the backlog sweep itself was audited as a failure: %#v", repo.logged)
+	}
+}
+
+// The backlog sweep must never process more than finalCaptureRetryBatch
+// pending captures per call, even when many more are outstanding -- an
+// unhealthy crew or bookmaker feed should cost one bounded sweep per tick,
+// not a growing amount of work as the backlog grows.
+func TestFinalCaptureBacklogBatchIsBoundedAtTen(t *testing.T) {
+	if finalCaptureRetryBatch != 10 {
+		t.Fatalf("finalCaptureRetryBatch = %d, want 10", finalCaptureRetryBatch)
+	}
+	const candidateMatches = 15 // 30 pending items: officials + fixed odds each
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	for i := 0; i < candidateMatches; i++ {
+		sourceID := fmt.Sprintf("m%02d", i)
+		repo.finalCaptureCandidates = append(repo.finalCaptureCandidates,
+			finalCaptureCandidate{matchID: fakeMatchID(sourceID), sourceID: sourceID})
+	}
+	src := &fakeSource{officialsErr: errors.New("still down"), oddsErr: errors.New("still down")}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	worker.runCycle(context.Background(), true)
+
+	if got := len(repo.pendingFinalCapturesLimits); got == 0 {
+		t.Fatal("PendingFinalCaptures was never called")
+	} else if last := repo.pendingFinalCapturesLimits[got-1]; last != finalCaptureRetryBatch {
+		t.Fatalf("limit passed to PendingFinalCaptures = %d, want the finalCaptureRetryBatch constant %d",
+			last, finalCaptureRetryBatch)
+	}
+	if attempted := src.officialsCalls + src.oddsCalls; attempted != finalCaptureRetryBatch {
+		t.Fatalf("attempts this tick = %d (with %d pending), want exactly the batch size %d",
+			attempted, candidateMatches*2, finalCaptureRetryBatch)
+	}
+}
+
+// A failed retry must not be offered again on the very next slow tick: it has
+// to wait out finalCaptureRetryInterval, or an unhealthy feed would spend
+// every tick re-attempting the same handful of matches.
+func TestFinalCaptureBacklogReschedulesFailedRetryThirtyMinutesOut(t *testing.T) {
+	const candidateMatches = finalCaptureRetryBatch / 2 // exactly one batch's worth of pending items
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	for i := 0; i < candidateMatches; i++ {
+		sourceID := fmt.Sprintf("m%02d", i)
+		repo.finalCaptureCandidates = append(repo.finalCaptureCandidates,
+			finalCaptureCandidate{matchID: fakeMatchID(sourceID), sourceID: sourceID})
+	}
+	src := &fakeSource{officialsErr: errors.New("still down"), oddsErr: errors.New("still down")}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	worker.runCycle(context.Background(), true)
+
+	attempted := src.officialsCalls + src.oddsCalls
+	if attempted != finalCaptureRetryBatch {
+		t.Fatalf("attempts this tick = %d, want exactly %d", attempted, finalCaptureRetryBatch)
+	}
+	if got := len(repo.finalCaptureStatus); got != finalCaptureRetryBatch {
+		t.Fatalf("status rows written = %d, want one per attempted item (%d)", got, finalCaptureRetryBatch)
+	}
+	minRetryAt := time.Now().Add(finalCaptureRetryInterval - time.Minute)
+	for key, row := range repo.finalCaptureStatus {
+		if row.retryAt.Before(minRetryAt) {
+			t.Fatalf("retry_at for %v = %v, want roughly %s out", key, row.retryAt, finalCaptureRetryInterval)
+		}
+	}
+
+	worker.runCycle(context.Background(), true)
+
+	if got := src.officialsCalls + src.oddsCalls; got != attempted {
+		t.Fatalf("attempts after an immediate second slow tick = %d, want unchanged at %d (not yet due)",
+			got, attempted)
+	}
+}
+
+// A capture kind the backlog does not recognise means the store and the
+// ingester have drifted. That has to fail loudly rather than being silently
+// skipped or crashing the sweep for every other match behind it.
+func TestFinalCaptureBacklogLogsUnknownKindLoudly(t *testing.T) {
+	repo := &fakeRepository{
+		existing: map[string]store.MatchRow{},
+		pendingFinalCapturesOverride: []store.PendingFinalCapture{
+			{MatchID: fakeMatchID("m1"), SourceID: "m1", Kind: store.FinalCaptureKind("mystery")},
+		},
+	}
+	src := &fakeSource{}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	worker.runCycle(context.Background(), true)
+
+	if src.officialsCalls != 0 || src.oddsCalls != 0 {
+		t.Fatalf("an unknown kind still dispatched a capture: officials=%d odds=%d",
+			src.officialsCalls, src.oddsCalls)
+	}
+	if !hasLoggedFailure(repo.logged, finalCaptureBacklogRunKind) {
+		t.Fatal("an unknown final capture kind was not audited as a backlog failure")
+	}
+}
+
+// If the write itself fails AND the retry ledger write also fails, the
+// original capture cause must still be visible -- losing it would leave an
+// operator staring at a database error with no idea a crew write ever failed
+// in the first place.
+func TestCaptureOfficialsPreservesOriginalCauseWhenStatusPersistenceAlsoFails(t *testing.T) {
+	repo := &fakeRepository{
+		crewWriteErr:                 errors.New("write down"),
+		scheduleFinalCaptureRetryErr: errors.New("ledger down"),
+	}
+	src := &fakeSource{officials: crewFixture()}
+	worker := testRunner(src, repo, config.Competition{ID: "test"})
+
+	err := worker.captureOfficials(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1")
+
+	if err == nil {
+		t.Fatal("want a non-nil error when both the capture and the retry ledger fail")
+	}
+	if !strings.Contains(err.Error(), "write down") {
+		t.Fatalf("error = %q, want it to still mention the original capture cause %q", err.Error(), "write down")
+	}
+	if !strings.Contains(err.Error(), "ledger down") {
+		t.Fatalf("error = %q, want it to also mention the status write failure %q", err.Error(), "ledger down")
+	}
+	// The individual "officials" ingest_run row -- not just the (often
+	// discarded) returned error -- must itself carry both causes. A caller
+	// that ignores the return value (like the full-time path) must still be
+	// able to see the whole story from the audit row alone.
+	runs := loggedRunsForKind(repo.logged, "officials")
+	if len(runs) != 1 {
+		t.Fatalf("officials audit rows = %#v, want exactly one", runs)
+	}
+	if runs[0].ok {
+		t.Fatal("the combined failure was not audited under the officials ingest_run kind")
+	}
+	if !strings.Contains(runs[0].message, "write down") {
+		t.Fatalf("officials audit message = %q, want it to still mention the original capture cause %q",
+			runs[0].message, "write down")
+	}
+	if !strings.Contains(runs[0].message, "ledger down") {
+		t.Fatalf("officials audit message = %q, want it to also mention the retry ledger cause %q",
+			runs[0].message, "ledger down")
+	}
+}
+
+// The odds equivalent: a fixed-odds write failure whose retry ledger write
+// also fails must not swallow the original bookmaker write failure.
+func TestCaptureOddsPreservesOriginalCauseWhenStatusPersistenceAlsoFails(t *testing.T) {
+	repo := &fakeRepository{
+		fixedOddsErr:                 errors.New("write down"),
+		scheduleFinalCaptureRetryErr: errors.New("ledger down"),
+	}
+	src := &fakeSource{odds: oddsFixture()}
+	worker := testRunner(src, repo, config.Competition{ID: "test"})
+
+	err := worker.captureOdds(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureFinal)
+
+	if err == nil {
+		t.Fatal("want a non-nil error when both the fixed write and the retry ledger fail")
+	}
+	if !strings.Contains(err.Error(), "write down") {
+		t.Fatalf("error = %q, want it to still mention the original capture cause %q", err.Error(), "write down")
+	}
+	if !strings.Contains(err.Error(), "ledger down") {
+		t.Fatalf("error = %q, want it to also mention the status write failure %q", err.Error(), "ledger down")
+	}
+	// The CURRENT-price snapshot is independent of the FIXED write/ledger
+	// outcome: it must still have been attempted even though the fixed side
+	// failed twice over.
+	if len(repo.oddsSnapshots) != 1 {
+		t.Fatalf("snapshot writes = %d, want the CURRENT sample still attempted independently",
+			len(repo.oddsSnapshots))
+	}
+	// The individual "odds" ingest_run row -- not just the (often discarded)
+	// returned error -- must itself carry both causes. A caller that ignores
+	// the return value (like the full-time path) must still be able to see
+	// the whole story from the audit row alone.
+	runs := loggedRunsForKind(repo.logged, "odds")
+	if len(runs) != 1 {
+		t.Fatalf("odds audit rows = %#v, want exactly one", runs)
+	}
+	if runs[0].ok {
+		t.Fatal("the combined failure was not audited under the odds ingest_run kind")
+	}
+	if !strings.Contains(runs[0].message, "write down") {
+		t.Fatalf("odds audit message = %q, want it to still mention the original capture cause %q",
+			runs[0].message, "write down")
+	}
+	if !strings.Contains(runs[0].message, "ledger down") {
+		t.Fatalf("odds audit message = %q, want it to also mention the retry ledger cause %q",
+			runs[0].message, "ledger down")
+	}
+}
+
+// A completion write can fail even though the capture itself succeeded. That
+// must still be surfaced to the caller -- otherwise a durable ledger outage
+// at exactly the wrong moment would silently keep retrying a crew that was
+// already written. Critically, the individual "officials" ingest_run row
+// itself must also read as a failure: the full-time caller discards
+// captureOfficials' returned error (crews are additive and must never block
+// finalization), so the audit row is the ONLY place a ledger outage can be
+// seen without following the retry ledger.
+func TestCaptureOfficialsAuditsACompletionLedgerFailure(t *testing.T) {
+	repo := &fakeRepository{completeFinalCaptureErr: errors.New("ledger down")}
+	src := &fakeSource{officials: crewFixture()}
+	worker := testRunner(src, repo, config.Competition{ID: "test"})
+
+	err := worker.captureOfficials(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1")
+
+	if err == nil || !strings.Contains(err.Error(), "ledger down") {
+		t.Fatalf("captureOfficials error = %v, want it to surface the completion ledger failure", err)
+	}
+	if len(repo.crewWrites) != 1 {
+		t.Fatalf("crew writes = %d, want the crew itself still durably written", len(repo.crewWrites))
+	}
+	runs := loggedRunsForKind(repo.logged, "officials")
+	if len(runs) != 1 {
+		t.Fatalf("officials audit rows = %#v, want exactly one", runs)
+	}
+	if runs[0].ok {
+		t.Fatalf("officials audit row = %#v, want it audited as a failure: a completion-ledger "+
+			"outage must not read as a successful capture", runs[0])
+	}
+	if !strings.Contains(runs[0].message, "ledger down") {
+		t.Fatalf("officials audit message = %q, want it to contain the completion ledger cause",
+			runs[0].message)
+	}
+}
+
+// The odds equivalent of the completion-ledger gap above: the FIXED write
+// itself succeeds, but the completion write to the retry ledger fails. The
+// odds ingest_run row must audit that as a failure too, not just the
+// returned error, for the same reason -- a live-mode/backlog caller's return
+// value is not always inspected, but the audit row always is.
+func TestCaptureOddsAuditsACompletionLedgerFailure(t *testing.T) {
+	repo := &fakeRepository{completeFinalCaptureErr: errors.New("ledger down")}
+	src := &fakeSource{odds: oddsFixture()}
+	worker := testRunner(src, repo, config.Competition{ID: "test"})
+
+	err := worker.captureOdds(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureFinal)
+
+	if err == nil || !strings.Contains(err.Error(), "ledger down") {
+		t.Fatalf("captureOdds error = %v, want it to surface the completion ledger failure", err)
+	}
+	if len(repo.fixedOdds) != 1 || len(repo.oddsSnapshots) != 1 {
+		t.Fatalf("fixed writes=%d snapshot writes=%d, want both still durably written",
+			len(repo.fixedOdds), len(repo.oddsSnapshots))
+	}
+	runs := loggedRunsForKind(repo.logged, "odds")
+	if len(runs) != 1 {
+		t.Fatalf("odds audit rows = %#v, want exactly one", runs)
+	}
+	if runs[0].ok {
+		t.Fatalf("odds audit row = %#v, want it audited as a failure: a completion-ledger "+
+			"outage must not read as a successful capture", runs[0])
+	}
+	if !strings.Contains(runs[0].message, "ledger down") {
+		t.Fatalf("odds audit message = %q, want it to contain the completion ledger cause",
+			runs[0].message)
+	}
+}
+
+// A snapshot failure and the fixed-odds outcome are independent durability
+// facts: the odds ingest_run audits both writes together, as before, but a
+// fixed line that was actually written must never be left pending just
+// because the accompanying CURRENT-price snapshot failed.
+func TestCaptureOddsSnapshotFailureDoesNotBlockFixedOddsCompletion(t *testing.T) {
+	repo := &fakeRepository{oddsSnapshotErr: errors.New("snapshot boom")}
+	src := &fakeSource{odds: oddsFixture()}
+	worker := testRunner(src, repo, config.Competition{ID: "test"})
+
+	worker.captureOdds(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureFinal)
+
+	if len(repo.fixedOdds) != 1 {
+		t.Fatalf("fixed odds writes = %d, want the fixed write still attempted", len(repo.fixedOdds))
+	}
+	if !hasLoggedFailure(repo.logged, "odds") {
+		t.Fatal("a failing snapshot write should still fail the odds audit")
+	}
+	row := repo.finalCaptureStatus[finalCaptureStatusKey{
+		matchID: fakeMatchID("m1"), kind: store.FinalCaptureFixedOdds,
+	}]
+	if row.completedAt.IsZero() {
+		t.Fatalf("fixed odds status = %#v, want it completed despite the snapshot failure", row)
+	}
+}
+
+// The reverse: a fixed-odds write failure schedules a retry even when the
+// accompanying CURRENT-price snapshot succeeded.
+func TestCaptureOddsFixedFailureSchedulesRetryEvenWhenSnapshotSucceeds(t *testing.T) {
+	repo := &fakeRepository{fixedOddsErr: errors.New("fixed boom")}
+	src := &fakeSource{odds: oddsFixture()}
+	worker := testRunner(src, repo, config.Competition{ID: "test"})
+
+	worker.captureOdds(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureFinal)
+
+	if len(repo.oddsSnapshots) != 1 {
+		t.Fatalf("snapshot writes = %d, want the snapshot still attempted", len(repo.oddsSnapshots))
+	}
+	row := repo.finalCaptureStatus[finalCaptureStatusKey{
+		matchID: fakeMatchID("m1"), kind: store.FinalCaptureFixedOdds,
+	}]
+	if !row.completedAt.IsZero() {
+		t.Fatalf("fixed odds status = %#v, want it NOT completed after a failed write", row)
+	}
+	if row.retryAt.IsZero() {
+		t.Fatalf("fixed odds status = %#v, want a retry scheduled", row)
+	}
+}
+
+// A canceled context must not be mistaken for a successful capture just
+// because the capture itself returned a nil error before the cancellation
+// was observed: that would durably mark a capture "complete" that never
+// actually finished.
+func TestPersistFinalCaptureAttemptTreatsContextCancellationAsFailureNotCompletion(t *testing.T) {
+	repo := &fakeRepository{}
+	worker := testRunner(&fakeSource{}, repo, config.Competition{ID: "test"})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	attemptedAt := time.Now()
+	err := worker.persistFinalCaptureAttempt(
+		ctx, fakeMatchID("m1"), store.FinalCaptureOfficials, attemptedAt, nil)
+
+	if err == nil {
+		t.Fatal("want a non-nil error for a canceled context, even with a nil capture error")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want it to still surface the original context.Canceled cause", err)
+	}
+	if repo.completeFinalCaptureCalls != 0 {
+		t.Fatalf("CompleteFinalCapture calls = %d, want 0: a canceled context must not complete",
+			repo.completeFinalCaptureCalls)
+	}
+	if repo.scheduleFinalCaptureRetryCalls != 1 {
+		t.Fatalf("ScheduleFinalCaptureRetry calls = %d, want 1", repo.scheduleFinalCaptureRetryCalls)
+	}
+	// A method call alone is not durability: the real Store derives its bounded
+	// DB context from the same ctx it was handed (context.WithTimeout(ctx, ...)),
+	// so a canceled parent must not silently prevent the retry row from ever
+	// existing. Assert the fake's row actually landed, not merely that the
+	// method was invoked with a context it could ignore.
+	row, ok := repo.finalCaptureStatus[finalCaptureStatusKey{
+		matchID: fakeMatchID("m1"), kind: store.FinalCaptureOfficials,
+	}]
+	if !ok {
+		t.Fatal("want a durable pending retry row after a canceled context, not silently dropped")
+	}
+	if !row.completedAt.IsZero() {
+		t.Fatalf("row = %#v, want it NOT completed after a canceled context", row)
+	}
+	if row.retryAt.IsZero() {
+		t.Fatalf("row = %#v, want retry_at scheduled despite the canceled context", row)
+	}
+	if !row.retryAt.After(attemptedAt) {
+		t.Fatalf("row.retryAt = %s, want it strictly after attemptedAt %s", row.retryAt, attemptedAt)
 	}
 }
