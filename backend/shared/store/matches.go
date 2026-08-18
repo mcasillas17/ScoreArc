@@ -34,9 +34,9 @@ type MatchIdentity struct {
 // MatchRow is the stored state of a match, in canonical space: every id on it
 // is a ScoreArc id, never a provider one.
 type MatchRow struct {
-	State           model.MatchState
-	FinalizedAt     pgtype.Timestamptz
-	HasDetail       bool
+	State       model.MatchState
+	FinalizedAt pgtype.Timestamptz
+	HasDetail   bool
 	// DetailUpdatedAt is match_detail.updated_at -- invalid (zero pgtype) when
 	// HasDetail is false. schedule.go's needsSummary uses this, and only this,
 	// to decide whether a SCHEDULED match's stored detail is stale enough to
