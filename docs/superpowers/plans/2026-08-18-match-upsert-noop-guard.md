@@ -97,8 +97,9 @@ spec's existing task list, not a new epic-level deliverable.
   review was fixed here. The harness-managed branch name and required Copilot
   App trailer supersede the plan's illustrative branch/trailer text.
 - No package-local ingester README exists. This internal write-path behavior is
-  documented here and in the separate shared architecture-docs PR; no public
-  API or OpenAPI contract changed.
+  documented here and in the separate shared architecture-docs PR
+  [#68](https://github.com/mcasillas17/ScoreArc/pull/68); no public API or
+  OpenAPI contract changed.
 
 ---
 
