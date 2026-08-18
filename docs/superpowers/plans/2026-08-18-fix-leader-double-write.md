@@ -329,7 +329,7 @@ npm run build
 
 Expected: suite green, typecheck silent, lint clean, build succeeds.
 
-- [ ] **Step 3: Open the PR**
+- [x] **Step 3: Open the PR**
 
 ```bash
 git push -u origin fix/leader-double-write
@@ -379,7 +379,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 4: Stop**
+- [x] **Step 4: Stop**
 
 Do **not** merge. Merging is the user's decision — see `AGENTS.md`.
 
