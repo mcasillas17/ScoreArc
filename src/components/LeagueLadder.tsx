@@ -54,7 +54,11 @@ export default function LeagueLadder({
               "Out" header numbered from the config (e.g. 9-18) sitting above
               the whole table — a count that is simply wrong. One flat list. */}
           {!started ? (
-            <div className="ll-band ll-band--out">
+            // Plain `ll-band`, deliberately NOT `ll-band--out`: that class
+            // carries `.ll-band--out .ll-row { opacity: 0.5 }`, which would dim
+            // every club as if eliminated — the same false claim as marking
+            // them all qualified, just inverted.
+            <div className="ll-band">
               {standings.map((s) => <Row key={s.team.id} s={s} teamStyle={teamStyle} lig={false} />)}
             </div>
           ) : (<>
