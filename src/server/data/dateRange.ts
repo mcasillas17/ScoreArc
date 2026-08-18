@@ -77,14 +77,23 @@ export function seasonInitialMonth(now: Date, seasonId: string, activeRange?: st
   const current = new Date(now.getFullYear(), now.getMonth(), 1);
   const currentTime = current.getTime();
 
-  if (currentTime >= min.getTime() && currentTime <= max.getTime()) return current;
-
   if (activeRange && parseRange(activeRange)) {
+    const start = activeRange.slice(0, 8);
     const end = activeRange.slice(9);
+    const activeStartMonth = new Date(
+      Number(start.slice(0, 4)),
+      Number(start.slice(4, 6)) - 1,
+      1,
+    );
     const activeMonth = new Date(Number(end.slice(0, 4)), Number(end.slice(4, 6)) - 1, 1);
-    if (activeMonth >= min && activeMonth <= max) return activeMonth;
+    const activeStart = activeStartMonth < min ? min : activeStartMonth;
+    const activeEnd = activeMonth > max ? max : activeMonth;
+    if (current < activeStart) return activeStart;
+    if (current > activeEnd) return activeEnd;
+    return current;
   }
 
+  if (currentTime >= min.getTime() && currentTime <= max.getTime()) return current;
   return currentTime < min.getTime() ? min : max;
 }
 

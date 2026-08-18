@@ -78,6 +78,15 @@ describe('seasonMonthBounds', () => {
       expect(seasonInitialMonth(now, '1998', '19980627-19980712')).toEqual(
         new Date(1998, 6, 1),
       );
+      expect(seasonInitialMonth(now, '2026', '20260628-20260719')).toEqual(
+        new Date(2026, 6, 1),
+      );
+    });
+
+    it('keeps the current month when it overlaps the active range', () => {
+      expect(
+        seasonInitialMonth(new Date(2026, 6, 4), '2026', '20260628-20260719'),
+      ).toEqual(new Date(2026, 6, 1));
     });
 
     it('clamps to the nearest season bound without an active range', () => {

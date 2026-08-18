@@ -3,6 +3,7 @@ import {
   monthLoadFailed,
   monthLoadStarted,
   monthLoadSucceeded,
+  monthNavigationAction,
   returnedToLoadedMonth,
 } from './matchCalendarState';
 
@@ -23,9 +24,12 @@ describe('match calendar request state', () => {
 
   it('clears stale rows when the requested month fails', () => {
     expect(monthLoadFailed(monthLoadStarted(initial), 'Fixtures unavailable')).toEqual({
-      matches: [],
-      loading: false,
-      error: 'Fixtures unavailable',
+      state: {
+        matches: [],
+        loading: false,
+        error: 'Fixtures unavailable',
+      },
+      loadedRange: null,
     });
   });
 
@@ -33,12 +37,26 @@ describe('match calendar request state', () => {
     expect(returnedToLoadedMonth(monthLoadStarted(initial))).toEqual(initial);
   });
 
+  it('preserves an initial error instead of immediately retrying the same range', () => {
+    const failedInitial = { matches: [], loading: false, error: 'Fixtures unavailable' };
+    expect(monthNavigationAction('august', 'august')).toBe('restore');
+    expect(returnedToLoadedMonth(failedInitial)).toEqual(failedInitial);
+  });
+
+  it('fetches only when the requested range differs from the loaded range', () => {
+    expect(monthNavigationAction('september', 'august')).toBe('fetch');
+    expect(monthNavigationAction('august', null)).toBe('fetch');
+  });
+
   it('replaces rows and clears status after a successful request', () => {
     const september = [{ id: 'september' }];
-    expect(monthLoadSucceeded(monthLoadStarted(initial), september)).toEqual({
-      matches: september,
-      loading: false,
-      error: null,
+    expect(monthLoadSucceeded(monthLoadStarted(initial), september, 'september')).toEqual({
+      state: {
+        matches: september,
+        loading: false,
+        error: null,
+      },
+      loadedRange: 'september',
     });
   });
 });

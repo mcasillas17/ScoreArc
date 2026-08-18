@@ -11,6 +11,7 @@ import {
   monthLoadFailed,
   monthLoadStarted,
   monthLoadSucceeded,
+  monthNavigationAction,
   returnedToLoadedMonth,
 } from './matchCalendarState';
 import { matchToBracketMatch } from './upcomingWindow';
@@ -135,9 +136,7 @@ export default function MatchCalendar({
   const [detail, setDetail] = useState<Match | null>(null);
   const [summary, setSummary] = useState<MatchSummary | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
-  const loadedRange = useRef<string | null>(
-    initialError ? null : monthRange(parseMonth(initialMonth)),
-  );
+  const loadedRange = useRef<string | null>(monthRange(parseMonth(initialMonth)));
   const feedFailed = useRef(false);
   const didScrollToToday = useRef(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -168,10 +167,8 @@ export default function MatchCalendar({
 
   useEffect(() => {
     const range = monthRange(cursor);
-    if (range === loadedRange.current) {
-      setLoadState((state) => (
-        state.loading || state.error ? returnedToLoadedMonth(state) : state
-      ));
+    if (monthNavigationAction(range, loadedRange.current) === 'restore') {
+      setLoadState(returnedToLoadedMonth);
       return;
     }
 
@@ -192,19 +189,25 @@ export default function MatchCalendar({
         const data: unknown = await res.json();
         if (!Array.isArray(data)) throw new Error('Fixtures response was not an array');
         if (controller.signal.aborted) return;
-        setLoadState((state) => monthLoadSucceeded(state, data as Match[]));
-        loadedRange.current = range;
+        setLoadState((state) => {
+          const transition = monthLoadSucceeded(state, data as Match[], range);
+          loadedRange.current = transition.loadedRange;
+          return transition.state;
+        });
         if (feedFailed.current) {
           trackFeedRecovery('fixtures');
           feedFailed.current = false;
         }
       } catch {
         if (controller.signal.aborted) return;
-        loadedRange.current = null;
-        setLoadState((state) => monthLoadFailed(
-          state,
-          'Fixtures are unavailable right now. Please try another month and come back.',
-        ));
+        setLoadState((state) => {
+          const transition = monthLoadFailed(
+            state,
+            'Fixtures are unavailable right now. Please try another month and come back.',
+          );
+          loadedRange.current = transition.loadedRange;
+          return transition.state;
+        });
         if (!feedFailed.current) {
           trackFeedFailure('fixtures', failureStatus);
           feedFailed.current = true;
