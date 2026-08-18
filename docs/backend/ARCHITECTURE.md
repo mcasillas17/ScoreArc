@@ -194,12 +194,22 @@ same transaction.
   metadata; group-stage matches continue finalizing, while knockout candidates
   require confirmation from the current successful bracket response before
   immutable finalization.
-- Standings and season-leader replacements are transactional. Empty leader
-  categories preserve their existing rows; empty or suspiciously partial
-  standings payloads preserve the prior snapshot rather than deleting valid
-  rows and remain retryable failures. ESPN statistics responses carry
-  unreliable season metadata, so leaderboard season scoping relies on the
-  requested statistics URL rather than rejecting the payload's reported year.
+- Standings and season-leader replacements are transactional. Standings replace
+  independently of crest mirroring; empty or suspiciously partial payloads
+  preserve the prior snapshot rather than deleting valid rows and remain
+  retryable failures.
+- Each goals/assists leader category mirrors crest URLs in its mapped in-memory
+  board before persistence, then performs exactly one guarded transactional
+  replacement per refresh. Empty categories still preserve existing rows. This
+  ordering is safe because leader crest mirroring depends only on that board and
+  the mirror cache/R2, never on persisted `top_scorer` rows. ESPN statistics
+  responses carry unreliable season metadata, so leaderboard season scoping
+  relies on the requested statistics URL rather than rejecting the payload's
+  reported year.
+- On the 300-row production `top_scorer` table, the former provider-write then
+  mirrored-rewrite path caused +600/-600 tuple writes per slow tick
+  (~345,600 writes/day) and briefly exposed provider hotlinks. The
+  mirror-then-write invariant removes both the redundant pass and that window.
 - Crest downloads allow only validated public HTTP(S) sources, enforce
   redirects/content type/size/deadline limits, and upload deterministic R2 keys.
 - Every provider/store operation and global audit-pruning pass records an
@@ -234,9 +244,11 @@ sequenceDiagram
     S->>P: monotonic match/team upserts
     S->>E: summary for live/final candidates
     S->>P: atomic detail + final freeze
-    S->>E: standings + goals/assists leaders (one statistics fetch)
-    S->>P: guarded transactional replacements
-    S->>R: validated crest mirror
+    S->>E: standings
+    S->>P: guarded transactional standings replacement
+    S->>E: goals/assists leaders (one statistics fetch)
+    S->>R: validated leader crest mirror (in-memory board)
+    S->>P: guarded transactional leader replacement
     S->>P: ingest_run audit
   end
 ```
