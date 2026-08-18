@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mcasillas17/scorearc-backend/config"
+	"github.com/mcasillas17/scorearc-backend/migrations"
 	"github.com/mcasillas17/scorearc-backend/shared/assets"
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
 	"github.com/mcasillas17/scorearc-backend/shared/source"
@@ -53,6 +55,7 @@ func run() int {
 		return 1
 	}
 	defer repo.Close()
+	reportSchemaDrift(startupCtx, log, repo)
 	lease, acquired, err := store.AcquireIngesterLease(startupCtx, leaseDSN)
 	cancelStartup()
 	if err != nil {
@@ -348,4 +351,58 @@ func cycleTimeout(slowTick bool) time.Duration {
 		return 4*time.Minute + 30*time.Second
 	}
 	return 18 * time.Second
+}
+
+// reportSchemaDrift compares the database's applied migration version against
+// the highest migration this binary carries, and says so once, loudly, at
+// startup.
+//
+// It deliberately does NOT abort. Deploys ship code while migrations are
+// applied by hand, so a lag is normal for the minutes between the two — and
+// stopping outright would halt play-stream capture, which is the one dataset
+// ESPN prunes and we cannot recover. A degraded ingester that says why beats a
+// dead one.
+//
+// The failure this exists to prevent: on 2026-08-18 a deploy shipped code
+// expecting match_final_capture_status against a schema still at 15. The only
+// symptom was a per-competition warning every tick, phrased like a transient
+// fault, which ran unnoticed. One ERROR naming both versions and the command to
+// fix it is unambiguous.
+func reportSchemaDrift(ctx context.Context, log *slog.Logger, repo *store.Store) {
+	expected, err := migrations.Latest()
+	if err != nil {
+		log.Error("cannot determine expected schema version", "err", err)
+		return
+	}
+	applied, dirty, err := repo.SchemaVersion(ctx)
+	switch {
+	case errors.Is(err, store.ErrSchemaLedgerAbsent):
+		// Correctly migrated via the psql bootstrap path, which creates no
+		// ledger. Nothing to compare against, and nothing wrong.
+		log.Info("schema version unavailable; database is not golang-migrate managed",
+			"expected", expected)
+		return
+	case err != nil:
+		// Not fatal: an unreadable ledger should not stop ingestion, but it
+		// must not pass silently either.
+		log.Error("cannot read applied schema version",
+			"err", err, "expected", expected)
+		return
+	}
+	switch {
+	case dirty:
+		log.Error("database schema is DIRTY — a migration failed part-way",
+			"applied", applied, "expected", expected,
+			"fix", "inspect the failed migration, then `migrate -path backend/migrations -database $DIRECT_DSN force <version>`")
+	case applied < expected:
+		log.Error("database schema is BEHIND this binary — writes to new tables will fail",
+			"applied", applied, "expected", expected,
+			"fix", "migrate -path backend/migrations -database $DIRECT_DSN up")
+	case applied > expected:
+		// A rollback, or an older binary redeployed over a newer schema.
+		log.Warn("database schema is AHEAD of this binary",
+			"applied", applied, "expected", expected)
+	default:
+		log.Info("schema version ok", "version", applied)
+	}
 }
