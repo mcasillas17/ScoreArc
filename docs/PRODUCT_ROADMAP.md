@@ -186,6 +186,8 @@ production right now.
 - **T0.1** Suppress zone bands and ranking when zero matches have been played
 - **T0.2** Own-goal attribution
 - **T0.3** Remove or repoint the dead "Live Scores" nav link
+- **T0.4** Suppress group-table qualification marking before kick-off — *added
+  during review; the same false statement in a second, sidebar-reachable path*
 
 Verified live 2026-08-15: ESPN ranks the 2026-27 Premier League **alphabetically**
 at 0 played. Our zone config paints rank 1 as champion and 18–20 as relegation, so
