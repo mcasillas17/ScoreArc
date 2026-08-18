@@ -369,6 +369,8 @@ type fakeRepository struct {
 	standingsCalls    int
 	standingsErr      error
 	leaderCategories  []string
+	leaderRows        [][]model.StatLeader
+	leaderErrors      map[string]error
 	snapshotCalls     int
 	snapshotDays      []time.Time
 	snapshotErr       error
@@ -1001,7 +1003,8 @@ func (f *fakeRepository) ReplaceLeaders(
 		return store.ErrEmptyReplacement
 	}
 	f.leaderCategories = append(f.leaderCategories, category)
-	return nil
+	f.leaderRows = append(f.leaderRows, append([]model.StatLeader(nil), rows...))
+	return f.leaderErrors[category]
 }
 func (f *fakeRepository) ReplaceSquad(
 	_ context.Context,
@@ -1144,6 +1147,7 @@ func testRunner(src *fakeSource, repo *fakeRepository, comp config.Competition) 
 		squadsRefreshed:   make(map[string]time.Time),
 		squadAttempted:    make(map[string]time.Time),
 		snapshotted:       make(map[string]time.Time),
+		written:           make(map[string]uint64, 32),
 		sampleAudit:       make(map[string]auditWindow),
 		liveSamples:       make(map[string]liveSample),
 		maxConcurrent:     3,
@@ -2186,6 +2190,57 @@ func TestLeaderCrestOutageUsesSharedCircuit(t *testing.T) {
 			result, repo.leaderCategories, mirror.calls,
 		)
 	}
+}
+
+// When mirroring recovers, the provider URL memoised during the outage must
+// move to the CDN URL and trigger one replacement. Otherwise the content memo
+// would preserve provider hotlinks for the rest of the process lifetime.
+func TestLeaderCrestRecoveryRewritesProviderURL(t *testing.T) {
+	crest := "https://source.example/crest.png"
+	src := &fakeSource{statistics: statisticsPayload(
+		t,
+		[]model.StatLeader{{
+			Rank: 1, Player: "Winner", TeamAbbr: "WIN",
+			TeamCrestURL: &crest, Value: 1,
+		}},
+		[]model.StatLeader{{Rank: 1, Player: "Helper", Value: 1}},
+	)}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+	mirror := &fakeMirror{err: errors.New("mirror outage")}
+	worker.mirror = mirror
+
+	worker.runCycle(context.Background(), true)
+
+	mirror.mu.Lock()
+	mirror.err = nil
+	mirror.mu.Unlock()
+	worker.mu.Lock()
+	worker.mirrorUnavailable = time.Time{}
+	worker.mu.Unlock()
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if len(repo.leaderCategories) != 3 {
+		t.Fatalf("leader writes = %v, want two outage writes plus one recovered goals write",
+			repo.leaderCategories)
+	}
+	for index := len(repo.leaderCategories) - 1; index >= 0; index-- {
+		if repo.leaderCategories[index] != "goals" {
+			continue
+		}
+		stored := repo.leaderRows[index][0].TeamCrestURL
+		if stored == nil || !strings.HasPrefix(*stored, "https://cdn.example/") {
+			t.Fatalf("recovered goals crest = %v, want CDN URL", stored)
+		}
+		return
+	}
+	t.Fatal("recovered goals board was not written")
 }
 
 // One fetch, two boards. Fetching /statistics twice would double the request
@@ -3577,6 +3632,15 @@ func TestStandingsSnapshotRetriesAfterFinalizationReplacementIsRejected(t *testi
 	source := worker.source.(*fakeSource)
 	source.mu.Lock()
 	source.matches = []model.Match{finishedMatch()}
+	// The content memo skips a byte-identical row set before it ever reaches
+	// the store, so the table has to MOVE for the replacement to be attempted
+	// at all. A post-finalization table the store rejects as shrinking is by
+	// definition a different row set, so say so rather than relying on an
+	// unconditional write.
+	source.standings = []model.Standing{{
+		Rank: 1, Team: model.Team{ID: "home"},
+		Played: 1, Wins: 1, Points: 3, GoalsFor: 2, GoalDifference: 2,
+	}}
 	source.mu.Unlock()
 	repo.mu.Lock()
 	repo.standingsErr = store.ErrPartialReplacement
@@ -3659,6 +3723,328 @@ func TestStandingsSnapshotRetriesWhenFinalizationRefreshStartsCanceled(t *testin
 	if retried.failures != 0 || repo.snapshotCalls != 2 {
 		t.Fatalf("retry cycle = %+v, snapshot calls = %d; want one successful retry",
 			retried, repo.snapshotCalls)
+	}
+}
+
+// THE TEST THIS SLICE EXISTS FOR. Two consecutive slow ticks over identical
+// upstream content must produce exactly ONE replacement.
+//
+// Measured on production before this guard: `standing` took +228 inserts and
+// -228 deletes per tick against a 228-row table -- 131,328 tuple writes a day
+// to keep 228 rows as they were -- while content hashes over those same rows,
+// captured across three tick boundaries, never once changed.
+func TestUnchangedStandingsAreReplacedOnce(t *testing.T) {
+	src := &fakeSource{}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	worker.runCycle(context.Background(), true)
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.standingsCalls != 1 {
+		t.Fatalf("ReplaceStandings calls = %d across two identical slow ticks, want 1",
+			repo.standingsCalls)
+	}
+}
+
+// The other half of the contract, and the one that makes the guard safe: a
+// table that MOVED must be written. A standings table moves when a match
+// finalizes, which is the only thing that can move it.
+func TestChangedStandingsAreReplacedAgain(t *testing.T) {
+	src := &fakeSource{}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	worker.runCycle(context.Background(), true)
+
+	src.mu.Lock()
+	src.standings = []model.Standing{{
+		Rank: 1, Team: model.Team{ID: "home"},
+		Played: 1, Wins: 1, Points: 3, GoalsFor: 2, GoalDifference: 2,
+	}}
+	src.mu.Unlock()
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.standingsCalls != 2 {
+		t.Fatalf("ReplaceStandings calls = %d after the table moved, want 2",
+			repo.standingsCalls)
+	}
+}
+
+// The memo records what was COMMITTED. A failed replacement must leave it
+// pointing at the last row set that really is in the table, or the next tick
+// would skip the retry and hide the failure until the content changed again.
+func TestFailedStandingsReplacementIsNotMemoised(t *testing.T) {
+	src := &fakeSource{}
+	repo := &fakeRepository{
+		existing:     map[string]store.MatchRow{},
+		standingsErr: errors.New("write failed"),
+	}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	if first := worker.runCycle(context.Background(), true); first.failures == 0 {
+		t.Fatal("a failed standings replacement did not fail the cycle")
+	}
+
+	repo.mu.Lock()
+	repo.standingsErr = nil
+	repo.mu.Unlock()
+
+	if second := worker.runCycle(context.Background(), true); second.failures != 0 {
+		t.Fatalf("retry cycle = %+v, want a clean cycle", second)
+	}
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.standingsCalls != 2 {
+		t.Fatalf("ReplaceStandings calls = %d, want the failure retried", repo.standingsCalls)
+	}
+}
+
+// A restart empties the memo, exactly as it empties the snapshot day gate. One
+// redundant replacement per scope per deploy -- 27 writes, ~530 tuples, once --
+// is the correct price for holding no state the database has to keep in sync,
+// and it is the same trade TestStandingsSnapshotSurvivesARestart already makes.
+func TestStandingsMemoIsColdAfterARestart(t *testing.T) {
+	src := &fakeSource{}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+
+	testRunner(src, repo, comp).runCycle(context.Background(), true)
+	testRunner(src, repo, comp).runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.standingsCalls != 2 {
+		t.Fatalf("ReplaceStandings calls = %d across two processes, want 2",
+			repo.standingsCalls)
+	}
+}
+
+// The leader boards' twin of TestUnchangedStandingsAreReplacedOnce, and the
+// larger half of the measured waste: top_scorer took +600 inserts and -600
+// deletes per tick against a 300-row table -- 345,600 tuple writes a day.
+func TestUnchangedLeaderBoardsAreReplacedOnce(t *testing.T) {
+	src := &fakeSource{}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	worker.runCycle(context.Background(), true)
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if len(repo.leaderCategories) != 2 {
+		t.Fatalf("ReplaceLeaders calls = %v across two identical slow ticks, want one per category",
+			repo.leaderCategories)
+	}
+}
+
+// top_scorer moved 600 tuples for a 300-row table because the board was
+// replaced TWICE per tick: the old code wrote the freshly-mapped board, mirrored
+// its crests, and re-wrote the whole board when leaderCrestsChanged(board,
+// mirrored) said the URLs had moved -- which it always did, because `board`
+// always carries a.espncdn.com URLs and `mirrored` always carries CDN ones.
+// Mirroring first collapses that to one write and removes the window in which
+// the table served provider hotlinks.
+func TestMirroredLeaderBoardIsWrittenOnceWithCDNCrests(t *testing.T) {
+	crest := "https://a.espncdn.com/crest.png"
+	src := &fakeSource{statistics: statisticsPayload(
+		t,
+		[]model.StatLeader{{
+			Rank: 1, Player: "Striker", TeamAbbr: "HOM",
+			TeamCrestURL: &crest, Value: 5,
+		}},
+		[]model.StatLeader{{Rank: 1, Player: "Playmaker", Value: 3}},
+	)}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+	worker.mirror = &fakeMirror{}
+
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if len(repo.leaderCategories) != 2 {
+		t.Fatalf("ReplaceLeaders calls = %v in one tick, want exactly one per category",
+			repo.leaderCategories)
+	}
+	written := false
+	for index, category := range repo.leaderCategories {
+		if category != "goals" {
+			continue
+		}
+		written = true
+		stored := repo.leaderRows[index][0].TeamCrestURL
+		if stored == nil || !strings.HasPrefix(*stored, "https://cdn.example/") {
+			t.Fatalf("stored crest = %v, want the mirrored URL on the FIRST write", stored)
+		}
+	}
+	if !written {
+		t.Fatal("the goals board was never written")
+	}
+}
+
+// An absent board must never be memoised, because nothing was committed: the
+// store rejected the replacement and the rows already stored survive. If it
+// were, the leaders_preserved audit -- the only signal that a board is missing
+// -- would stop firing after the first tick, and a board that later appears
+// must still be written.
+func TestAbsentLeaderBoardIsNeverMemoised(t *testing.T) {
+	goals := []model.StatLeader{{Rank: 1, Player: "Striker", Value: 5}}
+	src := &fakeSource{statistics: statisticsPayload(t, goals, nil)}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	worker.runCycle(context.Background(), true)
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	preserved := len(loggedRunsForKind(repo.logged, "leaders_preserved"))
+	repo.mu.Unlock()
+	if preserved != 2 {
+		t.Fatalf("leaders_preserved runs = %d across two ticks with an absent board, want 2",
+			preserved)
+	}
+
+	// The board appears. It must be written, once.
+	src.mu.Lock()
+	src.statistics = statisticsPayload(
+		t, goals, []model.StatLeader{{Rank: 1, Player: "Playmaker", Value: 3}})
+	src.mu.Unlock()
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	assists := 0
+	for _, category := range repo.leaderCategories {
+		if category == "assists" {
+			assists++
+		}
+	}
+	if assists != 1 {
+		t.Fatalf("assists writes = %d, want the board written exactly once when it appeared",
+			assists)
+	}
+	if len(repo.leaderCategories) != 2 {
+		t.Fatalf("writes = %v, want one goals write and one assists write in total",
+			repo.leaderCategories)
+	}
+}
+
+// A failed replacement must not poison the memo. The failed category retries
+// on the next tick, while a category that committed successfully is skipped.
+func TestFailedLeaderReplacementIsNotMemoised(t *testing.T) {
+	src := &fakeSource{}
+	repo := &fakeRepository{
+		existing:     map[string]store.MatchRow{},
+		leaderErrors: map[string]error{"goals": errors.New("write failed")},
+	}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	if first := worker.runCycle(context.Background(), true); first.failures == 0 {
+		t.Fatal("a failed leader replacement did not fail the cycle")
+	}
+
+	repo.mu.Lock()
+	delete(repo.leaderErrors, "goals")
+	repo.mu.Unlock()
+	if second := worker.runCycle(context.Background(), true); second.failures != 0 {
+		t.Fatalf("retry cycle = %+v, want a clean cycle", second)
+	}
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	writes := map[string]int{}
+	for _, category := range repo.leaderCategories {
+		writes[category]++
+	}
+	if writes["goals"] != 2 || writes["assists"] != 1 {
+		t.Fatalf("leader writes = %v, want failed goals retried and committed assists skipped", writes)
+	}
+}
+
+// T10.10's /v1/ingest-freshness reads ingest_run per competition per kind, with
+// a 20-minute threshold for `standings` and `leaders` -- three missed slow
+// ticks. A tick whose write the content memo skipped is a HEALTHY tick, so it
+// must still record its run under the same kind. Recording nothing, or
+// recording a new "..._unchanged" kind, would report every settled competition as
+// stale within twenty minutes and trade a write-amplification bug for a
+// monitoring one.
+func TestSkippedReplacementsStillRecordFreshness(t *testing.T) {
+	src := &fakeSource{}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	worker.runCycle(context.Background(), true)
+	repo.mu.Lock()
+	standingsBefore := len(loggedRunsForKind(repo.logged, "standings"))
+	leadersBefore := len(loggedRunsForKind(repo.logged, "leaders"))
+	repo.mu.Unlock()
+
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.standingsCalls != 1 || len(repo.leaderCategories) != 2 {
+		t.Fatalf("the second tick wrote: standings=%d leaders=%v",
+			repo.standingsCalls, repo.leaderCategories)
+	}
+	standings := loggedRunsForKind(repo.logged, "standings")
+	leaders := loggedRunsForKind(repo.logged, "leaders")
+	if len(standings) != standingsBefore+1 || !standings[len(standings)-1].ok {
+		t.Fatalf("standings runs = %v; a skipped tick must still record a successful run",
+			standings)
+	}
+	if len(leaders) != leadersBefore+1 || !leaders[len(leaders)-1].ok {
+		t.Fatalf("leaders runs = %v; a skipped tick must still record a successful run",
+			leaders)
+	}
+	// And no new kind was invented for it: ingest_run is C5 and gets coarser,
+	// never finer.
+	for _, run := range repo.logged {
+		if strings.HasSuffix(run.kind, "_unchanged") || strings.HasSuffix(run.kind, "_skipped") {
+			t.Fatalf("a skip invented the ingest_run kind %q; T10.10 reads kinds by name",
+				run.kind)
+		}
 	}
 }
 
