@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -569,4 +570,62 @@ UPDATE match_play SET team_id='eng-luton-town', type_key='shot-saved'
 WHERE match_id=$1`, id)
 		mustBeImmutableViolation(t, "repoint carrying a type rewrite", err)
 	})
+}
+
+// The guard fires per row on the write-heaviest tables in the system, so the
+// per-row cost is a real number and not a hand-wave.
+//
+// Measured in one statement so the number is trigger overhead rather than the
+// roughly 1 ms Fly-to-Neon round trip each of these statements already pays. The
+// match is deliberately unfinalized: that is the hot path, where the guard
+// evaluates one EXISTS against match_pkey and returns before it ever builds
+// to_jsonb(NEW).
+//
+// match_commentary is the subject because its only foreign key is match_id, so
+// 50,000 rows need no other setup and the measurement is not diluted by FK
+// checks the guard is not responsible for.
+func TestFinalizationGuardCostOnTheHotPath(t *testing.T) {
+	f := newSealFixture(t)
+	ctx := context.Background()
+	id := f.unfinalized(t, "eng-arsenal")
+
+	const rows = 50_000
+	insert := func(base int) time.Duration {
+		t.Helper()
+		start := time.Now()
+		if _, err := f.pool.Exec(ctx, `
+INSERT INTO match_commentary (match_id, seq, clock_display, text)
+SELECT $1, $2 + g, '45''', 'commentary line ' || g
+FROM generate_series(1, $3) g`, id, base, rows); err != nil {
+			t.Fatal(err)
+		}
+		return time.Since(start)
+	}
+
+	insert(0) // warm the plan cache, the buffers and the WAL segment
+	guarded := insert(10_000_000)
+
+	if _, err := f.pool.Exec(ctx,
+		`ALTER TABLE match_commentary DISABLE TRIGGER protect_final_match_commentary`,
+	); err != nil {
+		t.Fatal(err)
+	}
+	insert(20_000_000)
+	bare := insert(30_000_000)
+
+	overhead := (guarded - bare) / rows
+	t.Logf("guard cost: %d rows guarded in %v, unguarded in %v -> %v per row",
+		rows, guarded.Round(time.Millisecond), bare.Round(time.Millisecond), overhead)
+
+	// The heaviest real burst this system has produced is 4,181 guarded rows in
+	// a 271-second window (spec Section 0). At this ceiling that burst costs about
+	// 105 ms. The ceiling is absolute rather than a ratio because a ratio is
+	// unstable on a loaded CI runner.
+	if overhead > 25*time.Microsecond {
+		t.Fatalf("guard costs %v per row, over the 25us budget -- "+
+			"the seal is doing more work than one primary-key probe", overhead)
+	}
+	if overhead < 0 {
+		t.Logf("guard cost measured below noise; treat as free")
+	}
 }
