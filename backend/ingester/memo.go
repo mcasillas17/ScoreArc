@@ -80,10 +80,11 @@ func (d *contentDigest) number(value int) { d.text(strconv.Itoa(value)) }
 
 func (d *contentDigest) flag(value bool) { d.text(strconv.FormatBool(value)) }
 
-// optionalText keeps a nil pointer distinct from a pointer to "". They are
-// different values in the database -- standing.group_id is nullable and a
-// single-table league stores NULL, not ” -- so they must be different bytes
-// here. The presence byte stops a nil colliding with any real string.
+// optionalText keeps a nil pointer distinct from a pointer to an empty string.
+// They are different values in the database -- standing.group_id is nullable
+// and a single-table league stores NULL, not an empty string -- so they must be
+// different bytes here. The presence byte stops a nil colliding with any real
+// string.
 func (d *contentDigest) optionalText(value *string) {
 	if value == nil {
 		_, _ = d.hash.Write([]byte{0})

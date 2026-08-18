@@ -89,9 +89,9 @@ func TestStandingsFingerprintIgnoresColumnsTheReplacementDoesNotWrite(t *testing
 	}
 }
 
-// standing.group_id is nullable and a single-table league stores NULL, not ”.
-// They are different values in the database, so they must be different bytes
-// here.
+// standing.group_id is nullable and a single-table league stores NULL, not an
+// empty string. They are different values in the database, so they must be
+// different bytes here.
 func TestStandingsFingerprintSeparatesNullFromEmptyGroup(t *testing.T) {
 	t.Parallel()
 	teamIDs := testTeamIDs()
