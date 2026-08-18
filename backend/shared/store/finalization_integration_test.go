@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
 
@@ -38,6 +39,11 @@ func newSealFixture(t *testing.T) *sealFixture {
 INSERT INTO team (id, kind, name, abbr, provisional) VALUES
 	('prov-espn-9999','club','Luton Town','LUT',true),
 	('eng-luton-town','club','Luton Town','LUT',false)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+INSERT INTO team_external_ref (source, source_id, team_id)
+VALUES ('espn', '9999', 'prov-espn-9999')`); err != nil {
 		t.Fatal(err)
 	}
 	player, err := store.Player(ctx, testSource,
@@ -419,4 +425,148 @@ func TestImmutableViolationIsNotAConnectionFailure(t *testing.T) {
 		&pgconn.PgError{Code: finalizedImmutable})), &pgErr) {
 		t.Fatal("errors.As no longer reaches a doubly-wrapped PgError")
 	}
+}
+
+// The play stream is sealed by the archive ledger, not by finalization, because
+// capturePlays runs after FinalizeMatch and retryMissingPlayStreams re-runs it on
+// finalized matches for as many slow ticks as it takes. This is the test that
+// stops someone "fixing" the seal to finalized_at.
+func TestPlayStreamStaysWritableUntilItIsArchived(t *testing.T) {
+	f := newSealFixture(t)
+	ctx := context.Background()
+	id := f.unfinalized(t, "eng-arsenal")
+	f.finalize(t, id)
+
+	plays := []model.Play{
+		{SourceID: "p-1", Seq: 1, TypeID: "70", TypeKey: "goal", TypeText: "Goal"},
+	}
+
+	// 1. capturePlays at the finalization transition (matches.go:302).
+	if _, err := f.store.WritePlays(ctx, id, plays, nil, nil); err != nil {
+		t.Fatalf("plays refused on a finalized match with no ledger: %v", err)
+	}
+
+	// 2. The R2 put failed, so no ledger was written. The next slow tick's
+	// retryMissingPlayStreams re-runs the same batch: an ON CONFLICT DO UPDATE
+	// against rows that already exist, which must still be allowed.
+	plays[0].TypeText = "Goal!"
+	if _, err := f.store.WritePlays(ctx, id, plays, nil, nil); err != nil {
+		t.Fatalf("the play backlog retry was refused: %v", err)
+	}
+
+	// 3. The ledger lands. From here the stream is history.
+	f.ledger(t, id)
+	_, err := f.store.WritePlays(ctx, id, plays, nil, nil)
+	mustBeImmutableViolation(t, "WritePlays after the ledger landed", err)
+
+	// 4. And the ledger itself stays writable, because that is exactly what
+	// cmd/play-backfill re-records for a match whose rows landed but whose
+	// ledger write did not.
+	if err := f.store.RecordPlayArchive(
+		ctx, id, "espn/eng.1/2026-27/1.json", 1, 200, true,
+	); err != nil {
+		t.Fatalf("re-recording the archive ledger was refused: %v", err)
+	}
+}
+
+// cmd/play-backfill's two store calls, in order, as the least-privilege role it
+// runs as in production, against an already-finalized match. If this fails, the
+// backfill is broken.
+func TestPlayBackfillPathSurvivesTheGuards(t *testing.T) {
+	f := newSealFixture(t)
+	ctx := context.Background()
+	roleStore, roleName := newIngesterRoleStore(t, f.pool, f.dsn)
+
+	id := f.unfinalized(t, "eng-arsenal")
+	if _, err := f.pool.Exec(ctx,
+		`INSERT INTO match_external_ref (source, source_id, match_id)
+		 VALUES ('espn', 'backfill-1', $1)`, id); err != nil {
+		t.Fatal(err)
+	}
+	f.finalize(t, id)
+
+	pending, err := roleStore.MatchesMissingPlays(
+		ctx, testCompetition, testSeason, testSource, 10)
+	if err != nil {
+		t.Fatalf("MatchesMissingPlays as %s: %v", roleName, err)
+	}
+	if len(pending) != 1 || pending[0].MatchID != id {
+		t.Fatalf("pending = %+v, want the one finalized unledgered match", pending)
+	}
+	if err := roleStore.RecordPlayArchive(
+		ctx, pending[0].MatchID, "espn/eng.1/2026-27/backfill-1.json", 0, 42, false,
+	); err != nil {
+		t.Fatalf("RecordPlayArchive as %s: %v", roleName, err)
+	}
+
+	pending, err = roleStore.MatchesMissingPlays(
+		ctx, testCompetition, testSeason, testSource, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 0 {
+		t.Fatalf("the backfill did not converge: %d matches still pending", len(pending))
+	}
+}
+
+// Curating a club that has already played finished matches is the normal
+// lifecycle. promoteProvisionalTeam repoints match_play.team_id (seed.go:308) on
+// matches that are finalized and ledgered, so the carve-out 0001 gave `match`
+// has to exist here too or team curation breaks on day one.
+func TestCurationRepointsTeamIdsAcrossSealedRecords(t *testing.T) {
+	f := newSealFixture(t)
+	ctx := context.Background()
+	id := f.unfinalized(t, "prov-espn-9999")
+	f.finalize(t, id)
+	f.postFinalRows(t, id, "prov-espn-9999")
+	f.ledger(t, id)
+	roleStore, roleName := newIngesterRoleStore(t, f.pool, f.dsn)
+
+	if err := roleStore.ApplyTeamSeed(ctx, []config.SeedTeam{{
+		ID: "eng-luton-town", Kind: "club", Name: "Luton Town", Abbr: "LUT",
+		Country: "eng", Refs: map[string]string{"espn": "9999"},
+	}}); err != nil {
+		t.Fatalf("ApplyTeamSeed as %s refused to curate across a sealed record: %v",
+			roleName, err)
+	}
+
+	var playTeam, matchHome string
+	var playType string
+	if err := f.pool.QueryRow(ctx, `
+SELECT (SELECT team_id FROM match_play WHERE match_id=$1),
+       (SELECT home_team_id FROM match WHERE id=$1),
+       (SELECT type_key FROM match_play WHERE match_id=$1)`,
+		id).Scan(&playTeam, &matchHome, &playType); err != nil {
+		t.Fatal(err)
+	}
+	if playTeam != "eng-luton-town" || matchHome != "eng-luton-town" {
+		t.Fatalf("curation left play team=%q match home=%q, want eng-luton-town",
+			playTeam, matchHome)
+	}
+	// The carve-out moves pointers, not history.
+	if playType != "goal" {
+		t.Fatalf("curation changed the play fact: type=%q, want goal", playType)
+	}
+}
+
+// The carve-out releases only ids that belonged to a provisional team, and it
+// releases nothing else. These are the two ways it could have been a hole.
+func TestCurationCarveOutIsNarrow(t *testing.T) {
+	f := newSealFixture(t)
+	ctx := context.Background()
+
+	t.Run("curated to curated is refused", func(t *testing.T) {
+		id := f.sealed(t, "eng-arsenal")
+		_, err := f.pool.Exec(ctx,
+			`UPDATE match_play SET team_id='eng-chelsea' WHERE match_id=$1`, id)
+		mustBeImmutableViolation(t, "repointing between two curated teams", err)
+	})
+
+	t.Run("a legal repoint may not smuggle a fact rewrite", func(t *testing.T) {
+		id := f.sealed(t, "prov-espn-9999")
+		_, err := f.pool.Exec(ctx, `
+UPDATE match_play SET team_id='eng-luton-town', type_key='shot-saved'
+WHERE match_id=$1`, id)
+		mustBeImmutableViolation(t, "repoint carrying a type rewrite", err)
+	})
 }
