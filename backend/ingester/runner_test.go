@@ -1167,14 +1167,18 @@ func finishedMatch() model.Match {
 	}
 }
 
-// scheduledNoOpMatch is a repeatable scheduled-match payload for the no-op
-// acceptance test.
+// scheduledNoOpMatch is a fixture with realistic non-empty status text, unlike
+// finishedMatch(), specifically so TestUnchangedScheduledMatchWritesOnce proves
+// the guard on a payload that isn't just all-zero-values matching all-zero-values
+// by coincidence.
 func scheduledNoOpMatch() model.Match {
 	return model.Match{
 		ID: "m1", Kickoff: "2026-06-11T18:00:00Z",
-		State: model.MatchStateScheduled,
-		Home:  model.Team{ID: "home", Name: "Home", Abbr: "HOM"},
-		Away:  model.Team{ID: "away", Name: "Away", Abbr: "AWY"},
+		State:        model.MatchStateScheduled,
+		StatusDetail: "Scheduled",
+		StatusName:   "STATUS_SCHEDULED",
+		Home:         model.Team{ID: "home", Name: "Home", Abbr: "HOM"},
+		Away:         model.Team{ID: "away", Name: "Away", Abbr: "AWY"},
 	}
 }
 
@@ -1194,6 +1198,11 @@ func TestUnchangedScheduledMatchWritesOnce(t *testing.T) {
 	}
 	runner := testRunner(src, repo, comp)
 
+	kickoff, err := time.Parse(time.RFC3339, match.Kickoff)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Tick 1: nothing stored yet, so this is a genuine write.
 	runner.runCycle(context.Background(), false)
 	if repo.matchCalls != 1 {
@@ -1205,7 +1214,8 @@ func TestUnchangedScheduledMatchWritesOnce(t *testing.T) {
 	// plays that role: it is what tick 1 actually persisted, in MatchRow shape.
 	repo.mu.Lock()
 	repo.existing["m1"] = store.MatchRow{
-		State: match.State,
+		State: match.State, Kickoff: kickoff,
+		StatusDetail: match.StatusDetail, StatusName: match.StatusName,
 		Home: model.Team{ID: fakeTeamID("home")},
 		Away: model.Team{ID: fakeTeamID("away")},
 	}
