@@ -360,6 +360,7 @@ type fakeRepository struct {
 	pruneCalls        int
 	pruneHook         func()
 	matchCalls        int
+	detailCalls       int
 	finalizeCalls     int
 	finalizeResult    *bool
 	finalizeErr       error
@@ -584,6 +585,9 @@ func (f *fakeRepository) UpsertMatch(
 	return nil
 }
 func (f *fakeRepository) UpsertMatchDetail(context.Context, uuid.UUID, model.MatchDetail) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.detailCalls++
 	return nil
 }
 func (f *fakeRepository) WriteParticipation(
@@ -4925,5 +4929,56 @@ func TestLiveSamplesRetryAFailedWriteWithinTheSameMinute(t *testing.T) {
 	if len(repo.oddsSnapshots) != 2 {
 		t.Fatalf("odds snapshot writes = %d after a failed write, want the next poll to retry",
 			len(repo.oddsSnapshots))
+	}
+}
+
+// The touch-level stream is ~1,500 plays over two pages. capturePlays is called
+// only when a match finalizes and from the slow-tick backlog, never on a live
+// poll -- eighteen requests a minute per live match against a keyless API is
+// the failure mode this guards.
+func TestLiveCycleNeverCapturesThePlayStream(t *testing.T) {
+	repo := &fakeRepository{}
+	src := &fakeSource{
+		live:           true,
+		winProbability: &model.WinProbability{Home: 50, Draw: 25, Away: 25},
+	}
+	worker := newTestRunnerWithSource(repo, src)
+
+	for range 3 {
+		worker.runCycle(context.Background(), false)
+	}
+
+	src.mu.Lock()
+	playsCalls := src.playsCalls
+	src.mu.Unlock()
+	repo.mu.Lock()
+	playWrites := len(repo.playWrites)
+	repo.mu.Unlock()
+	if playsCalls != 0 || playWrites != 0 {
+		t.Fatalf("a live match fetched the play stream %d times and wrote %d batches, want 0/0",
+			playsCalls, playWrites)
+	}
+}
+
+// match_detail is deliberately NOT content-guarded on the live path: its
+// content genuinely moves every poll (running stats, the growing commentary
+// array). What must stay true is that it costs ONE write per match per poll --
+// if it ever becomes one per row of anything, it joins the tables Tasks 2-4
+// fixed.
+func TestLiveCycleWritesMatchDetailOncePerPoll(t *testing.T) {
+	repo := &fakeRepository{}
+	src := &fakeSource{live: true}
+	worker := newTestRunnerWithSource(repo, src)
+
+	const polls = 3
+	for range polls {
+		worker.runCycle(context.Background(), false)
+	}
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.detailCalls != polls {
+		t.Fatalf("match_detail writes = %d over %d polls of one match, want %d",
+			repo.detailCalls, polls, polls)
 	}
 }
