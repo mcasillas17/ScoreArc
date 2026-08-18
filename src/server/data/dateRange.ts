@@ -61,6 +61,33 @@ export function seasonMonthBounds(seasonId: string): { minMonth: string; maxMont
 
 const RANGE_RE = /^(\d{4})(\d{2})(\d{2})-(\d{4})(\d{2})(\d{2})$/;
 
+function parseMonthStart(value: string): Date {
+  const [year, month] = value.split('-').map(Number);
+  return new Date(year, month - 1, 1);
+}
+
+/**
+ * Choose an initial month inside the season. Completed tournament editions use
+ * their last active bracket month rather than an empty calendar-year endpoint.
+ */
+export function seasonInitialMonth(now: Date, seasonId: string, activeRange?: string): Date {
+  const { minMonth, maxMonth } = seasonMonthBounds(seasonId);
+  const min = parseMonthStart(minMonth);
+  const max = parseMonthStart(maxMonth);
+  const current = new Date(now.getFullYear(), now.getMonth(), 1);
+  const currentTime = current.getTime();
+
+  if (currentTime >= min.getTime() && currentTime <= max.getTime()) return current;
+
+  if (activeRange && parseRange(activeRange)) {
+    const end = activeRange.slice(9);
+    const activeMonth = new Date(Number(end.slice(0, 4)), Number(end.slice(4, 6)) - 1, 1);
+    if (activeMonth >= min && activeMonth <= max) return activeMonth;
+  }
+
+  return currentTime < min.getTime() ? min : max;
+}
+
 /**
  * Validate a client-supplied `dates` range before it is interpolated into a
  * third-party URL.

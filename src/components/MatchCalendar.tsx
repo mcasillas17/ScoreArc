@@ -7,10 +7,17 @@ import { monthRange, shiftMonth } from '@/server/data/dateRange';
 import { flagUrl } from '@/lib/flags';
 import { trackEvent, trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
+import {
+  monthLoadFailed,
+  monthLoadStarted,
+  monthLoadSucceeded,
+  returnedToLoadedMonth,
+} from './matchCalendarState';
 import { matchToBracketMatch } from './upcomingWindow';
 
 interface Props {
   initialMatches: Match[];
+  initialError?: string | null;
   initialMonth: string;
   minMonth: string;
   maxMonth: string;
@@ -75,14 +82,15 @@ function MatchRow({
     ? (match.minute ?? match.statusDetail)
     : match.state === 'finished'
       ? (match.statusDetail || 'FT')
-      : kickoffTime(match.kickoff);
+      : 'Scheduled';
+  const ariaStatus = match.state === 'scheduled' ? kickoffTime(match.kickoff) : status;
 
   return (
     <button
       type="button"
       className={`mc-match mc-match--${match.state}`}
       onClick={onOpen}
-      aria-label={`${match.home.name} versus ${match.away.name}, ${status}`}
+      aria-label={`${match.home.name} versus ${match.away.name}, ${ariaStatus}`}
     >
       <span className="mc-team">
         <TeamMark team={match.home} style={teamStyle} />
@@ -110,6 +118,7 @@ function MatchRow({
 
 export default function MatchCalendar({
   initialMatches,
+  initialError = null,
   initialMonth,
   minMonth,
   maxMonth,
@@ -117,14 +126,18 @@ export default function MatchCalendar({
   teamStyle = 'flag',
 }: Props) {
   const [cursor, setCursor] = useState(() => parseMonth(initialMonth));
-  const [matches, setMatches] = useState(initialMatches);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadState, setLoadState] = useState({
+    matches: initialMatches,
+    loading: false,
+    error: initialError,
+  });
   const [today, setToday] = useState<Date | null>(null);
   const [detail, setDetail] = useState<Match | null>(null);
   const [summary, setSummary] = useState<MatchSummary | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
-  const loadedRange = useRef(monthRange(parseMonth(initialMonth)));
+  const loadedRange = useRef<string | null>(
+    initialError ? null : monthRange(parseMonth(initialMonth)),
+  );
   const feedFailed = useRef(false);
   const didScrollToToday = useRef(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -138,7 +151,7 @@ export default function MatchCalendar({
 
   const groups = useMemo<DayGroup[]>(() => {
     const byDay = new Map<string, DayGroup>();
-    const ordered = [...matches].sort(
+    const ordered = [...loadState.matches].sort(
       (a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime(),
     );
     for (const match of ordered) {
@@ -149,17 +162,21 @@ export default function MatchCalendar({
       else byDay.set(key, { key, date, matches: [match] });
     }
     return Array.from(byDay.values());
-  }, [matches]);
+  }, [loadState.matches]);
 
   useEffect(() => setToday(new Date()), []);
 
   useEffect(() => {
     const range = monthRange(cursor);
-    if (range === loadedRange.current) return;
+    if (range === loadedRange.current) {
+      setLoadState((state) => (
+        state.loading || state.error ? returnedToLoadedMonth(state) : state
+      ));
+      return;
+    }
 
     const controller = new AbortController();
-    setLoading(true);
-    setError(null);
+    setLoadState(monthLoadStarted);
 
     async function loadMonth() {
       let failureStatus: number | undefined;
@@ -175,7 +192,7 @@ export default function MatchCalendar({
         const data: unknown = await res.json();
         if (!Array.isArray(data)) throw new Error('Fixtures response was not an array');
         if (controller.signal.aborted) return;
-        setMatches(data as Match[]);
+        setLoadState((state) => monthLoadSucceeded(state, data as Match[]));
         loadedRange.current = range;
         if (feedFailed.current) {
           trackFeedRecovery('fixtures');
@@ -183,13 +200,15 @@ export default function MatchCalendar({
         }
       } catch {
         if (controller.signal.aborted) return;
-        setError('Fixtures are unavailable right now. Please try another month and come back.');
+        loadedRange.current = null;
+        setLoadState((state) => monthLoadFailed(
+          state,
+          'Fixtures are unavailable right now. Please try another month and come back.',
+        ));
         if (!feedFailed.current) {
           trackFeedFailure('fixtures', failureStatus);
           feedFailed.current = true;
         }
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
       }
     }
 
@@ -265,10 +284,13 @@ export default function MatchCalendar({
       </div>
 
       <p className="mc-status" aria-live="polite">
-        {loading ? `Loading ${monthLabel(cursor)}…` : error}
+        {loadState.loading ? `Loading ${monthLabel(cursor)}…` : loadState.error}
       </p>
 
-      <div ref={listRef} className={`mc-list${loading ? ' mc-list--loading' : ''}`}>
+      <div
+        ref={listRef}
+        className={`mc-list${loadState.loading ? ' mc-list--loading' : ''}`}
+      >
         {groups.map((group) => {
           const isToday = group.key === todayKey;
           return (
@@ -289,7 +311,9 @@ export default function MatchCalendar({
             </section>
           );
         })}
-        {groups.length === 0 && !error && <p className="empty-text">No matches this month.</p>}
+        {groups.length === 0 && !loadState.error && !loadState.loading && (
+          <p className="empty-text">No matches this month.</p>
+        )}
       </div>
 
       {detail && (

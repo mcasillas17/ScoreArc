@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { monthRange, parseRange, seasonMonthBounds, shiftMonth } from './dateRange';
+import {
+  monthRange,
+  parseRange,
+  seasonInitialMonth,
+  seasonMonthBounds,
+  shiftMonth,
+} from './dateRange';
 
 describe('monthRange', () => {
   it('covers the whole calendar month', () => {
@@ -58,6 +64,25 @@ describe('seasonMonthBounds', () => {
     expect(seasonMonthBounds('2027-clausura')).toEqual({
       minMonth: '2027-01-01',
       maxMonth: '2027-06-01',
+    });
+  });
+
+  describe('seasonInitialMonth', () => {
+    const now = new Date(2026, 7, 18);
+
+    it('keeps the current month when it is inside the season', () => {
+      expect(seasonInitialMonth(now, '2026-27')).toEqual(new Date(2026, 7, 1));
+    });
+
+    it('uses the last active month for a completed tournament', () => {
+      expect(seasonInitialMonth(now, '1998', '19980627-19980712')).toEqual(
+        new Date(1998, 6, 1),
+      );
+    });
+
+    it('clamps to the nearest season bound without an active range', () => {
+      expect(seasonInitialMonth(now, '2027-clausura')).toEqual(new Date(2027, 0, 1));
+      expect(seasonInitialMonth(now, '2025-26')).toEqual(new Date(2026, 5, 1));
     });
   });
 
