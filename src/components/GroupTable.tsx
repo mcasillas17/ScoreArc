@@ -1,15 +1,10 @@
-import type { Group, Standing } from "@/server/data/types";
+import type { Group } from "@/server/data/types";
 import TeamBadge from "./TeamBadge";
+import { groupRowClass } from "./groupRowClass";
 
 interface GroupTableProps {
   group: Group;
   teamStyle?: 'flag' | 'crest';
-}
-
-function rowClass(s: Standing): string {
-  if (s.advanced || s.rank <= 2) return "row-qualify";
-  if (s.rank === 3) return "row-playoff";
-  return "";
 }
 
 function fmtGD(gd: number): string {
@@ -17,9 +12,13 @@ function fmtGD(gd: number): string {
 }
 
 export default function GroupTable({ group, teamStyle }: GroupTableProps) {
+  const started = group.standings.some((s) => s.played > 0);
   return (
     <div className="group-card">
       <h2 className="group-name">{group.name}</h2>
+      {!started ? (
+        <p className="lz-preseason">Season not started — no matches played yet.</p>
+      ) : null}
       <table className="standings-table">
         <thead>
           <tr>
@@ -37,8 +36,8 @@ export default function GroupTable({ group, teamStyle }: GroupTableProps) {
         </thead>
         <tbody>
           {group.standings.map((s) => (
-            <tr key={s.team.id} className={rowClass(s)}>
-              <td className="rank-cell">{s.rank}</td>
+            <tr key={s.team.id} className={groupRowClass(s, started)}>
+              <td className="rank-cell">{started ? s.rank : ''}</td>
               <td className="team-cell">
                 <div className="team-cell-inner">
                   <TeamBadge team={s.team} size={22} style={teamStyle} />

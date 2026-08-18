@@ -186,6 +186,19 @@ production right now.
 - **T0.1** Suppress zone bands and ranking when zero matches have been played
 - **T0.2** Own-goal attribution
 - **T0.3** Remove or repoint the dead "Live Scores" nav link
+- **T0.4** Suppress group-table qualification marking before kick-off
+- **T0.5** Flag third-placed qualifiers only when the criteria actually separate
+  8th from 9th — the ranking *is* the tiebreak, and its last resort is
+  alphabetical by group id
+- **T0.6** Guard the qualification cut (`splitByCut`, `LeagueLadder`,
+  `LeagueDial`) — the most exposed path: Liga MX's and the Leagues Cup's landing
+  page, where the dial crowns `standings[0]` as **LEADER**
+
+> **T0.4–T0.6 were all found by review, not by the spec.** The same false
+> statement lived in five code paths; the original spec identified one. Two of
+> them were introduced or missed by the fix itself. The generalised lesson is
+> recorded in the spec: suppressing a positive claim is not enough when the
+> negative one is applied by default, including by a shared CSS class.
 
 Verified live 2026-08-15: ESPN ranks the 2026-27 Premier League **alphabetically**
 at 0 played. Our zone config paints rank 1 as champion and 18–20 as relegation, so
