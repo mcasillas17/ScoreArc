@@ -222,7 +222,7 @@ func (r *runner) processMatches(
 			needsSummary(match, currentPtr, slowTick) {
 			summaryMatch := match
 			summaryMatch.Home, summaryMatch.Away = providerHome, providerAway
-			summaryStartedAt := time.Now()
+			summaryStartedAt := r.clock()
 			summary, err := r.source.Summary(ctx, comp, summaryMatch)
 			if err != nil {
 				operationErrors = append(operationErrors, fmt.Errorf("match %s summary: %w", match.ID, err))
@@ -262,13 +262,21 @@ func (r *runner) processMatches(
 			// invent a market a reader could not distinguish from a real one.
 			if match.State == model.MatchStateLive {
 				if detail.WinProbability != nil {
-					start := time.Now()
-					err := r.repo.WriteWinProbSnapshot(
-						ctx, identity.MatchID, *detail.WinProbability, summaryStartedAt)
-					r.recordSample(ctx, comp.ID, winProbSnapshotRunKind, start, err)
-					if err != nil {
-						r.log.Warn("win probability snapshot",
-							"match", match.ID, "err", err)
+					probability := *detail.WinProbability
+					if !r.sampleUnchanged(identity.MatchID, winProbSnapshotRunKind,
+						summaryStartedAt, sampleDigest(
+							probability.Home, probability.Draw, probability.Away)) {
+						start := r.clock()
+						err := r.repo.WriteWinProbSnapshot(
+							ctx, identity.MatchID, probability, summaryStartedAt)
+						if err != nil {
+							r.forgetSample(identity.MatchID, winProbSnapshotRunKind)
+						}
+						r.recordSample(ctx, comp.ID, winProbSnapshotRunKind, start, err)
+						if err != nil {
+							r.log.Warn("win probability snapshot",
+								"match", match.ID, "err", err)
+						}
 					}
 				}
 				// Deliberately OUTSIDE the win-probability condition. These are
@@ -310,6 +318,7 @@ func (r *runner) processMatches(
 					// having failed to ingest.
 					r.captureOfficials(ctx, comp, identity, match.ID)
 					r.captureOdds(ctx, comp, identity, match.ID, oddsCaptureFinal)
+					r.forgetSamples(identity.MatchID)
 					existing[identity.MatchID] = store.MatchRow{
 						State: match.State,
 						FinalizedAt: pgtype.Timestamptz{

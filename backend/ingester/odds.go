@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/shared/store"
@@ -78,7 +77,7 @@ func (r *runner) captureOdds(
 	providerEventID string,
 	mode oddsCaptureMode,
 ) error {
-	started := time.Now()
+	started := r.clock()
 	// Final and fixed-retry captures are once-per-match operations and must
 	// never be throttled; the live sample is the one that repeats every 20
 	// seconds.
@@ -108,11 +107,26 @@ func (r *runner) captureOdds(
 		return effectiveErr
 	}
 
+	// The bucket is a minute (WriteOddsSnapshot truncates), so two of every
+	// three live polls would otherwise rewrite the row they just wrote. A
+	// finalized capture always writes: it is the closing sample and the fixed
+	// lines, not a point on a curve.
+	liveSampleReserved := false
+	if mode == oddsCaptureLive {
+		if r.sampleUnchanged(identity.MatchID, oddsRunKind, started, oddsDigest(providers)) {
+			return nil
+		}
+		liveSampleReserved = true
+	}
+
 	var snapshotErr, fixedErr error
 	if mode != oddsCaptureFixedRetry {
 		if err := r.repo.WriteOddsSnapshot(
 			ctx, identity.MatchID, providers, started); err != nil {
 			snapshotErr = fmt.Errorf("odds snapshot: %w", err)
+			if liveSampleReserved {
+				r.forgetSample(identity.MatchID, oddsRunKind)
+			}
 			r.log.Warn("write odds snapshot", "match", providerEventID, "err", err)
 		}
 	}

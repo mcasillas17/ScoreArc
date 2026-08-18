@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"log/slog"
 	"sort"
 	"strings"
@@ -40,6 +41,18 @@ type auditWindow struct {
 	windowStart  time.Time
 	lastRecorded time.Time
 	suppressed   int
+}
+
+// liveSample is the last (bucket, value) this process wrote for one match and
+// one sampling kind.
+//
+// It is a COST GATE, not the idempotency guarantee -- that is the unique index
+// in migrations 0004 and 0005, the same relationship `snapshotted` has with the
+// standings snapshot. A restart empties it and the next poll writes one extra
+// row into a bucket it already holds, which the store upserts.
+type liveSample struct {
+	bucket time.Time
+	digest uint64
 }
 
 type activity struct {
@@ -82,6 +95,10 @@ type runner struct {
 	// sampleAudit throttles the audit rows of the two per-match-per-poll
 	// sampling kinds. Successes only -- failures are never suppressed.
 	sampleAudit map[string]auditWindow
+
+	// liveSamples gates the two per-poll time-series writes. Keyed by
+	// match id + kind; dropped when the match finalizes.
+	liveSamples map[string]liveSample
 }
 
 func assetCacheKey(kind, id, sourceURL string) string {
@@ -799,6 +816,99 @@ func (r *runner) clock() time.Time {
 		return r.now()
 	}
 	return time.Now()
+}
+
+// sampleUnchanged reports whether this match's sample for `kind` would land in
+// the same minute bucket with the same value as the last one written.
+//
+// Both conditions, not either: spec §5. A flat probability curve is a finding
+// and an even one-row-per-minute axis is what makes two matches comparable, so
+// an unchanged VALUE in a new BUCKET is still written. What is skipped is only
+// the second and third poll of the same minute, which the unique index would
+// collapse anyway -- at the cost of a statement and a tuple version each.
+func (r *runner) sampleUnchanged(matchID uuid.UUID, kind string, at time.Time, digest uint64) bool {
+	bucket := at.UTC().Truncate(time.Minute)
+	key := matchID.String() + "\x00" + kind
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	last, seen := r.liveSamples[key]
+	if seen && last.bucket.Equal(bucket) && last.digest == digest {
+		return true
+	}
+	r.liveSamples[key] = liveSample{bucket: bucket, digest: digest}
+	return false
+}
+
+// forgetSample clears a reservation after a failed write. The memo describes
+// what reached Postgres, so retaining a failed value would suppress its retry.
+func (r *runner) forgetSample(matchID uuid.UUID, kind string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.liveSamples, matchID.String()+"\x00"+kind)
+}
+
+// forgetSamples drops a finalized match's gates. The match will never be polled
+// live again, and leaving the entries would grow the map for the life of the
+// process.
+func (r *runner) forgetSamples(matchID uuid.UUID) {
+	for _, kind := range []string{winProbSnapshotRunKind, oddsRunKind} {
+		r.forgetSample(matchID, kind)
+	}
+}
+
+// sampleDigest fingerprints a value so an unchanged one can be recognised
+// without keeping the value itself. Collisions cost one skipped sample in a
+// bucket that will be re-sampled a minute later, which is why FNV is enough and
+// a cryptographic hash would be theatre.
+func sampleDigest(parts ...any) uint64 {
+	hash := fnv.New64a()
+	for _, part := range parts {
+		fmt.Fprintf(hash, "%v\x1f", sampleValue(part))
+	}
+	return hash.Sum64()
+}
+
+// sampleValue renders a nullable market value by its CONTENT.
+//
+// This is not defensive tidiness. fmt's %v on a pointer prints its ADDRESS,
+// which differs on every poll because the mapper allocates a fresh OddsLine --
+// so digesting the pointers directly would make every fingerprint unique, the
+// gate would never fire, and the bug would present as "the optimisation does
+// nothing" rather than as a failure.
+func sampleValue(value any) any {
+	switch typed := value.(type) {
+	case *int:
+		if typed == nil {
+			return "nil"
+		}
+		return *typed
+	case *float64:
+		if typed == nil {
+			return "nil"
+		}
+		return *typed
+	default:
+		return value
+	}
+}
+
+// oddsDigest covers every current-line field of every book, in provider order,
+// so a move in any one of them is a change.
+func oddsDigest(providers []model.ProviderOdds) uint64 {
+	parts := make([]any, 0, len(providers)*10)
+	for _, provider := range providers {
+		parts = append(parts, provider.ProviderID)
+		line := provider.Current
+		if line == nil {
+			parts = append(parts, "nil")
+			continue
+		}
+		parts = append(parts,
+			line.HomeMoneyline, line.DrawMoneyline, line.AwayMoneyline,
+			line.Spread, line.HomeSpreadOdds, line.AwaySpreadOdds,
+			line.OverUnder, line.OverOdds, line.UnderOdds)
+	}
+	return sampleDigest(parts...)
 }
 
 // recordSample audits a per-match, per-poll sampling operation.

@@ -1141,6 +1141,7 @@ func testRunner(src *fakeSource, repo *fakeRepository, comp config.Competition) 
 		squadAttempted:    make(map[string]time.Time),
 		snapshotted:       make(map[string]time.Time),
 		sampleAudit:       make(map[string]auditWindow),
+		liveSamples:       make(map[string]liveSample),
 		maxConcurrent:     3,
 	}
 }
@@ -4861,5 +4862,68 @@ func TestLiveSampleAuditNeverSuppressesAFailure(t *testing.T) {
 	runs := loggedRunsForKind(repo.logged, "odds")
 	if len(runs) != 2 || runs[1].ok {
 		t.Fatalf("odds audit rows = %#v, want the failure recorded immediately", runs)
+	}
+}
+
+// Migration 0005 buckets the curve to the minute. Three polls inside one
+// minute with the same prices must therefore produce one write, not three
+// conflict updates rewriting the row they just wrote.
+func TestLiveSamplesSkipAnUnchangedMinuteBucket(t *testing.T) {
+	repo := &fakeRepository{}
+	src := &fakeSource{odds: oddsFixture()}
+	worker := testRunner(src, repo, config.Competition{ID: "test"})
+	clock := time.Date(2026, 8, 22, 19, 0, 0, 0, time.UTC)
+	worker.now = func() time.Time { return clock }
+
+	for range 3 {
+		worker.captureOdds(context.Background(),
+			config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureLive)
+		clock = clock.Add(20 * time.Second)
+	}
+	if len(repo.oddsSnapshots) != 1 {
+		t.Fatalf("odds snapshot writes = %d within one minute, want 1", len(repo.oddsSnapshots))
+	}
+
+	// The next minute is a new bucket and must be sampled, even though the
+	// prices are identical -- a flat curve is a real observation.
+	worker.captureOdds(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureLive)
+	if len(repo.oddsSnapshots) != 2 {
+		t.Fatalf("odds snapshot writes = %d after the bucket rolled, want 2",
+			len(repo.oddsSnapshots))
+	}
+
+	// A price move inside the same bucket is written immediately: the bucket is
+	// a floor on resolution, not a ceiling on truth.
+	moved := oddsFixture()
+	price := 250
+	moved[0].Current.HomeMoneyline = &price
+	src.odds = moved
+	clock = clock.Add(10 * time.Second)
+	worker.captureOdds(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureLive)
+	if len(repo.oddsSnapshots) != 3 {
+		t.Fatalf("odds snapshot writes = %d after the line moved, want 3",
+			len(repo.oddsSnapshots))
+	}
+}
+
+func TestLiveSamplesRetryAFailedWriteWithinTheSameMinute(t *testing.T) {
+	repo := &fakeRepository{oddsSnapshotErr: errors.New("database unavailable")}
+	src := &fakeSource{odds: oddsFixture()}
+	worker := testRunner(src, repo, config.Competition{ID: "test"})
+	clock := time.Date(2026, 8, 22, 19, 0, 0, 0, time.UTC)
+	worker.now = func() time.Time { return clock }
+
+	worker.captureOdds(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureLive)
+	repo.oddsSnapshotErr = nil
+	clock = clock.Add(20 * time.Second)
+	worker.captureOdds(context.Background(),
+		config.Competition{ID: "test"}, captureIdentity(), "m1", oddsCaptureLive)
+
+	if len(repo.oddsSnapshots) != 2 {
+		t.Fatalf("odds snapshot writes = %d after a failed write, want the next poll to retry",
+			len(repo.oddsSnapshots))
 	}
 }
