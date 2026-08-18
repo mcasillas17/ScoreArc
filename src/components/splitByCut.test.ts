@@ -32,4 +32,19 @@ describe('splitByCut', () => {
     expect(splitByCut(rows, 0).inCut).toHaveLength(1);
     expect(splitByCut(rows, 99).out).toHaveLength(1);
   });
+
+  // A qualification cut applied to a table nobody has played is a claim that
+  // the alphabetically-first eight clubs are in the Liguilla. Same defect as
+  // the league zones, in the code path Liga MX and the Leagues Cup land on.
+  it('puts nobody inside the cut before a ball is kicked', () => {
+    const pre = Array.from({ length: 18 }, (_, i) => ({ ...s(i + 1, 0), played: 0 }));
+    const { inCut, out } = splitByCut(pre, 8);
+    expect(inCut).toHaveLength(0);
+    expect(out).toHaveLength(18);
+  });
+
+  it('restores the cut as soon as a single match has been played', () => {
+    const partial = Array.from({ length: 18 }, (_, i) => ({ ...s(i + 1, 0), played: i === 5 ? 1 : 0 }));
+    expect(splitByCut(partial, 8).inCut).toHaveLength(8);
+  });
 });

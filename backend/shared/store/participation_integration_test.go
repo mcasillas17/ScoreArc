@@ -409,3 +409,131 @@ func TestWriteParticipationKeepsStatsWhenAPollOmitsThem(t *testing.T) {
 		t.Fatalf("goals = %v after a statless poll, want the earlier 2 preserved", stored)
 	}
 }
+
+// The live path: the same roster, polled again, must cost nothing. The stats
+// block is deliberately absent on the second poll -- ESPN does that, and the
+// COALESCE in the upsert exists because of it. Absent stats mean "unchanged",
+// so the whole write must be a no-op, not 44 rewrites that store the same
+// numbers.
+func TestWriteParticipationIsANoOpWhenTheRosterIsUnchanged(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	matchID := mustParticipationMatch(t, store, pool)
+
+	scored := 1
+	withStats := sampleParticipation()
+	withStats.Home[0].Stats = &model.PlayerMatchStats{Goals: &scored}
+	if _, err := store.WriteParticipation(ctx, "espn", matchID,
+		"eng-arsenal", "eng-chelsea", withStats); err != nil {
+		t.Fatal(err)
+	}
+	before := tupleVersions(t, pool,
+		`SELECT xmin::text FROM appearance WHERE match_id=$1 ORDER BY player_id`, matchID)
+
+	// Second poll: identical squad, no stats block at all.
+	if _, err := store.WriteParticipation(ctx, "espn", matchID,
+		"eng-arsenal", "eng-chelsea", sampleParticipation()); err != nil {
+		t.Fatal(err)
+	}
+	after := tupleVersions(t, pool,
+		`SELECT xmin::text FROM appearance WHERE match_id=$1 ORDER BY player_id`, matchID)
+
+	if len(before) != len(after) {
+		t.Fatalf("appearances = %d, want %d", len(after), len(before))
+	}
+	for index := range before {
+		if before[index] != after[index] {
+			t.Fatalf("appearance %d was rewritten (xmin %s -> %s) by an unchanged poll",
+				index, before[index], after[index])
+		}
+	}
+	// And the number the first poll established survived the stats-less one.
+	if goals := countRows(t, pool,
+		`SELECT count(*) FROM appearance WHERE match_id=$1 AND goals=1`, matchID); goals != 1 {
+		t.Fatalf("a stats-less poll erased an established number (rows with goals=1: %d)", goals)
+	}
+}
+
+// Two roster entries can resolve to one canonical player -- the crosswalk
+// allows it and a merged duplicate produces it. A repeated key in the source
+// of a set-based upsert raises SQLSTATE 21000 and would fail the whole match's
+// participation write.
+func TestWriteParticipationToleratesADuplicatePlayer(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	matchID := mustParticipationMatch(t, store, pool)
+
+	part := sampleParticipation()
+	twin := part.Home[0]
+	twin.Starter = false
+	part.Home = append(part.Home, twin)
+
+	stats, err := store.WriteParticipation(ctx, "espn", matchID,
+		"eng-arsenal", "eng-chelsea", part)
+	if err != nil {
+		t.Fatalf("a duplicate player failed the whole write: %v", err)
+	}
+	if stats.Appearances != 3 {
+		t.Fatalf("appearances = %d, want 3 distinct players", stats.Appearances)
+	}
+	var starter bool
+	if err := pool.QueryRow(ctx, `
+SELECT a.starter FROM appearance a
+JOIN player_external_ref r ON r.player_id = a.player_id
+WHERE a.match_id=$1 AND r.source='espn' AND r.source_id='p1'`, matchID).Scan(&starter); err != nil {
+		t.Fatal(err)
+	}
+	if starter {
+		t.Fatal("the last occurrence did not win")
+	}
+}
+
+func tupleVersions(t *testing.T, pool *pgxpool.Pool, sql string, args ...any) []string {
+	t.Helper()
+	rows, err := pool.Query(context.Background(), sql, args...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var versions []string
+	for rows.Next() {
+		var version string
+		if err := rows.Scan(&version); err != nil {
+			t.Fatal(err)
+		}
+		versions = append(versions, version)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return versions
+}
+
+// The coverage report exists to raise a gap where a human can find it. Raising
+// it 360 times for one live match buries the signal it exists to carry, so it
+// is written only when the poll actually changed something.
+func TestParticipationCoverageIsReportedOncePerChange(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	matchID := mustParticipationMatch(t, store, pool)
+
+	part := sampleParticipation()
+	// An event whose athlete id the provider omitted: recorded, unidentified.
+	part.Events = append(part.Events, model.PlayerEvent{
+		TeamSourceID: "359", PlayerName: "", Type: model.PlayerEventYellow,
+		Minute: "70'", Detail: "Yellow Card",
+	})
+
+	for range 4 {
+		if _, err := store.WriteParticipation(ctx, "espn", matchID,
+			"eng-arsenal", "eng-chelsea", part); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	reported := countRows(t, pool,
+		`SELECT count(*) FROM ingest_run WHERE kind='player_capture'`)
+	if reported != 1 {
+		t.Fatalf("player_capture audit rows = %d after four identical polls, want 1", reported)
+	}
+}
