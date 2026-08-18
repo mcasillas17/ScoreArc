@@ -6,7 +6,13 @@ interface GroupTableProps {
   teamStyle?: 'flag' | 'crest';
 }
 
-function rowClass(s: Standing): string {
+// Before a group has kicked off, the provider ranks it alphabetically and
+// still emits rank 1..n. Marking rows 1-2 as qualifying then states that the
+// two clubs whose names sort first are through — the same defect the league
+// tables carried, in a second code path. `started` is threaded in rather than
+// derived per row because the question is about the group, not the team.
+export function groupRowClass(s: Standing, started: boolean): string {
+  if (!started) return "";
   if (s.advanced || s.rank <= 2) return "row-qualify";
   if (s.rank === 3) return "row-playoff";
   return "";
@@ -17,6 +23,7 @@ function fmtGD(gd: number): string {
 }
 
 export default function GroupTable({ group, teamStyle }: GroupTableProps) {
+  const started = group.standings.some((s) => s.played > 0);
   return (
     <div className="group-card">
       <h2 className="group-name">{group.name}</h2>
@@ -37,8 +44,8 @@ export default function GroupTable({ group, teamStyle }: GroupTableProps) {
         </thead>
         <tbody>
           {group.standings.map((s) => (
-            <tr key={s.team.id} className={rowClass(s)}>
-              <td className="rank-cell">{s.rank}</td>
+            <tr key={s.team.id} className={groupRowClass(s, started)}>
+              <td className="rank-cell">{started ? s.rank : ''}</td>
               <td className="team-cell">
                 <div className="team-cell-inner">
                   <TeamBadge team={s.team} size={22} style={teamStyle} />
