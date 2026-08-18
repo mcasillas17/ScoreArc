@@ -437,6 +437,48 @@ func TestFinalizedMatchAndDetailAreFrozen(t *testing.T) {
 	}
 }
 
+// TestExistingMatchesReturnsTheNoOpGuardColumns is the store-side half of the
+// C2 guard (design doc §4.2): the ingester cannot tell a genuine change from a
+// redundant write without kickoff, score, minute and status on MatchRow.
+func TestExistingMatchesReturnsTheNoOpGuardColumns(t *testing.T) {
+	store, _ := newSeededStore(t)
+	ctx := context.Background()
+	kickoff := time.Date(2026, 8, 25, 15, 0, 0, 0, time.UTC)
+	identity := resolveFixture(t, store, "compare-1", kickoff)
+	homeScore, awayScore := 2, 1
+	minute := "67"
+	match := fixtureMatch(identity, "compare-1", kickoff)
+	match.State = model.MatchStateLive
+	match.HomeScore, match.AwayScore = &homeScore, &awayScore
+	match.Minute = &minute
+	match.StatusDetail, match.StatusName = "Second Half", "STATUS_IN_PROGRESS"
+	if err := store.UpsertMatch(ctx, identity, match); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := store.ExistingMatches(ctx, testCompetition, testSeason, []uuid.UUID{identity.MatchID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, ok := rows[identity.MatchID]
+	if !ok {
+		t.Fatal("match missing from ExistingMatches")
+	}
+	if !row.Kickoff.Equal(kickoff) {
+		t.Fatalf("kickoff = %v, want %v", row.Kickoff, kickoff)
+	}
+	if row.HomeScore == nil || *row.HomeScore != 2 || row.AwayScore == nil || *row.AwayScore != 1 {
+		t.Fatalf("score = %v-%v, want 2-1", row.HomeScore, row.AwayScore)
+	}
+	if row.Minute == nil || *row.Minute != "67" {
+		t.Fatalf("minute = %v, want 67", row.Minute)
+	}
+	if row.StatusDetail != "Second Half" || row.StatusName != "STATUS_IN_PROGRESS" {
+		t.Fatalf("status = %q/%q, want %q/%q", row.StatusDetail, row.StatusName,
+			"Second Half", "STATUS_IN_PROGRESS")
+	}
+}
+
 // A live match must not be dragged back to scheduled by a stale payload, but a
 // postponement legitimately does exactly that.
 func TestMatchStateOnlyRegressesForAPostponement(t *testing.T) {
