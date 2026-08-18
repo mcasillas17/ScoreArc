@@ -131,12 +131,37 @@ simply supersede this task — the plan says so explicitly.
   substitute content. Showing the squad list honestly is the fix; inventing a
   table to fill the space is the same defect wearing a hat.
 
+## Defect 1b — the same false statement in a second code path
+
+Found during review of the fix. `GroupTable.rowClass` marks rank 1–2 as
+`row-qualify` and rank 3 as `row-playoff` with **no `played` guard**, so a group
+table rendered before kick-off says the two clubs whose names sort first are
+through.
+
+This is not theoretical: `/c/[comp]/[season]/standings` never passes `zones` to
+`StandingsLive`, so it always renders `GroupTable` — and that route is what the
+sidebar's **Standings** link points at for every bracket competition. It is not
+live-broken today only because neither the World Cup nor the Leagues Cup is
+currently pre-season.
+
+### Decision
+
+Same rule, same predicate. `rowClass` becomes an exported
+`groupRowClass(s, started)` returning `''` for everything when the group has not
+started, with the rank cell blanked to match. Exporting it makes the rule
+unit-testable rather than browser-only.
+
 ## Verification
 
 - `npm test` green, `npx tsc --noEmit` clean.
-- In a browser: `/c/premier-league/2026-27/standings` shows a flat unranked list
-  with no colour bands and no champion or relegation labels.
-- In a browser: Liga MX standings (mid-season, real `played` values) are
-  **unchanged** — bands, ranks and legend all still render.
+- In a browser: `/c/premier-league/2026-27` — the **base** page — shows a flat
+  unranked list with no colour bands and no champion or relegation labels.
+- In a browser: `/c/mls/2026` (mid-season, real `played` values, and zone-configured)
+  is **unchanged** — bands, ranks and legend all still render.
+
+> ⚠️ **Route trap.** `/standings` never passes `zones`, so it renders the legacy
+> `GroupTable` and never exercises `toBands`. And Liga MX renders through
+> `LeagueLadder`, not `LeagueZoneTable`. Verifying against either would prove
+> nothing about this fix — MLS is the correct mid-season regression check.
 - In a browser: the Leagues Cup Minnesota–Atlante match popup shows Padelford's
   32' goal marked `(OG)` under Atlante.
