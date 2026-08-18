@@ -19,11 +19,13 @@
     "react-dom": "^18"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
+    "jsdom": "^30.0.1",
     "tsx": "^4.23.12",
     "typescript": "^5",
     "vitest": "^4.1.9"

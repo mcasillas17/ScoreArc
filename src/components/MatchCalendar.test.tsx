@@ -1,6 +1,9 @@
+// @vitest-environment jsdom
+
 import React from 'react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Match } from '@/server/data/types';
 import MatchCalendar from './MatchCalendar';
 
@@ -39,6 +42,10 @@ function renderCalendar(overrides: Partial<React.ComponentProps<typeof MatchCale
 }
 
 describe('MatchCalendar', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('labels a scheduled row without repeating its kickoff time', () => {
     expect(renderCalendar()).toContain('<small>Scheduled</small>');
   });
@@ -51,5 +58,45 @@ describe('MatchCalendar', () => {
 
     expect(html).toContain('Fixtures are unavailable right now.');
     expect(html).not.toContain('No matches this month.');
+  });
+
+  it('retries an SSR-failed month only after navigating away and back', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      void input;
+      return new Promise<Response>(() => {});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <React.StrictMode>
+        <MatchCalendar
+          initialMatches={[]}
+          initialError="Fixtures are unavailable right now."
+          initialMonth="2026-08-01"
+          minMonth="2026-07-01"
+          maxMonth="2027-06-01"
+          apiBase="/api/premier-league/2026-27"
+        />
+      </React.StrictMode>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'September 2026' })).toBeTruthy();
+      expect(screen.getByText('Loading September 2026…')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous month' }));
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'August 2026' })).toBeTruthy();
+      expect(screen.getByText('Loading August 2026…')).toBeTruthy();
+    });
+
+    expect(screen.queryByText('No matches this month.')).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      '/api/premier-league/2026-27/fixtures?range=20260901-20260930',
+      '/api/premier-league/2026-27/fixtures?range=20260801-20260831',
+    ]);
   });
 });

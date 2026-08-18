@@ -136,7 +136,9 @@ export default function MatchCalendar({
   const [detail, setDetail] = useState<Match | null>(null);
   const [summary, setSummary] = useState<MatchSummary | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
-  const loadedRange = useRef<string | null>(monthRange(parseMonth(initialMonth)));
+  const initialRange = monthRange(parseMonth(initialMonth));
+  const loadedRange = useRef<string | null>(initialError ? null : initialRange);
+  const serverAttemptedRange = useRef<string | null>(initialError ? initialRange : null);
   const feedFailed = useRef(false);
   const didScrollToToday = useRef(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -167,6 +169,10 @@ export default function MatchCalendar({
 
   useEffect(() => {
     const range = monthRange(cursor);
+    if (range === serverAttemptedRange.current) {
+      return;
+    }
+    serverAttemptedRange.current = null;
     if (monthNavigationAction(range, loadedRange.current) === 'restore') {
       setLoadState(returnedToLoadedMonth);
       return;
