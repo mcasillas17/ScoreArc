@@ -175,6 +175,22 @@ func (r *runner) processMatches(
 		identity.AwayTeamID = match.Away.ID
 		identity.WinnerTeamID = match.WinnerID
 
+		// C2 guard (design doc §4.2): matchUpsertSQL is a blind UPDATE with no
+		// content comparison -- 82 updates/slow-tick against a 2,578-row table,
+		// ~23,616/day, almost all rewriting a scheduled fixture whose kickoff,
+		// score and status had not moved. matchRowUnchanged runs on `match` in
+		// its FINAL form, after every preservation rule above has already run,
+		// so a preserved round or winner is compared against what it actually
+		// is, not against the raw provider payload. It composes with
+		// skipMatchUpsert rather than replacing it: that guard already means
+		// "do not write" for a state regression, and this one only evaluates
+		// once it did not fire. A match transitioning to 'finished' can never
+		// satisfy this guard -- state itself is one of the compared columns --
+		// so the finalization transition is never suppressed by it, and
+		// FinalizeMatch's own write is unconditional regardless either way.
+		noopUpsert := found && !skipMatchUpsert &&
+			matchRowUnchanged(identity, match, current)
+
 		matchActive := false
 		switch match.State {
 		case model.MatchStateLive:
@@ -186,7 +202,7 @@ func (r *runner) processMatches(
 			matchActive = currentPtr == nil || !currentPtr.FinalizedAt.Valid
 		}
 
-		if !skipMatchUpsert {
+		if !skipMatchUpsert && !noopUpsert {
 			if err := r.repo.UpsertMatch(ctx, identity, match); err != nil {
 				operationErrors = append(operationErrors, fmt.Errorf("match %s row: %w", match.ID, err))
 				result.active = result.active || matchActive

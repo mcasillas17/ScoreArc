@@ -1167,6 +1167,70 @@ func finishedMatch() model.Match {
 	}
 }
 
+// scheduledNoOpMatch is a fixture with realistic non-empty status text, unlike
+// finishedMatch(), specifically so TestUnchangedScheduledMatchWritesOnce proves
+// the guard on a payload that isn't just all-zero-values matching all-zero-values
+// by coincidence.
+func scheduledNoOpMatch() model.Match {
+	return model.Match{
+		ID: "m1", Kickoff: "2026-06-11T18:00:00Z",
+		State:        model.MatchStateScheduled,
+		StatusDetail: "Scheduled",
+		StatusName:   "STATUS_SCHEDULED",
+		Home:         model.Team{ID: "home", Name: "Home", Abbr: "HOM"},
+		Away:         model.Team{ID: "away", Name: "Away", Abbr: "AWY"},
+	}
+}
+
+// TestUnchangedScheduledMatchWritesOnce is the regression test for the C2 guard
+// (design doc §4.2, §3.3). Before the guard, matchUpsertSQL was a blind UPDATE:
+// 82 updates per slow tick against a 2,578-row match table, ~23,616/day, almost
+// all rewriting a scheduled fixture whose kickoff, score and status had not
+// moved since the previous tick. Two ticks over the exact same provider payload
+// must produce exactly one write, not two.
+func TestUnchangedScheduledMatchWritesOnce(t *testing.T) {
+	match := scheduledNoOpMatch()
+	src := &fakeSource{matches: []model.Match{match}}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	runner := testRunner(src, repo, comp)
+
+	kickoff, err := time.Parse(time.RFC3339, match.Kickoff)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Tick 1: nothing stored yet, so this is a genuine write.
+	runner.runCycle(context.Background(), false)
+	if repo.matchCalls != 1 {
+		t.Fatalf("first tick upsert calls=%d, want 1", repo.matchCalls)
+	}
+
+	// The fake's `existing` fixture does not mutate itself after UpsertMatch --
+	// unlike Postgres, it has no memory of what was just written. This block
+	// plays that role: it is what tick 1 actually persisted, in MatchRow shape.
+	repo.mu.Lock()
+	repo.existing["m1"] = store.MatchRow{
+		State: match.State, Kickoff: kickoff,
+		StatusDetail: match.StatusDetail, StatusName: match.StatusName,
+		Home: model.Team{ID: fakeTeamID("home")},
+		Away: model.Team{ID: fakeTeamID("away")},
+	}
+	repo.mu.Unlock()
+
+	// Tick 2: the exact same provider payload. Nothing changed.
+	runner.runCycle(context.Background(), false)
+	if repo.matchCalls != 1 {
+		t.Fatalf(
+			"second tick upsert calls=%d, want still 1 -- an unchanged match must not write twice",
+			repo.matchCalls,
+		)
+	}
+}
+
 func TestFinishedMatchRetriesSummaryBeforeFinalizing(t *testing.T) {
 	src := &fakeSource{
 		matches:       []model.Match{finishedMatch()},
