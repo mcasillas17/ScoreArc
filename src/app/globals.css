@@ -3138,3 +3138,49 @@ a {
 }
 /* The heading above each ladder wears its own accent too. */
 .std-ladder[data-group] .std-ladder-title { color: var(--qual-bright); }
+
+/* ---- Match calendar ---- */
+.mc-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 12px; }
+.mc-month { font-size: 15px; font-weight: 700; letter-spacing: 0.02em; text-align: center; }
+.mc-nav button { background: var(--surface-2); border: 1px solid var(--hairline); color: var(--text); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+.mc-nav button:hover:not(:disabled) { border-color: var(--gold); }
+.mc-nav button:disabled { opacity: 0.35; cursor: default; }
+.mc-status { min-height: 20px; margin-bottom: 4px; color: var(--text-muted); font-size: 12px; text-align: center; }
+.mc-day { margin: 18px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+.mc-day--today { color: var(--gold); }
+.mc-matches { display: grid; gap: 7px; }
+.mc-match {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--surface-1);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+.mc-match:hover { border-color: var(--accent); }
+.mc-match:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mc-team { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.mc-team--away { justify-content: flex-end; text-align: right; }
+.mc-team-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 650; }
+.mc-crest { width: 28px; height: 28px; flex: none; border-radius: 50%; object-fit: contain; background: #f4f4f6; }
+.mc-crest--fallback { display: inline-flex; align-items: center; justify-content: center; background: var(--surface-2); color: var(--text-muted); font-size: 8px; font-weight: 800; }
+.mc-score { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 5px; min-width: 76px; font-variant-numeric: tabular-nums; text-align: center; }
+.mc-score strong { font-size: 15px; color: var(--text); }
+.mc-match--live .mc-score strong { color: var(--live-red); }
+.mc-score small { flex-basis: 100%; color: var(--text-muted); font-size: 9px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+/* Keep the outgoing month visible while the next one loads. Blanking the list
+   on every navigation makes a fast fetch feel like a broken one. */
+.mc-list--loading { opacity: 0.5; transition: opacity 120ms ease; }
+@media (max-width: 560px) {
+  .mc-nav { gap: 7px; }
+  .mc-nav button { padding: 6px 9px; font-size: 12px; }
+  .mc-match { gap: 8px; padding: 11px 9px; }
+  .mc-team-name { font-size: 11px; }
+  .mc-crest { width: 24px; height: 24px; }
+}

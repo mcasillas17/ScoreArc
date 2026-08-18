@@ -19,7 +19,8 @@ import { TtlCache } from './cache';
 // slug lives on the competition; per-season fetch details (e.g. the bracket
 // date range) live on the season.
 export interface DataStore {
-  getMatches(rc: CompetitionSeason): Promise<Match[]>;
+  getMatches(rc: CompetitionSeason, range?: string): Promise<Match[]>;
+  getFixtures(rc: CompetitionSeason, range: string): Promise<Match[]>;
   getUpcoming(rc: CompetitionSeason, limit?: number): Promise<Match[]>;
   getStandings(rc: CompetitionSeason): Promise<Group[]>;
   getBracket(rc: CompetitionSeason): Promise<BracketRound[]>;
@@ -143,13 +144,14 @@ export function createDataStore(deps: DataDeps): DataStore {
   return {
     getMatchSummary,
 
-    async getMatches(rc, ttlMs = 10_000): Promise<Match[]> {
-      const k = key(rc, 'matches');
+    async getMatches(rc, range?: string, ttlMs = 10_000): Promise<Match[]> {
+      const window = range ?? currentWeekRange(new Date());
+      // The range is part of the identity of this result. Without it in the
+      // key, the first window fetched is served for every later one.
+      const k = key(rc, `matches:${window}`);
       const cached = deps.cache.get(k) as Match[] | undefined;
       if (cached) return cached;
-      // Fetch the whole current week (Mon→Sun) so the ticker sees every fixture,
-      // not just ESPN's default single-day scoreboard.
-      const raw = await deps.fetchJson(scoreboardUrl(slug(rc), currentWeekRange(new Date())));
+      const raw = await deps.fetchJson(scoreboardUrl(slug(rc), window));
       const matches = mapScoreboard(raw);
       const summaries = await Promise.all(
         matches.map((m) => getMatchSummary(rc, m.id, m.home.id, m.away.id).catch(() => emptySummary())),
@@ -162,6 +164,28 @@ export function createDataStore(deps: DataDeps): DataStore {
         m.shootoutDetail = summaries[i].shootoutDetail;
       });
       for (const m of matches) m.shootout = parseShootout(m.note, m.home.name, m.away.name);
+      deps.cache.set(k, matches, ttlMs);
+      return matches;
+    },
+
+    // A calendar month of results, with NO summary enrichment.
+    //
+    // getMatches fetches one summary per match, which is right for a live
+    // matchday of ten fixtures and ruinous for a month of forty -- the same
+    // trap getUpcoming avoids. A calendar row needs kickoff, teams, state and
+    // score; the match popup fetches the summary when a match is actually
+    // clicked.
+    //
+    // Longer TTL than getMatches for the same reason: a finished month does
+    // not change.
+    async getFixtures(rc, range: string, ttlMs = 120_000): Promise<Match[]> {
+      const k = key(rc, `fixtures:${range}`);
+      const cached = deps.cache.get(k) as Match[] | undefined;
+      if (cached) return cached;
+      const raw = await deps.fetchJson(scoreboardUrl(slug(rc), range));
+      const matches = mapScoreboard(raw)
+        .map((m) => ({ ...m, shootout: parseShootout(m.note, m.home.name, m.away.name) }))
+        .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
       deps.cache.set(k, matches, ttlMs);
       return matches;
     },
