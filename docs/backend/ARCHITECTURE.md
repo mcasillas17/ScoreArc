@@ -112,7 +112,7 @@ same transaction.
   **match_external_ref**(PK (source, source_id), *canonical id*→entity ON DELETE CASCADE, first_seen_at, last_seen_at) — the PK is `(source, source_id)`, not the canonical id, so **many** provider ids may map to **one** entity, which is exactly what merging duplicates produces. Each has an index on the canonical id for the reverse lookup.
 
 ### Tier 1 — current state (hot, upserted by the ingester)
-- **match**(id PK `uuid` v7, competition_id, season_id, round, kickoff, **kickoff_date** (generated, UTC date), state[`scheduled|live|finished`], home_team_id→team, away_team_id→team, home_score, away_score, minute, status_detail, status_name, winner_id→team, note, home_placeholder, away_placeholder, bracket_required, **finalized_at**, source, updated_at) — FK to `season(competition_id,id)`; **UNIQUE (competition_id, season_id, home_team_id, away_team_id, kickoff_date)** is the natural key that makes the same fixture from a second source resolve to one row; indexes on `(competition_id,season_id,kickoff)`, `state`, and unfinalized history.
+- **match**(id PK `uuid` v7, competition_id, season_id, round, kickoff, **kickoff_date** (generated, UTC date), state[`scheduled|live|finished`], home_team_id→team, away_team_id→team, home_score, away_score, minute, status_detail, status_name, winner_id→team, note, home_placeholder, away_placeholder, bracket_required, **finalized_at**, source, updated_at) — FK to `season(competition_id,id)`; **UNIQUE (competition_id, season_id, home_team_id, away_team_id, kickoff_date)** is the natural key that makes the same fixture from a second source resolve to one row; indexes on `(competition_id,season_id,kickoff)`, `state`, and unfinalized history. `updated_at` records the last persisted content change: an ingest that resolves to the same row does not refresh it.
 - **match_detail**(match_id PK→match, scorers jsonb, cards jsonb, stats jsonb, win_probability jsonb, shootout jsonb, shootout_detail jsonb, lineups jsonb, videos jsonb, info jsonb, form jsonb, h2h jsonb, commentary jsonb, updated_at)
 - **match_commentary**(PK (match_id→match, **seq** = ESPN's `sequence`), period, clock_value, clock_display, play_type, play_type_text, wallclock, text) — minute-by-minute commentary **with the structure `match_detail.commentary` drops** (T7.11). That jsonb column is unchanged and remains the reader's `MatchSummaryData.commentary` contract; it keeps `{minute, text}` only. This table adds guaranteed order (`sequence`), a numeric clock (`play.clock.value`, falling back to `time.value`; the recorded pre-match, kickoff, and match-end entries have an empty `time.displayValue`), the machine play type (`play.type.type`, so consumers need not regex English prose), and mutability (`match_detail` is frozen by `protect_finalized_detail` once a match finalizes). Rows are upserted and then tail-pruned like `match_event`; an **empty payload is a no-op, not a delete**, because commentary coverage varies by competition and has been observed at zero. Missing numeric provider fields remain SQL `NULL`, distinct from a measured zero. A failed write leaves a finished match unfinalized so the next cycle retries before freezing its detail. **Nothing here is parsed** — E6's shot-log parser is downstream and gated on T6.1's coverage probe.
 - **standing**(PK (competition_id,season_id,team_id→team), group_id, group_name, rank, played, wins, draws, losses, goals_for, goals_against, goal_difference, points, advanced, source, updated_at) — `group_id`/`group_name` (e.g. "A"/"Group A") are nullable: populated for multi-group competitions (e.g. World Cup group stage), null for single-table leagues.
@@ -174,6 +174,22 @@ same transaction.
 - Current state is idempotently upserted. State cannot regress except
   live→scheduled for ESPN's explicit postponed or suspended status. Sparse payloads preserve
   known scores, winners, detail arrays, and bracket placeholders.
+- Before writing an existing match, the ingester applies those preservation,
+  finalization, and state-regression rules in memory and compares the resulting
+  row with the values the match upsert would persist. It skips the SQL upsert
+  when no content would change; absent provider numerics remain SQL `NULL`
+  rather than becoming zero. This keeps `match.updated_at` meaningful and avoids
+  generating dead tuples for stable fixtures without changing finalization or
+  reader behavior. A production sample found 82 redundant updates per five-minute
+  slow tick across 2,578 matches, so the stable case avoids approximately 23,616
+  tuple writes per day. This is an ingester-only write-path optimization: the
+  database finalization and state-regression protections still apply, and it
+  requires no migration or reader/OpenAPI contract change.
+- The durable unfinalized-match query orders candidates by `match.updated_at`
+  and caps each pass at 500. Preserving timestamps on no-op rows has no paging
+  consequence at or below that cap; with a theoretical backlog above 500,
+  selection fairness across the full backlog is not guaranteed and the paging
+  strategy should be revisited.
 - Odds mapping is field-local at the PostgreSQL boundary: nested-string and
   flattened numeric spread/total values that would overflow `numeric(5,2)` after
   PostgreSQL-equivalent two-decimal rounding become SQL `NULL` only for that one
