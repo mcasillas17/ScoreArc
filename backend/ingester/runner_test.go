@@ -368,6 +368,7 @@ type fakeRepository struct {
 	standingsCalls    int
 	standingsErr      error
 	leaderCategories  []string
+	leaderRows        [][]model.StatLeader
 	snapshotCalls     int
 	snapshotDays      []time.Time
 	snapshotErr       error
@@ -997,6 +998,7 @@ func (f *fakeRepository) ReplaceLeaders(
 		return store.ErrEmptyReplacement
 	}
 	f.leaderCategories = append(f.leaderCategories, category)
+	f.leaderRows = append(f.leaderRows, append([]model.StatLeader(nil), rows...))
 	return nil
 }
 func (f *fakeRepository) ReplaceSquad(
@@ -3679,6 +3681,129 @@ func TestStandingsMemoIsColdAfterARestart(t *testing.T) {
 	if repo.standingsCalls != 2 {
 		t.Fatalf("ReplaceStandings calls = %d across two processes, want 2",
 			repo.standingsCalls)
+	}
+}
+
+// The leader boards' twin of TestUnchangedStandingsAreReplacedOnce, and the
+// larger half of the measured waste: top_scorer took +600 inserts and -600
+// deletes per tick against a 300-row table -- 345,600 tuple writes a day.
+func TestUnchangedLeaderBoardsAreReplacedOnce(t *testing.T) {
+	src := &fakeSource{}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	worker.runCycle(context.Background(), true)
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if len(repo.leaderCategories) != 2 {
+		t.Fatalf("ReplaceLeaders calls = %v across two identical slow ticks, want one per category",
+			repo.leaderCategories)
+	}
+}
+
+// top_scorer moved 600 tuples for a 300-row table because the board was
+// replaced TWICE per tick: the old code wrote the freshly-mapped board, mirrored
+// its crests, and re-wrote the whole board when leaderCrestsChanged(board,
+// mirrored) said the URLs had moved -- which it always did, because `board`
+// always carries a.espncdn.com URLs and `mirrored` always carries CDN ones.
+// Mirroring first collapses that to one write and removes the window in which
+// the table served provider hotlinks.
+func TestMirroredLeaderBoardIsWrittenOnceWithCDNCrests(t *testing.T) {
+	crest := "https://a.espncdn.com/crest.png"
+	src := &fakeSource{statistics: statisticsPayload(
+		t,
+		[]model.StatLeader{{
+			Rank: 1, Player: "Striker", TeamAbbr: "HOM",
+			TeamCrestURL: &crest, Value: 5,
+		}},
+		[]model.StatLeader{{Rank: 1, Player: "Playmaker", Value: 3}},
+	)}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+	worker.mirror = &fakeMirror{}
+
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if len(repo.leaderCategories) != 2 {
+		t.Fatalf("ReplaceLeaders calls = %v in one tick, want exactly one per category",
+			repo.leaderCategories)
+	}
+	written := false
+	for index, category := range repo.leaderCategories {
+		if category != "goals" {
+			continue
+		}
+		written = true
+		stored := repo.leaderRows[index][0].TeamCrestURL
+		if stored == nil || !strings.HasPrefix(*stored, "https://cdn.example/") {
+			t.Fatalf("stored crest = %v, want the mirrored URL on the FIRST write", stored)
+		}
+	}
+	if !written {
+		t.Fatal("the goals board was never written")
+	}
+}
+
+// An absent board must never be memoised, because nothing was committed: the
+// store rejected the replacement and the rows already stored survive. If it
+// were, the leaders_preserved audit -- the only signal that a board is missing
+// -- would stop firing after the first tick, and a board that later appears
+// must still be written.
+func TestAbsentLeaderBoardIsNeverMemoised(t *testing.T) {
+	goals := []model.StatLeader{{Rank: 1, Player: "Striker", Value: 5}}
+	src := &fakeSource{statistics: statisticsPayload(t, goals, nil)}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	worker.runCycle(context.Background(), true)
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	preserved := len(loggedRunsForKind(repo.logged, "leaders_preserved"))
+	repo.mu.Unlock()
+	if preserved != 2 {
+		t.Fatalf("leaders_preserved runs = %d across two ticks with an absent board, want 2",
+			preserved)
+	}
+
+	// The board appears. It must be written, once.
+	src.mu.Lock()
+	src.statistics = statisticsPayload(
+		t, goals, []model.StatLeader{{Rank: 1, Player: "Playmaker", Value: 3}})
+	src.mu.Unlock()
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	assists := 0
+	for _, category := range repo.leaderCategories {
+		if category == "assists" {
+			assists++
+		}
+	}
+	if assists != 1 {
+		t.Fatalf("assists writes = %d, want the board written exactly once when it appeared",
+			assists)
+	}
+	if len(repo.leaderCategories) != 2 {
+		t.Fatalf("writes = %v, want one goals write and one assists write in total",
+			repo.leaderCategories)
 	}
 }
 

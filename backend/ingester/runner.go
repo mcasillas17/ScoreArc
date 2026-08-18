@@ -699,12 +699,40 @@ func (r *runner) refreshLeaders(
 			errs = append(errs, fmt.Errorf("%s: %w", category, mapErr))
 			continue
 		}
+		// Mirror BEFORE fingerprinting and before writing. The old shape wrote
+		// the board, mirrored its crests, then re-wrote the whole board when
+		// leaderCrestsChanged(board, mirrored) reported a difference -- but
+		// `board` is mapped fresh from ESPN on every tick and therefore ALWAYS
+		// carries a.espncdn.com URLs while `mirrored` ALWAYS carries
+		// cdn.scorearc.futbol ones, so that comparison was unconditionally true
+		// and the second full replacement ran on every tick, forever. It also
+		// left a window in which the table served provider hotlinks. Mirroring
+		// first removes both, and costs nothing on a steady tick because
+		// mirrorLeader answers from r.mirrored after the first mirror.
+		board = r.mirrorLeaders(ctx, board)
+
+		// The C3 guard (spec §4.1). A leader board is a pure function of the
+		// goals and assists scored in its competition, so it can only move when
+		// a match finalizes; content hashes over ten stored boards, captured
+		// across three production tick boundaries, changed zero times.
+		scope := leadersScope(comp.ID, season.ID, category)
+		digest := leadersFingerprint(sourceESPN, category, board)
+		if r.contentUnchanged(scope, len(board), digest) {
+			r.log.Debug("leader board unchanged; replacement skipped",
+				"comp", comp.ID, "category", category, "rows", len(board))
+			continue
+		}
 		writeErr := r.repo.ReplaceLeaders(
 			ctx, comp.ID, season.ID, sourceESPN, category, board,
 		)
 		if errors.Is(writeErr, store.ErrEmptyReplacement) {
 			// Normal. Not every competition publishes every board, and an
 			// absent assists table must not take the Golden Boot down with it.
+			//
+			// DELIBERATELY NOT MEMOISED: nothing was committed, and the rows
+			// already in the table survive. contentUnchanged refuses a zero-row
+			// set for the same reason, so this branch stays reachable on every
+			// tick and keeps auditing the missing board.
 			r.log.Info("leader board unavailable; preserving existing rows",
 				"comp", comp.ID, "category", category)
 			r.recordRun(ctx, comp.ID, "leaders_preserved", start, nil)
@@ -714,14 +742,8 @@ func (r *runner) refreshLeaders(
 			errs = append(errs, fmt.Errorf("%s: %w", category, writeErr))
 			continue
 		}
-		mirrored := r.mirrorLeaders(ctx, board)
-		if leaderCrestsChanged(board, mirrored) {
-			if err := r.repo.ReplaceLeaders(
-				ctx, comp.ID, season.ID, sourceESPN, category, mirrored,
-			); err != nil {
-				errs = append(errs, fmt.Errorf("%s crests: %w", category, err))
-			}
-		}
+		// Only after the transaction committed.
+		r.markContentWritten(scope, digest)
 	}
 	joined := errors.Join(errs...)
 	r.recordRun(ctx, comp.ID, "leaders", start, joined)
@@ -750,23 +772,6 @@ func (r *runner) mirrorLeaders(
 	}
 	wg.Wait()
 	return mirrored
-}
-
-func leaderCrestsChanged(before, after []model.StatLeader) bool {
-	for index := range before {
-		if index >= len(after) || stringValue(before[index].TeamCrestURL) !=
-			stringValue(after[index].TeamCrestURL) {
-			return true
-		}
-	}
-	return len(before) != len(after)
-}
-
-func stringValue(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
 }
 
 func (r *runner) mirrorLeader(ctx context.Context, leader model.StatLeader) model.StatLeader {
