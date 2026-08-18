@@ -300,15 +300,23 @@ Append to `src/app/globals.css`, under the existing
 npm run dev
 ```
 
-Open `http://localhost:3000/c/premier-league/2026-27/standings`.
+Open `http://localhost:3000/c/premier-league/2026-27` — the **base** page.
+
+> ⚠️ **Not `/standings`.** That route never passes `zones` to `StandingsLive`, so
+> it renders the legacy `GroupTable`, never `LeagueZoneTable`/`toBands`. Checking
+> it would show the *unfixed* behaviour and prove nothing.
 
 Expected: a flat list of 20 clubs. **No** colour bands, **no** `◆ Champion` or
 `◆ Relegation` labels, **no** legend, **no** rank numbers, and the "Season not
 started" note above the ring. The ring shows plain hairline circles with no
 coloured arcs and reads "20 clubs / 0 played" in the hub.
 
-Now open `http://localhost:3000/c/liga-mx/2026-27/standings` — a competition that
-is mid-season with real `played` values.
+Now open `http://localhost:3000/c/mls/2026` — a competition that is mid-season
+with real `played` values **and** uses `zones`.
+
+> ⚠️ **Not Liga MX.** Its real season id is not `2026-27`, and it renders through
+> `LeagueLadder` (a single qualification cut), not `LeagueZoneTable` — so it does
+> not exercise `toBands` at all. MLS is the correct regression check.
 
 Expected: **completely unchanged**. Bands, band labels, legend, rank numbers and
 coloured ring arcs all still render. If this regressed, the `some(s => s.played > 0)`
@@ -636,8 +644,8 @@ Expected: suite green, typecheck silent, lint clean, build succeeds.
 npm run dev
 ```
 
-- `/c/premier-league/2026-27/standings` — flat list, no bands, no ranks, no legend.
-- `/c/liga-mx/2026-27/standings` — bands, ranks, legend and arcs all intact.
+- `/c/premier-league/2026-27` — flat list, no bands, no ranks, no legend.
+- `/c/mls/2026` — bands, ranks, legend and arcs all intact.
 - Leagues Cup Minnesota v Atlante popup — `Devin Padelford 32' (OG)`.
 
 - [ ] **Step 3: Open the PR**

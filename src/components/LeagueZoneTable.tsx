@@ -29,18 +29,20 @@ export default function LeagueZoneTable({
   }
   const bands = toBands(standings, zones);
   const marked = bands.filter((b) => b.kind !== 'mid');
-  // A season that has not kicked off has a table of zeros. Saying so is more
-  // honest than drawing qualification arcs around results that do not exist.
-  const played = standings.reduce((n, s) => n + s.played, 0);
+  // toBands already strips the zones before kick-off, which takes the bands,
+  // the band labels and the legend with it. What remains to suppress is the
+  // rank number — ESPN's pre-season order is alphabetical, so numbering it
+  // makes an accident look like a standing.
+  const started = standings.some((s) => s.played > 0);
 
   return (
     <div className="ll-card">
       <div className="ll-split">
         <div className="ll-left">
-          <ZoneRing standings={standings} zones={zones} teamStyle={teamStyle} />
-          {played === 0 ? (
+          {!started ? (
             <p className="lz-preseason">Season not started — no matches played yet.</p>
           ) : null}
+          <ZoneRing standings={standings} zones={zones} teamStyle={teamStyle} />
           <div className="ll-legend lz-legend">
             {marked.map((b) => (
               <span key={`${b.kind}-${b.from}`}>
@@ -67,7 +69,7 @@ export default function LeagueZoneTable({
                 </div>
               ) : null}
               {b.standings.map((s) => (
-                <Row key={s.team.id} s={s} teamStyle={teamStyle} marked={b.kind !== 'mid'} />
+                <Row key={s.team.id} s={s} teamStyle={teamStyle} marked={b.kind !== 'mid'} started={started} />
               ))}
             </div>
           ))}
@@ -77,10 +79,10 @@ export default function LeagueZoneTable({
   );
 }
 
-function Row({ s, teamStyle, marked }: { s: Standing; teamStyle: TeamStyle; marked: boolean }) {
+function Row({ s, teamStyle, marked, started }: { s: Standing; teamStyle: TeamStyle; marked: boolean; started: boolean }) {
   return (
-    <div className={`ll-row lz-row${marked ? ' lz-row--marked' : ''}`}>
-      <span className="ll-rank">{s.rank}</span>
+    <div className={`ll-row lz-row${marked ? ' lz-row--marked' : ''}${started ? '' : ' lz-row--preseason'}`}>
+      {started ? <span className="ll-rank">{s.rank}</span> : null}
       <TeamBadge team={s.team} size={26} style={teamStyle} />
       <span className="ll-name">{s.team.name}</span>
       <span className="lz-pl">{s.played}</span>

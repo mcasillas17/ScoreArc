@@ -53,9 +53,43 @@ export function thirdPlacedRanking(groups: Group[]): ThirdPlaceRow[] {
     });
   }
   rows.sort(compareThird);
+
+  // Unlike a league table, this ranking IS the tiebreak — ScoreArc computes it
+  // across independent groups, and `compareThird`'s last resort is
+  // `groupId.localeCompare`, which is alphabetical order, not a result. So the
+  // cut is only real when the numeric criteria actually separate the last
+  // qualifying row from the first one out. If they tie, the boundary was
+  // decided by the group's name and flagging it invents a qualification.
+  //
+  // This subsumes the pre-season case (every row tied at zero) without relying
+  // on `played`, which is the wrong signal here: one group kicking off tells
+  // you nothing about the other eleven, all of whom remain tied.
+  // Fewer candidates than slots means there is no boundary to earn — everyone
+  // present goes through, which is true by definition rather than by result.
+  // It still requires a played match: with nothing played the rows are a
+  // provider-ordered list, and "all of them qualify" would be asserting a
+  // tournament outcome before kick-off.
+  const noBoundaryToEarn =
+    rows.length <= QUALIFYING_THIRDS && rows.some((row) => row.played > 0);
+
+  const boundaryIsEarned =
+    noBoundaryToEarn ||
+    (rows.length > QUALIFYING_THIRDS &&
+      !tiedOnMerit(rows[QUALIFYING_THIRDS - 1], rows[QUALIFYING_THIRDS]));
+
   return rows.map((row, i) => ({
     ...row,
     rank: i + 1,
-    qualifies: i < QUALIFYING_THIRDS,
+    qualifies: boundaryIsEarned && i < QUALIFYING_THIRDS,
   }));
+}
+
+// Two third-placed teams the FIFA criteria cannot separate. Anything beyond
+// this — fair play, drawing of lots — is not derivable from group data.
+function tiedOnMerit(a: ThirdPlaceRow, b: ThirdPlaceRow): boolean {
+  return (
+    a.points === b.points &&
+    a.goalDifference === b.goalDifference &&
+    a.goalsFor === b.goalsFor
+  );
 }

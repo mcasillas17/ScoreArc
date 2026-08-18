@@ -3,11 +3,14 @@ import { toBands } from './zoneBands';
 import type { Zone } from '@/server/data/competitions';
 import type { Standing } from '@/server/data/types';
 
-function table(n: number): Standing[] {
+// `played` defaults to a non-zero value because these cases test zone
+// GEOMETRY, which is independent of whether the season has started. The
+// pre-season cases below opt into 0 explicitly.
+function table(n: number, played = 3): Standing[] {
   return Array.from({ length: n }, (_, i) => ({
     team: { id: `t${i + 1}`, name: `Team ${i + 1}`, abbr: `T${i + 1}`, crestUrl: null },
     rank: i + 1,
-    played: 0, wins: 0, draws: 0, losses: 0,
+    played, wins: 0, draws: 0, losses: 0,
     goalsFor: 0, goalsAgainst: 0, goalDifference: 0, points: 0, advanced: false,
   }));
 }
@@ -75,5 +78,31 @@ describe('toBands', () => {
     expect(bands).toHaveLength(1);
     expect(bands[0].kind).toBe('mid');
     expect(bands[0].standings).toHaveLength(6);
+  });
+
+  // ESPN ranks a table that has not kicked off ALPHABETICALLY and still emits
+  // rank 1..n. Painting zones over that order tells twenty clubs' supporters
+  // that an alphabetical accident is a standing. Verified live on 2026-08-15
+  // and still true on 2026-08-18: the 2026-27 Premier League returns
+  // Bournemouth 1st and Tottenham 20th at P0, which the zone config rendered
+  // as champion and relegation respectively.
+  it('draws no zones at all before a ball is kicked', () => {
+    const bands = toBands(table(20, 0), PL);
+    expect(bands).toHaveLength(1);
+    expect(bands[0].kind).toBe('mid');
+    expect(bands[0].label).toBe('');
+    expect(bands[0].from).toBe(1);
+    expect(bands[0].to).toBe(20);
+    expect(bands[0].standings).toHaveLength(20);
+  });
+
+  // The rule is "every club at zero", not "any club at zero". A league one
+  // matchday old is lopsided but real, and its zones must survive.
+  it('restores zones as soon as a single match has been played', () => {
+    const partial = table(20, 0);
+    partial[7].played = 1;
+    const kinds = toBands(partial, PL).map((b) => b.kind);
+    expect(kinds).toContain('champion');
+    expect(kinds).toContain('relegation');
   });
 });

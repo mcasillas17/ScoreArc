@@ -74,4 +74,68 @@ describe('thirdPlacedRanking', () => {
     ];
     expect(thirdPlacedRanking(groups)).toEqual([]);
   });
+
+  // Before a ball is kicked every numeric tiebreaker ties, so compareThird
+  // falls through to `groupId.localeCompare` and the ranking becomes
+  // alphabetical by group. Marking the first eight as qualifying then states
+  // that Groups A-H are through on no evidence whatsoever.
+  it('flags nobody as qualifying before any group has kicked off', () => {
+    const thirds = Array.from({ length: 12 }, () => ({ pts: 0, gd: 0, gf: 0 }));
+    const groups = groupsWithThirds(thirds).map((g) => ({
+      ...g,
+      standings: g.standings.map((s) => ({ ...s, played: 0 })),
+    }));
+    const ranked = thirdPlacedRanking(groups);
+    expect(ranked).toHaveLength(12);
+    expect(ranked.filter((r) => r.qualifies)).toHaveLength(0);
+  });
+
+  // One group kicking off does NOT make the race real. All twelve rows can
+  // still be tied at 0/0/0, so compareThird still falls through to
+  // groupId.localeCompare and the 8-vs-4 split would be pure alphabet.
+  it('does not flag merely because one group has played, while all rows remain tied', () => {
+    const thirds = Array.from({ length: 12 }, () => ({ pts: 0, gd: 0, gf: 0 }));
+    const groups = groupsWithThirds(thirds).map((g, i) => ({
+      ...g,
+      standings: g.standings.map((s) => ({ ...s, played: i === 0 ? 1 : 0 })),
+    }));
+    expect(thirdPlacedRanking(groups).filter((r) => r.qualifies)).toHaveLength(0);
+  });
+
+  // What makes the cut real is the numeric criteria separating 8th from 9th,
+  // not how many matches have been played.
+  it('flags once the qualification boundary is actually earned', () => {
+    const thirds = Array.from({ length: 12 }, (_, i) => ({ pts: i < 8 ? 3 : 0, gd: 0, gf: 0 }));
+    const ranked = thirdPlacedRanking(groupsWithThirds(thirds));
+    expect(ranked.filter((r) => r.qualifies)).toHaveLength(QUALIFYING_THIRDS);
+  });
+
+  // A genuine mid-tournament tie ON the boundary is undetermined — FIFA draws
+  // lots, which group data cannot express. Better to flag nobody than to flag
+  // whoever's group name sorts first.
+  it('does not flag when 8th and 9th are tied on every criterion', () => {
+    const thirds = Array.from({ length: 12 }, (_, i) => ({ pts: i < 4 ? 6 : 3, gd: 0, gf: 0 }));
+    const groups = groupsWithThirds(thirds).map((g) => ({
+      ...g,
+      standings: g.standings.map((s) => ({ ...s, played: 3 })),
+    }));
+    expect(thirdPlacedRanking(groups).filter((r) => r.qualifies)).toHaveLength(0);
+  });
+
+  // Fewer candidates than qualifying slots is "everyone through" by definition
+  // — but only once something has been played. Before kick-off it would be
+  // asserting a tournament outcome from a provider-ordered list.
+  it('does not flag a sub-quota field before anything has been played', () => {
+    const thirds = Array.from({ length: 2 }, () => ({ pts: 0, gd: 0, gf: 0 }));
+    const groups = groupsWithThirds(thirds).map((g) => ({
+      ...g,
+      standings: g.standings.map((s) => ({ ...s, played: 0 })),
+    }));
+    expect(thirdPlacedRanking(groups).filter((r) => r.qualifies)).toHaveLength(0);
+  });
+
+  it('flags a sub-quota field once it has played', () => {
+    const thirds = Array.from({ length: 2 }, () => ({ pts: 0, gd: 0, gf: 0 }));
+    expect(thirdPlacedRanking(groupsWithThirds(thirds)).filter((r) => r.qualifies)).toHaveLength(2);
+  });
 });
