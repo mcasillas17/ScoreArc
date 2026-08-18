@@ -27,6 +27,110 @@ type ParticipationStats struct {
 	SquadUnidentified int
 }
 
+// appearanceRow is one resolved roster entry: the canonical player, the
+// canonical side, and the provider's view of what they did.
+type appearanceRow struct {
+	playerID uuid.UUID
+	teamID   string
+	player   model.SquadPlayer
+}
+
+// eventRow is one resolved event. playerID is nil when the provider sent no
+// athlete id -- the event still happened, and migration 0003 explains why it is
+// recorded with the person unknown rather than dropped.
+type eventRow struct {
+	playerID *uuid.UUID
+	teamID   string
+	event    model.PlayerEvent
+}
+
+// appearanceConvergeSQL makes a match's appearances equal the incoming roster
+// in one statement, writing only rows that differ and pruning anyone the
+// corrected roster dropped.
+//
+// The COALESCE in the SET list is load-bearing and is explained on the old
+// upsert: a live poll that comes back without a stats block must not NULL out
+// numbers an earlier poll established. The consequence for change detection is
+// that the guard below compares the stored row against the POST-COALESCE value,
+// not against EXCLUDED -- otherwise a stats-less poll would look like a change
+// and rewrite the whole sheet to store what was already there.
+const appearanceConvergeSQL = `
+WITH incoming AS (
+	SELECT * FROM unnest(
+		$2::uuid[], $3::text[], $4::bool[], $5::int[], $6::text[],
+		$7::int[], $8::int[], $9::int[], $10::int[], $11::int[], $12::int[],
+		$13::int[], $14::int[], $15::int[], $16::int[], $17::int[], $18::int[], $19::int[]
+	) AS a(player_id, team_id, starter, shirt_number, position,
+	       goals, assists, shots, shots_on_target, offsides,
+	       fouls_committed, fouls_suffered, own_goals,
+	       yellow_cards, red_cards, saves, goals_conceded, shots_faced)
+), upserted AS (
+	INSERT INTO appearance (
+		match_id, player_id, team_id, starter, shirt_number, position,
+		goals, assists, shots, shots_on_target, offsides,
+		fouls_committed, fouls_suffered, own_goals,
+		yellow_cards, red_cards, saves, goals_conceded, shots_faced)
+	SELECT $1, player_id, team_id, starter, shirt_number, NULLIF(position, ''),
+	       goals, assists, shots, shots_on_target, offsides,
+	       fouls_committed, fouls_suffered, own_goals,
+	       yellow_cards, red_cards, saves, goals_conceded, shots_faced
+	FROM incoming
+	ON CONFLICT (match_id, player_id) DO UPDATE SET
+		team_id      = EXCLUDED.team_id,
+		starter      = EXCLUDED.starter,
+		shirt_number = EXCLUDED.shirt_number,
+		position     = EXCLUDED.position,
+		goals           = COALESCE(EXCLUDED.goals,           appearance.goals),
+		assists         = COALESCE(EXCLUDED.assists,         appearance.assists),
+		shots           = COALESCE(EXCLUDED.shots,           appearance.shots),
+		shots_on_target = COALESCE(EXCLUDED.shots_on_target, appearance.shots_on_target),
+		offsides        = COALESCE(EXCLUDED.offsides,        appearance.offsides),
+		fouls_committed = COALESCE(EXCLUDED.fouls_committed, appearance.fouls_committed),
+		fouls_suffered  = COALESCE(EXCLUDED.fouls_suffered,  appearance.fouls_suffered),
+		own_goals       = COALESCE(EXCLUDED.own_goals,       appearance.own_goals),
+		yellow_cards    = COALESCE(EXCLUDED.yellow_cards,    appearance.yellow_cards),
+		red_cards       = COALESCE(EXCLUDED.red_cards,       appearance.red_cards),
+		saves           = COALESCE(EXCLUDED.saves,           appearance.saves),
+		goals_conceded  = COALESCE(EXCLUDED.goals_conceded,  appearance.goals_conceded),
+		shots_faced     = COALESCE(EXCLUDED.shots_faced,     appearance.shots_faced)
+	WHERE (
+		appearance.team_id, appearance.starter, appearance.shirt_number,
+		appearance.position, appearance.goals, appearance.assists,
+		appearance.shots, appearance.shots_on_target, appearance.offsides,
+		appearance.fouls_committed, appearance.fouls_suffered, appearance.own_goals,
+		appearance.yellow_cards, appearance.red_cards, appearance.saves,
+		appearance.goals_conceded, appearance.shots_faced
+	) IS DISTINCT FROM (
+		EXCLUDED.team_id, EXCLUDED.starter, EXCLUDED.shirt_number,
+		EXCLUDED.position,
+		COALESCE(EXCLUDED.goals,           appearance.goals),
+		COALESCE(EXCLUDED.assists,         appearance.assists),
+		COALESCE(EXCLUDED.shots,           appearance.shots),
+		COALESCE(EXCLUDED.shots_on_target, appearance.shots_on_target),
+		COALESCE(EXCLUDED.offsides,        appearance.offsides),
+		COALESCE(EXCLUDED.fouls_committed, appearance.fouls_committed),
+		COALESCE(EXCLUDED.fouls_suffered,  appearance.fouls_suffered),
+		COALESCE(EXCLUDED.own_goals,       appearance.own_goals),
+		COALESCE(EXCLUDED.yellow_cards,    appearance.yellow_cards),
+		COALESCE(EXCLUDED.red_cards,       appearance.red_cards),
+		COALESCE(EXCLUDED.saves,           appearance.saves),
+		COALESCE(EXCLUDED.goals_conceded,  appearance.goals_conceded),
+		COALESCE(EXCLUDED.shots_faced,     appearance.shots_faced)
+	)
+	RETURNING 1
+), pruned AS (
+	-- A player removed from a corrected roster must lose their appearance, or
+	-- the phantom outlives the correction. Targeting the incoming set rather
+	-- than the upserted one is deliberate: an unchanged row is NOT returned by
+	-- the CTE above, and comparing against that would delete everyone who did
+	-- not change.
+	DELETE FROM appearance a
+	WHERE a.match_id = $1
+	  AND NOT (a.player_id = ANY(SELECT player_id FROM incoming))
+	RETURNING 1
+)
+SELECT (SELECT count(*) FROM upserted), (SELECT count(*) FROM pruned)`
+
 // WriteParticipation resolves every player in a match to a canonical id and
 // replaces that match's appearances and events.
 //
@@ -76,11 +180,6 @@ func (s *Store) WriteParticipation(
 		return id, true
 	}
 
-	type appearanceRow struct {
-		playerID uuid.UUID
-		teamID   string
-		player   model.SquadPlayer
-	}
 	rows := make([]appearanceRow, 0, len(part.Home)+len(part.Away))
 	for _, side := range []struct {
 		squad  []model.SquadPlayer
@@ -99,11 +198,6 @@ func (s *Store) WriteParticipation(
 		}
 	}
 
-	type eventRow struct {
-		playerID *uuid.UUID
-		teamID   string
-		event    model.PlayerEvent
-	}
 	events := make([]eventRow, 0, len(part.Events))
 	for _, e := range part.Events {
 		// The event's team is in provider shape. Map it onto a canonical side,
@@ -137,59 +231,14 @@ func (s *Store) WriteParticipation(
 	}
 	defer rollback(opCtx, tx)
 
+	appearancesWritten, appearancesPruned := 0, 0
 	if squadPresent {
-		keep := make([]uuid.UUID, 0, len(rows))
-		for _, r := range rows {
-			if _, err := tx.Exec(opCtx, `
-INSERT INTO appearance (
-  match_id, player_id, team_id, starter, shirt_number, position,
-  goals, assists, shots, shots_on_target, offsides,
-  fouls_committed, fouls_suffered, own_goals,
-  yellow_cards, red_cards, saves, goals_conceded, shots_faced)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
-ON CONFLICT (match_id, player_id) DO UPDATE SET
-  team_id      = EXCLUDED.team_id,
-  starter      = EXCLUDED.starter,
-  shirt_number = EXCLUDED.shirt_number,
-  position     = EXCLUDED.position,
-  -- COALESCE, not a bare EXCLUDED. A live match is re-polled every 20s and a
-  -- poll that comes back without a stats block -- which happens -- would
-  -- otherwise NULL out numbers an earlier poll established. Absence of
-  -- evidence only, the same rule the empty-payload guard above applies. A
-  -- stat can therefore never go from a number back to unknown, which is the
-  -- correct trade: nothing upstream retracts a measurement, it only revises
-  -- it, and a revision arrives as a number.
-  goals           = COALESCE(EXCLUDED.goals,           appearance.goals),
-  assists         = COALESCE(EXCLUDED.assists,         appearance.assists),
-  shots           = COALESCE(EXCLUDED.shots,           appearance.shots),
-  shots_on_target = COALESCE(EXCLUDED.shots_on_target, appearance.shots_on_target),
-  offsides        = COALESCE(EXCLUDED.offsides,        appearance.offsides),
-  fouls_committed = COALESCE(EXCLUDED.fouls_committed, appearance.fouls_committed),
-  fouls_suffered  = COALESCE(EXCLUDED.fouls_suffered,  appearance.fouls_suffered),
-  own_goals       = COALESCE(EXCLUDED.own_goals,       appearance.own_goals),
-  yellow_cards    = COALESCE(EXCLUDED.yellow_cards,    appearance.yellow_cards),
-  red_cards       = COALESCE(EXCLUDED.red_cards,       appearance.red_cards),
-  saves           = COALESCE(EXCLUDED.saves,           appearance.saves),
-  goals_conceded  = COALESCE(EXCLUDED.goals_conceded,  appearance.goals_conceded),
-  shots_faced     = COALESCE(EXCLUDED.shots_faced,     appearance.shots_faced)`,
-				append([]any{
-					matchID, r.playerID, r.teamID, r.player.Starter,
-					r.player.Number, nullIfEmpty(r.player.Position),
-				}, boxScoreArgs(r.player.Stats)...)...,
-			); err != nil {
-				return stats, fmt.Errorf("upsert appearance: %w", err)
-			}
-			keep = append(keep, r.playerID)
+		rows = dedupeAppearances(rows)
+		if err := tx.QueryRow(opCtx, appearanceConvergeSQL, appearanceArgs(matchID, rows)...).
+			Scan(&appearancesWritten, &appearancesPruned); err != nil {
+			return stats, fmt.Errorf("converge appearances: %w", err)
 		}
-		// A player removed from a corrected roster must lose their appearance,
-		// or the phantom outlives the correction.
-		if _, err := tx.Exec(opCtx,
-			`DELETE FROM appearance WHERE match_id=$1 AND NOT (player_id = ANY($2))`,
-			matchID, keep,
-		); err != nil {
-			return stats, fmt.Errorf("prune appearances: %w", err)
-		}
-		stats.Appearances = len(keep)
+		stats.Appearances = len(rows)
 	}
 
 	if len(events) > 0 {
@@ -230,19 +279,73 @@ ON CONFLICT (match_id, seq) DO UPDATE SET
 	return stats, nil
 }
 
-// boxScoreArgs flattens the thirteen box-score columns in the exact order the
+// dedupeAppearances keeps the LAST entry for each canonical player. Two roster
+// entries can resolve to one player once a duplicate is merged, and a repeated
+// key in the source of an ON CONFLICT DO UPDATE raises SQLSTATE 21000 and fails
+// the whole match's write. The old row-at-a-time loop upserted twice and the
+// second won; last-wins keeps that.
+func dedupeAppearances(rows []appearanceRow) []appearanceRow {
+	if len(rows) < 2 {
+		return rows
+	}
+	at := make(map[uuid.UUID]int, len(rows))
+	deduped := make([]appearanceRow, 0, len(rows))
+	for _, row := range rows {
+		if index, seen := at[row.playerID]; seen {
+			deduped[index] = row
+			continue
+		}
+		at[row.playerID] = len(deduped)
+		deduped = append(deduped, row)
+	}
+	return deduped
+}
+
+// appearanceArgs flattens the roster into the eighteen parallel arrays
+// appearanceConvergeSQL unnests, in the order its column list declares them.
+func appearanceArgs(matchID uuid.UUID, rows []appearanceRow) []any {
+	playerIDs := make([]uuid.UUID, len(rows))
+	teamIDs := make([]string, len(rows))
+	starters := make([]bool, len(rows))
+	numbers := make([]*int, len(rows))
+	positions := make([]string, len(rows))
+	columns := make([][]*int, boxScoreColumnCount)
+	for column := range columns {
+		columns[column] = make([]*int, len(rows))
+	}
+	for index, row := range rows {
+		playerIDs[index] = row.playerID
+		teamIDs[index] = row.teamID
+		starters[index] = row.player.Starter
+		numbers[index] = row.player.Number
+		positions[index] = row.player.Position
+		for column, value := range boxScoreColumns(row.player.Stats) {
+			columns[column][index] = value
+		}
+	}
+	args := []any{matchID, playerIDs, teamIDs, starters, numbers, positions}
+	for _, column := range columns {
+		args = append(args, column)
+	}
+	return args
+}
+
+const boxScoreColumnCount = 13
+
+// boxScoreColumns lists the thirteen box-score values in the exact order the
 // INSERT lists them. A nil PlayerMatchStats yields thirteen nils, which the
-// COALESCE in the upsert turns into "change nothing" -- so a poll with no
-// stats block is a no-op on the numbers rather than an erasure.
+// COALESCE in the upsert turns into "change nothing" -- so a poll with no stats
+// block is a no-op on the numbers rather than an erasure, AND compares equal in
+// the change guard rather than looking like a change.
 //
 // The columns are listed here in one place, in one order, so adding a
-// fourteenth stat is one edit to the INSERT and one to this slice rather than
-// a hunt through positional placeholders.
-func boxScoreArgs(stats *model.PlayerMatchStats) []any {
+// fourteenth stat is one edit to the INSERT, one to the guard, and one here
+// rather than a hunt through positional placeholders.
+func boxScoreColumns(stats *model.PlayerMatchStats) []*int {
 	if stats == nil {
-		return make([]any, 13)
+		return make([]*int, boxScoreColumnCount)
 	}
-	return []any{
+	return []*int{
 		stats.Goals, stats.Assists, stats.Shots, stats.ShotsOnTarget,
 		stats.Offsides, stats.FoulsCommitted, stats.FoulsSuffered,
 		stats.OwnGoals, stats.YellowCards, stats.RedCards,
