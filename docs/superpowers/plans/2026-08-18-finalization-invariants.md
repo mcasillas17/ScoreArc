@@ -540,6 +540,8 @@ Shared architecture, roadmap, and backend handoff documentation is isolated in
 [PR #73](https://github.com/mcasillas17/ScoreArc/pull/73), based directly on
 `main`.
 
+The implementation is [PR #76](https://github.com/mcasillas17/ScoreArc/pull/76).
+
 ---
 
 ### Task 1: Confirm the watermark and re-verify the write inventory
@@ -2142,7 +2144,7 @@ docker rm -f pg-ci
 
 Expected: no `FAILED` lines, `tables_left` `0`, `roles_left` `0`.
 
-- [ ] **Step 5: Open the PR**
+- [x] **Step 5: Open the PR**
 
 ```bash
 git push -u origin fix/finalization-invariants
@@ -2231,7 +2233,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 6: Stop and hand back**
+- [x] **Step 6: Stop and hand back**
 
 Report to the user: the measured per-row cost, the PR link, and that **applying `0021`
 to production Neon is their call**. Do not run `migrate up` against production, and do
