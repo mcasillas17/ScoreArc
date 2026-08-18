@@ -2281,7 +2281,7 @@ Rules for anything added to this path:
 Add T7.16 / T7.17 to E7's ingester write table in `docs/PRODUCT_ROADMAP.md`, linking
 this plan.
 
-- [ ] **Step 2: Full backend gate**
+- [x] **Step 2: Full backend gate**
 
 ```bash
 cd backend && go build ./... && go vet ./... && go test -race ./... 2>&1 | tail -15
@@ -2289,7 +2289,7 @@ cd backend && go build ./... && go vet ./... && go test -race ./... 2>&1 | tail 
 
 Expected: `ok` for every package, no `FAIL`, no vet output. Docker must be running.
 
-- [ ] **Step 3: Frontend gate**
+- [x] **Step 3: Frontend gate**
 
 ```bash
 npm test && npx tsc --noEmit && npm run lint && npm run build 2>&1 | tail -8
