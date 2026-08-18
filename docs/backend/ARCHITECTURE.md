@@ -205,9 +205,9 @@ The GUC alone is insufficient; the guard also checks `TRUNCATE`. The
 least-privilege ingester must never receive that privilege, and database-owner
 credentials must never appear in application configuration.
 
-The final implementation-run measurement for the hot, unsealed path was **3.134
-microseconds per guarded row across 50,000 rows**, below the 25-microsecond
-budget.
+The final implementation-run measurement for the hot, unsealed path was a
+**5.633-microsecond median overhead per guarded row across three interleaved
+50,000-row guarded/bare pairs**, below the unchanged 25-microsecond budget.
 
 ---
 
