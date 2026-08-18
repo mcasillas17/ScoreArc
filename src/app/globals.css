@@ -3084,6 +3084,11 @@ a {
    Give it its own column rather than widening the shared ladder's grid. */
 .lz-row { grid-template-columns: 20px 26px 1fr 26px auto 22px; }
 
+/* Pre-season: no rank cell is rendered, so the row is five columns, not six.
+   Without this the grid keeps a 20px gutter where the rank used to be and
+   every crest sits inset from the rest of the app. */
+.lz-row--preseason { grid-template-columns: 26px 1fr 26px auto 22px; }
+
 /* The ring was vertically centred against a 20-row table, leaving several
    hundred pixels of dead space beneath it. Align it to the top of its column
    so the arc sits beside the head of the table it describes. */

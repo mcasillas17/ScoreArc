@@ -2,6 +2,7 @@
 
 import { useId } from 'react';
 import type { Standing } from '@/server/data/types';
+import { splitByCut } from './splitByCut';
 import type { TeamStyle } from '@/server/data/competitions';
 import { flagUrl } from '@/lib/flags';
 
@@ -82,8 +83,13 @@ export default function LeagueDial({
   const hubId = `lld-hub-${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const n = standings.length;
   if (n === 0) return null;
-  const leader = standings[0];
-  const inCut = (rank: number) => rank <= cut;
+  // Share the cut rule with LeagueLadder rather than re-deriving it. This dial
+  // previously had its own `rank <= cut` predicate, which is how it kept
+  // crowning an alphabetically-first club "LEADER" on a table nobody had
+  // played — the ladder beside it would have been fixed and this would not.
+  const { started } = splitByCut(standings, cut);
+  const leader = started ? standings[0] : null;
+  const inCut = (rank: number) => started && rank <= cut;
 
   // gold Liguilla arc over ranks 1..cut
   const a0 = pt(1, n, ARC_R);
@@ -101,7 +107,10 @@ export default function LeagueDial({
 
       <circle cx={C} cy={C} r={150} fill={`url(#${hubId})`} />
 
-      {/* Liguilla arc: a soft wide underlay (no blur filter) + a crisp line. */}
+      {/* Liguilla arc: a soft wide underlay (no blur filter) + a crisp line.
+          Suppressed before kick-off — an arc over ranks 1..cut on an unplayed
+          table draws a qualification that has not been earned. */}
+      {started ? (<>
       <path className="lld-arc-glow"
         d={`M ${a0.x} ${a0.y} A ${ARC_R} ${ARC_R} 0 0 1 ${a1.x} ${a1.y}`}
         fill="none" stroke="var(--qual, var(--gold))" strokeWidth={9} strokeLinecap="round" opacity={0.28} />
@@ -110,6 +119,7 @@ export default function LeagueDial({
         fill="none" stroke="var(--qual-bright, var(--gold-bright))" strokeWidth={2.5} strokeLinecap="round" pathLength={1} />
       <circle cx={a0.x} cy={a0.y} r={3.2} fill="var(--qual-bright, var(--gold-bright))" />
       <circle cx={a1.x} cy={a1.y} r={3.2} fill="var(--qual-bright, var(--gold-bright))" />
+      </>) : null}
 
       {/* spokes + team chips */}
       {standings.map((s) => {
@@ -128,13 +138,18 @@ export default function LeagueDial({
         );
       })}
 
-      {/* centre hub: leader */}
-      <text x={C} y={C - 30} fill="var(--text-muted)" fontSize={10} letterSpacing={3} textAnchor="middle">LEADER</text>
-      <CrestDisc s={leader} teamStyle={teamStyle} x={C} y={C + 2} r={HUB_R}
-        ring="var(--qual-bright, var(--gold-bright))" ringWidth={2.5} dim={false} idSuffix="hub" />
-      <text x={C} y={C + 44} fill="var(--text)" fontSize={13} fontWeight={700} textAnchor="middle">
-        {leader.team.name}
-      </text>
+      {/* centre hub: the leader, or an honest count before kick-off. */}
+      {leader ? (<>
+        <text x={C} y={C - 30} fill="var(--text-muted)" fontSize={10} letterSpacing={3} textAnchor="middle">LEADER</text>
+        <CrestDisc s={leader} teamStyle={teamStyle} x={C} y={C + 2} r={HUB_R}
+          ring="var(--qual-bright, var(--gold-bright))" ringWidth={2.5} dim={false} idSuffix="hub" />
+        <text x={C} y={C + 44} fill="var(--text)" fontSize={13} fontWeight={700} textAnchor="middle">
+          {leader.team.name}
+        </text>
+      </>) : (<>
+        <text x={C} y={C - 6} fill="var(--text-muted)" fontSize={13} textAnchor="middle">{n} clubs</text>
+        <text x={C} y={C + 16} fill="var(--text-muted)" fontSize={13} textAnchor="middle">0 played</text>
+      </>)}
     </svg>
   );
 }

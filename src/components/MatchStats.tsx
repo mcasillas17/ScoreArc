@@ -79,6 +79,7 @@ export function ScorerLine({ scorer }: { scorer: Scorer }) {
       <span className="ls-scorer-minute">
         {scorer.minute}
         {scorer.penalty && !scorer.shootout ? ' (P)' : ''}
+        {scorer.ownGoal ? ' (OG)' : ''}
       </span>
     </span>
   );

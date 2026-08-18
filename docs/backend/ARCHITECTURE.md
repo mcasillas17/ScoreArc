@@ -115,7 +115,7 @@ untouched and do not use that escape hatch.
   **match_external_ref**(PK (source, source_id), *canonical id*→entity ON DELETE CASCADE, first_seen_at, last_seen_at) — the PK is `(source, source_id)`, not the canonical id, so **many** provider ids may map to **one** entity, which is exactly what merging duplicates produces. Each has an index on the canonical id for the reverse lookup.
 
 ### Tier 1 — current state (hot, upserted by the ingester)
-- **match**(id PK `uuid` v7, competition_id, season_id, round, kickoff, **kickoff_date** (generated, UTC date), state[`scheduled|live|finished`], home_team_id→team, away_team_id→team, home_score, away_score, minute, status_detail, status_name, winner_id→team, note, home_placeholder, away_placeholder, bracket_required, **finalized_at**, source, updated_at) — FK to `season(competition_id,id)`; **UNIQUE (competition_id, season_id, home_team_id, away_team_id, kickoff_date)** is the natural key that makes the same fixture from a second source resolve to one row; indexes on `(competition_id,season_id,kickoff)`, `state`, and unfinalized history.
+- **match**(id PK `uuid` v7, competition_id, season_id, round, kickoff, **kickoff_date** (generated, UTC date), state[`scheduled|live|finished`], home_team_id→team, away_team_id→team, home_score, away_score, minute, status_detail, status_name, winner_id→team, note, home_placeholder, away_placeholder, bracket_required, **finalized_at**, source, updated_at) — FK to `season(competition_id,id)`; **UNIQUE (competition_id, season_id, home_team_id, away_team_id, kickoff_date)** is the natural key that makes the same fixture from a second source resolve to one row; indexes on `(competition_id,season_id,kickoff)`, `state`, and unfinalized history. `updated_at` records the last persisted content change: an ingest that resolves to the same row does not refresh it.
 - **match_detail**(match_id PK→match, scorers jsonb, cards jsonb, stats jsonb, win_probability jsonb, shootout jsonb, shootout_detail jsonb, lineups jsonb, videos jsonb, info jsonb, form jsonb, h2h jsonb, commentary jsonb, updated_at)
 - **match_commentary**(PK (match_id→match, **seq** = ESPN's `sequence`), period, clock_value, clock_display, play_type, play_type_text, wallclock, text) — minute-by-minute commentary **with the structure `match_detail.commentary` drops** (T7.11). That jsonb column is unchanged and remains the reader's `MatchSummaryData.commentary` contract; it keeps `{minute, text}` only. This table adds guaranteed order (`sequence`), a numeric clock (`play.clock.value`, falling back to `time.value`; the recorded pre-match, kickoff, and match-end entries have an empty `time.displayValue`), the machine play type (`play.type.type`, so consumers need not regex English prose), and mutability (`match_detail` is frozen by `protect_finalized_detail` once a match finalizes). Rows are upserted and then tail-pruned like `match_event`; an **empty payload is a no-op, not a delete**, because commentary coverage varies by competition and has been observed at zero. Missing numeric provider fields remain SQL `NULL`, distinct from a measured zero. A failed write leaves a finished match unfinalized so the next cycle retries before freezing its detail. **Nothing here is parsed** — E6's shot-log parser is downstream and gated on T6.1's coverage probe.
 - **standing**(PK (competition_id,season_id,team_id→team), group_id, group_name, rank, played, wins, draws, losses, goals_for, goals_against, goal_difference, points, advanced, source, updated_at) — `group_id`/`group_name` (e.g. "A"/"Group A") are nullable: populated for multi-group competitions (e.g. World Cup group stage), null for single-table leagues.
@@ -129,7 +129,7 @@ untouched and do not use that escape hatch.
 
 ### Tier 3 — time-series (created now, WRITTEN in Phase 2 via `emitSnapshots()`)
 - **standing_snapshot**(id bigserial, competition_id, season_id, team_id→team, captured_at, rank, points, goal_difference, played) — append-only.
-- **win_prob_snapshot**(id bigserial, match_id→match ON DELETE CASCADE, captured_at (minute bucket, UTC), observed_at (untruncated poll-start time), home, draw, away numeric(5,2)) — append-only, **WRITTEN** by the ingester since T7.6, for matches in state `live` only. `UNIQUE (match_id, captured_at)` collapses the 20-second live poll to one row per minute; same-minute conflicts update only when `observed_at` is at least as recent, so a delayed response cannot replace fresher data. The values are **market-implied** — the first betting provider's three-way moneyline with the margin removed, per `mapWinProbability` — and are not a ScoreArc forecast. Pre-match line movement is deliberately not recorded: a scheduled fixture is polled on slow ticks all season and would produce ~288 rows a day describing a market nobody is watching yet.
+- **win_prob_snapshot**(id bigserial, match_id→match ON DELETE CASCADE, captured_at (minute bucket, UTC), observed_at (untruncated poll-start time), home, draw, away numeric(5,2)) — append-only, **WRITTEN** by the ingester since T7.6, for matches in state `live` only. `UNIQUE (match_id, captured_at)` collapses the 20-second live poll to one row per minute; same-minute conflicts update only when `observed_at` is at least as recent, so a delayed response cannot replace fresher data. The values are **market-implied** — the first betting provider's three-way moneyline with the margin removed, per `mapWinProbability` — and are not a ScoreArc forecast. Scheduled detail is now TTL-throttled (>24 hours to kickoff every six hours, 24 hours down to more than one hour hourly, and the final hour every slow tick), but pre-match snapshots remain deliberately out of scope: even 4–24 rows per day for every future fixture would accumulate an unused market curve. Postponed or suspended fixtures whose kickoff has passed remain in the final-hour band and continue at slow-tick cadence.
 
 ### Ops
 - **ingest_run**(id bigserial, competition_id, kind, started_at, finished_at, ok, error) — observability. Beyond per-operation runs it also records the identity events a human has to act on: `provisional_team` (a club nobody has curated), `team_promotion` (a curation that could not complete), and `player_capture` (a match where the provider sent no athlete ids — without this, total capture failure and a match where nothing happened are the same empty table).
@@ -186,7 +186,7 @@ write. Repointing between curated teams, changing any other fact, or repointing
 gap: `promoteProvisionalTeam` does not repoint `appearance.team_id` or
 `match_event.team_id`. If either table still references the provisional team,
 the promotion's final team deletion fails with FK SQLSTATE `23503`. Closing
-that gap is **OUT OF SCOPE for T7.16**, rather than an implicit follow-up owned
+that gap is **OUT OF SCOPE for T7.18**, rather than an implicit follow-up owned
 by this invariant slice.
 
 A deliberate correction to one of these six tables requires both explicit
@@ -227,6 +227,20 @@ the seal is the intended single `match_pkey` probe with two shared-buffer hits.
   failed reconciliation after 30 minutes, and refresh successful reconciliation
   daily. Normal scoreboards use a rolling `-30d/+7d` window with foreign-season
   events filtered; full-season backfills reject season mismatches.
+- Scheduled-match detail follows kickoff-aware cadence: more than 24 hours out it
+  is re-fetched every six hours; from 24 hours down to more than one hour out it
+  is re-fetched hourly; and at or inside the final hour it follows the five-minute
+  slow tick itself. The final-hour band uses `slowTick`, not the age of
+  `match_detail.updated_at`, because that timestamp is written after provider
+  latency; an `age == 5m` threshold would skip the immediately following tick
+  and turn a five-minute target into roughly ten minutes. A scheduled→live
+  transition always re-fetches immediately, and a malformed kickoff fails open.
+  The measured baseline was 82 candidates × 288 slow ticks = 23,616 ESPN summary
+  requests and `match_detail` rewrites per day, with 0/82 details changed in the
+  audit. The predicted ~692 requests per day (~97% reduction) is only a
+  uniform-distribution estimate for future scheduled candidates; it excludes
+  postponed or suspended fixtures with past kickoffs, which retain slow-tick
+  cadence.
 - Work is bounded to three competitions concurrently. Two successful empty
   polls are required before a competition becomes dormant; failed polls reset
   that sequence and preserve known live cadence.
@@ -238,7 +252,7 @@ the seal is the intended single `match_pkey` probe with two shared-buffer hits.
   `ingest_run` — and curation repoints its supported references instead of creating
   a duplicate. The current promotion helper does not repoint `appearance.team_id`
   or `match_event.team_id`; if either reference exists, full promotion fails closed
-  with FK SQLSTATE `23503` (the T7.16 out-of-scope gap documented above). A match
+  with FK SQLSTATE `23503` (the T7.18 out-of-scope gap documented above). A match
   crosswalk hit is verified against the competition and season being ingested, so
   one provider event id cannot carry facts across competitions.
   `Store.Competition` and `Store.Player` exist for the same crosswalk but have no
@@ -248,6 +262,22 @@ the seal is the intended single `match_pkey` probe with two shared-buffer hits.
 - Current state is idempotently upserted. State cannot regress except
   live→scheduled for ESPN's explicit postponed or suspended status. Sparse payloads preserve
   known scores, winners, detail arrays, and bracket placeholders.
+- Before writing an existing match, the ingester applies those preservation,
+  finalization, and state-regression rules in memory and compares the resulting
+  row with the values the match upsert would persist. It skips the SQL upsert
+  when no content would change; absent provider numerics remain SQL `NULL`
+  rather than becoming zero. This keeps `match.updated_at` meaningful and avoids
+  generating dead tuples for stable fixtures without changing finalization or
+  reader behavior. A production sample found 82 redundant updates per five-minute
+  slow tick across 2,578 matches, so the stable case avoids approximately 23,616
+  tuple writes per day. This is an ingester-only write-path optimization: the
+  database finalization and state-regression protections still apply, and it
+  requires no migration or reader/OpenAPI contract change.
+- The durable unfinalized-match query orders candidates by `match.updated_at`
+  and caps each pass at 500. Preserving timestamps on no-op rows has no paging
+  consequence at or below that cap; with a theoretical backlog above 500,
+  selection fairness across the full backlog is not guaranteed and the paging
+  strategy should be revisited.
 - Odds mapping is field-local at the PostgreSQL boundary: nested-string and
   flattened numeric spread/total values that would overflow `numeric(5,2)` after
   PostgreSQL-equivalent two-decimal rounding become SQL `NULL` only for that one
@@ -268,12 +298,22 @@ the seal is the intended single `match_pkey` probe with two shared-buffer hits.
   metadata; group-stage matches continue finalizing, while knockout candidates
   require confirmation from the current successful bracket response before
   immutable finalization.
-- Standings and season-leader replacements are transactional. Empty leader
-  categories preserve their existing rows; empty or suspiciously partial
-  standings payloads preserve the prior snapshot rather than deleting valid
-  rows and remain retryable failures. ESPN statistics responses carry
-  unreliable season metadata, so leaderboard season scoping relies on the
-  requested statistics URL rather than rejecting the payload's reported year.
+- Standings and season-leader replacements are transactional. Standings replace
+  independently of crest mirroring; empty or suspiciously partial payloads
+  preserve the prior snapshot rather than deleting valid rows and remain
+  retryable failures.
+- Each goals/assists leader category mirrors crest URLs in its mapped in-memory
+  board before persistence, then performs exactly one guarded transactional
+  replacement per refresh. Empty categories still preserve existing rows. This
+  ordering is safe because leader crest mirroring depends only on that board and
+  the mirror cache/R2, never on persisted `top_scorer` rows. ESPN statistics
+  responses carry unreliable season metadata, so leaderboard season scoping
+  relies on the requested statistics URL rather than rejecting the payload's
+  reported year.
+- On the 300-row production `top_scorer` table, the former provider-write then
+  mirrored-rewrite path caused +600/-600 tuple writes per slow tick
+  (~345,600 writes/day) and briefly exposed provider hotlinks. The
+  mirror-then-write invariant removes both the redundant pass and that window.
 - Crest downloads allow only validated public HTTP(S) sources, enforce
   redirects/content type/size/deadline limits, and upload deterministic R2 keys.
 - Every provider/store operation and global audit-pruning pass records an
@@ -289,6 +329,35 @@ the seal is the intended single `match_pkey` probe with two shared-buffer hits.
   finalization, and do not change the existing live CURRENT-price sampling.
 - `go run ./ingester -once` performs one complete slow reconciliation without a
   fixed whole-cycle deadline; individual operations remain bounded.
+
+### Live write reduction policy
+- `commentary`, `appearance`, and `event` tables converge the whole latest
+  non-empty set in one set-based statement, write only changed rows, and prune
+  retracted rows where the table contract allows it.
+- Late commentary edits are caught because every keyed row is content-compared,
+  not just the tail. Duplicate commentary sequences and duplicate canonical
+  players are deduplicated before the set upsert, with the last occurrence
+  winning, so SQLSTATE 21000 does not surface.
+- Unmeasured provider stats stay SQL NULL. Appearance change detection compares
+  the stored row to the effective post-COALESCE value, so missing stats neither
+  erase known values nor trigger rewrites.
+- Time-series sample writes are skipped only when both the minute bucket and the
+  value repeat. A new minute with the same value, or a changed value in the same
+  minute, still writes.
+- Successful live sample audits are limited to once per (competition, kind) per
+  five minutes; failures are recorded immediately.
+- `player_capture` is emitted only when a participation write actually changes
+  stored rows and there is an unidentified participant or event. A first payload
+  with only unidentified participants that resolves to zero writable rows can
+  produce no `player_capture` row.
+- Measured regression baseline: 246 commentary statements for 36 lines over 12
+  simulated ticks. Projected whole-match reduction: about 47,000 to about 2,090
+  statements, and about 46,000 to about 1,400 tuple versions. These are
+  projections, not production measurements.
+- No migration was needed: no column, table, index, constraint, or grant changed,
+  and the existing table keys and grants already support this.
+- Provider in-play behavior remains unmeasured; these projections need
+  validation on the first live match.
 
 ```mermaid
 sequenceDiagram
@@ -308,9 +377,11 @@ sequenceDiagram
     S->>P: monotonic match/team upserts
     S->>E: summary for live/final candidates
     S->>P: atomic detail + final freeze
-    S->>E: standings + goals/assists leaders (one statistics fetch)
-    S->>P: guarded transactional replacements
-    S->>R: validated crest mirror
+    S->>E: standings
+    S->>P: guarded transactional standings replacement
+    S->>E: goals/assists leaders (one statistics fetch)
+    S->>R: validated leader crest mirror (in-memory board)
+    S->>P: guarded transactional leader replacement
     S->>P: ingest_run audit
   end
 ```

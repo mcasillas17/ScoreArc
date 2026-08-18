@@ -130,6 +130,8 @@ func run() int {
 		squadsRefreshed:   make(map[string]time.Time),
 		squadAttempted:    make(map[string]time.Time),
 		snapshotted:       make(map[string]time.Time),
+		sampleAudit:       make(map[string]auditWindow),
+		liveSamples:       make(map[string]liveSample),
 	}
 
 	if *once {
