@@ -181,7 +181,7 @@ export default function MatchCalendar({
           trackFeedRecovery('fixtures');
           feedFailed.current = false;
         }
-      } catch (cause) {
+      } catch {
         if (controller.signal.aborted) return;
         setError('Fixtures are unavailable right now. Please try another month and come back.');
         if (!feedFailed.current) {
