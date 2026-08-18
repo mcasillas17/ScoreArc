@@ -584,7 +584,7 @@ func (f *fakeRepository) UpsertMatch(
 	f.upserted = append(f.upserted, match.ID)
 	return nil
 }
-func (f *fakeRepository) UpsertMatchDetail(context.Context, uuid.UUID, model.MatchDetail) error {
+func (f *fakeRepository) UpsertMatchDetail(_ context.Context, _ uuid.UUID, _ model.MatchDetail) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.detailCalls++
@@ -4911,6 +4911,65 @@ func TestPersistFinalCaptureAttemptTreatsContextCancellationAsFailureNotCompleti
 	}
 	if !row.retryAt.After(attemptedAt) {
 		t.Fatalf("row.retryAt = %s, want it strictly after attemptedAt %s", row.retryAt, attemptedAt)
+	}
+}
+
+// The bug this test exists to catch: needsSummary's old `|| slowTick` branch
+// re-fetched and rewrote EVERY scheduled fixture's detail on EVERY slow tick,
+// forever -- measured at 23,616 rewrites and 23,616 ESPN summary requests a
+// day, all no-ops
+// (docs/superpowers/specs/2026-08-18-ingestion-write-classification-design.md
+// §3.2). A fixture far from kickoff, ingested twice within its TTL, must
+// produce exactly one fetch and one write -- not one per slow tick.
+func TestScheduledMatchFarFromKickoffIsNotRefetchedWithinTTL(t *testing.T) {
+	match := model.Match{
+		ID:      "m1",
+		Kickoff: time.Now().Add(10 * 24 * time.Hour).UTC().Format(time.RFC3339),
+		State:   model.MatchStateScheduled,
+		Home:    model.Team{ID: "home", Name: "Home", Abbr: "HOM"},
+		Away:    model.Team{ID: "away", Name: "Away", Abbr: "AWY"},
+	}
+	src := &fakeSource{matches: []model.Match{match}}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{"m1": {}}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	runner := testRunner(src, repo, comp)
+	// A brand-new runner treats its first slow tick as a full-season backfill,
+	// which deliberately skips scheduled summaries. Mark the backfill fresh so
+	// both cycles exercise the normal rolling-window slow-tick path this
+	// regression covers.
+	backfilledAt := time.Now()
+	runner.backfilled["test/2026"] = backfilledAt
+	runner.backfillAttempted["test/2026"] = backfilledAt
+
+	// First cycle: no stored detail yet, so it must fetch and write once,
+	// regardless of tick speed.
+	runner.runCycle(context.Background(), true)
+	if src.summaryCalls != 1 || repo.detailCalls != 1 {
+		t.Fatalf("first cycle summary/detail calls = %d/%d, want 1/1",
+			src.summaryCalls, repo.detailCalls)
+	}
+
+	// Simulate what a real ExistingMatches read would now return: the detail
+	// row this cycle just wrote, freshly stamped. (fakeRepository does not
+	// auto-persist writes back into itself -- this mirrors the existing
+	// pattern in TestSlowTickRetriesFinalizedMatchMissingPlayArchive.)
+	repo.existing["m1"] = store.MatchRow{
+		HasDetail:       true,
+		DetailUpdatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
+	}
+
+	// Second cycle, on a SLOW TICK -- the exact condition that forced a
+	// rewrite on every prior cycle under the old code. The fixture is still
+	// 10 days from kickoff and its detail is milliseconds old, deep inside
+	// the 6-hour far-band TTL: nothing should be fetched or written again.
+	runner.runCycle(context.Background(), true)
+	if src.summaryCalls != 1 || repo.detailCalls != 1 {
+		t.Fatalf("second cycle summary/detail calls = %d/%d, want 1/1 (unchanged) -- "+
+			"a scheduled fixture inside its TTL must not be refetched on every slow tick",
+			src.summaryCalls, repo.detailCalls)
 	}
 }
 
