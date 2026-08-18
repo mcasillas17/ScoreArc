@@ -50,6 +50,17 @@ type MatchRow struct {
 	Away            model.Team
 	HomePlaceholder bool
 	AwayPlaceholder bool
+	// The remaining six are the columns matchUpsertSQL writes that were not
+	// already above -- added so the ingester's no-op guard (design doc §4.2)
+	// can tell a genuine change from a redundant write. source is deliberately
+	// absent: every write in this process carries the same sourceESPN
+	// constant, so comparing it could never produce a false "unchanged".
+	Kickoff      time.Time
+	HomeScore    *int
+	AwayScore    *int
+	Minute       *string
+	StatusDetail string
+	StatusName   string
 }
 
 // matchUpsertSQL is an UPDATE, not an upsert: the resolver INSERTs the row when
@@ -347,7 +358,8 @@ SELECT m.id, m.state, m.finalized_at, d.match_id IS NOT NULL, d.updated_at,
 	COALESCE(m.round, ''), m.bracket_required, m.winner_id, m.note,
 	home.id, home.name, home.abbr, home.crest_url,
 	away.id, away.name, away.abbr, away.crest_url,
-	m.home_placeholder, m.away_placeholder
+	m.home_placeholder, m.away_placeholder,
+	m.kickoff, m.home_score, m.away_score, m.minute, m.status_detail, m.status_name
 FROM match m
 LEFT JOIN match_detail d ON d.match_id=m.id
 JOIN team home ON home.id=m.home_team_id
@@ -369,6 +381,8 @@ WHERE m.competition_id=$1 AND m.season_id=$2 AND m.id=ANY($3)`,
 			&row.Home.ID, &row.Home.Name, &row.Home.Abbr, &row.Home.CrestURL,
 			&row.Away.ID, &row.Away.Name, &row.Away.Abbr, &row.Away.CrestURL,
 			&row.HomePlaceholder, &row.AwayPlaceholder,
+			&row.Kickoff, &row.HomeScore, &row.AwayScore,
+			&row.Minute, &row.StatusDetail, &row.StatusName,
 		); err != nil {
 			return nil, err
 		}

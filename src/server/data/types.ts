@@ -15,6 +15,11 @@ export interface Scorer {
   minute: string;
   penalty: boolean;
   shootout: boolean;
+  // ESPN credits an own goal to the team that BENEFITS and names the
+  // opposition player who scored it. `teamId` is therefore correct as sent —
+  // what is wrong without this flag is presenting that player as one of the
+  // benefiting team's scorers.
+  ownGoal: boolean;
 }
 
 export interface Card {

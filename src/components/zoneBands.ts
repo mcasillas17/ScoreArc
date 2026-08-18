@@ -27,6 +27,20 @@ export function toBands(standings: Standing[], zones: Zone[]): Band[] {
   const n = standings.length;
   if (n === 0) return [];
 
+  // A season that has not kicked off has no standings — it has an alphabetical
+  // club list that the provider happens to number 1..n. Painting qualification
+  // and relegation over that order states, in ScoreArc's own voice, that the
+  // club whose name sorts first is champion. Verified live: the 2026-27
+  // Premier League returns Bournemouth 1st and Tottenham 20th at P0.
+  //
+  // The rule lives here rather than in the components because both
+  // LeagueZoneTable and ZoneRing consume bands, and fixing only one of them is
+  // how this shipped. One unmarked band costs the ring its arcs and the table
+  // its legend automatically.
+  if (standings.every((s) => s.played === 0)) {
+    return [{ kind: 'mid', label: '', from: 1, to: n, standings }];
+  }
+
   const clamped = zones
     .map((z) => ({
       ...z,

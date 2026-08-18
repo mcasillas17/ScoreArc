@@ -80,8 +80,8 @@ measure-before-you-build rule, for the same reason. Writing exact-code plans for
 them today would be inventing detail we do not have, which the plan format
 explicitly forbids.
 
-**E7's plans exist** and are listed under the task index below: eight ingester
-plans covering T7.1 and T7.6–T7.15.
+**E7's plans exist** and are listed under the task index below: nine ingester
+plans covering T7.1 and T7.6–T7.17.
 
 **E10 has no spec of its own by design.** It is the read path for work already
 specified elsewhere — every endpoint exists to serve an E1–E8 feature, and those
@@ -186,6 +186,19 @@ production right now.
 - **T0.1** Suppress zone bands and ranking when zero matches have been played
 - **T0.2** Own-goal attribution
 - **T0.3** Remove or repoint the dead "Live Scores" nav link
+- **T0.4** Suppress group-table qualification marking before kick-off
+- **T0.5** Flag third-placed qualifiers only when the criteria actually separate
+  8th from 9th — the ranking *is* the tiebreak, and its last resort is
+  alphabetical by group id
+- **T0.6** Guard the qualification cut (`splitByCut`, `LeagueLadder`,
+  `LeagueDial`) — the most exposed path: Liga MX's and the Leagues Cup's landing
+  page, where the dial crowns `standings[0]` as **LEADER**
+
+> **T0.4–T0.6 were all found by review, not by the spec.** The same false
+> statement lived in five code paths; the original spec identified one. Two of
+> them were introduced or missed by the fix itself. The generalised lesson is
+> recorded in the spec: suppressing a positive claim is not enough when the
+> negative one is applied by default, including by a shared CSS class.
 
 Verified live 2026-08-15: ESPN ranks the 2026-27 Premier League **alphabetically**
 at 0 played. Our zone config paints rank 1 as champion and 18–20 as relegation, so
@@ -297,6 +310,8 @@ to either**. These are the writers, each with an exact-code plan.
 | **T7.13** | **Retention probe + current-season play backfill** | same plan as T7.12 |
 | **T7.14** | Match officials as canonical people | [plan](superpowers/plans/2026-08-15-ingester-officials-and-odds.md) |
 | **T7.15** | Odds line-movement snapshots | same plan as T7.14 |
+| **T7.16** | Live-path set convergence/write reduction | [plan](superpowers/plans/2026-08-18-live-path-write-reduction.md) |
+| **T7.17** | Live sample/audit cadence reduction | same plan as T7.16 |
 
 **T7.12/T7.13 carry a deadline** — see the capability note below. They are also
 **E9's hard prerequisite**: a model cannot be trained on data we did not persist.

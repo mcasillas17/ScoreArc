@@ -290,6 +290,9 @@ export function mapSummaryScorers(raw: unknown): Scorer[] {
         minute: e.clock?.displayValue ?? '',
         penalty: !!e.penaltyKick,
         shootout: !!e.shootout,
+        // There is no `ownGoal` boolean on the event — `type.type` is the only
+        // signal ESPN gives (`{"id":"97","text":"Own Goal","type":"own-goal"}`).
+        ownGoal: e.type?.type === 'own-goal',
       })
     );
 }
