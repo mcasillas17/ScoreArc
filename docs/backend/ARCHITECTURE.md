@@ -126,7 +126,7 @@ same transaction.
 
 ### Tier 3 — time-series (created now, WRITTEN in Phase 2 via `emitSnapshots()`)
 - **standing_snapshot**(id bigserial, competition_id, season_id, team_id→team, captured_at, rank, points, goal_difference, played) — append-only.
-- **win_prob_snapshot**(id bigserial, match_id→match ON DELETE CASCADE, captured_at (minute bucket, UTC), observed_at (untruncated poll-start time), home, draw, away numeric(5,2)) — append-only, **WRITTEN** by the ingester since T7.6, for matches in state `live` only. `UNIQUE (match_id, captured_at)` collapses the 20-second live poll to one row per minute; same-minute conflicts update only when `observed_at` is at least as recent, so a delayed response cannot replace fresher data. The values are **market-implied** — the first betting provider's three-way moneyline with the margin removed, per `mapWinProbability` — and are not a ScoreArc forecast. Pre-match line movement is deliberately not recorded: a scheduled fixture is polled on slow ticks all season and would produce ~288 rows a day describing a market nobody is watching yet.
+- **win_prob_snapshot**(id bigserial, match_id→match ON DELETE CASCADE, captured_at (minute bucket, UTC), observed_at (untruncated poll-start time), home, draw, away numeric(5,2)) — append-only, **WRITTEN** by the ingester since T7.6, for matches in state `live` only. `UNIQUE (match_id, captured_at)` collapses the 20-second live poll to one row per minute; same-minute conflicts update only when `observed_at` is at least as recent, so a delayed response cannot replace fresher data. The values are **market-implied** — the first betting provider's three-way moneyline with the margin removed, per `mapWinProbability` — and are not a ScoreArc forecast. Scheduled detail is now TTL-throttled (>24 hours to kickoff every six hours, 24 hours down to more than one hour hourly, and the final hour every slow tick), but pre-match snapshots remain deliberately out of scope: even 4–24 rows per day for every future fixture would accumulate an unused market curve. Postponed or suspended fixtures whose kickoff has passed remain in the final-hour band and continue at slow-tick cadence.
 
 ### Ops
 - **ingest_run**(id bigserial, competition_id, kind, started_at, finished_at, ok, error) — observability. Beyond per-operation runs it also records the identity events a human has to act on: `provisional_team` (a club nobody has curated), `team_promotion` (a curation that could not complete), and `player_capture` (a match where the provider sent no athlete ids — without this, total capture failure and a match where nothing happened are the same empty table).
@@ -156,6 +156,20 @@ same transaction.
   failed reconciliation after 30 minutes, and refresh successful reconciliation
   daily. Normal scoreboards use a rolling `-30d/+7d` window with foreign-season
   events filtered; full-season backfills reject season mismatches.
+- Scheduled-match detail follows kickoff-aware cadence: more than 24 hours out it
+  is re-fetched every six hours; from 24 hours down to more than one hour out it
+  is re-fetched hourly; and at or inside the final hour it follows the five-minute
+  slow tick itself. The final-hour band uses `slowTick`, not the age of
+  `match_detail.updated_at`, because that timestamp is written after provider
+  latency; an `age == 5m` threshold would skip the immediately following tick
+  and turn a five-minute target into roughly ten minutes. A scheduled→live
+  transition always re-fetches immediately, and a malformed kickoff fails open.
+  The measured baseline was 82 candidates × 288 slow ticks = 23,616 ESPN summary
+  requests and `match_detail` rewrites per day, with 0/82 details changed in the
+  audit. The predicted ~692 requests per day (~97% reduction) is only a
+  uniform-distribution estimate for future scheduled candidates; it excludes
+  postponed or suspended fixtures with past kickoffs, which retain slow-tick
+  cadence.
 - Work is bounded to three competitions concurrently. Two successful empty
   polls are required before a competition becomes dormant; failed polls reset
   that sequence and preserve known live cadence.
