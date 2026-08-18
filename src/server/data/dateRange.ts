@@ -26,6 +26,39 @@ export function shiftMonth(d: Date, delta: number): Date {
   return new Date(d.getFullYear(), d.getMonth() + delta, 1);
 }
 
+/**
+ * Inclusive month bounds derived from ScoreArc's season-id conventions.
+ */
+export function seasonMonthBounds(seasonId: string): { minMonth: string; maxMonth: string } {
+  const crossYear = /^(\d{4})-(\d{2})$/.exec(seasonId);
+  if (crossYear) {
+    const startYear = Number(crossYear[1]);
+    const endYear = startYear + 1;
+    if (Number(crossYear[2]) === endYear % 100) {
+      return {
+        minMonth: `${startYear}-07-01`,
+        maxMonth: `${endYear}-06-01`,
+      };
+    }
+  }
+
+  const splitSeason = /^(\d{4})-(apertura|clausura)$/.exec(seasonId);
+  if (splitSeason) {
+    const year = splitSeason[1];
+    return splitSeason[2] === 'apertura'
+      ? { minMonth: `${year}-07-01`, maxMonth: `${year}-12-01` }
+      : { minMonth: `${year}-01-01`, maxMonth: `${year}-06-01` };
+  }
+
+  const calendarYear = /^(\d{4})$/.exec(seasonId);
+  if (calendarYear) {
+    const year = calendarYear[1];
+    return { minMonth: `${year}-01-01`, maxMonth: `${year}-12-01` };
+  }
+
+  throw new Error(`Unsupported season id: ${seasonId}`);
+}
+
 const RANGE_RE = /^(\d{4})(\d{2})(\d{2})-(\d{4})(\d{2})(\d{2})$/;
 
 /**

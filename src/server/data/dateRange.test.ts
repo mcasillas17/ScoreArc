@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { monthRange, shiftMonth, parseRange } from './dateRange';
+import { monthRange, parseRange, seasonMonthBounds, shiftMonth } from './dateRange';
 
 describe('monthRange', () => {
   it('covers the whole calendar month', () => {
@@ -39,6 +39,37 @@ describe('shiftMonth', () => {
     const d = shiftMonth(new Date(2026, 0, 31), 1);
     expect(d.getMonth()).toBe(1);
     expect(d.getDate()).toBe(1);
+  });
+});
+
+describe('seasonMonthBounds', () => {
+  it('bounds a cross-year league season from July through June', () => {
+    expect(seasonMonthBounds('2026-27')).toEqual({
+      minMonth: '2026-07-01',
+      maxMonth: '2027-06-01',
+    });
+  });
+
+  it('bounds Liga MX split seasons to their half of the year', () => {
+    expect(seasonMonthBounds('2026-apertura')).toEqual({
+      minMonth: '2026-07-01',
+      maxMonth: '2026-12-01',
+    });
+    expect(seasonMonthBounds('2027-clausura')).toEqual({
+      minMonth: '2027-01-01',
+      maxMonth: '2027-06-01',
+    });
+  });
+
+  it('bounds a calendar-year competition to that year', () => {
+    expect(seasonMonthBounds('2026')).toEqual({
+      minMonth: '2026-01-01',
+      maxMonth: '2026-12-01',
+    });
+  });
+
+  it('rejects an unsupported season id', () => {
+    expect(() => seasonMonthBounds('summer-2026')).toThrow('Unsupported season id');
   });
 });
 
