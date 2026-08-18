@@ -90,14 +90,35 @@ describe('thirdPlacedRanking', () => {
     expect(ranked.filter((r) => r.qualifies)).toHaveLength(0);
   });
 
-  // One group kicking off is enough for the race to be real, even though the
-  // rest are still level. Same "every, not any" boundary as the league tables.
-  it('resumes flagging once a single group has played', () => {
+  // One group kicking off does NOT make the race real. All twelve rows can
+  // still be tied at 0/0/0, so compareThird still falls through to
+  // groupId.localeCompare and the 8-vs-4 split would be pure alphabet.
+  it('does not flag merely because one group has played, while all rows remain tied', () => {
     const thirds = Array.from({ length: 12 }, () => ({ pts: 0, gd: 0, gf: 0 }));
     const groups = groupsWithThirds(thirds).map((g, i) => ({
       ...g,
       standings: g.standings.map((s) => ({ ...s, played: i === 0 ? 1 : 0 })),
     }));
-    expect(thirdPlacedRanking(groups).filter((r) => r.qualifies)).toHaveLength(QUALIFYING_THIRDS);
+    expect(thirdPlacedRanking(groups).filter((r) => r.qualifies)).toHaveLength(0);
+  });
+
+  // What makes the cut real is the numeric criteria separating 8th from 9th,
+  // not how many matches have been played.
+  it('flags once the qualification boundary is actually earned', () => {
+    const thirds = Array.from({ length: 12 }, (_, i) => ({ pts: i < 8 ? 3 : 0, gd: 0, gf: 0 }));
+    const ranked = thirdPlacedRanking(groupsWithThirds(thirds));
+    expect(ranked.filter((r) => r.qualifies)).toHaveLength(QUALIFYING_THIRDS);
+  });
+
+  // A genuine mid-tournament tie ON the boundary is undetermined — FIFA draws
+  // lots, which group data cannot express. Better to flag nobody than to flag
+  // whoever's group name sorts first.
+  it('does not flag when 8th and 9th are tied on every criterion', () => {
+    const thirds = Array.from({ length: 12 }, (_, i) => ({ pts: i < 4 ? 6 : 3, gd: 0, gf: 0 }));
+    const groups = groupsWithThirds(thirds).map((g) => ({
+      ...g,
+      standings: g.standings.map((s) => ({ ...s, played: 3 })),
+    }));
+    expect(thirdPlacedRanking(groups).filter((r) => r.qualifies)).toHaveLength(0);
   });
 });

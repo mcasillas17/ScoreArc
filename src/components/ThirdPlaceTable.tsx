@@ -14,16 +14,18 @@ export default function ThirdPlaceTable({
   teamStyle?: 'flag' | 'crest';
 }) {
   const rows = thirdPlacedRanking(groups);
-  // Pre-season every tiebreaker ties, so this ranking is alphabetical by group.
-  // Marking rows would claim a qualification race that has not begun.
-  const started = rows.some((r) => r.played > 0);
+  // thirdPlacedRanking only sets `qualifies` when the numeric criteria actually
+  // separate 8th from 9th. If nothing qualifies, the order came from
+  // groupId.localeCompare — alphabetical, not earned — so showing a rank or a
+  // row class here would dress that up as a standing.
+  const ranked = rows.some((r) => r.qualifies);
   if (rows.length === 0) {
     return <p className="empty-text">Third-place data is unavailable right now.</p>;
   }
   return (
     <div className="std-panel">
-      {!started ? (
-        <p className="lz-preseason">Season not started — no matches played yet.</p>
+      {!ranked ? (
+        <p className="lz-preseason">Not ranked yet — the qualification criteria do not separate these teams.</p>
       ) : null}
       <table className="standings-table std-wide">
         <thead>
@@ -43,8 +45,8 @@ export default function ThirdPlaceTable({
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.team.id} className={!started ? "" : r.qualifies ? "row-qualify" : "row-out"}>
-              <td className="rank-cell">{started ? r.rank : ''}</td>
+            <tr key={r.team.id} className={!ranked ? "" : r.qualifies ? "row-qualify" : "row-out"}>
+              <td className="rank-cell">{ranked ? r.rank : ''}</td>
               <td className="team-cell">
                 <div className="team-cell-inner">
                   <TeamBadge team={r.team} size={22} style={teamStyle} />
