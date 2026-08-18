@@ -2297,7 +2297,7 @@ npm test && npx tsc --noEmit && npm run lint && npm run build 2>&1 | tail -8
 
 Expected: all clean. Nothing in `src/**` changed; this is CI parity, not a risk.
 
-- [ ] **Step 4: Open the PR**
+- [x] **Step 4: Open the PR**
 
 ```bash
 git push -u origin fix/live-path-write-reduction
@@ -2384,7 +2384,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 5: Report, and say what is still unmeasured**
+- [x] **Step 5: Report, and say what is still unmeasured**
 
 Tell the user, in the PR comment or the handoff:
 
