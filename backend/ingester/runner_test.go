@@ -3475,6 +3475,15 @@ func TestStandingsSnapshotRetriesAfterFinalizationReplacementIsRejected(t *testi
 	source := worker.source.(*fakeSource)
 	source.mu.Lock()
 	source.matches = []model.Match{finishedMatch()}
+	// The content memo skips a byte-identical row set before it ever reaches
+	// the store, so the table has to MOVE for the replacement to be attempted
+	// at all. A post-finalization table the store rejects as shrinking is by
+	// definition a different row set, so say so rather than relying on an
+	// unconditional write.
+	source.standings = []model.Standing{{
+		Rank: 1, Team: model.Team{ID: "home"},
+		Played: 1, Wins: 1, Points: 3, GoalsFor: 2, GoalDifference: 2,
+	}}
 	source.mu.Unlock()
 	repo.mu.Lock()
 	repo.standingsErr = store.ErrPartialReplacement
@@ -3557,6 +3566,119 @@ func TestStandingsSnapshotRetriesWhenFinalizationRefreshStartsCanceled(t *testin
 	if retried.failures != 0 || repo.snapshotCalls != 2 {
 		t.Fatalf("retry cycle = %+v, snapshot calls = %d; want one successful retry",
 			retried, repo.snapshotCalls)
+	}
+}
+
+// THE TEST THIS SLICE EXISTS FOR. Two consecutive slow ticks over identical
+// upstream content must produce exactly ONE replacement.
+//
+// Measured on production before this guard: `standing` took +228 inserts and
+// -228 deletes per tick against a 228-row table -- 131,328 tuple writes a day
+// to keep 228 rows as they were -- while content hashes over those same rows,
+// captured across three tick boundaries, never once changed.
+func TestUnchangedStandingsAreReplacedOnce(t *testing.T) {
+	src := &fakeSource{}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	worker.runCycle(context.Background(), true)
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.standingsCalls != 1 {
+		t.Fatalf("ReplaceStandings calls = %d across two identical slow ticks, want 1",
+			repo.standingsCalls)
+	}
+}
+
+// The other half of the contract, and the one that makes the guard safe: a
+// table that MOVED must be written. A standings table moves when a match
+// finalizes, which is the only thing that can move it.
+func TestChangedStandingsAreReplacedAgain(t *testing.T) {
+	src := &fakeSource{}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	worker.runCycle(context.Background(), true)
+
+	src.mu.Lock()
+	src.standings = []model.Standing{{
+		Rank: 1, Team: model.Team{ID: "home"},
+		Played: 1, Wins: 1, Points: 3, GoalsFor: 2, GoalDifference: 2,
+	}}
+	src.mu.Unlock()
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.standingsCalls != 2 {
+		t.Fatalf("ReplaceStandings calls = %d after the table moved, want 2",
+			repo.standingsCalls)
+	}
+}
+
+// The memo records what was COMMITTED. A failed replacement must leave it
+// pointing at the last row set that really is in the table, or the next tick
+// would skip the retry and hide the failure until the content changed again.
+func TestFailedStandingsReplacementIsNotMemoised(t *testing.T) {
+	src := &fakeSource{}
+	repo := &fakeRepository{
+		existing:     map[string]store.MatchRow{},
+		standingsErr: errors.New("write failed"),
+	}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	if first := worker.runCycle(context.Background(), true); first.failures == 0 {
+		t.Fatal("a failed standings replacement did not fail the cycle")
+	}
+
+	repo.mu.Lock()
+	repo.standingsErr = nil
+	repo.mu.Unlock()
+
+	if second := worker.runCycle(context.Background(), true); second.failures != 0 {
+		t.Fatalf("retry cycle = %+v, want a clean cycle", second)
+	}
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.standingsCalls != 2 {
+		t.Fatalf("ReplaceStandings calls = %d, want the failure retried", repo.standingsCalls)
+	}
+}
+
+// A restart empties the memo, exactly as it empties the snapshot day gate. One
+// redundant replacement per scope per deploy -- 27 writes, ~530 tuples, once --
+// is the correct price for holding no state the database has to keep in sync,
+// and it is the same trade TestStandingsSnapshotSurvivesARestart already makes.
+func TestStandingsMemoIsColdAfterARestart(t *testing.T) {
+	src := &fakeSource{}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+
+	testRunner(src, repo, comp).runCycle(context.Background(), true)
+	testRunner(src, repo, comp).runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.standingsCalls != 2 {
+		t.Fatalf("ReplaceStandings calls = %d across two processes, want 2",
+			repo.standingsCalls)
 	}
 }
 

@@ -532,7 +532,34 @@ func (r *runner) refreshStandings(
 		}
 	}
 	if err == nil {
-		err = r.repo.ReplaceStandings(ctx, comp.ID, season.ID, sourceESPN, rows, teamIDs)
+		// The C3 guard (spec §4.1). A standings table is a pure function of the
+		// finished matches in its competition, so it can only move when a match
+		// finalizes -- ~60 times a day across all nine competitions, against
+		// 2,592 competition-slow-ticks. Measured on production across three
+		// windows spanning confirmed delete-and-reinsert ticks: nine tables,
+		// zero changes. Everything below this block is unchanged; the guard only
+		// decides whether to open the transaction at all.
+		//
+		// Note what is NOT gated on it: the crest mirroring below, the
+		// `standings` ingest_run (T10.10 reads it with a 20-minute threshold and
+		// a skip must not read as stale), snapshotStandings -- which is C4, the
+		// class where writing the same value twice is CORRECT -- and
+		// refreshSquads. A skip keeps err == nil precisely so all four still run.
+		scope := standingsScope(comp.ID, season.ID)
+		digest := standingsFingerprint(sourceESPN, rows, teamIDs)
+		if r.contentUnchanged(scope, len(rows), digest) {
+			r.log.Debug("standings unchanged; replacement skipped",
+				"comp", comp.ID, "season", season.ID, "rows", len(rows))
+		} else {
+			err = r.repo.ReplaceStandings(
+				ctx, comp.ID, season.ID, sourceESPN, rows, teamIDs)
+			if err == nil {
+				// Only after the transaction committed. A rejected or failed
+				// replacement must leave the memo on the row set that really is
+				// in the table.
+				r.markContentWritten(scope, digest)
+			}
+		}
 	}
 	if err != nil && tableChanged {
 		// Finalization is a one-cycle edge. If its refresh fails, remove the
