@@ -600,3 +600,101 @@ func TestFinalCaptureStatusRollbackDropsOnlyOwnedTable(t *testing.T) {
 		}
 	}
 }
+
+// The C1 guards. Each assertion below encodes a decision that is easy to
+// "simplify" into a production outage, so each is pinned by text.
+func TestFinalizationInvariantsSealEachTableByItsOwnMarker(t *testing.T) {
+	sql := readMigration(t, "0021_finalization_invariants.up.sql")
+	for _, required := range []string{
+		// One function, one escape hatch, six triggers.
+		"CREATE FUNCTION scorearc_final_writes_allowed(target regclass)",
+		"CREATE FUNCTION scorearc_protect_final_records() RETURNS trigger",
+		"CREATE TRIGGER protect_final_appearance",
+		"CREATE TRIGGER protect_final_match_event",
+		"CREATE TRIGGER protect_final_match_commentary",
+		"CREATE TRIGGER protect_final_match_play",
+		"CREATE TRIGGER protect_final_match_official",
+		"CREATE TRIGGER protect_final_match_odds",
+		// The seal phrasing that keeps a cascade delete working. The inverted
+		// form would make a finalized match permanently undeletable.
+		"WHERE id = target_match AND finalized_at IS NOT NULL",
+		// match_play is sealed by the ledger, joined to match so the cascade
+		// order between two sibling children cannot decide the outcome.
+		"FROM match_play_archive a",
+		"JOIN match m ON m.id = a.match_id",
+		// The curation carve-out, in jsonb so one function serves tables with
+		// and without the column.
+		"- 'team_id' - 'player_id'",
+		"SELECT 1 FROM team WHERE id = old_row->>'team_id' AND provisional",
+		// A classifiable rejection.
+		"ERRCODE = 'SA001'",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("0021_finalization_invariants.up.sql missing %q", required)
+		}
+	}
+	if strings.Contains(sql, "CREATE TRIGGER protect_finalized_detail") {
+		t.Fatal("0021 must leave 0001's protect_finalized_detail trigger untouched")
+	}
+}
+
+// match_official and match_odds are written AFTER finalization on the normal
+// path (ingester/matches.go:311, :312). Guarding their INSERT would reject the
+// one legitimate write each of them ever receives.
+func TestFinalizationInvariantsDoNotGuardTheFinalizationInsert(t *testing.T) {
+	sql := readMigration(t, "0021_finalization_invariants.up.sql")
+	for _, table := range []string{"match_official", "match_odds"} {
+		guarded := "BEFORE UPDATE OR DELETE ON " + table
+		if !strings.Contains(sql, guarded) {
+			t.Fatalf("%s must be guarded on UPDATE and DELETE only, missing %q", table, guarded)
+		}
+		if strings.Contains(sql, "BEFORE INSERT OR UPDATE OR DELETE ON "+table) {
+			t.Fatalf(
+				"%s guards INSERT: that rejects the finalization write at "+
+					"ingester/matches.go and breaks production finalization", table)
+		}
+	}
+	// The other four must guard all three, because their writers upsert and
+	// then issue a tail DELETE.
+	for _, table := range []string{
+		"appearance", "match_event", "match_commentary", "match_play",
+	} {
+		guarded := "BEFORE INSERT OR UPDATE OR DELETE ON " + table
+		if !strings.Contains(sql, guarded) {
+			t.Fatalf("%s must guard INSERT, UPDATE and DELETE, missing %q", table, guarded)
+		}
+	}
+}
+
+func TestFinalizationInvariantsRollbackRemovesEveryOwnedObject(t *testing.T) {
+	sql := readMigration(t, "0021_finalization_invariants.down.sql")
+	for _, required := range []string{
+		"DROP TRIGGER IF EXISTS protect_final_appearance ON appearance",
+		"DROP TRIGGER IF EXISTS protect_final_match_event ON match_event",
+		"DROP TRIGGER IF EXISTS protect_final_match_commentary ON match_commentary",
+		"DROP TRIGGER IF EXISTS protect_final_match_play ON match_play",
+		"DROP TRIGGER IF EXISTS protect_final_match_official ON match_official",
+		"DROP TRIGGER IF EXISTS protect_final_match_odds ON match_odds",
+		"DROP FUNCTION IF EXISTS scorearc_protect_final_records()",
+		"DROP FUNCTION IF EXISTS scorearc_final_writes_allowed(regclass)",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("0021_finalization_invariants.down.sql missing %q", required)
+		}
+	}
+	if strings.Contains(sql, "protect_finalized_detail") {
+		t.Fatal("0021 rollback must not drop 0001's protect_finalized_detail trigger")
+	}
+}
+
+// match_play_archive is the ledger the match_play seal reads. Guarding it would
+// break cmd/play-backfill, whose entire job is to write that ledger for
+// already-finalized matches.
+func TestFinalizationInvariantsLeaveTheArchiveLedgerWritable(t *testing.T) {
+	sql := readMigration(t, "0021_finalization_invariants.up.sql")
+	if strings.Contains(sql, "ON match_play_archive") {
+		t.Fatal(
+			"0021 guards match_play_archive: cmd/play-backfill writes exactly that " +
+				"table for already-finalized matches and would stop working")
+	}
+}
