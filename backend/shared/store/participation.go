@@ -131,6 +131,46 @@ WITH incoming AS (
 )
 SELECT (SELECT count(*) FROM upserted), (SELECT count(*) FROM pruned)`
 
+// eventConvergeSQL is appearanceConvergeSQL's shape for match_event. seq is a
+// deterministic ordinal in mapper order -- events carry no stable provider id,
+// which migration 0003 explains -- so re-ingestion is an upsert on
+// (match_id, seq), and the prune removes any longer previous history an
+// upstream retraction left behind.
+const eventConvergeSQL = `
+WITH incoming AS (
+	SELECT * FROM unnest(
+		$2::int[], $3::uuid[], $4::text[], $5::text[],
+		$6::text[], $7::bool[], $8::bool[], $9::text[]
+	) AS e(seq, player_id, team_id, type, minute, penalty, shootout, detail)
+), upserted AS (
+	INSERT INTO match_event (
+		match_id, seq, player_id, team_id, type, minute, penalty, shootout, detail)
+	SELECT $1, seq, player_id, team_id, type, minute, penalty, shootout, detail
+	FROM incoming
+	ON CONFLICT (match_id, seq) DO UPDATE SET
+		player_id = EXCLUDED.player_id,
+		team_id   = EXCLUDED.team_id,
+		type      = EXCLUDED.type,
+		minute    = EXCLUDED.minute,
+		penalty   = EXCLUDED.penalty,
+		shootout  = EXCLUDED.shootout,
+		detail    = EXCLUDED.detail
+	WHERE (
+		match_event.player_id, match_event.team_id, match_event.type,
+		match_event.minute, match_event.penalty, match_event.shootout,
+		match_event.detail
+	) IS DISTINCT FROM (
+		EXCLUDED.player_id, EXCLUDED.team_id, EXCLUDED.type,
+		EXCLUDED.minute, EXCLUDED.penalty, EXCLUDED.shootout, EXCLUDED.detail
+	)
+	RETURNING 1
+), pruned AS (
+	DELETE FROM match_event
+	WHERE match_id = $1 AND seq >= (SELECT count(*) FROM incoming)
+	RETURNING 1
+)
+SELECT (SELECT count(*) FROM upserted), (SELECT count(*) FROM pruned)`
+
 // WriteParticipation resolves every player in a match to a canonical id and
 // replaces that match's appearances and events.
 //
@@ -241,32 +281,11 @@ func (s *Store) WriteParticipation(
 		stats.Appearances = len(rows)
 	}
 
+	eventsWritten, eventsPruned := 0, 0
 	if len(events) > 0 {
-		for seq, e := range events {
-			if _, err := tx.Exec(opCtx, `
-INSERT INTO match_event (match_id, seq, player_id, team_id, type, minute, penalty, shootout, detail)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-ON CONFLICT (match_id, seq) DO UPDATE SET
-  player_id = EXCLUDED.player_id,
-  team_id   = EXCLUDED.team_id,
-  type      = EXCLUDED.type,
-  minute    = EXCLUDED.minute,
-  penalty   = EXCLUDED.penalty,
-  shootout  = EXCLUDED.shootout,
-  detail    = EXCLUDED.detail`,
-				matchID, seq, e.playerID, e.teamID, e.event.Type,
-				e.event.Minute, e.event.Penalty, e.event.Shootout, e.event.Detail,
-			); err != nil {
-				return stats, fmt.Errorf("upsert match event: %w", err)
-			}
-		}
-		// Upserting 1..N leaves any longer previous history behind it. An event
-		// retracted upstream (a mis-attributed goal) must disappear.
-		if _, err := tx.Exec(opCtx,
-			`DELETE FROM match_event WHERE match_id=$1 AND seq >= $2`,
-			matchID, len(events),
-		); err != nil {
-			return stats, fmt.Errorf("prune match events: %w", err)
+		if err := tx.QueryRow(opCtx, eventConvergeSQL, eventArgs(matchID, events)...).
+			Scan(&eventsWritten, &eventsPruned); err != nil {
+			return stats, fmt.Errorf("converge match events: %w", err)
 		}
 		stats.Events = len(events)
 	}
@@ -275,7 +294,12 @@ ON CONFLICT (match_id, seq) DO UPDATE SET
 		return stats, err
 	}
 
-	s.reportParticipation(ctx, matchID, stats)
+	// Nothing moved, so nothing new is known about coverage. A live match is
+	// polled 360 times; reporting the same gap on every one of them buries the
+	// signal this exists to raise.
+	if appearancesWritten+appearancesPruned+eventsWritten+eventsPruned > 0 {
+		s.reportParticipation(ctx, matchID, stats)
+	}
 	return stats, nil
 }
 
@@ -328,6 +352,33 @@ func appearanceArgs(matchID uuid.UUID, rows []appearanceRow) []any {
 		args = append(args, column)
 	}
 	return args
+}
+
+// eventArgs flattens the events into the eight parallel arrays
+// eventConvergeSQL unnests. The sequence is the position in mapper order, which
+// is what makes re-ingestion an upsert rather than a duplicate.
+func eventArgs(matchID uuid.UUID, events []eventRow) []any {
+	seq := make([]int, len(events))
+	playerIDs := make([]*uuid.UUID, len(events))
+	teamIDs := make([]string, len(events))
+	types := make([]string, len(events))
+	minutes := make([]string, len(events))
+	penalties := make([]bool, len(events))
+	shootouts := make([]bool, len(events))
+	details := make([]string, len(events))
+	for index, event := range events {
+		seq[index] = index
+		playerIDs[index] = event.playerID
+		teamIDs[index] = event.teamID
+		types[index] = event.event.Type
+		minutes[index] = event.event.Minute
+		penalties[index] = event.event.Penalty
+		shootouts[index] = event.event.Shootout
+		details[index] = event.event.Detail
+	}
+	return []any{
+		matchID, seq, playerIDs, teamIDs, types, minutes, penalties, shootouts, details,
+	}
 }
 
 const boxScoreColumnCount = 13

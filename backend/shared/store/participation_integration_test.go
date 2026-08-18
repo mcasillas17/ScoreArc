@@ -508,3 +508,32 @@ func tupleVersions(t *testing.T, pool *pgxpool.Pool, sql string, args ...any) []
 	}
 	return versions
 }
+
+// The coverage report exists to raise a gap where a human can find it. Raising
+// it 360 times for one live match buries the signal it exists to carry, so it
+// is written only when the poll actually changed something.
+func TestParticipationCoverageIsReportedOncePerChange(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	matchID := mustParticipationMatch(t, store, pool)
+
+	part := sampleParticipation()
+	// An event whose athlete id the provider omitted: recorded, unidentified.
+	part.Events = append(part.Events, model.PlayerEvent{
+		TeamSourceID: "359", PlayerName: "", Type: model.PlayerEventYellow,
+		Minute: "70'", Detail: "Yellow Card",
+	})
+
+	for range 4 {
+		if _, err := store.WriteParticipation(ctx, "espn", matchID,
+			"eng-arsenal", "eng-chelsea", part); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	reported := countRows(t, pool,
+		`SELECT count(*) FROM ingest_run WHERE kind='player_capture'`)
+	if reported != 1 {
+		t.Fatalf("player_capture audit rows = %d after four identical polls, want 1", reported)
+	}
+}
