@@ -1921,7 +1921,7 @@ git diff --stat origin/main -- backend/migrations/
 Expected: **no output.** This plan changes no schema. If there is output, the
 number must be 0017 and the watermark re-checked — see the red box.
 
-- [ ] **Step 4: Open the PR**
+- [x] **Step 4: Open the PR**
 
 ```bash
 cd /Users/elopenmike/build/Apps/Futbol/ScoreArc
@@ -2055,7 +2055,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 5: Stop, and hand the verification over**
+- [x] **Step 5: Stop, and hand the verification over**
 
 Do **not** merge. Merging — and therefore deploying, since `main` auto-deploys —
 is the user's decision (`AGENTS.md`).
@@ -2141,6 +2141,10 @@ tick, and T10.10 must keep seeing it that way.
   both Claude Opus 5 and GPT-5.6 Terra reran the complete frontend and backend
   gates, including uncached real-Postgres Testcontainers suites, and reported
   **NO BLOCKING FINDINGS**.
+- **Implementation PR:** the reviewed branch is
+  [PR #78](https://github.com/mcasillas17/ScoreArc/pull/78). It is intentionally
+  left open; merging and the post-deploy production check remain the user's
+  decision.
 
 ---
 
