@@ -64,9 +64,18 @@ export function thirdPlacedRanking(groups: Group[]): ThirdPlaceRow[] {
   // This subsumes the pre-season case (every row tied at zero) without relying
   // on `played`, which is the wrong signal here: one group kicking off tells
   // you nothing about the other eleven, all of whom remain tied.
+  // Fewer candidates than slots means there is no boundary to earn — everyone
+  // present goes through, which is true by definition rather than by result.
+  // It still requires a played match: with nothing played the rows are a
+  // provider-ordered list, and "all of them qualify" would be asserting a
+  // tournament outcome before kick-off.
+  const noBoundaryToEarn =
+    rows.length <= QUALIFYING_THIRDS && rows.some((row) => row.played > 0);
+
   const boundaryIsEarned =
-    rows.length <= QUALIFYING_THIRDS ||
-    !tiedOnMerit(rows[QUALIFYING_THIRDS - 1], rows[QUALIFYING_THIRDS]);
+    noBoundaryToEarn ||
+    (rows.length > QUALIFYING_THIRDS &&
+      !tiedOnMerit(rows[QUALIFYING_THIRDS - 1], rows[QUALIFYING_THIRDS]));
 
   return rows.map((row, i) => ({
     ...row,

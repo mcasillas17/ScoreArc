@@ -121,4 +121,21 @@ describe('thirdPlacedRanking', () => {
     }));
     expect(thirdPlacedRanking(groups).filter((r) => r.qualifies)).toHaveLength(0);
   });
+
+  // Fewer candidates than qualifying slots is "everyone through" by definition
+  // — but only once something has been played. Before kick-off it would be
+  // asserting a tournament outcome from a provider-ordered list.
+  it('does not flag a sub-quota field before anything has been played', () => {
+    const thirds = Array.from({ length: 2 }, () => ({ pts: 0, gd: 0, gf: 0 }));
+    const groups = groupsWithThirds(thirds).map((g) => ({
+      ...g,
+      standings: g.standings.map((s) => ({ ...s, played: 0 })),
+    }));
+    expect(thirdPlacedRanking(groups).filter((r) => r.qualifies)).toHaveLength(0);
+  });
+
+  it('flags a sub-quota field once it has played', () => {
+    const thirds = Array.from({ length: 2 }, () => ({ pts: 0, gd: 0, gf: 0 }));
+    expect(thirdPlacedRanking(groupsWithThirds(thirds)).filter((r) => r.qualifies)).toHaveLength(2);
+  });
 });
