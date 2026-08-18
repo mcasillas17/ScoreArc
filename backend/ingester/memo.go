@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"hash"
 	"hash/fnv"
 	"strconv"
@@ -45,14 +46,7 @@ import (
 // each scope once (27 writes, once, per deploy), and nothing is EVER memoised
 // that the store did not commit.
 
-const (
-	// A unit separator between fields and a record separator between rows, so
-	// no run of values can be re-read as a different run. Both are C0 control
-	// characters that cannot survive MapStandings/MapLeaders into a team name,
-	// a player name or a URL.
-	fingerprintFieldSep = "\x1f"
-	fingerprintRowSep   = "\x1e"
-)
+const fingerprintRowMarker = byte(0xff)
 
 // contentDigest accumulates FNV-1a/64 over a canonical encoding of the exact
 // column values a replacement is about to write.
@@ -69,11 +63,17 @@ func newContentDigest() *contentDigest {
 	return &contentDigest{hash: fnv.New64a()}
 }
 
-// text writes one field. hash.Hash's contract is that Write never returns an
-// error, which is why the returns are discarded here and nowhere else.
+// text writes one length-prefixed field. Provider strings are not sanitized,
+// so delimiter framing would let an embedded control character make two
+// different stored rows produce the same byte stream.
+//
+// hash.Hash's contract is that Write never returns an error, which is why the
+// returns are discarded here and nowhere else.
 func (d *contentDigest) text(value string) {
+	var size [8]byte
+	binary.BigEndian.PutUint64(size[:], uint64(len(value)))
+	_, _ = d.hash.Write(size[:])
 	_, _ = d.hash.Write([]byte(value))
-	_, _ = d.hash.Write([]byte(fingerprintFieldSep))
 }
 
 func (d *contentDigest) number(value int) { d.text(strconv.Itoa(value)) }
@@ -83,24 +83,26 @@ func (d *contentDigest) flag(value bool) { d.text(strconv.FormatBool(value)) }
 // optionalText keeps a nil pointer distinct from a pointer to "". They are
 // different values in the database -- standing.group_id is nullable and a
 // single-table league stores NULL, not ” -- so they must be different bytes
-// here. The "-"/"+" prefix is what stops a nil colliding with any real string.
+// here. The presence byte stops a nil colliding with any real string.
 func (d *contentDigest) optionalText(value *string) {
 	if value == nil {
-		d.text("-")
+		_, _ = d.hash.Write([]byte{0})
 		return
 	}
-	d.text("+" + *value)
+	_, _ = d.hash.Write([]byte{1})
+	d.text(*value)
 }
 
 func (d *contentDigest) optionalNumber(value *int) {
 	if value == nil {
-		d.text("-")
+		_, _ = d.hash.Write([]byte{0})
 		return
 	}
-	d.text("+" + strconv.Itoa(*value))
+	_, _ = d.hash.Write([]byte{1})
+	d.number(*value)
 }
 
-func (d *contentDigest) endRow() { _, _ = d.hash.Write([]byte(fingerprintRowSep)) }
+func (d *contentDigest) endRow() { _, _ = d.hash.Write([]byte{fingerprintRowMarker}) }
 
 func (d *contentDigest) sum() uint64 { return d.hash.Sum64() }
 

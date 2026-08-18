@@ -369,6 +369,7 @@ type fakeRepository struct {
 	standingsErr      error
 	leaderCategories  []string
 	leaderRows        [][]model.StatLeader
+	leaderErrors      map[string]error
 	snapshotCalls     int
 	snapshotDays      []time.Time
 	snapshotErr       error
@@ -999,7 +1000,7 @@ func (f *fakeRepository) ReplaceLeaders(
 	}
 	f.leaderCategories = append(f.leaderCategories, category)
 	f.leaderRows = append(f.leaderRows, append([]model.StatLeader(nil), rows...))
-	return nil
+	return f.leaderErrors[category]
 }
 func (f *fakeRepository) ReplaceSquad(
 	_ context.Context,
@@ -2086,6 +2087,57 @@ func TestLeaderCrestOutageUsesSharedCircuit(t *testing.T) {
 			result, repo.leaderCategories, mirror.calls,
 		)
 	}
+}
+
+// When mirroring recovers, the provider URL memoised during the outage must
+// move to the CDN URL and trigger one replacement. Otherwise the content memo
+// would preserve provider hotlinks for the rest of the process lifetime.
+func TestLeaderCrestRecoveryRewritesProviderURL(t *testing.T) {
+	crest := "https://source.example/crest.png"
+	src := &fakeSource{statistics: statisticsPayload(
+		t,
+		[]model.StatLeader{{
+			Rank: 1, Player: "Winner", TeamAbbr: "WIN",
+			TeamCrestURL: &crest, Value: 1,
+		}},
+		[]model.StatLeader{{Rank: 1, Player: "Helper", Value: 1}},
+	)}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+	mirror := &fakeMirror{err: errors.New("mirror outage")}
+	worker.mirror = mirror
+
+	worker.runCycle(context.Background(), true)
+
+	mirror.mu.Lock()
+	mirror.err = nil
+	mirror.mu.Unlock()
+	worker.mu.Lock()
+	worker.mirrorUnavailable = time.Time{}
+	worker.mu.Unlock()
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if len(repo.leaderCategories) != 3 {
+		t.Fatalf("leader writes = %v, want two outage writes plus one recovered goals write",
+			repo.leaderCategories)
+	}
+	for index := len(repo.leaderCategories) - 1; index >= 0; index-- {
+		if repo.leaderCategories[index] != "goals" {
+			continue
+		}
+		stored := repo.leaderRows[index][0].TeamCrestURL
+		if stored == nil || !strings.HasPrefix(*stored, "https://cdn.example/") {
+			t.Fatalf("recovered goals crest = %v, want CDN URL", stored)
+		}
+		return
+	}
+	t.Fatal("recovered goals board was not written")
 }
 
 // One fetch, two boards. Fetching /statistics twice would double the request
@@ -3804,6 +3856,42 @@ func TestAbsentLeaderBoardIsNeverMemoised(t *testing.T) {
 	if len(repo.leaderCategories) != 2 {
 		t.Fatalf("writes = %v, want one goals write and one assists write in total",
 			repo.leaderCategories)
+	}
+}
+
+// A failed replacement must not poison the memo. The failed category retries
+// on the next tick, while a category that committed successfully is skipped.
+func TestFailedLeaderReplacementIsNotMemoised(t *testing.T) {
+	src := &fakeSource{}
+	repo := &fakeRepository{
+		existing:     map[string]store.MatchRow{},
+		leaderErrors: map[string]error{"goals": errors.New("write failed")},
+	}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	worker := testRunner(src, repo, comp)
+
+	if first := worker.runCycle(context.Background(), true); first.failures == 0 {
+		t.Fatal("a failed leader replacement did not fail the cycle")
+	}
+
+	repo.mu.Lock()
+	delete(repo.leaderErrors, "goals")
+	repo.mu.Unlock()
+	if second := worker.runCycle(context.Background(), true); second.failures != 0 {
+		t.Fatalf("retry cycle = %+v, want a clean cycle", second)
+	}
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	writes := map[string]int{}
+	for _, category := range repo.leaderCategories {
+		writes[category]++
+	}
+	if writes["goals"] != 2 || writes["assists"] != 1 {
+		t.Fatalf("leader writes = %v, want failed goals retried and committed assists skipped", writes)
 	}
 }
 

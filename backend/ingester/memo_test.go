@@ -171,6 +171,25 @@ func TestLeadersFingerprintSeparatesNullFromZeroMatches(t *testing.T) {
 	}
 }
 
+// Provider strings are not sanitized before they reach model.StatLeader. The
+// encoding therefore cannot use raw delimiter bytes: an embedded delimiter at
+// the end of one field must not collide with the same byte at the start of the
+// next field.
+func TestLeadersFingerprintSeparatesEmbeddedFieldDelimiters(t *testing.T) {
+	t.Parallel()
+	first := leaderFixture()
+	first.Player = "A\x1f"
+	first.TeamAbbr = "B"
+	second := leaderFixture()
+	second.Player = "A"
+	second.TeamAbbr = "\x1fB"
+
+	if leadersFingerprint(sourceESPN, "goals", []model.StatLeader{first}) ==
+		leadersFingerprint(sourceESPN, "goals", []model.StatLeader{second}) {
+		t.Fatal("embedded field separators make distinct stored rows collide")
+	}
+}
+
 // Row order is not itself a change -- the primary keys make a reordered table
 // the same table. Hashing in slice order anyway is deliberate: it is cheaper
 // than sorting and it errs toward one extra write, never a missed one.
