@@ -2245,7 +2245,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Modify: `docs/backend/ARCHITECTURE.md`
 - Modify: `docs/PRODUCT_ROADMAP.md`
 
-- [ ] **Step 1: Write the policy down where the next agent will look**
+- [x] **Step 1: Write the policy down where the next agent will look**
 
 Add to `docs/backend/ARCHITECTURE.md`, in the ingester section:
 
