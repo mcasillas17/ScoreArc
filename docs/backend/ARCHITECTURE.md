@@ -90,16 +90,19 @@ revert a mirrored crest to a provider hotlink. Full rationale:
 > `competitions.ts`/`radialBracketModel.ts` on the frontend — correctly not in
 > the backend.) See §10.
 
-Migrations: `backend/migrations/0001_init.*.sql` (canonical entities, the
-crosswalk, Tier-1, ops, roles/grants, durability columns, indexes, and history
-guards) and `0002_snapshots.*.sql` (Tier-3). The pre-launch `0003`/`0004`
-migrations were folded into `0001` when the schema was re-keyed onto canonical
-ids; there is no deployed database to migrate forward from them.
+Migrations: `backend/migrations/0001_init.*.sql` establishes the canonical
+entities, crosswalk, Tier-1, ops, roles/grants, durability columns, indexes, and
+the original `match`/`match_detail` history guards; `0002_snapshots.*.sql`
+establishes Tier-3. Forward migrations add the later history surfaces, with
+`0021_finalization_invariants.*.sql` extending C1 ("immutable once final") to
+the six remaining finalized-fact tables. The old pre-launch `0003`/`0004` were
+folded into `0001` before deployment; the current migrations bearing those
+numbers are newer forward migrations.
 
-Data backfills must run before finalized-history protection triggers are enabled.
-A future migration that intentionally rewrites finalized matches or details must
-disable the relevant trigger only for the bounded rewrite and re-enable it in the
-same transaction.
+Backfills must finish before their finalization or archive seal is written.
+The bounded operator correction path for the six migration-0021 tables is
+documented below. The pre-existing `match` and `match_detail` guards remain
+untouched and do not use that escape hatch.
 
 ### Canonical entities (ids ScoreArc mints)
 - **competition**(id PK `text` slug, name, short_name, kind[`league|cup`], country, updated_at)
@@ -120,7 +123,7 @@ same transaction.
 - **appearance**(PK (match_id→match, player_id→player), team_id→team, starter, shirt_number, position) — who was in the squad, **including substitutes**; the `lineups` jsonb above keeps starters only because that is what the site renders. This is the table that makes "minutes played" computable.
 - **match_event**(PK (match_id→match, **seq**), player_id→player NULL, team_id→team, type[`goal|own_goal|yellow|red|sub_on|sub_off`], minute, penalty, shootout, detail) — one row per player-action, so a substitution is two rows rather than one row with two players. `seq` is a deterministic ordinal, **not** a surrogate uuid: a live summary is re-fetched every 20s and a surrogate key would duplicate every goal on every poll. `player_id` is nullable because an event the provider reports without an athlete id still happened — we record it unattributed rather than inventing a player. `penalty` is a flag, not a type, so penalties stay inside `type = 'goal'`.
 - **squad_membership**(PK (competition_id, season_id, team_id→team, player_id→player), shirt_number, position, source, updated_at) — who is in a squad, per season (T7.9). Season-scoped so a transfer is a second row rather than an overwrite. Refreshed **once per UTC day** from `/teams/{id}/roster`: nine competitions × ~20 clubs = ~180 requests, against ~52,000 if it ran on every slow tick. Successful teams are remembered independently; a failed team alone retries after 30 minutes. The team list comes from `standing`.
-- **player_season_stat**(PK (competition_id, season_id, player_id→player), team_id→team, appearances, sub_ins, goals, assists, shots, shots_on_target, offsides, fouls_committed, fouls_suffered, own_goals, yellow_cards, red_cards, saves, goals_conceded, shots_faced, source, updated_at) — **the provider's** season aggregate, deliberately not derived from summing `appearance`. The two will disagree: ours covers only matches the ingester has seen, ESPN's covers the whole season and competitions we do not ingest. Keeping both makes the disagreement visible. All nullable — 8 of 35 roster athletes carry no statistics block at all.
+- **player_season_stat**(PK (competition_id, season_id, player_id→player), team_id→team, appearances, sub_ins, goals, assists, shots, shots_on_target, offsides, fouls_committed, fouls_suffered, own_goals, yellow_cards, red_cards, saves, goals_conceded, shots_faced, source, updated_at) — **the provider's** season aggregate, deliberately not derived from summing `appearance`. The two will disagree: ours covers only matches the ingester has seen, ESPN's covers the whole season and competitions we do not ingest. Keeping both makes the disagreement visible. All nullable — 8 of 35 roster athletes carry no statistics block at all — and a missing provider statistic remains SQL `NULL`, never a synthetic `0`.
 - **player_team_history**(PK (player_id→player, team_source_id, seasons), team_name, ord, source) — career clubs from `/athletes/{id}/bio` (T7.10), on the **common/v3 host**. `team_source_id` is the provider's id and **not** a FK to `team`: a career spans competitions we will never curate. `seasons` is ESPN's own string (`"2025-CURRENT"`), stored verbatim because the vocabulary is undocumented. Fetched on a budget — only players with an `appearance`, 20 per slow tick, 30-day TTL via `player.bio_fetched_at`.
 - **player** additionally carries **birth_date** and **nationality**, filled from the roster payload's ISO `dateOfBirth`/`citizenship`. Never from the per-athlete endpoint's `displayDOB` (`"23/9/2003"`), which is locale-formatted and ambiguous below the 13th.
 
@@ -143,6 +146,69 @@ same transaction.
   curation once shipped permanently broken.
 - `ALTER DEFAULT PRIVILEGES` mirrors these so future tables inherit them.
 
+### Finalized-history invariants (migration 0021)
+
+Migration 0021 makes C1 ("immutable once final") a database invariant for
+`appearance`, `match_event`, `match_commentary`, `match_play`,
+`match_official`, and `match_odds`. It does not replace or modify the
+pre-existing `match` and `match_detail` guards. The six tables cannot share one
+blanket `finalized_at` rule because plays, officials, and final odds are
+legitimately captured after the match finalization transition:
+
+| Table | Seal | Rejected after the seal |
+|---|---|---|
+| `appearance` | `match.finalized_at` | `INSERT`, `UPDATE`, `DELETE` |
+| `match_event` | `match.finalized_at` | `INSERT`, `UPDATE`, `DELETE` |
+| `match_commentary` | `match.finalized_at` | `INSERT`, `UPDATE`, `DELETE` |
+| `match_play` | matching `match_play_archive` ledger row | `INSERT`, `UPDATE`, `DELETE` |
+| `match_official` | `match.finalized_at` | `UPDATE`, `DELETE` |
+| `match_odds` | `match.finalized_at` | `UPDATE`, `DELETE` |
+
+The play archive ledger is the play-stream completion marker: sealing
+`match_play` at `finalized_at` would prevent the durable retry path from filling
+rows after an R2 failure. Officials and odds leave `INSERT` legal so their
+normal finalization-transition captures can add facts after `finalized_at`; a
+later rewrite or deletion is still rejected. Fixed-odds retries created by
+migration 0016 also converge if the row is identical except for `observed_at`:
+the guard preserves the original value. A changed market fact is not a retry
+and remains immutable.
+
+Every migration-0021 rejection raises SQLSTATE `SA001`.
+`store.IsImmutableViolation` recognizes that code through wrapped writer
+errors. This class means **writer defect, not transient failure**: it must be
+surfaced rather than retried. The classifier is available for that policy, but
+no production caller uses it yet.
+
+Curation gets one narrow exception: an `UPDATE` may repoint `team_id` away from
+a row that is still marked provisional, provided no fact changes in the same
+write. Repointing between curated teams, changing any other fact, or repointing
+`player_id` remains blocked with `SA001`. There is also a pre-existing promotion
+gap: `promoteProvisionalTeam` does not repoint `appearance.team_id` or
+`match_event.team_id`. If either table still references the provisional team,
+the promotion's final team deletion fails with FK SQLSTATE `23503`. Closing
+that gap is **OUT OF SCOPE for T7.16**, rather than an implicit follow-up owned
+by this invariant slice.
+
+A deliberate correction to one of these six tables requires both explicit
+intent and elevated table privilege. Use the direct DSN and a bounded,
+explicit transaction as a migration owner or operator role that holds
+`TRUNCATE` on the target table:
+
+```sql
+BEGIN;
+SET LOCAL scorearc.allow_final_writes = 'on';
+-- bounded correction to the sealed table
+COMMIT;
+```
+
+The GUC alone is insufficient; the guard also checks `TRUNCATE`. The
+least-privilege ingester must never receive that privilege, and database-owner
+credentials must never appear in application configuration.
+
+The final implementation-run measurement for the hot, unsealed path was **3.134
+microseconds per guarded row across 50,000 rows**, below the 25-microsecond
+budget.
+
 ---
 
 ## 4. Ingester (slice 1b — implemented Go worker)
@@ -164,9 +230,12 @@ same transaction.
   `Store.Match`: each looks `(source, source_id)` up in the crosswalk, falling back
   to the curated team seed or the `match` natural key. A team the seed does not carry
   becomes a `provisional` row rather than failing the poll — logged and recorded in
-  `ingest_run` — and curating it later repoints the existing rows instead of creating
-  a duplicate. A match crosswalk hit is verified against the competition and season
-  being ingested, so one provider event id cannot carry facts across competitions.
+  `ingest_run` — and curation repoints its supported references instead of creating
+  a duplicate. The current promotion helper does not repoint `appearance.team_id`
+  or `match_event.team_id`; if either reference exists, full promotion fails closed
+  with FK SQLSTATE `23503` (the T7.16 out-of-scope gap documented above). A match
+  crosswalk hit is verified against the competition and season being ingested, so
+  one provider event id cannot carry facts across competitions.
   `Store.Competition` and `Store.Player` exist for the same crosswalk but have no
   production caller yet: the ingester takes the competition from its own config
   (`comp.ID`), and player identity is written by the follow-on slice. The ESPN mappers

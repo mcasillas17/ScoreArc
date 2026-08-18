@@ -87,10 +87,9 @@ All committed on this branch. Verified: `cd backend && go build ./... && go test
 
 1. **Go module scaffold** — `backend/go.mod` (module `github.com/mcasillas17/scorearc-backend`, Go 1.26), `.vercelignore` excludes `/backend` `/infra` `/docs`.
 2. **Config export** — `scripts/export-competitions.mjs` generates `backend/config/competitions.json` from the frontend's `src/server/data/competitions.ts` (single source of truth); `backend/config/config.go` loads it (`//go:embed`), with tests. Run `npm run export:competitions` to regenerate.
-3. **Postgres migrations** — `backend/migrations/000{1,2}_*.sql`: the canonical
-   schema (entities, `*_external_ref` crosswalk, current state, operations
-   tables, replacement/retention grants, finalization guards) plus the snapshot
-   skeleton, and the **least-privilege roles**
+3. **Postgres migrations** — the canonical schema, forward history surfaces,
+   snapshot skeleton, replacement/retention grants, and finalization guards
+   through migration 0021, plus the **least-privilege roles**
    (`scorearc_reader` = SELECT-only; `scorearc_ingester` = writer with narrowly
    scoped replacement deletes). See ARCHITECTURE.md for the full schema.
 4. **Deploy assets (Fly)** — `backend/{reader,ingester}/Dockerfile` + `fly.toml`, path-filtered GitHub Actions deploy workflows, and `backend/.dockerignore`. Both images are validated by a real `docker build`. The old GCP Terraform under `/infra` was **deleted** by this slice (Fly+Neon+R2 supersedes it); recover it from history at `c6d382e` if ever needed.
@@ -174,10 +173,17 @@ Hard rules (also in `AGENTS.md` — read it; Codex auto-loads it):
 
 - **The seam:** the frontend reads everything through `DataStore` (6 methods) in `src/server/data/store.ts`. Phase 1 adds a second implementation (`apiStore`) that calls our reader. Nothing else in the frontend changes.
 - **The 6 methods / shapes:** `getMatches`, `getStandings`, `getBracket`, `getMatchSummary`, `getTopScorers`, `getNews`. Types are in `src/server/data/types.ts` — the reader's JSON must deserialize into these.
-- **Ingester durability:** final match/detail writes are atomic; finalized rows
-  are database-protected from mutation; unresolved finals remain in a durable
-  backlog; bracket classification is persisted so retries remain safe after a
-  restart.
+- **Ingester durability:** final match/detail writes are atomic; migration 0021
+  gives every finalized-fact table a database seal appropriate to its write
+  lifecycle; unresolved finals remain in a durable backlog; bracket
+  classification is persisted so retries remain safe after a restart.
+  Rejections are SQLSTATE `SA001`, classified by
+  `store.IsImmutableViolation`, and indicate a writer bug rather than a
+  transient retry. The classifier has no production caller yet. Deliberate
+  operator corrections require the direct DSN, an explicit transaction with
+  `SET LOCAL scorearc.allow_final_writes = 'on'`, and a role holding `TRUNCATE`
+  on the target table; never grant that privilege to the ingester or place
+  database-owner credentials in app configuration.
 - **ESPN mapping already exists in TS** under `src/server/data/providers/espn-*.ts`, tested against recorded JSON in `src/server/data/__fixtures__/`. The Go ingester re-implements these; **test the Go port against the same fixtures** for parity.
 - **All frontend data-fetching is server-side** (Next.js server components + `/api` routes) — so the reader can be public without the browser ever holding a DB credential.
 - **Competitions/seasons** are config in `src/server/data/competitions.ts` (9 competitions). The Go side reads the generated `backend/config/competitions.json` — never hand-edit it; run `npm run export:competitions`.
