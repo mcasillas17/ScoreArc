@@ -51,12 +51,13 @@
 -- conflict detection, and then BEFORE UPDATE triggers if a conflict occurs. Both
 -- writers are INSERT ... ON CONFLICT DO UPDATE, and their single legitimate
 -- write is an INSERT against an already-finalized match. Guarding INSERT would
--- reject it. Guarding UPDATE still catches every re-poll, because a re-poll
--- writes the same crew and the same settled lines and therefore lands on the
--- conflict branch. What stays possible is an ADDITIVE row -- a crew member the
--- first capture lacked -- which 0014 already declares intentional ("No DELETE:
--- removing a crew entry must be an explicit future retention rule"). Adding an
--- appointment is not rewriting one.
+-- reject it. Guarding UPDATE catches changed facts on every re-poll. The fixed
+-- odds completion ledger added in 0016 can retry after the identical odds row
+-- committed, so the guard preserves OLD when observed_at is the only difference
+-- and lets that durable retry converge. What also stays possible is an ADDITIVE
+-- row -- a crew member the first capture lacked -- which 0014 already declares
+-- intentional ("No DELETE: removing a crew entry must be an explicit future
+-- retention rule"). Adding an appointment is not rewriting one.
 --
 -- NOT A CHECK CONSTRAINT: a CHECK expression may not run a subquery and may not
 -- see OLD, so it can express neither seal and not the curation carve-out below.
@@ -202,12 +203,20 @@ BEGIN
   -- becomes "reject every write". None of these six tables has one today
   -- (verified against 0003, 0006, 0007, 0013, 0014, 0015).
   --
-  -- match_odds.observed_at is deliberately NOT subtracted, unlike match.updated_at.
-  -- It records WHEN THE LINE WAS OBSERVED and the upsert sets it to now(), so a
-  -- changed observed_at means the row was re-written -- exactly the event this
-  -- guard refuses.
+  -- match_odds has one additional legitimate retry. Migration 0016 added a
+  -- durable final-capture backlog whose completion ledger can fail after the odds
+  -- rows commit. Its retry upserts the identical line while setting observed_at
+  -- to now(). Preserve the original observation by returning OLD only when
+  -- observed_at is the sole difference. Any changed market fact still falls
+  -- through to SA001 below.
   new_row := to_jsonb(NEW);
   old_row := to_jsonb(OLD);
+  IF TG_TABLE_NAME = 'match_odds'
+     AND (new_row - 'observed_at')
+         IS NOT DISTINCT FROM (old_row - 'observed_at') THEN
+    RETURN OLD;
+  END IF;
+
   IF (new_row - 'team_id' - 'player_id')
      IS DISTINCT FROM (old_row - 'team_id' - 'player_id') THEN
     RAISE EXCEPTION '% is immutable once its record is sealed', TG_TABLE_NAME

@@ -666,6 +666,18 @@ func TestFinalizationInvariantsDoNotGuardTheFinalizationInsert(t *testing.T) {
 	}
 }
 
+func TestFinalizationInvariantsAllowOnlyIdempotentFixedOddsRetries(t *testing.T) {
+	sql := readMigration(t, "0021_finalization_invariants.up.sql")
+	required := `IF TG_TABLE_NAME = 'match_odds'
+     AND (new_row - 'observed_at')
+         IS NOT DISTINCT FROM (old_row - 'observed_at') THEN
+    RETURN OLD;
+  END IF;`
+	if !strings.Contains(sql, required) {
+		t.Fatal("0021 must preserve observed_at for an identical fixed-odds backlog retry")
+	}
+}
+
 func TestFinalizationInvariantsRollbackRemovesEveryOwnedObject(t *testing.T) {
 	sql := readMigration(t, "0021_finalization_invariants.down.sql")
 	for _, required := range []string{

@@ -397,6 +397,56 @@ func TestWritersSurfaceTheRejectionClassifiably(t *testing.T) {
 	mustBeImmutableViolation(t, "WriteMatchOdds", err)
 }
 
+// A fixed-odds capture can commit its fact rows and lose the process before its
+// completion ledger lands. The durable backlog then retries the same line. That
+// retry must converge without changing the original observation time; a changed
+// line is still a rewrite and must remain classifiably refused.
+func TestFixedOddsRetryIsIdempotentAfterFinalization(t *testing.T) {
+	f := newSealFixture(t)
+	ctx := context.Background()
+	id := f.unfinalized(t, "eng-arsenal")
+	f.finalize(t, id)
+
+	home := -140
+	providers := []model.ProviderOdds{{
+		ProviderID: "58", ProviderName: "Bet365",
+		Close: &model.OddsLine{HomeMoneyline: &home},
+	}}
+	if err := f.store.WriteMatchOdds(ctx, id, providers); err != nil {
+		t.Fatalf("initial fixed-odds capture: %v", err)
+	}
+
+	var firstObserved time.Time
+	if err := f.pool.QueryRow(ctx, `
+SELECT observed_at FROM match_odds
+WHERE match_id=$1 AND provider_id='58' AND phase='close'`,
+		id).Scan(&firstObserved); err != nil {
+		t.Fatal(err)
+	}
+
+	time.Sleep(time.Millisecond)
+	if err := f.store.WriteMatchOdds(ctx, id, providers); err != nil {
+		t.Fatalf("identical fixed-odds backlog retry must converge: %v", err)
+	}
+
+	var retriedObserved time.Time
+	if err := f.pool.QueryRow(ctx, `
+SELECT observed_at FROM match_odds
+WHERE match_id=$1 AND provider_id='58' AND phase='close'`,
+		id).Scan(&retriedObserved); err != nil {
+		t.Fatal(err)
+	}
+	if !retriedObserved.Equal(firstObserved) {
+		t.Fatalf("idempotent retry changed observed_at from %s to %s",
+			firstObserved, retriedObserved)
+	}
+
+	changedHome := -150
+	providers[0].Close.HomeMoneyline = &changedHome
+	err := f.store.WriteMatchOdds(ctx, id, providers)
+	mustBeImmutableViolation(t, "changed fixed-odds backlog retry", err)
+}
+
 // A rejected write and a broken connection must not look the same, or the
 // ingester retries a bug forever.
 func TestImmutableViolationIsNotAConnectionFailure(t *testing.T) {
