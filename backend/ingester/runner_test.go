@@ -2114,6 +2114,39 @@ func TestLeaderCrestMirrorsOnceAcrossRefreshes(t *testing.T) {
 	}
 }
 
+// Mirroring a crest after the first replacement must not turn that category
+// into a second full-table write.
+func TestRefreshLeadersWritesEachCategoryExactlyOnce(t *testing.T) {
+	crest := "https://a.espncdn.com/crest.png"
+	src := &fakeSource{statistics: statisticsPayload(
+		t,
+		[]model.StatLeader{{
+			Rank: 1, Player: "Winner", TeamAbbr: "WIN",
+			TeamCrestURL: &crest, Value: 1,
+		}},
+		[]model.StatLeader{{Rank: 1, Player: "Helper", Value: 1}},
+	)}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+	}
+	runner := testRunner(src, repo, comp)
+	runner.mirror = &fakeMirror{}
+
+	runner.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	counts := make(map[string]int, len(repo.leaderCategories))
+	for _, category := range repo.leaderCategories {
+		counts[category]++
+	}
+	repo.mu.Unlock()
+	if counts["goals"] != 1 || counts["assists"] != 1 || len(counts) != 2 {
+		t.Fatalf("leader writes=%v, want map[assists:1 goals:1]", counts)
+	}
+}
+
 func TestLeaderCrestOutageUsesSharedCircuit(t *testing.T) {
 	leaders := make([]model.StatLeader, 10)
 	for index := range leaders {

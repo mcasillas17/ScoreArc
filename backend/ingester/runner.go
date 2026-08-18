@@ -663,8 +663,12 @@ func (r *runner) refreshLeaders(
 			errs = append(errs, fmt.Errorf("%s: %w", category, mapErr))
 			continue
 		}
+		// Mirror before replacing so each category is written exactly once.
+		// Writing provider crests first and mirrored crests second doubles the
+		// transactional delete-and-insert work for boards whose crests change.
+		mirrored := r.mirrorLeaders(ctx, board)
 		writeErr := r.repo.ReplaceLeaders(
-			ctx, comp.ID, season.ID, sourceESPN, category, board,
+			ctx, comp.ID, season.ID, sourceESPN, category, mirrored,
 		)
 		if errors.Is(writeErr, store.ErrEmptyReplacement) {
 			// Normal. Not every competition publishes every board, and an
@@ -677,14 +681,6 @@ func (r *runner) refreshLeaders(
 		if writeErr != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", category, writeErr))
 			continue
-		}
-		mirrored := r.mirrorLeaders(ctx, board)
-		if leaderCrestsChanged(board, mirrored) {
-			if err := r.repo.ReplaceLeaders(
-				ctx, comp.ID, season.ID, sourceESPN, category, mirrored,
-			); err != nil {
-				errs = append(errs, fmt.Errorf("%s crests: %w", category, err))
-			}
 		}
 	}
 	joined := errors.Join(errs...)
@@ -714,23 +710,6 @@ func (r *runner) mirrorLeaders(
 	}
 	wg.Wait()
 	return mirrored
-}
-
-func leaderCrestsChanged(before, after []model.StatLeader) bool {
-	for index := range before {
-		if index >= len(after) || stringValue(before[index].TeamCrestURL) !=
-			stringValue(after[index].TeamCrestURL) {
-			return true
-		}
-	}
-	return len(before) != len(after)
-}
-
-func stringValue(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
 }
 
 func (r *runner) mirrorLeader(ctx context.Context, leader model.StatLeader) model.StatLeader {
