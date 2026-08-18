@@ -1803,7 +1803,7 @@ The `standing` and `top_scorer` bullets describe the columns and say nothing
 about cadence, which is how "replace it every tick" survived unexamined for a
 season.
 
-- [ ] **Step 1: Amend the two schema bullets**
+- [x] **Step 1: Amend the two schema bullets**
 
 In `docs/backend/ARCHITECTURE.md`, append to the end of the **`standing`**
 bullet (line ~118):
@@ -1818,7 +1818,7 @@ And to the end of the **`top_scorer`** bullet (line ~119):
 Written **once** per category per change, not twice per tick. Crests are mirrored to R2 **before** the write, and the mirrored board is what is fingerprinted and stored — the previous shape wrote the freshly-mapped board, mirrored it, and re-wrote it whenever the URLs differed, which they always did (`a.espncdn.com` vs `cdn.scorearc.futbol`), so a 300-row table absorbed 600 tuple writes per tick and briefly served provider hotlinks between the two. The same content memo as `standing` then skips the remaining write when a board did not move. **An absent board is never memoised**: `ErrEmptyReplacement` means the store refused and the stored rows survive, so the `leaders_preserved` audit keeps firing on every tick.
 ```
 
-- [ ] **Step 2: Verify and commit**
+- [x] **Step 2: Verify and commit**
 
 ```bash
 cd /Users/elopenmike/build/Apps/Futbol/ScoreArc
@@ -1840,7 +1840,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 **Files:**
 - Modify: `docs/PRODUCT_ROADMAP.md`
 
-- [ ] **Step 1: Find the next free E7 task number — do not assume one**
+- [x] **Step 1: Find the next free E7 task number — do not assume one**
 
 ```bash
 cd /Users/elopenmike/build/Apps/Futbol/ScoreArc && grep -n "^| \*\*T7\." docs/PRODUCT_ROADMAP.md
@@ -1855,7 +1855,7 @@ have taken it, and note that
 officials and odds. Use the first genuinely unused number, and if two plans race
 for it, renumber yours rather than duplicating.
 
-- [ ] **Step 2: Add the row**
+- [x] **Step 2: Add the row**
 
 Append to the E7 task table, using the number Step 1 confirmed:
 
@@ -1863,7 +1863,7 @@ Append to the E7 task table, using the number Step 1 confirmed:
 | **T7.16** | Content-memo write guard for `standing` / `top_scorer` | [plan](superpowers/plans/2026-08-18-content-memo-write-guard.md) |
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 cd /Users/elopenmike/build/Apps/Futbol/ScoreArc
@@ -2132,6 +2132,10 @@ tick, and T10.10 must keep seeing it that way.
   not share its branch. There is no `backend/ingester/README.md`, and this
   internal write-policy change does not alter the reader API or OpenAPI
   contract, so no package-local or API document exists that needs an update.
+  The shared updates are commit `0718fae` in
+  [PR #74](https://github.com/mcasillas17/ScoreArc/pull/74); the required
+  docs-only PR combined the architecture and roadmap edits in one commit rather
+  than placing shared high-collision files on this implementation branch.
 - **Independent review:** round 1 found the framing collision and missing
   leader failure/recovery coverage. Commit `b556854` resolved them. In round 2,
   both Claude Opus 5 and GPT-5.6 Terra reran the complete frontend and backend
