@@ -205,9 +205,14 @@ The GUC alone is insufficient; the guard also checks `TRUNCATE`. The
 least-privilege ingester must never receive that privilege, and database-owner
 credentials must never appear in application configuration.
 
-The final implementation-run measurement for the hot, unsealed path was a
-**5.633-microsecond median overhead per guarded row across three interleaved
-50,000-row guarded/bare pairs**, below the unchanged 25-microsecond budget.
+The final local measurement over three 50,000-row samples was **5.304
+microseconds per guarded row**, below the 25-microsecond product budget. An
+equivalent one-primary-key-probe reference trigger measured 4.832 microseconds,
+so migration 0021 was **1.10x** the same-database control. Hosted runner classes
+vary enough that the absolute budget is reported but cannot be enforced
+portably; standard CI therefore requires the migration guard's median to remain
+within **1.5x** of that interleaved control. `EXPLAIN (ANALYZE, BUFFERS)` confirms
+the seal is the intended single `match_pkey` probe with two shared-buffer hits.
 
 ---
 
