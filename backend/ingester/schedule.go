@@ -85,7 +85,7 @@ func matchRowUnchanged(identity store.MatchIdentity, match model.Match, current 
 // confirmed with BracketRequired explicitly false, round is cleared to NULL
 // regardless of what the payload carries -- a bye or a dead rubber leaving the
 // bracket. Otherwise an empty incoming round falls back to whatever is already
-// stored, exactly like SQL's COALESCE(NULLIF($2,”), match.round).
+// stored, matching SQL's empty-string-to-NULL fallback before COALESCE.
 func finalRound(match model.Match, current store.MatchRow) string {
 	if match.BracketConfirmed && match.BracketRequired != nil && !*match.BracketRequired {
 		return ""
