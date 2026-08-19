@@ -31,8 +31,19 @@ to serve that data instead.
    (`feat/...`, `fix/...`, `tweak/...`).
 2. **Test locally before opening a PR.** Run `npm run dev` and verify the change in the
    browser, plus `npm test` and `npx tsc --noEmit`. Only open a PR once it works locally.
-3. Integrate via PR, not by pushing to `main`. Do not use `gh pr merge`/`--admin` to
+3. **Leave the dev server running and hand over the URLs.** Verifying it yourself
+   is not the same as showing it. For any user-visible change, end your turn with
+   a running server and the specific paths to look at — and say what to look
+   *for* on each one, not just that it works. Do not wait to be asked; being
+   asked "can I see it locally?" means this step was skipped.
+4. Integrate via PR, not by pushing to `main`. Do not use `gh pr merge`/`--admin` to
    self-merge unless the user explicitly asks — merging is the user's decision.
+5. **Verify what a merge actually contains**, not that the PR says `MERGED`.
+   `git show --stat --oneline origin/main`. This has bitten twice: PR #85 merged
+   only the first of three commits and PR #89 only its first slice, both because
+   later commits had not been pushed when the merge happened. Nothing was lost
+   either time — the remote branch still had them — but the follow-on work was
+   built on a `main` that was missing half the change.
 
 ## Commands
 
@@ -43,6 +54,11 @@ to serve that data instead.
 - `npx tsc --noEmit` — typecheck (strict). Must be clean before a PR.
 - `npm run lint` — ESLint (`next lint`).
 - `npm run build` — production build; run it if a change could affect the build.
+- `npm run export:competitions` — **required** after any edit to
+  `src/server/data/competitions.ts`. `backend/config/competitions.json` is
+  generated from it and CI fails if the two drift. `npm test`/`tsc`/`lint`/`build`
+  all pass while it is stale, so nothing local catches this — run the exporter and
+  commit the JSON.
 
 After hot-editing components/CSS, HMR can corrupt (`__webpack_require__.n is not a
 function`). Fix: kill dev server, `rm -rf .next`, restart.
