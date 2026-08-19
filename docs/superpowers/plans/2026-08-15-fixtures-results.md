@@ -31,7 +31,8 @@
 - **One upstream scoreboard request per month navigation.** Not one per match.
 - Pure date helpers get Vitest tests with a **fixed `now`** — never `new Date()` in a test.
 - `npx tsc --noEmit` clean and `npm test` green before a PR.
-- Conventional commits ending with `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`.
+- Conventional commits ending with the implementing agent's own `Co-Authored-By:`
+  identity.
 - Never run `npm run build` while `npm run dev` is running.
 
 ---
@@ -64,7 +65,7 @@
   range if it is well-formed, ordered and within `maxDays` (default 92);
   otherwise `null`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/server/data/dateRange.test.ts`:
 
@@ -162,12 +163,12 @@ describe('parseRange', () => {
 });
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `npx vitest run src/server/data/dateRange.test.ts`
 Expected: FAIL — cannot resolve `./dateRange`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Create `src/server/data/dateRange.ts`:
 
@@ -241,12 +242,12 @@ export function parseRange(raw: string | null, maxDays = 92): string | null {
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `npx vitest run src/server/data/dateRange.test.ts`
 Expected: PASS, all cases.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/server/data/dateRange.ts src/server/data/dateRange.test.ts
@@ -256,7 +257,7 @@ parseRange guards a value that reaches a third-party URL: anchored
 regex, real-date round-trip (so 20260231 is rejected rather than rolling
 to March 3), ordering, and a 92-day span cap.
 
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>"
 ```
 
 ---
@@ -279,7 +280,7 @@ trap `getUpcoming`'s comment already documents: *"pulling a summary per match
 would turn one request into thirty."* The calendar does not need scorers on every
 row; the popup fetches a summary when a match is actually clicked.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `src/server/data/store.test.ts`:
 
@@ -351,12 +352,12 @@ and define `SCOREBOARD_TWO_EVENTS` from the existing
 hand-writing a payload — the point is that `mapScoreboard` really produces two
 matches.
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `npx vitest run src/server/data/store.test.ts -t "range-aware"`
 Expected: FAIL — `store.getFixtures is not a function`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/server/data/store.ts`, add the import:
 
@@ -416,7 +417,7 @@ Add `getFixtures` beside `getUpcoming`:
     },
 ```
 
-- [ ] **Step 4: Run the suite**
+- [x] **Step 4: Run the suite**
 
 Run: `npm test`
 Expected: PASS. Existing `getMatches` callers pass no range and are unaffected.
@@ -424,7 +425,7 @@ Expected: PASS. Existing `getMatches` callers pass no range and are unaffected.
 Run: `npx tsc --noEmit`
 Expected: clean.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/server/data/store.ts src/server/data/store.test.ts
@@ -434,7 +435,7 @@ getMatches gains an optional range (default: the current week, so every
 existing caller is unchanged). getFixtures is new and does no summary
 enrichment -- one request per month rather than one per match.
 
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>"
 ```
 
 ---
@@ -445,7 +446,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Create: `src/app/api/[comp]/[season]/fixtures/route.ts`
 - Test: `src/app/api/routes.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `src/app/api/routes.test.ts`, matching the shape the existing route
 tests in that file use to build a `Request` and call the handler:
@@ -474,12 +475,12 @@ describe('GET /api/[comp]/[season]/fixtures', () => {
 });
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `npx vitest run src/app/api/routes.test.ts -t "fixtures"`
 Expected: FAIL — the route module does not exist.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Create `src/app/api/[comp]/[season]/fixtures/route.ts`:
 
@@ -514,7 +515,7 @@ export async function GET(req: Request, { params }: { params: { comp: string; se
 }
 ```
 
-- [ ] **Step 4: Run and verify by hand**
+- [x] **Step 4: Run and verify by hand**
 
 Run: `npx vitest run src/app/api/routes.test.ts`
 Expected: PASS.
@@ -528,7 +529,7 @@ curl -s "http://localhost:3000/api/premier-league/2026-27/fixtures?range=2026080
 
 Expected: `400`, `400`, then a JSON array of August fixtures.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add "src/app/api/[comp]/[season]/fixtures/route.ts" src/app/api/routes.test.ts
@@ -537,7 +538,7 @@ git commit -m "feat: add the fixtures API route with server-side range validatio
 An invalid range is a 400, not a silent fallback -- falling back would
 hide a broken caller and still fetch something.
 
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>"
 ```
 
 ---
@@ -550,7 +551,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 Presentational — verified by running the app.
 
-- [ ] **Step 1: Build the component**
+- [x] **Step 1: Build the component**
 
 Create `src/components/MatchCalendar.tsx`, a client component that:
 
@@ -584,13 +585,13 @@ Append to `src/app/globals.css`:
 .mc-list--loading { opacity: 0.5; transition: opacity 120ms ease; }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add src/components/MatchCalendar.tsx src/app/globals.css
 git commit -m "feat: add the match calendar with month navigation
 
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>"
 ```
 
 ---
@@ -601,7 +602,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Create: `src/app/c/[comp]/[season]/fixtures/page.tsx`
 - Modify: `src/components/Sidebar.tsx`
 
-- [ ] **Step 1: Add the page**
+- [x] **Step 1: Add the page**
 
 Create `src/app/c/[comp]/[season]/fixtures/page.tsx`, mirroring
 `standings/page.tsx` for the `resolveSeason` guard, `notFound()`, metadata and
@@ -609,7 +610,7 @@ shell markup. Server-render the current month with
 `dataStore.getFixtures(rc, monthRange(new Date()))` so first paint is populated,
 then hand off to `MatchCalendar`.
 
-- [ ] **Step 2: Add the sidebar item**
+- [x] **Step 2: Add the sidebar item**
 
 Add a "Fixtures & Results" item to both nav arrays in `src/components/Sidebar.tsx`,
 matching the `href` / `label` / `match` / `icon` shape the existing items use:
@@ -626,7 +627,7 @@ matching the `href` / `label` / `match` / `icon` shape the existing items use:
 Add a matching `fixturesIcon` beside the existing icon declarations, in the same
 inline-SVG style (a calendar glyph on the shared `ICON` props object).
 
-- [ ] **Step 3: Verify in the browser, on more than one competition**
+- [x] **Step 3: Verify in the browser, on more than one competition**
 
 ```bash
 npm run dev
@@ -649,20 +650,20 @@ Repeat on `/c/liga-mx/2026-27/fixtures` and `/c/leagues-cup/2026/fixtures` — t
 Leagues Cup is the awkward one, with phase matches and a bracket in the same
 month.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add "src/app/c/[comp]/[season]/fixtures/page.tsx" src/components/Sidebar.tsx
 git commit -m "feat: add the fixtures and results page
 
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>"
 ```
 
 ---
 
 ### Task 6: Full gate and PR
 
-- [ ] **Step 1: Gate**
+- [x] **Step 1: Gate**
 
 Kill the dev server first.
 
@@ -676,13 +677,13 @@ npm run build
 
 Expected: green, silent, clean, succeeds.
 
-- [ ] **Step 2: Sweep all nine competitions**
+- [x] **Step 2: Sweep all nine competitions**
 
 Open `/fixtures` on every competition in `src/server/data/competitions.ts`.
 Expected: each renders a month, navigates in both directions, and shows the empty
 state rather than an error where a month has no fixtures.
 
-- [ ] **Step 3: Open the PR**
+- [x] **Step 3: Open the PR**
 
 ```bash
 git push -u origin feat/fixtures-results
@@ -730,7 +731,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 4: Stop.** Do not merge — that is the user's decision.
+- [x] **Step 4: Stop.** Do not merge — that is the user's decision.
 
 ---
 
@@ -745,3 +746,28 @@ EOF
   is declared in Task 2 and called in Tasks 3 and 5.
 - **Cross-epic dependency.** Task 4 reuses E2's `LiveMatchCard` if present and
   falls back to a local row if not, so E3 does not block on E2.
+
+## Implementation outcome (2026-08-18)
+
+E3 shipped through PR #81. A follow-up branch addressed the post-merge review
+findings before documentation was marked complete. Opus 5 and GPT-5.6 Terra
+both reported no blocking or non-blocking findings on the follow-up head after
+running the complete frontend gate and rendering the failure and race paths.
+
+The implementation applied the plan's intent where its snapshot was stale:
+
+- Current API-route and client telemetry was retained instead of replacing the
+  newer route/component blocks quoted by the plan.
+- `Sidebar.tsx` used its post-PR #77 structure. E2 had not supplied a reusable
+  `LiveMatchCard`, so the calendar uses one local compact row and reuses
+  `MatchDetailPopup` for on-demand enrichment.
+- Liga MX browser verification used the configured `2026-apertura` season id.
+- `TtlCache` has no public key iterator, so cache isolation is proven through
+  provider call counts and returned values. The follow-up also bounded it to
+  500 least-recently-used entries.
+- Completed tournament editions open on their nearest active month rather than
+  the wall-clock month. Initial provider failures render an honest navigable
+  state, do not retry on mount, and retry only after explicit month navigation.
+- Mounted StrictMode coverage was added for abort, restore, and SSR-error retry
+  behavior. The final gate passed 31 files and 282 tests, strict TypeScript,
+  lint, production build, and an unchanged generated competition registry.

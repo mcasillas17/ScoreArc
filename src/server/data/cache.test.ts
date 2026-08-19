@@ -30,4 +30,21 @@ describe('TtlCache', () => {
     t = 100; // expires = 0 + 100 = 100; now() === expires → NOT expired (impl uses >)
     expect(c.get('k')).toBe(42);
   });
+
+  it('evicts the least recently used entry at its capacity', () => {
+    const c = new TtlCache<number>(() => 0, 2);
+    c.set('oldest', 1, 100);
+    c.set('recent', 2, 100);
+    expect(c.get('oldest')).toBe(1);
+
+    c.set('new', 3, 100);
+
+    expect(c.get('recent')).toBeUndefined();
+    expect(c.get('oldest')).toBe(1);
+    expect(c.get('new')).toBe(3);
+  });
+
+  it('rejects a non-positive capacity', () => {
+    expect(() => new TtlCache<number>(() => 0, 0)).toThrow('positive integer');
+  });
 });
