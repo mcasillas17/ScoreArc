@@ -183,7 +183,36 @@ export interface StatLeader {
   matches: number | null;
 }
 
-export interface LineupPlayer { name: string; number: number | null; position: string; jersey: string | null; }
+// One player's line in a single match. Every field is nullable because ESPN's
+// stat set varies by position -- goalkeepers carry saves and no offsides,
+// outfielders the reverse -- so an absent stat means "not applicable to this
+// player", which is a different fact from zero.
+export interface PlayerMatchStats {
+  appearances: number | null;
+  subIns: number | null;
+  totalGoals: number | null;
+  goalAssists: number | null;
+  totalShots: number | null;
+  shotsOnTarget: number | null;
+  offsides: number | null;
+  foulsCommitted: number | null;
+  foulsSuffered: number | null;
+  yellowCards: number | null;
+  redCards: number | null;
+  ownGoals: number | null;
+  saves: number | null;
+  goalsConceded: number | null;
+  shotsFaced: number | null;
+}
+
+export interface LineupPlayer {
+  name: string;
+  number: number | null;
+  position: string;
+  jersey: string | null;
+  starter: boolean;
+  stats: PlayerMatchStats | null;
+}
 export interface TeamLineup { formation: string; players: LineupPlayer[] }
 export interface MatchLineups { home: TeamLineup; away: TeamLineup }
 

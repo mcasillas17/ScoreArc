@@ -1,4 +1,4 @@
-import type { Scorer, Card, MatchStats, TeamStats, WinProbability, LineupPlayer, TeamLineup, MatchLineups, MatchVideo, PenaltyKick, ShootoutDetail, MatchInfo, FormResult, MatchForm, CommentaryItem, H2HMeeting } from '../types';
+import type { Scorer, Card, MatchStats, TeamStats, WinProbability, LineupPlayer, PlayerMatchStats, TeamLineup, MatchLineups, MatchVideo, PenaltyKick, ShootoutDetail, MatchInfo, FormResult, MatchForm, CommentaryItem, H2HMeeting } from '../types';
 
 // Venue, city, referee and attendance from summary.gameInfo.
 export function mapSummaryInfo(raw: unknown): MatchInfo | null {
@@ -318,6 +318,38 @@ function jerseyImage(images: any): string | null {
   return (light ?? images[0])?.href ?? null;
 }
 
+// ESPN sends each player's match stats as a name/value array whose membership
+// depends on position. Look up by name and default to null: an outfielder has
+// no `saves` entry, and recording that as 0 would claim they faced shots and
+// stopped none.
+function statFor(entry: any, name: string): number | null {
+  const found = (entry?.stats ?? []).find((s: any) => s?.name === name);
+  if (!found) return null;
+  const n = Number(found.value ?? found.displayValue);
+  return Number.isFinite(n) ? n : null;
+}
+
+function toPlayerStats(entry: any): PlayerMatchStats | null {
+  if (!Array.isArray(entry?.stats) || entry.stats.length === 0) return null;
+  return {
+    appearances: statFor(entry, 'appearances'),
+    subIns: statFor(entry, 'subIns'),
+    totalGoals: statFor(entry, 'totalGoals'),
+    goalAssists: statFor(entry, 'goalAssists'),
+    totalShots: statFor(entry, 'totalShots'),
+    shotsOnTarget: statFor(entry, 'shotsOnTarget'),
+    offsides: statFor(entry, 'offsides'),
+    foulsCommitted: statFor(entry, 'foulsCommitted'),
+    foulsSuffered: statFor(entry, 'foulsSuffered'),
+    yellowCards: statFor(entry, 'yellowCards'),
+    redCards: statFor(entry, 'redCards'),
+    ownGoals: statFor(entry, 'ownGoals'),
+    saves: statFor(entry, 'saves'),
+    goalsConceded: statFor(entry, 'goalsConceded'),
+    shotsFaced: statFor(entry, 'shotsFaced'),
+  };
+}
+
 export function mapSummaryLineups(
   raw: unknown,
   homeId: string,
@@ -331,14 +363,16 @@ export function mapSummaryLineups(
 
     const toTeamLineup = (entry: any): TeamLineup => {
       const formation: string = entry.formation ?? '';
-      const players: LineupPlayer[] = (entry.roster ?? [])
-        .filter((p: any) => p.starter === true)
-        .map((p: any): LineupPlayer => ({
-          name: p.athlete?.displayName ?? '',
-          number: p.jersey ? Number(p.jersey) : null,
-          position: p.position?.abbreviation ?? '',
-          jersey: jerseyImage(p.athlete?.jerseyImages),
-        }));
+      // Substitutes were dropped here. A box score that omits the player who
+      // came on and scored is not a box score.
+      const players: LineupPlayer[] = (entry.roster ?? []).map((p: any): LineupPlayer => ({
+        name: p.athlete?.displayName ?? '',
+        number: p.jersey ? Number(p.jersey) : null,
+        position: p.position?.abbreviation ?? '',
+        jersey: jerseyImage(p.athlete?.jerseyImages),
+        starter: p.starter === true,
+        stats: toPlayerStats(p),
+      }));
       return { formation, players };
     };
 
@@ -346,7 +380,7 @@ export function mapSummaryLineups(
     const away = toTeamLineup(awayEntry);
     // Rosters can be present before lineups are published (no starters yet) —
     // treat that as "no lineup" so the UI doesn't render an empty XI.
-    if (!home.players.length || !away.players.length) return null;
+    if (!home.players.some((p) => p.starter) || !away.players.some((p) => p.starter)) return null;
     return { home, away };
   } catch {
     return null;

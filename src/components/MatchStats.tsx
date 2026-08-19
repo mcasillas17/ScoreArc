@@ -172,7 +172,9 @@ function LineupColumn({ team, abbr, side }: { team: TeamLineup; abbr: string; si
         {team.formation && <span className="lu-formation">{team.formation}</span>}
       </div>
       <ul className="lu-list">
-        {team.players.map((p, i) => (
+        {/* The roster now carries substitutes too (they feed the box score).
+            The formation view is the starting eleven. */}
+        {team.players.filter((p) => p.starter).map((p, i) => (
           <li key={i} className="lu-player">
             {p.jersey ? (
               // eslint-disable-next-line @next/next/no-img-element

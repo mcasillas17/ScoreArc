@@ -230,20 +230,20 @@ describe('mapSummaryLineups', () => {
 
   it('home lineup has exactly 11 starters', () => {
     const result = mapSummaryLineups(raw, '4789', '464');
-    expect(result!.home.players).toHaveLength(11);
+    expect(result!.home.players.filter((p) => p.starter)).toHaveLength(11);
   });
 
-  it('all home starters have a non-empty name', () => {
+  it('all home players have a non-empty name', () => {
     const result = mapSummaryLineups(raw, '4789', '464');
     expect(result!.home.players.every((p) => p.name.length > 0)).toBe(true);
   });
 
   it('away lineup also has 11 starters', () => {
     const result = mapSummaryLineups(raw, '4789', '464');
-    expect(result!.away.players).toHaveLength(11);
+    expect(result!.away.players.filter((p) => p.starter)).toHaveLength(11);
   });
 
-  it('starters carry a jersey image url when available', () => {
+  it('players carry a jersey image url when available', () => {
     const result = mapSummaryLineups(raw, '4789', '464');
     const withJersey = result!.home.players.filter((p) => p.jersey != null);
     // Fixture players have jerseyImages; expect at least one mapped, and any
@@ -413,5 +413,34 @@ describe('mapSummaryScorers own goals', () => {
     const normal = scorers.filter((s) => s.teamId === '17362');
     expect(normal).toHaveLength(3);
     expect(normal.every((s) => s.ownGoal === false)).toBe(true);
+  });
+});
+
+describe('mapSummaryLineups box score', () => {
+  const lineups = mapSummaryLineups(ownGoalFixture, '17362', '226')!;
+
+  it('includes substitutes, not only the starting eleven', () => {
+    expect(lineups.home.players.length).toBeGreaterThan(11);
+    expect(lineups.home.players.some((p) => p.starter === false)).toBe(true);
+    expect(lineups.home.players.filter((p) => p.starter).length).toBe(11);
+  });
+
+  it('reads per-player stats by name', () => {
+    const padelford = lineups.home.players.find((p) => p.name === 'Devin Padelford')!;
+    expect(padelford.stats).not.toBeNull();
+    expect(padelford.stats!.ownGoals).toBe(1);
+    expect(padelford.stats!.appearances).toBe(1);
+  });
+
+  // Goalkeepers and outfielders carry different stat sets. A stat ESPN does
+  // not send is null -- not applicable -- never zero.
+  it('distinguishes a missing stat from a zero', () => {
+    const keeper = lineups.home.players.find((p) => p.name === 'Alec Smir')!;
+    expect(keeper.stats!.saves).toBe(3);
+    expect(keeper.stats!.offsides).toBeNull();
+
+    const outfielder = lineups.home.players.find((p) => p.name === 'Jefferson Díaz')!;
+    expect(outfielder.stats!.offsides).toBe(0);
+    expect(outfielder.stats!.saves).toBeNull();
   });
 });
