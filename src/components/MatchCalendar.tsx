@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Match, Team } from '@/server/data/types';
+import type { Match } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
 import { monthRange, shiftMonth } from '@/server/data/dateRange';
-import { flagUrl } from '@/lib/flags';
 import { trackEvent, trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
+import MatchRow from './MatchRow';
 import {
   monthLoadFailed,
   monthLoadStarted,
@@ -51,70 +51,6 @@ function monthLabel(date: Date): string {
 
 function dayLabel(date: Date): string {
   return date.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
-}
-
-function kickoffTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-}
-
-function TeamMark({ team, style }: { team: Team; style: TeamStyle }) {
-  const src = style === 'crest'
-    ? (team.crestUrl ?? flagUrl(team.abbr))
-    : (flagUrl(team.abbr) ?? team.crestUrl);
-  return src ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img className="mc-crest" src={src} alt="" loading="lazy" referrerPolicy="no-referrer" />
-  ) : (
-    <span className="mc-crest mc-crest--fallback" aria-hidden>{team.abbr}</span>
-  );
-}
-
-function MatchRow({
-  match,
-  teamStyle,
-  onOpen,
-}: {
-  match: Match;
-  teamStyle: TeamStyle;
-  onOpen: () => void;
-}) {
-  const started = match.state !== 'scheduled';
-  const status = match.state === 'live'
-    ? (match.minute ?? match.statusDetail)
-    : match.state === 'finished'
-      ? (match.statusDetail || 'FT')
-      : 'Scheduled';
-  const ariaStatus = match.state === 'scheduled' ? kickoffTime(match.kickoff) : status;
-
-  return (
-    <button
-      type="button"
-      className={`mc-match mc-match--${match.state}`}
-      onClick={onOpen}
-      aria-label={`${match.home.name} versus ${match.away.name}, ${ariaStatus}`}
-    >
-      <span className="mc-team">
-        <TeamMark team={match.home} style={teamStyle} />
-        <span className="mc-team-name">{match.home.name}</span>
-      </span>
-      <span className="mc-score">
-        {started ? (
-          <>
-            <strong>{match.homeScore ?? 0}</strong>
-            <span>–</span>
-            <strong>{match.awayScore ?? 0}</strong>
-          </>
-        ) : (
-          <strong>{kickoffTime(match.kickoff)}</strong>
-        )}
-        <small>{status}</small>
-      </span>
-      <span className="mc-team mc-team--away">
-        <span className="mc-team-name">{match.away.name}</span>
-        <TeamMark team={match.away} style={teamStyle} />
-      </span>
-    </button>
-  );
 }
 
 export default function MatchCalendar({

@@ -3218,3 +3218,98 @@ a {
 .ls-box td.ls-box-na { color: var(--text-muted); }
 .ls-box-scroll { overflow-x: auto; }
 .ls-box-scroll .standings-table { min-width: 520px; }
+
+/* ---- Live band (home) ----
+   One slot above the competition tiles, in one of three modes: anything in
+   play, otherwise what just finished beside what is next, otherwise nothing
+   at all. The empty case renders no markup, so there is no state here for it. */
+.lb { margin-bottom: 30px; }
+
+.lb-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.lb-title--live { color: var(--live-red); }
+.lb-title--next { color: var(--gold); }
+
+/* Same pulse language the hub tiles already use for an active competition. */
+.lb-ping {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--live-red);
+  box-shadow: 0 0 0 0 rgba(224, 36, 43, 0.55);
+  animation: lb-pulse 1.9s ease-out infinite;
+}
+@keyframes lb-pulse {
+  70% { box-shadow: 0 0 0 7px rgba(224, 36, 43, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(224, 36, 43, 0); }
+}
+
+/* A grid, not a carousel: Liga MX kicks off seven matches at once and a
+   carousel shows you one of them. */
+.lb-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 9px;
+}
+.lb-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 22px;
+}
+.lb-list { display: flex; flex-direction: column; gap: 7px; }
+
+.lb-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid transparent;
+  text-decoration: none;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+.lb-row:hover { background: var(--surface-3, var(--surface-2)); border-color: var(--gold); }
+.lb-row:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.lb-row--live { border-left-color: var(--live-red); }
+.lb-row--next { border-left-color: var(--gold); }
+.lb-row--recent { border-left-color: var(--hairline); }
+
+.lb-teams {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.lb-team { font-weight: 650; }
+.lb-score { font-size: 14px; font-weight: 800; }
+.lb-row--live .lb-score { color: var(--live-red); }
+
+.lb-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.lb-comp { letter-spacing: 0.03em; }
+.lb-detail { font-variant-numeric: tabular-nums; }
+
+@media (max-width: 560px) {
+  .lb-grid { grid-template-columns: 1fr; }
+  .lb-split { gap: 18px; }
+}

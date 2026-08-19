@@ -1,15 +1,10 @@
 import { listCompetitions, resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
-import type { Match } from '@/server/data/types';
+import { sortEntriesByKickoff, toLiveEntries, type LiveEntry } from '@/server/data/liveFeed';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-export interface LiveEntry {
-  competition: { id: string; name: string; shortName: string; emblem: string };
-  match: Match;
-}
 
 /**
  * Every competition's current window, merged, so the client polls once rather
@@ -32,16 +27,7 @@ export async function GET() {
       const rc = resolveSeason(comp.id);
       if (!rc) return [];
       try {
-        const matches = await dataStore.getLiveWindow(rc);
-        return matches.map((match) => ({
-          competition: {
-            id: comp.id,
-            name: comp.name,
-            shortName: comp.shortName,
-            emblem: comp.emblem,
-          },
-          match,
-        }));
+        return toLiveEntries(comp, rc.season.id, await dataStore.getLiveWindow(rc));
       } catch {
         failed += 1;
         await trackAPIRequestFailure('live', 502, comp.id, rc.season.id);
@@ -55,9 +41,7 @@ export async function GET() {
     return Response.json({ error: 'every competition feed failed' }, { status: 502 });
   }
 
-  const entries = perCompetition
-    .flat()
-    .sort((a, b) => new Date(a.match.kickoff).getTime() - new Date(b.match.kickoff).getTime());
+  const entries = sortEntriesByKickoff(perCompetition.flat());
 
   return Response.json(entries, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
 }

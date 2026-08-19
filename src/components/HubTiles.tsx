@@ -6,9 +6,12 @@ interface Tile {
   comp: Competition;
   season: Season;
   status: HubStatus;
-  count: number;
   live: number;
   champion?: string | null;
+  // What the tile says under the competition name. Computed on the server by
+  // `tileSubLine` so the rule is one testable function rather than a switch
+  // spread across a component.
+  subLine: string;
 }
 
 interface Props {
@@ -35,19 +38,6 @@ function badge(tile: Tile): { text: string; className: string } {
 
 // live + ongoing are "active" states that get an animated status dot.
 const isActive = (s: HubStatus) => s === 'live' || s === 'ongoing';
-
-function subLine(tile: Tile): string {
-  switch (tile.status) {
-    case 'live':
-      return `${tile.live} live · ${tile.count} matches`;
-    case 'upcoming':
-      return `${tile.comp.shortName} · ${tile.season.label} season`;
-    case 'ongoing':
-      return `${tile.count} matches`;
-    case 'finished':
-      return tile.champion ? `${tile.champion} — champions` : `${tile.season.label} · complete`;
-  }
-}
 
 export default function HubTiles({ tiles }: Props) {
   return (
@@ -80,7 +70,7 @@ export default function HubTiles({ tiles }: Props) {
                       </span>
                     </div>
                     <div className="hub-name">{tile.comp.name}</div>
-                    <div className="hub-sub">{subLine(tile)}</div>
+                    <div className="hub-sub">{tile.subLine}</div>
                   </TrackedCompetitionLink>
                 );
               })}

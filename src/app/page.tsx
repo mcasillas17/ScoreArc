@@ -1,14 +1,19 @@
 import Link from 'next/link';
 import { listCompetitions, resolveSeason } from '@/server/data/competitions';
-import { dataStore, currentWeekRange } from '@/server/data/store';
+import { dataStore } from '@/server/data/store';
 import { hubStatus } from '@/lib/hubStatus';
+import { tileFacts, tileSubLine } from '@/lib/hubTile';
+import { sortEntriesByKickoff, toLiveEntries, type LiveEntry } from '@/server/data/liveFeed';
 import HubTiles from '@/components/HubTiles';
+import LiveBand from '@/components/LiveBand';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata = { title: 'ScoreArc · Live Football' };
 
 export default async function Hub() {
+  // One clock for the whole render, so two tiles cannot disagree about "today".
+  const now = new Date();
   const tiles = await Promise.all(
     listCompetitions().map(async (comp) => {
       const rc = resolveSeason(comp.id)!;
@@ -19,9 +24,11 @@ export default async function Hub() {
       try {
         // The unenriched read, deliberately. getMatches fetches one /summary
         // per match for scorers and cards this page never renders — 77 of the
-        // 95 upstream requests a single home render used to cost. The same
-        // current-week window, so every tile is unchanged.
-        matches = await dataStore.getFixtures(rc, currentWeekRange(new Date()));
+        // 95 upstream requests a single home render used to cost.
+        //
+        // The window is the band's, not the current week's: one read per
+        // competition feeds both the band above and the tile below it.
+        matches = await dataStore.getLiveWindow(rc);
       } catch {
         // ESPN feed unavailable — show best-effort status
       }
@@ -55,9 +62,22 @@ export default async function Hub() {
       const champion = finalMatch
         ? (finalMatch.winnerId === finalMatch.home.id ? finalMatch.home.name : finalMatch.away.name)
         : null;
-      return { comp, season: rc.season, status: hubStatus(matches, started, finished), count: matches.length, live, champion };
+      const status = hubStatus(matches, started, finished);
+      const facts = tileFacts(matches, standings, now);
+      return {
+        comp,
+        season: rc.season,
+        status,
+        live,
+        champion,
+        subLine: tileSubLine(status, facts, champion, rc.season.label),
+        entries: toLiveEntries(comp, rc.season.id, matches),
+      };
     }),
   );
+  // The band draws from every competition at once; the tiles are the way in.
+  const entries: LiveEntry[] = sortEntriesByKickoff(tiles.flatMap((t) => t.entries));
+
   return (
     <main className="hub">
       <header className="hub-head">
@@ -67,6 +87,7 @@ export default async function Hub() {
         </Link>
         <p className="hub-tag">Live football — brackets, scores &amp; standings, every arc.</p>
       </header>
+      <LiveBand initialEntries={entries} />
       <HubTiles tiles={tiles} />
     </main>
   );
