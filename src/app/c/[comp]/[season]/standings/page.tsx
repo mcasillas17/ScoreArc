@@ -35,8 +35,8 @@ export default async function StandingsPage({ params }: { params: { comp: string
           <h1 className="bracket-title">Standings</h1>
           <p className="page-subtitle">
             {rc.season.format.hasBracket
-              ? 'Top scorers, the third-place race, and full group tables.'
-              : 'Top scorers and the full league table.'}
+              ? 'Scorers, assists, the third-place race, and full group tables.'
+              : 'Scorers, assists, and the full league table.'}
           </p>
         </header>
 

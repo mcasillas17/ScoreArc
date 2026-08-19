@@ -3184,3 +3184,27 @@ a {
   .mc-team-name { font-size: 11px; }
   .mc-crest { width: 24px; height: 24px; }
 }
+
+/* ---- Per-player match box score ----
+   Starters then substitutes; a dash means the provider sent no such stat for
+   that position, which is not the same as a zero and must not render as one. */
+.ls-box { margin-top: 12px; }
+.ls-box:first-child { margin-top: 0; }
+.ls-box-team {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.ls-box-sub {
+  color: var(--text-muted);
+  font-size: 10px;
+  margin-left: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ls-box td.ls-box-na { color: var(--text-muted); }
+.ls-box-scroll { overflow-x: auto; }
+.ls-box-scroll .standings-table { min-width: 520px; }

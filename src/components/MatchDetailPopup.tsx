@@ -6,7 +6,7 @@ import type { BracketMatch, MatchSummaryData } from '@/server/data/types';
 import { flagUrl } from '@/lib/flags';
 import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar, LineupView, PenaltyShootout, liveStatus, isBeforeKickoff } from './MatchStats';
 import MatchHighlights from './MatchHighlights';
-import { MatchInfoRow, FormRow, H2HRow, CommentaryFeed } from './MatchExtras';
+import { MatchInfoRow, FormRow, H2HRow, CommentaryFeed, BoxScoreBlock } from './MatchExtras';
 import { CollapsibleSection } from './Collapsible';
 
 export type MatchSummary = MatchSummaryData;
@@ -217,6 +217,15 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
               <CollapsibleSection title="Lineups" tone="#2dd4bf">
                 <LineupView lineups={summary.lineups} homeAbbr={home.abbr} awayAbbr={away.abbr} />
               </CollapsibleSection>
+            </div>
+          )}
+
+          {/* Per-player numbers only exist once a match has been played, so the
+              box score sits behind the same lineups guard but not the upcoming
+              one — it renders itself away when the payload carries no stats. */}
+          {!upcoming && !loading && summary?.lineups && (
+            <div className="md-section">
+              <BoxScoreBlock lineups={summary.lineups} homeAbbr={home.abbr} awayAbbr={away.abbr} />
             </div>
           )}
 
