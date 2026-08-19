@@ -1,5 +1,11 @@
 # Assists & Per-Match Box Score Implementation Plan
 
+> **Executed and shipped 2026-08-18** on `feat/assists-and-box-score`. Where the
+> implementation diverged from what is written below, the divergence is recorded
+> in `docs/PRODUCT_ROADMAP.md` under E1 — chiefly: all four accuracy stats were
+> derived (not only shots), an offsides column was added to the box score, and
+> `goalsConceded` was deliberately left out of it.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Render the assist leaderboard and the per-player match box score, both of which already arrive in responses ScoreArc fetches today and discards, without adding a single network request.
@@ -62,7 +68,7 @@
 - `StatLeader` — `{ rank: number; player: string; teamAbbr: string; teamName: string; teamCrestUrl: string | null; value: number; matches: number | null }`. Replaces `TopScorer`; the metric-specific field `goals` becomes `value`.
 - `mapLeaders(raw: unknown, category: string, limit?: number): StatLeader[]` — `category` is an ESPN `stats[].name`, e.g. `'goalsLeaders'` or `'assistsLeaders'`. Returns `[]` for a missing category or malformed payload.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Replace the whole contents of `src/server/data/providers/espn-stats.test.ts`:
 
@@ -164,7 +170,7 @@ describe('mapLeaders', () => {
 });
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `npx vitest run src/server/data/providers/espn-stats.test.ts`
 Expected: FAIL — `mapLeaders` is not exported from `./espn-stats`.
@@ -176,7 +182,7 @@ it:
 Verified live 2026-08-15: that URL returns both `goalsLeaders` and
 `assistsLeaders`, 50 rows each.
 
-- [ ] **Step 3: Rename the type**
+- [x] **Step 3: Rename the type**
 
 In `src/server/data/types.ts`, replace the `TopScorer` interface:
 
@@ -195,7 +201,7 @@ export interface StatLeader {
 }
 ```
 
-- [ ] **Step 4: Generalise the mapper**
+- [x] **Step 4: Generalise the mapper**
 
 Replace the whole contents of `src/server/data/providers/espn-stats.ts`:
 
@@ -245,7 +251,7 @@ export function mapLeaders(raw: unknown, category: string, limit = 20): StatLead
 }
 ```
 
-- [ ] **Step 5: Run the mapper suite**
+- [x] **Step 5: Run the mapper suite**
 
 Run: `npx vitest run src/server/data/providers/espn-stats.test.ts`
 Expected: PASS, all cases.
@@ -253,7 +259,7 @@ Expected: PASS, all cases.
 `npx tsc --noEmit` will still fail across the app — the consumers are renamed in
 Task 2. That is expected; do not chase it here.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/server/data/types.ts src/server/data/providers/espn-stats.ts src/server/data/providers/espn-stats.test.ts
@@ -280,7 +286,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - `getLeaders(rc: CompetitionSeason, ttlMs?: number): Promise<{ scorers: StatLeader[]; assists: StatLeader[] }>` — fetches `/statistics` **once**, maps both categories, caches the pair under one key.
 - `getTopScorers(rc)` and `getTopAssists(rc)` keep returning `StatLeader[]` and both read `getLeaders`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `src/server/data/store.test.ts`, inside the top-level `describe`:
 
@@ -319,12 +325,12 @@ reuse whatever names the existing tests in that file use for the resolved
 competition-season and the cache — match the file, do not introduce a second
 convention.
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `npx vitest run src/server/data/store.test.ts -t "both leaderboards"`
 Expected: FAIL — `store.getTopAssists is not a function`.
 
-- [ ] **Step 3: Implement in the store**
+- [x] **Step 3: Implement in the store**
 
 In `src/server/data/store.ts`:
 
@@ -377,12 +383,12 @@ Add `getLeaders` to the `DataStore` interface beside the two getters:
 
 Replace every other `TopScorer` in the file with `StatLeader`.
 
-- [ ] **Step 4: Run the store suite**
+- [x] **Step 4: Run the store suite**
 
 Run: `npx vitest run src/server/data/store.test.ts`
 Expected: PASS, including the new case asserting exactly one `/statistics` call.
 
-- [ ] **Step 5: Add the API route**
+- [x] **Step 5: Add the API route**
 
 Create `src/app/api/[comp]/[season]/top-assists/route.ts`:
 
@@ -405,7 +411,7 @@ export async function GET(_req: Request, { params }: { params: { comp: string; s
 }
 ```
 
-- [ ] **Step 6: Verify the route**
+- [x] **Step 6: Verify the route**
 
 ```bash
 npm run dev
@@ -415,7 +421,7 @@ curl -s "http://localhost:3000/api/liga-mx/2026-27/top-assists" | head -c 400
 Expected: a JSON array whose first element is Robert Morales (UNAM) with
 `"value": 3`. Verified live 2026-08-15.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/server/data/store.ts src/server/data/store.test.ts "src/app/api/[comp]/[season]/top-assists/route.ts"
@@ -440,7 +446,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - `LeaderTable({ leaders, metric, teamStyle })` where
   `metric: { abbr: string; title: string }` — e.g. `{ abbr: 'G', title: 'Goals' }`.
 
-- [ ] **Step 1: Create the component**
+- [x] **Step 1: Create the component**
 
 ```bash
 git mv src/components/TopScorersTable.tsx src/components/LeaderTable.tsx
@@ -509,7 +515,7 @@ export default function LeaderTable({
 }
 ```
 
-- [ ] **Step 2: Render both boards in `StandingsLive`**
+- [x] **Step 2: Render both boards in `StandingsLive`**
 
 In `src/components/StandingsLive.tsx`:
 
@@ -586,7 +592,7 @@ immediately after `{standingsBlock}`.
 Empty boards render nothing — a competition ESPN publishes no statistics for is a
 real state, and an empty table is worse than no table.
 
-- [ ] **Step 3: Feed the pages**
+- [x] **Step 3: Feed the pages**
 
 In both `src/app/c/[comp]/[season]/standings/page.tsx` and
 `src/app/c/[comp]/[season]/page.tsx`:
@@ -605,13 +611,13 @@ In both `src/app/c/[comp]/[season]/standings/page.tsx` and
 
 - pass `initialAssists={assists}` to `<StandingsLive />` alongside `initialScorers`.
 
-- [ ] **Step 4: Typecheck**
+- [x] **Step 4: Typecheck**
 
 Run: `npx tsc --noEmit`
 Expected: no output. Any remaining error naming `TopScorer` is a rename site
 missed in Task 2 Step 3 or this step — fix it there, do not re-add the old type.
 
-- [ ] **Step 5: Verify in the browser, including the request count**
+- [x] **Step 5: Verify in the browser, including the request count**
 
 ```bash
 npm run dev
@@ -626,7 +632,7 @@ Open DevTools → Network, filter `statistics`, and hard-reload.
 Expected: **one** upstream `/statistics` request, not two. This is the constraint
 the whole task exists to respect.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/components/LeaderTable.tsx src/components/StandingsLive.tsx "src/app/c/[comp]/[season]/standings/page.tsx" "src/app/c/[comp]/[season]/page.tsx"
@@ -659,7 +665,7 @@ goalkeeper Alec Smir carries `saves`, `goalsConceded` and `shotsFaced` but no
 by array index would silently mis-assign every value the moment a position
 changes the set. A missing stat is `null` — "not applicable" — never `0`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `src/server/data/providers/espn-summary.test.ts`:
 
@@ -697,13 +703,13 @@ describe('mapSummaryLineups box score', () => {
 This reuses the `espn-summary-own-goal.json` fixture recorded in **E0 Task 3**. If
 E0 has not landed on your branch, record it first with the command in that plan.
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `npx vitest run src/server/data/providers/espn-summary.test.ts -t "box score"`
 Expected: FAIL — `p.starter` and `p.stats` do not exist, and the roster is
 filtered to 11 starters so the substitutes assertion fails.
 
-- [ ] **Step 3: Add the types**
+- [x] **Step 3: Add the types**
 
 In `src/server/data/types.ts`, replace the `LineupPlayer` line:
 
@@ -740,7 +746,7 @@ export interface LineupPlayer {
 }
 ```
 
-- [ ] **Step 4: Read the stats array in the mapper**
+- [x] **Step 4: Read the stats array in the mapper**
 
 In `src/server/data/providers/espn-summary.ts`, add the import of
 `PlayerMatchStats` to the existing type import on line 1, then insert this helper
@@ -807,7 +813,7 @@ And replace the emptiness guard, which counted starters:
     if (!home.players.some((p) => p.starter) || !away.players.some((p) => p.starter)) return null;
 ```
 
-- [ ] **Step 5: Run the suite**
+- [x] **Step 5: Run the suite**
 
 Run: `npm test`
 Expected: PASS.
@@ -823,7 +829,7 @@ grep -rn "lineups" src/components/
 Every place that draws the XI must now use `.filter((p) => p.starter)`. Fix them
 in this step, then re-run `npm test` and `npx tsc --noEmit`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/server/data/types.ts src/server/data/providers/espn-summary.ts src/server/data/providers/espn-summary.test.ts src/components
@@ -850,7 +856,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 Presentational — verified by running the app, per repo convention.
 
-- [ ] **Step 1: Add the table**
+- [x] **Step 1: Add the table**
 
 In `src/components/MatchExtras.tsx`, add a box-score section rendered for each
 team when at least one player has non-null `stats`. Columns, in order:
@@ -876,7 +882,7 @@ only what is genuinely new:
 .ls-box td.ls-box-na { color: var(--text-muted); }
 ```
 
-- [ ] **Step 2: Verify in the browser**
+- [x] **Step 2: Verify in the browser**
 
 ```bash
 npm run dev
@@ -890,7 +896,7 @@ Expected:
 - Alec Smir (GK) shows `SV 3` and a dash under offsides.
 - Jefferson Díaz shows `0` under offsides and no saves column value.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/components/MatchExtras.tsx src/app/globals.css
@@ -911,7 +917,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ESPN sends `shotAccuracy` pre-rounded to a whole number. We hold `shots` and
 `shotsOnTarget`, so we can be more accurate than the field we are copying.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `src/server/data/providers/espn-summary.test.ts`:
 
@@ -957,12 +963,12 @@ Adjust the payload shape in Step 1 to match however `mapSummaryStats` actually
 reads the boxscore in this repo — open the function first and mirror its access
 path exactly. The two assertions are the contract; the fixture shape is not.
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `npx vitest run src/server/data/providers/espn-summary.test.ts -t "derived percentages"`
 Expected: FAIL — `shotAccuracy` comes back as `30`.
 
-- [ ] **Step 3: Compute in the mapper**
+- [x] **Step 3: Compute in the mapper**
 
 In `mapSummaryStats`, after the raw stats are read, override the accuracy fields
 where both operands are present:
@@ -979,13 +985,13 @@ Apply it to `shotAccuracy` from `shotsOnTarget / shots`. Leave `passAccuracy`,
 carries both operands for them too — check before assuming, and do not invent a
 denominator.
 
-- [ ] **Step 4: Show the fraction**
+- [x] **Step 4: Show the fraction**
 
 In `src/components/MatchStats.tsx`, render the accuracy row as `27.3%` with
 `3/11` beside it in `--text-muted`. The fraction is what makes the percentage
 checkable.
 
-- [ ] **Step 5: Run and verify**
+- [x] **Step 5: Run and verify**
 
 Run: `npm test` — expected PASS.
 Run: `npx tsc --noEmit` — expected clean.
@@ -997,7 +1003,7 @@ npm run dev
 Find a finished match and confirm the accuracy row shows one decimal place and
 the raw fraction.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/server/data/providers/espn-summary.ts src/server/data/providers/espn-summary.test.ts src/components/MatchStats.tsx
@@ -1013,7 +1019,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ### Task 7: Full gate and PR
 
-- [ ] **Step 1: Gate**
+- [x] **Step 1: Gate**
 
 Kill the dev server first — `next dev` and `next build` both write `.next/`.
 
@@ -1027,7 +1033,7 @@ npm run build
 
 Expected: green, silent, clean, succeeds.
 
-- [ ] **Step 2: Verify the no-new-requests constraint one final time**
+- [x] **Step 2: Verify the no-new-requests constraint one final time**
 
 ```bash
 npm run dev
@@ -1040,7 +1046,7 @@ Expected: **one** upstream `/statistics` request while two leaderboards render.
 If there are two, `getTopScorers` and `getTopAssists` are not both going through
 `getLeaders`.
 
-- [ ] **Step 3: Open the PR**
+- [x] **Step 3: Open the PR**
 
 ```bash
 git push -u origin feat/assists-and-box-score
@@ -1084,7 +1090,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 4: Stop.** Do not merge — that is the user's decision.
+- [x] **Step 4: Stop.** Do not merge — that is the user's decision.
 
 ---
 

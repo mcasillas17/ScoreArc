@@ -209,13 +209,26 @@ Serie A, Bundesliga and Ligue 1 are affected identically.
 `LeagueZoneTable` already prints "Season not started" — the note shipped, the fix
 did not. The coloured bands and the alphabetical rank column still render.
 
-### E1 · Assists & per-match box score
+### E1 · Assists & per-match box score — **shipped**
 Branch `feat/assists-and-box-score`. No new endpoint, no new network call.
 
-- **T1.1** Generalise the leaders mapper; add `mapTopAssists`
-- **T1.2** Assists API route + UI block
-- **T1.3** Per-match player box score from `rosters[].roster[].stats`
-- **T1.4** Recompute derived percentages from raw numerator/denominator
+- **T1.1** ✅ Generalise the leaders mapper — `mapTopScorers` → `mapLeaders(raw, category)`
+- **T1.2** ✅ Assists API route + UI block (`TopScorersTable` → `LeaderTable`)
+- **T1.3** ✅ Per-match player box score from `rosters[].roster[].stats`
+- **T1.4** ✅ Recompute derived percentages from raw numerator/denominator
+
+Verified live: one upstream `/statistics` request serves both boards (asserted
+by a store test *and* observed against the running dev server).
+
+Two things the plan did not anticipate, both settled during implementation:
+
+- **All four accuracy stats carry both operands**, not just shots. ESPN sends
+  them as a 0–1 fraction with a single decimal — 339-of-401 passes arrives as
+  `0.8` and rendered as 80% against an actual 84.5%. All four are now derived,
+  and each shows its fraction beneath it.
+- **`goalsConceded` is not a per-player stat.** ESPN repeats the team's conceded
+  count on every outfielder, so it is deliberately not a box-score column; a
+  column of it would read as eleven players each conceding the same goal.
 
 ### E2 · Live scores grid
 Branch `feat/live-scores`.
@@ -379,7 +392,7 @@ copies of the same validator and reconciling them later.
 
 ## Delivery order
 
-**Now** — E0, then E1 and E2 in either order. One branch each.
+**Now** — ~~E0~~ (#77), ~~E1~~ (#84), then E2. One branch each.
 
 **Next** — E3, E4, E5. Mutually independent and touching largely disjoint files:
 the natural three-way split across parallel sessions.
