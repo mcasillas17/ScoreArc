@@ -2578,6 +2578,12 @@ a {
   align-items: flex-end;
   gap: 20px;
   margin-bottom: 34px;
+  /* 40% of 750 is 300, which is the width the lockup was drawn at. Capping the
+     row there lets the mark stay exactly 40% at every width while never being
+     upscaled past its own artwork -- on a 2000px display an uncapped 40% is a
+     680px logo. The cards below still use the full width; only the masthead
+     stops, which reads as a masthead rather than a banner. */
+  max-width: 750px;
 }
 
 .hub-brand {
@@ -2607,7 +2613,7 @@ a {
   /* Sized to about half the mark's height. The mark tracks the row width, so
      a fixed size would drift out of proportion across the range; the clamp
      keeps it readable at 320px and stops it running large on a desktop. */
-  font-size: clamp(10px, 2.2vw, 26px);
+  font-size: clamp(10px, 2.2vw, 17px);
   line-height: 1.3;
   /* Balance only -- it evens the two lines without capping the width, so the
      orphaned "arc." goes away and the dead corner does not come back. */
