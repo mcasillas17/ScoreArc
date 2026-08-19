@@ -3158,7 +3158,14 @@ a {
 .mc-status { min-height: 20px; margin-bottom: 4px; color: var(--text-muted); font-size: 12px; text-align: center; }
 .mc-day { margin: 18px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
 .mc-day--today { color: var(--gold); }
-.mc-matches { display: grid; gap: 7px; }
+/* Every list of matches, in both views. Liga MX kicks off seven at once and a
+   single column buries six of them; 420px rather than 320 because at 320 a
+   three-up grid truncated "Monterrey" to "Mo…" on a 1280px screen. */
+.match-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 8px;
+}
 .mc-match {
   width: 100%;
   display: grid;
@@ -3380,13 +3387,7 @@ a {
   padding: 1px 7px;
 }
 
-.mn-grid {
-  display: grid;
-  /* 420px, not 320px: at 320 a three-up grid truncated "Monterrey" to "Mo…"
-     on a 1280px screen, which is worse than one fewer column. */
-  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
-  gap: 8px;
-}
+
 
 .mn-day + .mn-day { margin-top: 14px; }
 .mn-day-label {
@@ -3402,7 +3403,7 @@ a {
 .mn-section--live .mc-match { border-left: 3px solid var(--live-red); }
 
 @media (max-width: 560px) {
-  .mn-grid { grid-template-columns: 1fr; }
+  .match-grid { grid-template-columns: 1fr; }
 }
 
 /* A competition with no trophy photograph shows its emblem at the same size,
