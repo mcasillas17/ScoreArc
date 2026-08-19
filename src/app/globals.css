@@ -1,12 +1,26 @@
 /* ===== ScoreArc — Dark Theme ===== */
 :root {
-  --bg: #0b0b0d;
-  --surface-1: #141418;
-  --surface-2: #1a1a20;
-  --border: #26262e;
-  --hairline: #1c1c22;
-  --text: #ececef;
-  --text-muted: #9a9aa4;
+  /* Neutrals taken from the logo: a near-black and an off-white that both
+     carry a trace of the mark's green, so the brand colour sits in the page
+     rather than on top of it. */
+  --bg: #0a0d0c;
+  --surface-1: #121614;
+  --surface-2: #181d1b;
+  --border: #22292a;
+  --hairline: #1b211f;
+  --text: #f7f9f8;
+  --text-muted: #949e99;
+
+  /* The brand, straight from the mark. --brand-deep is the logo's light-
+     background variant, for anything drawn on a pale surface. */
+  --brand: #22c55e;
+  --brand-bright: #4ade80;
+  --brand-deep: #128a4d;
+  --brand-soft: rgba(34, 197, 94, 0.16);
+
+  /* Gold is no longer the brand — it is the PRIZE. It marks qualification,
+     a champion and a playoff place, and nothing else, so the two colours
+     never compete: green is ScoreArc, gold is what is at stake. */
   --gold: #e8b84b;
   --gold-bright: #f0c873;
   /* Per-competition accent — overridden on .app-shell; falls back to gold. */
@@ -17,17 +31,19 @@
   --qual: var(--gold);
   --qual-bright: var(--gold-bright);
   /* Semantic palette (global; --live-red already defined above). */
-  --win: #35c17b;
+  /* Shifted toward teal, away from --brand (#22c55e, hue 145). A result and
+     the site's own chrome must not read as the same colour. */
+  --win: #2bb89a;
   --loss: #e5533d;
   --draw: #55555f;
   --info: #4a90d9;
   --info-bright: #8fbdec;
   --live-red: #ff5c5c;
-  --qualify-green: #36c275;
+  --qualify-green: #2cbf9d;
   /* Per-category match-stat bar colors */
   --stat-attack: #ff6b6b;
   --stat-pass: #5aa2ff;
-  --stat-defend: #36c275;
+  --stat-defend: #2cbf9d;
   --stat-discipline: #e8b84b;
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -174,16 +190,17 @@ a {
   margin-left: var(--sidebar-collapsed-w);
 }
 
-.sidebar-ball {
-  font-size: 22px;
-  line-height: 1;
-}
+/* The mark inherits currentColor, so the brand colour lives in one place. */
+.sidebar-ball { color: var(--brand); flex: none; }
+/* The hub's lockup is the brand moment on the site, so it is given room. */
+.hub-lockup { height: 96px; width: auto; display: block; }
+@media (max-width: 560px) { .hub-lockup { height: 62px; } }
 
 .sidebar-wordmark {
   font-size: 21px;
   font-weight: 800;
   letter-spacing: -0.03em;
-  color: var(--gold);
+  color: var(--text);
 }
 
 .sidebar-nav {
@@ -423,7 +440,7 @@ a {
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   letter-spacing: 0.01em;
   padding: 7px 16px;
@@ -2548,7 +2565,14 @@ a {
   margin: 0 auto;
 }
 
+/* Tagline sits immediately right of the lockup, not pushed to the page edge:
+   the two read as one masthead rather than as opposite corners of a bar. The
+   lockup's underline arc already closes the mark, so stacking the tagline
+   beneath it made it a third element instead of a subtitle. */
 .hub-head {
+  display: flex;
+  align-items: center;
+  gap: 26px;
   margin-bottom: 34px;
 }
 
@@ -2562,7 +2586,9 @@ a {
 }
 
 .hub-word {
-  color: var(--gold);
+  /* Off-white, per the delivered lockup: the mark carries the brand colour,
+     the wordmark carries the contrast. */
+  color: var(--text);
   font-weight: 800;
   font-size: 26px;
   letter-spacing: -0.5px;
@@ -2570,7 +2596,22 @@ a {
 
 .hub-tag {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 15px;
+  /* Wrapped to a tidy block beside the mark rather than one long line, and
+     balanced so the two lines are even. */
+  max-width: 30ch;
+  text-wrap: balance;
+  line-height: 1.45;
+}
+
+/* Stacked once there is no room to sit side by side. */
+@media (max-width: 760px) {
+  .hub-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .hub-tag { max-width: none; font-size: 13.5px; }
 }
 
 .hub-groups {
@@ -2665,7 +2706,7 @@ a {
 }
 
 .hub-tile:hover {
-  border-color: var(--gold);
+  border-color: var(--brand);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
   transform: translateY(-2px);
 }
@@ -3078,14 +3119,14 @@ a {
   --zone-champion: var(--accent, var(--gold));
   --zone-ucl: #4f8cff;
   --zone-uel: #ff9f45;
-  --zone-uecl: #35c98c;
+  --zone-uecl: #2fc4a0;
   --zone-playoff: var(--gold);
   /* A play-in tie is not a place in the post-season, it is a chance at one, so
      it wears --zone-playoff's gold drained of its saturation: MLS's 8th and 9th
      read as "nearly in" beside the solid gold above them, and stay clearly
      distinct from it in the legend. */
   --zone-wildcard: #cfc09a;
-  --zone-promotion: #35c98c;
+  --zone-promotion: #2fc4a0;
   --zone-releg-playoff: #e8a33d;
   --zone-relegation: #e5484d;
   --zone-mid: var(--hairline);
@@ -3261,7 +3302,7 @@ a {
   margin-bottom: 10px;
 }
 .lb-title--live { color: var(--live-red); }
-.lb-title--next { color: var(--gold); }
+.lb-title--next { color: var(--brand); }
 
 /* Same pulse language the hub tiles already use for an active competition. */
 .lb-ping {
@@ -3306,10 +3347,10 @@ a {
   text-decoration: none;
   transition: border-color 140ms ease, background 140ms ease;
 }
-.lb-row:hover { background: var(--surface-2); border-color: var(--gold); }
-.lb-row:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.lb-row:hover { background: var(--surface-2); border-color: var(--brand); }
+.lb-row:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .lb-row--live { border-left-color: var(--live-red); }
-.lb-row--next { border-left-color: var(--gold); }
+.lb-row--next { border-left-color: var(--brand); }
 .lb-row--recent { border-left-color: var(--hairline); }
 
 .lb-teams {
@@ -3367,16 +3408,16 @@ a {
   text-decoration: none;
   transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
 }
-.mn-tab:hover { color: var(--text); border-color: var(--gold); }
-.mn-tab:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.mn-tab:hover { color: var(--text); border-color: var(--brand); }
+.mn-tab:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .mn-tab--on {
-  background: var(--gold);
-  border-color: var(--gold);
+  background: var(--brand);
+  border-color: var(--brand);
   color: var(--bg);
   font-weight: 750;
 }
 
-.mn-empty-link { color: var(--gold); }
+.mn-empty-link { color: var(--brand); }
 
 .mn-sections { display: flex; flex-direction: column; gap: 26px; }
 

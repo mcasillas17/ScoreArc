@@ -5,6 +5,7 @@ import { hubStatus } from '@/lib/hubStatus';
 import { tileFacts, tileSubLine } from '@/lib/hubTile';
 import { prioritiseEntries, toLiveEntries, type LiveEntry } from '@/server/data/liveFeed';
 import HubTiles from '@/components/HubTiles';
+
 import LiveBand from '@/components/LiveBand';
 
 export const dynamic = 'force-dynamic';
@@ -84,8 +85,18 @@ export default async function Hub() {
     <main className="hub">
       <header className="hub-head">
         <Link href="/" className="hub-brand" aria-label="ScoreArc home">
-          <span>⚽</span>
-          <span className="hub-word">ScoreArc</span>
+          {/* The delivered lockup, used as an image: its kerning and the
+              underline arc are the designer's, and reproducing them in HTML
+              would drift. The sidebar keeps HTML text, where matching the
+              app's own typography matters more. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            className="hub-lockup"
+            src="/brand/scorearc-lockup-3a-dark.svg"
+            alt="ScoreArc"
+            width={300}
+            height={104}
+          />
         </Link>
         <p className="hub-tag">Live football — brackets, scores &amp; standings, every arc.</p>
       </header>

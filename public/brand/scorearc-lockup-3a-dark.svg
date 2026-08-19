@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="104" viewBox="0 0 300 104">
+  <circle cx="46" cy="46" r="30" fill="none" stroke="#22292a" stroke-width="7"></circle>
+  <path d="M46 16A30 30 0 0 1 72 61" fill="none" stroke="#22c55e" stroke-width="7" stroke-linecap="round"></path>
+  <circle cx="46" cy="46" r="8" fill="#f7f9f8"></circle>
+  <text x="96" y="58" font-family="Archivo, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="42" font-weight="700" letter-spacing="-1.2" fill="#f7f9f8">ScoreArc</text>
+  <path d="M97 76C130 88 200 88 288 74" fill="none" stroke="#22c55e" stroke-width="5" stroke-linecap="round"></path>
+</svg>

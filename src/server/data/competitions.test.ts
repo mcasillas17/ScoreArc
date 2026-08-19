@@ -106,7 +106,11 @@ describe('competition registry', () => {
     // country. Every club league takes a colour from its own flag, so the
     // domestic title band and the competition chrome read as national.
     expect(COMPETITIONS['world-cup'].accent.base.toLowerCase()).toBe('#e8b84b');
-    expect(COMPETITIONS['liga-mx'].accent.base).toBe('#22a95e');      // verde
+    // Blanco, not verde. The flag has both, and the brand green now sits 5
+    // degrees of hue from Mexico's verde -- close enough that Liga MX pages
+    // would have looked like they had no accent at all. White is the only
+    // achromatic accent in the set, so it cannot collide with anything.
+    expect(COMPETITIONS['liga-mx'].accent.base).toBe('#e9edeb');      // blanco
     expect(COMPETITIONS['premier-league'].accent.base).toBe('#d4344a'); // St George red
     expect(COMPETITIONS['serie-a'].accent.base).toBe('#0a9b52');       // tricolore green
     expect(COMPETITIONS['bundesliga'].accent.base).toBe('#d20515');    // rot
