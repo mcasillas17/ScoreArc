@@ -45,6 +45,14 @@ to serve that data instead.
    either time — the remote branch still had them — but the follow-on work was
    built on a `main` that was missing half the change.
 
+6. **Verify a responsive change across the breakpoint range, not at one width.**
+   A fix checked at a single viewport is not checked. PR #97 widened the phone
+   masthead to `min(100%, 340px)`, which meets the content edge at 390px and
+   nowhere else -- 42px short at 430px, 172px at 560px. It was verified at 390px,
+   shipped, and reached production still showing the bug it claimed to fix, now
+   with an oversized logo as well. Render at a low, a middle and a high width
+   inside the media query before opening the PR.
+
 ## Commands
 
 - `npm run dev` — local dev server (Next.js). Verify UI changes here before any PR.
