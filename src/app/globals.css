@@ -193,17 +193,10 @@ a {
 /* The mark inherits currentColor, so the brand colour lives in one place. */
 .sidebar-ball { color: var(--brand); flex: none; }
 /* The hub's lockup is the brand moment on the site, so it is given room. */
-.hub-lockup { height: 96px; width: auto; display: block; }
+.hub-lockup { width: 100%; height: auto; display: block; }
 /* Bigger than it was, and nudged left so the ring optically aligns with the
    text beneath it — the SVG's own left padding pushed it off. */
-/* On a phone the lockup is a left-aligned block roughly half the viewport
-   wide, which left a conspicuous hole in the top-right of the page. Filling
-   the width instead: the mark scales with the viewport and the masthead
-   centres, so the header reads as a header rather than as content that ran
-   out. Capped so it never outgrows the tablet size. */
-@media (max-width: 760px) {
-  .hub-lockup { height: auto; width: min(100%, 340px); margin-left: -4px; }
-}
+
 
 .sidebar-wordmark {
   font-size: 21px;
@@ -2574,14 +2567,16 @@ a {
   margin: 0 auto;
 }
 
-/* Tagline sits immediately right of the lockup, not pushed to the page edge:
-   the two read as one masthead rather than as opposite corners of a bar. The
-   lockup's underline arc already closes the mark, so stacking the tagline
-   beneath it made it a third element instead of a subtitle. */
+/* One composition at every width: the mark on the left, the tagline filling
+   the rest and sitting on the mark's baseline. The mark is 40% of the row
+   until that would upscale it past the 300px the lockup was drawn at, so the
+   header spans the full width on a phone and on a desktop without the mark
+   growing into a billboard. The tagline flexes, so there is no width at which
+   the row ends early and leaves space beside it -- the bug this replaces. */
 .hub-head {
   display: flex;
-  align-items: center;
-  gap: 26px;
+  align-items: flex-end;
+  gap: 20px;
   margin-bottom: 34px;
 }
 
@@ -2589,8 +2584,10 @@ a {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 6px;
-  width: fit-content;
+  margin-bottom: 0;
+  flex: 0 0 auto;
+  width: 40%;
+  min-width: 0;
   text-decoration: none;
 }
 
@@ -2605,31 +2602,29 @@ a {
 
 .hub-tag {
   color: var(--text-muted);
-  font-size: 15px;
-  /* Wrapped to a tidy block beside the mark rather than one long line, and
-     balanced so the two lines are even. */
-  max-width: 30ch;
-  text-wrap: balance;
-  line-height: 1.45;
+  flex: 1;
+  min-width: 0;
+  /* Sized to about half the mark's height. The mark tracks the row width, so
+     a fixed size would drift out of proportion across the range; the clamp
+     keeps it readable at 320px and stops it running large on a desktop. */
+  font-size: clamp(10px, 2.2vw, 26px);
+  line-height: 1.3;
+  /* Balance only -- it evens the two lines without capping the width, so the
+     orphaned "arc." goes away and the dead corner does not come back. */
+  text-wrap: pretty;
+  /* Deliberately no max-width. Capping it is what left 213px of dead space to
+     the right of the tagline on a desktop -- the same empty-corner bug the
+     phone had, from the same cause: a fixed limit inside a flexible row. */
 }
 
-/* Stacked once there is no room to sit side by side.
-   The gap is tighter than it looks it should be: the lockup SVG carries about
-   16px of its own padding inside a 104-unit viewBox, so a 10px flex gap read
-   as nearly 20 on a phone and the tagline floated away from the mark, leaving
-   the header looking like two unrelated blocks. */
+/* Only the spacing changes on a phone -- the composition above already
+   holds. NOTE: a second mobile block for the masthead used to live near the
+   top of this file. Being earlier it lost every conflict, so edits there did
+   nothing except where they set a property the winning block left undeclared
+   (.hub-lockup's size). Three "fixes" landed that way, one in production.
+   Keep the masthead's mobile rules here, in one place. */
 @media (max-width: 760px) {
-  .hub-head {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-    margin-bottom: 24px;
-  }
-  .hub-tag {
-    font-size: 13px;
-    /* Two balanced lines on a phone rather than one running to the edge. */
-    max-width: 34ch;
-  }
+  .hub-head { gap: 12px; margin-bottom: 24px; }
 }
 
 .hub-groups {
