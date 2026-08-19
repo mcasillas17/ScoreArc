@@ -1,4 +1,4 @@
-import type { Match, BracketRound, Shootout, MatchSummaryData, TopScorer, NewsArticle, Group } from './types';
+import type { Match, BracketRound, Shootout, MatchSummaryData, StatLeader, NewsArticle, Group } from './types';
 import type { CompetitionSeason } from './competitions';
 import { scoreboardUrl, standingsUrl, summaryUrl, bracketUrl, statisticsUrl, newsUrl, teamsUrl } from './endpoints';
 import { mapScoreboard } from './providers/espn-matches';
@@ -8,7 +8,7 @@ import { computeOverallTable } from './mlsTables';
 import { mapNews } from './providers/espn-news';
 import { mapStandings } from './providers/espn-standings';
 import { mapBracket } from './providers/espn-bracket';
-import { mapTopScorers } from './providers/espn-stats';
+import { mapLeaders } from './providers/espn-stats';
 import {
   mapSummaryScorers, mapSummaryCards, mapSummaryStats, mapWinProbability, mapSummaryLineups,
   mapSummaryVideos, mapSummaryShootout, mapSummaryInfo, mapSummaryForm, mapSummaryCommentary, mapSummaryH2H,
@@ -25,7 +25,9 @@ export interface DataStore {
   getStandings(rc: CompetitionSeason): Promise<Group[]>;
   getBracket(rc: CompetitionSeason): Promise<BracketRound[]>;
   getMatchSummary(rc: CompetitionSeason, eventId: string, homeId: string, awayId: string): Promise<MatchSummaryData>;
-  getTopScorers(rc: CompetitionSeason): Promise<TopScorer[]>;
+  getLeaders(rc: CompetitionSeason): Promise<{ scorers: StatLeader[]; assists: StatLeader[] }>;
+  getTopScorers(rc: CompetitionSeason): Promise<StatLeader[]>;
+  getTopAssists(rc: CompetitionSeason): Promise<StatLeader[]>;
   getNews(rc: CompetitionSeason): Promise<NewsArticle[]>;
 }
 
@@ -97,6 +99,28 @@ export function createDataStore(deps: DataDeps): DataStore {
   // phase's full date range (it spans more than one calendar week, so the
   // current-week matches feed cannot see all of it), and the club list of the
   // league that forms the second table.
+  // Both leaderboards arrive in ONE /statistics response. Fetch it once, map
+  // both, cache the pair — rendering two tables must not mean two requests for
+  // a payload we already hold. A free function rather than a store method so
+  // the two getters cannot be detached from their `this`.
+  async function loadLeaders(
+    rc: CompetitionSeason,
+    ttlMs = 60_000,
+  ): Promise<{ scorers: StatLeader[]; assists: StatLeader[] }> {
+    const k = key(rc, 'leaders');
+    const cached = deps.cache.get(k) as { scorers: StatLeader[]; assists: StatLeader[] } | undefined;
+    if (cached) return cached;
+    const raw = await deps.fetchJson(statisticsUrl(slug(rc)));
+    // Ten is the Golden Boot race; twenty is a list nobody scrolls. The mapper
+    // keeps its wider default for any caller that wants the tail.
+    const boards = {
+      scorers: mapLeaders(raw, 'goalsLeaders', TOP_SCORERS_SHOWN),
+      assists: mapLeaders(raw, 'assistsLeaders', TOP_SCORERS_SHOWN),
+    };
+    deps.cache.set(k, boards, ttlMs);
+    return boards;
+  }
+
   async function computeTables(
     rc: CompetitionSeason,
     config: NonNullable<CompetitionSeason['season']['computedTables']>,
@@ -251,16 +275,14 @@ export function createDataStore(deps: DataDeps): DataStore {
       return rounds;
     },
 
-    async getTopScorers(rc, ttlMs = 60_000): Promise<TopScorer[]> {
-      const k = key(rc, 'topscorers');
-      const cached = deps.cache.get(k) as TopScorer[] | undefined;
-      if (cached) return cached;
-      const raw = await deps.fetchJson(statisticsUrl(slug(rc)));
-      // Ten is the Golden Boot race; twenty is a list nobody scrolls. The
-      // mapper keeps its wider default for any caller that wants the tail.
-      const scorers = mapTopScorers(raw, TOP_SCORERS_SHOWN);
-      deps.cache.set(k, scorers, ttlMs);
-      return scorers;
+    getLeaders: loadLeaders,
+
+    async getTopScorers(rc): Promise<StatLeader[]> {
+      return (await loadLeaders(rc)).scorers;
+    },
+
+    async getTopAssists(rc): Promise<StatLeader[]> {
+      return (await loadLeaders(rc)).assists;
     },
 
     async getNews(rc, ttlMs = 90_000): Promise<NewsArticle[]> {
