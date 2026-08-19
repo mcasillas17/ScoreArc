@@ -230,20 +230,20 @@ describe('mapSummaryLineups', () => {
 
   it('home lineup has exactly 11 starters', () => {
     const result = mapSummaryLineups(raw, '4789', '464');
-    expect(result!.home.players).toHaveLength(11);
+    expect(result!.home.players.filter((p) => p.starter)).toHaveLength(11);
   });
 
-  it('all home starters have a non-empty name', () => {
+  it('all home players have a non-empty name', () => {
     const result = mapSummaryLineups(raw, '4789', '464');
     expect(result!.home.players.every((p) => p.name.length > 0)).toBe(true);
   });
 
   it('away lineup also has 11 starters', () => {
     const result = mapSummaryLineups(raw, '4789', '464');
-    expect(result!.away.players).toHaveLength(11);
+    expect(result!.away.players.filter((p) => p.starter)).toHaveLength(11);
   });
 
-  it('starters carry a jersey image url when available', () => {
+  it('players carry a jersey image url when available', () => {
     const result = mapSummaryLineups(raw, '4789', '464');
     const withJersey = result!.home.players.filter((p) => p.jersey != null);
     // Fixture players have jerseyImages; expect at least one mapped, and any
@@ -367,9 +367,12 @@ describe('mapSummaryStats — full stat set', () => {
     expect(stats!.away.tackles).toBe(19);
   });
 
-  it('normalizes fraction-scale accuracy pcts to 0-100', () => {
-    expect(stats!.home.passAccuracy).toBe(80); // 0.8 -> 80
-    expect(stats!.away.passAccuracy).toBe(90); // 0.9 -> 90
+  // Accuracy is now computed from the counts rather than read off ESPN's
+  // one-decimal fraction, which is why these are 84.5 and 87.7 and not the
+  // 80 and 90 the payload's passPct rounds to.
+  it('derives pass accuracy from the counts, on the 0-100 scale', () => {
+    expect(stats!.home.passAccuracy).toBeCloseTo(84.5, 1); // 339 / 401
+    expect(stats!.away.passAccuracy).toBeCloseTo(87.7, 1); // 415 / 473
   });
 
   it('keeps possession on the 0-100 scale', () => {
@@ -413,5 +416,104 @@ describe('mapSummaryScorers own goals', () => {
     const normal = scorers.filter((s) => s.teamId === '17362');
     expect(normal).toHaveLength(3);
     expect(normal.every((s) => s.ownGoal === false)).toBe(true);
+  });
+});
+
+describe('mapSummaryLineups box score', () => {
+  const lineups = mapSummaryLineups(ownGoalFixture, '17362', '226')!;
+
+  it('includes substitutes, not only the starting eleven', () => {
+    expect(lineups.home.players.length).toBeGreaterThan(11);
+    expect(lineups.home.players.some((p) => p.starter === false)).toBe(true);
+    expect(lineups.home.players.filter((p) => p.starter).length).toBe(11);
+  });
+
+  it('reads per-player stats by name', () => {
+    const padelford = lineups.home.players.find((p) => p.name === 'Devin Padelford')!;
+    expect(padelford.stats).not.toBeNull();
+    expect(padelford.stats!.ownGoals).toBe(1);
+    expect(padelford.stats!.appearances).toBe(1);
+  });
+
+  // Goalkeepers and outfielders carry different stat sets. A stat ESPN does
+  // not send is null -- not applicable -- never zero.
+  it('distinguishes a missing stat from a zero', () => {
+    const keeper = lineups.home.players.find((p) => p.name === 'Alec Smir')!;
+    expect(keeper.stats!.saves).toBe(3);
+    expect(keeper.stats!.offsides).toBeNull();
+
+    const outfielder = lineups.home.players.find((p) => p.name === 'Jefferson Díaz')!;
+    expect(outfielder.stats!.offsides).toBe(0);
+    expect(outfielder.stats!.saves).toBeNull();
+  });
+});
+
+describe('derived percentages', () => {
+  function payload(stats: { name: string; displayValue: string }[]) {
+    return {
+      boxscore: {
+        teams: [
+          { team: { id: '1' }, statistics: stats },
+          { team: { id: '2' }, statistics: [] },
+        ],
+      },
+    };
+  }
+
+  // ESPN sends these as a 0–1 fraction rounded to ONE decimal — 10% of
+  // granularity. We hold both counts, so echoing that rounding is choosing to
+  // be less accurate than our own data.
+  it('computes shot accuracy from the raw counts rather than echoing the provider', () => {
+    const stats = mapSummaryStats(payload([
+      { name: 'totalShots', displayValue: '11' },
+      { name: 'shotsOnTarget', displayValue: '3' },
+      { name: 'shotPct', displayValue: '0.3' },
+    ]), '1', '2');
+    expect(stats!.home.shotAccuracy).toBeCloseTo(27.3, 1);
+  });
+
+  it('derives pass, cross and tackle accuracy too', () => {
+    const stats = mapSummaryStats(payload([
+      { name: 'totalPasses', displayValue: '401' },
+      { name: 'accuratePasses', displayValue: '339' },
+      { name: 'passPct', displayValue: '0.8' },
+      { name: 'totalCrosses', displayValue: '29' },
+      { name: 'accurateCrosses', displayValue: '7' },
+      { name: 'crossPct', displayValue: '0.2' },
+      { name: 'totalTackles', displayValue: '24' },
+      { name: 'effectiveTackles', displayValue: '18' },
+      { name: 'tacklePct', displayValue: '0.8' },
+    ]), '1', '2')!.home;
+    expect(stats.passAccuracy).toBeCloseTo(84.5, 1);
+    expect(stats.crossAccuracy).toBeCloseTo(24.1, 1);
+    expect(stats.tackleAccuracy).toBeCloseTo(75, 1);
+  });
+
+  it('leaves accuracy null when there were no shots, rather than reporting 0%', () => {
+    const stats = mapSummaryStats(payload([
+      { name: 'totalShots', displayValue: '0' },
+      { name: 'shotsOnTarget', displayValue: '0' },
+      { name: 'shotPct', displayValue: '0' },
+    ]), '1', '2');
+    expect(stats!.home.shotAccuracy).toBeNull();
+  });
+
+  // Deriving is an upgrade, not a precondition: a payload without the
+  // numerator still gets the provider's own figure rather than a blank row.
+  it("falls back to the provider's percentage when an operand is missing", () => {
+    const stats = mapSummaryStats(payload([
+      { name: 'totalShots', displayValue: '11' },
+      { name: 'shotPct', displayValue: '0.3' },
+    ]), '1', '2');
+    expect(stats!.home.shotAccuracy).toBe(30);
+  });
+
+  it('exposes the numerators so the percentage is checkable in the UI', () => {
+    const stats = mapSummaryStats(payload([
+      { name: 'totalPasses', displayValue: '401' },
+      { name: 'accuratePasses', displayValue: '339' },
+    ]), '1', '2')!.home;
+    expect(stats.passesAccurate).toBe(339);
+    expect(stats.passes).toBe(401);
   });
 });

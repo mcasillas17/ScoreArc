@@ -1,4 +1,4 @@
-import type { MatchInfo, MatchForm, FormResult, CommentaryItem, H2HMeeting } from '@/server/data/types';
+import type { MatchInfo, MatchForm, FormResult, CommentaryItem, H2HMeeting, MatchLineups, TeamLineup, LineupPlayer } from '@/server/data/types';
 import { CollapsibleSection } from './Collapsible';
 
 function fmtYear(iso: string): string {
@@ -114,6 +114,117 @@ export function CommentaryFeed({ items }: { items: CommentaryItem[] }) {
           </li>
         ))}
       </ul>
+    </CollapsibleSection>
+  );
+}
+
+// A stat ESPN did not send for this player renders as a dash, never a zero:
+// an outfielder has no `saves` entry, and printing 0 there would claim they
+// faced shots and stopped none.
+function StatCell({ value }: { value: number | null }) {
+  if (value == null) return <td className="ls-box-na">–</td>;
+  return <td>{value}</td>;
+}
+
+function CardChips({ player }: { player: LineupPlayer }) {
+  const yellow = player.stats?.yellowCards ?? 0;
+  const red = player.stats?.redCards ?? 0;
+  if (!yellow && !red) return <td />;
+  return (
+    <td>
+      {yellow > 0 && <span className="ls-card-chip ls-card-yellow" title="Yellow card" />}
+      {red > 0 && <span className="ls-card-chip ls-card-red" title="Red card" />}
+    </td>
+  );
+}
+
+// Starters first, then the bench, each by shirt number. Unnumbered players go
+// last rather than sorting as zero and jumping the goalkeeper.
+function boxOrder(a: LineupPlayer, b: LineupPlayer): number {
+  if (a.starter !== b.starter) return a.starter ? -1 : 1;
+  return (a.number ?? 999) - (b.number ?? 999);
+}
+
+function BoxScoreTable({ team, abbr }: { team: TeamLineup; abbr: string }) {
+  const players = team.players.filter((p) => p.stats != null).sort(boxOrder);
+  if (players.length === 0) return null;
+  // Only goalkeepers carry `saves`. Rendering the column for a team whose
+  // payload has none would be a column of dashes.
+  const showSaves = players.some((p) => p.stats!.saves != null);
+  return (
+    <div className="ls-box">
+      <div className="ls-box-team">{abbr}</div>
+      {/* Twelve columns do not fit a phone. Scroll the table, not the popup. */}
+      <div className="ls-box-scroll">
+      <table className="standings-table std-wide">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th className="team-col">Player</th>
+            <th>Pos</th>
+            <th title="Goals">G</th>
+            <th title="Assists">A</th>
+            <th title="Shots">SH</th>
+            <th title="Shots on target">SOT</th>
+            <th title="Offsides">OFF</th>
+            <th title="Fouls committed">FC</th>
+            <th title="Fouls suffered">FA</th>
+            {showSaves && <th title="Saves">SV</th>}
+            <th title="Cards" />
+          </tr>
+        </thead>
+        <tbody>
+          {players.map((p, i) => (
+            <tr key={`${p.name}-${i}`}>
+              <td className="rank-cell">{p.number ?? '–'}</td>
+              <td className="team-cell">
+                <span className="team-name">{p.name}</span>
+                {!p.starter && <span className="ls-box-sub">sub</span>}
+              </td>
+              <td className="std-muted">{p.position}</td>
+              <StatCell value={p.stats!.totalGoals} />
+              <StatCell value={p.stats!.goalAssists} />
+              <StatCell value={p.stats!.totalShots} />
+              <StatCell value={p.stats!.shotsOnTarget} />
+              <StatCell value={p.stats!.offsides} />
+              <StatCell value={p.stats!.foulsCommitted} />
+              <StatCell value={p.stats!.foulsSuffered} />
+              {showSaves && <StatCell value={p.stats!.saves} />}
+              <CardChips player={p} />
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Per-player match statistics for both squads.
+ *
+ * `goalsConceded` and `shotsFaced` are deliberately not columns: ESPN repeats
+ * the team's conceded count on every outfielder, so a per-player column would
+ * read as eleven players each conceding the same goal.
+ */
+export function BoxScoreBlock({
+  lineups,
+  homeAbbr,
+  awayAbbr,
+}: {
+  lineups: MatchLineups;
+  homeAbbr: string;
+  awayAbbr: string;
+}) {
+  // Checked on the data, not on the elements: a component returning null is
+  // still a truthy JSX value, so testing the elements would always pass and
+  // render an empty collapsible for matches with no player stats.
+  const hasStats = [lineups.home, lineups.away].some((t) => t.players.some((p) => p.stats != null));
+  if (!hasStats) return null;
+  return (
+    <CollapsibleSection title="Box score" tone="#38bdf8">
+      <BoxScoreTable team={lineups.home} abbr={homeAbbr} />
+      <BoxScoreTable team={lineups.away} abbr={awayAbbr} />
     </CollapsibleSection>
   );
 }

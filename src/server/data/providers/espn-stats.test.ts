@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { mapTopScorers } from './espn-stats';
+import { mapLeaders } from './espn-stats';
 import raw from '../__fixtures__/espn-statistics.json';
 
-describe('mapTopScorers', () => {
-  const scorers = mapTopScorers(raw);
+describe('mapLeaders', () => {
+  const scorers = mapLeaders(raw, 'goalsLeaders');
 
   it('returns a ranked list starting at 1', () => {
     expect(scorers.length).toBeGreaterThan(0);
@@ -11,17 +11,16 @@ describe('mapTopScorers', () => {
     expect(scorers[1].rank).toBe(2);
   });
 
-  it('is sorted by goals descending', () => {
+  it('is sorted by value descending', () => {
     for (let i = 1; i < scorers.length; i++) {
-      expect(scorers[i - 1].goals).toBeGreaterThanOrEqual(scorers[i].goals);
+      expect(scorers[i - 1].value).toBeGreaterThanOrEqual(scorers[i].value);
     }
   });
 
-  it('maps player, team abbreviation and goals', () => {
-    const top = scorers[0];
-    expect(top.player.length).toBeGreaterThan(0);
-    expect(top.teamAbbr.length).toBeGreaterThan(0);
-    expect(top.goals).toBeGreaterThan(0);
+  it('maps player, team abbreviation and value', () => {
+    expect(scorers[0].player.length).toBeGreaterThan(0);
+    expect(scorers[0].teamAbbr.length).toBeGreaterThan(0);
+    expect(scorers[0].value).toBeGreaterThan(0);
   });
 
   it('parses matches played from the display value', () => {
@@ -30,21 +29,34 @@ describe('mapTopScorers', () => {
   });
 
   it('caps the list at the requested limit', () => {
-    expect(mapTopScorers(raw, 5)).toHaveLength(5);
+    expect(mapLeaders(raw, 'goalsLeaders', 5)).toHaveLength(5);
   });
 
   it('returns [] for a malformed payload', () => {
-    expect(mapTopScorers({})).toEqual([]);
-    expect(mapTopScorers(null)).toEqual([]);
+    expect(mapLeaders({}, 'goalsLeaders')).toEqual([]);
+    expect(mapLeaders(null, 'goalsLeaders')).toEqual([]);
+  });
+
+  // The whole point of the generalisation: assistsLeaders ships in the same
+  // response as goalsLeaders and was being discarded.
+  it('reads a category other than goals from the same payload', () => {
+    const assists = mapLeaders(raw, 'assistsLeaders');
+    expect(assists.length).toBeGreaterThan(0);
+    expect(assists[0].rank).toBe(1);
+    expect(assists[0].value).toBeGreaterThan(0);
+    expect(assists[0].matches).toBeGreaterThan(0);
+  });
+
+  it('returns [] for a category the payload does not carry', () => {
+    expect(mapLeaders(raw, 'cleanSheetsLeaders')).toEqual([]);
   });
 
   it('sets teamCrestUrl to null when the fixture team has no logo', () => {
-    expect(scorers[0].teamCrestUrl).toBeNull();
     expect(scorers.every((s) => s.teamCrestUrl === null)).toBe(true);
   });
 
   it('maps teamCrestUrl from team.logo when present', () => {
-    const raw = {
+    const payload = {
       stats: [{
         name: 'goalsLeaders',
         leaders: [{
@@ -57,12 +69,11 @@ describe('mapTopScorers', () => {
         }],
       }],
     };
-    const result = mapTopScorers(raw);
-    expect(result[0].teamCrestUrl).toBe('https://a.espncdn.com/test.png');
+    expect(mapLeaders(payload, 'goalsLeaders')[0].teamCrestUrl).toBe('https://a.espncdn.com/test.png');
   });
 
   it('maps teamCrestUrl from team.logos[0].href when team.logo is absent', () => {
-    const raw = {
+    const payload = {
       stats: [{
         name: 'goalsLeaders',
         leaders: [{
@@ -79,7 +90,6 @@ describe('mapTopScorers', () => {
         }],
       }],
     };
-    const result = mapTopScorers(raw);
-    expect(result[0].teamCrestUrl).toBe('https://a.espncdn.com/logos/team.png');
+    expect(mapLeaders(payload, 'goalsLeaders')[0].teamCrestUrl).toBe('https://a.espncdn.com/logos/team.png');
   });
 });

@@ -1,4 +1,4 @@
-import type { Scorer, Card, MatchStats, TeamStats, WinProbability, LineupPlayer, TeamLineup, MatchLineups, MatchVideo, PenaltyKick, ShootoutDetail, MatchInfo, FormResult, MatchForm, CommentaryItem, H2HMeeting } from '../types';
+import type { Scorer, Card, MatchStats, TeamStats, WinProbability, LineupPlayer, PlayerMatchStats, TeamLineup, MatchLineups, MatchVideo, PenaltyKick, ShootoutDetail, MatchInfo, FormResult, MatchForm, CommentaryItem, H2HMeeting } from '../types';
 
 // Venue, city, referee and attendance from summary.gameInfo.
 export function mapSummaryInfo(raw: unknown): MatchInfo | null {
@@ -234,21 +234,49 @@ export function mapWinProbability(
   }
 }
 
+// A percentage we can derive from the counts we hold beats the one the
+// provider rounded: ESPN sends these as a 0-1 fraction with a single decimal,
+// so 3-of-11 (27.3%) reaches us as 0.3, i.e. 30%.
+//
+// Null when the denominator is zero — 0-of-0 is "no shots taken", not 0%.
+// Falls back to the provider's own figure when we lack an operand, so a
+// sparser payload still fills the row.
+function derivedPct(
+  numerator: number | null,
+  denominator: number | null,
+  provided: number | null,
+): number | null {
+  if (denominator === 0) return null;
+  if (numerator === null || denominator === null) return provided;
+  return Math.round((numerator / denominator) * 1000) / 10;
+}
+
 function buildTeamStats(statistics: any[]): TeamStats {
+  const shots = parseStat(statistics, 'totalShots');
+  const shotsOnTarget = parseStat(statistics, 'shotsOnTarget');
+  const passes = parseStat(statistics, 'totalPasses');
+  const passesAccurate = parseStat(statistics, 'accuratePasses');
+  const crosses = parseStat(statistics, 'totalCrosses');
+  const crossesAccurate = parseStat(statistics, 'accurateCrosses');
+  const tackles = parseStat(statistics, 'totalTackles');
+  const tacklesEffective = parseStat(statistics, 'effectiveTackles');
   return {
     possession: parseStat(statistics, 'possessionPct'),
-    shots: parseStat(statistics, 'totalShots'),
-    shotsOnTarget: parseStat(statistics, 'shotsOnTarget'),
-    shotAccuracy: parsePct(statistics, 'shotPct'),
+    shots,
+    shotsOnTarget,
+    shotAccuracy: derivedPct(shotsOnTarget, shots, parsePct(statistics, 'shotPct')),
     corners: parseStat(statistics, 'wonCorners'),
     offsides: parseStat(statistics, 'offsides'),
-    passes: parseStat(statistics, 'totalPasses'),
-    passAccuracy: parsePct(statistics, 'passPct'),
-    crosses: parseStat(statistics, 'totalCrosses'),
-    crossAccuracy: parsePct(statistics, 'crossPct'),
+    passes,
+    passesAccurate,
+    passAccuracy: derivedPct(passesAccurate, passes, parsePct(statistics, 'passPct')),
+    crosses,
+    crossesAccurate,
+    crossAccuracy: derivedPct(crossesAccurate, crosses, parsePct(statistics, 'crossPct')),
     longBalls: parseStat(statistics, 'totalLongBalls'),
-    tackles: parseStat(statistics, 'totalTackles'),
-    tackleAccuracy: parsePct(statistics, 'tacklePct'),
+    tackles,
+    tacklesEffective,
+    tackleAccuracy: derivedPct(tacklesEffective, tackles, parsePct(statistics, 'tacklePct')),
     interceptions: parseStat(statistics, 'interceptions'),
     clearances: parseStat(statistics, 'totalClearance'),
     blockedShots: parseStat(statistics, 'blockedShots'),
@@ -318,6 +346,38 @@ function jerseyImage(images: any): string | null {
   return (light ?? images[0])?.href ?? null;
 }
 
+// ESPN sends each player's match stats as a name/value array whose membership
+// depends on position. Look up by name and default to null: an outfielder has
+// no `saves` entry, and recording that as 0 would claim they faced shots and
+// stopped none.
+function statFor(entry: any, name: string): number | null {
+  const found = (entry?.stats ?? []).find((s: any) => s?.name === name);
+  if (!found) return null;
+  const n = Number(found.value ?? found.displayValue);
+  return Number.isFinite(n) ? n : null;
+}
+
+function toPlayerStats(entry: any): PlayerMatchStats | null {
+  if (!Array.isArray(entry?.stats) || entry.stats.length === 0) return null;
+  return {
+    appearances: statFor(entry, 'appearances'),
+    subIns: statFor(entry, 'subIns'),
+    totalGoals: statFor(entry, 'totalGoals'),
+    goalAssists: statFor(entry, 'goalAssists'),
+    totalShots: statFor(entry, 'totalShots'),
+    shotsOnTarget: statFor(entry, 'shotsOnTarget'),
+    offsides: statFor(entry, 'offsides'),
+    foulsCommitted: statFor(entry, 'foulsCommitted'),
+    foulsSuffered: statFor(entry, 'foulsSuffered'),
+    yellowCards: statFor(entry, 'yellowCards'),
+    redCards: statFor(entry, 'redCards'),
+    ownGoals: statFor(entry, 'ownGoals'),
+    saves: statFor(entry, 'saves'),
+    goalsConceded: statFor(entry, 'goalsConceded'),
+    shotsFaced: statFor(entry, 'shotsFaced'),
+  };
+}
+
 export function mapSummaryLineups(
   raw: unknown,
   homeId: string,
@@ -331,14 +391,16 @@ export function mapSummaryLineups(
 
     const toTeamLineup = (entry: any): TeamLineup => {
       const formation: string = entry.formation ?? '';
-      const players: LineupPlayer[] = (entry.roster ?? [])
-        .filter((p: any) => p.starter === true)
-        .map((p: any): LineupPlayer => ({
-          name: p.athlete?.displayName ?? '',
-          number: p.jersey ? Number(p.jersey) : null,
-          position: p.position?.abbreviation ?? '',
-          jersey: jerseyImage(p.athlete?.jerseyImages),
-        }));
+      // Substitutes were dropped here. A box score that omits the player who
+      // came on and scored is not a box score.
+      const players: LineupPlayer[] = (entry.roster ?? []).map((p: any): LineupPlayer => ({
+        name: p.athlete?.displayName ?? '',
+        number: p.jersey ? Number(p.jersey) : null,
+        position: p.position?.abbreviation ?? '',
+        jersey: jerseyImage(p.athlete?.jerseyImages),
+        starter: p.starter === true,
+        stats: toPlayerStats(p),
+      }));
       return { formation, players };
     };
 
@@ -346,7 +408,7 @@ export function mapSummaryLineups(
     const away = toTeamLineup(awayEntry);
     // Rosters can be present before lineups are published (no starters yet) —
     // treat that as "no lineup" so the UI doesn't render an empty XI.
-    if (!home.players.length || !away.players.length) return null;
+    if (!home.players.some((p) => p.starter) || !away.players.some((p) => p.starter)) return null;
     return { home, away };
   } catch {
     return null;

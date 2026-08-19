@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
-import type { Group, TopScorer } from '@/server/data/types';
+import type { Group, StatLeader } from '@/server/data/types';
 import StandingsLive from '@/components/StandingsLive';
 
 export const dynamic = 'force-dynamic';
@@ -11,16 +11,20 @@ export default async function StandingsPage({ params }: { params: { comp: string
   if (!rc) notFound();
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
   let groups: Group[] = [];
-  let scorers: TopScorer[] = [];
+  let scorers: StatLeader[] = [];
+  let assists: StatLeader[] = [];
   try {
     groups = await dataStore.getStandings(rc);
   } catch {
     // ESPN feed unavailable — render empty state
   }
   try {
-    scorers = await dataStore.getTopScorers(rc);
+    // One fetch, both boards.
+    const boards = await dataStore.getLeaders(rc);
+    scorers = boards.scorers;
+    assists = boards.assists;
   } catch {
-    // ESPN stats unavailable — table renders its own empty state
+    // ESPN stats unavailable — tables render their own empty state
   }
 
   return (
@@ -31,12 +35,12 @@ export default async function StandingsPage({ params }: { params: { comp: string
           <h1 className="bracket-title">Standings</h1>
           <p className="page-subtitle">
             {rc.season.format.hasBracket
-              ? 'Top scorers, the third-place race, and full group tables.'
-              : 'Top scorers and the full league table.'}
+              ? 'Scorers, assists, the third-place race, and full group tables.'
+              : 'Scorers, assists, and the full league table.'}
           </p>
         </header>
 
-        <StandingsLive initialGroups={groups} initialScorers={scorers} apiBase={apiBase} teamStyle={rc.competition.teamStyle} showThirdPlace={rc.season.format.hasBracket} />
+        <StandingsLive initialGroups={groups} initialScorers={scorers} initialAssists={assists} apiBase={apiBase} teamStyle={rc.competition.teamStyle} showThirdPlace={rc.season.format.hasBracket} />
       </section>
 
       <footer className="site-footer">

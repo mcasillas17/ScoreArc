@@ -175,3 +175,33 @@ describe('range-aware match reads', () => {
     expect(urls[0]).toMatch(/dates=\d{8}-\d{8}/);
   });
 });
+
+describe('leaderboards', () => {
+  // Both boards live in one response. Fetching it twice to render two tables
+  // would double our request volume against a keyless public API for data we
+  // already hold.
+  it('fetches /statistics once to serve both leaderboards', async () => {
+    const urls: string[] = [];
+    const store = createDataStore({
+      cache: new TtlCache<unknown>(),
+      fetchJson: async (url: string) => {
+        urls.push(url);
+        return {
+          stats: [
+            { name: 'goalsLeaders', leaders: [{ value: 5, displayValue: 'Matches: 3, Goals: 5', athlete: { displayName: 'Striker', team: { abbreviation: 'AAA', displayName: 'A FC' } } }] },
+            { name: 'assistsLeaders', leaders: [{ value: 3, displayValue: 'Matches: 3, Assists: 3', athlete: { displayName: 'Playmaker', team: { abbreviation: 'BBB', displayName: 'B FC' } } }] },
+          ],
+        };
+      },
+    });
+
+    const scorers = await store.getTopScorers(wc);
+    const assists = await store.getTopAssists(wc);
+
+    expect(urls.filter((u) => u.includes('/statistics'))).toHaveLength(1);
+    expect(scorers[0].player).toBe('Striker');
+    expect(scorers[0].value).toBe(5);
+    expect(assists[0].player).toBe('Playmaker');
+    expect(assists[0].value).toBe(3);
+  });
+});

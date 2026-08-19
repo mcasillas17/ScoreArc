@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
-import type { Match, BracketRound, Group, TopScorer } from '@/server/data/types';
+import type { Match, BracketRound, Group, StatLeader } from '@/server/data/types';
 import UpcomingTicker from '@/components/UpcomingTicker';
 import BracketInteractive from '@/components/BracketInteractive';
 import StandingsLive from '@/components/StandingsLive';
@@ -71,16 +71,18 @@ export default async function Workspace({ params }: { params: { comp: string; se
   // League competitions have no knockout bracket — lead with the table.
   if (!rc.season.format.hasBracket) {
     let groups: Group[] = [];
-    let scorers: TopScorer[] = [];
+    let scorers: StatLeader[] = [];
+    let assists: StatLeader[] = [];
     try { groups = await dataStore.getStandings(rc); } catch {}
-    try { scorers = await dataStore.getTopScorers(rc); } catch {}
+    // One fetch, both boards.
+    try { const boards = await dataStore.getLeaders(rc); scorers = boards.scorers; assists = boards.assists; } catch {}
     const table = (
       <section id="table" className={rc.season.qualification || rc.season.zones ? 'std-wide' : undefined}>
         <header className="bracket-head">
           <p className="bracket-eyebrow">{rc.competition.name}</p>
           <h1 className="bracket-title">League Table</h1>
         </header>
-        <StandingsLive initialGroups={groups} initialScorers={scorers} apiBase={apiBase} teamStyle={teamStyle} showThirdPlace={false} qualification={rc.season.qualification} zones={rc.season.zones} />
+        <StandingsLive initialGroups={groups} initialScorers={scorers} initialAssists={assists} apiBase={apiBase} teamStyle={teamStyle} showThirdPlace={false} qualification={rc.season.qualification} zones={rc.season.zones} />
       </section>
     );
     // The banner always leads. It is null when there is genuinely nothing to
@@ -137,6 +139,7 @@ export default async function Workspace({ params }: { params: { comp: string; se
           <StandingsLive
             initialGroups={phaseGroups}
             initialScorers={[]}
+            initialAssists={[]}
             apiBase={apiBase}
             teamStyle={teamStyle}
             showThirdPlace={false}
