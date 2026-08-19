@@ -174,6 +174,12 @@ export const COMPETITIONS: Record<string, Competition> = {
           groupLabels: { primary: 'MLS', split: 'Liga MX' },
           nextRound: { label: 'Quarterfinals', when: '25–27 August' },
         },
+        // Its knockout starts at the quarterfinals. Without this the bracket
+        // inherits the World Cup's five rounds, whose leaf is `round-of-32` —
+        // a round the Leagues Cup never plays — and `buildRings` lays out from
+        // the leaf, so every ring came out empty and the page rendered a
+        // trophy over nothing.
+        knockoutRounds: ['quarterfinals', 'semifinals', 'final'],
       },
     },
   },

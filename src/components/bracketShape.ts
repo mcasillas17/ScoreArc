@@ -15,8 +15,14 @@ export interface BracketShape {
 }
 
 // Tuned radii/disc sizes per ring COUNT (hand-tuned reads better than computed
-// spacing; only 4 and 5 occur). rx===ry (true circles). Outer is always 400.
+// spacing). rx===ry (true circles). Outer is always 400.
 const RADII: Record<number, { rx: number; discR: number }[]> = {
+  // The Leagues Cup knockout: quarterfinals, semifinals, final. Discs grow as
+  // the rings thin out, because three rings leave room a five-ring draw does
+  // not.
+  3: [
+    { rx: 400, discR: 34 }, { rx: 250, discR: 32 }, { rx: 96, discR: 36 },
+  ],
   5: [
     { rx: 400, discR: 26 }, { rx: 312, discR: 22 }, { rx: 224, discR: 23 },
     { rx: 138, discR: 25 }, { rx: 66, discR: 29 },

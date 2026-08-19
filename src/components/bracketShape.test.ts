@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { bracketShapeFor } from './bracketShape';
 import type { Season } from '@/server/data/competitions';
+import { COMPETITIONS, listCompetitions } from '@/server/data/competitions';
 
 const season = (over: Partial<Season>): Season => ({
   id: 'x', label: 'x', sections: ['bracket'],
@@ -30,5 +31,47 @@ describe('bracketShapeFor', () => {
     ]);
     expect(s.ringGeometry[0].rx).toBe(400); // outer ring is always the flag ring
     expect(s.bracketOrder).toBeUndefined();
+  });
+});
+
+// The Leagues Cup rendered a trophy over an empty bracket for weeks because its
+// season declared no `knockoutRounds`, so it silently inherited the World Cup's
+// five — whose leaf ring is `round-of-32`, a round it never plays. `buildRings`
+// lays out from the leaf, so every ring came out empty.
+describe('every bracket competition declares a shape it can actually fill', () => {
+  const bracketSeasons = listCompetitions().flatMap((comp) =>
+    Object.values(comp.seasons)
+      .filter((season) => season.format.hasBracket)
+      .map((season) => ({ comp, season })),
+  );
+
+  it('finds bracket competitions to check', () => {
+    expect(bracketSeasons.length).toBeGreaterThan(0);
+  });
+
+  it.each(bracketSeasons.map(({ comp, season }) => [`${comp.id} ${season.id}`, comp, season] as const))(
+    '%s declares its own knockout rounds',
+    (_label, _comp, season) => {
+      // The default is the World Cup's. Inheriting it is what caused the bug,
+      // so every bracket season must say which rounds it plays.
+      expect(season.knockoutRounds).toBeDefined();
+      expect(season.knockoutRounds!.length).toBeGreaterThan(0);
+    },
+  );
+
+  it.each(bracketSeasons.map(({ comp, season }) => [`${comp.id} ${season.id}`, comp, season] as const))(
+    '%s gets ring geometry matching its round count',
+    (_label, _comp, season) => {
+      const shape = bracketShapeFor(season);
+      // A missing preset falls back to the 5-ring geometry, which silently
+      // mismatches the rounds and misplaces every disc.
+      expect(shape.ringGeometry).toHaveLength(season.knockoutRounds!.length);
+      expect(shape.ringGeometry.map((r) => r.slug)).toEqual(season.knockoutRounds);
+    },
+  );
+
+  it('gives the Leagues Cup a knockout that starts where its data does', () => {
+    const season = COMPETITIONS['leagues-cup'].seasons['2026'];
+    expect(season.knockoutRounds?.[0]).toBe('quarterfinals');
   });
 });
