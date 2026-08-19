@@ -234,21 +234,49 @@ export function mapWinProbability(
   }
 }
 
+// A percentage we can derive from the counts we hold beats the one the
+// provider rounded: ESPN sends these as a 0-1 fraction with a single decimal,
+// so 3-of-11 (27.3%) reaches us as 0.3, i.e. 30%.
+//
+// Null when the denominator is zero — 0-of-0 is "no shots taken", not 0%.
+// Falls back to the provider's own figure when we lack an operand, so a
+// sparser payload still fills the row.
+function derivedPct(
+  numerator: number | null,
+  denominator: number | null,
+  provided: number | null,
+): number | null {
+  if (denominator === 0) return null;
+  if (numerator === null || denominator === null) return provided;
+  return Math.round((numerator / denominator) * 1000) / 10;
+}
+
 function buildTeamStats(statistics: any[]): TeamStats {
+  const shots = parseStat(statistics, 'totalShots');
+  const shotsOnTarget = parseStat(statistics, 'shotsOnTarget');
+  const passes = parseStat(statistics, 'totalPasses');
+  const passesAccurate = parseStat(statistics, 'accuratePasses');
+  const crosses = parseStat(statistics, 'totalCrosses');
+  const crossesAccurate = parseStat(statistics, 'accurateCrosses');
+  const tackles = parseStat(statistics, 'totalTackles');
+  const tacklesEffective = parseStat(statistics, 'effectiveTackles');
   return {
     possession: parseStat(statistics, 'possessionPct'),
-    shots: parseStat(statistics, 'totalShots'),
-    shotsOnTarget: parseStat(statistics, 'shotsOnTarget'),
-    shotAccuracy: parsePct(statistics, 'shotPct'),
+    shots,
+    shotsOnTarget,
+    shotAccuracy: derivedPct(shotsOnTarget, shots, parsePct(statistics, 'shotPct')),
     corners: parseStat(statistics, 'wonCorners'),
     offsides: parseStat(statistics, 'offsides'),
-    passes: parseStat(statistics, 'totalPasses'),
-    passAccuracy: parsePct(statistics, 'passPct'),
-    crosses: parseStat(statistics, 'totalCrosses'),
-    crossAccuracy: parsePct(statistics, 'crossPct'),
+    passes,
+    passesAccurate,
+    passAccuracy: derivedPct(passesAccurate, passes, parsePct(statistics, 'passPct')),
+    crosses,
+    crossesAccurate,
+    crossAccuracy: derivedPct(crossesAccurate, crosses, parsePct(statistics, 'crossPct')),
     longBalls: parseStat(statistics, 'totalLongBalls'),
-    tackles: parseStat(statistics, 'totalTackles'),
-    tackleAccuracy: parsePct(statistics, 'tacklePct'),
+    tackles,
+    tacklesEffective,
+    tackleAccuracy: derivedPct(tacklesEffective, tackles, parsePct(statistics, 'tacklePct')),
     interceptions: parseStat(statistics, 'interceptions'),
     clearances: parseStat(statistics, 'totalClearance'),
     blockedShots: parseStat(statistics, 'blockedShots'),

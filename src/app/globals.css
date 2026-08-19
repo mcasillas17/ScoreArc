@@ -1812,6 +1812,16 @@ a {
   font-weight: 600;
 }
 
+/* The counts a derived percentage came from, under the percentage itself.
+   84.5% is only trustworthy next to the 339/401 it was computed from. */
+.ls-stat-frac {
+  display: block;
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
 /* Grouped diverging stat bars.
    Rows flow into 2 columns when the container is wide enough (match popup) and
    collapse to 1 column when narrow (inline live card) — keeps the expanded view

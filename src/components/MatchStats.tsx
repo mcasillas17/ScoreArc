@@ -217,7 +217,22 @@ export function LineupView({
   );
 }
 
-type StatRowData = { label: string; home: number | null; away: number | null; pct?: boolean };
+type StatFraction = { num: number | null; den: number | null };
+type StatRowData = {
+  label: string;
+  home: number | null;
+  away: number | null;
+  pct?: boolean;
+  // The counts a derived percentage came from. Printed beside it so the
+  // number is checkable rather than merely asserted.
+  homeOf?: StatFraction;
+  awayOf?: StatFraction;
+};
+
+function Fraction({ of }: { of?: StatFraction }) {
+  if (!of || of.num == null || of.den == null) return null;
+  return <span className="ls-stat-frac">{of.num}/{of.den}</span>;
+}
 
 function StatRow({ row }: { row: StatRowData }) {
   const { home, away } = row;
@@ -229,7 +244,10 @@ function StatRow({ row }: { row: StatRowData }) {
   const fmt = (v: number | null) => (v == null ? '–' : row.pct ? `${v}%` : `${v}`);
   return (
     <div className="ls-stat-row">
-      <span className={`ls-stat-val-home${hv > av ? ' ls-stat-higher' : ''}`}>{fmt(home)}</span>
+      <span className={`ls-stat-val-home${hv > av ? ' ls-stat-higher' : ''}`}>
+        {fmt(home)}
+        <Fraction of={row.homeOf} />
+      </span>
       <div className="ls-stat-mid">
         <span className="ls-stat-name">{row.label}</span>
         <div className="ls-stat-bar">
@@ -237,7 +255,10 @@ function StatRow({ row }: { row: StatRowData }) {
           <div className="ls-stat-bar-away" />
         </div>
       </div>
-      <span className={`ls-stat-val-away${av > hv ? ' ls-stat-higher' : ''}`}>{fmt(away)}</span>
+      <span className={`ls-stat-val-away${av > hv ? ' ls-stat-higher' : ''}`}>
+        {fmt(away)}
+        <Fraction of={row.awayOf} />
+      </span>
     </div>
   );
 }
@@ -276,7 +297,8 @@ export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
       rows: [
         { label: 'Shots', home: h.shots, away: a.shots },
         { label: 'On Target', home: h.shotsOnTarget, away: a.shotsOnTarget },
-        { label: 'Shot Accuracy', home: h.shotAccuracy, away: a.shotAccuracy, pct: true },
+        { label: 'Shot Accuracy', home: h.shotAccuracy, away: a.shotAccuracy, pct: true,
+          homeOf: { num: h.shotsOnTarget, den: h.shots }, awayOf: { num: a.shotsOnTarget, den: a.shots } },
         { label: 'Corners', home: h.corners, away: a.corners },
         { label: 'Offsides', home: h.offsides, away: a.offsides },
       ],
@@ -286,9 +308,11 @@ export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
       tone: 'var(--stat-pass)',
       rows: [
         { label: 'Passes', home: h.passes, away: a.passes },
-        { label: 'Pass Accuracy', home: h.passAccuracy, away: a.passAccuracy, pct: true },
+        { label: 'Pass Accuracy', home: h.passAccuracy, away: a.passAccuracy, pct: true,
+          homeOf: { num: h.passesAccurate, den: h.passes }, awayOf: { num: a.passesAccurate, den: a.passes } },
         { label: 'Crosses', home: h.crosses, away: a.crosses },
-        { label: 'Cross Accuracy', home: h.crossAccuracy, away: a.crossAccuracy, pct: true },
+        { label: 'Cross Accuracy', home: h.crossAccuracy, away: a.crossAccuracy, pct: true,
+          homeOf: { num: h.crossesAccurate, den: h.crosses }, awayOf: { num: a.crossesAccurate, den: a.crosses } },
         { label: 'Long Balls', home: h.longBalls, away: a.longBalls },
       ],
     },
@@ -297,7 +321,8 @@ export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
       tone: 'var(--stat-defend)',
       rows: [
         { label: 'Tackles', home: h.tackles, away: a.tackles },
-        { label: 'Tackle %', home: h.tackleAccuracy, away: a.tackleAccuracy, pct: true },
+        { label: 'Tackle %', home: h.tackleAccuracy, away: a.tackleAccuracy, pct: true,
+          homeOf: { num: h.tacklesEffective, den: h.tackles }, awayOf: { num: a.tacklesEffective, den: a.tackles } },
         { label: 'Interceptions', home: h.interceptions, away: a.interceptions },
         { label: 'Clearances', home: h.clearances, away: a.clearances },
         { label: 'Blocked Shots', home: h.blockedShots, away: a.blockedShots },

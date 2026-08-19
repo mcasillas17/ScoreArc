@@ -37,11 +37,16 @@ export interface TeamStats {
   corners: number | null;
   offsides: number | null;
   passes: number | null;
+  // The numerators are kept beside the percentages so the UI can show the
+  // fraction that makes each percentage checkable.
+  passesAccurate: number | null;
   passAccuracy: number | null; // percent 0-100
   crosses: number | null;
+  crossesAccurate: number | null;
   crossAccuracy: number | null; // percent 0-100
   longBalls: number | null;
   tackles: number | null;
+  tacklesEffective: number | null;
   tackleAccuracy: number | null; // percent 0-100
   interceptions: number | null;
   clearances: number | null;

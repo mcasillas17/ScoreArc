@@ -367,9 +367,12 @@ describe('mapSummaryStats — full stat set', () => {
     expect(stats!.away.tackles).toBe(19);
   });
 
-  it('normalizes fraction-scale accuracy pcts to 0-100', () => {
-    expect(stats!.home.passAccuracy).toBe(80); // 0.8 -> 80
-    expect(stats!.away.passAccuracy).toBe(90); // 0.9 -> 90
+  // Accuracy is now computed from the counts rather than read off ESPN's
+  // one-decimal fraction, which is why these are 84.5 and 87.7 and not the
+  // 80 and 90 the payload's passPct rounds to.
+  it('derives pass accuracy from the counts, on the 0-100 scale', () => {
+    expect(stats!.home.passAccuracy).toBeCloseTo(84.5, 1); // 339 / 401
+    expect(stats!.away.passAccuracy).toBeCloseTo(87.7, 1); // 415 / 473
   });
 
   it('keeps possession on the 0-100 scale', () => {
@@ -442,5 +445,75 @@ describe('mapSummaryLineups box score', () => {
     const outfielder = lineups.home.players.find((p) => p.name === 'Jefferson Díaz')!;
     expect(outfielder.stats!.offsides).toBe(0);
     expect(outfielder.stats!.saves).toBeNull();
+  });
+});
+
+describe('derived percentages', () => {
+  function payload(stats: { name: string; displayValue: string }[]) {
+    return {
+      boxscore: {
+        teams: [
+          { team: { id: '1' }, statistics: stats },
+          { team: { id: '2' }, statistics: [] },
+        ],
+      },
+    };
+  }
+
+  // ESPN sends these as a 0–1 fraction rounded to ONE decimal — 10% of
+  // granularity. We hold both counts, so echoing that rounding is choosing to
+  // be less accurate than our own data.
+  it('computes shot accuracy from the raw counts rather than echoing the provider', () => {
+    const stats = mapSummaryStats(payload([
+      { name: 'totalShots', displayValue: '11' },
+      { name: 'shotsOnTarget', displayValue: '3' },
+      { name: 'shotPct', displayValue: '0.3' },
+    ]), '1', '2');
+    expect(stats!.home.shotAccuracy).toBeCloseTo(27.3, 1);
+  });
+
+  it('derives pass, cross and tackle accuracy too', () => {
+    const stats = mapSummaryStats(payload([
+      { name: 'totalPasses', displayValue: '401' },
+      { name: 'accuratePasses', displayValue: '339' },
+      { name: 'passPct', displayValue: '0.8' },
+      { name: 'totalCrosses', displayValue: '29' },
+      { name: 'accurateCrosses', displayValue: '7' },
+      { name: 'crossPct', displayValue: '0.2' },
+      { name: 'totalTackles', displayValue: '24' },
+      { name: 'effectiveTackles', displayValue: '18' },
+      { name: 'tacklePct', displayValue: '0.8' },
+    ]), '1', '2')!.home;
+    expect(stats.passAccuracy).toBeCloseTo(84.5, 1);
+    expect(stats.crossAccuracy).toBeCloseTo(24.1, 1);
+    expect(stats.tackleAccuracy).toBeCloseTo(75, 1);
+  });
+
+  it('leaves accuracy null when there were no shots, rather than reporting 0%', () => {
+    const stats = mapSummaryStats(payload([
+      { name: 'totalShots', displayValue: '0' },
+      { name: 'shotsOnTarget', displayValue: '0' },
+      { name: 'shotPct', displayValue: '0' },
+    ]), '1', '2');
+    expect(stats!.home.shotAccuracy).toBeNull();
+  });
+
+  // Deriving is an upgrade, not a precondition: a payload without the
+  // numerator still gets the provider's own figure rather than a blank row.
+  it("falls back to the provider's percentage when an operand is missing", () => {
+    const stats = mapSummaryStats(payload([
+      { name: 'totalShots', displayValue: '11' },
+      { name: 'shotPct', displayValue: '0.3' },
+    ]), '1', '2');
+    expect(stats!.home.shotAccuracy).toBe(30);
+  });
+
+  it('exposes the numerators so the percentage is checkable in the UI', () => {
+    const stats = mapSummaryStats(payload([
+      { name: 'totalPasses', displayValue: '401' },
+      { name: 'accuratePasses', displayValue: '339' },
+    ]), '1', '2')!.home;
+    expect(stats.passesAccurate).toBe(339);
+    expect(stats.passes).toBe(401);
   });
 });
