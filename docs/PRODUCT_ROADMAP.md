@@ -71,6 +71,7 @@ gates history, trends, percentiles and simulation — nothing else.
 | **E8** | AI recaps & digest | T1.3 / T7.1 | [spec](superpowers/specs/2026-08-15-ai-recaps-design.md) | after E1 |
 | **E9** | Expected goals (xG) | T7.12 / T7.13 | [spec](superpowers/specs/2026-08-15-expected-goals-design.md) | after T9.1 |
 | **E10** | Public API read surface | E7 write path | — (serves E1–E8) | T10.1–T10.9, see task index |
+| **E11** | Dynamic home & now-first matches | none | [spec](superpowers/specs/2026-08-18-dynamic-home-and-matches-design.md) | T11.1–T11.3, see task index |
 
 E6, E8 and E9 deliberately stop at a spec, and E7 now has plans for its whole
 task set. E6's extractor is determined by what the coverage probe (T6.1) finds;
@@ -279,6 +280,26 @@ Verified 2026-08-15: `/athletes/{id}` (200), `/athletes/{id}/overview` (200) and
 limit stated in the first draft of this roadmap was wrong; a last-five log ships
 in E5. What genuinely needs E7 is a *full-season* log, cross-season history and
 percentiles.
+
+### E11 · Dynamic home & now-first matches
+Branch per slice. No backend, no new provider, no new upstream endpoint.
+
+- **T11.1** `matchPriority` + the cheap data path + `/api/live` — no UI change
+- **T11.2** Home live band + tiles that carry real football
+- **T11.3** Matches "Now" mode + calendar polling
+
+Both entry points are static in the literal sense: neither updates itself, and
+both look the same on a matchday as on a quiet Tuesday. `MatchCalendar` fetches
+on month change and **never again**, so a match that kicks off while the page is
+open stays frozen until reload.
+
+Measured 2026-08-18: **one `/` render costs 95 upstream ESPN requests, 77 of
+them per-match `/summary` calls** that buy nothing — the page reads only `state`
+and a score, both of which the scoreboard already carries. T11.1 takes it to 18.
+
+Also measured: **there is no jornada/matchday number to group by.** `mex.1`,
+`eng.1` and `usa.1` all return no `week`, no round and an empty `calendar`, so
+matchday grouping is not built. See the spec's "Out of scope" table.
 
 ### E6 · Shot log
 - **T6.1** Per-competition coverage probe, **before any parser is written**
