@@ -205,3 +205,56 @@ describe('leaderboards', () => {
     expect(assists[0].value).toBe(3);
   });
 });
+
+describe('getLiveWindow', () => {
+  // The whole point of this method: the band must not pay for 77 summary
+  // fetches to read a scoreline the scoreboard already carries.
+  it('fetches the scoreboard once and never a summary', async () => {
+    const urls: string[] = [];
+    const store = createDataStore({
+      cache: new TtlCache<unknown>(),
+      fetchJson: async (url: string) => {
+        urls.push(url);
+        return SCOREBOARD_TWO_EVENTS;
+      },
+    });
+
+    const matches = await store.getLiveWindow(wc);
+
+    expect(matches.length).toBe(2);
+    expect(urls.filter((u) => u.includes('/summary'))).toHaveLength(0);
+    expect(urls).toHaveLength(1);
+  });
+
+  it('serves a repeat call from cache', async () => {
+    const urls: string[] = [];
+    const store = createDataStore({
+      cache: new TtlCache<unknown>(),
+      fetchJson: async (url: string) => {
+        urls.push(url);
+        return { events: [] };
+      },
+    });
+    await store.getLiveWindow(wc);
+    await store.getLiveWindow(wc);
+    expect(urls).toHaveLength(1);
+  });
+
+  // Sharing getFixtures' cache entry would give the calendar's 120s TTL to a
+  // live scoreline, or the live 15s TTL to the calendar. Distinct keys.
+  it('does not share a cache entry with getFixtures', async () => {
+    const cache = new TtlCache<unknown>();
+    const urls: string[] = [];
+    const store = createDataStore({
+      cache,
+      fetchJson: async (url: string) => {
+        urls.push(url);
+        return { events: [] };
+      },
+    });
+    await store.getLiveWindow(wc);
+    const liveCalls = urls.length;
+    await store.getFixtures(wc, '20260801-20260831');
+    expect(urls.length).toBe(liveCalls + 1);
+  });
+});

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   monthRange,
+  nowWindowRange,
   parseRange,
   seasonInitialMonth,
   seasonMonthBounds,
@@ -152,5 +153,30 @@ describe('parseRange', () => {
   it('honours a custom cap', () => {
     expect(parseRange('20260801-20260810', 5)).toBeNull();
     expect(parseRange('20260801-20260803', 5)).toBe('20260801-20260803');
+  });
+});
+
+describe('nowWindowRange', () => {
+  it('spans the default 7 days back and 14 forward', () => {
+    expect(nowWindowRange(new Date(2026, 7, 18))).toBe('20260811-20260901');
+  });
+
+  it('honours custom spans', () => {
+    expect(nowWindowRange(new Date(2026, 7, 18), 1, 1)).toBe('20260817-20260819');
+  });
+
+  // Month and year rollover is exactly what a hand-rolled string would get
+  // wrong, and the value is interpolated straight into an upstream URL.
+  it('rolls across a month boundary', () => {
+    expect(nowWindowRange(new Date(2026, 8, 2), 7, 0)).toBe('20260826-20260902');
+  });
+
+  it('rolls across a year boundary', () => {
+    expect(nowWindowRange(new Date(2027, 0, 3), 7, 0)).toBe('20261227-20270103');
+  });
+
+  it('produces a range parseRange accepts', () => {
+    const range = nowWindowRange(new Date(2026, 7, 18));
+    expect(parseRange(range)).toBe(range);
   });
 });

@@ -16,6 +16,21 @@ export function monthRange(d: Date): string {
 }
 
 /**
+ * The scoreboard window the "now" surfaces read: recent results behind, the
+ * next fortnight ahead.
+ *
+ * Wider than the current week on purpose. `currentWeekRange` is right on a
+ * matchday and empty the rest of the time — five of nine competitions were in
+ * exactly that state on 2026-08-15, between them holding 132 scheduled
+ * fixtures and displaying none.
+ */
+export function nowWindowRange(now: Date, backDays = 7, forwardDays = 14): string {
+  const from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - backDays);
+  const to = new Date(now.getFullYear(), now.getMonth(), now.getDate() + forwardDays);
+  return `${fmt(from)}-${fmt(to)}`;
+}
+
+/**
  * The first of the month `delta` months from `d`.
  *
  * Clamped to the 1st deliberately: `new Date(2026, 0, 31)` stepped forward with
