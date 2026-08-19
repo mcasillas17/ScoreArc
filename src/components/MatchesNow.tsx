@@ -193,7 +193,7 @@ export default function MatchesNow({
               groupByDay(section.matches, now ?? new Date()).map((day) => (
                 <div key={day.key} className="mn-day">
                   <h3 className="mn-day-label">{day.label}</h3>
-                  <div className="mn-grid">
+                  <div className="match-grid">
                     {day.matches.map((match) => (
                       <MatchRow
                         key={match.id}
@@ -206,7 +206,7 @@ export default function MatchesNow({
                 </div>
               ))
             ) : (
-              <div className="mn-grid">
+              <div className="match-grid">
                 {section.matches.map((match) => (
                   <MatchRow
                     key={match.id}

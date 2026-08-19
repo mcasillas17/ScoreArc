@@ -298,7 +298,7 @@ export default function MatchCalendar({
               <h3 className={`mc-day${isToday ? ' mc-day--today' : ''}`} data-today={isToday || undefined}>
                 {dayLabel(group.date)}
               </h3>
-              <div className="mc-matches">
+              <div className="match-grid">
                 {group.matches.map((match) => (
                   <MatchRow
                     key={match.id}

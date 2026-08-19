@@ -14,6 +14,10 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
   const pathname = usePathname();
   const base = `/c/${comp.id}/${seasonId}`;
   const hasBracket = comp.seasons[seasonId]?.format.hasBracket ?? true;
+  // A cross-league cup's root shows its phase tables ("Qualified for the
+  // Knockout") until the draw is complete, and the bracket after — so "Bracket"
+  // is wrong for most of the competition. "Knockout" is true in both states.
+  const phasedCup = !!comp.seasons[seasonId]?.computedTables;
 
   const bracketIcon = <svg {...ICON}><path d="M6 4v4a3 3 0 0 0 3 3h2" /><path d="M6 20v-4a3 3 0 0 1 3-3h2" /><circle cx="18" cy="12" r="2" /><path d="M11 12h5" /><circle cx="5" cy="4" r="1.5" /><circle cx="5" cy="20" r="1.5" /></svg>;
   const tableIcon = <svg {...ICON}><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="14" y2="18" /></svg>;
@@ -36,7 +40,7 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
   };
   const items = hasBracket
     ? [
-        { href: base, label: 'Bracket', match: atBase, icon: bracketIcon },
+        { href: base, label: phasedCup ? 'Knockout' : 'Bracket', match: atBase, icon: bracketIcon },
         standingsItem,
         matchesItem,
         newsItem,

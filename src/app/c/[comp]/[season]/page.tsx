@@ -9,7 +9,7 @@ import BracketInteractive from '@/components/BracketInteractive';
 import StandingsLive from '@/components/StandingsLive';
 import PhaseQualifiers from '@/components/PhaseQualifiers';
 import SeasonSwitcher from '@/components/SeasonSwitcher';
-import { bracketShapeFor } from '@/components/bracketShape';
+import { bracketShapeFor, knockoutIsReady } from '@/components/bracketShape';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,7 +67,11 @@ export default async function Workspace({ params }: { params: { comp: string; se
   if (computed) {
     try { phaseGroups = await dataStore.getStandings(rc); } catch {}
   }
-  if (computed && phaseGroups.length > 0 && bracket.length === 0) {
+  // Not `bracket.length === 0`: one published fixture is not a knockout. That
+  // test handed the page over on the Leagues Cup's second quarterfinal of four,
+  // replacing a complete set of phase tables with a bracket holding half a
+  // round and two empty rings.
+  if (computed && phaseGroups.length > 0 && !knockoutIsReady(bracket, bracketShapeFor(rc.season))) {
     // Real fixtures win. The derived ties existed because the provider had
     // published none — now that it has, they carry the actual kickoff times
     // and the actual venue, which the seeded pairing cannot know: seeding
@@ -118,7 +122,7 @@ export default async function Workspace({ params }: { params: { comp: string; se
           <SeasonSwitcher competition={rc.competition} activeSeasonId={rc.season.id} />
         </header>
         {bracket.length > 0
-          ? <div key={rc.season.id} className="edition-fade"><BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} shape={bracketShapeFor(rc.season)} readOnly={readOnly} /></div>
+          ? <div key={rc.season.id} className="edition-fade"><BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} emblem={rc.competition.emblem} trophyImage={rc.competition.trophyImage} championTitle={rc.competition.championTitle} shape={bracketShapeFor(rc.season)} readOnly={readOnly} /></div>
           : <div className="empty-section"><p className="empty-text">Bracket data is unavailable right now.</p></div>}
       </section>
       {!readOnly && liveSection}
