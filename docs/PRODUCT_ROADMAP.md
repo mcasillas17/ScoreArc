@@ -303,10 +303,9 @@ percentiles.
 ### E11 · Dynamic home & now-first matches
 Branch per slice. No backend, no new provider, no new upstream endpoint.
 
-- **T11.1** `matchPriority` + the cheap data path + `/api/live` — no UI change
-- **T11.2** Home live band + tiles that carry real football
-- **T11.3** Matches "Now" mode + calendar polling — **absorbs E2** (`LiveScores.tsx`
-  becomes the Live section renderer; closes T0.3)
+- **T11.1** ✅ `matchPriority` + the cheap data path + `/api/live` (#89) — no UI change
+- **T11.2** ✅ Home live band + tiles that carry real football
+- **T11.3** ✅ Matches "Now" mode + calendar polling — **absorbs E2** (closes T0.3)
 
 Both entry points are static in the literal sense: neither updates itself, and
 both look the same on a matchday as on a quiet Tuesday. `MatchCalendar` fetches
@@ -316,6 +315,12 @@ open stays frozen until reload.
 Measured 2026-08-18: **one `/` render costs 95 upstream ESPN requests, 77 of
 them per-match `/summary` calls** that buy nothing — the page reads only `state`
 and a score, both of which the scoreboard already carries. T11.1 takes it to 18.
+
+Shipped 2026-08-19. Two defects found in review are worth carrying forward as
+rules rather than anecdotes: **deferring a timezone-bound *decision* to the
+client is not enough if the *formatting* still happens on the server** (see the
+spec's "What implementation changed"), and **a cheaper upstream read can still
+make a page heavier** if the saving is handed to the client as payload.
 
 Also measured: **there is no jornada/matchday number to group by.** `mex.1`,
 `eng.1` and `usa.1` all return no `week`, no round and an empty `calendar`, so
