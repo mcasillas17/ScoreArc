@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
-import type { Match, BracketRound, Group, StatLeader } from '@/server/data/types';
-import UpcomingTicker from '@/components/UpcomingTicker';
+import type { BracketRound, Group } from '@/server/data/types';
+import UpcomingBanner from '@/components/UpcomingBanner';
+import { getBannerFeed } from '@/server/data/banner';
 import BracketInteractive from '@/components/BracketInteractive';
 import StandingsLive from '@/components/StandingsLive';
 import PhaseQualifiers from '@/components/PhaseQualifiers';
@@ -31,71 +32,28 @@ export async function generateMetadata({ params, searchParams }: { params: { com
 export default async function Workspace({ params }: { params: { comp: string; season: string } }) {
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) notFound();
+  // A league's headline view IS its table, and the table lives at /standings
+  // for every competition — so the season root has nothing of its own to show.
+  // Redirect rather than render a second copy: two routes drawing the same
+  // table is how the old /standings page drifted into an orphan that nothing
+  // linked to and that quietly lacked the Liguilla dial.
+  if (!rc.season.format.hasBracket) {
+    redirect(`/c/${rc.competition.id}/${rc.season.id}/standings`);
+  }
+
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
   const { teamStyle } = rc.competition;
   // A finished (non-current) edition is view-only.
   const readOnly = rc.season.id !== rc.competition.currentSeasonId;
 
-  let matches: Match[] = [];
-  try { matches = await dataStore.getMatches(rc); } catch {}
-
-  // The fixture banner leads every competition page.
-  //
-  // getMatches only sees the current Monday→Sunday week, which is right on a
-  // matchday and wrong the rest of the time: a season whose next fixture falls
-  // next week has fixtures, and showing an empty band says otherwise. Five of
-  // nine competitions were in exactly that state — between them holding 132
-  // scheduled fixtures and displaying none. Fall back to the forward feed.
-  const scheduledThisWeek = matches.some((m) => m.state === 'scheduled');
-  let upcoming: Match[] = [];
-  if (!scheduledThisWeek) {
-    try { upcoming = await dataStore.getUpcoming(rc); } catch {}
-  }
-  const bannerMatches = scheduledThisWeek ? matches : upcoming;
+  // The fixture band leads every competition page.
+  const feed = await getBannerFeed(rc);
   // Null rather than an empty section: a competition that really has no
   // fixtures left (a finished edition) should show no band at all, not a
-  // heading over nothing.
-  const liveSection = bannerMatches.length > 0 ? (
-    <section id="live">
-      <h2 className="section-label">{scheduledThisWeek ? 'Upcoming This Week' : 'Next Up'}</h2>
-      <UpcomingTicker
-        initialMatches={bannerMatches}
-        apiBase={apiBase}
-        teamStyle={teamStyle}
-        weekOnly={scheduledThisWeek}
-      />
-    </section>
-  ) : null;
+  // heading over nothing. Kept as a nullable value, not an always-truthy
+  // element, because the phase branch below falls back on it being null.
+  const liveSection = feed.matches.length > 0 ? <UpcomingBanner feed={feed} rc={rc} /> : null;
   const footer = <footer className="site-footer"><p>ScoreArc · Data via ESPN · Not affiliated with FIFA</p></footer>;
-
-  // League competitions have no knockout bracket — lead with the table.
-  if (!rc.season.format.hasBracket) {
-    let groups: Group[] = [];
-    let scorers: StatLeader[] = [];
-    let assists: StatLeader[] = [];
-    try { groups = await dataStore.getStandings(rc); } catch {}
-    // One fetch, both boards.
-    try { const boards = await dataStore.getLeaders(rc); scorers = boards.scorers; assists = boards.assists; } catch {}
-    const table = (
-      <section id="table" className={rc.season.qualification || rc.season.zones ? 'std-wide' : undefined}>
-        <header className="bracket-head">
-          <p className="bracket-eyebrow">{rc.competition.name}</p>
-          <h1 className="bracket-title">League Table</h1>
-        </header>
-        <StandingsLive initialGroups={groups} initialScorers={scorers} initialAssists={assists} apiBase={apiBase} teamStyle={teamStyle} showThirdPlace={false} qualification={rc.season.qualification} zones={rc.season.zones} />
-      </section>
-    );
-    // The banner always leads. It is null when there is genuinely nothing to
-    // show, so the old shuffle that moved an empty band below the table is no
-    // longer needed.
-    return (
-      <main className="main">
-        {liveSection}
-        {table}
-        {footer}
-      </main>
-    );
-  }
 
   let bracket: BracketRound[] = [];
   try { bracket = await dataStore.getBracket(rc); } catch {}

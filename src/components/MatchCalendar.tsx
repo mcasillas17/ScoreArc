@@ -209,7 +209,7 @@ export default function MatchCalendar({
         setLoadState((state) => {
           const transition = monthLoadFailed(
             state,
-            'Fixtures are unavailable right now. Please try another month and come back.',
+            'Matches are unavailable right now. Please try another month and come back.',
           );
           loadedRange.current = transition.loadedRange;
           return transition.state;

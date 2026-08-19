@@ -21,23 +21,27 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
   const newsIcon = <svg {...ICON}><path d="M4 5h16v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>;
 
   const atBase = (p: string) => p === base;
-  const fixturesItem = { href: `${base}/fixtures`, label: 'Fixtures & Results', match: (p: string) => p.endsWith('/fixtures'), icon: fixturesIcon };
+  const fixturesItem = { href: `${base}/fixtures`, label: 'Matches', match: (p: string) => p.endsWith('/fixtures'), icon: fixturesIcon };
   const newsItem = { href: `${base}/news`, label: 'News', match: (p: string) => p.startsWith(`${base}/news`), icon: newsIcon };
 
-  // Knockout competitions lead with a bracket + a separate standings page;
-  // leagues lead with the table (which is the base page), so no bracket item.
+  // Standings live at the same route for every competition, under the same
+  // label. A cup adds a Bracket item because it has one; a league's base URL
+  // redirects to /standings, so it needs no item of its own — and the item
+  // stays active on that redirect, which `atBase` would not catch.
+  const standingsItem = {
+    href: `${base}/standings`,
+    label: 'Standings',
+    match: (p: string) => p.startsWith(`${base}/standings`),
+    icon: tableIcon,
+  };
   const items = hasBracket
     ? [
         { href: base, label: 'Bracket', match: atBase, icon: bracketIcon },
-        { href: `${base}/standings`, label: 'Standings', match: (p: string) => p.startsWith(`${base}/standings`), icon: tableIcon },
+        standingsItem,
         fixturesItem,
         newsItem,
       ]
-    : [
-        { href: base, label: 'Table', match: atBase, icon: tableIcon },
-        fixturesItem,
-        newsItem,
-      ];
+    : [standingsItem, fixturesItem, newsItem];
 
   return (
     <>
