@@ -92,6 +92,20 @@ describe('matchPriority', () => {
     expect(live.map((m) => m.id)).toEqual(['l']);
   });
 
+  // A fixture dated in the future but already marked finished — ESPN reports
+  // every `post` state as finished, abandoned ties included — used to yield a
+  // negative age, satisfy the recent window, and sort to the TOP of "just
+  // finished" because that bucket is ordered newest-first.
+  it('never files a future-dated finished match under recent', () => {
+    const { recent, upcoming, live } = matchPriority(
+      [match('abandoned', 'finished', hours(72))],
+      NOW,
+    );
+    expect(recent).toEqual([]);
+    expect(upcoming).toEqual([]);
+    expect(live).toEqual([]);
+  });
+
   it('returns three empty arrays for no input', () => {
     expect(matchPriority([], NOW)).toEqual({ live: [], upcoming: [], recent: [] });
   });

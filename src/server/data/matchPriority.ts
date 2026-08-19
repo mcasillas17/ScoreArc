@@ -29,19 +29,38 @@ export const KICKOFF_GRACE_MS = 3 * 60 * 60 * 1000;
 export function matchPriority(
   matches: Match[],
   now: Date,
-  { recentWindowMs = RECENT_WINDOW_MS, kickoffGraceMs = KICKOFF_GRACE_MS }: PriorityWindows = {},
+  windows: PriorityWindows = {},
 ): PrioritisedMatches {
-  const t = now.getTime();
-  const live: Match[] = [];
-  const upcoming: Match[] = [];
-  const recent: Match[] = [];
+  return prioritiseBy(matches, (m) => m, now, windows);
+}
 
-  for (const m of matches) {
+/**
+ * The same rule over anything that carries a match — a `{ competition, match }`
+ * entry, say.
+ *
+ * Exists so callers never have to map bucketed `Match` objects back to whatever
+ * wrapped them. The first attempt did that through a Map and silently dropped
+ * every entry after the first whenever two of them shared a Match object; a
+ * generic bucket cannot have that bug because it never loses the wrapper.
+ */
+export function prioritiseBy<T>(
+  items: T[],
+  getMatch: (item: T) => Match,
+  now: Date,
+  { recentWindowMs = RECENT_WINDOW_MS, kickoffGraceMs = KICKOFF_GRACE_MS }: PriorityWindows = {},
+): { live: T[]; upcoming: T[]; recent: T[] } {
+  const t = now.getTime();
+  const live: T[] = [];
+  const upcoming: T[] = [];
+  const recent: T[] = [];
+
+  for (const item of items) {
+    const m = getMatch(item);
     const kickoff = new Date(m.kickoff).getTime();
 
     // A live match is live regardless of what its kickoff says.
     if (m.state === 'live') {
-      live.push(m);
+      live.push(item);
       continue;
     }
 
@@ -53,14 +72,19 @@ export function matchPriority(
       // Past kickoff but still scheduled means either "about to start" or
       // "postponed". The grace tells them apart: advertising a fixture from
       // last Tuesday under "Next up" is worse than showing nothing.
-      if (kickoff >= t - kickoffGraceMs) upcoming.push(m);
+      if (kickoff >= t - kickoffGraceMs) upcoming.push(item);
       continue;
     }
 
-    if (t - kickoff <= recentWindowMs) recent.push(m);
+    // Both bounds matter. Without `kickoff <= t`, a fixture dated in the
+    // future but already marked finished — ESPN reports every `post` state as
+    // finished, including abandoned ties — yields a negative age, satisfies
+    // the window, and sorts to the TOP of "just finished".
+    if (kickoff <= t && t - kickoff <= recentWindowMs) recent.push(item);
   }
 
-  const asc = (a: Match, b: Match) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime();
+  const asc = (a: T, b: T) =>
+    new Date(getMatch(a).kickoff).getTime() - new Date(getMatch(b).kickoff).getTime();
   live.sort(asc);
   upcoming.sort(asc);
   recent.sort((a, b) => -asc(a, b));

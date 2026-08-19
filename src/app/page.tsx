@@ -3,7 +3,7 @@ import { listCompetitions, resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import { hubStatus } from '@/lib/hubStatus';
 import { tileFacts, tileSubLine } from '@/lib/hubTile';
-import { sortEntriesByKickoff, toLiveEntries, type LiveEntry } from '@/server/data/liveFeed';
+import { prioritiseEntries, toLiveEntries, type LiveEntry } from '@/server/data/liveFeed';
 import HubTiles from '@/components/HubTiles';
 import LiveBand from '@/components/LiveBand';
 
@@ -76,7 +76,9 @@ export default async function Hub() {
     }),
   );
   // The band draws from every competition at once; the tiles are the way in.
-  const entries: LiveEntry[] = sortEntriesByKickoff(tiles.flatMap((t) => t.entries));
+  // Trimmed the same way /api/live trims, so the payload embedded in this page
+  // matches what the first poll replaces it with.
+  const entries: LiveEntry[] = prioritiseEntries(tiles.flatMap((t) => t.entries), now);
 
   return (
     <main className="hub">

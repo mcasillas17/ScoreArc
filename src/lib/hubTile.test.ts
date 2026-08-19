@@ -39,15 +39,14 @@ describe('tileFacts', () => {
     expect(facts.liveLine).toBe('AME 1–0 CAZ');
   });
 
-  it('names the next fixture by weekday when it is not today', () => {
-    const facts = tileFacts([match('u', 'scheduled', hours(72), 'TIG', 'ATL')], [], NOW);
-    expect(facts.nextLine).toContain('TIG v ATL');
-    expect(facts.nextLine).toMatch(/Friday|Saturday/);
-  });
-
-  it('names the next fixture by time when it is today', () => {
-    const facts = tileFacts([match('u', 'scheduled', hours(2), 'TIG', 'ATL')], [], NOW);
-    expect(facts.nextLine).toMatch(/TIG v ATL, \d/);
+  // The teams, and the raw kickoff -- never a formatted day or time. This runs
+  // on the server, where toLocale* resolves against UTC.
+  it('names the next fixture without formatting its kickoff', () => {
+    const kickoff = hours(72);
+    const facts = tileFacts([match('u', 'scheduled', kickoff, 'TIG', 'ATL')], [], NOW);
+    expect(facts.nextLine).toBe('TIG v ATL');
+    expect(facts.nextKickoff).toBe(kickoff);
+    expect(facts.nextLine).not.toMatch(/Friday|Saturday|AM|PM|\d:\d/);
   });
 
   // A table before anyone has played is alphabetical. Printing a leader from
@@ -62,54 +61,54 @@ describe('tileFacts', () => {
 
   it('is empty for a competition with no matches and no table', () => {
     expect(tileFacts([], [], NOW)).toEqual({
-      liveCount: 0, liveLine: null, nextLine: null, leaderLine: null,
+      liveCount: 0, liveLine: null, nextLine: null, nextKickoff: null, leaderLine: null,
     });
   });
 });
 
 describe('tileSubLine', () => {
-  const none = { liveCount: 0, liveLine: null, nextLine: null, leaderLine: null };
+  const none = { liveCount: 0, liveLine: null, nextLine: null, nextKickoff: null, leaderLine: null };
 
   it('crowns a finished competition', () => {
-    expect(tileSubLine('finished', none, 'Spain', '2026')).toBe('Spain — champions');
+    expect(tileSubLine('finished', none, 'Spain', '2026')).toEqual({ text: 'Spain — champions', when: null });
   });
 
   it('falls back when a finished competition has no champion', () => {
-    expect(tileSubLine('finished', none, null, '2026')).toBe('2026 · complete');
+    expect(tileSubLine('finished', none, null, '2026')).toEqual({ text: '2026 · complete', when: null });
   });
 
   it('leads with a live score', () => {
-    expect(tileSubLine('live', { ...none, liveCount: 1, liveLine: 'AME 1–0 CAZ' }, null, '2026'))
+    expect(tileSubLine('live', { ...none, liveCount: 1, liveLine: 'AME 1–0 CAZ' }, null, '2026').text)
       .toBe('AME 1–0 CAZ');
   });
 
   it('counts simultaneous live matches — Liga MX kicks off seven at once', () => {
-    expect(tileSubLine('live', { ...none, liveCount: 7, liveLine: 'AME 1–0 CAZ' }, null, '2026'))
+    expect(tileSubLine('live', { ...none, liveCount: 7, liveLine: 'AME 1–0 CAZ' }, null, '2026').text)
       .toBe('7 live · AME 1–0 CAZ');
   });
 
   // A pre-season competition gets its first fixture and never a standing.
   it('gives a pre-season competition only its start', () => {
-    expect(tileSubLine('upcoming', { ...none, nextLine: 'ARS v MCI, Friday', leaderLine: 'X, 9 pts' }, null, '2026-27'))
-      .toBe('Starts ARS v MCI, Friday');
+    expect(tileSubLine('upcoming', { ...none, nextLine: 'ARS v MCI', leaderLine: 'X, 9 pts' }, null, '2026-27').text)
+      .toBe('Starts ARS v MCI');
   });
 
   it('falls back to the season label when even the start is unknown', () => {
-    expect(tileSubLine('upcoming', none, null, '2026-27')).toBe('2026-27 season');
+    expect(tileSubLine('upcoming', none, null, '2026-27').text).toBe('2026-27 season');
   });
 
   it('prefers the next fixture over the table for an ongoing competition', () => {
-    expect(tileSubLine('ongoing', { ...none, nextLine: 'TIG v ATL, Friday', leaderLine: 'América, 10 pts' }, null, '2026'))
-      .toBe('Next: TIG v ATL, Friday');
+    expect(tileSubLine('ongoing', { ...none, nextLine: 'TIG v ATL', leaderLine: 'América, 10 pts' }, null, '2026').text)
+      .toBe('Next: TIG v ATL');
   });
 
   it('falls back to the leader when nothing is scheduled in range', () => {
-    expect(tileSubLine('ongoing', { ...none, leaderLine: 'América, 10 pts' }, null, '2026'))
+    expect(tileSubLine('ongoing', { ...none, leaderLine: 'América, 10 pts' }, null, '2026').text)
       .toBe('Leaders: América, 10 pts');
   });
 
   // The state that produced "0 matches" on the live site.
   it('never renders a bare count', () => {
-    expect(tileSubLine('ongoing', none, null, '2026')).toBe('2026 season');
+    expect(tileSubLine('ongoing', none, null, '2026').text).toBe('2026 season');
   });
 });

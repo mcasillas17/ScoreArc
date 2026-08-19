@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import type { Match } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
 import { matchPriority } from '@/server/data/matchPriority';
@@ -18,6 +19,8 @@ interface Props {
   apiBase: string;
   range: string;
   teamStyle?: TeamStyle;
+  /** Where "the full calendar" lives, so the empty state is not a dead end. */
+  calendarHref: string;
 }
 
 interface Section {
@@ -52,17 +55,27 @@ export default function MatchesNow({
   apiBase,
   range,
   teamStyle = 'crest',
+  calendarHref,
 }: Props) {
   const [matches, setMatches] = useState<Match[]>(initialMatches);
   const [error, setError] = useState<string | null>(initialError);
   const [mounted, setMounted] = useState(false);
+  // Advanced on every successful poll so a page left open across midnight
+  // re-splits "later today" instead of keeping yesterday's.
+  const [now, setNow] = useState<Date | null>(null);
   const [detail, setDetail] = useState<Match | null>(null);
   const [summary, setSummary] = useState<MatchSummary | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const detailsAbort = useRef<AbortController | null>(null);
   const failing = useRef(false);
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    setMounted(true);
+    setNow(new Date());
+  }, []);
+
+  // Abort an in-flight detail fetch when the component goes away.
+  useEffect(() => () => detailsAbort.current?.abort(), []);
 
   useEffect(() => {
     let alive = true;
@@ -76,6 +89,7 @@ export default function MatchesNow({
         if (!alive) return;
         if (!Array.isArray(next)) throw new Error('not an array');
         setMatches(next);
+        setNow(new Date());
         setError(null);
         if (failing.current) {
           trackFeedRecovery('matches-now');
@@ -97,8 +111,8 @@ export default function MatchesNow({
   }, [apiBase, range]);
 
   const sections = useMemo<Section[]>(() => {
-    const now = new Date();
-    const { live, upcoming, recent } = matchPriority(matches, now);
+    const clock = now ?? new Date();
+    const { live, upcoming, recent } = matchPriority(matches, clock);
 
     const out: Section[] = [];
     if (live.length) out.push({ key: 'live', title: 'Live', tone: 'live', matches: live });
@@ -109,8 +123,8 @@ export default function MatchesNow({
         out.push({ key: 'upcoming', title: 'Coming up', tone: 'week', matches: upcoming });
       }
     } else {
-      const today = upcoming.filter((m) => isSameLocalDay(m.kickoff, now));
-      const later = upcoming.filter((m) => !isSameLocalDay(m.kickoff, now));
+      const today = upcoming.filter((m) => isSameLocalDay(m.kickoff, clock));
+      const later = upcoming.filter((m) => !isSameLocalDay(m.kickoff, clock));
       if (today.length) out.push({ key: 'today', title: 'Later today', tone: 'today', matches: today });
       if (later.length) {
         out.push({ key: 'week', title: 'Coming up', tone: 'week', matches: later, byDay: true });
@@ -121,12 +135,13 @@ export default function MatchesNow({
       out.push({ key: 'recent', title: 'Latest results', tone: 'recent', matches: recent, byDay: mounted });
     }
     return out;
-  }, [matches, mounted]);
+  }, [matches, mounted, now]);
 
   async function openDetails(match: Match) {
     detailsAbort.current?.abort();
     const controller = new AbortController();
     detailsAbort.current = controller;
+    trackEvent('Match details opened', { surface: 'matches-now' });
     setDetail(match);
     setSummary(null);
     setLoadingDetail(true);
@@ -154,7 +169,10 @@ export default function MatchesNow({
       {error && <p className="mc-status" aria-live="polite">{error}</p>}
 
       {sections.length === 0 && !error && (
-        <p className="empty-text">Nothing scheduled or recently played. Try the full calendar.</p>
+        <p className="empty-text">
+          Nothing scheduled or recently played.{' '}
+          <Link href={calendarHref} className="mn-empty-link">Browse the full calendar</Link>.
+        </p>
       )}
 
       <div className="mn-sections">
@@ -167,7 +185,7 @@ export default function MatchesNow({
             </h2>
             {/* A grid, not a list: Liga MX kicks off seven matches at once. */}
             {section.byDay ? (
-              groupByDay(section.matches, new Date()).map((day) => (
+              groupByDay(section.matches, now ?? new Date()).map((day) => (
                 <div key={day.key} className="mn-day">
                   <h3 className="mn-day-label">{day.label}</h3>
                   <div className="mn-grid">

@@ -3,14 +3,11 @@
 import type { Match, Team } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
 import { flagUrl } from '@/lib/flags';
+import LocalTime from './LocalTime';
 
 // Extracted from MatchCalendar when the "Now" view arrived: a match has to look
 // the same wherever it is listed, and two copies of this markup would drift the
 // first time a column changed.
-
-export function kickoffTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-}
 
 export function TeamMark({ team, style }: { team: Team; style: TeamStyle }) {
   const src = style === 'crest'
@@ -24,22 +21,16 @@ export function TeamMark({ team, style }: { team: Team; style: TeamStyle }) {
   );
 }
 
-/**
- * One match in a list.
- *
- * `context` is the competition name, shown only where a list mixes
- * competitions — the home band does, a single competition's calendar does not.
- */
+// One match in a list. Every surface that lists matches renders this, so a
+// match looks and behaves the same in the Now view and the calendar.
 export default function MatchRow({
   match,
   teamStyle,
   onOpen,
-  context,
 }: {
   match: Match;
   teamStyle: TeamStyle;
   onOpen: () => void;
-  context?: string;
 }) {
   const started = match.state !== 'scheduled';
   const status = match.state === 'live'
@@ -47,14 +38,22 @@ export default function MatchRow({
     : match.state === 'finished'
       ? (match.statusDetail || 'FT')
       : 'Scheduled';
-  const ariaStatus = match.state === 'scheduled' ? kickoffTime(match.kickoff) : status;
+  // Deliberately not the kickoff time: that is the reader's clock and is not
+  // known during server rendering. The score carries the information anyway.
+  const ariaStatus = match.state === 'scheduled'
+    ? 'scheduled'
+    : `${match.homeScore ?? 0}, ${match.away.name} ${match.awayScore ?? 0}, ${status}`;
 
   return (
     <button
       type="button"
       className={`mc-match mc-match--${match.state}`}
       onClick={onOpen}
-      aria-label={`${match.home.name} versus ${match.away.name}, ${ariaStatus}${context ? `, ${context}` : ''}`}
+      aria-label={
+        match.state === 'scheduled'
+          ? `${match.home.name} versus ${match.away.name}, scheduled`
+          : `${match.home.name} ${ariaStatus}`
+      }
     >
       <span className="mc-team">
         <TeamMark team={match.home} style={teamStyle} />
@@ -68,10 +67,9 @@ export default function MatchRow({
             <strong>{match.awayScore ?? 0}</strong>
           </>
         ) : (
-          <strong>{kickoffTime(match.kickoff)}</strong>
+          <strong><LocalTime iso={match.kickoff} mode="time" /></strong>
         )}
         <small>{status}</small>
-        {context && <small className="mc-context">{context}</small>}
       </span>
       <span className="mc-team mc-team--away">
         <span className="mc-team-name">{match.away.name}</span>

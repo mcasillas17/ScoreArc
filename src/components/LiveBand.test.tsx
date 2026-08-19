@@ -60,7 +60,7 @@ describe('LiveBand', () => {
     );
     expect(html).toContain('Live now');
     // The live mode owns the whole slot -- the other two are not also shown.
-    expect(html).not.toContain('Just finished');
+    expect(html).not.toContain('Latest results');
     expect(html).not.toContain('Next up');
   });
 
@@ -70,7 +70,7 @@ describe('LiveBand', () => {
         initialEntries={[entry('u', 'scheduled', hours(3)), entry('r', 'finished', hours(-4))]}
       />,
     );
-    expect(html).toContain('Just finished');
+    expect(html).toContain('Latest results');
     expect(html).toContain('Next up');
     expect(html).not.toContain('Live now');
   });
@@ -97,13 +97,33 @@ describe('LiveBand', () => {
     expect(html).toContain('/c/liga-mx/2026-apertura/matches');
   });
 
-  // The centre of a scheduled row already carries the kickoff time; printing
-  // it again on the right was the first cut's bug.
-  it('does not print a scheduled kickoff time twice', () => {
+  // Nothing on the server pass may carry a wall clock. Vercel runs UTC, and a
+  // time baked into server-rendered HTML is never corrected afterwards -- the
+  // reader would see a kickoff hours off, or the wrong day entirely.
+  it('renders no server-formatted clock time', () => {
     const html = renderToStaticMarkup(
       <LiveBand initialEntries={[entry('u', 'scheduled', hours(3))]} />,
     );
-    const time = new Date(hours(3)).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    expect(html.split(time)).toHaveLength(2); // one occurrence
+    expect(html).not.toMatch(/\d{1,2}:\d{2}/);
+    expect(html).toContain('lt-pending');
+  });
+
+  // The same markup under two very different clocks. If any formatting leaked
+  // into the server pass, these would differ -- which is exactly the defect
+  // both reviewers found in the first cut.
+  it('renders identically regardless of the server timezone', () => {
+    const render = () =>
+      renderToStaticMarkup(
+        <LiveBand
+          initialEntries={[entry('u', 'scheduled', hours(3)), entry('r', 'finished', hours(-4))]}
+        />,
+      );
+    const original = process.env.TZ;
+    process.env.TZ = 'UTC';
+    const utc = render();
+    process.env.TZ = 'America/Mexico_City';
+    const cdmx = render();
+    process.env.TZ = original;
+    expect(utc).toBe(cdmx);
   });
 });

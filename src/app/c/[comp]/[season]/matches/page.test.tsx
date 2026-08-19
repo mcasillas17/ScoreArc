@@ -161,6 +161,44 @@ describe('MatchesPage default mode', () => {
     expect(html).toContain('Nothing scheduled or recently played');
   });
 
+  // The tab must name the view it opens. Linking to the bare path made it a
+  // no-op for exactly the states it exists to reach: when Now is empty the
+  // bare path resolves to the calendar, so clicking "Now" changed nothing.
+  it('points the Now tab at an explicit view', async () => {
+    vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
+    const html = renderToStaticMarkup(
+      await MatchesPage({ params: { comp: 'liga-mx', season: '2026-apertura' } }),
+    );
+    expect(html).toContain('/c/liga-mx/2026-apertura/matches?view=now');
+  });
+
+  // ?view=now on a past edition rendered one sentence with no tabs and no way
+  // out, while polling a window that cannot contain any of its matches.
+  it('refuses ?view=now for a past edition instead of stranding the reader', async () => {
+    const live = vi.spyOn(dataStore, 'getLiveWindow');
+    const html = renderToStaticMarkup(
+      await MatchesPage({
+        params: { comp: 'world-cup', season: '1998' },
+        searchParams: { view: 'now' },
+      }),
+    );
+    expect(html).toContain('Previous');
+    expect(live).not.toHaveBeenCalled();
+  });
+
+  // An empty Now must offer the way out it names.
+  it('links to the calendar from the empty Now state', async () => {
+    vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
+    const html = renderToStaticMarkup(
+      await MatchesPage({
+        params: { comp: 'liga-mx', season: '2026-apertura' },
+        searchParams: { view: 'now' },
+      }),
+    );
+    expect(html).toContain('Nothing scheduled or recently played');
+    expect(html).toContain('?view=calendar');
+  });
+
   it('ignores an unknown view rather than rendering nothing', async () => {
     vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([match('u', 'scheduled', inDays(3))]);
     const html = renderToStaticMarkup(

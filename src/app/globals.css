@@ -3244,13 +3244,16 @@ a {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--live-red);
-  box-shadow: 0 0 0 0 rgba(224, 36, 43, 0.55);
+  /* currentColor so the halo is the same red as the dot. The literal rgba it
+     replaced was #e0242b while --live-red is #ff5c5c — visibly two reds. */
+  background: currentColor;
+  color: var(--live-red);
+  box-shadow: 0 0 0 0 currentColor;
   animation: lb-pulse 1.9s ease-out infinite;
 }
 @keyframes lb-pulse {
-  70% { box-shadow: 0 0 0 7px rgba(224, 36, 43, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(224, 36, 43, 0); }
+  70% { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
 }
 
 /* A grid, not a carousel: Liga MX kicks off seven matches at once and a
@@ -3279,7 +3282,7 @@ a {
   text-decoration: none;
   transition: border-color 140ms ease, background 140ms ease;
 }
-.lb-row:hover { background: var(--surface-3, var(--surface-2)); border-color: var(--gold); }
+.lb-row:hover { background: var(--surface-2); border-color: var(--gold); }
 .lb-row:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .lb-row--live { border-left-color: var(--live-red); }
 .lb-row--next { border-left-color: var(--gold); }
@@ -3309,9 +3312,17 @@ a {
 .lb-comp { letter-spacing: 0.03em; }
 .lb-detail { font-variant-numeric: tabular-nums; }
 
+/* The status word beside the day, both muted. */
+.lb-detail { display: inline-flex; align-items: baseline; gap: 6px; }
+.lb-status { font-weight: 700; }
+/* Pre-mount placeholder for a time only the reader's clock can render. */
+.lt-pending { opacity: 0.35; }
+
 @media (max-width: 560px) {
   .lb-grid { grid-template-columns: 1fr; }
-  .lb-split { gap: 18px; }
+  /* Columns too, not just the gap: a fixed 280px minimum overflows a 320px
+     device once the page padding is taken out. */
+  .lb-split { grid-template-columns: 1fr; gap: 18px; }
 }
 
 /* ---- Matches: "Now" mode ----
@@ -3337,9 +3348,11 @@ a {
 .mn-tab--on {
   background: var(--gold);
   border-color: var(--gold);
-  color: #101014;
+  color: var(--bg);
   font-weight: 750;
 }
+
+.mn-empty-link { color: var(--gold); }
 
 .mn-sections { display: flex; flex-direction: column; gap: 26px; }
 

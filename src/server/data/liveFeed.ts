@@ -1,5 +1,6 @@
 import type { Match } from './types';
 import type { Competition } from './competitions';
+import { prioritiseBy } from './matchPriority';
 
 /**
  * One match, labelled with the competition it belongs to.
@@ -32,4 +33,25 @@ export function sortEntriesByKickoff(entries: LiveEntry[]): LiveEntry[] {
   return [...entries].sort(
     (a, b) => new Date(a.match.kickoff).getTime() - new Date(b.match.kickoff).getTime(),
   );
+}
+
+/** How many of each bucket cross the wire. The band shows at most six live and
+ *  three each side; the surplus exists so a client-side re-split never runs
+ *  out of rows, not so it can render them all. */
+export const ENTRIES_PER_BUCKET = 12;
+
+/**
+ * The entries worth sending: live, then next, then just played, capped.
+ *
+ * The merge across nine competitions over a three-week window runs to a couple
+ * of hundred matches. Sending all of them to fill a six-row band put more back
+ * into the page than the cheap upstream read took out of it.
+ *
+ * Safe to do on the server because `matchPriority` compares instants and has
+ * no notion of a local day — the timezone-bound split stays in the browser.
+ */
+export function prioritiseEntries(entries: LiveEntry[], now: Date): LiveEntry[] {
+  const { live, upcoming, recent } = prioritiseBy(entries, (e) => e.match, now);
+  const take = (es: LiveEntry[]) => es.slice(0, ENTRIES_PER_BUCKET);
+  return [...take(live), ...take(upcoming), ...take(recent)];
 }

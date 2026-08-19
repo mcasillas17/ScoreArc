@@ -205,9 +205,22 @@ export default function MatchCalendar({
           loadedRange.current = transition.loadedRange;
           return transition.state;
         });
+        // Without this, a refresh that heals a month the initial load failed
+        // on leaves feedFailed pinned true -- which then swallows the NEXT
+        // genuine failure. A flapping feed would report one failure ever and
+        // no recovery at all.
+        if (feedFailed.current) {
+          trackFeedRecovery('fixtures');
+          feedFailed.current = false;
+        }
       } catch {
-        // A failed refresh keeps the month already on screen. The month-load
-        // effect above owns the error surface; this one must not blank it.
+        // A failed refresh keeps the month already on screen -- the month-load
+        // effect owns the error surface and this one must not blank it -- but
+        // it is still a feed failure and the dashboard needs to see it.
+        if (!feedFailed.current) {
+          trackFeedFailure('fixtures');
+          feedFailed.current = true;
+        }
       }
     }
     const id = setInterval(refresh, LIVE_REFRESH_MS);

@@ -6,24 +6,18 @@ export interface TileFacts {
   liveCount: number;
   /** The live match a tile headlines with, if any. */
   liveLine: string | null;
-  /** The next kickoff, phrased relative to the reader's week. */
+  /** The next fixture, teams only. Its DAY AND TIME are deliberately absent:
+   *  this runs on the server, where every toLocale* call resolves against
+   *  UTC, and a formatted string baked into HTML is never corrected on the
+   *  client. The tile pairs this with <LocalTime> for the when. */
   nextLine: string | null;
+  nextKickoff: string | null;
   /** Who is top of the table. Leagues only — a cup has no leader. */
   leaderLine: string | null;
 }
 
 function abbrScore(m: Match): string {
   return `${m.home.abbr} ${m.homeScore ?? 0}–${m.awayScore ?? 0} ${m.away.abbr}`;
-}
-
-function dayLabel(iso: string, now: Date): string {
-  const d = new Date(iso);
-  const days = Math.round((d.getTime() - now.getTime()) / 86_400_000);
-  if (d.toDateString() === now.toDateString()) {
-    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  }
-  if (days <= 6) return d.toLocaleDateString([], { weekday: 'long' });
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
 /**
@@ -41,8 +35,9 @@ export function tileFacts(matches: Match[], standings: Group[], now: Date): Tile
     liveCount: live.length,
     liveLine: live.length > 0 ? abbrScore(live[0]) : null,
     nextLine: upcoming.length > 0
-      ? `${upcoming[0].home.abbr} v ${upcoming[0].away.abbr}, ${dayLabel(upcoming[0].kickoff, now)}`
+      ? `${upcoming[0].home.abbr} v ${upcoming[0].away.abbr}`
       : null,
+    nextKickoff: upcoming.length > 0 ? upcoming[0].kickoff : null,
     // Only once someone has actually played: a table before kick-off is
     // alphabetical, and printing "Leaders: América" then would be a fiction.
     leaderLine: leader && leader.played > 0
@@ -54,28 +49,41 @@ export function tileFacts(matches: Match[], standings: Group[], now: Date): Tile
 /**
  * The one line under a competition's name.
  *
+ * Returns the text and, separately, the kickoff it refers to — never a
+ * formatted date. The tile renders the `when` through <LocalTime>, because
+ * this function runs on the server and the server's clock is not the reader's.
+ *
  * Ordered by what a visitor most wants to know: something in play, then what is
  * next, then who is winning. A pre-season competition deliberately gets only
  * its next fixture — never a standing, which is the E0 regression.
  */
+export interface TileSubLine {
+  text: string;
+  /** ISO kickoff to append as a local day, or null when the text stands alone. */
+  when: string | null;
+}
+
 export function tileSubLine(
   status: HubStatus,
   facts: TileFacts,
   champion: string | null,
   seasonLabel: string,
-): string {
+): TileSubLine {
   if (status === 'finished') {
-    return champion ? `${champion} — champions` : `${seasonLabel} · complete`;
+    return { text: champion ? `${champion} — champions` : `${seasonLabel} · complete`, when: null };
   }
   if (facts.liveCount > 0 && facts.liveLine) {
-    return facts.liveCount > 1
-      ? `${facts.liveCount} live · ${facts.liveLine}`
-      : facts.liveLine;
+    return {
+      text: facts.liveCount > 1 ? `${facts.liveCount} live · ${facts.liveLine}` : facts.liveLine,
+      when: null,
+    };
   }
   if (status === 'upcoming') {
-    return facts.nextLine ? `Starts ${facts.nextLine}` : `${seasonLabel} season`;
+    return facts.nextLine
+      ? { text: `Starts ${facts.nextLine}`, when: facts.nextKickoff }
+      : { text: `${seasonLabel} season`, when: null };
   }
-  if (facts.nextLine) return `Next: ${facts.nextLine}`;
-  if (facts.leaderLine) return `Leaders: ${facts.leaderLine}`;
-  return `${seasonLabel} season`;
+  if (facts.nextLine) return { text: `Next: ${facts.nextLine}`, when: facts.nextKickoff };
+  if (facts.leaderLine) return { text: `Leaders: ${facts.leaderLine}`, when: null };
+  return { text: `${seasonLabel} season`, when: null };
 }

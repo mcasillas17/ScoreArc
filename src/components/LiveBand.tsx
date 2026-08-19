@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { LiveEntry } from '@/server/data/liveFeed';
-import { matchPriority } from '@/server/data/matchPriority';
+import { prioritiseBy } from '@/server/data/matchPriority';
 import { trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
-import { kickoffTime } from './MatchRow';
+import LocalTime from './LocalTime';
 
 const REFRESH_MS = 30_000;
 
@@ -18,46 +18,51 @@ interface Props {
   initialEntries: LiveEntry[];
 }
 
-function scoreLine(entry: LiveEntry): string {
-  const { match } = entry;
-  if (match.state === 'scheduled') return kickoffTime(match.kickoff);
-  return `${match.homeScore ?? 0}–${match.awayScore ?? 0}`;
-}
-
 function EntryRow({ entry, tone }: { entry: LiveEntry; tone: 'live' | 'next' | 'recent' }) {
   const { competition, match } = entry;
-  // The centre already shows a scheduled match's kickoff time, so the detail
-  // slot carries only what the centre cannot: which day it is on. Today needs
-  // no day at all, and printing the time twice is what the first cut did.
-  const detail = match.state === 'live'
+  const scheduled = match.state === 'scheduled';
+  const score = `${match.homeScore ?? 0}–${match.awayScore ?? 0}`;
+
+  // The status word. A scheduled match's day and a played match's day both
+  // come from LocalTime, because both are the reader's dates, not the
+  // server's.
+  const status = match.state === 'live'
     ? (match.minute ?? match.statusDetail)
     : match.state === 'finished'
       ? (match.statusDetail || 'FT')
-      : kickoffDay(match.kickoff);
+      : null;
 
   return (
     <Link
       href={`/c/${competition.id}/${competition.seasonId}/matches`}
       className={`lb-row lb-row--${tone}`}
-      aria-label={`${match.home.name} versus ${match.away.name}, ${detail}, ${competition.name}`}
+      aria-label={
+        scheduled
+          ? `${match.home.name} versus ${match.away.name}, ${competition.name}`
+          // The score is the whole point of the row; an aria-label that omits
+          // it leaves a screen-reader user with everything except the result.
+          : `${match.home.name} ${match.homeScore ?? 0}, ${match.away.name} ${match.awayScore ?? 0}, ${status}, ${competition.name}`
+      }
     >
       <span className="lb-teams">
         <span className="lb-team">{match.home.abbr}</span>
-        <strong className="lb-score">{scoreLine(entry)}</strong>
+        <strong className="lb-score">
+          {scheduled ? <LocalTime iso={match.kickoff} mode="time" /> : score}
+        </strong>
         <span className="lb-team">{match.away.abbr}</span>
       </span>
       <span className="lb-meta">
         <span className="lb-comp">{competition.emblem} {competition.shortName}</span>
-        {detail && <span className="lb-detail">{detail}</span>}
+        {/* Results carry their day too. "Just finished" spans up to two days,
+            and three rows reading only "FT" made a match from Sunday look
+            like one that ended five minutes ago. */}
+        <span className="lb-detail">
+          {status && <span className="lb-status">{status}</span>}
+          <LocalTime iso={match.kickoff} mode="day" />
+        </span>
       </span>
     </Link>
   );
-}
-
-function kickoffDay(iso: string): string {
-  const d = new Date(iso);
-  if (d.toDateString() === new Date().toDateString()) return 'Today';
-  return d.toLocaleDateString([], { weekday: 'long' });
 }
 
 /**
@@ -116,13 +121,10 @@ export default function LiveBand({ initialEntries }: Props) {
     };
   }, []);
 
-  const { live, upcoming, recent } = useMemo(() => {
-    const buckets = matchPriority(entries.map((e) => e.match), now ?? new Date());
-    const byId = new Map(entries.map((e) => [e.match.id, e]));
-    const pick = (ms: typeof buckets.live) =>
-      ms.map((m) => byId.get(m.id)).filter((e): e is LiveEntry => e !== undefined);
-    return { live: pick(buckets.live), upcoming: pick(buckets.upcoming), recent: pick(buckets.recent) };
-  }, [entries, now]);
+  const { live, upcoming, recent } = useMemo(
+    () => prioritiseBy(entries, (e) => e.match, now ?? new Date()),
+    [entries, now],
+  );
 
   if (live.length > 0) {
     return (
@@ -133,7 +135,7 @@ export default function LiveBand({ initialEntries }: Props) {
         </h2>
         <div className="lb-grid">
           {live.slice(0, LIVE_SHOWN).map((e) => (
-            <EntryRow key={e.match.id} entry={e} tone="live" />
+            <EntryRow key={`${e.competition.id}:${e.match.id}`} entry={e} tone="live" />
           ))}
         </div>
       </section>
@@ -143,14 +145,14 @@ export default function LiveBand({ initialEntries }: Props) {
   if (recent.length === 0 && upcoming.length === 0) return null;
 
   return (
-    <section className="lb" aria-label="Recent and upcoming matches">
+    <section className="lb" aria-label="Latest results and upcoming matches">
       <div className="lb-split">
         {recent.length > 0 && (
           <div className="lb-col">
-            <h2 className="lb-title">Just finished</h2>
+            <h2 className="lb-title">Latest results</h2>
             <div className="lb-list">
               {recent.slice(0, SIDE_SHOWN).map((e) => (
-                <EntryRow key={e.match.id} entry={e} tone="recent" />
+                <EntryRow key={`${e.competition.id}:${e.match.id}`} entry={e} tone="recent" />
               ))}
             </div>
           </div>
@@ -160,7 +162,7 @@ export default function LiveBand({ initialEntries }: Props) {
             <h2 className="lb-title lb-title--next">Next up</h2>
             <div className="lb-list">
               {upcoming.slice(0, SIDE_SHOWN).map((e) => (
-                <EntryRow key={e.match.id} entry={e} tone="next" />
+                <EntryRow key={`${e.competition.id}:${e.match.id}`} entry={e} tone="next" />
               ))}
             </div>
           </div>

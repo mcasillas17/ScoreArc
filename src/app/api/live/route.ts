@@ -1,7 +1,7 @@
 import { listCompetitions, resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
-import { sortEntriesByKickoff, toLiveEntries, type LiveEntry } from '@/server/data/liveFeed';
+import { prioritiseEntries, toLiveEntries, type LiveEntry } from '@/server/data/liveFeed';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -30,7 +30,9 @@ export async function GET() {
         return toLiveEntries(comp, rc.season.id, await dataStore.getLiveWindow(rc));
       } catch {
         failed += 1;
-        await trackAPIRequestFailure('live', 502, comp.id, rc.season.id);
+            // 200: this response still succeeds for the other eight. The status
+        // records what the reader got, not what this one feed did.
+        await trackAPIRequestFailure('live', 200, comp.id, rc.season.id);
         return [];
       }
     }),
@@ -41,7 +43,12 @@ export async function GET() {
     return Response.json({ error: 'every competition feed failed' }, { status: 502 });
   }
 
-  const entries = sortEntriesByKickoff(perCompetition.flat());
+  // Trimmed to what a band can render. The unbounded merge was ~200 entries
+  // across nine competitions -- well over 100KB embedded in the home page and
+  // sent again on every 30s poll -- to fill at most six rows. Bucketing here
+  // is safe because matchPriority compares instants only; the timezone-bound
+  // "later today" split still happens in the browser.
+  const entries = prioritiseEntries(perCompetition.flat(), new Date());
 
   return Response.json(entries, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
 }

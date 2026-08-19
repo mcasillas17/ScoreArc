@@ -69,7 +69,12 @@ export default async function MatchesPage({
   const nowHasContent = buckets.live.length + buckets.upcoming.length + buckets.recent.length > 0;
   const requestedView = searchParams?.view;
   const requested = requestedView === 'calendar' ? 'calendar' : requestedView === 'now' ? 'now' : null;
-  const view: 'now' | 'calendar' = requested ?? (nowHasContent ? 'now' : 'calendar');
+  // A past edition has no Now to show and no tabs to escape through, so an
+  // explicit ?view=now there would strand the reader on a single sentence
+  // while polling a window that cannot contain any of its matches.
+  const view: 'now' | 'calendar' = !isCurrentEdition
+    ? 'calendar'
+    : (requested ?? (nowHasContent ? 'now' : 'calendar'));
 
   const initialDate = seasonInitialMonth(new Date(), rc.season.id, rc.season.bracketDatesRange);
   const range = monthRange(initialDate);
@@ -105,7 +110,10 @@ export default async function MatchesPage({
         {isCurrentEdition && (
           <nav className="mn-tabs" aria-label="Match views">
             <Link
-              href={basePath}
+              // Explicit, not the bare path: when Now is empty the bare path
+              // resolves to the calendar, so a bare-path tab would be a link
+              // that does nothing for exactly the states it exists to reach.
+              href={`${basePath}?view=now`}
               className={`mn-tab${view === 'now' ? ' mn-tab--on' : ''}`}
               aria-current={view === 'now' ? 'page' : undefined}
             >
@@ -128,6 +136,7 @@ export default async function MatchesPage({
             apiBase={apiBase}
             range={nowRange}
             teamStyle={rc.competition.teamStyle}
+            calendarHref={`${basePath}?view=calendar`}
           />
         ) : (
           <MatchCalendar

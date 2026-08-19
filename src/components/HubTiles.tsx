@@ -1,6 +1,8 @@
 import type { Competition, Season } from '@/server/data/competitions';
 import type { HubStatus } from '@/lib/hubStatus';
 import TrackedCompetitionLink from './TrackedCompetitionLink';
+import LocalTime from './LocalTime';
+import type { TileSubLine } from '@/lib/hubTile';
 
 interface Tile {
   comp: Competition;
@@ -10,8 +12,9 @@ interface Tile {
   champion?: string | null;
   // What the tile says under the competition name. Computed on the server by
   // `tileSubLine` so the rule is one testable function rather than a switch
-  // spread across a component.
-  subLine: string;
+  // spread across a component — but the `when` is formatted on the client,
+  // because the server's clock is not the reader's.
+  subLine: TileSubLine;
 }
 
 interface Props {
@@ -70,7 +73,12 @@ export default function HubTiles({ tiles }: Props) {
                       </span>
                     </div>
                     <div className="hub-name">{tile.comp.name}</div>
-                    <div className="hub-sub">{tile.subLine}</div>
+                    <div className="hub-sub">
+                      {tile.subLine.text}
+                      {tile.subLine.when && (
+                        <>, <LocalTime iso={tile.subLine.when} mode="day" /></>
+                      )}
+                    </div>
                   </TrackedCompetitionLink>
                 );
               })}
