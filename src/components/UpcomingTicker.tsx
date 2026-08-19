@@ -172,7 +172,10 @@ export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'f
       try {
         // Poll the same feed the band was rendered from, or the first poll would
         // replace next week's fixtures with an empty current week.
-        const res = await fetch(`${apiBase}/${weekOnly ? 'matches' : 'upcoming'}`, { cache: 'no-store' });
+        // weekOnly wants this week's matches WITH scorers and cards (a live
+        // card shows them); otherwise the forward feed of what is scheduled.
+        const query = weekOnly ? 'detail=summary' : 'state=scheduled&limit=12';
+        const res = await fetch(`${apiBase}/matches?${query}`, { cache: 'no-store' });
         if (!on) return;
         if (res.ok) {
           const data = (await res.json()) as Match[];

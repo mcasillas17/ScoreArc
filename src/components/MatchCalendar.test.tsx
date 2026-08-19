@@ -95,8 +95,8 @@ describe('MatchCalendar', () => {
     expect(screen.queryByText('No matches this month.')).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
-      '/api/premier-league/2026-27/fixtures?range=20260901-20260930',
-      '/api/premier-league/2026-27/fixtures?range=20260801-20260831',
+      '/api/premier-league/2026-27/matches?range=20260901-20260930',
+      '/api/premier-league/2026-27/matches?range=20260801-20260831',
     ]);
   });
 });

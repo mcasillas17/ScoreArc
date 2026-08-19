@@ -48,7 +48,7 @@ describe('MatchesPage', () => {
     expect(html).not.toContain('provider secret');
     expect(html).not.toContain('No matches this month.');
     expect(trackAPIRequestFailure).toHaveBeenCalledWith(
-      'fixtures',
+      'matches',
       502,
       'premier-league',
       '2026-27',

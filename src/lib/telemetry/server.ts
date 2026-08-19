@@ -2,14 +2,12 @@ import { track } from '@vercel/analytics/server';
 
 type APIEndpoint =
   | 'bracket'
-  | 'fixtures'
   | 'match-summary'
   | 'matches'
   | 'news'
   | 'standings'
   | 'top-assists'
-  | 'top-scorers'
-  | 'upcoming';
+  | 'top-scorers';
 
 const eventIntervalMs = 60_000;
 const lastTrackedAt = new Map<string, number>();
