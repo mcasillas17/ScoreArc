@@ -3218,3 +3218,189 @@ a {
 .ls-box td.ls-box-na { color: var(--text-muted); }
 .ls-box-scroll { overflow-x: auto; }
 .ls-box-scroll .standings-table { min-width: 520px; }
+
+/* ---- Live band (home) ----
+   One slot above the competition tiles, in one of three modes: anything in
+   play, otherwise what just finished beside what is next, otherwise nothing
+   at all. The empty case renders no markup, so there is no state here for it. */
+.lb { margin-bottom: 30px; }
+
+.lb-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.lb-title--live { color: var(--live-red); }
+.lb-title--next { color: var(--gold); }
+
+/* Same pulse language the hub tiles already use for an active competition. */
+.lb-ping {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  /* currentColor so the halo is the same red as the dot. The literal rgba it
+     replaced was #e0242b while --live-red is #ff5c5c — visibly two reds. */
+  background: currentColor;
+  color: var(--live-red);
+  box-shadow: 0 0 0 0 currentColor;
+  animation: lb-pulse 1.9s ease-out infinite;
+}
+@keyframes lb-pulse {
+  70% { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* A grid, not a carousel: Liga MX kicks off seven matches at once and a
+   carousel shows you one of them. */
+.lb-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 9px;
+}
+.lb-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 22px;
+}
+.lb-list { display: flex; flex-direction: column; gap: 7px; }
+
+.lb-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid transparent;
+  text-decoration: none;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+.lb-row:hover { background: var(--surface-2); border-color: var(--gold); }
+.lb-row:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.lb-row--live { border-left-color: var(--live-red); }
+.lb-row--next { border-left-color: var(--gold); }
+.lb-row--recent { border-left-color: var(--hairline); }
+
+.lb-teams {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.lb-team { font-weight: 650; }
+.lb-score { font-size: 14px; font-weight: 800; }
+.lb-row--live .lb-score { color: var(--live-red); }
+
+.lb-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.lb-comp { letter-spacing: 0.03em; }
+.lb-detail { font-variant-numeric: tabular-nums; }
+
+/* The status word beside the day, both muted. */
+.lb-detail { display: inline-flex; align-items: baseline; gap: 6px; }
+.lb-status { font-weight: 700; }
+/* Pre-mount placeholder for a time only the reader's clock can render. */
+.lt-pending { opacity: 0.35; }
+
+@media (max-width: 560px) {
+  .lb-grid { grid-template-columns: 1fr; }
+  /* Columns too, not just the gap: a fixed 280px minimum overflows a 320px
+     device once the page padding is taken out. */
+  .lb-split { grid-template-columns: 1fr; gap: 18px; }
+}
+
+/* ---- Matches: "Now" mode ----
+   Sections in priority order, each a grid rather than a list: Liga MX kicks
+   off seven matches at once and a single column buries six of them. */
+.mn-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.mn-tab {
+  font-size: 12px;
+  font-weight: 650;
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--hairline);
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+.mn-tab:hover { color: var(--text); border-color: var(--gold); }
+.mn-tab:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.mn-tab--on {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: var(--bg);
+  font-weight: 750;
+}
+
+.mn-empty-link { color: var(--gold); }
+
+.mn-sections { display: flex; flex-direction: column; gap: 26px; }
+
+.mn-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.mn-section--live .mn-title { color: var(--live-red); }
+.mn-section--today .mn-title { color: var(--gold); }
+
+.mn-count {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 1px 7px;
+}
+
+.mn-grid {
+  display: grid;
+  /* 420px, not 320px: at 320 a three-up grid truncated "Monterrey" to "Mo…"
+     on a 1280px screen, which is worse than one fewer column. */
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 8px;
+}
+
+.mn-day + .mn-day { margin-top: 14px; }
+.mn-day-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 7px;
+}
+
+/* Live rows carry the same red edge the band uses, so a match reads the same
+   way wherever it is listed. */
+.mn-section--live .mc-match { border-left: 3px solid var(--live-red); }
+
+@media (max-width: 560px) {
+  .mn-grid { grid-template-columns: 1fr; }
+}

@@ -3,6 +3,7 @@ import { dataStore } from '@/server/data/store';
 import { listCompetitions } from '@/server/data/competitions';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 import type { Match } from '@/server/data/types';
+import { ENTRIES_PER_BUCKET } from '@/server/data/liveFeed';
 
 vi.mock('@/server/data/store', async (orig) => {
   const mod = (await orig()) as typeof import('@/server/data/store');
@@ -65,7 +66,10 @@ describe('GET /api/live', () => {
 
     expect(res.status).toBe(200);
     expect(body).toHaveLength(listCompetitions().length - 1);
-    expect(trackAPIRequestFailure).toHaveBeenCalledWith('live', 502, expect.any(String), expect.any(String));
+    // 200, not 502: the response succeeded for the other eight competitions.
+    // Recording 502 here would put an outage in the dashboard that no reader
+    // experienced.
+    expect(trackAPIRequestFailure).toHaveBeenCalledWith('live', 200, expect.any(String), expect.any(String));
   });
 
   it('502s only when every competition fails', async () => {
@@ -73,6 +77,32 @@ describe('GET /api/live', () => {
     const { GET } = await import('./route');
     const res = await GET();
     expect(res.status).toBe(502);
+  });
+
+  // The merge is capped so a six-row band does not ship a three-week window.
+  it('caps how many entries cross the wire', async () => {
+    const many = Array.from({ length: 40 }, (_, i) =>
+      match(`m${i}`, new Date(Date.UTC(2026, 7, 20, i % 24)).toISOString()),
+    );
+    vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue(many);
+    const { GET } = await import('./route');
+    const body = await (await GET()).json();
+    expect(body.length).toBeLessThanOrEqual(ENTRIES_PER_BUCKET * 3);
+  });
+
+  // The band renders "Live now · N" from what it receives, so capping live
+  // entries would make that count wrong -- "Live now · 12" on a Saturday when
+  // fifteen are in play. Only the other two buckets are trimmed.
+  it('never caps live matches, whatever the window holds', async () => {
+    const live = Array.from({ length: 20 }, (_, i) => ({
+      ...match(`live${i}`, new Date(Date.UTC(2026, 7, 19, 12)).toISOString()),
+      state: 'live' as const,
+    }));
+    vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue(live);
+    const { GET } = await import('./route');
+    const body = await (await GET()).json();
+    expect(body.filter((e: { match: Match }) => e.match.state === 'live').length)
+      .toBeGreaterThan(ENTRIES_PER_BUCKET);
   });
 
   it('never fetches a match summary', async () => {

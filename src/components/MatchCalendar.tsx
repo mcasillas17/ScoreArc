@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Match, Team } from '@/server/data/types';
+import type { Match } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
 import { monthRange, shiftMonth } from '@/server/data/dateRange';
-import { flagUrl } from '@/lib/flags';
 import { trackEvent, trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
+import MatchRow from './MatchRow';
 import {
   monthLoadFailed,
   monthLoadStarted,
@@ -15,6 +15,9 @@ import {
   returnedToLoadedMonth,
 } from './matchCalendarState';
 import { matchToBracketMatch } from './upcomingWindow';
+
+// How often the month containing today re-reads itself.
+const LIVE_REFRESH_MS = 30_000;
 
 interface Props {
   initialMatches: Match[];
@@ -51,70 +54,6 @@ function monthLabel(date: Date): string {
 
 function dayLabel(date: Date): string {
   return date.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
-}
-
-function kickoffTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-}
-
-function TeamMark({ team, style }: { team: Team; style: TeamStyle }) {
-  const src = style === 'crest'
-    ? (team.crestUrl ?? flagUrl(team.abbr))
-    : (flagUrl(team.abbr) ?? team.crestUrl);
-  return src ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img className="mc-crest" src={src} alt="" loading="lazy" referrerPolicy="no-referrer" />
-  ) : (
-    <span className="mc-crest mc-crest--fallback" aria-hidden>{team.abbr}</span>
-  );
-}
-
-function MatchRow({
-  match,
-  teamStyle,
-  onOpen,
-}: {
-  match: Match;
-  teamStyle: TeamStyle;
-  onOpen: () => void;
-}) {
-  const started = match.state !== 'scheduled';
-  const status = match.state === 'live'
-    ? (match.minute ?? match.statusDetail)
-    : match.state === 'finished'
-      ? (match.statusDetail || 'FT')
-      : 'Scheduled';
-  const ariaStatus = match.state === 'scheduled' ? kickoffTime(match.kickoff) : status;
-
-  return (
-    <button
-      type="button"
-      className={`mc-match mc-match--${match.state}`}
-      onClick={onOpen}
-      aria-label={`${match.home.name} versus ${match.away.name}, ${ariaStatus}`}
-    >
-      <span className="mc-team">
-        <TeamMark team={match.home} style={teamStyle} />
-        <span className="mc-team-name">{match.home.name}</span>
-      </span>
-      <span className="mc-score">
-        {started ? (
-          <>
-            <strong>{match.homeScore ?? 0}</strong>
-            <span>–</span>
-            <strong>{match.awayScore ?? 0}</strong>
-          </>
-        ) : (
-          <strong>{kickoffTime(match.kickoff)}</strong>
-        )}
-        <small>{status}</small>
-      </span>
-      <span className="mc-team mc-team--away">
-        <span className="mc-team-name">{match.away.name}</span>
-        <TeamMark team={match.away} style={teamStyle} />
-      </span>
-    </button>
-  );
 }
 
 export default function MatchCalendar({
@@ -238,6 +177,58 @@ export default function MatchCalendar({
     });
     didScrollToToday.current = true;
   }, [cursorIndex, initialMonth, today]);
+
+  // Refresh the visible month while it contains today.
+  //
+  // Until now this component fetched on month change and never again, so a
+  // match that kicked off while the page was open stayed frozen at its
+  // scheduled time until someone reloaded. Older months are settled history
+  // and are deliberately left alone.
+  useEffect(() => {
+    if (!today) return;
+    const cursorHasToday =
+      cursor.getFullYear() === today.getFullYear() && cursor.getMonth() === today.getMonth();
+    if (!cursorHasToday) return;
+
+    const range = monthRange(cursor);
+    let alive = true;
+    async function refresh() {
+      try {
+        const res = await fetch(`${apiBase}/matches?range=${encodeURIComponent(range)}`, {
+          cache: 'no-store',
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        const data: unknown = await res.json();
+        if (!alive || !Array.isArray(data)) return;
+        setLoadState((state) => {
+          const transition = monthLoadSucceeded(state, data as Match[], range);
+          loadedRange.current = transition.loadedRange;
+          return transition.state;
+        });
+        // Without this, a refresh that heals a month the initial load failed
+        // on leaves feedFailed pinned true -- which then swallows the NEXT
+        // genuine failure. A flapping feed would report one failure ever and
+        // no recovery at all.
+        if (feedFailed.current) {
+          trackFeedRecovery('fixtures');
+          feedFailed.current = false;
+        }
+      } catch {
+        // A failed refresh keeps the month already on screen -- the month-load
+        // effect owns the error surface and this one must not blank it -- but
+        // it is still a feed failure and the dashboard needs to see it.
+        if (!feedFailed.current) {
+          trackFeedFailure('fixtures');
+          feedFailed.current = true;
+        }
+      }
+    }
+    const id = setInterval(refresh, LIVE_REFRESH_MS);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [apiBase, cursor, today]);
 
   useEffect(() => () => detailsAbort.current?.abort(), []);
 

@@ -1,6 +1,6 @@
 # Dynamic Home Page & Now-First Matches View — Design
 
-**Status:** approved 2026-08-18
+**Status:** shipped 2026-08-19 (T11.1 in #89; T11.2/T11.3 in the follow-up PR)
 **Epic:** E11 in `docs/PRODUCT_ROADMAP.md`
 **Surfaces:** `/` (all competitions) and `/c/{comp}/{season}/matches`
 **Gate:** none — no backend, no new provider, no new upstream endpoint
@@ -165,6 +165,44 @@ The rules live in pure functions, so most of the tests do too.
 | Continuous season scroll (no month paging) | Deferred, not rejected. Scroll-anchored incremental loading is a lot of machinery for a page that does not yet refresh itself. |
 | Favourites / personalisation | There are no accounts. |
 | Dial-and-ladder clipping below ~1000px | Pre-existing (identical `scrollWidth` on production); its own change. |
+
+## What implementation changed about this design
+
+Recorded because the spec was wrong in two places, and both only surfaced in
+review.
+
+**Client-side bucketing was not enough — formatting is the real hazard.** The
+spec said to bucket by local date on the client. It did not say that
+*formatting* a kickoff is equally timezone-bound, so the first implementation
+deferred the bucketing and then formatted times on the server anyway. Vercel
+runs UTC: a 19:00 Mexico City kickoff rendered as "Thursday 1:00 AM", wrong day
+and wrong hour, permanently, for every reader outside UTC. Unlike a bucketing
+decision, a string baked into server HTML is never corrected on hydration.
+
+Every kickoff now renders through `LocalTime`, which shows a placeholder until
+mount and then the reader's clock. It exports `useLocalNow` and `localTimeText`
+too, because an `aria-label` is a string attribute and cannot contain a
+component — a row that shows its day on screen while its label omits it has
+fixed the ambiguity only for people who can see it.
+
+**The cheap upstream read moved the cost to the client.** The spec counted
+upstream requests (95 → 18) and never counted the payload. `/api/live` merged
+nine competitions across a three-week window — roughly 200 entries, over 100KB
+— embedded it in the home page *and* re-sent it every 30 seconds, to fill a
+six-row band. `prioritiseEntries` now caps upcoming and recent at twelve each:
+15 entries, 10KB. **Live entries are deliberately not capped**, because the
+band renders a count from what it receives and a capped list makes that count
+wrong.
+
+**Two rules the spec did not anticipate:**
+
+- `matchPriority`'s recent bucket needs a *lower* bound. ESPN reports every
+  `post` state as finished, abandoned ties included, so a future-dated finished
+  fixture had a negative age, satisfied the window, and sorted to the top of
+  "just finished".
+- The mode tabs must name their view. Linking "Now" to the bare path made it a
+  no-op for exactly the states it exists to reach: when Now is empty the bare
+  path resolves to the calendar.
 
 ## Delivery
 
