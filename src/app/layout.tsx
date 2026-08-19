@@ -27,14 +27,17 @@ export const metadata: Metadata = {
     url: "https://www.scorearc.futbol",
     siteName: "ScoreArc",
     type: "website",
-    images: [{ url: "/api/og", width: 1200, height: 630, alt: "ScoreArc — Live Football" }],
+    // A static card, not /api/og: the dynamic route is for per-competition
+    // shares, and the root link is the one that gets pasted into WhatsApp.
+    // metadataBase makes this absolute, which WhatsApp requires.
+    images: [{ url: "/brand/og.png", width: 1200, height: 634, alt: "ScoreArc — Live Football" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "ScoreArc · Live Football",
     description:
       "Live football brackets, scores, and standings — every arc.",
-    images: ["/api/og"],
+    images: ["/brand/og.png"],
   },
 };
 

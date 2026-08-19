@@ -25,7 +25,9 @@ interface Props {
 // Ordered by relevance: matches in play first, then tournaments already
 // underway, then ones yet to start.
 const GROUPS: { status: HubStatus; label: string; labelClass: string }[] = [
-  { status: 'live',     label: 'Live now',      labelClass: 'hub-group-label--live' },
+  // Not "Live now" — the band above already owns that heading, and it lists
+  // matches while this lists the competitions they belong to.
+  { status: 'live',     label: 'Playing now',   labelClass: 'hub-group-label--live' },
   { status: 'ongoing',  label: 'Ongoing',       labelClass: 'hub-group-label--ongoing' },
   { status: 'upcoming', label: 'Starting soon', labelClass: 'hub-group-label--upcoming' },
   { status: 'finished', label: 'Finished',      labelClass: 'hub-group-label--finished' },

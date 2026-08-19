@@ -404,7 +404,7 @@ export const COMPETITIONS: Record<string, Competition> = {
       zones: [{ from: 1, to: 1, kind: 'champion', label: "Supporters' Shield" }],
     },
   ),
-  ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/22.png', '2026-apertura', 'Apertura 2026', { base: '#22a95e', bright: '#3ed07f', soft: 'rgba(34,169,94,0.16)' }, { cut: 8, label: 'Liguilla' }),
+  ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/22.png', '2026-apertura', 'Apertura 2026', { base: '#e9edeb', bright: '#ffffff', soft: 'rgba(233,237,235,0.14)' }, { cut: 8, label: 'Liguilla' }),
 };
 
 // A past 32-team WC edition — R16 knockout, view-only, no seed order -> derived

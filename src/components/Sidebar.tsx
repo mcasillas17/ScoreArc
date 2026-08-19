@@ -6,6 +6,7 @@ import type { Competition } from '@/server/data/competitions';
 import { listCompetitions } from '@/server/data/competitions';
 import { trackEvent } from '@/lib/telemetry/client';
 import CompetitionMark from './CompetitionMark';
+import BrandMark from './BrandMark';
 
 const ICON = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
 
@@ -53,7 +54,7 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
     <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`}>
       <div className="sidebar-brand">
         <Link href="/" className="sidebar-brand-link" aria-label="ScoreArc home">
-          <span className="sidebar-ball" aria-hidden>⚽</span>
+          <BrandMark size={30} className="sidebar-ball" />
           <span className="sidebar-wordmark">ScoreArc</span>
         </Link>
         <button type="button" className="sidebar-toggle" onClick={() => {
