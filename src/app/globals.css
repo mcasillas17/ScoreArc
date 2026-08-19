@@ -202,7 +202,11 @@ a {
    reached. Widening the lockup to cover the hole only moved the problem --
    a fixed cap still left 42px over at 430px and 92px at 480px, and an
    uncapped one made the mark taller than the content below it. Centring
-   treats the space as composition instead of something to fill. Only the
+   treats the space as composition instead of something to fill.
+   The height drops to 60px because the phone problem was never only the gap:
+   at 118px (live) the mark was 89% of the screen width and at 86px still 65%,
+   both of which read as a hero above scores rather than a header introducing
+   them. 60px is 45%, and the first result clears the fold. Only the
    masthead centres; the section labels below stay left, so the page still
    reads as a list. */
 @media (max-width: 760px) {
@@ -212,7 +216,7 @@ a {
     gap: 4px;
     margin-bottom: 24px;
   }
-  .hub-lockup { height: 86px; width: auto; }
+  .hub-lockup { height: 60px; width: auto; }
   .hub-tag {
     font-size: 13px;
     max-width: 34ch;
