@@ -1,7 +1,8 @@
-import type { TopScorer } from '../types';
+import type { StatLeader } from '../types';
 
 // Parse the matches-played count out of ESPN's leader displayValue,
-// e.g. "Matches: 4, Goals: 6" -> 4.
+// e.g. "Matches: 4, Goals: 6" -> 4. Every category uses the same grammar
+// ("Matches: 3, Assists: 3"), so this is metric-agnostic.
 function parseMatches(displayValue: string | undefined): number | null {
   if (!displayValue) return null;
   const m = /Matches:\s*(\d+)/i.exec(displayValue);
@@ -9,16 +10,21 @@ function parseMatches(displayValue: string | undefined): number | null {
 }
 
 /**
- * Tournament-wide goal-scoring leaderboard from ESPN's `statistics` feed
- * (`stats[].name === 'goalsLeaders'`). Ranked by goals as returned by ESPN
- * (already sorted). Resilient: returns [] if the shape is missing.
+ * One leaderboard from ESPN's `statistics` feed, already sorted by the provider.
+ *
+ * `category` is an entry in `stats[].name` — `goalsLeaders`, `assistsLeaders`.
+ * Both arrive in the SAME response, which is why this takes a category instead
+ * of hardcoding goals: the previous version fetched fifty assist rows on every
+ * standings render and threw them away.
+ *
+ * Resilient: returns [] if the category or the shape is missing.
  */
-export function mapTopScorers(raw: unknown, limit = 20): TopScorer[] {
+export function mapLeaders(raw: unknown, category: string, limit = 20): StatLeader[] {
   try {
     const stats: any[] = (raw as any)?.stats ?? [];
-    const goals = stats.find((s: any) => s?.name === 'goalsLeaders');
-    const leaders: any[] = goals?.leaders ?? [];
-    return leaders.slice(0, limit).map((l: any, i: number): TopScorer => {
+    const board = stats.find((s: any) => s?.name === category);
+    const leaders: any[] = board?.leaders ?? [];
+    return leaders.slice(0, limit).map((l: any, i: number): StatLeader => {
       const athlete = l?.athlete ?? {};
       const team = athlete.team ?? {};
       return {
@@ -27,7 +33,7 @@ export function mapTopScorers(raw: unknown, limit = 20): TopScorer[] {
         teamAbbr: team.abbreviation ?? '',
         teamName: team.displayName ?? '',
         teamCrestUrl: team.logo ?? team.logos?.[0]?.href ?? null,
-        goals: Number(l?.value ?? 0),
+        value: Number(l?.value ?? 0),
         matches: parseMatches(l?.displayValue),
       };
     });

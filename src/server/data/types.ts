@@ -170,13 +170,16 @@ export interface NewsArticle {
   byline: string;
 }
 
-export interface TopScorer {
+// One row of any player leaderboard. The metric lives in `value` rather than a
+// named field so goals, assists and every board E7 adds share one type and one
+// component. ESPN ships them all in the same shape, in the same response.
+export interface StatLeader {
   rank: number;
   player: string;
   teamAbbr: string;
   teamName: string;
   teamCrestUrl: string | null;
-  goals: number;
+  value: number;
   matches: number | null;
 }
 
