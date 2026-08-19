@@ -2575,7 +2575,10 @@ a {
    the row ends early and leaves space beside it -- the bug this replaces. */
 .hub-head {
   display: flex;
-  align-items: flex-end;
+  /* Centred on the mark rather than sitting on its baseline: the lockup's
+     underline arc gives it a heavy bottom edge, so a baseline-aligned tagline
+     read as hanging off it. */
+  align-items: center;
   gap: 20px;
   margin-bottom: 34px;
   /* 40% of 750 is 300, which is the width the lockup was drawn at. Capping the
@@ -2615,6 +2618,9 @@ a {
      keeps it readable at 320px and stops it running large on a desktop. */
   font-size: clamp(10px, 2.2vw, 17px);
   line-height: 1.3;
+  /* Pushed to the right edge of the capped row, so the masthead is anchored at
+     both ends instead of trailing off after the mark. */
+  text-align: right;
   /* Balance only -- it evens the two lines without capping the width, so the
      orphaned "arc." goes away and the dead corner does not come back. */
   text-wrap: pretty;
