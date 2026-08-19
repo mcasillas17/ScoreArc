@@ -184,7 +184,7 @@ export default function MatchCalendar({
     async function loadMonth() {
       let failureStatus: number | undefined;
       try {
-        const res = await fetch(`${apiBase}/fixtures?range=${encodeURIComponent(range)}`, {
+        const res = await fetch(`${apiBase}/matches?range=${encodeURIComponent(range)}`, {
           cache: 'no-store',
           signal: controller.signal,
         });

@@ -23,9 +23,11 @@ describe('trackAPIRequestFailure', () => {
   it('tracks a new failure after the throttle window', () => {
     vi.useFakeTimers();
     try {
-      trackAPIRequestFailure('upcoming', 502, 'world-cup', '2026');
+      // A distinct endpoint from the throttling test above: the throttle map
+      // is module state and outlives a single test.
+      trackAPIRequestFailure('bracket', 502, 'world-cup', '2026');
       vi.advanceTimersByTime(60_000);
-      trackAPIRequestFailure('upcoming', 502, 'world-cup', '2026');
+      trackAPIRequestFailure('bracket', 502, 'world-cup', '2026');
 
       expect(track).toHaveBeenCalledTimes(2);
     } finally {

@@ -43,7 +43,7 @@ export default async function MatchesPage({
   try {
     initialMatches = await dataStore.getFixtures(rc, range);
   } catch {
-    trackAPIRequestFailure('fixtures', 502, rc.competition.id, rc.season.id);
+    trackAPIRequestFailure('matches', 502, rc.competition.id, rc.season.id);
     initialError = 'Matches are unavailable right now. Please try another month and come back.';
   }
   const { minMonth, maxMonth } = seasonMonthBounds(rc.season.id);
