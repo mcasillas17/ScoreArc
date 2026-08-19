@@ -53,6 +53,13 @@ to serve that data instead.
    with an oversized logo as well. Render at a low, a middle and a high width
    inside the media query before opening the PR.
 
+   Also confirm the rule you edited is the one that wins. `globals.css` is one
+   long file and the same selector can appear in two media queries thousands of
+   lines apart; the later one takes every conflict. The masthead had exactly
+   that, and three fixes in a row appeared to do nothing because only the one
+   property the winning block left undeclared ever got through. `grep -n` the
+   selector across the file before editing it.
+
 ## Commands
 
 - `npm run dev` — local dev server (Next.js). Verify UI changes here before any PR.
