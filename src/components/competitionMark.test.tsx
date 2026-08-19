@@ -31,14 +31,27 @@ describe('CompetitionMark', () => {
     }
   });
 
-  // Pinned so a future "add the missing logos" pass has to read why.
-  it('leaves the two unusable provider marks alone', () => {
-    expect(COMPETITIONS['leagues-cup'].logo).toBeUndefined();
-    expect(COMPETITIONS['liga-mx'].logo).toBeUndefined();
+  it('gives every competition a logo', () => {
+    const without = listCompetitions().filter((c) => !c.logo).map((c) => c.id);
+    expect(without).toEqual([]);
   });
 
-  it('uses a logo everywhere else', () => {
-    const without = listCompetitions().filter((c) => !c.logo).map((c) => c.id).sort();
-    expect(without).toEqual(['leagues-cup', 'liga-mx']);
+  // Inverting is for monochrome marks only — it would recolour a colour logo
+  // into a different one. ESPN's Leagues Cup mark measured ink luminance 0.
+  it('inverts only the mark that is solid black', () => {
+    const inverted = listCompetitions().filter((c) => c.logoInvert).map((c) => c.id);
+    expect(inverted).toEqual(['leagues-cup']);
+    expect(COMPETITIONS['liga-mx'].logoInvert).toBeUndefined();
+  });
+
+  it('applies the filter only when asked', () => {
+    const plain = renderToStaticMarkup(
+      <CompetitionMark logo="https://example.test/l.png" emblem="🏆" name="A" />,
+    );
+    const flipped = renderToStaticMarkup(
+      <CompetitionMark logo="https://example.test/l.png" logoInvert emblem="🏆" name="A" />,
+    );
+    expect(plain).not.toContain('invert');
+    expect(flipped).toContain('invert(1)');
   });
 });

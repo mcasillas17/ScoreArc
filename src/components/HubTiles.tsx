@@ -66,8 +66,19 @@ export default function HubTiles({ tiles }: Props) {
                     source="hub"
                     className="hub-tile"
                   >
+                    {/* The logo leads, at a size it can actually be read at.
+                        Everything else stacks to the right of it. */}
+                    <span className="hub-mark">
+                      <CompetitionMark
+                        logo={tile.comp.logo}
+                        logoInvert={tile.comp.logoInvert}
+                        emblem={tile.comp.emblem}
+                        name={tile.comp.name}
+                        size={64}
+                      />
+                    </span>
+                    <div className="hub-body">
                     <div className="hub-tile-top">
-                      <span className="hub-emblem"><CompetitionMark logo={tile.comp.logo} emblem={tile.comp.emblem} name={tile.comp.name} size={30} /></span>
                       <span className={`hub-badge ${b.className}`}>
                         {isActive(tile.status) && <span className={`hub-bdot hub-bdot--${tile.status}`} aria-hidden />}
                         {b.text}
@@ -79,6 +90,7 @@ export default function HubTiles({ tiles }: Props) {
                       {tile.subLine.when && (
                         <>, <LocalTime iso={tile.subLine.when} mode="day" /></>
                       )}
+                    </div>
                     </div>
                   </TrackedCompetitionLink>
                 );

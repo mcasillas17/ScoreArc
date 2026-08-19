@@ -2648,10 +2648,12 @@ a {
 }
 
 .hub-tile {
+  /* Logo first, then everything else in a column beside it. */
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 22px 22px 20px;
+  flex-direction: row;
+  align-items: center;
+  gap: 18px;
+  padding: 20px 22px;
   min-height: 148px;
   border: 1px solid #3a3a44;
   border-radius: 14px;
@@ -2674,14 +2676,24 @@ a {
   align-items: flex-start;
 }
 
-.hub-emblem {
-  /* Sized by CompetitionMark now, not by the glyph. The box is fixed so a tile
-     whose logo has not loaded is the same height as one whose logo has. */
+/* A fixed square so every tile lines up whatever shape its mark is, and so a
+   tile whose logo has not loaded is the same size as one whose logo has. */
+.hub-mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 30px;
+  flex: none;
+  width: 84px;
+  height: 84px;
   line-height: 1;
+}
+
+.hub-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
 }
 
 .hub-badge {

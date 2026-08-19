@@ -69,7 +69,7 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
       <div className="sidebar-switcher">
         <button type="button" className="cs-current" onClick={() => setSwitcherOpen((v) => !v)} aria-expanded={switcherOpen} aria-label="Switch competition">
           <span className="cs-label">Competition</span>
-          <span className="cs-name"><span className="cs-emblem"><CompetitionMark logo={comp.logo} emblem={comp.emblem} name={comp.name} size={18} /></span>{comp.shortName}</span>
+          <span className="cs-name"><span className="cs-emblem"><CompetitionMark logo={comp.logo} logoInvert={comp.logoInvert} emblem={comp.emblem} name={comp.name} size={18} /></span>{comp.shortName}</span>
           <span className="cs-season">{comp.seasons[seasonId]?.label ?? seasonId} season</span>
         </button>
         {switcherOpen && (
@@ -83,7 +83,7 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
                 });
                 setSwitcherOpen(false);
               }}>
-                <span className="cs-emblem"><CompetitionMark logo={c.logo} emblem={c.emblem} name={c.name} size={18} /></span>{c.shortName}
+                <span className="cs-emblem"><CompetitionMark logo={c.logo} logoInvert={c.logoInvert} emblem={c.emblem} name={c.name} size={18} /></span>{c.shortName}
               </Link>
             ))}
           </div>

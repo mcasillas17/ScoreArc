@@ -17,11 +17,13 @@ import { useState } from 'react';
  */
 export default function CompetitionMark({
   logo,
+  logoInvert = false,
   emblem,
   name,
   size = 24,
 }: {
   logo?: string;
+  logoInvert?: boolean;
   emblem: string;
   name: string;
   size?: number;
@@ -47,7 +49,7 @@ export default function CompetitionMark({
       className="cm-mark"
       src={logo}
       alt={name}
-      style={{ height: size, maxWidth: size * 2.8 }}
+      style={{ height: size, maxWidth: size * 2.8, filter: logoInvert ? 'invert(1)' : undefined }}
       loading="lazy"
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}

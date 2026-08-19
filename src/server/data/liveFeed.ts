@@ -10,7 +10,7 @@ import { prioritiseBy } from './matchPriority';
  * second list. The label travels with the match instead.
  */
 export interface LiveEntry {
-  competition: { id: string; seasonId: string; name: string; shortName: string; emblem: string; logo?: string };
+  competition: { id: string; seasonId: string; name: string; shortName: string; emblem: string; logo?: string; logoInvert?: boolean };
   match: Match;
 }
 
@@ -28,6 +28,7 @@ export function competitionLabel(comp: Competition, seasonId: string): LiveEntry
     shortName: comp.shortName,
     emblem: comp.emblem,
     logo: comp.logo,
+    logoInvert: comp.logoInvert,
   };
 }
 

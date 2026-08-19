@@ -109,6 +109,10 @@ export interface Competition {
    *  The emblem is never removed because a logo exists: it is also the fallback
    *  when the image fails, which covers offline readers and blocked CDNs. */
   logo?: string;
+  /** Invert the logo's colours. For MONOCHROME marks only: ESPN ships some as
+   *  solid black on transparent, correct on their white pages and near-invisible
+   *  on ours. Inverting a colour logo would produce a different logo. */
+  logoInvert?: boolean;
   /** A real trophy image for the bracket hub and the champion card. Only the
    *  World Cup has one: `/trophy.png` IS the FIFA trophy, so showing it for
    *  any other competition is a factual error, not a styling choice. Everything
@@ -174,6 +178,11 @@ export const COMPETITIONS: Record<string, Competition> = {
     kind: 'club',
     teamStyle: 'crest',
     emblem: '🏆',
+    logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/2410.png',
+    // Measured ink luminance 0 — solid black on transparent. It is a
+    // single-colour wordmark, so inverting reads as the mark in white rather
+    // than as a different mark.
+    logoInvert: true,
     accent: { base: '#0d9488', bright: '#2dd4bf', soft: 'rgba(13,148,136,0.16)' },
     currentSeasonId: '2026',
     seasons: {
@@ -395,7 +404,7 @@ export const COMPETITIONS: Record<string, Competition> = {
       zones: [{ from: 1, to: 1, kind: 'champion', label: "Supporters' Shield" }],
     },
   ),
-  ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', undefined, '2026-apertura', 'Apertura 2026', { base: '#22a95e', bright: '#3ed07f', soft: 'rgba(34,169,94,0.16)' }, { cut: 8, label: 'Liguilla' }),
+  ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/22.png', '2026-apertura', 'Apertura 2026', { base: '#22a95e', bright: '#3ed07f', soft: 'rgba(34,169,94,0.16)' }, { cut: 8, label: 'Liguilla' }),
 };
 
 // A past 32-team WC edition — R16 knockout, view-only, no seed order -> derived
