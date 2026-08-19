@@ -14,6 +14,7 @@ import {
   mapSummaryVideos, mapSummaryShootout, mapSummaryInfo, mapSummaryForm, mapSummaryCommentary, mapSummaryH2H,
 } from './providers/espn-summary';
 import { TtlCache } from './cache';
+import { nowWindowRange } from './dateRange';
 
 // The store is keyed on a resolved (competition, season) pair. The ESPN league
 // slug lives on the competition; per-season fetch details (e.g. the bracket
@@ -21,6 +22,7 @@ import { TtlCache } from './cache';
 export interface DataStore {
   getMatches(rc: CompetitionSeason, range?: string): Promise<Match[]>;
   getFixtures(rc: CompetitionSeason, range: string): Promise<Match[]>;
+  getLiveWindow(rc: CompetitionSeason): Promise<Match[]>;
   getUpcoming(rc: CompetitionSeason, limit?: number): Promise<Match[]>;
   getStandings(rc: CompetitionSeason): Promise<Group[]>;
   getBracket(rc: CompetitionSeason): Promise<BracketRound[]>;
@@ -121,6 +123,26 @@ export function createDataStore(deps: DataDeps): DataStore {
     return boards;
   }
 
+  // One unenriched scoreboard read. Shared by getFixtures and getLiveWindow,
+  // which differ only in cache key and TTL — a calendar month is settled for
+  // two minutes, a live scoreline is not.
+  async function loadWindow(
+    rc: CompetitionSeason,
+    range: string,
+    cacheKey: string,
+    ttlMs: number,
+  ): Promise<Match[]> {
+    const k = key(rc, cacheKey);
+    const cached = deps.cache.get(k) as Match[] | undefined;
+    if (cached) return cached;
+    const raw = await deps.fetchJson(scoreboardUrl(slug(rc), range));
+    const matches = mapScoreboard(raw)
+      .map((m) => ({ ...m, shootout: parseShootout(m.note, m.home.name, m.away.name) }))
+      .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
+    deps.cache.set(k, matches, ttlMs);
+    return matches;
+  }
+
   async function computeTables(
     rc: CompetitionSeason,
     config: NonNullable<CompetitionSeason['season']['computedTables']>,
@@ -203,15 +225,16 @@ export function createDataStore(deps: DataDeps): DataStore {
     // Longer TTL than getMatches for the same reason: a finished month does
     // not change.
     async getFixtures(rc, range: string, ttlMs = 120_000): Promise<Match[]> {
-      const k = key(rc, `fixtures:${range}`);
-      const cached = deps.cache.get(k) as Match[] | undefined;
-      if (cached) return cached;
-      const raw = await deps.fetchJson(scoreboardUrl(slug(rc), range));
-      const matches = mapScoreboard(raw)
-        .map((m) => ({ ...m, shootout: parseShootout(m.note, m.home.name, m.away.name) }))
-        .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
-      deps.cache.set(k, matches, ttlMs);
-      return matches;
+      return loadWindow(rc, range, `fixtures:${range}`, ttlMs);
+    },
+
+    // The window the live band and the "Now" view read. Same unenriched
+    // scoreboard as getFixtures, on its own cache key and a far shorter TTL:
+    // the band polls every 30s, and serving it a 120s-old entry would render
+    // "67'" beside a two-minute-old scoreline.
+    async getLiveWindow(rc, ttlMs = 15_000): Promise<Match[]> {
+      const range = nowWindowRange(new Date());
+      return loadWindow(rc, range, `live:${range}`, ttlMs);
     },
 
     // The next fixtures, however far out they are.
