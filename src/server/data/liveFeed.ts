@@ -10,7 +10,7 @@ import { prioritiseBy } from './matchPriority';
  * second list. The label travels with the match instead.
  */
 export interface LiveEntry {
-  competition: { id: string; seasonId: string; name: string; shortName: string; emblem: string };
+  competition: { id: string; seasonId: string; name: string; shortName: string; emblem: string; logo?: string; logoInvert?: boolean };
   match: Match;
 }
 
@@ -21,7 +21,15 @@ export function competitionLabel(comp: Competition, seasonId: string): LiveEntry
   // seasonId travels too: a band row links straight to that competition's
   // matches page, and the bare /c/{comp} route redirects to the season root
   // rather than to the matches list.
-  return { id: comp.id, seasonId, name: comp.name, shortName: comp.shortName, emblem: comp.emblem };
+  return {
+    id: comp.id,
+    seasonId,
+    name: comp.name,
+    shortName: comp.shortName,
+    emblem: comp.emblem,
+    logo: comp.logo,
+    logoInvert: comp.logoInvert,
+  };
 }
 
 export function toLiveEntries(comp: Competition, seasonId: string, matches: Match[]): LiveEntry[] {

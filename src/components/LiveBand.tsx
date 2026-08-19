@@ -6,6 +6,7 @@ import type { LiveEntry } from '@/server/data/liveFeed';
 import { prioritiseBy } from '@/server/data/matchPriority';
 import { trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
 import LocalTime, { localTimeText, useLocalNow } from './LocalTime';
+import CompetitionMark from './CompetitionMark';
 
 const REFRESH_MS = 30_000;
 
@@ -59,7 +60,7 @@ function EntryRow({ entry, tone }: { entry: LiveEntry; tone: 'live' | 'next' | '
         <span className="lb-team">{match.away.abbr}</span>
       </span>
       <span className="lb-meta">
-        <span className="lb-comp">{competition.emblem} {competition.shortName}</span>
+        <span className="lb-comp"><CompetitionMark logo={competition.logo} logoInvert={competition.logoInvert} emblem={competition.emblem} name={competition.name} size={14} />{competition.shortName}</span>
         {/* Results carry their day too. "Just finished" spans up to two days,
             and three rows reading only "FT" made a match from Sunday look
             like one that ended five minutes ago. */}
