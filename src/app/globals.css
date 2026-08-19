@@ -3404,3 +3404,13 @@ a {
 @media (max-width: 560px) {
   .mn-grid { grid-template-columns: 1fr; }
 }
+
+/* A competition with no trophy photograph shows its emblem at the same size,
+   so the champion card's layout does not shift between competitions. */
+.champ-trophy--emblem {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 64px;
+  line-height: 1;
+}

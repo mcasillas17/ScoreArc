@@ -10,6 +10,10 @@ interface Props {
   team: BracketTeam;
   onClose: () => void;
   onShare?: () => void;
+  /** The competition's emblem, shown when it has no trophy image of its own. */
+  emblem: string;
+  /** Only the World Cup has one — see Competition.trophyImage. */
+  trophyImage?: string;
 }
 
 // Deterministic pseudo-random in [0,1) seeded by an index, so the confetti is
@@ -21,7 +25,7 @@ function rand(seed: number): number {
 
 const CONFETTI_COUNT = 110;
 
-export default function ChampionCelebration({ team, onClose, onShare }: Props) {
+export default function ChampionCelebration({ team, onClose, onShare, emblem, trophyImage }: Props) {
   const teamColor = colorFor(team);
   const palette = ['#e8b84b', '#ffffff', teamColor, '#ff5c5c', '#4cc4ff', '#36c275'];
   const flag = flagUrl(team.abbr);
@@ -101,7 +105,14 @@ export default function ChampionCelebration({ team, onClose, onShare }: Props) {
         <div className="champ-glow" aria-hidden />
 
         <div className="champ-emblem">
-          <img className="champ-trophy" src="/trophy.png" alt="World Cup trophy" />
+          {trophyImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img className="champ-trophy" src={trophyImage} alt="The World Cup trophy" />
+          ) : (
+            <span className="champ-trophy champ-trophy--emblem" role="img" aria-label="Competition emblem">
+              {emblem}
+            </span>
+          )}
           <div className="champ-flagwrap">
             {flag ? (
               <WavingFlagCanvas src={flag} />
@@ -112,6 +123,11 @@ export default function ChampionCelebration({ team, onClose, onShare }: Props) {
         </div>
 
         <p className="champ-subtitle">Your predicted winner</p>
+        {/* Still World Cup wording. Harmless today because this card is only
+            reachable from predict mode and PREDICT_ENABLED is false — but if
+            predict mode is ever turned on for another competition, this and the
+            aria-label above must become competition-aware, the same way the
+            trophy just did. */}
         <h2 className="champ-title">WORLD CHAMPIONS</h2>
         <p className="champ-team">{team.name}</p>
 

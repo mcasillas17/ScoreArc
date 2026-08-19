@@ -25,6 +25,10 @@ interface Props {
   // Bracket shape (ring geometry + rounds + seed order). Defaults to the 2026
   // 5-ring shape so existing callers keep working unchanged.
   shape?: BracketShape;
+  /** The competition's emblem, drawn at the hub when it has no trophy image. */
+  emblem: string;
+  /** A real trophy photograph. Only the World Cup has one — see Competition. */
+  trophyImage?: string;
 }
 
 
@@ -166,7 +170,7 @@ function arcTextPath(cx: number, cy: number, r: number, startDeg: number, endDeg
   return `M ${x1} ${y1} A ${r} ${r} 0 ${large} ${sweep} ${x2} ${y2}`;
 }
 
-export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle, apiBase, shape: shapeProp }: Props) {
+export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle, apiBase, shape: shapeProp, emblem, trophyImage }: Props) {
   const shape = shapeProp ?? DEFAULT_SHAPE;
   const geom = shape.ringGeometry;
   const rings = buildRings(rounds, shape, picks, mode);
@@ -737,20 +741,35 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           }),
         )}
 
-        {/* (1b) Center trophy on top — real WC2026 trophy image. Once a finished
-            edition's final has resolved, the trophy becomes a button that opens
-            the final match's details (same popup as a result dot). */}
+        {/* (1b) Center emblem on top. The World Cup gets the real trophy; every
+            other competition gets its own emblem, because /trophy.png IS the
+            FIFA trophy and putting it at the middle of a Leagues Cup bracket
+            states something false. Once a finished edition's final has
+            resolved, it becomes a button that opens the final match's details
+            (same popup as a result dot). */}
         {(() => {
           const finalMatch = champNode?.match ?? null;
-          const trophyImg = (
+          const trophyImg = trophyImage ? (
             <image
-              href="/trophy.png"
+              href={trophyImage}
               x={C.x - 26}
               y={C.y - 64}
               width={52}
               height={128}
               preserveAspectRatio="xMidYMid meet"
             />
+          ) : (
+            <text
+              x={C.x}
+              y={C.y}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize={64}
+              role="img"
+              aria-label="Competition emblem"
+            >
+              {emblem}
+            </text>
           );
           if (!finalMatch) return trophyImg;
           return (

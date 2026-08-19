@@ -19,6 +19,8 @@ interface Props {
   apiBase: string;
   teamStyle?: 'flag' | 'crest';
   compId: string;
+  emblem: string;
+  trophyImage?: string;
   seasonId: string;
   compShortName: string;
   seasonLabel: string;
@@ -102,7 +104,7 @@ function decodePicks(s: string): Record<string, string> {
   return {};
 }
 
-export default function BracketInteractive({ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, seasonId, compShortName, seasonLabel, shape, readOnly = false }: Props) {
+export default function BracketInteractive({ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage, seasonId, compShortName, seasonLabel, shape, readOnly = false }: Props) {
   const [mode, setMode] = useState<BracketMode>('live');
   const [rounds, setRounds] = useState<BracketRound[]>(initialRounds);
   const [picks, setPicks] = useState<Record<string, string>>({});
@@ -261,12 +263,16 @@ export default function BracketInteractive({ rounds: initialRounds, apiBase, tea
         teamStyle={teamStyle}
         apiBase={apiBase}
         shape={shape}
+        emblem={emblem}
+        trophyImage={trophyImage}
       />
 
       {mode === 'live' && <ThirdPlaceMini rounds={rounds} />}
 
       {celebrate && (
         <ChampionCelebration
+          emblem={emblem}
+          trophyImage={trophyImage}
           team={celebrate}
           onClose={() => setCelebrate(null)}
           onShare={share}

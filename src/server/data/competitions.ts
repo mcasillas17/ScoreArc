@@ -97,6 +97,11 @@ export interface Competition {
   kind: CompetitionKind;
   teamStyle: TeamStyle;
   emblem: string;
+  /** A real trophy image for the bracket hub and the champion card. Only the
+   *  World Cup has one: `/trophy.png` IS the FIFA trophy, so showing it for
+   *  any other competition is a factual error, not a styling choice. Everything
+   *  else falls back to `emblem`. */
+  trophyImage?: string;
   // Per-competition identity accent. base = primary, bright = hover/emphasis,
   // soft = low-alpha tint for borders/backgrounds. Injected as CSS custom
   // properties on the app-shell; :root falls back to gold.
@@ -120,6 +125,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     kind: 'national',
     teamStyle: 'flag',
     emblem: '🌍',
+    trophyImage: '/trophy.png',
     accent: { base: '#e8b84b', bright: '#f0c873', soft: 'rgba(232,184,75,0.16)' },
     currentSeasonId: '2026',
     seasons: {
