@@ -196,33 +196,6 @@ a {
 .hub-lockup { height: 96px; width: auto; display: block; }
 /* Bigger than it was, and nudged left so the ring optically aligns with the
    text beneath it — the SVG's own left padding pushed it off. */
-/* Centred on a phone, and left alone otherwise.
-   Left-aligned, the lockup ended halfway across and the tagline under it was
-   also short and left-aligned: two ragged blocks with a hole where neither
-   reached. Widening the lockup to cover the hole only moved the problem --
-   a fixed cap still left 42px over at 430px and 92px at 480px, and an
-   uncapped one made the mark taller than the content below it. Centring
-   treats the space as composition instead of something to fill.
-   The height drops to 60px because the phone problem was never only the gap:
-   at 118px (live) the mark was 89% of the screen width and at 86px still 65%,
-   both of which read as a hero above scores rather than a header introducing
-   them. 60px is 45%, and the first result clears the fold. Only the
-   masthead centres; the section labels below stay left, so the page still
-   reads as a list. */
-@media (max-width: 760px) {
-  .hub-head {
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    margin-bottom: 24px;
-  }
-  .hub-lockup { height: 60px; width: auto; }
-  .hub-tag {
-    font-size: 13px;
-    max-width: 34ch;
-    text-align: center;
-  }
-}
 
 
 .sidebar-wordmark {
@@ -2633,22 +2606,33 @@ a {
   line-height: 1.45;
 }
 
-/* Stacked once there is no room to sit side by side.
-   The gap is tighter than it looks it should be: the lockup SVG carries about
-   16px of its own padding inside a 104-unit viewBox, so a 10px flex gap read
-   as nearly 20 on a phone and the tagline floated away from the mark, leaving
-   the header looking like two unrelated blocks. */
+/* The mark takes the left third and the tagline fills the rest, sitting on
+   the mark's baseline -- the desktop composition, kept rather than stacked.
+   Stacking left the space to the right of the mark empty, and the fixes for
+   that all resized the mark (#97 widened it to 89% of a 430px screen; later
+   attempts shrank and centred it) so the emptiness would read as less wrong.
+   Using the space fixes it instead, and nothing here is keyed to a pixel
+   width, so it holds across the whole query.
+
+   NOTE: this is the only mobile block for the masthead. A second one existed
+   above the fold of this file for a while; being earlier it lost every
+   conflict, so edits made there silently did nothing except where they set a
+   property this block does not (.hub-lockup's size). Three "fixes" landed
+   that way, one of them in production. Edit this block. */
 @media (max-width: 760px) {
   .hub-head {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
+    align-items: flex-end;
+    gap: 12px;
     margin-bottom: 24px;
   }
+  .hub-brand { flex: 0 0 30%; min-width: 0; margin-bottom: 0; }
+  .hub-lockup { width: 100%; height: auto; }
   .hub-tag {
-    font-size: 13px;
-    /* Two balanced lines on a phone rather than one running to the edge. */
-    max-width: 34ch;
+    flex: 1;
+    min-width: 0;
+    font-size: 12.5px;
+    max-width: none;
+    line-height: 1.35;
   }
 }
 
