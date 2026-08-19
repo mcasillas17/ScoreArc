@@ -62,7 +62,7 @@ gates history, trends, percentiles and simulation — nothing else.
 |---|---|---|---|---|
 | **E0** | Pre-season table integrity | none — **live bug** | [spec](superpowers/specs/2026-08-15-preseason-table-integrity-design.md) | [plan](superpowers/plans/2026-08-15-preseason-table-integrity.md) |
 | **E1** | Assists & per-match box score | none | [spec](superpowers/specs/2026-08-15-assists-and-box-score-design.md) | [plan](superpowers/plans/2026-08-15-assists-and-box-score.md) |
-| **E2** | Live scores grid | none | [spec](superpowers/specs/2026-08-15-live-scores-grid-design.md) | [plan](superpowers/plans/2026-08-15-live-scores-grid.md) |
+| ~~**E2**~~ | ~~Live scores grid~~ — **folded into E11 T11.3** | — | [spec](superpowers/specs/2026-08-15-live-scores-grid-design.md) | superseded |
 | **E3** | Fixtures & results | none | [spec](superpowers/specs/2026-08-15-fixtures-results-design.md) | [plan](superpowers/plans/2026-08-15-fixtures-results.md) |
 | **E4** | Team pages | none | [spec](superpowers/specs/2026-08-15-team-pages-design.md) | [plan](superpowers/plans/2026-08-15-team-pages.md) |
 | **E5** | Player pages | none | [spec](superpowers/specs/2026-08-15-player-pages-design.md) | [plan](superpowers/plans/2026-08-15-player-pages.md) |
@@ -231,11 +231,24 @@ Two things the plan did not anticipate, both settled during implementation:
   count on every outfielder, so it is deliberately not a box-score column; a
   column of it would read as eleven players each conceding the same goal.
 
-### E2 · Live scores grid
-Branch `feat/live-scores`.
+### ~~E2 · Live scores grid~~ — folded into E11 T11.3 (2026-08-19)
 
-- **T2.1** Rework `LiveScores.tsx` from carousel to grid
-- **T2.2** Route `/c/[comp]/[season]/live` + real sidebar nav (closes T0.3)
+**Do not build this as a separate epic.** T2.2's `/c/[comp]/[season]/live`
+route is a strict subset of T11.3's "Now" mode, whose first section is Live for
+that same competition. Building both would render the same matches on two
+routes — the duplication `AGENTS.md` forbids, except here the fix is not to
+build the second one.
+
+What survives, inside T11.3:
+
+- **T2.1's grid** — `LiveScores.tsx` is still 378 finished lines imported
+  nowhere, and is still the right raw material. It becomes the **Live section's
+  renderer** rather than a standalone page. Liga MX's seven simultaneous
+  kickoffs are why it is a grid and not the carousel.
+- **T2.2's nav fix** — T0.3's dead "Live Scores" link is closed by the Now mode
+  being the matches page's default, not by a new route.
+
+The E2 spec is kept for its grid reasoning; its routing section is superseded.
 
 > **The sidebar changed on 2026-08-18** (`tweak/uniform-standings-nav`). Standings
 > now live at `/c/{comp}/{season}/standings` for **every** competition under a
@@ -292,7 +305,8 @@ Branch per slice. No backend, no new provider, no new upstream endpoint.
 
 - **T11.1** `matchPriority` + the cheap data path + `/api/live` — no UI change
 - **T11.2** Home live band + tiles that carry real football
-- **T11.3** Matches "Now" mode + calendar polling
+- **T11.3** Matches "Now" mode + calendar polling — **absorbs E2** (`LiveScores.tsx`
+  becomes the Live section renderer; closes T0.3)
 
 Both entry points are static in the literal sense: neither updates itself, and
 both look the same on a matchday as on a quiet Tuesday. `MatchCalendar` fetches
