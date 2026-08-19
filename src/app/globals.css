@@ -196,7 +196,14 @@ a {
 .hub-lockup { height: 96px; width: auto; display: block; }
 /* Bigger than it was, and nudged left so the ring optically aligns with the
    text beneath it — the SVG's own left padding pushed it off. */
-@media (max-width: 760px) { .hub-lockup { height: 72px; margin-left: -6px; } }
+/* On a phone the lockup is a left-aligned block roughly half the viewport
+   wide, which left a conspicuous hole in the top-right of the page. Filling
+   the width instead: the mark scales with the viewport and the masthead
+   centres, so the header reads as a header rather than as content that ran
+   out. Capped so it never outgrows the tablet size. */
+@media (max-width: 760px) {
+  .hub-lockup { height: auto; width: min(100%, 340px); margin-left: -4px; }
+}
 
 .sidebar-wordmark {
   font-size: 21px;
