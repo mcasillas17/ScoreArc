@@ -23,7 +23,7 @@ export async function generateMetadata({
   };
 }
 
-export default async function FixturesPage({
+export default async function MatchesPage({
   params,
 }: {
   params: { comp: string; season: string };
@@ -52,7 +52,7 @@ export default async function FixturesPage({
 
   return (
     <main className="main">
-      <section id="fixtures">
+      <section id="matches">
         <header className="page-head">
           <p className="bracket-eyebrow">{editionName}</p>
           <h1 className="bracket-title">Matches</h1>
