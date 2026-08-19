@@ -1,11 +1,19 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import MatchCalendar from '@/components/MatchCalendar';
 import { resolveSeason } from '@/server/data/competitions';
-import { monthRange, seasonInitialMonth, seasonMonthBounds } from '@/server/data/dateRange';
 import { dataStore } from '@/server/data/store';
+import {
+  monthRange,
+  nowWindowRange,
+  seasonInitialMonth,
+  seasonMonthBounds,
+} from '@/server/data/dateRange';
+import { matchPriority } from '@/server/data/matchPriority';
 import type { Match } from '@/server/data/types';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
+import MatchCalendar from '@/components/MatchCalendar';
+import MatchesNow from '@/components/MatchesNow';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,30 +33,58 @@ export async function generateMetadata({
 
 export default async function MatchesPage({
   params,
+  searchParams,
 }: {
   params: { comp: string; season: string };
+  searchParams?: { view?: string };
 }) {
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) notFound();
 
-  const initialDate = seasonInitialMonth(
-    new Date(),
-    rc.season.id,
-    rc.season.bracketDatesRange,
-  );
+  const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
+  const editionName = `${rc.competition.shortName} ${rc.season.label}`;
+  const basePath = `/c/${rc.competition.id}/${rc.season.id}/matches`;
+
+  // "Now" is a live view, so it only makes sense for the season being played.
+  // A past edition has nothing live, upcoming or recent by definition.
+  const isCurrentEdition = rc.season.id === rc.competition.currentSeasonId;
+  const nowRange = nowWindowRange(new Date());
+  let nowMatches: Match[] = [];
+  let nowError: string | null = null;
+  if (isCurrentEdition) {
+    try {
+      nowMatches = await dataStore.getLiveWindow(rc);
+    } catch {
+      trackAPIRequestFailure('matches', 502, rc.competition.id, rc.season.id);
+      nowError = 'Live matches are unavailable right now. The full calendar still works.';
+    }
+  }
+
+  // The mode is decided here, not in the component: a competition whose "Now"
+  // would be empty must not open on an empty tab. One rule, no per-competition
+  // special cases — a finished edition falls to the calendar, a pre-season
+  // league opens on Now because "first match is Friday" is exactly what a
+  // visitor wants.
+  const buckets = matchPriority(nowMatches, new Date());
+  const nowHasContent = buckets.live.length + buckets.upcoming.length + buckets.recent.length > 0;
+  const requestedView = searchParams?.view;
+  const requested = requestedView === 'calendar' ? 'calendar' : requestedView === 'now' ? 'now' : null;
+  const view: 'now' | 'calendar' = requested ?? (nowHasContent ? 'now' : 'calendar');
+
+  const initialDate = seasonInitialMonth(new Date(), rc.season.id, rc.season.bracketDatesRange);
   const range = monthRange(initialDate);
   const initialMonth = `${range.slice(0, 4)}-${range.slice(4, 6)}-01`;
   let initialMatches: Match[] = [];
   let initialError: string | null = null;
-  try {
-    initialMatches = await dataStore.getFixtures(rc, range);
-  } catch {
-    trackAPIRequestFailure('matches', 502, rc.competition.id, rc.season.id);
-    initialError = 'Matches are unavailable right now. Please try another month and come back.';
+  if (view === 'calendar') {
+    try {
+      initialMatches = await dataStore.getFixtures(rc, range);
+    } catch {
+      trackAPIRequestFailure('matches', 502, rc.competition.id, rc.season.id);
+      initialError = 'Matches are unavailable right now. Please try another month and come back.';
+    }
   }
   const { minMonth, maxMonth } = seasonMonthBounds(rc.season.id);
-  const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
-  const editionName = `${rc.competition.shortName} ${rc.season.label}`;
 
   return (
     <main className="main">
@@ -56,18 +92,54 @@ export default async function MatchesPage({
         <header className="page-head">
           <p className="bracket-eyebrow">{editionName}</p>
           <h1 className="bracket-title">Matches</h1>
-          <p className="page-subtitle">Every match, month by month.</p>
+          <p className="page-subtitle">
+            {view === 'now'
+              ? 'What is on now, next, and just played.'
+              : 'Every match, month by month.'}
+          </p>
         </header>
 
-        <MatchCalendar
-          initialMatches={initialMatches}
-          initialError={initialError}
-          initialMonth={initialMonth}
-          minMonth={minMonth}
-          maxMonth={maxMonth}
-          apiBase={apiBase}
-          teamStyle={rc.competition.teamStyle}
-        />
+        {/* The mode lives in the URL so a link to either is shareable and the
+            back button behaves. Rendered only for the current edition, where
+            both modes have something to show. */}
+        {isCurrentEdition && (
+          <nav className="mn-tabs" aria-label="Match views">
+            <Link
+              href={basePath}
+              className={`mn-tab${view === 'now' ? ' mn-tab--on' : ''}`}
+              aria-current={view === 'now' ? 'page' : undefined}
+            >
+              Now
+            </Link>
+            <Link
+              href={`${basePath}?view=calendar`}
+              className={`mn-tab${view === 'calendar' ? ' mn-tab--on' : ''}`}
+              aria-current={view === 'calendar' ? 'page' : undefined}
+            >
+              Full calendar
+            </Link>
+          </nav>
+        )}
+
+        {view === 'now' ? (
+          <MatchesNow
+            initialMatches={nowMatches}
+            initialError={nowError}
+            apiBase={apiBase}
+            range={nowRange}
+            teamStyle={rc.competition.teamStyle}
+          />
+        ) : (
+          <MatchCalendar
+            initialMatches={initialMatches}
+            initialError={initialError}
+            initialMonth={initialMonth}
+            minMonth={minMonth}
+            maxMonth={maxMonth}
+            apiBase={apiBase}
+            teamStyle={rc.competition.teamStyle}
+          />
+        )}
       </section>
 
       <footer className="site-footer">

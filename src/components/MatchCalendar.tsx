@@ -16,6 +16,9 @@ import {
 } from './matchCalendarState';
 import { matchToBracketMatch } from './upcomingWindow';
 
+// How often the month containing today re-reads itself.
+const LIVE_REFRESH_MS = 30_000;
+
 interface Props {
   initialMatches: Match[];
   initialError?: string | null;
@@ -174,6 +177,45 @@ export default function MatchCalendar({
     });
     didScrollToToday.current = true;
   }, [cursorIndex, initialMonth, today]);
+
+  // Refresh the visible month while it contains today.
+  //
+  // Until now this component fetched on month change and never again, so a
+  // match that kicked off while the page was open stayed frozen at its
+  // scheduled time until someone reloaded. Older months are settled history
+  // and are deliberately left alone.
+  useEffect(() => {
+    if (!today) return;
+    const cursorHasToday =
+      cursor.getFullYear() === today.getFullYear() && cursor.getMonth() === today.getMonth();
+    if (!cursorHasToday) return;
+
+    const range = monthRange(cursor);
+    let alive = true;
+    async function refresh() {
+      try {
+        const res = await fetch(`${apiBase}/matches?range=${encodeURIComponent(range)}`, {
+          cache: 'no-store',
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        const data: unknown = await res.json();
+        if (!alive || !Array.isArray(data)) return;
+        setLoadState((state) => {
+          const transition = monthLoadSucceeded(state, data as Match[], range);
+          loadedRange.current = transition.loadedRange;
+          return transition.state;
+        });
+      } catch {
+        // A failed refresh keeps the month already on screen. The month-load
+        // effect above owns the error surface; this one must not blank it.
+      }
+    }
+    const id = setInterval(refresh, LIVE_REFRESH_MS);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [apiBase, cursor, today]);
 
   useEffect(() => () => detailsAbort.current?.abort(), []);
 

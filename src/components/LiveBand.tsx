@@ -76,10 +76,13 @@ function kickoffDay(iso: string): string {
  */
 export default function LiveBand({ initialEntries }: Props) {
   const [entries, setEntries] = useState<LiveEntry[]>(initialEntries);
-  const [mounted, setMounted] = useState(false);
+  // Null until mount, then the reader's clock. Same pattern MatchCalendar uses
+  // for `today`: bucketing on the server's UTC clock and again on the reader's
+  // would hydrate two different sets of rows.
+  const [now, setNow] = useState<Date | null>(null);
   const failing = useRef(false);
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => setNow(new Date()), []);
 
   useEffect(() => {
     let alive = true;
@@ -93,6 +96,9 @@ export default function LiveBand({ initialEntries }: Props) {
         // Keep the last good feed on a bad one: an empty band is a worse
         // answer than a slightly stale one.
         setEntries(next);
+        // Advance the clock with the data, so "Today" and the minute labels
+        // do not drift on a page left open.
+        setNow(new Date());
         if (failing.current) {
           trackFeedRecovery('live');
           failing.current = false;
@@ -110,18 +116,13 @@ export default function LiveBand({ initialEntries }: Props) {
     };
   }, []);
 
-  const { live, upcoming, recent } = useMemo(
-    () => {
-      const buckets = matchPriority(entries.map((e) => e.match), new Date());
-      const byId = new Map(entries.map((e) => [e.match.id, e]));
-      const pick = (ms: typeof buckets.live) =>
-        ms.map((m) => byId.get(m.id)).filter((e): e is LiveEntry => e !== undefined);
-      return { live: pick(buckets.live), upcoming: pick(buckets.upcoming), recent: pick(buckets.recent) };
-    },
-    // `mounted` is a dependency because the first pass runs on the server's
-    // clock and the second must re-run on the reader's.
-    [entries, mounted],
-  );
+  const { live, upcoming, recent } = useMemo(() => {
+    const buckets = matchPriority(entries.map((e) => e.match), now ?? new Date());
+    const byId = new Map(entries.map((e) => [e.match.id, e]));
+    const pick = (ms: typeof buckets.live) =>
+      ms.map((m) => byId.get(m.id)).filter((e): e is LiveEntry => e !== undefined);
+    return { live: pick(buckets.live), upcoming: pick(buckets.upcoming), recent: pick(buckets.recent) };
+  }, [entries, now]);
 
   if (live.length > 0) {
     return (

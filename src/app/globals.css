@@ -3313,3 +3313,81 @@ a {
   .lb-grid { grid-template-columns: 1fr; }
   .lb-split { gap: 18px; }
 }
+
+/* ---- Matches: "Now" mode ----
+   Sections in priority order, each a grid rather than a list: Liga MX kicks
+   off seven matches at once and a single column buries six of them. */
+.mn-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.mn-tab {
+  font-size: 12px;
+  font-weight: 650;
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--hairline);
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+.mn-tab:hover { color: var(--text); border-color: var(--gold); }
+.mn-tab:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.mn-tab--on {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #101014;
+  font-weight: 750;
+}
+
+.mn-sections { display: flex; flex-direction: column; gap: 26px; }
+
+.mn-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.mn-section--live .mn-title { color: var(--live-red); }
+.mn-section--today .mn-title { color: var(--gold); }
+
+.mn-count {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 1px 7px;
+}
+
+.mn-grid {
+  display: grid;
+  /* 420px, not 320px: at 320 a three-up grid truncated "Monterrey" to "Mo…"
+     on a 1280px screen, which is worse than one fewer column. */
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 8px;
+}
+
+.mn-day + .mn-day { margin-top: 14px; }
+.mn-day-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 7px;
+}
+
+/* Live rows carry the same red edge the band uses, so a match reads the same
+   way wherever it is listed. */
+.mn-section--live .mc-match { border-left: 3px solid var(--live-red); }
+
+@media (max-width: 560px) {
+  .mn-grid { grid-template-columns: 1fr; }
+}
