@@ -196,14 +196,30 @@ a {
 .hub-lockup { height: 96px; width: auto; display: block; }
 /* Bigger than it was, and nudged left so the ring optically aligns with the
    text beneath it — the SVG's own left padding pushed it off. */
-/* On a phone the lockup is a left-aligned block roughly half the viewport
-   wide, which left a conspicuous hole in the top-right of the page. Filling
-   the width instead: the mark scales with the viewport and the masthead
-   centres, so the header reads as a header rather than as content that ran
-   out. Capped so it never outgrows the tablet size. */
+/* Centred on a phone, and left alone otherwise.
+   Left-aligned, the lockup ended halfway across and the tagline under it was
+   also short and left-aligned: two ragged blocks with a hole where neither
+   reached. Widening the lockup to cover the hole only moved the problem --
+   a fixed cap still left 42px over at 430px and 92px at 480px, and an
+   uncapped one made the mark taller than the content below it. Centring
+   treats the space as composition instead of something to fill. Only the
+   masthead centres; the section labels below stay left, so the page still
+   reads as a list. */
 @media (max-width: 760px) {
-  .hub-lockup { height: auto; width: min(100%, 340px); margin-left: -4px; }
+  .hub-head {
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 24px;
+  }
+  .hub-lockup { height: 86px; width: auto; }
+  .hub-tag {
+    font-size: 13px;
+    max-width: 34ch;
+    text-align: center;
+  }
 }
+
 
 .sidebar-wordmark {
   font-size: 21px;
