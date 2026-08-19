@@ -194,7 +194,9 @@ a {
 .sidebar-ball { color: var(--brand); flex: none; }
 /* The hub's lockup is the brand moment on the site, so it is given room. */
 .hub-lockup { height: 96px; width: auto; display: block; }
-@media (max-width: 560px) { .hub-lockup { height: 62px; } }
+/* Bigger than it was, and nudged left so the ring optically aligns with the
+   text beneath it — the SVG's own left padding pushed it off. */
+@media (max-width: 760px) { .hub-lockup { height: 72px; margin-left: -6px; } }
 
 .sidebar-wordmark {
   font-size: 21px;
@@ -2604,14 +2606,23 @@ a {
   line-height: 1.45;
 }
 
-/* Stacked once there is no room to sit side by side. */
+/* Stacked once there is no room to sit side by side.
+   The gap is tighter than it looks it should be: the lockup SVG carries about
+   16px of its own padding inside a 104-unit viewBox, so a 10px flex gap read
+   as nearly 20 on a phone and the tagline floated away from the mark, leaving
+   the header looking like two unrelated blocks. */
 @media (max-width: 760px) {
   .hub-head {
     flex-direction: column;
     align-items: flex-start;
-    gap: 10px;
+    gap: 2px;
+    margin-bottom: 24px;
   }
-  .hub-tag { max-width: none; font-size: 13.5px; }
+  .hub-tag {
+    font-size: 13px;
+    /* Two balanced lines on a phone rather than one running to the edge. */
+    max-width: 34ch;
+  }
 }
 
 .hub-groups {
