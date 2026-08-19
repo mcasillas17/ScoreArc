@@ -2,6 +2,7 @@ import type { Competition, Season } from '@/server/data/competitions';
 import type { HubStatus } from '@/lib/hubStatus';
 import TrackedCompetitionLink from './TrackedCompetitionLink';
 import LocalTime from './LocalTime';
+import CompetitionMark from './CompetitionMark';
 import type { TileSubLine } from '@/lib/hubTile';
 
 interface Tile {
@@ -66,7 +67,7 @@ export default function HubTiles({ tiles }: Props) {
                     className="hub-tile"
                   >
                     <div className="hub-tile-top">
-                      <span className="hub-emblem">{tile.comp.emblem}</span>
+                      <span className="hub-emblem"><CompetitionMark logo={tile.comp.logo} emblem={tile.comp.emblem} name={tile.comp.name} size={30} /></span>
                       <span className={`hub-badge ${b.className}`}>
                         {isActive(tile.status) && <span className={`hub-bdot hub-bdot--${tile.status}`} aria-hidden />}
                         {b.text}

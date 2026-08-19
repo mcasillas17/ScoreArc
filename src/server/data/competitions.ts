@@ -97,6 +97,18 @@ export interface Competition {
   kind: CompetitionKind;
   teamStyle: TeamStyle;
   emblem: string;
+  /** The competition's real logo, where the provider has one that is legible
+   *  on this background at the size we draw it.
+   *
+   *  Two of nine deliberately have none. ESPN's Leagues Cup mark is solid black
+   *  on transparent — invisible here — and its ink is 19% of the canvas height,
+   *  so it is a 6px blur at tile size even inverted. ESPN's Liga MX asset is
+   *  the BBVA Bancomer sponsor lockup, not a Liga MX mark. Their emblems read
+   *  better than either.
+   *
+   *  The emblem is never removed because a logo exists: it is also the fallback
+   *  when the image fails, which covers offline readers and blocked CDNs. */
+  logo?: string;
   /** A real trophy image for the bracket hub and the champion card. Only the
    *  World Cup has one: `/trophy.png` IS the FIFA trophy, so showing it for
    *  any other competition is a factual error, not a styling choice. Everything
@@ -128,6 +140,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     kind: 'national',
     teamStyle: 'flag',
     emblem: '🌍',
+    logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/4.png',
     trophyImage: '/trophy.png',
     championTitle: 'WORLD CHAMPIONS',
     accent: { base: '#e8b84b', bright: '#f0c873', soft: 'rgba(232,184,75,0.16)' },
@@ -187,7 +200,7 @@ export const COMPETITIONS: Record<string, Competition> = {
       },
     },
   },
-  ...leagueCompetition('premier-league', 'Premier League', 'Premier League', 'eng.1', '🦁', '2026-27', '2026-27', { base: '#d4344a', bright: '#ff6b7e', soft: 'rgba(212,52,74,0.16)' }, undefined, [
+  ...leagueCompetition('premier-league', 'Premier League', 'Premier League', 'eng.1', '🦁', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/23.png', '2026-27', '2026-27', { base: '#d4344a', bright: '#ff6b7e', soft: 'rgba(212,52,74,0.16)' }, undefined, [
     // 2026-27: 20 clubs, bottom three relegated to the Championship. These
     // ranges are what a finishing position earns *by itself* — England's other
     // European berths are decided by cup results and a coefficient race that no
@@ -219,7 +232,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     { from: 5, to: 5, kind: 'uel', label: 'Europa League' },
     { from: 18, to: 20, kind: 'relegation', label: 'Relegation' },
   ]),
-  ...leagueCompetition('laliga', 'LaLiga', 'LaLiga', 'esp.1', '🇪🇸', '2026-27', '2026-27', { base: '#d43a3f', bright: '#f1bf00', soft: 'rgba(241,191,0,0.16)' }, undefined, [
+  ...leagueCompetition('laliga', 'LaLiga', 'LaLiga', 'esp.1', '🇪🇸', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/15.png', '2026-27', '2026-27', { base: '#d43a3f', bright: '#f1bf00', soft: 'rgba(241,191,0,0.16)' }, undefined, [
     // LaLiga EA Sports 2026-27 — 20 clubs, 38 rounds, bottom three down to
     // Segunda División with no relegation play-off (Spain has never had the
     // Bundesliga's survival tie). Researched Aug 2026 against Wikipedia's
@@ -257,7 +270,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     { from: 6, to: 6, kind: 'uecl', label: 'Conference League' },
     { from: 18, to: 20, kind: 'relegation', label: 'Descenso' },
   ]),
-  ...leagueCompetition('serie-a', 'Serie A', 'Serie A', 'ita.1', '🇮🇹', '2026-27', '2026-27', { base: '#0a9b52', bright: '#e4f7ec', soft: 'rgba(205,33,42,0.16)' }, undefined, [
+  ...leagueCompetition('serie-a', 'Serie A', 'Serie A', 'ita.1', '🇮🇹', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/12.png', '2026-27', '2026-27', { base: '#0a9b52', bright: '#e4f7ec', soft: 'rgba(205,33,42,0.16)' }, undefined, [
     // Serie A 2026-27: 20 clubs, three down to Serie B. Europe below is what
     // the 2026-27 table earns for 2027-28. Italy is 2nd in the 2026 UEFA
     // association coefficients (99.946), so it holds four Champions League
@@ -291,7 +304,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     { from: 6, to: 6, kind: 'uecl', label: 'Conference League' },
     { from: 18, to: 20, kind: 'relegation', label: 'Relegation' },
   ]),
-  ...leagueCompetition('bundesliga', 'Bundesliga', 'Bundesliga', 'ger.1', '🇩🇪', '2026-27', '2026-27', { base: '#d20515', bright: '#f5c518', soft: 'rgba(245,197,24,0.16)' }, undefined, [
+  ...leagueCompetition('bundesliga', 'Bundesliga', 'Bundesliga', 'ger.1', '🇩🇪', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/10.png', '2026-27', '2026-27', { base: '#d20515', bright: '#f5c518', soft: 'rgba(245,197,24,0.16)' }, undefined, [
     // 2026-27 Bundesliga (28 Aug 2026 – 22 May 2027). 18 clubs, 34 matchdays.
     //
     // Europe: Germany is 4th in the association ranking used to allocate the
@@ -321,7 +334,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     { from: 16, to: 16, kind: 'relegation-playoff', label: 'Relegationsspiele — playoff' },
     { from: 17, to: 18, kind: 'relegation', label: 'Relegation' },
   ]),
-  ...leagueCompetition('ligue-1', 'Ligue 1', 'Ligue 1', 'fra.1', '🇫🇷', '2026-27', '2026-27', { base: '#3b7fd4', bright: '#eaf2ff', soft: 'rgba(239,65,53,0.16)' }, undefined, [
+  ...leagueCompetition('ligue-1', 'Ligue 1', 'Ligue 1', 'fra.1', '🇫🇷', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/9.png', '2026-27', '2026-27', { base: '#3b7fd4', bright: '#eaf2ff', soft: 'rgba(239,65,53,0.16)' }, undefined, [
     // 2026-27 Ligue 1: 18 clubs (down from 20 since 2023-24), 34 rounds.
     // Sources: Wikipedia "2026-27 Ligue 1" + its table template
     // (Template:2026–27 Ligue 1 table, res_col_header definitions), the
@@ -368,7 +381,7 @@ export const COMPETITIONS: Record<string, Competition> = {
   // best record in the league. `overallTable` merges the two conferences into
   // that one 30-club table (see mlsTables.ts) and marks its single gold place.
   ...leagueCompetition(
-    'mls', 'MLS', 'MLS', 'usa.1', '🇺🇸', '2026', '2026',
+    'mls', 'MLS', 'MLS', 'usa.1', '🇺🇸', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/19.png', '2026', '2026',
     { base: '#2c5282', bright: '#dce6ff', soft: 'rgba(179,25,66,0.16)' },
     undefined,
     [
@@ -382,7 +395,7 @@ export const COMPETITIONS: Record<string, Competition> = {
       zones: [{ from: 1, to: 1, kind: 'champion', label: "Supporters' Shield" }],
     },
   ),
-  ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', '2026-apertura', 'Apertura 2026', { base: '#22a95e', bright: '#3ed07f', soft: 'rgba(34,169,94,0.16)' }, { cut: 8, label: 'Liguilla' }),
+  ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', undefined, '2026-apertura', 'Apertura 2026', { base: '#22a95e', bright: '#3ed07f', soft: 'rgba(34,169,94,0.16)' }, { cut: 8, label: 'Liguilla' }),
 };
 
 // A past 32-team WC edition — R16 knockout, view-only, no seed order -> derived
@@ -408,6 +421,8 @@ function leagueCompetition(
   shortName: string,
   espnSlug: string,
   emblem: string,
+  /** Undefined where the provider's asset is unusable — see Competition.logo. */
+  logo: string | undefined,
   seasonId: string,
   seasonLabel: string,
   accent: { base: string; bright: string; soft: string },
@@ -424,6 +439,7 @@ function leagueCompetition(
       kind: 'club',
       teamStyle: 'crest',
       emblem,
+      logo,
       accent,
       currentSeasonId: seasonId,
       seasons: {

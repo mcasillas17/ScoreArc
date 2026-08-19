@@ -2675,7 +2675,12 @@ a {
 }
 
 .hub-emblem {
-  font-size: 40px;
+  /* Sized by CompetitionMark now, not by the glyph. The box is fixed so a tile
+     whose logo has not loaded is the same height as one whose logo has. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
   line-height: 1;
 }
 
@@ -3415,3 +3420,21 @@ a {
   font-size: 64px;
   line-height: 1;
 }
+
+/* ---- Competition mark ----
+   A real league logo where we have one, the emoji emblem where we do not or
+   where the image fails. Both branches take the same box so a row does not
+   reflow when one competition's image loads and another's does not. */
+.cm-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: auto;
+  object-fit: contain;
+  vertical-align: middle;
+}
+.cm-mark--emblem { line-height: 1; }
+
+/* The band pairs the mark with the competition's short name. */
+.lb-comp { display: inline-flex; align-items: center; gap: 5px; }
