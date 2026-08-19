@@ -239,8 +239,14 @@ Branch `feat/live-scores`.
 > **The sidebar changed on 2026-08-18** (`tweak/uniform-standings-nav`). Standings
 > now live at `/c/{comp}/{season}/standings` for **every** competition under a
 > single "Standings" item — a league's base URL redirects there rather than
-> rendering its own copy — and "Fixtures & Results" is now "Matches". T2.2 adds
-> its item to that list; it no longer has to reconcile two different nav shapes.
+> rendering its own copy — and "Fixtures & Results" is now **Matches**, at
+> `/c/{comp}/{season}/matches` (the old `/fixtures` path 308s to it). The **API**
+> **API** routes were unified in the same change: `/matches`, `/fixtures` and
+> `/upcoming` differed only by hidden defaults — the narrowest window carried the
+> broadest name — and are now one `/api/{comp}/{season}/matches` taking
+> `?range=`, `?state=scheduled`, `?detail=summary` and `?limit=`. T2.2 adds its
+> item to the nav list; it no longer has to reconcile two different nav shapes,
+> and its live grid reads `?detail=summary` rather than a fourth route.
 
 `LiveScores.tsx` is 378 finished lines imported nowhere — the only `LiveScores`
 matches in `src/` are its own declaration and its own props interface.

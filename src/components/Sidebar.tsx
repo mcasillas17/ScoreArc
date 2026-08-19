@@ -17,11 +17,11 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
 
   const bracketIcon = <svg {...ICON}><path d="M6 4v4a3 3 0 0 0 3 3h2" /><path d="M6 20v-4a3 3 0 0 1 3-3h2" /><circle cx="18" cy="12" r="2" /><path d="M11 12h5" /><circle cx="5" cy="4" r="1.5" /><circle cx="5" cy="20" r="1.5" /></svg>;
   const tableIcon = <svg {...ICON}><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="14" y2="18" /></svg>;
-  const fixturesIcon = <svg {...ICON}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" /></svg>;
+  const matchesIcon = <svg {...ICON}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" /></svg>;
   const newsIcon = <svg {...ICON}><path d="M4 5h16v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>;
 
   const atBase = (p: string) => p === base;
-  const fixturesItem = { href: `${base}/fixtures`, label: 'Matches', match: (p: string) => p.endsWith('/fixtures'), icon: fixturesIcon };
+  const matchesItem = { href: `${base}/matches`, label: 'Matches', match: (p: string) => p.endsWith('/matches'), icon: matchesIcon };
   const newsItem = { href: `${base}/news`, label: 'News', match: (p: string) => p.startsWith(`${base}/news`), icon: newsIcon };
 
   // Standings live at the same route for every competition, under the same
@@ -38,10 +38,10 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
     ? [
         { href: base, label: 'Bracket', match: atBase, icon: bracketIcon },
         standingsItem,
-        fixturesItem,
+        matchesItem,
         newsItem,
       ]
-    : [standingsItem, fixturesItem, newsItem];
+    : [standingsItem, matchesItem, newsItem];
 
   return (
     <>

@@ -23,7 +23,7 @@ export async function generateMetadata({
   };
 }
 
-export default async function FixturesPage({
+export default async function MatchesPage({
   params,
 }: {
   params: { comp: string; season: string };
@@ -43,7 +43,7 @@ export default async function FixturesPage({
   try {
     initialMatches = await dataStore.getFixtures(rc, range);
   } catch {
-    trackAPIRequestFailure('fixtures', 502, rc.competition.id, rc.season.id);
+    trackAPIRequestFailure('matches', 502, rc.competition.id, rc.season.id);
     initialError = 'Matches are unavailable right now. Please try another month and come back.';
   }
   const { minMonth, maxMonth } = seasonMonthBounds(rc.season.id);
@@ -52,7 +52,7 @@ export default async function FixturesPage({
 
   return (
     <main className="main">
-      <section id="fixtures">
+      <section id="matches">
         <header className="page-head">
           <p className="bracket-eyebrow">{editionName}</p>
           <h1 className="bracket-title">Matches</h1>

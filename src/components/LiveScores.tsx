@@ -176,7 +176,7 @@ export default function LiveScores({ initialMatches, apiBase, teamStyle = 'flag'
     let mounted = true;
     async function poll() {
       try {
-        const res = await fetch(`${apiBase}/matches`, { cache: "no-store" });
+        const res = await fetch(`${apiBase}/matches?detail=summary`, { cache: "no-store" });
         if (res.ok) {
           const data = (await res.json()) as Match[];
           if (mounted) {
