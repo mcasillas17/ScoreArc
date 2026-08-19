@@ -1,15 +1,20 @@
-import type { TopScorer } from "@/server/data/types";
+import type { StatLeader } from "@/server/data/types";
 import TeamBadge from "./TeamBadge";
 
-export default function TopScorersTable({
-  scorers,
+// One leaderboard, any metric. Goals and assists ship in the same shape from
+// the same response, so they get the same table rather than two files that
+// drift apart the first time a column changes.
+export default function LeaderTable({
+  leaders,
+  metric,
   teamStyle = 'flag',
 }: {
-  scorers: TopScorer[];
+  leaders: StatLeader[];
+  metric: { abbr: string; title: string };
   teamStyle?: 'flag' | 'crest';
 }) {
-  if (scorers.length === 0) {
-    return <p className="empty-text">Scorer data is unavailable right now.</p>;
+  if (leaders.length === 0) {
+    return <p className="empty-text">{metric.title} data is unavailable right now.</p>;
   }
   return (
     <div className="std-panel">
@@ -20,13 +25,13 @@ export default function TopScorersTable({
             <th className="team-col">Player</th>
             <th className="team-col">Team</th>
             <th title="Matches played">MP</th>
-            <th className="pts-col" title="Goals">
-              G
+            <th className="pts-col" title={metric.title}>
+              {metric.abbr}
             </th>
           </tr>
         </thead>
         <tbody>
-          {scorers.map((s) => (
+          {leaders.map((s) => (
             <tr key={`${s.rank}-${s.player}`} className={s.rank === 1 ? "row-qualify" : ""}>
               <td className="rank-cell">{s.rank}</td>
               <td className="team-cell">
@@ -43,7 +48,7 @@ export default function TopScorersTable({
                 </div>
               </td>
               <td>{s.matches ?? "–"}</td>
-              <td className="pts-cell">{s.goals}</td>
+              <td className="pts-cell">{s.value}</td>
             </tr>
           ))}
         </tbody>

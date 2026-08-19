@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import type { Group, TopScorer } from '@/server/data/types';
+import type { Group, StatLeader } from '@/server/data/types';
 import type { Zone } from '@/server/data/competitions';
 import GroupTable from './GroupTable';
-import TopScorersTable from './TopScorersTable';
+import LeaderTable from './LeaderTable';
 import ThirdPlaceTable from './ThirdPlaceTable';
 import LeagueLadder from './LeagueLadder';
 import LeagueZoneTable from './LeagueZoneTable';
@@ -12,7 +12,8 @@ import { trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
 
 interface Props {
   initialGroups: Group[];
-  initialScorers: TopScorer[];
+  initialScorers: StatLeader[];
+  initialAssists: StatLeader[];
   apiBase: string;
   teamStyle?: 'flag' | 'crest';
   // Group-stage tournaments race for best third place; leagues don't.
@@ -27,64 +28,70 @@ interface Props {
 
 const REFRESH_MS = 30_000;
 
-export default function StandingsLive({ initialGroups, initialScorers, apiBase, teamStyle = 'flag', showThirdPlace = true, qualification, zones }: Props) {
+export default function StandingsLive({ initialGroups, initialScorers, initialAssists, apiBase, teamStyle = 'flag', showThirdPlace = true, qualification, zones }: Props) {
   const [groups, setGroups] = useState<Group[]>(initialGroups);
-  const [scorers, setScorers] = useState<TopScorer[]>(initialScorers);
-  const feedFailures = useRef({ standings: false, topScorers: false });
+  const [scorers, setScorers] = useState<StatLeader[]>(initialScorers);
+  const [assists, setAssists] = useState<StatLeader[]>(initialAssists);
+  const feedFailures = useRef<Record<string, boolean>>({
+    standings: false,
+    'top-scorers': false,
+    'top-assists': false,
+  });
 
-  // Keep standings + Golden Boot fresh (groups shift during the group stage;
-  // top scorers change as knockout goals go in).
+  // Keep standings and both leaderboards fresh (groups shift during the group
+  // stage; the boards change as goals go in). Three calls to our own API, but
+  // the two leaderboards read one cached upstream /statistics fetch between
+  // them.
   useEffect(() => {
     let mounted = true;
+    // One descriptor per feed, so a third board costs a line rather than
+    // another copy of the fetch → track → parse → track sequence.
+    const feeds: { name: string; apply: (rows: unknown[]) => void }[] = [
+      // Empty groups mean the feed is momentarily blank, not that the table
+      // emptied — keep what we already show.
+      { name: 'standings', apply: (rows) => { if (rows.length) setGroups(rows as Group[]); } },
+      { name: 'top-scorers', apply: (rows) => setScorers(rows as StatLeader[]) },
+      { name: 'top-assists', apply: (rows) => setAssists(rows as StatLeader[]) },
+    ];
+
     async function poll() {
-      const [groupsResult, scorersResult] = await Promise.allSettled([
-          fetch(`${apiBase}/standings`, { cache: 'no-store' }),
-          fetch(`${apiBase}/top-scorers`, { cache: 'no-store' }),
-      ]);
+      const responses = await Promise.allSettled(
+        feeds.map((f) => fetch(`${apiBase}/${f.name}`, { cache: 'no-store' })),
+      );
       if (!mounted) return;
-      const results = [
-        { feed: 'standings', result: groupsResult, failed: 'standings' as const },
-        { feed: 'top-scorers', result: scorersResult, failed: 'topScorers' as const },
-      ];
-      for (const { feed, result, failed } of results) {
+      responses.forEach((result, i) => {
+        const feed = feeds[i].name;
         if (result.status === 'rejected') {
-          if (!feedFailures.current[failed]) {
+          if (!feedFailures.current[feed]) {
             trackFeedFailure(feed);
-            feedFailures.current[failed] = true;
+            feedFailures.current[feed] = true;
           }
-          continue;
+          return;
         }
-        if (!result.value.ok && !feedFailures.current[failed]) {
+        if (!result.value.ok && !feedFailures.current[feed]) {
           trackFeedFailure(feed, result.value.status);
-          feedFailures.current[failed] = true;
+          feedFailures.current[feed] = true;
         }
-      }
-      const [groupsJSON, scorersJSON] = await Promise.allSettled([
-        groupsResult.status === 'fulfilled' && groupsResult.value.ok
-          ? groupsResult.value.json()
-          : null,
-        scorersResult.status === 'fulfilled' && scorersResult.value.ok
-          ? scorersResult.value.json()
-          : null,
-      ]);
+      });
+
+      const parsed = await Promise.allSettled(
+        responses.map((r) => (r.status === 'fulfilled' && r.value.ok ? r.value.json() : null)),
+      );
       if (!mounted) return;
-      const g = groupsJSON.status === 'fulfilled' ? groupsJSON.value : null;
-      const s = scorersJSON.status === 'fulfilled' ? scorersJSON.value : null;
-      const parsedFeeds = [
-        { feed: 'standings', value: g, failed: 'standings' as const },
-        { feed: 'top-scorers', value: s, failed: 'topScorers' as const },
-      ];
-      for (const { feed, value, failed } of parsedFeeds) {
-        if (Array.isArray(value) && feedFailures.current[failed]) {
-          trackFeedRecovery(feed);
-          feedFailures.current[failed] = false;
-        } else if (!Array.isArray(value) && !feedFailures.current[failed]) {
+      parsed.forEach((result, i) => {
+        const feed = feeds[i].name;
+        const value = result.status === 'fulfilled' ? result.value : null;
+        if (Array.isArray(value)) {
+          if (feedFailures.current[feed]) {
+            trackFeedRecovery(feed);
+            feedFailures.current[feed] = false;
+          }
+          feeds[i].apply(value);
+        } else if (!feedFailures.current[feed]) {
           trackFeedFailure(feed);
-          feedFailures.current[failed] = true;
+          feedFailures.current[feed] = true;
         }
-      }
-      if (Array.isArray(g) && g.length) setGroups(g);
-      if (Array.isArray(s)) setScorers(s);
+      });
     }
     const id = setInterval(poll, REFRESH_MS);
     return () => {
@@ -96,7 +103,14 @@ export default function StandingsLive({ initialGroups, initialScorers, apiBase, 
   const topScorersBlock = (
     <div className="std-block">
       <h2 className="std-block-title">Golden Boot · Top Scorers</h2>
-      <TopScorersTable scorers={scorers} teamStyle={teamStyle} />
+      <LeaderTable leaders={scorers} metric={{ abbr: 'G', title: 'Goals' }} teamStyle={teamStyle} />
+    </div>
+  );
+
+  const topAssistsBlock = (
+    <div className="std-block">
+      <h2 className="std-block-title">Playmakers · Top Assists</h2>
+      <LeaderTable leaders={assists} metric={{ abbr: 'A', title: 'Assists' }} teamStyle={teamStyle} />
     </div>
   );
 
@@ -160,6 +174,7 @@ export default function StandingsLive({ initialGroups, initialScorers, apiBase, 
           </div>
         </div>
         {standingsBlock}
+        {assists.length > 0 ? topAssistsBlock : null}
       </>
     );
   }
@@ -170,6 +185,7 @@ export default function StandingsLive({ initialGroups, initialScorers, apiBase, 
       {/* No scorers is a real state for competitions the provider gives no
           statistics for — render nothing rather than an empty table. */}
       {scorers.length > 0 ? topScorersBlock : null}
+      {assists.length > 0 ? topAssistsBlock : null}
     </>
   );
 }

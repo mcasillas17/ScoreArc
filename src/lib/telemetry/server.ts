@@ -7,6 +7,7 @@ type APIEndpoint =
   | 'matches'
   | 'news'
   | 'standings'
+  | 'top-assists'
   | 'top-scorers'
   | 'upcoming';
 
