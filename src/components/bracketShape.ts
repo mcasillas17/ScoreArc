@@ -55,3 +55,25 @@ export const DEFAULT_SHAPE: BracketShape = bracketShapeFor({
   knockoutRounds: ['round-of-32', 'round-of-16', 'quarterfinals', 'semifinals', 'final'],
   bracketOrder: OFFICIAL_R32_ORDER,
 });
+
+/**
+ * Is the knockout real enough to lead a page with?
+ *
+ * A cross-league cup's phase tables ARE the competition until its knockout
+ * starts, so the season root shows them first. The handover used to be "the
+ * provider has published at least one knockout fixture", which fired on the
+ * Leagues Cup's *second* quarterfinal of four and replaced a full set of
+ * standings with a three-round bracket holding half a round.
+ *
+ * A knockout is ready when its first round is fully drawn — the leaf ring has
+ * every tie it will ever have, `2^(rounds-1)` of them — or when a later round
+ * has fixtures, which means the draw has moved on regardless of how the
+ * provider labelled the first.
+ */
+export function knockoutIsReady(bracket: { slug: string; matches: unknown[] }[], shape: BracketShape): boolean {
+  const [leafSlug, ...laterSlugs] = shape.knockoutRounds;
+  const expectedLeaf = 2 ** (shape.knockoutRounds.length - 1);
+  const leaf = bracket.find((r) => r.slug === leafSlug);
+  if ((leaf?.matches.length ?? 0) >= expectedLeaf) return true;
+  return laterSlugs.some((slug) => (bracket.find((r) => r.slug === slug)?.matches.length ?? 0) > 0);
+}

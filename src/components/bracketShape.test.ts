@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bracketShapeFor } from './bracketShape';
+import { bracketShapeFor, knockoutIsReady } from './bracketShape';
 import type { Season } from '@/server/data/competitions';
 import { COMPETITIONS, listCompetitions } from '@/server/data/competitions';
 
@@ -73,5 +73,49 @@ describe('every bracket competition declares a shape it can actually fill', () =
   it('gives the Leagues Cup a knockout that starts where its data does', () => {
     const season = COMPETITIONS['leagues-cup'].seasons['2026'];
     expect(season.knockoutRounds?.[0]).toBe('quarterfinals');
+  });
+});
+
+// The Leagues Cup root replaced a full set of phase tables with a
+// three-round bracket holding two of four quarterfinals, because the handover
+// test was "has the provider published anything at all".
+describe('knockoutIsReady', () => {
+  const shape = bracketShapeFor(season({
+    knockoutRounds: ['quarterfinals', 'semifinals', 'final'],
+  }));
+  const round = (slug: string, n: number) => ({ slug, matches: Array.from({ length: n }) });
+
+  it('is not ready with nothing published', () => {
+    expect(knockoutIsReady([], shape)).toBe(false);
+  });
+
+  it('is not ready with a partly drawn first round', () => {
+    expect(knockoutIsReady([round('quarterfinals', 2)], shape)).toBe(false);
+    expect(knockoutIsReady([round('quarterfinals', 3)], shape)).toBe(false);
+  });
+
+  it('is ready once the first round is fully drawn', () => {
+    expect(knockoutIsReady([round('quarterfinals', 4)], shape)).toBe(true);
+  });
+
+  // The provider can relabel or skip a round. A later round with fixtures means
+  // the draw has moved on whatever the first one says.
+  it('is ready when a later round has fixtures', () => {
+    expect(knockoutIsReady([round('quarterfinals', 1), round('semifinals', 2)], shape)).toBe(true);
+    expect(knockoutIsReady([round('final', 1)], shape)).toBe(true);
+  });
+
+  it('ignores rounds the competition does not play', () => {
+    expect(knockoutIsReady([round('round-of-32', 16)], shape)).toBe(false);
+  });
+
+  // 5 rounds -> 16 leaf ties, so a handful of published R32 fixtures is not
+  // yet a World Cup knockout either.
+  it('scales the expected first round to the shape', () => {
+    const wc = bracketShapeFor(season({
+      knockoutRounds: ['round-of-32', 'round-of-16', 'quarterfinals', 'semifinals', 'final'],
+    }));
+    expect(knockoutIsReady([round('round-of-32', 8)], wc)).toBe(false);
+    expect(knockoutIsReady([round('round-of-32', 16)], wc)).toBe(true);
   });
 });
