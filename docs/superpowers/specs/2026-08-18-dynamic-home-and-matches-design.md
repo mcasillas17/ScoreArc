@@ -173,4 +173,7 @@ Three slices, one PR each. The first is invisible and the other two depend on it
 1. **`matchPriority` + the cheap data path + `/api/live`** — no UI change; the
    95 → 18 drop lands here.
 2. **Home band + richer tiles.**
-3. **Matches Now mode + calendar polling.**
+3. **Matches Now mode + calendar polling** — **absorbs E2.** `LiveScores.tsx`
+   (378 finished lines, imported nowhere) becomes the Live section's renderer
+   instead of a standalone `/live` route, which would have rendered the same
+   matches on a second URL. Closes T0.3's dead nav link.
