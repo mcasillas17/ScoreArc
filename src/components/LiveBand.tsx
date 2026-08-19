@@ -5,7 +5,7 @@ import Link from 'next/link';
 import type { LiveEntry } from '@/server/data/liveFeed';
 import { prioritiseBy } from '@/server/data/matchPriority';
 import { trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
-import LocalTime from './LocalTime';
+import LocalTime, { localTimeText, useLocalNow } from './LocalTime';
 
 const REFRESH_MS = 30_000;
 
@@ -20,6 +20,10 @@ interface Props {
 
 function EntryRow({ entry, tone }: { entry: LiveEntry; tone: 'live' | 'next' | 'recent' }) {
   const { competition, match } = entry;
+  // The label needs the same clock the row renders with. Without it a screen
+  // reader hears "FT, Liga MX" for a result from two days ago — the exact
+  // ambiguity the visible day was added to remove.
+  const now = useLocalNow();
   const scheduled = match.state === 'scheduled';
   const score = `${match.homeScore ?? 0}–${match.awayScore ?? 0}`;
 
@@ -36,13 +40,16 @@ function EntryRow({ entry, tone }: { entry: LiveEntry; tone: 'live' | 'next' | '
     <Link
       href={`/c/${competition.id}/${competition.seasonId}/matches`}
       className={`lb-row lb-row--${tone}`}
-      aria-label={
+      aria-label={[
         scheduled
-          ? `${match.home.name} versus ${match.away.name}, ${competition.name}`
-          // The score is the whole point of the row; an aria-label that omits
-          // it leaves a screen-reader user with everything except the result.
-          : `${match.home.name} ${match.homeScore ?? 0}, ${match.away.name} ${match.awayScore ?? 0}, ${status}, ${competition.name}`
-      }
+          ? `${match.home.name} versus ${match.away.name}`
+          // The score is the whole point of the row; a label that omits it
+          // leaves a screen-reader user with everything except the result.
+          : `${match.home.name} ${match.homeScore ?? 0}, ${match.away.name} ${match.awayScore ?? 0}`,
+        status,
+        now ? localTimeText(match.kickoff, scheduled ? 'dayTime' : 'day', now) : null,
+        competition.name,
+      ].filter(Boolean).join(', ')}
     >
       <span className="lb-teams">
         <span className="lb-team">{match.home.abbr}</span>
@@ -72,12 +79,15 @@ function EntryRow({ entry, tone }: { entry: LiveEntry; tone: 'live' | 'next' | '
  * what just happened beside what is coming; and when it has neither it renders
  * nothing rather than a heading over an empty row.
  *
- * Bucketing happens **after mount**, deliberately. The server runs UTC and a
- * reader in UTC-6 disagrees with it about which day an 8pm kickoff falls on, so
- * a server-rendered "later today" would hydrate into a different set of rows
- * than the client computes -- on exactly the matches people care about most.
- * Until mount we render the server's list unbucketed, which is stable in both
- * places.
+ * Bucketing DOES run on the server pass, and that is safe: `matchPriority`
+ * compares instants and has no notion of a local day, so UTC and UTC-6 agree
+ * on it. What is *not* safe on the server is formatting -- a wall clock or a
+ * weekday -- which is why every such value goes through `LocalTime`.
+ *
+ * (An earlier version of this comment claimed the server pass rendered the
+ * list unbucketed. It never did. The narrow real consequence is that a match
+ * sitting within request latency of the 3h or 48h boundary can bucket
+ * differently across the two passes, which React recovers from.)
  */
 export default function LiveBand({ initialEntries }: Props) {
   const [entries, setEntries] = useState<LiveEntry[]>(initialEntries);

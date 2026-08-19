@@ -44,10 +44,13 @@ function isSameLocalDay(iso: string, now: Date): boolean {
  *
  * The local-date split lives here rather than in `matchPriority` because it is
  * the only part of the ordering that depends on the reader's timezone. Vercel
- * runs UTC; an 8pm Mexico City kickoff is 02:00 UTC the next day, so a section
- * computed on the server would disagree with the one the browser computes — on
- * exactly the matches people care about most. Until mount, "later today" and
- * "this week" render as one combined section, which is correct in both places.
+ * runs UTC; an 8pm Mexico City kickoff is 02:00 UTC the next day, so a "later
+ * today" computed on the server would disagree with the one the browser
+ * computes — on exactly the matches people care about most. Until mount the
+ * two render as one combined "Coming up", which is correct under either clock.
+ *
+ * The priority bucketing above it does run on both passes, and that is fine:
+ * `matchPriority` compares instants only.
  */
 export default function MatchesNow({
   initialMatches,
@@ -160,7 +163,9 @@ export default function MatchesNow({
         trackEvent('Match details unavailable', { surface: 'matches-now' });
       }
     } finally {
-      if (!controller.signal.aborted) setLoadingDetail(false);
+      // Cleared even when aborted: closing the popup mid-flight aborts, and
+      // leaving the flag set would show a spinner on the next open.
+      setLoadingDetail(false);
     }
   }
 

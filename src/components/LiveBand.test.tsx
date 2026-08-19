@@ -108,6 +108,17 @@ describe('LiveBand', () => {
     expect(html).toContain('lt-pending');
   });
 
+  // A row that shows its day on screen but omits it from its label has fixed
+  // the ambiguity only for people who can see it. Pre-mount the day is absent
+  // from both, which is the point -- it is the reader's clock.
+  it('keeps the score in a result row label', () => {
+    const html = renderToStaticMarkup(
+      <LiveBand initialEntries={[entry('r', 'finished', hours(-4))]} />,
+    );
+    expect(html).toMatch(/aria-label="[^"]*América 1, Cruz Azul 0[^"]*"/);
+    expect(html).toMatch(/aria-label="[^"]*FT[^"]*"/);
+  });
+
   // The same markup under two very different clocks. If any formatting leaked
   // into the server pass, these would differ -- which is exactly the defect
   // both reviewers found in the first cut.

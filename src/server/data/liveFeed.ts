@@ -53,5 +53,10 @@ export const ENTRIES_PER_BUCKET = 12;
 export function prioritiseEntries(entries: LiveEntry[], now: Date): LiveEntry[] {
   const { live, upcoming, recent } = prioritiseBy(entries, (e) => e.match, now);
   const take = (es: LiveEntry[]) => es.slice(0, ENTRIES_PER_BUCKET);
-  return [...take(live), ...take(upcoming), ...take(recent)];
+  // `live` is deliberately NOT capped. The band renders a count from what it
+  // receives, so trimming this list makes the count wrong — "Live now · 12" on
+  // a Saturday when fifteen are in play. Live matches are self-limiting: even
+  // a full Liga MX matchday plus a Premier League slate is a few dozen rows,
+  // and unlike the other buckets they are the reason anyone opened the page.
+  return [...live, ...take(upcoming), ...take(recent)];
 }

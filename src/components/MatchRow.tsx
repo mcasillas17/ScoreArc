@@ -3,7 +3,7 @@
 import type { Match, Team } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
 import { flagUrl } from '@/lib/flags';
-import LocalTime from './LocalTime';
+import LocalTime, { localTimeText, useLocalNow } from './LocalTime';
 
 // Extracted from MatchCalendar when the "Now" view arrived: a match has to look
 // the same wherever it is listed, and two copies of this markup would drift the
@@ -32,28 +32,30 @@ export default function MatchRow({
   teamStyle: TeamStyle;
   onOpen: () => void;
 }) {
+  const now = useLocalNow();
   const started = match.state !== 'scheduled';
   const status = match.state === 'live'
     ? (match.minute ?? match.statusDetail)
     : match.state === 'finished'
       ? (match.statusDetail || 'FT')
       : 'Scheduled';
-  // Deliberately not the kickoff time: that is the reader's clock and is not
-  // known during server rendering. The score carries the information anyway.
-  const ariaStatus = match.state === 'scheduled'
-    ? 'scheduled'
-    : `${match.homeScore ?? 0}, ${match.away.name} ${match.awayScore ?? 0}, ${status}`;
+  // The kickoff is the reader's clock, so it joins the label only once mounted
+  // — but it must join it. Dropping it, as the first cut did, took a time that
+  // screen-reader users already had on this row and gave nothing back.
+  const label = [
+    started
+      ? `${match.home.name} ${match.homeScore ?? 0}, ${match.away.name} ${match.awayScore ?? 0}`
+      : `${match.home.name} versus ${match.away.name}`,
+    status,
+    !started && now ? localTimeText(match.kickoff, 'dayTime', now) : null,
+  ].filter(Boolean).join(', ');
 
   return (
     <button
       type="button"
       className={`mc-match mc-match--${match.state}`}
       onClick={onOpen}
-      aria-label={
-        match.state === 'scheduled'
-          ? `${match.home.name} versus ${match.away.name}, scheduled`
-          : `${match.home.name} ${ariaStatus}`
-      }
+      aria-label={label}
     >
       <span className="mc-team">
         <TeamMark team={match.home} style={teamStyle} />

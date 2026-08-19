@@ -90,6 +90,21 @@ describe('GET /api/live', () => {
     expect(body.length).toBeLessThanOrEqual(ENTRIES_PER_BUCKET * 3);
   });
 
+  // The band renders "Live now · N" from what it receives, so capping live
+  // entries would make that count wrong -- "Live now · 12" on a Saturday when
+  // fifteen are in play. Only the other two buckets are trimmed.
+  it('never caps live matches, whatever the window holds', async () => {
+    const live = Array.from({ length: 20 }, (_, i) => ({
+      ...match(`live${i}`, new Date(Date.UTC(2026, 7, 19, 12)).toISOString()),
+      state: 'live' as const,
+    }));
+    vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue(live);
+    const { GET } = await import('./route');
+    const body = await (await GET()).json();
+    expect(body.filter((e: { match: Match }) => e.match.state === 'live').length)
+      .toBeGreaterThan(ENTRIES_PER_BUCKET);
+  });
+
   it('never fetches a match summary', async () => {
     const spy = vi.spyOn(dataStore, 'getMatchSummary');
     vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
