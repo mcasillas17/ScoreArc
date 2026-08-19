@@ -70,3 +70,17 @@ describe('bracket hub emblem', () => {
     expect(render(leaguesCup.emblem, leaguesCup.trophyImage)).not.toContain('/trophy.png');
   });
 });
+
+// Both of these were World Cup wording surviving the multi-competition
+// migration, in the same way the trophy image did.
+describe('competition wording', () => {
+  it('crowns WORLD champions only where that is true', () => {
+    const titled = listCompetitions().filter((c) => c.championTitle);
+    expect(titled.map((c) => c.id)).toEqual(['world-cup']);
+    expect(COMPETITIONS['world-cup'].championTitle).toBe('WORLD CHAMPIONS');
+  });
+
+  it('leaves every other competition to the plain default', () => {
+    expect(COMPETITIONS['leagues-cup'].championTitle).toBeUndefined();
+  });
+});

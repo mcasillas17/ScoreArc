@@ -21,6 +21,7 @@ interface Props {
   compId: string;
   emblem: string;
   trophyImage?: string;
+  championTitle?: string;
   seasonId: string;
   compShortName: string;
   seasonLabel: string;
@@ -104,7 +105,7 @@ function decodePicks(s: string): Record<string, string> {
   return {};
 }
 
-export default function BracketInteractive({ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage, seasonId, compShortName, seasonLabel, shape, readOnly = false }: Props) {
+export default function BracketInteractive({ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage, championTitle, seasonId, compShortName, seasonLabel, shape, readOnly = false }: Props) {
   const [mode, setMode] = useState<BracketMode>('live');
   const [rounds, setRounds] = useState<BracketRound[]>(initialRounds);
   const [picks, setPicks] = useState<Record<string, string>>({});
@@ -273,6 +274,7 @@ export default function BracketInteractive({ rounds: initialRounds, apiBase, tea
         <ChampionCelebration
           emblem={emblem}
           trophyImage={trophyImage}
+          championTitle={championTitle}
           team={celebrate}
           onClose={() => setCelebrate(null)}
           onShare={share}

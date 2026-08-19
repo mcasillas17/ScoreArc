@@ -102,6 +102,9 @@ export interface Competition {
    *  any other competition is a factual error, not a styling choice. Everything
    *  else falls back to `emblem`. */
   trophyImage?: string;
+  /** What a champion of this competition is called. Defaults to "CHAMPIONS";
+   *  only the World Cup crowns WORLD champions. */
+  championTitle?: string;
   // Per-competition identity accent. base = primary, bright = hover/emphasis,
   // soft = low-alpha tint for borders/backgrounds. Injected as CSS custom
   // properties on the app-shell; :root falls back to gold.
@@ -126,6 +129,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     teamStyle: 'flag',
     emblem: '🌍',
     trophyImage: '/trophy.png',
+    championTitle: 'WORLD CHAMPIONS',
     accent: { base: '#e8b84b', bright: '#f0c873', soft: 'rgba(232,184,75,0.16)' },
     currentSeasonId: '2026',
     seasons: {
