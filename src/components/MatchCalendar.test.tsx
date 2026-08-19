@@ -53,10 +53,10 @@ describe('MatchCalendar', () => {
   it('renders an initial feed error without claiming the month is empty', () => {
     const html = renderCalendar({
       initialMatches: [],
-      initialError: 'Fixtures are unavailable right now.',
+      initialError: 'Matches are unavailable right now.',
     });
 
-    expect(html).toContain('Fixtures are unavailable right now.');
+    expect(html).toContain('Matches are unavailable right now.');
     expect(html).not.toContain('No matches this month.');
   });
 
@@ -71,7 +71,7 @@ describe('MatchCalendar', () => {
       <React.StrictMode>
         <MatchCalendar
           initialMatches={[]}
-          initialError="Fixtures are unavailable right now."
+          initialError="Matches are unavailable right now."
           initialMonth="2026-08-01"
           minMonth="2026-07-01"
           maxMonth="2027-06-01"

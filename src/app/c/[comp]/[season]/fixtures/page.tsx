@@ -15,11 +15,11 @@ export async function generateMetadata({
   params: { comp: string; season: string };
 }): Promise<Metadata> {
   const rc = resolveSeason(params.comp, params.season);
-  if (!rc) return { title: 'Fixtures & Results' };
+  if (!rc) return { title: 'Matches' };
   const editionName = `${rc.competition.shortName} ${rc.season.label}`;
   return {
-    title: `Fixtures & Results · ${editionName}`,
-    description: `${editionName} fixtures and results by month.`,
+    title: `Matches · ${editionName}`,
+    description: `${editionName} matches and results by month.`,
   };
 }
 
@@ -44,7 +44,7 @@ export default async function FixturesPage({
     initialMatches = await dataStore.getFixtures(rc, range);
   } catch {
     trackAPIRequestFailure('fixtures', 502, rc.competition.id, rc.season.id);
-    initialError = 'Fixtures are unavailable right now. Please try another month and come back.';
+    initialError = 'Matches are unavailable right now. Please try another month and come back.';
   }
   const { minMonth, maxMonth } = seasonMonthBounds(rc.season.id);
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
@@ -55,7 +55,7 @@ export default async function FixturesPage({
       <section id="fixtures">
         <header className="page-head">
           <p className="bracket-eyebrow">{editionName}</p>
-          <h1 className="bracket-title">Fixtures &amp; Results</h1>
+          <h1 className="bracket-title">Matches</h1>
           <p className="page-subtitle">Every match, month by month.</p>
         </header>
 

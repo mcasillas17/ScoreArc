@@ -31,7 +31,7 @@ describe('FixturesPage', () => {
     expect(getFixtures).toHaveBeenCalledWith(expect.anything(), '19980701-19980731');
     expect(html).toContain('World Cup 1998');
     expect(html).toContain('July 1998');
-    expect(metadata.title).toBe('Fixtures & Results · World Cup 1998');
+    expect(metadata.title).toBe('Matches · World Cup 1998');
   });
 
   it('renders calendar navigation and an honest error when the initial fetch fails', async () => {
@@ -44,7 +44,7 @@ describe('FixturesPage', () => {
 
     expect(html).toContain('Previous');
     expect(html).toContain('Next');
-    expect(html).toContain('Fixtures are unavailable right now.');
+    expect(html).toContain('Matches are unavailable right now.');
     expect(html).not.toContain('provider secret');
     expect(html).not.toContain('No matches this month.');
     expect(trackAPIRequestFailure).toHaveBeenCalledWith(
