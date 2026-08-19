@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { listCompetitions, resolveSeason } from '@/server/data/competitions';
-import { dataStore } from '@/server/data/store';
+import { dataStore, currentWeekRange } from '@/server/data/store';
 import { hubStatus } from '@/lib/hubStatus';
 import HubTiles from '@/components/HubTiles';
 
@@ -13,11 +13,15 @@ export default async function Hub() {
     listCompetitions().map(async (comp) => {
       const rc = resolveSeason(comp.id)!;
       const hasBracket = rc.season.format.hasBracket;
-      let matches: Awaited<ReturnType<typeof dataStore.getMatches>> = [];
+      let matches: Awaited<ReturnType<typeof dataStore.getFixtures>> = [];
       let bracket: Awaited<ReturnType<typeof dataStore.getBracket>> = [];
       let standings: Awaited<ReturnType<typeof dataStore.getStandings>> = [];
       try {
-        matches = await dataStore.getMatches(rc);
+        // The unenriched read, deliberately. getMatches fetches one /summary
+        // per match for scorers and cards this page never renders — 77 of the
+        // 95 upstream requests a single home render used to cost. The same
+        // current-week window, so every tile is unchanged.
+        matches = await dataStore.getFixtures(rc, currentWeekRange(new Date()));
       } catch {
         // ESPN feed unavailable — show best-effort status
       }
