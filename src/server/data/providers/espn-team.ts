@@ -16,14 +16,25 @@ function mapTeam(t: any): Team {
 /**
  * A number, or null -- never NaN.
  *
- * The schedule payload's competitor.score is a $ref stub pointing at the core
- * API rather than a value, and Number({$ref}) is NaN. A NaN reaching the UI
- * renders as "NaN" where a score should be, which is worse than an honest dash,
- * so anything non-finite becomes null here.
+ * The schedule payload's competitor.score is an object, not a scalar: it
+ * carries a $ref into the core API alongside a displayValue holding the goals.
+ * Number() on that object is NaN, and a NaN reaching the UI renders as "NaN"
+ * where a score should be. So objects are unwrapped by displayValue/value and
+ * anything still non-finite becomes null, which renders as an honest dash.
  */
 function num(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
-  if (typeof value === 'object') return null;
+  if (typeof value === 'object') {
+    // competitor.score on the schedule payload is an object carrying BOTH a
+    // $ref into the core API and a displayValue holding the goals. Rejecting
+    // the object outright loses every past result's scoreline; dereferencing
+    // the $ref would be one extra request per fixture for a number already
+    // present here.
+    const o = value as Record<string, unknown>;
+    if ('displayValue' in o) return num(o.displayValue);
+    if ('value' in o) return num(o.value);
+    return null;
+  }
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
@@ -149,7 +160,8 @@ export function mapTeamRoster(raw: unknown): SquadPlayer[] {
  * mapScoreboard is not reused here even though the payloads look alike. Two
  * differences break it: status sits on competitions[0].status rather than on
  * ev.status, which mapScoreboard dereferences unconditionally, and
- * competitor.score is a $ref stub rather than a value.
+ * competitor.score is an object rather than a scalar, so its Number(score)
+ * yields NaN where this reads the object's displayValue.
  */
 export function mapTeamSchedule(raw: unknown): Match[] {
   try {

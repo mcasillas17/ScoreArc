@@ -104,6 +104,15 @@ describe('mapTeamSchedule', () => {
     }
   });
 
+  // score is an object carrying a $ref AND a displayValue. Reading only the
+  // $ref loses the scoreline of every match already played, which is most of
+  // what a fixtures-and-results block is for.
+  it('reads the scoreline of a finished fixture', () => {
+    const played = s.filter((m) => m.state === 'finished');
+    expect(played.length).toBeGreaterThan(0);
+    expect(played.every((m) => m.homeScore !== null && m.awayScore !== null)).toBe(true);
+  });
+
   it('returns [] for a malformed payload', () => {
     expect(mapTeamSchedule({})).toEqual([]);
     expect(mapTeamSchedule(null)).toEqual([]);
