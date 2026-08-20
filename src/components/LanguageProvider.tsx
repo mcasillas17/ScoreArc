@@ -10,7 +10,11 @@ type LanguageContextValue = {
   toggleLanguage: () => void;
 };
 
-const LanguageContext = createContext<LanguageContextValue | null>(null);
+const LanguageContext = createContext<LanguageContextValue>({
+  language: 'en',
+  setLanguage: () => {},
+  toggleLanguage: () => {},
+});
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguageState] = useState<Language>('en');
@@ -39,7 +43,5 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useLanguage() {
-  const context = useContext(LanguageContext);
-  if (!context) throw new Error('useLanguage must be used within LanguageProvider');
-  return context;
+  return useContext(LanguageContext);
 }
