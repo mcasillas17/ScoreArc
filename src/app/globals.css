@@ -3626,8 +3626,8 @@ a {
 .tm-next-teams { font-weight: 700; color: var(--text); }
 .tm-none { color: var(--text-muted); font-size: 13px; margin: 0; }
 
-.tm-fixtures { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.tm-fixture {
+.tm-matchlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.tm-matchrow {
   display: flex;
   align-items: center;
   justify-content: space-between;

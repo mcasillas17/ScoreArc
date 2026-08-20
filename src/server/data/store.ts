@@ -297,9 +297,9 @@ export function createDataStore(deps: DataDeps): DataStore {
       if (cached) return cached;
 
       try {
-        // Four requests, not three: the schedule endpoint returns results OR
-        // upcoming fixtures depending on `fixture=true`, never both, so a
-        // fixtures-and-results block has to ask twice.
+        // Four requests, not three: the schedule endpoint returns played OR
+        // upcoming matches depending on `fixture=true`, never both, so a
+        // matches-and-results block has to ask twice.
         const [rawProfile, rawRoster, rawResults, rawFixtures] = await Promise.all([
           deps.fetchJson(teamUrl(slug(rc), teamId)),
           deps.fetchJson(teamRosterUrl(slug(rc), teamId)).catch(() => null),

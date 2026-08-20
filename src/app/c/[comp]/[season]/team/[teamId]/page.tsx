@@ -23,7 +23,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   if (!profile) return { title: 'Team' };
   return {
     title: `${profile.team.name} · ${rc.competition.shortName} ${rc.season.label}`,
-    description: `${profile.team.name} squad, season record and fixtures in ${rc.competition.shortName} ${rc.season.label}.`,
+    description: `${profile.team.name} squad, season record and matches in ${rc.competition.shortName} ${rc.season.label}.`,
   };
 }
 
@@ -46,9 +46,9 @@ export default async function TeamPage({ params }: Params) {
 
   const played = profile.schedule.filter((m) => m.state === 'finished');
   const form = played.slice(-5);
-  // The next fixture comes from the schedule, never from the profile's
+  // The next match comes from the schedule, never from the profile's
   // nextEvent: that array is empty on this provider while the schedule carries
-  // the club's fixtures, so reading it would report nothing upcoming for a club
+  // the club's matches, so reading it would report nothing upcoming for a club
   // that has several.
   const next = profile.schedule.find((m) => m.state !== 'finished') ?? null;
 
@@ -58,7 +58,7 @@ export default async function TeamPage({ params }: Params) {
 
       <section className="tm-section">
         <h2 className="section-label">
-          <LanguageText en="Form and next fixture" es="Forma y próximo partido" />
+          <LanguageText en="Form and next match" es="Forma y próximo partido" />
         </h2>
         <div className="tm-form-row">
           {form.length > 0 ? (
@@ -96,7 +96,7 @@ export default async function TeamPage({ params }: Params) {
             </p>
           ) : (
             <p className="tm-none">
-              <LanguageText en="No upcoming fixture." es="Sin próximo partido." />
+              <LanguageText en="No upcoming match." es="Sin próximo partido." />
             </p>
           )}
         </div>
@@ -111,16 +111,16 @@ export default async function TeamPage({ params }: Params) {
 
       <section className="tm-section">
         <h2 className="section-label">
-          <LanguageText en="Fixtures and results" es="Partidos y resultados" />
+          <LanguageText en="Matches and results" es="Partidos y resultados" />
         </h2>
         {profile.schedule.length === 0 ? (
           <p className="tm-none">
-            <LanguageText en="No fixtures listed." es="Sin partidos." />
+            <LanguageText en="No matches listed." es="Sin partidos." />
           </p>
         ) : (
-          <ul className="tm-fixtures">
+          <ul className="tm-matchlist">
             {profile.schedule.map((m) => (
-              <li key={m.id} className="tm-fixture">
+              <li key={m.id} className="tm-matchrow">
                 <span className="tm-fx-teams">
                   <TeamBadge team={m.home} size={18} style={rc.competition.teamStyle} />
                   <span>{m.home.abbr}</span>

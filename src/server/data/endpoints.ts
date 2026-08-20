@@ -29,11 +29,11 @@ export const teamUrl = (slug: string, teamId: string) =>
 export const teamRosterUrl = (slug: string, teamId: string) =>
   `${site(slug)}/teams/${encodeURIComponent(teamId)}/roster`;
 
-// The club's schedule -- results by default, upcoming fixtures with
-// `fixture=true`. It is one or the other, never both: verified 2026-08-19,
+// The club's schedule -- results by default, upcoming matches with
+// `fixture=true` (ESPN's parameter name, not ours). It is one or the other, never both: verified 2026-08-19,
 // the bare call returned 4 events all finished while `?fixture=true` returned
-// 13 all upcoming. A page wanting fixtures AND results has to ask twice, and
-// the next fixture comes from the second call (the profile's nextEvent array
+// 13 all upcoming. A page wanting upcoming AND played has to ask twice, and
+// the next match comes from the second call (the profile's nextEvent array
 // is empty on this provider).
 export const teamScheduleUrl = (slug: string, teamId: string, upcoming = false) =>
   `${site(slug)}/teams/${encodeURIComponent(teamId)}/schedule${upcoming ? '?fixture=true' : ''}`;

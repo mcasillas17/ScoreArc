@@ -60,6 +60,17 @@ to serve that data instead.
    property the winning block left undeclared ever got through. `grep -n` the
    selector across the file before editing it.
 
+## Wording
+
+**Say "match", not "fixture".** The site is US/Mexico-facing and the term reads
+as British sportswriting. `/fixtures` was renamed to `/matches` for this reason,
+and the team page shipped saying "Fixtures and results" anyway -- the rename is
+the rule, not a one-off. Section headings, empty states and metadata all say
+match.
+
+Two exceptions, both meaning something else entirely: `__fixtures__` (recorded
+test payloads) and ESPN's own `?fixture=true` parameter.
+
 ## Commands
 
 - `npm run dev` — local dev server (Next.js). Verify UI changes here before any PR.

@@ -28,7 +28,7 @@ function num(value: unknown): number | null {
     // competitor.score on the schedule payload is an object carrying BOTH a
     // $ref into the core API and a displayValue holding the goals. Rejecting
     // the object outright loses every past result's scoreline; dereferencing
-    // the $ref would be one extra request per fixture for a number already
+    // the $ref would be one extra request per match for a number already
     // present here.
     const o = value as Record<string, unknown>;
     if ('displayValue' in o) return num(o.displayValue);
@@ -155,7 +155,7 @@ export function mapTeamRoster(raw: unknown): SquadPlayer[] {
 }
 
 /**
- * The club's fixtures, oldest first.
+ * The club's matches, oldest first.
  *
  * mapScoreboard is not reused here even though the payloads look alike. Two
  * differences break it: status sits on competitions[0].status rather than on
