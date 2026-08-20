@@ -67,7 +67,12 @@ export default async function TeamPage({ params }: Params) {
                 const r = resultFor(m, profile.team.id);
                 return (
                   <li key={m.id} className={`tm-chip tm-chip--${r ?? 'na'}`}>
-                    {r ?? '–'}
+                    {/* Ganado / Empate / Perdido -- W-D-L is not the
+                        abbreviation a Spanish reader expects. */}
+                    {r === 'W' && <LanguageText en="W" es="G" />}
+                    {r === 'D' && <LanguageText en="D" es="E" />}
+                    {r === 'L' && <LanguageText en="L" es="P" />}
+                    {r === null && '–'}
                   </li>
                 );
               })}

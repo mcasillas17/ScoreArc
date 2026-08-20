@@ -80,6 +80,10 @@ export default function TeamHeader(
               )}
             </span>
           )}
+          {/* Provider-authored and English-only ("1st in Mexican Liga BBVA
+              MX"). Left as sent rather than half-translated: our own backend
+              builds this string from the standing row instead, so it becomes
+              translatable when the frontend moves onto that API. */}
           {profile.standingSummary && (
             <span className="tm-standing">{profile.standingSummary}</span>
           )}
