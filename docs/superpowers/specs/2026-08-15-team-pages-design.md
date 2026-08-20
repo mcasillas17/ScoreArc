@@ -1,6 +1,6 @@
 # Team pages — design
 
-**Status:** Design approved · 2026-08-15
+**Status:** Design approved · 2026-08-15 · payload claims re-verified 2026-08-19
 **Epic:** E4 (`docs/PRODUCT_ROADMAP.md`)
 **Scope:** One implementation plan.
 
@@ -25,8 +25,8 @@ Three keyless endpoints, all HTTP 200, checked against `mex.1/teams/227` (Améri
 América three matchdays into the season, each with `date`, `name`, `shortName`
 and a full `competitions[]` block.
 
-**`/teams/{id}/roster`** — the headline find. **35 athletes, and every one of
-them carries their full season statistics inline**:
+**`/teams/{id}/roster`** — the headline find. **35 athletes, and 28 of them
+carry their full season statistics inline**:
 
 ```
 Cristian Borja (D)
@@ -38,8 +38,15 @@ Cristian Borja (D)
 
 So a **complete squad statistics table costs one request**. This is materially
 better than the design assumed — the original plan was a squad list of names and
-numbers, and what is actually available is a sortable season stat table for all 35
-players.
+numbers, and what is actually available is a sortable season stat table.
+
+**Re-verified 2026-08-19: 28 of 35, not all 35.** Seven athletes carry no
+`statistics` key whatsoever — not a block of zeroes, no block. They have not
+played. `SquadPlayer.stats` is therefore nullable as a whole, separately from
+each stat inside it being nullable, and a row for one of these players must read
+as "has not appeared" rather than as a line of zeroes. A design that assumes the
+block is always present renders seven players as having played zero minutes,
+which is a claim the provider never made.
 
 **Also present, and deliberately unused:** each athlete carries an `injuries`
 array. It is **empty for all 35 players**. The field exists; the data does not.
@@ -62,7 +69,10 @@ Four blocks, in order:
    competition accent, so a team page feels like *that* club's page. Reuse the
    accent-injection pattern already used per competition on `.app-shell`.
 2. **Form and next fixture** — last five results as W/D/L chips, then the next
-   fixture from `nextEvent`.
+   fixture. **Not from `nextEvent`:** re-verified 2026-08-19, that array is
+   empty for América while the schedule endpoint carries four fixtures. Reading
+   it would render "no upcoming fixture" for a club that has several. Take the
+   next fixture from the schedule instead.
 3. **Squad statistics** — the whole roster, one row per player, sortable by
    appearances, goals, assists, shots, cards. Goalkeeper rows show saves and
    goals conceded; outfield rows show offsides. Same nullability rule as E1: a

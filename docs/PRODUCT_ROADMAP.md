@@ -279,9 +279,15 @@ Branch `feat/team-pages`. Every crest on the site is currently a dead end.
 - **T4.2** Team route and page
 - **T4.3** Make crests clickable everywhere
 
-Verified 2026-08-15: `/teams/{id}/roster` returns all 35 players **with their
-season statistics inline** — so a complete, sortable squad stat table costs one
-request, not 35. The scope here is larger than a squad list for the same effort.
+Verified 2026-08-15, re-verified 2026-08-19: `/teams/{id}/roster` returns all 35
+players, **28 of them with season statistics inline** — so a complete, sortable
+squad stat table costs one request, not 35. The scope here is larger than a
+squad list for the same effort.
+
+The other seven carry no `statistics` key at all; they have not played. A squad
+row for them reads "has not appeared", never a line of zeroes. Also re-verified:
+the profile's `nextEvent` array is **empty** while the schedule endpoint carries
+four fixtures, so the next-fixture block reads the schedule.
 
 Each athlete also carries an `injuries` array that is **empty for all 35**. The
 field existing is not the data existing; no injuries feature is built on it.

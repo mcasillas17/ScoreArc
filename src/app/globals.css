@@ -2646,8 +2646,10 @@ a {
   /* Pushed to the right edge of the capped row, so the masthead is anchored at
      both ends instead of trailing off after the mark. */
   text-align: right;
-  /* Balance only -- it evens the two lines without capping the width, so the
-     orphaned "arc." goes away and the dead corner does not come back. */
+  /* pretty, not balance. Both avoid the orphaned "arc." on its own line, but
+     balance shortens every line to even them, which pulled the text 245px
+     clear of the right edge at 1440 -- the dead corner again. pretty fills the
+     line and only intervenes on the last one. */
   text-wrap: pretty;
   /* Deliberately no max-width. Capping it is what left 213px of dead space to
      the right of the tagline on a desktop -- the same empty-corner bug the
