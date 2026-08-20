@@ -272,3 +272,59 @@ export interface MatchSummaryData {
   commentary: CommentaryItem[];
   h2h: H2HMeeting[];
 }
+
+// A player's season totals, as carried inline on the team roster payload under
+// statistics.splits.categories[].stats[]. Nullable throughout for the same
+// reason as PlayerMatchStats: a goalkeeper has no offsides entry and an
+// outfielder no saves entry, and recording either as 0 asserts something the
+// provider never said.
+export interface PlayerSeasonStats {
+  appearances: number | null;
+  subIns: number | null;
+  totalGoals: number | null;
+  goalAssists: number | null;
+  totalShots: number | null;
+  shotsOnTarget: number | null;
+  offsides: number | null;
+  foulsCommitted: number | null;
+  foulsSuffered: number | null;
+  yellowCards: number | null;
+  redCards: number | null;
+  ownGoals: number | null;
+  saves: number | null;
+  shotsFaced: number | null;
+  goalsConceded: number | null;
+}
+
+// stats is nullable, and that is not the same as every stat being null: 7 of
+// the 35 athletes on the recorded América roster carry no statistics block at
+// all. A squad row for a player who has never appeared must say so, rather
+// than show a line of zeroes.
+export interface SquadPlayer {
+  id: string;
+  name: string;
+  jersey: number | null;
+  position: string;
+  age: number | null;
+  nationality: string | null;
+  headshotUrl: string | null;
+  stats: PlayerSeasonStats | null;
+}
+
+export interface TeamRecord {
+  summary: string;          // e.g. "3-1-0"
+  gamesPlayed: number | null;
+  points: number | null;
+  goalDifference: number | null;
+}
+
+export interface TeamProfile {
+  team: Team;
+  location: string | null;
+  color: string | null;
+  altColor: string | null;
+  record: TeamRecord | null;
+  standingSummary: string | null;
+  squad: SquadPlayer[];
+  schedule: Match[];
+}
