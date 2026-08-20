@@ -3543,3 +3543,147 @@ a {
 
 /* The band pairs the mark with the competition's short name. */
 .lb-comp { display: inline-flex; align-items: center; gap: 5px; }
+
+/* ---- Team page (tm-*, sq-*) ------------------------------------------- */
+
+.tm {
+  min-height: 100vh;
+  background: var(--bg);
+  padding: 32px 24px 64px;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+/* --accent here may have been overridden with the club's own colour by
+   TeamHeader, so the page feels like that club's page rather than the
+   competition's. It falls back to the competition accent when the club plays
+   in something too dark to read on this background. */
+.tm-head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding-bottom: 20px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.tm-crest { flex: none; }
+.tm-id { min-width: 0; }
+.tm-name {
+  font-size: clamp(22px, 4vw, 34px);
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  margin: 0;
+  color: var(--text);
+}
+.tm-loc { margin: 2px 0 0; color: var(--text-muted); font-size: 13px; }
+.tm-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 14px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+.tm-record { display: inline-flex; align-items: baseline; gap: 6px; color: var(--text); }
+.tm-record-label,
+.tm-next-label {
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.tm-pts { color: var(--accent-bright); font-weight: 700; }
+.tm-standing { color: var(--text-muted); }
+
+.tm-section { margin-top: 28px; }
+
+.tm-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.tm-form { display: flex; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.tm-chip {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+.tm-chip--W { background: rgba(43, 184, 154, 0.16); color: var(--win); }
+.tm-chip--D { background: var(--surface-2); color: var(--text-muted); }
+.tm-chip--L { background: rgba(220, 68, 68, 0.14); color: #e06868; }
+
+.tm-next { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; margin: 0; }
+.tm-next-teams { font-weight: 700; color: var(--text); }
+.tm-none { color: var(--text-muted); font-size: 13px; margin: 0; }
+
+.tm-fixtures { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.tm-fixture {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 13px;
+}
+.tm-fx-teams { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.tm-fx-score { font-variant-numeric: tabular-nums; color: var(--text); }
+.tm-fx-when { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+
+/* The squad table scrolls inside its own box: ten stat columns will not fit a
+   phone, and letting the page scroll sideways instead would move the whole
+   layout. */
+.sq-wrap { overflow-x: auto; }
+.sq { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 620px; }
+.sq th, .sq td { padding: 8px 6px; text-align: right; }
+.sq th { color: var(--text-muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.2px; }
+.sq .sq-num { width: 34px; text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.sq .sq-player { text-align: left; }
+.sq .sq-pos { text-align: left; width: 46px; color: var(--text-muted); }
+.sq-stat { font-variant-numeric: tabular-nums; }
+.sq-row { border-top: 1px solid var(--hairline); }
+.sq-name { color: var(--text); }
+
+.sq-sort {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.sq-sort:hover { color: var(--text); }
+.sq-sorted .sq-sort { color: var(--accent-bright); }
+
+/* A dash, not a zero: the player was never measured. Muted so a column of
+   dashes reads as absence rather than as a row of results. */
+.sq-none { color: var(--text-muted); opacity: 0.55; }
+.sq-unplayed .sq-name { color: var(--text-muted); }
+.sq-tag {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.1px;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+.sq-empty { color: var(--text-muted); font-size: 13px; }
+
+@media (max-width: 760px) {
+  .tm { padding: 20px 16px 48px; }
+  .tm-head { gap: 12px; }
+  .tm-form-row { align-items: flex-start; flex-direction: column; }
+}

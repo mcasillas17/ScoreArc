@@ -297,10 +297,14 @@ export function createDataStore(deps: DataDeps): DataStore {
       if (cached) return cached;
 
       try {
-        const [rawProfile, rawRoster, rawSchedule] = await Promise.all([
+        // Four requests, not three: the schedule endpoint returns results OR
+        // upcoming fixtures depending on `fixture=true`, never both, so a
+        // fixtures-and-results block has to ask twice.
+        const [rawProfile, rawRoster, rawResults, rawFixtures] = await Promise.all([
           deps.fetchJson(teamUrl(slug(rc), teamId)),
           deps.fetchJson(teamRosterUrl(slug(rc), teamId)).catch(() => null),
           deps.fetchJson(teamScheduleUrl(slug(rc), teamId)).catch(() => null),
+          deps.fetchJson(teamScheduleUrl(slug(rc), teamId, true)).catch(() => null),
         ]);
 
         const base = mapTeamProfile(rawProfile);
@@ -309,7 +313,10 @@ export function createDataStore(deps: DataDeps): DataStore {
         const profile: TeamProfile = {
           ...base,
           squad: rawRoster ? mapTeamRoster(rawRoster) : [],
-          schedule: rawSchedule ? mapTeamSchedule(rawSchedule) : [],
+          schedule: [
+            ...(rawResults ? mapTeamSchedule(rawResults) : []),
+            ...(rawFixtures ? mapTeamSchedule(rawFixtures) : []),
+          ].sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()),
         };
         deps.cache.set(k, profile, ttlMs);
         return profile;

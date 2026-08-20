@@ -29,8 +29,11 @@ export const teamUrl = (slug: string, teamId: string) =>
 export const teamRosterUrl = (slug: string, teamId: string) =>
   `${site(slug)}/teams/${encodeURIComponent(teamId)}/roster`;
 
-// The club's fixtures. This is also where the next fixture comes from: the
-// profile payload carries a nextEvent array and it is empty, so reading it
-// would render "no upcoming fixture" for a club that has four.
-export const teamScheduleUrl = (slug: string, teamId: string) =>
-  `${site(slug)}/teams/${encodeURIComponent(teamId)}/schedule`;
+// The club's schedule -- results by default, upcoming fixtures with
+// `fixture=true`. It is one or the other, never both: verified 2026-08-19,
+// the bare call returned 4 events all finished while `?fixture=true` returned
+// 13 all upcoming. A page wanting fixtures AND results has to ask twice, and
+// the next fixture comes from the second call (the profile's nextEvent array
+// is empty on this provider).
+export const teamScheduleUrl = (slug: string, teamId: string, upcoming = false) =>
+  `${site(slug)}/teams/${encodeURIComponent(teamId)}/schedule${upcoming ? '?fixture=true' : ''}`;
