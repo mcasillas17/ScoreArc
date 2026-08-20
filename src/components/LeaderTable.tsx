@@ -11,11 +11,11 @@ export default function LeaderTable({
   teamStyle = 'flag',
 }: {
   leaders: StatLeader[];
-  metric: { abbr: string; title: string };
+  metric: { abbr: string; title: string; titleEs?: string };
   teamStyle?: 'flag' | 'crest';
 }) {
   if (leaders.length === 0) {
-    return <p className="empty-text"><LanguageText en={`${metric.title} data is unavailable right now.`} es={`Los datos de ${metric.title === "Goals" ? "goles" : "asistencias"} no están disponibles en este momento.`} /></p>;
+    return <p className="empty-text"><LanguageText en={`${metric.title} data is unavailable right now.`} es={`Los datos de ${metric.titleEs ?? metric.title} no están disponibles en este momento.`} /></p>;
   }
   return (
     <div className="std-panel">

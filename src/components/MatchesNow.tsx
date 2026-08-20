@@ -176,7 +176,7 @@ export default function MatchesNow({
 
       {sections.length === 0 && !error && (
         <p className="empty-text">
-          Nothing scheduled or recently played.{' '}
+          <LanguageText en="Nothing scheduled or recently played." es="Nada programado o jugado recientemente." />{' '}
           <Link href={calendarHref} className="mn-empty-link"><LanguageText en="Browse the full calendar" es="Ver el calendario completo" /></Link>.
         </p>
       )}

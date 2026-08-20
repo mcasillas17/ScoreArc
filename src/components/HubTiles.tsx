@@ -51,11 +51,11 @@ function translateSubLine(text: string, spanish: boolean): string {
   return text
     .replace(/champions/gi, 'campeones')
     .replace(/complete/gi, 'completo')
-    .replace(' live ·', ' en vivo ·')
-    .replace('Starts ', 'Comienza ')
-    .replace(' season', ' temporada')
-    .replace('Next: ', 'Próximo: ')
-    .replace('Leaders: ', 'Líderes: ');
+    .replace(/ live ·/g, ' en vivo ·')
+    .replace(/Starts /g, 'Comienza ')
+    .replace(/ season/g, ' temporada')
+    .replace(/Next: /g, 'Próximo: ')
+    .replace(/Leaders: /g, 'Líderes: ');
 }
 
 export default function HubTiles({ tiles }: Props) {

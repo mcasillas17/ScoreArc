@@ -104,14 +104,14 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
   const topScorersBlock = (
     <div className="std-block">
       <h2 className="std-block-title"><LanguageText en="Golden Boot · Top Scorers" es="Bota de Oro · Máximos goleadores" /></h2>
-      <LeaderTable leaders={scorers} metric={{ abbr: 'G', title: 'Goals' }} teamStyle={teamStyle} />
+      <LeaderTable leaders={scorers} metric={{ abbr: 'G', title: 'Goals', titleEs: 'goles' }} teamStyle={teamStyle} />
     </div>
   );
 
   const topAssistsBlock = (
     <div className="std-block">
       <h2 className="std-block-title"><LanguageText en="Playmakers · Top Assists" es="Creadores · Máximas asistencias" /></h2>
-      <LeaderTable leaders={assists} metric={{ abbr: 'A', title: 'Assists' }} teamStyle={teamStyle} />
+      <LeaderTable leaders={assists} metric={{ abbr: 'A', title: 'Assists', titleEs: 'asistencias' }} teamStyle={teamStyle} />
     </div>
   );
 
