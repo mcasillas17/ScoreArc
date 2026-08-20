@@ -204,6 +204,7 @@ func (f *fakeSource) Roster(
 	if !exists {
 		squad = model.Squad{
 			TeamSourceID: teamSourceID,
+			Color:        "ffff91",
 			Players: []model.SquadMember{{
 				SourceID: teamSourceID + "-player",
 				FullName: teamSourceID + " Player",
@@ -377,6 +378,8 @@ type fakeRepository struct {
 	topScorersCalls   int
 	squadCalls        int
 	squadTeams        []string
+	teamColours       map[string]string
+	colourErrors      map[string]error
 	squadErrors       map[string]error
 	bioCandidates     map[string]uuid.UUID
 	bioQueryCalls     int
@@ -1018,6 +1021,16 @@ func (f *fakeRepository) ReplaceSquad(
 	f.squadTeams = append(f.squadTeams, teamID)
 	return f.squadErrors[teamID]
 }
+func (f *fakeRepository) SetTeamColour(_ context.Context, teamID, colour string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.teamColours == nil {
+		f.teamColours = make(map[string]string)
+	}
+	f.teamColours[teamID] = colour
+	return f.colourErrors[teamID]
+}
+
 func (f *fakeRepository) PlayersNeedingBio(
 	_ context.Context,
 	_ string,
@@ -5522,5 +5535,61 @@ func TestLiveCycleWritesMatchDetailOncePerPoll(t *testing.T) {
 	if repo.detailCalls != polls {
 		t.Fatalf("match_detail writes = %d over %d polls of one match, want %d",
 			repo.detailCalls, polls, polls)
+	}
+}
+
+// The club's colour rides along on the roster payload the squad refresh
+// already fetches, so capturing it must cost no extra request.
+func TestSquadRefreshCapturesClubColour(t *testing.T) {
+	src := &fakeSource{standings: squadTestStandings("one", "two", "three")}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	worker := testRunner(src, repo, squadTestCompetition())
+	worker.runCycle(context.Background(), true)
+
+	src.mu.Lock()
+	rosterCalls := len(src.rosterCalls)
+	src.mu.Unlock()
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if len(repo.teamColours) != len(repo.standingTeamIDs) {
+		t.Fatalf("colours captured = %d, want one per team (%d)",
+			len(repo.teamColours), len(repo.standingTeamIDs))
+	}
+	for teamID, colour := range repo.teamColours {
+		if colour != "ffff91" {
+			t.Fatalf("team %s colour = %q, want ffff91", teamID, colour)
+		}
+	}
+	// One roster request per club, and nothing else: the colour is free.
+	if rosterCalls != len(repo.standingTeamIDs) {
+		t.Fatalf("roster requests = %d, want %d -- the colour must not cost an extra fetch",
+			rosterCalls, len(repo.standingTeamIDs))
+	}
+}
+
+// A club whose colour the provider omits is not a failure. Blanking a colour
+// already held would lose good data to a bad response.
+func TestSquadRefreshSkipsAnEmptyColour(t *testing.T) {
+	src := &fakeSource{
+		standings: squadTestStandings("one"),
+		rosters: map[string]model.Squad{
+			"one": {
+				TeamSourceID: "one",
+				Players:      []model.SquadMember{{SourceID: "p", FullName: "Player"}},
+			},
+		},
+	}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	worker := testRunner(src, repo, squadTestCompetition())
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if _, wrote := repo.teamColours["one"]; wrote {
+		t.Fatalf("wrote a colour for a club that sent none: %q", repo.teamColours["one"])
+	}
+	if repo.squadCalls == 0 {
+		t.Fatal("squad was not written at all -- the missing colour must not block it")
 	}
 }

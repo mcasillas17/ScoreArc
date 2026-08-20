@@ -4,7 +4,10 @@ import "time"
 
 type Squad struct {
 	TeamSourceID string
-	Players      []SquadMember
+	// Club primary colour, six hex digits without '#', or "" when the provider
+	// did not send a usable one.
+	Color   string
+	Players []SquadMember
 }
 
 type SquadMember struct {

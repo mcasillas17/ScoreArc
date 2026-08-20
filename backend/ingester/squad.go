@@ -104,6 +104,17 @@ func (r *runner) refreshSquads(
 				recordError(fmt.Errorf("team %s squad write: %w", providerTeamID, err))
 				return
 			}
+			// The club's colour rides along on the roster payload, so this
+			// costs no extra request. A failure here is logged as an error
+			// for the run but does not undo the squad write: the squad is the
+			// point of this refresh and a missing tint is cosmetic.
+			if squad.Color != "" {
+				if err := r.repo.SetTeamColour(
+					ctx, teamIDs[providerTeamID], squad.Color,
+				); err != nil {
+					recordError(fmt.Errorf("team %s colour: %w", providerTeamID, err))
+				}
+			}
 			r.mu.Lock()
 			r.squadsRefreshed[comp.ID+"/"+season.ID+"/"+providerTeamID] = today
 			r.mu.Unlock()
