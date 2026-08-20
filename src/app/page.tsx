@@ -5,6 +5,8 @@ import { hubStatus } from '@/lib/hubStatus';
 import { tileFacts, tileSubLine } from '@/lib/hubTile';
 import { prioritiseEntries, toLiveEntries, type LiveEntry } from '@/server/data/liveFeed';
 import HubTiles from '@/components/HubTiles';
+import LanguageText from '@/components/LanguageText';
+import SiteFooter from '@/components/SiteFooter';
 
 import LiveBand from '@/components/LiveBand';
 
@@ -98,10 +100,11 @@ export default async function Hub() {
             height={104}
           />
         </Link>
-        <p className="hub-tag">Live football — brackets, scores &amp; standings, every arc.</p>
+        <p className="hub-tag"><LanguageText en="Live football — brackets, scores & standings, every arc." es="Fútbol en vivo — cuadros, resultados y clasificaciones, en cada arco." /></p>
       </header>
       <LiveBand initialEntries={entries} />
       <HubTiles tiles={tiles} />
+      <SiteFooter />
     </main>
   );
 }

@@ -14,6 +14,7 @@ import type { Match } from '@/server/data/types';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 import MatchCalendar from '@/components/MatchCalendar';
 import MatchesNow from '@/components/MatchesNow';
+import SiteFooter from '@/components/SiteFooter';
 
 export const dynamic = 'force-dynamic';
 
@@ -151,9 +152,7 @@ export default async function MatchesPage({
         )}
       </section>
 
-      <footer className="site-footer">
-        <p>ScoreArc · Data via ESPN · Not affiliated with FIFA</p>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }

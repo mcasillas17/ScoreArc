@@ -6,6 +6,8 @@ import { getBannerFeed } from '@/server/data/banner';
 import type { Group, StatLeader } from '@/server/data/types';
 import StandingsLive from '@/components/StandingsLive';
 import UpcomingBanner from '@/components/UpcomingBanner';
+import LanguageText from '@/components/LanguageText';
+import SiteFooter from '@/components/SiteFooter';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,11 +65,11 @@ export default async function StandingsPage({ params }: { params: { comp: string
           {/* The same heading for every competition: the nav item says
               "Standings", so landing on a page titled "League Table" reads as
               having clicked the wrong thing. The subtitle carries what differs. */}
-          <h1 className="bracket-title">Standings</h1>
+          <h1 className="bracket-title"><LanguageText en="Standings" es="Clasificación" /></h1>
           <p className="page-subtitle">
             {hasBracket
-              ? 'Scorers, assists, the third-place race, and full group tables.'
-              : 'Scorers, assists, and the full league table.'}
+              ? <LanguageText en="Scorers, assists, the third-place race, and full group tables." es="Goleadores, asistencias, la carrera por el tercer puesto y tablas de grupos completas." />
+              : <LanguageText en="Scorers, assists, and the full league table." es="Goleadores, asistencias y la tabla completa de la liga." />}
           </p>
         </header>
 
@@ -88,9 +90,7 @@ export default async function StandingsPage({ params }: { params: { comp: string
         />
       </section>
 
-      <footer className="site-footer">
-        <p>ScoreArc · Data via ESPN · Not affiliated with FIFA</p>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }

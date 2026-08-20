@@ -7,6 +7,7 @@ import { listCompetitions } from '@/server/data/competitions';
 import { trackEvent } from '@/lib/telemetry/client';
 import CompetitionMark from './CompetitionMark';
 import BrandMark from './BrandMark';
+import { useLanguage } from './LanguageProvider';
 
 const ICON = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
 
@@ -14,6 +15,8 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
   const [collapsed, setCollapsed] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const pathname = usePathname();
+  const { language } = useLanguage();
+  const spanish = language === 'es';
   const base = `/c/${comp.id}/${seasonId}`;
   const hasBracket = comp.seasons[seasonId]?.format.hasBracket ?? true;
   // A cross-league cup's root shows its phase tables ("Qualified for the
@@ -27,8 +30,8 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
   const newsIcon = <svg {...ICON}><path d="M4 5h16v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>;
 
   const atBase = (p: string) => p === base;
-  const matchesItem = { href: `${base}/matches`, label: 'Matches', match: (p: string) => p.endsWith('/matches'), icon: matchesIcon };
-  const newsItem = { href: `${base}/news`, label: 'News', match: (p: string) => p.startsWith(`${base}/news`), icon: newsIcon };
+  const matchesItem = { href: `${base}/matches`, label: spanish ? 'Partidos' : 'Matches', match: (p: string) => p.endsWith('/matches'), icon: matchesIcon };
+  const newsItem = { href: `${base}/news`, label: spanish ? 'Noticias' : 'News', match: (p: string) => p.startsWith(`${base}/news`), icon: newsIcon };
 
   // Standings live at the same route for every competition, under the same
   // label. A cup adds a Bracket item because it has one; a league's base URL
@@ -36,13 +39,13 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
   // stays active on that redirect, which `atBase` would not catch.
   const standingsItem = {
     href: `${base}/standings`,
-    label: 'Standings',
+    label: spanish ? 'Clasificación' : 'Standings',
     match: (p: string) => p.startsWith(`${base}/standings`),
     icon: tableIcon,
   };
   const items = hasBracket
     ? [
-        { href: base, label: phasedCup ? 'Knockout' : 'Bracket', match: atBase, icon: bracketIcon },
+        { href: base, label: phasedCup ? (spanish ? 'Eliminatorias' : 'Knockout') : (spanish ? 'Cuadro' : 'Bracket'), match: atBase, icon: bracketIcon },
         standingsItem,
         matchesItem,
         newsItem,
@@ -100,7 +103,7 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
         ))}
       </nav>
 
-      <Link href="/" className="sidebar-allcomps">⌂ All competitions</Link>
+      <Link href="/" className="sidebar-allcomps">⌂ {spanish ? 'Todas las competiciones' : 'All competitions'}</Link>
 
       <a className="sidebar-credit" href="https://github.com/mcasillas17" target="_blank" rel="noreferrer" title={collapsed ? 'Built by elOpenMike' : undefined}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.22-3.37-1.22-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.36 9.36 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.6.69.49A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2z" /></svg>
