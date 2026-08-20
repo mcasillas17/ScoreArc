@@ -96,11 +96,15 @@ Neon Postgres (provisioned via Vercel) + Cloudflare R2**. Full detail:
   eleven test failures rather than a misconfigured environment. Export these first:
 
   ```bash
-  export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
+  export DOCKER_HOST="unix://$HOME/.colima/<profile>/docker.sock"
   export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
   ```
 
-  Check which runtime you have with `docker context ls`.
+  Check which runtime you have with `docker context ls`, and take `<profile>`
+  from the row marked `*` — it is not always `default`. Pointing at a profile
+  that exists but is not running fails the same way as having no Docker at all,
+  so the eleven failures look identical whether the socket path is wrong or the
+  daemon is down.
 - **PRs here are squash-merged, which breaks stacked branches.** After a base
   branch merges, the branch stacked on it still shows every one of the base's
   commits as unmerged — the content is in `main` but the SHAs are not. Do not

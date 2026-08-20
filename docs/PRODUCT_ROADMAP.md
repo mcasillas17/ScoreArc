@@ -275,9 +275,13 @@ Branch `feat/fixtures-results`. The single biggest missing capability.
 ### E4 · Team pages
 Branch `feat/team-pages`. Every crest on the site is currently a dead end.
 
-- **T4.1** Team provider + mapper
-- **T4.2** Team route and page
-- **T4.3** Make crests clickable everywhere
+- **T4.1** Team provider + mapper — done
+- **T4.2** Team route and page — done
+- **T4.3** Make crests clickable everywhere — done
+- **T4.4** Backend mirror — done: migration 0022 (club colours), the ingester
+  capturing them from the roster it already fetches, and
+  `GET /v1/competitions/{comp}/{season}/teams/{teamId}` returning the same
+  `TeamProfile` shape, so the migration off ESPN is a base-URL change.
 
 Verified 2026-08-15, re-verified 2026-08-19: `/teams/{id}/roster` returns all 35
 players, **28 of them with season statistics inline** — so a complete, sortable
