@@ -1,5 +1,7 @@
 'use client';
 
+import { useLanguage } from './LanguageProvider';
+import LanguageText from './LanguageText';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { LiveEntry } from '@/server/data/liveFeed';
@@ -90,7 +92,10 @@ function EntryRow({ entry, tone }: { entry: LiveEntry; tone: 'live' | 'next' | '
  * sitting within request latency of the 3h or 48h boundary can bucket
  * differently across the two passes, which React recovers from.)
  */
-export default function LiveBand({ initialEntries }: Props) {
+export default function LiveBand({
+initialEntries }: Props) {
+  const { language } = useLanguage();
+  const spanish = language === 'es';
   const [entries, setEntries] = useState<LiveEntry[]>(initialEntries);
   // Null until mount, then the reader's clock. Same pattern MatchCalendar uses
   // for `today`: bucketing on the server's UTC clock and again on the reader's
@@ -139,10 +144,10 @@ export default function LiveBand({ initialEntries }: Props) {
 
   if (live.length > 0) {
     return (
-      <section className="lb" aria-label="Live matches">
+      <section className="lb" aria-label={spanish ? "Partidos en directo" : "Live matches"}>
         <h2 className="lb-title lb-title--live">
           <span className="lb-ping" aria-hidden />
-          Live now · {live.length}
+          <LanguageText en="Live now" es="En directo" /> · {live.length}
         </h2>
         <div className="lb-grid">
           {live.slice(0, LIVE_SHOWN).map((e) => (
@@ -156,11 +161,11 @@ export default function LiveBand({ initialEntries }: Props) {
   if (recent.length === 0 && upcoming.length === 0) return null;
 
   return (
-    <section className="lb" aria-label="Latest results and upcoming matches">
+    <section className="lb" aria-label={spanish ? "Últimos resultados y próximos partidos" : "Latest results and upcoming matches"}>
       <div className="lb-split">
         {recent.length > 0 && (
           <div className="lb-col">
-            <h2 className="lb-title">Latest results</h2>
+            <h2 className="lb-title"><LanguageText en="Latest results" es="Últimos resultados" /></h2>
             <div className="lb-list">
               {recent.slice(0, SIDE_SHOWN).map((e) => (
                 <EntryRow key={`${e.competition.id}:${e.match.id}`} entry={e} tone="recent" />
@@ -170,7 +175,7 @@ export default function LiveBand({ initialEntries }: Props) {
         )}
         {upcoming.length > 0 && (
           <div className="lb-col">
-            <h2 className="lb-title lb-title--next">Next up</h2>
+            <h2 className="lb-title lb-title--next"><LanguageText en="Next up" es="Próximamente" /></h2>
             <div className="lb-list">
               {upcoming.slice(0, SIDE_SHOWN).map((e) => (
                 <EntryRow key={`${e.competition.id}:${e.match.id}`} entry={e} tone="next" />

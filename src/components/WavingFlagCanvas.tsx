@@ -1,12 +1,16 @@
 'use client';
 
+import { useLanguage } from './LanguageProvider';
 import { useEffect, useRef } from 'react';
 
 // A real (pseudo-)3D waving flag: the flag texture is drawn in thin vertical
 // slices, each shifted by a travelling sine wave, with per-slice light/shadow so
 // the cloth appears to billow in 3D. Renders on a <canvas> at 60fps — works with
 // a cross-origin flag image directly (we only draw it, never read pixels back).
-export default function WavingFlagCanvas({ src }: { src: string }) {
+export default function WavingFlagCanvas({
+src }: { src: string }) {
+  const { language } = useLanguage();
+  const spanish = language === 'es';
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -68,5 +72,5 @@ export default function WavingFlagCanvas({ src }: { src: string }) {
     return () => cancelAnimationFrame(raf);
   }, [src]);
 
-  return <canvas ref={ref} className="champ-wave-flag" role="img" aria-label="Champion flag" />;
+  return <canvas ref={ref} className="champ-wave-flag" role="img" aria-label={spanish ? "Bandera del campeón" : "Champion flag"} />;
 }

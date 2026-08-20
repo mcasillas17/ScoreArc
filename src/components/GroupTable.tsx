@@ -1,6 +1,7 @@
 import type { Group } from "@/server/data/types";
 import TeamBadge from "./TeamBadge";
 import { groupRowClass } from "./groupRowClass";
+import LanguageText from "./LanguageText";
 
 interface GroupTableProps {
   group: Group;
@@ -17,13 +18,13 @@ export default function GroupTable({ group, teamStyle }: GroupTableProps) {
     <div className="group-card">
       <h2 className="group-name">{group.name}</h2>
       {!started ? (
-        <p className="lz-preseason">Season not started — no matches played yet.</p>
+        <p className="lz-preseason"><LanguageText en="Season not started — no matches played yet." es="La temporada no ha comenzado — aún no hay partidos jugados." /></p>
       ) : null}
       <table className="standings-table">
         <thead>
           <tr>
             <th>#</th>
-            <th className="team-col">Team</th>
+            <th className="team-col"><LanguageText en="Team" es="Equipo" /></th>
             <th title="Played">P</th>
             <th title="Wins">W</th>
             <th title="Draws">D</th>

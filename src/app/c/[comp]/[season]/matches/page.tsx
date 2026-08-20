@@ -1,3 +1,4 @@
+import LanguageText from '@/components/LanguageText';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -97,11 +98,11 @@ export default async function MatchesPage({
       <section id="matches">
         <header className="page-head">
           <p className="bracket-eyebrow">{editionName}</p>
-          <h1 className="bracket-title">Matches</h1>
+          <h1 className="bracket-title"><LanguageText en="Matches" es="Partidos" /></h1>
           <p className="page-subtitle">
             {view === 'now'
-              ? 'What is on now, next, and just played.'
-              : 'Every match, month by month.'}
+              ? <LanguageText en="What is on now, next, and just played." es="Lo que está en juego, lo próximo y lo recién jugado." />
+              : <LanguageText en="Every match, month by month." es="Todos los partidos, mes a mes." />}
           </p>
         </header>
 
@@ -118,14 +119,14 @@ export default async function MatchesPage({
               className={`mn-tab${view === 'now' ? ' mn-tab--on' : ''}`}
               aria-current={view === 'now' ? 'page' : undefined}
             >
-              Now
+              <LanguageText en="Now" es="Ahora" />
             </Link>
             <Link
               href={`${basePath}?view=calendar`}
               className={`mn-tab${view === 'calendar' ? ' mn-tab--on' : ''}`}
               aria-current={view === 'calendar' ? 'page' : undefined}
             >
-              Full calendar
+              <LanguageText en="Full calendar" es="Calendario completo" />
             </Link>
           </nav>
         )}

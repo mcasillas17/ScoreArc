@@ -1,5 +1,6 @@
 'use client';
 
+import LanguageText from './LanguageText';
 import type { Standing } from '@/server/data/types';
 import type { TeamStyle, Zone } from '@/server/data/competitions';
 import TeamBadge from './TeamBadge';
@@ -23,7 +24,7 @@ export default function LeagueZoneTable({
   if (standings.length === 0) {
     return (
       <div className="empty-section">
-        <p className="empty-text">Standings are unavailable right now.</p>
+        <p className="empty-text"><LanguageText en="Standings are unavailable right now." es="La clasificación no está disponible en este momento." /></p>
       </div>
     );
   }
@@ -40,7 +41,7 @@ export default function LeagueZoneTable({
       <div className="ll-split">
         <div className="ll-left">
           {!started ? (
-            <p className="lz-preseason">Season not started — no matches played yet.</p>
+            <p className="lz-preseason"><LanguageText en="Season not started — no matches played yet." es="La temporada no ha comenzado — aún no hay partidos jugados." /></p>
           ) : null}
           <ZoneRing standings={standings} zones={zones} teamStyle={teamStyle} />
           <div className="ll-legend lz-legend">

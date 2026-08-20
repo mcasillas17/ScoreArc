@@ -1,5 +1,6 @@
 'use client';
 
+import LanguageText from './LanguageText';
 import { useState, useEffect, useRef } from 'react';
 import type { Group, StatLeader } from '@/server/data/types';
 import type { Zone } from '@/server/data/competitions';
@@ -102,15 +103,15 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
 
   const topScorersBlock = (
     <div className="std-block">
-      <h2 className="std-block-title">Golden Boot · Top Scorers</h2>
-      <LeaderTable leaders={scorers} metric={{ abbr: 'G', title: 'Goals' }} teamStyle={teamStyle} />
+      <h2 className="std-block-title"><LanguageText en="Golden Boot · Top Scorers" es="Bota de Oro · Máximos goleadores" /></h2>
+      <LeaderTable leaders={scorers} metric={{ abbr: 'G', title: 'Goals', titleEs: 'goles' }} teamStyle={teamStyle} />
     </div>
   );
 
   const topAssistsBlock = (
     <div className="std-block">
-      <h2 className="std-block-title">Playmakers · Top Assists</h2>
-      <LeaderTable leaders={assists} metric={{ abbr: 'A', title: 'Assists' }} teamStyle={teamStyle} />
+      <h2 className="std-block-title"><LanguageText en="Playmakers · Top Assists" es="Creadores · Máximas asistencias" /></h2>
+      <LeaderTable leaders={assists} metric={{ abbr: 'A', title: 'Assists', titleEs: 'asistencias' }} teamStyle={teamStyle} />
     </div>
   );
 
@@ -150,7 +151,7 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
         </div>
       ) : (
         <div className="empty-section">
-          <p className="empty-text">Group data is unavailable right now.</p>
+          <p className="empty-text"><LanguageText en="Group data is unavailable right now." es="Los datos de los grupos no están disponibles en este momento." /></p>
         </div>
       )}
     </div>
@@ -165,11 +166,11 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
         <div className="std-columns">
           {topScorersBlock}
           <div className="std-block">
-            <h2 className="std-block-title">Best Third-Placed Teams</h2>
+            <h2 className="std-block-title"><LanguageText en="Best Third-Placed Teams" es="Mejores terceros" /></h2>
             {groups.length > 0 ? (
               <ThirdPlaceTable groups={groups} teamStyle={teamStyle} />
             ) : (
-              <p className="empty-text">Group data is unavailable right now.</p>
+              <p className="empty-text"><LanguageText en="Group data is unavailable right now." es="Los datos de los grupos no están disponibles en este momento." /></p>
             )}
           </div>
         </div>

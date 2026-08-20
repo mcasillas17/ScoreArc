@@ -1,5 +1,7 @@
 'use client';
 
+import { useLanguage } from './LanguageProvider';
+import LanguageText from './LanguageText';
 import type { CSSProperties } from 'react';
 import type { BracketTeam } from '@/server/data/types';
 import { colorFor } from './radialBracketModel';
@@ -28,7 +30,10 @@ function rand(seed: number): number {
 
 const CONFETTI_COUNT = 110;
 
-export default function ChampionCelebration({ team, onClose, onShare, emblem, trophyImage, championTitle = 'CHAMPIONS' }: Props) {
+export default function ChampionCelebration({
+team, onClose, onShare, emblem, trophyImage, championTitle = 'CHAMPIONS' }: Props) {
+  const { language } = useLanguage();
+  const spanish = language === 'es';
   const teamColor = colorFor(team);
   const palette = ['#e8b84b', '#ffffff', teamColor, '#ff5c5c', '#4cc4ff', '#36c275'];
   const flag = flagUrl(team.abbr);
@@ -97,7 +102,7 @@ export default function ChampionCelebration({ team, onClose, onShare, emblem, tr
       <button
         type="button"
         className="champ-close"
-        aria-label="Close celebration"
+        aria-label={spanish ? "Cerrar celebración" : "Close celebration"}
         onClick={onClose}
       >
         ×
@@ -112,7 +117,7 @@ export default function ChampionCelebration({ team, onClose, onShare, emblem, tr
             // eslint-disable-next-line @next/next/no-img-element
             <img className="champ-trophy" src={trophyImage} alt="The World Cup trophy" />
           ) : (
-            <span className="champ-trophy champ-trophy--emblem" role="img" aria-label="Competition emblem">
+            <span className="champ-trophy champ-trophy--emblem" role="img" aria-label={spanish ? "Emblema de la competición" : "Competition emblem"}>
               {emblem}
             </span>
           )}
@@ -125,7 +130,7 @@ export default function ChampionCelebration({ team, onClose, onShare, emblem, tr
           </div>
         </div>
 
-        <p className="champ-subtitle">Your predicted winner</p>
+        <p className="champ-subtitle"><LanguageText en="Your predicted winner" es="Tu ganador previsto" /></p>
         <h2 className="champ-title">{championTitle}</h2>
         <p className="champ-team">{team.name}</p>
 
@@ -145,7 +150,7 @@ export default function ChampionCelebration({ team, onClose, onShare, emblem, tr
           </button>
         )}
 
-        <p className="champ-hint">Tap anywhere to keep building</p>
+        <p className="champ-hint"><LanguageText en="Tap anywhere to keep building" es="Toca en cualquier lugar para seguir construyendo" /></p>
       </div>
     </div>
   );

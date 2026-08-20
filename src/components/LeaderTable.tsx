@@ -1,3 +1,4 @@
+import LanguageText from './LanguageText';
 import type { StatLeader } from "@/server/data/types";
 import TeamBadge from "./TeamBadge";
 
@@ -10,11 +11,11 @@ export default function LeaderTable({
   teamStyle = 'flag',
 }: {
   leaders: StatLeader[];
-  metric: { abbr: string; title: string };
+  metric: { abbr: string; title: string; titleEs?: string };
   teamStyle?: 'flag' | 'crest';
 }) {
   if (leaders.length === 0) {
-    return <p className="empty-text">{metric.title} data is unavailable right now.</p>;
+    return <p className="empty-text"><LanguageText en={`${metric.title} data is unavailable right now.`} es={`Los datos de ${metric.titleEs ?? metric.title} no están disponibles en este momento.`} /></p>;
   }
   return (
     <div className="std-panel">
@@ -22,8 +23,8 @@ export default function LeaderTable({
         <thead>
           <tr>
             <th>#</th>
-            <th className="team-col">Player</th>
-            <th className="team-col">Team</th>
+            <th className="team-col"><LanguageText en="Player" es="Jugador" /></th>
+            <th className="team-col"><LanguageText en="Team" es="Equipo" /></th>
             <th title="Matches played">MP</th>
             <th className="pts-col" title={metric.title}>
               {metric.abbr}

@@ -1,5 +1,6 @@
 'use client';
 
+import { useLanguage } from './LanguageProvider';
 import { useRef, useState } from 'react';
 
 const MIN = 1;
@@ -18,7 +19,10 @@ interface View {
  * At rest (scale 1) the page still scrolls vertically over it (touch-action:
  * pan-y); once zoomed, we own all touches so panning is smooth.
  */
-export default function BracketZoom({ children }: { children: React.ReactNode }) {
+export default function BracketZoom({
+children }: { children: React.ReactNode }) {
+  const { language } = useLanguage();
+  const spanish = language === 'es';
   const boxRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View>({ scale: 1, tx: 0, ty: 0 });
   const [smooth, setSmooth] = useState(false);
@@ -130,14 +134,14 @@ export default function BracketZoom({ children }: { children: React.ReactNode })
         </div>
       </div>
 
-      <div className="bz-controls" aria-label="Bracket zoom">
-        <button type="button" onClick={() => zoomBtn(1 / 1.4)} aria-label="Zoom out" disabled={!zoomed}>
+      <div className="bz-controls" aria-label={spanish ? "Zoom del cuadro" : "Bracket zoom"}>
+        <button type="button" onClick={() => zoomBtn(1 / 1.4)} aria-label={spanish ? "Alejar" : "Zoom out"} disabled={!zoomed}>
           −
         </button>
-        <button type="button" onClick={reset} aria-label="Reset zoom" disabled={!zoomed}>
+        <button type="button" onClick={reset} aria-label={spanish ? "Restablecer zoom" : "Reset zoom"} disabled={!zoomed}>
           ⤢
         </button>
-        <button type="button" onClick={() => zoomBtn(1.4)} aria-label="Zoom in" disabled={view.scale >= MAX}>
+        <button type="button" onClick={() => zoomBtn(1.4)} aria-label={spanish ? "Acercar" : "Zoom in"} disabled={view.scale >= MAX}>
           +
         </button>
       </div>

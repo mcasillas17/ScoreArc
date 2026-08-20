@@ -1,5 +1,7 @@
 'use client';
 
+import LanguageText from './LanguageText';
+import { useLanguage } from './LanguageProvider';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { BracketMatch, MatchSummaryData } from '@/server/data/types';
@@ -33,6 +35,8 @@ function formatKickoff(iso: string): string {
 }
 
 export default function MatchDetailPopup({ match, summary, loading, onClose }: Props) {
+  const { language } = useLanguage();
+  const spanish = language === 'es';
   const closeRef = useRef<HTMLButtonElement>(null);
 
   // Portal to <body> so the fixed backdrop escapes the bracket's transformed
@@ -99,10 +103,10 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label="Match details"
+      aria-label={spanish ? 'Detalles del partido' : 'Match details'}
     >
       <div className="md-card" onClick={(e) => e.stopPropagation()}>
-        <button ref={closeRef} className="md-close" onClick={onClose} aria-label="Close match details">
+        <button ref={closeRef} className="md-close" onClick={onClose} aria-label={spanish ? 'Cerrar detalles del partido' : 'Close match details'}>
           ×
         </button>
 
@@ -157,7 +161,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
 
         {/* Body */}
         <div className="md-body">
-          {loading && <p className="md-loading">Loading match details…</p>}
+          {loading && <p className="md-loading"><LanguageText en="Loading match details…" es="Cargando detalles del partido…" /></p>}
 
           {!loading && info && (
             <div className="md-section">
@@ -172,11 +176,11 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
           )}
 
           {upcoming && !loading && !showWinProb && !summary?.lineups && (
-            <p className="md-empty">Not started yet — no preview data available.</p>
+            <p className="md-empty"><LanguageText en="Not started yet — no preview data available." es="Aún no ha comenzado — no hay vista previa disponible." /></p>
           )}
 
           {!upcoming && !loading && summary && !hasContent && (
-            <p className="md-empty">No detailed stats available for this match.</p>
+            <p className="md-empty"><LanguageText en="No detailed stats available for this match." es="No hay estadísticas detalladas disponibles para este partido." /></p>
           )}
 
           {/* Always-visible match facts first: goals, then cards right below,

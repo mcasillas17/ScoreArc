@@ -4,6 +4,7 @@ import TrackedCompetitionLink from './TrackedCompetitionLink';
 import LocalTime from './LocalTime';
 import CompetitionMark from './CompetitionMark';
 import type { TileSubLine } from '@/lib/hubTile';
+import { useLanguage } from './LanguageProvider';
 
 interface Tile {
   comp: Competition;
@@ -24,42 +25,57 @@ interface Props {
 
 // Ordered by relevance: matches in play first, then tournaments already
 // underway, then ones yet to start.
-const GROUPS: { status: HubStatus; label: string; labelClass: string }[] = [
+const GROUPS: { status: HubStatus; label: string; labelEs: string; labelClass: string }[] = [
   // Not "Live now" — the band above already owns that heading, and it lists
   // matches while this lists the competitions they belong to.
-  { status: 'live',     label: 'Playing now',   labelClass: 'hub-group-label--live' },
-  { status: 'ongoing',  label: 'Ongoing',       labelClass: 'hub-group-label--ongoing' },
-  { status: 'upcoming', label: 'Starting soon', labelClass: 'hub-group-label--upcoming' },
-  { status: 'finished', label: 'Finished',      labelClass: 'hub-group-label--finished' },
+  { status: 'live',     label: 'Playing now',   labelEs: 'Jugando ahora', labelClass: 'hub-group-label--live' },
+  { status: 'ongoing',  label: 'Ongoing',       labelEs: 'En curso', labelClass: 'hub-group-label--ongoing' },
+  { status: 'upcoming', label: 'Starting soon', labelEs: 'Próximamente', labelClass: 'hub-group-label--upcoming' },
+  { status: 'finished', label: 'Finished',      labelEs: 'Finalizado', labelClass: 'hub-group-label--finished' },
 ];
 
-function badge(tile: Tile): { text: string; className: string } {
+function badge(tile: Tile, spanish: boolean): { text: string; className: string } {
   switch (tile.status) {
-    case 'live':     return { text: 'LIVE',         className: 'hub-badge--live' };
-    case 'upcoming': return { text: 'SOON',          className: 'hub-badge--upcoming' };
-    case 'ongoing':  return { text: 'IN PROGRESS',  className: 'hub-badge--ongoing' };
-    case 'finished': return { text: tile.champion ? `🏆 ${tile.champion}` : 'FINISHED', className: 'hub-badge--finished' };
+    case 'live':     return { text: spanish ? 'EN VIVO' : 'LIVE', className: 'hub-badge--live' };
+    case 'upcoming': return { text: spanish ? 'PRONTO' : 'SOON', className: 'hub-badge--upcoming' };
+    case 'ongoing':  return { text: spanish ? 'EN CURSO' : 'IN PROGRESS', className: 'hub-badge--ongoing' };
+    case 'finished': return { text: tile.champion ? `🏆 ${tile.champion}` : (spanish ? 'FINALIZADO' : 'FINISHED'), className: 'hub-badge--finished' };
   }
 }
 
 // live + ongoing are "active" states that get an animated status dot.
 const isActive = (s: HubStatus) => s === 'live' || s === 'ongoing';
 
+function translateSubLine(text: string, spanish: boolean): string {
+  if (!spanish) return text;
+  return text
+    .replace(/\bchampions\b/gi, 'campeones')
+    .replace(/\bcomplete\b/gi, 'completo')
+    .replace(/ live ·/g, ' en vivo ·')
+    .replace(/Starts /g, 'Comienza ')
+    .replace(/ season/g, ' temporada')
+    .replace(/Next: /g, 'Próximo: ')
+    .replace(/Leaders: /g, 'Líderes: ');
+}
+
 export default function HubTiles({ tiles }: Props) {
+  const { language } = useLanguage();
+  const spanish = language === 'es';
+
   return (
     <div className="hub-groups">
-      {GROUPS.map(({ status, label, labelClass }) => {
+      {GROUPS.map(({ status, label, labelEs, labelClass }) => {
         const group = tiles.filter((t) => t.status === status);
         if (group.length === 0) return null;
         return (
           <section key={status} className="hub-group">
             <div className={`hub-group-label ${labelClass}`}>
               {isActive(status) && <span className={`hub-ping hub-ping--${status}`} aria-hidden />}
-              {label}
+              {spanish ? labelEs : label}
             </div>
             <div className="hub-grid">
               {group.map((tile) => {
-                const b = badge(tile);
+                const b = badge(tile, spanish);
                 return (
                   <TrackedCompetitionLink
                     key={tile.comp.id}
@@ -88,7 +104,7 @@ export default function HubTiles({ tiles }: Props) {
                     </div>
                     <div className="hub-name">{tile.comp.name}</div>
                     <div className="hub-sub">
-                      {tile.subLine.text}
+                      {translateSubLine(tile.subLine.text, spanish)}
                       {tile.subLine.when && (
                         <>, <LocalTime iso={tile.subLine.when} mode="day" /></>
                       )}
