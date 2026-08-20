@@ -1059,6 +1059,31 @@ a {
   letter-spacing: 0.03em;
 }
 
+.language-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.language-toggle button {
+  border: 0;
+  padding: 2px 3px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.language-toggle button:hover,
+.language-toggle--active {
+  color: var(--brand-bright);
+}
+
 /* Mobile bottom tab bar for section nav — hidden on desktop, shown under the
    860px breakpoint below (where the sidebar becomes a slim top bar). */
 .mobile-tabbar {

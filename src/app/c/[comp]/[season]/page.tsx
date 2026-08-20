@@ -10,6 +10,8 @@ import StandingsLive from '@/components/StandingsLive';
 import PhaseQualifiers from '@/components/PhaseQualifiers';
 import SeasonSwitcher from '@/components/SeasonSwitcher';
 import { bracketShapeFor, knockoutIsReady } from '@/components/bracketShape';
+import LanguageText from '@/components/LanguageText';
+import SiteFooter from '@/components/SiteFooter';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,7 +55,7 @@ export default async function Workspace({ params }: { params: { comp: string; se
   // heading over nothing. Kept as a nullable value, not an always-truthy
   // element, because the phase branch below falls back on it being null.
   const liveSection = feed.matches.length > 0 ? <UpcomingBanner feed={feed} rc={rc} /> : null;
-  const footer = <footer className="site-footer"><p>ScoreArc · Data via ESPN · Not affiliated with FIFA</p></footer>;
+  const footer = <SiteFooter />;
 
   let bracket: BracketRound[] = [];
   try { bracket = await dataStore.getBracket(rc); } catch {}
@@ -79,7 +81,7 @@ export default async function Workspace({ params }: { params: { comp: string; se
     // while nothing is published.
     const banner = liveSection ?? (
       <section id="live">
-        <h2 className="section-label">Next Up</h2>
+        <h2 className="section-label"><LanguageText en="Next Up" es="Próximamente" /></h2>
         <div className="lcq-banner">
           <PhaseQualifiers
             groups={phaseGroups}
@@ -96,7 +98,7 @@ export default async function Workspace({ params }: { params: { comp: string; se
         <section id="phase" className="std-wide">
           <header className="bracket-head">
             <p className="bracket-eyebrow">{rc.competition.name} · {rc.season.label}</p>
-            <h1 className="bracket-title">Qualified for the {computed.label}</h1>
+            <h1 className="bracket-title"><LanguageText en={`Qualified for the ${computed.label}`} es={`Clasificados para ${computed.label}`} /></h1>
           </header>
           <StandingsLive
             initialGroups={phaseGroups}
@@ -118,12 +120,12 @@ export default async function Workspace({ params }: { params: { comp: string; se
       <section id="bracket" className="bracket-section">
         <header className="bracket-head">
           <p className="bracket-eyebrow">{rc.competition.shortName}</p>
-          <h1 className="bracket-title">Knockout Bracket</h1>
+          <h1 className="bracket-title"><LanguageText en="Knockout Bracket" es="Cuadro de eliminatorias" /></h1>
           <SeasonSwitcher competition={rc.competition} activeSeasonId={rc.season.id} />
         </header>
         {bracket.length > 0
           ? <div key={rc.season.id} className="edition-fade"><BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} emblem={rc.competition.emblem} trophyImage={rc.competition.trophyImage} championTitle={rc.competition.championTitle} shape={bracketShapeFor(rc.season)} readOnly={readOnly} /></div>
-          : <div className="empty-section"><p className="empty-text">Bracket data is unavailable right now.</p></div>}
+          : <div className="empty-section"><p className="empty-text"><LanguageText en="Bracket data is unavailable right now." es="El cuadro no está disponible en este momento." /></p></div>}
       </section>
       {!readOnly && liveSection}
       {footer}
