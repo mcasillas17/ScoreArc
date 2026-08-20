@@ -56,14 +56,14 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
     <>
     <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`}>
       <div className="sidebar-brand">
-        <Link href="/" className="sidebar-brand-link" aria-label="ScoreArc home">
+        <Link href="/" className="sidebar-brand-link" aria-label={spanish ? "Inicio de ScoreArc" : "ScoreArc home"}>
           <BrandMark size={30} className="sidebar-ball" />
           <span className="sidebar-wordmark">ScoreArc</span>
         </Link>
         <button type="button" className="sidebar-toggle" onClick={() => {
           trackEvent('Sidebar toggled', { collapsed: !collapsed });
           setCollapsed(!collapsed);
-        }} aria-label={collapsed ? 'Expand' : 'Collapse'} aria-expanded={!collapsed}>
+        }} aria-label={collapsed ? (spanish ? 'Expandir' : 'Expand') : (spanish ? 'Contraer' : 'Collapse')} aria-expanded={!collapsed}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             {collapsed ? <polyline points="9 6 15 12 9 18" /> : <polyline points="15 6 9 12 15 18" />}
           </svg>
@@ -71,8 +71,8 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
       </div>
 
       <div className="sidebar-switcher">
-        <button type="button" className="cs-current" onClick={() => setSwitcherOpen((v) => !v)} aria-expanded={switcherOpen} aria-label="Switch competition">
-          <span className="cs-label">Competition</span>
+        <button type="button" className="cs-current" onClick={() => setSwitcherOpen((v) => !v)} aria-expanded={switcherOpen} aria-label={spanish ? "Cambiar competición" : "Switch competition"}>
+          <span className="cs-label">{spanish ? "Competición" : "Competition"}</span>
           <span className="cs-name"><span className="cs-emblem"><CompetitionMark logo={comp.logo} logoInvert={comp.logoInvert} emblem={comp.emblem} name={comp.name} size={18} /></span>{comp.shortName}</span>
           <span className="cs-season">{comp.seasons[seasonId]?.label ?? seasonId} season</span>
         </button>
@@ -94,7 +94,7 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
         )}
       </div>
 
-      <nav className="sidebar-nav" aria-label="Sections">
+      <nav className="sidebar-nav" aria-label={spanish ? "Secciones" : "Sections"}>
         {items.map((item) => (
           <Link key={item.label} href={item.href} className={`nav-item${item.match(pathname) ? ' nav-item--active' : ''}`} title={collapsed ? item.label : undefined} onClick={() => trackEvent('Section opened', { section: item.label, surface: 'sidebar' })}>
             <span className="nav-icon">{item.icon}</span>
@@ -107,12 +107,12 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
 
       <a className="sidebar-credit" href="https://github.com/mcasillas17" target="_blank" rel="noreferrer" title={collapsed ? 'Built by elOpenMike' : undefined}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.22-3.37-1.22-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.36 9.36 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.6.69.49A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2z" /></svg>
-        <span className="credit-text">Built by <strong>elOpenMike</strong></span>
+        <span className="credit-text">{spanish ? "Creado por" : "Built by"} <strong>elOpenMike</strong></span>
       </a>
     </aside>
 
       {/* Fixed bottom tab bar — mobile only (CSS hides it on desktop). */}
-      <nav className="mobile-tabbar" aria-label="Sections">
+      <nav className="mobile-tabbar" aria-label={spanish ? "Secciones" : "Sections"}>
         {items.map((item) => (
           <Link key={item.label} href={item.href} className={`mtab${item.match(pathname) ? ' mtab--active' : ''}`} onClick={() => trackEvent('Section opened', { section: item.label, surface: 'mobile-tabs' })}>
             <span className="mtab-icon">{item.icon}</span>

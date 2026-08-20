@@ -1,5 +1,7 @@
 'use client';
 
+import { useLanguage } from './LanguageProvider';
+import LanguageText from './LanguageText';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Match } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
@@ -65,6 +67,8 @@ export default function MatchCalendar({
   apiBase,
   teamStyle = 'flag',
 }: Props) {
+  const { language } = useLanguage();
+  const spanish = language === 'es';
   const [cursor, setCursor] = useState(() => parseMonth(initialMonth));
   const [loadState, setLoadState] = useState({
     matches: initialMatches,
@@ -268,23 +272,25 @@ export default function MatchCalendar({
           type="button"
           onClick={() => setCursor((date) => shiftMonth(date, -1))}
           disabled={!canGoBack}
-          aria-label="Previous month"
+          aria-label={spanish ? "Mes anterior" : "Previous month"}
         >
-          ← Previous
+          <LanguageText en="← Previous" es="← Anterior" />
         </button>
         <h2 className="mc-month">{monthLabel(cursor)}</h2>
         <button
           type="button"
           onClick={() => setCursor((date) => shiftMonth(date, 1))}
           disabled={!canGoForward}
-          aria-label="Next month"
+          aria-label={spanish ? "Mes siguiente" : "Next month"}
         >
-          Next →
+          <LanguageText en="Next →" es="Siguiente →" />
         </button>
       </div>
 
       <p className="mc-status" aria-live="polite">
-        {loadState.loading ? `Loading ${monthLabel(cursor)}…` : loadState.error}
+        {loadState.loading
+          ? <><LanguageText en="Loading" es="Cargando" /> {monthLabel(cursor)}…</>
+          : loadState.error}
       </p>
 
       <div
@@ -312,7 +318,7 @@ export default function MatchCalendar({
           );
         })}
         {groups.length === 0 && !loadState.error && !loadState.loading && (
-          <p className="empty-text">No matches this month.</p>
+          <p className="empty-text"><LanguageText en="No matches this month." es="No hay partidos este mes." /></p>
         )}
       </div>
 

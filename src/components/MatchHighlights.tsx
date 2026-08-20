@@ -1,5 +1,6 @@
 'use client';
 
+import LanguageText from './LanguageText';
 import { useState } from 'react';
 import type { MatchVideo } from '@/server/data/types';
 
@@ -51,7 +52,7 @@ function Clip({ video }: { video: MatchVideo }) {
                 <path d="M8 5v14l11-7z" />
               </svg>
             </span>
-            {video.isGoal && <span className="mh-goal">⚽ Goal</span>}
+            {video.isGoal && <span className="mh-goal">⚽ <LanguageText en="Goal" es="Gol" /></span>}
             {dur && <span className="mh-dur">{dur}</span>}
           </button>
         )}
@@ -65,7 +66,7 @@ export default function MatchHighlights({ videos }: { videos: MatchVideo[] }) {
   if (!videos || videos.length === 0) return null;
   return (
     <div className="mh-block">
-      <div className="mh-title">Highlights</div>
+      <div className="mh-title"><LanguageText en="Highlights" es="Resumen" /></div>
       <div className="mh-row">
         {videos.map((v) => (
           <Clip key={v.id} video={v} />

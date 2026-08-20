@@ -1,5 +1,7 @@
 'use client';
 
+import { useLanguage } from './LanguageProvider';
+import LanguageText from './LanguageText';
 import { useEffect, useRef, useState } from 'react';
 import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/types';
 import { flagUrl } from '@/lib/flags';
@@ -33,6 +35,8 @@ interface Props {
 // Compact third-place match card — shown once both semi-final losers are known
 // (the radial ring geometry ends at the final, so this lives beneath it).
 function ThirdPlaceMini({ rounds }: { rounds: BracketRound[] }) {
+  const { language } = useLanguage();
+  const spanish = language === 'es';
   const m = rounds.find((r) => r.slug === '3rd-place-match')?.matches[0];
   if (!m || m.home.placeholder || m.away.placeholder) return null;
   const started = m.state === 'live' || m.state === 'finished';
@@ -51,8 +55,8 @@ function ThirdPlaceMini({ rounds }: { rounds: BracketRound[] }) {
     );
   };
   return (
-    <div className="tp-mini" aria-label="Third-place match">
-      <span className="tp-label">🥉 Third Place</span>
+    <div className="tp-mini" aria-label={spanish ? 'Partido por el tercer puesto' : 'Third-place match'}>
+      <span className="tp-label">🥉 <LanguageText en="Third Place" es="Tercer puesto" /></span>
       <Side abbr={m.home.abbr} name={m.home.name} />
       <span className="tp-score">
         {started ? `${m.homeScore ?? 0}–${m.awayScore ?? 0}` : 'vs'}
@@ -105,7 +109,10 @@ function decodePicks(s: string): Record<string, string> {
   return {};
 }
 
-export default function BracketInteractive({ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage, championTitle, seasonId, compShortName, seasonLabel, shape, readOnly = false }: Props) {
+export default function BracketInteractive({
+rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage, championTitle, seasonId, compShortName, seasonLabel, shape, readOnly = false }: Props) {
+  const { language } = useLanguage();
+  const spanish = language === 'es';
   const [mode, setMode] = useState<BracketMode>('live');
   const [rounds, setRounds] = useState<BracketRound[]>(initialRounds);
   const [picks, setPicks] = useState<Record<string, string>>({});
@@ -213,7 +220,7 @@ export default function BracketInteractive({ rounds: initialRounds, apiBase, tea
           "Build your bracket" predict mode is also disabled once the tournament
           is over (see PREDICT_ENABLED). */}
       {!readOnly && PREDICT_ENABLED && (
-        <div className="bracket-modes" role="tablist" aria-label="Bracket mode">
+        <div className="bracket-modes" role="tablist" aria-label={spanish ? "Modo del cuadro" : "Bracket mode"}>
           <button
             type="button"
             role="tab"
@@ -237,12 +244,12 @@ export default function BracketInteractive({ rounds: initialRounds, apiBase, tea
 
       {mode === 'predict' && (
         <div className="bracket-controls">
-          <span className="bracket-hint">Tap a team to send them through</span>
+          <span className="bracket-hint"><LanguageText en="Tap a team to send them through" es="Toca un equipo para hacerlo avanzar" /></span>
           <button
             type="button"
             className="bracket-share"
             onClick={share}
-            aria-label="Share your bracket on X"
+            aria-label={spanish ? "Compartir tu cuadro en X" : "Share your bracket on X"}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
               <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z" />

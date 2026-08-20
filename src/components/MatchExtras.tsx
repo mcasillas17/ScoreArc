@@ -1,3 +1,4 @@
+import LanguageText from './LanguageText';
 import type { MatchInfo, MatchForm, FormResult, CommentaryItem, H2HMeeting, MatchLineups, TeamLineup, LineupPlayer } from '@/server/data/types';
 import { CollapsibleSection } from './Collapsible';
 
@@ -70,7 +71,7 @@ export function FormRow({
   if (!form.home.length && !form.away.length) return null;
   return (
     <div className="fm-block">
-      <div className="fm-title">Recent form</div>
+      <div className="fm-title"><LanguageText en="Recent form" es="Forma reciente" /></div>
       <div className="fm-team">
         <span className="fm-abbr">{homeAbbr}</span>
         <FormPills form={form.home} />
@@ -87,7 +88,7 @@ export function H2HRow({ meetings }: { meetings: H2HMeeting[] }) {
   if (!meetings.length) return null;
   return (
     <div className="fm-block">
-      <div className="fm-title">Head to head</div>
+      <div className="fm-title"><LanguageText en="Head to head" es="Enfrentamientos directos" /></div>
       <ul className="h2h-list">
         {meetings.map((m, i) => (
           <li key={i} className="h2h-item">
@@ -160,7 +161,7 @@ function BoxScoreTable({ team, abbr }: { team: TeamLineup; abbr: string }) {
         <thead>
           <tr>
             <th>#</th>
-            <th className="team-col">Player</th>
+            <th className="team-col"><LanguageText en="Player" es="Jugador" /></th>
             <th>Pos</th>
             <th title="Goals">G</th>
             <th title="Assists">A</th>

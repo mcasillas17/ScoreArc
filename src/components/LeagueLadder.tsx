@@ -1,5 +1,6 @@
 'use client';
 
+import LanguageText from './LanguageText';
 import type { Standing } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
 import TeamBadge from './TeamBadge';
@@ -30,7 +31,7 @@ export default function LeagueLadder({
   teamStyle: TeamStyle;
 }) {
   if (standings.length === 0) {
-    return <div className="empty-section"><p className="empty-text">Standings are unavailable right now.</p></div>;
+    return <div className="empty-section"><p className="empty-text"><LanguageText en="Standings are unavailable right now." es="La clasificación no está disponible en este momento." /></p></div>;
   }
   const { inCut, out, started } = splitByCut(standings, qualification.cut);
 
@@ -40,11 +41,11 @@ export default function LeagueLadder({
         <div className="ll-left">
           <LeagueDial standings={standings} cut={qualification.cut} teamStyle={teamStyle} />
           {!started ? (
-            <p className="lz-preseason">Season not started — no matches played yet.</p>
+            <p className="lz-preseason"><LanguageText en="Season not started — no matches played yet." es="La temporada no ha comenzado — aún no hay partidos jugados." /></p>
           ) : (
             <div className="ll-legend">
               <span><i className="ll-dot ll-dot--in" />{qualification.label} · top {qualification.cut}</span>
-              <span><i className="ll-dot ll-dot--out" />Out</span>
+              <span><i className="ll-dot ll-dot--out" /><LanguageText en="Out" es="Fuera" /></span>
             </div>
           )}
         </div>
@@ -64,14 +65,14 @@ export default function LeagueLadder({
           ) : (<>
             <div className="ll-band">
               <div className="ll-band-label ll-band-label--in">
-                <span>◆ {qualification.label}</span><span className="ll-band-n">Quarterfinals</span><span className="ll-rule" />
+                <span>◆ {qualification.label}</span><span className="ll-band-n"><LanguageText en="Quarterfinals" es="Cuartos de final" /></span><span className="ll-rule" />
               </div>
               {inCut.map((s) => <Row key={s.team.id} s={s} teamStyle={teamStyle} lig />)}
             </div>
-            <div className="ll-cutline"><span className="ll-rule" /><span>{qualification.label} cut</span><span className="ll-rule" /></div>
+            <div className="ll-cutline"><span className="ll-rule" /><span><LanguageText en={`${qualification.label} cut`} es={`Corte de ${qualification.label}`} /></span><span className="ll-rule" /></div>
             <div className="ll-band ll-band--out">
               <div className="ll-band-label">
-                <span>Out</span><span className="ll-band-n">{qualification.cut + 1}–{standings.length}</span><span className="ll-rule" />
+                <span><LanguageText en="Out" es="Fuera" /></span><span className="ll-band-n">{qualification.cut + 1}–{standings.length}</span><span className="ll-rule" />
               </div>
               {out.map((s) => <Row key={s.team.id} s={s} teamStyle={teamStyle} lig={false} />)}
             </div>

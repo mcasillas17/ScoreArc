@@ -1,3 +1,4 @@
+import LanguageText from './LanguageText';
 import type { CSSProperties } from 'react';
 import type { Scorer, Card, MatchStats, WinProbability, MatchLineups, TeamLineup, ShootoutDetail, PenaltyKick } from '@/server/data/types';
 import { CollapsibleSection } from './Collapsible';
@@ -64,7 +65,7 @@ export function PenaltyShootout({
 
   return (
     <div className="pk-block">
-      <div className="pk-title">Penalty Shootout</div>
+      <div className="pk-title"><LanguageText en="Penalty Shootout" es="Tanda de penaltis" /></div>
       <Row abbr={homeAbbr} kicks={shootout.home} />
       <Row abbr={awayAbbr} kicks={shootout.away} />
     </div>
@@ -145,7 +146,7 @@ export function WinProbBar({
 }) {
   return (
     <div className="ls-winprob">
-      <div className="ls-winprob-title">Chance to win</div>
+      <div className="ls-winprob-title"><LanguageText en="Chance to win" es="Probabilidad de ganar" /></div>
       <div className="ls-winprob-bar">
         <div className="ls-winprob-home" style={{ width: `${prob.home}%` }} />
         <div className="ls-winprob-draw" style={{ width: `${prob.draw}%` }} />

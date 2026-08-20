@@ -1,5 +1,6 @@
 'use client';
 
+import LanguageText from './LanguageText';
 import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import type { Match, Team } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
@@ -119,7 +120,7 @@ function Chip({
           <div className="tick-pop-when">{weekdayLong(m.kickoff)} · {kickoffTime(m.kickoff)}</div>
           {wp && (
             <div className="tick-wp">
-              <div className="tick-wp-cap">Chance to win</div>
+              <div className="tick-wp-cap"><LanguageText en="Chance to win" es="Probabilidad de ganar" /></div>
               <div className="tick-wp-bar">
                 <span className="tick-wp-h" style={{ width: `${wp.home}%` }} />
                 <span className="tick-wp-d" style={{ width: `${wp.draw}%` }} />
@@ -132,7 +133,7 @@ function Chip({
               </div>
             </div>
           )}
-          <button type="button" className="tick-pop-more" onClick={onDetails}>Full details ›</button>
+          <button type="button" className="tick-pop-more" onClick={onDetails}><LanguageText en="Full details ›" es="Detalles completos ›" /></button>
         </div>
       )}
     </div>

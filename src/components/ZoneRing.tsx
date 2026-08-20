@@ -5,6 +5,7 @@ import type { Standing } from '@/server/data/types';
 import type { TeamStyle, Zone } from '@/server/data/competitions';
 import { toBands, ZONE_VAR, DASHED_KINDS } from './zoneBands';
 import { flagUrl } from '@/lib/flags';
+import { useLanguage } from './LanguageProvider';
 
 // The league analog of the arc bracket: the whole table laid around a ring,
 // with each outcome drawn as an arc over the clubs it claims. Rank 1 sits at
@@ -49,6 +50,8 @@ export default function ZoneRing({
   zones: Zone[];
   teamStyle: TeamStyle;
 }) {
+  const { language } = useLanguage();
+  const spanish = language === 'es';
   // SVG ids are document-global. A club can appear in more than one ring on the
   // same page — MLS draws every club twice, once in its conference and once in
   // the league-wide Supporters' Shield ring — so a clip path keyed on team id
@@ -63,7 +66,7 @@ export default function ZoneRing({
   const bands = toBands(standings, zones).filter((b) => b.kind !== 'mid');
 
   return (
-    <svg className="lld lzr" viewBox={`0 0 ${SIZE} ${SIZE}`} role="img" aria-label="League table ring">
+    <svg className="lld lzr" viewBox={`0 0 ${SIZE} ${SIZE}`} role="img" aria-label={spanish ? 'Anillo de clasificación' : 'League table ring'}>
       <circle cx={CX} cy={CY} r={R_CREST} fill="none" stroke="var(--hairline)" strokeWidth={1} />
 
       {bands.map((b) => {

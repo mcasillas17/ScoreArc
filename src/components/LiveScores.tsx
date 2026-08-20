@@ -1,5 +1,7 @@
 "use client";
 
+import { useLanguage } from './LanguageProvider';
+import LanguageText from './LanguageText';
 import { useState, useEffect, useRef } from "react";
 import type { Match, Team } from "@/server/data/types";
 import type { TeamStyle } from "@/server/data/competitions";
@@ -150,7 +152,10 @@ function MatchCard({ match, teamStyle }: { match: Match; teamStyle: TeamStyle })
   );
 }
 
-export default function LiveScores({ initialMatches, apiBase, teamStyle = 'flag' }: LiveScoresProps) {
+export default function LiveScores({
+initialMatches, apiBase, teamStyle = 'flag' }: LiveScoresProps) {
+  const { language } = useLanguage();
+  const spanish = language === 'es';
   const sortedInitial = sortMatches(initialMatches);
   const [matches, setMatches] = useState<Match[]>(sortedInitial);
   const [index, setIndex] = useState(() => firstLiveIndex(sortedInitial));
@@ -232,7 +237,7 @@ export default function LiveScores({ initialMatches, apiBase, teamStyle = 'flag'
 
   if (matches.length === 0) {
     return (
-      <p className="live-strip-empty">No matches in the live window right now.</p>
+      <p className="live-strip-empty"><LanguageText en="No matches in the live window right now." es="No hay partidos en directo en este momento." /></p>
     );
   }
 
@@ -320,7 +325,7 @@ export default function LiveScores({ initialMatches, apiBase, teamStyle = 'flag'
           type="button"
           className="ls-arrow"
           onClick={() => go(-1)}
-          aria-label="Previous match"
+          aria-label={spanish ? "Partido anterior" : "Previous match"}
           disabled={!multiple}
         >
           ‹
@@ -356,7 +361,7 @@ export default function LiveScores({ initialMatches, apiBase, teamStyle = 'flag'
           type="button"
           className="ls-arrow"
           onClick={() => go(1)}
-          aria-label="Next match"
+          aria-label={spanish ? "Partido siguiente" : "Next match"}
           disabled={!multiple}
         >
           ›
@@ -374,7 +379,7 @@ export default function LiveScores({ initialMatches, apiBase, teamStyle = 'flag'
       </div>
 
       {multiple && (
-        <div className="ls-dots" role="tablist" aria-label="Live matches">
+        <div className="ls-dots" role="tablist" aria-label={spanish ? "Partidos en directo" : "Live matches"}>
           {matches.map((m, i) => (
             <button
               key={m.id}

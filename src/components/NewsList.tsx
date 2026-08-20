@@ -1,5 +1,6 @@
 'use client';
 
+import LanguageText from './LanguageText';
 import type { NewsArticle } from '@/server/data/types';
 import { trackEvent } from '@/lib/telemetry/client';
 
@@ -40,7 +41,7 @@ function NewsCard({ a }: { a: NewsArticle }) {
 
 export default function NewsList({ articles }: { articles: NewsArticle[] }) {
   if (articles.length === 0) {
-    return <p className="empty-text">News is unavailable right now.</p>;
+    return <p className="empty-text"><LanguageText en="News is unavailable right now." es="Las noticias no están disponibles en este momento." /></p>;
   }
   return (
     <div className="nw-grid">
