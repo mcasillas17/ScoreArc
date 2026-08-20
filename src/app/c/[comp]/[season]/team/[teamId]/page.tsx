@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
+import { providerTeamId } from '@/server/data/teamIdentity';
 import type { Match } from '@/server/data/types';
 import TeamHeader from '@/components/TeamHeader';
 import SquadTable from '@/components/SquadTable';
@@ -19,7 +20,9 @@ interface Params {
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) return { title: 'Team' };
-  const profile = await dataStore.getTeam(rc, params.teamId);
+  const upstreamId = providerTeamId(params.teamId);
+  if (!upstreamId) return { title: 'Team' };
+  const profile = await dataStore.getTeam(rc, upstreamId);
   if (!profile) return { title: 'Team' };
   return {
     title: `${profile.team.name} · ${rc.competition.shortName} ${rc.season.label}`,
@@ -41,7 +44,11 @@ function resultFor(match: Match, teamId: string): 'W' | 'D' | 'L' | null {
 export default async function TeamPage({ params }: Params) {
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) notFound();
-  const profile = await dataStore.getTeam(rc, params.teamId);
+  // The URL carries our canonical id; the provider is asked by its own number.
+  // A slug we do not know is a 404, not an upstream call with a bad id.
+  const upstreamId = providerTeamId(params.teamId);
+  if (!upstreamId) notFound();
+  const profile = await dataStore.getTeam(rc, upstreamId);
   if (!profile) notFound();
 
   const played = profile.schedule.filter((m) => m.state === 'finished');

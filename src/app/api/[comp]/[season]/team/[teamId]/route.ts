@@ -1,5 +1,6 @@
 import { dataStore } from '@/server/data/store';
 import { resolveSeason } from '@/server/data/competitions';
+import { providerTeamId } from '@/server/data/teamIdentity';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 
 export const dynamic = 'force-dynamic';
@@ -13,8 +14,14 @@ export async function GET(
   if (!rc) {
     return Response.json({ error: 'unknown competition or season' }, { status: 404 });
   }
+  // Addressed by our canonical id, matching the reader API this will migrate
+  // onto. An unknown slug is a 404 without an upstream request.
+  const upstreamId = providerTeamId(params.teamId);
+  if (!upstreamId) {
+    return Response.json({ error: 'unknown team' }, { status: 404 });
+  }
   try {
-    const team = await dataStore.getTeam(rc, params.teamId);
+    const team = await dataStore.getTeam(rc, upstreamId);
     // getTeam returns null for a team the provider does not know in this
     // competition, which is a 404 rather than a 502: the request was
     // well-formed and the answer is that there is no such team here.
