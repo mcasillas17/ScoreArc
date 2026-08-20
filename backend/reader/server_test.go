@@ -32,6 +32,8 @@ type fakeReaderStore struct {
 	summaryErr         error
 	topScorers         []espn.TopScorer
 	topScorersErr      error
+	teams              map[string]*TeamProfile
+	teamErr            error
 	calls              int
 }
 
@@ -50,6 +52,17 @@ func (f *fakeReaderStore) Matches(ctx context.Context, _ string, _ string) ([]Ma
 	f.calls++
 	_, f.matchesHasDeadline = ctx.Deadline()
 	return f.matches, f.matchesErr
+}
+func (f *fakeReaderStore) Team(_ context.Context, teamID, _, _ string) (*TeamProfile, error) {
+	f.calls++
+	if f.teamErr != nil {
+		return nil, f.teamErr
+	}
+	profile, known := f.teams[teamID]
+	if !known {
+		return nil, nil
+	}
+	return profile, nil
 }
 func (f *fakeReaderStore) Standings(context.Context, string, string, string) ([]Group, error) {
 	f.calls++
@@ -373,5 +386,62 @@ func TestHTTPServerHasDefensiveTimeouts(t *testing.T) {
 	}
 	if server.ReadTimeout <= 0 || server.ReadHeaderTimeout <= 0 || server.WriteTimeout <= 0 || server.IdleTimeout <= 0 || server.MaxHeaderBytes <= 0 {
 		t.Fatalf("server is missing defensive limits: %+v", server)
+	}
+}
+
+// A team we do not hold is 404, not 500: the request was well-formed and the
+// answer is that there is no such team here.
+func TestTeamUnknownIs404(t *testing.T) {
+	router := newTestApp(t, &fakeReaderStore{teams: map[string]*TeamProfile{}}, &fakeNewsReader{}).router()
+	response := performRequest(router, "GET", "/v1/competitions/world-cup/2026/teams/nope")
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404: %s", response.Code, response.Body.String())
+	}
+}
+
+// An unknown competition is a malformed request, not a miss -- 400, matching
+// every other handler.
+func TestTeamUnknownCompetitionIs400(t *testing.T) {
+	router := newTestApp(t, &fakeReaderStore{}, &fakeNewsReader{}).router()
+	response := performRequest(router, "GET", "/v1/competitions/not-a-comp/2026/teams/arg")
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", response.Code, response.Body.String())
+	}
+}
+
+// The whole point of the nullable stats block: a player nobody has measured
+// must serialise as "stats": null, never as a block of zeroes, which would
+// assert they played and did nothing.
+func TestTeamSerialisesUnmeasuredPlayerAsNullStats(t *testing.T) {
+	store := &fakeReaderStore{teams: map[string]*TeamProfile{"arg": {
+		Team: espn.Team{ID: "arg", Name: "Argentina", Abbr: "ARG"},
+		Squad: []SquadPlayer{
+			{ID: "p1", Name: "Unplayed", Position: "D"},
+		},
+	}}}
+	router := newTestApp(t, store, &fakeNewsReader{}).router()
+	response := performRequest(router, "GET", "/v1/competitions/world-cup/2026/teams/arg")
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", response.Code, response.Body.String())
+	}
+	var payload struct {
+		Squad []struct {
+			Stats *map[string]any `json:"stats"`
+		} `json:"squad"`
+		Schedule []any `json:"schedule"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Squad) != 1 {
+		t.Fatalf("squad size = %d, want 1", len(payload.Squad))
+	}
+	if payload.Squad[0].Stats != nil {
+		t.Fatalf("stats = %v, want null for a player with no statistics", *payload.Squad[0].Stats)
+	}
+	// An empty schedule must be [] rather than null, so clients can iterate it
+	// without a nil check.
+	if payload.Schedule == nil {
+		t.Fatal("schedule = null, want []")
 	}
 }

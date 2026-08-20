@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -56,7 +57,14 @@ func (s *Store) Matches(ctx context.Context, competition, season string) ([]Matc
 		return nil, err
 	}
 	defer rows.Close()
+	return scanMatches(rows)
+}
 
+// scanMatches reads the shared match projection. Extracted so the team page's
+// fixture list reads the same columns through the same normalisation as the
+// competition match list -- two copies of this would drift the first time a
+// detail column changed.
+func scanMatches(rows pgx.Rows) ([]Match, error) {
 	matches := make([]Match, 0)
 	for rows.Next() {
 		match := Match{Scorers: []espn.Scorer{}, Cards: []espn.Card{}}
@@ -312,4 +320,162 @@ func (s *Store) TopScorers(ctx context.Context, competition, season string) ([]e
 		scorers = append(scorers, scorer)
 	}
 	return scorers, rows.Err()
+}
+
+// One club inside one competition.
+//
+// Identity, colours and the season record come from team and standing; the
+// squad from squad_membership joined to player_season_stat; the fixtures from
+// match. Nothing here needs a new ingest -- every table is already written.
+//
+// The squad join is LEFT: a player in the squad with no player_season_stat row
+// has never been measured, and must still appear. An INNER join would silently
+// drop exactly the players the "has not appeared" row exists to show.
+const teamProfileSQL = `
+SELECT t.id, t.name, t.abbr, t.crest_url, t.color, t.alternate_color,
+       s.rank, s.played, s.wins, s.draws, s.losses, s.points, s.goal_difference
+FROM team t
+LEFT JOIN standing s
+       ON s.team_id = t.id AND s.competition_id = $2 AND s.season_id = $3
+WHERE t.id = $1`
+
+const teamSquadSQL = `
+SELECT p.id, COALESCE(p.known_as, p.full_name), sm.shirt_number, COALESCE(sm.position, ''),
+       p.nationality,
+       st.appearances, st.sub_ins, st.goals, st.assists, st.shots, st.shots_on_target,
+       st.offsides, st.fouls_committed, st.fouls_suffered, st.yellow_cards,
+       st.red_cards, st.own_goals, st.saves, st.shots_faced, st.goals_conceded,
+       (st.player_id IS NOT NULL) AS has_stats
+FROM squad_membership sm
+JOIN player p ON p.id = sm.player_id
+LEFT JOIN player_season_stat st
+       ON st.player_id = sm.player_id
+      AND st.competition_id = sm.competition_id
+      AND st.season_id = sm.season_id
+WHERE sm.competition_id = $2 AND sm.season_id = $3 AND sm.team_id = $1
+ORDER BY sm.shirt_number NULLS LAST, p.full_name`
+
+func (s *Store) Team(
+	ctx context.Context,
+	teamID, competition, season string,
+) (*TeamProfile, error) {
+	var profile TeamProfile
+	var colour, altColour *string
+	var rank, played, wins, draws, losses, points, goalDifference *int
+
+	err := s.db.QueryRow(ctx, teamProfileSQL, teamID, competition, season).Scan(
+		&profile.Team.ID, &profile.Team.Name, &profile.Team.Abbr, &profile.Team.CrestURL,
+		&colour, &altColour,
+		&rank, &played, &wins, &draws, &losses, &points, &goalDifference,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// Stored bare, rendered with the '#': the column holds six hex digits so
+	// consumers that are not CSS do not have to strip punctuation.
+	if colour != nil {
+		hashed := "#" + *colour
+		profile.Color = &hashed
+	}
+	if altColour != nil {
+		hashed := "#" + *altColour
+		profile.AltColor = &hashed
+	}
+
+	// The record is built from our own standing row rather than echoed from a
+	// provider string, so W-D-L is ours and stays consistent with the table.
+	if wins != nil && draws != nil && losses != nil {
+		summary := fmt.Sprintf("%d-%d-%d", *wins, *draws, *losses)
+		profile.Record = &TeamRecord{
+			Summary:        summary,
+			GamesPlayed:    played,
+			Points:         points,
+			GoalDifference: goalDifference,
+		}
+	}
+	if rank != nil {
+		standing := fmt.Sprintf("%d in %s", *rank, competition)
+		profile.StandingSummary = &standing
+	}
+
+	squad, err := s.teamSquad(ctx, teamID, competition, season)
+	if err != nil {
+		return nil, err
+	}
+	profile.Squad = squad
+
+	schedule, err := s.teamSchedule(ctx, teamID, competition, season)
+	if err != nil {
+		return nil, err
+	}
+	profile.Schedule = schedule
+	return &profile, nil
+}
+
+func (s *Store) teamSquad(
+	ctx context.Context,
+	teamID, competition, season string,
+) ([]SquadPlayer, error) {
+	rows, err := s.db.Query(ctx, teamSquadSQL, teamID, competition, season)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	squad := make([]SquadPlayer, 0)
+	for rows.Next() {
+		var player SquadPlayer
+		var stats PlayerSeasonStats
+		var hasStats bool
+		if err := rows.Scan(
+			&player.ID, &player.Name, &player.Jersey, &player.Position, &player.Nationality,
+			&stats.Appearances, &stats.SubIns, &stats.TotalGoals, &stats.GoalAssists,
+			&stats.TotalShots, &stats.ShotsOnTarget, &stats.Offsides,
+			&stats.FoulsCommitted, &stats.FoulsSuffered, &stats.YellowCards,
+			&stats.RedCards, &stats.OwnGoals, &stats.Saves, &stats.ShotsFaced,
+			&stats.GoalsConceded, &hasStats,
+		); err != nil {
+			return nil, err
+		}
+		// No row at all means never measured, which the page shows as "has not
+		// appeared". A row of nulls would read as a measurement that failed.
+		if hasStats {
+			player.Stats = &stats
+		}
+		squad = append(squad, player)
+	}
+	return squad, rows.Err()
+}
+
+// The club's fixtures and results: the same projection as Matches, filtered to
+// the matches this team plays in. No new ingest -- match already carries both
+// team ids.
+const teamScheduleSQL = `
+SELECT m.id, m.kickoff, m.state, m.minute, m.status_detail, m.status_name,
+       m.home_score, m.away_score, m.winner_id, m.note,
+       ht.id, ht.name, ht.abbr, ht.crest_url,
+       at.id, at.name, at.abbr, at.crest_url,
+       d.scorers, d.cards, d.stats, d.win_probability, d.shootout, d.shootout_detail
+FROM match m
+JOIN team ht ON ht.id = m.home_team_id
+JOIN team at ON at.id = m.away_team_id
+LEFT JOIN match_detail d ON d.match_id = m.id
+WHERE m.competition_id = $2 AND m.season_id = $3
+  AND (m.home_team_id = $1 OR m.away_team_id = $1)
+ORDER BY m.kickoff, m.id`
+
+func (s *Store) teamSchedule(
+	ctx context.Context,
+	teamID, competition, season string,
+) ([]Match, error) {
+	rows, err := s.db.Query(ctx, teamScheduleSQL, teamID, competition, season)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanMatches(rows)
 }
