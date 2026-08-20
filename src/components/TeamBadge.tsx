@@ -1,5 +1,6 @@
 import type { Team } from "@/server/data/types";
 import type { TeamStyle } from "@/server/data/competitions";
+import Link from "next/link";
 import { flagUrl } from "@/lib/flags";
 
 function teamFallbackColor(id: string): string {
@@ -16,6 +17,15 @@ interface TeamBadgeProps {
   size?: number;
   label?: boolean;
   style?: TeamStyle;
+  /**
+   * Where this crest leads, if anywhere.
+   *
+   * Optional so a badge is inert unless a caller deliberately makes it a
+   * link. Anything without a real team id -- a bracket placeholder for an
+   * undecided slot -- then stays unlinked by default, instead of pointing at
+   * /team/undefined, which is a 404 with a crest on it.
+   */
+  href?: string;
 }
 
 export default function TeamBadge({
@@ -23,6 +33,7 @@ export default function TeamBadge({
   size = 32,
   label = false,
   style = 'flag',
+  href,
 }: TeamBadgeProps) {
   const disc: React.CSSProperties = {
     width: size,
@@ -46,7 +57,7 @@ export default function TeamBadge({
     ? (team.crestUrl ?? flagUrl(team.abbr))
     : (flagUrl(team.abbr) ?? team.crestUrl);
 
-  return (
+  const badge = (
     <span
       style={{
         display: "inline-flex",
@@ -84,5 +95,12 @@ export default function TeamBadge({
         </span>
       )}
     </span>
+  );
+
+  if (!href) return badge;
+  return (
+    <Link href={href} className="tb-link" aria-label={team.name}>
+      {badge}
+    </Link>
   );
 }

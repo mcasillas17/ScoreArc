@@ -16,6 +16,12 @@ interface Props {
   initialScorers: StatLeader[];
   initialAssists: StatLeader[];
   apiBase: string;
+  /**
+   * Competition-scoped prefix for team pages
+   * (`/c/liga-mx/2026-apertura/team`). Optional: without it every crest
+   * renders exactly as before, unlinked.
+   */
+  teamBase?: string;
   teamStyle?: 'flag' | 'crest';
   // Group-stage tournaments race for best third place; leagues don't.
   showThirdPlace?: boolean;
@@ -29,7 +35,7 @@ interface Props {
 
 const REFRESH_MS = 30_000;
 
-export default function StandingsLive({ initialGroups, initialScorers, initialAssists, apiBase, teamStyle = 'flag', showThirdPlace = true, qualification, zones }: Props) {
+export default function StandingsLive({ initialGroups, initialScorers, initialAssists, apiBase, teamBase, teamStyle = 'flag', showThirdPlace = true, qualification, zones }: Props) {
   const [groups, setGroups] = useState<Group[]>(initialGroups);
   const [scorers, setScorers] = useState<StatLeader[]>(initialScorers);
   const [assists, setAssists] = useState<StatLeader[]>(initialAssists);
@@ -104,14 +110,14 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
   const topScorersBlock = (
     <div className="std-block">
       <h2 className="std-block-title"><LanguageText en="Golden Boot · Top Scorers" es="Bota de Oro · Máximos goleadores" /></h2>
-      <LeaderTable leaders={scorers} metric={{ abbr: 'G', title: 'Goals', titleEs: 'goles' }} teamStyle={teamStyle} />
+      <LeaderTable leaders={scorers} metric={{ abbr: 'G', title: 'Goals', titleEs: 'goles' }} teamStyle={teamStyle} teamBase={teamBase} />
     </div>
   );
 
   const topAssistsBlock = (
     <div className="std-block">
       <h2 className="std-block-title"><LanguageText en="Playmakers · Top Assists" es="Creadores · Máximas asistencias" /></h2>
-      <LeaderTable leaders={assists} metric={{ abbr: 'A', title: 'Assists', titleEs: 'asistencias' }} teamStyle={teamStyle} />
+      <LeaderTable leaders={assists} metric={{ abbr: 'A', title: 'Assists', titleEs: 'asistencias' }} teamStyle={teamStyle} teamBase={teamBase} />
     </div>
   );
 
@@ -126,7 +132,7 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
                 set of outcomes — but MLS's Supporters' Shield table is ranked
                 across both conferences, so the conference playoff cut means
                 nothing in it. */}
-            <LeagueZoneTable standings={group.standings} zones={group.zones ?? zones} teamStyle={teamStyle} />
+            <LeagueZoneTable standings={group.standings} zones={group.zones ?? zones} teamStyle={teamStyle} teamBase={teamBase} />
           </div>
         ))
       ) : qualification && !showThirdPlace ? (
@@ -140,13 +146,14 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
               standings={group.standings}
               qualification={qualification}
               teamStyle={teamStyle}
+              teamBase={teamBase}
             />
           </div>
         ))
       ) : groups.length > 0 ? (
         <div className="groups-grid">
           {groups.map((group) => (
-            <GroupTable key={group.id} group={group} teamStyle={teamStyle} />
+            <GroupTable key={group.id} group={group} teamStyle={teamStyle} teamBase={teamBase} />
           ))}
         </div>
       ) : (
@@ -168,7 +175,7 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
           <div className="std-block">
             <h2 className="std-block-title"><LanguageText en="Best Third-Placed Teams" es="Mejores terceros" /></h2>
             {groups.length > 0 ? (
-              <ThirdPlaceTable groups={groups} teamStyle={teamStyle} />
+              <ThirdPlaceTable groups={groups} teamStyle={teamStyle} teamBase={teamBase} />
             ) : (
               <p className="empty-text"><LanguageText en="Group data is unavailable right now." es="Los datos de los grupos no están disponibles en este momento." /></p>
             )}

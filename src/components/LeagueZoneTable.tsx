@@ -4,6 +4,7 @@ import LanguageText from './LanguageText';
 import type { Standing } from '@/server/data/types';
 import type { TeamStyle, Zone } from '@/server/data/competitions';
 import TeamBadge from './TeamBadge';
+import { teamHref } from './teamHref';
 import ZoneRing from './ZoneRing';
 import { toBands, ZONE_VAR } from './zoneBands';
 
@@ -15,11 +16,12 @@ function fmtGD(gd: number): string {
 // the season, the table on the right carries the detail. Same split as the
 // Liguilla ladder, generalised from one boundary to many.
 export default function LeagueZoneTable({
-  standings, zones, teamStyle,
+  standings, zones, teamStyle, teamBase,
 }: {
   standings: Standing[];
   zones: Zone[];
   teamStyle: TeamStyle;
+  teamBase?: string;
 }) {
   if (standings.length === 0) {
     return (
@@ -70,7 +72,7 @@ export default function LeagueZoneTable({
                 </div>
               ) : null}
               {b.standings.map((s) => (
-                <Row key={s.team.id} s={s} teamStyle={teamStyle} marked={b.kind !== 'mid'} started={started} />
+                <Row key={s.team.id} s={s} teamStyle={teamStyle} marked={b.kind !== 'mid'} started={started} teamBase={teamBase} />
               ))}
             </div>
           ))}
@@ -80,11 +82,11 @@ export default function LeagueZoneTable({
   );
 }
 
-function Row({ s, teamStyle, marked, started }: { s: Standing; teamStyle: TeamStyle; marked: boolean; started: boolean }) {
+function Row({ s, teamStyle, marked, started, teamBase }: { s: Standing; teamStyle: TeamStyle; marked: boolean; started: boolean; teamBase?: string }) {
   return (
     <div className={`ll-row lz-row${marked ? ' lz-row--marked' : ''}${started ? '' : ' lz-row--preseason'}`}>
       {started ? <span className="ll-rank">{s.rank}</span> : null}
-      <TeamBadge team={s.team} size={26} style={teamStyle} />
+      <TeamBadge team={s.team} size={26} style={teamStyle} href={teamHref(teamBase, s.team)} />
       <span className="ll-name">{s.team.name}</span>
       <span className="lz-pl">{s.played}</span>
       <span className="ll-gd">{fmtGD(s.goalDifference)}</span>

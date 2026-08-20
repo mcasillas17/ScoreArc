@@ -1,18 +1,20 @@
 import type { Group } from "@/server/data/types";
 import TeamBadge from "./TeamBadge";
+import { teamHref } from './teamHref';
 import { groupRowClass } from "./groupRowClass";
 import LanguageText from "./LanguageText";
 
 interface GroupTableProps {
   group: Group;
   teamStyle?: 'flag' | 'crest';
+  teamBase?: string;
 }
 
 function fmtGD(gd: number): string {
   return gd > 0 ? `+${gd}` : String(gd);
 }
 
-export default function GroupTable({ group, teamStyle }: GroupTableProps) {
+export default function GroupTable({ group, teamStyle, teamBase }: GroupTableProps) {
   const started = group.standings.some((s) => s.played > 0);
   return (
     <div className="group-card">
@@ -41,7 +43,7 @@ export default function GroupTable({ group, teamStyle }: GroupTableProps) {
               <td className="rank-cell">{started ? s.rank : ''}</td>
               <td className="team-cell">
                 <div className="team-cell-inner">
-                  <TeamBadge team={s.team} size={22} style={teamStyle} />
+                  <TeamBadge team={s.team} size={22} style={teamStyle} href={teamHref(teamBase, s.team)} />
                   <span className="team-name">{s.team.name}</span>
                 </div>
               </td>

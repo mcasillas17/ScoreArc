@@ -44,6 +44,9 @@ export default async function Workspace({ params }: { params: { comp: string; se
   }
 
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
+  // Crests in the tables below link here. Competition-scoped because a club's
+  // record and squad only mean something inside one competition.
+  const teamBase = `/c/${rc.competition.id}/${rc.season.id}/team`;
   const { teamStyle } = rc.competition;
   // A finished (non-current) edition is view-only.
   const readOnly = rc.season.id !== rc.competition.currentSeasonId;
@@ -101,6 +104,7 @@ export default async function Workspace({ params }: { params: { comp: string; se
             <h1 className="bracket-title"><LanguageText en={`Qualified for the ${computed.label}`} es={`Clasificados para ${computed.label}`} /></h1>
           </header>
           <StandingsLive
+            teamBase={teamBase}
             initialGroups={phaseGroups}
             initialScorers={[]}
             initialAssists={[]}

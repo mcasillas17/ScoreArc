@@ -181,6 +181,14 @@ export interface NewsArticle {
 export interface StatLeader {
   rank: number;
   player: string;
+  /**
+   * The provider's team id, or null.
+   *
+   * Separate from teamAbbr because the team page is addressed by id: linking a
+   * crest by abbreviation produces /team/AME, which 404s. Null when the
+   * payload omits it, and a null id means the crest simply does not link.
+   */
+  teamId: string | null;
   teamAbbr: string;
   teamName: string;
   teamCrestUrl: string | null;
