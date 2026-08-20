@@ -1,3 +1,5 @@
+'use client';
+
 import type { Competition, Season } from '@/server/data/competitions';
 import type { HubStatus } from '@/lib/hubStatus';
 import TrackedCompetitionLink from './TrackedCompetitionLink';
