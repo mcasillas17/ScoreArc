@@ -1,6 +1,7 @@
 import type { Group } from "@/server/data/types";
 import TeamBadge from "./TeamBadge";
 import { groupRowClass } from "./groupRowClass";
+import LanguageText from "./LanguageText";
 
 interface GroupTableProps {
   group: Group;

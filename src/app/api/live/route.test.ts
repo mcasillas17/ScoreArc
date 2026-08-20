@@ -12,9 +12,9 @@ vi.mock('@/server/data/store', async (orig) => {
 
 vi.mock('@/lib/telemetry/server', () => ({ trackAPIRequestFailure: vi.fn() }));
 
-function match(id: string, kickoff: string): Match {
+function match(id: string, kickoff: string, state: Match['state'] = 'scheduled'): Match {
   return {
-    id, kickoff, state: 'scheduled', minute: null, statusDetail: '', statusName: '',
+    id, kickoff, state, minute: null, statusDetail: '', statusName: '',
     home: { id: 'h', name: 'Home', abbr: 'HOM', crestUrl: null },
     away: { id: 'a', name: 'Away', abbr: 'AWY', crestUrl: null },
     homeScore: null, awayScore: null, winnerId: null, note: null,
@@ -27,7 +27,7 @@ describe('GET /api/live', () => {
   beforeEach(() => vi.restoreAllMocks());
 
   it('labels every match with its competition', async () => {
-    vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([match('m1', '2026-08-20T00:00:00Z')]);
+    vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([match('m1', '2026-08-20T00:00:00Z', 'live')]);
     const { GET } = await import('./route');
     const res = await GET();
     const body = await res.json();
@@ -58,7 +58,7 @@ describe('GET /api/live', () => {
     let first = true;
     vi.spyOn(dataStore, 'getLiveWindow').mockImplementation(async () => {
       if (first) { first = false; throw new Error('upstream unavailable'); }
-      return [match('ok', '2026-08-20T00:00:00Z')];
+      return [match('ok', '2026-08-20T00:00:00Z', 'live')];
     });
     const { GET } = await import('./route');
     const res = await GET();
