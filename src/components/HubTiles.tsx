@@ -49,8 +49,8 @@ const isActive = (s: HubStatus) => s === 'live' || s === 'ongoing';
 function translateSubLine(text: string, spanish: boolean): string {
   if (!spanish) return text;
   return text
-    .replace(/champions/gi, 'campeones')
-    .replace(/complete/gi, 'completo')
+    .replace(/\bchampions\b/gi, 'campeones')
+    .replace(/\bcomplete\b/gi, 'completo')
     .replace(/ live ·/g, ' en vivo ·')
     .replace(/Starts /g, 'Comienza ')
     .replace(/ season/g, ' temporada')
