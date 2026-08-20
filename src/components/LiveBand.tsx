@@ -147,7 +147,7 @@ initialEntries }: Props) {
       <section className="lb" aria-label={spanish ? "Partidos en directo" : "Live matches"}>
         <h2 className="lb-title lb-title--live">
           <span className="lb-ping" aria-hidden />
-          Live now · {live.length}
+          <LanguageText en="Live now" es="En directo" /> · {live.length}
         </h2>
         <div className="lb-grid">
           {live.slice(0, LIVE_SHOWN).map((e) => (
