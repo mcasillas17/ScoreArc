@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { trackEvent } from '@/lib/telemetry/client';
+import { useLocale } from '@/i18n/I18nProvider';
 
 interface Props {
   competition: string;
@@ -19,9 +20,10 @@ export default function TrackedCompetitionLink({
   className,
   children,
 }: Props) {
+  const locale = useLocale();
   return (
     <Link
-      href={`/c/${competition}/${season}`}
+      href={`/${locale}/c/${competition}/${season}`}
       className={className}
       onClick={() => trackEvent('Competition opened', { competition, season, source })}
     >

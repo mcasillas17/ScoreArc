@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
+import { getTranslator } from '@/i18n/translate';
 import { listCompetitions, resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import { competitionLabel, type LiveEntry } from '@/server/data/liveFeed';
@@ -11,12 +12,9 @@ import DigestMatches from '@/components/DigestMatches';
 import DigestScorers, { type ScorerBoard } from '@/components/DigestScorers';
 import DigestNews from '@/components/DigestNews';
 import TrackedLink from '@/components/TrackedLink';
-import LanguageText from '@/components/LanguageText';
 import SiteFooter from '@/components/SiteFooter';
 
 export const dynamic = 'force-dynamic';
-
-export const metadata = { title: 'ScoreArc · Live Football' };
 
 /** How many match cards the digest shows. A digest is a glance; the nav is the
  *  way into a competition's full list. This is also the whole page's match
@@ -46,6 +44,8 @@ function dedupeByMatch(entries: LiveEntry[]): LiveEntry[] {
 
 export default async function Home({ params }: { params: { locale: string } }) {
   if (!isLocale(params.locale)) notFound();
+  const locale = params.locale;
+  const t = getTranslator(locale);
   // One clock for the whole render, so two blocks cannot disagree about "now".
   const now = new Date();
 
@@ -106,51 +106,36 @@ export default async function Home({ params }: { params: { locale: string } }) {
   return (
     <main className="dg">
       <header className="dg-head">
-        <h1 className="dg-title">
-          <LanguageText en="What's new in ScoreArc" es="Nuevo en ScoreArc" />
-        </h1>
-        <p className="dg-sub">
-          <LanguageText en={headline.en} es={headline.es} />
-        </p>
+        <h1 className="dg-title">{t('home.digest.title')}</h1>
+        <p className="dg-sub">{headline[locale]}</p>
       </header>
 
       <section className="dg-sec">
-        <h2 className="dg-lab">
-          <LanguageText en="What's on" es="Qué hay hoy" />
-        </h2>
+        <h2 className="dg-lab">{t('home.digest.whatsOn')}</h2>
         {shown.length > 0 ? (
           <DigestMatches entries={shown} />
         ) : (
-          <p className="dg-empty">
-            <LanguageText
-              en="No matches in the current window."
-              es="No hay partidos en la ventana actual."
-            />
-          </p>
+          <p className="dg-empty">{t('home.digest.emptyMatches')}</p>
         )}
       </section>
 
       <div className="dg-two">
         <section className="dg-sec">
-          <h2 className="dg-lab">
-            <LanguageText en="Leading scorers" es="Goleadores" />
-          </h2>
+          <h2 className="dg-lab">{t('home.digest.leadingScorers')}</h2>
           <DigestScorers boards={boards} />
         </section>
         <section className="dg-sec">
           {/* Every story row leaves for ESPN in a new tab. Without this the
               block was a dead end: nothing on it led anywhere inside ScoreArc. */}
           <div className="dg-labrow">
-            <h2 className="dg-lab">
-              <LanguageText en="News" es="Noticias" />
-            </h2>
+            <h2 className="dg-lab">{t('home.digest.news')}</h2>
             <TrackedLink
               className="dg-more"
-              href="/news"
+              href={`/${locale}/news`}
               event="Section opened"
               properties={{ section: 'News', surface: 'digest' }}
             >
-              <LanguageText en="All news →" es="Todas las noticias →" />
+              {t('home.digest.allNews')}
             </TrackedLink>
           </div>
           <DigestNews items={stories} surface="digest" />

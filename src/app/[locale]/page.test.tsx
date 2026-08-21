@@ -6,6 +6,7 @@ import { listCompetitions, resolveSeason, type CompetitionSeason } from '@/serve
 import type { Match, NewsArticle, StatLeader } from '@/server/data/types';
 import Home from './page';
 import { I18nProvider } from '@/i18n/I18nProvider';
+import type { Locale } from '@/i18n/config';
 
 vi.mock('next/navigation', () => ({
   notFound: vi.fn(() => { throw new Error('NEXT_NOT_FOUND'); }),
@@ -80,8 +81,8 @@ const matchIds = (html: string) =>
   (html.match(/data-match-id="[^"]+"/g) ?? []).map((a) => a.slice(15, -1));
 const count = (html: string, needle: string) => html.split(needle).length - 1;
 
-const renderLocalized = (node: ReactNode) =>
-  renderToStaticMarkup(<I18nProvider locale="en">{node}</I18nProvider>);
+const renderLocalized = (node: ReactNode, locale: Locale = 'en') =>
+  renderToStaticMarkup(<I18nProvider locale={locale}>{node}</I18nProvider>);
 
 describe('Home digest', () => {
   beforeEach(() => {
@@ -119,6 +120,19 @@ describe('Home digest', () => {
     vi.spyOn(dataStore, 'getNews').mockRejectedValue(new Error('upstream unavailable'));
     const html = renderLocalized(await Home({ params: { locale: 'en' } }));
     expect(html).toContain('What&#x27;s new in ScoreArc');
+  });
+
+  it('renders Spanish digest copy and locale-prefixed internal links in the first response', async () => {
+    vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
+    vi.spyOn(dataStore, 'getLeaders').mockResolvedValue({ scorers: [], assists: [] });
+    vi.spyOn(dataStore, 'getNews').mockResolvedValue([]);
+
+    const html = renderLocalized(await Home({ params: { locale: 'es' } }), 'es');
+
+    expect(html).toContain('Nuevo en ScoreArc');
+    expect(html).toContain('Qué hay hoy');
+    expect(html).toContain('href="/es/news"');
+    expect(html).not.toContain('href="/news"');
   });
 
   // The defect this page was redesigned to remove: the old home page showed
@@ -349,7 +363,7 @@ describe('Home digest', () => {
     it('offers a way into the app', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
       const html = renderLocalized(await Home({ params: { locale: 'en' } }));
-      expect(html).toContain('href="/news"');
+      expect(html).toContain('href="/en/news"');
     });
   });
 });

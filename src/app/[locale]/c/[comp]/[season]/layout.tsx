@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
+import { getTranslator } from '@/i18n/translate';
 import { resolveSeason } from '@/server/data/competitions';
 
 export const dynamic = 'force-dynamic';
@@ -12,15 +13,25 @@ export const dynamic = 'force-dynamic';
 export async function generateMetadata({ params }: { params: { locale: string; comp: string; season: string } }): Promise<Metadata> {
   if (!isLocale(params.locale)) notFound();
   const locale = params.locale;
+  const t = getTranslator(locale);
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) return {};
   const label = `${rc.competition.shortName} ${rc.season.label}`;
   const og = `/api/og?comp=${encodeURIComponent(label)}&locale=${encodeURIComponent(locale)}`;
-  const title = `ScoreArc · ${rc.competition.name}`;
+  const title = t('meta.competition.title', rc.competition.name);
+  const description = t('meta.competition.description', rc.competition.shortName, rc.season.label);
   return {
     title,
-    openGraph: { title, images: [{ url: og, width: 1200, height: 630 }] },
-    twitter: { card: 'summary_large_image', title, images: [og] },
+    description,
+    alternates: {
+      canonical: `/${locale}/c/${params.comp}/${params.season}`,
+      languages: {
+        en: `/en/c/${params.comp}/${params.season}`,
+        es: `/es/c/${params.comp}/${params.season}`,
+      },
+    },
+    openGraph: { title, description, images: [{ url: og, width: 1200, height: 630 }] },
+    twitter: { card: 'summary_large_image', title, description, images: [og] },
   };
 }
 
