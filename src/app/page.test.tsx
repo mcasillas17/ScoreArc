@@ -93,7 +93,7 @@ describe('Home digest', () => {
     vi.spyOn(dataStore, 'getLeaders').mockRejectedValue(new Error('upstream unavailable'));
     vi.spyOn(dataStore, 'getNews').mockRejectedValue(new Error('upstream unavailable'));
     const html = renderToStaticMarkup(await Home());
-    expect(html).toContain('Today across ScoreArc');
+    expect(html).toContain('What&#x27;s new in ScoreArc');
   });
 
   // The defect this page was redesigned to remove: the old home page showed
