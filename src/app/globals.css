@@ -3831,3 +3831,46 @@ a {
 .tsp-back { margin: 0 0 14px; font-size: 12.5px; }
 .tsp-back a { color: var(--text-muted); text-decoration: none; }
 .tsp-back a:hover { color: var(--text); }
+
+/* ---- Explore strip: the ways in that are not a scoreline (ex-*) ------- */
+
+.ex { margin-top: 8px; }
+.ex-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+.ex-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  border-radius: 13px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  text-decoration: none;
+  color: var(--text);
+}
+.ex-card:hover { border-color: var(--border); }
+/* Not a link, and it must not look like one: these are named so the page can
+   say what the site is becoming, without pointing anywhere that 404s. */
+.ex-card--soon { opacity: 0.72; }
+.ex-card--soon:hover { border-color: var(--hairline); }
+.ex-title { font-size: 15px; font-weight: 700; }
+.ex-desc { color: var(--text-muted); font-size: 12.5px; line-height: 1.45; }
+.ex-go {
+  margin-top: 6px;
+  color: var(--accent-bright);
+  font-size: 11px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.ex-soon {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  font-weight: 700;
+}

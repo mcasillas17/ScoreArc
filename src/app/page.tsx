@@ -9,12 +9,31 @@ import LanguageText from '@/components/LanguageText';
 import SiteFooter from '@/components/SiteFooter';
 
 import LiveBand from '@/components/LiveBand';
+import ExploreStrip from '@/components/ExploreStrip';
+import { allTeams } from '@/server/data/teamIndex';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata = { title: 'ScoreArc · Live Football' };
 
-export default async function Hub() {
+/**
+ * Which shape the home page takes.
+ *
+ * `auto` is the real behaviour: live-first while matches are on, discovery-first
+ * when nothing is. `live` and `directory` pin one shape, so the three can be
+ * compared side by side on the running site before one is chosen.
+ */
+type HomeShape = 'auto' | 'live' | 'directory';
+
+function readShape(value: string | string[] | undefined): HomeShape {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw === 'live' || raw === 'directory' ? raw : 'auto';
+}
+
+export default async function Hub(
+  { searchParams }: { searchParams?: { home?: string | string[] } },
+) {
+  const shape = readShape(searchParams?.home);
   // One clock for the whole render, so two tiles cannot disagree about "today".
   const now = new Date();
   const tiles = await Promise.all(
@@ -83,6 +102,15 @@ export default async function Hub() {
   // matches what the first poll replaces it with.
   const entries: LiveEntry[] = prioritiseEntries(tiles.flatMap((t) => t.entries), now);
 
+  // The band is the signal for "is anything on", and it already knows.
+  const anythingLive = entries.some((e) => e.match.state === 'live');
+  const liveFirst = shape === 'live' || (shape === 'auto' && anythingLive);
+  const teams = await allTeams();
+
+  const band = <LiveBand key="band" initialEntries={entries} />;
+  const competitions = <HubTiles key="tiles" tiles={tiles} />;
+  const explore = <ExploreStrip key="explore" teamCount={teams.length} />;
+
   return (
     <main className="hub">
       <header className="hub-head">
@@ -102,8 +130,9 @@ export default async function Hub() {
         </Link>
         <p className="hub-tag"><LanguageText en="Live football — brackets, scores & standings, every arc." es="Fútbol en vivo — cuadros, resultados y clasificaciones, en cada arco." /></p>
       </header>
-      <LiveBand initialEntries={entries} />
-      <HubTiles tiles={tiles} />
+      {liveFirst
+        ? [band, competitions, explore]
+        : [competitions, band, explore]}
       <SiteFooter />
     </main>
   );
