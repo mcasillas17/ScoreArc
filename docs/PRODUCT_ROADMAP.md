@@ -368,10 +368,17 @@ Also measured: **there is no jornada/matchday number to group by.** `mex.1`,
 `eng.1` and `usa.1` all return no `week`, no round and an empty `calendar`, so
 matchday grouping is not built. See the spec's "Out of scope" table.
 
-### E14 · Home digest and global navigation — designed, ready to build
+### E14 · Home digest and global navigation — done
 
 Branch `feat/home-digest`.
 [spec](superpowers/specs/2026-08-21-home-digest-and-global-nav-design.md)
+
+Shipped alongside two things the spec did not plan for: a `/news` page (the
+digest's News block continued past its six-row budget — the "all news" link had
+nowhere honest to point, since every other news route is competition-scoped),
+and `stripLocale`/`withLocale`, which carry an existing locale prefix onto nav
+hrefs without inventing one, so the nav survives whichever way the in-flight
+i18n middleware lands.
 
 The home page shows the same matches three times — live band, results/next
 columns, and nine tiles each repeating the next fixture — because the tiles are

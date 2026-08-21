@@ -1,6 +1,6 @@
 # Home digest and global navigation — design
 
-**Status:** Design approved · 2026-08-21
+**Status:** Built and reviewed · 2026-08-21 · three review rounds, two reviewers
 **Epic:** E14 (`docs/PRODUCT_ROADMAP.md`)
 **Scope:** One implementation plan.
 
