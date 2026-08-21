@@ -3825,19 +3825,9 @@ a {
   .tsp-grid { grid-template-columns: 1fr 1fr; }
 }
 
-/* Entry point into team discovery from the masthead, and the way back out. */
-.hub-teams-link {
-  align-self: center;
-  font-size: 12.5px;
-  letter-spacing: 0.4px;
-  color: var(--accent-bright);
-  text-decoration: none;
-  border: 1px solid var(--hairline);
-  border-radius: 999px;
-  padding: 5px 13px;
-  white-space: nowrap;
-}
-.hub-teams-link:hover { border-color: var(--accent); }
+/* The way back out of team discovery. Nothing is added to .hub-head: the
+   masthead is a mark and a tagline anchored to opposite ends of the row, and a
+   third element in that row takes the right edge the tagline is meant to hold. */
 .tsp-back { margin: 0 0 14px; font-size: 12.5px; }
 .tsp-back a { color: var(--text-muted); text-decoration: none; }
 .tsp-back a:hover { color: var(--text); }

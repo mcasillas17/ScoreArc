@@ -101,12 +101,6 @@ export default async function Hub() {
           />
         </Link>
         <p className="hub-tag"><LanguageText en="Live football — brackets, scores & standings, every arc." es="Fútbol en vivo — cuadros, resultados y clasificaciones, en cada arco." /></p>
-        {/* The only way into team discovery from the top of the site. Without
-            it /teams is reachable only from inside a competition, which is
-            backwards for a page whose whole point is to span them. */}
-        <Link href="/teams" className="hub-teams-link">
-          <LanguageText en="Find a team" es="Buscar equipo" />
-        </Link>
       </header>
       <LiveBand initialEntries={entries} />
       <HubTiles tiles={tiles} />
