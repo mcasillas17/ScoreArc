@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { resolveSeason } from '@/server/data/competitions';
-import Sidebar from '@/components/Sidebar';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,20 +22,9 @@ export async function generateMetadata({ params }: { params: { comp: string; sea
 }
 
 export default function WorkspaceLayout({ children, params }: { children: React.ReactNode; params: { comp: string; season: string } }) {
-  const rc = resolveSeason(params.comp, params.season);
-  if (!rc) notFound();
-  const a = rc.competition.accent;
-  return (
-    <div
-      className="app-shell"
-      style={{
-        ['--accent' as string]: a.base,
-        ['--accent-bright' as string]: a.bright,
-        ['--accent-soft' as string]: a.soft,
-      }}
-    >
-      <Sidebar comp={rc.competition} seasonId={rc.season.id} />
-      {children}
-    </div>
-  );
+  // The shell, the nav and the per-competition accent all live at the root
+  // now: `AppShell` derives the open competition from the path, so this layout
+  // exists only to reject a competition or season that does not exist.
+  if (!resolveSeason(params.comp, params.season)) notFound();
+  return <>{children}</>;
 }

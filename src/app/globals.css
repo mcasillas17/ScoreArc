@@ -94,8 +94,11 @@ a {
   min-height: 100vh;
 }
 
-/* ===== Sidebar ===== */
-.sidebar {
+/* ===== Global nav ===== */
+/* One nav for the whole site: site sections, then the competitions, and the
+   open competition's own sections nested beneath it. Mounted at the root, so
+   it is the same component on the home page as inside a competition. */
+.sn {
   position: fixed;
   top: 0;
   left: 0;
@@ -103,40 +106,45 @@ a {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  gap: 28px;
-  padding: 22px 16px;
+  gap: 18px;
+  padding: 18px 12px;
   background: #0d0d10;
   border-right: 1px solid var(--hairline);
   z-index: 50;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   transition: width 0.2s ease;
-  overflow: hidden;
 }
 
-.sidebar--collapsed {
-  width: var(--sidebar-collapsed-w);
-  padding: 22px 10px;
-}
-
-.sidebar-brand {
+.sn-top {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 4px 8px 2px;
+  gap: 8px;
+  padding: 2px 4px;
 }
-.sidebar-brand-link {
-  display: inline-flex;
+
+.sn-brand {
+  display: flex;
   align-items: center;
-  gap: 9px;
+  flex: 1;
+  min-width: 0;
   text-decoration: none;
 }
 
-.sidebar-toggle {
-  margin-left: auto;
+/* The delivered artwork at its own proportions. The lockup carries the
+   wordmark AND the underline arc; the mark is the ring-and-dot alone, which is
+   what survives a 64px rail. */
+.sn-lockup { width: 100%; max-width: 168px; height: auto; display: block; }
+.sn-mark { width: 30px; height: 30px; display: block; }
+
+.sn-collapse,
+.sn-burger {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
+  flex: none;
   border: none;
   border-radius: 7px;
   background: transparent;
@@ -144,161 +152,143 @@ a {
   cursor: pointer;
   transition: background-color 0.15s, color 0.15s;
 }
+.sn-collapse:hover,
+.sn-burger:hover { background: rgba(255, 255, 255, 0.06); color: var(--text); }
+/* The hamburger only exists at the phone breakpoint. */
+.sn-burger { display: none; }
 
-.sidebar-toggle:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
-}
-
-.sidebar--collapsed .sidebar-brand {
-  padding: 4px 0 2px;
-  justify-content: center;
-}
-
-.sidebar--collapsed .sidebar-ball {
-  display: none;
-}
-
-.sidebar--collapsed .sidebar-toggle {
-  margin-left: 0;
-}
-
-.sidebar--collapsed .sidebar-wordmark {
-  display: none;
-}
-
-.sidebar--collapsed .nav-item {
-  justify-content: center;
-  padding: 10px 0;
-}
-
-.sidebar--collapsed .nav-label,
-.sidebar--collapsed .nav-soon {
-  display: none;
-}
-
-.sidebar--collapsed .sidebar-credit {
-  justify-content: center;
-  padding: 10px 0;
-}
-
-.sidebar--collapsed .credit-text {
-  display: none;
-}
-
-.app-shell:has(.sidebar--collapsed) .main {
-  margin-left: var(--sidebar-collapsed-w);
-}
-
-/* The mark inherits currentColor, so the brand colour lives in one place. */
-.sidebar-ball { color: var(--brand); flex: none; }
-/* The hub's lockup is the brand moment on the site, so it is given room. */
-.hub-lockup { width: 100%; height: auto; display: block; }
-/* Bigger than it was, and nudged left so the ring optically aligns with the
-   text beneath it — the SVG's own left padding pushed it off. */
-
-
-.sidebar-wordmark {
-  font-size: 21px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  color: var(--text);
-}
-
-.sidebar-nav {
+.sn-panel {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 18px;
   flex: 1;
+  min-height: 0;
 }
 
-.nav-item {
+.sn-group { display: flex; flex-direction: column; gap: 2px; }
+
+.sn-heading {
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 700;
+  padding: 0 9px;
+  margin-bottom: 6px;
+}
+
+.sn-item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 10px 12px;
-  border-radius: 8px;
+  gap: 10px;
+  padding: 8px 9px;
+  border-radius: 9px;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 500;
+  text-decoration: none;
   transition: background-color 0.15s, color 0.15s;
 }
+a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 
-.nav-item:hover {
-  background: rgba(255, 255, 255, 0.04);
+.sn-item--active {
   color: var(--text);
+  background: var(--surface-2);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent);
 }
+.sn-item--active .sn-icon { color: var(--accent); }
+/* The competition you are inside, as opposed to the section you are on. */
+.sn-item--current { color: var(--text); font-weight: 600; }
 
-.nav-item--active {
-  color: var(--text);
-  background: rgba(232, 184, 75, 0.08);
-}
+/* Named, never linked: these sections do not exist yet, and a link to a 404 is
+   worse than an honest label. */
+.sn-item--soon { cursor: default; opacity: 0.7; }
 
-.nav-item--active::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--accent);
-}
-
-.nav-item--active .nav-icon {
-  color: var(--accent);
-}
-
-.nav-icon {
+.sn-icon {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  flex: none;
   color: inherit;
 }
 
-.nav-label {
+.sn-label {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.nav-soon {
-  font-size: 9px;
+.sn-soon {
+  font-size: 8.5px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 100px;
-  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 6px;
+  flex: none;
 }
 
-.sidebar-credit {
+.sn-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 3px 0 7px 13px;
+  padding-left: 10px;
+  border-left: 1px solid var(--hairline);
+}
+.sn-item--sub { font-size: 12.5px; padding: 6px 9px; }
+
+.sn-credit {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
+  margin-top: auto;
+  padding: 10px 9px 0;
   border-top: 1px solid var(--hairline);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11.5px;
   transition: color 0.15s;
 }
+.sn-credit:hover { color: var(--accent); }
+.sn-credit-text strong { font-weight: 700; color: var(--text); }
+.sn-credit:hover .sn-credit-text strong { color: var(--accent); }
 
-.sidebar-credit:hover {
-  color: var(--accent);
+/* The content column beside the fixed rail. */
+.app-content {
+  flex: 1;
+  min-width: 0;
+  margin-left: var(--sidebar-w);
+  transition: margin-left 0.2s ease;
 }
 
-.credit-text strong {
-  font-weight: 700;
-  color: var(--text);
-}
-
-.sidebar-credit:hover .credit-text strong {
-  color: var(--accent);
+/* Collapsing is a desktop affordance only — on a phone the nav is a top bar
+   and a 64px rail has nowhere to be. Keeping every collapsed rule inside this
+   query is what stops `width: 0` labels leaking onto the phone layout. */
+@media (min-width: 761px) {
+  .sn--collapsed { width: var(--sidebar-collapsed-w); padding: 18px 8px; }
+  .sn--collapsed .sn-top { flex-direction: column; gap: 6px; padding: 2px 0; }
+  .sn--collapsed .sn-brand { flex: none; justify-content: center; }
+  .sn--collapsed .sn-heading { display: none; }
+  .sn--collapsed .sn-item { justify-content: center; padding: 9px 0; }
+  .sn--collapsed .sn-label,
+  .sn--collapsed .sn-soon,
+  .sn--collapsed .sn-credit-text { display: none; }
+  .sn--collapsed .sn-sub { margin-left: 0; padding-left: 0; border-left: none; }
+  .sn--collapsed .sn-credit { justify-content: center; }
+  .app-shell:has(.sn--collapsed) .app-content { margin-left: var(--sidebar-collapsed-w); }
 }
 
 /* ===== Main ===== */
 .main {
-  flex: 1;
-  margin-left: var(--sidebar-w);
-  transition: margin-left 0.2s ease;
+  /* The sidebar offset lives on .app-content now, so every page gets it — not
+     only the ones whose root element happens to carry .main. */
   padding: 36px 36px 56px;
   display: flex;
   flex-direction: column;
@@ -1084,135 +1074,91 @@ a {
   color: var(--brand-bright);
 }
 
-/* Mobile bottom tab bar for section nav — hidden on desktop, shown under the
-   860px breakpoint below (where the sidebar becomes a slim top bar). */
-.mobile-tabbar {
-  display: none;
-}
-.mtab {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  padding: 8px 4px;
-  min-width: 0;
-  color: var(--text-muted);
-  text-decoration: none;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-.mtab-icon {
-  display: inline-flex;
-}
-.mtab-icon svg {
-  width: 21px;
-  height: 21px;
-}
-.mtab-label {
-  white-space: nowrap;
-}
-.mtab--active {
-  color: var(--accent);
-}
+/* ===== Responsive: the nav becomes a top bar ===== */
+/* The rule this replaces hid the section list outright, which is why every
+   section link measured `width: 0, height: 0` at 390px and phone readers had
+   no section navigation at all.
+   Here the bar always LAYS OUT every item -- the row scrolls horizontally, so
+   nothing is display:none and nothing measures zero -- and the hamburger turns
+   that row into the full vertical list for anything past the first few. */
+@media (max-width: 760px) {
+  .app-shell { flex-direction: column; }
 
-/* ===== Responsive: sidebar collapses to top bar ===== */
-@media (max-width: 860px) {
-  .app-shell {
-    flex-direction: column;
-  }
-
-  .sidebar,
-  .sidebar--collapsed {
+  .sn {
     position: sticky;
     width: 100%;
     height: auto;
-    flex-direction: row;
-    align-items: center;
-    gap: 14px;
-    padding: 12px 16px;
+    max-height: 100vh;
+    flex-direction: column;
+    gap: 0;
+    padding: 8px 12px;
     border-right: none;
     border-bottom: 1px solid var(--hairline);
-    /* The desktop sidebar clips content during its collapse transition, but on
-       this short horizontal bar that overflow:hidden chops off the competition
-       dropdown (it drops below the bar). Let it escape on mobile. */
-    overflow: visible;
+    overflow-y: auto;
   }
 
-  /* The switcher button is narrow in the top-bar flex row, so pin the dropdown
-     to a readable width and anchor it to the button's left edge instead of
-     stretching to the button width. */
-  .cs-menu {
-    right: auto;
-    min-width: 200px;
-    max-width: calc(100vw - 32px);
-  }
+  .sn-top { padding: 0; }
+  .sn-lockup { max-width: 132px; }
+  .sn-collapse { display: none; }
+  .sn-burger { display: inline-flex; }
 
-  .sidebar-toggle {
-    display: none;
+  /* Closed: one scrolling row. */
+  .sn-panel {
+    flex: none;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 0 1px;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
-
-  .app-shell:has(.sidebar--collapsed) .main {
-    margin-left: 0;
-  }
-
-  .sidebar-brand {
-    padding: 0;
-    flex-shrink: 0;
-  }
-
-  /* Sections move to the fixed bottom tab bar; hide the top-bar nav. */
-  .sidebar-nav {
-    display: none;
-  }
-
-  .mobile-tabbar {
-    display: flex;
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 40;
-    background: var(--surface-1);
-    border-top: 1px solid var(--hairline);
-    padding-bottom: env(safe-area-inset-bottom);
-    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.35);
-  }
-
-  .nav-item {
-    flex-shrink: 0;
-    padding: 8px 10px;
-  }
-
-  .nav-item--active::before {
-    display: none;
-  }
-
-  .nav-soon {
-    display: none;
-  }
-
-  .sidebar-credit {
-    border-top: none;
+  .sn-panel::-webkit-scrollbar { display: none; }
+  .sn-group { flex-direction: row; gap: 4px; flex: none; }
+  .sn-heading { display: none; }
+  .sn-comp { display: flex; flex-direction: row; align-items: center; gap: 4px; }
+  .sn-sub {
+    flex-direction: row;
+    gap: 4px;
+    margin: 0;
+    padding-left: 8px;
     border-left: 1px solid var(--hairline);
-    flex-shrink: 0;
-    white-space: nowrap;
   }
+  .sn-item { padding: 7px 10px; white-space: nowrap; flex: none; }
+  .sn-item--sub { padding: 7px 10px; }
+  .sn-label { overflow: visible; }
+  .sn-soon,
+  .sn-credit { display: none; }
+
+  /* Open: the same items, as the full list. */
+  .sn--open .sn-panel {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+    padding: 10px 0 4px;
+    overflow-x: visible;
+  }
+  .sn--open .sn-group { flex-direction: column; gap: 2px; }
+  .sn--open .sn-heading { display: block; }
+  .sn--open .sn-comp { flex-direction: column; align-items: stretch; gap: 0; }
+  .sn--open .sn-sub {
+    flex-direction: column;
+    gap: 1px;
+    margin: 3px 0 7px 13px;
+    padding-left: 10px;
+  }
+  .sn--open .sn-soon { display: inline-block; }
+  .sn--open .sn-credit { display: flex; margin-top: 4px; }
+
+  .app-content { margin-left: 0; }
 
   .main {
-    margin-left: 0;
-    padding: 24px 16px calc(84px + env(safe-area-inset-bottom));
+    padding: 22px 14px 48px;
     gap: 32px;
     max-width: 100%;
   }
 }
 
 @media (max-width: 560px) {
-  .credit-text {
-    display: none;
-  }
 
   .bracket-title {
     font-size: 22px;
@@ -2568,21 +2514,6 @@ a {
   letter-spacing: 0.04em;
 }
 
-/* ===== Competition Switcher ===== */
-.sidebar-switcher { position: relative; margin: 4px 0 8px; }
-.cs-current { width: 100%; text-align: left; background: var(--surface-1); border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; }
-.cs-current:hover { border-color: var(--accent); }
-.cs-label { font-size: 8px; letter-spacing: 0.12em; color: var(--text-muted); text-transform: uppercase; }
-.cs-name { display: flex; align-items: center; gap: 7px; font-weight: 700; font-size: 13px; color: var(--text); }
-.cs-emblem { font-size: 15px; }
-.cs-season { font-size: 10px; color: var(--text-muted); }
-.cs-menu { position: absolute; z-index: 20; left: 0; right: 0; margin-top: 4px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
-.cs-opt { display: flex; align-items: center; gap: 8px; padding: 9px 11px; font-size: 13px; color: var(--text); text-decoration: none; }
-.cs-opt:hover { background: var(--surface-1); }
-.cs-opt--active { color: var(--accent); }
-.sidebar-allcomps { display: block; margin-top: 6px; font-size: 12px; color: var(--text-muted); text-decoration: none; }
-.sidebar-allcomps:hover { color: var(--accent); }
-
 /* ===== Competition Hub ===== */
 .hub {
   min-height: 100vh;
@@ -3713,7 +3644,6 @@ a {
   min-height: 0;
   padding: 36px 36px 56px;
   max-width: 1280px;
-  margin-left: var(--sidebar-w);
   gap: 0;
 }
 .tsp-head { margin-bottom: 20px; }
