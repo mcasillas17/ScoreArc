@@ -379,9 +379,10 @@ doing navigation's job. A global collapsible nav takes that job; the home page
 becomes a digest (what's on, leading scorers, news) and each section owns its
 depth.
 
-Also fixes a measured defect: at 390px the current sidebar's four section links
-render at `width: 0, height: 0`, so phone users have no section navigation at
-all.
+Note: an earlier draft justified this with a phone-nav defect that did not
+exist — the links measured at `width: 0` were deliberately hidden behind a
+working bottom tab bar. The redesign replaces that bar rather than repairing
+anything; see the spec.
 
 Explicitly out: trending (telemetry is write-only), and derived facts like
 "longest unbeaten run", which need to state what they were counted over.

@@ -24,12 +24,25 @@ The nine tiles exist because there is nowhere else to put competitions. Move
 "which competition" into a persistent nav and the tiles lose their job, which is
 what lets each match appear exactly once.
 
-**The current sidebar is competition-scoped and partly broken.** Measured on a
-390px viewport at `/c/liga-mx/2026-apertura/standings`: the sidebar becomes a
-122px sticky top bar, and its four section links — Standings, Matches, Teams,
-News — each render at `width: 0, height: 0`. They are in the DOM and invisible.
-**Phone users have no section navigation at all today.** The redesign must fix
-this rather than inherit it.
+**The current sidebar is competition-scoped.** Note that an earlier draft of
+this spec justified the redesign with a false claim, and it is corrected here
+rather than deleted, because it changed a decision.
+
+That draft measured `/c/liga-mx/2026-apertura/standings` at 390px, found the
+sidebar's four section links rendering at `width: 0, height: 0`, and concluded
+that phone users had no section navigation at all. **They did.** Those links
+were deliberately hidden — `globals.css` on `main` carried the comment
+*"Sections move to the fixed bottom tab bar; hide the top-bar nav"* — and the
+real phone affordance was `.mobile-tabbar`, a fixed bottom bar that was always
+visible and thumb-reachable.
+
+So this redesign does not repair a broken nav. It **replaces a working bottom
+tab bar with a scrolling top row plus a drawer**, and that trade should be
+judged on its merits: the bottom bar was closer to the thumb and never needed
+scrolling, while the new nav carries the site sections and competitions that the
+bottom bar had no room for. The lesson for future measurement: an element
+rendering at zero size may be hidden on purpose, and the question to ask is what
+replaced it, not whether it is visible.
 
 ## Navigation
 
@@ -161,6 +174,8 @@ moment the digest landed. It is deleted. One rule survives the cull — `.lb-pin
 ## Verification
 
 - Every nav item reachable at 390px, 768px and 1280px — no item at `width: 0`.
+  (Necessary, but it was never sufficient: the nav it replaced also failed this
+  check while working fine, via a separate bottom bar.)
 - On the home page, no match id appears twice in the rendered HTML.
 - At 1280px the scorers column and the first match card share a right edge, and
   the news column and the second card share a left edge.

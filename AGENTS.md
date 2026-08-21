@@ -53,6 +53,13 @@ to serve that data instead.
    with an oversized logo as well. Render at a low, a middle and a high width
    inside the media query before opening the PR.
 
+   And a zero-sized element is not necessarily a broken one. A redesign in this
+   repo was justified by measuring nav links at `width: 0` on a phone and
+   concluding the nav was broken; those links were deliberately hidden behind a
+   working bottom tab bar, with a comment in `globals.css` saying so. Before
+   calling something broken because it does not render, grep for what replaced
+   it.
+
    Also confirm the rule you edited is the one that wins. `globals.css` is one
    long file and the same selector can appear in two media queries thousands of
    lines apart; the later one takes every conflict. The masthead had exactly
