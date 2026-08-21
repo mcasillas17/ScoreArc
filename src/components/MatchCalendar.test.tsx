@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { hydrateRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '@/i18n/I18nProvider';
+import type { Locale } from '@/i18n/config';
 import type { Match } from '@/server/data/types';
 import MatchCalendar from './MatchCalendar';
 
@@ -34,9 +36,19 @@ const scheduledMatch: Match = {
   winProbability: null,
 };
 
-function renderCalendar(overrides: Partial<React.ComponentProps<typeof MatchCalendar>> = {}) {
-  return renderToStaticMarkup(
-    <I18nProvider locale="en">
+function renderCalendar(
+  overrides: Partial<React.ComponentProps<typeof MatchCalendar>> = {},
+  locale: Locale = 'en',
+) {
+  return renderToStaticMarkup(calendarElement(overrides, locale));
+}
+
+function calendarElement(
+  overrides: Partial<React.ComponentProps<typeof MatchCalendar>> = {},
+  locale: Locale = 'en',
+) {
+  return (
+    <I18nProvider locale={locale}>
       <MatchCalendar
         initialMatches={[scheduledMatch]}
         initialMonth="2026-08-01"
@@ -45,17 +57,114 @@ function renderCalendar(overrides: Partial<React.ComponentProps<typeof MatchCale
         apiBase="/api/premier-league/2026-27"
         {...overrides}
       />
-    </I18nProvider>,
+    </I18nProvider>
   );
 }
 
 describe('MatchCalendar', () => {
   afterEach(() => {
+    cleanup();
     vi.unstubAllGlobals();
   });
 
-  it('labels a scheduled row without repeating its kickoff time', () => {
-    expect(renderCalendar()).toContain('<small>Scheduled</small>');
+  it('labels a scheduled row without repeating its kickoff time', async () => {
+    const { container } = render(calendarElement());
+    await waitFor(() => expect(container.innerHTML).toContain('<small>Scheduled</small>'));
+  });
+
+  it('uses the explicit Spanish locale for calendar copy, dates, and scheduled state', async () => {
+    const { container } = render(calendarElement({}, 'es'));
+    await waitFor(() => expect(container.innerHTML).toContain('<small>Programado</small>'));
+    const html = container.innerHTML;
+
+    expect(html).toContain('agosto de 2026');
+    expect(html).toContain('aria-label="Mes anterior"');
+    expect(html).toContain('<small>Programado</small>');
+    expect(html).toContain('Home contra Away');
+    expect(html).not.toContain('8/18 - 3:00 PM EDT');
+  });
+
+  it('derives recognized halftime, penalties, and final states from match semantics', async () => {
+    const halftime = {
+      ...scheduledMatch,
+      id: 'halftime',
+      state: 'live' as const,
+      statusName: 'STATUS_HALFTIME',
+      statusDetail: 'Half Time',
+    };
+    const penalties = {
+      ...scheduledMatch,
+      id: 'penalties',
+      state: 'live' as const,
+      statusName: 'STATUS_SHOOTOUT',
+      statusDetail: 'Penalty Shootout',
+    };
+    const finished = {
+      ...scheduledMatch,
+      id: 'finished',
+      state: 'finished' as const,
+      statusName: 'STATUS_FULL_TIME',
+      statusDetail: 'Full Time',
+    };
+
+    const { container } = render(
+      calendarElement({ initialMatches: [halftime, penalties, finished] }, 'es'),
+    );
+    await waitFor(() => expect(container.innerHTML).toContain('<small>Descanso</small>'));
+    const html = container.innerHTML;
+    expect(html).toContain('<small>Descanso</small>');
+    expect(html).toContain('<small>Penaltis</small>');
+    expect(html).toContain('<small>Final</small>');
+    expect(html).not.toContain('Half Time');
+    expect(html).not.toContain('Penalty Shootout');
+    expect(html).not.toContain('Full Time');
+  });
+
+  it('renders a translated unavailable date for an invalid provider kickoff', async () => {
+    const invalid = { ...scheduledMatch, kickoff: 'not-a-date' };
+    const { container } = render(calendarElement({ initialMatches: [invalid] }, 'es'));
+    await waitFor(() => expect(container.innerHTML).toContain('No disponible'));
+  });
+
+  it('keeps SSR timezone-neutral and hydrates kickoff groups on the viewer clock', async () => {
+    const boundary = { ...scheduledMatch, kickoff: '2026-08-18T00:30:00.000Z' };
+    const originalTimezone = process.env.TZ;
+    let root: Root | null = null;
+    let hydrationContainer: HTMLDivElement | null = null;
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    try {
+      process.env.TZ = 'UTC';
+      const utcHtml = renderCalendar({ initialMatches: [boundary] });
+      process.env.TZ = 'America/Los_Angeles';
+      const viewerHtml = renderCalendar({ initialMatches: [boundary] });
+
+      expect(utcHtml).toBe(viewerHtml);
+      expect(utcHtml).not.toContain('mc-group');
+
+      hydrationContainer = document.createElement('div');
+      hydrationContainer.innerHTML = utcHtml;
+      document.body.appendChild(hydrationContainer);
+      root = hydrateRoot(
+        hydrationContainer,
+        calendarElement({ initialMatches: [boundary] }),
+      );
+
+      await waitFor(() => {
+        expect(hydrationContainer?.textContent).toContain('Monday, August 17');
+      });
+      const hydrationErrors = consoleError.mock.calls
+        .flat()
+        .map(String)
+        .filter((message) => /hydration|did not match|server html/i.test(message));
+      expect(hydrationErrors).toEqual([]);
+    } finally {
+      root?.unmount();
+      hydrationContainer?.remove();
+      consoleError.mockRestore();
+      if (originalTimezone === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTimezone;
+    }
   });
 
   it('renders an initial feed error without claiming the month is empty', () => {

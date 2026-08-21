@@ -5,6 +5,7 @@ import { dataStore } from '@/server/data/store';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 import type { Match, MatchState } from '@/server/data/types';
 import { I18nProvider } from '@/i18n/I18nProvider';
+import type { Locale } from '@/i18n/config';
 import MatchesPage, { generateMetadata } from './page';
 
 vi.mock('next/navigation', () => ({
@@ -17,8 +18,8 @@ vi.mock('@/lib/telemetry/server', () => ({
   trackAPIRequestFailure: vi.fn(),
 }));
 
-const renderLocalized = (node: ReactNode) =>
-  renderToStaticMarkup(<I18nProvider locale="en">{node}</I18nProvider>);
+const renderLocalized = (node: ReactNode, locale: Locale = 'en') =>
+  renderToStaticMarkup(<I18nProvider locale={locale}>{node}</I18nProvider>);
 
 const NOW = new Date(2026, 7, 18);
 
@@ -87,6 +88,26 @@ describe('MatchesPage', () => {
       'premier-league',
       '2026-27',
     );
+  });
+
+  it('renders Spanish page copy, metadata, errors, and locale-prefixed tabs', async () => {
+    vi.spyOn(dataStore, 'getFixtures').mockRejectedValue(new Error('provider secret'));
+
+    const page = await MatchesPage({
+      params: { locale: 'es', comp: 'premier-league', season: '2026-27' },
+      searchParams: { view: 'calendar' },
+    });
+    const html = renderLocalized(page, 'es');
+    const metadata = await generateMetadata({
+      params: { locale: 'es', comp: 'premier-league', season: '2026-27' },
+    });
+
+    expect(html).toContain('Partidos');
+    expect(html).toContain('Todos los partidos, mes a mes.');
+    expect(html).toContain('Los partidos no están disponibles en este momento.');
+    expect(html).toContain('/es/c/premier-league/2026-27/matches?view=now');
+    expect(html).not.toContain('provider secret');
+    expect(metadata.title).toBe('Partidos · Premier League 2026-27');
   });
 });
 

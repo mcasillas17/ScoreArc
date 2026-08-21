@@ -1,7 +1,5 @@
 "use client";
 
-import { useLanguage } from './LanguageProvider';
-import LanguageText from './LanguageText';
 import { useState, useEffect, useRef } from "react";
 import type { Match, Team } from "@/server/data/types";
 import type { TeamStyle } from "@/server/data/competitions";
@@ -15,6 +13,9 @@ import {
   liveStatus,
   isBeforeKickoff,
 } from "./MatchStats";
+import { useTranslations } from '@/i18n/I18nProvider';
+import { matchStatusText } from './MatchRow';
+import LocalTime from './LocalTime';
 
 interface LiveScoresProps {
   initialMatches: Match[];
@@ -36,15 +37,6 @@ function sortMatches(matches: Match[]): Match[] {
 function firstLiveIndex(matches: Match[]): number {
   const i = matches.findIndex((m) => m.state === "live");
   return i >= 0 ? i : 0;
-}
-
-function formatKickoff(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return "--:--";
-  }
 }
 
 function FullFlag({ team, style }: { team: Team; style: TeamStyle }) {
@@ -71,8 +63,10 @@ function FullFlag({ team, style }: { team: Team; style: TeamStyle }) {
 }
 
 function MatchCard({ match, teamStyle }: { match: Match; teamStyle: TeamStyle }) {
+  const t = useTranslations();
   const started = match.state === "live" || match.state === "finished";
   const ls = liveStatus(match);
+  const status = matchStatusText(match, t);
 
   // Exclude shootout goals from the in-play scorers list
   const inPlayScorers = (match.scorers ?? []).filter((s) => !s.shootout);
@@ -98,12 +92,12 @@ function MatchCard({ match, teamStyle }: { match: Match; teamStyle: TeamStyle })
               {match.awayScore ?? 0}
             </span>
           ) : (
-            <span className="match-time">{formatKickoff(match.kickoff)}</span>
+            <span className="match-time"><LocalTime iso={match.kickoff} /></span>
           )}
           {/* aggregate pens badge only when we lack the kick-by-kick detail */}
           {match.shootout && !match.shootoutDetail && (
             <span className="ls-pens-badge">
-              Pens {match.shootout.homeScore}–{match.shootout.awayScore}
+              {t('match.penalties')} {match.shootout.homeScore}–{match.shootout.awayScore}
             </span>
           )}
           {match.note && <span className="match-note">{match.note}</span>}
@@ -138,14 +132,14 @@ function MatchCard({ match, teamStyle }: { match: Match; teamStyle: TeamStyle })
         {ls && (
           <span className={`status-live status-${ls.tone}`}>
             {ls.tone === "live" && <span className="live-dot" />}
-            {ls.text}
+            {status}
           </span>
         )}
         {match.state === "finished" && (
-          <span className="status-finished">{match.statusDetail || "FT"}</span>
+          <span className="status-finished">{status}</span>
         )}
         {match.state === "scheduled" && (
-          <span className="status-scheduled">{formatKickoff(match.kickoff)}</span>
+          <span className="status-scheduled"><LocalTime iso={match.kickoff} /></span>
         )}
       </div>
     </div>
@@ -154,8 +148,7 @@ function MatchCard({ match, teamStyle }: { match: Match; teamStyle: TeamStyle })
 
 export default function LiveScores({
 initialMatches, apiBase, teamStyle = 'flag' }: LiveScoresProps) {
-  const { language } = useLanguage();
-  const spanish = language === 'es';
+  const t = useTranslations();
   const sortedInitial = sortMatches(initialMatches);
   const [matches, setMatches] = useState<Match[]>(sortedInitial);
   const [index, setIndex] = useState(() => firstLiveIndex(sortedInitial));
@@ -237,7 +230,7 @@ initialMatches, apiBase, teamStyle = 'flag' }: LiveScoresProps) {
 
   if (matches.length === 0) {
     return (
-      <p className="live-strip-empty"><LanguageText en="No matches in the live window right now." es="No hay partidos en directo en este momento." /></p>
+      <p className="live-strip-empty">{t('live.emptyWindow')}</p>
     );
   }
 
@@ -325,7 +318,7 @@ initialMatches, apiBase, teamStyle = 'flag' }: LiveScoresProps) {
           type="button"
           className="ls-arrow"
           onClick={() => go(-1)}
-          aria-label={spanish ? "Partido anterior" : "Previous match"}
+          aria-label={t('match.previous')}
           disabled={!multiple}
         >
           ‹
@@ -361,7 +354,7 @@ initialMatches, apiBase, teamStyle = 'flag' }: LiveScoresProps) {
           type="button"
           className="ls-arrow"
           onClick={() => go(1)}
-          aria-label={spanish ? "Partido siguiente" : "Next match"}
+          aria-label={t('match.next')}
           disabled={!multiple}
         >
           ›
@@ -371,15 +364,15 @@ initialMatches, apiBase, teamStyle = 'flag' }: LiveScoresProps) {
       <div className={`ls-conn${connOk ? "" : " ls-conn--bad"}`} aria-live="polite">
         {connOk ? (
           <>
-            <span className="ls-conn-dot" /> Live · auto-updating
+            <span className="ls-conn-dot" /> {t('live.autoUpdating')}
           </>
         ) : (
-          "Reconnecting…"
+          t('live.reconnecting')
         )}
       </div>
 
       {multiple && (
-        <div className="ls-dots" role="tablist" aria-label={spanish ? "Partidos en directo" : "Live matches"}>
+        <div className="ls-dots" role="tablist" aria-label={t('live.liveMatches')}>
           {matches.map((m, i) => (
             <button
               key={m.id}
@@ -387,7 +380,7 @@ initialMatches, apiBase, teamStyle = 'flag' }: LiveScoresProps) {
               className={`ls-dot${i === index ? " ls-dot-active" : ""}${
                 m.state === "live" ? " ls-dot-live" : ""
               }`}
-              aria-label={`Show match ${i + 1} of ${matches.length}`}
+              aria-label={t('live.showMatch', i + 1, matches.length)}
               aria-selected={i === index}
               onClick={() => jumpTo(i)}
             />

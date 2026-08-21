@@ -1,4 +1,3 @@
-import LanguageText from '@/components/LanguageText';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -17,6 +16,7 @@ import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 import MatchCalendar from '@/components/MatchCalendar';
 import MatchesNow from '@/components/MatchesNow';
 import SiteFooter from '@/components/SiteFooter';
+import { getTranslator } from '@/i18n/translate';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,12 +26,13 @@ export async function generateMetadata({
   params: { locale: string; comp: string; season: string };
 }): Promise<Metadata> {
   if (!isLocale(params.locale)) notFound();
+  const t = getTranslator(params.locale);
   const rc = resolveSeason(params.comp, params.season);
-  if (!rc) return { title: 'Matches' };
+  if (!rc) return { title: t('matches.title') };
   const editionName = `${rc.competition.shortName} ${rc.season.label}`;
   return {
-    title: `Matches · ${editionName}`,
-    description: `${editionName} matches and results by month.`,
+    title: t('matches.metaTitle', editionName),
+    description: t('matches.metaDescription', editionName),
   };
 }
 
@@ -44,6 +45,7 @@ export default async function MatchesPage({
 }) {
   if (!isLocale(params.locale)) notFound();
   const locale = params.locale;
+  const t = getTranslator(locale);
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) notFound();
 
@@ -64,7 +66,7 @@ export default async function MatchesPage({
       nowMatches = await dataStore.getLiveWindow(rc);
     } catch {
       trackAPIRequestFailure('matches', 502, rc.competition.id, rc.season.id);
-      nowError = 'Live matches are unavailable right now. The full calendar still works.';
+      nowError = t('matches.unavailableNow');
     }
   }
 
@@ -94,7 +96,7 @@ export default async function MatchesPage({
       initialMatches = await dataStore.getFixtures(rc, range);
     } catch {
       trackAPIRequestFailure('matches', 502, rc.competition.id, rc.season.id);
-      initialError = 'Matches are unavailable right now. Please try another month and come back.';
+      initialError = t('matches.unavailableCalendar');
     }
   }
   const { minMonth, maxMonth } = seasonMonthBounds(rc.season.id);
@@ -104,11 +106,11 @@ export default async function MatchesPage({
       <section id="matches">
         <header className="page-head">
           <p className="bracket-eyebrow">{editionName}</p>
-          <h1 className="bracket-title"><LanguageText en="Matches" es="Partidos" /></h1>
+          <h1 className="bracket-title">{t('matches.title')}</h1>
           <p className="page-subtitle">
             {view === 'now'
-              ? <LanguageText en="What is on now, next, and just played." es="Lo que está en juego, lo próximo y lo recién jugado." />
-              : <LanguageText en="Every match, month by month." es="Todos los partidos, mes a mes." />}
+              ? t('matches.nowDescription')
+              : t('matches.calendarDescription')}
           </p>
         </header>
 
@@ -116,7 +118,7 @@ export default async function MatchesPage({
             back button behaves. Rendered only for the current edition, where
             both modes have something to show. */}
         {isCurrentEdition && (
-          <nav className="mn-tabs" aria-label="Match views">
+          <nav className="mn-tabs" aria-label={t('matches.views')}>
             <Link
               // Explicit, not the bare path: when Now is empty the bare path
               // resolves to the calendar, so a bare-path tab would be a link
@@ -125,14 +127,14 @@ export default async function MatchesPage({
               className={`mn-tab${view === 'now' ? ' mn-tab--on' : ''}`}
               aria-current={view === 'now' ? 'page' : undefined}
             >
-              <LanguageText en="Now" es="Ahora" />
+              {t('matches.now')}
             </Link>
             <Link
               href={`${basePath}?view=calendar`}
               className={`mn-tab${view === 'calendar' ? ' mn-tab--on' : ''}`}
               aria-current={view === 'calendar' ? 'page' : undefined}
             >
-              <LanguageText en="Full calendar" es="Calendario completo" />
+              {t('matches.fullCalendar')}
             </Link>
           </nav>
         )}

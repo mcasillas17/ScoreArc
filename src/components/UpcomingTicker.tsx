@@ -1,6 +1,5 @@
 'use client';
 
-import LanguageText from './LanguageText';
 import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import type { Match, Team } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
@@ -8,6 +7,9 @@ import { flagUrl } from '@/lib/flags';
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
 import { isThisWeek, matchToBracketMatch } from './upcomingWindow';
 import { trackEvent, trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
+import { useLocale, useTranslations } from '@/i18n/I18nProvider';
+import { intlLocale, type Locale } from '@/i18n/config';
+import { formatDate, formatTime } from '@/i18n/format';
 
 interface Props {
   initialMatches: Match[];
@@ -30,17 +32,14 @@ function upcomingFixtures(matches: Match[], now: Date, weekOnly: boolean): Match
     .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
 }
 
-function dayTag(iso: string): string {
-  try { return new Date(iso).toLocaleDateString([], { weekday: 'short' }).toUpperCase(); }
-  catch { return ''; }
+function dayTag(iso: string, locale: Locale): string | null {
+  return formatDate(iso, locale, { weekday: 'short' })?.toLocaleUpperCase(intlLocale(locale)) ?? null;
 }
-function kickoffTime(iso: string): string {
-  try { return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
-  catch { return ''; }
+function kickoffTime(iso: string, locale: Locale): string | null {
+  return formatTime(iso, locale);
 }
-function weekdayLong(iso: string): string {
-  try { return new Date(iso).toLocaleDateString([], { weekday: 'long' }); }
-  catch { return ''; }
+function weekdayLong(iso: string, locale: Locale): string | null {
+  return formatDate(iso, locale, { weekday: 'long' });
 }
 
 function TeamMark({ team, style }: { team: Team; style: TeamStyle }) {
@@ -61,6 +60,8 @@ function Chip({
   m: Match; teamStyle: TeamStyle; active: boolean; duplicate: boolean;
   onEnter: () => void; onLeave: () => void; onOpen: () => void; onDetails: () => void;
 }) {
+  const locale = useLocale();
+  const t = useTranslations();
   const wp = m.winProbability;
   const popRef = useRef<HTMLDivElement | null>(null);
 
@@ -103,25 +104,27 @@ function Chip({
         }
       }}
     >
-      <span className="tick-day">{dayTag(m.kickoff)}</span>
+      <span className="tick-day">{dayTag(m.kickoff, locale) ?? t('common.unavailable')}</span>
       <span className="tick-side">
         <TeamMark team={m.home} style={teamStyle} />
         <span className="tick-abbr">{m.home.abbr}</span>
       </span>
-      <span className="tick-vs">vs</span>
+      <span className="tick-vs">{t('match.versusShort')}</span>
       <span className="tick-side tick-side--away">
         <TeamMark team={m.away} style={teamStyle} />
         <span className="tick-abbr">{m.away.abbr}</span>
       </span>
-      <span className="tick-ko">{kickoffTime(m.kickoff)}</span>
+      <span className="tick-ko">{kickoffTime(m.kickoff, locale) ?? t('common.unavailable')}</span>
 
       {active && (
         <div className="tick-pop" data-pop ref={popRef} onClick={(e) => e.stopPropagation()}>
-          <div className="tick-pop-teams">{m.home.abbr}<span className="tick-vs">vs</span>{m.away.abbr}</div>
-          <div className="tick-pop-when">{weekdayLong(m.kickoff)} · {kickoffTime(m.kickoff)}</div>
+          <div className="tick-pop-teams">{m.home.abbr}<span className="tick-vs">{t('match.versusShort')}</span>{m.away.abbr}</div>
+          <div className="tick-pop-when">
+            {weekdayLong(m.kickoff, locale) ?? t('common.unavailable')} · {kickoffTime(m.kickoff, locale) ?? t('common.unavailable')}
+          </div>
           {wp && (
             <div className="tick-wp">
-              <div className="tick-wp-cap"><LanguageText en="Chance to win" es="Probabilidad de ganar" /></div>
+              <div className="tick-wp-cap">{t('upcoming.chanceToWin')}</div>
               <div className="tick-wp-bar">
                 <span className="tick-wp-h" style={{ width: `${wp.home}%` }} />
                 <span className="tick-wp-d" style={{ width: `${wp.draw}%` }} />
@@ -129,12 +132,12 @@ function Chip({
               </div>
               <div className="tick-wp-legend">
                 <span className="l">{m.home.abbr} {wp.home}%</span>
-                <span className="m">Draw {wp.draw}%</span>
+                <span className="m">{t('match.draw')} {wp.draw}%</span>
                 <span className="r">{wp.away}% {m.away.abbr}</span>
               </div>
             </div>
           )}
-          <button type="button" className="tick-pop-more" onClick={onDetails}><LanguageText en="Full details ›" es="Detalles completos ›" /></button>
+          <button type="button" className="tick-pop-more" onClick={onDetails}>{t('upcoming.fullDetails')}</button>
         </div>
       )}
     </div>
@@ -142,6 +145,7 @@ function Chip({
 }
 
 export default function UpcomingTicker({ initialMatches, apiBase, teamBase, teamStyle = 'flag', weekOnly = true }: Props) {
+  const t = useTranslations();
   const [matches, setMatches] = useState<Match[]>(initialMatches);
   const [mounted, setMounted] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
@@ -302,7 +306,7 @@ export default function UpcomingTicker({ initialMatches, apiBase, teamBase, team
   return (
     <>
       {mounted && upcoming.length === 0 ? (
-        <p className="tick-empty">{weekOnly ? 'No matches scheduled this week.' : 'No upcoming fixtures.'}</p>
+        <p className="tick-empty">{weekOnly ? t('upcoming.emptyWeek') : t('upcoming.empty')}</p>
       ) : (
         <div className="tick-band" data-testid="ticker" ref={bandRef}>
           <div
