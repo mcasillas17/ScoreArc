@@ -1,0 +1,79 @@
+import { readFileSync } from 'node:fs';
+import postcss, { type Rule } from 'postcss';
+import { describe, expect, it } from 'vitest';
+
+const stylesheet = postcss.parse(readFileSync('src/app/globals.css', 'utf8'));
+
+function maxWidthMediaApplies(rule: Rule, viewportWidth: number): boolean {
+  const parent = rule.parent;
+  if (!parent || parent.type !== 'atrule') return true;
+  const mediaRule = parent as unknown as { name: string; params: string };
+  if (mediaRule.name !== 'media') return true;
+  const maxWidth = mediaRule.params.match(/^\(max-width:\s*(\d+)px\)$/);
+  return Boolean(maxWidth && viewportWidth <= Number(maxWidth[1]));
+}
+
+function cascadeSimpleClassProperty(
+  classNames: string[],
+  property: string,
+  viewportWidth: number,
+): string | undefined {
+  const targetClasses = new Set(classNames);
+  let winner: { specificity: number; order: number; value: string } | undefined;
+  let order = 0;
+
+  stylesheet.walkRules((rule) => {
+    order += 1;
+    if (!maxWidthMediaApplies(rule, viewportWidth)) return;
+
+    for (const selector of rule.selectors) {
+      const simpleClasses = selector.trim().match(/^((?:\.[a-z0-9_-]+)+)$/i)?.[1]
+        .split('.')
+        .filter(Boolean);
+      if (!simpleClasses || !simpleClasses.every((name) => targetClasses.has(name))) continue;
+
+      const declaration = rule.nodes.find(
+        (node) => node.type === 'decl' && node.prop === property,
+      );
+      if (!declaration || declaration.type !== 'decl') continue;
+
+      const candidate = { specificity: simpleClasses.length, order, value: declaration.value };
+      if (
+        !winner ||
+        candidate.specificity > winner.specificity ||
+        (candidate.specificity === winner.specificity && candidate.order > winner.order)
+      ) {
+        winner = candidate;
+      }
+    }
+  });
+
+  return winner?.value;
+}
+
+describe('responsive competition main layout', () => {
+  it.each([360, 768])(
+    'keeps specialized competition pages inside the mobile shell at %ipx',
+    (viewportWidth) => {
+      for (const classes of [['main', 'tm'], ['main', 'tsp']]) {
+        expect(cascadeSimpleClassProperty(classes, 'margin-left', viewportWidth)).toBe('0');
+        expect(cascadeSimpleClassProperty(classes, 'padding', viewportWidth)).toBe(
+          '24px 16px calc(84px + env(safe-area-inset-bottom))',
+        );
+      }
+    },
+  );
+
+  it('preserves the desktop sidebar offset and spacing', () => {
+    expect(cascadeSimpleClassProperty(['main', 'tm'], 'margin-left', 1280)).toBe(
+      'var(--sidebar-w)',
+    );
+    expect(cascadeSimpleClassProperty(['main', 'tm'], 'padding', 1280)).toBe(
+      '36px 36px 56px',
+    );
+  });
+
+  it('keeps squad overflow inside its own scroll container', () => {
+    expect(cascadeSimpleClassProperty(['sq-wrap'], 'overflow-x', 360)).toBe('auto');
+  });
+});
