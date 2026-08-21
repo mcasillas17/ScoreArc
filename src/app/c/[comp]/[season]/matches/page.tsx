@@ -44,6 +44,8 @@ export default async function MatchesPage({
   if (!rc) notFound();
 
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
+  // Crests in the match views link to the club's page.
+  const teamBase = `/c/${rc.competition.id}/${rc.season.id}/team`;
   const editionName = `${rc.competition.shortName} ${rc.season.label}`;
   const basePath = `/c/${rc.competition.id}/${rc.season.id}/matches`;
 
@@ -133,6 +135,7 @@ export default async function MatchesPage({
 
         {view === 'now' ? (
           <MatchesNow
+            teamBase={teamBase}
             initialMatches={nowMatches}
             initialError={nowError}
             apiBase={apiBase}
@@ -142,6 +145,7 @@ export default async function MatchesPage({
           />
         ) : (
           <MatchCalendar
+            teamBase={teamBase}
             initialMatches={initialMatches}
             initialError={initialError}
             initialMonth={initialMonth}

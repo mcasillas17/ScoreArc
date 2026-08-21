@@ -30,6 +30,7 @@ export function mapLeaders(raw: unknown, category: string, limit = 20): StatLead
       return {
         rank: i + 1,
         player: athlete.displayName ?? '',
+        teamId: team.id != null ? String(team.id) : null,
         teamAbbr: team.abbreviation ?? '',
         teamName: team.displayName ?? '',
         teamCrestUrl: team.logo ?? team.logos?.[0]?.href ?? null,

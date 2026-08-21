@@ -104,6 +104,27 @@ paths:
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
+  /v1/competitions/{comp}/{season}/teams/{teamId}:
+    get:
+      operationId: getTeam
+      summary: Get one club's profile, squad and fixtures within a competition
+      parameters:
+        - { $ref: "#/components/parameters/Comp" }
+        - { $ref: "#/components/parameters/Season" }
+        - { $ref: "#/components/parameters/TeamID" }
+      responses:
+        "200":
+          description: Club identity, season record, squad statistics and fixtures
+          headers:
+            Cache-Control: { $ref: "#/components/headers/StandardCacheControl" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TeamProfile" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
   /v1/competitions/{comp}/news:
     get:
       operationId: listNews
@@ -154,6 +175,12 @@ components:
       in: path
       required: true
       description: Whitelisted season identifier within the competition.
+      schema: { type: string, minLength: 1 }
+    TeamID:
+      name: teamId
+      in: path
+      required: true
+      description: Our canonical team identifier, such as nat-mex.
       schema: { type: string, minLength: 1 }
     MatchID:
       name: id
@@ -248,6 +275,68 @@ components:
         name: { type: string }
         abbr: { type: string }
         crestUrl: { type: [string, "null"] }
+    PlayerSeasonStats:
+      type: object
+      additionalProperties: false
+      required: [appearances, subIns, totalGoals, goalAssists, totalShots, shotsOnTarget, offsides, foulsCommitted, foulsSuffered, yellowCards, redCards, ownGoals, saves, shotsFaced, goalsConceded]
+      properties:
+        appearances: { type: [integer, "null"] }
+        subIns: { type: [integer, "null"] }
+        totalGoals: { type: [integer, "null"] }
+        goalAssists: { type: [integer, "null"] }
+        totalShots: { type: [integer, "null"] }
+        shotsOnTarget: { type: [integer, "null"] }
+        offsides: { type: [integer, "null"] }
+        foulsCommitted: { type: [integer, "null"] }
+        foulsSuffered: { type: [integer, "null"] }
+        yellowCards: { type: [integer, "null"] }
+        redCards: { type: [integer, "null"] }
+        ownGoals: { type: [integer, "null"] }
+        saves: { type: [integer, "null"] }
+        shotsFaced: { type: [integer, "null"] }
+        goalsConceded: { type: [integer, "null"] }
+    SquadPlayer:
+      type: object
+      additionalProperties: false
+      required: [id, name, jersey, position, age, nationality, headshotUrl, stats]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        jersey: { type: [integer, "null"] }
+        position: { type: string }
+        age: { type: [integer, "null"] }
+        nationality: { type: [string, "null"] }
+        headshotUrl: { type: [string, "null"] }
+        stats:
+          description: Null when the player has no season statistics at all, which is not the same as every stat being null.
+          oneOf:
+            - { $ref: "#/components/schemas/PlayerSeasonStats" }
+            - { type: "null" }
+    TeamRecord:
+      type: object
+      additionalProperties: false
+      required: [summary, gamesPlayed, points, goalDifference]
+      properties:
+        summary: { type: string }
+        gamesPlayed: { type: [integer, "null"] }
+        points: { type: [integer, "null"] }
+        goalDifference: { type: [integer, "null"] }
+    TeamProfile:
+      type: object
+      additionalProperties: false
+      required: [team, location, color, altColor, record, standingSummary, squad, schedule]
+      properties:
+        team: { $ref: "#/components/schemas/Team" }
+        location: { type: [string, "null"] }
+        color: { type: [string, "null"] }
+        altColor: { type: [string, "null"] }
+        record:
+          oneOf:
+            - { $ref: "#/components/schemas/TeamRecord" }
+            - { type: "null" }
+        standingSummary: { type: [string, "null"] }
+        squad: { type: array, items: { $ref: "#/components/schemas/SquadPlayer" } }
+        schedule: { type: array, items: { $ref: "#/components/schemas/Match" } }
     Scorer:
       type: object
       additionalProperties: false

@@ -60,6 +60,17 @@ to serve that data instead.
    property the winning block left undeclared ever got through. `grep -n` the
    selector across the file before editing it.
 
+## Wording
+
+**Say "match", not "fixture".** The site is US/Mexico-facing and the term reads
+as British sportswriting. `/fixtures` was renamed to `/matches` for this reason,
+and the team page shipped saying "Fixtures and results" anyway -- the rename is
+the rule, not a one-off. Section headings, empty states and metadata all say
+match.
+
+Two exceptions, both meaning something else entirely: `__fixtures__` (recorded
+test payloads) and ESPN's own `?fixture=true` parameter.
+
 ## Commands
 
 - `npm run dev` — local dev server (Next.js). Verify UI changes here before any PR.
@@ -96,11 +107,15 @@ Neon Postgres (provisioned via Vercel) + Cloudflare R2**. Full detail:
   eleven test failures rather than a misconfigured environment. Export these first:
 
   ```bash
-  export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
+  export DOCKER_HOST="unix://$HOME/.colima/<profile>/docker.sock"
   export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
   ```
 
-  Check which runtime you have with `docker context ls`.
+  Check which runtime you have with `docker context ls`, and take `<profile>`
+  from the row marked `*` — it is not always `default`. Pointing at a profile
+  that exists but is not running fails the same way as having no Docker at all,
+  so the eleven failures look identical whether the socket path is wrong or the
+  daemon is down.
 - **PRs here are squash-merged, which breaks stacked branches.** After a base
   branch merges, the branch stacked on it still shows every one of the base's
   commits as unmerged — the content is in `main` but the SHAs are not. Do not

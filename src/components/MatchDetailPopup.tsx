@@ -10,6 +10,8 @@ import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar, LineupView, PenaltyS
 import MatchHighlights from './MatchHighlights';
 import { MatchInfoRow, FormRow, H2HRow, CommentaryFeed, BoxScoreBlock } from './MatchExtras';
 import { CollapsibleSection } from './Collapsible';
+import Link from 'next/link';
+import { teamHref } from './teamHref';
 
 export type MatchSummary = MatchSummaryData;
 
@@ -18,11 +20,20 @@ interface Props {
   summary: MatchSummary | null;
   loading: boolean;
   onClose: () => void;
+  /**
+   * Competition-scoped prefix for team pages. Optional: without it the crests
+   * render exactly as before, unlinked -- which is what bracket placeholders
+   * need, since an undecided slot has no club to link to.
+   */
+  teamBase?: string;
 }
 
-function formatKickoff(iso: string): string {
+// Follows the app's language, not the machine's: toLocaleString([]) resolves
+// against the browser, so a reader who chose Spanish on an English laptop got
+// an English kickoff inside an otherwise Spanish dialog.
+function formatKickoff(iso: string, spanish: boolean): string {
   try {
-    return new Date(iso).toLocaleString([], {
+    return new Date(iso).toLocaleString(spanish ? 'es-MX' : 'en-US', {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
@@ -34,7 +45,31 @@ function formatKickoff(iso: string): string {
   }
 }
 
-export default function MatchDetailPopup({ match, summary, loading, onClose }: Props) {
+/**
+ * The crest block, linked to the club's page when there is one.
+ *
+ * A bracket placeholder has no real club, and an uncurated club has no
+ * canonical id, so teamHref returns undefined for both and this renders the
+ * plain div it always was.
+ */
+function TeamLink({
+  team, teamBase, className, children,
+}: {
+  team: { id: string; name: string; abbr: string };
+  teamBase?: string;
+  className: string;
+  children: React.ReactNode;
+}) {
+  const href = teamHref(teamBase, team);
+  if (!href) return <div className={className}>{children}</div>;
+  return (
+    <Link href={href} className={className} aria-label={team.name}>
+      {children}
+    </Link>
+  );
+}
+
+export default function MatchDetailPopup({ match, summary, loading, onClose, teamBase }: Props) {
   const { language } = useLanguage();
   const spanish = language === 'es';
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -112,7 +147,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
 
         {/* Header: flags + score */}
         <div className="md-header">
-          <div className="md-team">
+          <TeamLink team={home} teamBase={teamBase} className="md-team">
             {homeFlag ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -126,11 +161,11 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
               <div className="md-flag md-flag-fallback">{home.abbr}</div>
             )}
             <span className="md-abbr">{home.abbr}</span>
-          </div>
+          </TeamLink>
 
           <div className="md-score-col">
             {upcoming ? (
-              <span className="md-kickoff">{formatKickoff(match.kickoff)}</span>
+              <span className="md-kickoff">{formatKickoff(match.kickoff, spanish)}</span>
             ) : (
               <span className="md-score">
                 {match.homeScore ?? '–'}
@@ -142,7 +177,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
             {match.note && <span className="md-note">{match.note}</span>}
           </div>
 
-          <div className="md-team md-team-away">
+          <TeamLink team={away} teamBase={teamBase} className="md-team md-team-away">
             {awayFlag ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -156,7 +191,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose }: P
               <div className="md-flag md-flag-fallback">{away.abbr}</div>
             )}
             <span className="md-abbr">{away.abbr}</span>
-          </div>
+          </TeamLink>
         </div>
 
         {/* Body */}

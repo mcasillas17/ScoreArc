@@ -27,6 +27,7 @@ function EntryRow({ entry, tone }: { entry: LiveEntry; tone: 'live' | 'next' | '
   // reader hears "FT, Liga MX" for a result from two days ago — the exact
   // ambiguity the visible day was added to remove.
   const now = useLocalNow();
+  const { language } = useLanguage();
   const scheduled = match.state === 'scheduled';
   const score = `${match.homeScore ?? 0}–${match.awayScore ?? 0}`;
 
@@ -50,7 +51,7 @@ function EntryRow({ entry, tone }: { entry: LiveEntry; tone: 'live' | 'next' | '
           // leaves a screen-reader user with everything except the result.
           : `${match.home.name} ${match.homeScore ?? 0}, ${match.away.name} ${match.awayScore ?? 0}`,
         status,
-        now ? localTimeText(match.kickoff, scheduled ? 'dayTime' : 'day', now) : null,
+        now ? localTimeText(match.kickoff, scheduled ? 'dayTime' : 'day', now, language) : null,
         competition.name,
       ].filter(Boolean).join(', ')}
     >

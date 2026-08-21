@@ -93,3 +93,14 @@ describe('mapLeaders', () => {
     expect(mapLeaders(payload, 'goalsLeaders')[0].teamCrestUrl).toBe('https://a.espncdn.com/logos/team.png');
   });
 });
+
+// The leaderboard crest links to the team page, which is addressed by the
+// provider's numeric id. teamAbbr cannot stand in for it: /team/AME is a 404.
+describe('leader team identity', () => {
+  it('carries the provider team id alongside the abbreviation', () => {
+    const scorers = mapLeaders(raw, 'goalsLeaders');
+    expect(scorers.length).toBeGreaterThan(0);
+    expect(scorers[0].teamId).toMatch(/^\d+$/);
+    expect(scorers[0].teamId).not.toBe(scorers[0].teamAbbr);
+  });
+});

@@ -75,6 +75,7 @@ type repository interface {
 	WriteStandingSnapshot(context.Context, string, string, []model.Standing, map[string]string, time.Time) (int, error)
 	ReplaceLeaders(context.Context, string, string, string, string, []model.StatLeader) error
 	ReplaceSquad(context.Context, string, string, string, string, []model.SquadMember, map[string]uuid.UUID) error
+	SetTeamColour(ctx context.Context, teamID, colour string) error
 	PlayersNeedingBio(context.Context, string, time.Time, int) (map[string]uuid.UUID, error)
 	ReplaceTeamHistory(context.Context, uuid.UUID, string, []model.TeamHistoryEntry) error
 	LogIngestRun(context.Context, *string, string, time.Time, time.Time, bool, string) error

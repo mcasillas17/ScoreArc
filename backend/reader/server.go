@@ -21,6 +21,7 @@ type readerStore interface {
 	Bracket(context.Context, string, string) ([]BracketRound, error)
 	MatchSummary(context.Context, string) (*MatchSummary, error)
 	TopScorers(context.Context, string, string) ([]espn.TopScorer, error)
+	Team(ctx context.Context, teamID, competition, season string) (*TeamProfile, error)
 }
 
 type newsReader interface {
@@ -57,6 +58,7 @@ func (a *App) router() http.Handler {
 		router.Get("/competitions/{comp}/{season}/standings", a.handleStandings)
 		router.Get("/competitions/{comp}/{season}/bracket", a.handleBracket)
 		router.Get("/competitions/{comp}/{season}/top-scorers", a.handleTopScorers)
+		router.Get("/competitions/{comp}/{season}/teams/{teamId}", a.handleTeam)
 		router.Get("/competitions/{comp}/news", a.handleNews)
 		router.Get("/matches/{id}", a.handleMatchSummary)
 	})

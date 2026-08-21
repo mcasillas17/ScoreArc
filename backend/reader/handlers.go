@@ -165,3 +165,38 @@ func (a *App) handleMatchSummary(writer http.ResponseWriter, request *http.Reque
 	cacheFor(writer, 30)
 	writeJSON(writer, http.StatusOK, summary)
 }
+
+// One club inside one competition: identity, colours, season record, squad
+// with season statistics, and the club's fixtures and results.
+//
+// A team we do not hold is 404, not 500: the request was well-formed and the
+// answer is that there is no such team here. An unknown competition stays 400,
+// matching the other handlers -- that is a malformed request, not a miss.
+func (a *App) handleTeam(writer http.ResponseWriter, request *http.Request) {
+	competition := chi.URLParam(request, "comp")
+	season := chi.URLParam(request, "season")
+	teamID := chi.URLParam(request, "teamId")
+	if _, _, ok := a.resolve(competition, season); !ok {
+		writeError(writer, http.StatusBadRequest, "unknown competition or season")
+		return
+	}
+	profile, err := a.store.Team(request.Context(), teamID, competition, season)
+	if err != nil {
+		a.logger.Error("team",
+			"competition", competition, "season", season, "team", teamID, "err", err)
+		writeError(writer, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if profile == nil {
+		writeError(writer, http.StatusNotFound, "unknown team")
+		return
+	}
+	if profile.Squad == nil {
+		profile.Squad = []SquadPlayer{}
+	}
+	if profile.Schedule == nil {
+		profile.Schedule = []Match{}
+	}
+	cacheFor(writer, 120)
+	writeJSON(writer, http.StatusOK, profile)
+}

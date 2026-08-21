@@ -1,0 +1,4 @@
+ALTER TABLE team DROP CONSTRAINT IF EXISTS team_color_hex;
+ALTER TABLE team DROP CONSTRAINT IF EXISTS team_alternate_color_hex;
+ALTER TABLE team DROP COLUMN IF EXISTS color;
+ALTER TABLE team DROP COLUMN IF EXISTS alternate_color;

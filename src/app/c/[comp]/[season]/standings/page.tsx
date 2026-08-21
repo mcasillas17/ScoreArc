@@ -25,6 +25,9 @@ export default async function StandingsPage({ params }: { params: { comp: string
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) notFound();
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
+  // Crests in the tables below link here. Competition-scoped because a club's
+  // record and squad only mean something inside one competition.
+  const teamBase = `/c/${rc.competition.id}/${rc.season.id}/team`;
   const hasBracket = rc.season.format.hasBracket;
   // A finished (non-current) edition is view-only — no "what's next" band.
   const readOnly = rc.season.id !== rc.competition.currentSeasonId;
@@ -79,6 +82,7 @@ export default async function StandingsPage({ params }: { params: { comp: string
             their UCL/UEL/relegation bands. StandingsLive ignores both when
             showThirdPlace is set, so passing them unconditionally is safe. */}
         <StandingsLive
+          teamBase={teamBase}
           initialGroups={groups}
           initialScorers={scorers}
           initialAssists={assists}

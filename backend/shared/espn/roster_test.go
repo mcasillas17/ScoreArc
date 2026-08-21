@@ -155,3 +155,28 @@ func TestMapRosterRejectsFailedEnvelope(t *testing.T) {
 		t.Fatal("expected non-success roster envelope to fail")
 	}
 }
+
+// The team.color column is CHECK-constrained to six hex digits, so anything
+// else is dropped at the mapper rather than failing a whole squad write for
+// one club whose colour arrived malformed.
+func TestNormaliseHexColour(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"ffff91", "ffff91"},
+		{"#ffff91", "ffff91"},
+		{"  ffff91  ", "ffff91"},
+		{"FFFF91", "FFFF91"},
+		{"", ""},
+		{"fff", ""},
+		{"transparent", ""},
+		{"ffff9g", ""},
+		{"ffff911", ""},
+	}
+	for _, c := range cases {
+		if got := normaliseHexColour(c.in); got != c.want {
+			t.Errorf("normaliseHexColour(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

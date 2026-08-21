@@ -9,7 +9,8 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "export:competitions": "tsx scripts/export-competitions.mjs"
+    "export:competitions": "tsx scripts/export-competitions.mjs",
+    "export:teams": "node scripts/export-team-crosswalk.mjs"
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",

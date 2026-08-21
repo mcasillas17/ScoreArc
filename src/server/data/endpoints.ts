@@ -13,3 +13,27 @@ export const newsUrl = (slug: string) => `${site(slug)}/news`;
 // tables a club belongs to, since the cup's own payload carries no league
 // membership on the team object.
 export const teamsUrl = (slug: string) => `${site(slug)}/teams`;
+
+// A single club within one competition. Verified keyless and HTTP 200 on
+// 2026-08-19 for mex.1/teams/227.
+//
+// Team ids reach these from a route parameter, so they are encoded rather than
+// interpolated raw.
+export const teamUrl = (slug: string, teamId: string) =>
+  `${site(slug)}/teams/${encodeURIComponent(teamId)}`;
+
+// The whole squad, with each player's season statistics inline -- one request
+// for a complete squad stat table, not one per player. Note that not every
+// athlete carries a statistics block: 7 of 35 on the recorded fixture have
+// none at all, because they have not played.
+export const teamRosterUrl = (slug: string, teamId: string) =>
+  `${site(slug)}/teams/${encodeURIComponent(teamId)}/roster`;
+
+// The club's schedule -- results by default, upcoming matches with
+// `fixture=true` (ESPN's parameter name, not ours). It is one or the other, never both: verified 2026-08-19,
+// the bare call returned 4 events all finished while `?fixture=true` returned
+// 13 all upcoming. A page wanting upcoming AND played has to ask twice, and
+// the next match comes from the second call (the profile's nextEvent array
+// is empty on this provider).
+export const teamScheduleUrl = (slug: string, teamId: string, upcoming = false) =>
+  `${site(slug)}/teams/${encodeURIComponent(teamId)}/schedule${upcoming ? '?fixture=true' : ''}`;

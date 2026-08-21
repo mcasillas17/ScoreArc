@@ -156,3 +156,26 @@ WHERE competition_id=$1 AND season_id=$2 AND team_id=$3
 	}
 	return nil
 }
+
+// SetTeamColour records a club's primary colour, captured from the roster
+// payload the squad refresh already fetches.
+//
+// Deliberately not folded into ReplaceSquad: a club's colour is identity, not
+// squad membership, and it must survive a squad write being rejected for
+// shrinking too far. It is also a no-op for an empty colour rather than an
+// error -- a club whose colour the provider omits is not a failure, and
+// blanking a colour we already hold would lose good data to a bad response.
+func (s *Store) SetTeamColour(ctx context.Context, teamID, colour string) error {
+	if teamID == "" || colour == "" {
+		return nil
+	}
+	_, err := s.pool.Exec(ctx, `
+UPDATE team
+   SET color = $2, updated_at = now()
+ WHERE id = $1
+   AND (color IS DISTINCT FROM $2)`, teamID, colour)
+	if err != nil {
+		return fmt.Errorf("set team colour: %w", err)
+	}
+	return nil
+}

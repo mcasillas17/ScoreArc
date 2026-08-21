@@ -1,7 +1,28 @@
-import type { Match, BracketRound, Shootout, MatchSummaryData, StatLeader, NewsArticle, Group } from './types';
+import type {
+  Match,
+  BracketRound,
+  Shootout,
+  MatchSummaryData,
+  StatLeader,
+  NewsArticle,
+  Group,
+  TeamProfile,
+} from './types';
 import type { CompetitionSeason } from './competitions';
-import { scoreboardUrl, standingsUrl, summaryUrl, bracketUrl, statisticsUrl, newsUrl, teamsUrl } from './endpoints';
+import {
+  scoreboardUrl,
+  standingsUrl,
+  summaryUrl,
+  bracketUrl,
+  statisticsUrl,
+  newsUrl,
+  teamsUrl,
+  teamUrl,
+  teamRosterUrl,
+  teamScheduleUrl,
+} from './endpoints';
 import { mapScoreboard } from './providers/espn-matches';
+import { mapTeamProfile, mapTeamRoster, mapTeamSchedule } from './providers/espn-team';
 import { splitLeagueTeamIds } from './providers/espn-teams';
 import { computePhaseTables } from './leaguesCupTables';
 import { computeOverallTable } from './mlsTables';
@@ -31,6 +52,7 @@ export interface DataStore {
   getTopScorers(rc: CompetitionSeason): Promise<StatLeader[]>;
   getTopAssists(rc: CompetitionSeason): Promise<StatLeader[]>;
   getNews(rc: CompetitionSeason): Promise<NewsArticle[]>;
+  getTeam(rc: CompetitionSeason, teamId: string): Promise<TeamProfile | null>;
 }
 
 // How many scorers the Golden Boot table shows.
@@ -259,6 +281,48 @@ export function createDataStore(deps: DataDeps): DataStore {
         .slice(0, limit);
       deps.cache.set(k, upcoming, ttlMs);
       return upcoming;
+    },
+
+    // A club within one competition. Three payloads fetched in parallel and
+    // cached as one.
+    //
+    // The failure modes are deliberately different. Identity is what the page
+    // is, so a failed profile fetch is null and the route 404s. The squad and
+    // the schedule are blocks on that page, so a failure there degrades to an
+    // empty block -- losing the whole page because the fixture list timed out
+    // would be a worse answer than showing the club without it.
+    async getTeam(rc, teamId: string, ttlMs = 120_000): Promise<TeamProfile | null> {
+      const k = key(rc, `team:${teamId}`);
+      const cached = deps.cache.get(k) as TeamProfile | undefined;
+      if (cached) return cached;
+
+      try {
+        // Four requests, not three: the schedule endpoint returns played OR
+        // upcoming matches depending on `fixture=true`, never both, so a
+        // matches-and-results block has to ask twice.
+        const [rawProfile, rawRoster, rawResults, rawFixtures] = await Promise.all([
+          deps.fetchJson(teamUrl(slug(rc), teamId)),
+          deps.fetchJson(teamRosterUrl(slug(rc), teamId)).catch(() => null),
+          deps.fetchJson(teamScheduleUrl(slug(rc), teamId)).catch(() => null),
+          deps.fetchJson(teamScheduleUrl(slug(rc), teamId, true)).catch(() => null),
+        ]);
+
+        const base = mapTeamProfile(rawProfile);
+        if (!base) return null;
+
+        const profile: TeamProfile = {
+          ...base,
+          squad: rawRoster ? mapTeamRoster(rawRoster) : [],
+          schedule: [
+            ...(rawResults ? mapTeamSchedule(rawResults) : []),
+            ...(rawFixtures ? mapTeamSchedule(rawFixtures) : []),
+          ].sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()),
+        };
+        deps.cache.set(k, profile, ttlMs);
+        return profile;
+      } catch {
+        return null;
+      }
     },
 
     async getStandings(rc, ttlMs = 60_000): Promise<Group[]> {

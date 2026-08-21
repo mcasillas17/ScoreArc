@@ -4,6 +4,7 @@ import LanguageText from './LanguageText';
 import type { Standing } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
 import TeamBadge from './TeamBadge';
+import { teamHref } from './teamHref';
 import LeagueDial from './LeagueDial';
 import { splitByCut } from './splitByCut';
 
@@ -11,11 +12,11 @@ function fmtGD(gd: number): string {
   return gd > 0 ? `+${gd}` : String(gd);
 }
 
-function Row({ s, teamStyle, lig }: { s: Standing; teamStyle: TeamStyle; lig: boolean }) {
+function Row({ s, teamStyle, lig, teamBase }: { s: Standing; teamStyle: TeamStyle; lig: boolean; teamBase?: string }) {
   return (
     <div className={`ll-row${lig ? ' ll-row--in' : ''}`}>
       <span className="ll-rank">{s.rank}</span>
-      <TeamBadge team={s.team} size={26} style={teamStyle} />
+      <TeamBadge team={s.team} size={26} style={teamStyle} href={teamHref(teamBase, s.team)} />
       <span className="ll-name">{s.team.name}</span>
       <span className="ll-gd">{fmtGD(s.goalDifference)}</span>
       <span className="ll-pts">{s.points}</span>
@@ -24,11 +25,12 @@ function Row({ s, teamStyle, lig }: { s: Standing; teamStyle: TeamStyle; lig: bo
 }
 
 export default function LeagueLadder({
-  standings, qualification, teamStyle,
+  standings, qualification, teamStyle, teamBase,
 }: {
   standings: Standing[];
   qualification: { cut: number; label: string };
   teamStyle: TeamStyle;
+  teamBase?: string;
 }) {
   if (standings.length === 0) {
     return <div className="empty-section"><p className="empty-text"><LanguageText en="Standings are unavailable right now." es="La clasificación no está disponible en este momento." /></p></div>;
@@ -60,21 +62,21 @@ export default function LeagueLadder({
             // every club as if eliminated — the same false claim as marking
             // them all qualified, just inverted.
             <div className="ll-band">
-              {standings.map((s) => <Row key={s.team.id} s={s} teamStyle={teamStyle} lig={false} />)}
+              {standings.map((s) => <Row key={s.team.id} s={s} teamStyle={teamStyle} lig={false} teamBase={teamBase} />)}
             </div>
           ) : (<>
             <div className="ll-band">
               <div className="ll-band-label ll-band-label--in">
                 <span>◆ {qualification.label}</span><span className="ll-band-n"><LanguageText en="Quarterfinals" es="Cuartos de final" /></span><span className="ll-rule" />
               </div>
-              {inCut.map((s) => <Row key={s.team.id} s={s} teamStyle={teamStyle} lig />)}
+              {inCut.map((s) => <Row key={s.team.id} s={s} teamStyle={teamStyle} lig teamBase={teamBase} />)}
             </div>
             <div className="ll-cutline"><span className="ll-rule" /><span><LanguageText en={`${qualification.label} cut`} es={`Corte de ${qualification.label}`} /></span><span className="ll-rule" /></div>
             <div className="ll-band ll-band--out">
               <div className="ll-band-label">
                 <span><LanguageText en="Out" es="Fuera" /></span><span className="ll-band-n">{qualification.cut + 1}–{standings.length}</span><span className="ll-rule" />
               </div>
-              {out.map((s) => <Row key={s.team.id} s={s} teamStyle={teamStyle} lig={false} />)}
+              {out.map((s) => <Row key={s.team.id} s={s} teamStyle={teamStyle} lig={false} teamBase={teamBase} />)}
             </div>
           </>)}
         </div>

@@ -125,3 +125,62 @@ func normalizeMatchSummary(summary *MatchSummary) {
 		}
 	}
 }
+
+// PlayerSeasonStats mirrors src/server/data/types.ts's PlayerSeasonStats.
+// Every field is a pointer: a stat the provider never sent must serialise as
+// null, not 0, or the API asserts a measurement nobody made.
+type PlayerSeasonStats struct {
+	Appearances    *int `json:"appearances"`
+	SubIns         *int `json:"subIns"`
+	TotalGoals     *int `json:"totalGoals"`
+	GoalAssists    *int `json:"goalAssists"`
+	TotalShots     *int `json:"totalShots"`
+	ShotsOnTarget  *int `json:"shotsOnTarget"`
+	Offsides       *int `json:"offsides"`
+	FoulsCommitted *int `json:"foulsCommitted"`
+	FoulsSuffered  *int `json:"foulsSuffered"`
+	YellowCards    *int `json:"yellowCards"`
+	RedCards       *int `json:"redCards"`
+	OwnGoals       *int `json:"ownGoals"`
+	Saves          *int `json:"saves"`
+	ShotsFaced     *int `json:"shotsFaced"`
+	GoalsConceded  *int `json:"goalsConceded"`
+}
+
+// SquadPlayer mirrors src/server/data/types.ts's SquadPlayer.
+//
+// Stats is a pointer to the whole block, separately from each stat inside it
+// being nullable: a player with no player_season_stat row has never been
+// measured at all, which the page renders as "has not appeared" rather than as
+// a line of dashes that looks like a measurement failure.
+type SquadPlayer struct {
+	ID          string             `json:"id"`
+	Name        string             `json:"name"`
+	Jersey      *int               `json:"jersey"`
+	Position    string             `json:"position"`
+	Age         *int               `json:"age"`
+	Nationality *string            `json:"nationality"`
+	HeadshotURL *string            `json:"headshotUrl"`
+	Stats       *PlayerSeasonStats `json:"stats"`
+}
+
+type TeamRecord struct {
+	Summary        string `json:"summary"`
+	GamesPlayed    *int   `json:"gamesPlayed"`
+	Points         *int   `json:"points"`
+	GoalDifference *int   `json:"goalDifference"`
+}
+
+// TeamProfile mirrors src/server/data/types.ts's TeamProfile, so migrating the
+// frontend from ESPN to this API is a base-URL change rather than a reshaping
+// exercise.
+type TeamProfile struct {
+	Team            espn.Team     `json:"team"`
+	Location        *string       `json:"location"`
+	Color           *string       `json:"color"`
+	AltColor        *string       `json:"altColor"`
+	Record          *TeamRecord   `json:"record"`
+	StandingSummary *string       `json:"standingSummary"`
+	Squad           []SquadPlayer `json:"squad"`
+	Schedule        []Match       `json:"schedule"`
+}

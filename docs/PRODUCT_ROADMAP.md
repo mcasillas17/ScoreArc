@@ -275,16 +275,56 @@ Branch `feat/fixtures-results`. The single biggest missing capability.
 ### E4 · Team pages
 Branch `feat/team-pages`. Every crest on the site is currently a dead end.
 
-- **T4.1** Team provider + mapper
-- **T4.2** Team route and page
-- **T4.3** Make crests clickable everywhere
+- **T4.1** Team provider + mapper — done
+- **T4.2** Team route and page — done
+- **T4.3** Make crests clickable everywhere — done
+- **T4.4** Backend mirror — done: migration 0022 (club colours), the ingester
+  capturing them from the roster it already fetches, and
+  `GET /v1/competitions/{comp}/{season}/teams/{teamId}` returning the same
+  `TeamProfile` shape, so the migration off ESPN is a base-URL change.
 
-Verified 2026-08-15: `/teams/{id}/roster` returns all 35 players **with their
-season statistics inline** — so a complete, sortable squad stat table costs one
-request, not 35. The scope here is larger than a squad list for the same effort.
+Verified 2026-08-15, re-verified 2026-08-19: `/teams/{id}/roster` returns all 35
+players, **28 of them with season statistics inline** — so a complete, sortable
+squad stat table costs one request, not 35. The scope here is larger than a
+squad list for the same effort.
+
+The other seven carry no `statistics` key at all; they have not played. A squad
+row for them reads "has not appeared", never a line of zeroes. Also re-verified:
+the profile's `nextEvent` array is **empty** while the schedule endpoint carries
+four fixtures, so the next-fixture block reads the schedule.
 
 Each athlete also carries an `injuries` array that is **empty for all 35**. The
 field existing is not the data existing; no injuries feature is built on it.
+
+### E12 · Team discovery — proposed, not scheduled
+
+Teams are reachable only by clicking a crest (standings, the landing page, the
+match popup). There is no way to browse or search for one. Two pieces:
+
+- **T12.1 Competition teams index** — `/c/[comp]/[season]/teams`, alphabetical,
+  plus a nav item. Low cost: the data is already fetched for the table. Note
+  that standings *is* the team list for a league, so the real value is
+  competitions without a published table, and discoverability.
+- **T12.2 Site-wide team search** — the more valuable half, and the one with a
+  design problem.
+
+**The blocker for search:** a team page is competition-scoped on purpose
+(América's record in Liga MX is not their record in the Leagues Cup), so a
+global result has to answer "which competition's page?". `teams.seed.json`
+carries `country`, not competition membership — verified 2026-08-20 — so
+nothing currently knows. Three options:
+
+1. **Results listed per competition** — "América · Liga MX" and
+   "América · Leagues Cup" as separate hits. Membership derived from the
+   standings already cached per competition. No new curation, no new provider
+   dependency. **Recommended.**
+2. Add membership to the seed. A curation burden that goes stale every transfer
+   window, for a fact the standings already state.
+3. A cross-competition team page ("América everywhere"). Already listed as out
+   of scope in the E4 spec: it needs identity resolution across competitions,
+   which is backend Phase 1.
+
+Do (1) now; (3) supersedes it when the backend lands.
 
 ### E5 · Player pages
 Branch `feat/player-pages`. Unblocked by three keyless athlete endpoints.

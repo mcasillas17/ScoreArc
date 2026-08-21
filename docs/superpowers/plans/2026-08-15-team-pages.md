@@ -4,13 +4,20 @@
 
 **Goal:** Make every crest on ScoreArc lead to a team page — identity, season record, form, next fixture, a full squad statistics table and the club's schedule — using three keyless ESPN endpoints verified live on 2026-08-15.
 
-**Architecture:** A new `espn-team.ts` provider maps three payloads behind the existing `DataStore` seam. The squad table is the centrepiece: `/teams/{id}/roster` returns all 35 players *with their season statistics inline*, so a complete sortable stat table costs one request. `TeamBadge` becomes the single place a crest turns into a link.
+**Architecture:** A new `espn-team.ts` provider maps three payloads behind the existing `DataStore` seam. The squad table is the centrepiece: `/teams/{id}/roster` returns all 35 players, 28 of them *with season statistics inline*, so a complete sortable stat table costs one request. `TeamBadge` becomes the single place a crest turns into a link.
 
 **Tech Stack:** Next.js 14 App Router, React 18, TypeScript (strict), Vitest.
 
 **Spec:** `docs/superpowers/specs/2026-08-15-team-pages-design.md`
 **Epic:** E4 in `docs/PRODUCT_ROADMAP.md`
 **Branch:** `feat/team-pages` off latest `origin/main`
+
+**Payload claims re-verified 2026-08-19.** Three of this plan's assertions had
+drifted and are corrected inline below: 28 of 35 athletes carry statistics (not
+all 35), `nextEvent` is empty, and `mapScoreboard` cannot be reused for the
+schedule. **Since this plan was written, #100/#101 added English/Spanish
+support**, so every string the team page introduces needs both languages — the
+tasks below predate i18n and do not mention it.
 
 ## Global Constraints
 
@@ -72,9 +79,13 @@ console.log('schedule events:', s.events.length);
 "
 ```
 
-Expected: América / AME with a record summary; 35 roster athletes; categories
-`general,offensive,goalKeeping`; **`injuries populated anywhere: false`**; a
-non-zero event count.
+Expected: América / AME with a record summary; 35 roster athletes of which
+**28 carry statistics**; categories `general,offensive,goalKeeping`;
+**`injuries populated anywhere: false`**; a non-zero event count.
+
+Also expect **`nextEvent` to be empty**. It was on 2026-08-19, while the
+schedule endpoint carried four fixtures — so the next-fixture block reads the
+schedule, never `nextEvent`.
 
 That last line is the point of checking: the `injuries` array exists on every
 athlete and is empty on all of them. The field being present is not the data
@@ -265,10 +276,14 @@ describe('mapTeamProfile', () => {
     expect(p.color).toBeTruthy();
   });
 
+  // Derive these from the recorded fixture rather than pasting the numbers
+  // below: the record moves every matchday. On the 2026-08-19 capture it is
+  // '3-1-0', 4 played, 10 points; on the 2026-08-15 capture it was '2-1-0',
+  // 3 played, 7 points. Assert the shape and the arithmetic, not a scoreline.
   it('maps the season record', () => {
-    expect(p.record!.summary).toBe('2-1-0');
-    expect(p.record!.gamesPlayed).toBe(3);
-    expect(p.record!.points).toBe(7);
+    expect(p.record!.summary).toMatch(/^\d+-\d+-\d+$/);
+    expect(p.record!.gamesPlayed).toBeGreaterThan(0);
+    expect(p.record!.points).toBeGreaterThanOrEqual(0);
   });
 
   it('returns null for a malformed payload', () => {
@@ -283,6 +298,15 @@ describe('mapTeamRoster', () => {
   it('maps the whole squad', () => {
     expect(squad).toHaveLength(35);
     expect(squad.every((p) => p.id && p.name)).toBe(true);
+  });
+
+  // Seven of the 35 have no statistics block at all. They must still appear in
+  // the squad -- with stats null, which is what the table renders as "has not
+  // appeared" rather than as zeroes.
+  it('keeps players who have no statistics block, with stats null', () => {
+    const statless = squad.filter((p) => p.stats === null);
+    expect(statless.length).toBeGreaterThan(0);
+    expect(statless.every((p) => p.id && p.name)).toBe(true);
   });
 
   // The headline capability: season stats arrive inline, so a squad stat table
@@ -374,10 +398,17 @@ Write `mapTeamProfile`, `mapTeamRoster` and `mapTeamSchedule` around it, each
 wrapped in try/catch returning `null` / `[]` on a malformed payload, matching the
 defensive style of the existing mappers in `providers/`.
 
-For `mapTeamSchedule`, reuse `mapScoreboard`'s event-shaped logic if the
-`competitions[]` block matches — open `espn-matches.ts` and check before
-duplicating it. If the shapes match, extract the shared event mapper rather than
-writing a second one.
+For `mapTeamSchedule`: **checked on 2026-08-19, and `mapScoreboard` cannot be
+reused as-is.** Two differences in the schedule payload break it:
+
+- status lives on `competitions[0].status`, not on `ev.status`, which
+  `mapScoreboard` dereferences unconditionally — it throws on this payload;
+- `competitor.score` is a `$ref` stub pointing at the core API
+  (`{"$ref": "http://sports.core.api.espn.pvt/..."}`), not a value, so
+  `Number(score)` yields NaN rather than a goal count.
+
+Write the accessors so both shapes work and extract the shared core, or give the
+schedule its own mapper. Do not call `mapScoreboard` on this payload.
 
 - [ ] **Step 4: Run to verify it passes**
 

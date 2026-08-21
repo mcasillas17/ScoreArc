@@ -38,6 +38,9 @@ jobs:
       - run: npm run export:competitions
       - name: Verify generated competition registry
         run: git diff --exit-code -- backend/config/competitions.json
+      - run: npm run export:teams
+      - name: Verify generated team crosswalk
+        run: git diff --exit-code -- src/server/data/teamCrosswalk.json
       - run: npm test
       - run: npx tsc --noEmit
       - run: npm run lint

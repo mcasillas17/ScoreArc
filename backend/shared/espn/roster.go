@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mcasillas17/scorearc-backend/shared/model"
@@ -14,6 +15,11 @@ type rawRosterDocument struct {
 	Status string `json:"status"`
 	Team   struct {
 		ID flexibleString `json:"id"`
+		// The club's primary colour, six hex digits with no '#'. Present on
+		// the roster payload the ingester already fetches, so capturing it
+		// costs no extra request. alternateColor is NOT here -- it appears
+		// only on /teams/{id}, which this ingester does not call.
+		Color string `json:"color"`
 	} `json:"team"`
 	Athletes []rawRosterAthlete `json:"athletes"`
 }
@@ -59,6 +65,7 @@ func MapRoster(raw []byte) (model.Squad, error) {
 
 	squad := model.Squad{
 		TeamSourceID: string(document.Team.ID),
+		Color:        normaliseHexColour(document.Team.Color),
 		Players:      make([]model.SquadMember, 0, len(document.Athletes)),
 	}
 	for index, athlete := range document.Athletes {
@@ -129,4 +136,27 @@ func MapRoster(raw []byte) (model.Squad, error) {
 		squad.Players = append(squad.Players, member)
 	}
 	return squad, nil
+}
+
+// normaliseHexColour returns six hex digits without a '#', or "" if the value
+// is not that.
+//
+// The column has a CHECK constraint of exactly this shape, so anything odd is
+// dropped here rather than failing the whole squad write for one club whose
+// colour the provider sent as "" or "transparent". A missing colour is a
+// cosmetic loss; a failed write loses the squad.
+func normaliseHexColour(value string) string {
+	trimmed := strings.TrimPrefix(strings.TrimSpace(value), "#")
+	if len(trimmed) != 6 {
+		return ""
+	}
+	for _, r := range trimmed {
+		isDigit := r >= '0' && r <= '9'
+		isLower := r >= 'a' && r <= 'f'
+		isUpper := r >= 'A' && r <= 'F'
+		if !isDigit && !isLower && !isUpper {
+			return ""
+		}
+	}
+	return trimmed
 }

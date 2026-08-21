@@ -5,6 +5,10 @@ import { TtlCache } from './cache';
 import sb from './__fixtures__/espn-scoreboard.json';
 import summaryFixture from './__fixtures__/espn-summary.json';
 import lcFixture from './__fixtures__/espn-leagues-cup-scoreboard.json';
+import teamProfileRaw from './__fixtures__/espn-team-profile.json';
+import teamRosterRaw from './__fixtures__/espn-team-roster.json';
+import teamScheduleRaw from './__fixtures__/espn-team-schedule.json';
+import teamFixturesRaw from './__fixtures__/espn-team-fixtures.json';
 
 const wc = resolveSeason('world-cup')!;
 const lc = resolveSeason('leagues-cup')!;
@@ -256,5 +260,88 @@ describe('getLiveWindow', () => {
     const liveCalls = urls.length;
     await store.getFixtures(wc, '20260801-20260831');
     expect(urls.length).toBe(liveCalls + 1);
+  });
+});
+
+describe('getTeam', () => {
+  const ligaMx = resolveSeason('liga-mx')!;
+
+  function teamDeps() {
+    const urls: string[] = [];
+    const deps = {
+      fetchJson: async (url: string) => {
+        urls.push(url);
+        if (url.endsWith('/roster')) return teamRosterRaw;
+        if (url.includes('fixture=true')) return teamFixturesRaw;
+        if (url.includes('/schedule')) return teamScheduleRaw;
+        return teamProfileRaw;
+      },
+      cache: new TtlCache<unknown>(),
+    };
+    return { deps, urls };
+  }
+
+  it('fetches profile, roster and schedule, and caches the result', async () => {
+    const { deps, urls } = teamDeps();
+    const store = createDataStore(deps);
+
+    const first = await store.getTeam(ligaMx, '227');
+    expect(first!.squad).toHaveLength(35);
+    expect(first!.schedule.length).toBeGreaterThan(0);
+    // Four: profile, roster, results and upcoming fixtures. The schedule
+    // endpoint returns one or the other, never both.
+    expect(urls).toHaveLength(4);
+
+    await store.getTeam(ligaMx, '227');
+    expect(urls).toHaveLength(4); // served from cache
+  });
+
+  it('caches per team id, not per competition', async () => {
+    const { deps, urls } = teamDeps();
+    const store = createDataStore(deps);
+    await store.getTeam(ligaMx, '227');
+    await store.getTeam(ligaMx, '228');
+    expect(urls.some((u) => u.includes('/228'))).toBe(true);
+  });
+
+  // The page is meaningless without identity, so a failed profile is null --
+  // but a failed roster or schedule degrades to an empty block rather than
+  // throwing the whole page away.
+  it('returns null when the profile fetch fails', async () => {
+    const store = createDataStore({
+      cache: new TtlCache<unknown>(),
+      fetchJson: async () => { throw new Error('502'); },
+    });
+    expect(await store.getTeam(ligaMx, '227')).toBeNull();
+  });
+
+  it('keeps the page when only the roster fails', async () => {
+    const store = createDataStore({
+      cache: new TtlCache<unknown>(),
+      fetchJson: async (url: string) => {
+        if (url.endsWith('/roster')) throw new Error('502');
+        if (url.includes('fixture=true')) return teamFixturesRaw;
+        if (url.includes('/schedule')) return teamScheduleRaw;
+        return teamProfileRaw;
+      },
+    });
+    const profile = await store.getTeam(ligaMx, '227');
+    expect(profile).not.toBeNull();
+    expect(profile!.squad).toEqual([]);
+    expect(profile!.schedule.length).toBeGreaterThan(0);
+  });
+
+  // Results and upcoming fixtures come from two calls and are merged into one
+  // chronological list, so the page can show both and pick a next fixture.
+  it('merges results and upcoming fixtures in kickoff order', async () => {
+    const { deps } = teamDeps();
+    const profile = await createDataStore(deps).getTeam(ligaMx, '227');
+    const schedule = profile!.schedule;
+    expect(schedule.some((m) => m.state === 'finished')).toBe(true);
+    expect(schedule.some((m) => m.state !== 'finished')).toBe(true);
+    for (let i = 1; i < schedule.length; i++) {
+      expect(new Date(schedule[i - 1].kickoff).getTime())
+        .toBeLessThanOrEqual(new Date(schedule[i].kickoff).getTime());
+    }
   });
 });

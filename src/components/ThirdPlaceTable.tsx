@@ -2,6 +2,7 @@ import LanguageText from './LanguageText';
 import type { Group } from "@/server/data/types";
 import { thirdPlacedRanking, QUALIFYING_THIRDS } from "@/lib/standings";
 import TeamBadge from "./TeamBadge";
+import { teamHref } from './teamHref';
 
 function fmtGD(gd: number): string {
   return gd > 0 ? `+${gd}` : String(gd);
@@ -10,9 +11,11 @@ function fmtGD(gd: number): string {
 export default function ThirdPlaceTable({
   groups,
   teamStyle,
+  teamBase,
 }: {
   groups: Group[];
   teamStyle?: 'flag' | 'crest';
+  teamBase?: string;
 }) {
   const rows = thirdPlacedRanking(groups);
   // thirdPlacedRanking only sets `qualifies` when the numeric criteria actually
@@ -50,7 +53,7 @@ export default function ThirdPlaceTable({
               <td className="rank-cell">{ranked ? r.rank : ''}</td>
               <td className="team-cell">
                 <div className="team-cell-inner">
-                  <TeamBadge team={r.team} size={22} style={teamStyle} />
+                  <TeamBadge team={r.team} size={22} style={teamStyle} href={teamHref(teamBase, r.team)} />
                   <span className="team-name">{r.team.name}</span>
                 </div>
               </td>

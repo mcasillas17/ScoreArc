@@ -116,6 +116,16 @@ func TestOpenAPIValidatesActualRouteResponses(t *testing.T) {
 		}}}},
 		summary:    &MatchSummary{Scorers: []espn.Scorer{}, Cards: []espn.Card{}, Videos: []espn.MatchVideo{}, Commentary: []espn.CommentaryItem{}, H2H: []espn.H2HMeeting{}},
 		topScorers: []espn.TopScorer{{Rank: 1, Player: "Player", TeamAbbr: "ARG", TeamName: "Argentina", Goals: 7}},
+		teams: map[string]*TeamProfile{"arg": {
+			Team: espn.Team{ID: "arg", Name: "Argentina", Abbr: "ARG"},
+			Squad: []SquadPlayer{
+				{ID: "p1", Name: "Measured Player", Position: "M", Stats: &PlayerSeasonStats{}},
+				// A player with no statistics at all: stats must serialise as
+				// null, not as a block of nulls.
+				{ID: "p2", Name: "Unplayed Player", Position: "D"},
+			},
+			Schedule: []Match{},
+		}},
 	}
 	router := newTestApp(t, store, &fakeNewsReader{articles: []espn.NewsArticle{{ID: "1", Headline: "Headline", URL: "https://example.com/article"}}}).router()
 	tests := []struct {
@@ -127,6 +137,7 @@ func TestOpenAPIValidatesActualRouteResponses(t *testing.T) {
 		{target: "/v1/competitions/world-cup/2026/bracket", template: "/v1/competitions/{comp}/{season}/bracket"},
 		{target: "/v1/competitions/world-cup/2026/top-scorers", template: "/v1/competitions/{comp}/{season}/top-scorers"},
 		{target: "/v1/competitions/world-cup/news", template: "/v1/competitions/{comp}/news"},
+		{target: "/v1/competitions/world-cup/2026/teams/arg", template: "/v1/competitions/{comp}/{season}/teams/{teamId}"},
 		{target: "/v1/matches/1", template: "/v1/matches/{id}"},
 	}
 	for _, tt := range tests {
