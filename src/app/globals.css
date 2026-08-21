@@ -1126,8 +1126,11 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   .sn-item { padding: 7px 10px; white-space: nowrap; flex: none; }
   .sn-item--sub { padding: 7px 10px; }
   .sn-label { overflow: visible; }
-  .sn-soon,
+  /* The badge stays in the closed row: without it Players and Simulate look
+     like items that simply do not respond to a tap. Opacity alone is not a
+     message. Only the credit is dropped, which the drawer restores. */
   .sn-credit { display: none; }
+  .sn-soon { font-size: 8px; padding: 1px 5px; letter-spacing: 0.8px; }
 
   /* Open: the same items, as the full list. */
   .sn--open .sn-panel {

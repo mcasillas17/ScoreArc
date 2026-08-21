@@ -105,6 +105,14 @@ export function untilKickoff(ms: number): Bilingual | null {
  * finished string. This is what a news row says about itself instead of naming
  * the competition feed it arrived through — the per-league /news endpoints are
  * mostly generic, so that label was wrong on most rows.
+ *
+ * It does not re-tick while a tab sits open, and that is a judgement rather
+ * than a constraint. A mount-time clock would be perfectly hydration-safe --
+ * `useLocalNow` does exactly that, on this same page, in DigestMatches -- so
+ * "it would break hydration" is not the reason and must not be recorded as one.
+ * The reason is that the error equals the tab's open time against a label whose
+ * granularity is already coarse, and both pages are force-dynamic, so arriving
+ * or reloading is always correct.
  */
 export function publishedAgo(ms: number): Bilingual | null {
   if (!Number.isFinite(ms) || ms < 0) return null;
