@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { listCompetitions, resolveSeason } from '@/server/data/competitions';
@@ -252,6 +252,7 @@ export function bottomBarItems(pathname: string, locale: Locale): BottomBarItem[
 export default function SiteNav() {
   const [collapsed, setCollapsed] = useState(false);
   const [open, setOpen] = useState(false);
+  const mastheadMenuRef = useRef<HTMLButtonElement>(null);
   const pathname = usePathname() ?? '/';
   const locale = useLocale();
   const t = useTranslations();
@@ -303,6 +304,7 @@ export default function SiteNav() {
           </svg>
         </button>
         <button
+          ref={mastheadMenuRef}
           type="button"
           className="sn-burger"
           aria-expanded={open}
@@ -413,7 +415,10 @@ export default function SiteNav() {
             className="sn-tab"
             aria-expanded={open}
             aria-controls="sn-panel"
-            onClick={() => setOpen((v) => !v)}
+            onClick={() => {
+              setOpen(true);
+              mastheadMenuRef.current?.focus();
+            }}
           >
             <span className="sn-tab-icon">{tab.icon}</span>
             <span className="sn-tab-label">{tab.label}</span>
