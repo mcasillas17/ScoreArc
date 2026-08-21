@@ -18,6 +18,7 @@ interface Props {
   initialMatches: Match[];
   initialError?: string | null;
   apiBase: string;
+  teamBase?: string;
   range: string;
   teamStyle?: TeamStyle;
   /** Where "the full calendar" lives, so the empty state is not a dead end. */
@@ -57,6 +58,7 @@ export default function MatchesNow({
   initialMatches,
   initialError = null,
   apiBase,
+  teamBase,
   range,
   teamStyle = 'crest',
   calendarHref,
@@ -224,6 +226,7 @@ export default function MatchesNow({
 
       {detail && (
         <MatchDetailPopup
+          teamBase={teamBase}
           match={matchToBracketMatch(detail)}
           summary={summary}
           loading={loadingDetail}

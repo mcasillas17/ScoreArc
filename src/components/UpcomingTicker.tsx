@@ -12,6 +12,7 @@ import { trackEvent, trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry
 interface Props {
   initialMatches: Match[];
   apiBase: string;
+  teamBase?: string;
   teamStyle?: TeamStyle;
   // Restrict to the current Monday→Sunday week. True on a matchday, when the
   // week IS the story. False when the next fixture falls outside it — a league
@@ -140,7 +141,7 @@ function Chip({
   );
 }
 
-export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'flag', weekOnly = true }: Props) {
+export default function UpcomingTicker({ initialMatches, apiBase, teamBase, teamStyle = 'flag', weekOnly = true }: Props) {
   const [matches, setMatches] = useState<Match[]>(initialMatches);
   const [mounted, setMounted] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
@@ -316,6 +317,7 @@ export default function UpcomingTicker({ initialMatches, apiBase, teamStyle = 'f
 
       {detail && (
         <MatchDetailPopup
+          teamBase={teamBase}
           match={matchToBracketMatch(detail)}
           summary={summary}
           loading={loadingDetail}

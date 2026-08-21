@@ -28,6 +28,7 @@ interface Props {
   minMonth: string;
   maxMonth: string;
   apiBase: string;
+  teamBase?: string;
   teamStyle?: TeamStyle;
 }
 
@@ -65,6 +66,7 @@ export default function MatchCalendar({
   minMonth,
   maxMonth,
   apiBase,
+  teamBase,
   teamStyle = 'flag',
 }: Props) {
   const { language } = useLanguage();
@@ -324,6 +326,7 @@ export default function MatchCalendar({
 
       {detail && (
         <MatchDetailPopup
+          teamBase={teamBase}
           match={matchToBracketMatch(detail)}
           summary={summary}
           loading={loadingDetail}

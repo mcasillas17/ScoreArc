@@ -263,6 +263,7 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
       )}
 
       <RadialBracket
+        teamBase={`/c/${compId}/${seasonId}/team`}
         rounds={rounds}
         mode={mode}
         picks={picks}
