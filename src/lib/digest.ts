@@ -1,15 +1,55 @@
+import type { NewsArticle } from '@/server/data/types';
+
 /**
  * What the home digest's "What's on" block is showing, and how it says so.
  *
- * A scores site with nothing on it reads as broken, so an empty state is never
- * the answer: with nothing live and no kickoff in the window, the block leads
- * with recent results and the heading says that is what they are.
+ * A scores site with nothing on it reads as broken, so an empty state is the
+ * last resort: with nothing live and no kickoff in the near window, the block
+ * leads with recent results and the heading says that is what they are. Only
+ * when there is genuinely nothing — no live, no fixture, no result — does the
+ * heading say so, because the alternative is a heading that promises results
+ * above a block that has none.
  */
-export type WhatsOnMode = 'live' | 'upcoming' | 'recent';
+export type WhatsOnMode = 'live' | 'upcoming' | 'recent' | 'none';
 
 export interface Bilingual {
   en: string;
   es: string;
+}
+
+/**
+ * How far ahead a fixture still counts as "what's on".
+ *
+ * `getLiveWindow` reads -7/+14 days, and every scheduled match in it lands in
+ * the upcoming bucket. Without a bound the upcoming branch always wins, so the
+ * dead-day fallback below it is unreachable: on a quiet day the page led with
+ * fixtures a fortnight out and said "next kickoff in about 12 days" while a
+ * week of finished results sat unused in the same payload. A day is the bound
+ * because "what's on" is a today question — beyond that, what just happened is
+ * the more interesting answer.
+ */
+export const UPCOMING_HORIZON_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Which of the four things the block shows, and the rows it shows.
+ *
+ * The ladder is live → a kickoff inside the horizon → recent results → a
+ * distant fixture → nothing. The distant fixture sits *below* results
+ * deliberately: a result from four hours ago is news, a fixture nine days out
+ * is not. It stays on the ladder at all so that a competition's opening
+ * weekend, where there are no results yet, still shows something.
+ */
+export function chooseWhatsOn<T>(
+  buckets: { live: T[]; upcoming: T[]; recent: T[] },
+  msToNextKickoff: number | null,
+): { mode: WhatsOnMode; pool: T[] } {
+  const { live, upcoming, recent } = buckets;
+  if (live.length > 0) return { mode: 'live', pool: live };
+  const imminent = msToNextKickoff !== null && msToNextKickoff <= UPCOMING_HORIZON_MS;
+  if (upcoming.length > 0 && imminent) return { mode: 'upcoming', pool: upcoming };
+  if (recent.length > 0) return { mode: 'recent', pool: recent };
+  if (upcoming.length > 0) return { mode: 'upcoming', pool: upcoming };
+  return { mode: 'none', pool: [] };
 }
 
 /**
@@ -44,8 +84,46 @@ export function untilKickoff(ms: number): Bilingual | null {
 }
 
 /**
- * The line under the digest's title. It states which of the three things the
- * block is showing, so "recent results" is never mistaken for "what's next".
+ * How long ago an article was published, in plain words.
+ *
+ * The same reasoning as `untilKickoff`: a duration is timezone-free, so it is
+ * safe to compute on a server running UTC and hand to a client component as a
+ * finished string. This is what a news row says about itself instead of naming
+ * the competition feed it arrived through — the per-league /news endpoints are
+ * mostly generic, so that label was wrong on most rows.
+ */
+export function publishedAgo(ms: number): Bilingual | null {
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  const minutes = Math.floor(ms / 60000);
+  if (minutes < 60) {
+    return {
+      en: minutes <= 1 ? 'just now' : `${minutes} minutes ago`,
+      es: minutes <= 1 ? 'ahora mismo' : `hace ${minutes} minutos`,
+    };
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return {
+      en: hours === 1 ? '1 hour ago' : `${hours} hours ago`,
+      es: hours === 1 ? 'hace 1 hora' : `hace ${hours} horas`,
+    };
+  }
+  const days = Math.floor(hours / 24);
+  return {
+    en: days === 1 ? '1 day ago' : `${days} days ago`,
+    es: days === 1 ? 'hace 1 día' : `hace ${days} días`,
+  };
+}
+
+/**
+ * The line under the digest's title. It states which of the four things the
+ * block is showing, so "recent results" is never mistaken for "what's next"
+ * and an empty block is never introduced as a list of results.
+ *
+ * `count` is the number of rows the block actually renders — after dedupe and
+ * after the cap. Taking it from the raw entry list made the heading claim "4
+ * matches live right now" above three cards, because two competitions carry
+ * the same provider event id for a club playing in both.
  */
 export function whatsOnHeadline(
   mode: WhatsOnMode,
@@ -71,8 +149,46 @@ export function whatsOnHeadline(
       es: `Nada en vivo ahora mismo — próximo silbatazo ${away.es}.`,
     };
   }
+  if (mode === 'none') {
+    return {
+      en: 'Nothing live, nothing next, nothing just played — the window is empty.',
+      es: 'Nada en vivo, nada por jugarse, nada recién jugado — la ventana está vacía.',
+    };
+  }
   return {
     en: 'Nothing live right now — here are the latest results.',
     es: 'Nada en vivo ahora mismo — estos son los últimos resultados.',
   };
+}
+
+/**
+ * The stories worth showing, across every competition's feed.
+ *
+ * Per-feed cap first, so one busy competition cannot crowd out another's lead
+ * story; then dedupe, because ESPN publishes the same wire article under
+ * several leagues; then newest first, with the id as a tie-break so two
+ * articles sharing a publish timestamp always sort the same way.
+ */
+export function collectStories(
+  perCompetition: NewsArticle[][],
+  { perFeed, limit }: { perFeed: number; limit: number },
+): NewsArticle[] {
+  const seen = new Set<string>();
+  const unique: NewsArticle[] = [];
+  for (const feed of perCompetition) {
+    for (const article of feed.slice(0, perFeed)) {
+      if (seen.has(article.id)) continue;
+      seen.add(article.id);
+      unique.push(article);
+    }
+  }
+  // An unparseable `published` sorts oldest rather than poisoning the
+  // comparator: NaN makes every comparison false and the order arbitrary.
+  const at = (article: NewsArticle) => {
+    const t = new Date(article.published).getTime();
+    return Number.isNaN(t) ? -Infinity : t;
+  };
+  return unique
+    .sort((a, b) => (at(b) !== at(a) ? at(b) - at(a) : a.id.localeCompare(b.id)))
+    .slice(0, limit);
 }

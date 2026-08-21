@@ -2546,6 +2546,25 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   color: var(--text-muted);
 }
 .dg-empty { color: var(--text-muted); font-size: 13px; }
+/* A section label with a way further in beside it. Baseline-aligned rather than
+   centred so the arrow sits on the label's line, not above it. */
+.dg-labrow { display: flex; align-items: baseline; gap: 12px; }
+.dg-labrow .dg-lab { flex: 1; min-width: 0; }
+.dg-more {
+  flex: none;
+  margin-bottom: 10px;
+  color: var(--brand-bright);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.dg-more:hover { text-decoration: underline; }
+/* The standalone news page: one column, held to a reading measure rather than
+   the digest's full 1180px. */
+.dg-onecol { max-width: 720px; }
 
 .dg-mgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--dg-gap); }
 .dg-two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--dg-gap); align-items: start; }
@@ -2623,6 +2642,16 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* The edition the board is for. On a competition page the workspace supplies
+   the year; here a board sits beside eight others and has to say so itself. */
+.dg-bseason {
+  flex: none;
+  font-size: 9.5px;
+  color: var(--text-muted);
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .dg-blink {
   margin-left: auto;
@@ -3201,27 +3230,16 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 .ls-box-scroll { overflow-x: auto; }
 .ls-box-scroll .standings-table { min-width: 520px; }
 
-/* ---- Live band (home) ----
-   One slot above the competition tiles, in one of three modes: anything in
-   play, otherwise what just finished beside what is next, otherwise nothing
-   at all. The empty case renders no markup, so there is no state here for it. */
-.lb { margin-bottom: 30px; }
+/* Pre-mount placeholder for a time only the reader's clock can render. */
+.lt-pending { opacity: 0.35; }
 
-.lb-title {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-bottom: 10px;
-}
-.lb-title--live { color: var(--live-red); }
-.lb-title--next { color: var(--brand); }
+/* ---- Matches: "Now" mode ----
+   Sections in priority order, each a grid rather than a list: Liga MX kicks
+   off seven matches at once and a single column buries six of them. */
 
-/* Same pulse language the hub tiles already use for an active competition. */
+/* The live pulse. Named lb-* from the retired home-page live band; MatchesNow
+   is its only caller now and the name is kept so the class in that component
+   still resolves. */
 .lb-ping {
   width: 7px;
   height: 7px;
@@ -3238,78 +3256,6 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   100% { box-shadow: 0 0 0 0 transparent; }
 }
 
-/* A grid, not a carousel: Liga MX kicks off seven matches at once and a
-   carousel shows you one of them. */
-.lb-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 9px;
-}
-.lb-split {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 22px;
-}
-.lb-list { display: flex; flex-direction: column; gap: 7px; }
-
-.lb-row {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 11px 13px;
-  border-radius: 10px;
-  background: var(--surface-2);
-  border: 1px solid var(--hairline);
-  border-left: 3px solid transparent;
-  text-decoration: none;
-  transition: border-color 140ms ease, background 140ms ease;
-}
-.lb-row:hover { background: var(--surface-2); border-color: var(--brand); }
-.lb-row:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-.lb-row--live { border-left-color: var(--live-red); }
-.lb-row--next { border-left-color: var(--brand); }
-.lb-row--recent { border-left-color: var(--hairline); }
-
-.lb-teams {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 9px;
-  font-size: 13px;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-.lb-team { font-weight: 650; }
-.lb-score { font-size: 14px; font-weight: 800; }
-.lb-row--live .lb-score { color: var(--live-red); }
-
-.lb-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 9px;
-  font-size: 10px;
-  color: var(--text-muted);
-}
-.lb-comp { letter-spacing: 0.03em; }
-.lb-detail { font-variant-numeric: tabular-nums; }
-
-/* The status word beside the day, both muted. */
-.lb-detail { display: inline-flex; align-items: baseline; gap: 6px; }
-.lb-status { font-weight: 700; }
-/* Pre-mount placeholder for a time only the reader's clock can render. */
-.lt-pending { opacity: 0.35; }
-
-@media (max-width: 560px) {
-  .lb-grid { grid-template-columns: 1fr; }
-  /* Columns too, not just the gap: a fixed 280px minimum overflows a 320px
-     device once the page padding is taken out. */
-  .lb-split { grid-template-columns: 1fr; gap: 18px; }
-}
-
-/* ---- Matches: "Now" mode ----
-   Sections in priority order, each a grid rather than a list: Liga MX kicks
-   off seven matches at once and a single column buries six of them. */
 .mn-tabs {
   display: flex;
   gap: 8px;
@@ -3405,9 +3351,6 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   vertical-align: middle;
 }
 .cm-mark--emblem { line-height: 1; }
-
-/* The band pairs the mark with the competition's short name. */
-.lb-comp { display: inline-flex; align-items: center; gap: 5px; }
 
 /* ---- Team page (tm-*, sq-*) ------------------------------------------- */
 
@@ -3675,6 +3618,29 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 }
 .ts-comp:hover { border-color: var(--accent); }
 
+/* The skip link is .sr-only until it is focused, then it is a real, visible
+   control -- a skip link nobody can see is only half a skip link. */
+.sn-skip:focus {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 60;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 9px 14px;
+  clip: auto;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--brand);
+  color: var(--text);
+  font-size: 13px;
+  text-decoration: none;
+}
+/* The content column takes focus programmatically when the skip link is used,
+   and a focus ring around the whole page is noise. */
+.app-content:focus { outline: none; }
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -3695,9 +3661,10 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   .ts-comps { margin-left: 0; }
 }
 
-/* The way back out of team discovery. Nothing is added to .hub-head: the
-   masthead is a mark and a tagline anchored to opposite ends of the row, and a
-   third element in that row takes the right edge the tagline is meant to hold. */
+/* The way back out of a team detail page, to that competition's team list.
+   Still live -- /c/{comp}/{season}/team/{teamId} renders it. The teams hub used
+   to render it too, pointing at the old competition directory on the home page;
+   that link went with the directory, since the global nav is the way back now. */
 .tsp-back { margin: 0 0 14px; font-size: 12.5px; }
 .tsp-back a { color: var(--text-muted); text-decoration: none; }
 .tsp-back a:hover { color: var(--text); }

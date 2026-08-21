@@ -1,9 +1,10 @@
+import Link from 'next/link';
 import { listCompetitions, resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import { competitionLabel, type LiveEntry } from '@/server/data/liveFeed';
 import { prioritiseBy } from '@/server/data/matchPriority';
 import type { Match, NewsArticle, StatLeader } from '@/server/data/types';
-import { whatsOnHeadline, type WhatsOnMode } from '@/lib/digest';
+import { chooseWhatsOn, collectStories, publishedAgo, whatsOnHeadline } from '@/lib/digest';
 import DigestMatches from '@/components/DigestMatches';
 import DigestScorers, { type ScorerBoard } from '@/components/DigestScorers';
 import DigestNews, { type DigestNewsItem } from '@/components/DigestNews';
@@ -26,7 +27,11 @@ const STORIES_PER_COMPETITION = 2;
 
 /** One match, once. Two competitions can carry the same provider event id (a
  *  club plays in a league and a cup), and the same match rendered twice is the
- *  defect this page was redesigned to remove. */
+ *  defect this page was redesigned to remove.
+ *
+ *  This runs BEFORE the entries are bucketed, not after. Deduping the pool
+ *  afterwards left the heading counting the raw entries: "4 matches live right
+ *  now" above three cards. */
 function dedupeByMatch(entries: LiveEntry[]): LiveEntry[] {
   const seen = new Set<string>();
   return entries.filter((e) => {
@@ -52,42 +57,52 @@ export default async function Home() {
         dataStore.getLeaders(rc).catch(() => ({ scorers: [] as StatLeader[], assists: [] as StatLeader[] })),
         dataStore.getNews(rc).catch((): NewsArticle[] => []),
       ]);
-      return { competition: competitionLabel(comp, rc.season.id), matches, scorers: leaders.scorers, news };
+      return {
+        competition: competitionLabel(comp, rc.season.id),
+        seasonLabel: rc.season.label,
+        matches,
+        scorers: leaders.scorers,
+        news,
+      };
     }),
   );
 
   // ===== What's on =====
-  const entries: LiveEntry[] = per.flatMap((p) =>
-    p.matches.map((match) => ({ competition: p.competition, match })),
+  const entries: LiveEntry[] = dedupeByMatch(
+    per.flatMap((p) => p.matches.map((match) => ({ competition: p.competition, match }))),
   );
-  const { live, upcoming, recent } = prioritiseBy(entries, (e) => e.match, now);
-  const mode: WhatsOnMode = live.length > 0 ? 'live' : upcoming.length > 0 ? 'upcoming' : 'recent';
-  const pool = live.length > 0 ? live : upcoming.length > 0 ? upcoming : recent;
-  const shown = dedupeByMatch(pool).slice(0, WHATS_ON_SHOWN);
+  const buckets = prioritiseBy(entries, (e) => e.match, now);
   // A duration, not a wall clock: the difference between two instants means
   // the same thing to every reader, so unlike "Thursday 8pm" it is safe to
-  // format on a server running UTC.
-  const msToNext = upcoming.length > 0
-    ? new Date(upcoming[0].match.kickoff).getTime() - now.getTime()
+  // format on a server running UTC. `upcoming` is sorted by kickoff, so its
+  // head is the nearest across every competition, not whichever feed answered
+  // first.
+  const msToNext = buckets.upcoming.length > 0
+    ? new Date(buckets.upcoming[0].match.kickoff).getTime() - now.getTime()
     : null;
-  const headline = whatsOnHeadline(mode, live.length, msToNext);
+  const { mode, pool } = chooseWhatsOn(buckets, msToNext);
+  const shown = pool.slice(0, WHATS_ON_SHOWN);
+  // The count the heading quotes is the number of cards below it.
+  const headline = whatsOnHeadline(mode, shown.length, msToNext);
 
   // ===== Leading scorers =====
   const boards: ScorerBoard[] = per
     .filter((p) => p.scorers.length > 0)
     .slice(0, BOARDS_SHOWN)
-    .map((p) => ({ competition: p.competition, leaders: p.scorers.slice(0, SCORERS_PER_BOARD) }));
+    .map((p) => ({
+      competition: p.competition,
+      seasonLabel: p.seasonLabel,
+      leaders: p.scorers.slice(0, SCORERS_PER_BOARD),
+    }));
 
   // ===== News =====
-  const stories: DigestNewsItem[] = per
-    .flatMap((p) =>
-      p.news
-        .slice(0, STORIES_PER_COMPETITION)
-        .map((article) => ({ article, source: p.competition.shortName })),
-    )
-    .sort((a, b) => new Date(b.article.published).getTime() - new Date(a.article.published).getTime())
-    .filter((item, i, all) => all.findIndex((o) => o.article.id === item.article.id) === i)
-    .slice(0, STORIES_SHOWN);
+  const stories: DigestNewsItem[] = collectStories(per.map((p) => p.news), {
+    perFeed: STORIES_PER_COMPETITION,
+    limit: STORIES_SHOWN,
+  }).map((article) => ({
+    article,
+    ago: publishedAgo(now.getTime() - new Date(article.published).getTime()),
+  }));
 
   return (
     <main className="dg">
@@ -124,10 +139,17 @@ export default async function Home() {
           <DigestScorers boards={boards} />
         </section>
         <section className="dg-sec">
-          <h2 className="dg-lab">
-            <LanguageText en="News" es="Noticias" />
-          </h2>
-          <DigestNews items={stories} />
+          {/* Every story row leaves for ESPN in a new tab. Without this the
+              block was a dead end: nothing on it led anywhere inside ScoreArc. */}
+          <div className="dg-labrow">
+            <h2 className="dg-lab">
+              <LanguageText en="News" es="Noticias" />
+            </h2>
+            <Link className="dg-more" href="/news">
+              <LanguageText en="All news →" es="Todas las noticias →" />
+            </Link>
+          </div>
+          <DigestNews items={stories} surface="digest" />
         </section>
       </div>
 

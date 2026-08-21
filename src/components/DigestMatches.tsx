@@ -31,8 +31,11 @@ function Card({ entry }: { entry: LiveEntry }) {
       data-match-id={match.id}
       onClick={() => trackEvent('Section opened', { section: 'Matches', surface: 'digest' })}
       aria-label={[
+        // "versus" is read aloud, so it is translated like every other word in
+        // this label -- an es reader was getting "Marseille versus Strasbourg,
+        // Hoy 11:45 a.m." out of an otherwise Spanish sentence.
         scheduled
-          ? `${match.home.name} versus ${match.away.name}`
+          ? `${match.home.name} ${language === 'es' ? 'contra' : 'versus'} ${match.away.name}`
           : `${match.home.name} ${match.homeScore ?? 0}, ${match.away.name} ${match.awayScore ?? 0}`,
         status,
         now ? localTimeText(match.kickoff, scheduled ? 'dayTime' : 'day', now, language) : null,

@@ -35,7 +35,7 @@ this rather than inherit it.
 
 Two levels in one component:
 
-- **Site sections** — Home, Teams, Players, Simulate. Players and Simulate
+- **Site sections** — Home, Teams, News, Players, Simulate. Players and Simulate
   render as disabled items labelled "soon" until they exist. They are named
   rather than hidden because the nav is where the site says what it is; they are
   not links, because a link to a 404 is worse than an honest label.
@@ -68,6 +68,18 @@ this block leads with recent results rather than showing an empty state. A
 scores site with nothing on it reads as broken. The heading states which it is
 ("Nothing live right now — next kickoff in about 4 hours").
 
+The upcoming branch is bounded by a **24-hour horizon** (`UPCOMING_HORIZON_MS`).
+Without it the fallback is unreachable: `getLiveWindow` reads −7/+14 days and
+every scheduled match in that range is "upcoming", so a quiet day led with
+fixtures a fortnight out — "next kickoff in about 12 days" — while a week of
+finished results sat unused in the same payload. A fixture beyond the horizon
+still ranks above nothing, so an opening weekend with no results yet is not an
+empty block. When all three buckets are empty the heading says so rather than
+promising results above an empty state.
+
+The heading's count is the number of cards actually rendered — after dedupe and
+after the cap — not the raw entry count.
+
 ### Leading scorers
 
 The top three of each competition's board, grouped by competition, from
@@ -89,6 +101,16 @@ the mapper — so this is presentation only.
 A compact list with small thumbnails, **not** a hero. A 16:9 lead image made the
 top story the largest object on the page, and the top story was "Adidas drops
 dog kits" — whatever ESPN ranks first would dominate our home page.
+
+Each row says how long ago it was published, **not** which competition feed it
+arrived through. The per-league `/news` endpoints are mostly generic: measured,
+four of six rows carried a competition the article had nothing to do with, and
+the tag was arbitrary anyway because the cross-feed dedupe keeps whichever copy
+sorts first. Recency is the one thing a row can say about itself that is true.
+
+Every row leaves for ESPN in a new tab, so the block needs one destination
+inside ScoreArc: an **All news →** link, and a `/news` page carrying the same
+merged feed at a larger cap. It is a site section in the nav alongside Teams.
 
 ## Layout and responsiveness
 
@@ -114,10 +136,13 @@ phone renders during design.
 
 - `HubTiles` — competitions move into the nav.
 - The home page's LATEST RESULTS / NEXT UP columns — folded into What's on.
-- The live band in its current form on the home page, replaced by What's on.
+- `LiveBand`, its test, and its `.lb-*` CSS — replaced by What's on.
 
-`LiveBand` is still used elsewhere and is not deleted; only its home-page role
-changes.
+An earlier draft of this spec said "`LiveBand` is still used elsewhere and is
+not deleted". That was wrong: on `origin/main` its only importer was
+`src/app/page.tsx`, the page this epic rewrote, so the component became dead the
+moment the digest landed. It is deleted. One rule survives the cull — `.lb-ping`
+— because `MatchesNow` renders that class for its live pulse.
 
 ## Out of scope
 

@@ -1,6 +1,59 @@
 import { describe, it, expect } from 'vitest';
-import { activeCompetition, competitionSections } from './SiteNav';
-import { resolveSeason } from '@/server/data/competitions';
+import {
+  accentStyle,
+  activeCompetition,
+  competitionHref,
+  competitionSections,
+  siteItems,
+  stripLocale,
+} from './SiteNav';
+import { listCompetitions, resolveSeason } from '@/server/data/competitions';
+
+/**
+ * Every nav item that lights up for a path, labelled.
+ *
+ * The nav renders site items and, under the open competition only, that
+ * competition's sections. "Exactly one active item" is a property of the two
+ * lists together, so the test has to combine them the way the component does.
+ */
+function activeItems(pathname: string): string[] {
+  const hits = siteItems(false).filter((i) => i.match(pathname)).map((i) => `site:${i.label}`);
+  const rc = activeCompetition(pathname);
+  if (rc) {
+    for (const s of competitionSections(rc, false)) {
+      if (s.match(pathname)) hits.push(`${rc.competition.id}:${s.label}`);
+    }
+  }
+  return hits;
+}
+
+describe('stripLocale', () => {
+  // Locale-prefixed routes are arriving with the i18n middleware. Nothing here
+  // implements them; these matchers only have to stop assuming their absence.
+  it('removes a leading two-letter locale segment', () => {
+    expect(stripLocale('/es/c/liga-mx/2026-apertura/standings')).toBe('/c/liga-mx/2026-apertura/standings');
+    expect(stripLocale('/es/teams')).toBe('/teams');
+  });
+
+  it('turns a bare locale into the root', () => {
+    expect(stripLocale('/es')).toBe('/');
+    expect(stripLocale('/en/')).toBe('/');
+  });
+
+  it('leaves an unprefixed path alone', () => {
+    expect(stripLocale('/')).toBe('/');
+    expect(stripLocale('/teams')).toBe('/teams');
+    expect(stripLocale('/c/liga-mx')).toBe('/c/liga-mx');
+  });
+
+  // No real first segment is two letters -- the site's are c, teams, news, api
+  // -- but a longer one must survive intact rather than losing its first two
+  // characters.
+  it('does not eat a longer first segment', () => {
+    expect(stripLocale('/news')).toBe('/news');
+    expect(stripLocale('/teams/anything')).toBe('/teams/anything');
+  });
+});
 
 describe('activeCompetition', () => {
   it('finds the competition a workspace path is inside', () => {
@@ -16,10 +69,17 @@ describe('activeCompetition', () => {
   it('is undefined off the workspace routes', () => {
     expect(activeCompetition('/')).toBeUndefined();
     expect(activeCompetition('/teams')).toBeUndefined();
+    expect(activeCompetition('/news')).toBeUndefined();
   });
 
   it('is undefined for a competition that does not exist', () => {
     expect(activeCompetition('/c/not-a-competition/2026')).toBeUndefined();
+  });
+
+  it('still resolves under a locale prefix', () => {
+    const rc = activeCompetition('/es/c/world-cup/2018/standings');
+    expect(rc?.competition.id).toBe('world-cup');
+    expect(rc?.season.id).toBe('2018');
   });
 });
 
@@ -57,5 +117,115 @@ describe('competitionSections', () => {
     const rc = resolveSeason('world-cup')!;
     const base = `/c/${rc.competition.id}/${rc.season.id}`;
     for (const s of competitionSections(rc, false)) expect(s.href.startsWith(base)).toBe(true);
+  });
+
+  it('keeps the season you are on rather than the current one', () => {
+    const rc = activeCompetition('/c/world-cup/2018/standings')!;
+    for (const s of competitionSections(rc, false)) {
+      expect(s.href.startsWith('/c/world-cup/2018')).toBe(true);
+    }
+  });
+});
+
+describe('one active item, and only one', () => {
+  it.each(listCompetitions().map((c) => c.id))('holds for every section of %s', (id) => {
+    const rc = resolveSeason(id)!;
+    for (const section of competitionSections(rc, false)) {
+      expect(activeItems(section.href)).toEqual([`${id}:${section.label}`]);
+    }
+  });
+
+  it.each(['/', '/teams', '/news'])('holds for the site route %s', (path) => {
+    expect(activeItems(path)).toHaveLength(1);
+  });
+
+  it.each(['/es', '/es/teams', '/es/news', '/es/c/liga-mx/2026-apertura/matches'])(
+    'holds under the locale prefix %s',
+    (path) => {
+      expect(activeItems(path)).toHaveLength(1);
+    },
+  );
+
+  it('lights the site items in the right order', () => {
+    expect(activeItems('/')).toEqual(['site:Home']);
+    expect(activeItems('/teams')).toEqual(['site:Teams']);
+    expect(activeItems('/news')).toEqual(['site:News']);
+    expect(activeItems('/es/teams')).toEqual(['site:Teams']);
+  });
+
+  // A real route: a team detail page is reached from a competition's Teams
+  // list, but its path is /team/{id} (singular). Matching only the plural left
+  // the reader on a live page with nothing at all lit up in the nav.
+  it('lights Teams on a team detail page', () => {
+    expect(activeItems('/c/liga-mx/2026-apertura/team/mex-america')).toEqual(['liga-mx:Teams']);
+    expect(activeItems('/es/c/liga-mx/2026-apertura/team/mex-america')).toEqual(['liga-mx:Teams']);
+  });
+
+  // The site-level Teams item is a different page from a competition's Teams
+  // section, and both must not light at once.
+  it('does not light the site Teams item inside a competition', () => {
+    expect(activeItems('/c/liga-mx/2026-apertura/teams')).toEqual(['liga-mx:Teams']);
+    expect(activeItems('/c/liga-mx/2026-apertura/news')).toEqual(['liga-mx:News']);
+  });
+});
+
+describe('sections nest under the open competition only', () => {
+  it('resolves exactly one competition for a workspace path', () => {
+    const open = listCompetitions().filter(
+      (c) => activeCompetition('/c/mls/2026/standings')?.competition.id === c.id,
+    );
+    expect(open.map((c) => c.id)).toEqual(['mls']);
+  });
+
+  it('nests nothing off the workspace routes', () => {
+    for (const path of ['/', '/teams', '/news', '/es']) {
+      expect(activeCompetition(path)).toBeUndefined();
+    }
+  });
+});
+
+describe('competitionHref', () => {
+  it('preserves the season you are on for the competition you are in', () => {
+    const active = activeCompetition('/c/world-cup/2018/standings');
+    const wc = listCompetitions().find((c) => c.id === 'world-cup')!;
+    expect(competitionHref(wc, active)).toBe('/c/world-cup/2018');
+  });
+
+  it('sends every other competition to its current season', () => {
+    const active = activeCompetition('/c/world-cup/2018/standings');
+    for (const c of listCompetitions()) {
+      if (c.id === 'world-cup') continue;
+      expect(competitionHref(c, active)).toBe(`/c/${c.id}/${c.currentSeasonId}`);
+    }
+  });
+
+  it('uses the current season with no competition open', () => {
+    for (const c of listCompetitions()) {
+      expect(competitionHref(c, undefined)).toBe(`/c/${c.id}/${c.currentSeasonId}`);
+    }
+  });
+});
+
+describe('accentStyle', () => {
+  it('is undefined off the workspace routes', () => {
+    expect(accentStyle('/')).toBeUndefined();
+    expect(accentStyle('/teams')).toBeUndefined();
+    expect(accentStyle('/c/not-a-competition/2026')).toBeUndefined();
+  });
+
+  it('sets all three custom properties on a competition route', () => {
+    const style = accentStyle('/c/liga-mx/2026-apertura/standings') as Record<string, string>;
+    const accent = resolveSeason('liga-mx')!.competition.accent;
+    expect(style).toEqual({
+      '--accent': accent.base,
+      '--accent-bright': accent.bright,
+      '--accent-soft': accent.soft,
+    });
+  });
+
+  it('survives a locale prefix', () => {
+    expect(accentStyle('/es/c/liga-mx/2026-apertura/standings')).toEqual(
+      accentStyle('/c/liga-mx/2026-apertura/standings'),
+    );
   });
 });

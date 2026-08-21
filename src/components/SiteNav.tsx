@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { listCompetitions, resolveSeason } from '@/server/data/competitions';
-import type { CompetitionSeason } from '@/server/data/competitions';
+import type { Competition, CompetitionSeason } from '@/server/data/competitions';
 import { trackEvent } from '@/lib/telemetry/client';
 import CompetitionMark from './CompetitionMark';
 import { useLanguage } from './LanguageProvider';
@@ -29,18 +29,69 @@ const tableIcon = <svg {...ICON}><line x1="4" y1="6" x2="20" y2="6" /><line x1="
 const matchesIcon = <svg {...ICON}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" /></svg>;
 const newsIcon = <svg {...ICON}><path d="M4 5h16v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>;
 
-interface NavItem {
+export interface NavItem {
   href: string;
   label: string;
   icon: React.ReactNode;
   match: (path: string) => boolean;
 }
 
+/**
+ * The path with any leading locale segment removed.
+ *
+ * Locale-prefixed routes (`/es/c/liga-mx/...`) are being introduced by the
+ * i18n middleware. Every matcher here used to assume their absence — the
+ * competition regex is anchored at `/c/` and the site items compare the whole
+ * string — so under a prefix nothing matched: no active item, no accent, no
+ * nested sections, and no error to notice it by. This does not implement
+ * locale routing; it stops the nav from breaking when routing arrives.
+ *
+ * Only a bare two-letter segment is stripped, and no real route starts with
+ * one: the site's own first segments are `c`, `teams`, `news` and `api`.
+ */
+export function stripLocale(pathname: string): string {
+  const rest = pathname.replace(/^\/[a-z]{2}(?=\/|$)/, '');
+  return rest === '' ? '/' : rest;
+}
+
 /** The competition whose workspace this path is inside, if any. */
 export function activeCompetition(pathname: string): CompetitionSeason | undefined {
-  const m = /^\/c\/([^/]+)(?:\/([^/]+))?/.exec(pathname);
+  const m = /^\/c\/([^/]+)(?:\/([^/]+))?/.exec(stripLocale(pathname));
   if (!m) return undefined;
   return resolveSeason(m[1], m[2]);
+}
+
+/**
+ * The per-competition accent for a path, as inline custom properties.
+ *
+ * Derived from the path rather than passed down: the nav is mounted once at
+ * the root and the competition layout is mounted below it, so the two would
+ * otherwise disagree about which competition is open on the very route that
+ * has one.
+ */
+export function accentStyle(pathname: string): React.CSSProperties | undefined {
+  const accent = activeCompetition(pathname)?.competition.accent;
+  if (!accent) return undefined;
+  return {
+    ['--accent' as string]: accent.base,
+    ['--accent-bright' as string]: accent.bright,
+    ['--accent-soft' as string]: accent.soft,
+  } as React.CSSProperties;
+}
+
+/**
+ * The site-wide sections, in nav order.
+ *
+ * Exported so the matchers are testable: inline in the component they could
+ * only be exercised by rendering the whole nav, which is why the strict
+ * equality below went unnoticed as a locale-prefix hazard.
+ */
+export function siteItems(spanish: boolean): NavItem[] {
+  return [
+    { href: '/', label: spanish ? 'Inicio' : 'Home', icon: homeIcon, match: (p) => stripLocale(p) === '/' },
+    { href: '/teams', label: spanish ? 'Equipos' : 'Teams', icon: teamsIcon, match: (p) => stripLocale(p) === '/teams' },
+    { href: '/news', label: spanish ? 'Noticias' : 'News', icon: newsIcon, match: (p) => stripLocale(p).startsWith('/news') },
+  ];
 }
 
 /**
@@ -55,17 +106,26 @@ export function competitionSections(rc: CompetitionSeason, spanish: boolean): Na
   const base = `/c/${rc.competition.id}/${rc.season.id}`;
   const hasBracket = rc.season.format.hasBracket;
   const phasedCup = !!rc.season.computedTables;
+  const under = (suffix: string) => (p: string) => stripLocale(p).startsWith(`${base}${suffix}`);
   const standings: NavItem = {
     href: `${base}/standings`,
     label: spanish ? 'Clasificación' : 'Standings',
     icon: tableIcon,
-    match: (p) => p.startsWith(`${base}/standings`),
+    match: under('/standings'),
   };
   const rest: NavItem[] = [
     standings,
-    { href: `${base}/matches`, label: spanish ? 'Partidos' : 'Matches', icon: matchesIcon, match: (p) => p.startsWith(`${base}/matches`) },
-    { href: `${base}/teams`, label: spanish ? 'Equipos' : 'Teams', icon: teamsIcon, match: (p) => p.startsWith(`${base}/teams`) },
-    { href: `${base}/news`, label: spanish ? 'Noticias' : 'News', icon: newsIcon, match: (p) => p.startsWith(`${base}/news`) },
+    { href: `${base}/matches`, label: spanish ? 'Partidos' : 'Matches', icon: matchesIcon, match: under('/matches') },
+    {
+      href: `${base}/teams`,
+      label: spanish ? 'Equipos' : 'Teams',
+      icon: teamsIcon,
+      // Both spellings. A team detail page lives at /team/{id} (singular) and
+      // is reached from /teams, so matching only the plural left the reader on
+      // a real route with nothing in the nav lit up at all.
+      match: (p) => under('/teams')(p) || under('/team/')(p),
+    },
+    { href: `${base}/news`, label: spanish ? 'Noticias' : 'News', icon: newsIcon, match: under('/news') },
   ];
   if (!hasBracket) return rest;
   return [
@@ -73,10 +133,26 @@ export function competitionSections(rc: CompetitionSeason, spanish: boolean): Na
       href: base,
       label: phasedCup ? (spanish ? 'Eliminatorias' : 'Knockout') : (spanish ? 'Cuadro' : 'Bracket'),
       icon: bracketIcon,
-      match: (p) => p === base,
+      match: (p) => stripLocale(p) === base,
     },
     ...rest,
   ];
+}
+
+/**
+ * Where a competition's nav entry points.
+ *
+ * The competition you are already inside keeps the season you are on — clicking
+ * "World Cup" from `/c/world-cup/2018/standings` must not bounce you to 2026.
+ * Every other competition opens at its current season, because there is no
+ * season in the path to preserve.
+ */
+export function competitionSeasonId(c: Competition, active: CompetitionSeason | undefined): string {
+  return active?.competition.id === c.id ? active.season.id : c.currentSeasonId;
+}
+
+export function competitionHref(c: Competition, active: CompetitionSeason | undefined): string {
+  return `/c/${c.id}/${competitionSeasonId(c, active)}`;
 }
 
 export default function SiteNav() {
@@ -89,10 +165,14 @@ export default function SiteNav() {
   const active = activeCompetition(pathname);
   const competitions = listCompetitions();
 
-  // On a phone the nav is one scrolling row, and the section you are actually
+  // On a phone this panel has two shapes: closed it is one horizontally
+  // scrolling row, and the hamburger opens the same items as the full vertical
+  // list. Only the closed row scrolls, and in it the section you are actually
   // on sits past the site links -- ten competitions to the right of the fold on
   // a competition page. Bring it into view rather than leaving the reader to
-  // discover it. Horizontal only: `scrollIntoView` would drag the page down too.
+  // discover it. The scrollWidth guard makes this a no-op in the open drawer
+  // and on the desktop rail, neither of which overflows horizontally.
+  // Horizontal only: `scrollIntoView` would drag the page down too.
   const panelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const panel = panelRef.current;
@@ -101,10 +181,7 @@ export default function SiteNav() {
     if (current) panel.scrollLeft = Math.max(0, current.offsetLeft - 12);
   }, [pathname]);
 
-  const siteItems: NavItem[] = [
-    { href: '/', label: spanish ? 'Inicio' : 'Home', icon: homeIcon, match: (p) => p === '/' },
-    { href: '/teams', label: spanish ? 'Equipos' : 'Teams', icon: teamsIcon, match: (p) => p === '/teams' },
-  ];
+  const items = siteItems(spanish);
   // Named, not linked. The nav is where the site says what it is, and a link
   // to a 404 is worse than an honest label.
   const soonItems = [
@@ -159,7 +236,7 @@ export default function SiteNav() {
 
       <div className="sn-panel" id="sn-panel" ref={panelRef}>
         <div className="sn-group">
-          {siteItems.map((item) => (
+          {items.map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -187,11 +264,12 @@ export default function SiteNav() {
           <span className="sn-heading">{spanish ? 'Competiciones' : 'Competitions'}</span>
           {competitions.map((c) => {
             const isActive = active?.competition.id === c.id;
-            const seasonId = isActive ? active.season.id : c.currentSeasonId;
+            const href = competitionHref(c, active);
+            const seasonId = competitionSeasonId(c, active);
             return (
               <div key={c.id} className="sn-comp">
                 <Link
-                  href={`/c/${c.id}/${seasonId}`}
+                  href={href}
                   className={`sn-item${isActive ? ' sn-item--current' : ''}`}
                   title={collapsed ? c.shortName : undefined}
                   onClick={() => {

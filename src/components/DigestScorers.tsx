@@ -9,6 +9,14 @@ import LanguageText from './LanguageText';
 
 export interface ScorerBoard {
   competition: LiveEntry['competition'];
+  /**
+   * Which edition the board is for — "Apertura 2026", "2026".
+   *
+   * On a competition page the workspace supplies the year; here a board says
+   * only "WORLD CUP" while sitting beside in-progress league boards, with
+   * nothing to tell a concluded tournament apart from a live race.
+   */
+  seasonLabel: string;
   leaders: StatLeader[];
 }
 
@@ -30,11 +38,12 @@ export default function DigestScorers({ boards }: { boards: ScorerBoard[] }) {
   }
   return (
     <div className="dg-boards">
-      {boards.map(({ competition, leaders }) => (
+      {boards.map(({ competition, seasonLabel, leaders }) => (
         <div className="dg-board" key={competition.id}>
           <div className="dg-bh">
             <CompetitionMark logo={competition.logo} logoInvert={competition.logoInvert} emblem={competition.emblem} name={competition.name} size={14} />
             <span className="dg-bname">{competition.shortName}</span>
+            <span className="dg-bseason">{seasonLabel}</span>
             <Link
               className="dg-blink"
               href={`/c/${competition.id}/${competition.seasonId}/standings`}

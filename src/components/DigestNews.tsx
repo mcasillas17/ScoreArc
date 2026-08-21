@@ -1,13 +1,25 @@
 'use client';
 
 import type { NewsArticle } from '@/server/data/types';
+import type { Bilingual } from '@/lib/digest';
 import { trackEvent } from '@/lib/telemetry/client';
 import LanguageText from './LanguageText';
 
 export interface DigestNewsItem {
   article: NewsArticle;
-  /** Which competition's feed it came from — the row's only provenance. */
-  source: string;
+  /**
+   * How long ago it was published, already worded, in both languages.
+   *
+   * This replaced the competition-feed label. ESPN's per-league /news is mostly
+   * generic — measured, four of six rows were tagged with a competition the
+   * article had nothing to do with — and the tag was arbitrary as well, since
+   * the cross-feed dedupe keeps whichever copy sorts first. Recency is the one
+   * thing a story row can say about itself that is always true.
+   *
+   * Computed on the server as a duration, which is timezone-free, so it cannot
+   * disagree with the client the way a formatted wall clock would.
+   */
+  ago: Bilingual | null;
 }
 
 /**
@@ -18,7 +30,7 @@ export interface DigestNewsItem {
  * dog kits", which is exactly the editorial decision we are not in a position
  * to make.
  */
-export default function DigestNews({ items }: { items: DigestNewsItem[] }) {
+export default function DigestNews({ items, surface }: { items: DigestNewsItem[]; surface: string }) {
   if (items.length === 0) {
     return (
       <p className="dg-empty">
@@ -28,14 +40,14 @@ export default function DigestNews({ items }: { items: DigestNewsItem[] }) {
   }
   return (
     <div className="dg-news">
-      {items.map(({ article, source }) => (
+      {items.map(({ article, ago }) => (
         <a
           className="dg-nw"
           key={article.id}
           href={article.url}
           target="_blank"
           rel="noreferrer"
-          onClick={() => trackEvent('News article opened', { surface: 'digest' })}
+          onClick={() => trackEvent('News article opened', { surface })}
         >
           {article.image ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -45,7 +57,11 @@ export default function DigestNews({ items }: { items: DigestNewsItem[] }) {
           )}
           <span className="dg-nwbody">
             <span className="dg-nwhead">{article.headline}</span>
-            <span className="dg-nwsrc">{source}</span>
+            {ago && (
+              <span className="dg-nwsrc">
+                <LanguageText en={ago.en} es={ago.es} />
+              </span>
+            )}
           </span>
         </a>
       ))}
