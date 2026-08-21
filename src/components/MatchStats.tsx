@@ -1,7 +1,9 @@
-import LanguageText from './LanguageText';
 import type { CSSProperties } from 'react';
 import type { Scorer, Card, MatchStats, WinProbability, MatchLineups, TeamLineup, ShootoutDetail, PenaltyKick } from '@/server/data/types';
+import { useTranslations } from '@/i18n/I18nProvider';
+import type { Translator } from '@/i18n/translate';
 import { CollapsibleSection } from './Collapsible';
+import { matchStatusText, type MatchStatusInput } from './MatchRow';
 
 // Win probability is a pre-match prediction (derived from pre-match odds), so it
 // only makes sense before kickoff — not for live or finished/past matches.
@@ -12,21 +14,16 @@ export function isBeforeKickoff(kickoff: string): boolean {
 
 // TV-style live status: distinguish half time / extra time / penalties from the
 // running clock. Returns null for non-live matches.
-export function liveStatus(match: {
-  state: string;
-  statusName: string;
-  minute: string | null;
-}): { text: string; tone: 'live' | 'break' | 'pens' } | null {
+export function liveStatus(match: MatchStatusInput, t: Translator): { text: string; tone: 'live' | 'break' | 'pens' } | null {
   if (match.state !== 'live') return null;
   const n = match.statusName || '';
-  const clk = match.minute || '';
   const isHalf = /HALFTIME/.test(n);
   const isEt = /EXTRA|OVERTIME|_ET/.test(n);
   const isPens = /SHOOTOUT|PENALT/.test(n);
-  if (isPens) return { text: 'Penalties', tone: 'pens' };
-  if (isHalf) return { text: isEt ? 'ET · Half Time' : 'Half Time', tone: 'break' };
-  if (isEt) return { text: clk ? `ET ${clk}` : 'Extra Time', tone: 'live' };
-  return { text: clk || 'LIVE', tone: 'live' };
+  if (isPens) return { text: matchStatusText(match, t), tone: 'pens' };
+  if (isHalf) return { text: matchStatusText(match, t), tone: 'break' };
+  if (isEt) return { text: matchStatusText(match, t), tone: 'live' };
+  return { text: matchStatusText(match, t), tone: 'live' };
 }
 
 // TV-style penalty shootout: a row of dots per team — green scored, red missed,
@@ -40,6 +37,7 @@ export function PenaltyShootout({
   homeAbbr: string;
   awayAbbr: string;
 }) {
+  const t = useTranslations();
   const slots = Math.max(5, shootout.home.length, shootout.away.length);
   const tally = (kicks: PenaltyKick[]) => kicks.filter((k) => k.scored).length;
 
@@ -50,11 +48,16 @@ export function PenaltyShootout({
         {Array.from({ length: slots }).map((_, i) => {
           const k = kicks[i];
           const cls = !k ? 'pk-empty' : k.scored ? 'pk-scored' : 'pk-missed';
+          const label = k
+            ? t('matchDetails.penaltyKick', k.order, k.player, k.scored ? t('matchDetails.scored') : t('matchDetails.missed'))
+            : undefined;
           return (
             <span
               key={i}
               className={`pk-dot ${cls}`}
-              title={k ? `${k.order}. ${k.player} — ${k.scored ? 'scored' : 'missed'}` : undefined}
+              title={label}
+              role={label ? 'img' : undefined}
+              aria-label={label}
             />
           );
         })}
@@ -65,7 +68,7 @@ export function PenaltyShootout({
 
   return (
     <div className="pk-block">
-      <div className="pk-title"><LanguageText en="Penalty Shootout" es="Tanda de penaltis" /></div>
+      <div className="pk-title">{t('matchDetails.penaltyShootout')}</div>
       <Row abbr={homeAbbr} kicks={shootout.home} />
       <Row abbr={awayAbbr} kicks={shootout.away} />
     </div>
@@ -73,23 +76,31 @@ export function PenaltyShootout({
 }
 
 export function ScorerLine({ scorer }: { scorer: Scorer }) {
+  const t = useTranslations();
   return (
     <span className="ls-scorer-line">
       <span className="ls-scorer-ball">⚽</span>
       <span className="ls-scorer-name">{scorer.player}</span>
       <span className="ls-scorer-minute">
         {scorer.minute}
-        {scorer.penalty && !scorer.shootout ? ' (P)' : ''}
-        {scorer.ownGoal ? ' (OG)' : ''}
+        {scorer.penalty && !scorer.shootout ? ` (${t('matchDetails.penalty')})` : ''}
+        {scorer.ownGoal ? ` (${t('matchDetails.ownGoal')})` : ''}
       </span>
     </span>
   );
 }
 
 export function CardLine({ card }: { card: Card }) {
+  const t = useTranslations();
+  const cardLabel = t(
+    'matchDetails.cardEvent',
+    card.player,
+    card.type === 'yellow' ? t('matchDetails.yellowCard') : t('matchDetails.redCard'),
+    card.minute,
+  );
   return (
     <span className="ls-scorer-line">
-      <span className={`ls-card-chip ls-card-${card.type}`} />
+      <span className={`ls-card-chip ls-card-${card.type}`} role="img" aria-label={cardLabel} />
       <span className="ls-scorer-name">{card.player}</span>
       <span className="ls-scorer-minute">{card.minute}</span>
     </span>
@@ -144,9 +155,10 @@ export function WinProbBar({
   homeAbbr: string;
   awayAbbr: string;
 }) {
+  const t = useTranslations();
   return (
     <div className="ls-winprob">
-      <div className="ls-winprob-title"><LanguageText en="Chance to win" es="Probabilidad de ganar" /></div>
+      <div className="ls-winprob-title">{t('matchDetails.chanceToWin')}</div>
       <div className="ls-winprob-bar">
         <div className="ls-winprob-home" style={{ width: `${prob.home}%` }} />
         <div className="ls-winprob-draw" style={{ width: `${prob.draw}%` }} />
@@ -156,7 +168,7 @@ export function WinProbBar({
         <span>
           {homeAbbr} {prob.home}%
         </span>
-        <span className="ls-winprob-draw-label">Draw {prob.draw}%</span>
+        <span className="ls-winprob-draw-label">{t('match.draw')} {prob.draw}%</span>
         <span>
           {awayAbbr} {prob.away}%
         </span>
@@ -286,6 +298,7 @@ function StatGroup({ title, rows, tone }: { title: string; rows: StatRowData[]; 
 }
 
 export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
+  const t = useTranslations();
   const h = stats.home;
   const a = stats.away;
   const homePct = h.possession ?? 50;
@@ -293,50 +306,50 @@ export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
 
   const groups: { title: string; tone: string; rows: StatRowData[] }[] = [
     {
-      title: 'Attacking',
+      title: t('matchDetails.attacking'),
       tone: 'var(--stat-attack)',
       rows: [
-        { label: 'Shots', home: h.shots, away: a.shots },
-        { label: 'On Target', home: h.shotsOnTarget, away: a.shotsOnTarget },
-        { label: 'Shot Accuracy', home: h.shotAccuracy, away: a.shotAccuracy, pct: true,
+        { label: t('matchDetails.shots'), home: h.shots, away: a.shots },
+        { label: t('matchDetails.onTarget'), home: h.shotsOnTarget, away: a.shotsOnTarget },
+        { label: t('matchDetails.shotAccuracy'), home: h.shotAccuracy, away: a.shotAccuracy, pct: true,
           homeOf: { num: h.shotsOnTarget, den: h.shots }, awayOf: { num: a.shotsOnTarget, den: a.shots } },
-        { label: 'Corners', home: h.corners, away: a.corners },
-        { label: 'Offsides', home: h.offsides, away: a.offsides },
+        { label: t('matchDetails.corners'), home: h.corners, away: a.corners },
+        { label: t('matchDetails.offsides'), home: h.offsides, away: a.offsides },
       ],
     },
     {
-      title: 'Passing',
+      title: t('matchDetails.passing'),
       tone: 'var(--stat-pass)',
       rows: [
-        { label: 'Passes', home: h.passes, away: a.passes },
-        { label: 'Pass Accuracy', home: h.passAccuracy, away: a.passAccuracy, pct: true,
+        { label: t('matchDetails.passes'), home: h.passes, away: a.passes },
+        { label: t('matchDetails.passAccuracy'), home: h.passAccuracy, away: a.passAccuracy, pct: true,
           homeOf: { num: h.passesAccurate, den: h.passes }, awayOf: { num: a.passesAccurate, den: a.passes } },
-        { label: 'Crosses', home: h.crosses, away: a.crosses },
-        { label: 'Cross Accuracy', home: h.crossAccuracy, away: a.crossAccuracy, pct: true,
+        { label: t('matchDetails.crosses'), home: h.crosses, away: a.crosses },
+        { label: t('matchDetails.crossAccuracy'), home: h.crossAccuracy, away: a.crossAccuracy, pct: true,
           homeOf: { num: h.crossesAccurate, den: h.crosses }, awayOf: { num: a.crossesAccurate, den: a.crosses } },
-        { label: 'Long Balls', home: h.longBalls, away: a.longBalls },
+        { label: t('matchDetails.longBalls'), home: h.longBalls, away: a.longBalls },
       ],
     },
     {
-      title: 'Defending',
+      title: t('matchDetails.defending'),
       tone: 'var(--stat-defend)',
       rows: [
-        { label: 'Tackles', home: h.tackles, away: a.tackles },
-        { label: 'Tackle %', home: h.tackleAccuracy, away: a.tackleAccuracy, pct: true,
+        { label: t('matchDetails.tackles'), home: h.tackles, away: a.tackles },
+        { label: t('matchDetails.tacklePercent'), home: h.tackleAccuracy, away: a.tackleAccuracy, pct: true,
           homeOf: { num: h.tacklesEffective, den: h.tackles }, awayOf: { num: a.tacklesEffective, den: a.tackles } },
-        { label: 'Interceptions', home: h.interceptions, away: a.interceptions },
-        { label: 'Clearances', home: h.clearances, away: a.clearances },
-        { label: 'Blocked Shots', home: h.blockedShots, away: a.blockedShots },
-        { label: 'Saves', home: h.saves, away: a.saves },
+        { label: t('matchDetails.interceptions'), home: h.interceptions, away: a.interceptions },
+        { label: t('matchDetails.clearances'), home: h.clearances, away: a.clearances },
+        { label: t('matchDetails.blockedShots'), home: h.blockedShots, away: a.blockedShots },
+        { label: t('matchDetails.saves'), home: h.saves, away: a.saves },
       ],
     },
     {
-      title: 'Discipline',
+      title: t('matchDetails.discipline'),
       tone: 'var(--stat-discipline)',
       rows: [
-        { label: 'Fouls', home: h.fouls, away: a.fouls },
-        { label: 'Yellow Cards', home: h.yellowCards, away: a.yellowCards },
-        { label: 'Red Cards', home: h.redCards, away: a.redCards },
+        { label: t('matchDetails.fouls'), home: h.fouls, away: a.fouls },
+        { label: t('matchDetails.yellowCards'), home: h.yellowCards, away: a.yellowCards },
+        { label: t('matchDetails.redCards'), home: h.redCards, away: a.redCards },
       ],
     },
   ];
@@ -349,7 +362,7 @@ export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
 
   return (
     <div className="ls-stat-block">
-      <CollapsibleSection title="Match stats">
+      <CollapsibleSection title={t('matchDetails.matchStats')}>
         {hasPossession && (
           <div className="ls-stat-poss-bar-wrap">
             <span className="ls-stat-poss-label">{homePct.toFixed(0)}%</span>

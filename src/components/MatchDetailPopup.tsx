@@ -1,17 +1,18 @@
 'use client';
 
-import LanguageText from './LanguageText';
-import { useLanguage } from './LanguageProvider';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { BracketMatch, MatchSummaryData } from '@/server/data/types';
 import { flagUrl } from '@/lib/flags';
-import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar, LineupView, PenaltyShootout, liveStatus, isBeforeKickoff } from './MatchStats';
+import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar, LineupView, PenaltyShootout, isBeforeKickoff } from './MatchStats';
 import MatchHighlights from './MatchHighlights';
 import { MatchInfoRow, FormRow, H2HRow, CommentaryFeed, BoxScoreBlock } from './MatchExtras';
 import { CollapsibleSection } from './Collapsible';
 import Link from 'next/link';
 import { teamHref } from './teamHref';
+import { matchStatusText } from './MatchRow';
+import { useLocale, useTranslations } from '@/i18n/I18nProvider';
+import { formatDateTime } from '@/i18n/format';
 
 export type MatchSummary = MatchSummaryData;
 
@@ -26,23 +27,6 @@ interface Props {
    * need, since an undecided slot has no club to link to.
    */
   teamBase?: string;
-}
-
-// Follows the app's language, not the machine's: toLocaleString([]) resolves
-// against the browser, so a reader who chose Spanish on an English laptop got
-// an English kickoff inside an otherwise Spanish dialog.
-function formatKickoff(iso: string, spanish: boolean): string {
-  try {
-    return new Date(iso).toLocaleString(spanish ? 'es-MX' : 'en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return '';
-  }
 }
 
 /**
@@ -70,8 +54,8 @@ function TeamLink({
 }
 
 export default function MatchDetailPopup({ match, summary, loading, onClose, teamBase }: Props) {
-  const { language } = useLanguage();
-  const spanish = language === 'es';
+  const locale = useLocale();
+  const t = useTranslations();
   const closeRef = useRef<HTMLButtonElement>(null);
 
   // Portal to <body> so the fixed backdrop escapes the bracket's transformed
@@ -82,6 +66,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose, tea
 
   // Close on Escape; move focus into the dialog on open and restore it on close.
   useEffect(() => {
+    if (!mounted) return;
     const prevFocus = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
@@ -92,7 +77,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose, tea
       document.removeEventListener('keydown', onKey);
       prevFocus?.focus?.();
     };
-  }, [onClose]);
+  }, [mounted, onClose]);
 
   const { home, away } = match;
   const homeFlag = flagUrl(home.abbr);
@@ -127,8 +112,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose, tea
   const showWinProb = !loading && wp != null && isBeforeKickoff(match.kickoff);
 
   // Live status shows HT / ET / Penalties; otherwise the short detail.
-  const ls = liveStatus(match);
-  const statusLabel = ls?.text ?? match.statusDetail ?? match.state.toUpperCase();
+  const statusLabel = matchStatusText({ ...match, shootoutDetail: shootout }, t);
 
   if (!mounted) return null;
 
@@ -138,10 +122,10 @@ export default function MatchDetailPopup({ match, summary, loading, onClose, tea
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label={spanish ? 'Detalles del partido' : 'Match details'}
+      aria-label={t('matchDetails.dialogLabel')}
     >
       <div className="md-card" onClick={(e) => e.stopPropagation()}>
-        <button ref={closeRef} className="md-close" onClick={onClose} aria-label={spanish ? 'Cerrar detalles del partido' : 'Close match details'}>
+        <button ref={closeRef} className="md-close" onClick={onClose} aria-label={t('matchDetails.closeDialog')}>
           ×
         </button>
 
@@ -165,7 +149,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose, tea
 
           <div className="md-score-col">
             {upcoming ? (
-              <span className="md-kickoff">{formatKickoff(match.kickoff, spanish)}</span>
+              <span className="md-kickoff">{formatDateTime(match.kickoff, locale) ?? t('common.unavailable')}</span>
             ) : (
               <span className="md-score">
                 {match.homeScore ?? '–'}
@@ -173,7 +157,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose, tea
                 {match.awayScore ?? '–'}
               </span>
             )}
-            <span className="md-status">{upcoming ? 'Upcoming' : statusLabel}</span>
+            <span className="md-status">{upcoming ? t('matchDetails.upcoming') : statusLabel}</span>
             {match.note && <span className="md-note">{match.note}</span>}
           </div>
 
@@ -196,7 +180,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose, tea
 
         {/* Body */}
         <div className="md-body">
-          {loading && <p className="md-loading"><LanguageText en="Loading match details…" es="Cargando detalles del partido…" /></p>}
+          {loading && <p className="md-loading">{t('matchDetails.loading')}</p>}
 
           {!loading && info && (
             <div className="md-section">
@@ -211,11 +195,11 @@ export default function MatchDetailPopup({ match, summary, loading, onClose, tea
           )}
 
           {upcoming && !loading && !showWinProb && !summary?.lineups && (
-            <p className="md-empty"><LanguageText en="Not started yet — no preview data available." es="Aún no ha comenzado — no hay vista previa disponible." /></p>
+            <p className="md-empty">{t('matchDetails.previewUnavailable')}</p>
           )}
 
           {!upcoming && !loading && summary && !hasContent && (
-            <p className="md-empty"><LanguageText en="No detailed stats available for this match." es="No hay estadísticas detalladas disponibles para este partido." /></p>
+            <p className="md-empty">{t('matchDetails.statsUnavailable')}</p>
           )}
 
           {/* Always-visible match facts first: goals, then cards right below,
@@ -253,7 +237,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose, tea
 
           {!loading && summary?.lineups && (
             <div className="md-section">
-              <CollapsibleSection title="Lineups" tone="#2dd4bf">
+              <CollapsibleSection title={t('matchDetails.lineups')} tone="#2dd4bf">
                 <LineupView lineups={summary.lineups} homeAbbr={home.abbr} awayAbbr={away.abbr} />
               </CollapsibleSection>
             </div>
@@ -270,7 +254,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose, tea
 
           {!loading && ((form && (form.home.length > 0 || form.away.length > 0)) || h2h.length > 0) && (
             <div className="md-section">
-              <CollapsibleSection title="Form & head-to-head" tone="#f472b6">
+              <CollapsibleSection title={t('matchDetails.formAndHeadToHead')} tone="#f472b6">
                 <div className="fm-h2h-grid">
                   {form && (form.home.length > 0 || form.away.length > 0) && (
                     <FormRow form={form} homeAbbr={home.abbr} awayAbbr={away.abbr} />

@@ -65,7 +65,7 @@ function FullFlag({ team, style }: { team: Team; style: TeamStyle }) {
 function MatchCard({ match, teamStyle }: { match: Match; teamStyle: TeamStyle }) {
   const t = useTranslations();
   const started = match.state === "live" || match.state === "finished";
-  const ls = liveStatus(match);
+  const ls = liveStatus(match, t);
   const status = matchStatusText(match, t);
 
   // Exclude shootout goals from the in-play scorers list

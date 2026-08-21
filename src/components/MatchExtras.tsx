@@ -1,16 +1,16 @@
-import LanguageText from './LanguageText';
 import type { MatchInfo, MatchForm, FormResult, CommentaryItem, H2HMeeting, MatchLineups, TeamLineup, LineupPlayer } from '@/server/data/types';
+import { useLocale, useTranslations } from '@/i18n/I18nProvider';
+import { formatDate, formatNumber } from '@/i18n/format';
+import type { Locale } from '@/i18n/config';
+import type { Translator } from '@/i18n/translate';
 import { CollapsibleSection } from './Collapsible';
 
-function fmtYear(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString([], { year: 'numeric', month: 'short' });
-  } catch {
-    return '';
-  }
+function fmtYear(iso: string, locale: Locale, t: Translator): string {
+  return formatDate(iso, locale, { year: 'numeric', month: 'short' }) ?? t('common.unavailable');
 }
 
 export function MatchInfoRow({ info }: { info: MatchInfo }) {
+  const locale = useLocale();
   const place = [info.venue, info.city].filter(Boolean).join(' · ');
   return (
     <div className="mi-row">
@@ -37,22 +37,31 @@ export function MatchInfoRow({ info }: { info: MatchInfo }) {
         </span>
       )}
       {info.attendance != null && (
-        <span className="mi-item">👥 {info.attendance.toLocaleString()}</span>
+        <span className="mi-item">👥 {formatNumber(info.attendance, locale)}</span>
       )}
     </div>
   );
 }
 
 function FormPills({ form }: { form: FormResult[] }) {
+  const t = useTranslations();
+  const labelFor = (result: FormResult['result']) => {
+    switch (result) {
+      case 'W': return { short: t('matchDetails.formWinShort'), full: t('matchDetails.formWin') };
+      case 'D': return { short: t('matchDetails.formDrawShort'), full: t('matchDetails.formDraw') };
+      case 'L': return { short: t('matchDetails.formLossShort'), full: t('matchDetails.formLoss') };
+    }
+  };
   return (
     <span className="fm-pills">
       {form.map((f, i) => (
         <span
           key={i}
           className={`fm-pill fm-${f.result}`}
-          title={`${f.result} vs ${f.opponent} ${f.score}`}
+          title={`${labelFor(f.result).full} ${t('match.versus')} ${f.opponent} ${f.score}`}
+          aria-label={`${labelFor(f.result).full} ${t('match.versus')} ${f.opponent} ${f.score}`}
         >
-          {f.result}
+          {labelFor(f.result).short}
         </span>
       ))}
     </span>
@@ -68,10 +77,11 @@ export function FormRow({
   homeAbbr: string;
   awayAbbr: string;
 }) {
+  const t = useTranslations();
   if (!form.home.length && !form.away.length) return null;
   return (
     <div className="fm-block">
-      <div className="fm-title"><LanguageText en="Recent form" es="Forma reciente" /></div>
+      <div className="fm-title">{t('matchDetails.recentForm')}</div>
       <div className="fm-team">
         <span className="fm-abbr">{homeAbbr}</span>
         <FormPills form={form.home} />
@@ -85,15 +95,17 @@ export function FormRow({
 }
 
 export function H2HRow({ meetings }: { meetings: H2HMeeting[] }) {
+  const locale = useLocale();
+  const t = useTranslations();
   if (!meetings.length) return null;
   return (
     <div className="fm-block">
-      <div className="fm-title"><LanguageText en="Head to head" es="Enfrentamientos directos" /></div>
+      <div className="fm-title">{t('matchDetails.headToHead')}</div>
       <ul className="h2h-list">
         {meetings.map((m, i) => (
           <li key={i} className="h2h-item">
             <span>{m.label}</span>
-            <span className="h2h-date">{fmtYear(m.date)}</span>
+            <span className="h2h-date">{fmtYear(m.date, locale, t)}</span>
           </li>
         ))}
       </ul>
@@ -102,11 +114,12 @@ export function H2HRow({ meetings }: { meetings: H2HMeeting[] }) {
 }
 
 export function CommentaryFeed({ items }: { items: CommentaryItem[] }) {
+  const t = useTranslations();
   if (!items.length) return null;
   // Latest first — most useful during a live match.
   const feed = [...items].reverse();
   return (
-    <CollapsibleSection title={`Commentary · ${items.length}`} tone="#a78bfa">
+    <CollapsibleSection title={t('matchDetails.commentary', items.length)} tone="#a78bfa">
       <ul className="cm-list">
         {feed.map((c, i) => (
           <li key={i} className="cm-item">
@@ -128,13 +141,14 @@ function StatCell({ value }: { value: number | null }) {
 }
 
 function CardChips({ player }: { player: LineupPlayer }) {
+  const t = useTranslations();
   const yellow = player.stats?.yellowCards ?? 0;
   const red = player.stats?.redCards ?? 0;
   if (!yellow && !red) return <td />;
   return (
     <td>
-      {yellow > 0 && <span className="ls-card-chip ls-card-yellow" title="Yellow card" />}
-      {red > 0 && <span className="ls-card-chip ls-card-red" title="Red card" />}
+      {yellow > 0 && <span className="ls-card-chip ls-card-yellow" role="img" aria-label={t('matchDetails.yellowCardsCount', yellow)} />}
+      {red > 0 && <span className="ls-card-chip ls-card-red" role="img" aria-label={t('matchDetails.redCardsCount', red)} />}
     </td>
   );
 }
@@ -147,6 +161,7 @@ function boxOrder(a: LineupPlayer, b: LineupPlayer): number {
 }
 
 function BoxScoreTable({ team, abbr }: { team: TeamLineup; abbr: string }) {
+  const t = useTranslations();
   const players = team.players.filter((p) => p.stats != null).sort(boxOrder);
   if (players.length === 0) return null;
   // Only goalkeepers carry `saves`. Rendering the column for a team whose
@@ -161,17 +176,17 @@ function BoxScoreTable({ team, abbr }: { team: TeamLineup; abbr: string }) {
         <thead>
           <tr>
             <th>#</th>
-            <th className="team-col"><LanguageText en="Player" es="Jugador" /></th>
-            <th>Pos</th>
-            <th title="Goals">G</th>
-            <th title="Assists">A</th>
-            <th title="Shots">SH</th>
-            <th title="Shots on target">SOT</th>
-            <th title="Offsides">OFF</th>
-            <th title="Fouls committed">FC</th>
-            <th title="Fouls suffered">FA</th>
-            {showSaves && <th title="Saves">SV</th>}
-            <th title="Cards" />
+            <th className="team-col">{t('matchDetails.player')}</th>
+            <th title={t('matchDetails.position')}>{t('matchDetails.positionAbbreviation')}</th>
+            <th title={t('matchDetails.goals')}>{t('matchDetails.goalsAbbreviation')}</th>
+            <th title={t('matchDetails.assists')}>{t('matchDetails.assistsAbbreviation')}</th>
+            <th title={t('matchDetails.shots')}>{t('matchDetails.shotsAbbreviation')}</th>
+            <th title={t('matchDetails.shotsOnTarget')}>{t('matchDetails.shotsOnTargetAbbreviation')}</th>
+            <th title={t('matchDetails.offsides')}>{t('matchDetails.offsidesAbbreviation')}</th>
+            <th title={t('matchDetails.foulsCommitted')}>{t('matchDetails.foulsCommittedAbbreviation')}</th>
+            <th title={t('matchDetails.foulsSuffered')}>{t('matchDetails.foulsSufferedAbbreviation')}</th>
+            {showSaves && <th title={t('matchDetails.saves')}>{t('matchDetails.savesAbbreviation')}</th>}
+            <th title={t('matchDetails.cards')} />
           </tr>
         </thead>
         <tbody>
@@ -180,7 +195,7 @@ function BoxScoreTable({ team, abbr }: { team: TeamLineup; abbr: string }) {
               <td className="rank-cell">{p.number ?? '–'}</td>
               <td className="team-cell">
                 <span className="team-name">{p.name}</span>
-                {!p.starter && <span className="ls-box-sub">sub</span>}
+                {!p.starter && <span className="ls-box-sub">{t('matchDetails.substitute')}</span>}
               </td>
               <td className="std-muted">{p.position}</td>
               <StatCell value={p.stats!.totalGoals} />
@@ -217,13 +232,14 @@ export function BoxScoreBlock({
   homeAbbr: string;
   awayAbbr: string;
 }) {
+  const t = useTranslations();
   // Checked on the data, not on the elements: a component returning null is
   // still a truthy JSX value, so testing the elements would always pass and
   // render an empty collapsible for matches with no player stats.
   const hasStats = [lineups.home, lineups.away].some((t) => t.players.some((p) => p.stats != null));
   if (!hasStats) return null;
   return (
-    <CollapsibleSection title="Box score" tone="#38bdf8">
+    <CollapsibleSection title={t('matchDetails.boxScore')} tone="#38bdf8">
       <BoxScoreTable team={lineups.home} abbr={homeAbbr} />
       <BoxScoreTable team={lineups.away} abbr={awayAbbr} />
     </CollapsibleSection>

@@ -1,6 +1,6 @@
 'use client';
 
-import type { Match, Team } from '@/server/data/types';
+import type { Match, Shootout, ShootoutDetail, Team } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
 import { flagUrl } from '@/lib/flags';
 import LocalTime, { localTimeText, useLocalNow } from './LocalTime';
@@ -24,10 +24,16 @@ export function TeamMark({ team, style }: { team: Team; style: TeamStyle }) {
 }
 
 const HALFTIME_STATUS = /HALFTIME/;
-const PENALTY_STATUS = /SHOOTOUT|PENALT/;
+const PENALTY_STATUS = /SHOOTOUT|PENALT|_PEN(?:$|_)/;
+const EXTRA_TIME_STATUS = /EXTRA_TIME|OVERTIME|_ET/;
 const KNOWN_LIVE_STATUS = /STATUS_(IN_PROGRESS|FIRST_HALF|SECOND_HALF|EXTRA_TIME|OVERTIME|END_PERIOD)/;
 
-export function matchStatusText(match: Match, t: Translator): string {
+export type MatchStatusInput = Pick<Match, 'state' | 'statusName' | 'statusDetail' | 'minute'> & {
+  shootout?: Shootout | null;
+  shootoutDetail?: ShootoutDetail | null;
+};
+
+export function matchStatusText(match: MatchStatusInput, t: Translator): string {
   if (match.state === 'scheduled') return t('match.scheduled');
   if (match.state === 'finished') {
     return PENALTY_STATUS.test(match.statusName) || match.shootout || match.shootoutDetail
@@ -36,7 +42,12 @@ export function matchStatusText(match: Match, t: Translator): string {
   }
 
   if (PENALTY_STATUS.test(match.statusName)) return t('match.penalties');
-  if (HALFTIME_STATUS.test(match.statusName)) return t('match.halftime');
+  if (HALFTIME_STATUS.test(match.statusName)) {
+    return EXTRA_TIME_STATUS.test(match.statusName) ? t('match.extraTimeHalfTime') : t('match.halftime');
+  }
+  if (EXTRA_TIME_STATUS.test(match.statusName)) {
+    return match.minute ? t('match.extraTimeClock', match.minute) : t('match.extraTime');
+  }
   if (match.minute) return match.minute;
   if (!match.statusName || KNOWN_LIVE_STATUS.test(match.statusName)) return t('match.live');
   return match.statusDetail || t('match.live');
