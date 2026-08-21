@@ -30,10 +30,17 @@ describe('localized root layout', () => {
   it.each([
     ['en', 'ScoreArc · Live Football', 'Live football brackets, scores, and standings — every arc.', 'ScoreArc — Live Football'],
     ['es', 'ScoreArc · Fútbol en vivo', 'Cuadros, resultados y clasificaciones de fútbol en vivo — en cada arco.', 'ScoreArc — Fútbol en vivo'],
-  ])('generates %s root metadata from its catalog', (locale, title, description, imageAlt) => {
+  ])('generates localized %s root metadata and canonical language alternates', (locale, title, description, imageAlt) => {
     expect(generateMetadata({ params: { locale } })).toMatchObject({
       title,
       description,
+      alternates: {
+        canonical: `/${locale}`,
+        languages: {
+          en: '/en',
+          es: '/es',
+        },
+      },
       openGraph: {
         title,
         description,

@@ -34,6 +34,13 @@ export function generateMetadata({ params }: { params: { locale: string } }): Me
     metadataBase: new URL("https://www.scorearc.futbol"),
     title,
     description,
+    alternates: {
+      canonical: `/${locale}`,
+      languages: {
+        en: "/en",
+        es: "/es",
+      },
+    },
     openGraph: {
       title,
       description,
