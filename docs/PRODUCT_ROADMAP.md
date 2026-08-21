@@ -368,6 +368,37 @@ Also measured: **there is no jornada/matchday number to group by.** `mex.1`,
 `eng.1` and `usa.1` all return no `week`, no round and an empty `calendar`, so
 matchday grouping is not built. See the spec's "Out of scope" table.
 
+### E13 · Competition simulation — noted, not designed
+
+Simulate a competition forward from **its current state**, the way the bracket
+already lets you pick winners.
+
+The precedent exists and should be extended rather than reinvented:
+`BracketInteractive` has a `predict` mode beside `live`, where picking a winner
+advances them through `RadialBracket` and ends in a champion. That works
+because a knockout is a tree — one pick, one consequence.
+
+**A league is the harder case, and the reason this is a separate epic.** There
+is no tree: simulating Liga MX from matchday 5 means resolving every remaining
+match and re-deriving the table, where one result changes goal difference,
+tie-breaks and the liguilla cut. Open questions, none answered yet:
+
+- What does the reader set — a result per match, or a winner per match with
+  goal difference left alone? The cut is decided on goal difference, so
+  "who wins" alone cannot produce a table.
+- Does it start from real current state (played matches fixed, remaining
+  open)? That is the whole point of "given the current state", and it means
+  the simulation has to consume the same standings the table does.
+- Is anything persisted or shared, or is it a scratchpad that resets on
+  reload? Sharing a predicted table is the interesting half and the expensive
+  half.
+- Cup competitions with a group phase feeding a bracket (Leagues Cup, World
+  Cup) need both models joined: simulate the groups, then the tree they seed.
+
+Not scheduled, and not started. Written down because it came up while
+designing the home page, and because the bracket's `predict` mode is the
+foundation to build on rather than a thing to duplicate.
+
 ### E6 · Shot log
 - **T6.1** Per-competition coverage probe, **before any parser is written**
 - **T6.2** Shot extraction from the play stream (with commentary as the fallback)
