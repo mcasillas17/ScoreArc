@@ -1,8 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import type { ReactNode } from 'react';
+import { describe, it, expect, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { I18nProvider } from '@/i18n/I18nProvider';
 import RadialBracket from './RadialBracket';
 import { COMPETITIONS, listCompetitions } from '@/server/data/competitions';
 import type { BracketRound } from '@/server/data/types';
+
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/en',
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
+const renderLocalized = (node: ReactNode) =>
+  renderToStaticMarkup(<I18nProvider locale="en">{node}</I18nProvider>);
 
 // `/trophy.png` is a photograph of the FIFA World Cup trophy. It sat hardcoded
 // at the centre of the radial bracket from when the World Cup was the only
@@ -13,7 +23,6 @@ import type { BracketRound } from '@/server/data/types';
 const rounds: BracketRound[] = [
   {
     slug: 'quarterfinals',
-    name: 'Quarterfinals',
     matches: [
       {
         id: 'm1',
@@ -30,7 +39,7 @@ const rounds: BracketRound[] = [
 ];
 
 function render(emblem: string, trophyImage?: string) {
-  return renderToStaticMarkup(
+  return renderLocalized(
     <RadialBracket
       rounds={rounds}
       teamStyle="crest"
@@ -75,12 +84,12 @@ describe('bracket hub emblem', () => {
 // migration, in the same way the trophy image did.
 describe('competition wording', () => {
   it('crowns WORLD champions only where that is true', () => {
-    const titled = listCompetitions().filter((c) => c.championTitle);
+    const titled = listCompetitions().filter((c) => c.championTitleKey === 'champion.world');
     expect(titled.map((c) => c.id)).toEqual(['world-cup']);
-    expect(COMPETITIONS['world-cup'].championTitle).toBe('WORLD CHAMPIONS');
+    expect(COMPETITIONS['world-cup'].championTitleKey).toBe('champion.world');
   });
 
   it('leaves every other competition to the plain default', () => {
-    expect(COMPETITIONS['leagues-cup'].championTitle).toBeUndefined();
+    expect(COMPETITIONS['leagues-cup'].championTitleKey).toBeUndefined();
   });
 });

@@ -4,8 +4,8 @@ import Link from 'next/link';
 import type { StatLeader } from '@/server/data/types';
 import type { LiveEntry } from '@/server/data/liveFeed';
 import { trackEvent } from '@/lib/telemetry/client';
+import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import CompetitionMark from './CompetitionMark';
-import LanguageText from './LanguageText';
 
 export interface ScorerBoard {
   competition: LiveEntry['competition'];
@@ -29,11 +29,11 @@ export interface ScorerBoard {
  * those in one order would invite a comparison that is not meaningful.
  */
 export default function DigestScorers({ boards }: { boards: ScorerBoard[] }) {
+  const locale = useLocale();
+  const t = useTranslations();
   if (boards.length === 0) {
     return (
-      <p className="dg-empty">
-        <LanguageText en="No scoring boards are published yet." es="Todavía no hay tablas de goleo publicadas." />
-      </p>
+      <p className="dg-empty">{t('home.digest.noScoringBoards')}</p>
     );
   }
   return (
@@ -46,10 +46,10 @@ export default function DigestScorers({ boards }: { boards: ScorerBoard[] }) {
             <span className="dg-bseason">{seasonLabel}</span>
             <Link
               className="dg-blink"
-              href={`/c/${competition.id}/${competition.seasonId}/standings`}
+              href={`/${locale}/c/${competition.id}/${competition.seasonId}/standings`}
               onClick={() => trackEvent('Section opened', { section: 'Standings', surface: 'digest' })}
             >
-              <LanguageText en="Table →" es="Tabla →" />
+              {t('home.digest.table')}
             </Link>
           </div>
           {leaders.map((l) => (

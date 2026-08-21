@@ -2,6 +2,7 @@ import { listCompetitions, resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 import { prioritiseEntries, toLiveEntries, type LiveEntry } from '@/server/data/liveFeed';
+import { apiError } from '@/app/api/errorResponse';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -40,7 +41,7 @@ export async function GET() {
 
   // Every feed down is an outage worth a 502; one feed down is a gap.
   if (failed === competitions.length) {
-    return Response.json({ error: 'every competition feed failed' }, { status: 502 });
+    return apiError('UPSTREAM_UNAVAILABLE', 502);
   }
 
   // Trimmed to what a band can render. The unbounded merge was ~200 entries

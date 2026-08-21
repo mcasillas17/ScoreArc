@@ -30,12 +30,16 @@ const UNCURATED = { id: '999999', name: 'Somebody FC', abbr: 'SFC' };
 describe('competitionTeams', () => {
   beforeEach(() => vi.restoreAllMocks());
 
-  it('lists clubs alphabetically with a link to their page', async () => {
+  it('lists clubs alphabetically with a locale-neutral semantic pathname', async () => {
     vi.spyOn(dataStore, 'getStandings').mockResolvedValue([group(ATLAS, AMERICA)]);
     const teams = await competitionTeams(resolveSeason('liga-mx')!);
     expect(teams.map((t) => t.name)).toEqual(['América', 'Atlas']);
     expect(teams[0].id).toBe('mex-america');
-    expect(teams[0].memberships[0].href).toContain('/team/mex-america');
+    expect(teams[0].memberships[0].pathname).toBe(
+      '/c/liga-mx/2026-apertura/team/mex-america',
+    );
+    expect(teams[0].memberships[0].pathname).not.toContain('/api/');
+    expect(teams[0].memberships[0].pathname).not.toMatch(/^\/(?:en|es)\//);
   });
 
   // An uncurated club has no canonical id, so there is no page to send anyone
@@ -66,7 +70,7 @@ describe('allTeams', () => {
     const america = teams.filter((t) => t.id === 'mex-america');
     expect(america).toHaveLength(1);
     expect(america[0].memberships.length).toBeGreaterThan(1);
-    const hrefs = america[0].memberships.map((m) => m.href);
-    expect(new Set(hrefs).size).toBe(hrefs.length);
+    const pathnames = america[0].memberships.map((m) => m.pathname);
+    expect(new Set(pathnames).size).toBe(pathnames.length);
   });
 });

@@ -102,6 +102,11 @@ go build ./...
 go vet ./...
 ```
 
+The website uses explicit locale-prefixed routes. Open
+`http://localhost:3000/en` for English or `http://localhost:3000/es` for
+Spanish; an unprefixed page redirects from the saved language preference,
+browser language, or English fallback.
+
 Run the reader against a migrated database using the SELECT-only login:
 
 ```bash
@@ -120,10 +125,21 @@ export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
 See [`backend/reader/README.md`](backend/reader/README.md) for API behavior and
 [`docs/backend/SETUP.md`](docs/backend/SETUP.md) for database provisioning.
 
+## Localization
+
+Fixed interface copy lives in complete, typed English and Spanish catalogs —
+not in middleware and not as hardcoded component strings. The URL is the locale
+source of truth; middleware only redirects unprefixed page requests. See
+[`docs/LOCALIZATION.md`](docs/LOCALIZATION.md) for the architecture, translation
+workflow, provider-text policy, privacy/security behavior, and verification
+checklist.
+
 ## Repository map
 
 - `src/app` — Next.js App Router pages and server routes.
 - `src/components` — shared UI and colocated pure-logic tests.
+- `src/i18n` — locale configuration, typed message catalogs, routing helpers,
+  explicit-locale formatters, and hardcoded-copy enforcement.
 - `src/server/data` — the `DataStore` seam, competition registry, ESPN mappers,
   fixtures, and frontend data contracts.
 - `backend/config` — generated competition configuration embedded in Go.
@@ -133,6 +149,7 @@ See [`backend/reader/README.md`](backend/reader/README.md) for API behavior and
 - `backend/reader` — public Go REST API, SQL read models, middleware, OpenAPI,
   unit tests, and Testcontainers integration tests.
 - `docs/backend` — system architecture and operator setup.
+- `docs/LOCALIZATION.md` — localization architecture and contributor workflow.
 - `docs/superpowers/specs` / `plans` — design history and implementation plans.
 
 ## Delivery workflow

@@ -1,4 +1,5 @@
-import type { Match, BracketMatch, BracketTeam, Team } from '@/server/data/types';
+import type { Match } from '@/server/data/types';
+import type { MatchDetailInput } from './MatchDetailPopup';
 
 // True when the kickoff falls within the Monday→Sunday calendar week that
 // contains `now` (local time) — Monday 00:00 through Sunday 23:59:59.999.
@@ -15,25 +16,19 @@ export function isThisWeek(kickoffIso: string, now: Date): boolean {
   return ko.getTime() >= mon.getTime() && ko.getTime() <= sun.getTime();
 }
 
-// Adapt a league Match to the BracketMatch shape MatchDetailPopup consumes.
-// BracketMatch === Match's shared fields + `round` and `placeholder` teams.
-export function matchToBracketMatch(m: Match): BracketMatch {
-  const toBracketTeam = (t: Team): BracketTeam => ({
-    id: t.id, name: t.name, abbr: t.abbr, crestUrl: t.crestUrl, placeholder: false,
-  });
+// Keep ordinary fixture data at the popup's exact display boundary rather than
+// fabricating knockout-only round or placeholder fields.
+export function toMatchDetailInput(m: Match): MatchDetailInput {
   return {
-    id: m.id,
-    round: '',
     kickoff: m.kickoff,
-    home: toBracketTeam(m.home),
-    away: toBracketTeam(m.away),
+    home: m.home,
+    away: m.away,
     homeScore: m.homeScore,
     awayScore: m.awayScore,
     state: m.state,
     statusDetail: m.statusDetail,
     statusName: m.statusName,
     minute: m.minute,
-    winnerId: m.winnerId,
     note: m.note,
   };
 }

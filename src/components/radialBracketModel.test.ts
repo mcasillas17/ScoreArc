@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { teamJourney, type RingNode } from './radialBracketModel';
+import { ellipse, teamJourney, type RingNode } from './radialBracketModel';
+
+describe('ellipse SVG coordinates', () => {
+  it('normalizes generated coordinates across JavaScript engine precision', () => {
+    expect(ellipse(400, 400, 241.875)).toEqual({
+      x: 311.441305,
+      y: 147.231494,
+    });
+  });
+});
 
 function node(depth: number, teamId: string, opts: Partial<RingNode> = {}): RingNode {
   return {
@@ -66,12 +75,12 @@ describe('teamJourney', () => {
 });
 
 import { deriveLeafOrder } from './radialBracketModel';
-import type { BracketRound, BracketMatch } from '@/server/data/types';
+import type { BracketRound, BracketMatch, KnockoutRoundSlug } from '@/server/data/types';
 
-function dm(id: string, home: string, away: string, winner: string): BracketMatch {
+function dm(round: KnockoutRoundSlug, id: string, home: string, away: string, winner: string): BracketMatch {
   const team = (a: string) => ({ id: a, name: a, abbr: a, crestUrl: null, placeholder: false });
   return {
-    id, round: '', kickoff: '', home: team(home), away: team(away),
+    id, round, kickoff: '', home: team(home), away: team(away),
     homeScore: null, awayScore: null, state: 'finished', statusDetail: 'FT',
     statusName: '', minute: null, winnerId: winner || null, note: null,
   };
@@ -80,25 +89,25 @@ function dm(id: string, home: string, away: string, winner: string): BracketMatc
 describe('deriveLeafOrder', () => {
   it('orders leaf matches so adjacent pairs feed the parent, from results', () => {
     const rounds: BracketRound[] = [
-      { slug: 'round-of-16', name: '', matches: [dm('l0', 'A', 'B', 'A'), dm('l1', 'C', 'D', 'C')] },
-      { slug: 'final', name: '', matches: [dm('f', 'A', 'C', 'A')] },
+      { slug: 'round-of-16', matches: [dm('round-of-16', 'l0', 'A', 'B', 'A'), dm('round-of-16', 'l1', 'C', 'D', 'C')] },
+      { slug: 'final', matches: [dm('final', 'f', 'A', 'C', 'A')] },
     ];
     expect(deriveLeafOrder(rounds, ['round-of-16', 'final'])).toEqual([0, 1]);
   });
 
   it('reverses when the final home team came from the second leaf match', () => {
     const rounds: BracketRound[] = [
-      { slug: 'round-of-16', name: '', matches: [dm('l0', 'A', 'B', 'A'), dm('l1', 'C', 'D', 'C')] },
-      { slug: 'final', name: '', matches: [dm('f', 'C', 'A', 'C')] },
+      { slug: 'round-of-16', matches: [dm('round-of-16', 'l0', 'A', 'B', 'A'), dm('round-of-16', 'l1', 'C', 'D', 'C')] },
+      { slug: 'final', matches: [dm('final', 'f', 'C', 'A', 'C')] },
     ];
     expect(deriveLeafOrder(rounds, ['round-of-16', 'final'])).toEqual([1, 0]);
   });
 
   it('falls back to event order when a winner is missing', () => {
-    const bad = dm('f', 'A', 'C', ''); bad.winnerId = null;
+    const bad = dm('final', 'f', 'A', 'C', ''); bad.winnerId = null;
     const rounds: BracketRound[] = [
-      { slug: 'round-of-16', name: '', matches: [dm('l0', 'A', 'B', 'A'), dm('l1', 'C', 'D', 'C')] },
-      { slug: 'final', name: '', matches: [bad] },
+      { slug: 'round-of-16', matches: [dm('round-of-16', 'l0', 'A', 'B', 'A'), dm('round-of-16', 'l1', 'C', 'D', 'C')] },
+      { slug: 'final', matches: [bad] },
     ];
     expect(deriveLeafOrder(rounds, ['round-of-16', 'final'])).toEqual([0, 1]);
   });

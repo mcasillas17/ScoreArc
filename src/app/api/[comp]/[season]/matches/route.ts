@@ -3,6 +3,7 @@ import { resolveSeason } from '@/server/data/competitions';
 import { parseMatchQuery } from '@/server/data/matchQuery';
 import type { Match } from '@/server/data/types';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
+import { apiError } from '@/app/api/errorResponse';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -26,12 +27,12 @@ export const revalidate = 0;
 export async function GET(req: Request, { params }: { params: { comp: string; season: string } }) {
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) {
-    return Response.json({ error: 'unknown competition or season' }, { status: 404 });
+    return apiError('NOT_FOUND', 404);
   }
 
   const parsed = parseMatchQuery(new URL(req.url).searchParams);
   if ('error' in parsed) {
-    return Response.json({ error: parsed.error }, { status: 400 });
+    return apiError('INVALID_REQUEST', 400);
   }
   const { range, state, summary, limit } = parsed.query;
 
@@ -50,8 +51,8 @@ export async function GET(req: Request, { params }: { params: { comp: string; se
       if (limit !== null) matches = matches.slice(0, limit);
     }
     return Response.json(matches, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
-  } catch (err) {
+  } catch {
     await trackAPIRequestFailure('matches', 502, params.comp, params.season);
-    return Response.json({ error: String(err) }, { status: 502 });
+    return apiError('UPSTREAM_UNAVAILABLE', 502);
   }
 }

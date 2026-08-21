@@ -1,4 +1,6 @@
 import type { NewsArticle } from '@/server/data/types';
+import type { Locale } from '@/i18n/config';
+import { getTranslator } from '@/i18n/translate';
 
 /**
  * What the home digest's "What's on" block is showing, and how it says so.
@@ -11,11 +13,6 @@ import type { NewsArticle } from '@/server/data/types';
  * above a block that has none.
  */
 export type WhatsOnMode = 'live' | 'upcoming' | 'recent' | 'none';
-
-export interface Bilingual {
-  en: string;
-  es: string;
-}
 
 /**
  * How far ahead a fixture still counts as "what's on".
@@ -74,27 +71,19 @@ export function chooseWhatsOn<T>(
  * the same thing in every timezone. Deliberately approximate — "in about 4
  * hours" cannot be wrong by the time the page is read the way "in 3h 58m" can.
  */
-export function untilKickoff(ms: number): Bilingual | null {
+export function untilKickoff(ms: number, locale: Locale): string | null {
   if (!Number.isFinite(ms) || ms <= 0) return null;
+  const t = getTranslator(locale);
   const minutes = Math.round(ms / 60000);
   if (minutes < 60) {
-    return {
-      en: minutes <= 1 ? 'in a minute' : `in ${minutes} minutes`,
-      es: minutes <= 1 ? 'en un minuto' : `en ${minutes} minutos`,
-    };
+    return minutes <= 1 ? t('home.digest.inMinute') : t('home.digest.inMinutes', minutes);
   }
   const hours = Math.round(minutes / 60);
   if (hours < 24) {
-    return {
-      en: hours === 1 ? 'in about an hour' : `in about ${hours} hours`,
-      es: hours === 1 ? 'en aproximadamente una hora' : `en aproximadamente ${hours} horas`,
-    };
+    return hours === 1 ? t('home.digest.inHour') : t('home.digest.inHours', hours);
   }
   const days = Math.round(hours / 24);
-  return {
-    en: days === 1 ? 'in about a day' : `in about ${days} days`,
-    es: days === 1 ? 'en aproximadamente un día' : `en aproximadamente ${days} días`,
-  };
+  return days === 1 ? t('home.digest.inDay') : t('home.digest.inDays', days);
 }
 
 /**
@@ -114,27 +103,19 @@ export function untilKickoff(ms: number): Bilingual | null {
  * granularity is already coarse, and both pages are force-dynamic, so arriving
  * or reloading is always correct.
  */
-export function publishedAgo(ms: number): Bilingual | null {
+export function publishedAgo(ms: number, locale: Locale): string | null {
   if (!Number.isFinite(ms) || ms < 0) return null;
+  const t = getTranslator(locale);
   const minutes = Math.floor(ms / 60000);
   if (minutes < 60) {
-    return {
-      en: minutes <= 1 ? 'just now' : `${minutes} minutes ago`,
-      es: minutes <= 1 ? 'ahora mismo' : `hace ${minutes} minutos`,
-    };
+    return minutes <= 1 ? t('home.digest.justNow') : t('home.digest.minutesAgo', minutes);
   }
   const hours = Math.floor(minutes / 60);
   if (hours < 24) {
-    return {
-      en: hours === 1 ? '1 hour ago' : `${hours} hours ago`,
-      es: hours === 1 ? 'hace 1 hora' : `hace ${hours} horas`,
-    };
+    return hours === 1 ? t('home.digest.hourAgo') : t('home.digest.hoursAgo', hours);
   }
   const days = Math.floor(hours / 24);
-  return {
-    en: days === 1 ? '1 day ago' : `${days} days ago`,
-    es: days === 1 ? 'hace 1 día' : `hace ${days} días`,
-  };
+  return days === 1 ? t('home.digest.dayAgo') : t('home.digest.daysAgo', days);
 }
 
 /**
@@ -151,36 +132,23 @@ export function whatsOnHeadline(
   mode: WhatsOnMode,
   count: number,
   msToNextKickoff: number | null,
-): Bilingual {
+  locale: Locale,
+): string {
+  const t = getTranslator(locale);
   if (mode === 'live') {
-    return {
-      en: count === 1 ? '1 match live right now.' : `${count} matches live right now.`,
-      es: count === 1 ? '1 partido en vivo ahora mismo.' : `${count} partidos en vivo ahora mismo.`,
-    };
+    return t('home.digest.liveHeadline', count);
   }
   if (mode === 'upcoming') {
-    const away = msToNextKickoff === null ? null : untilKickoff(msToNextKickoff);
+    const away = msToNextKickoff === null ? null : untilKickoff(msToNextKickoff, locale);
     if (!away) {
-      return {
-        en: 'Nothing live right now — here is what is next.',
-        es: 'Nada en vivo ahora mismo — esto es lo que sigue.',
-      };
+      return t('home.digest.upcomingHeadline');
     }
-    return {
-      en: `Nothing live right now — next kickoff ${away.en}.`,
-      es: `Nada en vivo ahora mismo — próximo silbatazo ${away.es}.`,
-    };
+    return t('home.digest.upcomingTimedHeadline', away);
   }
   if (mode === 'none') {
-    return {
-      en: 'Nothing live, nothing next, nothing just played — the window is empty.',
-      es: 'Nada en vivo, nada por jugarse, nada recién jugado — la ventana está vacía.',
-    };
+    return t('home.digest.emptyHeadline');
   }
-  return {
-    en: 'Nothing live right now — here are the latest results.',
-    es: 'Nada en vivo ahora mismo — estos son los últimos resultados.',
-  };
+  return t('home.digest.recentHeadline');
 }
 
 /**
@@ -201,7 +169,7 @@ export function whatsOnHeadline(
  */
 export interface DigestNewsItem {
   article: NewsArticle;
-  ago: Bilingual | null;
+  ago: string | null;
 }
 
 /**

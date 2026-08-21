@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { NextRequest } from 'next/server';
 import { dataStore, currentWeekRange } from '@/server/data/store';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 
@@ -9,11 +11,192 @@ vi.mock('@/server/data/store', async (orig) => {
 
 vi.mock('@/lib/telemetry/server', () => ({ trackAPIRequestFailure: vi.fn() }));
 
+beforeEach(() => {
+  vi.restoreAllMocks();
+  vi.clearAllMocks();
+});
+
+vi.mock('next/og', () => ({
+  ImageResponse: class ImageResponse {
+    status = 200;
+    constructor(
+      public element: React.ReactElement,
+      public options: { width: number; height: number },
+    ) {}
+  },
+}));
+
 const route = () => import('./[comp]/[season]/matches/route');
 const wc = { comp: 'world-cup', season: '2026' };
 const mx = { comp: 'liga-mx', season: '2026-apertura' };
 const get = async (query: string, params = mx) =>
   (await route()).GET(new Request(`http://x/api/matches${query}`), { params });
+
+const sensitiveProviderFailure = new Error(
+  'upstream unavailable: sensitive provider detail',
+);
+
+const migratedRouteCases = [
+  {
+    name: 'bracket',
+    telemetry: 'bracket',
+    comp: wc.comp,
+    season: wc.season,
+    rejectProvider: () => vi.spyOn(dataStore, 'getBracket').mockRejectedValueOnce(sensitiveProviderFailure),
+    getValid: async () => (await import('./[comp]/[season]/bracket/route')).GET(
+      new Request('http://x/api/world-cup/2026/bracket'),
+      { params: wc },
+    ),
+    getMissing: async () => (await import('./[comp]/[season]/bracket/route')).GET(
+      new Request('http://x/api/nope/2026/bracket'),
+      { params: { comp: 'nope', season: '2026' } },
+    ),
+  },
+  {
+    name: 'match summary',
+    telemetry: 'match-summary',
+    comp: wc.comp,
+    season: wc.season,
+    rejectProvider: () => vi.spyOn(dataStore, 'getMatchSummary').mockRejectedValueOnce(sensitiveProviderFailure),
+    getValid: async () => (await import('./[comp]/[season]/match/[id]/route')).GET(
+      new Request('http://x/api/world-cup/2026/match/401?home=MEX&away=USA'),
+      { params: { ...wc, id: '401' } },
+    ),
+    getMissing: async () => (await import('./[comp]/[season]/match/[id]/route')).GET(
+      new Request('http://x/api/nope/2026/match/401'),
+      { params: { comp: 'nope', season: '2026', id: '401' } },
+    ),
+  },
+  {
+    name: 'matches',
+    telemetry: 'matches',
+    comp: wc.comp,
+    season: wc.season,
+    rejectProvider: () => vi.spyOn(dataStore, 'getFixtures').mockRejectedValueOnce(sensitiveProviderFailure),
+    getValid: async () => get('', wc),
+    getMissing: async () => get('', { comp: 'nope', season: '2026' }),
+  },
+  {
+    name: 'news',
+    telemetry: 'news',
+    comp: wc.comp,
+    season: wc.season,
+    rejectProvider: () => vi.spyOn(dataStore, 'getNews').mockRejectedValueOnce(sensitiveProviderFailure),
+    getValid: async () => (await import('./[comp]/[season]/news/route')).GET(
+      new Request('http://x/api/world-cup/2026/news'),
+      { params: wc },
+    ),
+    getMissing: async () => (await import('./[comp]/[season]/news/route')).GET(
+      new Request('http://x/api/nope/2026/news'),
+      { params: { comp: 'nope', season: '2026' } },
+    ),
+  },
+  {
+    name: 'standings',
+    telemetry: 'standings',
+    comp: wc.comp,
+    season: wc.season,
+    rejectProvider: () => vi.spyOn(dataStore, 'getStandings').mockRejectedValueOnce(sensitiveProviderFailure),
+    getValid: async () => (await import('./[comp]/[season]/standings/route')).GET(
+      new Request('http://x/api/world-cup/2026/standings'),
+      { params: wc },
+    ),
+    getMissing: async () => (await import('./[comp]/[season]/standings/route')).GET(
+      new Request('http://x/api/nope/2026/standings'),
+      { params: { comp: 'nope', season: '2026' } },
+    ),
+  },
+  {
+    name: 'team',
+    telemetry: 'team',
+    comp: mx.comp,
+    season: mx.season,
+    rejectProvider: () => vi.spyOn(dataStore, 'getTeam').mockRejectedValueOnce(sensitiveProviderFailure),
+    getValid: async () => (await import('./[comp]/[season]/team/[teamId]/route')).GET(
+      new Request('http://x/api/liga-mx/2026-apertura/team/mex-america'),
+      { params: { ...mx, teamId: 'mex-america' } },
+    ),
+    getMissing: async () => (await import('./[comp]/[season]/team/[teamId]/route')).GET(
+      new Request('http://x/api/nope/2026/team/mex-america'),
+      { params: { comp: 'nope', season: '2026', teamId: 'mex-america' } },
+    ),
+  },
+  {
+    name: 'top assists',
+    telemetry: 'top-assists',
+    comp: wc.comp,
+    season: wc.season,
+    rejectProvider: () => vi.spyOn(dataStore, 'getTopAssists').mockRejectedValueOnce(sensitiveProviderFailure),
+    getValid: async () => (await import('./[comp]/[season]/top-assists/route')).GET(
+      new Request('http://x/api/world-cup/2026/top-assists'),
+      { params: wc },
+    ),
+    getMissing: async () => (await import('./[comp]/[season]/top-assists/route')).GET(
+      new Request('http://x/api/nope/2026/top-assists'),
+      { params: { comp: 'nope', season: '2026' } },
+    ),
+  },
+  {
+    name: 'top scorers',
+    telemetry: 'top-scorers',
+    comp: wc.comp,
+    season: wc.season,
+    rejectProvider: () => vi.spyOn(dataStore, 'getTopScorers').mockRejectedValueOnce(sensitiveProviderFailure),
+    getValid: async () => (await import('./[comp]/[season]/top-scorers/route')).GET(
+      new Request('http://x/api/world-cup/2026/top-scorers'),
+      { params: wc },
+    ),
+    getMissing: async () => (await import('./[comp]/[season]/top-scorers/route')).GET(
+      new Request('http://x/api/nope/2026/top-scorers'),
+      { params: { comp: 'nope', season: '2026' } },
+    ),
+  },
+] as const;
+
+describe.each(migratedRouteCases)('stable API errors — $name', (routeCase) => {
+  it('returns an exact code-only 404 without provider access or telemetry', async () => {
+    const provider = routeCase.rejectProvider();
+
+    const response = await routeCase.getMissing();
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: { code: 'NOT_FOUND' } });
+    expect(provider).not.toHaveBeenCalled();
+    expect(trackAPIRequestFailure).not.toHaveBeenCalled();
+  });
+
+  it('returns an exact code-only 502 and preserves route telemetry', async () => {
+    routeCase.rejectProvider();
+
+    const response = await routeCase.getValid();
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body).toEqual({ error: { code: 'UPSTREAM_UNAVAILABLE' } });
+    expect(JSON.stringify(body)).not.toContain('sensitive provider detail');
+    expect(trackAPIRequestFailure).toHaveBeenCalledOnce();
+    expect(trackAPIRequestFailure).toHaveBeenCalledWith(
+      routeCase.telemetry,
+      502,
+      routeCase.comp,
+      routeCase.season,
+    );
+  });
+});
+
+describe('team route not-found result', () => {
+  it('returns an exact code-only 404 when the provider has no team', async () => {
+    vi.spyOn(dataStore, 'getTeam').mockResolvedValueOnce(null);
+    const response = await (await import('./[comp]/[season]/team/[teamId]/route')).GET(
+      new Request('http://x/api/liga-mx/2026-apertura/team/mex-america'),
+      { params: { ...mx, teamId: 'mex-america' } },
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: { code: 'NOT_FOUND' } });
+    expect(trackAPIRequestFailure).not.toHaveBeenCalled();
+  });
+});
 
 describe('competition/season resolution', () => {
   beforeEach(() => vi.restoreAllMocks());
@@ -34,19 +217,24 @@ describe('competition/season resolution', () => {
   it('404s an unknown competition', async () => {
     const res = await get('', { comp: 'nope', season: '2026' });
     expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: { code: 'NOT_FOUND' } });
     expect(trackAPIRequestFailure).not.toHaveBeenCalled();
   });
 
   it('404s an unknown season', async () => {
     const res = await get('', { comp: 'world-cup', season: '1999' });
     expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: { code: 'NOT_FOUND' } });
     expect(trackAPIRequestFailure).not.toHaveBeenCalled();
   });
 
   it('tracks an upstream failure', async () => {
-    vi.spyOn(dataStore, 'getFixtures').mockRejectedValueOnce(new Error('upstream unavailable'));
+    vi.spyOn(dataStore, 'getFixtures').mockRejectedValueOnce(
+      new Error('upstream unavailable: sensitive provider detail'),
+    );
     const res = await get('', wc);
     expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: { code: 'UPSTREAM_UNAVAILABLE' } });
     expect(trackAPIRequestFailure).toHaveBeenCalledWith('matches', 502, 'world-cup', '2026');
   });
 });
@@ -145,9 +333,11 @@ describe('GET /api/[comp]/[season]/matches — rejected input', () => {
       const upcoming = vi.spyOn(dataStore, 'getUpcoming').mockResolvedValue([]);
       const res = await get(query);
       expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: { code: 'INVALID_REQUEST' } });
       expect(fixtures).not.toHaveBeenCalled();
       expect(enriched).not.toHaveBeenCalled();
       expect(upcoming).not.toHaveBeenCalled();
+      expect(trackAPIRequestFailure).not.toHaveBeenCalled();
     });
   }
 
@@ -156,5 +346,44 @@ describe('GET /api/[comp]/[season]/matches — rejected input', () => {
     const res = await get('?range=20260801-20260831', { comp: 'nope', season: '2026-27' });
     expect(res.status).toBe(404);
     expect(fixtures).not.toHaveBeenCalled();
+  });
+});
+
+const ogRoute = () => import('./og/route');
+const ogMarkup = async (query: string) => {
+  const response = await (await ogRoute()).GET(new NextRequest(`http://x/api/og${query}`));
+  return {
+    status: response.status,
+    html: renderToStaticMarkup((response as unknown as { element: React.ReactElement }).element),
+  };
+};
+
+describe('GET /api/og — validated locale', () => {
+  it.each([
+    ['en', 'MY PREDICTED CHAMPION'],
+    ['es', 'MI CAMPEÓN PRONOSTICADO'],
+  ])('renders predicted-champion copy in %s', async (locale, copy) => {
+    const result = await ogMarkup(
+      `?locale=${locale}&champ=MEX&name=M%C3%A9xico&comp=World%20Cup%202026`,
+    );
+    expect(result.status).toBe(200);
+    expect(result.html).toContain(`lang="${locale}"`);
+    expect(result.html).toContain(copy);
+  });
+
+  it('defaults an arbitrary locale to English without reflecting it', async () => {
+    const result = await ogMarkup('?locale=%3Cscript%3Ebad%3C%2Fscript%3E');
+    expect(result.status).toBe(200);
+    expect(result.html).toContain('lang="en"');
+    expect(result.html).toContain('Live Football');
+    expect(result.html).toContain('Live scores · standings · brackets');
+    expect(result.html).not.toContain('script');
+    expect(result.html).not.toContain('Fútbol en vivo');
+  });
+
+  it('keeps existing query rendering escaped', async () => {
+    const result = await ogMarkup('?locale=es&comp=%3Cb%3EFinal%3C%2Fb%3E');
+    expect(result.html).toContain('&lt;b&gt;Final&lt;/b&gt;');
+    expect(result.html).not.toContain('<b>Final</b>');
   });
 });

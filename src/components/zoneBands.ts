@@ -1,5 +1,5 @@
 import type { Standing } from '@/server/data/types';
-import type { Zone, ZoneKind } from '@/server/data/competitions';
+import type { Zone, ZoneKind, ZoneLabelKey } from '@/server/data/competitions';
 
 // A league table is not a flat list — it is a set of outcomes stacked on top of
 // each other. The top of the Premier League is the Champions League; the bottom
@@ -13,7 +13,7 @@ import type { Zone, ZoneKind } from '@/server/data/competitions';
 
 export interface Band {
   kind: ZoneKind | 'mid';
-  label: string;
+  labelKey: ZoneLabelKey | null;
   from: number;
   to: number;
   standings: Standing[];
@@ -38,7 +38,7 @@ export function toBands(standings: Standing[], zones: Zone[]): Band[] {
   // how this shipped. One unmarked band costs the ring its arcs and the table
   // its legend automatically.
   if (standings.every((s) => s.played === 0)) {
-    return [{ kind: 'mid', label: '', from: 1, to: n, standings }];
+    return [{ kind: 'mid', labelKey: null, from: 1, to: n, standings }];
   }
 
   const clamped = zones
@@ -65,7 +65,7 @@ export function toBands(standings: Standing[], zones: Zone[]): Band[] {
     while (end + 1 <= n && owned[end + 1] === zone) end++;
     bands.push({
       kind: zone ? zone.kind : 'mid',
-      label: zone ? zone.label : '',
+      labelKey: zone?.labelKey ?? null,
       from: cursor,
       to: end,
       standings: standings.filter((s) => s.rank >= cursor && s.rank <= end),

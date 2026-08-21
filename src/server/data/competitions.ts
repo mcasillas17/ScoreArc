@@ -1,6 +1,9 @@
+import type { KnockoutRoundSlug } from './types';
+
 export type CompetitionKind = 'national' | 'club';
 export type TeamStyle = 'flag' | 'crest';
 export type Section = 'bracket' | 'standings' | 'scores' | 'news';
+export type ChampionTitleKey = 'champion.world' | 'champion.competition';
 
 // Fixed official WC2026 R32 leaf order (identity-based). Data, not UI — lives
 // here so the bracket builder can receive it per-season.
@@ -26,11 +29,30 @@ export type ZoneKind =
   | 'relegation-playoff'  // a tie to survive (Bundesliga 16th, Ligue 1)
   | 'relegation';
 
+export type ZoneLabelKey =
+  | 'zone.champion'
+  | 'zone.championsLeague'
+  | 'zone.championsLeagueQualifying'
+  | 'zone.europaLeague'
+  | 'zone.conferenceLeague'
+  | 'zone.relegation'
+  | 'zone.relegationPlayoff'
+  | 'zone.mlsChampionsCup'
+  | 'zone.mlsRoundOne'
+  | 'zone.wildCard'
+  | 'zone.supportersShield'
+  | 'zone.promotion';
+
+export type QualificationLabelKey = 'standings.liguilla' | 'round.knockout';
+export type OverallTableLabelKey = 'standings.supportersShieldOverall';
+export type ConfiguredRound = 'quarterfinals';
+export type ISODate = `${number}-${number}-${number}`;
+
 export interface Zone {
   from: number; // 1-based rank, inclusive
   to: number;   // 1-based rank, inclusive
   kind: ZoneKind;
-  label: string;
+  labelKey: ZoneLabelKey;
 }
 
 // A specific edition of a competition — World Cup 2026, Liga MX Apertura 2026.
@@ -47,14 +69,14 @@ export interface Season {
   // Knockout round slugs, outer->inner (leaf first, final last). Drives the
   // bracket's ring count + geometry. 2026 starts at round-of-32; 1998-2022 at
   // round-of-16.
-  knockoutRounds?: string[];
+  knockoutRounds?: KnockoutRoundSlug[];
   // Leagues only: highlight the top-N qualification cut in the standings view
   // (e.g. Liga MX top 8 → Liguilla). Absent for leagues with no such cut.
   //
   // This models exactly ONE boundary. A European league has four or five —
   // Champions League, Europa, Conference, relegation playoff, relegation — so
   // those use `zones` below instead. Both are supported; `zones` wins when set.
-  qualification?: { cut: number; label: string };
+  qualification?: { cut: number; labelKey: QualificationLabelKey };
   // What each range of the table earns. Ranges are 1-based and inclusive, and
   // anything not covered renders as unmarked mid-table.
   zones?: Zone[];
@@ -63,7 +85,7 @@ export interface Season {
   // decide the playoffs, but the Supporters' Shield is the best record across
   // both, and no provider publishes that combined table — so it is merged from
   // the conference tables and appended as one more table with its own zones.
-  overallTable?: { id: string; label: string; zones?: Zone[] };
+  overallTable?: { id: string; labelKey: OverallTableLabelKey; zones?: Zone[] };
   // Competitions whose tables the provider does not publish at all, so we
   // compute them from results instead. ESPN's /standings returns `{}` for the
   // Leagues Cup — for the current season AND for seasons that ended a year
@@ -78,13 +100,13 @@ export interface Season {
     datesRange: string;
     splitLeagueSlug: string;
     cut: number;
-    label: string;
+    labelKey: 'round.knockout';
     groupLabels: { primary: string; split: string };
     // What the top banner says between the phase ending and the first
     // knockout kickoff. The provider has published no knockout fixture, so
     // there is no scheduled match to show and no kickoff time to quote — only
     // the round and its window, both of which are tournament configuration.
-    nextRound?: { label: string; when: string };
+    nextRound?: { round: ConfiguredRound; startDate: ISODate; endDate: ISODate };
   };
 }
 
@@ -118,9 +140,9 @@ export interface Competition {
    *  any other competition is a factual error, not a styling choice. Everything
    *  else falls back to `emblem`. */
   trophyImage?: string;
-  /** What a champion of this competition is called. Defaults to "CHAMPIONS";
-   *  only the World Cup crowns WORLD champions. */
-  championTitle?: string;
+  /** Catalog key for the competition's champion title. Only the World Cup
+   *  crowns world champions; every other competition uses champion.competition. */
+  championTitleKey?: ChampionTitleKey;
   // Per-competition identity accent. base = primary, bright = hover/emphasis,
   // soft = low-alpha tint for borders/backgrounds. Injected as CSS custom
   // properties on the app-shell; :root falls back to gold.
@@ -146,7 +168,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     emblem: '🌍',
     logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/4.png',
     trophyImage: '/trophy.png',
-    championTitle: 'WORLD CHAMPIONS',
+    championTitleKey: 'champion.world',
     accent: { base: '#e8b84b', bright: '#f0c873', soft: 'rgba(232,184,75,0.16)' },
     currentSeasonId: '2026',
     seasons: {
@@ -196,9 +218,9 @@ export const COMPETITIONS: Record<string, Competition> = {
           datesRange: '20260804-20260813',
           splitLeagueSlug: 'mex.1',
           cut: 4,
-          label: 'Knockout',
+          labelKey: 'round.knockout',
           groupLabels: { primary: 'MLS', split: 'Liga MX' },
-          nextRound: { label: 'Quarterfinals', when: '25–27 August' },
+          nextRound: { round: 'quarterfinals', startDate: '2026-08-25', endDate: '2026-08-27' },
         },
         // Its knockout starts at the quarterfinals. Without this the bracket
         // inherits the World Cup's five rounds, whose leaf is `round-of-32` —
@@ -236,10 +258,10 @@ export const COMPETITIONS: Record<string, Competition> = {
     //    likewise only falls to the league if the winner is already qualified.
     //    Which rank catches it varies with everything above it: 7th in 2024-25,
     //    8th in 2025-26. No fixed rank earns it, so no `uecl` band is drawn.
-    { from: 1, to: 1, kind: 'champion', label: 'Champion' },
-    { from: 2, to: 4, kind: 'ucl', label: 'Champions League' },
-    { from: 5, to: 5, kind: 'uel', label: 'Europa League' },
-    { from: 18, to: 20, kind: 'relegation', label: 'Relegation' },
+    { from: 1, to: 1, kind: 'champion', labelKey: 'zone.champion' },
+    { from: 2, to: 4, kind: 'ucl', labelKey: 'zone.championsLeague' },
+    { from: 5, to: 5, kind: 'uel', labelKey: 'zone.europaLeague' },
+    { from: 18, to: 20, kind: 'relegation', labelKey: 'zone.relegation' },
   ]),
   ...leagueCompetition('laliga', 'LaLiga', 'LaLiga', 'esp.1', '🇪🇸', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/15.png', '2026-27', '2026-27', { base: '#d43a3f', bright: '#f1bf00', soft: 'rgba(241,191,0,0.16)' }, undefined, [
     // LaLiga EA Sports 2026-27 — 20 clubs, 38 rounds, bottom three down to
@@ -273,11 +295,11 @@ export const COMPETITIONS: Record<string, Competition> = {
     //    is the more common outcome: a big club usually wins the cup. Encoded
     //    as the cup winner coming from OUTSIDE the top five, which is the only
     //    reading that does not assume a result.
-    { from: 1, to: 1, kind: 'champion', label: 'Campeón' },
-    { from: 2, to: 4, kind: 'ucl', label: 'Champions League' },
-    { from: 5, to: 5, kind: 'uel', label: 'Europa League' },
-    { from: 6, to: 6, kind: 'uecl', label: 'Conference League' },
-    { from: 18, to: 20, kind: 'relegation', label: 'Descenso' },
+    { from: 1, to: 1, kind: 'champion', labelKey: 'zone.champion' },
+    { from: 2, to: 4, kind: 'ucl', labelKey: 'zone.championsLeague' },
+    { from: 5, to: 5, kind: 'uel', labelKey: 'zone.europaLeague' },
+    { from: 6, to: 6, kind: 'uecl', labelKey: 'zone.conferenceLeague' },
+    { from: 18, to: 20, kind: 'relegation', labelKey: 'zone.relegation' },
   ]),
   ...leagueCompetition('serie-a', 'Serie A', 'Serie A', 'ita.1', '🇮🇹', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/12.png', '2026-27', '2026-27', { base: '#0a9b52', bright: '#e4f7ec', soft: 'rgba(205,33,42,0.16)' }, undefined, [
     // Serie A 2026-27: 20 clubs, three down to Serie B. Europe below is what
@@ -307,11 +329,11 @@ export const COMPETITIONS: Record<string, Competition> = {
     // instead. It triggers only on equal points, so 18th is marked plain
     // relegation rather than 'relegation-playoff' — that kind would wrongly
     // promise a survival tie in every season.
-    { from: 1, to: 1, kind: 'champion', label: 'Scudetto' },
-    { from: 2, to: 4, kind: 'ucl', label: 'Champions League' },
-    { from: 5, to: 5, kind: 'uel', label: 'Europa League' },
-    { from: 6, to: 6, kind: 'uecl', label: 'Conference League' },
-    { from: 18, to: 20, kind: 'relegation', label: 'Relegation' },
+    { from: 1, to: 1, kind: 'champion', labelKey: 'zone.champion' },
+    { from: 2, to: 4, kind: 'ucl', labelKey: 'zone.championsLeague' },
+    { from: 5, to: 5, kind: 'uel', labelKey: 'zone.europaLeague' },
+    { from: 6, to: 6, kind: 'uecl', labelKey: 'zone.conferenceLeague' },
+    { from: 18, to: 20, kind: 'relegation', labelKey: 'zone.relegation' },
   ]),
   ...leagueCompetition('bundesliga', 'Bundesliga', 'Bundesliga', 'ger.1', '🇩🇪', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/10.png', '2026-27', '2026-27', { base: '#d20515', bright: '#f5c518', soft: 'rgba(245,197,24,0.16)' }, undefined, [
     // 2026-27 Bundesliga (28 Aug 2026 – 22 May 2027). 18 clubs, 34 matchdays.
@@ -336,12 +358,12 @@ export const COMPETITIONS: Record<string, Competition> = {
     // happened in 2025-26, when Bayern won the cup). Likewise a German club
     // winning the UCL/UEL can add a fifth Champions League entrant. Both are
     // decided in May, so the table is drawn at its baseline until then.
-    { from: 1, to: 1, kind: 'champion', label: 'Meister' },
-    { from: 2, to: 4, kind: 'ucl', label: 'Champions League' },
-    { from: 5, to: 5, kind: 'uel', label: 'Europa League' },
-    { from: 6, to: 6, kind: 'uecl', label: 'Conference League' },
-    { from: 16, to: 16, kind: 'relegation-playoff', label: 'Relegationsspiele — playoff' },
-    { from: 17, to: 18, kind: 'relegation', label: 'Relegation' },
+    { from: 1, to: 1, kind: 'champion', labelKey: 'zone.champion' },
+    { from: 2, to: 4, kind: 'ucl', labelKey: 'zone.championsLeague' },
+    { from: 5, to: 5, kind: 'uel', labelKey: 'zone.europaLeague' },
+    { from: 6, to: 6, kind: 'uecl', labelKey: 'zone.conferenceLeague' },
+    { from: 16, to: 16, kind: 'relegation-playoff', labelKey: 'zone.relegationPlayoff' },
+    { from: 17, to: 18, kind: 'relegation', labelKey: 'zone.relegation' },
   ]),
   ...leagueCompetition('ligue-1', 'Ligue 1', 'Ligue 1', 'fra.1', '🇫🇷', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/9.png', '2026-27', '2026-27', { base: '#3b7fd4', bright: '#eaf2ff', soft: 'rgba(239,65,53,0.16)' }, undefined, [
     // 2026-27 Ligue 1: 18 clubs (down from 20 since 2023-24), 34 rounds.
@@ -367,13 +389,13 @@ export const COMPETITIONS: Record<string, Competition> = {
     // UEFA's top two by season coefficient, a fifth Champions League berth would
     // pass to 5th. Both are decided in-season, so the table below is the base
     // allocation and 6-7 can shift once the cup is won.
-    { from: 1, to: 1, kind: 'champion', label: 'Champion' },
-    { from: 2, to: 3, kind: 'ucl', label: 'Champions League' },
-    { from: 4, to: 4, kind: 'ucl', label: 'Champions League qualifying' },
-    { from: 5, to: 5, kind: 'uel', label: 'Europa League' },
-    { from: 6, to: 6, kind: 'uecl', label: 'Conference League' },
-    { from: 16, to: 16, kind: 'relegation-playoff', label: 'Relegation play-off' },
-    { from: 17, to: 18, kind: 'relegation', label: 'Relegation' },
+    { from: 1, to: 1, kind: 'champion', labelKey: 'zone.champion' },
+    { from: 2, to: 3, kind: 'ucl', labelKey: 'zone.championsLeague' },
+    { from: 4, to: 4, kind: 'ucl', labelKey: 'zone.championsLeagueQualifying' },
+    { from: 5, to: 5, kind: 'uel', labelKey: 'zone.europaLeague' },
+    { from: 6, to: 6, kind: 'uecl', labelKey: 'zone.conferenceLeague' },
+    { from: 16, to: 16, kind: 'relegation-playoff', labelKey: 'zone.relegationPlayoff' },
+    { from: 17, to: 18, kind: 'relegation', labelKey: 'zone.relegation' },
   ]),
   // MLS is not one table. Thirty clubs play in two conferences of fifteen, and
   // ESPN publishes them as two children — so both conference tables arrive for
@@ -394,17 +416,17 @@ export const COMPETITIONS: Record<string, Competition> = {
     { base: '#2c5282', bright: '#dce6ff', soft: 'rgba(179,25,66,0.16)' },
     undefined,
     [
-      { from: 1, to: 1, kind: 'ucl', label: 'Round One · Champions Cup' },
-      { from: 2, to: 7, kind: 'playoff', label: 'Round One (best-of-3)' },
-      { from: 8, to: 9, kind: 'wildcard', label: 'Wild Card' },
+      { from: 1, to: 1, kind: 'ucl', labelKey: 'zone.mlsChampionsCup' },
+      { from: 2, to: 7, kind: 'playoff', labelKey: 'zone.mlsRoundOne' },
+      { from: 8, to: 9, kind: 'wildcard', labelKey: 'zone.wildCard' },
     ],
     {
       id: 'supporters-shield',
-      label: "Supporters' Shield · Overall",
-      zones: [{ from: 1, to: 1, kind: 'champion', label: "Supporters' Shield" }],
+      labelKey: 'standings.supportersShieldOverall',
+      zones: [{ from: 1, to: 1, kind: 'champion', labelKey: 'zone.supportersShield' }],
     },
   ),
-  ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/22.png', '2026-apertura', 'Apertura 2026', { base: '#e9edeb', bright: '#ffffff', soft: 'rgba(233,237,235,0.14)' }, { cut: 8, label: 'Liguilla' }),
+  ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/22.png', '2026-apertura', 'Apertura 2026', { base: '#e9edeb', bright: '#ffffff', soft: 'rgba(233,237,235,0.14)' }, { cut: 8, labelKey: 'standings.liguilla' }),
 };
 
 // A past 32-team WC edition — R16 knockout, view-only, no seed order -> derived
@@ -435,9 +457,9 @@ function leagueCompetition(
   seasonId: string,
   seasonLabel: string,
   accent: { base: string; bright: string; soft: string },
-  qualification?: { cut: number; label: string },
+  qualification?: { cut: number; labelKey: QualificationLabelKey },
   zones?: Zone[],
-  overallTable?: { id: string; label: string; zones?: Zone[] },
+  overallTable?: { id: string; labelKey: OverallTableLabelKey; zones?: Zone[] },
 ): Record<string, Competition> {
   return {
     [id]: {

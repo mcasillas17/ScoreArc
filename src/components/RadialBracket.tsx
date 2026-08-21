@@ -2,16 +2,16 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/types';
-import { type TeamStyle } from '@/server/data/competitions';
+import { type ChampionTitleKey, type TeamStyle } from '@/server/data/competitions';
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
 import BracketZoom from './BracketZoom';
 import {
-  teamJourney, buildRings, ellipse, colorFor, C,
+  teamJourney, buildRings, ellipse, colorFor, roundSvgCoordinate, C,
   type RingNode, type JourneyStop, type BracketMode,
 } from './radialBracketModel';
-import { DEFAULT_SHAPE, type BracketShape, type RingGeom } from './bracketShape';
+import { DEFAULT_SHAPE, roundLabelKey, type BracketShape, type RingGeom } from './bracketShape';
 import { trackEvent, trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
-import { useLanguage } from './LanguageProvider';
+import { useTranslations } from '@/i18n/I18nProvider';
 
 export type { BracketMode };
 
@@ -31,6 +31,7 @@ interface Props {
   emblem: string;
   /** A real trophy photograph. Only the World Cup has one — see Competition. */
   trophyImage?: string;
+  championTitleKey?: ChampionTitleKey;
 }
 
 
@@ -163,7 +164,10 @@ function isTodayLocal(iso: string | undefined): boolean {
 function arcTextPath(cx: number, cy: number, r: number, startDeg: number, endDeg: number): string {
   const pt = (deg: number): [number, number] => {
     const a = (deg * Math.PI) / 180;
-    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+    return [
+      roundSvgCoordinate(cx + r * Math.cos(a)),
+      roundSvgCoordinate(cy + r * Math.sin(a)),
+    ];
   };
   const [x1, y1] = pt(startDeg);
   const [x2, y2] = pt(endDeg);
@@ -172,10 +176,12 @@ function arcTextPath(cx: number, cy: number, r: number, startDeg: number, endDeg
   return `M ${x1} ${y1} A ${r} ${r} 0 ${large} ${sweep} ${x2} ${y2}`;
 }
 
-export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle, apiBase, teamBase, shape: shapeProp, emblem, trophyImage }: Props) {
-  const { language } = useLanguage();
-  const spanish = language === 'es';
+export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle, apiBase, teamBase, shape: shapeProp, emblem, trophyImage, championTitleKey = 'champion.competition' }: Props) {
+  const t = useTranslations();
   const shape = shapeProp ?? DEFAULT_SHAPE;
+  const roundLabels = shape.knockoutRounds.map((slug) => t(roundLabelKey(slug))).join(', ');
+  const bracketLabel = t('bracket.diagramLabel', roundLabels);
+  const championTitle = t(championTitleKey);
   const geom = shape.ringGeometry;
   const rings = buildRings(rounds, shape, picks, mode);
 
@@ -322,7 +328,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
       <BracketZoom>
       <svg
         viewBox="-70 -70 1140 1140"
-        aria-label={spanish ? 'Cuadro de eliminatorias' : 'Knockout bracket'}
+        aria-label={bracketLabel}
         role="img"
         style={{
           width: '100%',
@@ -332,6 +338,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           display: 'block',
         }}
       >
+        <title>{bracketLabel}</title>
         <defs>
           <radialGradient id="center-glow" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#d59a37" stopOpacity="0.6" />
@@ -551,8 +558,10 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             const tEdge = Math.min(570 / Math.abs(ux || 1e-6), 570 / Math.abs(uy || 1e-6));
             const r0 = outerR + node.discR + 1; // just outside the flag
             const r1 = Math.min(outerR + 210, tEdge - 6);
-            const x0 = C.x + ux * r0, y0 = C.y + uy * r0;
-            const x1 = C.x + ux * r1, y1 = C.y + uy * r1;
+            const x0 = roundSvgCoordinate(C.x + ux * r0);
+            const y0 = roundSvgCoordinate(C.y + uy * r0);
+            const x1 = roundSvgCoordinate(C.x + ux * r1);
+            const y1 = roundSvgCoordinate(C.y + uy * r1);
             const gid = `tail-grad-${node.index}`;
             // Scale about the flag anchor: with transform-box: fill-box the
             // origin is the bbox corner nearest the flag (depends on direction).
@@ -681,13 +690,12 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                   tabIndex={upcomingMatch ? 0 : undefined}
                   aria-label={
                     upcomingMatch
-                      ? `${cA!.team.abbr} ${spanish ? 'contra' : 'vs'} ${cB!.team.abbr}${
-                          kind === 'live'
-                            ? spanish ? ' — en directo' : ' — live'
-                            : kind === 'today'
-                              ? spanish ? ' — hoy' : ' — today'
-                              : ''
-                        }`
+                      ? t(
+                          'bracket.matchLabel',
+                          cA!.team.abbr,
+                          cB!.team.abbr,
+                          kind === 'live' ? t('match.live') : kind === 'today' ? t('time.today') : '',
+                        )
                       : undefined
                   }
                   onClick={upcomingMatch ? () => handleView(upcomingMatch) : undefined}
@@ -774,7 +782,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
               dominantBaseline="central"
               fontSize={64}
               role="img"
-              aria-label={spanish ? 'Emblema de la competición' : 'Competition emblem'}
+              aria-label={t('bracket.competitionEmblem')}
             >
               {emblem}
             </text>
@@ -785,9 +793,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
               className="champ-trophy-btn"
               role="button"
               tabIndex={0}
-              aria-label={spanish
-                ? `Ver la final: ${finalMatch.home.name} contra ${finalMatch.away.name}`
-                : `View the final: ${finalMatch.home.name} vs ${finalMatch.away.name}`}
+              aria-label={t('bracket.viewFinal', finalMatch.home.name, finalMatch.away.name)}
               onClick={() => handleView(finalMatch)}
               onKeyDown={activate(() => handleView(finalMatch))}
             >
@@ -802,9 +808,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
         {/* (1c) Champion crown: a laurel ring around the winning disc plus a
             curved "CHAMPIONS" caption arced beneath the trophy (empty space). */}
         {champNode && (
-          <g className="champ-crown" role="img" aria-label={spanish
-            ? `${champNode.team.name} — Campeones`
-            : `${champNode.team.name} — Champions`}>
+          <g className="champ-crown" role="img" aria-label={t('bracket.championLabel', champNode.team.name, championTitle)}>
             <circle
               className="champ-laurel"
               cx={champNode.x}
@@ -817,7 +821,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             <path id="champ-arc" d={arcTextPath(C.x, C.y, 100, 124, 56)} fill="none" />
             <text className="champ-caption" fill="#f0c873">
               <textPath href="#champ-arc" startOffset="50%" textAnchor="middle">
-                CHAMPIONS
+                {championTitle}
               </textPath>
             </text>
           </g>

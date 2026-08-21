@@ -1,6 +1,6 @@
 'use client';
 
-import { useLanguage } from './LanguageProvider';
+import { useTranslations } from '@/i18n/I18nProvider';
 import { useEffect, useRef } from 'react';
 
 // A real (pseudo-)3D waving flag: the flag texture is drawn in thin vertical
@@ -9,8 +9,7 @@ import { useEffect, useRef } from 'react';
 // a cross-origin flag image directly (we only draw it, never read pixels back).
 export default function WavingFlagCanvas({
 src }: { src: string }) {
-  const { language } = useLanguage();
-  const spanish = language === 'es';
+  const t = useTranslations();
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -72,5 +71,5 @@ src }: { src: string }) {
     return () => cancelAnimationFrame(raf);
   }, [src]);
 
-  return <canvas ref={ref} className="champ-wave-flag" role="img" aria-label={spanish ? "Bandera del campeón" : "Champion flag"} />;
+  return <canvas ref={ref} className="champ-wave-flag" role="img" aria-label={t('bracket.championFlag')} />;
 }

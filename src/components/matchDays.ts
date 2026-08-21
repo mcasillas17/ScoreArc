@@ -1,18 +1,7 @@
 import type { Match } from '@/server/data/types';
-import type { Language } from './LanguageProvider';
-
-// Spoken-language day names. "Today" is not a date format, so Intl cannot
-// supply it -- these are the only two sets, and adding a language means adding
-// a row here rather than threading a dictionary through every caller.
-const RELATIVE: Record<Language, { today: string; tomorrow: string; yesterday: string }> = {
-  en: { today: 'Today', tomorrow: 'Tomorrow', yesterday: 'Yesterday' },
-  es: { today: 'Hoy', tomorrow: 'Mañana', yesterday: 'Ayer' },
-};
-
-// The locale the *app* is set to, not the one the browser happens to prefer.
-// toLocaleDateString([]) reads the machine, so a reader who chose Spanish on an
-// English laptop still got "Saturday, Oct 17" under an otherwise Spanish page.
-const LOCALE: Record<Language, string> = { en: 'en-US', es: 'es-MX' };
+import type { Locale } from '@/i18n/config';
+import { formatDate } from '@/i18n/format';
+import { getTranslator } from '@/i18n/translate';
 
 export interface DayGroup {
   key: string;
@@ -30,32 +19,41 @@ export interface DayGroup {
  * Caller must pass the reader's clock — see LocalTime for why this must never
  * run on the server.
  */
-export function relativeDay(iso: string, now: Date, language: Language = 'en'): string {
+export function relativeDay(iso: string, now: Date, locale: Locale): string | null {
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime()) || Number.isNaN(now.getTime())) return null;
   const days = Math.round(
-    (new Date(d.toDateString()).getTime() - new Date(now.toDateString()).getTime()) / 86_400_000,
+    (
+      new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+      - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    ) / 86_400_000,
   );
-  const words = RELATIVE[language] ?? RELATIVE.en;
-  const locale = LOCALE[language] ?? LOCALE.en;
-  if (days === 0) return words.today;
-  if (days === 1) return words.tomorrow;
-  if (days === -1) return words.yesterday;
-  if (days > 1 && days < 7) return d.toLocaleDateString(locale, { weekday: 'long' });
-  return d.toLocaleDateString(locale, { weekday: 'long', month: 'short', day: 'numeric' });
+  const t = getTranslator(locale);
+  if (days === 0) return t('time.today');
+  if (days === 1) return t('time.tomorrow');
+  if (days === -1) return t('time.yesterday');
+  if (days > 1 && days < 7) return formatDate(d, locale, { weekday: 'long' });
+  return formatDate(d, locale, { weekday: 'long', month: 'short', day: 'numeric' });
 }
 
 export const dayHeading = relativeDay;
 
-export function groupByDay(matches: Match[], now: Date, language: Language = 'en'): DayGroup[] {
+export function groupByDay(matches: Match[], now: Date, locale: Locale): DayGroup[] {
   const groups = new Map<string, DayGroup>();
+  const t = getTranslator(locale);
   for (const m of matches) {
-    const key = new Date(m.kickoff).toDateString();
+    const date = new Date(m.kickoff);
+    const hasValidKickoff = !Number.isNaN(date.getTime());
+    const key = hasValidKickoff ? date.toDateString() : `invalid:${m.id}`;
     const existing = groups.get(key);
     if (existing) existing.matches.push(m);
-    else groups.set(key, { key, label: relativeDay(m.kickoff, now, language), matches: [m] });
+    else groups.set(key, {
+      key,
+      label: relativeDay(m.kickoff, now, locale) ?? t('common.unavailable'),
+      matches: [m],
+    });
   }
   // Array.from rather than spread: the repo targets a TS lib without
   // downlevelIteration, so spreading a Map iterator does not compile.
   return Array.from(groups.values());
 }
-

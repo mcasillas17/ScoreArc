@@ -28,6 +28,44 @@ describe('mapTeamProfile', () => {
     expect(p.standingSummary).toBeTruthy();
   });
 
+  it('extracts a structured standing only from the recognized provider shape', () => {
+    expect(p).toMatchObject({
+      standing: { rank: 1, competition: 'Mexican Liga BBVA MX' },
+      standingSummary: '1st in Mexican Liga BBVA MX',
+    });
+  });
+
+  it('accepts the 160-character competition boundary without rewriting provider text', () => {
+    const competition = ` ${'L'.repeat(158)} `;
+    const summary = `12th in ${competition}`;
+    const raw = structuredClone(profileRaw);
+    raw.team.standingSummary = summary;
+
+    expect(mapTeamProfile(raw)).toMatchObject({
+      standing: { rank: 12, competition },
+      standingSummary: summary,
+    });
+  });
+
+  it.each([
+    'Leaders of Mexican Liga BBVA MX',
+    ' 1st in Mexican Liga BBVA MX',
+    '1st in ',
+    '1st in   ',
+    `1st in ${' '.repeat(160)}`,
+    '0th in Mexican Liga BBVA MX',
+    `1st in ${'L'.repeat(161)}`,
+    `${'9'.repeat(400)}th in Mexican Liga BBVA MX`,
+  ])('preserves an unrecognized summary verbatim without inventing a standing: %s', (summary) => {
+    const raw = structuredClone(profileRaw);
+    raw.team.standingSummary = summary;
+
+    expect(mapTeamProfile(raw)).toMatchObject({
+      standing: null,
+      standingSummary: summary,
+    });
+  });
+
   it('returns null for a malformed payload', () => {
     expect(mapTeamProfile({})).toBeNull();
     expect(mapTeamProfile(null)).toBeNull();

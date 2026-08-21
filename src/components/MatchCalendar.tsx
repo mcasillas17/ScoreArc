@@ -1,7 +1,5 @@
 'use client';
 
-import { useLanguage } from './LanguageProvider';
-import LanguageText from './LanguageText';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Match } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
@@ -16,7 +14,10 @@ import {
   monthNavigationAction,
   returnedToLoadedMonth,
 } from './matchCalendarState';
-import { matchToBracketMatch } from './upcomingWindow';
+import { toMatchDetailInput } from './upcomingWindow';
+import { useLocale, useTranslations } from '@/i18n/I18nProvider';
+import type { Locale } from '@/i18n/config';
+import { formatDate } from '@/i18n/format';
 
 // How often the month containing today re-reads itself.
 const LIVE_REFRESH_MS = 30_000;
@@ -51,12 +52,12 @@ function dayKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function monthLabel(date: Date): string {
-  return date.toLocaleDateString([], { month: 'long', year: 'numeric' });
+function monthLabel(date: Date, locale: Locale): string | null {
+  return formatDate(date, locale, { month: 'long', year: 'numeric' });
 }
 
-function dayLabel(date: Date): string {
-  return date.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+function dayLabel(date: Date, locale: Locale): string | null {
+  return formatDate(date, locale, { weekday: 'long', month: 'long', day: 'numeric' });
 }
 
 export default function MatchCalendar({
@@ -69,8 +70,8 @@ export default function MatchCalendar({
   teamBase,
   teamStyle = 'flag',
 }: Props) {
-  const { language } = useLanguage();
-  const spanish = language === 'es';
+  const locale = useLocale();
+  const t = useTranslations();
   const [cursor, setCursor] = useState(() => parseMonth(initialMonth));
   const [loadState, setLoadState] = useState({
     matches: initialMatches,
@@ -94,21 +95,23 @@ export default function MatchCalendar({
   const cursorIndex = monthIndex(cursor);
   const canGoBack = cursorIndex > minIndex;
   const canGoForward = cursorIndex < maxIndex;
+  const viewerClockReady = today !== null;
 
   const groups = useMemo<DayGroup[]>(() => {
+    if (!viewerClockReady) return [];
     const byDay = new Map<string, DayGroup>();
     const ordered = [...loadState.matches].sort(
       (a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime(),
     );
     for (const match of ordered) {
       const date = new Date(match.kickoff);
-      const key = dayKey(date);
+      const key = Number.isNaN(date.getTime()) ? `invalid:${match.id}` : dayKey(date);
       const group = byDay.get(key);
       if (group) group.matches.push(match);
       else byDay.set(key, { key, date, matches: [match] });
     }
     return Array.from(byDay.values());
-  }, [loadState.matches]);
+  }, [loadState.matches, viewerClockReady]);
 
   useEffect(() => setToday(new Date()), []);
 
@@ -154,7 +157,7 @@ export default function MatchCalendar({
         setLoadState((state) => {
           const transition = monthLoadFailed(
             state,
-            'Matches are unavailable right now. Please try another month and come back.',
+            t('matches.unavailableCalendar'),
           );
           loadedRange.current = transition.loadedRange;
           return transition.state;
@@ -168,7 +171,7 @@ export default function MatchCalendar({
 
     void loadMonth();
     return () => controller.abort();
-  }, [apiBase, cursor]);
+  }, [apiBase, cursor, t]);
 
   useEffect(() => {
     if (!today || didScrollToToday.current) return;
@@ -266,6 +269,7 @@ export default function MatchCalendar({
   }
 
   const todayKey = today ? dayKey(today) : null;
+  const cursorLabel = monthLabel(cursor, locale) ?? t('common.unavailable');
 
   return (
     <>
@@ -274,24 +278,24 @@ export default function MatchCalendar({
           type="button"
           onClick={() => setCursor((date) => shiftMonth(date, -1))}
           disabled={!canGoBack}
-          aria-label={spanish ? "Mes anterior" : "Previous month"}
+          aria-label={t('calendar.previousMonth')}
         >
-          <LanguageText en="← Previous" es="← Anterior" />
+          {t('calendar.previous')}
         </button>
-        <h2 className="mc-month">{monthLabel(cursor)}</h2>
+        <h2 className="mc-month">{cursorLabel}</h2>
         <button
           type="button"
           onClick={() => setCursor((date) => shiftMonth(date, 1))}
           disabled={!canGoForward}
-          aria-label={spanish ? "Mes siguiente" : "Next month"}
+          aria-label={t('calendar.nextMonth')}
         >
-          <LanguageText en="Next →" es="Siguiente →" />
+          {t('calendar.next')}
         </button>
       </div>
 
       <p className="mc-status" aria-live="polite">
         {loadState.loading
-          ? <><LanguageText en="Loading" es="Cargando" /> {monthLabel(cursor)}…</>
+          ? t('calendar.loadingMonth', cursorLabel)
           : loadState.error}
       </p>
 
@@ -304,7 +308,7 @@ export default function MatchCalendar({
           return (
             <section key={group.key} className="mc-group">
               <h3 className={`mc-day${isToday ? ' mc-day--today' : ''}`} data-today={isToday || undefined}>
-                {dayLabel(group.date)}
+                {dayLabel(group.date, locale) ?? t('common.unavailable')}
               </h3>
               <div className="match-grid">
                 {group.matches.map((match) => (
@@ -319,15 +323,15 @@ export default function MatchCalendar({
             </section>
           );
         })}
-        {groups.length === 0 && !loadState.error && !loadState.loading && (
-          <p className="empty-text"><LanguageText en="No matches this month." es="No hay partidos este mes." /></p>
+        {viewerClockReady && groups.length === 0 && !loadState.error && !loadState.loading && (
+          <p className="empty-text">{t('calendar.noMatches')}</p>
         )}
       </div>
 
       {detail && (
         <MatchDetailPopup
           teamBase={teamBase}
-          match={matchToBracketMatch(detail)}
+          match={toMatchDetailInput(detail)}
           summary={summary}
           loading={loadingDetail}
           onClose={() => {

@@ -3,6 +3,7 @@
 import { useLayoutEffect, useRef } from 'react';
 import Link from 'next/link';
 import type { Competition } from '@/server/data/competitions';
+import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 
 // A proper timeline: editions placed proportionally by year on a continuous axis,
 // so equal gaps are equal and a missing edition (e.g. 2010) shows as a faint gap.
@@ -16,6 +17,8 @@ export default function SeasonSwitcher({
   competition: Competition;
   activeSeasonId: string;
 }) {
+  const locale = useLocale();
+  const t = useTranslations();
   const editions = Object.values(competition.seasons)
     .map((s) => ({ id: s.id, label: s.label, year: parseInt(s.id, 10) }))
     .filter((s) => Number.isFinite(s.year))
@@ -78,12 +81,12 @@ export default function SeasonSwitcher({
   }
 
   return (
-    <nav className="wc-timeline" aria-label={`${competition.shortName} editions`}>
+    <nav className="wc-timeline" aria-label={t('seasonSwitcher.editions', competition.shortName)}>
       <div className="wc-tl-track">
         <div className="wc-tl-axis" aria-hidden />
         <span ref={phRef} className="wc-tl-playhead" aria-hidden style={{ left: `${currentPos}%` }} />
         {gaps.map((y) => (
-          <span key={`gap-${y}`} className="wc-tl-gap" style={{ left: `${pos(y)}%` }} title={`${y} — not available`} aria-hidden>
+          <span key={`gap-${y}`} className="wc-tl-gap" style={{ left: `${pos(y)}%` }} title={t('seasonSwitcher.notAvailable', y)} aria-hidden>
             <span className="wc-tl-gap-dot" />
             <span className="wc-tl-gap-year">{y}</span>
           </span>
@@ -93,7 +96,7 @@ export default function SeasonSwitcher({
           return (
             <Link
               key={e.id}
-              href={`/c/${competition.id}/${e.id}`}
+              href={`/${locale}/c/${competition.id}/${e.id}`}
               className={`wc-tl-node${isActive ? ' wc-tl-node--active' : ''}`}
               style={{ left: `${pos(e.year)}%` }}
               aria-current={isActive ? 'page' : undefined}

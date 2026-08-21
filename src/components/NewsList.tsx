@@ -1,20 +1,20 @@
 'use client';
 
-import LanguageText from './LanguageText';
+import { useLocale, useTranslations } from '@/i18n/I18nProvider';
+import { formatRelativeTime } from '@/i18n/format';
 import type { NewsArticle } from '@/server/data/types';
 import { trackEvent } from '@/lib/telemetry/client';
 
-function relTime(iso: string): string {
-  const t = new Date(iso).getTime();
-  if (isNaN(t)) return '';
-  const s = Math.floor((Date.now() - t) / 1000);
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
-}
-
 function NewsCard({ a }: { a: NewsArticle }) {
+  const locale = useLocale();
+  const t = useTranslations();
+  const publishedAt = a.published ? new Date(a.published) : null;
+  const publishedTime = publishedAt && !Number.isNaN(publishedAt.getTime())
+    ? Math.abs(Date.now() - publishedAt.getTime()) < 60_000
+      ? t('time.justNow')
+      : formatRelativeTime(publishedAt, new Date(), locale)
+    : null;
+
   return (
     <a className="nw-card" href={a.url} target="_blank" rel="noreferrer" onClick={() => trackEvent('News article opened')}>
       {a.image ? (
@@ -27,10 +27,10 @@ function NewsCard({ a }: { a: NewsArticle }) {
         <h3 className="nw-headline">{a.headline}</h3>
         {a.description && <p className="nw-desc">{a.description}</p>}
         <div className="nw-meta">
-          <span>{a.byline || 'ESPN'}</span>
-          {a.published && (
+          <span>{a.byline || t('news.defaultByline')}</span>
+          {publishedTime && (
             <span suppressHydrationWarning className="nw-time">
-              {relTime(a.published)}
+              {publishedTime}
             </span>
           )}
         </div>
@@ -40,8 +40,9 @@ function NewsCard({ a }: { a: NewsArticle }) {
 }
 
 export default function NewsList({ articles }: { articles: NewsArticle[] }) {
+  const t = useTranslations();
   if (articles.length === 0) {
-    return <p className="empty-text"><LanguageText en="News is unavailable right now." es="Las noticias no están disponibles en este momento." /></p>;
+    return <p className="empty-text">{t('news.unavailable')}</p>;
   }
   return (
     <div className="nw-grid">

@@ -5,7 +5,7 @@ import type { Standing } from '@/server/data/types';
 import type { TeamStyle, Zone } from '@/server/data/competitions';
 import { toBands, ZONE_VAR, DASHED_KINDS } from './zoneBands';
 import { flagUrl } from '@/lib/flags';
-import { useLanguage } from './LanguageProvider';
+import { useTranslations } from '@/i18n/I18nProvider';
 
 // The league analog of the arc bracket: the whole table laid around a ring,
 // with each outcome drawn as an arc over the clubs it claims. Rank 1 sits at
@@ -33,16 +33,6 @@ function arcPath(startDeg: number, endDeg: number, radius: number): string {
   return `M ${s.x.toFixed(2)} ${s.y.toFixed(2)} A ${radius} ${radius} 0 ${large} 1 ${e.x.toFixed(2)} ${e.y.toFixed(2)}`;
 }
 
-// Clubs in the same table can have played different numbers of matches — MLS
-// runs 17-19 mid-season — so quoting the leader's count alone misreports the
-// league. Show the range when it is not uniform.
-function playedLabel(standings: Standing[]): string {
-  const counts = standings.map((s) => s.played);
-  const lo = Math.min(...counts);
-  const hi = Math.max(...counts);
-  return lo === hi ? `${hi} played` : `${lo}\u2013${hi} played`;
-}
-
 export default function ZoneRing({
   standings, zones, teamStyle,
 }: {
@@ -50,8 +40,7 @@ export default function ZoneRing({
   zones: Zone[];
   teamStyle: TeamStyle;
 }) {
-  const { language } = useLanguage();
-  const spanish = language === 'es';
+  const t = useTranslations();
   // SVG ids are document-global. A club can appear in more than one ring on the
   // same page — MLS draws every club twice, once in its conference and once in
   // the league-wide Supporters' Shield ring — so a clip path keyed on team id
@@ -62,11 +51,20 @@ export default function ZoneRing({
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
   const n = standings.length;
   if (n === 0) return null;
+  // Clubs in the same table can have played different numbers of matches —
+  // MLS runs 17-19 mid-season — so show a localized range when it is not
+  // uniform instead of quoting only the leader's count.
+  const playedCounts = standings.map((standing) => standing.played);
+  const minimumPlayed = Math.min(...playedCounts);
+  const maximumPlayed = Math.max(...playedCounts);
+  const playedLabel = minimumPlayed === maximumPlayed
+    ? t('standings.played', maximumPlayed)
+    : t('standings.playedRange', `${minimumPlayed}\u2013${maximumPlayed}`);
   const step = 360 / n;
   const bands = toBands(standings, zones).filter((b) => b.kind !== 'mid');
 
   return (
-    <svg className="lld lzr" viewBox={`0 0 ${SIZE} ${SIZE}`} role="img" aria-label={spanish ? 'Anillo de clasificación' : 'League table ring'}>
+    <svg className="lld lzr" viewBox={`0 0 ${SIZE} ${SIZE}`} role="img" aria-label={t('standings.ringLabel')}>
       <circle cx={CX} cy={CY} r={R_CREST} fill="none" stroke="var(--hairline)" strokeWidth={1} />
 
       {bands.map((b) => {
@@ -136,10 +134,10 @@ export default function ZoneRing({
 
       <circle cx={CX} cy={CY} r={62} fill="var(--surface-2)" stroke="var(--hairline)" />
       <text x={CX} y={CY - 6} textAnchor="middle" fontSize={13} fill="var(--text-muted)">
-        {n} clubs
+        {t('standings.clubs', n)}
       </text>
       <text x={CX} y={CY + 16} textAnchor="middle" fontSize={13} fill="var(--text-muted)">
-        {playedLabel(standings)}
+        {playedLabel}
       </text>
     </svg>
   );

@@ -1,13 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { listCompetitions, resolveSeason } from '@/server/data/competitions';
 import type { Competition, CompetitionSeason } from '@/server/data/competitions';
 import { trackEvent } from '@/lib/telemetry/client';
+import { useLocale, useTranslations } from '@/i18n/I18nProvider';
+import type { Locale } from '@/i18n/config';
+import { getTranslator } from '@/i18n/translate';
 import CompetitionMark from './CompetitionMark';
-import { useLanguage } from './LanguageProvider';
 
 const ICON = {
   width: 17,
@@ -119,7 +121,8 @@ export function accentStyle(pathname: string): React.CSSProperties | undefined {
  * only be exercised by rendering the whole nav, which is why the strict
  * equality below went unnoticed as a locale-prefix hazard.
  */
-export function siteItems(spanish: boolean, prefix = ''): NavItem[] {
+export function siteItems(locale: Locale, prefix = ''): NavItem[] {
+  const t = getTranslator(locale);
   // Exactly this page, or something below it. `startsWith('/news')` would also
   // light News on a hypothetical `/newsletter`.
   const at = (route: string) => (p: string) => {
@@ -127,9 +130,9 @@ export function siteItems(spanish: boolean, prefix = ''): NavItem[] {
     return path === route || path.startsWith(`${route}/`);
   };
   return [
-    { href: withLocale(prefix, '/'), label: spanish ? 'Inicio' : 'Home', icon: homeIcon, match: (p) => stripLocale(p) === '/' },
-    { href: withLocale(prefix, '/teams'), label: spanish ? 'Equipos' : 'Teams', icon: teamsIcon, match: at('/teams') },
-    { href: withLocale(prefix, '/news'), label: spanish ? 'Noticias' : 'News', icon: newsIcon, match: at('/news') },
+    { href: withLocale(prefix, '/'), label: t('nav.home'), icon: homeIcon, match: (p) => stripLocale(p) === '/' },
+    { href: withLocale(prefix, '/teams'), label: t('teams.title'), icon: teamsIcon, match: at('/teams') },
+    { href: withLocale(prefix, '/news'), label: t('news.title'), icon: newsIcon, match: at('/news') },
   ];
 }
 
@@ -141,7 +144,8 @@ export function siteItems(spanish: boolean, prefix = ''): NavItem[] {
  * "Knockout" is true in both states. A league has no root item at all: its
  * base URL redirects to /standings.
  */
-export function competitionSections(rc: CompetitionSeason, spanish: boolean, prefix = ''): NavItem[] {
+export function competitionSections(rc: CompetitionSeason, locale: Locale, prefix = ''): NavItem[] {
+  const t = getTranslator(locale);
   // Two bases: the one the matchers compare against, which is always
   // locale-free because `stripLocale` runs first, and the one the hrefs are
   // built from, which keeps whatever prefix the reader arrived under.
@@ -152,29 +156,29 @@ export function competitionSections(rc: CompetitionSeason, spanish: boolean, pre
   const under = (suffix: string) => (p: string) => stripLocale(p).startsWith(`${base}${suffix}`);
   const standings: NavItem = {
     href: link('/standings'),
-    label: spanish ? 'Clasificación' : 'Standings',
+    label: t('sidebar.standings'),
     icon: tableIcon,
     match: under('/standings'),
   };
   const rest: NavItem[] = [
     standings,
-    { href: link('/matches'), label: spanish ? 'Partidos' : 'Matches', icon: matchesIcon, match: under('/matches') },
+    { href: link('/matches'), label: t('sidebar.matches'), icon: matchesIcon, match: under('/matches') },
     {
       href: link('/teams'),
-      label: spanish ? 'Equipos' : 'Teams',
+      label: t('sidebar.teams'),
       icon: teamsIcon,
       // Both spellings. A team detail page lives at /team/{id} (singular) and
       // is reached from /teams, so matching only the plural left the reader on
       // a real route with nothing in the nav lit up at all.
       match: (p) => under('/teams')(p) || under('/team/')(p),
     },
-    { href: link('/news'), label: spanish ? 'Noticias' : 'News', icon: newsIcon, match: under('/news') },
+    { href: link('/news'), label: t('sidebar.news'), icon: newsIcon, match: under('/news') },
   ];
   if (!hasBracket) return rest;
   return [
     {
       href: link(),
-      label: phasedCup ? (spanish ? 'Eliminatorias' : 'Knockout') : (spanish ? 'Cuadro' : 'Bracket'),
+      label: phasedCup ? t('sidebar.knockout') : t('sidebar.bracket'),
       icon: bracketIcon,
       match: (p) => stripLocale(p) === base,
     },
@@ -227,7 +231,8 @@ export interface BottomBarItem {
  * Pure and path-derived, like every other matcher here, so which items a path
  * produces is testable without rendering.
  */
-export function bottomBarItems(pathname: string, spanish: boolean): BottomBarItem[] {
+export function bottomBarItems(pathname: string, locale: Locale): BottomBarItem[] {
+  const t = getTranslator(locale);
   const prefix = localePrefix(pathname);
   const entry = (i: NavItem): BottomBarItem => ({
     key: i.href,
@@ -237,19 +242,20 @@ export function bottomBarItems(pathname: string, spanish: boolean): BottomBarIte
     active: i.match(pathname),
   });
   const rc = activeCompetition(pathname);
-  if (rc) return competitionSections(rc, spanish, prefix).map(entry);
+  if (rc) return competitionSections(rc, locale, prefix).map(entry);
   return [
-    ...siteItems(spanish, prefix).map(entry),
-    { key: 'menu', label: spanish ? 'Menú' : 'Menu', icon: menuIcon, active: false },
+    ...siteItems(locale, prefix).map(entry),
+    { key: 'menu', label: t('nav.menu'), icon: menuIcon, active: false },
   ];
 }
 
 export default function SiteNav() {
   const [collapsed, setCollapsed] = useState(false);
   const [open, setOpen] = useState(false);
+  const mastheadMenuRef = useRef<HTMLButtonElement>(null);
   const pathname = usePathname() ?? '/';
-  const { language } = useLanguage();
-  const spanish = language === 'es';
+  const locale = useLocale();
+  const t = useTranslations();
 
   const active = activeCompetition(pathname);
   const competitions = listCompetitions();
@@ -257,21 +263,21 @@ export default function SiteNav() {
   // href below so the nav cannot silently return them to English.
   const prefix = localePrefix(pathname);
 
-  const items = siteItems(spanish, prefix);
+  const items = siteItems(locale, prefix);
   // Named, not linked. The nav is where the site says what it is, and a link
   // to a 404 is worse than an honest label.
   const soonItems = [
-    { label: spanish ? 'Jugadores' : 'Players', icon: playersIcon },
-    { label: spanish ? 'Simular' : 'Simulate', icon: simulateIcon },
+    { label: t('nav.players'), icon: playersIcon },
+    { label: t('nav.simulate'), icon: simulateIcon },
   ];
 
   const close = () => setOpen(false);
 
   return (
     <>
-    <nav className={`sn${collapsed ? ' sn--collapsed' : ''}${open ? ' sn--open' : ''}`} aria-label={spanish ? 'Principal' : 'Main'}>
+    <nav className={`sn${collapsed ? ' sn--collapsed' : ''}${open ? ' sn--open' : ''}`} aria-label={t('nav.main')}>
       <div className="sn-top">
-        <Link href={withLocale(prefix, '/')} className="sn-brand" aria-label={spanish ? 'Inicio de ScoreArc' : 'ScoreArc home'} onClick={close}>
+        <Link href={withLocale(prefix, '/')} className="sn-brand" aria-label={t('common.scoreArcHome')} onClick={close}>
           {/* The delivered artwork, used as an image: the lockup's kerning and
               its underline arc are the designer's. The wordmark cannot survive
               a 64px rail, so the collapsed rail shows the mark alone. */}
@@ -287,7 +293,7 @@ export default function SiteNav() {
           type="button"
           className="sn-collapse"
           aria-expanded={!collapsed}
-          aria-label={collapsed ? (spanish ? 'Expandir' : 'Expand') : (spanish ? 'Contraer' : 'Collapse')}
+          aria-label={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
           onClick={() => {
             trackEvent('Nav toggled', { collapsed: !collapsed });
             setCollapsed(!collapsed);
@@ -298,11 +304,12 @@ export default function SiteNav() {
           </svg>
         </button>
         <button
+          ref={mastheadMenuRef}
           type="button"
           className="sn-burger"
           aria-expanded={open}
           aria-controls="sn-panel"
-          aria-label={open ? (spanish ? 'Cerrar menú' : 'Close menu') : (spanish ? 'Abrir menú' : 'Open menu')}
+          aria-label={open ? t('nav.closeMenu') : t('nav.openMenu')}
           onClick={() => setOpen((v) => !v)}
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
@@ -336,13 +343,13 @@ export default function SiteNav() {
             <span key={item.label} className="sn-item sn-item--soon" title={collapsed ? item.label : undefined}>
               <span className="sn-icon">{item.icon}</span>
               <span className="sn-label">{item.label}</span>
-              <span className="sn-soon">{spanish ? 'pronto' : 'soon'}</span>
+              <span className="sn-soon">{t('nav.soon')}</span>
             </span>
           ))}
         </div>
 
         <div className="sn-group">
-          <span className="sn-heading">{spanish ? 'Competiciones' : 'Competitions'}</span>
+          <span className="sn-heading">{t('nav.competitions')}</span>
           {competitions.map((c) => {
             const isActive = active?.competition.id === c.id;
             const href = competitionHref(c, active, prefix);
@@ -365,7 +372,7 @@ export default function SiteNav() {
                 </Link>
                 {isActive && (
                   <div className="sn-sub">
-                    {competitionSections(active, spanish, prefix).map((s) => (
+                    {competitionSections(active, locale, prefix).map((s) => (
                       <Link
                         key={s.href}
                         href={s.href}
@@ -387,9 +394,9 @@ export default function SiteNav() {
           })}
         </div>
 
-        <a className="sn-credit" href="https://github.com/mcasillas17" target="_blank" rel="noreferrer" title={collapsed ? 'Built by elOpenMike' : undefined}>
+        <a className="sn-credit" href="https://github.com/mcasillas17" target="_blank" rel="noreferrer" title={collapsed ? t('nav.creditTitle', 'elOpenMike') : undefined}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.22-3.37-1.22-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.36 9.36 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.6.69.49A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2z" /></svg>
-          <span className="sn-credit-text">{spanish ? 'Creado por' : 'Built by'} <strong>elOpenMike</strong></span>
+          <span className="sn-credit-text">{t('sidebar.credit')} <strong>elOpenMike</strong></span>
         </a>
       </div>
     </nav>
@@ -399,8 +406,8 @@ export default function SiteNav() {
         while the drawer is open (CSS), so the two never show at once -- the
         defect this replaced was a permanent scrolling row *plus* a drawer
         holding the same items. */}
-    <nav className="sn-tabs" aria-label={spanish ? 'Secciones' : 'Sections'}>
-      {bottomBarItems(pathname, spanish).map((tab) =>
+    <nav className="sn-tabs" aria-label={t('nav.sections')}>
+      {bottomBarItems(pathname, locale).map((tab) =>
         tab.href === undefined ? (
           <button
             key={tab.key}
@@ -408,7 +415,10 @@ export default function SiteNav() {
             className="sn-tab"
             aria-expanded={open}
             aria-controls="sn-panel"
-            onClick={() => setOpen((v) => !v)}
+            onClick={() => {
+              setOpen(true);
+              mastheadMenuRef.current?.focus();
+            }}
           >
             <span className="sn-tab-icon">{tab.icon}</span>
             <span className="sn-tab-label">{tab.label}</span>

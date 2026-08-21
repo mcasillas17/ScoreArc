@@ -1,8 +1,8 @@
 'use client';
 
-import LanguageText from './LanguageText';
 import { useState } from 'react';
 import type { MatchVideo } from '@/server/data/types';
+import { useTranslations } from '@/i18n/I18nProvider';
 
 function fmtDuration(s: number | null): string {
   if (!s || s <= 0) return '';
@@ -12,6 +12,7 @@ function fmtDuration(s: number | null): string {
 }
 
 function Clip({ video }: { video: MatchVideo }) {
+  const t = useTranslations();
   const [playing, setPlaying] = useState(false);
   const dur = fmtDuration(video.duration);
 
@@ -33,7 +34,7 @@ function Clip({ video }: { video: MatchVideo }) {
             type="button"
             className="mh-thumb-btn"
             onClick={() => setPlaying(true)}
-            aria-label={`Play: ${video.headline}`}
+            aria-label={t('matchDetails.playHighlight', video.headline)}
           >
             {video.thumbnail ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -52,7 +53,7 @@ function Clip({ video }: { video: MatchVideo }) {
                 <path d="M8 5v14l11-7z" />
               </svg>
             </span>
-            {video.isGoal && <span className="mh-goal">⚽ <LanguageText en="Goal" es="Gol" /></span>}
+            {video.isGoal && <span className="mh-goal">⚽ {t('matchDetails.goal')}</span>}
             {dur && <span className="mh-dur">{dur}</span>}
           </button>
         )}
@@ -63,10 +64,11 @@ function Clip({ video }: { video: MatchVideo }) {
 }
 
 export default function MatchHighlights({ videos }: { videos: MatchVideo[] }) {
+  const t = useTranslations();
   if (!videos || videos.length === 0) return null;
   return (
     <div className="mh-block">
-      <div className="mh-title"><LanguageText en="Highlights" es="Resumen" /></div>
+      <div className="mh-title">{t('matchDetails.highlights')}</div>
       <div className="mh-row">
         {videos.map((v) => (
           <Clip key={v.id} video={v} />

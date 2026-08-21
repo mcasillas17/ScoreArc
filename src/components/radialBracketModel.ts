@@ -1,4 +1,4 @@
-import type { BracketMatch, BracketTeam, BracketRound } from '@/server/data/types';
+import type { BracketMatch, BracketTeam, BracketRound, KnockoutRoundSlug } from '@/server/data/types';
 import type { BracketShape } from './bracketShape';
 
 // Moved out of RadialBracket.tsx so the pure model logic is unit-testable
@@ -107,9 +107,16 @@ function toRad(deg: number): number {
   return (deg * Math.PI) / 180;
 }
 
+export function roundSvgCoordinate(value: number): number {
+  return Number(value.toFixed(6));
+}
+
 export function ellipse(rx: number, ry: number, angleDeg: number): { x: number; y: number } {
   const r = toRad(angleDeg);
-  return { x: C.x + rx * Math.cos(r), y: C.y + ry * Math.sin(r) };
+  return {
+    x: roundSvgCoordinate(C.x + rx * Math.cos(r)),
+    y: roundSvgCoordinate(C.y + ry * Math.sin(r)),
+  };
 }
 
 function makePlaceholder(depth: number, slot: number): BracketTeam {
@@ -305,7 +312,7 @@ export function buildRings(
  * `knockoutRounds` is outer->inner (leaf first, final last). Falls back to plain
  * event order (0,1,2,...) if the bracket isn't fully/consistently decided.
  */
-export function deriveLeafOrder(rounds: BracketRound[], knockoutRounds: string[]): number[] {
+export function deriveLeafOrder(rounds: BracketRound[], knockoutRounds: KnockoutRoundSlug[]): number[] {
   const N = knockoutRounds.length;
   const leaf = rounds.find((r) => r.slug === knockoutRounds[0]);
   const fallback = leaf ? leaf.matches.map((_, i) => i) : [];

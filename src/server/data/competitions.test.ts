@@ -88,10 +88,20 @@ describe('competition registry', () => {
   it('Liga MX Apertura carries the Liguilla qualification cut; other leagues do not', () => {
     const ligaMx = COMPETITIONS['liga-mx'];
     const season = ligaMx.seasons[ligaMx.currentSeasonId];
-    expect(season.qualification).toEqual({ cut: 8, label: 'Liguilla' });
+    expect(season.qualification).toEqual({ cut: 8, labelKey: 'standings.liguilla' });
 
     const pl = COMPETITIONS['premier-league'];
     expect(pl.seasons[pl.currentSeasonId].qualification).toBeUndefined();
+  });
+
+  it('stores qualification zones as semantic label keys', () => {
+    expect(COMPETITIONS['premier-league'].seasons['2026-27'].zones?.[0].labelKey)
+      .toBe('zone.champion');
+  });
+
+  it('stores configured round windows as structured dates', () => {
+    expect(COMPETITIONS['leagues-cup'].seasons['2026'].computedTables?.nextRound)
+      .toEqual({ round: 'quarterfinals', startDate: '2026-08-25', endDate: '2026-08-27' });
   });
 
   it('every competition defines a valid accent (base/bright/soft), world-cup = gold', () => {

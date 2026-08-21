@@ -1,8 +1,24 @@
-import type { Match, PlayerSeasonStats, SquadPlayer, Team, TeamProfile, TeamRecord } from '../types';
+import type { Match, PlayerSeasonStats, SquadPlayer, Team, TeamProfile, TeamRecord, TeamStanding } from '../types';
 import { mapState } from '../state';
 
 /** The profile without the two blocks that come from other endpoints. */
 export type TeamIdentity = Omit<TeamProfile, 'squad' | 'schedule'>;
+
+const STANDING_SUMMARY_PATTERN = /^([1-9]\d*)(?:st|nd|rd|th) in (.{1,160})$/;
+
+/**
+ * Extract only the one provider sentence shape whose fields we understand.
+ * Everything else remains provider-authored fallback text at the call site.
+ */
+function parseStandingSummary(summary: string | null): TeamStanding | null {
+  if (summary === null) return null;
+  const match = STANDING_SUMMARY_PATTERN.exec(summary);
+  if (!match) return null;
+  const rank = Number(match[1]);
+  const competition = match[2];
+  if (!Number.isSafeInteger(rank) || rank <= 0 || competition.trim().length === 0) return null;
+  return { rank, competition };
+}
 
 function mapTeam(t: any): Team {
   return {
@@ -110,13 +126,18 @@ export function mapTeamProfile(raw: unknown): TeamIdentity | null {
       };
     }
 
+    const standingSummary = typeof t.standingSummary === 'string'
+      ? t.standingSummary
+      : null;
+
     return {
       team: mapTeam(t),
       location: t.location ?? null,
       color: t.color ? `#${String(t.color).replace(/^#/, '')}` : null,
       altColor: t.alternateColor ? `#${String(t.alternateColor).replace(/^#/, '')}` : null,
       record,
-      standingSummary: t.standingSummary ?? null,
+      standing: parseStandingSummary(standingSummary),
+      standingSummary,
     };
   } catch {
     return null;

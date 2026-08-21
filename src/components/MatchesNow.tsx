@@ -1,6 +1,5 @@
 'use client';
 
-import LanguageText from './LanguageText';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { Match } from '@/server/data/types';
@@ -9,8 +8,9 @@ import { matchPriority } from '@/server/data/matchPriority';
 import { trackEvent, trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
 import MatchRow from './MatchRow';
-import { matchToBracketMatch } from './upcomingWindow';
+import { toMatchDetailInput } from './upcomingWindow';
 import { groupByDay } from './matchDays';
+import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 
 const REFRESH_MS = 30_000;
 
@@ -63,6 +63,8 @@ export default function MatchesNow({
   teamStyle = 'crest',
   calendarHref,
 }: Props) {
+  const locale = useLocale();
+  const t = useTranslations();
   const [matches, setMatches] = useState<Match[]>(initialMatches);
   const [error, setError] = useState<string | null>(initialError);
   const [mounted, setMounted] = useState(false);
@@ -121,27 +123,27 @@ export default function MatchesNow({
     const { live, upcoming, recent } = matchPriority(matches, clock);
 
     const out: Section[] = [];
-    if (live.length) out.push({ key: 'live', title: 'Live', tone: 'live', matches: live });
+    if (live.length) out.push({ key: 'live', title: t('match.live'), tone: 'live', matches: live });
 
     if (!mounted) {
       // Server pass: no local-date split, so the two upcoming sections are one.
       if (upcoming.length) {
-        out.push({ key: 'upcoming', title: 'Coming up', tone: 'week', matches: upcoming });
+        out.push({ key: 'upcoming', title: t('matches.comingUp'), tone: 'week', matches: upcoming });
       }
     } else {
       const today = upcoming.filter((m) => isSameLocalDay(m.kickoff, clock));
       const later = upcoming.filter((m) => !isSameLocalDay(m.kickoff, clock));
-      if (today.length) out.push({ key: 'today', title: 'Later today', tone: 'today', matches: today });
+      if (today.length) out.push({ key: 'today', title: t('matches.laterToday'), tone: 'today', matches: today });
       if (later.length) {
-        out.push({ key: 'week', title: 'Coming up', tone: 'week', matches: later, byDay: true });
+        out.push({ key: 'week', title: t('matches.comingUp'), tone: 'week', matches: later, byDay: true });
       }
     }
 
     if (recent.length) {
-      out.push({ key: 'recent', title: 'Latest results', tone: 'recent', matches: recent, byDay: mounted });
+      out.push({ key: 'recent', title: t('matches.latestResults'), tone: 'recent', matches: recent, byDay: mounted });
     }
     return out;
-  }, [matches, mounted, now]);
+  }, [matches, mounted, now, t]);
 
   async function openDetails(match: Match) {
     detailsAbort.current?.abort();
@@ -178,8 +180,8 @@ export default function MatchesNow({
 
       {sections.length === 0 && !error && (
         <p className="empty-text">
-          <LanguageText en="Nothing scheduled or recently played." es="Nada programado o jugado recientemente." />{' '}
-          <Link href={calendarHref} className="mn-empty-link"><LanguageText en="Browse the full calendar" es="Ver el calendario completo" /></Link>.
+          {t('matches.empty')}{' '}
+          <Link href={calendarHref} className="mn-empty-link">{t('matches.browseCalendar')}</Link>.
         </p>
       )}
 
@@ -193,7 +195,7 @@ export default function MatchesNow({
             </h2>
             {/* A grid, not a list: Liga MX kicks off seven matches at once. */}
             {section.byDay ? (
-              groupByDay(section.matches, now ?? new Date()).map((day) => (
+              groupByDay(section.matches, now ?? new Date(), locale).map((day) => (
                 <div key={day.key} className="mn-day">
                   <h3 className="mn-day-label">{day.label}</h3>
                   <div className="match-grid">
@@ -227,7 +229,7 @@ export default function MatchesNow({
       {detail && (
         <MatchDetailPopup
           teamBase={teamBase}
-          match={matchToBracketMatch(detail)}
+          match={toMatchDetailInput(detail)}
           summary={summary}
           loading={loadingDetail}
           onClose={() => {

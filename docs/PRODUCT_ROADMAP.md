@@ -72,6 +72,10 @@ gates history, trends, percentiles and simulation — nothing else.
 | **E9** | Expected goals (xG) | T7.12 / T7.13 | [spec](superpowers/specs/2026-08-15-expected-goals-design.md) | after T9.1 |
 | **E10** | Public API read surface | E7 write path | — (serves E1–E8) | T10.1–T10.9, see task index |
 | **E11** | Dynamic home & now-first matches | none | [spec](superpowers/specs/2026-08-18-dynamic-home-and-matches-design.md) | T11.1–T11.3, see task index |
+| **E12** | Team discovery | none — **done** | see E12 below | shipped |
+| **E13** | Competition simulation | backend/current-state model | not designed | noted below |
+| **E14** | Home digest and global navigation | none — **done** | [spec](superpowers/specs/2026-08-21-home-digest-and-global-nav-design.md) | shipped |
+| **E15** | Typed English/Spanish localization | none — **done** | [spec](superpowers/specs/2026-08-21-typed-localization-and-locale-routing-design.md) | [plan](superpowers/plans/2026-08-21-typed-localization-and-locale-routing.md) |
 
 E6, E8 and E9 deliberately stop at a spec, and E7 now has plans for its whole
 task set. E6's extractor is determined by what the coverage probe (T6.1) finds;
@@ -376,9 +380,9 @@ Branch `feat/home-digest`.
 Shipped alongside two things the spec did not plan for: a `/news` page (the
 digest's News block continued past its six-row budget — the "all news" link had
 nowhere honest to point, since every other news route is competition-scoped),
-and `stripLocale`/`withLocale`, which carry an existing locale prefix onto nav
-hrefs without inventing one, so the nav survives whichever way the in-flight
-i18n middleware lands.
+and locale-aware navigation helpers. E15 subsequently moved the page to
+`/[locale]/news` and made every global-nav and digest link/copy part of the
+shipped typed localization architecture.
 
 The home page shows the same matches three times — live band, results/next
 columns, and nine tiles each repeating the next fixture — because the tiles are
@@ -393,6 +397,23 @@ anything; see the spec.
 
 Explicitly out: trending (telemetry is write-only), and derived facts like
 "longest unbeaten run", which need to state what they were counted over.
+
+### E15 · Typed English/Spanish localization — done
+
+[spec](superpowers/specs/2026-08-21-typed-localization-and-locale-routing-design.md) ·
+[plan](superpowers/plans/2026-08-21-typed-localization-and-locale-routing.md) ·
+[contributor guide](LOCALIZATION.md)
+
+All public pages now live under explicit `/en` and `/es` URLs, with localized
+first-response HTML, document language, metadata, canonical URLs, and language
+alternates. Middleware validates a preference cookie and weighted browser
+language only to redirect unprefixed pages; it never translates content and
+does not use IP geolocation.
+
+Fixed interface copy, including accessibility and error/empty-state text, lives
+in exact-shape typed catalogs. Locale-aware formatting is explicit, provider
+prose remains in its source language, API error contracts remain stable, and a
+source audit rejects new hardcoded UI copy or ambient-locale formatting.
 
 ### E13 · Competition simulation — noted, not designed
 

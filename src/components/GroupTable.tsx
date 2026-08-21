@@ -2,7 +2,8 @@ import type { Group } from "@/server/data/types";
 import TeamBadge from "./TeamBadge";
 import { teamHref } from './teamHref';
 import { groupRowClass } from "./groupRowClass";
-import LanguageText from "./LanguageText";
+import { useTranslations } from '@/i18n/I18nProvider';
+import { translatedGroupName } from './translatedGroupName';
 
 interface GroupTableProps {
   group: Group;
@@ -15,25 +16,26 @@ function fmtGD(gd: number): string {
 }
 
 export default function GroupTable({ group, teamStyle, teamBase }: GroupTableProps) {
+  const t = useTranslations();
   const started = group.standings.some((s) => s.played > 0);
   return (
     <div className="group-card">
-      <h2 className="group-name">{group.name}</h2>
+      <h2 className="group-name">{translatedGroupName(group, t)}</h2>
       {!started ? (
-        <p className="lz-preseason"><LanguageText en="Season not started — no matches played yet." es="La temporada no ha comenzado — aún no hay partidos jugados." /></p>
+        <p className="lz-preseason">{t('standings.preseason')}</p>
       ) : null}
       <table className="standings-table">
         <thead>
           <tr>
-            <th>#</th>
-            <th className="team-col"><LanguageText en="Team" es="Equipo" /></th>
-            <th title="Played">P</th>
-            <th title="Wins">W</th>
-            <th title="Draws">D</th>
-            <th title="Losses">L</th>
-            <th title="Goal Difference">GD</th>
-            <th className="pts-col" title="Points">
-              Pts
+            <th title={t('standings.positionTooltip')}>{t('standings.positionAbbreviation')}</th>
+            <th className="team-col">{t('standings.team')}</th>
+            <th title={t('standings.playedTooltip')}>{t('standings.playedAbbreviation')}</th>
+            <th title={t('standings.winsTooltip')}>{t('standings.winsAbbreviation')}</th>
+            <th title={t('standings.drawsTooltip')}>{t('standings.drawsAbbreviation')}</th>
+            <th title={t('standings.lossesTooltip')}>{t('standings.lossesAbbreviation')}</th>
+            <th title={t('standings.goalDifferenceTooltip')}>{t('standings.goalDifferenceAbbreviation')}</th>
+            <th className="pts-col" title={t('standings.pointsTooltip')}>
+              {t('standings.pointsAbbreviation')}
             </th>
           </tr>
         </thead>

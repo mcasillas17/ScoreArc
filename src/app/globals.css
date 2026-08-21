@@ -3573,6 +3573,17 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   max-width: 1280px;
   gap: 0;
 }
+
+/* This compound selector appears after the shared .main mobile rule and has
+   higher specificity, so its mobile reset must live after the desktop rule. */
+@media (max-width: 860px) {
+  .main.tsp,
+  .main.tm {
+    margin-left: 0;
+    padding: 24px 16px calc(84px + env(safe-area-inset-bottom));
+  }
+}
+
 .tsp-head { margin-bottom: 20px; }
 .tsp-eyebrow {
   margin: 0 0 4px;

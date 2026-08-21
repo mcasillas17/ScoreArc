@@ -1,15 +1,16 @@
 'use client';
 
-import LanguageText from './LanguageText';
 import { useState, useEffect, useRef } from 'react';
 import type { Group, StatLeader } from '@/server/data/types';
-import type { Zone } from '@/server/data/competitions';
+import type { QualificationLabelKey, Zone } from '@/server/data/competitions';
 import GroupTable from './GroupTable';
 import LeaderTable from './LeaderTable';
 import ThirdPlaceTable from './ThirdPlaceTable';
 import LeagueLadder from './LeagueLadder';
 import LeagueZoneTable from './LeagueZoneTable';
 import { trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
+import { useTranslations } from '@/i18n/I18nProvider';
+import { translatedGroupName } from './translatedGroupName';
 
 interface Props {
   initialGroups: Group[];
@@ -27,7 +28,7 @@ interface Props {
   showThirdPlace?: boolean;
   // League qualification cut (e.g. Liga MX top 8 → Liguilla). When set, the
   // standings render as the split dial+tier ladder instead of a plain table.
-  qualification?: { cut: number; label: string };
+  qualification?: { cut: number; labelKey: QualificationLabelKey };
   // Multi-outcome table (European leagues: UCL / UEL / UECL / relegation).
   // Takes precedence over `qualification`, which models a single cut.
   zones?: Zone[];
@@ -36,6 +37,7 @@ interface Props {
 const REFRESH_MS = 30_000;
 
 export default function StandingsLive({ initialGroups, initialScorers, initialAssists, apiBase, teamBase, teamStyle = 'flag', showThirdPlace = true, qualification, zones }: Props) {
+  const t = useTranslations();
   const [groups, setGroups] = useState<Group[]>(initialGroups);
   const [scorers, setScorers] = useState<StatLeader[]>(initialScorers);
   const [assists, setAssists] = useState<StatLeader[]>(initialAssists);
@@ -109,25 +111,25 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
 
   const topScorersBlock = (
     <div className="std-block">
-      <h2 className="std-block-title"><LanguageText en="Golden Boot · Top Scorers" es="Bota de Oro · Máximos goleadores" /></h2>
-      <LeaderTable leaders={scorers} metric={{ abbr: 'G', title: 'Goals', titleEs: 'goles' }} teamStyle={teamStyle} teamBase={teamBase} />
+      <h2 className="std-block-title">{t('standings.goldenBoot')}</h2>
+      <LeaderTable leaders={scorers} metric="goals" teamStyle={teamStyle} teamBase={teamBase} />
     </div>
   );
 
   const topAssistsBlock = (
     <div className="std-block">
-      <h2 className="std-block-title"><LanguageText en="Playmakers · Top Assists" es="Creadores · Máximas asistencias" /></h2>
-      <LeaderTable leaders={assists} metric={{ abbr: 'A', title: 'Assists', titleEs: 'asistencias' }} teamStyle={teamStyle} teamBase={teamBase} />
+      <h2 className="std-block-title">{t('standings.playmakers')}</h2>
+      <LeaderTable leaders={assists} metric="assists" teamStyle={teamStyle} teamBase={teamBase} />
     </div>
   );
 
   const standingsBlock = (
     <div className="std-block">
-      <h2 className="std-block-title">{showThirdPlace ? 'Group Stage Results' : 'Standings'}</h2>
+      <h2 className="std-block-title">{t(showThirdPlace ? 'standings.groupStageResults' : 'standings.title')}</h2>
       {zones && zones.length > 0 && !showThirdPlace ? (
         groups.map((group) => (
           <div key={group.id} className="std-ladder" data-group={group.id}>
-            {groups.length > 1 ? <h3 className="std-ladder-title">{group.name}</h3> : null}
+            {groups.length > 1 ? <h3 className="std-ladder-title">{translatedGroupName(group, t)}</h3> : null}
             {/* A table may carry its own zones. Almost none do — one league, one
                 set of outcomes — but MLS's Supporters' Shield table is ranked
                 across both conferences, so the conference playoff cut means
@@ -141,7 +143,7 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
         // only the first would silently drop half the competition.
         groups.map((group) => (
           <div key={group.id} className="std-ladder" data-group={group.id}>
-            {groups.length > 1 ? <h3 className="std-ladder-title">{group.name}</h3> : null}
+            {groups.length > 1 ? <h3 className="std-ladder-title">{translatedGroupName(group, t)}</h3> : null}
             <LeagueLadder
               standings={group.standings}
               qualification={qualification}
@@ -158,7 +160,7 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
         </div>
       ) : (
         <div className="empty-section">
-          <p className="empty-text"><LanguageText en="Group data is unavailable right now." es="Los datos de los grupos no están disponibles en este momento." /></p>
+          <p className="empty-text">{t('standings.groupsUnavailable')}</p>
         </div>
       )}
     </div>
@@ -173,11 +175,11 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
         <div className="std-columns">
           {topScorersBlock}
           <div className="std-block">
-            <h2 className="std-block-title"><LanguageText en="Best Third-Placed Teams" es="Mejores terceros" /></h2>
+            <h2 className="std-block-title">{t('standings.bestThirdPlaced')}</h2>
             {groups.length > 0 ? (
               <ThirdPlaceTable groups={groups} teamStyle={teamStyle} teamBase={teamBase} />
             ) : (
-              <p className="empty-text"><LanguageText en="Group data is unavailable right now." es="Los datos de los grupos no están disponibles en este momento." /></p>
+              <p className="empty-text">{t('standings.groupsUnavailable')}</p>
             )}
           </div>
         </div>
