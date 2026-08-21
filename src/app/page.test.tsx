@@ -26,7 +26,7 @@ describe('Hub', () => {
     const enriching = vi.spyOn(dataStore, 'getMatches');
     const cheap = vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
 
-    renderToStaticMarkup(await Hub({}));
+    renderToStaticMarkup(await Hub());
 
     expect(enriching).not.toHaveBeenCalled();
     expect(cheap).toHaveBeenCalled();
@@ -37,13 +37,13 @@ describe('Hub', () => {
   // between matchdays has nothing this week and still has a next fixture.
   it("reads each competition's window exactly once", async () => {
     const cheap = vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
-    renderToStaticMarkup(await Hub({}));
+    renderToStaticMarkup(await Hub());
     expect(cheap).toHaveBeenCalledTimes(listCompetitions().length);
   });
 
   it('still renders a tile per competition when the feed is empty', async () => {
     vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
-    const html = renderToStaticMarkup(await Hub({}));
+    const html = renderToStaticMarkup(await Hub());
     expect(html).toContain('ScoreArc');
     expect(html).toContain('Liga MX');
   });
@@ -51,7 +51,7 @@ describe('Hub', () => {
   // A dead feed for one competition must not take the page down.
   it('renders when a competition feed throws', async () => {
     vi.spyOn(dataStore, 'getLiveWindow').mockRejectedValue(new Error('upstream unavailable'));
-    const html = renderToStaticMarkup(await Hub({}));
+    const html = renderToStaticMarkup(await Hub());
     expect(html).toContain('Liga MX');
   });
 });
