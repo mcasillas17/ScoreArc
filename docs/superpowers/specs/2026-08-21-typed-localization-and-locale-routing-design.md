@@ -1,7 +1,8 @@
 # Typed localization and locale routing — design
 
-**Status:** Design approved · 2026-08-21
+**Status:** Implemented · 2026-08-21
 **Scope:** One implementation plan covering all fixed user-facing website copy.
+**Contributor guide:** [`docs/LOCALIZATION.md`](../../LOCALIZATION.md)
 
 ## Goal
 
@@ -54,7 +55,8 @@ cookie. A prefixed URL always wins over a conflicting cookie or browser header.
 The language switcher replaces the locale segment while preserving the remaining path,
 query string, and hash. It records the explicit choice in a `scorearc-language` cookie
 with `Path=/`, a one-year lifetime, and `SameSite=Lax`. Local storage and post-hydration
-mutation of `<html lang>` are removed.
+mutation of `<html lang>` are removed. The preference cookie includes `Secure` on HTTPS
+and omits it on local HTTP so development switching continues to work.
 
 ## Translation architecture
 
