@@ -1,6 +1,6 @@
 # Home digest and global navigation — design
 
-**Status:** Design approved · 2026-08-21
+**Status:** Built and reviewed · 2026-08-21 · three review rounds, two reviewers
 **Epic:** E14 (`docs/PRODUCT_ROADMAP.md`)
 **Scope:** One implementation plan.
 
@@ -24,18 +24,31 @@ The nine tiles exist because there is nowhere else to put competitions. Move
 "which competition" into a persistent nav and the tiles lose their job, which is
 what lets each match appear exactly once.
 
-**The current sidebar is competition-scoped and partly broken.** Measured on a
-390px viewport at `/c/liga-mx/2026-apertura/standings`: the sidebar becomes a
-122px sticky top bar, and its four section links — Standings, Matches, Teams,
-News — each render at `width: 0, height: 0`. They are in the DOM and invisible.
-**Phone users have no section navigation at all today.** The redesign must fix
-this rather than inherit it.
+**The current sidebar is competition-scoped.** Note that an earlier draft of
+this spec justified the redesign with a false claim, and it is corrected here
+rather than deleted, because it changed a decision.
+
+That draft measured `/c/liga-mx/2026-apertura/standings` at 390px, found the
+sidebar's four section links rendering at `width: 0, height: 0`, and concluded
+that phone users had no section navigation at all. **They did.** Those links
+were deliberately hidden — `globals.css` on `main` carried the comment
+*"Sections move to the fixed bottom tab bar; hide the top-bar nav"* — and the
+real phone affordance was `.mobile-tabbar`, a fixed bottom bar that was always
+visible and thumb-reachable.
+
+So this redesign does not repair a broken nav. It **replaces a working bottom
+tab bar with a scrolling top row plus a drawer**, and that trade should be
+judged on its merits: the bottom bar was closer to the thumb and never needed
+scrolling, while the new nav carries the site sections and competitions that the
+bottom bar had no room for. The lesson for future measurement: an element
+rendering at zero size may be hidden on purpose, and the question to ask is what
+replaced it, not whether it is visible.
 
 ## Navigation
 
 Two levels in one component:
 
-- **Site sections** — Home, Teams, Players, Simulate. Players and Simulate
+- **Site sections** — Home, Teams, News, Players, Simulate. Players and Simulate
   render as disabled items labelled "soon" until they exist. They are named
   rather than hidden because the nav is where the site says what it is; they are
   not links, because a link to a 404 is worse than an honest label.
@@ -68,6 +81,18 @@ this block leads with recent results rather than showing an empty state. A
 scores site with nothing on it reads as broken. The heading states which it is
 ("Nothing live right now — next kickoff in about 4 hours").
 
+The upcoming branch is bounded by a **24-hour horizon** (`UPCOMING_HORIZON_MS`).
+Without it the fallback is unreachable: `getLiveWindow` reads −7/+14 days and
+every scheduled match in that range is "upcoming", so a quiet day led with
+fixtures a fortnight out — "next kickoff in about 12 days" — while a week of
+finished results sat unused in the same payload. A fixture beyond the horizon
+still ranks above nothing, so an opening weekend with no results yet is not an
+empty block. When all three buckets are empty the heading says so rather than
+promising results above an empty state.
+
+The heading's count is the number of cards actually rendered — after dedupe and
+after the cap — not the raw entry count.
+
 ### Leading scorers
 
 The top three of each competition's board, grouped by competition, from
@@ -90,13 +115,25 @@ A compact list with small thumbnails, **not** a hero. A 16:9 lead image made the
 top story the largest object on the page, and the top story was "Adidas drops
 dog kits" — whatever ESPN ranks first would dominate our home page.
 
+Each row says how long ago it was published, **not** which competition feed it
+arrived through. The per-league `/news` endpoints are mostly generic: measured,
+four of six rows carried a competition the article had nothing to do with, and
+the tag was arbitrary anyway because the cross-feed dedupe keeps whichever copy
+sorts first. Recency is the one thing a row can say about itself that is true.
+
+Every row leaves for ESPN in a new tab, so the block needs one destination
+inside ScoreArc: an **All news →** link, and a `/news` page carrying the same
+merged feed at a larger cap. It is a site section in the nav alongside Teams.
+
 ## Layout and responsiveness
 
 **One shared gap.** Leading scorers and News are a 50/50 split, and the What's
 On cards above them are also 50/50. Equal columns are not enough to align them:
 the two grids must share the same gap or their centre lines differ. Measured at
-1280px with a shared 16px gap, card 1 ends at 748 and the scorers column ends at
-748; card 2 starts at 764 and news starts at 764.
+1280px with a shared 16px gap, card 1 ends at 747 and the scorers column ends at
+747; card 2 starts at 763 and news starts at 763. (Measured in the browser; the
+first draft of this spec said 748/764, off by one from rounding the arithmetic
+by hand rather than reading it off the rendered boxes.)
 
 Breakpoints:
 
@@ -114,10 +151,13 @@ phone renders during design.
 
 - `HubTiles` — competitions move into the nav.
 - The home page's LATEST RESULTS / NEXT UP columns — folded into What's on.
-- The live band in its current form on the home page, replaced by What's on.
+- `LiveBand`, its test, and its `.lb-*` CSS — replaced by What's on.
 
-`LiveBand` is still used elsewhere and is not deleted; only its home-page role
-changes.
+An earlier draft of this spec said "`LiveBand` is still used elsewhere and is
+not deleted". That was wrong: on `origin/main` its only importer was
+`src/app/page.tsx`, the page this epic rewrote, so the component became dead the
+moment the digest landed. It is deleted. One rule survives the cull — `.lb-ping`
+— because `MatchesNow` renders that class for its live pulse.
 
 ## Out of scope
 
@@ -134,6 +174,8 @@ changes.
 ## Verification
 
 - Every nav item reachable at 390px, 768px and 1280px — no item at `width: 0`.
+  (Necessary, but it was never sufficient: the nav it replaced also failed this
+  check while working fine, via a separate bottom bar.)
 - On the home page, no match id appears twice in the rendered HTML.
 - At 1280px the scorers column and the first match card share a right edge, and
   the news column and the second card share a left edge.

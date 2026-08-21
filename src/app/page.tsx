@@ -1,109 +1,159 @@
-import Link from 'next/link';
 import { listCompetitions, resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
-import { hubStatus } from '@/lib/hubStatus';
-import { tileFacts, tileSubLine } from '@/lib/hubTile';
-import { prioritiseEntries, toLiveEntries, type LiveEntry } from '@/server/data/liveFeed';
-import HubTiles from '@/components/HubTiles';
+import { competitionLabel, type LiveEntry } from '@/server/data/liveFeed';
+import { prioritiseBy } from '@/server/data/matchPriority';
+import type { Match, StatLeader } from '@/server/data/types';
+import { collectDatedStories } from '@/server/data/newsFeed';
+import { chooseWhatsOn, whatsOnHeadline } from '@/lib/digest';
+import DigestMatches from '@/components/DigestMatches';
+import DigestScorers, { type ScorerBoard } from '@/components/DigestScorers';
+import DigestNews from '@/components/DigestNews';
+import TrackedLink from '@/components/TrackedLink';
 import LanguageText from '@/components/LanguageText';
 import SiteFooter from '@/components/SiteFooter';
-
-import LiveBand from '@/components/LiveBand';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata = { title: 'ScoreArc · Live Football' };
 
-export default async function Hub() {
-  // One clock for the whole render, so two tiles cannot disagree about "today".
+/** How many match cards the digest shows. A digest is a glance; the nav is the
+ *  way into a competition's full list. This is also the whole page's match
+ *  budget — no match may appear twice on it. */
+const WHATS_ON_SHOWN = 6;
+/** Boards and stories: the same reasoning, per block. */
+const BOARDS_SHOWN = 6;
+const SCORERS_PER_BOARD = 3;
+const STORIES_SHOWN = 6;
+const STORIES_PER_COMPETITION = 2;
+
+/** One match, once. Two competitions can carry the same provider event id (a
+ *  club plays in a league and a cup), and the same match rendered twice is the
+ *  defect this page was redesigned to remove.
+ *
+ *  This runs BEFORE the entries are bucketed, not after. Deduping the pool
+ *  afterwards left the heading counting the raw entries: "4 matches live right
+ *  now" above three cards. */
+function dedupeByMatch(entries: LiveEntry[]): LiveEntry[] {
+  const seen = new Set<string>();
+  return entries.filter((e) => {
+    if (seen.has(e.match.id)) return false;
+    seen.add(e.match.id);
+    return true;
+  });
+}
+
+export default async function Home() {
+  // One clock for the whole render, so two blocks cannot disagree about "now".
   const now = new Date();
-  const tiles = await Promise.all(
-    listCompetitions().map(async (comp) => {
-      const rc = resolveSeason(comp.id)!;
-      const hasBracket = rc.season.format.hasBracket;
-      let matches: Awaited<ReturnType<typeof dataStore.getFixtures>> = [];
-      let bracket: Awaited<ReturnType<typeof dataStore.getBracket>> = [];
-      let standings: Awaited<ReturnType<typeof dataStore.getStandings>> = [];
-      try {
-        // The unenriched read, deliberately. getMatches fetches one /summary
-        // per match for scorers and cards this page never renders — 77 of the
-        // 95 upstream requests a single home render used to cost.
-        //
-        // The window is the band's, not the current week's: one read per
-        // competition feeds both the band above and the tile below it.
-        matches = await dataStore.getLiveWindow(rc);
-      } catch {
-        // ESPN feed unavailable — show best-effort status
-      }
-      // A knockout competition proves it's underway via a decided bracket match;
-      // a league proves it via games already played in its table.
-      if (hasBracket) {
-        try {
-          bracket = await dataStore.getBracket(rc);
-        } catch {
-          // no bracket yet (e.g. pre-knockout) — not fatal for status
-        }
-      } else {
-        try {
-          standings = await dataStore.getStandings(rc);
-        } catch {
-          // standings unavailable — fall back to scoreboard-only status
-        }
-      }
-      const live = matches.filter((m) => m.state === 'live').length;
-      // Underway if any fixture has finished, any knockout match is decided, or
-      // the league table shows games played — so a mid-season competition isn't
-      // mislabelled "Starting soon" just because today's fixtures are scheduled.
-      const started =
-        matches.some((m) => m.state === 'finished') ||
-        bracket.some((r) => r.matches.some((m) => m.winnerId)) ||
-        standings.some((g) => g.standings.some((s) => s.played > 0));
-      // A knockout tournament is finished once its FINAL is decided. Grab the
-      // champion (the final's winner) so the tile can crown them.
-      const finalMatch = bracket.find((r) => r.slug === 'final')?.matches.find((m) => m.winnerId);
-      const finished = !!finalMatch;
-      const champion = finalMatch
-        ? (finalMatch.winnerId === finalMatch.home.id ? finalMatch.home.name : finalMatch.away.name)
-        : null;
-      const status = hubStatus(matches, started, finished);
-      const facts = tileFacts(matches, standings, now);
-      return {
-        comp,
-        season: rc.season,
-        status,
-        live,
-        champion,
-        subLine: tileSubLine(status, facts, champion, rc.season.label),
-        entries: toLiveEntries(comp, rc.season.id, matches),
-      };
-    }),
+
+  // The news fan-out runs alongside the match and scorer fan-out rather than
+  // after it: it is the same nine competitions, and awaiting it separately
+  // would put a second upstream round trip on the page's critical path.
+  const [per, stories] = await Promise.all([
+    Promise.all(
+      listCompetitions().map(async (comp) => {
+        const rc = resolveSeason(comp.id)!;
+        // Every read is independently optional: a dead feed for one competition
+        // must cost that competition's rows, not the page.
+        const [matches, leaders] = await Promise.all([
+          // The unenriched read, deliberately — getMatches buys one /summary per
+          // match for scorers and cards this page never renders.
+          dataStore.getLiveWindow(rc).catch((): Match[] => []),
+          dataStore.getLeaders(rc).catch(() => ({ scorers: [] as StatLeader[], assists: [] as StatLeader[] })),
+        ]);
+        return {
+          competition: competitionLabel(comp, rc.season.id),
+          seasonLabel: rc.season.label,
+          matches,
+          scorers: leaders.scorers,
+        };
+      }),
+    ),
+    // ===== News ===== the same collection /news renders, at the digest's size.
+    collectDatedStories(now, { perFeed: STORIES_PER_COMPETITION, limit: STORIES_SHOWN }),
+  ]);
+
+  // ===== What's on =====
+  const entries: LiveEntry[] = dedupeByMatch(
+    per.flatMap((p) => p.matches.map((match) => ({ competition: p.competition, match }))),
   );
-  // The band draws from every competition at once; the tiles are the way in.
-  // Trimmed the same way /api/live trims, so the payload embedded in this page
-  // matches what the first poll replaces it with.
-  const entries: LiveEntry[] = prioritiseEntries(tiles.flatMap((t) => t.entries), now);
+  const buckets = prioritiseBy(entries, (e) => e.match, now);
+  // A duration, not a wall clock: the difference between two instants means
+  // the same thing to every reader, so unlike "Thursday 8pm" it is safe to
+  // format on a server running UTC. `upcoming` is sorted by kickoff, so its
+  // head is the nearest across every competition, not whichever feed answered
+  // first.
+  const msUntilKickoff = (e: LiveEntry) => new Date(e.match.kickoff).getTime() - now.getTime();
+  const msToNext = buckets.upcoming.length > 0 ? msUntilKickoff(buckets.upcoming[0]) : null;
+  const { mode, pool } = chooseWhatsOn(buckets, msUntilKickoff);
+  const shown = pool.slice(0, WHATS_ON_SHOWN);
+  // The count the heading quotes is the number of cards below it.
+  const headline = whatsOnHeadline(mode, shown.length, msToNext);
+
+  // ===== Leading scorers =====
+  const boards: ScorerBoard[] = per
+    .filter((p) => p.scorers.length > 0)
+    .slice(0, BOARDS_SHOWN)
+    .map((p) => ({
+      competition: p.competition,
+      seasonLabel: p.seasonLabel,
+      leaders: p.scorers.slice(0, SCORERS_PER_BOARD),
+    }));
 
   return (
-    <main className="hub">
-      <header className="hub-head">
-        <Link href="/" className="hub-brand" aria-label="ScoreArc home">
-          {/* The delivered lockup, used as an image: its kerning and the
-              underline arc are the designer's, and reproducing them in HTML
-              would drift. The sidebar keeps HTML text, where matching the
-              app's own typography matters more. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            className="hub-lockup"
-            src="/brand/scorearc-lockup-3a-dark.svg"
-            alt="ScoreArc"
-            width={300}
-            height={104}
-          />
-        </Link>
-        <p className="hub-tag"><LanguageText en="Live football — brackets, scores & standings, every arc." es="Fútbol en vivo — cuadros, resultados y clasificaciones, en cada arco." /></p>
+    <main className="dg">
+      <header className="dg-head">
+        <h1 className="dg-title">
+          <LanguageText en="What's new in ScoreArc" es="Nuevo en ScoreArc" />
+        </h1>
+        <p className="dg-sub">
+          <LanguageText en={headline.en} es={headline.es} />
+        </p>
       </header>
-      <LiveBand initialEntries={entries} />
-      <HubTiles tiles={tiles} />
+
+      <section className="dg-sec">
+        <h2 className="dg-lab">
+          <LanguageText en="What's on" es="Qué hay hoy" />
+        </h2>
+        {shown.length > 0 ? (
+          <DigestMatches entries={shown} />
+        ) : (
+          <p className="dg-empty">
+            <LanguageText
+              en="No matches in the current window."
+              es="No hay partidos en la ventana actual."
+            />
+          </p>
+        )}
+      </section>
+
+      <div className="dg-two">
+        <section className="dg-sec">
+          <h2 className="dg-lab">
+            <LanguageText en="Leading scorers" es="Goleadores" />
+          </h2>
+          <DigestScorers boards={boards} />
+        </section>
+        <section className="dg-sec">
+          {/* Every story row leaves for ESPN in a new tab. Without this the
+              block was a dead end: nothing on it led anywhere inside ScoreArc. */}
+          <div className="dg-labrow">
+            <h2 className="dg-lab">
+              <LanguageText en="News" es="Noticias" />
+            </h2>
+            <TrackedLink
+              className="dg-more"
+              href="/news"
+              event="Section opened"
+              properties={{ section: 'News', surface: 'digest' }}
+            >
+              <LanguageText en="All news →" es="Todas las noticias →" />
+            </TrackedLink>
+          </div>
+          <DigestNews items={stories} surface="digest" />
+        </section>
+      </div>
+
       <SiteFooter />
     </main>
   );

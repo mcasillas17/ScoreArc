@@ -3,7 +3,6 @@ import { allTeams } from '@/server/data/teamIndex';
 import TeamSearch from '@/components/TeamSearch';
 import LanguageText from '@/components/LanguageText';
 import SiteFooter from '@/components/SiteFooter';
-import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,11 +16,6 @@ export default async function TeamsPage() {
 
   return (
     <main className="tsp">
-      <p className="tsp-back">
-        <Link href="/">
-          <LanguageText en="← All competitions" es="← Todas las competiciones" />
-        </Link>
-      </p>
       <header className="tsp-head">
         <h1 className="tsp-title">
           <LanguageText en="Teams" es="Equipos" />
