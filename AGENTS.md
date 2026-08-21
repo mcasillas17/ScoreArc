@@ -60,6 +60,14 @@ to serve that data instead.
    calling something broken because it does not render, grep for what replaced
    it.
 
+   Sticky is the other silent failure. `overflow` of anything but `visible`
+   makes an element a scroll container, and `position: sticky` sticks to its
+   nearest scrolling ancestor — so `overflow-x: hidden` on `html, body` turns
+   every sticky descendant into `position: relative` with no error and no
+   warning. That shipped here: the phone nav measured `top: -900` after a 900px
+   scroll, leaving phone readers with no navigation past the first screenful.
+   Use `overflow-x: clip`, which clips without creating a scroll container.
+
    Also confirm the rule you edited is the one that wins. `globals.css` is one
    long file and the same selector can appear in two media queries thousands of
    lines apart; the later one takes every conflict. The masthead had exactly

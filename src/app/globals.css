@@ -73,7 +73,19 @@ html {
 html,
 body {
   max-width: 100vw;
-  overflow-x: hidden;
+  /* clip, not hidden. Both stop a horizontal scrollbar, but `hidden` makes this
+     element a scroll container, and `position: sticky` sticks to its nearest
+     scrolling ancestor -- so every sticky descendant silently stuck to a box
+     that never scrolls and behaved like `position: relative`. Nothing errors;
+     it just quietly does nothing, which is how it survived until someone
+     measured the phone nav's position after scrolling and found it at -900.
+     `clip` clips without creating a scroll container, so sticky works.
+
+     Measured 2026-08-21 with the rule neutralised: 6 routes x 390/768/1280,
+     zero horizontal overflow. Nothing depends on the clipping today -- it is
+     kept as a guard against a future wide element, not because something is
+     currently overflowing. */
+  overflow-x: clip;
 }
 
 body {
