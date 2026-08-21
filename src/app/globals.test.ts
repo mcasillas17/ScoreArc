@@ -51,6 +51,22 @@ function cascadeSimpleClassProperty(
   return winner?.value;
 }
 
+function selectorProperty(
+  selector: string,
+  property: string,
+  viewportWidth: number,
+): string | undefined {
+  let value: string | undefined;
+  stylesheet.walkRules((rule) => {
+    if (!maxWidthMediaApplies(rule, viewportWidth) || !rule.selectors.includes(selector)) return;
+    const declaration = rule.nodes.find(
+      (node) => node.type === 'decl' && node.prop === property,
+    );
+    if (declaration?.type === 'decl') value = declaration.value;
+  });
+  return value;
+}
+
 describe('responsive competition main layout', () => {
   it.each([360, 768])(
     'does not add a second sidebar offset to specialized pages at %ipx',
@@ -89,5 +105,13 @@ describe('responsive competition main layout', () => {
 
   it('keeps squad overflow inside its own scroll container', () => {
     expect(cascadeSimpleClassProperty(['sq-wrap'], 'overflow-x', 360)).toBe('auto');
+  });
+
+  it('keeps the phone masthead sticky without showing two navigations', () => {
+    expect(selectorProperty('html', 'overflow-x', 360)).toBe('clip');
+    expect(selectorProperty('body', 'overflow-x', 360)).toBe('clip');
+    expect(selectorProperty('.sn', 'position', 360)).toBe('sticky');
+    expect(selectorProperty('.sn-tabs', 'position', 360)).toBe('fixed');
+    expect(selectorProperty('.sn--open ~ .sn-tabs', 'display', 360)).toBe('none');
   });
 });
