@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { isLocale } from '@/i18n/config';
 import { resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import type { NewsArticle } from '@/server/data/types';
@@ -8,7 +9,8 @@ import SiteFooter from '@/components/SiteFooter';
 
 export const dynamic = 'force-dynamic';
 
-export default async function NewsPage({ params }: { params: { comp: string; season: string } }) {
+export default async function NewsPage({ params }: { params: { locale: string; comp: string; season: string } }) {
+  if (!isLocale(params.locale)) notFound();
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) notFound();
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;

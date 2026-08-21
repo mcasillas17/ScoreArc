@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { resolveSeason } from '@/server/data/competitions';
 import { competitionTeams } from '@/server/data/teamIndex';
+import { isLocale } from '@/i18n/config';
+import { replacePathLocale } from '@/i18n/pathnames';
 import TeamBadge from '@/components/TeamBadge';
 import LanguageText from '@/components/LanguageText';
 import SiteFooter from '@/components/SiteFooter';
@@ -10,10 +12,11 @@ import SiteFooter from '@/components/SiteFooter';
 export const dynamic = 'force-dynamic';
 
 interface Params {
-  params: { comp: string; season: string };
+  params: { locale: string; comp: string; season: string };
 }
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
+  if (!isLocale(params.locale)) notFound();
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) return { title: 'Teams' };
   const edition = `${rc.competition.shortName} ${rc.season.label}`;
@@ -24,6 +27,8 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 }
 
 export default async function CompetitionTeamsPage({ params }: Params) {
+  if (!isLocale(params.locale)) notFound();
+  const locale = params.locale;
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) notFound();
   const teams = await competitionTeams(rc);
@@ -51,7 +56,7 @@ export default async function CompetitionTeamsPage({ params }: Params) {
         <ul className="tsp-grid">
           {teams.map((team) => (
             <li key={team.id}>
-              <Link href={team.memberships[0].href} className="tsp-card">
+              <Link href={replacePathLocale(team.memberships[0].href, locale)} className="tsp-card">
                 <TeamBadge
                   team={{ id: team.id, name: team.name, abbr: team.abbr, crestUrl: team.crestUrl }}
                   size={34}
@@ -65,7 +70,7 @@ export default async function CompetitionTeamsPage({ params }: Params) {
       )}
 
       <p className="tsp-all">
-        <Link href="/teams">
+        <Link href={`/${locale}/teams`}>
           <LanguageText en="Search all teams →" es="Buscar todos los equipos →" />
         </Link>
       </p>

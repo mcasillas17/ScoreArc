@@ -4,8 +4,14 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { I18nProvider } from '@/i18n/I18nProvider';
 import type { Match } from '@/server/data/types';
 import MatchCalendar from './MatchCalendar';
+
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/en/c/premier-league/2026-27/matches',
+  useRouter: () => ({ push: vi.fn() }),
+}));
 
 const scheduledMatch: Match = {
   id: 'scheduled',
@@ -30,14 +36,16 @@ const scheduledMatch: Match = {
 
 function renderCalendar(overrides: Partial<React.ComponentProps<typeof MatchCalendar>> = {}) {
   return renderToStaticMarkup(
-    <MatchCalendar
-      initialMatches={[scheduledMatch]}
-      initialMonth="2026-08-01"
-      minMonth="2026-07-01"
-      maxMonth="2027-06-01"
-      apiBase="/api/premier-league/2026-27"
-      {...overrides}
-    />,
+    <I18nProvider locale="en">
+      <MatchCalendar
+        initialMatches={[scheduledMatch]}
+        initialMonth="2026-08-01"
+        minMonth="2026-07-01"
+        maxMonth="2027-06-01"
+        apiBase="/api/premier-league/2026-27"
+        {...overrides}
+      />
+    </I18nProvider>,
   );
 }
 
@@ -68,16 +76,18 @@ describe('MatchCalendar', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(
-      <React.StrictMode>
-        <MatchCalendar
-          initialMatches={[]}
-          initialError="Matches are unavailable right now."
-          initialMonth="2026-08-01"
-          minMonth="2026-07-01"
-          maxMonth="2027-06-01"
-          apiBase="/api/premier-league/2026-27"
-        />
-      </React.StrictMode>,
+      <I18nProvider locale="en">
+        <React.StrictMode>
+          <MatchCalendar
+            initialMatches={[]}
+            initialError="Matches are unavailable right now."
+            initialMonth="2026-08-01"
+            minMonth="2026-07-01"
+            maxMonth="2027-06-01"
+            apiBase="/api/premier-league/2026-27"
+          />
+        </React.StrictMode>
+      </I18nProvider>,
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Next month' }));

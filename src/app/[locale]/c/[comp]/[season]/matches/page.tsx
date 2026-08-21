@@ -2,6 +2,7 @@ import LanguageText from '@/components/LanguageText';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { isLocale } from '@/i18n/config';
 import { resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import {
@@ -22,8 +23,9 @@ export const dynamic = 'force-dynamic';
 export async function generateMetadata({
   params,
 }: {
-  params: { comp: string; season: string };
+  params: { locale: string; comp: string; season: string };
 }): Promise<Metadata> {
+  if (!isLocale(params.locale)) notFound();
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) return { title: 'Matches' };
   const editionName = `${rc.competition.shortName} ${rc.season.label}`;
@@ -37,17 +39,19 @@ export default async function MatchesPage({
   params,
   searchParams,
 }: {
-  params: { comp: string; season: string };
+  params: { locale: string; comp: string; season: string };
   searchParams?: { view?: string };
 }) {
+  if (!isLocale(params.locale)) notFound();
+  const locale = params.locale;
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) notFound();
 
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
   // Crests in the match views link to the club's page.
-  const teamBase = `/c/${rc.competition.id}/${rc.season.id}/team`;
+  const teamBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/team`;
   const editionName = `${rc.competition.shortName} ${rc.season.label}`;
-  const basePath = `/c/${rc.competition.id}/${rc.season.id}/matches`;
+  const basePath = `/${locale}/c/${rc.competition.id}/${rc.season.id}/matches`;
 
   // "Now" is a live view, so it only makes sense for the season being played.
   // A past edition has nothing live, upcoming or recent by definition.

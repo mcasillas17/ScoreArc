@@ -1,13 +1,24 @@
 import { renderToStaticMarkup } from 'react-dom/server';
+import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { dataStore } from '@/server/data/store';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 import type { Match, MatchState } from '@/server/data/types';
+import { I18nProvider } from '@/i18n/I18nProvider';
 import MatchesPage, { generateMetadata } from './page';
+
+vi.mock('next/navigation', () => ({
+  notFound: vi.fn(() => { throw new Error('NEXT_NOT_FOUND'); }),
+  usePathname: () => '/en/c/world-cup/1998/matches',
+  useRouter: () => ({ push: vi.fn() }),
+}));
 
 vi.mock('@/lib/telemetry/server', () => ({
   trackAPIRequestFailure: vi.fn(),
 }));
+
+const renderLocalized = (node: ReactNode) =>
+  renderToStaticMarkup(<I18nProvider locale="en">{node}</I18nProvider>);
 
 const NOW = new Date(2026, 7, 18);
 
@@ -44,10 +55,10 @@ describe('MatchesPage', () => {
   it('opens a historical World Cup in its last active month with the edition label', async () => {
     const getFixtures = vi.spyOn(dataStore, 'getFixtures').mockResolvedValue([]);
 
-    const page = await MatchesPage({ params: { comp: 'world-cup', season: '1998' } });
-    const html = renderToStaticMarkup(page);
+    const page = await MatchesPage({ params: { locale: 'en', comp: 'world-cup', season: '1998' } });
+    const html = renderLocalized(page);
     const metadata = await generateMetadata({
-      params: { comp: 'world-cup', season: '1998' },
+      params: { locale: 'en', comp: 'world-cup', season: '1998' },
     });
 
     expect(getFixtures).toHaveBeenCalledWith(expect.anything(), '19980701-19980731');
@@ -60,10 +71,10 @@ describe('MatchesPage', () => {
     vi.spyOn(dataStore, 'getFixtures').mockRejectedValue(new Error('provider secret'));
 
     const page = await MatchesPage({
-      params: { comp: 'premier-league', season: '2026-27' },
+      params: { locale: 'en', comp: 'premier-league', season: '2026-27' },
       searchParams: { view: 'calendar' },
     });
-    const html = renderToStaticMarkup(page);
+    const html = renderLocalized(page);
 
     expect(html).toContain('Previous');
     expect(html).toContain('Next');
@@ -98,8 +109,8 @@ describe('MatchesPage default mode', () => {
       match('r', 'finished', inDays(-1)),
       match('u', 'scheduled', inDays(3)),
     ]);
-    const html = renderToStaticMarkup(
-      await MatchesPage({ params: { comp: 'liga-mx', season: '2026-apertura' } }),
+    const html = renderLocalized(
+      await MatchesPage({ params: { locale: 'en', comp: 'liga-mx', season: '2026-apertura' } }),
     );
     expect(html).toContain('Latest results');
     expect(html).toContain('Coming up');
@@ -110,8 +121,8 @@ describe('MatchesPage default mode', () => {
   // wants, so an upcoming-only window is a legitimate Now.
   it('opens a pre-season competition on Now', async () => {
     vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([match('u', 'scheduled', inDays(3))]);
-    const html = renderToStaticMarkup(
-      await MatchesPage({ params: { comp: 'premier-league', season: '2026-27' } }),
+    const html = renderLocalized(
+      await MatchesPage({ params: { locale: 'en', comp: 'premier-league', season: '2026-27' } }),
     );
     expect(html).toContain('Coming up');
     expect(html).not.toContain('Previous');
@@ -119,8 +130,8 @@ describe('MatchesPage default mode', () => {
 
   it('falls back to the calendar when Now would be empty', async () => {
     vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
-    const html = renderToStaticMarkup(
-      await MatchesPage({ params: { comp: 'liga-mx', season: '2026-apertura' } }),
+    const html = renderLocalized(
+      await MatchesPage({ params: { locale: 'en', comp: 'liga-mx', season: '2026-apertura' } }),
     );
     expect(html).toContain('Previous');
     expect(html).not.toContain('Latest results');
@@ -130,8 +141,8 @@ describe('MatchesPage default mode', () => {
   // must not pay for a live read at all.
   it('never offers Now for a past edition', async () => {
     const live = vi.spyOn(dataStore, 'getLiveWindow');
-    const html = renderToStaticMarkup(
-      await MatchesPage({ params: { comp: 'world-cup', season: '1998' } }),
+    const html = renderLocalized(
+      await MatchesPage({ params: { locale: 'en', comp: 'world-cup', season: '1998' } }),
     );
     expect(live).not.toHaveBeenCalled();
     expect(html).not.toContain('mn-tabs');
@@ -140,9 +151,9 @@ describe('MatchesPage default mode', () => {
 
   it('honours an explicit ?view=calendar even when Now has content', async () => {
     vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([match('u', 'scheduled', inDays(3))]);
-    const html = renderToStaticMarkup(
+    const html = renderLocalized(
       await MatchesPage({
-        params: { comp: 'liga-mx', season: '2026-apertura' },
+        params: { locale: 'en', comp: 'liga-mx', season: '2026-apertura' },
         searchParams: { view: 'calendar' },
       }),
     );
@@ -152,9 +163,9 @@ describe('MatchesPage default mode', () => {
 
   it('honours an explicit ?view=now even when Now is empty', async () => {
     vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
-    const html = renderToStaticMarkup(
+    const html = renderLocalized(
       await MatchesPage({
-        params: { comp: 'liga-mx', season: '2026-apertura' },
+        params: { locale: 'en', comp: 'liga-mx', season: '2026-apertura' },
         searchParams: { view: 'now' },
       }),
     );
@@ -166,19 +177,19 @@ describe('MatchesPage default mode', () => {
   // bare path resolves to the calendar, so clicking "Now" changed nothing.
   it('points the Now tab at an explicit view', async () => {
     vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
-    const html = renderToStaticMarkup(
-      await MatchesPage({ params: { comp: 'liga-mx', season: '2026-apertura' } }),
+    const html = renderLocalized(
+      await MatchesPage({ params: { locale: 'en', comp: 'liga-mx', season: '2026-apertura' } }),
     );
-    expect(html).toContain('/c/liga-mx/2026-apertura/matches?view=now');
+    expect(html).toContain('/en/c/liga-mx/2026-apertura/matches?view=now');
   });
 
   // ?view=now on a past edition rendered one sentence with no tabs and no way
   // out, while polling a window that cannot contain any of its matches.
   it('refuses ?view=now for a past edition instead of stranding the reader', async () => {
     const live = vi.spyOn(dataStore, 'getLiveWindow');
-    const html = renderToStaticMarkup(
+    const html = renderLocalized(
       await MatchesPage({
-        params: { comp: 'world-cup', season: '1998' },
+        params: { locale: 'en', comp: 'world-cup', season: '1998' },
         searchParams: { view: 'now' },
       }),
     );
@@ -189,9 +200,9 @@ describe('MatchesPage default mode', () => {
   // An empty Now must offer the way out it names.
   it('links to the calendar from the empty Now state', async () => {
     vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
-    const html = renderToStaticMarkup(
+    const html = renderLocalized(
       await MatchesPage({
-        params: { comp: 'liga-mx', season: '2026-apertura' },
+        params: { locale: 'en', comp: 'liga-mx', season: '2026-apertura' },
         searchParams: { view: 'now' },
       }),
     );
@@ -201,9 +212,9 @@ describe('MatchesPage default mode', () => {
 
   it('ignores an unknown view rather than rendering nothing', async () => {
     vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([match('u', 'scheduled', inDays(3))]);
-    const html = renderToStaticMarkup(
+    const html = renderLocalized(
       await MatchesPage({
-        params: { comp: 'liga-mx', season: '2026-apertura' },
+        params: { locale: 'en', comp: 'liga-mx', season: '2026-apertura' },
         searchParams: { view: 'nonsense' },
       }),
     );
@@ -214,8 +225,8 @@ describe('MatchesPage default mode', () => {
   it('does not fetch a calendar month when opening on Now', async () => {
     const fixtures = vi.spyOn(dataStore, 'getFixtures').mockResolvedValue([]);
     vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([match('u', 'scheduled', inDays(3))]);
-    renderToStaticMarkup(
-      await MatchesPage({ params: { comp: 'liga-mx', season: '2026-apertura' } }),
+    renderLocalized(
+      await MatchesPage({ params: { locale: 'en', comp: 'liga-mx', season: '2026-apertura' } }),
     );
     expect(fixtures).not.toHaveBeenCalled();
   });

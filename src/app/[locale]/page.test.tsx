@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import type { ReactNode } from 'react';
 import { dataStore } from '@/server/data/store';
 import { listCompetitions, resolveSeason, type CompetitionSeason } from '@/server/data/competitions';
 import type { Match, NewsArticle, StatLeader } from '@/server/data/types';
 import Home from './page';
+import { I18nProvider } from '@/i18n/I18nProvider';
+
+vi.mock('next/navigation', () => ({
+  notFound: vi.fn(() => { throw new Error('NEXT_NOT_FOUND'); }),
+  usePathname: () => '/en',
+  useRouter: () => ({ push: vi.fn() }),
+}));
 
 vi.mock('@/server/data/store', async (orig) => {
   const mod = (await orig()) as typeof import('@/server/data/store');
@@ -72,6 +80,9 @@ const matchIds = (html: string) =>
   (html.match(/data-match-id="[^"]+"/g) ?? []).map((a) => a.slice(15, -1));
 const count = (html: string, needle: string) => html.split(needle).length - 1;
 
+const renderLocalized = (node: ReactNode) =>
+  renderToStaticMarkup(<I18nProvider locale="en">{node}</I18nProvider>);
+
 describe('Home digest', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -89,7 +100,7 @@ describe('Home digest', () => {
     const enriching = vi.spyOn(dataStore, 'getMatches');
     const cheap = vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
 
-    renderToStaticMarkup(await Home());
+    renderLocalized(await Home({ params: { locale: 'en' } }));
 
     expect(enriching).not.toHaveBeenCalled();
     expect(cheap).toHaveBeenCalled();
@@ -97,7 +108,7 @@ describe('Home digest', () => {
 
   it("reads each competition's window exactly once", async () => {
     const cheap = vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
-    renderToStaticMarkup(await Home());
+    renderLocalized(await Home({ params: { locale: 'en' } }));
     expect(cheap).toHaveBeenCalledTimes(COMPETITIONS.length);
   });
 
@@ -106,7 +117,7 @@ describe('Home digest', () => {
     vi.spyOn(dataStore, 'getLiveWindow').mockRejectedValue(new Error('upstream unavailable'));
     vi.spyOn(dataStore, 'getLeaders').mockRejectedValue(new Error('upstream unavailable'));
     vi.spyOn(dataStore, 'getNews').mockRejectedValue(new Error('upstream unavailable'));
-    const html = renderToStaticMarkup(await Home());
+    const html = renderLocalized(await Home({ params: { locale: 'en' } }));
     expect(html).toContain('What&#x27;s new in ScoreArc');
   });
 
@@ -119,7 +130,7 @@ describe('Home digest', () => {
       match('m2', 3),
       match('m3', -4, 'finished'),
     ]);
-    const html = renderToStaticMarkup(await Home());
+    const html = renderLocalized(await Home({ params: { locale: 'en' } }));
     const ids = matchIds(html);
     expect(ids.length).toBeGreaterThan(0);
     expect(new Set(ids).size).toBe(ids.length);
@@ -132,7 +143,7 @@ describe('Home digest', () => {
     // nine live matches above one card.
     it('counts one when nine competitions return the same live match', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([match('shared', 0, 'live')]);
-      const html = renderToStaticMarkup(await Home());
+      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(matchIds(html)).toEqual(['shared']);
       expect(html).toContain('1 match live right now.');
     });
@@ -142,7 +153,7 @@ describe('Home digest', () => {
     it('counts the cap, not the pool, when more are live than fit', async () => {
       const live = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => match(`live${n}`, 0, 'live'));
       vi.spyOn(dataStore, 'getLiveWindow').mockImplementation(byCompetition({ [FIRST]: live }));
-      const html = renderToStaticMarkup(await Home());
+      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(matchIds(html)).toHaveLength(6);
       expect(html).toContain('6 matches live right now.');
       expect(html).not.toContain('8 matches live right now.');
@@ -154,7 +165,7 @@ describe('Home digest', () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockImplementation(
         byCompetition({ [FIRST]: [match('inplay', 0, 'live')], [SECOND]: [match('soon', 2)] }),
       );
-      const html = renderToStaticMarkup(await Home());
+      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(matchIds(html)).toEqual(['inplay']);
       expect(html).toContain('1 match live right now.');
     });
@@ -167,7 +178,7 @@ describe('Home digest', () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockImplementation(
         byCompetition({ [FIRST]: [match('faraway', 9 * 24)], [SECOND]: [match('done', -4, 'finished')] }),
       );
-      const html = renderToStaticMarkup(await Home());
+      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(matchIds(html)).toEqual(['done']);
       expect(html).toContain('latest results');
       expect(html).not.toContain('in about 9 days');
@@ -181,7 +192,7 @@ describe('Home digest', () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockImplementation(
         byCompetition({ [FIRST]: [match('soon', 2), match('sameday', 9), match('nextweek', 7 * 24)] }),
       );
-      const html = renderToStaticMarkup(await Home());
+      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(matchIds(html)).toEqual(['soon', 'sameday']);
       expect(html).toContain('next kickoff in about 2 hours');
     });
@@ -189,7 +200,7 @@ describe('Home digest', () => {
     // With no results either, a distant fixture still beats an empty block.
     it('falls back to a distant fixture when there is no result to show', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([match('faraway', 9 * 24)]);
-      const html = renderToStaticMarkup(await Home());
+      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(matchIds(html)).toEqual(['faraway']);
       expect(html).toContain('next kickoff in about 9 days');
     });
@@ -199,14 +210,14 @@ describe('Home digest', () => {
   // as a broken site -- so the digest leads with results and says so.
   it('falls back to recent results and names them', async () => {
     vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([match('done', -4, 'finished')]);
-    const html = renderToStaticMarkup(await Home());
+    const html = renderLocalized(await Home({ params: { locale: 'en' } }));
     expect(html).toContain('latest results');
     expect(html).toContain('data-match-id="done"');
   });
 
   it('says how far off the next kickoff is when nothing is live', async () => {
     vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([match('next', 4)]);
-    const html = renderToStaticMarkup(await Home());
+    const html = renderLocalized(await Home({ params: { locale: 'en' } }));
     expect(html).toContain('next kickoff in about 4 hours');
   });
 
@@ -216,7 +227,7 @@ describe('Home digest', () => {
     vi.spyOn(dataStore, 'getLiveWindow').mockImplementation(
       byCompetition({ [FIRST]: [match('later', 9)], [SECOND]: [match('sooner', 4)] }),
     );
-    const html = renderToStaticMarkup(await Home());
+    const html = renderLocalized(await Home({ params: { locale: 'en' } }));
     expect(html).toContain('next kickoff in about 4 hours');
     expect(html).not.toContain('in about 9 hours');
   });
@@ -224,7 +235,7 @@ describe('Home digest', () => {
   describe('empty states', () => {
     it('says so in every block when nothing is available', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
-      const html = renderToStaticMarkup(await Home());
+      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(html).toContain('No matches in the current window.');
       expect(html).toContain('No scoring boards are published yet.');
       expect(html).toContain('News is unavailable right now.');
@@ -235,7 +246,7 @@ describe('Home digest', () => {
     // matches in the current window."
     it('does not promise results above an empty block', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
-      const html = renderToStaticMarkup(await Home());
+      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(html).toContain('window is empty');
       expect(html).not.toContain('latest results');
     });
@@ -248,7 +259,7 @@ describe('Home digest', () => {
         scorers: [1, 2, 3, 4, 5].map((r) => leader(r, `Player ${r}`)),
         assists: [],
       });
-      const html = renderToStaticMarkup(await Home());
+      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(html).toContain('Player 3');
       expect(html).not.toContain('Player 4');
     });
@@ -258,7 +269,7 @@ describe('Home digest', () => {
     it('caps the number of boards', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
       vi.spyOn(dataStore, 'getLeaders').mockResolvedValue({ scorers: [leader(1, 'Solo')], assists: [] });
-      const html = renderToStaticMarkup(await Home());
+      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(COMPETITIONS.length).toBeGreaterThan(6);
       expect(count(html, 'class="dg-board"')).toBe(6);
     });
@@ -268,7 +279,7 @@ describe('Home digest', () => {
     it('names the season each board is for', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
       vi.spyOn(dataStore, 'getLeaders').mockResolvedValue({ scorers: [leader(1, 'Solo')], assists: [] });
-      const html = renderToStaticMarkup(await Home());
+      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
       const label = resolveSeason(FIRST)!.season.label;
       expect(html).toContain(`<span class="dg-bseason">${label}</span>`);
     });
@@ -278,7 +289,7 @@ describe('Home digest', () => {
     it('lists news across competitions', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
       vi.spyOn(dataStore, 'getNews').mockResolvedValue([article('a'), article('b'), article('c')]);
-      const html = renderToStaticMarkup(await Home());
+      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(html).toContain('Headline a');
       // Two per competition, so the third from one feed never crowds out another
       // competition's lead story.
@@ -290,7 +301,7 @@ describe('Home digest', () => {
     it('shows a syndicated story exactly once', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
       vi.spyOn(dataStore, 'getNews').mockResolvedValue([article('shared')]);
-      const html = renderToStaticMarkup(await Home());
+      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(count(html, 'Headline shared')).toBe(1);
       expect(count(html, 'class="dg-nw"')).toBe(1);
     });
@@ -304,7 +315,7 @@ describe('Home digest', () => {
           [COMPETITIONS[2].id]: [article('middle', '2026-08-18T09:00:00Z')],
         }),
       );
-      const html = renderToStaticMarkup(await Home());
+      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(html.indexOf('Headline newest')).toBeLessThan(html.indexOf('Headline middle'));
       expect(html.indexOf('Headline middle')).toBeLessThan(html.indexOf('Headline old'));
     });
@@ -315,7 +326,7 @@ describe('Home digest', () => {
         article(`${rc.competition.id}-1`),
         article(`${rc.competition.id}-2`),
       ]);
-      const html = renderToStaticMarkup(await Home());
+      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(COMPETITIONS.length * 2).toBeGreaterThan(6);
       expect(count(html, 'class="dg-nw"')).toBe(6);
     });
@@ -328,7 +339,7 @@ describe('Home digest', () => {
       vi.spyOn(dataStore, 'getNews').mockImplementation(
         byCompetition({ [FIRST]: [article('a', '2026-08-18T10:00:00Z')] }),
       );
-      const html = renderToStaticMarkup(await Home());
+      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(html).toContain('2 hours ago');
       expect(html).not.toContain(`<span class="dg-nwsrc">${COMPETITIONS[0].shortName}</span>`);
     });
@@ -337,7 +348,7 @@ describe('Home digest', () => {
     // nowhere inside ScoreArc at all.
     it('offers a way into the app', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
-      const html = renderToStaticMarkup(await Home());
+      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(html).toContain('href="/news"');
     });
   });

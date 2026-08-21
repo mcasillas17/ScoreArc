@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
+import { isLocale } from '@/i18n/config';
 import { resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import type { BracketRound, Group } from '@/server/data/types';
@@ -15,23 +16,27 @@ import SiteFooter from '@/components/SiteFooter';
 
 export const dynamic = 'force-dynamic';
 
-export async function generateMetadata({ params, searchParams }: { params: { comp: string; season: string }; searchParams: { c?: string; name?: string } }): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: { params: { locale: string; comp: string; season: string }; searchParams: { c?: string; name?: string } }): Promise<Metadata> {
+  if (!isLocale(params.locale)) notFound();
+  const locale = params.locale;
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) return {};
   const label = `${rc.competition.shortName} ${rc.season.label}`;
   const champ = searchParams.c;
   if (!champ) {
-    const og = `/api/og?comp=${encodeURIComponent(label)}`;
+    const og = `/api/og?comp=${encodeURIComponent(label)}&locale=${encodeURIComponent(locale)}`;
     const title = `ScoreArc · ${rc.competition.name}`;
     return { title, openGraph: { title, images: [{ url: og, width: 1200, height: 630 }] }, twitter: { card: 'summary_large_image', title, images: [og] } };
   }
   const name = searchParams.name ?? champ;
-  const og = `/api/og?champ=${encodeURIComponent(champ)}&name=${encodeURIComponent(name)}&comp=${encodeURIComponent(label)}`;
+  const og = `/api/og?champ=${encodeURIComponent(champ)}&name=${encodeURIComponent(name)}&comp=${encodeURIComponent(label)}&locale=${encodeURIComponent(locale)}`;
   const title = `My ${rc.competition.shortName} champion: ${name} 🏆`;
   return { title, openGraph: { title, images: [{ url: og, width: 1200, height: 630 }] }, twitter: { card: 'summary_large_image', title, images: [og] } };
 }
 
-export default async function Workspace({ params }: { params: { comp: string; season: string } }) {
+export default async function Workspace({ params }: { params: { locale: string; comp: string; season: string } }) {
+  if (!isLocale(params.locale)) notFound();
+  const locale = params.locale;
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) notFound();
   // A league's headline view IS its table, and the table lives at /standings
@@ -40,13 +45,13 @@ export default async function Workspace({ params }: { params: { comp: string; se
   // table is how the old /standings page drifted into an orphan that nothing
   // linked to and that quietly lacked the Liguilla dial.
   if (!rc.season.format.hasBracket) {
-    redirect(`/c/${rc.competition.id}/${rc.season.id}/standings`);
+    redirect(`/${locale}/c/${rc.competition.id}/${rc.season.id}/standings`);
   }
 
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
   // Crests in the tables below link here. Competition-scoped because a club's
   // record and squad only mean something inside one competition.
-  const teamBase = `/c/${rc.competition.id}/${rc.season.id}/team`;
+  const teamBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/team`;
   const { teamStyle } = rc.competition;
   // A finished (non-current) edition is view-only.
   const readOnly = rc.season.id !== rc.competition.currentSeasonId;

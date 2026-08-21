@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { isLocale } from '@/i18n/config';
 import { resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import { getBannerFeed } from '@/server/data/banner';
@@ -11,7 +12,8 @@ import SiteFooter from '@/components/SiteFooter';
 
 export const dynamic = 'force-dynamic';
 
-export async function generateMetadata({ params }: { params: { comp: string; season: string } }): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: { locale: string; comp: string; season: string } }): Promise<Metadata> {
+  if (!isLocale(params.locale)) notFound();
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) return { title: 'Standings' };
   const editionName = `${rc.competition.shortName} ${rc.season.label}`;
@@ -21,13 +23,15 @@ export async function generateMetadata({ params }: { params: { comp: string; sea
   };
 }
 
-export default async function StandingsPage({ params }: { params: { comp: string; season: string } }) {
+export default async function StandingsPage({ params }: { params: { locale: string; comp: string; season: string } }) {
+  if (!isLocale(params.locale)) notFound();
+  const locale = params.locale;
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) notFound();
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
   // Crests in the tables below link here. Competition-scoped because a club's
   // record and squad only mean something inside one competition.
-  const teamBase = `/c/${rc.competition.id}/${rc.season.id}/team`;
+  const teamBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/team`;
   const hasBracket = rc.season.format.hasBracket;
   // A finished (non-current) edition is view-only — no "what's next" band.
   const readOnly = rc.season.id !== rc.competition.currentSeasonId;

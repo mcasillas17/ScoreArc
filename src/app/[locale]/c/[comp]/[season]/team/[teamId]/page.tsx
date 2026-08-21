@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { isLocale } from '@/i18n/config';
 import { resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import { providerTeamId } from '@/server/data/teamIdentity';
@@ -15,10 +16,11 @@ import SiteFooter from '@/components/SiteFooter';
 export const dynamic = 'force-dynamic';
 
 interface Params {
-  params: { comp: string; season: string; teamId: string };
+  params: { locale: string; comp: string; season: string; teamId: string };
 }
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
+  if (!isLocale(params.locale)) notFound();
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) return { title: 'Team' };
   const upstreamId = providerTeamId(params.teamId);
@@ -43,6 +45,8 @@ function resultFor(match: Match, teamId: string): 'W' | 'D' | 'L' | null {
 }
 
 export default async function TeamPage({ params }: Params) {
+  if (!isLocale(params.locale)) notFound();
+  const locale = params.locale;
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) notFound();
   // The URL carries our canonical id; the provider is asked by its own number.
@@ -65,7 +69,7 @@ export default async function TeamPage({ params }: Params) {
       {/* A team page reached from search has no sidebar context to go back to,
           and browser-back is not navigation. */}
       <p className="tsp-back">
-        <Link href={`/c/${rc.competition.id}/${rc.season.id}/teams`}>
+        <Link href={`/${locale}/c/${rc.competition.id}/${rc.season.id}/teams`}>
           ← {rc.competition.shortName} <LanguageText en="teams" es="equipos" />
         </Link>
       </p>

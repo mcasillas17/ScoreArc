@@ -1,3 +1,5 @@
+import { notFound } from 'next/navigation';
+import { isLocale } from '@/i18n/config';
 import { listCompetitions, resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import { competitionLabel, type LiveEntry } from '@/server/data/liveFeed';
@@ -42,7 +44,8 @@ function dedupeByMatch(entries: LiveEntry[]): LiveEntry[] {
   });
 }
 
-export default async function Home() {
+export default async function Home({ params }: { params: { locale: string } }) {
+  if (!isLocale(params.locale)) notFound();
   // One clock for the whole render, so two blocks cannot disagree about "now".
   const now = new Date();
 

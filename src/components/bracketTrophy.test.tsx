@@ -1,8 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import type { ReactNode } from 'react';
+import { describe, it, expect, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { I18nProvider } from '@/i18n/I18nProvider';
 import RadialBracket from './RadialBracket';
 import { COMPETITIONS, listCompetitions } from '@/server/data/competitions';
 import type { BracketRound } from '@/server/data/types';
+
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/en',
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
+const renderLocalized = (node: ReactNode) =>
+  renderToStaticMarkup(<I18nProvider locale="en">{node}</I18nProvider>);
 
 // `/trophy.png` is a photograph of the FIFA World Cup trophy. It sat hardcoded
 // at the centre of the radial bracket from when the World Cup was the only
@@ -30,7 +40,7 @@ const rounds: BracketRound[] = [
 ];
 
 function render(emblem: string, trophyImage?: string) {
-  return renderToStaticMarkup(
+  return renderLocalized(
     <RadialBracket
       rounds={rounds}
       teamStyle="crest"

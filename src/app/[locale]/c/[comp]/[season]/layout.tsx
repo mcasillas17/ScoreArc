@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { isLocale } from '@/i18n/config';
 import { resolveSeason } from '@/server/data/competitions';
 
 export const dynamic = 'force-dynamic';
@@ -8,11 +9,13 @@ export const dynamic = 'force-dynamic';
 // page overrides this with a champion-specific card when a bracket is shared
 // (?c=); standings/news inherit these values so their share cards show the
 // right competition instead of the root layout's generic default.
-export async function generateMetadata({ params }: { params: { comp: string; season: string } }): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: { locale: string; comp: string; season: string } }): Promise<Metadata> {
+  if (!isLocale(params.locale)) notFound();
+  const locale = params.locale;
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) return {};
   const label = `${rc.competition.shortName} ${rc.season.label}`;
-  const og = `/api/og?comp=${encodeURIComponent(label)}`;
+  const og = `/api/og?comp=${encodeURIComponent(label)}&locale=${encodeURIComponent(locale)}`;
   const title = `ScoreArc · ${rc.competition.name}`;
   return {
     title,
@@ -21,10 +24,11 @@ export async function generateMetadata({ params }: { params: { comp: string; sea
   };
 }
 
-export default function WorkspaceLayout({ children, params }: { children: React.ReactNode; params: { comp: string; season: string } }) {
+export default function WorkspaceLayout({ children, params }: { children: React.ReactNode; params: { locale: string; comp: string; season: string } }) {
   // The shell, the nav and the per-competition accent all live at the root
   // now: `AppShell` derives the open competition from the path, so this layout
   // exists only to reject a competition or season that does not exist.
+  if (!isLocale(params.locale)) notFound();
   if (!resolveSeason(params.comp, params.season)) notFound();
   return <>{children}</>;
 }

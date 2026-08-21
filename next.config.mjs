@@ -9,6 +9,18 @@ const nextConfig = {
       // The API route keeps its /fixtures name deliberately: /api/.../matches
       // already exists and serves the current week only, so renaming that one
       // would collide with a different endpoint.
+      // Localized prefixes are authoritative in middleware, so each supported
+      // locale needs a redirect that keeps the reader on that locale.
+      {
+        source: '/en/c/:comp/:season/fixtures',
+        destination: '/en/c/:comp/:season/matches',
+        permanent: true,
+      },
+      {
+        source: '/es/c/:comp/:season/fixtures',
+        destination: '/es/c/:comp/:season/matches',
+        permanent: true,
+      },
       {
         source: '/c/:comp/:season/fixtures',
         destination: '/c/:comp/:season/matches',

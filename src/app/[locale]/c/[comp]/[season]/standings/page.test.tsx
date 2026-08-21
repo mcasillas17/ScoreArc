@@ -1,8 +1,19 @@
 import { renderToStaticMarkup } from 'react-dom/server';
+import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { dataStore } from '@/server/data/store';
 import type { Group, Standing } from '@/server/data/types';
+import { I18nProvider } from '@/i18n/I18nProvider';
 import StandingsPage from './page';
+
+vi.mock('next/navigation', () => ({
+  notFound: vi.fn(() => { throw new Error('NEXT_NOT_FOUND'); }),
+  usePathname: () => '/en/c/world-cup/2026/standings',
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
+const renderLocalized = (node: ReactNode) =>
+  renderToStaticMarkup(<I18nProvider locale="en">{node}</I18nProvider>);
 
 function standings(n: number): Standing[] {
   return Array.from({ length: n }, (_, i) => ({
@@ -34,8 +45,8 @@ describe('StandingsPage', () => {
   // those competitions have.
   it("renders Liga MX's Liguilla cut, not a plain table", async () => {
     stubStore([group('liga-mx', 18)]);
-    const html = renderToStaticMarkup(await StandingsPage({
-      params: { comp: 'liga-mx', season: '2026-apertura' },
+    const html = renderLocalized(await StandingsPage({
+      params: { locale: 'en', comp: 'liga-mx', season: '2026-apertura' },
     }));
     expect(html).toContain('Liguilla');
     expect(html).toContain('ll-cutline');
@@ -43,8 +54,8 @@ describe('StandingsPage', () => {
 
   it("renders the Premier League's outcome zones", async () => {
     stubStore([group('premier-league', 20)]);
-    const html = renderToStaticMarkup(await StandingsPage({
-      params: { comp: 'premier-league', season: '2026-27' },
+    const html = renderLocalized(await StandingsPage({
+      params: { locale: 'en', comp: 'premier-league', season: '2026-27' },
     }));
     expect(html).toContain('Champions League');
   });
@@ -52,8 +63,8 @@ describe('StandingsPage', () => {
   // A cup keeps its group-stage layout: third-place race, no single cut.
   it('keeps the third-place race for a group-stage tournament', async () => {
     stubStore([group('A', 4), group('B', 4)]);
-    const html = renderToStaticMarkup(await StandingsPage({
-      params: { comp: 'world-cup', season: '2026' },
+    const html = renderLocalized(await StandingsPage({
+      params: { locale: 'en', comp: 'world-cup', season: '2026' },
     }));
     expect(html).toContain('Best Third-Placed Teams');
   });
@@ -68,8 +79,8 @@ describe('StandingsPage', () => {
         status: 'Sat', round: null, venue: null,
       } as never,
     ]);
-    const html = renderToStaticMarkup(await StandingsPage({
-      params: { comp: 'liga-mx', season: '2026-apertura' },
+    const html = renderLocalized(await StandingsPage({
+      params: { locale: 'en', comp: 'liga-mx', season: '2026-apertura' },
     }));
     expect(html).toContain('Upcoming This Week');
     expect(html.indexOf('Upcoming This Week')).toBeLessThan(html.indexOf('Standings'));
@@ -79,8 +90,8 @@ describe('StandingsPage', () => {
   it('shows no fixture band for a past edition', async () => {
     stubStore([group('A', 4)]);
     const getMatches = vi.spyOn(dataStore, 'getMatches');
-    const html = renderToStaticMarkup(await StandingsPage({
-      params: { comp: 'world-cup', season: '1998' },
+    const html = renderLocalized(await StandingsPage({
+      params: { locale: 'en', comp: 'world-cup', season: '1998' },
     }));
     expect(html).not.toContain('Upcoming This Week');
     expect(html).not.toContain('Next Up');
@@ -94,13 +105,13 @@ describe('StandingsPage heading', () => {
   // reads as having clicked the wrong item.
   it('uses one heading regardless of competition type', async () => {
     stubStore([group('liga-mx', 18)]);
-    const league = renderToStaticMarkup(await StandingsPage({
-      params: { comp: 'liga-mx', season: '2026-apertura' },
+    const league = renderLocalized(await StandingsPage({
+      params: { locale: 'en', comp: 'liga-mx', season: '2026-apertura' },
     }));
     vi.restoreAllMocks();
     stubStore([group('A', 4)]);
-    const cup = renderToStaticMarkup(await StandingsPage({
-      params: { comp: 'world-cup', season: '2026' },
+    const cup = renderLocalized(await StandingsPage({
+      params: { locale: 'en', comp: 'world-cup', season: '2026' },
     }));
     const heading = /<h1 class="bracket-title">([^<]*)<\/h1>/;
     expect(league.match(heading)![1]).toBe('Standings');

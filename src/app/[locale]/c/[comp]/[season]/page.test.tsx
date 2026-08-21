@@ -19,16 +19,16 @@ describe('competition season root', () => {
   // /standings page an orphan that quietly lacked the Liguilla dial.
   it('redirects a league to its standings page', async () => {
     await expect(
-      Workspace({ params: { comp: 'liga-mx', season: '2026-apertura' } }),
+      Workspace({ params: { locale: 'en', comp: 'liga-mx', season: '2026-apertura' } }),
     ).rejects.toThrow('NEXT_REDIRECT');
-    expect(redirect).toHaveBeenCalledWith('/c/liga-mx/2026-apertura/standings');
+    expect(redirect).toHaveBeenCalledWith('/en/c/liga-mx/2026-apertura/standings');
   });
 
   it('redirects before fetching anything', async () => {
     const getMatches = vi.spyOn(dataStore, 'getMatches');
     const getStandings = vi.spyOn(dataStore, 'getStandings');
     await expect(
-      Workspace({ params: { comp: 'premier-league', season: '2026-27' } }),
+      Workspace({ params: { locale: 'en', comp: 'premier-league', season: '2026-27' } }),
     ).rejects.toThrow('NEXT_REDIRECT');
     expect(getMatches).not.toHaveBeenCalled();
     expect(getStandings).not.toHaveBeenCalled();
@@ -39,7 +39,7 @@ describe('competition season root', () => {
     vi.spyOn(dataStore, 'getMatches').mockResolvedValue([]);
     vi.spyOn(dataStore, 'getUpcoming').mockResolvedValue([]);
     vi.spyOn(dataStore, 'getBracket').mockResolvedValue([]);
-    await Workspace({ params: { comp: 'world-cup', season: '2026' } });
+    await Workspace({ params: { locale: 'en', comp: 'world-cup', season: '2026' } });
     expect(redirect).not.toHaveBeenCalled();
   });
 });

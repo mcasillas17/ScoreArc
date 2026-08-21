@@ -1,8 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import type { ReactNode } from 'react';
+import { describe, it, expect, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { I18nProvider } from '@/i18n/I18nProvider';
 import { BoxScoreBlock } from './MatchExtras';
 import { mapSummaryLineups } from '@/server/data/providers/espn-summary';
 import ownGoalFixture from '@/server/data/__fixtures__/espn-summary-own-goal.json';
+
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/en',
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
+const renderLocalized = (node: ReactNode) =>
+  renderToStaticMarkup(<I18nProvider locale="en">{node}</I18nProvider>);
 
 // Per repo convention presentational components are verified by running the
 // app. This one gets a render test because the fact it exists to carry — a
@@ -11,7 +21,7 @@ import ownGoalFixture from '@/server/data/__fixtures__/espn-summary-own-goal.jso
 // it back to 0 would throw away the whole reason PlayerMatchStats is nullable.
 
 const lineups = mapSummaryLineups(ownGoalFixture, '17362', '226')!;
-const html = renderToStaticMarkup(
+const html = renderLocalized(
   <BoxScoreBlock lineups={lineups} homeAbbr="MIN" awayAbbr="ATL" />,
 );
 
@@ -58,6 +68,6 @@ describe('BoxScoreBlock', () => {
       home: { formation: '4-4-2', players: [{ name: 'A', number: 1, position: 'G', jersey: null, starter: true, stats: null }] },
       away: { formation: '4-4-2', players: [{ name: 'B', number: 1, position: 'G', jersey: null, starter: true, stats: null }] },
     };
-    expect(renderToStaticMarkup(<BoxScoreBlock lineups={bare} homeAbbr="A" awayAbbr="B" />)).toBe('');
+    expect(renderLocalized(<BoxScoreBlock lineups={bare} homeAbbr="A" awayAbbr="B" />)).toBe('');
   });
 });
