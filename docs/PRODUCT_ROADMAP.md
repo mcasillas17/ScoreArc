@@ -296,17 +296,18 @@ four fixtures, so the next-fixture block reads the schedule.
 Each athlete also carries an `injuries` array that is **empty for all 35**. The
 field existing is not the data existing; no injuries feature is built on it.
 
-### E12 · Team discovery — proposed, not scheduled
+### E12 · Team discovery — done
 
-Teams are reachable only by clicking a crest (standings, the landing page, the
-match popup). There is no way to browse or search for one. Two pieces:
+Teams were reachable only by clicking a crest (standings, the landing page, the
+match popup), with no way to browse or search for one. Three pieces, all
+shipped:
 
-- **T12.1 Competition teams index** — `/c/[comp]/[season]/teams`, alphabetical,
-  plus a nav item. Low cost: the data is already fetched for the table. Note
-  that standings *is* the team list for a league, so the real value is
-  competitions without a published table, and discoverability.
-- **T12.2 Site-wide team search** — the more valuable half, and the one with a
-  design problem.
+- **T12.1 Competition teams index** — done. `/c/[comp]/[season]/teams`,
+  alphabetical, with a Teams item in the sidebar.
+- **T12.2 Site-wide team search** — done. `/teams`, 192 clubs, linked from the
+  masthead. Accent-folded, so "america" finds "América".
+- **T12.3 Navigation** — done. Team pages carry a link back to their
+  competition's team list.
 
 **The blocker for search:** a team page is competition-scoped on purpose
 (América's record in Liga MX is not their record in the Leagues Cup), so a
@@ -324,7 +325,8 @@ nothing currently knows. Three options:
    of scope in the E4 spec: it needs identity resolution across competitions,
    which is backend Phase 1.
 
-Do (1) now; (3) supersedes it when the backend lands.
+**Shipped (1).** A club is one entry with one link per competition —
+"América · Leagues Cup · Liga MX". (3) supersedes it when the backend lands.
 
 ### E5 · Player pages
 Branch `feat/player-pages`. Unblocked by three keyless athlete endpoints.
