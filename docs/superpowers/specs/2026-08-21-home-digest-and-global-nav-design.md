@@ -60,11 +60,22 @@ survive a ~64px rail, so collapsed swaps to `scorearc-mark-dark.svg` (the
 ring-and-dot) while expanded uses `scorearc-lockup-3a-dark.svg`, which carries
 the wordmark and the underline arc.
 
-**Phone.** The nav becomes a full-width bar above the content, keeping every
-item. The mockup used a horizontally scrolling row, which works but truncates —
-"Players" is already cut off at 390px. A hamburger drawer is the alternative and
-is the recommended shape; the decision is called out in the plan as its own
-task, to be judged on the running page rather than in advance.
+**Phone.** Two pieces, and only ever one of them showing a list:
+
+- A **masthead** at the top with the wordmark and a hamburger. The hamburger
+  opens the rail's full contents as a drawer — site sections, all nine
+  competitions, and the open competition's sections nested under it.
+- A **fixed bottom bar**, `position: fixed; bottom: 0`, which is the standing
+  navigation. Inside a competition it carries that competition's sections; off
+  one it carries Home, Teams, News and a fourth slot that opens the drawer.
+  This is `.mobile-tabbar` restored: it was thumb-reachable and never needed
+  scrolling, and E14's replacement — a scrolling row *plus* a drawer — showed
+  both at once (see the correction below).
+
+The drawer and the bar are mutually exclusive: opening the drawer hides the
+bar. The bar overlaps the drawer's contents by design — the drawer is the
+complete index of the site, and an index with the reachable items cut out of it
+is not an index.
 
 ## The digest
 
@@ -171,11 +182,34 @@ moment the digest landed. It is deleted. One rule survives the cull — `.lb-pin
   counted over, which is a design conversation of its own.
 - Personalisation, favourites, and anything requiring accounts.
 
+## Correction: the `width: 0` criterion is deleted
+
+An earlier version of this spec required that *no nav item render at
+`width: 0` on a phone*. That criterion is gone, and it should never have been
+written.
+
+It is the same mis-measurement the section above already corrects, promoted
+into an acceptance test. An item inside a **closed menu** measures 0×0. That is
+what closed means. The measurement cannot tell a hidden-because-broken item
+from a hidden-because-closed one, so as a pass/fail gate it only rules out
+menus.
+
+And it duly did. The implementation tried a drawer-only phone nav, found that
+every item measured 0×0 while the drawer was shut, read that as a failure
+against this criterion, and shipped a permanently visible horizontally
+scrolling row **in addition to** the hamburger drawer — two navigations on
+screen at once, holding the same items. The reader's report: *"I see that
+collapsed icon and a bar on top with all of the same items."* A bad criterion
+produced redundant UI, exactly as written.
+
+What replaced it — one fixed bottom bar, contextual, plus the hamburger for
+the full index — is verified by counting the navigation items **visible at
+rest**, which is the property that was actually wanted. Zero-size elements are
+evidence of nothing until you know what state their container is in.
+
 ## Verification
 
-- Every nav item reachable at 390px, 768px and 1280px — no item at `width: 0`.
-  (Necessary, but it was never sufficient: the nav it replaced also failed this
-  check while working fine, via a separate bottom bar.)
+- Every nav item reachable at 390px, 768px and 1280px.
 - On the home page, no match id appears twice in the rendered HTML.
 - At 1280px the scorers column and the first match card share a right edge, and
   the news column and the second card share a left edge.

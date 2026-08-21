@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   accentStyle,
   activeCompetition,
+  bottomBarItems,
   competitionHref,
   competitionSections,
   localePrefix,
@@ -320,5 +321,124 @@ describe('accentStyle', () => {
     expect(accentStyle('/es/c/liga-mx/2026-apertura/standings')).toEqual(
       accentStyle('/c/liga-mx/2026-apertura/standings'),
     );
+  });
+});
+
+/**
+ * The phone's bottom bar.
+ *
+ * It is the only navigation standing at rest on a phone, so what it shows for
+ * a given path is the whole of that reader's navigation — worth pinning as a
+ * pure function rather than discovering in a browser at one width.
+ */
+describe('bottomBarItems', () => {
+  it('shows the site pages plus a way into the menu off a competition', () => {
+    for (const path of ['/', '/teams', '/news']) {
+      const tabs = bottomBarItems(path, false);
+      expect(tabs.map((t) => t.label)).toEqual(['Home', 'Teams', 'News', 'Menu']);
+      // The menu slot opens the drawer; it is the one entry with no href.
+      expect(tabs.filter((t) => t.href === undefined).map((t) => t.key)).toEqual(['menu']);
+    }
+  });
+
+  it('shows the open competition\'s own sections inside it', () => {
+    const tabs = bottomBarItems('/c/liga-mx/2026-apertura/standings', false);
+    expect(tabs.map((t) => t.label)).toEqual(['Standings', 'Matches', 'Teams', 'News']);
+    // No menu slot inside a competition: the sections fill the bar and the
+    // masthead hamburger is the way to the full list.
+    expect(tabs.every((t) => t.href !== undefined)).toBe(true);
+  });
+
+  // A cup has a fifth section (its bracket), and it is the headline one. It
+  // stays in the bar rather than being the one thing hidden behind a hamburger.
+  it('keeps a cup root in the bar', () => {
+    expect(bottomBarItems('/c/world-cup/2026/matches', false).map((t) => t.label)).toEqual([
+      'Bracket', 'Standings', 'Matches', 'Teams', 'News',
+    ]);
+    expect(bottomBarItems('/c/leagues-cup/2026/matches', false)[0].label).toBe('Knockout');
+  });
+
+  it('never carries more than five slots on any route', () => {
+    const paths = ['/', '/teams', '/news'];
+    for (const c of listCompetitions()) {
+      const rc = resolveSeason(c.id)!;
+      for (const s of competitionSections(rc, false)) paths.push(s.href);
+    }
+    for (const path of paths) {
+      const n = bottomBarItems(path, false).length;
+      expect(n).toBeGreaterThanOrEqual(4);
+      expect(n).toBeLessThanOrEqual(5);
+    }
+  });
+
+  it('marks exactly one slot active on every real route', () => {
+    const paths = ['/', '/teams', '/news'];
+    for (const c of listCompetitions()) {
+      const rc = resolveSeason(c.id)!;
+      for (const s of competitionSections(rc, false)) paths.push(s.href);
+    }
+    for (const path of paths) {
+      expect(bottomBarItems(path, false).filter((t) => t.active)).toHaveLength(1);
+    }
+  });
+
+  // The bar is the whole nav on a phone: a slot that links somewhere it would
+  // not then highlight leaves the reader on a live page with nothing lit.
+  it('highlights the slot it links to', () => {
+    for (const path of ['/', '/teams', '/news']) {
+      const hit = bottomBarItems(path, false).find((t) => t.active)!;
+      expect(hit.href).toBe(path);
+    }
+    const tabs = bottomBarItems('/c/mls/2026/matches', false);
+    expect(tabs.find((t) => t.active)!.href).toBe('/c/mls/2026/matches');
+  });
+
+  it('lights Teams on a team detail page', () => {
+    const tabs = bottomBarItems('/c/liga-mx/2026-apertura/team/mex-america', false);
+    expect(tabs.find((t) => t.active)!.label).toBe('Teams');
+  });
+
+  it('translates every label', () => {
+    expect(bottomBarItems('/', true).map((t) => t.label)).toEqual([
+      'Inicio', 'Equipos', 'Noticias', 'Menú',
+    ]);
+    expect(bottomBarItems('/c/liga-mx/2026-apertura/standings', true).map((t) => t.label)).toEqual([
+      'Clasificación', 'Partidos', 'Equipos', 'Noticias',
+    ]);
+  });
+
+  // Same seam as the rail: a prefix already in the URL is carried, never
+  // invented, so the bar cannot drop a Spanish reader back into English.
+  it('carries a locale prefix onto every slot, and only when there is one', () => {
+    expect(bottomBarItems('/es/teams', true).map((t) => t.href)).toEqual([
+      '/es', '/es/teams', '/es/news', undefined,
+    ]);
+    expect(bottomBarItems('/teams', false).map((t) => t.href)).toEqual([
+      '/', '/teams', '/news', undefined,
+    ]);
+    for (const t of bottomBarItems('/es/c/world-cup/2026/standings', true)) {
+      expect(t.href!.startsWith('/es/c/world-cup/2026')).toBe(true);
+    }
+  });
+
+  it('still marks one slot active under a locale prefix', () => {
+    for (const path of ['/es', '/es/teams', '/es/c/liga-mx/2026-apertura/matches']) {
+      expect(bottomBarItems(path, true).filter((t) => t.active)).toHaveLength(1);
+    }
+  });
+
+  // The competition you are inside keeps the season you are on -- the bar must
+  // not bounce a reader browsing 2018 back to 2026.
+  it('keeps the season you are on', () => {
+    for (const t of bottomBarItems('/c/world-cup/2018/standings', false)) {
+      expect(t.href!.startsWith('/c/world-cup/2018')).toBe(true);
+    }
+  });
+
+  it('gives every slot a distinct key', () => {
+    for (const path of ['/', '/teams', '/c/world-cup/2026/standings']) {
+      const keys = bottomBarItems(path, false).map((t) => t.key);
+      expect(new Set(keys).size).toBe(keys.length);
+    }
   });
 });
