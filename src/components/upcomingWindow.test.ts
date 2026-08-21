@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { isThisWeek, matchToBracketMatch } from './upcomingWindow';
+import { describe, it, expect, expectTypeOf } from 'vitest';
+import { isThisWeek, toMatchDetailInput } from './upcomingWindow';
 import type { Match, Team } from '@/server/data/types';
+import type { MatchDetailInput } from './MatchDetailPopup';
 
 // Fixed reference: Wednesday 2026-07-22 10:00 local (getDay() === 3).
 const NOW = new Date('2026-07-22T10:00:00');
@@ -46,16 +47,16 @@ function match(): Match {
   };
 }
 
-describe('matchToBracketMatch', () => {
-  it('adapts a Match to a BracketMatch with empty round and non-placeholder teams', () => {
-    const bm = matchToBracketMatch(match());
-    expect(bm.round).toBe('');
-    expect(bm.home.placeholder).toBe(false);
-    expect(bm.away.placeholder).toBe(false);
-    expect(bm.id).toBe('m1');
-    expect(bm.home.abbr).toBe('CAZ');
-    expect(bm.kickoff).toBe('2026-07-24T19:00:00');
-    expect(bm.state).toBe('scheduled');
-    expect(bm.homeScore).toBeNull();
+describe('toMatchDetailInput', () => {
+  it('adapts an ordinary Match without fabricating knockout-only fields', () => {
+    const detailInput = toMatchDetailInput(match());
+    expectTypeOf(detailInput).toEqualTypeOf<MatchDetailInput>();
+    expect(detailInput).not.toHaveProperty('round');
+    expect(detailInput.home).not.toHaveProperty('placeholder');
+    expect(detailInput.away).not.toHaveProperty('placeholder');
+    expect(detailInput.home.abbr).toBe('CAZ');
+    expect(detailInput.kickoff).toBe('2026-07-24T19:00:00');
+    expect(detailInput.state).toBe('scheduled');
+    expect(detailInput.homeScore).toBeNull();
   });
 });

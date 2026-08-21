@@ -1,7 +1,9 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { redirect } from 'next/navigation';
 import { dataStore } from '@/server/data/store';
-import Workspace from './page';
+import { I18nProvider } from '@/i18n/I18nProvider';
+import Workspace, { generateMetadata } from './page';
 
 // The real redirect() aborts rendering by throwing. A no-op mock would let
 // execution fall through into the bracket path and quietly invert the
@@ -9,6 +11,8 @@ import Workspace from './page';
 vi.mock('next/navigation', () => ({
   redirect: vi.fn(() => { throw new Error('NEXT_REDIRECT'); }),
   notFound: vi.fn(() => { throw new Error('NEXT_NOT_FOUND'); }),
+  usePathname: () => '/es/c/world-cup/2026',
+  useRouter: () => ({ push: vi.fn() }),
 }));
 
 afterEach(() => vi.clearAllMocks());
@@ -41,5 +45,40 @@ describe('competition season root', () => {
     vi.spyOn(dataStore, 'getBracket').mockResolvedValue([]);
     await Workspace({ params: { locale: 'en', comp: 'world-cup', season: '2026' } });
     expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it('renders the Spanish bracket heading and unavailable state without English fallback', async () => {
+    vi.spyOn(dataStore, 'getMatches').mockResolvedValue([]);
+    vi.spyOn(dataStore, 'getUpcoming').mockResolvedValue([]);
+    vi.spyOn(dataStore, 'getBracket').mockResolvedValue([]);
+    const node = await Workspace({ params: { locale: 'es', comp: 'world-cup', season: '2026' } });
+    const html = renderToStaticMarkup(<I18nProvider locale="es">{node}</I18nProvider>);
+
+    expect(html).toContain('Cuadro de eliminatorias');
+    expect(html).toContain('El cuadro no está disponible en este momento.');
+    expect(html).not.toContain('Knockout Bracket');
+    expect(html).not.toContain('Bracket data is unavailable right now.');
+  });
+});
+
+describe('competition bracket metadata', () => {
+  it('localizes a predicted champion title and preserves locale in canonical alternatives', async () => {
+    const metadata = await generateMetadata({
+      params: { locale: 'es', comp: 'world-cup', season: '2026' },
+      searchParams: { c: 'MEX', name: 'México' },
+    });
+
+    expect(metadata).toMatchObject({
+      title: 'Mi campeón de World Cup: México 🏆',
+      alternates: {
+        canonical: '/es/c/world-cup/2026?c=MEX&name=M%C3%A9xico',
+        languages: {
+          en: '/en/c/world-cup/2026?c=MEX&name=M%C3%A9xico',
+          es: '/es/c/world-cup/2026?c=MEX&name=M%C3%A9xico',
+        },
+      },
+      openGraph: { title: 'Mi campeón de World Cup: México 🏆' },
+      twitter: { title: 'Mi campeón de World Cup: México 🏆' },
+    });
   });
 });

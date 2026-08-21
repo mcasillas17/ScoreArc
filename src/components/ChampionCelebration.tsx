@@ -1,9 +1,9 @@
 'use client';
 
-import { useLanguage } from './LanguageProvider';
-import LanguageText from './LanguageText';
+import { useTranslations } from '@/i18n/I18nProvider';
 import type { CSSProperties } from 'react';
 import type { BracketTeam } from '@/server/data/types';
+import type { ChampionTitleKey } from '@/server/data/competitions';
 import { colorFor } from './radialBracketModel';
 import { flagUrl } from '@/lib/flags';
 import WavingFlagCanvas from './WavingFlagCanvas';
@@ -18,7 +18,7 @@ interface Props {
   trophyImage?: string;
   /** What this competition calls its champion. Only the World Cup crowns
    *  WORLD champions; everyone else just has champions. */
-  championTitle?: string;
+  championTitleKey?: ChampionTitleKey;
 }
 
 // Deterministic pseudo-random in [0,1) seeded by an index, so the confetti is
@@ -31,9 +31,9 @@ function rand(seed: number): number {
 const CONFETTI_COUNT = 110;
 
 export default function ChampionCelebration({
-team, onClose, onShare, emblem, trophyImage, championTitle = 'CHAMPIONS' }: Props) {
-  const { language } = useLanguage();
-  const spanish = language === 'es';
+team, onClose, onShare, emblem, trophyImage, championTitleKey = 'champion.competition' }: Props) {
+  const t = useTranslations();
+  const championTitle = t(championTitleKey);
   const teamColor = colorFor(team);
   const palette = ['#e8b84b', '#ffffff', teamColor, '#ff5c5c', '#4cc4ff', '#36c275'];
   const flag = flagUrl(team.abbr);
@@ -88,7 +88,7 @@ team, onClose, onShare, emblem, trophyImage, championTitle = 'CHAMPIONS' }: Prop
       className="champ-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label={`${team.name} are ${championTitle.toLowerCase()}`}
+      aria-label={t('bracket.championLabel', team.name, championTitle)}
       onClick={onClose}
     >
       <div className="champ-fireworks-layer" aria-hidden>
@@ -102,7 +102,7 @@ team, onClose, onShare, emblem, trophyImage, championTitle = 'CHAMPIONS' }: Prop
       <button
         type="button"
         className="champ-close"
-        aria-label={spanish ? "Cerrar celebración" : "Close celebration"}
+        aria-label={t('bracket.closeCelebration')}
         onClick={onClose}
       >
         ×
@@ -115,9 +115,9 @@ team, onClose, onShare, emblem, trophyImage, championTitle = 'CHAMPIONS' }: Prop
         <div className="champ-emblem">
           {trophyImage ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img className="champ-trophy" src={trophyImage} alt="The World Cup trophy" />
+            <img className="champ-trophy" src={trophyImage} alt={t('bracket.worldCupTrophy')} />
           ) : (
-            <span className="champ-trophy champ-trophy--emblem" role="img" aria-label={spanish ? "Emblema de la competición" : "Competition emblem"}>
+            <span className="champ-trophy champ-trophy--emblem" role="img" aria-label={t('bracket.competitionEmblem')}>
               {emblem}
             </span>
           )}
@@ -130,7 +130,7 @@ team, onClose, onShare, emblem, trophyImage, championTitle = 'CHAMPIONS' }: Prop
           </div>
         </div>
 
-        <p className="champ-subtitle"><LanguageText en="Your predicted winner" es="Tu ganador previsto" /></p>
+        <p className="champ-subtitle">{t('bracket.predictedWinner')}</p>
         <h2 className="champ-title">{championTitle}</h2>
         <p className="champ-team">{team.name}</p>
 
@@ -146,11 +146,11 @@ team, onClose, onShare, emblem, trophyImage, championTitle = 'CHAMPIONS' }: Prop
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
               <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z" />
             </svg>
-            Share on X
+            {t('bracket.shareOnX')}
           </button>
         )}
 
-        <p className="champ-hint"><LanguageText en="Tap anywhere to keep building" es="Toca en cualquier lugar para seguir construyendo" /></p>
+        <p className="champ-hint">{t('bracket.keepBuilding')}</p>
       </div>
     </div>
   );

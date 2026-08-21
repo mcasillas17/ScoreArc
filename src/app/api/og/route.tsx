@@ -1,20 +1,27 @@
 import { ImageResponse } from 'next/og';
+import type { NextRequest } from 'next/server';
 import { flagUrl } from '@/lib/flags';
+import { DEFAULT_LOCALE, isLocale } from '@/i18n/config';
+import { getTranslator } from '@/i18n/translate';
 
 export const runtime = 'edge';
 
 // Dynamic social-share card. Default = branded; with ?champ=ABR&name=Team it
 // renders the user's predicted World Cup champion.
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
+export async function GET(req: NextRequest) {
+  const { searchParams } = req.nextUrl;
+  const requestedLocale = searchParams.get('locale');
+  const locale = isLocale(requestedLocale) ? requestedLocale : DEFAULT_LOCALE;
+  const t = getTranslator(locale);
   const champ = searchParams.get('champ')?.toUpperCase() ?? '';
   const name = searchParams.get('name') ?? '';
-  const comp = searchParams.get('comp') || 'Live Football';
+  const comp = searchParams.get('comp') || t('og.liveFootball');
   const flag = champ ? flagUrl(champ) : null;
 
   return new ImageResponse(
     (
       <div
+        lang={locale}
         style={{
           width: '100%',
           height: '100%',
@@ -45,7 +52,7 @@ export async function GET(req: Request) {
                 color: '#b9b9c2',
               }}
             >
-              🏆 MY PREDICTED CHAMPION
+              🏆 {t('og.predictedChampion')}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
               {flag && (
@@ -65,7 +72,7 @@ export async function GET(req: Request) {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
             <div style={{ fontSize: 40, fontWeight: 700 }}>{comp}</div>
             <div style={{ fontSize: 26, color: '#b9b9c2' }}>
-              Live scores · standings · brackets
+              {t('og.footer')}
             </div>
           </div>
         )}

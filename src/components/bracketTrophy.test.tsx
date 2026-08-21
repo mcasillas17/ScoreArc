@@ -23,7 +23,6 @@ const renderLocalized = (node: ReactNode) =>
 const rounds: BracketRound[] = [
   {
     slug: 'quarterfinals',
-    name: 'Quarterfinals',
     matches: [
       {
         id: 'm1',
@@ -85,12 +84,12 @@ describe('bracket hub emblem', () => {
 // migration, in the same way the trophy image did.
 describe('competition wording', () => {
   it('crowns WORLD champions only where that is true', () => {
-    const titled = listCompetitions().filter((c) => c.championTitle);
+    const titled = listCompetitions().filter((c) => c.championTitleKey === 'champion.world');
     expect(titled.map((c) => c.id)).toEqual(['world-cup']);
-    expect(COMPETITIONS['world-cup'].championTitle).toBe('WORLD CHAMPIONS');
+    expect(COMPETITIONS['world-cup'].championTitleKey).toBe('champion.world');
   });
 
   it('leaves every other competition to the plain default', () => {
-    expect(COMPETITIONS['leagues-cup'].championTitle).toBeUndefined();
+    expect(COMPETITIONS['leagues-cup'].championTitleKey).toBeUndefined();
   });
 });

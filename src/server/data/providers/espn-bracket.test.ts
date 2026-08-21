@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, expectTypeOf } from 'vitest';
 import { mapBracket } from './espn-bracket';
+import type { BracketMatch, KnockoutRoundSlug } from '../types';
 import raw from '../__fixtures__/espn-bracket.json';
 
 describe('mapBracket', () => {
@@ -72,11 +73,25 @@ describe('mapBracket', () => {
     expect(m.away.placeholder).toBe(true);
   });
 
-  it('round names are human-readable', () => {
-    const names = rounds.map((r) => r.name);
-    expect(names).toContain('Round of 32');
-    expect(names).toContain('Final');
-    expect(names).toContain('Third Place');
+  it('returns semantic rounds without provider-authored display prose', () => {
+    expect(rounds.map(({ slug }) => slug)).toEqual([
+      'round-of-32',
+      'round-of-16',
+      'quarterfinals',
+      'semifinals',
+      'final',
+      '3rd-place-match',
+    ]);
+    for (const round of rounds) {
+      expect(Object.keys(round).sort()).toEqual(['matches', 'slug']);
+    }
+  });
+
+  it('keeps every bracket match inside the exact knockout-round contract', () => {
+    expectTypeOf<BracketMatch['round']>().toEqualTypeOf<KnockoutRoundSlug>();
+    for (const round of rounds) {
+      expect(round.matches.every((match) => match.round === round.slug)).toBe(true);
+    }
   });
 });
 
@@ -115,6 +130,10 @@ describe('mapBracket — slug normalization (older editions)', () => {
     expect(slugs).toContain('3rd-place-match');
     expect(slugs).not.toContain('second-round');
     expect(slugs).not.toContain('third-place');
+  });
+
+  it('ignores unsupported provider round records instead of exposing arbitrary keys', () => {
+    expect(mapBracket({ events: [ev('conference-final', 'unsupported')] })).toEqual([]);
   });
 });
 

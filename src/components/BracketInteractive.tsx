@@ -1,9 +1,9 @@
 'use client';
 
-import { useLanguage } from './LanguageProvider';
-import LanguageText from './LanguageText';
+import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import { useEffect, useRef, useState } from 'react';
 import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/types';
+import type { ChampionTitleKey } from '@/server/data/competitions';
 import { flagUrl } from '@/lib/flags';
 import RadialBracket, { type BracketMode } from './RadialBracket';
 import ChampionCelebration from './ChampionCelebration';
@@ -23,11 +23,12 @@ interface Props {
   compId: string;
   emblem: string;
   trophyImage?: string;
-  championTitle?: string;
+  championTitleKey?: ChampionTitleKey;
   seasonId: string;
   compShortName: string;
   seasonLabel: string;
   shape: BracketShape;
+  predictionEnabled?: boolean;
   // Finished (past) editions are view-only: no predict tab, no live poll.
   readOnly?: boolean;
 }
@@ -35,8 +36,7 @@ interface Props {
 // Compact third-place match card — shown once both semi-final losers are known
 // (the radial ring geometry ends at the final, so this lives beneath it).
 function ThirdPlaceMini({ rounds }: { rounds: BracketRound[] }) {
-  const { language } = useLanguage();
-  const spanish = language === 'es';
+  const t = useTranslations();
   const m = rounds.find((r) => r.slug === '3rd-place-match')?.matches[0];
   if (!m || m.home.placeholder || m.away.placeholder) return null;
   const started = m.state === 'live' || m.state === 'finished';
@@ -55,11 +55,11 @@ function ThirdPlaceMini({ rounds }: { rounds: BracketRound[] }) {
     );
   };
   return (
-    <div className="tp-mini" aria-label={spanish ? 'Partido por el tercer puesto' : 'Third-place match'}>
-      <span className="tp-label">🥉 <LanguageText en="Third Place" es="Tercer puesto" /></span>
+    <div className="tp-mini" aria-label={t('bracket.thirdPlaceMatch')}>
+      <span className="tp-label">🥉 {t('round.thirdPlace')}</span>
       <Side abbr={m.home.abbr} name={m.home.name} />
       <span className="tp-score">
-        {started ? `${m.homeScore ?? 0}–${m.awayScore ?? 0}` : 'vs'}
+        {started ? `${m.homeScore ?? 0}–${m.awayScore ?? 0}` : t('match.versusShort')}
       </span>
       <Side abbr={m.away.abbr} name={m.away.name} />
     </div>
@@ -110,9 +110,9 @@ function decodePicks(s: string): Record<string, string> {
 }
 
 export default function BracketInteractive({
-rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage, championTitle, seasonId, compShortName, seasonLabel, shape, readOnly = false }: Props) {
-  const { language } = useLanguage();
-  const spanish = language === 'es';
+rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage, championTitleKey, seasonId, compShortName, seasonLabel, shape, predictionEnabled = PREDICT_ENABLED, readOnly = false }: Props) {
+  const locale = useLocale();
+  const t = useTranslations();
   const [mode, setMode] = useState<BracketMode>('live');
   const [rounds, setRounds] = useState<BracketRound[]>(initialRounds);
   const [picks, setPicks] = useState<Record<string, string>>({});
@@ -172,7 +172,7 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
 
   // Hydrate a shared bracket from ?b=... on first load.
   useEffect(() => {
-    if (!PREDICT_ENABLED) return; // predict mode disabled — ignore shared brackets
+    if (!predictionEnabled) return; // predict mode disabled — ignore shared brackets
     const code = new URLSearchParams(window.location.search).get('b');
     if (!code) return;
     const shared = decodePicks(code);
@@ -191,13 +191,10 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
     const champParam = champion
       ? `&c=${encodeURIComponent(champion.abbr)}&name=${encodeURIComponent(champion.name)}`
       : '';
-    const label = `${compShortName} ${seasonLabel}`; // e.g. "World Cup 2026" / "Leagues Cup 2026"
-    const url = `${origin}/c/${compId}/${seasonId}?b=${encodePicks(picks)}${champParam}`;
-    const text = champion
-      ? `My pick to win the ${label}: ${champion.name} 🏆⚽ — build your bracket on ScoreArc:`
-      : `Building my ${label} bracket on ScoreArc ⚽ — make yours:`;
+    const url = `${origin}/${locale}/c/${compId}/${seasonId}?b=${encodePicks(picks)}${champParam}`;
+    const text = t('bracket.shareText', champion?.name ?? '', compShortName, seasonLabel, url);
     const hashtag = `${compShortName.replace(/\s+/g, '')}${seasonLabel}`; // "WorldCup2026" / "LeaguesCup2026"
-    const tweet = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}&hashtags=${hashtag}`;
+    const tweet = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&hashtags=${hashtag}`;
     window.open(tweet, '_blank', 'noopener,noreferrer');
   }
 
@@ -219,8 +216,8 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
       {/* Past (finished) editions are view-only — no Live/Predict tabs. The
           "Build your bracket" predict mode is also disabled once the tournament
           is over (see PREDICT_ENABLED). */}
-      {!readOnly && PREDICT_ENABLED && (
-        <div className="bracket-modes" role="tablist" aria-label={spanish ? "Modo del cuadro" : "Bracket mode"}>
+      {!readOnly && predictionEnabled && (
+        <div className="bracket-modes" role="tablist" aria-label={t('bracket.mode')}>
           <button
             type="button"
             role="tab"
@@ -228,7 +225,7 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
             className={`bracket-mode${mode === 'live' ? ' bracket-mode--active' : ''}`}
             onClick={() => setMode('live')}
           >
-            Live results
+            {t('bracket.liveResults')}
           </button>
           <button
             type="button"
@@ -237,33 +234,33 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
             className={`bracket-mode${mode === 'predict' ? ' bracket-mode--active' : ''}`}
             onClick={() => setMode('predict')}
           >
-            Build your bracket
+            {t('bracket.buildYours')}
           </button>
         </div>
       )}
 
       {mode === 'predict' && (
         <div className="bracket-controls">
-          <span className="bracket-hint"><LanguageText en="Tap a team to send them through" es="Toca un equipo para hacerlo avanzar" /></span>
+          <span className="bracket-hint">{t('bracket.advanceHint')}</span>
           <button
             type="button"
             className="bracket-share"
             onClick={share}
-            aria-label={spanish ? "Compartir tu cuadro en X" : "Share your bracket on X"}
+            aria-label={t('bracket.shareAria')}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
               <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z" />
             </svg>
-            Share
+            {t('bracket.share')}
           </button>
           <button type="button" className="bracket-reset" onClick={() => setPicks({})}>
-            Reset
+            {t('bracket.reset')}
           </button>
         </div>
       )}
 
       <RadialBracket
-        teamBase={`/c/${compId}/${seasonId}/team`}
+        teamBase={`/${locale}/c/${compId}/${seasonId}/team`}
         rounds={rounds}
         mode={mode}
         picks={picks}
@@ -274,6 +271,7 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
         shape={shape}
         emblem={emblem}
         trophyImage={trophyImage}
+        championTitleKey={championTitleKey}
       />
 
       {mode === 'live' && <ThirdPlaceMini rounds={rounds} />}
@@ -282,7 +280,7 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
         <ChampionCelebration
           emblem={emblem}
           trophyImage={trophyImage}
-          championTitle={championTitle}
+          championTitleKey={championTitleKey}
           team={celebrate}
           onClose={() => setCelebrate(null)}
           onShare={share}

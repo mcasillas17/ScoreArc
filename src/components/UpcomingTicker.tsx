@@ -5,7 +5,7 @@ import type { Match, Team } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
 import { flagUrl } from '@/lib/flags';
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
-import { isThisWeek, matchToBracketMatch } from './upcomingWindow';
+import { isThisWeek, toMatchDetailInput } from './upcomingWindow';
 import { trackEvent, trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
 import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import { intlLocale, type Locale } from '@/i18n/config';
@@ -322,7 +322,7 @@ export default function UpcomingTicker({ initialMatches, apiBase, teamBase, team
       {detail && (
         <MatchDetailPopup
           teamBase={teamBase}
-          match={matchToBracketMatch(detail)}
+          match={toMatchDetailInput(detail)}
           summary={summary}
           loading={loadingDetail}
           onClose={() => { setDetail(null); setSummary(null); }}

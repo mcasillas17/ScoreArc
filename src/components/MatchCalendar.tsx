@@ -14,7 +14,7 @@ import {
   monthNavigationAction,
   returnedToLoadedMonth,
 } from './matchCalendarState';
-import { matchToBracketMatch } from './upcomingWindow';
+import { toMatchDetailInput } from './upcomingWindow';
 import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import type { Locale } from '@/i18n/config';
 import { formatDate } from '@/i18n/format';
@@ -331,7 +331,7 @@ export default function MatchCalendar({
       {detail && (
         <MatchDetailPopup
           teamBase={teamBase}
-          match={matchToBracketMatch(detail)}
+          match={toMatchDetailInput(detail)}
           summary={summary}
           loading={loadingDetail}
           onClose={() => {

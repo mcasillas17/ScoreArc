@@ -8,7 +8,7 @@ import { matchPriority } from '@/server/data/matchPriority';
 import { trackEvent, trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
 import MatchRow from './MatchRow';
-import { matchToBracketMatch } from './upcomingWindow';
+import { toMatchDetailInput } from './upcomingWindow';
 import { groupByDay } from './matchDays';
 import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 
@@ -229,7 +229,7 @@ export default function MatchesNow({
       {detail && (
         <MatchDetailPopup
           teamBase={teamBase}
-          match={matchToBracketMatch(detail)}
+          match={toMatchDetailInput(detail)}
           summary={summary}
           loading={loadingDetail}
           onClose={() => {

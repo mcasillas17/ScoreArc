@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { BracketMatch, MatchSummaryData } from '@/server/data/types';
+import type { Match, MatchSummaryData } from '@/server/data/types';
 import { flagUrl } from '@/lib/flags';
 import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar, LineupView, PenaltyShootout, isBeforeKickoff } from './MatchStats';
 import MatchHighlights from './MatchHighlights';
@@ -16,8 +16,24 @@ import { formatDateTime } from '@/i18n/format';
 
 export type MatchSummary = MatchSummaryData;
 
+/** The match facts this shared detail view renders. Knockout-only identity such
+ * as `round` and `placeholder` deliberately stays outside the view contract. */
+export type MatchDetailInput = Pick<
+  Match,
+  | 'kickoff'
+  | 'home'
+  | 'away'
+  | 'homeScore'
+  | 'awayScore'
+  | 'state'
+  | 'statusDetail'
+  | 'statusName'
+  | 'minute'
+  | 'note'
+>;
+
 interface Props {
-  match: BracketMatch;
+  match: MatchDetailInput;
   summary: MatchSummary | null;
   loading: boolean;
   onClose: () => void;

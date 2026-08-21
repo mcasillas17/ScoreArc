@@ -1,8 +1,9 @@
 import type { Season } from '@/server/data/competitions';
 import { OFFICIAL_R32_ORDER } from '@/server/data/competitions';
+import type { KnockoutRoundSlug } from '@/server/data/types';
 
 export interface RingGeom {
-  slug: string;
+  slug: KnockoutRoundSlug;
   rx: number;
   ry: number;
   discR: number;
@@ -10,8 +11,29 @@ export interface RingGeom {
 
 export interface BracketShape {
   ringGeometry: RingGeom[]; // depth 0 (outer flag ring) .. N-1 (final)
-  knockoutRounds: string[]; // slugs, outer->inner; parallel to ringGeometry
+  knockoutRounds: KnockoutRoundSlug[]; // slugs, outer->inner; parallel to ringGeometry
   bracketOrder?: [string, string][]; // present -> use as seeds; absent -> derive
+}
+
+export type RoundLabelKey =
+  | 'round.roundOf32'
+  | 'round.roundOf16'
+  | 'round.quarterfinals'
+  | 'round.semifinals'
+  | 'round.thirdPlace'
+  | 'round.final';
+
+const ROUND_LABEL_KEYS: Record<KnockoutRoundSlug, RoundLabelKey> = {
+  'round-of-32': 'round.roundOf32',
+  'round-of-16': 'round.roundOf16',
+  quarterfinals: 'round.quarterfinals',
+  semifinals: 'round.semifinals',
+  '3rd-place-match': 'round.thirdPlace',
+  final: 'round.final',
+};
+
+export function roundLabelKey(slug: KnockoutRoundSlug): RoundLabelKey {
+  return ROUND_LABEL_KEYS[slug];
 }
 
 // Tuned radii/disc sizes per ring COUNT (hand-tuned reads better than computed
@@ -70,7 +92,7 @@ export const DEFAULT_SHAPE: BracketShape = bracketShapeFor({
  * has fixtures, which means the draw has moved on regardless of how the
  * provider labelled the first.
  */
-export function knockoutIsReady(bracket: { slug: string; matches: unknown[] }[], shape: BracketShape): boolean {
+export function knockoutIsReady(bracket: { slug: KnockoutRoundSlug; matches: unknown[] }[], shape: BracketShape): boolean {
   const [leafSlug, ...laterSlugs] = shape.knockoutRounds;
   const expectedLeaf = 2 ** (shape.knockoutRounds.length - 1);
   const leaf = bracket.find((r) => r.slug === leafSlug);

@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { NextRequest } from 'next/server';
 import { dataStore, currentWeekRange } from '@/server/data/store';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 
@@ -8,6 +10,16 @@ vi.mock('@/server/data/store', async (orig) => {
 });
 
 vi.mock('@/lib/telemetry/server', () => ({ trackAPIRequestFailure: vi.fn() }));
+
+vi.mock('next/og', () => ({
+  ImageResponse: class ImageResponse {
+    status = 200;
+    constructor(
+      public element: React.ReactElement,
+      public options: { width: number; height: number },
+    ) {}
+  },
+}));
 
 const route = () => import('./[comp]/[season]/matches/route');
 const wc = { comp: 'world-cup', season: '2026' };
@@ -156,5 +168,44 @@ describe('GET /api/[comp]/[season]/matches — rejected input', () => {
     const res = await get('?range=20260801-20260831', { comp: 'nope', season: '2026-27' });
     expect(res.status).toBe(404);
     expect(fixtures).not.toHaveBeenCalled();
+  });
+});
+
+const ogRoute = () => import('./og/route');
+const ogMarkup = async (query: string) => {
+  const response = await (await ogRoute()).GET(new NextRequest(`http://x/api/og${query}`));
+  return {
+    status: response.status,
+    html: renderToStaticMarkup((response as unknown as { element: React.ReactElement }).element),
+  };
+};
+
+describe('GET /api/og — validated locale', () => {
+  it.each([
+    ['en', 'MY PREDICTED CHAMPION'],
+    ['es', 'MI CAMPEÓN PRONOSTICADO'],
+  ])('renders predicted-champion copy in %s', async (locale, copy) => {
+    const result = await ogMarkup(
+      `?locale=${locale}&champ=MEX&name=M%C3%A9xico&comp=World%20Cup%202026`,
+    );
+    expect(result.status).toBe(200);
+    expect(result.html).toContain(`lang="${locale}"`);
+    expect(result.html).toContain(copy);
+  });
+
+  it('defaults an arbitrary locale to English without reflecting it', async () => {
+    const result = await ogMarkup('?locale=%3Cscript%3Ebad%3C%2Fscript%3E');
+    expect(result.status).toBe(200);
+    expect(result.html).toContain('lang="en"');
+    expect(result.html).toContain('Live Football');
+    expect(result.html).toContain('Live scores · standings · brackets');
+    expect(result.html).not.toContain('script');
+    expect(result.html).not.toContain('Fútbol en vivo');
+  });
+
+  it('keeps existing query rendering escaped', async () => {
+    const result = await ogMarkup('?locale=es&comp=%3Cb%3EFinal%3C%2Fb%3E');
+    expect(result.html).toContain('&lt;b&gt;Final&lt;/b&gt;');
+    expect(result.html).not.toContain('<b>Final</b>');
   });
 });

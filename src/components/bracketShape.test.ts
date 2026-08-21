@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { bracketShapeFor, knockoutIsReady } from './bracketShape';
+import { bracketShapeFor, knockoutIsReady, roundLabelKey } from './bracketShape';
 import type { Season } from '@/server/data/competitions';
+import type { KnockoutRoundSlug } from '@/server/data/types';
 import { COMPETITIONS, listCompetitions } from '@/server/data/competitions';
 
 const season = (over: Partial<Season>): Season => ({
@@ -31,6 +32,19 @@ describe('bracketShapeFor', () => {
     ]);
     expect(s.ringGeometry[0].rx).toBe(400); // outer ring is always the flag ring
     expect(s.bracketOrder).toBeUndefined();
+  });
+});
+
+describe('roundLabelKey', () => {
+  it.each([
+    ['round-of-32', 'round.roundOf32'],
+    ['round-of-16', 'round.roundOf16'],
+    ['quarterfinals', 'round.quarterfinals'],
+    ['semifinals', 'round.semifinals'],
+    ['3rd-place-match', 'round.thirdPlace'],
+    ['final', 'round.final'],
+  ] as const)('maps %s to the catalog key %s', (slug, key) => {
+    expect(roundLabelKey(slug)).toBe(key);
   });
 });
 
@@ -83,7 +97,7 @@ describe('knockoutIsReady', () => {
   const shape = bracketShapeFor(season({
     knockoutRounds: ['quarterfinals', 'semifinals', 'final'],
   }));
-  const round = (slug: string, n: number) => ({ slug, matches: Array.from({ length: n }) });
+  const round = (slug: KnockoutRoundSlug, n: number) => ({ slug, matches: Array.from({ length: n }) });
 
   it('is not ready with nothing published', () => {
     expect(knockoutIsReady([], shape)).toBe(false);

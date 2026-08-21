@@ -1,4 +1,4 @@
-import type { BracketMatch, BracketTeam, BracketRound } from '@/server/data/types';
+import type { BracketMatch, BracketTeam, BracketRound, KnockoutRoundSlug } from '@/server/data/types';
 import type { BracketShape } from './bracketShape';
 
 // Moved out of RadialBracket.tsx so the pure model logic is unit-testable
@@ -305,7 +305,7 @@ export function buildRings(
  * `knockoutRounds` is outer->inner (leaf first, final last). Falls back to plain
  * event order (0,1,2,...) if the bracket isn't fully/consistently decided.
  */
-export function deriveLeafOrder(rounds: BracketRound[], knockoutRounds: string[]): number[] {
+export function deriveLeafOrder(rounds: BracketRound[], knockoutRounds: KnockoutRoundSlug[]): number[] {
   const N = knockoutRounds.length;
   const leaf = rounds.find((r) => r.slug === knockoutRounds[0]);
   const fallback = leaf ? leaf.matches.map((_, i) => i) : [];

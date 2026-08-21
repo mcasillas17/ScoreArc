@@ -1,6 +1,9 @@
+import type { KnockoutRoundSlug } from './types';
+
 export type CompetitionKind = 'national' | 'club';
 export type TeamStyle = 'flag' | 'crest';
 export type Section = 'bracket' | 'standings' | 'scores' | 'news';
+export type ChampionTitleKey = 'champion.world' | 'champion.competition';
 
 // Fixed official WC2026 R32 leaf order (identity-based). Data, not UI — lives
 // here so the bracket builder can receive it per-season.
@@ -66,7 +69,7 @@ export interface Season {
   // Knockout round slugs, outer->inner (leaf first, final last). Drives the
   // bracket's ring count + geometry. 2026 starts at round-of-32; 1998-2022 at
   // round-of-16.
-  knockoutRounds?: string[];
+  knockoutRounds?: KnockoutRoundSlug[];
   // Leagues only: highlight the top-N qualification cut in the standings view
   // (e.g. Liga MX top 8 → Liguilla). Absent for leagues with no such cut.
   //
@@ -137,9 +140,9 @@ export interface Competition {
    *  any other competition is a factual error, not a styling choice. Everything
    *  else falls back to `emblem`. */
   trophyImage?: string;
-  /** What a champion of this competition is called. Defaults to "CHAMPIONS";
-   *  only the World Cup crowns WORLD champions. */
-  championTitle?: string;
+  /** Catalog key for the competition's champion title. Only the World Cup
+   *  crowns world champions; every other competition uses champion.competition. */
+  championTitleKey?: ChampionTitleKey;
   // Per-competition identity accent. base = primary, bright = hover/emphasis,
   // soft = low-alpha tint for borders/backgrounds. Injected as CSS custom
   // properties on the app-shell; :root falls back to gold.
@@ -165,7 +168,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     emblem: '🌍',
     logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/4.png',
     trophyImage: '/trophy.png',
-    championTitle: 'WORLD CHAMPIONS',
+    championTitleKey: 'champion.world',
     accent: { base: '#e8b84b', bright: '#f0c873', soft: 'rgba(232,184,75,0.16)' },
     currentSeasonId: '2026',
     seasons: {

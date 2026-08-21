@@ -11,7 +11,6 @@ import StandingsLive from '@/components/StandingsLive';
 import PhaseQualifiers from '@/components/PhaseQualifiers';
 import SeasonSwitcher from '@/components/SeasonSwitcher';
 import { bracketShapeFor, knockoutIsReady } from '@/components/bracketShape';
-import LanguageText from '@/components/LanguageText';
 import SiteFooter from '@/components/SiteFooter';
 import { getTranslator } from '@/i18n/translate';
 
@@ -22,17 +21,28 @@ export async function generateMetadata({ params, searchParams }: { params: { loc
   const locale = params.locale;
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) return {};
+  const t = getTranslator(locale);
   const label = `${rc.competition.shortName} ${rc.season.label}`;
   const champ = searchParams.c;
+  const name = searchParams.name ?? champ;
+  const predictionQuery = champ
+    ? `?c=${encodeURIComponent(champ)}&name=${encodeURIComponent(name ?? champ)}`
+    : '';
+  const localizedPath = (pathLocale: 'en' | 'es') =>
+    `/${pathLocale}/c/${rc.competition.id}/${rc.season.id}${predictionQuery}`;
+  const alternates = {
+    canonical: localizedPath(locale),
+    languages: { en: localizedPath('en'), es: localizedPath('es') },
+  };
   if (!champ) {
     const og = `/api/og?comp=${encodeURIComponent(label)}&locale=${encodeURIComponent(locale)}`;
-    const title = `ScoreArc · ${rc.competition.name}`;
-    return { title, openGraph: { title, images: [{ url: og, width: 1200, height: 630 }] }, twitter: { card: 'summary_large_image', title, images: [og] } };
+    const title = t('meta.competition.title', rc.competition.name);
+    return { title, alternates, openGraph: { title, images: [{ url: og, width: 1200, height: 630 }] }, twitter: { card: 'summary_large_image', title, images: [og] } };
   }
-  const name = searchParams.name ?? champ;
-  const og = `/api/og?champ=${encodeURIComponent(champ)}&name=${encodeURIComponent(name)}&comp=${encodeURIComponent(label)}&locale=${encodeURIComponent(locale)}`;
-  const title = `My ${rc.competition.shortName} champion: ${name} 🏆`;
-  return { title, openGraph: { title, images: [{ url: og, width: 1200, height: 630 }] }, twitter: { card: 'summary_large_image', title, images: [og] } };
+  const championName = name ?? champ;
+  const og = `/api/og?champ=${encodeURIComponent(champ)}&name=${encodeURIComponent(championName)}&comp=${encodeURIComponent(label)}&locale=${encodeURIComponent(locale)}`;
+  const title = t('meta.predictedChampion.title', rc.competition.shortName, championName);
+  return { title, alternates, openGraph: { title, images: [{ url: og, width: 1200, height: 630 }] }, twitter: { card: 'summary_large_image', title, images: [og] } };
 }
 
 export default async function Workspace({ params }: { params: { locale: string; comp: string; season: string } }) {
@@ -91,7 +101,7 @@ export default async function Workspace({ params }: { params: { locale: string; 
     // while nothing is published.
     const banner = liveSection ?? (
       <section id="live">
-        <h2 className="section-label"><LanguageText en="Next Up" es="Próximamente" /></h2>
+        <h2 className="section-label">{t('upcoming.nextUp')}</h2>
         <div className="lcq-banner">
           <PhaseQualifiers
             groups={phaseGroups}
@@ -131,12 +141,12 @@ export default async function Workspace({ params }: { params: { locale: string; 
       <section id="bracket" className="bracket-section">
         <header className="bracket-head">
           <p className="bracket-eyebrow">{rc.competition.shortName}</p>
-          <h1 className="bracket-title"><LanguageText en="Knockout Bracket" es="Cuadro de eliminatorias" /></h1>
+          <h1 className="bracket-title">{t('bracket.knockout')}</h1>
           <SeasonSwitcher competition={rc.competition} activeSeasonId={rc.season.id} />
         </header>
         {bracket.length > 0
-          ? <div key={rc.season.id} className="edition-fade"><BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} emblem={rc.competition.emblem} trophyImage={rc.competition.trophyImage} championTitle={rc.competition.championTitle} shape={bracketShapeFor(rc.season)} readOnly={readOnly} /></div>
-          : <div className="empty-section"><p className="empty-text"><LanguageText en="Bracket data is unavailable right now." es="El cuadro no está disponible en este momento." /></p></div>}
+          ? <div key={rc.season.id} className="edition-fade"><BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} emblem={rc.competition.emblem} trophyImage={rc.competition.trophyImage} championTitleKey={rc.competition.championTitleKey} shape={bracketShapeFor(rc.season)} readOnly={readOnly} /></div>
+          : <div className="empty-section"><p className="empty-text">{t('bracket.unavailable')}</p></div>}
       </section>
       {!readOnly && liveSection}
       {footer}

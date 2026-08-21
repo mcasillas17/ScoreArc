@@ -3,8 +3,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { I18nProvider } from '@/i18n/I18nProvider';
-import type { BracketMatch, MatchStats, MatchSummaryData, TeamStats } from '@/server/data/types';
-import MatchDetailPopup from './MatchDetailPopup';
+import type { MatchStats, MatchSummaryData, TeamStats } from '@/server/data/types';
+import MatchDetailPopup, { type MatchDetailInput } from './MatchDetailPopup';
 import { MatchStatsBlock, WinProbBar } from './MatchStats';
 
 vi.mock('next/navigation', () => ({
@@ -40,19 +40,16 @@ const teamStats = (shots: number): TeamStats => ({
 
 const stats: MatchStats = { home: teamStats(8), away: teamStats(11) };
 
-const scheduledMatch: BracketMatch = {
-  id: 'scheduled-localization',
-  round: 'group',
+const scheduledMatch: MatchDetailInput = {
   kickoff: 'not-a-date',
-  home: { id: 'home', name: 'Home FC', abbr: 'HOM', crestUrl: null, placeholder: false },
-  away: { id: 'away', name: 'Away FC', abbr: 'AWY', crestUrl: null, placeholder: false },
+  home: { id: 'home', name: 'Home FC', abbr: 'HOM', crestUrl: null },
+  away: { id: 'away', name: 'Away FC', abbr: 'AWY', crestUrl: null },
   homeScore: null,
   awayScore: null,
   state: 'scheduled',
   statusDetail: 'Scheduled',
   statusName: 'STATUS_SCHEDULED',
   minute: null,
-  winnerId: null,
   note: null,
 };
 
@@ -61,7 +58,7 @@ const emptySummary: MatchSummaryData = {
   videos: [], shootoutDetail: null, info: null, form: null, commentary: [], h2h: [],
 };
 
-function renderPopup(match: BracketMatch, summary: MatchSummaryData | null = emptySummary, onClose = vi.fn()) {
+function renderPopup(match: MatchDetailInput, summary: MatchSummaryData | null = emptySummary, onClose = vi.fn()) {
   return render(
     <I18nProvider locale="es">
       <MatchDetailPopup match={match} summary={summary} loading={false} onClose={onClose} />
@@ -93,7 +90,7 @@ describe('match details localization', () => {
   });
 
   it('uses semantic Spanish status labels and keeps only unknown provider states verbatim', async () => {
-    const cases: Array<{ match: BracketMatch; expected: string; absent?: string }> = [
+    const cases: Array<{ match: MatchDetailInput; expected: string; absent?: string }> = [
       { match: { ...scheduledMatch, state: 'finished', statusName: 'STATUS_FINAL', statusDetail: 'FT', homeScore: 2, awayScore: 1 }, expected: 'Final', absent: 'FT' },
       { match: { ...scheduledMatch, state: 'finished', statusName: 'STATUS_FINAL_PEN', statusDetail: 'FT-Pens', homeScore: 4, awayScore: 3 }, expected: 'Penaltis', absent: 'FT-Pens' },
       { match: { ...scheduledMatch, state: 'live', statusName: 'STATUS_IN_PROGRESS', statusDetail: '1st half', minute: null, homeScore: 0, awayScore: 0 }, expected: 'En vivo' },

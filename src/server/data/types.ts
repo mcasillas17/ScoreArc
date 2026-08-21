@@ -149,9 +149,17 @@ export interface BracketTeam {
   placeholder: boolean;     // true when team is not yet determined
 }
 
+export type KnockoutRoundSlug =
+  | 'round-of-32'
+  | 'round-of-16'
+  | 'quarterfinals'
+  | 'semifinals'
+  | '3rd-place-match'
+  | 'final';
+
 export interface BracketMatch {
   id: string;
-  round: string;            // slug, e.g. "round-of-32"
+  round: KnockoutRoundSlug;
   kickoff: string;          // ISO date string
   home: BracketTeam;
   away: BracketTeam;
@@ -166,8 +174,7 @@ export interface BracketMatch {
 }
 
 export interface BracketRound {
-  slug: string;             // e.g. "round-of-32"
-  name: string;             // e.g. "Round of 32"
+  slug: KnockoutRoundSlug;
   matches: BracketMatch[];
 }
 
