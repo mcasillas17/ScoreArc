@@ -23,10 +23,15 @@
      never compete: green is ScoreArc, gold is what is at stake. */
   --gold: #e8b84b;
   --gold-bright: #f0c873;
-  /* Per-competition accent — overridden on .app-shell; falls back to gold. */
-  --accent: var(--gold);
-  --accent-bright: var(--gold-bright);
-  --accent-soft: rgba(232,184,75,0.16);
+  /* Per-competition accent — overridden on .app-shell by the competition you
+     are inside. Off a competition (home, /teams, /news) it falls back to the
+     brand, not to gold: gold is the prize, and a gold nav on the home page
+     contradicts the rule stated three lines above. This default was left as
+     gold from when gold WAS the brand, and only became visible once the nav
+     started rendering on every route. */
+  --accent: var(--brand);
+  --accent-bright: var(--brand-bright);
+  --accent-soft: var(--brand-soft);
   /* Prize / qualification — gold by default. */
   --qual: var(--gold);
   --qual-bright: var(--gold-bright);
