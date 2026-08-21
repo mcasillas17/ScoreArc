@@ -3550,6 +3550,7 @@ a {
   min-height: 100vh;
   background: var(--bg);
   padding: 32px 24px 64px;
+  width: 100%;
   max-width: 1040px;
   margin: 0 auto;
 }
@@ -3687,3 +3688,146 @@ a {
   .tm-head { gap: 12px; }
   .tm-form-row { align-items: flex-start; flex-direction: column; }
 }
+
+/* ---- Team discovery: index + search (tsp-*, ts-*) --------------------- */
+
+/* Inside a competition these pages carry `main` as well, which supplies the
+   sidebar offset, the flex column and the page max-width. Only the standalone
+   /teams page uses .tsp alone, so the sizing lives here and is overridden to
+   nothing when .main is also present.
+
+   Getting this wrong is subtle: a bespoke container with `margin: 0 auto` and
+   no width looks correct beside a fixed sidebar, because auto margins centre a
+   shrink-to-fit flex item in the space left over. It only breaks when the
+   content is wide enough to matter. */
+.tsp {
+  min-height: 100vh;
+  background: var(--bg);
+  padding: 32px 24px 64px;
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+.main.tsp,
+.main.tm {
+  min-height: 0;
+  padding: 36px 36px 56px;
+  max-width: 1280px;
+  margin-left: var(--sidebar-w);
+  gap: 0;
+}
+.tsp-head { margin-bottom: 20px; }
+.tsp-eyebrow {
+  margin: 0 0 4px;
+  font-size: 11px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.tsp-title {
+  margin: 0;
+  font-size: clamp(22px, 4vw, 32px);
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: var(--text);
+}
+.tsp-sub { margin: 4px 0 0; color: var(--text-muted); font-size: 13.5px; }
+.tsp-empty { color: var(--text-muted); font-size: 13px; }
+
+.tsp-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+}
+.tsp-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  text-decoration: none;
+  color: var(--text);
+  border: 1px solid transparent;
+}
+.tsp-card:hover { border-color: var(--hairline); }
+.tsp-card-name { font-size: 13.5px; font-weight: 600; }
+.tsp-all { margin-top: 22px; font-size: 13px; }
+.tsp-all a { color: var(--accent-bright); text-decoration: none; }
+
+.ts-field { display: block; }
+.ts-input {
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 15px;
+}
+.ts-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.ts-count {
+  margin: 8px 2px 14px;
+  font-size: 11px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.ts-empty { color: var(--text-muted); font-size: 13px; }
+
+.ts-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ts-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.ts-crest { flex: none; }
+.ts-id { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; min-width: 0; }
+.ts-name { font-size: 14px; font-weight: 600; color: var(--text); }
+/* One club, one row, and a link per competition it plays in — a team page is
+   competition-scoped, so there is no single page to point the name at. */
+.ts-comps { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.ts-comp {
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--accent-bright);
+  text-decoration: none;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+.ts-comp:hover { border-color: var(--accent); }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 760px) {
+  .tsp { padding: 20px 16px 48px; }
+  .tsp-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* The way back out of team discovery. Nothing is added to .hub-head: the
+   masthead is a mark and a tagline anchored to opposite ends of the row, and a
+   third element in that row takes the right edge the tagline is meant to hold. */
+.tsp-back { margin: 0 0 14px; font-size: 12.5px; }
+.tsp-back a { color: var(--text-muted); text-decoration: none; }
+.tsp-back a:hover { color: var(--text); }

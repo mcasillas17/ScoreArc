@@ -9,6 +9,7 @@ import SquadTable from '@/components/SquadTable';
 import TeamBadge from '@/components/TeamBadge';
 import LanguageText from '@/components/LanguageText';
 import LocalTime from '@/components/LocalTime';
+import Link from 'next/link';
 import SiteFooter from '@/components/SiteFooter';
 
 export const dynamic = 'force-dynamic';
@@ -60,7 +61,14 @@ export default async function TeamPage({ params }: Params) {
   const next = profile.schedule.find((m) => m.state !== 'finished') ?? null;
 
   return (
-    <main className="tm">
+    <main className="main tm">
+      {/* A team page reached from search has no sidebar context to go back to,
+          and browser-back is not navigation. */}
+      <p className="tsp-back">
+        <Link href={`/c/${rc.competition.id}/${rc.season.id}/teams`}>
+          ← {rc.competition.shortName} <LanguageText en="teams" es="equipos" />
+        </Link>
+      </p>
       <TeamHeader profile={profile} teamStyle={rc.competition.teamStyle} />
 
       <section className="tm-section">

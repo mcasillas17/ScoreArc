@@ -28,10 +28,15 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
   const tableIcon = <svg {...ICON}><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="14" y2="18" /></svg>;
   const matchesIcon = <svg {...ICON}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" /></svg>;
   const newsIcon = <svg {...ICON}><path d="M4 5h16v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>;
+  const teamsIcon = <svg {...ICON}><circle cx="9" cy="8" r="3" /><path d="M3 20a6 6 0 0 1 12 0" /><circle cx="17" cy="9" r="2.2" /><path d="M15.5 20a5 5 0 0 1 5.5-4.6" /></svg>;
 
   const atBase = (p: string) => p === base;
   const matchesItem = { href: `${base}/matches`, label: spanish ? 'Partidos' : 'Matches', match: (p: string) => p.endsWith('/matches'), icon: matchesIcon };
   const newsItem = { href: `${base}/news`, label: spanish ? 'Noticias' : 'News', match: (p: string) => p.startsWith(`${base}/news`), icon: newsIcon };
+  // The clubs in this competition. Standings is already a team list, but it is
+  // ordered by rank and only exists where a table is published -- this is
+  // alphabetical, and gives the crest a name to be found by.
+  const teamsItem = { href: `${base}/teams`, label: spanish ? 'Equipos' : 'Teams', match: (p: string) => p.startsWith(`${base}/teams`), icon: teamsIcon };
 
   // Standings live at the same route for every competition, under the same
   // label. A cup adds a Bracket item because it has one; a league's base URL
@@ -48,9 +53,10 @@ export default function Sidebar({ comp, seasonId }: { comp: Competition; seasonI
         { href: base, label: phasedCup ? (spanish ? 'Eliminatorias' : 'Knockout') : (spanish ? 'Cuadro' : 'Bracket'), match: atBase, icon: bracketIcon },
         standingsItem,
         matchesItem,
+        teamsItem,
         newsItem,
       ]
-    : [standingsItem, matchesItem, newsItem];
+    : [standingsItem, matchesItem, teamsItem, newsItem];
 
   return (
     <>

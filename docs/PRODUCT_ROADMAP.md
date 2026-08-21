@@ -296,17 +296,18 @@ four fixtures, so the next-fixture block reads the schedule.
 Each athlete also carries an `injuries` array that is **empty for all 35**. The
 field existing is not the data existing; no injuries feature is built on it.
 
-### E12 · Team discovery — proposed, not scheduled
+### E12 · Team discovery — done
 
-Teams are reachable only by clicking a crest (standings, the landing page, the
-match popup). There is no way to browse or search for one. Two pieces:
+Teams were reachable only by clicking a crest (standings, the landing page, the
+match popup), with no way to browse or search for one. Three pieces, all
+shipped:
 
-- **T12.1 Competition teams index** — `/c/[comp]/[season]/teams`, alphabetical,
-  plus a nav item. Low cost: the data is already fetched for the table. Note
-  that standings *is* the team list for a league, so the real value is
-  competitions without a published table, and discoverability.
-- **T12.2 Site-wide team search** — the more valuable half, and the one with a
-  design problem.
+- **T12.1 Competition teams index** — done. `/c/[comp]/[season]/teams`,
+  alphabetical, with a Teams item in the sidebar.
+- **T12.2 Site-wide team search** — done. `/teams`, 192 clubs, linked from the
+  masthead. Accent-folded, so "america" finds "América".
+- **T12.3 Navigation** — done. Team pages carry a link back to their
+  competition's team list.
 
 **The blocker for search:** a team page is competition-scoped on purpose
 (América's record in Liga MX is not their record in the Leagues Cup), so a
@@ -324,7 +325,8 @@ nothing currently knows. Three options:
    of scope in the E4 spec: it needs identity resolution across competitions,
    which is backend Phase 1.
 
-Do (1) now; (3) supersedes it when the backend lands.
+**Shipped (1).** A club is one entry with one link per competition —
+"América · Leagues Cup · Liga MX". (3) supersedes it when the backend lands.
 
 ### E5 · Player pages
 Branch `feat/player-pages`. Unblocked by three keyless athlete endpoints.
@@ -365,6 +367,55 @@ make a page heavier** if the saving is handed to the client as payload.
 Also measured: **there is no jornada/matchday number to group by.** `mex.1`,
 `eng.1` and `usa.1` all return no `week`, no round and an empty `calendar`, so
 matchday grouping is not built. See the spec's "Out of scope" table.
+
+### E14 · Home digest and global navigation — designed, ready to build
+
+Branch `feat/home-digest`.
+[spec](superpowers/specs/2026-08-21-home-digest-and-global-nav-design.md)
+
+The home page shows the same matches three times — live band, results/next
+columns, and nine tiles each repeating the next fixture — because the tiles are
+doing navigation's job. A global collapsible nav takes that job; the home page
+becomes a digest (what's on, leading scorers, news) and each section owns its
+depth.
+
+Also fixes a measured defect: at 390px the current sidebar's four section links
+render at `width: 0, height: 0`, so phone users have no section navigation at
+all.
+
+Explicitly out: trending (telemetry is write-only), and derived facts like
+"longest unbeaten run", which need to state what they were counted over.
+
+### E13 · Competition simulation — noted, not designed
+
+Simulate a competition forward from **its current state**, the way the bracket
+already lets you pick winners.
+
+The precedent exists and should be extended rather than reinvented:
+`BracketInteractive` has a `predict` mode beside `live`, where picking a winner
+advances them through `RadialBracket` and ends in a champion. That works
+because a knockout is a tree — one pick, one consequence.
+
+**A league is the harder case, and the reason this is a separate epic.** There
+is no tree: simulating Liga MX from matchday 5 means resolving every remaining
+match and re-deriving the table, where one result changes goal difference,
+tie-breaks and the liguilla cut. Open questions, none answered yet:
+
+- What does the reader set — a result per match, or a winner per match with
+  goal difference left alone? The cut is decided on goal difference, so
+  "who wins" alone cannot produce a table.
+- Does it start from real current state (played matches fixed, remaining
+  open)? That is the whole point of "given the current state", and it means
+  the simulation has to consume the same standings the table does.
+- Is anything persisted or shared, or is it a scratchpad that resets on
+  reload? Sharing a predicted table is the interesting half and the expensive
+  half.
+- Cup competitions with a group phase feeding a bracket (Leagues Cup, World
+  Cup) need both models joined: simulate the groups, then the tree they seed.
+
+Not scheduled, and not started. Written down because it came up while
+designing the home page, and because the bracket's `predict` mode is the
+foundation to build on rather than a thing to duplicate.
 
 ### E6 · Shot log
 - **T6.1** Per-competition coverage probe, **before any parser is written**
