@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { teamJourney, type RingNode } from './radialBracketModel';
+import { ellipse, teamJourney, type RingNode } from './radialBracketModel';
+
+describe('ellipse SVG coordinates', () => {
+  it('normalizes generated coordinates across JavaScript engine precision', () => {
+    expect(ellipse(400, 400, 241.875)).toEqual({
+      x: 311.441305,
+      y: 147.231494,
+    });
+  });
+});
 
 function node(depth: number, teamId: string, opts: Partial<RingNode> = {}): RingNode {
   return {

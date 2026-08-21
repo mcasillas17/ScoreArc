@@ -6,7 +6,7 @@ import { type ChampionTitleKey, type TeamStyle } from '@/server/data/competition
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
 import BracketZoom from './BracketZoom';
 import {
-  teamJourney, buildRings, ellipse, colorFor, C,
+  teamJourney, buildRings, ellipse, colorFor, roundSvgCoordinate, C,
   type RingNode, type JourneyStop, type BracketMode,
 } from './radialBracketModel';
 import { DEFAULT_SHAPE, roundLabelKey, type BracketShape, type RingGeom } from './bracketShape';
@@ -164,7 +164,10 @@ function isTodayLocal(iso: string | undefined): boolean {
 function arcTextPath(cx: number, cy: number, r: number, startDeg: number, endDeg: number): string {
   const pt = (deg: number): [number, number] => {
     const a = (deg * Math.PI) / 180;
-    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+    return [
+      roundSvgCoordinate(cx + r * Math.cos(a)),
+      roundSvgCoordinate(cy + r * Math.sin(a)),
+    ];
   };
   const [x1, y1] = pt(startDeg);
   const [x2, y2] = pt(endDeg);
@@ -555,8 +558,10 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             const tEdge = Math.min(570 / Math.abs(ux || 1e-6), 570 / Math.abs(uy || 1e-6));
             const r0 = outerR + node.discR + 1; // just outside the flag
             const r1 = Math.min(outerR + 210, tEdge - 6);
-            const x0 = C.x + ux * r0, y0 = C.y + uy * r0;
-            const x1 = C.x + ux * r1, y1 = C.y + uy * r1;
+            const x0 = roundSvgCoordinate(C.x + ux * r0);
+            const y0 = roundSvgCoordinate(C.y + uy * r0);
+            const x1 = roundSvgCoordinate(C.x + ux * r1);
+            const y1 = roundSvgCoordinate(C.y + uy * r1);
             const gid = `tail-grad-${node.index}`;
             // Scale about the flag anchor: with transform-box: fill-box the
             // origin is the bbox corner nearest the flag (depends on direction).

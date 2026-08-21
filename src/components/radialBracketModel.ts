@@ -107,9 +107,16 @@ function toRad(deg: number): number {
   return (deg * Math.PI) / 180;
 }
 
+export function roundSvgCoordinate(value: number): number {
+  return Number(value.toFixed(6));
+}
+
 export function ellipse(rx: number, ry: number, angleDeg: number): { x: number; y: number } {
   const r = toRad(angleDeg);
-  return { x: C.x + rx * Math.cos(r), y: C.y + ry * Math.sin(r) };
+  return {
+    x: roundSvgCoordinate(C.x + rx * Math.cos(r)),
+    y: roundSvgCoordinate(C.y + ry * Math.sin(r)),
+  };
 }
 
 function makePlaceholder(depth: number, slot: number): BracketTeam {
