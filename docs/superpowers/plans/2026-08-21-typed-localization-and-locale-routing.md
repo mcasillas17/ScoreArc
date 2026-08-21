@@ -42,9 +42,10 @@
 | `src/app/[locale]/layout.tsx` | Validates route locale, sets `<html lang>`, localized global metadata, and provider. |
 | `src/i18n/uiCopyAudit.test.ts` | Prevents new fixed JSX/ARIA copy and ambient-locale formatting. |
 
-The page tree moves from `src/app/page.tsx` and `src/app/c/**` to
-`src/app/[locale]/page.tsx` and `src/app/[locale]/c/**`. `src/app/api/**`, fonts,
-icons, `globals.css`, and public assets stay where they are.
+The page tree moves from `src/app/page.tsx`, `src/app/teams/**`, and `src/app/c/**` to
+`src/app/[locale]/page.tsx`, `src/app/[locale]/teams/**`, and
+`src/app/[locale]/c/**`. `src/app/api/**`, fonts, icons, `globals.css`, and public assets
+stay where they are.
 
 ---
 
@@ -429,6 +430,7 @@ git commit -m "feat: add locale negotiation and paths" \
 - Move: `src/app/layout.tsx` → `src/app/[locale]/layout.tsx`
 - Move: `src/app/page.tsx` → `src/app/[locale]/page.tsx`
 - Move: `src/app/page.test.tsx` → `src/app/[locale]/page.test.tsx`
+- Move: `src/app/teams/**` → `src/app/[locale]/teams/**`
 - Move: `src/app/c/**` → `src/app/[locale]/c/**`
 - Modify: every moved page/layout/test to add `locale` to route params and imports.
 - Modify: `src/components/LanguageProvider.tsx`
@@ -511,6 +513,7 @@ mkdir -p 'src/app/[locale]'
 git mv src/app/layout.tsx 'src/app/[locale]/layout.tsx'
 git mv src/app/page.tsx 'src/app/[locale]/page.tsx'
 git mv src/app/page.test.tsx 'src/app/[locale]/page.test.tsx'
+git mv src/app/teams 'src/app/[locale]/teams'
 git mv src/app/c 'src/app/[locale]/c'
 ```
 
@@ -1151,11 +1154,16 @@ git commit -m "feat: localize brackets and sharing" \
 
 **Files:**
 - Modify: `src/app/[locale]/c/[comp]/[season]/team/[teamId]/page.tsx`
+- Modify: `src/app/[locale]/teams/page.tsx`
+- Modify: `src/app/[locale]/c/[comp]/[season]/teams/page.tsx`
 - Modify: `src/app/[locale]/c/[comp]/[season]/news/page.tsx`
 - Modify: `src/components/TeamHeader.tsx`
 - Modify: `src/components/SquadTable.tsx`
+- Modify: `src/components/TeamSearch.tsx`
 - Modify: `src/components/NewsList.tsx`
 - Modify: `src/components/NewsLive.tsx`
+- Modify: `src/server/data/teamIndex.ts`
+- Modify: `src/server/data/teamIndex.test.ts`
 - Modify: `src/server/data/types.ts`
 - Modify: `src/server/data/providers/espn-team.ts`
 - Modify: `src/server/data/providers/espn-team.test.ts`
@@ -1170,6 +1178,7 @@ git commit -m "feat: localize brackets and sharing" \
 
 **Interfaces:**
 - Produces: structured team standing fields when ESPN's summary matches a recognized ordinal pattern.
+- Produces: language-neutral team membership pathnames localized only by the rendering layer.
 - Produces: stable `ApiErrorCode` JSON contracts with no user-facing prose.
 - Consumes: team/news translators and relative-time formatter.
 
@@ -1203,14 +1212,17 @@ otherwise it renders the raw provider summary unchanged.
 Cover Form and next match, W/D/L abbreviations, no matches yet, Next, no upcoming match,
 Squad, Matches and results, no matches listed, Record, points, Player, Pos, every squad
 stat heading, Has not appeared, Squad unavailable, News, latest tournament headlines,
-news unavailable, and relative timestamps. Include metadata title/description functions
-for matches, standings, news, team, competition, and prediction pages.
+news unavailable, relative timestamps, Teams, Search teams, team-result counts, no search
+result, every-club descriptions, no teams in this season, and Search all teams. Include
+metadata title/description functions for matches, standings, news, team, team directory,
+competition, and prediction pages.
 
 - [ ] **Step 5: Write and run a failing Spanish team/news render test**
 
-Render TeamHeader, SquadTable, and NewsList under Spanish. Assert `1.º en Mexican Liga
-BBVA MX`, `Plantel`, `Sin aparición`, `Noticias`, and `ahora mismo`; reject `1st in`,
-`Squad`, `Has not appeared`, `News`, and `just now`.
+Render TeamHeader, SquadTable, TeamSearch, and NewsList under Spanish. Assert `1.º en
+Mexican Liga BBVA MX`, `Plantel`, `Sin aparición`, `Buscar equipos`, `2 equipos`,
+`Noticias`, and `ahora mismo`; reject `1st in`, `Squad`, `Has not appeared`, `Search
+teams`, `2 teams`, `News`, and `just now`.
 
 Run: `npx vitest run src/components/TeamNewsI18n.test.tsx`
 
@@ -1221,7 +1233,11 @@ Expected: FAIL until mapper and components use structured/localized framing.
 Use explicit locale formatting for published timestamps. Preserve provider headline,
 description, byline, player/team names, and canonical competition names. Prefix team,
 match, news, home, and competition links; leave API fetch URLs unprefixed. Localize all
-page metadata and emit canonical plus English/Spanish alternates.
+page metadata and emit canonical plus English/Spanish alternates. Rename
+`TeamMembership.href` to `pathname` in `teamIndex.ts`; it remains an unprefixed semantic
+path. `TeamSearch` and both team-directory pages apply `replacePathLocale(pathname,
+locale)` when rendering links. Replace the bilingual `Buscar · Search` placeholder with
+one locale-specific catalog value.
 
 - [ ] **Step 7: Write failing stable API error-contract tests**
 
@@ -1405,6 +1421,7 @@ Open and inspect:
 ```text
 http://localhost:3012/en/
 http://localhost:3012/es/
+http://localhost:3012/es/teams
 http://localhost:3012/es/c/world-cup/2026/matches?view=now
 http://localhost:3012/es/c/world-cup/2026/matches?view=calendar
 http://localhost:3012/es/c/liga-mx/2026-apertura/standings
@@ -1412,10 +1429,11 @@ http://localhost:3012/es/c/world-cup/2026
 http://localhost:3012/es/c/liga-mx/2026-apertura/team/mex-america
 ```
 
-Check headings, dates, tooltips/accessible names, empty/error states available in the
-fixtures, dialog details, bracket controls, standings labels, team standing summary, and
-that the language switcher preserves the current route/query. Verify at 360px, 768px,
-and 1280px because the navigation surface changes across breakpoints.
+Check headings, team search placeholder/counts/results, dates, tooltips/accessible names,
+empty/error states available in the fixtures, dialog details, bracket controls,
+standings labels, team standing summary, and that the language switcher preserves the
+current route/query. Verify at 360px, 768px, and 1280px because the navigation surface
+changes across breakpoints.
 
 - [ ] **Step 5: Re-run the final gate after the latest correction**
 

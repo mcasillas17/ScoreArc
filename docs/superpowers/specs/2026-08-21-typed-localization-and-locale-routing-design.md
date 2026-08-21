@@ -33,9 +33,9 @@ second translation system.
 ## Route architecture
 
 Move all page routes below `src/app/[locale]/`, including the home page and competition,
-match, team, bracket, news, and calendar pages. The locale layout becomes the HTML root
-layout and sets `<html lang>` from the validated route parameter. API route handlers stay
-under `src/app/api/` and are not locale-prefixed.
+match, team, team-directory/search, bracket, news, and calendar pages. The locale layout
+becomes the HTML root layout and sets `<html lang>` from the validated route parameter.
+API route handlers stay under `src/app/api/` and are not locale-prefixed.
 
 `src/middleware.ts` applies only to navigable page paths. It excludes API routes, Next.js
 internals, static files, and public assets. Its behavior is:
@@ -125,7 +125,8 @@ Migrate every fixed string identified in the website audit, including:
   chrome, box scores, form, and head-to-head sections;
 - standings, league dial/ladder, qualification zones, group and third-place tables;
 - bracket stages, prediction controls, champion celebration, sharing, and social cards;
-- team pages, roster labels, fixture states, and provider-summary framing;
+- team pages, team directories/search, roster labels, fixture states, and
+  provider-summary framing;
 - news timestamps and publisher framing;
 - loading, empty, unavailable, retry, and error states;
 - `aria-label`, `title`, `alt`, screen-reader-only text, and control announcements;
