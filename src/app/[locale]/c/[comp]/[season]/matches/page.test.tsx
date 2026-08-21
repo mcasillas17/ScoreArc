@@ -109,6 +109,20 @@ describe('MatchesPage', () => {
     expect(html).not.toContain('provider secret');
     expect(metadata.title).toBe('Partidos · Premier League 2026-27');
   });
+
+  it.each(['en', 'es'])('publishes the exact %s matches canonical and language alternates', async (locale) => {
+    await expect(generateMetadata({
+      params: { locale, comp: 'world-cup', season: '2026' },
+    })).resolves.toMatchObject({
+      alternates: {
+        canonical: `/${locale}/c/world-cup/2026/matches`,
+        languages: {
+          en: '/en/c/world-cup/2026/matches',
+          es: '/es/c/world-cup/2026/matches',
+        },
+      },
+    });
+  });
 });
 
 // The mode is chosen on the server so a competition whose "Now" would be empty

@@ -26,13 +26,21 @@ export async function generateMetadata({
   params: { locale: string; comp: string; season: string };
 }): Promise<Metadata> {
   if (!isLocale(params.locale)) notFound();
-  const t = getTranslator(params.locale);
+  const locale = params.locale;
+  const t = getTranslator(locale);
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) return { title: t('matches.title') };
   const editionName = `${rc.competition.shortName} ${rc.season.label}`;
   return {
     title: t('matches.metaTitle', editionName),
     description: t('matches.metaDescription', editionName),
+    alternates: {
+      canonical: `/${locale}/c/${rc.competition.id}/${rc.season.id}/matches`,
+      languages: {
+        en: `/en/c/${rc.competition.id}/${rc.season.id}/matches`,
+        es: `/es/c/${rc.competition.id}/${rc.season.id}/matches`,
+      },
+    },
   };
 }
 
