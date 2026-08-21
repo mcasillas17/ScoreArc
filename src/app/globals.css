@@ -3655,11 +3655,14 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   background: var(--surface-2);
 }
 .ts-crest { flex: none; }
-.ts-id { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; min-width: 0; }
+/* flex:1 so the row is two anchors rather than one: the club at the left edge,
+   its competitions at the right. Without it the whole row hugged the left third
+   of a 1370px container and read as empty. */
+.ts-id { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; min-width: 0; flex: 1; }
 .ts-name { font-size: 14px; font-weight: 600; color: var(--text); }
 /* One club, one row, and a link per competition it plays in — a team page is
    competition-scoped, so there is no single page to point the name at. */
-.ts-comps { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.ts-comps { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
 .ts-comp {
   font-size: 11px;
   letter-spacing: 0.6px;
@@ -3687,6 +3690,9 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 @media (max-width: 760px) {
   .tsp { padding: 20px 16px 48px; }
   .tsp-grid { grid-template-columns: 1fr 1fr; }
+  /* Wrapped onto their own line, right-aligned pills would sit far from the
+     club they belong to. */
+  .ts-comps { margin-left: 0; }
 }
 
 /* The way back out of team discovery. Nothing is added to .hub-head: the
