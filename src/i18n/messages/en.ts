@@ -1,3 +1,17 @@
+function ordinal(rank: number): string {
+  const modulo100 = rank % 100;
+  const suffix = modulo100 >= 11 && modulo100 <= 13
+    ? 'th'
+    : rank % 10 === 1
+      ? 'st'
+      : rank % 10 === 2
+        ? 'nd'
+        : rank % 10 === 3
+          ? 'rd'
+          : 'th';
+  return `${rank}${suffix}`;
+}
+
 export const en = {
   'common.close': 'Close',
   'common.unavailable': 'Unavailable',
@@ -49,6 +63,68 @@ export const en = {
   'time.tomorrow': 'Tomorrow',
   'time.yesterday': 'Yesterday',
   'time.justNow': 'just now',
+  'team.backToTeams': (competition: string) => `← ${competition} teams`,
+  'team.formAndNextMatch': 'Form and next match',
+  'team.formWinAbbreviation': 'W',
+  'team.formDrawAbbreviation': 'D',
+  'team.formLossAbbreviation': 'L',
+  'team.noMatchesPlayed': 'No matches played yet.',
+  'team.next': 'Next',
+  'team.noUpcomingMatch': 'No upcoming match.',
+  'team.squad': 'Squad',
+  'team.matchesAndResults': 'Matches and results',
+  'team.noMatchesListed': 'No matches listed.',
+  'team.record': 'Record',
+  'team.pointsAbbreviation': 'pts',
+  'team.standingIn': (rank: number, competition: string) => `${ordinal(rank)} in ${competition}`,
+  'squad.player': 'Player',
+  'squad.positionAbbreviation': 'Pos',
+  'squad.position': 'Position',
+  'squad.appearancesAbbreviation': 'Apps',
+  'squad.appearances': 'Appearances',
+  'squad.goalsAbbreviation': 'G',
+  'squad.goals': 'Goals',
+  'squad.assistsAbbreviation': 'A',
+  'squad.assists': 'Assists',
+  'squad.shotsAbbreviation': 'Sh',
+  'squad.shots': 'Shots',
+  'squad.shotsOnTargetAbbreviation': 'SoT',
+  'squad.shotsOnTarget': 'Shots on target',
+  'squad.foulsCommittedAbbreviation': 'F',
+  'squad.foulsCommitted': 'Fouls committed',
+  'squad.yellowCardsAbbreviation': 'YC',
+  'squad.yellowCards': 'Yellow cards',
+  'squad.redCardsAbbreviation': 'RC',
+  'squad.redCards': 'Red cards',
+  'squad.savesAbbreviation': 'SV',
+  'squad.saves': 'Saves',
+  'squad.goalsConcededAbbreviation': 'GA',
+  'squad.goalsConceded': 'Goals conceded',
+  'squad.hasNotAppeared': 'Has not appeared',
+  'squad.unavailable': 'Squad unavailable.',
+  'news.title': 'News',
+  'news.latestHeadlines': 'Latest headlines from around the tournament.',
+  'news.unavailable': 'News is unavailable right now.',
+  'news.metaTitle': (edition: string) => `News · ${edition}`,
+  'news.metaDescription': (edition: string) => `Latest ${edition} headlines and tournament news.`,
+  'teams.title': 'Teams',
+  'teams.search': 'Search teams',
+  'teams.count': (count: number) => `${count} ${count === 1 ? 'team' : 'teams'}`,
+  'teams.filteredCount': (count: number, total: number) =>
+    `${count} of ${total} ${total === 1 ? 'team' : 'teams'}`,
+  'teams.noSearchResult': 'No team by that name.',
+  'teams.allCompetitions': '← All competitions',
+  'teams.directoryDescription': 'Every club across every competition.',
+  'teams.noSeasonTeams': 'No teams listed for this season yet.',
+  'teams.searchAll': 'Search all teams →',
+  'teams.metaTitle': 'Teams · ScoreArc',
+  'teams.metaDescription': 'Search every club ScoreArc covers, across all competitions.',
+  'teams.competitionMetaTitle': (edition: string) => `Teams · ${edition}`,
+  'teams.competitionMetaDescription': (edition: string) => `Every club in ${edition}.`,
+  'team.metaFallbackTitle': 'Team',
+  'team.metaTitle': (team: string, edition: string) => `${team} · ${edition}`,
+  'team.metaDescription': (team: string, edition: string) =>
+    `${team} squad, season record and matches in ${edition}.`,
   'standings.title': 'Standings',
   'standings.metaTitle': (edition: string) => `Standings · ${edition}`,
   'standings.metaDescription': (edition: string) => `${edition} table, top scorers and top assists.`,
@@ -145,6 +221,8 @@ export const en = {
   'champion.competition': 'CHAMPIONS',
   'meta.predictedChampion.title': (competition: string, champion: string) =>
     `My ${competition} champion: ${champion} 🏆`,
+  'meta.predictedChampion.description': (competition: string, champion: string) =>
+    `${champion} is my pick to win ${competition}. Build your bracket on ScoreArc.`,
   'og.liveFootball': 'Live Football',
   'og.predictedChampion': 'MY PREDICTED CHAMPION',
   'og.footer': 'Live scores · standings · brackets',

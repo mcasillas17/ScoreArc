@@ -4,9 +4,9 @@ import Link from 'next/link';
 import { resolveSeason } from '@/server/data/competitions';
 import { competitionTeams } from '@/server/data/teamIndex';
 import { isLocale } from '@/i18n/config';
+import { getTranslator } from '@/i18n/translate';
 import { replacePathLocale } from '@/i18n/pathnames';
 import TeamBadge from '@/components/TeamBadge';
-import LanguageText from '@/components/LanguageText';
 import SiteFooter from '@/components/SiteFooter';
 
 export const dynamic = 'force-dynamic';
@@ -17,18 +17,26 @@ interface Params {
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   if (!isLocale(params.locale)) notFound();
+  const locale = params.locale;
+  const t = getTranslator(locale);
   const rc = resolveSeason(params.comp, params.season);
-  if (!rc) return { title: 'Teams' };
+  if (!rc) return { title: t('teams.title') };
   const edition = `${rc.competition.shortName} ${rc.season.label}`;
+  const pathname = `/c/${rc.competition.id}/${rc.season.id}/teams`;
   return {
-    title: `Teams · ${edition}`,
-    description: `Every club in ${edition}.`,
+    title: t('teams.competitionMetaTitle', edition),
+    description: t('teams.competitionMetaDescription', edition),
+    alternates: {
+      canonical: `/${locale}${pathname}`,
+      languages: { en: `/en${pathname}`, es: `/es${pathname}` },
+    },
   };
 }
 
 export default async function CompetitionTeamsPage({ params }: Params) {
   if (!isLocale(params.locale)) notFound();
   const locale = params.locale;
+  const t = getTranslator(locale);
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) notFound();
   const teams = await competitionTeams(rc);
@@ -38,7 +46,7 @@ export default async function CompetitionTeamsPage({ params }: Params) {
       <header className="tsp-head">
         <p className="tsp-eyebrow">{rc.competition.name} · {rc.season.label}</p>
         <h1 className="tsp-title">
-          <LanguageText en="Teams" es="Equipos" />
+          {t('teams.title')}
         </h1>
       </header>
 
@@ -47,16 +55,13 @@ export default async function CompetitionTeamsPage({ params }: Params) {
         // has no club list to show, and saying so is better than an empty grid
         // that looks like a failed load.
         <p className="tsp-empty">
-          <LanguageText
-            en="No teams listed for this season yet."
-            es="Aún no hay equipos para esta temporada."
-          />
+          {t('teams.noSeasonTeams')}
         </p>
       ) : (
         <ul className="tsp-grid">
           {teams.map((team) => (
             <li key={team.id}>
-              <Link href={replacePathLocale(team.memberships[0].href, locale)} className="tsp-card">
+              <Link href={replacePathLocale(team.memberships[0].pathname, locale)} className="tsp-card">
                 <TeamBadge
                   team={{ id: team.id, name: team.name, abbr: team.abbr, crestUrl: team.crestUrl }}
                   size={34}
@@ -71,7 +76,7 @@ export default async function CompetitionTeamsPage({ params }: Params) {
 
       <p className="tsp-all">
         <Link href={`/${locale}/teams`}>
-          <LanguageText en="Search all teams →" es="Buscar todos los equipos →" />
+          {t('teams.searchAll')}
         </Link>
       </p>
       <SiteFooter />

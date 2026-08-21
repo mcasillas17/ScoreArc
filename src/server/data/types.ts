@@ -339,12 +339,18 @@ export interface TeamRecord {
   goalDifference: number | null;
 }
 
+export interface TeamStanding {
+  rank: number;
+  competition: string;
+}
+
 export interface TeamProfile {
   team: Team;
   location: string | null;
   color: string | null;
   altColor: string | null;
   record: TeamRecord | null;
+  standing: TeamStanding | null;
   standingSummary: string | null;
   squad: SquadPlayer[];
   schedule: Match[];

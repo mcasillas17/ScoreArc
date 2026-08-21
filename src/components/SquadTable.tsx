@@ -1,30 +1,31 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useTranslations } from '@/i18n/I18nProvider';
+import type { MessageKey } from '@/i18n/messages/en';
 import type { PlayerSeasonStats, SquadPlayer } from '@/server/data/types';
-import LanguageText from './LanguageText';
 
 type StatKey = keyof PlayerSeasonStats;
 
 interface Column {
   key: StatKey;
-  en: string;
-  es: string;
+  abbreviationKey: MessageKey;
+  labelKey: MessageKey;
   /** Goalkeeping columns render only on goalkeeper rows. */
   keeper?: boolean;
 }
 
 const COLUMNS: Column[] = [
-  { key: 'appearances', en: 'Apps', es: 'PJ' },
-  { key: 'totalGoals', en: 'G', es: 'G' },
-  { key: 'goalAssists', en: 'A', es: 'A' },
-  { key: 'totalShots', en: 'Sh', es: 'Tir' },
-  { key: 'shotsOnTarget', en: 'SoT', es: 'TaP' },
-  { key: 'foulsCommitted', en: 'F', es: 'FC' },
-  { key: 'yellowCards', en: 'YC', es: 'TA' },
-  { key: 'redCards', en: 'RC', es: 'TR' },
-  { key: 'saves', en: 'SV', es: 'ATJ', keeper: true },
-  { key: 'goalsConceded', en: 'GA', es: 'GR', keeper: true },
+  { key: 'appearances', abbreviationKey: 'squad.appearancesAbbreviation', labelKey: 'squad.appearances' },
+  { key: 'totalGoals', abbreviationKey: 'squad.goalsAbbreviation', labelKey: 'squad.goals' },
+  { key: 'goalAssists', abbreviationKey: 'squad.assistsAbbreviation', labelKey: 'squad.assists' },
+  { key: 'totalShots', abbreviationKey: 'squad.shotsAbbreviation', labelKey: 'squad.shots' },
+  { key: 'shotsOnTarget', abbreviationKey: 'squad.shotsOnTargetAbbreviation', labelKey: 'squad.shotsOnTarget' },
+  { key: 'foulsCommitted', abbreviationKey: 'squad.foulsCommittedAbbreviation', labelKey: 'squad.foulsCommitted' },
+  { key: 'yellowCards', abbreviationKey: 'squad.yellowCardsAbbreviation', labelKey: 'squad.yellowCards' },
+  { key: 'redCards', abbreviationKey: 'squad.redCardsAbbreviation', labelKey: 'squad.redCards' },
+  { key: 'saves', abbreviationKey: 'squad.savesAbbreviation', labelKey: 'squad.saves', keeper: true },
+  { key: 'goalsConceded', abbreviationKey: 'squad.goalsConcededAbbreviation', labelKey: 'squad.goalsConceded', keeper: true },
 ];
 
 const KEEPER = new Set(['G', 'GK']);
@@ -47,6 +48,7 @@ function Stat({ value }: { value: number | null }) {
 }
 
 export default function SquadTable({ squad }: { squad: SquadPlayer[] }) {
+  const t = useTranslations();
   const [sortKey, setSortKey] = useState<StatKey>('appearances');
   const [descending, setDescending] = useState(true);
 
@@ -82,7 +84,7 @@ export default function SquadTable({ squad }: { squad: SquadPlayer[] }) {
   if (squad.length === 0) {
     return (
       <p className="sq-empty">
-        <LanguageText en="Squad unavailable." es="Plantel no disponible." />
+        {t('squad.unavailable')}
       </p>
     );
   }
@@ -94,10 +96,10 @@ export default function SquadTable({ squad }: { squad: SquadPlayer[] }) {
           <tr>
             <th className="sq-num" scope="col">#</th>
             <th className="sq-player" scope="col">
-              <LanguageText en="Player" es="Jugador" />
+              {t('squad.player')}
             </th>
             <th className="sq-pos" scope="col">
-              <LanguageText en="Pos" es="Pos" />
+              <span title={t('squad.position')}>{t('squad.positionAbbreviation')}</span>
             </th>
             {columns.map((c) => (
               <th
@@ -106,8 +108,14 @@ export default function SquadTable({ squad }: { squad: SquadPlayer[] }) {
                 className={`sq-stat${sortKey === c.key ? ' sq-sorted' : ''}`}
                 aria-sort={sortKey === c.key ? (descending ? 'descending' : 'ascending') : 'none'}
               >
-                <button type="button" className="sq-sort" onClick={() => sortBy(c.key)}>
-                  <LanguageText en={c.en} es={c.es} />
+                <button
+                  type="button"
+                  className="sq-sort"
+                  onClick={() => sortBy(c.key)}
+                  aria-label={t(c.labelKey)}
+                  title={t(c.labelKey)}
+                >
+                  {t(c.abbreviationKey)}
                 </button>
               </th>
             ))}
@@ -123,7 +131,7 @@ export default function SquadTable({ squad }: { squad: SquadPlayer[] }) {
                   <span className="sq-name">{player.name}</span>
                   {player.stats === null && (
                     <span className="sq-tag">
-                      <LanguageText en="Has not appeared" es="Sin aparición" />
+                      {t('squad.hasNotAppeared')}
                     </span>
                   )}
                 </td>

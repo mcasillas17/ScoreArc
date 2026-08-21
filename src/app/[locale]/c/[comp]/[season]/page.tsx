@@ -42,7 +42,18 @@ export async function generateMetadata({ params, searchParams }: { params: { loc
   const championName = name ?? champ;
   const og = `/api/og?champ=${encodeURIComponent(champ)}&name=${encodeURIComponent(championName)}&comp=${encodeURIComponent(label)}&locale=${encodeURIComponent(locale)}`;
   const title = t('meta.predictedChampion.title', rc.competition.shortName, championName);
-  return { title, alternates, openGraph: { title, images: [{ url: og, width: 1200, height: 630 }] }, twitter: { card: 'summary_large_image', title, images: [og] } };
+  const description = t(
+    'meta.predictedChampion.description',
+    rc.competition.shortName,
+    championName,
+  );
+  return {
+    title,
+    description,
+    alternates,
+    openGraph: { title, description, images: [{ url: og, width: 1200, height: 630 }] },
+    twitter: { card: 'summary_large_image', title, description, images: [og] },
+  };
 }
 
 export default async function Workspace({ params }: { params: { locale: string; comp: string; season: string } }) {

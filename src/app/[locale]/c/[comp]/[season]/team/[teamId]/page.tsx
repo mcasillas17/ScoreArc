@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
+import { getTranslator } from '@/i18n/translate';
 import { resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import { providerTeamId } from '@/server/data/teamIdentity';
@@ -8,7 +9,6 @@ import type { Match } from '@/server/data/types';
 import TeamHeader from '@/components/TeamHeader';
 import SquadTable from '@/components/SquadTable';
 import TeamBadge from '@/components/TeamBadge';
-import LanguageText from '@/components/LanguageText';
 import LocalTime from '@/components/LocalTime';
 import Link from 'next/link';
 import SiteFooter from '@/components/SiteFooter';
@@ -21,15 +21,23 @@ interface Params {
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   if (!isLocale(params.locale)) notFound();
+  const locale = params.locale;
+  const t = getTranslator(locale);
   const rc = resolveSeason(params.comp, params.season);
-  if (!rc) return { title: 'Team' };
+  if (!rc) return { title: t('team.metaFallbackTitle') };
   const upstreamId = providerTeamId(params.teamId);
-  if (!upstreamId) return { title: 'Team' };
+  if (!upstreamId) return { title: t('team.metaFallbackTitle') };
   const profile = await dataStore.getTeam(rc, upstreamId);
-  if (!profile) return { title: 'Team' };
+  if (!profile) return { title: t('team.metaFallbackTitle') };
+  const edition = `${rc.competition.shortName} ${rc.season.label}`;
+  const pathname = `/c/${rc.competition.id}/${rc.season.id}/team/${params.teamId}`;
   return {
-    title: `${profile.team.name} · ${rc.competition.shortName} ${rc.season.label}`,
-    description: `${profile.team.name} squad, season record and matches in ${rc.competition.shortName} ${rc.season.label}.`,
+    title: t('team.metaTitle', profile.team.name, edition),
+    description: t('team.metaDescription', profile.team.name, edition),
+    alternates: {
+      canonical: `/${locale}${pathname}`,
+      languages: { en: `/en${pathname}`, es: `/es${pathname}` },
+    },
   };
 }
 
@@ -47,6 +55,7 @@ function resultFor(match: Match, teamId: string): 'W' | 'D' | 'L' | null {
 export default async function TeamPage({ params }: Params) {
   if (!isLocale(params.locale)) notFound();
   const locale = params.locale;
+  const t = getTranslator(locale);
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) notFound();
   // The URL carries our canonical id; the provider is asked by its own number.
@@ -70,14 +79,26 @@ export default async function TeamPage({ params }: Params) {
           and browser-back is not navigation. */}
       <p className="tsp-back">
         <Link href={`/${locale}/c/${rc.competition.id}/${rc.season.id}/teams`}>
-          ← {rc.competition.shortName} <LanguageText en="teams" es="equipos" />
+          {t('team.backToTeams', rc.competition.shortName)}
         </Link>
       </p>
-      <TeamHeader profile={profile} teamStyle={rc.competition.teamStyle} />
+      <TeamHeader
+        profile={{
+          team: profile.team,
+          location: profile.location,
+          color: profile.color,
+          altColor: profile.altColor,
+          record: profile.record,
+          standing: profile.standing,
+          standingSummary: profile.standingSummary,
+        }}
+        teamStyle={rc.competition.teamStyle}
+        locale={locale}
+      />
 
       <section className="tm-section">
         <h2 className="section-label">
-          <LanguageText en="Form and next match" es="Forma y próximo partido" />
+          {t('team.formAndNextMatch')}
         </h2>
         <div className="tm-form-row">
           {form.length > 0 ? (
@@ -88,9 +109,9 @@ export default async function TeamPage({ params }: Params) {
                   <li key={m.id} className={`tm-chip tm-chip--${r ?? 'na'}`}>
                     {/* Ganado / Empate / Perdido -- W-D-L is not the
                         abbreviation a Spanish reader expects. */}
-                    {r === 'W' && <LanguageText en="W" es="G" />}
-                    {r === 'D' && <LanguageText en="D" es="E" />}
-                    {r === 'L' && <LanguageText en="L" es="P" />}
+                    {r === 'W' && t('team.formWinAbbreviation')}
+                    {r === 'D' && t('team.formDrawAbbreviation')}
+                    {r === 'L' && t('team.formLossAbbreviation')}
                     {r === null && '–'}
                   </li>
                 );
@@ -98,24 +119,24 @@ export default async function TeamPage({ params }: Params) {
             </ol>
           ) : (
             <p className="tm-none">
-              <LanguageText en="No matches played yet." es="Aún no ha jugado." />
+              {t('team.noMatchesPlayed')}
             </p>
           )}
 
           {next ? (
             <p className="tm-next">
               <span className="tm-next-label">
-                <LanguageText en="Next" es="Próximo" />
+                {t('team.next')}
               </span>
               <TeamBadge team={next.home} size={20} style={rc.competition.teamStyle} />
               <span className="tm-next-teams">
-                {next.home.abbr} v {next.away.abbr}
+                {next.home.abbr} {t('match.versusShort')} {next.away.abbr}
               </span>
               <LocalTime iso={next.kickoff} mode="dayTime" />
             </p>
           ) : (
             <p className="tm-none">
-              <LanguageText en="No upcoming match." es="Sin próximo partido." />
+              {t('team.noUpcomingMatch')}
             </p>
           )}
         </div>
@@ -123,18 +144,18 @@ export default async function TeamPage({ params }: Params) {
 
       <section className="tm-section">
         <h2 className="section-label">
-          <LanguageText en="Squad" es="Plantel" />
+          {t('team.squad')}
         </h2>
         <SquadTable squad={profile.squad} />
       </section>
 
       <section className="tm-section">
         <h2 className="section-label">
-          <LanguageText en="Matches and results" es="Partidos y resultados" />
+          {t('team.matchesAndResults')}
         </h2>
         {profile.schedule.length === 0 ? (
           <p className="tm-none">
-            <LanguageText en="No matches listed." es="Sin partidos." />
+            {t('team.noMatchesListed')}
           </p>
         ) : (
           <ul className="tm-matchlist">

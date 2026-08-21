@@ -1,8 +1,20 @@
 import type { CSSProperties } from 'react';
 import type { TeamProfile } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
+import type { Locale } from '@/i18n/config';
+import { getTranslator } from '@/i18n/translate';
 import TeamBadge from './TeamBadge';
-import LanguageText from './LanguageText';
+
+export type TeamHeaderProfile = Pick<
+  TeamProfile,
+  | 'team'
+  | 'location'
+  | 'color'
+  | 'altColor'
+  | 'record'
+  | 'standing'
+  | 'standingSummary'
+>;
 
 /**
  * How dark a club colour may be before the header falls back to the
@@ -44,8 +56,17 @@ export function usableAccent(color: string | null, altColor: string | null): str
 }
 
 export default function TeamHeader(
-  { profile, teamStyle }: { profile: TeamProfile; teamStyle: TeamStyle },
+  {
+    profile,
+    teamStyle,
+    locale,
+  }: {
+    profile: TeamHeaderProfile;
+    teamStyle: TeamStyle;
+    locale: Locale;
+  },
 ) {
+  const t = getTranslator(locale);
   const accent = usableAccent(profile.color, profile.altColor);
   // Only override when the club's colour is readable; otherwise inherit the
   // competition accent already injected on the layout.
@@ -69,23 +90,23 @@ export default function TeamHeader(
           {profile.record && (
             <span className="tm-record">
               <span className="tm-record-label">
-                <LanguageText en="Record" es="Récord" />
+                {t('team.record')}
               </span>
               <strong>{profile.record.summary}</strong>
               {profile.record.points !== null && (
                 <span className="tm-pts">
                   {profile.record.points}{' '}
-                  <LanguageText en="pts" es="pts" />
+                  {t('team.pointsAbbreviation')}
                 </span>
               )}
             </span>
           )}
-          {/* Provider-authored and English-only ("1st in Mexican Liga BBVA
-              MX"). Left as sent rather than half-translated: our own backend
-              builds this string from the standing row instead, so it becomes
-              translatable when the frontend moves onto that API. */}
           {profile.standingSummary && (
-            <span className="tm-standing">{profile.standingSummary}</span>
+            <span className="tm-standing">
+              {profile.standing
+                ? t('team.standingIn', profile.standing.rank, profile.standing.competition)
+                : profile.standingSummary}
+            </span>
           )}
         </div>
       </div>

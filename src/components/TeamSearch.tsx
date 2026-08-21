@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useLocale, useTranslations } from '@/i18n/I18nProvider';
+import { replacePathLocale } from '@/i18n/pathnames';
 import type { IndexedTeam } from '@/server/data/teamIndex';
 import TeamBadge from './TeamBadge';
-import LanguageText from './LanguageText';
 
 /**
  * Fold accents so "america" finds "América".
@@ -22,6 +23,8 @@ function fold(value: string): string {
 }
 
 export default function TeamSearch({ teams }: { teams: IndexedTeam[] }) {
+  const locale = useLocale();
+  const t = useTranslations();
   const [query, setQuery] = useState('');
 
   const folded = useMemo(
@@ -50,7 +53,7 @@ export default function TeamSearch({ teams }: { teams: IndexedTeam[] }) {
     <div className="ts">
       <label className="ts-field">
         <span className="sr-only">
-          <LanguageText en="Search teams" es="Buscar equipos" />
+          {t('teams.search')}
         </span>
         <input
           type="search"
@@ -58,28 +61,22 @@ export default function TeamSearch({ teams }: { teams: IndexedTeam[] }) {
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           autoComplete="off"
-          placeholder="Buscar · Search"
+          placeholder={t('teams.search')}
           aria-describedby="ts-count"
         />
       </label>
 
       <p className="ts-count" id="ts-count" aria-live="polite">
         {results.length === teams.length ? (
-          <LanguageText
-            en={`${teams.length} teams`}
-            es={`${teams.length} equipos`}
-          />
+          t('teams.count', teams.length)
         ) : (
-          <LanguageText
-            en={`${results.length} of ${teams.length} teams`}
-            es={`${results.length} de ${teams.length} equipos`}
-          />
+          t('teams.filteredCount', results.length, teams.length)
         )}
       </p>
 
       {results.length === 0 ? (
         <p className="ts-empty">
-          <LanguageText en="No team by that name." es="Ningún equipo con ese nombre." />
+          {t('teams.noSearchResult')}
         </p>
       ) : (
         <ul className="ts-list">
@@ -97,7 +94,7 @@ export default function TeamSearch({ teams }: { teams: IndexedTeam[] }) {
                   {team.memberships.map((membership) => (
                     <Link
                       key={`${membership.competitionId}:${membership.seasonId}`}
-                      href={membership.href}
+                      href={replacePathLocale(membership.pathname, locale)}
                       className="ts-comp"
                     >
                       {membership.competitionName}

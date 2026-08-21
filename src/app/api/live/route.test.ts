@@ -24,7 +24,10 @@ function match(id: string, kickoff: string, state: Match['state'] = 'scheduled')
 }
 
 describe('GET /api/live', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
+  });
 
   it('labels every match with its competition', async () => {
     vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([match('m1', '2026-08-20T00:00:00Z', 'live')]);
@@ -73,10 +76,20 @@ describe('GET /api/live', () => {
   });
 
   it('502s only when every competition fails', async () => {
-    vi.spyOn(dataStore, 'getLiveWindow').mockRejectedValue(new Error('upstream unavailable'));
+    vi.spyOn(dataStore, 'getLiveWindow').mockRejectedValue(
+      new Error('upstream unavailable: sensitive provider detail'),
+    );
     const { GET } = await import('./route');
     const res = await GET();
     expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: { code: 'UPSTREAM_UNAVAILABLE' } });
+    expect(trackAPIRequestFailure).toHaveBeenCalledTimes(listCompetitions().length);
+    expect(trackAPIRequestFailure).toHaveBeenCalledWith(
+      'live',
+      200,
+      expect.any(String),
+      expect.any(String),
+    );
   });
 
   // The merge is capped so a six-row band does not ship a three-week window.

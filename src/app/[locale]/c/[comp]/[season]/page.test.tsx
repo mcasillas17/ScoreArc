@@ -62,23 +62,48 @@ describe('competition season root', () => {
 });
 
 describe('competition bracket metadata', () => {
-  it('localizes a predicted champion title and preserves locale in canonical alternatives', async () => {
+  it.each([
+    {
+      locale: 'en' as const,
+      title: 'My World Cup champion: México 🏆',
+      description: 'México is my pick to win World Cup. Build your bracket on ScoreArc.',
+    },
+    {
+      locale: 'es' as const,
+      title: 'Mi campeón de World Cup: México 🏆',
+      description: 'México es mi elección para ganar World Cup. Arma tu cuadro en ScoreArc.',
+    },
+  ])('localizes predicted-champion metadata in $locale without changing share URLs', async ({ locale, title, description }) => {
     const metadata = await generateMetadata({
-      params: { locale: 'es', comp: 'world-cup', season: '2026' },
+      params: { locale, comp: 'world-cup', season: '2026' },
       searchParams: { c: 'MEX', name: 'México' },
     });
 
     expect(metadata).toMatchObject({
-      title: 'Mi campeón de World Cup: México 🏆',
+      title,
+      description,
       alternates: {
-        canonical: '/es/c/world-cup/2026?c=MEX&name=M%C3%A9xico',
+        canonical: `/${locale}/c/world-cup/2026?c=MEX&name=M%C3%A9xico`,
         languages: {
           en: '/en/c/world-cup/2026?c=MEX&name=M%C3%A9xico',
           es: '/es/c/world-cup/2026?c=MEX&name=M%C3%A9xico',
         },
       },
-      openGraph: { title: 'Mi campeón de World Cup: México 🏆' },
-      twitter: { title: 'Mi campeón de World Cup: México 🏆' },
+      openGraph: {
+        title,
+        description,
+        images: [{
+          url: `/api/og?champ=MEX&name=M%C3%A9xico&comp=World%20Cup%202026&locale=${locale}`,
+          width: 1200,
+          height: 630,
+        }],
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title,
+        description,
+        images: [`/api/og?champ=MEX&name=M%C3%A9xico&comp=World%20Cup%202026&locale=${locale}`],
+      },
     });
   });
 });

@@ -9,7 +9,8 @@ export interface TeamMembership {
   competitionName: string;
   seasonId: string;
   seasonLabel: string;
-  href: string;
+  /** Locale-neutral public pathname. Rendering adds the validated locale. */
+  pathname: string;
 }
 
 export interface IndexedTeam {
@@ -62,7 +63,7 @@ export async function competitionTeams(rc: CompetitionSeason): Promise<IndexedTe
           competitionName: rc.competition.shortName,
           seasonId: rc.season.id,
           seasonLabel: rc.season.label,
-          href: `/c/${rc.competition.id}/${rc.season.id}/team/${canonical}`,
+          pathname: `/c/${rc.competition.id}/${rc.season.id}/team/${canonical}`,
         }],
       });
     }
