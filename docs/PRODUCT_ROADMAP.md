@@ -368,6 +368,24 @@ Also measured: **there is no jornada/matchday number to group by.** `mex.1`,
 `eng.1` and `usa.1` all return no `week`, no round and an empty `calendar`, so
 matchday grouping is not built. See the spec's "Out of scope" table.
 
+### E14 · Home digest and global navigation — designed, ready to build
+
+Branch `feat/home-digest`.
+[spec](superpowers/specs/2026-08-21-home-digest-and-global-nav-design.md)
+
+The home page shows the same matches three times — live band, results/next
+columns, and nine tiles each repeating the next fixture — because the tiles are
+doing navigation's job. A global collapsible nav takes that job; the home page
+becomes a digest (what's on, leading scorers, news) and each section owns its
+depth.
+
+Also fixes a measured defect: at 390px the current sidebar's four section links
+render at `width: 0, height: 0`, so phone users have no section navigation at
+all.
+
+Explicitly out: trending (telemetry is write-only), and derived facts like
+"longest unbeaten run", which need to state what they were counted over.
+
 ### E13 · Competition simulation — noted, not designed
 
 Simulate a competition forward from **its current state**, the way the bracket
