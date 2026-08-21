@@ -27,7 +27,7 @@ function NewsCard({ a }: { a: NewsArticle }) {
         <h3 className="nw-headline">{a.headline}</h3>
         {a.description && <p className="nw-desc">{a.description}</p>}
         <div className="nw-meta">
-          <span>{a.byline || 'ESPN'}</span>
+          <span>{a.byline || t('news.defaultByline')}</span>
           {publishedTime && (
             <span suppressHydrationWarning className="nw-time">
               {publishedTime}

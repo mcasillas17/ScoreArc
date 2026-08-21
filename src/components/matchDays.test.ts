@@ -84,7 +84,7 @@ describe('groupByDay', () => {
 
 // The app's language, not the browser's: a reader who picks Spanish on an
 // English laptop was getting "Saturday, Oct 17" under an otherwise Spanish
-// page, because toLocaleDateString([]) reads the machine.
+// page, because an empty locale list reads the machine locale.
 describe('dayHeading in Spanish', () => {
   it('speaks the relative days', () => {
     expect(dayHeading(at(2026, 7, 18).kickoff, NOW, 'es')).toBe('Hoy');
