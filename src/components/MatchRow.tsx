@@ -4,6 +4,7 @@ import type { Match, Team } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
 import { flagUrl } from '@/lib/flags';
 import LocalTime, { localTimeText, useLocalNow } from './LocalTime';
+import { useLanguage } from './LanguageProvider';
 
 // Extracted from MatchCalendar when the "Now" view arrived: a match has to look
 // the same wherever it is listed, and two copies of this markup would drift the
@@ -33,6 +34,7 @@ export default function MatchRow({
   onOpen: () => void;
 }) {
   const now = useLocalNow();
+  const { language } = useLanguage();
   const started = match.state !== 'scheduled';
   const status = match.state === 'live'
     ? (match.minute ?? match.statusDetail)
@@ -47,7 +49,7 @@ export default function MatchRow({
       ? `${match.home.name} ${match.homeScore ?? 0}, ${match.away.name} ${match.awayScore ?? 0}`
       : `${match.home.name} versus ${match.away.name}`,
     status,
-    !started && now ? localTimeText(match.kickoff, 'dayTime', now) : null,
+    !started && now ? localTimeText(match.kickoff, 'dayTime', now, language) : null,
   ].filter(Boolean).join(', ');
 
   return (

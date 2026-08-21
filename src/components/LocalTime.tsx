@@ -2,6 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { relativeDay } from './matchDays';
+import { useLanguage, type Language } from './LanguageProvider';
+
+// Kickoff times follow the app's language too: es-MX renders a 24-hour clock,
+// so "8:00 PM" becomes "20:00" rather than an English time on a Spanish page.
+const LOCALE: Record<Language, string> = { en: 'en-US', es: 'es-MX' };
 
 export type LocalTimeMode = 'time' | 'day' | 'dayTime';
 
@@ -20,12 +25,20 @@ export function useLocalNow(): Date | null {
 }
 
 /** The same formatting as the component, for callers that need a string. */
-export function localTimeText(iso: string, mode: LocalTimeMode, now: Date): string {
+export function localTimeText(
+  iso: string,
+  mode: LocalTimeMode,
+  now: Date,
+  language: Language = 'en',
+): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const time = d.toLocaleTimeString(LOCALE[language] ?? LOCALE.en, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
   if (mode === 'time') return time;
-  const day = relativeDay(iso, now);
+  const day = relativeDay(iso, now, language);
   return mode === 'day' ? day : `${day} ${time}`;
 }
 
@@ -49,7 +62,8 @@ export function localTimeText(iso: string, mode: LocalTimeMode, now: Date): stri
  */
 export default function LocalTime({ iso, mode = 'time' }: { iso: string; mode?: LocalTimeMode }) {
   const now = useLocalNow();
+  const { language } = useLanguage();
   if (!now) return <span className="lt-pending" aria-hidden>—</span>;
-  const text = localTimeText(iso, mode, now);
+  const text = localTimeText(iso, mode, now, language);
   return text ? <>{text}</> : null;
 }

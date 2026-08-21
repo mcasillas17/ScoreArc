@@ -69,3 +69,24 @@ describe('groupByDay', () => {
     expect(new Set(groups.map((g) => g.key)).size).toBe(2);
   });
 });
+
+// The app's language, not the browser's: a reader who picks Spanish on an
+// English laptop was getting "Saturday, Oct 17" under an otherwise Spanish
+// page, because toLocaleDateString([]) reads the machine.
+describe('dayHeading in Spanish', () => {
+  it('speaks the relative days', () => {
+    expect(dayHeading(at(2026, 7, 18).kickoff, NOW, 'es')).toBe('Hoy');
+    expect(dayHeading(at(2026, 7, 19).kickoff, NOW, 'es')).toBe('Mañana');
+    expect(dayHeading(at(2026, 7, 17).kickoff, NOW, 'es')).toBe('Ayer');
+  });
+
+  it('formats weekdays and dates with a Spanish locale', () => {
+    expect(dayHeading(at(2026, 7, 21).kickoff, NOW, 'es')).toBe('viernes');
+    expect(dayHeading(at(2026, 7, 28).kickoff, NOW, 'es')).toMatch(/viernes/);
+  });
+
+  it('still speaks English by default, so untouched callers do not change', () => {
+    expect(dayHeading(at(2026, 7, 18).kickoff, NOW)).toBe('Today');
+    expect(dayHeading(at(2026, 7, 21).kickoff, NOW)).toBe('Friday');
+  });
+});
