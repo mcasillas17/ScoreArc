@@ -43,7 +43,7 @@ const STORIES_SHOWN = 30;
 export default async function NewsPage({ params }: { params: { locale: string } }) {
   if (!isLocale(params.locale)) notFound();
   const t = getTranslator(params.locale);
-  const stories = await collectDatedStories(new Date(), {
+  const stories = await collectDatedStories(new Date(), params.locale, {
     perFeed: STORIES_PER_COMPETITION,
     limit: STORIES_SHOWN,
   });

@@ -1,4 +1,5 @@
 import { collectStories, publishedAgo, type DigestNewsItem } from '@/lib/digest';
+import type { Locale } from '@/i18n/config';
 import { listCompetitions, resolveSeason } from './competitions';
 import { dataStore } from './store';
 import type { NewsArticle } from './types';
@@ -19,6 +20,7 @@ import type { NewsArticle } from './types';
  */
 export async function collectDatedStories(
   now: Date,
+  locale: Locale,
   { perFeed, limit }: { perFeed: number; limit: number },
 ): Promise<DigestNewsItem[]> {
   const feeds = await Promise.all(
@@ -30,6 +32,6 @@ export async function collectDatedStories(
     article,
     // A duration, not a wall clock: safe to format on a server running UTC
     // because it means the same thing to a reader in any timezone.
-    ago: publishedAgo(now.getTime() - new Date(article.published).getTime()),
+    ago: publishedAgo(now.getTime() - new Date(article.published).getTime(), locale),
   }));
 }

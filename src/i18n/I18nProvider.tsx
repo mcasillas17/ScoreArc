@@ -10,12 +10,16 @@ type I18nValue = { locale: Locale; t: Translator; setLocale: (locale: Locale) =>
 
 const I18nContext = createContext<I18nValue | null>(null);
 
+export function localeCookie(locale: Locale, secure: boolean): string {
+  return `${LOCALE_COOKIE_NAME}=${locale};Path=/;Max-Age=31536000;SameSite=Lax${secure ? ';Secure' : ''}`;
+}
+
 export function I18nProvider({ locale, children }: { locale: Locale; children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const setLocale = useCallback(
     (nextLocale: Locale) => {
-      document.cookie = `${LOCALE_COOKIE_NAME}=${nextLocale};Path=/;Max-Age=31536000;SameSite=Lax`;
+      document.cookie = localeCookie(nextLocale, window.location.protocol === 'https:');
       const query = window.location.search;
       const hash = window.location.hash;
       router.push(`${replacePathLocale(pathname, nextLocale)}${query}${hash}`);

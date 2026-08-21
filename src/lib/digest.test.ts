@@ -13,45 +13,46 @@ const H = 3600_000;
 
 describe('untilKickoff', () => {
   it('reads in minutes under an hour', () => {
-    expect(untilKickoff(25 * 60_000)?.en).toBe('in 25 minutes');
+    expect(untilKickoff(25 * 60_000, 'en')).toBe('in 25 minutes');
+    expect(untilKickoff(25 * 60_000, 'es')).toBe('en 25 minutos');
   });
 
   it('rounds to whole hours once past one', () => {
-    expect(untilKickoff(4 * H + 12 * 60_000)?.en).toBe('in about 4 hours');
+    expect(untilKickoff(4 * H + 12 * 60_000, 'en')).toBe('in about 4 hours');
   });
 
   it('switches to days past a day out', () => {
-    expect(untilKickoff(50 * H)?.en).toBe('in about 2 days');
+    expect(untilKickoff(50 * H, 'en')).toBe('in about 2 days');
   });
 
   // A kickoff already in the past is not a countdown. Returning null lets the
   // caller fall back to a sentence that does not quote a negative duration.
   it('refuses a kickoff that has passed', () => {
-    expect(untilKickoff(-H)).toBeNull();
-    expect(untilKickoff(0)).toBeNull();
+    expect(untilKickoff(-H, 'en')).toBeNull();
+    expect(untilKickoff(0, 'es')).toBeNull();
   });
 });
 
 describe('publishedAgo', () => {
   it('reads in minutes, hours and days', () => {
-    expect(publishedAgo(20 * 60_000)?.en).toBe('20 minutes ago');
-    expect(publishedAgo(3 * H)?.en).toBe('3 hours ago');
-    expect(publishedAgo(50 * H)?.en).toBe('2 days ago');
+    expect(publishedAgo(20 * 60_000, 'en')).toBe('20 minutes ago');
+    expect(publishedAgo(3 * H, 'en')).toBe('3 hours ago');
+    expect(publishedAgo(50 * H, 'en')).toBe('2 days ago');
   });
 
   it('floors rather than rounds, so nothing reads older than it is', () => {
-    expect(publishedAgo(119 * 60_000)?.en).toBe('1 hour ago');
+    expect(publishedAgo(119 * 60_000, 'en')).toBe('1 hour ago');
   });
 
   it('says just now under a minute', () => {
-    expect(publishedAgo(30_000)?.en).toBe('just now');
-    expect(publishedAgo(30_000)?.es).toBe('ahora mismo');
+    expect(publishedAgo(30_000, 'en')).toBe('just now');
+    expect(publishedAgo(30_000, 'es')).toBe('ahora mismo');
   });
 
   // A publish time in the future is a provider defect, not a duration.
   it('refuses a negative or unparseable age', () => {
-    expect(publishedAgo(-1)).toBeNull();
-    expect(publishedAgo(NaN)).toBeNull();
+    expect(publishedAgo(-1, 'en')).toBeNull();
+    expect(publishedAgo(NaN, 'es')).toBeNull();
   });
 });
 
@@ -112,36 +113,36 @@ describe('chooseWhatsOn', () => {
 
 describe('whatsOnHeadline', () => {
   it('counts live matches', () => {
-    expect(whatsOnHeadline('live', 3, null).en).toBe('3 matches live right now.');
-    expect(whatsOnHeadline('live', 1, null).en).toBe('1 match live right now.');
+    expect(whatsOnHeadline('live', 3, null, 'en')).toBe('3 matches live right now.');
+    expect(whatsOnHeadline('live', 1, null, 'es')).toBe('1 partido en vivo ahora mismo.');
   });
 
   it('says how far off the next kickoff is', () => {
-    expect(whatsOnHeadline('upcoming', 4, 4 * H).en).toContain('next kickoff in about 4 hours');
+    expect(whatsOnHeadline('upcoming', 4, 4 * H, 'en')).toContain('next kickoff in about 4 hours');
   });
 
   // The dead-day case the spec calls out: an empty block reads as a broken
   // site, so the heading has to say these are results rather than fixtures.
   it('names recent results as results', () => {
-    expect(whatsOnHeadline('recent', 4, null).en).toContain('latest results');
-    expect(whatsOnHeadline('recent', 4, null).es).toContain('últimos resultados');
+    expect(whatsOnHeadline('recent', 4, null, 'en')).toContain('latest results');
+    expect(whatsOnHeadline('recent', 4, null, 'es')).toContain('últimos resultados');
   });
 
   // Falling through to 'recent' when there is nothing at all put "here are the
   // latest results" directly above "No matches in the current window."
   it('does not promise results when there are none', () => {
-    const line = whatsOnHeadline('none', 0, null);
-    expect(line.en).not.toContain('results');
-    expect(line.en).toContain('window is empty');
-    expect(line.es).toContain('ventana está vacía');
+    expect(whatsOnHeadline('none', 0, null, 'en')).not.toContain('results');
+    expect(whatsOnHeadline('none', 0, null, 'en')).toContain('window is empty');
+    expect(whatsOnHeadline('none', 0, null, 'es')).toContain('ventana está vacía');
   });
 
-  it('is bilingual in every mode', () => {
+  it('returns only the selected locale string in every mode', () => {
     for (const m of ['live', 'upcoming', 'recent', 'none'] as const) {
-      const line = whatsOnHeadline(m, 2, 2 * H);
-      expect(line.en.length).toBeGreaterThan(0);
-      expect(line.es.length).toBeGreaterThan(0);
-      expect(line.es).not.toBe(line.en);
+      const en = whatsOnHeadline(m, 2, 2 * H, 'en');
+      const es = whatsOnHeadline(m, 2, 2 * H, 'es');
+      expect(typeof en).toBe('string');
+      expect(typeof es).toBe('string');
+      expect(es).not.toBe(en);
     }
   });
 });

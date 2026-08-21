@@ -1,8 +1,6 @@
 import type { NewsArticle } from '@/server/data/types';
+import type { Locale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
-
-const enT = getTranslator('en');
-const esT = getTranslator('es');
 
 /**
  * What the home digest's "What's on" block is showing, and how it says so.
@@ -15,11 +13,6 @@ const esT = getTranslator('es');
  * above a block that has none.
  */
 export type WhatsOnMode = 'live' | 'upcoming' | 'recent' | 'none';
-
-export interface Bilingual {
-  en: string;
-  es: string;
-}
 
 /**
  * How far ahead a fixture still counts as "what's on".
@@ -78,27 +71,19 @@ export function chooseWhatsOn<T>(
  * the same thing in every timezone. Deliberately approximate — "in about 4
  * hours" cannot be wrong by the time the page is read the way "in 3h 58m" can.
  */
-export function untilKickoff(ms: number): Bilingual | null {
+export function untilKickoff(ms: number, locale: Locale): string | null {
   if (!Number.isFinite(ms) || ms <= 0) return null;
+  const t = getTranslator(locale);
   const minutes = Math.round(ms / 60000);
   if (minutes < 60) {
-    return {
-      en: minutes <= 1 ? enT('home.digest.inMinute') : enT('home.digest.inMinutes', minutes),
-      es: minutes <= 1 ? esT('home.digest.inMinute') : esT('home.digest.inMinutes', minutes),
-    };
+    return minutes <= 1 ? t('home.digest.inMinute') : t('home.digest.inMinutes', minutes);
   }
   const hours = Math.round(minutes / 60);
   if (hours < 24) {
-    return {
-      en: hours === 1 ? enT('home.digest.inHour') : enT('home.digest.inHours', hours),
-      es: hours === 1 ? esT('home.digest.inHour') : esT('home.digest.inHours', hours),
-    };
+    return hours === 1 ? t('home.digest.inHour') : t('home.digest.inHours', hours);
   }
   const days = Math.round(hours / 24);
-  return {
-    en: days === 1 ? enT('home.digest.inDay') : enT('home.digest.inDays', days),
-    es: days === 1 ? esT('home.digest.inDay') : esT('home.digest.inDays', days),
-  };
+  return days === 1 ? t('home.digest.inDay') : t('home.digest.inDays', days);
 }
 
 /**
@@ -118,27 +103,19 @@ export function untilKickoff(ms: number): Bilingual | null {
  * granularity is already coarse, and both pages are force-dynamic, so arriving
  * or reloading is always correct.
  */
-export function publishedAgo(ms: number): Bilingual | null {
+export function publishedAgo(ms: number, locale: Locale): string | null {
   if (!Number.isFinite(ms) || ms < 0) return null;
+  const t = getTranslator(locale);
   const minutes = Math.floor(ms / 60000);
   if (minutes < 60) {
-    return {
-      en: minutes <= 1 ? enT('home.digest.justNow') : enT('home.digest.minutesAgo', minutes),
-      es: minutes <= 1 ? esT('home.digest.justNow') : esT('home.digest.minutesAgo', minutes),
-    };
+    return minutes <= 1 ? t('home.digest.justNow') : t('home.digest.minutesAgo', minutes);
   }
   const hours = Math.floor(minutes / 60);
   if (hours < 24) {
-    return {
-      en: hours === 1 ? enT('home.digest.hourAgo') : enT('home.digest.hoursAgo', hours),
-      es: hours === 1 ? esT('home.digest.hourAgo') : esT('home.digest.hoursAgo', hours),
-    };
+    return hours === 1 ? t('home.digest.hourAgo') : t('home.digest.hoursAgo', hours);
   }
   const days = Math.floor(hours / 24);
-  return {
-    en: days === 1 ? enT('home.digest.dayAgo') : enT('home.digest.daysAgo', days),
-    es: days === 1 ? esT('home.digest.dayAgo') : esT('home.digest.daysAgo', days),
-  };
+  return days === 1 ? t('home.digest.dayAgo') : t('home.digest.daysAgo', days);
 }
 
 /**
@@ -155,36 +132,23 @@ export function whatsOnHeadline(
   mode: WhatsOnMode,
   count: number,
   msToNextKickoff: number | null,
-): Bilingual {
+  locale: Locale,
+): string {
+  const t = getTranslator(locale);
   if (mode === 'live') {
-    return {
-      en: enT('home.digest.liveHeadline', count),
-      es: esT('home.digest.liveHeadline', count),
-    };
+    return t('home.digest.liveHeadline', count);
   }
   if (mode === 'upcoming') {
-    const away = msToNextKickoff === null ? null : untilKickoff(msToNextKickoff);
+    const away = msToNextKickoff === null ? null : untilKickoff(msToNextKickoff, locale);
     if (!away) {
-      return {
-        en: enT('home.digest.upcomingHeadline'),
-        es: esT('home.digest.upcomingHeadline'),
-      };
+      return t('home.digest.upcomingHeadline');
     }
-    return {
-      en: enT('home.digest.upcomingTimedHeadline', away.en),
-      es: esT('home.digest.upcomingTimedHeadline', away.es),
-    };
+    return t('home.digest.upcomingTimedHeadline', away);
   }
   if (mode === 'none') {
-    return {
-      en: enT('home.digest.emptyHeadline'),
-      es: esT('home.digest.emptyHeadline'),
-    };
+    return t('home.digest.emptyHeadline');
   }
-  return {
-    en: enT('home.digest.recentHeadline'),
-    es: esT('home.digest.recentHeadline'),
-  };
+  return t('home.digest.recentHeadline');
 }
 
 /**
@@ -205,7 +169,7 @@ export function whatsOnHeadline(
  */
 export interface DigestNewsItem {
   article: NewsArticle;
-  ago: Bilingual | null;
+  ago: string | null;
 }
 
 /**

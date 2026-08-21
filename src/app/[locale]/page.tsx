@@ -73,7 +73,7 @@ export default async function Home({ params }: { params: { locale: string } }) {
       }),
     ),
     // ===== News ===== the same collection /news renders, at the digest's size.
-    collectDatedStories(now, { perFeed: STORIES_PER_COMPETITION, limit: STORIES_SHOWN }),
+    collectDatedStories(now, locale, { perFeed: STORIES_PER_COMPETITION, limit: STORIES_SHOWN }),
   ]);
 
   // ===== What's on =====
@@ -91,7 +91,7 @@ export default async function Home({ params }: { params: { locale: string } }) {
   const { mode, pool } = chooseWhatsOn(buckets, msUntilKickoff);
   const shown = pool.slice(0, WHATS_ON_SHOWN);
   // The count the heading quotes is the number of cards below it.
-  const headline = whatsOnHeadline(mode, shown.length, msToNext);
+  const headline = whatsOnHeadline(mode, shown.length, msToNext, locale);
 
   // ===== Leading scorers =====
   const boards: ScorerBoard[] = per
@@ -107,7 +107,7 @@ export default async function Home({ params }: { params: { locale: string } }) {
     <main className="dg">
       <header className="dg-head">
         <h1 className="dg-title">{t('home.digest.title')}</h1>
-        <p className="dg-sub">{headline[locale]}</p>
+        <p className="dg-sub">{headline}</p>
       </header>
 
       <section className="dg-sec">

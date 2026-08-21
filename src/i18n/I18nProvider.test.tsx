@@ -2,7 +2,7 @@
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { I18nProvider, useLocale, useSetLocale, useTranslations } from './I18nProvider';
+import { I18nProvider, localeCookie, useLocale, useSetLocale, useTranslations } from './I18nProvider';
 
 vi.mock('next/navigation', () => ({
   usePathname: () => window.location.pathname,
@@ -49,5 +49,11 @@ describe('I18nProvider', () => {
     expect(window.location.pathname).toBe('/es/matches');
     expect(window.location.search).toBe('?status=live');
     expect(window.location.hash).toBe('#scores');
+  });
+
+  it('marks the preference cookie Secure only on HTTPS', () => {
+    expect(localeCookie('es', true)).toContain(';Secure');
+    expect(localeCookie('es', false)).not.toContain(';Secure');
+    expect(localeCookie('es', true)).toContain('SameSite=Lax');
   });
 });
