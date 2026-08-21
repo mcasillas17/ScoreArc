@@ -48,8 +48,8 @@ describe('computeOverallTable', () => {
   const conferences = mapStandings(raw);
   const shield = computeOverallTable(conferences, {
     id: 'supporters-shield',
-    label: "Supporters' Shield",
-    zones: [{ from: 1, to: 1, kind: 'champion', label: "Supporters' Shield" }],
+    labelKey: 'standings.supportersShieldOverall',
+    zones: [{ from: 1, to: 1, kind: 'champion', labelKey: 'zone.supportersShield' }],
   });
 
   it('merges every club from every conference exactly once', () => {
@@ -71,10 +71,19 @@ describe('computeOverallTable', () => {
     expect(shield!.standings[1].team.name).toBe('Inter Miami CF');
   });
 
-  it('carries the configured id, label and its own zones', () => {
+  it('carries the configured id, semantic label key and its own zones', () => {
     expect(shield!.id).toBe('supporters-shield');
-    expect(shield!.name).toBe("Supporters' Shield");
-    expect(shield!.zones).toEqual([{ from: 1, to: 1, kind: 'champion', label: "Supporters' Shield" }]);
+    expect(shield!.labelKey).toBe('standings.supportersShieldOverall');
+    expect(shield!.zones).toEqual([{ from: 1, to: 1, kind: 'champion', labelKey: 'zone.supportersShield' }]);
+  });
+
+  it('serializes a computed table without inventing a provider display name', () => {
+    const serialized = JSON.parse(JSON.stringify(shield)) as Record<string, unknown>;
+    expect(serialized).toMatchObject({
+      id: 'supporters-shield',
+      labelKey: 'standings.supportersShieldOverall',
+    });
+    expect(serialized).not.toHaveProperty('name');
   });
 
   it('never re-ranks a club twice if the provider repeats it', () => {
@@ -82,12 +91,12 @@ describe('computeOverallTable', () => {
       { id: 'a', name: 'A', standings: [row('Shared', { points: 10 }), row('Solo', { points: 5 })] },
       { id: 'b', name: 'B', standings: [row('Shared', { points: 10 })] },
     ];
-    const merged = computeOverallTable(dup, { id: 'x', label: 'X' });
+    const merged = computeOverallTable(dup, { id: 'x', labelKey: 'standings.supportersShieldOverall' });
     expect(merged!.standings.map((s) => s.team.name)).toEqual(['Shared', 'Solo']);
   });
 
   it('returns null when there is nothing to merge', () => {
-    expect(computeOverallTable([], { id: 'x', label: 'X' })).toBeNull();
-    expect(computeOverallTable([{ id: 'a', name: 'A', standings: [] }], { id: 'x', label: 'X' })).toBeNull();
+    expect(computeOverallTable([], { id: 'x', labelKey: 'standings.supportersShieldOverall' })).toBeNull();
+    expect(computeOverallTable([{ id: 'a', name: 'A', standings: [] }], { id: 'x', labelKey: 'standings.supportersShieldOverall' })).toBeNull();
   });
 });

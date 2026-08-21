@@ -1,4 +1,4 @@
-import LanguageText from './LanguageText';
+import { useTranslations } from '@/i18n/I18nProvider';
 import type { Group } from "@/server/data/types";
 import { thirdPlacedRanking, QUALIFYING_THIRDS } from "@/lib/standings";
 import TeamBadge from "./TeamBadge";
@@ -17,6 +17,7 @@ export default function ThirdPlaceTable({
   teamStyle?: 'flag' | 'crest';
   teamBase?: string;
 }) {
+  const t = useTranslations();
   const rows = thirdPlacedRanking(groups);
   // thirdPlacedRanking only sets `qualifies` when the numeric criteria actually
   // separate 8th from 9th. If nothing qualifies, the order came from
@@ -24,26 +25,26 @@ export default function ThirdPlaceTable({
   // row class here would dress that up as a standing.
   const ranked = rows.some((r) => r.qualifies);
   if (rows.length === 0) {
-    return <p className="empty-text"><LanguageText en="Third-place data is unavailable right now." es="Los datos del tercer puesto no están disponibles en este momento." /></p>;
+    return <p className="empty-text">{t('standings.thirdPlaceUnavailable')}</p>;
   }
   return (
     <div className="std-panel">
       {!ranked ? (
-        <p className="lz-preseason"><LanguageText en="Not ranked yet — the qualification criteria do not separate these teams." es="Aún sin clasificación — los criterios no separan a estos equipos." /></p>
+        <p className="lz-preseason">{t('standings.thirdPlaceUnranked')}</p>
       ) : null}
       <table className="standings-table std-wide">
         <thead>
           <tr>
-            <th>#</th>
-            <th className="team-col"><LanguageText en="Team" es="Equipo" /></th>
-            <th title="Group">Grp</th>
-            <th title="Played">P</th>
-            <th title="Wins">W</th>
-            <th title="Draws">D</th>
-            <th title="Losses">L</th>
-            <th title="Goal Difference">GD</th>
-            <th className="pts-col" title="Points">
-              Pts
+            <th title={t('standings.positionTooltip')}>{t('standings.positionAbbreviation')}</th>
+            <th className="team-col">{t('standings.team')}</th>
+            <th title={t('standings.groupTooltip')}>{t('standings.groupAbbreviation')}</th>
+            <th title={t('standings.playedTooltip')}>{t('standings.playedAbbreviation')}</th>
+            <th title={t('standings.winsTooltip')}>{t('standings.winsAbbreviation')}</th>
+            <th title={t('standings.drawsTooltip')}>{t('standings.drawsAbbreviation')}</th>
+            <th title={t('standings.lossesTooltip')}>{t('standings.lossesAbbreviation')}</th>
+            <th title={t('standings.goalDifferenceTooltip')}>{t('standings.goalDifferenceAbbreviation')}</th>
+            <th className="pts-col" title={t('standings.pointsTooltip')}>
+              {t('standings.pointsAbbreviation')}
             </th>
           </tr>
         </thead>
@@ -69,8 +70,7 @@ export default function ThirdPlaceTable({
         </tbody>
       </table>
       <p className="std-note">
-        <span className="std-swatch" /> Top {QUALIFYING_THIRDS} third-placed teams advance to
-        the Round of 32.
+        <span className="std-swatch" /> {t('standings.thirdPlaceAdvanceNote', QUALIFYING_THIRDS)}
       </p>
     </div>
   );

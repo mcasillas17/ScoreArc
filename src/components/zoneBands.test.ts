@@ -16,11 +16,11 @@ function table(n: number, played = 3): Standing[] {
 }
 
 const PL: Zone[] = [
-  { from: 1, to: 1, kind: 'champion', label: 'Champion' },
-  { from: 2, to: 5, kind: 'ucl', label: 'Champions League' },
-  { from: 6, to: 6, kind: 'uel', label: 'Europa League' },
-  { from: 7, to: 7, kind: 'uecl', label: 'Conference League' },
-  { from: 18, to: 20, kind: 'relegation', label: 'Relegation' },
+  { from: 1, to: 1, kind: 'champion', labelKey: 'zone.champion' },
+  { from: 2, to: 5, kind: 'ucl', labelKey: 'zone.championsLeague' },
+  { from: 6, to: 6, kind: 'uel', labelKey: 'zone.europaLeague' },
+  { from: 7, to: 7, kind: 'uecl', labelKey: 'zone.conferenceLeague' },
+  { from: 18, to: 20, kind: 'relegation', labelKey: 'zone.relegation' },
 ];
 
 describe('toBands', () => {
@@ -59,8 +59,8 @@ describe('toBands', () => {
   // Overlap is a config mistake; a club must still appear exactly once.
   it('resolves overlapping zones in favour of the earlier one', () => {
     const overlapping: Zone[] = [
-      { from: 1, to: 4, kind: 'ucl', label: 'UCL' },
-      { from: 3, to: 6, kind: 'uel', label: 'UEL' },
+      { from: 1, to: 4, kind: 'ucl', labelKey: 'zone.championsLeague' },
+      { from: 3, to: 6, kind: 'uel', labelKey: 'zone.europaLeague' },
     ];
     const bands = toBands(table(10), overlapping);
     const ranks = bands.flatMap((b) => b.standings.map((s) => s.rank));
@@ -90,7 +90,7 @@ describe('toBands', () => {
     const bands = toBands(table(20, 0), PL);
     expect(bands).toHaveLength(1);
     expect(bands[0].kind).toBe('mid');
-    expect(bands[0].label).toBe('');
+    expect(bands[0].labelKey).toBeNull();
     expect(bands[0].from).toBe(1);
     expect(bands[0].to).toBe(20);
     expect(bands[0].standings).toHaveLength(20);
@@ -104,5 +104,10 @@ describe('toBands', () => {
     const kinds = toBands(partial, PL).map((b) => b.kind);
     expect(kinds).toContain('champion');
     expect(kinds).toContain('relegation');
+  });
+
+  it('carries semantic label keys without rendering prose', () => {
+    const champion = toBands(table(20), PL).find((band) => band.kind === 'champion');
+    expect(champion?.labelKey).toBe('zone.champion');
   });
 });

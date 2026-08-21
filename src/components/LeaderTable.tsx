@@ -1,4 +1,4 @@
-import LanguageText from './LanguageText';
+import { useTranslations } from '@/i18n/I18nProvider';
 import type { StatLeader } from "@/server/data/types";
 import TeamBadge from "./TeamBadge";
 import { teamHref } from './teamHref';
@@ -13,24 +13,31 @@ export default function LeaderTable({
   teamBase,
 }: {
   leaders: StatLeader[];
-  metric: { abbr: string; title: string; titleEs?: string };
+  metric: 'goals' | 'assists';
   teamStyle?: 'flag' | 'crest';
   teamBase?: string;
 }) {
+  const t = useTranslations();
+  const metricAbbreviation = metric === 'goals'
+    ? t('standings.goalsAbbreviation')
+    : t('standings.assistsAbbreviation');
+  const metricTooltip = metric === 'goals'
+    ? t('standings.goalsTooltip')
+    : t('standings.assistsTooltip');
   if (leaders.length === 0) {
-    return <p className="empty-text"><LanguageText en={`${metric.title} data is unavailable right now.`} es={`Los datos de ${metric.titleEs ?? metric.title} no están disponibles en este momento.`} /></p>;
+    return <p className="empty-text">{t(metric === 'goals' ? 'standings.goalsUnavailable' : 'standings.assistsUnavailable')}</p>;
   }
   return (
     <div className="std-panel">
       <table className="standings-table std-wide">
         <thead>
           <tr>
-            <th>#</th>
-            <th className="team-col"><LanguageText en="Player" es="Jugador" /></th>
-            <th className="team-col"><LanguageText en="Team" es="Equipo" /></th>
-            <th title="Matches played">MP</th>
-            <th className="pts-col" title={metric.title}>
-              {metric.abbr}
+            <th title={t('standings.positionTooltip')}>{t('standings.positionAbbreviation')}</th>
+            <th className="team-col">{t('standings.player')}</th>
+            <th className="team-col">{t('standings.team')}</th>
+            <th title={t('standings.matchesPlayedTooltip')}>{t('standings.matchesPlayedAbbreviation')}</th>
+            <th className="pts-col" title={metricTooltip}>
+              {metricAbbreviation}
             </th>
           </tr>
         </thead>

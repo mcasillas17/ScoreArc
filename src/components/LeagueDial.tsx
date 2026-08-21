@@ -5,7 +5,7 @@ import type { Standing } from '@/server/data/types';
 import { splitByCut } from './splitByCut';
 import type { TeamStyle } from '@/server/data/competitions';
 import { flagUrl } from '@/lib/flags';
-import { useLanguage } from './LanguageProvider';
+import { useTranslations } from '@/i18n/I18nProvider';
 
 // Full-ring standings dial: rank 1 at 12 o'clock, clockwise; a glowing gold arc
 // sweeps over the teams inside the qualification cut; the leader is crowned in
@@ -77,8 +77,7 @@ export default function LeagueDial({
   cut: number;
   teamStyle: TeamStyle;
 }) {
-  const { language } = useLanguage();
-  const spanish = language === 'es';
+  const t = useTranslations();
   // SVG ids are document-global. A cross-league cup draws two dials on one
   // page, and a shared gradient id meant the second dial silently reused the
   // first one's gradient — so both hubs glowed in whichever palette rendered
@@ -99,7 +98,7 @@ export default function LeagueDial({
   const a1 = pt(Math.min(cut, n), n, ARC_R);
 
   return (
-    <svg className="lld" viewBox="0 0 500 500" role="img" aria-label={spanish ? 'Dial de clasificación' : 'Standings dial'}>
+    <svg className="lld" viewBox="0 0 500 500" role="img" aria-label={t('standings.dialLabel')}>
       <defs>
         <radialGradient id={hubId} cx="50%" cy="50%" r="50%">
           <stop offset="0%" stopColor="var(--qual-glow, #40340f)" />
@@ -143,15 +142,15 @@ export default function LeagueDial({
 
       {/* centre hub: the leader, or an honest count before kick-off. */}
       {leader ? (<>
-        <text x={C} y={C - 30} fill="var(--text-muted)" fontSize={10} letterSpacing={3} textAnchor="middle">LEADER</text>
+        <text x={C} y={C - 30} fill="var(--text-muted)" fontSize={10} letterSpacing={3} textAnchor="middle">{t('standings.leader')}</text>
         <CrestDisc s={leader} teamStyle={teamStyle} x={C} y={C + 2} r={HUB_R}
           ring="var(--qual-bright, var(--gold-bright))" ringWidth={2.5} dim={false} idSuffix="hub" />
         <text x={C} y={C + 44} fill="var(--text)" fontSize={13} fontWeight={700} textAnchor="middle">
           {leader.team.name}
         </text>
       </>) : (<>
-        <text x={C} y={C - 6} fill="var(--text-muted)" fontSize={13} textAnchor="middle">{n} clubs</text>
-        <text x={C} y={C + 16} fill="var(--text-muted)" fontSize={13} textAnchor="middle">0 played</text>
+        <text x={C} y={C - 6} fill="var(--text-muted)" fontSize={13} textAnchor="middle">{t('standings.clubs', n)}</text>
+        <text x={C} y={C + 16} fill="var(--text-muted)" fontSize={13} textAnchor="middle">{t('standings.played', 0)}</text>
       </>)}
     </svg>
   );

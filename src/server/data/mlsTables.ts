@@ -1,5 +1,5 @@
 import type { Group, Standing } from './types';
-import type { Zone } from './competitions';
+import type { OverallTableLabelKey, Zone } from './competitions';
 
 // MLS is three competitions inside one regular season, and only two of them are
 // tables ESPN publishes.
@@ -48,7 +48,7 @@ export function compareByMlsRules(a: Standing, b: Standing): number {
  */
 export function computeOverallTable(
   groups: Group[],
-  config: { id: string; label: string; zones?: Zone[] },
+  config: { id: string; labelKey: OverallTableLabelKey; zones?: Zone[] },
 ): Group | null {
   const all = groups.flatMap((g) => g.standings);
   if (all.length === 0) return null;
@@ -67,5 +67,10 @@ export function computeOverallTable(
     .sort(compareByMlsRules)
     .map((s, i) => ({ ...s, rank: i + 1 }));
 
-  return { id: config.id, name: config.label, standings, zones: config.zones };
+  return {
+    id: config.id,
+    labelKey: config.labelKey,
+    standings,
+    zones: config.zones,
+  };
 }

@@ -1,12 +1,12 @@
 'use client';
 
-import LanguageText from './LanguageText';
 import type { Standing } from '@/server/data/types';
-import type { TeamStyle } from '@/server/data/competitions';
+import type { QualificationLabelKey, TeamStyle } from '@/server/data/competitions';
 import TeamBadge from './TeamBadge';
 import { teamHref } from './teamHref';
 import LeagueDial from './LeagueDial';
 import { splitByCut } from './splitByCut';
+import { useTranslations } from '@/i18n/I18nProvider';
 
 function fmtGD(gd: number): string {
   return gd > 0 ? `+${gd}` : String(gd);
@@ -28,14 +28,16 @@ export default function LeagueLadder({
   standings, qualification, teamStyle, teamBase,
 }: {
   standings: Standing[];
-  qualification: { cut: number; label: string };
+  qualification: { cut: number; labelKey: QualificationLabelKey };
   teamStyle: TeamStyle;
   teamBase?: string;
 }) {
+  const t = useTranslations();
   if (standings.length === 0) {
-    return <div className="empty-section"><p className="empty-text"><LanguageText en="Standings are unavailable right now." es="La clasificación no está disponible en este momento." /></p></div>;
+    return <div className="empty-section"><p className="empty-text">{t('standings.unavailable')}</p></div>;
   }
   const { inCut, out, started } = splitByCut(standings, qualification.cut);
+  const qualificationLabel = t(qualification.labelKey);
 
   return (
     <div className="ll-card">
@@ -43,11 +45,11 @@ export default function LeagueLadder({
         <div className="ll-left">
           <LeagueDial standings={standings} cut={qualification.cut} teamStyle={teamStyle} />
           {!started ? (
-            <p className="lz-preseason"><LanguageText en="Season not started — no matches played yet." es="La temporada no ha comenzado — aún no hay partidos jugados." /></p>
+            <p className="lz-preseason">{t('standings.preseason')}</p>
           ) : (
             <div className="ll-legend">
-              <span><i className="ll-dot ll-dot--in" />{qualification.label} · top {qualification.cut}</span>
-              <span><i className="ll-dot ll-dot--out" /><LanguageText en="Out" es="Fuera" /></span>
+              <span><i className="ll-dot ll-dot--in" />{qualificationLabel} · {t('standings.top', qualification.cut)}</span>
+              <span><i className="ll-dot ll-dot--out" />{t('standings.out')}</span>
             </div>
           )}
         </div>
@@ -67,14 +69,14 @@ export default function LeagueLadder({
           ) : (<>
             <div className="ll-band">
               <div className="ll-band-label ll-band-label--in">
-                <span>◆ {qualification.label}</span><span className="ll-band-n"><LanguageText en="Quarterfinals" es="Cuartos de final" /></span><span className="ll-rule" />
+                <span>◆ {qualificationLabel}</span><span className="ll-band-n">{t('round.quarterfinals')}</span><span className="ll-rule" />
               </div>
               {inCut.map((s) => <Row key={s.team.id} s={s} teamStyle={teamStyle} lig teamBase={teamBase} />)}
             </div>
-            <div className="ll-cutline"><span className="ll-rule" /><span><LanguageText en={`${qualification.label} cut`} es={`Corte de ${qualification.label}`} /></span><span className="ll-rule" /></div>
+            <div className="ll-cutline"><span className="ll-rule" /><span>{t('standings.cut', qualificationLabel)}</span><span className="ll-rule" /></div>
             <div className="ll-band ll-band--out">
               <div className="ll-band-label">
-                <span><LanguageText en="Out" es="Fuera" /></span><span className="ll-band-n">{qualification.cut + 1}–{standings.length}</span><span className="ll-rule" />
+                <span>{t('standings.out')}</span><span className="ll-band-n">{qualification.cut + 1}–{standings.length}</span><span className="ll-rule" />
               </div>
               {out.map((s) => <Row key={s.team.id} s={s} teamStyle={teamStyle} lig={false} teamBase={teamBase} />)}
             </div>

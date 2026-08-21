@@ -1,11 +1,19 @@
 import { intlLocale, type Locale } from './config';
 
 type DateInput = string | Date | null | undefined;
+type ConfiguredISODateInput = string | null | undefined;
 
 function parseDateInput(value: DateInput): Date | null {
   if (value == null) return null;
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parseConfiguredISODate(value: ConfiguredISODateInput): Date | null {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) return null;
+  return date;
 }
 
 export function formatDate(
@@ -15,6 +23,23 @@ export function formatDate(
 ): string | null {
   const date = parseDateInput(value);
   return date ? new Intl.DateTimeFormat(intlLocale(locale), options).format(date) : null;
+}
+
+export function formatDateRange(
+  startValue: ConfiguredISODateInput,
+  endValue: ConfiguredISODateInput,
+  locale: Locale,
+): string | null {
+  const start = parseConfiguredISODate(startValue);
+  const end = parseConfiguredISODate(endValue);
+  if (!start || !end || start.getTime() > end.getTime()) return null;
+
+  return new Intl.DateTimeFormat(intlLocale(locale), {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+  }).formatRange(start, end).replace(/\s*–\s*/, '–');
 }
 
 export function formatTime(value: DateInput, locale: Locale): string | null {

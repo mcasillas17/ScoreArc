@@ -1,4 +1,4 @@
-import type { Zone } from './competitions';
+import type { OverallTableLabelKey, Zone } from './competitions';
 
 export type MatchState = 'scheduled' | 'live' | 'finished';
 
@@ -122,9 +122,8 @@ export interface Standing {
   advanced: boolean;
 }
 
-export interface Group {
-  id: string;               // "A".."L"
-  name: string;             // "Group A"
+interface GroupTable {
+  id: string;               // stable provider or ScoreArc table identifier
   standings: Standing[];
   // Per-table outcome zones, overriding the competition-wide ones. Almost every
   // competition wants one set of zones for every table it publishes; MLS does
@@ -132,6 +131,13 @@ export interface Group {
   // rewards entirely different positions than a conference table does.
   zones?: Zone[];
 }
+
+export type Group = GroupTable & (
+  // Provider-authored groups preserve their display name exactly.
+  | { name: string; labelKey?: never }
+  // ScoreArc-computed groups have semantic identity and no provider name.
+  | { name?: never; labelKey: OverallTableLabelKey }
+);
 
 // ===== Knockout Bracket =====
 

@@ -13,6 +13,7 @@ import SeasonSwitcher from '@/components/SeasonSwitcher';
 import { bracketShapeFor, knockoutIsReady } from '@/components/bracketShape';
 import LanguageText from '@/components/LanguageText';
 import SiteFooter from '@/components/SiteFooter';
+import { getTranslator } from '@/i18n/translate';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +38,7 @@ export async function generateMetadata({ params, searchParams }: { params: { loc
 export default async function Workspace({ params }: { params: { locale: string; comp: string; season: string } }) {
   if (!isLocale(params.locale)) notFound();
   const locale = params.locale;
+  const t = getTranslator(locale);
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) notFound();
   // A league's headline view IS its table, and the table lives at /standings
@@ -106,7 +108,7 @@ export default async function Workspace({ params }: { params: { locale: string; 
         <section id="phase" className="std-wide">
           <header className="bracket-head">
             <p className="bracket-eyebrow">{rc.competition.name} · {rc.season.label}</p>
-            <h1 className="bracket-title"><LanguageText en={`Qualified for the ${computed.label}`} es={`Clasificados para ${computed.label}`} /></h1>
+            <h1 className="bracket-title">{t('standings.qualifiedFor', t(computed.labelKey))}</h1>
           </header>
           <StandingsLive
             teamBase={teamBase}
@@ -116,7 +118,7 @@ export default async function Workspace({ params }: { params: { locale: string; 
             apiBase={apiBase}
             teamStyle={teamStyle}
             showThirdPlace={false}
-            qualification={{ cut: computed.cut, label: computed.label }}
+            qualification={{ cut: computed.cut, labelKey: computed.labelKey }}
           />
         </section>
         {footer}

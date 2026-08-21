@@ -7,25 +7,35 @@ import { getBannerFeed } from '@/server/data/banner';
 import type { Group, StatLeader } from '@/server/data/types';
 import StandingsLive from '@/components/StandingsLive';
 import UpcomingBanner from '@/components/UpcomingBanner';
-import LanguageText from '@/components/LanguageText';
 import SiteFooter from '@/components/SiteFooter';
+import { getTranslator } from '@/i18n/translate';
 
 export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: { params: { locale: string; comp: string; season: string } }): Promise<Metadata> {
   if (!isLocale(params.locale)) notFound();
+  const locale = params.locale;
+  const t = getTranslator(locale);
   const rc = resolveSeason(params.comp, params.season);
-  if (!rc) return { title: 'Standings' };
+  if (!rc) return { title: t('standings.title') };
   const editionName = `${rc.competition.shortName} ${rc.season.label}`;
   return {
-    title: `Standings · ${editionName}`,
-    description: `${editionName} table, top scorers and top assists.`,
+    title: t('standings.metaTitle', editionName),
+    description: t('standings.metaDescription', editionName),
+    alternates: {
+      canonical: `/${locale}/c/${rc.competition.id}/${rc.season.id}/standings`,
+      languages: {
+        en: `/en/c/${rc.competition.id}/${rc.season.id}/standings`,
+        es: `/es/c/${rc.competition.id}/${rc.season.id}/standings`,
+      },
+    },
   };
 }
 
 export default async function StandingsPage({ params }: { params: { locale: string; comp: string; season: string } }) {
   if (!isLocale(params.locale)) notFound();
   const locale = params.locale;
+  const t = getTranslator(locale);
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) notFound();
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
@@ -72,11 +82,11 @@ export default async function StandingsPage({ params }: { params: { locale: stri
           {/* The same heading for every competition: the nav item says
               "Standings", so landing on a page titled "League Table" reads as
               having clicked the wrong thing. The subtitle carries what differs. */}
-          <h1 className="bracket-title"><LanguageText en="Standings" es="Clasificación" /></h1>
+          <h1 className="bracket-title">{t('standings.title')}</h1>
           <p className="page-subtitle">
             {hasBracket
-              ? <LanguageText en="Scorers, assists, the third-place race, and full group tables." es="Goleadores, asistencias, la carrera por el tercer puesto y tablas de grupos completas." />
-              : <LanguageText en="Scorers, assists, and the full league table." es="Goleadores, asistencias y la tabla completa de la liga." />}
+              ? t('standings.tournamentDescription')
+              : t('standings.leagueDescription')}
           </p>
         </header>
 

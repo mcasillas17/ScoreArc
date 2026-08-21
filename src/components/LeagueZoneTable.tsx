@@ -1,12 +1,12 @@
 'use client';
 
-import LanguageText from './LanguageText';
 import type { Standing } from '@/server/data/types';
 import type { TeamStyle, Zone } from '@/server/data/competitions';
 import TeamBadge from './TeamBadge';
 import { teamHref } from './teamHref';
 import ZoneRing from './ZoneRing';
 import { toBands, ZONE_VAR } from './zoneBands';
+import { useTranslations } from '@/i18n/I18nProvider';
 
 function fmtGD(gd: number): string {
   return gd > 0 ? `+${gd}` : String(gd);
@@ -23,10 +23,11 @@ export default function LeagueZoneTable({
   teamStyle: TeamStyle;
   teamBase?: string;
 }) {
+  const t = useTranslations();
   if (standings.length === 0) {
     return (
       <div className="empty-section">
-        <p className="empty-text"><LanguageText en="Standings are unavailable right now." es="La clasificación no está disponible en este momento." /></p>
+        <p className="empty-text">{t('standings.unavailable')}</p>
       </div>
     );
   }
@@ -43,14 +44,14 @@ export default function LeagueZoneTable({
       <div className="ll-split">
         <div className="ll-left">
           {!started ? (
-            <p className="lz-preseason"><LanguageText en="Season not started — no matches played yet." es="La temporada no ha comenzado — aún no hay partidos jugados." /></p>
+            <p className="lz-preseason">{t('standings.preseason')}</p>
           ) : null}
           <ZoneRing standings={standings} zones={zones} teamStyle={teamStyle} />
           <div className="ll-legend lz-legend">
             {marked.map((b) => (
               <span key={`${b.kind}-${b.from}`}>
                 <i className="ll-dot" style={{ background: `var(${ZONE_VAR[b.kind]})` }} />
-                {b.label}
+                {b.labelKey ? t(b.labelKey) : null}
               </span>
             ))}
           </div>
@@ -62,9 +63,9 @@ export default function LeagueZoneTable({
               className={`ll-band lz-band lz-band--${b.kind}`}
               style={{ ['--zone' as string]: `var(${ZONE_VAR[b.kind]})` }}
             >
-              {b.label ? (
+              {b.labelKey ? (
                 <div className="ll-band-label lz-band-label">
-                  <span>◆ {b.label}</span>
+                  <span>◆ {t(b.labelKey)}</span>
                   <span className="ll-band-n">
                     {b.from === b.to ? b.from : `${b.from}–${b.to}`}
                   </span>

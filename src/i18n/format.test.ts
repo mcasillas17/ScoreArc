@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatDate,
+  formatDateRange,
   formatDateTime,
   formatNumber,
   formatRelativeTime,
@@ -20,8 +21,37 @@ describe('locale formatters', () => {
     expect(formatDate('not-a-date', 'en')).toBeNull();
     expect(formatTime(undefined, 'es')).toBeNull();
     expect(formatDateTime('not-a-date', 'en')).toBeNull();
+    expect(formatDateRange('not-a-date', value, 'en')).toBeNull();
+    expect(formatDateRange(value, undefined, 'es')).toBeNull();
     expect(formatRelativeTime(new Date('not-a-date'), new Date(value), 'es')).toBeNull();
     expect(formatRelativeTime(new Date(value), new Date('not-a-date'), 'en')).toBeNull();
+  });
+
+  it('formats date ranges from an explicit locale and timezone', () => {
+    expect(formatDateRange('2026-08-25', '2026-08-27', 'en')).toBe('August 25–27, 2026');
+    expect(formatDateRange('2026-08-25', '2026-08-27', 'es')).toBe('25–27 de agosto de 2026');
+  });
+
+  it('accepts a real leap day in a configured ISO date range', () => {
+    expect(formatDateRange('2024-02-29', '2024-03-01', 'en'))
+      .toBe('February 29–March 1, 2024');
+  });
+
+  it('rejects configured dates outside the exact YYYY-MM-DD grammar', () => {
+    expect(formatDateRange('2026-8-25', '2026-08-27', 'en')).toBeNull();
+  });
+
+  it('rejects impossible configured calendar dates', () => {
+    expect(formatDateRange('2026-02-30', '2026-03-03', 'en')).toBeNull();
+    expect(formatDateRange('2025-02-29', '2025-03-01', 'en')).toBeNull();
+  });
+
+  it('rejects trailing junk in configured dates', () => {
+    expect(formatDateRange('2026-08-25junk', '2026-08-27', 'en')).toBeNull();
+  });
+
+  it('rejects reversed configured date ranges', () => {
+    expect(formatDateRange('2026-08-27', '2026-08-25', 'en')).toBeNull();
   });
 
   it('formats numbers and relative time by locale', () => {

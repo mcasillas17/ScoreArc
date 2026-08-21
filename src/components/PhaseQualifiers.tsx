@@ -1,15 +1,20 @@
+'use client';
+
 import type { Group } from '@/server/data/types';
 import { computeQuarterfinals } from '@/server/data/leaguesCupTables';
 import TeamBadge from './TeamBadge';
+import type { ConfiguredRound, ISODate } from '@/server/data/competitions';
+import { useLocale, useTranslations } from '@/i18n/I18nProvider';
+import { formatDateRange } from '@/i18n/format';
 
 interface Props {
   groups: Group[];
   cut: number;
   teamStyle?: 'flag' | 'crest';
-  // Round name and window, e.g. "Quarterfinals" / "25–27 August". Shown when
+  // Semantic round and ISO window. Shown when
   // this renders as the page's top banner, standing in for the fixtures the
   // provider has not published.
-  round?: { label: string; when: string };
+  round?: { round: ConfiguredRound; startDate: ISODate; endDate: ISODate };
 }
 
 // The knockout ties for a cross-league cup, derived rather than fetched.
@@ -19,35 +24,42 @@ interface Props {
 // That is why this renders while the provider still has no knockout fixture
 // published: there is nothing left to find out.
 export default function PhaseQualifiers({ groups, cut, teamStyle = 'crest', round }: Props) {
+  const locale = useLocale();
+  const t = useTranslations();
   const ties = computeQuarterfinals(groups, cut);
   if (ties.length === 0) return null;
+  const roundTitle = round?.round === 'quarterfinals'
+    ? t('round.quarterfinals')
+    : null;
+  const roundDateRange = round
+    ? formatDateRange(round.startDate, round.endDate, locale)
+    : null;
 
   return (
     <div className="lcq">
       {round ? (
         <p className="lcq-when">
-          <span className="lcq-round">{round.label}</span>
+          <span className="lcq-round">{roundTitle ?? t('common.unavailable')}</span>
           <span className="lcq-dot" aria-hidden="true">·</span>
-          <span>{round.when}</span>
+          <span>{roundDateRange ?? t('common.unavailable')}</span>
         </p>
       ) : null}
       <p className="lcq-note">
-        Seeded pairings — the bracket is fixed, so no two clubs from the same league can
-        meet before the semifinal.
+        {t('standings.seededPairingExplanation')}
       </p>
       <ol className="lcq-list">
-        {ties.map((t) => (
-          <li key={`${t.home.team.id}-${t.away.team.id}`} className="lcq-tie">
+        {ties.map((tie) => (
+          <li key={`${tie.home.team.id}-${tie.away.team.id}`} className="lcq-tie">
             <span className="lcq-side lcq-side-home">
-              <span className="lcq-seed">{t.homeSeed}</span>
-              <TeamBadge team={t.home.team} style={teamStyle} size={28} />
-              <span className="lcq-name">{t.home.team.name}</span>
+              <span className="lcq-seed">{tie.homeSeed}</span>
+              <TeamBadge team={tie.home.team} style={teamStyle} size={28} />
+              <span className="lcq-name">{tie.home.team.name}</span>
             </span>
-            <span className="lcq-v">v</span>
+            <span className="lcq-v">{t('match.versusShort')}</span>
             <span className="lcq-side lcq-side-away">
-              <span className="lcq-name">{t.away.team.name}</span>
-              <TeamBadge team={t.away.team} style={teamStyle} size={28} />
-              <span className="lcq-seed">{t.awaySeed}</span>
+              <span className="lcq-name">{tie.away.team.name}</span>
+              <TeamBadge team={tie.away.team} style={teamStyle} size={28} />
+              <span className="lcq-seed">{tie.awaySeed}</span>
             </span>
           </li>
         ))}

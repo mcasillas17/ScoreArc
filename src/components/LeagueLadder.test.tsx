@@ -29,7 +29,7 @@ function table(n: number, played: number): Standing[] {
   }));
 }
 
-const QUAL = { cut: 8, label: 'Liguilla' };
+const QUAL = { cut: 8, labelKey: 'standings.liguilla' } as const;
 
 function render(n: number, played: number): string {
   return renderLocalized(
