@@ -56,14 +56,19 @@ describe('publishedAgo', () => {
 });
 
 describe('chooseWhatsOn', () => {
-  const b = (live: string[], upcoming: string[], recent: string[]) => ({ live, upcoming, recent });
+  /** An item is just its distance from kickoff, which is all the ladder reads. */
+  const at = (h: number) => ({ h });
+  const ms = (item: { h: number }) => item.h * H;
+  const b = (live: { h: number }[], upcoming: { h: number }[], recent: { h: number }[]) =>
+    ({ live, upcoming, recent });
 
   it('puts live above everything', () => {
-    expect(chooseWhatsOn(b(['l'], ['u'], ['r']), 2 * H)).toEqual({ mode: 'live', pool: ['l'] });
+    const live = at(0);
+    expect(chooseWhatsOn(b([live], [at(2)], [at(-3)]), ms)).toEqual({ mode: 'live', pool: [live] });
   });
 
   it('takes a kickoff inside the horizon over recent results', () => {
-    expect(chooseWhatsOn(b([], ['u'], ['r']), 4 * H).mode).toBe('upcoming');
+    expect(chooseWhatsOn(b([], [at(4)], [at(-3)]), ms).mode).toBe('upcoming');
   });
 
   // The bug this exists for: getLiveWindow reads +14 days, so without a bound
@@ -71,23 +76,37 @@ describe('chooseWhatsOn', () => {
   // never fire -- "next kickoff in about 12 days" above a fortnight-out
   // fixture, while a week of results sat unused in the same payload.
   it('drops a distant fixture below recent results', () => {
-    const chosen = chooseWhatsOn(b([], ['u'], ['r']), 9 * 24 * H);
-    expect(chosen).toEqual({ mode: 'recent', pool: ['r'] });
+    const result = at(-3);
+    expect(chooseWhatsOn(b([], [at(9 * 24)], [result]), ms)).toEqual({ mode: 'recent', pool: [result] });
   });
 
   it('switches over exactly at the horizon', () => {
-    expect(chooseWhatsOn(b([], ['u'], ['r']), UPCOMING_HORIZON_MS).mode).toBe('upcoming');
-    expect(chooseWhatsOn(b([], ['u'], ['r']), UPCOMING_HORIZON_MS + 1).mode).toBe('recent');
+    expect(chooseWhatsOn(b([], [at(24)], [at(-3)]), ms).mode).toBe('upcoming');
+    expect(chooseWhatsOn(b([], [at(24.001)], [at(-3)]), ms).mode).toBe('recent');
+    expect(UPCOMING_HORIZON_MS).toBe(24 * H);
+  });
+
+  // The horizon has to bound the pool as well as the branch. One kickoff two
+  // hours away used to drag the rest of the +14-day bucket onto the page with
+  // it, under a heading that says "What's on".
+  it('returns only the fixtures inside the horizon', () => {
+    const soon = at(2);
+    const sameDay = at(9);
+    const chosen = chooseWhatsOn(b([], [soon, sameDay, at(7 * 24)], []), ms);
+    expect(chosen).toEqual({ mode: 'upcoming', pool: [soon, sameDay] });
   });
 
   // An opening weekend has fixtures and no results yet. A distant fixture is
-  // still better than an empty block, so it stays on the ladder.
+  // still better than an empty block, so it stays on the ladder -- and this
+  // last-resort branch is deliberately NOT filtered by the horizon, or it
+  // would hand back an empty pool under an "upcoming" mode.
   it('shows a distant fixture when there is nothing else', () => {
-    expect(chooseWhatsOn(b([], ['u'], []), 9 * 24 * H)).toEqual({ mode: 'upcoming', pool: ['u'] });
+    const far = at(9 * 24);
+    expect(chooseWhatsOn(b([], [far], []), ms)).toEqual({ mode: 'upcoming', pool: [far] });
   });
 
   it('reports none when every bucket is empty', () => {
-    expect(chooseWhatsOn(b([], [], []), null)).toEqual({ mode: 'none', pool: [] });
+    expect(chooseWhatsOn(b([], [], []), ms)).toEqual({ mode: 'none', pool: [] });
   });
 });
 

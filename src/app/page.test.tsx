@@ -173,6 +173,19 @@ describe('Home digest', () => {
       expect(html).not.toContain('in about 9 days');
     });
 
+    // The horizon bounds which bucket wins, and it has to bound what goes into
+    // it as well. getLiveWindow reads +14 days, so with one kickoff two hours
+    // away the upcoming bucket also carries next week's fixtures -- and the
+    // block rendered all six of them under a heading that says "What's on".
+    it('shows only the fixtures inside the horizon, not the whole bucket', async () => {
+      vi.spyOn(dataStore, 'getLiveWindow').mockImplementation(
+        byCompetition({ [FIRST]: [match('soon', 2), match('sameday', 9), match('nextweek', 7 * 24)] }),
+      );
+      const html = renderToStaticMarkup(await Home());
+      expect(matchIds(html)).toEqual(['soon', 'sameday']);
+      expect(html).toContain('next kickoff in about 2 hours');
+    });
+
     // With no results either, a distant fixture still beats an empty block.
     it('falls back to a distant fixture when there is no result to show', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([match('faraway', 9 * 24)]);

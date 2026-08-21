@@ -36,6 +36,8 @@ export interface NavItem {
   match: (path: string) => boolean;
 }
 
+const LOCALE_SEGMENT = /^\/[a-z]{2}(?=\/|$)/;
+
 /**
  * The path with any leading locale segment removed.
  *
@@ -50,8 +52,38 @@ export interface NavItem {
  * one: the site's own first segments are `c`, `teams`, `news` and `api`.
  */
 export function stripLocale(pathname: string): string {
-  const rest = pathname.replace(/^\/[a-z]{2}(?=\/|$)/, '');
+  const rest = pathname.replace(LOCALE_SEGMENT, '');
   return rest === '' ? '/' : rest;
+}
+
+/**
+ * The locale segment `stripLocale` would remove, or `''`.
+ *
+ * Matching was made locale-aware before the hrefs were, so under `/es/teams`
+ * the Teams item lit up correctly and then linked to `/teams` — highlighting
+ * the page the reader is on while offering to drop them back into English.
+ *
+ * This preserves a prefix that is *already in the URL*; it never invents one.
+ * With no prefix in the path — which is every route on `main` today — every
+ * href below is byte-identical to what it was, so this is inert until locale
+ * routing exists. Whether prefixed routes exist at all, and how a locale is
+ * negotiated, belongs to the i18n branch (`codex/translation-middleware`), not
+ * here. If that branch lands cookie-based locales with no path prefix, this
+ * stays a permanent no-op; if it lands prefixes, the nav already follows them.
+ * Either way `siteNav.test.ts` pins the behaviour, so the seam is visible at
+ * merge instead of being discovered in the browser.
+ */
+export function localePrefix(pathname: string): string {
+  return LOCALE_SEGMENT.exec(pathname)?.[0] ?? '';
+}
+
+/** An app-absolute href, moved under the prefix the reader is already on. */
+export function withLocale(prefix: string, href: string): string {
+  if (!prefix) return href;
+  // `/` is the one href that must not gain a trailing slash: `/es/` and `/es`
+  // are the same page but not the same string, and `usePathname` returns the
+  // second, so the Home item would stop matching its own link.
+  return href === '/' ? prefix : `${prefix}${href}`;
 }
 
 /** The competition whose workspace this path is inside, if any. */
@@ -86,11 +118,17 @@ export function accentStyle(pathname: string): React.CSSProperties | undefined {
  * only be exercised by rendering the whole nav, which is why the strict
  * equality below went unnoticed as a locale-prefix hazard.
  */
-export function siteItems(spanish: boolean): NavItem[] {
+export function siteItems(spanish: boolean, prefix = ''): NavItem[] {
+  // Exactly this page, or something below it. `startsWith('/news')` would also
+  // light News on a hypothetical `/newsletter`.
+  const at = (route: string) => (p: string) => {
+    const path = stripLocale(p);
+    return path === route || path.startsWith(`${route}/`);
+  };
   return [
-    { href: '/', label: spanish ? 'Inicio' : 'Home', icon: homeIcon, match: (p) => stripLocale(p) === '/' },
-    { href: '/teams', label: spanish ? 'Equipos' : 'Teams', icon: teamsIcon, match: (p) => stripLocale(p) === '/teams' },
-    { href: '/news', label: spanish ? 'Noticias' : 'News', icon: newsIcon, match: (p) => stripLocale(p).startsWith('/news') },
+    { href: withLocale(prefix, '/'), label: spanish ? 'Inicio' : 'Home', icon: homeIcon, match: (p) => stripLocale(p) === '/' },
+    { href: withLocale(prefix, '/teams'), label: spanish ? 'Equipos' : 'Teams', icon: teamsIcon, match: at('/teams') },
+    { href: withLocale(prefix, '/news'), label: spanish ? 'Noticias' : 'News', icon: newsIcon, match: at('/news') },
   ];
 }
 
@@ -102,22 +140,26 @@ export function siteItems(spanish: boolean): NavItem[] {
  * "Knockout" is true in both states. A league has no root item at all: its
  * base URL redirects to /standings.
  */
-export function competitionSections(rc: CompetitionSeason, spanish: boolean): NavItem[] {
+export function competitionSections(rc: CompetitionSeason, spanish: boolean, prefix = ''): NavItem[] {
+  // Two bases: the one the matchers compare against, which is always
+  // locale-free because `stripLocale` runs first, and the one the hrefs are
+  // built from, which keeps whatever prefix the reader arrived under.
   const base = `/c/${rc.competition.id}/${rc.season.id}`;
+  const link = (suffix = '') => withLocale(prefix, `${base}${suffix}`);
   const hasBracket = rc.season.format.hasBracket;
   const phasedCup = !!rc.season.computedTables;
   const under = (suffix: string) => (p: string) => stripLocale(p).startsWith(`${base}${suffix}`);
   const standings: NavItem = {
-    href: `${base}/standings`,
+    href: link('/standings'),
     label: spanish ? 'Clasificación' : 'Standings',
     icon: tableIcon,
     match: under('/standings'),
   };
   const rest: NavItem[] = [
     standings,
-    { href: `${base}/matches`, label: spanish ? 'Partidos' : 'Matches', icon: matchesIcon, match: under('/matches') },
+    { href: link('/matches'), label: spanish ? 'Partidos' : 'Matches', icon: matchesIcon, match: under('/matches') },
     {
-      href: `${base}/teams`,
+      href: link('/teams'),
       label: spanish ? 'Equipos' : 'Teams',
       icon: teamsIcon,
       // Both spellings. A team detail page lives at /team/{id} (singular) and
@@ -125,12 +167,12 @@ export function competitionSections(rc: CompetitionSeason, spanish: boolean): Na
       // a real route with nothing in the nav lit up at all.
       match: (p) => under('/teams')(p) || under('/team/')(p),
     },
-    { href: `${base}/news`, label: spanish ? 'Noticias' : 'News', icon: newsIcon, match: under('/news') },
+    { href: link('/news'), label: spanish ? 'Noticias' : 'News', icon: newsIcon, match: under('/news') },
   ];
   if (!hasBracket) return rest;
   return [
     {
-      href: base,
+      href: link(),
       label: phasedCup ? (spanish ? 'Eliminatorias' : 'Knockout') : (spanish ? 'Cuadro' : 'Bracket'),
       icon: bracketIcon,
       match: (p) => stripLocale(p) === base,
@@ -151,8 +193,12 @@ export function competitionSeasonId(c: Competition, active: CompetitionSeason | 
   return active?.competition.id === c.id ? active.season.id : c.currentSeasonId;
 }
 
-export function competitionHref(c: Competition, active: CompetitionSeason | undefined): string {
-  return `/c/${c.id}/${competitionSeasonId(c, active)}`;
+export function competitionHref(
+  c: Competition,
+  active: CompetitionSeason | undefined,
+  prefix = '',
+): string {
+  return withLocale(prefix, `/c/${c.id}/${competitionSeasonId(c, active)}`);
 }
 
 export default function SiteNav() {
@@ -164,6 +210,9 @@ export default function SiteNav() {
 
   const active = activeCompetition(pathname);
   const competitions = listCompetitions();
+  // Whatever locale segment the reader is already under, carried onto every
+  // href below so the nav cannot silently return them to English.
+  const prefix = localePrefix(pathname);
 
   // On a phone this panel has two shapes: closed it is one horizontally
   // scrolling row, and the hamburger opens the same items as the full vertical
@@ -181,7 +230,7 @@ export default function SiteNav() {
     if (current) panel.scrollLeft = Math.max(0, current.offsetLeft - 12);
   }, [pathname]);
 
-  const items = siteItems(spanish);
+  const items = siteItems(spanish, prefix);
   // Named, not linked. The nav is where the site says what it is, and a link
   // to a 404 is worse than an honest label.
   const soonItems = [
@@ -194,7 +243,7 @@ export default function SiteNav() {
   return (
     <nav className={`sn${collapsed ? ' sn--collapsed' : ''}${open ? ' sn--open' : ''}`} aria-label={spanish ? 'Principal' : 'Main'}>
       <div className="sn-top">
-        <Link href="/" className="sn-brand" aria-label={spanish ? 'Inicio de ScoreArc' : 'ScoreArc home'} onClick={close}>
+        <Link href={withLocale(prefix, '/')} className="sn-brand" aria-label={spanish ? 'Inicio de ScoreArc' : 'ScoreArc home'} onClick={close}>
           {/* The delivered artwork, used as an image: the lockup's kerning and
               its underline arc are the designer's. The wordmark cannot survive
               a 64px rail, so the collapsed rail shows the mark alone. */}
@@ -251,8 +300,12 @@ export default function SiteNav() {
               <span className="sn-label">{item.label}</span>
             </Link>
           ))}
+          {/* No `aria-disabled`: it is ignored on a bare span with no role, so
+              it only ever reassured us. The visible "soon" badge is real text
+              inside the item, so a screen reader reads "Players soon" and the
+              absence of a link does the rest. */}
           {soonItems.map((item) => (
-            <span key={item.label} className="sn-item sn-item--soon" title={collapsed ? item.label : undefined} aria-disabled="true">
+            <span key={item.label} className="sn-item sn-item--soon" title={collapsed ? item.label : undefined}>
               <span className="sn-icon">{item.icon}</span>
               <span className="sn-label">{item.label}</span>
               <span className="sn-soon">{spanish ? 'pronto' : 'soon'}</span>
@@ -264,7 +317,7 @@ export default function SiteNav() {
           <span className="sn-heading">{spanish ? 'Competiciones' : 'Competitions'}</span>
           {competitions.map((c) => {
             const isActive = active?.competition.id === c.id;
-            const href = competitionHref(c, active);
+            const href = competitionHref(c, active, prefix);
             const seasonId = competitionSeasonId(c, active);
             return (
               <div key={c.id} className="sn-comp">
@@ -284,7 +337,7 @@ export default function SiteNav() {
                 </Link>
                 {isActive && (
                   <div className="sn-sub">
-                    {competitionSections(active, spanish).map((s) => (
+                    {competitionSections(active, spanish, prefix).map((s) => (
                       <Link
                         key={s.href}
                         href={s.href}

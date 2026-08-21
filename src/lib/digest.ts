@@ -38,15 +38,29 @@ export const UPCOMING_HORIZON_MS = 24 * 60 * 60 * 1000;
  * deliberately: a result from four hours ago is news, a fixture nine days out
  * is not. It stays on the ladder at all so that a competition's opening
  * weekend, where there are no results yet, still shows something.
+ *
+ * The horizon has to bound the *pool*, not just which branch wins. The whole
+ * +14-day window lands in `upcoming`, so one kickoff two hours away used to
+ * elect the upcoming branch and then hand the caller next week's fixtures
+ * along with it: five rows a week out under a heading that reads "What's on".
+ * The imminent branch therefore returns only the fixtures inside the horizon.
+ *
+ * The last-resort branch below results stays unfiltered on purpose — by then
+ * every fixture is outside the horizon by definition, and filtering there
+ * would empty the one thing an opening weekend has to show.
+ *
+ * `msUntilKickoff` is a function rather than a precomputed number so that the
+ * branch decision and the rows it returns cannot be measured against
+ * different clocks.
  */
 export function chooseWhatsOn<T>(
   buckets: { live: T[]; upcoming: T[]; recent: T[] },
-  msToNextKickoff: number | null,
+  msUntilKickoff: (item: T) => number,
 ): { mode: WhatsOnMode; pool: T[] } {
   const { live, upcoming, recent } = buckets;
   if (live.length > 0) return { mode: 'live', pool: live };
-  const imminent = msToNextKickoff !== null && msToNextKickoff <= UPCOMING_HORIZON_MS;
-  if (upcoming.length > 0 && imminent) return { mode: 'upcoming', pool: upcoming };
+  const imminent = upcoming.filter((item) => msUntilKickoff(item) <= UPCOMING_HORIZON_MS);
+  if (imminent.length > 0) return { mode: 'upcoming', pool: imminent };
   if (recent.length > 0) return { mode: 'recent', pool: recent };
   if (upcoming.length > 0) return { mode: 'upcoming', pool: upcoming };
   return { mode: 'none', pool: [] };
@@ -159,6 +173,27 @@ export function whatsOnHeadline(
     en: 'Nothing live right now — here are the latest results.',
     es: 'Nada en vivo ahora mismo — estos son los últimos resultados.',
   };
+}
+
+/**
+ * A story as the UI shows it: the article, and how old it is in plain words.
+ *
+ * The age replaced the competition-feed label. ESPN's per-league /news is
+ * mostly generic — measured, four of six rows were tagged with a competition
+ * the article had nothing to do with — and the tag was arbitrary as well,
+ * since the cross-feed dedupe keeps whichever copy sorts first. Recency is the
+ * one thing a story row can say about itself that is always true.
+ *
+ * Computed on the server as a duration, which is timezone-free, so it cannot
+ * disagree with the client the way a formatted wall clock would.
+ *
+ * It lives here rather than on the component so the server module that builds
+ * these rows and the client component that renders them share one definition
+ * without either importing the other.
+ */
+export interface DigestNewsItem {
+  article: NewsArticle;
+  ago: Bilingual | null;
 }
 
 /**

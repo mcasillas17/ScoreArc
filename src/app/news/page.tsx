@@ -1,9 +1,6 @@
 import type { Metadata } from 'next';
-import { listCompetitions, resolveSeason } from '@/server/data/competitions';
-import { dataStore } from '@/server/data/store';
-import type { NewsArticle } from '@/server/data/types';
-import { collectStories, publishedAgo } from '@/lib/digest';
-import DigestNews, { type DigestNewsItem } from '@/components/DigestNews';
+import { collectDatedStories } from '@/server/data/newsFeed';
+import DigestNews from '@/components/DigestNews';
 import LanguageText from '@/components/LanguageText';
 import SiteFooter from '@/components/SiteFooter';
 
@@ -26,23 +23,25 @@ export const metadata: Metadata = {
 const STORIES_PER_COMPETITION = 4;
 const STORIES_SHOWN = 30;
 
+/**
+ * Why this page does not poll, while a competition's news page does.
+ *
+ * `NewsLive` re-reads one competition's feed every 150 seconds. Doing the same
+ * here would mean re-reading *nine* feeds from every open tab, and the whole
+ * cost buys very little: headlines land on the order of tens of minutes, not
+ * seconds, and the page is `force-dynamic`, so arriving here or reloading is
+ * already a fresh read. A scoreboard has to move under the reader; a headline
+ * list does not.
+ *
+ * The rows are also deliberately the digest's compact treatment rather than
+ * `NewsLive`'s cards: this is the digest's News block continued past its
+ * six-row budget, and the reader arrives by clicking "All news" on it.
+ */
 export default async function NewsPage() {
-  const now = new Date();
-  const feeds = await Promise.all(
-    listCompetitions().map(async (comp) => {
-      const rc = resolveSeason(comp.id)!;
-      // One dead feed costs its own rows, not the page.
-      return dataStore.getNews(rc).catch((): NewsArticle[] => []);
-    }),
-  );
-
-  const stories: DigestNewsItem[] = collectStories(feeds, {
+  const stories = await collectDatedStories(new Date(), {
     perFeed: STORIES_PER_COMPETITION,
     limit: STORIES_SHOWN,
-  }).map((article) => ({
-    article,
-    ago: publishedAgo(now.getTime() - new Date(article.published).getTime()),
-  }));
+  });
 
   return (
     <main className="dg">

@@ -1,13 +1,14 @@
-import Link from 'next/link';
 import { listCompetitions, resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import { competitionLabel, type LiveEntry } from '@/server/data/liveFeed';
 import { prioritiseBy } from '@/server/data/matchPriority';
-import type { Match, NewsArticle, StatLeader } from '@/server/data/types';
-import { chooseWhatsOn, collectStories, publishedAgo, whatsOnHeadline } from '@/lib/digest';
+import type { Match, StatLeader } from '@/server/data/types';
+import { collectDatedStories } from '@/server/data/newsFeed';
+import { chooseWhatsOn, whatsOnHeadline } from '@/lib/digest';
 import DigestMatches from '@/components/DigestMatches';
 import DigestScorers, { type ScorerBoard } from '@/components/DigestScorers';
-import DigestNews, { type DigestNewsItem } from '@/components/DigestNews';
+import DigestNews from '@/components/DigestNews';
+import TrackedLink from '@/components/TrackedLink';
 import LanguageText from '@/components/LanguageText';
 import SiteFooter from '@/components/SiteFooter';
 
@@ -45,27 +46,32 @@ export default async function Home() {
   // One clock for the whole render, so two blocks cannot disagree about "now".
   const now = new Date();
 
-  const per = await Promise.all(
-    listCompetitions().map(async (comp) => {
-      const rc = resolveSeason(comp.id)!;
-      // Every read is independently optional: a dead feed for one competition
-      // must cost that competition's rows, not the page.
-      const [matches, leaders, news] = await Promise.all([
-        // The unenriched read, deliberately — getMatches buys one /summary per
-        // match for scorers and cards this page never renders.
-        dataStore.getLiveWindow(rc).catch((): Match[] => []),
-        dataStore.getLeaders(rc).catch(() => ({ scorers: [] as StatLeader[], assists: [] as StatLeader[] })),
-        dataStore.getNews(rc).catch((): NewsArticle[] => []),
-      ]);
-      return {
-        competition: competitionLabel(comp, rc.season.id),
-        seasonLabel: rc.season.label,
-        matches,
-        scorers: leaders.scorers,
-        news,
-      };
-    }),
-  );
+  // The news fan-out runs alongside the match and scorer fan-out rather than
+  // after it: it is the same nine competitions, and awaiting it separately
+  // would put a second upstream round trip on the page's critical path.
+  const [per, stories] = await Promise.all([
+    Promise.all(
+      listCompetitions().map(async (comp) => {
+        const rc = resolveSeason(comp.id)!;
+        // Every read is independently optional: a dead feed for one competition
+        // must cost that competition's rows, not the page.
+        const [matches, leaders] = await Promise.all([
+          // The unenriched read, deliberately — getMatches buys one /summary per
+          // match for scorers and cards this page never renders.
+          dataStore.getLiveWindow(rc).catch((): Match[] => []),
+          dataStore.getLeaders(rc).catch(() => ({ scorers: [] as StatLeader[], assists: [] as StatLeader[] })),
+        ]);
+        return {
+          competition: competitionLabel(comp, rc.season.id),
+          seasonLabel: rc.season.label,
+          matches,
+          scorers: leaders.scorers,
+        };
+      }),
+    ),
+    // ===== News ===== the same collection /news renders, at the digest's size.
+    collectDatedStories(now, { perFeed: STORIES_PER_COMPETITION, limit: STORIES_SHOWN }),
+  ]);
 
   // ===== What's on =====
   const entries: LiveEntry[] = dedupeByMatch(
@@ -77,10 +83,9 @@ export default async function Home() {
   // format on a server running UTC. `upcoming` is sorted by kickoff, so its
   // head is the nearest across every competition, not whichever feed answered
   // first.
-  const msToNext = buckets.upcoming.length > 0
-    ? new Date(buckets.upcoming[0].match.kickoff).getTime() - now.getTime()
-    : null;
-  const { mode, pool } = chooseWhatsOn(buckets, msToNext);
+  const msUntilKickoff = (e: LiveEntry) => new Date(e.match.kickoff).getTime() - now.getTime();
+  const msToNext = buckets.upcoming.length > 0 ? msUntilKickoff(buckets.upcoming[0]) : null;
+  const { mode, pool } = chooseWhatsOn(buckets, msUntilKickoff);
   const shown = pool.slice(0, WHATS_ON_SHOWN);
   // The count the heading quotes is the number of cards below it.
   const headline = whatsOnHeadline(mode, shown.length, msToNext);
@@ -94,15 +99,6 @@ export default async function Home() {
       seasonLabel: p.seasonLabel,
       leaders: p.scorers.slice(0, SCORERS_PER_BOARD),
     }));
-
-  // ===== News =====
-  const stories: DigestNewsItem[] = collectStories(per.map((p) => p.news), {
-    perFeed: STORIES_PER_COMPETITION,
-    limit: STORIES_SHOWN,
-  }).map((article) => ({
-    article,
-    ago: publishedAgo(now.getTime() - new Date(article.published).getTime()),
-  }));
 
   return (
     <main className="dg">
@@ -145,9 +141,14 @@ export default async function Home() {
             <h2 className="dg-lab">
               <LanguageText en="News" es="Noticias" />
             </h2>
-            <Link className="dg-more" href="/news">
+            <TrackedLink
+              className="dg-more"
+              href="/news"
+              event="Section opened"
+              properties={{ section: 'News', surface: 'digest' }}
+            >
               <LanguageText en="All news →" es="Todas las noticias →" />
-            </Link>
+            </TrackedLink>
           </div>
           <DigestNews items={stories} surface="digest" />
         </section>

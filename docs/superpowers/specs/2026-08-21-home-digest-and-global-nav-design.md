@@ -117,8 +117,10 @@ merged feed at a larger cap. It is a site section in the nav alongside Teams.
 **One shared gap.** Leading scorers and News are a 50/50 split, and the What's
 On cards above them are also 50/50. Equal columns are not enough to align them:
 the two grids must share the same gap or their centre lines differ. Measured at
-1280px with a shared 16px gap, card 1 ends at 748 and the scorers column ends at
-748; card 2 starts at 764 and news starts at 764.
+1280px with a shared 16px gap, card 1 ends at 747 and the scorers column ends at
+747; card 2 starts at 763 and news starts at 763. (Measured in the browser; the
+first draft of this spec said 748/764, off by one from rounding the arithmetic
+by hand rather than reading it off the rendered boxes.)
 
 Breakpoints:
 

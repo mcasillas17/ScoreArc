@@ -4,8 +4,10 @@ import {
   activeCompetition,
   competitionHref,
   competitionSections,
+  localePrefix,
   siteItems,
   stripLocale,
+  withLocale,
 } from './SiteNav';
 import { listCompetitions, resolveSeason } from '@/server/data/competitions';
 
@@ -203,6 +205,97 @@ describe('competitionHref', () => {
     for (const c of listCompetitions()) {
       expect(competitionHref(c, undefined)).toBe(`/c/${c.id}/${c.currentSeasonId}`);
     }
+  });
+});
+
+/**
+ * Where the nav points under a locale prefix.
+ *
+ * This branch does not implement locale routing — `codex/translation-middleware`
+ * does. What it must not do is highlight the page you are on and then link you
+ * out of your own language, which is what a locale-aware matcher paired with a
+ * locale-blind href does. These pin both halves: unprefixed paths produce
+ * byte-identical hrefs to before (so the change is inert on `main` today), and
+ * a prefix already in the URL is carried, never invented.
+ */
+describe('locale-preserving hrefs', () => {
+  it('reports no prefix on every unprefixed route', () => {
+    for (const p of ['/', '/teams', '/news', '/c/liga-mx/2026-apertura/standings']) {
+      expect(localePrefix(p)).toBe('');
+    }
+  });
+
+  it('reports the prefix a prefixed route carries', () => {
+    expect(localePrefix('/es')).toBe('/es');
+    expect(localePrefix('/es/teams')).toBe('/es');
+    expect(localePrefix('/en/c/world-cup/2026')).toBe('/en');
+  });
+
+  it('is the exact inverse of stripLocale', () => {
+    for (const p of ['/', '/teams', '/es', '/es/teams', '/es/c/mls/2026/matches']) {
+      expect(withLocale(localePrefix(p), stripLocale(p))).toBe(p);
+    }
+  });
+
+  // `/es/` and `/es` are the same page but not the same string, and usePathname
+  // returns the second -- so a trailing slash here would stop Home matching its
+  // own link.
+  it('does not give the root href a trailing slash', () => {
+    expect(withLocale('/es', '/')).toBe('/es');
+  });
+
+  it('leaves every href alone with no prefix', () => {
+    expect(siteItems(false).map((i) => i.href)).toEqual(['/', '/teams', '/news']);
+    const rc = resolveSeason('world-cup')!;
+    expect(competitionSections(rc, false).map((s) => s.href)).toEqual([
+      '/c/world-cup/2026',
+      '/c/world-cup/2026/standings',
+      '/c/world-cup/2026/matches',
+      '/c/world-cup/2026/teams',
+      '/c/world-cup/2026/news',
+    ]);
+    expect(competitionHref(rc.competition, undefined)).toBe('/c/world-cup/2026');
+  });
+
+  it('keeps the reader in their language on every site item', () => {
+    expect(siteItems(true, localePrefix('/es/teams')).map((i) => i.href)).toEqual([
+      '/es', '/es/teams', '/es/news',
+    ]);
+  });
+
+  it('keeps the reader in their language on every competition item', () => {
+    const prefix = localePrefix('/es/c/world-cup/2026/standings');
+    const rc = resolveSeason('world-cup')!;
+    for (const s of competitionSections(rc, true, prefix)) {
+      expect(s.href.startsWith('/es/c/world-cup/2026')).toBe(true);
+    }
+    expect(competitionHref(rc.competition, rc, prefix)).toBe('/es/c/world-cup/2026');
+  });
+
+  // The href moves under the prefix; the matcher still compares the stripped
+  // path. An item that links to a page it would not highlight is the defect
+  // this pair exists to prevent, so assert them against each other.
+  it('still highlights the item it links to', () => {
+    const prefix = '/es';
+    for (const item of siteItems(false, prefix)) expect(item.match(item.href)).toBe(true);
+    for (const c of listCompetitions()) {
+      const rc = resolveSeason(c.id)!;
+      for (const s of competitionSections(rc, false, prefix)) expect(s.match(s.href)).toBe(true);
+    }
+  });
+});
+
+describe('site item matching', () => {
+  // `startsWith('/news')` also lights News on /newsletter. A sibling route
+  // whose name merely starts with a section's is not that section.
+  it('does not light a section on a route that merely shares its prefix', () => {
+    const news = siteItems(false).find((i) => i.label === 'News')!;
+    expect(news.match('/news')).toBe(true);
+    expect(news.match('/news/2026-08-21-something')).toBe(true);
+    expect(news.match('/newsletter')).toBe(false);
+    const teams = siteItems(false).find((i) => i.label === 'Teams')!;
+    expect(teams.match('/teams')).toBe(true);
+    expect(teams.match('/teams-of-the-year')).toBe(false);
   });
 });
 

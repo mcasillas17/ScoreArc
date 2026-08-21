@@ -1,26 +1,8 @@
 'use client';
 
-import type { NewsArticle } from '@/server/data/types';
-import type { Bilingual } from '@/lib/digest';
+import type { DigestNewsItem } from '@/lib/digest';
 import { trackEvent } from '@/lib/telemetry/client';
 import LanguageText from './LanguageText';
-
-export interface DigestNewsItem {
-  article: NewsArticle;
-  /**
-   * How long ago it was published, already worded, in both languages.
-   *
-   * This replaced the competition-feed label. ESPN's per-league /news is mostly
-   * generic — measured, four of six rows were tagged with a competition the
-   * article had nothing to do with — and the tag was arbitrary as well, since
-   * the cross-feed dedupe keeps whichever copy sorts first. Recency is the one
-   * thing a story row can say about itself that is always true.
-   *
-   * Computed on the server as a duration, which is timezone-free, so it cannot
-   * disagree with the client the way a formatted wall clock would.
-   */
-  ago: Bilingual | null;
-}
 
 /**
  * A compact list with small thumbnails, deliberately NOT a hero.
