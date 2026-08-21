@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { listCompetitions, resolveSeason } from '@/server/data/competitions';
@@ -28,6 +28,7 @@ const bracketIcon = <svg {...ICON}><path d="M6 4v4a3 3 0 0 0 3 3h2" /><path d="M
 const tableIcon = <svg {...ICON}><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="14" y2="18" /></svg>;
 const matchesIcon = <svg {...ICON}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" /></svg>;
 const newsIcon = <svg {...ICON}><path d="M4 5h16v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>;
+const menuIcon = <svg {...ICON}><path d="M4 7h16M4 12h16M4 17h16" /></svg>;
 
 export interface NavItem {
   href: string;
@@ -201,6 +202,48 @@ export function competitionHref(
   return withLocale(prefix, `/c/${c.id}/${competitionSeasonId(c, active)}`);
 }
 
+/** One slot in the phone's fixed bottom bar: a destination, or the menu. */
+export interface BottomBarItem {
+  key: string;
+  label: string;
+  icon: React.ReactNode;
+  /** Where it goes. Absent on the one entry that opens the drawer instead. */
+  href?: string;
+  active: boolean;
+}
+
+/**
+ * What the phone's bottom bar shows on a given path.
+ *
+ * The bar is the phone's *only* standing navigation, so it has to be
+ * contextual: inside a competition it carries that competition's own sections
+ * — the pattern `main` had before E14, where the fixed bar was the section nav
+ * and nothing else competed with it. Off a competition there are no sections to
+ * show, so it carries the site's three real pages plus a way into the full
+ * list. Players and Simulate are deliberately absent: they are labels, not
+ * destinations, and a bottom bar of four thumb targets is the wrong place to
+ * advertise something you cannot tap.
+ *
+ * Pure and path-derived, like every other matcher here, so which items a path
+ * produces is testable without rendering.
+ */
+export function bottomBarItems(pathname: string, spanish: boolean): BottomBarItem[] {
+  const prefix = localePrefix(pathname);
+  const entry = (i: NavItem): BottomBarItem => ({
+    key: i.href,
+    label: i.label,
+    icon: i.icon,
+    href: i.href,
+    active: i.match(pathname),
+  });
+  const rc = activeCompetition(pathname);
+  if (rc) return competitionSections(rc, spanish, prefix).map(entry);
+  return [
+    ...siteItems(spanish, prefix).map(entry),
+    { key: 'menu', label: spanish ? 'Menú' : 'Menu', icon: menuIcon, active: false },
+  ];
+}
+
 export default function SiteNav() {
   const [collapsed, setCollapsed] = useState(false);
   const [open, setOpen] = useState(false);
@@ -214,22 +257,6 @@ export default function SiteNav() {
   // href below so the nav cannot silently return them to English.
   const prefix = localePrefix(pathname);
 
-  // On a phone this panel has two shapes: closed it is one horizontally
-  // scrolling row, and the hamburger opens the same items as the full vertical
-  // list. Only the closed row scrolls, and in it the section you are actually
-  // on sits past the site links -- ten competitions to the right of the fold on
-  // a competition page. Bring it into view rather than leaving the reader to
-  // discover it. The scrollWidth guard makes this a no-op in the open drawer
-  // and on the desktop rail, neither of which overflows horizontally.
-  // Horizontal only: `scrollIntoView` would drag the page down too.
-  const panelRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const panel = panelRef.current;
-    if (!panel || panel.scrollWidth <= panel.clientWidth) return;
-    const current = panel.querySelector<HTMLElement>('.sn-item--active');
-    if (current) panel.scrollLeft = Math.max(0, current.offsetLeft - 12);
-  }, [pathname]);
-
   const items = siteItems(spanish, prefix);
   // Named, not linked. The nav is where the site says what it is, and a link
   // to a 404 is worse than an honest label.
@@ -241,6 +268,7 @@ export default function SiteNav() {
   const close = () => setOpen(false);
 
   return (
+    <>
     <nav className={`sn${collapsed ? ' sn--collapsed' : ''}${open ? ' sn--open' : ''}`} aria-label={spanish ? 'Principal' : 'Main'}>
       <div className="sn-top">
         <Link href={withLocale(prefix, '/')} className="sn-brand" aria-label={spanish ? 'Inicio de ScoreArc' : 'ScoreArc home'} onClick={close}>
@@ -283,7 +311,7 @@ export default function SiteNav() {
         </button>
       </div>
 
-      <div className="sn-panel" id="sn-panel" ref={panelRef}>
+      <div className="sn-panel" id="sn-panel">
         <div className="sn-group">
           {items.map((item) => (
             <Link
@@ -365,5 +393,43 @@ export default function SiteNav() {
         </a>
       </div>
     </nav>
+
+    {/* The phone's standing navigation: fixed to the bottom, inside thumb
+        reach, and the only nav visible at rest. It is hidden on desktop and
+        while the drawer is open (CSS), so the two never show at once -- the
+        defect this replaced was a permanent scrolling row *plus* a drawer
+        holding the same items. */}
+    <nav className="sn-tabs" aria-label={spanish ? 'Secciones' : 'Sections'}>
+      {bottomBarItems(pathname, spanish).map((tab) =>
+        tab.href === undefined ? (
+          <button
+            key={tab.key}
+            type="button"
+            className="sn-tab"
+            aria-expanded={open}
+            aria-controls="sn-panel"
+            onClick={() => setOpen((v) => !v)}
+          >
+            <span className="sn-tab-icon">{tab.icon}</span>
+            <span className="sn-tab-label">{tab.label}</span>
+          </button>
+        ) : (
+          <Link
+            key={tab.key}
+            href={tab.href}
+            className={`sn-tab${tab.active ? ' sn-tab--active' : ''}`}
+            aria-current={tab.active ? 'page' : undefined}
+            onClick={() => {
+              trackEvent('Section opened', { section: tab.label, surface: 'bottom-bar' });
+              close();
+            }}
+          >
+            <span className="sn-tab-icon">{tab.icon}</span>
+            <span className="sn-tab-label">{tab.label}</span>
+          </Link>
+        ),
+      )}
+    </nav>
+    </>
   );
 }

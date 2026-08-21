@@ -265,6 +265,46 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 .sn-credit-text strong { font-weight: 700; color: var(--text); }
 .sn-credit:hover .sn-credit-text strong { color: var(--accent); }
 
+/* ===== The phone's bottom tab bar ===== */
+/* Desktop has the rail and needs no second nav, so this is display:none until
+   the phone query below turns it on. On a phone it is the *only* navigation
+   standing at rest: four or five thumb-reachable sections, contextual to where
+   you are. It is what `main` had before E14 (`.mobile-tabbar`), restored,
+   because the row-plus-drawer that replaced it showed both at once. */
+.sn-tabs { display: none; }
+
+.sn-tab {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 4px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.sn-tab-icon { display: inline-flex; }
+.sn-tab-icon svg { width: 21px; height: 21px; }
+/* The bar divides the width evenly, so the longest label ("Clasificación")
+   decides. Let it shrink rather than wrap or spill into its neighbour. */
+.sn-tab-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sn-tab--active { color: var(--accent); }
+.sn-tab--active .sn-tab-icon { color: var(--accent); }
+
 /* The content column beside the fixed rail. */
 .app-content {
   flex: 1;
@@ -273,9 +313,10 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   transition: margin-left 0.2s ease;
 }
 
-/* Collapsing is a desktop affordance only — on a phone the nav is a top bar
-   and a 64px rail has nowhere to be. Keeping every collapsed rule inside this
-   query is what stops `width: 0` labels leaking onto the phone layout. */
+/* Collapsing is a desktop affordance only — on a phone the nav is a masthead
+   plus a bottom bar, and a 64px rail has nowhere to be. Keeping every
+   collapsed rule inside this query is what stops the icon-only rail leaking
+   onto the phone layout. */
 @media (min-width: 761px) {
   .sn--collapsed { width: var(--sidebar-collapsed-w); padding: 18px 8px; }
   .sn--collapsed .sn-top { flex-direction: column; gap: 6px; padding: 2px 0; }
@@ -1079,13 +1120,17 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   color: var(--brand-bright);
 }
 
-/* ===== Responsive: the nav becomes a top bar ===== */
-/* The rule this replaces hid the section list outright, which is why every
-   section link measured `width: 0, height: 0` at 390px and phone readers had
-   no section navigation at all.
-   Here the bar always LAYS OUT every item -- the row scrolls horizontally, so
-   nothing is display:none and nothing measures zero -- and the hamburger turns
-   that row into the full vertical list for anything past the first few. */
+/* ===== Responsive: the nav becomes a masthead plus a bottom bar ===== */
+/* E14 shipped two navigations on a phone at the same time: a permanently
+   visible horizontally scrolling `.sn-panel` row *and* a hamburger opening the
+   same items as a vertical list. It did that to satisfy a spec criterion --
+   "no nav item at width: 0 on a phone" -- which was itself a mis-measurement:
+   the items it found at zero size were inside a closed menu, which is where a
+   closed menu's items belong. That criterion has been deleted from the spec.
+   So: `.sn` keeps only the brand and the hamburger, `.sn-panel` is a drawer
+   and stays closed until opened, and the standing navigation is `.sn-tabs`
+   fixed to the bottom of the viewport. Exactly one of the two is ever on
+   screen -- the tab bar hides while the drawer is open. */
 @media (max-width: 760px) {
   .app-shell { flex-direction: column; }
 
@@ -1107,57 +1152,35 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   .sn-collapse { display: none; }
   .sn-burger { display: inline-flex; }
 
-  /* Closed: one scrolling row. */
-  .sn-panel {
-    flex: none;
-    flex-direction: row;
-    align-items: center;
-    gap: 8px;
-    padding: 7px 0 1px;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .sn-panel::-webkit-scrollbar { display: none; }
-  .sn-group { flex-direction: row; gap: 4px; flex: none; }
-  .sn-heading { display: none; }
-  .sn-comp { display: flex; flex-direction: row; align-items: center; gap: 4px; }
-  .sn-sub {
-    flex-direction: row;
-    gap: 4px;
-    margin: 0;
-    padding-left: 8px;
-    border-left: 1px solid var(--hairline);
-  }
-  .sn-item { padding: 7px 10px; white-space: nowrap; flex: none; }
-  .sn-item--sub { padding: 7px 10px; }
-  .sn-label { overflow: visible; }
-  /* The badge stays in the closed row: without it Players and Simulate look
-     like items that simply do not respond to a tap. Opacity alone is not a
-     message. Only the credit is dropped, which the drawer restores. */
-  .sn-credit { display: none; }
-  .sn-soon { font-size: 8px; padding: 1px 5px; letter-spacing: 0.8px; }
+  /* A drawer is closed until you open it. Open, it is the same vertical list
+     the desktop rail renders, so no shape rules are needed -- only padding to
+     part it from the masthead. */
+  .sn-panel { display: none; }
+  .sn--open .sn-panel { display: flex; padding-top: 12px; }
 
-  /* Open: the same items, as the full list. */
-  .sn--open .sn-panel {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 14px;
-    padding: 10px 0 4px;
-    overflow-x: visible;
+  .sn-tabs {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    background: var(--surface-1);
+    border-top: 1px solid var(--hairline);
+    padding-bottom: env(safe-area-inset-bottom);
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.35);
   }
-  .sn--open .sn-group { flex-direction: column; gap: 2px; }
-  .sn--open .sn-heading { display: block; }
-  .sn--open .sn-comp { flex-direction: column; align-items: stretch; gap: 0; }
-  .sn--open .sn-sub {
-    flex-direction: column;
-    gap: 1px;
-    margin: 3px 0 7px 13px;
-    padding-left: 10px;
-  }
-  .sn--open .sn-soon { display: inline-block; }
-  .sn--open .sn-credit { display: flex; margin-top: 4px; }
+  /* Two navigations at once is the bug. While the drawer is open it is the
+     navigation, and the bar underneath it would both duplicate it and cover
+     its last rows. */
+  .sn--open ~ .sn-tabs { display: none; }
 
-  .app-content { margin-left: 0; }
+  .app-content {
+    margin-left: 0;
+    /* Clears the fixed bar so it never covers the last row or the footer.
+       ~57px of bar (21px icon + label + padding) plus the home indicator. */
+    padding-bottom: calc(62px + env(safe-area-inset-bottom));
+  }
 
   .main {
     padding: 22px 14px 48px;
