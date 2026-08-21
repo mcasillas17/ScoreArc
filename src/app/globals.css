@@ -1442,6 +1442,10 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   box-shadow: 0 6px 20px rgba(0,0,0,0.5);
   transition: transform .15s ease, background .15s ease, border-color .15s ease;
 }
+/* The .champ-* block stays gold on purpose: it is the champion celebration,
+   which is the prize. Same for --qual and the zone bands. Chrome that merely
+   needed a highlight -- share buttons, calendar nav, "today" -- now uses the
+   accent. */
 .champ-share:hover { transform: translateY(-1px); background: #111; border-color: #e8b84b; }
 .bracket-share {
   display: inline-flex; align-items: center; gap: 6px;
@@ -1450,7 +1454,7 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   font-size: 13px; font-weight: 600; cursor: pointer;
   transition: background .15s ease, border-color .15s ease;
 }
-.bracket-share:hover { background: #141414; border-color: #e8b84b; }
+.bracket-share:hover { background: #141414; border-color: var(--accent); }
 
 @media (prefers-reduced-motion: reduce) {
   .champ-spark { animation: none; opacity: 0; }
@@ -1724,6 +1728,9 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   display: flex; align-items: center; justify-content: center;
   transition: background .15s ease, border-color .15s ease, transform .1s ease;
 }
+/* NOTE: the .ls-* block styles LiveScores.tsx, which nothing imports -- these
+   rules never render. Left gold rather than recoloured, because recolouring
+   dead CSS is churn; retire the component and the block together. */
 .ls-arrow:hover:not(:disabled) { background: #1f1f2a; border-color: #e8b84b; color: #fff; }
 .ls-arrow:active:not(:disabled) { transform: scale(0.93); }
 .ls-arrow:disabled { opacity: 0.3; cursor: default; }
@@ -3165,11 +3172,11 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 .mc-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 12px; }
 .mc-month { font-size: 15px; font-weight: 700; letter-spacing: 0.02em; text-align: center; }
 .mc-nav button { background: var(--surface-2); border: 1px solid var(--hairline); color: var(--text); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
-.mc-nav button:hover:not(:disabled) { border-color: var(--gold); }
+.mc-nav button:hover:not(:disabled) { border-color: var(--accent); }
 .mc-nav button:disabled { opacity: 0.35; cursor: default; }
 .mc-status { min-height: 20px; margin-bottom: 4px; color: var(--text-muted); font-size: 12px; text-align: center; }
 .mc-day { margin: 18px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
-.mc-day--today { color: var(--gold); }
+.mc-day--today { color: var(--accent-bright); }
 /* Every list of matches, in both views. Liga MX kicks off seven at once and a
    single column buries six of them; 420px rather than 320 because at 320 a
    three-up grid truncated "Monterrey" to "Mo…" on a 1280px screen. */
@@ -3304,7 +3311,7 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   margin-bottom: 10px;
 }
 .mn-section--live .mn-title { color: var(--live-red); }
-.mn-section--today .mn-title { color: var(--gold); }
+.mn-section--today .mn-title { color: var(--accent-bright); }
 
 .mn-count {
   font-size: 10px;
