@@ -93,7 +93,7 @@ export default async function Home() {
     <main className="dg">
       <header className="dg-head">
         <h1 className="dg-title">
-          <LanguageText en="What's new in ScoreArc" es="Novedades en ScoreArc" />
+          <LanguageText en="What's new in ScoreArc" es="Nuevo en ScoreArc" />
         </h1>
         <p className="dg-sub">
           <LanguageText en={headline.en} es={headline.es} />
