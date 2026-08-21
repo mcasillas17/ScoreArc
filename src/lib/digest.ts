@@ -1,4 +1,8 @@
 import type { NewsArticle } from '@/server/data/types';
+import { getTranslator } from '@/i18n/translate';
+
+const enT = getTranslator('en');
+const esT = getTranslator('es');
 
 /**
  * What the home digest's "What's on" block is showing, and how it says so.
@@ -79,21 +83,21 @@ export function untilKickoff(ms: number): Bilingual | null {
   const minutes = Math.round(ms / 60000);
   if (minutes < 60) {
     return {
-      en: minutes <= 1 ? 'in a minute' : `in ${minutes} minutes`,
-      es: minutes <= 1 ? 'en un minuto' : `en ${minutes} minutos`,
+      en: minutes <= 1 ? enT('home.digest.inMinute') : enT('home.digest.inMinutes', minutes),
+      es: minutes <= 1 ? esT('home.digest.inMinute') : esT('home.digest.inMinutes', minutes),
     };
   }
   const hours = Math.round(minutes / 60);
   if (hours < 24) {
     return {
-      en: hours === 1 ? 'in about an hour' : `in about ${hours} hours`,
-      es: hours === 1 ? 'en aproximadamente una hora' : `en aproximadamente ${hours} horas`,
+      en: hours === 1 ? enT('home.digest.inHour') : enT('home.digest.inHours', hours),
+      es: hours === 1 ? esT('home.digest.inHour') : esT('home.digest.inHours', hours),
     };
   }
   const days = Math.round(hours / 24);
   return {
-    en: days === 1 ? 'in about a day' : `in about ${days} days`,
-    es: days === 1 ? 'en aproximadamente un día' : `en aproximadamente ${days} días`,
+    en: days === 1 ? enT('home.digest.inDay') : enT('home.digest.inDays', days),
+    es: days === 1 ? esT('home.digest.inDay') : esT('home.digest.inDays', days),
   };
 }
 
@@ -119,21 +123,21 @@ export function publishedAgo(ms: number): Bilingual | null {
   const minutes = Math.floor(ms / 60000);
   if (minutes < 60) {
     return {
-      en: minutes <= 1 ? 'just now' : `${minutes} minutes ago`,
-      es: minutes <= 1 ? 'ahora mismo' : `hace ${minutes} minutos`,
+      en: minutes <= 1 ? enT('home.digest.justNow') : enT('home.digest.minutesAgo', minutes),
+      es: minutes <= 1 ? esT('home.digest.justNow') : esT('home.digest.minutesAgo', minutes),
     };
   }
   const hours = Math.floor(minutes / 60);
   if (hours < 24) {
     return {
-      en: hours === 1 ? '1 hour ago' : `${hours} hours ago`,
-      es: hours === 1 ? 'hace 1 hora' : `hace ${hours} horas`,
+      en: hours === 1 ? enT('home.digest.hourAgo') : enT('home.digest.hoursAgo', hours),
+      es: hours === 1 ? esT('home.digest.hourAgo') : esT('home.digest.hoursAgo', hours),
     };
   }
   const days = Math.floor(hours / 24);
   return {
-    en: days === 1 ? '1 day ago' : `${days} days ago`,
-    es: days === 1 ? 'hace 1 día' : `hace ${days} días`,
+    en: days === 1 ? enT('home.digest.dayAgo') : enT('home.digest.daysAgo', days),
+    es: days === 1 ? esT('home.digest.dayAgo') : esT('home.digest.daysAgo', days),
   };
 }
 
@@ -154,32 +158,32 @@ export function whatsOnHeadline(
 ): Bilingual {
   if (mode === 'live') {
     return {
-      en: count === 1 ? '1 match live right now.' : `${count} matches live right now.`,
-      es: count === 1 ? '1 partido en vivo ahora mismo.' : `${count} partidos en vivo ahora mismo.`,
+      en: enT('home.digest.liveHeadline', count),
+      es: esT('home.digest.liveHeadline', count),
     };
   }
   if (mode === 'upcoming') {
     const away = msToNextKickoff === null ? null : untilKickoff(msToNextKickoff);
     if (!away) {
       return {
-        en: 'Nothing live right now — here is what is next.',
-        es: 'Nada en vivo ahora mismo — esto es lo que sigue.',
+        en: enT('home.digest.upcomingHeadline'),
+        es: esT('home.digest.upcomingHeadline'),
       };
     }
     return {
-      en: `Nothing live right now — next kickoff ${away.en}.`,
-      es: `Nada en vivo ahora mismo — próximo silbatazo ${away.es}.`,
+      en: enT('home.digest.upcomingTimedHeadline', away.en),
+      es: esT('home.digest.upcomingTimedHeadline', away.es),
     };
   }
   if (mode === 'none') {
     return {
-      en: 'Nothing live, nothing next, nothing just played — the window is empty.',
-      es: 'Nada en vivo, nada por jugarse, nada recién jugado — la ventana está vacía.',
+      en: enT('home.digest.emptyHeadline'),
+      es: esT('home.digest.emptyHeadline'),
     };
   }
   return {
-    en: 'Nothing live right now — here are the latest results.',
-    es: 'Nada en vivo ahora mismo — estos son los últimos resultados.',
+    en: enT('home.digest.recentHeadline'),
+    es: esT('home.digest.recentHeadline'),
   };
 }
 

@@ -20,10 +20,10 @@ import { listCompetitions, resolveSeason } from '@/server/data/competitions';
  * lists together, so the test has to combine them the way the component does.
  */
 function activeItems(pathname: string): string[] {
-  const hits = siteItems(false).filter((i) => i.match(pathname)).map((i) => `site:${i.label}`);
+  const hits = siteItems('en').filter((i) => i.match(pathname)).map((i) => `site:${i.label}`);
   const rc = activeCompetition(pathname);
   if (rc) {
-    for (const s of competitionSections(rc, false)) {
+    for (const s of competitionSections(rc, 'en')) {
       if (s.match(pathname)) hits.push(`${rc.competition.id}:${s.label}`);
     }
   }
@@ -91,7 +91,7 @@ describe('competitionSections', () => {
   // second link to the page below it.
   it('gives a league no root item', () => {
     const rc = resolveSeason('liga-mx')!;
-    expect(competitionSections(rc, false).map((s) => s.label)).toEqual([
+    expect(competitionSections(rc, 'en').map((s) => s.label)).toEqual([
       'Standings', 'Matches', 'Teams', 'News',
     ]);
   });
@@ -100,18 +100,18 @@ describe('competitionSections', () => {
   // and the bracket after, so "Bracket" is wrong for most of the competition.
   it('calls a phased cup\'s root Knockout', () => {
     const rc = resolveSeason('leagues-cup')!;
-    expect(competitionSections(rc, false)[0].label).toBe('Knockout');
+    expect(competitionSections(rc, 'en')[0].label).toBe('Knockout');
   });
 
   it('calls a straight knockout root Bracket', () => {
     const rc = resolveSeason('world-cup')!;
-    expect(competitionSections(rc, false)[0].label).toBe('Bracket');
+    expect(competitionSections(rc, 'en')[0].label).toBe('Bracket');
   });
 
   it('translates every label', () => {
     const rc = resolveSeason('world-cup')!;
-    const en = competitionSections(rc, false).map((s) => s.label);
-    const es = competitionSections(rc, true).map((s) => s.label);
+    const en = competitionSections(rc, 'en').map((s) => s.label);
+    const es = competitionSections(rc, 'es').map((s) => s.label);
     expect(es).toHaveLength(en.length);
     expect(es.every((label, i) => label !== en[i])).toBe(true);
   });
@@ -119,12 +119,12 @@ describe('competitionSections', () => {
   it('points every section at a real route under the season', () => {
     const rc = resolveSeason('world-cup')!;
     const base = `/c/${rc.competition.id}/${rc.season.id}`;
-    for (const s of competitionSections(rc, false)) expect(s.href.startsWith(base)).toBe(true);
+    for (const s of competitionSections(rc, 'en')) expect(s.href.startsWith(base)).toBe(true);
   });
 
   it('keeps the season you are on rather than the current one', () => {
     const rc = activeCompetition('/c/world-cup/2018/standings')!;
-    for (const s of competitionSections(rc, false)) {
+    for (const s of competitionSections(rc, 'en')) {
       expect(s.href.startsWith('/c/world-cup/2018')).toBe(true);
     }
   });
@@ -133,7 +133,7 @@ describe('competitionSections', () => {
 describe('one active item, and only one', () => {
   it.each(listCompetitions().map((c) => c.id))('holds for every section of %s', (id) => {
     const rc = resolveSeason(id)!;
-    for (const section of competitionSections(rc, false)) {
+    for (const section of competitionSections(rc, 'en')) {
       expect(activeItems(section.href)).toEqual([`${id}:${section.label}`]);
     }
   });
@@ -246,9 +246,9 @@ describe('locale-preserving hrefs', () => {
   });
 
   it('leaves every href alone with no prefix', () => {
-    expect(siteItems(false).map((i) => i.href)).toEqual(['/', '/teams', '/news']);
+    expect(siteItems('en').map((i) => i.href)).toEqual(['/', '/teams', '/news']);
     const rc = resolveSeason('world-cup')!;
-    expect(competitionSections(rc, false).map((s) => s.href)).toEqual([
+    expect(competitionSections(rc, 'en').map((s) => s.href)).toEqual([
       '/c/world-cup/2026',
       '/c/world-cup/2026/standings',
       '/c/world-cup/2026/matches',
@@ -259,7 +259,7 @@ describe('locale-preserving hrefs', () => {
   });
 
   it('keeps the reader in their language on every site item', () => {
-    expect(siteItems(true, localePrefix('/es/teams')).map((i) => i.href)).toEqual([
+    expect(siteItems('es', localePrefix('/es/teams')).map((i) => i.href)).toEqual([
       '/es', '/es/teams', '/es/news',
     ]);
   });
@@ -267,7 +267,7 @@ describe('locale-preserving hrefs', () => {
   it('keeps the reader in their language on every competition item', () => {
     const prefix = localePrefix('/es/c/world-cup/2026/standings');
     const rc = resolveSeason('world-cup')!;
-    for (const s of competitionSections(rc, true, prefix)) {
+    for (const s of competitionSections(rc, 'es', prefix)) {
       expect(s.href.startsWith('/es/c/world-cup/2026')).toBe(true);
     }
     expect(competitionHref(rc.competition, rc, prefix)).toBe('/es/c/world-cup/2026');
@@ -278,10 +278,10 @@ describe('locale-preserving hrefs', () => {
   // this pair exists to prevent, so assert them against each other.
   it('still highlights the item it links to', () => {
     const prefix = '/es';
-    for (const item of siteItems(false, prefix)) expect(item.match(item.href)).toBe(true);
+    for (const item of siteItems('en', prefix)) expect(item.match(item.href)).toBe(true);
     for (const c of listCompetitions()) {
       const rc = resolveSeason(c.id)!;
-      for (const s of competitionSections(rc, false, prefix)) expect(s.match(s.href)).toBe(true);
+      for (const s of competitionSections(rc, 'en', prefix)) expect(s.match(s.href)).toBe(true);
     }
   });
 });
@@ -290,11 +290,11 @@ describe('site item matching', () => {
   // `startsWith('/news')` also lights News on /newsletter. A sibling route
   // whose name merely starts with a section's is not that section.
   it('does not light a section on a route that merely shares its prefix', () => {
-    const news = siteItems(false).find((i) => i.label === 'News')!;
+    const news = siteItems('en').find((i) => i.label === 'News')!;
     expect(news.match('/news')).toBe(true);
     expect(news.match('/news/2026-08-21-something')).toBe(true);
     expect(news.match('/newsletter')).toBe(false);
-    const teams = siteItems(false).find((i) => i.label === 'Teams')!;
+    const teams = siteItems('en').find((i) => i.label === 'Teams')!;
     expect(teams.match('/teams')).toBe(true);
     expect(teams.match('/teams-of-the-year')).toBe(false);
   });
@@ -334,7 +334,7 @@ describe('accentStyle', () => {
 describe('bottomBarItems', () => {
   it('shows the site pages plus a way into the menu off a competition', () => {
     for (const path of ['/', '/teams', '/news']) {
-      const tabs = bottomBarItems(path, false);
+      const tabs = bottomBarItems(path, 'en');
       expect(tabs.map((t) => t.label)).toEqual(['Home', 'Teams', 'News', 'Menu']);
       // The menu slot opens the drawer; it is the one entry with no href.
       expect(tabs.filter((t) => t.href === undefined).map((t) => t.key)).toEqual(['menu']);
@@ -342,7 +342,7 @@ describe('bottomBarItems', () => {
   });
 
   it('shows the open competition\'s own sections inside it', () => {
-    const tabs = bottomBarItems('/c/liga-mx/2026-apertura/standings', false);
+    const tabs = bottomBarItems('/c/liga-mx/2026-apertura/standings', 'en');
     expect(tabs.map((t) => t.label)).toEqual(['Standings', 'Matches', 'Teams', 'News']);
     // No menu slot inside a competition: the sections fill the bar and the
     // masthead hamburger is the way to the full list.
@@ -352,20 +352,20 @@ describe('bottomBarItems', () => {
   // A cup has a fifth section (its bracket), and it is the headline one. It
   // stays in the bar rather than being the one thing hidden behind a hamburger.
   it('keeps a cup root in the bar', () => {
-    expect(bottomBarItems('/c/world-cup/2026/matches', false).map((t) => t.label)).toEqual([
+    expect(bottomBarItems('/c/world-cup/2026/matches', 'en').map((t) => t.label)).toEqual([
       'Bracket', 'Standings', 'Matches', 'Teams', 'News',
     ]);
-    expect(bottomBarItems('/c/leagues-cup/2026/matches', false)[0].label).toBe('Knockout');
+    expect(bottomBarItems('/c/leagues-cup/2026/matches', 'en')[0].label).toBe('Knockout');
   });
 
   it('never carries more than five slots on any route', () => {
     const paths = ['/', '/teams', '/news'];
     for (const c of listCompetitions()) {
       const rc = resolveSeason(c.id)!;
-      for (const s of competitionSections(rc, false)) paths.push(s.href);
+      for (const s of competitionSections(rc, 'en')) paths.push(s.href);
     }
     for (const path of paths) {
-      const n = bottomBarItems(path, false).length;
+      const n = bottomBarItems(path, 'en').length;
       expect(n).toBeGreaterThanOrEqual(4);
       expect(n).toBeLessThanOrEqual(5);
     }
@@ -375,10 +375,10 @@ describe('bottomBarItems', () => {
     const paths = ['/', '/teams', '/news'];
     for (const c of listCompetitions()) {
       const rc = resolveSeason(c.id)!;
-      for (const s of competitionSections(rc, false)) paths.push(s.href);
+      for (const s of competitionSections(rc, 'en')) paths.push(s.href);
     }
     for (const path of paths) {
-      expect(bottomBarItems(path, false).filter((t) => t.active)).toHaveLength(1);
+      expect(bottomBarItems(path, 'en').filter((t) => t.active)).toHaveLength(1);
     }
   });
 
@@ -386,23 +386,23 @@ describe('bottomBarItems', () => {
   // not then highlight leaves the reader on a live page with nothing lit.
   it('highlights the slot it links to', () => {
     for (const path of ['/', '/teams', '/news']) {
-      const hit = bottomBarItems(path, false).find((t) => t.active)!;
+      const hit = bottomBarItems(path, 'en').find((t) => t.active)!;
       expect(hit.href).toBe(path);
     }
-    const tabs = bottomBarItems('/c/mls/2026/matches', false);
+    const tabs = bottomBarItems('/c/mls/2026/matches', 'en');
     expect(tabs.find((t) => t.active)!.href).toBe('/c/mls/2026/matches');
   });
 
   it('lights Teams on a team detail page', () => {
-    const tabs = bottomBarItems('/c/liga-mx/2026-apertura/team/mex-america', false);
+    const tabs = bottomBarItems('/c/liga-mx/2026-apertura/team/mex-america', 'en');
     expect(tabs.find((t) => t.active)!.label).toBe('Teams');
   });
 
   it('translates every label', () => {
-    expect(bottomBarItems('/', true).map((t) => t.label)).toEqual([
+    expect(bottomBarItems('/', 'es').map((t) => t.label)).toEqual([
       'Inicio', 'Equipos', 'Noticias', 'Menú',
     ]);
-    expect(bottomBarItems('/c/liga-mx/2026-apertura/standings', true).map((t) => t.label)).toEqual([
+    expect(bottomBarItems('/c/liga-mx/2026-apertura/standings', 'es').map((t) => t.label)).toEqual([
       'Clasificación', 'Partidos', 'Equipos', 'Noticias',
     ]);
   });
@@ -410,34 +410,34 @@ describe('bottomBarItems', () => {
   // Same seam as the rail: a prefix already in the URL is carried, never
   // invented, so the bar cannot drop a Spanish reader back into English.
   it('carries a locale prefix onto every slot, and only when there is one', () => {
-    expect(bottomBarItems('/es/teams', true).map((t) => t.href)).toEqual([
+    expect(bottomBarItems('/es/teams', 'es').map((t) => t.href)).toEqual([
       '/es', '/es/teams', '/es/news', undefined,
     ]);
-    expect(bottomBarItems('/teams', false).map((t) => t.href)).toEqual([
+    expect(bottomBarItems('/teams', 'en').map((t) => t.href)).toEqual([
       '/', '/teams', '/news', undefined,
     ]);
-    for (const t of bottomBarItems('/es/c/world-cup/2026/standings', true)) {
+    for (const t of bottomBarItems('/es/c/world-cup/2026/standings', 'es')) {
       expect(t.href!.startsWith('/es/c/world-cup/2026')).toBe(true);
     }
   });
 
   it('still marks one slot active under a locale prefix', () => {
     for (const path of ['/es', '/es/teams', '/es/c/liga-mx/2026-apertura/matches']) {
-      expect(bottomBarItems(path, true).filter((t) => t.active)).toHaveLength(1);
+      expect(bottomBarItems(path, 'es').filter((t) => t.active)).toHaveLength(1);
     }
   });
 
   // The competition you are inside keeps the season you are on -- the bar must
   // not bounce a reader browsing 2018 back to 2026.
   it('keeps the season you are on', () => {
-    for (const t of bottomBarItems('/c/world-cup/2018/standings', false)) {
+    for (const t of bottomBarItems('/c/world-cup/2018/standings', 'en')) {
       expect(t.href!.startsWith('/c/world-cup/2018')).toBe(true);
     }
   });
 
   it('gives every slot a distinct key', () => {
     for (const path of ['/', '/teams', '/c/world-cup/2026/standings']) {
-      const keys = bottomBarItems(path, false).map((t) => t.key);
+      const keys = bottomBarItems(path, 'en').map((t) => t.key);
       expect(new Set(keys).size).toBe(keys.length);
     }
   });

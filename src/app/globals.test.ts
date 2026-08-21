@@ -53,21 +53,35 @@ function cascadeSimpleClassProperty(
 
 describe('responsive competition main layout', () => {
   it.each([360, 768])(
-    'keeps specialized competition pages inside the mobile shell at %ipx',
+    'does not add a second sidebar offset to specialized pages at %ipx',
     (viewportWidth) => {
       for (const classes of [['main', 'tm'], ['main', 'tsp']]) {
         expect(cascadeSimpleClassProperty(classes, 'margin-left', viewportWidth)).toBe('0');
-        expect(cascadeSimpleClassProperty(classes, 'padding', viewportWidth)).toBe(
-          '24px 16px calc(84px + env(safe-area-inset-bottom))',
-        );
       }
     },
   );
 
-  it('preserves the desktop sidebar offset and spacing', () => {
-    expect(cascadeSimpleClassProperty(['main', 'tm'], 'margin-left', 1280)).toBe(
+  it('does not add a desktop sidebar offset to specialized pages', () => {
+    for (const classes of [['main', 'tm'], ['main', 'tsp']]) {
+      expect(cascadeSimpleClassProperty(classes, 'margin-left', 1280)).not.toBe(
+        'var(--sidebar-w)',
+      );
+    }
+  });
+
+  it('keeps the sidebar offset on the shared shell only', () => {
+    expect(cascadeSimpleClassProperty(['app-content'], 'margin-left', 1280)).toBe(
       'var(--sidebar-w)',
     );
+    expect(cascadeSimpleClassProperty(['app-content'], 'margin-left', 760)).toBe('0');
+  });
+
+  it('uses compact spacing through the narrow-page breakpoint', () => {
+    for (const viewportWidth of [360, 768]) {
+      expect(cascadeSimpleClassProperty(['main', 'tm'], 'padding', viewportWidth)).toBe(
+        '24px 16px calc(84px + env(safe-area-inset-bottom))',
+      );
+    }
     expect(cascadeSimpleClassProperty(['main', 'tm'], 'padding', 1280)).toBe(
       '36px 36px 56px',
     );

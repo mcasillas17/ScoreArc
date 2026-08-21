@@ -2,7 +2,7 @@
 
 import type { DigestNewsItem } from '@/lib/digest';
 import { trackEvent } from '@/lib/telemetry/client';
-import LanguageText from './LanguageText';
+import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 
 /**
  * A compact list with small thumbnails, deliberately NOT a hero.
@@ -13,11 +13,11 @@ import LanguageText from './LanguageText';
  * to make.
  */
 export default function DigestNews({ items, surface }: { items: DigestNewsItem[]; surface: string }) {
+  const locale = useLocale();
+  const t = useTranslations();
   if (items.length === 0) {
     return (
-      <p className="dg-empty">
-        <LanguageText en="News is unavailable right now." es="Las noticias no están disponibles en este momento." />
-      </p>
+      <p className="dg-empty">{t('home.digest.newsUnavailable')}</p>
     );
   }
   return (
@@ -40,9 +40,7 @@ export default function DigestNews({ items, surface }: { items: DigestNewsItem[]
           <span className="dg-nwbody">
             <span className="dg-nwhead">{article.headline}</span>
             {ago && (
-              <span className="dg-nwsrc">
-                <LanguageText en={ago.en} es={ago.es} />
-              </span>
+              <span className="dg-nwsrc">{ago[locale]}</span>
             )}
           </span>
         </a>

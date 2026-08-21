@@ -3,9 +3,9 @@
 import Link from 'next/link';
 import type { LiveEntry } from '@/server/data/liveFeed';
 import { trackEvent } from '@/lib/telemetry/client';
+import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import LocalTime, { localTimeText, useLocalNow } from './LocalTime';
 import CompetitionMark from './CompetitionMark';
-import { useLanguage } from './LanguageProvider';
 
 function Crest({ url, name }: { url: string | null; name: string }) {
   if (!url) return <span className="dg-crest dg-crest--blank" aria-hidden />;
@@ -15,18 +15,19 @@ function Crest({ url, name }: { url: string | null; name: string }) {
 
 function Card({ entry }: { entry: LiveEntry }) {
   const { competition, match } = entry;
-  const { language } = useLanguage();
+  const locale = useLocale();
+  const t = useTranslations();
   const now = useLocalNow();
   const scheduled = match.state === 'scheduled';
   const status = match.state === 'live'
     ? (match.minute ?? match.statusDetail)
     : match.state === 'finished'
-      ? (match.statusDetail || 'FT')
+      ? (match.statusDetail || t('match.fullTimeAbbreviation'))
       : null;
 
   return (
     <Link
-      href={`/c/${competition.id}/${competition.seasonId}/matches`}
+      href={`/${locale}/c/${competition.id}/${competition.seasonId}/matches`}
       className={`dg-card dg-card--${match.state}`}
       data-match-id={match.id}
       onClick={() => trackEvent('Section opened', { section: 'Matches', surface: 'digest' })}
@@ -35,10 +36,10 @@ function Card({ entry }: { entry: LiveEntry }) {
         // this label -- an es reader was getting "Marseille versus Strasbourg,
         // Hoy 11:45 a.m." out of an otherwise Spanish sentence.
         scheduled
-          ? `${match.home.name} ${language === 'es' ? 'contra' : 'versus'} ${match.away.name}`
+          ? `${match.home.name} ${t('match.versus')} ${match.away.name}`
           : `${match.home.name} ${match.homeScore ?? 0}, ${match.away.name} ${match.awayScore ?? 0}`,
         status,
-        now ? localTimeText(match.kickoff, scheduled ? 'dayTime' : 'day', now, language) : null,
+        now ? localTimeText(match.kickoff, scheduled ? 'dayTime' : 'day', now, locale) : null,
         competition.name,
       ].filter(Boolean).join(', ')}
     >
