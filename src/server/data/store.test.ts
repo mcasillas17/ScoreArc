@@ -7,6 +7,9 @@ import summaryFixture from './__fixtures__/espn-summary.json';
 import lcFixture from './__fixtures__/espn-leagues-cup-scoreboard.json';
 import teamProfileRaw from './__fixtures__/espn-team-profile.json';
 import teamRosterRaw from './__fixtures__/espn-team-roster.json';
+import athleteRaw from './__fixtures__/espn-athlete.json';
+import athleteOverviewRaw from './__fixtures__/espn-athlete-overview.json';
+import athleteBioRaw from './__fixtures__/espn-athlete-bio.json';
 import teamScheduleRaw from './__fixtures__/espn-team-schedule.json';
 import teamFixturesRaw from './__fixtures__/espn-team-fixtures.json';
 
@@ -372,5 +375,53 @@ describe('getSquad', () => {
       cache: new TtlCache<unknown>(),
     });
     expect(await store.getSquad(ligaMx, '227')).toEqual([]);
+  });
+});
+
+describe('getPlayer', () => {
+  const ligaMx = resolveSeason('liga-mx')!;
+
+  it('fetches profile, overview and bio in parallel and caches', async () => {
+    const urls: string[] = [];
+    const store = createDataStore({
+      fetchJson: async (url: string) => {
+        urls.push(url);
+        if (url.endsWith('/overview')) return athleteOverviewRaw;
+        if (url.endsWith('/bio')) return athleteBioRaw;
+        return athleteRaw;
+      },
+      cache: new TtlCache<unknown>(),
+    });
+    const p = await store.getPlayer(ligaMx, '297287');
+    expect(p!.name).toBe('Ali Avila');
+    expect(p!.gameLog).toHaveLength(5);
+    expect(p!.career).toHaveLength(4);
+    expect(urls).toHaveLength(3);
+
+    await store.getPlayer(ligaMx, '297287');
+    expect(urls).toHaveLength(3); // cached
+  });
+
+  // A dead sibling endpoint must not take the page down with it.
+  it('still returns a profile when overview and bio fail', async () => {
+    const store = createDataStore({
+      fetchJson: async (url: string) => {
+        if (url.endsWith('/overview') || url.endsWith('/bio')) throw new Error('500');
+        return athleteRaw;
+      },
+      cache: new TtlCache<unknown>(),
+    });
+    const p = await store.getPlayer(ligaMx, '297287');
+    expect(p!.name).toBe('Ali Avila');
+    expect(p!.gameLog).toEqual([]);
+    expect(p!.career).toEqual([]);
+  });
+
+  it('returns null when the profile fetch fails', async () => {
+    const store = createDataStore({
+      fetchJson: async () => { throw new Error('502'); },
+      cache: new TtlCache<unknown>(),
+    });
+    expect(await store.getPlayer(ligaMx, '297287')).toBeNull();
   });
 });

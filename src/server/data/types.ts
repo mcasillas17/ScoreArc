@@ -367,11 +367,20 @@ export interface PlayerSeasonTotal {
 }
 
 // One row of the last-five game log. Keyed by eventId, which is the same id the
-// match popup takes -- so a row is a link into detail we already render.
+// match popup takes -- so a row is a link into detail we already render. The
+// context fields come from the overview's sibling `events` map; a row whose
+// context entry is missing keeps nulls rather than dropping the stats.
 export interface GameLogRow {
   eventId: string;
   appearance: string; // "Started" | "Sub"
   stats: Record<string, number | null>;
+  date: string | null;
+  atVs: string; // "vs" | "@" as the provider words it
+  opponent: Team | null;
+  score: string; // "2-1", provider-formatted
+  result: string; // "W" | "L" | "D"
+  homeTeamId: string | null;
+  awayTeamId: string | null;
 }
 
 export interface CareerStint {

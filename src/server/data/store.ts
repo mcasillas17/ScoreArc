@@ -8,6 +8,7 @@ import type {
   Group,
   TeamProfile,
   SquadPlayer,
+  PlayerProfile,
 } from './types';
 import type { CompetitionSeason } from './competitions';
 import {
@@ -21,9 +22,11 @@ import {
   teamUrl,
   teamRosterUrl,
   teamScheduleUrl,
+  athleteUrl, athleteOverviewUrl, athleteBioUrl,
 } from './endpoints';
 import { mapScoreboard } from './providers/espn-matches';
 import { mapTeamProfile, mapTeamRoster, mapTeamSchedule } from './providers/espn-team';
+import { mapAthleteProfile, mapAthleteOverview, mapAthleteBio } from './providers/espn-athlete';
 import { splitLeagueTeamIds } from './providers/espn-teams';
 import { computePhaseTables } from './leaguesCupTables';
 import { computeOverallTable } from './mlsTables';
@@ -55,6 +58,7 @@ export interface DataStore {
   getNews(rc: CompetitionSeason): Promise<NewsArticle[]>;
   getTeam(rc: CompetitionSeason, teamId: string): Promise<TeamProfile | null>;
   getSquad(rc: CompetitionSeason, teamId: string): Promise<SquadPlayer[]>;
+  getPlayer(rc: CompetitionSeason, athleteId: string): Promise<PlayerProfile | null>;
 }
 
 // How many scorers the Golden Boot table shows.
@@ -341,6 +345,41 @@ export function createDataStore(deps: DataDeps): DataStore {
         return squad;
       } catch {
         return [];
+      }
+    },
+
+    // A player within one competition. Same failure split as getTeam:
+    // identity is what the page is, so a failed profile is null and the route
+    // 404s; the game log and career are blocks on that page and degrade to
+    // empty rather than taking the page down. The two optional payloads'
+    // sibling endpoints (/gamelog, /splits, /stats) are dead upstream and are
+    // never called -- /overview and /bio are the only sources.
+    async getPlayer(rc, athleteId: string, ttlMs = 120_000): Promise<PlayerProfile | null> {
+      const k = key(rc, `player:${athleteId}`);
+      const cached = deps.cache.get(k) as PlayerProfile | undefined;
+      if (cached) return cached;
+
+      try {
+        const [rawProfile, rawOverview, rawBio] = await Promise.all([
+          deps.fetchJson(athleteUrl(slug(rc), athleteId)),
+          deps.fetchJson(athleteOverviewUrl(slug(rc), athleteId)).catch(() => null),
+          deps.fetchJson(athleteBioUrl(slug(rc), athleteId)).catch(() => null),
+        ]);
+
+        const identity = mapAthleteProfile(rawProfile);
+        if (!identity) return null;
+
+        const overview = rawOverview ? mapAthleteOverview(rawOverview) : { label: '', rows: [] };
+        const profile: PlayerProfile = {
+          ...identity,
+          gameLogLabel: overview.label,
+          gameLog: overview.rows,
+          career: rawBio ? mapAthleteBio(rawBio) : [],
+        };
+        deps.cache.set(k, profile, ttlMs);
+        return profile;
+      } catch {
+        return null;
       }
     },
 

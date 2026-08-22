@@ -62,6 +62,20 @@ describe('mapAthleteOverview', () => {
     expect(row.stats.offsides).toBe(2);
   });
 
+  // The sibling `events` map (keyed by id) carries the context that makes a
+  // row readable: opponent, date, score, result and the home/away ids the
+  // match popup needs. A row without its context entry keeps nulls.
+  it('merges match context from the events map', () => {
+    const row = o.rows.find((r) => r.eventId === '401877007')!;
+    expect(row.opponent!.abbr).toBe('TOL');
+    expect(row.score).toBe('2-1');
+    expect(row.result).toBe('L');
+    expect(row.atVs).toBe('vs');
+    expect(row.homeTeamId).toBe('222');
+    expect(row.awayTeamId).toBe('223');
+    expect(row.date).toContain('2026-08-22');
+  });
+
   it('distinguishes a substitute appearance', () => {
     const row = o.rows.find((r) => r.eventId === '401863600')!;
     expect(row.appearance).toBe('Sub');

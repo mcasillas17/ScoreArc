@@ -69,6 +69,10 @@ export function mapAthleteOverview(raw: unknown): { label: string; rows: GameLog
   const events: any[] = Array.isArray(block.events) ? block.events : [];
   if (names.length === 0 || events.length === 0) return { label: '', rows: [] };
 
+  // The log's sibling `events` map (keyed by event id) carries the match
+  // context -- opponent, date, score, result, home/away ids.
+  const context: Record<string, any> = (raw as any)?.gameLog?.events ?? {};
+
   const rows: GameLogRow[] = events.map((e: any): GameLogRow => {
     const values: string[] = Array.isArray(e?.stats) ? e.stats : [];
     const stats: Record<string, number | null> = {};
@@ -76,10 +80,26 @@ export function mapAthleteOverview(raw: unknown): { label: string; rows: GameLog
     for (let i = 1; i < names.length; i++) {
       stats[names[i]] = num(values[i]);
     }
+    const eventId = String(e?.eventId ?? '');
+    const ctx: any = context[eventId] ?? {};
     return {
-      eventId: String(e?.eventId ?? ''),
+      eventId,
       appearance: values[0] ?? '',
       stats,
+      date: ctx.gameDate ?? null,
+      atVs: ctx.atVs ?? '',
+      opponent: ctx.opponent
+        ? {
+            id: String(ctx.opponent.id ?? ''),
+            name: ctx.opponent.name ?? ctx.opponent.displayName ?? '',
+            abbr: ctx.opponent.abbr ?? ctx.opponent.abbreviation ?? '',
+            crestUrl: ctx.opponent.logo ?? null,
+          }
+        : null,
+      score: ctx.score ?? '',
+      result: ctx.gameResult ?? '',
+      homeTeamId: ctx.homeTeamId != null ? String(ctx.homeTeamId) : null,
+      awayTeamId: ctx.awayTeamId != null ? String(ctx.awayTeamId) : null,
     };
   });
   return { label: log.displayName ?? '', rows };
