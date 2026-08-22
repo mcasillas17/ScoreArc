@@ -345,3 +345,32 @@ describe('getTeam', () => {
     }
   });
 });
+
+describe('getSquad', () => {
+  const ligaMx = resolveSeason('liga-mx')!;
+
+  it('fetches only the roster and caches it', async () => {
+    const urls: string[] = [];
+    const store = createDataStore({
+      fetchJson: async (url: string) => { urls.push(url); return teamRosterRaw; },
+      cache: new TtlCache<unknown>(),
+    });
+    const squad = await store.getSquad(ligaMx, '227');
+    expect(squad).toHaveLength(35);
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).toContain('/roster');
+
+    await store.getSquad(ligaMx, '227');
+    expect(urls).toHaveLength(1); // cached
+  });
+
+  // The index that consumes this merges across teams, so one club's roster
+  // being down must cost that club's players, not the whole index.
+  it('returns [] when the roster fetch fails', async () => {
+    const store = createDataStore({
+      fetchJson: async () => { throw new Error('502'); },
+      cache: new TtlCache<unknown>(),
+    });
+    expect(await store.getSquad(ligaMx, '227')).toEqual([]);
+  });
+});

@@ -7,6 +7,7 @@ import type {
   NewsArticle,
   Group,
   TeamProfile,
+  SquadPlayer,
 } from './types';
 import type { CompetitionSeason } from './competitions';
 import {
@@ -53,6 +54,7 @@ export interface DataStore {
   getTopAssists(rc: CompetitionSeason): Promise<StatLeader[]>;
   getNews(rc: CompetitionSeason): Promise<NewsArticle[]>;
   getTeam(rc: CompetitionSeason, teamId: string): Promise<TeamProfile | null>;
+  getSquad(rc: CompetitionSeason, teamId: string): Promise<SquadPlayer[]>;
 }
 
 // How many scorers the Golden Boot table shows.
@@ -322,6 +324,23 @@ export function createDataStore(deps: DataDeps): DataStore {
         return profile;
       } catch {
         return null;
+      }
+    },
+
+    // Roster only -- one request, for callers that need players but not the
+    // profile or schedule (the player index reads every club in a
+    // competition, so the 4-request getTeam would quadruple its cold cost).
+    async getSquad(rc, teamId: string, ttlMs = 300_000): Promise<SquadPlayer[]> {
+      const k = key(rc, `squad:${teamId}`);
+      const cached = deps.cache.get(k) as SquadPlayer[] | undefined;
+      if (cached) return cached;
+      try {
+        const raw = await deps.fetchJson(teamRosterUrl(slug(rc), teamId));
+        const squad = mapTeamRoster(raw);
+        deps.cache.set(k, squad, ttlMs);
+        return squad;
+      } catch {
+        return [];
       }
     },
 
