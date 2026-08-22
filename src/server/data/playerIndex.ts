@@ -1,4 +1,5 @@
 import type { CompetitionSeason } from './competitions';
+import type { Team } from './types';
 import { dataStore, type DataStore } from './store';
 import { buildSlugMap, type ResolvedPlayer, type SlugEntry } from './playerIdentity';
 
@@ -31,14 +32,28 @@ export async function competitionPlayerIndex(
 ): Promise<PlayerIndex> {
   const groups = await store.getStandings(rc);
 
-  const teams = groups.flatMap((g) => g.standings.map((s) => s.team));
+  // Dedupe: MLS standings carry each club twice (conference AND overall
+  // groups), and a duplicated roster makes every player collide with
+  // himself -- Messi rendered as lionel-messi-mia-10.
+  const teamById = new Map<string, Team>();
+  for (const group of groups) {
+    for (const standing of group.standings) {
+      if (!teamById.has(standing.team.id)) teamById.set(standing.team.id, standing.team);
+    }
+  }
+  const teams = Array.from(teamById.values());
   const squads = await Promise.all(
     teams.map(async (team) => ({ team, squad: await store.getSquad(rc, team.id) })),
   );
 
   const entries: SlugEntry[] = [];
+  const seenAthletes = new Set<string>();
   for (const { team, squad } of squads) {
     for (const player of squad) {
+      // The same belt-and-suspenders at athlete level: a player listed on two
+      // rosters (mid-window transfer) is one identity, not a collision.
+      if (seenAthletes.has(player.id)) continue;
+      seenAthletes.add(player.id);
       entries.push({
         name: player.name,
         providerId: player.id,

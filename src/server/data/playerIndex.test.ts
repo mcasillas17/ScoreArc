@@ -53,6 +53,21 @@ describe('competitionPlayerIndex', () => {
     expect(index.bySlug.get('rodrigo-lopez-ame')!.providerId).toBe('2');
   });
 
+  // MLS standings carry each club in two groups (conference + overall), so a
+  // naive flatten indexes every roster twice and every player "collides with
+  // himself" -- Messi came out as lionel-messi-mia-10. Duplicate teams and
+  // duplicate athletes must both collapse before collision detection.
+  it('does not self-collide a player whose team appears in two groups', async () => {
+    const twoGroups: Group[] = [
+      { id: 'east', name: 'east', standings: [{ team: team('222', 'QRO'), rank: 1 } as Group['standings'][number]] } as Group,
+      { id: 'overall', name: 'overall', standings: [{ team: team('222', 'QRO'), rank: 1 } as Group['standings'][number]] } as Group,
+    ];
+    const store = fakeStore(twoGroups, { '222': [player('297287', 'Ali Avila', 9)] });
+    const index = await competitionPlayerIndex(rc, store);
+    expect(index.bySlug.get('ali-avila')!.providerId).toBe('297287');
+    expect(index.bySlug.has('ali-avila-qro-9')).toBe(false);
+  });
+
   it('survives a club with no roster', async () => {
     const store = fakeStore(groups, { '222': [player('297287', 'Ali Avila')] });
     const index = await competitionPlayerIndex(rc, store);
