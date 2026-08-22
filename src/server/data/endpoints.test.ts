@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   scoreboardUrl, standingsUrl, summaryUrl, bracketUrl, statisticsUrl, newsUrl,
   teamUrl, teamRosterUrl, teamScheduleUrl,
+  athleteUrl, athleteOverviewUrl, athleteBioUrl,
 } from './endpoints';
 
 describe('endpoint builders', () => {
@@ -35,5 +36,23 @@ describe('team endpoints', () => {
     expect(teamUrl('mex.1', '../secret')).not.toContain('../');
     expect(teamRosterUrl('mex.1', '../secret')).not.toContain('../');
     expect(teamScheduleUrl('mex.1', '../secret')).not.toContain('../');
+  });
+});
+
+describe('athlete endpoints', () => {
+  const base = 'https://site.web.api.espn.com/apis/common/v3/sports/soccer/mex.1/athletes/297287';
+
+  it('builds athlete urls on the web api host', () => {
+    expect(athleteUrl('mex.1', '297287')).toBe(base);
+    expect(athleteOverviewUrl('mex.1', '297287')).toBe(`${base}/overview`);
+    expect(athleteBioUrl('mex.1', '297287')).toBe(`${base}/bio`);
+  });
+
+  // Athlete ids arrive from a resolved slug, but the same traversal rule as
+  // team ids applies: nothing raw reaches the upstream path.
+  it('encodes the athlete id', () => {
+    expect(athleteUrl('mex.1', '../x')).not.toContain('../');
+    expect(athleteOverviewUrl('mex.1', '../x')).not.toContain('../');
+    expect(athleteBioUrl('mex.1', '../x')).not.toContain('../');
   });
 });
