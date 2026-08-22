@@ -17,6 +17,11 @@ export interface PlayerIndex {
  * roster is unavailable contributes no players rather than failing the
  * index; its players' pages 404 until the roster returns, which is honest.
  *
+ * A standings failure, by contrast, PROPAGATES: an index built from zero
+ * teams is not knowledge that a player does not exist, and a caller turning
+ * it into a 404 would tell a reader their bookmark is dead during an
+ * outage. The route maps the throw to a 502 instead.
+ *
  * Provider ids stay inside the returned maps and never reach a URL -- the
  * slug contract is docs/backend/PLAYER_IDENTITY.md.
  */
@@ -24,12 +29,7 @@ export async function competitionPlayerIndex(
   rc: CompetitionSeason,
   store: DataStore = dataStore,
 ): Promise<PlayerIndex> {
-  let groups;
-  try {
-    groups = await store.getStandings(rc);
-  } catch {
-    return { bySlug: new Map(), byProvider: new Map() };
-  }
+  const groups = await store.getStandings(rc);
 
   const teams = groups.flatMap((g) => g.standings.map((s) => s.team));
   const squads = await Promise.all(

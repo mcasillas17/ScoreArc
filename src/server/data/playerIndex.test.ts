@@ -59,11 +59,12 @@ describe('competitionPlayerIndex', () => {
     expect(index.bySlug.size).toBe(1);
   });
 
-  it('returns an empty index when standings are unavailable', async () => {
+  // An index built from zero teams is not knowledge that a player does not
+  // exist -- the failure propagates so the route can answer 502, not 404.
+  it('propagates a standings failure', async () => {
     const store = {
       getStandings: async () => { throw new Error('502'); },
     } as unknown as DataStore;
-    const index = await competitionPlayerIndex(rc, store);
-    expect(index.bySlug.size).toBe(0);
+    await expect(competitionPlayerIndex(rc, store)).rejects.toThrow();
   });
 });

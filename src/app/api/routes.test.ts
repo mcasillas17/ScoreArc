@@ -107,6 +107,23 @@ const migratedRouteCases = [
     ),
   },
   {
+    name: 'player',
+    telemetry: 'player',
+    comp: mx.comp,
+    season: mx.season,
+    // The slug index is built from standings, so a standings failure is the
+    // player route's provider failure -- it must 502, never 404.
+    rejectProvider: () => vi.spyOn(dataStore, 'getStandings').mockRejectedValueOnce(sensitiveProviderFailure),
+    getValid: async () => (await import('./[comp]/[season]/player/[playerSlug]/route')).GET(
+      new Request('http://x/api/liga-mx/2026-apertura/player/ali-avila'),
+      { params: { ...mx, playerSlug: 'ali-avila' } },
+    ),
+    getMissing: async () => (await import('./[comp]/[season]/player/[playerSlug]/route')).GET(
+      new Request('http://x/api/nope/2026/player/ali-avila'),
+      { params: { comp: 'nope', season: '2026', playerSlug: 'ali-avila' } },
+    ),
+  },
+  {
     name: 'team',
     telemetry: 'team',
     comp: mx.comp,
@@ -181,6 +198,23 @@ describe.each(migratedRouteCases)('stable API errors — $name', (routeCase) => 
       routeCase.comp,
       routeCase.season,
     );
+  });
+});
+
+
+describe('player route slug resolution', () => {
+  it('404s an unknown slug without an athlete request', async () => {
+    vi.spyOn(dataStore, 'getStandings').mockResolvedValueOnce([]);
+    const getPlayer = vi.spyOn(dataStore, 'getPlayer');
+    const response = await (await import('./[comp]/[season]/player/[playerSlug]/route')).GET(
+      new Request('http://x/api/liga-mx/2026-apertura/player/nobody-here'),
+      { params: { ...mx, playerSlug: 'nobody-here' } },
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: { code: 'NOT_FOUND' } });
+    expect(getPlayer).not.toHaveBeenCalled();
+    expect(trackAPIRequestFailure).not.toHaveBeenCalled();
   });
 });
 

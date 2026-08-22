@@ -405,4 +405,5 @@ export interface PlayerProfile {
   gameLogLabel: string; // e.g. "Last 5 Matches"
   gameLog: GameLogRow[];
   career: CareerStint[];
+  news: NewsArticle[];
 }

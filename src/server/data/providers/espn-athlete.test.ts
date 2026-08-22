@@ -81,8 +81,15 @@ describe('mapAthleteOverview', () => {
     expect(row.appearance).toBe('Sub');
   });
 
+  it('maps the athlete news through the shared article shape', () => {
+    expect(o.news.length).toBeGreaterThan(0);
+    expect(o.news[0].headline.length).toBeGreaterThan(0);
+    expect(o.news[0].url).toContain('espn');
+  });
+
   it('returns an empty log for a malformed payload', () => {
     expect(mapAthleteOverview({}).rows).toEqual([]);
+    expect(mapAthleteOverview({}).news).toEqual([]);
     expect(mapAthleteOverview(null).rows).toEqual([]);
   });
 });
