@@ -6,6 +6,7 @@ type APIEndpoint =
   | 'match-summary'
   | 'matches'
   | 'news'
+  | 'player'
   | 'standings'
   | 'team'
   | 'top-assists'

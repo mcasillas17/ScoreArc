@@ -381,6 +381,8 @@ export interface GameLogRow {
   result: string; // "W" | "L" | "D"
   homeTeamId: string | null;
   awayTeamId: string | null;
+  teamId: string | null; // the player's club in THIS match (transfers move it)
+  teamAbbr: string;
 }
 
 export interface CareerStint {

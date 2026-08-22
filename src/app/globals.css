@@ -3729,3 +3729,127 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 .tsp-back { margin: 0 0 14px; font-size: 12.5px; }
 .tsp-back a { color: var(--text-muted); text-decoration: none; }
 .tsp-back a:hover { color: var(--text); }
+
+/* ---- Player page (ph-*, pl-*) ----------------------------------------- */
+
+/* The portrait survives a missing headshot by design: the provider returns
+   null headshots routinely, so initials on a surface disc are the primary
+   layout, not a fallback that looks like one. */
+.ph { display: flex; align-items: center; gap: 18px; margin-bottom: 6px; }
+.ph-portrait {
+  width: 84px;
+  height: 84px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.ph-headshot { width: 100%; height: 100%; object-fit: cover; }
+.ph-initials {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--accent-bright);
+}
+.ph-name { display: flex; align-items: baseline; gap: 10px; font-size: 24px; margin: 0 0 4px; }
+.ph-jersey { color: var(--text-muted); font-size: 16px; font-weight: 600; }
+.ph-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0 0 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.ph-nation { display: inline-flex; align-items: center; gap: 6px; }
+.ph-flag { width: 16px; height: 11px; object-fit: cover; border-radius: 2px; }
+.ph-club { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 13.5px; }
+.ph-club a { color: var(--text); text-decoration: none; font-weight: 600; }
+.ph-club a:hover { color: var(--accent-bright); }
+.ph-club span { color: var(--text); font-weight: 600; }
+
+.pl-section { margin-top: 28px; }
+.pl-none { color: var(--text-muted); font-size: 13px; margin: 0; }
+
+.pl-totals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+.pl-total {
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 2px;
+}
+.pl-total-value { font-size: 20px; font-variant-numeric: tabular-nums; }
+.pl-total-label { color: var(--text-muted); font-size: 11.5px; }
+
+/* The log scrolls inside its own box for the same reason the squad table
+   does: nine stat columns will not fit a phone. */
+.pl-log-wrap { overflow-x: auto; }
+.pl-log { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px; }
+.pl-log th, .pl-log td { padding: 8px 6px; text-align: right; }
+.pl-log th {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+}
+.pl-log th abbr { text-decoration: none; }
+.pl-log tbody tr { border-top: 1px solid var(--hairline); }
+.pl-log-match { text-align: left !important; }
+.pl-log-stat { font-variant-numeric: tabular-nums; }
+
+.pl-log-open {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.pl-log-open:hover .pl-log-opp { color: var(--accent-bright); }
+.pl-log-opp { font-weight: 700; color: var(--text); }
+.pl-log-atvs { color: var(--text-muted); font-weight: 400; margin-right: 4px; }
+.pl-log-result { font-weight: 800; font-size: 12px; }
+.pl-log-result--W { color: var(--win); }
+.pl-log-result--L { color: #e06868; }
+.pl-log-result--D { color: var(--text-muted); }
+.pl-log-score { font-variant-numeric: tabular-nums; }
+.pl-log-app { color: var(--text-muted); font-size: 12px; }
+.pl-log-date { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+
+/* The ceiling is a claim about the data, not a caption: it must be readable
+   without being mistaken for part of the log. */
+.pl-ceiling { color: var(--text-muted); font-size: 12px; margin: 10px 0 0; max-width: 560px; }
+
+.pl-career { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.pl-stint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 13px;
+}
+.pl-stint-club { font-weight: 600; }
+.pl-stint-years { margin-left: auto; color: var(--text-muted); font-size: 12px; }
+
+@media (max-width: 760px) {
+  .pl { padding: 20px 16px 48px; }
+  .ph-portrait { width: 64px; height: 64px; }
+  .ph-initials { font-size: 20px; }
+  .ph-name { font-size: 20px; }
+}

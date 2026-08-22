@@ -103,6 +103,8 @@ export function mapAthleteOverview(raw: unknown): { label: string; rows: GameLog
       result: ctx.gameResult ?? '',
       homeTeamId: ctx.homeTeamId != null ? String(ctx.homeTeamId) : null,
       awayTeamId: ctx.awayTeamId != null ? String(ctx.awayTeamId) : null,
+      teamId: ctx.team?.id != null ? String(ctx.team.id) : null,
+      teamAbbr: ctx.team?.abbr ?? ctx.team?.abbreviation ?? '',
     };
   });
   return { label: log.displayName ?? '', rows, news };

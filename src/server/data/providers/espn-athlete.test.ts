@@ -74,6 +74,8 @@ describe('mapAthleteOverview', () => {
     expect(row.homeTeamId).toBe('222');
     expect(row.awayTeamId).toBe('223');
     expect(row.date).toContain('2026-08-22');
+    expect(row.teamId).toBe('222');
+    expect(row.teamAbbr).toBe('QRO');
   });
 
   it('distinguishes a substitute appearance', () => {
