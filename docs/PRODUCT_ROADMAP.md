@@ -332,12 +332,30 @@ nothing currently knows. Three options:
 **Shipped (1).** A club is one entry with one link per competition —
 "América · Leagues Cup · Liga MX". (3) supersedes it when the backend lands.
 
-### E5 · Player pages
+### E5 · Player pages — **shipped**
 Branch `feat/player-pages`. Unblocked by three keyless athlete endpoints.
 
-- **T5.1** Athlete provider + mapper
-- **T5.2** Player route and page, with its ceiling stated on the page
-- **T5.3** Link players from scorers, assists, lineups and match popups
+- **T5.1** ✅ Athlete provider + mapper (`espn-athlete.ts`; the game log is
+  column-oriented — positional strings zipped against a `names` array read
+  from the payload)
+- **T5.2** ✅ Player route and page, with its ceiling stated on the page
+- **T5.3** ✅ Link players from scorers, assists boards and squad tables
+
+Two decisions made during implementation, both deliberate:
+
+- **URLs carry name slugs, never ESPN athlete numbers** —
+  `/c/liga-mx/2026-apertura/player/ali-avila`. The slug algorithm and
+  collision policy are a written contract shared with the backend
+  (`docs/backend/PLAYER_IDENTITY.md`) so the same URLs survive the API
+  cutover, and a guard test fails the suite if any source interpolates a raw
+  id into `/player/` or `/team/`. Resolution runs through a per-competition
+  player index built from the squad rosters the team pages already fetch.
+- **Two surfaces stay unlinked, honestly.** The home digest's scorer boards
+  span nine competitions, and enriching all nine costs ~160 upstream requests
+  on a cold cache — the class of cost E11 existed to remove; the board's
+  "Standings" link leads to the linked version. Match-popup lineups need slugs
+  in the summary API payload (the popup is client-side with no index access)
+  — a small follow-up, not done in E5.
 
 Verified 2026-08-15: `/athletes/{id}` (200), `/athletes/{id}/overview` (200) and
 `/athletes/{id}/bio` (200) — while `/gamelog` (500), `/splits` (404) and `/stats`
