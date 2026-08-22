@@ -126,7 +126,6 @@ export const es = {
   'player.seasonStats': 'Estadísticas de la temporada',
   'player.lastMatches': 'Últimos partidos',
   'player.career': 'Trayectoria',
-  'player.news': 'Noticias',
   'player.gameLogCeiling':
     'Se muestran los últimos cinco partidos: lo más profundo que publica esta fuente. La historia de temporada completa y de varias temporadas está en camino.',
   'player.yearsOld': (age: number) => `${age} años`,

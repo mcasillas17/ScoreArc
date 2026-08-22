@@ -138,7 +138,6 @@ export const en = {
   'player.seasonStats': 'Season stats',
   'player.lastMatches': 'Last matches',
   'player.career': 'Career',
-  'player.news': 'News',
   'player.gameLogCeiling':
     'Showing the last five matches — the deepest history this data source publishes. Full-season and multi-season history are coming.',
   'player.yearsOld': (age: number) => `${age} years`,

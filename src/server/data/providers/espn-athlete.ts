@@ -1,5 +1,4 @@
-import type { CareerStint, GameLogRow, NewsArticle, PlayerProfile, PlayerSeasonTotal, Team } from '../types';
-import { mapNews } from './espn-news';
+import type { CareerStint, GameLogRow, PlayerProfile, PlayerSeasonTotal, Team } from '../types';
 
 /** Profile without the blocks that come from the other two endpoints. */
 export type AthleteIdentity = Omit<PlayerProfile, 'gameLog' | 'gameLogLabel' | 'career' | 'news'>;
@@ -63,14 +62,12 @@ export function mapAthleteProfile(raw: unknown): AthleteIdentity | null {
  * the payload rather than hardcoded -- a hardcoded order would keep parsing
  * successfully while shifting every value one column to the left.
  */
-export function mapAthleteOverview(raw: unknown): { label: string; rows: GameLogRow[]; news: NewsArticle[] } {
+export function mapAthleteOverview(raw: unknown): { label: string; rows: GameLogRow[] } {
   const log: any = (raw as any)?.gameLog ?? {};
   const block: any = log.statistics?.[0] ?? {};
   const names: string[] = Array.isArray(block.names) ? block.names : [];
   const events: any[] = Array.isArray(block.events) ? block.events : [];
-  // The athlete's articles ride on the same payload in the site-wide shape.
-  const news = mapNews({ articles: (raw as any)?.news ?? [] });
-  if (names.length === 0 || events.length === 0) return { label: '', rows: [], news };
+  if (names.length === 0 || events.length === 0) return { label: '', rows: [] };
 
   // The log's sibling `events` map (keyed by event id) carries the match
   // context -- opponent, date, score, result, home/away ids.
@@ -107,7 +104,7 @@ export function mapAthleteOverview(raw: unknown): { label: string; rows: GameLog
       teamAbbr: ctx.team?.abbr ?? ctx.team?.abbreviation ?? '',
     };
   });
-  return { label: log.displayName ?? '', rows, news };
+  return { label: log.displayName ?? '', rows };
 }
 
 /** `/athletes/{id}/bio` -- career club history, newest first as delivered. */

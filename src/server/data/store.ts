@@ -369,13 +369,12 @@ export function createDataStore(deps: DataDeps): DataStore {
         const identity = mapAthleteProfile(rawProfile);
         if (!identity) return null;
 
-        const overview = rawOverview ? mapAthleteOverview(rawOverview) : { label: '', rows: [], news: [] };
+        const overview = rawOverview ? mapAthleteOverview(rawOverview) : { label: '', rows: [] };
         const profile: PlayerProfile = {
           ...identity,
           gameLogLabel: overview.label,
           gameLog: overview.rows,
           career: rawBio ? mapAthleteBio(rawBio) : [],
-          news: overview.news,
         };
         deps.cache.set(k, profile, ttlMs);
         return profile;

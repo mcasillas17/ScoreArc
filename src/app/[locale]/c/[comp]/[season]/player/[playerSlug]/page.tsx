@@ -10,7 +10,6 @@ import type { PlayerProfile } from '@/server/data/types';
 import PlayerHeader from '@/components/PlayerHeader';
 import PlayerGameLog from '@/components/PlayerGameLog';
 import TeamBadge from '@/components/TeamBadge';
-import NewsList from '@/components/NewsList';
 import SiteFooter from '@/components/SiteFooter';
 import { teamHref } from '@/components/teamHref';
 
@@ -138,12 +137,6 @@ export default async function PlayerPage({ params }: Params) {
         </section>
       )}
 
-      {player.news.length > 0 && (
-        <section className="pl-section">
-          <h2 className="section-label">{t('player.news')}</h2>
-          <NewsList articles={player.news.slice(0, 6)} />
-        </section>
-      )}
 
       <SiteFooter />
     </main>
