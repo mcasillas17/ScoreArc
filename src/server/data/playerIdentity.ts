@@ -23,12 +23,22 @@ export interface ResolvedPlayer {
   name: string;
 }
 
+/**
+ * Letters NFD cannot reach: they carry no combining mark to strip, so without
+ * this table they would be deleted rather than folded ("Ødegaard" ->
+ * "degaard"). Applied after lowercasing.
+ */
+const NON_DECOMPOSING: Record<string, string> = {
+  'ø': 'o', 'đ': 'd', 'ð': 'd', 'ł': 'l', 'ß': 'ss', 'æ': 'ae', 'œ': 'oe', 'þ': 'th',
+};
+
 /** NFD-fold accents, lowercase, collapse non-alphanumerics to hyphens. */
 export function playerSlug(name: string): string {
   return name
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
+    .replace(/[øđðłßæœþ]/g, (ch) => NON_DECOMPOSING[ch] ?? ch)
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 }

@@ -3853,3 +3853,8 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   .ph-initials { font-size: 20px; }
   .ph-name { font-size: 20px; }
 }
+
+/* Player-name links keep the row's text colour until hover: a leaderboard
+   of accent-coloured names would read as ten calls to action. */
+.ldr-player, .sq-name-link { color: inherit; text-decoration: none; }
+.ldr-player:hover, .sq-name-link:hover { color: var(--accent-bright); text-decoration: underline; }

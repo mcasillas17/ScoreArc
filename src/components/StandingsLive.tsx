@@ -23,6 +23,7 @@ interface Props {
    * renders exactly as before, unlinked.
    */
   teamBase?: string;
+  playerBase?: string;
   teamStyle?: 'flag' | 'crest';
   // Group-stage tournaments race for best third place; leagues don't.
   showThirdPlace?: boolean;
@@ -36,7 +37,7 @@ interface Props {
 
 const REFRESH_MS = 30_000;
 
-export default function StandingsLive({ initialGroups, initialScorers, initialAssists, apiBase, teamBase, teamStyle = 'flag', showThirdPlace = true, qualification, zones }: Props) {
+export default function StandingsLive({ initialGroups, initialScorers, initialAssists, apiBase, teamBase, playerBase, teamStyle = 'flag', showThirdPlace = true, qualification, zones }: Props) {
   const t = useTranslations();
   const [groups, setGroups] = useState<Group[]>(initialGroups);
   const [scorers, setScorers] = useState<StatLeader[]>(initialScorers);
@@ -112,14 +113,14 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
   const topScorersBlock = (
     <div className="std-block">
       <h2 className="std-block-title">{t('standings.goldenBoot')}</h2>
-      <LeaderTable leaders={scorers} metric="goals" teamStyle={teamStyle} teamBase={teamBase} />
+      <LeaderTable leaders={scorers} metric="goals" teamStyle={teamStyle} teamBase={teamBase} playerBase={playerBase} />
     </div>
   );
 
   const topAssistsBlock = (
     <div className="std-block">
       <h2 className="std-block-title">{t('standings.playmakers')}</h2>
-      <LeaderTable leaders={assists} metric="assists" teamStyle={teamStyle} teamBase={teamBase} />
+      <LeaderTable leaders={assists} metric="assists" teamStyle={teamStyle} teamBase={teamBase} playerBase={playerBase} />
     </div>
   );
 

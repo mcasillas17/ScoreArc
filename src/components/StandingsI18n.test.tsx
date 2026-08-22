@@ -54,7 +54,7 @@ function renderLocalized(locale: 'en' | 'es', node: ReactNode): string {
 function leader(): StatLeader {
   return {
     rank: 1,
-    player: 'Alex Morgan',
+    athleteId: null, player: 'Alex Morgan',
     teamId: 'team-1',
     teamAbbr: 'USA',
     teamName: 'United States',

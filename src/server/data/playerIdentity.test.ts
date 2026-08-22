@@ -16,6 +16,16 @@ describe('playerSlug', () => {
     expect(playerSlug('  O.G. van der Sar  ')).toBe('o-g-van-der-sar');
   });
 
+  // These letters do NOT decompose under NFD, so a fold that only strips
+  // combining marks silently deletes them: "Ødegaard" became "degaard".
+  it('folds the non-decomposing letters', () => {
+    expect(playerSlug('Martin Ødegaard')).toBe('martin-odegaard');
+    expect(playerSlug('Łukasz Fabiański')).toBe('lukasz-fabianski');
+    expect(playerSlug('Đorđe Petrović')).toBe('dorde-petrovic');
+    expect(playerSlug('Toni Rüdiger ß')).toBe('toni-rudiger-ss');
+    expect(playerSlug('Æon Œuvre')).toBe('aeon-oeuvre');
+  });
+
   it('keeps digits', () => {
     expect(playerSlug('Ronaldo 9')).toBe('ronaldo-9');
   });

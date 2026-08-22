@@ -26,11 +26,14 @@ From the player's full display name, in order:
 1. Unicode-normalize to NFD and strip combining marks (`é` → `e`, `ñ` → `n`).
    Same folding `TeamSearch.tsx` already uses.
 2. Lowercase.
-3. Replace every run of characters outside `[a-z0-9]` with a single `-`.
-4. Trim leading/trailing `-`.
+3. Fold the letters NFD cannot reach (they carry no combining mark, so step 1
+   would *delete* them rather than fold them): `ø`→`o`, `đ`→`d`, `ð`→`d`,
+   `ł`→`l`, `ß`→`ss`, `æ`→`ae`, `œ`→`oe`, `þ`→`th`.
+4. Replace every run of characters outside `[a-z0-9]` with a single `-`.
+5. Trim leading/trailing `-`.
 
 `"Alí Ávila"` → `ali-avila` · `"N'Golo Kanté"` → `n-golo-kante` ·
-`"João Félix"` → `joao-felix`
+`"Martin Ødegaard"` → `martin-odegaard` (not `martin-degaard`)
 
 ## Collisions
 

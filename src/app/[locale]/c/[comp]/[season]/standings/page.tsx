@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
 import { resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
+import { withPlayerSlugs } from '@/server/data/playerIndex';
 import { getBannerFeed } from '@/server/data/banner';
 import type { Group, StatLeader } from '@/server/data/types';
 import StandingsLive from '@/components/StandingsLive';
@@ -42,6 +43,7 @@ export default async function StandingsPage({ params }: { params: { locale: stri
   // Crests in the tables below link here. Competition-scoped because a club's
   // record and squad only mean something inside one competition.
   const teamBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/team`;
+  const playerBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/player`;
   const hasBracket = rc.season.format.hasBracket;
   // A finished (non-current) edition is view-only — no "what's next" band.
   const readOnly = rc.season.id !== rc.competition.currentSeasonId;
@@ -59,8 +61,12 @@ export default async function StandingsPage({ params }: { params: { locale: stri
   try {
     // One fetch, both boards.
     const boards = await dataStore.getLeaders(rc);
-    scorers = boards.scorers;
-    assists = boards.assists;
+    // Best-effort slug enrichment: a failed player index costs the name
+    // links, never the boards.
+    [scorers, assists] = await Promise.all([
+      withPlayerSlugs(rc, boards.scorers),
+      withPlayerSlugs(rc, boards.assists),
+    ]);
   } catch {
     // ESPN stats unavailable — tables render their own empty state
   }
@@ -97,6 +103,7 @@ export default async function StandingsPage({ params }: { params: { locale: stri
             showThirdPlace is set, so passing them unconditionally is safe. */}
         <StandingsLive
           teamBase={teamBase}
+          playerBase={playerBase}
           initialGroups={groups}
           initialScorers={scorers}
           initialAssists={assists}

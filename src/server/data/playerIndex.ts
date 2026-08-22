@@ -55,3 +55,27 @@ export async function competitionPlayerIndex(
   }
   return { bySlug, byProvider };
 }
+
+/**
+ * Fill each leader's playerSlug from the competition index -- the step that
+ * turns an internal athlete id into the public identity a link may use.
+ *
+ * Failure degrades to the input unchanged: a leaderboard without links is a
+ * poorer page, a leaderboard that failed to render is a broken one.
+ */
+export async function withPlayerSlugs<T extends { athleteId: string | null; playerSlug?: string | null }>(
+  rc: CompetitionSeason,
+  leaders: T[],
+  store: DataStore = dataStore,
+): Promise<T[]> {
+  if (leaders.length === 0) return leaders;
+  try {
+    const index = await competitionPlayerIndex(rc, store);
+    return leaders.map((leader) => ({
+      ...leader,
+      playerSlug: leader.athleteId ? index.byProvider.get(leader.athleteId) ?? null : null,
+    }));
+  } catch {
+    return leaders;
+  }
+}

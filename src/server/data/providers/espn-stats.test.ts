@@ -97,6 +97,11 @@ describe('mapLeaders', () => {
 // The leaderboard crest links to the team page, which is addressed by the
 // provider's numeric id. teamAbbr cannot stand in for it: /team/AME is a 404.
 describe('leader team identity', () => {
+  it('carries the athlete id for slug resolution, never for a URL', () => {
+    const leaders = mapLeaders(raw, 'goalsLeaders');
+    expect(leaders[0].athleteId).toBe('231388');
+  });
+
   it('carries the provider team id alongside the abbreviation', () => {
     const scorers = mapLeaders(raw, 'goalsLeaders');
     expect(scorers.length).toBeGreaterThan(0);

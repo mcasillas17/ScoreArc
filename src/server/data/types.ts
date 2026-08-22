@@ -195,6 +195,17 @@ export interface StatLeader {
   rank: number;
   player: string;
   /**
+   * The provider's athlete id, or null. Internal -- it never reaches a URL.
+   * Links go through playerSlug, the public identity.
+   */
+  athleteId: string | null;
+  /**
+   * The player's public slug (docs/backend/PLAYER_IDENTITY.md), filled by
+   * withPlayerSlugs where a page can afford the index. Null/absent means the
+   * name renders as plain text -- never a guessed or numeric link.
+   */
+  playerSlug?: string | null;
+  /**
    * The provider's team id, or null.
    *
    * Separate from teamAbbr because the team page is addressed by id: linking a

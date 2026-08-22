@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { competitionPlayerIndex } from './playerIndex';
+import { competitionPlayerIndex, withPlayerSlugs } from './playerIndex';
 import { resolveSeason } from './competitions';
 import type { DataStore } from './store';
 import type { Group, SquadPlayer, Team } from './types';
@@ -66,5 +66,31 @@ describe('competitionPlayerIndex', () => {
       getStandings: async () => { throw new Error('502'); },
     } as unknown as DataStore;
     await expect(competitionPlayerIndex(rc, store)).rejects.toThrow();
+  });
+});
+
+describe('withPlayerSlugs', () => {
+  const store = fakeStore(groups, {
+    '222': [player('297287', 'Alí Ávila')],
+    '227': [],
+  });
+
+  it('resolves slugs for known athletes and null for strangers', async () => {
+    const leaders: { athleteId: string | null; player: string; playerSlug?: string | null }[] = [
+      { athleteId: '297287', player: 'Alí Ávila' },
+      { athleteId: '999999', player: 'Unknown Loanee' },
+      { athleteId: null, player: 'No Id' },
+    ];
+    const out = await withPlayerSlugs(rc, leaders, store);
+    expect(out[0].playerSlug).toBe('ali-avila');
+    expect(out[1].playerSlug).toBeNull();
+    expect(out[2].playerSlug).toBeNull();
+  });
+
+  it('returns the input unchanged when the index cannot build', async () => {
+    const broken = { getStandings: async () => { throw new Error('502'); } } as unknown as DataStore;
+    const leaders: { athleteId: string | null; playerSlug?: string | null }[] = [{ athleteId: '297287' }];
+    const out = await withPlayerSlugs(rc, leaders, broken);
+    expect(out).toEqual(leaders);
   });
 });
