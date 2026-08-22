@@ -137,6 +137,7 @@ export const en = {
   'player.backToTeam': (team: string) => `← ${team}`,
   'player.seasonStats': 'Season stats',
   'player.lastMatches': 'Last matches',
+  'player.lastNMatches': (n: number) => `Last ${n} matches`,
   'player.career': 'Career',
   'player.gameLogCeiling':
     'Showing the last five matches — the deepest history this data source publishes. Full-season and multi-season history are coming.',

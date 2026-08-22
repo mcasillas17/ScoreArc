@@ -81,61 +81,75 @@ export default async function PlayerPage({ params }: Params) {
         </p>
       )}
 
-      <PlayerHeader player={player} teamBase={teamBase} teamStyle={rc.competition.teamStyle} t={t} />
+      {/* Identity and season totals share the top row: on a wide screen the
+          header alone left half the viewport empty. */}
+      <div className="pl-top">
+        <PlayerHeader player={player} teamBase={teamBase} teamStyle={rc.competition.teamStyle} t={t} />
 
-      <section className="pl-section">
-        <h2 className="section-label">
-          {/* The provider labels the season itself ("2026-27 Liga MX Stats");
-              its label wins over ours because it states the scope. */}
-          {player.seasonLabel || t('player.seasonStats')}
-        </h2>
-        {player.totals.length === 0 ? (
-          <p className="pl-none">{t('player.noSeasonStats')}</p>
-        ) : (
-          <ul className="pl-totals">
-            {player.totals.map((total) => (
-              <li key={total.name} className="pl-total">
-                {/* display, not value: "5 (0)" is starts AND substitute
-                    appearances, and the value alone discards the second. */}
-                <strong className="pl-total-value">{total.display || '–'}</strong>
-                <span className="pl-total-label">{total.label}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="pl-section">
-        <h2 className="section-label">{player.gameLogLabel || t('player.lastMatches')}</h2>
-        <PlayerGameLog
-          rows={player.gameLog}
-          playerTeam={player.team}
-          apiBase={apiBase}
-          teamBase={teamBase}
-          teamStyle={rc.competition.teamStyle}
-        />
-        {/* The ceiling, stated: five matches must not read as a season. */}
-        <p className="pl-ceiling">{t('player.gameLogCeiling')}</p>
-      </section>
-
-      {player.career.length > 0 && (
-        <section className="pl-section">
-          <h2 className="section-label">{t('player.career')}</h2>
-          <ul className="pl-career">
-            {player.career.map((stint) => (
-              <li key={`${stint.teamId}:${stint.seasons}`} className="pl-stint">
-                <TeamBadge
-                  team={{ id: stint.teamId, name: stint.teamName, abbr: stint.teamName, crestUrl: stint.crestUrl }}
-                  size={22}
-                  style="crest"
-                />
-                <span className="pl-stint-club">{stint.teamName}</span>
-                <span className="pl-stint-years">{stint.seasons}</span>
-              </li>
-            ))}
-          </ul>
+        <section className="pl-season">
+          <h2 className="section-label">
+            {/* The provider labels the season itself ("2026-27 Liga MX Stats");
+                its label wins over ours because it states the scope. */}
+            {player.seasonLabel || t('player.seasonStats')}
+          </h2>
+          {player.totals.length === 0 ? (
+            <p className="pl-none">{t('player.noSeasonStats')}</p>
+          ) : (
+            <ul className="pl-totals">
+              {player.totals.map((total) => (
+                <li key={total.name} className="pl-total">
+                  {/* display, not value: "5 (0)" is starts AND substitute
+                      appearances, and the value alone discards the second. */}
+                  <strong className="pl-total-value">{total.display || '–'}</strong>
+                  <span className="pl-total-label">{total.label}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
-      )}
+      </div>
+
+      {/* The log and the career split the width below: the log is the wide
+          column, the career is a rail. */}
+      <div className="pl-body">
+        <section className="pl-section pl-log-col">
+          {/* Our label, not the provider's: "Last 5 Matches" arrives in
+              English regardless of locale. The count is the real row count. */}
+          <h2 className="section-label">
+            {player.gameLog.length > 0
+              ? t('player.lastNMatches', player.gameLog.length)
+              : t('player.lastMatches')}
+          </h2>
+          <PlayerGameLog
+            rows={player.gameLog}
+            playerTeam={player.team}
+            apiBase={apiBase}
+            teamBase={teamBase}
+            teamStyle={rc.competition.teamStyle}
+          />
+          {/* The ceiling, stated: five matches must not read as a season. */}
+          <p className="pl-ceiling">{t('player.gameLogCeiling')}</p>
+        </section>
+
+        {player.career.length > 0 && (
+          <section className="pl-section pl-career-col">
+            <h2 className="section-label">{t('player.career')}</h2>
+            <ul className="pl-career">
+              {player.career.map((stint) => (
+                <li key={`${stint.teamId}:${stint.seasons}`} className="pl-stint">
+                  <TeamBadge
+                    team={{ id: stint.teamId, name: stint.teamName, abbr: stint.teamName, crestUrl: stint.crestUrl }}
+                    size={22}
+                    style="crest"
+                  />
+                  <span className="pl-stint-club">{stint.teamName}</span>
+                  <span className="pl-stint-years">{stint.seasons}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </div>
 
 
       <SiteFooter />

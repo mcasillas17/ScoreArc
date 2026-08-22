@@ -125,6 +125,7 @@ export const es = {
   'player.backToTeam': (team: string) => `← ${team}`,
   'player.seasonStats': 'Estadísticas de la temporada',
   'player.lastMatches': 'Últimos partidos',
+  'player.lastNMatches': (n: number) => `Últimos ${n} partidos`,
   'player.career': 'Trayectoria',
   'player.gameLogCeiling':
     'Se muestran los últimos cinco partidos: lo más profundo que publica esta fuente. La historia de temporada completa y de varias temporadas está en camino.',

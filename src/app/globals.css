@@ -3735,7 +3735,7 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 /* The portrait survives a missing headshot by design: the provider returns
    null headshots routinely, so initials on a surface disc are the primary
    layout, not a fallback that looks like one. */
-.ph { display: flex; align-items: center; gap: 18px; margin-bottom: 6px; }
+.ph { display: flex; align-items: center; gap: 18px; }
 .ph-portrait {
   width: 84px;
   height: 84px;
@@ -3774,6 +3774,43 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 .pl-section { margin-top: 28px; }
 .pl-none { color: var(--text-muted); font-size: 13px; margin: 0; }
 
+/* Top row: identity left, season tiles right. One row on a wide screen --
+   the header alone left half the viewport empty -- stacking below 1080px,
+   where the tiles stop fitting beside the name. */
+.pl-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px 48px;
+  flex-wrap: wrap;
+}
+.pl-top .ph { margin-bottom: 0; flex: 0 1 auto; }
+.pl-season { flex: 0 1 460px; min-width: 300px; }
+/* Four tiles as 2x2 beside the header -- auto-fill made it 3+1 with an
+   orphan. Stacked layouts below keep the fluid fill. */
+.pl-season .pl-totals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* Below: the match log is the wide column, the career a rail beside it.
+   Grid, not flex -- the rail must keep its width while the log column
+   shrinks, and the log's own overflow-x needs a minmax(0, 1fr) track. */
+.pl-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 0 36px;
+  align-items: start;
+}
+.pl-career-col { min-width: 0; }
+
+@media (max-width: 1080px) {
+  /* Plain block, not a column flex: flex-wrap + column direction inflated
+     the season block with ~150px of phantom height. */
+  .pl-top { display: block; }
+  .pl-top .ph { margin-bottom: 24px; }
+  .pl-season { min-width: 0; }
+  .pl-season .pl-totals { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .pl-body { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}
+
 .pl-totals {
   list-style: none;
   margin: 0;
@@ -3795,7 +3832,7 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 /* The log scrolls inside its own box for the same reason the squad table
    does: nine stat columns will not fit a phone. */
 .pl-log-wrap { overflow-x: auto; }
-.pl-log { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px; }
+.pl-log { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 560px; }
 .pl-log th, .pl-log td { padding: 8px 6px; text-align: right; }
 .pl-log th {
   color: var(--text-muted);
