@@ -206,6 +206,7 @@ export const es = {
   'bracket.unavailable': 'El cuadro no está disponible en este momento.',
   'bracket.projectionTitle': 'Liguilla hoy',
   'bracket.projectionNote': 'Si la Liguilla empezara hoy, según la tabla general. El cuadro real la reemplaza cuando se publiquen los cruces.',
+  'bracket.projectionTab': 'Proyección',
   'bracket.thirdPlaceMatch': 'Partido por el tercer puesto',
   'bracket.mode': 'Modo del cuadro',
   'bracket.liveResults': 'Resultados en vivo',

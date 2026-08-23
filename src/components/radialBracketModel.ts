@@ -99,8 +99,12 @@ const TEAM_COLOR: Record<string, string> = {
   CMR: '#007a5e',
 };
 
-export function colorFor(team: BracketTeam): string {
-  return TEAM_COLOR[(team.abbr ?? '').toUpperCase()] ?? '#e8b84b';
+export function colorFor(team: BracketTeam, fallback = '#e8b84b'): string {
+  // The fallback is the route colour for teams outside the national-colour
+  // map — every club competition. Callers with a competition accent pass its
+  // tinted gold so club routes match the bracket, while a REAL national
+  // colour above always wins untinted.
+  return TEAM_COLOR[(team.abbr ?? '').toUpperCase()] ?? fallback;
 }
 
 function toRad(deg: number): number {

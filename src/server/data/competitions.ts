@@ -149,6 +149,10 @@ export interface Competition {
   /** Catalog key for the competition's champion title. Only the World Cup
    *  crowns world champions; every other competition uses champion.competition. */
   championTitleKey?: ChampionTitleKey;
+  /** Accent hex for the radial bracket's art: the hand-tuned gold family's hue
+   *  rotates onto this colour (see accentTint). Absent keeps the gold — the
+   *  cups' trophy signature. Liga MX uses Mexican green. */
+  bracketAccent?: string;
   // Per-competition identity accent. base = primary, bright = hover/emphasis,
   // soft = low-alpha tint for borders/backgrounds. Injected as CSS custom
   // properties on the app-shell; :root falls back to gold.
@@ -432,7 +436,7 @@ export const COMPETITIONS: Record<string, Competition> = {
       zones: [{ from: 1, to: 1, kind: 'champion', labelKey: 'zone.supportersShield' }],
     },
   ),
-  ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/22.png', '2026-apertura', 'Apertura 2026', { base: '#e9edeb', bright: '#ffffff', soft: 'rgba(233,237,235,0.14)' }, { cut: 8, labelKey: 'standings.liguilla' }, undefined, undefined, 'liguilla'),
+  ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/22.png', '2026-apertura', 'Apertura 2026', { base: '#e9edeb', bright: '#ffffff', soft: 'rgba(233,237,235,0.14)' }, { cut: 8, labelKey: 'standings.liguilla' }, undefined, undefined, 'liguilla', '#0b9e52'),
 };
 
 // A past 32-team WC edition — R16 knockout, view-only, no seed order -> derived
@@ -467,6 +471,7 @@ function leagueCompetition(
   zones?: Zone[],
   overallTable?: { id: string; labelKey: OverallTableLabelKey; zones?: Zone[] },
   projection?: 'liguilla',
+  bracketAccent?: string,
 ): Record<string, Competition> {
   return {
     [id]: {
@@ -479,6 +484,7 @@ function leagueCompetition(
       emblem,
       logo,
       accent,
+      ...(bracketAccent ? { bracketAccent } : {}),
       currentSeasonId: seasonId,
       seasons: {
         [seasonId]: {

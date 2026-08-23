@@ -50,6 +50,11 @@ describe('competition season root', () => {
     expect(html).toContain('Liguilla hoy');
     expect(html).toContain('Si la Liguilla empezara hoy');
     expect(html).toContain('T1');
+    // The interactive shell ships with it: predict mode is open on a
+    // projection (quarters fully seeded), so the tabs render server-side.
+    expect(html).toContain('Arma tu cuadro');
+    expect(html).toContain('Proyección');
+    expect(html).not.toContain('Resultados en vivo');
   });
 
   // Standings down => the honest empty state, never a fabricated bracket.

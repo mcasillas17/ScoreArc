@@ -13,7 +13,6 @@ import SeasonSwitcher from '@/components/SeasonSwitcher';
 import { bracketShapeFor, knockoutIsReady } from '@/components/bracketShape';
 import SiteFooter from '@/components/SiteFooter';
 import { getTranslator } from '@/i18n/translate';
-import RadialBracket from '@/components/RadialBracket';
 import { projectLiguilla } from '@/server/data/liguillaProjection';
 
 export const dynamic = 'force-dynamic';
@@ -110,13 +109,24 @@ export default async function Workspace({ params }: { params: { locale: string; 
             <>
               <p className="bracket-projection-note">{t('bracket.projectionNote')}</p>
               <div className="edition-fade">
-                <RadialBracket
+                {/* The interactive shell, not bare RadialBracket: it owns the
+                    "build your bracket" predict mode, which is real here — the
+                    quarters are fully seeded. poll={false} because there is no
+                    bracket feed behind a projection to poll. */}
+                <BracketInteractive
                   rounds={projected}
-                  teamStyle={teamStyle}
                   apiBase={apiBase}
-                  teamBase={teamBase}
+                  teamStyle={teamStyle}
+                  compId={rc.competition.id}
+                  seasonId={rc.season.id}
+                  compShortName={rc.competition.shortName}
+                  seasonLabel={rc.season.label}
                   shape={bracketShapeFor(rc.season)}
                   emblem={rc.competition.emblem}
+                  championTitleKey={rc.competition.championTitleKey}
+                  accent={rc.competition.bracketAccent}
+                  predictionEnabled
+                  poll={false}
                 />
               </div>
             </>
@@ -198,7 +208,7 @@ export default async function Workspace({ params }: { params: { locale: string; 
           <SeasonSwitcher competition={rc.competition} activeSeasonId={rc.season.id} />
         </header>
         {bracket.length > 0
-          ? <div key={rc.season.id} className="edition-fade"><BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} emblem={rc.competition.emblem} trophyImage={rc.competition.trophyImage} championTitleKey={rc.competition.championTitleKey} shape={bracketShapeFor(rc.season)} readOnly={readOnly} /></div>
+          ? <div key={rc.season.id} className="edition-fade"><BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} emblem={rc.competition.emblem} trophyImage={rc.competition.trophyImage} championTitleKey={rc.competition.championTitleKey} accent={rc.competition.bracketAccent} shape={bracketShapeFor(rc.season)} readOnly={readOnly} /></div>
           : <div className="empty-section"><p className="empty-text">{t('bracket.unavailable')}</p></div>}
       </section>
       {!readOnly && liveSection}
