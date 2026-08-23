@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useTranslations } from '@/i18n/I18nProvider';
 import type { MessageKey } from '@/i18n/messages/en';
@@ -47,7 +48,17 @@ function Stat({ value }: { value: number | null }) {
   return <>{value}</>;
 }
 
-export default function SquadTable({ squad }: { squad: SquadPlayer[] }) {
+export default function SquadTable({
+  squad,
+  playerBase,
+  playerSlugs,
+}: {
+  squad: SquadPlayer[];
+  /** Competition-scoped prefix for player pages; without it names stay text. */
+  playerBase?: string;
+  /** Provider athlete id -> public slug, resolved by the caller's index. */
+  playerSlugs?: Record<string, string>;
+}) {
   const t = useTranslations();
   const [sortKey, setSortKey] = useState<StatKey>('appearances');
   const [descending, setDescending] = useState(true);
@@ -128,7 +139,15 @@ export default function SquadTable({ squad }: { squad: SquadPlayer[] }) {
               <tr key={player.id} className={player.stats === null ? 'sq-row sq-unplayed' : 'sq-row'}>
                 <td className="sq-num">{player.jersey ?? '–'}</td>
                 <td className="sq-player">
-                  <span className="sq-name">{player.name}</span>
+                  {/* Linked by slug, never by the provider's number; a player
+                      the index has not resolved stays plain text. */}
+                  {playerBase && playerSlugs?.[player.id] ? (
+                    <Link className="sq-name sq-name-link" href={`${playerBase}/${playerSlugs[player.id]}`}>
+                      {player.name}
+                    </Link>
+                  ) : (
+                    <span className="sq-name">{player.name}</span>
+                  )}
                   {player.stats === null && (
                     <span className="sq-tag">
                       {t('squad.hasNotAppeared')}

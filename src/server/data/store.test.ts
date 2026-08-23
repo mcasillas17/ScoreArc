@@ -7,6 +7,9 @@ import summaryFixture from './__fixtures__/espn-summary.json';
 import lcFixture from './__fixtures__/espn-leagues-cup-scoreboard.json';
 import teamProfileRaw from './__fixtures__/espn-team-profile.json';
 import teamRosterRaw from './__fixtures__/espn-team-roster.json';
+import athleteRaw from './__fixtures__/espn-athlete.json';
+import athleteOverviewRaw from './__fixtures__/espn-athlete-overview.json';
+import athleteBioRaw from './__fixtures__/espn-athlete-bio.json';
 import teamScheduleRaw from './__fixtures__/espn-team-schedule.json';
 import teamFixturesRaw from './__fixtures__/espn-team-fixtures.json';
 
@@ -343,5 +346,82 @@ describe('getTeam', () => {
       expect(new Date(schedule[i - 1].kickoff).getTime())
         .toBeLessThanOrEqual(new Date(schedule[i].kickoff).getTime());
     }
+  });
+});
+
+describe('getSquad', () => {
+  const ligaMx = resolveSeason('liga-mx')!;
+
+  it('fetches only the roster and caches it', async () => {
+    const urls: string[] = [];
+    const store = createDataStore({
+      fetchJson: async (url: string) => { urls.push(url); return teamRosterRaw; },
+      cache: new TtlCache<unknown>(),
+    });
+    const squad = await store.getSquad(ligaMx, '227');
+    expect(squad).toHaveLength(35);
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).toContain('/roster');
+
+    await store.getSquad(ligaMx, '227');
+    expect(urls).toHaveLength(1); // cached
+  });
+
+  // The index that consumes this merges across teams, so one club's roster
+  // being down must cost that club's players, not the whole index.
+  it('returns [] when the roster fetch fails', async () => {
+    const store = createDataStore({
+      fetchJson: async () => { throw new Error('502'); },
+      cache: new TtlCache<unknown>(),
+    });
+    expect(await store.getSquad(ligaMx, '227')).toEqual([]);
+  });
+});
+
+describe('getPlayer', () => {
+  const ligaMx = resolveSeason('liga-mx')!;
+
+  it('fetches profile, overview and bio in parallel and caches', async () => {
+    const urls: string[] = [];
+    const store = createDataStore({
+      fetchJson: async (url: string) => {
+        urls.push(url);
+        if (url.endsWith('/overview')) return athleteOverviewRaw;
+        if (url.endsWith('/bio')) return athleteBioRaw;
+        return athleteRaw;
+      },
+      cache: new TtlCache<unknown>(),
+    });
+    const p = await store.getPlayer(ligaMx, '297287');
+    expect(p!.name).toBe('Ali Avila');
+    expect(p!.gameLog).toHaveLength(5);
+    expect(p!.career).toHaveLength(4);
+    expect(urls).toHaveLength(3);
+
+    await store.getPlayer(ligaMx, '297287');
+    expect(urls).toHaveLength(3); // cached
+  });
+
+  // A dead sibling endpoint must not take the page down with it.
+  it('still returns a profile when overview and bio fail', async () => {
+    const store = createDataStore({
+      fetchJson: async (url: string) => {
+        if (url.endsWith('/overview') || url.endsWith('/bio')) throw new Error('500');
+        return athleteRaw;
+      },
+      cache: new TtlCache<unknown>(),
+    });
+    const p = await store.getPlayer(ligaMx, '297287');
+    expect(p!.name).toBe('Ali Avila');
+    expect(p!.gameLog).toEqual([]);
+    expect(p!.career).toEqual([]);
+  });
+
+  it('returns null when the profile fetch fails', async () => {
+    const store = createDataStore({
+      fetchJson: async () => { throw new Error('502'); },
+      cache: new TtlCache<unknown>(),
+    });
+    expect(await store.getPlayer(ligaMx, '297287')).toBeNull();
   });
 });

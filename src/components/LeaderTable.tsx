@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { useTranslations } from '@/i18n/I18nProvider';
 import type { StatLeader } from "@/server/data/types";
 import TeamBadge from "./TeamBadge";
@@ -11,11 +12,14 @@ export default function LeaderTable({
   metric,
   teamStyle = 'flag',
   teamBase,
+  playerBase,
 }: {
   leaders: StatLeader[];
   metric: 'goals' | 'assists';
   teamStyle?: 'flag' | 'crest';
   teamBase?: string;
+  /** Competition-scoped prefix for player pages; without it names stay text. */
+  playerBase?: string;
 }) {
   const t = useTranslations();
   const metricAbbreviation = metric === 'goals'
@@ -46,7 +50,16 @@ export default function LeaderTable({
             <tr key={`${s.rank}-${s.player}`} className={s.rank === 1 ? "row-qualify" : ""}>
               <td className="rank-cell">{s.rank}</td>
               <td className="team-cell">
-                <span className="team-name">{s.player}</span>
+                {/* Linked by slug, never by athlete number -- and only when
+                    the index resolved one, so a loanee the rosters do not
+                    list yet is plain text rather than a dead link. */}
+                {playerBase && s.playerSlug ? (
+                  <Link className="team-name ldr-player" href={`${playerBase}/${s.playerSlug}`}>
+                    {s.player}
+                  </Link>
+                ) : (
+                  <span className="team-name">{s.player}</span>
+                )}
               </td>
               <td className="team-cell">
                 <div className="team-cell-inner">

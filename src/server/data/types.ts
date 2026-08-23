@@ -195,6 +195,17 @@ export interface StatLeader {
   rank: number;
   player: string;
   /**
+   * The provider's athlete id, or null. Internal -- it never reaches a URL.
+   * Links go through playerSlug, the public identity.
+   */
+  athleteId: string | null;
+  /**
+   * The player's public slug (docs/backend/PLAYER_IDENTITY.md), filled by
+   * withPlayerSlugs where a page can afford the index. Null/absent means the
+   * name renders as plain text -- never a guessed or numeric link.
+   */
+  playerSlug?: string | null;
+  /**
    * The provider's team id, or null.
    *
    * Separate from teamAbbr because the team page is addressed by id: linking a
@@ -354,4 +365,57 @@ export interface TeamProfile {
   standingSummary: string | null;
   squad: SquadPlayer[];
   schedule: Match[];
+}
+
+// One headline season figure as ESPN pre-aggregates it. `display` is kept
+// alongside `value` because some are not plain numbers -- starts-subIns comes
+// through as "5 (0)" and rendering it as 5 loses the substitute appearances.
+export interface PlayerSeasonTotal {
+  name: string;
+  label: string;
+  display: string;
+  value: number | null;
+}
+
+// One row of the last-five game log. Keyed by eventId, which is the same id the
+// match popup takes -- so a row is a link into detail we already render. The
+// context fields come from the overview's sibling `events` map; a row whose
+// context entry is missing keeps nulls rather than dropping the stats.
+export interface GameLogRow {
+  eventId: string;
+  appearance: string; // "Started" | "Sub"
+  stats: Record<string, number | null>;
+  date: string | null;
+  atVs: string; // "vs" | "@" as the provider words it
+  opponent: Team | null;
+  score: string; // "2-1", provider-formatted
+  result: string; // "W" | "L" | "D"
+  homeTeamId: string | null;
+  awayTeamId: string | null;
+  teamId: string | null; // the player's club in THIS match (transfers move it)
+  teamAbbr: string;
+}
+
+export interface CareerStint {
+  teamId: string;
+  teamName: string;
+  crestUrl: string | null;
+  seasons: string; // e.g. "2025-CURRENT"
+}
+
+export interface PlayerProfile {
+  id: string;
+  name: string;
+  age: number | null;
+  position: string;
+  jersey: string | null;
+  nationality: string | null;
+  flagUrl: string | null;
+  headshotUrl: string | null; // frequently null -- lay out for its absence
+  team: Team | null;
+  seasonLabel: string; // e.g. "2026-27 Liga MX Stats"
+  totals: PlayerSeasonTotal[];
+  gameLogLabel: string; // e.g. "Last 5 Matches"
+  gameLog: GameLogRow[];
+  career: CareerStint[];
 }

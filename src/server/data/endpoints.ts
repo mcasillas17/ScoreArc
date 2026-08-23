@@ -37,3 +37,21 @@ export const teamRosterUrl = (slug: string, teamId: string) =>
 // is empty on this provider).
 export const teamScheduleUrl = (slug: string, teamId: string, upcoming = false) =>
   `${site(slug)}/teams/${encodeURIComponent(teamId)}/schedule${upcoming ? '?fixture=true' : ''}`;
+
+// Athletes live on a DIFFERENT host and a different API version from everything
+// else in this file -- site.web.api / common/v3, not site.api / site/v2.
+// Verified keyless and HTTP 200 on 2026-08-22 for mex.1/athletes/297287.
+//
+// Three sibling paths are dead and must not be called: /gamelog returns 500,
+// /splits and /stats return 404. The game log comes from /overview.
+const webCommon = (slug: string) =>
+  `https://site.web.api.espn.com/apis/common/v3/sports/soccer/${slug}`;
+
+export const athleteUrl = (slug: string, athleteId: string) =>
+  `${webCommon(slug)}/athletes/${encodeURIComponent(athleteId)}`;
+
+export const athleteOverviewUrl = (slug: string, athleteId: string) =>
+  `${webCommon(slug)}/athletes/${encodeURIComponent(athleteId)}/overview`;
+
+export const athleteBioUrl = (slug: string, athleteId: string) =>
+  `${webCommon(slug)}/athletes/${encodeURIComponent(athleteId)}/bio`;

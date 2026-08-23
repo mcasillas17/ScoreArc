@@ -50,6 +50,7 @@ function match(id: string, kickoffHours: number, state: Match['state'] = 'schedu
 const leader = (rank: number, player: string): StatLeader => ({
   rank,
   player,
+  athleteId: null,
   teamId: 't',
   teamAbbr: 'AAA',
   teamName: 'A',

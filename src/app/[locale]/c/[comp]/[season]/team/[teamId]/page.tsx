@@ -5,6 +5,7 @@ import { getTranslator } from '@/i18n/translate';
 import { resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import { providerTeamId } from '@/server/data/teamIdentity';
+import { competitionPlayerIndex } from '@/server/data/playerIndex';
 import type { Match } from '@/server/data/types';
 import TeamHeader from '@/components/TeamHeader';
 import SquadTable from '@/components/SquadTable';
@@ -64,6 +65,17 @@ export default async function TeamPage({ params }: Params) {
   if (!upstreamId) notFound();
   const profile = await dataStore.getTeam(rc, upstreamId);
   if (!profile) notFound();
+
+  // Squad names link by slug (PLAYER_IDENTITY.md). Best-effort: a failed
+  // index costs the links, not the page.
+  const playerBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/player`;
+  let playerSlugs: Record<string, string> = {};
+  try {
+    const index = await competitionPlayerIndex(rc);
+    playerSlugs = Object.fromEntries(Array.from(index.byProvider.entries()));
+  } catch {
+    // leaderboard-style degradation: plain text names
+  }
 
   const played = profile.schedule.filter((m) => m.state === 'finished');
   const form = played.slice(-5);
@@ -146,7 +158,7 @@ export default async function TeamPage({ params }: Params) {
         <h2 className="section-label">
           {t('team.squad')}
         </h2>
-        <SquadTable squad={profile.squad} />
+        <SquadTable squad={profile.squad} playerBase={playerBase} playerSlugs={playerSlugs} />
       </section>
 
       <section className="tm-section">
