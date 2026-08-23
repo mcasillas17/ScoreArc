@@ -32,6 +32,10 @@ interface Props {
   emblem: string;
   /** A real trophy photograph. Only the World Cup has one — see Competition. */
   trophyImage?: string;
+  /** The competition's logo, drawn at the hub when there is no trophy image.
+   *  Falls back to the emblem when the provider's asset is unusable. */
+  logo?: string;
+  logoInvert?: boolean;
   championTitleKey?: ChampionTitleKey;
   /** Competition accent hex. The gold family's hue rotates onto it; absent
    *  means the original golds, byte for byte. */
@@ -180,7 +184,7 @@ function arcTextPath(cx: number, cy: number, r: number, startDeg: number, endDeg
   return `M ${x1} ${y1} A ${r} ${r} 0 ${large} ${sweep} ${x2} ${y2}`;
 }
 
-export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle, apiBase, teamBase, shape: shapeProp, emblem, trophyImage, championTitleKey = 'champion.competition', accent }: Props) {
+export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle, apiBase, teamBase, shape: shapeProp, emblem, trophyImage, logo, logoInvert, championTitleKey = 'champion.competition', accent }: Props) {
   const t = useTranslations();
   const tint = accentTint(accent);
   const shape = shapeProp ?? DEFAULT_SHAPE;
@@ -781,6 +785,23 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
               height={128}
               preserveAspectRatio="xMidYMid meet"
             />
+          ) : logo ? (
+            <g role="img" aria-label={t('bracket.competitionEmblem')}>
+              {/* A quiet dark disc under the mark: the hub glow is the accent
+                  colour, and a colourful logo drawn straight onto it drowns. */}
+              <circle cx={C.x} cy={C.y} r={80} fill="rgba(8, 10, 9, 0.55)" />
+              <image
+                href={logo}
+                x={C.x - 62}
+                y={C.y - 62}
+                width={124}
+                height={124}
+                preserveAspectRatio="xMidYMid meet"
+                style={{
+                  filter: `${logoInvert ? 'invert(1) ' : ''}drop-shadow(0 4px 14px rgba(0, 0, 0, 0.6))`,
+                }}
+              />
+            </g>
           ) : (
             <text
               x={C.x}

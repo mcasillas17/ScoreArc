@@ -23,6 +23,8 @@ interface Props {
   compId: string;
   emblem: string;
   trophyImage?: string;
+  logo?: string;
+  logoInvert?: boolean;
   championTitleKey?: ChampionTitleKey;
   seasonId: string;
   compShortName: string;
@@ -116,7 +118,7 @@ function decodePicks(s: string): Record<string, string> {
 }
 
 export default function BracketInteractive({
-rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage, championTitleKey, seasonId, compShortName, seasonLabel, shape, predictionEnabled = PREDICT_ENABLED, readOnly = false, accent, poll = true }: Props) {
+rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage, logo, logoInvert, championTitleKey, seasonId, compShortName, seasonLabel, shape, predictionEnabled = PREDICT_ENABLED, readOnly = false, accent, poll = true }: Props) {
   const locale = useLocale();
   const t = useTranslations();
   const [mode, setMode] = useState<BracketMode>('live');
@@ -278,6 +280,8 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
         shape={shape}
         emblem={emblem}
         trophyImage={trophyImage}
+        logo={logo}
+        logoInvert={logoInvert}
         championTitleKey={championTitleKey}
       />
 
@@ -287,6 +291,8 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
         <ChampionCelebration
           emblem={emblem}
           trophyImage={trophyImage}
+          logo={logo}
+          logoInvert={logoInvert}
           championTitleKey={championTitleKey}
           team={celebrate}
           onClose={() => setCelebrate(null)}

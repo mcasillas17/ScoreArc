@@ -436,7 +436,10 @@ export const COMPETITIONS: Record<string, Competition> = {
       zones: [{ from: 1, to: 1, kind: 'champion', labelKey: 'zone.supportersShield' }],
     },
   ),
-  ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/22.png', '2026-apertura', 'Apertura 2026', { base: '#e9edeb', bright: '#ffffff', soft: 'rgba(233,237,235,0.14)' }, { cut: 8, labelKey: 'standings.liguilla' }, undefined, undefined, 'liguilla', '#0b9e52'),
+  // Not ESPN's Liga MX asset: theirs is the BBVA Bancomer sponsor lockup, dark
+  // on transparent — illegible at the bracket hub. TheSportsDB carries the real
+  // tricolor Liga MX mark, same CDN the team crests already use.
+  ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', 'https://r2.thesportsdb.com/images/media/league/badge/mav5rx1686157960.png', '2026-apertura', 'Apertura 2026', { base: '#e9edeb', bright: '#ffffff', soft: 'rgba(233,237,235,0.14)' }, { cut: 8, labelKey: 'standings.liguilla' }, undefined, undefined, 'liguilla', '#0b9e52'),
 };
 
 // A past 32-team WC edition — R16 knockout, view-only, no seed order -> derived

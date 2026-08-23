@@ -1381,6 +1381,15 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   width: 200px;
   height: 132px;
 }
+.champ-trophy--logo {
+  /* A league mark is wide-ish where the trophy is tall; contain, don't crop. */
+  object-fit: contain;
+}
+.champ-crest {
+  /* A crest is not fabric: no waving canvas, just the badge at rest. contain
+     keeps tall shield crests unclipped inside the flag-shaped slot. */
+  object-fit: contain;
+}
 .champ-flag-fallback {
   display: flex;
   align-items: center;

@@ -123,6 +123,8 @@ export default async function Workspace({ params }: { params: { locale: string; 
                   seasonLabel={rc.season.label}
                   shape={bracketShapeFor(rc.season)}
                   emblem={rc.competition.emblem}
+                  logo={rc.competition.logo}
+                  logoInvert={rc.competition.logoInvert}
                   championTitleKey={rc.competition.championTitleKey}
                   accent={rc.competition.bracketAccent}
                   predictionEnabled
@@ -208,7 +210,7 @@ export default async function Workspace({ params }: { params: { locale: string; 
           <SeasonSwitcher competition={rc.competition} activeSeasonId={rc.season.id} />
         </header>
         {bracket.length > 0
-          ? <div key={rc.season.id} className="edition-fade"><BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} emblem={rc.competition.emblem} trophyImage={rc.competition.trophyImage} championTitleKey={rc.competition.championTitleKey} accent={rc.competition.bracketAccent} shape={bracketShapeFor(rc.season)} readOnly={readOnly} /></div>
+          ? <div key={rc.season.id} className="edition-fade"><BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} emblem={rc.competition.emblem} logo={rc.competition.logo} logoInvert={rc.competition.logoInvert} trophyImage={rc.competition.trophyImage} championTitleKey={rc.competition.championTitleKey} accent={rc.competition.bracketAccent} shape={bracketShapeFor(rc.season)} readOnly={readOnly} /></div>
           : <div className="empty-section"><p className="empty-text">{t('bracket.unavailable')}</p></div>}
       </section>
       {!readOnly && liveSection}
