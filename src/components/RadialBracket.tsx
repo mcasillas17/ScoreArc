@@ -789,13 +789,15 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             <g role="img" aria-label={t('bracket.competitionEmblem')}>
               {/* A quiet dark disc under the mark: the hub glow is the accent
                   colour, and a colourful logo drawn straight onto it drowns. */}
-              <circle cx={C.x} cy={C.y} r={80} fill="rgba(8, 10, 9, 0.55)" />
+              {/* Sized to stay clear of the final ring: its discs' inner edge
+                  sits 60 from center in the 3-ring shape (rx 96, discR 36). */}
+              <circle cx={C.x} cy={C.y} r={50} fill="rgba(8, 10, 9, 0.55)" />
               <image
                 href={logo}
-                x={C.x - 62}
-                y={C.y - 62}
-                width={124}
-                height={124}
+                x={C.x - 40}
+                y={C.y - 40}
+                width={80}
+                height={80}
                 preserveAspectRatio="xMidYMid meet"
                 style={{
                   filter: `${logoInvert ? 'invert(1) ' : ''}drop-shadow(0 4px 14px rgba(0, 0, 0, 0.6))`,
