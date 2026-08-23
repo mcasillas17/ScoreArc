@@ -45,8 +45,10 @@ projectLiguilla(groups: Group[]): BracketRound[] | null
   standings, ordered by `rank`.
 - Output: synthetic rounds `quarterfinals / semifinals / final` shaped exactly
   like a real `BracketRound[]`:
-  - Quarters: real `BracketTeam`s paired 1v8, 2v7, 3v6, 4v5. Synthetic ids
-    (`proj-qf-1` … `proj-qf-4`), `state: 'pre'`, `kickoff: ''`, null scores,
+  - Quarters: real `BracketTeam`s paired 1v8, 2v7, 3v6, 4v5 (emitted in ring
+    order [1v8, 4v5, 2v7, 3v6] so seeds 1 and 2 sit in opposite halves).
+    Synthetic ids (`proj-qf-1` … `proj-qf-4`), `state: 'scheduled'` (the
+    only pre-kickoff member of `MatchState`), `kickoff: ''`, null scores,
     `winnerId: null`.
   - Semis and final: all-placeholder teams (`placeholder: true`), ids
     `proj-sf-*`, `proj-f-1` — `RadialBracket` already renders placeholder
