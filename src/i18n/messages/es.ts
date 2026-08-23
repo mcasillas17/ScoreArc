@@ -314,6 +314,7 @@ export const es = {
   'sidebar.standings': 'Clasificación',
   'sidebar.knockout': 'Eliminatorias',
   'sidebar.bracket': 'Cuadro',
+  'sidebar.liguilla': 'Liguilla',
   'sidebar.expand': 'Expandir',
   'sidebar.collapse': 'Contraer',
   'sidebar.switchCompetition': 'Cambiar competición',

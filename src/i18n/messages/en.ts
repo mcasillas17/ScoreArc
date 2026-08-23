@@ -326,6 +326,7 @@ export const en = {
   'sidebar.standings': 'Standings',
   'sidebar.knockout': 'Knockout',
   'sidebar.bracket': 'Bracket',
+  'sidebar.liguilla': 'Liguilla',
   'sidebar.expand': 'Expand',
   'sidebar.collapse': 'Collapse',
   'sidebar.switchCompetition': 'Switch competition',
