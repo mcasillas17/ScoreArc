@@ -23,9 +23,49 @@ describe('competition season root', () => {
   // /standings page an orphan that quietly lacked the Liguilla dial.
   it('redirects a league to its standings page', async () => {
     await expect(
-      Workspace({ params: { locale: 'en', comp: 'liga-mx', season: '2026-apertura' } }),
+      Workspace({ params: { locale: 'en', comp: 'premier-league', season: '2026-27' } }),
     ).rejects.toThrow('NEXT_REDIRECT');
-    expect(redirect).toHaveBeenCalledWith('/en/c/liga-mx/2026-apertura/standings');
+    expect(redirect).toHaveBeenCalledWith('/en/c/premier-league/2026-27/standings');
+  });
+
+  // Liga MX's root is the projected Liguilla, not a redirect: quarters pair
+  // 1v8, 2v7, 3v6, 4v5 (emitted in ring order 1v8/4v5/2v7/3v6) from the live
+  // table, semis and final as placeholders.
+  it('renders the projected Liguilla for Liga MX instead of redirecting', async () => {
+    vi.spyOn(dataStore, 'getMatches').mockResolvedValue([]);
+    vi.spyOn(dataStore, 'getUpcoming').mockResolvedValue([]);
+    vi.spyOn(dataStore, 'getStandings').mockResolvedValue([
+      {
+        id: 'general', name: 'General',
+        standings: Array.from({ length: 18 }, (_, i) => ({
+          team: { id: String(100 + i + 1), name: `Club ${i + 1}`, abbr: `T${i + 1}`, crestUrl: null },
+          rank: i + 1, played: 7, wins: 0, draws: 0, losses: 0,
+          goalsFor: 0, goalsAgainst: 0, goalDifference: 0, points: 0, advanced: false,
+        })),
+      } as never,
+    ]);
+    const node = await Workspace({ params: { locale: 'es', comp: 'liga-mx', season: '2026-apertura' } });
+    const html = renderToStaticMarkup(<I18nProvider locale="es">{node}</I18nProvider>);
+    expect(redirect).not.toHaveBeenCalled();
+    expect(html).toContain('Liguilla hoy');
+    expect(html).toContain('Si la Liguilla empezara hoy');
+    expect(html).toContain('T1');
+    // The interactive shell ships with it: predict mode is open on a
+    // projection (quarters fully seeded), so the tabs render server-side.
+    expect(html).toContain('Arma tu cuadro');
+    expect(html).toContain('Proyección');
+    expect(html).not.toContain('Resultados en vivo');
+  });
+
+  // Standings down => the honest empty state, never a fabricated bracket.
+  it('shows the unavailable state when the projection cannot build', async () => {
+    vi.spyOn(dataStore, 'getMatches').mockResolvedValue([]);
+    vi.spyOn(dataStore, 'getUpcoming').mockResolvedValue([]);
+    vi.spyOn(dataStore, 'getStandings').mockRejectedValue(new Error('502'));
+    const node = await Workspace({ params: { locale: 'es', comp: 'liga-mx', season: '2026-apertura' } });
+    const html = renderToStaticMarkup(<I18nProvider locale="es">{node}</I18nProvider>);
+    expect(html).toContain('El cuadro no está disponible en este momento.');
+    expect(html).not.toContain('Bracket data is unavailable right now.');
   });
 
   it('redirects before fetching anything', async () => {

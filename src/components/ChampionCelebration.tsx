@@ -16,6 +16,8 @@ interface Props {
   emblem: string;
   /** Only the World Cup has one — see Competition.trophyImage. */
   trophyImage?: string;
+  logo?: string;
+  logoInvert?: boolean;
   /** What this competition calls its champion. Only the World Cup crowns
    *  WORLD champions; everyone else just has champions. */
   championTitleKey?: ChampionTitleKey;
@@ -31,12 +33,15 @@ function rand(seed: number): number {
 const CONFETTI_COUNT = 110;
 
 export default function ChampionCelebration({
-team, onClose, onShare, emblem, trophyImage, championTitleKey = 'champion.competition' }: Props) {
+team, onClose, onShare, emblem, trophyImage, logo, logoInvert, championTitleKey = 'champion.competition' }: Props) {
   const t = useTranslations();
   const championTitle = t(championTitleKey);
   const teamColor = colorFor(team);
   const palette = ['#e8b84b', '#ffffff', teamColor, '#ff5c5c', '#4cc4ff', '#36c275'];
   const flag = flagUrl(team.abbr);
+  // Clubs have no national flag to wave — their identity is the crest the
+  // bracket already carries on BracketTeam.
+  const crest = team.crestUrl;
 
   // Firework bursts at fixed spots, each a ring of sparks flying outward.
   const bursts = [
@@ -116,6 +121,14 @@ team, onClose, onShare, emblem, trophyImage, championTitleKey = 'champion.compet
           {trophyImage ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img className="champ-trophy" src={trophyImage} alt={t('bracket.worldCupTrophy')} />
+          ) : logo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              className="champ-trophy champ-trophy--logo"
+              src={logo}
+              alt={t('bracket.competitionEmblem')}
+              style={logoInvert ? { filter: 'invert(1)' } : undefined}
+            />
           ) : (
             <span className="champ-trophy champ-trophy--emblem" role="img" aria-label={t('bracket.competitionEmblem')}>
               {emblem}
@@ -124,6 +137,9 @@ team, onClose, onShare, emblem, trophyImage, championTitleKey = 'champion.compet
           <div className="champ-flagwrap">
             {flag ? (
               <WavingFlagCanvas src={flag} />
+            ) : crest ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img className="champ-wave-flag champ-crest" src={crest} alt={team.name} />
             ) : (
               <div className="champ-wave-flag champ-flag-fallback">{team.abbr}</div>
             )}

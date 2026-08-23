@@ -23,6 +23,8 @@ interface Props {
   compId: string;
   emblem: string;
   trophyImage?: string;
+  logo?: string;
+  logoInvert?: boolean;
   championTitleKey?: ChampionTitleKey;
   seasonId: string;
   compShortName: string;
@@ -31,6 +33,12 @@ interface Props {
   predictionEnabled?: boolean;
   // Finished (past) editions are view-only: no predict tab, no live poll.
   readOnly?: boolean;
+  /** Competition accent for the radial art; absent keeps the original gold. */
+  accent?: string;
+  // A projected bracket has no live feed behind it: polling `/bracket` would
+  // only 404 every 10s. False also relabels the first tab, since "Live
+  // results" would promise data this view does not have.
+  poll?: boolean;
 }
 
 // Compact third-place match card — shown once both semi-final losers are known
@@ -110,7 +118,7 @@ function decodePicks(s: string): Record<string, string> {
 }
 
 export default function BracketInteractive({
-rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage, championTitleKey, seasonId, compShortName, seasonLabel, shape, predictionEnabled = PREDICT_ENABLED, readOnly = false }: Props) {
+rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage, logo, logoInvert, championTitleKey, seasonId, compShortName, seasonLabel, shape, predictionEnabled = PREDICT_ENABLED, readOnly = false, accent, poll = true }: Props) {
   const locale = useLocale();
   const t = useTranslations();
   const [mode, setMode] = useState<BracketMode>('live');
@@ -125,9 +133,9 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
   // picks live in separate state and are untouched; RadialBracket already
   // prefers a real result over a pick, so newly-decided matches just take over.
   useEffect(() => {
-    if (readOnly) return; // finished editions never change — no polling
+    if (readOnly || !poll) return; // finished or synthetic — nothing to poll
     let mounted = true;
-    async function poll() {
+    async function pollBracket() {
       try {
         const res = await fetch(`${apiBase}/bracket`, { cache: 'no-store' });
         if (!mounted) return;
@@ -155,7 +163,7 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
         }
       }
     }
-    const id = setInterval(poll, 10_000);
+    const id = setInterval(pollBracket, 10_000);
     return () => {
       mounted = false;
       clearInterval(id);
@@ -225,7 +233,7 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
             className={`bracket-mode${mode === 'live' ? ' bracket-mode--active' : ''}`}
             onClick={() => setMode('live')}
           >
-            {t('bracket.liveResults')}
+            {t(poll ? 'bracket.liveResults' : 'bracket.projectionTab')}
           </button>
           <button
             type="button"
@@ -264,6 +272,7 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
         rounds={rounds}
         mode={mode}
         picks={picks}
+        accent={accent}
         onPick={handlePick}
         onChampion={setChampion}
         teamStyle={teamStyle}
@@ -271,6 +280,8 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
         shape={shape}
         emblem={emblem}
         trophyImage={trophyImage}
+        logo={logo}
+        logoInvert={logoInvert}
         championTitleKey={championTitleKey}
       />
 
@@ -280,6 +291,8 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
         <ChampionCelebration
           emblem={emblem}
           trophyImage={trophyImage}
+          logo={logo}
+          logoInvert={logoInvert}
           championTitleKey={championTitleKey}
           team={celebrate}
           onClose={() => setCelebrate(null)}

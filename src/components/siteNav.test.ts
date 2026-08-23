@@ -88,9 +88,20 @@ describe('activeCompetition', () => {
 
 describe('competitionSections', () => {
   // A league's base URL redirects to /standings, so a root item would be a
-  // second link to the page below it.
-  it('gives a league no root item', () => {
+  // second link to the page below it — unless the season is a projection
+  // (Liga MX 2026-apertura), which gives that root real content of its own.
+  it('gives a projected league a Liguilla root item', () => {
     const rc = resolveSeason('liga-mx')!;
+    expect(competitionSections(rc, 'en').map((s) => s.label)).toEqual([
+      'Liguilla', 'Standings', 'Matches', 'Teams', 'News',
+    ]);
+  });
+
+  // The rule the projection is an exception to: a plain league's base URL
+  // redirects to /standings, so a root item would be a second link to the
+  // page below it.
+  it('still gives a league with no projection no root item', () => {
+    const rc = resolveSeason('premier-league')!;
     expect(competitionSections(rc, 'en').map((s) => s.label)).toEqual([
       'Standings', 'Matches', 'Teams', 'News',
     ]);
@@ -343,7 +354,7 @@ describe('bottomBarItems', () => {
 
   it('shows the open competition\'s own sections inside it', () => {
     const tabs = bottomBarItems('/c/liga-mx/2026-apertura/standings', 'en');
-    expect(tabs.map((t) => t.label)).toEqual(['Standings', 'Matches', 'Teams', 'News']);
+    expect(tabs.map((t) => t.label)).toEqual(['Liguilla', 'Standings', 'Matches', 'Teams', 'News']);
     // No menu slot inside a competition: the sections fill the bar and the
     // masthead hamburger is the way to the full list.
     expect(tabs.every((t) => t.href !== undefined)).toBe(true);
@@ -403,7 +414,7 @@ describe('bottomBarItems', () => {
       'Inicio', 'Equipos', 'Noticias', 'Menú',
     ]);
     expect(bottomBarItems('/c/liga-mx/2026-apertura/standings', 'es').map((t) => t.label)).toEqual([
-      'Clasificación', 'Partidos', 'Equipos', 'Noticias',
+      'Liguilla', 'Clasificación', 'Partidos', 'Equipos', 'Noticias',
     ]);
   });
 

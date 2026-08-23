@@ -5,6 +5,7 @@ import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/type
 import { type ChampionTitleKey, type TeamStyle } from '@/server/data/competitions';
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
 import BracketZoom from './BracketZoom';
+import { accentTint } from './accentTint';
 import {
   teamJourney, buildRings, ellipse, colorFor, roundSvgCoordinate, C,
   type RingNode, type JourneyStop, type BracketMode,
@@ -31,7 +32,14 @@ interface Props {
   emblem: string;
   /** A real trophy photograph. Only the World Cup has one — see Competition. */
   trophyImage?: string;
+  /** The competition's logo, drawn at the hub when there is no trophy image.
+   *  Falls back to the emblem when the provider's asset is unusable. */
+  logo?: string;
+  logoInvert?: boolean;
   championTitleKey?: ChampionTitleKey;
+  /** Competition accent hex. The gold family's hue rotates onto it; absent
+   *  means the original golds, byte for byte. */
+  accent?: string;
 }
 
 
@@ -176,8 +184,9 @@ function arcTextPath(cx: number, cy: number, r: number, startDeg: number, endDeg
   return `M ${x1} ${y1} A ${r} ${r} 0 ${large} ${sweep} ${x2} ${y2}`;
 }
 
-export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle, apiBase, teamBase, shape: shapeProp, emblem, trophyImage, championTitleKey = 'champion.competition' }: Props) {
+export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle, apiBase, teamBase, shape: shapeProp, emblem, trophyImage, logo, logoInvert, championTitleKey = 'champion.competition', accent }: Props) {
   const t = useTranslations();
+  const tint = accentTint(accent);
   const shape = shapeProp ?? DEFAULT_SHAPE;
   const roundLabels = shape.knockoutRounds.map((slug) => t(roundLabelKey(slug))).join(', ');
   const bracketLabel = t('bracket.diagramLabel', roundLabels);
@@ -341,9 +350,9 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
         <title>{bracketLabel}</title>
         <defs>
           <radialGradient id="center-glow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#d59a37" stopOpacity="0.6" />
-            <stop offset="30%" stopColor="#8a5e1f" stopOpacity="0.34" />
-            <stop offset="62%" stopColor="#43300f" stopOpacity="0.14" />
+            <stop offset="0%" stopColor={tint('#d59a37')} stopOpacity="0.6" />
+            <stop offset="30%" stopColor={tint('#8a5e1f')} stopOpacity="0.34" />
+            <stop offset="62%" stopColor={tint('#43300f')} stopOpacity="0.14" />
             <stop offset="100%" stopColor="#0b0b0d" stopOpacity="0" />
           </radialGradient>
           {/* Connector gradients — bright gold near the trophy, fading outward
@@ -355,9 +364,9 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             r={470}
             gradientUnits="userSpaceOnUse"
           >
-            <stop offset="0%" stopColor="#f0c873" stopOpacity="0.95" />
-            <stop offset="42%" stopColor="#b78a3c" stopOpacity="0.7" />
-            <stop offset="100%" stopColor="#544a36" stopOpacity="0.4" />
+            <stop offset="0%" stopColor={tint('#f0c873')} stopOpacity="0.95" />
+            <stop offset="42%" stopColor={tint('#b78a3c')} stopOpacity="0.7" />
+            <stop offset="100%" stopColor={tint('#544a36')} stopOpacity="0.4" />
           </radialGradient>
           <radialGradient
             id="conn-gold"
@@ -366,14 +375,14 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             r={470}
             gradientUnits="userSpaceOnUse"
           >
-            <stop offset="0%" stopColor="#ffe9a8" stopOpacity="1" />
-            <stop offset="55%" stopColor="#eebc54" stopOpacity="0.98" />
-            <stop offset="100%" stopColor="#cf9a36" stopOpacity="0.9" />
+            <stop offset="0%" stopColor={tint('#ffe9a8')} stopOpacity="1" />
+            <stop offset="55%" stopColor={tint('#eebc54')} stopOpacity="0.98" />
+            <stop offset="100%" stopColor={tint('#cf9a36')} stopOpacity="0.9" />
           </radialGradient>
           <linearGradient id="trophy-grad" x1="0" y1="-55" x2="0" y2="60" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#f6e27a" />
-            <stop offset="55%" stopColor="#d4af37" />
-            <stop offset="100%" stopColor="#9b7d2e" />
+            <stop offset="0%" stopColor={tint('#f6e27a')} />
+            <stop offset="55%" stopColor={tint('#d4af37')} />
+            <stop offset="100%" stopColor={tint('#9b7d2e')} />
           </linearGradient>
           <filter id="trophy-blur" x="-80%" y="-80%" width="260%" height="260%">
             <feGaussianBlur stdDeviation="6" />
@@ -386,15 +395,15 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           </filter>
           {/* Tighter, brighter warm halo hugging the trophy itself. */}
           <radialGradient id="trophy-halo" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#ffe9a8" stopOpacity="0.55" />
-            <stop offset="42%" stopColor="#e9b859" stopOpacity="0.34" />
-            <stop offset="100%" stopColor="#e9b859" stopOpacity="0" />
+            <stop offset="0%" stopColor={tint('#ffe9a8')} stopOpacity="0.55" />
+            <stop offset="42%" stopColor={tint('#e9b859')} stopOpacity="0.34" />
+            <stop offset="100%" stopColor={tint('#e9b859')} stopOpacity="0" />
           </radialGradient>
           {/* Localized golden halo behind the winning finalist disc. */}
           <radialGradient id="champ-halo" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#ffe9a8" stopOpacity="0.9" />
-            <stop offset="45%" stopColor="#f0c873" stopOpacity="0.5" />
-            <stop offset="100%" stopColor="#f0c873" stopOpacity="0" />
+            <stop offset="0%" stopColor={tint('#ffe9a8')} stopOpacity="0.9" />
+            <stop offset="45%" stopColor={tint('#f0c873')} stopOpacity="0.5" />
+            <stop offset="100%" stopColor={tint('#f0c873')} stopOpacity="0" />
           </radialGradient>
         </defs>
 
@@ -406,9 +415,9 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
         {/* (1·) Decorative center bar: a faint hairline through the trophy with
             a small gold end-cap dot on each side (as in the reference art). */}
         <line x1={C.x - 92} y1={C.y} x2={C.x + 92} y2={C.y}
-          stroke="#e9b859" strokeOpacity={0.28} strokeWidth={1} />
-        <circle cx={C.x - 92} cy={C.y} r={2.4} fill="#f0c873" />
-        <circle cx={C.x + 92} cy={C.y} r={2.4} fill="#f0c873" />
+          stroke={tint('#e9b859')} strokeOpacity={0.28} strokeWidth={1} />
+        <circle cx={C.x - 92} cy={C.y} r={2.4} fill={tint('#f0c873')} />
+        <circle cx={C.x + 92} cy={C.y} r={2.4} fill={tint('#f0c873')} />
 
         {/* (1a) Champion halo — localized golden glow behind the winning
             finalist disc, drawn before the discs so it reads as a glow ring. */}
@@ -442,7 +451,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             const sweep = b.angle > a.angle ? 1 : 0;
             // The team that actually advances from this match (if decided).
             const win = a.isWinner ? a : b.isWinner ? b : null;
-            const winColor = win ? colorFor(win.team) : null;
+            const winColor = win ? colorFor(win.team, tint('#e8b84b')) : null;
             const jWin = win ? (win === a ? jA : jB) : null;
             const arcSweep = win && win.angle < parent.angle ? 1 : 0;
             return (
@@ -510,7 +519,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                     className="bracket-conn-draw"
                     d={`M ${node.x} ${node.y} L ${inner.x} ${inner.y}`}
                     fill="none"
-                    stroke={colorFor(node.team)}
+                    stroke={colorFor(node.team, tint('#e8b84b'))}
                     strokeWidth={6}
                     strokeLinecap="round"
                     opacity={0.5}
@@ -521,7 +530,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                     className="bracket-conn-draw"
                     d={`M ${node.x} ${node.y} L ${inner.x} ${inner.y}`}
                     fill="none"
-                    stroke={colorFor(node.team)}
+                    stroke={colorFor(node.team, tint('#e8b84b'))}
                     strokeWidth={3.8}
                     strokeLinecap="round"
                     pathLength={1}
@@ -549,7 +558,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             // play-through. Kept mounted when out so it can retract, not vanish.
             const aliveNow = j.eliminatedAtDepth == null || simRound <= j.eliminatedAtDepth;
 
-            const col = colorFor(node.team);
+            const col = colorFor(node.team, tint('#e8b84b'));
             const ux = (node.x - C.x) / outerR;
             const uy = (node.y - C.y) / outerR;
             // Reach out toward the (margin-expanded) canvas edge in this
@@ -643,15 +652,15 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
               ? 'today'
               : null;
             const kind = mounted ? rawKind : null;
-            const pingColor = kind === 'live' ? '#ff5c5c' : '#e8b84b';
+            const pingColor = kind === 'live' ? '#ff5c5c' : tint('#e8b84b');
             const dotFill = !node.team.placeholder
-              ? colorFor(node.team)
+              ? colorFor(node.team, tint('#e8b84b'))
               : !upcomingMatch
               ? '#43434c'
               : kind === 'live'
               ? '#ff5c5c'
               : kind === 'today'
-              ? '#e8b84b'
+              ? tint('#e8b84b')
               : '#6a7a95';
 
             return (
@@ -720,6 +729,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             <OuterTeam
               key={`outer-${node.index}`}
               node={node}
+              tint={tint}
               mode={mode}
               clickable={node.clickable}
               viewable={false}
@@ -745,6 +755,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
               <InnerHop
                 key={`hop-${j.teamId}-${stop.depth}`}
                 stop={stop}
+                tint={tint}
                 from={from}
                 geom={geom}
                 greyed={greyed}
@@ -774,6 +785,23 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
               height={128}
               preserveAspectRatio="xMidYMid meet"
             />
+          ) : logo ? (
+            <g role="img" aria-label={t('bracket.competitionEmblem')}>
+              {/* A quiet dark disc under the mark: the hub glow is the accent
+                  colour, and a colourful logo drawn straight onto it drowns. */}
+              <circle cx={C.x} cy={C.y} r={80} fill="rgba(8, 10, 9, 0.55)" />
+              <image
+                href={logo}
+                x={C.x - 62}
+                y={C.y - 62}
+                width={124}
+                height={124}
+                preserveAspectRatio="xMidYMid meet"
+                style={{
+                  filter: `${logoInvert ? 'invert(1) ' : ''}drop-shadow(0 4px 14px rgba(0, 0, 0, 0.6))`,
+                }}
+              />
+            </g>
           ) : (
             <text
               x={C.x}
@@ -815,11 +843,11 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
               cy={champNode.y}
               r={champNode.discR + 5}
               fill="none"
-              stroke="#f0c873"
+              stroke={tint('#f0c873')}
               strokeWidth={1.4}
             />
             <path id="champ-arc" d={arcTextPath(C.x, C.y, 100, 124, 56)} fill="none" />
-            <text className="champ-caption" fill="#f0c873">
+            <text className="champ-caption" fill={tint('#f0c873')}>
               <textPath href="#champ-arc" startOffset="50%" textAnchor="middle">
                 {championTitle}
               </textPath>
@@ -932,6 +960,7 @@ function OuterTeam({
   crestGreyed,
   onClick,
   teamStyle,
+  tint,
 }: {
   node: RingNode;
   mode: BracketMode;
@@ -941,12 +970,13 @@ function OuterTeam({
   crestGreyed: boolean;
   onClick: () => void;
   teamStyle: TeamStyle;
+  tint: (hex: string) => string;
 }) {
   const { team, isWinner } = node;
   // Clean disc: a thin gold ring marks a winner, a quiet dark hairline otherwise.
   // The national colour lives in the connector PATHS, not the discs (keeping the
   // discs clean is what reads as premium — matches the reference art).
-  const ringStroke = isWinner && !greyed ? '#e8b84b' : '#2a2a32';
+  const ringStroke = isWinner && !greyed ? tint('#e8b84b') : '#2a2a32';
   const ringWidth = isWinner && !greyed ? 2.4 : 1;
 
   const flag = team.placeholder ? null : flagUrl(team.abbr);
@@ -1069,6 +1099,7 @@ function InnerHop({
   teamStyle,
   onView,
   onPick,
+  tint,
 }: {
   stop: JourneyStop;
   from: JourneyStop;
@@ -1078,12 +1109,13 @@ function InnerHop({
   teamStyle: TeamStyle;
   onView: (m: BracketMatch) => void;
   onPick: (node: RingNode) => void;
+  tint: (hex: string) => string;
 }) {
   const { node } = stop;
   const { team, isWinner, discR: r } = node;
   // Clean disc — thin gold ring for a winner, dark hairline otherwise. Colour
   // lives in the paths, not the discs.
-  const ringStroke = isWinner && !greyed ? '#e8b84b' : '#2a2a32';
+  const ringStroke = isWinner && !greyed ? tint('#e8b84b') : '#2a2a32';
   const ringWidth = isWinner && !greyed ? 2.4 : 1;
 
   // Clicking a flag views the match it WON to reach this ring — the pairing

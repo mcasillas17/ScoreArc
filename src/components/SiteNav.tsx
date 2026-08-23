@@ -142,7 +142,8 @@ export function siteItems(locale: Locale, prefix = ''): NavItem[] {
  * A cross-league cup's root shows its phase tables until the draw is complete
  * and the bracket after, so "Bracket" is wrong for most of the competition —
  * "Knockout" is true in both states. A league has no root item at all: its
- * base URL redirects to /standings.
+ * base URL redirects to /standings — unless the season declares a projected
+ * Liguilla, which gives the root real content and a "Liguilla" item.
  */
 export function competitionSections(rc: CompetitionSeason, locale: Locale, prefix = ''): NavItem[] {
   const t = getTranslator(locale);
@@ -174,11 +175,19 @@ export function competitionSections(rc: CompetitionSeason, locale: Locale, prefi
     },
     { href: link('/news'), label: t('sidebar.news'), icon: newsIcon, match: under('/news') },
   ];
-  if (!hasBracket) return rest;
+  // A projected Liguilla gives a league's root real content of its own, so
+  // it earns the root nav item leagues otherwise lack. The label stays
+  // "Liguilla" after the real draw lands — truer than "Bracket" either way.
+  const projection = rc.season.projection === 'liguilla';
+  if (!hasBracket && !projection) return rest;
   return [
     {
       href: link(),
-      label: phasedCup ? t('sidebar.knockout') : t('sidebar.bracket'),
+      label: projection
+        ? t('sidebar.liguilla')
+        : phasedCup
+          ? t('sidebar.knockout')
+          : t('sidebar.bracket'),
       icon: bracketIcon,
       match: (p) => stripLocale(p) === base,
     },

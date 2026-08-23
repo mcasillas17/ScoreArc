@@ -13,6 +13,7 @@ import SeasonSwitcher from '@/components/SeasonSwitcher';
 import { bracketShapeFor, knockoutIsReady } from '@/components/bracketShape';
 import SiteFooter from '@/components/SiteFooter';
 import { getTranslator } from '@/i18n/translate';
+import { projectLiguilla } from '@/server/data/liguillaProjection';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,11 +64,11 @@ export default async function Workspace({ params }: { params: { locale: string; 
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) notFound();
   // A league's headline view IS its table, and the table lives at /standings
-  // for every competition — so the season root has nothing of its own to show.
-  // Redirect rather than render a second copy: two routes drawing the same
-  // table is how the old /standings page drifted into an orphan that nothing
-  // linked to and that quietly lacked the Liguilla dial.
-  if (!rc.season.format.hasBracket) {
+  // for every competition — so a season root with nothing of its own
+  // redirects rather than render a second copy of the table. A projected
+  // Liguilla IS something of its own; that branch returns below, after the
+  // shared banner setup.
+  if (!rc.season.format.hasBracket && rc.season.projection !== 'liguilla') {
     redirect(`/${locale}/c/${rc.competition.id}/${rc.season.id}/standings`);
   }
 
@@ -87,6 +88,59 @@ export default async function Workspace({ params }: { params: { locale: string; 
   // element, because the phase branch below falls back on it being null.
   const liveSection = feed.matches.length > 0 ? <UpcomingBanner feed={feed} rc={rc} /> : null;
   const footer = <SiteFooter />;
+
+  // The projected Liguilla: real seeds in the quarters from the live table,
+  // placeholders inward. Renders through the same RadialBracket as a real
+  // knockout; only the data is synthetic, and the note says so. When the real
+  // draw is published, hasBracket flips true in config and this branch's own
+  // !hasBracket retires it.
+  if (!rc.season.format.hasBracket && rc.season.projection === 'liguilla') {
+    let groups: Group[] = [];
+    try { groups = await dataStore.getStandings(rc); } catch {}
+    const projected = projectLiguilla(groups);
+    return (
+      <main className="main">
+        <section id="bracket" className="bracket-section">
+          <header className="bracket-head">
+            <p className="bracket-eyebrow">{rc.competition.shortName} · {rc.season.label}</p>
+            <h1 className="bracket-title">{t('bracket.projectionTitle')}</h1>
+          </header>
+          {projected ? (
+            <>
+              <p className="bracket-projection-note">{t('bracket.projectionNote')}</p>
+              <div className="edition-fade">
+                {/* The interactive shell, not bare RadialBracket: it owns the
+                    "build your bracket" predict mode, which is real here — the
+                    quarters are fully seeded. poll={false} because there is no
+                    bracket feed behind a projection to poll. */}
+                <BracketInteractive
+                  rounds={projected}
+                  apiBase={apiBase}
+                  teamStyle={teamStyle}
+                  compId={rc.competition.id}
+                  seasonId={rc.season.id}
+                  compShortName={rc.competition.shortName}
+                  seasonLabel={rc.season.label}
+                  shape={bracketShapeFor(rc.season)}
+                  emblem={rc.competition.emblem}
+                  logo={rc.competition.logo}
+                  logoInvert={rc.competition.logoInvert}
+                  championTitleKey={rc.competition.championTitleKey}
+                  accent={rc.competition.bracketAccent}
+                  predictionEnabled
+                  poll={false}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="empty-section"><p className="empty-text">{t('bracket.unavailable')}</p></div>
+          )}
+        </section>
+        {!readOnly && liveSection}
+        {footer}
+      </main>
+    );
+  }
 
   let bracket: BracketRound[] = [];
   try { bracket = await dataStore.getBracket(rc); } catch {}
@@ -156,7 +210,7 @@ export default async function Workspace({ params }: { params: { locale: string; 
           <SeasonSwitcher competition={rc.competition} activeSeasonId={rc.season.id} />
         </header>
         {bracket.length > 0
-          ? <div key={rc.season.id} className="edition-fade"><BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} emblem={rc.competition.emblem} trophyImage={rc.competition.trophyImage} championTitleKey={rc.competition.championTitleKey} shape={bracketShapeFor(rc.season)} readOnly={readOnly} /></div>
+          ? <div key={rc.season.id} className="edition-fade"><BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} emblem={rc.competition.emblem} logo={rc.competition.logo} logoInvert={rc.competition.logoInvert} trophyImage={rc.competition.trophyImage} championTitleKey={rc.competition.championTitleKey} accent={rc.competition.bracketAccent} shape={bracketShapeFor(rc.season)} readOnly={readOnly} /></div>
           : <div className="empty-section"><p className="empty-text">{t('bracket.unavailable')}</p></div>}
       </section>
       {!readOnly && liveSection}
