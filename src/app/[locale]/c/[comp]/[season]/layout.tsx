@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
+import { ogUrl, shareMetadata } from '@/lib/ogUrl';
 import { getTranslator } from '@/i18n/translate';
 import { resolveSeason } from '@/server/data/competitions';
 
@@ -17,7 +18,7 @@ export async function generateMetadata({ params }: { params: { locale: string; c
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) return {};
   const label = `${rc.competition.shortName} ${rc.season.label}`;
-  const og = `/api/og?comp=${encodeURIComponent(label)}&locale=${encodeURIComponent(locale)}`;
+  const og = ogUrl({ compId: rc.competition.id, comp: label, locale });
   const title = t('meta.competition.title', rc.competition.name);
   const description = t('meta.competition.description', rc.competition.shortName, rc.season.label);
   return {
@@ -30,8 +31,7 @@ export async function generateMetadata({ params }: { params: { locale: string; c
         es: `/es/c/${params.comp}/${params.season}`,
       },
     },
-    openGraph: { title, description, images: [{ url: og, width: 1200, height: 630 }] },
-    twitter: { card: 'summary_large_image', title, description, images: [og] },
+    ...shareMetadata(title, description, og),
   };
 }
 

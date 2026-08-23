@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
+import { ogUrl, shareMetadata } from '@/lib/ogUrl';
 import { resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import { competitionPlayerIndex } from '@/server/data/playerIndex';
@@ -48,13 +49,25 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   if (!player) return { title: t('player.metaFallbackTitle') };
   const edition = `${rc.competition.shortName} ${rc.season.label}`;
   const pathname = `/c/${rc.competition.id}/${rc.season.id}/player/${params.playerSlug}`;
+  const title = t('player.metaTitle', player.name, edition);
+  const description = t('player.metaDescription', player.name, edition);
+  const og = ogUrl({
+    subject: player.name,
+    // The club crest, not the headshot: headshot coverage is ~7%, and a card
+    // that usually renders a blank slot reads broken.
+    crest: player.team?.crestUrl,
+    compId: rc.competition.id,
+    comp: edition,
+    locale,
+  });
   return {
-    title: t('player.metaTitle', player.name, edition),
-    description: t('player.metaDescription', player.name, edition),
+    title,
+    description,
     alternates: {
       canonical: `/${locale}${pathname}`,
       languages: { en: `/en${pathname}`, es: `/es${pathname}` },
     },
+    ...shareMetadata(title, description, og),
   };
 }
 

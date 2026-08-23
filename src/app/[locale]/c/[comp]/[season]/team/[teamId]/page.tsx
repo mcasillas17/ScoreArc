@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
+import { ogUrl, shareMetadata } from '@/lib/ogUrl';
 import { resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import { providerTeamId } from '@/server/data/teamIdentity';
@@ -32,13 +33,23 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   if (!profile) return { title: t('team.metaFallbackTitle') };
   const edition = `${rc.competition.shortName} ${rc.season.label}`;
   const pathname = `/c/${rc.competition.id}/${rc.season.id}/team/${params.teamId}`;
+  const title = t('team.metaTitle', profile.team.name, edition);
+  const description = t('team.metaDescription', profile.team.name, edition);
+  const og = ogUrl({
+    subject: profile.team.name,
+    crest: profile.team.crestUrl,
+    compId: rc.competition.id,
+    comp: edition,
+    locale,
+  });
   return {
-    title: t('team.metaTitle', profile.team.name, edition),
-    description: t('team.metaDescription', profile.team.name, edition),
+    title,
+    description,
     alternates: {
       canonical: `/${locale}${pathname}`,
       languages: { en: `/en${pathname}`, es: `/es${pathname}` },
     },
+    ...shareMetadata(title, description, og),
   };
 }
 

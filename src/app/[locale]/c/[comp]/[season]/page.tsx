@@ -13,11 +13,12 @@ import SeasonSwitcher from '@/components/SeasonSwitcher';
 import { bracketShapeFor, knockoutIsReady } from '@/components/bracketShape';
 import SiteFooter from '@/components/SiteFooter';
 import { getTranslator } from '@/i18n/translate';
+import { ogUrl, safeCrest, shareMetadata } from '@/lib/ogUrl';
 import { projectLiguilla } from '@/server/data/liguillaProjection';
 
 export const dynamic = 'force-dynamic';
 
-export async function generateMetadata({ params, searchParams }: { params: { locale: string; comp: string; season: string }; searchParams: { c?: string; name?: string } }): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: { params: { locale: string; comp: string; season: string }; searchParams: { c?: string; name?: string; crest?: string } }): Promise<Metadata> {
   if (!isLocale(params.locale)) notFound();
   const locale = params.locale;
   const rc = resolveSeason(params.comp, params.season);
@@ -26,8 +27,13 @@ export async function generateMetadata({ params, searchParams }: { params: { loc
   const label = `${rc.competition.shortName} ${rc.season.label}`;
   const champ = searchParams.c;
   const name = searchParams.name ?? champ;
+  // Echoed into canonical/hreflang, so it is validated, not trusted: an
+  // attacker-crafted ?crest= must not land in our own canonical tag.
+  const crest = safeCrest(searchParams.crest);
   const predictionQuery = champ
-    ? `?c=${encodeURIComponent(champ)}&name=${encodeURIComponent(name ?? champ)}`
+    ? `?c=${encodeURIComponent(champ)}&name=${encodeURIComponent(name ?? champ)}${
+        crest ? `&crest=${encodeURIComponent(crest)}` : ''
+      }`
     : '';
   const localizedPath = (pathLocale: 'en' | 'es') =>
     `/${pathLocale}/c/${rc.competition.id}/${rc.season.id}${predictionQuery}`;
@@ -36,12 +42,16 @@ export async function generateMetadata({ params, searchParams }: { params: { loc
     languages: { en: localizedPath('en'), es: localizedPath('es') },
   };
   if (!champ) {
-    const og = `/api/og?comp=${encodeURIComponent(label)}&locale=${encodeURIComponent(locale)}`;
+    const og = ogUrl({ compId: rc.competition.id, comp: label, locale });
     const title = t('meta.competition.title', rc.competition.name);
-    return { title, alternates, openGraph: { title, images: [{ url: og, width: 1200, height: 630 }] }, twitter: { card: 'summary_large_image', title, images: [og] } };
+    // Same description the layout builds: this return replaces the layout's
+    // openGraph WHOLESALE, so anything left out here (siteName, type,
+    // description) silently vanishes from the most-shared URL on the site.
+    const description = t('meta.competition.description', rc.competition.shortName, rc.season.label);
+    return { title, alternates, ...shareMetadata(title, description, og) };
   }
   const championName = name ?? champ;
-  const og = `/api/og?champ=${encodeURIComponent(champ)}&name=${encodeURIComponent(championName)}&comp=${encodeURIComponent(label)}&locale=${encodeURIComponent(locale)}`;
+  const og = ogUrl({ champ, name: championName, crest, compId: rc.competition.id, comp: label, locale });
   const title = t('meta.predictedChampion.title', rc.competition.shortName, championName);
   const description = t(
     'meta.predictedChampion.description',
@@ -52,8 +62,7 @@ export async function generateMetadata({ params, searchParams }: { params: { loc
     title,
     description,
     alternates,
-    openGraph: { title, description, images: [{ url: og, width: 1200, height: 630 }] },
-    twitter: { card: 'summary_large_image', title, description, images: [og] },
+    ...shareMetadata(title, description, og),
   };
 }
 
