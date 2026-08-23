@@ -70,6 +70,12 @@ export interface Season {
   // bracket's ring count + geometry. 2026 starts at round-of-32; 1998-2022 at
   // round-of-16.
   knockoutRounds?: KnockoutRoundSlug[];
+  /** Render a projected bracket at the season root while no real knockout
+   *  exists. 'liguilla': top 8 of the general table, quarters 1v8/2v7/3v6/4v5.
+   *  When the real draw is published, adding bracketDatesRange +
+   *  hasBracket: true makes real fixtures win; this flag then only keeps the
+   *  nav label. */
+  projection?: 'liguilla';
   // Leagues only: highlight the top-N qualification cut in the standings view
   // (e.g. Liga MX top 8 → Liguilla). Absent for leagues with no such cut.
   //
@@ -426,7 +432,7 @@ export const COMPETITIONS: Record<string, Competition> = {
       zones: [{ from: 1, to: 1, kind: 'champion', labelKey: 'zone.supportersShield' }],
     },
   ),
-  ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/22.png', '2026-apertura', 'Apertura 2026', { base: '#e9edeb', bright: '#ffffff', soft: 'rgba(233,237,235,0.14)' }, { cut: 8, labelKey: 'standings.liguilla' }),
+  ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/22.png', '2026-apertura', 'Apertura 2026', { base: '#e9edeb', bright: '#ffffff', soft: 'rgba(233,237,235,0.14)' }, { cut: 8, labelKey: 'standings.liguilla' }, undefined, undefined, 'liguilla'),
 };
 
 // A past 32-team WC edition — R16 knockout, view-only, no seed order -> derived
@@ -460,6 +466,7 @@ function leagueCompetition(
   qualification?: { cut: number; labelKey: QualificationLabelKey },
   zones?: Zone[],
   overallTable?: { id: string; labelKey: OverallTableLabelKey; zones?: Zone[] },
+  projection?: 'liguilla',
 ): Record<string, Competition> {
   return {
     [id]: {
@@ -477,11 +484,19 @@ function leagueCompetition(
         [seasonId]: {
           id: seasonId,
           label: seasonLabel,
-          sections: ['standings', 'scores', 'news'],
+          sections: projection
+            ? ['bracket', 'standings', 'scores', 'news']
+            : ['standings', 'scores', 'news'],
           format: { hasBracket: false, hasGroups: true, hasThirdPlaceRace: false },
           ...(qualification ? { qualification } : {}),
           ...(zones ? { zones } : {}),
           ...(overallTable ? { overallTable } : {}),
+          ...(projection
+            ? {
+                projection,
+                knockoutRounds: ['quarterfinals', 'semifinals', 'final'] as KnockoutRoundSlug[],
+              }
+            : {}),
         },
       },
     },

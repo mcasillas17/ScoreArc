@@ -233,7 +233,11 @@
         "label": "Apertura 2026",
         "hasBracket": false,
         "bracketDatesRange": null,
-        "knockoutRounds": null
+        "knockoutRounds": [
+          "quarterfinals",
+          "semifinals",
+          "final"
+        ]
       }
     }
   }
