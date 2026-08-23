@@ -216,6 +216,8 @@ export const en = {
   'bracket.knockout': 'Knockout Bracket',
   'bracket.diagramLabel': (rounds: string) => `Knockout bracket: ${rounds}`,
   'bracket.unavailable': 'Bracket data is unavailable right now.',
+  'bracket.projectionTitle': 'Liguilla today',
+  'bracket.projectionNote': 'If the Liguilla started today, seeded from the live table. The real bracket takes over when the draw is published.',
   'bracket.thirdPlaceMatch': 'Third-place match',
   'bracket.mode': 'Bracket mode',
   'bracket.liveResults': 'Live results',

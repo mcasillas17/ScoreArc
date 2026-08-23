@@ -204,6 +204,8 @@ export const es = {
   'bracket.knockout': 'Cuadro de eliminatorias',
   'bracket.diagramLabel': (rounds: string) => `Cuadro de eliminatorias: ${rounds}`,
   'bracket.unavailable': 'El cuadro no está disponible en este momento.',
+  'bracket.projectionTitle': 'Liguilla hoy',
+  'bracket.projectionNote': 'Si la Liguilla empezara hoy, según la tabla general. El cuadro real la reemplaza cuando se publiquen los cruces.',
   'bracket.thirdPlaceMatch': 'Partido por el tercer puesto',
   'bracket.mode': 'Modo del cuadro',
   'bracket.liveResults': 'Resultados en vivo',

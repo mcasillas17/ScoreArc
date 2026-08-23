@@ -396,6 +396,15 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   margin-top: 4px;
 }
 
+.bracket-projection-note {
+  max-width: 560px;
+  margin: 0 auto 14px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
 /* ===== Standalone page header (e.g. Standings) ===== */
 .page-head {
   margin-bottom: 24px;
