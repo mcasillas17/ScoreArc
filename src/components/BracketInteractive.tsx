@@ -196,8 +196,14 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
       typeof window !== 'undefined'
         ? window.location.origin
         : 'https://www.scorearc.futbol';
+    // The crest travels only where the card renders it: club competitions.
+    // A national champion's card uses the flag, so the crest would be ~100
+    // dead characters in every shared World Cup link.
+    const shareCrest = teamStyle === 'crest' ? champion?.crestUrl : null;
     const champParam = champion
-      ? `&c=${encodeURIComponent(champion.abbr)}&name=${encodeURIComponent(champion.name)}`
+      ? `&c=${encodeURIComponent(champion.abbr)}&name=${encodeURIComponent(champion.name)}${
+          shareCrest ? `&crest=${encodeURIComponent(shareCrest)}` : ''
+        }`
       : '';
     const url = `${origin}/${locale}/c/${compId}/${seasonId}?b=${encodePicks(picks)}${champParam}`;
     const text = t('bracket.shareText', champion?.name ?? '', compShortName, seasonLabel, url);

@@ -216,6 +216,18 @@ rather than improvising around it.
   `--hairline`, `--text`) rather than hardcoding colors.
 - Commit messages: conventional prefixes (`feat:`, `fix:`, `tweak:`, `polish:`,
   `chore:`, `docs:`).
+- **Share cards (`/api/og`)**: every route's social preview is ONE data-driven
+  template — competition cards (`?compId` → logo + colour glow from
+  `competitions.ts`), subject cards for team/player pages, champion cards.
+  Build every og URL through `src/lib/ogUrl.ts`, never by hand: it appends the
+  version param, and **WhatsApp/Slack/Twitter cache previews by exact URL — bump
+  `OG_VERSION` whenever the card's rendering changes** or shares keep the old
+  art forever. Satori (the renderer) has NO CSS `filter` support, crashes on
+  `undefined` style values, and requires explicit `display: flex` on any div
+  with more than one child — the route's comments mark the spots this has
+  already bitten. `?crest=` is host-whitelisted; extend `CREST_HOSTS` only with
+  hosts our own data layer serves. Verify a card change by curling
+  `/api/og?...` variants (a 000/500 means satori threw) and eyeballing the PNGs.
 
 ## Testing
 

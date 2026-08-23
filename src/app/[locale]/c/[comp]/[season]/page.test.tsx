@@ -133,7 +133,7 @@ describe('competition bracket metadata', () => {
         title,
         description,
         images: [{
-          url: `/api/og?champ=MEX&name=M%C3%A9xico&comp=World%20Cup%202026&locale=${locale}`,
+          url: `/api/og?champ=MEX&name=M%C3%A9xico&compId=world-cup&comp=World+Cup+2026&locale=${locale}&v=3`,
           width: 1200,
           height: 630,
         }],
@@ -142,7 +142,7 @@ describe('competition bracket metadata', () => {
         card: 'summary_large_image',
         title,
         description,
-        images: [`/api/og?champ=MEX&name=M%C3%A9xico&comp=World%20Cup%202026&locale=${locale}`],
+        images: [`/api/og?champ=MEX&name=M%C3%A9xico&compId=world-cup&comp=World+Cup+2026&locale=${locale}&v=3`],
       },
     });
   });

@@ -384,13 +384,130 @@ describe('GET /api/[comp]/[season]/matches — rejected input', () => {
 });
 
 const ogRoute = () => import('./og/route');
-const ogMarkup = async (query: string) => {
-  const response = await (await ogRoute()).GET(new NextRequest(`http://x/api/og${query}`));
-  return {
-    status: response.status,
-    html: renderToStaticMarkup((response as unknown as { element: React.ReactElement }).element),
-  };
+// ImageResponse is mocked above, so these tests render the element with React,
+// never satori — `status` is set before rendering and a satori throw would not
+// fail here. What IS testable: which images/copy the element carries, and the
+// liveImage guard (the stubbed fetch below answers its HEAD checks; pass a
+// custom impl to simulate a dead image).
+const ogMarkup = async (
+  query: string,
+  imageFetch: (url: string) => Promise<{ ok: boolean }> = async () => ({ ok: true }),
+) => {
+  // NOTE: unstubAllGlobals below is a blunt reset — a future beforeEach-level
+  // stubGlobal in this file would be silently wiped by the first ogMarkup call.
+  vi.stubGlobal('fetch', vi.fn((url: string) => imageFetch(String(url))));
+  try {
+    const response = await (await ogRoute()).GET(new NextRequest(`http://x/api/og${query}`));
+    return {
+      status: response.status,
+      html: renderToStaticMarkup((response as unknown as { element: React.ReactElement }).element),
+    };
+  } finally {
+    vi.unstubAllGlobals();
+  }
 };
+
+describe('GET /api/og — card variants', () => {
+  const CREST = 'https://a.espncdn.com/i/teamlogos/soccer/500/227.png';
+
+  // A plain-object lookup of a prototype member returned truthy and crashed
+  // the accent read — a public, unauthenticated 500 on every prototype key.
+  it.each(['__proto__', 'constructor', 'toString', 'hasOwnProperty'])(
+    'survives compId=%s with the default card',
+    async (key) => {
+      const result = await ogMarkup(`?compId=${key}&locale=en`);
+      expect(result.status).toBe(200);
+      expect(result.html).toContain('Live Football');
+    },
+  );
+
+  it('renders a subject card with a whitelisted crest', async () => {
+    const result = await ogMarkup(
+      `?subject=Am%C3%A9rica&crest=${encodeURIComponent(CREST)}&compId=liga-mx&comp=Liga%20MX&locale=es`,
+    );
+    expect(result.status).toBe(200);
+    expect(result.html).toContain('América');
+    expect(result.html).toContain('teamlogos/soccer/500/227.png');
+    expect(result.html).toContain('Resultados en vivo');
+  });
+
+  // Portland is POR — also Portugal's FIFA code. A club competition must
+  // never dress its champion in a national flag.
+  it('gives a club champion its crest, never a colliding flag', async () => {
+    const result = await ogMarkup(
+      `?champ=POR&name=Portland+Timbers&crest=${encodeURIComponent(CREST)}&compId=mls&locale=en`,
+    );
+    expect(result.status).toBe(200);
+    expect(result.html).toContain('teamlogos/soccer/500/227.png');
+    expect(result.html).not.toContain('flagcdn');
+  });
+
+  it('keeps the flag for national champions, with or without compId', async () => {
+    for (const query of ['?champ=MEX&name=M%C3%A9xico&compId=world-cup', '?champ=MEX&name=M%C3%A9xico']) {
+      const result = await ogMarkup(`${query}&locale=en`);
+      expect(result.status).toBe(200);
+      expect(result.html).toContain('flagcdn');
+    }
+  });
+
+  it.each([
+    ['off-list host', 'https://evil.example/hostile.png'],
+    ['lookalike host', 'https://a.espncdn.com.evil.example/hostile.png'],
+    ['http downgrade', 'http://a.espncdn.com/hostile.png'],
+    ['not a URL', '::::'],
+  ])('rejects a hostile crest (%s)', async (_label, crest) => {
+    const result = await ogMarkup(
+      `?subject=X&crest=${encodeURIComponent(crest)}&compId=liga-mx&locale=en`,
+    );
+    // The card renders (degraded, no image) — the hostile URL must not.
+    expect(result.status).toBe(200);
+    expect(result.html).not.toContain('hostile.png');
+    expect(result.html).not.toContain('evil.example');
+  });
+
+  it('strips credentials from an otherwise-valid crest', async () => {
+    const result = await ogMarkup(
+      `?subject=X&crest=${encodeURIComponent('https://user:pw@a.espncdn.com/i/x.png')}&locale=en`,
+    );
+    expect(result.status).toBe(200);
+    expect(result.html).toContain('https://a.espncdn.com/i/x.png');
+    expect(result.html).not.toContain('user:pw');
+  });
+
+  it('scales the type down continuously for long names instead of clipping', async () => {
+    const short = await ogMarkup('?subject=Ame&compId=liga-mx&locale=en');
+    // 30 chars -> round(68 * 22 / 30) = 50
+    const long = await ogMarkup(
+      '?subject=Santiago+Gael+Camarena+Rosales&compId=liga-mx&locale=en',
+    );
+    // 44 chars -> round(68 * 22 / 44) = 34
+    const longest = await ogMarkup(
+      `?subject=${encodeURIComponent('Municipal Deportivo Iztacalco Reserva Threep')}&compId=liga-mx&locale=en`,
+    );
+    expect(short.html).toContain('font-size:68px');
+    expect(long.html).toContain('font-size:50px');
+    expect(longest.html).toContain('font-size:34px');
+  });
+
+  // Satori aborts the whole render when an <img> URL fails to fetch, so a
+  // rotted crest in an old share link must drop the crest, not the card.
+  it('drops a crest whose URL no longer answers', async () => {
+    const result = await ogMarkup(
+      `?subject=Am%C3%A9rica&crest=${encodeURIComponent(CREST)}&compId=liga-mx&locale=es`,
+      async (url) => ({ ok: !url.includes('teamlogos') }),
+    );
+    expect(result.status).toBe(200);
+    expect(result.html).toContain('América');
+    expect(result.html).not.toContain('teamlogos');
+  });
+
+  it('renders the competition logo, not an emoji, on a competition card', async () => {
+    const result = await ogMarkup('?compId=liga-mx&comp=Liga%20MX&locale=es');
+    expect(result.status).toBe(200);
+    expect(result.html).toContain('thesportsdb.com');
+    expect(result.html).not.toContain('🇲🇽');
+  });
+});
 
 describe('GET /api/og — validated locale', () => {
   it.each([
