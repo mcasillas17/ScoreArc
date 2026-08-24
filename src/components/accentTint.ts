@@ -30,6 +30,20 @@ function hexToHsl(hex: string): { h: number; s: number; l: number } | null {
   return { h, s, l };
 }
 
+// WCAG relative luminance of a hex colour — the "how bright does this look"
+// number, which HSL lightness is NOT: gold at L=52% reads far brighter than
+// green at L=52%, because the eye weighs green and red channels differently
+// than blue. Rotating hue at constant HSL L therefore DIMMED every gold line
+// that became green — the Liga MX bracket's connectors all but vanished.
+function luminance(hex: string): number {
+  const n = parseInt(hex.slice(1), 16);
+  const lin = (v: number) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * lin((n >> 16) & 0xff) + 0.7152 * lin((n >> 8) & 0xff) + 0.0722 * lin(n & 0xff);
+}
+
 function hslToHex(h: number, s: number, l: number): string {
   const hue = ((h % 360) + 360) % 360;
   const c = (1 - Math.abs(2 * l - 1)) * s;
@@ -61,8 +75,25 @@ export function accentTint(accent?: string): (hex: string) => string {
     const hit = cache.get(hex);
     if (hit) return hit;
     const hsl = hexToHsl(hex);
-    // Neutral slots (pure greys) have no hue to rotate; pass them through.
-    const out = !hsl || hsl.s === 0 ? hex : hslToHex(hsl.h + delta, hsl.s, hsl.l);
+    if (!hsl || hsl.s === 0) {
+      // Neutral slots (pure greys) have no hue to rotate; pass them through.
+      cache.set(hex, hex);
+      return hex;
+    }
+    // Rotate the hue, then walk lightness until the result LOOKS as bright as
+    // the source (perceived luminance, not HSL L) — a dozen bisection steps
+    // lands within a hair of the target.
+    const targetY = luminance(hex);
+    const hue = hsl.h + delta;
+    let lo = 0;
+    let hi = 1;
+    let out = hslToHex(hue, hsl.s, hsl.l);
+    for (let i = 0; i < 12; i++) {
+      const mid = (lo + hi) / 2;
+      out = hslToHex(hue, hsl.s, mid);
+      if (luminance(out) < targetY) lo = mid;
+      else hi = mid;
+    }
     cache.set(hex, out);
     return out;
   };

@@ -365,8 +365,8 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             gradientUnits="userSpaceOnUse"
           >
             <stop offset="0%" stopColor={tint('#f0c873')} stopOpacity="0.95" />
-            <stop offset="42%" stopColor={tint('#b78a3c')} stopOpacity="0.7" />
-            <stop offset="100%" stopColor={tint('#544a36')} stopOpacity="0.4" />
+            <stop offset="42%" stopColor={tint('#c29a52')} stopOpacity="0.8" />
+            <stop offset="100%" stopColor={tint('#8a744a')} stopOpacity="0.62" />
           </radialGradient>
           <radialGradient
             id="conn-gold"
@@ -457,10 +457,10 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             return (
               <g key={`conn-${depth}-${k}`}>
                 {/* neutral base structure (full elbow) */}
-                <path d={`M ${a.x} ${a.y} L ${jA.x} ${jA.y}`} fill="none" stroke={GRAD} strokeWidth={1.4} strokeLinecap="round" />
-                <path d={`M ${b.x} ${b.y} L ${jB.x} ${jB.y}`} fill="none" stroke={GRAD} strokeWidth={1.4} strokeLinecap="round" />
-                <path d={`M ${jA.x} ${jA.y} A ${rj} ${rj} 0 0 ${sweep} ${jB.x} ${jB.y}`} fill="none" stroke={GRAD} strokeWidth={1.4} />
-                <path d={`M ${jMid.x} ${jMid.y} L ${pPar.x} ${pPar.y}`} fill="none" stroke={GRAD} strokeWidth={1.4} strokeLinecap="round" />
+                <path d={`M ${a.x} ${a.y} L ${jA.x} ${jA.y}`} fill="none" stroke={GRAD} strokeWidth={1.9} strokeLinecap="round" />
+                <path d={`M ${b.x} ${b.y} L ${jB.x} ${jB.y}`} fill="none" stroke={GRAD} strokeWidth={1.9} strokeLinecap="round" />
+                <path d={`M ${jA.x} ${jA.y} A ${rj} ${rj} 0 0 ${sweep} ${jB.x} ${jB.y}`} fill="none" stroke={GRAD} strokeWidth={1.9} />
+                <path d={`M ${jMid.x} ${jMid.y} L ${pPar.x} ${pPar.y}`} fill="none" stroke={GRAD} strokeWidth={1.9} strokeLinecap="round" />
                 {/* winner's route ONLY, tinted with its flag colour. It draws
                     in from child to parent as the winner's flag hops through it
                     — same path + 1.25s ease as the flag's offset-path, so the
