@@ -260,6 +260,8 @@ export const en = {
   'zone.championsLeagueQualifying': 'Champions League qualifying',
   'zone.europaLeague': 'Europa League',
   'zone.conferenceLeague': 'Conference League',
+  'zone.championshipPlayoff': 'Championship play-off',
+  'zone.europeanPlayoff': 'European play-off',
   'zone.relegation': 'Relegation',
   'zone.relegationPlayoff': 'Relegation play-off',
   'zone.mlsChampionsCup': 'Round One · Champions Cup',

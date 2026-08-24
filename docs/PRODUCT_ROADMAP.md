@@ -25,7 +25,7 @@ are stable and are how work gets assigned across sessions.
 
 ## Where ScoreArc actually is
 
-Nine competitions, a signature radial bracket, computed Leagues Cup tables no
+Ten competitions, a signature radial bracket, computed Leagues Cup tables no
 other site publishes — and **no memory and no people**. The site cannot tell you
 what happened last Saturday, who scored it, or anything at all about the player
 who did.
@@ -351,7 +351,7 @@ Two decisions made during implementation, both deliberate:
   id into `/player/` or `/team/`. Resolution runs through a per-competition
   player index built from the squad rosters the team pages already fetch.
 - **Two surfaces stay unlinked, honestly.** The home digest's scorer boards
-  span nine competitions, and enriching all nine costs ~160 upstream requests
+  span the whole competition set (nine at the time), and enriching them all cost ~160 upstream requests
   on a cold cache — the class of cost E11 existed to remove; the board's
   "Standings" link leads to the linked version. Match-popup lineups need slugs
   in the summary API payload (the popup is client-side with no index access)
@@ -575,7 +575,7 @@ copies of the same validator and reconciling them later.
 | **Heat maps** | **Not a data limit any more — a product judgement.** Touch-level coordinates exist and are archived in full (T7.12), so this is buildable. It stays unbuilt because a heat map describes a match without explaining one, and because rowing the touch tier into Postgres is ~35M rows and ~5GB of billed storage per season to serve it. Unblocked but unscheduled; revisit with a named use case, not with a "now we have coordinates". |
 | **Match simulation** | Gated on **E7**, not on xG. Dixon–Coles runs on goals and results alone. The real gate is a Brier score and reliability curve we can publish *on the page*; until we can, it is a toy that will be screenshotted and held against us. E9 now holds the same standard for xG, and the two should share one validation story rather than inventing two. |
 | **Chatbot** | Capped by an API with no player granularity. E8's push features beat it at zero user effort. |
-| **A tenth competition** | Nine competitions one week deep are worth less than three with five years of history. |
+| ~~**A tenth competition**~~ | **Reversed 2026-08-23** — the owner asked for Super League Greece and ESPN carries `gre.1` end to end, so it shipped as pure config (the platform absorbed it without new code, which is itself the E11-era design paying off). The original argument stands for competitions that would need new *code*: depth still beats breadth. |
 | **Possession as a hero stat** | Unanimous across all three reviews. It describes a match; it does not explain one. |
 
 ---
