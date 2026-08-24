@@ -1,6 +1,6 @@
 import { collectStories, publishedAgo, type DigestNewsItem } from '@/lib/digest';
 import type { Locale } from '@/i18n/config';
-import { listCompetitions, resolveSeason } from './competitions';
+import { listCompetitions, resolveSeason, type Competition } from './competitions';
 import { dataStore } from './store';
 import type { NewsArticle } from './types';
 
@@ -14,6 +14,11 @@ import type { NewsArticle } from './types';
  * sizes are the only honest difference between them, so they are the only
  * thing the caller passes.
  *
+ * `competitions` defaults to every competition (what /news, the full
+ * directory, wants); the home digest passes `ongoingCompetitions()` so a
+ * concluded tournament's stories stop being promoted there while /news still
+ * carries them.
+ *
  * Every feed is independently optional: one competition's dead feed costs its
  * own rows, not the page. A rejected read becomes an empty feed, which the
  * collector then treats like any other empty one.
@@ -22,9 +27,10 @@ export async function collectDatedStories(
   now: Date,
   locale: Locale,
   { perFeed, limit }: { perFeed: number; limit: number },
+  competitions: Competition[] = listCompetitions(),
 ): Promise<DigestNewsItem[]> {
   const feeds = await Promise.all(
-    listCompetitions().map((comp) =>
+    competitions.map((comp) =>
       dataStore.getNews(resolveSeason(comp.id)!).catch((): NewsArticle[] => []),
     ),
   );
