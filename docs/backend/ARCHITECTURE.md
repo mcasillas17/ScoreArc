@@ -224,7 +224,7 @@ the seal is the intended single `match_pkey` probe with two shared-buffer hits.
 
 ## 4. Ingester (slice 1b — implemented Go worker)
 
-- Always-on (Fly `min_machines_running = 1`), **no public HTTP**.
+- Always-on (Fly restart policy `always`, deployed with `--ha=false`), **no public HTTP**.
 - A dedicated direct/unpooled pgx connection holds a PostgreSQL advisory lock.
   Normal writes use `POOLED_DSN`; lease health is checked independently during
   each cycle so losing the singleton session cancels work and terminates.
@@ -396,7 +396,8 @@ sequenceDiagram
 
 ## 5. Reader (slice 1c — implemented public Go REST API)
 
-- Public, autoscaling, scale-to-zero. Versioned under `/v1`.
+- Public and autoscaling, with one warm machine and an autostopped spare.
+  Versioned under `/v1`.
 - Endpoints mirror the 6 `DataStore` methods:
   - `GET /v1/competitions/{comp}/{season}/matches`
   - `GET /v1/competitions/{comp}/{season}/standings`

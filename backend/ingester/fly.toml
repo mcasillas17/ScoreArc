@@ -1,15 +1,13 @@
 # Ingester — always-on PRIVATE worker. Outbound only: ESPN -> Neon + R2.
 #
 # NO [http_service] block: the worker makes only outbound calls, so there is
-# nothing to auto-stop and the machine runs continuously. (Fly's
-# auto_stop_machines / min_machines_running knobs live ONLY inside an
-# [http_service]/[[services]] block, so "always-on" is expressed by omitting
-# that block.) After the FIRST deploy, pin exactly one machine:
-#   fly scale count 1 --app scorearc-ingester
+# nothing for Fly Proxy to auto-stop or auto-start. The restart policy below
+# keeps the worker running, while --ha=false prevents fly deploy from creating
+# a stopped standby for this singleton.
 #
 # Deploy from the repo root with the backend/ build context:
 #   flyctl deploy backend --config ingester/fly.toml \
-#     --dockerfile ingester/Dockerfile --remote-only
+#     --dockerfile ingester/Dockerfile --remote-only --ha=false
 #
 # Secrets (POOLED_DSN, INGESTER_LEASE_DSN, R2_*) are set with `fly secrets set`,
 # never here. INGESTER_LEASE_DSN must be an UNPOOLED Neon DSN — the process
@@ -26,6 +24,10 @@ primary_region = "iad"   # MUST match the Neon region (same as the reader)
 # the old machine before starting the new one.
 [deploy]
   strategy = "immediate"
+
+[[restart]]
+  policy = "always"
+  processes = ["app"]
 
 # The lease is released on SIGINT/SIGTERM through a 5s shutdown context
 # (ingester/main.go). Fly's default kill_timeout of 5s races that, which would
