@@ -3,11 +3,6 @@ import { toMatchDetailInput } from './upcomingWindow';
 import type { Match, Team } from '@/server/data/types';
 import type { MatchDetailInput } from './MatchDetailPopup';
 
-// Fixed reference: Wednesday 2026-07-22 10:00 local (getDay() === 3).
-const NOW = new Date('2026-07-22T10:00:00');
-
-// The Monday→Sunday week containing NOW (Wed 2026-07-22) is 2026-07-20 .. 2026-07-26.
-
 function team(id: string): Team {
   return { id, name: `Team ${id}`, abbr: id, crestUrl: `http://x/${id}.png` };
 }

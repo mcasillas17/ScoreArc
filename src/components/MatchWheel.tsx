@@ -7,10 +7,10 @@ import { flagUrl } from '@/lib/flags';
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
 import { toMatchDetailInput } from './upcomingWindow';
 import { matchStatusText } from './MatchRow';
-import LocalTime from './LocalTime';
+import LocalTime, { localTimeText, useLocalNow } from './LocalTime';
 import { wheelOrder, initialIndex, scoreChanges } from './matchWheelModel';
 import { trackEvent, trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
-import { useTranslations } from '@/i18n/I18nProvider';
+import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 
 interface Props {
   initialMatches: Match[];
@@ -33,7 +33,7 @@ const GOAL_FLASH_MS = 1_200;
 // never lags behind by however far down the list the row sits.
 const ENTRANCE_STEP_MS = 16;
 const ENTRANCE_CAP_MS = 200;
-// Prototype tuning (public/fixture-concepts.html renderE), ported verbatim:
+// Prototype tuning (the approved design prototype, not in the repo), ported verbatim:
 // each row tilts/scales/fades by its distance from the drum's vertical center.
 const TILT_DEG = 38;
 const SCALE_FALLOFF = 0.14;
@@ -65,6 +65,8 @@ export default function MatchWheel({
   initialMatches, apiBase, teamBase, teamStyle = 'flag', weekOnly = true,
 }: Props) {
   const t = useTranslations();
+  const locale = useLocale();
+  const now = useLocalNow();
   const [matches, setMatches] = useState<Match[]>(initialMatches);
   const [reduced, setReduced] = useState(false);
   const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
@@ -181,6 +183,12 @@ export default function MatchWheel({
     const el = scrollerRef.current;
     if (!el) return undefined;
 
+    // Gate the CSS opacity:0 pre-tilt default behind this class (see
+    // `.mw-ready .mw-row` in globals.css). A no-JS visitor never runs this
+    // effect, so `.mw-row` keeps its own default of fully visible instead of
+    // rendering an empty band.
+    el.classList.add('mw-ready');
+
     if (reduced) {
       // Degrade to a flat snap list: drop any tilt/scale/opacity a prior
       // non-reduced session may have left on the rows. CSS shows every row at
@@ -195,7 +203,14 @@ export default function MatchWheel({
     }
 
     if (!scrolledRef.current && ordered.length > 0) {
-      const target = ordered[initialIndex(ordered)];
+      // On a quiet day (nothing live/finished) initialIndex lands on row 0,
+      // and centering row 0 leaves the lead-in slots above it empty — honest
+      // for the picker metaphor, but it reads as a half-empty drum on every
+      // quiet day. With ≥3 rows, center row 1 instead: the next match sits
+      // one notch above center and the drum reads full.
+      let idx = initialIndex(ordered);
+      if (idx === 0 && ordered.length >= 3) idx = 1;
+      const target = ordered[idx];
       const node = target ? rowRefs.current.get(target.id) : undefined;
       if (node) {
         // Synchronous: layout updates immediately even though the DOM
@@ -260,9 +275,25 @@ export default function MatchWheel({
             {ordered.map((m) => {
               const live = m.state === 'live';
               const finished = m.state === 'finished';
-              const scoreLabel = live || finished
+              const started = live || finished;
+              const scoreLabel = started
                 ? `${m.homeScore ?? 0}–${m.awayScore ?? 0}`
                 : t('match.versusShort');
+              // Composed like MatchRow's label (src/components/MatchRow.tsx):
+              // names + score-or-versus, then status, then — for a match that
+              // hasn't started — the localized kickoff time. A bare "HOME vs
+              // AWAY" aria-label overrides the button's own content for
+              // screen readers, so it must carry everything sighted readers
+              // get from the row (score, status, time), not less.
+              const ariaLabel = [
+                started
+                  ? `${m.home.name} ${m.homeScore ?? 0}, ${m.away.name} ${m.awayScore ?? 0}`
+                  : `${m.home.name} ${t('match.versus')} ${m.away.name}`,
+                matchStatusText(m, t),
+                !started && now
+                  ? (localTimeText(m.kickoff, 'dayTime', now, locale) ?? t('common.unavailable'))
+                  : null,
+              ].filter(Boolean).join(', ');
               return (
                 <button
                   type="button"
@@ -276,8 +307,9 @@ export default function MatchWheel({
                     live && 'mw-row--live',
                     flashIds.has(m.id) && 'mw-row--flash',
                   ].filter(Boolean).join(' ')}
-                  aria-label={`${m.home.name} ${t('match.versusShort')} ${m.away.name}`}
+                  aria-label={ariaLabel}
                   onClick={() => openDetails(m)}
+                  onFocus={(e) => e.currentTarget.scrollIntoView({ block: 'center' })}
                 >
                   <span className="mw-side">
                     <span className="mw-name">{m.home.name}</span>

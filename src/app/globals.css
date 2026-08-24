@@ -3823,9 +3823,8 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 /* ---- Match wheel (mw-*) ---- */
 /* Replaces the horizontal fixture ticker (tick-*, retired in Task 3): a
    fixed-height vertical drum that scrolls like a phone time picker. Tuning
-   (angles/scale/opacity/heights) ported from the approved prototype, which
-   lived at public/fixture-concepts.html (renderE / .wheel / .wrow) before
-   Task 3 deleted it too. */
+   (angles/scale/opacity/heights) ported from the approved design prototype
+   (renderE / .wheel / .wrow) — not in the repo. */
 .mw-empty { color: var(--text-muted); font-size: 13.5px; padding: 8px 2px; }
 
 .mw-wrap {
@@ -3844,13 +3843,13 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 .mw-wrap::before { top: 0; background: linear-gradient(180deg, var(--surface-1) 12%, transparent); }
 .mw-wrap::after { bottom: 0; background: linear-gradient(0deg, var(--surface-2) 12%, transparent); }
 
-/* The snap target: a soft green-tinted slot marking where a row "lands". */
+/* The snap target: a soft accent-tinted slot marking where a row "lands". */
 .mw-centerline {
   position: absolute; left: 16px; right: 16px; top: 50%; height: 64px;
   transform: translateY(-50%);
   border-radius: 12px;
-  background: rgba(34, 197, 94, 0.06);
-  border: 1px solid rgba(34, 197, 94, 0.25);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
   pointer-events: none;
   z-index: 1;
 }
@@ -3860,7 +3859,9 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   z-index: 0;
   height: 100%;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  /* Default overscroll chaining (not `contain`): a swipe that exhausts the
+     drum keeps scrolling the page instead of being trapped at the drum's
+     edges. */
   scroll-snap-type: y mandatory;
   /* Vertical padding = (wrap height − row height) / 2, so the first and last
      rows can still scroll all the way to the center slot. */
@@ -3881,22 +3882,28 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   padding: 0 14px;
   scroll-snap-align: center;
   background: none; border: 0; font: inherit; color: var(--text); text-align: left; cursor: pointer;
-  /* Pre-JS / pre-mount default: invisible. The mount effect's first tilt pass
-     sets the real per-row opacity, and the browser transitions into it —
-     that transition, staggered by transition-delay (set in JS), IS the
-     entrance cascade. transform is intentionally not listed: the rAF handler
-     drives it every scroll frame and a transition there would make dragging
-     feel laggy instead of 1:1. */
-  opacity: 0;
+  /* Default is opacity's own initial value (1) — a no-JS visitor sees every
+     row fully visible, a flat list. `.mw-ready` (added below once the mount
+     effect has run — see MatchWheel.tsx) scopes the pre-tilt-pass opacity:0
+     default that makes the entrance cascade possible: the first tilt pass
+     sets each row's real opacity inline, and the browser transitions into
+     it, staggered by transition-delay (set in JS). transform is
+     intentionally not listed here: the rAF handler drives it every scroll
+     frame and a transition there would make dragging feel laggy instead of
+     1:1. */
   transition: opacity 180ms ease;
   will-change: transform, opacity;
 }
+.mw-ready .mw-row { opacity: 0; }
 .mw-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 @media (prefers-reduced-motion: reduce) {
   /* The drum degrades to a flat, still-scrollable snap list: every row is
-     shown immediately, with no dependency on JS ever running the tilt pass. */
-  .mw-row { opacity: 1; transition: none; }
+     shown immediately, with no dependency on JS ever running the tilt pass.
+     `.mw-ready .mw-row` is listed explicitly: it outranks the bare `.mw-row`
+     selector on specificity alone, so without it a reduced-motion visitor
+     whose JS still adds `.mw-ready` would go back to invisible rows. */
+  .mw-ready .mw-row, .mw-row { opacity: 1; transition: none; }
 }
 
 .mw-side { display: flex; align-items: center; gap: 8px; min-width: 0; justify-content: flex-end; }
@@ -3908,7 +3915,7 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 }
 @media (min-width: 900px) { .mw-name { display: inline-block; max-width: 15ch; } }
 .mw-abbr { font-weight: 800; font-size: 14.5px; letter-spacing: 0.2px; flex: none; }
-.mw-crest { width: 28px; height: 28px; border-radius: 50%; object-fit: contain; background: #fff; padding: 2px; flex: none; }
+.mw-crest { width: 28px; height: 28px; border-radius: 50%; object-fit: contain; background: #f4f4f6; padding: 2px; flex: none; }
 .mw-crest--fallback {
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--surface-2); color: var(--text-muted); font-size: 9px; font-weight: 800;
@@ -3965,7 +3972,7 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
    scoreChanges() diff. */
 .mw-row--flash .mw-score { animation: mw-goal-flash 1.2s ease; }
 @keyframes mw-goal-flash {
-  0% { color: var(--accent-bright); transform: scale(1.32); text-shadow: 0 0 14px rgba(34, 197, 94, 0.65); }
+  0% { color: var(--accent-bright); transform: scale(1.32); text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 65%, transparent); }
   60% { color: var(--accent-bright); transform: scale(1.05); }
   100% { color: inherit; transform: scale(1); text-shadow: none; }
 }
@@ -3982,6 +3989,26 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   .mw-row { height: 52px; gap: 10px; padding: 0 10px; }
   .mw-centerline { left: 12px; right: 12px; height: 60px; }
   .mw-crest { width: 24px; height: 24px; }
-  .mw-meta { min-width: 76px; font-size: 12px; }
+  /* min+max pinned equal: an "auto" grid track otherwise sizes itself to fit
+     its content's longest unwrapped line (e.g. "Friday 8:00 PM"), which at
+     390px starves the two `1fr` side tracks of the room their crest+abbr
+     need — that is the mechanism behind the -12px away-abbr/meta overlap
+     measured on Liga MX (JUA/GDL). Pinning the max lets the meta text wrap
+     to two short lines instead of stealing width from the sides. */
+  .mw-meta { min-width: 76px; max-width: 76px; font-size: 12px; }
   .mw-mid { min-width: 68px; font-size: 15px; }
+  /* .mw-abbr is `flex: none` by default (full, unclipped width — there is
+     room for it at ≥761px). Below 760px a `1fr` side track can be narrower
+     than crest + gap + abbr even with the meta fix above (a 4-char abbr like
+     UANL), so let it shrink and, only if it still doesn't fit, ellipsize
+     rather than overflow into the meta column. The crest keeps flex: none —
+     it must stay full size. */
+  .mw-abbr {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 40px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }

@@ -29,8 +29,8 @@ as the ticker did (same fetch, same telemetry surface renamed
   gradients fade rows out; a soft green-tinted center slot marks the snap
   target.
 - CSS `scroll-snap-type: y mandatory`, rows `scroll-snap-align: center`;
-  `overscroll-behavior: contain` so the drum never traps the page scroll;
-  scrollbar hidden.
+  default overscroll chaining, so a swipe that exhausts the drum keeps
+  scrolling the page; scrollbar hidden.
 - A rAF scroll handler transforms each row by its distance from center:
   `rotateX(-38deg·d)`, `scale(1-0.14|d|)`, `opacity 1-0.65|d|` (the prototype's
   tuning; refine in browser).
