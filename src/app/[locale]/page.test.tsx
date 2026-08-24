@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ReactNode } from 'react';
 import { dataStore } from '@/server/data/store';
-import { listCompetitions, resolveSeason, type CompetitionSeason } from '@/server/data/competitions';
+import { getCompetition, ongoingCompetitions, resolveSeason, type CompetitionSeason } from '@/server/data/competitions';
 import type { Match, NewsArticle, StatLeader } from '@/server/data/types';
 import Home from './page';
 import { I18nProvider } from '@/i18n/I18nProvider';
@@ -69,9 +69,12 @@ const article = (id: string, published = '2026-08-18T10:00:00Z'): NewsArticle =>
   byline: 'ESPN',
 });
 
-const COMPETITIONS = listCompetitions();
-const FIRST = COMPETITIONS[0].id;
-const SECOND = COMPETITIONS[1].id;
+// The home page fans out over ongoingCompetitions(), not every competition —
+// a concluded season (world-cup/2026) is excluded, so the fixtures below use
+// the same set the page actually reads.
+const ONGOING = ongoingCompetitions();
+const FIRST = ONGOING[0].id;
+const SECOND = ONGOING[1].id;
 
 /** Per-competition feeds, keyed by competition id; anything unlisted is empty. */
 function byCompetition<T>(map: Record<string, T[]>) {
@@ -111,7 +114,7 @@ describe('Home digest', () => {
   it("reads each competition's window exactly once", async () => {
     const cheap = vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
     renderLocalized(await Home({ params: { locale: 'en' } }));
-    expect(cheap).toHaveBeenCalledTimes(COMPETITIONS.length);
+    expect(cheap).toHaveBeenCalledTimes(ONGOING.length);
   });
 
   // A dead feed must cost that competition's rows, not the page.
@@ -149,6 +152,28 @@ describe('Home digest', () => {
     const ids = matchIds(html);
     expect(ids.length).toBeGreaterThan(0);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  // The world-cup/2026 season is marked concluded (its final was played);
+  // the digest must not promote it as though it were still current.
+  it('excludes a competition whose current season has concluded from every block', async () => {
+    const wc = getCompetition('world-cup')!;
+    vi.spyOn(dataStore, 'getLiveWindow').mockImplementation(
+      byCompetition({ [wc.id]: [match('wc-match', 0, 'live')] }),
+    );
+    vi.spyOn(dataStore, 'getLeaders').mockImplementation(async (rc: CompetitionSeason) =>
+      rc.competition.id === wc.id
+        ? { scorers: [leader(1, 'Concluded Scorer')], assists: [] }
+        : { scorers: [], assists: [] },
+    );
+    vi.spyOn(dataStore, 'getNews').mockImplementation(
+      byCompetition({ [wc.id]: [article('wc-story')] }),
+    );
+    const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+    expect(matchIds(html)).not.toContain('wc-match');
+    expect(html).not.toContain('Concluded Scorer');
+    expect(html).not.toContain('Headline wc-story');
+    expect(html).not.toContain(`<span class="dg-bname">${wc.shortName}</span>`);
   });
 
   describe('the heading counts what the body shows', () => {
@@ -285,7 +310,7 @@ describe('Home digest', () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
       vi.spyOn(dataStore, 'getLeaders').mockResolvedValue({ scorers: [leader(1, 'Solo')], assists: [] });
       const html = renderLocalized(await Home({ params: { locale: 'en' } }));
-      expect(COMPETITIONS.length).toBeGreaterThan(6);
+      expect(ONGOING.length).toBeGreaterThan(6);
       expect(count(html, 'class="dg-board"')).toBe(6);
     });
 
@@ -327,7 +352,7 @@ describe('Home digest', () => {
         byCompetition({
           [FIRST]: [article('old', '2026-08-18T06:00:00Z')],
           [SECOND]: [article('newest', '2026-08-18T11:30:00Z')],
-          [COMPETITIONS[2].id]: [article('middle', '2026-08-18T09:00:00Z')],
+          [ONGOING[2].id]: [article('middle', '2026-08-18T09:00:00Z')],
         }),
       );
       const html = renderLocalized(await Home({ params: { locale: 'en' } }));
@@ -342,7 +367,7 @@ describe('Home digest', () => {
         article(`${rc.competition.id}-2`),
       ]);
       const html = renderLocalized(await Home({ params: { locale: 'en' } }));
-      expect(COMPETITIONS.length * 2).toBeGreaterThan(6);
+      expect(ONGOING.length * 2).toBeGreaterThan(6);
       expect(count(html, 'class="dg-nw"')).toBe(6);
     });
 
@@ -356,7 +381,7 @@ describe('Home digest', () => {
       );
       const html = renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(html).toContain('2 hours ago');
-      expect(html).not.toContain(`<span class="dg-nwsrc">${COMPETITIONS[0].shortName}</span>`);
+      expect(html).not.toContain(`<span class="dg-nwsrc">${ONGOING[0].shortName}</span>`);
     });
 
     // Every row leaves for ESPN in a new tab; without this the block led

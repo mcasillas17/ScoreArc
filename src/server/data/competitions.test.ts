@@ -3,6 +3,7 @@ import {
   COMPETITIONS,
   getCompetition,
   listCompetitions,
+  ongoingCompetitions,
   resolveSeason,
   OFFICIAL_R32_ORDER,
 } from './competitions';
@@ -37,6 +38,19 @@ describe('competition registry', () => {
     expect(getCompetition('leagues-cup')?.name).toBe('Leagues Cup');
     expect(getCompetition('nope')).toBeUndefined();
     expect(listCompetitions().length).toBe(Object.keys(COMPETITIONS).length);
+  });
+
+  it('ongoingCompetitions excludes a competition whose current season concluded, keeps the rest', () => {
+    const ongoing = ongoingCompetitions();
+    const ids = ongoing.map((c) => c.id);
+    expect(ids).not.toContain('world-cup');
+    expect(ids).toContain('liga-mx');
+    expect(ids).toContain('premier-league');
+    // Every competition, minus exactly the concluded ones.
+    const concludedCount = listCompetitions().filter(
+      (c) => c.seasons[c.currentSeasonId]?.concluded,
+    ).length;
+    expect(ongoing.length).toBe(listCompetitions().length - concludedCount);
   });
 
   it('resolveSeason defaults to the current season and validates inputs', () => {

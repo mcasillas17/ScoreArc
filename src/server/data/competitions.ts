@@ -62,6 +62,10 @@ export interface Zone {
 export interface Season {
   id: string;
   label: string; // e.g. 'Apertura 2026', '2026'
+  /** The season is over: its final is played, its table is history. A
+   *  concluded current season keeps every page browsable but contributes
+   *  nothing to the home digest. */
+  concluded?: boolean;
   sections: Section[];
   format: { hasBracket: boolean; hasGroups: boolean; hasThirdPlaceRace: boolean };
   bracketDatesRange?: string; // ESPN date-range for the bracket scoreboard
@@ -185,6 +189,7 @@ export const COMPETITIONS: Record<string, Competition> = {
       '2026': {
         id: '2026',
         label: '2026',
+        concluded: true,
         sections: ['bracket', 'standings', 'scores', 'news'],
         format: { hasBracket: true, hasGroups: true, hasThirdPlaceRace: true },
         bracketDatesRange: '20260628-20260719',
@@ -518,6 +523,12 @@ export function getCompetition(id: string): Competition | undefined {
 
 export function listCompetitions(): Competition[] {
   return Object.values(COMPETITIONS);
+}
+
+/** Competitions whose current season is still being played — the home
+ *  digest's universe. Everything else stays browsable, just not promoted. */
+export function ongoingCompetitions(): Competition[] {
+  return listCompetitions().filter((c) => !c.seasons[c.currentSeasonId]?.concluded);
 }
 
 // Resolve a (competition, season) pair. `seasonId` defaults to the competition's

@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
-import { listCompetitions, resolveSeason } from '@/server/data/competitions';
+import { ongoingCompetitions, resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import { competitionLabel, type LiveEntry } from '@/server/data/liveFeed';
 import { prioritiseBy } from '@/server/data/matchPriority';
@@ -50,11 +50,17 @@ export default async function Home({ params }: { params: { locale: string } }) {
   const now = new Date();
 
   // The news fan-out runs alongside the match and scorer fan-out rather than
-  // after it: it is the same nine competitions, and awaiting it separately
-  // would put a second upstream round trip on the page's critical path.
+  // after it: it is the same competitions, and awaiting it separately would
+  // put a second upstream round trip on the page's critical path.
+  //
+  // Both fan-outs read ongoingCompetitions(), not listCompetitions(): a
+  // competition whose current season has concluded (its final played, its
+  // table history) stays fully browsable on its own pages but contributes no
+  // match cards, no scorer board and no stories here.
+  const ongoing = ongoingCompetitions();
   const [per, stories] = await Promise.all([
     Promise.all(
-      listCompetitions().map(async (comp) => {
+      ongoing.map(async (comp) => {
         const rc = resolveSeason(comp.id)!;
         // Every read is independently optional: a dead feed for one competition
         // must cost that competition's rows, not the page.
@@ -72,8 +78,14 @@ export default async function Home({ params }: { params: { locale: string } }) {
         };
       }),
     ),
-    // ===== News ===== the same collection /news renders, at the digest's size.
-    collectDatedStories(now, locale, { perFeed: STORIES_PER_COMPETITION, limit: STORIES_SHOWN }),
+    // ===== News ===== the same collection /news renders (minus concluded
+    // competitions), at the digest's size.
+    collectDatedStories(
+      now,
+      locale,
+      { perFeed: STORIES_PER_COMPETITION, limit: STORIES_SHOWN },
+      ongoing,
+    ),
   ]);
 
   // ===== What's on =====

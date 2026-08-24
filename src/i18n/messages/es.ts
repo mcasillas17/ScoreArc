@@ -333,8 +333,6 @@ export const es = {
   'footer.languageGroup': 'Idioma',
   'upcoming.thisWeek': 'Esta semana',
   'upcoming.nextUp': 'Próximos',
-  'upcoming.chanceToWin': 'Probabilidad de ganar',
-  'upcoming.fullDetails': 'Detalles completos ›',
   'upcoming.emptyWeek': 'No hay partidos programados esta semana.',
   'upcoming.empty': 'No hay próximos partidos.',
   'matchDetails.dialogLabel': 'Detalles del partido',

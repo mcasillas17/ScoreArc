@@ -345,8 +345,6 @@ export const en = {
   'footer.languageGroup': 'Language',
   'upcoming.thisWeek': 'Upcoming This Week',
   'upcoming.nextUp': 'Next Up',
-  'upcoming.chanceToWin': 'Chance to win',
-  'upcoming.fullDetails': 'Full details ›',
   'upcoming.emptyWeek': 'No matches scheduled this week.',
   'upcoming.empty': 'No upcoming fixtures.',
   'matchDetails.dialogLabel': 'Match details',

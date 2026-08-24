@@ -2967,100 +2967,6 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
    the dial + tier split has room; it still stacks below the split breakpoint. */
 .std-wide { width: 100%; max-width: 960px; }
 
-/* ===== Upcoming-this-week ticker ===== */
-.tick-band {
-  position: relative;
-  width: 100%;
-  background: linear-gradient(180deg, var(--surface-1), var(--surface-2));
-  border: 1px solid var(--accent-soft);
-  border-radius: 14px;
-  /* clip the marquee sideways, but let the hover-card rise above the band */
-  overflow-x: clip;
-  overflow-y: visible;
-}
-.tick-band::before, .tick-band::after {
-  content: ""; position: absolute; top: 0; bottom: 0; width: 54px; z-index: 3; pointer-events: none;
-}
-.tick-band::before { left: 0; background: linear-gradient(90deg, var(--surface-1), transparent); }
-.tick-band::after { right: 0; background: linear-gradient(270deg, var(--surface-2), transparent); }
-
-.tick-track { display: flex; width: max-content; }
-.tick-group { display: flex; }
-/* Two animation modes (never duplicates a fixture to fill):
-   --scroll: many matches, seamless two-copy loop.
-   --cross:  few matches, one row scrolls across the band and cycles. */
-.tick-track--scroll { animation: tick-scroll linear infinite; }
-.tick-track--cross { animation: tick-cross linear infinite; }
-@keyframes tick-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-@keyframes tick-cross {
-  from { transform: translateX(var(--tick-from, 100%)); }
-  to { transform: translateX(var(--tick-to, -100%)); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .tick-track--scroll, .tick-track--cross { animation: none; }
-  .tick-band { overflow-x: auto; }
-}
-
-.tick-chip {
-  display: flex; align-items: center; gap: 11px;
-  padding: 12px 34px;
-  white-space: nowrap; cursor: pointer; position: relative;
-  transition: background 0.15s ease;
-}
-.tick-chip:hover { background: rgba(255, 255, 255, 0.04); }
-/* Clear vertical divider between matches (centred rule). */
-.tick-chip::after {
-  content: ""; position: absolute; right: 0; top: 50%; transform: translateY(-50%);
-  width: 1px; height: 30px; background: #3a3a44;
-}
-.tick-day { font-size: 10px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--accent); }
-.tick-side { display: flex; align-items: center; gap: 6px; }
-.tick-side--away { flex-direction: row-reverse; }
-.tick-crest { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex: none; background: #f4f4f6; }
-.tick-crest--fallback {
-  display: inline-flex; align-items: center; justify-content: center;
-  background: var(--surface-2); color: var(--text-muted); font-size: 8px; font-weight: 800;
-}
-.tick-abbr { font-size: 13px; font-weight: 700; letter-spacing: 0.2px; color: var(--text); }
-.tick-vs { font-size: 11px; font-weight: 700; color: var(--text-muted); padding: 0 2px; }
-.tick-ko { font-size: 13px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; margin-left: 2px; }
-
-/* Opens BELOW the chip: the ticker sits at the top of the page, so a card that
-   rose above would be clipped by the viewport top. Arrow points up at the chip. */
-.tick-pop {
-  position: absolute; top: calc(100% + 12px); left: 50%;
-  /* --pop-shift keeps the card inside the band; see UpcomingTicker. */
-  transform: translateX(calc(-50% + var(--pop-shift, 0px)));
-  width: 244px; background: var(--surface-2); border: 1px solid var(--hairline);
-  border-radius: 12px; padding: 13px 14px; z-index: 10; white-space: normal; text-align: left;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5); cursor: default;
-}
-.tick-pop::after {
-  content: ""; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
-  border: 7px solid transparent; border-bottom-color: var(--surface-2);
-}
-.tick-pop::before {
-  content: ""; position: absolute; bottom: 100%; left: 0; right: 0; height: 12px;
-}
-.tick-pop-teams { font-size: 13px; font-weight: 800; color: var(--text); margin-bottom: 2px; }
-.tick-pop-when { font-size: 11.5px; color: var(--text-muted); margin-bottom: 11px; }
-.tick-wp-cap { font-size: 9.5px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-bottom: 6px; }
-.tick-wp-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; }
-.tick-wp-h { background: var(--accent); }
-.tick-wp-d { background: #3a3a44; }
-.tick-wp-a { background: #4a90d9; }
-.tick-wp-legend { display: flex; justify-content: space-between; font-size: 11px; margin-top: 6px; font-variant-numeric: tabular-nums; }
-.tick-wp-legend .l { color: var(--accent-bright); font-weight: 700; }
-.tick-wp-legend .m { color: var(--text-muted); }
-.tick-wp-legend .r { color: #7fb3e6; font-weight: 700; }
-.tick-pop-more {
-  margin-top: 11px; padding-top: 9px; border-top: 1px solid var(--hairline);
-  font-size: 11px; color: var(--info-bright); font-weight: 700; letter-spacing: 0.4px;
-  background: none; border-left: none; border-right: none; border-bottom: none;
-  width: 100%; text-align: left; cursor: pointer;
-}
-.tick-empty { color: var(--text-muted); font-size: 13.5px; padding: 8px 2px; }
-
 /* ---- Cross-league cup: derived knockout ties (Leagues Cup) ---- */
 /* The pairings are computed from the two phase tables, not fetched — the
    bracket is fixed and pre-seeded, so results alone determine them. */
@@ -3186,11 +3092,11 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   to bottom, var(--zone) 0 6px, transparent 6px 11px); }
 
 /* The fixture banner must sit above the sections beneath it.
-   .tick-track animates `transform` for the marquee, and a transform creates a
-   stacking context — so .tick-pop's own z-index is trapped inside the track and
-   cannot lift the hover card above anything outside it. The band and the
+   .mw-row animates `transform` for the drum tilt, and a transform creates a
+   stacking context — so anything riding on a row's own z-index is trapped
+   inside it and cannot lift above content outside the banner. The wrap and
    section are both z-index:auto, so the next section in the DOM (the league
-   table, with its competition heading) painted over the popup.
+   table, with its competition heading) would paint over it.
    Give the banner section its own stacking context above later content.
    Stays below the sidebar (50) and the match modal (200/9999). */
 #live { position: relative; z-index: 30; }
@@ -3913,3 +3819,196 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
    of accent-coloured names would read as ten calls to action. */
 .ldr-player, .sq-name-link { color: inherit; text-decoration: none; }
 .ldr-player:hover, .sq-name-link:hover { color: var(--accent-bright); text-decoration: underline; }
+
+/* ---- Match wheel (mw-*) ---- */
+/* Replaces the horizontal fixture ticker (tick-*, retired in Task 3): a
+   fixed-height vertical drum that scrolls like a phone time picker. Tuning
+   (angles/scale/opacity/heights) ported from the approved design prototype
+   (renderE / .wheel / .wrow) — not in the repo. */
+.mw-empty { color: var(--text-muted); font-size: 13.5px; padding: 8px 2px; }
+
+.mw-wrap {
+  position: relative;
+  height: 330px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--surface-1), var(--surface-2));
+  border: 1px solid var(--hairline);
+  overflow: hidden;
+}
+/* Edge fades: rows curl away under the wrap's rounded corners rather than
+   clipping flat, so the drum reads as continuous rather than a cut-off list. */
+.mw-wrap::before, .mw-wrap::after {
+  content: ''; position: absolute; left: 0; right: 0; height: 72px; z-index: 2; pointer-events: none;
+}
+.mw-wrap::before { top: 0; background: linear-gradient(180deg, var(--surface-1) 12%, transparent); }
+.mw-wrap::after { bottom: 0; background: linear-gradient(0deg, var(--surface-2) 12%, transparent); }
+
+/* The snap target: a soft accent-tinted slot marking where a row "lands". */
+.mw-centerline {
+  position: absolute; left: 16px; right: 16px; top: 50%; height: 64px;
+  transform: translateY(-50%);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.mw-drum {
+  position: relative;
+  z-index: 0;
+  height: 100%;
+  overflow-y: auto;
+  /* Default overscroll chaining (not `contain`): a swipe that exhausts the
+     drum keeps scrolling the page instead of being trapped at the drum's
+     edges. */
+  scroll-snap-type: y mandatory;
+  /* Vertical padding = (wrap height − row height) / 2, so the first and last
+     rows can still scroll all the way to the center slot. */
+  padding: 137px 16px;
+  perspective: 900px;
+  scrollbar-width: none;
+}
+.mw-drum::-webkit-scrollbar { display: none; }
+
+.mw-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  height: 56px;
+  margin-bottom: 8px;
+  padding: 0 14px;
+  scroll-snap-align: center;
+  background: none; border: 0; font: inherit; color: var(--text); text-align: left; cursor: pointer;
+  /* Default is opacity's own initial value (1) — a no-JS visitor sees every
+     row fully visible, a flat list. `.mw-ready` (added below once the mount
+     effect has run — see MatchWheel.tsx) scopes the pre-tilt-pass opacity:0
+     default that makes the entrance cascade possible: the first tilt pass
+     sets each row's real opacity inline, and the browser transitions into
+     it, staggered by transition-delay (set in JS). transform is
+     intentionally not listed here: the rAF handler drives it every scroll
+     frame and a transition there would make dragging feel laggy instead of
+     1:1. */
+  transition: opacity 180ms ease;
+  will-change: transform, opacity;
+}
+.mw-ready .mw-row { opacity: 0; }
+.mw-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  /* The drum degrades to a flat, still-scrollable snap list: every row is
+     shown immediately, with no dependency on JS ever running the tilt pass.
+     `.mw-ready .mw-row` is listed explicitly: it outranks the bare `.mw-row`
+     selector on specificity alone, so without it a reduced-motion visitor
+     whose JS still adds `.mw-ready` would go back to invisible rows. */
+  .mw-ready .mw-row, .mw-row { opacity: 1; transition: none; }
+}
+
+.mw-side { display: flex; align-items: center; gap: 8px; min-width: 0; justify-content: flex-end; }
+.mw-side--away { justify-content: flex-start; }
+.mw-name {
+  display: none;
+  font-size: 14px; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+@media (min-width: 900px) { .mw-name { display: inline-block; max-width: 15ch; } }
+.mw-abbr { font-weight: 800; font-size: 14.5px; letter-spacing: 0.2px; flex: none; }
+.mw-crest { width: 28px; height: 28px; border-radius: 50%; object-fit: contain; background: #f4f4f6; padding: 2px; flex: none; }
+.mw-crest--fallback {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface-2); color: var(--text-muted); font-size: 9px; font-weight: 800;
+}
+
+.mw-mid {
+  position: relative;
+  min-width: 84px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.mw-mid--pre { color: var(--text-muted); font-weight: 700; font-size: 13px; }
+.mw-mid--live { color: var(--accent-bright); }
+/* inline-block: `transform` (the goal-flash scale pop) does not apply to a
+   plain inline box in every browser. */
+.mw-score { position: relative; display: inline-block; }
+/* The arc is scarce: drawn ONLY over a live score (see LiveArc in
+   MatchWheel.tsx) — the brand mark as a pulse of life, not decoration
+   repeated on every row. */
+.mw-arc {
+  position: absolute; left: 50%; top: -14px; transform: translateX(-50%);
+  width: 56px; height: 12px; overflow: visible;
+}
+.mw-arc path { stroke: var(--accent-bright); stroke-width: 2.5px; animation: mw-arc-pulse 2.4s ease-in-out infinite; }
+
+.mw-meta { min-width: 92px; text-align: right; font-size: 13px; color: var(--text-muted); }
+.mw-final { color: var(--text-muted); font-weight: 600; }
+.mw-time { font-variant-numeric: tabular-nums; }
+.mw-live-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  color: var(--live-red); font-size: 12px; font-weight: 800; letter-spacing: 0.6px; white-space: nowrap;
+}
+.mw-live-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor; color: var(--live-red);
+  box-shadow: 0 0 0 0 currentColor;
+  animation: mw-live-pulse 2.4s ease-out infinite;
+}
+
+@keyframes mw-arc-pulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 0.45; }
+}
+@keyframes mw-live-pulse {
+  70% { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* Goal flash: the just-polled row's score pops and flashes green for ~1.2s.
+   MatchWheel toggles mw-row--flash for that long from matchWheelModel's
+   scoreChanges() diff. */
+.mw-row--flash .mw-score { animation: mw-goal-flash 1.2s ease; }
+@keyframes mw-goal-flash {
+  0% { color: var(--accent-bright); transform: scale(1.32); text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 65%, transparent); }
+  60% { color: var(--accent-bright); transform: scale(1.05); }
+  100% { color: inherit; transform: scale(1); text-shadow: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mw-arc path { animation: none; }
+  .mw-live-dot { animation: none; box-shadow: none; }
+  .mw-row--flash .mw-score { animation: none; }
+}
+
+@media (max-width: 760px) {
+  .mw-wrap { height: 300px; }
+  .mw-drum { padding: 124px 12px; }
+  .mw-row { height: 52px; gap: 10px; padding: 0 10px; }
+  .mw-centerline { left: 12px; right: 12px; height: 60px; }
+  .mw-crest { width: 24px; height: 24px; }
+  /* min+max pinned equal: an "auto" grid track otherwise sizes itself to fit
+     its content's longest unwrapped line (e.g. "Friday 8:00 PM"), which at
+     390px starves the two `1fr` side tracks of the room their crest+abbr
+     need — that is the mechanism behind the -12px away-abbr/meta overlap
+     measured on Liga MX (JUA/GDL). Pinning the max lets the meta text wrap
+     to two short lines instead of stealing width from the sides. */
+  .mw-meta { min-width: 76px; max-width: 76px; font-size: 12px; }
+  .mw-mid { min-width: 68px; font-size: 15px; }
+  /* .mw-abbr is `flex: none` by default (full, unclipped width — there is
+     room for it at ≥761px). Below 760px a `1fr` side track can be narrower
+     than crest + gap + abbr even with the meta fix above (a 4-char abbr like
+     UANL), so let it shrink and, only if it still doesn't fit, ellipsize
+     rather than overflow into the meta column. The crest keeps flex: none —
+     it must stay full size. */
+  .mw-abbr {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 40px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
