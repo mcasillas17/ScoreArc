@@ -18,8 +18,9 @@ interface Props {
   teamBase?: string;
   teamStyle?: TeamStyle;
   // Restrict the poll to the current Monday→Sunday week. True on a matchday,
-  // when the week IS the story. False when the next fixture falls outside it
-  // — see UpcomingTicker, whose banner this replaces, for the full rationale.
+  // when the week IS the story; getBannerFeed flips it false when the next
+  // fixture falls outside the week, so the band shows what is actually next
+  // instead of an empty week (see src/server/data/banner.ts).
   weekOnly?: boolean;
 }
 
@@ -69,7 +70,7 @@ export default function MatchWheel({
   const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
 
   // Full-details popup state (reuses the bracket's MatchDetailPopup) — same
-  // fetch, same shape, as UpcomingTicker's openDetails.
+  // fetch, same shape, as the retired ticker's openDetails used.
   const [detail, setDetail] = useState<Match | null>(null);
   const [summary, setSummary] = useState<MatchSummary | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -92,7 +93,7 @@ export default function MatchWheel({
   }, []);
 
   // Poll the same feed the drum was rendered from, every 15s. Reused verbatim
-  // from UpcomingTicker: weekOnly asks for this week's matches WITH scorers
+  // inherited from the retired ticker: weekOnly asks for this week WITH scorers
   // and cards (detail=summary), otherwise the forward feed of what's
   // scheduled. Telemetry stays under the 'upcoming' feed name — only the
   // popup-open event below is renamed to the wheel's own surface.
@@ -162,7 +163,7 @@ export default function MatchWheel({
   }
 
   // Ordering is pure (kickoff timestamps, not the reader's clock), so — unlike
-  // UpcomingTicker's isThisWeek filter — it produces the same result on the
+  // the retired ticker's client-side week filter — it produces the same result on the
   // server and the client's first paint. No mount-gate is needed to avoid a
   // hydration mismatch here; the server-rendered drum is the real drum.
   const ordered = useMemo(() => wheelOrder(matches), [matches]);
