@@ -1,4 +1,4 @@
-# Reader — public, autoscaling, scale-to-zero Go HTTP API.
+# Reader — public Go HTTP API with one warm machine and an autostopped spare.
 # Deploy from the repo root with the backend/ build context:
 #   flyctl deploy backend --config reader/fly.toml \
 #     --dockerfile reader/Dockerfile --remote-only
@@ -15,7 +15,7 @@ primary_region = "iad"   # MUST match the Neon region (see SETUP §4/§7)
   force_https = true
   auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
   processes = ["app"]
 
   [[http_service.checks]]

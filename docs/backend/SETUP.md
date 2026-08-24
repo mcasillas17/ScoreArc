@@ -318,7 +318,7 @@ overwrite them** — use `fly launch` only to create the app *record*, then depl
 the committed config:
 
 - Reader: `backend/reader/Dockerfile` + `backend/reader/fly.toml`
-  (public HTTP, scale-to-zero, `/healthz` check).
+  (public HTTP, one warm machine, autostopped spare, `/healthz` check).
 - Ingester: `backend/ingester/Dockerfile` + `backend/ingester/fly.toml`
   (always-on singleton, no public HTTP).
 
@@ -388,23 +388,34 @@ flyctl deploy backend \
 
 flyctl deploy backend \
   --config ingester/fly.toml \
-  --dockerfile ingester/Dockerfile --remote-only
-
-# the ingester has no [http_service], so pin exactly one always-on machine:
-fly scale count 1 --app scorearc-ingester
+  --dockerfile ingester/Dockerfile --remote-only --ha=false
 ```
 
-- **Reader**: public HTTP on 8080, scales to zero when idle
-  (`min_machines_running = 0`), woken by requests; Fly runs the `/healthz` check.
-- **Ingester**: always-on worker (no `[http_service]` → nothing auto-stops it);
-  `fly scale count 1` keeps its live-polling ticker running. No public port.
+- **Reader**: public HTTP on 8080, keeps one machine running in `iad`
+  (`min_machines_running = 1`), and wakes the autostopped spare when traffic
+  requires it; Fly runs the `/healthz` check.
+- **Ingester**: always-on worker with no public port. Its `restart = "always"`
+  policy restarts the process after any exit, and `--ha=false` prevents Fly's
+  default no-service deployment from creating a stopped standby machine.
+
+If `fly status --app scorearc-ingester` shows a stopped `app†` standby as the
+**only** machine, it cannot be promoted by a normal deploy. Remove that orphan
+and redeploy with HA disabled so Fly creates one ordinary running machine:
+
+```bash
+fly machine destroy <standby-machine-id> --app scorearc-ingester
+flyctl deploy backend \
+  --config ingester/fly.toml \
+  --dockerfile ingester/Dockerfile --remote-only --ha=false
+```
 
 ⚠️ **The ingester is a singleton — never run two machines.** It holds a Postgres
 advisory lock via `pg_try_advisory_lock`, which is non-blocking: a second
 instance does not queue, it logs `another ingester instance holds the database
 lease` and exits 1. Its `fly.toml` therefore pins `strategy = "immediate"` so
 the old machine stops before the new one starts, and `kill_timeout = "15s"` so
-the 5s lease-release path finishes on shutdown. If a deploy ever leaves the lock
+the 5s lease-release path finishes on shutdown. Every ingester deploy must pass
+`--ha=false`; the committed workflow does so. If a deploy ever leaves the lock
 stranded, the machine holding it is gone and Postgres reaps the session — wait
 for the connection to drop, then redeploy.
 

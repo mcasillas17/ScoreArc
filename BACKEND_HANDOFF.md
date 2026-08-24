@@ -69,7 +69,7 @@ This is a **monorepo**. The frontend and backend live together; Vercel ignores
   ingester/               [IMPLEMENTED] private worker/store/cadence/assets
                           + Dockerfile/fly.toml (always-on singleton worker)
   reader/                 [IMPLEMENTED — slice 1c] public REST API serving the 6 shapes
-                          + Dockerfile/fly.toml (public, scale-to-zero)
+                          + Dockerfile/fly.toml (public, one warm machine + autostopped spare)
   shared/espn/            tested Go ESPN client, domain types, and mappers
 /docs/
   backend/                THIS handoff package (SETUP.md, ARCHITECTURE.md)
