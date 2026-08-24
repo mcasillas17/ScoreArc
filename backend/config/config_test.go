@@ -8,8 +8,15 @@ func TestLoadRegistry(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if got := len(r.List()); got != 9 {
-		t.Fatalf("competitions = %d, want 9", got)
+	if got := len(r.List()); got != 10 {
+		t.Fatalf("competitions = %d, want 10", got)
+	}
+	gr, ok := r.Get("super-league-greece")
+	if !ok {
+		t.Fatal("super-league-greece missing")
+	}
+	if gr.ESPNSlug != "gre.1" {
+		t.Errorf("super-league-greece espnSlug = %q, want gre.1", gr.ESPNSlug)
 	}
 	lm, ok := r.Get("liga-mx")
 	if !ok {

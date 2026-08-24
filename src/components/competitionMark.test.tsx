@@ -5,8 +5,8 @@ import { COMPETITIONS, listCompetitions } from '@/server/data/competitions';
 
 // ESPN's league logos vary in quality. Measured 2026-08-19 on the 500-dark
 // variant: the Leagues Cup mark is solid black (ink luminance 0) on transparent
-// and vanishes on this background; Liga MX's is the BBVA Bancomer sponsor
-// lockup. Seven of nine are fine. The rule is per competition, not blanket.
+// and vanishes on this background; Greece's only asset bakes in a solid
+// white square. The rule is per competition, not blanket.
 describe('CompetitionMark', () => {
   it('renders the logo when there is one', () => {
     const html = renderToStaticMarkup(
@@ -31,9 +31,11 @@ describe('CompetitionMark', () => {
     }
   });
 
-  it('gives every competition a logo', () => {
+  it('gives every competition a logo, except where no usable asset exists', () => {
     const without = listCompetitions().filter((c) => !c.logo).map((c) => c.id);
-    expect(without).toEqual([]);
+    // gre.1's sole ESPN asset has a white ground baked in (no dark variant) —
+    // the emblem carries it. Adding an id here requires a note in the config.
+    expect(without).toEqual(['super-league-greece']);
   });
 
   // Inverting is for monochrome marks only — it would recolour a colour logo

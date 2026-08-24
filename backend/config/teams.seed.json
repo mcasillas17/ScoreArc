@@ -810,6 +810,146 @@
     }
   },
   {
+    "id": "gre-aek-athens",
+    "kind": "club",
+    "name": "AEK Athens",
+    "abbr": "AEK",
+    "country": "gre",
+    "refs": {
+      "espn": "887"
+    }
+  },
+  {
+    "id": "gre-aris",
+    "kind": "club",
+    "name": "Aris",
+    "abbr": "ARI",
+    "country": "gre",
+    "refs": {
+      "espn": "11553"
+    }
+  },
+  {
+    "id": "gre-asteras-tripoli",
+    "kind": "club",
+    "name": "Asteras Tripoli",
+    "abbr": "AST",
+    "country": "gre",
+    "refs": {
+      "espn": "8354"
+    }
+  },
+  {
+    "id": "gre-atromitos",
+    "kind": "club",
+    "name": "Atromitos",
+    "abbr": "ATRO",
+    "country": "gre",
+    "refs": {
+      "espn": "6790"
+    }
+  },
+  {
+    "id": "gre-iraklis",
+    "kind": "club",
+    "name": "Iraklis",
+    "abbr": "IRAK",
+    "country": "gre",
+    "refs": {
+      "espn": "2575"
+    }
+  },
+  {
+    "id": "gre-kalamata",
+    "kind": "club",
+    "name": "Kalamata",
+    "abbr": "KAL",
+    "country": "gre",
+    "refs": {
+      "espn": "132429"
+    }
+  },
+  {
+    "id": "gre-kifisia",
+    "kind": "club",
+    "name": "Kifisia",
+    "abbr": "KIF",
+    "country": "gre",
+    "refs": {
+      "espn": "21969"
+    }
+  },
+  {
+    "id": "gre-levadiakos",
+    "kind": "club",
+    "name": "Levadiakos",
+    "abbr": "LEV",
+    "country": "gre",
+    "refs": {
+      "espn": "5276"
+    }
+  },
+  {
+    "id": "gre-ofi-crete",
+    "kind": "club",
+    "name": "OFI Crete",
+    "abbr": "OFI",
+    "country": "gre",
+    "refs": {
+      "espn": "1010"
+    }
+  },
+  {
+    "id": "gre-olympiacos",
+    "kind": "club",
+    "name": "Olympiacos",
+    "abbr": "OLY",
+    "country": "gre",
+    "refs": {
+      "espn": "435"
+    }
+  },
+  {
+    "id": "gre-panathinaikos",
+    "kind": "club",
+    "name": "Panathinaikos",
+    "abbr": "PAO",
+    "country": "gre",
+    "refs": {
+      "espn": "443"
+    }
+  },
+  {
+    "id": "gre-panetolikos",
+    "kind": "club",
+    "name": "Panetolikos",
+    "abbr": "PAN",
+    "country": "gre",
+    "refs": {
+      "espn": "11431"
+    }
+  },
+  {
+    "id": "gre-paok",
+    "kind": "club",
+    "name": "PAOK",
+    "abbr": "PAOK",
+    "country": "gre",
+    "refs": {
+      "espn": "605"
+    }
+  },
+  {
+    "id": "gre-volos-nfc",
+    "kind": "club",
+    "name": "Volos NFC",
+    "abbr": "VOL",
+    "country": "gre",
+    "refs": {
+      "espn": "20043"
+    }
+  },
+  {
     "id": "ita-ac-milan",
     "kind": "club",
     "name": "AC Milan",

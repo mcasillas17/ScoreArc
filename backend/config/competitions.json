@@ -206,6 +206,22 @@
     }
   },
   {
+    "id": "super-league-greece",
+    "name": "Super League Greece",
+    "shortName": "Super League Greece",
+    "espnSlug": "gre.1",
+    "currentSeasonId": "2026-27",
+    "seasons": {
+      "2026-27": {
+        "id": "2026-27",
+        "label": "2026-27",
+        "hasBracket": false,
+        "bracketDatesRange": null,
+        "knockoutRounds": null
+      }
+    }
+  },
+  {
     "id": "mls",
     "name": "MLS",
     "shortName": "MLS",

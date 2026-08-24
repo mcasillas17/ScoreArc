@@ -35,6 +35,8 @@ export type ZoneLabelKey =
   | 'zone.championsLeagueQualifying'
   | 'zone.europaLeague'
   | 'zone.conferenceLeague'
+  | 'zone.championshipPlayoff'
+  | 'zone.europeanPlayoff'
   | 'zone.relegation'
   | 'zone.relegationPlayoff'
   | 'zone.mlsChampionsCup'
@@ -132,7 +134,7 @@ export interface Competition {
   /** The competition's real logo, where the provider has one that is legible
    *  on this background at the size we draw it.
    *
-   *  Two of nine deliberately have none. ESPN's Leagues Cup mark is solid black
+   *  Some deliberately have none (see each entry's note). ESPN's Leagues Cup mark is solid black
    *  on transparent — invisible here — and its ink is 19% of the canvas height,
    *  so it is a 6px blur at tile size even inverted. ESPN's Liga MX asset is
    *  the BBVA Bancomer sponsor lockup, not a Liga MX mark. Their emblems read
@@ -411,6 +413,20 @@ export const COMPETITIONS: Record<string, Competition> = {
     { from: 6, to: 6, kind: 'uecl', labelKey: 'zone.conferenceLeague' },
     { from: 16, to: 16, kind: 'relegation-playoff', labelKey: 'zone.relegationPlayoff' },
     { from: 17, to: 18, kind: 'relegation', labelKey: 'zone.relegation' },
+  ]),
+  // No logo on purpose: ESPN's only gre.1 asset (500/98.png) bakes a solid
+  // white square into the canvas (no dark variant exists), which renders as a
+  // white tile on this background — the same class of unusable asset the
+  // Leagues Cup note above describes. The emblem carries the identity.
+  ...leagueCompetition('super-league-greece', 'Super League Greece', 'Super League Greece', 'gre.1', '🇬🇷', undefined, '2026-27', '2026-27', { base: '#0d5eaf', bright: '#4a94e8', soft: 'rgba(13,94,175,0.16)' }, undefined, [
+    // Mirrors the provider, not a format guess: site.api.espn.com
+    // /apis/v2/sports/soccer/gre.1/standings entries[].note (checked
+    // 2026-08-23) paints exactly these three bands — "Championship playoffs"
+    // 1-4, "European playoffs" 5-8, "Relegation playoffs" 9-14. Accent is the
+    // Greek flag blue (#0d5eaf), deliberately apart from Ligue 1's #3b7fd4.
+    { from: 1, to: 4, kind: 'playoff', labelKey: 'zone.championshipPlayoff' },
+    { from: 5, to: 8, kind: 'uecl', labelKey: 'zone.europeanPlayoff' },
+    { from: 9, to: 14, kind: 'relegation-playoff', labelKey: 'zone.relegationPlayoff' },
   ]),
   // MLS is not one table. Thirty clubs play in two conferences of fifteen, and
   // ESPN publishes them as two children — so both conference tables arrive for

@@ -80,6 +80,7 @@ describe('competition registry', () => {
       'ligue-1': 'fra.1',
       mls: 'usa.1',
       'liga-mx': 'mex.1',
+      'super-league-greece': 'gre.1',
     };
     for (const [id, slug] of Object.entries(leagues)) {
       const comp = COMPETITIONS[id];
