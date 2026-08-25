@@ -33,11 +33,17 @@ interface Props {
   // Multi-outcome table (European leagues: UCL / UEL / UECL / relegation).
   // Takes precedence over `qualification`, which models a single cut.
   zones?: Zone[];
+  // Season length in rounds — threaded through to `LeagueZoneTable` /
+  // `ZoneRing` (via `toBands`) so a `champion`-kind zone only renders once
+  // the title is mathematically clinched. Applies uniformly to every group
+  // rendered here, including MLS's merged overall table, since only zones of
+  // kind `champion` ever consult it.
+  rounds?: number;
 }
 
 const REFRESH_MS = 30_000;
 
-export default function StandingsLive({ initialGroups, initialScorers, initialAssists, apiBase, teamBase, playerBase, teamStyle = 'flag', showThirdPlace = true, qualification, zones }: Props) {
+export default function StandingsLive({ initialGroups, initialScorers, initialAssists, apiBase, teamBase, playerBase, teamStyle = 'flag', showThirdPlace = true, qualification, zones, rounds }: Props) {
   const t = useTranslations();
   const [groups, setGroups] = useState<Group[]>(initialGroups);
   const [scorers, setScorers] = useState<StatLeader[]>(initialScorers);
@@ -135,7 +141,7 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
                 set of outcomes — but MLS's Supporters' Shield table is ranked
                 across both conferences, so the conference playoff cut means
                 nothing in it. */}
-            <LeagueZoneTable standings={group.standings} zones={group.zones ?? zones} teamStyle={teamStyle} teamBase={teamBase} />
+            <LeagueZoneTable standings={group.standings} zones={group.zones ?? zones} teamStyle={teamStyle} teamBase={teamBase} rounds={rounds} />
           </div>
         ))
       ) : qualification && !showThirdPlace ? (

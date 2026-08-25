@@ -34,11 +34,14 @@ function arcPath(startDeg: number, endDeg: number, radius: number): string {
 }
 
 export default function ZoneRing({
-  standings, zones, teamStyle,
+  standings, zones, teamStyle, rounds,
 }: {
   standings: Standing[];
   zones: Zone[];
   teamStyle: TeamStyle;
+  // Season length in rounds — threaded to `toBands` so a `champion`-kind zone
+  // only draws its arc once the title is mathematically clinched.
+  rounds?: number;
 }) {
   const t = useTranslations();
   // SVG ids are document-global. A club can appear in more than one ring on the
@@ -61,7 +64,7 @@ export default function ZoneRing({
     ? t('standings.played', maximumPlayed)
     : t('standings.playedRange', `${minimumPlayed}\u2013${maximumPlayed}`);
   const step = 360 / n;
-  const bands = toBands(standings, zones).filter((b) => b.kind !== 'mid');
+  const bands = toBands(standings, zones, { rounds }).filter((b) => b.kind !== 'mid');
 
   return (
     <svg className="lld lzr" viewBox={`0 0 ${SIZE} ${SIZE}`} role="img" aria-label={t('standings.ringLabel')}>
