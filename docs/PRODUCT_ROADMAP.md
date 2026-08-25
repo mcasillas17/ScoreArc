@@ -480,7 +480,38 @@ designing the home page, and because the bracket's `predict` mode is the
 foundation to build on rather than a thing to duplicate.
 
 ### E6 · Shot log
-- **T6.1** Per-competition coverage probe, **before any parser is written**
+- **T6.1** ✅ Per-competition coverage probe — run 2026-08-25, results below
+- **T6.1 findings (3 finished matches per competition, both `plays` pages):**
+
+  | Competition | Plays/m | Shots/m vs box | Recon | Field XY | Goal-mouth | Per-shot xG |
+  |---|---|---|---|---|---|---|
+  | Premier League | 1,479 | 25 / 26 | 96% | 100% | 100% | **100%** |
+  | Serie A | 1,483 | 26 / 27 | 96% | 100% | 100% | **100%** |
+  | LaLiga | 1,362 | 22 / 24 | 94% | 100% | 100% | **100%** |
+  | Liga MX | 1,431 | 28 / 30 | 93% | 100% | 100% | **100%** |
+  | MLS | 1,479 | 25 / 27 | 92% | 100% | 100% | **100%** |
+  | World Cup 2026 | 1,633 | 23 / 26 | 89% | 100% | 100% | 98% |
+  | Ligue 1 | 1,457 | 23 / 25 | 92% | 100% | 100% | 52% |
+  | Leagues Cup | 1,417 | 22 / 23 | 97% | 100% | 100% | 0% |
+  | Bundesliga* | 180 | 24 / 26 | 93% | 100% | 100% | 0% |
+  | Super League Greece | **19** | 3 / 20 | **15%** | 0% | 0% | 0% |
+
+  Shots are `type.text` ∈ {Goal, Shot On/Off Target, Shot Blocked, Penalty …} —
+  NOT the `Assists Shot` type, which is the assist event. \*Bundesliga measured
+  against May 2026 archive (2026-27 opens Aug 28): the 180-play stream may be
+  archive pruning rather than live thinness — **re-measure after Aug 28** —
+  but its shot rows are complete either way. **Gating decision: Greece is
+  OUT of E6** (key-events-only stream, 15% of real shots); the other nine are
+  in, with goal-mouth placement at 100% on shots — better than the Aug 15
+  estimate of 55-75%.
+
+  > **Premise change flagged for E9, not acted on:** shot plays carry
+  > provider-computed `expectedGoals` and `expectedGoalsOnTarget` per shot —
+  > 100% coverage in five competitions, 98% at the World Cup, partial or absent
+  > elsewhere. E9 was scoped as *training* a model because no xG existed;
+  > provider xG existing is a different product question (surface theirs,
+  > validate ours against theirs, or both) and needs an owner decision before
+  > E9's plan is written.
 - **T6.2** Shot extraction from the play stream (with commentary as the fallback)
 - **T6.3** Reconcile extracted shots against `rosters[].totalShots`
 - **T6.4** Shot map rendering
