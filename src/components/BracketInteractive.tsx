@@ -275,6 +275,7 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
 
       <RadialBracket
         teamBase={`/${locale}/c/${compId}/${seasonId}/team`}
+        playerBase={`/${locale}/c/${compId}/${seasonId}/player`}
         rounds={rounds}
         mode={mode}
         picks={picks}

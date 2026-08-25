@@ -19,6 +19,7 @@ export default function UpcomingBanner({ feed, rc }: { feed: BannerFeed; rc: Com
       </h2>
       <MatchWheel
         teamBase={`/${locale}/c/${rc.competition.id}/${rc.season.id}/team`}
+        playerBase={`/${locale}/c/${rc.competition.id}/${rc.season.id}/player`}
         initialMatches={feed.matches}
         apiBase={`/api/${rc.competition.id}/${rc.season.id}`}
         teamStyle={rc.competition.teamStyle}

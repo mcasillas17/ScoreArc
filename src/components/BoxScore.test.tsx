@@ -47,7 +47,18 @@ function cardStats(cards: Pick<PlayerMatchStats, 'yellowCards' | 'redCards'>): P
 const cardLineups: MatchLineups = {
   home: {
     formation: '4-3-3',
-    players: [{ name: 'Booked Player', number: 8, position: 'M', jersey: null, starter: true, stats: cardStats({ yellowCards: 2, redCards: 1 }) }],
+    players: [{ name: 'Booked Player', number: 8, position: 'M', jersey: null, starter: true, stats: cardStats({ yellowCards: 2, redCards: 1 }), athleteId: null }],
+  },
+  away: { formation: '4-3-3', players: [] },
+};
+
+const linkedLineups: MatchLineups = {
+  home: {
+    formation: '4-3-3',
+    players: [{
+      name: 'Linked Player', number: 10, position: 'F', jersey: null, starter: true,
+      stats: cardStats({ yellowCards: 0, redCards: 0 }), athleteId: '123', playerSlug: 'linked-player',
+    }],
   },
   away: { formation: '4-3-3', players: [] },
 };
@@ -131,10 +142,28 @@ describe('BoxScoreBlock', () => {
     }
   });
 
+  // PlayerName (shared with ScorerLine/LineupColumn/SquadTable/LeaderTable):
+  // linked by slug, only when playerBase is also known.
+  it('links a player name to their page when playerBase and slug are both present', () => {
+    const linked = renderLocalized(
+      <BoxScoreBlock lineups={linkedLineups} homeAbbr="HOM" awayAbbr="AWY" playerBase="/en/c/x/y/player" />,
+    );
+    expect(linked).toContain('href="/en/c/x/y/player/linked-player"');
+    expect(linked).toContain('>Linked Player<');
+  });
+
+  it('renders a plain name, no link, when playerBase is absent', () => {
+    const unlinked = renderLocalized(
+      <BoxScoreBlock lineups={linkedLineups} homeAbbr="HOM" awayAbbr="AWY" />,
+    );
+    expect(unlinked).not.toContain('<a ');
+    expect(unlinked).toContain('>Linked Player<');
+  });
+
   it('renders nothing when no player carries stats', () => {
     const bare = {
-      home: { formation: '4-4-2', players: [{ name: 'A', number: 1, position: 'G', jersey: null, starter: true, stats: null }] },
-      away: { formation: '4-4-2', players: [{ name: 'B', number: 1, position: 'G', jersey: null, starter: true, stats: null }] },
+      home: { formation: '4-4-2', players: [{ name: 'A', number: 1, position: 'G', jersey: null, starter: true, stats: null, athleteId: null }] },
+      away: { formation: '4-4-2', players: [{ name: 'B', number: 1, position: 'G', jersey: null, starter: true, stats: null, athleteId: null }] },
     };
     expect(renderLocalized(<BoxScoreBlock lineups={bare} homeAbbr="A" awayAbbr="B" />)).toBe('');
   });

@@ -269,12 +269,19 @@ The E2 spec is kept for its grid reasoning; its routing section is superseded.
 `LiveScores.tsx` is 378 finished lines imported nowhere — the only `LiveScores`
 matches in `src/` are its own declaration and its own props interface.
 
-### E3 · Fixtures & results
+### E3 · Fixtures & results — **shipped**
 Branch `feat/fixtures-results`. The single biggest missing capability.
 
-- **T3.1** `getMatches(rc, range?)` — un-hardcode the current-week window
-- **T3.2** Validated `?range=` param on the matches route, range in the cache key
-- **T3.3** Fixtures & Results page with date navigation
+- **T3.1** ✅ `getMatches(rc, range?)` — un-hardcode the current-week window;
+  `range` keyed into the cache alongside it (`src/server/data/store.ts`)
+- **T3.2** ✅ Validated `?range=` param on the matches route, range in the
+  cache key (`parseRange` in `src/server/data/dateRange.ts`, wired through
+  `src/server/data/matchQuery.ts` and the `/api/{comp}/{season}/matches` route)
+- **T3.3** ✅ Fixtures & Results page with date navigation — shipped as
+  **Matches**, absorbed by E11/T11.3: Now mode plus a full-calendar month view
+  at `/c/{comp}/{season}/matches`
+  (`src/app/[locale]/c/[comp]/[season]/matches/page.tsx`,
+  `src/components/MatchCalendar.tsx`, `src/components/MatchesNow.tsx`)
 
 ### E4 · Team pages
 Branch `feat/team-pages`. Every crest on the site is currently a dead end.
@@ -356,6 +363,14 @@ Two decisions made during implementation, both deliberate:
   "Standings" link leads to the linked version. Match-popup lineups need slugs
   in the summary API payload (the popup is client-side with no index access)
   — a small follow-up, not done in E5.
+  **Landed 2026-08-24** (`feat/lineup-player-links`): the match-summary route
+  enriches scorers and lineup/box-score entries with `playerSlug` via
+  `withSummaryPlayerSlugs` (`src/server/data/playerIndex.ts`), best-effort and
+  scoped to the single-match popup fetch — never the bulk `getMatches` summary
+  path. `MatchDetailPopup` and its five consumers (`RadialBracket` — the
+  bracket's direct popup owner, wrapped by `BracketInteractive` — `MatchWheel`,
+  `MatchCalendar`, `MatchesNow`, `PlayerGameLog`) now thread a `playerBase`
+  prop, mirroring `teamBase`.
 
 Verified 2026-08-15: `/athletes/{id}` (200), `/athletes/{id}/overview` (200) and
 `/athletes/{id}/bio` (200) — while `/gamelog` (500), `/splits` (404) and `/stats`
@@ -584,8 +599,10 @@ copies of the same validator and reconciling them later.
 
 **Now** — ~~E0~~ (#77), ~~E1~~ (#84), then E2. One branch each.
 
-**Next** — E3, E4, E5. Mutually independent and touching largely disjoint files:
-the natural three-way split across parallel sessions.
+**Next** — ~~E3~~, ~~E4~~, ~~E5~~, all shipped (E3 2026-08-24, absorbed in part
+by E11/T11.3; E4 and E5 earlier). What's left of the frontage track is **E6**
+(blocked on T6.1's coverage probe, not started) and **E7's render tasks**
+(blocked on the parallel track below actually writing the rows they read).
 
 **Parallel track, starting immediately** — **T7.1 and T7.12/T7.13**, by two
 different agents. These are the tasks with a **cost for waiting**, and until

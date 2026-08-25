@@ -43,6 +43,13 @@ interface Props {
    * need, since an undecided slot has no club to link to.
    */
   teamBase?: string;
+  /**
+   * Competition-scoped prefix for player pages, mirroring teamBase. Optional:
+   * without it lineup and scorer names render exactly as before, unlinked --
+   * the summary API's playerSlug enrichment is best-effort, so this also
+   * covers a player the roster index couldn't resolve.
+   */
+  playerBase?: string;
 }
 
 /**
@@ -69,7 +76,7 @@ function TeamLink({
   );
 }
 
-export default function MatchDetailPopup({ match, summary, loading, onClose, teamBase }: Props) {
+export default function MatchDetailPopup({ match, summary, loading, onClose, teamBase, playerBase }: Props) {
   const locale = useLocale();
   const t = useTranslations();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -222,7 +229,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose, tea
               then the shootout and highlights. */}
           {!upcoming && !loading && summary && hasScorers && (
             <div className="md-section">
-              <ScorersRow home={homeScorers} away={awayScorers} />
+              <ScorersRow home={homeScorers} away={awayScorers} playerBase={playerBase} />
             </div>
           )}
 
@@ -254,7 +261,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose, tea
           {!loading && summary?.lineups && (
             <div className="md-section">
               <CollapsibleSection title={t('matchDetails.lineups')} tone="#2dd4bf">
-                <LineupView lineups={summary.lineups} homeAbbr={home.abbr} awayAbbr={away.abbr} />
+                <LineupView lineups={summary.lineups} homeAbbr={home.abbr} awayAbbr={away.abbr} playerBase={playerBase} />
               </CollapsibleSection>
             </div>
           )}
@@ -264,7 +271,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose, tea
               one — it renders itself away when the payload carries no stats. */}
           {!upcoming && !loading && summary?.lineups && (
             <div className="md-section">
-              <BoxScoreBlock lineups={summary.lineups} homeAbbr={home.abbr} awayAbbr={away.abbr} />
+              <BoxScoreBlock lineups={summary.lineups} homeAbbr={home.abbr} awayAbbr={away.abbr} playerBase={playerBase} />
             </div>
           )}
 

@@ -321,6 +321,7 @@ export function mapSummaryScorers(raw: unknown): Scorer[] {
         // There is no `ownGoal` boolean on the event — `type.type` is the only
         // signal ESPN gives (`{"id":"97","text":"Own Goal","type":"own-goal"}`).
         ownGoal: e.type?.type === 'own-goal',
+        athleteId: e.participants?.[0]?.athlete?.id != null ? String(e.participants[0].athlete.id) : null,
       })
     );
 }
@@ -400,6 +401,7 @@ export function mapSummaryLineups(
         jersey: jerseyImage(p.athlete?.jerseyImages),
         starter: p.starter === true,
         stats: toPlayerStats(p),
+        athleteId: p.athlete?.id != null ? String(p.athlete.id) : null,
       }));
       return { formation, players };
     };

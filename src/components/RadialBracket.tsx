@@ -25,6 +25,7 @@ interface Props {
   teamStyle: TeamStyle;
   apiBase: string;
   teamBase?: string;
+  playerBase?: string;
   // Bracket shape (ring geometry + rounds + seed order). Defaults to the 2026
   // 5-ring shape so existing callers keep working unchanged.
   shape?: BracketShape;
@@ -184,7 +185,7 @@ function arcTextPath(cx: number, cy: number, r: number, startDeg: number, endDeg
   return `M ${x1} ${y1} A ${r} ${r} 0 ${large} ${sweep} ${x2} ${y2}`;
 }
 
-export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle, apiBase, teamBase, shape: shapeProp, emblem, trophyImage, logo, logoInvert, championTitleKey = 'champion.competition', accent }: Props) {
+export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle, apiBase, teamBase, playerBase, shape: shapeProp, emblem, trophyImage, logo, logoInvert, championTitleKey = 'champion.competition', accent }: Props) {
   const t = useTranslations();
   const tint = accentTint(accent);
   const shape = shapeProp ?? DEFAULT_SHAPE;
@@ -862,6 +863,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
       {detail && (
         <MatchDetailPopup
           teamBase={teamBase}
+          playerBase={playerBase}
           match={detail}
           summary={summary}
           loading={loadingDetail}

@@ -52,12 +52,14 @@ export default function PlayerGameLog({
   playerTeam,
   apiBase,
   teamBase,
+  playerBase,
   teamStyle,
 }: {
   rows: GameLogRow[];
   playerTeam: Team | null;
   apiBase: string;
   teamBase?: string;
+  playerBase?: string;
   teamStyle?: 'crest' | 'flag';
 }) {
   const t = useTranslations();
@@ -182,6 +184,7 @@ export default function PlayerGameLog({
             setDetail(null);
           }}
           teamBase={teamBase}
+          playerBase={playerBase}
         />
       )}
     </div>
