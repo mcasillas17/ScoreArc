@@ -269,12 +269,19 @@ The E2 spec is kept for its grid reasoning; its routing section is superseded.
 `LiveScores.tsx` is 378 finished lines imported nowhere — the only `LiveScores`
 matches in `src/` are its own declaration and its own props interface.
 
-### E3 · Fixtures & results
+### E3 · Fixtures & results — **shipped**
 Branch `feat/fixtures-results`. The single biggest missing capability.
 
-- **T3.1** `getMatches(rc, range?)` — un-hardcode the current-week window
-- **T3.2** Validated `?range=` param on the matches route, range in the cache key
-- **T3.3** Fixtures & Results page with date navigation
+- **T3.1** ✅ `getMatches(rc, range?)` — un-hardcode the current-week window;
+  `range` keyed into the cache alongside it (`src/server/data/store.ts`)
+- **T3.2** ✅ Validated `?range=` param on the matches route, range in the
+  cache key (`parseRange` in `src/server/data/dateRange.ts`, wired through
+  `src/server/data/matchQuery.ts` and the `/api/{comp}/{season}/matches` route)
+- **T3.3** ✅ Fixtures & Results page with date navigation — shipped as
+  **Matches**, absorbed by E11/T11.3: Now mode plus a full-calendar month view
+  at `/c/{comp}/{season}/matches`
+  (`src/app/[locale]/c/[comp]/[season]/matches/page.tsx`,
+  `src/components/MatchCalendar.tsx`, `src/components/MatchesNow.tsx`)
 
 ### E4 · Team pages
 Branch `feat/team-pages`. Every crest on the site is currently a dead end.
@@ -356,6 +363,13 @@ Two decisions made during implementation, both deliberate:
   "Standings" link leads to the linked version. Match-popup lineups need slugs
   in the summary API payload (the popup is client-side with no index access)
   — a small follow-up, not done in E5.
+  **Landed 2026-08-24** (`feat/lineup-player-links`): the match-summary route
+  enriches scorers and lineup/box-score entries with `playerSlug` via
+  `withSummaryPlayerSlugs` (`src/server/data/playerIndex.ts`), best-effort and
+  scoped to the single-match popup fetch — never the bulk `getMatches` summary
+  path. `MatchDetailPopup` and its five consumers (`BracketInteractive`,
+  `MatchWheel`, `MatchCalendar`, `MatchesNow`, `PlayerGameLog`) now thread a
+  `playerBase` prop, mirroring `teamBase`.
 
 Verified 2026-08-15: `/athletes/{id}` (200), `/athletes/{id}/overview` (200) and
 `/athletes/{id}/bio` (200) — while `/gamelog` (500), `/splits` (404) and `/stats`

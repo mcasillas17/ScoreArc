@@ -1,8 +1,8 @@
-import Link from 'next/link';
 import { useTranslations } from '@/i18n/I18nProvider';
 import type { StatLeader } from "@/server/data/types";
 import TeamBadge from "./TeamBadge";
 import { teamHref } from './teamHref';
+import PlayerName from './PlayerName';
 
 // One leaderboard, any metric. Goals and assists ship in the same shape from
 // the same response, so they get the same table rather than two files that
@@ -50,16 +50,13 @@ export default function LeaderTable({
             <tr key={`${s.rank}-${s.player}`} className={s.rank === 1 ? "row-qualify" : ""}>
               <td className="rank-cell">{s.rank}</td>
               <td className="team-cell">
-                {/* Linked by slug, never by athlete number -- and only when
-                    the index resolved one, so a loanee the rosters do not
-                    list yet is plain text rather than a dead link. */}
-                {playerBase && s.playerSlug ? (
-                  <Link className="team-name ldr-player" href={`${playerBase}/${s.playerSlug}`}>
-                    {s.player}
-                  </Link>
-                ) : (
-                  <span className="team-name">{s.player}</span>
-                )}
+                <PlayerName
+                  name={s.player}
+                  slug={s.playerSlug}
+                  playerBase={playerBase}
+                  className="team-name"
+                  linkClassName="ldr-player"
+                />
               </td>
               <td className="team-cell">
                 <div className="team-cell-inner">

@@ -16,6 +16,7 @@ interface Props {
   initialMatches: Match[];
   apiBase: string;
   teamBase?: string;
+  playerBase?: string;
   teamStyle?: TeamStyle;
   // Restrict the poll to the current Monday→Sunday week. True on a matchday,
   // when the week IS the story; getBannerFeed flips it false when the next
@@ -62,7 +63,7 @@ function LiveArc() {
 }
 
 export default function MatchWheel({
-  initialMatches, apiBase, teamBase, teamStyle = 'flag', weekOnly = true,
+  initialMatches, apiBase, teamBase, playerBase, teamStyle = 'flag', weekOnly = true,
 }: Props) {
   const t = useTranslations();
   const locale = useLocale();
@@ -347,6 +348,7 @@ export default function MatchWheel({
       {detail && (
         <MatchDetailPopup
           teamBase={teamBase}
+          playerBase={playerBase}
           match={toMatchDetailInput(detail)}
           summary={summary}
           loading={loadingDetail}

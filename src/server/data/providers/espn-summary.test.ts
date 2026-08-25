@@ -87,6 +87,13 @@ describe('mapSummaryScorers', () => {
     expect(names).toContain('Antonio Nusa');
     expect(names).toContain('Erling Haaland');
   });
+
+  // athleteId is what withSummaryPlayerSlugs resolves to a public slug --
+  // the popup's lineup/scorer links depend on it surviving the mapper.
+  it('carries the provider athlete id for each scorer', () => {
+    const nusa = scorers.find((s) => s.player === 'Antonio Nusa');
+    expect(nusa?.athleteId).toBe('319368');
+  });
 });
 
 describe('mapSummaryScorers resilience', () => {
@@ -250,6 +257,13 @@ describe('mapSummaryLineups', () => {
     // mapped value is an ESPN https url.
     expect(withJersey.length).toBeGreaterThan(0);
     expect(withJersey.every((p) => p.jersey!.startsWith('https://'))).toBe(true);
+  });
+
+  // athleteId is what withSummaryPlayerSlugs resolves to a public slug --
+  // the popup's lineup links depend on it surviving the mapper.
+  it('carries the provider athlete id for each player', () => {
+    const result = mapSummaryLineups(raw, '4789', '464');
+    expect(result!.home.players.every((p) => p.athleteId != null)).toBe(true);
   });
 
   it('returns null for empty object (resilience)', () => {

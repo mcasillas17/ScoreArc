@@ -20,6 +20,20 @@ export interface Scorer {
   // what is wrong without this flag is presenting that player as one of the
   // benefiting team's scorers.
   ownGoal: boolean;
+  /**
+   * The provider's athlete id, or null. It rides the API response body (the
+   * server also uses it to resolve playerSlug before responding), but it
+   * never reaches a URL -- that's guard-tested
+   * (src/app/playerLinkGuard.test.tsx). Links go through playerSlug, the
+   * public identity.
+   */
+  athleteId: string | null;
+  /**
+   * The player's public slug (docs/backend/PLAYER_IDENTITY.md), filled by
+   * withSummaryPlayerSlugs where a page can afford the index. Null/absent
+   * means the name renders as plain text -- never a guessed or numeric link.
+   */
+  playerSlug?: string | null;
 }
 
 export interface Card {
@@ -195,8 +209,11 @@ export interface StatLeader {
   rank: number;
   player: string;
   /**
-   * The provider's athlete id, or null. Internal -- it never reaches a URL.
-   * Links go through playerSlug, the public identity.
+   * The provider's athlete id, or null. It rides the API response body (the
+   * server also uses it to resolve playerSlug before responding), but it
+   * never reaches a URL -- that's guard-tested
+   * (src/app/playerLinkGuard.test.tsx). Links go through playerSlug, the
+   * public identity.
    */
   athleteId: string | null;
   /**
@@ -249,6 +266,20 @@ export interface LineupPlayer {
   jersey: string | null;
   starter: boolean;
   stats: PlayerMatchStats | null;
+  /**
+   * The provider's athlete id, or null. It rides the API response body (the
+   * server also uses it to resolve playerSlug before responding), but it
+   * never reaches a URL -- that's guard-tested
+   * (src/app/playerLinkGuard.test.tsx). Links go through playerSlug, the
+   * public identity.
+   */
+  athleteId: string | null;
+  /**
+   * The player's public slug (docs/backend/PLAYER_IDENTITY.md), filled by
+   * withSummaryPlayerSlugs where a page can afford the index. Null/absent
+   * means the name renders as plain text -- never a guessed or numeric link.
+   */
+  playerSlug?: string | null;
 }
 export interface TeamLineup { formation: string; players: LineupPlayer[] }
 export interface MatchLineups { home: TeamLineup; away: TeamLineup }

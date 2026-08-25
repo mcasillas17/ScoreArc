@@ -4,6 +4,7 @@ import { useTranslations } from '@/i18n/I18nProvider';
 import type { Translator } from '@/i18n/translate';
 import { CollapsibleSection } from './Collapsible';
 import { matchStatusText, type MatchStatusInput } from './MatchRow';
+import PlayerName from './PlayerName';
 
 // Win probability is a pre-match prediction (derived from pre-match odds), so it
 // only makes sense before kickoff — not for live or finished/past matches.
@@ -75,12 +76,12 @@ export function PenaltyShootout({
   );
 }
 
-export function ScorerLine({ scorer }: { scorer: Scorer }) {
+export function ScorerLine({ scorer, playerBase }: { scorer: Scorer; playerBase?: string }) {
   const t = useTranslations();
   return (
     <span className="ls-scorer-line">
       <span className="ls-scorer-ball">⚽</span>
-      <span className="ls-scorer-name">{scorer.player}</span>
+      <PlayerName name={scorer.player} slug={scorer.playerSlug} playerBase={playerBase} className="ls-scorer-name" />
       <span className="ls-scorer-minute">
         {scorer.minute}
         {scorer.penalty && !scorer.shootout ? ` (${t('matchDetails.penalty')})` : ''}
@@ -108,18 +109,18 @@ export function CardLine({ card }: { card: Card }) {
 }
 
 // Two-column (home | away) list of goal scorers.
-export function ScorersRow({ home, away }: { home: Scorer[]; away: Scorer[] }) {
+export function ScorersRow({ home, away, playerBase }: { home: Scorer[]; away: Scorer[]; playerBase?: string }) {
   return (
     <div className="ls-scorers">
       <div className="ls-scorers-col ls-scorers-home">
         {home.map((s, i) => (
-          <ScorerLine key={i} scorer={s} />
+          <ScorerLine key={i} scorer={s} playerBase={playerBase} />
         ))}
       </div>
       <div className="ls-scorers-divider" />
       <div className="ls-scorers-col ls-scorers-away">
         {away.map((s, i) => (
-          <ScorerLine key={i} scorer={s} />
+          <ScorerLine key={i} scorer={s} playerBase={playerBase} />
         ))}
       </div>
     </div>
@@ -177,7 +178,11 @@ export function WinProbBar({
   );
 }
 
-function LineupColumn({ team, abbr, side }: { team: TeamLineup; abbr: string; side: 'home' | 'away' }) {
+function LineupColumn({
+  team, abbr, side, playerBase,
+}: {
+  team: TeamLineup; abbr: string; side: 'home' | 'away'; playerBase?: string;
+}) {
   return (
     <div className={`lu-col lu-col-${side}`}>
       <div className="lu-head">
@@ -201,7 +206,7 @@ function LineupColumn({ team, abbr, side }: { team: TeamLineup; abbr: string; si
             ) : (
               <span className="lu-num">{p.number ?? '–'}</span>
             )}
-            <span className="lu-name">{p.name}</span>
+            <PlayerName name={p.name} slug={p.playerSlug} playerBase={playerBase} className="lu-name" />
             <span className="lu-pos">{p.position}</span>
           </li>
         ))}
@@ -214,17 +219,19 @@ export function LineupView({
   lineups,
   homeAbbr,
   awayAbbr,
+  playerBase,
 }: {
   lineups: MatchLineups;
   homeAbbr: string;
   awayAbbr: string;
+  playerBase?: string;
 }) {
   return (
     <div className="lu-block">
       <div className="lu-cols">
-        <LineupColumn team={lineups.home} abbr={homeAbbr} side="home" />
+        <LineupColumn team={lineups.home} abbr={homeAbbr} side="home" playerBase={playerBase} />
         <div className="lu-divider" />
-        <LineupColumn team={lineups.away} abbr={awayAbbr} side="away" />
+        <LineupColumn team={lineups.away} abbr={awayAbbr} side="away" playerBase={playerBase} />
       </div>
     </div>
   );

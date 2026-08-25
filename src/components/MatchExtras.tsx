@@ -4,6 +4,7 @@ import { formatDate, formatNumber } from '@/i18n/format';
 import type { Locale } from '@/i18n/config';
 import type { Translator } from '@/i18n/translate';
 import { CollapsibleSection } from './Collapsible';
+import PlayerName from './PlayerName';
 
 function fmtYear(iso: string, locale: Locale, t: Translator): string {
   return formatDate(iso, locale, { year: 'numeric', month: 'short' }) ?? t('common.unavailable');
@@ -160,7 +161,7 @@ function boxOrder(a: LineupPlayer, b: LineupPlayer): number {
   return (a.number ?? 999) - (b.number ?? 999);
 }
 
-function BoxScoreTable({ team, abbr }: { team: TeamLineup; abbr: string }) {
+function BoxScoreTable({ team, abbr, playerBase }: { team: TeamLineup; abbr: string; playerBase?: string }) {
   const t = useTranslations();
   const players = team.players.filter((p) => p.stats != null).sort(boxOrder);
   if (players.length === 0) return null;
@@ -194,7 +195,7 @@ function BoxScoreTable({ team, abbr }: { team: TeamLineup; abbr: string }) {
             <tr key={`${p.name}-${i}`}>
               <td className="rank-cell">{p.number ?? '–'}</td>
               <td className="team-cell">
-                <span className="team-name">{p.name}</span>
+                <PlayerName name={p.name} slug={p.playerSlug} playerBase={playerBase} className="team-name" />
                 {!p.starter && <span className="ls-box-sub">{t('matchDetails.substitute')}</span>}
               </td>
               <td className="std-muted">{p.position}</td>
@@ -227,10 +228,12 @@ export function BoxScoreBlock({
   lineups,
   homeAbbr,
   awayAbbr,
+  playerBase,
 }: {
   lineups: MatchLineups;
   homeAbbr: string;
   awayAbbr: string;
+  playerBase?: string;
 }) {
   const t = useTranslations();
   // Checked on the data, not on the elements: a component returning null is
@@ -240,8 +243,8 @@ export function BoxScoreBlock({
   if (!hasStats) return null;
   return (
     <CollapsibleSection title={t('matchDetails.boxScore')} tone="#38bdf8">
-      <BoxScoreTable team={lineups.home} abbr={homeAbbr} />
-      <BoxScoreTable team={lineups.away} abbr={awayAbbr} />
+      <BoxScoreTable team={lineups.home} abbr={homeAbbr} playerBase={playerBase} />
+      <BoxScoreTable team={lineups.away} abbr={awayAbbr} playerBase={playerBase} />
     </CollapsibleSection>
   );
 }

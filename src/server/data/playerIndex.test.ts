@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { competitionPlayerIndex, withPlayerSlugs } from './playerIndex';
+import { competitionPlayerIndex, withPlayerSlugs, withSummaryPlayerSlugs } from './playerIndex';
 import { resolveSeason } from './competitions';
 import type { DataStore } from './store';
-import type { Group, SquadPlayer, Team } from './types';
+import type { Group, MatchSummaryData, SquadPlayer, Team } from './types';
 
 const rc = resolveSeason('liga-mx')!;
 
@@ -107,5 +107,60 @@ describe('withPlayerSlugs', () => {
     const leaders: { athleteId: string | null; playerSlug?: string | null }[] = [{ athleteId: '297287' }];
     const out = await withPlayerSlugs(rc, leaders, broken);
     expect(out).toEqual(leaders);
+  });
+});
+
+function emptySummary(): MatchSummaryData {
+  return {
+    scorers: [], cards: [], stats: null, winProbability: null, lineups: null,
+    videos: [], shootoutDetail: null, info: null, form: null, commentary: [], h2h: [],
+  };
+}
+
+describe('withSummaryPlayerSlugs', () => {
+  const store = fakeStore(groups, {
+    '222': [player('297287', 'Alí Ávila')],
+    '227': [],
+  });
+
+  it('resolves slugs for scorers and lineup players, null for strangers', async () => {
+    const summary: MatchSummaryData = {
+      ...emptySummary(),
+      scorers: [
+        { teamId: '222', player: 'Alí Ávila', minute: "10'", penalty: false, shootout: false, ownGoal: false, athleteId: '297287' },
+        { teamId: '227', player: 'Unknown Loanee', minute: "20'", penalty: false, shootout: false, ownGoal: false, athleteId: '999999' },
+      ],
+      lineups: {
+        home: {
+          formation: '4-3-3',
+          players: [{ name: 'Alí Ávila', number: 9, position: 'F', jersey: null, starter: true, stats: null, athleteId: '297287' }],
+        },
+        away: {
+          formation: '4-3-3',
+          players: [{ name: 'No Id', number: null, position: 'M', jersey: null, starter: true, stats: null, athleteId: null }],
+        },
+      },
+    };
+    const out = await withSummaryPlayerSlugs(rc, summary, store);
+    expect(out.scorers[0].playerSlug).toBe('ali-avila');
+    expect(out.scorers[1].playerSlug).toBeNull();
+    expect(out.lineups!.home.players[0].playerSlug).toBe('ali-avila');
+    expect(out.lineups!.away.players[0].playerSlug).toBeNull();
+  });
+
+  it('passes null lineups through unchanged', async () => {
+    const summary: MatchSummaryData = { ...emptySummary(), lineups: null };
+    const out = await withSummaryPlayerSlugs(rc, summary, store);
+    expect(out.lineups).toBeNull();
+  });
+
+  it('returns the input unchanged when the index cannot build', async () => {
+    const broken = { getStandings: async () => { throw new Error('502'); } } as unknown as DataStore;
+    const summary: MatchSummaryData = {
+      ...emptySummary(),
+      scorers: [{ teamId: '222', player: 'Alí Ávila', minute: "10'", penalty: false, shootout: false, ownGoal: false, athleteId: '297287' }],
+    };
+    const out = await withSummaryPlayerSlugs(rc, summary, broken);
+    expect(out).toEqual(summary);
   });
 });

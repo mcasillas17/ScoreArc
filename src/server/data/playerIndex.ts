@@ -1,5 +1,5 @@
 import type { CompetitionSeason } from './competitions';
-import type { Team } from './types';
+import type { MatchSummaryData, Team } from './types';
 import { dataStore, type DataStore } from './store';
 import { buildSlugMap, type ResolvedPlayer, type SlugEntry } from './playerIdentity';
 
@@ -92,5 +92,41 @@ export async function withPlayerSlugs<T extends { athleteId: string | null; play
     }));
   } catch {
     return leaders;
+  }
+}
+
+/**
+ * Fill playerSlug on a match summary's scorers and lineup entries -- the
+ * match-popup counterpart to withPlayerSlugs above. Only the match-summary
+ * ROUTE calls this: it builds one competitionPlayerIndex per call (a roster
+ * fetch per club on a cold cache, cheap warm), which is fine for a single
+ * popup fetch but would be one extra index build per match if it ran inside
+ * getMatches' bulk summary enrichment -- so that path stays unenriched.
+ *
+ * Failure degrades to the summary unchanged: a popup with plain names is a
+ * poorer popup, a popup that failed to load is a broken one.
+ */
+export async function withSummaryPlayerSlugs(
+  rc: CompetitionSeason,
+  summary: MatchSummaryData,
+  store: DataStore = dataStore,
+): Promise<MatchSummaryData> {
+  try {
+    const index = await competitionPlayerIndex(rc, store);
+    const slugFor = (athleteId: string | null) => (athleteId ? index.byProvider.get(athleteId) ?? null : null);
+    const withSlug = <T extends { athleteId: string | null; playerSlug?: string | null }>(entry: T): T => ({
+      ...entry,
+      playerSlug: slugFor(entry.athleteId),
+    });
+    return {
+      ...summary,
+      scorers: summary.scorers.map(withSlug),
+      lineups: summary.lineups && {
+        home: { ...summary.lineups.home, players: summary.lineups.home.players.map(withSlug) },
+        away: { ...summary.lineups.away, players: summary.lineups.away.players.map(withSlug) },
+      },
+    };
+  } catch {
+    return summary;
   }
 }

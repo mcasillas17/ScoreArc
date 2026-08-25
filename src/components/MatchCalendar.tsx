@@ -30,6 +30,7 @@ interface Props {
   maxMonth: string;
   apiBase: string;
   teamBase?: string;
+  playerBase?: string;
   teamStyle?: TeamStyle;
 }
 
@@ -68,6 +69,7 @@ export default function MatchCalendar({
   maxMonth,
   apiBase,
   teamBase,
+  playerBase,
   teamStyle = 'flag',
 }: Props) {
   const locale = useLocale();
@@ -331,6 +333,7 @@ export default function MatchCalendar({
       {detail && (
         <MatchDetailPopup
           teamBase={teamBase}
+          playerBase={playerBase}
           match={toMatchDetailInput(detail)}
           summary={summary}
           loading={loadingDetail}

@@ -81,6 +81,7 @@ export default async function PlayerPage({ params }: Params) {
   if (!player) notFound();
 
   const teamBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/team`;
+  const playerBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/player`;
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
   const clubHref = player.team ? teamHref(teamBase, player.team) : undefined;
 
@@ -138,6 +139,7 @@ export default async function PlayerPage({ params }: Params) {
             playerTeam={player.team}
             apiBase={apiBase}
             teamBase={teamBase}
+            playerBase={playerBase}
             teamStyle={rc.competition.teamStyle}
           />
           {/* The ceiling, stated: five matches must not read as a season. */}

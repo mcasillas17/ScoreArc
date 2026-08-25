@@ -218,6 +218,96 @@ describe('player route slug resolution', () => {
   });
 });
 
+// The summary route's player-slug enrichment (docs/PRODUCT_ROADMAP.md E5's
+// leftover): lineup and scorer entries gain playerSlug from the competition's
+// roster index, best-effort so a broken index costs only the links.
+describe('match summary route — player slug enrichment', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  const summaryFixture = {
+    scorers: [
+      { teamId: '222', player: 'Alí Ávila', minute: "10'", penalty: false, shootout: false, ownGoal: false, athleteId: '297287' },
+    ],
+    cards: [],
+    stats: null,
+    winProbability: null,
+    lineups: {
+      home: {
+        formation: '4-3-3',
+        players: [{ name: 'Alí Ávila', number: 9, position: 'F', jersey: null, starter: true, stats: null, athleteId: '297287' }],
+      },
+      away: { formation: '4-3-3', players: [] },
+    },
+    videos: [],
+    shootoutDetail: null,
+    info: null,
+    form: null,
+    commentary: [],
+    h2h: [],
+  };
+
+  it('fills playerSlug on scorers and lineup players from the roster index', async () => {
+    vi.spyOn(dataStore, 'getMatchSummary').mockResolvedValueOnce(summaryFixture as never);
+    vi.spyOn(dataStore, 'getStandings').mockResolvedValueOnce([
+      { id: 'g', name: 'g', standings: [{ team: { id: '222', name: 'QRO', abbr: 'QRO', crestUrl: null } }] },
+    ] as never);
+    vi.spyOn(dataStore, 'getSquad').mockImplementation(async (_rc, teamId) =>
+      (teamId === '222'
+        ? [{ id: '297287', name: 'Alí Ávila', jersey: 9, position: 'F', age: null, nationality: null, headshotUrl: null, stats: null }]
+        : []) as never,
+    );
+
+    const response = await (await import('./[comp]/[season]/match/[id]/route')).GET(
+      new Request('http://x/api/liga-mx/2026-apertura/match/401?home=222&away=227'),
+      { params: { ...mx, id: '401' } },
+    );
+    const body = await response.json();
+    expect(body.scorers[0].playerSlug).toBe('ali-avila');
+    expect(body.lineups.home.players[0].playerSlug).toBe('ali-avila');
+  });
+
+  it('degrades to unenriched slugs (never a failed response) when the index cannot build', async () => {
+    vi.spyOn(dataStore, 'getMatchSummary').mockResolvedValueOnce(summaryFixture as never);
+    vi.spyOn(dataStore, 'getStandings').mockRejectedValueOnce(new Error('upstream unavailable'));
+
+    const response = await (await import('./[comp]/[season]/match/[id]/route')).GET(
+      new Request('http://x/api/liga-mx/2026-apertura/match/401?home=222&away=227'),
+      { params: { ...mx, id: '401' } },
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.scorers[0].playerSlug).toBeUndefined();
+    expect(body.lineups.home.players[0].playerSlug).toBeUndefined();
+  });
+
+  // withSummaryPlayerSlugs only catches a REJECTED index build -- a
+  // slow-but-not-failing upstream never rejects, it just hangs. The route
+  // races enrichment against an 800ms fallback so a hung roster fetch cannot
+  // hang the popup.
+  it('falls back to the unenriched summary if the index has not resolved after 800ms', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(dataStore, 'getMatchSummary').mockResolvedValueOnce(summaryFixture as never);
+      // Never resolves or rejects -- simulates a hung upstream roster fetch.
+      vi.spyOn(dataStore, 'getStandings').mockReturnValueOnce(new Promise(() => {}) as never);
+
+      const responsePromise = (await import('./[comp]/[season]/match/[id]/route')).GET(
+        new Request('http://x/api/liga-mx/2026-apertura/match/401?home=222&away=227'),
+        { params: { ...mx, id: '401' } },
+      );
+      await vi.advanceTimersByTimeAsync(800);
+      const response = await responsePromise;
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.scorers[0].playerSlug).toBeUndefined();
+      expect(body.lineups.home.players[0].playerSlug).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('team route not-found result', () => {
   it('returns an exact code-only 404 when the provider has no team', async () => {
     vi.spyOn(dataStore, 'getTeam').mockResolvedValueOnce(null);

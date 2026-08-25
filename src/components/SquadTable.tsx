@@ -1,10 +1,10 @@
 'use client';
 
-import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useTranslations } from '@/i18n/I18nProvider';
 import type { MessageKey } from '@/i18n/messages/en';
 import type { PlayerSeasonStats, SquadPlayer } from '@/server/data/types';
+import PlayerName from './PlayerName';
 
 type StatKey = keyof PlayerSeasonStats;
 
@@ -139,15 +139,13 @@ export default function SquadTable({
               <tr key={player.id} className={player.stats === null ? 'sq-row sq-unplayed' : 'sq-row'}>
                 <td className="sq-num">{player.jersey ?? '–'}</td>
                 <td className="sq-player">
-                  {/* Linked by slug, never by the provider's number; a player
-                      the index has not resolved stays plain text. */}
-                  {playerBase && playerSlugs?.[player.id] ? (
-                    <Link className="sq-name sq-name-link" href={`${playerBase}/${playerSlugs[player.id]}`}>
-                      {player.name}
-                    </Link>
-                  ) : (
-                    <span className="sq-name">{player.name}</span>
-                  )}
+                  <PlayerName
+                    name={player.name}
+                    slug={playerSlugs?.[player.id]}
+                    playerBase={playerBase}
+                    className="sq-name"
+                    linkClassName="sq-name-link"
+                  />
                   {player.stats === null && (
                     <span className="sq-tag">
                       {t('squad.hasNotAppeared')}
