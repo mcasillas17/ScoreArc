@@ -367,9 +367,10 @@ Two decisions made during implementation, both deliberate:
   enriches scorers and lineup/box-score entries with `playerSlug` via
   `withSummaryPlayerSlugs` (`src/server/data/playerIndex.ts`), best-effort and
   scoped to the single-match popup fetch — never the bulk `getMatches` summary
-  path. `MatchDetailPopup` and its five consumers (`BracketInteractive`,
-  `MatchWheel`, `MatchCalendar`, `MatchesNow`, `PlayerGameLog`) now thread a
-  `playerBase` prop, mirroring `teamBase`.
+  path. `MatchDetailPopup` and its five consumers (`RadialBracket` — the
+  bracket's direct popup owner, wrapped by `BracketInteractive` — `MatchWheel`,
+  `MatchCalendar`, `MatchesNow`, `PlayerGameLog`) now thread a `playerBase`
+  prop, mirroring `teamBase`.
 
 Verified 2026-08-15: `/athletes/{id}` (200), `/athletes/{id}/overview` (200) and
 `/athletes/{id}/bio` (200) — while `/gamelog` (500), `/splits` (404) and `/stats`
@@ -598,8 +599,10 @@ copies of the same validator and reconciling them later.
 
 **Now** — ~~E0~~ (#77), ~~E1~~ (#84), then E2. One branch each.
 
-**Next** — E3, E4, E5. Mutually independent and touching largely disjoint files:
-the natural three-way split across parallel sessions.
+**Next** — ~~E3~~, ~~E4~~, ~~E5~~, all shipped (E3 2026-08-24, absorbed in part
+by E11/T11.3; E4 and E5 earlier). What's left of the frontage track is **E6**
+(blocked on T6.1's coverage probe, not started) and **E7's render tasks**
+(blocked on the parallel track below actually writing the rows they read).
 
 **Parallel track, starting immediately** — **T7.1 and T7.12/T7.13**, by two
 different agents. These are the tasks with a **cost for waiting**, and until
