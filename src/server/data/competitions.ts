@@ -92,6 +92,13 @@ export interface Season {
   // What each range of the table earns. Ranges are 1-based and inclusive, and
   // anything not covered renders as unmarked mid-table.
   zones?: Zone[];
+  // The league season's length in rounds — an identity fact like every other,
+  // not a live count. Carried so a champion claim can wait for the math: a
+  // `champion`-kind zone in `zones` (or `overallTable.zones`) only renders once
+  // the leader's points lead is mathematically unassailable, which needs to
+  // know how many rounds remain. No `rounds` means that zone never clinches —
+  // see `toBands` in zoneBands.ts.
+  rounds?: number;
   // Competitions split into parallel tables that ALSO crown something
   // league-wide. MLS is the case: the Eastern and Western Conference tables
   // decide the playoffs, but the Supporters' Shield is the best record across
@@ -279,7 +286,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     { from: 2, to: 4, kind: 'ucl', labelKey: 'zone.championsLeague' },
     { from: 5, to: 5, kind: 'uel', labelKey: 'zone.europaLeague' },
     { from: 18, to: 20, kind: 'relegation', labelKey: 'zone.relegation' },
-  ]),
+  ], undefined, undefined, undefined, 38),
   ...leagueCompetition('laliga', 'LaLiga', 'LaLiga', 'esp.1', '🇪🇸', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/15.png', '2026-27', '2026-27', { base: '#d43a3f', bright: '#f1bf00', soft: 'rgba(241,191,0,0.16)' }, undefined, [
     // LaLiga EA Sports 2026-27 — 20 clubs, 38 rounds, bottom three down to
     // Segunda División with no relegation play-off (Spain has never had the
@@ -317,7 +324,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     { from: 5, to: 5, kind: 'uel', labelKey: 'zone.europaLeague' },
     { from: 6, to: 6, kind: 'uecl', labelKey: 'zone.conferenceLeague' },
     { from: 18, to: 20, kind: 'relegation', labelKey: 'zone.relegation' },
-  ]),
+  ], undefined, undefined, undefined, 38),
   ...leagueCompetition('serie-a', 'Serie A', 'Serie A', 'ita.1', '🇮🇹', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/12.png', '2026-27', '2026-27', { base: '#0a9b52', bright: '#e4f7ec', soft: 'rgba(205,33,42,0.16)' }, undefined, [
     // Serie A 2026-27: 20 clubs, three down to Serie B. Europe below is what
     // the 2026-27 table earns for 2027-28. Italy is 2nd in the 2026 UEFA
@@ -351,7 +358,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     { from: 5, to: 5, kind: 'uel', labelKey: 'zone.europaLeague' },
     { from: 6, to: 6, kind: 'uecl', labelKey: 'zone.conferenceLeague' },
     { from: 18, to: 20, kind: 'relegation', labelKey: 'zone.relegation' },
-  ]),
+  ], undefined, undefined, undefined, 38),
   ...leagueCompetition('bundesliga', 'Bundesliga', 'Bundesliga', 'ger.1', '🇩🇪', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/10.png', '2026-27', '2026-27', { base: '#d20515', bright: '#f5c518', soft: 'rgba(245,197,24,0.16)' }, undefined, [
     // 2026-27 Bundesliga (28 Aug 2026 – 22 May 2027). 18 clubs, 34 matchdays.
     //
@@ -381,7 +388,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     { from: 6, to: 6, kind: 'uecl', labelKey: 'zone.conferenceLeague' },
     { from: 16, to: 16, kind: 'relegation-playoff', labelKey: 'zone.relegationPlayoff' },
     { from: 17, to: 18, kind: 'relegation', labelKey: 'zone.relegation' },
-  ]),
+  ], undefined, undefined, undefined, 34),
   ...leagueCompetition('ligue-1', 'Ligue 1', 'Ligue 1', 'fra.1', '🇫🇷', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/9.png', '2026-27', '2026-27', { base: '#3b7fd4', bright: '#eaf2ff', soft: 'rgba(239,65,53,0.16)' }, undefined, [
     // 2026-27 Ligue 1: 18 clubs (down from 20 since 2023-24), 34 rounds.
     // Sources: Wikipedia "2026-27 Ligue 1" + its table template
@@ -413,7 +420,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     { from: 6, to: 6, kind: 'uecl', labelKey: 'zone.conferenceLeague' },
     { from: 16, to: 16, kind: 'relegation-playoff', labelKey: 'zone.relegationPlayoff' },
     { from: 17, to: 18, kind: 'relegation', labelKey: 'zone.relegation' },
-  ]),
+  ], undefined, undefined, undefined, 34),
   // No logo on purpose: ESPN's only gre.1 asset (500/98.png) bakes a solid
   // white square into the canvas (no dark variant exists), which renders as a
   // white tile on this background — the same class of unusable asset the
@@ -427,7 +434,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     { from: 1, to: 4, kind: 'playoff', labelKey: 'zone.championshipPlayoff' },
     { from: 5, to: 8, kind: 'uecl', labelKey: 'zone.europeanPlayoff' },
     { from: 9, to: 14, kind: 'relegation-playoff', labelKey: 'zone.relegationPlayoff' },
-  ]),
+  ], undefined, undefined, undefined, 26),
   // MLS is not one table. Thirty clubs play in two conferences of fifteen, and
   // ESPN publishes them as two children — so both conference tables arrive for
   // free and are rendered as two ladders, exactly like the Leagues Cup's two.
@@ -456,6 +463,9 @@ export const COMPETITIONS: Record<string, Competition> = {
       labelKey: 'standings.supportersShieldOverall',
       zones: [{ from: 1, to: 1, kind: 'champion', labelKey: 'zone.supportersShield' }],
     },
+    undefined,
+    undefined,
+    34,
   ),
   // Not ESPN's Liga MX asset: theirs is the BBVA Bancomer sponsor lockup, dark
   // on transparent — illegible at the bracket hub. TheSportsDB carries the real
@@ -496,6 +506,7 @@ function leagueCompetition(
   overallTable?: { id: string; labelKey: OverallTableLabelKey; zones?: Zone[] },
   projection?: 'liguilla',
   bracketAccent?: string,
+  rounds?: number,
 ): Record<string, Competition> {
   return {
     [id]: {
@@ -521,6 +532,7 @@ function leagueCompetition(
           ...(qualification ? { qualification } : {}),
           ...(zones ? { zones } : {}),
           ...(overallTable ? { overallTable } : {}),
+          ...(rounds ? { rounds } : {}),
           ...(projection
             ? {
                 projection,

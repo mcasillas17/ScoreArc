@@ -97,17 +97,93 @@ describe('toBands', () => {
   });
 
   // The rule is "every club at zero", not "any club at zero". A league one
-  // matchday old is lopsided but real, and its zones must survive.
+  // matchday old is lopsided but real, and its zones must survive. (`champion`
+  // is checked separately below — with no `rounds` passed here it always
+  // folds into the Champions League band, so 'ucl' is the zone that proves
+  // restoration happened.)
   it('restores zones as soon as a single match has been played', () => {
     const partial = table(20, 0);
     partial[7].played = 1;
     const kinds = toBands(partial, PL).map((b) => b.kind);
-    expect(kinds).toContain('champion');
+    expect(kinds).toContain('ucl');
     expect(kinds).toContain('relegation');
   });
 
   it('carries semantic label keys without rendering prose', () => {
-    const champion = toBands(table(20), PL).find((band) => band.kind === 'champion');
-    expect(champion?.labelKey).toBe('zone.champion');
+    const relegation = toBands(table(20), PL).find((band) => band.kind === 'relegation');
+    expect(relegation?.labelKey).toBe('zone.relegation');
+  });
+});
+
+// `champion` is not a place, it is a verdict: it renders only once the
+// leader's points lead over 2nd is mathematically unassailable, given the
+// rounds left in the season. Every case here uses a hand-built lead (`table`
+// alone gives every club identical points) rather than PL's baked-in
+// `played: 3` default.
+describe('toBands — champion clinch', () => {
+  // Overrides only rank 1's points, so the "gap" is exactly the points value
+  // passed in and every other row (including 2nd) stays at the `table()`
+  // default of 0.
+  function leaderClear(n: number, playedEach: number, lead: number): Standing[] {
+    const rows = table(n, playedEach);
+    rows[0] = { ...rows[0], points: lead };
+    return rows;
+  }
+
+  it('renders the champion band once the lead cannot be caught', () => {
+    // 10 points clear with 3 rounds left (35 of 38 played): 10 > 3*3.
+    const bands = toBands(leaderClear(20, 35, 10), PL, { rounds: 38 });
+    const champion = bands.find((b) => b.kind === 'champion');
+    expect(champion?.from).toBe(1);
+    expect(champion?.to).toBe(1);
+  });
+
+  it('withholds the champion band while the gap is still catchable, and lets the band below absorb rank 1', () => {
+    // Same 10-point gap, but 4 rounds left: 10 is not > 3*4 = 12.
+    const bands = toBands(leaderClear(20, 34, 10), PL, { rounds: 38 });
+    expect(bands.find((b) => b.kind === 'champion')).toBeUndefined();
+    expect(bands.find((b) => b.kind === 'ucl')?.from).toBe(1);
+  });
+
+  // A gap exactly equal to 3x the rounds remaining is still catchable — the
+  // trailing side can draw every remaining match and close it on goal
+  // difference alone. Equal points is not a title, so this must NOT clinch.
+  it('treats a gap of exactly 3x rounds-remaining as catchable, not clinched', () => {
+    const bands = toBands(leaderClear(20, 34, 12), PL, { rounds: 38 });
+    expect(bands.find((b) => b.kind === 'champion')).toBeUndefined();
+  });
+
+  it('never clinches when no rounds are configured for the season', () => {
+    // A gap that would clinch at rounds=38 (20 clear, 1 round left) still
+    // does not render champion when `rounds` is omitted entirely.
+    const bands = toBands(leaderClear(20, 37, 20), PL);
+    expect(bands.find((b) => b.kind === 'champion')).toBeUndefined();
+  });
+
+  it('falls to mid-table when no band sits directly below an unclinched champion zone', () => {
+    const gapped: Zone[] = [
+      { from: 1, to: 1, kind: 'champion', labelKey: 'zone.champion' },
+      { from: 3, to: 5, kind: 'ucl', labelKey: 'zone.championsLeague' },
+    ];
+    const bands = toBands(leaderClear(20, 34, 10), gapped, { rounds: 38 });
+    expect(bands.find((b) => b.kind === 'champion')).toBeUndefined();
+    expect(bands.find((b) => b.kind === 'mid')?.from).toBe(1);
+  });
+
+  // MLS's Supporters' Shield is a `champion`-kind zone inside
+  // `overallTable.zones` rather than a league's own `zones` — it reaches
+  // `toBands` through the exact same `{ rounds }` option, so one literal in
+  // that shape is enough to prove it gets the same treatment.
+  it('honors season rounds for a champion zone shaped like the MLS Supporters’ Shield', () => {
+    const shield: Zone[] = [{ from: 1, to: 1, kind: 'champion', labelKey: 'zone.supportersShield' }];
+    const bands = toBands(leaderClear(30, 32, 15), shield, { rounds: 34 });
+    const champion = bands.find((b) => b.kind === 'champion');
+    expect(champion?.labelKey).toBe('zone.supportersShield');
+  });
+
+  it('never clinches with fewer than two rows in the table', () => {
+    const oneRow: Zone[] = [{ from: 1, to: 1, kind: 'champion', labelKey: 'zone.champion' }];
+    const bands = toBands(table(1, 38), oneRow, { rounds: 38 });
+    expect(bands.find((b) => b.kind === 'champion')).toBeUndefined();
   });
 });

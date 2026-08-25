@@ -16,12 +16,15 @@ function fmtGD(gd: number): string {
 // the season, the table on the right carries the detail. Same split as the
 // Liguilla ladder, generalised from one boundary to many.
 export default function LeagueZoneTable({
-  standings, zones, teamStyle, teamBase,
+  standings, zones, teamStyle, teamBase, rounds,
 }: {
   standings: Standing[];
   zones: Zone[];
   teamStyle: TeamStyle;
   teamBase?: string;
+  // Season length in rounds — threaded to `toBands` so a `champion`-kind zone
+  // only draws once the title is mathematically clinched.
+  rounds?: number;
 }) {
   const t = useTranslations();
   if (standings.length === 0) {
@@ -31,7 +34,7 @@ export default function LeagueZoneTable({
       </div>
     );
   }
-  const bands = toBands(standings, zones);
+  const bands = toBands(standings, zones, { rounds });
   const marked = bands.filter((b) => b.kind !== 'mid');
   // toBands already strips the zones before kick-off, which takes the bands,
   // the band labels and the legend with it. What remains to suppress is the
@@ -46,7 +49,7 @@ export default function LeagueZoneTable({
           {!started ? (
             <p className="lz-preseason">{t('standings.preseason')}</p>
           ) : null}
-          <ZoneRing standings={standings} zones={zones} teamStyle={teamStyle} />
+          <ZoneRing standings={standings} zones={zones} teamStyle={teamStyle} rounds={rounds} />
           <div className="ll-legend lz-legend">
             {marked.map((b) => (
               <span key={`${b.kind}-${b.from}`}>

@@ -112,6 +112,7 @@ export default async function StandingsPage({ params }: { params: { locale: stri
           showThirdPlace={hasBracket}
           qualification={rc.season.qualification}
           zones={rc.season.zones}
+          rounds={rc.season.rounds}
         />
       </section>
 

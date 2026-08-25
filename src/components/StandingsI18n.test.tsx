@@ -122,13 +122,18 @@ describe('Spanish standings surfaces', () => {
       { from: 1, to: 1, kind: 'champion', labelKey: 'zone.champion' },
       { from: 4, to: 4, kind: 'relegation', labelKey: 'zone.relegation' },
     ];
+    // The champion band only renders once clinched (see zoneBands.ts), so
+    // give rank 1 a lead no `rounds` left could close: 8 points clear with 1
+    // round left (`rounds` 4, all four rows on `played: 3`) — 8 > 3*1.
+    const leagueStandings = group('league').standings;
+    leagueStandings[0] = { ...leagueStandings[0], points: leagueStandings[0].points + 8 };
     const phaseGroups = [
       group('mls', 'MLS'),
       group('liga-mx', 'Liga MX'),
     ];
     const html = renderSpanish(
       <>
-        <LeagueZoneTable standings={group('league').standings} zones={zones} teamStyle="crest" />
+        <LeagueZoneTable standings={leagueStandings} zones={zones} teamStyle="crest" rounds={4} />
         <PhaseQualifiers
           groups={phaseGroups}
           cut={4}

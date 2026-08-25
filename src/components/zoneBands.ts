@@ -19,11 +19,51 @@ export interface Band {
   standings: Standing[];
 }
 
+// Zones are places on the table — "finishing here earns the Champions League"
+// is true from matchday one. `champion` is the one kind that is not a place
+// but a VERDICT: it asserts a result, not a stake. Painting it before the
+// title is mathematically settled tells readers something that has not
+// happened yet — exactly the shape of bug the P0 rule above already fixes for
+// an unplayed season. This closes the same gap for a season that HAS kicked
+// off but is nowhere near decided: a `champion` zone only survives resolution
+// once the leader's points lead cannot be caught, given the rounds left to
+// play. Until then rank 1 is just the top of whatever band sits below it.
+function resolveZones(standings: Standing[], zones: Zone[], rounds: number | undefined): Zone[] {
+  const championIndex = zones.findIndex((z) => z.kind === 'champion');
+  if (championIndex === -1) return zones;
+  const champion = zones[championIndex];
+
+  // No `rounds` configured -> never clinched. The conservative direction: a
+  // missing config value must not mint a champion.
+  const sorted = [...standings].sort((a, b) => a.rank - b.rank);
+  const leader = sorted[0];
+  const second = sorted[1];
+  const clinched =
+    rounds !== undefined &&
+    leader !== undefined &&
+    second !== undefined &&
+    leader.points - second.points > 3 * (rounds - second.played);
+  if (clinched) return zones;
+
+  const rest = zones.filter((_, i) => i !== championIndex);
+  // If a zone starts exactly where the champion zone ended, it was already
+  // adjacent (e.g. Premier League Champions League 2-4 sitting right below
+  // champion 1-1) — extend it up to cover the champion range too, so 1-4
+  // reads as one Champions League band instead of a gap at the top. If
+  // nothing abuts it, dropping the champion zone entirely lets the normal
+  // mid-table fill handle rank 1 like any other unmarked rank.
+  const abutting = rest.find((z) => z.from === champion.to + 1);
+  if (abutting) {
+    return rest.map((z) => (z === abutting ? { ...z, from: champion.from } : z));
+  }
+  return rest;
+}
+
 // Zones are authored per season as rank ranges. They are clamped and sorted
 // here rather than trusted, because a config that says "relegation 18-20" for a
 // league ESPN reports with 18 rows would otherwise silently render an empty
 // band — or worse, drop teams off the bottom of the table.
-export function toBands(standings: Standing[], zones: Zone[]): Band[] {
+export function toBands(standings: Standing[], zones: Zone[], opts?: { rounds?: number }): Band[] {
   const n = standings.length;
   if (n === 0) return [];
 
@@ -41,7 +81,9 @@ export function toBands(standings: Standing[], zones: Zone[]): Band[] {
     return [{ kind: 'mid', labelKey: null, from: 1, to: n, standings }];
   }
 
-  const clamped = zones
+  const resolved = resolveZones(standings, zones, opts?.rounds);
+
+  const clamped = resolved
     .map((z) => ({
       ...z,
       from: Math.max(1, Math.min(z.from, n)),
