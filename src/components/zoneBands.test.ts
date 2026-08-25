@@ -130,6 +130,40 @@ describe('toBands — champion clinch', () => {
     return rows;
   }
 
+  it('consults every chaser, not just rank 2 — games in hand raise the ceiling', () => {
+    // Rank 2 is caught-and-passed math (9 clear, 1 game left for them), but
+    // rank 3 has 5 games in hand: ceiling 51 + 15 = 66 > 62. The Shield
+    // scenario that slipped a rank-2-only check.
+    const rows = table(20, 33);
+    rows[0] = { ...rows[0], points: 62, played: 32 };
+    rows[1] = { ...rows[1], points: 53, played: 33 };
+    rows[2] = { ...rows[2], points: 51, played: 29 };
+    const bands = toBands(rows, PL, { rounds: 34 });
+    expect(bands.find((b) => b.kind === 'champion')).toBeUndefined();
+  });
+
+  it('a stale rounds value can only delay the crown, never mint one on a tie', () => {
+    // Both leaders level on points with played > rounds (config says 34, the
+    // real season ran longer): negative remaining must clamp to zero, not
+    // turn a tie into a title.
+    const rows = table(20, 36);
+    rows[0] = { ...rows[0], points: 60 };
+    rows[1] = { ...rows[1], points: 60 };
+    const bands = toBands(rows, PL, { rounds: 34 });
+    expect(bands.find((b) => b.kind === 'champion')).toBeUndefined();
+  });
+
+  it('a finished season keeps the crown on the provider-ranked leader, even level on points', () => {
+    // 2011-12: title on goal difference. Every game played -> the table is
+    // final and rank 1 already carries the tiebreak.
+    const rows = table(20, 38);
+    rows[0] = { ...rows[0], points: 89 };
+    rows[1] = { ...rows[1], points: 89 };
+    const bands = toBands(rows, PL, { rounds: 38 });
+    const champion = bands.find((b) => b.kind === 'champion');
+    expect(champion?.from).toBe(1);
+  });
+
   it('renders the champion band once the lead cannot be caught', () => {
     // 10 points clear with 3 rounds left (35 of 38 played): 10 > 3*3.
     const bands = toBands(leaderClear(20, 35, 10), PL, { rounds: 38 });

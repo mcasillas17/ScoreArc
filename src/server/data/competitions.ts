@@ -425,6 +425,9 @@ export const COMPETITIONS: Record<string, Competition> = {
   // white square into the canvas (no dark variant exists), which renders as a
   // white tile on this background — the same class of unusable asset the
   // Leagues Cup note above describes. The emblem carries the identity.
+  // Greece's `rounds` is a forward-looking identity fact: its zones carry no
+  // champion kind today (the playoffs decide the title), so nothing reads it
+  // yet.
   ...leagueCompetition('super-league-greece', 'Super League Greece', 'Super League Greece', 'gre.1', '🇬🇷', undefined, '2026-27', '2026-27', { base: '#0d5eaf', bright: '#4a94e8', soft: 'rgba(13,94,175,0.16)' }, undefined, [
     // Mirrors the provider, not a format guess: site.api.espn.com
     // /apis/v2/sports/soccer/gre.1/standings entries[].note (checked

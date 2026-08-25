@@ -20,8 +20,15 @@ pattern: one rule, in the one place both renderers already consume.
 A `champion`-kind zone renders **only when mathematically clinched**:
 
 ```
-leader.points − second.points > 3 × (rounds − second.played)
+leader.points > max over every other team of (points + 3 × max(0, rounds − played))
 ```
+
+Every chaser, not just rank 2 — the provider ranks by points, so a team on
+fewer points with games in hand sits below second and its ceiling can be the
+highest. Remaining games clamp at zero. When every team has played all its
+rounds the table is final and rank 1 keeps the band regardless of the strict
+inequality: the provider's ranking already applied the tiebreakers, and a
+title won on goal difference must not lose its crown.
 
 Until then, rank 1 is absorbed into the band directly below it (PL: the
 Champions League band becomes 1–4 — which is also true), or into mid-table

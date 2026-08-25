@@ -37,12 +37,28 @@ function resolveZones(standings: Standing[], zones: Zone[], rounds: number | und
   // missing config value must not mint a champion.
   const sorted = [...standings].sort((a, b) => a.rank - b.rank);
   const leader = sorted[0];
-  const second = sorted[1];
-  const clinched =
-    rounds !== undefined &&
-    leader !== undefined &&
-    second !== undefined &&
-    leader.points - second.points > 3 * (rounds - second.played);
+  const chasers = sorted.slice(1);
+  let clinched = false;
+  if (rounds !== undefined && leader !== undefined && chasers.length > 0) {
+    // The ceiling is the best any OTHER team can still reach — every chaser,
+    // not just rank 2: the provider ranks by points, so a side on fewer
+    // points with games in hand sits below second and would otherwise never
+    // be consulted (mid-season MLS routinely has 3-5 games-in-hand spreads).
+    // Remaining games clamp at zero so a stale `rounds` after a format
+    // change can only delay the crown, never mint one on a points tie.
+    const ceiling = Math.max(
+      ...chasers.map((s) => s.points + 3 * Math.max(0, rounds - s.played)),
+    );
+    // Every game played — EXACTLY every game: the table is final and the
+    // provider's rank 1 already carries the tiebreakers, so a title won on
+    // goal difference keeps its band on the one day it matters most. Strict
+    // equality, not >=: played beyond `rounds` can only mean the config is
+    // stale, and a stale season length must not turn a points tie into a
+    // title. While games remain, strict >: points parity is not a title.
+    const seasonOver =
+      leader.played === rounds && chasers.every((s) => s.played === rounds);
+    clinched = seasonOver || leader.points > ceiling;
+  }
   if (clinched) return zones;
 
   const rest = zones.filter((_, i) => i !== championIndex);
