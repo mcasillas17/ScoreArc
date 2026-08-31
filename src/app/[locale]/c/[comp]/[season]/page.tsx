@@ -14,6 +14,7 @@ import { bracketShapeFor, knockoutIsReady } from '@/components/bracketShape';
 import SiteFooter from '@/components/SiteFooter';
 import { getTranslator } from '@/i18n/translate';
 import { ogUrl, safeCrest, shareMetadata } from '@/lib/ogUrl';
+import { firstSearchParam } from '@/lib/searchParams';
 import { projectLiguilla } from '@/server/data/liguillaProjection';
 
 export const dynamic = 'force-dynamic';
@@ -24,10 +25,6 @@ type SeasonParams =
 type PageSearchParams =
   | { c?: string | string[]; name?: string | string[]; crest?: string | string[] }
   | Promise<{ c?: string | string[]; name?: string | string[]; crest?: string | string[] }>;
-
-function firstSearchParam(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
-}
 
 export async function generateMetadata({ params, searchParams }: { params: SeasonParams; searchParams: PageSearchParams }): Promise<Metadata> {
   const { locale, comp, season } = await params;

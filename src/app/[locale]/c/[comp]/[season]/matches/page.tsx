@@ -13,6 +13,7 @@ import {
 import { matchPriority } from '@/server/data/matchPriority';
 import type { Match } from '@/server/data/types';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
+import { firstSearchParam } from '@/lib/searchParams';
 import MatchCalendar from '@/components/MatchCalendar';
 import MatchesNow from '@/components/MatchesNow';
 import SiteFooter from '@/components/SiteFooter';
@@ -24,10 +25,6 @@ type SeasonParams =
   | { locale: string; comp: string; season: string }
   | Promise<{ locale: string; comp: string; season: string }>;
 type MatchSearchParams = { view?: string | string[] } | Promise<{ view?: string | string[] }>;
-
-function firstSearchParam(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
-}
 
 export async function generateMetadata({
   params,
