@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: gomod
+    directory: /backend
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directory: /backend/ingester
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directory: /backend/reader
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
