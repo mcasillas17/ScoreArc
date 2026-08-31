@@ -42,9 +42,9 @@ function dedupeByMatch(entries: LiveEntry[]): LiveEntry[] {
   });
 }
 
-export default async function Home({ params }: { params: { locale: string } | Promise<{ locale: string }> }) {
-  const { locale } = await params;
-  if (!isLocale(locale)) notFound();
+export default async function Home({ params }: { params: { locale: string } }) {
+  if (!isLocale(params.locale)) notFound();
+  const locale = params.locale;
   const t = getTranslator(locale);
   // One clock for the whole render, so two blocks cannot disagree about "now".
   const now = new Date();

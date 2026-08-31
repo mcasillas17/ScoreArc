@@ -30,8 +30,8 @@ describe('localized root layout', () => {
   it.each([
     ['en', 'ScoreArc · Live Football', 'Live football brackets, scores, and standings — every arc.', 'ScoreArc — Live Football'],
     ['es', 'ScoreArc · Fútbol en vivo', 'Cuadros, resultados y clasificaciones de fútbol en vivo — en cada arco.', 'ScoreArc — Fútbol en vivo'],
-  ])('generates localized %s root metadata and canonical language alternates', async (locale, title, description, imageAlt) => {
-    await expect(generateMetadata({ params: { locale } })).resolves.toMatchObject({
+  ])('generates localized %s root metadata and canonical language alternates', (locale, title, description, imageAlt) => {
+    expect(generateMetadata({ params: { locale } })).toMatchObject({
       title,
       description,
       alternates: {
@@ -54,22 +54,21 @@ describe('localized root layout', () => {
   it.each([
     ['en', 'Close'],
     ['es', 'Cerrar'],
-  ])('renders the %s html and provider locale on the first response', async (locale, closeLabel) => {
-    const root = await RootLayout({ children: <LocaleProbe />, params: { locale } });
+  ])('renders the %s html and provider locale on the first response', (locale, closeLabel) => {
     const html = renderToStaticMarkup(
-      root,
+      RootLayout({ children: <LocaleProbe />, params: { locale } }),
     );
 
     expect(html).toContain(`<html lang="${locale}">`);
     expect(html).toContain(`<span data-locale="${locale}">${closeLabel}</span>`);
   });
 
-  it('rejects an invalid locale before generating metadata', async () => {
-    await expect(generateMetadata({ params: { locale: 'fr' } })).rejects.toThrow('NEXT_NOT_FOUND');
+  it('rejects an invalid locale before generating metadata', () => {
+    expect(() => generateMetadata({ params: { locale: 'fr' } })).toThrow('NEXT_NOT_FOUND');
   });
 
-  it('rejects an invalid locale before rendering', async () => {
-    await expect(RootLayout({ children: null, params: { locale: 'fr' } })).rejects.toThrow(
+  it('rejects an invalid locale before rendering', () => {
+    expect(() => RootLayout({ children: null, params: { locale: 'fr' } })).toThrow(
       'NEXT_NOT_FOUND',
     );
   });

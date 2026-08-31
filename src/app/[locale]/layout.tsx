@@ -24,9 +24,9 @@ export function generateStaticParams() {
   return SUPPORTED_LOCALES.map((locale) => ({ locale }));
 }
 
-export async function generateMetadata({ params }: { params: { locale: string } | Promise<{ locale: string }> }): Promise<Metadata> {
-  const { locale } = await params;
-  if (!isLocale(locale)) notFound();
+export function generateMetadata({ params }: { params: { locale: string } }): Metadata {
+  if (!isLocale(params.locale)) notFound();
+  const locale = params.locale;
   const t = getTranslator(locale);
   const title = t('meta.root.title');
   const description = t('meta.root.description');
@@ -61,15 +61,15 @@ export async function generateMetadata({ params }: { params: { locale: string } 
   };
 }
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
   params,
 }: Readonly<{
   children: React.ReactNode;
-  params: { locale: string } | Promise<{ locale: string }>;
+  params: { locale: string };
 }>) {
-  const { locale } = await params;
-  if (!isLocale(locale)) notFound();
+  if (!isLocale(params.locale)) notFound();
+  const locale = params.locale;
   return (
     <html lang={locale}>
       <body className={`${geistSans.variable} ${geistMono.variable}`}>

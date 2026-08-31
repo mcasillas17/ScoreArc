@@ -23,12 +23,12 @@ export const dynamic = 'force-dynamic';
 export async function generateMetadata({
   params,
 }: {
-  params: { locale: string; comp: string; season: string } | Promise<{ locale: string; comp: string; season: string }>;
+  params: { locale: string; comp: string; season: string };
 }): Promise<Metadata> {
-  const { locale, comp, season } = await params;
-  if (!isLocale(locale)) notFound();
+  if (!isLocale(params.locale)) notFound();
+  const locale = params.locale;
   const t = getTranslator(locale);
-  const rc = resolveSeason(comp, season);
+  const rc = resolveSeason(params.comp, params.season);
   if (!rc) return { title: t('matches.title') };
   const editionName = `${rc.competition.shortName} ${rc.season.label}`;
   return {
@@ -48,14 +48,13 @@ export default async function MatchesPage({
   params,
   searchParams,
 }: {
-  params: { locale: string; comp: string; season: string } | Promise<{ locale: string; comp: string; season: string }>;
-  searchParams?: { view?: string } | Promise<{ view?: string }>;
+  params: { locale: string; comp: string; season: string };
+  searchParams?: { view?: string };
 }) {
-  const { locale, comp, season } = await params;
-  const query = await searchParams;
-  if (!isLocale(locale)) notFound();
+  if (!isLocale(params.locale)) notFound();
+  const locale = params.locale;
   const t = getTranslator(locale);
-  const rc = resolveSeason(comp, season);
+  const rc = resolveSeason(params.comp, params.season);
   if (!rc) notFound();
 
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
@@ -87,7 +86,7 @@ export default async function MatchesPage({
   // visitor wants.
   const buckets = matchPriority(nowMatches, new Date());
   const nowHasContent = buckets.live.length + buckets.upcoming.length + buckets.recent.length > 0;
-  const requestedView = query?.view;
+  const requestedView = searchParams?.view;
   const requested = requestedView === 'calendar' ? 'calendar' : requestedView === 'now' ? 'now' : null;
   // A past edition has no Now to show and no tabs to escape through, so an
   // explicit ?view=now there would strand the reader on a single sentence

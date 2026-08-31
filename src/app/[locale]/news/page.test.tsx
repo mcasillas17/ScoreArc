@@ -56,8 +56,8 @@ describe('localized news directory', () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it('publishes localized canonical and alternate metadata', async () => {
-    const metadata = await generateMetadata({ params: { locale: 'es' } });
+  it('publishes localized canonical and alternate metadata', () => {
+    const metadata = generateMetadata({ params: { locale: 'es' } });
     expect(metadata.title).toBe('Noticias · ScoreArc');
     expect(metadata.alternates).toEqual({
       canonical: '/es/news',
