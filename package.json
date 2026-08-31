@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
     "export:competitions": "tsx scripts/export-competitions.mjs",
@@ -15,7 +15,7 @@
   "dependencies": {
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
-    "next": "14.2.35",
+    "next": "16.3.3",
     "react": "^18",
     "react-dom": "^18"
   },

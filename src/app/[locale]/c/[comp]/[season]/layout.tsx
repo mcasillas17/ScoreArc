@@ -11,11 +11,15 @@ export const dynamic = 'force-dynamic';
 // page overrides this with a champion-specific card when a bracket is shared
 // (?c=); standings/news inherit these values so their share cards show the
 // right competition instead of the root layout's generic default.
-export async function generateMetadata({ params }: { params: { locale: string; comp: string; season: string } }): Promise<Metadata> {
-  if (!isLocale(params.locale)) notFound();
-  const locale = params.locale;
+type LayoutParams =
+  | { locale: string; comp: string; season: string }
+  | Promise<{ locale: string; comp: string; season: string }>;
+
+export async function generateMetadata({ params }: { params: LayoutParams }): Promise<Metadata> {
+  const { locale, comp, season } = await params;
+  if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
-  const rc = resolveSeason(params.comp, params.season);
+  const rc = resolveSeason(comp, season);
   if (!rc) return {};
   const label = `${rc.competition.shortName} ${rc.season.label}`;
   const og = ogUrl({ compId: rc.competition.id, comp: label, locale });
@@ -25,21 +29,22 @@ export async function generateMetadata({ params }: { params: { locale: string; c
     title,
     description,
     alternates: {
-      canonical: `/${locale}/c/${params.comp}/${params.season}`,
+      canonical: `/${locale}/c/${comp}/${season}`,
       languages: {
-        en: `/en/c/${params.comp}/${params.season}`,
-        es: `/es/c/${params.comp}/${params.season}`,
+        en: `/en/c/${comp}/${season}`,
+        es: `/es/c/${comp}/${season}`,
       },
     },
     ...shareMetadata(title, description, og),
   };
 }
 
-export default function WorkspaceLayout({ children, params }: { children: React.ReactNode; params: { locale: string; comp: string; season: string } }) {
+export default async function WorkspaceLayout({ children, params }: { children: React.ReactNode; params: LayoutParams }) {
   // The shell, the nav and the per-competition accent all live at the root
   // now: `AppShell` derives the open competition from the path, so this layout
   // exists only to reject a competition or season that does not exist.
-  if (!isLocale(params.locale)) notFound();
-  if (!resolveSeason(params.comp, params.season)) notFound();
+  const { locale, comp, season } = await params;
+  if (!isLocale(locale)) notFound();
+  if (!resolveSeason(comp, season)) notFound();
   return <>{children}</>;
 }

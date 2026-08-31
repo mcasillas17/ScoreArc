@@ -12,14 +12,16 @@ import SiteFooter from '@/components/SiteFooter';
 export const dynamic = 'force-dynamic';
 
 interface Params {
-  params: { locale: string; comp: string; season: string };
+  params:
+    | { locale: string; comp: string; season: string }
+    | Promise<{ locale: string; comp: string; season: string }>;
 }
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
-  if (!isLocale(params.locale)) notFound();
-  const locale = params.locale;
+  const { locale, comp, season } = await params;
+  if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
-  const rc = resolveSeason(params.comp, params.season);
+  const rc = resolveSeason(comp, season);
   if (!rc) return { title: t('teams.title') };
   const edition = `${rc.competition.shortName} ${rc.season.label}`;
   const pathname = `/c/${rc.competition.id}/${rc.season.id}/teams`;
@@ -34,10 +36,10 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 }
 
 export default async function CompetitionTeamsPage({ params }: Params) {
-  if (!isLocale(params.locale)) notFound();
-  const locale = params.locale;
+  const { locale, comp, season } = await params;
+  if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
-  const rc = resolveSeason(params.comp, params.season);
+  const rc = resolveSeason(comp, season);
   if (!rc) notFound();
   const teams = await competitionTeams(rc);
 
