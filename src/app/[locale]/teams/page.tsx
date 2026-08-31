@@ -8,7 +8,9 @@ import SiteFooter from '@/components/SiteFooter';
 
 export const dynamic = 'force-dynamic';
 
-export async function generateMetadata({ params }: { params: { locale: string } | Promise<{ locale: string }> }): Promise<Metadata> {
+type PageParams = { locale: string } | Promise<{ locale: string }>;
+
+export async function generateMetadata({ params }: { params: PageParams }): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
@@ -22,7 +24,7 @@ export async function generateMetadata({ params }: { params: { locale: string } 
   };
 }
 
-export default async function TeamsPage({ params }: { params: { locale: string } | Promise<{ locale: string }> }) {
+export default async function TeamsPage({ params }: { params: PageParams }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);

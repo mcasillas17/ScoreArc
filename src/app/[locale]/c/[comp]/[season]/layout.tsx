@@ -11,7 +11,11 @@ export const dynamic = 'force-dynamic';
 // page overrides this with a champion-specific card when a bracket is shared
 // (?c=); standings/news inherit these values so their share cards show the
 // right competition instead of the root layout's generic default.
-export async function generateMetadata({ params }: { params: { locale: string; comp: string; season: string } | Promise<{ locale: string; comp: string; season: string }> }): Promise<Metadata> {
+type LayoutParams =
+  | { locale: string; comp: string; season: string }
+  | Promise<{ locale: string; comp: string; season: string }>;
+
+export async function generateMetadata({ params }: { params: LayoutParams }): Promise<Metadata> {
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
@@ -35,7 +39,7 @@ export async function generateMetadata({ params }: { params: { locale: string; c
   };
 }
 
-export default async function WorkspaceLayout({ children, params }: { children: React.ReactNode; params: { locale: string; comp: string; season: string } | Promise<{ locale: string; comp: string; season: string }> }) {
+export default async function WorkspaceLayout({ children, params }: { children: React.ReactNode; params: LayoutParams }) {
   // The shell, the nav and the per-competition accent all live at the root
   // now: `AppShell` derives the open competition from the path, so this layout
   // exists only to reject a competition or season that does not exist.

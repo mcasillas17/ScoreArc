@@ -8,6 +8,8 @@ import { apiError } from '@/app/api/errorResponse';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+type RouteParams = { comp: string; season: string } | Promise<{ comp: string; season: string }>;
+
 /**
  * Every match list, behind one endpoint.
  *
@@ -24,7 +26,7 @@ export const revalidate = 0;
  * The three windows keep their own store methods and their own cache TTLs —
  * live scores go stale in seconds, a calendar month does not.
  */
-export async function GET(req: Request, { params }: { params: { comp: string; season: string } | Promise<{ comp: string; season: string }> }) {
+export async function GET(req: Request, { params }: { params: RouteParams }) {
   const { comp, season } = await params;
   const rc = resolveSeason(comp, season);
   if (!rc) {

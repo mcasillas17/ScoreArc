@@ -13,6 +13,7 @@ import {
 import { matchPriority } from '@/server/data/matchPriority';
 import type { Match } from '@/server/data/types';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
+import { firstSearchParam } from '@/lib/searchParams';
 import MatchCalendar from '@/components/MatchCalendar';
 import MatchesNow from '@/components/MatchesNow';
 import SiteFooter from '@/components/SiteFooter';
@@ -20,10 +21,15 @@ import { getTranslator } from '@/i18n/translate';
 
 export const dynamic = 'force-dynamic';
 
+type SeasonParams =
+  | { locale: string; comp: string; season: string }
+  | Promise<{ locale: string; comp: string; season: string }>;
+type MatchSearchParams = { view?: string | string[] } | Promise<{ view?: string | string[] }>;
+
 export async function generateMetadata({
   params,
 }: {
-  params: { locale: string; comp: string; season: string } | Promise<{ locale: string; comp: string; season: string }>;
+  params: SeasonParams;
 }): Promise<Metadata> {
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
@@ -48,11 +54,11 @@ export default async function MatchesPage({
   params,
   searchParams,
 }: {
-  params: { locale: string; comp: string; season: string } | Promise<{ locale: string; comp: string; season: string }>;
-  searchParams?: { view?: string } | Promise<{ view?: string }>;
+  params: SeasonParams;
+  searchParams?: MatchSearchParams;
 }) {
   const { locale, comp, season } = await params;
-  const query = await searchParams;
+  const query = searchParams ? await searchParams : undefined;
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
   const rc = resolveSeason(comp, season);
@@ -87,7 +93,7 @@ export default async function MatchesPage({
   // visitor wants.
   const buckets = matchPriority(nowMatches, new Date());
   const nowHasContent = buckets.live.length + buckets.upcoming.length + buckets.recent.length > 0;
-  const requestedView = query?.view;
+  const requestedView = firstSearchParam(query?.view);
   const requested = requestedView === 'calendar' ? 'calendar' : requestedView === 'now' ? 'now' : null;
   // A past edition has no Now to show and no tabs to escape through, so an
   // explicit ?view=now there would strand the reader on a single sentence

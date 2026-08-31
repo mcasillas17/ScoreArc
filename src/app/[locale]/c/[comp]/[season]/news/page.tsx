@@ -11,7 +11,9 @@ import SiteFooter from '@/components/SiteFooter';
 export const dynamic = 'force-dynamic';
 
 interface Params {
-  params: { locale: string; comp: string; season: string } | Promise<{ locale: string; comp: string; season: string }>;
+  params:
+    | { locale: string; comp: string; season: string }
+    | Promise<{ locale: string; comp: string; season: string }>;
 }
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {

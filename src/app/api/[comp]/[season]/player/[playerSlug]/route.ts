@@ -7,9 +7,13 @@ import { apiError } from '@/app/api/errorResponse';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+type RouteParams =
+  | { comp: string; season: string; playerSlug: string }
+  | Promise<{ comp: string; season: string; playerSlug: string }>;
+
 export async function GET(
   _req: Request,
-  { params }: { params: { comp: string; season: string; playerSlug: string } | Promise<{ comp: string; season: string; playerSlug: string }> },
+  { params }: { params: RouteParams },
 ) {
   const { comp, season, playerSlug } = await params;
   const rc = resolveSeason(comp, season);

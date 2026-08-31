@@ -16,18 +16,18 @@ import { teamHref } from '@/components/teamHref';
 
 export const dynamic = 'force-dynamic';
 
-interface Params {
-  params: { locale: string; comp: string; season: string; playerSlug: string } | Promise<{ locale: string; comp: string; season: string; playerSlug: string }>;
-}
+type PlayerParams = { locale: string; comp: string; season: string; playerSlug: string };
 
-type ResolvedParams = Awaited<Params['params']>;
+interface Params {
+  params: PlayerParams | Promise<PlayerParams>;
+}
 
 /**
  * The URL carries our slug (docs/backend/PLAYER_IDENTITY.md), never the
  * provider's athlete number. A slug the index does not know is a 404 without
  * an upstream athlete request.
  */
-async function loadPlayer(params: ResolvedParams): Promise<PlayerProfile | null> {
+async function loadPlayer(params: PlayerParams): Promise<PlayerProfile | null> {
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) return null;
   const index = await competitionPlayerIndex(rc);

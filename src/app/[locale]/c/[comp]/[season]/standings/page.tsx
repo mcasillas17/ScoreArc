@@ -13,7 +13,11 @@ import { getTranslator } from '@/i18n/translate';
 
 export const dynamic = 'force-dynamic';
 
-export async function generateMetadata({ params }: { params: { locale: string; comp: string; season: string } | Promise<{ locale: string; comp: string; season: string }> }): Promise<Metadata> {
+type SeasonParams =
+  | { locale: string; comp: string; season: string }
+  | Promise<{ locale: string; comp: string; season: string }>;
+
+export async function generateMetadata({ params }: { params: SeasonParams }): Promise<Metadata> {
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
@@ -33,7 +37,7 @@ export async function generateMetadata({ params }: { params: { locale: string; c
   };
 }
 
-export default async function StandingsPage({ params }: { params: { locale: string; comp: string; season: string } | Promise<{ locale: string; comp: string; season: string }> }) {
+export default async function StandingsPage({ params }: { params: SeasonParams }) {
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);

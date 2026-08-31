@@ -55,9 +55,8 @@ describe('localized root layout', () => {
     ['en', 'Close'],
     ['es', 'Cerrar'],
   ])('renders the %s html and provider locale on the first response', async (locale, closeLabel) => {
-    const root = await RootLayout({ children: <LocaleProbe />, params: { locale } });
     const html = renderToStaticMarkup(
-      root,
+      await RootLayout({ children: <LocaleProbe />, params: { locale } }),
     );
 
     expect(html).toContain(`<html lang="${locale}">`);

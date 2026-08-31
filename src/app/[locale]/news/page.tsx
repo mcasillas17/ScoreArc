@@ -8,7 +8,9 @@ import SiteFooter from '@/components/SiteFooter';
 
 export const dynamic = 'force-dynamic';
 
-export async function generateMetadata({ params }: { params: { locale: string } | Promise<{ locale: string }> }): Promise<Metadata> {
+type PageParams = { locale: string } | Promise<{ locale: string }>;
+
+export async function generateMetadata({ params }: { params: PageParams }): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
@@ -40,7 +42,7 @@ const STORIES_SHOWN = 30;
  * change much more slowly than scores. The page is force-dynamic, so arrival
  * and reload already fetch current stories.
  */
-export default async function NewsPage({ params }: { params: { locale: string } | Promise<{ locale: string }> }) {
+export default async function NewsPage({ params }: { params: PageParams }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
