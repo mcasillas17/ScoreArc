@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
     "export:competitions": "tsx scripts/export-competitions.mjs",
@@ -15,7 +15,7 @@
   "dependencies": {
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
-    "next": "14.2.35",
+    "next": "16.3.3",
     "react": "^18",
     "react-dom": "^18"
   },
@@ -24,8 +24,8 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "eslint": "^8",
-    "eslint-config-next": "14.2.35",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "16.3.3",
     "jsdom": "27.0.1",
     "tsx": "^4.23.12",
     "typescript": "^7",

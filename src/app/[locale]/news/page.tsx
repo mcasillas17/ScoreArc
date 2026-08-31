@@ -8,9 +8,9 @@ import SiteFooter from '@/components/SiteFooter';
 
 export const dynamic = 'force-dynamic';
 
-export function generateMetadata({ params }: { params: { locale: string } }): Metadata {
-  if (!isLocale(params.locale)) notFound();
-  const locale = params.locale;
+export async function generateMetadata({ params }: { params: { locale: string } | Promise<{ locale: string }> }): Promise<Metadata> {
+  const { locale } = await params;
+  if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
   return {
     title: t('news.directoryTitle'),
@@ -40,10 +40,11 @@ const STORIES_SHOWN = 30;
  * change much more slowly than scores. The page is force-dynamic, so arrival
  * and reload already fetch current stories.
  */
-export default async function NewsPage({ params }: { params: { locale: string } }) {
-  if (!isLocale(params.locale)) notFound();
-  const t = getTranslator(params.locale);
-  const stories = await collectDatedStories(new Date(), params.locale, {
+export default async function NewsPage({ params }: { params: { locale: string } | Promise<{ locale: string }> }) {
+  const { locale } = await params;
+  if (!isLocale(locale)) notFound();
+  const t = getTranslator(locale);
+  const stories = await collectDatedStories(new Date(), locale, {
     perFeed: STORIES_PER_COMPETITION,
     limit: STORIES_SHOWN,
   });
