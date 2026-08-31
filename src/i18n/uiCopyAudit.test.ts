@@ -1,17 +1,12 @@
 import { readdirSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
-import { createVirtualFileSystem } from 'typescript/unstable/fs';
-import type * as ts from 'typescript/unstable/ast';
-import { API, type Checker, type Project, type Symbol } from 'typescript/unstable/sync';
-import * as tsCompiler from 'typescript/unstable/ast';
-import { afterAll, describe, expect, test } from 'vitest';
+import type ts from 'typescript';
+import { describe, expect, test } from 'vitest';
+
+const tsCompiler = createRequire(import.meta.url)('typescript') as typeof ts;
 
 const PRODUCTION_TSX_ROOTS = ['src/app', 'src/components'] as const;
-const auditFileSystem = createVirtualFileSystem({});
-const auditApi = new API({ fs: auditFileSystem });
-let auditSourceId = 0;
-
-afterAll(() => auditApi.close());
 
 const RAW_IDENTITY_TEXT = new Set([
   'ScoreArc', 'ESPN', 'FIFA', 'X', 'EN', 'ES', 'MLS', 'Liga MX', 'Liguilla',
@@ -55,9 +50,8 @@ type AuditableCopy =
   | { kind: 'parts'; staticText: string[] };
 
 type CopyAnalysisContext = {
-  checker: Checker;
-  project: Project;
-  reassignedSymbols: Set<Symbol>;
+  checker: ts.TypeChecker;
+  reassignedSymbols: Set<ts.Symbol>;
 };
 
 type LocalConstInitializer = {
@@ -113,7 +107,7 @@ function hasCompetingBlockScopedDeclaration(
       competingDeclaration = true;
       return;
     }
-    node.forEachChild(visit);
+    tsCompiler.forEachChild(node, visit);
   };
   visit(scope);
   return competingDeclaration;
@@ -127,7 +121,7 @@ function unwrapExpression(expression: ts.Expression): ts.Expression {
   if (
     tsCompiler.isParenthesizedExpression(expression)
     || tsCompiler.isAsExpression(expression)
-    || tsCompiler.isAssertionExpression(expression)
+    || tsCompiler.isTypeAssertionExpression(expression)
     || tsCompiler.isSatisfiesExpression(expression)
     || tsCompiler.isNonNullExpression(expression)
   ) {
@@ -153,8 +147,7 @@ function localConstInitializer(
     return null;
   }
 
-  const declaration = symbol.declarations[0]?.resolve(context.project);
-  if (!declaration) return null;
+  const [declaration] = symbol.declarations;
   if (
     !tsCompiler.isVariableDeclaration(declaration)
     || !tsCompiler.isIdentifier(declaration.name)
@@ -366,31 +359,42 @@ function importsLegacyLocalizationModule(moduleSpecifier: string): boolean {
 
 function createBoundAuditSource(filePath: string, sourceText: string): {
   sourceFile: ts.SourceFile;
-  checker: Checker;
-  project: Project;
-  close: () => void;
+  checker: ts.TypeChecker;
 } {
-  const virtualFilePath = path.resolve('.audit', `${auditSourceId++}-${path.basename(filePath)}`);
-  auditFileSystem.writeFile?.(virtualFilePath, sourceText);
-  const snapshot = auditApi.updateSnapshot({ openFiles: [virtualFilePath] });
-  const project = snapshot.getDefaultProjectForFile(virtualFilePath);
-  const sourceFile = project?.program.getSourceFile(virtualFilePath);
-  if (!project || !sourceFile) {
-    snapshot.dispose();
-    throw new Error(`Failed to parse audit source: ${filePath}`);
-  }
-  return {
-    sourceFile,
-    checker: project.checker,
-    project,
-    close: () => snapshot.dispose(),
+  const sourceFile = tsCompiler.createSourceFile(
+    filePath,
+    sourceText,
+    tsCompiler.ScriptTarget.Latest,
+    true,
+    tsCompiler.ScriptKind.TSX,
+  );
+  const compilerOptions: ts.CompilerOptions = {
+    jsx: tsCompiler.JsxEmit.Preserve,
+    noLib: true,
+    noResolve: true,
+    target: tsCompiler.ScriptTarget.Latest,
   };
+  const host: ts.CompilerHost = {
+    fileExists: (candidatePath) => candidatePath === filePath,
+    getCanonicalFileName: (candidatePath) => candidatePath,
+    getCurrentDirectory: () => process.cwd(),
+    getDefaultLibFileName: () => '',
+    getNewLine: () => '\n',
+    getSourceFile: (candidatePath) => candidatePath === filePath ? sourceFile : undefined,
+    readFile: (candidatePath) => candidatePath === filePath ? sourceText : undefined,
+    useCaseSensitiveFileNames: () => true,
+    writeFile: () => undefined,
+  };
+  const program = tsCompiler.createProgram([filePath], compilerOptions, host);
+  const boundSourceFile = program.getSourceFile(filePath);
+  if (!boundSourceFile) throw new Error(`Failed to parse audit source: ${filePath}`);
+  return { sourceFile: boundSourceFile, checker: program.getTypeChecker() };
 }
 
 function addAssignmentTargetSymbols(
   expression: ts.Expression,
-  checker: Checker,
-  symbols: Set<Symbol>,
+  checker: ts.TypeChecker,
+  symbols: Set<ts.Symbol>,
 ): void {
   const unwrapped = unwrapExpression(expression);
   if (tsCompiler.isIdentifier(unwrapped)) {
@@ -414,7 +418,7 @@ function addAssignmentTargetSymbols(
   if (tsCompiler.isObjectLiteralExpression(unwrapped)) {
     for (const property of unwrapped.properties) {
       if (tsCompiler.isShorthandPropertyAssignment(property)) {
-        addAssignmentTargetSymbols(property.name as ts.Expression, checker, symbols);
+        addAssignmentTargetSymbols(property.name, checker, symbols);
       } else if (tsCompiler.isPropertyAssignment(property)) {
         addAssignmentTargetSymbols(property.initializer, checker, symbols);
       } else if (tsCompiler.isSpreadAssignment(property)) {
@@ -424,8 +428,8 @@ function addAssignmentTargetSymbols(
   }
 }
 
-function reassignedSymbols(sourceFile: ts.SourceFile, checker: Checker): Set<Symbol> {
-  const symbols = new Set<Symbol>();
+function reassignedSymbols(sourceFile: ts.SourceFile, checker: ts.TypeChecker): Set<ts.Symbol> {
+  const symbols = new Set<ts.Symbol>();
   const visit = (node: ts.Node) => {
     if (
       tsCompiler.isBinaryExpression(node)
@@ -443,92 +447,87 @@ function reassignedSymbols(sourceFile: ts.SourceFile, checker: Checker): Set<Sym
       (tsCompiler.isForInStatement(node) || tsCompiler.isForOfStatement(node))
       && !tsCompiler.isVariableDeclarationList(node.initializer)
     ) {
-      addAssignmentTargetSymbols(node.initializer as ts.Expression, checker, symbols);
+      addAssignmentTargetSymbols(node.initializer, checker, symbols);
     }
-    node.forEachChild(visit);
+    tsCompiler.forEachChild(node, visit);
   };
   visit(sourceFile);
   return symbols;
 }
 
 function auditSource(filePath: string, sourceText: string): AuditDiagnostic[] {
-  const { sourceFile, checker, project, close } = createBoundAuditSource(filePath, sourceText);
-  try {
-    const copyAnalysisContext: CopyAnalysisContext = {
-      checker,
-      project,
-      reassignedSymbols: reassignedSymbols(sourceFile, checker),
-    };
-    const diagnostics: AuditDiagnostic[] = [];
+  const { sourceFile, checker } = createBoundAuditSource(filePath, sourceText);
+  const copyAnalysisContext: CopyAnalysisContext = {
+    checker,
+    reassignedSymbols: reassignedSymbols(sourceFile, checker),
+  };
+  const diagnostics: AuditDiagnostic[] = [];
 
-    const report = (node: ts.Node, category: string, detail: string) => {
-      const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-      diagnostics.push({ filePath, line: line + 1, category, detail });
-    };
+  const report = (node: ts.Node, category: string, detail: string) => {
+    const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+    diagnostics.push({ filePath, line: line + 1, category, detail });
+  };
 
-    const visit = (node: ts.Node) => {
-      if (tsCompiler.isJsxText(node)) {
-        const text = normalizeJsxText(node.text);
-        if (hasAuditableText(text)) report(node, 'jsx-text', JSON.stringify(text));
-      }
+  const visit = (node: ts.Node) => {
+    if (tsCompiler.isJsxText(node)) {
+      const text = normalizeJsxText(node.text);
+      if (hasAuditableText(text)) report(node, 'jsx-text', JSON.stringify(text));
+    }
 
-      if (tsCompiler.isJsxExpression(node) && !tsCompiler.isJsxAttribute(node.parent)) {
-        const copy = auditableCopy(node.expression, copyAnalysisContext);
-        if (copy) report(node, 'jsx-expression', copyDetail(copy));
-      }
+    if (tsCompiler.isJsxExpression(node) && !tsCompiler.isJsxAttribute(node.parent)) {
+      const copy = auditableCopy(node.expression, copyAnalysisContext);
+      if (copy) report(node, 'jsx-expression', copyDetail(copy));
+    }
 
-      if (tsCompiler.isJsxAttribute(node)) {
-        const name = node.name.getText(sourceFile);
-        if (AUDITED_ATTRIBUTE_NAMES.has(name) || name === 'alt') {
-          const copy = jsxAttributeCopy(node.initializer, copyAnalysisContext);
-          if (copy && AUDITED_ATTRIBUTE_NAMES.has(name)) {
-            const separator = copy.kind === 'literal' ? '=' : ' ';
-            report(node, 'literal-attribute', `${name}${separator}${copyDetail(copy)}`);
-          } else if (copy && name === 'alt') {
-            report(node, 'literal-alt', copyDetail(copy));
-          }
+    if (tsCompiler.isJsxAttribute(node)) {
+      const name = node.name.getText(sourceFile);
+      if (AUDITED_ATTRIBUTE_NAMES.has(name) || name === 'alt') {
+        const copy = jsxAttributeCopy(node.initializer, copyAnalysisContext);
+        if (copy && AUDITED_ATTRIBUTE_NAMES.has(name)) {
+          const separator = copy.kind === 'literal' ? '=' : ' ';
+          report(node, 'literal-attribute', `${name}${separator}${copyDetail(copy)}`);
+        } else if (copy && name === 'alt') {
+          report(node, 'literal-alt', copyDetail(copy));
         }
       }
+    }
 
-      if (tsCompiler.isPropertyAssignment(node)) {
-        const name = propertyNameText(node.name);
-        if (name && AUDITED_OBJECT_PROPERTY_NAMES.has(name)) {
-          const copy = auditableCopy(node.initializer, copyAnalysisContext);
-          if (copy) {
-            const separator = copy.kind === 'literal' ? '=' : ' ';
-            report(node, 'literal-object-property', `${name}${separator}${copyDetail(copy)}`);
-          }
+    if (tsCompiler.isPropertyAssignment(node)) {
+      const name = propertyNameText(node.name);
+      if (name && AUDITED_OBJECT_PROPERTY_NAMES.has(name)) {
+        const copy = auditableCopy(node.initializer, copyAnalysisContext);
+        if (copy) {
+          const separator = copy.kind === 'literal' ? '=' : ' ';
+          report(node, 'literal-object-property', `${name}${separator}${copyDetail(copy)}`);
         }
       }
+    }
 
-      if (tsCompiler.isCallExpression(node)) {
-        const methodName = calledMethodName(node.expression);
-        if (
-          methodName
-          && AMBIENT_LOCALE_METHODS.has(methodName)
-          && (node.arguments.length === 0 || isEmptyArrayExpression(node.arguments[0]))
-        ) {
-          report(node, 'ambient-locale', `${methodName} requires an explicit locale`);
-        }
+    if (tsCompiler.isCallExpression(node)) {
+      const methodName = calledMethodName(node.expression);
+      if (
+        methodName
+        && AMBIENT_LOCALE_METHODS.has(methodName)
+        && (node.arguments.length === 0 || isEmptyArrayExpression(node.arguments[0]))
+      ) {
+        report(node, 'ambient-locale', `${methodName} requires an explicit locale`);
       }
+    }
 
-      if (tsCompiler.isImportDeclaration(node) && tsCompiler.isStringLiteral(node.moduleSpecifier)) {
-        if (
-          importsLegacyLocalizationModule(node.moduleSpecifier.text)
-          || importedLegacyLocalizationName(node.importClause)
-        ) {
-          report(node, 'legacy-localization-import', JSON.stringify(node.moduleSpecifier.text));
-        }
+    if (tsCompiler.isImportDeclaration(node) && tsCompiler.isStringLiteral(node.moduleSpecifier)) {
+      if (
+        importsLegacyLocalizationModule(node.moduleSpecifier.text)
+        || importedLegacyLocalizationName(node.importClause)
+      ) {
+        report(node, 'legacy-localization-import', JSON.stringify(node.moduleSpecifier.text));
       }
+    }
 
-      node.forEachChild(visit);
-    };
+    tsCompiler.forEachChild(node, visit);
+  };
 
-    visit(sourceFile);
-    return diagnostics;
-  } finally {
-    close();
-  }
+  visit(sourceFile);
+  return diagnostics;
 }
 
 function productionTsxFiles(directoryPath: string): string[] {
