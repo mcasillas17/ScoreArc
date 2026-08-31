@@ -26,11 +26,11 @@ jobs:
       DIRECT_DSN: postgres://postgres:postgres@localhost:5432/scorearc?sslmode=disable
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
