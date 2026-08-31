@@ -18,21 +18,22 @@ import SiteFooter from '@/components/SiteFooter';
 export const dynamic = 'force-dynamic';
 
 interface Params {
-  params: { locale: string; comp: string; season: string; teamId: string };
+  params: { locale: string; comp: string; season: string; teamId: string } | Promise<{ locale: string; comp: string; season: string; teamId: string }>;
 }
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
-  if (!isLocale(params.locale)) notFound();
-  const locale = params.locale;
+  const resolvedParams = await params;
+  if (!isLocale(resolvedParams.locale)) notFound();
+  const locale = resolvedParams.locale;
   const t = getTranslator(locale);
-  const rc = resolveSeason(params.comp, params.season);
+  const rc = resolveSeason(resolvedParams.comp, resolvedParams.season);
   if (!rc) return { title: t('team.metaFallbackTitle') };
-  const upstreamId = providerTeamId(params.teamId);
+  const upstreamId = providerTeamId(resolvedParams.teamId);
   if (!upstreamId) return { title: t('team.metaFallbackTitle') };
   const profile = await dataStore.getTeam(rc, upstreamId);
   if (!profile) return { title: t('team.metaFallbackTitle') };
   const edition = `${rc.competition.shortName} ${rc.season.label}`;
-  const pathname = `/c/${rc.competition.id}/${rc.season.id}/team/${params.teamId}`;
+  const pathname = `/c/${rc.competition.id}/${rc.season.id}/team/${resolvedParams.teamId}`;
   const title = t('team.metaTitle', profile.team.name, edition);
   const description = t('team.metaDescription', profile.team.name, edition);
   const og = ogUrl({
@@ -65,14 +66,15 @@ function resultFor(match: Match, teamId: string): 'W' | 'D' | 'L' | null {
 }
 
 export default async function TeamPage({ params }: Params) {
-  if (!isLocale(params.locale)) notFound();
-  const locale = params.locale;
+  const resolvedParams = await params;
+  if (!isLocale(resolvedParams.locale)) notFound();
+  const locale = resolvedParams.locale;
   const t = getTranslator(locale);
-  const rc = resolveSeason(params.comp, params.season);
+  const rc = resolveSeason(resolvedParams.comp, resolvedParams.season);
   if (!rc) notFound();
   // The URL carries our canonical id; the provider is asked by its own number.
   // A slug we do not know is a 404, not an upstream call with a bad id.
-  const upstreamId = providerTeamId(params.teamId);
+  const upstreamId = providerTeamId(resolvedParams.teamId);
   if (!upstreamId) notFound();
   const profile = await dataStore.getTeam(rc, upstreamId);
   if (!profile) notFound();

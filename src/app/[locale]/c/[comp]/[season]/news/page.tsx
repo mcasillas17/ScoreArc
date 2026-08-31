@@ -11,14 +11,14 @@ import SiteFooter from '@/components/SiteFooter';
 export const dynamic = 'force-dynamic';
 
 interface Params {
-  params: { locale: string; comp: string; season: string };
+  params: { locale: string; comp: string; season: string } | Promise<{ locale: string; comp: string; season: string }>;
 }
 
-export function generateMetadata({ params }: Params): Metadata {
-  if (!isLocale(params.locale)) notFound();
-  const locale = params.locale;
+export async function generateMetadata({ params }: Params): Promise<Metadata> {
+  const { locale, comp, season } = await params;
+  if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
-  const rc = resolveSeason(params.comp, params.season);
+  const rc = resolveSeason(comp, season);
   if (!rc) return { title: t('news.title') };
   const edition = `${rc.competition.shortName} ${rc.season.label}`;
   const pathname = `/c/${rc.competition.id}/${rc.season.id}/news`;
@@ -33,9 +33,10 @@ export function generateMetadata({ params }: Params): Metadata {
 }
 
 export default async function NewsPage({ params }: Params) {
-  if (!isLocale(params.locale)) notFound();
-  const t = getTranslator(params.locale);
-  const rc = resolveSeason(params.comp, params.season);
+  const { locale, comp, season } = await params;
+  if (!isLocale(locale)) notFound();
+  const t = getTranslator(locale);
+  const rc = resolveSeason(comp, season);
   if (!rc) notFound();
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
   let news: NewsArticle[] = [];

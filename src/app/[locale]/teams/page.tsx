@@ -8,9 +8,9 @@ import SiteFooter from '@/components/SiteFooter';
 
 export const dynamic = 'force-dynamic';
 
-export function generateMetadata({ params }: { params: { locale: string } }): Metadata {
-  if (!isLocale(params.locale)) notFound();
-  const locale = params.locale;
+export async function generateMetadata({ params }: { params: { locale: string } | Promise<{ locale: string }> }): Promise<Metadata> {
+  const { locale } = await params;
+  if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
   return {
     title: t('teams.metaTitle'),
@@ -22,9 +22,9 @@ export function generateMetadata({ params }: { params: { locale: string } }): Me
   };
 }
 
-export default async function TeamsPage({ params }: { params: { locale: string } }) {
-  if (!isLocale(params.locale)) notFound();
-  const locale = params.locale;
+export default async function TeamsPage({ params }: { params: { locale: string } | Promise<{ locale: string }> }) {
+  const { locale } = await params;
+  if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
   const teams = await allTeams();
 

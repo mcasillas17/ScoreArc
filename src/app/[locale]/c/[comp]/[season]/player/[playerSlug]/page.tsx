@@ -17,15 +17,17 @@ import { teamHref } from '@/components/teamHref';
 export const dynamic = 'force-dynamic';
 
 interface Params {
-  params: { locale: string; comp: string; season: string; playerSlug: string };
+  params: { locale: string; comp: string; season: string; playerSlug: string } | Promise<{ locale: string; comp: string; season: string; playerSlug: string }>;
 }
+
+type ResolvedParams = Awaited<Params['params']>;
 
 /**
  * The URL carries our slug (docs/backend/PLAYER_IDENTITY.md), never the
  * provider's athlete number. A slug the index does not know is a 404 without
  * an upstream athlete request.
  */
-async function loadPlayer(params: Params['params']): Promise<PlayerProfile | null> {
+async function loadPlayer(params: ResolvedParams): Promise<PlayerProfile | null> {
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) return null;
   const index = await competitionPlayerIndex(rc);
@@ -35,20 +37,21 @@ async function loadPlayer(params: Params['params']): Promise<PlayerProfile | nul
 }
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
-  if (!isLocale(params.locale)) notFound();
-  const locale = params.locale;
+  const resolvedParams = await params;
+  if (!isLocale(resolvedParams.locale)) notFound();
+  const locale = resolvedParams.locale;
   const t = getTranslator(locale);
-  const rc = resolveSeason(params.comp, params.season);
+  const rc = resolveSeason(resolvedParams.comp, resolvedParams.season);
   if (!rc) return { title: t('player.metaFallbackTitle') };
   let player: PlayerProfile | null = null;
   try {
-    player = await loadPlayer(params);
+    player = await loadPlayer(resolvedParams);
   } catch {
     return { title: t('player.metaFallbackTitle') };
   }
   if (!player) return { title: t('player.metaFallbackTitle') };
   const edition = `${rc.competition.shortName} ${rc.season.label}`;
-  const pathname = `/c/${rc.competition.id}/${rc.season.id}/player/${params.playerSlug}`;
+  const pathname = `/c/${rc.competition.id}/${rc.season.id}/player/${resolvedParams.playerSlug}`;
   const title = t('player.metaTitle', player.name, edition);
   const description = t('player.metaDescription', player.name, edition);
   const og = ogUrl({
@@ -72,12 +75,13 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 }
 
 export default async function PlayerPage({ params }: Params) {
-  if (!isLocale(params.locale)) notFound();
-  const locale = params.locale;
+  const resolvedParams = await params;
+  if (!isLocale(resolvedParams.locale)) notFound();
+  const locale = resolvedParams.locale;
   const t = getTranslator(locale);
-  const rc = resolveSeason(params.comp, params.season);
+  const rc = resolveSeason(resolvedParams.comp, resolvedParams.season);
   if (!rc) notFound();
-  const player = await loadPlayer(params);
+  const player = await loadPlayer(resolvedParams);
   if (!player) notFound();
 
   const teamBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/team`;
