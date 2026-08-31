@@ -18,18 +18,30 @@ import { projectLiguilla } from '@/server/data/liguillaProjection';
 
 export const dynamic = 'force-dynamic';
 
-export async function generateMetadata({ params, searchParams }: { params: { locale: string; comp: string; season: string }; searchParams: { c?: string; name?: string; crest?: string } }): Promise<Metadata> {
-  if (!isLocale(params.locale)) notFound();
-  const locale = params.locale;
-  const rc = resolveSeason(params.comp, params.season);
+type SeasonParams =
+  | { locale: string; comp: string; season: string }
+  | Promise<{ locale: string; comp: string; season: string }>;
+type PageSearchParams =
+  | { c?: string | string[]; name?: string | string[]; crest?: string | string[] }
+  | Promise<{ c?: string | string[]; name?: string | string[]; crest?: string | string[] }>;
+
+function firstSearchParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export async function generateMetadata({ params, searchParams }: { params: SeasonParams; searchParams: PageSearchParams }): Promise<Metadata> {
+  const { locale, comp, season } = await params;
+  const query = await searchParams;
+  if (!isLocale(locale)) notFound();
+  const rc = resolveSeason(comp, season);
   if (!rc) return {};
   const t = getTranslator(locale);
   const label = `${rc.competition.shortName} ${rc.season.label}`;
-  const champ = searchParams.c;
-  const name = searchParams.name ?? champ;
+  const champ = firstSearchParam(query.c);
+  const name = firstSearchParam(query.name) ?? champ;
   // Echoed into canonical/hreflang, so it is validated, not trusted: an
   // attacker-crafted ?crest= must not land in our own canonical tag.
-  const crest = safeCrest(searchParams.crest);
+  const crest = safeCrest(firstSearchParam(query.crest));
   const predictionQuery = champ
     ? `?c=${encodeURIComponent(champ)}&name=${encodeURIComponent(name ?? champ)}${
         crest ? `&crest=${encodeURIComponent(crest)}` : ''
@@ -66,11 +78,11 @@ export async function generateMetadata({ params, searchParams }: { params: { loc
   };
 }
 
-export default async function Workspace({ params }: { params: { locale: string; comp: string; season: string } }) {
-  if (!isLocale(params.locale)) notFound();
-  const locale = params.locale;
+export default async function Workspace({ params }: { params: SeasonParams }) {
+  const { locale, comp, season } = await params;
+  if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
-  const rc = resolveSeason(params.comp, params.season);
+  const rc = resolveSeason(comp, season);
   if (!rc) notFound();
   // A league's headline view IS its table, and the table lives at /standings
   // for every competition — so a season root with nothing of its own

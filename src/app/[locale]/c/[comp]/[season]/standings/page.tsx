@@ -13,11 +13,15 @@ import { getTranslator } from '@/i18n/translate';
 
 export const dynamic = 'force-dynamic';
 
-export async function generateMetadata({ params }: { params: { locale: string; comp: string; season: string } }): Promise<Metadata> {
-  if (!isLocale(params.locale)) notFound();
-  const locale = params.locale;
+type SeasonParams =
+  | { locale: string; comp: string; season: string }
+  | Promise<{ locale: string; comp: string; season: string }>;
+
+export async function generateMetadata({ params }: { params: SeasonParams }): Promise<Metadata> {
+  const { locale, comp, season } = await params;
+  if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
-  const rc = resolveSeason(params.comp, params.season);
+  const rc = resolveSeason(comp, season);
   if (!rc) return { title: t('standings.title') };
   const editionName = `${rc.competition.shortName} ${rc.season.label}`;
   return {
@@ -33,11 +37,11 @@ export async function generateMetadata({ params }: { params: { locale: string; c
   };
 }
 
-export default async function StandingsPage({ params }: { params: { locale: string; comp: string; season: string } }) {
-  if (!isLocale(params.locale)) notFound();
-  const locale = params.locale;
+export default async function StandingsPage({ params }: { params: SeasonParams }) {
+  const { locale, comp, season } = await params;
+  if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
-  const rc = resolveSeason(params.comp, params.season);
+  const rc = resolveSeason(comp, season);
   if (!rc) notFound();
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
   // Crests in the tables below link here. Competition-scoped because a club's

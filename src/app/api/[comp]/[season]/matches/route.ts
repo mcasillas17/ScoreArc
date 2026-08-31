@@ -8,6 +8,8 @@ import { apiError } from '@/app/api/errorResponse';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+type RouteParams = { comp: string; season: string } | Promise<{ comp: string; season: string }>;
+
 /**
  * Every match list, behind one endpoint.
  *
@@ -24,8 +26,9 @@ export const revalidate = 0;
  * The three windows keep their own store methods and their own cache TTLs —
  * live scores go stale in seconds, a calendar month does not.
  */
-export async function GET(req: Request, { params }: { params: { comp: string; season: string } }) {
-  const rc = resolveSeason(params.comp, params.season);
+export async function GET(req: Request, { params }: { params: RouteParams }) {
+  const { comp, season } = await params;
+  const rc = resolveSeason(comp, season);
   if (!rc) {
     return apiError('NOT_FOUND', 404);
   }
@@ -52,7 +55,7 @@ export async function GET(req: Request, { params }: { params: { comp: string; se
     }
     return Response.json(matches, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
   } catch {
-    await trackAPIRequestFailure('matches', 502, params.comp, params.season);
+    await trackAPIRequestFailure('matches', 502, comp, season);
     return apiError('UPSTREAM_UNAVAILABLE', 502);
   }
 }
