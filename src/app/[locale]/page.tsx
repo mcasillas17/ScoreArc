@@ -15,6 +15,7 @@ import TrackedLink from '@/components/TrackedLink';
 import SiteFooter from '@/components/SiteFooter';
 
 export const dynamic = 'force-dynamic';
+type PageParams = { locale: string } | Promise<{ locale: string }>;
 
 /** How many match cards the digest shows. A digest is a glance; the nav is the
  *  way into a competition's full list. This is also the whole page's match
@@ -42,9 +43,9 @@ function dedupeByMatch(entries: LiveEntry[]): LiveEntry[] {
   });
 }
 
-export default async function Home({ params }: { params: { locale: string } }) {
-  if (!isLocale(params.locale)) notFound();
-  const locale = params.locale;
+export default async function Home({ params }: { params: PageParams }) {
+  const { locale } = await params;
+  if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
   // One clock for the whole render, so two blocks cannot disagree about "now".
   const now = new Date();

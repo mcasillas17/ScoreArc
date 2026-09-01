@@ -6,8 +6,11 @@ import { apiError } from '@/app/api/errorResponse';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET(_req: Request, { params }: { params: { comp: string; season: string } }) {
-  const rc = resolveSeason(params.comp, params.season);
+type RouteParams = { comp: string; season: string } | Promise<{ comp: string; season: string }>;
+
+export async function GET(_req: Request, { params }: { params: RouteParams }) {
+  const { comp, season } = await params;
+  const rc = resolveSeason(comp, season);
   if (!rc) {
     return apiError('NOT_FOUND', 404);
   }
@@ -15,7 +18,7 @@ export async function GET(_req: Request, { params }: { params: { comp: string; s
     const news = await dataStore.getNews(rc);
     return Response.json(news, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
   } catch {
-    await trackAPIRequestFailure('news', 502, params.comp, params.season);
+    await trackAPIRequestFailure('news', 502, comp, season);
     return apiError('UPSTREAM_UNAVAILABLE', 502);
   }
 }
