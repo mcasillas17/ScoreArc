@@ -93,7 +93,7 @@ test payloads) and ESPN's own `?fixture=true` parameter.
 - `npm run test:watch` — watch mode.
 - Single test: `npx vitest run <file> -t "<test name>"`.
 - `npx tsc --noEmit` — typecheck (strict). Must be clean before a PR.
-- `npm run lint` — ESLint (`next lint`).
+- `npm run lint` — ESLint (`eslint .`, flat config in `eslint.config.mjs`).
 - `npm run build` — production build; run it if a change could affect the build.
 - `npm run export:competitions` — **required** after any edit to
   `src/server/data/competitions.ts`. `backend/config/competitions.json` is

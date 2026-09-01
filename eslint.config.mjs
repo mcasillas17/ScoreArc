@@ -3,6 +3,11 @@ import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTypescript from "eslint-config-next/typescript";
 
 export default defineConfig([
+  {
+    // Local agent worktrees can live inside the checkout; `eslint .` would
+    // drown real findings in thousands of stale copies. CI never has these.
+    ignores: [".worktrees/**", ".claude/**"],
+  },
   ...nextVitals,
   ...nextTypescript,
   {
