@@ -6,6 +6,10 @@ working dev + deploy environment for the ScoreArc backend. Copy-paste friendly.
 Target OS: **macOS** (Apple Silicon or Intel). If on Linux, swap `brew` for your
 package manager; all the CLIs below have Linux builds.
 
+> 📍 This is an **operations/setup** reference. For live deployment status — what
+> is running, healthy, or broken right now — see
+> [`docs/CURRENT_STATE.md`](../CURRENT_STATE.md), the canonical status ledger.
+
 > ⚠️ **Needs a human (an unattended agent cannot do these):** creating the
 > accounts in §0; the browser OAuth logins `gh auth login` / `fly auth login` /
 > `vercel login` / `wrangler login` (§1–§2); adding a card to Fly; creating the
@@ -46,12 +50,16 @@ brew install go
 go version             # expect: go version go1.26.x  (must be >= 1.26)
 ```
 
-### 1.4 Node.js + npm (for the frontend + the config export script) — **20 LTS or newer**
+### 1.4 Node.js + npm (for the frontend + the config export script) — **22.22.2 or newer**
 ```bash
 brew install node
-node --version         # expect v20.x or newer
+node --version         # expect v22.22.2 or newer
 ```
 The repo uses `tsx` (via `npx`) for the `export-competitions` script — no global install needed.
+
+> The Node floor is **≥ 22.22.2** (jsdom 30, used by the Vitest suite, requires
+> it); CI pins **22.23.2** (`.github/workflows/ci.yml`). Node 20 no longer
+> passes the test suite.
 
 ### 1.5 PostgreSQL client (`psql`) — to run migrations + inspect the DB
 ```bash
@@ -177,12 +185,18 @@ export DIRECT_DSN='postgres://<user>:<pass>@<direct-host>/<db>?sslmode=require'
 ```bash
 cd backend
 migrate -path migrations -database "$DIRECT_DSN" up
-# expect: applied 0001_init through 0004_ingester_hardening
+# expect: the full ordered chain applies, 0001_init through the latest migration
 ```
 
-Apply migrations through `0004_ingester_hardening` before deploying reader or
-ingester binaries from this release. The reader selects columns added by `0004`;
-do not roll that migration back while this reader version is serving traffic.
+Apply the **full ordered migration chain** — every file in `backend/migrations/`,
+in sequence, from `0001_init` through the latest committed migration (currently
+`0022_team_colours`) — before deploying the reader or ingester from this release.
+The reader and ingester select columns and rely on constraints added across that
+chain, so deploy binaries only against a database migrated through the current
+head, and never roll a migration back while a binary that depends on it is
+serving traffic. (Migration numbering has gaps — some pre-launch migrations were
+folded into `0001` before deployment — so trust the files on disk, not a
+contiguous count.)
 
 ### 5.3 (Option B) with psql directly — fresh database bootstrap only
 
@@ -223,7 +237,7 @@ never the owner/admin account.
 ```bash
 psql "$DIRECT_DSN" -c '\dt'
 # expect tables: team, match, match_detail, standing, top_scorer,
-#                standing_snapshot, win_prob_snapshot, ingest_run
+#                standing_snapshot, win_prob_snapshot, odds_snapshot, ingest_run
 
 # the reader MUST be read-only — this should ERROR with "permission denied":
 psql "$READER_DSN" -c "INSERT INTO team(id,name,abbr) VALUES('x','x','x');"
@@ -322,8 +336,10 @@ the committed config:
 - Ingester: `backend/ingester/Dockerfile` + `backend/ingester/fly.toml`
   (always-on singleton, no public HTTP).
 
-Complete the database migration in §5 before either deploy. During rollback,
-replace the reader with a pre-`0004` binary before reverting migration `0004`.
+Complete the database migration in §5 before either deploy. During a rollback,
+replace the reader (or ingester) with a binary that predates any migration you
+revert, before reverting it — never leave a running binary pointed at a database
+missing a migration it depends on.
 
 ### 7.1 Build context (read this first)
 
@@ -442,14 +458,22 @@ Successful `/healthz` probes are deliberately not logged — Fly polls it every
 Push to `main` auto-deploys via GitHub Actions, **path-filtered per service** so
 a reader-only change never redeploys the ingester:
 `.github/workflows/deploy-reader.yml` and `.github/workflows/deploy-ingester.yml`.
-Both authenticate with the `FLY_API_TOKEN` repo secret. Create it with a
-deploy-scoped token and add it under GitHub → repo → Settings → Secrets and
-variables → Actions:
+Each workflow authenticates with its **own app-scoped** repo secret —
+`FLY_API_TOKEN_READER` for the reader and `FLY_API_TOKEN_INGESTER` for the
+ingester — so a leaked or rotated token is scoped to one app, not both. Create a
+deploy-scoped token per app and add each under GitHub → repo → Settings →
+Secrets and variables → Actions:
 
 ```bash
 fly tokens create deploy --app scorearc-reader
-# paste the output as the FLY_API_TOKEN GitHub Actions secret
+# paste the output as the FLY_API_TOKEN_READER GitHub Actions secret
+
+fly tokens create deploy --app scorearc-ingester
+# paste the output as the FLY_API_TOKEN_INGESTER GitHub Actions secret
 ```
+
+Each workflow skips its deploy with a notice if its token secret is unset, so an
+unprovisioned Fly account does not fail CI.
 
 Note that `ci.yml` runs on pull requests and on pushes to every branch **except**
 `main`, so the PR is the test gate — a push to `main` deploys without re-running
@@ -526,6 +550,7 @@ Everything should say `OK`. `go` must be **>= 1.26**; `psql` **16.x or newer**.
 | `R2_RAW_BUCKET` | Fly secret on the ingester | **private** raw-payload archive, `scorearc-espn-historic`. Has no public base URL by design |
 | `DATA_SOURCE` | Vercel env (frontend) | `espn` until parity, then `api` (slice 1d) |
 | `SCOREARC_API_BASE` | Vercel env (frontend) | the reader's public URL, e.g. `https://scorearc-reader.fly.dev` (slice 1d) |
-| `FLY_API_TOKEN` | GitHub Actions secret | `fly tokens create deploy` (CI) |
+| `FLY_API_TOKEN_READER` | GitHub Actions secret | `fly tokens create deploy --app scorearc-reader` (reader deploy CI) |
+| `FLY_API_TOKEN_INGESTER` | GitHub Actions secret | `fly tokens create deploy --app scorearc-ingester` (ingester deploy CI) |
 
 Migrations use the **direct** DSN interactively (not stored as a service secret).

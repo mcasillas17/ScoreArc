@@ -4,6 +4,12 @@ Self-contained design reference for the backend. The full original spec is
 `docs/superpowers/specs/2026-07-22-backend-api-phase1-design.md` (its GCP infra
 section is superseded by the Fly+Neon+R2 pivot; everything else here matches).
 
+> 📍 **This document describes intended design.** For what is actually deployed,
+> working, or broken right now — and for any live defect a design statement below
+> does not capture — see [`docs/CURRENT_STATE.md`](../CURRENT_STATE.md), the
+> canonical status ledger. Where design and current reality differ, this file
+> states the design and defers the status to that document.
+
 ---
 
 ## 1. System diagram
@@ -30,8 +36,11 @@ flowchart LR
 
 - **Live vs historical is a first-class axis.** Current state is hot/mutable
   (upserted). A finished match is frozen (`finalized_at`) and immutable →
-  historical results accrue for free. Time-series snapshots are append-only
-  (Phase 2). The ingester behaves accordingly (upsert while live; write-and-freeze
+  historical results accrue for free. Time-series snapshots use **bucketed
+  latest-observation** semantics rather than being strictly append-only: writes
+  converge to one row per UTC day (standings) or per UTC minute (win-prob, odds),
+  updating the bucket's row on a re-poll instead of appending a duplicate (§3,
+  Tier 3). The ingester behaves accordingly (upsert while live; write-and-freeze
   on finish).
 
 ---
@@ -42,12 +51,20 @@ The frontend reads through **one interface**, `DataStore` (`src/server/data/stor
 
 ```ts
 interface DataStore {
-  getMatches(rc): Promise<Match[]>
+  getMatches(rc, range?): Promise<Match[]>
+  getFixtures(rc, range): Promise<Match[]>
+  getLiveWindow(rc): Promise<Match[]>
+  getUpcoming(rc, limit?): Promise<Match[]>
   getStandings(rc): Promise<Group[]>
   getBracket(rc): Promise<BracketRound[]>
   getMatchSummary(rc, eventId, homeId, awayId): Promise<MatchSummaryData>
-  getTopScorers(rc): Promise<TopScorer[]>
+  getLeaders(rc): Promise<{ scorers: StatLeader[]; assists: StatLeader[] }>
+  getTopScorers(rc): Promise<StatLeader[]>
+  getTopAssists(rc): Promise<StatLeader[]>
   getNews(rc): Promise<NewsArticle[]>
+  getTeam(rc, teamId): Promise<TeamProfile | null>
+  getSquad(rc, teamId): Promise<SquadPlayer[]>
+  getPlayer(rc, athleteId): Promise<PlayerProfile | null>
 }
 ```
 
@@ -55,7 +72,9 @@ Today it's ESPN read-through + TTL cache. Phase 1 adds a second implementation,
 `apiStore`, that calls our reader. **No page or component changes** — only the
 seam swaps (slice 1d, behind a `DATA_SOURCE` flag with ESPN fallback). The
 reader's JSON must deserialize into the existing types in
-`src/server/data/types.ts`.
+`src/server/data/types.ts`. These **14 methods do not yet map 1:1 onto the
+reader's routes** (§5), so 1d is a contract/parity project, not a base-URL swap —
+the current gap is tracked in [`docs/CURRENT_STATE.md`](../CURRENT_STATE.md) §5.
 
 ---
 
@@ -93,11 +112,15 @@ revert a mirrored crest to a provider hotlink. Full rationale:
 Migrations: `backend/migrations/0001_init.*.sql` establishes the canonical
 entities, crosswalk, Tier-1, ops, roles/grants, durability columns, indexes, and
 the original `match`/`match_detail` history guards; `0002_snapshots.*.sql`
-establishes Tier-3. Forward migrations add the later history surfaces, with
+establishes Tier-3's active snapshot tables `standing_snapshot` and
+`win_prob_snapshot`, with `0015_odds_snapshot.*.sql` adding `odds_snapshot`
+later. Forward migrations add the later history surfaces, with
 `0021_finalization_invariants.*.sql` extending C1 ("immutable once final") to
-the six remaining finalized-fact tables. The old pre-launch `0003`/`0004` were
-folded into `0001` before deployment; the current migrations bearing those
-numbers are newer forward migrations.
+the six remaining finalized-fact tables and `0022_team_colours.*.sql` as the
+current head. The old pre-launch `0003`/`0004` were folded into `0001` before
+deployment; the current migrations bearing those numbers are newer forward
+migrations. Which of these are applied in a given environment is tracked by
+[`../CURRENT_STATE.md`](../CURRENT_STATE.md), not this inventory.
 
 Backfills must finish before their finalization or archive seal is written.
 The bounded operator correction path for the six migration-0021 tables is
@@ -116,7 +139,7 @@ untouched and do not use that escape hatch.
   **match_external_ref** / **official_external_ref**(PK (source, source_id), *canonical id*→entity ON DELETE CASCADE, first_seen_at, last_seen_at) — the PK is `(source, source_id)`, not the canonical id, so **many** provider ids may map to **one** entity, which is exactly what merging duplicates produces. Each has an index on the canonical id for the reverse lookup. `official_external_ref` (T7.14) is the same shape for officials, so the second match a referee appears in resolves to the person already minted rather than to a new one.
 
 ### Tier 1 — current state (hot, upserted by the ingester)
-- **match**(id PK `uuid` v7, competition_id, season_id, round, kickoff, **kickoff_date** (generated, UTC date), state[`scheduled|live|finished`], home_team_id→team, away_team_id→team, home_score, away_score, minute, status_detail, status_name, winner_id→team, note, home_placeholder, away_placeholder, bracket_required, **finalized_at**, source, updated_at) — FK to `season(competition_id,id)`; **UNIQUE (competition_id, season_id, home_team_id, away_team_id, kickoff_date)** is the natural key that makes the same fixture from a second source resolve to one row; indexes on `(competition_id,season_id,kickoff)`, `state`, and unfinalized history. `updated_at` records the last persisted content change: an ingest that resolves to the same row does not refresh it.
+- **match**(id PK `uuid` v7, competition_id, season_id, round, kickoff, **kickoff_date** (generated, UTC date), state[`scheduled|live|finished`], home_team_id→team, away_team_id→team, home_score, away_score, minute, status_detail, status_name, winner_id→team, note, home_placeholder, away_placeholder, bracket_required, **finalized_at**, source, updated_at) — FK to `season(competition_id,id)`; **UNIQUE (competition_id, season_id, home_team_id, away_team_id, kickoff_date)** is the natural key that makes the same match from a second source resolve to one row; indexes on `(competition_id,season_id,kickoff)`, `state`, and unfinalized history. `updated_at` records the last persisted content change: an ingest that resolves to the same row does not refresh it.
 - **match_detail**(match_id PK→match, scorers jsonb, cards jsonb, stats jsonb, win_probability jsonb, shootout jsonb, shootout_detail jsonb, lineups jsonb, videos jsonb, info jsonb, form jsonb, h2h jsonb, commentary jsonb, updated_at)
 - **match_commentary**(PK (match_id→match, **seq** = ESPN's `sequence`), period, clock_value, clock_display, play_type, play_type_text, wallclock, text) — minute-by-minute commentary **with the structure `match_detail.commentary` drops** (T7.11). That jsonb column is unchanged and remains the reader's `MatchSummaryData.commentary` contract; it keeps `{minute, text}` only. This table adds guaranteed order (`sequence`), a numeric clock (`play.clock.value`, falling back to `time.value`; the recorded pre-match, kickoff, and match-end entries have an empty `time.displayValue`), the machine play type (`play.type.type`, so consumers need not regex English prose), and mutability (`match_detail` is frozen by `protect_finalized_detail` once a match finalizes). Rows are upserted and then tail-pruned like `match_event`; an **empty payload is a no-op, not a delete**, because commentary coverage varies by competition and has been observed at zero. Missing numeric provider fields remain SQL `NULL`, distinct from a measured zero. A failed write leaves a finished match unfinalized so the next cycle retries before freezing its detail. **Nothing here is parsed** — E6's shot-log parser is downstream and gated on T6.1's coverage probe.
 - **standing**(PK (competition_id,season_id,team_id→team), group_id, group_name, rank, played, wins, draws, losses, goals_for, goals_against, goal_difference, points, advanced, source, updated_at) — `group_id`/`group_name` (e.g. "A"/"Group A") are nullable: populated for multi-group competitions (e.g. World Cup group stage), null for single-table leagues. Wholesale replacement is guarded by an in-process FNV-1a/64 content memo over a collision-safe, length-prefixed encoding of exactly the mapped stored values within the scope: canonical `team_id`, nullable group id/name, rank, played/wins/draws/losses, goals for/against/difference, points, `advanced`, and `source` (never `updated_at` or unmapped team display fields). The memo advances only after commit; zero-row or rejected replacements are never skipped or memoised, and a cold restart deliberately rewrites each scope once. The memo is only a C3 cost gate: `standing_snapshot` remains deliberately ungated C4. In the 2026-08-18 production baseline, one idle slow tick produced 228 inserts and 228 deletes for 228 standing rows while all nine standings hashes stayed identical across the next tick.
@@ -127,14 +150,14 @@ untouched and do not use that escape hatch.
 - **match_play_archive**(match_id PK→match ON DELETE CASCADE, object_key, plays, bytes, **touch_tier**, archived_at) — one row per match (not per object) recording what went to the **private raw** R2 bucket at `plays/{source}/{competition}/{season}/{providerEventId}.ndjson.gz`, so a backfill knows what it still owes and a re-process knows what it can read. The archive is written **before** the rows, because bytes can rebuild rows and rows cannot rebuild bytes. `touch_tier` records whether the archived payload still carried the touch tier: ESPN prunes it at the season boundary (verified 2026-08-15), the answer is only knowable at write time, and without it a later re-process finds no passes and concludes the parser is broken. It only ever ratchets to true. This ledger, not `finalized_at`, is `match_play`'s seal under migration 0021 (below) — sealing on finalization would block the durable retry that fills the rows after an R2 failure.
 - **match_official**(PK (match_id→match ON DELETE CASCADE, official_id→official), role, role_id, ord) — the crew that officiated a match (T7.14), keyed by person rather than by role because a crew has **variable size**: a provider may send a referee alone, or assistants, a fourth official and video officials too. Projecting a fixed set of columns would silently drop whatever a competition sends beyond them. Captured at full time and retried from the durable final-capture backlog until it succeeds — the crew does not change during a match, so fetching it on every live poll would spend a request every 20s to re-learn the referee's name. There is deliberately **no tail DELETE** and migration 0014 grants none: a provider that briefly reports a shorter crew must not erase appointments.
 - **match_odds**(PK (match_id→match ON DELETE CASCADE, provider_id, **phase**[`open|close`]), provider_name, home/draw/away_moneyline, spread, home/away_spread_odds, over_under, over_odds, under_odds, observed_at) — each bookmaker's **fixed** opening and closing lines (T7.15), written only once the match is finalized, when they are settled facts rather than values still moving. `phase` is in the key so an opening line cannot overwrite a closing one, and so neither can collide with the sampled movement in `odds_snapshot`. These are the books' own American prices, **not** probabilities: `win_prob_snapshot` remains the separate record of probability, and neither is derivable from the other. A phase the provider never published is skipped rather than written — a row of nine `NULL`s would claim a book posted a line with no prices in it, which nothing downstream could tell from a real one. Overflowing `numeric(5,2)` nulls that one field only, so one malformed book cannot roll back another provider's row.
-- **squad_membership**(PK (competition_id, season_id, team_id→team, player_id→player), shirt_number, position, source, updated_at) — who is in a squad, per season (T7.9). Season-scoped so a transfer is a second row rather than an overwrite. Refreshed **once per UTC day** from `/teams/{id}/roster`: nine competitions × ~20 clubs = ~180 requests, against ~52,000 if it ran on every slow tick. Successful teams are remembered independently; a failed team alone retries after 30 minutes. The team list comes from `standing`.
+- **squad_membership**(PK (competition_id, season_id, team_id→team, player_id→player), shirt_number, position, source, updated_at) — who is in a squad, per season (T7.9). Season-scoped so a transfer is a second row rather than an overwrite. Refreshed **once per UTC day** from `/teams/{id}/roster`: the nine-competition baseline was ~20 clubs each, so ~180 requests, against ~52,000 if it ran on every slow tick; the current configured set is ten competitions, with ingestion coverage varying by competition. Successful teams are remembered independently; a failed team alone retries after 30 minutes. The team list comes from `standing`.
 - **player_season_stat**(PK (competition_id, season_id, player_id→player), team_id→team, appearances, sub_ins, goals, assists, shots, shots_on_target, offsides, fouls_committed, fouls_suffered, own_goals, yellow_cards, red_cards, saves, goals_conceded, shots_faced, source, updated_at) — **the provider's** season aggregate, deliberately not derived from summing `appearance`. The two will disagree: ours covers only matches the ingester has seen, ESPN's covers the whole season and competitions we do not ingest. Keeping both makes the disagreement visible. All nullable — 8 of 35 roster athletes carry no statistics block at all — and a missing provider statistic remains SQL `NULL`, never a synthetic `0`.
 - **player_team_history**(PK (player_id→player, team_source_id, seasons), team_name, ord, source) — career clubs from `/athletes/{id}/bio` (T7.10), on the **common/v3 host**. `team_source_id` is the provider's id and **not** a FK to `team`: a career spans competitions we will never curate. `seasons` is ESPN's own string (`"2025-CURRENT"`), stored verbatim because the vocabulary is undocumented. Fetched on a budget — only players with an `appearance`, 20 per slow tick, 30-day TTL via `player.bio_fetched_at`.
 - **player** additionally carries **birth_date** and **nationality**, filled from the roster payload's ISO `dateOfBirth`/`citizenship`. Never from the per-athlete endpoint's `displayDOB` (`"23/9/2003"`), which is locale-formatted and ambiguous below the 13th.
 
 ### Tier 3 — time-series (WRITTEN by the ingester today — there is no deferred `emitSnapshots()`)
 - **standing_snapshot**(id bigserial, competition_id, season_id, team_id→team, captured_at (the true observation time), **captured_on** (generated, UTC date), rank, points, goal_difference, played) — the daily table, **WRITTEN** by the ingester since T7.1 (`snapshotStandings` in `ingester/runner.go` → `Store.WriteStandingSnapshot`), and only after `ReplaceStandings` committed so the snapshot and the live table always agree. This is the one write in the system whose absence is irreversible: ESPN publishes the current table, not yesterday's, so a day nobody records can never be recovered from any provider — which is why the whole day is one transaction (a reader cannot tell a half-written table from a real one) and why the day is enforced by the database rather than by the caller. `captured_on` is **generated** from `(captured_at AT TIME ZONE 'UTC')::date` for the same reason `match.kickoff_date` is: a bucket the writer fills can disagree with the value it was derived from. Fixing the boundary at 00:00 UTC also lets a Liga MX series and a Premier League series share one x-axis. **UNIQUE (competition_id, season_id, team_id, captured_on)** is what makes a restart, a redeploy or a crash-loop unable to duplicate a day; the ingester's in-process day gate is only a cost optimisation on top of it. A second write within a recorded day UPDATES it — the semantic is "the day's last observed table", so 06:00 refreshed at 22:30 keeps the 22:30 numbers — guarded by `WHERE standing_snapshot.captured_at <= EXCLUDED.captured_at` so a delayed response cannot replace a fresher observation. A recorded day is only re-recorded when a match finalized that cycle, since that is the only thing that moves a table. The content memo that gates `standing` deliberately does **not** gate this: it is C4, the class where writing the same value twice is correct.
-- **win_prob_snapshot**(id bigserial, match_id→match ON DELETE CASCADE, captured_at (minute bucket, UTC), observed_at (untruncated poll-start time), home, draw, away numeric(5,2)) — append-only, **WRITTEN** by the ingester since T7.6, for matches in state `live` only. `UNIQUE (match_id, captured_at)` collapses the 20-second live poll to one row per minute; same-minute conflicts update only when `observed_at` is at least as recent, so a delayed response cannot replace fresher data. The values are **market-implied** — the first betting provider's three-way moneyline with the margin removed, per `mapWinProbability` — and are not a ScoreArc forecast. Scheduled detail is now TTL-throttled (>24 hours to kickoff every six hours, 24 hours down to more than one hour hourly, and the final hour every slow tick), but pre-match snapshots remain deliberately out of scope: even 4–24 rows per day for every future fixture would accumulate an unused market curve. Postponed or suspended fixtures whose kickoff has passed remain in the final-hour band and continue at slow-tick cadence.
+- **win_prob_snapshot**(id bigserial, match_id→match ON DELETE CASCADE, captured_at (minute bucket, UTC), observed_at (untruncated poll-start time), home, draw, away numeric(5,2)) — one row per UTC minute (bucketed latest-observation, not strictly append-only), **WRITTEN** by the ingester since T7.6, for matches in state `live` only. `UNIQUE (match_id, captured_at)` collapses the 20-second live poll to one row per minute; same-minute conflicts update only when `observed_at` is at least as recent, so a delayed response cannot replace fresher data. The values are **market-implied** — the first betting provider's three-way moneyline with the margin removed, per `mapWinProbability` — and are not a ScoreArc forecast. Scheduled detail is now TTL-throttled (>24 hours to kickoff every six hours, 24 hours down to more than one hour hourly, and the final hour every slow tick), but pre-match snapshots remain deliberately out of scope: even 4–24 rows per day for every future match would accumulate an unused market curve. Postponed or suspended matches whose kickoff has passed remain in the final-hour band and continue at slow-tick cadence.
 - **odds_snapshot**(PK (match_id→match ON DELETE CASCADE, provider_id, captured_at (minute bucket, UTC)), the same price columns as `match_odds`) — each bookmaker's **moving** current line, sampled on every live poll (T7.15), because market movement only exists if somebody writes it down: ESPN publishes the price now, not the price ten minutes ago. `captured_at` is bucketed to the UTC minute so the 20-second poll produces one evenly spaced row per minute instead of three, and an in-process sample gate skips the two polls that would only rewrite the row they just wrote — a full-time capture always writes, because that is the closing sample rather than a point on a curve. Sampled deliberately **outside** the win-probability condition: the competitions whose market `mapWinProbability` cannot normalize are exactly the ones whose market would otherwise never be recorded at all. Deliberately best-effort where `match_odds` is durable: another poll follows in ~20 seconds, so a failed sample is audited but never retried, and because the current market closes at full time a fixed-odds backlog retry does **not** add a post-match sample. Raw American prices again, so `win_prob_snapshot` is neither derived from nor replaced by these rows; a value the provider omits stays `NULL` rather than becoming a zero-priced observation.
 
 ### Ops
@@ -245,7 +268,7 @@ the seal is the intended single `match_pkey` probe with two shared-buffer hits.
   requests and `match_detail` rewrites per day, with 0/82 details changed in the
   audit. The predicted ~692 requests per day (~97% reduction) is only a
   uniform-distribution estimate for future scheduled candidates; it excludes
-  postponed or suspended fixtures with past kickoffs, which retain slow-tick
+  postponed or suspended matches with past kickoffs, which retain slow-tick
   cadence.
 - Work is bounded to three competitions concurrently. Two successful empty
   polls are required before a competition becomes dormant; failed polls reset
@@ -273,7 +296,7 @@ the seal is the intended single `match_pkey` probe with two shared-buffer hits.
   row with the values the match upsert would persist. It skips the SQL upsert
   when no content would change; absent provider numerics remain SQL `NULL`
   rather than becoming zero. This keeps `match.updated_at` meaningful and avoids
-  generating dead tuples for stable fixtures without changing finalization or
+  generating dead tuples for stable matches without changing finalization or
   reader behavior. A production sample found 82 redundant updates per five-minute
   slow tick across 2,578 matches, so the stable case avoids approximately 23,616
   tuple writes per day. This is an ingester-only write-path optimization: the
@@ -398,11 +421,14 @@ sequenceDiagram
 
 - Public and autoscaling, with one warm machine and an autostopped spare.
   Versioned under `/v1`.
-- Endpoints mirror the 6 `DataStore` methods:
+- **Seven `/v1` data routes plus `/healthz`** (they cover a subset of the 14
+  `DataStore` methods — the parity gap is in §2 and
+  [`docs/CURRENT_STATE.md`](../CURRENT_STATE.md) §5):
   - `GET /v1/competitions/{comp}/{season}/matches`
   - `GET /v1/competitions/{comp}/{season}/standings`
   - `GET /v1/competitions/{comp}/{season}/bracket`  (computed read-model)
   - `GET /v1/competitions/{comp}/{season}/top-scorers`
+  - `GET /v1/competitions/{comp}/{season}/teams/{teamId}`  (team profile)
   - `GET /v1/matches/{id}`  (summary/detail)
   - `GET /v1/competitions/{comp}/news`  → **live proxy to ESPN** (short TTL cache), NOT DB-served.
 - **Response shapes match the frontend types.** Publish an **OpenAPI** doc as the
@@ -477,10 +503,17 @@ nested response locations.
 
 ## 7. Frontend cutover (slice 1d)
 
+**Not started** — no `apiStore` exists on `main` (see
+[`docs/CURRENT_STATE.md`](../CURRENT_STATE.md)). This is a **contract/parity
+project, not a base-URL swap**: the 14 `DataStore` methods (§2) exceed the
+reader's 7 routes (§5), and canonical DTO shapes, query semantics, and derived
+views must reach tested parity first (`CURRENT_STATE.md` §5). The intended design:
+
 - Add `apiStore` implementing `DataStore` by calling the reader `/v1` endpoints
   and deserializing into the existing types.
 - `DATA_SOURCE` env flag (`espn` | `api`) selects the implementation; default
-  `espn` until parity is verified, then flip to `api`.
+  `espn` until parity is verified. Cut over **method-by-method**, with a
+  per-method ESPN fallback and shadow comparison — not a single one-step flip.
 - During rollout, `apiStore` **falls back to the ESPN store on error** so a
   backend issue never dark-pages the site.
 - Set `SCOREARC_API_BASE` (the reader's public URL) in Vercel env.
@@ -513,11 +546,14 @@ nested response locations.
   the ingester sees, so this would be ~6,000 requests to duplicate a subset of what we hold.
 - **Injuries** — not ingested. The `injuries` array is present on every roster athlete and
   **empty on all 35**. The field existing is not the data existing.
-- **Phase 2** — time-series *writes* + an analytics store. Options when we get
-  there: **BigQuery** (usable cross-cloud via API even off GCP), **R2 + DuckDB /
-  MotherDuck** (data-lake on the object storage we already have — natural fit),
-  **ClickHouse Cloud**, or just partitioned Neon/Postgres until it outgrows it.
-  The `emitSnapshots()` hook + snapshot tables are the seam; whatever we pick
+- **Phase 2 analytics store** — the time-series **writes already ship** (the
+  ingester writes `standing_snapshot`/`win_prob_snapshot`/`odds_snapshot`; see §3
+  Tier 3 — there is no deferred `emitSnapshots()`). What is deferred is a
+  dedicated analytics store and richer history/trend reads on top of those rows.
+  Options when we get there: **BigQuery** (usable cross-cloud via API even off
+  GCP), **R2 + DuckDB / MotherDuck** (data-lake on the object storage we already
+  have — natural fit), **ClickHouse Cloud**, or just partitioned Neon/Postgres
+  until it outgrows it. The snapshot tables are the seam; whatever we pick
   attaches there without reshaping Phase 1.
 - **Phase 3** — historical backfill. **Revised 2026-08-15:** xG no longer needs an
   external source. ESPN's *core* host serves shot geometry directly and T7.12/T7.13
@@ -567,8 +603,11 @@ truth is the TS**: `src/server/data/types.ts` (shapes), `providers/espn-*.ts`
 
 **1c — Reader (implemented)**
 - **Endpoint → type map:** each `/v1/…` response must deserialize into exactly
-  `Match[]` / `Group[]` / `BracketRound[]` / `MatchSummaryData` / `TopScorer[]` /
-  `NewsArticle[]` from `types.ts`. Write a field-by-field map in the plan.
+  the matching `types.ts` shape — `Match[]` / `Group[]` / `BracketRound[]` /
+  `StatLeader[]` (`top-scorers`) / `TeamProfile` (`teams/{teamId}`) /
+  `MatchSummaryData` (`matches/{id}`) / `NewsArticle[]` (`news`). Seven data
+  routes today; the frontend's other `DataStore` methods (§2) have no reader
+  route yet. Write a field-by-field map in the plan.
 - **`/news` drops season:** `newsUrl(slug)` is comp-only; the endpoint is
   `/v1/competitions/{comp}/news` and `apiStore.getNews` builds it from
   `rc.competition`, ignoring season.
