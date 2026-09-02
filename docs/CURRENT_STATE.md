@@ -29,7 +29,7 @@ re-verification — supersedes that proposed audit as filed.
 | Area | Status |
 |---|---|
 | Frontend | Live at scorearc.futbol, fully ESPN-backed. No reader/backend fetch call sites exist in `src/server/data/` — the 1d cutover has not started. |
-| Go backend | Ingester + reader deployed on Fly.io, Neon Postgres, Cloudflare R2 crest mirror. `deploy-reader.yml`/`deploy-ingester.yml` run and succeed on every `main` push. |
+| Go backend | Ingester + reader are deployed on Fly.io, Neon Postgres, Cloudflare R2 crest mirror. Recent credentialed, path-filtered deploy workflow runs completed checkout/setup/deploy steps successfully. |
 | Reader API | 7 registered `/v1` data routes (`matches`, `standings`, `bracket`, `top-scorers`, `teams/{teamId}`, `news`, `matches/{id}`) + `/healthz`. The team-profile route (`teams/{teamId}`) currently returns **500** for at least one live competition (Liga MX). |
 | 1d (frontend cutover) | Absent. No spec has landed as an implementation; no `apiStore` exists. |
 | E6 (shot log) | T6.1 (coverage probe) complete. T6.2–T6.4 (extraction, reconciliation, rendering) pending. |
