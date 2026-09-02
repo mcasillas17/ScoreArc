@@ -112,11 +112,14 @@ revert a mirrored crest to a provider hotlink. Full rationale:
 Migrations: `backend/migrations/0001_init.*.sql` establishes the canonical
 entities, crosswalk, Tier-1, ops, roles/grants, durability columns, indexes, and
 the original `match`/`match_detail` history guards; `0002_snapshots.*.sql`
-establishes Tier-3. Forward migrations add the later history surfaces, with
+establishes Tier-3's active snapshot tables (standings, win-prob, odds). Forward
+migrations add the later history surfaces, with
 `0021_finalization_invariants.*.sql` extending C1 ("immutable once final") to
-the six remaining finalized-fact tables. The old pre-launch `0003`/`0004` were
-folded into `0001` before deployment; the current migrations bearing those
-numbers are newer forward migrations.
+the six remaining finalized-fact tables and `0022_team_colours.*.sql` as the
+current head. The old pre-launch `0003`/`0004` were folded into `0001` before
+deployment; the current migrations bearing those numbers are newer forward
+migrations. Which of these are applied in a given environment is tracked by
+[`../CURRENT_STATE.md`](../CURRENT_STATE.md), not this inventory.
 
 Backfills must finish before their finalization or archive seal is written.
 The bounded operator correction path for the six migration-0021 tables is

@@ -36,10 +36,15 @@ are stable and are how work gets assigned across sessions.
 
 ## Where ScoreArc actually is
 
-Ten competitions, a signature radial bracket, computed Leagues Cup tables no
-other site publishes — and **no memory and no people**. The site cannot tell you
-what happened last Saturday, who scored it, or anything at all about the player
-who did.
+Ten configured competitions, a signature radial bracket, computed Leagues Cup
+tables no other site publishes — plus team, player, and scorer surfaces the
+frontend already renders, and backend **writer foundations** that persist
+history and trends. What is still missing is the reading and rendering of that
+history: the trend and player-history surfaces do not exist yet, the snapshots
+and plays are written but unread, and the frontend still depends entirely on
+ESPN. The ten competitions are configured but **not uniformly proven ingested**
+end-to-end. For exactly what is deployed, populated, empty, or broken right now,
+see [`CURRENT_STATE.md`](CURRENT_STATE.md) rather than trusting this narrative.
 
 Three independent reviews converged on the same absence, and the review turned up
 something better than a wish list: **most of the top of this roadmap needs no new
@@ -691,21 +696,22 @@ landed. What remains is sequenced as:
   ([gate](decisions/2026-09-01-data-rights-gate.md)) — nothing that expands
   ESPN-derived data's audience, training use, or MCP exposure proceeds without it.
 - **Protect `main`** — every change through a feature-branch PR (`AGENTS.md`).
+- **Production completeness/freshness + the Greece-empty and team-route defects** —
+  live user-facing/data-integrity bugs (including the empty Greece reader feeds and
+  the team-profile 500), not roadmap items.
 - **T7.13 / archive / backfill durability** — close the backfill row-write gap,
   decide the raw-archive requirement, fix retry fairness before calling E7's
   writers "operationally done".
 - **Participation and final-capture durability** — give finalized-but-unwritten
   participation a retry path, or accept the gap in writing.
-- **Production completeness/freshness + the Greece-empty and team-500 defects** —
-  live user-facing/data-integrity bugs, not roadmap items.
 - **Canonical reader DTO / query contract with cross-language parity** — make the
   reader's shape and query semantics a tested contract before building on it.
 
-**Next** — derived-view and identity parity; then a **staged 1d cutover**
-(method-by-method, with per-method ESPN fallback and shadow comparison — never a
-one-step flip); then initial **E10** history/player/shot reads; **E6** shot map
-(T6.2–T6.4); **E7** history UI (T7.3–T7.5); and **E9's** measurement/product
-decision (post-rights, post-T7.13-closure).
+**Next** — derived-view and identity parity as part of readiness; then a **staged
+1d parity/cutover** (method-by-method, with per-method ESPN fallback and shadow
+comparison — never a one-step flip); then initial **E10** history/player/shot
+reads; **E6** shot map (T6.2–T6.4); **E7** history UI (T7.3–T7.5); and **E9's**
+measurement/product decision (post-rights, post-T7.13-closure).
 
 **Later** — validated **E8** language and **E9** models; a **real-data MCP** per
 its [decision record](decisions/2026-09-01-mcp-timing-and-boundary.md); the LED

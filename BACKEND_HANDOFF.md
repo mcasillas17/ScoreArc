@@ -87,17 +87,24 @@ This is a **monorepo**. The frontend and backend live together; Vercel ignores
 The authoritative design detail is `docs/superpowers/specs/2026-07-22-backend-api-phase1-design.md`
 (read it — only its GCP *infra* section is outdated; schema/endpoints/security stand).
 
-## 4. What's already done ✅
+## 4. Repository inventory (what exists in the tree)
 
-All committed on this branch. Verified: `cd backend && go build ./... && go test ./...` pass.
+This is the durable inventory of the backend components that live in the repo.
+**Whether any of them is built, deployed, or healthy right now is owned by
+[`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md)**, not this list; the backend
+build/test gate is `cd backend && go build ./... && go test ./...`.
 
 1. **Go module scaffold** — `backend/go.mod` (module `github.com/mcasillas17/scorearc-backend`, Go 1.26), `.vercelignore` excludes `/backend` `/infra` `/docs`.
 2. **Config export** — `scripts/export-competitions.mjs` generates `backend/config/competitions.json` from the frontend's `src/server/data/competitions.ts` (single source of truth); `backend/config/config.go` loads it (`//go:embed`), with tests. Run `npm run export:competitions` to regenerate.
-3. **Postgres migrations** — the canonical schema, forward history surfaces,
-   snapshot skeleton, replacement/retention grants, and finalization guards
-   through migration 0021, plus the **least-privilege roles**
-   (`scorearc_reader` = SELECT-only; `scorearc_ingester` = writer with narrowly
-   scoped replacement deletes). See ARCHITECTURE.md for the full schema.
+3. **Postgres migrations** — the canonical schema, the forward history surfaces,
+   the active snapshot tables (standings, win-prob, odds), replacement/retention
+   grants, and the finalization guards; the migration head is
+   `0022_team_colours`, with `0021_finalization_invariants` extending the
+   "immutable once final" invariant to the remaining finalized-fact tables. Plus
+   the **least-privilege roles** (`scorearc_reader` = SELECT-only;
+   `scorearc_ingester` = writer with narrowly scoped replacement deletes). See
+   ARCHITECTURE.md for the full schema; whether a given migration is applied in
+   production is tracked by [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md).
 4. **Deploy assets (Fly)** — `backend/{reader,ingester}/Dockerfile` + `fly.toml`, path-filtered GitHub Actions deploy workflows, and `backend/.dockerignore`. Both images are validated by a real `docker build`. The old GCP Terraform under `/infra` was **deleted** by this slice (Fly+Neon+R2 supersedes it); recover it from history at `c6d382e` if ever needed.
 5. **Shared ESPN layer** — Go endpoint builders, response models, and fixture-tested
    mappers for scoreboard, standings, bracket, summary, statistics, and news.
@@ -123,34 +130,33 @@ All committed on this branch. Verified: `cd backend && go build ./... && go test
 
 ## 5. The slice map (and what is actually next)
 
-> **What is actually next is owned by [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md),
-> not this list.** The infrastructure, ingester, and reader slices below are
-> **built and deployed** — do not pick them up as greenfield work. This section
-> is the durable *shape* of Phase 1 (each slice is its own spec-lite → plan →
-> build cycle, see §6); read `CURRENT_STATE.md` for current health, defects, and
-> the ranked next steps.
+> **This is the durable *shape* of Phase 1, not a status checklist.** Each slice
+> is its own spec-lite → plan → build cycle (see §6). **Whether a slice is built,
+> deployed, in progress, or not started is owned by
+> [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md)** — read it before picking up
+> anything here so you do not redo work that already exists or assume work exists
+> that does not.
 
 - **1a-rev — Fly + Neon + R2 infra** ("-rev" = revised infra for the new host,
-  replacing the superseded GCP Terraform). **Done.** For reference, it covers the
-  Fly Dockerfiles/`fly.toml`s, Neon provisioning (pooled + direct DSNs, the
+  replacing the superseded GCP Terraform). Covers the Fly
+  Dockerfiles/`fly.toml`s, Neon provisioning (pooled + direct DSNs, the
   `scorearc_reader`/`scorearc_ingester` roles + login users), the **two** R2
   buckets on one access key pair — `scorearc-assets` (public logo mirror,
   `cdn.scorearc.futbol`) and `scorearc-espn-historic` (**private** raw ESPN
   archive; never public) — and the path-filtered Fly deploy workflows.
   `docs/backend/SETUP.md` has the exact, human-run provisioning steps.
-- **1b — Ingester**: **implemented and deployed.** Production requires a pooled
-  writer DSN (`POOLED_DSN`) and a direct/unpooled lease DSN
-  (`INGESTER_LEASE_DSN`) using the same least-privilege login.
-- **1c — Reader**: **implemented and deployed.** Production uses the SELECT-only
-  reader DSN.
-- **1d — Frontend cutover**: **not started.** Add an `apiStore` implementation of
-  `DataStore` (in `src/server/data/`) that calls the reader; select it via a
-  `DATA_SOURCE=api|espn` flag with ESPN fallback; verify parity; cut over
-  method-by-method. This is a **contract/parity project, not a base-URL swap** —
-  the 14 `DataStore` methods do not yet map onto the reader's routes 1:1, and
-  DTO/query/derived-view parity must be a tested contract first. See
+- **1b — Ingester**: requires a pooled writer DSN (`POOLED_DSN`) and a
+  direct/unpooled lease DSN (`INGESTER_LEASE_DSN`) using the same least-privilege
+  login.
+- **1c — Reader**: uses the SELECT-only reader DSN.
+- **1d — Frontend cutover**: add an `apiStore` implementation of `DataStore` (in
+  `src/server/data/`) that calls the reader; select it via a `DATA_SOURCE=api|espn`
+  flag with ESPN fallback; verify parity; cut over method-by-method. This is a
+  **contract/parity project, not a base-URL swap** — the 14 `DataStore` methods do
+  not yet map onto the reader's routes 1:1, and DTO/query/derived-view parity must
+  be a tested contract first. See
   [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) §5 for the blockers.
-- **Phase 2+** (later): the snapshot **writers already exist** (standings,
+- **Phase 2+** (later): the snapshot writers exist in the tree (standings,
   win-prob, odds); what remains is richer history/analytics reads and a possible
   dedicated analytics store (BigQuery cross-cloud, R2+DuckDB, or partitioned
   Neon), historical/xG backfill, own ML, the Claude language layer, and the LED

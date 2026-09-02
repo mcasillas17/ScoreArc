@@ -142,16 +142,18 @@ writers lives in [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md).
 
 ## 6. Roadmap
 
-Built in vertical slices; each is its own spec → plan → build.
+Built in vertical slices; each is its own spec → plan → build. The table below is
+the durable *shape* of the roadmap; **current status of every phase lives in
+[`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md)**, not here.
 
-| Phase | What | Status |
-|---|---|---|
-| **1 — Own the contract** | Ingester + reader on Fly/Neon/R2; swap the site's `DataStore` to read from us | Ingester + reader deployed; frontend cutover (1d) not started — see [`CURRENT_STATE.md`](docs/CURRENT_STATE.md) |
-| **2 — History** | Time-series snapshot *writes* + an analytics store | Snapshot **writers shipped** (standings/win-prob/odds); richer reads + a dedicated analytics store remain future |
-| **3 — Backfill** | Historical results; **shot geometry from ESPN's own `/plays`** (no scraping or open data needed — see note) | Partially underway (play stream + raw archive); current-season backfill durability open — see [`CURRENT_STATE.md`](docs/CURRENT_STATE.md) |
-| **4 — Own ML** | xG (**epic E9**, from our own persisted geometry), odds (Dixon-Coles), season sim (Monte Carlo), similarity → precomputed | Planned — gated (E9 rights + measurement) |
-| **5 — Language layer** | Claude: auto summaries + Q&A via tool-use over our API | Planned — gated on data rights |
-| **Board** | Repurpose an LED matrix scoreboard that polls a compact `/v1/board/…` | Planned |
+| Phase | What |
+|---|---|
+| **1 — Own the contract** | Ingester + reader on Fly/Neon/R2; swap the site's `DataStore` to read from us (slice 1d) |
+| **2 — History** | Time-series snapshot *writes* + an analytics store |
+| **3 — Backfill** | Historical results; **shot geometry from ESPN's own `/plays`** (no scraping or open data needed — see note) |
+| **4 — Own ML** | xG (**epic E9**, from our own persisted geometry), odds (Dixon-Coles), season sim (Monte Carlo), similarity → precomputed |
+| **5 — Language layer** | Claude: auto summaries + Q&A via tool-use over our API |
+| **Board** | Repurpose an LED matrix scoreboard that polls a compact `/v1/board/…` |
 
 > **Note added 2026-08-15 — Phases 3 and 4 got cheaper.** These rows previously assumed
 > xG had to come from scraping or open data (StatsBomb, FBref, Understat) because ESPN
@@ -174,11 +176,12 @@ the reader, the 1d cutover, and each epic — lives in one canonical ledger:
 > truth for current status. **[`docs/PRODUCT_ROADMAP.md`](docs/PRODUCT_ROADMAP.md)**
 > owns the forward epic/task IDs and priorities.
 
-Durably: the frontend is live at scorearc.futbol on ESPN data; the Go ingester
-and reader are built and deployed on Fly/Neon/R2; and the frontend has **not**
-yet been cut over to read from our reader. The pivotal remaining move of Phase 1
-is that cutover (slice 1d) — a tested contract/parity project, gated as
-`CURRENT_STATE.md` describes.
+The architecture is durable: the frontend is a live Next.js site on ESPN data,
+and the Go ingester and reader exist as the Fly/Neon/R2 contract layer. The
+pivotal remaining move of Phase 1 is the frontend cutover (slice 1d) — a tested
+contract/parity project, not a base-URL swap. What is deployed, populated,
+broken, or blocked at any moment — including whether that cutover has begun —
+lives only in [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md).
 
 ## 8. Principles & key decisions (the "why")
 
