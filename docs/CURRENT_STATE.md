@@ -31,7 +31,7 @@ re-verification — supersedes that proposed audit as filed.
 | Frontend | Live at scorearc.futbol, fully ESPN-backed. No reader/backend fetch call sites exist in `src/server/data/` — the 1d cutover has not started. |
 | Ingester | Deployed/running on Fly.io with Neon Postgres and the Cloudflare R2 crest mirror. E7 writers are present. Raw-archive completeness/config remains unverified. |
 | Reader API | 7 registered `/v1` data routes (`matches`, `standings`, `bracket`, `top-scorers`, `teams/{teamId}`, `news`, `matches/{id}`) + `/healthz`. The team-profile route (`teams/{teamId}`) currently returns **500** for at least one live competition (Liga MX). |
-| Operations | Recent credentialed, path-filtered deploy workflow runs completed checkout/setup/deploy steps successfully. `main` is unprotected. No per-competition freshness/completeness alert exists. Migrations are manual, and the production-schema cause of the team 500 is unknown. |
+| Operations | Recent credentialed, path-filtered deploy workflow runs completed checkout/setup/deploy steps successfully. `main` is unprotected. No per-competition freshness/completeness alert exists. Migrations are manual, and the cause of the team 500 is unverified (§3, §9). |
 | 1d (frontend cutover) | Absent. No spec has landed as an implementation; no `apiStore` exists. |
 | E6 (shot log) | T6.1 (coverage probe) complete. T6.2–T6.4 (extraction, reconciliation, rendering) pending. |
 | E7 (history & trends) | Writer code is implemented and running (`WriteStandingSnapshot`, `WriteWinProbSnapshot`, `WritePlays`, `WriteParticipation`, `WriteCommentary`, `ReplaceLeaders`, `ReplaceSquad`, `WriteMatchOfficials`, `WriteMatchOdds`, `WriteOddsSnapshot`). **T7.13 operational acceptance is pending** (§4). Read/render surfaces (T7.3–T7.5) do not exist. |
@@ -128,7 +128,8 @@ re-verification — supersedes that proposed audit as filed.
 - **Most E7 writer code has shipped** (2026-08-16–18, per PR #144, verified
   against `backend/ingester/contracts.go` and its callers in `matches.go`,
   `plays.go`, `squad.go`, `officials.go`, `odds.go`). This is real progress;
-  it is not the same claim as "T7.13 is done" (§9 above corrects that).
+  it is not the same claim as "T7.13 is done" (§1 and the current T7.13 entry
+  in §4 correct it).
 - **Configured competitions = 10** (`backend/config/competitions.json`:
   world-cup, leagues-cup, premier-league, laliga, serie-a, bundesliga,
   ligue-1, super-league-greece, mls, liga-mx). **Uniformly ingested is not
