@@ -60,9 +60,11 @@ re-verification — supersedes that proposed audit as filed.
 - **Additional evidence:** backend race tests and `go vet` pass with the
   documented Colima `DOCKER_HOST` / `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE`
   environment for testcontainers (see `AGENTS.md`).
-- **Deploy workflows executed:** the three most recent `Deploy reader` and
-  `Deploy ingester` GitHub Actions runs on `main` all completed
-  `success` (most recent 2026-09-01T05:38:13Z).
+- **Deploy workflows:** `Deploy reader` and `Deploy ingester` are
+  path-filtered and credential-gated. The most recent runs that matched main
+  commit `0d6bb8f` completed the checkout/setup/deploy steps successfully
+  (most recent 2026-09-01T05:38:13Z); this does not mean every `main` push
+  triggers them, or that absent credentials cannot cause them to be skipped.
 - **`/healthz`:** `curl https://scorearc-reader.fly.dev/healthz` → `200`,
   `{"status":"ok"}`.
 - **Super League Greece is live and empty in the reader.** The frontend
