@@ -3,8 +3,9 @@
 - **Status:** Accepted (engineering gate)
 - **Date:** 2026-09-01
 - **Decision owner:** Project owner (mcasillas17), on engineering recommendation
-- **Supersedes:** the informal rights note in `docs/CURRENT_STATE.md` §7, which
-  this record now backs with source citations and a closure path
+- **Authority:** this record provides the durable rationale and gate closure for
+  `docs/CURRENT_STATE.md` §7; `docs/CURRENT_STATE.md` retains mutable status
+  ownership, while this record owns the durable decision rationale and closure
 - **Scope:** what ScoreArc's engineering may build and ship against ESPN's
   public data while this gate is open
 

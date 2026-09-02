@@ -178,7 +178,8 @@ Every tool result carries, not just the requested fields:
   polling harder than a browser would.
 - **Audit logs** record which principal called which tool with which
   arguments, for the same reason the reader itself needs better
-  observability (`docs/CURRENT_STATE.md` §8, priority 5).
+  observability (see this record's consensus gate 7 and
+  `docs/CURRENT_STATE.md` §2, Operations).
 - **A kill switch** exists to disable the MCP surface independent of the
   reader itself.
 - **The reader's current limiter is not sufficient for agent traffic as
