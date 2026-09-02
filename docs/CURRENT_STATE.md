@@ -12,17 +12,17 @@ broken, or blocked right now**. It supersedes any mutable "current status,"
 their durable product principles and architecture, but their status claims
 should be read as superseded by this file until they are corrected in place.
 
-`docs/ROADMAP_AUDIT_2026-09-01.md` (landed as PR #144, from an independent
-Sonnet/Haiku review) is treated here as **evidence, not conclusion**. Its
-findings on E7 writer completeness, the 14-method `DataStore`, the ten
-configured competitions, and the reader-parity bugs were independently
-re-verified below and are correct. Its claim that **T7.13 is done** and that
-E9's gate is therefore cleared is **wrong**: T7.13 requires operational
-acceptance of the durability path (backfill writing rows, no silent
-touch-tier loss, fair retry), which is not complete (§4, §6). This document —
-the consensus of five independent audits (GPT-5.6 Sol, Claude Opus 4.8,
-Grok 4.6, Gemini 3.7 Flash, GPT-5.6 Luna), incorporating PR #144's evidence
-after independent re-verification — is what supersedes PR #144 as filed.
+`docs/ROADMAP_AUDIT_2026-09-01.md` is currently only a proposed audit in open
+PR #144 and is treated here as **evidence, not conclusion**. Its findings on
+E7 writer completeness, the 14-method `DataStore`, the ten configured
+competitions, and the reader-parity bugs were independently re-verified below
+and are correct. Its claim that **T7.13 is done** and that E9's gate is
+therefore cleared is **wrong**: T7.13 requires operational acceptance of the
+durability path (backfill writing rows, no silent touch-tier loss, fair
+retry), which is not complete (§4, §6). This document — the consensus of five
+independent audits (GPT-5.6 Sol, Claude Opus 4.8, Grok 4.6, Gemini 3.7 Flash,
+GPT-5.6 Luna), incorporating PR #144's evidence after independent
+re-verification — supersedes that proposed audit as filed.
 
 ## 2. Executive status
 
@@ -41,17 +41,23 @@ after independent re-verification — is what supersedes PR #144 as filed.
 
 ## 3. Verification evidence (this pass, 2026-09-01)
 
-- **Frontend tests:** `npx vitest run` → **73 test files, 813 tests, all
+- **Repository baseline gate:** `npm test` → **73 test files, 813 tests, all
   passing.**
-- **Typecheck:** `npx tsc --noEmit` → clean, zero errors.
-- **Lint:** `npm run lint` → **0 errors, 7 warnings** (missing-dependency
-  `react-hooks/exhaustive-deps` on `BracketInteractive.tsx`, `LiveScores.tsx`,
-  `NewsLive.tsx`, `StandingsLive.tsx`; an ARIA role mismatch on
-  `LiveScores.tsx`; two unused `eslint-disable` directives).
-- **Build:** `npm run build` → succeeds. Emits Next.js's own deprecation
-  warnings only: the `middleware` file convention (migrate to `proxy`) and
-  the Edge Runtime (`/api/live` disables static generation for that route).
-- **Backend:** race tests, `go vet`, and `go build ./...` pass with the
+- **Repository baseline gate:** `npx tsc --noEmit` → clean, zero errors.
+- **Repository baseline gate:** `cd backend && go build ./... && go test ./...`
+  → pass with the documented Colima `DOCKER_HOST` /
+  `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE` environment for testcontainers (see
+  `AGENTS.md`).
+- **Additional evidence:** `npm run lint` → **0 errors, 7 warnings**
+  (missing-dependency `react-hooks/exhaustive-deps` on
+  `BracketInteractive.tsx`, `LiveScores.tsx`, `NewsLive.tsx`,
+  `StandingsLive.tsx`; an ARIA role mismatch on `LiveScores.tsx`; two unused
+  `eslint-disable` directives).
+- **Additional evidence:** `npm run build` → succeeds. Emits Next.js's own
+  deprecation warnings only: the `middleware` file convention (migrate to
+  `proxy`) and the Edge Runtime (`/api/live` disables static generation for
+  that route).
+- **Additional evidence:** backend race tests and `go vet` pass with the
   documented Colima `DOCKER_HOST` / `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE`
   environment for testcontainers (see `AGENTS.md`).
 - **Deploy workflows executed:** the three most recent `Deploy reader` and
@@ -277,12 +283,13 @@ them.
 
 **Hierarchy:** this document (`docs/CURRENT_STATE.md`) is authoritative for
 current status. `docs/PRODUCT_ROADMAP.md` owns forward task IDs and
-priorities and should defer to this document for status. Design specs
-under `docs/superpowers/specs/` and plans under `docs/superpowers/plans/`
-describe intent as of their date and may be stale against `main` — diff
-before applying (`AGENTS.md`, "Plans quote code as of the day they were
-written"). `docs/ROADMAP_AUDIT_2026-09-01.md` (PR #144) is retained as
-supporting evidence, correct except where §1/§4 note otherwise.
+priorities and should defer to this document for status. Design specs under
+`docs/superpowers/specs/` and plans under `docs/superpowers/plans/` describe
+intent as of their date and may be stale against `main` — diff before
+applying (`AGENTS.md`, "Plans quote code as of the day they were written").
+Open PR #144 provides supporting evidence via
+`docs/ROADMAP_AUDIT_2026-09-01.md`; this document supersedes that proposed
+audit as filed, correct except where §1/§4 note otherwise.
 
 **Explicit unknowns**, not resolved by this pass:
 
