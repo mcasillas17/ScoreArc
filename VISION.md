@@ -64,7 +64,7 @@ The through-line: **own the contract, then enrich it.**
 
 Owning the data is what unlocks the thing that will actually set ScoreArc apart:
 **AI-powered stats and insight, not just scores.** Once results, lineups, events,
-and time-series live in our DB, we can turn raw fixtures into understanding. Where
+and time-series live in our DB, we can turn raw matches into understanding. Where
 we're heading:
 
 - **Predictive stats we compute ourselves** — live **win probability** and
@@ -226,7 +226,7 @@ closing), a regular phase then an **8-team playoff called the *Liguilla*** — t
 the gold-arc cut on the standings dial.
 
 **Match lifecycle & scoring:**
-- A match (a.k.a. **fixture**) is **scheduled → live → finished**. Live carries a
+- A match is **scheduled → live → finished**. Live carries a
   **minute** (and states like **HT** half-time, **ET** extra time).
 - Knockout ties must have a winner: if level after 90', **extra time**, then a
   **penalty shootout** — the aggregate shootout score is carried in the match note

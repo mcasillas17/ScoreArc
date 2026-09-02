@@ -237,7 +237,7 @@ never the owner/admin account.
 ```bash
 psql "$DIRECT_DSN" -c '\dt'
 # expect tables: team, match, match_detail, standing, top_scorer,
-#                standing_snapshot, win_prob_snapshot, ingest_run
+#                standing_snapshot, win_prob_snapshot, odds_snapshot, ingest_run
 
 # the reader MUST be read-only — this should ERROR with "permission denied":
 psql "$READER_DSN" -c "INSERT INTO team(id,name,abbr) VALUES('x','x','x');"

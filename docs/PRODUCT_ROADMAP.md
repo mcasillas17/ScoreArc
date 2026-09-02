@@ -324,7 +324,7 @@ squad list for the same effort.
 The other seven carry no `statistics` key at all; they have not played. A squad
 row for them reads "has not appeared", never a line of zeroes. Also re-verified:
 the profile's `nextEvent` array is **empty** while the schedule endpoint carries
-four fixtures, so the next-fixture block reads the schedule.
+four matches, so the next-match block reads the schedule.
 
 Each athlete also carries an `injuries` array that is **empty for all 35**. The
 field existing is not the data existing; no injuries feature is built on it.
@@ -440,7 +440,7 @@ and locale-aware navigation helpers. E15 subsequently moved the page to
 shipped typed localization architecture.
 
 The home page shows the same matches three times — live band, results/next
-columns, and nine tiles each repeating the next fixture — because the tiles are
+columns, and nine tiles each repeating the next match — because the tiles are
 doing navigation's job. A global collapsible nav takes that job; the home page
 becomes a digest (what's on, leading scorers, news) and each section owns its
 depth.
@@ -550,11 +550,13 @@ What changes in practice: **zone no longer has to be parsed out of English prose
 It can be computed from `fieldPositionX/Y`, which means a real shot map is a
 `SELECT` rather than a regex, and the "coarse zones only" constraint is lifted.
 
-What does **not** change: **T6.1 still blocks.** Coverage varies per competition
-and the probe is still the only thing standing between us and shipping an empty
-feature to a tenth of the site. Nor does T6.3 change — reconciling against the
-provider's own `rosters[].totalShots` is what makes the log trustworthy, and it is
-now doubly load-bearing because E9 trains on those same rows.
+What does **not** change: **T6.1's result still gates coverage.** It ran and
+found coverage varies per competition — Super League Greece is OUT of E6
+(key-events-only stream, 15% of real shots), the other nine competitions are
+in. T6.2–T6.4 remain pending for those nine. Nor does T6.3 change — reconciling
+against the provider's own `rosters[].totalShots` is what makes the log
+trustworthy, and it is now doubly load-bearing because E9 trains on those same
+rows.
 
 ### E7 · History & trends — writers landed, reads remain
 
@@ -647,7 +649,7 @@ requirements. No spec of its own. Cutover (1d) depends on that DTO/query/
 derived-view parity being a tested contract — see
 [`docs/CURRENT_STATE.md`](CURRENT_STATE.md) §5 for the current gap.
 
-- **T10.1** Match reads — fixtures/results by range, calendar (E3, E2) · [plan](superpowers/plans/2026-08-15-api-match-reads.md)
+- **T10.1** Match reads — matches/results by range, calendar (E3, E2) · [plan](superpowers/plans/2026-08-15-api-match-reads.md)
 - **T10.2** Leaders & box scores (E1) · [plan](superpowers/plans/2026-08-15-api-leaders-and-box-scores.md)
 - **T10.3** Teams (E4) · [plan](superpowers/plans/2026-08-15-api-teams.md)
 - **T10.4** Players (E5) · [plan](superpowers/plans/2026-08-15-api-players.md)
@@ -705,13 +707,14 @@ landed. What remains is sequenced as:
 - **Participation and final-capture durability** — give finalized-but-unwritten
   participation a retry path, or accept the gap in writing.
 - **Canonical reader DTO / query contract with cross-language parity** — make the
-  reader's shape and query semantics a tested contract before building on it.
+  reader's shape and query semantics a tested contract before building on it,
+  including derived-view and canonical identity parity.
 
-**Next** — derived-view and identity parity as part of readiness; then a **staged
-1d parity/cutover** (method-by-method, with per-method ESPN fallback and shadow
-comparison — never a one-step flip); then initial **E10** history/player/shot
-reads; **E6** shot map (T6.2–T6.4); **E7** history UI (T7.3–T7.5); and **E9's**
-measurement/product decision (post-rights, post-T7.13-closure).
+**Next** — a **staged 1d parity/cutover** (method-by-method, with per-method
+ESPN fallback and shadow comparison — never a one-step flip); then initial
+**E10** history/player/shot reads; **E6** shot map (T6.2–T6.4); **E7** history UI
+(T7.3–T7.5); and **E9's** measurement/product decision (post-rights,
+post-T7.13-closure).
 
 **Later** — validated **E8** language and **E9** models; a **real-data MCP** per
 its [decision record](decisions/2026-09-01-mcp-timing-and-boundary.md); the LED

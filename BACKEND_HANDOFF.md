@@ -121,7 +121,7 @@ build/test gate is `cd backend && go build ./... && go test ./...`.
 8. **Canonical identity** — ScoreArc mints its own entity ids (slugs for the
    curated sets, UUIDv7 for `match`/`player`); provider ids live in per-source
    `*_external_ref` crosswalk tables. `match` carries a natural-key unique
-   constraint so the same fixture from a second source resolves to one row.
+   constraint so the same match from a second source resolves to one row.
    Team identity is curated in `backend/config/teams.seed.json`; an unseeded
    team becomes a `provisional` row instead of blocking ingestion. See
    `docs/superpowers/specs/2026-08-12-canonical-identity-design.md`.
