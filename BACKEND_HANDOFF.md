@@ -44,8 +44,9 @@ layer) builds on it later.
 > **GCP** implementation (Cloud Run + Cloud SQL + GCS/CDN + Terraform). We have
 > since **switched the hosting target** to the stack below. The **application
 > design is unchanged** (same architecture, schema, endpoints, security model) —
-> only the *infrastructure/host* changed. The GCP Terraform in `/infra` is
-> **superseded and must be replaced** (see §5, next task).
+> only the *infrastructure/host* changed. The GCP Terraform in `/infra` was
+> deleted, and the Fly/Neon/R2 deployment assets replaced it; the mutable live
+> status still lives in `CURRENT_STATE` (see §5).
 
 ```
 Vercel        → hosts the Next.js frontend  +  provisions/manages the Postgres (Neon) via its Storage tab
