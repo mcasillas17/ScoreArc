@@ -26,10 +26,14 @@ of evidence that would move the line.
 of this audit. Its own text states it governs "Disney Products," defined to
 include anything "branded Disney, ABC, ESPN, Marvel, Pixar, Lucasfilm, FX,
 Searchlight Pictures, 20th Century Studios, National Geographic, or another
-brand owned or licensed by Disney" — ESPN-branded products, including
-espn.com and its API surfaces, are expressly in scope, not an inference.
-ESPN's own support site points at the same document as its Terms of Use
+brand owned or licensed by Disney" — ESPN-branded products are expressly
+included by that definition. ESPN's own support site points at the same
+document as its Terms of Use
 (<https://support.espn.com/hc/en-us/articles/360035445091-Terms-of-Use>).
+Whether and how that consumer-terms document governs undocumented, keyless ESPN
+API endpoints is unresolved on this record and requires qualified counsel
+and/or provider terms; this audit does not treat those specific API surfaces as
+expressly covered by the cited language.
 
 Relevant sections, summarized (not overquoted — read the source for exact
 wording before relying on it):
@@ -40,10 +44,12 @@ wording before relying on it):
 | **§2.B.viii** | Prohibits, without express written permission, using the products "for any commercial or business-related use" or building "a business utilizing" them, whether or not for profit. |
 | **§2.B.x** | Prohibits, without express written permission, accessing, monitoring, copying, or extracting the products "using a robot, spider, script, or other automated means," including for building or training an AI tool, data mining, web scraping, or otherwise "compiling, building, creating or contributing to any collection of data, data set or database." |
 
-Taken together, the plain text reaches ScoreArc's own architecture directly:
-automated collection (§2.B.x), building a persistent dataset from it
-(§2.B.x), and any AI/ML use of it (§2.A, §2.B.x) are each named, not merely
-arguably covered.
+Taken together, the terms create a credible applicability risk for ScoreArc's
+architecture: automated collection (§2.B.x), building a persistent dataset
+from it (§2.B.x), and any AI/ML use of it (§2.A, §2.B.x) are named activities
+ScoreArc performs or plans. That is sufficient for an engineering gate, but it
+is not a legal conclusion that every undocumented ESPN endpoint is actually
+governed; counsel or a license must decide endpoint applicability.
 
 ## Surfaces this gate maps to
 
@@ -64,19 +70,21 @@ arguably covered.
 
 The ESPN endpoints ScoreArc reads are **undocumented and keyless** — no
 sign-up, no published contract, no key. That makes them easy to reach, but it
-does not make them licensed: the Terms of Use above govern use of the
-underlying Disney/ESPN products regardless of which specific unpublished path
-serves the data, and nothing in them treats "no authentication required" as
-"no restrictions apply." Separately, and just as materially: team names,
-club and league crests, and competition marks (e.g. league branding) are
-**not ESPN's to grant** under ESPN's own consumer terms at all — clearing
-ESPN's terms says nothing about clearing the underlying clubs' and leagues'
-trademark and likeness rights. Both questions — the scope of an undocumented
-API's terms, and the separate rights of the clubs/leagues whose identity we
-mirror — require either qualified counsel's review or an explicit,
-negotiated provider agreement. Neither is resolved by this document, and
-neither is resolved merely by continuing to observe that the endpoint has no
-key.
+does not resolve rights. The Terms of Use above create a credible
+applicability risk because ScoreArc performs activities the text names, even if
+actual applicability of those consumer terms to specific undocumented endpoints
+remains unresolved. That plausible risk is enough for an engineering freeze. It
+is not a legal conclusion about whether any given undocumented endpoint is
+within those terms, and nothing here treats "no authentication required" as
+"no restrictions apply." Separately, and just as materially: team names, club and league
+crests, and competition marks (e.g. league branding) are **not ESPN's to
+grant** under ESPN's own consumer terms at all — clearing ESPN's terms says
+nothing about clearing the underlying clubs' and leagues' trademark and
+likeness rights. Both questions — actual endpoint applicability, and the
+separate rights of the clubs/leagues whose identity we mirror — require either
+qualified counsel's review or an explicit, negotiated provider agreement.
+Neither is resolved by this document, and neither is resolved merely by
+continuing to observe that the endpoint has no key.
 
 ## Decision: the engineering gate
 
