@@ -13,17 +13,18 @@ their durable product principles and architecture, but their status claims
 should be read as superseded by this file until they are corrected in place.
 
 `docs/ROADMAP_AUDIT_2026-09-01.md` landed on `main` in PR #144 and is treated
-here as **evidence, not conclusion**. Its findings on
-E7 writer completeness, the 14-method `DataStore`, the ten configured
-competitions, and the reader-parity bugs were independently re-verified below
-and are correct. Its claim that **T7.13 is done** and that E9's gate is
-therefore cleared is **wrong**: T7.13 requires operational acceptance of the
-durability path (backfill writing rows, no silent touch-tier loss, fair
-retry), which is not complete (§4, §6). This document — the consensus of five
-independent audits (GPT-5.6 Sol, Claude Opus 4.8, Grok 4.6, Gemini 3.7 Flash,
-GPT-5.6 Luna), incorporating PR #144's evidence after independent
-re-verification — supersedes that audit's mutable status conclusions where
-they conflict.
+here as **evidence, not conclusion**. Its findings on E7 writer completeness,
+the 14-method `DataStore`, the ten configured competitions, and the
+reader-parity bugs were independently re-verified below and are correct. Its
+status conclusions are not: PR #144 incorrectly said **T7.2 was unmerged**
+(that work shipped in squash-merged PR #29; branch ancestry misled the audit —
+see §4), and it also incorrectly said **T7.13 is done** and that E9's gate is
+therefore cleared. T7.13 requires operational acceptance of the durability path
+(backfill writing rows, no silent touch-tier loss, fair retry), which is not
+complete (§4, §6). This document — the consensus of five independent audits
+(GPT-5.6 Sol, Claude Opus 4.8, Grok 4.6, Gemini 3.7 Flash, GPT-5.6 Luna),
+incorporating PR #144's evidence after independent re-verification — supersedes
+that audit's mutable status conclusions where they conflict.
 
 ## 2. Executive status
 

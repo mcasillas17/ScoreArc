@@ -692,9 +692,10 @@ priority, and it defers every live-defect and done/pending detail to
 duplicating them. E0–E5, E11, E12, E14 and E15 have shipped; E7's writers have
 landed. What remains is sequenced as:
 
-**Now** — the P0 hard gates. The exact hard-gate sequence lives in
-[`docs/CURRENT_STATE.md`](CURRENT_STATE.md) §8, which is the canonical source;
-this roadmap keeps the Now set unordered to avoid duplicating that authority:
+**Now** — the pre-cutover P0 gates. The full authoritative hard-gate sequence,
+including staged **1d** and the initial **E10** reads, lives in
+[`docs/CURRENT_STATE.md`](CURRENT_STATE.md) §8; this roadmap keeps the Now set
+unordered to avoid duplicating that authority:
 
 - The **data-rights decision**
   ([gate](decisions/2026-09-01-data-rights-gate.md)) — nothing that expands
