@@ -1,6 +1,6 @@
 # ScoreArc current state
 
-**Last verified:** 2026-09-01, against `main` @ `0d6bb8f` (2026-08-31).
+**Last verified:** 2026-09-01, against `main` @ `49bf68d` (2026-09-01).
 
 ## 1. Authority
 
@@ -12,8 +12,8 @@ broken, or blocked right now**. It supersedes any mutable "current status,"
 their durable product principles and architecture, but their status claims
 should be read as superseded by this file until they are corrected in place.
 
-`docs/ROADMAP_AUDIT_2026-09-01.md` is currently only a proposed audit in open
-PR #144 and is treated here as **evidence, not conclusion**. Its findings on
+`docs/ROADMAP_AUDIT_2026-09-01.md` landed on `main` in PR #144 and is treated
+here as **evidence, not conclusion**. Its findings on
 E7 writer completeness, the 14-method `DataStore`, the ten configured
 competitions, and the reader-parity bugs were independently re-verified below
 and are correct. Its claim that **T7.13 is done** and that E9's gate is
@@ -22,7 +22,8 @@ durability path (backfill writing rows, no silent touch-tier loss, fair
 retry), which is not complete (§4, §6). This document — the consensus of five
 independent audits (GPT-5.6 Sol, Claude Opus 4.8, Grok 4.6, Gemini 3.7 Flash,
 GPT-5.6 Luna), incorporating PR #144's evidence after independent
-re-verification — supersedes that proposed audit as filed.
+re-verification — supersedes that audit's mutable status conclusions where
+they conflict.
 
 ## 2. Executive status
 
@@ -165,7 +166,7 @@ re-verification — supersedes that proposed audit as filed.
   stats, leader, and team-profile fields the ingester now writes are not
   all exposed in the current reader response shapes.
 - **Canonical team helper mismatch** between frontend and reader-side team
-  resolution paths (see PR #144's 1d spec) is unresolved.
+  resolution paths (see PR #144's audit and the 1d spec it cites) is unresolved.
 - **Leagues Cup computed group tables and the MLS overall table are
   frontend-only** derived views; the reader has no equivalent computed
   endpoint.
@@ -291,9 +292,9 @@ priorities and should defer to this document for status. Design specs under
 `docs/superpowers/specs/` and plans under `docs/superpowers/plans/` describe
 intent as of their date and may be stale against `main` — diff before
 applying (`AGENTS.md`, "Plans quote code as of the day they were written").
-Open PR #144 provides supporting evidence via
-`docs/ROADMAP_AUDIT_2026-09-01.md`; this document supersedes that proposed
-audit as filed, correct except where §1/§4 note otherwise.
+PR #144's merged `docs/ROADMAP_AUDIT_2026-09-01.md` provides supporting
+evidence; this document supersedes that audit's mutable status conclusions
+where §1/§4 correct them.
 
 **Explicit unknowns**, not resolved by this pass:
 
