@@ -10,10 +10,10 @@ for the backend build. This file is the "why"; those are the "how".
 ## 1. What ScoreArc is
 
 **ScoreArc** is a live, multi-competition fútbol platform — brackets, live scores,
-standings, and match detail across the World Cup and the major leagues (Liga MX,
-Premier League, LaLiga, Serie A, Bundesliga, Ligue 1, MLS, Leagues Cup). It's a
-Next.js app on Vercel at **scorearc.futbol**, currently reading ESPN's keyless
-public API at request time.
+standings, and match detail across the World Cup and major competitions like Liga
+MX, Premier League, LaLiga, Serie A, Bundesliga, Ligue 1, MLS, Leagues Cup, and
+Super League Greece. It's a Next.js app on Vercel at **scorearc.futbol**,
+currently reading ESPN's keyless public API at request time.
 
 It started as a World Cup 2026 live bracket and grew into a polished
 multi-competition product with a distinctive visual identity.
