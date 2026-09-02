@@ -5,6 +5,12 @@ written so an agent (or engineer) with **no prior context** can pick this up on 
 fresh machine and continue. Read this file first, then `docs/backend/SETUP.md`
 (tools + cloud setup) and `docs/backend/ARCHITECTURE.md` (the design).
 
+> 📍 **Current status — what is deployed, working, broken, or blocked right now —
+> lives in [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md), the single canonical
+> ledger.** This handoff is durable onboarding (stack, layout, contracts, setup);
+> where it and `CURRENT_STATE.md` ever disagree on status, `CURRENT_STATE.md`
+> wins, and it — not this file — decides what work is actually next.
+
 > **Branching:** `main` is the integration baseline and auto-deploys. Start each
 > backend slice on its own feature branch and merge only through a reviewed PR.
 > Every backend slice starts from the latest `origin/main`; the reader and
@@ -68,7 +74,7 @@ This is a **monorepo**. The frontend and backend live together; Vercel ignores
   migrations/             Postgres schema, hardening, roles, and rollback files
   ingester/               [IMPLEMENTED] private worker/store/cadence/assets
                           + Dockerfile/fly.toml (always-on singleton worker)
-  reader/                 [IMPLEMENTED — slice 1c] public REST API serving the 6 shapes
+  reader/                 [IMPLEMENTED — slice 1c] public REST API (7 /v1 data routes + /healthz)
                           + Dockerfile/fly.toml (public, one warm machine + autostopped spare)
   shared/espn/            tested Go ESPN client, domain types, and mappers
 /docs/
@@ -95,8 +101,8 @@ All committed on this branch. Verified: `cd backend && go build ./... && go test
 4. **Deploy assets (Fly)** — `backend/{reader,ingester}/Dockerfile` + `fly.toml`, path-filtered GitHub Actions deploy workflows, and `backend/.dockerignore`. Both images are validated by a real `docker build`. The old GCP Terraform under `/infra` was **deleted** by this slice (Fly+Neon+R2 supersedes it); recover it from history at `c6d382e` if ever needed.
 5. **Shared ESPN layer** — Go endpoint builders, response models, and fixture-tested
    mappers for scoreboard, standings, bracket, summary, statistics, and news.
-6. **Public reader API (slice 1c)** — six versioned `/v1` routes plus `/healthz`,
-   parameterized pgx read models, registry validation, SELECT-only role
+6. **Public reader API (slice 1c)** — seven versioned `/v1` data routes plus
+   `/healthz`, parameterized pgx read models, registry validation, SELECT-only role
    enforcement, CORS, per-client limiting, defensive process timeouts, a
    stampede-safe news cache, OpenAPI 3.1, unit tests, and real-Postgres
    Testcontainers coverage. See `backend/reader/README.md`.
@@ -115,30 +121,41 @@ All committed on this branch. Verified: `cd backend && go build ./... && go test
 
 **Known minor follow-up:** Go struct field `config.Competition.CurrentSeasonId` should be renamed `CurrentSeasonID` (Go initialism lint, ST1003) when a linter is added.
 
-## 5. What's next (in order)
+## 5. The slice map (and what is actually next)
 
-Each slice is its own spec-lite → plan → build cycle (see §6 for how we work).
+> **What is actually next is owned by [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md),
+> not this list.** The infrastructure, ingester, and reader slices below are
+> **built and deployed** — do not pick them up as greenfield work. This section
+> is the durable *shape* of Phase 1 (each slice is its own spec-lite → plan →
+> build cycle, see §6); read `CURRENT_STATE.md` for current health, defects, and
+> the ranked next steps.
 
-- **1a-rev — Replace `/infra` for Fly + Neon + R2** ("-rev" = the revised infra
-  for the new host). The existing plan `docs/superpowers/plans/2026-07-23-backend-1a-infra-schema.md`
-  has 5 tasks: **tasks 1–3 (Go scaffold, config export, migrations) are DONE and
-  stand; tasks 4–5 (GCP Terraform + GCP runbook) are SUPERSEDED — do not
-  execute.** This slice writes a *new* plan and replaces the GCP Terraform:
-  - `backend/reader/fly.toml` + `backend/ingester/fly.toml` + Dockerfiles.
-  - Neon provisioning notes (provision via Vercel Storage; capture pooled + direct connection strings; create the `scorearc_reader`/`scorearc_ingester` roles + login users per the migrations).
-  - Cloudflare R2: **two** buckets + one access key pair scoped to both —
-    `scorearc-assets` (public, logo mirror, `cdn.scorearc.futbol`) and
-    `scorearc-espn-historic` (**private**, raw ESPN payload archive; never
-    public). See `docs/backend/SETUP.md` §6.
-  - GitHub Actions workflows to deploy each Go service to Fly (`flyctl deploy`), path-filtered to `/backend`.
-  - `docs/backend/SETUP.md` already contains the exact provisioning steps.
-- **1b — Ingester**: **implemented.** Deployment configuration remains part of
-  1a-rev. Production requires a pooled writer DSN and a direct/unpooled lease
-  DSN using the same least-privilege login.
-- **1c — Reader**: **implemented.** Deployment configuration remains part of
-  1a-rev; production rollout must use the SELECT-only reader DSN.
-- **1d — Frontend cutover**: add an `apiStore` implementation of `DataStore` (in `src/server/data/`) that calls the reader; select it via a `DATA_SOURCE=api|espn` env flag with ESPN fallback; verify parity; flip to `api`.
-- **Phase 2+** (later): time-series snapshot writes + an analytics store (BigQuery cross-cloud, or R2+DuckDB, or defer and use Neon); historical/xG backfill; own ML; Claude language layer; the LED board consumer.
+- **1a-rev — Fly + Neon + R2 infra** ("-rev" = revised infra for the new host,
+  replacing the superseded GCP Terraform). **Done.** For reference, it covers the
+  Fly Dockerfiles/`fly.toml`s, Neon provisioning (pooled + direct DSNs, the
+  `scorearc_reader`/`scorearc_ingester` roles + login users), the **two** R2
+  buckets on one access key pair — `scorearc-assets` (public logo mirror,
+  `cdn.scorearc.futbol`) and `scorearc-espn-historic` (**private** raw ESPN
+  archive; never public) — and the path-filtered Fly deploy workflows.
+  `docs/backend/SETUP.md` has the exact, human-run provisioning steps.
+- **1b — Ingester**: **implemented and deployed.** Production requires a pooled
+  writer DSN (`POOLED_DSN`) and a direct/unpooled lease DSN
+  (`INGESTER_LEASE_DSN`) using the same least-privilege login.
+- **1c — Reader**: **implemented and deployed.** Production uses the SELECT-only
+  reader DSN.
+- **1d — Frontend cutover**: **not started.** Add an `apiStore` implementation of
+  `DataStore` (in `src/server/data/`) that calls the reader; select it via a
+  `DATA_SOURCE=api|espn` flag with ESPN fallback; verify parity; cut over
+  method-by-method. This is a **contract/parity project, not a base-URL swap** —
+  the 14 `DataStore` methods do not yet map onto the reader's routes 1:1, and
+  DTO/query/derived-view parity must be a tested contract first. See
+  [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) §5 for the blockers.
+- **Phase 2+** (later): the snapshot **writers already exist** (standings,
+  win-prob, odds); what remains is richer history/analytics reads and a possible
+  dedicated analytics store (BigQuery cross-cloud, R2+DuckDB, or partitioned
+  Neon), historical/xG backfill, own ML, the Claude language layer, and the LED
+  board consumer — all gated as `CURRENT_STATE.md` and the decision records
+  describe.
 
 ## 6. How we work
 
@@ -171,8 +188,8 @@ Hard rules (also in `AGENTS.md` — read it; Codex auto-loads it):
 
 ## 7. Key facts an agent needs
 
-- **The seam:** the frontend reads everything through `DataStore` (6 methods) in `src/server/data/store.ts`. Phase 1 adds a second implementation (`apiStore`) that calls our reader. Nothing else in the frontend changes.
-- **The 6 methods / shapes:** `getMatches`, `getStandings`, `getBracket`, `getMatchSummary`, `getTopScorers`, `getNews`. Types are in `src/server/data/types.ts` — the reader's JSON must deserialize into these.
+- **The seam:** the frontend reads everything through `DataStore` (**14 methods**) in `src/server/data/store.ts`. Phase 1 adds a second implementation (`apiStore`) that calls our reader. Nothing else in the frontend changes.
+- **The 14 methods:** `getMatches`, `getFixtures`, `getLiveWindow`, `getUpcoming`, `getStandings`, `getBracket`, `getMatchSummary`, `getLeaders`, `getTopScorers`, `getTopAssists`, `getNews`, `getTeam`, `getSquad`, `getPlayer`. Types are in `src/server/data/types.ts` — the reader's JSON must deserialize into these. The reader currently exposes **7 data routes**, so these 14 methods do not map 1:1 onto it yet; the cutover gap is tracked in [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) §5.
 - **Ingester durability:** final match/detail writes are atomic; migration 0021
   gives every finalized-fact table a database seal appropriate to its write
   lifecycle; unresolved finals remain in a durable backlog; bracket
@@ -186,7 +203,7 @@ Hard rules (also in `AGENTS.md` — read it; Codex auto-loads it):
   database-owner credentials in app configuration.
 - **ESPN mapping already exists in TS** under `src/server/data/providers/espn-*.ts`, tested against recorded JSON in `src/server/data/__fixtures__/`. The Go ingester re-implements these; **test the Go port against the same fixtures** for parity.
 - **All frontend data-fetching is server-side** (Next.js server components + `/api` routes) — so the reader can be public without the browser ever holding a DB credential.
-- **Competitions/seasons** are config in `src/server/data/competitions.ts` (9 competitions). The Go side reads the generated `backend/config/competitions.json` — never hand-edit it; run `npm run export:competitions`.
+- **Competitions/seasons** are config in `src/server/data/competitions.ts` (**ten** configured competitions). The Go side reads the generated `backend/config/competitions.json` — never hand-edit it; run `npm run export:competitions`. (Configured is not the same as uniformly ingested — see [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md).)
 
 ---
 

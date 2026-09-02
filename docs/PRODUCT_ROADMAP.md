@@ -1,9 +1,20 @@
 # ScoreArc Product Roadmap
 
-**Status:** Approved · 2026-08-15
+**Status:** Approved · task index revised 2026-09-01
 **Owner:** Product
 **Companion docs:** `VISION.md` (north star) · `BACKEND_HANDOFF.md` (the Go build) ·
 `AGENTS.md` (how to work in this repo)
+
+> **What is deployed, working, broken, or blocked right now lives in
+> [`docs/CURRENT_STATE.md`](CURRENT_STATE.md)** — the single canonical status
+> ledger. This roadmap owns the **stable epic/task IDs, dependencies, hard
+> gates, and forward priorities**; it defers every mutable status claim to
+> `CURRENT_STATE.md`. The two gate decisions it points to are
+> [`docs/decisions/2026-09-01-data-rights-gate.md`](decisions/2026-09-01-data-rights-gate.md)
+> (the ESPN data-rights engineering gate) and
+> [`docs/decisions/2026-09-01-mcp-timing-and-boundary.md`](decisions/2026-09-01-mcp-timing-and-boundary.md)
+> (MCP sequencing). Where an epic below cites a live defect or a "done/next"
+> claim, treat `CURRENT_STATE.md` as authoritative if the two ever drift.
 
 This is the index. Every epic below links to a design spec and, where the work is
 ready to execute, a task-by-task implementation plan. Task IDs (`T0.1`, `T3.2`, …)
@@ -51,8 +62,12 @@ Which produces the sequencing principle for this roadmap:
 > **Phase 1 is the real gate for exactly four things, and it has been used to gate
 > fourteen.**
 
-E0–E6 and T8.1 ship with today's architecture. E7 is the genuine gate, and it
-gates history, trends, percentiles and simulation — nothing else.
+E0–E6 and T8.1 ship with today's architecture. E7 is the genuine gate for
+history, trends, percentiles and simulation — nothing else. Its **ingester
+writers have since landed**; what remains behind the gate is the read/render
+surface (T7.3–T7.5) and operational durability acceptance — see
+[`docs/CURRENT_STATE.md`](CURRENT_STATE.md) for exactly what is implemented
+versus pending.
 
 ---
 
@@ -66,11 +81,11 @@ gates history, trends, percentiles and simulation — nothing else.
 | **E3** | Fixtures & results | none | [spec](superpowers/specs/2026-08-15-fixtures-results-design.md) | [plan](superpowers/plans/2026-08-15-fixtures-results.md) |
 | **E4** | Team pages | none | [spec](superpowers/specs/2026-08-15-team-pages-design.md) | [plan](superpowers/plans/2026-08-15-team-pages.md) |
 | **E5** | Player pages | none | [spec](superpowers/specs/2026-08-15-player-pages-design.md) | [plan](superpowers/plans/2026-08-15-player-pages.md) |
-| **E6** | Shot log | coverage probe | [spec](superpowers/specs/2026-08-15-shot-log-design.md) | after T6.1 |
-| **E7** | History & trends | backend Phase 1 | [spec](superpowers/specs/2026-08-15-history-and-trends-design.md) | after T7.1 |
-| **E8** | AI recaps & digest | T1.3 / T7.1 | [spec](superpowers/specs/2026-08-15-ai-recaps-design.md) | after E1 |
-| **E9** | Expected goals (xG) | T7.12 / T7.13 | [spec](superpowers/specs/2026-08-15-expected-goals-design.md) | after T9.1 |
-| **E10** | Public API read surface | E7 write path | — (serves E1–E8) | T10.1–T10.9, see task index |
+| **E6** | Shot log | T6.1 done — extraction/render remain | [spec](superpowers/specs/2026-08-15-shot-log-design.md) | after T6.1 |
+| **E7** | History & trends | writers implemented — read/render remain | [spec](superpowers/specs/2026-08-15-history-and-trends-design.md) | after T7.1 |
+| **E8** | AI recaps & digest | T1.3 / T7.1 + data-rights gate | [spec](superpowers/specs/2026-08-15-ai-recaps-design.md) | after E1 |
+| **E9** | Expected goals (xG) | T7.13 op-closure · T9.1 · product choice · rights | [spec](superpowers/specs/2026-08-15-expected-goals-design.md) | after T9.1 |
+| **E10** | Public API read surface | reader DTO/query parity | — (serves E1–E8) | T10.1–T10.9, see task index |
 | **E11** | Dynamic home & now-first matches | none | [spec](superpowers/specs/2026-08-18-dynamic-home-and-matches-design.md) | T11.1–T11.3, see task index |
 | **E12** | Team discovery | none — **done** | see E12 below | shipped |
 | **E13** | Competition simulation | backend/current-state model | not designed | noted below |
@@ -291,8 +306,10 @@ Branch `feat/team-pages`. Every crest on the site is currently a dead end.
 - **T4.3** Make crests clickable everywhere — done
 - **T4.4** Backend mirror — done: migration 0022 (club colours), the ingester
   capturing them from the roster it already fetches, and
-  `GET /v1/competitions/{comp}/{season}/teams/{teamId}` returning the same
-  `TeamProfile` shape, so the migration off ESPN is a base-URL change.
+  `GET /v1/competitions/{comp}/{season}/teams/{teamId}` returning the
+  `TeamProfile` shape. The route exists, but the frontend cutover to it is a
+  contract/parity project, **not** a base-URL swap — and the route itself has a
+  live defect. See [`docs/CURRENT_STATE.md`](CURRENT_STATE.md).
 
 Verified 2026-08-15, re-verified 2026-08-19: `/teams/{id}/roster` returns all 35
 players, **28 of them with season statistics inline** — so a complete, sortable
@@ -534,19 +551,32 @@ feature to a tenth of the site. Nor does T6.3 change — reconciling against the
 provider's own `rosters[].totalShots` is what makes the log trustworthy, and it is
 now doubly load-bearing because E9 trains on those same rows.
 
-### E7 · History & trends — the real gate
+### E7 · History & trends — writers landed, reads remain
 
-**Render tasks** (need the writers below to have run first):
+E7's foundation shipped as a large batch of ingester writers (2026-08-16–18).
+**The backend now has memory.** What is left of E7 is the read/render surface
+and the operational acceptance of the durability path — not the writers. See
+[`docs/CURRENT_STATE.md`](CURRENT_STATE.md) for the authoritative
+implemented-vs-pending breakdown; the task IDs and plans below are kept stable.
 
-- **T7.1** Daily standings snapshot writer — **start immediately** · [plan](superpowers/plans/2026-08-15-ingester-standings-snapshots.md)
-- **T7.2** Match + participation history — on `feat/player-identity`, unmerged
+**Read/render tasks — remaining** (they need the writers below, which have run):
+
 - **T7.3** Form column (last five) in every table
 - **T7.4** Player game log and per-position percentiles
 - **T7.5** Previous seasons
 
-**Ingester write tasks.** The backend had no memory: `standing_snapshot` and
-`win_prob_snapshot` existed since migration `0002` and **nothing had ever written
-to either**. These are the writers, each with an exact-code plan.
+**Foundation tasks — implemented:**
+
+- **T7.1** Daily standings snapshot writer — implemented (`snapshotStandings` →
+  `Store.WriteStandingSnapshot`) · [plan](superpowers/plans/2026-08-15-ingester-standings-snapshots.md)
+- **T7.2** Match + participation history — **implemented**, merged as
+  squash-merge PR #29 (commit `5836d372`, 2026-08-16). The stale
+  `feat/player-identity` remote branch is squash-merge ancestry residue, **not**
+  pending work — check the squash commit, not branch ancestry.
+
+**Ingester write tasks — implemented.** `standing_snapshot` and
+`win_prob_snapshot` existed since migration `0002` and nothing wrote to either;
+these are the writers, each with an exact-code plan, now shipped.
 
 | Task | What it writes | Plan |
 |---|---|---|
@@ -557,39 +587,60 @@ to either**. These are the writers, each with an exact-code plan.
 | **T7.10** | Athlete demographics + career club history | same plan as T7.9 |
 | **T7.11** | Relational match commentary | [plan](superpowers/plans/2026-08-15-ingester-commentary.md) |
 | **T7.12** | **Touch-level play stream + R2 raw archive** | [plan](superpowers/plans/2026-08-15-ingester-play-stream.md) |
-| **T7.13** | **Retention probe + current-season play backfill** | same plan as T7.12 |
+| **T7.13** | **Retention probe + current-season play backfill** — **partially implemented, not operationally accepted** (see below) | same plan as T7.12 |
 | **T7.14** | Match officials as canonical people | [plan](superpowers/plans/2026-08-15-ingester-officials-and-odds.md) |
 | **T7.15** | Odds line-movement snapshots | same plan as T7.14 |
 | **T7.16** | Live-path set convergence/write reduction | [plan](superpowers/plans/2026-08-18-live-path-write-reduction.md) |
 | **T7.17** | Live sample/audit cadence reduction | same plan as T7.16 |
 | **T7.18** | **Finalization invariants** — database-enforced C1 protection for every finalized-fact table (migration 0021) | **completed** |
-| **T7.19** | Content-memo write guard for `standing` / `top_scorer` | [plan](superpowers/plans/2026-08-18-content-memo-write-guard.md) |
+| **T7.19** | Content-memo write guard for `standing` / `top_scorer` — **implemented**; broader writer durability gaps (participation retry, official retry poison path, backfill row path) remain, governed by [`docs/CURRENT_STATE.md`](CURRENT_STATE.md) | [plan](superpowers/plans/2026-08-18-content-memo-write-guard.md) |
 
-**T7.12/T7.13 carry a deadline** — see the capability note below. They are also
-**E9's hard prerequisite**: a model cannot be trained on data we did not persist.
+**T7.13 is not done.** Live-path capture archives raw bytes to R2 *and* writes
+analysable `match_play` rows before the completion ledger. But the standalone
+`cmd/play-backfill` archives bytes and records the archive ledger **without**
+writing `match_play`, removes the match from normal retry, and seals later row
+writes — with no archive-to-rows reprocessor, and production archive coverage
+unverified. T7.13 stays open until the backfill row path, the raw-archive
+requirement, retry fairness, and per-competition coverage evidence are complete.
+It carries a deadline (see the capability note above) and is **E9's hard
+prerequisite** — but writer existence is not the same as operational closure.
 
 ### E8 · AI
 - **T8.1** Auto-generated match recaps
 - **T8.2** Anomaly digest
 - **T8.3** Match previews
 
-### E9 · Expected goals — committed, and gated on a measurement
-- **T9.1** Training-set probe — **blocking, before any modelling**
+### E9 · Expected goals — committed, and multiply gated
+
+- **T9.1** Training-set probe — **blocking, before any modelling; not yet run**
 - **T9.2** Shot-feature extraction from `match_play`
 - **T9.3** Model fit + calibration
 - **T9.4** Published validation (Brier score + reliability curve, on the page)
 - **T9.5** Per-competition gating and rendering
 
-Gated on **T7.12/T7.13**, not on a provider. T9.1 blocks T9.2 for exactly the
-reason T6.1 blocks T6.2: an unmeasured sample is an assumption, and a model built
-on one is discovered to be wrong by a user. Detail: the
-[E9 spec](superpowers/specs/2026-08-15-expected-goals-design.md).
+**No ScoreArc xG model or public xG surface exists.** T7.12 live-path capture is
+implemented, but the gate is **not** cleared: T7.13 is not operationally complete
+(above), T9.1 has not run, and — flagged by T6.1 — shots already carry
+provider-computed `expectedGoals`, so the owner must still choose provider xG, a
+ScoreArc-built model, or both with explicit provenance and calibration. Model
+work is **additionally gated on documented data rights** — training/validating a
+model on ESPN-derived data is named by the
+[data-rights gate](decisions/2026-09-01-data-rights-gate.md). T9.1 blocks T9.2
+for the same reason T6.1 blocks T6.2: an unmeasured sample is an assumption.
+Detail: the [E9 spec](superpowers/specs/2026-08-15-expected-goals-design.md) and
+[`docs/CURRENT_STATE.md`](CURRENT_STATE.md).
 
 ### E10 · Public API read surface
 
-The read path for everything E7's ingester writes. 42 endpoints — the 7 that exist
-today (paths unchanged) plus 35 new. No spec of its own: each endpoint serves an
-E1–E8 feature, and those specs are the requirements.
+The read path for everything E7's ingester writes. The base reader ships **seven
+`/v1` data routes plus `/healthz`** today (paths unchanged); the T10.1–T10.9
+expansion is **not yet built**. The acceptance criterion is **use-case contract
+parity, not a route count** — each endpoint exists to serve an E1–E8 feature and
+must satisfy the frontend's canonical DTO shapes, query semantics (range/state/
+detail/limit), and derived-view needs, so those feature specs are its
+requirements. No spec of its own. Cutover (1d) depends on that DTO/query/
+derived-view parity being a tested contract — see
+[`docs/CURRENT_STATE.md`](CURRENT_STATE.md) §5 for the current gap.
 
 - **T10.1** Match reads — fixtures/results by range, calendar (E3, E2) · [plan](superpowers/plans/2026-08-15-api-match-reads.md)
 - **T10.2** Leaders & box scores (E1) · [plan](superpowers/plans/2026-08-15-api-leaders-and-box-scores.md)
@@ -628,33 +679,41 @@ copies of the same validator and reconciling them later.
 
 ## Delivery order
 
-**Now** — ~~E0~~ (#77), ~~E1~~ (#84), then E2. One branch each.
+The stable epic/task IDs above do not change; this is the current forward
+priority, and it defers every live-defect and done/pending detail to
+[`docs/CURRENT_STATE.md`](CURRENT_STATE.md) §8 (hard gates) rather than
+duplicating them. E0–E5, E11, E12, E14 and E15 have shipped; E7's writers have
+landed. What remains is sequenced as:
 
-**Next** — ~~E3~~, ~~E4~~, ~~E5~~, all shipped (E3 2026-08-24, absorbed in part
-by E11/T11.3; E4 and E5 earlier). What's left of the frontage track is **E6**
-(blocked on T6.1's coverage probe, not started) and **E7's render tasks**
-(blocked on the parallel track below actually writing the rows they read).
+**Now** — the hard gates, in order:
 
-**Parallel track, starting immediately** — **T7.1 and T7.12/T7.13**, by two
-different agents. These are the tasks with a **cost for waiting**, and until
-2026-08-15 this document claimed there was only one of them:
+- The **data-rights decision**
+  ([gate](decisions/2026-09-01-data-rights-gate.md)) — nothing that expands
+  ESPN-derived data's audience, training use, or MCP exposure proceeds without it.
+- **Protect `main`** — every change through a feature-branch PR (`AGENTS.md`).
+- **T7.13 / archive / backfill durability** — close the backfill row-write gap,
+  decide the raw-archive requirement, fix retry fairness before calling E7's
+  writers "operationally done".
+- **Participation and final-capture durability** — give finalized-but-unwritten
+  participation a retry path, or accept the gap in writing.
+- **Production completeness/freshness + the Greece-empty and team-500 defects** —
+  live user-facing/data-integrity bugs, not roadmap items.
+- **Canonical reader DTO / query contract with cross-language parity** — make the
+  reader's shape and query semantics a tested contract before building on it.
 
-- **T7.1** — a standings snapshot not written today is gone forever. ESPN
-  publishes the current table, not yesterday's.
-- **T7.12/T7.13** — ESPN keeps the full play stream for the **current season
-  only**. Every match this season still has its touch tier and its 0–100 geometry
-  today; at season end all of it collapses to a ~200-play summary on a different
-  coordinate scale with goal-mouth placement zeroed. This is a deadline measured
-  in months rather than days, which makes it schedulable — and makes it very easy
-  to let slip.
+**Next** — derived-view and identity parity; then a **staged 1d cutover**
+(method-by-method, with per-method ESPN fallback and shadow comparison — never a
+one-step flip); then initial **E10** history/player/shot reads; **E6** shot map
+(T6.2–T6.4); **E7** history UI (T7.3–T7.5); and **E9's** measurement/product
+decision (post-rights, post-T7.13-closure).
 
-They touch disjoint files (`competitions.go` / standings vs a new `plays.go` and a
-new R2 bucket) and are the natural two-way split.
+**Later** — validated **E8** language and **E9** models; a **real-data MCP** per
+its [decision record](decisions/2026-09-01-mcp-timing-and-boundary.md); the LED
+board; competition simulation (E13); personalization.
 
-**Then** — E6, then E8.
-
-**E9 follows T7.12/T7.13**, and cannot start before them: T9.1's training-set
-probe measures rows that only exist once the play stream is being persisted.
+Explicitly lower priority, not ahead of data correctness: product-quality fixes
+(LCP/TTFB, the ESPN asset payload, contrast/accessible-name findings) and
+removing the dead `LiveScores` component — real, but they gate nothing above.
 
 ## Rules that apply to every epic
 

@@ -4,6 +4,12 @@ Self-contained design reference for the backend. The full original spec is
 `docs/superpowers/specs/2026-07-22-backend-api-phase1-design.md` (its GCP infra
 section is superseded by the Fly+Neon+R2 pivot; everything else here matches).
 
+> 📍 **This document describes intended design.** For what is actually deployed,
+> working, or broken right now — and for any live defect a design statement below
+> does not capture — see [`docs/CURRENT_STATE.md`](../CURRENT_STATE.md), the
+> canonical status ledger. Where design and current reality differ, this file
+> states the design and defers the status to that document.
+
 ---
 
 ## 1. System diagram
@@ -30,8 +36,11 @@ flowchart LR
 
 - **Live vs historical is a first-class axis.** Current state is hot/mutable
   (upserted). A finished match is frozen (`finalized_at`) and immutable →
-  historical results accrue for free. Time-series snapshots are append-only
-  (Phase 2). The ingester behaves accordingly (upsert while live; write-and-freeze
+  historical results accrue for free. Time-series snapshots use **bucketed
+  latest-observation** semantics rather than being strictly append-only: writes
+  converge to one row per UTC day (standings) or per UTC minute (win-prob, odds),
+  updating the bucket's row on a re-poll instead of appending a duplicate (§3,
+  Tier 3). The ingester behaves accordingly (upsert while live; write-and-freeze
   on finish).
 
 ---
@@ -42,12 +51,20 @@ The frontend reads through **one interface**, `DataStore` (`src/server/data/stor
 
 ```ts
 interface DataStore {
-  getMatches(rc): Promise<Match[]>
+  getMatches(rc, range?): Promise<Match[]>
+  getFixtures(rc, range): Promise<Match[]>
+  getLiveWindow(rc): Promise<Match[]>
+  getUpcoming(rc, limit?): Promise<Match[]>
   getStandings(rc): Promise<Group[]>
   getBracket(rc): Promise<BracketRound[]>
   getMatchSummary(rc, eventId, homeId, awayId): Promise<MatchSummaryData>
-  getTopScorers(rc): Promise<TopScorer[]>
+  getLeaders(rc): Promise<{ scorers: StatLeader[]; assists: StatLeader[] }>
+  getTopScorers(rc): Promise<StatLeader[]>
+  getTopAssists(rc): Promise<StatLeader[]>
   getNews(rc): Promise<NewsArticle[]>
+  getTeam(rc, teamId): Promise<TeamProfile | null>
+  getSquad(rc, teamId): Promise<SquadPlayer[]>
+  getPlayer(rc, athleteId): Promise<PlayerProfile | null>
 }
 ```
 
@@ -55,7 +72,9 @@ Today it's ESPN read-through + TTL cache. Phase 1 adds a second implementation,
 `apiStore`, that calls our reader. **No page or component changes** — only the
 seam swaps (slice 1d, behind a `DATA_SOURCE` flag with ESPN fallback). The
 reader's JSON must deserialize into the existing types in
-`src/server/data/types.ts`.
+`src/server/data/types.ts`. These **14 methods do not yet map 1:1 onto the
+reader's routes** (§5), so 1d is a contract/parity project, not a base-URL swap —
+the current gap is tracked in [`docs/CURRENT_STATE.md`](../CURRENT_STATE.md) §5.
 
 ---
 
@@ -134,7 +153,7 @@ untouched and do not use that escape hatch.
 
 ### Tier 3 — time-series (WRITTEN by the ingester today — there is no deferred `emitSnapshots()`)
 - **standing_snapshot**(id bigserial, competition_id, season_id, team_id→team, captured_at (the true observation time), **captured_on** (generated, UTC date), rank, points, goal_difference, played) — the daily table, **WRITTEN** by the ingester since T7.1 (`snapshotStandings` in `ingester/runner.go` → `Store.WriteStandingSnapshot`), and only after `ReplaceStandings` committed so the snapshot and the live table always agree. This is the one write in the system whose absence is irreversible: ESPN publishes the current table, not yesterday's, so a day nobody records can never be recovered from any provider — which is why the whole day is one transaction (a reader cannot tell a half-written table from a real one) and why the day is enforced by the database rather than by the caller. `captured_on` is **generated** from `(captured_at AT TIME ZONE 'UTC')::date` for the same reason `match.kickoff_date` is: a bucket the writer fills can disagree with the value it was derived from. Fixing the boundary at 00:00 UTC also lets a Liga MX series and a Premier League series share one x-axis. **UNIQUE (competition_id, season_id, team_id, captured_on)** is what makes a restart, a redeploy or a crash-loop unable to duplicate a day; the ingester's in-process day gate is only a cost optimisation on top of it. A second write within a recorded day UPDATES it — the semantic is "the day's last observed table", so 06:00 refreshed at 22:30 keeps the 22:30 numbers — guarded by `WHERE standing_snapshot.captured_at <= EXCLUDED.captured_at` so a delayed response cannot replace a fresher observation. A recorded day is only re-recorded when a match finalized that cycle, since that is the only thing that moves a table. The content memo that gates `standing` deliberately does **not** gate this: it is C4, the class where writing the same value twice is correct.
-- **win_prob_snapshot**(id bigserial, match_id→match ON DELETE CASCADE, captured_at (minute bucket, UTC), observed_at (untruncated poll-start time), home, draw, away numeric(5,2)) — append-only, **WRITTEN** by the ingester since T7.6, for matches in state `live` only. `UNIQUE (match_id, captured_at)` collapses the 20-second live poll to one row per minute; same-minute conflicts update only when `observed_at` is at least as recent, so a delayed response cannot replace fresher data. The values are **market-implied** — the first betting provider's three-way moneyline with the margin removed, per `mapWinProbability` — and are not a ScoreArc forecast. Scheduled detail is now TTL-throttled (>24 hours to kickoff every six hours, 24 hours down to more than one hour hourly, and the final hour every slow tick), but pre-match snapshots remain deliberately out of scope: even 4–24 rows per day for every future fixture would accumulate an unused market curve. Postponed or suspended fixtures whose kickoff has passed remain in the final-hour band and continue at slow-tick cadence.
+- **win_prob_snapshot**(id bigserial, match_id→match ON DELETE CASCADE, captured_at (minute bucket, UTC), observed_at (untruncated poll-start time), home, draw, away numeric(5,2)) — one row per UTC minute (bucketed latest-observation, not strictly append-only), **WRITTEN** by the ingester since T7.6, for matches in state `live` only. `UNIQUE (match_id, captured_at)` collapses the 20-second live poll to one row per minute; same-minute conflicts update only when `observed_at` is at least as recent, so a delayed response cannot replace fresher data. The values are **market-implied** — the first betting provider's three-way moneyline with the margin removed, per `mapWinProbability` — and are not a ScoreArc forecast. Scheduled detail is now TTL-throttled (>24 hours to kickoff every six hours, 24 hours down to more than one hour hourly, and the final hour every slow tick), but pre-match snapshots remain deliberately out of scope: even 4–24 rows per day for every future fixture would accumulate an unused market curve. Postponed or suspended fixtures whose kickoff has passed remain in the final-hour band and continue at slow-tick cadence.
 - **odds_snapshot**(PK (match_id→match ON DELETE CASCADE, provider_id, captured_at (minute bucket, UTC)), the same price columns as `match_odds`) — each bookmaker's **moving** current line, sampled on every live poll (T7.15), because market movement only exists if somebody writes it down: ESPN publishes the price now, not the price ten minutes ago. `captured_at` is bucketed to the UTC minute so the 20-second poll produces one evenly spaced row per minute instead of three, and an in-process sample gate skips the two polls that would only rewrite the row they just wrote — a full-time capture always writes, because that is the closing sample rather than a point on a curve. Sampled deliberately **outside** the win-probability condition: the competitions whose market `mapWinProbability` cannot normalize are exactly the ones whose market would otherwise never be recorded at all. Deliberately best-effort where `match_odds` is durable: another poll follows in ~20 seconds, so a failed sample is audited but never retried, and because the current market closes at full time a fixed-odds backlog retry does **not** add a post-match sample. Raw American prices again, so `win_prob_snapshot` is neither derived from nor replaced by these rows; a value the provider omits stays `NULL` rather than becoming a zero-priced observation.
 
 ### Ops
@@ -398,11 +417,14 @@ sequenceDiagram
 
 - Public and autoscaling, with one warm machine and an autostopped spare.
   Versioned under `/v1`.
-- Endpoints mirror the 6 `DataStore` methods:
+- **Seven `/v1` data routes plus `/healthz`** (they cover a subset of the 14
+  `DataStore` methods — the parity gap is in §2 and
+  [`docs/CURRENT_STATE.md`](../CURRENT_STATE.md) §5):
   - `GET /v1/competitions/{comp}/{season}/matches`
   - `GET /v1/competitions/{comp}/{season}/standings`
   - `GET /v1/competitions/{comp}/{season}/bracket`  (computed read-model)
   - `GET /v1/competitions/{comp}/{season}/top-scorers`
+  - `GET /v1/competitions/{comp}/{season}/teams/{teamId}`  (team profile)
   - `GET /v1/matches/{id}`  (summary/detail)
   - `GET /v1/competitions/{comp}/news`  → **live proxy to ESPN** (short TTL cache), NOT DB-served.
 - **Response shapes match the frontend types.** Publish an **OpenAPI** doc as the
@@ -477,10 +499,17 @@ nested response locations.
 
 ## 7. Frontend cutover (slice 1d)
 
+**Not started** — no `apiStore` exists on `main` (see
+[`docs/CURRENT_STATE.md`](../CURRENT_STATE.md)). This is a **contract/parity
+project, not a base-URL swap**: the 14 `DataStore` methods (§2) exceed the
+reader's 7 routes (§5), and canonical DTO shapes, query semantics, and derived
+views must reach tested parity first (`CURRENT_STATE.md` §5). The intended design:
+
 - Add `apiStore` implementing `DataStore` by calling the reader `/v1` endpoints
   and deserializing into the existing types.
 - `DATA_SOURCE` env flag (`espn` | `api`) selects the implementation; default
-  `espn` until parity is verified, then flip to `api`.
+  `espn` until parity is verified. Cut over **method-by-method**, with a
+  per-method ESPN fallback and shadow comparison — not a single one-step flip.
 - During rollout, `apiStore` **falls back to the ESPN store on error** so a
   backend issue never dark-pages the site.
 - Set `SCOREARC_API_BASE` (the reader's public URL) in Vercel env.
@@ -513,11 +542,14 @@ nested response locations.
   the ingester sees, so this would be ~6,000 requests to duplicate a subset of what we hold.
 - **Injuries** — not ingested. The `injuries` array is present on every roster athlete and
   **empty on all 35**. The field existing is not the data existing.
-- **Phase 2** — time-series *writes* + an analytics store. Options when we get
-  there: **BigQuery** (usable cross-cloud via API even off GCP), **R2 + DuckDB /
-  MotherDuck** (data-lake on the object storage we already have — natural fit),
-  **ClickHouse Cloud**, or just partitioned Neon/Postgres until it outgrows it.
-  The `emitSnapshots()` hook + snapshot tables are the seam; whatever we pick
+- **Phase 2 analytics store** — the time-series **writes already ship** (the
+  ingester writes `standing_snapshot`/`win_prob_snapshot`/`odds_snapshot`; see §3
+  Tier 3 — there is no deferred `emitSnapshots()`). What is deferred is a
+  dedicated analytics store and richer history/trend reads on top of those rows.
+  Options when we get there: **BigQuery** (usable cross-cloud via API even off
+  GCP), **R2 + DuckDB / MotherDuck** (data-lake on the object storage we already
+  have — natural fit), **ClickHouse Cloud**, or just partitioned Neon/Postgres
+  until it outgrows it. The snapshot tables are the seam; whatever we pick
   attaches there without reshaping Phase 1.
 - **Phase 3** — historical backfill. **Revised 2026-08-15:** xG no longer needs an
   external source. ESPN's *core* host serves shot geometry directly and T7.12/T7.13
@@ -567,8 +599,11 @@ truth is the TS**: `src/server/data/types.ts` (shapes), `providers/espn-*.ts`
 
 **1c — Reader (implemented)**
 - **Endpoint → type map:** each `/v1/…` response must deserialize into exactly
-  `Match[]` / `Group[]` / `BracketRound[]` / `MatchSummaryData` / `TopScorer[]` /
-  `NewsArticle[]` from `types.ts`. Write a field-by-field map in the plan.
+  the matching `types.ts` shape — `Match[]` / `Group[]` / `BracketRound[]` /
+  `StatLeader[]` (`top-scorers`) / `TeamProfile` (`teams/{teamId}`) /
+  `MatchSummaryData` (`matches/{id}`) / `NewsArticle[]` (`news`). Seven data
+  routes today; the frontend's other `DataStore` methods (§2) have no reader
+  route yet. Write a field-by-field map in the plan.
 - **`/news` drops season:** `newsUrl(slug)` is comp-only; the endpoint is
   `/v1/competitions/{comp}/news` and `apiStore.getNews` builds it from
   `rc.competition`, ignoring season.
