@@ -29,8 +29,9 @@ re-verification — supersedes that proposed audit as filed.
 | Area | Status |
 |---|---|
 | Frontend | Live at scorearc.futbol, fully ESPN-backed. No reader/backend fetch call sites exist in `src/server/data/` — the 1d cutover has not started. |
-| Go backend | Ingester + reader are deployed on Fly.io, Neon Postgres, Cloudflare R2 crest mirror. Recent credentialed, path-filtered deploy workflow runs completed checkout/setup/deploy steps successfully. |
+| Ingester | Deployed/running on Fly.io with Neon Postgres and the Cloudflare R2 crest mirror. E7 writers are present. Raw-archive completeness/config remains unverified. |
 | Reader API | 7 registered `/v1` data routes (`matches`, `standings`, `bracket`, `top-scorers`, `teams/{teamId}`, `news`, `matches/{id}`) + `/healthz`. The team-profile route (`teams/{teamId}`) currently returns **500** for at least one live competition (Liga MX). |
+| Operations | Recent credentialed, path-filtered deploy workflow runs completed checkout/setup/deploy steps successfully. `main` is unprotected. No per-competition freshness/completeness alert exists. Migrations are manual, and the production-schema cause of the team 500 is unknown. |
 | 1d (frontend cutover) | Absent. No spec has landed as an implementation; no `apiStore` exists. |
 | E6 (shot log) | T6.1 (coverage probe) complete. T6.2–T6.4 (extraction, reconciliation, rendering) pending. |
 | E7 (history & trends) | Writer code is implemented and running (`WriteStandingSnapshot`, `WriteWinProbSnapshot`, `WritePlays`, `WriteParticipation`, `WriteCommentary`, `ReplaceLeaders`, `ReplaceSquad`, `WriteMatchOfficials`, `WriteMatchOdds`, `WriteOddsSnapshot`). **T7.13 operational acceptance is pending** (§4). Read/render surfaces (T7.3–T7.5) do not exist. |
