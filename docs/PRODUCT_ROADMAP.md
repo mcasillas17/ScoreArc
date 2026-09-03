@@ -1,9 +1,8 @@
 # ScoreArc Product Roadmap
 
-**Status:** Approved · task index revised 2026-09-01
+**Status:** Approved · task index revised 2026-09-03
 **Owner:** Product
-**Companion docs:** `VISION.md` (north star) · `BACKEND_HANDOFF.md` (the Go build) ·
-`AGENTS.md` (how to work in this repo)
+**Companion docs:** `VISION.md` (north star) · `BACKEND_HANDOFF.md` (the Go build)
 
 > **What is deployed, working, broken, or blocked right now lives in
 > [`docs/CURRENT_STATE.md`](CURRENT_STATE.md)** — the single canonical status
@@ -18,7 +17,9 @@
 
 This is the index. Every epic below links to a design spec and, where the work is
 ready to execute, a task-by-task implementation plan. Task IDs (`T0.1`, `T3.2`, …)
-are stable and are how work gets assigned across sessions.
+are stable and are how work gets assigned across sessions. The 2026-09-03 expansion
+adds implementation contracts for every open task while keeping mutable status in
+`CURRENT_STATE.md` and exact code in per-slice plans.
 
 > **Revised 2026-08-15 — a factual error was found and corrected.** Earlier
 > versions of this document asserted that ESPN exposes no pitch coordinates and
@@ -46,10 +47,9 @@ ESPN. The ten competitions are configured but **not uniformly proven ingested**
 end-to-end. For exactly what is deployed, populated, empty, or broken right now,
 see [`CURRENT_STATE.md`](CURRENT_STATE.md) rather than trusting this narrative.
 
-Three independent reviews converged on the same absence, and the review turned up
-something better than a wish list: **most of the top of this roadmap needs no new
-provider and no database.** It is already inside JSON we fetch, parse, and throw
-away on every single request.
+The highest-priority work is better than a wish list: **most of the top of this
+roadmap needs no new provider and no database.** It is already inside JSON we
+fetch, parse, and throw away on every single request.
 
 Three examples, all verified against live responses on 2026-08-14/15:
 
@@ -64,14 +64,15 @@ Three examples, all verified against live responses on 2026-08-14/15:
 
 Which produces the sequencing principle for this roadmap:
 
-> **Phase 1 is the real gate for exactly four things, and it has been used to gate
-> fourteen.**
+> **Trust the data, complete the reader contract, dogfood it, then build the
+> intelligence and personalization layers.**
 
-E0–E6 and T8.1 ship with today's architecture. E7 is the genuine gate for
-history, trends, percentiles and simulation — nothing else. Its **ingester
-writers have since landed**; what remains behind the gate is the read/render
-surface (T7.3–T7.5) and operational durability acceptance — see
-[`docs/CURRENT_STATE.md`](CURRENT_STATE.md) for exactly what is implemented
+The immediate frontier is no longer feature discovery. It is operational
+durability, honest freshness/completeness signals, reader parity, and a staged
+frontend cutover. E7's writers have landed, but their durability acceptance and
+read/render surfaces remain. AI generation, model training, new public data
+distribution, and real-data MCP remain behind the accepted data-rights gate.
+See [`docs/CURRENT_STATE.md`](CURRENT_STATE.md) for exactly what is implemented
 versus pending.
 
 ---
@@ -80,38 +81,45 @@ versus pending.
 
 | Epic | Title | Gate | Spec | Plan |
 |---|---|---|---|---|
-| **E0** | Pre-season table integrity | none — **live bug** | [spec](superpowers/specs/2026-08-15-preseason-table-integrity-design.md) | [plan](superpowers/plans/2026-08-15-preseason-table-integrity.md) |
-| **E1** | Assists & per-match box score | none | [spec](superpowers/specs/2026-08-15-assists-and-box-score-design.md) | [plan](superpowers/plans/2026-08-15-assists-and-box-score.md) |
+| **E0** | Pre-season table integrity | **shipped** | [spec](superpowers/specs/2026-08-15-preseason-table-integrity-design.md) | [plan](superpowers/plans/2026-08-15-preseason-table-integrity.md) |
+| **E1** | Assists & per-match box score | **shipped** | [spec](superpowers/specs/2026-08-15-assists-and-box-score-design.md) | [plan](superpowers/plans/2026-08-15-assists-and-box-score.md) |
 | ~~**E2**~~ | ~~Live scores grid~~ — **folded into E11 T11.3** | — | [spec](superpowers/specs/2026-08-15-live-scores-grid-design.md) | superseded |
-| **E3** | Fixtures & results | none | [spec](superpowers/specs/2026-08-15-fixtures-results-design.md) | [plan](superpowers/plans/2026-08-15-fixtures-results.md) |
-| **E4** | Team pages | none | [spec](superpowers/specs/2026-08-15-team-pages-design.md) | [plan](superpowers/plans/2026-08-15-team-pages.md) |
-| **E5** | Player pages | none | [spec](superpowers/specs/2026-08-15-player-pages-design.md) | [plan](superpowers/plans/2026-08-15-player-pages.md) |
+| **E3** | Matches & results | **shipped** | [spec](superpowers/specs/2026-08-15-fixtures-results-design.md) | [plan](superpowers/plans/2026-08-15-fixtures-results.md) |
+| **E4** | Team pages | **shipped** | [spec](superpowers/specs/2026-08-15-team-pages-design.md) | [plan](superpowers/plans/2026-08-15-team-pages.md) |
+| **E5** | Player pages | **shipped** | [spec](superpowers/specs/2026-08-15-player-pages-design.md) | [plan](superpowers/plans/2026-08-15-player-pages.md) |
 | **E6** | Shot log | T6.1 done — extraction/render remain | [spec](superpowers/specs/2026-08-15-shot-log-design.md) | after T6.1 |
-| **E7** | History & trends | writers implemented — read/render remain | [spec](superpowers/specs/2026-08-15-history-and-trends-design.md) | after T7.1 |
-| **E8** | AI recaps & digest | T1.3 / T7.1 + data-rights gate | [spec](superpowers/specs/2026-08-15-ai-recaps-design.md) | after E1 |
+| **E7** | History, trends & evidence-backed insight | writers implemented — durability/read/render remain | [spec](superpowers/specs/2026-08-15-history-and-trends-design.md) | per task |
+| **E8** | AI narrative & conversational stats | data-rights + grounding/eval gates | [spec](superpowers/specs/2026-08-15-ai-recaps-design.md) | after T8.4 design |
 | **E9** | Expected goals (xG) | T7.13 op-closure · T9.1 · product choice · rights | [spec](superpowers/specs/2026-08-15-expected-goals-design.md) | after T9.1 |
-| **E10** | Public API read surface | reader DTO/query parity | — (serves E1–E8) | T10.1–T10.9, see task index |
-| **E11** | Dynamic home & now-first matches | none | [spec](superpowers/specs/2026-08-18-dynamic-home-and-matches-design.md) | T11.1–T11.3, see task index |
-| **E12** | Team discovery | none — **done** | see E12 below | shipped |
-| **E13** | Competition simulation | backend/current-state model | not designed | noted below |
-| **E14** | Home digest and global navigation | none — **done** | [spec](superpowers/specs/2026-08-21-home-digest-and-global-nav-design.md) | shipped |
-| **E15** | Typed English/Spanish localization | none — **done** | [spec](superpowers/specs/2026-08-21-typed-localization-and-locale-routing-design.md) | [plan](superpowers/plans/2026-08-21-typed-localization-and-locale-routing.md) |
+| **E10** | Public API read surface | reader DTO/query parity + rights for new public exposure | — (serves product epics) | T10.1–T10.11, see task index |
+| **E11** | Dynamic home & now-first matches | **shipped** | [spec](superpowers/specs/2026-08-18-dynamic-home-and-matches-design.md) | T11.1–T11.3, see task index |
+| **E12** | Discovery & search | team discovery shipped; player directory/search remains | see E12 below | player UI may precede reader parity |
+| **E13** | Competition simulation | E7 history + product contract + published validation | not designed | T13.1 first |
+| **E14** | Home digest and global navigation | **shipped** | [spec](superpowers/specs/2026-08-21-home-digest-and-global-nav-design.md) | shipped |
+| **E15** | Typed English/Spanish localization | **shipped** | [spec](superpowers/specs/2026-08-21-typed-localization-and-locale-routing-design.md) | [plan](superpowers/plans/2026-08-21-typed-localization-and-locale-routing.md) |
+| **E16** | Reader parity & staged frontend cutover (1d) | E10 parity + E17 trust signals | implementation contract below | T16.1–T16.6 |
+| **E17** | Data reliability, freshness & provenance | pre-cutover P0 | implementation contract below | T17.1–T17.4 |
+| **E18** | Rights & multi-source platform | owner/counsel/license decisions | [rights gate](decisions/2026-09-01-data-rights-gate.md) | T18.1–T18.4 |
+| **E19** | Personalization & alerts | 1d dogfood; E18/E8 for generated briefs | implementation contract below | T19.1–T19.5 |
+| **E20** | Product quality, accessibility & SEO | below data correctness | implementation contract below | T20.1–T20.6 |
+| **E21** | Operations, admin & governance | pre-cutover operations | implementation contract below | T21.1–T21.4 |
+| **E22** | Developer & device platform | 1d dogfood + rights + auth/quotas | [MCP decision](decisions/2026-09-01-mcp-timing-and-boundary.md) | T22.1–T22.5 |
+| **E23** | Global competition onboarding | E17 honesty + E18 rights/source | implementation contract below | T23.1–T23.5 |
 
-E6, E8 and E9 deliberately stop at a spec, and E7 now has plans for its whole
-task set. E6's extractor is determined by what the coverage probe (T6.1) finds;
-E8's prompt design depends on the box-score shape E1 lands; E9's model is
-determined by what its training-set probe (T9.1) finds — the same
-measure-before-you-build rule, for the same reason. Writing exact-code plans for
-them today would be inventing detail we do not have, which the plan format
-explicitly forbids.
+E6, E8, E9, and the new E16–E23 work use the same measure-before-building rule.
+This roadmap records task intent, implementation boundaries, failure rules,
+acceptance criteria, dependencies, and gates. Exact code, SQL, endpoint schemas,
+and test bodies belong in one task-by-task plan per implementation slice, written
+against current `main` only when that slice starts.
 
 **E7's plans exist** and are listed under the task index below: ten ingester
 plans cover T7.1, T7.6–T7.17 and T7.19; completed T7.18 records the
 cross-cutting finalization-invariant slice.
 
-**E10 has no spec of its own by design.** It is the read path for work already
-specified elsewhere — every endpoint exists to serve an E1–E8 feature, and those
-specs are its requirements. Its nine plans are listed in the task index.
+**E10 has no spec of its own by design.** It is the read path for work specified
+by product epics — endpoints exist to serve a use case, not to grow a route count.
+Its existing plans are listed in the task index; every dated plan must be diffed
+against current code before execution.
 
 > **Numbering note.** E10/T10.x was originally drafted as E9/T9.x by a parallel
 > session, colliding with xG. The API epic was renumbered; **xG keeps E9**. If you
@@ -205,34 +213,29 @@ Two more operational facts worth not rediscovering:
 
 ## Task index
 
-### E0 · Pre-season table integrity — **ship first**
-Branch `fix/pre-season-tables`. This is a regression from PR #26 and it is on
-production right now.
+### E0 · Pre-season table integrity — **shipped**
+Branch `fix/pre-season-tables`. This repaired the pre-season regression from PR #26.
 
-- **T0.1** Suppress zone bands and ranking when zero matches have been played
-- **T0.2** Own-goal attribution
-- **T0.3** Remove or repoint the dead "Live Scores" nav link
-- **T0.4** Suppress group-table qualification marking before kick-off
-- **T0.5** Flag third-placed qualifiers only when the criteria actually separate
+- **T0.1** ✅ Suppress zone bands and ranking when zero matches have been played
+- **T0.2** ✅ Own-goal attribution
+- **T0.3** ✅ Remove or repoint the dead "Live Scores" nav link
+- **T0.4** ✅ Suppress group-table qualification marking before kick-off
+- **T0.5** ✅ Flag third-placed qualifiers only when the criteria actually separate
   8th from 9th — the ranking *is* the tiebreak, and its last resort is
   alphabetical by group id
-- **T0.6** Guard the qualification cut (`splitByCut`, `LeagueLadder`,
+- **T0.6** ✅ Guard the qualification cut (`splitByCut`, `LeagueLadder`,
   `LeagueDial`) — the most exposed path: Liga MX's and the Leagues Cup's landing
   page, where the dial crowns `standings[0]` as **LEADER**
 
-> **T0.4–T0.6 were all found by review, not by the spec.** The same false
-> statement lived in five code paths; the original spec identified one. Two of
-> them were introduced or missed by the fix itself. The generalised lesson is
-> recorded in the spec: suppressing a positive claim is not enough when the
-> negative one is applied by default, including by a shared CSS class.
+> **T0.4–T0.6 carry one general rule:** suppressing a positive claim is not
+> enough when the negative claim is applied by default, including by a shared
+> CSS class. The same false pre-season statement must be removed from every
+> table, qualification, and ranking path.
 
-Verified live 2026-08-15: ESPN ranks the 2026-27 Premier League **alphabetically**
-at 0 played. Our zone config paints rank 1 as champion and 18–20 as relegation, so
-the site currently declares **Bournemouth champions and Tottenham relegated**.
-Serie A, Bundesliga and Ligue 1 are affected identically.
-
-`LeagueZoneTable` already prints "Season not started" — the note shipped, the fix
-did not. The coloured bands and the alphabetical rank column still render.
+The incident that motivated E0 was verified live on 2026-08-15: ESPN ranked
+pre-season tables alphabetically at zero played, while the UI interpreted those
+positions as sporting merit. The shipped fix suppresses rank, qualification,
+champion, and relegation claims until results actually separate teams.
 
 ### E1 · Assists & per-match box score — **shipped**
 Branch `feat/assists-and-box-score`. No new endpoint, no new network call.
@@ -260,15 +263,14 @@ Two things the plan did not anticipate, both settled during implementation:
 **Do not build this as a separate epic.** T2.2's `/c/[comp]/[season]/live`
 route is a strict subset of T11.3's "Now" mode, whose first section is Live for
 that same competition. Building both would render the same matches on two
-routes — the duplication `AGENTS.md` forbids, except here the fix is not to
-build the second one.
+routes. The fix is to keep one implementation, not build the second route.
 
 What survives, inside T11.3:
 
-- **T2.1's grid** — `LiveScores.tsx` is still 378 finished lines imported
-  nowhere, and is still the right raw material. It becomes the **Live section's
-  renderer** rather than a standalone page. Liga MX's seven simultaneous
-  kickoffs are why it is a grid and not the carousel.
+- **T2.1's display requirement** — simultaneous live matches need a compact,
+  scannable view. T11.3 shipped that requirement through `MatchesNow`; it did
+  **not** adopt `LiveScores.tsx`, which remains dead code scheduled for deletion
+  in T20.6.
 - **T2.2's nav fix** — T0.3's dead "Live Scores" link is closed by the Now mode
   being the matches page's default, not by a new route.
 
@@ -277,19 +279,19 @@ The E2 spec is kept for its grid reasoning; its routing section is superseded.
 > **The sidebar changed on 2026-08-18** (`tweak/uniform-standings-nav`). Standings
 > now live at `/c/{comp}/{season}/standings` for **every** competition under a
 > single "Standings" item — a league's base URL redirects there rather than
-> rendering its own copy — and "Fixtures & Results" is now **Matches**, at
+> rendering its own copy — and the old results label is now **Matches**, at
 > `/c/{comp}/{season}/matches` (the old `/fixtures` path 308s to it). The **API**
-> **API** routes were unified in the same change: `/matches`, `/fixtures` and
+> routes were unified in the same change: `/matches`, `/fixtures` and
 > `/upcoming` differed only by hidden defaults — the narrowest window carried the
 > broadest name — and are now one `/api/{comp}/{season}/matches` taking
 > `?range=`, `?state=scheduled`, `?detail=summary` and `?limit=`. T2.2 adds its
 > item to the nav list; it no longer has to reconcile two different nav shapes,
 > and its live grid reads `?detail=summary` rather than a fourth route.
 
-`LiveScores.tsx` is 378 finished lines imported nowhere — the only `LiveScores`
-matches in `src/` are its own declaration and its own props interface.
+`LiveScores.tsx` is imported only by its test; T20.6 removes the obsolete
+component and test after preserving the live-grid behavior in `MatchesNow`.
 
-### E3 · Fixtures & results — **shipped**
+### E3 · Matches & results — **shipped**
 Branch `feat/fixtures-results`. The single biggest missing capability.
 
 - **T3.1** ✅ `getMatches(rc, range?)` — un-hardcode the current-week window;
@@ -303,8 +305,9 @@ Branch `feat/fixtures-results`. The single biggest missing capability.
   (`src/app/[locale]/c/[comp]/[season]/matches/page.tsx`,
   `src/components/MatchCalendar.tsx`, `src/components/MatchesNow.tsx`)
 
-### E4 · Team pages
-Branch `feat/team-pages`. Every crest on the site is currently a dead end.
+### E4 · Team pages — **shipped**
+Branch `feat/team-pages`. Team identities, pages, and crest navigation are in
+the frontend; reader parity is tracked separately in E16/E17.
 
 - **T4.1** Team provider + mapper — done
 - **T4.2** Team route and page — done
@@ -329,7 +332,7 @@ four matches, so the next-match block reads the schedule.
 Each athlete also carries an `injuries` array that is **empty for all 35**. The
 field existing is not the data existing; no injuries feature is built on it.
 
-### E12 · Team discovery — done
+### E12 · Discovery & search
 
 Teams were reachable only by clicking a crest (standings, the landing page, the
 match popup), with no way to browse or search for one. Three pieces, all
@@ -341,6 +344,9 @@ shipped:
   masthead. Accent-folded, so "america" finds "América".
 - **T12.3 Navigation** — done. Team pages carry a link back to their
   competition's team list.
+- **T12.4 Player directory and search UI** — pending. May ship first against the
+  existing provider-backed player index; reader search parity follows rather
+  than blocking the UI through E10.11.
 
 **The blocker for search:** a team page is competition-scoped on purpose
 (América's record in Liga MX is not their record in the Leagues Cup), so a
@@ -359,7 +365,8 @@ nothing currently knows. Three options:
    which is backend Phase 1.
 
 **Shipped (1).** A club is one entry with one link per competition —
-"América · Leagues Cup · Liga MX". (3) supersedes it when the backend lands.
+"América · Leagues Cup · Liga MX". Canonical cross-competition discovery
+supersedes this provider-backed index after E16/E10.11.
 
 ### E5 · Player pages — **shipped**
 Branch `feat/player-pages`. Unblocked by three keyless athlete endpoints.
@@ -408,17 +415,16 @@ Branch per slice. No backend, no new provider, no new upstream endpoint.
 - **T11.2** ✅ Home live band + tiles that carry real football
 - **T11.3** ✅ Matches "Now" mode + calendar polling — **absorbs E2** (closes T0.3)
 
-Both entry points are static in the literal sense: neither updates itself, and
-both look the same on a matchday as on a quiet Tuesday. `MatchCalendar` fetches
-on month change and **never again**, so a match that kicks off while the page is
-open stays frozen until reload.
+The server-rendered first response is static, then `MatchesNow` and the current
+calendar month poll while open. `MatchCalendar` refreshes the live month on its
+`LIVE_REFRESH_MS` interval, so a kickoff or score change does not require reload.
 
 Measured 2026-08-18: **one `/` render costs 95 upstream ESPN requests, 77 of
 them per-match `/summary` calls** that buy nothing — the page reads only `state`
 and a score, both of which the scoreboard already carries. T11.1 takes it to 18.
 
-Shipped 2026-08-19. Two defects found in review are worth carrying forward as
-rules rather than anecdotes: **deferring a timezone-bound *decision* to the
+Shipped 2026-08-19. Two implementation rules are worth carrying forward:
+**deferring a timezone-bound *decision* to the
 client is not enough if the *formatting* still happens on the server** (see the
 spec's "What implementation changed"), and **a cheaper upstream read can still
 make a page heavier** if the saving is handed to the client as payload.
@@ -450,8 +456,9 @@ exist — the links measured at `width: 0` were deliberately hidden behind a
 working bottom tab bar. The redesign replaces that bar rather than repairing
 anything; see the spec.
 
-Explicitly out: trending (telemetry is write-only), and derived facts like
-"longest unbeaten run", which need to state what they were counted over.
+Telemetry-based "trending" remains out because analytics are write-only. Derived
+facts such as unbeaten runs move to T7.25 only when each claim states its
+counting window, source, and supporting matches.
 
 ### E15 · Typed English/Spanish localization — done
 
@@ -467,10 +474,10 @@ does not use IP geolocation.
 
 Fixed interface copy, including accessibility and error/empty-state text, lives
 in exact-shape typed catalogs. Locale-aware formatting is explicit, provider
-prose remains in its source language, API error contracts remain stable, and a
-source audit rejects new hardcoded UI copy or ambient-locale formatting.
+prose remains in its source language, API error contracts remain stable, and
+source checks reject new hardcoded UI copy or ambient-locale formatting.
 
-### E13 · Competition simulation — noted, not designed
+### E13 · Competition simulation — product contract first
 
 Simulate a competition forward from **its current state**, the way the bracket
 already lets you pick winners.
@@ -497,12 +504,25 @@ tie-breaks and the liguilla cut. Open questions, none answered yet:
 - Cup competitions with a group phase feeding a bracket (Leagues Cup, World
   Cup) need both models joined: simulate the groups, then the tree they seed.
 
-Not scheduled, and not started. Written down because it came up while
-designing the home page, and because the bracket's `predict` mode is the
-foundation to build on rather than a thing to duplicate.
+Tasks:
+
+- **T13.1** Define the simulation contract: fixed played matches, inputs for
+  unplayed scorelines, tie-break rules, persistence, and sharing.
+- **T13.2** Build a pure deterministic league/group recomputation engine.
+- **T13.3** Join group simulation to the existing knockout prediction tree.
+- **T13.4** Render the scenario through the existing arc/dial visual language
+  and encode a bounded shareable state.
+- **T13.5** Add probabilistic season simulation only after a model publishes
+  its validation and calibration; never label deterministic user picks as odds.
+
+Not scheduled and not started. T13.1 must be designed and approved before any
+simulation implementation; the bracket's existing `predict` mode is the
+foundation rather than something to duplicate.
 
 ### E6 · Shot log
 - **T6.1** ✅ Per-competition coverage probe — run 2026-08-25, results below
+- **T6.1a** Refresh the Bundesliga and Ligue 1 measurements against active
+  current-season streams; the original Bundesliga sample predated its new season.
 - **T6.1 findings (3 finished matches per competition, both `plays` pages):**
 
   | Competition | Plays/m | Shots/m vs box | Recon | Field XY | Goal-mouth | Per-shot xG |
@@ -537,6 +557,11 @@ foundation to build on rather than a thing to duplicate.
 - **T6.2** Shot extraction from the play stream (with commentary as the fallback)
 - **T6.3** Reconcile extracted shots against `rosters[].totalShots`
 - **T6.4** Shot map rendering
+- **T6.5** Preserve nullable provider `expectedGoals` and
+  `expectedGoalsOnTarget` fields in private `match_play` rows. This task is
+  classified together with T7.13/T7.20 by T18.1: mapping or reprocessing bytes
+  already collected is distinct from fetching new backfill data, but neither is
+  an implicit authorization to publish, render, train, or validate a model.
 
 > **Rescoped 2026-08-15 (was "Shot log — *not* an xG model").** The old title and
 > the epic's whole justification rested on a claim that turned out to be false:
@@ -555,8 +580,8 @@ found coverage varies per competition — Super League Greece is OUT of E6
 (key-events-only stream, 15% of real shots), the other nine competitions are
 in. T6.2–T6.4 remain pending for those nine. Nor does T6.3 change — reconciling
 against the provider's own `rosters[].totalShots` is what makes the log
-trustworthy, and it is now doubly load-bearing because E9 trains on those same
-rows.
+trustworthy. Any later E9 training or provider-xG validation may consume the same
+rows only after its independent product and rights gates close.
 
 ### E7 · History & trends — writers landed, reads remain
 
@@ -568,9 +593,16 @@ implemented-vs-pending breakdown; the task IDs and plans below are kept stable.
 
 **Read/render tasks — remaining** (they need the writers below, which have run):
 
-- **T7.3** Form column (last five) in every table
+- **T7.3** Form column (last five) in every table. It reads finalized matches and
+  can ship on today's `DataStore`; standings snapshots are not its gate.
 - **T7.4** Player game log and per-position percentiles
-- **T7.5** Previous seasons
+- **T7.5** Previous seasons, including non-numeric season ids such as
+  `2026-apertura` and `2026-27`
+- **T7.24** Team/player comparison and records explorer, with every comparison
+  carrying a season, competition, and minimum-sample rule
+- **T7.25** Deterministic insight facts (form changes, streaks, table movers,
+  over/under-performance once E9 exists) with counting window, source, and
+  supporting match ids; these facts feed T8.2 rather than being invented by it
 
 **Foundation tasks — implemented:**
 
@@ -612,10 +644,33 @@ requirement, retry fairness, and per-competition coverage evidence are complete.
 It carries a deadline (see the capability note above) and is **E9's hard
 prerequisite** — but writer existence is not the same as operational closure.
 
-### E8 · AI
-- **T8.1** Auto-generated match recaps
-- **T8.2** Anomaly digest
-- **T8.3** Match previews
+**Durability repair tasks — remaining:**
+
+- **T7.20** Build the archive-to-`match_play` reprocessor and change backfill so
+  analysable rows are durable before the completion ledger seals the match.
+- **T7.21** Add a retry backlog for finalized matches whose participation write
+  failed, or record an explicit decision accepting that permanent gap.
+- **T7.22** Make officials replay idempotent when the completion ledger fails and
+  provider role/order changes before retry.
+
+T7.13's acceptance must decide whether the raw archive is required in production.
+If it remains optional, the rows-tier retry must still run when the archive client
+is absent; `retryMissingPlayStreams` may not silently turn into a no-op.
+
+### E8 · AI narrative & conversational stats — rights-gated
+- **T8.1** Auto-generated match recaps, generated once after finalization and
+  stored rather than regenerated per request
+- **T8.2** Anomaly digest, selecting only T7.25 facts that meet their evidence
+  and sample rules
+- **T8.3** Match previews grounded in held form, lineups, availability, and odds
+  rather than generic prose
+- **T8.4** Grounding and deterministic English/Spanish eval gate: every factual
+  claim traces to structured evidence; unsupported claims fail the release
+- **T8.5** Bounded conversational stats through tool-use over `/v1`, never
+  text-to-SQL and never an unrestricted general chatbot
+
+All five tasks remain behind E18's documented permission/license gate. T8.4 is a
+release prerequisite for T8.1–T8.3 and T8.5, not a cleanup after launch.
 
 ### E9 · Expected goals — committed, and multiply gated
 
@@ -637,6 +692,11 @@ for the same reason T6.1 blocks T6.2: an unmeasured sample is an assumption.
 Detail: the [E9 spec](superpowers/specs/2026-08-15-expected-goals-design.md) and
 [`docs/CURRENT_STATE.md`](CURRENT_STATE.md).
 
+The owner must choose provider xG, a ScoreArc-built model, both with explicit
+provenance, or neither. That is an E9 gate, not a numbered implementation task:
+the choice changes the epic's architecture and must be recorded before T9.1 is
+used to authorize modelling work.
+
 ### E10 · Public API read surface
 
 The read path for everything E7's ingester writes. The base reader ships **seven
@@ -656,12 +716,152 @@ derived-view parity being a tested contract — see
 - **T10.5** History & trends (E7, E8) · [plan](superpowers/plans/2026-08-15-api-history.md)
 - **T10.6** Commentary & shots (E6) · [plan](superpowers/plans/2026-08-15-api-commentary-and-shots.md)
 - **T10.7** Generated content (E8) · [plan](superpowers/plans/2026-08-15-api-generated-content.md)
-- **T10.8** Play stream · [plan](superpowers/plans/2026-08-15-api-play-stream.md)
+- **T10.8** Processed/authorized play reads — never the private raw R2 archive · [plan](superpowers/plans/2026-08-15-api-play-stream.md)
 - **T10.9** Officials · [plan](superpowers/plans/2026-08-15-api-officials.md)
+- **T10.10** Derived standings parity — Leagues Cup phase tables and MLS overall
+  table as reader read-models, or an explicit tested decision to retain their
+  existing TypeScript derivation in `apiStore`
+- **T10.11** Canonical team/player/competition search for E12, bounded and
+  competition-aware; public promotion remains subject to E18
 
 **T10.1 lands first.** It creates `params.go`, the single validation choke-point
-the other eight import — so building any of them before it means writing eight
-copies of the same validator and reconciling them later.
+the later endpoint handlers import — so building them first means duplicating
+validation and reconciling it later. Its entity-id parser
+must accept ScoreArc's UUIDv7 match ids; a provider-number-only parser would
+reject every canonical match-detail request.
+
+## Open-task implementation contracts
+
+These contracts are deliberately one level above an exact-code plan. Every open
+task states the outcome, primary implementation boundary, failure behavior,
+measurable acceptance, and dependencies. Exact SQL, endpoint schemas, test
+bodies, and commit steps are written only when that slice starts, against current
+code rather than pasted from a dated plan.
+
+### Existing epics E6–E13
+
+| Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
+|---|---|---|---|
+| **T6.1a** | Refresh active-season shot/xG coverage using the existing probe. | Publish per-competition counts and fidelity; never infer current coverage from the prior-season Bundesliga sample. | none |
+| **T6.2** | Normalize typed shots from `match_play`, enriching body part/assist only where commentary matches confidently. | Unknown enrichment remains unknown; extraction is fixture-tested for every gated-in competition. | T7.13/T7.20, T6.1a |
+| **T6.3** | Reconcile normalized shots against provider box-score `totalShots`. | A mismatch marks the match/competition degraded rather than silently dropping shots; publish the acceptance threshold in the plan. | T6.2 |
+| **T6.4** | Render a responsive pitch and goal-mouth shot map from the reconciled reader response. | Hide the map when capability or reconciliation fails and retain a chronological shot list; verify low/mid/high responsive widths. | T6.3, T10.6 |
+| **T6.5** | Preserve nullable provider xG fields in private normalized play rows from already-held bytes. | Absence is `NULL`; no reader field, UI, model training, or validation is part of this task. | T18.1 classification |
+| **T7.3** | Derive last-five form from finalized matches and add it to standings. | Omit form before any match is final; badges link to held match detail. | can ship on current `DataStore` |
+| **T7.4** | Serve and render full player match history plus position-specific percentiles. | Enforce minimum samples and keep unmeasured stats null; every percentile names population, season, and position. | T10.5 |
+| **T7.5** | Browse prior held seasons through the reader and `SeasonSwitcher`. | Do not assume numeric ids; test calendar-year, split-season, and range ids. | T10.5 |
+| **T7.13** | Make current-season backfill produce both raw archive evidence and analysable rows with fair, resumable retries. | Ledger completion cannot seal an empty row tier; archive-required/optional policy is explicit, optional mode still retries rows, and coverage is reported per competition. | T18.1 classification for new upstream fetches |
+| **T7.20** | Reprocess already-held raw archives into normalized `match_play` rows idempotently. | A corrupt/non-touch archive is reported and skipped without sealing success; rerunning a completed object changes no facts. | T18.1 classification, operator correction path |
+| **T7.21** | Retry finalized participation writes through a durable backlog. | An injected finalization-time failure is recovered on a later sweep, or the permanent gap is explicitly accepted in `CURRENT_STATE.md`. | none |
+| **T7.22** | Make officials replay safe after a completion-ledger failure. | Identical retries are no-ops; provider changes to role/order cannot silently overwrite finalized facts. | none |
+| **T7.24** | Compare teams and players across a named competition/season and surface records. | Reject incomparable populations; every result states sample and counting window. | T7.4/T7.5, T10.5 |
+| **T7.25** | Materialize deterministic insight facts with evidence ids and derivation metadata. | No prose-only inference; every fact resolves to held matches/snapshots and fails closed below its sample rule. | T7.3/T7.4/T7.5 |
+| **T8.1** | Generate one stored recap after a match finalizes. | Missing facts are omitted, not invented; every claim passes T8.4 evidence checks and regeneration is idempotent. | T8.4, T18 rights closure |
+| **T8.2** | Rank T7.25 facts into a bounded anomaly digest. | The model selects and explains held facts; it never creates the underlying statistic. | T7.25, T8.4, T18 |
+| **T8.3** | Generate grounded pre-match angles from held form, availability, and odds. | Stale or unavailable inputs are disclosed or omitted; no unsupported tactical claim. | T7.3/T10.5, T8.4, T18 |
+| **T8.4** | Build deterministic English/Spanish grounding, provenance, safety, and regression evals. | Any scorer/score/minute/stat hallucination blocks release; eval fixtures are versioned and reproducible. | reader contracts stable |
+| **T8.5** | Answer bounded stats questions through typed `/v1` tools. | No text-to-SQL, arbitrary fetch, unsupported inference, or silent stale answer; tool choice and citations are eval-scored. | T8.4, E16 dogfood, T22.1, T18 |
+| **T9.1** | Measure training sample, feature coverage, base rate, and historical-frame compatibility. | A thin or incompatible sample produces a documented no-go rather than a model. | T7.13, T6.2/T6.3, E18 rights |
+| **T9.2** | Produce pre-shot feature vectors with versioned provenance. | Post-shot fields never leak into headline xG; penalties are modeled separately. | T9.1 go |
+| **T9.3** | Fit and calibrate the simplest defensible model. | Train/validation splits are by match, not shot; pooled/per-competition choice follows measured calibration. | T9.2 |
+| **T9.4** | Publish Brier score, reliability curve, sample, and model version. | No xG value ships without user-visible validation and a base-rate comparison. | T9.3 |
+| **T9.5** | Gate and render xG only for supported competitions. | Unsupported competitions render no xG, never zero or a misleading disabled number. | T9.4, owner product choice |
+| **T10.1** | Add validated range/state/detail/limit match reads and calendar queries through one `params.go` layer. | Bad input is `400`; UUIDv7 match ids are accepted; all-season dumps are never an accidental default. | first E10 task, E16.1 |
+| **T10.2** | Generalize leaders and expose per-match box scores. | Goals/assists share one typed shape; unknown stats stay null and percentages are derived from operands. | T10.1 |
+| **T10.3** | Complete team profile, squad, and schedule reads. | Unknown teams are `404`; unexpected DB errors retain request-id diagnostics; no speculative fix for the current 500. | T10.1, T17.1 |
+| **T10.4** | Serve canonical player profiles, seasons, and full game logs. | Slug resolution never leaks provider ids; missing optional blocks degrade without losing identity. | T10.1, E16.2 |
+| **T10.5** | Expose bounded standings history, form/streaks, held seasons, percentiles, win-probability, and odds series. | Every list is bounded and every derived metric names its period/sample. | T10.1, E17.3 |
+| **T10.6** | Serve reconciled shots and relational commentary. | Coverage/fidelity accompany the response; no shot surface where T6.3 fails. | T10.1, T6.3 |
+| **T10.7** | Serve stored generated content with evidence metadata. | Never generates on request; unavailable or failed generation is explicit. | E8, E18 |
+| **T10.8** | Expose bounded processed play/action reads to authorized consumers. | The private raw R2 archive is never reachable; raw touch-level publication requires E18 and E22 controls. | T10.1, E18/E22 |
+| **T10.9** | Expose match/official profiles and bounded match lists. | Canonical official ids only; unknown ids are `404`, list filters are validated. | T10.1 |
+| **T10.10** | Close derived-standings parity for Leagues Cup and MLS overall tables. | A fixed snapshot matches today's TypeScript computation; if derivation remains in `apiStore`, that decision is contract-tested and documented. | T10.1, E16.1 |
+| **T10.11** | Search canonical team, player, and competition identities through one bounded reader query. | Empty query is rejected; no-result is an empty result, and public promotion remains subject to E18. | E16.2, T10.1 |
+| **T12.4** | Add an accent-folded player directory/search UI with competition-aware links. | Ambiguous names show their competitions; provider-backed UI may precede reader parity. | player index now; T10.11 later |
+| **T13.1** | Decide deterministic/probabilistic inputs, tie-breaks, persistence, and sharing in an approved design. | No engine work begins with unresolved scoreline or tie-break semantics. | owner design approval |
+| **T13.2** | Recompute league/group tables from fixed played matches plus user-entered remaining results. | Pure golden scenarios cover points, goal difference, qualification cuts, and split-season rules. | T13.1 |
+| **T13.3** | Feed simulated group qualifiers into the existing knockout prediction tree. | Invalid or incomplete seed sets are rejected rather than guessed. | T13.2 |
+| **T13.4** | Render and share bounded scenarios through the existing arc/dial language. | URL/state size is capped and parsing is versioned; invalid shared state falls back to live data. | T13.2/T13.3 |
+| **T13.5** | Add probabilistic season simulation as a separately labeled model surface. | Publish calibration before probabilities; deterministic picks are never presented as odds. | E9 validation, E18 |
+
+### E16 · Reader parity & staged frontend cutover (1d)
+
+| Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
+|---|---|---|---|
+| **T16.1** | Build one cross-language contract harness over TypeScript types, OpenAPI, Go DTOs, query vectors, and recorded payloads. | Any field/nullability/query drift fails CI; canonical equivalence is required, not byte equality with provider JSON. | none |
+| **T16.2** | Fix canonical nested team ids, `ownGoal`/`athleteId`, slug-stable leader crests, and the ScoreArc CDN allowlist. | Unknown crest hosts are dropped, not proxied; contract fixtures prove scorer/card-to-side and player identity. | T16.1 |
+| **T16.3** | Implement a strict `apiStore` satisfying all 14 `DataStore` methods with per-method source flags. | 5xx, timeout, parse error, or explicit stale/unavailable status may fall back to ESPN; a valid empty result never does. | T10.1–T10.4, T10.10, T17.3 |
+| **T16.4** | Shadow reader and ESPN per method with named normalizers and ignore rules. | Diffs never affect the user; each method gets a documented threshold based on semantic fields, not provider/canonical id equality. | T16.3 |
+| **T16.5** | Cut over one method at a time, dogfood, and retain immediate rollback. | No one-step flip; each method completes an owner-approved soak without correctness/freshness SLO breach before the next. | T16.4, T17.4 |
+| **T16.6** | Decide the reader news route: explicit current proxy, rights-permitted owned ingest, or removal. | This blocks only `getNews`; the other 13 methods continue independently. The ingest branch requires E18; keep/drop records the existing exposure. | before `getNews` flips |
+
+### E17 · Data reliability, freshness & provenance
+
+| Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
+|---|---|---|---|
+| **T17.1** | Reproduce, diagnose, and fix the Liga MX team-profile 500 in reader store/handler integration tests. | Root cause is evidence from a real-Postgres reproduction, not a UUID hypothesis; seeded teams return `200` or intentional `404`, never unexplained `500`. | none |
+| **T17.2** | Diagnose Greece across config, source, ingester, database, and reader; populate it or gate it out honestly. | Never assert a missing row count in advance; a configured-but-unproven competition is not presented as healthy. | none |
+| **T17.3** | Add source, observed/finalized time, derivation, and complete/empty/stale/unavailable semantics to reader contracts. | Consumers can distinguish a genuine empty window from broken ingestion from the response alone; all reader routes have contract coverage. | T16.1 |
+| **T17.4** | Define per-competition freshness/completeness SLOs, alerts, and runbooks from ingest evidence. | Dormant seasons do not page; active competitions crossing their declared threshold do, with competition/season/run context. | T17.3; T21.4 later exports richer metrics |
+
+### E18 · Rights & multi-source platform
+
+| Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
+|---|---|---|---|
+| **T18.1** | Owner classifies T7.13/T7.20/T6.5 work as service continuation, reprocessing held bytes, or new collection that pauses. | No engineer silently expands collection; the written classification distinguishes existing bytes from new upstream fetches. | owner decision |
+| **T18.2** | Obtain written counsel guidance and/or a licensed-source agreement covering fields, assets/news, retention, redistribution, derivation, AI, geography, and deletion. | Partial permission closes only the named uses; no legal conclusion is inferred from a keyless endpoint. | owner/counsel/provider |
+| **T18.3** | Specify per-field/per-competition source precedence and provenance when providers disagree. | A conflict never resolves by arrival order; every chosen fact retains its source and observation time. | before two sources run |
+| **T18.4** | Prove one licensed adapter behind the existing source/crosswalk seams. | Provider failure does not corrupt canonical identity or overwrite higher-precedence facts; parity fixtures cover one complete competition. | T18.2/T18.3 |
+
+### E19 · Personalization & alerts
+
+| Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
+|---|---|---|---|
+| **T19.1** | Store local-first follows for teams, players, and competitions without accounts. | Unavailable browser storage falls back to defaults; following requires no server round trip or PII. | schedule after E16 dogfood |
+| **T19.2** | Build a “My ScoreArc” view that ranks followed matches, standings, players, and news. | Missing followed data is marked unavailable, not silently replaced by unrelated content; default home remains usable. | T19.1, E17.3 |
+| **T19.3** | Add optional accounts and preference sync only after cross-device demand is proven. | Consent, export, deletion, session security, and local-to-account merge are designed before storing PII. | owner decision, T19.1 demand evidence |
+| **T19.4** | Deliver opt-in kickoff/result/goal alerts with timezone, dedupe, channel, and unsubscribe rules. | No duplicate or stale alert; revocation stops delivery; provider/reader uncertainty suppresses rather than invents an event. | E16 dogfood, T17.4, T19.1 |
+| **T19.5** | Rank evidence-backed personal briefs from followed entities; language generation is optional. | Deterministic ranking works without an LLM; generated wording must pass T8.4 and rights gates. | T7.25, T19.1/T19.2, E8/E18 for language |
+
+### E20 · Product quality, accessibility & SEO
+
+| Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
+|---|---|---|---|
+| **T20.1** | Establish route-level request, transfer, image, TTFB, and LCP budgets and move eligible crests to optimized ScoreArc CDN delivery. | Budgets use measured baselines and fail on regression; no unlicensed asset is mirrored merely for speed. | E18 asset rights for new mirroring |
+| **T20.2** | Fix contrast and accessible-name defects and add automated accessibility checks. | Meet WCAG AA contrast and label/name requirements; zero serious/critical automated violations on key routes. | none |
+| **T20.3** | Verify responsive arc/dial/table/navigation behavior plus reduced-motion alternatives. | Test low/mid/high widths inside every breakpoint; reduced motion removes nonessential animation without hiding state. | none |
+| **T20.4** | Design explicit loading, stale, empty, unavailable, and retry states across live surfaces. | Empty is never used as an error fallback; stale data shows timestamp/provenance and keeps a safe retry path. | E17.3 |
+| **T20.5** | Complete sitemap, robots, structured match/team/player data, canonical/alternate metadata, and share-card integrity. | Generated URLs are locale-aware and canonical; share cards accept only approved crest hosts and render all route variants. | E16.2 |
+| **T20.6** | Delete dead `LiveScores.tsx` and its isolated tests after preserving behavior in `MatchesNow`. | No production import or behavior disappears; typecheck/tests remain clean. | none |
+
+### E21 · Operations, admin & governance
+
+| Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
+|---|---|---|---|
+| **T21.1** | Protect `main`, require PR/CI checks, and make CI run on `main` before deploy. | Direct push is rejected and a merge cannot deploy untested code; protection/API evidence is recorded. | owner repository access |
+| **T21.2** | Fail service readiness when the database migration head is behind code and document the controlled apply path. | First slice does not auto-migrate production; reader/ingester refuse mismatched schema with an actionable error. | none |
+| **T21.3** | Complete provisional-team curation and safe identity promotion in both operator tooling and the ingester promotion path. | Repoint match, standing, appearance, and match-event references before deletion; promotion never ends in FK `23503`. | T21.2 |
+| **T21.4** | Add reader/ingester metrics, bounded audit retention, dashboards, and operator runbooks. | Metrics omit secrets/high-cardinality ids; each E17 alert links to a diagnostic and recovery action. | none |
+
+### E22 · Developer & device platform
+
+| Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
+|---|---|---|---|
+| **T22.1** | Add principals, API keys, cost-aware quotas, usage audit, and revocation for non-browser consumers. | Keys are hashed, scopes are read-only, quotas are per principal/operation, and revocation is immediate. | E16 dogfood, E18 |
+| **T22.2** | Publish versioned API documentation and a minimal generated client only for rights-cleared surfaces. | Examples never expose private archive/admin routes; contract tests keep docs and reader synchronized. | T22.1, E18 |
+| **T22.3** | Serve and consume a compact live board payload for the physical display. | Bounded fields/window, no unbounded history, explicit stale/offline state, and no effect on browser SLOs. | E16 dogfood, T22.1 if remote |
+| **T22.4** | Optionally prove MCP protocol shape locally over synthetic or explicitly licensed fixtures. | No live ESPN-derived data, remote endpoint, external model call, or displacement of P0 work. | unscheduled |
+| **T22.5** | Build the real-data read-only MCP adapter over `/v1` with evals, audit, quotas, and kill switch. | Never accesses DB/R2 directly; every result carries provenance; rollout follows the accepted MCP decision gates. | E18, E16 dogfood, T10.5/T10.6, T17.3/T17.4, T22.1 |
+
+### E23 · Global competition onboarding
+
+| Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
+|---|---|---|---|
+| **T23.1** | Define a competition capability/format matrix for league, groups, knockout, split season, and future formats. | Unsupported shapes are explicit; no “just config” claim without every required capability. | none |
+| **T23.2** | Make config export, canonical identity seed, and provider capability tests one onboarding contract. | Generated config cannot drift; provisional identity is visible; a provider outage cannot masquerade as an empty competition. | T23.1, E17.3 |
+| **T23.3** | Certify ingestion, reader parity, history, assets, and optional shot/xG capability per competition. | A competition is not promoted as live until required reads pass or an explicit gated-out capability is shown. | E16/E17 |
+| **T23.4** | Verify locale copy, naming, timezone/date formatting, competition rules, responsive layouts, and share metadata. | English/Spanish framing is complete; provider prose remains labeled; domain rules have golden tests. | T23.2/T23.3 |
+| **T23.5** | Add prioritized competition batches only after rights and current-ten honesty are proven. | No named league is scheduled by this task itself; every addition has an owner, source rights, coverage report, and rollback. | E18, T23.1–T23.4 |
 
 ---
 
@@ -677,59 +877,64 @@ copies of the same validator and reconciling them later.
 | Rejected | Reason |
 |---|---|
 | **Heat maps** | **Not a data limit any more — a product judgement.** Touch-level coordinates exist and are archived in full (T7.12), so this is buildable. It stays unbuilt because a heat map describes a match without explaining one, and because rowing the touch tier into Postgres is ~35M rows and ~5GB of billed storage per season to serve it. Unblocked but unscheduled; revisit with a named use case, not with a "now we have coordinates". |
-| **Match simulation** | Gated on **E7**, not on xG. Dixon–Coles runs on goals and results alone. The real gate is a Brier score and reliability curve we can publish *on the page*; until we can, it is a toy that will be screenshotted and held against us. E9 now holds the same standard for xG, and the two should share one validation story rather than inventing two. |
-| **Chatbot** | Capped by an API with no player granularity. E8's push features beat it at zero user effort. |
-| ~~**A tenth competition**~~ | **Reversed 2026-08-23** — the owner asked for Super League Greece and ESPN carries `gre.1` end to end, so it shipped as pure config (the platform absorbed it without new code, which is itself the E11-era design paying off). The original argument stands for competitions that would need new *code*: depth still beats breadth. |
-| **Possession as a hero stat** | Unanimous across all three reviews. It describes a match; it does not explain one. |
+| **Generic chatbot** | A blank chat box is not the product. T8.5 is a later, rights-gated, bounded stats experience using typed `/v1` tools, evidence, and refusal rules — never text-to-SQL or arbitrary retrieval. Push and personalized briefs deliver value without requiring a user to invent a prompt. |
+| **Unverified competition breadth** | Ten competitions are configured, not uniformly proven ingested. E23 defines the onboarding and certification bar; no additional competition is scheduled until current coverage is honest and source rights are documented. Depth and trust beat a larger logo grid. |
+| **Possession as a hero stat** | It describes a match; it does not explain one. |
 
 ---
 
 ## Delivery order
 
-The stable epic/task IDs above do not change; this is the current forward
-priority, and it defers every live-defect and done/pending detail to
-[`docs/CURRENT_STATE.md`](CURRENT_STATE.md) §8 (hard gates) rather than
-duplicating them. E0–E5, E11, E12, E14 and E15 have shipped; E7's writers have
-landed. What remains is sequenced as:
+This is the durable dependency order, not a duplicate live-status ledger.
+[`docs/CURRENT_STATE.md`](CURRENT_STATE.md) §8 decides which item is actually
+active. Independent lanes should proceed in parallel rather than serializing
+every P0 behind one owner decision.
 
-**Now** — the pre-cutover P0 gates. The full authoritative hard-gate sequence,
-including staged **1d** and the initial **E10** reads, lives in
-[`docs/CURRENT_STATE.md`](CURRENT_STATE.md) §8; this roadmap keeps the Now set
-unordered to avoid duplicating that authority:
+### Now — parallel P0 lanes
 
-- The **data-rights decision**
-  ([gate](decisions/2026-09-01-data-rights-gate.md)) — nothing that expands
-  ESPN-derived data's audience, training use, or MCP exposure proceeds without it.
-- **Protect `main`** — every change through a feature-branch PR (`AGENTS.md`).
-- **Production completeness/freshness + the Greece-empty and team-route defects** —
-  live user-facing/data-integrity bugs (including the empty Greece reader feeds and
-  the team-profile 500), not roadmap items.
-- **T7.13 / archive / backfill durability** — close the backfill row-write gap,
-  decide the raw-archive requirement, fix retry fairness before calling E7's
-  writers "operationally done".
-- **Participation and final-capture durability** — give finalized-but-unwritten
-  participation a retry path, or accept the gap in writing.
-- **Canonical reader DTO / query contract with cross-language parity** — make the
-  reader's shape and query semantics a tested contract before building on it,
-  including derived-view and canonical identity parity.
+| Lane | Work | Exit |
+|---|---|---|
+| **0 · Governance** | **T21.1** protect `main` and require CI before deploy | direct push is rejected and merged code is tested |
+| **R · Owner/rights** | **T18.1** classify T7.13/T7.20/T6.5; pursue **T18.2** counsel/license evidence in parallel | engineering knows which existing/new collection work may proceed |
+| **A · Perishable durability** | **T7.13/T7.20**, **T7.21**, **T7.22**, **T6.1a**; **T6.5** only under T18.1's classification | backfill rows/archive converge, retries are durable, coverage is measured |
+| **B · Live trust** | **T17.1–T17.4** | team/Greece causes are resolved or gated; responses distinguish complete, empty, stale, and unavailable |
+| **C · Contract/read** | **T16.1–T16.2**, then **T10.1**, **T10.10**, **T10.2–T10.4** | the reader satisfies the first cutover methods with canonical, tested contracts |
 
-**Next** — a **staged 1d parity/cutover** (method-by-method, with per-method
-ESPN fallback and shadow comparison — never a one-step flip); then initial
-**E10** history/player/shot reads; **E6** shot map (T6.2–T6.4); **E7** history UI
-(T7.3–T7.5); and **E9's** measurement/product decision (post-rights,
-post-T7.13-closure).
+### Next — own and dogfood the contract
 
-**Later** — validated **E8** language and **E9** models; a **real-data MCP** per
-its [decision record](decisions/2026-09-01-mcp-timing-and-boundary.md); the LED
-board; competition simulation (E13); personalization.
+1. **T16.3** implements `apiStore` with per-method fallback. A valid empty result
+   never falls back; stale/unavailable requires T17.3's explicit signal.
+2. **T16.4** shadows semantic fields per method with documented normalizers and
+   ignore rules.
+3. **T16.5** cuts over and soaks one method at a time with rollback. **T16.6**
+   blocks only `getNews`; every other method continues independently.
+4. **T10.5/T10.6** expose held history and shots, while **T7.3** may ship earlier
+   on finalized matches through today's store.
 
-Explicitly lower priority, not ahead of data correctness: product-quality fixes
-(LCP/TTFB, the ESPN asset payload, contrast/accessible-name findings) and
-removing the dead `LiveScores` component — real, but they gate nothing above.
+### Then — prove differentiated product value
+
+- **E6 T6.2–T6.4:** the reconciled shot map.
+- **E7 T7.4/T7.5/T7.24/T7.25:** full player history, prior seasons,
+  comparisons, records, and evidence-backed insight facts.
+- **E20:** performance, accessibility, resilient states, responsive behavior,
+  SEO, and dead-code removal — important, but not ahead of data correctness.
+- **E10.11 / E12 T12.4:** canonical entity search and player discovery.
+- **E19 T19.1/T19.2:** local-first follows and “My ScoreArc”; accounts,
+  notifications, and generated briefs remain demand/gate dependent.
+
+### Later or explicitly gated
+
+- **E8/E9:** language and models only after E18 and their evidence/eval gates.
+- **E22:** authenticated developer/device consumers; real-data MCP follows every
+  condition in its decision record.
+- **E23:** prioritized competition batches only after current-ten certification
+  and source rights.
+- **E13:** simulation only after T13.1 design and published model validation for
+  any probabilistic output.
 
 ## Rules that apply to every epic
 
-From `AGENTS.md`, repeated because they are the ones most often broken:
+Repository workflow constraints:
 
 - `main` auto-deploys to production. Never commit or merge to it. Branch for all work.
 - Test locally before opening a PR: `npm run dev` in a browser, `npm test`,
