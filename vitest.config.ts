@@ -3,6 +3,6 @@ import { resolve } from 'node:path';
 
 export default defineConfig({
   oxc: { jsx: { runtime: 'automatic' } },
-  test: { environment: 'node', include: ['src/**/*.test.ts', 'src/**/*.test.tsx'] },
+  test: { environment: 'node', include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'scripts/**/*.test.ts'] },
   resolve: { alias: { '@': resolve(__dirname, 'src') } },
 });

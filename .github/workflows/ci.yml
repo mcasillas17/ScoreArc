@@ -3,11 +3,20 @@ name: CI
 on:
   pull_request:
   push:
-    branches-ignore:
-      - main
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "After full CI: release changed services, or explicitly redeploy"
+        type: choice
+        default: changed
+        options: [changed, reader, ingester, frontend, all]
+
+permissions:
+  contents: read
 
 jobs:
   test:
+    if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -56,3 +65,23 @@ jobs:
         run: go vet ./...
       - name: Verify database migration rollback
         run: for migration in $(find backend/migrations -name '*.down.sql' | sort -r); do psql "$DIRECT_DSN" -v ON_ERROR_STOP=1 -f "$migration"; done
+
+  production:
+    needs: test
+    if: >-
+      needs.test.result == 'success' &&
+      github.repository == 'mcasillas17/ScoreArc' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+      actions: read
+      deployments: write
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [reader, ingester, frontend]
+    uses: ./.github/workflows/deploy-production.yml
+    with:
+      service: ${{ matrix.service }}
+      selection: ${{ inputs.release || 'changed' }}

@@ -1,0 +1,110 @@
+name: Production release
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        required: true
+        type: string
+      selection:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  deployments: write
+
+jobs:
+  release:
+    if: >-
+      github.repository == 'mcasillas17/ScoreArc' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: production-${{ inputs.service }}
+      deployment: false
+    concurrency:
+      group: deploy-${{ inputs.service }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_SERVICE: ${{ inputs.service }}
+      RELEASE_SELECTION: ${{ inputs.selection }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.23.2
+      - name: Exact-SHA eligibility and cumulative path filter
+        id: plan
+        run: node scripts/production-release.mjs prepare
+      - name: Require deployment credentials
+        if: steps.plan.outputs.deploy == 'true'
+        env:
+          FLY_API_TOKEN: ${{ inputs.service == 'reader' && secrets.FLY_API_TOKEN_READER || secrets.FLY_API_TOKEN_INGESTER }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: |
+          if [ "$RELEASE_SERVICE" = frontend ]; then
+            test -n "$VERCEL_TOKEN" && test -n "$VERCEL_ORG_ID" && test -n "$VERCEL_PROJECT_ID" || {
+              echo "::error::Missing Vercel credentials/IDs; no deployment occurred"; exit 1;
+            }
+          else
+            test -n "$FLY_API_TOKEN" || {
+              echo "::error::Missing app-scoped Fly token; no deployment occurred"; exit 1;
+            }
+          fi
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+        if: steps.plan.outputs.deploy == 'true' && inputs.service != 'frontend'
+        with:
+          version: 0.4.83
+      - name: Install pinned Vercel CLI
+        if: steps.plan.outputs.deploy == 'true' && inputs.service == 'frontend'
+        run: npm install --global vercel@59.11.7
+      - name: Revalidate and start release ledger
+        id: begin
+        if: steps.plan.outputs.deploy == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: node scripts/production-release.mjs begin
+      - name: Publish tested commit
+        id: publish
+        if: steps.plan.outputs.deploy == 'true'
+        env:
+          FLY_API_TOKEN: ${{ inputs.service == 'reader' && secrets.FLY_API_TOKEN_READER || secrets.FLY_API_TOKEN_INGESTER }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: |
+          node scripts/production-release.mjs assert
+          case "$RELEASE_SERVICE" in
+            reader)
+              flyctl deploy backend --config reader/fly.toml --dockerfile reader/Dockerfile --remote-only
+              ;;
+            ingester)
+              flyctl deploy backend --config ingester/fly.toml --dockerfile ingester/Dockerfile --remote-only --ha=false
+              ;;
+            frontend)
+              vercel deploy --yes --prod --skip-domain --token "$VERCEL_TOKEN" \
+                --meta "githubCommitSha=$GITHUB_SHA" > "$RUNNER_TEMP/production-url.txt"
+              node scripts/production-release.mjs assert
+              vercel promote "$(cat "$RUNNER_TEMP/production-url.txt")" --yes --token "$VERCEL_TOKEN"
+              ;;
+            *) echo "::error::Unknown release service"; exit 1 ;;
+          esac
+      - name: Record actual release outcome
+        if: always() && steps.begin.outputs.id != ''
+        env:
+          RELEASE_ID: ${{ steps.begin.outputs.id }}
+          RELEASE_OUTCOME: ${{ steps.publish.outcome }}
+        run: node scripts/production-release.mjs finish
