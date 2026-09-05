@@ -7,7 +7,13 @@ export function previewBuildRequired(env, diff = changedPaths) {
   const base = env.VERCEL_GIT_PREVIOUS_SHA;
   const sha = env.VERCEL_GIT_COMMIT_SHA;
   if (env.VERCEL_ENV === 'production' || !base || !sha) return true;
-  return diff(base, sha).some(path => affectsService(path, 'frontend'));
+  try {
+    return diff(base, sha).some(path => affectsService(path, 'frontend'));
+  } catch (error) {
+    if (!(error instanceof Error) || !('status' in error) || ![1, 128].includes(error.status)) throw error;
+    console.warn('Preview base unavailable or divergent; cannot prove unchanged, so a build is required.');
+    return true;
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

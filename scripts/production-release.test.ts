@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, renameSync, rmSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { changedPaths, deployedBase, githubClient, paginate, validateVercel } from './production-release.mjs';
+import { changedPaths, deployedBase, deploymentRequest, githubClient, paginate, validateVercel, confirmVercelPublication } from './production-release.mjs';
 import { previewBuildRequired } from './production-preview.mjs';
 
 const sha = 'a'.repeat(40);
@@ -20,9 +20,22 @@ describe('actual deployment ledger', () => {
     expect(api.mock.calls[0][0]).toContain('task=scorearc-release');
     expect(api.mock.calls[0][0]).toContain('environment=production-reader');
   });
-  it.each(['failure', 'pending', 'in_progress', 'error', 'inactive'])('forces recovery for %s (may have partially published)', async state => {
+  it.each(['failure', 'pending', 'in_progress', 'error'])('blocks after %s (remote effects may still be running)', async state => {
     const api = vi.fn(async (path: string) => path.includes('/statuses') ? [{ state }] : [release]);
+    await expect(deployedBase(api, 'reader')).rejects.toThrow('reconcile');
+  });
+  it('permits recovery only after explicit operator acknowledgement, still requiring full CI', async () => {
+    const api = vi.fn(async (path: string) => path.includes('/statuses') ? [{ state: 'inactive' }] : [release]);
     expect(await deployedBase(api, 'reader')).toBeNull();
+  });
+  it('bounds ledger reads and does not require a nonexistent legacy test commit status', async () => {
+    const api = vi.fn(async (path: string) => path.includes('/statuses') ? [{ state: 'success' }] : [release]);
+    await deployedBase(api, 'reader');
+    expect(api.mock.calls[0][0]).toContain('per_page=1');
+    expect(deploymentRequest('reader', sha, 42, 1)).toMatchObject({
+      ref: sha, auto_merge: false, required_contexts: [],
+      payload: { runId: 42, runAttempt: 1 },
+    });
   });
   it('bootstraps only when the ledger is genuinely empty', async () => {
     expect(await deployedBase(vi.fn(async () => []), 'reader')).toBeNull();
@@ -76,6 +89,10 @@ describe('immutable git range', () => {
 });
 
 describe('credential and Vercel boundaries', () => {
+  const env = {
+    VERCEL_TOKEN: 'test', VERCEL_PROJECT_ID: 'prj_test', VERCEL_ORG_ID: 'team_test',
+    GITHUB_SHA: sha,
+  };
   it('fails before network access if deployment credentials are missing', async () => {
     const fetcher = vi.fn();
     await expect(validateVercel({}, fetcher)).rejects.toThrow('no deployment occurred');
@@ -85,6 +102,30 @@ describe('credential and Vercel boundaries', () => {
     await expect(validateVercel({
       VERCEL_TOKEN: 'test', VERCEL_PROJECT_ID: 'prj_test', VERCEL_ORG_ID: 'team_test',
     }, vi.fn(async () => new Response('{}', { status: 403 })))).rejects.toThrow('HTTP 403');
+  });
+  it('confirms exact staged deployment and actual production domain after promotion', async () => {
+    const deployment = {
+      id: 'dpl_test', projectId: 'prj_test', readyState: 'READY', target: 'production',
+      aliasAssigned: true, aliasError: null, meta: { scorearcCommitSha: sha },
+    };
+    const fetcher = vi.fn(async (url: string | URL | Request) => new Response(JSON.stringify(
+      String(url).includes('/aliases/')
+        ? { deploymentId: 'dpl_test', projectId: 'prj_test' } : deployment,
+    )));
+    await expect(confirmVercelPublication(env, 'https://test.vercel.app', fetcher)).resolves.toBeUndefined();
+    for (const change of [{ aliasAssigned: false }, { readyState: 'QUEUED' }, { meta: { scorearcCommitSha: 'b'.repeat(40) } }]) {
+      await expect(confirmVercelPublication(env, 'https://test.vercel.app',
+        vi.fn(async () => new Response(JSON.stringify({ ...deployment, ...change }))))).rejects.toThrow();
+    }
+  });
+  it('does not label another deployment on the production domain a success', async () => {
+    const fetcher = vi.fn(async (url: string | URL | Request) => new Response(JSON.stringify(
+      String(url).includes('/aliases/') ? { deploymentId: 'dpl_other', projectId: 'prj_test' } : {
+        id: 'dpl_test', projectId: 'prj_test', readyState: 'READY', target: 'production',
+        aliasAssigned: true, aliasError: null, meta: { scorearcCommitSha: sha },
+      },
+    )));
+    await expect(confirmVercelPublication(env, 'https://test.vercel.app', fetcher)).rejects.toThrow();
   });
 });
 
@@ -101,5 +142,21 @@ describe('preview-only ignored build', () => {
     expect(previewBuildRequired({
       VERCEL_GIT_PREVIOUS_SHA: 'b'.repeat(40), VERCEL_GIT_COMMIT_SHA: sha,
     }, () => ['src/app/page.tsx'])).toBe(true);
+  });
+  it('never skips the staged production upload', () => {
+    expect(previewBuildRequired({
+      VERCEL_ENV: 'production', VERCEL_GIT_PREVIOUS_SHA: sha, VERCEL_GIT_COMMIT_SHA: sha,
+    }, () => [])).toBe(true);
+  });
+  it('builds conservatively with a clear diagnostic when the preview clone lacks its base', () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      expect(previewBuildRequired({
+        VERCEL_GIT_PREVIOUS_SHA: 'b'.repeat(40), VERCEL_GIT_COMMIT_SHA: sha,
+      }, () => { throw Object.assign(new Error('git missing base'), { status: 128 }); })).toBe(true);
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining('cannot prove unchanged'));
+    } finally {
+      warning.mockRestore();
+    }
   });
 });

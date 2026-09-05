@@ -123,6 +123,7 @@ describe('workflow wiring', () => {
   it('retains the required test name and gates every production caller on its success', () => {
     const ci = readFileSync('.github/workflows/ci.yml', 'utf8');
     expect(ci).toContain('  test:');
+    expect(ci).not.toMatch(/  test:\n\s+if:/);
     expect(ci).not.toContain('branches-ignore');
     expect(ci).toContain('needs: test');
     expect(ci).toContain("needs.test.result == 'success'");
@@ -134,6 +135,19 @@ describe('workflow wiring', () => {
   it('removes independently triggerable Fly workflows', () => {
     expect(existsSync('.github/workflows/deploy-reader.yml')).toBe(false);
     expect(existsSync('.github/workflows/deploy-ingester.yml')).toBe(false);
+  });
+  it('uses only same-commit CI calls, immutable actions, and non-replacing production queues', () => {
+    const workflow = readFileSync('.github/workflows/deploy-production.yml', 'utf8');
+    expect(workflow).toContain('  workflow_call:');
+    expect(workflow).not.toMatch(/^\s+(push|workflow_run|workflow_dispatch|pull_request):/m);
+    expect(workflow).toContain('queue: max');
+    expect(workflow).toContain('cancel-in-progress: false');
+    expect(workflow).toContain('name: production-${{ inputs.service }}');
+    expect(workflow).toContain('deployment: false');
+    expect(workflow).toContain('ref: ${{ github.sha }}');
+    for (const action of workflow.matchAll(/uses: ([\w/-]+)@([^\s]+)/g)) {
+      expect(action[2]).toMatch(/^[a-f0-9]{40}$/);
+    }
   });
   it('turns off Vercel Git production deployment, not preview builds', () => {
     const config = JSON.parse(readFileSync('vercel.json', 'utf8'));

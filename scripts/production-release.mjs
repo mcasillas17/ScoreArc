@@ -1,4 +1,5 @@
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { assertReleaseContext, assertSha, assertVercelProject, planRelease, repository, services } from './production-policy.mjs';
@@ -38,8 +39,10 @@ export async function paginate(api, path, key = null) {
 
 /** @param {ReturnType<typeof githubClient>} api @param {string} service */
 export async function deployedBase(api, service) {
-  const releases = await paginate(api, `deployments?environment=production-${service}&task=scorearc-release`);
-  const latest = releases.sort((a, b) => b.id - a.id)[0];
+  // GitHub lists deployments newest-first, as it does deployment statuses.
+  const releases = await api(`deployments?environment=production-${service}&task=scorearc-release&per_page=1`);
+  if (!Array.isArray(releases)) throw new Error('Invalid deployment ledger response');
+  const latest = releases[0];
   if (!latest) return null;
   if (latest.performed_via_github_app?.id !== 15368 || latest.payload?.version !== 1 ||
       latest.payload?.service !== service || latest.task !== 'scorearc-release' ||
@@ -49,9 +52,23 @@ export async function deployedBase(api, service) {
   assertSha(latest.sha);
   const statuses = await api(`deployments/${latest.id}/statuses?per_page=1`);
   if (!Array.isArray(statuses)) throw new Error('Invalid deployment status response');
-  // A failed/interrupted command may already have changed production. Reconcile
-  // by redeploying, not by diffing against an older, no-longer-reliable success.
-  return statuses[0]?.state === 'success' ? latest.sha : null;
+  if (statuses[0]?.state === 'success') return latest.sha;
+  // "inactive" is an explicit operator acknowledgement that remote effects have
+  // stopped. Never automatically retry a timeout: promotion may still be running.
+  if (statuses[0]?.state === 'inactive') return null;
+  throw new Error(`Release ${latest.id} is unresolved; reconcile provider-side operations before retrying`);
+}
+
+/** @param {string} service @param {string} sha @param {number} runId @param {number} runAttempt */
+export function deploymentRequest(service, sha, runId, runAttempt) {
+  return {
+    ref: sha, task: 'scorearc-release', environment: `production-${service}`,
+    // The mandatory Actions test job is verified by validateRun; this REST
+    // field checks legacy commit statuses, not that job's check run.
+    auto_merge: false, required_contexts: [], production_environment: true,
+    payload: { version: 1, service, runId, runAttempt },
+    description: `CI-gated ${service} release`,
+  };
 }
 
 /** @param {string} base @param {string} sha */
@@ -98,6 +115,32 @@ export async function validateVercel(env, fetcher = fetch) {
   assertVercelProject(await response.json(), VERCEL_PROJECT_ID, VERCEL_ORG_ID);
 }
 
+/** @param {Record<string, string | undefined>} env @param {string} deploymentUrl @param {typeof fetch} fetcher */
+export async function confirmVercelPublication(env, deploymentUrl, fetcher = fetch) {
+  const url = new URL(deploymentUrl.trim());
+  if (url.protocol !== 'https:' || !url.hostname.endsWith('.vercel.app') ||
+      url.username || url.password || url.port || url.pathname !== '/' || url.search || url.hash) {
+    throw new Error('Unexpected staged Vercel deployment URL');
+  }
+  const read = async path => {
+    const response = await fetcher(`https://api.vercel.com/${path}?teamId=${encodeURIComponent(env.VERCEL_ORG_ID)}`, {
+      headers: { Authorization: `Bearer ${env.VERCEL_TOKEN}` }, signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) throw new Error(`Verify Vercel publication: HTTP ${response.status}`);
+    return response.json();
+  };
+  const deployment = await read(`v13/deployments/${encodeURIComponent(url.hostname)}`);
+  if (!deployment.id || deployment.projectId !== env.VERCEL_PROJECT_ID ||
+      deployment.meta?.scorearcCommitSha !== env.GITHUB_SHA || deployment.readyState !== 'READY' ||
+      deployment.target !== 'production' || deployment.aliasAssigned !== true || deployment.aliasError) {
+    throw new Error('Exact tested Vercel deployment has not completed production promotion');
+  }
+  const alias = await read('v4/aliases/www.scorearc.futbol');
+  if (alias.projectId !== env.VERCEL_PROJECT_ID || alias.deploymentId !== deployment.id) {
+    throw new Error('Production domain does not serve this tested Vercel deployment');
+  }
+}
+
 /** @param {Record<string, string | number | boolean>} values */
 function outputs(values) {
   for (const [key, value] of Object.entries(values)) {
@@ -113,11 +156,15 @@ async function main() {
   const command = process.argv[2];
   const logUrl = `https://github.com/${repository}/actions/runs/${env.GITHUB_RUN_ID}`;
 
+  if (command === 'confirm-vercel') {
+    await confirmVercelPublication(env, readFileSync(join(env.RUNNER_TEMP, 'production-url.txt'), 'utf8'));
+    return;
+  }
   if (command === 'finish') {
     if (!/^\d+$/.test(env.RELEASE_ID ?? '')) throw new Error('A deployment ledger ID is required');
     await api(`deployments/${env.RELEASE_ID}/statuses`, {
       state: env.RELEASE_OUTCOME === 'success' ? 'success' : 'failure',
-      description: env.RELEASE_OUTCOME === 'success' ? 'Production command completed' : 'Release incomplete; next run must reconcile',
+      description: env.RELEASE_OUTCOME === 'success' ? 'Production publication confirmed' : 'Release unresolved; operator must reconcile before retry',
       log_url: logUrl, auto_inactive: false,
     });
     return;
@@ -139,12 +186,8 @@ async function main() {
   if (service === 'frontend') await validateVercel(env);
   if (command === 'assert') return;
   if (command !== 'begin') throw new Error('Expected prepare, begin, assert or finish');
-  const deployment = await api('deployments', {
-    ref: sha, task: 'scorearc-release', environment: `production-${service}`,
-    auto_merge: false, required_contexts: ['test'], production_environment: true,
-    payload: { version: 1, service, runId: Number(env.GITHUB_RUN_ID), runAttempt: Number(env.GITHUB_RUN_ATTEMPT) },
-    description: `CI-gated ${service} release`,
-  });
+  const deployment = await api('deployments',
+    deploymentRequest(service, sha, Number(env.GITHUB_RUN_ID), Number(env.GITHUB_RUN_ATTEMPT)));
   if (!Number.isSafeInteger(deployment.id) || deployment.sha !== sha) throw new Error('Invalid deployment ledger response');
   outputs({ id: deployment.id });
   await api(`deployments/${deployment.id}/statuses`, {
