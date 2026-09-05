@@ -75,6 +75,8 @@ export function releaseStatus(outcomes) {
   if (outcomes.fly === 'success' || outcomes.promote === 'success') return 'success';
   if (outcomes.precheckCurrent === 'false' || outcomes.promoteCurrent === 'false' ||
       outcomes.stage === 'failure') return 'inactive';
+  if (outcomes.fly === 'skipped' && outcomes.promote === 'skipped' &&
+      ['skipped', 'success'].includes(outcomes.stage)) return 'inactive';
   return 'failure';
 }
 

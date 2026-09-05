@@ -68,6 +68,11 @@ describe('release selection', () => {
     expect(releaseStatus({ stage: 'success', promoteCurrent: 'true', promote: 'failure' })).toBe('failure');
     expect(releaseStatus({ promote: 'cancelled' })).toBe('failure');
     expect(releaseStatus({ fly: 'success' })).toBe('success');
+    expect(releaseStatus({ fly: 'skipped', stage: 'skipped', promote: 'skipped' })).toBe('inactive');
+    expect(releaseStatus({ fly: 'skipped', stage: 'success', promote: 'skipped' })).toBe('inactive');
+    expect(releaseStatus({ fly: 'skipped', stage: 'cancelled', promote: 'skipped' })).toBe('failure');
+    expect(releaseStatus({ fly: 'failure', stage: 'skipped', promote: 'skipped' })).toBe('failure');
+    expect(releaseStatus({})).toBe('failure');
   });
   it('skips old CI without substituting the newer main SHA', () => {
     expect(planRelease({ ...plan, mainSha: older })).toEqual({
@@ -155,6 +160,11 @@ describe('workflow wiring', () => {
     expect(workflow).toContain('ref: ${{ github.sha }}');
     expect(workflow).not.toMatch(/^    env:\n      GH_TOKEN:/m);
     expect(workflow).toContain('id: promote_gate');
+    for (const id of ['fly', 'stage', 'promote']) {
+      const step = workflow.split(/^      - /m).find(block => block.includes(`id: ${id}\n`));
+      expect(step).toBeDefined();
+      expect(step).not.toContain('GH_TOKEN:');
+    }
     for (const action of workflow.matchAll(/uses: ([\w/-]+)@([^\s]+)/g)) {
       expect(action[2]).toMatch(/^[a-f0-9]{40}$/);
     }
