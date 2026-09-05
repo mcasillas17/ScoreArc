@@ -154,6 +154,18 @@ checklist.
 
 ## Delivery workflow
 
-`main` auto-deploys the frontend to production. Work on a feature branch, run
-the frontend and backend gates locally, and integrate through a pull request.
-Merging remains a human decision.
+Work on a feature branch and integrate through a pull request. `main` requires
+the GitHub Actions `test` check, up-to-date validation, and PR-based integration,
+including for administrators. Force pushes and deletion are blocked. Merging
+remains a human decision.
+
+CI validates both PRs and the actual merged `main` commit. Only after its full
+`test` job succeeds can that same run release the exact tested SHA, with separate
+reader, ingester, and frontend change filters. Vercel Git integration does not
+publish `main`; the gated workflow stages and promotes the frontend.
+
+Manual releases use **Actions → CI → Run workflow → main** and rerun the full
+suite. Roll back through a revert PR, never a direct old-image deployment.
+See the [release runbook](docs/backend/RELEASES.md) for activation, credentials,
+retry/recovery and post-merge acceptance; [current state](docs/CURRENT_STATE.md#10-t211-delivery-controls)
+distinguishes implemented code from enabled production paths.

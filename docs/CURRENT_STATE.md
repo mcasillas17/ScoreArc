@@ -2,6 +2,10 @@
 
 **Last verified:** 2026-09-01, against `main` @ `49bf68d` (2026-09-01).
 
+**Delivery-controls update:** T21.1 settings separately rechecked 2026-09-05
+against `origin/main` @ `883e59f`; see §10. Other operational observations retain
+their original verification date.
+
 **Reader diagnosis update:** T17.1 separately checked 2026-09-05 against
 `origin/main` @ `883e59f`; see §3. Other observations retain their original date.
 
@@ -36,7 +40,7 @@ that audit's mutable status conclusions where they conflict.
 | Frontend | Live at scorearc.futbol, fully ESPN-backed. No reader/backend fetch call sites exist in `src/server/data/` — the 1d cutover has not started. |
 | Ingester | Deployed/running on Fly.io with Neon Postgres and the Cloudflare R2 crest mirror. E7 writers are present. Raw-archive completeness/config remains unverified. |
 | Reader API | 7 registered `/v1` data routes (`matches`, `standings`, `bracket`, `top-scorers`, `teams/{teamId}`, `news`, `matches/{id}`) + `/healthz`. The Liga MX team-profile **500** is diagnosed: the runtime identity query cannot find `t.color`. Regression coverage and sanitized diagnostics are implemented; production schema repair and acceptance remain pending (§3). |
-| Operations | Recent credentialed, path-filtered deploy workflow runs completed checkout/setup/deploy steps successfully. `main` is unprotected. No per-competition freshness/completeness alert exists. Migrations are manual; the team 500 requires schema reconciliation and production acceptance (§3, §9). |
+| Operations | `main` now requires PR integration and strict `test` checks, with admin enforcement and no force pushes/deletion. Automatic production publication is held during T21.1 activation; release code and owner actions are distinguished in §10. No per-competition freshness/completeness alert exists. Migrations are manual; the team 500 requires schema reconciliation and production acceptance (§3, §9). |
 | 1d (frontend cutover) | Absent. No spec has landed as an implementation; no `apiStore` exists. |
 | E6 (shot log) | T6.1 (coverage probe) complete. T6.2–T6.4 (extraction, reconciliation, rendering) pending. |
 | E7 (history & trends) | Writer code is implemented and running (`WriteStandingSnapshot`, `WriteWinProbSnapshot`, `WritePlays`, `WriteParticipation`, `WriteCommentary`, `ReplaceLeaders`, `ReplaceSquad`, `WriteMatchOfficials`, `WriteMatchOdds`, `WriteOddsSnapshot`). **T7.13 operational acceptance is pending** (§4). Read/render surfaces (T7.3–T7.5) do not exist. |
@@ -274,8 +278,8 @@ platform's core data-correctness work (§8).
 
 **Hard gates first, in order:**
 
-1. **Protect `main`.** No direct pushes; every change through a
-   feature-branch PR, as `AGENTS.md` already requires.
+1. **Finish T21.1 delivery activation (§10).** Main protection is enabled;
+   finish non-owner Vercel credentials and post-merge release acceptance.
 2. **The legal/rights decision (§7).** Nothing that expands ESPN-derived
    data's audience, training use, or MCP exposure proceeds without it.
 3. **T7.13 / archive / backfill durability (§4, §6a–c).** Close the
@@ -341,3 +345,44 @@ where §1/§4 correct them.
 - The legal/rights determination itself (§7) — owned by counsel or a
   licensing decision, not by this document.
 - The E9 product choice: provider xG, a ScoreArc-built model, or both.
+
+## 10. T21.1 delivery controls
+
+**2026-09-05: implementation awaiting integration; not fully operationally accepted.**
+The CI dependency graph, immutable deployment policy, cumulative per-service
+filters, manual/revert rules and Vercel staged-publication path are implemented
+in this change. Before it merges, `origin/main` remains `883e59f`, with the old
+workflow files; do not mistake this branch's code for deployed automation.
+
+| Control | Observed state |
+|---|---|
+| Main protection | REST readback: `protected=true`; strict `test` from GitHub Actions app `15368`; `enforce_admins=true`; PR requirement with zero required approvals; force pushes/deletions disabled. No direct push was attempted as a test. |
+| Existing rules | Ruleset `18441202` retained unchanged. Its empty include list makes it ineffective; classic main protection supplies the active controls. |
+| Deployment environments | `production-reader`, `production-ingester`, `production-frontend` each allow only branch `main`, not tags or PR refs. |
+| Fly credentials | Fresh app-scoped, one-year tokens stored only in their corresponding production environments. Repository-scoped copies removed after replacement. Old standalone workflows consequently cannot access a deployment token. |
+| Vercel live setting | Project `score-arc`, team `elopenmike` (Pro), remains linked to this repo/main; deploy hooks empty; fork protection enabled. `autoAssignCustomDomains=false` verified after update. Existing traffic was not intentionally changed. |
+| Vercel release credentials | Project/team ID variables installed in `production-frontend`. **`VERCEL_TOKEN` absent:** a dedicated non-owner deployment identity is required. The local owner credential was not placed in Actions. |
+| Production acceptance | **Pending.** No production deployment, workflow dispatch, service restart, merge, or auto-merge was performed to prove this change. |
+
+**Owner actions:** before merging, supply the non-owner Vercel token and audit
+provider membership, token scopes, deploy hooks and manual promotion rights as
+described in the [release runbook](backend/RELEASES.md). Revoke retired Fly tokens
+at the provider after identifying them; deleting a GitHub secret does not revoke
+the underlying token. Account owners can alter protections or deploy outside
+Actions, so those privileged paths are not claimed to be technically prevented.
+They are not supported source-release paths.
+
+**Post-merge acceptance:** confirm actual merge-SHA `test` success, each provider
+release/actual-success ledger and serving SHA, reader health, and one running
+ingester. The first ledger-free run bootstraps all services and restarts the
+ingester. Vercel Git must not independently publish the merge; its publication
+must come from the gated promotion step. Keep T21.1 open until these observations
+are recorded. Without `VERCEL_TOKEN`, the frontend release fails explicitly while
+Fly targets remain independent; that is a blocked release, not a docs-only skip.
+
+**Pre-merge evidence:** frontend tests/typecheck/lint/build and deterministic
+release-policy tests were exercised. No Go product code changed. Local Go build
+succeeded, but backend integration/race validation was blocked by the shared
+Colima environment (host-port reachability, then exhausted VM disk); no unrelated
+runtime data was pruned and no tests disabled. The PR's unchanged full backend
+CI gate must succeed before integration. A green PR is not production acceptance.

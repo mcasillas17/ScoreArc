@@ -25,7 +25,9 @@ to serve that data instead.
 
 ## Workflow — non-negotiable
 
-**`main` auto-deploys to production (scorearc.futbol) on every push.** Therefore:
+**`main` can release to production (scorearc.futbol) after its full CI gate.**
+See `docs/backend/RELEASES.md` for the release contract and `docs/CURRENT_STATE.md`
+for activation status. Therefore:
 
 1. **Never commit or merge directly to `main`.** Do all work on a feature branch
    (`feat/...`, `fix/...`, `tweak/...`).

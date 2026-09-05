@@ -176,3 +176,15 @@ go vet ./...
 Reader integration tests apply the real migrations to Postgres 16 in
 Testcontainers, seed representative rows, exercise every SQL shape, and verify
 that `scorearc_reader` cannot insert, update, delete, or create tables.
+
+## Production delivery
+
+The reader releases through the `CI` workflow after the complete `test` job
+succeeds on the exact `main` SHA. The release uses the `backend` build context,
+`reader/fly.toml`, and `reader/Dockerfile`, with an app-scoped token held only in
+the main-only `production-reader` environment.
+
+Use a main CI dispatch with `release=reader` for a deliberate redeploy. Rollback
+requires a revert PR and fresh main CI. Do not deploy a local working tree or
+an old image directly. See the [release runbook](../../docs/backend/RELEASES.md)
+for activation, concurrency, interrupted-release recovery and health acceptance.

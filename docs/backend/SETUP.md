@@ -359,8 +359,9 @@ flyctl deploy backend \
   --remote-only
 ```
 
-`backend` (positional) is the build context; `--config`/`--dockerfile` are paths
-from the repo root. `--remote-only` builds on Fly's builders, so no local Docker
+This is the invocation contract used by gated CI, **not a supported direct
+production command**. `backend` (positional) is the build context;
+`--config`/`--dockerfile` are relative to that context. `--remote-only` builds on Fly's builders, so no local Docker
 is needed to deploy. `competitions.json` is `//go:embed`-ed, so the runtime
 images carry only the binary (~20 MB each).
 
@@ -402,15 +403,16 @@ mirroring rather than failing. Check that log line after the first deploy.
 
 ### 7.4 First deploy
 
-```bash
-flyctl deploy backend \
-  --config reader/fly.toml \
-  --dockerfile reader/Dockerfile --remote-only
+After the [activation checklist](RELEASES.md#activation-order) is complete and
+the gated workflow has merged, dispatch full CI on `main`:
 
-flyctl deploy backend \
-  --config ingester/fly.toml \
-  --dockerfile ingester/Dockerfile --remote-only --ha=false
+```bash
+gh workflow run ci.yml --repo mcasillas17/ScoreArc --ref main -f release=all
 ```
+
+This also selects the frontend. For one service, use `release=reader` or
+`release=ingester`. Every selection runs the entire test suite first; no
+untested local tree or arbitrary old SHA is accepted.
 
 - **Reader**: public HTTP on 8080, keeps one machine running in `iad`
   (`min_machines_running = 1`), and wakes the autostopped spare when traffic
@@ -425,10 +427,12 @@ and redeploy with HA disabled so Fly creates one ordinary running machine:
 
 ```bash
 fly machine destroy <standby-machine-id> --app scorearc-ingester
-flyctl deploy backend \
-  --config ingester/fly.toml \
-  --dockerfile ingester/Dockerfile --remote-only --ha=false
+gh workflow run ci.yml --repo mcasillas17/ScoreArc --ref main -f release=ingester
 ```
+
+Destroying a machine is an explicitly authorized operator recovery action, not
+a routine release step. Diagnose and reconcile any unresolved release ledger
+first; see [interrupted-release recovery](RELEASES.md#interrupted-release-recovery).
 
 ⚠️ **The ingester is a singleton — never run two machines.** It holds a Postgres
 advisory lock via `pg_try_advisory_lock`, which is non-blocking: a second
@@ -458,31 +462,53 @@ one structured JSON line on stdout (`fly logs --app scorearc-reader`).
 Successful `/healthz` probes are deliberately not logged — Fly polls it every
 15s — but failing ones are.
 
-### 7.6 CI/CD (automated after the first manual deploy)
+### 7.6 CI/CD and permissions
 
-Push to `main` auto-deploys via GitHub Actions, **path-filtered per service** so
-a reader-only change never redeploys the ingester:
-`.github/workflows/deploy-reader.yml` and `.github/workflows/deploy-ingester.yml`.
-Each workflow authenticates with its **own app-scoped** repo secret —
-`FLY_API_TOKEN_READER` for the reader and `FLY_API_TOKEN_INGESTER` for the
-ingester — so a leaked or rotated token is scoped to one app, not both. Create a
-deploy-scoped token per app and add each under GitHub → repo → Settings →
-Secrets and variables → Actions:
+`.github/workflows/ci.yml` runs full validation on PRs, pushes (including `main`)
+and manual dispatch. Its unchanged `test` check is required by main protection.
+Only a successful main `test` job can call the same-commit reusable
+`.github/workflows/deploy-production.yml`. The former independent Fly push/
+dispatch workflows are removed; running CI alongside a deploy is not the gate.
+
+Create **three GitHub environments**, each restricted to branch `main` only
+(custom branch policy, no tags): `production-reader`, `production-ingester`,
+`production-frontend`. Store credentials in these environments, **never as
+repository or organization-wide secrets available to feature-branch workflows**.
+Preserve stronger existing protections. The release jobs opt out of implicit
+deployment objects; the actual-success ledger is created separately. Do not add
+a custom deployment-protection-rule app without revisiting `deployment: false`.
+
+| Environment | Secret | Variables |
+|---|---|---|
+| `production-reader` | `FLY_API_TOKEN_READER`, scoped to `scorearc-reader` | none |
+| `production-ingester` | `FLY_API_TOKEN_INGESTER`, scoped to `scorearc-ingester` | none |
+| `production-frontend` | `VERCEL_TOKEN`, dedicated non-owner deployment identity | `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` |
+
+An authorized operator can provision Fly tokens without printing their values:
 
 ```bash
-fly tokens create deploy --app scorearc-reader
-# paste the output as the FLY_API_TOKEN_READER GitHub Actions secret
-
-fly tokens create deploy --app scorearc-ingester
-# paste the output as the FLY_API_TOKEN_INGESTER GitHub Actions secret
+set -o pipefail
+fly tokens create deploy --app scorearc-reader --expiry 8760h |
+  gh secret set FLY_API_TOKEN_READER --repo mcasillas17/ScoreArc --env production-reader
+fly tokens create deploy --app scorearc-ingester --expiry 8760h |
+  gh secret set FLY_API_TOKEN_INGESTER --repo mcasillas17/ScoreArc --env production-ingester
 ```
 
-Each workflow skips its deploy with a notice if its token secret is unset, so an
-unprovisioned Fly account does not fail CI.
+Verify the environment secret names exist before removing repository-scoped
+copies. Rotate before expiry; revoke retired tokens at Fly after identification.
+Never use `fly auth token`, a DB owner credential, or a Vercel Owner/Admin
+credential as an application workflow secret.
 
-Note that `ci.yml` runs on pull requests and on pushes to every branch **except**
-`main`, so the PR is the test gate — a push to `main` deploys without re-running
-the suite. Keep merges gated on a green PR.
+For Vercel, keep **Auto-assign Custom Production Domains OFF**, no deploy hooks,
+and `git.deploymentEnabled.main=false` in `vercel.json`. Production goes through
+staging (`--prod --skip-domain`), exact-SHA revalidation and promotion in CI;
+Git previews still work. A missing credential is an error, never a successful
+deployment or an optional protection.
+
+See [RELEASES.md](RELEASES.md) for the exact activation order, current role/plan
+requirements, manual dispatch, rollback, failed-release diagnosis and acceptance.
+See [CURRENT_STATE §10](../CURRENT_STATE.md#10-t211-delivery-controls) for what is
+actually enabled versus still awaiting owner action.
 
 ---
 
@@ -555,7 +581,9 @@ Everything should say `OK`. `go` must be **>= 1.26**; `psql` **16.x or newer**.
 | `R2_RAW_BUCKET` | Fly secret on the ingester | **private** raw-payload archive, `scorearc-espn-historic`. Has no public base URL by design |
 | `DATA_SOURCE` | Vercel env (frontend) | `espn` until parity, then `api` (slice 1d) |
 | `SCOREARC_API_BASE` | Vercel env (frontend) | the reader's public URL, e.g. `https://scorearc-reader.fly.dev` (slice 1d) |
-| `FLY_API_TOKEN_READER` | GitHub Actions secret | `fly tokens create deploy --app scorearc-reader` (reader deploy CI) |
-| `FLY_API_TOKEN_INGESTER` | GitHub Actions secret | `fly tokens create deploy --app scorearc-ingester` (ingester deploy CI) |
+| `FLY_API_TOKEN_READER` | GitHub `production-reader` environment secret | app-scoped reader deploy token |
+| `FLY_API_TOKEN_INGESTER` | GitHub `production-ingester` environment secret | app-scoped ingester deploy token |
+| `VERCEL_TOKEN` | GitHub `production-frontend` environment secret | scoped non-owner deployment identity; never the local owner token |
+| `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` | GitHub `production-frontend` environment variables | exact Vercel team and existing project IDs |
 
 Migrations use the **direct** DSN interactively (not stored as a service secret).
