@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { assertReleaseContext, assertVercelProject, planRelease } from './production-policy.mjs';
+import { assertReleaseContext, assertVercelProject, planRelease, releaseStatus } from './production-policy.mjs';
 
 const sha = 'a'.repeat(40);
 const older = 'b'.repeat(40);
@@ -61,6 +61,14 @@ describe('production eligibility', () => {
 });
 
 describe('release selection', () => {
+  it('does not wedge later releases for a superseded or failed inert staged build', () => {
+    expect(releaseStatus({ precheckCurrent: 'false' })).toBe('inactive');
+    expect(releaseStatus({ stage: 'success', promoteCurrent: 'false', promote: 'skipped' })).toBe('inactive');
+    expect(releaseStatus({ stage: 'failure', promote: 'skipped' })).toBe('inactive');
+    expect(releaseStatus({ stage: 'success', promoteCurrent: 'true', promote: 'failure' })).toBe('failure');
+    expect(releaseStatus({ promote: 'cancelled' })).toBe('failure');
+    expect(releaseStatus({ fly: 'success' })).toBe('success');
+  });
   it('skips old CI without substituting the newer main SHA', () => {
     expect(planRelease({ ...plan, mainSha: older })).toEqual({
       deploy: false, reason: 'stale-main', sha,
@@ -145,6 +153,8 @@ describe('workflow wiring', () => {
     expect(workflow).toContain('name: production-${{ inputs.service }}');
     expect(workflow).toContain('deployment: false');
     expect(workflow).toContain('ref: ${{ github.sha }}');
+    expect(workflow).not.toMatch(/^    env:\n      GH_TOKEN:/m);
+    expect(workflow).toContain('id: promote_gate');
     for (const action of workflow.matchAll(/uses: ([\w/-]+)@([^\s]+)/g)) {
       expect(action[2]).toMatch(/^[a-f0-9]{40}$/);
     }

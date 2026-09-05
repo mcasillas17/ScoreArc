@@ -31,7 +31,6 @@ jobs:
       cancel-in-progress: false
       queue: max
     env:
-      GH_TOKEN: ${{ github.token }}
       RELEASE_SERVICE: ${{ inputs.service }}
       RELEASE_SELECTION: ${{ inputs.selection }}
     steps:
@@ -45,6 +44,8 @@ jobs:
           node-version: 22.23.2
       - name: Exact-SHA eligibility and cumulative path filter
         id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: node scripts/production-release.mjs prepare
       - name: Require deployment credentials
         if: steps.plan.outputs.deploy == 'true'
@@ -74,20 +75,26 @@ jobs:
         id: begin
         if: steps.plan.outputs.deploy == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
         run: node scripts/production-release.mjs begin
-      - name: Publish tested commit
-        id: publish
+      - name: Revalidate before provider operation
+        id: precheck
         if: steps.plan.outputs.deploy == 'true'
         env:
-          FLY_API_TOKEN: ${{ inputs.service == 'reader' && secrets.FLY_API_TOKEN_READER || inputs.service == 'ingester' && secrets.FLY_API_TOKEN_INGESTER || '' }}
+          GH_TOKEN: ${{ github.token }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: node scripts/production-release.mjs assert
+      - name: Publish tested Fly commit
+        id: fly
+        if: steps.precheck.outputs.current == 'true' && inputs.service != 'frontend'
+        env:
+          FLY_API_TOKEN: ${{ inputs.service == 'reader' && secrets.FLY_API_TOKEN_READER || inputs.service == 'ingester' && secrets.FLY_API_TOKEN_INGESTER || '' }}
         run: |
-          node scripts/production-release.mjs assert
           case "$RELEASE_SERVICE" in
             reader)
               flyctl deploy backend --config reader/fly.toml --dockerfile reader/Dockerfile --remote-only
@@ -95,20 +102,47 @@ jobs:
             ingester)
               flyctl deploy backend --config ingester/fly.toml --dockerfile ingester/Dockerfile --remote-only --ha=false
               ;;
-            frontend)
-              vercel deploy --yes --prod --skip-domain --token "$VERCEL_TOKEN" \
-                --meta "scorearcCommitSha=$GITHUB_SHA" \
-                --meta "scorearcRunId=$GITHUB_RUN_ID" \
-                --meta "scorearcRunAttempt=$GITHUB_RUN_ATTEMPT" > "$RUNNER_TEMP/production-url.txt"
-              node scripts/production-release.mjs assert
-              vercel promote "$(cat "$RUNNER_TEMP/production-url.txt")" --yes --timeout 10m --token "$VERCEL_TOKEN"
-              node scripts/production-release.mjs confirm-vercel
-              ;;
             *) echo "::error::Unknown release service"; exit 1 ;;
           esac
+      - name: Stage tested frontend without production domains
+        id: stage
+        if: steps.precheck.outputs.current == 'true' && inputs.service == 'frontend'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: |
+          vercel deploy --yes --prod --skip-domain --token "$VERCEL_TOKEN" \
+            --meta "scorearcCommitSha=$GITHUB_SHA" \
+            --meta "scorearcRunId=$GITHUB_RUN_ID" \
+            --meta "scorearcRunAttempt=$GITHUB_RUN_ATTEMPT" > "$RUNNER_TEMP/production-url.txt"
+      - name: Revalidate before production promotion
+        id: promote_gate
+        if: steps.stage.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: node scripts/production-release.mjs assert
+      - name: Promote and confirm tested frontend
+        id: promote
+        if: steps.promote_gate.outputs.current == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: |
+          vercel promote "$(cat "$RUNNER_TEMP/production-url.txt")" --yes --timeout 10m --token "$VERCEL_TOKEN"
+          node scripts/production-release.mjs confirm-vercel
       - name: Record actual release outcome
         if: always() && steps.begin.outputs.id != ''
         env:
+          GH_TOKEN: ${{ github.token }}
           RELEASE_ID: ${{ steps.begin.outputs.id }}
-          RELEASE_OUTCOME: ${{ steps.publish.outcome }}
+          FLY_OUTCOME: ${{ steps.fly.outcome }}
+          STAGE_OUTCOME: ${{ steps.stage.outcome }}
+          PROMOTE_OUTCOME: ${{ steps.promote.outcome }}
+          PRECHECK_CURRENT: ${{ steps.precheck.outputs.current }}
+          PROMOTE_CURRENT: ${{ steps.promote_gate.outputs.current }}
         run: node scripts/production-release.mjs finish

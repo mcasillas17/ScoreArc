@@ -2,7 +2,8 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { assertReleaseContext, assertSha, assertVercelProject, planRelease, repository, services } from './production-policy.mjs';
+import { setTimeout as delay } from 'node:timers/promises';
+import { assertReleaseContext, assertSha, assertVercelProject, planRelease, releaseStatus, repository, services } from './production-policy.mjs';
 
 /** @param {string} token @param {typeof fetch} fetcher */
 export function githubClient(token, fetcher = fetch) {
@@ -53,8 +54,8 @@ export async function deployedBase(api, service) {
   const statuses = await api(`deployments/${latest.id}/statuses?per_page=1`);
   if (!Array.isArray(statuses)) throw new Error('Invalid deployment status response');
   if (statuses[0]?.state === 'success') return latest.sha;
-  // "inactive" is an explicit operator acknowledgement that remote effects have
-  // stopped. Never automatically retry a timeout: promotion may still be running.
+  // "inactive" proves publication never started or acknowledges operator
+  // reconciliation. A publication timeout may still be running remotely.
   if (statuses[0]?.state === 'inactive') return null;
   throw new Error(`Release ${latest.id} is unresolved; reconcile provider-side operations before retrying`);
 }
@@ -115,8 +116,11 @@ export async function validateVercel(env, fetcher = fetch) {
   assertVercelProject(await response.json(), VERCEL_PROJECT_ID, VERCEL_ORG_ID);
 }
 
-/** @param {Record<string, string | undefined>} env @param {string} deploymentUrl @param {typeof fetch} fetcher */
-export async function confirmVercelPublication(env, deploymentUrl, fetcher = fetch) {
+/**
+ * @param {Record<string, string | undefined>} env @param {string} deploymentUrl
+ * @param {typeof fetch} fetcher @param {() => Promise<void>} pause
+ */
+export async function confirmVercelPublication(env, deploymentUrl, fetcher = fetch, pause = () => delay(5000)) {
   const url = new URL(deploymentUrl.trim());
   if (url.protocol !== 'https:' || !url.hostname.endsWith('.vercel.app') ||
       url.username || url.password || url.port || url.pathname !== '/' || url.search || url.hash) {
@@ -129,16 +133,20 @@ export async function confirmVercelPublication(env, deploymentUrl, fetcher = fet
     if (!response.ok) throw new Error(`Verify Vercel publication: HTTP ${response.status}`);
     return response.json();
   };
-  const deployment = await read(`v13/deployments/${encodeURIComponent(url.hostname)}`);
-  if (!deployment.id || deployment.projectId !== env.VERCEL_PROJECT_ID ||
-      deployment.meta?.scorearcCommitSha !== env.GITHUB_SHA || deployment.readyState !== 'READY' ||
-      deployment.target !== 'production' || deployment.aliasAssigned !== true || deployment.aliasError) {
-    throw new Error('Exact tested Vercel deployment has not completed production promotion');
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const deployment = await read(`v13/deployments/${encodeURIComponent(url.hostname)}`);
+    if (!deployment.id || deployment.projectId !== env.VERCEL_PROJECT_ID ||
+        deployment.meta?.scorearcCommitSha !== env.GITHUB_SHA || deployment.readyState !== 'READY' ||
+        deployment.target !== 'production' || deployment.aliasError) {
+      throw new Error('Exact tested Vercel deployment has not completed production promotion');
+    }
+    if (deployment.aliasAssigned === true) {
+      const alias = await read('v4/aliases/www.scorearc.futbol');
+      if (alias.projectId === env.VERCEL_PROJECT_ID && alias.deploymentId === deployment.id) return;
+    }
+    if (attempt < 2) await pause();
   }
-  const alias = await read('v4/aliases/www.scorearc.futbol');
-  if (alias.projectId !== env.VERCEL_PROJECT_ID || alias.deploymentId !== deployment.id) {
-    throw new Error('Production domain does not serve this tested Vercel deployment');
-  }
+  throw new Error('Production domain does not serve this tested Vercel deployment after bounded confirmation');
 }
 
 /** @param {Record<string, string | number | boolean>} values */
@@ -152,7 +160,6 @@ async function main() {
   const env = process.env;
   const service = env.RELEASE_SERVICE;
   if (!services.includes(service)) throw new Error('RELEASE_SERVICE must be reader, ingester or frontend');
-  const api = githubClient(env.GH_TOKEN);
   const command = process.argv[2];
   const logUrl = `https://github.com/${repository}/actions/runs/${env.GITHUB_RUN_ID}`;
 
@@ -160,11 +167,18 @@ async function main() {
     await confirmVercelPublication(env, readFileSync(join(env.RUNNER_TEMP, 'production-url.txt'), 'utf8'));
     return;
   }
+  const api = githubClient(env.GH_TOKEN);
   if (command === 'finish') {
     if (!/^\d+$/.test(env.RELEASE_ID ?? '')) throw new Error('A deployment ledger ID is required');
+    const state = releaseStatus({
+      fly: env.FLY_OUTCOME, stage: env.STAGE_OUTCOME, promote: env.PROMOTE_OUTCOME,
+      precheckCurrent: env.PRECHECK_CURRENT, promoteCurrent: env.PROMOTE_CURRENT,
+    });
     await api(`deployments/${env.RELEASE_ID}/statuses`, {
-      state: env.RELEASE_OUTCOME === 'success' ? 'success' : 'failure',
-      description: env.RELEASE_OUTCOME === 'success' ? 'Production publication confirmed' : 'Release unresolved; operator must reconcile before retry',
+      state,
+      description: state === 'success' ? 'Production publication confirmed'
+        : state === 'inactive' ? 'No publication started; superseded or inert build failed'
+          : 'Release unresolved; operator must reconcile before retry',
       log_url: logUrl, auto_inactive: false,
     });
     return;
@@ -182,9 +196,17 @@ async function main() {
     appendFileSync(env.GITHUB_STEP_SUMMARY, `### ${service}\n\n${plan.reason}: \`${sha}\`; baseline \`${baseSha ?? 'none (bootstrap/recovery)'}\`.\n`);
     return;
   }
+  if (command === 'assert' && sha !== mainSha) {
+    outputs({ current: false });
+    appendFileSync(env.GITHUB_STEP_SUMMARY, `\n${service}: superseded before publication; no production change.\n`);
+    return;
+  }
   if (sha !== mainSha) throw new Error('Main advanced before publication; retry CI on current main');
   if (service === 'frontend') await validateVercel(env);
-  if (command === 'assert') return;
+  if (command === 'assert') {
+    outputs({ current: true });
+    return;
+  }
   if (command !== 'begin') throw new Error('Expected prepare, begin, assert or finish');
   const deployment = await api('deployments',
     deploymentRequest(service, sha, Number(env.GITHUB_RUN_ID), Number(env.GITHUB_RUN_ATTEMPT)));

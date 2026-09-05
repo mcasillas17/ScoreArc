@@ -68,6 +68,17 @@ export function planRelease({ service, sha, mainSha, baseSha, paths, manual }) {
 }
 
 /**
+ * @param {{fly?: string, stage?: string, promote?: string,
+ * precheckCurrent?: string, promoteCurrent?: string}} outcomes
+ */
+export function releaseStatus(outcomes) {
+  if (outcomes.fly === 'success' || outcomes.promote === 'success') return 'success';
+  if (outcomes.precheckCurrent === 'false' || outcomes.promoteCurrent === 'false' ||
+      outcomes.stage === 'failure') return 'inactive';
+  return 'failure';
+}
+
+/**
  * @param {{id: string, accountId: string, autoAssignCustomDomains: boolean,
  * link?: {type: string, org: string, repo: string, productionBranch: string, deployHooks: unknown[]} | null}} project
  * @param {string} projectId @param {string} teamId

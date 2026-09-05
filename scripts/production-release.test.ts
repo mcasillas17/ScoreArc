@@ -115,7 +115,7 @@ describe('credential and Vercel boundaries', () => {
     await expect(confirmVercelPublication(env, 'https://test.vercel.app', fetcher)).resolves.toBeUndefined();
     for (const change of [{ aliasAssigned: false }, { readyState: 'QUEUED' }, { meta: { scorearcCommitSha: 'b'.repeat(40) } }]) {
       await expect(confirmVercelPublication(env, 'https://test.vercel.app',
-        vi.fn(async () => new Response(JSON.stringify({ ...deployment, ...change }))))).rejects.toThrow();
+        vi.fn(async () => new Response(JSON.stringify({ ...deployment, ...change }))), async () => {})).rejects.toThrow();
     }
   });
   it('does not label another deployment on the production domain a success', async () => {
@@ -125,7 +125,21 @@ describe('credential and Vercel boundaries', () => {
         aliasAssigned: true, aliasError: null, meta: { scorearcCommitSha: sha },
       },
     )));
-    await expect(confirmVercelPublication(env, 'https://test.vercel.app', fetcher)).rejects.toThrow();
+    await expect(confirmVercelPublication(env, 'https://test.vercel.app', fetcher, async () => {})).rejects.toThrow();
+  });
+  it('allows bounded alias propagation without releasing the service lock', async () => {
+    let attempts = 0;
+    const pause = vi.fn(async () => {});
+    const fetcher = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).includes('/aliases/')) return new Response(JSON.stringify({ deploymentId: 'dpl_test', projectId: 'prj_test' }));
+      attempts++;
+      return new Response(JSON.stringify({
+        id: 'dpl_test', projectId: 'prj_test', readyState: 'READY', target: 'production',
+        aliasAssigned: attempts === 3, aliasError: null, meta: { scorearcCommitSha: sha },
+      }));
+    });
+    await expect(confirmVercelPublication(env, 'https://test.vercel.app', fetcher, pause)).resolves.toBeUndefined();
+    expect(pause).toHaveBeenCalledTimes(2);
   });
 });
 
