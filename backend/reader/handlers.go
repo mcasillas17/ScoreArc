@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
 )
@@ -167,7 +168,7 @@ func (a *App) handleMatchSummary(writer http.ResponseWriter, request *http.Reque
 }
 
 // One club inside one competition: identity, colours, season record, squad
-// with season statistics, and the club's fixtures and results.
+// with season statistics, and the club's matches and results.
 //
 // A team we do not hold is 404, not 500: the request was well-formed and the
 // answer is that there is no such team here. An unknown competition stays 400,
@@ -182,8 +183,22 @@ func (a *App) handleTeam(writer http.ResponseWriter, request *http.Request) {
 	}
 	profile, err := a.store.Team(request.Context(), teamID, competition, season)
 	if err != nil {
+		id, _ := request.Context().Value(requestIDKey).(string)
+		operation, cause := "unknown", err
+		var readErr *teamReadError
+		if errors.As(err, &readErr) {
+			operation, cause = readErr.operation, readErr.err
+		}
+		var pgErr *pgconn.PgError
+		sqlstate := ""
+		if errors.As(err, &pgErr) {
+			sqlstate = pgErr.Code
+		}
+		// Connection errors may include DSNs; PostgreSQL messages/detail may
+		// include row values. Log the operation and safe error metadata only.
 		a.logger.Error("team",
-			"competition", competition, "season", season, "team", teamID, "err", err)
+			"request_id", id, "competition", competition, "season", season, "team", teamID,
+			"operation", operation, "error_type", fmt.Sprintf("%T", cause), "sqlstate", sqlstate)
 		writeError(writer, http.StatusInternalServerError, "internal error")
 		return
 	}

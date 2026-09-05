@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -10,9 +12,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	postgrescontainer "github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -21,6 +25,13 @@ import (
 )
 
 func newIntegrationStore(t *testing.T) (*Store, *pgxpool.Pool) {
+	t.Helper()
+	return newIntegrationStoreThrough(t, "")
+}
+
+// An empty lastMigration applies the complete chain. A filename pins a test
+// to a historical schema so it can exercise a forward migration in place.
+func newIntegrationStoreThrough(t *testing.T, lastMigration string) (*Store, *pgxpool.Pool) {
 	t.Helper()
 	ctx := context.Background()
 	container, err := postgrescontainer.Run(
@@ -52,6 +63,9 @@ func newIntegrationStore(t *testing.T) (*Store, *pgxpool.Pool) {
 	}
 	sort.Strings(migrations)
 	for _, migration := range migrations {
+		if lastMigration != "" && filepath.Base(migration) > lastMigration {
+			break
+		}
 		sql, err := os.ReadFile(migration)
 		if err != nil {
 			t.Fatalf("read migration %s: %v", migration, err)
@@ -314,5 +328,211 @@ func TestStoreIntegration(t *testing.T) {
 		if err := store.Ping(pingCtx); err != nil {
 			t.Fatal(err)
 		}
+	})
+}
+
+const ligaTeamPath = "/v1/competitions/liga-mx/2026-apertura/teams/mex-america"
+
+// Synthetic roster data covers UUIDs, measured zeroes, unmeasured fields,
+// an absent statistics row, and a present all-null statistics row.
+func seedLigaTeam(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	_, err := pool.Exec(context.Background(), `
+		INSERT INTO competition (id, name, short_name, kind) VALUES ('liga-mx', 'Liga MX', 'Liga MX', 'league');
+		INSERT INTO season (competition_id, id, label) VALUES
+		('liga-mx', '2026-apertura', 'Apertura 2026'), ('liga-mx', '2026-clausura', 'Clausura 2026');
+		INSERT INTO team (id, kind, name, abbr) VALUES
+		('mex-america', 'club', 'América', 'AME'), ('mex-empty', 'club', 'Empty Club', 'EMP');
+		INSERT INTO standing (competition_id, season_id, team_id, rank, played,
+		wins, draws, losses, goals_for, goals_against, goal_difference, points, source)
+		VALUES ('liga-mx', '2026-apertura', 'mex-america', 2, 5, 3, 1, 1, 9, 4, 5, 10, 'espn');
+		INSERT INTO player (id, full_name, known_as, nationality) VALUES
+		('018f0000-0000-7000-8000-000000000101', 'Measured Player', 'Captain', 'Mexico'),
+		('018f0000-0000-7000-8000-000000000102', 'Unmeasured Player', NULL, NULL),
+		('018f0000-0000-7000-8000-000000000103', 'Null Statistics', NULL, NULL);
+		INSERT INTO squad_membership (competition_id, season_id, team_id, player_id, shirt_number, position, source) VALUES
+		('liga-mx', '2026-apertura', 'mex-america', '018f0000-0000-7000-8000-000000000101', 9, 'F', 'espn'),
+		('liga-mx', '2026-apertura', 'mex-america', '018f0000-0000-7000-8000-000000000102', NULL, NULL, 'espn'),
+		('liga-mx', '2026-apertura', 'mex-america', '018f0000-0000-7000-8000-000000000103', 20, 'D', 'espn');
+		INSERT INTO player_season_stat (competition_id, season_id, player_id, team_id, appearances, goals, assists, source) VALUES
+		('liga-mx', '2026-apertura', '018f0000-0000-7000-8000-000000000101', 'mex-america', 5, 3, 0, 'espn'),
+		('liga-mx', '2026-apertura', '018f0000-0000-7000-8000-000000000103', NULL, NULL, NULL, NULL, 'espn'),
+		('liga-mx', '2026-clausura', '018f0000-0000-7000-8000-000000000102', 'mex-america', 8, 8, 8, 'espn');
+		INSERT INTO match (id, competition_id, season_id, kickoff, state, home_team_id, away_team_id, source) VALUES
+		('018f0000-0000-7000-8000-000000000201', 'liga-mx', '2026-apertura', '2026-09-06T00:00:00Z', 'scheduled', 'mex-america', 'nat-arg', 'espn'),
+		('018f0000-0000-7000-8000-000000000202', 'liga-mx', '2026-apertura', '2026-09-07T00:00:00Z', 'scheduled', 'nat-fra', 'mex-america', 'espn'),
+		('018f0000-0000-7000-8000-000000000203', 'liga-mx', '2026-clausura', '2026-02-07T00:00:00Z', 'scheduled', 'nat-fra', 'mex-america', 'espn'),
+		('018f0000-0000-7000-8000-000000000204', 'world-cup', '2026', '2026-07-07T00:00:00Z', 'scheduled', 'nat-fra', 'mex-america', 'espn'),
+		('018f0000-0000-7000-8000-000000000205', 'liga-mx', '2026-apertura', '2026-09-08T00:00:00Z', 'scheduled', 'nat-fra', 'nat-arg', 'espn');
+		INSERT INTO match_detail (match_id, scorers, cards, shootout_detail) VALUES
+		('018f0000-0000-7000-8000-000000000201', 'null', 'null', '{"home":null,"away":null}');
+	`)
+	if err != nil {
+		t.Fatalf("seed Liga MX: %v", err)
+	}
+}
+
+func teamIntegrationApp(t *testing.T, store *Store, logs *bytes.Buffer) *App {
+	t.Helper()
+	app := newTestApp(t, &fakeReaderStore{}, &fakeNewsReader{})
+	app.store = store
+	app.health = newHealthChecker(context.Background(), store.Ping)
+	app.logger = slog.New(slog.NewJSONHandler(logs, nil))
+	return app
+}
+
+func assertTeamResponse(t *testing.T, response *httptest.ResponseRecorder) TeamProfile {
+	t.Helper()
+	if response.Code != 200 || response.Header().Get("Cache-Control") != "public, max-age=120" {
+		t.Fatalf("team response: status=%d headers=%v body=%s", response.Code, response.Header(), response.Body.String())
+	}
+	var value any
+	if err := json.Unmarshal(response.Body.Bytes(), &value); err != nil {
+		t.Fatal(err)
+	}
+	schema := loadOpenAPI(t).Paths.Value("/v1/competitions/{comp}/{season}/teams/{teamId}").Get.Responses.Status(200).Value.Content.Get("application/json").Schema
+	if err := schema.Value.VisitJSON(value); err != nil {
+		t.Fatalf("team response violates OpenAPI: %v", err)
+	}
+	var profile TeamProfile
+	if err := json.Unmarshal(response.Body.Bytes(), &profile); err != nil {
+		t.Fatal(err)
+	}
+	return profile
+}
+
+func assertTeamFailure(t *testing.T, response *httptest.ResponseRecorder, logs *bytes.Buffer, operation, sqlstate string) {
+	t.Helper()
+	if response.Code != 500 || response.Body.String() != "{\"error\":\"internal error\"}\n" || response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("failure disguised or leaked: status=%d headers=%v body=%s", response.Code, response.Header(), response.Body.String())
+	}
+	requestID := response.Header().Get("X-Request-Id")
+	for _, line := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatal(err)
+		}
+		if entry["msg"] == "team" {
+			if requestID == "" || entry["request_id"] != requestID || entry["operation"] != operation || entry["sqlstate"] != sqlstate {
+				t.Errorf("team error lacks request-linked diagnostics: %s", line)
+			}
+			return
+		}
+	}
+	t.Fatal("no team error log")
+}
+
+func TestTeamProfileIntegration(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	seedLigaTeam(t, pool)
+	if _, err := pool.Exec(context.Background(), `UPDATE team SET color='ffff91', alternate_color='000080' WHERE id='mex-america'`); err != nil {
+		t.Fatal(err)
+	}
+	var logs bytes.Buffer
+	router := teamIntegrationApp(t, store, &logs).router()
+	profile := assertTeamResponse(t, performRequest(router, "GET", ligaTeamPath))
+	if profile.Team.ID != "mex-america" || profile.Color == nil || *profile.Color != "#ffff91" || profile.AltColor == nil || *profile.AltColor != "#000080" || profile.Record == nil || profile.Record.Summary != "3-1-1" || profile.Record.Points == nil || *profile.Record.Points != 10 || profile.StandingSummary == nil || *profile.StandingSummary != "2 in liga-mx" {
+		t.Fatalf("identity/standing = %+v", profile)
+	}
+	if len(profile.Squad) != 3 {
+		t.Fatalf("squad length = %d", len(profile.Squad))
+	}
+	measured, nullStats, unmeasured := profile.Squad[0], profile.Squad[1], profile.Squad[2]
+	if measured.ID != "018f0000-0000-7000-8000-000000000101" || measured.Name != "Captain" || measured.Stats == nil || measured.Stats.Appearances == nil || *measured.Stats.Appearances != 5 || measured.Stats.TotalGoals == nil || *measured.Stats.TotalGoals != 3 || measured.Stats.GoalAssists == nil || *measured.Stats.GoalAssists != 0 || measured.Stats.TotalShots != nil {
+		t.Fatalf("measured player = %+v stats=%+v", measured, measured.Stats)
+	}
+	if nullStats.Stats == nil || *nullStats.Stats != (PlayerSeasonStats{}) {
+		t.Fatalf("all-null statistics must retain their block: %+v", nullStats)
+	}
+	if unmeasured.Name != "Unmeasured Player" || unmeasured.Stats != nil || unmeasured.Jersey != nil || unmeasured.Position != "" || unmeasured.Nationality != nil || unmeasured.Age != nil || unmeasured.HeadshotURL != nil {
+		t.Fatalf("unmeasured player = %+v", unmeasured)
+	}
+	if len(profile.Schedule) != 2 || profile.Schedule[0].Home.ID != "mex-america" || profile.Schedule[1].Away.ID != "mex-america" || profile.Schedule[0].Kickoff >= profile.Schedule[1].Kickoff {
+		t.Fatalf("schedule order/scope = %+v", profile.Schedule)
+	}
+	for _, match := range profile.Schedule {
+		if match.Scorers == nil || match.Cards == nil || match.HomeScore != nil || match.AwayScore != nil {
+			t.Fatalf("schedule normalization = %+v", match)
+		}
+	}
+	if detail := profile.Schedule[0].ShootoutDetail; detail == nil || detail.Home == nil || detail.Away == nil {
+		t.Fatalf("shootout normalization = %+v", detail)
+	}
+	empty := assertTeamResponse(t, performRequest(router, "GET", strings.Replace(ligaTeamPath, "mex-america", "mex-empty", 1)))
+	if empty.Squad == nil || len(empty.Squad) != 0 || empty.Schedule == nil || len(empty.Schedule) != 0 || empty.Record != nil || empty.StandingSummary != nil || empty.Color != nil || empty.AltColor != nil || empty.Team.CrestURL != nil {
+		t.Fatalf("legitimate empty team = %+v", empty)
+	}
+	for _, tc := range []struct {
+		path, body string
+		status     int
+	}{
+		{strings.Replace(ligaTeamPath, "mex-america", "unknown", 1), "{\"error\":\"unknown team\"}\n", 404},
+		{strings.Replace(ligaTeamPath, "liga-mx", "unknown", 1), "{\"error\":\"unknown competition or season\"}\n", 400},
+		{strings.Replace(ligaTeamPath, "2026-apertura", "unknown", 1), "{\"error\":\"unknown competition or season\"}\n", 400},
+	} {
+		response := performRequest(router, "GET", tc.path)
+		if response.Code != tc.status || response.Body.String() != tc.body || response.Header().Get("Cache-Control") != "no-store" {
+			t.Errorf("%s: status=%d body=%s", tc.path, response.Code, response.Body.String())
+		}
+	}
+}
+
+func TestTeamProfileMissingColoursMigration(t *testing.T) {
+	store, pool := newIntegrationStoreThrough(t, "0021_finalization_invariants.up.sql")
+	seedLigaTeam(t, pool)
+	ctx := context.Background()
+	profile, err := store.Team(ctx, "mex-america", "liga-mx", "2026-apertura")
+	var pgErr *pgconn.PgError
+	if profile != nil || !errors.As(err, &pgErr) || pgErr.Code != "42703" || pgErr.Message != "column t.color does not exist" {
+		t.Fatalf("expected production regression, got profile=%+v err=%v", profile, err)
+	}
+	t.Logf("before migration 0022: %s (SQLSTATE %s)", pgErr.Message, pgErr.Code)
+	var logs bytes.Buffer
+	router := teamIntegrationApp(t, store, &logs).router()
+	if health := performRequest(router, "GET", "/healthz"); health.Code != 200 {
+		t.Fatalf("schema mismatch should still allow connectivity health: %d", health.Code)
+	}
+	assertTeamFailure(t, performRequest(router, "GET", ligaTeamPath), &logs, "identity", "42703")
+	// Repair only the disposable local database using the existing migration.
+	sql, err := os.ReadFile("../migrations/0022_team_colours.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, string(sql)); err != nil {
+		t.Fatal(err)
+	}
+	profileAfter := assertTeamResponse(t, performRequest(router, "GET", ligaTeamPath))
+	if profileAfter.Color != nil || profileAfter.AltColor != nil || len(profileAfter.Squad) != 3 || len(profileAfter.Schedule) != 2 {
+		t.Fatalf("profile after migration = %+v", profileAfter)
+	}
+	t.Log("after migration 0022: HTTP 200, complete OpenAPI-valid profile; colours remain null")
+}
+
+func TestTeamProfileQueryFailures(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	seedLigaTeam(t, pool)
+	for _, tc := range []struct{ table, operation string }{{"standing", "identity"}, {"squad_membership", "squad"}, {"match", "schedule"}} {
+		t.Run(tc.operation, func(t *testing.T) {
+			// The table name is a fixed test-owned value, never caller input.
+			if _, err := pool.Exec(context.Background(), "REVOKE SELECT ON "+tc.table+" FROM scorearc_reader"); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if _, err := pool.Exec(context.Background(), "GRANT SELECT ON "+tc.table+" TO scorearc_reader"); err != nil {
+					t.Error(err)
+				}
+			})
+			var logs bytes.Buffer
+			router := teamIntegrationApp(t, store, &logs).router()
+			assertTeamFailure(t, performRequest(router, "GET", ligaTeamPath), &logs, tc.operation, "42501")
+		})
+	}
+	t.Run("malformed schedule JSON", func(t *testing.T) {
+		if _, err := pool.Exec(context.Background(), `UPDATE match_detail SET scorers='{}' WHERE match_id='018f0000-0000-7000-8000-000000000201'`); err != nil {
+			t.Fatal(err)
+		}
+		var logs bytes.Buffer
+		router := teamIntegrationApp(t, store, &logs).router()
+		assertTeamFailure(t, performRequest(router, "GET", ligaTeamPath), &logs, "schedule", "")
 	})
 }

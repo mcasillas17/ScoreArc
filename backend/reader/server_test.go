@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
@@ -443,5 +446,34 @@ func TestTeamSerialisesUnmeasuredPlayerAsNullStats(t *testing.T) {
 	// without a nil check.
 	if payload.Schedule == nil {
 		t.Fatal("schedule = null, want []")
+	}
+}
+
+func TestTeamErrorsDoNotLogDependencyText(t *testing.T) {
+	const sensitive = "private_dependency_detail"
+	for _, cause := range []error{
+		errors.New("connect postgres://user:" + sensitive + "@db.example/private"),
+		&pgconn.PgError{Code: "42703", Message: sensitive, Detail: sensitive, Where: sensitive},
+	} {
+		var logs bytes.Buffer
+		app := newTestApp(t, &fakeReaderStore{teamErr: cause}, &fakeNewsReader{})
+		app.logger = slog.New(slog.NewJSONHandler(&logs, nil))
+		response := performRequest(app.router(), "GET", "/v1/competitions/world-cup/2026/teams/nat-arg")
+		if response.Code != 500 || strings.Contains(response.Body.String(), sensitive) || strings.Contains(logs.String(), sensitive) {
+			t.Fatalf("dependency text leaked: status=%d body=%s logs=%s", response.Code, response.Body.String(), logs.String())
+		}
+	}
+}
+
+func TestTeamInvalidScopeDoesNotQueryStore(t *testing.T) {
+	for _, path := range []string{
+		"/v1/competitions/unknown/2026/teams/nat-arg",
+		"/v1/competitions/world-cup/unknown/teams/nat-arg",
+	} {
+		store := &fakeReaderStore{teamErr: errors.New("must not query")}
+		response := performRequest(newTestApp(t, store, &fakeNewsReader{}).router(), "GET", path)
+		if response.Code != 400 || store.calls != 0 {
+			t.Fatalf("invalid scope: status=%d store calls=%d", response.Code, store.calls)
+		}
 	}
 }
