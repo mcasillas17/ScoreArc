@@ -11,7 +11,8 @@ fresh machine and continue. Read this file first, then `docs/backend/SETUP.md`
 > where it and `CURRENT_STATE.md` ever disagree on status, `CURRENT_STATE.md`
 > wins, and it — not this file — decides what work is actually next.
 
-> **Branching:** `main` is the integration baseline and auto-deploys. Start each
+> **Branching:** `main` is the protected integration baseline; releases require
+> successful CI on the actual main commit. Start each
 > backend slice on its own feature branch and merge only through a reviewed PR.
 > Every backend slice starts from the latest `origin/main`; the reader and
 > ingester now coexist on the same shared backend foundation.
@@ -106,7 +107,13 @@ build/test gate is `cd backend && go build ./... && go test ./...`.
    `scorearc_ingester` = writer with narrowly scoped replacement deletes). See
    ARCHITECTURE.md for the full schema; whether a given migration is applied in
    production is tracked by [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md).
-4. **Deploy assets (Fly)** — `backend/{reader,ingester}/Dockerfile` + `fly.toml`, path-filtered GitHub Actions deploy workflows, and `backend/.dockerignore`. Both images are validated by a real `docker build`. The old GCP Terraform under `/infra` was **deleted** by this slice (Fly+Neon+R2 supersedes it); recover it from history at `c6d382e` if ever needed.
+4. **Deploy assets (Fly)** — `backend/{reader,ingester}/Dockerfile` + `fly.toml`,
+   `backend/.dockerignore`, and the same-commit reusable production workflow
+   called after main CI. Per-service filtering compares the last actual
+   deployment with the tested SHA. Setup, manual delivery and revert-based
+   rollback are in [`docs/backend/RELEASES.md`](docs/backend/RELEASES.md).
+   The old GCP Terraform under `/infra` was deleted (Fly+Neon+R2 supersedes it);
+   recover it from history at `c6d382e` if ever needed.
 5. **Shared ESPN layer** — Go endpoint builders, response models, and fixture-tested
    mappers for scoreboard, standings, bracket, summary, statistics, and news.
 6. **Public reader API (slice 1c)** — seven versioned `/v1` data routes plus
@@ -188,7 +195,7 @@ execute them** — and Codex / Copilot don't have it. The artifacts are plain ma
    humans used to author it.
 
 Hard rules (also in `AGENTS.md` — read it; Codex auto-loads it):
-- **`main` auto-deploys the frontend to production. Never commit/merge to `main`.** Branch for all work (`feat/…`, `fix/…`).
+- **`main` can release after its full CI gate. Never commit/merge directly to `main`.** Branch for all work (`feat/…`, `fix/…`).
 - **Test before a PR:** `npx tsc --noEmit`, `npm test`, and for the backend `cd backend && go build ./... && go test ./...` (Docker running for testcontainers). Merging is the human's decision.
 - Conventional commit prefixes (`feat:`/`fix:`/`docs:`/`chore:`). End commit messages with a `Co-Authored-By:` trailer using **your own** agent identity — e.g. `Co-Authored-By: Codex <noreply@openai.com>` or `Co-Authored-By: Copilot <noreply@github.com>`. Do **not** attribute commits to another agent.
 - TypeScript strict; no `any`. Go: idiomatic, tested.

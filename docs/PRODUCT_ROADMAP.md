@@ -838,7 +838,7 @@ code rather than pasted from a dated plan.
 
 | Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
 |---|---|---|---|
-| **T21.1** | Protect `main`, require PR/CI checks, and make CI run on `main` before deploy. | Direct push is rejected and a merge cannot deploy untested code; protection/API evidence is recorded. | owner repository access |
+| **T21.1** | Protect `main`; require PR/CI integration and exact-SHA main CI before Fly or Vercel publication. [Release contract](decisions/2026-09-05-ci-production-gates.md), [operations](backend/RELEASES.md). | No direct push/force push/deletion; failed or skipped tests cannot release. Manual delivery reruns CI; rollback uses a revert PR. Closure requires live settings evidence and post-merge acceptance for all three targets, not just a green PR. | owner GitHub/Vercel access and a non-owner Vercel deployment identity; activation ledger in CURRENT_STATE §10 |
 | **T21.2** | Fail service readiness when the database migration head is behind code and document the controlled apply path. | First slice does not auto-migrate production; reader/ingester refuse mismatched schema with an actionable error. | none |
 | **T21.3** | Complete provisional-team curation and safe identity promotion in both operator tooling and the ingester promotion path. | Repoint match, standing, appearance, and match-event references before deletion; promotion never ends in FK `23503`. | T21.2 |
 | **T21.4** | Add reader/ingester metrics, bounded audit retention, dashboards, and operator runbooks. | Metrics omit secrets/high-cardinality ids; each E17 alert links to a diagnostic and recovery action. | none |
@@ -894,7 +894,7 @@ every P0 behind one owner decision.
 
 | Lane | Work | Exit |
 |---|---|---|
-| **0 · Governance** | **T21.1** protect `main` and require CI before deploy | direct push is rejected and merged code is tested |
+| **0 · Governance** | **T21.1** exact-SHA CI-gated production delivery | main protection enabled, every release path gated, and all three targets accepted after merge; see CURRENT_STATE §10 for remaining activation actions |
 | **R · Owner/rights** | **T18.1** classify T7.13/T7.20/T6.5; pursue **T18.2** counsel/license evidence in parallel | engineering knows which existing/new collection work may proceed |
 | **A · Perishable durability** | **T7.13/T7.20**, **T7.21**, **T7.22**, **T6.1a**; **T6.5** only under T18.1's classification | backfill rows/archive converge, retries are durable, coverage is measured |
 | **B · Live trust** | **T17.1–T17.4** | team/Greece causes are resolved or gated; responses distinguish complete, empty, stale, and unavailable |
@@ -936,7 +936,7 @@ every P0 behind one owner decision.
 
 Repository workflow constraints:
 
-- `main` auto-deploys to production. Never commit or merge to it. Branch for all work.
+- `main` can release to production after full main CI. Never commit or merge directly to it. Branch for all work; use the [release runbook](backend/RELEASES.md).
 - Test locally before opening a PR: `npm run dev` in a browser, `npm test`,
   `npx tsc --noEmit`.
 - Never run `npm run build` while the dev server is running — both write `.next/`

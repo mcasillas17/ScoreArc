@@ -624,3 +624,52 @@ truth is the TS**: `src/server/data/types.ts` (shapes), `providers/espn-*.ts`
   (`espn` default | `api`), reading the reader base from `SCOREARC_API_BASE`.
 - `apiStore` wraps each call in try/catch and **falls back to the ESPN store on
   error** during rollout.
+
+---
+
+## 11. Production delivery
+
+[T21.1's durable gate](../decisions/2026-09-05-ci-production-gates.md) separates
+PR validation from validation of the actual merged commit. Mutable activation
+status is in [CURRENT_STATE §10](../CURRENT_STATE.md#10-t211-delivery-controls);
+commands and failure handling are in [RELEASES.md](RELEASES.md).
+
+```mermaid
+flowchart TD
+  PR["Feature PR"] --> PRCI["Full CI / test"]
+  PRCI --> Protection["Protected main: PR + strict test check"]
+  Protection --> Merge["Human merge: immutable SHA"]
+  Manual["Manual CI dispatch on main"] --> MainCI
+  Merge --> MainCI["Full main CI / test"]
+  MainCI -->|"needs: test; actual success only"| Queue
+  Eligibility["Same run + attempt + repository + event + exact SHA"]
+  Queue["Per-service non-cancelling queue"] --> Eligibility
+  Eligibility --> Head{"Tested SHA still main?"}
+  Head -->|"No"| Skip["Explicit stale skip; no publication"]
+  Head -->|"Yes"| Paths["Diff last actual successful service release to tested SHA"]
+  Paths -->|"No relevant paths"| Unchanged["Intentional skip; no success ledger"]
+  Paths -->|"Reader/shared"| ReaderRelease["Fly reader: tested SHA / backend context"]
+  Paths -->|"Ingester/shared"| IngesterRelease["Fly singleton: tested SHA / --ha=false"]
+  Paths -->|"Frontend"| Stage["Vercel --prod --skip-domain"]
+  Stage --> Recheck{"Same tested SHA still main?"}
+  Recheck -->|"No"| Inert["Inactive: no production publication started"]
+  Recheck -->|"Yes"| Promote["Promote + confirm exact SHA and production alias"]
+  ReaderRelease --> Ledger["Actual release result ledger"]
+  IngesterRelease --> Ledger
+  Promote --> Ledger
+  Git["Vercel Git integration"] -->|"main deployment disabled; auto-domain assignment OFF"| NoBypass["No independent production publication"]
+```
+
+The queue is acquired before the per-service API/ledger check. Release scripts
+recheck the main SHA immediately before a provider operation, and again between
+Vercel staging and promotion. They never substitute a moving branch head for the
+tested SHA. Once publication starts it finishes without cancellation from a newer
+run; the next same-service job cannot overlap it.
+
+The ledger uses GitHub deployment task `scorearc-release` and environment
+`production-{reader,ingester,frontend}`. Automatic environment deployment objects
+are disabled so a path skip cannot masquerade as an actual success. No baseline
+means a full bootstrap for that service. Only an actual success supplies the
+next diff base; a known-inert or reconciled `inactive` release forces a full
+retry. Failed/unknown publishing operations lock further releases, including
+manual dispatch, until the operator has confirmed provider-side termination.
