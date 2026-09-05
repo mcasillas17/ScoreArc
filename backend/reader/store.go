@@ -61,7 +61,7 @@ func (s *Store) Matches(ctx context.Context, competition, season string) ([]Matc
 }
 
 // scanMatches reads the shared match projection. Extracted so the team page's
-// fixture list reads the same columns through the same normalisation as the
+// match list reads the same columns through the same normalisation as the
 // competition match list -- two copies of this would drift the first time a
 // detail column changed.
 func scanMatches(rows pgx.Rows) ([]Match, error) {
@@ -461,7 +461,7 @@ func (s *Store) teamSquad(
 	return squad, rows.Err()
 }
 
-// The club's fixtures and results: the same projection as Matches, filtered to
+// The club's matches and results: the same projection as Matches, filtered to
 // the matches this team plays in. No new ingest -- match already carries both
 // team ids.
 const teamScheduleSQL = `

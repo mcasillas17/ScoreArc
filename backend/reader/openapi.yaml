@@ -107,14 +107,14 @@ paths:
   /v1/competitions/{comp}/{season}/teams/{teamId}:
     get:
       operationId: getTeam
-      summary: Get one club's profile, squad and fixtures within a competition
+      summary: Get one club's profile, squad and matches within a competition
       parameters:
         - { $ref: "#/components/parameters/Comp" }
         - { $ref: "#/components/parameters/Season" }
         - { $ref: "#/components/parameters/TeamID" }
       responses:
         "200":
-          description: Club identity, season record, squad statistics and fixtures
+          description: Club identity, season record, squad statistics and matches
           headers:
             Cache-Control: { $ref: "#/components/headers/StandardCacheControl" }
           content:
