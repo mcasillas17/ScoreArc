@@ -804,6 +804,15 @@ code rather than pasted from a dated plan.
 | **T17.3** | Add source, observed/finalized time, derivation, and complete/empty/stale/unavailable semantics to reader contracts. | Consumers can distinguish a genuine empty window from broken ingestion from the response alone; all reader routes have contract coverage. | T16.1 |
 | **T17.4** | Define per-competition freshness/completeness SLOs, alerts, and runbooks from ingest evidence. | Dormant seasons do not page; active competitions crossing their declared threshold do, with competition/season/run context. | T17.3; T21.4 later exports richer metrics |
 
+**T17.1 follow-up:** the missing `t.color` projection is reproduced with real
+Postgres and existing migration 0022 repairs the local profile; sanitized
+stage diagnostics and regression/contract coverage are implemented. The
+[reader runbook](../backend/reader/README.md#team-profile-failures-and-schema-repair)
+defines schema/ledger verification and conditional operator repair. Keep
+operational closure open until the actual production target is reconciled and
+the full team request passes; [CURRENT_STATE §3](CURRENT_STATE.md#3-verification-evidence-this-pass-2026-09-01)
+owns the evidence and remaining uncertainty. This does not implement T21.2 readiness.
+
 ### E18 · Rights & multi-source platform
 
 | Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |

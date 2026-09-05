@@ -198,6 +198,11 @@ serving traffic. (Migration numbering has gaps — some pre-launch migrations we
 folded into `0001` before deployment — so trust the files on disk, not a
 contiguous count.)
 
+For a team-profile `500` with a healthy `/healthz`, follow the reader's
+[team schema verification and repair procedure](../../backend/reader/README.md#operator-verification-and-repair)
+before running migrations against an existing deployment. It separates read-only
+schema/ledger diagnosis from an explicitly authorized operator repair.
+
 ### 5.3 (Option B) with psql directly — fresh database bootstrap only
 
 This path has no migration ledger and the SQL files are intentionally versioned,

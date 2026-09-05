@@ -61,7 +61,7 @@ func (s *Store) Matches(ctx context.Context, competition, season string) ([]Matc
 }
 
 // scanMatches reads the shared match projection. Extracted so the team page's
-// fixture list reads the same columns through the same normalisation as the
+// match list reads the same columns through the same normalisation as the
 // competition match list -- two copies of this would drift the first time a
 // detail column changed.
 func scanMatches(rows pgx.Rows) ([]Match, error) {
@@ -325,7 +325,7 @@ func (s *Store) TopScorers(ctx context.Context, competition, season string) ([]e
 // One club inside one competition.
 //
 // Identity, colours and the season record come from team and standing; the
-// squad from squad_membership joined to player_season_stat; the fixtures from
+// squad from squad_membership joined to player_season_stat; the matches from
 // match. Nothing here needs a new ingest -- every table is already written.
 //
 // The squad join is LEFT: a player in the squad with no player_season_stat row
@@ -355,6 +355,16 @@ LEFT JOIN player_season_stat st
 WHERE sm.competition_id = $2 AND sm.season_id = $3 AND sm.team_id = $1
 ORDER BY sm.shirt_number NULLS LAST, p.full_name`
 
+// Preserve the original error for inspection while naming the failed block.
+// The HTTP handler logs only safe metadata, not the dependency's error text.
+type teamReadError struct {
+	operation string
+	err       error
+}
+
+func (e *teamReadError) Error() string { return fmt.Sprintf("team %s: %v", e.operation, e.err) }
+func (e *teamReadError) Unwrap() error { return e.err }
+
 func (s *Store) Team(
 	ctx context.Context,
 	teamID, competition, season string,
@@ -372,7 +382,7 @@ func (s *Store) Team(
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, &teamReadError{operation: "identity", err: err}
 	}
 
 	// Stored bare, rendered with the '#': the column holds six hex digits so
@@ -404,13 +414,13 @@ func (s *Store) Team(
 
 	squad, err := s.teamSquad(ctx, teamID, competition, season)
 	if err != nil {
-		return nil, err
+		return nil, &teamReadError{operation: "squad", err: err}
 	}
 	profile.Squad = squad
 
 	schedule, err := s.teamSchedule(ctx, teamID, competition, season)
 	if err != nil {
-		return nil, err
+		return nil, &teamReadError{operation: "schedule", err: err}
 	}
 	profile.Schedule = schedule
 	return &profile, nil
@@ -451,7 +461,7 @@ func (s *Store) teamSquad(
 	return squad, rows.Err()
 }
 
-// The club's fixtures and results: the same projection as Matches, filtered to
+// The club's matches and results: the same projection as Matches, filtered to
 // the matches this team plays in. No new ingest -- match already carries both
 // team ids.
 const teamScheduleSQL = `
