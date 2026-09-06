@@ -6,8 +6,9 @@
 against `origin/main` @ `883e59f`; see §10. Other operational observations retain
 their original verification date.
 
-**Reader diagnosis update:** T17.1 separately checked 2026-09-05 against
-`origin/main` @ `883e59f`; see §3. Other observations retain their original date.
+**Reader recovery update:** T17.1 production repair accepted 2026-09-06 using
+existing migration 0022 from `origin/main` @ `2a917fe`; see §3. The serving reader
+image was unchanged. Other observations retain their original date.
 
 ## 1. Authority
 
@@ -39,8 +40,8 @@ that audit's mutable status conclusions where they conflict.
 |---|---|
 | Frontend | Live at scorearc.futbol, fully ESPN-backed. No reader/backend fetch call sites exist in `src/server/data/` — the 1d cutover has not started. |
 | Ingester | Deployed/running on Fly.io with Neon Postgres and the Cloudflare R2 crest mirror. E7 writers are present. Raw-archive completeness/config remains unverified. |
-| Reader API | 7 registered `/v1` data routes (`matches`, `standings`, `bracket`, `top-scorers`, `teams/{teamId}`, `news`, `matches/{id}`) + `/healthz`. The Liga MX team-profile **500** is diagnosed: the runtime identity query cannot find `t.color`. Regression coverage and sanitized diagnostics are implemented; production schema repair and acceptance remain pending (§3). |
-| Operations | `main` now requires PR integration and strict `test` checks, with admin enforcement and no force pushes/deletion. Automatic production publication is held during T21.1 activation; release code and owner actions are distinguished in §10. No per-competition freshness/completeness alert exists. Migrations are manual; the team 500 requires schema reconciliation and production acceptance (§3, §9). |
+| Reader API | 7 registered `/v1` data routes (`matches`, `standings`, `bracket`, `top-scorers`, `teams/{teamId}`, `news`, `matches/{id}`) + `/healthz`. The Liga MX team-profile **500 is repaired**: existing migration 0022 restored the full production response, accepted 2026-09-06 (§3). Broader reader parity remains open (§5). |
+| Operations | `main` now requires PR integration and strict `test` checks, with admin enforcement and no force pushes/deletion. Automatic production publication is held during T21.1 activation; release code and owner actions are distinguished in §10. No per-competition freshness/completeness alert exists. Migrations remain manual; T17.1 repair is accepted, but T21.2 schema-readiness prevention is not implemented. |
 | 1d (frontend cutover) | Absent. No spec has landed as an implementation; no `apiStore` exists. |
 | E6 (shot log) | T6.1 (coverage probe) complete. T6.2–T6.4 (extraction, reconciliation, rendering) pending. |
 | E7 (history & trends) | Writer code is implemented and running (`WriteStandingSnapshot`, `WriteWinProbSnapshot`, `WritePlays`, `WriteParticipation`, `WriteCommentary`, `ReplaceLeaders`, `ReplaceSquad`, `WriteMatchOfficials`, `WriteMatchOdds`, `WriteOddsSnapshot`). **T7.13 operational acceptance is pending** (§4). Read/render surfaces (T7.3–T7.5) do not exist. |
@@ -82,31 +83,44 @@ that audit's mutable status conclusions where they conflict.
   `/v1/competitions/super-league-greece/2026-27/matches`,
   `/standings`, and `/top-scorers` each return `200` with an **empty
   array**. Cause is unverified (§9).
-- **Liga MX team profile: diagnosed, production repair pending (T17.1,
-  2026-09-05).** At `2026-09-05T07:44:55Z`, `GET
+- **Liga MX team profile: production recovery accepted (T17.1,
+  2026-09-06).** The diagnosed failure was `column t.color does not exist`
+  (`42703`), before the squad and schedule queries; PR #148 reproduced it
+  against migration 0021 and added regression coverage and sanitized diagnostics.
+  Immediately before repair, at `2026-09-06T07:14:05.480Z`, `GET
   https://scorearc-reader.fly.dev/v1/competitions/liga-mx/2026-apertura/teams/mex-america`
-  returned **500**, `{"error":"internal error"}`, request id
-  `47e107d1f6891f9d`; `/healthz` returned **200**, `{"status":"ok"}`.
-  The adjacent matching Fly team error at `07:44:55.737962689Z` was
-  `ERROR: column t.color does not exist (SQLSTATE 42703)`. The identity/standing
-  projection fails before squad or schedule queries run. This establishes the
-  missing selected column, not the production migration ledger or why the
-  runtime schema differs. A recheck at `20:33:21Z` still returned **500**
-  (request id `d9df896e4e829db9`).
-  **Local proof:** real Postgres 16 through migration 0021 reproduces that exact
-  error despite a healthy ping. Applying existing migration 0022 to the same
-  disposable database returns **200** with the full OpenAPI-valid profile and
-  null colours. Populated UUID players, nullable/missing statistics, empty
-  collections, 400/404 contracts, and explicit query/decoding failures are covered.
-  **Implemented:** identity/squad/schedule error context with request id, error
-  type and SQLSTATE, without raw dependency messages. Queries, DTOs and migration
-  definitions are unchanged. Backend build/test/race/vet and frontend tests/typecheck
-  pass locally; the first race run hit an unchanged timing-cost assertion, which
-  passed three isolated repetitions and the full retry without source changes.
-  **Operator action:** verify the reader's actual database/schema and migration
-  ledger, then reconcile using the [reader repair runbook](../backend/reader/README.md#operator-verification-and-repair).
-  No production migration, repair or deployment was performed; a local pass
-  does not establish production acceptance.
+  still returned **500**, `{"error":"internal error"}`, request id
+  `476ec5c8816a8724`; `/healthz` was **200**.
+  **Verified target and repair:** read-only diagnostics matched the authorized
+  direct migration connection to the running reader's actual pooled endpoint,
+  database and resolved schema: existing Neon `scorearc-db`, branch `main`,
+  `neondb/public`. Both reported a clean version **21** ledger, with both colour
+  columns absent and no conflicting constraints. After explicit authorization,
+  only existing `0022_team_colours` was applied with `goto 22` at
+  `2026-09-06T07:14:16Z`. The version command and subsequent read-only inspection
+  confirmed **22, dirty=false**; `color` and `alternate_color` are nullable text
+  with the validated `team_color_hex` and `team_alternate_color_hex` checks.
+  **Production acceptance:** at `2026-09-06T07:15:21.061Z`, the same team endpoint
+  returned **200**, request id `64dc68901dece0fa`, with the complete OpenAPI-valid
+  profile: **36 squad players and 17 matches**. All player statistics and schedule
+  ids matched database reads. Seven players retained `stats: null`; twelve
+  matches retained empty scorer/card arrays and null match statistics. Both
+  colours remained null, not invented or backfilled. `/healthz` remained **200**
+  at `07:15:20.749Z`, request id `fe462bbefa53e7c6`. Unknown team returned **404**
+  (`2343640cb60a29c1`); invalid competition and season returned **400**
+  (`2f602902e494c86e`, `f97237c96085df1a`). Matching Fly team-request access logs
+  confirmed the team-route statuses; database/response comparisons completed at
+  `07:19:56Z`.
+  **Boundaries:** the reader retained its original restricted application
+  credential, with unchanged secret digest and running instance. SELECT on
+  `team` remained allowed; INSERT, UPDATE, DELETE on `team` and CREATE in `public`
+  remained denied. No deployment, restart, application-secret change, colour
+  backfill or frontend cutover was performed.
+  Neon offered approximately six hours of PITR history; no restore, snapshot or
+  retention change was made. Future repairs still require the
+  [reader runbook](../backend/reader/README.md#operator-verification-and-repair);
+  do not replay 0022 on this now-current target. T21.1 delivery activation and
+  T21.2 schema readiness remain separate, unresolved work.
 - **Other competitions are populated**, for comparison:
   `premier-league/2026-27/matches` → 380, `laliga/2026-27/matches` → 380,
   `mls/2026/matches` → 511, `world-cup/2026/matches` → 104. Greece is the
@@ -288,9 +302,9 @@ platform's core data-correctness work (§8).
    done."
 4. **Participation durability (§6a).** Give finalized-but-unwritten
    participation a retry path, or explicitly accept the gap in writing.
-5. **Production freshness/completeness + the Greece and team-500 bugs
-   (§3, §9).** These are live user-facing and data-integrity defects, not
-   roadmap items.
+5. **Production freshness/completeness and the Greece gap (§3, §9).**
+   These remain live data-integrity concerns. The T17.1 team-profile 500 is
+   repaired; that does not establish ingestion completeness elsewhere.
 6. **Canonical reader DTO / query-contract / cross-language tests (§5).**
    Make the reader's shape and query semantics a tested contract before
    building more against it.
@@ -332,10 +346,9 @@ where §1/§4 correct them.
   in production (as opposed to exercised correctly in tests).
 - Whether production's ingester has `R2_RAW_BUCKET` and its credentials
   configured at all right now (§6, explicitly not claimed absent).
-- Why the Liga MX reader's runtime `team` relation lacks `color`: the production
-  migration ledger, target/search path and schema history have not been inspected.
-  Whether further squad/schedule dependencies fail after that projection is
-  repaired is also unknown; production acceptance remains pending (§3).
+- Why the schema rollout stopped at version 21 before the deployed reader began
+  selecting colour columns. The schema/code mismatch is now repaired and the full
+  team response accepted (§3); preventing a recurrence remains T21.2.
 - The exact root cause of Super League Greece's empty reader collections
   (broken ingestion vs. a genuinely empty season-to-date vs. a
   registry/config mismatch).

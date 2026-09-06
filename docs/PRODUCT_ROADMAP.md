@@ -768,7 +768,7 @@ code rather than pasted from a dated plan.
 | **T9.5** | Gate and render xG only for supported competitions. | Unsupported competitions render no xG, never zero or a misleading disabled number. | T9.4, owner product choice |
 | **T10.1** | Add validated range/state/detail/limit match reads and calendar queries through one `params.go` layer. | Bad input is `400`; UUIDv7 match ids are accepted; all-season dumps are never an accidental default. | first E10 task, E16.1 |
 | **T10.2** | Generalize leaders and expose per-match box scores. | Goals/assists share one typed shape; unknown stats stay null and percentages are derived from operands. | T10.1 |
-| **T10.3** | Complete team profile, squad, and schedule reads. | Unknown teams are `404`; unexpected DB errors retain request-id diagnostics; no speculative fix for the current 500. | T10.1, T17.1 |
+| **T10.3** | Complete team profile, squad, and schedule reads. | Unknown teams are `404`; unexpected DB errors retain request-id diagnostics; no speculative fixes for query failures. | T10.1, T17.1 |
 | **T10.4** | Serve canonical player profiles, seasons, and full game logs. | Slug resolution never leaks provider ids; missing optional blocks degrade without losing identity. | T10.1, E16.2 |
 | **T10.5** | Expose bounded standings history, form/streaks, held seasons, percentiles, win-probability, and odds series. | Every list is bounded and every derived metric names its period/sample. | T10.1, E17.3 |
 | **T10.6** | Serve reconciled shots and relational commentary. | Coverage/fidelity accompany the response; no shot surface where T6.3 fails. | T10.1, T6.3 |
@@ -804,14 +804,19 @@ code rather than pasted from a dated plan.
 | **T17.3** | Add source, observed/finalized time, derivation, and complete/empty/stale/unavailable semantics to reader contracts. | Consumers can distinguish a genuine empty window from broken ingestion from the response alone; all reader routes have contract coverage. | T16.1 |
 | **T17.4** | Define per-competition freshness/completeness SLOs, alerts, and runbooks from ingest evidence. | Dormant seasons do not page; active competitions crossing their declared threshold do, with competition/season/run context. | T17.3; T21.4 later exports richer metrics |
 
-**T17.1 follow-up:** the missing `t.color` projection is reproduced with real
-Postgres and existing migration 0022 repairs the local profile; sanitized
-stage diagnostics and regression/contract coverage are implemented. The
+**T17.1 production repair accepted (2026-09-06):** the missing `t.color`
+projection was reproduced with real Postgres; regression/contract coverage
+and sanitized stage diagnostics are implemented. An authorized application of
+existing migration 0022 advanced the verified existing production database from
+clean version 21 to clean version 22. The America team endpoint now returns
+`200` with its full squad and schedule; health, `404`/`400` contracts, real empty
+arrays and null statistics were preserved. No deployment, restart, application
+credential change or frontend cutover was part of the repair. The
 [reader runbook](../backend/reader/README.md#team-profile-failures-and-schema-repair)
-defines schema/ledger verification and conditional operator repair. Keep
-operational closure open until the actual production target is reconciled and
-the full team request passes; [CURRENT_STATE §3](CURRENT_STATE.md#3-verification-evidence-this-pass-2026-09-01)
-owns the evidence and remaining uncertainty. This does not implement T21.2 readiness.
+still defines conditional operator repair;
+[CURRENT_STATE §3](CURRENT_STATE.md#3-verification-evidence-this-pass-2026-09-01)
+owns the UTC acceptance evidence and remaining uncertainty. Broader reader parity,
+T21.1 delivery activation and T21.2 schema readiness remain separate work.
 
 ### E18 · Rights & multi-source platform
 
