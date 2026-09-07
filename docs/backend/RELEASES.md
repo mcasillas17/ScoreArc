@@ -74,10 +74,14 @@ The singleton ingester retains `--ha=false` and its non-cancelling queue.
    administrators, no bypass allowances, no force pushes and no deletion. The
    initial zero-approval count supports the solo owner while still requiring a
    PR; it is not permission for direct pushes.
-3. Create the three main-only environments and scoped credentials in
-   [SETUP §7.6](SETUP.md#76-cicd-and-permissions). Verify replacement Fly secret
-   names exist, then remove repository/organization-wide copies. Audit/revoke
-   retired provider tokens separately. Do not cancel a live deployment to do this.
+3. Inspect the three main-only environments and scoped credentials in
+   [SETUP §7.6](SETUP.md#76-cicd-and-permissions); preserve existing protections.
+   Secret names are not proof that nonempty values reach a job. Use the
+   [non-deploying preflight](#non-deploying-credential-preflight) to diagnose
+   access before replacing tokens. Credential creation/replacement and removal
+   of repository/organization-wide copies require explicit owner authorization.
+   Audit/revoke retired provider tokens separately. Do not cancel a live
+   deployment to do this.
 4. On the existing Vercel project, turn **Auto-assign Custom Production Domains
    OFF** under its production environment settings. Verify
    `autoAssignCustomDomains=false` through the project API. Keep Git fork
@@ -88,8 +92,11 @@ The singleton ingester retains `--ha=false` and its non-cancelling queue.
    deployment identity, scoped to the intended team and with an expiry/rotation
    owner. Use the lowest deployment-capable role available on the team's plan;
    verify permission to read project/deployment/alias metadata, stage and promote.
-   Pro has a Developer role; do not assume Enterprise project-level role controls
-   exist on Pro. If identity creation, plan/seat cost, token or role approval is
+   Pro has a Developer role, but that alone does not establish permission for
+   production CLI staging or promotion. Verify a supported non-admin grant for
+   those operations on the actual plan; see [SETUP](SETUP.md#vercel-deployment-identity).
+   Do not assume Enterprise project-level role controls exist on Pro.
+   If identity creation, plan/seat cost, token or role approval is
    unavailable, stop activation and record the blocker. Never copy a local Owner
    token into Actions as a workaround. Set the existing project's
    `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` environment variables.
@@ -99,10 +106,15 @@ The singleton ingester retains `--ha=false` and its non-cancelling queue.
    external deploy hook. Use CI dispatch or a revert PR. Owners can change
    these controls; the repository cannot protect itself against an account
    owner deliberately bypassing them. Restrict and audit such privileges.
-7. Review the PR and require all applicable checks. Do not merge while Vercel
-   credentials/permissions or production operations remain unresolved unless
-   the owner explicitly accepts a continued frontend release freeze. Do not
-   enable auto-merge or deploy to test this setup before authorization.
+7. Review the PR and require all applicable checks. Before merge, explain and
+   obtain authorization for any releases its main CI may select, including a
+   possible ingester restart. A diagnostic-only change can still select all
+   targets (`scripts/production-*`, or no managed baseline). Missing credentials
+   are a failure, not an approval mechanism; a blocked frontend does not hold
+   the Fly jobs. Leave the PR unmerged without this authorization. Unresolved
+   credential/provider operations and a continued release freeze must be
+   explicitly accepted by the owner, never mistaken for completed activation.
+   Do not enable auto-merge or deploy merely to test setup.
 8. After human merge, observe the **actual merged SHA's** CI and provider
    outcomes below. The merged `vercel.json` disables Git-triggered main
    deployments while keeping Git previews. Leave automatic domain assignment
@@ -122,6 +134,120 @@ vercel api /v9/projects/score-arc --scope elopenmike --raw |
 
 Repeat environment-policy/secret-name checks for ingester/frontend. Never dump
 authentication files, token values or Vercel environment-variable values.
+
+## Eligibility rejection diagnostics
+
+The first `assertReleaseContext` guard retains all fourteen requirements and
+reports only the **names** of checks that failed, for example:
+
+```text
+Release requires this repository's active main CI run and exact tested SHA; failed checks: runStatus
+```
+
+These are constant labels, not raw process context, API response values or
+credentials. All checks must pass; naming a failure does not make it retryable
+or optional.
+
+| Failed check names | Required condition |
+|---|---|
+| `contextRepository`, `contextRef`, `contextEvent`, `workflowRef` | This repository's main `CI` push/dispatch context and caller workflow. |
+| `runRepository`, `headRepository`, `runId`, `runAttempt`, `runEvent`, `runBranch`, `runSha`, `runWorkflow` | API run identity matches that context, including the exact main SHA and current attempt. |
+| `runStatus`, `runConclusion` | The API run is `in_progress` with a null conclusion. Queued, waiting, pending, completed or cancelled candidates are not accepted. |
+
+Malformed SHA syntax still fails its earlier validation. The separate
+`Required test job is not successful in this attempt` error checks the unique,
+completed successful `test` job's run, attempt and SHA; do not conflate it with
+the first guard.
+
+For a rejection, preserve the failed labels with the run ID, attempt, selected
+service, step and timestamp already shown by Actions. Correlate that evidence
+without dumping tokens or complete contexts. A terminal API read after the job
+ends cannot reconstruct what the earlier request returned. In particular,
+`runStatus` alone does not prove a transient scheduling/cache race. No refetch,
+automatic retry or eligibility relaxation is implemented here; cancelled,
+wrong-SHA and wrong-attempt runs continue to fail closed.
+
+Run `34077227730` predates these labels: both Fly jobs failed this first guard,
+while frontend passed it later and then failed credentials. Its historical
+rejecting predicate remains unknown. The new diagnostics repair that ambiguity,
+not the production failure itself. See
+[CURRENT_STATE §10](../CURRENT_STATE.md#10-t211-delivery-controls) for evidence
+and the separately authorized main-runtime confirmation still required.
+
+## Non-deploying credential preflight
+
+`production-credentials.yml` is a separate, manually dispatched workflow. It
+compares a direct job with a same-commit matrix call to
+`production-credential-probe.yml`. Both bind the selected `production-<service>`
+environment with `deployment: false`, as the release workflow does. They use
+read-only permissions and the exact dispatched SHA, with no credential
+inheritance, provider commands or managed deployment records. This diagnostic
+does **not** run, replace or authorize the full release CI gate.
+
+Only this repository's `workflow_dispatch` on branch `main` is allowed.
+Feature branches, tags, PRs, forks and other callers are rejected before the
+protected job runs. Do not weaken environment rules to try an unmerged probe.
+Local tests cover the script and wiring, not GitHub's live secret injection.
+Protected runtime acceptance therefore requires human merge first, followed by
+explicit authorization to dispatch this non-deploying diagnostic:
+
+```bash
+gh workflow run production-credentials.yml --repo mcasillas17/ScoreArc \
+  --ref main -f service=reader
+```
+
+Select `ingester` or `frontend` for the other environments. Compare the
+`direct` and `reusable (...) / probe` job logs **in the same run**. Do not edit
+secrets during the comparison. Each prints only a JSON object of booleans:
+`token_present`, `control_present`, `org_id_present`, `project_id_present`.
+Step expressions pass the Node probe only presence booleans for these fields,
+not raw credential or identifier values. This is a probe-process/logging
+boundary, **not a secret-free runner**: the environment-bound Actions runner
+evaluates the expressions with its secrets context, and the referenced actions
+remain trusted with secret material. Keep the main-only guards and pinned actions.
+For Fly, only the selected app token is required; frontend requires its token
+and both identifiers. These booleans prove neither token validity/expiry nor
+provider authorization.
+
+A red job **with JSON plus `Required credentials absent; no deployment attempted`**
+is an expected measured absence/inaccessibility, not a successful release or a
+path skip. A guard/tool failure without JSON is not a measurement. A green job
+means required values were present; it still did not publish anything.
+
+If both jobs report an absent token, an owner may separately authorize an
+optional, known-nonempty **non-sensitive** `CREDENTIAL_PREFLIGHT_CONTROL` value
+in that exact production environment. Choose a distinctive, whitespace-free
+marker: `scorearc-preflight-` followed by a newly generated UUID. Never use
+`true`, `false`, a report field name or a short/common word: Actions masks secret
+values in logs, which can obscure the booleans or keys being measured. If a
+report contains masked `***` tokens, it is unusable evidence, not an absent
+credential; investigate setup with the owner rather than disabling masking or
+printing secret values.
+
+Use the environment's Secrets UI, not repository/organization storage, and
+verify no same-named broader-scope secret can contaminate the control. Never use
+a real credential as the control. No control is provisioned by this workflow.
+Without verified control setup, `control_present=false` is inconclusive.
+
+| Same-run observations | Interpretation and next action |
+|---|---|
+| Token present in both jobs | Access works in the probe contexts. Compare the actual release's selected service/environment and run; do not infer provider permission or historical repair. |
+| Direct token present, reusable token absent | A reproducible context difference, not an empty stored token. Preserve both reports and investigate reusable binding/injection before choosing a fix. |
+| Token absent in both, verified environment control present in both | General environment-secret access works; investigate the selected secret's name, write provenance and absent/empty or secret-specific value delivery. Metadata still cannot reveal the stored value. |
+| Token and control absent, or control results differ | Inconclusive without verified control setup; inspect protections, scope and context. Do not label the token empty or replace it speculatively. |
+| Frontend token present, either identifier absent | Restore the exact existing project's environment variables after authorization; do not create a new project. |
+
+GitHub documents that job-level environments in reusable workflows supply
+environment secrets and that `deployment: false` retains access. A caller with
+no `secrets: inherit` is therefore **not evidence of the cause**. Do not move
+tokens to repository scope, inherit all secrets or enable deployment objects as
+an unproven fix. If the live comparison cannot identify a cause, keep activation
+blocked and escalate with run IDs and boolean reports only. Any controlled
+replacement needs separate consent, followed by another preflight.
+
+The observed empty Fly values and missing Vercel token are recorded in
+[CURRENT_STATE §10](../CURRENT_STATE.md#10-t211-delivery-controls). This preflight
+repairs the diagnostic gap; it does not claim to repair production credentials.
 
 ## Manual delivery and rollback
 
@@ -150,10 +276,12 @@ restore the deployment identity, not a raw dashboard bypass.
 
 | Outcome | Meaning and response |
 |---|---|
+| `Release requires ...; failed checks: ...` | Run/context eligibility failed before credential validation or publication. Follow the [named-check diagnosis](#eligibility-rejection-diagnostics); do not weaken guards or treat this as a missing-token failure. |
 | `test` failure/skipped/missing | No release is eligible. Fix the cause through a PR or rerun full CI; do not weaken the required check. |
 | `stale-main` / `current=false` | Newer main superseded this run; nothing new was published by the skipped operation. The newer run uses cumulative paths. |
 | `unchanged-paths` / `not-selected` | Intentional no-op, reported in the job summary. No actual-success ledger created. |
-| Missing Fly/Vercel token or IDs | Explicit failure before creating a release ledger; configure the protected environment and rerun CI. It is not a success or path skip. |
+| Fly token absent at the release step | Explicit failure before the ledger. If the secret name exists, use the [direct/reusable preflight](#non-deploying-credential-preflight) before choosing a fix; neither name metadata nor both-negative output proves empty storage. Do not replace the token speculatively. |
+| Vercel token or IDs absent | Explicit failure before the ledger. A known-missing identity/token follows [SETUP](SETUP.md#vercel-deployment-identity) after owner consent; verify identifiers against the existing project. A name that exists but delivers no value requires preflight diagnosis. Neither outcome is a success or path skip. |
 | Vercel automatic domain assignment ON, unexpected repo link/hooks | Fail closed before publication. Restore the audited settings, then rerun CI. |
 | Inert staged build fails or publishing steps both skipped | Ledger `inactive`; no publishing command started. The next eligible attempt does a full service deployment. |
 | Fly deploy / Vercel promotion fails, times out, or is cancelled | May have continuing provider-side effects. Ledger remains unresolved and blocks all later releases for that target until reconciled. |
@@ -212,6 +340,12 @@ latest record/status; unknown ledger identity/schema fails loudly.
 
 ## Post-merge production acceptance
 
+First complete the protected credential comparison and separately authorize the
+selected releases. Inspect current provider state and resolve any suspended
+ingester/invalid standby or unresolved release operation through its own
+authorized recovery procedure. A credential change is not authorization to
+restart the ingester. Do not run a raw deploy to test credentials.
+
 1. Record the actual main merge SHA and its completed `test` job. A green PR
    tests a different integration point and is insufficient.
 2. Confirm the release jobs check out that exact SHA and report the expected
@@ -227,6 +361,8 @@ latest record/status; unknown ledger identity/schema fails loudly.
    Until all targets are accepted, T21.1 is implemented but not closed.
 
 Primary references: [GitHub reusable workflows](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows),
+[environment secrets without deployments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/control-deployments#using-environments-without-deployments),
+[runner step-environment evaluation](https://github.com/actions/runner/blob/main/src/Runner.Worker/StepsRunner.cs),
 [concurrency](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency),
 [deployment environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/control-deployments),
 [Vercel Git configuration](https://vercel.com/docs/project-configuration/git-configuration),

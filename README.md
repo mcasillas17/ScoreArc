@@ -169,3 +169,13 @@ suite. Roll back through a revert PR, never a direct old-image deployment.
 See the [release runbook](docs/backend/RELEASES.md) for activation, credentials,
 retry/recovery and post-merge acceptance; [current state](docs/CURRENT_STATE.md#10-t211-delivery-controls)
 distinguishes implemented code from enabled production paths.
+
+For missing deployment credentials, use the authorized **Production credential
+preflight (no deployment)** workflow on `main`, selecting one service. It
+compares direct/reusable environment access using presence booleans only; it
+does not publish code or replace release CI. See the
+[diagnostic runbook](docs/backend/RELEASES.md#non-deploying-credential-preflight)
+for interpreting missing values and the separate owner activation steps.
+If release eligibility fails first, use the runbook's
+[named-check diagnostics](docs/backend/RELEASES.md#eligibility-rejection-diagnostics);
+do not weaken the guard or mistake that failure for a credential check.

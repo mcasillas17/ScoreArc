@@ -25,6 +25,38 @@ const plan = {
 };
 
 describe('production eligibility', () => {
+  it.each([
+    { check: 'contextRepository', candidate: { ...context, repository: 'UNTRUSTED_VALUE_DO_NOT_LOG' }, metadata: run },
+    { check: 'contextRef', candidate: { ...context, ref: 'UNTRUSTED_VALUE_DO_NOT_LOG' }, metadata: run },
+    { check: 'contextEvent', candidate: { ...context, eventName: 'pull_request' }, metadata: { ...run, event: 'pull_request' } },
+    { check: 'workflowRef', candidate: { ...context, workflowRef: 'UNTRUSTED_VALUE_DO_NOT_LOG' }, metadata: run },
+    { check: 'runRepository', candidate: context, metadata: { ...run, repository: { full_name: 'UNTRUSTED_VALUE_DO_NOT_LOG' } } },
+    { check: 'headRepository', candidate: context, metadata: { ...run, head_repository: { full_name: 'UNTRUSTED_VALUE_DO_NOT_LOG' } } },
+    { check: 'runId', candidate: context, metadata: { ...run, id: 43 } },
+    { check: 'runAttempt', candidate: context, metadata: { ...run, run_attempt: 2 } },
+    { check: 'runEvent', candidate: context, metadata: { ...run, event: 'UNTRUSTED_VALUE_DO_NOT_LOG' } },
+    { check: 'runBranch', candidate: context, metadata: { ...run, head_branch: 'UNTRUSTED_VALUE_DO_NOT_LOG' } },
+    { check: 'runSha', candidate: context, metadata: { ...run, head_sha: older } },
+    { check: 'runWorkflow', candidate: context, metadata: { ...run, path: 'UNTRUSTED_VALUE_DO_NOT_LOG' } },
+    { check: 'runStatus', candidate: context, metadata: { ...run, status: 'queued' } },
+    { check: 'runConclusion', candidate: context, metadata: { ...run, conclusion: 'cancelled' } },
+  ])('identifies $check rejection using only a constant label', ({ check, candidate, metadata }) => {
+    expect(() => assertReleaseContext(candidate, metadata, [testJob])).toThrowError(new Error(
+      `Release requires this repository's active main CI run and exact tested SHA; failed checks: ${check}`,
+    ));
+  });
+  it.each(['queued', 'waiting', 'pending', 'requested', 'completed'])('still rejects %s run state with a successful exact-SHA test', status => {
+    expect(() => assertReleaseContext(context, { ...run, status }, [testJob])).toThrowError(new Error(
+      "Release requires this repository's active main CI run and exact tested SHA; failed checks: runStatus",
+    ));
+  });
+  it('reports every failed check without accepting a cancelled, wrong-attempt or wrong-SHA run', () => {
+    expect(() => assertReleaseContext(context, {
+      ...run, run_attempt: 2, head_sha: older, status: 'completed', conclusion: 'cancelled',
+    }, [testJob])).toThrowError(new Error(
+      "Release requires this repository's active main CI run and exact tested SHA; failed checks: runAttempt, runSha, runStatus, runConclusion",
+    ));
+  });
   it('binds successful CI to this exact main SHA and run attempt', () => {
     expect(() => assertReleaseContext(context, run, [testJob])).not.toThrow();
     expect(() => assertReleaseContext(context, { ...run, head_sha: older }, [testJob])).toThrow();
@@ -168,6 +200,15 @@ describe('workflow wiring', () => {
     for (const action of workflow.matchAll(/uses: ([\w/-]+)@([^\s]+)/g)) {
       expect(action[2]).toMatch(/^[a-f0-9]{40}$/);
     }
+  });
+  it('preserves Fly build contexts and singleton ingester deployment', () => {
+    const workflow = readFileSync('.github/workflows/deploy-production.yml', 'utf8');
+    const flyStep = workflow.split(/^      - /m).find(block => block.includes('id: fly\n'));
+    expect(flyStep).toBeDefined();
+    expect(flyStep?.split('\n').map(line => line.trim()).filter(line => line.startsWith('flyctl deploy '))).toEqual([
+      'flyctl deploy backend --config reader/fly.toml --dockerfile reader/Dockerfile --remote-only',
+      'flyctl deploy backend --config ingester/fly.toml --dockerfile ingester/Dockerfile --remote-only --ha=false',
+    ]);
   });
   it('turns off Vercel Git production deployment, not preview builds', () => {
     const config = JSON.parse(readFileSync('vercel.json', 'utf8'));

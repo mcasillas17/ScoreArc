@@ -188,3 +188,13 @@ Use a main CI dispatch with `release=reader` for a deliberate redeploy. Rollback
 requires a revert PR and fresh main CI. Do not deploy a local working tree or
 an old image directly. See the [release runbook](../../docs/backend/RELEASES.md)
 for activation, concurrency, interrupted-release recovery and health acceptance.
+
+If the token name exists but the release reports an empty value, use the
+authorized main-only **Production credential preflight (no deployment)** with
+`service=reader`. It compares direct/reusable environment access without
+deploying or creating a release record. Follow the
+[diagnostic runbook](../../docs/backend/RELEASES.md#non-deploying-credential-preflight);
+do not infer empty storage from a missing value or add broad secret inheritance.
+An earlier eligibility failure instead reports constant failed-check names;
+follow the [eligibility diagnosis](../../docs/backend/RELEASES.md#eligibility-rejection-diagnostics)
+without relaxing the exact-SHA/current-attempt gate.

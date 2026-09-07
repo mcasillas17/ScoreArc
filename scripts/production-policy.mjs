@@ -17,15 +17,25 @@ export function assertSha(value) {
  */
 export function assertReleaseContext(context, run, jobs) {
   assertSha(context.sha);
-  if (context.repository !== repository || context.ref !== 'refs/heads/main' ||
-      !['push', 'workflow_dispatch'].includes(context.eventName) ||
-      context.workflowRef !== `${repository}/.github/workflows/ci.yml@refs/heads/main` ||
-      run.repository?.full_name !== repository || run.head_repository?.full_name !== repository ||
-      run.id !== context.runId || run.run_attempt !== context.runAttempt ||
-      run.event !== context.eventName || run.head_branch !== 'main' ||
-      run.head_sha !== context.sha || run.path !== '.github/workflows/ci.yml' ||
-      run.status !== 'in_progress' || run.conclusion !== null) {
-    throw new Error('Release requires this repository\'s active main CI run and exact tested SHA');
+  const checks = {
+    contextRepository: context.repository === repository,
+    contextRef: context.ref === 'refs/heads/main',
+    contextEvent: ['push', 'workflow_dispatch'].includes(context.eventName),
+    workflowRef: context.workflowRef === `${repository}/.github/workflows/ci.yml@refs/heads/main`,
+    runRepository: run.repository?.full_name === repository,
+    headRepository: run.head_repository?.full_name === repository,
+    runId: run.id === context.runId,
+    runAttempt: run.run_attempt === context.runAttempt,
+    runEvent: run.event === context.eventName,
+    runBranch: run.head_branch === 'main',
+    runSha: run.head_sha === context.sha,
+    runWorkflow: run.path === '.github/workflows/ci.yml',
+    runStatus: run.status === 'in_progress',
+    runConclusion: run.conclusion === null,
+  };
+  const failedChecks = Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name);
+  if (failedChecks.length > 0) {
+    throw new Error(`Release requires this repository's active main CI run and exact tested SHA; failed checks: ${failedChecks.join(', ')}`);
   }
   const tests = jobs.filter(job => job.name === 'test');
   if (tests.length !== 1 || tests[0].run_id !== context.runId ||

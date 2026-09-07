@@ -545,7 +545,15 @@ a custom deployment-protection-rule app without revisiting `deployment: false`.
 | `production-ingester` | `FLY_API_TOKEN_INGESTER`, scoped to `scorearc-ingester` | none |
 | `production-frontend` | `VERCEL_TOKEN`, dedicated non-owner deployment identity | `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` |
 
-An authorized operator can provision Fly tokens without printing their values:
+For existing secrets, first follow the
+[protected credential preflight](RELEASES.md#non-deploying-credential-preflight).
+Names in `gh secret list` do not prove nonempty injection or provider permission.
+Do not add `secrets: inherit` or replace Fly tokens merely because a release
+received an empty value. The optional diagnostic control belongs only in the
+selected environment and requires separate owner authorization.
+
+After explicit creation/replacement authorization, an operator can provision
+Fly tokens without printing their values:
 
 ```bash
 set -o pipefail
@@ -570,6 +578,57 @@ See [RELEASES.md](RELEASES.md) for the exact activation order, current role/plan
 requirements, manual dispatch, rollback, failed-release diagnosis and acceptance.
 See [CURRENT_STATE §10](../CURRENT_STATE.md#10-t211-delivery-controls) for what is
 actually enabled versus still awaiting owner action.
+
+#### Vercel deployment identity
+
+Use the existing `elopenmike` team and `score-arc` project, not the local Owner's
+credential or a newly created project. Handle each owner approval separately:
+
+1. In team **Settings → Members**, identify an existing dedicated non-owner,
+   non-administrator identity or approve an invitation. Confirm the current
+   plan and any seat cost **before** inviting or changing roles. Account
+   sign-in, invitation acceptance and MFA must be completed by the identity's
+   human custodian, never by sharing a password or token in chat.
+2. Verify the least-privilege role/permission combination for the actual plan.
+   Vercel documents a Developer role on Pro, but its default production path
+   is Git integration, which this project intentionally does not use for main
+   publication. The documented **Full Production Deployment** permission
+   covers CLI production deployment and promotion. Confirm that a supported
+   non-admin grant is available to this team and scoped as narrowly as its
+   plan permits; do not assume Enterprise project-level controls are available.
+   If the UI/API or provider cannot confirm that grant, leave activation
+   blocked. Do not silently upgrade a plan or substitute Owner/Project Admin
+   credentials or a broader role to make the workflow pass.
+3. After separate token-creation approval, the dedicated identity's custodian
+   creates a team-scoped access token with a recorded expiration and rotation
+   owner. Store it directly in GitHub **Settings → Environments →
+   production-frontend → Environment secrets → VERCEL_TOKEN**. Alternatively,
+   use the secure interactive prompt below; never put the token in command
+   arguments, chat, source, screenshots or logs:
+
+   ```bash
+   gh secret set VERCEL_TOKEN --repo mcasillas17/ScoreArc --env production-frontend
+   ```
+
+4. Verify `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` against the existing project's
+   metadata. Run the authorized main-only presence preflight. Through the
+   dedicated identity (not an Owner readback), verify read access to project,
+   deployment and alias metadata and inspect the granted production permission.
+   A nonempty token or successful metadata GET does not prove staging/promoting
+   permission; actual stage/promotion acceptance waits for a separately
+   authorized, fully CI-gated release of an eligible merged revision. Do not
+   invoke a write endpoint as a permission test.
+
+Keep automatic domain assignment OFF and deploy hooks empty. Account-level
+production permissions can enable paths outside CI; audit the identity's use,
+protect its credential and retain the supported release/rollback rules. Token
+creation, storage, permission changes and production acceptance are separate
+approvals, not consequences of a successful local test.
+
+Primary references: [team roles](https://vercel.com/docs/rbac/access-roles),
+[Pro Developer role](https://vercel.com/changelog/developer-role-now-available-for-pro-teams),
+[extended permissions](https://vercel.com/docs/rbac/access-roles/extended-permissions),
+[member management](https://vercel.com/docs/rbac/managing-team-members).
 
 ---
 

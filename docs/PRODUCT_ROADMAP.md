@@ -880,6 +880,18 @@ per-competition freshness alerting remains T17.4.
 | **T21.3** | Complete provisional-team curation and safe identity promotion in both operator tooling and the ingester promotion path. | Repoint match, standing, appearance, and match-event references before deletion; promotion never ends in FK `23503`. | T21.2 |
 | **T21.4** | Add reader/ingester metrics, bounded audit retention, dashboards, and operator runbooks. | Metrics omit secrets/high-cardinality ids; each E17 alert links to a diagnostic and recovery action. | none |
 
+**T21.1 activation remains open:** the release gates are merged, but main run
+`34019423444` passed tests then failed all three credential checks; the later
+`34077227730` passed tests but stopped Fly at the preceding eligibility guard.
+Named failed-check diagnostics retain all eligibility conditions; the historical
+rejecting predicate remains unknown. The protected
+non-deploying preflight separates direct/reusable access diagnosis from release
+acceptance; its live main-only comparison is still pending. Fly empty delivery
+has no proven root cause yet, and the Vercel deployment identity/token still
+requires owner approval. See CURRENT_STATE §10 for active settings, local
+validation blockers and post-merge consent gates. This is neither the E16 data
+cutover nor T21.2 schema readiness; T17.1 recovery stays closed.
+
 ### E22 · Developer & device platform
 
 | Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
