@@ -800,7 +800,7 @@ code rather than pasted from a dated plan.
 | Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
 |---|---|---|---|
 | **T17.1** | Reproduce, diagnose, and fix the Liga MX team-profile 500 in reader store/handler integration tests. | Root cause is evidence from a real-Postgres reproduction, not a UUID hypothesis; seeded teams return `200` or intentional `404`, never unexplained `500`. | none |
-| **T17.2** | Diagnose Greece across config, source, ingester, database, and reader; populate it or gate it out honestly. | Never assert a missing row count in advance; a configured-but-unproven competition is not presented as healthy. | none |
+| **T17.2** | Diagnose Greece across config, source, ingester, database, and reader; populate it or gate it out honestly. **Not-running state and Greece's empty-vs-stale explanation established 2026-09-06 (below); database state inferred from the reader, not read directly; why writes stopped on 2026-08-22 is still open (CURRENT_STATE §9); population blocked on an authorized ingester restart.** | Never assert a missing row count in advance; a configured-but-unproven competition is not presented as healthy. | diagnosis: none. Population: authorized orphan-standby recovery, coordinated with T21.1 |
 | **T17.3** | Add source, observed/finalized time, derivation, and complete/empty/stale/unavailable semantics to reader contracts. | Consumers can distinguish a genuine empty window from broken ingestion from the response alone; all reader routes have contract coverage. | T16.1 |
 | **T17.4** | Define per-competition freshness/completeness SLOs, alerts, and runbooks from ingest evidence. | Dormant seasons do not page; active competitions crossing their declared threshold do, with competition/season/run context. | T17.3; T21.4 later exports richer metrics |
 
@@ -817,6 +817,29 @@ still defines conditional operator repair;
 [CURRENT_STATE §3](CURRENT_STATE.md#3-verification-evidence-this-pass-2026-09-01)
 owns the UTC acceptance evidence and remaining uncertainty. Broader reader parity,
 T21.1 delivery activation and T21.2 schema readiness remain separate work.
+
+**T17.2 diagnosis complete (2026-09-06); population pending.** Greece's empty
+collections are **not** Greece-specific, and no Greece-specific application
+defect survives (a worker crash loop or lease conflict is not excluded —
+CURRENT_STATE §9): no
+ingester write has landed since 2026-08-22 and nothing is running now, so every
+in-season competition is stale, and Greece is empty rather than stale only because it was configured
+2026-08-24, after the stall. Config, source and mappers check out against live ESPN, and the
+reader resolves the competition/season correctly (`400` on unknown ones), so
+**no source change was made**. Gating Greece out was rejected — it
+would hide a pipeline-wide stall behind a per-competition flag and break a
+working ESPN-backed frontend competition. Population requires the authorized
+orphan-standby recovery in
+[SETUP.md §7.4](backend/SETUP.md#74-first-deploy) (observe the ⛔ blocker there
+before acting), accepted with the freshness
+check in [§7.5](backend/SETUP.md#75-verify).
+[CURRENT_STATE §3](CURRENT_STATE.md#3-verification-evidence-this-pass-2026-09-01)
+owns the dated evidence and the remaining unknowns (why the worker stopped and
+when its primary Machine was removed; why `--ha=false` has not cleared the
+standby; whether a release-ledger baseline exists and the ingester tree is
+unchanged since it). Distinguishing "genuinely
+empty" from "ingestion stopped" *in the response itself* remains T17.3;
+per-competition freshness alerting remains T17.4.
 
 ### E18 · Rights & multi-source platform
 
