@@ -658,6 +658,10 @@ flowchart TD
   IngesterRelease --> Ledger
   Promote --> Ledger
   Git["Vercel Git integration"] -->|"main deployment disabled; auto-domain assignment OFF"| NoBypass["No independent production publication"]
+  Diagnostic["Authorized credential preflight dispatch on main"] --> DirectProbe["Direct protected-environment job"]
+  Diagnostic --> ReusableProbe["Same-commit matrix reusable probe"]
+  DirectProbe --> Presence["Presence booleans only; no provider operation or release record"]
+  ReusableProbe --> Presence
 ```
 
 The queue is acquired before the per-service API/ledger check. Release scripts
@@ -673,3 +677,15 @@ means a full bootstrap for that service. Only an actual success supplies the
 next diff base; a known-inert or reconciled `inactive` release forces a full
 retry. Failed/unknown publishing operations lock further releases, including
 manual dispatch, until the operator has confirmed provider-side termination.
+
+The separate `production-credentials.yml` diagnostic uses the same main-only
+environment binding and `deployment: false` in direct and reusable contexts.
+Its Node probe receives presence booleans for the credential fields and emits
+only those booleans; it does not consume raw provider credentials. The
+environment-bound runner and referenced pinned actions remain trusted with
+secret material. The jobs have no write permissions or release-ledger
+operations. An optional owner-provisioned, environment-only
+control helps isolate secret delivery without exposing values. The probe is not
+an alternative release path or a substitute for successful exact-SHA CI. Its
+same-run interpretation and live-acceptance limits are in the
+[preflight runbook](RELEASES.md#non-deploying-credential-preflight).

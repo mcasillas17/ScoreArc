@@ -2,8 +2,8 @@
 
 **Last verified:** 2026-09-01, against `main` @ `49bf68d` (2026-09-01).
 
-**Delivery-controls update:** T21.1 settings separately rechecked 2026-09-05
-against `origin/main` @ `883e59f`; see §10. Other operational observations retain
+**Delivery-controls update:** T21.1 evidence updated 2026-09-06
+against `origin/main` @ `de52780`; see §10. Other operational observations retain
 their original verification date.
 
 **Reader recovery update:** T17.1 production repair accepted 2026-09-06 using
@@ -45,7 +45,7 @@ that audit's mutable status conclusions where they conflict.
 | Frontend | Live at scorearc.futbol, fully ESPN-backed. No reader/backend fetch call sites exist in `src/server/data/` — the 1d cutover has not started. |
 | Ingester | **Not running.** Image v20 is deployed on Fly.io, but the app is `suspended` and its only Machine is a stopped orphan standby; no ingest **write** has landed since **2026-08-22** (T17.2, §3, which states exactly which competitions are stale, truncated or complete, and what is observed versus inferred). E7 writers are present in the deployed code. Raw-archive completeness remains unverified. |
 | Reader API | 7 registered `/v1` data routes (`matches`, `standings`, `bracket`, `top-scorers`, `teams/{teamId}`, `news`, `matches/{id}`) + `/healthz`. The Liga MX team-profile **500 is repaired**: existing migration 0022 restored the full production response, accepted 2026-09-06 (§3). Broader reader parity remains open (§5). |
-| Operations | `main` now requires PR integration and strict `test` checks, with admin enforcement and no force pushes/deletion. Automatic *frontend* publication is blocked pending `VERCEL_TOKEN`, while the Fly reader/ingester targets are *designed* to release independently of it. **The gated path has been exercised on `main` and currently cannot deploy:** all three pushes since it merged failed at the credentials gate, step outcomes read for each (§3); release code and owner actions are distinguished in §10. No per-competition freshness/completeness alert exists. Migrations remain manual; T17.1 repair is accepted, but T21.2 schema-readiness prevention is not implemented. |
+| Operations | `main` requires PR integration and strict `test` checks, with admin enforcement and no force pushes/deletion. Automatic *frontend* publication is blocked pending `VERCEL_TOKEN`; Fly targets are independent of it. **The gated path currently cannot deploy:** earlier runs failed credential checks (§3); in the latest run `34077227730`, Fly failed the preceding run/context eligibility guard while frontend reached its credential failure (§10). No per-competition freshness/completeness alert exists. Migrations remain manual; T17.1 repair is accepted, but T21.2 schema-readiness prevention is not implemented. |
 | 1d (frontend cutover) | Absent. No spec has landed as an implementation; no `apiStore` exists. |
 | E6 (shot log) | T6.1 (coverage probe) complete. T6.2–T6.4 (extraction, reconciliation, rendering) pending. |
 | E7 (history & trends) | Writer code is implemented and deployed; no write from it is visible in reader data since 2026-08-22 and nothing is running now (§2 above, §3). Whether a process ran and failed between 2026-08-22 and the 2026-09-01 relaunch is open (§9), and the database was not queried — several of these writers target tables no reader route exposes, so partially written rows are not excluded. (`WriteStandingSnapshot`, `WriteWinProbSnapshot`, `WritePlays`, `WriteParticipation`, `WriteCommentary`, `ReplaceLeaders`, `ReplaceSquad`, `WriteMatchOfficials`, `WriteMatchOdds`, `WriteOddsSnapshot`). **T7.13 operational acceptance is pending** (§4). Read/render surfaces (T7.3–T7.5) do not exist. |
@@ -155,26 +155,24 @@ that audit's mutable status conclusions where they conflict.
   standby, then release the ingester through the gated `main` CI path
   ([SETUP.md §7.4](backend/SETUP.md#74-first-deploy)), accepted with the
   [freshness check in §7.5](backend/SETUP.md#75-verify).
-  ⛔ **Do not start the destroy yet.** Step 2 currently fails at *Require
-  deployment credentials* (see the 2026-09-06 CI observation below), so
+  ⛔ **Do not start the destroy yet.** The release path remains blocked:
+  earlier runs failed credentials, and the latest Fly jobs failed the preceding
+  eligibility guard (§10). Therefore
   destroying the standby now would take an irreversible action and leave the app
   with no machine at all and no way to release one. Clear that gate first. That is an
   authorized-operator step requiring an explicit decision, not a routine
   release. It is **not** blocked by T21.1's outstanding `VERCEL_TOKEN` gap —
-  §10 records the Fly release targets as independent of it, and the app-scoped
-  Fly tokens as installed — though the 2026-09-06 CI observation recorded below
-  (runs `33990828082` / `33991842634` / `34019423444`) is in tension with that
-  row — (the gated workflow itself merged as `cc623e9`; §10's `883e59f`
-  baseline sentence predates it) — but it goes through the gated release path T21.1
-  owns, so coordinate with that owner. No deploy, restart, machine change,
+  Fly release targets are independent of it, but both eligibility and Fly
+  credential delivery need the diagnosis recorded in §10. Coordinate recovery
+  with T21.1's release owner. No deploy, restart, machine change,
   backfill or database write was made for this diagnosis, and this record is
   deliberately documentation-only: per
   [RELEASES.md](backend/RELEASES.md#paths-and-ordering) `docs/**` selects no
   release target, while any `scripts/production-*` path selects **all three**.
-  A regression test pinning `--ha=false` to the ingester release command is
-  therefore **deferred to the T21.1 owner**, who owns that release-policy test
-  file — adding it here would have made this merge release the ingester image
-  onto the un-repaired app, ahead of the standby destroy that must come first.
+  The `backend` build contexts and ingester `--ha=false` command are now pinned
+  by T21.1's `scripts/production-policy.test.ts`; no deployment command was
+  changed to add that coverage. A change to that test path still selects all
+  services and is subject to the same production authorization.
   ⚠️ **That path filter is not, on its own, a guarantee that merging releases
   nothing** — and it is not hypothetical: a `main` merge **does** select the
   ingester today (observed, next paragraph). Before merging *anything* to
@@ -184,8 +182,9 @@ that audit's mutable status conclusions where they conflict.
   `affectsService`/`planRelease`; **this pass did not read the ledger**, and the
   ingester's last release (v20, 2026-09-01) predates the gated workflow's merge
   (`cc623e9`, 2026-09-05).
-  Today that selection stops at the credentials gate (below), but once an
-  app-scoped Fly token is installed it would release the ingester image onto the
+  Earlier observed selections stopped at the credentials gate (below); the
+  latest Fly jobs stopped earlier (§10). Once the eligibility and credential
+  gates pass, a selected release would publish the ingester image onto the
   un-repaired app ahead of the standby destroy. On the observed evidence such a
   deploy would leave the standby `stopped` rather than start a worker
   ([SETUP.md §7.4](backend/SETUP.md#74-first-deploy); see the v20 event log and
@@ -193,40 +192,29 @@ that audit's mutable status conclusions where they conflict.
   v13–v19, so their lack of a `start` event is unrecorded, not observed), but its effect on a
   pre-existing standby is **not** established (§9) — so this must be an intentional operator step, never a side
   effect of merging documentation.
-  **Observed 2026-09-06 — the gated path already runs on `main` and currently
-  cannot deploy.** All three pushes since the gated workflow merged concluded
-  `failure`, and the step outcomes of **all three** were read: `cc623e9`
+  **Observed 2026-09-06, before #150 merged — the gated path already ran on
+  `main` but could not deploy.** The three observed pushes after the gated
+  workflow merged concluded `failure`, and their step outcomes were read: `cc623e9`
   (run `33990828082`), `2a917fe` (run `33991842634`) and `84bb381`
   (run `34019423444`). In each, `test` **succeeded** while
   `production (reader)`, `production (ingester)` and `production (frontend)`
   failed at *Require deployment credentials*, logging
   `Missing app-scoped Fly token; no deployment occurred` for the two Fly
   services. That step runs only when the plan sets `deploy == 'true'`
-  (`deploy-production.yml`), so **a `main` push does currently select the
-  ingester** — the release is stopped by the credentials gate, not by path
+  (`deploy-production.yml`), so **those `main` pushes selected the
+  ingester** — those releases were stopped by the credentials gate, not by path
   filtering, and `setup-flyctl` and the publish step never run. Two
-  consequences: merging today fails at that gate rather than deploying the
-  ingester, *and* the T17.2 repair cannot complete through CI until that gate
-  passes. What the gate proves is only that the workflow's Fly token
-  expressions resolved **empty** for `production-reader` and
-  `production-ingester`; §10's Fly-credentials row records those tokens as
-  installed, so the cause is open. Candidates, not
-  exhaustive: they are absent or revoked; their secret names differ from the
-  ones the workflow reads; or the reusable workflow never receives them —
-  `ci.yml` invokes `deploy-production.yml` with a `with:` block and **no**
-  `secrets:` or `secrets: inherit`, while the called workflow reads
-  `secrets.FLY_API_TOKEN_READER` / `_INGESTER` (verified 2026-09-06 by reading
-  both workflow files; no workflow was modified). ⚠️ That third candidate is
-  the weakest: the release job declares `environment: production-${{ inputs.service }}`
-  on the same job that reads those secrets, and §10 records the tokens as
-  stored *only* in their production environments — environment-scoped secrets
-  resolve through that `environment:` key, not through caller-to-callee
-  passing, which `secrets: inherit` governs for repository- and
-  organization-scoped secrets. It is live only if the tokens are in fact
-  repository- or organization-scoped, contradicting §10. **Do not "fix" it with
-  `secrets: inherit`** — that would pass every repository secret into the called
-  workflow while leaving an environment-scoped gap untouched. Determining which is **T21.1's**, not this
-  task's.
+  consequences: no ingester publication occurred in those runs, and the T17.2
+  repair still requires an eligible, credentialed release path. Those logs
+  establish empty Fly token expressions, not why they were empty. Secret names
+  exist in the intended environments (§10), but names do not prove delivery or
+  validity. Token revocation alone would not explain an empty string at this
+  pre-provider check. **Do not add `secrets: inherit` speculatively**: job-level
+  environment secrets are documented to resolve without broad inheritance.
+  T21.1's [preflight runbook](backend/RELEASES.md#non-deploying-credential-preflight)
+  owns the protected comparison and interpretation. The later `de52780` run
+  stopped Fly before credential checks at all; that new symptom is recorded
+  separately in §10 and does not clear the earlier credential fault.
   **If writes do not resume** after the destroy-and-release — judged by the
   [§7.5 freshness check](backend/SETUP.md#75-verify), not by the Machine merely
   reaching `started` — then the 2026-08-22 write-stop had a cause this pass did
@@ -572,47 +560,88 @@ the diagnosis.
 
 ## 10. T21.1 delivery controls
 
-> **Dated-framing note (T17.2, 2026-09-06):** the gated workflow has since
-> merged as `cc623e9`, so this section's "awaiting integration" / "before it
-> merges, `origin/main` remains `883e59f`" framing predates the merge. The
-> substantive T21.1 acceptance rewrite belongs to that task's owner; only this
-> pointer was added here. See §3.
-
-**2026-09-05: implementation awaiting integration; not fully operationally accepted.**
+**2026-09-06: release gates merged; credential activation remains blocked.**
 The CI dependency graph, immutable deployment policy, cumulative per-service
 filters, manual/revert rules and Vercel staged-publication path are implemented
-in this change. Before it merges, `origin/main` remains `883e59f`, with the old
-workflow files; do not mistake this branch's code for deployed automation.
+on main through #147 (`cc623e9`); the rechecked main revision is `de52780`.
+Run [34019423444](https://github.com/mcasillas17/ScoreArc/actions/runs/34019423444)
+passed its complete `test` job but all three production jobs failed at
+**Require deployment credentials**, before provider operations or release
+ledger creation. Green tests did not restore credential access.
+
+The later run
+[34077227730](https://github.com/mcasillas17/ScoreArc/actions/runs/34077227730)
+on `de52780` also passed `test`, but Fly ingester/reader failed **Exact-SHA
+eligibility and cumulative path filter**, at the first `assertReleaseContext`
+guard, before credential checks. The test job completed at 02:50:00 UTC on
+2026-09-07; Fly failed at 02:50:09/10, while frontend passed the same guard at
+02:50:43/44 and then failed credentials. The release code was unchanged by #150.
+Persisted run/job IDs, attempt and SHA match, but terminal metadata cannot
+reconstruct the API response or process context at the earlier failures.
+No timing/cache race or specific rejecting predicate is established.
 
 | Control | Observed state |
 |---|---|
 | Main protection | REST readback: `protected=true`; strict `test` from GitHub Actions app `15368`; `enforce_admins=true`; PR requirement with zero required approvals; force pushes/deletions disabled. No direct push was attempted as a test. |
 | Existing rules | Ruleset `18441202` retained unchanged. Its empty include list makes it ineffective; classic main protection supplies the active controls. |
 | Deployment environments | `production-reader`, `production-ingester`, `production-frontend` each allow only branch `main`, not tags or PR refs. |
-| Fly credentials | Fresh app-scoped, one-year tokens stored only in their corresponding production environments. Repository-scoped copies removed after replacement. Old standalone workflows consequently cannot access a deployment token. |
+| Fly credentials | `FLY_API_TOKEN_READER` and `FLY_API_TOKEN_INGESTER` names exist in their respective environments (updated 2026-09-05 06:48:40/43 UTC). Run `34019423444` received empty values; `34077227730` did not reach this check. Stored emptiness versus workflow access/injection remains **unproven**; names do not establish token validity, expiry or provider authorization. |
 | Vercel live setting | Project `score-arc`, team `elopenmike` (Pro), remains linked to this repo/main; deploy hooks empty; fork protection enabled. `autoAssignCustomDomains=false` verified after update. Existing traffic was not intentionally changed. |
-| Vercel release credentials | Project/team ID variables installed in `production-frontend`. **`VERCEL_TOKEN` absent:** a dedicated non-owner deployment identity is required. The local owner credential was not placed in Actions. |
-| Production acceptance | **Pending.** No production deployment, workflow dispatch, service restart, merge, or auto-merge was performed to prove this change. |
+| Vercel release credentials | Project/team ID variables in `production-frontend` match the existing project. **`VERCEL_TOKEN` absent.** Membership readback showed one confirmed Owner and no pending invitations, not a dedicated deployment identity. The local Owner credential was not placed in Actions. |
+| Credential diagnosis | Main-only, non-deploying direct/reusable preflight implemented with this documentation update; **protected runtime comparison not yet performed**. No speculative inheritance or token replacement fix was applied. |
+| Eligibility diagnosis | Implementation in this change adds constant failed-check names while retaining all fourteen conditions; **not yet exercised on main, and the historical rejecting check remains unknown**. No status relaxation or retry was added. The latest Fly jobs did not reach credential validation. |
+| Production acceptance | **Pending for all three targets.** No production deployment, credential replacement, permission change or restart was performed as part of this credential diagnosis. Release activation is not frontend-to-reader cutover. |
 
-**Owner actions:** before merging, supply the non-owner Vercel token and audit
-provider membership, token scopes, deploy hooks and manual promotion rights as
-described in the [release runbook](backend/RELEASES.md). Revoke retired Fly tokens
-at the provider after identifying them; deleting a GitHub secret does not revoke
-the underlying token. Account owners can alter protections or deploy outside
-Actions, so those privileged paths are not claimed to be technically prevented.
-They are not supported source-release paths.
+**Proven versus pending:** the missing Vercel token is established by secret-name
+metadata. For Fly, empty runtime values are established by the failed-step logs,
+but the cause is not. GitHub documents that reusable job-level environments
+supply secrets and `deployment: false` preserves access; missing
+`secrets: inherit` is not proof of a defect. The
+[non-deploying comparison](backend/RELEASES.md#non-deploying-credential-preflight)
+must run on an authorized merged main revision before choosing a Fly repair.
+Both-negative results without a verified environment-only control remain
+inconclusive. Local tests do not prove live injection or provider permission.
+The additional [eligibility diagnostics](backend/RELEASES.md#eligibility-rejection-diagnostics)
+make a future rejection identifiable without logging raw context/API values.
+They do not retroactively identify the old failure or make an ineligible run
+safe to release. Both this rejection and the earlier empty Fly values remain
+open operational questions.
 
-**Post-merge acceptance:** confirm actual merge-SHA `test` success, each provider
+**Owner actions:** approve a dedicated non-owner/non-administrator Vercel identity,
+any seat cost and the minimum supported production CLI/promotion permission on
+the actual Pro plan; a Developer role alone is insufficient evidence. Token
+creation/storage in `production-frontend` needs separate approval. Follow
+[SETUP](backend/SETUP.md#vercel-deployment-identity) rather than copying an Owner
+token. Keep the environment restrictions, automatic domain assignment OFF and
+empty deploy hooks. Any Fly control-secret setup, replacement or retirement also
+requires authorization; secret deletion is not token revocation.
+
+**Post-merge acceptance:** first authorize the protected preflight and resolve its
+findings; then separately authorize the selected releases. Confirm actual
+merge-SHA `test` success, each provider
 release/actual-success ledger and serving SHA, reader health, and one running
-ingester. The first ledger-free run bootstraps all services and restarts the
-ingester. Vercel Git must not independently publish the merge; its publication
+ingester. Main pushes already attempt gated releases: even a diagnostic-only
+merge can select all services, and the first ledger-free release may restart
+the ingester. Do not merge without authorization for those effects. Inspect
+current Fly machine state and coordinate any necessary ingester recovery
+separately; credential activation does not authorize a raw deploy or machine
+repair. Vercel Git must not independently publish the merge; its publication
 must come from the gated promotion step. Keep T21.1 open until these observations
 are recorded. Without `VERCEL_TOKEN`, the frontend release fails explicitly while
 Fly targets remain independent; that is a blocked release, not a docs-only skip.
 
 **Pre-merge evidence:** frontend tests/typecheck/lint/build and deterministic
-release-policy tests were exercised. No Go product code changed. Local Go build
-succeeded, but backend integration/race validation was blocked by the shared
-Colima environment (host-port reachability, then exhausted VM disk); no unrelated
-runtime data was pruned and no tests disabled. The PR's unchanged full backend
-CI gate must succeed before integration. A green PR is not production acceptance.
+release/preflight tests passed, and the local frontend rendered in a real browser
+with no reported runtime errors. No Go product code changed. After explicit
+local-runtime authorization, `go build ./...`, `go test -race -count=1 ./...`
+and `go vet ./...` all passed using the isolated `scorearc-t211-validation`
+Colima profile. This clears the local backend validation blocker, not any
+production credential or release-acceptance gate.
+
+The shared profile's failed port forwarding and full Docker disk were not
+repaired by deleting data or restarting it. Its selected Docker context and
+running state were preserved; the isolated test profile was shut down after
+the successful run. No tests were disabled and no production runtime or
+deployment credentials changed. The full main CI gate and provider acceptance
+remain necessary after human merge and separate release authorization.
+T17.1 database recovery is closed; do not reapply migration 0022 for this task.
