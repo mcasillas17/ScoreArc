@@ -425,13 +425,26 @@ If `fly status --app scorearc-ingester` shows a stopped `app†` standby as the
 **only** machine, it cannot be promoted by a normal deploy. Remove that orphan
 and redeploy with HA disabled so Fly creates one ordinary running machine:
 
+⛔ **As of 2026-09-06, step 2 below fails at *Require deployment credentials***
+(the gate logs `Missing app-scoped Fly token`; the underlying cause is **open**
+— see [CURRENT_STATE §3](../CURRENT_STATE.md#3-verification-evidence-this-pass-2026-09-01)).
+`deploy-production.yml` applies that gate to a `workflow_dispatch` exactly as it
+does to a push, so **do not destroy the standby until the gate passes** — the
+app would be left with no machine at all and no way to release one.
+
 ```bash
 fly machine destroy <standby-machine-id> --app scorearc-ingester
 gh workflow run ci.yml --repo mcasillas17/ScoreArc --ref main -f release=ingester
 ```
 
 Destroying a machine is an explicitly authorized operator recovery action, not
-a routine release step. Diagnose and reconcile any unresolved release ledger
+a routine release step.
+
+⚠️ This recovery addresses the orphan standby only. If `fly apps list` also
+shows the app `suspended` (T17.2 observed exactly that on 2026-09-06), whether
+the gated release resumes a suspended app was **not established** — re-run the
+[§7.5](#75-verify) `fly apps list` check after the release and confirm
+`deployed` rather than assuming it. Diagnose and reconcile any unresolved release ledger
 first; see [interrupted-release recovery](RELEASES.md#interrupted-release-recovery).
 
 ⚠️ **The ingester is a singleton — never run two machines.** It holds a Postgres
@@ -450,12 +463,60 @@ for the connection to drop, then redeploy.
 curl -s -o /dev/null -w '%{http_code}\n' https://scorearc-reader.fly.dev/healthz
 # expect: 200
 
+fly apps list | grep scorearc-ingester
+# expect: STATUS "deployed" — "suspended" means nothing is running
+
 fly status --app scorearc-ingester
 # expect: 1 machine in "started" state (the always-on worker)
+# a lone stopped "app†" standby is the orphan-standby failure in 7.4
 
 fly logs --app scorearc-ingester | head
 # expect: no "another ingester instance holds the database lease"
 ```
+
+⚠️ **A `Deployed` secret set, a green deploy run and a `200` reader `/healthz`
+do not prove ingestion is running** (T17.2,
+[CURRENT_STATE §3](../CURRENT_STATE.md#3-verification-evidence-this-pass-2026-09-01)).
+Confirm the pipeline is actually *writing* by comparing a live competition
+against ESPN, which needs no credentials:
+
+```bash
+# `dates` MUST match the season id, mirroring fullSeasonRange in
+# backend/shared/source/espn.go: `YYYY-YY` -> Jul 1..Jun 30 (below);
+# bare `YYYY` -> YYYY0101-YYYY1231 (mls, world-cup, leagues-cup);
+# `YYYY-apertura` -> YYYY0701-YYYY1231; `YYYY-clausura` -> YYYY0101-YYYY0630.
+# Using the wrong range over-counts ESPN and invents a gap.
+comp=premier-league; season=2026-27; slug=eng.1; dates=20260701-20270630
+curl -s "https://scorearc-reader.fly.dev/v1/competitions/$comp/$season/matches" |
+  python3 -c 'import json,sys; m=json.load(sys.stdin); f=sorted(x["kickoff"] for x in m if x["state"]=="finished"); print("reader finished:",len(f),"last:",f[-1] if f else "-"); print("stuck live:",sum(1 for x in m if x["state"]=="live"))'
+curl -s "https://site.api.espn.com/apis/site/v2/sports/soccer/$slug/scoreboard?dates=$dates&limit=1000" |
+  python3 -c 'import json,sys; d=json.load(sys.stdin); t=lambda e: e["status"]["type"]; print("espn finished (mapState):",sum(1 for e in d.get("events",[]) if t(e)["completed"] or (t(e)["state"]=="post" and t(e)["name"] in {"STATUS_CANCELED","STATUS_ABANDONED","STATUS_FORFEIT","STATUS_FINAL","STATUS_FINAL_AET","STATUS_FINAL_PEN","STATUS_FULL_TIME"})))'
+# The ESPN-side set mirrors mapState in shared/espn/matches.go EXACTLY: those
+# seven names map to `finished` when ESPN's state is `post` (and only then),
+# while ESPN can leave `completed` false -- matches_test.go pins
+# mapState("post", false, "STATUS_FULL_TIME") == finished. Counting only
+# `completed` invents a permanent gap; dropping the `post` guard invents one
+# the other way (POSTPONED/SUSPENDED map to `scheduled`, not `finished`); and
+# omitting any of the seven UNDERCOUNTS ESPN, which would make the two sides
+# look level while ingestion is actually behind.
+# NOTE: the ingester also acts on each event's `season.year`, via
+# FilterScoreboardSeason / ValidateScoreboardSeason (defined in
+# shared/espn/matches.go, called from shared/source/espn.go). The two differ:
+# the ROLLING path FILTERS foreign-season events out, so a small ESPN-side
+# excess here at a season boundary -- and for the `YYYY-clausura` / bare-`YYYY`
+# forms above -- is expected and is not an ingestion gap; the BACKFILL path
+# VALIDATES and returns an error on the first foreign-season event, so a
+# persistent large gap after a restart can be a failed backfill rather than an
+# idle worker. This snippet applies neither.
+# expect: the two counts agree within the matches played since the last cycle,
+# and "stuck live" is 0 outside an actual live window. A large, GROWING gap --
+# or a match frozen mid-half for hours -- means the worker is not running,
+# whatever `fly status` reports.
+```
+
+Read the newest configured competition first when triaging: a competition
+added *after* a stall shows up as an **empty** collection rather than a stale
+one, which reads like a per-competition bug and is not.
 
 Every reader response carries an `X-Request-Id`, and each request is logged as
 one structured JSON line on stdout (`fly logs --app scorearc-reader`).
