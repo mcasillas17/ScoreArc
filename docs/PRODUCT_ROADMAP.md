@@ -836,8 +836,8 @@ check in [§7.5](backend/SETUP.md#75-verify).
 [CURRENT_STATE §3](CURRENT_STATE.md#3-verification-evidence-this-pass-2026-09-01)
 owns the dated evidence and the remaining unknowns (why the worker stopped and
 when its primary Machine was removed; why `--ha=false` has not cleared the
-standby; whether a release-ledger baseline exists and the ingester tree is
-unchanged since it). Distinguishing "genuinely
+standby). The September 11 ledger read found no managed baseline for any
+service (CURRENT_STATE §10), so bootstrap remains an activation risk. Distinguishing "genuinely
 empty" from "ingestion stopped" *in the response itself* remains T17.3;
 per-competition freshness alerting remains T17.4.
 
@@ -884,12 +884,17 @@ per-competition freshness alerting remains T17.4.
 `34019423444` passed tests then failed all three credential checks; the later
 `34077227730` passed tests but stopped Fly at the preceding eligibility guard.
 Named failed-check diagnostics retain all eligibility conditions; the historical
-rejecting predicate remains unknown. The protected
-non-deploying preflight separates direct/reusable access diagnosis from release
-acceptance; its live main-only comparison is still pending. Fly empty delivery
-has no proven root cause yet, and the Vercel deployment identity/token still
-requires owner approval. See CURRENT_STATE §10 for active settings, local
-validation blockers and post-merge consent gates. This is neither the E16 data
+rejecting predicate remains unknown. The completed protected comparison found
+tokens present in ordinary jobs and absent in reusable jobs for all three
+services. `VERCEL_TOKEN` was supplied September 11; provider permissions remain
+unaccepted. The correction moves release execution into ordinary environment-bound
+`ci.yml` matrix jobs and replaces the comparative probe with the same topology.
+No credential replacement, scope broadening or eligibility relaxation is required.
+New-topology hosted presence acceptance and actual provider release acceptance
+remain separate, authorized post-merge steps. With no managed baseline, merging
+may publish all services and restart the ingester; coordinate a safe hold or
+authorize activation before merge, with ingester recovery separately approved.
+See CURRENT_STATE §10 for dated evidence and remaining operator actions. This is neither the E16 data
 cutover nor T21.2 schema readiness; T17.1 recovery stays closed.
 
 ### E22 · Developer & device platform

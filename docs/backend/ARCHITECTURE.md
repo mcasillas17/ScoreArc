@@ -643,7 +643,7 @@ flowchart TD
   Merge --> MainCI["Full main CI / test"]
   MainCI -->|"needs: test; actual success only"| Queue
   Eligibility["Same run + attempt + repository + event + exact SHA"]
-  Queue["Per-service non-cancelling queue"] --> Eligibility
+  Queue["ci.yml ordinary production matrix<br/>matching protected environment + non-cancelling service queue"] --> Eligibility
   Eligibility --> Head{"Tested SHA still main?"}
   Head -->|"No"| Skip["Explicit stale skip; no publication"]
   Head -->|"Yes"| Paths["Diff last actual successful service release to tested SHA"]
@@ -658,10 +658,8 @@ flowchart TD
   IngesterRelease --> Ledger
   Promote --> Ledger
   Git["Vercel Git integration"] -->|"main deployment disabled; auto-domain assignment OFF"| NoBypass["No independent production publication"]
-  Diagnostic["Authorized credential preflight dispatch on main"] --> DirectProbe["Direct protected-environment job"]
-  Diagnostic --> ReusableProbe["Same-commit matrix reusable probe"]
+  Diagnostic["Authorized credential preflight dispatch on main"] --> DirectProbe["Ordinary probe matrix<br/>same service environment + secret selection"]
   DirectProbe --> Presence["Presence booleans only; no provider operation or release record"]
-  ReusableProbe --> Presence
 ```
 
 The queue is acquired before the per-service API/ledger check. Release scripts
@@ -669,6 +667,14 @@ recheck the main SHA immediately before a provider operation, and again between
 Vercel staging and promotion. They never substitute a moving branch head for the
 tested SHA. Once publication starts it finishes without cancellation from a newer
 run; the next same-service job cannot overlap it.
+
+Each ordinary job resolves only the selected service's credential from its
+existing `production-<service>` environment. The reusable release and probe
+workflows are removed; there is no second publication mechanism. This avoids
+the measured context where the old reusable jobs received absent tokens while
+ordinary jobs received them, without asserting a GitHub platform cause or
+changing scope/protection. Vercel CLI authentication stays in the step environment,
+not command arguments.
 
 The ledger uses GitHub deployment task `scorearc-release` and environment
 `production-{reader,ingester,frontend}`. Automatic environment deployment objects
@@ -678,14 +684,18 @@ next diff base; a known-inert or reconciled `inactive` release forces a full
 retry. Failed/unknown publishing operations lock further releases, including
 manual dispatch, until the operator has confirmed provider-side termination.
 
-The separate `production-credentials.yml` diagnostic uses the same main-only
-environment binding and `deployment: false` in direct and reusable contexts.
+The separate `production-credentials.yml` diagnostic uses ordinary matrix jobs,
+the same main-only environment binding, `deployment: false` and service-specific
+secret selection as production.
 Its Node probe receives presence booleans for the credential fields and emits
 only those booleans; it does not consume raw provider credentials. The
 environment-bound runner and referenced pinned actions remain trusted with
 secret material. The jobs have no write permissions or release-ledger
-operations. An optional owner-provisioned, environment-only
+operations or service publication queue. An optional owner-provisioned, environment-only
 control helps isolate secret delivery without exposing values. The probe is not
 an alternative release path or a substitute for successful exact-SHA CI. Its
-same-run interpretation and live-acceptance limits are in the
+historical direct/reusable evidence and new-topology acceptance steps are in the
 [preflight runbook](RELEASES.md#non-deploying-credential-preflight).
+Presence does not prove provider permission or recover the ingester. Because
+merging can trigger automatic publication, any hold needed to run this check
+before releasing must be arranged by the owner before merge.

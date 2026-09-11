@@ -108,8 +108,8 @@ build/test gate is `cd backend && go build ./... && go test ./...`.
    ARCHITECTURE.md for the full schema; whether a given migration is applied in
    production is tracked by [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md).
 4. **Deploy assets (Fly)** — `backend/{reader,ingester}/Dockerfile` + `fly.toml`,
-   `backend/.dockerignore`, and the same-commit reusable production workflow
-   called after main CI. Per-service filtering compares the last actual
+   `backend/.dockerignore`, and ordinary environment-bound production matrix
+   jobs in `ci.yml`, dependent on successful main CI. Per-service filtering compares the last actual
    deployment with the tested SHA. Setup, manual delivery and revert-based
    rollback are in [`docs/backend/RELEASES.md`](docs/backend/RELEASES.md).
    The old GCP Terraform under `/infra` was deleted (Fly+Neon+R2 supersedes it);

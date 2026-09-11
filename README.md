@@ -161,7 +161,9 @@ remains a human decision.
 
 CI validates both PRs and the actual merged `main` commit. Only after its full
 `test` job succeeds can that same run release the exact tested SHA, with separate
-reader, ingester, and frontend change filters. Vercel Git integration does not
+reader, ingester, and frontend change filters. Ordinary matrix jobs in `ci.yml`
+bind each service's protected environment directly; there is no reusable release
+workflow or alternate publication path. Vercel Git integration does not
 publish `main`; the gated workflow stages and promotes the frontend.
 
 Manual releases use **Actions → CI → Run workflow → main** and rerun the full
@@ -170,12 +172,16 @@ See the [release runbook](docs/backend/RELEASES.md) for activation, credentials,
 retry/recovery and post-merge acceptance; [current state](docs/CURRENT_STATE.md#10-t211-delivery-controls)
 distinguishes implemented code from enabled production paths.
 
-For missing deployment credentials, use the authorized **Production credential
+To accept environment access, use the authorized **Production credential
 preflight (no deployment)** workflow on `main`, selecting one service. It
-compares direct/reusable environment access using presence booleans only; it
+mirrors production's ordinary matrix-job topology using presence booleans only; it
 does not publish code or replace release CI. See the
 [diagnostic runbook](docs/backend/RELEASES.md#non-deploying-credential-preflight)
 for interpreting missing values and the separate owner activation steps.
+The Vercel token has been supplied; presence does not prove provider permission.
+Before merging the correction, coordinate a safe activation hold or authorize
+the selected releases: an empty managed ledger can bootstrap all three services
+and restart the ingester. Its recovery remains a separate operator action.
 If release eligibility fails first, use the runbook's
 [named-check diagnostics](docs/backend/RELEASES.md#eligibility-rejection-diagnostics);
 do not weaken the guard or mistake that failure for a credential check.
