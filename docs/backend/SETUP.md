@@ -425,12 +425,18 @@ If `fly status --app scorearc-ingester` shows a stopped `app†` standby as the
 **only** machine, it cannot be promoted by a normal deploy. Remove that orphan
 and redeploy with HA disabled so Fly creates one ordinary running machine:
 
-⛔ **As of 2026-09-06, step 2 below fails at *Require deployment credentials***
-(the gate logs `Missing app-scoped Fly token`; the underlying cause is **open**
-— see [CURRENT_STATE §3](../CURRENT_STATE.md#3-verification-evidence-this-pass-2026-09-01)).
-`deploy-production.yml` applies that gate to a `workflow_dispatch` exactly as it
-does to a push, so **do not destroy the standby until the gate passes** — the
-app would be left with no machine at all and no way to release one.
+⛔ **Do not destroy the standby until release readiness and a separately
+authorized recovery/release plan are established.** The September 6 releases
+failed credential checks. The completed comparison now shows existing Fly
+tokens present in ordinary jobs but absent in the old reusable path. The
+correction uses `ci.yml`'s ordinary production matrix for both main pushes and
+manual dispatch, preserving the full test/eligibility/credential gates.
+New-topology hosted presence acceptance and provider permissions are still
+pending; follow [CURRENT_STATE §10](../CURRENT_STATE.md#10-t211-delivery-controls)
+and the [non-deploying preflight](RELEASES.md#non-deploying-credential-preflight).
+A presence check is not permission to destroy or restart anything. Destroying
+the standby while release readiness is blocked would leave no machine at all;
+do not use destruction or a raw deployment as a credential test.
 
 ```bash
 fly machine destroy <standby-machine-id> --app scorearc-ingester
@@ -527,8 +533,10 @@ Successful `/healthz` probes are deliberately not logged — Fly polls it every
 
 `.github/workflows/ci.yml` runs full validation on PRs, pushes (including `main`)
 and manual dispatch. Its unchanged `test` check is required by main protection.
-Only a successful main `test` job can call the same-commit reusable
-`.github/workflows/deploy-production.yml`. The former independent Fly push/
+Only a successful main `test` job can enable its ordinary production matrix jobs.
+Each job binds its matching `production-<service>` environment directly and
+checks out `github.sha`. The obsolete reusable `deploy-production.yml` and
+comparative `production-credential-probe.yml` are removed. The former independent Fly push/
 dispatch workflows are removed; running CI alongside a deploy is not the gate.
 
 Create **three GitHub environments**, each restricted to branch `main` only
@@ -548,6 +556,9 @@ a custom deployment-protection-rule app without revisiting `deployment: false`.
 For existing secrets, first follow the
 [protected credential preflight](RELEASES.md#non-deploying-credential-preflight).
 Names in `gh secret list` do not prove nonempty injection or provider permission.
+The September 2026 comparison measured token presence in ordinary jobs and
+absence in reusable jobs for all three services. The new preflight mirrors
+production's ordinary matrix jobs; it no longer repeats the obsolete topology.
 Do not add `secrets: inherit` or replace Fly tokens merely because a release
 received an empty value. The optional diagnostic control belongs only in the
 selected environment and requires separate owner authorization.
@@ -580,6 +591,15 @@ See [CURRENT_STATE §10](../CURRENT_STATE.md#10-t211-delivery-controls) for what
 actually enabled versus still awaiting owner action.
 
 #### Vercel deployment identity
+
+**Current provisioning:** the user supplied `VERCEL_TOKEN` to
+`production-frontend` on 2026-09-11, selecting team **Spider** (CLI slug
+`elopenmike`) and existing project `score-arc`. The ordinary-job report confirmed
+token and both IDs present. Do not create or replace the token again merely
+because the old reusable path reported absence. Its identity, expiry and
+production permissions still require acceptance; presence alone establishes none
+of them. The steps below are the governance/provisioning contract, not a claim
+that the supplied token is missing or that its role has already been verified.
 
 Use the existing `elopenmike` team and `score-arc` project, not the local Owner's
 credential or a newly created project. Handle each owner approval separately:
@@ -624,6 +644,10 @@ production permissions can enable paths outside CI; audit the identity's use,
 protect its credential and retain the supported release/rollback rules. Token
 creation, storage, permission changes and production acceptance are separate
 approvals, not consequences of a successful local test.
+The pinned CLI reads `VERCEL_TOKEN` from the step environment; release commands
+do not put it in `--token` arguments. Before merge, coordinate the
+[activation hold and acceptance order](RELEASES.md#activation-order): main CI
+may immediately select all services, and ingester recovery is separately authorized.
 
 Primary references: [team roles](https://vercel.com/docs/rbac/access-roles),
 [Pro Developer role](https://vercel.com/changelog/developer-role-now-available-for-pro-teams),

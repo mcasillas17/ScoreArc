@@ -19,9 +19,18 @@ Preserve any stronger policy subsequently adopted.
 ## Mechanism
 
 Use `needs: test` in one workflow rather than a privileged `workflow_run`
-handoff. The reusable release workflow comes from that same commit. It validates
+handoff. Ordinary matrix jobs in `ci.yml` bind each `production-<service>`
+environment directly and check out the immutable tested commit. The release validates
 repository, event, branch, run, attempt, SHA and actual successful `test` job.
 Each target has main-only environment credentials and a non-cancelling queue.
+
+**2026-09-11 correction:** measured direct jobs received the existing tokens
+while the matrix-to-reusable path did not, for all three services. This is a
+workflow-context access difference, not proof of a GitHub platform cause or bad
+credentials. Replace the reusable release with ordinary jobs; keep secrets in
+their existing service environments and all eligibility conditions unchanged.
+The non-deploying preflight mirrors this topology. It proves presence only, not
+provider permission. Evidence and safe activation sequencing are in the runbook.
 
 Deploy only the immutable tested SHA, and only while it is still main when
 publication starts. A newer main commit does not change an in-flight checkout.

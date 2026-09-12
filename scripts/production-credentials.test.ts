@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const caller = 'mcasillas17/ScoreArc/.github/workflows/production-credentials.yml@refs/heads/main';
@@ -23,6 +23,28 @@ const probe = (change: Partial<NodeJS.ProcessEnv> = {}) =>
   });
 
 describe('non-deploying credential presence probe', () => {
+  // Actual same-SHA hosted measurements, not proof of injection in a new topology.
+  it.each([
+    ['reader', '34100370795', false],
+    ['ingester', '34100370559', false],
+    ['frontend', '34576989906', true],
+  ])('interprets %s run %s direct presence and reusable absence as measurements', (service, _runId, idsPresent) => {
+    const measured = {
+      PREFLIGHT_SERVICE: service, PREFLIGHT_ENVIRONMENT: `production-${service}`,
+      GITHUB_SHA: '5a31554402c2f406e3c7d6b6e77d0e7dc9eb14cd',
+      ORG_ID_PRESENT: String(idsPresent), PROJECT_ID_PRESENT: String(idsPresent),
+    };
+    const direct = probe({ ...measured, TOKEN_PRESENT: 'true' });
+    const reusable = probe({ ...measured, TOKEN_PRESENT: 'false' });
+    expect(direct.status).toBe(0);
+    expect(JSON.parse(direct.stdout).token_present).toBe(true);
+    expect(reusable.status).toBe(1);
+    expect(JSON.parse(reusable.stdout)).toEqual({
+      token_present: false, control_present: false,
+      org_id_present: idsPresent, project_id_present: idsPresent,
+    });
+    expect(reusable.stderr).toContain('Required credentials absent; no deployment attempted');
+  });
   it.each(['reader', 'ingester'])('checks only %s credentials, not frontend IDs', service => {
     const result = probe({ PREFLIGHT_SERVICE: service, PREFLIGHT_ENVIRONMENT: `production-${service}` });
     expect(result.status).toBe(0);
@@ -97,35 +119,44 @@ describe('non-deploying credential presence probe', () => {
 });
 
 describe('protected credential workflow wiring', () => {
-  it('compares direct and same-commit reusable contexts without broad secret inheritance', () => {
-    const direct = readFileSync('.github/workflows/production-credentials.yml', 'utf8');
-    const reusable = readFileSync('.github/workflows/production-credential-probe.yml', 'utf8');
-    expect(direct).toContain('  workflow_dispatch:');
-    expect(direct).toContain('options: [reader, ingester, frontend]');
-    expect(direct).toContain('uses: ./.github/workflows/production-credential-probe.yml');
-    expect(reusable).toContain('  workflow_call:');
-    expect(reusable).not.toMatch(/^\s+(push|workflow_dispatch|workflow_run|pull_request):/m);
-    for (const workflow of [direct, reusable]) {
-      expect(workflow).toContain("github.repository == 'mcasillas17/ScoreArc'");
-      expect(workflow).toContain("github.ref == 'refs/heads/main'");
-      expect(workflow).toContain("github.event_name == 'workflow_dispatch'");
-      expect(workflow).toContain(`github.workflow_ref == '${caller}'`);
-      expect(workflow).toContain("contains(fromJSON('[\"reader\",\"ingester\",\"frontend\"]'), inputs.service)");
-      expect(workflow).toContain('name: production-${{ inputs.service }}');
-      expect(workflow).toContain('deployment: false');
-      expect(workflow).toContain('PREFLIGHT_ENVIRONMENT: production-${{ inputs.service }}');
-      expect(workflow).toContain('ref: ${{ github.sha }}');
-      expect(workflow).toContain('persist-credentials: false');
-      expect(workflow).toContain('contents: read');
-      expect(workflow).not.toMatch(/: write|secrets:|inherit|production-release\.mjs|flyctl|vercel@|continue-on-error|actions\/upload-artifact/);
-      const commands = [...workflow.matchAll(/^\s+run: (.+)$/gm)].map(match => match[1]);
-      expect(commands).toEqual(['node scripts/production-credentials.mjs']);
-      const secretLines = workflow.split('\n').filter(line => line.includes('secrets.'));
-      expect(secretLines).toHaveLength(2);
-      expect(secretLines.every(line => line.includes('_PRESENT:') && line.includes("!= ''"))).toBe(true);
-      expect(workflow).toContain("inputs.service == 'reader' && secrets.FLY_API_TOKEN_READER || inputs.service == 'ingester' && secrets.FLY_API_TOKEN_INGESTER || inputs.service == 'frontend' && secrets.VERCEL_TOKEN || ''");
+  it('mirrors the ordinary production matrix environment binding without any provider operation', () => {
+    const workflow = readFileSync('.github/workflows/production-credentials.yml', 'utf8');
+    const production = readFileSync('.github/workflows/ci.yml', 'utf8').split('\n  production:\n')[1];
+    expect(existsSync('.github/workflows/production-credential-probe.yml')).toBe(false);
+    expect(workflow).toContain('  workflow_dispatch:');
+    expect(workflow).toContain('options: [reader, ingester, frontend]');
+    expect(workflow).not.toMatch(/^\s+(push|workflow_call|workflow_run|pull_request|pull_request_target):/m);
+    expect(workflow.match(/^  \w+:$/gm)).toEqual(['  workflow_dispatch:', '  probe:']);
+    expect(workflow).toContain('service: ["${{ inputs.service }}"]');
+    expect(workflow).toContain('PREFLIGHT_SERVICE: ${{ matrix.service }}');
+    expect(workflow).toContain('PREFLIGHT_ENVIRONMENT: production-${{ matrix.service }}');
+    for (const shared of [
+      'runs-on: ubuntu-latest', 'fail-fast: false', 'name: production-${{ matrix.service }}',
+      'deployment: false', 'ref: ${{ github.sha }}', 'persist-credentials: false',
+    ]) {
+      expect(workflow).toContain(shared);
+      expect(production).toContain(shared);
     }
-    const presenceBlock = (text: string) => text.split('\n').filter(line => /_PRESENT:/.test(line));
-    expect(presenceBlock(direct)).toEqual(presenceBlock(reusable));
+    expect(workflow).toContain("github.repository == 'mcasillas17/ScoreArc'");
+    expect(workflow).toContain("github.ref == 'refs/heads/main'");
+    expect(workflow).toContain("github.event_name == 'workflow_dispatch'");
+    expect(workflow).toContain(`github.workflow_ref == '${caller}'`);
+    expect(workflow).toContain("contains(fromJSON('[\"reader\",\"ingester\",\"frontend\"]'), inputs.service)");
+    expect(workflow).toContain('contents: read');
+    expect(workflow).not.toMatch(/: write|secrets:|inherit|production-release\.mjs|flyctl|vercel@|continue-on-error|actions\/upload-artifact|uses: \.\/|GITHUB_OUTPUT/);
+    const commands = [...workflow.matchAll(/^\s+run: (.+)$/gm)].map(match => match[1]);
+    expect(commands).toEqual(['node scripts/production-credentials.mjs']);
+    const secretLines = workflow.split('\n').filter(line => line.includes('secrets.'));
+    expect(secretLines).toHaveLength(2);
+    expect(secretLines.every(line => line.includes('_PRESENT:') && line.includes("!= ''"))).toBe(true);
+    const flySelection = "matrix.service == 'reader' && secrets.FLY_API_TOKEN_READER || matrix.service == 'ingester' && secrets.FLY_API_TOKEN_INGESTER";
+    const vercelSelection = "matrix.service == 'frontend' && secrets.VERCEL_TOKEN";
+    for (const selection of [flySelection, vercelSelection]) {
+      expect(production).toContain(selection);
+      expect(workflow).toContain(selection);
+    }
+    for (const action of workflow.matchAll(/uses: ([\w/-]+)@([^\s]+)/g)) {
+      expect(action[2]).toMatch(/^[a-f0-9]{40}$/);
+    }
   });
 });

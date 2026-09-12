@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { assertReleaseContext, assertVercelProject, planRelease, releaseStatus } from './production-policy.mjs';
 
@@ -165,6 +166,9 @@ describe('Vercel publication gate', () => {
 });
 
 describe('workflow wiring', () => {
+  const ci = readFileSync('.github/workflows/ci.yml', 'utf8');
+  const production = ci.split('\n  production:\n')[1];
+
   it('retains the required test name and gates every production caller on its success', () => {
     const ci = readFileSync('.github/workflows/ci.yml', 'utf8');
     expect(ci).toContain('  test:');
@@ -181,15 +185,30 @@ describe('workflow wiring', () => {
     expect(existsSync('.github/workflows/deploy-reader.yml')).toBe(false);
     expect(existsSync('.github/workflows/deploy-ingester.yml')).toBe(false);
   });
-  it('uses only same-commit CI calls, immutable actions, and non-replacing production queues', () => {
-    const workflow = readFileSync('.github/workflows/deploy-production.yml', 'utf8');
-    expect(workflow).toContain('  workflow_call:');
-    expect(workflow).not.toMatch(/^\s+(push|workflow_run|workflow_dispatch|pull_request):/m);
+  it('binds ordinary CI matrix jobs to isolated environments and non-replacing service queues', () => {
+    const workflow = production;
+    expect(existsSync('.github/workflows/deploy-production.yml')).toBe(false);
+    expect(workflow).not.toMatch(/^\s+uses: \.\/\.github\/workflows\//m);
+    expect(workflow).toContain('runs-on: ubuntu-latest');
+    expect(workflow).toContain('needs: test');
+    expect(workflow).toContain("needs.test.result == 'success'");
+    expect(workflow).toContain("github.repository == 'mcasillas17/ScoreArc'");
+    expect(workflow).toContain("github.ref == 'refs/heads/main'");
+    expect(workflow).toContain("(github.event_name == 'push' || github.event_name == 'workflow_dispatch')");
+    expect(workflow).toContain('service: [reader, ingester, frontend]');
+    expect(workflow).toContain('fail-fast: false');
+    expect(workflow).toContain('timeout-minutes: 45');
+    expect(workflow).toContain('group: deploy-${{ matrix.service }}');
     expect(workflow).toContain('queue: max');
     expect(workflow).toContain('cancel-in-progress: false');
-    expect(workflow).toContain('name: production-${{ inputs.service }}');
+    expect(workflow).toContain('name: production-${{ matrix.service }}');
     expect(workflow).toContain('deployment: false');
+    expect(workflow).toContain('RELEASE_SERVICE: ${{ matrix.service }}');
+    expect(workflow).toContain("RELEASE_SELECTION: ${{ inputs.release || 'changed' }}");
     expect(workflow).toContain('ref: ${{ github.sha }}');
+    expect(workflow).toContain('fetch-depth: 0');
+    expect(workflow).toContain('persist-credentials: false');
+    expect(workflow).not.toMatch(/secrets:|inherit|continue-on-error|inputs\.service|ref: (main|\$\{\{.*head)/);
     expect(workflow).not.toMatch(/^    env:\n      GH_TOKEN:/m);
     expect(workflow).toContain('id: promote_gate');
     for (const id of ['fly', 'stage', 'promote']) {
@@ -202,13 +221,69 @@ describe('workflow wiring', () => {
     }
   });
   it('preserves Fly build contexts and singleton ingester deployment', () => {
-    const workflow = readFileSync('.github/workflows/deploy-production.yml', 'utf8');
+    const workflow = production;
     const flyStep = workflow.split(/^      - /m).find(block => block.includes('id: fly\n'));
     expect(flyStep).toBeDefined();
     expect(flyStep?.split('\n').map(line => line.trim()).filter(line => line.startsWith('flyctl deploy '))).toEqual([
       'flyctl deploy backend --config reader/fly.toml --dockerfile reader/Dockerfile --remote-only',
       'flyctl deploy backend --config ingester/fly.toml --dockerfile ingester/Dockerfile --remote-only --ha=false',
     ]);
+  });
+  it('selects only the matching provider credential and keeps secrets out of command arguments and outputs', () => {
+    const fly = "${{ matrix.service == 'reader' && secrets.FLY_API_TOKEN_READER || matrix.service == 'ingester' && secrets.FLY_API_TOKEN_INGESTER || '' }}";
+    const vercel = "${{ matrix.service == 'frontend' && secrets.VERCEL_TOKEN || '' }}";
+    const secretLines = production.split('\n').filter(line => line.includes('secrets.'));
+    expect(secretLines.length).toBeGreaterThan(0);
+    for (const line of secretLines) {
+      expect([`FLY_API_TOKEN: ${fly}`, `VERCEL_TOKEN: ${vercel}`]).toContain(line.trim());
+    }
+    for (const name of ['VERCEL_ORG_ID', 'VERCEL_PROJECT_ID']) {
+      const lines = production.split('\n').filter(line => line.includes(`vars.${name}`));
+      expect(lines.length).toBeGreaterThan(0);
+      for (const line of lines) expect(line.trim()).toBe(
+        `${name}: \${{ matrix.service == 'frontend' && vars.${name} || '' }}`,
+      );
+    }
+    expect(production).not.toMatch(/--token|echo.*TOKEN|TOKEN.*GITHUB_(OUTPUT|ENV)|actions\/upload-artifact/);
+  });
+  it('retains preparation, credential failure, ledger, revalidation and staged promotion in order', () => {
+    const steps = production.split(/^      - /m);
+    const indexOf = (text: string) => steps.findIndex(step => step.includes(text));
+    const sequence = [
+      'production-release.mjs prepare', 'name: Require deployment credentials',
+      'production-release.mjs begin', 'id: precheck', 'id: fly',
+      'id: stage', 'id: promote_gate', 'id: promote\n', 'production-release.mjs finish',
+    ].map(indexOf);
+    expect(sequence.every(index => index >= 0)).toBe(true);
+    expect(sequence).toEqual([...sequence].sort((a, b) => a - b));
+    expect(steps[indexOf('id: stage')]).toContain('vercel deploy --yes --prod --skip-domain');
+    expect(steps[indexOf('id: stage')]).toContain('steps.precheck.outputs.current');
+    expect(steps[indexOf('id: promote_gate')]).toContain("steps.stage.outcome == 'success'");
+    expect(steps[indexOf('id: promote_gate')]).toContain('production-release.mjs assert');
+    expect(steps[indexOf('id: promote\n')]).toContain('steps.promote_gate.outputs.current');
+    expect(steps[indexOf('id: promote\n')]).toContain('--yes --timeout 10m');
+    expect(steps[indexOf('id: promote\n')]).toContain('production-release.mjs confirm-vercel');
+    expect(steps[indexOf('production-release.mjs finish')]).toContain("always() && steps.begin.outputs.id != ''");
+  });
+  it.each(['reader', 'ingester', 'frontend'])('fails %s explicitly before publication when required credentials are absent', service => {
+    const step = production.split(/^      - /m).find(block => block.startsWith('name: Require deployment credentials\n'));
+    expect(step).toBeDefined();
+    expect(step).toContain("if: steps.plan.outputs.deploy == 'true'");
+    const shell = step!.split('run: |\n')[1].split('\n').map(line => line.trimStart()).join('\n');
+    const values: NodeJS.ProcessEnv = {
+      NODE_ENV: 'test', RELEASE_SERVICE: service, FLY_API_TOKEN: 'synthetic-fly',
+      VERCEL_TOKEN: 'synthetic-vercel', VERCEL_ORG_ID: 'synthetic-org', VERCEL_PROJECT_ID: 'synthetic-project',
+    };
+    expect(spawnSync('/bin/bash', ['-e', '-c', shell], { env: values }).status).toBe(0);
+    for (const key of service === 'frontend'
+      ? ['VERCEL_TOKEN', 'VERCEL_ORG_ID', 'VERCEL_PROJECT_ID'] : ['FLY_API_TOKEN']) {
+      const result = spawnSync('/bin/bash', ['-e', '-c', shell], {
+        env: { ...values, [key]: '' }, encoding: 'utf8',
+      });
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain('no deployment occurred');
+      expect(result.stdout + result.stderr).not.toContain('synthetic-');
+    }
   });
   it('turns off Vercel Git production deployment, not preview builds', () => {
     const config = JSON.parse(readFileSync('vercel.json', 'utf8'));
