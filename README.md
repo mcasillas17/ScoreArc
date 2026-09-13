@@ -164,7 +164,12 @@ CI validates both PRs and the actual merged `main` commit. Only after its full
 reader, ingester, and frontend change filters. Ordinary matrix jobs in `ci.yml`
 bind each service's protected environment directly; there is no reusable release
 workflow or alternate publication path. Vercel Git integration does not
-publish `main`; the gated workflow stages and promotes the frontend.
+publish `main`; the gated workflow stages the frontend, promotes through the
+project-specific Vercel API using the existing project-scoped token, and confirms
+the exact deployment on the production domain. An accepted/queued request is
+not a successful release, and uncertain operations block retries.
+Release history is validated against the server-owned Actions bot identity;
+missing optional app metadata does not discard a genuine successful baseline.
 
 Manual releases use **Actions → CI → Run workflow → main** and rerun the full
 suite. Roll back through a revert PR, never a direct old-image deployment.
@@ -172,7 +177,14 @@ See the [release runbook](docs/backend/RELEASES.md) for activation, credentials,
 retry/recovery and post-merge acceptance; [current state](docs/CURRENT_STATE.md#10-t211-delivery-controls)
 distinguishes implemented code from enabled production paths.
 
-To accept environment access, use the authorized **Production credential
+An ingester image upload is not proof of fresh data. The
+[same-machine recovery runbook](docs/backend/SETUP.md#74-first-deploy) preserves
+the tested image and configuration instead of deleting an orphan standby first.
+Updating the machine and starting its normal database-writing loop require
+separate explicit approvals. Recovery is accepted only with one running worker,
+clean ingestion cycles and advancing match data, including Greece.
+
+If environment access is in doubt, use the authorized **Production credential
 preflight (no deployment)** workflow on `main`, selecting one service. It
 mirrors production's ordinary matrix-job topology using presence booleans only; it
 does not publish code or replace release CI. See the
@@ -180,8 +192,10 @@ does not publish code or replace release CI. See the
 for interpreting missing values and the separate owner activation steps.
 The Vercel token has been supplied; presence does not prove provider permission.
 Before merging the correction, coordinate a safe activation hold or authorize
-the selected releases: an empty managed ledger can bootstrap all three services
-and restart the ingester. Its recovery remains a separate operator action.
+the selected releases. This correction's `ci.yml` and release-script changes
+select all three services against the `0f75102` baselines; unresolved frontend
+record `6404319208` does not hold either Fly job. Ingester recovery remains the
+separately approved same-machine update-then-start plan.
 If release eligibility fails first, use the runbook's
 [named-check diagnostics](docs/backend/RELEASES.md#eligibility-rejection-diagnostics);
 do not weaken the guard or mistake that failure for a credential check.

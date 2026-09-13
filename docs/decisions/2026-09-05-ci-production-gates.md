@@ -44,6 +44,15 @@ the deployment and canonical production alias. Native Vercel checks alone were
 not selected because they permit force promotion and do not supply the shared
 service ordering/ledger contract.
 
+**2026-09-13 promotion correction:** keep the supplied project-scoped token and
+the ordinary-job topology. Replace CLI promotion, whose scope-resolution path
+can request a user resource, with the supported project-specific promotion API.
+Resolve and validate the exact staged deployment first, send once, poll the
+asynchronous result within a deadline, and confirm the immutable deployment on
+the canonical domain. A queued request or uncertain timeout cannot advance the
+ledger. This changes the mechanism, not the exact-main-CI invariant or production
+authorization boundary.
+
 ## Supported operations and trust boundary
 
 Manual delivery dispatches full CI on main. Rollback is a revert PR followed by
