@@ -653,10 +653,11 @@ flowchart TD
   Paths -->|"Frontend"| Stage["Vercel --prod --skip-domain"]
   Stage --> Recheck{"Same tested SHA still main?"}
   Recheck -->|"No"| Inert["Inactive: no production publication started"]
-  Recheck -->|"Yes"| Promote["Promote + confirm exact SHA and production alias"]
+  Recheck -->|"Yes"| Promote["Project API: one promotion POST"]
+  Promote --> Poll["Bounded exact-job polling + exact SHA/domain confirmation"]
   ReaderRelease --> Ledger["Actual release result ledger"]
   IngesterRelease --> Ledger
-  Promote --> Ledger
+  Poll --> Ledger
   Git["Vercel Git integration"] -->|"main deployment disabled; auto-domain assignment OFF"| NoBypass["No independent production publication"]
   Diagnostic["Authorized credential preflight dispatch on main"] --> DirectProbe["Ordinary probe matrix<br/>same service environment + secret selection"]
   DirectProbe --> Presence["Presence booleans only; no provider operation or release record"]
@@ -673,8 +674,11 @@ existing `production-<service>` environment. The reusable release and probe
 workflows are removed; there is no second publication mechanism. This avoids
 the measured context where the old reusable jobs received absent tokens while
 ordinary jobs received them, without asserting a GitHub platform cause or
-changing scope/protection. Vercel CLI authentication stays in the step environment,
-not command arguments.
+changing scope/protection. Vercel staging CLI and promotion API authentication
+stay in the step environment, not command arguments. The project-scoped token
+does not need account-level user lookup. A `201`/`202` promotion request is followed
+by bounded polling and exact deployment/domain confirmation; no POST retry is
+made after a potentially accepted timeout.
 
 The ledger uses GitHub deployment task `scorearc-release` and environment
 `production-{reader,ingester,frontend}`. Automatic environment deployment objects

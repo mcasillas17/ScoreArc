@@ -54,9 +54,10 @@ not imported by either deployed binary. Unrelated `.github/**` changes do not
 redeploy the frontend. The executable policy is `scripts/production-policy.mjs`.
 
 With **no managed ledger baseline**, bootstrap the selected service rather than
-guessing what was deployed. The 2026-09-11 read found no managed entries for any
-service; if that remains true, the first eligible main run selects all three
-targets and may restart the ingester. Changing `ci.yml` also selects all three
+guessing what was deployed. The September 13 read found successful reader and
+ingester entries at `0f75102`, and unresolved frontend entry `6404319208`.
+Recheck these records before activation; do not erase the frontend failure.
+Changing `ci.yml` or `scripts/production-*` selects all three
 against an older baseline. Subsequent docs-only changes skip
 when the service tree is unchanged from its last actual release. A path skip
 creates no successful deployment record. An explicitly requested redeploy
@@ -99,6 +100,8 @@ The singleton ingester retains `--ha=false` and its non-cancelling queue.
    identity is **non-owner, non-administrator**, scoped to the intended team,
    with an expiry/rotation owner. Use the lowest deployment-capable role available on the team's plan;
    verify permission to read project/deployment/alias metadata, stage and promote.
+   This is a **project-scoped token**: keep that scope. Promotion uses the
+   project-specific API, not the CLI's account-level user lookup.
    Pro has a Developer role, but that alone does not establish permission for
    production CLI staging or promotion. Verify a supported non-admin grant for
    those operations on the actual plan; see [SETUP](SETUP.md#vercel-deployment-identity).
@@ -127,7 +130,7 @@ The singleton ingester retains `--ha=false` and its non-cancelling queue.
    deployments while keeping Git previews. Leave automatic domain assignment
    OFF permanently; only the tested CI promotion publishes production.
 
-**Presence-before-publication requires a hold arranged BEFORE merge.** Merging
+**Publication requires authorization or a hold arranged BEFORE merge.** Merging
 this correction starts full main CI and can automatically publish all three
 services; the separate diagnostic does not pause those jobs. If presence
 acceptance must happen first, the owner must confirm a protected-environment
@@ -138,6 +141,16 @@ holds Fly. If a suitable hold is not already available, leave the PR unmerged
 until the owner authorizes an activation plan and any necessary protection
 configuration. Do not recommend merge before this decision. A queued release
 is not permission to recover the suspended ingester or destroy its standby.
+
+**September 13 activation baseline:** the three environments had main-only
+branch policies but **no required-reviewer approval holds**. PR #161 already
+proved credential delivery in the ordinary production jobs. This follow-up
+changes `ci.yml` and `scripts/production-*`, so reader and ingester releases
+are selected against their `0f75102` baselines; frontend preparation remains
+blocked by ledger `6404319208` until separately reconciled. A frontend failure
+does not hold either Fly job. Leave this PR unmerged until the owner authorizes
+those automatic releases or approves and verifies suitable holds on all three
+jobs. Do not change credentials or protections as an implicit part of merging.
 
 Read-only configuration evidence:
 
@@ -226,17 +239,21 @@ platform cause. GitHub documents environment secrets on both ordinary and
 reusable environment-bound jobs, including `deployment: false`; missing
 `secrets: inherit` is not evidence of the cause. The correction uses the measured
 working ordinary-job structure, without moving, replacing or broadly inheriting
-credentials. New-topology hosted acceptance is still required.
+credentials. **PR #161's run `34663184517` subsequently accepted credential
+delivery in all three ordinary production jobs.** Actual frontend promotion,
+ingester recovery and fresh-data acceptance remain outstanding.
 
-### Run after authorized merge
+### Conditional access diagnostics on main
 
 Only this repository's `workflow_dispatch` on branch `main` is allowed.
 Feature branches, tags, PRs, forks and other callers are rejected before the
 protected job runs. Do not weaken environment rules to try an unmerged probe.
 Local tests cover the script and wiring, not GitHub's live secret injection.
-Protected runtime acceptance therefore requires human merge first, with the
-[pre-merge activation decision](#activation-order) already made, followed by
-explicit authorization to dispatch these non-deploying checks:
+The diagnostic is already merged. Use these retained non-deploying commands
+only when access is in doubt and dispatch is explicitly authorized; they are
+not another mandatory acceptance step for PR #161. Any future diagnostic change
+still requires the [pre-merge activation decision](#activation-order) before
+merging, because release selection is independent:
 
 ```bash
 gh workflow run production-credentials.yml --repo mcasillas17/ScoreArc \
@@ -335,15 +352,43 @@ restore the deployment identity, not a raw dashboard bypass.
 | Inert staged build fails or publishing steps both skipped | Ledger `inactive`; no publishing command started. The next eligible attempt does a full service deployment. |
 | Fly deploy / Vercel promotion fails, times out, or is cancelled | May have continuing provider-side effects. Ledger remains unresolved and blocks all later releases for that target until reconciled. |
 | Ledger/confirmation API failure | Inspect the record and actual provider state; never manufacture a success. A missing outcome remains unresolved. |
+| `Unrecognized production ledger entry` | Provenance/schema did not match. Do not erase records or mark them inactive to bypass validation. Older code incorrectly required optional app metadata; see the Actions-creator contract below and main run `34741032755`. |
 
-Vercel production is `--prod --skip-domain`, followed by revalidation and
-`promote --timeout 10m`. The pinned CLI reads `VERCEL_TOKEN` from the step
-environment, never a token-bearing command argument.
-A CLI timeout **does not stop remote promotion**. After
-promotion, the workflow checks the exact deployment's project/SHA/READY status,
-alias assignment and the `www.scorearc.futbol` mapping, retrying propagation
-confirmation three times with five-second waits. Failed confirmation is not
-assumed harmless.
+### Project-scoped Vercel promotion
+
+Staging still uses pinned CLI `59.11.7` with `--prod --skip-domain`. After
+the exact-SHA revalidation step, `production-release.mjs promote-vercel`:
+
+1. Reads the configured project and resolves the staged hostname through the
+   fixed `https://api.vercel.com` origin. Requires the expected project/team,
+   automatic domain assignment OFF, a validated deployment ID, production
+   target, `READY`, and matching SHA/run ID/attempt metadata.
+2. Sends **one** `POST /v10/projects/{projectId}/promote/{deploymentId}` with
+   `{}`. The documented responses are `201` and `202`, with no required JSON
+   body. `202` means accepted/queued, not deployed.
+3. Polls the project's `lastAliasRequest`, requiring a new `promote` record for
+   that immutable deployment. `pending`/`in-progress` wait; `failed`, `skipped`
+   and unknown matching-job states fail. An older/different job never proves
+   success. The overall deadline is ten minutes, with at most 120 polls,
+   five-second waits and individual requests bounded to 30 seconds.
+4. After `succeeded`, checks the same immutable deployment's readiness and
+   tested metadata, successful alias assignment, and the exact
+   `www.scorearc.futbol` project/deployment mapping. Propagation confirmation
+   gets three attempts with five-second waits, still under the overall deadline.
+
+Tokens remain in environment variables and authorization headers, never command
+arguments. No `/v2/user`, team-resource lookup, response-provided callback URL,
+redirect, or broader credential fallback is used. Project tokens support their
+own project's reads/writes; a real `401`/`403` still blocks publication.
+
+The earlier CLI `User not found. (404)` is consistent with its account-level
+`getScope`/`getUser` path being incompatible with project tokens. Source/mock
+evidence establishes that path, **not a historical HTTP trace of the failed
+provider request**. Adding `--scope` is not the correction.
+
+**A timeout does not cancel remote promotion.** There is no automatic POST retry.
+Any uncertain API/confirmation outcome leaves the release unresolved for operator
+reconciliation; neither `201`/`202` nor job success alone advances the ledger.
 
 Preview builds are separate from production eligibility. The ignored build step
 uses Vercel's immutable last-success SHA and candidate SHA. Proven docs/backend-
@@ -357,12 +402,27 @@ The managed ledger is GitHub deployment task `scorearc-release`, in
 `production-<service>`. Environment-only jobs do not create automatic deployment
 objects. Only the provider's actual success advances a diff baseline.
 
+Validate server-owned deployment creator `github-actions[bot]`, numeric ID
+`41898282`, type `Bot`, as well as task/environment/payload version/service and
+full SHA. Real Actions-created records can have null or absent
+`performed_via_github_app`; if supplied, its ID must still be `15368`.
+A `success` status must also be authored by that Actions bot. These are identity
+checks, not a fallback to trusting a payload's claimed author.
+Unknown authors/schema or conflicting app metadata remain blocked.
+Operator-authored `inactive` retains the explicit reconciliation path below;
+it is never a successful publication.
+
+Main run `34741032755` (`4b972c2`, the dependency-only PR #153) exposed the old
+optional-app-field assumption and stopped all three jobs before publication.
+The corrected reader recognizes the existing Fly successes without modifying
+them, while the frontend failure remains unresolved. Do not use this historical
+bug as a release hold: once the correction merges, normal target selection
+applies and the owner must have approved activation or arranged real holds.
+
 ```bash
 gh api 'repos/mcasillas17/ScoreArc/deployments?task=scorearc-release&environment=production-frontend&per_page=1'
 gh api repos/mcasillas17/ScoreArc/deployments/DEPLOYMENT_ID/statuses
 gh run view RUN_ID --repo mcasillas17/ScoreArc
-vercel promote status score-arc --scope elopenmike
-vercel list score-arc --scope elopenmike --meta scorearcRunId=RUN_ID
 fly releases --app scorearc-reader
 fly status --app scorearc-reader
 ```
@@ -372,6 +432,36 @@ GitHub job is **not** proof that provider operations stopped. Wait for/cancel th
 provider operation through an authorized operator and confirm its terminal
 state, actual serving deployment, and absence of pending operations. If this
 cannot be established, keep the ledger blocked and escalate to the provider.
+
+For Vercel, use an authenticated dashboard read or project-specific API reads
+with the existing token available securely in the environment. Do **not** use
+`vercel promote status`, which can take the same incompatible user-lookup path.
+Inspect the configured project's `lastAliasRequest`, any active rolling release
+and queued promotion, deployment metadata for the failed run, and both domain
+assignments/redirects. Relevant fixed-origin GETs are
+`/v9/projects/{projectId}`, `/v1/projects/{projectId}/rolling-release`,
+`/v7/deployments?projectId={projectId}`, `/v13/deployments/{deploymentId}`,
+and `/v4/aliases/www.scorearc.futbol`; scope them to the configured team.
+Never follow a response-provided URL with credentials or print complete responses
+that may contain environment values.
+
+The retained `confirm-vercel` command is **read-only incident verification**:
+it reads `$RUNNER_TEMP/production-url.txt`, validates `GITHUB_SHA`,
+`GITHUB_RUN_ID`, `GITHUB_RUN_ATTEMPT` and the three `VERCEL_*` environment
+values, and checks the canonical alias for that exact deployment. Set
+`RELEASE_SERVICE=frontend`. It neither promotes nor writes the ledger. Its
+success does **not** prove absence of pending promotions/rolling releases;
+that separate provider-state inspection is still required. Prefer owner
+sign-in for readback over exposing or replacing the stored Actions token.
+
+**Known incident:** frontend ledger `6404319208`, run `34663184517` attempt 1
+at `0f75102`, remained `failure` on September 13. The run's staging succeeded
+and CLI promotion failed before confirmation. That log alone does not establish
+provider terminal state. This follow-up did not have authenticated Vercel
+readback, so pending promotions and actual serving deployment remain unverified.
+Keep the record blocked. Obtain separate explicit authorization to reconcile
+only after fresh provider evidence proves the prior operation terminal; obtain
+release authorization separately before any current-main retry.
 
 Only after the GitHub run is terminal **and** the provider state is reconciled,
 record an explicit acknowledgement with the incident/evidence reference:
@@ -391,8 +481,10 @@ latest record/status; unknown ledger identity/schema fails loudly.
 
 ## Post-merge production acceptance
 
-First complete the new-topology protected presence checks and separately authorize the
-selected releases. Inspect current provider state and resolve any suspended
+PR #161's run already demonstrated ordinary-job credential presence. Re-run the
+non-deploying diagnostic only if access is in doubt, with authorization; do not
+ask for another token as a routine step. Separately authorize the selected
+releases. Inspect current provider state and resolve any suspended
 ingester/invalid standby or unresolved release operation through its own
 authorized recovery procedure. A credential change is not authorization to
 restart the ingester. Do not run a raw deploy to test credentials.
@@ -404,9 +496,13 @@ restart the ingester. Do not run a raw deploy to test credentials.
 3. For each selected target, inspect the provider log and successful managed
    ledger with that SHA. Vercel must confirm its deployed metadata and canonical
    domain. Fly logs must show deployment from the same checkout/config.
-4. Check reader `/healthz`, serving behavior, and exactly one started ingester
-   with no duplicate-lease errors. No schema-readiness claim follows from this
-   gate. Observe a later docs-only skip and deterministic stale/failure test
+4. Check reader `/healthz` and América's team profile. Recover the ingester only
+   under the separate [same-machine recovery plan](SETUP.md#74-first-deploy).
+   Require exactly one ordinary started worker, an app that is not suspended,
+   successful cycles with `failures: 0`, no duplicate/lost-lease errors, and
+   advancing match data including Greece. A green Fly command/ledger is not
+   ingestion acceptance. No schema-readiness claim follows from this gate.
+   Observe a later docs-only skip and deterministic stale/failure test
    evidence; never introduce deliberately bad production code for testing.
 5. Update CURRENT_STATE with these observations and any remaining owner action.
    Until all targets are accepted, T21.1 is implemented but not closed.
@@ -418,6 +514,9 @@ Primary references: [GitHub reusable workflows](https://docs.github.com/en/actio
 [deployment environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/control-deployments),
 [Vercel Git configuration](https://vercel.com/docs/project-configuration/git-configuration),
 [Vercel promote](https://vercel.com/docs/cli/promote),
+[project promotion API](https://vercel.com/docs/rest-api/projects/point-production-traffic-to-a-given-deployment),
+[project-scoped tokens](https://vercel.com/docs/accounts/access-tokens),
+[machine-readable API contract](https://openapi.vercel.sh/),
 [Vercel CLI environment-token authentication](https://vercel.com/docs/cli/global-options#token),
 [Vercel roles](https://vercel.com/docs/rbac/access-roles),
 [Fly app-scoped tokens](https://fly.io/docs/launch/continuous-deployment-with-github-actions/).

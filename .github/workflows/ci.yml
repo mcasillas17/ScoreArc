@@ -191,9 +191,7 @@ jobs:
           VERCEL_TOKEN: ${{ matrix.service == 'frontend' && secrets.VERCEL_TOKEN || '' }}
           VERCEL_ORG_ID: ${{ matrix.service == 'frontend' && vars.VERCEL_ORG_ID || '' }}
           VERCEL_PROJECT_ID: ${{ matrix.service == 'frontend' && vars.VERCEL_PROJECT_ID || '' }}
-        run: |
-          vercel promote "$(cat "$RUNNER_TEMP/production-url.txt")" --yes --timeout 10m
-          node scripts/production-release.mjs confirm-vercel
+        run: node scripts/production-release.mjs promote-vercel
       - name: Record actual release outcome
         if: always() && steps.begin.outputs.id != ''
         env:

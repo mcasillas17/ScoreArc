@@ -261,8 +261,8 @@ describe('workflow wiring', () => {
     expect(steps[indexOf('id: promote_gate')]).toContain("steps.stage.outcome == 'success'");
     expect(steps[indexOf('id: promote_gate')]).toContain('production-release.mjs assert');
     expect(steps[indexOf('id: promote\n')]).toContain('steps.promote_gate.outputs.current');
-    expect(steps[indexOf('id: promote\n')]).toContain('--yes --timeout 10m');
-    expect(steps[indexOf('id: promote\n')]).toContain('production-release.mjs confirm-vercel');
+    expect(steps[indexOf('id: promote\n')]).toContain('production-release.mjs promote-vercel');
+    expect(production).not.toContain('vercel promote ');
     expect(steps[indexOf('production-release.mjs finish')]).toContain("always() && steps.begin.outputs.id != ''");
   });
   it.each(['reader', 'ingester', 'frontend'])('fails %s explicitly before publication when required credentials are absent', service => {

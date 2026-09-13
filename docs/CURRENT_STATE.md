@@ -2,10 +2,16 @@
 
 **Last verified:** 2026-09-01, against `main` @ `49bf68d` (2026-09-01).
 
-**Delivery-controls update:** T21.1 evidence updated 2026-09-11
-against `origin/main` @ `5a31554`; see §10 for measured credential access and
-the ordinary-job correction awaiting hosted acceptance. Other operational observations retain
-their original verification date.
+**Delivery/recovery update:** read-only evidence refreshed 2026-09-13 UTC
+against the deployed `0f75102` (PR #161), then source main `4b972c2` (PR #153).
+Ordinary jobs received credentials;
+reader deployment succeeded, ingester image v21 was uploaded but its worker is
+still stopped, and frontend promotion failed. Project-token promotion repair
+and non-destructive ingester recovery are prepared, **not activated** (§10).
+Other operational observations retain their original verification date.
+The later dependency-only main run exposed a ledger-identity compatibility bug
+before any new release; this follow-up also corrects that read without clearing
+the unresolved frontend record (§10).
 
 **Reader recovery update:** T17.1 production repair accepted 2026-09-06 using
 existing migration 0022 from `origin/main` @ `2a917fe`; see §3. The serving reader
@@ -44,9 +50,9 @@ that audit's mutable status conclusions where they conflict.
 | Area | Status |
 |---|---|
 | Frontend | Live at scorearc.futbol, fully ESPN-backed. No reader/backend fetch call sites exist in `src/server/data/` — the 1d cutover has not started. |
-| Ingester | **Not running.** Image v20 is deployed on Fly.io, but the app is `suspended` and its only Machine is a stopped orphan standby; no ingest **write** has landed since **2026-08-22** (T17.2, §3, which states exactly which competitions are stale, truncated or complete, and what is observed versus inferred). E7 writers are present in the deployed code. Raw-archive completeness remains unverified. |
+| Ingester | **Not running**, rechecked September 13. Image v21 at tested `0f75102` is deployed, but app `suspended`, sole Machine `d896262f9016e8` stopped with obsolete standby target. Greece remains empty; Premier League finished data still ends August 22. These are public-reader observations, not a fresh database write-timestamp query. Same-machine recovery awaits separate update/start approvals (§10; SETUP §7.4). |
 | Reader API | 7 registered `/v1` data routes (`matches`, `standings`, `bracket`, `top-scorers`, `teams/{teamId}`, `news`, `matches/{id}`) + `/healthz`. The Liga MX team-profile **500 is repaired**: existing migration 0022 restored the full production response, accepted 2026-09-06 (§3). Broader reader parity remains open (§5). |
-| Operations | `main` requires PR integration and strict `test` checks, with admin enforcement and no force pushes/deletion. **T21.1 remains open:** existing tokens, including the September 11 Vercel token, reached ordinary diagnostic jobs but not reusable jobs. The ordinary-job release correction still needs protected hosted acceptance and separately authorized publication (§10). No per-competition freshness/completeness alert exists. Migrations remain manual; T17.1 repair is accepted, but T21.2 schema-readiness prevention is not implemented. |
+| Operations | `main` requires PR integration and strict `test`, admins enforced, force pushes/deletion blocked. **T21.1 remains open:** ordinary production jobs now receive existing credentials; frontend CLI promotion is incompatible with the supplied project token, and ingester upload did not restore ingestion. Frontend ledger `6404319208` remains unresolved. No approval hold was present on any release environment at September 13 readback. Migrations remain manual; T17.1 is complete, T21.2 is not. |
 | 1d (frontend cutover) | Absent. No spec has landed as an implementation; no `apiStore` exists. |
 | E6 (shot log) | T6.1 (coverage probe) complete. T6.2–T6.4 (extraction, reconciliation, rendering) pending. |
 | E7 (history & trends) | Writer code is implemented and deployed; no write from it is visible in reader data since 2026-08-22 and nothing is running now (§2 above, §3). Whether a process ran and failed between 2026-08-22 and the 2026-09-01 relaunch is open (§9), and the database was not queried — several of these writers target tables no reader route exposes, so partially written rows are not excluded. (`WriteStandingSnapshot`, `WriteWinProbSnapshot`, `WritePlays`, `WriteParticipation`, `WriteCommentary`, `ReplaceLeaders`, `ReplaceSquad`, `WriteMatchOfficials`, `WriteMatchOdds`, `WriteOddsSnapshot`). **T7.13 operational acceptance is pending** (§4). Read/render surfaces (T7.3–T7.5) do not exist. |
@@ -152,50 +158,21 @@ that audit's mutable status conclusions where they conflict.
   (The provider counts come from a one-off local probe of `shared/source.ESPN`
   that was not committed; the ESPN-side half is reproducible with the
   [§7.5 command](backend/SETUP.md#75-verify) using `slug=gre.1`.)
-  **Pending production action (not performed here):** destroy the orphan
-  standby, then release the ingester through the gated `main` CI path
-  ([SETUP.md §7.4](backend/SETUP.md#74-first-deploy)), accepted with the
-  [freshness check in §7.5](backend/SETUP.md#75-verify).
-  ⛔ **Do not start the destroy yet.** The release path remains blocked:
-  earlier runs failed credentials, and the latest Fly jobs failed the preceding
-  eligibility guard (§10). Therefore
-  destroying the standby now would take an irreversible action and leave the app
-  with no machine at all and no way to release one. Clear that gate first. That is an
-  authorized-operator step requiring an explicit decision, not a routine
-  release. Fly release targets are independent of frontend credentials.
-  **September 11 update:** `VERCEL_TOKEN` has been supplied, and ordinary-job
-  token access is measured for all three services; the corrected release
-  topology and provider permissions still need acceptance (§10). Coordinate recovery
-  with T21.1's release owner. No deploy, restart, machine change,
-  backfill or database write was made for the historical T17.2 diagnosis, which
-  was documentation-only (the later release-code correction is in §10): per
-  [RELEASES.md](backend/RELEASES.md#paths-and-ordering) `docs/**` selects no
-  release target, while any `scripts/production-*` path selects **all three**.
-  The `backend` build contexts and ingester `--ha=false` command are now pinned
-  by T21.1's `scripts/production-policy.test.ts`; no deployment command was
-  changed to add that coverage. A change to that test path still selects all
-  services and is subject to the same production authorization.
-  ⚠️ **That path filter is not, on its own, a guarantee that merging releases
-  nothing** — and it is not hypothetical: a `main` merge **does** select the
-  ingester today (observed, next paragraph). Before merging *anything* to
-  `main`, have the T21.1 owner confirm the two release-ledger conditions in
-  [RELEASES.md](backend/RELEASES.md#paths-and-ordering) (a `success` ingester
-  entry, and an unchanged ingester-affecting tree since its SHA), executable as
-  `affectsService`/`planRelease`. **The September 11 ledger read found zero
-  managed entries for all three services** (§10), so a baseline-free eligible
-  main run may bootstrap all three; recheck immediately before activation.
-  The last observed ingester release (v20, 2026-09-01) predates the gated
-  workflow's merge (`cc623e9`, 2026-09-05).
-  Earlier observed selections stopped at the credentials gate (below); the
-  latest Fly jobs stopped earlier (§10). Once the eligibility and credential
-  gates pass, a selected release would publish the ingester image onto the
-  un-repaired app ahead of the standby destroy. On the observed evidence such a
-  deploy would leave the standby `stopped` rather than start a worker
-  ([SETUP.md §7.4](backend/SETUP.md#74-first-deploy); see the v20 event log and
-  the v13–v20 release run recorded above — and note no event data survives for
-  v13–v19, so their lack of a `start` event is unrecorded, not observed), but its effect on a
-  pre-existing standby is **not** established (§9) — so this must be an intentional operator step, never a side
-  effect of merging documentation.
+  **September 13 recovery update (not executed):** preserve the sole machine,
+  clear its obsolete standby relationship in place with `--skip-start`, and
+  retain the same tested v21 image by immutable digest. Then seek separate
+  approval to start normal ingestion. The versioned CLI/config evidence and
+  exact drift-checked plan are in [SETUP §7.4](backend/SETUP.md#74-first-deploy).
+  Do not destroy/recreate it as the first step.
+  At 05:20:56Z the machine remained stopped; at 05:16:38Z the app was suspended.
+  Greece's three collections were still empty; Premier League still had six
+  finished matches, versus 37 at ESPN. Log reads timed out, so no clean-cycle
+  or no-lease-error conclusion is possible. No database was queried.
+  PR #161's v21 deployment updated the image without repairing this designation;
+  upload success is not recovery. No production operation was performed in this
+  follow-up. Changes to `ci.yml` or `scripts/production-*` select all services,
+  so coordinate activation **before merge**; the frontend ledger block does not
+  hold Fly. Older observations below retain their historical dates.
   **Observed 2026-09-06, before #150 merged — the gated path already ran on
   `main` but could not deploy.** The three observed pushes after the gated
   workflow merged concluded `failure`, and their step outcomes were read: `cc623e9`
@@ -220,7 +197,7 @@ that audit's mutable status conclusions where they conflict.
   owns the protected comparison and interpretation. The later `de52780` run
   stopped Fly before credential checks at all; that new symptom is recorded
   separately in §10 and does not clear the earlier credential fault.
-  **If writes do not resume** after the destroy-and-release — judged by the
+  **If writes do not resume** after the separately approved same-machine recovery — judged by the
   [§7.5 freshness check](backend/SETUP.md#75-verify), not by the Machine merely
   reaching `started` — then the 2026-08-22 write-stop had a cause this pass did
   not establish. Read the worker's logs for `another ingester instance holds the
@@ -450,18 +427,18 @@ platform's core data-correctness work (§8).
 **Hard gates first, in order:**
 
 1. **Finish T21.1 delivery activation (§10).** Main protection is enabled;
-   finish non-owner Vercel credentials, resolve the app-scoped Fly tokens that
-   resolve empty in `production-reader` / `production-ingester` (§3 — this is
-   what blocks priority 3), and post-merge release acceptance.
+   retain the existing credentials whose ordinary-job delivery was accepted
+   in PR #161's run, finish project-token promotion and authorized provider/ledger
+   reconciliation, and complete post-merge release acceptance. Do not reopen
+   credential provisioning merely because older reusable jobs lacked access.
 2. **The legal/rights decision (§7).** Nothing that expands ESPN-derived
    data's audience, training use, or MCP exposure proceeds without it.
 3. **Restart production ingestion (§3).** Diagnosed 2026-09-06: no ingester
    write has landed since 2026-08-22 and nothing is running now, so every
    in-season competition is stale
    and Greece — configured 2026-08-24, after the stall — is empty. The repair is the
-   authorized orphan-standby recovery in
-   [SETUP.md §7.4](backend/SETUP.md#74-first-deploy) — see the ⛔ blocker there
-   and in §3 before acting — coordinated with the
+   same-machine standby-clearing update with `--skip-start`, then a separately
+   approved start in [SETUP.md §7.4](backend/SETUP.md#74-first-deploy), coordinated with the
    T21.1 owner because the ingester releases through the gated path. Ranked
    above the two durability items below because neither writer can be
    exercised, or its fix verified, until a worker runs again. The T17.1
@@ -533,8 +510,8 @@ the diagnosis.
 - Why the ingester stopped writing on 2026-08-22, and when its primary Machine
   was removed. Only the write-stop date is evidenced (last finished kickoff plus
   matches frozen mid-half). The surviving standby Machine was created
-  **2026-08-17T07:21:20Z** and last updated 2026-09-01T05:39:16Z, but Fly
-  retains events only from that 2026-09-01 relaunch, so the primary's removal is
+  **2026-08-17T07:21:20Z** and was last updated 2026-09-12T01:04:23Z. The
+  returned event history still does not date the original primary's removal, so it is
   undated. **Separate what is observed from what is inferred:** the *current*
   not-running state is directly observed (app `suspended`, sole Machine a
   stopped standby), and the standby recovery addresses that. Whether a process
@@ -542,17 +519,14 @@ the diagnosis.
   **not** excluded — Fly retains no events from that window, and eight
   `complete` releases occurred in it, so a crash loop or a lease conflict
   (`another ingester instance holds the database lease`) remains possible.
-- Why `--ha=false`, passed by every ingester release since PR #113
-  (`045e703`, 2026-08-24T00:52Z), has not
-  left the app with one ordinary running Machine. The standby predates that flag
-  (created 2026-08-17); whether the flag cannot clear a pre-existing standby, or
-  something else preserved it, is **not** established — so the repair in §3
-  ([SETUP.md §7.4](backend/SETUP.md#74-first-deploy)) is accepted on observed
-  Machine state, not on the deploy having passed the flag.
-- **Answered September 11:** the managed `scorearc-release` ledger query returned
-  no entries for reader, ingester or frontend. There is no managed-success
-  baseline to justify a docs-only skip; the first eligible main release may
-  bootstrap all three. Recheck the ledger before activation; the authoritative
+- **Recovery mechanism established September 13:** Fly v0.4.83 can clear the
+  pre-existing standby through a partial config update; `--skip-start` prevents
+  that update from implicitly starting ingestion. `--ha=false` alone left the
+  designation intact in v21. The underlying August outage is not thereby
+  explained. See [SETUP §7.4](backend/SETUP.md#74-first-deploy).
+- **Updated September 13:** the managed ledger now contains reader/ingester
+  successes at `0f75102` and unresolved frontend failure `6404319208`.
+  Recheck the ledger before activation; the authoritative
   mechanism is [RELEASES.md](backend/RELEASES.md#paths-and-ordering), executable
   as `scripts/production-policy.mjs`.
 - The legal/rights determination itself (§7) — owned by counsel or a
@@ -561,12 +535,69 @@ the diagnosis.
 
 ## 10. T21.1 delivery controls
 
-**2026-09-11: credential context difference measured; release correction
-implemented, hosted acceptance and production activation still pending.**
+**2026-09-13: ordinary-job correction merged and exercised; frontend promotion
+and ingester activation remain incomplete.**
+PR #161 is merged as `0f751029f3dd6965c8b607814d97c3b9c29f131c`. Run
+[34663184517](https://github.com/mcasillas17/ScoreArc/actions/runs/34663184517),
+attempt 1, passed full `test` and all three actual credential-presence checks.
+
+| Milestone | Current evidence |
+|---|---|
+| Code completed | This follow-up implements project-specific promotion with the existing Vercel token, bounded 201/202 job polling and exact deployed-SHA/domain confirmation, plus compatible Actions-owned ledger validation; safe ingester recovery is documented. |
+| PR merged | **PR #161 and dependency-only #153. This follow-up is not merged or activated.** |
+| Reader deployed | Run `34663184517` and ledger `6404317179` succeeded at `0f75102`; September 13 `/healthz` and América profile both returned 200 (36 squad members, 17 matches). |
+| Ingester image deployed | Run/ledger `6404317598` succeeded at `0f75102`, Fly v21; machine `d896262f9016e8` remains stopped with `standbys=["80d219b6421d78"]`, app suspended. |
+| Frontend deployed | Staging succeeded, CLI 59.11.7 promotion failed `User not found. (404)`; confirmation never ran. Ledger `6404319208` remains failure/unresolved. No successful frontend publication is established. |
+| Fresh data arriving | **Not accepted.** September 13 Greece matches/standings/top-scorers are empty; Premier League finished data still ends August 22. Logs timed out; no direct database query was made. |
+| Activation hold | Main-only branch policies exist, but no required-reviewer approval hold was present on any of the three environments. |
+
+**Later main update:** PR #153 advanced main to `4b972c2` with only the Node type
+dependency change. Run
+[34741032755](https://github.com/mcasillas17/ScoreArc/actions/runs/34741032755)
+passed `test`, then all three release jobs failed before credentials/publication
+with `Unrecognized production ledger entry`. The existing deployment records
+have the server-owned creator `github-actions[bot]` (ID `41898282`, type `Bot`)
+but null/absent `performed_via_github_app`; the old guard wrongly required its
+app ID unconditionally. No new managed records were created.
+
+The correction checks that exact Actions creator, rejects conflicting app
+metadata when present, and requires an Actions-authored `success` status.
+Unknown provenance still fails closed; authorized operator `inactive`
+acknowledgement and unresolved-failure blocking are unchanged. Read-only execution
+of the corrected lookup returned the two existing `0f75102` Fly baselines and
+still rejected frontend `6404319208` as unresolved. No record was edited.
+This branch includes the dependency-only main update; the ledger correction,
+like promotion, still requires review/merge and authorized hosted acceptance.
+
+**Vercel repair boundary:** token scope is project `score-arc` in team Spider
+(`elopenmike`), with the existing matching IDs. Project tokens deny user-level
+resources. Source inspection/mock evidence shows the CLI promotion path can call
+`getScope` → `getUser` → `/v2/user`, consistent with the observed failure; this
+is not a captured historical HTTP trace. The correction sends one supported
+project promotion POST and polls/validates its exact deployment, with no account
+lookup, token replacement, scope broadening or retry after uncertain acceptance.
+
+Authenticated Vercel provider readback was unavailable in this follow-up (local
+token absent, dashboard required sign-in). Public HTTP still redirected
+`scorearc.futbol` to `www.scorearc.futbol`, then `/en`, but that does not identify
+the serving deployment or prove no queued operation. **Do not reconcile
+`6404319208` or retry until an authenticated read proves terminal provider state
+and the owner separately authorizes reconciliation and publication.**
+
+The safe Fly plan preserves the existing machine and exact image digest,
+clears only the standby relationship plus equivalent image pinning while keeping
+it stopped, then asks separately to start its normal polling/writes. The complete
+configuration and concurrency/drift guards are in
+[SETUP §7.4](backend/SETUP.md#74-first-deploy). No machine change, management
+lease, start, dispatch, credential change, database write or migration was
+performed by this follow-up.
+
+### Historical credential diagnosis
+
 The CI dependency graph, immutable deployment policy, cumulative per-service
 filters, manual/revert rules and Vercel staged-publication path are implemented
 on main through #147 (`cc623e9`), with diagnostics in #160 (`5a31554`).
-The latest main revision rechecked for this correction is `5a31554`.
+The September 11 diagnosis below used `5a31554`; current evidence is above.
 Run [34019423444](https://github.com/mcasillas17/ScoreArc/actions/runs/34019423444)
 passed its complete `test` job but all three production jobs failed at
 **Require deployment credentials**, before provider operations or release
@@ -583,8 +614,9 @@ Persisted run/job IDs, attempt and SHA match, but terminal metadata cannot
 reconstruct the API response or process context at the earlier failures.
 No timing/cache race or specific rejecting predicate is established.
 
-The September 6 configuration observations below were not changed by this code
-correction; current credential/ledger observations are dated September 11.
+The following table records the earlier September 6–11 observations. Its
+pending acceptance and empty-ledger states were superseded by the September 13
+table above, not by an inference from code.
 
 | Control | Observed state |
 |---|---|
@@ -614,17 +646,22 @@ status. GitHub documents secrets on environment-bound ordinary and reusable
 jobs and retains them with `deployment: false`; the platform cause is not
 established. The correction uses the measured working ordinary-job structure,
 preserving existing environments, service isolation and every release guard.
-Local tests prove structure and failure handling, not live injection.
-The [new non-deploying check](backend/RELEASES.md#non-deploying-credential-preflight)
-must run after authorized merge to accept the new topology. Even successful
-presence does not prove token validity, expiry or deployment permissions.
+Local tests prove structure and failure handling, not live injection. PR #161's
+actual release run subsequently established that all three ordinary jobs received
+the existing credentials. The [non-deploying check](backend/RELEASES.md#non-deploying-credential-preflight)
+remains available if access regresses; it need not be repeated solely to
+re-establish already observed presence. Presence alone does not prove expiry or
+all provider permissions.
 The additional [eligibility diagnostics](backend/RELEASES.md#eligibility-rejection-diagnostics)
 make a future rejection identifiable without logging raw context/API values.
 They do not retroactively identify the old failure or make an ineligible run
 safe to release. That historical rejection remains a separate operational
 question and is not mixed into the credential fix.
 
-**Owner actions:** verify the supplied Vercel identity's least-privilege role,
+### Remaining owner decisions and production acceptance
+
+**Owner actions:** preserve the supplied Vercel token's project scope and verify
+its least-privilege role,
 expiry/rotation ownership and supported production CLI/promotion permission on
 the actual plan; a Developer role or presence boolean alone is insufficient
 evidence. Do not reprovision the token speculatively. Any identity, role, token or
@@ -634,21 +671,23 @@ token. Keep the environment restrictions, automatic domain assignment OFF and
 empty deploy hooks. Any Fly control-secret setup, replacement or retirement also
 requires authorization; secret deletion is not token revocation.
 
-**Before merge:** main CI automatically attempts release. The empty managed
-ledger and the `ci.yml` change can select **all three services** and restart
-the ingester. Coordinate owner authorization for those effects before
+**Before merge:** main CI automatically attempts release. This follow-up's
+`ci.yml` and release-script changes select **all three services** against the
+latest managed baselines. The unresolved frontend entry blocks that target,
+not either Fly job. Coordinate owner authorization for those effects before
 recommending merge. If presence checks must precede publication, confirm an
 approval hold on all release jobs and approve only diagnostic jobs; otherwise
 leave the PR unmerged until the owner has an activation plan. Do not disable
 required CI or weaken environment protections to run acceptance.
 
-**Post-merge acceptance:** first authorize the new-topology protected preflight and resolve its
-findings; then separately authorize the selected releases. Confirm actual
+**Post-merge acceptance:** authorize the selected releases and reconcile
+the failed frontend record only after terminal provider readback. Confirm actual
 merge-SHA `test` success, each provider
-release/actual-success ledger and serving SHA, reader health, and one running
-ingester. Main pushes already attempt gated releases: even a diagnostic-only
-merge can select all services, and the first ledger-free release may restart
-the ingester. Do not merge without authorization for those effects. Inspect
+release/actual-success ledger and serving SHA, reader health/América profile,
+and one ordinary running ingester with successful zero-failure cycles, no lease
+errors and advancing match data including Greece. Do not equate an image upload
+with those observations. Main pushes already attempt gated releases; do not
+merge without authorization for those effects. Inspect
 current Fly machine state and coordinate any necessary ingester recovery
 separately; credential activation does not authorize a raw deploy or machine
 repair. Vercel Git must not independently publish the merge; its publication

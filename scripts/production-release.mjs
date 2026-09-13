@@ -38,6 +38,11 @@ export async function paginate(api, path, key = null) {
   throw new Error(`Pagination limit reached for ${path}; refusing a partial release history`);
 }
 
+/** @param {{id?: number, login?: string, type?: string} | null | undefined} creator */
+function isActionsBot(creator) {
+  return creator?.id === 41898282 && creator.login === 'github-actions[bot]' && creator.type === 'Bot';
+}
+
 /** @param {ReturnType<typeof githubClient>} api @param {string} service */
 export async function deployedBase(api, service) {
   // GitHub lists deployments newest-first, as it does deployment statuses.
@@ -45,7 +50,10 @@ export async function deployedBase(api, service) {
   if (!Array.isArray(releases)) throw new Error('Invalid deployment ledger response');
   const latest = releases[0];
   if (!latest) return null;
-  if (latest.performed_via_github_app?.id !== 15368 || latest.payload?.version !== 1 ||
+  // Actual Actions deployments can omit app metadata; creator is server-owned.
+  if (!isActionsBot(latest.creator) ||
+      (latest.performed_via_github_app != null && latest.performed_via_github_app.id !== 15368) ||
+      latest.payload?.version !== 1 ||
       latest.payload?.service !== service || latest.task !== 'scorearc-release' ||
       latest.environment !== `production-${service}`) {
     throw new Error('Unrecognized production ledger entry; reconcile it before releasing');
@@ -53,7 +61,10 @@ export async function deployedBase(api, service) {
   assertSha(latest.sha);
   const statuses = await api(`deployments/${latest.id}/statuses?per_page=1`);
   if (!Array.isArray(statuses)) throw new Error('Invalid deployment status response');
-  if (statuses[0]?.state === 'success') return latest.sha;
+  if (statuses[0]?.state === 'success') {
+    if (!isActionsBot(statuses[0].creator)) throw new Error('Unrecognized production success author; reconcile before releasing');
+    return latest.sha;
+  }
   // "inactive" proves publication never started or acknowledges operator
   // reconciliation. A publication timeout may still be running remotely.
   if (statuses[0]?.state === 'inactive') return null;
@@ -102,18 +113,87 @@ export async function validateRun(api, env) {
   return { sha: context.sha, mainSha: branch.object.sha };
 }
 
-/** @param {Record<string, string | undefined>} env @param {typeof fetch} fetcher */
-export async function validateVercel(env, fetcher = fetch) {
+/** @param {Record<string, string | undefined>} env @param {typeof fetch} fetcher @param {AbortSignal} [signal] */
+function vercelClient(env, fetcher, signal) {
   const { VERCEL_TOKEN, VERCEL_PROJECT_ID, VERCEL_ORG_ID } = env;
   if (!VERCEL_TOKEN || !VERCEL_PROJECT_ID || !VERCEL_ORG_ID) {
     throw new Error('VERCEL_TOKEN, VERCEL_PROJECT_ID and VERCEL_ORG_ID are required; no deployment occurred');
   }
-  const response = await fetcher(
-    `https://api.vercel.com/v9/projects/${encodeURIComponent(VERCEL_PROJECT_ID)}?teamId=${encodeURIComponent(VERCEL_ORG_ID)}`,
-    { headers: { Authorization: `Bearer ${VERCEL_TOKEN}` }, signal: AbortSignal.timeout(30_000) },
-  );
-  if (!response.ok) throw new Error(`Read Vercel production settings: HTTP ${response.status}`);
-  assertVercelProject(await response.json(), VERCEL_PROJECT_ID, VERCEL_ORG_ID);
+  // Native header-validation errors can include the rejected credential value.
+  if (!/^[\x21-\x7e]+$/.test(VERCEL_TOKEN)) {
+    throw new Error('Invalid Vercel token format; no deployment occurred');
+  }
+  if (!/^prj_[a-zA-Z0-9]{1,128}$/.test(VERCEL_PROJECT_ID) ||
+      !/^team_[a-zA-Z0-9]{1,128}$/.test(VERCEL_ORG_ID)) {
+    throw new Error('Invalid Vercel project or team identifier');
+  }
+  return async (path, method = 'GET') => {
+    const requestTimeout = AbortSignal.timeout(30_000);
+    const response = await fetcher(`https://api.vercel.com/${path}?teamId=${encodeURIComponent(VERCEL_ORG_ID)}`, {
+      method, redirect: 'error',
+      headers: { Authorization: `Bearer ${VERCEL_TOKEN}`, 'Content-Type': 'application/json' },
+      body: method === 'POST' ? '{}' : undefined,
+      signal: signal ? AbortSignal.any([signal, requestTimeout]) : requestTimeout,
+    });
+    if (!(method === 'POST' ? [201, 202] : [200]).includes(response.status)) {
+      throw new Error(`Vercel ${method === 'POST' ? 'promotion' : 'metadata read'}: HTTP ${response.status}; release remains unresolved`);
+    }
+    // Promotion's 201/202 contract has no JSON response body.
+    if (method === 'POST') return response.status;
+    try {
+      return await response.json();
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+      throw new Error('Vercel metadata is not valid JSON; release remains unresolved');
+    }
+  };
+}
+
+/** @param {Record<string, string | undefined>} env @param {typeof fetch} fetcher */
+export async function validateVercel(env, fetcher = fetch) {
+  const project = await vercelClient(env, fetcher)(`v9/projects/${encodeURIComponent(env.VERCEL_PROJECT_ID)}`);
+  assertVercelProject(project, env.VERCEL_PROJECT_ID, env.VERCEL_ORG_ID);
+}
+
+/** @param {string} deploymentUrl */
+function stagedHostname(deploymentUrl) {
+  if (!/^https:\/\/[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.vercel\.app\/?$/.test(deploymentUrl.trim())) {
+    throw new Error('Unexpected staged Vercel deployment URL');
+  }
+  return new URL(deploymentUrl.trim()).hostname;
+}
+
+function assertVercelRun(env) {
+  assertSha(env.GITHUB_SHA);
+  if (!/^[1-9]\d*$/.test(env.GITHUB_RUN_ID ?? '') || !/^[1-9]\d*$/.test(env.GITHUB_RUN_ATTEMPT ?? '')) {
+    throw new Error('Vercel publication requires the exact CI run and attempt');
+  }
+}
+
+function assertTestedDeployment(env, deployment, expectedId) {
+  if (!/^dpl_[a-zA-Z0-9]{1,128}$/.test(deployment?.id ?? '') ||
+      (expectedId && deployment.id !== expectedId) || deployment.projectId !== env.VERCEL_PROJECT_ID ||
+      deployment.meta?.scorearcCommitSha !== env.GITHUB_SHA ||
+      deployment.meta?.scorearcRunId !== env.GITHUB_RUN_ID ||
+      deployment.meta?.scorearcRunAttempt !== env.GITHUB_RUN_ATTEMPT ||
+      deployment.readyState !== 'READY' || deployment.target !== 'production' || deployment.aliasError) {
+    throw new Error('Exact tested Vercel deployment is not ready for production promotion');
+  }
+}
+
+async function confirmDeployment(env, identifier, read, pause) {
+  let deploymentId = identifier.startsWith('dpl_') ? identifier : undefined;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const deployment = await read(`v13/deployments/${encodeURIComponent(deploymentId ?? identifier)}`);
+    assertTestedDeployment(env, deployment, deploymentId);
+    deploymentId = deployment.id;
+    if (deployment.aliasAssigned === true) {
+      const alias = await read('v4/aliases/www.scorearc.futbol');
+      if (alias?.projectId === env.VERCEL_PROJECT_ID && alias.deploymentId === deploymentId) return;
+    }
+    if (attempt < 2) await pause();
+  }
+  throw new Error('Production domain does not serve this tested Vercel deployment after bounded confirmation');
 }
 
 /**
@@ -121,32 +201,51 @@ export async function validateVercel(env, fetcher = fetch) {
  * @param {typeof fetch} fetcher @param {() => Promise<void>} pause
  */
 export async function confirmVercelPublication(env, deploymentUrl, fetcher = fetch, pause = () => delay(5000)) {
-  const url = new URL(deploymentUrl.trim());
-  if (url.protocol !== 'https:' || !url.hostname.endsWith('.vercel.app') ||
-      url.username || url.password || url.port || url.pathname !== '/' || url.search || url.hash) {
-    throw new Error('Unexpected staged Vercel deployment URL');
+  const hostname = stagedHostname(deploymentUrl);
+  assertVercelRun(env);
+  const read = vercelClient(env, fetcher);
+  await confirmDeployment(env, hostname, read, pause);
+}
+
+/**
+ * @param {Record<string, string | undefined>} env @param {string} deploymentUrl
+ * @param {typeof fetch} fetcher @param {() => Promise<void>} [pause]
+ */
+export async function promoteVercelPublication(env, deploymentUrl, fetcher = fetch, pause) {
+  const hostname = stagedHostname(deploymentUrl);
+  assertVercelRun(env);
+  const deadline = AbortSignal.timeout(600_000);
+  const read = vercelClient(env, fetcher, deadline);
+  const wait = pause ?? (() => delay(5000, undefined, { signal: deadline }));
+  const projectPath = `v9/projects/${encodeURIComponent(env.VERCEL_PROJECT_ID)}`;
+  const project = await read(projectPath);
+  assertVercelProject(project, env.VERCEL_PROJECT_ID, env.VERCEL_ORG_ID);
+  if (['pending', 'in-progress'].includes(project.lastAliasRequest?.jobStatus)) {
+    throw new Error('Vercel has a pending publication; reconcile the unresolved operation before promotion');
   }
-  const read = async path => {
-    const response = await fetcher(`https://api.vercel.com/${path}?teamId=${encodeURIComponent(env.VERCEL_ORG_ID)}`, {
-      headers: { Authorization: `Bearer ${env.VERCEL_TOKEN}` }, signal: AbortSignal.timeout(30_000),
-    });
-    if (!response.ok) throw new Error(`Verify Vercel publication: HTTP ${response.status}`);
-    return response.json();
-  };
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const deployment = await read(`v13/deployments/${encodeURIComponent(url.hostname)}`);
-    if (!deployment.id || deployment.projectId !== env.VERCEL_PROJECT_ID ||
-        deployment.meta?.scorearcCommitSha !== env.GITHUB_SHA || deployment.readyState !== 'READY' ||
-        deployment.target !== 'production' || deployment.aliasError) {
-      throw new Error('Exact tested Vercel deployment has not completed production promotion');
+  const deployment = await read(`v13/deployments/${encodeURIComponent(hostname)}`);
+  assertTestedDeployment(env, deployment);
+  // Send once only. A lost response or local timeout does not cancel remote work.
+  await read(`v10/projects/${encodeURIComponent(env.VERCEL_PROJECT_ID)}/promote/${encodeURIComponent(deployment.id)}`, 'POST');
+  for (let attempt = 0; attempt < 120; attempt++) {
+    deadline.throwIfAborted();
+    const current = await read(projectPath);
+    assertVercelProject(current, env.VERCEL_PROJECT_ID, env.VERCEL_ORG_ID);
+    const job = current.lastAliasRequest;
+    // A 202 can leave the previous job visible while this promotion is queued.
+    if (job?.type === 'promote' && job.toDeploymentId === deployment.id &&
+        Number.isFinite(job.requestedAt) && job.requestedAt > (project.lastAliasRequest?.requestedAt ?? 0)) {
+      if (job.jobStatus === 'succeeded') {
+        await confirmDeployment(env, deployment.id, read, wait);
+        return;
+      }
+      if (!['pending', 'in-progress'].includes(job.jobStatus)) {
+        throw new Error('Vercel promotion failed, was skipped, or has an unknown status; release remains unresolved');
+      }
     }
-    if (deployment.aliasAssigned === true) {
-      const alias = await read('v4/aliases/www.scorearc.futbol');
-      if (alias.projectId === env.VERCEL_PROJECT_ID && alias.deploymentId === deployment.id) return;
-    }
-    if (attempt < 2) await pause();
+    if (attempt < 119) await wait();
   }
-  throw new Error('Production domain does not serve this tested Vercel deployment after bounded confirmation');
+  throw new Error('Vercel promotion timed out; reconcile provider state before retrying the unresolved release');
 }
 
 /** @param {Record<string, string | number | boolean>} values */
@@ -165,6 +264,11 @@ async function main() {
 
   if (command === 'confirm-vercel') {
     await confirmVercelPublication(env, readFileSync(join(env.RUNNER_TEMP, 'production-url.txt'), 'utf8'));
+    return;
+  }
+  if (command === 'promote-vercel') {
+    if (service !== 'frontend') throw new Error('Vercel promotion is frontend-only');
+    await promoteVercelPublication(env, readFileSync(join(env.RUNNER_TEMP, 'production-url.txt'), 'utf8'));
     return;
   }
   const api = githubClient(env.GH_TOKEN);

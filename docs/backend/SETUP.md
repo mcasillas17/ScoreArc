@@ -422,46 +422,105 @@ untested local tree or arbitrary old SHA is accepted.
   default no-service deployment from creating a stopped standby machine.
 
 If `fly status --app scorearc-ingester` shows a stopped `app†` standby as the
-**only** machine, it cannot be promoted by a normal deploy. Remove that orphan
-and redeploy with HA disabled so Fly creates one ordinary running machine:
+**only** machine, do not delete it as the first recovery step. A deploy with
+`--ha=false` did not clear the observed orphan relationship, including PR #161's
+successful v21 deployment. The supported narrow repair is an in-place config
+update that keeps the same tested image, followed by a separately approved start.
+This is operational recovery, not an alternate source-code release path.
 
-⛔ **Do not destroy the standby until release readiness and a separately
-authorized recovery/release plan are established.** The September 6 releases
-failed credential checks. The completed comparison now shows existing Fly
-tokens present in ordinary jobs but absent in the old reusable path. The
-correction uses `ci.yml`'s ordinary production matrix for both main pushes and
-manual dispatch, preserving the full test/eligibility/credential gates.
-New-topology hosted presence acceptance and provider permissions are still
-pending; follow [CURRENT_STATE §10](../CURRENT_STATE.md#10-t211-delivery-controls)
-and the [non-deploying preflight](RELEASES.md#non-deploying-credential-preflight).
-A presence check is not permission to destroy or restart anything. Destroying
-the standby while release readiness is blocked would leave no machine at all;
-do not use destruction or a raw deployment as a credential test.
+#### Same-machine recovery plan (not executed)
 
-```bash
-fly machine destroy <standby-machine-id> --app scorearc-ingester
-gh workflow run ci.yml --repo mcasillas17/ScoreArc --ref main -f release=ingester
-```
+Read-only baseline, **2026-09-13 05:16–05:21 UTC**:
 
-Destroying a machine is an explicitly authorized operator recovery action, not
-a routine release step.
+| Item | Observed value |
+|---|---|
+| App / state | `scorearc-ingester`, `suspended` |
+| Sole machine / state | `d896262f9016e8`, `stopped`, region `iad`, host `ok` |
+| Instance ID | `01M29J9QPBM5RQ8956H6WP40CX` |
+| Obsolete standby target | `80d219b6421d78`, absent from machine inventory |
+| Image release / tested SHA | v21 / `0f751029f3dd6965c8b607814d97c3b9c29f131c`, main CI `34663184517`, attempt 1 |
+| Immutable image digest | `sha256:2d4cb05c3a155ac5a021e3c8c9dc6cf42fc62fd73969906760ef51e239931cfe` |
+| Existing config | Shared CPU, 1 vCPU, 512 MiB, restart `always`, init `{}`; no services or mounts |
+| Secrets / volumes | Eight expected secret names `Deployed` (values not inspected); no app volumes |
 
-⚠️ This recovery addresses the orphan standby only. If `fly apps list` also
-shows the app `suspended` (T17.2 observed exactly that on 2026-09-06), whether
-the gated release resumes a suspended app was **not established** — re-run the
-[§7.5](#75-verify) `fly apps list` check after the release and confirm
-`deployed` rather than assuming it. Diagnose and reconcile any unresolved release ledger
-first; see [interrupted-release recovery](RELEASES.md#interrupted-release-recovery).
+The complete config fingerprint was
+`6137bee38cd32cd1608cc116716b62e7a4b1ab00f1a72ddf36afc42de6dad6de`:
+SHA-256 of the full returned `config` serialized with Python
+`json.dumps(config, sort_keys=True, separators=(',', ':'), ensure_ascii=True)`.
+Hash in memory; do not print env values. Separately managed app secrets are
+not part of this config hash.
+
+1. Establish an exclusive operator window: no running/queued ingester release,
+   other machine update, or secret operation. Re-read machine inventory, instance
+   ID, complete config/hash, immutable image, secret-name/digest metadata and
+   volumes. Any drift invalidates this pinned plan: re-diagnose instead of
+   overwriting a newer deployment with the digest below. Follow the
+   [release activation decision](RELEASES.md#activation-order); no merge or CI
+   dispatch is implicit authorization.
+2. **Ask for explicit approval immediately before the UPDATE.** Even invoking
+   update to see its interactive diff acquires a provider management lease;
+   it is not a read-only dry run. After approval, use installed Fly **v0.4.83**:
+
+   ```bash
+   fly machine update d896262f9016e8 \
+     --app scorearc-ingester \
+     --machine-config '{"standbys":[],"image":"registry.fly.io/scorearc-ingester@sha256:2d4cb05c3a155ac5a021e3c8c9dc6cf42fc62fd73969906760ef51e239931cfe"}' \
+     --skip-start
+   ```
+
+   Do not add `--yes`. Confirm only the intended diff: remove the standby
+   relationship and replace the tag representation with the **same** image
+   digest. Preserve every other config field, metadata, env value, restart
+   policy, CPU/RAM and mounts, plus the separately managed app secrets.
+   `--skip-start` is essential: clearing standbys without it can start ingestion
+   during the update. Do not add `--image`, `--dockerfile`, deploy or destroy.
+3. Read back the machine and app: the **same sole machine must still be
+   stopped**, with no standby targets, identical image digest and no unintended
+   config/secret/volume changes. The app may remain suspended until start.
+   If the update response times out, inspect its actual result before any retry.
+4. **Ask for separate explicit approval immediately before START**:
+
+   ```bash
+   fly machine start d896262f9016e8 --app scorearc-ingester
+   ```
+
+   Starting resumes ordinary upstream polling and database writes, including
+   registry seeding and the already-existing current-season reconciliation
+   scheduler on its initial slow tick. It does **not** authorize a new historical
+   backfill, `-once` process, date-range expansion, provider, schema change, or
+   migration 0022 replay.
+5. Complete [§7.5](#75-verify), not just the Fly command. On failure, keep recovery
+   incomplete, preserve read-only evidence and request approval for the specific
+   next action. Stop/restart/update/rollback/destruction and secret changes are
+   not automatic recovery steps. An emergency stop can be separately preauthorized
+   with the owner before starting.
+
+The v0.4.83 source at commit `29e9b03d8c3a16318a3ff02d0b1911f268e9cb01`
+confirms that partial `--machine-config` merges into a deep clone of the existing
+config. Explicit `--standby-for=''` also clears standbys, but additionally writes
+an empty `FLY_STANDBY_FOR` env variable; the partial-config command avoids that
+extra change. Empty standbys may be omitted in returned JSON. Supplying the
+verified digest through config avoids `--image` resolution/build bookkeeping.
+The management lease refreshes changed instance data but is **not** an
+expected-config-hash guard; reject drift in the interactive diff.
+Sources: [update](https://github.com/superfly/flyctl/blob/29e9b03d8c3a16318a3ff02d0b1911f268e9cb01/internal/command/machine/update.go),
+[configuration assembly](https://github.com/superfly/flyctl/blob/29e9b03d8c3a16318a3ff02d0b1911f268e9cb01/internal/command/machine/run.go),
+[partial config merge](https://github.com/superfly/flyctl/blob/29e9b03d8c3a16318a3ff02d0b1911f268e9cb01/internal/config/machine.go).
 
 ⚠️ **The ingester is a singleton — never run two machines.** It holds a Postgres
 advisory lock via `pg_try_advisory_lock`, which is non-blocking: a second
 instance does not queue, it logs `another ingester instance holds the database
 lease` and exits 1. Its `fly.toml` therefore pins `strategy = "immediate"` so
-the old machine stops before the new one starts, and `kill_timeout = "15s"` so
-the 5s lease-release path finishes on shutdown. Every ingester deploy must pass
+the old machine stops before the new one starts. The Go shutdown path gives lease
+release five seconds. **Do not assume a live 15-second Fly shutdown allowance:**
+the observed machine has no `stop_config`, and the existing `kill_signal` /
+`kill_timeout` TOML entries are nested under `[[restart]]`, not top-level.
+The narrow same-image recovery preserves this configuration; correcting shutdown
+configuration is separate from this recovery and requires its own release.
+Every ingester deploy must pass
 `--ha=false`; the committed workflow does so. If a deploy ever leaves the lock
-stranded, the machine holding it is gone and Postgres reaps the session — wait
-for the connection to drop, then redeploy.
+stranded, verify which process holds it and wait for the connection to drop;
+do not launch another worker or redeploy without authorization.
 
 ### 7.5 Verify
 
@@ -476,9 +535,21 @@ fly status --app scorearc-ingester
 # expect: 1 machine in "started" state (the always-on worker)
 # a lone stopped "app†" standby is the orphan-standby failure in 7.4
 
-fly logs --app scorearc-ingester | head
-# expect: no "another ingester instance holds the database lease"
+fly logs --app scorearc-ingester --no-tail
+# expect: successful "cycle complete" with failures: 0, no duplicate/lost lease
 ```
+
+Confirm more than one successful cycle and no restart loop. `cycle complete`
+also appears when `failures` is nonzero, so the message alone is insufficient.
+If bounded log reads time out, logs are unavailable, not clean.
+
+For the September 13 recovery baseline, Greece
+`super-league-greece/2026-27` matches, standings and top-scorers were all empty;
+Premier League had 6 finished matches, last finished kickoff August 22.
+After start, repeat the public-reader reads beyond its 60-second non-live cache
+window and across successful cycles. Require advancing match data, including
+new Greece matches; examine standings/scorers separately. No progress, a still
+suspended app, or stale rows means recovery remains incomplete.
 
 ⚠️ **A `Deployed` secret set, a green deploy run and a `200` reader `/healthz`
 do not prove ingestion is running** (T17.2,
@@ -581,7 +652,8 @@ credential as an application workflow secret.
 
 For Vercel, keep **Auto-assign Custom Production Domains OFF**, no deploy hooks,
 and `git.deploymentEnabled.main=false` in `vercel.json`. Production goes through
-staging (`--prod --skip-domain`), exact-SHA revalidation and promotion in CI;
+staging (`--prod --skip-domain`), exact-SHA revalidation and project-specific
+API promotion/confirmation in CI;
 Git previews still work. A missing credential is an error, never a successful
 deployment or an optional protection.
 
@@ -596,9 +668,12 @@ actually enabled versus still awaiting owner action.
 `production-frontend` on 2026-09-11, selecting team **Spider** (CLI slug
 `elopenmike`) and existing project `score-arc`. The ordinary-job report confirmed
 token and both IDs present. Do not create or replace the token again merely
-because the old reusable path reported absence. Its identity, expiry and
-production permissions still require acceptance; presence alone establishes none
-of them. The steps below are the governance/provisioning contract, not a claim
+because the old reusable path reported absence. PR #161's main run
+`34663184517` passed the actual presence check and staged production successfully,
+but CLI promotion failed with `User not found. (404)` before confirmation.
+The token is **project-scoped**; the repair uses the supported project promotion
+API and does not broaden scope. Role/expiry governance and actual API promotion
+acceptance remain separate. The steps below are the governance/provisioning contract, not a claim
 that the supplied token is missing or that its role has already been verified.
 
 Use the existing `elopenmike` team and `score-arc` project, not the local Owner's
@@ -620,7 +695,7 @@ credential or a newly created project. Handle each owner approval separately:
    blocked. Do not silently upgrade a plan or substitute Owner/Project Admin
    credentials or a broader role to make the workflow pass.
 3. After separate token-creation approval, the dedicated identity's custodian
-   creates a team-scoped access token with a recorded expiration and rotation
+   creates a **project-scoped** access token for `score-arc` with a recorded expiration and rotation
    owner. Store it directly in GitHub **Settings → Environments →
    production-frontend → Environment secrets → VERCEL_TOKEN**. Alternatively,
    use the secure interactive prompt below; never put the token in command
@@ -644,8 +719,10 @@ production permissions can enable paths outside CI; audit the identity's use,
 protect its credential and retain the supported release/rollback rules. Token
 creation, storage, permission changes and production acceptance are separate
 approvals, not consequences of a successful local test.
-The pinned CLI reads `VERCEL_TOKEN` from the step environment; release commands
-do not put it in `--token` arguments. Before merge, coordinate the
+The pinned staging CLI and project-specific promotion helper read `VERCEL_TOKEN`
+from the step environment; release commands do not put it in `--token` arguments.
+Do not use account/user endpoints or the incompatible CLI promote/status path
+to test this project's token. Before merge, coordinate the
 [activation hold and acceptance order](RELEASES.md#activation-order): main CI
 may immediately select all services, and ingester recovery is separately authorized.
 
@@ -653,6 +730,9 @@ Primary references: [team roles](https://vercel.com/docs/rbac/access-roles),
 [Pro Developer role](https://vercel.com/changelog/developer-role-now-available-for-pro-teams),
 [extended permissions](https://vercel.com/docs/rbac/access-roles/extended-permissions),
 [member management](https://vercel.com/docs/rbac/managing-team-members).
+[Project-token scope](https://vercel.com/docs/accounts/access-tokens) and the
+[promotion API](https://vercel.com/docs/rest-api/projects/point-production-traffic-to-a-given-deployment)
+define the corrected authentication path.
 
 ---
 
