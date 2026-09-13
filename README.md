@@ -190,12 +190,14 @@ mirrors production's ordinary matrix-job topology using presence booleans only; 
 does not publish code or replace release CI. See the
 [diagnostic runbook](docs/backend/RELEASES.md#non-deploying-credential-preflight)
 for interpreting missing values and the separate owner activation steps.
-The Vercel token has been supplied; presence does not prove provider permission.
-Before merging the correction, coordinate a safe activation hold or authorize
-the selected releases. This correction's `ci.yml` and release-script changes
-select all three services against the `0f75102` baselines; unresolved frontend
-record `6404319208` does not hold either Fly job. Ingester recovery remains the
-separately approved same-machine update-then-start plan.
+The existing Vercel token published `c8faba2` during the September 13 website
+recovery. CI confirmation still needs the `rollbackInfo=true` metadata-query
+correction; a red confirmation does not undo an already completed promotion.
+See [current release evidence](docs/CURRENT_STATE.md#10-t211-delivery-controls).
+Before merging release-script changes, coordinate a safe activation hold or
+authorize the selected releases: these changes can select all three services,
+and a frontend hold does not hold Fly. Do not repeat a promotion without first
+reconciling its provider-side outcome.
 If release eligibility fails first, use the runbook's
 [named-check diagnostics](docs/backend/RELEASES.md#eligibility-rejection-diagnostics);
 do not weaken the guard or mistake that failure for a credential check.

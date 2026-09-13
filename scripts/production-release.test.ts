@@ -213,7 +213,9 @@ describe('project-scoped Vercel promotion', () => {
         return new Response(null, { status, headers: { Location: 'https://untrusted.invalid/do-not-follow' } });
       }
       if (url.pathname === '/v9/projects/prj_test') return Response.json({
-        ...settings, lastAliasRequest: posted ? jobs[Math.min(polls++, jobs.length - 1)] : null,
+        ...settings,
+        lastAliasRequest: posted && url.searchParams.get('rollbackInfo') === 'true'
+          ? jobs[Math.min(polls++, jobs.length - 1)] : null,
       });
       if (url.pathname === '/v13/deployments/test.vercel.app' || url.pathname === '/v13/deployments/dpl_test') {
         return Response.json(candidate);
@@ -240,6 +242,17 @@ describe('project-scoped Vercel promotion', () => {
       expect(init?.headers).toMatchObject({ Authorization: 'Bearer synthetic-project-token' });
     }
     expect(fetcher.mock.calls.some(([input]) => String(input).includes('/v4/aliases/www.scorearc.futbol'))).toBe(true);
+  });
+  it('requests promotion metadata on preflight and every poll while retaining team scope', async () => {
+    const fetcher = provider({ jobs: [{ ...job, jobStatus: 'in-progress' }, job] });
+    await expect(promoteVercelPublication(env, 'https://test.vercel.app', fetcher, pause)).resolves.toBeUndefined();
+    const projectReads = fetcher.mock.calls.map(([input]) => new URL(String(input)))
+      .filter(url => url.pathname === '/v9/projects/prj_test');
+    expect(projectReads).toHaveLength(3);
+    for (const url of projectReads) {
+      expect(url.searchParams.getAll('rollbackInfo')).toEqual(['true']);
+      expect(url.searchParams.getAll('teamId')).toEqual(['team_test']);
+    }
   });
   it.each([
     { projectId: 'prj_other' }, { id: '../../user' }, { id: 'https://untrusted.invalid/' },

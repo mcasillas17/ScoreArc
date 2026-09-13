@@ -535,23 +535,36 @@ the diagnosis.
 
 ## 10. T21.1 delivery controls
 
-**2026-09-13: ordinary-job correction merged and exercised; frontend promotion
-and ingester activation remain incomplete.**
-PR #161 is merged as `0f751029f3dd6965c8b607814d97c3b9c29f131c`. Run
-[34663184517](https://github.com/mcasillas17/ScoreArc/actions/runs/34663184517),
-attempt 1, passed full `test` and all three actual credential-presence checks.
+**2026-09-13 07:25 UTC: latest main is live on the website; automated
+publication confirmation still needs the metadata-query correction.**
+The owner authorized recovery at 07:05 UTC. Frontend-only run
+[34744420797](https://github.com/mcasillas17/ScoreArc/actions/runs/34744420797)
+passed full `test` and published `c8faba2a6dc0e105c0c1d7fcb03e957e6e07a022`
+using the existing project-scoped token. Its Fly publishing steps were skipped.
 
 | Milestone | Current evidence |
 |---|---|
-| Code completed | This follow-up implements project-specific promotion with the existing Vercel token, bounded 201/202 job polling and exact deployed-SHA/domain confirmation, plus compatible Actions-owned ledger validation; safe ingester recovery is documented. |
-| PR merged | **PR #161 and dependency-only #153. This follow-up is not merged or activated.** |
-| Reader deployed | Run `34663184517` and ledger `6404317179` succeeded at `0f75102`; September 13 `/healthz` and América profile both returned 200 (36 squad members, 17 matches). |
-| Ingester image deployed | Run/ledger `6404317598` succeeded at `0f75102`, Fly v21; machine `d896262f9016e8` remains stopped with `standbys=["80d219b6421d78"]`, app suspended. |
-| Frontend deployed | Staging succeeded, CLI 59.11.7 promotion failed `User not found. (404)`; confirmation never ran. Ledger `6404319208` remains failure/unresolved. No successful frontend publication is established. |
-| Fresh data arriving | **Not accepted.** September 13 Greece matches/standings/top-scorers are empty; Premier League finished data still ends August 22. Logs timed out; no direct database query was made. |
+| Code completed | Project-specific promotion works. A regression fix requests `rollbackInfo=true` on promotion preflight/polling and preserves the team query parameter; this correction is not yet merged or deployed. |
+| PR merged | **#162**, merge `c8faba2`, includes the ordinary-job, ledger-identity and project-scoped promotion repairs. |
+| Reader deployed | #162 run `34742757841` and ledger `6418498944` deployed `c8faba2`; `/healthz` returned 200. The later frontend-only recovery did not redeploy it. |
+| Ingester image deployed | #162 ledger `6418498672` deployed the `c8faba2` image. The owner started machine `d896262f9016e8` at 06:40 UTC; readback showed one started machine and the old standby target still configured. No ingester change was made during website recovery. |
+| Frontend deployed | **Verified live:** both production domains point to `dpl_GkNQFyCMMYpVRPZi6nvpVtfCPbzg`, exact `c8faba2`, run `34744420797` attempt 1. The promotion job is `succeeded`; no rolling release. Read-only repository confirmation and English/Spanish browser rendering passed. |
+| Automated confirmation | CI timed out waiting for metadata hidden unless `rollbackInfo=true` is supplied. Old incident `6404319208` and new confirmation incident `6418795270` were acknowledged `inactive` under the approved recovery; no actual-success Actions baseline is claimed. |
+| Fresh data arriving | At 06:41 UTC Greece had 182 matches, 23 finished, latest finished kickoff September 12, plus standings and 30 top scorers. Premier League had 37 finished matches through September 12, up from 6 through August 22. Writes resumed, but multiple zero-failure cycles and standby cleanup are not accepted by this observation. |
 | Activation hold | Main-only branch policies exist, but no required-reviewer approval hold was present on any of the three environments. |
 
-**Later main update:** PR #153 advanced main to `4b972c2` with only the Node type
+The plain project GET returned `lastAliasRequest: null`; adding
+`rollbackInfo=true` exposed the succeeded promotion from the previous live
+deployment to the exact new deployment. The missing parameter explains the
+false CI failure; it is not a failed publication or a token-scope problem.
+Keep the single-POST rule and exact SHA/run/attempt/domain checks. The next
+release must exercise the corrected reader and record its own Actions-authored
+success. No frontend data-source cutover occurred.
+
+### Pre-recovery evidence
+
+PR #161 run `34663184517`, attempt 1, passed full `test` and all three actual
+credential-presence checks. PR #153 advanced main to `4b972c2` with only the Node type
 dependency change. Run
 [34741032755](https://github.com/mcasillas17/ScoreArc/actions/runs/34741032755)
 passed `test`, then all three release jobs failed before credentials/publication
@@ -566,8 +579,7 @@ Unknown provenance still fails closed; authorized operator `inactive`
 acknowledgement and unresolved-failure blocking are unchanged. Read-only execution
 of the corrected lookup returned the two existing `0f75102` Fly baselines and
 still rejected frontend `6404319208` as unresolved. No record was edited.
-This branch includes the dependency-only main update; the ledger correction,
-like promotion, still requires review/merge and authorized hosted acceptance.
+PR #162 subsequently merged that ledger correction and the promotion repair.
 
 **Vercel repair boundary:** token scope is project `score-arc` in team Spider
 (`elopenmike`), with the existing matching IDs. Project tokens deny user-level
@@ -577,12 +589,11 @@ is not a captured historical HTTP trace. The correction sends one supported
 project promotion POST and polls/validates its exact deployment, with no account
 lookup, token replacement, scope broadening or retry after uncertain acceptance.
 
-Authenticated Vercel provider readback was unavailable in this follow-up (local
+Authenticated Vercel provider readback was unavailable before #162 merged (local
 token absent, dashboard required sign-in). Public HTTP still redirected
 `scorearc.futbol` to `www.scorearc.futbol`, then `/en`, but that does not identify
-the serving deployment or prove no queued operation. **Do not reconcile
-`6404319208` or retry until an authenticated read proves terminal provider state
-and the owner separately authorizes reconciliation and publication.**
+the serving deployment or prove no queued operation. That pre-recovery blocker
+was superseded by the authorized recovery and authenticated evidence above.
 
 The safe Fly plan preserves the existing machine and exact image digest,
 clears only the standby relationship plus equivalent image pinning while keeping

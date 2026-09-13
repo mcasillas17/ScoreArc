@@ -366,7 +366,8 @@ the exact-SHA revalidation step, `production-release.mjs promote-vercel`:
 2. Sends **one** `POST /v10/projects/{projectId}/promote/{deploymentId}` with
    `{}`. The documented responses are `201` and `202`, with no required JSON
    body. `202` means accepted/queued, not deployed.
-3. Polls the project's `lastAliasRequest`, requiring a new `promote` record for
+3. Reads the project with `rollbackInfo=true` both before POST and while polling
+   `lastAliasRequest`, requiring a new `promote` record for
    that immutable deployment. `pending`/`in-progress` wait; `failed`, `skipped`
    and unknown matching-job states fail. An older/different job never proves
    success. The overall deadline is ten minutes, with at most 120 polls,
@@ -375,6 +376,12 @@ the exact-SHA revalidation step, `production-release.mjs promote-vercel`:
    tested metadata, successful alias assignment, and the exact
    `www.scorearc.futbol` project/deployment mapping. Propagation confirmation
    gets three attempts with five-second waits, still under the overall deadline.
+
+The project endpoint returns `lastAliasRequest: null` without
+`rollbackInfo=true`, even after a successful promotion. Always retain this
+query parameter alongside `teamId`; a null value from the default project read
+does not establish that no promotion is pending. This is also the parameter
+used by CLI 59.11.7's promotion-status lookup.
 
 Tokens remain in environment variables and authorization headers, never command
 arguments. No `/v2/user`, team-resource lookup, response-provided callback URL,
@@ -439,9 +446,11 @@ with the existing token available securely in the environment. Do **not** use
 Inspect the configured project's `lastAliasRequest`, any active rolling release
 and queued promotion, deployment metadata for the failed run, and both domain
 assignments/redirects. Relevant fixed-origin GETs are
-`/v9/projects/{projectId}`, `/v1/projects/{projectId}/rolling-release`,
+`/v9/projects/{projectId}?rollbackInfo=true`, `/v1/projects/{projectId}/rolling-release`,
 `/v7/deployments?projectId={projectId}`, `/v13/deployments/{deploymentId}`,
 and `/v4/aliases/www.scorearc.futbol`; scope them to the configured team.
+For the first URL, append `&teamId=...`, not a second `?`. Requesting promotion
+metadata is mandatory before interpreting `lastAliasRequest`.
 Never follow a response-provided URL with credentials or print complete responses
 that may contain environment values.
 
@@ -454,14 +463,23 @@ success does **not** prove absence of pending promotions/rolling releases;
 that separate provider-state inspection is still required. Prefer owner
 sign-in for readback over exposing or replacing the stored Actions token.
 
-**Known incident:** frontend ledger `6404319208`, run `34663184517` attempt 1
-at `0f75102`, remained `failure` on September 13. The run's staging succeeded
-and CLI promotion failed before confirmation. That log alone does not establish
-provider terminal state. This follow-up did not have authenticated Vercel
-readback, so pending promotions and actual serving deployment remain unverified.
-Keep the record blocked. Obtain separate explicit authorization to reconcile
-only after fresh provider evidence proves the prior operation terminal; obtain
-release authorization separately before any current-main retry.
+**September 13 recovery:** the owner authorized website recovery and latest-main
+publication. Incident `6404319208` was acknowledged `inactive`, then frontend-only
+run [34744420797](https://github.com/mcasillas17/ScoreArc/actions/runs/34744420797)
+published `c8faba2` to both production domains. The promotion succeeded, but CI
+timed out because its project reads omitted `rollbackInfo=true`. Authenticated
+readback with the parameter proved the exact promotion `succeeded`, no rolling
+release, and the canonical domain on `dpl_GkNQFyCMMYpVRPZi6nvpVtfCPbzg`.
+The repository's read-only verifier and English/Spanish browser checks also
+passed. After the run was terminal, record `6418795270` was acknowledged
+`inactive` at 07:25:52 UTC with the actual publication and confirmation defect
+in its description. No successful Actions status was manufactured.
+
+Land the metadata-query correction before another release; do not repeat the
+promotion POST merely because this run is red. The website is already live.
+The next eligible release still needs full current-main CI and an
+Actions-authored actual-success ledger. Historical evidence does not authorize
+reconciling a different future incident without fresh provider checks.
 
 Only after the GitHub run is terminal **and** the provider state is reconciled,
 record an explicit acknowledgement with the incident/evidence reference:
