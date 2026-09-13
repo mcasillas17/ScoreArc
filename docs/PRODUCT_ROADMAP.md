@@ -830,14 +830,19 @@ reader resolves the competition/season correctly (`400` on unknown ones), so
 would hide a pipeline-wide stall behind a per-competition flag and break a
 working ESPN-backed frontend competition. Population requires the authorized
 orphan-standby recovery in
-[SETUP.md §7.4](backend/SETUP.md#74-first-deploy) (observe the ⛔ blocker there
-before acting), accepted with the freshness
+[SETUP.md §7.4](backend/SETUP.md#74-first-deploy) (separate explicit approval
+before update and start), accepted with the freshness
 check in [§7.5](backend/SETUP.md#75-verify).
 [CURRENT_STATE §3](CURRENT_STATE.md#3-verification-evidence-this-pass-2026-09-01)
 owns the dated evidence and the remaining unknowns (why the worker stopped and
-when its primary Machine was removed; why `--ha=false` has not cleared the
-standby). The September 11 ledger read found no managed baseline for any
-service (CURRENT_STATE §10), so bootstrap remains an activation risk. Distinguishing "genuinely
+when its primary Machine was removed). **September 13:** v21 at tested `0f75102`
+updated the same machine but left it stopped/suspended; Greece remains empty.
+Versioned Fly behavior supports clearing its obsolete standby in place while
+preserving the same image/config and keeping it stopped before a separate start
+approval. No recovery operation has been executed. Reader/ingester now have
+successful release records; frontend `6404319208` is unresolved. Workflow/release
+script changes still select all services, so coordinate activation before merge.
+Distinguishing "genuinely
 empty" from "ingestion stopped" *in the response itself* remains T17.3;
 per-competition freshness alerting remains T17.4.
 
@@ -880,20 +885,24 @@ per-competition freshness alerting remains T17.4.
 | **T21.3** | Complete provisional-team curation and safe identity promotion in both operator tooling and the ingester promotion path. | Repoint match, standing, appearance, and match-event references before deletion; promotion never ends in FK `23503`. | T21.2 |
 | **T21.4** | Add reader/ingester metrics, bounded audit retention, dashboards, and operator runbooks. | Metrics omit secrets/high-cardinality ids; each E17 alert links to a diagnostic and recovery action. | none |
 
-**T21.1 activation remains open:** the release gates are merged, but main run
-`34019423444` passed tests then failed all three credential checks; the later
-`34077227730` passed tests but stopped Fly at the preceding eligibility guard.
-Named failed-check diagnostics retain all eligibility conditions; the historical
-rejecting predicate remains unknown. The completed protected comparison found
-tokens present in ordinary jobs and absent in reusable jobs for all three
-services. `VERCEL_TOKEN` was supplied September 11; provider permissions remain
-unaccepted. The correction moves release execution into ordinary environment-bound
-`ci.yml` matrix jobs and replaces the comparative probe with the same topology.
-No credential replacement, scope broadening or eligibility relaxation is required.
-New-topology hosted presence acceptance and actual provider release acceptance
-remain separate, authorized post-merge steps. With no managed baseline, merging
-may publish all services and restart the ingester; coordinate a safe hold or
-authorize activation before merge, with ingester recovery separately approved.
+**T21.1 activation remains open (September 13 readback):** PR #161 merged as
+`0f75102`; main run `34663184517` passed full tests and all three actual credential
+checks. Reader deployed and serves health/América correctly. Ingester image v21
+deployed but its sole worker remains stopped. Frontend staging succeeded, then
+CLI 59.11.7 promotion failed `User not found. (404)` before confirmation.
+Later dependency-only main `4b972c2` passed tests but stopped all releases on
+an optional ledger app-identity field. The follow-up recognizes the actual
+Actions-owned creator/status without discarding provenance or unresolved records.
+The follow-up implements project-specific API promotion with the **existing
+project-scoped token**, bounded async polling and exact-domain proof; it is not
+yet merged or activated. Ledger `6404319208` remains unresolved pending
+authenticated provider-state inspection and separately approved reconciliation.
+No token replacement, scope broadening or eligibility relaxation is required.
+Reader/ingester now have successful `0f75102` ledger baselines, but this
+workflow/release-script change selects all three services. No approval hold was
+present on any production environment at readback; leave the PR unmerged until
+the owner authorizes activation or verifies suitable holds. Ingester recovery
+requires separate update/start approvals and actual fresh-data acceptance.
 See CURRENT_STATE §10 for dated evidence and remaining operator actions. This is neither the E16 data
 cutover nor T21.2 schema readiness; T17.1 recovery stays closed.
 

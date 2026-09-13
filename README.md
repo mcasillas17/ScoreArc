@@ -164,7 +164,12 @@ CI validates both PRs and the actual merged `main` commit. Only after its full
 reader, ingester, and frontend change filters. Ordinary matrix jobs in `ci.yml`
 bind each service's protected environment directly; there is no reusable release
 workflow or alternate publication path. Vercel Git integration does not
-publish `main`; the gated workflow stages and promotes the frontend.
+publish `main`; the gated workflow stages the frontend, promotes through the
+project-specific Vercel API using the existing project-scoped token, and confirms
+the exact deployment on the production domain. An accepted/queued request is
+not a successful release, and uncertain operations block retries.
+Release history is validated against the server-owned Actions bot identity;
+missing optional app metadata does not discard a genuine successful baseline.
 
 Manual releases use **Actions → CI → Run workflow → main** and rerun the full
 suite. Roll back through a revert PR, never a direct old-image deployment.
@@ -172,16 +177,27 @@ See the [release runbook](docs/backend/RELEASES.md) for activation, credentials,
 retry/recovery and post-merge acceptance; [current state](docs/CURRENT_STATE.md#10-t211-delivery-controls)
 distinguishes implemented code from enabled production paths.
 
-To accept environment access, use the authorized **Production credential
+An ingester image upload is not proof of fresh data. The
+[same-machine recovery runbook](docs/backend/SETUP.md#74-first-deploy) preserves
+the tested image and configuration instead of deleting an orphan standby first.
+Updating the machine and starting its normal database-writing loop require
+separate explicit approvals. Recovery is accepted only with one running worker,
+clean ingestion cycles and advancing match data, including Greece.
+
+If environment access is in doubt, use the authorized **Production credential
 preflight (no deployment)** workflow on `main`, selecting one service. It
 mirrors production's ordinary matrix-job topology using presence booleans only; it
 does not publish code or replace release CI. See the
 [diagnostic runbook](docs/backend/RELEASES.md#non-deploying-credential-preflight)
 for interpreting missing values and the separate owner activation steps.
-The Vercel token has been supplied; presence does not prove provider permission.
-Before merging the correction, coordinate a safe activation hold or authorize
-the selected releases: an empty managed ledger can bootstrap all three services
-and restart the ingester. Its recovery remains a separate operator action.
+The existing Vercel token published `c8faba2` during the September 13 website
+recovery. CI confirmation still needs the `rollbackInfo=true` metadata-query
+correction; a red confirmation does not undo an already completed promotion.
+See [current release evidence](docs/CURRENT_STATE.md#10-t211-delivery-controls).
+Before merging release-script changes, coordinate a safe activation hold or
+authorize the selected releases: these changes can select all three services,
+and a frontend hold does not hold Fly. Do not repeat a promotion without first
+reconciling its provider-side outcome.
 If release eligibility fails first, use the runbook's
 [named-check diagnostics](docs/backend/RELEASES.md#eligibility-rejection-diagnostics);
 do not weaken the guard or mistake that failure for a credential check.
