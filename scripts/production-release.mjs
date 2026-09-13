@@ -129,7 +129,9 @@ function vercelClient(env, fetcher, signal) {
   }
   return async (path, method = 'GET') => {
     const requestTimeout = AbortSignal.timeout(30_000);
-    const response = await fetcher(`https://api.vercel.com/${path}?teamId=${encodeURIComponent(VERCEL_ORG_ID)}`, {
+    const url = new URL(`https://api.vercel.com/${path}`);
+    url.searchParams.set('teamId', VERCEL_ORG_ID);
+    const response = await fetcher(url.href, {
       method, redirect: 'error',
       headers: { Authorization: `Bearer ${VERCEL_TOKEN}`, 'Content-Type': 'application/json' },
       body: method === 'POST' ? '{}' : undefined,
@@ -217,7 +219,8 @@ export async function promoteVercelPublication(env, deploymentUrl, fetcher = fet
   const deadline = AbortSignal.timeout(600_000);
   const read = vercelClient(env, fetcher, deadline);
   const wait = pause ?? (() => delay(5000, undefined, { signal: deadline }));
-  const projectPath = `v9/projects/${encodeURIComponent(env.VERCEL_PROJECT_ID)}`;
+  // Vercel returns lastAliasRequest: null unless promotion metadata is requested.
+  const projectPath = `v9/projects/${encodeURIComponent(env.VERCEL_PROJECT_ID)}?rollbackInfo=true`;
   const project = await read(projectPath);
   assertVercelProject(project, env.VERCEL_PROJECT_ID, env.VERCEL_ORG_ID);
   if (['pending', 'in-progress'].includes(project.lastAliasRequest?.jobStatus)) {
