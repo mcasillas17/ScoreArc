@@ -4,8 +4,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Match } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
 import { monthRange, shiftMonth } from '@/server/data/dateRange';
-import { trackEvent, trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
-import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
+import { trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
+import MatchDetailPopup from './MatchDetailPopup';
+import { useMatchDetails } from './useMatchDetails';
 import MatchRow from './MatchRow';
 import {
   monthLoadFailed,
@@ -81,16 +82,13 @@ export default function MatchCalendar({
     error: initialError,
   });
   const [today, setToday] = useState<Date | null>(null);
-  const [detail, setDetail] = useState<Match | null>(null);
-  const [summary, setSummary] = useState<MatchSummary | null>(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
+  const { detail, summary, loadingDetail, openDetails, closeDetails } = useMatchDetails(apiBase, 'match-calendar');
   const initialRange = monthRange(parseMonth(initialMonth));
   const loadedRange = useRef<string | null>(initialError ? null : initialRange);
   const serverAttemptedRange = useRef<string | null>(initialError ? initialRange : null);
   const feedFailed = useRef(false);
   const didScrollToToday = useRef(false);
   const listRef = useRef<HTMLDivElement>(null);
-  const detailsAbort = useRef<AbortController | null>(null);
 
   const minIndex = monthIndex(parseMonth(minMonth));
   const maxIndex = monthIndex(parseMonth(maxMonth));
@@ -241,35 +239,6 @@ export default function MatchCalendar({
     };
   }, [apiBase, cursor, today]);
 
-  useEffect(() => () => detailsAbort.current?.abort(), []);
-
-  async function openDetails(match: Match) {
-    detailsAbort.current?.abort();
-    const controller = new AbortController();
-    detailsAbort.current = controller;
-    trackEvent('Match details opened', { surface: 'match-calendar' });
-    setDetail(match);
-    setSummary(null);
-    setLoadingDetail(true);
-    try {
-      const res = await fetch(
-        `${apiBase}/match/${match.id}?home=${match.home.id}&away=${match.away.id}`,
-        { cache: 'no-store', signal: controller.signal },
-      );
-      if (!res.ok) {
-        trackEvent('Match details unavailable', { surface: 'match-calendar', status: res.status });
-        return;
-      }
-      setSummary((await res.json()) as MatchSummary);
-    } catch {
-      if (!controller.signal.aborted) {
-        trackEvent('Match details unavailable', { surface: 'match-calendar' });
-      }
-    } finally {
-      if (!controller.signal.aborted) setLoadingDetail(false);
-    }
-  }
-
   const todayKey = today ? dayKey(today) : null;
   const cursorLabel = monthLabel(cursor, locale) ?? t('common.unavailable');
 
@@ -337,11 +306,7 @@ export default function MatchCalendar({
           match={toMatchDetailInput(detail)}
           summary={summary}
           loading={loadingDetail}
-          onClose={() => {
-            detailsAbort.current?.abort();
-            setDetail(null);
-            setSummary(null);
-          }}
+          onClose={closeDetails}
         />
       )}
     </>

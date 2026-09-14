@@ -90,6 +90,42 @@ export function releaseStatus(outcomes) {
   return 'failure';
 }
 
+export const ingesterApp = 'scorearc-ingester';
+
+const isRecord = value => typeof value === 'object' && value !== null && !Array.isArray(value);
+const label = (value, pattern) => typeof value === 'string' && pattern.test(value) ? value : null;
+
+/**
+ * Checks `flyctl machines list --json` against the singleton ingester contract.
+ * Returns constant condition labels plus sanitized IDs/states only, never config.
+ * @param {unknown} inventory
+ */
+export function assessIngesterMachines(inventory) {
+  if (inventory !== null && !Array.isArray(inventory)) return { failures: ['malformedInventory'], machines: [] };
+  const failures = new Set();
+  const machines = [];
+  for (const machine of inventory ?? []) {
+    const id = label(machine?.id, /^[a-z0-9]{1,32}$/);
+    const state = label(machine?.state, /^[a-z_]{1,32}$/);
+    if (!id || !state) failures.add('malformedInventory');
+    if (state === 'destroyed' || state === 'destroying') continue;
+    machines.push({ id: id ?? 'invalid-id', state: state ?? 'invalid-state' });
+    const config = machine?.config;
+    const { standbys, restart } = isRecord(config) ? config : {};
+    if (!isRecord(config) || (standbys !== undefined &&
+        !(Array.isArray(standbys) && standbys.every(target => typeof target === 'string'))) ||
+        (restart !== undefined && !isRecord(restart))) {
+      failures.add('malformedInventory');
+      continue;
+    }
+    if (state !== 'started') failures.add('started');
+    if (standbys?.length) failures.add('noStandbys');
+    if (restart?.policy !== 'always') failures.add('restartAlways');
+  }
+  if (machines.length !== 1) failures.add('exactlyOneMachine');
+  return { failures: [...failures], machines };
+}
+
 /**
  * @param {{id: string, accountId: string, autoAssignCustomDomains: boolean,
  * link?: {type: string, org: string, repo: string, productionBranch: string, deployHooks: unknown[]} | null}} project
