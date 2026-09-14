@@ -421,14 +421,56 @@ untested local tree or arbitrary old SHA is accepted.
   policy restarts the process after any exit, and `--ha=false` prevents Fly's
   default no-service deployment from creating a stopped standby machine.
 
-If `fly status --app scorearc-ingester` shows a stopped `app†` standby as the
-**only** machine, do not delete it as the first recovery step. A deploy with
-`--ha=false` did not clear the observed orphan relationship, including PR #161's
-successful v21 deployment. The supported narrow repair is an in-place config
-update that keeps the same tested image, followed by a separately approved start.
-This is operational recovery, not an alternate source-code release path.
+#### Ingester configuration layers
 
-#### Same-machine recovery plan (not executed)
+Three different things decide what the ingester machine looks like. Check the
+right one before concluding a setting is live:
+
+| Layer | Where it lives | When it changes production | What confirms it |
+|---|---|---|---|
+| Committed app configuration | `backend/ingester/fly.toml`: top-level `kill_signal`/`kill_timeout`, `[deploy] strategy`, `[[restart]]`, `[[vm]]` | Only on the next gated CI ingester release, which rewrites the machine from it | `scripts/production-policy.test.ts` (keys are top level, not nested); `flyctl config show --local -c backend/ingester/fly.toml` |
+| One-time machine configuration | State on the machine itself that `fly.toml` does not express: the `standbys` relationship, and anything set by `fly machine update` or `fly scale` | Only by an explicitly approved operator command | Read-only machine readback |
+| Post-deployment readiness | The release step's [machine-contract check](RELEASES.md#post-deployment-ingester-verification) | Never: it only reads | Its log line and the ledger outcome; it does **not** prove data freshness |
+
+The layers interact. flyctl v0.4.83 (`internal/appconfig/machines.go`)
+rebuilds the machine config on deploy by cloning the existing one. `[[vm]]`
+overrides the guest size, and top-level kill settings set `stop_config`. A
+`standbys` list survives, because deploy clears it only for groups with services
+(`internal/command/deploy/machines_launchinput.go`). This worker has no
+services. That is why `--ha=false` never removed the old standby target: that
+flag only stops deploy creating **new** standbys.
+
+**Live drift to decide before the next ingester release.** Read-only readback at
+2026-09-14 05:38 UTC found machine `d896262f9016e8` at shared **2 vCPU /
+4096 MB**. The committed `[[vm]]` is `shared-cpu-1x` / `512mb`. The next
+ingester release applies the committed size, shrinking the machine to 1 vCPU /
+512 MB. The first release to set top-level kill settings also adds the 15-second
+`SIGTERM` stop configuration, which the machine does not have yet. Resizing is
+a separate owner decision. Either accept the committed size, or change `[[vm]]`
+in its own reviewed PR before an ingester release. Do not reconcile it with
+`fly scale`.
+
+If `fly status --app scorearc-ingester` ever shows a stopped `app†` standby as
+the **only** machine, do not delete it as the first recovery step, and do not
+expect a deploy to clear it (see above). The supported narrow repair is an
+in-place config update that keeps the same tested image, followed by a
+separately approved start. This is operational recovery, not an alternate
+source-code release path. The release step's machine check fails on any standby
+target, so a recurrence shows up as a red ingester release.
+
+#### Same-machine standby recovery (completed 2026-09-13)
+
+**Status:** the owner reports removing the obsolete standby relationship from
+`d896262f9016e8` after the September 13 website recovery. The same machine
+was returned to running. Read-only readback at 2026-09-14 05:38 UTC found one
+started machine, no standby targets, restart `always` and no `stop_config`. Its
+last update was 2026-09-13 08:17 UTC. This recovery is **not outstanding**; do
+not repeat it. Its guest size (shared 2 vCPU / 4096 MB) differs from the
+baseline below (1 vCPU / 512 MiB). This readback does not show when or why it
+changed; see the drift note above. The record below keeps the procedure in case
+the problem returns. Its pinned values are the **pre-recovery** baseline. The
+image has also changed since (PR #162's release), so re-read every value before
+reusing any command.
 
 Read-only baseline, **2026-09-13 05:16–05:21 UTC**:
 
@@ -512,11 +554,13 @@ advisory lock via `pg_try_advisory_lock`, which is non-blocking: a second
 instance does not queue, it logs `another ingester instance holds the database
 lease` and exits 1. Its `fly.toml` therefore pins `strategy = "immediate"` so
 the old machine stops before the new one starts. The Go shutdown path gives lease
-release five seconds. **Do not assume a live 15-second Fly shutdown allowance:**
-the observed machine has no `stop_config`, and the existing `kill_signal` /
-`kill_timeout` TOML entries are nested under `[[restart]]`, not top-level.
-The narrow same-image recovery preserves this configuration; correcting shutdown
-configuration is separate from this recovery and requires its own release.
+release five seconds. The committed `fly.toml` now declares `kill_signal =
+"SIGTERM"` and `kill_timeout = "15s"` at top level, where Fly reads them. Before
+this fix they sat under `[[restart]]`, and Fly silently dropped them.
+**Do not assume the live machine has the 15-second allowance yet:** at the
+2026-09-14 readback it still had no `stop_config`. The allowance takes effect only
+when the next gated ingester release rewrites the machine from the committed
+file. Never apply it with a machine update.
 Every ingester deploy must pass
 `--ha=false`; the committed workflow does so. If a deploy ever leaves the lock
 stranded, verify which process holds it and wait for the connection to drop;
@@ -542,6 +586,11 @@ fly logs --app scorearc-ingester --no-tail
 Confirm more than one successful cycle and no restart loop. `cycle complete`
 also appears when `failures` is nonzero, so the message alone is insufficient.
 If bounded log reads time out, logs are unavailable, not clean.
+
+Every gated ingester release now runs the machine part of this check itself
+(one started machine, no standby targets, restart `always`). See
+[RELEASES](RELEASES.md#post-deployment-ingester-verification). A passing check,
+like a green deploy, does not replace the log and freshness checks here.
 
 For the September 13 recovery baseline, Greece
 `super-league-greece/2026-27` matches, standings and top-scorers were all empty;
@@ -724,7 +773,7 @@ from the step environment; release commands do not put it in `--token` arguments
 Do not use account/user endpoints or the incompatible CLI promote/status path
 to test this project's token. Before merge, coordinate the
 [activation hold and acceptance order](RELEASES.md#activation-order): main CI
-may immediately select all services, and ingester recovery is separately authorized.
+may immediately select all services, and any ingester machine operation is separately authorized.
 
 Primary references: [team roles](https://vercel.com/docs/rbac/access-roles),
 [Pro Developer role](https://vercel.com/changelog/developer-role-now-available-for-pro-teams),

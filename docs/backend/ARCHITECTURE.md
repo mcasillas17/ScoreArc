@@ -248,6 +248,8 @@ the seal is the intended single `match_pkey` probe with two shared-buffer hits.
 ## 4. Ingester (slice 1b — implemented Go worker)
 
 - Always-on (Fly restart policy `always`, deployed with `--ha=false`), **no public HTTP**.
+  Each release ends with a read-only machine-contract check
+  ([RELEASES](RELEASES.md#post-deployment-ingester-verification)).
 - A dedicated direct/unpooled pgx connection holds a PostgreSQL advisory lock.
   Normal writes use `POOLED_DSN`; lease health is checked independently during
   each cycle so losing the singleton session cancels work and terminates.
@@ -656,7 +658,8 @@ flowchart TD
   Recheck -->|"Yes"| Promote["Project API: one promotion POST"]
   Promote --> Poll["Bounded exact-job polling + exact SHA/domain confirmation"]
   ReaderRelease --> Ledger["Actual release result ledger"]
-  IngesterRelease --> Ledger
+  IngesterRelease --> MachineCheck["Same step: read-only machine contract<br/>one started machine, no standbys, restart always"]
+  MachineCheck --> Ledger
   Poll --> Ledger
   Git["Vercel Git integration"] -->|"main deployment disabled; auto-domain assignment OFF"| NoBypass["No independent production publication"]
   Diagnostic["Authorized credential preflight dispatch on main"] --> DirectProbe["Ordinary probe matrix<br/>same service environment + secret selection"]
