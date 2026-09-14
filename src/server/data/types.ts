@@ -103,6 +103,8 @@ export interface ShootoutDetail {
 
 export interface Match {
   id: string;
+  /** Present only when the data seam has verified this match's edition. */
+  scope?: { competitionId: string; seasonId: string };
   kickoff: string;          // ISO date string
   state: MatchState;
   minute: string | null;    // displayClock while live, else null
@@ -396,6 +398,8 @@ export interface TeamProfile {
   standingSummary: string | null;
   squad: SquadPlayer[];
   schedule: Match[];
+  /** Transport/scope availability, not a claim of freshness or full coverage. */
+  scheduleAvailability?: { results: 'available' | 'unavailable'; upcoming: 'available' | 'unavailable' };
 }
 
 // One headline season figure as ESPN pre-aggregates it. `display` is kept

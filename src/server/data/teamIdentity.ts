@@ -32,7 +32,7 @@ const canonicalToProvider: Record<string, string> = Object.fromEntries(
  */
 export function canonicalTeamId(providerId: string | null | undefined): string | null {
   if (!providerId) return null;
-  return providerToCanonical[String(providerId)] ?? null;
+  return Object.hasOwn(providerToCanonical, providerId) ? providerToCanonical[providerId] : null;
 }
 
 /**
@@ -41,5 +41,5 @@ export function canonicalTeamId(providerId: string | null | undefined): string |
  */
 export function providerTeamId(canonicalId: string | null | undefined): string | null {
   if (!canonicalId) return null;
-  return canonicalToProvider[String(canonicalId)] ?? null;
+  return Object.hasOwn(canonicalToProvider, canonicalId) ? canonicalToProvider[canonicalId] : null;
 }

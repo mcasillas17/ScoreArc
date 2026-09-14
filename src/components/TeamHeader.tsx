@@ -4,6 +4,8 @@ import type { TeamStyle } from '@/server/data/competitions';
 import type { Locale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
 import TeamBadge from './TeamBadge';
+import FollowTeamButton from './FollowTeamButton';
+import type { TeamFollow } from '@/lib/teamFollows';
 
 export type TeamHeaderProfile = Pick<
   TeamProfile,
@@ -60,10 +62,12 @@ export default function TeamHeader(
     profile,
     teamStyle,
     locale,
+    follow,
   }: {
     profile: TeamHeaderProfile;
     teamStyle: TeamStyle;
     locale: Locale;
+    follow?: TeamFollow;
   },
 ) {
   const t = getTranslator(locale);
@@ -110,6 +114,7 @@ export default function TeamHeader(
           )}
         </div>
       </div>
+      {follow && <FollowTeamButton {...follow} />}
     </header>
   );
 }

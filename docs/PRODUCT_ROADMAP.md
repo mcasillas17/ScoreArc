@@ -786,6 +786,14 @@ code rather than pasted from a dated plan.
 
 ### E16 · Reader parity & staged frontend cutover (1d)
 
+**Bounded foundation implemented (September 13 team-insights slice):** the
+[contract inventory and harness](backend/TEAM_INSIGHTS_CONTRACT.md) cover all
+14 methods in the inventory, with executable TS/Go/OpenAPI coverage limited to
+the team identity, schedule and match fields this feature uses. Query, DTO and
+availability gaps are explicit. **T16.1 remains open** for the broader contract;
+T16.2–T16.6 and the production-cutover gates are unchanged. See the
+[milestone handoff](TEAM_INSIGHTS_HANDOFF.md) for local validation, not deployment.
+
 | Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
 |---|---|---|---|
 | **T16.1** | Build one cross-language contract harness over TypeScript types, OpenAPI, Go DTOs, query vectors, and recorded payloads. | Any field/nullability/query drift fails CI; canonical equivalence is required, not byte equality with provider JSON. | none |
@@ -856,6 +864,15 @@ per-competition freshness alerting remains T17.4.
 | **T18.4** | Prove one licensed adapter behind the existing source/crosswalk seams. | Provider failure does not corrupt canonical identity or overwrite higher-precedence facts; parity fixtures cover one complete competition. | T18.2/T18.3 |
 
 ### E19 · Personalization & alerts
+
+**Deliberate scheduling exception (September 13):** team-only browser-local
+follows on the existing DataStore may ship before E16 dogfooding. The bounded
+[team-insights milestone](TEAM_INSIGHTS_HANDOFF.md) implements Follow/Following,
+home shortcuts to the current season, and deterministic evidence-backed recent
+performance on existing team pages. This is **partial T19.1**, not completion of
+the task or epic. Player/competition follows retain the original gate; T19.2
+ranking/feed, accounts, notifications and generated briefs remain out of scope.
+The data-rights decision and all source-cutover boundaries remain in force.
 
 | Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
 |---|---|---|---|
@@ -982,7 +999,8 @@ every P0 behind one owner decision.
 - **E20:** performance, accessibility, resilient states, responsive behavior,
   SEO, and dead-code removal — important, but not ahead of data correctness.
 - **E10.11 / E12 T12.4:** canonical entity search and player discovery.
-- **E19 T19.1/T19.2:** local-first follows and “My ScoreArc”; accounts,
+- **E19 T19.1/T19.2:** broader local-first follows and “My ScoreArc” (the
+  team-only shortcut subset has the explicit early scheduling exception above); accounts,
   notifications, and generated briefs remain demand/gate dependent.
 
 ### Later or explicitly gated
