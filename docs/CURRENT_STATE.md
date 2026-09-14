@@ -19,6 +19,11 @@ image was unchanged. Other observations retain their original date.
 
 **Ingestion update:** T17.2 diagnosed 2026-09-06 — see §2 and §3.
 
+**Team-insights implementation update:** validated locally September 14 UTC on
+the feature branch based on `504d4bf`; see §11. This is not a production
+deployment, reader cutover, or closure of T16.1/T19.1. Operational observations
+above retain their own verification dates.
+
 ## 1. Authority
 
 This document is the single canonical source for **what is deployed, working,
@@ -316,6 +321,11 @@ that audit's mutable status conclusions where they conflict.
 
 ## 5. 1d / API cutover blockers
 
+The [team-insights contract slice](backend/TEAM_INSIGHTS_CONTRACT.md) now records
+all 14 mappings and tests the supported identity/schedule/match subset across
+TypeScript, OpenAPI and Go, including actual query/error behavior and SQL scope.
+It does not resolve the broader parity or availability blockers below.
+
 - **`DataStore` has 14 methods** (`getMatches`, `getFixtures`,
   `getLiveWindow`, `getUpcoming`, `getStandings`, `getBracket`,
   `getMatchSummary`, `getLeaders`, `getTopScorers`, `getTopAssists`,
@@ -469,6 +479,11 @@ platform's core data-correctness work (§8).
 provider/model decision (post-rights, post-T7.13-closure). **Later:**
 anything requiring validated models or real data — AI recaps (E8), a
 real-data MCP, an LED board, match simulation, personalization.
+
+**Narrow personalization exception:** the September 13 team-insights request
+permits team-only browser-local follows and home shortcuts on the existing
+DataStore before E16 dogfooding (§11). The broader T19.1/T19.2 work keeps its
+existing gates; this does not reorder the infrastructure or data-rights lanes.
 
 **Explicitly lower priority, not ahead of data correctness:** product-
 quality fixes (LCP/TTFB, the 4.9MB ESPN asset payload, the 4.08:1 contrast
@@ -722,3 +737,36 @@ the successful run. No tests were disabled and no production runtime or
 deployment credentials changed. The full main CI gate and provider acceptance
 remain necessary after human merge and separate release authorization.
 T17.1 database recovery is closed; do not reapply migration 0022 for this task.
+
+## 11. First team-insights milestone — local implementation
+
+Implemented and locally validated September 14, 2026 UTC. The initial branch
+started at then-latest `origin/main` `fea71f9`, then incorporated the independently
+merged Next/Vitest upgrades by rebasing onto `504d4bf`. No merge or deployment is
+part of this milestone. Production remains fully ESPN-backed.
+
+- **Partial T16.1:** all 14 DataStore methods inventoried; shared recorded/test
+  vectors cover the milestone's team identity, scoped schedule and match fields.
+  Go DTO/OpenAPI serialization, actual handler error/query semantics and real
+  Postgres ordering/scope are tested. No new Go routes or production code,
+  `apiStore`, shadow traffic, or assertion of full parity.
+- **Partial T19.1:** team-only canonical browser-local follows, with versioned
+  validation/migration, cross-tab updates, hydration safety and a visible usable
+  session fallback on storage failure. Home Your teams is a shortcut list with
+  no per-team statistics/news fan-out. Player/competition follows, T19.2 ranking,
+  accounts, sync, notifications and briefs remain gated/out of scope.
+- **Existing team-page extension:** pure deterministic recent W/D/L, goals,
+  per-match rates and clean sheets, comparing two five-match windows only when
+  ten eligible matches exist. Both periods expose supporting match details.
+  Scope, actual samples, unverified source freshness/coverage and exceptional
+  status/score treatment are explicit. Existing next match, squad, schedule,
+  default home content and telemetry are preserved in English and Spanish.
+- **Local evidence:** 85 Vitest files / 1,084 tests, typecheck, lint (zero errors;
+  seven existing warnings), Next production build, Go build/race suite/vet and
+  real-browser checks passed. Independent Knights Sol/Terra implementation review
+  converged after fixes; final documented-state review is recorded in the PR.
+
+The [handoff](TEAM_INSIGHTS_HANDOFF.md) includes definitions, screenshots,
+validation details and local inspection paths. T16.1, T19.1 and their epics remain
+open. The [data-rights gate](decisions/2026-09-01-data-rights-gate.md), E16
+production-cutover gates, T17 ingestion work and T21 delivery work are unchanged.

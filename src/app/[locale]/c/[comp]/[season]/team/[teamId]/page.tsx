@@ -7,7 +7,8 @@ import { resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import { providerTeamId } from '@/server/data/teamIdentity';
 import { competitionPlayerIndex } from '@/server/data/playerIndex';
-import type { Match } from '@/server/data/types';
+import TeamPerformance from '@/components/TeamPerformance';
+import TeamSchedule from '@/components/TeamSchedule';
 import TeamHeader from '@/components/TeamHeader';
 import SquadTable from '@/components/SquadTable';
 import TeamBadge from '@/components/TeamBadge';
@@ -56,17 +57,6 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   };
 }
 
-/** W / D / L from the club's point of view. */
-function resultFor(match: Match, teamId: string): 'W' | 'D' | 'L' | null {
-  if (match.state !== 'finished') return null;
-  if (match.homeScore === null || match.awayScore === null) return null;
-  const isHome = match.home.id === teamId;
-  const own = isHome ? match.homeScore : match.awayScore;
-  const other = isHome ? match.awayScore : match.homeScore;
-  if (own === other) return 'D';
-  return own > other ? 'W' : 'L';
-}
-
 export default async function TeamPage({ params }: Params) {
   const resolvedParams = await params;
   if (!isLocale(resolvedParams.locale)) notFound();
@@ -92,13 +82,11 @@ export default async function TeamPage({ params }: Params) {
     // leaderboard-style degradation: plain text names
   }
 
-  const played = profile.schedule.filter((m) => m.state === 'finished');
-  const form = played.slice(-5);
   // The next match comes from the schedule, never from the profile's
   // nextEvent: that array is empty on this provider while the schedule carries
   // the club's matches, so reading it would report nothing upcoming for a club
   // that has several.
-  const next = profile.schedule.find((m) => m.state !== 'finished') ?? null;
+  const next = profile.schedule.find((m) => m.state === 'scheduled' && m.statusName === 'STATUS_SCHEDULED') ?? null;
 
   return (
     <main className="main tm">
@@ -120,41 +108,20 @@ export default async function TeamPage({ params }: Params) {
           standingSummary: profile.standingSummary,
         }}
         teamStyle={rc.competition.teamStyle}
+        follow={{ teamId: resolvedParams.teamId, competitionId: rc.competition.id, name: profile.team.name }}
         locale={locale}
       />
 
-      <section className="tm-section">
-        <h2 className="section-label">
-          {t('team.formAndNextMatch')}
-        </h2>
-        <div className="tm-form-row">
-          {form.length > 0 ? (
-            <ol className="tm-form">
-              {form.map((m) => {
-                const r = resultFor(m, profile.team.id);
-                return (
-                  <li key={m.id} className={`tm-chip tm-chip--${r ?? 'na'}`}>
-                    {/* Ganado / Empate / Perdido -- W-D-L is not the
-                        abbreviation a Spanish reader expects. */}
-                    {r === 'W' && t('team.formWinAbbreviation')}
-                    {r === 'D' && t('team.formDrawAbbreviation')}
-                    {r === 'L' && t('team.formLossAbbreviation')}
-                    {r === null && '–'}
-                  </li>
-                );
-              })}
-            </ol>
-          ) : (
-            <p className="tm-none">
-              {t('team.noMatchesPlayed')}
-            </p>
-          )}
+      <TeamPerformance matches={profile.schedule} teamId={profile.team.id}
+        scope={{ competitionId: rc.competition.id, seasonId: rc.season.id }}
+        competitionName={rc.competition.shortName} seasonLabel={rc.season.label}
+        teamStyle={rc.competition.teamStyle} availability={profile.scheduleAvailability} />
 
+      <section className="tm-section">
+        <h2 className="section-label">{t('team.next')}</h2>
+        <div className="tm-form-row">
           {next ? (
             <p className="tm-next">
-              <span className="tm-next-label">
-                {t('team.next')}
-              </span>
               <TeamBadge team={next.home} size={20} style={rc.competition.teamStyle} />
               <span className="tm-next-teams">
                 {next.home.abbr} {t('match.versusShort')} {next.away.abbr}
@@ -163,7 +130,7 @@ export default async function TeamPage({ params }: Params) {
             </p>
           ) : (
             <p className="tm-none">
-              {t('team.noUpcomingMatch')}
+              {t(profile.scheduleAvailability?.upcoming === 'unavailable' ? 'performance.upcomingUnavailable' : 'team.noUpcomingMatch')}
             </p>
           )}
         </div>
@@ -180,31 +147,15 @@ export default async function TeamPage({ params }: Params) {
         <h2 className="section-label">
           {t('team.matchesAndResults')}
         </h2>
+        {(profile.scheduleAvailability?.results === 'unavailable' || profile.scheduleAvailability?.upcoming === 'unavailable') &&
+          <p className="tp-notice">{t('performance.scheduleUnavailable')}</p>}
         {profile.schedule.length === 0 ? (
           <p className="tm-none">
             {t('team.noMatchesListed')}
           </p>
         ) : (
-          <ul className="tm-matchlist">
-            {profile.schedule.map((m) => (
-              <li key={m.id} className="tm-matchrow">
-                <span className="tm-fx-teams">
-                  <TeamBadge team={m.home} size={18} style={rc.competition.teamStyle} />
-                  <span>{m.home.abbr}</span>
-                  <strong className="tm-fx-score">
-                    {m.state === 'finished' && m.homeScore !== null && m.awayScore !== null
-                      ? `${m.homeScore}–${m.awayScore}`
-                      : <LocalTime iso={m.kickoff} mode="time" />}
-                  </strong>
-                  <span>{m.away.abbr}</span>
-                  <TeamBadge team={m.away} size={18} style={rc.competition.teamStyle} />
-                </span>
-                <span className="tm-fx-when">
-                  <LocalTime iso={m.kickoff} mode="day" />
-                </span>
-              </li>
-            ))}
-          </ul>
+          <TeamSchedule matches={profile.schedule} competitionId={rc.competition.id}
+            seasonId={rc.season.id} teamStyle={rc.competition.teamStyle} />
         )}
       </section>
 

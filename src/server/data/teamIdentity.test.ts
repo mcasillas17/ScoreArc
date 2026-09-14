@@ -23,6 +23,11 @@ describe('team identity crosswalk', () => {
     expect(providerTeamId(null)).toBeNull();
   });
 
+  it.each(['__proto__', 'constructor', 'toString'])('rejects inherited keys: %s', (id) => {
+    expect(canonicalTeamId(id)).toBeNull();
+    expect(providerTeamId(id)).toBeNull();
+  });
+
   it('uses country-prefixed slugs, never bare provider numbers', () => {
     expect(canonicalTeamId('227')).toMatch(/^[a-z]{3}-[a-z0-9-]+$/);
     expect(canonicalTeamId('227')).not.toMatch(/^\d+$/);

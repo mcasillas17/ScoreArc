@@ -35,8 +35,18 @@ export const teamRosterUrl = (slug: string, teamId: string) =>
 // 13 all upcoming. A page wanting upcoming AND played has to ask twice, and
 // the next match comes from the second call (the profile's nextEvent array
 // is empty on this provider).
-export const teamScheduleUrl = (slug: string, teamId: string, upcoming = false) =>
-  `${site(slug)}/teams/${encodeURIComponent(teamId)}/schedule${upcoming ? '?fixture=true' : ''}`;
+export const teamScheduleUrl = (slug: string, teamId: string, upcoming = false, seasonId?: string) => {
+  const query = new URLSearchParams();
+  if (upcoming) query.set('fixture', 'true');
+  if (seasonId) {
+    query.set('season', seasonId.slice(0, 4));
+    // ESPN's public schedule selects the split by ordinal, not its internal
+    // season-type id (14277). Verified against the recorded Apertura payload.
+    if (seasonId.endsWith('-apertura')) query.set('seasontype', '1');
+    if (seasonId.endsWith('-clausura')) query.set('seasontype', '2');
+  }
+  return `${site(slug)}/teams/${encodeURIComponent(teamId)}/schedule${query.size ? `?${query}` : ''}`;
+};
 
 // Athletes live on a DIFFERENT host and a different API version from everything
 // else in this file -- site.web.api / common/v3, not site.api / site/v2.

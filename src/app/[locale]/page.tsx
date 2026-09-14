@@ -13,6 +13,7 @@ import DigestScorers, { type ScorerBoard } from '@/components/DigestScorers';
 import DigestNews from '@/components/DigestNews';
 import TrackedLink from '@/components/TrackedLink';
 import SiteFooter from '@/components/SiteFooter';
+import YourTeams from '@/components/YourTeams';
 
 export const dynamic = 'force-dynamic';
 type PageParams = { locale: string } | Promise<{ locale: string }>;
@@ -122,6 +123,8 @@ export default async function Home({ params }: { params: PageParams }) {
         <h1 className="dg-title">{t('home.digest.title')}</h1>
         <p className="dg-sub">{headline}</p>
       </header>
+
+      <YourTeams />
 
       <section className="dg-sec">
         <h2 className="dg-lab">{t('home.digest.whatsOn')}</h2>

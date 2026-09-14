@@ -1,8 +1,10 @@
 import type { Match, PlayerSeasonStats, SquadPlayer, Team, TeamProfile, TeamRecord, TeamStanding } from '../types';
 import { mapState } from '../state';
+import type { CompetitionSeason } from '../competitions';
+import { isMatchKickoff } from '../matchKickoff';
 
 /** The profile without the two blocks that come from other endpoints. */
-export type TeamIdentity = Omit<TeamProfile, 'squad' | 'schedule'>;
+export type TeamIdentity = Omit<TeamProfile, 'squad' | 'schedule' | 'scheduleAvailability'>;
 
 const STANDING_SUMMARY_PATTERN = /^([1-9]\d*)(?:st|nd|rd|th) in (.{1,160})$/;
 
@@ -53,6 +55,16 @@ function num(value: unknown): number | null {
   }
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function score(value: unknown): number | null {
+  if (value && typeof value === 'object') {
+    const object = value as Record<string, unknown>;
+    return score('displayValue' in object ? object.displayValue : object.value);
+  }
+  if (typeof value !== 'number' && (typeof value !== 'string' || !/^\d+$/.test(value))) return null;
+  const n = Number(value);
+  return Number.isSafeInteger(n) && n >= 0 ? n : null;
 }
 
 /**
@@ -207,8 +219,8 @@ export function mapTeamSchedule(raw: unknown): Match[] {
         statusName: type?.name ?? '',
         home: mapTeam(home.team),
         away: mapTeam(away.team),
-        homeScore: num(home.score),
-        awayScore: num(away.score),
+        homeScore: score(home.score),
+        awayScore: score(away.score),
         winnerId: home.winner
           ? String(home.team?.id)
           : away.winner
@@ -230,4 +242,40 @@ export function mapTeamSchedule(raw: unknown): Match[] {
   } catch {
     return [];
   }
+}
+
+/** Verify each event's source scope before it can become performance evidence.
+ * A response from the right URL alone does not prove the requested edition.
+ * Invalid events are excluded and the block is marked unavailable; valid rows
+ * remain useful for the schedule, but must not become an incomplete trend.
+ */
+export function mapScopedTeamSchedule(
+  raw: unknown, rc: CompetitionSeason, teamId: string,
+): { matches: Match[]; available: boolean } {
+  const payload = raw as any;
+  const year = Number(rc.season.id.slice(0, 4));
+  const split = rc.season.id.endsWith('-apertura') ? 'Torneo Apertura'
+    : rc.season.id.endsWith('-clausura') ? 'Torneo Clausura' : null;
+  if (!payload || !Array.isArray(payload.events) || payload.team?.id !== teamId
+    || payload.requestedSeason?.year !== year || (split && payload.requestedSeason?.name !== split)) {
+    return { matches: [], available: false };
+  }
+  let available = true;
+  const events = payload.events.filter((event: any) => {
+    const rawCompetitors = event?.competitions?.[0]?.competitors;
+    const competitors: any[] = Array.isArray(rawCompetitors) ? rawCompetitors : [];
+    const home = competitors.find((c) => c?.homeAway === 'home')?.team?.id;
+    const away = competitors.find((c) => c?.homeAway === 'away')?.team?.id;
+    const valid = event?.league?.slug === rc.competition.espnSlug
+      && event?.season?.year === year && (!split || event?.seasonType?.name === split)
+      && typeof event.id === 'string' && /^\d+$/.test(event.id)
+      && isMatchKickoff(event.date)
+      && typeof home === 'string' && typeof away === 'string' && home !== away
+      && (home === teamId || away === teamId);
+    if (!valid) available = false;
+    return valid;
+  });
+  return { available, matches: mapTeamSchedule({ events }).map((match) => ({
+    ...match, scope: { competitionId: rc.competition.id, seasonId: rc.season.id },
+  })) };
 }
