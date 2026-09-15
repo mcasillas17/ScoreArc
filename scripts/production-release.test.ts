@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, renameSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { changedPaths, deployedBase, deploymentRequest, githubClient, paginate, validateVercel, confirmVercelPublication, promoteVercelPublication } from './production-release.mjs';
+import { changedPaths, deployedBase, deploymentRequest, flyMachineList, githubClient, ingesterVerification, paginate, validateVercel, confirmVercelPublication, promoteVercelPublication, verifyIngesterMachines } from './production-release.mjs';
 import { previewBuildRequired } from './production-preview.mjs';
 
 const sha = 'a'.repeat(40);
@@ -407,5 +407,143 @@ describe('preview-only ignored build', () => {
     } finally {
       warning.mockRestore();
     }
+  });
+});
+
+describe('post-deployment ingester machine verification', () => {
+  const { pollMs, stableObservations, deadlineMs, callTimeoutMs } = ingesterVerification;
+  const sentinel = 'UNTRUSTED_VALUE_DO_NOT_LOG';
+  const machine = (state = 'started', config: Record<string, unknown> = {}, id = 'd896262f9016e8') => ({
+    id, state, config: { restart: { policy: 'always' }, env: { POOLED_DSN: sentinel }, ...config },
+  });
+  const inventory = (...machines: unknown[]) => JSON.stringify(machines);
+  const observations = (...texts: string[]) => {
+    let call = 0;
+    return vi.fn(async (_timeout: number) => texts[Math.min(call++, texts.length - 1)]);
+  };
+  const clock = () => {
+    let now = 0;
+    return { now: () => now, advance: (ms: number) => { now += ms; }, pause: vi.fn(async (ms: number) => { now += ms; }) };
+  };
+
+  it('passes only after consecutive healthy observations of the one machine', async () => {
+    const time = clock();
+    const list = observations(inventory(machine()));
+    await expect(verifyIngesterMachines(list, time.pause, time.now)).resolves.toEqual({ id: 'd896262f9016e8', state: 'started' });
+    expect(list).toHaveBeenCalledTimes(stableObservations);
+    expect(time.pause).toHaveBeenCalledTimes(stableObservations - 1);
+    expect(time.pause).toHaveBeenCalledWith(pollMs);
+  });
+  it('allows a bounded startup transition before the stable window', async () => {
+    const time = clock();
+    const list = observations(inventory(machine('created')), inventory(machine('starting')), inventory(machine()));
+    await expect(verifyIngesterMachines(list, time.pause, time.now)).resolves.toMatchObject({ state: 'started' });
+    expect(list).toHaveBeenCalledTimes(2 + stableObservations);
+  });
+  it('does not accept a single lucky sample from a machine that keeps stopping', async () => {
+    const time = clock();
+    let call = 0;
+    const list = vi.fn(async () => inventory(machine(call++ % 2 ? 'stopped' : 'started')));
+    await expect(verifyIngesterMachines(list, time.pause, time.now)).rejects.toThrow(
+      /within 120s; failed conditions: (started|stableObservations \(1 of 3\)); observed machines: d896262f9016e8=(started|stopped)\. No repair/,
+    );
+    expect(time.now()).toBeLessThanOrEqual(deadlineMs);
+    expect(list.mock.calls.length).toBeLessThanOrEqual(deadlineMs / pollMs + 1);
+  });
+  it('restarts the stable window when a different machine is observed', async () => {
+    const time = clock();
+    const list = observations(inventory(machine()), inventory(machine('started', {}, '80d219b6421d78')));
+    await expect(verifyIngesterMachines(list, time.pause, time.now)).resolves.toEqual({ id: '80d219b6421d78', state: 'started' });
+    expect(list).toHaveBeenCalledTimes(1 + stableObservations);
+  });
+  it.each([
+    ['an obsolete standby', inventory(machine('started', { standbys: ['80d219b6421d78'] })), 'noStandbys'],
+    ['a wrong restart policy', inventory(machine('started', { restart: { policy: 'on-failure' } })), 'restartAlways'],
+    ['zero machines', inventory(), 'exactlyOneMachine'],
+    ['multiple machines', inventory(machine(), machine('started', {}, '80d219b6421d78')), 'exactlyOneMachine'],
+    ['malformed inventory', '{"machines": []}', 'malformedInventory'],
+    ['non-JSON output', `Error: ${sentinel}`, 'malformedInventory'],
+  ])('fails immediately, without waiting or repairing, on %s', async (_name, text, condition) => {
+    const time = clock();
+    const list = observations(text);
+    const error = await verifyIngesterMachines(list, time.pause, time.now).catch((caught: Error) => caught);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain(`failed conditions: ${condition}`);
+    expect((error as Error).message).toContain('No repair, start, scale or redeploy was attempted');
+    expect((error as Error).message).not.toContain(sentinel);
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(time.pause).not.toHaveBeenCalled();
+  });
+  it('retries a failed inventory command within the deadline, then fails explicitly', async () => {
+    const time = clock();
+    const list = vi.fn(async () => { throw new Error('flyctl machine list failed (exit 1)'); });
+    await expect(verifyIngesterMachines(list, time.pause, time.now)).rejects.toThrow(
+      'failed conditions: machineList (flyctl machine list failed (exit 1)); observed machines: none. No repair',
+    );
+    expect(time.now()).toBeLessThanOrEqual(deadlineMs);
+  });
+  it('recovers from a transient inventory command failure', async () => {
+    const time = clock();
+    let call = 0;
+    const list = vi.fn(async () => {
+      if (call++ === 0) throw new Error('flyctl machine list failed (exit 1)');
+      return inventory(machine());
+    });
+    await expect(verifyIngesterMachines(list, time.pause, time.now)).resolves.toMatchObject({ state: 'started' });
+    expect(list).toHaveBeenCalledTimes(1 + stableObservations);
+  });
+  it('never starts a call that could outlast the deadline, so timeouts cannot extend the total', async () => {
+    const time = clock();
+    const list = vi.fn(async (timeout: number) => {
+      time.advance(timeout);
+      throw new Error(`flyctl machine list timed out after ${timeout} ms`);
+    });
+    await expect(verifyIngesterMachines(list, time.pause, time.now)).rejects.toThrow('machineList (flyctl machine list timed out');
+    for (const [timeout] of list.mock.calls) expect(timeout).toBe(callTimeoutMs);
+    expect(time.now()).toBeLessThanOrEqual(deadlineMs);
+  });
+  it('reports the machine state it saw when real calls take time near the deadline', async () => {
+    const time = clock();
+    const list = vi.fn(async (timeout: number) => {
+      const duration = 2_000;
+      time.advance(Math.min(duration, timeout));
+      if (timeout < duration) throw new Error(`flyctl machine list timed out after ${timeout} ms`);
+      return inventory(machine('stopped'));
+    });
+    await expect(verifyIngesterMachines(list, time.pause, time.now)).rejects.toThrow(
+      'failed conditions: started; observed machines: d896262f9016e8=stopped. No repair',
+    );
+    expect(time.now()).toBeLessThanOrEqual(deadlineMs);
+  });
+});
+
+describe('flyctl machine inventory read', () => {
+  const standIn = (body: string) => {
+    const dir = mkdtempSync(join(tmpdir(), 'scorearc-flyctl-'));
+    const command = join(dir, 'flyctl');
+    writeFileSync(command, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+    return { dir, command };
+  };
+  const dirs: string[] = [];
+  afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+
+  it('runs only the fixed read-only list command, with the token left in the environment', async () => {
+    const fake = standIn('echo "$*" > "$(dirname "$0")/args"; printf "[]"');
+    dirs.push(fake.dir);
+    await expect(flyMachineList(5_000, fake.command)).resolves.toBe('[]');
+    expect(readFileSync(join(fake.dir, 'args'), 'utf8').trim()).toBe('machines list --app scorearc-ingester --json');
+  });
+  it('reports a failed command with a constant message, not provider output', async () => {
+    const fake = standIn('echo "UNTRUSTED_VALUE_DO_NOT_LOG" >&2; printf "{\\"env\\": 1}"; exit 3');
+    dirs.push(fake.dir);
+    const error = await flyMachineList(5_000, fake.command).catch((caught: Error) => caught);
+    expect((error as Error).message).toBe('flyctl machine list failed (exit 3)');
+  });
+  it('kills a hung command at its timeout', async () => {
+    const fake = standIn('exec sleep 30');
+    dirs.push(fake.dir);
+    const started = Date.now();
+    await expect(flyMachineList(200, fake.command)).rejects.toThrow('flyctl machine list timed out after 200 ms');
+    expect(Date.now() - started).toBeLessThan(5_000);
   });
 });

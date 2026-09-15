@@ -1,9 +1,9 @@
 import { appendFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
-import { assertReleaseContext, assertSha, assertVercelProject, planRelease, releaseStatus, repository, services } from './production-policy.mjs';
+import { assertReleaseContext, assertSha, assertVercelProject, assessIngesterMachines, ingesterApp, planRelease, releaseStatus, repository, services } from './production-policy.mjs';
 
 /** @param {string} token @param {typeof fetch} fetcher */
 export function githubClient(token, fetcher = fetch) {
@@ -251,6 +251,71 @@ export async function promoteVercelPublication(env, deploymentUrl, fetcher = fet
   throw new Error('Vercel promotion timed out; reconcile provider state before retrying the unresolved release');
 }
 
+export const ingesterVerification = { pollMs: 5_000, stableObservations: 3, deadlineMs: 120_000, callTimeoutMs: 30_000 };
+
+/**
+ * Read-only machine inventory through the pinned flyctl and the step's FLY_API_TOKEN.
+ * @param {number} timeout @param {string} [command]
+ * @returns {Promise<string>}
+ */
+export function flyMachineList(timeout, command = 'flyctl') {
+  return new Promise((resolve, reject) => {
+    execFile(command, ['machines', 'list', '--app', ingesterApp, '--json'],
+      { encoding: 'utf8', timeout, killSignal: 'SIGKILL', maxBuffer: 1024 * 1024 },
+      (error, stdout) => {
+        if (!error) return resolve(stdout);
+        // Constant text only: provider output can carry machine configuration.
+        const reason = error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ? 'exceeded its output limit'
+          : error.killed ? `timed out after ${timeout} ms`
+            : `failed (exit ${Number.isInteger(error.code) ? error.code : 'unavailable'})`;
+        reject(new Error(`flyctl machine list ${reason}`));
+      });
+  });
+}
+
+/**
+ * Confirms the deployed singleton contract without changing anything. Only a
+ * non-started state or an inventory read error is retried inside the deadline.
+ * Machine readiness is not evidence of data freshness or complete ingestion.
+ * @param {(timeout: number) => Promise<string>} list
+ * @param {(ms: number) => Promise<unknown>} pause @param {() => number} now
+ */
+export async function verifyIngesterMachines(list = flyMachineList, pause = ms => delay(ms), now = Date.now) {
+  const { pollMs, stableObservations, deadlineMs, callTimeoutMs } = ingesterVerification;
+  const deadline = now() + deadlineMs;
+  let stableId = null;
+  let streak = 0;
+  for (;;) {
+    let observation;
+    try {
+      const text = await list(callTimeoutMs);
+      let inventory;
+      try { inventory = JSON.parse(text); } catch { inventory = text; }
+      observation = assessIngesterMachines(inventory);
+    } catch (error) {
+      observation = { failures: [`machineList (${error instanceof Error ? error.message : 'unknown error'})`], machines: [] };
+    }
+    const { failures, machines } = observation;
+    const id = failures.length === 0 ? machines[0].id : null;
+    streak = id !== null && id === stableId ? streak + 1 : Number(id !== null);
+    stableId = id;
+    if (streak >= stableObservations) return machines[0];
+    const retryable = failures.every(failure => failure === 'started' || failure.startsWith('machineList'));
+    // Start no call that could outlast the deadline: a clipped final call would
+    // report its own timeout instead of the machine state already observed.
+    if (!retryable || now() + pollMs + callTimeoutMs > deadline) {
+      const unmet = failures.length > 0 ? failures : [`stableObservations (${streak} of ${stableObservations})`];
+      const observed = machines.map(machine => `${machine.id}=${machine.state}`).join(', ') || 'none';
+      throw new Error(`Ingester machine contract not met${retryable ? ` within ${deadlineMs / 1000}s` : ''}; ` +
+        `failed conditions: ${unmet.join(', ')}; observed machines: ${observed}. ` +
+        'No repair, start, scale or redeploy was attempted. This release stays unresolved: reconcile the ' +
+        'machine (docs/backend/SETUP.md §7.4), then acknowledge the ledger (docs/backend/RELEASES.md, ' +
+        'Interrupted-release recovery) before retrying.');
+    }
+    await pause(pollMs);
+  }
+}
+
 /** @param {Record<string, string | number | boolean>} values */
 function outputs(values) {
   for (const [key, value] of Object.entries(values)) {
@@ -272,6 +337,13 @@ async function main() {
   if (command === 'promote-vercel') {
     if (service !== 'frontend') throw new Error('Vercel promotion is frontend-only');
     await promoteVercelPublication(env, readFileSync(join(env.RUNNER_TEMP, 'production-url.txt'), 'utf8'));
+    return;
+  }
+  if (command === 'verify-ingester') {
+    if (service !== 'ingester') throw new Error('Machine verification is ingester-only');
+    const { id } = await verifyIngesterMachines();
+    console.log(`Ingester machine contract verified: ${id} started, no standby targets, restart policy always, ` +
+      `${ingesterVerification.stableObservations} consecutive observations. This does not prove data freshness or complete ingestion.`);
     return;
   }
   const api = githubClient(env.GH_TOKEN);

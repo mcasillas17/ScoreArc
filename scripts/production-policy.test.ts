@@ -1,7 +1,9 @@
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { assertReleaseContext, assertVercelProject, planRelease, releaseStatus } from './production-policy.mjs';
+import { assertReleaseContext, assertVercelProject, assessIngesterMachines, ingesterApp, planRelease, releaseStatus } from './production-policy.mjs';
 
 const sha = 'a'.repeat(40);
 const older = 'b'.repeat(40);
@@ -165,6 +167,87 @@ describe('Vercel publication gate', () => {
   });
 });
 
+const secretSentinel = 'UNTRUSTED_VALUE_DO_NOT_LOG';
+// Shape of one `flyctl machines list --json` entry (fly-go v0.9.3, pinned by flyctl 0.4.83).
+const ingesterMachine = (overrides: Record<string, unknown> = {}, config: Record<string, unknown> = {}) => ({
+  id: 'd896262f9016e8', name: 'ingester', state: 'started', region: 'iad',
+  instance_id: '01M29J9QPBM5RQ8956H6WP40CX', host_status: 'ok',
+  config: {
+    image: 'registry.fly.io/scorearc-ingester:deployment-x', env: { POOLED_DSN: secretSentinel },
+    restart: { policy: 'always' }, guest: { cpu_kind: 'shared', cpus: 1, memory_mb: 512 }, ...config,
+  },
+  ...overrides,
+});
+
+describe('ingester machine contract', () => {
+  const healthy = { failures: [], machines: [{ id: 'd896262f9016e8', state: 'started' }] };
+
+  it('accepts one started always-restarting machine with omitted or empty standbys', () => {
+    expect(assessIngesterMachines([ingesterMachine()])).toEqual(healthy);
+    expect(assessIngesterMachines([ingesterMachine({}, { standbys: [] })])).toEqual(healthy);
+  });
+  it('ignores destroyed machines when counting the singleton', () => {
+    expect(assessIngesterMachines([
+      ingesterMachine(), ingesterMachine({ id: '80d219b6421d78', state: 'destroyed' }),
+      ingesterMachine({ id: '3d8d9e1c2b4a57', state: 'destroying' }),
+    ])).toEqual(healthy);
+  });
+  it.each([
+    ['no machines', [], ['exactlyOneMachine']],
+    ['a null inventory', null, ['exactlyOneMachine']],
+    ['two machines', [ingesterMachine(), ingesterMachine({ id: '80d219b6421d78' })], ['exactlyOneMachine']],
+    ['a stopped machine', [ingesterMachine({ state: 'stopped' })], ['started']],
+    ['a starting machine', [ingesterMachine({ state: 'starting' })], ['started']],
+    ['an obsolete standby target', [ingesterMachine({}, { standbys: ['80d219b6421d78'] })], ['noStandbys']],
+    ['an on-failure restart policy', [ingesterMachine({}, { restart: { policy: 'on-failure' } })], ['restartAlways']],
+    ['an omitted restart policy', [ingesterMachine({}, { restart: undefined })], ['restartAlways']],
+  ])('rejects %s with constant condition labels', (_name, inventory, failures) => {
+    expect(assessIngesterMachines(inventory).failures).toEqual(failures);
+  });
+  it.each([
+    ['an object instead of a list', { machines: [] }],
+    ['a string', 'd896262f9016e8 started'],
+    ['a null entry', [null]],
+    ['a numeric id', [ingesterMachine({ id: 42 })]],
+    ['an id with markup', [ingesterMachine({ id: '<script>' })]],
+    ['a missing state', [ingesterMachine({ state: undefined })]],
+    ['a missing config', [ingesterMachine({ config: undefined })]],
+    ['a scalar standby list', [ingesterMachine({}, { standbys: '80d219b6421d78' })]],
+    ['a null standby list', [ingesterMachine({}, { standbys: null })]],
+    ['a non-string standby', [ingesterMachine({}, { standbys: [7] })]],
+    ['a scalar restart section', [ingesterMachine({}, { restart: 'always' })]],
+  ])('treats %s as malformed rather than healthy', (_name, inventory) => {
+    expect(assessIngesterMachines(inventory).failures).toContain('malformedInventory');
+  });
+  it('reports only sanitized machine IDs and states, never configuration values', () => {
+    const report = JSON.stringify(assessIngesterMachines([
+      ingesterMachine({ state: 'stopped' }, { standbys: ['80d219b6421d78'] }),
+      ingesterMachine({ id: secretSentinel.toLowerCase(), state: secretSentinel }),
+    ]));
+    expect(report).toContain('d896262f9016e8');
+    expect(report).not.toContain(secretSentinel);
+    expect(report).not.toContain(secretSentinel.toLowerCase());
+    expect(report).not.toContain('registry.fly.io');
+  });
+});
+
+describe('ingester Fly app configuration', () => {
+  it('places shutdown settings at top level, not inside [[restart]], and keeps the singleton shape', () => {
+    // TOML assigns every key after a table header to that table, so only the text
+    // before the first header is top level. Exact table text also rejects any key
+    // nested in a table (the committed bug) and an indented header.
+    const [root, ...tables] = readFileSync('backend/ingester/fly.toml', 'utf8').split(/^(?=\[)/m);
+    expect(root).toContain(`\napp = ${JSON.stringify(ingesterApp)}\n`);
+    expect(root).toMatch(/^kill_signal = "SIGTERM"$/m);
+    expect(root).toMatch(/^kill_timeout = "15s"$/m);
+    expect(tables.map(table => table.trim())).toEqual([
+      '[deploy]\n  strategy = "immediate"',
+      '[[restart]]\n  policy = "always"\n  processes = ["app"]',
+      '[[vm]]\n  size = "shared-cpu-1x"\n  memory = "512mb"',
+    ]);
+  });
+});
+
 describe('workflow wiring', () => {
   const ci = readFileSync('.github/workflows/ci.yml', 'utf8');
   const production = ci.split('\n  production:\n')[1];
@@ -285,9 +368,96 @@ describe('workflow wiring', () => {
       expect(result.stdout + result.stderr).not.toContain('synthetic-');
     }
   });
+  it('verifies the ingester inside its publishing step, so the ledger reads one outcome', () => {
+    const steps = production.split(/^      - /m);
+    const flyStep = steps.find(block => block.includes('id: fly\n'))!;
+    const lines = flyStep.split('\n').map(line => line.trim());
+    const deploy = lines.indexOf('flyctl deploy backend --config ingester/fly.toml --dockerfile ingester/Dockerfile --remote-only --ha=false');
+    expect(lines[deploy + 1]).toBe('node scripts/production-release.mjs verify-ingester');
+    expect(lines[deploy + 2]).toBe(';;');
+    expect(lines.filter(line => line.includes('verify-ingester'))).toHaveLength(1);
+    expect(steps.filter(step => step.includes('verify-ingester'))).toHaveLength(1);
+    const finish = steps.find(step => step.includes('production-release.mjs finish'))!;
+    expect(finish).toContain('FLY_OUTCOME: ${{ steps.fly.outcome }}');
+  });
   it('turns off Vercel Git production deployment, not preview builds', () => {
     const config = JSON.parse(readFileSync('vercel.json', 'utf8'));
     expect(config.git.deploymentEnabled).toEqual({ main: false });
     expect(config.ignoreCommand).toBe('node scripts/production-preview.mjs');
+  });
+});
+
+describe('ingester publishing step with a stand-in flyctl', () => {
+  const production = readFileSync('.github/workflows/ci.yml', 'utf8').split('\n  production:\n')[1];
+  const flyStep = production.split(/^      - /m).find(block => block.includes('id: fly\n'))!;
+  const shell = flyStep.split('run: |\n')[1].split('\n').map(line => line.trimStart()).join('\n');
+
+  // GitHub runs an unspecified Linux shell as `bash -e`; the step's exit status becomes steps.fly.outcome.
+  function publish(service: string, inventory: unknown, deployExit = 0) {
+    const bin = mkdtempSync(join(tmpdir(), 'scorearc-flyctl-'));
+    try {
+      writeFileSync(join(bin, 'flyctl'), [
+        '#!/bin/sh',
+        'echo "$*" >> "$FAKE_FLY_LOG"',
+        'case "$1" in',
+        '  deploy) exit "$FAKE_DEPLOY_EXIT" ;;',
+        '  machines) echo "synthetic-fly-token in provider diagnostics" >&2; printf "%s" "$FAKE_INVENTORY" ;;',
+        '  *) exit 99 ;;',
+        'esac',
+      ].join('\n'), { mode: 0o755 });
+      const result = spawnSync('/bin/bash', ['-e', '-c', shell], {
+        encoding: 'utf8', timeout: 60_000,
+        env: {
+          PATH: `${bin}:${process.env.PATH}`, NODE_ENV: 'test', RELEASE_SERVICE: service,
+          FLY_API_TOKEN: 'synthetic-fly-token', FAKE_FLY_LOG: join(bin, 'calls.log'),
+          FAKE_DEPLOY_EXIT: String(deployExit),
+          FAKE_INVENTORY: typeof inventory === 'string' ? inventory : JSON.stringify(inventory),
+        },
+      });
+      const log = join(bin, 'calls.log');
+      const calls = existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n') : [];
+      // Mirror GitHub: a nonzero step is outcome `failure`, which is all the ledger sees.
+      const ledger = releaseStatus({
+        fly: result.status === 0 ? 'success' : 'failure', stage: 'skipped', promote: 'skipped', precheckCurrent: 'true',
+      });
+      return { ...result, calls, ledger };
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+    }
+  }
+  const ingesterDeploy = 'deploy backend --config ingester/fly.toml --dockerfile ingester/Dockerfile --remote-only --ha=false';
+  const machineList = `machines list --app ${ingesterApp} --json`;
+
+  // Per-condition coverage lives in the assessment and polling suites; this layer proves the wiring.
+  it('fails the step after a successful deploy and records no success ledger when verification fails', () => {
+    const result = publish('ingester', [ingesterMachine({}, { standbys: ['80d219b6421d78'] })]);
+    expect(result.status).not.toBe(0);
+    expect(result.calls).toEqual([ingesterDeploy, machineList]);
+    expect(result.stderr).toContain('failed conditions: noStandbys; observed machines: d896262f9016e8=started');
+    expect(result.stderr).toContain('No repair');
+    expect(result.stdout + result.stderr).not.toContain(secretSentinel);
+    expect(result.stdout + result.stderr).not.toContain('synthetic-fly-token');
+    expect(result.ledger).toBe('failure');
+  });
+  it('does not verify after a failed deploy, which already records failure', () => {
+    const result = publish('ingester', [ingesterMachine()], 1);
+    expect(result.status).toBe(1);
+    expect(result.calls).toEqual([ingesterDeploy]);
+    expect(result.ledger).toBe('failure');
+  });
+  it('succeeds only after stable healthy observations of the singleton', () => {
+    const result = publish('ingester', [ingesterMachine()]);
+    expect(result.status).toBe(0);
+    expect(result.calls).toEqual([ingesterDeploy, machineList, machineList, machineList]);
+    expect(result.stdout).toContain('d896262f9016e8');
+    expect(result.stdout).toContain('does not prove data freshness');
+    expect(result.stdout).not.toContain(secretSentinel);
+    expect(result.ledger).toBe('success');
+  }, 30_000);
+  it('leaves the reader publish unchanged, with no machine verification', () => {
+    const result = publish('reader', 'unused');
+    expect(result.status).toBe(0);
+    expect(result.calls).toEqual(['deploy backend --config reader/fly.toml --dockerfile reader/Dockerfile --remote-only']);
+    expect(result.ledger).toBe('success');
   });
 });
