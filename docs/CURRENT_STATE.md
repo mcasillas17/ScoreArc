@@ -8,6 +8,10 @@ Ordinary jobs received credentials;
 reader deployment succeeded, ingester image v21 was uploaded but its worker is
 still stopped, and frontend promotion failed. Project-token promotion repair
 and non-destructive ingester recovery are prepared, **not activated** (§10).
+**Superseded for the ingester, 2026-09-13/14:** the owner started the machine
+and later reports removing its obsolete standby. Read-only readback on
+2026-09-14 found one started machine with no standby targets. Ingestion
+acceptance is still pending (§2).
 Other operational observations retain their original verification date.
 The later dependency-only main run exposed a ledger-identity compatibility bug
 before any new release; this follow-up also corrects that read without clearing
@@ -18,6 +22,11 @@ existing migration 0022 from `origin/main` @ `2a917fe`; see §3. The serving rea
 image was unchanged. Other observations retain their original date.
 
 **Ingestion update:** T17.2 diagnosed 2026-09-06 — see §2 and §3.
+
+**Team-insights implementation update:** validated locally September 14 UTC on
+the feature branch based on `504d4bf`; see §11. This is not a production
+deployment, reader cutover, or closure of T16.1/T19.1. Operational observations
+above retain their own verification dates.
 
 ## 1. Authority
 
@@ -37,8 +46,8 @@ status conclusions are not: PR #144 incorrectly said **T7.2 was unmerged**
 (that work shipped in squash-merged PR #29; branch ancestry misled the audit —
 see §4), and it also incorrectly said **T7.13 is done** and that E9's gate is
 therefore cleared. It further concluded that E7's writers are **running** and
-the season-end deadline is **being met**; no ingester write has landed since
-2026-08-22 and nothing is running now (§2, §3), so that conclusion was already wrong on its own date. T7.13 requires operational acceptance of the durability path
+the season-end deadline is **being met**; no ingester write had landed since
+2026-08-22 and nothing was running as of September 6 (§3), so that conclusion was already wrong on its own date. (The machine has run again since September 13; see §2.) T7.13 requires operational acceptance of the durability path
 (backfill writing rows, no silent touch-tier loss, fair retry), which is not
 complete (§4, §6). This document — the consensus of five independent audits
 (GPT-5.6 Sol, Claude Opus 4.8, Grok 4.6, Gemini 3.7 Flash, GPT-5.6 Luna),
@@ -50,12 +59,12 @@ that audit's mutable status conclusions where they conflict.
 | Area | Status |
 |---|---|
 | Frontend | Live at scorearc.futbol, fully ESPN-backed. No reader/backend fetch call sites exist in `src/server/data/` — the 1d cutover has not started. |
-| Ingester | **Not running**, rechecked September 13. Image v21 at tested `0f75102` is deployed, but app `suspended`, sole Machine `d896262f9016e8` stopped with obsolete standby target. Greece remains empty; Premier League finished data still ends August 22. These are public-reader observations, not a fresh database write-timestamp query. Same-machine recovery awaits separate update/start approvals (§10; SETUP §7.4). |
+| Ingester | **Machine running; ingestion not yet accepted.** Read-only readback at 2026-09-14 05:38 UTC: sole Machine `d896262f9016e8` `started`, no standby targets, restart `always`, no `stop_config`. The owner reports removing the obsolete standby after the September 13 website recovery; it is not outstanding. Public-reader data advanced after the 06:40 UTC start (§10), but zero-failure cycles and sustained freshness are not accepted. Live size (2 vCPU / 4096 MB) differs from the committed `shared-cpu-1x` / 512 MB. The next ingester release applies the committed size ([SETUP §7.4](backend/SETUP.md#ingester-configuration-layers)). |
 | Reader API | 7 registered `/v1` data routes (`matches`, `standings`, `bracket`, `top-scorers`, `teams/{teamId}`, `news`, `matches/{id}`) + `/healthz`. The Liga MX team-profile **500 is repaired**: existing migration 0022 restored the full production response, accepted 2026-09-06 (§3). Broader reader parity remains open (§5). |
 | Operations | `main` requires PR integration and strict `test`, admins enforced, force pushes/deletion blocked. **T21.1 remains open:** ordinary production jobs now receive existing credentials; frontend CLI promotion is incompatible with the supplied project token, and ingester upload did not restore ingestion. Frontend ledger `6404319208` remains unresolved. No approval hold was present on any release environment at September 13 readback. Migrations remain manual; T17.1 is complete, T21.2 is not. |
 | 1d (frontend cutover) | Absent. No spec has landed as an implementation; no `apiStore` exists. |
 | E6 (shot log) | T6.1 (coverage probe) complete. T6.2–T6.4 (extraction, reconciliation, rendering) pending. |
-| E7 (history & trends) | Writer code is implemented and deployed; no write from it is visible in reader data since 2026-08-22 and nothing is running now (§2 above, §3). Whether a process ran and failed between 2026-08-22 and the 2026-09-01 relaunch is open (§9), and the database was not queried — several of these writers target tables no reader route exposes, so partially written rows are not excluded. (`WriteStandingSnapshot`, `WriteWinProbSnapshot`, `WritePlays`, `WriteParticipation`, `WriteCommentary`, `ReplaceLeaders`, `ReplaceSquad`, `WriteMatchOfficials`, `WriteMatchOdds`, `WriteOddsSnapshot`). **T7.13 operational acceptance is pending** (§4). Read/render surfaces (T7.3–T7.5) do not exist. |
+| E7 (history & trends) | Writer code is implemented and deployed. No write from it was visible in reader data from 2026-08-22 until the September 13 restart (§3). The machine is running again, but ingestion is not yet accepted (§2 above). Whether a process ran and failed between 2026-08-22 and the 2026-09-01 relaunch is open (§9), and the database was not queried — several of these writers target tables no reader route exposes, so partially written rows are not excluded. (`WriteStandingSnapshot`, `WriteWinProbSnapshot`, `WritePlays`, `WriteParticipation`, `WriteCommentary`, `ReplaceLeaders`, `ReplaceSquad`, `WriteMatchOfficials`, `WriteMatchOdds`, `WriteOddsSnapshot`). **T7.13 operational acceptance is pending** (§4). Read/render surfaces (T7.3–T7.5) do not exist. |
 | E8 (AI) | Spec/task list only. No recap, digest, or preview code exists in `src` or `backend`. |
 | E9 (expected goals) | No ScoreArc xG model and no public xG surface. Gated on T7.13's actual closure (not its writer existence), T9.1, a provider/model product decision, and data rights (§7, §9). |
 | E10 (public API read surface) | Expansion absent beyond the 7 routes above; `params.go` and the other 35 planned endpoints do not exist. |
@@ -89,8 +98,9 @@ that audit's mutable status conclusions where they conflict.
   triggers them, or that absent credentials cannot cause them to be skipped.
 - **`/healthz`:** `curl https://scorearc-reader.fly.dev/healthz` → `200`,
   `{"status":"ok"}`.
-- **Super League Greece is empty because production ingestion stopped on
-  2026-08-22 (T17.2, diagnosed 2026-09-06).** The frontend (ESPN-backed) shows
+- **Super League Greece was empty because production ingestion stopped on
+  2026-08-22 (T17.2, diagnosed 2026-09-06; data advanced after the September 13
+  restart, see §2 and §10).** The frontend (ESPN-backed) shows
   Greece normally, and the reader's
   `/v1/competitions/super-league-greece/2026-27/matches`, `/standings` and
   `/top-scorers` each still return `200` with an **empty array**. The cause is
@@ -98,7 +108,7 @@ that audit's mutable status conclusions where they conflict.
   read path; a *system-wide* worker-level fault — a crash loop, or a lease
   conflict — would still be an application-layer cause of the write-stop, and
   this pass does not exclude one (§9):
-  **1. No ingester is running.** `fly apps list` reports `scorearc-ingester`
+  **1. No ingester was running (2026-09-06; restarted September 13, see §2).** `fly apps list` reports `scorearc-ingester`
   as **suspended**, while `scorearc-reader` is `deployed`. The ingester app has
   exactly **one** Machine, `d896262f9016e8`, in state `stopped`, and its config
   carries `standbys = ["80d219b6421d78"]` — a target Machine that no longer
@@ -118,8 +128,11 @@ that audit's mutable status conclusions where they conflict.
   Machine was created **2026-08-17T07:21:20Z** — before `--ha=false` was added
   to the ingester release by PR #113 (`045e703`, 2026-08-24T00:52Z) — and the
   eight releases since (`fly releases`: v13 at 2026-08-24T00:54Z through v20 at
-  2026-09-01T05:39Z, all `complete`) have left it in place. Why `--ha=false` has not cleared it is an open question (§9).
-  **2. Every in-season competition is frozen at 2026-08-22, not just Greece.** Read at
+  2026-09-01T05:39Z, all `complete`) have left it in place. flyctl v0.4.83
+  source later showed why: deploy keeps an existing `standbys` list for groups
+  without services, and `--ha=false` only stops new standbys
+  ([SETUP §7.4](backend/SETUP.md#ingester-configuration-layers)).
+  **2. Every in-season competition was frozen at 2026-08-22, not just Greece (2026-09-06).** Read at
   2026-09-06T08:37Z, the last `finished` kickoff is 2026-08-22 for
   premier-league (`16:30Z`), laliga (`19:30Z`), serie-a (`18:45Z`), ligue-1
   (`18:45Z`) and liga-mx (`03:10Z`); bundesliga has **0** finished of 306. Six
@@ -133,7 +146,7 @@ that audit's mutable status conclusions where they conflict.
   statuses the [§7.5 check](backend/SETUP.md#75-verify) enumerates as finished,
   which is why that check reports **30** for eng.1 rather than 28, a measured
   difference of two. The direction of every gap is unaffected.)
-  **3. Greece is empty rather than stale only because of its date.** It was
+  **3. Greece was empty rather than stale only because of its date (2026-09-06).** It was
   configured by PR #116 (`e82cea6`) on **2026-08-24T02:43Z** — after the worker
   stopped — so it is the one competition that appears never to have received a
   first write (inferred from empty reader collections, not from a row count —
@@ -158,12 +171,16 @@ that audit's mutable status conclusions where they conflict.
   (The provider counts come from a one-off local probe of `shared/source.ESPN`
   that was not committed; the ESPN-side half is reproducible with the
   [§7.5 command](backend/SETUP.md#75-verify) using `slug=gre.1`.)
-  **September 13 recovery update (not executed):** preserve the sole machine,
+  **Superseded September 13–14:** the owner started the machine at 06:40 UTC
+  and later reports removing the obsolete standby relationship. Read-only
+  readback at 2026-09-14 05:38 UTC found it `started` with no standby targets
+  (§2). The pre-recovery plan below is historical. It is kept in
+  [SETUP §7.4](backend/SETUP.md#74-first-deploy) only as the procedure if a
+  standby returns.
+  **September 13 recovery plan (pre-recovery record):** preserve the sole machine,
   clear its obsolete standby relationship in place with `--skip-start`, and
   retain the same tested v21 image by immutable digest. Then seek separate
-  approval to start normal ingestion. The versioned CLI/config evidence and
-  exact drift-checked plan are in [SETUP §7.4](backend/SETUP.md#74-first-deploy).
-  Do not destroy/recreate it as the first step.
+  approval to start normal ingestion. Do not destroy/recreate it as the first step.
   At 05:20:56Z the machine remained stopped; at 05:16:38Z the app was suspended.
   Greece's three collections were still empty; Premier League still had six
   finished matches, versus 37 at ESPN. Log reads timed out, so no clean-cycle
@@ -197,7 +214,7 @@ that audit's mutable status conclusions where they conflict.
   owns the protected comparison and interpretation. The later `de52780` run
   stopped Fly before credential checks at all; that new symptom is recorded
   separately in §10 and does not clear the earlier credential fault.
-  **If writes do not resume** after the separately approved same-machine recovery — judged by the
+  **If writes stall again or fail acceptance** after the September 13 restart — judged by the
   [§7.5 freshness check](backend/SETUP.md#75-verify), not by the Machine merely
   reaching `started` — then the 2026-08-22 write-stop had a cause this pass did
   not establish. Read the worker's logs for `another ingester instance holds the
@@ -306,15 +323,21 @@ that audit's mutable status conclusions where they conflict.
   in §4 correct it).
 - **Configured competitions = 10** (`backend/config/competitions.json`:
   world-cup, leagues-cup, premier-league, laliga, serie-a, bundesliga,
-  ligue-1, super-league-greece, mls, liga-mx). **None is currently being
-  ingested** — no ingester write has landed since 2026-08-22 and nothing is
-  running now; see §3 for which
-  competitions are stale, truncated or complete, and why Greece (configured
-  2026-08-24, after the stall) is the only one whose reader collections are all
-  empty (row counts were not read; §3). No
+  ligue-1, super-league-greece, mls, liga-mx). **None was being ingested as of
+  2026-09-06**: no ingester write had landed since 2026-08-22 and nothing was
+  running then. See §3 for which competitions were stale, truncated or complete
+  then, and why Greece (configured 2026-08-24, after the stall) was the only one
+  whose reader collections were all empty (row counts were not read; §3). The
+  machine restarted on September 13 and data advanced; ingestion acceptance is
+  pending (§2). No
   per-competition ingestion-coverage report exists.
 
 ## 5. 1d / API cutover blockers
+
+The [team-insights contract slice](backend/TEAM_INSIGHTS_CONTRACT.md) now records
+all 14 mappings and tests the supported identity/schedule/match subset across
+TypeScript, OpenAPI and Go, including actual query/error behavior and SQL scope.
+It does not resolve the broader parity or availability blockers below.
 
 - **`DataStore` has 14 methods** (`getMatches`, `getFixtures`,
   `getLiveWindow`, `getUpcoming`, `getStandings`, `getBracket`,
@@ -433,15 +456,18 @@ platform's core data-correctness work (§8).
    credential provisioning merely because older reusable jobs lacked access.
 2. **The legal/rights decision (§7).** Nothing that expands ESPN-derived
    data's audience, training use, or MCP exposure proceeds without it.
-3. **Restart production ingestion (§3).** Diagnosed 2026-09-06: no ingester
-   write has landed since 2026-08-22 and nothing is running now, so every
-   in-season competition is stale
-   and Greece — configured 2026-08-24, after the stall — is empty. The repair is the
-   same-machine standby-clearing update with `--skip-start`, then a separately
-   approved start in [SETUP.md §7.4](backend/SETUP.md#74-first-deploy), coordinated with the
-   T21.1 owner because the ingester releases through the gated path. Ranked
-   above the two durability items below because neither writer can be
-   exercised, or its fix verified, until a worker runs again. The T17.1
+3. **Accept restarted production ingestion (§2, §3).** Diagnosed 2026-09-06: no ingester
+   write had landed since 2026-08-22 and nothing was running then, so every
+   in-season competition was stale
+   and Greece — configured 2026-08-24, after the stall — was empty. The machine
+   repair is done: the machine was started on September 13 and its obsolete
+   standby removed, with readback on September 14 (§2). Each ingester release now
+   checks the machine contract automatically. What remains is acceptance:
+   zero-failure cycles and sustained freshness
+   ([SETUP §7.5](backend/SETUP.md#75-verify)). Ranked
+   above the two durability items below because neither writer's fix can be
+   verified until ingestion is accepted (zero-failure cycles, advancing data).
+   The T17.1
    team-profile 500 is repaired; that said nothing about ingestion. **The
    restart alone does not close this item:** a pipeline-wide write stop ran
    ~15 days unnoticed because no per-competition freshness alert exists (§2),
@@ -470,6 +496,11 @@ provider/model decision (post-rights, post-T7.13-closure). **Later:**
 anything requiring validated models or real data — AI recaps (E8), a
 real-data MCP, an LED board, match simulation, personalization.
 
+**Narrow personalization exception:** the September 13 team-insights request
+permits team-only browser-local follows and home shortcuts on the existing
+DataStore before E16 dogfooding (§11). The broader T19.1/T19.2 work keeps its
+existing gates; this does not reorder the infrastructure or data-rights lanes.
+
 **Explicitly lower priority, not ahead of data correctness:** product-
 quality fixes (LCP/TTFB, the 4.9MB ESPN asset payload, the 4.08:1 contrast
 finding, the match-card accessible-name mismatch) and removing the dead
@@ -492,7 +523,7 @@ where §1/§4 correct them.
 **Retired 2026-09-06 (T17.2):** two former unknowns — Greece's empty
 collections, and whether the ingester was keeping pace across the ten
 configured competitions — share one established cause: no ingester write has
-landed since 2026-08-22, and nothing is running now (§3). What remains open is the *production repair*, not
+landed since 2026-08-22, and nothing was running then (§3). The machine has since been restarted (§2); what remains open is ingestion acceptance, not
 the diagnosis.
 
 **Explicit unknowns**, not resolved by this pass:
@@ -502,8 +533,9 @@ the diagnosis.
   *names* are present and `Deployed` (§3, §6), but only names and digests were
   read: `ArchiveFromEnv` disables the archive on empty *values*, which a name
   listing cannot rule out. Confirm from the ingester's startup log
-  (`R2 raw archive disabled; the play stream will NOT be kept`) once a worker
-  runs again. Nothing has been archived since writes stopped on 2026-08-22.
+  (`R2 raw archive disabled; the play stream will NOT be kept`) for the worker
+  running since September 13; that log has not been checked. Nothing was
+  archived while writes were stopped, from 2026-08-22 to the September 13 restart.
 - Why the schema rollout stopped at version 21 before the deployed reader began
   selecting colour columns. The schema/code mismatch is now repaired and the full
   team response accepted (§3); preventing a recurrence remains T21.2.
@@ -512,9 +544,9 @@ the diagnosis.
   matches frozen mid-half). The surviving standby Machine was created
   **2026-08-17T07:21:20Z** and was last updated 2026-09-12T01:04:23Z. The
   returned event history still does not date the original primary's removal, so it is
-  undated. **Separate what is observed from what is inferred:** the *current*
-  not-running state is directly observed (app `suspended`, sole Machine a
-  stopped standby), and the standby recovery addresses that. Whether a process
+  undated. **Separate what is observed from what is inferred:** the September
+  6–13 not-running state was directly observed (app `suspended`, sole Machine a
+  stopped standby); the machine is running again (§2). Whether a process
   ran and failed to write between 2026-08-22 and the 2026-09-01 relaunch is
   **not** excluded — Fly retains no events from that window, and eight
   `complete` releases occurred in it, so a crash loop or a lease conflict
@@ -522,8 +554,10 @@ the diagnosis.
 - **Recovery mechanism established September 13:** Fly v0.4.83 can clear the
   pre-existing standby through a partial config update; `--skip-start` prevents
   that update from implicitly starting ingestion. `--ha=false` alone left the
-  designation intact in v21. The underlying August outage is not thereby
-  explained. See [SETUP §7.4](backend/SETUP.md#74-first-deploy).
+  designation intact in v21, because deploy keeps existing standbys for groups
+  without services. The owner reports that the cleanup is done (§2). The
+  underlying August outage is not thereby explained. See
+  [SETUP §7.4](backend/SETUP.md#74-first-deploy).
 - **Updated September 13:** the managed ledger now contains reader/ingester
   successes at `0f75102` and unresolved frontend failure `6404319208`.
   Recheck the ledger before activation; the authoritative
@@ -547,11 +581,22 @@ using the existing project-scoped token. Its Fly publishing steps were skipped.
 | Code completed | Project-specific promotion works. A regression fix requests `rollbackInfo=true` on promotion preflight/polling and preserves the team query parameter; this correction is not yet merged or deployed. |
 | PR merged | **#162**, merge `c8faba2`, includes the ordinary-job, ledger-identity and project-scoped promotion repairs. |
 | Reader deployed | #162 run `34742757841` and ledger `6418498944` deployed `c8faba2`; `/healthz` returned 200. The later frontend-only recovery did not redeploy it. |
-| Ingester image deployed | #162 ledger `6418498672` deployed the `c8faba2` image. The owner started machine `d896262f9016e8` at 06:40 UTC; readback showed one started machine and the old standby target still configured. No ingester change was made during website recovery. |
+| Ingester image deployed | #162 ledger `6418498672` deployed the `c8faba2` image. The owner started machine `d896262f9016e8` at 06:40 UTC; readback showed one started machine and the old standby target still configured. No ingester change was made during website recovery. **Later:** the owner reports removing the standby target. Read-only readback at 2026-09-14 05:38 UTC found no standby targets, restart `always`, no `stop_config` and a 2 vCPU / 4096 MB guest (§2). |
 | Frontend deployed | **Verified live:** both production domains point to `dpl_GkNQFyCMMYpVRPZi6nvpVtfCPbzg`, exact `c8faba2`, run `34744420797` attempt 1. The promotion job is `succeeded`; no rolling release. Read-only repository confirmation and English/Spanish browser rendering passed. |
 | Automated confirmation | CI timed out waiting for metadata hidden unless `rollbackInfo=true` is supplied. Old incident `6404319208` and new confirmation incident `6418795270` were acknowledged `inactive` under the approved recovery; no actual-success Actions baseline is claimed. |
-| Fresh data arriving | At 06:41 UTC Greece had 182 matches, 23 finished, latest finished kickoff September 12, plus standings and 30 top scorers. Premier League had 37 finished matches through September 12, up from 6 through August 22. Writes resumed, but multiple zero-failure cycles and standby cleanup are not accepted by this observation. |
+| Fresh data arriving | At 06:41 UTC Greece had 182 matches, 23 finished, latest finished kickoff September 12, plus standings and 30 top scorers. Premier League had 37 finished matches through September 12, up from 6 through August 22. Writes resumed, but multiple zero-failure cycles are not accepted by this observation. Standby cleanup was observed separately (row above). |
 | Activation hold | Main-only branch policies exist, but no required-reviewer approval hold was present on any of the three environments. |
+
+**Ingester shutdown and machine-check correction (branch `fix/ingester-fly-verify`,
+not merged or deployed):** the committed `kill_signal`/`kill_timeout` move to top
+level, and the ingester publishing step gains a read-only machine-contract check
+([RELEASES](backend/RELEASES.md#post-deployment-ingester-verification)). It
+changes `ci.yml` and `scripts/production-*`, so its main CI selects **all three
+services**. That ingester release would also apply the committed
+`shared-cpu-1x` / 512 MB size to the live 2 vCPU / 4096 MB machine
+([SETUP §7.4](backend/SETUP.md#ingester-configuration-layers)). The owner decides
+on that release before merge. This change only read production: one machine
+listing. It changed nothing there.
 
 The plain project GET returned `lastAliasRequest: null`; adding
 `rollbackInfo=true` exposed the succeeded promotion from the previous live
@@ -595,9 +640,10 @@ token absent, dashboard required sign-in). Public HTTP still redirected
 the serving deployment or prove no queued operation. That pre-recovery blocker
 was superseded by the authorized recovery and authenticated evidence above.
 
-The safe Fly plan preserves the existing machine and exact image digest,
-clears only the standby relationship plus equivalent image pinning while keeping
-it stopped, then asks separately to start its normal polling/writes. The complete
+The pre-recovery safe Fly plan (since superseded; the machine is running with no
+standby, §2) preserved the existing machine and exact image digest,
+cleared only the standby relationship plus equivalent image pinning while keeping
+it stopped, then asked separately to start its normal polling/writes. The complete
 configuration and concurrency/drift guards are in
 [SETUP §7.4](backend/SETUP.md#74-first-deploy). No machine change, management
 lease, start, dispatch, credential change, database write or migration was
@@ -722,3 +768,36 @@ the successful run. No tests were disabled and no production runtime or
 deployment credentials changed. The full main CI gate and provider acceptance
 remain necessary after human merge and separate release authorization.
 T17.1 database recovery is closed; do not reapply migration 0022 for this task.
+
+## 11. First team-insights milestone — local implementation
+
+Implemented and locally validated September 14, 2026 UTC. The initial branch
+started at then-latest `origin/main` `fea71f9`, then incorporated the independently
+merged Next/Vitest upgrades by rebasing onto `504d4bf`. No merge or deployment is
+part of this milestone. Production remains fully ESPN-backed.
+
+- **Partial T16.1:** all 14 DataStore methods inventoried; shared recorded/test
+  vectors cover the milestone's team identity, scoped schedule and match fields.
+  Go DTO/OpenAPI serialization, actual handler error/query semantics and real
+  Postgres ordering/scope are tested. No new Go routes or production code,
+  `apiStore`, shadow traffic, or assertion of full parity.
+- **Partial T19.1:** team-only canonical browser-local follows, with versioned
+  validation/migration, cross-tab updates, hydration safety and a visible usable
+  session fallback on storage failure. Home Your teams is a shortcut list with
+  no per-team statistics/news fan-out. Player/competition follows, T19.2 ranking,
+  accounts, sync, notifications and briefs remain gated/out of scope.
+- **Existing team-page extension:** pure deterministic recent W/D/L, goals,
+  per-match rates and clean sheets, comparing two five-match windows only when
+  ten eligible matches exist. Both periods expose supporting match details.
+  Scope, actual samples, unverified source freshness/coverage and exceptional
+  status/score treatment are explicit. Existing next match, squad, schedule,
+  default home content and telemetry are preserved in English and Spanish.
+- **Local evidence:** 85 Vitest files / 1,084 tests, typecheck, lint (zero errors;
+  seven existing warnings), Next production build, Go build/race suite/vet and
+  real-browser checks passed. Independent Knights Sol/Terra implementation review
+  converged after fixes; final documented-state review is recorded in the PR.
+
+The [handoff](TEAM_INSIGHTS_HANDOFF.md) includes definitions, screenshots,
+validation details and local inspection paths. T16.1, T19.1 and their epics remain
+open. The [data-rights gate](decisions/2026-09-01-data-rights-gate.md), E16
+production-cutover gates, T17 ingestion work and T21 delivery work are unchanged.

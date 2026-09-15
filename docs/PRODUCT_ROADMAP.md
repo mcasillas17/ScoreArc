@@ -786,6 +786,14 @@ code rather than pasted from a dated plan.
 
 ### E16 · Reader parity & staged frontend cutover (1d)
 
+**Bounded foundation implemented (September 13 team-insights slice):** the
+[contract inventory and harness](backend/TEAM_INSIGHTS_CONTRACT.md) cover all
+14 methods in the inventory, with executable TS/Go/OpenAPI coverage limited to
+the team identity, schedule and match fields this feature uses. Query, DTO and
+availability gaps are explicit. **T16.1 remains open** for the broader contract;
+T16.2–T16.6 and the production-cutover gates are unchanged. See the
+[milestone handoff](TEAM_INSIGHTS_HANDOFF.md) for local validation, not deployment.
+
 | Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
 |---|---|---|---|
 | **T16.1** | Build one cross-language contract harness over TypeScript types, OpenAPI, Go DTOs, query vectors, and recorded payloads. | Any field/nullability/query drift fails CI; canonical equivalence is required, not byte equality with provider JSON. | none |
@@ -800,7 +808,7 @@ code rather than pasted from a dated plan.
 | Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
 |---|---|---|---|
 | **T17.1** | Reproduce, diagnose, and fix the Liga MX team-profile 500 in reader store/handler integration tests. | Root cause is evidence from a real-Postgres reproduction, not a UUID hypothesis; seeded teams return `200` or intentional `404`, never unexplained `500`. | none |
-| **T17.2** | Diagnose Greece across config, source, ingester, database, and reader; populate it or gate it out honestly. **Not-running state and Greece's empty-vs-stale explanation established 2026-09-06 (below); database state inferred from the reader, not read directly; why writes stopped on 2026-08-22 is still open (CURRENT_STATE §9); population blocked on an authorized ingester restart.** | Never assert a missing row count in advance; a configured-but-unproven competition is not presented as healthy. | diagnosis: none. Population: authorized orphan-standby recovery, coordinated with T21.1 |
+| **T17.2** | Diagnose Greece across config, source, ingester, database, and reader; populate it or gate it out honestly. **Not-running state and Greece's empty-vs-stale explanation established 2026-09-06 (below); database state inferred from the reader, not read directly; why writes stopped on 2026-08-22 is still open (CURRENT_STATE §9). The machine was restarted 2026-09-13 and its obsolete standby removed (readback 2026-09-14); population acceptance is pending.** | Never assert a missing row count in advance; a configured-but-unproven competition is not presented as healthy. | diagnosis: none. Population: [SETUP §7.5](backend/SETUP.md#75-verify) freshness acceptance (zero-failure cycles, advancing data including Greece) |
 | **T17.3** | Add source, observed/finalized time, derivation, and complete/empty/stale/unavailable semantics to reader contracts. | Consumers can distinguish a genuine empty window from broken ingestion from the response alone; all reader routes have contract coverage. | T16.1 |
 | **T17.4** | Define per-competition freshness/completeness SLOs, alerts, and runbooks from ingest evidence. | Dormant seasons do not page; active competitions crossing their declared threshold do, with competition/season/run context. | T17.3; T21.4 later exports richer metrics |
 
@@ -822,24 +830,28 @@ T21.1 delivery activation and T21.2 schema readiness remain separate work.
 collections are **not** Greece-specific, and no Greece-specific application
 defect survives (a worker crash loop or lease conflict is not excluded —
 CURRENT_STATE §9): no
-ingester write has landed since 2026-08-22 and nothing is running now, so every
-in-season competition is stale, and Greece is empty rather than stale only because it was configured
+ingester write had landed since 2026-08-22 and nothing was running then, so every
+in-season competition was stale, and Greece was empty rather than stale only because it was configured
 2026-08-24, after the stall. Config, source and mappers check out against live ESPN, and the
 reader resolves the competition/season correctly (`400` on unknown ones), so
 **no source change was made**. Gating Greece out was rejected — it
 would hide a pipeline-wide stall behind a per-competition flag and break a
-working ESPN-backed frontend competition. Population requires the authorized
-orphan-standby recovery in
-[SETUP.md §7.4](backend/SETUP.md#74-first-deploy) (separate explicit approval
-before update and start), accepted with the freshness
-check in [§7.5](backend/SETUP.md#75-verify).
+working ESPN-backed frontend competition. The orphan-standby recovery is done:
+the owner started the machine on September 13 and reports removing the
+standby, confirmed by read-only readback on 2026-09-14. Population acceptance
+now depends only on the freshness check in
+[SETUP.md §7.5](backend/SETUP.md#75-verify).
+[SETUP.md §7.4](backend/SETUP.md#74-first-deploy) keeps the procedure in case a
+standby returns.
 [CURRENT_STATE §3](CURRENT_STATE.md#3-verification-evidence-this-pass-2026-09-01)
 owns the dated evidence and the remaining unknowns (why the worker stopped and
 when its primary Machine was removed). **September 13:** v21 at tested `0f75102`
-updated the same machine but left it stopped/suspended; Greece remains empty.
-Versioned Fly behavior supports clearing its obsolete standby in place while
+updated the same machine but left it stopped/suspended; Greece was still empty
+then. Versioned Fly behavior supports clearing its obsolete standby in place while
 preserving the same image/config and keeping it stopped before a separate start
-approval. No recovery operation has been executed. Reader/ingester now have
+approval. (Superseded: the machine was later started and its standby removed.
+Public-reader data, including Greece, advanced after the September 13 start;
+acceptance is pending [SETUP.md §7.5](backend/SETUP.md#75-verify).) Reader/ingester now have
 successful release records; frontend `6404319208` is unresolved. Workflow/release
 script changes still select all services, so coordinate activation before merge.
 Distinguishing "genuinely
@@ -856,6 +868,15 @@ per-competition freshness alerting remains T17.4.
 | **T18.4** | Prove one licensed adapter behind the existing source/crosswalk seams. | Provider failure does not corrupt canonical identity or overwrite higher-precedence facts; parity fixtures cover one complete competition. | T18.2/T18.3 |
 
 ### E19 · Personalization & alerts
+
+**Deliberate scheduling exception (September 13):** team-only browser-local
+follows on the existing DataStore may ship before E16 dogfooding. The bounded
+[team-insights milestone](TEAM_INSIGHTS_HANDOFF.md) implements Follow/Following,
+home shortcuts to the current season, and deterministic evidence-backed recent
+performance on existing team pages. This is **partial T19.1**, not completion of
+the task or epic. Player/competition follows retain the original gate; T19.2
+ranking/feed, accounts, notifications and generated briefs remain out of scope.
+The data-rights decision and all source-cutover boundaries remain in force.
 
 | Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
 |---|---|---|---|
@@ -888,7 +909,9 @@ per-competition freshness alerting remains T17.4.
 **T21.1 activation remains open (September 13 readback):** PR #161 merged as
 `0f75102`; main run `34663184517` passed full tests and all three actual credential
 checks. Reader deployed and serves health/América correctly. Ingester image v21
-deployed but its sole worker remains stopped. Frontend staging succeeded, then
+deployed, but its sole worker was still stopped at that readback. (The owner
+started it on 2026-09-13 and later removed its obsolete standby; readback on
+2026-09-14 confirmed it. See CURRENT_STATE §2 and §10.) Frontend staging succeeded, then
 CLI 59.11.7 promotion failed `User not found. (404)` before confirmation.
 Later dependency-only main `4b972c2` passed tests but stopped all releases on
 an optional ledger app-identity field. The follow-up recognizes the actual
@@ -901,8 +924,9 @@ No token replacement, scope broadening or eligibility relaxation is required.
 Reader/ingester now have successful `0f75102` ledger baselines, but this
 workflow/release-script change selects all three services. No approval hold was
 present on any production environment at readback; leave the PR unmerged until
-the owner authorizes activation or verifies suitable holds. Ingester recovery
-requires separate update/start approvals and actual fresh-data acceptance.
+the owner authorizes activation or verifies suitable holds. Ingester fresh-data
+acceptance ([SETUP §7.5](backend/SETUP.md#75-verify)) remains. Any further
+ingester machine operation still needs its own approval.
 See CURRENT_STATE §10 for dated evidence and remaining operator actions. This is neither the E16 data
 cutover nor T21.2 schema readiness; T17.1 recovery stays closed.
 
@@ -982,7 +1006,8 @@ every P0 behind one owner decision.
 - **E20:** performance, accessibility, resilient states, responsive behavior,
   SEO, and dead-code removal — important, but not ahead of data correctness.
 - **E10.11 / E12 T12.4:** canonical entity search and player discovery.
-- **E19 T19.1/T19.2:** local-first follows and “My ScoreArc”; accounts,
+- **E19 T19.1/T19.2:** broader local-first follows and “My ScoreArc” (the
+  team-only shortcut subset has the explicit early scheduling exception above); accounts,
   notifications, and generated briefs remain demand/gate dependent.
 
 ### Later or explicitly gated

@@ -34,6 +34,9 @@ export type MatchStatusInput = Pick<Match, 'state' | 'statusName' | 'statusDetai
 };
 
 export function matchStatusText(match: MatchStatusInput, t: Translator): string {
+  if (/CANCELED|CANCELLED|ABANDONED|POSTPONED|SUSPENDED|FORFEIT|AWARDED/.test(match.statusName)) {
+    return match.statusDetail || t('common.unavailable');
+  }
   if (match.state === 'scheduled') return t('match.scheduled');
   if (match.state === 'finished') {
     return PENALTY_STATUS.test(match.statusName) || match.shootout || match.shootoutDetail
@@ -59,10 +62,12 @@ export default function MatchRow({
   match,
   teamStyle,
   onOpen,
+  showDate = false,
 }: {
   match: Match;
   teamStyle: TeamStyle;
   onOpen: () => void;
+  showDate?: boolean;
 }) {
   const now = useLocalNow();
   const locale = useLocale();
@@ -74,10 +79,10 @@ export default function MatchRow({
   // screen-reader users already had on this row and gave nothing back.
   const label = [
     started
-      ? `${match.home.name} ${match.homeScore ?? 0}, ${match.away.name} ${match.awayScore ?? 0}`
+      ? `${match.home.name} ${match.homeScore ?? t('common.unavailable')}, ${match.away.name} ${match.awayScore ?? t('common.unavailable')}`
       : `${match.home.name} ${t('match.versus')} ${match.away.name}`,
     status,
-    !started && now
+    (showDate || !started) && now
       ? (localTimeText(match.kickoff, 'dayTime', now, locale) ?? t('common.unavailable'))
       : null,
   ].filter(Boolean).join(', ');
@@ -96,9 +101,9 @@ export default function MatchRow({
       <span className="mc-score">
         {started ? (
           <>
-            <strong>{match.homeScore ?? 0}</strong>
+            <strong>{match.homeScore ?? '–'}</strong>
             <span>–</span>
-            <strong>{match.awayScore ?? 0}</strong>
+            <strong>{match.awayScore ?? '–'}</strong>
           </>
         ) : (
           <strong><LocalTime iso={match.kickoff} mode="time" /></strong>
@@ -109,6 +114,7 @@ export default function MatchRow({
         <span className="mc-team-name">{match.away.name}</span>
         <TeamMark team={match.away} style={teamStyle} />
       </span>
+      {showDate && <span className="mc-match-date"><LocalTime iso={match.kickoff} mode="dayTime" /></span>}
     </button>
   );
 }

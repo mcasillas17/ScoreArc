@@ -160,6 +160,7 @@ jobs:
               ;;
             ingester)
               flyctl deploy backend --config ingester/fly.toml --dockerfile ingester/Dockerfile --remote-only --ha=false
+              node scripts/production-release.mjs verify-ingester
               ;;
             *) echo "::error::Unknown release service"; exit 1 ;;
           esac

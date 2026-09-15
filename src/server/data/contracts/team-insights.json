@@ -1,0 +1,459 @@
+{
+  "provenance": "First event reduced without changing retained fields from ../__fixtures__/espn-team-schedule.json (401877014); second event is a synthetic null-score upcoming vector. Reader UUIDs are test identities, not a production crosswalk. Reader kickoff uses its RFC3339 serialization.",
+  "scope": {
+    "competitionId": "liga-mx",
+    "seasonId": "2026-apertura"
+  },
+  "identity": {
+    "providerId": "227",
+    "canonicalId": "mex-america"
+  },
+  "scheduleInput": {
+    "events": [
+      {
+        "id": "401877015",
+        "date": "2026-08-17T23:00Z",
+        "season": {
+          "year": 2026,
+          "displayName": "2026-27 Liga BBVA MX"
+        },
+        "seasonType": {
+          "id": "1",
+          "type": 14277,
+          "name": "Torneo Apertura",
+          "abbreviation": "2026 Liga MX Apertura"
+        },
+        "competitions": [
+          {
+            "status": {
+              "type": {
+                "name": "STATUS_SCHEDULED",
+                "state": "pre",
+                "completed": false,
+                "shortDetail": "Scheduled"
+              }
+            },
+            "competitors": [
+              {
+                "homeAway": "home",
+                "winner": false,
+                "score": null,
+                "team": {
+                  "id": "227",
+                  "displayName": "América",
+                  "abbreviation": "AME",
+                  "logos": [
+                    {
+                      "href": "https://a.espncdn.com/i/teamlogos/soccer/500/227.png",
+                      "width": 500,
+                      "height": 500,
+                      "alt": "",
+                      "rel": [
+                        "full",
+                        "default"
+                      ],
+                      "lastUpdated": "2019-05-08T16:07Z"
+                    },
+                    {
+                      "href": "https://a.espncdn.com/i/teamlogos/soccer/500-dark/227.png",
+                      "width": 500,
+                      "height": 500,
+                      "alt": "",
+                      "rel": [
+                        "full",
+                        "dark"
+                      ],
+                      "lastUpdated": "2019-05-08T16:07Z"
+                    }
+                  ]
+                }
+              },
+              {
+                "homeAway": "away",
+                "winner": false,
+                "score": null,
+                "team": {
+                  "id": "15720",
+                  "displayName": "Atlético de San Luis",
+                  "abbreviation": "ASL",
+                  "logos": [
+                    {
+                      "href": "https://a.espncdn.com/i/teamlogos/soccer/500/15720.png",
+                      "width": 500,
+                      "height": 500,
+                      "alt": "",
+                      "rel": [
+                        "full",
+                        "default"
+                      ],
+                      "lastUpdated": "2023-08-10T22:15Z"
+                    },
+                    {
+                      "href": "https://a.espncdn.com/i/teamlogos/soccer/500-dark/15720.png",
+                      "width": 500,
+                      "height": 500,
+                      "alt": "",
+                      "rel": [
+                        "full",
+                        "dark"
+                      ],
+                      "lastUpdated": "2023-08-10T22:17Z"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "401877014",
+        "date": "2026-08-16T23:00Z",
+        "season": {
+          "year": 2026,
+          "displayName": "2026-27 Liga BBVA MX"
+        },
+        "seasonType": {
+          "id": "1",
+          "type": 14277,
+          "name": "Torneo Apertura",
+          "abbreviation": "2026 Liga MX Apertura"
+        },
+        "competitions": [
+          {
+            "status": {
+              "clock": 5400.0,
+              "addedClock": 480.0,
+              "displayClock": "90'+8'",
+              "period": 2,
+              "type": {
+                "id": "28",
+                "name": "STATUS_FULL_TIME",
+                "state": "post",
+                "completed": true,
+                "description": "Full Time",
+                "detail": "FT",
+                "shortDetail": "FT"
+              }
+            },
+            "competitors": [
+              {
+                "homeAway": "home",
+                "winner": true,
+                "score": {
+                  "$ref": "http://sports.core.api.espn.pvt/v2/sports/soccer/leagues/mex.1/events/401877014/competitions/401877014/competitors/227/scores/38?lang=en&region=us",
+                  "value": 3.0,
+                  "displayValue": "3",
+                  "winner": true,
+                  "source": {
+                    "id": "38",
+                    "description": "SA.ENVOY"
+                  }
+                },
+                "team": {
+                  "id": "227",
+                  "displayName": "América",
+                  "abbreviation": "AME",
+                  "logos": [
+                    {
+                      "href": "https://a.espncdn.com/i/teamlogos/soccer/500/227.png",
+                      "width": 500,
+                      "height": 500,
+                      "alt": "",
+                      "rel": [
+                        "full",
+                        "default"
+                      ],
+                      "lastUpdated": "2019-05-08T16:07Z"
+                    },
+                    {
+                      "href": "https://a.espncdn.com/i/teamlogos/soccer/500-dark/227.png",
+                      "width": 500,
+                      "height": 500,
+                      "alt": "",
+                      "rel": [
+                        "full",
+                        "dark"
+                      ],
+                      "lastUpdated": "2019-05-08T16:07Z"
+                    }
+                  ]
+                }
+              },
+              {
+                "homeAway": "away",
+                "winner": false,
+                "score": {
+                  "$ref": "http://sports.core.api.espn.pvt/v2/sports/soccer/leagues/mex.1/events/401877014/competitions/401877014/competitors/15720/scores/38?lang=en&region=us",
+                  "value": 0.0,
+                  "displayValue": "0",
+                  "winner": false,
+                  "source": {
+                    "id": "38",
+                    "description": "SA.ENVOY"
+                  }
+                },
+                "team": {
+                  "id": "15720",
+                  "displayName": "Atlético de San Luis",
+                  "abbreviation": "ASL",
+                  "logos": [
+                    {
+                      "href": "https://a.espncdn.com/i/teamlogos/soccer/500/15720.png",
+                      "width": 500,
+                      "height": 500,
+                      "alt": "",
+                      "rel": [
+                        "full",
+                        "default"
+                      ],
+                      "lastUpdated": "2023-08-10T22:15Z"
+                    },
+                    {
+                      "href": "https://a.espncdn.com/i/teamlogos/soccer/500-dark/15720.png",
+                      "width": 500,
+                      "height": 500,
+                      "alt": "",
+                      "rel": [
+                        "full",
+                        "dark"
+                      ],
+                      "lastUpdated": "2023-08-10T22:17Z"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "espnMatches": [
+    {
+      "id": "401877014",
+      "kickoff": "2026-08-16T23:00Z",
+      "state": "finished",
+      "minute": null,
+      "statusDetail": "FT",
+      "statusName": "STATUS_FULL_TIME",
+      "home": {
+        "id": "227",
+        "name": "América",
+        "abbr": "AME",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/227.png"
+      },
+      "away": {
+        "id": "15720",
+        "name": "Atlético de San Luis",
+        "abbr": "ASL",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/15720.png"
+      },
+      "homeScore": 3,
+      "awayScore": 0,
+      "winnerId": "227",
+      "note": null,
+      "scorers": [],
+      "cards": [],
+      "shootout": null,
+      "shootoutDetail": null,
+      "stats": null,
+      "winProbability": null
+    },
+    {
+      "id": "401877015",
+      "kickoff": "2026-08-17T23:00Z",
+      "state": "scheduled",
+      "minute": null,
+      "statusDetail": "Scheduled",
+      "statusName": "STATUS_SCHEDULED",
+      "home": {
+        "id": "227",
+        "name": "América",
+        "abbr": "AME",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/227.png"
+      },
+      "away": {
+        "id": "15720",
+        "name": "Atlético de San Luis",
+        "abbr": "ASL",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/15720.png"
+      },
+      "homeScore": null,
+      "awayScore": null,
+      "winnerId": null,
+      "note": null,
+      "scorers": [],
+      "cards": [],
+      "shootout": null,
+      "shootoutDetail": null,
+      "stats": null,
+      "winProbability": null
+    }
+  ],
+  "readerMatches": [
+    {
+      "id": "018f0000-0000-7000-8000-000000000301",
+      "kickoff": "2026-08-16T23:00:00Z",
+      "state": "finished",
+      "minute": null,
+      "statusDetail": "FT",
+      "statusName": "STATUS_FULL_TIME",
+      "home": {
+        "id": "mex-america",
+        "name": "América",
+        "abbr": "AME",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/227.png"
+      },
+      "away": {
+        "id": "mex-atletico-de-san-luis",
+        "name": "Atlético de San Luis",
+        "abbr": "ASL",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/15720.png"
+      },
+      "homeScore": 3,
+      "awayScore": 0,
+      "winnerId": "mex-america",
+      "note": null,
+      "scorers": [],
+      "cards": [],
+      "shootout": null,
+      "shootoutDetail": null,
+      "stats": null,
+      "winProbability": null
+    },
+    {
+      "id": "018f0000-0000-7000-8000-000000000302",
+      "kickoff": "2026-08-17T23:00:00Z",
+      "state": "scheduled",
+      "minute": null,
+      "statusDetail": "Scheduled",
+      "statusName": "STATUS_SCHEDULED",
+      "home": {
+        "id": "mex-america",
+        "name": "América",
+        "abbr": "AME",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/227.png"
+      },
+      "away": {
+        "id": "mex-atletico-de-san-luis",
+        "name": "Atlético de San Luis",
+        "abbr": "ASL",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/15720.png"
+      },
+      "homeScore": null,
+      "awayScore": null,
+      "winnerId": null,
+      "note": null,
+      "scorers": [],
+      "cards": [],
+      "shootout": null,
+      "shootoutDetail": null,
+      "stats": null,
+      "winProbability": null
+    }
+  ],
+  "readerTeam": {
+    "team": {
+      "id": "mex-america",
+      "name": "América",
+      "abbr": "AME",
+      "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/227.png"
+    },
+    "location": null,
+    "color": null,
+    "altColor": null,
+    "record": null,
+    "standingSummary": null,
+    "squad": [],
+    "schedule": [
+      {
+        "id": "018f0000-0000-7000-8000-000000000301",
+        "kickoff": "2026-08-16T23:00:00Z",
+        "state": "finished",
+        "minute": null,
+        "statusDetail": "FT",
+        "statusName": "STATUS_FULL_TIME",
+        "home": {
+          "id": "mex-america",
+          "name": "América",
+          "abbr": "AME",
+          "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/227.png"
+        },
+        "away": {
+          "id": "mex-atletico-de-san-luis",
+          "name": "Atlético de San Luis",
+          "abbr": "ASL",
+          "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/15720.png"
+        },
+        "homeScore": 3,
+        "awayScore": 0,
+        "winnerId": "mex-america",
+        "note": null,
+        "scorers": [],
+        "cards": [],
+        "shootout": null,
+        "shootoutDetail": null,
+        "stats": null,
+        "winProbability": null
+      },
+      {
+        "id": "018f0000-0000-7000-8000-000000000302",
+        "kickoff": "2026-08-17T23:00:00Z",
+        "state": "scheduled",
+        "minute": null,
+        "statusDetail": "Scheduled",
+        "statusName": "STATUS_SCHEDULED",
+        "home": {
+          "id": "mex-america",
+          "name": "América",
+          "abbr": "AME",
+          "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/227.png"
+        },
+        "away": {
+          "id": "mex-atletico-de-san-luis",
+          "name": "Atlético de San Luis",
+          "abbr": "ASL",
+          "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/15720.png"
+        },
+        "homeScore": null,
+        "awayScore": null,
+        "winnerId": null,
+        "note": null,
+        "scorers": [],
+        "cards": [],
+        "shootout": null,
+        "shootoutDetail": null,
+        "stats": null,
+        "winProbability": null
+      }
+    ]
+  },
+  "queries": [
+    {
+      "query": "?range=19000101-19000102&state=live&detail=false&limit=1",
+      "expectedCount": 2
+    },
+    {
+      "query": "?range=invalid&limit=-1",
+      "expectedCount": 2
+    }
+  ],
+  "errors": [
+    {
+      "path": "/v1/competitions/missing/2026-apertura/teams/mex-america",
+      "status": 400,
+      "error": "unknown competition or season"
+    },
+    {
+      "path": "/v1/competitions/liga-mx/missing/teams/mex-america",
+      "status": 400,
+      "error": "unknown competition or season"
+    },
+    {
+      "path": "/v1/competitions/liga-mx/2026-apertura/teams/unknown",
+      "status": 404,
+      "error": "unknown team"
+    }
+  ]
+}
