@@ -808,9 +808,9 @@ T16.2–T16.6 and the production-cutover gates are unchanged. See the
 | Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
 |---|---|---|---|
 | **T17.1** | Reproduce, diagnose, and fix the Liga MX team-profile 500 in reader store/handler integration tests. | Root cause is evidence from a real-Postgres reproduction, not a UUID hypothesis; seeded teams return `200` or intentional `404`, never unexplained `500`. | none |
-| **T17.2** | Diagnose Greece across config, source, ingester, database, and reader; populate it or gate it out honestly. **Not-running state and Greece's empty-vs-stale explanation established 2026-09-06 (below); database state inferred from the reader, not read directly; why writes stopped on 2026-08-22 is still open (CURRENT_STATE §9). The machine was restarted 2026-09-13 and its obsolete standby removed (readback 2026-09-14); population acceptance is pending.** | Never assert a missing row count in advance; a configured-but-unproven competition is not presented as healthy. | diagnosis: none. Population: [SETUP §7.5](backend/SETUP.md#75-verify) freshness acceptance (zero-failure cycles, advancing data including Greece) |
-| **T17.3** | Add source, observed/finalized time, derivation, and complete/empty/stale/unavailable semantics to reader contracts. | Consumers can distinguish a genuine empty window from broken ingestion from the response alone; all reader routes have contract coverage. | T16.1 |
-| **T17.4** | Define per-competition freshness/completeness SLOs, alerts, and runbooks from ingest evidence. | Dormant seasons do not page; active competitions crossing their declared threshold do, with competition/season/run context. | T17.3; T21.4 later exports richer metrics |
+| **T17.2** | Diagnose Greece across config, source, ingester, database, and reader; populate it or gate it out honestly. **The September 6 stopped-machine diagnosis and September 13/14 recovery are historical; #163/#172 delivery repairs are merged. September 19 stale live matches and range-request failures require separate current diagnosis. Bounded verified recovery is implemented on the recovery branch, not deployed; production SQL/machine evidence and population acceptance remain pending.** | Never assert a missing row count in advance; a configured-but-unproven competition is not presented as healthy. | diagnosis: none. Population: [SETUP §7.5](backend/SETUP.md#75-verify) freshness acceptance (zero-failure cycles, advancing data including Greece) |
+| **T17.3** | Add source, observed/finalized time, derivation, and complete/empty/stale/unavailable semantics to reader contracts. **September 19: match-specific additive headers, accepted-observation timestamps and stopped-worker detection are implemented on the recovery branch, not deployed; broader endpoint/provenance coverage remains open.** | Consumers can distinguish a genuine empty window from broken ingestion from the response alone; all reader routes have contract coverage. | T16.1 |
+| **T17.4** | Define per-competition freshness/completeness SLOs, alerts, and runbooks from ingest evidence. **September 19: bounded match watchdog, durable transition deduplication and [runbook](backend/MATCH_FRESHNESS.md) are implemented; schedule/notification delivery and live acceptance are not activated or complete.** | Dormant seasons do not page; active competitions crossing their declared threshold do, with competition/season/run context. | T17.3; T21.4 later exports richer metrics |
 
 **T17.1 production repair accepted (2026-09-06):** the missing `t.color`
 projection was reproduced with real Postgres; regression/contract coverage
@@ -851,12 +851,15 @@ then. Versioned Fly behavior supports clearing its obsolete standby in place whi
 preserving the same image/config and keeping it stopped before a separate start
 approval. (Superseded: the machine was later started and its standby removed.
 Public-reader data, including Greece, advanced after the September 13 start;
-acceptance is pending [SETUP.md §7.5](backend/SETUP.md#75-verify).) Reader/ingester now have
-successful release records; frontend `6404319208` is unresolved. Workflow/release
-script changes still select all services, so coordinate activation before merge.
-Distinguishing "genuinely
-empty" from "ingestion stopped" *in the response itself* remains T17.3;
-per-competition freshness alerting remains T17.4.
+acceptance is pending [SETUP.md §7.5](backend/SETUP.md#75-verify).)
+**September 19 ledger refresh:** frontend `6404319208` is inactive as of
+September 13 07:06 UTC, and later frontend ledger `6432468280` records successful
+publication on September 14 at 07:32 UTC. Those old delivery incidents are not
+pending repairs. Current ingestion acceptance and the September 19 stale-match
+diagnosis remain separate. The recovery branch implements match-specific
+T17.3/T17.4 contracts and a manual watchdog; production rollout/notification
+acceptance and broader endpoint coverage remain open. Coordinate authorization
+for any new release using the current path policy, not the historical ledger.
 
 ### E18 · Rights & multi-source platform
 
@@ -902,7 +905,7 @@ The data-rights decision and all source-cutover boundaries remain in force.
 | Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
 |---|---|---|---|
 | **T21.1** | Protect `main`; require PR/CI integration and exact-SHA main CI before Fly or Vercel publication. [Release contract](decisions/2026-09-05-ci-production-gates.md), [operations](backend/RELEASES.md). | No direct push/force push/deletion; failed or skipped tests cannot release. Manual delivery reruns CI; rollback uses a revert PR. Closure requires live settings evidence and post-merge acceptance for all three targets, not just a green PR. | owner GitHub/Vercel access and a non-owner Vercel deployment identity; activation ledger in CURRENT_STATE §10 |
-| **T21.2** | Fail service readiness when the database migration head is behind code and document the controlled apply path. | First slice does not auto-migrate production; reader/ingester refuse mismatched schema with an actionable error. | none |
+| **T21.2** | Fail service readiness when the database migration head is behind code and document the controlled apply path. **September 19: the recovery slice checks its 0023 tables/columns/read access at startup; full head/dirty-ledger enforcement remains open.** | First slice does not auto-migrate production; reader/ingester refuse mismatched schema with an actionable error. | none |
 | **T21.3** | Complete provisional-team curation and safe identity promotion in both operator tooling and the ingester promotion path. | Repoint match, standing, appearance, and match-event references before deletion; promotion never ends in FK `23503`. | T21.2 |
 | **T21.4** | Add reader/ingester metrics, bounded audit retention, dashboards, and operator runbooks. | Metrics omit secrets/high-cardinality ids; each E17 alert links to a diagnostic and recovery action. | none |
 
@@ -916,19 +919,24 @@ CLI 59.11.7 promotion failed `User not found. (404)` before confirmation.
 Later dependency-only main `4b972c2` passed tests but stopped all releases on
 an optional ledger app-identity field. The follow-up recognizes the actual
 Actions-owned creator/status without discarding provenance or unresolved records.
-The follow-up implements project-specific API promotion with the **existing
-project-scoped token**, bounded async polling and exact-domain proof; it is not
-yet merged or activated. Ledger `6404319208` remains unresolved pending
-authenticated provider-state inspection and separately approved reconciliation.
-No token replacement, scope broadening or eligibility relaxation is required.
-Reader/ingester now have successful `0f75102` ledger baselines, but this
-workflow/release-script change selects all three services. No approval hold was
-present on any production environment at readback; leave the PR unmerged until
-the owner authorizes activation or verifies suitable holds. Ingester fresh-data
-acceptance ([SETUP §7.5](backend/SETUP.md#75-verify)) remains. Any further
-ingester machine operation still needs its own approval.
-See CURRENT_STATE §10 for dated evidence and remaining operator actions. This is neither the E16 data
-cutover nor T21.2 schema readiness; T17.1 recovery stays closed.
+**September 19, 2026 evidence refresh:** that project-token promotion follow-up
+merged in #163 on September 13, using the existing project-scoped token,
+bounded async polling and exact-domain proof. #172's shutdown/singleton
+verification repair merged September 14. These are not unmerged repairs.
+The latest GitHub status for old frontend ledger `6404319208` is `inactive`
+(September 13, 07:06 UTC); later frontend ledger `6432468280` at `4d5e6a2`
+records successful publication (September 14, 07:32 UTC). Do not reopen that
+old ledger incident or replace/broaden credentials merely from the historical
+failures above.
+
+Current approval holds, deployment-identity governance and sustained ingestion
+acceptance still need their own evidence. Recheck live settings before any new
+release; the September 13 absence of approval holds is not present authorization.
+The separate [match-recovery slice](backend/MATCH_FRESHNESS.md) needs approved
+migration 0023 before dependent binaries, then normal main-CI release and live
+freshness acceptance. Any production machine operation or alert activation
+requires separate approval. T21.1 is not declared wholly closed here; this is
+neither E16 cutover nor full T21.2 schema readiness, and T17.1 stays closed.
 
 ### E22 · Developer & device platform
 

@@ -37,7 +37,20 @@ type fakeReaderStore struct {
 	topScorersErr      error
 	teams              map[string]*TeamProfile
 	teamErr            error
+	freshness          freshnessSnapshot
+	freshnessErr       error
 	calls              int
+}
+
+func (f *fakeReaderStore) Snapshot(context.Context) (matchReader, func() error, error) {
+	return f, func() error { return nil }, nil
+}
+
+func (f *fakeReaderStore) Freshness(context.Context, freshnessScope) (freshnessSnapshot, error) {
+	return f.freshness, f.freshnessErr
+}
+func (f *fakeReaderStore) MatchScope(_ context.Context, id string) (freshnessScope, error) {
+	return freshnessScope{Competition: "world-cup", Season: "2026", MatchID: id}, nil
 }
 
 func (f *fakeReaderStore) Ping(ctx context.Context) error {
@@ -144,7 +157,7 @@ func TestPublicRoutesAndCachePolicies(t *testing.T) {
 		{path: "/v1/competitions/world-cup/2026/bracket", cacheControl: "public, max-age=60", array: true},
 		{path: "/v1/competitions/world-cup/2026/top-scorers", cacheControl: "public, max-age=60", array: true},
 		{path: "/v1/competitions/world-cup/news", cacheControl: "public, max-age=60", array: true},
-		{path: "/v1/matches/1", cacheControl: "public, max-age=30"},
+		{path: "/v1/matches/" + finalMatchID, cacheControl: "public, max-age=30"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
@@ -250,7 +263,7 @@ func TestDependencyErrorsAreSanitized(t *testing.T) {
 		{name: "bracket database", path: "/v1/competitions/world-cup/2026/bracket", store: &fakeReaderStore{bracketErr: secret}, news: &fakeNewsReader{}, status: http.StatusInternalServerError},
 		{name: "top scorers database", path: "/v1/competitions/world-cup/2026/top-scorers", store: &fakeReaderStore{topScorersErr: secret}, news: &fakeNewsReader{}, status: http.StatusInternalServerError},
 		{name: "missing summary", path: "/v1/matches/missing", store: &fakeReaderStore{summaryErr: ErrNotFound}, news: &fakeNewsReader{}, status: http.StatusNotFound},
-		{name: "summary database", path: "/v1/matches/1", store: &fakeReaderStore{summaryErr: secret}, news: &fakeNewsReader{}, status: http.StatusInternalServerError},
+		{name: "summary database", path: "/v1/matches/" + finalMatchID, store: &fakeReaderStore{summaryErr: secret}, news: &fakeNewsReader{}, status: http.StatusInternalServerError},
 		{name: "news upstream", path: "/v1/competitions/world-cup/news", store: &fakeReaderStore{}, news: &fakeNewsReader{err: secret}, status: http.StatusBadGateway},
 	}
 	for _, tt := range tests {

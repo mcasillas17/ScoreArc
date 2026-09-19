@@ -164,13 +164,13 @@ func TestESPNAthleteBioAcceptsExplicitEmptyHistory(t *testing.T) {
 func TestESPNRollingScoreboardFiltersForeignSeason(t *testing.T) {
 	body := `{"events":[
 		{"id":"old","date":"2025-12-31T12:00:00Z","season":{"year":2025,"slug":"regular-season"},
-		 "status":{"type":{"state":"post","completed":true}},
+		 "status":{"type":{"state":"post","completed":true,"name":"STATUS_FULL_TIME"}},
 		 "competitions":[{"competitors":[
 			{"homeAway":"home","team":{"id":"old-home","displayName":"Old Home","abbreviation":"OHO"}},
 			{"homeAway":"away","team":{"id":"old-away","displayName":"Old Away","abbreviation":"OAW"}}
 		 ]}]},
 		{"id":"current","date":"2026-01-01T12:00:00Z","season":{"year":2026,"slug":"regular-season"},
-		 "status":{"type":{"state":"pre","completed":false}},
+		 "status":{"type":{"state":"pre","completed":false,"name":"STATUS_SCHEDULED"}},
 		 "competitions":[{"competitors":[
 			{"homeAway":"home","team":{"id":"home","displayName":"Home","abbreviation":"HOM"}},
 			{"homeAway":"away","team":{"id":"away","displayName":"Away","abbreviation":"AWY"}}
@@ -654,7 +654,7 @@ func TestESPNNonBracketSeasonClearsProviderRoundClassification(t *testing.T) {
 				Body: io.NopCloser(strings.NewReader(`{"events":[{
 					"id":"league-match","date":"2026-05-01T19:00:00Z",
 					"season":{"year":2025,"slug":"2025-26-english-premier-league"},
-					"status":{"type":{"state":"post","completed":true}},
+					"status":{"type":{"state":"post","completed":true,"name":"STATUS_FULL_TIME"}},
 					"competitions":[{"competitors":[
 						{"homeAway":"home","team":{"id":"1","displayName":"Home","abbreviation":"HOM"}},
 						{"homeAway":"away","team":{"id":"2","displayName":"Away","abbreviation":"AWY"}}

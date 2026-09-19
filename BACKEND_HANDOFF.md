@@ -101,7 +101,9 @@ build/test gate is `cd backend && go build ./... && go test ./...`.
 3. **Postgres migrations** — the canonical schema, the forward history surfaces,
    the active snapshot tables (standings, win-prob, odds), replacement/retention
    grants, and the finalization guards; the migration head is
-   `0022_team_colours`, with `0021_finalization_invariants` extending the
+   `0023_match_sync`, which adds source-observation/poll evidence and durable
+   overdue-match retry bookkeeping. `0022_team_colours` adds team colours, with
+   `0021_finalization_invariants` extending the
    "immutable once final" invariant to the remaining finalized-fact tables. Plus
    the **least-privilege roles** (`scorearc_reader` = SELECT-only;
    `scorearc_ingester` = writer with narrowly scoped replacement deletes). See
@@ -216,6 +218,13 @@ Hard rules (also in `AGENTS.md` — read it; Codex auto-loads it):
   on the target table; never grant that privilege to the ingester or place
   database-owner credentials in app configuration.
 - **ESPN mapping already exists in TS** under `src/server/data/providers/espn-*.ts`, tested against recorded JSON in `src/server/data/__fixtures__/`. The Go ingester re-implements these; **test the Go port against the same fixtures** for parity.
+- **Match synchronization:** migration 0023 separates accepted source observations
+  from fact writes and persists bounded nonfinal recovery retries. The reader
+  exposes additive freshness headers without changing bodies or cutting over the
+  website. Apply the schema before dependent binaries; the external watchdog is
+  manual-only until separately authorized. See
+  [`MATCH_FRESHNESS.md`](docs/backend/MATCH_FRESHNESS.md) for evidence, limits and
+  rollout acceptance. This narrow schema prerequisite is not all of T21.2.
 - **All frontend data-fetching is server-side** (Next.js server components + `/api` routes) — so the reader can be public without the browser ever holding a DB credential.
 - **Competitions/seasons** are config in `src/server/data/competitions.ts` (**ten** configured competitions). The Go side reads the generated `backend/config/competitions.json` — never hand-edit it; run `npm run export:competitions`. (Configured is not the same as uniformly ingested — see [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md).)
 

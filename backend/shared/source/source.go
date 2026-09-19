@@ -3,10 +3,30 @@ package source
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
+
+// PartialScoreboardError means returned matches are validated, but cover only
+// today's fallback rather than the requested window. It must not mark a
+// full-season reconciliation complete or establish an empty/dormant season.
+type PartialScoreboardError struct {
+	Err error
+}
+
+func (e *PartialScoreboardError) Error() string {
+	return fmt.Sprintf("partial scoreboard (current UTC date only): %v", e.Err)
+}
+
+func (e *PartialScoreboardError) Unwrap() error { return e.Err }
+
+func IsPartialScoreboard(err error) bool {
+	var partial *PartialScoreboardError
+	return errors.As(err, &partial)
+}
 
 type SummaryResult struct {
 	Detail model.MatchDetail
@@ -29,6 +49,9 @@ type Source interface {
 	Name() string
 	Scoreboard(context.Context, config.Competition, config.Season, bool) ([]model.Match, error)
 	Summary(context.Context, config.Competition, model.Match) (SummaryResult, error)
+	// RecoverMatch observes fresh provider match fields and detail in one
+	// lookup. Input identities are provider-shaped, not canonical IDs.
+	RecoverMatch(context.Context, config.Competition, config.Season, model.Match) (model.Match, SummaryResult, error)
 	Standings(context.Context, config.Competition, config.Season) ([]model.Standing, error)
 	Statistics(context.Context, config.Competition, config.Season) ([]byte, error)
 	Bracket(context.Context, config.Competition, config.Season, bool) ([]model.BracketMatch, error)

@@ -1,0 +1,88 @@
+name: Match freshness watchdog (manual)
+
+# No schedule. Bootstrap is explicit; later runs restore an operator-selected
+# state-bearing run. Nothing automatically selects the latest artifact.
+on:
+  workflow_dispatch:
+    inputs:
+      initialize_state:
+        description: First run only; explicitly start new incident history instead of restoring
+        type: boolean
+        default: false
+        required: false
+      state_run_id:
+        description: Latest state-bearing run ID to restore; leave blank only for explicit bootstrap
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: match-freshness-watchdog
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Require exactly one bootstrap or restore
+        id: validate
+        env:
+          INITIALIZE_STATE: ${{ inputs.initialize_state }}
+          STATE_RUN_ID: ${{ inputs.state_run_id }}
+        run: |
+          case "$INITIALIZE_STATE" in
+            true)
+              if [[ -n "$STATE_RUN_ID" ]]; then
+                echo "Choose bootstrap OR a prior state run, not both."
+                exit 1
+              fi
+              ;;
+            false)
+              if [[ ! "$STATE_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+                echo "Restore requires a positive state_run_id; no automatic initialization."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "initialize_state must be an explicit boolean."
+              exit 1
+              ;;
+          esac
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "26"
+      - name: Restore durable incident state
+        id: restore
+        if: ${{ !inputs.initialize_state }}
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: match-freshness-state
+          path: watchdog-state
+          run-id: ${{ inputs.state_run_id }}
+          github-token: ${{ github.token }}
+      - name: Check public reader using its independent clock
+        id: check
+        env:
+          INITIALIZE_STATE: ${{ inputs.initialize_state }}
+        run: |
+          mkdir -p watchdog-state
+          args=(--base-url https://scorearc-reader.fly.dev --state-file watchdog-state/state.json)
+          if [[ "$INITIALIZE_STATE" == "true" ]]; then
+            args+=(--init-state)
+          fi
+          node "$GITHUB_WORKSPACE/scripts/match-freshness-watchdog.mjs" "${args[@]}"
+      - name: Preserve state even while an incident is unresolved
+        if: always() && steps.check.outputs.state_written == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: match-freshness-state
+          path: watchdog-state/state.json
+          if-no-files-found: error
+          retention-days: 90
