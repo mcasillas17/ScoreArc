@@ -14,20 +14,28 @@ import (
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
 )
 
-type database interface {
+type queryer interface {
 	Query(context.Context, string, ...any) (pgx.Rows, error)
 	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+type database interface {
+	queryer
 	Ping(context.Context) error
+	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
 }
 
 // Store is the parameterized read layer over the SELECT-only database pool.
-type Store struct{ db database }
+type Store struct {
+	db   queryer
+	pool database
+}
 
-func NewStore(db database) *Store { return &Store{db: db} }
+func NewStore(db database) *Store { return &Store{db: db, pool: db} }
 
 var ErrNotFound = errors.New("not found")
 
-func (s *Store) Ping(ctx context.Context) error { return s.db.Ping(ctx) }
+func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 
 func isoTime(value time.Time) string { return value.UTC().Format(time.RFC3339) }
 

@@ -138,7 +138,7 @@ func TestOpenAPIValidatesActualRouteResponses(t *testing.T) {
 		{target: "/v1/competitions/world-cup/2026/top-scorers", template: "/v1/competitions/{comp}/{season}/top-scorers"},
 		{target: "/v1/competitions/world-cup/news", template: "/v1/competitions/{comp}/news"},
 		{target: "/v1/competitions/world-cup/2026/teams/arg", template: "/v1/competitions/{comp}/{season}/teams/{teamId}"},
-		{target: "/v1/matches/1", template: "/v1/matches/{id}"},
+		{target: "/v1/matches/" + finalMatchID, template: "/v1/matches/{id}"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.template, func(t *testing.T) {

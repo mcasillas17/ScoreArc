@@ -56,6 +56,16 @@ func run() int {
 	}
 	defer repo.Close()
 	reportSchemaDrift(startupCtx, log, repo)
+	if err := repo.CheckMatchSyncSchema(startupCtx); err != nil {
+		cancelStartup()
+		if leaseErrorExitCode(ctx, err) == 0 {
+			log.Info("shutdown complete")
+			return 0
+		}
+		log.Error("match synchronization schema unavailable; apply migration 0023 before deployment",
+			"error_type", fmt.Sprintf("%T", err))
+		return 1
+	}
 	lease, acquired, err := store.AcquireIngesterLease(startupCtx, leaseDSN)
 	cancelStartup()
 	if err != nil {

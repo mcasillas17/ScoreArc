@@ -501,11 +501,24 @@ func TestTeamProfileMissingColoursMigration(t *testing.T) {
 	if _, err := pool.Exec(ctx, string(sql)); err != nil {
 		t.Fatal(err)
 	}
+	// The profile projection is repaired by 0022, but the current reader also
+	// requires 0023 freshness bookkeeping before it can return a success.
+	response := performRequest(router, "GET", ligaTeamPath)
+	if response.Code != 500 || response.Header().Get("X-ScoreArc-Freshness") == "fresh" {
+		t.Fatalf("missing freshness schema disguised: status=%d headers=%v", response.Code, response.Header())
+	}
+	sql, err = os.ReadFile("../migrations/0023_match_sync.up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, string(sql)); err != nil {
+		t.Fatal(err)
+	}
 	profileAfter := assertTeamResponse(t, performRequest(router, "GET", ligaTeamPath))
 	if profileAfter.Color != nil || profileAfter.AltColor != nil || len(profileAfter.Squad) != 3 || len(profileAfter.Schedule) != 2 {
 		t.Fatalf("profile after migration = %+v", profileAfter)
 	}
-	t.Log("after migration 0022: HTTP 200, complete OpenAPI-valid profile; colours remain null")
+	t.Log("after migrations 0022 + 0023: HTTP 200, complete OpenAPI-valid profile; colours remain null")
 }
 
 func TestTeamProfileQueryFailures(t *testing.T) {

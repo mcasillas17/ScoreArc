@@ -275,24 +275,51 @@ func (r *runner) ingestCompSeason(
 	previous activity,
 	slowTick bool,
 	backfill bool,
-) competitionResult {
-	scoreboardStart := time.Now()
+) (result competitionResult) {
+	scoreboardStart := r.clock()
+	pollOutcome, pollCount := "failed", 0
+	defer func() {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return
+		}
+		recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancel()
+		if err := r.repo.RecordMatchPoll(recordCtx, comp.ID, season.ID, sourceESPN, scoreboardStart, pollOutcome, pollCount); err != nil {
+			r.log.Warn("record match poll", "comp", comp.ID, "season", season.ID, "error_type", fmt.Sprintf("%T", err))
+			result.err = errors.Join(result.err, fmt.Errorf("record match poll: %w", err))
+		}
+	}()
 	scoreboard, scoreboardErr := r.source.Scoreboard(ctx, comp, season, backfill)
 	if scoreboardErr != nil {
 		r.recordRun(ctx, comp.ID, "scoreboard_fetch", scoreboardStart, scoreboardErr)
-		if !slowTick {
+		if !slowTick && !source.IsPartialScoreboard(scoreboardErr) {
 			return competitionResult{err: scoreboardErr}
 		}
-		scoreboard = nil
+		if !source.IsPartialScoreboard(scoreboardErr) {
+			scoreboard = nil
+		}
 	} else {
 		r.recordRun(ctx, comp.ID, "scoreboard_fetch", scoreboardStart, nil)
 	}
+	pollCount = len(scoreboard)
+	var recovery matchResult
+	var recovered map[uuid.UUID]bool
+	var recoveryErr error
+	if slowTick && ctx.Err() == nil {
+		start := r.clock()
+		recovery, recovered, recoveryErr = r.recoverOverdueMatches(ctx, comp, season)
+		r.recordRun(ctx, comp.ID, "match_recovery", start, recoveryErr)
+	}
 
 	candidates := make(map[string]model.Match, len(scoreboard))
+	observations := make(map[string]time.Time, len(scoreboard))
+	observedMatches := make(map[string]model.Match, len(scoreboard))
 	activeCandidate := false
 	liveCandidate := false
 	for _, match := range scoreboard {
 		candidates[match.ID] = mergeCandidate(candidates[match.ID], match)
+		observations[match.ID] = scoreboardStart
+		observedMatches[match.ID] = match
 		activeCandidate = activeCandidate || candidateIsActive(match, backfill, time.Now())
 		liveCandidate = liveCandidate || match.State == model.MatchStateLive
 	}
@@ -300,13 +327,19 @@ func (r *runner) ingestCompSeason(
 	var bracketErr error
 	var bracketStart time.Time
 	if season.HasBracket && (len(scoreboard) > 0 || previous.active || slowTick) && ctx.Err() == nil {
-		bracketStart = time.Now()
+		bracketStart = r.clock()
 		var bracket []model.BracketMatch
 		bracket, bracketErr = r.source.Bracket(ctx, comp, season, backfill)
 		if bracketErr == nil {
 			for _, match := range bracket {
 				candidate := bracketMatch(match)
 				candidates[match.ID] = mergeBracketCandidate(candidates[match.ID], candidate)
+				// The normal bracket merge composes two validated observations
+				// of the same event. Keep its older contributing timestamp.
+				if observations[match.ID].IsZero() {
+					observations[match.ID] = bracketStart
+				}
+				observedMatches[match.ID] = candidates[match.ID]
 				activeCandidate = activeCandidate ||
 					candidateIsActive(candidate, backfill, time.Now())
 				liveCandidate = liveCandidate || candidate.State == model.MatchStateLive
@@ -370,9 +403,16 @@ func (r *runner) ingestCompSeason(
 	var resolveErrors []error
 	for _, id := range providerIDs {
 		match := candidates[id]
+		if observed, ok := observedMatches[id]; ok && !sameObservedFacts(match, observed) {
+			delete(observations, id)
+			resolveErrors = append(resolveErrors, fmt.Errorf("match %s source observation conflicts with preserved backlog facts", id))
+		}
 		identity, err := r.resolveMatch(ctx, comp, season.ID, match)
 		if err != nil {
 			resolveErrors = append(resolveErrors, fmt.Errorf("match %s: %w", id, err))
+			continue
+		}
+		if recovered[identity.MatchID] {
 			continue
 		}
 		identities[id] = identity
@@ -401,14 +441,18 @@ func (r *runner) ingestCompSeason(
 			live: liveCandidate, active: activeCandidate,
 			stateReliable: false,
 			empty:         len(scoreboard) == 0 && !activeCandidate,
-			err:           errors.Join(bracketErr, backlogErr, resolveErr, existingErr),
+			err:           errors.Join(scoreboardErr, bracketErr, backlogErr, recoveryErr, resolveErr, existingErr),
 		}
 	}
 
 	matchStart := time.Now()
 	matchResult, processErr := r.processMatches(
 		ctx, comp, season, matches, identities, existing, slowTick, backfill,
+		observations, nil, false,
 	)
+	matchResult.live = matchResult.live || recovery.live
+	matchResult.active = matchResult.active || recovery.active
+	matchResult.finalized = matchResult.finalized || recovery.finalized
 	r.recordRun(ctx, comp.ID, "matches", matchStart, processErr)
 
 	var refreshErrors []error
@@ -426,7 +470,18 @@ func (r *runner) ingestCompSeason(
 		)
 	}
 	coreErr := errors.Join(
-		scoreboardErr, bracketErr, backlogErr, resolveErr, processErr, playBacklogErr)
+		scoreboardErr, bracketErr, backlogErr, recoveryErr, resolveErr, processErr, playBacklogErr)
+	recoveryIncomplete := recovery.observationFailed
+	for id := range recovery.failedRecoveryIDs {
+		recoveryIncomplete = recoveryIncomplete || !matchResult.observedIDs[id]
+	}
+	if scoreboardErr == nil && bracketErr == nil && resolveErr == nil &&
+		!matchResult.observationFailed && !recoveryIncomplete && ctx.Err() == nil {
+		pollOutcome = "ok"
+	} else if source.IsPartialScoreboard(scoreboardErr) && !matchResult.observationFailed &&
+		!recoveryIncomplete && resolveErr == nil && ctx.Err() == nil {
+		pollOutcome = "partial"
+	}
 	combinedErr := errors.Join(coreErr, errors.Join(refreshErrors...))
 	processCanceled := errors.Is(processErr, context.Canceled) ||
 		errors.Is(processErr, context.DeadlineExceeded)
@@ -439,11 +494,26 @@ func (r *runner) ingestCompSeason(
 		live:   live,
 		active: active,
 		stateReliable: scoreboardErr == nil && bracketErr == nil &&
-			backlogErr == nil && resolveErr == nil && !processCanceled,
+			backlogErr == nil && recoveryErr == nil && resolveErr == nil && !processCanceled,
 		backfillDone: coreErr == nil,
 		empty:        scoreboardErr == nil && len(scoreboard) == 0 && !activeCandidate,
 		err:          combinedErr,
 	}
+}
+
+func sameObservedFacts(a, b model.Match) bool {
+	return a.ID == b.ID && a.Kickoff == b.Kickoff && a.State == b.State &&
+		a.StatusName == b.StatusName && a.StatusDetail == b.StatusDetail &&
+		a.Home.ID == b.Home.ID && a.Away.ID == b.Away.ID &&
+		strPtrEqual(a.Minute, b.Minute) &&
+		intPtrEqual(a.HomeScore, b.HomeScore) && intPtrEqual(a.AwayScore, b.AwayScore)
+}
+
+func intPtrEqual(a, b *int) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 func mergeCandidate(current, incoming model.Match) model.Match {

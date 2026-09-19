@@ -1,21 +1,36 @@
 # ScoreArc current state
 
-**Last verified:** 2026-09-01, against `main` @ `49bf68d` (2026-09-01).
+**Broad inventory baseline:** 2026-09-01, against `main` @ `49bf68d`.
+Unrelated inventory observations below retain their original dates.
 
-**Delivery/recovery update:** read-only evidence refreshed 2026-09-13 UTC
-against the deployed `0f75102` (PR #161), then source main `4b972c2` (PR #153).
-Ordinary jobs received credentials;
-reader deployment succeeded, ingester image v21 was uploaded but its worker is
-still stopped, and frontend promotion failed. Project-token promotion repair
-and non-destructive ingester recovery are prepared, **not activated** (§10).
-**Superseded for the ingester, 2026-09-13/14:** the owner started the machine
-and later reports removing its obsolete standby. Read-only readback on
-2026-09-14 found one started machine with no standby targets. Ingestion
-acceptance is still pending (§2).
-Other operational observations retain their original verification date.
-The later dependency-only main run exposed a ledger-identity compatibility bug
-before any new release; this follow-up also corrects that read without clearing
-the unresolved frontend record (§10).
+**Match reliability update, 2026-09-19:** initial baseline `803094e`, then
+dependency-only main `2e79750` (#169). PR #163's promotion repair and #172's Fly
+shutdown/singleton verification repair are merged, not pending implementation.
+Main CI `34944474666` passed on September 15; GitHub also recorded the independent
+`2e79750` ingester publication successful at September 19 08:31 UTC. Neither
+deployment result establishes continuing ingestion.
+
+The older frontend ledger `6404319208` is not still unresolved: its latest
+GitHub status is `inactive`, recorded September 13 at 07:06 UTC. A later frontend
+ledger, `6432468280` at `4d5e6a2`, records successful publication September 14 at
+07:32 UTC. These are dated delivery records, not present runtime-health proof.
+
+At approximately 08:00 UTC September 19, the public reader still showed two
+September 15 LaLiga matches live at 88'/2-1 and 45'/0-0 while `/healthz` was 200.
+Configured ESPN range requests returned 400; single-date and targeted summary
+reads supplied completed results. Later reader/health requests timed out from
+this host. Fly logs, current machine state and production SQL remain inaccessible,
+so the complete incident cause is **unverified**, not assumed to be a stopped
+machine, a Fly regression or exclusively an ESPN fault.
+
+The `mcasillas17-stale-match-recovery` branch implements validated targeted
+recovery, durable bounded retries, independent source-observation timestamps,
+additive reader freshness headers and a manual-only external watchdog.
+**Not deployed or operationally accepted.** Migration 0023, release and any
+schedule/notification activation require separate approval. See
+[the dated evidence, boundaries and acceptance procedure](backend/MATCH_FRESHNESS.md).
+Historical September 6/13/14 records below remain evidence of those dates; they
+do not reopen completed delivery repairs or prove present machine health.
 
 **Reader recovery update:** T17.1 production repair accepted 2026-09-06 using
 existing migration 0022 from `origin/main` @ `2a917fe`; see §3. The serving reader
@@ -23,10 +38,9 @@ image was unchanged. Other observations retain their original date.
 
 **Ingestion update:** T17.2 diagnosed 2026-09-06 — see §2 and §3.
 
-**Team-insights implementation update:** validated locally September 14 UTC on
-the feature branch based on `504d4bf`; see §11. This is not a production
-deployment, reader cutover, or closure of T16.1/T19.1. Operational observations
-above retain their own verification dates.
+**Team-insights update:** #171 merged as `969f013` on September 14; §11 retains
+its local validation evidence. It remains partial T16.1/T19.1, not reader cutover
+or closure of those tasks.
 
 ## 1. Authority
 
@@ -59,12 +73,12 @@ that audit's mutable status conclusions where they conflict.
 | Area | Status |
 |---|---|
 | Frontend | Live at scorearc.futbol, fully ESPN-backed. No reader/backend fetch call sites exist in `src/server/data/` — the 1d cutover has not started. |
-| Ingester | **Machine running; ingestion not yet accepted.** Read-only readback at 2026-09-14 05:38 UTC: sole Machine `d896262f9016e8` `started`, no standby targets, restart `always`, no `stop_config`. The owner reports removing the obsolete standby after the September 13 website recovery; it is not outstanding. Public-reader data advanced after the 06:40 UTC start (§10), but zero-failure cycles and sustained freshness are not accepted. Live size (2 vCPU / 4096 MB) differs from the committed `shared-cpu-1x` / 512 MB. The next ingester release applies the committed size ([SETUP §7.4](backend/SETUP.md#ingester-configuration-layers)). |
+| Ingester | **Sustained ingestion not accepted; current machine state unverified.** September 14 readback found a started singleton without the obsolete standby. #172 subsequently merged the shutdown/configuration and bounded deployment-verification repair. Successful September 15/19 publications do not explain the September 19 stale-match observations. Read-only Fly/SQL access is needed for continuing runtime diagnosis; the new recovery/freshness slice is prepared, not deployed. |
 | Reader API | 7 registered `/v1` data routes (`matches`, `standings`, `bracket`, `top-scorers`, `teams/{teamId}`, `news`, `matches/{id}`) + `/healthz`. The Liga MX team-profile **500 is repaired**: existing migration 0022 restored the full production response, accepted 2026-09-06 (§3). Broader reader parity remains open (§5). |
-| Operations | `main` requires PR integration and strict `test`, admins enforced, force pushes/deletion blocked. **T21.1 remains open:** ordinary production jobs now receive existing credentials; frontend CLI promotion is incompatible with the supplied project token, and ingester upload did not restore ingestion. Frontend ledger `6404319208` remains unresolved. No approval hold was present on any release environment at September 13 readback. Migrations remain manual; T17.1 is complete, T21.2 is not. |
+| Operations | The recorded main PR/CI protections remain the release contract. Credential delivery, project-token promotion and Fly shutdown-verification repairs are merged; older failure/ledger descriptions in §10 are dated history, not work to repeat. Recheck live approval holds before any release (none were present at September 13 readback). Migrations remain manual. New match-sync schema checks cover only migration 0023 prerequisites, not full T21.2 head/dirty-ledger readiness. T17.1 is complete; broader T21.1 governance/acceptance and T21.2 are not declared closed here. |
 | 1d (frontend cutover) | Absent. No spec has landed as an implementation; no `apiStore` exists. |
 | E6 (shot log) | T6.1 (coverage probe) complete. T6.2–T6.4 (extraction, reconciliation, rendering) pending. |
-| E7 (history & trends) | Writer code is implemented and deployed. No write from it was visible in reader data from 2026-08-22 until the September 13 restart (§3). The machine is running again, but ingestion is not yet accepted (§2 above). Whether a process ran and failed between 2026-08-22 and the 2026-09-01 relaunch is open (§9), and the database was not queried — several of these writers target tables no reader route exposes, so partially written rows are not excluded. (`WriteStandingSnapshot`, `WriteWinProbSnapshot`, `WritePlays`, `WriteParticipation`, `WriteCommentary`, `ReplaceLeaders`, `ReplaceSquad`, `WriteMatchOfficials`, `WriteMatchOdds`, `WriteOddsSnapshot`). **T7.13 operational acceptance is pending** (§4). Read/render surfaces (T7.3–T7.5) do not exist. |
+| E7 (history & trends) | Writer code is implemented and deployed; continuing capture is not operationally accepted. September 13 recovery and September 14 machine readback are historical observations, not present-health proof. Production SQL has not been inspected in this pass; unexposed writer tables cannot be judged from reader responses alone. **T7.13 operational acceptance remains pending** (§4), and T7.21 participation retry work is separate from match-state recovery. |
 | E8 (AI) | Spec/task list only. No recap, digest, or preview code exists in `src` or `backend`. |
 | E9 (expected goals) | No ScoreArc xG model and no public xG surface. Gated on T7.13's actual closure (not its writer existence), T9.1, a provider/model product decision, and data rights (§7, §9). |
 | E10 (public API read surface) | Expansion absent beyond the 7 routes above; `params.go` and the other 35 planned endpoints do not exist. |
@@ -546,7 +560,8 @@ the diagnosis.
   returned event history still does not date the original primary's removal, so it is
   undated. **Separate what is observed from what is inferred:** the September
   6–13 not-running state was directly observed (app `suspended`, sole Machine a
-  stopped standby); the machine is running again (§2). Whether a process
+  stopped standby); running state was observed again on September 13/14,
+  but present machine state is unverified (§2). Whether a process
   ran and failed to write between 2026-08-22 and the 2026-09-01 relaunch is
   **not** excluded — Fly retains no events from that window, and eight
   `complete` releases occurred in it, so a crash loop or a lease conflict
@@ -558,9 +573,12 @@ the diagnosis.
   without services. The owner reports that the cleanup is done (§2). The
   underlying August outage is not thereby explained. See
   [SETUP §7.4](backend/SETUP.md#74-first-deploy).
-- **Updated September 13:** the managed ledger now contains reader/ingester
-  successes at `0f75102` and unresolved frontend failure `6404319208`.
-  Recheck the ledger before activation; the authoritative
+- **Ledger evidence refreshed September 19:** the early September 13 read found
+  reader/ingester successes at `0f75102` and then-unresolved frontend
+  `6404319208`. That frontend record was acknowledged inactive September 13 at
+  07:06 UTC; later `6432468280` records successful frontend publication
+  September 14 at 07:32 UTC. Do not treat the old failure as outstanding.
+  Recheck current ledger state before a new release; the authoritative
   mechanism is [RELEASES.md](backend/RELEASES.md#paths-and-ordering), executable
   as `scripts/production-policy.mjs`.
 - The legal/rights determination itself (§7) — owned by counsel or a
@@ -569,17 +587,19 @@ the diagnosis.
 
 ## 10. T21.1 delivery controls
 
-**2026-09-13 07:25 UTC: latest main is live on the website; automated
-publication confirmation still needs the metadata-query correction.**
+**Historical recovery at 2026-09-13 07:25 UTC:** the website publication below
+succeeded, while automated confirmation then needed the metadata-query
+correction. That correction subsequently merged in #163; later successful
+publication evidence is recorded at the top of this document.
 The owner authorized recovery at 07:05 UTC. Frontend-only run
 [34744420797](https://github.com/mcasillas17/ScoreArc/actions/runs/34744420797)
 passed full `test` and published `c8faba2a6dc0e105c0c1d7fcb03e957e6e07a022`
 using the existing project-scoped token. Its Fly publishing steps were skipped.
 
-| Milestone | Current evidence |
+| Milestone | Dated recovery evidence and subsequent correction |
 |---|---|
-| Code completed | Project-specific promotion works. A regression fix requests `rollbackInfo=true` on promotion preflight/polling and preserves the team query parameter; this correction is not yet merged or deployed. |
-| PR merged | **#162**, merge `c8faba2`, includes the ordinary-job, ledger-identity and project-scoped promotion repairs. |
+| Code completed | Project-specific promotion works. The `rollbackInfo=true` confirmation correction and team query preservation subsequently merged in **#163**, not an outstanding implementation. |
+| PR merged | **#162**, merge `c8faba2`, carried ordinary-job, ledger-identity and project-scoped promotion repairs; **#163** followed with confirmation repair, and **#172** with Fly shutdown/machine verification. |
 | Reader deployed | #162 run `34742757841` and ledger `6418498944` deployed `c8faba2`; `/healthz` returned 200. The later frontend-only recovery did not redeploy it. |
 | Ingester image deployed | #162 ledger `6418498672` deployed the `c8faba2` image. The owner started machine `d896262f9016e8` at 06:40 UTC; readback showed one started machine and the old standby target still configured. No ingester change was made during website recovery. **Later:** the owner reports removing the standby target. Read-only readback at 2026-09-14 05:38 UTC found no standby targets, restart `always`, no `stop_config` and a 2 vCPU / 4096 MB guest (§2). |
 | Frontend deployed | **Verified live:** both production domains point to `dpl_GkNQFyCMMYpVRPZi6nvpVtfCPbzg`, exact `c8faba2`, run `34744420797` attempt 1. The promotion job is `succeeded`; no rolling release. Read-only repository confirmation and English/Spanish browser rendering passed. |
@@ -587,24 +607,25 @@ using the existing project-scoped token. Its Fly publishing steps were skipped.
 | Fresh data arriving | At 06:41 UTC Greece had 182 matches, 23 finished, latest finished kickoff September 12, plus standings and 30 top scorers. Premier League had 37 finished matches through September 12, up from 6 through August 22. Writes resumed, but multiple zero-failure cycles are not accepted by this observation. Standby cleanup was observed separately (row above). |
 | Activation hold | Main-only branch policies exist, but no required-reviewer approval hold was present on any of the three environments. |
 
-**Ingester shutdown and machine-check correction (branch `fix/ingester-fly-verify`,
-not merged or deployed):** the committed `kill_signal`/`kill_timeout` move to top
-level, and the ingester publishing step gains a read-only machine-contract check
+**Ingester shutdown and machine-check correction (#172, merged September 14):**
+`kill_signal`/`kill_timeout` are at top level, and the ingester publishing step
+has a bounded read-only machine-contract check
 ([RELEASES](backend/RELEASES.md#post-deployment-ingester-verification)). It
-changes `ci.yml` and `scripts/production-*`, so its main CI selects **all three
-services**. That ingester release would also apply the committed
-`shared-cpu-1x` / 512 MB size to the live 2 vCPU / 4096 MB machine
-([SETUP §7.4](backend/SETUP.md#ingester-configuration-layers)). The owner decides
-on that release before merge. This change only read production: one machine
-listing. It changed nothing there.
+changed `ci.yml` and `scripts/production-*`, selecting all three services under
+the release policy. Subsequent successful deployment jobs establish that dated
+delivery, not current runtime resource size or sustained ingestion. Inspect
+current machine configuration with authorized read-only access instead of
+reusing the old 2 vCPU / 4096 MB snapshot. No machine operation is authorized
+by this documentation update.
 
 The plain project GET returned `lastAliasRequest: null`; adding
 `rollbackInfo=true` exposed the succeeded promotion from the previous live
 deployment to the exact new deployment. The missing parameter explains the
 false CI failure; it is not a failed publication or a token-scope problem.
-Keep the single-POST rule and exact SHA/run/attempt/domain checks. The next
-release must exercise the corrected reader and record its own Actions-authored
-success. No frontend data-source cutover occurred.
+Keep the single-POST rule and exact SHA/run/attempt/domain checks. Later
+frontend ledger `6432468280` records Actions-confirmed publication at `4d5e6a2`;
+every new release still needs its own exact-SHA acceptance. No frontend
+data-source cutover occurred.
 
 ### Pre-recovery evidence
 
@@ -640,8 +661,8 @@ token absent, dashboard required sign-in). Public HTTP still redirected
 the serving deployment or prove no queued operation. That pre-recovery blocker
 was superseded by the authorized recovery and authenticated evidence above.
 
-The pre-recovery safe Fly plan (since superseded; the machine is running with no
-standby, §2) preserved the existing machine and exact image digest,
+The pre-recovery safe Fly plan (superseded by the September 13/14 started-machine
+and removed-standby observations, not proof of current state; §2) preserved the existing machine and exact image digest,
 cleared only the standby relationship plus equivalent image pinning while keeping
 it stopped, then asked separately to start its normal polling/writes. The complete
 configuration and concurrency/drift guards are in
@@ -671,11 +692,11 @@ Persisted run/job IDs, attempt and SHA match, but terminal metadata cannot
 reconstruct the API response or process context at the earlier failures.
 No timing/cache race or specific rejecting predicate is established.
 
-The following table records the earlier September 6–11 observations. Its
-pending acceptance and empty-ledger states were superseded by the September 13
-table above, not by an inference from code.
+The following table records historical September 6–11 observations, not current
+pending work. Its acceptance and empty-ledger states were superseded by the
+September 13 recovery and the later September 14/19 delivery evidence above.
 
-| Control | Observed state |
+| Control | Historical observed state (September 6–11) |
 |---|---|
 | Main protection | REST readback: `protected=true`; strict `test` from GitHub Actions app `15368`; `enforce_admins=true`; PR requirement with zero required approvals; force pushes/deletions disabled. No direct push was attempted as a test. |
 | Existing rules | Ruleset `18441202` retained unchanged. Its empty include list makes it ineffective; classic main protection supplies the active controls. |
@@ -683,10 +704,10 @@ table above, not by an inference from code.
 | Fly credentials | Existing `FLY_API_TOKEN_READER` and `FLY_API_TOKEN_INGESTER` in their matching environments were present in ordinary jobs and absent in reusable jobs; see reports below. Do not replace them based on the reusable failure. Validity, expiry and provider permissions remain unaccepted. |
 | Vercel live setting | Project `score-arc`, team `elopenmike` (Pro), remains linked to this repo/main; deploy hooks empty; fork protection enabled. `autoAssignCustomDomains=false` verified after update. Existing traffic was not intentionally changed. |
 | Vercel release credentials | The user supplied `VERCEL_TOKEN` to `production-frontend` on **2026-09-11**, selecting team **Spider** (CLI slug `elopenmike`), project `score-arc`. Ordinary job: token, org ID and project ID present. Reusable job: token absent, both IDs present. Do not request the token again; the supplied identity's role/expiry and production permissions still need acceptance. |
-| Credential diagnosis/correction | Completed comparison proves a workflow-context access difference. This revision replaces reusable releases with ordinary environment-bound `ci.yml` matrix jobs and provides a matching non-deploying matrix probe. New-topology hosted acceptance is pending; no underlying GitHub cause is asserted. |
+| Credential diagnosis/correction | At this historical capture, comparison established a workflow-context access difference and the proposed revision replaced reusable releases with ordinary environment-bound jobs plus a non-deploying probe. Hosted acceptance was then pending; later #161/#162 delivery evidence supersedes that status. The underlying GitHub cause remains unasserted. |
 | Eligibility diagnosis | Constant failed-check names landed in #160; all fourteen conditions and the separate exact-attempt successful-test requirement are unchanged by this correction. The historical rejecting check remains unknown; no status relaxation or blind retry was added. |
-| Managed baseline | September 11 read-only queries for task `scorearc-release`, `per_page=1`, returned zero entries in each production environment. The first eligible release may bootstrap all services. |
-| Production acceptance | **Pending for all three targets.** This correction has not merged or deployed. No credential/role change, production restart, machine repair or database operation was performed by this task. Release activation is not frontend-to-reader cutover. |
+| Managed baseline | September 11 read-only queries for task `scorearc-release`, `per_page=1`, returned zero entries in each production environment, so bootstrap was then required. This is not the current ledger state. |
+| Production acceptance | **Was pending at the September 6–11 capture**, before the correction merged or deployed. Subsequent delivery is recorded above; ongoing ingestion/identity-governance acceptance remains separate. The diagnostic pass itself performed no credential/role change, restart or database operation. Release activation was not frontend-to-reader cutover. |
 
 **Measured reports, all at `5a31554`:**
 
@@ -728,17 +749,19 @@ token. Keep the environment restrictions, automatic domain assignment OFF and
 empty deploy hooks. Any Fly control-secret setup, replacement or retirement also
 requires authorization; secret deletion is not token revocation.
 
-**Before merge:** main CI automatically attempts release. This follow-up's
-`ci.yml` and release-script changes select **all three services** against the
-latest managed baselines. The unresolved frontend entry blocks that target,
-not either Fly job. Coordinate owner authorization for those effects before
+**Before a new merge:** main CI automatically attempts the services selected
+by the current path policy. Changes to `ci.yml` or release scripts select all
+three services; the new match-recovery slice also needs its schema prerequisite.
+The old frontend incident is inactive, not a release hold. A new unresolved
+frontend entry would block that target, not either Fly job. Coordinate owner authorization for those effects before
 recommending merge. If presence checks must precede publication, confirm an
 approval hold on all release jobs and approve only diagnostic jobs; otherwise
 leave the PR unmerged until the owner has an activation plan. Do not disable
 required CI or weaken environment protections to run acceptance.
 
-**Post-merge acceptance:** authorize the selected releases and reconcile
-the failed frontend record only after terminal provider readback. Confirm actual
+**Post-merge acceptance:** authorize the selected releases; reconcile any new
+failed record only after terminal provider readback, not by reopening the
+already inactive September 13 incidents. Confirm actual
 merge-SHA `test` success, each provider
 release/actual-success ledger and serving SHA, reader health/América profile,
 and one ordinary running ingester with successful zero-failure cycles, no lease

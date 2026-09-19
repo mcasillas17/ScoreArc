@@ -30,7 +30,7 @@ func TestValidateSummaryChecksRequestedFinalEvent(t *testing.T) {
 func TestValidateSummaryRejectsEmptyDetailShell(t *testing.T) {
 	raw := []byte(`{
 		"header":{"id":"m1","competitions":[{"id":"m1",
-			"status":{"type":{"completed":true}},
+			"status":{"type":{"completed":true,"state":"post","name":"STATUS_FULL_TIME"}},
 			"competitors":[
 				{"homeAway":"home","score":"1","team":{"id":"home"}},
 				{"homeAway":"away","score":"0","team":{"id":"away"}}
@@ -428,7 +428,7 @@ func TestMapSummaryStatsNilWhenEntriesAreEmpty(t *testing.T) {
 func TestValidateSummaryAcceptsNumericIdentityAndScores(t *testing.T) {
 	raw := []byte(`{"gameInfo":{"venue":{"fullName":"Venue"}},"header":{"id":123,"competitions":[{
 		"id":123,
-		"status":{"type":{"completed":true}},
+		"status":{"type":{"completed":true,"state":"post","name":"STATUS_FULL_TIME"}},
 		"competitors":[
 			{"homeAway":"home","team":{"id":1},"score":2},
 			{"homeAway":"away","team":{"id":2},"score":1}
@@ -442,7 +442,7 @@ func TestValidateSummaryAcceptsNumericIdentityAndScores(t *testing.T) {
 func TestValidateSummaryRejectsSparseFinalPayload(t *testing.T) {
 	raw := []byte(`{"header":{"id":"123","competitions":[{
 		"id":"123",
-		"status":{"type":{"completed":true}},
+		"status":{"type":{"completed":true,"state":"post","name":"STATUS_FULL_TIME"}},
 		"competitors":[
 			{"homeAway":"home","team":{"id":"1"},"score":"2"},
 			{"homeAway":"away","team":{"id":"2"},"score":"1"}

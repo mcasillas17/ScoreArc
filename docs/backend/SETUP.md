@@ -190,13 +190,20 @@ migrate -path migrations -database "$DIRECT_DSN" up
 
 Apply the **full ordered migration chain** — every file in `backend/migrations/`,
 in sequence, from `0001_init` through the latest committed migration (currently
-`0022_team_colours`) — before deploying the reader or ingester from this release.
+`0023_match_sync`) — before deploying the reader or ingester from this release.
 The reader and ingester select columns and rely on constraints added across that
 chain, so deploy binaries only against a database migrated through the current
 head, and never roll a migration back while a binary that depends on it is
 serving traffic. (Migration numbering has gaps — some pre-launch migrations were
 folded into `0001` before deployment — so trust the files on disk, not a
 contiguous count.)
+
+For an existing version-22 database, the separately approved 0023 apply/release
+sequence and narrow startup prerequisite checks are in
+[MATCH_FRESHNESS.md](MATCH_FRESHNESS.md#schema-and-separately-approved-release-order).
+Do not merge dependent binaries into an automatically releasing main branch
+before schema readiness and release authorization are arranged. No code path
+auto-migrates production.
 
 For a team-profile `500` with a healthy `/healthz`, follow the reader's
 [team schema verification and repair procedure](../../backend/reader/README.md#operator-verification-and-repair)
@@ -567,6 +574,15 @@ stranded, verify which process holds it and wait for the connection to drop;
 do not launch another worker or redeploy without authorization.
 
 ### 7.5 Verify
+
+**Match freshness, September 19 update:** the shutdown/singleton deployment
+repair in #172 and promotion repair in #163 are merged. Their historical failure
+records are not pending implementations. A successful deployment or `/healthz`
+still does not establish current match ingestion. Use the
+[match recovery acceptance procedure](MATCH_FRESHNESS.md#post-deployment-acceptance)
+and [reader freshness contract](../../backend/reader/README.md#match-freshness-additive-no-body-changes);
+the new schema, release and watchdog activation remain separately approved.
+
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' https://scorearc-reader.fly.dev/healthz

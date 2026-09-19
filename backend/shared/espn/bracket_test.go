@@ -334,7 +334,7 @@ func TestValidateBracketSeasonRejectsMismatch(t *testing.T) {
 func TestMapBracketRejectsUnknownStatusState(t *testing.T) {
 	raw := []byte(`{"events":[{"id":"1","date":"2026-07-01T12:00Z",
 		"season":{"slug":"quarterfinals"},
-		"status":{"type":{"state":"mystery"}},
+		"status":{"type":{"state":"mystery","completed":false,"name":"STATUS_IN_PROGRESS"}},
 		"competitions":[{"competitors":[
 			{"homeAway":"home","team":{"id":"1","displayName":"Home","abbreviation":"HOM"}},
 			{"homeAway":"away","team":{"id":"2","displayName":"Away","abbreviation":"AWY"}}

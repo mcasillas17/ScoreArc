@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
@@ -22,6 +24,7 @@ import (
 type ESPN struct {
 	client   *espn.Client
 	coreBase string
+	now      func() time.Time
 	group    singleflight.Group
 	mu       sync.Mutex
 	recent   map[string]cachedResponse
@@ -47,7 +50,7 @@ func NewESPN(client *espn.Client) *ESPN {
 	}
 
 	return &ESPN{
-		client: client, coreBase: espn.CorePlaysBase,
+		client: client, coreBase: espn.CorePlaysBase, now: time.Now,
 		recent: make(map[string]cachedResponse),
 	}
 }
@@ -115,7 +118,8 @@ func (e *ESPN) Scoreboard(
 	season config.Season,
 	backfill bool,
 ) ([]model.Match, error) {
-	datesRange, err := rollingSeasonRange(time.Now(), season.ID)
+	now := e.now().UTC()
+	datesRange, err := rollingSeasonRange(now, season.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -127,10 +131,40 @@ func (e *ESPN) Scoreboard(
 	}
 	scoreboardURL := espn.ScoreboardURLWithLimit(comp.ESPNSlug, datesRange, scoreboardEventLimit)
 	raw, err := e.get(ctx, scoreboardURL)
+	var partial *PartialScoreboardError
 	if err != nil {
+		var statusErr *espn.HTTPStatusError
+		if !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusBadRequest {
+			return nil, err
+		}
+		start, endExclusive, rangeErr := SeasonBounds(season)
+		if rangeErr != nil {
+			return nil, errors.Join(err, rangeErr)
+		}
+		today := now.Format("20060102")
+		if now.Before(start) || !now.Before(endExclusive) {
+			return nil, err
+		}
+		partial = &PartialScoreboardError{Err: err}
+		raw, err = e.get(ctx, espn.ScoreboardURLWithLimit(comp.ESPNSlug, today, scoreboardEventLimit))
+		if err != nil {
+			return nil, errors.Join(partial.Err, fmt.Errorf("current-date scoreboard fallback: %w", err))
+		}
+	}
+	matches, err := mapScoreboard(raw, season, backfill)
+	if err != nil {
+		if partial != nil {
+			return nil, errors.Join(partial.Err, fmt.Errorf("current-date scoreboard fallback: %w", err))
+		}
 		return nil, err
 	}
+	if partial != nil {
+		return matches, partial
+	}
+	return matches, nil
+}
 
+func mapScoreboard(raw []byte, season config.Season, backfill bool) ([]model.Match, error) {
 	expectedYear, err := seasonStartYear(season.ID)
 	if err != nil {
 		return nil, err
@@ -167,8 +201,57 @@ func (e *ESPN) Summary(ctx context.Context, comp config.Competition, match model
 	if err != nil {
 		return SummaryResult{}, err
 	}
+	return mapSummary(raw, match)
+}
+
+func (e *ESPN) RecoverMatch(
+	ctx context.Context, comp config.Competition, season config.Season, match model.Match,
+) (model.Match, SummaryResult, error) {
+	if comp.ESPNSlug == "" || match.ID == "" || match.Home.ID == "" ||
+		match.Away.ID == "" || match.Home.ID == match.Away.ID {
+		return model.Match{}, SummaryResult{}, fmt.Errorf("summary recovery requires league, event and distinct team identities")
+	}
+	expectedYear, err := seasonStartYear(season.ID)
+	if err != nil {
+		return model.Match{}, SummaryResult{}, err
+	}
+	seasonRange, err := fullSeasonRange(season.ID)
+	if err != nil {
+		return model.Match{}, SummaryResult{}, err
+	}
+	raw, err := e.get(ctx, espn.SummaryURL(comp.ESPNSlug, match.ID))
+	if err != nil {
+		return model.Match{}, SummaryResult{}, fmt.Errorf("recover match %s: %w", match.ID, err)
+	}
+	observed, err := espn.MapSummaryObservation(raw, match, comp.ESPNSlug, expectedYear)
+	if err != nil {
+		return model.Match{}, SummaryResult{}, fmt.Errorf("recover match %s: %w", match.ID, err)
+	}
+	kickoff, err := time.Parse(time.RFC3339, observed.Kickoff)
+	if err != nil {
+		return model.Match{}, SummaryResult{}, err
+	}
+	day := kickoff.UTC().Format("20060102")
+	if day < seasonRange[:8] || day > seasonRange[9:] {
+		return model.Match{}, SummaryResult{}, fmt.Errorf("summary event %q kickoff outside season %q", match.ID, season.ID)
+	}
+	result, err := mapSummary(raw, observed)
+	if err != nil {
+		return model.Match{}, SummaryResult{}, fmt.Errorf("recover match %s detail: %w", match.ID, err)
+	}
+	return observed, result, nil
+}
+
+// Both summary paths parse the same fetched body. Final validation follows the
+// observed state for recovery, never the stale candidate's state.
+func mapSummary(raw []byte, match model.Match) (SummaryResult, error) {
+	requireFinal := match.State == model.MatchStateFinished
+	switch match.StatusName {
+	case "STATUS_CANCELED", "STATUS_ABANDONED", "STATUS_FORFEIT":
+		requireFinal = false // Existing terminal policy permits no detail/scores.
+	}
 	if err := espn.ValidateSummary(raw, match.ID, match.Home.ID, match.Away.ID,
-		match.State == model.MatchStateFinished); err != nil {
+		requireFinal); err != nil {
 		return SummaryResult{}, err
 	}
 	detail, err := espn.MapSummary(raw)
@@ -191,7 +274,7 @@ func (e *ESPN) Summary(ctx context.Context, comp config.Competition, match model
 	result := SummaryResult{
 		Detail: detail, Participation: participation, Commentary: commentary,
 	}
-	if match.State == model.MatchStateFinished {
+	if requireFinal {
 		result.HomeScore, result.AwayScore, err = espn.SummaryFinalScores(raw)
 		if err != nil {
 			return SummaryResult{}, err

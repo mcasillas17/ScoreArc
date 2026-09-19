@@ -44,19 +44,29 @@ type rawSummary struct {
 type rawSummaryHeader struct {
 	ID           flexibleString         `json:"id"`
 	Competitions []rawHeaderCompetition `json:"competitions"`
+	League       struct {
+		Slug string `json:"slug"`
+	} `json:"league"`
+	Season struct {
+		Year int `json:"year"`
+	} `json:"season"`
 }
 
 type rawHeaderCompetition struct {
 	Competitors []rawHeaderCompetitor `json:"competitors"`
 	ID          flexibleString        `json:"id"`
-	Status      *rawStatus            `json:"status"`
+	Status      *rawObservationStatus `json:"status"`
+	Date        string                `json:"date"`
+	Notes       []rawNote             `json:"notes"`
 }
 
 type rawHeaderCompetitor struct {
+	ID            *flexibleString `json:"id"`
 	HomeAway      string          `json:"homeAway"`
 	Team          rawTeamIDRef    `json:"team"`
 	Score         *flexibleString `json:"score"`
 	ShootoutScore json.RawMessage `json:"shootoutScore"`
+	Winner        bool            `json:"winner"`
 }
 
 // rawTeamIDRef is the recurring `{ team: { id: "..." } }` shape used across
@@ -308,6 +318,7 @@ func parseRawSummary(raw []byte, out *rawSummary) error {
 // the payload's header (mirroring how espn-matches.ts tags competitors),
 // then threaded into every sub-mapper that needs to orient itself to OUR
 // home/away rather than ESPN's.
+// Shootout mapping is tolerant; persistence callers must first call ValidateSummary.
 func MapSummary(raw []byte) (MatchDetail, error) {
 	var rs rawSummary
 	if err := parseRawSummary(raw, &rs); err != nil {
@@ -343,25 +354,29 @@ func ValidateSummary(
 		return err
 	}
 
-	if string(rs.Header.ID) != expectedMatchID || len(rs.Header.Competitions) == 0 ||
-		string(rs.Header.Competitions[0].ID) != expectedMatchID {
-		return fmt.Errorf("summary event identity does not match %q", expectedMatchID)
+	if err := validateSummaryIdentity(rs, expectedMatchID, expectedHomeID, expectedAwayID); err != nil {
+		return err
 	}
-	homeID, awayID := headerTeamIDs(rs)
-	if homeID != expectedHomeID || awayID != expectedAwayID {
-		return fmt.Errorf("summary teams do not match event %q", expectedMatchID)
+	for _, competitor := range rs.Header.Competitions[0].Competitors {
+		if _, _, err := parseSuppliedShootoutScore(competitor.ShootoutScore); err != nil {
+			return fmt.Errorf("summary event %q %s: %w", expectedMatchID, competitor.HomeAway, err)
+		}
 	}
 	if requireFinal {
+		competition := rs.Header.Competitions[0]
+		state, err := observedMatchState(competition.Status)
+		if err != nil {
+			return fmt.Errorf("summary event %q status: %w", expectedMatchID, err)
+		}
+		if state != MatchStateFinished {
+			return fmt.Errorf("summary event %q is not finished", expectedMatchID)
+		}
 		detail, err := MapSummary(raw)
 		if err != nil {
 			return err
 		}
 		if !hasSummaryDetail(detail) {
 			return fmt.Errorf("final summary contains no detail sections")
-		}
-		competition := rs.Header.Competitions[0]
-		if competition.Status == nil || !competition.Status.Type.Completed {
-			return fmt.Errorf("summary event %q is not complete", expectedMatchID)
 		}
 		var homeScore, awayScore *flexibleString
 		for _, competitor := range competition.Competitors {
@@ -450,10 +465,15 @@ func mapSummaryShootout(rs rawSummary) *Shootout {
 	if len(rs.Header.Competitions) == 0 {
 		return nil
 	}
-	var home, away float64
+	var home, away int
 	var homeOK, awayOK bool
 	for _, competitor := range rs.Header.Competitions[0].Competitors {
-		score, ok := jsNumber(competitor.ShootoutScore)
+		score, ok, err := parseSuppliedShootoutScore(competitor.ShootoutScore)
+		if err != nil {
+			// MapSummary remains tolerant; authoritative callers validate
+			// first and receive this error instead of accepting lost totals.
+			return nil
+		}
 		switch competitor.HomeAway {
 		case "home":
 			home, homeOK = score, ok
@@ -464,7 +484,7 @@ func mapSummaryShootout(rs rawSummary) *Shootout {
 	if !homeOK || !awayOK || (home == 0 && away == 0) {
 		return nil
 	}
-	return &Shootout{HomeScore: int(home), AwayScore: int(away)}
+	return &Shootout{HomeScore: home, AwayScore: away}
 }
 
 // headerTeamIDs reads OUR home/away team ids off
