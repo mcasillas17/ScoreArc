@@ -116,8 +116,9 @@ establishes Tier-3's active snapshot tables `standing_snapshot` and
 `win_prob_snapshot`, with `0015_odds_snapshot.*.sql` adding `odds_snapshot`
 later. Forward migrations add the later history surfaces, with
 `0021_finalization_invariants.*.sql` extending C1 ("immutable once final") to
-the six remaining finalized-fact tables and `0022_team_colours.*.sql` as the
-current head. The old pre-launch `0003`/`0004` were folded into `0001` before
+the six remaining finalized-fact tables, `0022_team_colours.*.sql` adding team
+colours, and `0023_match_sync.*.sql` adding observation/retry bookkeeping as the
+current source head. The old pre-launch `0003`/`0004` were folded into `0001` before
 deployment; the current migrations bearing those numbers are newer forward
 migrations. Which of these are applied in a given environment is tracked by
 [`../CURRENT_STATE.md`](../CURRENT_STATE.md), not this inventory.
@@ -139,6 +140,20 @@ untouched and do not use that escape hatch.
   **match_external_ref** / **official_external_ref**(PK (source, source_id), *canonical id*→entity ON DELETE CASCADE, first_seen_at, last_seen_at) — the PK is `(source, source_id)`, not the canonical id, so **many** provider ids may map to **one** entity, which is exactly what merging duplicates produces. Each has an index on the canonical id for the reverse lookup. `official_external_ref` (T7.14) is the same shape for officials, so the second match a referee appears in resolves to the person already minted rather than to a new one.
 
 ### Tier 1 — current state (hot, upserted by the ingester)
+
+Migration 0023 adds bookkeeping separate from immutable match facts:
+
+- **match_sync_status**(PK (match_id→match, source), observed_at, last_attempted_at,
+  retry_at, attempts, last_error) — accepted source observations and durable
+  bounded nonfinal recovery attempts. Unchanged validated observations renew
+  `observed_at` without rewriting `match.updated_at`; claims precede lookup and
+  retries are ordered fairly. Failure never invents a state or score.
+- **match_poll_status**(PK (competition_id, season_id, source), attempted_at,
+  succeeded_at, outcome, event_count) — core match polling evidence. Outcomes
+  are `ok`, `partial`, or `failed`; failures preserve the last success.
+  A current-date fallback cannot establish full-window emptiness or completed
+  season reconciliation. Both tables are reader-SELECT/ingester-write
+  bookkeeping, not an exception to finalized-fact seals.
 - **match**(id PK `uuid` v7, competition_id, season_id, round, kickoff, **kickoff_date** (generated, UTC date), state[`scheduled|live|finished`], home_team_id→team, away_team_id→team, home_score, away_score, minute, status_detail, status_name, winner_id→team, note, home_placeholder, away_placeholder, bracket_required, **finalized_at**, source, updated_at) — FK to `season(competition_id,id)`; **UNIQUE (competition_id, season_id, home_team_id, away_team_id, kickoff_date)** is the natural key that makes the same match from a second source resolve to one row; indexes on `(competition_id,season_id,kickoff)`, `state`, and unfinalized history. `updated_at` records the last persisted content change: an ingest that resolves to the same row does not refresh it.
 - **match_detail**(match_id PK→match, scorers jsonb, cards jsonb, stats jsonb, win_probability jsonb, shootout jsonb, shootout_detail jsonb, lineups jsonb, videos jsonb, info jsonb, form jsonb, h2h jsonb, commentary jsonb, updated_at)
 - **match_commentary**(PK (match_id→match, **seq** = ESPN's `sequence`), period, clock_value, clock_display, play_type, play_type_text, wallclock, text) — minute-by-minute commentary **with the structure `match_detail.commentary` drops** (T7.11). That jsonb column is unchanged and remains the reader's `MatchSummaryData.commentary` contract; it keeps `{minute, text}` only. This table adds guaranteed order (`sequence`), a numeric clock (`play.clock.value`, falling back to `time.value`; the recorded pre-match, kickoff, and match-end entries have an empty `time.displayValue`), the machine play type (`play.type.type`, so consumers need not regex English prose), and mutability (`match_detail` is frozen by `protect_finalized_detail` once a match finalizes). Rows are upserted and then tail-pruned like `match_event`; an **empty payload is a no-op, not a delete**, because commentary coverage varies by competition and has been observed at zero. Missing numeric provider fields remain SQL `NULL`, distinct from a measured zero. A failed write leaves a finished match unfinalized so the next cycle retries before freezing its detail. **Nothing here is parsed** — E6's shot-log parser is downstream and gated on T6.1's coverage probe.
@@ -420,6 +435,14 @@ sequenceDiagram
 ---
 
 ## 5. Reader (slice 1c — implemented public Go REST API)
+
+Match-bearing responses add freshness headers while retaining existing body
+shapes. Body, identity scope and metadata share a bounded read-only repeatable-read
+snapshot, released before response writes. Reader time detects stopped ingestion
+independently of worker logging. The website stays on its existing DataStore;
+broader E17 provenance and T21.2 readiness are not closed by this slice. See
+[MATCH_FRESHNESS.md](MATCH_FRESHNESS.md) for thresholds, independent watchdog,
+migration compatibility and separately approved rollout.
 
 - Public and autoscaling, with one warm machine and an autostopped spare.
   Versioned under `/v1`.

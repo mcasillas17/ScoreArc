@@ -39,6 +39,11 @@ paths:
         "200":
           description: Matches ordered by kickoff
           headers:
+            X-ScoreArc-Freshness: { $ref: "#/components/headers/Freshness" }
+            X-ScoreArc-Observed-At: { $ref: "#/components/headers/ObservedAt" }
+            X-ScoreArc-Poll-Status: { $ref: "#/components/headers/PollStatus" }
+            X-ScoreArc-Stale-Matches: { $ref: "#/components/headers/MatchCount" }
+            X-ScoreArc-Overdue-Matches: { $ref: "#/components/headers/MatchCount" }
             Cache-Control: { $ref: "#/components/headers/LiveCacheControl" }
           content:
             application/json:
@@ -77,6 +82,11 @@ paths:
         "200":
           description: Canonically ordered knockout rounds
           headers:
+            X-ScoreArc-Freshness: { $ref: "#/components/headers/Freshness" }
+            X-ScoreArc-Observed-At: { $ref: "#/components/headers/ObservedAt" }
+            X-ScoreArc-Poll-Status: { $ref: "#/components/headers/PollStatus" }
+            X-ScoreArc-Stale-Matches: { $ref: "#/components/headers/MatchCount" }
+            X-ScoreArc-Overdue-Matches: { $ref: "#/components/headers/MatchCount" }
             Cache-Control: { $ref: "#/components/headers/LiveCacheControl" }
           content:
             application/json:
@@ -116,6 +126,11 @@ paths:
         "200":
           description: Club identity, season record, squad statistics and matches
           headers:
+            X-ScoreArc-Freshness: { $ref: "#/components/headers/Freshness" }
+            X-ScoreArc-Observed-At: { $ref: "#/components/headers/ObservedAt" }
+            X-ScoreArc-Poll-Status: { $ref: "#/components/headers/PollStatus" }
+            X-ScoreArc-Stale-Matches: { $ref: "#/components/headers/MatchCount" }
+            X-ScoreArc-Overdue-Matches: { $ref: "#/components/headers/MatchCount" }
             Cache-Control: { $ref: "#/components/headers/StandardCacheControl" }
           content:
             application/json:
@@ -154,6 +169,11 @@ paths:
         "200":
           description: Match summary
           headers:
+            X-ScoreArc-Freshness: { $ref: "#/components/headers/Freshness" }
+            X-ScoreArc-Observed-At: { $ref: "#/components/headers/ObservedAt" }
+            X-ScoreArc-Poll-Status: { $ref: "#/components/headers/PollStatus" }
+            X-ScoreArc-Stale-Matches: { $ref: "#/components/headers/MatchCount" }
+            X-ScoreArc-Overdue-Matches: { $ref: "#/components/headers/MatchCount" }
             Cache-Control: { $ref: "#/components/headers/DetailCacheControl" }
           content:
             application/json:
@@ -192,6 +212,41 @@ components:
         match_external_ref crosswalk.
       schema: { type: string, minLength: 1 }
   headers:
+    Freshness:
+      required: true
+      description: >-
+        Core match freshness evaluated using reader time, not process health.
+        Empty requires a recent full poll; dormant requires valid out-of-season
+        bounds and no unfinalized rows in the competition season.
+        Active collections require discovery polling even when all known rows
+        are finalized; only an explicit finalized single-match selection can
+        ignore poll expiry.
+        Ordinary scheduled observations expire at 25 hours, allowing a 24-hour
+        full-season reconciliation plus alignment/processing allowance.
+        Explicit postponed/suspended observations and unfinalized finished
+        observations expire at 24 hours; live observations at 2 minutes and
+        competition polling at 20 minutes. Equality is stale.
+        Body and metadata are read in one read-only repeatable-read snapshot.
+        All five X-ScoreArc headers are exposed by CORS. Bookkeeping query or
+        schema failure returns 500, never a healthy default.
+      schema: { type: string, enum: [fresh, empty, dormant, stale, unavailable] }
+    ObservedAt:
+      description: >-
+        Optional oldest known successful selected match observation or full
+        competition poll timestamp. Never a retry or match update timestamp.
+        Does not by itself imply health; inspect freshness and poll status.
+      schema: { type: string, format: date-time }
+    PollStatus:
+      required: true
+      description: Most recent ESPN competition-season poll outcome; unknown if none exists.
+      schema: { type: string, enum: [ok, partial, failed, unknown] }
+    MatchCount:
+      required: true
+      description: >-
+        Number of selected matches that are stale (including missing observations
+        or unhealthy active polling), or overdue by kickoff, respectively.
+        Finalized rows never expire. Overdue is a subset of stale.
+      schema: { type: integer, minimum: 0 }
     LiveCacheControl:
       description: public, max-age=10 when any result is live; otherwise public, max-age=60.
       schema: { type: string }

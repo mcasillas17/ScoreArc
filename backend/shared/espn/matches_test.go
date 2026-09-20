@@ -9,7 +9,7 @@ import (
 
 func TestMapScoreboardRejectsBlankTeamIDs(t *testing.T) {
 	raw := []byte(`{"events":[{"id":"m","date":"2026-01-01T00:00:00Z",
-		"status":{"type":{"state":"pre"}},
+		"status":{"type":{"state":"pre","completed":false,"name":"STATUS_SCHEDULED"}},
 		"competitions":[{"competitors":[
 			{"homeAway":"home","team":{"id":"","displayName":"Unknown"}},
 			{"homeAway":"away","team":{"id":"2","displayName":"Away"}}
@@ -166,7 +166,7 @@ func TestMapScoreboardResilience(t *testing.T) {
 func TestMapScoreboardAcceptsNumericIdentityAndScores(t *testing.T) {
 	raw := []byte(`{"events":[{"id":123,"date":"2026-01-01T00:00:00Z",
 		"season":{"year":2026},
-		"status":{"type":{"state":"post","completed":true}},
+		"status":{"type":{"state":"post","completed":true,"name":"STATUS_FULL_TIME"}},
 		"competitions":[{"competitors":[
 			{"homeAway":"home","score":2,"team":{"id":1,"displayName":"Home","abbreviation":"HOM"}},
 			{"homeAway":"away","score":1,"team":{"id":2,"displayName":"Away","abbreviation":"AWY"}}
@@ -193,7 +193,7 @@ func TestBackfillCompletenessRejectsLimitSizedResponse(t *testing.T) {
 func TestMapScoreboardNormalizesSecondlessKickoff(t *testing.T) {
 	raw := []byte(`{"events":[{"id":"1","date":"2026-06-29T17:00Z",
 		"season":{"slug":"group-stage"},
-		"status":{"type":{"state":"pre","completed":false}},
+		"status":{"type":{"state":"pre","completed":false,"name":"STATUS_SCHEDULED"}},
 		"competitions":[{"competitors":[
 			{"homeAway":"home","team":{"id":"1","displayName":"Home","abbreviation":"HOM"}},
 			{"homeAway":"away","team":{"id":"2","displayName":"Away","abbreviation":"AWY"}}
@@ -235,7 +235,7 @@ func TestFilterScoreboardSeasonRemovesForeignEvents(t *testing.T) {
 func TestScoreboardClassificationUsesHistoricalRoundOverride(t *testing.T) {
 	raw := []byte(`{"events":[{"id":"264118","date":"2010-07-03T18:30:00Z",
 		"season":{"year":2010,"slug":"group-stage"},
-		"status":{"type":{"state":"post","completed":true}},
+		"status":{"type":{"state":"post","completed":true,"name":"STATUS_FULL_TIME"}},
 		"competitions":[{"competitors":[
 			{"homeAway":"home","team":{"id":"1","displayName":"Home","abbreviation":"HOM"}},
 			{"homeAway":"away","team":{"id":"2","displayName":"Away","abbreviation":"AWY"}}
@@ -250,28 +250,10 @@ func TestScoreboardClassificationUsesHistoricalRoundOverride(t *testing.T) {
 	}
 }
 
-func TestMapStateHandlesIncompletePostStatuses(t *testing.T) {
-	if got := mapState("post", false, "STATUS_CANCELED"); got != MatchStateFinished {
-		t.Fatalf("canceled state=%q", got)
-	}
-	if got := mapState("post", false, "STATUS_POSTPONED"); got != MatchStateScheduled {
-		t.Fatalf("postponed state=%q", got)
-	}
-	if got := mapState("post", false, "STATUS_FULL_TIME"); got != MatchStateFinished {
-		t.Fatalf("incomplete post state=%q", got)
-	}
-	if got := mapState("post", false, "STATUS_SUSPENDED"); got != MatchStateScheduled {
-		t.Fatalf("suspended state=%q", got)
-	}
-	if got := mapState("post", false, "STATUS_PROVIDER_NEW"); got != MatchStateLive {
-		t.Fatalf("unknown post state=%q", got)
-	}
-}
-
 func TestScoreboardUnknownRoundRequiresBracketClassification(t *testing.T) {
 	raw := []byte(`{"events":[{"id":"unknown-round","date":"2026-06-29T17:00Z",
 		"season":{"year":2026,"slug":"provider-new-round"},
-		"status":{"type":{"state":"post","completed":true}},
+		"status":{"type":{"state":"post","completed":true,"name":"STATUS_FULL_TIME"}},
 		"competitions":[{"competitors":[
 			{"homeAway":"home","team":{"id":"1","displayName":"Home","abbreviation":"HOM"}},
 			{"homeAway":"away","team":{"id":"2","displayName":"Away","abbreviation":"AWY"}}

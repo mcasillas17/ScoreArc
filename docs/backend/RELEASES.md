@@ -6,6 +6,16 @@ The [decision](../decisions/2026-09-05-ci-production-gates.md) owns the invarian
 is actually enabled. [Architecture §11](ARCHITECTURE.md#11-production-delivery)
 shows the dependency graph. This runbook does not authorize a production change.
 
+**September 19, 2026 status context:** #163's promotion repair and #172's Fly
+shutdown/singleton verification repair are merged. Earlier September 13 failure
+and ledger observations below are historical, not instructions to repeat those
+repairs. Main CI succeeded September 15; a separate dependency-only ingester
+publication at `2e79750` succeeded September 19. Current ingestion/reachability
+is not established by either result. See
+[CURRENT_STATE](../CURRENT_STATE.md) and the
+[match freshness runbook](MATCH_FRESHNESS.md) for the dated stale-match evidence
+and separately approved migration 0023/release/notification acceptance.
+
 ## Release contract
 
 `CI` validates PRs, branch pushes, main pushes and manual dispatches. The stable
@@ -55,8 +65,11 @@ redeploy the frontend. The executable policy is `scripts/production-policy.mjs`.
 
 With **no managed ledger baseline**, bootstrap the selected service rather than
 guessing what was deployed. The September 13 read found successful reader and
-ingester entries at `0f75102`, and unresolved frontend entry `6404319208`.
-Recheck these records before activation; do not erase the frontend failure.
+ingester entries at `0f75102`, and a then-unresolved frontend entry `6404319208`.
+That entry was acknowledged inactive September 13 at 07:06 UTC; later frontend
+`6432468280` records successful publication September 14 at 07:32 UTC. Preserve
+that history, but do not treat the old failure as an outstanding release hold.
+Recheck current records before a new release.
 Changing `ci.yml` or `scripts/production-*` selects all three
 against an older baseline. Subsequent docs-only changes skip
 when the service tree is unchanged from its last actual release. A path skip
@@ -148,13 +161,13 @@ destruction).
 
 **September 13 activation baseline:** the three environments had main-only
 branch policies but **no required-reviewer approval holds**. PR #161 already
-proved credential delivery in the ordinary production jobs. This follow-up
-changes `ci.yml` and `scripts/production-*`, so reader and ingester releases
-are selected against their `0f75102` baselines; frontend preparation remains
-blocked by ledger `6404319208` until separately reconciled. A frontend failure
-does not hold either Fly job. Leave this PR unmerged until the owner authorizes
-those automatic releases or approves and verifies suitable holds on all three
-jobs. Do not change credentials or protections as an implicit part of merging.
+proved credential delivery in the ordinary production jobs. At that readback,
+the then-proposed workflow/release-script correction selected all services and
+frontend preparation was blocked by `6404319208`. That incident was subsequently
+acknowledged inactive and the repairs merged; it is not a pending repair today.
+For any new PR, recheck current holds and selected services. A frontend failure
+does not hold Fly, and owner authorization or verified holds must precede
+publication. Do not change credentials or protections implicitly while merging.
 
 Read-only configuration evidence:
 
@@ -411,6 +424,11 @@ conservatively, with a diagnostic. There is no unsafe `HEAD^` fallback. A skippe
 Vercel preview is not evidence of a production deployment.
 
 ## Post-deployment ingester verification
+
+This verifies the machine contract, not ongoing source observations. For the
+independent data-freshness check and exact post-deployment acceptance, see
+[MATCH_FRESHNESS.md](MATCH_FRESHNESS.md#post-deployment-acceptance). Its manual
+watchdog is not an activated production schedule or proof of delivered alerts.
 
 The ingester case of **Publish tested Fly commit** runs
 `node scripts/production-release.mjs verify-ingester` right after

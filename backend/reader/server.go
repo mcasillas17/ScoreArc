@@ -14,14 +14,21 @@ import (
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
 )
 
-type readerStore interface {
-	Ping(context.Context) error
+type matchReader interface {
 	Matches(context.Context, string, string) ([]Match, error)
-	Standings(context.Context, string, string, string) ([]Group, error)
 	Bracket(context.Context, string, string) ([]BracketRound, error)
 	MatchSummary(context.Context, string) (*MatchSummary, error)
-	TopScorers(context.Context, string, string) ([]espn.TopScorer, error)
 	Team(ctx context.Context, teamID, competition, season string) (*TeamProfile, error)
+	Freshness(context.Context, freshnessScope) (freshnessSnapshot, error)
+	MatchScope(context.Context, string) (freshnessScope, error)
+}
+
+type readerStore interface {
+	matchReader
+	Ping(context.Context) error
+	Standings(context.Context, string, string, string) ([]Group, error)
+	TopScorers(context.Context, string, string) ([]espn.TopScorer, error)
+	Snapshot(context.Context) (matchReader, func() error, error)
 }
 
 type newsReader interface {
@@ -35,6 +42,7 @@ type App struct {
 	news     newsReader
 	limiter  *ipRateLimiter
 	health   *healthChecker
+	now      func() time.Time
 }
 
 func (a *App) router() http.Handler {
@@ -46,6 +54,7 @@ func (a *App) router() http.Handler {
 		AllowedOrigins: []string{"*"},
 		AllowedMethods: []string{http.MethodGet, http.MethodOptions},
 		AllowedHeaders: []string{"Accept", "Content-Type"},
+		ExposedHeaders: freshnessHeaders,
 		MaxAge:         300,
 	}))
 	router.Use(a.securityHeaders)
