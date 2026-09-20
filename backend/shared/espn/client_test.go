@@ -3,13 +3,34 @@ package espn
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
+
+func TestHTTPStatusErrorRetainsBoundedCauseThroughWrapping(t *testing.T) {
+	calls := 0
+	client := NewWithOptions(Options{
+		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			calls++
+			return response(400, strings.Repeat("x", 199)+"é provider failure"), nil
+		})},
+	})
+	var out json.RawMessage
+	err := client.GetJSON(context.Background(), "https://example.test/scoreboard?dates=20260919-20260919", &out)
+	var status *HTTPStatusError
+	if !errors.As(fmt.Errorf("range: %w", err), &status) || status.StatusCode != 400 ||
+		status.URL != "https://example.test/scoreboard?dates=20260919-20260919" ||
+		!utf8.ValidString(status.Body) || len(status.Body) > 200 || calls != 1 {
+		t.Fatalf("status=%+v calls=%d err=%v", status, calls, err)
+	}
+}
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
 

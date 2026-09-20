@@ -66,6 +66,11 @@ type repository interface {
 	MatchesMissingPlays(context.Context, string, string, string, int) ([]store.MissingPlayMatch, error)
 	ExistingMatches(context.Context, string, string, []uuid.UUID) (map[uuid.UUID]store.MatchRow, error)
 	UnfinalizedMatches(context.Context, string, string, string) ([]model.Match, error)
+	PendingMatchRecovery(context.Context, string, string, string, time.Time, int) ([]store.RecoveryMatch, error)
+	BeginMatchRecovery(context.Context, uuid.UUID, string, time.Time, time.Time) error
+	CompleteMatchRecovery(context.Context, uuid.UUID, string, time.Time, bool) error
+	RecordMatchObservations(context.Context, []store.MatchObservation) error
+	RecordMatchPoll(context.Context, string, string, string, time.Time, string, int) error
 	ReplaceStandings(context.Context, string, string, string, []model.Standing, map[string]string) error
 	// WriteStandingSnapshot is the only write here whose absence is
 	// irreversible: ESPN publishes the current table, not yesterday's, so a day

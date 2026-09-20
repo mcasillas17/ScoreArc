@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
@@ -41,14 +42,23 @@ func (a *App) handleMatches(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusBadRequest, "unknown competition or season")
 		return
 	}
-	matches, err := a.store.Matches(request.Context(), competition, season)
+	reader, finish, ok := a.beginMatchSnapshot(writer, request)
+	if !ok {
+		return
+	}
+	defer finish()
+	matches, err := reader.Matches(request.Context(), competition, season)
 	if err != nil {
+		finish()
 		a.logger.Error("matches", "competition", competition, "season", season, "err", err)
 		writeError(writer, http.StatusInternalServerError, "internal error")
 		return
 	}
 	if matches == nil {
 		matches = []Match{}
+	}
+	if !a.attachFreshness(writer, request, reader, finish, freshnessScope{Competition: competition, Season: season}) {
+		return
 	}
 	anyLive := false
 	for _, match := range matches {
@@ -89,14 +99,23 @@ func (a *App) handleBracket(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusBadRequest, "unknown competition or season")
 		return
 	}
-	rounds, err := a.store.Bracket(request.Context(), competition, season)
+	reader, finish, ok := a.beginMatchSnapshot(writer, request)
+	if !ok {
+		return
+	}
+	defer finish()
+	rounds, err := reader.Bracket(request.Context(), competition, season)
 	if err != nil {
+		finish()
 		a.logger.Error("bracket", "competition", competition, "season", season, "err", err)
 		writeError(writer, http.StatusInternalServerError, "internal error")
 		return
 	}
 	if rounds == nil {
 		rounds = []BracketRound{}
+	}
+	if !a.attachFreshness(writer, request, reader, finish, freshnessScope{Competition: competition, Season: season, Bracket: true}) {
+		return
 	}
 	anyLive := false
 	for _, round := range rounds {
@@ -153,14 +172,40 @@ func (a *App) handleNews(writer http.ResponseWriter, request *http.Request) {
 
 func (a *App) handleMatchSummary(writer http.ResponseWriter, request *http.Request) {
 	id := chi.URLParam(request, "id")
-	summary, err := a.store.MatchSummary(request.Context(), id)
+	if _, err := uuid.Parse(id); err != nil {
+		writeError(writer, http.StatusNotFound, "match not found")
+		return
+	}
+	reader, finish, ok := a.beginMatchSnapshot(writer, request)
+	if !ok {
+		return
+	}
+	defer finish()
+	summary, err := reader.MatchSummary(request.Context(), id)
 	if errors.Is(err, ErrNotFound) {
+		finish()
 		writeError(writer, http.StatusNotFound, "match not found")
 		return
 	}
 	if err != nil {
+		finish()
 		a.logger.Error("match summary", "id", id, "err", err)
 		writeError(writer, http.StatusInternalServerError, "internal error")
+		return
+	}
+	scope, err := reader.MatchScope(request.Context(), id)
+	if errors.Is(err, ErrNotFound) {
+		finish()
+		writeError(writer, http.StatusNotFound, "match not found")
+		return
+	}
+	if err != nil {
+		finish()
+		a.logger.Error("match scope unavailable")
+		writeError(writer, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if !a.attachFreshness(writer, request, reader, finish, scope) {
 		return
 	}
 	cacheFor(writer, 30)
@@ -181,8 +226,14 @@ func (a *App) handleTeam(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusBadRequest, "unknown competition or season")
 		return
 	}
-	profile, err := a.store.Team(request.Context(), teamID, competition, season)
+	reader, finish, ok := a.beginMatchSnapshot(writer, request)
+	if !ok {
+		return
+	}
+	defer finish()
+	profile, err := reader.Team(request.Context(), teamID, competition, season)
 	if err != nil {
+		finish()
 		id, _ := request.Context().Value(requestIDKey).(string)
 		operation, cause := "unknown", err
 		var readErr *teamReadError
@@ -203,6 +254,7 @@ func (a *App) handleTeam(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	if profile == nil {
+		finish()
 		writeError(writer, http.StatusNotFound, "unknown team")
 		return
 	}
@@ -211,6 +263,9 @@ func (a *App) handleTeam(writer http.ResponseWriter, request *http.Request) {
 	}
 	if profile.Schedule == nil {
 		profile.Schedule = []Match{}
+	}
+	if !a.attachFreshness(writer, request, reader, finish, freshnessScope{Competition: competition, Season: season, TeamID: teamID}) {
+		return
 	}
 	cacheFor(writer, 120)
 	writeJSON(writer, http.StatusOK, profile)

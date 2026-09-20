@@ -25,7 +25,8 @@ import {
   athleteUrl, athleteOverviewUrl, athleteBioUrl,
 } from './endpoints';
 import { mapScoreboard } from './providers/espn-matches';
-import { mapTeamProfile, mapTeamRoster, mapTeamSchedule } from './providers/espn-team';
+import { mapTeamProfile, mapTeamRoster, mapScopedTeamSchedule } from './providers/espn-team';
+import { uniqueTeamMatches } from './teamPerformance';
 import { mapAthleteProfile, mapAthleteOverview, mapAthleteBio } from './providers/espn-athlete';
 import { splitLeagueTeamIds } from './providers/espn-teams';
 import { computePhaseTables } from './leaguesCupTables';
@@ -309,20 +310,23 @@ export function createDataStore(deps: DataDeps): DataStore {
         const [rawProfile, rawRoster, rawResults, rawFixtures] = await Promise.all([
           deps.fetchJson(teamUrl(slug(rc), teamId)),
           deps.fetchJson(teamRosterUrl(slug(rc), teamId)).catch(() => null),
-          deps.fetchJson(teamScheduleUrl(slug(rc), teamId)).catch(() => null),
-          deps.fetchJson(teamScheduleUrl(slug(rc), teamId, true)).catch(() => null),
+          deps.fetchJson(teamScheduleUrl(slug(rc), teamId, false, rc.season.id)).catch(() => null),
+          deps.fetchJson(teamScheduleUrl(slug(rc), teamId, true, rc.season.id)).catch(() => null),
         ]);
 
         const base = mapTeamProfile(rawProfile);
-        if (!base) return null;
+        if (!base || base.team.id !== teamId) return null;
+        const results = mapScopedTeamSchedule(rawResults, rc, teamId);
+        const upcoming = mapScopedTeamSchedule(rawFixtures, rc, teamId);
 
         const profile: TeamProfile = {
           ...base,
           squad: rawRoster ? mapTeamRoster(rawRoster) : [],
-          schedule: [
-            ...(rawResults ? mapTeamSchedule(rawResults) : []),
-            ...(rawFixtures ? mapTeamSchedule(rawFixtures) : []),
-          ].sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime()),
+          schedule: uniqueTeamMatches([...results.matches, ...upcoming.matches]).reverse(),
+          scheduleAvailability: {
+            results: results.available ? 'available' : 'unavailable',
+            upcoming: upcoming.available ? 'available' : 'unavailable',
+          },
         };
         deps.cache.set(k, profile, ttlMs);
         return profile;

@@ -3343,6 +3343,7 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
    in something too dark to read on this background. */
 .tm-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 18px;
   padding-bottom: 20px;
@@ -3351,7 +3352,7 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 }
 
 .tm-crest { flex: none; }
-.tm-id { min-width: 0; }
+.tm-id { min-width: 0; flex: 1 1 0; }
 .tm-name {
   font-size: clamp(22px, 4vw, 34px);
   font-weight: 800;
@@ -3423,6 +3424,62 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 .tm-fx-teams { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .tm-fx-score { font-variant-numeric: tabular-nums; color: var(--text); }
 .tm-fx-when { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+
+/* Team insights extend the existing form chips and match rows. */
+.tm-name { overflow-wrap: anywhere; }
+.tm-next { flex-wrap: wrap; }
+.follow-team { margin-left: auto; max-width: 320px; }
+.follow-team-button {
+  border: 1px solid var(--accent-bright); border-radius: 999px;
+  background: var(--surface-2); color: var(--text); padding: 10px 22px;
+  min-height: 44px; font: inherit; font-weight: 700; cursor: pointer;
+}
+.follow-team-button[aria-pressed="true"] { color: var(--accent-bright); }
+.team-follows-notice { color: var(--text-muted); font-size: 13px; line-height: 1.5; margin: 10px 0; }
+.your-teams { border-bottom: 1px solid var(--hairline); margin: 0 0 28px; padding-bottom: 24px; }
+.your-teams h2 { font-size: 15px; margin: 0 0 8px; }
+.your-teams > p { color: var(--text-muted); font-size: 13px; line-height: 1.5; margin: 6px 0; }
+.your-teams-list { display: flex; flex-wrap: wrap; gap: 10px; list-style: none; padding: 0; margin: 14px 0 0; }
+.your-teams-item { display: flex; align-items: center; border: 1px solid var(--hairline); border-radius: 24px; background: var(--surface-2); max-width: 100%; }
+.your-teams-item a { padding: 12px 4px 12px 18px; color: var(--text); font-weight: 650; font-size: 13px; overflow-wrap: anywhere; }
+.your-teams-remove { flex: none; min-height: 44px; width: 44px; border: 0; background: none; color: var(--text-muted); font-size: 22px; cursor: pointer; border-radius: 50%; }
+.your-teams-remove:hover { color: var(--text); }
+.tp { scroll-margin-top: 100px; }
+.tp-scope { color: var(--accent-bright); font-size: 13px; margin: -3px 0 20px; }
+.tp h3 { font-size: 15px; margin: 0; }
+.tp-period-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 14px; align-items: center; }
+.tp-period-head p, .tp-period-caption { font-size: 12px; color: var(--text-muted); line-height: 1.6; margin: 5px 0 0; }
+.tp-form-button { border: 1px solid var(--hairline); width: 38px; height: 38px; border-radius: 50%; cursor: pointer; }
+.tp-record { font-size: 13px; color: var(--text-muted); margin: 14px 0; }
+.tp-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 18px 0; }
+.tp-metrics > div { border-left: 2px solid var(--accent); padding: 4px 12px; }
+.tp-metrics dt { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.tp-metrics dd { margin: 4px 0 0; font-size: clamp(24px, 4vw, 34px); font-weight: 750; font-variant-numeric: tabular-nums; }
+.tp-metrics dd small { display: block; margin-top: 6px; color: var(--text-muted); font-size: 12px; font-weight: 400; }
+.tp-notice { color: var(--text-muted); font-size: 13px; line-height: 1.6; margin: 16px 0; }
+.tp-comparison { margin: 24px 0; }
+.tp-comparison table { width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 14px; font-size: 13px; }
+.tp-comparison caption { caption-side: bottom; text-align: left; color: var(--text-muted); font-size: 12px; padding-top: 10px; }
+.tp-comparison th, .tp-comparison td { text-align: right; padding: 10px 6px; border-bottom: 1px solid var(--hairline); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.tp-comparison th:first-child { text-align: left; }
+.tp-comparison thead th, .tp-comparison tbody th { color: var(--text-muted); font-size: 12px; font-weight: 500; }
+.tp-comparison td span { display: inline-block; color: var(--text-muted); }
+.tp-evidence-title { margin-top: 24px !important; }
+.tp-evidence { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 7px; }
+.tp-evidence > li { display: grid; grid-template-columns: 26px minmax(0, 1fr); align-items: center; gap: 10px; }
+.mc-match-date { grid-column: 1 / -1; color: var(--text-muted); font-size: 11px; text-align: center; }
+.tm .mc-team-name { white-space: normal; overflow-wrap: anywhere; }
+.tp-previous { margin-top: 14px; }
+.tp-previous summary { color: var(--accent-bright); cursor: pointer; padding: 10px 0; font-size: 13px; }
+.tp-definitions { color: var(--text-muted); font-size: 12px; line-height: 1.7; margin: 20px 0 0; max-width: 78ch; }
+.follow-team-button:focus-visible, .your-teams a:focus-visible, .your-teams-remove:focus-visible,
+.tp-form-button:focus-visible, .tp-previous summary:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 3px; }
+@media (max-width: 600px) {
+  .follow-team { flex-basis: 100%; margin-left: 0; max-width: none; }
+  .tp-metrics { gap: 5px; }
+  .tp-metrics > div { padding: 4px 8px; }
+  .tp-comparison th, .tp-comparison td { padding: 10px 3px; }
+}
 
 /* The squad table scrolls inside its own box: ten stat columns will not fit a
    phone, and letting the page scroll sideways instead would move the whole

@@ -6,6 +6,16 @@ The [decision](../decisions/2026-09-05-ci-production-gates.md) owns the invarian
 is actually enabled. [Architecture §11](ARCHITECTURE.md#11-production-delivery)
 shows the dependency graph. This runbook does not authorize a production change.
 
+**September 19, 2026 status context:** #163's promotion repair and #172's Fly
+shutdown/singleton verification repair are merged. Earlier September 13 failure
+and ledger observations below are historical, not instructions to repeat those
+repairs. Main CI succeeded September 15; a separate dependency-only ingester
+publication at `2e79750` succeeded September 19. Current ingestion/reachability
+is not established by either result. See
+[CURRENT_STATE](../CURRENT_STATE.md) and the
+[match freshness runbook](MATCH_FRESHNESS.md) for the dated stale-match evidence
+and separately approved migration 0023/release/notification acceptance.
+
 ## Release contract
 
 `CI` validates PRs, branch pushes, main pushes and manual dispatches. The stable
@@ -55,8 +65,11 @@ redeploy the frontend. The executable policy is `scripts/production-policy.mjs`.
 
 With **no managed ledger baseline**, bootstrap the selected service rather than
 guessing what was deployed. The September 13 read found successful reader and
-ingester entries at `0f75102`, and unresolved frontend entry `6404319208`.
-Recheck these records before activation; do not erase the frontend failure.
+ingester entries at `0f75102`, and a then-unresolved frontend entry `6404319208`.
+That entry was acknowledged inactive September 13 at 07:06 UTC; later frontend
+`6432468280` records successful publication September 14 at 07:32 UTC. Preserve
+that history, but do not treat the old failure as an outstanding release hold.
+Recheck current records before a new release.
 Changing `ci.yml` or `scripts/production-*` selects all three
 against an older baseline. Subsequent docs-only changes skip
 when the service tree is unchanged from its last actual release. A path skip
@@ -68,7 +81,10 @@ SHA. If it advances during an inert Vercel staged build, do not promote that
 build. If publication already started, finish that tested SHA under the service
 lock; only then may a newer same-service job start. Reader and ingester retain
 the `backend` build context and context-relative Dockerfile/config paths.
-The singleton ingester retains `--ha=false` and its non-cancelling queue.
+The singleton ingester retains `--ha=false` and its non-cancelling queue. Its
+publishing step then runs the read-only
+[machine-contract check](#post-deployment-ingester-verification); the reader
+and frontend steps are unchanged.
 
 ## Activation order
 
@@ -140,17 +156,18 @@ disable required CI, rely on absent credentials, or assume a frontend failure
 holds Fly. If a suitable hold is not already available, leave the PR unmerged
 until the owner authorizes an activation plan and any necessary protection
 configuration. Do not recommend merge before this decision. A queued release
-is not permission to recover the suspended ingester or destroy its standby.
+is not permission for an ingester machine operation (start, standby change or
+destruction).
 
 **September 13 activation baseline:** the three environments had main-only
 branch policies but **no required-reviewer approval holds**. PR #161 already
-proved credential delivery in the ordinary production jobs. This follow-up
-changes `ci.yml` and `scripts/production-*`, so reader and ingester releases
-are selected against their `0f75102` baselines; frontend preparation remains
-blocked by ledger `6404319208` until separately reconciled. A frontend failure
-does not hold either Fly job. Leave this PR unmerged until the owner authorizes
-those automatic releases or approves and verifies suitable holds on all three
-jobs. Do not change credentials or protections as an implicit part of merging.
+proved credential delivery in the ordinary production jobs. At that readback,
+the then-proposed workflow/release-script correction selected all services and
+frontend preparation was blocked by `6404319208`. That incident was subsequently
+acknowledged inactive and the repairs merged; it is not a pending repair today.
+For any new PR, recheck current holds and selected services. A frontend failure
+does not hold Fly, and owner authorization or verified holds must precede
+publication. Do not change credentials or protections implicitly while merging.
 
 Read-only configuration evidence:
 
@@ -240,8 +257,10 @@ reusable environment-bound jobs, including `deployment: false`; missing
 `secrets: inherit` is not evidence of the cause. The correction uses the measured
 working ordinary-job structure, without moving, replacing or broadly inheriting
 credentials. **PR #161's run `34663184517` subsequently accepted credential
-delivery in all three ordinary production jobs.** Actual frontend promotion,
-ingester recovery and fresh-data acceptance remain outstanding.
+delivery in all three ordinary production jobs.** Frontend promotion and
+ingester machine recovery have since completed
+([CURRENT_STATE §10, §2](../CURRENT_STATE.md#10-t211-delivery-controls)).
+Ingester fresh-data acceptance ([SETUP §7.5](SETUP.md#75-verify)) remains outstanding.
 
 ### Conditional access diagnostics on main
 
@@ -351,6 +370,7 @@ restore the deployment identity, not a raw dashboard bypass.
 | Vercel automatic domain assignment ON, unexpected repo link/hooks | Fail closed before publication. Restore the audited settings, then rerun CI. |
 | Inert staged build fails or publishing steps both skipped | Ledger `inactive`; no publishing command started. The next eligible attempt does a full service deployment. |
 | Fly deploy / Vercel promotion fails, times out, or is cancelled | May have continuing provider-side effects. Ledger remains unresolved and blocks all later releases for that target until reconciled. |
+| `Ingester machine contract not met ...` | The deploy ran, but the [machine check](#post-deployment-ingester-verification) failed. The ledger is `failure` (unresolved), never success. Read the named conditions and machine IDs. Reconcile the machine ([SETUP §7.4](SETUP.md#74-first-deploy) for standby/singleton problems), then acknowledge the ledger under [Interrupted-release recovery](#interrupted-release-recovery). Nothing was repaired automatically. |
 | Ledger/confirmation API failure | Inspect the record and actual provider state; never manufacture a success. A missing outcome remains unresolved. |
 | `Unrecognized production ledger entry` | Provenance/schema did not match. Do not erase records or mark them inactive to bypass validation. Older code incorrectly required optional app metadata; see the Actions-creator contract below and main run `34741032755`. |
 
@@ -402,6 +422,54 @@ uses Vercel's immutable last-success SHA and candidate SHA. Proven docs/backend-
 only ranges skip; first previews or missing/divergent/shallow history build
 conservatively, with a diagnostic. There is no unsafe `HEAD^` fallback. A skipped
 Vercel preview is not evidence of a production deployment.
+
+## Post-deployment ingester verification
+
+This verifies the machine contract, not ongoing source observations. For the
+independent data-freshness check and exact post-deployment acceptance, see
+[MATCH_FRESHNESS.md](MATCH_FRESHNESS.md#post-deployment-acceptance). Its manual
+watchdog is not an activated production schedule or proof of delivered alerts.
+
+The ingester case of **Publish tested Fly commit** runs
+`node scripts/production-release.mjs verify-ingester` right after
+`flyctl deploy ... --ha=false`, in the same step. The check is read-only. It
+uses the pinned flyctl and the step's `FLY_API_TOKEN`, never a command-line
+token. Each observation is one `flyctl machines list --app scorearc-ingester
+--json`. The contract, from `assessIngesterMachines` in
+`scripts/production-policy.mjs`:
+
+| Condition label | Requirement |
+|---|---|
+| `exactlyOneMachine` | Exactly one machine whose state is not `destroyed`/`destroying` |
+| `started` | That machine's state is `started` |
+| `noStandbys` | `config.standbys` is omitted or `[]` |
+| `restartAlways` | `config.restart.policy` is `always` |
+| `malformedInventory` | Output is not JSON, not a list, or has an unexpected ID, state, config, standby or restart shape. It is rejected, never treated as healthy. |
+| `machineList (...)` | The inventory read itself failed, timed out, or exceeded its output limit. The text in brackets is a fixed message plus an exit code, never provider output. |
+| `stableObservations (N of 3)` | The last observation was healthy, but the deadline arrived before three in a row. |
+
+Bounds: each CLI call is killed after 30 seconds, and no call starts unless it
+can finish before the 120-second deadline. Success needs **three consecutive
+healthy observations** of the same machine, five seconds apart, so one lucky
+sample is not enough. During the startup grace, only a machine that is not yet
+`started` or a failed or timed-out inventory read is retried. The other
+conditions do not fix themselves after a deploy, so they fail at once.
+
+Output contains only machine IDs, states and the condition labels above, never
+configuration, environment values, provider output or tokens. On failure the
+step exits non-zero and nothing is repaired, started, recreated, scaled or
+redeployed. `steps.fly.outcome` becomes `failure`, so **finish** records the
+unresolved `failure` status. A failed verification can never leave a successful
+ingester ledger entry. As after a failed deploy, later ingester releases stay
+blocked until an operator reconciles the machine and then acknowledges the
+ledger as `inactive` under
+[Interrupted-release recovery](#interrupted-release-recovery). Use
+[SETUP §7.4](SETUP.md#74-first-deploy) for a standby or singleton problem.
+For `started` or `machineList`, read the machine state and logs first.
+
+The check proves the machine contract only. It does **not** prove data
+freshness, zero-failure cycles or complete ingestion. Those remain
+[SETUP §7.5](SETUP.md#75-verify) and the acceptance steps below.
 
 ## Interrupted-release recovery
 
@@ -514,8 +582,12 @@ restart the ingester. Do not run a raw deploy to test credentials.
 3. For each selected target, inspect the provider log and successful managed
    ledger with that SHA. Vercel must confirm its deployed metadata and canonical
    domain. Fly logs must show deployment from the same checkout/config.
-4. Check reader `/healthz` and América's team profile. Recover the ingester only
-   under the separate [same-machine recovery plan](SETUP.md#74-first-deploy).
+4. Check reader `/healthz` and América's team profile. The September 13
+   standby cleanup is complete and is not a prerequisite. Still, read the machine
+   state fresh before accepting a release, and use the
+   [same-machine procedure](SETUP.md#74-first-deploy) only if a standby returns.
+   The release step's [machine check](#post-deployment-ingester-verification)
+   covers the machine contract only.
    Require exactly one ordinary started worker, an app that is not suspended,
    successful cycles with `failures: 0`, no duplicate/lost-lease errors, and
    advancing match data including Greece. A green Fly command/ledger is not

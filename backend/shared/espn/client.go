@@ -107,6 +107,18 @@ type Client struct {
 	baseDelay   time.Duration
 }
 
+// HTTPStatusError retains the endpoint and bounded provider response while
+// allowing callers to distinguish a rejected range from transport/JSON errors.
+type HTTPStatusError struct {
+	URL        string
+	StatusCode int
+	Body       string
+}
+
+func (e *HTTPStatusError) Error() string {
+	return fmt.Sprintf("espn %s: %d %s", e.URL, e.StatusCode, e.Body)
+}
+
 // New returns a Client with a sane default timeout.
 func New() *Client {
 	return NewWithOptions(Options{})
@@ -179,7 +191,7 @@ func (c *Client) getJSONOnce(ctx context.Context, url string, out any) (time.Dur
 	if res.StatusCode != http.StatusOK {
 		retry := res.StatusCode == http.StatusTooManyRequests || res.StatusCode >= 500
 		return parseRetryAfter(res.Header.Get("Retry-After"), time.Now()), retry,
-			fmt.Errorf("espn %s: %d %s", url, res.StatusCode, validUTF8Prefix(body, 200))
+			&HTTPStatusError{URL: url, StatusCode: res.StatusCode, Body: validUTF8Prefix(body, 200)}
 	}
 
 	if err := json.Unmarshal(body, out); err != nil {

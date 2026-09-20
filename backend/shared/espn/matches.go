@@ -9,12 +9,11 @@ import (
 	"time"
 )
 
-// Port of src/server/data/providers/espn-matches.ts's mapScoreboard +
-// src/server/data/state.ts's mapState. Reads ESPN's scoreboard shape
+// Port of src/server/data/providers/espn-matches.ts's mapScoreboard, using
+// shared observation-status validation. Reads ESPN's scoreboard shape
 // (events[].competitions[0] with competitors/status/notes) into our domain
-// Match type. Malformed events (missing competition, home, or away
-// competitor) are skipped rather than erroring, matching the TS mapper's
-// `flatMap(() => [])` short-circuit.
+// Match type. Incomplete or contradictory observations reject the payload
+// instead of silently refreshing stored facts with unvalidated data.
 
 // rawScoreboard mirrors the subset of ESPN's scoreboard JSON the mapper
 // reads.
@@ -23,10 +22,10 @@ type rawScoreboard struct {
 }
 
 type rawEvent struct {
-	ID           flexibleString   `json:"id"`
-	Date         string           `json:"date"`
-	Status       *rawStatus       `json:"status"`
-	Competitions []rawCompetition `json:"competitions"`
+	ID           flexibleString        `json:"id"`
+	Date         string                `json:"date"`
+	Status       *rawObservationStatus `json:"status"`
+	Competitions []rawCompetition      `json:"competitions"`
 	Season       struct {
 		Year int    `json:"year"`
 		Slug string `json:"slug"`
@@ -136,42 +135,6 @@ type rawLogo struct {
 	Href string `json:"href"`
 }
 
-type rawStatus struct {
-	Type         rawStatusType `json:"type"`
-	DisplayClock string        `json:"displayClock"`
-}
-
-type rawStatusType struct {
-	State       string `json:"state"`
-	Completed   bool   `json:"completed"`
-	Name        string `json:"name"`
-	ShortDetail string `json:"shortDetail"`
-}
-
-// mapState follows the frontend state mapping except that ESPN statuses not yet
-// confirmed final remain mutable instead of being frozen as finished.
-func mapState(espnState string, completed bool, statusName string) MatchState {
-	if completed {
-		return MatchStateFinished
-	}
-	if espnState == "post" {
-		switch statusName {
-		case "STATUS_ABANDONED", "STATUS_CANCELED", "STATUS_FINAL",
-			"STATUS_FINAL_AET", "STATUS_FINAL_PEN", "STATUS_FORFEIT",
-			"STATUS_FULL_TIME":
-			return MatchStateFinished
-		case "STATUS_POSTPONED", "STATUS_SUSPENDED":
-			return MatchStateScheduled
-		default:
-			return MatchStateLive
-		}
-	}
-	if espnState == "pre" {
-		return MatchStateScheduled
-	}
-	return MatchStateLive
-}
-
 // mapTeam ports espn-matches.ts's mapTeam.
 func mapTeam(t rawTeam) Team {
 	var crest *string
@@ -254,11 +217,11 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 			return nil, fmt.Errorf("scoreboard event %q has unnamed team", ev.ID)
 		}
 		status := ev.Status
-		if status.Type.State != "pre" && status.Type.State != "in" && status.Type.State != "post" {
-			return nil, fmt.Errorf("scoreboard event %q has unknown state %q", ev.ID, status.Type.State)
+		state, err := observedMatchState(status)
+		if err != nil {
+			return nil, fmt.Errorf("scoreboard event %q: %w", ev.ID, err)
 		}
 
-		state := mapState(status.Type.State, status.Type.Completed, status.Type.Name)
 		bracketRequired := bracketRequirement(string(ev.ID), ev.Season.Slug)
 
 		var note *string

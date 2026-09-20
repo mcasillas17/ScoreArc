@@ -13,6 +13,7 @@ import (
 	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/shared/assets"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
+	"github.com/mcasillas17/scorearc-backend/shared/source"
 	"github.com/mcasillas17/scorearc-backend/shared/store"
 )
 
@@ -23,9 +24,12 @@ var errMirrorUnavailable = errors.New("asset mirror temporarily unavailable")
 const sourceESPN = "espn"
 
 type matchResult struct {
-	live      bool
-	active    bool
-	finalized bool
+	live              bool
+	active            bool
+	finalized         bool
+	observationFailed bool
+	observedIDs       map[uuid.UUID]bool
+	failedRecoveryIDs map[uuid.UUID]bool
 }
 
 // resolveMatch turns a provider-shaped match into its canonical identity,
@@ -101,11 +105,17 @@ func (r *runner) processMatches(
 	existing map[uuid.UUID]store.MatchRow,
 	slowTick bool,
 	backfill bool,
+	observations map[string]time.Time,
+	summaries map[string]source.SummaryResult,
+	targetedRecovery bool,
 ) (matchResult, error) {
 	var result matchResult
 	var operationErrors []error
+	var acceptedObservations []store.MatchObservation
+	observationIndex := make(map[uuid.UUID]int)
 	for _, match := range matches {
 		if err := ctx.Err(); err != nil {
+			result.observationFailed = true
 			operationErrors = append(operationErrors, err)
 			break
 		}
@@ -115,6 +125,7 @@ func (r *runner) processMatches(
 			continue
 		}
 		providerHome, providerAway := match.Home, match.Away
+		observedIdentity := identity
 		// Past this point the match is in CANONICAL space — the same space the
 		// stored row is in — so the two can be compared and merged. The summary
 		// fetch below is the one thing that still needs provider ids, which is
@@ -204,17 +215,37 @@ func (r *runner) processMatches(
 
 		if !skipMatchUpsert && !noopUpsert {
 			if err := r.repo.UpsertMatch(ctx, identity, match); err != nil {
+				result.observationFailed = true
 				operationErrors = append(operationErrors, fmt.Errorf("match %s row: %w", match.ID, err))
 				result.active = result.active || matchActive
 				continue
 			}
 		}
 		if skipMatchUpsert {
+			if !observations[match.ID].IsZero() {
+				result.observationFailed = true
+				operationErrors = append(operationErrors, fmt.Errorf("match %s observation rejected by state guard", match.ID))
+				if targetedRecovery {
+					result.active = result.active || matchActive
+					continue
+				}
+			}
 			r.mirrorCrest(ctx, match.Home)
 			r.mirrorCrest(ctx, match.Away)
 			result.active = result.active || matchActive
 			if current.State == model.MatchStateFinished {
 				continue
+			}
+		}
+		if observedAt := observations[match.ID]; !observedAt.IsZero() && !skipMatchUpsert {
+			if identity.HomeTeamID != observedIdentity.HomeTeamID || identity.AwayTeamID != observedIdentity.AwayTeamID {
+				result.observationFailed = true
+				operationErrors = append(operationErrors, fmt.Errorf("match %s observation rejected by team preservation guard", match.ID))
+			} else {
+				observationIndex[identity.MatchID] = len(acceptedObservations)
+				acceptedObservations = append(acceptedObservations, store.MatchObservation{
+					Identity: identity, Match: match, ObservedAt: observedAt,
+				})
 			}
 		}
 		canFinalize := !requiresBracketConfirmation(match, season) || match.BracketConfirmed
@@ -239,7 +270,15 @@ func (r *runner) processMatches(
 			summaryMatch := match
 			summaryMatch.Home, summaryMatch.Away = providerHome, providerAway
 			summaryStartedAt := r.clock()
-			summary, err := r.source.Summary(ctx, comp, summaryMatch)
+			summary, recovered := summaries[match.ID]
+			var err error
+			if !recovered {
+				if targetedRecovery {
+					err = fmt.Errorf("recovery match %s lacks its validated summary", match.ID)
+				} else {
+					summary, err = r.source.Summary(ctx, comp, summaryMatch)
+				}
+			}
 			if err != nil {
 				operationErrors = append(operationErrors, fmt.Errorf("match %s summary: %w", match.ID, err))
 				r.mirrorCrest(ctx, match.Home)
@@ -252,6 +291,9 @@ func (r *runner) processMatches(
 			if match.State == model.MatchStateFinished {
 				match.HomeScore = summary.HomeScore
 				match.AwayScore = summary.AwayScore
+				if at, ok := observationIndex[identity.MatchID]; ok {
+					acceptedObservations[at].Match = match
+				}
 			} else if err := r.repo.UpsertMatchDetail(ctx, identity.MatchID, detail); err != nil &&
 				!errors.Is(err, store.ErrMatchFinalized) {
 				operationErrors = append(operationErrors, fmt.Errorf("match %s detail: %w", match.ID, err))
@@ -299,7 +341,9 @@ func (r *runner) processMatches(
 				// the books' raw prices, and the competitions whose market
 				// mapWinProbability cannot normalize are exactly the ones whose
 				// market would otherwise never be recorded at all.
-				r.captureOdds(ctx, comp, identity, match.ID, oddsCaptureLive)
+				if !targetedRecovery {
+					r.captureOdds(ctx, comp, identity, match.ID, oddsCaptureLive)
+				}
 			}
 
 			// Structured commentary is additive to the scoreline row already
@@ -323,17 +367,16 @@ func (r *runner) processMatches(
 					// The stream is complete at full time. Fetching it once
 					// here, rather than on every live poll, bounds the core API
 					// to roughly two requests per match.
-					if err := r.capturePlays(ctx, comp, season, identity, match.ID); err != nil {
-						operationErrors = append(operationErrors,
-							fmt.Errorf("match %s play stream: %w", match.ID, err))
+					// Recovery reserves its provider budget for core facts;
+					// existing durable backlogs own the follow-up captures.
+					if !targetedRecovery {
+						if err := r.capturePlays(ctx, comp, season, identity, match.ID); err != nil {
+							operationErrors = append(operationErrors,
+								fmt.Errorf("match %s play stream: %w", match.ID, err))
+						}
+						r.captureOfficials(ctx, comp, identity, match.ID)
+						r.captureOdds(ctx, comp, identity, match.ID, oddsCaptureFinal)
 					}
-					// The crew and the settled lines are full-time facts too.
-					// Both are additive and audit their own failures, so
-					// neither is appended to operationErrors: a core-API or
-					// bookmaker outage must not report a match that finished as
-					// having failed to ingest.
-					r.captureOfficials(ctx, comp, identity, match.ID)
-					r.captureOdds(ctx, comp, identity, match.ID, oddsCaptureFinal)
 					r.forgetSamples(identity.MatchID)
 					existing[identity.MatchID] = store.MatchRow{
 						State: match.State,
@@ -348,6 +391,17 @@ func (r *runner) processMatches(
 		r.mirrorCrest(ctx, match.Home)
 		r.mirrorCrest(ctx, match.Away)
 		result.active = result.active || matchActive
+	}
+	if len(acceptedObservations) > 0 {
+		if err := r.repo.RecordMatchObservations(ctx, acceptedObservations); err != nil {
+			result.observationFailed = true
+			operationErrors = append(operationErrors, err)
+		} else {
+			result.observedIDs = make(map[uuid.UUID]bool, len(acceptedObservations))
+			for _, observation := range acceptedObservations {
+				result.observedIDs[observation.Identity.MatchID] = true
+			}
+		}
 	}
 	return result, errorsJoin(operationErrors)
 }

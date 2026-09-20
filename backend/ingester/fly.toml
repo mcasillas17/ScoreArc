@@ -16,6 +16,15 @@
 app = "scorearc-ingester"
 primary_region = "iad"   # MUST match the Neon region (same as the reader)
 
+# The lease is released on SIGINT/SIGTERM through a 5s shutdown context
+# (ingester/main.go). Fly's default kill_timeout of 5s races that, which would
+# strand the advisory lock until Postgres reaps the connection and make the
+# NEXT deploy fail to acquire it. Give the release room to finish.
+# These keys MUST stay above the first [table] header: TOML assigns every key
+# after a header to that table, and Fly silently ignores unknown table keys.
+kill_signal = "SIGTERM"
+kill_timeout = "15s"
+
 # SINGLETON: the ingester holds a Postgres advisory lock
 # (pg_try_advisory_lock, shared/store/lease.go). The call is non-blocking — a
 # second live instance does NOT wait, it logs "another ingester instance holds
@@ -28,13 +37,6 @@ primary_region = "iad"   # MUST match the Neon region (same as the reader)
 [[restart]]
   policy = "always"
   processes = ["app"]
-
-# The lease is released on SIGINT/SIGTERM through a 5s shutdown context
-# (ingester/main.go). Fly's default kill_timeout of 5s races that, which would
-# strand the advisory lock until Postgres reaps the connection and make the
-# NEXT deploy fail to acquire it. Give the release room to finish.
-kill_signal = "SIGTERM"
-kill_timeout = "15s"
 
 [[vm]]
   size = "shared-cpu-1x"
