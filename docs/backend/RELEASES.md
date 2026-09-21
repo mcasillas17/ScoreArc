@@ -6,15 +6,19 @@ The [decision](../decisions/2026-09-05-ci-production-gates.md) owns the invarian
 is actually enabled. [Architecture §11](ARCHITECTURE.md#11-production-delivery)
 shows the dependency graph. This runbook does not authorize a production change.
 
-**September 19, 2026 status context:** #163's promotion repair and #172's Fly
+**September 21, 2026 status context:** #163's promotion repair and #172's Fly
 shutdown/singleton verification repair are merged. Earlier September 13 failure
 and ledger observations below are historical, not instructions to repeat those
 repairs. Main CI succeeded September 15; a separate dependency-only ingester
 publication at `2e79750` succeeded September 19. Current ingestion/reachability
 is not established by either result. See
 [CURRENT_STATE](../CURRENT_STATE.md) and the
-[match freshness runbook](MATCH_FRESHNESS.md) for the dated stale-match evidence
-and separately approved migration 0023/release/notification acceptance.
+[match freshness runbook](MATCH_FRESHNESS.md): the owner reports migration 0023
+and reader/ingester recovery releases completed September 20, with both original
+incidents finalized. Do not reapply that migration. The new monthly scoreboard
+repair needs no schema change, but shared source changes select both Fly
+services after an authorized merge/full CI gate. Its complete-poll and
+transient-failure acceptance is still pending; notifications remain manual-only.
 
 ## Release contract
 

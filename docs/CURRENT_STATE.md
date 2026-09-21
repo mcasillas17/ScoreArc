@@ -3,7 +3,29 @@
 **Broad inventory baseline:** 2026-09-01, against `main` @ `49bf68d`.
 Unrelated inventory observations below retain their original dates.
 
-**Match reliability update, 2026-09-19:** initial baseline `803094e`, then
+**Match reliability update, 2026-09-21:** implementation began on freshly fetched
+`2a5ae77`; before final review the isolated branch fast-forwarded to
+dependency-only `488f5d9` (#166, `package-lock.json` only).
+The owner reports the Neon quota issue resolved, migration 0023 verified clean
+at version 23 with application grants on September 20, and successful reader/
+ingester recovery releases. Both original September 15 incidents automatically
+finalized: Rayo--Espanyol 2-1 and Alaves--Valencia 0-1, independently checked
+against provider summaries. These are completed operations, not work to repeat.
+
+At approximately 07:25 UTC September 21 the reader returned health 200 and no
+overdue/live original incidents, but LaLiga still reported poll `partial` and
+freshness `unavailable`. Bounded probes demonstrated that hyphenated scoreboard
+date ranges fail 400 while compact month selectors work. The current repair
+uses bounded monthly discovery with UTC/season validation and honest incomplete
+results; local real-adapter probes returned LaLiga rolling 61 matches, full
+2026-27 season 380, and Liga MX rolling 52. Backend build/race/vet and real
+Postgres pipeline checks passed locally. **This scoreboard repair is not yet
+deployed or operationally accepted.** Repeated complete active-scope polls,
+reconciliation and observed transient-failure recovery remain post-rollout
+acceptance; no production action was performed here. See
+[MATCH_FRESHNESS](backend/MATCH_FRESHNESS.md) for the contract, limits and steps.
+
+**Historical match reliability evidence, 2026-09-19:** initial baseline `803094e`, then
 dependency-only main `2e79750` (#169). PR #163's promotion repair and #172's Fly
 shutdown/singleton verification repair are merged, not pending implementation.
 Main CI `34944474666` passed on September 15; GitHub also recorded the independent
@@ -26,8 +48,9 @@ machine, a Fly regression or exclusively an ESPN fault.
 The `mcasillas17-stale-match-recovery` branch implements validated targeted
 recovery, durable bounded retries, independent source-observation timestamps,
 additive reader freshness headers and a manual-only external watchdog.
-**Not deployed or operationally accepted.** Migration 0023, release and any
-schedule/notification activation require separate approval. See
+**At that September 19 inspection it was not deployed or operationally accepted.**
+The September 20 schema/recovery releases supersede that status, as recorded
+above; schedule/notification activation still requires separate approval. See
 [the dated evidence, boundaries and acceptance procedure](backend/MATCH_FRESHNESS.md).
 Historical September 6/13/14 records below remain evidence of those dates; they
 do not reopen completed delivery repairs or prove present machine health.
@@ -73,7 +96,7 @@ that audit's mutable status conclusions where they conflict.
 | Area | Status |
 |---|---|
 | Frontend | Live at scorearc.futbol, fully ESPN-backed. No reader/backend fetch call sites exist in `src/server/data/` — the 1d cutover has not started. |
-| Ingester | **Sustained ingestion not accepted; current machine state unverified.** September 14 readback found a started singleton without the obsolete standby. #172 subsequently merged the shutdown/configuration and bounded deployment-verification repair. Successful September 15/19 publications do not explain the September 19 stale-match observations. Read-only Fly/SQL access is needed for continuing runtime diagnosis; the new recovery/freshness slice is prepared, not deployed. |
+| Ingester | **Targeted incident recovery accepted; complete discovery remains pending.** Owner-reported September 20 migration/recovery releases resolved the two original stale matches. September 21 still showed partial/unavailable LaLiga discovery. The bounded monthly source repair is locally verified, not deployed; sustained complete polling/reconciliation requires separately authorized rollout and acceptance. #172 shutdown/singleton settings and #173 recovery are not being rebuilt. |
 | Reader API | 7 registered `/v1` data routes (`matches`, `standings`, `bracket`, `top-scorers`, `teams/{teamId}`, `news`, `matches/{id}`) + `/healthz`. The Liga MX team-profile **500 is repaired**: existing migration 0022 restored the full production response, accepted 2026-09-06 (§3). Broader reader parity remains open (§5). |
 | Operations | The recorded main PR/CI protections remain the release contract. Credential delivery, project-token promotion and Fly shutdown-verification repairs are merged; older failure/ledger descriptions in §10 are dated history, not work to repeat. Recheck live approval holds before any release (none were present at September 13 readback). Migrations remain manual. New match-sync schema checks cover only migration 0023 prerequisites, not full T21.2 head/dirty-ledger readiness. T17.1 is complete; broader T21.1 governance/acceptance and T21.2 are not declared closed here. |
 | 1d (frontend cutover) | Absent. No spec has landed as an implementation; no `apiStore` exists. |

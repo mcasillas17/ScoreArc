@@ -46,7 +46,7 @@ func TestESPNScoreboardRejectsInvalidObservationStatus(t *testing.T) {
 					if fallback && calls == 1 {
 						return recoveryResponse(400, "range unavailable"), nil
 					}
-					return recoveryResponse(200, body), nil
+					return recoveryResponse(200, strings.Replace(body, `{"events"`, `{"leagues":[{"slug":"esp.1"}],"events"`, 1)), nil
 				})
 				src.now = func() time.Time { return time.Date(2026, 9, 19, 8, 0, 0, 0, time.UTC) }
 				matches, err := src.Scoreboard(context.Background(), config.Competition{ESPNSlug: "esp.1"},

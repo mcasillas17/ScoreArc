@@ -36,7 +36,7 @@ func TestESPNBracketPropagatesInvalidObservationStatus(t *testing.T) {
 				calls := 0
 				src := recoverySource(func(*http.Request) (*http.Response, error) {
 					calls++
-					return recoveryResponse(200, raw), nil
+					return recoveryResponse(200, strings.Replace(raw, `{"events"`, `{"leagues":[{"slug":"fifa.world"}],"events"`, 1)), nil
 				})
 				dates := "20260628-20260719"
 				matches, err := src.Bracket(context.Background(), config.Competition{ESPNSlug: "fifa.world"},

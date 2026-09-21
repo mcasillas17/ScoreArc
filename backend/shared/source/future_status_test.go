@@ -35,12 +35,12 @@ func TestESPNScoreboardFutureStatesKeepOtherMatches(t *testing.T) {
 		for _, fallback := range []bool{false, true} {
 			t.Run(fmt.Sprintf("backfill=%t/fallback=%t", backfill, fallback), func(t *testing.T) {
 				calls := 0
-				src := recoverySource(func(*http.Request) (*http.Response, error) {
+				src := recoverySource(func(req *http.Request) (*http.Response, error) {
 					calls++
 					if fallback && calls == 1 {
 						return recoveryResponse(400, "range unavailable"), nil
 					}
-					return recoveryResponse(200, `{"events":[`+strings.Join(events, ",")+`]}`), nil
+					return partitionedTestResponse(req, `{"events":[`+strings.Join(events, ",")+`]}`), nil
 				})
 				src.now = func() time.Time { return time.Date(2026, 9, 19, 8, 0, 0, 0, time.UTC) }
 				matches, err := src.Scoreboard(context.Background(), config.Competition{ESPNSlug: "esp.1"},
@@ -70,7 +70,7 @@ func TestESPNScoreboardFutureStateDoesNotHideInvalidNeighbor(t *testing.T) {
 	body := `{"events":[` + futureStatusScoreboardEvent("valid", "pre", false) + `,` +
 		futureStatusScoreboardEvent("ambiguous", "post", false) + `]}`
 	src := recoverySource(func(*http.Request) (*http.Response, error) {
-		return recoveryResponse(200, body), nil
+		return recoveryResponse(200, strings.Replace(body, `{"events"`, `{"leagues":[{"slug":"esp.1"}],"events"`, 1)), nil
 	})
 	matches, err := src.Scoreboard(context.Background(), config.Competition{ESPNSlug: "esp.1"},
 		config.Season{ID: "2026-27"}, false)

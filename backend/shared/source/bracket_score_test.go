@@ -11,7 +11,7 @@ import (
 )
 
 const scheduledBracketEvent = `{
-	"id":"scheduled","date":"2026-07-01T12:00Z",
+	"id":"scheduled","date":"2026-07-03T12:00Z",
 	"season":{"year":2026,"slug":"quarterfinals"},
 	"status":{"type":{"name":"STATUS_SCHEDULED","state":"pre","completed":false}},
 	"competitions":[{"competitors":[
@@ -35,10 +35,11 @@ func TestESPNBracketRejectsMalformedScoresWithoutCandidates(t *testing.T) {
 						calls := 0
 						src := recoverySource(func(*http.Request) (*http.Response, error) {
 							calls++
-							return recoveryResponse(200, `{"events":[`+events+`]}`), nil
+							return recoveryResponse(200, monthEnvelope("fifa.world", events)), nil
 						})
+						dates := "20260702-20260719"
 						matches, err := src.Bracket(context.Background(), config.Competition{ESPNSlug: "fifa.world"},
-							config.Season{ID: "2026", HasBracket: true}, backfill)
+							config.Season{ID: "2026", HasBracket: true, BracketDatesRange: &dates}, backfill)
 						if err == nil || matches != nil || IsPartialScoreboard(err) || calls != 1 ||
 							!strings.Contains(err.Error(), "bad-scheduled") {
 							t.Fatalf("bad score yielded %d bracket candidates: calls=%d err=%v", len(matches), calls, err)
@@ -62,10 +63,11 @@ func TestESPNBracketAllowsAbsentScheduledScores(t *testing.T) {
 				event = strings.Replace(event, original, replacement, 1)
 			}
 			src := recoverySource(func(*http.Request) (*http.Response, error) {
-				return recoveryResponse(200, `{"events":[`+event+`]}`), nil
+				return recoveryResponse(200, monthEnvelope("fifa.world", event)), nil
 			})
+			dates := "20260702-20260719"
 			matches, err := src.Bracket(context.Background(), config.Competition{ESPNSlug: "fifa.world"},
-				config.Season{ID: "2026", HasBracket: true}, false)
+				config.Season{ID: "2026", HasBracket: true, BracketDatesRange: &dates}, false)
 			if err != nil || len(matches) != 1 || matches[0].HomeScore != nil || matches[0].AwayScore != nil {
 				t.Fatalf("legitimate scheduled scores rejected: matches=%+v err=%v", matches, err)
 			}

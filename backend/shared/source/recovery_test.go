@@ -17,16 +17,16 @@ import (
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
 
-func TestESPNRange400ReturnsValidatedCurrentMatchesWithError(t *testing.T) {
+func TestESPNMonth400ReturnsValidatedCurrentMatchesWithError(t *testing.T) {
 	now := time.Date(2026, 9, 19, 8, 0, 0, 0, time.UTC)
 	var dates []string
 	src := recoverySource(func(req *http.Request) (*http.Response, error) {
 		date := req.URL.Query().Get("dates")
 		dates = append(dates, date)
-		if strings.Contains(date, "-") {
+		if len(date) == 6 {
 			return recoveryResponse(400, `{"error":"Failed to get events endpoint."}`), nil
 		}
-		return recoveryResponse(200, fmt.Sprintf(`{"events":[{
+		return recoveryResponse(200, fmt.Sprintf(`{"leagues":[{"slug":"esp.1"}],"events":[{
 			"id":"current","date":%q,"season":{"year":%d,"slug":"regular-season"},
 			"status":{"type":{"name":"STATUS_IN_PROGRESS","state":"in","completed":false}},
 			"competitions":[{"competitors":[
@@ -43,8 +43,8 @@ func TestESPNRange400ReturnsValidatedCurrentMatchesWithError(t *testing.T) {
 	if len(matches) != 1 || matches[0].ID != "current" {
 		t.Fatalf("range 400 yielded no validated current events: matches=%+v err=%v", matches, err)
 	}
-	if len(dates) != 2 || !strings.Contains(dates[0], "-") || dates[1] != now.Format("20060102") {
-		t.Fatalf("requests=%v, want range then one current UTC date", dates)
+	if len(dates) != 2 || len(dates[0]) != 6 || dates[1] != now.Format("20060102") {
+		t.Fatalf("requests=%v, want month then one current UTC date", dates)
 	}
 }
 

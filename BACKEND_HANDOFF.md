@@ -221,7 +221,11 @@ Hard rules (also in `AGENTS.md` — read it; Codex auto-loads it):
 - **Match synchronization:** migration 0023 separates accepted source observations
   from fact writes and persists bounded nonfinal recovery retries. The reader
   exposes additive freshness headers without changing bodies or cutting over the
-  website. Apply the schema before dependent binaries; the external watchdog is
+  website. The scoreboard adapter retrieves complete bounded monthly partitions
+  for rolling/current-season windows; any incomplete retrieval preserves honest
+  partial/unavailable evidence and targeted recovery. Apply the schema before
+  dependent binaries in unmigrated environments (production's September 20
+  acceptance is in `CURRENT_STATE`); the external watchdog is
   manual-only until separately authorized. See
   [`MATCH_FRESHNESS.md`](docs/backend/MATCH_FRESHNESS.md) for evidence, limits and
   rollout acceptance. This narrow schema prerequisite is not all of T21.2.
