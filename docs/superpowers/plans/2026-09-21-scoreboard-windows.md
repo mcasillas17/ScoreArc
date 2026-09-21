@@ -97,3 +97,17 @@ scoreboard with the actual ESPN adapter while isolating ancillary endpoints.
 - [ ] Stage only reviewed task-owned files, conventional commit with Copilot
   trailers, verify hooks did not change content, push without force and open
   active non-draft PR. Verify remote head SHA and changed file set, no auto-merge.
+
+## CI follow-through: cancellation before every HTTP attempt
+
+The first push run exposed a ready-timer/cancellation race in the shared client;
+the simultaneous PR run passed. Keep ownership of the same PR, without duplicate
+workflow dispatch or changed retry/time budgets.
+
+- [x] Reproduce with pre-cancelled/expired contexts and cancellation concurrent
+  with a nanosecond retry timer in `shared/espn/client_test.go`.
+- [x] Check `ctx.Err()` before every `GetJSON` attempt; tighten the source
+  deadline regression to at most one transport call.
+- [ ] Run stress regressions, full backend build/race/vet, and fresh complete
+  Knights implementation/final panels before the follow-up commit.
+- [ ] Push normally to the same PR and observe its resulting CI outcomes.

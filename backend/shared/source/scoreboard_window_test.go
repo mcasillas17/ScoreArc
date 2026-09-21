@@ -361,7 +361,7 @@ func TestMonthlyScoreboardFailureBudgetsAndNoPartialWindow(t *testing.T) {
 		return nil, req.Context().Err()
 	})
 	_, err := src.Scoreboard(ctx, config.Competition{ESPNSlug: "esp.1"}, config.Season{ID: "2026"}, true)
-	if !errors.Is(err, context.DeadlineExceeded) || calls > 2 {
+	if !errors.Is(err, context.DeadlineExceeded) || calls > 1 {
 		t.Fatalf("deadline did not bound retries: calls=%d err=%v", calls, err)
 	}
 }

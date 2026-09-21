@@ -91,7 +91,9 @@ Windows have a 45-second total ceiling including fallback. The existing
 18-second live / 270-second slow whole-cycle deadlines can shorten it. Requests
 are sequential within a window, with at most three competitions active; client
 attempt timeout remains 15 seconds, Retry-After is capped at 30 seconds. Each
-response, accumulated window bytes and the shared short scoreboard cache are
+attempt checks caller cancellation before starting, even if a retry timer and
+cancellation become ready together; expired contexts cannot start another attempt.
+Each response, accumulated window bytes and the shared short scoreboard cache are
 bounded to 16 MiB each. New scoreboard polls discard the same competition's
 cached bytes; the five-second cache only saves subsequent bracket reads, not
 later poll evidence. Budget calculations never rely on a cache hit.
