@@ -1,0 +1,12 @@
+{
+  "observedOn": "2026-09-21",
+  "scope": "Minimized boundary-event samples, not complete monthly payloads",
+  "rejectedRange": {"code":400,"message":"Failed to get events endpoint."},
+  "january": {"leagues":[{"slug":"mex.1"}],"events":[
+    {"id":"401840847","date":"2026-02-01T01:00Z","season":{"year":2025,"slug":"torneo-clausura"},"status":{"type":{"name":"STATUS_FULL_TIME","state":"post","completed":true,"shortDetail":"FT"}},"competitions":[{"competitors":[{"homeAway":"home","team":{"id":"220","displayName":"Monterrey"},"score":"2"},{"homeAway":"away","team":{"id":"10125","displayName":"Tijuana"},"score":"2"}]}]},
+    {"id":"401840846","date":"2026-02-01T01:10Z","season":{"year":2025,"slug":"torneo-clausura"},"status":{"type":{"name":"STATUS_FULL_TIME","state":"post","completed":true,"shortDetail":"FT"}},"competitions":[{"competitors":[{"homeAway":"home","team":{"id":"228","displayName":"Le\u00f3n"},"score":"1"},{"homeAway":"away","team":{"id":"232","displayName":"Tigres UANL"},"score":"2"}]}]}
+  ]},
+  "february": {"leagues":[{"slug":"mex.1"}],"events":[
+    {"id":"401840849","date":"2026-02-01T23:00Z","season":{"year":2025,"slug":"torneo-clausura"},"status":{"type":{"name":"STATUS_FULL_TIME","state":"post","completed":true,"shortDetail":"FT"}},"competitions":[{"competitors":[{"homeAway":"home","team":{"id":"222","displayName":"Quer\u00e9taro"},"score":"0"},{"homeAway":"away","team":{"id":"234","displayName":"Pachuca"},"score":"0"}]}]}
+  ]}
+}

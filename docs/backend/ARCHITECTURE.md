@@ -271,8 +271,14 @@ the seal is the intended single `match_pkey` probe with two shared-buffer hits.
 - Active competitions poll every 20 seconds while any match is live and every
   five minutes otherwise. Slow cycles reconcile the current season, retry
   failed reconciliation after 30 minutes, and refresh successful reconciliation
-  daily. Normal scoreboards use a rolling `-30d/+7d` window with foreign-season
-  events filtered; full-season backfills reject season mismatches.
+  daily. Normal scoreboards use a rolling UTC `-30d/+7d` window clamped to
+  season/tournament bounds. Compact monthly selectors replace provider-rejected
+  date ranges; one-day calendar guards cover UTC spillover. Exact-window events
+  must match the requested league/season, and conflicts are rejected before
+  discarding padding. Every month must be complete; cap-sized responses and
+  failed partitions cannot advance complete-poll evidence. A validated 400-only
+  current-date fallback remains explicitly partial. See
+  [the source contract and budgets](MATCH_FRESHNESS.md#complete-window-source-contract).
 - Scheduled-match detail follows kickoff-aware cadence: more than 24 hours out it
   is re-fetched every six hours; from 24 hours down to more than one hour out it
   is re-fetched hourly; and at or inside the final hour it follows the five-minute
@@ -415,9 +421,9 @@ sequenceDiagram
 
   S->>L: acquire/check advisory lock
   loop active competitions (max 3)
-    S->>E: rolling or full-season scoreboard
+    S->>E: bounded month selectors for rolling/full window
     opt bracket season
-      S->>E: bracket feed
+      S->>E: bracket month selectors (short same-cycle reuse)
     end
     S->>P: load durable unfinalized backlog
     S->>P: monotonic match/team upserts

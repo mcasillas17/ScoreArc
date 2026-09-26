@@ -89,6 +89,55 @@ func TestGetJSONDoesNotRetryPermanentStatus(t *testing.T) {
 	}
 }
 
+func TestGetJSONDoesNotAttemptAfterContextDone(t *testing.T) {
+	for _, expired := range []bool{false, true} {
+		t.Run(fmt.Sprintf("expired=%t", expired), func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			if expired {
+				cancel()
+				ctx, cancel = context.WithDeadline(context.Background(), time.Unix(0, 0))
+			} else {
+				cancel()
+			}
+			defer cancel()
+			calls := 0
+			client := NewWithOptions(Options{
+				HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+					calls++
+					return response(http.StatusOK, `{"ok":true}`), nil
+				})},
+				BaseDelay: time.Nanosecond,
+			})
+			var got json.RawMessage
+			err := client.GetJSON(ctx, "https://example.test/data", &got)
+			if !errors.Is(err, ctx.Err()) || calls != 0 || got != nil {
+				t.Fatalf("completed context started work: calls=%d payload=%s err=%v", calls, got, err)
+			}
+		})
+	}
+}
+
+func TestGetJSONCancellationWinsReadyRetryTimer(t *testing.T) {
+	for range 50 {
+		ctx, cancel := context.WithCancel(context.Background())
+		calls := 0
+		client := NewWithOptions(Options{
+			HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				calls++
+				cancel()
+				return response(http.StatusServiceUnavailable, "retryable status after cancellation"), nil
+			})},
+			BaseDelay: time.Nanosecond,
+		})
+		var got json.RawMessage
+		err := client.GetJSON(ctx, "https://example.test/data", &got)
+		cancel()
+		if !errors.Is(err, context.Canceled) || calls != 1 {
+			t.Fatalf("cancelled request retried: calls=%d err=%v", calls, err)
+		}
+	}
+}
+
 func TestGetJSONRejectsOversizedResponse(t *testing.T) {
 	client := NewWithOptions(Options{
 		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {

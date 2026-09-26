@@ -145,6 +145,9 @@ func NewWithOptions(opts Options) *Client {
 // GetJSON fetches url and decodes the JSON body into out.
 func (c *Client) GetJSON(ctx context.Context, url string, out any) error {
 	for attempt := 1; attempt <= c.maxAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		retryAfter, retry, err := c.getJSONOnce(ctx, url, out)
 		if err == nil {
 			return nil

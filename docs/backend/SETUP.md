@@ -623,38 +623,28 @@ Confirm the pipeline is actually *writing* by comparing a live competition
 against ESPN, which needs no credentials:
 
 ```bash
-# `dates` MUST match the season id, mirroring fullSeasonRange in
-# backend/shared/source/espn.go: `YYYY-YY` -> Jul 1..Jun 30 (below);
-# bare `YYYY` -> YYYY0101-YYYY1231 (mls, world-cup, leagues-cup);
-# `YYYY-apertura` -> YYYY0701-YYYY1231; `YYYY-clausura` -> YYYY0101-YYYY0630.
-# Using the wrong range over-counts ESPN and invents a gap.
-comp=premier-league; season=2026-27; slug=eng.1; dates=20260701-20270630
-curl -s "https://scorearc-reader.fly.dev/v1/competitions/$comp/$season/matches" |
+set -o pipefail
+comp=premier-league; season=2026-27; slug=eng.1
+curl --fail --silent --show-error --max-time 15 \
+  "https://scorearc-reader.fly.dev/v1/competitions/$comp/$season/matches" |
   python3 -c 'import json,sys; m=json.load(sys.stdin); f=sorted(x["kickoff"] for x in m if x["state"]=="finished"); print("reader finished:",len(f),"last:",f[-1] if f else "-"); print("stuck live:",sum(1 for x in m if x["state"]=="live"))'
-curl -s "https://site.api.espn.com/apis/site/v2/sports/soccer/$slug/scoreboard?dates=$dates&limit=1000" |
-  python3 -c 'import json,sys; d=json.load(sys.stdin); t=lambda e: e["status"]["type"]; print("espn finished (mapState):",sum(1 for e in d.get("events",[]) if t(e)["completed"] or (t(e)["state"]=="post" and t(e)["name"] in {"STATUS_CANCELED","STATUS_ABANDONED","STATUS_FORFEIT","STATUS_FINAL","STATUS_FINAL_AET","STATUS_FINAL_PEN","STATUS_FULL_TIME"})))'
-# The ESPN-side set mirrors mapState in shared/espn/matches.go EXACTLY: those
-# seven names map to `finished` when ESPN's state is `post` (and only then),
-# while ESPN can leave `completed` false -- matches_test.go pins
-# mapState("post", false, "STATUS_FULL_TIME") == finished. Counting only
-# `completed` invents a permanent gap; dropping the `post` guard invents one
-# the other way (POSTPONED/SUSPENDED map to `scheduled`, not `finished`); and
-# omitting any of the seven UNDERCOUNTS ESPN, which would make the two sides
-# look level while ingestion is actually behind.
-# NOTE: the ingester also acts on each event's `season.year`, via
-# FilterScoreboardSeason / ValidateScoreboardSeason (defined in
-# shared/espn/matches.go, called from shared/source/espn.go). The two differ:
-# the ROLLING path FILTERS foreign-season events out, so a small ESPN-side
-# excess here at a season boundary -- and for the `YYYY-clausura` / bare-`YYYY`
-# forms above -- is expected and is not an ingestion gap; the BACKFILL path
-# VALIDATES and returns an error on the first foreign-season event, so a
-# persistent large gap after a restart can be a failed backfill rather than an
-# idle worker. This snippet applies neither.
-# expect: the two counts agree within the matches played since the last cycle,
-# and "stuck live" is 0 outside an actual live window. A large, GROWING gap --
-# or a match frozen mid-half for hours -- means the worker is not running,
-# whatever `fly status` reports.
+# Diagnostic sample only, NOT complete-season coverage. Hyphenated ranges
+# returned 400 on September 21; compact months are the measured working shape.
+month=202609
+curl --fail --silent --show-error --max-time 15 --max-filesize 16777216 \
+  "https://site.api.espn.com/apis/site/v2/sports/soccer/$slug/scoreboard?dates=$month&limit=1000" |
+  python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["events"]; assert isinstance(e,list) and len(e)<1000; print("sample leagues:",[x["slug"] for x in d["leagues"]]); print("sample events:",len(e)); print([(x["id"],x["date"],x["season"]["year"],x["status"]["type"]) for x in e])'
 ```
+
+Compare the sampled event identities/dates/statuses, **not** the single-month
+count against the reader's whole-season count. Provider calendar dates can spill
+into the next UTC month. The adapter covers adjacent calendar edges, validates
+every month, filters exact UTC/season bounds, and keeps postponed/suspended
+matches mutable. A 400, cap-sized response or missing month is not an empty
+window. A persistent gap can be a discovery or validation failure even with a
+running worker. Read the additive freshness/poll headers and follow
+[MATCH_FRESHNESS](MATCH_FRESHNESS.md#post-deployment-acceptance) for complete
+acceptance; health 200 alone is insufficient.
 
 Read the newest configured competition first when triaging: a competition
 added *after* a stall shows up as an **empty** collection rather than a stale

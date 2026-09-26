@@ -13,7 +13,7 @@ import (
 	espnprovider "github.com/mcasillas17/scorearc-backend/shared/espn"
 )
 
-const currentScoreboard = `{"events":[{
+const currentScoreboard = `{"leagues":[{"slug":"esp.1"}],"events":[{
 	"id":"current","date":"2026-09-19T19:00Z","season":{"year":2026,"slug":"regular-season"},
 	"status":{"type":{"name":"STATUS_IN_PROGRESS","state":"in","completed":false}},
 	"competitions":[{"competitors":[
@@ -36,7 +36,7 @@ func TestESPNScoreboardFallbackRemainsPartialForRollingAndBackfill(t *testing.T)
 					}
 					body := currentScoreboard
 					if empty {
-						body = `{"events":[]}`
+						body = monthEnvelope("esp.1")
 					}
 					return recoveryResponse(200, body), nil
 				})
@@ -53,9 +53,9 @@ func TestESPNScoreboardFallbackRemainsPartialForRollingAndBackfill(t *testing.T)
 					!strings.Contains(status.URL, "dates=2026") || status.Body != "Failed to get events endpoint." {
 					t.Fatalf("lost typed partial error/original cause: %v", err)
 				}
-				wantRange := "20260820-20260926"
+				wantRange := "202608"
 				if backfill {
-					wantRange = "20260701-20270630"
+					wantRange = "202606"
 				}
 				if len(requests) != 2 || requests[0] != wantRange || requests[1] != "20260919" {
 					t.Fatalf("requests=%v", requests)
@@ -94,10 +94,10 @@ func TestESPNScoreboardFallbackOnlyWithinSeason(t *testing.T) {
 			calls := 0
 			src := recoverySource(func(req *http.Request) (*http.Response, error) {
 				calls++
-				if strings.Contains(req.URL.Query().Get("dates"), "-") {
+				if len(req.URL.Query().Get("dates")) == 6 {
 					return recoveryResponse(400, "range unavailable"), nil
 				}
-				return recoveryResponse(200, `{"events":[]}`), nil
+				return recoveryResponse(200, monthEnvelope("esp.1")), nil
 			})
 			now, err := time.Parse(time.RFC3339, tc.now)
 			if err != nil {
@@ -123,11 +123,11 @@ func TestESPNScoreboardFallbackHonorsBracketSeasonBounds(t *testing.T) {
 		{"after bracket end", "20260901-20260918", true, 1, false},
 		{"on bracket end", "20260901-20260919", true, 2, false},
 		{"before bracket starts", "20261001-20261101", true, 2, false},
-		{"empty", "", true, 1, true},
-		{"missing separator", "2026090120260919", true, 1, true},
-		{"bad date", "20260230-20260919", true, 1, true},
-		{"reversed", "20260920-20260901", true, 1, true},
-		{"outside season", "20250601-20250630", true, 1, true},
+		{"empty", "", true, 0, true},
+		{"missing separator", "2026090120260919", true, 0, true},
+		{"bad date", "20260230-20260919", true, 0, true},
+		{"reversed", "20260920-20260901", true, 0, true},
+		{"outside season", "20250601-20250630", true, 0, true},
 		{"disabled bracket ignored", "invalid", false, 2, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -137,7 +137,7 @@ func TestESPNScoreboardFallbackHonorsBracketSeasonBounds(t *testing.T) {
 				if calls == 1 {
 					return recoveryResponse(400, "original range failure"), nil
 				}
-				return recoveryResponse(200, `{"events":[]}`), nil
+				return recoveryResponse(200, monthEnvelope("fifa.world")), nil
 			})
 			src.now = func() time.Time { return time.Date(2026, 9, 19, 0, 0, 0, 0, time.UTC) }
 			_, err := src.Scoreboard(context.Background(), config.Competition{ESPNSlug: "fifa.world"},
@@ -148,7 +148,7 @@ func TestESPNScoreboardFallbackHonorsBracketSeasonBounds(t *testing.T) {
 			if tc.invalid && !strings.Contains(err.Error(), "bracket date range") {
 				t.Fatalf("invalid configured range was not reported: %v", err)
 			}
-			if !strings.Contains(err.Error(), "original range failure") {
+			if !tc.invalid && !strings.Contains(err.Error(), "original range failure") {
 				t.Fatalf("range error lost: %v", err)
 			}
 		})
@@ -177,7 +177,7 @@ func TestESPNScoreboardFallbackFailuresStayExplicit(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			rangeCalls, fallbackCalls := 0, 0
 			src := recoverySource(func(req *http.Request) (*http.Response, error) {
-				if strings.Contains(req.URL.Query().Get("dates"), "-") {
+				if len(req.URL.Query().Get("dates")) == 6 {
 					rangeCalls++
 					return recoveryResponse(400, "original range failure"), nil
 				}
@@ -222,7 +222,7 @@ func TestESPNScoreboardDoesNotFallbackOnOtherFailures(t *testing.T) {
 			calls := 0
 			src := recoverySource(func(req *http.Request) (*http.Response, error) {
 				calls++
-				if !strings.Contains(req.URL.Query().Get("dates"), "-") {
+				if len(req.URL.Query().Get("dates")) != 6 {
 					t.Errorf("unexpected fallback: %s", req.URL)
 				}
 

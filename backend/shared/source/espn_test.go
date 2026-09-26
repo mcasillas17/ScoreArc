@@ -29,21 +29,13 @@ func TestESPNScoreboardBuildsProviderURL(t *testing.T) {
 	client := espnprovider.NewWithOptions(espnprovider.Options{
 		HTTP: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			gotURL = req.URL.String()
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Header:     make(http.Header),
-				Body:       io.NopCloser(strings.NewReader(`{"events":[]}`)),
-			}, nil
+			return partitionedTestResponse(req, `{"events":[]}`), nil
 		})},
 		MaxAttempts: 1,
 	})
 	src := NewESPN(client)
-
-	before, err := rollingSeasonRange(time.Now(), "2026")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = src.Scoreboard(
+	src.now = func() time.Time { return time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC) }
+	_, err := src.Scoreboard(
 		context.Background(),
 		config.Competition{ESPNSlug: "eng.1"},
 		config.Season{ID: "2026"},
@@ -56,20 +48,15 @@ func TestESPNScoreboardBuildsProviderURL(t *testing.T) {
 	if src.Name() != "espn" {
 		t.Fatalf("name=%q", src.Name())
 	}
-	after, err := rollingSeasonRange(time.Now(), "2026")
-	if err != nil {
-		t.Fatal(err)
-	}
-	beforeURL := espnprovider.ScoreboardURLWithLimit("eng.1", before, scoreboardEventLimit)
-	afterURL := espnprovider.ScoreboardURLWithLimit("eng.1", after, scoreboardEventLimit)
-	if gotURL != beforeURL && gotURL != afterURL {
-		t.Fatalf("url=%q want=%q or %q", gotURL, beforeURL, afterURL)
+	want := espnprovider.ScoreboardURLWithLimit("eng.1", "202609", scoreboardEventLimit)
+	if gotURL != want {
+		t.Fatalf("url=%q want=%q", gotURL, want)
 	}
 
 }
 
 func TestESPNScoreboardRejectsLimitSizedRollingResponse(t *testing.T) {
-	body := `{"events":[` + strings.Repeat(`{},`, scoreboardEventLimit-1) + `{}` + `]}`
+	body := `{"leagues":[{"slug":"eng.1"}],"events":[` + strings.Repeat(`{},`, scoreboardEventLimit-1) + `{}` + `]}`
 	client := espnprovider.NewWithOptions(espnprovider.Options{
 		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return &http.Response{
@@ -177,17 +164,15 @@ func TestESPNRollingScoreboardFiltersForeignSeason(t *testing.T) {
 		 ]}]}
 	]}`
 	client := espnprovider.NewWithOptions(espnprovider.Options{
-		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Header:     make(http.Header),
-				Body:       io.NopCloser(strings.NewReader(body)),
-			}, nil
+		HTTP: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return partitionedTestResponse(req, body), nil
 		})},
 		MaxAttempts: 1,
 	})
 
-	matches, err := NewESPN(client).Scoreboard(
+	src := NewESPN(client)
+	src.now = func() time.Time { return time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC) }
+	matches, err := src.Scoreboard(
 		context.Background(),
 		config.Competition{ESPNSlug: "eng.1"},
 		config.Season{ID: "2026"},
@@ -224,18 +209,19 @@ func TestESPNBackfillRejectsForeignSeason(t *testing.T) {
 	}
 }
 
-func TestRollingScoreboardRange(t *testing.T) {
+func TestRollingScoreboardBounds(t *testing.T) {
 	now := time.Date(2026, time.August, 11, 12, 0, 0, 0, time.UTC)
-	if got := rollingScoreboardRange(now); got != "20260712-20260818" {
-		t.Fatalf("range=%q", got)
+	start, end, err := scoreboardBounds(now, config.Season{ID: "2026"}, false)
+	if err != nil || start.Format(time.DateOnly) != "2026-07-12" || end.Format(time.DateOnly) != "2026-08-19" {
+		t.Fatalf("bounds=[%s,%s) err=%v", start, end, err)
 	}
 }
 
-func TestRollingSeasonRangeClampsSplitSeason(t *testing.T) {
+func TestRollingScoreboardBoundsClampSplitSeason(t *testing.T) {
 	now := time.Date(2025, time.January, 10, 12, 0, 0, 0, time.UTC)
-	got, err := rollingSeasonRange(now, "2025-clausura")
-	if err != nil || got != "20250101-20250117" {
-		t.Fatalf("range=%q err=%v", got, err)
+	start, end, err := scoreboardBounds(now, config.Season{ID: "2025-clausura"}, false)
+	if err != nil || start.Format(time.DateOnly) != "2025-01-01" || end.Format(time.DateOnly) != "2025-01-18" {
+		t.Fatalf("bounds=[%s,%s) err=%v", start, end, err)
 	}
 }
 
@@ -499,11 +485,7 @@ func TestESPNBracketUsesExplicitLimit(t *testing.T) {
 	client := espnprovider.NewWithOptions(espnprovider.Options{
 		HTTP: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			gotURL = req.URL.String()
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Header:     make(http.Header),
-				Body:       io.NopCloser(strings.NewReader(`{"events":[]}`)),
-			}, nil
+			return partitionedTestResponse(req, `{"events":[]}`), nil
 		})},
 		MaxAttempts: 1,
 	})
@@ -517,7 +499,7 @@ func TestESPNBracketUsesExplicitLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := espnprovider.BracketURLWithLimit("fifa.world", dates, scoreboardEventLimit)
+	want := espnprovider.BracketURLWithLimit("fifa.world", "202608", scoreboardEventLimit)
 	if gotURL != want {
 		t.Fatalf("url=%q want=%q", gotURL, want)
 	}
@@ -528,11 +510,7 @@ func TestESPNBracketBackfillUsesFullSeasonWithoutConfiguredRange(t *testing.T) {
 	client := espnprovider.NewWithOptions(espnprovider.Options{
 		HTTP: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			gotURL = req.URL.String()
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Header:     make(http.Header),
-				Body:       io.NopCloser(strings.NewReader(`{"events":[]}`)),
-			}, nil
+			return partitionedTestResponse(req, `{"events":[]}`), nil
 		})},
 		MaxAttempts: 1,
 	})
@@ -546,7 +524,7 @@ func TestESPNBracketBackfillUsesFullSeasonWithoutConfiguredRange(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := espnprovider.BracketURLWithLimit(
-		"concacaf.leagues.cup", "20260101-20261231", scoreboardEventLimit,
+		"concacaf.leagues.cup", "202701", scoreboardEventLimit,
 	)
 	if gotURL != want {
 		t.Fatalf("url=%q want=%q", gotURL, want)
@@ -558,19 +536,13 @@ func TestESPNBracketUsesRollingWindowWithoutConfiguredRange(t *testing.T) {
 	client := espnprovider.NewWithOptions(espnprovider.Options{
 		HTTP: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			gotURL = req.URL.String()
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Header:     make(http.Header),
-				Body:       io.NopCloser(strings.NewReader(`{"events":[]}`)),
-			}, nil
+			return partitionedTestResponse(req, `{"events":[]}`), nil
 		})},
 		MaxAttempts: 1,
 	})
-	before, err := rollingSeasonRange(time.Now(), "2026")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = NewESPN(client).Bracket(
+	src := NewESPN(client)
+	src.now = func() time.Time { return time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC) }
+	_, err := src.Bracket(
 		context.Background(),
 		config.Competition{ESPNSlug: "concacaf.leagues.cup"},
 		config.Season{ID: "2026"},
@@ -579,22 +551,13 @@ func TestESPNBracketUsesRollingWindowWithoutConfiguredRange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	after, err := rollingSeasonRange(time.Now(), "2026")
-	if err != nil {
-		t.Fatal(err)
-	}
-	beforeURL := espnprovider.BracketURLWithLimit(
-		"concacaf.leagues.cup", before, scoreboardEventLimit,
-	)
-	afterURL := espnprovider.BracketURLWithLimit(
-		"concacaf.leagues.cup", after, scoreboardEventLimit,
-	)
-	if gotURL != beforeURL && gotURL != afterURL {
-		t.Fatalf("url=%q want=%q or %q", gotURL, beforeURL, afterURL)
+	want := espnprovider.BracketURLWithLimit("concacaf.leagues.cup", "202609", scoreboardEventLimit)
+	if gotURL != want {
+		t.Fatalf("url=%q want=%q", gotURL, want)
 	}
 }
 
-func TestESPNRollingBracketFiltersForeignSeason(t *testing.T) {
+func TestESPNRollingBracketRejectsUnscopedForeignSeason(t *testing.T) {
 	client := espnprovider.NewWithOptions(espnprovider.Options{
 		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return &http.Response{
@@ -613,7 +576,7 @@ func TestESPNRollingBracketFiltersForeignSeason(t *testing.T) {
 		config.Season{ID: "2026"},
 		false,
 	)
-	if err != nil || len(matches) != 0 {
+	if err == nil || len(matches) != 0 {
 		t.Fatalf("matches=%+v err=%v", matches, err)
 	}
 }
@@ -621,17 +584,14 @@ func TestESPNRollingBracketFiltersForeignSeason(t *testing.T) {
 func TestESPNReusesIdenticalScoreboardForBracket(t *testing.T) {
 	requests := 0
 	client := espnprovider.NewWithOptions(espnprovider.Options{
-		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		HTTP: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			requests++
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Header:     make(http.Header),
-				Body:       io.NopCloser(strings.NewReader(`{"events":[]}`)),
-			}, nil
+			return partitionedTestResponse(req, `{"events":[]}`), nil
 		})},
 		MaxAttempts: 1,
 	})
 	src := NewESPN(client)
+	src.now = func() time.Time { return time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC) }
 	comp := config.Competition{ESPNSlug: "concacaf.leagues.cup"}
 	season := config.Season{ID: "2026"}
 	if _, err := src.Scoreboard(context.Background(), comp, season, false); err != nil {
@@ -640,30 +600,28 @@ func TestESPNReusesIdenticalScoreboardForBracket(t *testing.T) {
 	if _, err := src.Bracket(context.Background(), comp, season, false); err != nil {
 		t.Fatal(err)
 	}
-	if requests != 1 {
+	if requests != 2 {
 		t.Fatalf("requests=%d", requests)
 	}
 }
 
 func TestESPNNonBracketSeasonClearsProviderRoundClassification(t *testing.T) {
 	client := espnprovider.NewWithOptions(espnprovider.Options{
-		HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Header:     make(http.Header),
-				Body: io.NopCloser(strings.NewReader(`{"events":[{
+		HTTP: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return partitionedTestResponse(req, `{"events":[{
 					"id":"league-match","date":"2026-05-01T19:00:00Z",
 					"season":{"year":2025,"slug":"2025-26-english-premier-league"},
 					"status":{"type":{"state":"post","completed":true,"name":"STATUS_FULL_TIME"}},
 					"competitions":[{"competitors":[
 						{"homeAway":"home","team":{"id":"1","displayName":"Home","abbreviation":"HOM"}},
 						{"homeAway":"away","team":{"id":"2","displayName":"Away","abbreviation":"AWY"}}
-					]}]}]}`)),
-			}, nil
+					]}]}]}`), nil
 		})},
 		MaxAttempts: 1,
 	})
-	matches, err := NewESPN(client).Scoreboard(
+	src := NewESPN(client)
+	src.now = func() time.Time { return time.Date(2026, 5, 2, 0, 0, 0, 0, time.UTC) }
+	matches, err := src.Scoreboard(
 		context.Background(),
 		config.Competition{ESPNSlug: "eng.1"},
 		config.Season{ID: "2025-26", HasBracket: false},

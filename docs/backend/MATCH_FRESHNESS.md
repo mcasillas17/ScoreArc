@@ -4,6 +4,120 @@ This runbook does not authorize a production change. The website still uses
 its existing ESPN DataStore. Reader response bodies and the three match states
 are unchanged; freshness is additive metadata.
 
+## September 21 status and scoreboard repair
+
+**Completed operations, reported by the owner:** the Neon quota issue was
+resolved; migration `0023_match_sync` was applied and verified clean at version
+23 with application grants on September 20; reader and ingester recovery releases
+succeeded. The original September 15 incidents automatically finalized as
+Rayo--Espanyol 2-1 and Alaves--Valencia 0-1, independently checked against provider
+summaries. Do not reapply that migration or repeat deployment recovery.
+
+At approximately 07:25 UTC September 21, the reader was healthy and those
+incidents were no longer overdue/live, but LaLiga still reported poll `partial`
+and freshness `unavailable`. The repair below has **local validation only**;
+its production rollout and acceptance have not occurred in this task.
+
+Bounded probes at 07:34--07:39 UTC reproduced the exact configured hyphenated
+date-range 400, including same-day ranges. Removing/changing the limit, adding
+the season, encoding the hyphen and trying Premier League did not fix it.
+The response was `{"code":400,"message":"Failed to get events endpoint."}`.
+Compact `dates=YYYYMM&limit=1000` worked across LaLiga, MLS, Liga MX and World Cup.
+LaLiga September's 39 IDs equaled September's subset of the year selector and
+included all three September 15 single-date IDs. `page=2&limit=2` repeated page
+1's two IDs, so pagination is not assumed. The provider's internal cause and
+permanence of this undocumented contract are unknown.
+
+### Complete-window source contract
+
+The adapter issues each required compact month selector once, sequentially.
+Provider calendar dates are not UTC: the recorded Liga MX January response
+contains February 1 01:00/01:10 UTC events that are absent from February's
+response. The adapter includes the months touched by one extra UTC day at each
+window edge, then filters to the original half-open UTC interval. It does not
+invent a timezone query parameter. Rolling windows retain days -30 through +7;
+full windows retain calendar/split-season and configured tournament bounds.
+
+Every partition must have the requested league, an explicit events array, fewer
+than 1,000 raw events, no incomplete count/page metadata, and valid
+identity/date/status/score data. Event dates must fit the queried month's
+one-day calendar envelope; retained events must match the configured season
+year. Exact UTC bounds separate apertura/clausura and padding seasons.
+Duplicate conflicts are checked **before** window filtering, including a
+reschedule with one copy outside the window. Identical duplicates merge in
+deterministic provider-ID order.
+
+Only a completely validated set can establish an empty window, successful poll
+or completed reconciliation. Truncation, malformed data or any failed month
+cannot renew complete success or delete known matches. Only HTTP 400 permits
+the existing current-UTC-date partial fallback while inside the season. The
+fallback uses the same league, explicit season-year and duplicate-conflict
+guards, plus its provider-day envelope and requested UTC window. It cannot
+establish completeness, even when empty. Targeted summary recovery remains independent.
+
+The endpoint publishes no authoritative total or pagination cursor. This
+coverage claim means every required selector passed the observed contract,
+**not** proof that ESPN knows every real-world match. Silent omissions below the
+cap remain a limitation; compare representative dates/events after release.
+Do not turn cap failures into success, widen freshness thresholds, or scan every
+day of a season to make the signal green.
+
+### Request, memory and write budgets
+
+| Discovery operation | Maximum logical requests | Maximum physical HTTP attempts |
+|---|---:|---:|
+| One rolling scoreboard, live or ordinary slow | 3 months + 1 possible fallback = 4 | 12 |
+| One full-season scoreboard | 14 months + 1 possible fallback = 15 | 45 |
+| One rolling bracket without explicit range | 3 months | 9 |
+| Configured World Cup bracket | 2 months | 6 |
+| One full-season bracket without explicit range | 14 months | 42 |
+| Ten configured competitions, live/ordinary slow discovery including brackets | <=45 | <=135 |
+| All ten current-season sweeps including brackets | <=154 | <=462 |
+
+The last two rows are conservative ceilings with no cache hits and every
+scoreboard taking its fallback; inactive competitions may be skipped. Current
+full-season counts are 128 scoreboard month selectors plus 16 bracket selectors
+plus at most ten fallbacks. Each logical request has at most three physical
+attempts: a final 400 can itself follow two retryable failures. Failure stops
+the current window; there is no page loop or daily subdivision.
+
+These are **discovery** budgets, not a claim that ancillary ESPN traffic is
+zero. Each slow recovery pass additionally allows five logical summaries per
+competition (15 attempts), at most 50/150 across the registry. Existing ordinary
+summary, play, officials, odds, standings, roster and bio paths keep their
+separate limits and costs; discovery does not add a second scheduler.
+
+Windows have a 45-second total ceiling including fallback. The existing
+18-second live / 270-second slow whole-cycle deadlines can shorten it. Requests
+are sequential within a window, with at most three competitions active; client
+attempt timeout remains 15 seconds, Retry-After is capped at 30 seconds. Each
+attempt checks caller cancellation before starting, even if a retry timer and
+cancellation become ready together; expired contexts cannot start another attempt.
+Each response, accumulated window bytes and the shared short scoreboard cache are
+bounded to 16 MiB each. New scoreboard polls discard the same competition's
+cached bytes; the five-second cache only saves subsequent bracket reads, not
+later poll evidence. Budget calculations never rely on a cache hit.
+
+Successful season sweeps remain daily; failed sweeps retry no more than every
+30 minutes. A restart may repeat one bounded sweep. Rolling month overfetch
+adds calendar-edge bytes, not extra retained matches or historical DB writes.
+No persistent partition progress or new schema is needed.
+
+For `M` accepted nonfinal matches, observation metadata costs at most `M` rows
+in one batch plus one competition poll upsert; unchanged `match` facts have
+zero upserts. Changed facts/finalization retain the existing guarded writes,
+crosswalk resolution and ancillary work. The raw event ceilings are 2,997 for
+three monthly selectors and 13,986 for fourteen (before deduplication/window
+filtering and the 16 MiB window cap); they are bounds, not expected workloads.
+Already-finalized matches are not rewritten or re-observed.
+
+Local real-adapter read-only evidence: LaLiga rolling 61 matches/2 requests;
+LaLiga full 2026-27 season 380 matches/14 requests; Liga MX rolling 52 matches/2
+requests, all `err=nil`, one HTTP attempt per request. Synthetic/recorded tests
+and real Postgres exercise complete empty polls, unknown discovery, unchanged
+facts, reschedules, normal finalization, failure preservation and targeted
+recovery. None of these local checks constitute production acceptance.
+
 ## Incident evidence: September 19, 2026
 
 Initial inspection used `803094e`. Dependency-only #169 independently advanced
@@ -33,8 +147,8 @@ restart/deploy merely to test a theory, or manually edit scores.
 
 ## Recovery contract
 
-The existing singleton worker owns all work. Normal range polling and full-season
-reconciliation remain. Only HTTP 400 permits one current-UTC-date fallback;
+The existing singleton worker owns all work. Complete monthly-window polling and
+full-season reconciliation use the source contract above. Only HTTP 400 permits one current-UTC-date fallback;
 validated events may advance facts, but the result remains **partial**, never
 successful full-window emptiness or completed reconciliation. There is no
 daily fan-out, new provider or second scheduler.
@@ -57,9 +171,8 @@ targeted refresh. Eligibility and deadlines survive restart.
 The recovery pass allows 30 seconds of provider work, six seconds per lookup,
 and five logical summaries: at most fifteen HTTP attempts under the existing
 three-attempt client. Bounded bookkeeping may finish for up to two seconds after
-cancellation. Ordinary scoreboard fallback permits at most two logical calls
-(six HTTP attempts in the worst retry sequence). Existing bracket/detail/capture
-paths keep their bounds. Recovery leaves ancillary provider calls to their
+cancellation. Scoreboard and bracket request ceilings are listed above;
+detail/capture paths keep their existing bounds. Recovery leaves ancillary provider calls to their
 existing durable backlogs.
 
 Elapsed time never establishes a score or finality. Canceled, abandoned and
@@ -116,6 +229,15 @@ platform scheduling; the mathematical threshold is not instantaneous delivery.
 
 ## Schema and separately approved release order
 
+**Existing production:** migration 0023 and the recovery releases were completed
+September 20 as reported above. This scoreboard repair adds no migration,
+grant or startup dependency. A human-approved merge of its shared backend
+changes selects **both Fly services**, not a frontend cutover. Authorize that
+release or arrange verified holds before merging; do not deploy from this branch.
+
+The following sequence is retained for a **new/unmigrated environment only**,
+not as instructions to repeat completed production recovery:
+
 Migration `0023_match_sync` adds bookkeeping tables and indexes without weakening
 fact seals. Existing binaries remain compatible with this additive migration.
 New binaries check its tables, columns and SELECT access before listening/polling.
@@ -148,11 +270,17 @@ reapplying starts unknown until genuine source observations arrive.
 - Compare affected matches with fresh verified provider data. Initial diagnostic
   examples are `01a00e9c-0ab5-76ec-a78f-fe12c3c455dd` and
   `01a00e9c-0d0d-7c09-8111-c05161ceee43`; recovery code does not hardcode them.
-- Observe at least three normal cycles for affected active scopes and continuing
-  accepted timestamps. Inspect cycle/audit errors and retry deadlines, not just
-  machine count or `/healthz`. Keep unrelated T7.21 capture work separate.
+- After an authorized rollout, observe at least three complete normal polls for
+  representative active European and Americas competitions, plus one complete
+  current-season sweep. Compare known event IDs, reschedules, dates and counts
+  against sampled provider days/summaries, not merely a 200 or green header.
+  Inspect audit errors, persisted poll success/count and accepted observations.
+  Keep unrelated T7.21 capture work separate.
 - Confirm unchanged data renews observation evidence without fact rewrites.
-  A continuing range failure remains partial/failed, not complete reconciliation.
+  A failed/truncated month remains partial/failed, not complete reconciliation.
+  Observe recovery through an actual transient provider failure when available;
+  use the local synthetic path to exercise it without disrupting production.
+  Do not claim live transient-failure acceptance before it has been observed.
 - Run a synthetic freshness failure, repeated failure, recovery and recurrence
   through the external check. Verify failure exits, persistent deduplication and
   separately configured notification delivery without stopping production to test.

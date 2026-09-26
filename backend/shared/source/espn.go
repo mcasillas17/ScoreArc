@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -86,10 +87,16 @@ func (e *ESPN) get(ctx context.Context, url string) ([]byte, error) {
 		stored := append([]byte(nil), raw...)
 		now := time.Now()
 		e.mu.Lock()
+		cacheBytes := len(stored)
 		for key, entry := range e.recent {
 			if now.Sub(entry.fetchedAt) > scoreboardCacheTTL {
 				delete(e.recent, key)
+			} else {
+				cacheBytes += len(entry.raw)
 			}
+		}
+		if cacheBytes > maxScoreboardBytes {
+			clear(e.recent)
 		}
 		e.recent[url] = cachedResponse{raw: stored, fetchedAt: now}
 		e.mu.Unlock()
@@ -118,20 +125,25 @@ func (e *ESPN) Scoreboard(
 	season config.Season,
 	backfill bool,
 ) ([]model.Match, error) {
+	ctx, cancel := context.WithTimeout(ctx, scoreboardTimeout)
+	defer cancel()
 	now := e.now().UTC()
-	datesRange, err := rollingSeasonRange(now, season.ID)
+	start, end, err := scoreboardBounds(now, season, backfill)
 	if err != nil {
 		return nil, err
 	}
-	if backfill {
-		datesRange, err = fullSeasonRange(season.ID)
-		if err != nil {
-			return nil, err
+	// A new poll must observe new bytes. The short cache is only for a
+	// following bracket read in this cycle, not evidence for a later poll.
+	e.mu.Lock()
+	for key := range e.recent {
+		if strings.HasPrefix(key, espn.ScoreboardURL(comp.ESPNSlug, "")+"?") {
+			delete(e.recent, key)
 		}
 	}
-	scoreboardURL := espn.ScoreboardURLWithLimit(comp.ESPNSlug, datesRange, scoreboardEventLimit)
-	raw, err := e.get(ctx, scoreboardURL)
+	e.mu.Unlock()
+	raw, err := e.scoreboardWindow(ctx, comp, season, start, end)
 	var partial *PartialScoreboardError
+	var fallback scoreboardEnvelope
 	if err != nil {
 		var statusErr *espn.HTTPStatusError
 		if !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusBadRequest {
@@ -150,8 +162,12 @@ func (e *ESPN) Scoreboard(
 		if err != nil {
 			return nil, errors.Join(partial.Err, fmt.Errorf("current-date scoreboard fallback: %w", err))
 		}
+		fallback, err = validateScoreboardEnvelope(raw, comp.ESPNSlug)
+		if err != nil {
+			return nil, errors.Join(partial.Err, fmt.Errorf("current-date scoreboard fallback: %w", err))
+		}
 	}
-	matches, err := mapScoreboard(raw, season, backfill)
+	matches, err := mapScoreboard(raw, season)
 	if err != nil {
 		if partial != nil {
 			return nil, errors.Join(partial.Err, fmt.Errorf("current-date scoreboard fallback: %w", err))
@@ -159,29 +175,37 @@ func (e *ESPN) Scoreboard(
 		return nil, err
 	}
 	if partial != nil {
-		return matches, partial
+		year, err := seasonStartYear(season.ID)
+		if err != nil {
+			return nil, errors.Join(partial.Err, err)
+		}
+		day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+		seen := make(map[string]json.RawMessage)
+		unique := make([]model.Match, 0, len(matches))
+		for i, match := range matches {
+			added, err := mergeScoreboardEvent(seen, match.ID, fallback.Events[i])
+			if err == nil {
+				err = validateScoreboardEventYear(fallback.Events[i], match.ID, year)
+			}
+			if err != nil {
+				return nil, errors.Join(partial.Err, fmt.Errorf("current-date scoreboard fallback: %w", err))
+			}
+			at, err := time.Parse(time.RFC3339, match.Kickoff)
+			if err != nil || at.Before(start) || !at.Before(end) ||
+				at.Before(day.AddDate(0, 0, -1)) || !at.Before(day.AddDate(0, 0, 2)) {
+				return nil, errors.Join(partial.Err, fmt.Errorf("current-date scoreboard fallback: event %q outside requested window", match.ID))
+			}
+			if added {
+				unique = append(unique, match)
+			}
+		}
+		sort.Slice(unique, func(i, j int) bool { return unique[i].ID < unique[j].ID })
+		return unique, partial
 	}
 	return matches, nil
 }
 
-func mapScoreboard(raw []byte, season config.Season, backfill bool) ([]model.Match, error) {
-	expectedYear, err := seasonStartYear(season.ID)
-	if err != nil {
-		return nil, err
-	}
-	if err := espn.ValidateBackfillCompleteness(raw, scoreboardEventLimit); err != nil {
-		return nil, err
-	}
-	if backfill {
-		if err := espn.ValidateScoreboardSeason(raw, expectedYear); err != nil {
-			return nil, err
-		}
-	} else {
-		raw, err = espn.FilterScoreboardSeason(raw, expectedYear)
-		if err != nil {
-			return nil, err
-		}
-	}
+func mapScoreboard(raw []byte, season config.Season) ([]model.Match, error) {
 	matches, err := espn.MapScoreboard(raw)
 	if err != nil {
 		return nil, err
@@ -504,86 +528,33 @@ func (e *ESPN) Bracket(
 	season config.Season,
 	backfill bool,
 ) ([]model.BracketMatch, error) {
-	var dates string
+	start, end, err := scoreboardBounds(e.now(), season, backfill)
+	if err != nil {
+		return nil, err
+	}
 	if season.BracketDatesRange != nil {
-		dates = *season.BracketDatesRange
-	} else if backfill {
-		var err error
-		dates, err = fullSeasonRange(season.ID)
+		parts := strings.Split(*season.BracketDatesRange, "-")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid bracket date range")
+		}
+		start, err = time.Parse("20060102", parts[0])
 		if err != nil {
 			return nil, err
 		}
-	} else {
-		var err error
-		dates, err = rollingSeasonRange(time.Now(), season.ID)
-		if err != nil {
-			return nil, err
+		end, err = time.Parse("20060102", parts[1])
+		if err != nil || end.Before(start) {
+			return nil, fmt.Errorf("invalid bracket date range")
 		}
+		end = end.AddDate(0, 0, 1)
 	}
-	raw, err := e.get(ctx, espn.BracketURLWithLimit(comp.ESPNSlug, dates, scoreboardEventLimit))
+	raw, err := e.scoreboardWindow(ctx, comp, season, start, end)
 	if err != nil {
 		return nil, err
-	}
-	if err := espn.ValidateBackfillCompleteness(raw, scoreboardEventLimit); err != nil {
-		return nil, err
-	}
-	expectedYear, err := seasonStartYear(season.ID)
-	if err != nil {
-		return nil, err
-	}
-	if backfill {
-		if err := espn.ValidateBracketSeason(raw, expectedYear); err != nil {
-			return nil, err
-		}
-	} else {
-		raw, err = espn.FilterScoreboardSeason(raw, expectedYear)
-		if err != nil {
-			return nil, err
-		}
 	}
 	return espn.MapBracket(raw)
 }
 
 var _ Source = (*ESPN)(nil)
-
-func rollingScoreboardRange(now time.Time) string {
-	now = now.UTC()
-	start := now.AddDate(0, 0, -30)
-	end := now.AddDate(0, 0, 7)
-	return start.Format("20060102") + "-" + end.Format("20060102")
-}
-
-func rollingSeasonRange(now time.Time, seasonID string) (string, error) {
-	seasonRange, err := fullSeasonRange(seasonID)
-	if err != nil {
-		return "", err
-	}
-	seasonStart, err := time.Parse("20060102", seasonRange[:8])
-	if err != nil {
-		return "", err
-	}
-	seasonEnd, err := time.Parse("20060102", seasonRange[9:])
-	if err != nil {
-		return "", err
-	}
-	now = now.UTC()
-	start := now.AddDate(0, 0, -30)
-	end := now.AddDate(0, 0, 7)
-	if start.Before(seasonStart) {
-		start = seasonStart
-	}
-	if end.After(seasonEnd) {
-		end = seasonEnd
-	}
-	if end.Before(start) {
-		if now.Before(seasonStart) {
-			start, end = seasonStart, seasonStart
-		} else {
-			start, end = seasonEnd, seasonEnd
-		}
-	}
-	return start.Format("20060102") + "-" + end.Format("20060102"), nil
-}
 
 var seasonYearRe = regexp.MustCompile(`^(\d{4})(?:-(\d{2}|apertura|clausura))?$`)
 
