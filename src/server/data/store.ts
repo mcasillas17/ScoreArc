@@ -38,16 +38,17 @@ import {
   mapSummaryVideos, mapSummaryShootout, mapSummaryInfo, mapSummaryForm, mapSummaryCommentary, mapSummaryH2H,
 } from './providers/espn-summary';
 import { TtlCache } from './cache';
-import { currentWeekRange, forwardRange, nowWindowRange, rangeMonths, inRange } from './dateRange';
+import { currentWeekRange, forwardRange, nowWindowRange } from './dateRange';
+import { fetchScoreboardWindow, boundedFetchJson, type ScoreboardFetchJson } from './scoreboardWindow';
 
 // The store is keyed on a resolved (competition, season) pair. The ESPN league
 // slug lives on the competition; per-season fetch details (e.g. the bracket
 // date range) live on the season.
 export interface DataStore {
-  getMatches(rc: CompetitionSeason, range?: string): Promise<Match[]>;
-  getFixtures(rc: CompetitionSeason, range: string): Promise<Match[]>;
+  getMatches(rc: CompetitionSeason, range?: string, signal?: AbortSignal): Promise<Match[]>;
+  getFixtures(rc: CompetitionSeason, range: string, signal?: AbortSignal): Promise<Match[]>;
   getLiveWindow(rc: CompetitionSeason): Promise<Match[]>;
-  getUpcoming(rc: CompetitionSeason, limit?: number): Promise<Match[]>;
+  getUpcoming(rc: CompetitionSeason, limit?: number, signal?: AbortSignal): Promise<Match[]>;
   getStandings(rc: CompetitionSeason): Promise<Group[]>;
   getBracket(rc: CompetitionSeason): Promise<BracketRound[]>;
   getMatchSummary(rc: CompetitionSeason, eventId: string, homeId: string, awayId: string): Promise<MatchSummaryData>;
@@ -62,7 +63,7 @@ export interface DataStore {
 const TOP_SCORERS_SHOWN = 10;
 
 interface DataDeps {
-  fetchJson: (url: string) => Promise<unknown>;
+  fetchJson: ScoreboardFetchJson;
   cache: TtlCache<unknown>;
 }
 
@@ -96,10 +97,6 @@ export function createDataStore(deps: DataDeps): DataStore {
   const key = (rc: CompetitionSeason, k: string) => `${rc.competition.id}:${rc.season.id}:${k}`;
   const slug = (rc: CompetitionSeason) => rc.competition.espnSlug;
 
-  // Build a cross-league cup's tables from its results. Two fetches: the
-  // phase's full date range (it spans more than one calendar week, so the
-  // current-week matches feed cannot see all of it), and the club list of the
-  // league that forms the second table.
   // Both leaderboards arrive in ONE /statistics response. Fetch it once, map
   // both, cache the pair — rendering two tables must not mean two requests for
   // a payload we already hold.
@@ -120,17 +117,6 @@ export function createDataStore(deps: DataDeps): DataStore {
     return boards;
   }
 
-  // Every scoreboard read goes through here. A day range is fetched as the
-  // months it spans (see rangeMonths) and trimmed back to its days.
-  async function fetchScoreboard(rc: CompetitionSeason, range?: string): Promise<unknown> {
-    if (!range?.includes('-')) return deps.fetchJson(scoreboardUrl(slug(rc), range));
-    const boards = (await Promise.all(
-      rangeMonths(range).map((m) => deps.fetchJson(scoreboardUrl(slug(rc), m))),
-    )) as { events?: { date: string }[] }[];
-    const events = boards.flatMap((b) => b.events ?? []).filter((e) => inRange(e.date, range));
-    return { ...boards[0], events };
-  }
-
   // One unenriched scoreboard read. Shared by getFixtures and getLiveWindow,
   // which differ only in cache key and TTL — a calendar month is settled for
   // two minutes, a live scoreline is not.
@@ -139,11 +125,13 @@ export function createDataStore(deps: DataDeps): DataStore {
     range: string,
     cacheKey: string,
     ttlMs: number,
+    signal?: AbortSignal,
   ): Promise<Match[]> {
+    signal?.throwIfAborted();
     const k = key(rc, cacheKey);
     const cached = deps.cache.get(k) as Match[] | undefined;
     if (cached) return cached;
-    const raw = await fetchScoreboard(rc, range);
+    const raw = await fetchScoreboardWindow(rc, range, deps.fetchJson, signal);
     const matches = mapScoreboard(raw)
       .map((m) => ({ ...m, shootout: parseShootout(m.note, m.home.name, m.away.name) }))
       .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
@@ -156,7 +144,7 @@ export function createDataStore(deps: DataDeps): DataStore {
     config: NonNullable<CompetitionSeason['season']['computedTables']>,
   ): Promise<Group[]> {
     const [rawPhase, rawSplit] = await Promise.all([
-      fetchScoreboard(rc, config.datesRange),
+      fetchScoreboardWindow(rc, config.datesRange, deps.fetchJson),
       deps.fetchJson(teamsUrl(config.splitLeagueSlug)),
     ]);
     const matches = mapScoreboard(rawPhase).map((m) => ({
@@ -172,12 +160,14 @@ export function createDataStore(deps: DataDeps): DataStore {
   }
 
   async function getMatchSummary(
-    rc: CompetitionSeason, eventId: string, homeId: string, awayId: string,
+    rc: CompetitionSeason, eventId: string, homeId: string, awayId: string, signal?: AbortSignal,
   ): Promise<MatchSummaryData> {
     const k = key(rc, `summary:${eventId}`);
     const cached = deps.cache.get(k) as MatchSummaryData | undefined;
     if (cached) return cached;
-    const raw = await deps.fetchJson(summaryUrl(slug(rc), eventId));
+    signal?.throwIfAborted();
+    const raw = await deps.fetchJson(summaryUrl(slug(rc), eventId), signal
+      ? { signal, maxBytes: 4 * 1024 * 1024 } : undefined);
     const summary: MatchSummaryData = {
       scorers: mapSummaryScorers(raw),
       cards: mapSummaryCards(raw),
@@ -198,18 +188,28 @@ export function createDataStore(deps: DataDeps): DataStore {
   return {
     getMatchSummary,
 
-    async getMatches(rc, range?: string): Promise<Match[]> {
+    async getMatches(rc, range?: string, signal?: AbortSignal): Promise<Match[]> {
+      signal?.throwIfAborted();
       const window = range ?? currentWeekRange(new Date());
       // The range is part of the identity of this result. Without it in the
       // key, the first window fetched is served for every later one.
       const k = key(rc, `matches:${window}`);
       const cached = deps.cache.get(k) as Match[] | undefined;
       if (cached) return cached;
-      const raw = await fetchScoreboard(rc, window);
+      const deadline = AbortSignal.timeout(15_000);
+      const readSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
+      const raw = await fetchScoreboardWindow(rc, window, deps.fetchJson, readSignal);
       const matches = mapScoreboard(raw);
-      const summaries = await Promise.all(
-        matches.map((m) => getMatchSummary(rc, m.id, m.home.id, m.away.id).catch(() => emptySummary())),
-      );
+      const summaries: MatchSummaryData[] = [];
+      // Only retained matches are enriched, four at a time under the same
+      // read deadline. Individual provider summary failures remain best effort.
+      for (let i = 0; i < matches.length; i += 4) {
+        readSignal.throwIfAborted();
+        summaries.push(...await Promise.all(matches.slice(i, i + 4).map(m =>
+          getMatchSummary(rc, m.id, m.home.id, m.away.id, readSignal).catch(() => emptySummary()),
+        )));
+      }
+      readSignal.throwIfAborted();
       matches.forEach((m, i) => {
         m.scorers = summaries[i].scorers;
         m.cards = summaries[i].cards;
@@ -232,8 +232,8 @@ export function createDataStore(deps: DataDeps): DataStore {
     //
     // Longer TTL than getMatches for the same reason: a finished month does
     // not change.
-    async getFixtures(rc, range: string): Promise<Match[]> {
-      return loadWindow(rc, range, `fixtures:${range}`, 120_000);
+    async getFixtures(rc, range: string, signal?: AbortSignal): Promise<Match[]> {
+      return loadWindow(rc, range, `fixtures:${range}`, 120_000, signal);
     },
 
     // The window the live band and the "Now" view read. Same unenriched
@@ -256,11 +256,13 @@ export function createDataStore(deps: DataDeps): DataStore {
     // This fetches a forward window and does NO summary enrichment — a banner
     // needs kickoff, teams and state, and pulling a summary per match would
     // turn one request into thirty.
-    async getUpcoming(rc, limit = 12): Promise<Match[]> {
-      const k = key(rc, `upcoming:${limit}`);
+    async getUpcoming(rc, limit = 12, signal?: AbortSignal): Promise<Match[]> {
+      signal?.throwIfAborted();
+      const range = forwardRange(new Date());
+      const k = key(rc, `upcoming:${range}:${limit}`);
       const cached = deps.cache.get(k) as Match[] | undefined;
       if (cached) return cached;
-      const raw = await fetchScoreboard(rc, forwardRange(new Date()));
+      const raw = await fetchScoreboardWindow(rc, range, deps.fetchJson, signal);
       const upcoming = mapScoreboard(raw)
         .filter((m) => m.state === 'scheduled')
         .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime())
@@ -397,7 +399,11 @@ export function createDataStore(deps: DataDeps): DataStore {
       const k = key(rc, 'bracket');
       const cached = deps.cache.get(k) as BracketRound[] | undefined;
       if (cached) return cached;
-      const raw = await fetchScoreboard(rc, rc.season.bracketDatesRange);
+      const raw = rc.season.bracketDatesRange
+        ? await fetchScoreboardWindow(rc, rc.season.bracketDatesRange, deps.fetchJson)
+        : await deps.fetchJson(scoreboardUrl(slug(rc)), {
+          signal: AbortSignal.timeout(15_000), maxBytes: 4 * 1024 * 1024,
+        });
       const rounds = mapBracket(raw);
       deps.cache.set(k, rounds, 8_000);
       return rounds;
@@ -417,13 +423,7 @@ export function createDataStore(deps: DataDeps): DataStore {
   };
 }
 
-async function defaultFetchJson(url: string): Promise<unknown> {
-  const res = await fetch(url, { headers: { 'User-Agent': 'scorearc' }, cache: 'no-store' });
-  if (!res.ok) throw new Error(`fetch ${url} -> ${res.status}`);
-  return res.json();
-}
-
 export const dataStore: DataStore = createDataStore({
-  fetchJson: defaultFetchJson,
+  fetchJson: boundedFetchJson,
   cache: new TtlCache(),
 });

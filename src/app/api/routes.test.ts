@@ -336,6 +336,7 @@ describe('competition/season resolution', () => {
         season: expect.objectContaining({ id: '2026' }),
       }),
       expect.any(String),
+      expect.any(AbortSignal),
     );
   });
 
@@ -380,7 +381,7 @@ describe('GET /api/[comp]/[season]/matches — window selection', () => {
     const enriched = vi.spyOn(dataStore, 'getMatches');
     const res = await get('');
     expect(res.status).toBe(200);
-    expect(fixtures).toHaveBeenCalledWith(expect.anything(), currentWeekRange(new Date()));
+    expect(fixtures).toHaveBeenCalledWith(expect.anything(), currentWeekRange(new Date()), expect.any(AbortSignal));
     expect(enriched).not.toHaveBeenCalled();
   });
 
@@ -390,7 +391,7 @@ describe('GET /api/[comp]/[season]/matches — window selection', () => {
     const fixtures = vi.spyOn(dataStore, 'getFixtures');
     const res = await get('?detail=summary');
     expect(res.status).toBe(200);
-    expect(enriched).toHaveBeenCalledWith(expect.anything(), currentWeekRange(new Date()));
+    expect(enriched).toHaveBeenCalledWith(expect.anything(), currentWeekRange(new Date()), expect.any(AbortSignal));
     expect(fixtures).not.toHaveBeenCalled();
   });
 
@@ -401,6 +402,7 @@ describe('GET /api/[comp]/[season]/matches — window selection', () => {
     expect(fixtures).toHaveBeenCalledWith(
       expect.objectContaining({ competition: expect.objectContaining({ id: 'liga-mx' }) }),
       '20260801-20260831',
+      expect.any(AbortSignal),
     );
   });
 
@@ -411,7 +413,7 @@ describe('GET /api/[comp]/[season]/matches — window selection', () => {
     const fixtures = vi.spyOn(dataStore, 'getFixtures');
     const res = await get('?state=scheduled&limit=12');
     expect(res.status).toBe(200);
-    expect(upcoming).toHaveBeenCalledWith(expect.anything(), 12);
+    expect(upcoming).toHaveBeenCalledWith(expect.anything(), 12, expect.any(AbortSignal));
     expect(fixtures).not.toHaveBeenCalled();
   });
 

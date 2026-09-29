@@ -110,7 +110,7 @@ export interface Season {
   // Leagues Cup — for the current season AND for seasons that ended a year
   // ago — so this is permanent, not a stopgap.
   //
-  // `datesRange` is the phase's full ESPN date range: the phase spans two
+  // `datesRange` is the phase's inclusive UTC date range: the phase spans two
   // calendar weeks, so the normal current-week matches feed cannot see all of
   // it. `splitLeagueSlug` is the ESPN league whose clubs form the second
   // table — membership is looked up rather than inferred, because splitting on
@@ -239,7 +239,8 @@ export const COMPETITIONS: Record<string, Competition> = {
         format: { hasBracket: true, hasGroups: true, hasThirdPlaceRace: false },
         computedTables: {
           // Phase one: 4–13 August 2026, 54 matches, every club plays three.
-          datesRange: '20260804-20260813',
+          // Last phase matches kick off August 14 UTC (August 13 locally).
+          datesRange: '20260804-20260814',
           splitLeagueSlug: 'mex.1',
           cut: 4,
           labelKey: 'round.knockout',

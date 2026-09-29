@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { currentWeekRange } from './dateRange';
 import { createDataStore, parseShootout } from './store';
 import { resolveSeason } from './competitions';
 import { TtlCache } from './cache';
@@ -17,20 +18,23 @@ const wc = resolveSeason('world-cup')!;
 const lc = resolveSeason('leagues-cup')!;
 const SCOREBOARD_TWO_EVENTS = { ...sb, events: sb.events.slice(0, 2) };
 
-// The scoreboard fixture's matches are on 2026-06-29 (US Eastern). Date-range
-// reads are trimmed to their days, so "this week" has to contain that day.
-beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['Date'] });
-  vi.setSystemTime(new Date('2026-06-29T12:00:00Z'));
-});
+// Requests now use monthly provider selectors. Keep these existing cache/mapping
+// checks deterministic and return only the selected month's recorded events.
+beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-06-29T12:00Z')); });
 afterEach(() => vi.useRealTimers());
+function monthResponse(url: string, payload = sb) {
+  const u = new URL(url);
+  const month = u.searchParams.get('dates');
+  return { ...payload, leagues: [{ slug: u.pathname.split('/soccer/')[1].split('/')[0] }],
+    events: payload.events.filter(e => !month || e.date.replaceAll('-', '').startsWith(month)) };
+}
 
 function fakeDeps() {
   const urls: string[] = [];
   const deps = {
     fetchJson: async (url: string) => {
       urls.push(url);
-      return sb; // scoreboard-shaped payload; content not asserted in URL tests
+      return monthResponse(url);
     },
     cache: new TtlCache<unknown>(),
   };
@@ -58,11 +62,7 @@ describe('EspnReadThroughStore', () => {
     const { deps, urls } = fakeDeps();
     const store = createDataStore(deps);
     await store.getBracket(wc);
-    // ESPN rejects day ranges; the bracket's range is read as its months.
-    expect(urls.filter((u) => u.includes('/scoreboard?dates='))).toEqual([
-      expect.stringContaining('?dates=202606'),
-      expect.stringContaining('?dates=202607'),
-    ]);
+    expect(urls.filter(u => u.includes('/scoreboard')).map(u => new URL(u).searchParams.get('dates'))).toEqual(['202606', '202607']);
     urls.length = 0;
     await store.getBracket(lc);
     expect(urls.some((u) => u.includes('concacaf.leagues.cup/scoreboard') && !u.includes('?dates'))).toBe(true);
@@ -73,13 +73,14 @@ describe('EspnReadThroughStore', () => {
     const store = createDataStore(deps);
     await store.getMatches(wc);
     const first = urls.filter((u) => u.includes('/scoreboard')).length;
+    expect(first).toBe(2);
     await store.getMatches(wc);
     expect(urls.filter((u) => u.includes('/scoreboard')).length).toBe(first);
   });
 
   it('enriches matches with scorers from the summary feed', async () => {
     const deps = {
-      fetchJson: async (url: string) => (url.includes('/summary') ? summaryFixture : sb),
+      fetchJson: async (url: string) => (url.includes('/summary') ? summaryFixture : monthResponse(url)),
       cache: new TtlCache<unknown>(),
     };
     const matches = await createDataStore(deps).getMatches(wc);
@@ -91,7 +92,7 @@ describe('EspnReadThroughStore', () => {
     const deps = {
       fetchJson: async (url: string) => {
         if (url.includes('/summary')) throw new Error('boom');
-        return sb;
+        return monthResponse(url);
       },
       cache: new TtlCache<unknown>(),
     };
@@ -124,7 +125,7 @@ describe('parseShootout', () => {
 describe('Leagues Cup through the store', () => {
   it('maps club matches from the Leagues Cup fixture', async () => {
     const deps = { fetchJson: async () => lcFixture, cache: new TtlCache<unknown>() };
-    const matches = await createDataStore(deps).getMatches(lc);
+    const matches = await createDataStore(deps).getMatches(lc, '20260804-20260805');
     expect(Array.isArray(matches)).toBe(true);
     for (const m of matches) expect(m.home.abbr.length).toBeGreaterThan(0);
   });
@@ -140,15 +141,15 @@ describe('range-aware match reads', () => {
       cache: new TtlCache<unknown>(),
       fetchJson: async (url: string) => {
         urls.push(url);
-        return { events: [] };
+        return monthResponse(url, { ...sb, events: [] });
       },
     });
 
     await store.getFixtures(wc, '20260801-20260831');
     await store.getFixtures(wc, '20260901-20260930');
 
-    expect(urls.filter((u) => u.includes('dates=202608'))).toHaveLength(1);
-    expect(urls.filter((u) => u.includes('dates=202609'))).toHaveLength(1);
+    expect(urls.filter((u) => u.includes('dates=202608&'))).toHaveLength(2);
+    expect(urls.filter((u) => u.includes('dates=202609&'))).toHaveLength(2);
   });
 
   it('serves a repeated range from cache', async () => {
@@ -157,15 +158,15 @@ describe('range-aware match reads', () => {
       cache: new TtlCache<unknown>(),
       fetchJson: async (url: string) => {
         urls.push(url);
-        return { events: [] };
+        return monthResponse(url, { ...sb, events: [] });
       },
     });
     await store.getFixtures(wc, '20260801-20260831');
     await store.getFixtures(wc, '20260801-20260831');
-    expect(urls).toHaveLength(1);
+    expect(urls).toHaveLength(3);
   });
 
-  // The calendar must cost one request per month, not one per match.
+  // A calendar read costs bounded monthly partitions, never per-match summaries.
   it('fetches no per-match summaries for a fixtures range', async () => {
     const urls: string[] = [];
     const store = createDataStore({
@@ -174,12 +175,12 @@ describe('range-aware match reads', () => {
         urls.push(url);
         // Two events, so a summary-enriching implementation would betray
         // itself with two extra /summary calls.
-        return SCOREBOARD_TWO_EVENTS;
+        return monthResponse(url, SCOREBOARD_TWO_EVENTS);
       },
     });
-    await store.getFixtures(wc, '20260801-20260831');
+    await store.getFixtures(wc, '20260601-20260630');
     expect(urls.filter((u) => u.includes('/summary'))).toHaveLength(0);
-    expect(urls).toHaveLength(1);
+    expect(urls).toHaveLength(3);
   });
 
   it('defaults getMatches to the current week when no range is given', async () => {
@@ -188,11 +189,12 @@ describe('range-aware match reads', () => {
       cache: new TtlCache<unknown>(),
       fetchJson: async (url: string) => {
         urls.push(url);
-        return { events: [] };
+        return monthResponse(url, { ...sb, events: [] });
       },
     });
     await store.getMatches(wc);
-    expect(urls[0]).toMatch(/dates=\d{6}$/);
+    expect(currentWeekRange(new Date())).toBe('20260629-20260705');
+    expect(urls.map(u => new URL(u).searchParams.get('dates'))).toEqual(['202606', '202607']);
   });
 });
 
@@ -229,13 +231,13 @@ describe('leaderboards', () => {
 describe('getLiveWindow', () => {
   // The whole point of this method: the band must not pay for 77 summary
   // fetches to read a scoreline the scoreboard already carries.
-  it('fetches the scoreboard once and never a summary', async () => {
+  it('fetches the bounded scoreboard partitions and never a summary', async () => {
     const urls: string[] = [];
     const store = createDataStore({
       cache: new TtlCache<unknown>(),
       fetchJson: async (url: string) => {
         urls.push(url);
-        return url.endsWith('dates=202606') ? SCOREBOARD_TWO_EVENTS : { events: [] };
+        return monthResponse(url, SCOREBOARD_TWO_EVENTS);
       },
     });
 
@@ -243,7 +245,7 @@ describe('getLiveWindow', () => {
 
     expect(matches.length).toBe(2);
     expect(urls.filter((u) => u.includes('/summary'))).toHaveLength(0);
-    expect(urls.every((u) => u.includes('/scoreboard?dates='))).toBe(true);
+    expect(urls).toHaveLength(2);
   });
 
   it('serves a repeat call from cache', async () => {
@@ -252,11 +254,12 @@ describe('getLiveWindow', () => {
       cache: new TtlCache<unknown>(),
       fetchJson: async (url: string) => {
         urls.push(url);
-        return { events: [] };
+        return monthResponse(url, { ...sb, events: [] });
       },
     });
     await store.getLiveWindow(wc);
     const first = urls.length;
+    expect(first).toBe(2);
     await store.getLiveWindow(wc);
     expect(urls).toHaveLength(first);
   });
@@ -270,13 +273,13 @@ describe('getLiveWindow', () => {
       cache,
       fetchJson: async (url: string) => {
         urls.push(url);
-        return { events: [] };
+        return monthResponse(url, { ...sb, events: [] });
       },
     });
     await store.getLiveWindow(wc);
     const liveCalls = urls.length;
     await store.getFixtures(wc, '20260801-20260831');
-    expect(urls.length).toBe(liveCalls + 1);
+    expect(urls.length).toBe(liveCalls + 3);
   });
 });
 

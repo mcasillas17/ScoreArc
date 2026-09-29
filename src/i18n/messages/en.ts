@@ -38,7 +38,7 @@ export const en = {
   'matches.latestResults': 'Latest results',
   'matches.empty': 'Nothing scheduled or recently played.',
   'matches.browseCalendar': 'Browse the full calendar',
-  'matches.unavailableNow': 'Live matches are unavailable right now. The full calendar still works.',
+  'matches.unavailableNow': 'Live matches are unavailable right now.',
   'matches.unavailableCalendar': 'Matches are unavailable right now. Please try another month and come back.',
   'matches.nowDescription': 'What is on now, next, and just played.',
   'matches.calendarDescription': 'Every match, month by month.',

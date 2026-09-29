@@ -266,3 +266,16 @@ describe('MatchesPage default mode', () => {
     expect(fixtures).not.toHaveBeenCalled();
   });
 });
+
+ it.each(['en', 'es'] as const)('does not promise another view works after a %s Now failure', async locale => {
+  vi.spyOn(dataStore, 'getLiveWindow').mockRejectedValue(new Error('provider secret'));
+  vi.spyOn(dataStore, 'getFixtures').mockRejectedValue(new Error('provider secret'));
+  try {
+    const page = await MatchesPage({ params: { locale, comp: 'liga-mx', season: '2026-apertura' }, searchParams: { view: 'now' } });
+    const html = renderLocalized(page, locale);
+    expect(html).toContain(locale === 'en' ? 'Live matches are unavailable right now.' : 'Los partidos en vivo no están disponibles en este momento.');
+    expect(html).not.toContain('still works');
+    expect(html).not.toContain('sigue funcionando');
+    expect(html).not.toContain('provider secret');
+  } finally { vi.restoreAllMocks(); }
+});

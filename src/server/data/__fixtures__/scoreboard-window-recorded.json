@@ -1,0 +1,1424 @@
+{
+  "description": "Recorded 2026-09-29. Compact event/field excerpts, not complete monthly payloads. Production validation is separately tested against complete synthetic envelopes.",
+  "samples": {
+    "mex-jan": {
+      "provenance": {
+        "at": "2026-09-29T07:24:17.259Z",
+        "url": "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard?dates=202601&limit=1000",
+        "status": 200,
+        "bytes": 362102,
+        "count": 35
+      },
+      "leagues": [
+        {
+          "slug": "mex.1",
+          "season": {
+            "year": 2025,
+            "startDate": "2025-06-01T04:00Z",
+            "endDate": "2026-06-01T03:59Z",
+            "displayName": "2025-26 Liga BBVA MX",
+            "type": {
+              "id": "14",
+              "type": 13433,
+              "name": "Clausura - Finals",
+              "abbreviation": "Clausura - Finals"
+            }
+          }
+        }
+      ],
+      "events": [
+        {
+          "id": "401840847",
+          "date": "2026-02-01T01:00Z",
+          "season": {
+            "year": 2025,
+            "slug": "torneo-clausura"
+          },
+          "status": {
+            "displayClock": "90'+7'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "2",
+                  "winner": false,
+                  "team": {
+                    "id": "220",
+                    "displayName": "Monterrey",
+                    "abbreviation": "MTY",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/220.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "2",
+                  "winner": false,
+                  "team": {
+                    "id": "10125",
+                    "displayName": "Tijuana",
+                    "abbreviation": "TIJ",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/10125.png"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "401840846",
+          "date": "2026-02-01T01:10Z",
+          "season": {
+            "year": 2025,
+            "slug": "torneo-clausura"
+          },
+          "status": {
+            "displayClock": "90'+11'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "1",
+                  "winner": false,
+                  "team": {
+                    "id": "228",
+                    "displayName": "León",
+                    "abbreviation": "LEO",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/228.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "2",
+                  "winner": true,
+                  "team": {
+                    "id": "232",
+                    "displayName": "Tigres UANL",
+                    "abbreviation": "UANL",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/232.png"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "mex-feb": {
+      "provenance": {
+        "at": "2026-09-29T07:24:17.338Z",
+        "url": "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard?dates=202602&limit=1000",
+        "status": 200,
+        "bytes": 389741,
+        "count": 36
+      },
+      "leagues": [
+        {
+          "slug": "mex.1",
+          "season": {
+            "year": 2025,
+            "startDate": "2025-06-01T04:00Z",
+            "endDate": "2026-06-01T03:59Z",
+            "displayName": "2025-26 Liga BBVA MX",
+            "type": {
+              "id": "14",
+              "type": 13433,
+              "name": "Clausura - Finals",
+              "abbreviation": "Clausura - Finals"
+            }
+          }
+        }
+      ],
+      "events": [
+        {
+          "id": "401840849",
+          "date": "2026-02-01T23:00Z",
+          "season": {
+            "year": 2025,
+            "slug": "torneo-clausura"
+          },
+          "status": {
+            "displayClock": "90'+11'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "0",
+                  "winner": false,
+                  "team": {
+                    "id": "222",
+                    "displayName": "Querétaro",
+                    "abbreviation": "QRO",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/222.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "0",
+                  "winner": false,
+                  "team": {
+                    "id": "234",
+                    "displayName": "Pachuca",
+                    "abbreviation": "PAC",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/234.png"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "mex-month": {
+      "provenance": {
+        "at": "2026-09-29T07:24:16.500Z",
+        "url": "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard?dates=202609&limit=1000",
+        "status": 200,
+        "bytes": 352937,
+        "count": 34
+      },
+      "leagues": [
+        {
+          "slug": "mex.1",
+          "season": {
+            "year": 2026,
+            "startDate": "2026-06-01T04:00Z",
+            "endDate": "2027-06-01T03:59Z",
+            "displayName": "2026-27 Liga BBVA MX",
+            "type": {
+              "id": "1",
+              "type": 14277,
+              "name": "Torneo Apertura",
+              "abbreviation": "2026 Liga MX Apertura"
+            }
+          }
+        }
+      ],
+      "events": [
+        {
+          "id": "401876990",
+          "date": "2026-09-05T03:00Z",
+          "season": {
+            "year": 2026,
+            "slug": "torneo-apertura"
+          },
+          "status": {
+            "displayClock": "90'+11'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "0",
+                  "winner": false,
+                  "team": {
+                    "id": "17851",
+                    "displayName": "FC Juarez",
+                    "abbreviation": "JUA",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/17851.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "2",
+                  "winner": true,
+                  "team": {
+                    "id": "234",
+                    "displayName": "Pachuca",
+                    "abbreviation": "PAC",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/234.png"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "esp-month": {
+      "provenance": {
+        "at": "2026-09-29T07:24:17.147Z",
+        "url": "https://site.api.espn.com/apis/site/v2/sports/soccer/esp.1/scoreboard?dates=202609&limit=1000",
+        "status": 200,
+        "bytes": 523898,
+        "count": 39
+      },
+      "leagues": [
+        {
+          "slug": "esp.1",
+          "season": {
+            "year": 2026,
+            "startDate": "2026-06-01T04:00Z",
+            "endDate": "2027-06-01T03:59Z",
+            "displayName": "2026-27 Spanish LALIGA",
+            "type": {
+              "id": "1",
+              "type": 14357,
+              "name": "2026-27 LALIGA",
+              "abbreviation": "2026-27 LALIGA"
+            }
+          }
+        }
+      ],
+      "events": [
+        {
+          "id": "401882867",
+          "date": "2026-09-03T19:00Z",
+          "season": {
+            "year": 2026,
+            "slug": "2026-27-laliga"
+          },
+          "status": {
+            "displayClock": "90'+5'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "0",
+                  "winner": false,
+                  "team": {
+                    "id": "89",
+                    "displayName": "Real Sociedad",
+                    "abbreviation": "RSO",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/89.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "0",
+                  "winner": false,
+                  "team": {
+                    "id": "85",
+                    "displayName": "Celta Vigo",
+                    "abbreviation": "CEL",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/85.png"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "world-2022": {
+      "provenance": {
+        "at": "2026-09-29T07:24:17.449Z",
+        "url": "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=202212&limit=1000",
+        "status": 200,
+        "bytes": 282799,
+        "count": 24
+      },
+      "leagues": [
+        {
+          "slug": "fifa.world",
+          "season": {
+            "year": 2022,
+            "startDate": "2022-11-20T05:00Z",
+            "endDate": "2022-12-19T04:59Z",
+            "displayName": "2022 FIFA World Cup",
+            "type": {
+              "id": "6",
+              "type": 10948,
+              "name": "Final",
+              "abbreviation": "Final"
+            }
+          }
+        }
+      ],
+      "events": [
+        {
+          "id": "633848",
+          "date": "2022-12-14T19:00Z",
+          "season": {
+            "year": 2022,
+            "slug": "semifinals"
+          },
+          "status": {
+            "displayClock": "90'+6'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "2",
+                  "winner": true,
+                  "team": {
+                    "id": "478",
+                    "displayName": "France",
+                    "abbreviation": "FRA",
+                    "logo": "https://a.espncdn.com/i/teamlogos/countries/500/fra.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "0",
+                  "winner": false,
+                  "team": {
+                    "id": "2869",
+                    "displayName": "Morocco",
+                    "abbreviation": "MAR",
+                    "logo": "https://a.espncdn.com/i/teamlogos/countries/500/mar.png"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "633849",
+          "date": "2022-12-17T15:00Z",
+          "season": {
+            "year": 2022,
+            "slug": "3rd-place-match"
+          },
+          "status": {
+            "displayClock": "90'+7'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "2",
+                  "winner": true,
+                  "team": {
+                    "id": "477",
+                    "displayName": "Croatia",
+                    "abbreviation": "CRO",
+                    "logo": "https://a.espncdn.com/i/teamlogos/countries/500/cro.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "1",
+                  "winner": false,
+                  "team": {
+                    "id": "2869",
+                    "displayName": "Morocco",
+                    "abbreviation": "MAR",
+                    "logo": "https://a.espncdn.com/i/teamlogos/countries/500/mar.png"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "633850",
+          "date": "2022-12-18T15:00Z",
+          "season": {
+            "year": 2022,
+            "slug": "final"
+          },
+          "status": {
+            "displayClock": "120'",
+            "type": {
+              "name": "STATUS_FINAL_PEN",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT-Pens"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [
+                {
+                  "text": "Argentina win 4-2 on penalties",
+                  "headline": "Argentina win 4-2 on penalties",
+                  "type": "event"
+                }
+              ],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "3",
+                  "shootoutScore": 4,
+                  "winner": true,
+                  "team": {
+                    "id": "202",
+                    "displayName": "Argentina",
+                    "abbreviation": "ARG",
+                    "logo": "https://a.espncdn.com/i/teamlogos/countries/500/arg.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "3",
+                  "shootoutScore": 2,
+                  "winner": false,
+                  "team": {
+                    "id": "478",
+                    "displayName": "France",
+                    "abbreviation": "FRA",
+                    "logo": "https://a.espncdn.com/i/teamlogos/countries/500/fra.png"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "mex-finals": {
+      "provenance": {
+        "at": "2026-09-29T07:30:30.101Z",
+        "url": "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard?dates=202605&limit=1000",
+        "status": 200,
+        "bytes": 147785,
+        "count": 14
+      },
+      "leagues": [
+        {
+          "slug": "mex.1",
+          "season": {
+            "year": 2025,
+            "startDate": "2025-06-01T04:00Z",
+            "endDate": "2026-06-01T03:59Z",
+            "displayName": "2025-26 Liga BBVA MX",
+            "type": {
+              "id": "14",
+              "type": 13433,
+              "name": "Clausura - Finals",
+              "abbreviation": "Clausura - Finals"
+            }
+          }
+        }
+      ],
+      "events": [
+        {
+          "id": "401870486",
+          "date": "2026-05-03T01:00Z",
+          "season": {
+            "year": 2025,
+            "slug": "clausura---quarterfinals"
+          },
+          "status": {
+            "displayClock": "90'+5'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [
+                {
+                  "text": "1st Leg",
+                  "headline": "1st Leg",
+                  "type": "event"
+                }
+              ],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "3",
+                  "winner": true,
+                  "team": {
+                    "id": "232",
+                    "displayName": "Tigres UANL",
+                    "abbreviation": "UANL",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/232.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "1",
+                  "winner": false,
+                  "team": {
+                    "id": "219",
+                    "displayName": "Guadalajara",
+                    "abbreviation": "GDL",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/219.png"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "401872570",
+          "date": "2026-05-14T02:00Z",
+          "season": {
+            "year": 2025,
+            "slug": "clausura---semifinals"
+          },
+          "status": {
+            "displayClock": "90'+7'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [
+                {
+                  "text": "1st Leg",
+                  "headline": "1st Leg",
+                  "type": "event"
+                }
+              ],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "2",
+                  "winner": false,
+                  "team": {
+                    "id": "218",
+                    "displayName": "Cruz Azul",
+                    "abbreviation": "CAZ",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/218.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "2",
+                  "winner": false,
+                  "team": {
+                    "id": "219",
+                    "displayName": "Guadalajara",
+                    "abbreviation": "GDL",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/219.png"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "401873246",
+          "date": "2026-05-25T01:00Z",
+          "season": {
+            "year": 2025,
+            "slug": "clausura---finals"
+          },
+          "status": {
+            "displayClock": "90'+9'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [
+                {
+                  "text": "2nd Leg - Cruz Azul win 2-1 on aggregate",
+                  "headline": "2nd Leg - Cruz Azul win 2-1 on aggregate",
+                  "type": "event"
+                }
+              ],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "1",
+                  "winner": false,
+                  "team": {
+                    "id": "233",
+                    "displayName": "Pumas UNAM",
+                    "abbreviation": "UNAM",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/233.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "2",
+                  "winner": true,
+                  "team": {
+                    "id": "218",
+                    "displayName": "Cruz Azul",
+                    "abbreviation": "CAZ",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/218.png"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "mex-202511": {
+      "provenance": {
+        "at": "2026-09-29T07:44:53.051Z",
+        "url": "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard?dates=202511&limit=1000",
+        "status": 200,
+        "bytes": 290063,
+        "count": 26,
+        "slugs": [
+          "torneo-apertura",
+          "apertura---9th-place-vs-10th-place",
+          "apertura---7th-place-vs-8th-place",
+          "apertura---8th-seed-game",
+          "apertura---quarterfinals"
+        ]
+      },
+      "leagues": [
+        {
+          "slug": "mex.1",
+          "season": {
+            "year": 2025,
+            "startDate": "2025-06-01T04:00Z",
+            "endDate": "2026-06-01T03:59Z",
+            "displayName": "2025-26 Liga BBVA MX",
+            "type": {
+              "id": "14",
+              "type": 13433,
+              "name": "Clausura - Finals",
+              "abbreviation": "Clausura - Finals"
+            }
+          }
+        }
+      ],
+      "events": [
+        {
+          "id": "736752",
+          "date": "2025-11-01T23:00Z",
+          "season": {
+            "year": 2025,
+            "slug": "torneo-apertura"
+          },
+          "status": {
+            "displayClock": "90'+5'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "0",
+                  "winner": false,
+                  "team": {
+                    "id": "216",
+                    "displayName": "Atlas",
+                    "abbreviation": "ATS",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/216.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "0",
+                  "winner": false,
+                  "team": {
+                    "id": "223",
+                    "displayName": "Toluca",
+                    "abbreviation": "TOL",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/223.png"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "760937",
+          "date": "2025-11-21T01:00Z",
+          "season": {
+            "year": 2025,
+            "slug": "apertura---9th-place-vs-10th-place"
+          },
+          "status": {
+            "displayClock": "90'+4'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "3",
+                  "winner": true,
+                  "team": {
+                    "id": "234",
+                    "displayName": "Pachuca",
+                    "abbreviation": "PAC",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/234.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "1",
+                  "winner": false,
+                  "team": {
+                    "id": "233",
+                    "displayName": "Pumas UNAM",
+                    "abbreviation": "UNAM",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/233.png"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "760936",
+          "date": "2025-11-21T03:00Z",
+          "season": {
+            "year": 2025,
+            "slug": "apertura---7th-place-vs-8th-place"
+          },
+          "status": {
+            "displayClock": "90'+9'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "3",
+                  "winner": true,
+                  "team": {
+                    "id": "10125",
+                    "displayName": "Tijuana",
+                    "abbreviation": "TIJ",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/10125.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "1",
+                  "winner": false,
+                  "team": {
+                    "id": "17851",
+                    "displayName": "FC Juarez",
+                    "abbreviation": "JUA",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/17851.png"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "761414",
+          "date": "2025-11-24T01:00Z",
+          "season": {
+            "year": 2025,
+            "slug": "apertura---8th-seed-game"
+          },
+          "status": {
+            "displayClock": "90'+15'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "2",
+                  "winner": true,
+                  "team": {
+                    "id": "17851",
+                    "displayName": "FC Juarez",
+                    "abbreviation": "JUA",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/17851.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "1",
+                  "winner": false,
+                  "team": {
+                    "id": "234",
+                    "displayName": "Pachuca",
+                    "abbreviation": "PAC",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/234.png"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "760940",
+          "date": "2025-11-27T01:00Z",
+          "season": {
+            "year": 2025,
+            "slug": "apertura---quarterfinals"
+          },
+          "status": {
+            "displayClock": "90'+6'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [
+                {
+                  "text": "1st Leg",
+                  "headline": "1st Leg",
+                  "type": "event"
+                }
+              ],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "1",
+                  "winner": false,
+                  "team": {
+                    "id": "17851",
+                    "displayName": "FC Juarez",
+                    "abbreviation": "JUA",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/17851.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "2",
+                  "winner": true,
+                  "team": {
+                    "id": "223",
+                    "displayName": "Toluca",
+                    "abbreviation": "TOL",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/223.png"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "mex-202505": {
+      "provenance": {
+        "at": "2026-09-29T07:44:53.127Z",
+        "url": "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard?dates=202505&limit=1000",
+        "status": 200,
+        "bytes": 159301,
+        "count": 15,
+        "slugs": [
+          "clausura-2025---8th-seed-game",
+          "clausura-2025---quarterfinals",
+          "clausura-2025---semifinals",
+          "clausura-2025---finals"
+        ]
+      },
+      "leagues": [
+        {
+          "slug": "mex.1",
+          "season": {
+            "year": 2024,
+            "startDate": "2024-06-01T04:00Z",
+            "endDate": "2025-06-01T03:59Z",
+            "displayName": "2024-25 Liga BBVA MX",
+            "type": {
+              "id": "14",
+              "type": 12626,
+              "name": "Clausura 2025 - Finals",
+              "abbreviation": "Clausura 2025 - Finals"
+            }
+          }
+        }
+      ],
+      "events": [
+        {
+          "id": "735577",
+          "date": "2025-05-05T01:30Z",
+          "season": {
+            "year": 2024,
+            "slug": "clausura-2025---8th-seed-game"
+          },
+          "status": {
+            "displayClock": "90'+7'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "2",
+                  "winner": true,
+                  "team": {
+                    "id": "220",
+                    "displayName": "Monterrey",
+                    "abbreviation": "MTY",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/220.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "0",
+                  "winner": false,
+                  "team": {
+                    "id": "233",
+                    "displayName": "Pumas UNAM",
+                    "abbreviation": "UNAM",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/233.png"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "735473",
+          "date": "2025-05-08T01:00Z",
+          "season": {
+            "year": 2024,
+            "slug": "clausura-2025---quarterfinals"
+          },
+          "status": {
+            "displayClock": "90'+6'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [
+                {
+                  "text": "1st Leg",
+                  "headline": "1st Leg",
+                  "type": "event"
+                }
+              ],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "3",
+                  "winner": true,
+                  "team": {
+                    "id": "220",
+                    "displayName": "Monterrey",
+                    "abbreviation": "MTY",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/220.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "2",
+                  "winner": false,
+                  "team": {
+                    "id": "223",
+                    "displayName": "Toluca",
+                    "abbreviation": "TOL",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/223.png"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "735746",
+          "date": "2025-05-15T03:00Z",
+          "season": {
+            "year": 2024,
+            "slug": "clausura-2025---semifinals"
+          },
+          "status": {
+            "displayClock": "90'+5'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [
+                {
+                  "text": "1st Leg",
+                  "headline": "1st Leg",
+                  "type": "event"
+                }
+              ],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "1",
+                  "winner": false,
+                  "team": {
+                    "id": "232",
+                    "displayName": "Tigres UANL",
+                    "abbreviation": "UANL",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/232.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "1",
+                  "winner": false,
+                  "team": {
+                    "id": "223",
+                    "displayName": "Toluca",
+                    "abbreviation": "TOL",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/223.png"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "735812",
+          "date": "2025-05-23T02:00Z",
+          "season": {
+            "year": 2024,
+            "slug": "clausura-2025---finals"
+          },
+          "status": {
+            "displayClock": "90'+5'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [
+                {
+                  "text": "1st Leg",
+                  "headline": "1st Leg",
+                  "type": "event"
+                }
+              ],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "0",
+                  "winner": false,
+                  "team": {
+                    "id": "227",
+                    "displayName": "América",
+                    "abbreviation": "AME",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/227.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "0",
+                  "winner": false,
+                  "team": {
+                    "id": "223",
+                    "displayName": "Toluca",
+                    "abbreviation": "TOL",
+                    "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/223.png"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "world-2010": {
+      "provenance": {
+        "at": "2026-09-29T07:45:18.782Z",
+        "url": "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=201006&limit=1000",
+        "status": 200,
+        "bytes": 605206,
+        "count": 56
+      },
+      "leagues": [
+        {
+          "slug": "fifa.world",
+          "season": {
+            "year": 2010,
+            "startDate": "2010-06-11T04:00Z",
+            "endDate": "2010-08-01T03:59Z",
+            "displayName": "2010 FIFA World Cup",
+            "type": {
+              "id": "6",
+              "type": 2322,
+              "name": "Final",
+              "abbreviation": "Final"
+            }
+          }
+        }
+      ],
+      "events": [
+        {
+          "id": "264109",
+          "date": "2010-06-26T14:00Z",
+          "season": {
+            "year": 2010,
+            "slug": "second-round"
+          },
+          "status": {
+            "displayClock": "90'+3'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "2",
+                  "winner": true,
+                  "team": {
+                    "id": "212",
+                    "displayName": "Uruguay",
+                    "abbreviation": "URU",
+                    "logo": "https://a.espncdn.com/i/teamlogos/countries/500/uru.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "1",
+                  "winner": false,
+                  "team": {
+                    "id": "451",
+                    "displayName": "South Korea",
+                    "abbreviation": "KOR",
+                    "logo": "https://a.espncdn.com/i/teamlogos/countries/500/kors.png"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "264108",
+          "date": "2010-06-26T18:30Z",
+          "season": {
+            "year": 2010,
+            "slug": "second-round"
+          },
+          "status": {
+            "displayClock": "120'+3'",
+            "type": {
+              "name": "STATUS_FINAL_AET",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "AET"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "1",
+                  "winner": false,
+                  "team": {
+                    "id": "660",
+                    "displayName": "United States",
+                    "abbreviation": "USA",
+                    "logo": "https://a.espncdn.com/i/teamlogos/countries/500/usa.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "2",
+                  "winner": true,
+                  "team": {
+                    "id": "4469",
+                    "displayName": "Ghana",
+                    "abbreviation": "GHA",
+                    "logo": "https://a.espncdn.com/i/teamlogos/countries/500/gha.png"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "264111",
+          "date": "2010-06-27T14:00Z",
+          "season": {
+            "year": 2010,
+            "slug": "second-round"
+          },
+          "status": {
+            "displayClock": "90'+3'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "4",
+                  "winner": true,
+                  "team": {
+                    "id": "481",
+                    "displayName": "Germany",
+                    "abbreviation": "GER",
+                    "logo": "https://a.espncdn.com/i/teamlogos/countries/500/ger.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "1",
+                  "winner": false,
+                  "team": {
+                    "id": "448",
+                    "displayName": "England",
+                    "abbreviation": "ENG",
+                    "logo": "https://a.espncdn.com/i/teamlogos/countries/500/eng.png"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "264110",
+          "date": "2010-06-27T18:30Z",
+          "season": {
+            "year": 2010,
+            "slug": "second-round"
+          },
+          "status": {
+            "displayClock": "90'+3'",
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "shortDetail": "FT"
+            }
+          },
+          "competitions": [
+            {
+              "notes": [],
+              "competitors": [
+                {
+                  "homeAway": "home",
+                  "score": "3",
+                  "winner": true,
+                  "team": {
+                    "id": "202",
+                    "displayName": "Argentina",
+                    "abbreviation": "ARG",
+                    "logo": "https://a.espncdn.com/i/teamlogos/countries/500/arg.png"
+                  }
+                },
+                {
+                  "homeAway": "away",
+                  "score": "1",
+                  "winner": false,
+                  "team": {
+                    "id": "203",
+                    "displayName": "Mexico",
+                    "abbreviation": "MEX",
+                    "logo": "https://a.espncdn.com/i/teamlogos/countries/500/mex.png"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

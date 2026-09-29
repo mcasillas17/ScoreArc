@@ -1,10 +1,12 @@
-// ESPN scoreboard `dates` strings are YYYYMMDD-YYYYMMDD in local time.
+// ScoreArc window strings are inclusive YYYYMMDD-YYYYMMDD dates. Calendar
+// controls choose local dates; the data layer interprets their endpoints in UTC
+// and translates them to padded provider month selectors.
 
 function fmt(d: Date): string {
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// ESPN scoreboard `dates` range (YYYYMMDD-YYYYMMDD) covering the Monday→Sunday
+// ScoreArc date window (YYYYMMDD-YYYYMMDD) covering the Monday→Sunday
 // calendar week that contains `now` (local time). Used so the matches feed
 // returns the whole current week's fixtures, not just ESPN's default (today).
 export function currentWeekRange(now: Date): string {
@@ -16,7 +18,7 @@ export function currentWeekRange(now: Date): string {
   return `${fmt(mon)}-${fmt(sun)}`;
 }
 
-// ESPN scoreboard `dates` range covering today through `days` ahead. Used by
+// ScoreArc date window covering today through `days` ahead. Used by
 // the fixture banner, which must see past the end of the current week: a
 // season starting next Friday has fixtures, and a banner that says otherwise
 // is wrong rather than merely empty.
@@ -168,33 +170,4 @@ export function parseRange(raw: string | null, maxDays = 92): string | null {
   if (spanDays > maxDays) return null;
 
   return raw;
-}
-
-// ESPN's scoreboard days are US Eastern: `?dates=202606` ends with a match at
-// 2026-07-01T02:00Z, which is 10pm on June 30 in New York.
-const espnDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' });
-
-/**
- * Split a YYYYMMDD-YYYYMMDD range into the YYYYMM months it touches.
- *
- * ESPN's scoreboard started answering every day range with a 400 on
- * 2026-09-29 ("Failed to get events endpoint."); single days, months and years
- * still work. The ingester has requested by month since it was written.
- */
-export function rangeMonths(range: string): string[] {
-  const months: string[] = [];
-  let y = Number(range.slice(0, 4));
-  let m = Number(range.slice(4, 6));
-  const last = range.slice(9, 15);
-  for (let ym = range.slice(0, 6); ym <= last; ym = `${y}${String(m).padStart(2, '0')}`) {
-    months.push(ym);
-    if (++m > 12) { m = 1; y++; }
-  }
-  return months;
-}
-
-/** Whether an ESPN event timestamp falls on a day inside the range. */
-export function inRange(iso: string, range: string): boolean {
-  const day = espnDay.format(new Date(iso)).replaceAll('-', '');
-  return day >= range.slice(0, 8) && day <= range.slice(9);
 }

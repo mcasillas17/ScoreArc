@@ -1,10 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  inRange,
   monthRange,
   nowWindowRange,
   parseRange,
-  rangeMonths,
   seasonInitialMonth,
   seasonMonthBounds,
   shiftMonth,
@@ -180,22 +178,5 @@ describe('nowWindowRange', () => {
   it('produces a range parseRange accepts', () => {
     const range = nowWindowRange(new Date(2026, 7, 18));
     expect(parseRange(range)).toBe(range);
-  });
-});
-
-describe('rangeMonths', () => {
-  it('lists every month a range touches, across a year end', () => {
-    expect(rangeMonths('20260628-20260719')).toEqual(['202606', '202607']);
-    expect(rangeMonths('20261215-20270110')).toEqual(['202612', '202701']);
-    expect(rangeMonths('20260801-20260831')).toEqual(['202608']);
-  });
-});
-
-describe('inRange', () => {
-  it('reads the day in US Eastern, as ESPN does', () => {
-    // 02:00Z on July 1 is 10pm on June 30 in New York.
-    expect(inRange('2026-07-01T02:00Z', '20260601-20260630')).toBe(true);
-    expect(inRange('2026-07-01T05:00Z', '20260601-20260630')).toBe(false);
-    expect(inRange('2026-06-01T03:00Z', '20260601-20260630')).toBe(false);
   });
 });

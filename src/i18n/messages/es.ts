@@ -26,7 +26,7 @@ export const es = {
   'matches.latestResults': 'Últimos resultados',
   'matches.empty': 'Nada programado o jugado recientemente.',
   'matches.browseCalendar': 'Ver el calendario completo',
-  'matches.unavailableNow': 'Los partidos en vivo no están disponibles en este momento. El calendario completo sigue funcionando.',
+  'matches.unavailableNow': 'Los partidos en vivo no están disponibles en este momento.',
   'matches.unavailableCalendar': 'Los partidos no están disponibles en este momento. Prueba otro mes y vuelve más tarde.',
   'matches.nowDescription': 'Lo que está en juego, lo próximo y lo recién jugado.',
   'matches.calendarDescription': 'Todos los partidos, mes a mes.',

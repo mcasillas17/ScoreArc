@@ -44,12 +44,12 @@ export async function GET(req: Request, { params }: { params: RouteParams }) {
     if (state === 'scheduled' && range === null) {
       // "What's next", however far out it is — deliberately not the current
       // week, which is empty on most days of most seasons.
-      matches = await dataStore.getUpcoming(rc, limit ?? undefined);
+      matches = await dataStore.getUpcoming(rc, limit ?? undefined, req.signal);
     } else {
       const window = range ?? currentWeekRange(new Date());
       matches = summary
-        ? await dataStore.getMatches(rc, window)
-        : await dataStore.getFixtures(rc, window);
+        ? await dataStore.getMatches(rc, window, req.signal)
+        : await dataStore.getFixtures(rc, window, req.signal);
       if (state === 'scheduled') matches = matches.filter((m) => m.state === 'scheduled');
       if (limit !== null) matches = matches.slice(0, limit);
     }
