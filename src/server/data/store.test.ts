@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createDataStore, parseShootout } from './store';
 import { resolveSeason } from './competitions';
 import { TtlCache } from './cache';
@@ -16,6 +16,14 @@ import teamFixturesRaw from './__fixtures__/espn-team-fixtures.json';
 const wc = resolveSeason('world-cup')!;
 const lc = resolveSeason('leagues-cup')!;
 const SCOREBOARD_TWO_EVENTS = { ...sb, events: sb.events.slice(0, 2) };
+
+// The scoreboard fixture's matches are on 2026-06-29 (US Eastern). Date-range
+// reads are trimmed to their days, so "this week" has to contain that day.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-06-29T12:00:00Z'));
+});
+afterEach(() => vi.useRealTimers());
 
 function fakeDeps() {
   const urls: string[] = [];
@@ -50,7 +58,11 @@ describe('EspnReadThroughStore', () => {
     const { deps, urls } = fakeDeps();
     const store = createDataStore(deps);
     await store.getBracket(wc);
-    expect(urls.some((u) => u.includes('?dates=20260628-20260719'))).toBe(true);
+    // ESPN rejects day ranges; the bracket's range is read as its months.
+    expect(urls.filter((u) => u.includes('/scoreboard?dates='))).toEqual([
+      expect.stringContaining('?dates=202606'),
+      expect.stringContaining('?dates=202607'),
+    ]);
     urls.length = 0;
     await store.getBracket(lc);
     expect(urls.some((u) => u.includes('concacaf.leagues.cup/scoreboard') && !u.includes('?dates'))).toBe(true);
@@ -60,8 +72,9 @@ describe('EspnReadThroughStore', () => {
     const { deps, urls } = fakeDeps();
     const store = createDataStore(deps);
     await store.getMatches(wc);
+    const first = urls.filter((u) => u.includes('/scoreboard')).length;
     await store.getMatches(wc);
-    expect(urls.filter((u) => u.includes('/scoreboard')).length).toBe(1);
+    expect(urls.filter((u) => u.includes('/scoreboard')).length).toBe(first);
   });
 
   it('enriches matches with scorers from the summary feed', async () => {
@@ -134,8 +147,8 @@ describe('range-aware match reads', () => {
     await store.getFixtures(wc, '20260801-20260831');
     await store.getFixtures(wc, '20260901-20260930');
 
-    expect(urls.filter((u) => u.includes('20260801-20260831'))).toHaveLength(1);
-    expect(urls.filter((u) => u.includes('20260901-20260930'))).toHaveLength(1);
+    expect(urls.filter((u) => u.includes('dates=202608'))).toHaveLength(1);
+    expect(urls.filter((u) => u.includes('dates=202609'))).toHaveLength(1);
   });
 
   it('serves a repeated range from cache', async () => {
@@ -179,7 +192,7 @@ describe('range-aware match reads', () => {
       },
     });
     await store.getMatches(wc);
-    expect(urls[0]).toMatch(/dates=\d{8}-\d{8}/);
+    expect(urls[0]).toMatch(/dates=\d{6}$/);
   });
 });
 
@@ -222,7 +235,7 @@ describe('getLiveWindow', () => {
       cache: new TtlCache<unknown>(),
       fetchJson: async (url: string) => {
         urls.push(url);
-        return SCOREBOARD_TWO_EVENTS;
+        return url.endsWith('dates=202606') ? SCOREBOARD_TWO_EVENTS : { events: [] };
       },
     });
 
@@ -230,7 +243,7 @@ describe('getLiveWindow', () => {
 
     expect(matches.length).toBe(2);
     expect(urls.filter((u) => u.includes('/summary'))).toHaveLength(0);
-    expect(urls).toHaveLength(1);
+    expect(urls.every((u) => u.includes('/scoreboard?dates='))).toBe(true);
   });
 
   it('serves a repeat call from cache', async () => {
@@ -243,8 +256,9 @@ describe('getLiveWindow', () => {
       },
     });
     await store.getLiveWindow(wc);
+    const first = urls.length;
     await store.getLiveWindow(wc);
-    expect(urls).toHaveLength(1);
+    expect(urls).toHaveLength(first);
   });
 
   // Sharing getFixtures' cache entry would give the calendar's 120s TTL to a
