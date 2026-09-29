@@ -56,22 +56,12 @@ func CorePlaysURLOn(base, slug, eventID string, page, limit int) string {
 		coreCompetitionURLOn(base, slug, eventID), limit, page)
 }
 
-// CoreOfficialsURL builds the core API URL for a match's officiating crew.
-func CoreOfficialsURL(slug, eventID string) string {
-	return CoreOfficialsURLOn(core, slug, eventID)
-}
-
-// CoreOfficialsURLOn builds an officials URL against an explicit base.
+// CoreOfficialsURLOn builds the core API URL for a match's officiating crew.
 func CoreOfficialsURLOn(base, slug, eventID string) string {
 	return coreCompetitionURLOn(base, slug, eventID) + "/officials"
 }
 
-// CoreOddsURL builds the core API URL for a match's provider odds.
-func CoreOddsURL(slug, eventID string) string {
-	return CoreOddsURLOn(core, slug, eventID)
-}
-
-// CoreOddsURLOn builds an odds URL against an explicit base.
+// CoreOddsURLOn builds the core API URL for a match's provider odds.
 func CoreOddsURLOn(base, slug, eventID string) string {
 	return coreCompetitionURLOn(base, slug, eventID) + "/odds"
 }

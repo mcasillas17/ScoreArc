@@ -7,7 +7,7 @@ import { GET } from './route';
 
 vi.mock('@/lib/telemetry/server', () => ({ trackAPIRequestFailure: vi.fn() }));
 afterEach(() => vi.restoreAllMocks());
-const params = { comp: 'world-cup', season: '2026' };
+const params = Promise.resolve({ comp: 'world-cup', season: '2026' });
 const request = (range: string) => new Request(`http://localhost/api/world-cup/2026/matches?range=${range}`);
 
 function realStore(failJune = false) {

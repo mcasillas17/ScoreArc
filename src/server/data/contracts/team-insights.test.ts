@@ -47,9 +47,7 @@ const readerCoverage = {
   getStandings: 'missing computed Leagues Cup and MLS views',
   getBracket: 'route exists; full DTO/identity parity unproven',
   getMatchSummary: 'canonical match id; nested scorer/stats/lineup DTO gaps',
-  getLeaders: 'missing assists and StatLeader value contract',
-  getTopScorers: 'goals key differs from value; missing player identity',
-  getTopAssists: 'no route',
+  getLeaders: 'no assists route; goals key differs from value; missing player identity',
   getNews: 'competition-only route; full parity unproven',
   getTeam: 'missing standing, scope and availability; canonical identity',
   getSquad: 'only embedded in team; partial stat population',
@@ -67,10 +65,9 @@ describe('bounded team insights contract (not reader parity)', () => {
     expectTypeOf<Extract<ReturnType<typeof mapTeamProfile>, null | undefined>>().toEqualTypeOf<null>();
   });
 
-  it('pins all 14 methods without representing a gap as supported', () => {
-    expect(Object.keys(readerCoverage)).toHaveLength(14);
+  it('pins all 12 methods without representing a gap as supported', () => {
+    expect(Object.keys(readerCoverage)).toHaveLength(12);
     expect(readerCoverage.getPlayer).toBe('no route');
-    expect(readerCoverage.getTopAssists).toBe('no route');
   });
 
   it('uses the actual schedule mapper and exact shared fields, nulls and ascending order', () => {

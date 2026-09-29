@@ -5,8 +5,10 @@ import Link from 'next/link';
 import type { Match } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
 import { matchPriority } from '@/server/data/matchPriority';
-import { trackEvent, trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
-import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
+import { trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
+import MatchDetailPopup from './MatchDetailPopup';
+import { useMatchDetails } from './useMatchDetails';
+import { fetchMatches } from './fetchMatches';
 import MatchRow from './MatchRow';
 import { toMatchDetailInput } from './upcomingWindow';
 import { groupByDay } from './matchDays';
@@ -73,10 +75,7 @@ export default function MatchesNow({
   // Advanced on every successful poll so a page left open across midnight
   // re-splits "later today" instead of keeping yesterday's.
   const [now, setNow] = useState<Date | null>(null);
-  const [detail, setDetail] = useState<Match | null>(null);
-  const [summary, setSummary] = useState<MatchSummary | null>(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
-  const detailsAbort = useRef<AbortController | null>(null);
+  const { detail, summary, loadingDetail, openDetails, closeDetails } = useMatchDetails(apiBase, 'matches-now');
   const failing = useRef(false);
 
   useEffect(() => {
@@ -84,20 +83,12 @@ export default function MatchesNow({
     setNow(new Date());
   }, []);
 
-  // Abort an in-flight detail fetch when the component goes away.
-  useEffect(() => () => detailsAbort.current?.abort(), []);
-
   useEffect(() => {
     let alive = true;
     async function poll() {
       try {
-        const res = await fetch(`${apiBase}/matches?range=${encodeURIComponent(range)}`, {
-          cache: 'no-store',
-        });
-        if (!res.ok) throw new Error(String(res.status));
-        const next = await res.json();
+        const next = await fetchMatches(apiBase, range);
         if (!alive) return;
-        if (!Array.isArray(next)) throw new Error('not an array');
         setMatches(next);
         setNow(new Date());
         setError(null);
@@ -146,35 +137,6 @@ export default function MatchesNow({
     }
     return out;
   }, [matches, mounted, now, t]);
-
-  async function openDetails(match: Match) {
-    detailsAbort.current?.abort();
-    const controller = new AbortController();
-    detailsAbort.current = controller;
-    trackEvent('Match details opened', { surface: 'matches-now' });
-    setDetail(match);
-    setSummary(null);
-    setLoadingDetail(true);
-    try {
-      const res = await fetch(
-        `${apiBase}/match/${match.id}?home=${match.home.id}&away=${match.away.id}`,
-        { cache: 'no-store', signal: controller.signal },
-      );
-      if (!res.ok) {
-        trackEvent('Match details unavailable', { surface: 'matches-now', status: res.status });
-        return;
-      }
-      setSummary((await res.json()) as MatchSummary);
-    } catch {
-      if (!controller.signal.aborted) {
-        trackEvent('Match details unavailable', { surface: 'matches-now' });
-      }
-    } finally {
-      // Cleared even when aborted: closing the popup mid-flight aborts, and
-      // leaving the flag set would show a spinner on the next open.
-      setLoadingDetail(false);
-    }
-  }
 
   return (
     <>
@@ -235,11 +197,7 @@ export default function MatchesNow({
           match={toMatchDetailInput(detail)}
           summary={summary}
           loading={loadingDetail}
-          onClose={() => {
-            detailsAbort.current?.abort();
-            setDetail(null);
-            setSummary(null);
-          }}
+          onClose={closeDetails}
         />
       )}
     </>

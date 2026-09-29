@@ -19,10 +19,10 @@ func TestCoreOfficialsAndOddsURLs(t *testing.T) {
 	const base = "https://sports.core.api.espn.com/v2/sports/soccer/leagues/mex.1" +
 		"/events/401877018/competitions/401877018"
 
-	if got, want := CoreOfficialsURL("mex.1", "401877018"), base+"/officials"; got != want {
+	if got, want := CoreOfficialsURLOn(core, "mex.1", "401877018"), base+"/officials"; got != want {
 		t.Fatalf("CoreOfficialsURL = %q, want %q", got, want)
 	}
-	if got, want := CoreOddsURL("mex.1", "401877018"), base+"/odds"; got != want {
+	if got, want := CoreOddsURLOn(core, "mex.1", "401877018"), base+"/odds"; got != want {
 		t.Fatalf("CoreOddsURL = %q, want %q", got, want)
 	}
 }

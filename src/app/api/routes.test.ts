@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { NextRequest } from 'next/server';
-import { dataStore, currentWeekRange } from '@/server/data/store';
+import { dataStore } from '@/server/data/store';
+import { currentWeekRange } from '@/server/data/dateRange';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 
 vi.mock('@/server/data/store', async (orig) => {
@@ -30,7 +31,7 @@ const route = () => import('./[comp]/[season]/matches/route');
 const wc = { comp: 'world-cup', season: '2026' };
 const mx = { comp: 'liga-mx', season: '2026-apertura' };
 const get = async (query: string, params = mx) =>
-  (await route()).GET(new Request(`http://x/api/matches${query}`), { params });
+  (await route()).GET(new Request(`http://x/api/matches${query}`), { params: Promise.resolve(params) });
 
 const sensitiveProviderFailure = new Error(
   'upstream unavailable: sensitive provider detail',
@@ -45,11 +46,11 @@ const migratedRouteCases = [
     rejectProvider: () => vi.spyOn(dataStore, 'getBracket').mockRejectedValueOnce(sensitiveProviderFailure),
     getValid: async () => (await import('./[comp]/[season]/bracket/route')).GET(
       new Request('http://x/api/world-cup/2026/bracket'),
-      { params: wc },
+      { params: Promise.resolve(wc) },
     ),
     getMissing: async () => (await import('./[comp]/[season]/bracket/route')).GET(
       new Request('http://x/api/nope/2026/bracket'),
-      { params: { comp: 'nope', season: '2026' } },
+      { params: Promise.resolve({ comp: 'nope', season: '2026' }) },
     ),
   },
   {
@@ -60,11 +61,11 @@ const migratedRouteCases = [
     rejectProvider: () => vi.spyOn(dataStore, 'getMatchSummary').mockRejectedValueOnce(sensitiveProviderFailure),
     getValid: async () => (await import('./[comp]/[season]/match/[id]/route')).GET(
       new Request('http://x/api/world-cup/2026/match/401?home=MEX&away=USA'),
-      { params: { ...wc, id: '401' } },
+      { params: Promise.resolve({ ...wc, id: '401' }) },
     ),
     getMissing: async () => (await import('./[comp]/[season]/match/[id]/route')).GET(
       new Request('http://x/api/nope/2026/match/401'),
-      { params: { comp: 'nope', season: '2026', id: '401' } },
+      { params: Promise.resolve({ comp: 'nope', season: '2026', id: '401' }) },
     ),
   },
   {
@@ -84,11 +85,11 @@ const migratedRouteCases = [
     rejectProvider: () => vi.spyOn(dataStore, 'getNews').mockRejectedValueOnce(sensitiveProviderFailure),
     getValid: async () => (await import('./[comp]/[season]/news/route')).GET(
       new Request('http://x/api/world-cup/2026/news'),
-      { params: wc },
+      { params: Promise.resolve(wc) },
     ),
     getMissing: async () => (await import('./[comp]/[season]/news/route')).GET(
       new Request('http://x/api/nope/2026/news'),
-      { params: { comp: 'nope', season: '2026' } },
+      { params: Promise.resolve({ comp: 'nope', season: '2026' }) },
     ),
   },
   {
@@ -99,11 +100,11 @@ const migratedRouteCases = [
     rejectProvider: () => vi.spyOn(dataStore, 'getStandings').mockRejectedValueOnce(sensitiveProviderFailure),
     getValid: async () => (await import('./[comp]/[season]/standings/route')).GET(
       new Request('http://x/api/world-cup/2026/standings'),
-      { params: wc },
+      { params: Promise.resolve(wc) },
     ),
     getMissing: async () => (await import('./[comp]/[season]/standings/route')).GET(
       new Request('http://x/api/nope/2026/standings'),
-      { params: { comp: 'nope', season: '2026' } },
+      { params: Promise.resolve({ comp: 'nope', season: '2026' }) },
     ),
   },
   {
@@ -116,11 +117,11 @@ const migratedRouteCases = [
     rejectProvider: () => vi.spyOn(dataStore, 'getStandings').mockRejectedValueOnce(sensitiveProviderFailure),
     getValid: async () => (await import('./[comp]/[season]/player/[playerSlug]/route')).GET(
       new Request('http://x/api/liga-mx/2026-apertura/player/ali-avila'),
-      { params: { ...mx, playerSlug: 'ali-avila' } },
+      { params: Promise.resolve({ ...mx, playerSlug: 'ali-avila' }) },
     ),
     getMissing: async () => (await import('./[comp]/[season]/player/[playerSlug]/route')).GET(
       new Request('http://x/api/nope/2026/player/ali-avila'),
-      { params: { comp: 'nope', season: '2026', playerSlug: 'ali-avila' } },
+      { params: Promise.resolve({ comp: 'nope', season: '2026', playerSlug: 'ali-avila' }) },
     ),
   },
   {
@@ -131,11 +132,11 @@ const migratedRouteCases = [
     rejectProvider: () => vi.spyOn(dataStore, 'getTeam').mockRejectedValueOnce(sensitiveProviderFailure),
     getValid: async () => (await import('./[comp]/[season]/team/[teamId]/route')).GET(
       new Request('http://x/api/liga-mx/2026-apertura/team/mex-america'),
-      { params: { ...mx, teamId: 'mex-america' } },
+      { params: Promise.resolve({ ...mx, teamId: 'mex-america' }) },
     ),
     getMissing: async () => (await import('./[comp]/[season]/team/[teamId]/route')).GET(
       new Request('http://x/api/nope/2026/team/mex-america'),
-      { params: { comp: 'nope', season: '2026', teamId: 'mex-america' } },
+      { params: Promise.resolve({ comp: 'nope', season: '2026', teamId: 'mex-america' }) },
     ),
   },
   {
@@ -143,14 +144,14 @@ const migratedRouteCases = [
     telemetry: 'top-assists',
     comp: wc.comp,
     season: wc.season,
-    rejectProvider: () => vi.spyOn(dataStore, 'getTopAssists').mockRejectedValueOnce(sensitiveProviderFailure),
+    rejectProvider: () => vi.spyOn(dataStore, 'getLeaders').mockRejectedValueOnce(sensitiveProviderFailure),
     getValid: async () => (await import('./[comp]/[season]/top-assists/route')).GET(
       new Request('http://x/api/world-cup/2026/top-assists'),
-      { params: wc },
+      { params: Promise.resolve(wc) },
     ),
     getMissing: async () => (await import('./[comp]/[season]/top-assists/route')).GET(
       new Request('http://x/api/nope/2026/top-assists'),
-      { params: { comp: 'nope', season: '2026' } },
+      { params: Promise.resolve({ comp: 'nope', season: '2026' }) },
     ),
   },
   {
@@ -158,14 +159,14 @@ const migratedRouteCases = [
     telemetry: 'top-scorers',
     comp: wc.comp,
     season: wc.season,
-    rejectProvider: () => vi.spyOn(dataStore, 'getTopScorers').mockRejectedValueOnce(sensitiveProviderFailure),
+    rejectProvider: () => vi.spyOn(dataStore, 'getLeaders').mockRejectedValueOnce(sensitiveProviderFailure),
     getValid: async () => (await import('./[comp]/[season]/top-scorers/route')).GET(
       new Request('http://x/api/world-cup/2026/top-scorers'),
-      { params: wc },
+      { params: Promise.resolve(wc) },
     ),
     getMissing: async () => (await import('./[comp]/[season]/top-scorers/route')).GET(
       new Request('http://x/api/nope/2026/top-scorers'),
-      { params: { comp: 'nope', season: '2026' } },
+      { params: Promise.resolve({ comp: 'nope', season: '2026' }) },
     ),
   },
 ] as const;
@@ -208,7 +209,7 @@ describe('player route slug resolution', () => {
     const getPlayer = vi.spyOn(dataStore, 'getPlayer');
     const response = await (await import('./[comp]/[season]/player/[playerSlug]/route')).GET(
       new Request('http://x/api/liga-mx/2026-apertura/player/nobody-here'),
-      { params: { ...mx, playerSlug: 'nobody-here' } },
+      { params: Promise.resolve({ ...mx, playerSlug: 'nobody-here' }) },
     );
 
     expect(response.status).toBe(404);
@@ -259,7 +260,7 @@ describe('match summary route — player slug enrichment', () => {
 
     const response = await (await import('./[comp]/[season]/match/[id]/route')).GET(
       new Request('http://x/api/liga-mx/2026-apertura/match/401?home=222&away=227'),
-      { params: { ...mx, id: '401' } },
+      { params: Promise.resolve({ ...mx, id: '401' }) },
     );
     const body = await response.json();
     expect(body.scorers[0].playerSlug).toBe('ali-avila');
@@ -272,7 +273,7 @@ describe('match summary route — player slug enrichment', () => {
 
     const response = await (await import('./[comp]/[season]/match/[id]/route')).GET(
       new Request('http://x/api/liga-mx/2026-apertura/match/401?home=222&away=227'),
-      { params: { ...mx, id: '401' } },
+      { params: Promise.resolve({ ...mx, id: '401' }) },
     );
     expect(response.status).toBe(200);
     const body = await response.json();
@@ -293,7 +294,7 @@ describe('match summary route — player slug enrichment', () => {
 
       const responsePromise = (await import('./[comp]/[season]/match/[id]/route')).GET(
         new Request('http://x/api/liga-mx/2026-apertura/match/401?home=222&away=227'),
-        { params: { ...mx, id: '401' } },
+        { params: Promise.resolve({ ...mx, id: '401' }) },
       );
       await vi.advanceTimersByTimeAsync(800);
       const response = await responsePromise;
@@ -313,7 +314,7 @@ describe('team route not-found result', () => {
     vi.spyOn(dataStore, 'getTeam').mockResolvedValueOnce(null);
     const response = await (await import('./[comp]/[season]/team/[teamId]/route')).GET(
       new Request('http://x/api/liga-mx/2026-apertura/team/mex-america'),
-      { params: { ...mx, teamId: 'mex-america' } },
+      { params: Promise.resolve({ ...mx, teamId: 'mex-america' }) },
     );
 
     expect(response.status).toBe(404);

@@ -32,9 +32,6 @@ func (f *fakeRepository) BeginMatchRecovery(context.Context, uuid.UUID, string, 
 func (f *fakeRepository) CompleteMatchRecovery(context.Context, uuid.UUID, string, time.Time, bool) error {
 	return nil
 }
-func (f *fakeRepository) RecordMatchObservation(context.Context, store.MatchIdentity, model.Match, time.Time) error {
-	return nil
-}
 func (f *fakeRepository) RecordMatchPoll(context.Context, string, string, string, time.Time, string, int) error {
 	return nil
 }
@@ -72,7 +69,7 @@ func (f *recoveryRepository) BeginMatchRecovery(_ context.Context, id uuid.UUID,
 	f.retryAt[id] = retryAt
 	return nil
 }
-func (f *recoveryRepository) RecordMatchObservation(_ context.Context, _ store.MatchIdentity, match model.Match, at time.Time) error {
+func (f *recoveryRepository) recordObservation(match model.Match, at time.Time) error {
 	if f.observationFailures > 0 {
 		f.observationFailures--
 		return errors.New("temporary observation write failure")
@@ -102,7 +99,7 @@ func (f *fakeRepository) RecordMatchObservations(context.Context, []store.MatchO
 func (f *recoveryRepository) RecordMatchObservations(ctx context.Context, observations []store.MatchObservation) error {
 	f.observationBatches++
 	for _, observation := range observations {
-		if err := f.RecordMatchObservation(ctx, observation.Identity, observation.Match, observation.ObservedAt); err != nil {
+		if err := f.recordObservation(observation.Match, observation.ObservedAt); err != nil {
 			return err
 		}
 	}

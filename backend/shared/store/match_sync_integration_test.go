@@ -75,7 +75,7 @@ func TestObservationRenewsWithoutRewritingFacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, at := range []time.Time{now, now.Add(time.Minute), now.Add(-time.Minute)} {
-		if err := st.RecordMatchObservation(ctx, id, match, at); err != nil {
+		if err := st.RecordMatchObservations(ctx, []MatchObservation{{id, match, at}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -87,7 +87,7 @@ func TestObservationRenewsWithoutRewritingFacts(t *testing.T) {
 		t.Fatalf("facts rewritten or observation regressed: before=%v after=%v observed=%v", before, after, observed)
 	}
 	match.State = model.MatchStateScheduled
-	if err := st.RecordMatchObservation(ctx, id, match, now.Add(time.Hour)); err == nil {
+	if err := st.RecordMatchObservations(ctx, []MatchObservation{{id, match, now.Add(time.Hour)}}); err == nil {
 		t.Fatal("contradictory facts must not renew freshness")
 	}
 }
@@ -124,7 +124,7 @@ func TestMatchSyncLeastPrivilegeAndFinalization(t *testing.T) {
 	if err := st.UpsertMatch(ctx, id, match); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.RecordMatchObservation(ctx, id, match, now); err != nil {
+	if err := st.RecordMatchObservations(ctx, []MatchObservation{{id, match, now}}); err != nil {
 		t.Fatal(err)
 	}
 	if ok, err := st.FinalizeMatch(ctx, id, match, model.MatchDetail{}); err != nil || !ok {
@@ -184,7 +184,7 @@ func TestSuspensionObservationPreservesLastKnownScores(t *testing.T) {
 	if err := st.UpsertMatch(ctx, id, match); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.RecordMatchObservation(ctx, id, match, now); err != nil {
+	if err := st.RecordMatchObservations(ctx, []MatchObservation{{id, match, now}}); err != nil {
 		t.Fatal(err)
 	}
 	var state string
@@ -224,7 +224,7 @@ func TestSuccessfulLiveRecoveryResetsFailureBackoffAcrossRestart(t *testing.T) {
 	if err := st.BeginMatchRecovery(ctx, id.MatchID, testSource, at, at.Add(6*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.RecordMatchObservation(ctx, id, match, at); err != nil {
+	if err := st.RecordMatchObservations(ctx, []MatchObservation{{id, match, at}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.CompleteMatchRecovery(ctx, id.MatchID, testSource, at, true); err != nil {

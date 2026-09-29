@@ -1,7 +1,7 @@
 import type { CareerStint, GameLogRow, PlayerProfile, PlayerSeasonTotal, Team } from '../types';
 
 /** Profile without the blocks that come from the other two endpoints. */
-export type AthleteIdentity = Omit<PlayerProfile, 'gameLog' | 'gameLogLabel' | 'career' | 'news'>;
+type AthleteIdentity = Omit<PlayerProfile, 'gameLog' | 'gameLogLabel' | 'career' | 'news'>;
 
 function num(v: unknown): number | null {
   const n = Number(v);

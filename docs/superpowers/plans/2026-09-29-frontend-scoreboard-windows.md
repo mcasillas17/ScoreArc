@@ -46,6 +46,12 @@ Provider year differs for Clausura; padded months cross season boundaries; histo
 brackets need raw round fields; failed partitions must not renew TTL; summary calls
 must include only the exact retained window. Task 1/2 tests pin each behavior.
 
+The owner's later instruction adds integration of cleanup PR #191 and an
+independent GPT-6 Luna Ponytail review. Both are complete; integration retains the
+cleanup, all local gates pass, and Luna reported no actionable complexity findings.
+The configured full panel was reopened on the integrated implementation before
+its separate final documented-state review.
+
 Implementation and local acceptance are complete. Publication milestones above
 are recorded in the PR after they happen; this source does not predeclare review,
 commit, push or CI outcomes. Operational details: [frontend window contract](../../FRONTEND_SCOREBOARD_WINDOWS.md).

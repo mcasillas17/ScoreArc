@@ -5,10 +5,10 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/cors"
 
 	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
@@ -50,13 +50,7 @@ func (a *App) router() http.Handler {
 	router.Use(a.requestID)
 	router.Use(a.recoverJSON)
 	router.Use(a.requestLogging)
-	router.Use(cors.Handler(cors.Options{
-		AllowedOrigins: []string{"*"},
-		AllowedMethods: []string{http.MethodGet, http.MethodOptions},
-		AllowedHeaders: []string{"Accept", "Content-Type"},
-		ExposedHeaders: freshnessHeaders,
-		MaxAge:         300,
-	}))
+	router.Use(corsHeaders)
 	router.Use(a.securityHeaders)
 	router.Use(a.rateLimit)
 
@@ -91,6 +85,26 @@ func (a *App) resolve(competition, season string) (config.Competition, config.Se
 		return config.Competition{}, config.Season{}, false
 	}
 	return comp, resolvedSeason, true
+}
+
+var exposedHeaders = strings.Join(freshnessHeaders, ", ")
+
+// corsHeaders opens the read-only API to every origin. A preflight is answered
+// here, before the rate limiter, and never reaches a route.
+func corsHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		header := writer.Header()
+		header.Set("Access-Control-Allow-Origin", "*")
+		header.Set("Access-Control-Expose-Headers", exposedHeaders)
+		if request.Method == http.MethodOptions && request.Header.Get("Access-Control-Request-Method") != "" {
+			header.Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+			header.Set("Access-Control-Allow-Headers", "Accept, Content-Type")
+			header.Set("Access-Control-Max-Age", "300")
+			writer.WriteHeader(http.StatusOK)
+			return
+		}
+		next.ServeHTTP(writer, request)
+	})
 }
 
 func (a *App) securityHeaders(next http.Handler) http.Handler {

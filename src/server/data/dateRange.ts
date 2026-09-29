@@ -6,6 +6,28 @@ function fmt(d: Date): string {
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// ScoreArc date window (YYYYMMDD-YYYYMMDD) covering the Monday→Sunday
+// calendar week that contains `now` (local time). Used so the matches feed
+// returns the whole current week's fixtures, not just ESPN's default (today).
+export function currentWeekRange(now: Date): string {
+  const mondayOffset = (now.getDay() + 6) % 7; // getDay(): 0=Sun..6=Sat → days since Monday
+  const mon = new Date(now);
+  mon.setDate(now.getDate() - mondayOffset);
+  const sun = new Date(mon);
+  sun.setDate(mon.getDate() + 6);
+  return `${fmt(mon)}-${fmt(sun)}`;
+}
+
+// ScoreArc date window covering today through `days` ahead. Used by
+// the fixture banner, which must see past the end of the current week: a
+// season starting next Friday has fixtures, and a banner that says otherwise
+// is wrong rather than merely empty.
+export function forwardRange(now: Date, days = 28): string {
+  const end = new Date(now);
+  end.setDate(now.getDate() + days);
+  return `${fmt(now)}-${fmt(end)}`;
+}
+
 /** The whole calendar month containing `d`. */
 export function monthRange(d: Date): string {
   const first = new Date(d.getFullYear(), d.getMonth(), 1);

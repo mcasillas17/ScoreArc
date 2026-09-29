@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { forwardRange, currentWeekRange } from './store';
+import { forwardRange, currentWeekRange } from './dateRange';
 
 // Thursday 2026-08-14 — the day five of nine competitions held 132 scheduled
 // fixtures between them and showed an empty banner, because every one of those

@@ -1,4 +1,5 @@
-import { collectStories, publishedAgo, type DigestNewsItem } from '@/lib/digest';
+import { collectStories, type DigestNewsItem } from '@/lib/digest';
+import { formatRelativeTime } from '@/i18n/format';
 import type { Locale } from '@/i18n/config';
 import { listCompetitions, resolveSeason, type Competition } from './competitions';
 import { dataStore } from './store';
@@ -34,10 +35,14 @@ export async function collectDatedStories(
       dataStore.getNews(resolveSeason(comp.id)!).catch((): NewsArticle[] => []),
     ),
   );
-  return collectStories(feeds, { perFeed, limit }).map((article) => ({
-    article,
-    // A duration, not a wall clock: safe to format on a server running UTC
-    // because it means the same thing to a reader in any timezone.
-    ago: publishedAgo(now.getTime() - new Date(article.published).getTime(), locale),
-  }));
+  return collectStories(feeds, { perFeed, limit }).map((article) => {
+    const published = new Date(article.published);
+    return {
+      article,
+      // A duration, not a wall clock: safe to format on a server running UTC
+      // because it means the same thing to a reader in any timezone. A publish
+      // time in the future is a provider defect, not a duration.
+      ago: published > now ? null : formatRelativeTime(published, now, locale),
+    };
+  });
 }

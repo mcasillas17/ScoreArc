@@ -183,13 +183,6 @@ func TestMapScoreboardAcceptsNumericIdentityAndScores(t *testing.T) {
 
 }
 
-func TestBackfillCompletenessRejectsLimitSizedResponse(t *testing.T) {
-	raw := []byte(`{"events":[{},{}]}`)
-	if err := ValidateBackfillCompleteness(raw, 2); err == nil {
-		t.Fatal("expected truncated backfill error")
-	}
-}
-
 func TestMapScoreboardNormalizesSecondlessKickoff(t *testing.T) {
 	raw := []byte(`{"events":[{"id":"1","date":"2026-06-29T17:00Z",
 		"season":{"slug":"group-stage"},
@@ -208,27 +201,6 @@ func TestMapScoreboardNormalizesSecondlessKickoff(t *testing.T) {
 	}
 	if matches[0].BracketRequired == nil || *matches[0].BracketRequired {
 		t.Fatalf("bracket required=%v", matches[0].BracketRequired)
-	}
-}
-
-func TestFilterScoreboardSeasonRemovesForeignEvents(t *testing.T) {
-	raw := []byte(`{"events":[
-		{"id":"old","season":{"year":2025}},
-		{"id":"current","season":{"year":2026}},
-		{"id":"unknown"}
-	]}`)
-	filtered, err := FilterScoreboardSeason(raw, 2026)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var scoreboard rawScoreboard
-	if err := json.Unmarshal(filtered, &scoreboard); err != nil {
-		t.Fatal(err)
-	}
-	if len(scoreboard.Events) != 2 ||
-		string(scoreboard.Events[0].ID) != "current" ||
-		string(scoreboard.Events[1].ID) != "unknown" {
-		t.Fatalf("filtered events=%+v", scoreboard.Events)
 	}
 }
 

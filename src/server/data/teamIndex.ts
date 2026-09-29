@@ -4,7 +4,7 @@ import { canonicalTeamId } from './teamIdentity';
 import type { Team } from './types';
 
 /** One competition a club appears in, and the page that describes it there. */
-export interface TeamMembership {
+interface TeamMembership {
   competitionId: string;
   competitionName: string;
   seasonId: string;

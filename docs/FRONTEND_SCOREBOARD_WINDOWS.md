@@ -2,7 +2,10 @@
 
 ## Evidence and scope — September 29, 2026 UTC
 
-This repair starts from origin/main at aa8aa2141750db7115a912d46f48d78663241b8a.
+This repair started from origin/main at aa8aa2141750db7115a912d46f48d78663241b8a.
+Before PR delivery, the owner requested incorporating cleanup PR #191 at
+9a65d8cb2385284d932cf70a8a035b716e9b61f2. The integration keeps its moved date
+helpers, fixed TTLs, shared client fetch helper and removal of the unused live API.
 Backend PR #183 (969e512) repaired the Go path; the frontend still called ESPN
 with hyphenated date ranges. The frontend remains ESPN-backed. No reader cutover,
 production operation, migration or additional competition is part of this change.
@@ -79,15 +82,18 @@ Failing-first regressions cover boundaries, historical/split editions, exact sco
 duplicate conflicts, empty results, failed partitions, malformed/truncated bodies,
 bytes, timeouts/cancellation, request limits, cache isolation, enrichment scope and
 concurrency. Store, API and localized page checks accompany the loader tests.
-npm test, npx tsc --noEmit, npm run lint and npm run build passed locally;
-the build ran with the dev server stopped. ESLint retains seven existing warnings.
+npm test (88 files, 1,249 tests), npx tsc --noEmit, npm run lint and npm run build
+passed after incorporating #191; the build ran with the dev server stopped.
+ESLint retains five existing warnings. The required competition exporter passed
+with no generated JSON drift. The owner's additional GPT-6 Luna Ponytail review
+found no actionable complexity issues; it supplements the configured Knights panel.
 
 Real-browser checks used localhost with real ESPN reads: Liga MX and LaLiga
 Now/calendar, month navigation, July 31 local/August 1 UTC matches, World Cup 2022
 calendar/bracket, Leagues Cup computed tables, home results and the upcoming banner.
 Representative 390px mobile and 1440px desktop layouts had no horizontal overflow.
 A temporary local transport failure returned 503 only for ESPN scoreboard reads:
-EN/ES Now and the EN calendar rendered unavailable states, not successful emptiness.
+EN/ES Now and calendar rendered unavailable states, not successful emptiness.
 Both languages no longer promise that the other view works. The normal server was
 restored; no failure switch was added to the product.
 

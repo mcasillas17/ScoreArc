@@ -1,20 +1,20 @@
 import type { Match } from './types';
 
-export interface PrioritisedMatches {
+interface PrioritisedMatches {
   live: Match[];
   upcoming: Match[];
   recent: Match[];
 }
 
-export interface PriorityWindows {
+interface PriorityWindows {
   /** How far back a finished match still counts as "just finished". */
   recentWindowMs?: number;
   /** How long past kickoff a still-scheduled match counts as imminent. */
   kickoffGraceMs?: number;
 }
 
-export const RECENT_WINDOW_MS = 48 * 60 * 60 * 1000;
-export const KICKOFF_GRACE_MS = 3 * 60 * 60 * 1000;
+const RECENT_WINDOW_MS = 48 * 60 * 60 * 1000;
+const KICKOFF_GRACE_MS = 3 * 60 * 60 * 1000;
 
 /**
  * The one rule both entry points answer: live, then what is next, then what

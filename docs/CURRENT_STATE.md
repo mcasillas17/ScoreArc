@@ -13,7 +13,10 @@ filtering and validated raw-event deduplication for calendar, Now/live, upcoming
 enriched matches, computed tables and historical brackets. Local tests, typecheck,
 lint, build and real-browser acceptance passed, including controlled unavailable
 states and EN/ES copy. This is **locally verified, not merged, deployed or accepted
-in production**. The frontend still uses ESPN; no E16 cutover or backend recovery
+in production**. Before delivery, cleanup #191 at `9a65d8c` was incorporated
+at the owner's request; its deleted code stays deleted. The integrated state passes
+1,249 tests and the same local gates, plus an additional GPT-6 Luna Ponytail review.
+The frontend still uses ESPN; no E16 cutover or backend recovery
 was performed. See [the evidence, request budgets and remaining limits](FRONTEND_SCOREBOARD_WINDOWS.md).
 
 **Match reliability update, 2026-09-21:** implementation began on freshly fetched

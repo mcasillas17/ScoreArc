@@ -499,7 +499,7 @@ func TestESPNBracketUsesExplicitLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := espnprovider.BracketURLWithLimit("fifa.world", "202608", scoreboardEventLimit)
+	want := espnprovider.ScoreboardURLWithLimit("fifa.world", "202608", scoreboardEventLimit)
 	if gotURL != want {
 		t.Fatalf("url=%q want=%q", gotURL, want)
 	}
@@ -523,7 +523,7 @@ func TestESPNBracketBackfillUsesFullSeasonWithoutConfiguredRange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := espnprovider.BracketURLWithLimit(
+	want := espnprovider.ScoreboardURLWithLimit(
 		"concacaf.leagues.cup", "202701", scoreboardEventLimit,
 	)
 	if gotURL != want {
@@ -551,7 +551,7 @@ func TestESPNBracketUsesRollingWindowWithoutConfiguredRange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := espnprovider.BracketURLWithLimit("concacaf.leagues.cup", "202609", scoreboardEventLimit)
+	want := espnprovider.ScoreboardURLWithLimit("concacaf.leagues.cup", "202609", scoreboardEventLimit)
 	if gotURL != want {
 		t.Fatalf("url=%q want=%q", gotURL, want)
 	}

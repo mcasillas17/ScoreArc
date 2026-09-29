@@ -200,12 +200,12 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
     // A national champion's card uses the flag, so the crest would be ~100
     // dead characters in every shared World Cup link.
     const shareCrest = teamStyle === 'crest' ? champion?.crestUrl : null;
-    const champParam = champion
-      ? `&c=${encodeURIComponent(champion.abbr)}&name=${encodeURIComponent(champion.name)}${
-          shareCrest ? `&crest=${encodeURIComponent(shareCrest)}` : ''
-        }`
-      : '';
-    const url = `${origin}/${locale}/c/${compId}/${seasonId}?b=${encodePicks(picks)}${champParam}`;
+    const query = new URLSearchParams({
+      b: encodePicks(picks),
+      ...(champion && { c: champion.abbr, name: champion.name }),
+      ...(shareCrest && { crest: shareCrest }),
+    });
+    const url = `${origin}/${locale}/c/${compId}/${seasonId}?${query}`;
     const text = t('bracket.shareText', champion?.name ?? '', compShortName, seasonLabel, url);
     const hashtag = `${compShortName.replace(/\s+/g, '')}${seasonLabel}`; // "WorldCup2026" / "LeaguesCup2026"
     const tweet = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&hashtags=${hashtag}`;

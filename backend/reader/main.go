@@ -57,7 +57,7 @@ func run(logger *slog.Logger) error {
 		store:    store,
 		registry: registry,
 		logger:   logger,
-		news:     newNewsServiceWithContext(processCtx, espn.New(), defaultNewsTTL),
+		news:     newNewsService(processCtx, espn.New(), defaultNewsTTL),
 		limiter:  newIPRateLimiter(10, 30),
 		health:   newHealthChecker(processCtx, store.Ping),
 	}

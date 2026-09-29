@@ -7,6 +7,7 @@ import { monthRange, shiftMonth } from '@/server/data/dateRange';
 import { trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
 import MatchDetailPopup from './MatchDetailPopup';
 import { useMatchDetails } from './useMatchDetails';
+import { fetchMatches } from './fetchMatches';
 import MatchRow from './MatchRow';
 import {
   monthLoadFailed,
@@ -130,21 +131,11 @@ export default function MatchCalendar({
     setLoadState(monthLoadStarted);
 
     async function loadMonth() {
-      let failureStatus: number | undefined;
       try {
-        const res = await fetch(`${apiBase}/matches?range=${encodeURIComponent(range)}`, {
-          cache: 'no-store',
-          signal: controller.signal,
-        });
-        if (!res.ok) {
-          failureStatus = res.status;
-          throw new Error(`Fixtures request failed with status ${res.status}`);
-        }
-        const data: unknown = await res.json();
-        if (!Array.isArray(data)) throw new Error('Fixtures response was not an array');
+        const data = await fetchMatches(apiBase, range, controller.signal);
         if (controller.signal.aborted) return;
         setLoadState((state) => {
-          const transition = monthLoadSucceeded(state, data as Match[], range);
+          const transition = monthLoadSucceeded(state, data, range);
           loadedRange.current = transition.loadedRange;
           return transition.state;
         });
@@ -152,7 +143,7 @@ export default function MatchCalendar({
           trackFeedRecovery('fixtures');
           feedFailed.current = false;
         }
-      } catch {
+      } catch (err) {
         if (controller.signal.aborted) return;
         setLoadState((state) => {
           const transition = monthLoadFailed(
@@ -163,7 +154,7 @@ export default function MatchCalendar({
           return transition.state;
         });
         if (!feedFailed.current) {
-          trackFeedFailure('fixtures', failureStatus);
+          trackFeedFailure('fixtures', (err as { status?: number }).status);
           feedFailed.current = true;
         }
       }
@@ -203,14 +194,10 @@ export default function MatchCalendar({
     let alive = true;
     async function refresh() {
       try {
-        const res = await fetch(`${apiBase}/matches?range=${encodeURIComponent(range)}`, {
-          cache: 'no-store',
-        });
-        if (!res.ok) throw new Error(String(res.status));
-        const data: unknown = await res.json();
-        if (!alive || !Array.isArray(data)) return;
+        const data = await fetchMatches(apiBase, range);
+        if (!alive) return;
         setLoadState((state) => {
-          const transition = monthLoadSucceeded(state, data as Match[], range);
+          const transition = monthLoadSucceeded(state, data, range);
           loadedRange.current = transition.loadedRange;
           return transition.state;
         });

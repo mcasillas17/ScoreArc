@@ -505,11 +505,11 @@ func sameObservedFacts(a, b model.Match) bool {
 	return a.ID == b.ID && a.Kickoff == b.Kickoff && a.State == b.State &&
 		a.StatusName == b.StatusName && a.StatusDetail == b.StatusDetail &&
 		a.Home.ID == b.Home.ID && a.Away.ID == b.Away.ID &&
-		strPtrEqual(a.Minute, b.Minute) &&
-		intPtrEqual(a.HomeScore, b.HomeScore) && intPtrEqual(a.AwayScore, b.AwayScore)
+		ptrEqual(a.Minute, b.Minute) &&
+		ptrEqual(a.HomeScore, b.HomeScore) && ptrEqual(a.AwayScore, b.AwayScore)
 }
 
-func intPtrEqual(a, b *int) bool {
+func ptrEqual[T comparable](a, b *T) bool {
 	if a == nil || b == nil {
 		return a == b
 	}

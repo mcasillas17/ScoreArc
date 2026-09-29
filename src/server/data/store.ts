@@ -24,10 +24,9 @@ import {
   athleteUrl, athleteOverviewUrl, athleteBioUrl,
 } from './endpoints';
 import { mapScoreboard } from './providers/espn-matches';
-import { mapTeamProfile, mapTeamRoster, mapScopedTeamSchedule } from './providers/espn-team';
+import { mapTeamProfile, mapTeamRoster, mapScopedTeamSchedule, splitLeagueTeamIds } from './providers/espn-team';
 import { uniqueTeamMatches } from './teamPerformance';
 import { mapAthleteProfile, mapAthleteOverview, mapAthleteBio } from './providers/espn-athlete';
-import { splitLeagueTeamIds } from './providers/espn-teams';
 import { computePhaseTables } from './leaguesCupTables';
 import { computeOverallTable } from './mlsTables';
 import { mapNews } from './providers/espn-news';
@@ -39,7 +38,7 @@ import {
   mapSummaryVideos, mapSummaryShootout, mapSummaryInfo, mapSummaryForm, mapSummaryCommentary, mapSummaryH2H,
 } from './providers/espn-summary';
 import { TtlCache } from './cache';
-import { nowWindowRange } from './dateRange';
+import { currentWeekRange, forwardRange, nowWindowRange } from './dateRange';
 import { fetchScoreboardWindow, boundedFetchJson, type ScoreboardFetchJson } from './scoreboardWindow';
 
 // The store is keyed on a resolved (competition, season) pair. The ESPN league
@@ -54,8 +53,6 @@ export interface DataStore {
   getBracket(rc: CompetitionSeason): Promise<BracketRound[]>;
   getMatchSummary(rc: CompetitionSeason, eventId: string, homeId: string, awayId: string): Promise<MatchSummaryData>;
   getLeaders(rc: CompetitionSeason): Promise<{ scorers: StatLeader[]; assists: StatLeader[] }>;
-  getTopScorers(rc: CompetitionSeason): Promise<StatLeader[]>;
-  getTopAssists(rc: CompetitionSeason): Promise<StatLeader[]>;
   getNews(rc: CompetitionSeason): Promise<NewsArticle[]>;
   getTeam(rc: CompetitionSeason, teamId: string): Promise<TeamProfile | null>;
   getSquad(rc: CompetitionSeason, teamId: string): Promise<SquadPlayer[]>;
@@ -63,37 +60,11 @@ export interface DataStore {
 }
 
 // How many scorers the Golden Boot table shows.
-export const TOP_SCORERS_SHOWN = 10;
+const TOP_SCORERS_SHOWN = 10;
 
-export interface DataDeps {
+interface DataDeps {
   fetchJson: ScoreboardFetchJson;
   cache: TtlCache<unknown>;
-}
-
-// ScoreArc date window (YYYYMMDD-YYYYMMDD) covering the Monday→Sunday
-// calendar week that contains `now` (local time). Used so the matches feed
-// returns the whole current week's fixtures, not just ESPN's default (today).
-export function currentWeekRange(now: Date): string {
-  const mondayOffset = (now.getDay() + 6) % 7; // getDay(): 0=Sun..6=Sat → days since Monday
-  const mon = new Date(now);
-  mon.setDate(now.getDate() - mondayOffset);
-  const sun = new Date(mon);
-  sun.setDate(mon.getDate() + 6);
-  const fmt = (d: Date) =>
-    `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  return `${fmt(mon)}-${fmt(sun)}`;
-}
-
-// ScoreArc date window covering today through `days` ahead. Used by
-// the fixture banner, which must see past the end of the current week: a
-// season starting next Friday has fixtures, and a banner that says otherwise
-// is wrong rather than merely empty.
-export function forwardRange(now: Date, days = 28): string {
-  const end = new Date(now);
-  end.setDate(now.getDate() + days);
-  const fmt = (d: Date) =>
-    `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  return `${fmt(now)}-${fmt(end)}`;
 }
 
 // Penalty shootout aggregate parsed from a match note, e.g.
@@ -126,13 +97,11 @@ export function createDataStore(deps: DataDeps): DataStore {
   const key = (rc: CompetitionSeason, k: string) => `${rc.competition.id}:${rc.season.id}:${k}`;
   const slug = (rc: CompetitionSeason) => rc.competition.espnSlug;
 
-    // Both leaderboards arrive in ONE /statistics response. Fetch it once, map
+  // Both leaderboards arrive in ONE /statistics response. Fetch it once, map
   // both, cache the pair — rendering two tables must not mean two requests for
-  // a payload we already hold. A free function rather than a store method so
-  // the two getters cannot be detached from their `this`.
+  // a payload we already hold.
   async function loadLeaders(
     rc: CompetitionSeason,
-    ttlMs = 60_000,
   ): Promise<{ scorers: StatLeader[]; assists: StatLeader[] }> {
     const k = key(rc, 'leaders');
     const cached = deps.cache.get(k) as { scorers: StatLeader[]; assists: StatLeader[] } | undefined;
@@ -144,7 +113,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       scorers: mapLeaders(raw, 'goalsLeaders', TOP_SCORERS_SHOWN),
       assists: mapLeaders(raw, 'assistsLeaders', TOP_SCORERS_SHOWN),
     };
-    deps.cache.set(k, boards, ttlMs);
+    deps.cache.set(k, boards, 60_000);
     return boards;
   }
 
@@ -191,7 +160,7 @@ export function createDataStore(deps: DataDeps): DataStore {
   }
 
   async function getMatchSummary(
-    rc: CompetitionSeason, eventId: string, homeId: string, awayId: string, ttlMs = 12_000, signal?: AbortSignal,
+    rc: CompetitionSeason, eventId: string, homeId: string, awayId: string, signal?: AbortSignal,
   ): Promise<MatchSummaryData> {
     const k = key(rc, `summary:${eventId}`);
     const cached = deps.cache.get(k) as MatchSummaryData | undefined;
@@ -212,14 +181,14 @@ export function createDataStore(deps: DataDeps): DataStore {
       commentary: mapSummaryCommentary(raw),
       h2h: mapSummaryH2H(raw),
     };
-    deps.cache.set(k, summary, ttlMs);
+    deps.cache.set(k, summary, 12_000);
     return summary;
   }
 
   return {
     getMatchSummary,
 
-    async getMatches(rc, range?: string, signal?: AbortSignal, ttlMs = 10_000): Promise<Match[]> {
+    async getMatches(rc, range?: string, signal?: AbortSignal): Promise<Match[]> {
       signal?.throwIfAborted();
       const window = range ?? currentWeekRange(new Date());
       // The range is part of the identity of this result. Without it in the
@@ -237,7 +206,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       for (let i = 0; i < matches.length; i += 4) {
         readSignal.throwIfAborted();
         summaries.push(...await Promise.all(matches.slice(i, i + 4).map(m =>
-          getMatchSummary(rc, m.id, m.home.id, m.away.id, 12_000, readSignal).catch(() => emptySummary()),
+          getMatchSummary(rc, m.id, m.home.id, m.away.id, readSignal).catch(() => emptySummary()),
         )));
       }
       readSignal.throwIfAborted();
@@ -249,7 +218,7 @@ export function createDataStore(deps: DataDeps): DataStore {
         m.shootoutDetail = summaries[i].shootoutDetail;
       });
       for (const m of matches) m.shootout = parseShootout(m.note, m.home.name, m.away.name);
-      deps.cache.set(k, matches, ttlMs);
+      deps.cache.set(k, matches, 10_000);
       return matches;
     },
 
@@ -263,17 +232,17 @@ export function createDataStore(deps: DataDeps): DataStore {
     //
     // Longer TTL than getMatches for the same reason: a finished month does
     // not change.
-    async getFixtures(rc, range: string, signal?: AbortSignal, ttlMs = 120_000): Promise<Match[]> {
-      return loadWindow(rc, range, `fixtures:${range}`, ttlMs, signal);
+    async getFixtures(rc, range: string, signal?: AbortSignal): Promise<Match[]> {
+      return loadWindow(rc, range, `fixtures:${range}`, 120_000, signal);
     },
 
     // The window the live band and the "Now" view read. Same unenriched
     // scoreboard as getFixtures, on its own cache key and a far shorter TTL:
     // the band polls every 30s, and serving it a 120s-old entry would render
     // "67'" beside a two-minute-old scoreline.
-    async getLiveWindow(rc, ttlMs = 15_000): Promise<Match[]> {
+    async getLiveWindow(rc): Promise<Match[]> {
       const range = nowWindowRange(new Date());
-      return loadWindow(rc, range, `live:${range}`, ttlMs);
+      return loadWindow(rc, range, `live:${range}`, 15_000);
     },
 
     // The next fixtures, however far out they are.
@@ -287,7 +256,7 @@ export function createDataStore(deps: DataDeps): DataStore {
     // This fetches a forward window and does NO summary enrichment — a banner
     // needs kickoff, teams and state, and pulling a summary per match would
     // turn one request into thirty.
-    async getUpcoming(rc, limit = 12, signal?: AbortSignal, ttlMs = 60_000): Promise<Match[]> {
+    async getUpcoming(rc, limit = 12, signal?: AbortSignal): Promise<Match[]> {
       signal?.throwIfAborted();
       const range = forwardRange(new Date());
       const k = key(rc, `upcoming:${range}:${limit}`);
@@ -298,7 +267,7 @@ export function createDataStore(deps: DataDeps): DataStore {
         .filter((m) => m.state === 'scheduled')
         .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime())
         .slice(0, limit);
-      deps.cache.set(k, upcoming, ttlMs);
+      deps.cache.set(k, upcoming, 60_000);
       return upcoming;
     },
 
@@ -310,7 +279,7 @@ export function createDataStore(deps: DataDeps): DataStore {
     // the schedule are blocks on that page, so a failure there degrades to an
     // empty block -- losing the whole page because the fixture list timed out
     // would be a worse answer than showing the club without it.
-    async getTeam(rc, teamId: string, ttlMs = 120_000): Promise<TeamProfile | null> {
+    async getTeam(rc, teamId: string): Promise<TeamProfile | null> {
       const k = key(rc, `team:${teamId}`);
       const cached = deps.cache.get(k) as TeamProfile | undefined;
       if (cached) return cached;
@@ -340,7 +309,7 @@ export function createDataStore(deps: DataDeps): DataStore {
             upcoming: upcoming.available ? 'available' : 'unavailable',
           },
         };
-        deps.cache.set(k, profile, ttlMs);
+        deps.cache.set(k, profile, 120_000);
         return profile;
       } catch {
         return null;
@@ -350,14 +319,14 @@ export function createDataStore(deps: DataDeps): DataStore {
     // Roster only -- one request, for callers that need players but not the
     // profile or schedule (the player index reads every club in a
     // competition, so the 4-request getTeam would quadruple its cold cost).
-    async getSquad(rc, teamId: string, ttlMs = 300_000): Promise<SquadPlayer[]> {
+    async getSquad(rc, teamId: string): Promise<SquadPlayer[]> {
       const k = key(rc, `squad:${teamId}`);
       const cached = deps.cache.get(k) as SquadPlayer[] | undefined;
       if (cached) return cached;
       try {
         const raw = await deps.fetchJson(teamRosterUrl(slug(rc), teamId));
         const squad = mapTeamRoster(raw);
-        deps.cache.set(k, squad, ttlMs);
+        deps.cache.set(k, squad, 300_000);
         return squad;
       } catch {
         return [];
@@ -370,7 +339,7 @@ export function createDataStore(deps: DataDeps): DataStore {
     // empty rather than taking the page down. The two optional payloads'
     // sibling endpoints (/gamelog, /splits, /stats) are dead upstream and are
     // never called -- /overview and /bio are the only sources.
-    async getPlayer(rc, athleteId: string, ttlMs = 120_000): Promise<PlayerProfile | null> {
+    async getPlayer(rc, athleteId: string): Promise<PlayerProfile | null> {
       const k = key(rc, `player:${athleteId}`);
       const cached = deps.cache.get(k) as PlayerProfile | undefined;
       if (cached) return cached;
@@ -392,14 +361,14 @@ export function createDataStore(deps: DataDeps): DataStore {
           gameLog: overview.rows,
           career: rawBio ? mapAthleteBio(rawBio) : [],
         };
-        deps.cache.set(k, profile, ttlMs);
+        deps.cache.set(k, profile, 120_000);
         return profile;
       } catch {
         return null;
       }
     },
 
-    async getStandings(rc, ttlMs = 60_000): Promise<Group[]> {
+    async getStandings(rc): Promise<Group[]> {
       const k = key(rc, 'standings');
       const cached = deps.cache.get(k) as Group[] | undefined;
       if (cached) return cached;
@@ -409,7 +378,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       const computed = rc.season.computedTables;
       if (computed) {
         const groups = await computeTables(rc, computed);
-        deps.cache.set(k, groups, ttlMs);
+        deps.cache.set(k, groups, 60_000);
         return groups;
       }
       const raw = await deps.fetchJson(standingsUrl(slug(rc)));
@@ -422,11 +391,11 @@ export function createDataStore(deps: DataDeps): DataStore {
         const merged = computeOverallTable(groups, overall);
         if (merged) groups.push(merged);
       }
-      deps.cache.set(k, groups, ttlMs);
+      deps.cache.set(k, groups, 60_000);
       return groups;
     },
 
-    async getBracket(rc, ttlMs = 8_000): Promise<BracketRound[]> {
+    async getBracket(rc): Promise<BracketRound[]> {
       const k = key(rc, 'bracket');
       const cached = deps.cache.get(k) as BracketRound[] | undefined;
       if (cached) return cached;
@@ -436,27 +405,19 @@ export function createDataStore(deps: DataDeps): DataStore {
           signal: AbortSignal.timeout(15_000), maxBytes: 4 * 1024 * 1024,
         });
       const rounds = mapBracket(raw);
-      deps.cache.set(k, rounds, ttlMs);
+      deps.cache.set(k, rounds, 8_000);
       return rounds;
     },
 
     getLeaders: loadLeaders,
 
-    async getTopScorers(rc): Promise<StatLeader[]> {
-      return (await loadLeaders(rc)).scorers;
-    },
-
-    async getTopAssists(rc): Promise<StatLeader[]> {
-      return (await loadLeaders(rc)).assists;
-    },
-
-    async getNews(rc, ttlMs = 90_000): Promise<NewsArticle[]> {
+    async getNews(rc): Promise<NewsArticle[]> {
       const k = key(rc, 'news');
       const cached = deps.cache.get(k) as NewsArticle[] | undefined;
       if (cached) return cached;
       const raw = await deps.fetchJson(newsUrl(slug(rc)));
       const news = mapNews(raw);
-      deps.cache.set(k, news, ttlMs);
+      deps.cache.set(k, news, 90_000);
       return news;
     },
   };

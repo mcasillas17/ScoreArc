@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
-import { currentWeekRange } from './store';
+import { currentWeekRange } from './dateRange';
 import { createDataStore, parseShootout } from './store';
 import { resolveSeason } from './competitions';
 import { TtlCache } from './cache';
@@ -215,8 +215,8 @@ describe('leaderboards', () => {
       },
     });
 
-    const scorers = await store.getTopScorers(wc);
-    const assists = await store.getTopAssists(wc);
+    const { scorers } = await store.getLeaders(wc);
+    const { assists } = await store.getLeaders(wc);
 
     expect(urls.filter((u) => u.includes('/statistics'))).toHaveLength(1);
     expect(scorers[0].player).toBe('Striker');
