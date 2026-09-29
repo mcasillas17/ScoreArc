@@ -6,6 +6,11 @@ This repair started from origin/main at aa8aa2141750db7115a912d46f48d78663241b8a
 Before PR delivery, the owner requested incorporating cleanup PR #191 at
 9a65d8cb2385284d932cf70a8a035b716e9b61f2. The integration keeps its moved date
 helpers, fixed TTLs, shared client fetch helper and removal of the unused live API.
+After PR #193 merged at 91753fd, its overlapping monthly reader was consolidated
+into this bounded loader. Its removal of the duplicate bracket URL builder remains.
+The now-unused Eastern-day helper and month enumerator are replaced by the loader's
+existing UTC/provider-boundary regression coverage: provider-local partitions are
+padded, while public windows still select the exact requested UTC dates.
 Backend PR #183 (969e512) repaired the Go path; the frontend still called ESPN
 with hyphenated date ranges. The frontend remains ESPN-backed. No reader cutover,
 production operation, migration or additional competition is part of this change.
@@ -84,6 +89,8 @@ bytes, timeouts/cancellation, request limits, cache isolation, enrichment scope 
 concurrency. Store, API and localized page checks accompany the loader tests.
 npm test (88 files, 1,249 tests), npx tsc --noEmit, npm run lint and npm run build
 passed after incorporating #191; the build ran with the dev server stopped.
+The same checks passed again after resolving #193's overlap (1,249 tests), followed
+by real-browser Liga MX and LaLiga Now/calendar checks on the merged working tree.
 ESLint retains five existing warnings. The required competition exporter passed
 with no generated JSON drift. The owner's additional GPT-6 Luna Ponytail review
 found no actionable complexity issues; it supplements the configured Knights panel.

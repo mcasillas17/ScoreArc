@@ -72,8 +72,10 @@ describe('EspnReadThroughStore', () => {
     const { deps, urls } = fakeDeps();
     const store = createDataStore(deps);
     await store.getMatches(wc);
+    const first = urls.filter((u) => u.includes('/scoreboard')).length;
+    expect(first).toBe(2);
     await store.getMatches(wc);
-    expect(urls.filter((u) => u.includes('/scoreboard')).length).toBe(2);
+    expect(urls.filter((u) => u.includes('/scoreboard')).length).toBe(first);
   });
 
   it('enriches matches with scorers from the summary feed', async () => {
@@ -256,8 +258,10 @@ describe('getLiveWindow', () => {
       },
     });
     await store.getLiveWindow(wc);
+    const first = urls.length;
+    expect(first).toBe(2);
     await store.getLiveWindow(wc);
-    expect(urls).toHaveLength(2);
+    expect(urls).toHaveLength(first);
   });
 
   // Sharing getFixtures' cache entry would give the calendar's 120s TTL to a

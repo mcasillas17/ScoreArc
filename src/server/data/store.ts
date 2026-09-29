@@ -12,9 +12,9 @@ import type {
 } from './types';
 import type { CompetitionSeason } from './competitions';
 import {
+  scoreboardUrl,
   standingsUrl,
   summaryUrl,
-  bracketUrl,
   statisticsUrl,
   newsUrl,
   teamsUrl,
@@ -401,7 +401,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       if (cached) return cached;
       const raw = rc.season.bracketDatesRange
         ? await fetchScoreboardWindow(rc, rc.season.bracketDatesRange, deps.fetchJson)
-        : await deps.fetchJson(bracketUrl(slug(rc)), {
+        : await deps.fetchJson(scoreboardUrl(slug(rc)), {
           signal: AbortSignal.timeout(15_000), maxBytes: 4 * 1024 * 1024,
         });
       const rounds = mapBracket(raw);
