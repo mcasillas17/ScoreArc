@@ -403,7 +403,7 @@ func (r *runner) processMatches(
 			}
 		}
 	}
-	return result, errorsJoin(operationErrors)
+	return result, errors.Join(operationErrors...)
 }
 
 func isTerminalWithoutSummary(match model.Match) bool {
@@ -564,8 +564,4 @@ func bracketMatch(match model.BracketMatch) model.Match {
 		BracketRequired:  &bracketRequired,
 		BracketConfirmed: true,
 	}
-}
-
-func errorsJoin(errs []error) error {
-	return errors.Join(errs...)
 }

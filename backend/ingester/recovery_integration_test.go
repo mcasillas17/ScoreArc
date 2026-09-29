@@ -260,7 +260,7 @@ func TestTerminalRecoveryPreservesKnownScoresAndRecordsSuccess(t *testing.T) {
 			bad := src.fresh
 			changedScore := 9
 			bad.HomeScore = &changedScore
-			if err := repo.RecordMatchObservation(ctx, id, bad, now.Add(time.Minute)); err == nil {
+			if err := repo.RecordMatchObservations(ctx, []store.MatchObservation{{Identity: id, Match: bad, ObservedAt: now.Add(time.Minute)}}); err == nil {
 				t.Fatal("supplied contradictory terminal score renewed freshness")
 			}
 		})

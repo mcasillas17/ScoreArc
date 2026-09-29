@@ -346,8 +346,8 @@ func TestMapWinProbabilitySwapsLegs(t *testing.T) {
 	raw := loadSummaryFixture(t)
 	parsed := mustParseRawSummary(t, raw)
 
-	home := mapWinProbability(parsed, "4789", "464")
-	swapped := mapWinProbability(parsed, "464", "4789")
+	home := mapWinProbability(parsed, "464")
+	swapped := mapWinProbability(parsed, "4789")
 	if home == nil || swapped == nil {
 		t.Fatal("expected non-nil win probabilities")
 	}
@@ -356,7 +356,7 @@ func TestMapWinProbabilitySwapsLegs(t *testing.T) {
 }
 
 func TestMapWinProbabilityNilOnMissingOdds(t *testing.T) {
-	if wp := mapWinProbability(mustParseRawSummary(t, []byte(`{}`)), "a", "b"); wp != nil {
+	if wp := mapWinProbability(mustParseRawSummary(t, []byte(`{}`)), "b"); wp != nil {
 		t.Errorf("expected nil, got %+v", wp)
 	}
 }

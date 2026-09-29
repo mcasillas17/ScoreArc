@@ -35,11 +35,7 @@ type newsService struct {
 
 const defaultNewsTTL = 90 * time.Second
 
-func newNewsService(client espnJSONClient, ttl time.Duration) *newsService {
-	return newNewsServiceWithContext(context.Background(), client, ttl)
-}
-
-func newNewsServiceWithContext(ctx context.Context, client espnJSONClient, ttl time.Duration) *newsService {
+func newNewsService(ctx context.Context, client espnJSONClient, ttl time.Duration) *newsService {
 	return &newsService{
 		client:       client,
 		ttl:          ttl,

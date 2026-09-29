@@ -55,23 +55,9 @@ func SummaryURL(slug, event string) string {
 	return fmt.Sprintf("%s/%s/summary?event=%s", site, slug, event)
 }
 
-// BracketURL mirrors endpoints.ts's bracketUrl(slug, range?): the bracket is
-// derived from the same scoreboard endpoint, filtered to knockout rounds.
-func BracketURL(slug, datesRange string) string {
-	return ScoreboardURL(slug, datesRange)
-}
-
-func BracketURLWithLimit(slug, datesRange string, limit int) string {
-	return ScoreboardURLWithLimit(slug, datesRange, limit)
-}
-
 // StatisticsURL mirrors endpoints.ts's statisticsUrl(slug) (top scorers).
-func StatisticsURL(slug string, seasonYear ...int) string {
-	base := fmt.Sprintf("%s/%s/statistics", site, slug)
-	if len(seasonYear) > 0 {
-		return fmt.Sprintf("%s?season=%d", base, seasonYear[0])
-	}
-	return base
+func StatisticsURL(slug string, seasonYear int) string {
+	return fmt.Sprintf("%s/%s/statistics?season=%d", site, slug, seasonYear)
 }
 
 func TeamRosterURL(slug, teamID string) string {

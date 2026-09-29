@@ -163,10 +163,6 @@ WHERE id=$1 AND competition_id=$4 AND season_id=$5
 ON CONFLICT(match_id,source) DO UPDATE SET
 	observed_at=GREATEST(match_sync_status.observed_at,EXCLUDED.observed_at)`
 
-func (s *Store) RecordMatchObservation(ctx context.Context, identity MatchIdentity, match model.Match, observedAt time.Time) error {
-	return s.RecordMatchObservations(ctx, []MatchObservation{{identity, match, observedAt}})
-}
-
 // Batch metadata I/O so unchanged season rows do not add a network round trip
 // each to the twenty-second polling path.
 func (s *Store) RecordMatchObservations(ctx context.Context, observations []MatchObservation) error {

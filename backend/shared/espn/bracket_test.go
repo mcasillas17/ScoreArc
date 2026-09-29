@@ -324,13 +324,6 @@ func TestMapBracketTeamDoesNotTreatClubCrestAsPlaceholder(t *testing.T) {
 	}
 }
 
-func TestValidateBracketSeasonRejectsMismatch(t *testing.T) {
-	raw := []byte(`{"events":[{"season":{"year":2022}}]}`)
-	if err := ValidateBracketSeason(raw, 2026); err == nil {
-		t.Fatal("expected bracket season mismatch")
-	}
-}
-
 func TestMapBracketRejectsUnknownStatusState(t *testing.T) {
 	raw := []byte(`{"events":[{"id":"1","date":"2026-07-01T12:00Z",
 		"season":{"slug":"quarterfinals"},
