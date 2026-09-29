@@ -15,7 +15,6 @@ import {
   scoreboardUrl,
   standingsUrl,
   summaryUrl,
-  bracketUrl,
   statisticsUrl,
   newsUrl,
   teamsUrl,
@@ -39,7 +38,7 @@ import {
   mapSummaryVideos, mapSummaryShootout, mapSummaryInfo, mapSummaryForm, mapSummaryCommentary, mapSummaryH2H,
 } from './providers/espn-summary';
 import { TtlCache } from './cache';
-import { currentWeekRange, forwardRange, nowWindowRange } from './dateRange';
+import { currentWeekRange, forwardRange, nowWindowRange, rangeMonths, inRange } from './dateRange';
 
 // The store is keyed on a resolved (competition, season) pair. The ESPN league
 // slug lives on the competition; per-season fetch details (e.g. the bracket
@@ -121,6 +120,17 @@ export function createDataStore(deps: DataDeps): DataStore {
     return boards;
   }
 
+  // Every scoreboard read goes through here. A day range is fetched as the
+  // months it spans (see rangeMonths) and trimmed back to its days.
+  async function fetchScoreboard(rc: CompetitionSeason, range?: string): Promise<unknown> {
+    if (!range?.includes('-')) return deps.fetchJson(scoreboardUrl(slug(rc), range));
+    const boards = (await Promise.all(
+      rangeMonths(range).map((m) => deps.fetchJson(scoreboardUrl(slug(rc), m))),
+    )) as { events?: { date: string }[] }[];
+    const events = boards.flatMap((b) => b.events ?? []).filter((e) => inRange(e.date, range));
+    return { ...boards[0], events };
+  }
+
   // One unenriched scoreboard read. Shared by getFixtures and getLiveWindow,
   // which differ only in cache key and TTL — a calendar month is settled for
   // two minutes, a live scoreline is not.
@@ -133,7 +143,7 @@ export function createDataStore(deps: DataDeps): DataStore {
     const k = key(rc, cacheKey);
     const cached = deps.cache.get(k) as Match[] | undefined;
     if (cached) return cached;
-    const raw = await deps.fetchJson(scoreboardUrl(slug(rc), range));
+    const raw = await fetchScoreboard(rc, range);
     const matches = mapScoreboard(raw)
       .map((m) => ({ ...m, shootout: parseShootout(m.note, m.home.name, m.away.name) }))
       .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
@@ -146,7 +156,7 @@ export function createDataStore(deps: DataDeps): DataStore {
     config: NonNullable<CompetitionSeason['season']['computedTables']>,
   ): Promise<Group[]> {
     const [rawPhase, rawSplit] = await Promise.all([
-      deps.fetchJson(scoreboardUrl(slug(rc), config.datesRange)),
+      fetchScoreboard(rc, config.datesRange),
       deps.fetchJson(teamsUrl(config.splitLeagueSlug)),
     ]);
     const matches = mapScoreboard(rawPhase).map((m) => ({
@@ -195,7 +205,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       const k = key(rc, `matches:${window}`);
       const cached = deps.cache.get(k) as Match[] | undefined;
       if (cached) return cached;
-      const raw = await deps.fetchJson(scoreboardUrl(slug(rc), window));
+      const raw = await fetchScoreboard(rc, window);
       const matches = mapScoreboard(raw);
       const summaries = await Promise.all(
         matches.map((m) => getMatchSummary(rc, m.id, m.home.id, m.away.id).catch(() => emptySummary())),
@@ -250,7 +260,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       const k = key(rc, `upcoming:${limit}`);
       const cached = deps.cache.get(k) as Match[] | undefined;
       if (cached) return cached;
-      const raw = await deps.fetchJson(scoreboardUrl(slug(rc), forwardRange(new Date())));
+      const raw = await fetchScoreboard(rc, forwardRange(new Date()));
       const upcoming = mapScoreboard(raw)
         .filter((m) => m.state === 'scheduled')
         .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime())
@@ -387,7 +397,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       const k = key(rc, 'bracket');
       const cached = deps.cache.get(k) as BracketRound[] | undefined;
       if (cached) return cached;
-      const raw = await deps.fetchJson(bracketUrl(slug(rc), rc.season.bracketDatesRange));
+      const raw = await fetchScoreboard(rc, rc.season.bracketDatesRange);
       const rounds = mapBracket(raw);
       deps.cache.set(k, rounds, 8_000);
       return rounds;
