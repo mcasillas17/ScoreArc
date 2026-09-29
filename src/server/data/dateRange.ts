@@ -1,6 +1,6 @@
-// ESPN scoreboard `dates` strings are YYYYMMDD-YYYYMMDD in local time. These
-// helpers sit beside currentWeekRange and forwardRange in store.ts, which use
-// the same format for the live week and the fixture banner respectively.
+// ScoreArc window strings are inclusive YYYYMMDD-YYYYMMDD dates. Calendar
+// controls choose local dates; the data layer interprets their endpoints in UTC
+// and translates them to padded provider month selectors.
 
 function fmt(d: Date): string {
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;

@@ -3,6 +3,19 @@
 **Broad inventory baseline:** 2026-09-01, against `main` @ `49bf68d`.
 Unrelated inventory observations below retain their original dates.
 
+**Frontend scoreboard repair, 2026-09-29:** on freshly fetched main
+`aa8aa2141750db7115a912d46f48d78663241b8a`, bounded Node probes reproduced the
+frontend ESPN range failure (400) while compact September selectors returned
+Liga MX 34 matches and LaLiga 39. The local application returned sanitized 502s;
+the public CDN 502 is a separate observed boundary, not proof of its origin cause.
+The shared TypeScript window path now uses bounded padded months, exact UTC/season
+filtering and validated raw-event deduplication for calendar, Now/live, upcoming,
+enriched matches, computed tables and historical brackets. Local tests, typecheck,
+lint, build and real-browser acceptance passed, including controlled unavailable
+states and EN/ES copy. This is **locally verified, not merged, deployed or accepted
+in production**. The frontend still uses ESPN; no E16 cutover or backend recovery
+was performed. See [the evidence, request budgets and remaining limits](FRONTEND_SCOREBOARD_WINDOWS.md).
+
 **Match reliability update, 2026-09-21:** implementation began on freshly fetched
 `2a5ae77`; before final review the isolated branch fast-forwarded to
 dependency-only `488f5d9` (#166, `package-lock.json` only).

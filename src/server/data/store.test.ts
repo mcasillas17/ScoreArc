@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { currentWeekRange } from './store';
 import { createDataStore, parseShootout } from './store';
 import { resolveSeason } from './competitions';
 import { TtlCache } from './cache';
@@ -17,12 +18,23 @@ const wc = resolveSeason('world-cup')!;
 const lc = resolveSeason('leagues-cup')!;
 const SCOREBOARD_TWO_EVENTS = { ...sb, events: sb.events.slice(0, 2) };
 
+// Requests now use monthly provider selectors. Keep these existing cache/mapping
+// checks deterministic and return only the selected month's recorded events.
+beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-06-29T12:00Z')); });
+afterEach(() => vi.useRealTimers());
+function monthResponse(url: string, payload = sb) {
+  const u = new URL(url);
+  const month = u.searchParams.get('dates');
+  return { ...payload, leagues: [{ slug: u.pathname.split('/soccer/')[1].split('/')[0] }],
+    events: payload.events.filter(e => !month || e.date.replaceAll('-', '').startsWith(month)) };
+}
+
 function fakeDeps() {
   const urls: string[] = [];
   const deps = {
     fetchJson: async (url: string) => {
       urls.push(url);
-      return sb; // scoreboard-shaped payload; content not asserted in URL tests
+      return monthResponse(url);
     },
     cache: new TtlCache<unknown>(),
   };
@@ -50,7 +62,7 @@ describe('EspnReadThroughStore', () => {
     const { deps, urls } = fakeDeps();
     const store = createDataStore(deps);
     await store.getBracket(wc);
-    expect(urls.some((u) => u.includes('?dates=20260628-20260719'))).toBe(true);
+    expect(urls.filter(u => u.includes('/scoreboard')).map(u => new URL(u).searchParams.get('dates'))).toEqual(['202606', '202607']);
     urls.length = 0;
     await store.getBracket(lc);
     expect(urls.some((u) => u.includes('concacaf.leagues.cup/scoreboard') && !u.includes('?dates'))).toBe(true);
@@ -61,12 +73,12 @@ describe('EspnReadThroughStore', () => {
     const store = createDataStore(deps);
     await store.getMatches(wc);
     await store.getMatches(wc);
-    expect(urls.filter((u) => u.includes('/scoreboard')).length).toBe(1);
+    expect(urls.filter((u) => u.includes('/scoreboard')).length).toBe(2);
   });
 
   it('enriches matches with scorers from the summary feed', async () => {
     const deps = {
-      fetchJson: async (url: string) => (url.includes('/summary') ? summaryFixture : sb),
+      fetchJson: async (url: string) => (url.includes('/summary') ? summaryFixture : monthResponse(url)),
       cache: new TtlCache<unknown>(),
     };
     const matches = await createDataStore(deps).getMatches(wc);
@@ -78,7 +90,7 @@ describe('EspnReadThroughStore', () => {
     const deps = {
       fetchJson: async (url: string) => {
         if (url.includes('/summary')) throw new Error('boom');
-        return sb;
+        return monthResponse(url);
       },
       cache: new TtlCache<unknown>(),
     };
@@ -111,7 +123,7 @@ describe('parseShootout', () => {
 describe('Leagues Cup through the store', () => {
   it('maps club matches from the Leagues Cup fixture', async () => {
     const deps = { fetchJson: async () => lcFixture, cache: new TtlCache<unknown>() };
-    const matches = await createDataStore(deps).getMatches(lc);
+    const matches = await createDataStore(deps).getMatches(lc, '20260804-20260805');
     expect(Array.isArray(matches)).toBe(true);
     for (const m of matches) expect(m.home.abbr.length).toBeGreaterThan(0);
   });
@@ -127,15 +139,15 @@ describe('range-aware match reads', () => {
       cache: new TtlCache<unknown>(),
       fetchJson: async (url: string) => {
         urls.push(url);
-        return { events: [] };
+        return monthResponse(url, { ...sb, events: [] });
       },
     });
 
     await store.getFixtures(wc, '20260801-20260831');
     await store.getFixtures(wc, '20260901-20260930');
 
-    expect(urls.filter((u) => u.includes('20260801-20260831'))).toHaveLength(1);
-    expect(urls.filter((u) => u.includes('20260901-20260930'))).toHaveLength(1);
+    expect(urls.filter((u) => u.includes('dates=202608&'))).toHaveLength(2);
+    expect(urls.filter((u) => u.includes('dates=202609&'))).toHaveLength(2);
   });
 
   it('serves a repeated range from cache', async () => {
@@ -144,15 +156,15 @@ describe('range-aware match reads', () => {
       cache: new TtlCache<unknown>(),
       fetchJson: async (url: string) => {
         urls.push(url);
-        return { events: [] };
+        return monthResponse(url, { ...sb, events: [] });
       },
     });
     await store.getFixtures(wc, '20260801-20260831');
     await store.getFixtures(wc, '20260801-20260831');
-    expect(urls).toHaveLength(1);
+    expect(urls).toHaveLength(3);
   });
 
-  // The calendar must cost one request per month, not one per match.
+  // A calendar read costs bounded monthly partitions, never per-match summaries.
   it('fetches no per-match summaries for a fixtures range', async () => {
     const urls: string[] = [];
     const store = createDataStore({
@@ -161,12 +173,12 @@ describe('range-aware match reads', () => {
         urls.push(url);
         // Two events, so a summary-enriching implementation would betray
         // itself with two extra /summary calls.
-        return SCOREBOARD_TWO_EVENTS;
+        return monthResponse(url, SCOREBOARD_TWO_EVENTS);
       },
     });
-    await store.getFixtures(wc, '20260801-20260831');
+    await store.getFixtures(wc, '20260601-20260630');
     expect(urls.filter((u) => u.includes('/summary'))).toHaveLength(0);
-    expect(urls).toHaveLength(1);
+    expect(urls).toHaveLength(3);
   });
 
   it('defaults getMatches to the current week when no range is given', async () => {
@@ -175,11 +187,12 @@ describe('range-aware match reads', () => {
       cache: new TtlCache<unknown>(),
       fetchJson: async (url: string) => {
         urls.push(url);
-        return { events: [] };
+        return monthResponse(url, { ...sb, events: [] });
       },
     });
     await store.getMatches(wc);
-    expect(urls[0]).toMatch(/dates=\d{8}-\d{8}/);
+    expect(currentWeekRange(new Date())).toBe('20260629-20260705');
+    expect(urls.map(u => new URL(u).searchParams.get('dates'))).toEqual(['202606', '202607']);
   });
 });
 
@@ -216,13 +229,13 @@ describe('leaderboards', () => {
 describe('getLiveWindow', () => {
   // The whole point of this method: the band must not pay for 77 summary
   // fetches to read a scoreline the scoreboard already carries.
-  it('fetches the scoreboard once and never a summary', async () => {
+  it('fetches the bounded scoreboard partitions and never a summary', async () => {
     const urls: string[] = [];
     const store = createDataStore({
       cache: new TtlCache<unknown>(),
       fetchJson: async (url: string) => {
         urls.push(url);
-        return SCOREBOARD_TWO_EVENTS;
+        return monthResponse(url, SCOREBOARD_TWO_EVENTS);
       },
     });
 
@@ -230,7 +243,7 @@ describe('getLiveWindow', () => {
 
     expect(matches.length).toBe(2);
     expect(urls.filter((u) => u.includes('/summary'))).toHaveLength(0);
-    expect(urls).toHaveLength(1);
+    expect(urls).toHaveLength(2);
   });
 
   it('serves a repeat call from cache', async () => {
@@ -239,12 +252,12 @@ describe('getLiveWindow', () => {
       cache: new TtlCache<unknown>(),
       fetchJson: async (url: string) => {
         urls.push(url);
-        return { events: [] };
+        return monthResponse(url, { ...sb, events: [] });
       },
     });
     await store.getLiveWindow(wc);
     await store.getLiveWindow(wc);
-    expect(urls).toHaveLength(1);
+    expect(urls).toHaveLength(2);
   });
 
   // Sharing getFixtures' cache entry would give the calendar's 120s TTL to a
@@ -256,13 +269,13 @@ describe('getLiveWindow', () => {
       cache,
       fetchJson: async (url: string) => {
         urls.push(url);
-        return { events: [] };
+        return monthResponse(url, { ...sb, events: [] });
       },
     });
     await store.getLiveWindow(wc);
     const liveCalls = urls.length;
     await store.getFixtures(wc, '20260801-20260831');
-    expect(urls.length).toBe(liveCalls + 1);
+    expect(urls.length).toBe(liveCalls + 3);
   });
 });
 
