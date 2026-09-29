@@ -5,11 +5,8 @@ import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 import { apiError } from '@/app/api/errorResponse';
 
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 
-type RouteParams =
-  | { comp: string; season: string; id: string }
-  | Promise<{ comp: string; season: string; id: string }>;
+type RouteParams = Promise<{ comp: string; season: string; id: string }>;
 
 export async function GET(req: Request, { params }: { params: RouteParams }) {
   const { comp, season, id } = await params;

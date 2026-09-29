@@ -1,4 +1,5 @@
-import { dataStore, currentWeekRange } from '@/server/data/store';
+import { dataStore } from '@/server/data/store';
+import { currentWeekRange } from '@/server/data/dateRange';
 import { resolveSeason } from '@/server/data/competitions';
 import { parseMatchQuery } from '@/server/data/matchQuery';
 import type { Match } from '@/server/data/types';
@@ -6,9 +7,8 @@ import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 import { apiError } from '@/app/api/errorResponse';
 
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 
-type RouteParams = { comp: string; season: string } | Promise<{ comp: string; season: string }>;
+type RouteParams = Promise<{ comp: string; season: string }>;
 
 /**
  * Every match list, behind one endpoint.

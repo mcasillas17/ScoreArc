@@ -148,6 +148,6 @@ describe('localized news directory', () => {
     vi.spyOn(dataStore, 'getNews').mockImplementation(
       byCompetition({ [FIRST]: [article('a', '2026-08-18T10:00:00Z')] }),
     );
-    expect(await renderPage()).toContain('2 hours ago');
+    expect(await renderPage()).toContain('2 hr. ago');
   });
 });

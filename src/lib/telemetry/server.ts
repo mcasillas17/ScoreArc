@@ -2,7 +2,6 @@ import { track } from '@vercel/analytics/server';
 
 type APIEndpoint =
   | 'bracket'
-  | 'live'
   | 'match-summary'
   | 'matches'
   | 'news'

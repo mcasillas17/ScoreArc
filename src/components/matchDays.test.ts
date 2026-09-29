@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dayHeading, groupByDay } from './matchDays';
+import { relativeDay, groupByDay } from './matchDays';
 import type { Match, MatchState } from '@/server/data/types';
 
 // Local dates throughout: these labels are what a reader sees, and the whole
@@ -20,30 +20,30 @@ function at(y: number, m: number, d: number, h = 18): Match {
   } as Match;
 }
 
-describe('dayHeading', () => {
+describe('relativeDay', () => {
   it('names the days around today in words', () => {
-    expect(dayHeading(at(2026, 7, 18).kickoff, NOW, 'en')).toBe('Today');
-    expect(dayHeading(at(2026, 7, 19).kickoff, NOW, 'en')).toBe('Tomorrow');
-    expect(dayHeading(at(2026, 7, 17).kickoff, NOW, 'en')).toBe('Yesterday');
+    expect(relativeDay(at(2026, 7, 18).kickoff, NOW, 'en')).toBe('Today');
+    expect(relativeDay(at(2026, 7, 19).kickoff, NOW, 'en')).toBe('Tomorrow');
+    expect(relativeDay(at(2026, 7, 17).kickoff, NOW, 'en')).toBe('Yesterday');
   });
 
   it('uses the weekday inside the coming week', () => {
-    expect(dayHeading(at(2026, 7, 21).kickoff, NOW, 'en')).toBe('Friday');
+    expect(relativeDay(at(2026, 7, 21).kickoff, NOW, 'en')).toBe('Friday');
   });
 
   // Past a week, a bare weekday is ambiguous: "Friday" could be either of two.
   it('adds a date once a weekday would be ambiguous', () => {
-    expect(dayHeading(at(2026, 7, 28).kickoff, NOW, 'en')).toMatch(/Friday.*Aug 28/);
+    expect(relativeDay(at(2026, 7, 28).kickoff, NOW, 'en')).toMatch(/Friday.*Aug 28/);
   });
 
   // A kickoff late in the evening is still that evening, not the next day.
   // Comparing instants rather than local dates is what would break this.
   it('keeps a late kickoff on its own local day', () => {
-    expect(dayHeading(at(2026, 7, 18, 22).kickoff, NOW, 'en')).toBe('Today');
+    expect(relativeDay(at(2026, 7, 18, 22).kickoff, NOW, 'en')).toBe('Today');
   });
 
   it('returns null for an invalid provider kickoff', () => {
-    expect(dayHeading('not-a-date', NOW, 'en')).toBeNull();
+    expect(relativeDay('not-a-date', NOW, 'en')).toBeNull();
   });
 });
 
@@ -85,15 +85,15 @@ describe('groupByDay', () => {
 // The app's language, not the browser's: a reader who picks Spanish on an
 // English laptop was getting "Saturday, Oct 17" under an otherwise Spanish
 // page, because an empty locale list reads the machine locale.
-describe('dayHeading in Spanish', () => {
+describe('relativeDay in Spanish', () => {
   it('speaks the relative days', () => {
-    expect(dayHeading(at(2026, 7, 18).kickoff, NOW, 'es')).toBe('Hoy');
-    expect(dayHeading(at(2026, 7, 19).kickoff, NOW, 'es')).toBe('Mañana');
-    expect(dayHeading(at(2026, 7, 17).kickoff, NOW, 'es')).toBe('Ayer');
+    expect(relativeDay(at(2026, 7, 18).kickoff, NOW, 'es')).toBe('Hoy');
+    expect(relativeDay(at(2026, 7, 19).kickoff, NOW, 'es')).toBe('Mañana');
+    expect(relativeDay(at(2026, 7, 17).kickoff, NOW, 'es')).toBe('Ayer');
   });
 
   it('formats weekdays and dates with a Spanish locale', () => {
-    expect(dayHeading(at(2026, 7, 21).kickoff, NOW, 'es')).toBe('viernes');
-    expect(dayHeading(at(2026, 7, 28).kickoff, NOW, 'es')).toMatch(/viernes/);
+    expect(relativeDay(at(2026, 7, 21).kickoff, NOW, 'es')).toBe('viernes');
+    expect(relativeDay(at(2026, 7, 28).kickoff, NOW, 'es')).toMatch(/viernes/);
   });
 });

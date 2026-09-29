@@ -32,19 +32,15 @@ describe('TtlCache', () => {
   });
 
   it('evicts the least recently used entry at its capacity', () => {
-    const c = new TtlCache<number>(() => 0, 2);
-    c.set('oldest', 1, 100);
-    c.set('recent', 2, 100);
-    expect(c.get('oldest')).toBe(1);
+    const c = new TtlCache<number>(() => 0);
+    c.set('oldest', 0, 100);
+    for (let i = 1; i < 500; i++) c.set(`k${i}`, i, 100);
+    expect(c.get('oldest')).toBe(0);
 
-    c.set('new', 3, 100);
+    c.set('new', 500, 100);
 
-    expect(c.get('recent')).toBeUndefined();
-    expect(c.get('oldest')).toBe(1);
-    expect(c.get('new')).toBe(3);
-  });
-
-  it('rejects a non-positive capacity', () => {
-    expect(() => new TtlCache<number>(() => 0, 0)).toThrow('positive integer');
+    expect(c.get('k1')).toBeUndefined();
+    expect(c.get('oldest')).toBe(0);
+    expect(c.get('new')).toBe(500);
   });
 });

@@ -1,9 +1,29 @@
-// ESPN scoreboard `dates` strings are YYYYMMDD-YYYYMMDD in local time. These
-// helpers sit beside currentWeekRange and forwardRange in store.ts, which use
-// the same format for the live week and the fixture banner respectively.
+// ESPN scoreboard `dates` strings are YYYYMMDD-YYYYMMDD in local time.
 
 function fmt(d: Date): string {
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// ESPN scoreboard `dates` range (YYYYMMDD-YYYYMMDD) covering the Monday→Sunday
+// calendar week that contains `now` (local time). Used so the matches feed
+// returns the whole current week's fixtures, not just ESPN's default (today).
+export function currentWeekRange(now: Date): string {
+  const mondayOffset = (now.getDay() + 6) % 7; // getDay(): 0=Sun..6=Sat → days since Monday
+  const mon = new Date(now);
+  mon.setDate(now.getDate() - mondayOffset);
+  const sun = new Date(mon);
+  sun.setDate(mon.getDate() + 6);
+  return `${fmt(mon)}-${fmt(sun)}`;
+}
+
+// ESPN scoreboard `dates` range covering today through `days` ahead. Used by
+// the fixture banner, which must see past the end of the current week: a
+// season starting next Friday has fixtures, and a banner that says otherwise
+// is wrong rather than merely empty.
+export function forwardRange(now: Date, days = 28): string {
+  const end = new Date(now);
+  end.setDate(now.getDate() + days);
+  return `${fmt(now)}-${fmt(end)}`;
 }
 
 /** The whole calendar month containing `d`. */

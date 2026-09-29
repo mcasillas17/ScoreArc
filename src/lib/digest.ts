@@ -87,38 +87,6 @@ export function untilKickoff(ms: number, locale: Locale): string | null {
 }
 
 /**
- * How long ago an article was published, in plain words.
- *
- * The same reasoning as `untilKickoff`: a duration is timezone-free, so it is
- * safe to compute on a server running UTC and hand to a client component as a
- * finished string. This is what a news row says about itself instead of naming
- * the competition feed it arrived through — the per-league /news endpoints are
- * mostly generic, so that label was wrong on most rows.
- *
- * It does not re-tick while a tab sits open, and that is a judgement rather
- * than a constraint. A mount-time clock would be perfectly hydration-safe --
- * `useLocalNow` does exactly that, on this same page, in DigestMatches -- so
- * "it would break hydration" is not the reason and must not be recorded as one.
- * The reason is that the error equals the tab's open time against a label whose
- * granularity is already coarse, and both pages are force-dynamic, so arriving
- * or reloading is always correct.
- */
-export function publishedAgo(ms: number, locale: Locale): string | null {
-  if (!Number.isFinite(ms) || ms < 0) return null;
-  const t = getTranslator(locale);
-  const minutes = Math.floor(ms / 60000);
-  if (minutes < 60) {
-    return minutes <= 1 ? t('home.digest.justNow') : t('home.digest.minutesAgo', minutes);
-  }
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    return hours === 1 ? t('home.digest.hourAgo') : t('home.digest.hoursAgo', hours);
-  }
-  const days = Math.floor(hours / 24);
-  return days === 1 ? t('home.digest.dayAgo') : t('home.digest.daysAgo', days);
-}
-
-/**
  * The line under the digest's title. It states which of the four things the
  * block is showing, so "recent results" is never mistaken for "what's next"
  * and an empty block is never introduced as a list of results.

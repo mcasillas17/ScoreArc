@@ -380,7 +380,7 @@ describe('Home digest', () => {
         byCompetition({ [FIRST]: [article('a', '2026-08-18T10:00:00Z')] }),
       );
       const html = renderLocalized(await Home({ params: { locale: 'en' } }));
-      expect(html).toContain('2 hours ago');
+      expect(html).toContain('2 hr. ago');
       expect(html).not.toContain(`<span class="dg-nwsrc">${ONGOING[0].shortName}</span>`);
     });
 

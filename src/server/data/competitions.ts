@@ -1,6 +1,6 @@
 import type { KnockoutRoundSlug } from './types';
 
-export type CompetitionKind = 'national' | 'club';
+type CompetitionKind = 'national' | 'club';
 export type TeamStyle = 'flag' | 'crest';
 export type Section = 'bracket' | 'standings' | 'scores' | 'news';
 export type ChampionTitleKey = 'champion.world' | 'champion.competition';

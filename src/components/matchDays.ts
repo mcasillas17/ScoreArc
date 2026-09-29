@@ -36,8 +36,6 @@ export function relativeDay(iso: string, now: Date, locale: Locale): string | nu
   return formatDate(d, locale, { weekday: 'long', month: 'short', day: 'numeric' });
 }
 
-export const dayHeading = relativeDay;
-
 export function groupByDay(matches: Match[], now: Date, locale: Locale): DayGroup[] {
   const groups = new Map<string, DayGroup>();
   const t = getTranslator(locale);

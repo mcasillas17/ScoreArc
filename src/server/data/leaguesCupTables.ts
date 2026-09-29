@@ -16,13 +16,13 @@ import type { Group, Match, Standing, Team } from './types';
 //     Every phase-one match is MLS v Liga MX, so an MLS club's table position
 //     is decided entirely by results against Liga MX opposition.
 
-export interface PhasePoints {
+interface PhasePoints {
   win: number;
   shootoutWin: number;
   shootoutLoss: number;
 }
 
-export const LEAGUES_CUP_POINTS: PhasePoints = { win: 3, shootoutWin: 2, shootoutLoss: 1 };
+const LEAGUES_CUP_POINTS: PhasePoints = { win: 3, shootoutWin: 2, shootoutLoss: 1 };
 
 interface Row {
   team: Team;
@@ -154,7 +154,7 @@ export function computePhaseTables(
   return groups;
 }
 
-export interface SeededTie {
+interface SeededTie {
   homeSeed: number; // seed within its own table (1-based)
   awaySeed: number;
   home: Standing;

@@ -1,9 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { Scorer, Card, MatchStats, WinProbability, MatchLineups, TeamLineup, ShootoutDetail, PenaltyKick } from '@/server/data/types';
 import { useTranslations } from '@/i18n/I18nProvider';
-import type { Translator } from '@/i18n/translate';
 import { CollapsibleSection } from './Collapsible';
-import { matchStatusText, type MatchStatusInput } from './MatchRow';
 import PlayerName from './PlayerName';
 
 // Win probability is a pre-match prediction (derived from pre-match odds), so it
@@ -11,20 +9,6 @@ import PlayerName from './PlayerName';
 export function isBeforeKickoff(kickoff: string): boolean {
   const t = new Date(kickoff).getTime();
   return !Number.isNaN(t) && t > Date.now();
-}
-
-// TV-style live status: distinguish half time / extra time / penalties from the
-// running clock. Returns null for non-live matches.
-export function liveStatus(match: MatchStatusInput, t: Translator): { text: string; tone: 'live' | 'break' | 'pens' } | null {
-  if (match.state !== 'live') return null;
-  const n = match.statusName || '';
-  const isHalf = /HALFTIME/.test(n);
-  const isEt = /EXTRA|OVERTIME|_ET/.test(n);
-  const isPens = /SHOOTOUT|PENALT/.test(n);
-  if (isPens) return { text: matchStatusText(match, t), tone: 'pens' };
-  if (isHalf) return { text: matchStatusText(match, t), tone: 'break' };
-  if (isEt) return { text: matchStatusText(match, t), tone: 'live' };
-  return { text: matchStatusText(match, t), tone: 'live' };
 }
 
 // TV-style penalty shootout: a row of dots per team — green scored, red missed,
@@ -76,7 +60,7 @@ export function PenaltyShootout({
   );
 }
 
-export function ScorerLine({ scorer, playerBase }: { scorer: Scorer; playerBase?: string }) {
+function ScorerLine({ scorer, playerBase }: { scorer: Scorer; playerBase?: string }) {
   const t = useTranslations();
   return (
     <span className="ls-scorer-line">
@@ -91,7 +75,7 @@ export function ScorerLine({ scorer, playerBase }: { scorer: Scorer; playerBase?
   );
 }
 
-export function CardLine({ card }: { card: Card }) {
+function CardLine({ card }: { card: Card }) {
   const t = useTranslations();
   const cardLabel = t(
     'matchDetails.cardEvent',
