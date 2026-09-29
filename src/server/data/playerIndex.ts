@@ -3,7 +3,7 @@ import type { MatchSummaryData, Team } from './types';
 import { dataStore, type DataStore } from './store';
 import { buildSlugMap, type ResolvedPlayer, type SlugEntry } from './playerIdentity';
 
-export interface PlayerIndex {
+interface PlayerIndex {
   /** URL slug -> the player, for resolving a page request. */
   bySlug: Map<string, ResolvedPlayer>;
   /** Provider athlete id -> slug, for generating links where we hold the id. */

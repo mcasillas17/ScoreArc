@@ -4,9 +4,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Match, MatchSummaryData } from '@/server/data/types';
 import { trackEvent } from '@/lib/telemetry/client';
 
-/** Shared on-demand detail lifecycle for the calendar and team evidence. */
-export function useMatchDetails(apiBase: string, surface: string) {
-  const [detail, setDetail] = useState<Match | null>(null);
+type DetailTarget = Pick<Match, 'id'> & { home: { id: string }; away: { id: string } };
+
+/** Shared on-demand detail lifecycle for every surface that opens the match
+ *  popup. Generic over the row shape: the bracket and the player log open
+ *  their own match types, not a scoreboard `Match`. */
+export function useMatchDetails<T extends DetailTarget = Match>(apiBase: string, surface: string) {
+  const [detail, setDetail] = useState<T | null>(null);
   const [summary, setSummary] = useState<MatchSummaryData | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const request = useRef<AbortController | null>(null);
@@ -17,7 +21,7 @@ export function useMatchDetails(apiBase: string, surface: string) {
     setDetail(null); setSummary(null); setLoadingDetail(false);
   }, []);
 
-  const openDetails = useCallback(async (match: Match) => {
+  const openDetails = useCallback(async (match: T) => {
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
@@ -42,5 +46,5 @@ export function useMatchDetails(apiBase: string, surface: string) {
     }
   }, [apiBase, surface]);
 
-  return { detail, summary, loadingDetail, openDetails, closeDetails };
+  return { detail, summary, setSummary, loadingDetail, openDetails, closeDetails };
 }

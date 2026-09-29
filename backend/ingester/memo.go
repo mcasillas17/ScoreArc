@@ -1,10 +1,8 @@
 package main
 
 import (
-	"encoding/binary"
-	"hash"
+	"encoding/json"
 	"hash/fnv"
-	"strconv"
 
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
@@ -46,66 +44,27 @@ import (
 // each scope once (27 writes, once, per deploy), and nothing is EVER memoised
 // that the store did not commit.
 
-const fingerprintRowMarker = byte(0xff)
-
-// contentDigest accumulates FNV-1a/64 over a canonical encoding of the exact
-// column values a replacement is about to write.
+// contentDigest is FNV-1a/64 over the JSON encoding of the exact column values
+// a replacement is about to write. JSON quotes and escapes every string, so an
+// embedded control character in a provider string cannot make two different
+// row sets encode the same, and it keeps a nil pointer (null) distinct from a
+// pointer to "" -- they are different values in the database
+// (standing.group_id is NULL for a single-table league).
 //
 // FNV rather than SHA-256 because the input is a few hundred short strings that
 // our own mappers produced from a non-adversarial provider, and because the
 // only consequence of a collision is ONE skipped write that persists until the
 // content next changes for real -- self-healing, not corrupting. At 64 bits
 // against ~10^5 distinct row sets per scope per season that is a ~3e-10 chance
-// per scope per year.
-type contentDigest struct{ hash hash.Hash64 }
-
-func newContentDigest() *contentDigest {
-	return &contentDigest{hash: fnv.New64a()}
+// per scope per year. The digest lives only in process memory, so changing
+// the encoding costs one rewrite per scope on the next deploy.
+func contentDigest(value any) uint64 {
+	hash := fnv.New64a()
+	// Encoding []any of strings, ints, bools and their pointers cannot fail,
+	// and hash.Hash's Write never returns an error.
+	_ = json.NewEncoder(hash).Encode(value)
+	return hash.Sum64()
 }
-
-// text writes one length-prefixed field. Provider strings are not sanitized,
-// so delimiter framing would let an embedded control character make two
-// different stored rows produce the same byte stream.
-//
-// hash.Hash's contract is that Write never returns an error, which is why the
-// returns are discarded here and nowhere else.
-func (d *contentDigest) text(value string) {
-	var size [8]byte
-	binary.BigEndian.PutUint64(size[:], uint64(len(value)))
-	_, _ = d.hash.Write(size[:])
-	_, _ = d.hash.Write([]byte(value))
-}
-
-func (d *contentDigest) number(value int) { d.text(strconv.Itoa(value)) }
-
-func (d *contentDigest) flag(value bool) { d.text(strconv.FormatBool(value)) }
-
-// optionalText keeps a nil pointer distinct from a pointer to an empty string.
-// They are different values in the database -- standing.group_id is nullable
-// and a single-table league stores NULL, not an empty string -- so they must be
-// different bytes here. The presence byte stops a nil colliding with any real
-// string.
-func (d *contentDigest) optionalText(value *string) {
-	if value == nil {
-		_, _ = d.hash.Write([]byte{0})
-		return
-	}
-	_, _ = d.hash.Write([]byte{1})
-	d.text(*value)
-}
-
-func (d *contentDigest) optionalNumber(value *int) {
-	if value == nil {
-		_, _ = d.hash.Write([]byte{0})
-		return
-	}
-	_, _ = d.hash.Write([]byte{1})
-	d.number(*value)
-}
-
-func (d *contentDigest) endRow() { _, _ = d.hash.Write([]byte{fingerprintRowMarker}) }
-
-func (d *contentDigest) sum() uint64 { return d.hash.Sum64() }
 
 func standingsScope(competitionID, seasonID string) string {
 	return "standing\x00" + competitionID + "\x00" + seasonID
@@ -136,25 +95,15 @@ func standingsFingerprint(
 	rows []model.Standing,
 	teamIDs map[string]string,
 ) uint64 {
-	digest := newContentDigest()
-	digest.text(source)
+	columns := make([][]any, 0, len(rows))
 	for _, row := range rows {
-		digest.text(teamIDs[row.Team.ID])
-		digest.optionalText(row.GroupID)
-		digest.optionalText(row.GroupName)
-		digest.number(row.Rank)
-		digest.number(row.Played)
-		digest.number(row.Wins)
-		digest.number(row.Draws)
-		digest.number(row.Losses)
-		digest.number(row.GoalsFor)
-		digest.number(row.GoalsAgainst)
-		digest.number(row.GoalDifference)
-		digest.number(row.Points)
-		digest.flag(row.Advanced)
-		digest.endRow()
+		columns = append(columns, []any{
+			teamIDs[row.Team.ID], row.GroupID, row.GroupName, row.Rank,
+			row.Played, row.Wins, row.Draws, row.Losses, row.GoalsFor,
+			row.GoalsAgainst, row.GoalDifference, row.Points, row.Advanced,
+		})
 	}
-	return digest.sum()
+	return contentDigest([]any{source, columns})
 }
 
 // leadersFingerprint covers EXACTLY the columns ReplaceLeaders INSERTs.
@@ -170,20 +119,14 @@ func leadersFingerprint(
 	source, category string,
 	rows []model.StatLeader,
 ) uint64 {
-	digest := newContentDigest()
-	digest.text(source)
-	digest.text(category)
+	columns := make([][]any, 0, len(rows))
 	for _, row := range rows {
-		digest.number(row.Rank)
-		digest.text(row.Player)
-		digest.text(row.TeamAbbr)
-		digest.text(row.TeamName)
-		digest.optionalText(row.TeamCrestURL)
-		digest.number(row.Value)
-		digest.optionalNumber(row.Matches)
-		digest.endRow()
+		columns = append(columns, []any{
+			row.Rank, row.Player, row.TeamAbbr, row.TeamName,
+			row.TeamCrestURL, row.Value, row.Matches,
+		})
 	}
-	return digest.sum()
+	return contentDigest([]any{source, category, columns})
 }
 
 // contentUnchanged reports whether `digest` is the fingerprint this PROCESS

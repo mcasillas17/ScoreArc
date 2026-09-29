@@ -48,7 +48,7 @@ function luminance(hex: string): number | null {
  * header is worse than a generic one, and silently lightening a club's colour
  * makes the page claim a brand the club does not have.
  */
-export function usableAccent(color: string | null, altColor: string | null): string | null {
+function usableAccent(color: string | null, altColor: string | null): string | null {
   for (const candidate of [color, altColor]) {
     if (!candidate) continue;
     const l = luminance(candidate);

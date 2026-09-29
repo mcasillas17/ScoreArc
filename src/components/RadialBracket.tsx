@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/types';
 import { type ChampionTitleKey, type TeamStyle } from '@/server/data/competitions';
 import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
+import { useMatchDetails } from './useMatchDetails';
 import BracketZoom from './BracketZoom';
 import { accentTint } from './accentTint';
 import {
@@ -11,7 +12,7 @@ import {
   type RingNode, type JourneyStop, type BracketMode,
 } from './radialBracketModel';
 import { DEFAULT_SHAPE, roundLabelKey, type BracketShape, type RingGeom } from './bracketShape';
-import { trackEvent, trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
+import { trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
 import { useTranslations } from '@/i18n/I18nProvider';
 
 export type { BracketMode };
@@ -257,37 +258,15 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
     mode === 'live' && simRound >= geom.length ? championNode : null;
 
   // Match-detail popup state (live/finished mode only)
-  const [detail, setDetail] = useState<BracketMatch | null>(null);
-  const [summary, setSummary] = useState<MatchSummary | null>(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
+  const {
+    detail, summary, setSummary, loadingDetail, openDetails: handleView, closeDetails,
+  } = useMatchDetails<BracketMatch>(apiBase, 'bracket');
   const summaryFeedFailedFor = useRef<string | null>(null);
 
   // Radar-ping cues use the client clock ("is this match today?"), so they only
   // render after mount to avoid an SSR/hydration mismatch.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-
-  async function handleView(m: BracketMatch) {
-    trackEvent('Match details opened', { surface: 'bracket' });
-    setDetail(m);
-    setSummary(null);
-    setLoadingDetail(true);
-    try {
-      const res = await fetch(`${apiBase}/match/${m.id}?home=${m.home.id}&away=${m.away.id}`, {
-        cache: 'no-store',
-      });
-      if (!res.ok) {
-        trackEvent('Match details unavailable', { surface: 'bracket', status: res.status });
-        return;
-      }
-      const json = (await res.json()) as MatchSummary;
-      setSummary(json);
-    } catch {
-      trackEvent('Match details unavailable', { surface: 'bracket' });
-    } finally {
-      setLoadingDetail(false);
-    }
-  }
 
   // While the popup is open on a LIVE match, quietly refresh its summary every
   // 15s so the score / stats / scorers stay current without blanking the card.
@@ -867,7 +846,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           match={detail}
           summary={summary}
           loading={loadingDetail}
-          onClose={() => { setDetail(null); setSummary(null); }}
+          onClose={closeDetails}
         />
       )}
     </div>

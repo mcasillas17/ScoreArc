@@ -1,6 +1,8 @@
 import type { Locale } from './config';
-import { getMessages } from './getMessages';
-import type { MessageKey, Messages } from './messages/en';
+import { en, type MessageKey, type Messages } from './messages/en';
+import { es } from './messages/es';
+
+const CATALOGS: Record<Locale, Messages> = { en, es };
 
 type MessageArguments<Key extends MessageKey> =
   Messages[Key] extends (...args: infer Args) => string ? Args : [];
@@ -18,5 +20,5 @@ export function createTranslator(messages: Messages): Translator {
 }
 
 export function getTranslator(locale: Locale): Translator {
-  return createTranslator(getMessages(locale));
+  return createTranslator(CATALOGS[locale]);
 }

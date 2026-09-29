@@ -40,9 +40,7 @@ export async function generateMetadata({ params, searchParams }: { params: Seaso
   // attacker-crafted ?crest= must not land in our own canonical tag.
   const crest = safeCrest(firstSearchParam(query.crest));
   const predictionQuery = champ
-    ? `?c=${encodeURIComponent(champ)}&name=${encodeURIComponent(name ?? champ)}${
-        crest ? `&crest=${encodeURIComponent(crest)}` : ''
-      }`
+    ? `?${new URLSearchParams({ c: champ, name: name ?? champ, ...(crest && { crest }) })}`
     : '';
   const localizedPath = (pathLocale: 'en' | 'es') =>
     `/${pathLocale}/c/${rc.competition.id}/${rc.season.id}${predictionQuery}`;

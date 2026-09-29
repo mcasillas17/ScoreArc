@@ -1,13 +1,12 @@
 'use client';
 
-import { useRef, useState } from 'react';
 import { useTranslations } from '@/i18n/I18nProvider';
 import type { MessageKey } from '@/i18n/messages/en';
 import type { GameLogRow, Team } from '@/server/data/types';
-import MatchDetailPopup, { type MatchDetailInput, type MatchSummary } from './MatchDetailPopup';
+import MatchDetailPopup, { type MatchDetailInput } from './MatchDetailPopup';
+import { useMatchDetails } from './useMatchDetails';
 import TeamBadge from './TeamBadge';
 import LocalTime from './LocalTime';
-import { trackEvent } from '@/lib/telemetry/client';
 
 /**
  * Column labels for the stat keys the provider currently sends. Read from this
@@ -63,10 +62,8 @@ export default function PlayerGameLog({
   teamStyle?: 'crest' | 'flag';
 }) {
   const t = useTranslations();
-  const [detail, setDetail] = useState<MatchDetailInput | null>(null);
-  const [summary, setSummary] = useState<MatchSummary | null>(null);
-  const [loading, setLoading] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
+  const { detail, summary, loadingDetail, openDetails, closeDetails } =
+    useMatchDetails<MatchDetailInput & { id: string }>(apiBase, 'player-game-log');
 
   // Columns come from the first row's stat keys, in payload order.
   const columns = rows.length > 0 ? Object.keys(rows[0].stats) : [];
@@ -94,30 +91,6 @@ export default function PlayerGameLog({
     };
   }
 
-  async function openDetails(row: GameLogRow) {
-    const input = toDetailInput(row);
-    if (!input) return;
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    trackEvent('Match details opened', { surface: 'player-game-log' });
-    setDetail(input);
-    setSummary(null);
-    setLoading(true);
-    try {
-      const res = await fetch(
-        `${apiBase}/match/${row.eventId}?home=${row.homeTeamId}&away=${row.awayTeamId}`,
-        { cache: 'no-store', signal: controller.signal },
-      );
-      if (!res.ok) return;
-      setSummary((await res.json()) as MatchSummary);
-    } catch {
-      // Row stays open with the header only; the popup shows its own empty state.
-    } finally {
-      setLoading(false);
-    }
-  }
-
   if (rows.length === 0) {
     return <p className="pl-none">{t('player.noGameLog')}</p>;
   }
@@ -142,7 +115,10 @@ export default function PlayerGameLog({
           {rows.map((row) => (
             <tr key={row.eventId}>
               <td className="pl-log-match">
-                <button type="button" className="pl-log-open" onClick={() => openDetails(row)}>
+                <button type="button" className="pl-log-open" onClick={() => {
+                  const input = toDetailInput(row);
+                  if (input) void openDetails({ ...input, id: row.eventId });
+                }}>
                   {row.opponent && (
                     <TeamBadge team={row.opponent} size={18} style={teamStyle ?? 'crest'} />
                   )}
@@ -178,11 +154,8 @@ export default function PlayerGameLog({
         <MatchDetailPopup
           match={detail}
           summary={summary}
-          loading={loading}
-          onClose={() => {
-            abortRef.current?.abort();
-            setDetail(null);
-          }}
+          loading={loadingDetail}
+          onClose={closeDetails}
           teamBase={teamBase}
           playerBase={playerBase}
         />

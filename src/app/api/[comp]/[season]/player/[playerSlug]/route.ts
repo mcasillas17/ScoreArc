@@ -5,11 +5,8 @@ import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 import { apiError } from '@/app/api/errorResponse';
 
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 
-type RouteParams =
-  | { comp: string; season: string; playerSlug: string }
-  | Promise<{ comp: string; season: string; playerSlug: string }>;
+type RouteParams = Promise<{ comp: string; season: string; playerSlug: string }>;
 
 export async function GET(
   _req: Request,

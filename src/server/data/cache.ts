@@ -1,14 +1,9 @@
+const MAX_ENTRIES = 500;
+
 export class TtlCache<T> {
   private store = new Map<string, { value: T; expires: number }>();
 
-  constructor(
-    private now: () => number = () => Date.now(),
-    private maxEntries = 500,
-  ) {
-    if (!Number.isInteger(maxEntries) || maxEntries <= 0) {
-      throw new Error('TtlCache maxEntries must be a positive integer');
-    }
-  }
+  constructor(private now: () => number = () => Date.now()) {}
 
   get(key: string): T | undefined {
     const entry = this.store.get(key);
@@ -24,7 +19,7 @@ export class TtlCache<T> {
 
   set(key: string, value: T, ttlMs: number): void {
     this.store.delete(key);
-    while (this.store.size >= this.maxEntries) {
+    while (this.store.size >= MAX_ENTRIES) {
       const oldestKey = this.store.keys().next().value as string | undefined;
       if (oldestKey === undefined) break;
       this.store.delete(oldestKey);

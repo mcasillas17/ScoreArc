@@ -1,6 +1,6 @@
 import { parseRange } from './dateRange';
 
-export interface MatchQuery {
+interface MatchQuery {
   // Explicit window, or null meaning "the current week".
   range: string | null;
   // Only 'scheduled' today: the forward feed, or a filter within a range.

@@ -3,7 +3,7 @@ import { isMatchKickoff } from './matchKickoff';
 
 export type MatchScope = NonNullable<Match['scope']>;
 export type TeamResult = 'W' | 'D' | 'L';
-export interface PerformanceMatch { match: Match; result: TeamResult; goalsFor: number; goalsAgainst: number }
+interface PerformanceMatch { match: Match; result: TeamResult; goalsFor: number; goalsAgainst: number }
 export interface PerformancePeriod {
   matches: PerformanceMatch[];
   sample: number;
@@ -23,7 +23,7 @@ const PLAYED = new Set(['STATUS_FULL_TIME', 'STATUS_FINAL_AET', 'STATUS_FINAL_PE
 const knownScore = (value: number | null): value is number =>
   value !== null && Number.isSafeInteger(value) && value >= 0;
 
-export function performanceMatch(match: Match, teamId: string, scope: MatchScope): PerformanceMatch | null {
+function performanceMatch(match: Match, teamId: string, scope: MatchScope): PerformanceMatch | null {
   if (!match.id || !isMatchKickoff(match.kickoff) || match.state !== 'finished'
     || !PLAYED.has(match.statusName) || !knownScore(match.homeScore) || !knownScore(match.awayScore)
     || match.scope?.competitionId !== scope.competitionId || match.scope?.seasonId !== scope.seasonId

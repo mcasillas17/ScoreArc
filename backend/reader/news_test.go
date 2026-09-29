@@ -46,7 +46,7 @@ func TestNewsServiceCachesBySlugAndExpires(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
 	client := &fakeESPNClient{raw: []byte(`{"articles":[{"id":1,"headline":"Headline","images":[{"url":"https://example.com/image.jpg"}],"links":{"web":{"href":"https://example.com/1"}}}]}`)}
-	service := newNewsService(client, 30*time.Second)
+	service := newNewsService(context.Background(), client, 30*time.Second)
 	service.now = func() time.Time { return now }
 
 	first, err := service.Get(context.Background(), "fifa.world")
@@ -86,7 +86,7 @@ func TestNewsServiceCachesBySlugAndExpires(t *testing.T) {
 
 func TestNewsServiceReturnsMapperErrors(t *testing.T) {
 	t.Parallel()
-	service := newNewsService(&fakeESPNClient{raw: []byte(`{"articles":`)}, time.Minute)
+	service := newNewsService(context.Background(), &fakeESPNClient{raw: []byte(`{"articles":`)}, time.Minute)
 	if _, err := service.Get(context.Background(), "fifa.world"); err == nil {
 		t.Fatal("Get() error = nil for malformed upstream JSON")
 	}
@@ -95,7 +95,7 @@ func TestNewsServiceReturnsMapperErrors(t *testing.T) {
 func TestNewsServiceDoesNotCacheFailures(t *testing.T) {
 	t.Parallel()
 	client := &fakeESPNClient{err: errors.New("upstream unavailable")}
-	service := newNewsService(client, time.Minute)
+	service := newNewsService(context.Background(), client, time.Minute)
 	for range 2 {
 		if _, err := service.Get(context.Background(), "fifa.world"); err == nil {
 			t.Fatal("Get() error = nil")
@@ -113,7 +113,7 @@ func TestNewsServiceCoalescesConcurrentMisses(t *testing.T) {
 		raw:   []byte(`{"articles":[{"id":1,"headline":"Headline","links":{"web":{"href":"https://example.com/1"}}}]}`),
 		block: release,
 	}
-	service := newNewsService(client, time.Minute)
+	service := newNewsService(context.Background(), client, time.Minute)
 
 	const callers = 12
 	start := make(chan struct{})
@@ -148,7 +148,7 @@ func TestNewsServiceCallerCancellationDoesNotAbortSharedFetch(t *testing.T) {
 		raw:   []byte(`{"articles":[{"id":1,"headline":"Headline","links":{"web":{"href":"https://example.com/1"}}}]}`),
 		block: release,
 	}
-	service := newNewsService(client, time.Minute)
+	service := newNewsService(context.Background(), client, time.Minute)
 
 	firstContext, cancelFirst := context.WithCancel(context.Background())
 	firstResult := make(chan error, 1)
@@ -189,7 +189,7 @@ func TestDefaultNewsTTLMatchesFrontendCache(t *testing.T) {
 func TestNewsServiceReturnsNonNilEmptySlice(t *testing.T) {
 	t.Parallel()
 	client := &fakeESPNClient{raw: []byte(`{}`)}
-	service := newNewsService(client, time.Minute)
+	service := newNewsService(context.Background(), client, time.Minute)
 	articles, err := service.Get(context.Background(), "fifa.world")
 	if err != nil {
 		t.Fatal(err)

@@ -11,9 +11,6 @@ import { trackEvent } from '@/lib/telemetry/client';
  * one. Every other way into the app from the digest — a match card, a scorer
  * board, a story row, a nav item — is tracked, so the one untracked link would
  * read on the dashboard as a route nobody uses.
- *
- * `TrackedCompetitionLink` is the same idea with the competition route and its
- * event baked in; this is the general case.
  */
 export default function TrackedLink({
   href,

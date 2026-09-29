@@ -32,56 +32,6 @@ type rawEvent struct {
 	} `json:"season"`
 }
 
-func ValidateScoreboardSeason(raw []byte, expectedYear int) error {
-	var scoreboard rawScoreboard
-	if err := json.Unmarshal(raw, &scoreboard); err != nil {
-		return err
-	}
-
-	for _, event := range scoreboard.Events {
-		if event.Season.Year != 0 && event.Season.Year != expectedYear {
-			return fmt.Errorf("scoreboard season %d does not match %d", event.Season.Year, expectedYear)
-		}
-	}
-	return nil
-}
-
-func FilterScoreboardSeason(raw []byte, expectedYear int) ([]byte, error) {
-	var scoreboard struct {
-		Events []json.RawMessage `json:"events"`
-	}
-	if err := json.Unmarshal(raw, &scoreboard); err != nil {
-		return nil, err
-	}
-	filtered := scoreboard.Events[:0]
-	for _, event := range scoreboard.Events {
-		var envelope struct {
-			Season struct {
-				Year int `json:"year"`
-			} `json:"season"`
-		}
-		if err := json.Unmarshal(event, &envelope); err != nil {
-			return nil, err
-		}
-		if envelope.Season.Year == 0 || envelope.Season.Year == expectedYear {
-			filtered = append(filtered, event)
-		}
-	}
-	scoreboard.Events = filtered
-	return json.Marshal(scoreboard)
-}
-
-func ValidateBackfillCompleteness(raw []byte, limit int) error {
-	var scoreboard rawScoreboard
-	if err := json.Unmarshal(raw, &scoreboard); err != nil {
-		return err
-	}
-	if len(scoreboard.Events) >= limit {
-		return fmt.Errorf("scoreboard backfill reached limit %d", limit)
-	}
-	return nil
-}
-
 type rawCompetition struct {
 	Competitors []rawCompetitor `json:"competitors"`
 	Notes       []rawNote       `json:"notes"`

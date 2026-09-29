@@ -12,13 +12,8 @@ const nextConfig = {
       // Localized prefixes are authoritative in middleware, so each supported
       // locale needs a redirect that keeps the reader on that locale.
       {
-        source: '/en/c/:comp/:season/fixtures',
-        destination: '/en/c/:comp/:season/matches',
-        permanent: true,
-      },
-      {
-        source: '/es/c/:comp/:season/fixtures',
-        destination: '/es/c/:comp/:season/matches',
+        source: '/:locale(en|es)/c/:comp/:season/fixtures',
+        destination: '/:locale/c/:comp/:season/matches',
         permanent: true,
       },
       {

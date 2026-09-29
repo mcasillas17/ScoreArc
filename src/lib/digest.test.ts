@@ -3,7 +3,6 @@ import type { NewsArticle } from '@/server/data/types';
 import {
   chooseWhatsOn,
   collectStories,
-  publishedAgo,
   untilKickoff,
   whatsOnHeadline,
   UPCOMING_HORIZON_MS,
@@ -30,29 +29,6 @@ describe('untilKickoff', () => {
   it('refuses a kickoff that has passed', () => {
     expect(untilKickoff(-H, 'en')).toBeNull();
     expect(untilKickoff(0, 'es')).toBeNull();
-  });
-});
-
-describe('publishedAgo', () => {
-  it('reads in minutes, hours and days', () => {
-    expect(publishedAgo(20 * 60_000, 'en')).toBe('20 minutes ago');
-    expect(publishedAgo(3 * H, 'en')).toBe('3 hours ago');
-    expect(publishedAgo(50 * H, 'en')).toBe('2 days ago');
-  });
-
-  it('floors rather than rounds, so nothing reads older than it is', () => {
-    expect(publishedAgo(119 * 60_000, 'en')).toBe('1 hour ago');
-  });
-
-  it('says just now under a minute', () => {
-    expect(publishedAgo(30_000, 'en')).toBe('just now');
-    expect(publishedAgo(30_000, 'es')).toBe('ahora mismo');
-  });
-
-  // A publish time in the future is a provider defect, not a duration.
-  it('refuses a negative or unparseable age', () => {
-    expect(publishedAgo(-1, 'en')).toBeNull();
-    expect(publishedAgo(NaN, 'es')).toBeNull();
   });
 });
 

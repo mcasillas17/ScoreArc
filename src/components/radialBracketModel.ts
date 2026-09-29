@@ -199,7 +199,7 @@ interface Slot {
  * live/current edition whose tree isn't determined yet. Falls back to plain
  * event order if the pairings don't match. Works for any leaf size (8 or 16).
  */
-export function leafOrderFromSeeds(
+function leafOrderFromSeeds(
   leaf: BracketRound | undefined,
   seeds: [string, string][],
 ): number[] {

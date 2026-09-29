@@ -123,19 +123,6 @@ type rawBracketSeason struct {
 	Year int    `json:"year"`
 }
 
-func ValidateBracketSeason(raw []byte, expectedYear int) error {
-	var scoreboard rawBracketScoreboard
-	if err := json.Unmarshal(raw, &scoreboard); err != nil {
-		return err
-	}
-	for _, event := range scoreboard.Events {
-		if event.Season.Year != 0 && event.Season.Year != expectedYear {
-			return fmt.Errorf("bracket season %d does not match %d", event.Season.Year, expectedYear)
-		}
-	}
-	return nil
-}
-
 type rawBracketCompetition struct {
 	Competitors []rawBracketCompetitor `json:"competitors"`
 	Notes       []rawNote              `json:"notes"`

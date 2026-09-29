@@ -4,12 +4,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Match, Team } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
 import { flagUrl } from '@/lib/flags';
-import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
+import MatchDetailPopup from './MatchDetailPopup';
+import { useMatchDetails } from './useMatchDetails';
 import { toMatchDetailInput } from './upcomingWindow';
 import { matchStatusText } from './MatchRow';
 import LocalTime, { localTimeText, useLocalNow } from './LocalTime';
 import { wheelOrder, initialIndex, scoreChanges } from './matchWheelModel';
-import { trackEvent, trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
+import { trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
 import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 
 interface Props {
@@ -72,11 +73,7 @@ export default function MatchWheel({
   const [reduced, setReduced] = useState(false);
   const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
 
-  // Full-details popup state (reuses the bracket's MatchDetailPopup) — same
-  // fetch, same shape, as the retired ticker's openDetails used.
-  const [detail, setDetail] = useState<Match | null>(null);
-  const [summary, setSummary] = useState<MatchSummary | null>(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
+  const { detail, summary, loadingDetail, openDetails, closeDetails } = useMatchDetails(apiBase, 'match-wheel');
 
   const feedFailed = useRef(false);
   const prevMatchesRef = useRef<Match[]>(initialMatches);
@@ -145,25 +142,6 @@ export default function MatchWheel({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  async function openDetails(m: Match) {
-    trackEvent('Match details opened', { surface: 'match-wheel' });
-    setDetail(m);
-    setSummary(null);
-    setLoadingDetail(true);
-    try {
-      const res = await fetch(`${apiBase}/match/${m.id}?home=${m.home.id}&away=${m.away.id}`, { cache: 'no-store' });
-      if (!res.ok) {
-        trackEvent('Match details unavailable', { surface: 'match-wheel', status: res.status });
-        return;
-      }
-      setSummary((await res.json()) as MatchSummary);
-    } catch {
-      trackEvent('Match details unavailable', { surface: 'match-wheel' });
-    } finally {
-      setLoadingDetail(false);
-    }
-  }
 
   // Ordering is pure (kickoff timestamps, not the reader's clock), so — unlike
   // the retired ticker's client-side week filter — it produces the same result on the
@@ -309,7 +287,7 @@ export default function MatchWheel({
                     flashIds.has(m.id) && 'mw-row--flash',
                   ].filter(Boolean).join(' ')}
                   aria-label={ariaLabel}
-                  onClick={() => openDetails(m)}
+                  onClick={() => void openDetails(m)}
                   onFocus={(e) => e.currentTarget.scrollIntoView({ block: 'center' })}
                 >
                   <span className="mw-side">
@@ -352,7 +330,7 @@ export default function MatchWheel({
           match={toMatchDetailInput(detail)}
           summary={summary}
           loading={loadingDetail}
-          onClose={() => { setDetail(null); setSummary(null); }}
+          onClose={closeDetails}
         />
       )}
     </>

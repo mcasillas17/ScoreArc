@@ -333,7 +333,7 @@ func MapSummary(raw []byte) (MatchDetail, error) {
 		Shootout:       mapSummaryShootout(rs),
 		ShootoutDetail: mapSummaryShootoutDetail(rs, homeID, awayID),
 		Stats:          mapSummaryStats(rs, homeID, awayID),
-		WinProbability: mapWinProbability(rs, homeID, awayID),
+		WinProbability: mapWinProbability(rs, awayID),
 		Lineups:        mapSummaryLineups(rs, homeID, awayID),
 		Videos:         mapSummaryVideos(rs),
 		Info:           mapSummaryInfo(rs),
@@ -862,7 +862,7 @@ func teamIdFromRef(ref string) string {
 // probability from the first betting provider's moneylines, with the
 // bookmaker margin removed (normalised to 100). Mapped to OUR home/away by
 // team id. nil if no usable 3-way moneyline is present.
-func mapWinProbability(rs rawSummary, homeID, awayID string) *WinProbability {
+func mapWinProbability(rs rawSummary, awayID string) *WinProbability {
 	for _, o := range rs.Odds {
 		pHome, okHome := moneylineToProb(o.HomeTeamOdds.MoneyLine)
 		pAway, okAway := moneylineToProb(o.AwayTeamOdds.MoneyLine)

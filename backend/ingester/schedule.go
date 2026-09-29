@@ -155,13 +155,13 @@ func matchRowUnchanged(identity store.MatchIdentity, match model.Match, current 
 		identity.AwayTeamID == current.Away.ID &&
 		coalesceIntUnchanged(match.HomeScore, current.HomeScore) &&
 		coalesceIntUnchanged(match.AwayScore, current.AwayScore) &&
-		strPtrEqual(match.Minute, current.Minute) &&
+		ptrEqual(match.Minute, current.Minute) &&
 		match.StatusDetail == current.StatusDetail &&
 		match.StatusName == current.StatusName &&
-		strPtrEqual(identity.WinnerTeamID, current.WinnerID) &&
-		strPtrEqual(match.Note, current.Note) &&
+		ptrEqual(identity.WinnerTeamID, current.WinnerID) &&
+		ptrEqual(match.Note, current.Note) &&
 		finalRound(match, current) == current.Round &&
-		boolPtrEqual(match.BracketRequired, current.BracketRequired) &&
+		ptrEqual(match.BracketRequired, current.BracketRequired) &&
 		finalPlaceholder(match.BracketConfirmed, identity.HomeTeamID, current.Home.ID,
 			current.HomePlaceholder, match.HomePlaceholder) == current.HomePlaceholder &&
 		finalPlaceholder(match.BracketConfirmed, identity.AwayTeamID, current.Away.ID,
@@ -201,18 +201,4 @@ func finalPlaceholder(bracketConfirmed bool, incomingTeamID, storedTeamID string
 // even when the stored value is non-nil.
 func coalesceIntUnchanged(incoming, stored *int) bool {
 	return incoming == nil || (stored != nil && *incoming == *stored)
-}
-
-func strPtrEqual(a, b *string) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	return *a == *b
-}
-
-func boolPtrEqual(a, b *bool) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	return *a == *b
 }
