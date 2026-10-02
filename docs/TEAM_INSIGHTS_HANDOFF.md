@@ -17,7 +17,8 @@ activate the reader. Production data still comes through the existing ESPN
 - A bounded T16.1 contract harness: shared recorded/test vectors consumed by
   TypeScript and Go, exact DTO/OpenAPI checks, real handler error/query tests and
   real-Postgres team-schedule scope/order tests. The
-  [14-method inventory](backend/TEAM_INSIGHTS_CONTRACT.md) names every gap.
+  [contract inventory](backend/TEAM_INSIGHTS_CONTRACT.md) names every gap
+  (14 methods at this milestone, 12 after #191 removed redundant leader wrappers).
 
 This is partial T16.1 and partial T19.1. The explicit scheduling exception allows
 only team-only browser-local follows on the current source before E16 dogfooding.

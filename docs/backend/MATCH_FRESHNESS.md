@@ -4,7 +4,20 @@ This runbook does not authorize a production change. The website still uses
 its existing ESPN DataStore. Reader response bodies and the three match states
 are unchanged; freshness is additive metadata.
 
-## September 21 status and scoreboard repair
+## Current release evidence — October 2, 2026
+
+#173 recovery is merged and released; #183's monthly scoreboard repair
+(`969e512`, September 26) and cancellation fix are also merged and released.
+October 2 at 06:42:54 UTC, all ten reader current-season match scopes returned
+200 with `poll=ok`, nine fresh / World Cup dormant, and zero stale/overdue
+counts. These are bounded match-contract observations, not full sustained
+completeness, archive/squad/player coverage or notification acceptance.
+T17.4 scheduling/notification activation remains open. See
+[CURRENT_STATE](../CURRENT_STATE.md#october-2-reconciliation) for exact release
+records, the distinct October 2 Fly eligibility failure before publication,
+and remaining limits. Do not repeat completed migration/recovery operations.
+
+## September 21 historical status and scoreboard repair
 
 **Completed operations, reported by the owner:** the Neon quota issue was
 resolved; migration `0023_match_sync` was applied and verified clean at version
@@ -15,8 +28,9 @@ summaries. Do not reapply that migration or repeat deployment recovery.
 
 At approximately 07:25 UTC September 21, the reader was healthy and those
 incidents were no longer overdue/live, but LaLiga still reported poll `partial`
-and freshness `unavailable`. The repair below has **local validation only**;
-its production rollout and acceptance have not occurred in this task.
+and freshness `unavailable`. At that capture the repair had **local validation
+only**; the September 26 release above supersedes its undeployed status, not
+the remaining sustained reconciliation/transient-failure acceptance.
 
 Bounded probes at 07:34--07:39 UTC reproduced the exact configured hyphenated
 date-range 400, including same-day ranges. Removing/changing the limit, adding
@@ -230,10 +244,10 @@ platform scheduling; the mathematical threshold is not instantaneous delivery.
 ## Schema and separately approved release order
 
 **Existing production:** migration 0023 and the recovery releases were completed
-September 20 as reported above. This scoreboard repair adds no migration,
-grant or startup dependency. A human-approved merge of its shared backend
-changes selects **both Fly services**, not a frontend cutover. Authorize that
-release or arrange verified holds before merging; do not deploy from this branch.
+September 20 as reported above. The scoreboard repair #183 subsequently shipped
+September 26 without a new migration, grant or startup dependency. Neither
+release was a frontend cutover. Do not repeat these completed operations;
+the remaining live acceptance and notification work is described below.
 
 The following sequence is retained for a **new/unmigrated environment only**,
 not as instructions to repeat completed production recovery:

@@ -11,7 +11,12 @@ Sources inspected: `src/server/data/{store,types,teamIdentity}.ts`,
 comments claiming an exact frontend mirror or a base-URL-only migration are not
 a parity guarantee. The concrete inventory below supersedes that interpretation.
 
-## All 14 DataStore methods
+## All 12 current DataStore methods
+
+Inventory reconciled October 2, 2026 against `store.ts`: September's slice had
+14 methods. PR #191 removed the redundant `getTopScorers`/`getTopAssists`
+wrappers; public scorer/assist capabilities still use `getLeaders`. This reduces
+the method count, not the reader's leader/assists or other parity gaps.
 
 In this table `C` means `/v1/competitions/{comp}/{season}`. Every listed reader
 route is GET. “Candidate” means a related existing route, not a compatible
@@ -27,9 +32,7 @@ news, match summary and team. `/healthz` is operational, not an eighth data rout
 | `getStandings(rc) → Group[]` | `C/standings`, `Group[]` | Stored standings exist. Frontend computes Leagues Cup tables and adds the MLS overall table; reader has neither derived view. Group metadata and full DTO parity remain untested here. |
 | `getBracket(rc) → BracketRound[]` | `C/bracket`, `BracketRound[]` | Stored bracket projection exists; frontend fetches configured bracket date range. Full round, team identity and detail parity are unproven by this slice. |
 | `getMatchSummary(rc,eventId,homeId,awayId) → MatchSummaryData` | `/v1/matches/{id}`, `MatchSummary` | Reader uses a canonical UUID, not the frontend ESPN event id, and no competition/side arguments. Unknown or malformed IDs return 404. Scorer own-goal/athlete fields, richer statistics and lineup fields differ; nested provider team IDs remain a placement risk. |
-| `getLeaders(rc) → {scorers,assists}` | `C/top-scorers`, `TopScorer[]` | Only goals rows are selected. No combined object or assists category. Reader uses `goals`, frontend `StatLeader.value`; athlete/team identity fields differ. |
-| `getTopScorers(rc) → StatLeader[]` | `C/top-scorers`, `TopScorer[]` | Ordered goal leaderboard exists; `goals` versus `value`, missing athlete/team identity and hashed leader crest keys prevent direct substitution. |
-| `getTopAssists(rc) → StatLeader[]` | None | No assists route; `topScorersSQL` hardcodes `category = 'goals'`. |
+| `getLeaders(rc) → {scorers,assists}` | `C/top-scorers`, `TopScorer[]` | Ordered goals rows only: `topScorersSQL` hardcodes `category = 'goals'`. No combined object or assists route. Reader uses `goals`, frontend `StatLeader.value`; missing athlete/team identity and hashed leader crest keys prevent direct substitution. |
 | `getNews(rc) → NewsArticle[]` | `/v1/competitions/{comp}/news`, `NewsArticle[]` | Competition news exists. Both source behaviors are competition-based despite the frontend season cache key. Reader returns 502 on upstream failure; full payload parity is not tested here. |
 | `getTeam(rc,teamId) → TeamProfile|null` | `C/teams/{teamId}`, `TeamProfile` | Canonical team identity, record, squad and scoped schedule exist. Frontend uses provider IDs internally and four ESPN requests. Reader lacks structured `standing`, per-match `scope`, and `scheduleAvailability`. Location remains null, standing summary is generated differently, and a failed child query fails the entire reader request rather than retaining optional blocks. |
 | `getSquad(rc,teamId) → SquadPlayer[]` | Embedded `TeamProfile.squad` only | No independent roster route; extracting from team requires the other queries too. Null statistics versus an all-null measured block is represented, but reader age/headshot stay null. Canonical player UUIDs differ from provider athlete IDs. |
@@ -111,5 +114,5 @@ ingestion coverage or availability.
 The shared score and identity vectors cover only the fields used by this
 milestone; they do not establish scorer/lineup/stats/leader/bracket/news parity,
 production event/player crosswalks, asset allowlisting, historical completeness,
-or parity of all 14 methods. Those gaps and the data-rights gate remain open in
+or parity of all 12 current methods. Those gaps and the data-rights gate remain open in
 `CURRENT_STATE.md` and the product roadmap.

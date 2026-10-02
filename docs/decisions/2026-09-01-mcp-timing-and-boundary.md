@@ -15,8 +15,9 @@ follows all of the following being true, not any one of them:
 
 1. Data-rights clearance (the companion decision record's gate is closed).
 2. Canonical reader parity — the 1d cutover has closed the `DataStore`
-   14-methods-vs-7-routes gap documented in `docs/CURRENT_STATE.md` §5, so
-   the reader is a complete contract, not a partial one.
+   gap documented in `docs/CURRENT_STATE.md` §5 (14 methods versus 7 routes at
+   this decision; 12 methods after #191 removed redundant leader wrappers), so
+   the reader is a complete contract, not a partial one. The parity gate is unchanged.
 3. Frontend 1d dogfooding — ScoreArc's own frontend has run on the reader in
    production long enough to have found its own bugs first.
 4. Initial E10 history/player/shot reads exist as real REST endpoints (not
