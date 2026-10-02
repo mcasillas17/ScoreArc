@@ -12,8 +12,8 @@ The shared TypeScript window path now uses bounded padded months, exact UTC/seas
 filtering and validated raw-event deduplication for calendar, Now/live, upcoming,
 enriched matches, computed tables and historical brackets. Local tests, typecheck,
 lint, build and real-browser acceptance passed, including controlled unavailable
-states and EN/ES copy. This is **locally verified, not merged, deployed or accepted
-in production**. Before delivery, cleanup #191 at `9a65d8c` was incorporated
+states and EN/ES copy. **Merged to `main` as #192 (`8961892`), alongside #193's
+month-read fix (`91753fd`); production acceptance is not recorded here.** Before delivery, cleanup #191 at `9a65d8c` was incorporated
 at the owner's request; its deleted code stays deleted. The integrated state passes
 1,249 tests and the same local gates, plus an additional GPT-6 Luna Ponytail review.
 The frontend still uses ESPN; no E16 cutover or backend recovery
@@ -136,7 +136,8 @@ that audit's mutable status conclusions where they conflict.
   (missing-dependency `react-hooks/exhaustive-deps` on
   `BracketInteractive.tsx`, `LiveScores.tsx`, `NewsLive.tsx`,
   `StandingsLive.tsx`; an ARIA role mismatch on `LiveScores.tsx`; two unused
-  `eslint-disable` directives).
+  `eslint-disable` directives). `LiveScores.tsx` and `/api/live` were deleted
+  in #191 (2026-09-29), so their warnings no longer apply.
 - **Additional evidence:** `npm run build` → succeeds. Emits Next.js's own
   deprecation warnings only: the `middleware` file convention (migrate to
   `proxy`) and the Edge Runtime (`/api/live` disables static generation for
@@ -335,9 +336,8 @@ that audit's mutable status conclusions where they conflict.
   normal text), and at least one match card's accessible name does not match
   its visible label (an accessible-name/visible-label mismatch flagged by
   the audit, not a missing name).
-- **Dead code:** `src/components/LiveScores.tsx` has no import anywhere
-  outside its own test file — it is unreachable from any route. Lower
-  priority; see §8.
+- **Dead code (resolved):** `src/components/LiveScores.tsx` had no import
+  outside its own test file; #191 deleted it (T20.6).
 
 ## 4. Corrected roadmap facts
 
@@ -556,8 +556,8 @@ existing gates; this does not reorder the infrastructure or data-rights lanes.
 
 **Explicitly lower priority, not ahead of data correctness:** product-
 quality fixes (LCP/TTFB, the 4.9MB ESPN asset payload, the 4.08:1 contrast
-finding, the match-card accessible-name mismatch) and removing the dead
-`LiveScores` component. These are real and worth fixing, but they do not
+finding, the match-card accessible-name mismatch). Removing the dead
+`LiveScores` component is done (#191). These are real and worth fixing, but they do not
 block on or gate anything above, and nothing above should be delayed for
 them.
 
