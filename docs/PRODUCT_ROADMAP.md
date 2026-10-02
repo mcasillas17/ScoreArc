@@ -1,6 +1,6 @@
 # ScoreArc Product Roadmap
 
-**Status:** Approved · task index revised 2026-09-03
+**Status:** Approved · task index revised 2026-09-03 · synced with `main` 2026-10-01
 **Owner:** Product
 **Companion docs:** `VISION.md` (north star) · `BACKEND_HANDOFF.md` (the Go build)
 
@@ -269,8 +269,7 @@ What survives, inside T11.3:
 
 - **T2.1's display requirement** — simultaneous live matches need a compact,
   scannable view. T11.3 shipped that requirement through `MatchesNow`; it did
-  **not** adopt `LiveScores.tsx`, which remains dead code scheduled for deletion
-  in T20.6.
+  **not** adopt `LiveScores.tsx`, which T20.6 deleted (#191).
 - **T2.2's nav fix** — T0.3's dead "Live Scores" link is closed by the Now mode
   being the matches page's default, not by a new route.
 
@@ -288,8 +287,8 @@ The E2 spec is kept for its grid reasoning; its routing section is superseded.
 > item to the nav list; it no longer has to reconcile two different nav shapes,
 > and its live grid reads `?detail=summary` rather than a fourth route.
 
-`LiveScores.tsx` is imported only by its test; T20.6 removes the obsolete
-component and test after preserving the live-grid behavior in `MatchesNow`.
+`LiveScores.tsx` and its test were deleted in #191 (T20.6); the live-grid
+behavior lives in `MatchesNow`.
 
 ### E3 · Matches & results — **shipped**
 Branch `feat/fixtures-results`. The single biggest missing capability.
@@ -411,7 +410,9 @@ percentiles.
 ### E11 · Dynamic home & now-first matches
 Branch per slice. No backend, no new provider, no new upstream endpoint.
 
-- **T11.1** ✅ `matchPriority` + the cheap data path + `/api/live` (#89) — no UI change
+- **T11.1** ✅ `matchPriority` + the cheap data path + `/api/live` (#89) — no UI change.
+  `/api/live` was later removed as unused (#191); live reads go through
+  `/api/{comp}/{season}/matches`.
 - **T11.2** ✅ Home live band + tiles that carry real football
 - **T11.3** ✅ Matches "Now" mode + calendar polling — **absorbs E2** (closes T0.3)
 
@@ -808,7 +809,7 @@ T16.2–T16.6 and the production-cutover gates are unchanged. See the
 | Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
 |---|---|---|---|
 | **T17.1** | Reproduce, diagnose, and fix the Liga MX team-profile 500 in reader store/handler integration tests. | Root cause is evidence from a real-Postgres reproduction, not a UUID hypothesis; seeded teams return `200` or intentional `404`, never unexplained `500`. | none |
-| **T17.2** | Diagnose Greece across config, source, ingester, database, and reader; populate it or gate it out honestly. **The September 6 stopped-machine diagnosis and September 13/14 recovery are historical; #163/#172 delivery repairs are merged. September 19 stale live matches and range-request failures require separate current diagnosis. Bounded verified recovery is implemented on the recovery branch, not deployed; production SQL/machine evidence and population acceptance remain pending.** | Never assert a missing row count in advance; a configured-but-unproven competition is not presented as healthy. | diagnosis: none. Population: [SETUP §7.5](backend/SETUP.md#75-verify) freshness acceptance (zero-failure cycles, advancing data including Greece) |
+| **T17.2** | Diagnose Greece across config, source, ingester, database, and reader; populate it or gate it out honestly. **The September 6 stopped-machine diagnosis and September 13/14 recovery are historical; #163/#172 delivery repairs are merged. September 19 stale live matches remain a separate diagnosis. The range-request failures are diagnosed: ESPN answers every `YYYYMMDD-YYYYMMDD` scoreboard query with 400, so both paths now read bounded months — backend #183 ([spec](superpowers/specs/2026-09-21-scoreboard-windows-design.md)), frontend #192/#193 ([spec](superpowers/specs/2026-09-29-frontend-scoreboard-windows-design.md), [evidence](FRONTEND_SCOREBOARD_WINDOWS.md)); rollout acceptance status lives in `CURRENT_STATE.md`. Bounded verified recovery is implemented on the recovery branch, not deployed; production SQL/machine evidence and population acceptance remain pending.** | Never assert a missing row count in advance; a configured-but-unproven competition is not presented as healthy. | diagnosis: none. Population: [SETUP §7.5](backend/SETUP.md#75-verify) freshness acceptance (zero-failure cycles, advancing data including Greece) |
 | **T17.3** | Add source, observed/finalized time, derivation, and complete/empty/stale/unavailable semantics to reader contracts. **September 19: match-specific additive headers, accepted-observation timestamps and stopped-worker detection are implemented on the recovery branch, not deployed; broader endpoint/provenance coverage remains open.** | Consumers can distinguish a genuine empty window from broken ingestion from the response alone; all reader routes have contract coverage. | T16.1 |
 | **T17.4** | Define per-competition freshness/completeness SLOs, alerts, and runbooks from ingest evidence. **September 19: bounded match watchdog, durable transition deduplication and [runbook](backend/MATCH_FRESHNESS.md) are implemented; schedule/notification delivery and live acceptance are not activated or complete.** | Dormant seasons do not page; active competitions crossing their declared threshold do, with competition/season/run context. | T17.3; T21.4 later exports richer metrics |
 
@@ -898,7 +899,7 @@ The data-rights decision and all source-cutover boundaries remain in force.
 | **T20.3** | Verify responsive arc/dial/table/navigation behavior plus reduced-motion alternatives. | Test low/mid/high widths inside every breakpoint; reduced motion removes nonessential animation without hiding state. | none |
 | **T20.4** | Design explicit loading, stale, empty, unavailable, and retry states across live surfaces. | Empty is never used as an error fallback; stale data shows timestamp/provenance and keeps a safe retry path. | E17.3 |
 | **T20.5** | Complete sitemap, robots, structured match/team/player data, canonical/alternate metadata, and share-card integrity. | Generated URLs are locale-aware and canonical; share cards accept only approved crest hosts and render all route variants. | E16.2 |
-| **T20.6** | Delete dead `LiveScores.tsx` and its isolated tests after preserving behavior in `MatchesNow`. | No production import or behavior disappears; typecheck/tests remain clean. | none |
+| **T20.6** ✅ | Delete dead `LiveScores.tsx` and its isolated tests after preserving behavior in `MatchesNow`. **Done in #191**, together with `/api/live`. | No production import or behavior disappears; typecheck/tests remain clean. | none |
 
 ### E21 · Operations, admin & governance
 
