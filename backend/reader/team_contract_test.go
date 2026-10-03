@@ -20,11 +20,7 @@ type teamContractVectors struct {
 	} `json:"identity"`
 	ReaderMatches []Match     `json:"readerMatches"`
 	ReaderTeam    TeamProfile `json:"readerTeam"`
-	Queries       []struct {
-		Query         string `json:"query"`
-		ExpectedCount int    `json:"expectedCount"`
-	} `json:"queries"`
-	Errors []struct {
+	Errors        []struct {
 		Path   string `json:"path"`
 		Status int    `json:"status"`
 		Error  string `json:"error"`
@@ -51,38 +47,23 @@ func loadTeamContract(t *testing.T) (teamContractVectors, map[string]any) {
 func TestTeamContractSerialization(t *testing.T) {
 	vectors, raw := loadTeamContract(t)
 	document := loadOpenAPI(t)
-	for _, tc := range []struct {
-		name, schema string
-		value        any
-	}{
-		{"readerTeam", "TeamProfile", vectors.ReaderTeam},
-	} {
-		data, err := json.Marshal(tc.value)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var actual any
-		if err := json.Unmarshal(data, &actual); err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(actual, raw[tc.name]) {
-			t.Fatalf("%s serialization lost or changed vector fields: %s", tc.name, data)
-		}
-		schema := document.Components.Schemas[tc.schema].Value
-		if err := schema.VisitJSON(actual); err != nil {
-			t.Fatal(err)
-		}
-		// Missing optional frontend fields are explicit incompatibilities, not normalized away.
-		object := actual.(map[string]any)
-		for _, missing := range []string{"standing", "scheduleAvailability"} {
-			if _, exists := object[missing]; exists {
-				t.Fatalf("gap changed: reader now emits %s; update contract", missing)
-			}
-			if _, exists := schema.Properties[missing]; exists {
-				t.Fatalf("gap changed: OpenAPI now defines %s", missing)
-			}
-		}
+	data, err := json.Marshal(vectors.ReaderTeam)
+	if err != nil {
+		t.Fatal(err)
 	}
+	var actual any
+	if err := json.Unmarshal(data, &actual); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(actual, raw["readerTeam"]) {
+		t.Fatalf("readerTeam serialization lost or changed vector fields: %s", data)
+	}
+	schema := document.Components.Schemas["TeamProfile"].Value
+	if err := schema.VisitJSON(actual); err != nil {
+		t.Fatal(err)
+	}
+	// The absent standing/scheduleAvailability gap (T10.3-team) is owned by
+	// reader_contract_test.go and reader-contract.json.
 	for i, match := range vectors.ReaderMatches {
 		data, err := json.Marshal(match)
 		if err != nil {
@@ -136,38 +117,8 @@ func TestTeamContractHTTPQueriesAndErrors(t *testing.T) {
 	if err := teamSchema.VisitJSON(actualTeam); err != nil {
 		t.Fatal(err)
 	}
-	paths := []string{
-		"/healthz", "/v1/competitions/{comp}/{season}/matches",
-		"/v1/competitions/{comp}/{season}/standings", "/v1/competitions/{comp}/{season}/bracket",
-		"/v1/competitions/{comp}/{season}/top-scorers", "/v1/competitions/{comp}/news",
-		"/v1/matches/{id}", "/v1/competitions/{comp}/{season}/teams/{teamId}",
-	}
-	if document.Paths.Len() != len(paths) {
-		t.Fatal("route inventory changed; update all 14 DataStore mappings")
-	}
-	for _, path := range paths {
-		if document.Paths.Value(path) == nil || document.Paths.Value(path).Get == nil {
-			t.Fatalf("missing GET %s", path)
-		}
-	}
-	for _, query := range vectors.Queries {
-		response := performRequest(router, "GET", base+"/matches"+query.Query)
-		if response.Code != 200 {
-			t.Fatalf("status=%d: %s", response.Code, response.Body.String())
-		}
-		var actual []any
-		if err := json.Unmarshal(response.Body.Bytes(), &actual); err != nil {
-			t.Fatal(err)
-		}
-		if len(actual) != query.ExpectedCount || !reflect.DeepEqual(actual, raw["readerMatches"]) {
-			t.Fatal("query gap changed: reader no longer returns the full season unchanged")
-		}
-	}
-	for _, parameter := range document.Paths.Value("/v1/competitions/{comp}/{season}/matches").Get.Parameters {
-		if parameter.Value.In == "query" {
-			t.Fatalf("query gap changed: %s now documented", parameter.Value.Name)
-		}
-	}
+	// Route inventory and the ignored match-query gap (T10.1) are owned by
+	// reader_contract_test.go and reader-contract.json.
 	for _, vector := range vectors.Errors {
 		response := performRequest(router, "GET", vector.Path)
 		var body map[string]string

@@ -140,8 +140,8 @@ image was unchanged. Other observations retain their original date.
 **Ingestion update:** T17.2 diagnosed 2026-09-06 — see §2 and §3.
 
 **Team-insights update:** #171 merged as `969f013` on September 14; §11 retains
-its local validation evidence. It remains partial T16.1/T19.1, not reader cutover
-or closure of those tasks.
+its local validation evidence. It was partial T16.1 (completed October 3 by the
+reader contract harness, §5) and remains partial T19.1, not reader cutover.
 
 ## 1. Authority
 
@@ -457,10 +457,16 @@ frozen and pending-release states; unobserved collections remain unproven.
 
 ## 5. 1d / API cutover blockers
 
-The [team-insights contract slice](backend/TEAM_INSIGHTS_CONTRACT.md) now records
-all 12 current mappings and tests the supported identity/schedule/match subset across
-TypeScript, OpenAPI and Go, including actual query/error behavior and SQL scope.
-It does not resolve the broader parity or availability blockers below.
+The [reader contract harness](backend/READER_CONTRACT.md) (T16.1, October 3)
+covers all 12 current methods across TypeScript, OpenAPI, Go and reader SQL, and
+registers the DTO, query, identity, derived-view, freshness and error-logging
+incompatibilities below as gaps with their roadmap tasks; it fails when any of
+them changes. Three T16.2 items are not registered gaps: the hashed leader crest keys, the missing
+`cdn.scorearc.futbol` allowlist entry and the canonical team helper mismatch
+(the harness only checks that both languages' crosswalks agree on its vector
+teams). It detects drift and does not resolve the parity or availability
+blockers below. The [team-insights slice](backend/TEAM_INSIGHTS_CONTRACT.md) keeps
+its team-specific contract.
 
 - **`DataStore` has 12 methods** (`getMatches`, `getFixtures`,
   `getLiveWindow`, `getUpcoming`, `getStandings`, `getBracket`,
@@ -473,12 +479,14 @@ It does not resolve the broader parity or availability blockers below.
   query parameters; it returns every match for the season. The frontend's
   `getMatches(range)`, `getFixtures(range)`, `getLiveWindow`, and
   `getUpcoming(limit)` semantics have no reader-side equivalent yet.
-- **Provider IDs leak into nested scorer/card data.** The ESPN mapper
-  (`src/server/data/providers/espn-summary.ts`) sets `scorers[].teamId` and
-  `cards[].teamId` from the raw provider `team.id` (e.g. `"359"`), while the
-  same payload's `home.id`/`away.id` are canonical (`eng-arsenal`) —
-  scorer-to-side placement can break on the reader path.
-- **Go `Scorer` (and `Card`) are missing `ownGoal`/`athleteId`.**
+- **Provider IDs leak into nested scorer/card data.** The ingester
+  canonicalizes match sides (`eng-arsenal`) but stores the summary mapper's
+  provider `scorers[].teamId`/`cards[].teamId` (e.g. `"359"`) unchanged in
+  `match_detail`, so the reader serves mixed ids and scorer-to-side placement
+  can break (gap `T16.2-nested-team-id`).
+- **Go `Scorer` is missing `ownGoal`/`athleteId`/`playerSlug`** (gap
+  `T16.2-scorer-identity`; `Card` matches the frontend apart from its provider
+  `teamId`, gap `T16.2-nested-team-id`).
   `shared/model/types.go`'s `Scorer` carries `TeamID`, `Player`, `Minute`,
   `Penalty`, `Shootout` — no own-goal flag and no athlete identity, even
   though `model.Play`/`model.MatchParticipation` already carry both
@@ -505,6 +513,11 @@ It does not resolve the broader parity or availability blockers below.
   `src/lib/ogUrl.ts`'s `CREST_HOSTS` is `{a.espncdn.com,
   r2.thesportsdb.com}` — a self-hosted R2/CDN crest would be rejected by
   `safeCrest` today.
+- **Six reader handlers log raw dependency error text** (matches, standings,
+  bracket, top-scorers, news, match summary), which can carry connection
+  details; response bodies stay sanitized. `handleTeam` logs only operation,
+  error type and SQLSTATE and is the reference. Owned by T21.4; pinned as gap
+  `T21.4-dependency-error-logging`.
 
 ## 6. Durability blockers
 
@@ -583,13 +596,11 @@ held-byte reprocessing and new collection remain unchanged.
 
 **Next implementation, in order:**
 
-1. **T16.1 — complete the cross-language contract harness (§5).** Extend the
-   bounded team-insights foundation across all 12 current DataStore methods,
-   TypeScript/Go/OpenAPI DTOs and query/error vectors; an inventory is not parity.
-2. **T16.2 — canonical identity and DTO parity (§5).** Resolve nested provider
+1. **T16.2 — canonical identity and DTO parity (§5).** Resolve nested provider
    IDs, `ownGoal`/`athleteId`, stable leader crests, the CDN allowlist and
-   canonical-team-helper mismatch through that harness.
-3. **T10.1 — match-query parity (§5).** Pin range/state/detail/limit behavior,
+   canonical-team-helper mismatch, and close the T16.2 gaps registered in the
+   completed T16.1 [harness](backend/READER_CONTRACT.md).
+2. **T10.1 — match-query parity (§5).** Pin range/state/detail/limit behavior,
    then the remaining T10.10 and T10.2–T10.4 derived-view/read contracts.
 
 **Independent high-priority reliability/durability lanes, not new dependencies:**
@@ -936,6 +947,7 @@ part of this milestone. Production remains fully ESPN-backed.
   converged after fixes; final documented-state review is recorded in the PR.
 
 The [handoff](TEAM_INSIGHTS_HANDOFF.md) includes definitions, screenshots,
-validation details and local inspection paths. T16.1, T19.1 and their epics remain
-open. The [data-rights gate](decisions/2026-09-01-data-rights-gate.md), E16
+validation details and local inspection paths. T19.1 and its epic remain open;
+T16.1 was completed October 3 (§5). The
+[data-rights gate](decisions/2026-09-01-data-rights-gate.md), E16
 production-cutover gates, T17 ingestion work and T21 delivery work are unchanged.

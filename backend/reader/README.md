@@ -1,8 +1,9 @@
 # ScoreArc public reader API
 
-`backend/reader` is a public, read-only Go HTTP service. It reconstructs the
-frontend's existing JSON models from Postgres, except news, which remains a
-short-lived ESPN proxy. The authoritative machine-readable contract is
+`backend/reader` is a public, read-only Go HTTP service. It serves JSON shaped
+after the frontend's existing models from Postgres, except news, which remains a
+short-lived ESPN proxy; the implemented differences are registered gaps in
+[`READER_CONTRACT`](../../docs/backend/READER_CONTRACT.md). The authoritative machine-readable contract is
 [`openapi.yaml`](openapi.yaml).
 
 Every id it serves is a **canonical ScoreArc id** — slugs for competitions,

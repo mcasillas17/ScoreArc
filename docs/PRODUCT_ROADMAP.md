@@ -769,8 +769,8 @@ code rather than pasted from a dated plan.
 | **T9.4** | Publish Brier score, reliability curve, sample, and model version. | No xG value ships without user-visible validation and a base-rate comparison. | T9.3 |
 | **T9.5** | Gate and render xG only for supported competitions. | Unsupported competitions render no xG, never zero or a misleading disabled number. | T9.4, owner product choice |
 | **T10.1** | Add validated range/state/detail/limit match reads and calendar queries through one `params.go` layer. | Bad input is `400`; UUIDv7 match ids are accepted; all-season dumps are never an accidental default. | first E10 task, E16.1 |
-| **T10.2** | Generalize leaders and expose per-match box scores. | Goals/assists share one typed shape; unknown stats stay null and percentages are derived from operands. | T10.1 |
-| **T10.3** | Complete team profile, squad, and schedule reads. | Unknown teams are `404`; unexpected DB errors retain request-id diagnostics; no speculative fixes for query failures. | T10.1, T17.1 |
+| **T10.2** | Generalize leaders and expose per-match box scores, closing the T10.2 gaps in the T16.1 harness (`src/server/data/contracts/reader-contract.json`: team stats, lineups, leaders, leader board depth). | Goals/assists share one typed shape; unknown stats stay null and percentages are derived from operands; the served board depth is an explicit decision (the frontend shows 10, the reader serves every stored row). | T10.1 |
+| **T10.3** | Complete team profile, squad, and schedule reads. | Unknown teams are `404`; unexpected DB errors retain request-id diagnostics; no speculative fixes for query failures; a failed squad/schedule child query either degrades to an empty block with available/unavailable signalling (as the frontend does) or is explicitly accepted as a 500, closing `T10.3-partial-failure` and the other T10.3 gaps in `src/server/data/contracts/reader-contract.json`. | T10.1, T17.1 |
 | **T10.4** | Serve canonical player profiles, seasons, and full game logs. | Slug resolution never leaks provider ids; missing optional blocks degrade without losing identity. | T10.1, E16.2 |
 | **T10.5** | Expose bounded standings history, form/streaks, held seasons, percentiles, win-probability, and odds series. | Every list is bounded and every derived metric names its period/sample. | T10.1, E17.3 |
 | **T10.6** | Serve reconciled shots and relational commentary. | Coverage/fidelity accompany the response; no shot surface where T6.3 fails. | T10.1, T6.3 |
@@ -789,19 +789,25 @@ code rather than pasted from a dated plan.
 ### E16 · Reader parity & staged frontend cutover (1d)
 
 **Bounded foundation implemented (September 13 team-insights slice):** the
-[contract inventory and harness](backend/TEAM_INSIGHTS_CONTRACT.md) inventory all
-12 current methods (14 at that milestone, before #191 removed redundant
-scorer/assist wrappers; both capabilities remain through `getLeaders`).
-Executable TS/Go/OpenAPI coverage is limited to
-the team identity, schedule and match fields this feature uses. Query, DTO and
-availability gaps are explicit. **T16.1 remains open** for the broader contract;
-T16.2–T16.6 and the production-cutover gates are unchanged. See the
+[team-insights contract](backend/TEAM_INSIGHTS_CONTRACT.md) inventoried 14
+methods at that milestone (12 after #191 removed redundant scorer/assist
+wrappers; both capabilities remain through `getLeaders`); that inventory now
+lives in the [reader contract harness](backend/READER_CONTRACT.md). The slice
+keeps its team identity, schedule and match checks. See the
 [milestone handoff](TEAM_INSIGHTS_HANDOFF.md) for local validation, not deployment.
+
+**T16.1 complete (October 3):** the [reader contract harness](backend/READER_CONTRACT.md)
+covers all 12 methods across TypeScript, OpenAPI, Go DTOs/handlers and reader SQL,
+with each DTO, query, identity, derived-view and freshness incompatibility it
+characterizes registered as a gap owned by T16.2, T10.1–T10.4, T10.10, T16.6, T17.3
+or T21.4 (leader crest keys, the CDN allowlist and the canonical team helper
+mismatch remain T16.2 work outside it). It is drift detection, not parity: T16.2–T16.6 and
+the production-cutover gates are unchanged.
 
 | Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
 |---|---|---|---|
-| **T16.1** | Build one cross-language contract harness over TypeScript types, OpenAPI, Go DTOs, query vectors, and recorded payloads. | Any field/nullability/query drift fails CI; canonical equivalence is required, not byte equality with provider JSON. | none |
-| **T16.2** | Fix canonical nested team ids, `ownGoal`/`athleteId`, slug-stable leader crests, and the ScoreArc CDN allowlist. | Unknown crest hosts are dropped, not proxied; contract fixtures prove scorer/card-to-side and player identity. | T16.1 |
+| **T16.1** ✅ | Build one cross-language contract harness over TypeScript types, OpenAPI, Go DTOs, query vectors, and recorded payloads. **Done October 3 — [READER_CONTRACT](backend/READER_CONTRACT.md); gaps stay open under their tasks.** | Any field/nullability/query drift fails CI; canonical equivalence is required, not byte equality with provider JSON. | none |
+| **T16.2** | Fix canonical nested team ids, `ownGoal`/`athleteId`, slug-stable leader crests, and the ScoreArc CDN allowlist, and close (or explicitly accept) the other DTO-parity gaps the T16.1 harness assigns to T16.2: match/team identity, standings rank/dedup/malformed-row handling and unnamed-table labels, bracket round names/slug type/placeholder crests, shootout aggregate source and the clockless live minute (`src/server/data/contracts/reader-contract.json`). | Unknown crest hosts are dropped, not proxied; contract fixtures prove scorer/card-to-side and player identity; each closed gap's harness characterization is updated. | T16.1 |
 | **T16.3** | Implement a strict `apiStore` satisfying all 12 `DataStore` methods with per-method source flags. | 5xx, timeout, parse error, or explicit stale/unavailable status may fall back to ESPN; a valid empty result never does. | T10.1–T10.4, T10.10, T17.3 |
 | **T16.4** | Shadow reader and ESPN per method with named normalizers and ignore rules. | Diffs never affect the user; each method gets a documented threshold based on semantic fields, not provider/canonical id equality. | T16.3 |
 | **T16.5** | Cut over one method at a time, dogfood, and retain immediate rollback. | No one-step flip; each method completes an owner-approved soak without correctness/freshness SLO breach before the next. | T16.4, T17.4 |
@@ -913,7 +919,7 @@ The data-rights decision and all source-cutover boundaries remain in force.
 | **T21.1** | Protect `main`; require PR/CI integration and exact-SHA main CI before Fly or Vercel publication. [Release contract](decisions/2026-09-05-ci-production-gates.md), [operations](backend/RELEASES.md). | No direct push/force push/deletion; failed or skipped tests cannot release. Manual delivery reruns CI; rollback uses a revert PR. Closure requires live settings evidence and post-merge acceptance for all three targets, not just a green PR. | owner GitHub/Vercel access and a non-owner Vercel deployment identity; activation ledger in CURRENT_STATE §10 |
 | **T21.2** | Fail service readiness when the database migration head is behind code and document the controlled apply path. **September 19: the recovery slice checks its 0023 tables/columns/read access at startup; full head/dirty-ledger enforcement remains open.** | First slice does not auto-migrate production; reader/ingester refuse mismatched schema with an actionable error. | none |
 | **T21.3** | Complete provisional-team curation and safe identity promotion in both operator tooling and the ingester promotion path. | Repoint match, standing, appearance, and match-event references before deletion; promotion never ends in FK `23503`. | T21.2 |
-| **T21.4** | Add reader/ingester metrics, bounded audit retention, dashboards, and operator runbooks. | Metrics omit secrets/high-cardinality ids; each E17 alert links to a diagnostic and recovery action. | none |
+| **T21.4** | Add reader/ingester metrics, bounded audit retention, dashboards, and operator runbooks, and sanitize reader dependency-error logs (gap `T21.4-dependency-error-logging` in the T16.1 harness). | Metrics omit secrets/high-cardinality ids; reader handlers log operation, error type and SQLSTATE rather than raw dependency text, as `handleTeam` already does; each E17 alert links to a diagnostic and recovery action. | none |
 
 **T21.1 activation remains open (September 13 readback):** PR #161 merged as
 `0f75102`; main run `34663184517` passed full tests and all three actual credential
@@ -1005,8 +1011,8 @@ every P0 behind one owner decision.
 | **B · Live trust** | **T17.1–T17.4** | team/Greece causes are resolved or gated; responses distinguish complete, empty, stale, and unavailable |
 | **C · Contract/read** | **T16.1–T16.2**, then **T10.1**, **T10.10**, **T10.2–T10.4** | the reader satisfies the first cutover methods with canonical, tested contracts |
 
-**Next implementation:** complete **T16.1**'s cross-language harness, then
-**T16.2** canonical identity/DTO parity, then **T10.1** match-query parity.
+**Next implementation:** **T16.2** canonical identity/DTO parity, then **T10.1**
+match-query parity, each closing its gaps in the T16.1 harness.
 The independent high-priority lanes remain explicit: archive/backfill durability
 under T18.1's classification, **T7.21** participation retry, **T17.4** scheduled
 freshness/notification delivery, and **T21.2** full schema readiness. Bounded

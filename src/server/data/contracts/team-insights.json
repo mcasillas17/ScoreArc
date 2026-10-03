@@ -429,16 +429,6 @@
       }
     ]
   },
-  "queries": [
-    {
-      "query": "?range=19000101-19000102&state=live&detail=false&limit=1",
-      "expectedCount": 2
-    },
-    {
-      "query": "?range=invalid&limit=-1",
-      "expectedCount": 2
-    }
-  ],
   "errors": [
     {
       "path": "/v1/competitions/missing/2026-apertura/teams/mex-america",
