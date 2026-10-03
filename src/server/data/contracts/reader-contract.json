@@ -1,0 +1,3898 @@
+{
+ "about": "T16.1 reader contract vectors. Consumed by reader-contract.test.ts and backend/reader/reader_contract_test.go. Not a parity claim: gaps are characterized, not normalized away. Per-method gap lists name the incompatibilities in the fields that frontend method actually populates (getFixtures and getLiveWindow do not enrich scorers or stats), not every field their shared reader route can return.",
+ "evidence": {
+  "recorded": "Unmodified recorded ESPN payloads under src/server/data/__fixtures__ (both languages read the same bytes).",
+  "synthetic": "Synthetic, labeled where they appear: queries.events and queries.liveMinute, freshness snapshots, transport paths, summary.syntheticOverlay, standings.unnamedTable and standings.synthetic, player.missingContext, the reader match/bracket UUIDs, the integration test's standings tie rows and provisional team, and the seedLigaTeam standing behind team.readerStandingSummary. None is a production crosswalk.",
+  "crosswalk": "Provider-to-canonical team ids come from the production seed (backend/config/teams.seed.json, exported to src/server/data/teamCrosswalk.json). Summary and own-goal side ids are checked against it in both suites; standings ids through the group-A comparisons (TS crosswalk, Go seed); bracket side ids only in the Go database suite."
+ },
+ "gaps": {
+  "T10.1-match-query": {
+   "task": "T10.1",
+   "mismatch": "Reader /matches ignores range/state/detail/limit (even malformed) and returns the whole season with 200; the frontend selects a window or returns 400.",
+   "suites": ["go"]
+  },
+  "T10.2-team-stats": {
+   "task": "T10.2",
+   "mismatch": "Reader TeamStats lacks passesAccurate/crossesAccurate/tacklesEffective and its accuracy percentages are ESPN's one-digit fractions x100 (40) instead of operand-derived values (35.7).",
+   "suites": ["ts", "go"]
+  },
+  "T10.2-lineups": {
+   "task": "T10.2",
+   "mismatch": "Reader lineups hold starters only (11 per side, 26 in the frontend) and LineupPlayer lacks starter/stats/athleteId/playerSlug, though each reader jersey URL still embeds the provider event and athlete ids.",
+   "suites": ["ts", "go"]
+  },
+  "T10.2-leaders-depth": {
+   "task": "T10.2",
+   "mismatch": "The frontend caps each leader board at 10 rows (TOP_SCORERS_SHOWN in store.ts); the reader's top-scorers SQL has no limit and serves every stored row (the ingester stores 30 per board, topScorerLimit).",
+   "suites": ["go-db"]
+  },
+  "T10.2-leaders": {
+   "task": "T10.2",
+   "mismatch": "Reader serves goals only as TopScorer{goals}; the frontend StatLeader uses value plus athleteId/teamId/playerSlug and an assists board. No assists route.",
+   "suites": ["go"]
+  },
+  "T10.3-team": {
+   "task": "T10.3",
+   "mismatch": "Reader TeamProfile lacks standing, scheduleAvailability and per-match scope (pinned in team-insights.json).",
+   "suites": ["go"]
+  },
+  "T10.3-squad": {
+   "task": "T10.3",
+   "mismatch": "No standalone squad route; the squad exists only inside TeamProfile.",
+   "suites": ["go"]
+  },
+  "T10.4-player": {
+   "task": "T10.4",
+   "mismatch": "No player route or DTO.",
+   "suites": ["go"]
+  },
+  "T10.10-derived-standings": {
+   "task": "T10.10",
+   "mismatch": "Reader Group has no labelKey/zones and no Leagues Cup phase or MLS overall tables.",
+   "suites": ["ts", "go"]
+  },
+  "T16.2-scorer-identity": {
+   "task": "T16.2",
+   "mismatch": "Reader Scorer lacks ownGoal, athleteId and playerSlug; an own goal is indistinguishable from a goal by the benefiting side, and scorers cannot link to player pages.",
+   "suites": ["ts", "go"]
+  },
+  "T16.2-nested-team-id": {
+   "task": "T16.2",
+   "mismatch": "Reader scorers[].teamId/cards[].teamId keep provider ids while the match sides are canonical.",
+   "suites": ["ts", "go"]
+  },
+  "T16.2-standings-rank": {
+   "task": "T16.2",
+   "mismatch": "When ESPN's rank stat is a complete 1..n permutation (the recorded tables), the frontend orders rows by it and Go MapStandings keeps provider array order. With a duplicated or partial rank stat both keep array order.",
+   "suites": ["ts", "go"]
+  },
+  "T16.2-placeholder-crest": {
+   "task": "T16.2",
+   "mismatch": "Placeholder bracket teams: frontend crestUrl is an empty string, reader crestUrl is null.",
+   "suites": ["ts", "go"]
+  },
+  "T16.2-match-id": {
+   "task": "T16.2",
+   "mismatch": "Reader match routes and list rows use canonical match UUIDs; the frontend uses provider event ids for list rows and summary addressing.",
+   "suites": ["ts", "go"]
+  },
+  "T16.6-news": {
+   "task": "T16.6",
+   "mismatch": "Reader news is a live ESPN proxy (502 on upstream failure), not owned data; bodies match today.",
+   "suites": ["go"]
+  },
+  "T17.3-freshness-coverage": {
+   "task": "T17.3",
+   "mismatch": "Standings, top-scorers and news responses carry no X-ScoreArc freshness headers.",
+   "suites": ["go"]
+  },
+  "T16.2-bracket-round-name": {
+   "task": "T16.2",
+   "mismatch": "Reader BracketRound adds a display name (e.g. 'Round of 32') that the frontend BracketRound {slug, matches} does not have.",
+   "suites": ["go"]
+  },
+  "T10.3-team-location": {
+   "task": "T10.3",
+   "mismatch": "Reader TeamProfile.location is always null (no column is selected); the frontend maps the provider location.",
+   "suites": ["go-db"]
+  },
+  "T10.3-squad-fields": {
+   "task": "T10.3",
+   "mismatch": "Reader SquadPlayer.id is a canonical player UUID, not the provider athlete id; age and headshotUrl are always null (no column is selected); and the squad is served in shirt-number order rather than provider roster order.",
+   "suites": ["go-db"]
+  },
+  "T16.2-shootout-source": {
+   "task": "T16.2",
+   "mismatch": "Match.shootout provenance differs: the reader serves the aggregate the ingester stored from the summary header's shootoutScore (its match-note fallback is owned by backend/shared/source and not re-verified here); the frontend parses only the scoreboard note, and its MatchSummaryData has no aggregate field, so a summary-only shootout is null in the frontend.",
+   "suites": ["ts", "go"]
+  },
+  "T16.2-team-id": {
+   "task": "T16.2",
+   "mismatch": "Top-level team ids are canonical slugs in the reader (standings rows, match and bracket sides, the team route) and provider ids in the frontend; equivalence needs the seed crosswalk.",
+   "suites": ["ts", "go"]
+  },
+  "T16.2-group-label": {
+   "task": "T16.2",
+   "mismatch": "An unnamed provider standings table keeps an empty Group id/name in the frontend, while the reader substitutes the competition short name (e.g. 'Premier League') for a NULL group.",
+   "suites": ["ts", "go-db"]
+  },
+  "T10.3-partial-failure": {
+   "task": "T10.3",
+   "mismatch": "The frontend getTeam/getSquad degrade a failed roster or schedule to empty (squad [], schedule unavailable) and return null only when the profile fails; the reader fails the whole team request with 500 when any child query fails.",
+   "suites": ["ts", "go"]
+  },
+  "T10.3-standing-summary": {
+   "task": "T10.3",
+   "mismatch": "Reader standingSummary is generated as '<rank> in <competition id>' from the standing row; the frontend serves the provider's own string.",
+   "suites": ["ts", "go-db"]
+  },
+  "T21.4-dependency-error-logging": {
+   "task": "T21.4",
+   "mismatch": "Every reader data handler except handleTeam (matches, standings, bracket, top-scorers, news, match summary) logs the raw dependency error text, which can carry connection details; handleTeam logs only operation, error type and SQLSTATE.",
+   "suites": ["go"]
+  },
+  "T16.2-standings-dedup": {
+   "task": "T16.2",
+   "mismatch": "A team listed in two provider tables stays in both frontend groups with contiguous ranks; Go MapStandings drops the later row and leaves a hole in that group's ranks.",
+   "suites": ["ts", "go"]
+  },
+  "T16.2-round-slug-type": {
+   "task": "T16.2",
+   "mismatch": "The frontend types bracket round and slug as the KnockoutRoundSlug union; the reader DTO and OpenAPI accept any string.",
+   "suites": ["go"]
+  },
+  "T16.2-standings-malformed": {
+   "task": "T16.2",
+   "mismatch": "A standings row missing a stat, or a table with no entries, is zero-filled or kept empty by the frontend mapper; Go MapStandings rejects the whole payload, so the reader keeps the previous standings.",
+   "suites": ["ts", "go"]
+  },
+  "T16.2-live-minute": {
+   "task": "T16.2",
+   "mismatch": "Three-way: the declared frontend contract is Match.minute string | null; the implemented frontend mapper (espn-matches.ts) yields undefined for a live event without ESPN's displayClock, which JSON drops (a frontend defect); the Go mapper stores an empty string. Closing the gap means both emit null, not teaching the reader to omit the field.",
+   "suites": ["ts", "go"]
+  },
+  "T10.3-team-cache-doc": {
+   "task": "T10.3",
+   "mismatch": "handleTeam serves Cache-Control public, max-age=120, but OpenAPI documents the team route with StandardCacheControl (public, max-age=60).",
+   "suites": ["go"]
+  },
+  "T10.3-team-record": {
+   "task": "T10.3",
+   "mismatch": "The frontend TeamProfile.record is the provider's record item (summary string, gamesPlayed, points, goalDifference from provider stats); the reader derives W-D-L, games, points and goal difference from its own standing row.",
+   "suites": ["go-db"]
+  },
+  "T16.2-bracket-live-minute": {
+   "task": "T16.2",
+   "mismatch": "For a live match without ESPN's displayClock, the frontend bracket and team-schedule mappers emit minute null, while the Go bracket mapper and the stored match minute are an empty string, which the reader serves on BracketMatch.minute and TeamProfile.schedule[].minute.",
+   "suites": ["ts", "go"]
+  }
+ },
+ "methods": {
+  "getMatches": {
+   "reader": "/v1/competitions/{comp}/{season}/matches",
+   "gaps": ["T10.1-match-query", "T16.2-scorer-identity", "T16.2-nested-team-id", "T10.2-team-stats", "T16.2-match-id", "T16.2-shootout-source", "T16.2-team-id", "T21.4-dependency-error-logging", "T16.2-live-minute"]
+  },
+  "getFixtures": {
+   "reader": "/v1/competitions/{comp}/{season}/matches",
+   "gaps": ["T10.1-match-query", "T16.2-match-id", "T16.2-shootout-source", "T16.2-team-id", "T21.4-dependency-error-logging", "T16.2-live-minute"]
+  },
+  "getLiveWindow": {
+   "reader": "/v1/competitions/{comp}/{season}/matches",
+   "gaps": ["T10.1-match-query", "T16.2-match-id", "T16.2-shootout-source", "T16.2-team-id", "T21.4-dependency-error-logging", "T16.2-live-minute"]
+  },
+  "getUpcoming": {
+   "reader": "/v1/competitions/{comp}/{season}/matches",
+   "gaps": ["T10.1-match-query", "T16.2-match-id", "T16.2-team-id", "T21.4-dependency-error-logging"]
+  },
+  "getStandings": {
+   "reader": "/v1/competitions/{comp}/{season}/standings",
+   "gaps": ["T16.2-standings-rank", "T10.10-derived-standings", "T17.3-freshness-coverage", "T16.2-team-id", "T16.2-group-label", "T21.4-dependency-error-logging", "T16.2-standings-dedup", "T16.2-standings-malformed"]
+  },
+  "getBracket": {
+   "reader": "/v1/competitions/{comp}/{season}/bracket",
+   "gaps": ["T16.2-placeholder-crest", "T16.2-bracket-round-name", "T16.2-team-id", "T16.2-match-id", "T21.4-dependency-error-logging", "T16.2-round-slug-type", "T16.2-bracket-live-minute"]
+  },
+  "getMatchSummary": {
+   "reader": "/v1/matches/{id}",
+   "gaps": ["T16.2-match-id", "T16.2-scorer-identity", "T16.2-nested-team-id", "T10.2-team-stats", "T10.2-lineups", "T21.4-dependency-error-logging"]
+  },
+  "getLeaders": {
+   "reader": "/v1/competitions/{comp}/{season}/top-scorers",
+   "gaps": ["T10.2-leaders", "T10.2-leaders-depth", "T17.3-freshness-coverage", "T21.4-dependency-error-logging"]
+  },
+  "getNews": {
+   "reader": "/v1/competitions/{comp}/news",
+   "gaps": ["T16.6-news", "T17.3-freshness-coverage", "T21.4-dependency-error-logging"]
+  },
+  "getTeam": {
+   "reader": "/v1/competitions/{comp}/{season}/teams/{teamId}",
+   "gaps": ["T10.3-team", "T10.3-team-location", "T16.2-team-id", "T10.3-partial-failure", "T10.3-standing-summary", "T16.2-match-id", "T10.3-team-cache-doc", "T10.3-team-record", "T16.2-bracket-live-minute", "T10.3-squad", "T10.3-squad-fields"]
+  },
+  "getSquad": {
+   "reader": "/v1/competitions/{comp}/{season}/teams/{teamId}",
+   "gaps": ["T10.3-squad", "T10.3-squad-fields", "T10.3-partial-failure", "T16.2-team-id"]
+  },
+  "getPlayer": {
+   "reader": null,
+   "gaps": ["T10.4-player"]
+  }
+ },
+ "summary": {
+  "fixture": "espn-summary.json",
+  "eventId": "760490",
+  "readerMatchId": "018f0000-0000-7000-8000-000000016001",
+  "competition": "world-cup",
+  "season": "2026",
+  "kickoff": "2026-06-30T17:00:00Z",
+  "sides": {
+   "home": {
+    "providerId": "4789",
+    "canonicalId": "nat-civ"
+   },
+   "away": {
+    "providerId": "464",
+    "canonicalId": "nat-nor"
+   }
+  },
+  "shared": {
+   "cards": [
+    {
+     "teamId": "464",
+     "player": "Antonio Nusa",
+     "minute": "45'+1'",
+     "type": "yellow"
+    }
+   ],
+   "winProbability": {
+    "home": 26.6,
+    "draw": 29,
+    "away": 44.5
+   },
+   "shootoutDetail": null,
+   "info": {
+    "venue": "AT&T Stadium",
+    "city": "Arlington, Texas",
+    "referee": "Jesús Valenzuela",
+    "attendance": 69665
+   },
+   "form": {
+    "home": [
+     {
+      "result": "W",
+      "opponent": "SCO",
+      "score": "1-0"
+     },
+     {
+      "result": "W",
+      "opponent": "FRA",
+      "score": "2-1"
+     },
+     {
+      "result": "W",
+      "opponent": "ECU",
+      "score": "1-0"
+     },
+     {
+      "result": "L",
+      "opponent": "GER",
+      "score": "1-2"
+     },
+     {
+      "result": "W",
+      "opponent": "CUW",
+      "score": "2-0"
+     }
+    ],
+    "away": [
+     {
+      "result": "W",
+      "opponent": "SWE",
+      "score": "3-1"
+     },
+     {
+      "result": "D",
+      "opponent": "MAR",
+      "score": "1-1"
+     },
+     {
+      "result": "W",
+      "opponent": "IRQ",
+      "score": "4-1"
+     },
+     {
+      "result": "W",
+      "opponent": "SEN",
+      "score": "3-2"
+     },
+     {
+      "result": "L",
+      "opponent": "FRA",
+      "score": "1-4"
+     }
+    ]
+   },
+   "h2h": [],
+   "videos": [
+    {
+     "id": "49227849",
+     "headline": "Norway fans celebrate Nusa's goal vs. Côte d'Ivoire",
+     "duration": 39,
+     "thumbnail": "https://a.espncdn.com/media/motion/2026/0630/dm_260630_COM_SOC_Analysis_Norway_fans_celebrate_NusaE28099s_goal_vs_CC3B4te_dIvoire_GLOBAL_2026-06-30/dm_260630_COM_SOC_Analysis_Norway_fans_celebrate_NusaE28099s_goal_vs_CC3B4te_dIvoire_GLOBAL_2026-06-30.jpg",
+     "mp4Url": "https://media.video-cdn.espn.com/motion/2026/0630/dm_260630_COM_SOC_Analysis_Norway_fans_celebrate_NusaE28099s_goal_vs_CC3B4te_dIvoire_GLOBAL_2026-06-30/dm_260630_COM_SOC_Analysis_Norway_fans_celebrate_NusaE28099s_goal_vs_CC3B4te_dIvoire_GLOBAL_2026-06-30_720p30_2896k.mp4",
+     "isGoal": true
+    },
+    {
+     "id": "49228418",
+     "headline": "Is Nusa what makes Norway 'special'?",
+     "duration": 131,
+     "thumbnail": "https://a.espncdn.com/media/motion/2026/0630/dm_260630_COM_SOC_Analysis_Is_Nusa_what_makes_Norway_E28098specialE280993F_GLOBAL_2026-06-30/dm_260630_COM_SOC_Analysis_Is_Nusa_what_makes_Norway_E28098specialE280993F_GLOBAL_2026-06-30.jpg",
+     "mp4Url": "https://media.video-cdn.espn.com/motion/2026/0630/dm_260630_COM_SOC_Analysis_Is_Nusa_what_makes_Norway_E28098specialE280993F_GLOBAL_2026-06-30/dm_260630_COM_SOC_Analysis_Is_Nusa_what_makes_Norway_E28098specialE280993F_GLOBAL_2026-06-30_720p30_2896k.mp4",
+     "isGoal": false
+    },
+    {
+     "id": "49230037",
+     "headline": "Ødegaard: Norway are lucky to have Haaland",
+     "duration": 56,
+     "thumbnail": "https://a.espncdn.com/media/motion/2026/0630/dm_260630_COM_SOC_Analysis_C398degaard3A_Norway_are_lucky_to_have_Haaland_GLOBAL_2026-06-30/dm_260630_COM_SOC_Analysis_C398degaard3A_Norway_are_lucky_to_have_Haaland_GLOBAL_2026-06-30.jpg",
+     "mp4Url": "https://media.video-cdn.espn.com/motion/2026/0630/dm_260630_COM_SOC_Analysis_C398degaard3A_Norway_are_lucky_to_have_Haaland_GLOBAL_2026-06-30/dm_260630_COM_SOC_Analysis_C398degaard3A_Norway_are_lucky_to_have_Haaland_GLOBAL_2026-06-30_720p30_2896k.mp4",
+     "isGoal": false
+    }
+   ]
+  },
+  "frontend": {
+   "scorers": [
+    {
+     "teamId": "464",
+     "player": "Antonio Nusa",
+     "minute": "39'",
+     "penalty": false,
+     "shootout": false,
+     "ownGoal": false,
+     "athleteId": "319368"
+    },
+    {
+     "teamId": "4789",
+     "player": "Amad Diallo",
+     "minute": "74'",
+     "penalty": false,
+     "shootout": false,
+     "ownGoal": false,
+     "athleteId": "291630"
+    },
+    {
+     "teamId": "464",
+     "player": "Erling Haaland",
+     "minute": "86'",
+     "penalty": false,
+     "shootout": false,
+     "ownGoal": false,
+     "athleteId": "253989"
+    }
+   ],
+   "stats": {
+    "home": {
+     "possession": 47.1,
+     "shots": 14,
+     "shotsOnTarget": 5,
+     "shotAccuracy": 35.7,
+     "corners": 14,
+     "offsides": 2,
+     "passes": 401,
+     "passesAccurate": 339,
+     "passAccuracy": 84.5,
+     "crosses": 29,
+     "crossesAccurate": 7,
+     "crossAccuracy": 24.1,
+     "longBalls": 38,
+     "tackles": 24,
+     "tacklesEffective": 18,
+     "tackleAccuracy": 75,
+     "interceptions": 4,
+     "clearances": 11,
+     "blockedShots": 1,
+     "saves": 1,
+     "fouls": 6,
+     "yellowCards": 0,
+     "redCards": 0
+    },
+    "away": {
+     "possession": 52.9,
+     "shots": 9,
+     "shotsOnTarget": 4,
+     "shotAccuracy": 44.4,
+     "corners": 3,
+     "offsides": 2,
+     "passes": 473,
+     "passesAccurate": 415,
+     "passAccuracy": 87.7,
+     "crosses": 10,
+     "crossesAccurate": 5,
+     "crossAccuracy": 50,
+     "longBalls": 32,
+     "tackles": 19,
+     "tacklesEffective": 11,
+     "tackleAccuracy": 57.9,
+     "interceptions": 6,
+     "clearances": 37,
+     "blockedShots": 3,
+     "saves": 4,
+     "fouls": 7,
+     "yellowCards": 1,
+     "redCards": 0
+    }
+   },
+   "lineups": {
+    "home": {
+     "formation": "4-1-4-1",
+     "roster": [
+      {
+       "name": "Yahia Fofana",
+       "number": 1,
+       "position": "G",
+       "starter": true,
+       "athleteId": "261595"
+      },
+      {
+       "name": "Emmanuel Agbadou",
+       "number": 20,
+       "position": "CD-L",
+       "starter": true,
+       "athleteId": "308449"
+      },
+      {
+       "name": "Odilon Kossounou",
+       "number": 7,
+       "position": "CD-R",
+       "starter": true,
+       "athleteId": "284822"
+      },
+      {
+       "name": "Ibrahim Sangaré",
+       "number": 18,
+       "position": "DM",
+       "starter": true,
+       "athleteId": "213718"
+      },
+      {
+       "name": "Ghislain Konan",
+       "number": 3,
+       "position": "LB",
+       "starter": true,
+       "athleteId": "250888"
+      },
+      {
+       "name": "Guela Doué",
+       "number": 17,
+       "position": "RB",
+       "starter": true,
+       "athleteId": "346636"
+      },
+      {
+       "name": "Christ Inao Oulaï",
+       "number": 26,
+       "position": "CM-L",
+       "starter": true,
+       "athleteId": "386989"
+      },
+      {
+       "name": "Franck Kessié",
+       "number": 8,
+       "position": "CM-R",
+       "starter": true,
+       "athleteId": "194711"
+      },
+      {
+       "name": "Yan Diomande",
+       "number": 11,
+       "position": "LM",
+       "starter": true,
+       "athleteId": "402479"
+      },
+      {
+       "name": "Nicolas Pépé",
+       "number": 19,
+       "position": "RM",
+       "starter": true,
+       "athleteId": "210397"
+      },
+      {
+       "name": "Ange-Yoan Bonny",
+       "number": 9,
+       "position": "F",
+       "starter": true,
+       "athleteId": "309185"
+      },
+      {
+       "name": "Jean Michaël Seri",
+       "number": 4,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "193539"
+      },
+      {
+       "name": "Alban Lafont",
+       "number": 23,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "231282"
+      },
+      {
+       "name": "Seko Fofana",
+       "number": 6,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "184118"
+      },
+      {
+       "name": "Mohamed Koné",
+       "number": 16,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "323997"
+      },
+      {
+       "name": "Evann Guessand",
+       "number": 22,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "288924"
+      },
+      {
+       "name": "Christopher Operi",
+       "number": 13,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "249072"
+      },
+      {
+       "name": "Evan Ndicka",
+       "number": 21,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "242593"
+      },
+      {
+       "name": "Bazoumana Touré",
+       "number": 24,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "359108"
+      },
+      {
+       "name": "Ousmane Diomande",
+       "number": 2,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "343964"
+      },
+      {
+       "name": "Elye Wahi",
+       "number": 12,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "311118"
+      },
+      {
+       "name": "Oumar Diakité",
+       "number": 14,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "329483"
+      },
+      {
+       "name": "Wilfried Singo",
+       "number": 5,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "286569"
+      },
+      {
+       "name": "Parfait Guiagon",
+       "number": 25,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "257055"
+      },
+      {
+       "name": "Simon Adingra",
+       "number": 10,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "317404"
+      },
+      {
+       "name": "Amad Diallo",
+       "number": 15,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "291630"
+      }
+     ],
+     "goalkeeper": {
+      "name": "Yahia Fofana",
+      "number": 1,
+      "position": "G",
+      "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/261595/jersey.png?darkMode=false",
+      "starter": true,
+      "stats": {
+       "appearances": 1,
+       "subIns": 0,
+       "totalGoals": 0,
+       "goalAssists": 0,
+       "totalShots": 0,
+       "shotsOnTarget": 0,
+       "offsides": null,
+       "foulsCommitted": 0,
+       "foulsSuffered": 0,
+       "yellowCards": 0,
+       "redCards": 0,
+       "ownGoals": 0,
+       "saves": 1,
+       "goalsConceded": 2,
+       "shotsFaced": 0
+      },
+      "athleteId": "261595"
+     },
+     "substitutes": [
+      {
+       "name": "Amad Diallo",
+       "number": 15,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/291630/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 1,
+        "subIns": 1,
+        "totalGoals": 1,
+        "goalAssists": 0,
+        "totalShots": 2,
+        "shotsOnTarget": 2,
+        "offsides": 1,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 1,
+        "shotsFaced": 0
+       },
+       "athleteId": "291630"
+      },
+      {
+       "name": "Jean Michaël Seri",
+       "number": 4,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/193539/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "193539"
+      }
+     ]
+    },
+    "away": {
+     "formation": "4-3-3",
+     "roster": [
+      {
+       "name": "Ørjan Nyland",
+       "number": 1,
+       "position": "G",
+       "starter": true,
+       "athleteId": "193610"
+      },
+      {
+       "name": "Torbjørn Heggem",
+       "number": 17,
+       "position": "CD-L",
+       "starter": true,
+       "athleteId": "272867"
+      },
+      {
+       "name": "Kristoffer Ajer",
+       "number": 3,
+       "position": "CD-R",
+       "starter": true,
+       "athleteId": "206173"
+      },
+      {
+       "name": "David Møller Wolfe",
+       "number": 5,
+       "position": "LB",
+       "starter": true,
+       "athleteId": "313361"
+      },
+      {
+       "name": "Marcus Holmgren Pedersen",
+       "number": 16,
+       "position": "RB",
+       "starter": true,
+       "athleteId": "129285"
+      },
+      {
+       "name": "Sander Berge",
+       "number": 8,
+       "position": "CM",
+       "starter": true,
+       "athleteId": "218998"
+      },
+      {
+       "name": "Patrick Berg",
+       "number": 6,
+       "position": "LM",
+       "starter": true,
+       "athleteId": "205924"
+      },
+      {
+       "name": "Martin Ødegaard",
+       "number": 10,
+       "position": "RM",
+       "starter": true,
+       "athleteId": "203669"
+      },
+      {
+       "name": "Erling Haaland",
+       "number": 9,
+       "position": "F",
+       "starter": true,
+       "athleteId": "253989"
+      },
+      {
+       "name": "Antonio Nusa",
+       "number": 20,
+       "position": "LF",
+       "starter": true,
+       "athleteId": "319368"
+      },
+      {
+       "name": "Alexander Sørloth",
+       "number": 7,
+       "position": "RF",
+       "starter": true,
+       "athleteId": "188230"
+      },
+      {
+       "name": "Sondre Langas",
+       "number": 24,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "366455"
+      },
+      {
+       "name": "Sander Tangvik",
+       "number": 12,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "304258"
+      },
+      {
+       "name": "Jens Petter Hauge",
+       "number": 23,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "235789"
+      },
+      {
+       "name": "Oscar Bobb",
+       "number": 22,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "307111"
+      },
+      {
+       "name": "Fredrik Aursnes",
+       "number": 14,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "212900"
+      },
+      {
+       "name": "Leo Østigard",
+       "number": 4,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "281736"
+      },
+      {
+       "name": "Egil Selvik",
+       "number": 13,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "286433"
+      },
+      {
+       "name": "Fredrik André Bjørkan",
+       "number": 15,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "238088"
+      },
+      {
+       "name": "Morten Thorsby",
+       "number": 2,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "202686"
+      },
+      {
+       "name": "Andreas Schjelderup",
+       "number": 21,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "313415"
+      },
+      {
+       "name": "Jørgen Strand Larsen",
+       "number": 11,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "252747"
+      },
+      {
+       "name": "Julian Ryerson",
+       "number": 26,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "222991"
+      },
+      {
+       "name": "Thelo Aasgaard",
+       "number": 19,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "307477"
+      },
+      {
+       "name": "Henrik Falchener",
+       "number": 25,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "303281"
+      },
+      {
+       "name": "Kristian Thorstvedt",
+       "number": 18,
+       "position": "SUB",
+       "starter": false,
+       "athleteId": "284212"
+      }
+     ],
+     "goalkeeper": {
+      "name": "Ørjan Nyland",
+      "number": 1,
+      "position": "G",
+      "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/193610/jersey.png?darkMode=false",
+      "starter": true,
+      "stats": {
+       "appearances": 1,
+       "subIns": 0,
+       "totalGoals": 0,
+       "goalAssists": 0,
+       "totalShots": 0,
+       "shotsOnTarget": 0,
+       "offsides": null,
+       "foulsCommitted": 0,
+       "foulsSuffered": 0,
+       "yellowCards": 0,
+       "redCards": 0,
+       "ownGoals": 0,
+       "saves": 4,
+       "goalsConceded": 1,
+       "shotsFaced": 0
+      },
+      "athleteId": "193610"
+     },
+     "substitutes": [
+      {
+       "name": "Oscar Bobb",
+       "number": 22,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/307111/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 1,
+        "subIns": 1,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 1,
+        "shotsFaced": 0
+       },
+       "athleteId": "307111"
+      },
+      {
+       "name": "Sondre Langas",
+       "number": 24,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/366455/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "366455"
+      }
+     ]
+    }
+   },
+   "lineupNote": "Each side pins its goalkeeper, one substitute who came on and one unused substitute in full. The recorded payload gives unused substitutes a measured all-zero stats block, not null; the null branch is a type-level contract only."
+  },
+  "reader": {
+   "scorers": [
+    {
+     "teamId": "464",
+     "player": "Antonio Nusa",
+     "minute": "39'",
+     "penalty": false,
+     "shootout": false
+    },
+    {
+     "teamId": "4789",
+     "player": "Amad Diallo",
+     "minute": "74'",
+     "penalty": false,
+     "shootout": false
+    },
+    {
+     "teamId": "464",
+     "player": "Erling Haaland",
+     "minute": "86'",
+     "penalty": false,
+     "shootout": false
+    }
+   ],
+   "stats": {
+    "home": {
+     "possession": 47.1,
+     "shots": 14,
+     "shotsOnTarget": 5,
+     "shotAccuracy": 40,
+     "corners": 14,
+     "offsides": 2,
+     "passes": 401,
+     "passAccuracy": 80,
+     "crosses": 29,
+     "crossAccuracy": 20,
+     "longBalls": 38,
+     "tackles": 24,
+     "tackleAccuracy": 80,
+     "interceptions": 4,
+     "clearances": 11,
+     "blockedShots": 1,
+     "saves": 1,
+     "fouls": 6,
+     "yellowCards": 0,
+     "redCards": 0
+    },
+    "away": {
+     "possession": 52.9,
+     "shots": 9,
+     "shotsOnTarget": 4,
+     "shotAccuracy": 40,
+     "corners": 3,
+     "offsides": 2,
+     "passes": 473,
+     "passAccuracy": 90,
+     "crosses": 10,
+     "crossAccuracy": 50,
+     "longBalls": 32,
+     "tackles": 19,
+     "tackleAccuracy": 60,
+     "interceptions": 6,
+     "clearances": 37,
+     "blockedShots": 3,
+     "saves": 4,
+     "fouls": 7,
+     "yellowCards": 1,
+     "redCards": 0
+    }
+   },
+   "lineups": {
+    "home": {
+     "formation": "4-1-4-1",
+     "players": [
+      {
+       "name": "Yahia Fofana",
+       "number": 1,
+       "position": "G",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/261595/jersey.png?darkMode=false"
+      },
+      {
+       "name": "Emmanuel Agbadou",
+       "number": 20,
+       "position": "CD-L",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/308449/jersey.png?darkMode=false"
+      },
+      {
+       "name": "Odilon Kossounou",
+       "number": 7,
+       "position": "CD-R",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/284822/jersey.png?darkMode=false"
+      },
+      {
+       "name": "Ibrahim Sangaré",
+       "number": 18,
+       "position": "DM",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/213718/jersey.png?darkMode=false"
+      },
+      {
+       "name": "Ghislain Konan",
+       "number": 3,
+       "position": "LB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/250888/jersey.png?darkMode=false"
+      },
+      {
+       "name": "Guela Doué",
+       "number": 17,
+       "position": "RB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/346636/jersey.png?darkMode=false"
+      },
+      {
+       "name": "Christ Inao Oulaï",
+       "number": 26,
+       "position": "CM-L",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/386989/jersey.png?darkMode=false"
+      },
+      {
+       "name": "Franck Kessié",
+       "number": 8,
+       "position": "CM-R",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/194711/jersey.png?darkMode=false"
+      },
+      {
+       "name": "Yan Diomande",
+       "number": 11,
+       "position": "LM",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/402479/jersey.png?darkMode=false"
+      },
+      {
+       "name": "Nicolas Pépé",
+       "number": 19,
+       "position": "RM",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/210397/jersey.png?darkMode=false"
+      },
+      {
+       "name": "Ange-Yoan Bonny",
+       "number": 9,
+       "position": "F",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/309185/jersey.png?darkMode=false"
+      }
+     ]
+    },
+    "away": {
+     "formation": "4-3-3",
+     "players": [
+      {
+       "name": "Ørjan Nyland",
+       "number": 1,
+       "position": "G",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/193610/jersey.png?darkMode=false"
+      },
+      {
+       "name": "Torbjørn Heggem",
+       "number": 17,
+       "position": "CD-L",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/272867/jersey.png?darkMode=false"
+      },
+      {
+       "name": "Kristoffer Ajer",
+       "number": 3,
+       "position": "CD-R",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/206173/jersey.png?darkMode=false"
+      },
+      {
+       "name": "David Møller Wolfe",
+       "number": 5,
+       "position": "LB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/313361/jersey.png?darkMode=false"
+      },
+      {
+       "name": "Marcus Holmgren Pedersen",
+       "number": 16,
+       "position": "RB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/129285/jersey.png?darkMode=false"
+      },
+      {
+       "name": "Sander Berge",
+       "number": 8,
+       "position": "CM",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/218998/jersey.png?darkMode=false"
+      },
+      {
+       "name": "Patrick Berg",
+       "number": 6,
+       "position": "LM",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/205924/jersey.png?darkMode=false"
+      },
+      {
+       "name": "Martin Ødegaard",
+       "number": 10,
+       "position": "RM",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/203669/jersey.png?darkMode=false"
+      },
+      {
+       "name": "Erling Haaland",
+       "number": 9,
+       "position": "F",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/253989/jersey.png?darkMode=false"
+      },
+      {
+       "name": "Antonio Nusa",
+       "number": 20,
+       "position": "LF",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/319368/jersey.png?darkMode=false"
+      },
+      {
+       "name": "Alexander Sørloth",
+       "number": 7,
+       "position": "RF",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/188230/jersey.png?darkMode=false"
+      }
+     ]
+    }
+   }
+  },
+  "syntheticOverlay": {
+   "note": "Synthetic: merged over the recorded 760490 summary because no recorded payload has a shootout or head-to-head block. Norway (away) is listed first to prove side mapping by id; six meetings prove the five-row cap; one string, one numeric and one missing score. An absent provider score renders as 0 in both implementations ('CIV 4-0 NOR'): characterized shared behavior that collapses missing into zero, not an endorsed contract. Appended key events add the second state of each discriminator (a penalty goal, a shootout kick, a red card); header shootoutScores give the reader's summary-side shootout aggregate.",
+   "raw": {
+    "shootout": [
+     {
+      "id": "464",
+      "shots": [
+       {
+        "shotNumber": 1,
+        "player": "Erling Haaland",
+        "didScore": true
+       },
+       {
+        "shotNumber": 2,
+        "player": "Martin Ødegaard",
+        "didScore": true
+       }
+      ]
+     },
+     {
+      "id": "4789",
+      "shots": [
+       {
+        "shotNumber": 1,
+        "player": "Franck Kessié",
+        "didScore": true
+       },
+       {
+        "shotNumber": 2,
+        "player": "Nicolas Pépé",
+        "didScore": false
+       }
+      ]
+     }
+    ],
+    "headToHeadGames": [
+     {
+      "team": {
+       "id": "4789",
+       "abbreviation": "CIV"
+      },
+      "events": [
+       {
+        "gameDate": "2024-03-22T19:00Z",
+        "homeTeamId": "464",
+        "opponent": {
+         "abbreviation": "NOR"
+        },
+        "homeTeamScore": "2",
+        "awayTeamScore": "1"
+       },
+       {
+        "gameDate": "2019-06-10T18:00Z",
+        "homeTeamId": "4789",
+        "opponent": {
+         "abbreviation": "NOR"
+        },
+        "homeTeamScore": 0,
+        "awayTeamScore": 0
+       },
+       {
+        "gameDate": "2016-01-01T00:00Z",
+        "homeTeamId": "4789",
+        "opponent": {
+         "abbreviation": "NOR"
+        },
+        "homeTeamScore": "1",
+        "awayTeamScore": "3"
+       },
+       {
+        "gameDate": "2014-05-05T17:00Z",
+        "homeTeamId": "464",
+        "opponent": {
+         "abbreviation": "NOR"
+        },
+        "homeTeamScore": "0",
+        "awayTeamScore": "2"
+       },
+       {
+        "gameDate": "2012-08-15T18:30Z",
+        "homeTeamId": "4789",
+        "opponent": {
+         "abbreviation": "NOR"
+        },
+        "homeTeamScore": "4"
+       },
+       {
+        "gameDate": "2010-02-02T20:00Z",
+        "homeTeamId": "464",
+        "opponent": {
+         "abbreviation": "NOR"
+        },
+        "homeTeamScore": "9",
+        "awayTeamScore": "9"
+       }
+      ]
+     }
+    ]
+   },
+   "expected": {
+    "shootoutDetail": {
+     "home": [
+      {
+       "order": 1,
+       "player": "Franck Kessié",
+       "scored": true
+      },
+      {
+       "order": 2,
+       "player": "Nicolas Pépé",
+       "scored": false
+      }
+     ],
+     "away": [
+      {
+       "order": 1,
+       "player": "Erling Haaland",
+       "scored": true
+      },
+      {
+       "order": 2,
+       "player": "Martin Ødegaard",
+       "scored": true
+      }
+     ]
+    },
+    "h2h": [
+     {
+      "date": "2024-03-22T19:00Z",
+      "label": "NOR 2-1 CIV"
+     },
+     {
+      "date": "2019-06-10T18:00Z",
+      "label": "CIV 0-0 NOR"
+     },
+     {
+      "date": "2016-01-01T00:00Z",
+      "label": "CIV 1-3 NOR"
+     },
+     {
+      "date": "2014-05-05T17:00Z",
+      "label": "NOR 0-2 CIV"
+     },
+     {
+      "date": "2012-08-15T18:30Z",
+      "label": "CIV 4-0 NOR"
+     }
+    ],
+    "addedScorers": [
+     {
+      "teamId": "4789",
+      "player": "Synthetic Penalty Taker",
+      "minute": "90'+3'",
+      "penalty": true,
+      "shootout": false,
+      "ownGoal": false,
+      "athleteId": "900001"
+     },
+     {
+      "teamId": "464",
+      "player": "Synthetic Shootout Taker",
+      "minute": "120'",
+      "penalty": false,
+      "shootout": true,
+      "ownGoal": false,
+      "athleteId": "900002"
+     }
+    ],
+    "addedCards": [
+     {
+      "teamId": "4789",
+      "player": "Synthetic Red",
+      "minute": "88'",
+      "type": "red"
+     }
+    ],
+    "readerShootout": {
+     "homeScore": 4,
+     "awayScore": 3
+    }
+   },
+   "appendKeyEvents": [
+    {
+     "scoringPlay": true,
+     "penaltyKick": true,
+     "shootout": false,
+     "team": {
+      "id": "4789"
+     },
+     "participants": [
+      {
+       "athlete": {
+        "id": "900001",
+        "displayName": "Synthetic Penalty Taker"
+       }
+      }
+     ],
+     "clock": {
+      "displayValue": "90'+3'"
+     },
+     "type": {
+      "type": "penalty---scored",
+      "text": "Penalty - Scored"
+     }
+    },
+    {
+     "scoringPlay": true,
+     "penaltyKick": false,
+     "shootout": true,
+     "team": {
+      "id": "464"
+     },
+     "participants": [
+      {
+       "athlete": {
+        "id": "900002",
+        "displayName": "Synthetic Shootout Taker"
+       }
+      }
+     ],
+     "clock": {
+      "displayValue": "120'"
+     },
+     "type": {
+      "type": "goal",
+      "text": "Goal"
+     }
+    },
+    {
+     "scoringPlay": false,
+     "team": {
+      "id": "4789"
+     },
+     "participants": [
+      {
+       "athlete": {
+        "id": "900003",
+        "displayName": "Synthetic Red"
+       }
+      }
+     ],
+     "clock": {
+      "displayValue": "88'"
+     },
+     "type": {
+      "type": "red-card",
+      "text": "Red Card"
+     }
+    }
+   ],
+   "shootoutScores": {
+    "home": 4,
+    "away": 3
+   }
+  },
+  "readerKeys": ["cards", "commentary", "form", "h2h", "info", "lineups", "scorers", "shootoutDetail", "stats", "videos", "winProbability"],
+  "commentary": {
+   "note": "Expected items are projected from the recorded payload in each suite (time.displayValue or '', non-empty text); these pins guard the projection itself.",
+   "count": 91,
+   "first": {
+    "minute": "",
+    "text": "Lineups are announced and players are warming up."
+   },
+   "stoppage": {
+    "minute": "45'+1'",
+    "text": "Guéla Doué (Côte d'Ivoire) wins a free kick on the right wing."
+   },
+   "last": {
+    "minute": "",
+    "text": "Match ends, Côte d'Ivoire 1, Norway 2."
+   }
+  }
+ },
+ "ownGoal": {
+  "fixture": "espn-summary-own-goal.json",
+  "eventId": "401863609",
+  "sides": {
+   "home": {
+    "providerId": "17362",
+    "canonicalId": "usa-minnesota-united-fc"
+   },
+   "away": {
+    "providerId": "226",
+    "canonicalId": "mex-atlante"
+   }
+  },
+  "frontend": {
+   "scorers": [
+    {
+     "teamId": "226",
+     "player": "Devin Padelford",
+     "minute": "32'",
+     "penalty": false,
+     "shootout": false,
+     "ownGoal": true,
+     "athleteId": "337030"
+    },
+    {
+     "teamId": "17362",
+     "player": "Mauricio Gonzalez",
+     "minute": "59'",
+     "penalty": false,
+     "shootout": false,
+     "ownGoal": false,
+     "athleteId": "353246"
+    },
+    {
+     "teamId": "17362",
+     "player": "Joaquín Pereyra",
+     "minute": "75'",
+     "penalty": false,
+     "shootout": false,
+     "ownGoal": false,
+     "athleteId": "233943"
+    },
+    {
+     "teamId": "17362",
+     "player": "Joaquín Pereyra",
+     "minute": "87'",
+     "penalty": false,
+     "shootout": false,
+     "ownGoal": false,
+     "athleteId": "233943"
+    }
+   ]
+  },
+  "reader": {
+   "scorers": [
+    {
+     "teamId": "226",
+     "player": "Devin Padelford",
+     "minute": "32'",
+     "penalty": false,
+     "shootout": false
+    },
+    {
+     "teamId": "17362",
+     "player": "Mauricio Gonzalez",
+     "minute": "59'",
+     "penalty": false,
+     "shootout": false
+    },
+    {
+     "teamId": "17362",
+     "player": "Joaquín Pereyra",
+     "minute": "75'",
+     "penalty": false,
+     "shootout": false
+    },
+    {
+     "teamId": "17362",
+     "player": "Joaquín Pereyra",
+     "minute": "87'",
+     "penalty": false,
+     "shootout": false
+    }
+   ]
+  }
+ },
+ "standings": {
+  "fixture": "espn-standings.json",
+  "groups": [
+   {
+    "id": "A",
+    "name": "Group A",
+    "teams": 4
+   },
+   {
+    "id": "B",
+    "name": "Group B",
+    "teams": 4
+   },
+   {
+    "id": "C",
+    "name": "Group C",
+    "teams": 4
+   },
+   {
+    "id": "D",
+    "name": "Group D",
+    "teams": 4
+   },
+   {
+    "id": "E",
+    "name": "Group E",
+    "teams": 4
+   },
+   {
+    "id": "F",
+    "name": "Group F",
+    "teams": 4
+   },
+   {
+    "id": "G",
+    "name": "Group G",
+    "teams": 4
+   },
+   {
+    "id": "H",
+    "name": "Group H",
+    "teams": 4
+   },
+   {
+    "id": "I",
+    "name": "Group I",
+    "teams": 4
+   },
+   {
+    "id": "J",
+    "name": "Group J",
+    "teams": 4
+   },
+   {
+    "id": "K",
+    "name": "Group K",
+    "teams": 4
+   },
+   {
+    "id": "L",
+    "name": "Group L",
+    "teams": 4
+   }
+  ],
+  "frontendGroupA": {
+   "id": "A",
+   "name": "Group A",
+   "standings": [
+    {
+     "team": {
+      "id": "203",
+      "name": "Mexico",
+      "abbr": "MEX",
+      "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/mex.png"
+     },
+     "rank": 1,
+     "played": 3,
+     "wins": 3,
+     "draws": 0,
+     "losses": 0,
+     "goalsFor": 6,
+     "goalsAgainst": 0,
+     "goalDifference": 6,
+     "points": 9,
+     "advanced": true
+    },
+    {
+     "team": {
+      "id": "467",
+      "name": "South Africa",
+      "abbr": "RSA",
+      "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/rsa.png"
+     },
+     "rank": 2,
+     "played": 3,
+     "wins": 1,
+     "draws": 1,
+     "losses": 1,
+     "goalsFor": 2,
+     "goalsAgainst": 3,
+     "goalDifference": -1,
+     "points": 4,
+     "advanced": true
+    },
+    {
+     "team": {
+      "id": "451",
+      "name": "South Korea",
+      "abbr": "KOR",
+      "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/kors.png"
+     },
+     "rank": 3,
+     "played": 3,
+     "wins": 1,
+     "draws": 0,
+     "losses": 2,
+     "goalsFor": 2,
+     "goalsAgainst": 3,
+     "goalDifference": -1,
+     "points": 3,
+     "advanced": false
+    },
+    {
+     "team": {
+      "id": "450",
+      "name": "Czechia",
+      "abbr": "CZE",
+      "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/cze.png"
+     },
+     "rank": 4,
+     "played": 3,
+     "wins": 0,
+     "draws": 1,
+     "losses": 2,
+     "goalsFor": 2,
+     "goalsAgainst": 6,
+     "goalDifference": -4,
+     "points": 1,
+     "advanced": false
+    }
+   ]
+  },
+  "readerGroupA": {
+   "id": "A",
+   "name": "Group A",
+   "standings": [
+    {
+     "team": {
+      "id": "nat-mex",
+      "name": "Mexico",
+      "abbr": "MEX",
+      "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/mex.png"
+     },
+     "rank": 1,
+     "played": 3,
+     "wins": 3,
+     "draws": 0,
+     "losses": 0,
+     "goalsFor": 6,
+     "goalsAgainst": 0,
+     "goalDifference": 6,
+     "points": 9,
+     "advanced": true
+    },
+    {
+     "team": {
+      "id": "nat-cze",
+      "name": "Czechia",
+      "abbr": "CZE",
+      "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/cze.png"
+     },
+     "rank": 2,
+     "played": 3,
+     "wins": 0,
+     "draws": 1,
+     "losses": 2,
+     "goalsFor": 2,
+     "goalsAgainst": 6,
+     "goalDifference": -4,
+     "points": 1,
+     "advanced": false
+    },
+    {
+     "team": {
+      "id": "nat-kor",
+      "name": "South Korea",
+      "abbr": "KOR",
+      "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/kors.png"
+     },
+     "rank": 3,
+     "played": 3,
+     "wins": 1,
+     "draws": 0,
+     "losses": 2,
+     "goalsFor": 2,
+     "goalsAgainst": 3,
+     "goalDifference": -1,
+     "points": 3,
+     "advanced": false
+    },
+    {
+     "team": {
+      "id": "nat-rsa",
+      "name": "South Africa",
+      "abbr": "RSA",
+      "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/rsa.png"
+     },
+     "rank": 4,
+     "played": 3,
+     "wins": 1,
+     "draws": 1,
+     "losses": 1,
+     "goalsFor": 2,
+     "goalsAgainst": 3,
+     "goalDifference": -1,
+     "points": 4,
+     "advanced": true
+    }
+   ]
+  },
+  "table": [
+   ["A", "MEX", 3, 3, 0, 0, 6, 0, 6, 9, true],
+   ["A", "RSA", 3, 1, 1, 1, 2, 3, -1, 4, true],
+   ["A", "KOR", 3, 1, 0, 2, 2, 3, -1, 3, false],
+   ["A", "CZE", 3, 0, 1, 2, 2, 6, -4, 1, false],
+   ["B", "SUI", 3, 2, 1, 0, 7, 3, 4, 7, true],
+   ["B", "CAN", 3, 1, 1, 1, 8, 3, 5, 4, true],
+   ["B", "BIH", 3, 1, 1, 1, 5, 6, -1, 4, true],
+   ["B", "QAT", 3, 0, 1, 2, 2, 10, -8, 1, false],
+   ["C", "BRA", 3, 2, 1, 0, 7, 1, 6, 7, true],
+   ["C", "MAR", 3, 2, 1, 0, 6, 3, 3, 7, true],
+   ["C", "SCO", 3, 1, 0, 2, 1, 4, -3, 3, false],
+   ["C", "HAI", 3, 0, 0, 3, 2, 8, -6, 0, false],
+   ["D", "USA", 3, 2, 0, 1, 8, 4, 4, 6, true],
+   ["D", "AUS", 3, 1, 1, 1, 2, 2, 0, 4, true],
+   ["D", "PAR", 3, 1, 1, 1, 2, 4, -2, 4, true],
+   ["D", "TUR", 3, 1, 0, 2, 3, 5, -2, 3, false],
+   ["E", "GER", 3, 2, 0, 1, 10, 4, 6, 6, true],
+   ["E", "CIV", 3, 2, 0, 1, 4, 2, 2, 6, true],
+   ["E", "ECU", 3, 1, 1, 1, 2, 2, 0, 4, true],
+   ["E", "CUW", 3, 0, 1, 2, 1, 9, -8, 1, false],
+   ["F", "NED", 3, 2, 1, 0, 10, 4, 6, 7, true],
+   ["F", "JPN", 3, 1, 2, 0, 7, 3, 4, 5, true],
+   ["F", "SWE", 3, 1, 1, 1, 7, 7, 0, 4, true],
+   ["F", "TUN", 3, 0, 0, 3, 2, 12, -10, 0, false],
+   ["G", "BEL", 3, 1, 2, 0, 6, 2, 4, 5, true],
+   ["G", "EGY", 3, 1, 2, 0, 5, 3, 2, 5, true],
+   ["G", "IRN", 3, 0, 3, 0, 3, 3, 0, 3, false],
+   ["G", "NZL", 3, 0, 1, 2, 4, 10, -6, 1, false],
+   ["H", "ESP", 3, 2, 1, 0, 5, 0, 5, 7, true],
+   ["H", "CPV", 3, 0, 3, 0, 2, 2, 0, 3, true],
+   ["H", "URU", 3, 0, 2, 1, 3, 4, -1, 2, false],
+   ["H", "KSA", 3, 0, 2, 1, 1, 5, -4, 2, false],
+   ["I", "FRA", 3, 3, 0, 0, 10, 2, 8, 9, true],
+   ["I", "NOR", 3, 2, 0, 1, 8, 7, 1, 6, true],
+   ["I", "SEN", 3, 1, 0, 2, 8, 6, 2, 3, true],
+   ["I", "IRQ", 3, 0, 0, 3, 1, 12, -11, 0, false],
+   ["J", "ARG", 3, 3, 0, 0, 8, 1, 7, 9, true],
+   ["J", "AUT", 3, 1, 1, 1, 6, 6, 0, 4, true],
+   ["J", "ALG", 3, 1, 1, 1, 5, 7, -2, 4, true],
+   ["J", "JOR", 3, 0, 0, 3, 3, 8, -5, 0, false],
+   ["K", "COL", 3, 2, 1, 0, 4, 1, 3, 7, true],
+   ["K", "POR", 3, 1, 2, 0, 6, 1, 5, 5, true],
+   ["K", "COD", 3, 1, 1, 1, 4, 3, 1, 4, true],
+   ["K", "UZB", 3, 0, 0, 3, 2, 11, -9, 0, false],
+   ["L", "ENG", 3, 2, 1, 0, 6, 2, 4, 7, true],
+   ["L", "CRO", 3, 2, 0, 1, 5, 5, 0, 6, true],
+   ["L", "GHA", 3, 1, 1, 1, 2, 2, 0, 4, true],
+   ["L", "PAN", 3, 0, 0, 3, 0, 4, -4, 0, false]
+  ],
+  "unnamedTable": {
+   "note": "Synthetic: the first two recorded Group A entries under one table with an empty name, as a single-table provider payload might arrive.",
+   "competition": "premier-league",
+   "season": "2026-27",
+   "frontendGroup": {
+    "id": "",
+    "name": ""
+   },
+   "readerGroup": {
+    "id": "Premier League",
+    "name": "Premier League"
+   }
+  },
+  "synthetic": {
+   "note": "Synthetic tables built from the recorded Group A entries (indices into children[0].standings.entries; MEX, CZE, KOR, RSA).",
+   "duplicateRank": {
+    "name": "Group A",
+    "entries": [0, 1, 2, 3],
+    "rankOverrides": {
+     "1": 2
+    },
+    "expected": {
+     "frontend": [
+      ["MEX", 1],
+      ["CZE", 2],
+      ["KOR", 3],
+      ["RSA", 4]
+     ],
+     "reader": [
+      ["MEX", 1],
+      ["CZE", 2],
+      ["KOR", 3],
+      ["RSA", 4]
+     ]
+    }
+   },
+   "sharedTeam": {
+    "groups": [
+     {
+      "name": "Group X",
+      "entries": [0, 1]
+     },
+     {
+      "name": "Group Y",
+      "entries": [0, 2]
+     }
+    ],
+    "expected": {
+     "frontend": {
+      "X": [
+       ["MEX", 1],
+       ["CZE", 2]
+      ],
+      "Y": [
+       ["MEX", 1],
+       ["KOR", 2]
+      ]
+     },
+     "reader": {
+      "X": [
+       ["MEX", 1],
+       ["CZE", 2]
+      ],
+      "Y": [
+       ["KOR", 2]
+      ]
+     }
+    }
+   },
+   "missingStat": {
+    "name": "Group A",
+    "entries": [0, 1],
+    "dropStats": {
+     "1": "points"
+    },
+    "expected": {
+     "frontend": [
+      ["MEX", 1, 9],
+      ["CZE", 2, 0]
+     ],
+     "reader": "error"
+    }
+   },
+   "emptyTable": {
+    "name": "Group Z",
+    "expected": {
+     "frontend": {
+      "id": "Z",
+      "name": "Group Z",
+      "standings": []
+     },
+     "reader": "error"
+    }
+   }
+  }
+ },
+ "bracket": {
+  "fixture": "espn-bracket.json",
+  "rounds": [
+   {
+    "slug": "round-of-32",
+    "matches": 16
+   },
+   {
+    "slug": "round-of-16",
+    "matches": 8
+   },
+   {
+    "slug": "quarterfinals",
+    "matches": 4
+   },
+   {
+    "slug": "semifinals",
+    "matches": 2
+   },
+   {
+    "slug": "final",
+    "matches": 1
+   },
+   {
+    "slug": "3rd-place-match",
+    "matches": 1
+   }
+  ],
+  "frontendFirst": {
+   "id": "760486",
+   "round": "round-of-32",
+   "kickoff": "2026-06-28T19:00Z",
+   "home": {
+    "id": "467",
+    "name": "South Africa",
+    "abbr": "RSA",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/rsa.png",
+    "placeholder": false
+   },
+   "away": {
+    "id": "206",
+    "name": "Canada",
+    "abbr": "CAN",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/can.png",
+    "placeholder": false
+   },
+   "homeScore": 0,
+   "awayScore": 1,
+   "state": "finished",
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "minute": null,
+   "winnerId": "206",
+   "note": null
+  },
+  "frontendPlaceholder": {
+   "id": "760503",
+   "round": "round-of-16",
+   "kickoff": "2026-07-04T21:00Z",
+   "home": {
+    "id": "210",
+    "name": "Paraguay",
+    "abbr": "PAR",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/par.png",
+    "placeholder": false
+   },
+   "away": {
+    "id": "131529",
+    "name": "Round of 32 5 Winner",
+    "abbr": "RD32",
+    "crestUrl": "",
+    "placeholder": true
+   },
+   "homeScore": 0,
+   "awayScore": 0,
+   "state": "scheduled",
+   "statusDetail": "Scheduled",
+   "statusName": "STATUS_SCHEDULED",
+   "minute": null,
+   "winnerId": null,
+   "note": null
+  },
+  "table": [
+   ["760486", "round-of-32", "finished", "467", "206", 0, 1, "206"],
+   ["760487", "round-of-32", "finished", "205", "627", 2, 1, "205"],
+   ["760489", "round-of-32", "finished", "481", "210", 1, 1, "210"],
+   ["760488", "round-of-32", "finished", "449", "2869", 1, 1, "2869"],
+   ["760490", "round-of-32", "scheduled", "4789", "464", 0, 0, null],
+   ["760492", "round-of-32", "scheduled", "478", "466", 0, 0, null],
+   ["760491", "round-of-32", "scheduled", "203", "209", 0, 0, null],
+   ["760495", "round-of-32", "scheduled", "448", "2850", 0, 0, null],
+   ["760493", "round-of-32", "scheduled", "459", "654", 0, 0, null],
+   ["760494", "round-of-32", "scheduled", "660", "452", 0, 0, null],
+   ["760497", "round-of-32", "scheduled", "164", "474", 0, 0, null],
+   ["760496", "round-of-32", "scheduled", "482", "477", 0, 0, null],
+   ["760498", "round-of-32", "scheduled", "475", "624", 0, 0, null],
+   ["760499", "round-of-32", "scheduled", "628", "2620", 0, 0, null],
+   ["760500", "round-of-32", "scheduled", "202", "2597", 0, 0, null],
+   ["760501", "round-of-32", "scheduled", "208", "4469", 0, 0, null],
+   ["760502", "round-of-16", "scheduled", "206", "2869", 0, 0, null],
+   ["760503", "round-of-16", "scheduled", "210", "131529", 0, 0, null],
+   ["760504", "round-of-16", "scheduled", "205", "131530", 0, 0, null],
+   ["760505", "round-of-16", "scheduled", "131531", "131532", 0, 0, null],
+   ["760506", "round-of-16", "scheduled", "131535", "131536", 0, 0, null],
+   ["760507", "round-of-16", "scheduled", "131533", "131534", 0, 0, null],
+   ["760509", "round-of-16", "scheduled", "131538", "131540", 0, 0, null],
+   ["760508", "round-of-16", "scheduled", "131537", "131539", 0, 0, null],
+   ["760510", "quarterfinals", "scheduled", "19282", "19283", 0, 0, null],
+   ["760511", "quarterfinals", "scheduled", "19278", "19279", 0, 0, null],
+   ["760512", "quarterfinals", "scheduled", "19284", "19285", 0, 0, null],
+   ["760513", "quarterfinals", "scheduled", "19280", "19281", 0, 0, null],
+   ["760514", "semifinals", "scheduled", "17631", "17629", 0, 0, null],
+   ["760515", "semifinals", "scheduled", "17630", "17632", 0, 0, null],
+   ["760517", "final", "scheduled", "5960", "5961", 0, 0, null],
+   ["760516", "3rd-place-match", "scheduled", "5958", "5959", 0, 0, null]
+  ],
+  "readerRoundNames": {
+   "round-of-32": "Round of 32",
+   "round-of-16": "Round of 16",
+   "quarterfinals": "Quarterfinals",
+   "semifinals": "Semifinals",
+   "final": "Final",
+   "3rd-place-match": "Third Place"
+  },
+  "liveClockless": {
+   "note": "Synthetic: recorded bracket event 760486 set live with ESPN's displayClock removed; the same change applied to the first recorded team-schedule event.",
+   "eventId": "760486",
+   "expected": {
+    "frontend": null,
+    "reader": ""
+   }
+  }
+ },
+ "leaders": {
+  "fixture": "espn-statistics.json",
+  "frontend": {
+   "scorers": [
+    {
+     "rank": 1,
+     "player": "Kylian Mbappé",
+     "athleteId": "231388",
+     "teamId": "478",
+     "teamAbbr": "FRA",
+     "teamName": "France",
+     "teamCrestUrl": null,
+     "value": 6,
+     "matches": 4
+    },
+    {
+     "rank": 2,
+     "player": "Lionel Messi",
+     "athleteId": "45843",
+     "teamId": "202",
+     "teamAbbr": "ARG",
+     "teamName": "Argentina",
+     "teamCrestUrl": null,
+     "value": 6,
+     "matches": 3
+    },
+    {
+     "rank": 3,
+     "player": "Erling Haaland",
+     "athleteId": "253989",
+     "teamId": "464",
+     "teamAbbr": "NOR",
+     "teamName": "Norway",
+     "teamCrestUrl": null,
+     "value": 5,
+     "matches": 3
+    },
+    {
+     "rank": 4,
+     "player": "Vinícius Júnior",
+     "athleteId": "252107",
+     "teamId": "205",
+     "teamAbbr": "BRA",
+     "teamName": "Brazil",
+     "teamCrestUrl": null,
+     "value": 4,
+     "matches": 4
+    },
+    {
+     "rank": 5,
+     "player": "Ousmane Dembélé",
+     "athleteId": "229744",
+     "teamId": "478",
+     "teamAbbr": "FRA",
+     "teamName": "France",
+     "teamCrestUrl": null,
+     "value": 4,
+     "matches": 4
+    },
+    {
+     "rank": 6,
+     "player": "Cody Gakpo",
+     "athleteId": "249524",
+     "teamId": "449",
+     "teamAbbr": "NED",
+     "teamName": "Netherlands",
+     "teamCrestUrl": null,
+     "value": 3,
+     "matches": 4
+    },
+    {
+     "rank": 7,
+     "player": "Ismael Saibari",
+     "athleteId": "304572",
+     "teamId": "2869",
+     "teamAbbr": "MAR",
+     "teamName": "Morocco",
+     "teamCrestUrl": null,
+     "value": 3,
+     "matches": 4
+    },
+    {
+     "rank": 8,
+     "player": "Kai Havertz",
+     "athleteId": "231182",
+     "teamId": "481",
+     "teamAbbr": "GER",
+     "teamName": "Germany",
+     "teamCrestUrl": null,
+     "value": 3,
+     "matches": 4
+    },
+    {
+     "rank": 9,
+     "player": "Julián Quiñones",
+     "athleteId": "233075",
+     "teamId": "203",
+     "teamAbbr": "MEX",
+     "teamName": "Mexico",
+     "teamCrestUrl": null,
+     "value": 3,
+     "matches": 4
+    },
+    {
+     "rank": 10,
+     "player": "Jonathan David",
+     "athleteId": "273499",
+     "teamId": "206",
+     "teamAbbr": "CAN",
+     "teamName": "Canada",
+     "teamCrestUrl": null,
+     "value": 3,
+     "matches": 4
+    }
+   ],
+   "assists": [
+    {
+     "rank": 1,
+     "player": "Michael Olise",
+     "athleteId": "286831",
+     "teamId": "478",
+     "teamAbbr": "FRA",
+     "teamName": "France",
+     "teamCrestUrl": null,
+     "value": 5,
+     "matches": 4
+    },
+    {
+     "rank": 2,
+     "player": "Bruno Guimarães",
+     "athleteId": "218522",
+     "teamId": "205",
+     "teamAbbr": "BRA",
+     "teamName": "Brazil",
+     "teamCrestUrl": null,
+     "value": 4,
+     "matches": 4
+    },
+    {
+     "rank": 3,
+     "player": "Florian Wirtz",
+     "athleteId": "303748",
+     "teamId": "481",
+     "teamAbbr": "GER",
+     "teamName": "Germany",
+     "teamCrestUrl": null,
+     "value": 3,
+     "matches": 4
+    },
+    {
+     "rank": 4,
+     "player": "Alexander Isak",
+     "athleteId": "235662",
+     "teamId": "466",
+     "teamAbbr": "SWE",
+     "teamName": "Sweden",
+     "teamCrestUrl": null,
+     "value": 3,
+     "matches": 4
+    },
+    {
+     "rank": 5,
+     "player": "Roberto Alvarado",
+     "athleteId": "194308",
+     "teamId": "203",
+     "teamAbbr": "MEX",
+     "teamName": "Mexico",
+     "teamCrestUrl": null,
+     "value": 3,
+     "matches": 4
+    },
+    {
+     "rank": 6,
+     "player": "Martin Ødegaard",
+     "athleteId": "203669",
+     "teamId": "464",
+     "teamAbbr": "NOR",
+     "teamName": "Norway",
+     "teamCrestUrl": null,
+     "value": 3,
+     "matches": 3
+    },
+    {
+     "rank": 7,
+     "player": "Denzel Dumfries",
+     "athleteId": "213248",
+     "teamId": "449",
+     "teamAbbr": "NED",
+     "teamName": "Netherlands",
+     "teamCrestUrl": null,
+     "value": 2,
+     "matches": 4
+    },
+    {
+     "rank": 8,
+     "player": "Viktor Gyökeres",
+     "athleteId": "258906",
+     "teamId": "466",
+     "teamAbbr": "SWE",
+     "teamName": "Sweden",
+     "teamCrestUrl": null,
+     "value": 2,
+     "matches": 4
+    },
+    {
+     "rank": 9,
+     "player": "Joshua Kimmich",
+     "athleteId": "190161",
+     "teamId": "481",
+     "teamAbbr": "GER",
+     "teamName": "Germany",
+     "teamCrestUrl": null,
+     "value": 2,
+     "matches": 4
+    },
+    {
+     "rank": 10,
+     "player": "Kylian Mbappé",
+     "athleteId": "231388",
+     "teamId": "478",
+     "teamAbbr": "FRA",
+     "teamName": "France",
+     "teamCrestUrl": null,
+     "value": 2,
+     "matches": 4
+    }
+   ]
+  }
+ },
+ "news": {
+  "fixture": "espn-news.json",
+  "shared": [
+   {
+    "id": "49233296",
+    "headline": "World Cup live updates: USA takes on Bosnia-Herzegovina in round of 32",
+    "description": "The United States kicks off its 2026 FIFA World Cup knockout stage as take on Bosnia-Herzegovina in the round of 32.",
+    "published": "2026-07-01T22:56:40Z",
+    "image": "https://a.espncdn.com/photo/2026/0701/r1682521_1296x729_16-9.jpg",
+    "url": "https://www.espn.com/soccer/story/_/id/49233296/live-updates-usa-takes-bosnia-herzegovina-round-32-fifa-world-cup",
+    "byline": "ESPN"
+   },
+   {
+    "id": "49240489",
+    "headline": "Belgium pulls off stunning comeback to eliminate Senegal",
+    "description": "Youri Tielemans scored from the penalty spot in stoppage time of extra time, and Belgium came back from two goals down to beat Senegal 3-2 Wednesday in the Round of 32 at the World Cup.",
+    "published": "2026-07-01T22:58:46Z",
+    "image": "https://a.espncdn.com/photo/2026/0701/r1682989_1296x729_16-9.jpg",
+    "url": "https://www.espn.com/soccer/story/_/id/49240489/belgium-stunning-comeback-eliminate-senegal",
+    "byline": "ESPN News Services"
+   },
+   {
+    "id": "49233418",
+    "headline": "World Cup Daily live: Belgium wins it over Senegal with latest winner in WC history",
+    "description": "We have three matches for you on Wednesday as the round-of-32 action at the 2026 World Cup continues.",
+    "published": "2026-07-01T22:56:25Z",
+    "image": "https://a.espncdn.com/photo/2026/0701/r1683028_1296x729_16-9.jpg",
+    "url": "https://www.espn.com/soccer/story/_/id/49233418/world-cup-daily-live-haaland-buys-cowboy-hat-usmnt-england-action",
+    "byline": "ESPN"
+   },
+   {
+    "id": "49241870",
+    "headline": "Christian Pulisic returns to USMNT lineup vs. Bosnia-Herzegovina",
+    "description": "Christian Pulisic has been named in the USMNT's starting lineup for Wednesday's World Cup round-of-32 clash with Bosnia-Herzegovina after recovering from a calf injury.",
+    "published": "2026-07-01T22:55:04Z",
+    "image": "https://a.espncdn.com/photo/2026/0701/r1683014_1296x729_16-9.jpg",
+    "url": "https://www.espn.com/soccer/story/_/id/49241870/christian-pulisic-usa-vs-bosnia-herzegovina-lineup-2026-world-cup",
+    "byline": "ESPN"
+   },
+   {
+    "id": "49241829",
+    "headline": "Chaos at Brussels watch party after Belgium's dramatic comeback",
+    "description": "Chaos at Brussels watch party after Belgium's dramatic comeback",
+    "published": "2026-07-01T22:19:28Z",
+    "image": "https://a.espncdn.com/media/motion/2026/0701/dm_260701_Chaos_at_Brussels_watch_party_after_Belgiums_dramatic_comeback/dm_260701_Chaos_at_Brussels_watch_party_after_Belgiums_dramatic_comeback.jpg",
+    "url": "https://www.espn.com/video/clip/_/id/49241829/chaos-brussels-watch-party-belgium-dramatic-comeback",
+    "byline": ""
+   },
+   {
+    "id": "49241567",
+    "headline": "'Icons' Modric, Ronaldo battle to avoid World Cup send-off",
+    "description": "Luka Modric and Cristiano Ronaldo are \"two great icons of world football,\" Portugal midfielder Vitinha said on Wednesday ahead of his team's clash with Croatia.",
+    "published": "2026-07-01T22:13:53Z",
+    "image": "https://a.espncdn.com/photo/2026/0701/r1682997_1296x729_16-9.jpg",
+    "url": "https://www.espn.com/soccer/story/_/id/49241567/croatia-portugal-luka-modric-cristiano-ronaldo-2026-world-cup",
+    "byline": "Bill Connelly"
+   }
+  ]
+ },
+ "squad": {
+  "fixture": "espn-team-roster.json",
+  "frontend": [
+   {
+    "id": "49306",
+    "age": 25,
+    "headshotUrl": null
+   },
+   {
+    "id": "200101",
+    "age": 29,
+    "headshotUrl": null
+   },
+   {
+    "id": "132676",
+    "age": 33,
+    "headshotUrl": null
+   }
+  ],
+  "withAge": 31,
+  "readerOrder": ["Ángel Malagón", "Emilio Lara", "Israel Reyes", "Sebastián Cáceres", "Kevin Álvarez", "Brian Rodríguez", "Henry Martín", "Alejandro Zendejas", "Isaías Violante", "Alan Cervantes", "Raúl Zúñiga", "Alexis Gutierrez", "Fernando Tapia", "Óscar Perea", "Raphael Veiga", "Franco Rossano", "Cristian Borja", "Ícaro ca Conceição", "Érick Sánchez", "Ramón Juarez", "Rodolfo Cota", "César Lugo", "Miguel Vazquez", "Patricio Salas", "Dagoberto Espinoza", "Santiago Naveda", "Miguel Ramírez", "Esteban Lozano", "Osvaldo Arriaga", "Santiago Gael Camarena Rosales", "Alejandro Cárdenas", "Adrián Fernández", "Andrés Marioni Araujo Muñoz", "Ricardo Gonzalez", "Edwin Cerrillo"],
+  "readerOrderNote": "Reader order (teamSquadSQL: shirt number, nulls last, then name). The recorded roster has unique numbers and one null, so collation never decides it.",
+  "players": [
+   {
+    "id": "49306",
+    "name": "Fernando Tapia",
+    "jersey": 21,
+    "position": "G",
+    "nationality": "Mexico",
+    "stats": {
+     "appearances": 1,
+     "subIns": 0,
+     "totalGoals": 0,
+     "goalAssists": 0,
+     "totalShots": 0,
+     "shotsOnTarget": 0,
+     "offsides": 0,
+     "foulsCommitted": 0,
+     "foulsSuffered": 0,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 2,
+     "shotsFaced": 0,
+     "goalsConceded": 0
+    }
+   },
+   {
+    "id": "103729",
+    "name": "Rodolfo Cota",
+    "jersey": 30,
+    "position": "G",
+    "nationality": "Mexico",
+    "stats": {
+     "appearances": 3,
+     "subIns": 0,
+     "totalGoals": 0,
+     "goalAssists": 0,
+     "totalShots": 0,
+     "shotsOnTarget": 0,
+     "offsides": 0,
+     "foulsCommitted": 0,
+     "foulsSuffered": 0,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 11,
+     "shotsFaced": 0,
+     "goalsConceded": 1
+    }
+   },
+   {
+    "id": "200101",
+    "name": "Ángel Malagón",
+    "jersey": 1,
+    "position": "G",
+    "nationality": "Mexico",
+    "stats": null
+   },
+   {
+    "id": "398891",
+    "name": "César Lugo",
+    "jersey": 31,
+    "position": "G",
+    "nationality": "Mexico",
+    "stats": null
+   },
+   {
+    "id": "132676",
+    "name": "Cristian Borja",
+    "jersey": 26,
+    "position": "D",
+    "nationality": "Colombia",
+    "stats": {
+     "appearances": 3,
+     "subIns": 0,
+     "totalGoals": 1,
+     "goalAssists": 0,
+     "totalShots": 2,
+     "shotsOnTarget": 1,
+     "offsides": 1,
+     "foulsCommitted": 3,
+     "foulsSuffered": 6,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 1
+    }
+   },
+   {
+    "id": "195312",
+    "name": "Kevin Álvarez",
+    "jersey": 5,
+    "position": "D",
+    "nationality": "Mexico",
+    "stats": {
+     "appearances": 3,
+     "subIns": 1,
+     "totalGoals": 0,
+     "goalAssists": 1,
+     "totalShots": 2,
+     "shotsOnTarget": 1,
+     "offsides": 0,
+     "foulsCommitted": 5,
+     "foulsSuffered": 2,
+     "yellowCards": 2,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 1
+    }
+   },
+   {
+    "id": "285756",
+    "name": "Sebastián Cáceres",
+    "jersey": 4,
+    "position": "D",
+    "nationality": "Uruguay",
+    "stats": {
+     "appearances": 1,
+     "subIns": 0,
+     "totalGoals": 0,
+     "goalAssists": 0,
+     "totalShots": 0,
+     "shotsOnTarget": 0,
+     "offsides": 0,
+     "foulsCommitted": 2,
+     "foulsSuffered": 1,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 0
+    }
+   },
+   {
+    "id": "290414",
+    "name": "Israel Reyes",
+    "jersey": 3,
+    "position": "D",
+    "nationality": "Mexico",
+    "stats": {
+     "appearances": 1,
+     "subIns": 1,
+     "totalGoals": 0,
+     "goalAssists": 0,
+     "totalShots": 1,
+     "shotsOnTarget": 0,
+     "offsides": 0,
+     "foulsCommitted": 1,
+     "foulsSuffered": 0,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 0
+    }
+   },
+   {
+    "id": "292414",
+    "name": "Emilio Lara",
+    "jersey": 2,
+    "position": "D",
+    "nationality": "Mexico",
+    "stats": {
+     "appearances": 1,
+     "subIns": 0,
+     "totalGoals": 0,
+     "goalAssists": 0,
+     "totalShots": 1,
+     "shotsOnTarget": 1,
+     "offsides": 0,
+     "foulsCommitted": 1,
+     "foulsSuffered": 0,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 0
+    }
+   },
+   {
+    "id": "307891",
+    "name": "Ramón Juarez",
+    "jersey": 29,
+    "position": "D",
+    "nationality": "Mexico",
+    "stats": {
+     "appearances": 4,
+     "subIns": 0,
+     "totalGoals": 0,
+     "goalAssists": 0,
+     "totalShots": 6,
+     "shotsOnTarget": 1,
+     "offsides": 0,
+     "foulsCommitted": 2,
+     "foulsSuffered": 1,
+     "yellowCards": 1,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 1
+    }
+   },
+   {
+    "id": "311853",
+    "name": "Miguel Vazquez",
+    "jersey": 32,
+    "position": "D",
+    "nationality": "Mexico",
+    "stats": {
+     "appearances": 3,
+     "subIns": 0,
+     "totalGoals": 0,
+     "goalAssists": 0,
+     "totalShots": 0,
+     "shotsOnTarget": 0,
+     "offsides": 0,
+     "foulsCommitted": 2,
+     "foulsSuffered": 3,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 1
+    }
+   },
+   {
+    "id": "386254",
+    "name": "Franco Rossano",
+    "jersey": 24,
+    "position": "D",
+    "nationality": "Mexico",
+    "stats": {
+     "appearances": 1,
+     "subIns": 1,
+     "totalGoals": 0,
+     "goalAssists": 0,
+     "totalShots": 0,
+     "shotsOnTarget": 0,
+     "offsides": 0,
+     "foulsCommitted": 1,
+     "foulsSuffered": 1,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 0
+    }
+   },
+   {
+    "id": "3102568",
+    "name": "Andrés Marioni Araujo Muñoz",
+    "jersey": 211,
+    "position": "D",
+    "nationality": null,
+    "stats": {
+     "appearances": 0,
+     "subIns": 0,
+     "totalGoals": 0,
+     "goalAssists": 0,
+     "totalShots": 0,
+     "shotsOnTarget": 0,
+     "offsides": 0,
+     "foulsCommitted": 0,
+     "foulsSuffered": 0,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 0
+    }
+   },
+   {
+    "id": "129421",
+    "name": "Érick Sánchez",
+    "jersey": 28,
+    "position": "M",
+    "nationality": "Mexico",
+    "stats": {
+     "appearances": 4,
+     "subIns": 1,
+     "totalGoals": 0,
+     "goalAssists": 1,
+     "totalShots": 8,
+     "shotsOnTarget": 1,
+     "offsides": 0,
+     "foulsCommitted": 4,
+     "foulsSuffered": 7,
+     "yellowCards": 1,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 1
+    }
+   },
+   {
+    "id": "228351",
+    "name": "Alan Cervantes",
+    "jersey": 13,
+    "position": "M",
+    "nationality": "Mexico",
+    "stats": {
+     "appearances": 3,
+     "subIns": 0,
+     "totalGoals": 0,
+     "goalAssists": 0,
+     "totalShots": 1,
+     "shotsOnTarget": 0,
+     "offsides": 0,
+     "foulsCommitted": 4,
+     "foulsSuffered": 1,
+     "yellowCards": 0,
+     "redCards": 1,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 0
+    }
+   },
+   {
+    "id": "236321",
+    "name": "Raphael Veiga",
+    "jersey": 23,
+    "position": "M",
+    "nationality": "Brazil",
+    "stats": {
+     "appearances": 4,
+     "subIns": 0,
+     "totalGoals": 1,
+     "goalAssists": 2,
+     "totalShots": 13,
+     "shotsOnTarget": 6,
+     "offsides": 0,
+     "foulsCommitted": 5,
+     "foulsSuffered": 3,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 1
+    }
+   },
+   {
+    "id": "265866",
+    "name": "Alexis Gutierrez",
+    "jersey": 20,
+    "position": "M",
+    "nationality": "Mexico",
+    "stats": {
+     "appearances": 4,
+     "subIns": 3,
+     "totalGoals": 0,
+     "goalAssists": 0,
+     "totalShots": 4,
+     "shotsOnTarget": 0,
+     "offsides": 0,
+     "foulsCommitted": 1,
+     "foulsSuffered": 2,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 0
+    }
+   },
+   {
+    "id": "286198",
+    "name": "Edwin Cerrillo",
+    "jersey": null,
+    "position": "M",
+    "nationality": "USA",
+    "stats": null
+   },
+   {
+    "id": "293353",
+    "name": "Santiago Naveda",
+    "jersey": 35,
+    "position": "M",
+    "nationality": "Mexico",
+    "stats": null
+   },
+   {
+    "id": "311296",
+    "name": "Miguel Ramírez",
+    "jersey": 36,
+    "position": "M",
+    "nationality": "Mexico",
+    "stats": null
+   },
+   {
+    "id": "363021",
+    "name": "Dagoberto Espinoza",
+    "jersey": 34,
+    "position": "M",
+    "nationality": "Mexico",
+    "stats": {
+     "appearances": 4,
+     "subIns": 0,
+     "totalGoals": 0,
+     "goalAssists": 2,
+     "totalShots": 2,
+     "shotsOnTarget": 0,
+     "offsides": 0,
+     "foulsCommitted": 6,
+     "foulsSuffered": 4,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 1
+    }
+   },
+   {
+    "id": "394111",
+    "name": "Osvaldo Arriaga",
+    "jersey": 186,
+    "position": "M",
+    "nationality": "Mexico",
+    "stats": {
+     "appearances": 2,
+     "subIns": 1,
+     "totalGoals": 1,
+     "goalAssists": 0,
+     "totalShots": 8,
+     "shotsOnTarget": 1,
+     "offsides": 0,
+     "foulsCommitted": 1,
+     "foulsSuffered": 0,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 0
+    }
+   },
+   {
+    "id": "422286",
+    "name": "Ricardo Gonzalez",
+    "jersey": 240,
+    "position": "M",
+    "nationality": "Mexico",
+    "stats": {
+     "appearances": 0,
+     "subIns": 0,
+     "totalGoals": 0,
+     "goalAssists": 0,
+     "totalShots": 0,
+     "shotsOnTarget": 0,
+     "offsides": 0,
+     "foulsCommitted": 0,
+     "foulsSuffered": 0,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 0
+    }
+   },
+   {
+    "id": "3102566",
+    "name": "Ícaro ca Conceição",
+    "jersey": 27,
+    "position": "M",
+    "nationality": null,
+    "stats": {
+     "appearances": 3,
+     "subIns": 1,
+     "totalGoals": 0,
+     "goalAssists": 0,
+     "totalShots": 1,
+     "shotsOnTarget": 0,
+     "offsides": 0,
+     "foulsCommitted": 5,
+     "foulsSuffered": 2,
+     "yellowCards": 1,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 1
+    }
+   },
+   {
+    "id": "3109381",
+    "name": "Santiago Gael Camarena Rosales",
+    "jersey": 188,
+    "position": "M",
+    "nationality": null,
+    "stats": {
+     "appearances": 0,
+     "subIns": 0,
+     "totalGoals": 0,
+     "goalAssists": 0,
+     "totalShots": 0,
+     "shotsOnTarget": 0,
+     "offsides": 0,
+     "foulsCommitted": 0,
+     "foulsSuffered": 0,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 0
+    }
+   },
+   {
+    "id": "93184",
+    "name": "Henry Martín",
+    "jersey": 9,
+    "position": "F",
+    "nationality": "Mexico",
+    "stats": {
+     "appearances": 4,
+     "subIns": 0,
+     "totalGoals": 1,
+     "goalAssists": 1,
+     "totalShots": 5,
+     "shotsOnTarget": 2,
+     "offsides": 3,
+     "foulsCommitted": 4,
+     "foulsSuffered": 5,
+     "yellowCards": 2,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 1
+    }
+   },
+   {
+    "id": "115044",
+    "name": "Patricio Salas",
+    "jersey": 33,
+    "position": "F",
+    "nationality": "Mexico",
+    "stats": {
+     "appearances": 2,
+     "subIns": 2,
+     "totalGoals": 0,
+     "goalAssists": 0,
+     "totalShots": 2,
+     "shotsOnTarget": 1,
+     "offsides": 0,
+     "foulsCommitted": 2,
+     "foulsSuffered": 1,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 0
+    }
+   },
+   {
+    "id": "144325",
+    "name": "Brian Rodríguez",
+    "jersey": 7,
+    "position": "F",
+    "nationality": "Uruguay",
+    "stats": {
+     "appearances": 2,
+     "subIns": 2,
+     "totalGoals": 1,
+     "goalAssists": 0,
+     "totalShots": 5,
+     "shotsOnTarget": 3,
+     "offsides": 0,
+     "foulsCommitted": 0,
+     "foulsSuffered": 0,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 0
+    }
+   },
+   {
+    "id": "212824",
+    "name": "Alejandro Zendejas",
+    "jersey": 10,
+    "position": "F",
+    "nationality": "USA",
+    "stats": null
+   },
+   {
+    "id": "290853",
+    "name": "Raúl Zúñiga",
+    "jersey": 19,
+    "position": "F",
+    "nationality": "Colombia",
+    "stats": {
+     "appearances": 0,
+     "subIns": 0,
+     "totalGoals": 0,
+     "goalAssists": 0,
+     "totalShots": 0,
+     "shotsOnTarget": 0,
+     "offsides": 0,
+     "foulsCommitted": 0,
+     "foulsSuffered": 0,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 0
+    }
+   },
+   {
+    "id": "304626",
+    "name": "Esteban Lozano",
+    "jersey": 37,
+    "position": "F",
+    "nationality": "Mexico",
+    "stats": null
+   },
+   {
+    "id": "308956",
+    "name": "Isaías Violante",
+    "jersey": 12,
+    "position": "F",
+    "nationality": "Mexico",
+    "stats": {
+     "appearances": 4,
+     "subIns": 1,
+     "totalGoals": 1,
+     "goalAssists": 1,
+     "totalShots": 15,
+     "shotsOnTarget": 4,
+     "offsides": 0,
+     "foulsCommitted": 1,
+     "foulsSuffered": 6,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 1
+    }
+   },
+   {
+    "id": "336456",
+    "name": "Óscar Perea",
+    "jersey": 22,
+    "position": "F",
+    "nationality": "Colombia",
+    "stats": {
+     "appearances": 1,
+     "subIns": 0,
+     "totalGoals": 1,
+     "goalAssists": 0,
+     "totalShots": 3,
+     "shotsOnTarget": 1,
+     "offsides": 0,
+     "foulsCommitted": 1,
+     "foulsSuffered": 1,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 0
+    }
+   },
+   {
+    "id": "376561",
+    "name": "Adrián Fernández",
+    "jersey": 191,
+    "position": "F",
+    "nationality": "Mexico",
+    "stats": {
+     "appearances": 0,
+     "subIns": 0,
+     "totalGoals": 0,
+     "goalAssists": 0,
+     "totalShots": 0,
+     "shotsOnTarget": 0,
+     "offsides": 0,
+     "foulsCommitted": 0,
+     "foulsSuffered": 0,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 0
+    }
+   },
+   {
+    "id": "3102567",
+    "name": "Alejandro Cárdenas",
+    "jersey": 189,
+    "position": "F",
+    "nationality": null,
+    "stats": {
+     "appearances": 3,
+     "subIns": 3,
+     "totalGoals": 1,
+     "goalAssists": 0,
+     "totalShots": 3,
+     "shotsOnTarget": 3,
+     "offsides": 0,
+     "foulsCommitted": 1,
+     "foulsSuffered": 0,
+     "yellowCards": 0,
+     "redCards": 0,
+     "ownGoals": 0,
+     "saves": 0,
+     "shotsFaced": 0,
+     "goalsConceded": 0
+    }
+   }
+  ],
+  "headshots": {
+   "286198": "https://a.espncdn.com/i/headshots/soccer/players/full/286198.png",
+   "144325": "https://a.espncdn.com/i/headshots/soccer/players/full/144325.png"
+  }
+ },
+ "player": {
+  "frontend": {
+   "identity": {
+    "id": "297287",
+    "name": "Ali Avila",
+    "age": 22,
+    "position": "Forward",
+    "jersey": "9",
+    "nationality": "Mexico",
+    "flagUrl": "https://a.espncdn.com/i/teamlogos/countries/500/mex.png",
+    "headshotUrl": null,
+    "team": {
+     "id": "222",
+     "name": "Querétaro",
+     "abbr": "QRO",
+     "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/222.png"
+    },
+    "seasonLabel": "2026-27 Liga MX Stats",
+    "totals": [
+     {
+      "name": "starts-subIns",
+      "label": "Starts-Substitute Appearances",
+      "display": "5 (0)",
+      "value": 5
+     },
+     {
+      "name": "totalGoals",
+      "label": "Total Goals",
+      "display": "3",
+      "value": 3
+     },
+     {
+      "name": "goalAssists",
+      "label": "Assists",
+      "display": "0",
+      "value": 0
+     },
+     {
+      "name": "totalShots",
+      "label": "Shots",
+      "display": "12",
+      "value": 12
+     }
+    ]
+   },
+   "gameLogLabel": "Last 5 Matches",
+   "career": [
+    {
+     "teamId": "222",
+     "teamName": "Querétaro",
+     "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/222.png",
+     "seasons": "2025-CURRENT"
+    },
+    {
+     "teamId": "233",
+     "teamName": "Pumas UNAM",
+     "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/233.png",
+     "seasons": "2023-2024, 2024-2025"
+    },
+    {
+     "teamId": "220",
+     "teamName": "Monterrey",
+     "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/220.png",
+     "seasons": "2020-2024"
+    },
+    {
+     "teamId": "5379",
+     "teamName": "Mexico U17",
+     "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/mex.png",
+     "seasons": "2019-2019"
+    }
+   ],
+   "gameLog": [
+    {
+     "eventId": "401877007",
+     "appearance": "Started",
+     "stats": {
+      "totalGoals": 0,
+      "goalAssists": 0,
+      "totalShots": 2,
+      "shotsOnTarget": 0,
+      "foulsCommitted": 2,
+      "foulsSuffered": 2,
+      "offsides": 0,
+      "yellowCards": 1,
+      "redCards": 0
+     },
+     "date": "2026-08-22T03:10:00.000+00:00",
+     "atVs": "vs",
+     "opponent": {
+      "id": "223",
+      "name": "Toluca",
+      "abbr": "TOL",
+      "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/223.png"
+     },
+     "score": "2-1",
+     "result": "L",
+     "homeTeamId": "222",
+     "awayTeamId": "223",
+     "teamId": "222",
+     "teamAbbr": "QRO"
+    },
+    {
+     "eventId": "401877015",
+     "appearance": "Started",
+     "stats": {
+      "totalGoals": 0,
+      "goalAssists": 0,
+      "totalShots": 1,
+      "shotsOnTarget": 1,
+      "foulsCommitted": 2,
+      "foulsSuffered": 1,
+      "offsides": 1,
+      "yellowCards": 0,
+      "redCards": 0
+     },
+     "date": "2026-08-16T18:00:00.000+00:00",
+     "atVs": "@",
+     "opponent": {
+      "id": "233",
+      "name": "Pumas UNAM",
+      "abbr": "UNAM",
+      "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/233.png"
+     },
+     "score": "0-0",
+     "result": "D",
+     "homeTeamId": "233",
+     "awayTeamId": "222",
+     "teamId": "222",
+     "teamAbbr": "QRO"
+    },
+    {
+     "eventId": "401863615",
+     "appearance": "Started",
+     "stats": {
+      "totalGoals": 1,
+      "goalAssists": 0,
+      "totalShots": 1,
+      "shotsOnTarget": 1,
+      "foulsCommitted": 4,
+      "foulsSuffered": 1,
+      "offsides": 2,
+      "yellowCards": 0,
+      "redCards": 0
+     },
+     "date": "2026-08-13T02:30:00.000+00:00",
+     "atVs": "@",
+     "opponent": {
+      "id": "18966",
+      "name": "LAFC",
+      "abbr": "LAFC",
+      "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/18966.png"
+     },
+     "score": "1-1",
+     "result": "D",
+     "homeTeamId": "18966",
+     "awayTeamId": "222",
+     "teamId": "222",
+     "teamAbbr": "QRO"
+    },
+    {
+     "eventId": "401863600",
+     "appearance": "Sub",
+     "stats": {
+      "totalGoals": 0,
+      "goalAssists": 0,
+      "totalShots": 0,
+      "shotsOnTarget": 0,
+      "foulsCommitted": 1,
+      "foulsSuffered": 0,
+      "offsides": 0,
+      "yellowCards": 0,
+      "redCards": 0
+     },
+     "date": "2026-08-09T19:30:00.000+00:00",
+     "atVs": "@",
+     "opponent": {
+      "id": "9726",
+      "name": "Seattle Sounders FC",
+      "abbr": "SEA",
+      "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/9726.png"
+     },
+     "score": "3-0",
+     "result": "L",
+     "homeTeamId": "9726",
+     "awayTeamId": "222",
+     "teamId": "222",
+     "teamAbbr": "QRO"
+    },
+    {
+     "eventId": "401863562",
+     "appearance": "Started",
+     "stats": {
+      "totalGoals": 0,
+      "goalAssists": 0,
+      "totalShots": 7,
+      "shotsOnTarget": 3,
+      "foulsCommitted": 1,
+      "foulsSuffered": 1,
+      "offsides": 2,
+      "yellowCards": 1,
+      "redCards": 0
+     },
+     "date": "2026-08-06T00:30:00.000+00:00",
+     "atVs": "@",
+     "opponent": {
+      "id": "185",
+      "name": "FC Dallas",
+      "abbr": "DAL",
+      "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/185.png"
+     },
+     "score": "2-0",
+     "result": "L",
+     "homeTeamId": "185",
+     "awayTeamId": "222",
+     "teamId": "222",
+     "teamAbbr": "QRO"
+    }
+   ]
+  },
+  "missingContext": {
+   "note": "Synthetic: the recorded overview with this event's context entry removed. The row keeps its stats; context becomes null or empty, never dropped.",
+   "eventId": "401877015",
+   "row": {
+    "eventId": "401877015",
+    "appearance": "Started",
+    "stats": {
+     "totalGoals": 0,
+     "goalAssists": 0,
+     "totalShots": 1,
+     "shotsOnTarget": 1,
+     "foulsCommitted": 2,
+     "foulsSuffered": 1,
+     "offsides": 1,
+     "yellowCards": 0,
+     "redCards": 0
+    },
+    "date": null,
+    "atVs": "",
+    "opponent": null,
+    "score": "",
+    "result": "",
+    "homeTeamId": null,
+    "awayTeamId": null,
+    "teamId": null,
+    "teamAbbr": ""
+   }
+  },
+  "bioFixture": "espn-athlete-bio.json"
+ },
+ "queries": {
+  "competition": "world-cup",
+  "season": "2026",
+  "leagueSlug": "fifa.world",
+  "now": "2026-07-01T12:00:00Z",
+  "clock": "Frozen at 2026-07-01T12:00Z with the test process pinned to TZ=UTC: window strings are local calendar dates, provider selectors UTC months.",
+  "events": [
+   {
+    "id": "q-0623",
+    "kickoff": "2026-06-23T12:00Z",
+    "status": "post"
+   },
+   {
+    "id": "q-0628",
+    "kickoff": "2026-06-28T12:00Z",
+    "status": "post"
+   },
+   {
+    "id": "q-0629",
+    "kickoff": "2026-06-29T00:00Z",
+    "status": "post"
+   },
+   {
+    "id": "q-0701",
+    "kickoff": "2026-07-01T11:00Z",
+    "status": "in"
+   },
+   {
+    "id": "q-0705",
+    "kickoff": "2026-07-05T23:59Z",
+    "status": "pre"
+   },
+   {
+    "id": "q-0706",
+    "kickoff": "2026-07-06T00:00Z",
+    "status": "pre"
+   },
+   {
+    "id": "q-0720",
+    "kickoff": "2026-07-20T12:00Z",
+    "status": "pre"
+   },
+   {
+    "id": "q-0730",
+    "kickoff": "2026-07-30T12:00Z",
+    "status": "pre"
+   }
+  ],
+  "cases": [
+   {
+    "method": "getMatches",
+    "args": [],
+    "months": ["202606", "202607"],
+    "ids": ["q-0629", "q-0701", "q-0705"],
+    "summaries": 3
+   },
+   {
+    "method": "getMatches",
+    "args": ["20260701-20260701"],
+    "months": ["202606", "202607"],
+    "ids": ["q-0701"],
+    "summaries": 1
+   },
+   {
+    "method": "getFixtures",
+    "args": ["20260628-20260705"],
+    "months": ["202606", "202607"],
+    "ids": ["q-0628", "q-0629", "q-0701", "q-0705"],
+    "summaries": 0
+   },
+   {
+    "method": "getLiveWindow",
+    "args": [],
+    "months": ["202606", "202607"],
+    "ids": ["q-0628", "q-0629", "q-0701", "q-0705", "q-0706"],
+    "summaries": 0
+   },
+   {
+    "method": "getUpcoming",
+    "args": [],
+    "months": ["202606", "202607"],
+    "ids": ["q-0705", "q-0706", "q-0720"],
+    "summaries": 0
+   },
+   {
+    "method": "getUpcoming",
+    "args": [2],
+    "months": ["202606", "202607"],
+    "ids": ["q-0705", "q-0706"],
+    "summaries": 0
+   }
+  ],
+  "outOfSeason": [
+   {
+    "competition": "liga-mx",
+    "season": "2026-apertura",
+    "args": ["20260301-20260331"],
+    "ids": [],
+    "fetches": 0
+   },
+   {
+    "competition": "world-cup",
+    "season": "2022",
+    "args": ["20260628-20260705"],
+    "ids": [],
+    "fetches": 0
+   }
+  ],
+  "params": [
+   {
+    "query": "",
+    "frontend": {
+     "status": 200,
+     "method": "getFixtures",
+     "args": ["20260629-20260705"],
+     "ids": ["q-0629", "q-0701", "q-0705"]
+    }
+   },
+   {
+    "query": "?range=20260701-20260701&detail=summary",
+    "frontend": {
+     "status": 200,
+     "method": "getMatches",
+     "args": ["20260701-20260701"],
+     "ids": ["q-0701"]
+    }
+   },
+   {
+    "query": "?state=scheduled&limit=2",
+    "frontend": {
+     "status": 200,
+     "method": "getUpcoming",
+     "args": [2],
+     "ids": ["q-0705", "q-0706"]
+    }
+   },
+   {
+    "query": "?range=20260628-20260705&state=scheduled&limit=1",
+    "frontend": {
+     "status": 200,
+     "method": "getFixtures",
+     "args": ["20260628-20260705"],
+     "ids": ["q-0705"]
+    }
+   },
+   {
+    "query": "?range=lol",
+    "frontend": {
+     "status": 400
+    }
+   },
+   {
+    "query": "?range=20260705-20260629",
+    "frontend": {
+     "status": 400
+    }
+   },
+   {
+    "query": "?range=20260101-20261231",
+    "frontend": {
+     "status": 400
+    }
+   },
+   {
+    "query": "?range=20260231-20260301",
+    "frontend": {
+     "status": 400
+    }
+   },
+   {
+    "query": "?state=finished",
+    "frontend": {
+     "status": 400
+    }
+   },
+   {
+    "query": "?detail=everything",
+    "frontend": {
+     "status": 400
+    }
+   },
+   {
+    "query": "?range=20260601-20260630&detail=summary",
+    "frontend": {
+     "status": 400
+    }
+   },
+   {
+    "query": "?limit=0",
+    "frontend": {
+     "status": 400
+    }
+   },
+   {
+    "query": "?limit=101",
+    "frontend": {
+     "status": 400
+    }
+   },
+   {
+    "query": "?limit=abc",
+    "frontend": {
+     "status": 400
+    }
+   }
+  ],
+  "liveMinute": {
+   "note": "Synthetic: recorded event 760487 set live; one with ESPN's displayClock, one without.",
+   "withClock": {
+    "displayClock": "60'",
+    "expected": {
+     "frontend": "60'",
+     "reader": "60'"
+    }
+   },
+   "withoutClock": {
+    "expected": {
+     "frontend": "absent",
+     "reader": ""
+    }
+   }
+  }
+ },
+ "freshness": {
+  "competition": "world-cup",
+  "season": "2026",
+  "cases": [
+   {
+    "name": "fresh live",
+    "now": "2026-07-01T12:00:00Z",
+    "snapshot": {
+     "pollSucceededAt": "2026-07-01T11:59:00Z",
+     "pollStatus": "ok",
+     "hasUnfinalized": true,
+     "matches": [
+      {
+       "kickoff": "2026-07-01T11:00:00Z",
+       "state": "live",
+       "status": "",
+       "observedAt": "2026-07-01T11:59:30Z",
+       "finalizedAt": null
+      }
+     ]
+    },
+    "headers": {
+     "X-ScoreArc-Freshness": "fresh",
+     "X-ScoreArc-Poll-Status": "ok",
+     "X-ScoreArc-Stale-Matches": "0",
+     "X-ScoreArc-Overdue-Matches": "0",
+     "X-ScoreArc-Observed-At": "2026-07-01T11:59:00Z"
+    }
+   },
+   {
+    "name": "successful empty",
+    "now": "2026-07-01T12:00:00Z",
+    "snapshot": {
+     "pollSucceededAt": "2026-07-01T11:55:00Z",
+     "pollStatus": "ok",
+     "hasUnfinalized": false,
+     "matches": []
+    },
+    "headers": {
+     "X-ScoreArc-Freshness": "empty",
+     "X-ScoreArc-Poll-Status": "ok",
+     "X-ScoreArc-Stale-Matches": "0",
+     "X-ScoreArc-Overdue-Matches": "0",
+     "X-ScoreArc-Observed-At": "2026-07-01T11:55:00Z"
+    }
+   },
+   {
+    "name": "dormant out of season",
+    "now": "2026-10-02T12:00:00Z",
+    "snapshot": {
+     "pollSucceededAt": null,
+     "pollStatus": "",
+     "hasUnfinalized": false,
+     "matches": []
+    },
+    "headers": {
+     "X-ScoreArc-Freshness": "dormant",
+     "X-ScoreArc-Poll-Status": "unknown",
+     "X-ScoreArc-Stale-Matches": "0",
+     "X-ScoreArc-Overdue-Matches": "0"
+    }
+   },
+   {
+    "name": "failed poll",
+    "now": "2026-07-01T12:00:00Z",
+    "snapshot": {
+     "pollSucceededAt": "2026-07-01T11:30:00Z",
+     "pollStatus": "failed",
+     "hasUnfinalized": true,
+     "matches": [
+      {
+       "kickoff": "2026-07-01T11:00:00Z",
+       "state": "live",
+       "status": "",
+       "observedAt": "2026-07-01T11:59:30Z",
+       "finalizedAt": null
+      }
+     ]
+    },
+    "headers": {
+     "X-ScoreArc-Freshness": "stale",
+     "X-ScoreArc-Poll-Status": "failed",
+     "X-ScoreArc-Stale-Matches": "1",
+     "X-ScoreArc-Overdue-Matches": "0",
+     "X-ScoreArc-Observed-At": "2026-07-01T11:30:00Z"
+    }
+   },
+   {
+    "name": "partial poll",
+    "now": "2026-07-01T12:00:00Z",
+    "snapshot": {
+     "pollSucceededAt": "2026-07-01T11:59:00Z",
+     "pollStatus": "partial",
+     "hasUnfinalized": true,
+     "matches": [
+      {
+       "kickoff": "2026-07-03T12:00:00Z",
+       "state": "scheduled",
+       "status": "",
+       "observedAt": "2026-07-01T11:00:00Z",
+       "finalizedAt": null
+      }
+     ]
+    },
+    "headers": {
+     "X-ScoreArc-Freshness": "stale",
+     "X-ScoreArc-Poll-Status": "partial",
+     "X-ScoreArc-Stale-Matches": "1",
+     "X-ScoreArc-Overdue-Matches": "0",
+     "X-ScoreArc-Observed-At": "2026-07-01T11:00:00Z"
+    }
+   },
+   {
+    "name": "no poll evidence is unavailable, not empty",
+    "now": "2026-07-01T12:00:00Z",
+    "snapshot": {
+     "pollSucceededAt": null,
+     "pollStatus": "",
+     "hasUnfinalized": true,
+     "matches": []
+    },
+    "headers": {
+     "X-ScoreArc-Freshness": "unavailable",
+     "X-ScoreArc-Poll-Status": "unknown",
+     "X-ScoreArc-Stale-Matches": "0",
+     "X-ScoreArc-Overdue-Matches": "0"
+    }
+   },
+   {
+    "name": "missing observation",
+    "now": "2026-07-01T12:00:00Z",
+    "snapshot": {
+     "pollSucceededAt": "2026-07-01T11:59:00Z",
+     "pollStatus": "ok",
+     "hasUnfinalized": true,
+     "matches": [
+      {
+       "kickoff": "2026-07-03T12:00:00Z",
+       "state": "scheduled",
+       "status": "",
+       "observedAt": null,
+       "finalizedAt": null
+      }
+     ]
+    },
+    "headers": {
+     "X-ScoreArc-Freshness": "unavailable",
+     "X-ScoreArc-Poll-Status": "ok",
+     "X-ScoreArc-Stale-Matches": "1",
+     "X-ScoreArc-Overdue-Matches": "0",
+     "X-ScoreArc-Observed-At": "2026-07-01T11:59:00Z"
+    }
+   },
+   {
+    "name": "overdue kickoff",
+    "now": "2026-07-01T12:00:00Z",
+    "snapshot": {
+     "pollSucceededAt": "2026-07-01T11:59:00Z",
+     "pollStatus": "ok",
+     "hasUnfinalized": true,
+     "matches": [
+      {
+       "kickoff": "2026-07-01T11:30:00Z",
+       "state": "scheduled",
+       "status": "",
+       "observedAt": "2026-07-01T11:59:00Z",
+       "finalizedAt": null
+      }
+     ]
+    },
+    "headers": {
+     "X-ScoreArc-Freshness": "stale",
+     "X-ScoreArc-Poll-Status": "ok",
+     "X-ScoreArc-Stale-Matches": "1",
+     "X-ScoreArc-Overdue-Matches": "1",
+     "X-ScoreArc-Observed-At": "2026-07-01T11:59:00Z"
+    }
+   }
+  ]
+ },
+ "transport": {
+  "note": "Frontend and reader envelopes and caching differ by design and are not interchangeable: the frontend routes are no-store proxies, the reader is a public CDN-cacheable API. Both are pinned here; choosing the cutover caching is apiStore work (T16.3), not a DTO gap.",
+  "frontend": [
+   {
+    "case": "unknown season",
+    "status": 404,
+    "body": {
+     "error": {
+      "code": "NOT_FOUND"
+     }
+    }
+   },
+   {
+    "case": "invalid query",
+    "status": 400,
+    "body": {
+     "error": {
+      "code": "INVALID_REQUEST"
+     }
+    }
+   },
+   {
+    "case": "provider failure",
+    "status": 502,
+    "body": {
+     "error": {
+      "code": "UPSTREAM_UNAVAILABLE"
+     }
+    }
+   }
+  ],
+  "reader": [
+   {
+    "path": "/v1/competitions/nope/2026/matches",
+    "status": 400,
+    "error": "unknown competition or season"
+   },
+   {
+    "path": "/v1/competitions/world-cup/1066/standings",
+    "status": 400,
+    "error": "unknown competition or season"
+   },
+   {
+    "path": "/v1/competitions/nope/news",
+    "status": 400,
+    "error": "unknown competition"
+   },
+   {
+    "path": "/v1/matches/760490",
+    "status": 404,
+    "error": "match not found"
+   },
+   {
+    "path": "/v1/competitions/world-cup/2026/players/297287",
+    "status": 404,
+    "error": "not found"
+   },
+   {
+    "path": "/v1/competitions/world-cup/2026/top-assists",
+    "status": 404,
+    "error": "not found"
+   }
+  ],
+  "successCache": {
+   "frontend": "no-store, max-age=0",
+   "reader": [
+    {
+     "path": "/v1/competitions/world-cup/2026/matches",
+     "cacheControl": "public, max-age=60",
+     "note": "no live match",
+     "openapiPath": "/v1/competitions/{comp}/{season}/matches"
+    },
+    {
+     "path": "/v1/competitions/world-cup/2026/matches",
+     "cacheControl": "public, max-age=10",
+     "note": "a live match",
+     "live": true,
+     "openapiPath": "/v1/competitions/{comp}/{season}/matches"
+    },
+    {
+     "path": "/v1/competitions/world-cup/2026/standings",
+     "cacheControl": "public, max-age=60",
+     "openapiPath": "/v1/competitions/{comp}/{season}/standings"
+    },
+    {
+     "path": "/v1/competitions/world-cup/2026/bracket",
+     "cacheControl": "public, max-age=60",
+     "openapiPath": "/v1/competitions/{comp}/{season}/bracket"
+    },
+    {
+     "path": "/v1/competitions/world-cup/2026/bracket",
+     "cacheControl": "public, max-age=10",
+     "note": "a live bracket match",
+     "live": true,
+     "openapiPath": "/v1/competitions/{comp}/{season}/bracket"
+    },
+    {
+     "path": "/v1/competitions/world-cup/2026/top-scorers",
+     "cacheControl": "public, max-age=60",
+     "openapiPath": "/v1/competitions/{comp}/{season}/top-scorers"
+    },
+    {
+     "path": "/v1/competitions/world-cup/news",
+     "cacheControl": "public, max-age=60",
+     "openapiPath": "/v1/competitions/{comp}/news"
+    },
+    {
+     "path": "/v1/matches/018f0000-0000-7000-8000-000000016001",
+     "cacheControl": "public, max-age=30",
+     "openapiPath": "/v1/matches/{id}"
+    },
+    {
+     "path": "/v1/competitions/liga-mx/2026-apertura/teams/mex-america",
+     "cacheControl": "public, max-age=120",
+     "openapiPath": "/v1/competitions/{comp}/{season}/teams/{teamId}"
+    }
+   ]
+  }
+ },
+ "team": {
+  "providerId": "227",
+  "scheduleNote": "Recorded team results then match schedule (espn-team-schedule.json, espn-team-fixtures.json), all in season, ascending kickoff.",
+  "scheduleIds": ["401877037", "401877033", "401877020", "401877014", "401877008", "401876995", "401876986", "401876981", "401876968", "401876956", "401876950", "401876941", "401876932", "401876922", "401876913", "401876904", "401877048"],
+  "location": "América",
+  "frontendStandingSummary": "1st in Mexican Liga BBVA MX",
+  "readerStandingSummary": "2 in liga-mx",
+  "readerStandingNote": "The reader value is from the synthetic seedLigaTeam standing row (rank 2), so the strings differ in format and source, not only rank.",
+  "frontendRecord": {
+   "summary": "3-1-0",
+   "gamesPlayed": 4,
+   "points": 10,
+   "goalDifference": 7
+  },
+  "readerRecord": {
+   "summary": "3-1-1",
+   "gamesPlayed": 5,
+   "points": 10,
+   "goalDifference": 5
+  },
+  "readerRecordNote": "From the synthetic seedLigaTeam standing row (W3 D1 L1, played 5, 10 points, +5): the reader derives the record from its standing row, not the provider's record item."
+ },
+ "scoreboard": {
+  "fixture": "espn-scoreboard.json",
+  "note": "Recorded round-of-32 scoreboard: two penalty shootouts carried only in the match note.",
+  "shootouts": [
+   {
+    "id": "760487",
+    "shootout": null
+   },
+   {
+    "id": "760489",
+    "shootout": {
+     "homeScore": 3,
+     "awayScore": 4
+    }
+   },
+   {
+    "id": "760488",
+    "shootout": {
+     "homeScore": 2,
+     "awayScore": 3
+    }
+   }
+  ],
+  "matchColumns": "id, kickoff (compared as an instant), state, statusDetail, statusName, homeId, awayId, homeAbbr, awayAbbr, homeScore, awayScore, winnerId, note",
+  "matches": [
+   ["760487", "2026-06-29T17:00Z", "finished", "FT", "STATUS_FULL_TIME", "205", "627", "BRA", "JPN", 2, 1, "205", null],
+   ["760489", "2026-06-29T20:30Z", "finished", "FT-Pens", "STATUS_FINAL_PEN", "481", "210", "GER", "PAR", 1, 1, "210", "Paraguay advance 4-3 on penalties"],
+   ["760488", "2026-06-30T01:00Z", "finished", "FT-Pens", "STATUS_FINAL_PEN", "449", "2869", "NED", "MAR", 1, 1, "2869", "Morocco advance 3-2 on penalties"]
+  ]
+ }
+}

@@ -2,8 +2,10 @@ package main
 
 import "github.com/mcasillas17/scorearc-backend/shared/espn"
 
-// Match mirrors src/server/data/types.ts's Match exactly. The detail fields
-// are stored separately in Postgres and reconstructed by Store.Matches.
+// Match is shaped after src/server/data/types.ts's Match; the remaining
+// incompatibilities are characterized in
+// src/server/data/contracts/reader-contract.json. The detail fields are stored
+// separately in Postgres and reconstructed by Store.Matches.
 type Match struct {
 	ID             string               `json:"id"`
 	Kickoff        string               `json:"kickoff"`
@@ -51,8 +53,9 @@ type BracketRound struct {
 	Matches []espn.BracketMatch `json:"matches"`
 }
 
-// MatchSummary mirrors MatchSummaryData. The aggregate shootout score is part
-// of Match, not the on-demand summary contract.
+// MatchSummary is shaped after MatchSummaryData (incompatibilities are in
+// reader-contract.json). The aggregate shootout score is part of Match, not
+// the on-demand summary contract.
 type MatchSummary struct {
 	Scorers        []espn.Scorer         `json:"scorers"`
 	Cards          []espn.Card           `json:"cards"`
@@ -126,7 +129,8 @@ func normalizeMatchSummary(summary *MatchSummary) {
 	}
 }
 
-// PlayerSeasonStats mirrors src/server/data/types.ts's PlayerSeasonStats.
+// PlayerSeasonStats matches src/server/data/types.ts's PlayerSeasonStats
+// field for field (pinned by reader-contract.json's squad vectors).
 // Every field is a pointer: a stat the provider never sent must serialise as
 // null, not 0, or the API asserts a measurement nobody made.
 type PlayerSeasonStats struct {
@@ -147,7 +151,9 @@ type PlayerSeasonStats struct {
 	GoalsConceded  *int `json:"goalsConceded"`
 }
 
-// SquadPlayer mirrors src/server/data/types.ts's SquadPlayer.
+// SquadPlayer is shaped after src/server/data/types.ts's SquadPlayer; its id,
+// age, headshotUrl and served order differ (gap T10.3-squad-fields in
+// src/server/data/contracts/reader-contract.json).
 //
 // Stats is a pointer to the whole block, separately from each stat inside it
 // being nullable: a player with no player_season_stat row has never been
@@ -171,9 +177,10 @@ type TeamRecord struct {
 	GoalDifference *int   `json:"goalDifference"`
 }
 
-// TeamProfile mirrors src/server/data/types.ts's TeamProfile, so migrating the
-// frontend from ESPN to this API is a base-URL change rather than a reshaping
-// exercise.
+// TeamProfile is shaped after src/server/data/types.ts's TeamProfile. It is
+// not yet a drop-in replacement: the remaining incompatibilities are
+// characterized in src/server/data/contracts/reader-contract.json and
+// team-insights.json.
 type TeamProfile struct {
 	Team            espn.Team     `json:"team"`
 	Location        *string       `json:"location"`
