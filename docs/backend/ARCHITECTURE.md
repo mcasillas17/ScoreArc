@@ -59,8 +59,6 @@ interface DataStore {
   getBracket(rc): Promise<BracketRound[]>
   getMatchSummary(rc, eventId, homeId, awayId): Promise<MatchSummaryData>
   getLeaders(rc): Promise<{ scorers: StatLeader[]; assists: StatLeader[] }>
-  getTopScorers(rc): Promise<StatLeader[]>
-  getTopAssists(rc): Promise<StatLeader[]>
   getNews(rc): Promise<NewsArticle[]>
   getTeam(rc, teamId): Promise<TeamProfile | null>
   getSquad(rc, teamId): Promise<SquadPlayer[]>
@@ -72,9 +70,11 @@ Today it's ESPN read-through + TTL cache. Phase 1 adds a second implementation,
 `apiStore`, that calls our reader. **No page or component changes** — only the
 seam swaps (slice 1d, behind a `DATA_SOURCE` flag with ESPN fallback). The
 reader's JSON must deserialize into the existing types in
-`src/server/data/types.ts`. These **14 methods do not yet map 1:1 onto the
+`src/server/data/types.ts`. These **12 methods do not yet map 1:1 onto the
 reader's routes** (§5), so 1d is a contract/parity project, not a base-URL swap —
 the current gap is tracked in [`docs/CURRENT_STATE.md`](../CURRENT_STATE.md) §5.
+PR #191 removed only the redundant `getTopScorers`/`getTopAssists` store wrappers;
+the public scorer and assist capabilities still use `getLeaders`.
 
 ---
 
@@ -452,7 +452,7 @@ migration compatibility and separately approved rollout.
 
 - Public and autoscaling, with one warm machine and an autostopped spare.
   Versioned under `/v1`.
-- **Seven `/v1` data routes plus `/healthz`** (they cover a subset of the 14
+- **Seven `/v1` data routes plus `/healthz`** (they cover a subset of the 12
   `DataStore` methods — the parity gap is in §2 and
   [`docs/CURRENT_STATE.md`](../CURRENT_STATE.md) §5):
   - `GET /v1/competitions/{comp}/{season}/matches`
@@ -536,7 +536,7 @@ nested response locations.
 
 **Not started** — no `apiStore` exists on `main` (see
 [`docs/CURRENT_STATE.md`](../CURRENT_STATE.md)). This is a **contract/parity
-project, not a base-URL swap**: the 14 `DataStore` methods (§2) exceed the
+project, not a base-URL swap**: the 12 `DataStore` methods (§2) exceed the
 reader's 7 routes (§5), and canonical DTO shapes, query semantics, and derived
 views must reach tested parity first (`CURRENT_STATE.md` §5). The intended design:
 

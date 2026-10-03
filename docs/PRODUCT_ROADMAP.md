@@ -1,6 +1,6 @@
 # ScoreArc Product Roadmap
 
-**Status:** Approved · task index revised 2026-09-03 · synced with `main` 2026-10-01
+**Status:** Approved · task index revised 2026-09-03 · synced with `main` 2026-10-02
 **Owner:** Product
 **Companion docs:** `VISION.md` (north star) · `BACKEND_HANDOFF.md` (the Go build)
 
@@ -315,8 +315,9 @@ the frontend; reader parity is tracked separately in E16/E17.
   capturing them from the roster it already fetches, and
   `GET /v1/competitions/{comp}/{season}/teams/{teamId}` returning the
   `TeamProfile` shape. The route exists, but the frontend cutover to it is a
-  contract/parity project, **not** a base-URL swap — and the route itself has a
-  live defect. See [`docs/CURRENT_STATE.md`](CURRENT_STATE.md).
+  contract/parity project, **not** a base-URL swap. T17.1's production team-route
+  repair was accepted September 6; broader parity remains open. See
+  [`docs/CURRENT_STATE.md`](CURRENT_STATE.md).
 
 Verified 2026-08-15, re-verified 2026-08-19: `/teams/{id}/roster` returns all 35
 players, **28 of them with season statistics inline** — so a complete, sortable
@@ -788,8 +789,10 @@ code rather than pasted from a dated plan.
 ### E16 · Reader parity & staged frontend cutover (1d)
 
 **Bounded foundation implemented (September 13 team-insights slice):** the
-[contract inventory and harness](backend/TEAM_INSIGHTS_CONTRACT.md) cover all
-14 methods in the inventory, with executable TS/Go/OpenAPI coverage limited to
+[contract inventory and harness](backend/TEAM_INSIGHTS_CONTRACT.md) inventory all
+12 current methods (14 at that milestone, before #191 removed redundant
+scorer/assist wrappers; both capabilities remain through `getLeaders`).
+Executable TS/Go/OpenAPI coverage is limited to
 the team identity, schedule and match fields this feature uses. Query, DTO and
 availability gaps are explicit. **T16.1 remains open** for the broader contract;
 T16.2–T16.6 and the production-cutover gates are unchanged. See the
@@ -799,18 +802,18 @@ T16.2–T16.6 and the production-cutover gates are unchanged. See the
 |---|---|---|---|
 | **T16.1** | Build one cross-language contract harness over TypeScript types, OpenAPI, Go DTOs, query vectors, and recorded payloads. | Any field/nullability/query drift fails CI; canonical equivalence is required, not byte equality with provider JSON. | none |
 | **T16.2** | Fix canonical nested team ids, `ownGoal`/`athleteId`, slug-stable leader crests, and the ScoreArc CDN allowlist. | Unknown crest hosts are dropped, not proxied; contract fixtures prove scorer/card-to-side and player identity. | T16.1 |
-| **T16.3** | Implement a strict `apiStore` satisfying all 14 `DataStore` methods with per-method source flags. | 5xx, timeout, parse error, or explicit stale/unavailable status may fall back to ESPN; a valid empty result never does. | T10.1–T10.4, T10.10, T17.3 |
+| **T16.3** | Implement a strict `apiStore` satisfying all 12 `DataStore` methods with per-method source flags. | 5xx, timeout, parse error, or explicit stale/unavailable status may fall back to ESPN; a valid empty result never does. | T10.1–T10.4, T10.10, T17.3 |
 | **T16.4** | Shadow reader and ESPN per method with named normalizers and ignore rules. | Diffs never affect the user; each method gets a documented threshold based on semantic fields, not provider/canonical id equality. | T16.3 |
 | **T16.5** | Cut over one method at a time, dogfood, and retain immediate rollback. | No one-step flip; each method completes an owner-approved soak without correctness/freshness SLO breach before the next. | T16.4, T17.4 |
-| **T16.6** | Decide the reader news route: explicit current proxy, rights-permitted owned ingest, or removal. | This blocks only `getNews`; the other 13 methods continue independently. The ingest branch requires E18; keep/drop records the existing exposure. | before `getNews` flips |
+| **T16.6** | Decide the reader news route: explicit current proxy, rights-permitted owned ingest, or removal. | This blocks only `getNews`; the other 11 methods continue independently. The ingest branch requires E18; keep/drop records the existing exposure. | before `getNews` flips |
 
 ### E17 · Data reliability, freshness & provenance
 
 | Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
 |---|---|---|---|
 | **T17.1** | Reproduce, diagnose, and fix the Liga MX team-profile 500 in reader store/handler integration tests. | Root cause is evidence from a real-Postgres reproduction, not a UUID hypothesis; seeded teams return `200` or intentional `404`, never unexplained `500`. | none |
-| **T17.2** | Diagnose Greece across config, source, ingester, database, and reader; populate it or gate it out honestly. **The September 6 stopped-machine diagnosis and September 13/14 recovery are historical; #163/#172 delivery repairs are merged. September 19 stale live matches remain a separate diagnosis. The range-request failures are diagnosed: ESPN answers every `YYYYMMDD-YYYYMMDD` scoreboard query with 400, so both paths now read bounded months — backend #183 ([spec](superpowers/specs/2026-09-21-scoreboard-windows-design.md)), frontend #192/#193 ([spec](superpowers/specs/2026-09-29-frontend-scoreboard-windows-design.md), [evidence](FRONTEND_SCOREBOARD_WINDOWS.md)); rollout acceptance status lives in `CURRENT_STATE.md`. Bounded verified recovery is implemented on the recovery branch, not deployed; production SQL/machine evidence and population acceptance remain pending.** | Never assert a missing row count in advance; a configured-but-unproven competition is not presented as healthy. | diagnosis: none. Population: [SETUP §7.5](backend/SETUP.md#75-verify) freshness acceptance (zero-failure cycles, advancing data including Greece) |
-| **T17.3** | Add source, observed/finalized time, derivation, and complete/empty/stale/unavailable semantics to reader contracts. **September 19: match-specific additive headers, accepted-observation timestamps and stopped-worker detection are implemented on the recovery branch, not deployed; broader endpoint/provenance coverage remains open.** | Consumers can distinguish a genuine empty window from broken ingestion from the response alone; all reader routes have contract coverage. | T16.1 |
+| **T17.2** | Diagnose Greece across config, source, ingester, database, and reader; populate it or gate it out honestly. **#173 recovery and #183 bounded monthly discovery are merged and released; the September 20 recovery completed the original stale matches. October 2 reader checks found all ten match scopes responding with `poll=ok`, nine fresh and World Cup dormant; Greece's `/matches` returned 182 and `fresh`. This match-only evidence does not establish current standings/top-scorers or other collection coverage, or close sustained ingestion acceptance.** Frontend #192/#193 are also merged and released, still ESPN-backed; see [CURRENT_STATE](CURRENT_STATE.md#october-2-reconciliation) and [frontend evidence](FRONTEND_SCOREBOARD_WINDOWS.md). | Never assert a missing row count in advance; a configured-but-unproven competition is not presented as healthy. | diagnosis: none. Population: [SETUP §7.5](backend/SETUP.md#75-verify) freshness acceptance (zero-failure cycles, advancing data including Greece) |
+| **T17.3** | Add source, observed/finalized time, derivation, and complete/empty/stale/unavailable semantics to reader contracts. **#173's match-specific additive freshness headers, accepted-observation timestamps and stopped-worker detection are merged and released; October 2 checks observed those headers. Broader endpoint/provenance coverage remains open.** | Consumers can distinguish a genuine empty window from broken ingestion from the response alone; all reader routes have contract coverage. | T16.1 |
 | **T17.4** | Define per-competition freshness/completeness SLOs, alerts, and runbooks from ingest evidence. **September 19: bounded match watchdog, durable transition deduplication and [runbook](backend/MATCH_FRESHNESS.md) are implemented; schedule/notification delivery and live acceptance are not activated or complete.** | Dormant seasons do not page; active competitions crossing their declared threshold do, with competition/season/run context. | T17.3; T21.4 later exports richer metrics |
 
 **T17.1 production repair accepted (2026-09-06):** the missing `t.color`
@@ -827,15 +830,16 @@ still defines conditional operator repair;
 owns the UTC acceptance evidence and remaining uncertainty. Broader reader parity,
 T21.1 delivery activation and T21.2 schema readiness remain separate work.
 
-**T17.2 diagnosis complete (2026-09-06); population pending.** Greece's empty
-collections are **not** Greece-specific, and no Greece-specific application
-defect survives (a worker crash loop or lease conflict is not excluded —
+**T17.2 historical diagnosis (2026-09-06), superseded by the bounded recovery
+evidence above; sustained population/coverage acceptance remains open.** Greece's
+then-empty collections were **not** a Greece-specific failure, and no
+Greece-specific application defect was found (a worker crash loop or lease conflict was not excluded —
 CURRENT_STATE §9): no
 ingester write had landed since 2026-08-22 and nothing was running then, so every
 in-season competition was stale, and Greece was empty rather than stale only because it was configured
-2026-08-24, after the stall. Config, source and mappers check out against live ESPN, and the
-reader resolves the competition/season correctly (`400` on unknown ones), so
-**no source change was made**. Gating Greece out was rejected — it
+2026-08-24, after the stall. Config, source and mappers checked out against live ESPN,
+and the reader resolved the competition/season correctly (`400` on unknown ones),
+so **no source change was made in that September 6 diagnosis**. Gating Greece out was rejected — it
 would hide a pipeline-wide stall behind a per-competition flag and break a
 working ESPN-backed frontend competition. The orphan-standby recovery is done:
 the owner started the machine on September 13 and reports removing the
@@ -856,10 +860,11 @@ acceptance is pending [SETUP.md §7.5](backend/SETUP.md#75-verify).)
 **September 19 ledger refresh:** frontend `6404319208` is inactive as of
 September 13 07:06 UTC, and later frontend ledger `6432468280` records successful
 publication on September 14 at 07:32 UTC. Those old delivery incidents are not
-pending repairs. Current ingestion acceptance and the September 19 stale-match
-diagnosis remain separate. The recovery branch implements match-specific
-T17.3/T17.4 contracts and a manual watchdog; production rollout/notification
-acceptance and broader endpoint coverage remain open. Coordinate authorization
+pending repairs. The September 20 recovery subsequently resolved the original
+stale-match incidents; #183's monthly discovery repair was released September 26.
+Match-specific T17.3 signals are deployed, while T17.4's watchdog remains
+manual-only. Sustained ingestion acceptance, scheduled notification delivery
+and broader endpoint coverage remain open. Coordinate authorization
 for any new release using the current path policy, not the historical ledger.
 
 ### E18 · Rights & multi-source platform
@@ -933,9 +938,13 @@ failures above.
 Current approval holds, deployment-identity governance and sustained ingestion
 acceptance still need their own evidence. Recheck live settings before any new
 release; the September 13 absence of approval holds is not present authorization.
-The separate [match-recovery slice](backend/MATCH_FRESHNESS.md) needs approved
-migration 0023 before dependent binaries, then normal main-CI release and live
-freshness acceptance. Any production machine operation or alert activation
+The [match-recovery slice](backend/MATCH_FRESHNESS.md) already received migration
+0023 and recovery releases on September 20; do not repeat them. #183's monthly
+repair and the later frontend repairs are also released. The October 2
+`529460b` main run passed tests but failed both Fly eligibility checks before
+publication (`runStatus`); this is a new unresolved delivery observation, not
+one of the old ledger incidents. See [the dated evidence](CURRENT_STATE.md#october-2-reconciliation).
+Any production machine operation or alert activation
 requires separate approval. T21.1 is not declared wholly closed here; this is
 neither E16 cutover nor full T21.2 schema readiness, and T17.1 stays closed.
 
@@ -990,11 +999,18 @@ every P0 behind one owner decision.
 
 | Lane | Work | Exit |
 |---|---|---|
-| **0 · Governance** | **T21.1** exact-SHA CI-gated production delivery | main protection enabled, every release path gated, and all three targets accepted after merge; see CURRENT_STATE §10 for remaining activation actions |
+| **0 · Governance** | **T21.1** exact-SHA CI-gated production delivery | retain merged controls and successful release evidence; resolve remaining governance/acceptance and the new October 2 eligibility observation, not completed promotion repairs; see CURRENT_STATE §10 |
 | **R · Owner/rights** | **T18.1** classify T7.13/T7.20/T6.5; pursue **T18.2** counsel/license evidence in parallel | engineering knows which existing/new collection work may proceed |
 | **A · Perishable durability** | **T7.13/T7.20**, **T7.21**, **T7.22**, **T6.1a**; **T6.5** only under T18.1's classification | backfill rows/archive converge, retries are durable, coverage is measured |
 | **B · Live trust** | **T17.1–T17.4** | team/Greece causes are resolved or gated; responses distinguish complete, empty, stale, and unavailable |
 | **C · Contract/read** | **T16.1–T16.2**, then **T10.1**, **T10.10**, **T10.2–T10.4** | the reader satisfies the first cutover methods with canonical, tested contracts |
+
+**Next implementation:** complete **T16.1**'s cross-language harness, then
+**T16.2** canonical identity/DTO parity, then **T10.1** match-query parity.
+The independent high-priority lanes remain explicit: archive/backfill durability
+under T18.1's classification, **T7.21** participation retry, **T17.4** scheduled
+freshness/notification delivery, and **T21.2** full schema readiness. Bounded
+October 2 freshness observations do not close these lanes or change task dependencies.
 
 ### Next — own and dogfood the contract
 

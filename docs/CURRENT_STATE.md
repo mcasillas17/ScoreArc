@@ -3,6 +3,66 @@
 **Broad inventory baseline:** 2026-09-01, against `main` @ `49bf68d`.
 Unrelated inventory observations below retain their original dates.
 
+### October 2 reconciliation
+
+Documentation baseline: `main` @ `529460b` (PR #198). The observations below
+supersede older pending-release/recovery wording; they do not certify sustained
+completeness or close every task in E17/E21.
+
+**Merged and released:** #173 (`b2e6429`, September 19) supplied overdue-match
+recovery and match freshness signals. The authorized September 20 migration
+advanced production from clean 22 to clean 23, with the required tables/grants
+verified; both original September 15 incidents finalized at 07:46 UTC
+(Rayo--Espanyol 2-1, Alaves--Valencia 0-1). This recovery is complete, not a new
+prerequisite. #183 (`969e512`, September 26) includes bounded monthly discovery
+and its cancellation fix. Its CI run
+[36216415363](https://github.com/mcasillas17/ScoreArc/actions/runs/36216415363)
+succeeded; subsequent run
+[36216947031](https://github.com/mcasillas17/ScoreArc/actions/runs/36216947031)
+released the containing commit `346f5ca`, with Actions-owned reader/ingester
+success records `6674544860` / `6674544559` at 04:19:07 / 04:19:14 UTC September 26.
+#193 (`91753fd`) and #192 (`8961892`, incorporating #191) are merged and included
+in the later frontend release below. The frontend remains ESPN-backed.
+
+Latest actual Actions-owned successes checked October 2 at 07:20 UTC:
+
+| Target | Released SHA | Deployment record | Success (UTC) |
+|---|---|---|---|
+| Reader | `9a65d8c` (#191), CI `36538260705` | `6729535391` | September 29, 07:52:53 |
+| Ingester | `9a65d8c` (#191), CI `36538260705` | `6729534527` | September 29, 07:52:59 |
+| Frontend | `4b50299`, CI `36973690667` | `6802809677` | October 2, 06:37:19 |
+
+**New unresolved delivery observation:** main CI
+[36976840786](https://github.com/mcasillas17/ScoreArc/actions/runs/36976840786)
+at `529460b` finished **failure**: `test` and the frontend job succeeded, but
+both Fly jobs failed in **Exact-SHA eligibility and cumulative path filter**
+with `failed checks: runStatus`, before publication. No new deployment records
+resulted. The cause is not diagnosed here. A passing test job is not an all-green
+main run; this does not reopen old credential, standby or ledger incidents.
+
+**Bounded live evidence, October 2 at 06:41–06:43 UTC:** isolated production
+browser checks rendered Liga MX and LaLiga Now/calendar with actual matches
+and no reported runtime errors. September web API windows returned 200 with
+34 / 39 matches respectively, every kickoff within September. At 06:42:54 UTC,
+all ten reader current-season `/matches` scopes returned 200 and `poll=ok`,
+with nine `fresh`, World Cup `dormant`, and zero reported stale/overdue matches.
+Counts were World Cup 104, Leagues Cup 62, Premier League 380, LaLiga 380,
+Serie A 380, Bundesliga 306, Ligue 1 306, Greece 182, MLS 511 and Liga MX 153.
+MLS had 405 finished through October 2; Liga MX had 88 through September 28.
+These headers attest the declared match-freshness contract at that instant,
+not independently proven whole-season completeness, archive/squad/player
+coverage, or unexposed writers. Full historical/edge/failure frontend acceptance,
+sustained reconciliation/transient-failure recovery, broader provenance,
+T17.4 scheduled notifications and remaining T21.1 governance stay open.
+
+**Earlier bounded operations evidence, September 26:** read-only Fly checks
+found singleton `d896262f9016e8` started, no standby and restart `always`;
+the reader had one started machine and one intentionally stopped spare.
+The 04:19–04:34 UTC log window had 42/46 zero-failure cycles; other cycles
+included squad-shrink guards and recurring `player_bios` missing `teamHistory`.
+These are dated observations, not assertions about today's logs or full
+writer acceptance. No production operation is part of this reconciliation.
+
 **Frontend scoreboard repair, 2026-09-29:** on freshly fetched main
 `aa8aa2141750db7115a912d46f48d78663241b8a`, bounded Node probes reproduced the
 frontend ESPN range failure (400) while compact September selectors returned
@@ -13,7 +73,8 @@ filtering and validated raw-event deduplication for calendar, Now/live, upcoming
 enriched matches, computed tables and historical brackets. Local tests, typecheck,
 lint, build and real-browser acceptance passed, including controlled unavailable
 states and EN/ES copy. **Merged to `main` as #192 (`8961892`), alongside #193's
-month-read fix (`91753fd`); production acceptance is not recorded here.** Before delivery, cleanup #191 at `9a65d8c` was incorporated
+month-read fix (`91753fd`); the later release and bounded production checks are
+recorded above, not full acceptance.** Before delivery, cleanup #191 at `9a65d8c` was incorporated
 at the owner's request; its deleted code stays deleted. The integrated state passes
 1,249 tests and the same local gates, plus an additional GPT-6 Luna Ponytail review.
 The frontend still uses ESPN; no E16 cutover or backend recovery
@@ -35,10 +96,11 @@ date ranges fail 400 while compact month selectors work. The current repair
 uses bounded monthly discovery with UTC/season validation and honest incomplete
 results; local real-adapter probes returned LaLiga rolling 61 matches, full
 2026-27 season 380, and Liga MX rolling 52. Backend build/race/vet and real
-Postgres pipeline checks passed locally. **This scoreboard repair is not yet
-deployed or operationally accepted.** Repeated complete active-scope polls,
-reconciliation and observed transient-failure recovery remain post-rollout
-acceptance; no production action was performed here. See
+Postgres pipeline checks passed locally. **At that September 21 capture the
+repair was not deployed; #183's September 26 release supersedes that status.**
+Repeated complete active-scope polls, reconciliation and observed transient-failure
+recovery remain acceptance work beyond the bounded October 2 observations.
+No production action was performed by that local pass. See
 [MATCH_FRESHNESS](backend/MATCH_FRESHNESS.md) for the contract, limits and steps.
 
 **Historical match reliability evidence, 2026-09-19:** initial baseline `803094e`, then
@@ -93,8 +155,9 @@ should be read as superseded by this file until they are corrected in place.
 
 `docs/ROADMAP_AUDIT_2026-09-01.md` landed on `main` in PR #144 and is treated
 here as **evidence, not conclusion**. Its findings on E7 writer completeness,
-the 14-method `DataStore`, the ten configured competitions, and the
-reader-parity bugs were independently re-verified below and are correct. Its
+the then-14-method `DataStore` (now 12 after #191), the ten configured competitions,
+and the reader-parity bugs were independently re-verified below. The method-count
+change does not resolve the parity gaps. Its
 status conclusions are not: PR #144 incorrectly said **T7.2 was unmerged**
 (that work shipped in squash-merged PR #29; branch ancestry misled the audit —
 see §4), and it also incorrectly said **T7.13 is done** and that E9's gate is
@@ -111,10 +174,10 @@ that audit's mutable status conclusions where they conflict.
 
 | Area | Status |
 |---|---|
-| Frontend | Live at scorearc.futbol, fully ESPN-backed. No reader/backend fetch call sites exist in `src/server/data/` — the 1d cutover has not started. |
-| Ingester | **Targeted incident recovery accepted; complete discovery remains pending.** Owner-reported September 20 migration/recovery releases resolved the two original stale matches. September 21 still showed partial/unavailable LaLiga discovery. The bounded monthly source repair is locally verified, not deployed; sustained complete polling/reconciliation requires separately authorized rollout and acceptance. #172 shutdown/singleton settings and #173 recovery are not being rebuilt. |
+| Frontend | Live at scorearc.futbol, fully ESPN-backed. #192/#193 are merged and released; October 2 Liga MX/LaLiga Now/calendar and September API-window checks passed within the limits above. No reader/backend fetch call sites exist in `src/server/data/` — the 1d cutover has not started. |
+| Ingester | **Recovery and monthly discovery repairs merged and released.** September 20 recovery resolved the original stale matches; #183 shipped September 26. October 2 match scopes reported nine fresh / one dormant, all polls OK and zero stale/overdue; Greece's `/matches` returned 182 and `fresh`. This does not establish current standings/top-scorers or ancillary collection coverage. Sustained completeness/reconciliation remains open. Do not rebuild #172/#173/#183 or repeat migration 0023/restart recovery. |
 | Reader API | 7 registered `/v1` data routes (`matches`, `standings`, `bracket`, `top-scorers`, `teams/{teamId}`, `news`, `matches/{id}`) + `/healthz`. The Liga MX team-profile **500 is repaired**: existing migration 0022 restored the full production response, accepted 2026-09-06 (§3). Broader reader parity remains open (§5). |
-| Operations | The recorded main PR/CI protections remain the release contract. Credential delivery, project-token promotion and Fly shutdown-verification repairs are merged; older failure/ledger descriptions in §10 are dated history, not work to repeat. Recheck live approval holds before any release (none were present at September 13 readback). Migrations remain manual. New match-sync schema checks cover only migration 0023 prerequisites, not full T21.2 head/dirty-ledger readiness. T17.1 is complete; broader T21.1 governance/acceptance and T21.2 are not declared closed here. |
+| Operations | Credential delivery, project-token promotion and Fly verification repairs are merged, with later successful releases above; older §10 incidents are not work to repeat. **October 2 main `529460b` has passing tests but failed Fly eligibility (`runStatus`), not all-green CI; cause unresolved.** Retain PR/CI protections, recheck live approval holds before any new release, and keep migrations manual. Applied 0023 checks are not full T21.2 head/dirty-ledger readiness; broader T21.1 governance/acceptance also remains open. |
 | 1d (frontend cutover) | Absent. No spec has landed as an implementation; no `apiStore` exists. |
 | E6 (shot log) | T6.1 (coverage probe) complete. T6.2–T6.4 (extraction, reconciliation, rendering) pending. |
 | E7 (history & trends) | Writer code is implemented and deployed; continuing capture is not operationally accepted. September 13 recovery and September 14 machine readback are historical observations, not present-health proof. Production SQL has not been inspected in this pass; unexposed writer tables cannot be judged from reader responses alone. **T7.13 operational acceptance remains pending** (§4), and T7.21 participation retry work is separate from match-state recovery. |
@@ -124,6 +187,11 @@ that audit's mutable status conclusions where they conflict.
 | MCP | Absent. No MCP server, tool, or client code exists anywhere in the repository; blocked on the same data-rights gate as E9 (§7). |
 
 ## 3. Verification evidence (this pass, 2026-09-01)
+
+**Historical evidence:** this section retains the September baseline and its
+dated follow-ups, not a new current-health inspection. The
+[October 2 reconciliation](#october-2-reconciliation) supersedes its old empty,
+frozen and pending-release states; unobserved collections remain unproven.
 
 - **Repository baseline gate:** `npm test` → **73 test files, 813 tests, all
   passing.**
@@ -154,10 +222,12 @@ that audit's mutable status conclusions where they conflict.
   `{"status":"ok"}`.
 - **Super League Greece was empty because production ingestion stopped on
   2026-08-22 (T17.2, diagnosed 2026-09-06; data advanced after the September 13
-  restart, see §2 and §10).** The frontend (ESPN-backed) shows
-  Greece normally, and the reader's
+  restart, see §2 and §10).** At that September 6 inspection, the frontend
+  (ESPN-backed) showed Greece normally, while the reader's
   `/v1/competitions/super-league-greece/2026-27/matches`, `/standings` and
-  `/top-scorers` each still return `200` with an **empty array**. The cause is
+  `/top-scorers` each returned `200` with an **empty array**. October 2 observed
+  182 matches with `fresh`/`poll=ok`; standings, top-scorers and other collections
+  were not re-verified then (§2). The September 6 cause was
   **not** Greece-specific. No Greece-specific application defect survives in its
   read path; a *system-wide* worker-level fault — a crash loop, or a lease
   conflict — would still be an application-layer cause of the write-stop, and
@@ -312,19 +382,19 @@ that audit's mutable status conclusions where they conflict.
   [reader runbook](../backend/reader/README.md#operator-verification-and-repair);
   do not replay 0022 on this now-current target. T21.1 delivery activation and
   T21.2 schema readiness remain separate, unresolved work.
-- **Other competitions hold rows, but row count is not freshness.**
+- **Historical September 6: other competitions held rows, but row count was not freshness.**
   `premier-league/2026-27/matches` → 380, `laliga/2026-27/matches` → 380,
-  `mls/2026/matches` → 511, `world-cup/2026/matches` → 104. None has been
-  updated since 2026-08-22 (above). These counts are read through the deployed
-  reader; the database was **not** queried directly in this pass, so Greece's
+  `mls/2026/matches` → 511, `world-cup/2026/matches` → 104. None had been
+  updated since 2026-08-22 at that inspection (above). These counts were read through
+  the deployed reader; the database was **not** queried directly in this pass, so Greece's
   zero-row state is inferred from three empty collections plus its 2026-08-24
-  configuration date, not from a row count. Greece is the only competition whose
-  reader collections are all empty; every other configured competition returns
-  rows. It is not the only one affected. Distinguish the cases: `world-cup`
-  is **complete**, not stale — 104 of 104 finished, concluded 2026-07-19, with
-  nothing left to ingest. Every in-season competition *is* stale, and
-  `leagues-cup` (54 of 58 finished) is genuinely truncated, so the restart's
-  backfill has real gaps to close beyond Greece.
+  configuration date, not from a row count. Greece was the only competition whose
+  reader collections were all empty; every other configured competition returned
+  rows. It was not the only one affected. At that capture `world-cup`
+  had **104 of 104 finished matches**, concluded 2026-07-19.
+  Every in-season competition was stale, and `leagues-cup` (54 of 58 finished)
+  was truncated, leaving recovery gaps beyond Greece. These are historical
+  match observations, not current states or proof of all writer coverage.
 - **Production performance** (from the audited trace): LCP **1439ms**, TTFB
   **1128ms**, **100 browser requests** on page load, **4.9MB** of
   `a.espncdn.com` payload. The 100 browser requests are page-load HTTP
@@ -388,15 +458,17 @@ that audit's mutable status conclusions where they conflict.
 ## 5. 1d / API cutover blockers
 
 The [team-insights contract slice](backend/TEAM_INSIGHTS_CONTRACT.md) now records
-all 14 mappings and tests the supported identity/schedule/match subset across
+all 12 current mappings and tests the supported identity/schedule/match subset across
 TypeScript, OpenAPI and Go, including actual query/error behavior and SQL scope.
 It does not resolve the broader parity or availability blockers below.
 
-- **`DataStore` has 14 methods** (`getMatches`, `getFixtures`,
+- **`DataStore` has 12 methods** (`getMatches`, `getFixtures`,
   `getLiveWindow`, `getUpcoming`, `getStandings`, `getBracket`,
-  `getMatchSummary`, `getLeaders`, `getTopScorers`, `getTopAssists`,
+  `getMatchSummary`, `getLeaders`,
   `getNews`, `getTeam`, `getSquad`, `getPlayer`) against **7 reader
-  routes**. The gap is real, not a documentation lag.
+  routes**. #191 removed the redundant `getTopScorers`/`getTopAssists` wrappers,
+  not their public product/API capabilities: both still use `getLeaders`.
+  The count is corrected; the underlying parity gaps remain real.
 - **`matches` lacks range/state/detail/limit.** `handleMatches` takes no
   query parameters; it returns every match for the season. The frontend's
   `getMatches(range)`, `getFixtures(range)`, `getLiveWindow`, and
@@ -423,10 +495,12 @@ It does not resolve the broader parity or availability blockers below.
 - **Leagues Cup computed group tables and the MLS overall table are
   frontend-only** derived views; the reader has no equivalent computed
   endpoint.
-- **Known-empty vs. unavailable is ambiguous.** Greece's `[]` responses
-  (§3) are indistinguishable, from the API alone, between "genuinely no
-  matches yet" and "ingestion is broken for this competition" — the reader
-  has no distinct signal for the two.
+- **Availability/provenance coverage is still partial.** #173's deployed
+  match-specific freshness headers distinguish complete/empty/stale/unavailable
+  states without changing bodies; October 2 checks observed them. Greece's
+  ambiguous empty match response in §3 is historical, not the present contract.
+  Equivalent coverage across all reader surfaces and consumer handling remain
+  T17.3/cutover work.
 - **`cdn.scorearc.futbol` is missing from the frontend's crest allowlist.**
   `src/lib/ogUrl.ts`'s `CREST_HOSTS` is `{a.espncdn.com,
   r2.thesportsdb.com}` — a self-hosted R2/CDN crest would be rejected by
@@ -500,49 +574,43 @@ platform's core data-correctness work (§8).
 
 ## 8. Ranked priorities
 
-**Hard gates first, in order:**
+**Standing gates:** retain T21.1's exact-SHA delivery controls and complete
+remaining identity/rotation governance and release acceptance (§10). Diagnose
+the new October 2 `runStatus` eligibility failure separately; do not implement
+already-merged promotion repairs or repeat old credential/standby recovery.
+The legal/rights gate (§7) and T18.1's classification of continuation,
+held-byte reprocessing and new collection remain unchanged.
 
-1. **Finish T21.1 delivery activation (§10).** Main protection is enabled;
-   retain the existing credentials whose ordinary-job delivery was accepted
-   in PR #161's run, finish project-token promotion and authorized provider/ledger
-   reconciliation, and complete post-merge release acceptance. Do not reopen
-   credential provisioning merely because older reusable jobs lacked access.
-2. **The legal/rights decision (§7).** Nothing that expands ESPN-derived
-   data's audience, training use, or MCP exposure proceeds without it.
-3. **Accept restarted production ingestion (§2, §3).** Diagnosed 2026-09-06: no ingester
-   write had landed since 2026-08-22 and nothing was running then, so every
-   in-season competition was stale
-   and Greece — configured 2026-08-24, after the stall — was empty. The machine
-   repair is done: the machine was started on September 13 and its obsolete
-   standby removed, with readback on September 14 (§2). Each ingester release now
-   checks the machine contract automatically. What remains is acceptance:
-   zero-failure cycles and sustained freshness
-   ([SETUP §7.5](backend/SETUP.md#75-verify)). Ranked
-   above the two durability items below because neither writer's fix can be
-   verified until ingestion is accepted (zero-failure cycles, advancing data).
-   The T17.1
-   team-profile 500 is repaired; that said nothing about ingestion. **The
-   restart alone does not close this item:** a pipeline-wide write stop ran
-   ~15 days unnoticed because no per-competition freshness alert exists (§2),
-   so the detection gap — T17.3's empty-vs-broken response semantics and
-   T17.4's freshness/completeness SLOs and alerting — is part of this priority,
-   not a later nicety.
-4. **T7.13 / archive / backfill durability (§4, §6a–c).** Close the
-   backfill row-write gap, decide the raw-archive requirement, and fix
-   retry fairness before calling any of E7's writer work "operationally
-   done."
-5. **Participation durability (§6a).** Give finalized-but-unwritten
-   participation a retry path, or explicitly accept the gap in writing.
-6. **Canonical reader DTO / query-contract / cross-language tests (§5).**
-   Make the reader's shape and query semantics a tested contract before
-   building more against it.
-7. **Derived-view and identity parity (§5).** Resolve the provider-ID leak,
-   the missing `ownGoal`/`athleteId`, the hashed crest keys, and the
-   canonical-team-helper mismatch.
-8. **1d staged cutover, per method, with fallback and shadow comparison.**
-   Do not flip the frontend to the reader in one step; cut over
-   method-by-method with a fallback to ESPN and a shadow-diff check.
-9. **Initial E10 history/player/shot reads**, once the above are stable.
+**Next implementation, in order:**
+
+1. **T16.1 — complete the cross-language contract harness (§5).** Extend the
+   bounded team-insights foundation across all 12 current DataStore methods,
+   TypeScript/Go/OpenAPI DTOs and query/error vectors; an inventory is not parity.
+2. **T16.2 — canonical identity and DTO parity (§5).** Resolve nested provider
+   IDs, `ownGoal`/`athleteId`, stable leader crests, the CDN allowlist and
+   canonical-team-helper mismatch through that harness.
+3. **T10.1 — match-query parity (§5).** Pin range/state/detail/limit behavior,
+   then the remaining T10.10 and T10.2–T10.4 derived-view/read contracts.
+
+**Independent high-priority reliability/durability lanes, not new dependencies:**
+
+- **T7.13/T7.20 archive/backfill (§4, §6):** close the normalized-row gap,
+  raw-archive requirement and retry fairness under T18.1's classification;
+  perishable capture/coverage remains urgent, not proved by fresh match headers.
+- **T7.21 participation retry (§6a):** provide durable recovery for finalized
+  matches with missing participation; match-state recovery does not repair it.
+- **T17.3/T17.4 trust and notification delivery:** finish broader provenance,
+  scheduled freshness checks and notification activation with explicit approval.
+  Collect sustained reconciliation and transient-failure recovery evidence
+  ([SETUP §7.5](backend/SETUP.md#75-verify)); the dated observations above do not
+  close this acceptance or ancillary squad/player/archive coverage.
+- **T21.2 full schema readiness:** enforce head/dirty-ledger compatibility;
+  migration 0023 is already applied and its narrow startup checks are not this task.
+
+**After the existing contract/trust gates:** T16.3–T16.5 implement, shadow and
+soak the reader per method with fallback and immediate rollback, never a
+one-step source flip. Initial E10 history/player/shot reads keep their roadmap
+dependencies. No reader cutover has occurred.
 
 **Then, roughly in order:** E6/E7 UI (T6.2–T6.4, T7.3–T7.5), E9's
 provider/model decision (post-rights, post-T7.13-closure). **Later:**
@@ -575,7 +643,7 @@ where §1/§4 correct them.
 
 **Retired 2026-09-06 (T17.2):** two former unknowns — Greece's empty
 collections, and whether the ingester was keeping pace across the ten
-configured competitions — share one established cause: no ingester write has
+configured competitions — shared one established cause: no ingester write had
 landed since 2026-08-22, and nothing was running then (§3). The machine has since been restarted (§2); what remains open is ingestion acceptance, not
 the diagnosis.
 
@@ -599,8 +667,9 @@ the diagnosis.
   returned event history still does not date the original primary's removal, so it is
   undated. **Separate what is observed from what is inferred:** the September
   6–13 not-running state was directly observed (app `suspended`, sole Machine a
-  stopped standby); running state was observed again on September 13/14,
-  but present machine state is unverified (§2). Whether a process
+  stopped standby); running state was observed again on September 13/14 and
+  September 26, but those snapshots do not establish present machine state (§2).
+  Whether a process
   ran and failed to write between 2026-08-22 and the 2026-09-01 relaunch is
   **not** excluded — Fly retains no events from that window, and eight
   `complete` releases occurred in it, so a crash loop or a lease conflict
@@ -777,6 +846,11 @@ question and is not mixed into the credential fix.
 
 ### Remaining owner decisions and production acceptance
 
+The latest actual-success releases and October 2 main-CI eligibility failure
+are recorded [above](#october-2-reconciliation). The checks below apply to a
+new authorized release; they do not reopen the completed recovery or claim
+that all T21.1 governance is closed.
+
 **Owner actions:** preserve the supplied Vercel token's project scope and verify
 its least-privilege role,
 expiry/rotation ownership and supported production CLI/promotion permission on
@@ -790,7 +864,8 @@ requires authorization; secret deletion is not token revocation.
 
 **Before a new merge:** main CI automatically attempts the services selected
 by the current path policy. Changes to `ci.yml` or release scripts select all
-three services; the new match-recovery slice also needs its schema prerequisite.
+three services. The match-recovery schema prerequisite (0023) was already
+accepted in production September 20; apply it only in an unmigrated environment.
 The old frontend incident is inactive, not a release hold. A new unresolved
 frontend entry would block that target, not either Fly job. Coordinate owner authorization for those effects before
 recommending merge. If presence checks must precede publication, confirm an
@@ -838,7 +913,8 @@ started at then-latest `origin/main` `fea71f9`, then incorporated the independen
 merged Next/Vitest upgrades by rebasing onto `504d4bf`. No merge or deployment is
 part of this milestone. Production remains fully ESPN-backed.
 
-- **Partial T16.1:** all 14 DataStore methods inventoried; shared recorded/test
+- **Partial T16.1:** all 14 DataStore methods at that milestone were inventoried
+  (12 now, after #191 removed redundant leader wrappers); shared recorded/test
   vectors cover the milestone's team identity, scoped schedule and match fields.
   Go DTO/OpenAPI serialization, actual handler error/query semantics and real
   Postgres ordering/scope are tested. No new Go routes or production code,

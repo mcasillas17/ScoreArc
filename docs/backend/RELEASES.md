@@ -16,9 +16,19 @@ is not established by either result. See
 [match freshness runbook](MATCH_FRESHNESS.md): the owner reports migration 0023
 and reader/ingester recovery releases completed September 20, with both original
 incidents finalized. Do not reapply that migration. The new monthly scoreboard
-repair needs no schema change, but shared source changes select both Fly
-services after an authorized merge/full CI gate. Its complete-poll and
-transient-failure acceptance is still pending; notifications remain manual-only.
+repair needed no schema change and subsequently merged/released as #183 on
+September 26. Shared source changes still select both Fly services after an
+authorized merge/full CI gate. Sustained complete-poll and transient-failure
+acceptance remains open; the freshness watchdog remains manual-only.
+
+**October 2 update:** later actual-success records exist for both Fly services
+at `9a65d8c` and the frontend at `4b50299`. Main `529460b` run `36976840786`
+passed `test` and the frontend job but failed both Fly eligibility steps
+(`failed checks: runStatus`) before publication, without new deployment records.
+This is a distinct unresolved observation, not an all-green main run or a
+reason to repeat old recovery. See
+[CURRENT_STATE's dated reconciliation](../CURRENT_STATE.md#october-2-reconciliation)
+for timestamps, bounded live evidence and the still-open governance/acceptance.
 
 ## Release contract
 

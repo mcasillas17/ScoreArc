@@ -162,7 +162,7 @@ build/test gate is `cd backend && go build ./... && go test ./...`.
 - **1d — Frontend cutover**: add an `apiStore` implementation of `DataStore` (in
   `src/server/data/`) that calls the reader; select it via a `DATA_SOURCE=api|espn`
   flag with ESPN fallback; verify parity; cut over method-by-method. This is a
-  **contract/parity project, not a base-URL swap** — the 14 `DataStore` methods do
+  **contract/parity project, not a base-URL swap** — the 12 `DataStore` methods do
   not yet map onto the reader's routes 1:1, and DTO/query/derived-view parity must
   be a tested contract first. See
   [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) §5 for the blockers.
@@ -204,8 +204,8 @@ Hard rules (also in `AGENTS.md` — read it; Codex auto-loads it):
 
 ## 7. Key facts an agent needs
 
-- **The seam:** the frontend reads everything through `DataStore` (**14 methods**) in `src/server/data/store.ts`. Phase 1 adds a second implementation (`apiStore`) that calls our reader. Nothing else in the frontend changes.
-- **The 14 methods:** `getMatches`, `getFixtures`, `getLiveWindow`, `getUpcoming`, `getStandings`, `getBracket`, `getMatchSummary`, `getLeaders`, `getTopScorers`, `getTopAssists`, `getNews`, `getTeam`, `getSquad`, `getPlayer`. Types are in `src/server/data/types.ts` — the reader's JSON must deserialize into these. The reader currently exposes **7 data routes**, so these 14 methods do not map 1:1 onto it yet; the cutover gap is tracked in [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) §5.
+- **The seam:** the frontend reads everything through `DataStore` (**12 methods**) in `src/server/data/store.ts`. Phase 1 adds a second implementation (`apiStore`) that calls our reader. Nothing else in the frontend changes.
+- **The 12 methods:** `getMatches`, `getFixtures`, `getLiveWindow`, `getUpcoming`, `getStandings`, `getBracket`, `getMatchSummary`, `getLeaders`, `getNews`, `getTeam`, `getSquad`, `getPlayer`. PR #191 removed the redundant `getTopScorers`/`getTopAssists` store wrappers, not the public scorer/assist capabilities: both use `getLeaders`. Types are in `src/server/data/types.ts` — the reader's JSON must deserialize into these. The reader still exposes **7 data routes**, so the methods do not map 1:1 onto it; the cutover gaps remain in [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) §5.
 - **Ingester durability:** final match/detail writes are atomic; migration 0021
   gives every finalized-fact table a database seal appropriate to its write
   lifecycle; unresolved finals remain in a durable backlog; bracket

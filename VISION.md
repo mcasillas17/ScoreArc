@@ -96,12 +96,13 @@ The frontend reads everything through **one interface — `DataStore`**
 `DataStore` is ESPN read-through + a TTL cache, with no persistence.
 
 The seam has grown well past its original handful of methods: it now exposes
-**14** — `getMatches`, `getFixtures`, `getLiveWindow`, `getUpcoming`,
-`getStandings`, `getBracket`, `getMatchSummary`, `getLeaders`, `getTopScorers`,
-`getTopAssists`, `getNews`, `getTeam`, `getSquad`, `getPlayer`. Because
+**12** — `getMatches`, `getFixtures`, `getLiveWindow`, `getUpcoming`,
+`getStandings`, `getBracket`, `getMatchSummary`, `getLeaders`,
+`getNews`, `getTeam`, `getSquad`, `getPlayer`. PR #191 removed the redundant
+scorer/assist wrappers; both capabilities remain through `getLeaders`. Because
 everything funnels through that seam, we can swap *what's behind it* without
 touching a single page or component. That's the entire migration strategy — but
-closing the gap between those 14 methods and the reader's routes is real work,
+closing the gap between those 12 methods and the reader's routes is real work,
 not a base-URL swap (see [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) for the
 current cutover blockers).
 

@@ -110,7 +110,14 @@ assumes the observed calendar offset is within one day. Conflicting live duplica
 fail rather than guessing which payload is authoritative. No speculative pagination,
 daily fan-out or retry hides these limitations.
 
-This is local repair evidence, not post-merge production acceptance. After an
-owner-authorized merge/release, verify both views, month navigation, boundary and
-historical results, sanitized failure behavior and freshness on the deployed SHA.
-No merge or deployment is performed by this task.
+The preceding checks are local repair evidence. **Post-merge update, October 2,
+2026:** #192/#193 are included in the Actions-owned frontend release at
+`4b50299` (deployment `6802809677`, success 06:37:19 UTC). Isolated production
+browser checks at 06:41–06:43 UTC rendered Liga MX and LaLiga Now/calendar with
+actual matches and no reported runtime errors. September API windows returned
+200 with 34 / 39 matches respectively, all kickoffs within September. This is
+bounded production verification, not full historical/edge/failure acceptance
+or evidence for every league; those checks remain necessary on future releases.
+The frontend still uses ESPN. Exact release and later CI distinctions live in
+[CURRENT_STATE](CURRENT_STATE.md#october-2-reconciliation); this documentation
+update performs no merge, deployment or production operation.
