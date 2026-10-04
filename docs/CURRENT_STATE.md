@@ -617,7 +617,9 @@ held-byte reprocessing and new collection remain unchanged.
 
 **After the existing contract/trust gates:** T16.3–T16.5 implement, shadow and
 soak the reader per method with fallback and immediate rollback, never a
-one-step source flip. Initial E10 history/player/shot reads keep their roadmap
+one-step source flip; the methods that produce or consume store-scoped match ids
+switch and fall back as one group
+([READER_CONTRACT](backend/READER_CONTRACT.md#identity-translations)). Initial E10 history/player/shot reads keep their roadmap
 dependencies. No reader cutover has occurred.
 
 **Then, roughly in order:** E6/E7 UI (T6.2–T6.4, T7.3–T7.5), E9's

@@ -801,7 +801,7 @@ covers all 12 methods across TypeScript, OpenAPI, Go DTOs/handlers and reader SQ
 with each DTO, query, identity, derived-view and freshness incompatibility it
 characterizes registered as a gap owned by T16.2, T10.1–T10.4, T10.10, T16.6, T17.3
 or T21.4 (leader crest keys, the CDN allowlist and the canonical team helper
-mismatch remain T16.2 work outside it). It is drift detection, not parity: T16.2–T16.6 and
+mismatch were left to T16.2 outside it, and resolved in code October 4, below). It is drift detection, not parity: T16.2–T16.6 and
 the production-cutover gates are unchanged.
 
 **T16.2 resolved in code (October 4), not complete:** 13 of its 14 harness gaps and
@@ -809,15 +809,19 @@ its three unregistered items, with match, team, nested team and player ids as
 tested translations ([contract](backend/READER_CONTRACT.md#t162-identity-and-dto-contract)).
 `T16.2-standings-dedup` (cross-table membership) awaits an owner decision; rows
 stored earlier recover `ownGoal`/`athleteId` only from aligned captured match
-events, else `null`. E10/E17 gaps and every cutover gate are unchanged.
+events, else `null`. Shootout winners and aggregates of rows finalized before
+T16.2 are served as stored; where they disagree neither is provably final,
+nothing is rewritten, correction needs a separately approved operator procedure,
+and how many production rows are affected is unmeasured. E10/E17 gaps and every
+cutover gate are unchanged.
 
 | Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
 |---|---|---|---|
 | **T16.1** ✅ | Build one cross-language contract harness over TypeScript types, OpenAPI, Go DTOs, query vectors, and recorded payloads. **Done October 3 — [READER_CONTRACT](backend/READER_CONTRACT.md); gaps stay open under their tasks.** | Any field/nullability/query drift fails CI; canonical equivalence is required, not byte equality with provider JSON. | none |
 | **T16.2** | Fix canonical nested team ids, `ownGoal`/`athleteId`, slug-stable leader crests, and the ScoreArc CDN allowlist, and close (or explicitly accept) the other DTO-parity gaps the T16.1 harness assigns to T16.2: match/team identity, standings rank/dedup/malformed-row handling and unnamed-table labels, bracket round names/slug type/placeholder crests, shootout aggregate source and the clockless live minute (`src/server/data/contracts/reader-contract.json`). **October 4: all but `standings-dedup` resolved in code ([contract](backend/READER_CONTRACT.md#t162-identity-and-dto-contract)); that one needs an owner decision.** | Unknown crest hosts are dropped, not proxied; contract fixtures prove scorer/card-to-side and player identity; each closed gap's harness characterization is updated. | T16.1 |
-| **T16.3** | Implement a strict `apiStore` satisfying all 12 `DataStore` methods with per-method source flags. | 5xx, timeout, parse error, or explicit stale/unavailable status may fall back to ESPN; a valid empty result never does. | T10.1–T10.4, T10.10, T17.3 |
+| **T16.3** | Implement a strict `apiStore` satisfying all 12 `DataStore` methods with per-method source flags. | 5xx, timeout, parse error, or explicit stale/unavailable status may fall back to ESPN; a valid empty result never does. Methods that produce or consume match ids (the window methods, `getBracket`, `getMatchSummary` and the match route's side ids) share one source flag and fall back together, because match ids are store-scoped ([READER_CONTRACT](backend/READER_CONTRACT.md#identity-translations)). | T10.1–T10.4, T10.10, T17.3 |
 | **T16.4** | Shadow reader and ESPN per method with named normalizers and ignore rules. | Diffs never affect the user; each method gets a documented threshold based on semantic fields, not provider/canonical id equality. | T16.3 |
-| **T16.5** | Cut over one method at a time, dogfood, and retain immediate rollback. | No one-step flip; each method completes an owner-approved soak without correctness/freshness SLO breach before the next. | T16.4, T17.4 |
+| **T16.5** | Cut over one method at a time (the match-id methods as one group, per T16.3), dogfood, and retain immediate rollback. | No one-step flip; each method completes an owner-approved soak without correctness/freshness SLO breach before the next. | T16.4, T17.4 |
 | **T16.6** | Decide the reader news route: explicit current proxy, rights-permitted owned ingest, or removal. | This blocks only `getNews`; the other 11 methods continue independently. The ingest branch requires E18; keep/drop records the existing exposure. | before `getNews` flips |
 
 ### E17 · Data reliability, freshness & provenance
@@ -1027,11 +1031,13 @@ October 2 freshness observations do not close these lanes or change task depende
 
 ### Next — own and dogfood the contract
 
-1. **T16.3** implements `apiStore` with per-method fallback. A valid empty result
+1. **T16.3** implements `apiStore` with per-method fallback, the methods that
+   produce or consume store-scoped match ids as one group. A valid empty result
    never falls back; stale/unavailable requires T17.3's explicit signal.
 2. **T16.4** shadows semantic fields per method with documented normalizers and
    ignore rules.
-3. **T16.5** cuts over and soaks one method at a time with rollback. **T16.6**
+3. **T16.5** cuts over and soaks one method (or that match-id group) at a time
+   with rollback. **T16.6**
    blocks only `getNews`; every other method continues independently.
 4. **T10.5/T10.6** expose held history and shots, while **T7.3** may ship earlier
    on finalized matches through today's store.

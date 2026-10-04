@@ -52,8 +52,10 @@ are not collisions; the slug is season-scoped.
 - A transfer does not change the slug — it contains no team component unless
   collision-forced, and a collision-forced suffix is frozen at mint time.
 - The backend stores the slug as the player's public id alongside its internal
-  UUIDv7; provider ids live only in `*_external_ref` crosswalk tables, per the
-  canonical-identity design.
+  UUIDv7; provider player ids map to it only through `player_external_ref`, per
+  the canonical-identity design. A scorer's `athleteId` is stored outside it as
+  a provider-scoped value, never resolved there
+  ([READER_CONTRACT, T16.2](READER_CONTRACT.md#t162-identity-and-dto-contract)).
 
 ## Enforcement
 

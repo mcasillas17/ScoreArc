@@ -83,9 +83,10 @@ the public scorer and assist capabilities still use `getLeaders`.
 **Every id in this schema is one ScoreArc mints — no provider is the identity
 authority.** Curated sets are slugs (`competition.id` = `premier-league`,
 `team.id` = `eng-manchester-united` | `nat-mex`), machine-generated sets are
-UUIDv7 (`match.id`, `player.id`, `official.id`). Provider ids live **only** in the
-`*_external_ref` crosswalk tables, so a second source describes the same entity
-instead of duplicating it. `competition_id`/`season_id` are still the **text
+UUIDv7 (`match.id`, `player.id`, `official.id`). Provider entity ids map to
+canonical ids **only** through the `*_external_ref` crosswalk tables, so a second
+source describes the same entity instead of duplicating it; the few provider ids
+stored outside them, unresolved, are listed under the crosswalk below. `competition_id`/`season_id` are still the **text
 config keys** from `competitions.ts` (config stays the source of truth), but
 they are now materialised as real `competition`/`season` rows that the other
 tables reference. Rich per-match detail is **jsonb** (lossless, serves the
@@ -137,13 +138,15 @@ untouched and do not use that escape hatch.
 - **player**(id PK `uuid` v7, full_name, known_as, birth_date, nationality, position, updated_at) — resolved from the provider's athlete id via `player_external_ref`, never from a display name: two players who share a name must not become one person. Note there is deliberately **no `team_id`** — a player's club is recorded per `appearance`, so a transfer needs no special handling.
 
 ### Source crosswalk (the only map from provider entity ids to canonical ids)
-Every provider entity id (competition, team, player, match, official) resolves
-to a canonical id here, and nowhere else. Two provider entity references are
-stored outside it, both by design (T16.2,
-[READER_CONTRACT](READER_CONTRACT.md#t162-identity-and-dto-contract)):
-`match_detail` scorers and cards keep the provider's team ids, which the reader
-translates through `team_external_ref` when it reads; and `Scorer.athleteId` is
-the source provider's athlete id, stored and served as a provider-scoped value.
+Every provider entity id ScoreArc resolves (competition, team, player, match,
+official) resolves to a canonical id here, and nowhere else. A few provider
+entity references are stored outside it, unresolved, by design: `match_detail`
+scorers and cards keep the provider's team ids, which the reader translates
+through `team_external_ref` when it reads, and `Scorer.athleteId` is the source
+provider's athlete id, stored and served as a provider-scoped value (both T16.2,
+[READER_CONTRACT](READER_CONTRACT.md#t162-identity-and-dto-contract)); and
+`player_team_history.team_source_id` is a career club's provider id, never
+resolved because a career spans competitions we never curate.
 Provider content ids are not entities and are never resolved: they stay ESPN's
 own opaque ids, such as `match_play.source_id` (the play id) and
 `match_detail.videos[].id`.
@@ -308,7 +311,7 @@ the seal is the intended single `match_pkey` probe with two shared-buffer hits.
 - Work is bounded to three competitions concurrently. Two successful empty
   polls are required before a competition becomes dormant; failed polls reset
   that sequence and preserve known live cadence.
-- Provider ids are **resolved to canonical ids before anything is written**
+- Every entity a row is keyed on is **resolved to its canonical id before anything is written**
   (`backend/shared/store/identity.go`). The ingester calls `Store.Team` and
   `Store.Match`: each looks `(source, source_id)` up in the crosswalk, falling back
   to the curated team seed or the `match` natural key. A team the seed does not carry
@@ -322,7 +325,10 @@ the seal is the intended single `match_pkey` probe with two shared-buffer hits.
   `Store.Competition` and `Store.Player` exist for the same crosswalk but have no
   production caller yet: the ingester takes the competition from its own config
   (`comp.ID`), and player identity is written by the follow-on slice. The ESPN mappers
-  still speak ESPN ids; nothing downstream of the resolver does.
+  still speak ESPN ids; downstream of the resolver only the provider references the
+  crosswalk section lists stay provider-scoped (the `match_detail` scorer/card team
+  ids and `athleteId`, which the reader translates or serves as provider-scoped, and
+  `player_team_history.team_source_id`).
 - Current state is idempotently upserted. State cannot regress except
   live→scheduled for ESPN's explicit postponed or suspended status. Sparse payloads preserve
   known scores, winners, detail arrays, and bracket placeholders.
@@ -566,6 +572,8 @@ views must reach tested parity first (`CURRENT_STATE.md` §5). The intended desi
 - `DATA_SOURCE` env flag (`espn` | `api`) selects the implementation; default
   `espn` until parity is verified. Cut over **method-by-method**, with a
   per-method ESPN fallback and shadow comparison — not a single one-step flip.
+  The methods that produce or consume store-scoped match ids move and fall back
+  as one group ([READER_CONTRACT](READER_CONTRACT.md#identity-translations)).
 - During rollout, `apiStore` **falls back to the ESPN store on error** so a
   backend issue never dark-pages the site.
 - Set `SCOREARC_API_BASE` (the reader's public URL) in Vercel env.

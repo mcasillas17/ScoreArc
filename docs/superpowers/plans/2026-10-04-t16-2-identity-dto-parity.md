@@ -114,3 +114,10 @@ OpenAPI 3.1 (kin-openapi).
   `ownGoal`/`athleteId` from aligned `match_event` rows or as `null`.
 - Ingester and reader can deploy in either order: an old reader ignores the new
   JSON keys, and a new reader translates both old and new rows.
+- Shootout winners and aggregates of rows finalized before T16.2 are served
+  unchanged, even where they disagree: neither is provably final. Correcting them
+  is outside this change and needs a separately approved operator procedure; the
+  affected production count is unmeasured.
+- Leader crests move to team-keyed `teams/<canonical id>` objects on the next
+  leader refresh; objects already mirrored under `teams/scorer-<hash>` stay in
+  R2, unreferenced.
