@@ -154,6 +154,10 @@ func TestCheckReadyPolicy(t *testing.T) {
 				!strings.Contains(text, "runbook=docs/backend/RELEASES.md#schema-readiness") {
 				t.Fatalf("diagnostic missing: %q", text)
 			}
+			// A dirty NilVersion was read, not lost: print it, don't say "unknown".
+			if tc.name == "dirty at nil version" && !strings.Contains(text, "applied=-1 dirty=true") {
+				t.Fatalf("dirty NilVersion not reported as read: %q", text)
+			}
 			if tc.category == "behind" && len(db.queries) != 1 {
 				t.Fatal("probes must not run once the version is refused")
 			}

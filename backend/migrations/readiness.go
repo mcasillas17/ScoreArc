@@ -25,7 +25,8 @@ type ReadinessError struct {
 	// query_failed, embedded_migrations_invalid.
 	Category string
 	Expected int
-	// Applied is the ledger version, or -1 when it could not be read.
+	// Applied is the ledger version, or -1 when it could not be read — except
+	// when Dirty, where -1 is golang-migrate's NilVersion as actually read.
 	Applied   int64
 	Dirty     bool
 	SQLState  string
@@ -34,7 +35,7 @@ type ReadinessError struct {
 
 func (e *ReadinessError) Error() string {
 	applied := "unknown"
-	if e.Applied >= 0 {
+	if e.Applied >= 0 || e.Dirty {
 		applied = fmt.Sprint(e.Applied)
 	}
 	msg := fmt.Sprintf("database schema not ready: category=%s expected=%d applied=%s dirty=%t",
@@ -104,7 +105,7 @@ func CheckReady(ctx context.Context, db Querier, probes ...string) error {
 	applied := versions[0]
 	switch {
 	// Dirty first: golang-migrate itself records (-1, dirty) when version 1's
-	// down migration fails (upstream issue #330). Error() prints -1 as unknown.
+	// down migration fails (upstream issue #330).
 	case dirty:
 		return refuse("dirty", applied, true)
 	case applied < 0:

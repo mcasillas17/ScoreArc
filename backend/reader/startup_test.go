@@ -42,7 +42,7 @@ func TestReaderSchemaGateRunsAsTheReaderRole(t *testing.T) {
 	probe := func() error {
 		startup, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
-		return checkSchemaReadiness(startup, store.db)
+		return migrations.CheckReady(startup, store.db, freshnessSchemaProbe)
 	}
 	if err := probe(); err != nil {
 		t.Fatalf("SELECT-only role on a compatible schema: %v", err)
