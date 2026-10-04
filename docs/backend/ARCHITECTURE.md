@@ -628,8 +628,10 @@ truth is the TS**: `src/server/data/types.ts` (shapes), `providers/espn-*.ts`
   comps/seasons + date ranges to poll come from `backend/config/competitions.json`.
 - **jsonb payloads target the `types.ts` shapes** so the reader can hand them
   back unchanged — fixture-test the Go mappers against `__fixtures__/`. The
-  implemented differences (`T16.2-scorer-identity`, `T10.2-team-stats`,
-  `T10.2-lineups`) are registered gaps in [READER_CONTRACT](READER_CONTRACT.md).
+  implemented differences (`T10.2-team-stats`, `T10.2-lineups`) are registered
+  gaps in [READER_CONTRACT](READER_CONTRACT.md). Scorer and card `teamId`s stay
+  the provider's in `match_detail`; the reader serves the canonical side
+  (READER_CONTRACT, T16.2).
 - **"Live" detection** for the fast/slow cadence: any polled `match.state == 'live'`.
 - **Freeze predicate:** on `state → finished`, write finals, set `finalized_at`,
   and skip re-upsert while `finalized_at IS NOT NULL`.

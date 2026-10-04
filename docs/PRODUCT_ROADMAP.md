@@ -804,10 +804,17 @@ or T21.4 (leader crest keys, the CDN allowlist and the canonical team helper
 mismatch remain T16.2 work outside it). It is drift detection, not parity: T16.2–T16.6 and
 the production-cutover gates are unchanged.
 
+**T16.2 resolved in code (October 4), not complete:** 13 of its 14 harness gaps and
+its three unregistered items, with match, team, nested team and player ids as
+tested translations ([contract](backend/READER_CONTRACT.md#t162-identity-and-dto-contract)).
+`T16.2-standings-dedup` (cross-table membership) awaits an owner decision; rows
+stored earlier serve `null` `ownGoal`/`athleteId`. E10/E17 gaps and every
+cutover gate are unchanged.
+
 | Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
 |---|---|---|---|
 | **T16.1** ✅ | Build one cross-language contract harness over TypeScript types, OpenAPI, Go DTOs, query vectors, and recorded payloads. **Done October 3 — [READER_CONTRACT](backend/READER_CONTRACT.md); gaps stay open under their tasks.** | Any field/nullability/query drift fails CI; canonical equivalence is required, not byte equality with provider JSON. | none |
-| **T16.2** | Fix canonical nested team ids, `ownGoal`/`athleteId`, slug-stable leader crests, and the ScoreArc CDN allowlist, and close (or explicitly accept) the other DTO-parity gaps the T16.1 harness assigns to T16.2: match/team identity, standings rank/dedup/malformed-row handling and unnamed-table labels, bracket round names/slug type/placeholder crests, shootout aggregate source and the clockless live minute (`src/server/data/contracts/reader-contract.json`). | Unknown crest hosts are dropped, not proxied; contract fixtures prove scorer/card-to-side and player identity; each closed gap's harness characterization is updated. | T16.1 |
+| **T16.2** | Fix canonical nested team ids, `ownGoal`/`athleteId`, slug-stable leader crests, and the ScoreArc CDN allowlist, and close (or explicitly accept) the other DTO-parity gaps the T16.1 harness assigns to T16.2: match/team identity, standings rank/dedup/malformed-row handling and unnamed-table labels, bracket round names/slug type/placeholder crests, shootout aggregate source and the clockless live minute (`src/server/data/contracts/reader-contract.json`). **October 4: all but `standings-dedup` resolved in code ([contract](backend/READER_CONTRACT.md#t162-identity-and-dto-contract)); that one needs an owner decision.** | Unknown crest hosts are dropped, not proxied; contract fixtures prove scorer/card-to-side and player identity; each closed gap's harness characterization is updated. | T16.1 |
 | **T16.3** | Implement a strict `apiStore` satisfying all 12 `DataStore` methods with per-method source flags. | 5xx, timeout, parse error, or explicit stale/unavailable status may fall back to ESPN; a valid empty result never does. | T10.1–T10.4, T10.10, T17.3 |
 | **T16.4** | Shadow reader and ESPN per method with named normalizers and ignore rules. | Diffs never affect the user; each method gets a documented threshold based on semantic fields, not provider/canonical id equality. | T16.3 |
 | **T16.5** | Cut over one method at a time, dogfood, and retain immediate rollback. | No one-step flip; each method completes an owner-approved soak without correctness/freshness SLO breach before the next. | T16.4, T17.4 |
@@ -1011,8 +1018,8 @@ every P0 behind one owner decision.
 | **B · Live trust** | **T17.1–T17.4** | team/Greece causes are resolved or gated; responses distinguish complete, empty, stale, and unavailable |
 | **C · Contract/read** | **T16.1–T16.2**, then **T10.1**, **T10.10**, **T10.2–T10.4** | the reader satisfies the first cutover methods with canonical, tested contracts |
 
-**Next implementation:** **T16.2** canonical identity/DTO parity, then **T10.1**
-match-query parity, each closing its gaps in the T16.1 harness.
+**Next implementation:** finish **T16.2** with the owner's `standings-dedup`
+decision, then **T10.1** match-query parity, each closing its gaps in the T16.1 harness.
 The independent high-priority lanes remain explicit: archive/backfill durability
 under T18.1's classification, **T7.21** participation retry, **T17.4** scheduled
 freshness/notification delivery, and **T21.2** full schema readiness. Bounded

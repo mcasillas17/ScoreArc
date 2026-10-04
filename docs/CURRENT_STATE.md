@@ -461,12 +461,20 @@ The [reader contract harness](backend/READER_CONTRACT.md) (T16.1, October 3)
 covers all 12 current methods across TypeScript, OpenAPI, Go and reader SQL, and
 registers the DTO, query, identity, derived-view, freshness and error-logging
 incompatibilities below as gaps with their roadmap tasks; it fails when any of
-them changes. Three T16.2 items are not registered gaps: the hashed leader crest keys, the missing
-`cdn.scorearc.futbol` allowlist entry and the canonical team helper mismatch
-(the harness only checks that both languages' crosswalks agree on its vector
-teams). It detects drift and does not resolve the parity or availability
+them changes. It detects drift and does not resolve the parity or availability
 blockers below. The [team-insights slice](backend/TEAM_INSIGHTS_CONTRACT.md) keeps
 its team-specific contract.
+
+**T16.2 (October 4):** 13 of its 14 harness gaps and its
+three unregistered items (leader crest keys, the `cdn.scorearc.futbol` crest
+allowlist, the canonical team helper) are resolved in code with positive
+TypeScript, Go/OpenAPI and Postgres proofs; match, team, nested team and player
+ids are tested translations, not equalities
+([READER_CONTRACT](backend/READER_CONTRACT.md#t162-identity-and-dto-contract)).
+`T16.2-standings-dedup` (a team in two provider tables) awaits an owner decision.
+Detail rows stored before T16.2 serve canonical sides but `null`
+`ownGoal`/`athleteId`, permanently for finalized rows. Production acceptance is
+separate.
 
 - **`DataStore` has 12 methods** (`getMatches`, `getFixtures`,
   `getLiveWindow`, `getUpcoming`, `getStandings`, `getBracket`,
@@ -479,27 +487,12 @@ its team-specific contract.
   query parameters; it returns every match for the season. The frontend's
   `getMatches(range)`, `getFixtures(range)`, `getLiveWindow`, and
   `getUpcoming(limit)` semantics have no reader-side equivalent yet.
-- **Provider IDs leak into nested scorer/card data.** The ingester
-  canonicalizes match sides (`eng-arsenal`) but stores the summary mapper's
-  provider `scorers[].teamId`/`cards[].teamId` (e.g. `"359"`) unchanged in
-  `match_detail`, so the reader serves mixed ids and scorer-to-side placement
-  can break (gap `T16.2-nested-team-id`).
-- **Go `Scorer` is missing `ownGoal`/`athleteId`/`playerSlug`** (gap
-  `T16.2-scorer-identity`; `Card` matches the frontend apart from its provider
-  `teamId`, gap `T16.2-nested-team-id`).
-  `shared/model/types.go`'s `Scorer` carries `TeamID`, `Player`, `Minute`,
-  `Penalty`, `Shootout` — no own-goal flag and no athlete identity, even
-  though `model.Play`/`model.MatchParticipation` already carry both
-  upstream.
-- **Leader crest keys are hashed, not slug-based.**
-  `ingester/runner.go`'s `mirrorLeader` mints R2 asset keys as
-  `scorer-<sha256(url)[:8]>` rather than a team-slug key, so the mirrored
-  crest URL for a leader is not stable/derivable the way team crests are.
+- **A team in two provider tables** stays in both frontend tables but only the
+  first reader table (gap `T16.2-standings-dedup`), pending an owner decision
+  on a multi-table standing model or a shared first-table rule.
 - **The reader/OpenAPI DTOs are older than the ingested data**: lineup,
   stats, leader, and team-profile fields the ingester now writes are not
   all exposed in the current reader response shapes.
-- **Canonical team helper mismatch** between frontend and reader-side team
-  resolution paths (see PR #144's audit and the 1d spec it cites) is unresolved.
 - **Leagues Cup computed group tables and the MLS overall table are
   frontend-only** derived views; the reader has no equivalent computed
   endpoint.
@@ -509,10 +502,6 @@ its team-specific contract.
   ambiguous empty match response in §3 is historical, not the present contract.
   Equivalent coverage across all reader surfaces and consumer handling remain
   T17.3/cutover work.
-- **`cdn.scorearc.futbol` is missing from the frontend's crest allowlist.**
-  `src/lib/ogUrl.ts`'s `CREST_HOSTS` is `{a.espncdn.com,
-  r2.thesportsdb.com}` — a self-hosted R2/CDN crest would be rejected by
-  `safeCrest` today.
 - **Six reader handlers log raw dependency error text** (matches, standings,
   bracket, top-scorers, news, match summary), which can carry connection
   details; response bodies stay sanitized. `handleTeam` logs only operation,
@@ -596,10 +585,10 @@ held-byte reprocessing and new collection remain unchanged.
 
 **Next implementation, in order:**
 
-1. **T16.2 — canonical identity and DTO parity (§5).** Resolve nested provider
-   IDs, `ownGoal`/`athleteId`, stable leader crests, the CDN allowlist and
-   canonical-team-helper mismatch, and close the T16.2 gaps registered in the
-   completed T16.1 [harness](backend/READER_CONTRACT.md).
+1. **T16.2 — canonical identity and DTO parity (§5).** Every item but
+   `T16.2-standings-dedup` is resolved in code; that one needs an owner
+   decision (multi-table standings, or a shared first-table rule) before T16.2
+   can close. Release and production acceptance remain separate.
 2. **T10.1 — match-query parity (§5).** Pin range/state/detail/limit behavior,
    then the remaining T10.10 and T10.2–T10.4 derived-view/read contracts.
 

@@ -49,7 +49,7 @@ OpenAPI 3.1 (kin-openapi).
 | `standings-dedup` | Rows kept in a later table keep their true provider positions (not renumbered), so a zone cut never shifts. Cross-table membership (a team kept in two provider tables) is **left open for an owner decision**: the one-row-per-team `standing` key (and `standing_snapshot`'s per-team uniqueness) cannot hold it; options are a multi-table standing model or a shared first-table rule. No configured competition publishes overlapping tables today. |
 | `standings-malformed` | The ingester's rule is the contract: a table with no entries or a row missing team identity or one of the eight required stats rejects the payload. The frontend mapper stops zero-filling and throws; a payload with no tables stays a legitimate empty `[]`. |
 | `group-label` | An unnamed provider table is labeled with the competition short name in both (frontend adopts the reader's rule); named tables are unchanged. |
-| `placeholder-crest` | `null` in both (frontend stops passing ESPN's `""` through). |
+| `placeholder-crest` | `null` in both (frontend stops passing ESPN's `""` through). Browser verification found the same `""` pass-through in the TS match-list, team-schedule and leader mappers, which Go already treats as absent; fixed there too. |
 | `bracket-round-name` | Contract decision, no behavior change: `name` is an additive English label for API consumers; the frontend localizes from `slug`. Proved equal to the frontend's English catalog label for every slug. |
 | `round-slug-type` | OpenAPI `BracketRound.slug` and `BracketMatch.round` become the six-slug enum; Go mapper, reader order and the TS union are proved equal. |
 | `shootout-source` | One precedence everywhere: summary-header `shootoutScore` (where a summary is held) → scoreboard competitor `shootoutScore` → anchored scoreboard note → `null`. Structured values must be non-negative integers and not both zero; a malformed structured value rejects the scoreboard in both languages (the frontend window loader already did). Lightweight feeds use the scoreboard tiers only (no summary fan-out). Regulation scores are untouched. |
@@ -101,10 +101,10 @@ OpenAPI 3.1 (kin-openapi).
 - [x] Commit `fix: slug-stable leader crests and the ScoreArc CDN crest host`.
 
 ### Task 8 — match/team identity translation proofs and docs
-- [ ] go-db: match minted by the real resolver; `match_external_ref` maps the provider event id to the served UUID; the list id addresses `/v1/matches/{id}`.
-- [ ] TS: summary addressed by provider id; reader UUIDs never reach the ESPN store in the harness.
-- [ ] Update `READER_CONTRACT.md`, `CURRENT_STATE.md` §5/§8, `PRODUCT_ROADMAP.md` T16.2 narrowly.
-- [ ] Commit `docs: record T16.2 identity and DTO contract`.
+- [x] go-db: match minted by the real resolver; `match_external_ref` maps the provider event id to the served UUID; the list id addresses `/v1/matches/{id}`.
+- [x] TS: summary addressed by provider id; reader UUIDs never reach the ESPN store in the harness.
+- [x] Update `READER_CONTRACT.md`, `CURRENT_STATE.md` §5/§8, `PRODUCT_ROADMAP.md` T16.2 narrowly.
+- [x] Commit `docs: record T16.2 identity and DTO contract`.
 
 ## Rollout and data notes
 
