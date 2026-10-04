@@ -301,7 +301,7 @@ func (r *runner) processMatches(
 				// ESPN's flag when it is level.
 				if detail.Shootout != nil {
 					flag := match.WinnerFlagID
-					if match.WinnerFlagUnknown {
+					if match.FromStorage {
 						// A candidate rebuilt from storage carries no flag of
 						// its own; the final summary header's stands in.
 						flag = canonicalSide(summary.WinnerFlagID, providerHome.ID, providerAway.ID, identity.HomeTeamID, identity.AwayTeamID)

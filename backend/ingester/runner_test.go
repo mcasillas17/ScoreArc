@@ -403,6 +403,7 @@ type fakeRepository struct {
 	teamErr           error
 	standingTeamIDs   map[string]string
 	matchAlias        map[string]string
+	teamAlias         map[string]string
 	upserted          []string
 	participation     []*model.MatchParticipation
 	participationTo   []string
@@ -566,6 +567,10 @@ func (f *fakeRepository) Team(_ context.Context, _ string, ref store.TeamRef) (s
 	f.teamKinds[ref.SourceID] = ref.Kind
 	if f.teamErr != nil {
 		return "", f.teamErr
+	}
+	// teamAlias makes two provider ids resolve to one canonical team.
+	if aliased, ok := f.teamAlias[ref.SourceID]; ok {
+		return fakeTeamID(aliased), nil
 	}
 	return fakeTeamID(ref.SourceID), nil
 }
@@ -3031,7 +3036,7 @@ func TestBacklogFinalizationTakesTheSummaryHeaderFlag(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			match := finishedMatch()
 			match.WinnerID = &homeID // the stored winner the backlog row carries
-			match.WinnerFlagUnknown = true
+			match.FromStorage = true
 			src := &fakeSource{summaryShootout: c.shootout, summaryFlag: c.headerFlag}
 			repo := &fakeRepository{existing: map[string]store.MatchRow{"m1": {}}, unfinalized: []model.Match{match}}
 			if c.observed {
@@ -3057,31 +3062,62 @@ func TestBacklogFinalizationTakesTheSummaryHeaderFlag(t *testing.T) {
 	}
 }
 
-// Two provider ids for one canonical match: the backlog row under the older id
-// survives the merge, but the match was still observed this cycle under the
-// other, so that observation's flag (none here) stands over the header's.
-func TestDuplicateProviderIDKeepsTheObservedWinnerFlag(t *testing.T) {
-	homeID, awayID := "home", "away"
-	backlog := finishedMatch()
-	backlog.ID = "a-older"
-	backlog.WinnerID = &homeID
-	backlog.WinnerFlagUnknown = true
-	observed := finishedMatch()
-	observed.ID = "b-current"
-	src := &fakeSource{matches: []model.Match{observed}, summaryShootout: &model.Shootout{HomeScore: 3, AwayScore: 3}, summaryFlag: &awayID}
-	repo := &fakeRepository{
-		existing:    map[string]store.MatchRow{"a-older": {}},
-		unfinalized: []model.Match{backlog},
-		matchAlias:  map[string]string{"b-current": "a-older"},
-	}
-	comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {ID: "2026"}}}
+// Two provider ids for one canonical match, one rebuilt from storage (the
+// backlog, under the older id, which sorts first) and one observed this cycle:
+// the observation survives the merge with its own team ids, winner flag (nil
+// included) and structured totals, so the header's flag never stands in for it
+// and its totals reach the summary precedence (source.mapSummary).
+func TestDuplicateProviderIDFinalizesTheObservation(t *testing.T) {
+	homeID, awayID, homeAlias := "home", "away", "home-current"
+	for _, c := range []struct {
+		name         string
+		observedHome string
+		flag         *string
+		want         *string
+	}{
+		{"observed with no flag", homeID, nil, nil},
+		{"observed with a flag on its own home alias", homeAlias, &homeAlias, &homeID},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			backlog := finishedMatch()
+			backlog.ID = "a-older"
+			backlog.WinnerID = &homeID
+			backlog.FromStorage = true
+			note := "Home advance 4-3 on penalties"
+			backlog.Note = &note
+			observed := finishedMatch()
+			observed.ID = "b-current"
+			observed.Home.ID = c.observedHome
+			observed.WinnerFlagID = c.flag
+			observed.Shootout = &model.Shootout{HomeScore: 3, AwayScore: 4}
+			src := &fakeSource{matches: []model.Match{observed}, summaryShootout: &model.Shootout{HomeScore: 3, AwayScore: 3}, summaryFlag: &awayID}
+			repo := &fakeRepository{
+				existing:    map[string]store.MatchRow{"a-older": {}},
+				unfinalized: []model.Match{backlog},
+				matchAlias:  map[string]string{"b-current": "a-older"},
+				teamAlias:   map[string]string{homeAlias: homeID},
+			}
+			comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {ID: "2026"}}}
 
-	testRunner(src, repo, comp).runCycle(context.Background(), true)
+			testRunner(src, repo, comp).runCycle(context.Background(), true)
 
-	if repo.finalizeCalls != 1 || repo.lastFinalized.ID != "a-older" || repo.lastFinalized.WinnerID != nil ||
-		!repo.lastFinalized.WinnerResolved || repo.lastFinalized.WinnerFlagUnknown {
-		t.Fatalf("finalized %q winner %v resolved=%t unknown=%t, want a-older, nil, resolved, known", repo.lastFinalized.ID,
-			repo.lastFinalized.WinnerID, repo.lastFinalized.WinnerResolved, repo.lastFinalized.WinnerFlagUnknown)
+			if src.summaryMatch.ID != "b-current" || src.summaryMatch.Home.ID != c.observedHome ||
+				src.summaryMatch.Shootout == nil || *src.summaryMatch.Shootout != *observed.Shootout {
+				t.Fatalf("summary fetched for %q home %q totals %v, want the observation's", src.summaryMatch.ID,
+					src.summaryMatch.Home.ID, src.summaryMatch.Shootout)
+			}
+			var want *string
+			if c.want != nil {
+				id := fakeTeamID(*c.want)
+				want = &id
+			}
+			got := repo.lastFinalized.WinnerID
+			if repo.finalizeCalls != 1 || repo.lastFinalized.ID != "b-current" || repo.lastFinalized.FromStorage ||
+				(got == nil) != (want == nil) || (got != nil && *got != *want) || !repo.lastFinalized.WinnerResolved {
+				t.Fatalf("finalized %q winner %v resolved=%t stored=%t, want b-current, %v, resolved", repo.lastFinalized.ID,
+					got, repo.lastFinalized.WinnerResolved, repo.lastFinalized.FromStorage, want)
+			}
+		})
 	}
 }
 

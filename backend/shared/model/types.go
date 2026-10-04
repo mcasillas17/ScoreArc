@@ -63,10 +63,11 @@ type Match struct {
 	// decisive aggregate derived: when a higher tier's aggregate supersedes
 	// that one and is level, the winner falls back to the flag.
 	WinnerFlagID *string `json:"-"`
-	// WinnerFlagUnknown marks a candidate rebuilt from storage (the
-	// finalization backlog), which keeps no flag: its nil WinnerFlagID means
-	// unknown, not that ESPN flagged no one.
-	WinnerFlagUnknown bool `json:"-"`
+	// FromStorage marks a candidate rebuilt from the stored row (the
+	// finalization backlog) rather than observed from the provider this cycle.
+	// The row keeps no flag, so its nil WinnerFlagID means unknown, not that
+	// ESPN flagged no one; an observation of the same match outranks it.
+	FromStorage bool `json:"-"`
 	// WinnerResolved marks a WinnerID resolved from the final shootout
 	// evidence: finalization stores it as given, null included, where a
 	// sparse observation's null would otherwise keep the stored winner.

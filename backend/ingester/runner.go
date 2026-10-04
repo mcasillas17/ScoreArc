@@ -520,7 +520,11 @@ func mergeCandidate(current, incoming model.Match) model.Match {
 		return incoming
 	}
 	sameStateRank := matchStateRank(current.State) == matchStateRank(incoming.State)
-	if matchStateRank(current.State) >= matchStateRank(incoming.State) {
+	// The further state survives. At equal state an observation outranks a row
+	// rebuilt from storage -- its team ids, winner flag and totals are this
+	// cycle's -- and otherwise the current candidate survives.
+	if matchStateRank(current.State) > matchStateRank(incoming.State) ||
+		(sameStateRank && (!current.FromStorage || incoming.FromStorage)) {
 		incoming, current = current, incoming
 	}
 	if incoming.Round == "" {
@@ -535,11 +539,6 @@ func mergeCandidate(current, incoming model.Match) model.Match {
 	if sameStateRank {
 		incoming.BracketConfirmed =
 			incoming.BracketConfirmed || current.BracketConfirmed
-		// A row rebuilt from storage knows no flag; an observation of the
-		// same match does, nil included.
-		if incoming.WinnerFlagUnknown && !current.WinnerFlagUnknown {
-			incoming.WinnerFlagID, incoming.WinnerFlagUnknown = current.WinnerFlagID, false
-		}
 	}
 	incoming.HomePlaceholder = (incoming.HomePlaceholder || current.HomePlaceholder) &&
 		isUnresolvedTeam(incoming.Home)
