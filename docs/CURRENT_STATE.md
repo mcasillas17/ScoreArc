@@ -474,7 +474,9 @@ ids are tested translations, not equalities
 `T16.2-standings-dedup` (a team in two provider tables) awaits an owner decision.
 Detail rows stored before T16.2 serve canonical sides; their
 `ownGoal`/`athleteId` are recovered at read time from aligned `match_event`
-rows where participation was captured, and are `null` otherwise. Their
+rows where participation was captured, and are `null` otherwise (a goal
+re-credited or reclassified between the last captured poll and the final
+summary is not detected). Their
 shootout winners and aggregates are served as stored; where they disagree,
 neither is provably final, and correction needs an approved operator procedure.
 How many production rows fall in each case is unmeasured. Production acceptance is

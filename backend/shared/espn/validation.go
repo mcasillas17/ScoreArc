@@ -28,7 +28,8 @@ func parseSuppliedShootoutScore(raw json.RawMessage) (int, bool, error) {
 // (parseSuppliedShootoutScore): a non-negative integral JSON number, or a
 // string holding one after trimming, with null and "" read as 0; absent and
 // anything else are not finite. Scoreboard and bracket totals pass the narrower
-// scoreboardTotal first, which admits only digit strings.
+// scoreboardTotal first: absent, null, "", a digit string or a non-negative
+// integer number.
 func jsNumber(raw json.RawMessage) (value float64, finite bool) {
 	if len(raw) == 0 {
 		return 0, false

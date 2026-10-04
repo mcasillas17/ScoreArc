@@ -88,9 +88,13 @@ type legacyGoal struct {
 // lists from the same summary keyEvents in the same order, so the scorers and
 // the goal events must have the same length and agree pairwise on canonical
 // side, minute, penalty and shootout. Any disagreement -- participation never
-// captured, a side the reader could not attribute, a later summary than the
-// events -- leaves every scorer unknown rather than guessing which event each
-// one was. Run after attributeDetail, which supplies the canonical sides.
+// captured, a side the reader could not attribute, a later summary whose goals
+// differ in count, side, minute, penalty or shootout -- leaves every scorer
+// unknown rather than guessing which event each one was. Players and goal
+// types are not compared (nothing is matched by name), so a later summary that
+// only re-credited a goal's player or reclassified it as an own goal is not
+// detected: the documented residual of the legacy-data gap (READER_CONTRACT).
+// Run after attributeDetail, which supplies the canonical sides.
 func recoverLegacyScorers(scorers []espn.Scorer, raw []byte) error {
 	if len(raw) == 0 {
 		return nil

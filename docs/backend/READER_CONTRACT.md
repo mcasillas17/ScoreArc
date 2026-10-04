@@ -182,8 +182,14 @@ both fields only when every scorer pairs with the event at its ordinal on
 canonical side, minute, penalty and shootout. `athleteId` is the player's one id
 on the match's source in `player_external_ref`; a player with none, or with two,
 is `null`. Any disagreement — participation never captured or partly skipped, a
-side the reader cannot attribute, events from another poll than the summary —
-leaves every scorer in that match `null`. Nothing is matched by name. The cost
+side the reader cannot attribute, events from another poll whose goals differ
+from the summary's in count, side, minute, penalty or shootout — leaves every
+scorer in that match `null`. Nothing is matched by name, so one residual is not
+detected: participation capture does not block finalization, and if ESPN
+re-credited a goal to another player, or reclassified it as an own goal,
+between the last captured poll and the final summary without changing those
+fields, the recovered `athleteId`/`ownGoal` is the earlier poll's. That residual
+is part of the legacy-row acceptance gap below. The cost
 is bounded: current rows pay one jsonpath test; a legacy row adds one
 primary-key range scan of `match_event` and one indexed `player_external_ref`
 lookup per goal. A go-db test plans the match, team-schedule and summary queries
@@ -206,9 +212,11 @@ approved operator procedure; how many exist in production is unmeasured. Rows
 finalized from now on store one final evidence for both.
 
 Legacy rows without aligned events stay `null`; nothing else in the database
-holds their own-goal flag or athlete id. The production share of each case is
-unmeasured: measuring it is part of production acceptance, and correcting the
-rest would need a separately approved operator procedure.
+holds their own-goal flag or athlete id. A recovered row can carry an earlier
+poll's player or own-goal flag for a goal re-credited or reclassified before the
+final summary (above). The production share of each case is unmeasured:
+measuring it is part of production acceptance, and correcting the rest would
+need a separately approved operator procedure.
 
 The participation mapper classifies an event as an own goal when ESPN's type
 contains `own`; the scorer mapper requires exactly `own-goal`, the only value

@@ -14,7 +14,7 @@ import (
 // tag ("round-of-32" ... "final") instead of belonging to a group.
 //
 // Divergence from the TS mapper (intentional, not a parity break): the TS
-// mapBracket groups matches into BracketRound[] (slug + name + matches) for
+// mapBracket groups matches into BracketRound[] (slug + matches) for
 // direct rendering. The Go port returns a flat []BracketMatch — each row
 // already carries its own Round slug (reusing the same vocabulary as
 // Match.Round) — because Task 6 upserts these as individual `match` rows;

@@ -809,7 +809,8 @@ its three unregistered items, with match, team, nested team and player ids as
 tested translations ([contract](backend/READER_CONTRACT.md#t162-identity-and-dto-contract)).
 `T16.2-standings-dedup` (cross-table membership) awaits an owner decision; rows
 stored earlier recover `ownGoal`/`athleteId` only from aligned captured match
-events, else `null`. Shootout winners and aggregates of rows finalized before
+events, else `null` (a goal re-credited or reclassified after the last captured
+poll is not detected). Shootout winners and aggregates of rows finalized before
 T16.2 are served as stored; where they disagree neither is provably final,
 nothing is rewritten, correction needs a separately approved operator procedure,
 and how many production rows are affected is unmeasured. E10/E17 gaps and every
