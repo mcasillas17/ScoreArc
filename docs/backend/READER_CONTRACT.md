@@ -88,12 +88,16 @@ Expectations come from three kinds of evidence:
   languages read the same bytes.
 - **Synthetic:** labeled in `evidence.synthetic`. These are the query window
   and live-minute events, freshness snapshots, transport paths, the summary
-  overlay (including a goal and a card credited to neither side), the shootout
-  precedence cases, the unnamed and tie/dedup/malformed standings tables, the
-  player missing-context overview, test match and bracket UUIDs, the
-  integration suite's standings tie rows, provisional team, sealed legacy
-  detail row and resolver-minted match, and the seeded Liga MX standing behind
-  the reader team record and standing summary. None is a production crosswalk.
+  overlay (including a goal and a card credited to neither side, and its
+  header-identity and level-header cases), the scoreboard shootout precedence
+  cases, the clockless and live-shootout bracket events, the unnamed and
+  tie/dedup/malformed standings tables, the player missing-context overview,
+  test match and bracket UUIDs, the integration suite's standings tie rows,
+  provisional team, stored clockless live row, sealed legacy detail rows with
+  their aligned match events, resolver-minted match, finalization winner rows,
+  and the Leagues Cup competition, teams and match row under the recorded own
+  goal, and the seeded Liga MX standing behind the reader team record and
+  standing summary. None is a production crosswalk.
 - **Crosswalk:** provider-to-canonical team ids come from the production seed
   (`backend/config/teams.seed.json`) and are verified in both languages; the
   go-db suite stores them as `team_external_ref` rows, and proves match ids

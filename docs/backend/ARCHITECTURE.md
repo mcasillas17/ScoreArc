@@ -324,9 +324,13 @@ the seal is the intended single `match_pkey` probe with two shared-buffer hits.
   with FK SQLSTATE `23503` (the T7.18 out-of-scope gap documented above). A match
   crosswalk hit is verified against the competition and season being ingested, so
   one provider event id cannot carry facts across competitions.
-  `Store.Competition` and `Store.Player` exist for the same crosswalk but have no
-  production caller yet: the ingester takes the competition from its own config
-  (`comp.ID`), and player identity is written by the follow-on slice. The ESPN mappers
+  `Store.Competition` exists for the same crosswalk but has no production caller
+  yet: the ingester takes the competition from its own config (`comp.ID`).
+  `Store.Player` is in production use: the participation writer (`WriteParticipation`,
+  on the summary path) and the squad writer (`ReplaceSquad`) resolve each
+  provider athlete through `player_external_ref`, minting a canonical player on
+  first sight. Those `match_event` player ids are what T16.2's legacy scorer
+  recovery reads. The ESPN mappers
   still speak ESPN ids; downstream of the resolver only the provider references the
   crosswalk section lists stay provider-scoped (the `match_detail` scorer/card team
   ids and `athleteId`, which the reader translates or serves as provider-scoped, and

@@ -242,10 +242,17 @@ scoring probability; the core of the Phase-4 models).
 
 **Data source nuance:** ESPN's keyless API keys competitions by **slug**
 (`fifa.world`, `mex.1`, `eng.1`, `esp.1`, …); those slugs live on each competition
-in `competitions.ts`. IDs for teams/matches are **ours**, not ESPN's. ESPN's ids live
-only in the `*_external_ref` crosswalk tables, which map `(source, source_id)` to a
-canonical id — so a second source describes the same entity instead of duplicating it.
-See `docs/superpowers/specs/2026-08-12-canonical-identity-design.md`.
+in `competitions.ts`. In our backend, entity keys for teams, matches and players are
+**ours**, not ESPN's: the `*_external_ref` crosswalk tables map `(source, source_id)`
+to a canonical id — so a second source describes the same entity instead of
+duplicating it. Two identity spaces coexist until cutover: the site's ESPN-backed
+store still serves ESPN's match and team ids, while our reader serves canonical
+match UUIDs and team slugs. A few provider references are also kept unresolved by
+design — stored scorer/card team ids (the reader translates them),
+`Scorer.athleteId`, and a player's career-club ids — and lineup jersey URLs still
+embed ESPN's event and athlete ids (the open `T10.2-lineups` gap). See
+`docs/superpowers/specs/2026-08-12-canonical-identity-design.md` and
+[READER_CONTRACT, T16.2](docs/backend/READER_CONTRACT.md#t162-identity-and-dto-contract).
 
 ## 10. Where everything lives (the map)
 
