@@ -182,57 +182,37 @@ exit **2**. State is persisted before messages are printed, so this is bounded
 incident deduplication, **not an exactly-once delivered notification service**.
 No actual messages are sent to external notification services.
 
-`.github/workflows/match-freshness.yml` is **manual `workflow_dispatch` only**.
-After separately approving the public-endpoint check, open **Actions → Match
-freshness watchdog (manual) → Run workflow**, choose the reviewed ref, and use
-these exact inputs:
+The Actions workflow now uses a **separate version-2 durable outbox** around this
+same checker; the version-1 local CLI above retains its console-only behavior.
+Both reject missing/corrupt/incompatible state. Do not feed a v1 file to the v2
+monitor or bootstrap over it: migration requires an owner-reviewed preservation
+of active incidents and pending delivery history.
 
-| Manual invocation | `initialize_state` | `state_run_id` |
-|---|---|---|
-| First run, explicitly creating incident history | `true` | Leave blank |
-| Every subsequent run, restoring incident history | `false` (default) | Run ID holding the latest valid `match-freshness-state` artifact |
+`.github/workflows/match-freshness.yml` remains **manual-only and disabled by
+default**. The job requires repository variable `MATCH_FRESHNESS_ENABLED=true`
+and `refs/heads/main`; the CLI independently checks enablement before state or
+network work. A commented five-minute schedule is an activation recipe, not an
+active trigger. No production settings, recipients or notifications are configured.
 
-Exactly one mode is required. Both bootstrap and a run ID, neither mode, or a
-non-positive/non-numeric restore ID fail input validation before the check.
-Only explicit bootstrap passes `--init-state`; restore never initializes or
-resets state if the artifact/file is missing, expired, or corrupt. Repeating
-bootstrap on a later fresh runner **starts new history** and may repeat openings
-or lose incident continuity: it is not a routine retry or a silent repair path.
+The only input is `initialize_state` (default false). Explicit initialization is
+allowed only after bounded API enumeration proves there is no prior checkpoint or
+uncertain preparation. Later runs automatically select the newest trusted
+state-bearing run, including failures, and prefer its acknowledged checkpoint to
+its pending checkpoint. There is no operator-selected older `state_run_id` bypass.
+Unknown/expired/deleted/corrupt newest state blocks; it never means healthy data.
 
-The workflow checks the production public reader and serializes its runs.
-After an atomic valid state write, the script reports `state_written=true`
-through `GITHUB_OUTPUT`, including when an incident makes the check exit 1 or
-later lock cleanup fails. An `always()` upload preserves that newly produced
-`state.json` as `match-freshness-state`. Failures before the write do not republish
-an unchanged restored file or a corrupt file as a new state artifact. Inspect the
-upload step and artifact even when the overall run is red; a failed upload means
-the local state was not durably carried to the next run.
+Runs serialize in the existing concurrency group. Preparation records incident
+transitions and reserves bounded send attempts; `match-freshness-pending` must
+upload successfully before delivery. Delivery additionally requires
+`MATCH_FRESHNESS_DELIVERY_ENABLED=true` and owner-configured
+`MATCH_FRESHNESS_WEBHOOK_URL`. Successful per-event acknowledgments are saved in
+`match-freshness-state`. Both artifacts retain for 90 days. Failed final upload
+leaves the pending checkpoint authoritative, with a documented duplicate risk.
 
-**No automatic latest selection exists.** The owner must manually select the
-latest state-bearing run, including failed incident runs, and carry its run ID
-into the next invocation. Selecting an older artifact rolls back deduplication
-history and can repeat openings or omit resolutions. Rolling back workflow/code
-does not roll state back safely; use the latest compatible state, and handle
-scope/origin/version mismatches explicitly rather than silently resetting.
-Artifacts expire after 90 days and are not permanent storage. Loss/expiry
-requires an explicit owner decision about lost incident history before any new
-bootstrap.
-
-Checkout, setup-node, download-artifact and upload-artifact use immutable commit
-pins. The checkout/download/upload pins were verified against their official
-GitHub tag refs on 2026-09-19, not inferred from remembered version tags.
-
-**Not activated here:** the owner must separately approve a cadence (for example
-every **5 minutes**) and a durable latest-state mechanism before adding a schedule.
-Expected alert latency includes cadence, request time, and platform scheduling
-delay; it is not a hard real-time SLA. Configure and verify GitHub Actions
-workflow-failure notifications for the intended recipients and, if desired,
-an explicitly approved transition-aware notifier. Native workflow-failure
-notifications may repeat despite console transition deduplication. Verify an
-opening, continued failure, recovery, recurrence and state-loss failure in the
-chosen delivery channel before claiming alerts are delivered. This change
-does not configure recipients, send a real alert, enable a service or activate
-a production schedule.
+See [the operational contract and activation checklist](../../docs/backend/MATCH_FRESHNESS.md#durable-match-monitor-activation-disabled)
+for the single webhook protocol, costs, state barriers, rollback, scope migration,
+retry exhaustion and separate recipient acceptance. Workflow success is never
+proof that a person received an alert.
 
 Focused local checks (Docker environment as below):
 
@@ -240,7 +220,7 @@ Focused local checks (Docker environment as below):
 cd backend
 go test -count=1 ./reader -run 'TestFreshness|TestOpenAPIFreshness|TestTeamProfile'
 cd ..
-npx vitest run src/lib/matchFreshness.test.ts scripts/match-freshness-watchdog.test.ts
+npx vitest run src/lib/matchFreshness.test.ts scripts/match-freshness-*.test.ts
 ```
 
 ## Observability

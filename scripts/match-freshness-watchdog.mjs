@@ -13,7 +13,7 @@ const MAX_TIMEOUT_MS = 30000;
 const idPattern = /^[a-z0-9][a-z0-9-]{0,79}$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function scopeKey(scope) {
+export function scopeKey(scope) {
   if (!scope || typeof scope.competition !== 'string' || typeof scope.season !== 'string' ||
       !idPattern.test(scope.competition) || !idPattern.test(scope.season)) {
     throw new Error('Invalid competition/season scope');
@@ -33,7 +33,7 @@ export function currentScopes(registry) {
   return scopes;
 }
 
-function origin(baseURL) {
+export function origin(baseURL) {
   const url = new URL(baseURL);
   const local = url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
   if ((url.protocol !== 'https:' && !local) || url.username || url.password || url.search || url.hash || url.pathname !== '/') {
@@ -51,7 +51,11 @@ const list = (value, valid) => Array.isArray(value) && value.every(valid);
 const exact = (value, keys) => record(value) && Object.keys(value).sort().join(',') === keys.split(' ').sort().join(',');
 const team = value => exact(value, 'id name abbr crestUrl') && [value.id, value.name, value.abbr].every(text) &&
   value.id.length > 0 && nullable(value.crestUrl, text);
-const scorer = value => exact(value, 'teamId player minute penalty shootout') &&
+const scorer = value => record(value) &&
+  ['teamId', 'player', 'minute', 'penalty', 'shootout'].every(key => Object.hasOwn(value, key)) &&
+  Object.keys(value).every(key => ['teamId', 'player', 'minute', 'penalty', 'shootout', 'ownGoal', 'athleteId', 'playerSlug'].includes(key)) &&
+  (!Object.hasOwn(value, 'ownGoal') || typeof value.ownGoal === 'boolean') &&
+  ['athleteId', 'playerSlug'].every(key => !Object.hasOwn(value, key) || nullable(value[key], text)) &&
   [value.teamId, value.player, value.minute].every(text) && typeof value.penalty === 'boolean' && typeof value.shootout === 'boolean';
 const card = value => exact(value, 'teamId player minute type') &&
   [value.teamId, value.player, value.minute].every(text) && ['yellow', 'red'].includes(value.type);
@@ -71,7 +75,7 @@ function validMatch(value) {
     nullable(value.winProbability, item => exact(item, 'home draw away') && [item.home, item.draw, item.away].every(finite));
 }
 
-async function boundedJSON(response, maxBytes) {
+export async function boundedJSON(response, maxBytes) {
   if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '')) throw new Error('content-type');
   const length = response.headers.get('content-length');
   if (length !== null && (!/^\d+$/.test(length) || Number(length) > maxBytes)) throw new Error('response-size');
@@ -119,14 +123,14 @@ export async function checkScope({ baseURL, competition, season, timeoutMs = 100
     // check. Retained off-season poll failures are visible, not active incidents.
     const ok = freshness.status === 'dormant' ||
       (['fresh', 'empty'].includes(freshness.status) && !['partial', 'failed'].includes(freshness.pollStatus));
-    return { ok, count, context: `${key} matches=${count} freshness=${freshness.status} poll=${freshness.pollStatus} stale=${freshness.staleMatches} overdue=${freshness.overdueMatches}` };
+    return { ok, count, observation: { freshness: freshness.status, poll: freshness.pollStatus, stale: freshness.staleMatches, overdue: freshness.overdueMatches, error: null }, context: `${key} matches=${count} freshness=${freshness.status} poll=${freshness.pollStatus} stale=${freshness.staleMatches} overdue=${freshness.overdueMatches}` };
   } catch (error) {
     // Only constant contract/error categories; never echo URLs or raw fetch errors.
     const message = error instanceof Error ? error.message : '';
     const reason = controller.signal.aborted ? 'timeout' :
       /^(http-\d{3}|content-type|response-size|body|json|body-contract|counts-contract)$/.test(message) ? message :
         freshness === null && /^(Invalid|Contradictory|Empty requires)/.test(message) ? 'headers-contract' : 'request';
-    return { ok: false, count, context: `${key} matches=${count ?? 'unknown'} stale=${freshness?.staleMatches ?? 'unknown'} overdue=${freshness?.overdueMatches ?? 'unknown'} error=${reason}` };
+    return { ok: false, count, observation: { freshness: null, poll: null, stale: null, overdue: null, error: reason }, context: `${key} matches=${count ?? 'unknown'} stale=${freshness?.staleMatches ?? 'unknown'} overdue=${freshness?.overdueMatches ?? 'unknown'} error=${reason}` };
   } finally {
     clearTimeout(timer);
     controller.abort();
