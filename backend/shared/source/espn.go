@@ -282,9 +282,9 @@ func mapSummary(raw []byte, match model.Match) (SummaryResult, error) {
 	if err != nil {
 		return SummaryResult{}, err
 	}
-	// One precedence (T16.2): the summary header's totals, then the scoreboard's
-	// own evidence (structured totals, else its note), then the note here for a
-	// caller whose match did not come from the scoreboard mapper.
+	// One precedence (T16.2): the summary header's totals, then the observation's
+	// own evidence (scoreboard or bracket: structured totals, else its note), then
+	// the note here for a caller whose match came from neither mapper.
 	if detail.Shootout == nil {
 		detail.Shootout = match.Shootout
 	}

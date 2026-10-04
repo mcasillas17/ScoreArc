@@ -111,9 +111,10 @@ type BracketMatch struct {
 	Minute       *string     `json:"minute"`
 	WinnerID     *string     `json:"winnerId"`
 	Note         *string     `json:"note"`
-	// Shootout is the observation's structured shootout totals, carried to the
-	// ingester's candidate so the summary precedence ranks them above the note.
-	// Not part of the served bracket.
+	// Shootout is the bracket observation's own penalty-shootout evidence
+	// (structured competitor totals, else the anchored note), carried to the
+	// ingester's candidate, where the summary header outranks it. Not part of
+	// the served bracket.
 	Shootout *Shootout `json:"-"`
 	// WinnerFlagID is ESPN's own winner flag (see Match.WinnerFlagID).
 	WinnerFlagID *string `json:"-"`
