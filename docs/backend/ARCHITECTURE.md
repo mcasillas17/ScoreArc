@@ -136,13 +136,17 @@ untouched and do not use that escape hatch.
 - **official**(id PK `uuid` v7, full_name, updated_at) — referees, assistants, fourth officials and video officials as **people** (T7.14). Their names arrive inside the embedded core match payload; there is no stable official endpoint. A name labels a person but is not an identity, so minting a canonical uuid and resolving through the crosswalk is what keeps two same-named referees distinct and lets a provider rename an official without creating a second one.
 - **player**(id PK `uuid` v7, full_name, known_as, birth_date, nationality, position, updated_at) — resolved from the provider's athlete id via `player_external_ref`, never from a display name: two players who share a name must not become one person. Note there is deliberately **no `team_id`** — a player's club is recorded per `appearance`, so a transfer needs no special handling.
 
-### Source crosswalk (the only map from provider ids to canonical ids)
-Every provider id resolves to a canonical id here, and nowhere else. Two
-provider-shaped values are stored outside it, both by design (T16.2,
+### Source crosswalk (the only map from provider entity ids to canonical ids)
+Every provider entity id (competition, team, player, match, official) resolves
+to a canonical id here, and nowhere else. Two provider entity references are
+stored outside it, both by design (T16.2,
 [READER_CONTRACT](READER_CONTRACT.md#t162-identity-and-dto-contract)):
 `match_detail` scorers and cards keep the provider's team ids, which the reader
 translates through `team_external_ref` when it reads; and `Scorer.athleteId` is
 the source provider's athlete id, stored and served as a provider-scoped value.
+Provider content ids are not entities and are never resolved: they stay ESPN's
+own opaque ids, such as `match_play.source_id` (the play id) and
+`match_detail.videos[].id`.
 
 - **competition_external_ref** / **team_external_ref** / **player_external_ref** /
   **match_external_ref** / **official_external_ref**(PK (source, source_id), *canonical id*→entity ON DELETE CASCADE, first_seen_at, last_seen_at) — the PK is `(source, source_id)`, not the canonical id, so **many** provider ids may map to **one** entity, which is exactly what merging duplicates produces. Each has an index on the canonical id for the reverse lookup. `official_external_ref` (T7.14) is the same shape for officials, so the second match a referee appears in resolves to the person already minted rather than to a new one.

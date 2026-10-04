@@ -78,7 +78,7 @@ OpenAPI 3.1 (kin-openapi).
 
 ### Task 4 — standings
 - [x] Go: port `inTableOrder`; rows kept after first-table dedup keep their true positions; tests for recorded order, duplicate/partial rank fallback, dedup ranks.
-- [x] TS: reject empty tables and rows missing team identity or a required stat; legitimate-empty `{}`/`{children: []}` stays `[]`; unnamed table labeled with `rc.competition.shortName`.
+- [x] TS: reject empty tables and rows missing team identity or a required stat; only `{children: []}` is a legitimate empty set and stays `[]`, while a missing or non-array `children` (`{}`, `{children: null}`) rejects the payload, as in Go (review round 1 superseded the original `{}` rule); unnamed table labeled with `rc.competition.shortName`.
 - [x] Harness: `standings-rank`, `standings-malformed`, `group-label` become positive; `standings-dedup` narrowed to cross-table membership (stays registered, owner decision).
 - [x] Commit `fix: align standings order, validation and labels`.
 

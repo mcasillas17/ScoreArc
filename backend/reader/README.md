@@ -11,10 +11,12 @@ competitions, seasons, and teams; UUIDs for matches — not a provider's. Ids st
 opaque strings to consumers. Provider ids live in the `*_external_ref` crosswalk
 tables; the reader reads them only to translate stored references: a scorer's or
 card's `teamId` becomes the canonical side it names (or `null`). The one
-provider-scoped value it serves is `Scorer.athleteId`, the source provider's
-athlete id, which a client may resolve to a player slug and must never put in a
-URL. For detail stored before T16.2 it is read from the scorer's aligned
-`match_event` player through `player_external_ref`. See
+provider-scoped player or team identity it serves is `Scorer.athleteId`, the
+source provider's athlete id, which a client may resolve to a player slug and
+must never put in a URL. For detail stored before T16.2 it is read from the
+scorer's aligned `match_event` player through `player_external_ref`. Content
+ids are a different kind of value: a video's or a news article's `id` is ESPN's
+own opaque id, served as received and never resolved. See
 [READER_CONTRACT, T16.2](../../docs/backend/READER_CONTRACT.md#t162-identity-and-dto-contract).
 
 ## Runtime configuration

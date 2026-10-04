@@ -80,8 +80,11 @@ publishes its complete OpenAPI 3.1 contract at
 | `GET /v1/competitions/{comp}/news` | live ESPN proxy, 90 s internal TTL | 60 s |
 | `GET /v1/matches/{id}` | Postgres | 30 s |
 
-Responses match the TypeScript models in `src/server/data/types.ts`. Empty
-collections are JSON arrays, never `null`. Competition and season identifiers
+Responses are shaped after the TypeScript models in `src/server/data/types.ts`,
+but DTO and query parity is not complete and the site still reads ESPN: the
+implemented differences are registered gaps in
+[`READER_CONTRACT`](docs/backend/READER_CONTRACT.md). Empty collections are JSON
+arrays, never `null`. Competition and season identifiers
 are checked against the embedded registry before a query runs; every SQL value
 uses a pgx parameter.
 
