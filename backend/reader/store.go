@@ -53,7 +53,7 @@ SELECT m.id, m.kickoff, m.state, NULLIF(m.minute, ''), m.status_detail, m.status
        m.home_score, m.away_score, m.winner_id, m.note,
        ht.id, ht.name, ht.abbr, ht.crest_url,
        at.id, at.name, at.abbr, at.crest_url,
-       d.scorers, d.cards, d.stats, d.win_probability, d.shootout, d.shootout_detail,` + sideRefsColumns + `
+       d.scorers, d.cards, d.stats, d.win_probability, d.shootout, d.shootout_detail,` + sideRefsColumns + legacyGoalsColumn + `
 FROM match m
 JOIN team ht ON ht.id = m.home_team_id
 JOIN team at ON at.id = m.away_team_id
@@ -81,7 +81,7 @@ func scanMatches(rows pgx.Rows) ([]Match, error) {
 		var id uuid.UUID
 		var kickoff time.Time
 		var state string
-		var scorers, cards, stats, winProbability, shootout, shootoutDetail []byte
+		var scorers, cards, stats, winProbability, shootout, shootoutDetail, legacyGoals []byte
 		var homeRefs, awayRefs []string
 		if err := rows.Scan(
 			&id, &kickoff, &state, &match.Minute, &match.StatusDetail, &match.StatusName,
@@ -89,7 +89,7 @@ func scanMatches(rows pgx.Rows) ([]Match, error) {
 			&match.Home.ID, &match.Home.Name, &match.Home.Abbr, &match.Home.CrestURL,
 			&match.Away.ID, &match.Away.Name, &match.Away.Abbr, &match.Away.CrestURL,
 			&scorers, &cards, &stats, &winProbability, &shootout, &shootoutDetail,
-			&homeRefs, &awayRefs,
+			&homeRefs, &awayRefs, &legacyGoals,
 		); err != nil {
 			return nil, err
 		}
@@ -114,6 +114,9 @@ func scanMatches(rows pgx.Rows) ([]Match, error) {
 		normalizeMatch(&match)
 		attributeDetail(match.Scorers, match.Cards,
 			matchSide{id: match.Home.ID, refs: homeRefs}, matchSide{id: match.Away.ID, refs: awayRefs})
+		if err := recoverLegacyScorers(match.Scorers, legacyGoals); err != nil {
+			return nil, err
+		}
 		matches = append(matches, match)
 	}
 	return matches, rows.Err()
@@ -244,7 +247,7 @@ func (s *Store) Bracket(ctx context.Context, competition, season string) ([]Brac
 const summarySQL = `
 SELECT d.scorers, d.cards, d.stats, d.win_probability, d.shootout_detail,
        d.lineups, d.videos, d.info, d.form, d.commentary, d.h2h,
-       m.home_team_id, m.away_team_id,` + sideRefsColumns + `
+       m.home_team_id, m.away_team_id,` + sideRefsColumns + legacyGoalsColumn + `
 FROM match_detail d
 JOIN match m ON m.id = d.match_id
 WHERE d.match_id = $1`
@@ -259,12 +262,12 @@ func (s *Store) MatchSummary(ctx context.Context, id string) (*MatchSummary, err
 		return nil, ErrNotFound
 	}
 	var scorers, cards, stats, winProbability, shootoutDetail []byte
-	var lineups, videos, info, form, commentary, h2h []byte
+	var lineups, videos, info, form, commentary, h2h, legacyGoals []byte
 	var home, away matchSide
 	if err := s.db.QueryRow(ctx, summarySQL, matchID).Scan(
 		&scorers, &cards, &stats, &winProbability, &shootoutDetail,
 		&lineups, &videos, &info, &form, &commentary, &h2h,
-		&home.id, &away.id, &home.refs, &away.refs,
+		&home.id, &away.id, &home.refs, &away.refs, &legacyGoals,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
@@ -302,6 +305,9 @@ func (s *Store) MatchSummary(ctx context.Context, id string) (*MatchSummary, err
 	}
 	normalizeMatchSummary(summary)
 	attributeDetail(summary.Scorers, summary.Cards, home, away)
+	if err := recoverLegacyScorers(summary.Scorers, legacyGoals); err != nil {
+		return nil, err
+	}
 	return summary, nil
 }
 
@@ -486,7 +492,7 @@ SELECT m.id, m.kickoff, m.state, NULLIF(m.minute, ''), m.status_detail, m.status
        m.home_score, m.away_score, m.winner_id, m.note,
        ht.id, ht.name, ht.abbr, ht.crest_url,
        at.id, at.name, at.abbr, at.crest_url,
-       d.scorers, d.cards, d.stats, d.win_probability, d.shootout, d.shootout_detail,` + sideRefsColumns + `
+       d.scorers, d.cards, d.stats, d.win_probability, d.shootout, d.shootout_detail,` + sideRefsColumns + legacyGoalsColumn + `
 FROM match m
 JOIN team ht ON ht.id = m.home_team_id
 JOIN team at ON at.id = m.away_team_id

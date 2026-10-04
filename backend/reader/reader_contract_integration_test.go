@@ -7,6 +7,7 @@ import (
 	"maps"
 	"net/http"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -590,6 +591,112 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		}
 		if found != 2 {
 			t.Fatalf("legacy match on %d of 2 list projections", found)
+		}
+	})
+
+	t.Run("a sealed legacy row recovers scorer identity only from aligned match events", func(t *testing.T) {
+		// Synthetic: legacy detail rows whose participation was captured. Every
+		// scorer pairs with the goal or own-goal event at the same ordinal on
+		// side, minute, penalty and shootout, or no scorer recovers anything.
+		home, away := vectors.Summary.Sides["home"].CanonicalID, vectors.Summary.Sides["away"].CanonicalID
+		team(t, espn.Team{ID: "4789", Name: "Ivory Coast", Abbr: "CIV"}, home)
+		team(t, espn.Team{ID: "464", Name: "Norway", Abbr: "NOR"}, away)
+		player := func(id, name string, refs ...string) {
+			if _, err := pool.Exec(ctx, `INSERT INTO player (id, full_name) VALUES ($1,$2)`, id, name); err != nil {
+				t.Fatal(err)
+			}
+			for _, ref := range refs {
+				if _, err := pool.Exec(ctx, `INSERT INTO player_external_ref (source, source_id, player_id) VALUES ($1,$2,$3)`, ref[:4], ref[5:], id); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		striker, defender, twice := "018f0000-0000-7000-8000-00000016a001", "018f0000-0000-7000-8000-00000016a002", "018f0000-0000-7000-8000-00000016a003"
+		player(striker, "Legacy Striker", "espn:916001")
+		player(defender, "Legacy Defender", "espn:916002", "fbrf:916002")
+		player(twice, "Legacy Twice", "espn:916003", "espn:916004")
+		legacy := `[{"teamId":"4789","player":"Legacy Striker","minute":"10'","penalty":false,"shootout":false},
+			{"teamId":"4789","player":"Legacy Defender","minute":"20'","penalty":false,"shootout":false},
+			{"teamId":"464","player":"Legacy Twice","minute":"30'","penalty":true,"shootout":false},
+			{"teamId":"464","player":"Legacy Unknown","minute":"120'","penalty":true,"shootout":true}]`
+		type event struct {
+			player            *string
+			team, kind        string
+			minute            string
+			penalty, shootout bool
+		}
+		aligned := []event{
+			{&striker, home, "yellow", "5'", false, false},
+			{&striker, home, "goal", "10'", false, false},
+			{&defender, home, "own_goal", "20'", false, false},
+			{&twice, away, "goal", "30'", true, false},
+			{nil, away, "goal", "120'", true, true},
+		}
+		misaligned := slices.Clone(aligned)
+		misaligned[3].minute = "31'"
+		seed := func(id, kickoff string, events []event) {
+			if _, err := pool.Exec(ctx, `INSERT INTO match (id, competition_id, season_id, kickoff, state, home_team_id, away_team_id, home_score, away_score, source)
+				VALUES ($1,'world-cup','2026',$4,'finished',$2,$3,2,1,'espn')`, id, home, away, kickoff); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := pool.Exec(ctx, `INSERT INTO match_detail (match_id, scorers, cards) VALUES ($1, $2, '[]')`, id, legacy); err != nil {
+				t.Fatal(err)
+			}
+			for seq, e := range events {
+				if _, err := pool.Exec(ctx, `INSERT INTO match_event (match_id, seq, player_id, team_id, type, minute, penalty, shootout, detail)
+					VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'')`, id, seq, e.player, e.team, e.kind, e.minute, e.penalty, e.shootout); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := pool.Exec(ctx, `UPDATE match SET finalized_at=now() WHERE id=$1`, id); err != nil {
+				t.Fatal(err)
+			}
+		}
+		recovered, unrecovered := "018f0000-0000-7000-8000-000000016023", "018f0000-0000-7000-8000-000000016024"
+		seed(recovered, "2026-07-05T17:00:00Z", aligned)
+		seed(unrecovered, "2026-07-06T17:00:00Z", misaligned)
+
+		scorer := func(team, player, minute string, penalty, shootout bool, ownGoal, athleteID any) map[string]any {
+			return map[string]any{"teamId": team, "player": player, "minute": minute, "penalty": penalty, "shootout": shootout, "ownGoal": ownGoal, "athleteId": athleteID}
+		}
+		want := map[string][]any{
+			// A player with two ids on the match's source has no single provider
+			// id, and one whose other id is on another source keeps this one.
+			recovered: {
+				scorer(home, "Legacy Striker", "10'", false, false, false, "916001"),
+				scorer(home, "Legacy Defender", "20'", false, false, true, "916002"),
+				scorer(away, "Legacy Twice", "30'", true, false, false, nil),
+				scorer(away, "Legacy Unknown", "120'", true, true, false, nil),
+			},
+			unrecovered: {
+				scorer(home, "Legacy Striker", "10'", false, false, nil, nil),
+				scorer(home, "Legacy Defender", "20'", false, false, nil, nil),
+				scorer(away, "Legacy Twice", "30'", true, false, nil, nil),
+				scorer(away, "Legacy Unknown", "120'", true, true, nil, nil),
+			},
+		}
+		var listed []map[string]any
+		get(t, "/v1/competitions/world-cup/2026/matches", &listed)
+		var profile map[string]any
+		get(t, "/v1/competitions/world-cup/2026/teams/"+home, &profile)
+		for id, scorers := range want {
+			var summary map[string]any
+			get(t, "/v1/matches/"+id, &summary)
+			validateSchema(t, document, "MatchSummary", summary)
+			assertWire(t, "summary scorers "+id, summary["scorers"], scorers)
+			found := 0
+			for _, rows := range [][]any{wire(t, listed).([]any), profile["schedule"].([]any)} {
+				for _, row := range rows {
+					if match := row.(map[string]any); match["id"] == id {
+						found++
+						validateSchema(t, document, "Match", match)
+						assertWire(t, "list scorers "+id, match["scorers"], scorers)
+					}
+				}
+			}
+			if found != 2 {
+				t.Fatalf("match %s on %d of 2 list projections", id, found)
+			}
 		}
 	})
 
