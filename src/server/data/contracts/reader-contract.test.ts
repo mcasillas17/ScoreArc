@@ -472,10 +472,12 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     expect(urls.filter(url => url.includes('/summary'))).toHaveLength(2);
   });
 
-  it.each(vectors.scoreboard.shootoutPrecedence.cases)('applies the shared scoreboard shootout precedence: $name', async (c) => {
-    const p = vectors.scoreboard.shootoutPrecedence;
-    const event = structuredClone(scoreboard.events.find(e => e.id === p.eventId)!);
-    const competition: { notes: unknown[]; competitors: Record<string, unknown>[] } = event.competitions[0];
+  // One shared precedence case applied to recorded event 760489 (the
+  // scoreboard and bracket fixtures carry it identically).
+  type PrecedenceCase = (typeof vectors.scoreboard.shootoutPrecedence.cases)[number];
+  const withShootoutCase = <E extends { id: string; status: { type: object }; competitions: unknown[] }>(events: E[], c: PrecedenceCase) => {
+    const event = structuredClone(events.find(e => e.id === vectors.scoreboard.shootoutPrecedence.eventId)!);
+    const competition = event.competitions[0] as { notes: unknown[]; competitors: Record<string, unknown>[] };
     const sideIds: Record<string, string> = {};
     for (const competitor of competition.competitors) {
       const side = competitor.homeAway as 'home' | 'away';
@@ -487,6 +489,11 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     }
     competition.notes = c.note === null ? [] : [{ text: c.note }];
     if ('status' in c && c.status) event.status.type = { ...event.status.type, ...c.status };
+    return { event, competition, sideIds };
+  };
+
+  it.each(vectors.scoreboard.shootoutPrecedence.cases)('applies the shared scoreboard shootout precedence: $name', async (c) => {
+    const { event, sideIds } = withShootoutCase(scoreboard.events, c);
     const fixtures = storeOver(windowOver([event])).store.getFixtures(wc, '20260629-20260630');
     if (c.expected === 'error') {
       await expect(fixtures).rejects.toThrow(/Malformed scoreboard score/); // Go: MapScoreboard errors.
@@ -503,27 +510,31 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
   // It never rejects its feed: a malformed structured total is ignored there,
   // leaving the note tier.
   it.each(vectors.scoreboard.shootoutPrecedence.cases)('applies the shared shootout precedence to the team schedule: $name', (c) => {
-    const p = vectors.scoreboard.shootoutPrecedence;
-    const event = structuredClone(scoreboard.events.find(e => e.id === p.eventId)!);
-    const competition: { notes: unknown[]; competitors: Record<string, unknown>[] } = event.competitions[0];
-    const sideIds: Record<string, string> = {};
-    for (const competitor of competition.competitors) {
-      const side = competitor.homeAway as 'home' | 'away';
-      sideIds[side] = String((competitor.team as { id: string }).id);
-      const value = c.shootoutScore[side];
-      if (value === 'absent') delete competitor.shootoutScore;
-      else competitor.shootoutScore = value;
-      if ('winnerFlags' in c && c.winnerFlags) competitor.winner = c.winnerFlags[side];
-    }
-    competition.notes = c.note === null ? [] : [{ text: c.note }];
+    const { event, competition, sideIds } = withShootoutCase(scoreboard.events, c);
     if ('status' in c && c.status) {
       // The team schedule reads the competition's own status first.
-      for (const holder of [event, competition as unknown as { status: { type: object } }]) holder.status.type = { ...holder.status.type, ...c.status };
+      const holder = competition as unknown as { status: { type: object } };
+      holder.status.type = { ...holder.status.type, ...c.status };
     }
     const [match] = mapTeamSchedule({ events: [event] });
     const expected = c.expected === 'error' ? parseShootout(c.note, match.home.name, match.away.name) : c.expected;
     expect(match.shootout).toEqual(expected);
     if (c.expected !== 'error') expect(match.winnerId).toBe(c.winner ? sideIds[c.winner] : null);
+    expect([match.homeScore, match.awayScore]).toEqual([1, 1]);
+  });
+
+  // The bracket reads the same scoreboard window, so its finished winner takes
+  // the same tiers: structured totals, then the anchored note, then the flags.
+  // The TS BracketMatch carries no aggregate (the Go suite checks that one).
+  it.each(vectors.scoreboard.shootoutPrecedence.cases)('applies the shared shootout precedence to the bracket: $name', async (c) => {
+    const { event, sideIds } = withShootoutCase(bracketRaw.events, c);
+    const bracket = storeOver(windowOver(bracketRaw.events.map(e => (e.id === event.id ? event : e)))).store.getBracket(wc);
+    if (c.expected === 'error') {
+      await expect(bracket).rejects.toThrow(/Malformed scoreboard score/);
+      return;
+    }
+    const match = (await bracket).flatMap(r => r.matches).find(m => m.id === event.id)!;
+    expect(match.winnerId).toBe(c.winner ? sideIds[c.winner] : null);
     expect([match.homeScore, match.awayScore]).toEqual([1, 1]);
   });
 

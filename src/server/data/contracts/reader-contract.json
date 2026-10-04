@@ -2472,7 +2472,7 @@
    }
   },
   "liveShootout": {
-   "note": "Synthetic: recorded bracket event 760489 (Germany 3-4 Paraguay on penalties, winner flag on Paraguay) with both winner flags cleared, then mapped as recorded (finished) and with its status set to a live shootout. A finished shootout's decisive totals name the winner; a live shootout's partial totals name none, so no side advances before the match is over. Both bracket mappers, and the Go summary recovery path, follow the scoreboard's rule. aggregate: the Go bracket mapper carries the structured totals off the wire to the ingester's candidate, live or finished; the TS BracketMatch has none.",
+   "note": "Synthetic: recorded bracket event 760489 (Germany 3-4 Paraguay on penalties, winner flag on Paraguay) with both winner flags cleared, then mapped as recorded (finished) and with its status set to a live shootout. A finished shootout's decisive totals name the winner; a live shootout's partial totals name none, so no side advances before the match is over. Both bracket mappers, and the Go summary recovery path, follow the scoreboard's rule. aggregate: the Go bracket mapper carries the scoreboard tiers (structured totals, else the anchored note) off the wire to the ingester's candidate, live or finished; the TS BracketMatch has none.",
    "eventId": "760489",
    "status": {
     "state": "in",
@@ -4361,7 +4361,7 @@
    ["760488", "2026-06-30T01:00Z", "finished", "FT-Pens", "STATUS_FINAL_PEN", "449", "2869", "NED", "MAR", 1, 1, "2869", "Morocco advance 3-2 on penalties"]
   ],
   "shootoutPrecedence": {
-   "note": "Synthetic: recorded event 760489 (Germany 1-1 Paraguay, finished, structured shootoutScore 3/4, winner flag on Paraguay and the note 'Paraguay advance 4-3 on penalties') with its shootout evidence replaced per case. 'absent' removes the field; a null note removes the notes; winnerFlags, when present, replaces both winner flags; status, when present, overrides the event's status type. One precedence in both languages: summary header (where a summary is held) > scoreboard structured totals > anchored note > null. A structured total is a non-negative integer number or a string of digits ('' and null read as 0); anything else rejects the scoreboard. A finished match's winner is the side a decisive aggregate names, else the winner flags; a live shootout's partial totals name no winner. Regulation scores never change.",
+   "note": "Synthetic: recorded event 760489 (Germany 1-1 Paraguay, finished, structured shootoutScore 3/4, winner flag on Paraguay and the note 'Paraguay advance 4-3 on penalties') with its shootout evidence replaced per case. 'absent' removes the field; a null note removes the notes; winnerFlags, when present, replaces both winner flags; status, when present, overrides the event's status type. One precedence in both languages: summary header (where a summary is held) > scoreboard structured totals > anchored note > null. Every case runs through the match list, the team schedule and both bracket mappers (the bracket shares the scoreboard window, whose validation rejects the malformed cases before either bracket mapper sees them). A structured total is a non-negative integer number or a string of digits ('' and null read as 0); anything else rejects the scoreboard. A finished match's winner is the side a decisive aggregate names, else the winner flags; a live shootout's partial totals name no winner. Regulation scores never change.",
    "eventId": "760489",
    "cases": [
     {
@@ -4397,6 +4397,40 @@
       "away": "absent"
      },
      "note": "Paraguay advance 4-3 on penalties",
+     "expected": {
+      "homeScore": 3,
+      "awayScore": 4
+     },
+     "winner": "away"
+    },
+    {
+     "name": "the note outranks an opposing winner flag",
+     "shootoutScore": {
+      "home": "absent",
+      "away": "absent"
+     },
+     "note": "Paraguay advance 4-3 on penalties",
+     "winnerFlags": {
+      "home": true,
+      "away": false
+     },
+     "expected": {
+      "homeScore": 3,
+      "awayScore": 4
+     },
+     "winner": "away"
+    },
+    {
+     "name": "the note decides a missing winner flag",
+     "shootoutScore": {
+      "home": "absent",
+      "away": "absent"
+     },
+     "note": "Paraguay advance 4-3 on penalties",
+     "winnerFlags": {
+      "home": false,
+      "away": false
+     },
      "expected": {
       "homeScore": 3,
       "awayScore": 4

@@ -236,9 +236,25 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, error) {
 		(away.Score != nil && *away.Score != "" && awayScore == nil) {
 		return BracketMatch{}, fmt.Errorf("invalid score")
 	}
+	var note *string
+	if len(comp.Notes) > 0 && comp.Notes[0].Text != "" {
+		text := comp.Notes[0].Text
+		note = &text
+	}
+	homeTeam, awayTeam := mapBracketTeam(home.Team), mapBracketTeam(away.Team)
+	// The scoreboard's tiers: structured totals, then the anchored note. The
+	// aggregate rides to the ingester's candidate and decides a finished winner.
+	var noteShootout *Shootout
+	if note != nil {
+		noteShootout = ParseShootoutNote(*note, homeTeam.Name, awayTeam.Name)
+	}
+	shootout := shootoutTotals(home.ShootoutScore, away.ShootoutScore)
+	if shootout == nil {
+		shootout = noteShootout
+	}
 	winnerID, err := shootoutFirstWinnerID(
 		string(home.Team.ID), string(away.Team.ID),
-		home.ShootoutScore, away.ShootoutScore, home.Winner, away.Winner, state == MatchStateFinished,
+		home.ShootoutScore, away.ShootoutScore, noteShootout, home.Winner, away.Winner, state == MatchStateFinished,
 	)
 	if err != nil {
 		return BracketMatch{}, err
@@ -248,12 +264,6 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, error) {
 		status.Type.Name != "STATUS_ABANDONED" &&
 		status.Type.Name != "STATUS_FORFEIT" {
 		return BracketMatch{}, fmt.Errorf("finished knockout match lacks winner")
-	}
-
-	var note *string
-	if len(comp.Notes) > 0 && comp.Notes[0].Text != "" {
-		text := comp.Notes[0].Text
-		note = &text
 	}
 
 	// A live minute is ESPN's display clock; without one it is unknown (nil),
@@ -268,8 +278,8 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, error) {
 		ID:           string(ev.ID),
 		Round:        bracketRoundSlug(string(ev.ID), ev.Season.Slug),
 		Kickoff:      kickoff.Format(time.RFC3339),
-		Home:         mapBracketTeam(home.Team),
-		Away:         mapBracketTeam(away.Team),
+		Home:         homeTeam,
+		Away:         awayTeam,
 		HomeScore:    homeScore,
 		AwayScore:    awayScore,
 		State:        state,
@@ -278,7 +288,7 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, error) {
 		Minute:       minute,
 		WinnerID:     winnerID,
 		Note:         note,
-		Shootout:     shootoutTotals(home.ShootoutScore, away.ShootoutScore),
+		Shootout:     shootout,
 		WinnerFlagID: flaggedWinnerID(string(home.Team.ID), string(away.Team.ID), home.Winner, away.Winner),
 	}, nil
 }

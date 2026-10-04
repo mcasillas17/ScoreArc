@@ -19,6 +19,7 @@ import (
 
 	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/shared/assets"
+	"github.com/mcasillas17/scorearc-backend/shared/espn"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 	"github.com/mcasillas17/scorearc-backend/shared/source"
 	"github.com/mcasillas17/scorearc-backend/shared/store"
@@ -1783,6 +1784,39 @@ func TestBracketCandidateCarriesItsShootoutAggregate(t *testing.T) {
 	}
 	if merged.WinnerFlagID == nil || *merged.WinnerFlagID != winner {
 		t.Fatalf("merged winner flag %v, want %s", merged.WinnerFlagID, winner)
+	}
+}
+
+// Synthetic bracket payload: a finished shootout with no structured totals,
+// ESPN's flag on the home side and a note naming the away side. The real
+// bracket mapper takes the note tier, as the scoreboard does, so the candidate
+// hands the summary the note's aggregate and finalizes the side it names, not
+// the flag.
+func TestBracketNoteDecidesFinalizedWinnerOverOpposingFlag(t *testing.T) {
+	match := finishedMatch()
+	raw := []byte(`{"events":[{"id":"m1","date":"2026-06-11T18:00Z","season":{"slug":"final"},
+		"status":{"type":{"state":"post","completed":true,"name":"STATUS_FINAL_PEN","shortDetail":"FT-Pens"}},
+		"competitions":[{"notes":[{"text":"Away advance 4-3 on penalties"}],"competitors":[
+			{"homeAway":"home","winner":true,"score":"1","team":{"id":"home","displayName":"Home","abbreviation":"HOM"}},
+			{"homeAway":"away","winner":false,"score":"1","team":{"id":"away","displayName":"Away","abbreviation":"AWY"}}]}]}]}`)
+	bracket, err := espn.MapBracket(raw)
+	if err != nil || len(bracket) != 1 {
+		t.Fatalf("bracket %v: %v", bracket, err)
+	}
+	src := &fakeSource{bracket: bracket}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026", HasBracket: true}},
+	}
+
+	testRunner(src, repo, comp).runCycle(context.Background(), true)
+	aggregate := model.Shootout{HomeScore: 3, AwayScore: 4}
+	if src.summaryCalls != 1 || src.summaryMatch.Shootout == nil || *src.summaryMatch.Shootout != aggregate {
+		t.Fatalf("summary saw shootout %+v, want %+v", src.summaryMatch.Shootout, aggregate)
+	}
+	if repo.finalizeCalls != 1 || repo.lastFinalized.WinnerID == nil || *repo.lastFinalized.WinnerID != fakeTeamID(match.Away.ID) {
+		t.Fatalf("finalized winner %v, want %s", repo.lastFinalized.WinnerID, fakeTeamID(match.Away.ID))
 	}
 }
 

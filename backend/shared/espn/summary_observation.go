@@ -85,7 +85,7 @@ func MapSummaryObservation(raw []byte, expected Match, league string, seasonYear
 	}
 	match.WinnerID, err = shootoutFirstWinnerID(
 		expected.Home.ID, expected.Away.ID,
-		home.ShootoutScore, away.ShootoutScore, home.Winner, away.Winner, state == MatchStateFinished,
+		home.ShootoutScore, away.ShootoutScore, nil, home.Winner, away.Winner, state == MatchStateFinished,
 	)
 	if err != nil {
 		return Match{}, fmt.Errorf("summary event %q winner: %w", expected.ID, err)
