@@ -930,6 +930,12 @@ func TestReaderContract(t *testing.T) {
 				if match.ID == liveShootout["eventId"] {
 					found = true
 					assertWire(t, "bracket shootout winner (live "+strconv.FormatBool(live)+")", wire(t, match.WinnerID), want)
+					// The structured aggregate rides off the wire to the ingester's
+					// candidate, where the summary precedence ranks it above the note.
+					assertWire(t, "bracket shootout aggregate", wire(t, match.Shootout), liveShootout["aggregate"])
+					if _, onWire := wire(t, match).(map[string]any)["shootout"]; onWire {
+						t.Fatal("the bracket aggregate reached the wire")
+					}
 				}
 			}
 			if !found {

@@ -95,6 +95,10 @@ type BracketMatch struct {
 	Minute       *string     `json:"minute"`
 	WinnerID     *string     `json:"winnerId"`
 	Note         *string     `json:"note"`
+	// Shootout is the observation's structured shootout totals, carried to the
+	// ingester's candidate so the summary precedence ranks them above the note.
+	// Not part of the served bracket.
+	Shootout *Shootout `json:"-"`
 }
 
 // Standing mirrors types.ts's Standing, plus GroupID/GroupName: the ESPN

@@ -1735,6 +1735,46 @@ func TestBracketUsesRetryableMatchFinalization(t *testing.T) {
 	}
 }
 
+// A bracket-only match hands the summary the bracket's structured shootout
+// totals, which the summary precedence ranks above the scoreboard note, so a
+// summary without header totals cannot let a conflicting note name the winner.
+func TestBracketCandidateCarriesItsShootoutAggregate(t *testing.T) {
+	match := finishedMatch()
+	note := "Home advance 5-4 on penalties"
+	winner := match.Away.ID
+	aggregate := &model.Shootout{HomeScore: 3, AwayScore: 4}
+	src := &fakeSource{
+		bracket: []model.BracketMatch{{
+			ID: match.ID, Round: "final", Kickoff: match.Kickoff, State: match.State,
+			Home:     model.BracketTeam{ID: match.Home.ID, Name: match.Home.Name, Abbr: match.Home.Abbr},
+			Away:     model.BracketTeam{ID: match.Away.ID, Name: match.Away.Name, Abbr: match.Away.Abbr},
+			WinnerID: &winner, Note: &note, Shootout: aggregate,
+		}},
+	}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026", HasBracket: true}},
+	}
+
+	testRunner(src, repo, comp).runCycle(context.Background(), true)
+	if src.summaryCalls != 1 || src.summaryMatch.Shootout == nil || *src.summaryMatch.Shootout != *aggregate {
+		t.Fatalf("summary saw shootout %+v, want %+v", src.summaryMatch.Shootout, aggregate)
+	}
+	if repo.finalizeCalls != 1 || repo.lastFinalized.WinnerID == nil || *repo.lastFinalized.WinnerID != fakeTeamID(winner) {
+		t.Fatalf("finalized winner %v, want %s", repo.lastFinalized.WinnerID, fakeTeamID(winner))
+	}
+
+	// Merged with a scoreboard observation, a confirming bracket keeps the
+	// aggregate that decided its winner.
+	scoreboard := match
+	scoreboard.Shootout = nil
+	merged := mergeBracketCandidate(scoreboard, bracketMatch(src.bracket[0]))
+	if merged.Shootout == nil || *merged.Shootout != *aggregate {
+		t.Fatalf("merged shootout %+v, want %+v", merged.Shootout, aggregate)
+	}
+}
+
 func TestFinalizingOneMatchDoesNotHideOtherActiveMatches(t *testing.T) {
 	scheduled := finishedMatch()
 	scheduled.ID = "scheduled"

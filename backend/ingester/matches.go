@@ -567,7 +567,7 @@ func bracketMatch(match model.BracketMatch) model.Match {
 			Abbr: match.Away.Abbr, CrestURL: match.Away.CrestURL,
 		},
 		HomeScore: match.HomeScore, AwayScore: match.AwayScore,
-		WinnerID: match.WinnerID, Note: match.Note,
+		WinnerID: match.WinnerID, Note: match.Note, Shootout: match.Shootout,
 		HomePlaceholder:  match.Home.Placeholder,
 		AwayPlaceholder:  match.Away.Placeholder,
 		BracketRequired:  &bracketRequired,

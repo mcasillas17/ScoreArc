@@ -2158,7 +2158,7 @@
    }
   },
   "liveShootout": {
-   "note": "Synthetic: recorded bracket event 760489 (Germany 3-4 Paraguay on penalties, winner flag on Paraguay) with both winner flags cleared, then mapped as recorded (finished) and with its status set to a live shootout. A finished shootout's decisive totals name the winner; a live shootout's partial totals name none, so no side advances before the match is over. Both bracket mappers, and the Go summary recovery path, follow the scoreboard's rule.",
+   "note": "Synthetic: recorded bracket event 760489 (Germany 3-4 Paraguay on penalties, winner flag on Paraguay) with both winner flags cleared, then mapped as recorded (finished) and with its status set to a live shootout. A finished shootout's decisive totals name the winner; a live shootout's partial totals name none, so no side advances before the match is over. Both bracket mappers, and the Go summary recovery path, follow the scoreboard's rule. aggregate: the Go bracket mapper carries the structured totals off the wire to the ingester's candidate, live or finished; the TS BracketMatch has none.",
    "eventId": "760489",
    "status": {
     "state": "in",
@@ -2171,6 +2171,10 @@
    "expected": {
     "finished": "away",
     "live": null
+   },
+   "aggregate": {
+    "homeScore": 3,
+    "awayScore": 4
    }
   }
  },
