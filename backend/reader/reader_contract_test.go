@@ -441,8 +441,9 @@ func TestReaderContract(t *testing.T) {
 		validateSchema(t, document, "MatchSummary", actual)
 		assertOverlaySummary(t, "", raw, actual)
 		expected := vector(t, raw, "summary", "syntheticOverlay", "expected").(map[string]any)
+		// The header tier of the shared shootout precedence; neither summary DTO
+		// carries it (readerKeys), the reader serves it on Match.
 		assertWire(t, "summary shootout aggregate", wire(t, detail.Shootout), expected["readerShootout"])
-		gap("T16.2-shootout-source") // The frontend summary DTO has no aggregate; TS pins that side.
 	})
 
 	t.Run("recorded scoreboard penalty aggregates agree", func(t *testing.T) {
@@ -452,15 +453,58 @@ func TestReaderContract(t *testing.T) {
 		}
 		var actual []any
 		for _, match := range matches {
-			// Mirrors shared/source/espn.go, which uses the note only when the
-			// summary-side aggregate is absent; that precedence is owned there.
-			var shootout *espn.Shootout
-			if match.Note != nil {
-				shootout = espn.ParseShootoutNote(*match.Note, match.Home.Name, match.Away.Name)
-			}
-			actual = append(actual, map[string]any{"id": match.ID, "shootout": wire(t, shootout)})
+			// The scoreboard tiers of the shared precedence, resolved by the mapper;
+			// shared/source lets a held summary header outrank them.
+			actual = append(actual, map[string]any{"id": match.ID, "shootout": wire(t, match.Shootout)})
 		}
 		assertWire(t, "scoreboard shootouts", actual, vector(t, raw, "scoreboard", "shootouts"))
+
+		// The shared precedence vectors, on the same recorded event as the TS suite.
+		var recorded map[string]any
+		if err := json.Unmarshal(contractFixture(t, fixtureName(t, raw, "scoreboard")), &recorded); err != nil {
+			t.Fatal(err)
+		}
+		precedence := vector(t, raw, "scoreboard", "shootoutPrecedence").(map[string]any)
+		for _, entry := range precedence["cases"].([]any) {
+			c := entry.(map[string]any)
+			var event map[string]any
+			for _, candidate := range recorded["events"].([]any) {
+				if candidate.(map[string]any)["id"] == precedence["eventId"] {
+					event = wire(t, candidate).(map[string]any)
+				}
+			}
+			competition := event["competitions"].([]any)[0].(map[string]any)
+			for _, competitor := range competition["competitors"].([]any) {
+				side := competitor.(map[string]any)
+				if value := c["shootoutScore"].(map[string]any)[side["homeAway"].(string)]; value == "absent" {
+					delete(side, "shootoutScore")
+				} else {
+					side["shootoutScore"] = value
+				}
+			}
+			competition["notes"] = []any{}
+			if c["note"] != nil {
+				competition["notes"] = []any{map[string]any{"text": c["note"]}}
+			}
+			data, err := json.Marshal(map[string]any{"leagues": recorded["leagues"], "events": []any{event}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			mapped, err := espn.MapScoreboard(data)
+			if c["expected"] == "error" {
+				if err == nil {
+					t.Fatalf("%s: malformed totals accepted", c["name"])
+				}
+				continue
+			}
+			if err != nil || len(mapped) != 1 {
+				t.Fatalf("%s: %v", c["name"], err)
+			}
+			assertWire(t, c["name"].(string), wire(t, mapped[0].Shootout), c["expected"])
+			if *mapped[0].HomeScore != 1 || *mapped[0].AwayScore != 1 {
+				t.Fatalf("%s: shootout replaced regulation scores", c["name"])
+			}
+		}
 	})
 
 	t.Run("recorded scoreboard core fields agree with the frontend table", func(t *testing.T) {

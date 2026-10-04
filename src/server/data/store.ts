@@ -35,7 +35,7 @@ import { mapBracket } from './providers/espn-bracket';
 import { mapLeaders } from './providers/espn-stats';
 import {
   mapSummaryScorers, mapSummaryCards, mapSummaryStats, mapWinProbability, mapSummaryLineups,
-  mapSummaryVideos, mapSummaryShootout, mapSummaryInfo, mapSummaryForm, mapSummaryCommentary, mapSummaryH2H,
+  mapSummaryVideos, mapSummaryShootout, mapSummaryShootoutTotals, mapSummaryInfo, mapSummaryForm, mapSummaryCommentary, mapSummaryH2H,
 } from './providers/espn-summary';
 import { TtlCache } from './cache';
 import { currentWeekRange, forwardRange, nowWindowRange } from './dateRange';
@@ -67,21 +67,8 @@ interface DataDeps {
   cache: TtlCache<unknown>;
 }
 
-// Penalty shootout aggregate parsed from a match note, e.g.
-// "Paraguay advance 4-3 on penalties".
-export function parseShootout(note: string | null, homeName: string, awayName: string): Shootout | null {
-  if (!note) return null;
-  const m = note.match(/(\d+)\s*[-–]\s*(\d+)\s+on penalties/i);
-  if (!m) return null;
-  const aNum = Number(m[1]);
-  const bNum = Number(m[2]);
-  const winnerScore = Math.max(aNum, bNum);
-  const loserScore = Math.min(aNum, bNum);
-  const noteLower = note.toLowerCase();
-  if (noteLower.includes(homeName.toLowerCase())) return { homeScore: winnerScore, awayScore: loserScore };
-  if (noteLower.includes(awayName.toLowerCase())) return { homeScore: loserScore, awayScore: winnerScore };
-  return { homeScore: aNum, awayScore: bNum };
-}
+// Re-exported: the scoreboard mapper owns the shootout precedence now.
+export { parseShootout } from './providers/espn-matches';
 
 // Fresh empty summary per call — never shared, so enrichment fallbacks can't
 // alias each other's arrays.
@@ -133,7 +120,6 @@ export function createDataStore(deps: DataDeps): DataStore {
     if (cached) return cached;
     const raw = await fetchScoreboardWindow(rc, range, deps.fetchJson, signal);
     const matches = mapScoreboard(raw)
-      .map((m) => ({ ...m, shootout: parseShootout(m.note, m.home.name, m.away.name) }))
       .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
     deps.cache.set(k, matches, ttlMs);
     return matches;
@@ -147,10 +133,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       fetchScoreboardWindow(rc, config.datesRange, deps.fetchJson),
       deps.fetchJson(teamsUrl(config.splitLeagueSlug)),
     ]);
-    const matches = mapScoreboard(rawPhase).map((m) => ({
-      ...m,
-      shootout: parseShootout(m.note, m.home.name, m.away.name),
-    }));
+    const matches = mapScoreboard(rawPhase);
     const groups = computePhaseTables(matches, splitLeagueTeamIds(rawSplit), config.cut);
     // Carry the configured display names so the view doesn't hardcode them.
     for (const g of groups) {
@@ -159,11 +142,15 @@ export function createDataStore(deps: DataDeps): DataStore {
     return groups;
   }
 
-  async function getMatchSummary(
+  // One summary read, cached with the header's shootout totals. MatchSummaryData
+  // has no aggregate (neither does the reader's summary), but getMatches already
+  // holds this summary and the header outranks the scoreboard's evidence.
+  type LoadedSummary = { data: MatchSummaryData; shootout: Shootout | null };
+  async function loadSummary(
     rc: CompetitionSeason, eventId: string, homeId: string, awayId: string, signal?: AbortSignal,
-  ): Promise<MatchSummaryData> {
+  ): Promise<LoadedSummary> {
     const k = key(rc, `summary:${eventId}`);
-    const cached = deps.cache.get(k) as MatchSummaryData | undefined;
+    const cached = deps.cache.get(k) as LoadedSummary | undefined;
     if (cached) return cached;
     signal?.throwIfAborted();
     const raw = await deps.fetchJson(summaryUrl(slug(rc), eventId), signal
@@ -181,8 +168,15 @@ export function createDataStore(deps: DataDeps): DataStore {
       commentary: mapSummaryCommentary(raw),
       h2h: mapSummaryH2H(raw),
     };
-    deps.cache.set(k, summary, 12_000);
-    return summary;
+    const loaded = { data: summary, shootout: mapSummaryShootoutTotals(raw) };
+    deps.cache.set(k, loaded, 12_000);
+    return loaded;
+  }
+
+  async function getMatchSummary(
+    rc: CompetitionSeason, eventId: string, homeId: string, awayId: string, signal?: AbortSignal,
+  ): Promise<MatchSummaryData> {
+    return (await loadSummary(rc, eventId, homeId, awayId, signal)).data;
   }
 
   return {
@@ -200,24 +194,26 @@ export function createDataStore(deps: DataDeps): DataStore {
       const readSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
       const raw = await fetchScoreboardWindow(rc, window, deps.fetchJson, readSignal);
       const matches = mapScoreboard(raw);
-      const summaries: MatchSummaryData[] = [];
+      const summaries: LoadedSummary[] = [];
       // Only retained matches are enriched, four at a time under the same
       // read deadline. Individual provider summary failures remain best effort.
       for (let i = 0; i < matches.length; i += 4) {
         readSignal.throwIfAborted();
         summaries.push(...await Promise.all(matches.slice(i, i + 4).map(m =>
-          getMatchSummary(rc, m.id, m.home.id, m.away.id, readSignal).catch(() => emptySummary()),
+          loadSummary(rc, m.id, m.home.id, m.away.id, readSignal)
+            .catch((): LoadedSummary => ({ data: emptySummary(), shootout: null })),
         )));
       }
       readSignal.throwIfAborted();
       matches.forEach((m, i) => {
-        m.scorers = summaries[i].scorers;
-        m.cards = summaries[i].cards;
-        m.stats = summaries[i].stats;
-        m.winProbability = summaries[i].winProbability;
-        m.shootoutDetail = summaries[i].shootoutDetail;
+        const { data, shootout } = summaries[i];
+        m.scorers = data.scorers;
+        m.cards = data.cards;
+        m.stats = data.stats;
+        m.winProbability = data.winProbability;
+        m.shootoutDetail = data.shootoutDetail;
+        m.shootout = shootout ?? m.shootout;
       });
-      for (const m of matches) m.shootout = parseShootout(m.note, m.home.name, m.away.name);
       deps.cache.set(k, matches, 10_000);
       return matches;
     },

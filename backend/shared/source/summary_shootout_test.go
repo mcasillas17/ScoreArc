@@ -115,3 +115,39 @@ func TestESPNSummaryPathsPreserveValidAndOptionalShootoutTotals(t *testing.T) {
 		})
 	}
 }
+
+// The summary header outranks the scoreboard's evidence; the scoreboard's
+// structured totals (already resolved onto the match by MapScoreboard) outrank
+// its note, which is the last resort.
+func TestESPNSummaryShootoutPrecedence(t *testing.T) {
+	note := "Barcelona advance 4-3 on penalties"
+	for _, tc := range []struct {
+		name       string
+		home, away string
+		scoreboard *model.Shootout
+		want       *model.Shootout
+	}{
+		{"header wins", `2`, `1`, &model.Shootout{HomeScore: 3, AwayScore: 4}, &model.Shootout{HomeScore: 2, AwayScore: 1}},
+		{"scoreboard structured without a header", "", "", &model.Shootout{HomeScore: 3, AwayScore: 4}, &model.Shootout{HomeScore: 3, AwayScore: 4}},
+		{"note as last resort", "", "", nil, &model.Shootout{HomeScore: 4, AwayScore: 3}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := shootoutSummary(tc.home, tc.away)
+			src := recoverySource(func(*http.Request) (*http.Response, error) {
+				return recoveryResponse(200, raw), nil
+			})
+			input := recoveryMatch()
+			input.State = model.MatchStateFinished
+			input.Home.Name, input.Away.Name = "Barcelona", "Real Madrid"
+			input.Note = &note
+			input.Shootout = tc.scoreboard
+			result, err := src.Summary(context.Background(), config.Competition{ESPNSlug: "esp.1"}, input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := result.Detail.Shootout; got == nil || *got != *tc.want {
+				t.Fatalf("shootout %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}

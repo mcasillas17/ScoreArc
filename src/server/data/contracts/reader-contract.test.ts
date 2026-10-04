@@ -379,19 +379,44 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     expect(summary.h2h).toEqual(o.expected.h2h);
     expect(summary.scorers).toEqual([...s.frontend.scorers, ...o.expected.addedScorers]);
     expect(summary.cards).toEqual([...s.shared.cards, ...o.expected.addedCards]);
-    gap('T16.2-shootout-source', () => {
-      // The reader serves {4,3} from this header; the frontend summary cannot carry it.
-      expect(summary).not.toHaveProperty('shootout');
-      expect(o.expected.readerShootout).toEqual({ homeScore: o.shootoutScores.home, awayScore: o.shootoutScores.away });
-    });
+    // Neither summary DTO carries the aggregate (Go asserts readerKeys); it lives
+    // on Match, from the header totals here (the reader stores the same {4,3}).
+    expect(summary).not.toHaveProperty('shootout');
+    expect(o.expected.readerShootout).toEqual({ homeScore: o.shootoutScores.home, awayScore: o.shootoutScores.away });
   });
 
-  it('keeps Match.shootout from the note only, even when the enriching summary has an aggregate', async () => {
-    const { store } = storeOver(url => url.includes('/summary') ? overlaidSummary()
-      : { leagues: [{ slug: vectors.queries.leagueSlug }], events: url.includes('dates=202606') ? scoreboard.events.slice(0, 1) : [] });
-    const [match] = await store.getMatches(wc, '20260629-20260629');
-    expect(match.note).toBeNull();
-    expect(match.shootout).toBeNull();
+  it('takes Match.shootout from a held summary header first, as the reader stores it', async () => {
+    const o = s0.syntheticOverlay;
+    // 760487 has no scoreboard evidence; 760489's structured totals {3,4} are
+    // outranked by the header's {4,3} wherever a summary is held.
+    for (const id of ['760487', '760489']) {
+      const { store } = storeOver(url => url.includes('/summary') ? overlaidSummary()
+        : { leagues: [{ slug: vectors.queries.leagueSlug }], events: url.includes('dates=202606') ? scoreboard.events.filter(e => e.id === id) : [] });
+      const [match] = await store.getMatches(wc, '20260629-20260629');
+      const recorded = vectors.scoreboard.matches.find(row => row[0] === id)!;
+      expect(match.shootout, id).toEqual(o.expected.readerShootout);
+      expect([match.homeScore, match.awayScore], id).toEqual([recorded[9], recorded[10]]); // Regulation scores stay.
+    }
+  });
+
+  it.each(vectors.scoreboard.shootoutPrecedence.cases)('applies the shared scoreboard shootout precedence: $name', async (c) => {
+    const p = vectors.scoreboard.shootoutPrecedence;
+    const event = structuredClone(scoreboard.events.find(e => e.id === p.eventId)!);
+    const competition: { notes: unknown[]; competitors: Record<string, unknown>[] } = event.competitions[0];
+    for (const competitor of competition.competitors) {
+      const value = c.shootoutScore[competitor.homeAway as 'home' | 'away'];
+      if (value === 'absent') delete competitor.shootoutScore;
+      else competitor.shootoutScore = value;
+    }
+    competition.notes = c.note === null ? [] : [{ text: c.note }];
+    const fixtures = storeOver(windowOver([event])).store.getFixtures(wc, '20260629-20260630');
+    if (c.expected === 'error') {
+      await expect(fixtures).rejects.toThrow(/Malformed scoreboard score/); // Go: MapScoreboard errors.
+      return;
+    }
+    const [match] = await fixtures;
+    expect(match.shootout).toEqual(c.expected);
+    expect([match.homeScore, match.awayScore]).toEqual([1, 1]);
   });
 
   it('maps the recorded scoreboard core fields identically to the Go mapper vector', async () => {

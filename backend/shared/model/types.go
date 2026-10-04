@@ -53,6 +53,10 @@ type Match struct {
 	AwayPlaceholder  bool       `json:"-"`
 	BracketRequired  *bool      `json:"-"`
 	BracketConfirmed bool       `json:"-"`
+	// Shootout is the scoreboard's own penalty-shootout evidence (structured
+	// competitor totals, else the note). It is carried to the summary mapper,
+	// where the summary header outranks it; MatchDetail stores the result.
+	Shootout *Shootout `json:"-"`
 }
 
 // BracketTeam is shaped after types.ts's BracketTeam. It is distinct from Team

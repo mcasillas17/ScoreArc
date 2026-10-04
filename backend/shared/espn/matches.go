@@ -42,10 +42,11 @@ type rawNote struct {
 }
 
 type rawCompetitor struct {
-	HomeAway string          `json:"homeAway"`
-	Winner   bool            `json:"winner"`
-	Score    *flexibleString `json:"score"`
-	Team     rawTeam         `json:"team"`
+	HomeAway      string          `json:"homeAway"`
+	Winner        bool            `json:"winner"`
+	Score         *flexibleString `json:"score"`
+	ShootoutScore json.RawMessage `json:"shootoutScore"`
+	Team          rawTeam         `json:"team"`
 }
 
 type rawTeam struct {
@@ -197,6 +198,21 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 			minute = &clock
 		}
 
+		homeTeam, awayTeam := mapTeam(home.Team), mapTeam(away.Team)
+		// A malformed total rejects the scoreboard, as an invalid score does
+		// below and as the frontend's window loader does.
+		for _, competitor := range []*rawCompetitor{home, away} {
+			if _, _, err := parseSuppliedShootoutScore(competitor.ShootoutScore); err != nil {
+				return nil, fmt.Errorf("scoreboard event %q: %w", ev.ID, err)
+			}
+		}
+		// Structured totals outrank the prose note; the summary header outranks
+		// both (shared/source). Regulation scores below stay separate.
+		shootout := shootoutTotals(home.ShootoutScore, away.ShootoutScore)
+		if shootout == nil && note != nil {
+			shootout = ParseShootoutNote(*note, homeTeam.Name, awayTeam.Name)
+		}
+
 		homeScore, awayScore := scoreOf(home.Score), scoreOf(away.Score)
 		if (home.Score != nil && *home.Score != "" && homeScore == nil) ||
 			(away.Score != nil && *away.Score != "" && awayScore == nil) {
@@ -209,12 +225,13 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 			Minute:          minute,
 			StatusDetail:    status.Type.ShortDetail,
 			StatusName:      status.Type.Name,
-			Home:            mapTeam(home.Team),
-			Away:            mapTeam(away.Team),
+			Home:            homeTeam,
+			Away:            awayTeam,
 			HomeScore:       homeScore,
 			AwayScore:       awayScore,
 			WinnerID:        winnerID,
 			Note:            note,
+			Shootout:        shootout,
 			BracketRequired: bracketRequired,
 		})
 	}

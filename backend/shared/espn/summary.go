@@ -465,23 +465,26 @@ func mapSummaryShootout(rs rawSummary) *Shootout {
 	if len(rs.Header.Competitions) == 0 {
 		return nil
 	}
-	var home, away int
-	var homeOK, awayOK bool
+	var home, away json.RawMessage
 	for _, competitor := range rs.Header.Competitions[0].Competitors {
-		score, ok, err := parseSuppliedShootoutScore(competitor.ShootoutScore)
-		if err != nil {
-			// MapSummary remains tolerant; authoritative callers validate
-			// first and receive this error instead of accepting lost totals.
-			return nil
-		}
 		switch competitor.HomeAway {
 		case "home":
-			home, homeOK = score, ok
+			home = competitor.ShootoutScore
 		case "away":
-			away, awayOK = score, ok
+			away = competitor.ShootoutScore
 		}
 	}
-	if !homeOK || !awayOK || (home == 0 && away == 0) {
+	return shootoutTotals(home, away)
+}
+
+// shootoutTotals reads a pair of provider shootout totals, from the summary
+// header or the scoreboard's competitors. Both must be supplied and valid and
+// not both zero; anything else is no aggregate. Tolerant: authoritative
+// callers validate first (ValidateSummary) and reject malformed totals.
+func shootoutTotals(homeRaw, awayRaw json.RawMessage) *Shootout {
+	home, homeOK, homeErr := parseSuppliedShootoutScore(homeRaw)
+	away, awayOK, awayErr := parseSuppliedShootoutScore(awayRaw)
+	if homeErr != nil || awayErr != nil || !homeOK || !awayOK || (home == 0 && away == 0) {
 		return nil
 	}
 	return &Shootout{HomeScore: home, AwayScore: away}

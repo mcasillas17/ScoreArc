@@ -1,4 +1,5 @@
-import type { Scorer, Card, MatchStats, TeamStats, WinProbability, LineupPlayer, PlayerMatchStats, TeamLineup, MatchLineups, MatchVideo, PenaltyKick, ShootoutDetail, MatchInfo, FormResult, MatchForm, CommentaryItem, H2HMeeting } from '../types';
+import type { Scorer, Card, Shootout, MatchStats, TeamStats, WinProbability, LineupPlayer, PlayerMatchStats, TeamLineup, MatchLineups, MatchVideo, PenaltyKick, ShootoutDetail, MatchInfo, FormResult, MatchForm, CommentaryItem, H2HMeeting } from '../types';
+import { shootoutTotals } from './espn-matches';
 
 // Venue, city, referee and attendance from summary.gameInfo.
 export function mapSummaryInfo(raw: unknown): MatchInfo | null {
@@ -117,6 +118,14 @@ export function mapSummaryShootout(
   } catch {
     return null;
   }
+}
+
+// The summary header's per-competitor shootout totals: the top tier of the
+// shootout precedence (header > scoreboard competitors > note > null).
+export function mapSummaryShootoutTotals(raw: unknown): Shootout | null {
+  const competitors: any[] = (raw as any)?.header?.competitions?.[0]?.competitors ?? [];
+  const side = (homeAway: string) => competitors.find((c: any) => c?.homeAway === homeAway)?.shootoutScore;
+  return shootoutTotals(side('home'), side('away'));
 }
 
 // A clip is a "goal" clip (vs. analysis/interview/presser) when the headline

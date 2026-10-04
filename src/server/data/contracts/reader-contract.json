@@ -86,11 +86,6 @@
    "mismatch": "Reader SquadPlayer.id is a canonical player UUID, not the provider athlete id; age and headshotUrl are always null (no column is selected); and the squad is served in shirt-number order rather than provider roster order.",
    "suites": ["go-db"]
   },
-  "T16.2-shootout-source": {
-   "task": "T16.2",
-   "mismatch": "Match.shootout provenance differs: the reader serves the aggregate the ingester stored from the summary header's shootoutScore (its match-note fallback is owned by backend/shared/source and not re-verified here); the frontend parses only the scoreboard note, and its MatchSummaryData has no aggregate field, so a summary-only shootout is null in the frontend.",
-   "suites": ["ts", "go"]
-  },
   "T10.3-partial-failure": {
    "task": "T10.3",
    "mismatch": "The frontend getTeam/getSquad degrade a failed roster or schedule to empty (squad [], schedule unavailable) and return null only when the profile fails; the reader fails the whole team request with 500 when any child query fails.",
@@ -125,15 +120,15 @@
  "methods": {
   "getMatches": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T16.2-scorer-identity", "T16.2-nested-team-id", "T10.2-team-stats", "T16.2-match-id", "T16.2-shootout-source", "T21.4-dependency-error-logging"]
+   "gaps": ["T10.1-match-query", "T16.2-scorer-identity", "T16.2-nested-team-id", "T10.2-team-stats", "T16.2-match-id", "T21.4-dependency-error-logging"]
   },
   "getFixtures": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T16.2-match-id", "T16.2-shootout-source", "T21.4-dependency-error-logging"]
+   "gaps": ["T10.1-match-query", "T16.2-match-id", "T21.4-dependency-error-logging"]
   },
   "getLiveWindow": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T16.2-match-id", "T16.2-shootout-source", "T21.4-dependency-error-logging"]
+   "gaps": ["T10.1-match-query", "T16.2-match-id", "T21.4-dependency-error-logging"]
   },
   "getUpcoming": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
@@ -3837,6 +3832,75 @@
    ["760487", "2026-06-29T17:00Z", "finished", "FT", "STATUS_FULL_TIME", "205", "627", "BRA", "JPN", 2, 1, "205", null],
    ["760489", "2026-06-29T20:30Z", "finished", "FT-Pens", "STATUS_FINAL_PEN", "481", "210", "GER", "PAR", 1, 1, "210", "Paraguay advance 4-3 on penalties"],
    ["760488", "2026-06-30T01:00Z", "finished", "FT-Pens", "STATUS_FINAL_PEN", "449", "2869", "NED", "MAR", 1, 1, "2869", "Morocco advance 3-2 on penalties"]
-  ]
+  ],
+  "shootoutPrecedence": {
+   "note": "Synthetic: recorded event 760489 (Germany 1-1 Paraguay, structured shootoutScore 3/4 and the note 'Paraguay advance 4-3 on penalties') with its shootout evidence replaced per case. 'absent' removes the field; a null note removes the notes. One precedence in both languages: summary header (where a summary is held) > scoreboard structured totals > anchored note > null. Regulation scores never change.",
+   "eventId": "760489",
+   "cases": [
+    {
+     "name": "recorded: structured and note agree",
+     "shootoutScore": {
+      "home": 3,
+      "away": 4
+     },
+     "note": "Paraguay advance 4-3 on penalties",
+     "expected": {
+      "homeScore": 3,
+      "awayScore": 4
+     }
+    },
+    {
+     "name": "structured wins a conflicting note",
+     "shootoutScore": {
+      "home": 5,
+      "away": 4
+     },
+     "note": "Paraguay advance 4-3 on penalties",
+     "expected": {
+      "homeScore": 5,
+      "awayScore": 4
+     }
+    },
+    {
+     "name": "the note when structured totals are absent",
+     "shootoutScore": {
+      "home": "absent",
+      "away": "absent"
+     },
+     "note": "Paraguay advance 4-3 on penalties",
+     "expected": {
+      "homeScore": 3,
+      "awayScore": 4
+     }
+    },
+    {
+     "name": "a malformed structured total rejects the scoreboard",
+     "shootoutScore": {
+      "home": "x",
+      "away": 4
+     },
+     "note": "Paraguay advance 4-3 on penalties",
+     "expected": "error"
+    },
+    {
+     "name": "a note naming neither side is unknown",
+     "shootoutScore": {
+      "home": "absent",
+      "away": "absent"
+     },
+     "note": "Somebody advance 4-3 on penalties",
+     "expected": null
+    },
+    {
+     "name": "no evidence",
+     "shootoutScore": {
+      "home": "absent",
+      "away": "absent"
+     },
+     "note": null,
+     "expected": null
+    }
+   ]
+  }
  }
 }

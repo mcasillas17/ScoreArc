@@ -7,6 +7,7 @@ import {
   mapSummaryLineups,
   mapSummaryVideos,
   mapSummaryShootout,
+  mapSummaryShootoutTotals,
   mapSummaryInfo,
   mapSummaryForm,
   mapSummaryCommentary,
@@ -529,5 +530,36 @@ describe('derived percentages', () => {
     ]), '1', '2')!.home;
     expect(stats.passesAccurate).toBe(339);
     expect(stats.passes).toBe(401);
+  });
+});
+
+// The summary header's per-competitor shootoutScore is the top tier of the
+// shootout precedence. Same totals rule as the Go mapper (and its source
+// tests): both supplied, non-negative integers, not both zero; null and ''
+// read as 0, as Go's parser reads them.
+describe('mapSummaryShootoutTotals', () => {
+  const withTotals = (home: unknown, away: unknown) => {
+    const header = structuredClone(raw.header);
+    header.competitions[0].competitors.forEach((c: Record<string, unknown>) => {
+      const value = c.homeAway === 'home' ? home : away;
+      if (value !== undefined) c.shootoutScore = value;
+    });
+    return { ...raw, header };
+  };
+  it.each([
+    ['numbers', 4, 3, { homeScore: 4, awayScore: 3 }],
+    ['strings', '4', '3', { homeScore: 4, awayScore: 3 }],
+    ['integral decimals', 4.0, '3.0', { homeScore: 4, awayScore: 3 }],
+    ['absent', undefined, undefined, null],
+    ['null both', null, null, null],
+    ['empty both', '', '', null],
+    ['mixed missing', undefined, 3, null],
+    ['null coerces zero', null, 3, { homeScore: 0, awayScore: 3 }],
+    ['empty coerces zero', '', 3, { homeScore: 0, awayScore: 3 }],
+    ['negative', -1, 3, null],
+    ['fractional', 1.5, 3, null],
+    ['not a number', 'x', 3, null],
+  ])('%s', (_name, home, away, expected) => {
+    expect(mapSummaryShootoutTotals(withTotals(home, away))).toEqual(expected);
   });
 });

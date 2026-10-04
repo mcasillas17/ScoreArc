@@ -442,3 +442,15 @@ describe('getPlayer', () => {
     expect(await store.getPlayer(ligaMx, '297287')).toBeNull();
   });
 });
+
+// The note names its winner first; only an exact (case-insensitive) match to a
+// side's name attributes the aggregate, as in the Go mapper. A substring test
+// would hand "Inter Miami CF advance 5-4" to a home side called "Inter".
+describe('parseShootout winner attribution', () => {
+  it('attributes by the leading winner name, not a substring', () => {
+    expect(parseShootout('Inter Miami CF advance 5-4 on penalties', 'Inter', 'Inter Miami CF')).toEqual({ homeScore: 4, awayScore: 5 });
+  });
+  it('is unknown when the leading name is neither side', () => {
+    expect(parseShootout('Somebody advance 4-3 on penalties', 'Germany', 'Paraguay')).toBeNull();
+  });
+});
