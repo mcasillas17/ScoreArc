@@ -366,10 +366,129 @@ Use **Re-run all jobs**, not **Re-run failed jobs**: the release gate requires
 Rollback means a new feature-branch **revert PR**, PR validation, human merge,
 then full CI on the new main SHA. Preserve delivery-control files when reverting
 product code. Do not revert this gate to recover an application regression.
-Schema readiness/automatic migrations are not implemented here (T21.2); confirm
-binary/schema compatibility before rollback and never drop a schema dependency
-under a serving binary. Missing Vercel credentials block frontend rollback too:
+Migrations stay manual (no auto-migrate). Both Fly services refuse to start
+unless the ledger matches the head they embed, so a revert must keep every
+applied migration file and must not drop a schema dependency under a serving
+binary; see [rollback compatibility](#rollback-compatibility). Missing Vercel
+credentials block frontend rollback too:
 restore the deployment identity, not a raw dashboard bypass.
+
+## Schema readiness
+
+Both Fly services run one shared startup gate, `migrations.CheckReady`
+([readiness.go](../../backend/migrations/readiness.go)), before normal work: the
+reader before it opens its listener, the ingester before it takes the singleton
+lease, seeds or polls. It passes only when the golang-migrate ledger
+(`schema_migrations`) holds **one clean row at exactly the highest migration the
+binary embeds** (`migrations.Latest()`, derived from the embedded filenames — no
+constant to keep in step), and each service's zero-row probe of the objects it
+needs succeeds **as its own least-privilege role**. The gate only reads; there
+is no auto-migrate, ledger write or bypass flag.
+
+**Startup enforcement is not deployment safety.** A refused start does not stop
+Fly replacing a working machine with a refusing one: verify the schema *before*
+anything selects a release (below). The ingester (`strategy = "immediate"`,
+restart `always`) has no overlap, so a release against an unready schema stops
+the old worker and the new one crash-loops — play-stream capture, the one
+dataset ESPN prunes, halts until fixed. That is the deliberate trade: no writes
+against a schema the binary was not built for, over degraded writes.
+
+### Failure matrix
+
+Each refusal logs `reader stopped` / `ingester stopped` with
+`category=… expected=… applied=… dirty=… [sqlstate=…] [error_type=…]
+runbook=docs/backend/RELEASES.md#schema-readiness` — never a DSN or PostgreSQL
+message/detail.
+
+| Category | Meaning | Remedy (operator; separately authorized for production) |
+|---|---|---|
+| `behind` | ledger below the embedded head | apply the reviewed migrations for this release, then verify |
+| `ahead` | ledger above the embedded head (older binary over newer schema) | release the binary that matches; never migrate down under a serving binary |
+| `dirty` | a migration failed part-way, including golang-migrate's own `(-1, dirty)` row after version 1's down fails | inspect the failed migration and the schema; reconcile, then `force` only with explicit authorization |
+| `ledger_absent` | no `schema_migrations` (e.g. a psql-only bootstrap) | bring the database under golang-migrate ([SETUP §5](SETUP.md#5-run-the-migrations)); do not create a ledger just to make startup pass |
+| `ledger_empty` | the ledger has no row (never migrated, or fully down) | apply migrations through the head |
+| `ledger_malformed` | more than one row, a clean negative version, or NULL/wrongly typed/missing columns | reconcile the ledger by hand against the actual schema |
+| `permission_denied` (42501) | the service role cannot read the ledger or a required object | restore the reviewed grants; never give a service an owner login |
+| `objects_missing` (42P01/42703) | a required table/column is absent although the ledger says head | reconcile schema against ledger; the ledger is wrong |
+| `timeout` / `canceled` | the startup deadline or shutdown interrupted the check | find the lock or latency (e.g. a migration holding the ledger) and retry |
+| `query_failed` | anything else; `sqlstate`/`error_type` say what | diagnose the connection or database |
+| `embedded_migrations_invalid` | the binary carries no readable migrations | build defect: fix the image, not the database |
+
+### Version policy and its cost
+
+The version must match **exactly**; `ahead` is refused like `behind`. A binary
+cannot know whether a migration it does not carry is additive, and "any newer
+version is safe" fails the first time a migration contracts a column. The cost
+is a window: between applying migration *N+1* and releasing the binary that
+embeds it, any old binary that (re)starts refuses `ahead`. That is routine here,
+not rare — the reader autostarts stopped spare machines on load
+(`auto_stop_machines = "stop"`, `min_machines_running = 1`) and the ingester
+restarts after any crash. Keep the window to minutes:
+
+1. Read-only verify the target (database, schema, a single clean ledger row at
+   the currently released head, role grants). A different, missing, dirty or
+   multi-row ledger requires reconciliation, never a forced version.
+2. With explicit authorization, apply exactly the reviewed migrations from the
+   reviewed commit over the direct owner connection:
+   `migrate -path backend/migrations -database "$DIRECT_DSN" goto <head>`.
+3. Read back `migrate … version` → `<head>`, not dirty. Then, as **each service
+   login** over its pooled DSN (never the owner),
+   `SELECT version, dirty FROM schema_migrations;` → exactly one row, `<head>`,
+   `false`.
+4. Merge immediately so the release follows, or dispatch it now if already
+   merged. If the release is blocked, the running binaries keep serving until
+   they restart — finish the release rather than migrate down.
+
+If that window ever bites, the upgrade path is a compatibility floor recorded in
+the database by migrations and read by older binaries. It is not built and not
+needed while releases follow migrations promptly.
+
+### Rollback compatibility
+
+Roll back code with a revert PR that **keeps every applied migration file**:
+removing one lowers the embedded head and the rolled-back binary refuses
+`ahead`. Schema rollback (`migrate down`) happens only after the binaries that
+need the higher version are gone, and then needs a released binary whose head
+matches the lowered ledger. Reverting the T21.2 gate itself restores the old
+warn-only behaviour and needs no schema change.
+
+### Activation prerequisites for T21.2
+
+The gate adds **no migration**; the expected head stays **23**
+(`0023_match_sync`). It still selects both Fly services on merge, and they then
+refuse to start unless production passes, so **before merge** the owner must
+read-only confirm, on the production database the services use:
+
+- `SELECT version, dirty FROM schema_migrations;` returns exactly one row:
+  `23`, `false` (September 20 reported clean 23; recheck).
+- Both service roles can read it:
+  `SELECT has_table_privilege('scorearc_reader','schema_migrations','SELECT'),
+  has_table_privilege('scorearc_ingester','schema_migrations','SELECT');` → both
+  `true`, and the same `SELECT version, dirty …` succeeds over the reader and
+  ingester pooled DSNs. golang-migrate creates the ledger before 0001, whose
+  `GRANT … ON ALL TABLES` then covers it (pinned by
+  `TestApplicationRolesCanReadTheLedgerWithoutExtraGrants`). A ledger created
+  any other way may differ, so check rather than assume. If either is `false`,
+  `GRANT SELECT ON schema_migrations TO scorearc_reader, scorearc_ingester` is a
+  production change needing separate authorization; do not merge until it is
+  done and verified.
+- The usual release authorization or approval holds for both Fly jobs
+  ([activation order](#activation-order)).
+
+Passing tests do not activate this protection. It is active only once a release
+containing it runs against a verified database.
+
+### Known follow-ups (not fixed by T21.2)
+
+- The same `GRANT … ON ALL TABLES` gives `scorearc_ingester` INSERT/UPDATE on
+  `schema_migrations`. The ingester never writes it; revoking needs a reviewed
+  migration.
+- A full golang-migrate `down` to zero fails at 0001's `DROP ROLE` because the
+  roles still hold privileges on the ledger, and leaves `(-1, dirty)`.
+- [MATCH_FRESHNESS.md](MATCH_FRESHNESS.md) still says its 0023 startup check
+  "is **not** the full T21.2 head/dirty-ledger gate". That file belongs to the
+  match-freshness lane; once both land, its owner should note that the probe
+  now runs inside this gate.
 
 ## Failure diagnosis and intentional skips
 

@@ -83,21 +83,21 @@ initial guess that a `0024` grant was required was disproved by the test).
 
 ## Tasks
 
-- [ ] **1. Policy, failing first.** Write `readiness_test.go` (fake querier:
+- [x] **1. Policy, failing first.** Write `readiness_test.go` (fake querier:
   each category, no driver text in `Error()`, `errors.Unwrap == nil`) and
   `readiness_integration_test.go` (both roles × matrix, timeout via an owner
   holding `ACCESS EXCLUSIVE` on the ledger, cancellation mid-wait, full
   ledger readable by both roles without extra grants). Run `go test
   ./migrations` → FAIL (undefined `CheckReady`). Implement `readiness.go`.
   Run → PASS. Commit.
-- [ ] **2. Ingester wiring.** Failing test in `ingester` calling `run()` against a
+- [x] **2. Ingester wiring.** Failing test in `ingester` calling `run()` against a
   behind ledger: exit 1, no competition rows seeded, advisory lock free.
   Compatible ledger: seeds, then stops on an invalid R2 URL, lock free. Wire
   `CheckSchemaReady`; delete `reportSchemaDrift`, `schema_version.go`. PASS. Commit.
-- [ ] **3. Reader wiring.** Failing test calling `run()`: behind ledger returns a
+- [x] **3. Reader wiring.** Failing test calling `run()`: behind ledger returns a
   `*ReadinessError` and the port was never bound; compatible serves `/healthz`
   200 and returns nil on SIGTERM. Wire `migrations.CheckReady` with `freshnessSchemaProbe`. PASS. Commit.
-- [ ] **4. Gate.** `go build ./... && go test -race -count=1 ./... && go vet ./...`.
-- [ ] **5. Docs** per the list above, including the pre-merge owner activation:
+- [x] **4. Gate.** `go build ./... && go test -race -count=1 ./... && go vet ./...`.
+- [x] **5. Docs** per the list above, including the pre-merge owner activation:
   read-only verify a clean ledger at the embedded head and role access before
   merging, because merge releases both services.
