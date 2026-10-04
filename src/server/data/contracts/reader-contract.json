@@ -1474,7 +1474,7 @@
     "away": 3
    },
    "headerIdentity": {
-    "note": "Synthetic: the overlay summary's header (shootoutScores home 4, away 3) is rewritten to the given event id and side ids and held for recorded scoreboard event 760489 (Germany 481 home, Paraguay 210 away; structured totals 3/4, winner flag Paraguay). Only a header that identifies the requested event and its sides may supply the aggregate (Go: ValidateSummary rejects any other); otherwise the scoreboard's evidence stands. A finished scoreboard match takes the header only once the header is itself final (Go: ValidateSummary with requireFinal rejects an unfinished one); a live header, even one held from an earlier read, never overrides it. A finished match's winner follows the aggregate it serves.",
+    "note": "Synthetic: the overlay summary's header (shootoutScores home 4, away 3) is rewritten to the given event id and side ids and held for recorded scoreboard event 760489 (Germany 481 home, Paraguay 210 away; structured totals 3/4, winner flag Paraguay). Only a header that identifies the requested event and its sides may supply the aggregate (Go: ValidateSummary rejects any other); otherwise the scoreboard's evidence stands. A finished scoreboard match takes the header only once the header is itself final: a STATUS_ name, state post and completed true, Go's requireFinal predicate (ValidateSummary rejects anything else, including post without completion and completion while in play); a live header, even one held from an earlier read, never overrides it. A finished match's winner follows the aggregate it serves.",
     "scoreboardEventId": "760489",
     "cases": [
      {
@@ -1532,6 +1532,86 @@
         "name": "STATUS_SHOOTOUT",
         "state": "in",
         "completed": false
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, header post but not completed",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_SHOOTOUT",
+        "state": "post",
+        "completed": false
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, header completion missing",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_FINAL_PEN",
+        "state": "post",
+        "completed": null
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, header completed while in play",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_FINAL_PEN",
+        "state": "in",
+        "completed": true
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, header status name unknown",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "FINAL",
+        "state": "post",
+        "completed": true
        }
       },
       "expected": {
