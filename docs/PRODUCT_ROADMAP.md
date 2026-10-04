@@ -808,8 +808,8 @@ the production-cutover gates are unchanged.
 its three unregistered items, with match, team, nested team and player ids as
 tested translations ([contract](backend/READER_CONTRACT.md#t162-identity-and-dto-contract)).
 `T16.2-standings-dedup` (cross-table membership) awaits an owner decision; rows
-stored earlier serve `null` `ownGoal`/`athleteId`. E10/E17 gaps and every
-cutover gate are unchanged.
+stored earlier recover `ownGoal`/`athleteId` only from aligned captured match
+events, else `null`. E10/E17 gaps and every cutover gate are unchanged.
 
 | Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
 |---|---|---|---|

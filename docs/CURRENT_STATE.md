@@ -472,8 +472,10 @@ TypeScript, Go/OpenAPI and Postgres proofs; match, team, nested team and player
 ids are tested translations, not equalities
 ([READER_CONTRACT](backend/READER_CONTRACT.md#t162-identity-and-dto-contract)).
 `T16.2-standings-dedup` (a team in two provider tables) awaits an owner decision.
-Detail rows stored before T16.2 serve canonical sides but `null`
-`ownGoal`/`athleteId`, permanently for finalized rows. Production acceptance is
+Detail rows stored before T16.2 serve canonical sides; their
+`ownGoal`/`athleteId` are recovered at read time from aligned `match_event`
+rows where participation was captured, and are `null` otherwise. How many
+production rows fall in each case is unmeasured. Production acceptance is
 separate.
 
 - **`DataStore` has 12 methods** (`getMatches`, `getFixtures`,

@@ -138,14 +138,14 @@ them (the window methods, `getBracket`, `getMatchSummary` and the match route's
 |---|---|---|
 | `match-id`, `team-id` | the translations above | TS round-trip and helper tests; Go seed equality; go-db resolver |
 | `nested-team-id` | reader serves canonical sides or `null`; `Scorer.teamId`/`Card.teamId` are `string \| null` in both contracts | TS translation of real store output equals the reader vectors; Go and OpenAPI over the seed; go-db over `team_external_ref`, including an unattributable pair |
-| `scorer-identity` | `ownGoal` (`boolean \| null`) and `athleteId` (`string \| null`) in both; an own goal credits the side that benefits | recorded own goal in every suite; route-layer slug parity; a sealed legacy row serves `null`, not `false` |
+| `scorer-identity` | `ownGoal` (`boolean \| null`) and `athleteId` (`string \| null`) in both; an own goal credits the side that benefits | recorded own goal in every suite; route-layer slug parity; sealed legacy rows recover both from aligned match events, and serve `null` (not `false`) without them (below) |
 | `standings-rank` | each table ordered by ESPN's `rank` stat when it is a complete `1..n` permutation, else provider order | recorded World Cup groups arrive out of order; both languages |
-| `standings-malformed` | the ingester's rule: a table with no teams, or a row missing team identity or a required stat, rejects the payload; no tables at all is a legitimate empty table set | shared malformed vectors: TS throws where the Go mapper rejects; the ingester's existing replacement guards keep stored standings when a payload is rejected |
+| `standings-malformed` | the ingester's rule: a table with no teams, or a row with no or an empty team id or a missing required stat, rejects the payload, and so does an envelope with no `children` array; `children: []` is a legitimate empty table set. In the frontend, a payload whose only defect is a stat still yields its team identities to the team and player indexes (`StandingsStatsError.teams`, read by `standingTeams`), so slug links survive it; the standings page itself rejects it | shared malformed and envelope vectors: TS throws where the Go mapper rejects; the ingester's existing replacement guards keep stored standings when a payload is rejected |
 | `group-label` | an unnamed table is labeled with the competition short name | both languages |
 | `placeholder-crest` | an empty provider logo is no crest (`null`), on the bracket and on the match-list, team-schedule and leader mappers that shared the defect | both languages, on the recorded placeholder through the bracket and match-list mappers; TS mapper tests for the team schedule and leaders |
 | `round-slug-type` | OpenAPI `KnockoutRound` enum on `BracketRound.slug` and `BracketMatch.round`, equal to the Go round order and the TS slug union | Go and `tsc` |
 | `bracket-round-name` | contract decision: `name` is an additive English label for API consumers; the frontend localizes from `slug` | each reader name equals the frontend's English catalog label |
-| `shootout-source` | summary header → scoreboard structured `shootoutScore` → anchored note → `null`; structured values are non-negative integers and not both zero; a malformed one rejects the scoreboard; regulation scores are untouched; lightweight feeds never fetch summaries | shared precedence vectors through both mappers |
+| `shootout-source` | summary header → scoreboard structured `shootoutScore` → anchored note → `null`. A scoreboard total is a non-negative integer or a string of digits, and the two are not both zero; anything else rejects the scoreboard. The summary header keeps its existing wider numeric rule. A header supplies totals only for its own match: its id and its single competition's id equal the event, and its two competitors are the event's sides, else it is ignored. A finished match with a decisive aggregate is won by the side with more, overriding the scoreboard's winner flags; a live, partial shootout names no winner; the ingester finalizes with the summary's winner. Regulation scores are untouched; lightweight feeds never fetch summaries | shared precedence vectors (totals and winner) through both mappers; header identity vectors; an ingester finalization test |
 | `live-minute`, `bracket-live-minute` | a live match without a display clock is `minute: null`; the reader also serves a stored `''` as `null` | both mappers; go-db on match, bracket and team-schedule projections |
 
 The three T16.2 items that were never registered gaps:
@@ -167,11 +167,31 @@ The three T16.2 items that were never registered gaps:
 No migration and no stored row is rewritten. The reader translates every stored
 scorer and card reference when it reads, so rows written before T16.2 —
 including finalized rows, which stay sealed — are served with canonical sides.
-Their `ownGoal` and `athleteId` were never stored and cannot be reconstructed
-(raw summaries are not archived, and name matching is not acceptable), so the
-reader serves them as `null`, permanently for sealed rows. Correcting them would
-need a separately approved operator procedure. Only detail written by the new
-ingester carries both fields.
+
+Their `match_detail` scorers never stored `ownGoal` or `athleteId`, but the
+ingester's participation capture wrote the same summary key events to
+`match_event`, in the same order, with the canonical side, the goal or own-goal
+type, and the player. For a stored row whose scorers lack `ownGoal`, the reader
+selects that match's goal and own-goal events in the same statement and fills
+both fields only when every scorer pairs with the event at its ordinal on
+canonical side, minute, penalty and shootout. `athleteId` is the player's one id
+on the match's source in `player_external_ref`; a player with none, or with two,
+is `null`. Any disagreement — participation never captured or partly skipped, a
+side the reader cannot attribute, events from another poll than the summary —
+leaves every scorer in that match `null`. Nothing is matched by name. The cost
+is bounded: current rows pay one jsonpath test; a legacy row adds one
+primary-key range scan of `match_event` and one indexed `player_external_ref`
+lookup per goal.
+
+Legacy rows without aligned events stay `null`; nothing else in the database
+holds their own-goal flag or athlete id. The production share of each case is
+unmeasured: measuring it is part of production acceptance, and correcting the
+rest would need a separately approved operator procedure.
+
+The participation mapper classifies an event as an own goal when ESPN's type
+contains `own`; the scorer mapper requires exactly `own-goal`, the only value
+recorded. If ESPN ever sent another such type, a recovered legacy row would
+call it an own goal where a new row would not.
 
 The reader and ingester can deploy in either order: an old reader ignores the
 new JSON keys, and a new reader translates old and new rows alike. Leader crests
@@ -238,4 +258,9 @@ enum removed; provider standings order; a zero-filled missing stat; scoreboard
 shootout totals or the summary header ignored; the own-goal flag dropped; an
 unknown scorer side defaulted to home, or the read-time translation removed; a
 URL-derived leader crest key; the CDN host or the port check removed; and a
-provider-derived match UUID.
+provider-derived match UUID. The review repairs were checked the same way: the
+scoreboard winner flags beating a decisive aggregate (both mappers and the
+ingester), a live partial shootout naming a winner, a summary header for another event or with reversed sides, a padded
+or fractional scoreboard total, a missing `children` array or an empty team id
+accepted, a stat failure hiding team identities, and legacy recovery ignoring
+the minute, the source or a second player id, or recovering a partial list.
