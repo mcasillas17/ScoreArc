@@ -543,10 +543,20 @@ describe('GET /api/og — card variants', () => {
     }
   });
 
+  it('renders a crest mirrored on the ScoreArc CDN', async () => {
+    const result = await ogMarkup(
+      `?subject=Am%C3%A9rica&crest=${encodeURIComponent('https://cdn.scorearc.futbol/teams/mex-america')}&compId=liga-mx&locale=es`,
+    );
+    expect(result.status).toBe(200);
+    expect(result.html).toContain('https://cdn.scorearc.futbol/teams/mex-america');
+  });
+
   it.each([
     ['off-list host', 'https://evil.example/hostile.png'],
     ['lookalike host', 'https://a.espncdn.com.evil.example/hostile.png'],
+    ['CDN lookalike host', 'https://cdn.scorearc.futbol.evil.example/hostile.png'],
     ['http downgrade', 'http://a.espncdn.com/hostile.png'],
+    ['CDN on a non-default port', 'https://cdn.scorearc.futbol:8443/hostile.png'],
     ['not a URL', '::::'],
   ])('rejects a hostile crest (%s)', async (_label, crest) => {
     const result = await ogMarkup(

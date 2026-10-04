@@ -449,36 +449,39 @@ func requiresBracketConfirmation(match model.Match, season config.Season) bool {
 	return !kickoff.Before(start) && !kickoff.After(end.Add(24*time.Hour-time.Nanosecond))
 }
 
-func (r *runner) mirrorCrest(ctx context.Context, team model.Team) {
+// mirrorCrest mirrors a team crest under the team's canonical id and stores the
+// CDN URL on the team. It returns that URL, or "" when the crest stays upstream.
+func (r *runner) mirrorCrest(ctx context.Context, team model.Team) string {
 	if r.mirror == nil || team.CrestURL == nil || *team.CrestURL == "" {
-		return
+		return ""
 	}
 	if isMirroredURL(*team.CrestURL, r.mirror.BaseURL()) {
-		return
+		return *team.CrestURL
 	}
 
 	r.mu.Lock()
-	if r.mirrored[team.ID] != "" {
+	if cached := r.mirrored[team.ID]; cached != "" {
 		r.mu.Unlock()
-		return
+		return cached
 	}
 	r.mu.Unlock()
 
 	cdnURL, err := r.mirrorAsset(ctx, "teams", team.ID, *team.CrestURL)
 	if errors.Is(err, errMirrorUnavailable) {
-		return
+		return ""
 	}
 	if err != nil {
 		r.log.Warn("mirror crest", "team", team.ID, "err", err)
-		return
+		return ""
 	}
 	if err := r.repo.SetTeamCrest(ctx, team.ID, cdnURL); err != nil {
 		r.log.Warn("set team crest", "team", team.ID, "err", err)
-		return
+		return ""
 	}
 	r.mu.Lock()
 	r.mirrored[team.ID] = cdnURL
 	r.mu.Unlock()
+	return cdnURL
 }
 
 func (r *runner) mirrorAsset(

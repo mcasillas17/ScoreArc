@@ -288,6 +288,7 @@ func statisticsPayload(
 ) []byte {
 	t.Helper()
 	type fixtureTeam struct {
+		ID           string  `json:"id,omitempty"`
 		Abbreviation string  `json:"abbreviation"`
 		DisplayName  string  `json:"displayName"`
 		Logo         *string `json:"logo,omitempty"`
@@ -319,6 +320,7 @@ func statisticsPayload(
 				Athlete: fixtureAthlete{
 					DisplayName: row.Player,
 					Team: fixtureTeam{
+						ID:           row.TeamSourceID,
 						Abbreviation: row.TeamAbbr,
 						DisplayName:  row.TeamName,
 						Logo:         row.TeamCrestURL,
@@ -393,6 +395,7 @@ type fakeRepository struct {
 	logged            []loggedRun
 	lastIdentity      store.MatchIdentity
 	teamKinds         map[string]string
+	teamErr           error
 	standingTeamIDs   map[string]string
 	matchAlias        map[string]string
 	upserted          []string
@@ -556,6 +559,9 @@ func (f *fakeRepository) Team(_ context.Context, _ string, ref store.TeamRef) (s
 		f.teamKinds = map[string]string{}
 	}
 	f.teamKinds[ref.SourceID] = ref.Kind
+	if f.teamErr != nil {
+		return "", f.teamErr
+	}
 	return fakeTeamID(ref.SourceID), nil
 }
 func (f *fakeRepository) Match(_ context.Context, _ string, ref store.MatchRef) (uuid.UUID, error) {
@@ -2116,7 +2122,7 @@ func TestLeaderCrestMirrorsOnceAcrossRefreshes(t *testing.T) {
 	src := &fakeSource{statistics: statisticsPayload(
 		t,
 		[]model.StatLeader{{
-			Rank: 1, Player: "Winner", TeamAbbr: "WIN",
+			Rank: 1, Player: "Winner", TeamSourceID: "1", TeamAbbr: "WIN",
 			TeamCrestURL: &crest, Value: 1,
 		}},
 		[]model.StatLeader{{Rank: 1, Player: "Helper", Value: 1}},
@@ -2144,7 +2150,7 @@ func TestRefreshLeadersWritesEachCategoryExactlyOnce(t *testing.T) {
 	src := &fakeSource{statistics: statisticsPayload(
 		t,
 		[]model.StatLeader{{
-			Rank: 1, Player: "Winner", TeamAbbr: "WIN",
+			Rank: 1, Player: "Winner", TeamSourceID: "1", TeamAbbr: "WIN",
 			TeamCrestURL: &crest, Value: 1,
 		}},
 		[]model.StatLeader{{Rank: 1, Player: "Helper", Value: 1}},
@@ -2175,7 +2181,7 @@ func TestLeaderCrestOutageUsesSharedCircuit(t *testing.T) {
 	for index := range leaders {
 		crest := fmt.Sprintf("https://source.example/%d.png", index)
 		leaders[index] = model.StatLeader{
-			Rank: index + 1, Player: fmt.Sprintf("Player %d", index),
+			Rank: index + 1, Player: fmt.Sprintf("Player %d", index), TeamSourceID: fmt.Sprint(index),
 			TeamAbbr: fmt.Sprintf("T%d", index), TeamCrestURL: &crest, Value: 1,
 		}
 	}
@@ -2213,7 +2219,7 @@ func TestLeaderCrestRecoveryRewritesProviderURL(t *testing.T) {
 	src := &fakeSource{statistics: statisticsPayload(
 		t,
 		[]model.StatLeader{{
-			Rank: 1, Player: "Winner", TeamAbbr: "WIN",
+			Rank: 1, Player: "Winner", TeamSourceID: "1", TeamAbbr: "WIN",
 			TeamCrestURL: &crest, Value: 1,
 		}},
 		[]model.StatLeader{{Rank: 1, Player: "Helper", Value: 1}},
@@ -3887,7 +3893,7 @@ func TestMirroredLeaderBoardIsWrittenOnceWithCDNCrests(t *testing.T) {
 	src := &fakeSource{statistics: statisticsPayload(
 		t,
 		[]model.StatLeader{{
-			Rank: 1, Player: "Striker", TeamAbbr: "HOM",
+			Rank: 1, Player: "Striker", TeamSourceID: "1", TeamAbbr: "HOM",
 			TeamCrestURL: &crest, Value: 5,
 		}},
 		[]model.StatLeader{{Rank: 1, Player: "Playmaker", Value: 3}},

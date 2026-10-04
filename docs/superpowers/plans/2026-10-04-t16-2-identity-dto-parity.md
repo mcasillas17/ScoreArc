@@ -54,8 +54,8 @@ OpenAPI 3.1 (kin-openapi).
 | `round-slug-type` | OpenAPI `BracketRound.slug` and `BracketMatch.round` become the six-slug enum; Go mapper, reader order and the TS union are proved equal. |
 | `shootout-source` | One precedence everywhere: summary-header `shootoutScore` (where a summary is held) → scoreboard competitor `shootoutScore` → anchored scoreboard note → `null`. Structured values must be non-negative integers and not both zero; a malformed structured value rejects the scoreboard in both languages (the frontend window loader already did). Lightweight feeds use the scoreboard tiers only (no summary fan-out). Regulation scores are untouched. |
 | `live-minute`, `bracket-live-minute` | A live event without a display clock is `minute: null` in every mapper; the reader also serves stored `''` as `null`. |
-| leader crest keys | Leader crests mirror under the leader team's canonical id (`teams/<canonical>`), through the same path as team crests; a leader without a provider team id keeps its upstream URL unmirrored. |
-| CDN allowlist | `safeCrest` adds exactly `cdn.scorearc.futbol` (HTTPS, default port); lookalikes and other hosts stay rejected. `OG_VERSION` is unchanged: no URL the site generated before can render differently. |
+| leader crest keys | Leader crests mirror under the leader team's canonical id (`teams/<canonical>`) through `mirrorCrest`, the team-crest path, resolving the leader's provider team id with the same crosswalk as standings (curated, or provisional when unseeded). A leader without a provider team id, or whose team cannot be resolved, keeps its upstream URL unmirrored — no key from the URL or a display name. |
+| CDN allowlist | `safeCrest` adds exactly `cdn.scorearc.futbol`; every allowed host now also requires HTTPS on the default port. Lookalikes, subdomains, the parent domain and other hosts stay rejected. `OG_VERSION` is unchanged: the site has never generated a share URL with a CDN crest (the frontend is ESPN-backed), so no cached preview can change. |
 
 ## Tasks
 
@@ -96,9 +96,9 @@ OpenAPI 3.1 (kin-openapi).
 - [x] Commit `fix: canonical nested team ids and scorer identity`.
 
 ### Task 7 — leader crest keys and CDN allowlist
-- [ ] Go: `StatLeader.TeamSourceID` (not serialized); `mirrorLeader` resolves the canonical team and reuses `mirrorCrest`; tests for curated, provisional and unresolved teams.
-- [ ] TS: `safeCrest` accepts `https://cdn.scorearc.futbol/…`; rejects lookalikes, subdomains, parent domain, `http`, non-default port; og route renders a CDN crest.
-- [ ] Commit `fix: slug-stable leader crests and the ScoreArc CDN crest host`.
+- [x] Go: `StatLeader.TeamSourceID` (not serialized); `mirrorLeader` resolves the canonical team and reuses `mirrorCrest`; tests for curated, provisional and unresolved teams.
+- [x] TS: `safeCrest` accepts `https://cdn.scorearc.futbol/…`; rejects lookalikes, subdomains, parent domain, `http`, non-default port; og route renders a CDN crest.
+- [x] Commit `fix: slug-stable leader crests and the ScoreArc CDN crest host`.
 
 ### Task 8 — match/team identity translation proofs and docs
 - [ ] go-db: match minted by the real resolver; `match_external_ref` maps the provider event id to the served UUID; the list id addresses `/v1/matches/{id}`.

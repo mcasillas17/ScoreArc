@@ -139,9 +139,13 @@ type TopScorer struct {
 //
 // TopScorer stays for now: it is the shape the reader serializes today, and
 // removing it belongs to slice 1d's cutover, not here.
+//
+// TeamSourceID is the provider's team id, never serialized or stored: the
+// ingester resolves it to the canonical team whose key its crest mirrors under.
 type StatLeader struct {
 	Rank         int     `json:"rank"`
 	Player       string  `json:"player"`
+	TeamSourceID string  `json:"-"`
 	TeamAbbr     string  `json:"teamAbbr"`
 	TeamName     string  `json:"teamName"`
 	TeamCrestURL *string `json:"teamCrestUrl"`

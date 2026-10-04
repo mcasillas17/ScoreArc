@@ -35,13 +35,14 @@ export function shareMetadata(title: string, description: string, og: string) {
 // arbitrary ?crest= would make /api/og an open image proxy, so only the hosts
 // our own data layer serves crests from are honored — and the card route and
 // the page that echoes crest into its alternates both use THIS check.
-const CREST_HOSTS = new Set(['a.espncdn.com', 'r2.thesportsdb.com']);
+// cdn.scorearc.futbol is where the ingester mirrors crests (exact host only).
+const CREST_HOSTS = new Set(['a.espncdn.com', 'r2.thesportsdb.com', 'cdn.scorearc.futbol']);
 
 export function safeCrest(raw: string | null | undefined): string | null {
   if (!raw || typeof raw !== 'string') return null;
   try {
     const u = new URL(raw);
-    if (u.protocol !== 'https:' || !CREST_HOSTS.has(u.hostname)) return null;
+    if (u.protocol !== 'https:' || u.port !== '' || !CREST_HOSTS.has(u.hostname)) return null;
     // Normalized, credentials stripped: satori cannot fetch a credentialed
     // URL, which would render as a phantom gap where the crest should be.
     u.username = '';
