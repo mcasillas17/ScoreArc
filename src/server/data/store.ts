@@ -144,12 +144,15 @@ export function createDataStore(deps: DataDeps): DataStore {
 
   // One summary read, cached with the header's shootout totals. MatchSummaryData
   // has no aggregate (neither does the reader's summary), but getMatches already
-  // holds this summary and the header outranks the scoreboard's evidence.
+  // holds this summary and the header outranks the scoreboard's evidence. The
+  // sides are part of the key: the totals, stats, lineups and other per-side
+  // fields are mapped for them, and the public match route passes its query's
+  // sides through unchecked.
   type LoadedSummary = { data: MatchSummaryData; shootout: Shootout | null };
   async function loadSummary(
     rc: CompetitionSeason, eventId: string, homeId: string, awayId: string, signal?: AbortSignal,
   ): Promise<LoadedSummary> {
-    const k = key(rc, `summary:${eventId}`);
+    const k = key(rc, `summary:${eventId}:${homeId}:${awayId}`);
     const cached = deps.cache.get(k) as LoadedSummary | undefined;
     if (cached) return cached;
     signal?.throwIfAborted();
