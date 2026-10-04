@@ -320,7 +320,7 @@ describe('bounded match freshness watchdog', () => {
     expect(inputs.state_run_id.required).toBe(false);
     const steps = document.jobs.check.steps;
     expect(steps.find(step => step.uses?.startsWith('actions/checkout@'))?.uses).toBe('actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1');
-    expect(steps.find(step => step.uses?.startsWith('actions/download-artifact@'))?.uses).toBe('actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53');
+    expect(steps.find(step => step.uses?.startsWith('actions/download-artifact@'))?.uses).toBe('actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c');
     expect(steps.find(step => step.uses?.startsWith('actions/upload-artifact@'))?.uses).toBe('actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f');
     expect(steps.find(step => step.id === 'restore')?.if).toContain('!inputs.initialize_state');
     expect(steps.find(step => step.id === 'restore')?.with?.['run-id']).toBe('${{ inputs.state_run_id }}');
