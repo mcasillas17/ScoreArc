@@ -145,7 +145,7 @@ them (the window methods, `getBracket`, `getMatchSummary` and the match route's
 | `placeholder-crest` | an empty provider logo is no crest (`null`), on the bracket and on the match-list, team-schedule and leader mappers that shared the defect | both languages, on the recorded placeholder through the bracket and match-list mappers; TS mapper tests for the team schedule and leaders |
 | `round-slug-type` | OpenAPI `KnockoutRound` enum on `BracketRound.slug` and `BracketMatch.round`, equal to the Go round order and the TS slug union | Go and `tsc` |
 | `bracket-round-name` | contract decision: `name` is an additive English label for API consumers; the frontend localizes from `slug` | each reader name equals the frontend's English catalog label |
-| `shootout-source` | summary header → scoreboard structured `shootoutScore` → anchored note → `null`. A scoreboard total is a non-negative integer or a string of digits (`''` and `null` read as 0), and the two are not both zero; anything else rejects the scoreboard. The summary header keeps its existing wider numeric rule. A header supplies totals only for its own match: its id and its single competition's id equal the event, and its two competitors are the event's sides, else it is ignored. A finished match with a decisive aggregate is won by the side with more, overriding the scoreboard's winner flags; a live, partial shootout names no winner, on the match list, the bracket (so no side advances early) and the ingester's summary recovery path alike; the ingester finalizes with the summary's winner, and the reader serves a finalized row's winner from its stored decisive aggregate, so rows finalized earlier agree; until finalization replaces the detail, a finished row's stored aggregate may still be a live poll's partial, so its stored winner stands. The reader serves no winner for a match that is not finished, so a provisional winner the bracket mapper stored mid-shootout before T16.2 is not served; the mappers keep ESPN's winner flags for such a match, and no recorded live payload sets one. A match the ingester knows only from the bracket carries the bracket's structured totals (off the served bracket) into the summary precedence, so a summary without header totals cannot let a conflicting note decide it. The frontend caches a summary per event and sides, because its totals are mapped for those sides. Regulation scores are untouched; lightweight feeds never fetch summaries | shared precedence vectors (totals and winner) through both mappers; a live and a finished bracket shootout through both bracket mappers; header identity vectors, including a summary first read with other sides; an ingester finalization test; a summary-recovery unit test; go-db: a sealed row whose stored winner contradicts its aggregate, a live partial shootout with a stored provisional winner, a finished unfinalized row still holding a live partial, and a level one, on the match, team-schedule and bracket projections; the Go bracket mapper's carried aggregate and an ingester test of a bracket-only match |
+| `shootout-source` | summary header → scoreboard structured `shootoutScore` → anchored note → `null`. A scoreboard total is a non-negative integer or a string of digits (`''` and `null` read as 0), and the two are not both zero; anything else rejects the scoreboard. The summary header keeps its existing wider numeric rule. A header supplies totals only for its own match: its id and its single competition's id equal the event, and its two competitors are the event's sides, else it is ignored. A finished match with a decisive aggregate is won by the side with more, overriding the scoreboard's winner flags; a live, partial shootout names no winner, on the match list, the bracket (so no side advances early) and the ingester's summary recovery path alike; the ingester finalizes with the summary's winner, and the final detail write stores that same evidence for both shootout fields (aggregate and kicks), or none, never a live poll's partial. The reader serves a finished match's stored winner, without re-deriving it from the stored aggregate (below), and no winner for a match that is not finished, so a provisional winner the bracket mapper stored mid-shootout before T16.2 is not served; the mappers keep ESPN's winner flags for such a match, and no recorded live payload sets one. The team schedule takes the scoreboard tiers and winner rule on its own competitor shape; as a lightweight per-team feed it ignores a malformed structured total instead of rejecting the feed. A match the ingester knows only from the bracket carries the bracket's structured totals (off the served bracket) into the summary precedence, so a summary without header totals cannot let a conflicting note decide it. The frontend caches a summary per event and sides, because its totals are mapped for those sides. Regulation scores are untouched; lightweight feeds never fetch summaries | shared precedence vectors (totals and winner) through both mappers; a live and a finished bracket shootout through both bracket mappers; header identity vectors, including a summary first read with other sides; an ingester finalization test; a summary-recovery unit test; go-db through the ingester's writer: a live partial with a stored provisional winner; finalization with no final shootout evidence, after a terminal status, and with a final aggregate; and a row sealed before T16.2 whose aggregate names the other side, on the match, team-schedule and bracket projections; the Go bracket mapper's carried aggregate and an ingester test of a bracket-only match; the shared precedence vectors through the team schedule |
 | `live-minute`, `bracket-live-minute` | a live match without a display clock is `minute: null`; the reader also serves a stored `''` as `null` | both mappers; go-db on match, bracket and team-schedule projections |
 
 The three T16.2 items that were never registered gaps:
@@ -187,13 +187,17 @@ lookup — each side's crosswalk ids, the goal events and their player ids, the
 bracket's stored aggregate — to use its expected index, `match_event` through its
 `(match_id, seq)` primary key rather than its type index.
 
-Rows finalized before T16.2 also kept the scoreboard's winner where the stored
-summary aggregate named the other side. For a finalized match the reader serves
-the side the stored decisive aggregate names, on every projection that carries a
-winner, without touching the sealed row. A finished row not yet finalized keeps
-its stored winner, because its stored aggregate may still be a live poll's
-partial. A row that is not finished is served without a winner, whatever was
-stored.
+Shootout winners and aggregates of rows finalized before T16.2 are served as
+stored, and neither is provably final. Their winner was resolved from the
+observation that finished them (scoreboard flags, bracket totals or a recovered
+summary header), independently of the stored aggregate; that aggregate went
+through a detail write that kept a live poll's value when the final summary had
+none, and a terminal status finalized with no detail at all. A sealed row whose aggregate names the other side than its winner
+therefore cannot be resolved from stored data: either may be wrong. The reader
+serves the stored winner and aggregate unchanged, and serves no winner for a row
+that is not finished. Finding and correcting such rows needs a separately
+approved operator procedure; how many exist in production is unmeasured. Rows
+finalized from now on store one final evidence for both.
 
 Legacy rows without aligned events stay `null`; nothing else in the database
 holds their own-goal flag or athlete id. The production share of each case is
@@ -274,8 +278,9 @@ provider-derived match UUID. The review repairs were checked the same way: the
 scoreboard winner flags beating a decisive aggregate (both mappers and the
 ingester), a live partial shootout naming a winner (match list, both bracket
 mappers and the summary recovery path), a summary cached without its sides, the
-reader serving the stored winner over a decisive sealed aggregate, naming one
-for a live row, or trusting an unsealed row's aggregate, a correlated lookup without an index path, the bracket aggregate
+reader naming a winner for a live row, a final detail write keeping a poll's
+shootout aggregate or kicks, the team schedule skipping the shootout tiers, a
+correlated lookup without an index path, the bracket aggregate
 dropped by the mapper, the ingester's candidate or its merge, a rejected
 standings payload refetched on every read, a summary header for another event or with reversed sides, a padded
 or fractional scoreboard total, a missing `children` array or an empty team id

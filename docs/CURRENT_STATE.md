@@ -474,9 +474,10 @@ ids are tested translations, not equalities
 `T16.2-standings-dedup` (a team in two provider tables) awaits an owner decision.
 Detail rows stored before T16.2 serve canonical sides; their
 `ownGoal`/`athleteId` are recovered at read time from aligned `match_event`
-rows where participation was captured, and are `null` otherwise; a finalized
-row's served winner follows its stored decisive shootout aggregate. How many
-production rows fall in each case is unmeasured. Production acceptance is
+rows where participation was captured, and are `null` otherwise. Their
+shootout winners and aggregates are served as stored; where they disagree,
+neither is provably final, and correction needs an approved operator procedure.
+How many production rows fall in each case is unmeasured. Production acceptance is
 separate.
 
 - **`DataStore` has 12 methods** (`getMatches`, `getFixtures`,
