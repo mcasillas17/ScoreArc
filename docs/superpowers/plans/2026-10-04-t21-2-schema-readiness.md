@@ -24,10 +24,19 @@ initial guess that a `0024` grant was required was disproved by the test).
 
 - **Version policy is exact equality.** A binary cannot know whether a migration
   it does not carry is additive, so "ahead" is refused like "behind". Cost: an
-  old binary that restarts between `migrate up` and its replacement's release
-  refuses to start; keep that window short. A rollback build must keep every
-  applied migration file (revert code, never an applied migration). Upgrade
-  path if this bites: a DB-recorded compatibility floor written by migrations.
+  old binary that (re)starts between `migrate up` and its replacement's release
+  refuses to start. On this Fly topology that is routine, not rare: the reader
+  autostarts stopped spare machines on load (`auto_stop_machines = "stop"`,
+  `min_machines_running = 1`), so any autostart — or a warm-machine restart —
+  in the window fails `ahead`; the ingester (`strategy = "immediate"`, restart
+  `always`) has no overlap, so a release against an unready schema stops the
+  old worker and the new one crash-loops, halting play-stream capture, the one
+  dataset ESPN prunes. That is the deliberate trade: fail closed over
+  degraded writes. Mitigation is operational: apply migrations immediately
+  before merge and let the merge release follow at once. A rollback build
+  must keep every applied migration file (revert code, never an applied
+  migration). Upgrade path if this bites: a DB-recorded compatibility floor
+  written by migrations.
 - **Absent/empty ledger is refused.** The psql bootstrap path (SETUP §5.3) is no
   longer valid for an environment that runs the services.
 - **No bypass flag, no auto-migrate, no ledger writes.** The check is read-only.
