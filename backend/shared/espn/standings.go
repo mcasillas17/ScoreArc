@@ -7,16 +7,17 @@ import (
 	"strings"
 )
 
-// Port of src/server/data/providers/espn-standings.ts's mapStandings.
+// Counterpart of src/server/data/providers/espn-standings.ts's mapStandings.
 //
 // The TS mapper returns Group[] (id/name/standings per ESPN "children"
 // group, e.g. "Group A"). The Go port flattens that into a single
 // []Standing, carrying the group id/name onto each row (GroupID/GroupName
 // on Standing) so the `standing` table — keyed only by (competition_id,
 // season_id, team_id), one group per team per season — doesn't lose which group a
-// team belongs to. Rank stays group-relative (1..n within each group,
-// matching the TS `entries.map((entry, i) => ({ rank: i + 1 })` behavior),
-// it's just that groups are concatenated rather than nested.
+// team belongs to. Rank is the provider entry index + 1 within each group,
+// so rows keep provider array order (the TS mapper reorders by ESPN's `rank`
+// stat when it is a complete 1..n permutation) and a dropped duplicate team
+// leaves a hole. See the T16.2-standings-rank/-dedup gaps.
 
 type rawStandingsDoc struct {
 	Children []rawStandingsGroup `json:"children"`
@@ -70,9 +71,13 @@ func standingStatMap(stats []rawStat) map[string]*float64 {
 	return out
 }
 
-// MapStandings ports espn-standings.ts's mapStandings: maps ESPN's raw
-// standings JSON (children[].standings.entries[]) into a flat []Standing,
-// rank restarting at 1 for each group in fixture order.
+// MapStandings maps ESPN's raw standings JSON (children[].standings.entries[])
+// into a flat []Standing whose rank is the provider entry index + 1 within its
+// group. Unlike espn-standings.ts it never reorders by ESPN's `rank` stat (the
+// TS mapper does when that stat is a complete 1..n permutation), and a team
+// already seen in an earlier group is dropped, leaving a rank hole. Both are
+// characterized gaps (T16.2-standings-rank, T16.2-standings-dedup) in
+// src/server/data/contracts/reader-contract.json.
 func MapStandings(raw []byte) ([]Standing, error) {
 	if err := validateArrayEnvelope(raw, "children"); err != nil {
 		return nil, err

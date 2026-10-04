@@ -1,9 +1,9 @@
 package model
 
-// Domain types persisted by the ingester. These mirror the frontend's
-// src/server/data/types.ts field-for-field (same JSON tags as the TS
-// property names) so the eventual Postgres reader can serialize rows back
-// out in the exact shape the frontend already expects.
+// Domain types persisted by the ingester. They are shaped after the frontend's
+// src/server/data/types.ts (same JSON tags as the TS property names), but are
+// not field-for-field identical: the remaining incompatibilities are
+// characterized in src/server/data/contracts/reader-contract.json.
 //
 // Match here is deliberately narrower than the TS `Match` interface: comp
 // and season are added by the ingester (they're not present in a single
@@ -55,10 +55,13 @@ type Match struct {
 	BracketConfirmed bool       `json:"-"`
 }
 
-// BracketTeam mirrors types.ts's BracketTeam. It is distinct from Team
+// BracketTeam is shaped after types.ts's BracketTeam. It is distinct from Team
 // because knockout brackets can name a not-yet-determined slot ("Round of 32
 // Winner 5") before the feeding match resolves; Placeholder flags that case
 // so the reader can render a TBD slot instead of a real crest.
+//
+// A placeholder's crestUrl is null here and an empty string in the frontend
+// (gap T16.2-placeholder-crest in src/server/data/contracts/reader-contract.json).
 type BracketTeam struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
@@ -67,7 +70,8 @@ type BracketTeam struct {
 	Placeholder bool    `json:"placeholder"`
 }
 
-// BracketMatch mirrors types.ts's BracketMatch field-for-field. It is the
+// BracketMatch is shaped after types.ts's BracketMatch (Round is a free string
+// here, a KnockoutRoundSlug union in TS; see reader-contract.json). It is the
 // bracket mapper's (Task 5) output: a knockout match tagged with its round
 // slug, alongside BracketTeam legs that may still be placeholders. These
 // rows are upserted into the same `match` table as scoreboard matches
@@ -110,7 +114,8 @@ type Standing struct {
 	Advanced       bool    `json:"advanced"`
 }
 
-// TopScorer mirrors types.ts's TopScorer.
+// TopScorer is the reader's goals-only leaderboard row. The frontend has no
+// TopScorer type; its StatLeader differs (gap T10.2-leaders).
 type TopScorer struct {
 	Rank         int     `json:"rank"`
 	Player       string  `json:"player"`
@@ -123,8 +128,8 @@ type TopScorer struct {
 
 // StatLeader is one row of any season leaderboard.
 //
-// It mirrors the TypeScript StatLeader that E1 introduces in
-// src/server/data/types.ts, field for field. The metric-specific `Goals` on
+// It is shaped after the TypeScript StatLeader in src/server/data/types.ts,
+// without its athleteId/teamId/playerSlug (gap T10.2-leaders). The metric-specific `Goals` on
 // TopScorer becomes `Value`, because a field called Goals holding an assist
 // count is a lie that every reader of this struct then has to remember.
 //
@@ -144,7 +149,8 @@ type StatLeader struct {
 // These mirror types.ts's MatchSummaryData plus the goal/card/shootout
 // fields that live inline on the TS Match type. Port of providers/espn-summary.ts.
 
-// Scorer mirrors types.ts's Scorer.
+// Scorer is shaped after types.ts's Scorer, without ownGoal/athleteId/playerSlug
+// (gap T16.2-scorer-identity).
 type Scorer struct {
 	TeamID   string `json:"teamId"`
 	Player   string `json:"player"`
@@ -153,7 +159,8 @@ type Scorer struct {
 	Shootout bool   `json:"shootout"`
 }
 
-// Card mirrors types.ts's Card.
+// Card mirrors types.ts's Card, except that TeamID keeps the provider id while
+// the match sides are canonical (gap T16.2-nested-team-id).
 type Card struct {
 	TeamID string `json:"teamId"`
 	Player string `json:"player"`
@@ -161,7 +168,8 @@ type Card struct {
 	Type   string `json:"type"` // "yellow" | "red"
 }
 
-// TeamStats mirrors types.ts's TeamStats.
+// TeamStats is shaped after types.ts's TeamStats, without the accuracy
+// numerators and with provider-fraction percentages (gap T10.2-team-stats).
 type TeamStats struct {
 	Possession     *float64 `json:"possession"`
 	Shots          *float64 `json:"shots"`
@@ -185,7 +193,8 @@ type TeamStats struct {
 	RedCards       *float64 `json:"redCards"`
 }
 
-// MatchStats mirrors types.ts's MatchStats.
+// MatchStats is shaped after types.ts's MatchStats; its TeamStats sides carry
+// gap T10.2-team-stats.
 type MatchStats struct {
 	Home TeamStats `json:"home"`
 	Away TeamStats `json:"away"`
@@ -217,7 +226,8 @@ type ShootoutDetail struct {
 	Away []PenaltyKick `json:"away"`
 }
 
-// LineupPlayer mirrors types.ts's LineupPlayer.
+// LineupPlayer is shaped after types.ts's LineupPlayer, without
+// starter/stats/athleteId/playerSlug (gap T10.2-lineups).
 type LineupPlayer struct {
 	Name     string  `json:"name"`
 	Number   *int    `json:"number"`
@@ -225,13 +235,14 @@ type LineupPlayer struct {
 	Jersey   *string `json:"jersey"`
 }
 
-// TeamLineup mirrors types.ts's TeamLineup.
+// TeamLineup is shaped after types.ts's TeamLineup; its players carry gap
+// T10.2-lineups.
 type TeamLineup struct {
 	Formation string         `json:"formation"`
 	Players   []LineupPlayer `json:"players"`
 }
 
-// MatchLineups mirrors types.ts's MatchLineups.
+// MatchLineups is shaped after types.ts's MatchLineups (gap T10.2-lineups).
 type MatchLineups struct {
 	Home TeamLineup `json:"home"`
 	Away TeamLineup `json:"away"`

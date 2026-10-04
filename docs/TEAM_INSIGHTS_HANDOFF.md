@@ -16,9 +16,11 @@ activate the reader. Production data still comes through the existing ESPN
   statistics or news for every saved team.
 - A bounded T16.1 contract harness: shared recorded/test vectors consumed by
   TypeScript and Go, exact DTO/OpenAPI checks, real handler error/query tests and
-  real-Postgres team-schedule scope/order tests. The
-  [contract inventory](backend/TEAM_INSIGHTS_CONTRACT.md) names every gap
-  (14 methods at this milestone, 12 after #191 removed redundant leader wrappers).
+  real-Postgres team-schedule scope/order tests (14 methods at this milestone,
+  12 after #191 removed redundant leader wrappers). The method inventory and
+  every gap now live in the [reader contract harness](backend/READER_CONTRACT.md);
+  the [team-insights contract](backend/TEAM_INSIGHTS_CONTRACT.md) keeps this
+  slice's team-specific checks.
 
 This is partial T16.1 and partial T19.1. The explicit scheduling exception allows
 only team-only browser-local follows on the current source before E16 dogfooding.

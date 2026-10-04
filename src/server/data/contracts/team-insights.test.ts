@@ -2,8 +2,7 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import { mapScopedTeamSchedule, mapTeamProfile, mapTeamSchedule } from '../providers/espn-team';
 import { canonicalTeamId, providerTeamId } from '../teamIdentity';
 import { resolveSeason } from '../competitions';
-import type { DataStore } from '../store';
-import type { Match, Team, TeamProfile } from '../types';
+import type { Match, SquadPlayer, Team, TeamProfile } from '../types';
 import recordedProfile from '../__fixtures__/espn-team-profile.json';
 import recordedSchedule from '../__fixtures__/espn-team-schedule.json';
 import vectors from './team-insights.json';
@@ -11,22 +10,8 @@ import vectors from './team-insights.json';
 
 // Independent expected shapes: do not alias these properties to production
 // types. tsc checks expectTypeOf; the runtime mapper assertions are separate.
+// Match and Team are pinned exhaustively in reader-contract.test.ts.
 type ContractTeam = { id: string; name: string; abbr: string; crestUrl: string | null };
-type ContractMatch = {
-  id: string;
-  kickoff: string;
-  state: 'scheduled' | 'live' | 'finished';
-  minute: string | null;
-  statusDetail: string;
-  statusName: string;
-  home: ContractTeam;
-  away: ContractTeam;
-  homeScore: number | null;
-  awayScore: number | null;
-  winnerId: string | null;
-  note: string | null;
-  scope?: { competitionId: string; seasonId: string };
-};
 type ContractProfile = {
   team: ContractTeam;
   location: string | null;
@@ -38,36 +23,16 @@ type ContractProfile = {
   scheduleAvailability?: { results: 'available' | 'unavailable'; upcoming: 'available' | 'unavailable' };
 };
 
-// Exhaustiveness is compile checked: a new DataStore method requires inventory.
-const readerCoverage = {
-  getMatches: 'missing range/state/detail/limit',
-  getFixtures: 'missing range and lightweight detail semantics',
-  getLiveWindow: 'missing time window and live derivation',
-  getUpcoming: 'missing future/state/limit derivation',
-  getStandings: 'missing computed Leagues Cup and MLS views',
-  getBracket: 'route exists; full DTO/identity parity unproven',
-  getMatchSummary: 'canonical match id; nested scorer/stats/lineup DTO gaps',
-  getLeaders: 'no assists route; goals key differs from value; missing player identity',
-  getNews: 'competition-only route; full parity unproven',
-  getTeam: 'missing standing, scope and availability; canonical identity',
-  getSquad: 'only embedded in team; partial stat population',
-  getPlayer: 'no route',
-} satisfies Record<keyof DataStore, string>;
-
 describe('bounded team insights contract (not reader parity)', () => {
   it('compile-checks supported field types and nullability against independent shapes', () => {
     expectTypeOf<Pick<Team, keyof ContractTeam>>().toEqualTypeOf<ContractTeam>();
-    expectTypeOf<Pick<Match, keyof ContractMatch>>().toEqualTypeOf<ContractMatch>();
     expectTypeOf<Pick<TeamProfile, keyof ContractProfile>>().toEqualTypeOf<ContractProfile>();
-    expectTypeOf<TeamProfile['schedule']>().toBeArray();
-    expectTypeOf<Pick<TeamProfile['schedule'][number], keyof ContractMatch>>().toEqualTypeOf<ContractMatch>();
+    // Exhaustive: a TeamProfile key outside the pinned shape, squad and schedule fails tsc.
+    expectTypeOf<Exclude<keyof TeamProfile, keyof ContractProfile | 'squad' | 'schedule'>>().toEqualTypeOf<never>();
+    expectTypeOf<TeamProfile['squad']>().toEqualTypeOf<SquadPlayer[]>();
+    expectTypeOf<TeamProfile['schedule']>().toEqualTypeOf<Match[]>();
     // Preserve the mapper's nullable result independently of TeamProfile's fields.
     expectTypeOf<Extract<ReturnType<typeof mapTeamProfile>, null | undefined>>().toEqualTypeOf<null>();
-  });
-
-  it('pins all 12 methods without representing a gap as supported', () => {
-    expect(Object.keys(readerCoverage)).toHaveLength(12);
-    expect(readerCoverage.getPlayer).toBe('no route');
   });
 
   it('uses the actual schedule mapper and exact shared fields, nulls and ascending order', () => {
