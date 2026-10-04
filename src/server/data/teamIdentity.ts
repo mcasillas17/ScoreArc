@@ -22,17 +22,24 @@ const canonicalToProvider: Record<string, string> = Object.fromEntries(
 );
 
 /**
- * The canonical id for a provider's team id, or null when the club is not yet
- * curated.
+ * The canonical id for a team id in either representation, or null when the
+ * club is not yet curated.
+ *
+ * The ESPN store hands out provider ids (`227`); the reader API hands out our
+ * canonical ids (`mex-america`). Both reach the same helpers -- teamHref, the
+ * team index, follows -- so a canonical id canonicalizes to itself. The two id
+ * spaces are disjoint (numbers vs slugs; teamIdentity.test.ts pins it), so the
+ * answer is never ambiguous.
  *
  * Null is a real answer, not a failure. A club ESPN knows and the seed does not
- * becomes a `provisional` row in the backend and has no canonical id until
- * someone curates it -- so it has no URL, and its crest stays unlinked rather
- * than pointing at a page that cannot resolve.
+ * becomes a `provisional` row in the backend (`prov-espn-360`) and has no
+ * canonical id until someone curates it -- so it has no URL, and its crest
+ * stays unlinked rather than pointing at a page that cannot resolve.
  */
-export function canonicalTeamId(providerId: string | null | undefined): string | null {
-  if (!providerId) return null;
-  return Object.hasOwn(providerToCanonical, providerId) ? providerToCanonical[providerId] : null;
+export function canonicalTeamId(id: string | null | undefined): string | null {
+  if (!id) return null;
+  if (Object.hasOwn(providerToCanonical, id)) return providerToCanonical[id];
+  return Object.hasOwn(canonicalToProvider, id) ? id : null;
 }
 
 /**

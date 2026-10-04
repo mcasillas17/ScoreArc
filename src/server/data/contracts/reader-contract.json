@@ -106,11 +106,6 @@
    "mismatch": "Match.shootout provenance differs: the reader serves the aggregate the ingester stored from the summary header's shootoutScore (its match-note fallback is owned by backend/shared/source and not re-verified here); the frontend parses only the scoreboard note, and its MatchSummaryData has no aggregate field, so a summary-only shootout is null in the frontend.",
    "suites": ["ts", "go"]
   },
-  "T16.2-team-id": {
-   "task": "T16.2",
-   "mismatch": "Top-level team ids are canonical slugs in the reader (standings rows, match and bracket sides, the team route) and provider ids in the frontend; equivalence needs the seed crosswalk.",
-   "suites": ["ts", "go"]
-  },
   "T16.2-group-label": {
    "task": "T16.2",
    "mismatch": "An unnamed provider standings table keeps an empty Group id/name in the frontend, while the reader substitutes the competition short name (e.g. 'Premier League') for a NULL group.",
@@ -170,27 +165,27 @@
  "methods": {
   "getMatches": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T16.2-scorer-identity", "T16.2-nested-team-id", "T10.2-team-stats", "T16.2-match-id", "T16.2-shootout-source", "T16.2-team-id", "T21.4-dependency-error-logging", "T16.2-live-minute"]
+   "gaps": ["T10.1-match-query", "T16.2-scorer-identity", "T16.2-nested-team-id", "T10.2-team-stats", "T16.2-match-id", "T16.2-shootout-source", "T21.4-dependency-error-logging", "T16.2-live-minute"]
   },
   "getFixtures": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T16.2-match-id", "T16.2-shootout-source", "T16.2-team-id", "T21.4-dependency-error-logging", "T16.2-live-minute"]
+   "gaps": ["T10.1-match-query", "T16.2-match-id", "T16.2-shootout-source", "T21.4-dependency-error-logging", "T16.2-live-minute"]
   },
   "getLiveWindow": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T16.2-match-id", "T16.2-shootout-source", "T16.2-team-id", "T21.4-dependency-error-logging", "T16.2-live-minute"]
+   "gaps": ["T10.1-match-query", "T16.2-match-id", "T16.2-shootout-source", "T21.4-dependency-error-logging", "T16.2-live-minute"]
   },
   "getUpcoming": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T16.2-match-id", "T16.2-team-id", "T21.4-dependency-error-logging"]
+   "gaps": ["T10.1-match-query", "T16.2-match-id", "T21.4-dependency-error-logging"]
   },
   "getStandings": {
    "reader": "/v1/competitions/{comp}/{season}/standings",
-   "gaps": ["T16.2-standings-rank", "T10.10-derived-standings", "T17.3-freshness-coverage", "T16.2-team-id", "T16.2-group-label", "T21.4-dependency-error-logging", "T16.2-standings-dedup", "T16.2-standings-malformed"]
+   "gaps": ["T16.2-standings-rank", "T10.10-derived-standings", "T17.3-freshness-coverage", "T16.2-group-label", "T21.4-dependency-error-logging", "T16.2-standings-dedup", "T16.2-standings-malformed"]
   },
   "getBracket": {
    "reader": "/v1/competitions/{comp}/{season}/bracket",
-   "gaps": ["T16.2-placeholder-crest", "T16.2-bracket-round-name", "T16.2-team-id", "T16.2-match-id", "T21.4-dependency-error-logging", "T16.2-round-slug-type", "T16.2-bracket-live-minute"]
+   "gaps": ["T16.2-placeholder-crest", "T16.2-bracket-round-name", "T16.2-match-id", "T21.4-dependency-error-logging", "T16.2-round-slug-type", "T16.2-bracket-live-minute"]
   },
   "getMatchSummary": {
    "reader": "/v1/matches/{id}",
@@ -206,11 +201,11 @@
   },
   "getTeam": {
    "reader": "/v1/competitions/{comp}/{season}/teams/{teamId}",
-   "gaps": ["T10.3-team", "T10.3-team-location", "T16.2-team-id", "T10.3-partial-failure", "T10.3-standing-summary", "T16.2-match-id", "T10.3-team-cache-doc", "T10.3-team-record", "T16.2-bracket-live-minute", "T10.3-squad", "T10.3-squad-fields"]
+   "gaps": ["T10.3-team", "T10.3-team-location", "T10.3-partial-failure", "T10.3-standing-summary", "T16.2-match-id", "T10.3-team-cache-doc", "T10.3-team-record", "T16.2-bracket-live-minute", "T10.3-squad", "T10.3-squad-fields"]
   },
   "getSquad": {
    "reader": "/v1/competitions/{comp}/{season}/teams/{teamId}",
-   "gaps": ["T10.3-squad", "T10.3-squad-fields", "T10.3-partial-failure", "T16.2-team-id"]
+   "gaps": ["T10.3-squad", "T10.3-squad-fields", "T10.3-partial-failure"]
   },
   "getPlayer": {
    "reader": null,

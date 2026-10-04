@@ -368,6 +368,20 @@ func TestReaderContract(t *testing.T) {
 				}
 			}
 		}
+		// Team identity is a tested translation, not an equality: the frontend
+		// helper (teamIdentity.ts) and the ingester resolve provider ids through
+		// the same curated map, entry for entry.
+		data, err := os.ReadFile("../../src/server/data/teamCrosswalk.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var frontend map[string]string
+		if err := json.Unmarshal(data, &frontend); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(frontend, crosswalk) {
+			t.Fatalf("frontend crosswalk (%d entries) differs from the backend seed (%d)", len(frontend), len(crosswalk))
+		}
 	})
 
 	t.Run("recorded summary through the Go mapper and reader DTO", func(t *testing.T) {
@@ -552,12 +566,6 @@ func TestReaderContract(t *testing.T) {
 		}
 		reader := vector(t, raw, "standings", "readerGroupA").(map[string]any)
 		assertWire(t, "group A rows", wire(t, groupA), reader["standings"])
-		for i, row := range rows[:len(groupA)] {
-			if groupA[i]["team"].(map[string]any)["id"] == row.Team.ID {
-				t.Fatal("gap changed: reader standing team id equals the provider id")
-			}
-		}
-		gap("T16.2-team-id")
 		frontend := vector(t, raw, "standings", "frontendGroupA", "standings").([]any)
 		var readerOrder, frontendOrder []string
 		for i := range frontend {

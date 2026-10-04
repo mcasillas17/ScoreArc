@@ -4,7 +4,8 @@ import { afterAll, afterEach, beforeEach, describe, expect, expectTypeOf, it, vi
 import { createDataStore, dataStore, type DataStore } from '../store';
 import { resolveSeason, type OverallTableLabelKey, type ZoneKind, type ZoneLabelKey } from '../competitions';
 import { TtlCache } from '../cache';
-import { canonicalTeamId } from '../teamIdentity';
+import { canonicalTeamId, providerTeamId } from '../teamIdentity';
+import { teamHref } from '@/components/teamHref';
 import { mapTeamSchedule } from '../providers/espn-team';
 import { parseMatchFreshness, type MatchFreshness } from '@/lib/matchFreshness';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
@@ -454,13 +455,22 @@ describe('reader contract: standings, bracket, leaders, news', () => {
     const reader = vectors.standings.readerGroupA;
     expect(Object.keys(reader).sort()).toEqual(['id', 'name', 'standings']);
     const byTeam = new Map(reader.standings.map(row => [row.team.id, row]));
+    const teamBase = `/c/${wc.competition.id}/${wc.season.id}/team`;
     for (const row of vectors.standings.frontendGroupA.standings) {
       const other = byTeam.get(canonicalTeamId(row.team.id)!);
       expect(other, row.team.abbr).toBeDefined();
+      // Team identity is an intentional representation difference with a tested
+      // translation: the seed crosswalk maps each way, and every downstream
+      // helper treats the reader's canonical id exactly like the provider id.
+      expect(providerTeamId(other!.team.id)).toBe(row.team.id);
+      expect(canonicalTeamId(other!.team.id)).toBe(other!.team.id);
+      expect(teamHref(teamBase, other!.team)).toBe(teamHref(teamBase, row.team));
+      expect(teamHref(teamBase, other!.team)).toBe(`${teamBase}/${other!.team.id}`);
       // Named normalizer: canonical team id back to the provider id; rank is the pinned gap below.
       expect({ ...other!, rank: row.rank, team: { ...other!.team, id: row.team.id } }).toEqual(row);
-      gap('T16.2-team-id', () => expect(other!.team.id).not.toBe(row.team.id));
     }
+    // A provisional reader id (an uncurated club) stays unlinked, like an uncurated provider id.
+    expect(teamHref(teamBase, { id: 'prov-espn-131529' })).toBeUndefined();
     gap('T16.2-standings-rank', () => {
       const order = (rows: { team: { abbr: string } }[]) => rows.map(r => r.team.abbr);
       expect(order(reader.standings)).not.toEqual(order(groups[0].standings));
