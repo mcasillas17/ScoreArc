@@ -22,16 +22,19 @@ Production must use TLS to Neon (`sslmode=require`). The process verifies the
 database on startup, uses bounded HTTP timeouts, and shuts down gracefully on
 `SIGINT` or `SIGTERM`.
 
-Before opening the HTTP listener, the reader also runs a column-specific
-`SELECT ... WHERE false` against `match_sync_status` and `match_poll_status`
-within the existing ten-second startup deadline. Missing required freshness
-columns, tables, or reader SELECT grants fail startup without reading match
-observations. The failure log contains only the operation, error type and
-SQLSTATE; the returned error is a constant safe for the top-level logger, not a
-wrapped DSN or PostgreSQL message/detail. Empty bookkeeping tables pass this
-schema check and still yield `unavailable` for active scopes at request time.
-This is only a migration-0023 dependency check, not general T21.2 readiness;
-the existing `/healthz` connectivity behavior is unchanged.
+Before opening the HTTP listener, within the existing ten-second startup
+deadline, the reader runs the shared schema-readiness gate
+(`migrations.CheckReady`, [policy and failure matrix](../../docs/backend/RELEASES.md#schema-readiness)):
+the golang-migrate ledger must hold one clean row at exactly the migration head
+this binary embeds, and a column-specific `SELECT ... WHERE false` against
+`match_sync_status` and `match_poll_status` must succeed as the reader role.
+Any other state — missing/empty/malformed/dirty ledger, behind or ahead,
+missing columns, tables or SELECT grants, timeout — exits without listening.
+The logged `reader stopped` error carries only category, expected/applied
+version, dirty flag, SQLSTATE, Go error type and the runbook pointer, never a DSN
+or PostgreSQL message/detail. Empty bookkeeping tables pass and still yield
+`unavailable` for active scopes at request time. The existing `/healthz`
+connectivity behavior is unchanged.
 
 ```bash
 cd backend/reader
@@ -236,10 +239,10 @@ similarly record each cycle's live state, failure count, duration, and sleep.
 ## Team-profile failures and schema repair
 
 The 0022 colour repair below is a historical prerequisite, not sufficient schema
-for this version. Current binaries also require 0023 match synchronization.
-Follow the separately approved
-[0023 migration/release sequence](../../docs/backend/MATCH_FRESHNESS.md#schema-and-separately-approved-release-order)
-before deploying them; general migration-head readiness remains T21.2.
+for this version. Current binaries refuse to start unless the golang-migrate
+ledger is clean and at exactly the migration head they embed; follow
+[schema readiness](../../docs/backend/RELEASES.md#schema-readiness) before
+deploying them.
 
 `GET /v1/competitions/{comp}/{season}/teams/{teamId}` reads identity and standing,
 then squad/statistics, then the team's schedule. Every block must succeed before

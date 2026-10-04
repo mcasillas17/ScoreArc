@@ -68,7 +68,9 @@ initial guess that a `0024` grant was required was disproved by the test).
   its test (superseded).
 - Modify `backend/ingester/main.go`: replace `reportSchemaDrift` +
   `CheckMatchSyncSchema` with `repo.CheckSchemaReady`, before the lease.
-- Modify `backend/reader/main.go`: `checkFreshnessSchema` → `checkSchemaReadiness`.
+- Modify `backend/reader/main.go`: replace `checkFreshnessSchema` with a direct
+  `migrations.CheckReady(startupCtx, pool, freshnessSchemaProbe)` call before the
+  listener (no wrapper).
 - Test harnesses (store, reader, ingester) create the ledger before `0001`, as
   golang-migrate does, and record the last applied version.
 - Docs: SETUP §5, RELEASES (schema readiness section, rollback), reader README,
@@ -94,7 +96,7 @@ initial guess that a `0024` grant was required was disproved by the test).
   `CheckSchemaReady`; delete `reportSchemaDrift`, `schema_version.go`. PASS. Commit.
 - [ ] **3. Reader wiring.** Failing test calling `run()`: behind ledger returns a
   `*ReadinessError` and the port was never bound; compatible serves `/healthz`
-  200 and returns nil on SIGTERM. Wire `checkSchemaReadiness`. PASS. Commit.
+  200 and returns nil on SIGTERM. Wire `migrations.CheckReady` with `freshnessSchemaProbe`. PASS. Commit.
 - [ ] **4. Gate.** `go build ./... && go test -race -count=1 ./... && go vet ./...`.
 - [ ] **5. Docs** per the list above, including the pre-merge owner activation:
   read-only verify a clean ledger at the embedded head and role access before
