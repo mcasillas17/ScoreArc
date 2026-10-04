@@ -9,9 +9,11 @@ package model
 // and season are added by the ingester (they're not present in a single
 // ESPN payload), and the "detail" fields the TS type inlines (scorers,
 // cards, stats, winProbability, shootout, shootoutDetail) live instead on
-// MatchDetail, stored separately as jsonb — the scoreboard/bracket mappers
-// (Tasks 2, 5) never populate them. Match additionally carries Round: the
-// bracket mapper (Task 5) tags knockout matches with a round slug (e.g.
+// MatchDetail, stored separately as jsonb. The scoreboard and bracket mappers
+// (Tasks 2, 5) fill no MatchDetail field; their own shootout evidence rides
+// off the wire on Match.Shootout (and BracketMatch.Shootout) into the summary
+// precedence, whose result MatchDetail stores. Match additionally carries
+// Round: the bracket mapper (Task 5) tags knockout matches with a round slug (e.g.
 // "round-of-16") before they're upserted into the same `match` table as
 // group-stage fixtures (Task 6); group-stage matches leave Round empty.
 
@@ -64,8 +66,8 @@ type Match struct {
 // Winner 5") before the feeding match resolves; Placeholder flags that case
 // so the reader can render a TBD slot instead of a real crest.
 //
-// A placeholder's crestUrl is null here and an empty string in the frontend
-// (gap T16.2-placeholder-crest in src/server/data/contracts/reader-contract.json).
+// A placeholder's crestUrl is null, here and in the frontend: an empty provider
+// logo is no crest (T16.2).
 type BracketTeam struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
@@ -74,8 +76,9 @@ type BracketTeam struct {
 	Placeholder bool    `json:"placeholder"`
 }
 
-// BracketMatch is shaped after types.ts's BracketMatch (Round is a free string
-// here, a KnockoutRoundSlug union in TS; see reader-contract.json). It is the
+// BracketMatch is shaped after types.ts's BracketMatch. Round is a string here
+// but takes only the OpenAPI KnockoutRound values (espn.KnockoutRounds(), the
+// TS KnockoutRoundSlug union; T16.2). It is the
 // bracket mapper's (Task 5) output: a knockout match tagged with its round
 // slug, alongside BracketTeam legs that may still be placeholders. These
 // rows are upserted into the same `match` table as scoreboard matches
