@@ -407,6 +407,24 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     expect([match.homeScore, match.awayScore]).toEqual([1, 1]); // Regulation scores stay.
   });
 
+  it('keeps the header aggregate for the match list after the summary route was read with other sides', async () => {
+    const h = s0.syntheticOverlay.headerIdentity;
+    const [own] = h.cases;
+    const summary = overlaidSummary();
+    summary.header.id = summary.header.competitions[0].id = own.header.eventId;
+    for (const side of summary.header.competitions[0].competitors as { homeAway: string; id: string; team: { id: string } }[]) {
+      side.id = side.team.id = own.header[side.homeAway as 'home' | 'away'];
+    }
+    const { store, urls } = storeOver(url => url.includes('/summary') ? summary
+      : { leagues: [{ slug: vectors.queries.leagueSlug }], events: url.includes('dates=202606') ? scoreboard.events.filter(e => e.id === h.scoreboardEventId) : [] });
+    // The public match route passes its query's sides through unchecked.
+    await store.getMatchSummary(wc, h.scoreboardEventId, '', '');
+    const [match] = await store.getMatches(wc, '20260629-20260629');
+    expect(match.shootout).toEqual(own.expected.shootout);
+    expect(match.winnerId).toBe(match[own.expected.winner as 'home' | 'away'].id);
+    expect(urls.filter(url => url.includes('/summary'))).toHaveLength(2);
+  });
+
   it.each(vectors.scoreboard.shootoutPrecedence.cases)('applies the shared scoreboard shootout precedence: $name', async (c) => {
     const p = vectors.scoreboard.shootoutPrecedence;
     const event = structuredClone(scoreboard.events.find(e => e.id === p.eventId)!);
@@ -599,6 +617,23 @@ describe('reader contract: standings, bracket, leaders, news', () => {
       expect(derived[0]).not.toHaveProperty('name');
       expect(resolveSeason('leagues-cup')!.season.computedTables).toBeDefined();
     });
+  });
+
+  it('names a bracket shootout winner only once the match is finished', async () => {
+    const ls = vectors.bracket.liveShootout;
+    const withStatus = (live: boolean) => bracketRaw.events.map((e) => {
+      if (e.id !== ls.eventId) return e;
+      const event = structuredClone(e);
+      for (const competitor of event.competitions[0].competitors) competitor.winner = false;
+      if (live) event.status.type = { ...event.status.type, ...ls.status };
+      return event;
+    });
+    for (const [live, expected] of [[false, ls.expected.finished], [true, ls.expected.live]] as const) {
+      const rounds = await storeOver(windowOver(withStatus(live))).store.getBracket(wc);
+      const match = rounds.flatMap(r => r.matches).find(m => m.id === ls.eventId)!;
+      expect(match.state).toBe(live ? 'live' : 'finished');
+      expect(match.winnerId).toBe(expected === null ? null : match[expected as 'home' | 'away'].id);
+    }
   });
 
   it('maps the recorded bracket through the real store window', async () => {

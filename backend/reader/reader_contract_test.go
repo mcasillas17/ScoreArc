@@ -12,6 +12,7 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -886,6 +887,54 @@ func TestReaderContract(t *testing.T) {
 		}
 		if !found {
 			t.Fatal("clockless live bracket match missing")
+		}
+		// A shootout names a bracket winner only once the match is finished.
+		liveShootout := vector(t, raw, "bracket", "liveShootout").(map[string]any)
+		for _, live := range []bool{false, true} {
+			var shootoutRaw map[string]any
+			if err := json.Unmarshal(contractFixture(t, fixtureName(t, raw, "bracket")), &shootoutRaw); err != nil {
+				t.Fatal(err)
+			}
+			sides := map[string]string{}
+			for _, event := range shootoutRaw["events"].([]any) {
+				e := event.(map[string]any)
+				if e["id"] != liveShootout["eventId"] {
+					continue
+				}
+				for _, competitor := range e["competitions"].([]any)[0].(map[string]any)["competitors"].([]any) {
+					side := competitor.(map[string]any)
+					side["winner"] = false
+					sides[side["homeAway"].(string)] = side["team"].(map[string]any)["id"].(string)
+				}
+				if live {
+					maps.Copy(e["status"].(map[string]any)["type"].(map[string]any), liveShootout["status"].(map[string]any))
+				}
+			}
+			data, err := json.Marshal(shootoutRaw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mapped, err := espn.MapBracket(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := liveShootout["expected"].(map[string]any)["finished"]
+			if live {
+				want = liveShootout["expected"].(map[string]any)["live"]
+			}
+			if side, ok := want.(string); ok {
+				want = sides[side]
+			}
+			found := false
+			for _, match := range mapped {
+				if match.ID == liveShootout["eventId"] {
+					found = true
+					assertWire(t, "bracket shootout winner (live "+strconv.FormatBool(live)+")", wire(t, match.WinnerID), want)
+				}
+			}
+			if !found {
+				t.Fatal("shootout bracket match missing")
+			}
 		}
 		// One knockout round vocabulary: the TS KnockoutRoundSlug union (pinned by
 		// the TS suite against readerRoundNames' keys), the Go mapper, the reader's

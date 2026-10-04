@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -700,5 +701,147 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		}
 	})
 
+	t.Run("a stored decisive shootout names the served winner of a finished match only", func(t *testing.T) {
+		// Synthetic: rows written before T16.2 finalized with the scoreboard's
+		// winner even when the stored summary aggregate named the other side.
+		// The reader serves the aggregate's side for a finished match, on every
+		// projection that carries a winner, and leaves the sealed row unchanged;
+		// a live shootout's partial totals name no winner.
+		home, away := vectors.Summary.Sides["home"].CanonicalID, vectors.Summary.Sides["away"].CanonicalID
+		team(t, espn.Team{ID: "4789", Name: "Ivory Coast", Abbr: "CIV"}, home)
+		team(t, espn.Team{ID: "464", Name: "Norway", Abbr: "NOR"}, away)
+		seed := func(id, kickoff, state string, winner *string, shootout string) {
+			if _, err := pool.Exec(ctx, `INSERT INTO match (id, competition_id, season_id, round, kickoff, state, home_team_id, away_team_id, home_score, away_score, winner_id, source)
+				VALUES ($1,'world-cup','2026','round-of-16',$2,$3,$4,$5,1,1,$6,'espn')`, id, kickoff, state, home, away, winner); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := pool.Exec(ctx, `INSERT INTO match_detail (match_id, scorers, cards, shootout) VALUES ($1,'[]','[]',$2)`, id, shootout); err != nil {
+				t.Fatal(err)
+			}
+			if state == "finished" {
+				if _, err := pool.Exec(ctx, `UPDATE match SET finalized_at=now() WHERE id=$1`, id); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		contradicted, live, level := "018f0000-0000-7000-8000-000000016025", "018f0000-0000-7000-8000-000000016026", "018f0000-0000-7000-8000-000000016027"
+		seed(contradicted, "2026-07-07T17:00:00Z", "finished", &away, `{"homeScore":4,"awayScore":3}`)
+		seed(live, "2026-07-08T17:00:00Z", "live", nil, `{"homeScore":3,"awayScore":2}`)
+		seed(level, "2026-07-09T17:00:00Z", "finished", &away, `{"homeScore":3,"awayScore":3}`)
+		want := map[string]any{contradicted: home, live: nil, level: away}
+
+		var listed []map[string]any
+		get(t, "/v1/competitions/world-cup/2026/matches", &listed)
+		var profile map[string]any
+		get(t, "/v1/competitions/world-cup/2026/teams/"+home, &profile)
+		var bracket []map[string]any
+		get(t, "/v1/competitions/world-cup/2026/bracket", &bracket)
+		var bracketMatches []any
+		for _, round := range bracket {
+			bracketMatches = append(bracketMatches, round["matches"].([]any)...)
+		}
+		for name, rows := range map[string][]any{"matches": wire(t, listed).([]any), "team schedule": profile["schedule"].([]any), "bracket": bracketMatches} {
+			found := 0
+			for _, row := range rows {
+				match := row.(map[string]any)
+				if winner, ok := want[match["id"].(string)]; ok {
+					found++
+					if match["winnerId"] != winner {
+						t.Fatalf("%s %s served winner %v, want %v", name, match["id"], match["winnerId"], winner)
+					}
+				}
+			}
+			if found != len(want) {
+				t.Fatalf("%s served %d of %d shootout matches", name, found, len(want))
+			}
+		}
+		var stored string
+		if err := pool.QueryRow(ctx, `SELECT winner_id FROM match WHERE id=$1`, contradicted).Scan(&stored); err != nil || stored != away {
+			t.Fatalf("sealed winner rewritten: %q %v", stored, err)
+		}
+	})
+
+	t.Run("read-time translation and recovery stay on indexed lookups", func(t *testing.T) {
+		// The bound READER_CONTRACT documents: every correlated lookup the read
+		// projections add -- each side's crosswalk ids, a legacy row's goal
+		// events and their player ids, a bracket row's stored aggregate -- has
+		// an index path keyed by the outer row. With sequential scans disabled,
+		// a lookup without one still plans as a Seq Scan, so none may appear.
+		// match_event must be reached through its (match_id, seq) primary key,
+		// never by scanning every goal of every match through its type index.
+		want := map[string]string{
+			"team_external_ref":   "team_external_ref_target_idx",
+			"player_external_ref": "player_external_ref_target_idx",
+			"match_event":         "match_event_pkey",
+			"match_detail":        "match_detail_pkey",
+		}
+		for _, q := range []struct {
+			name   string
+			sql    string
+			args   []any
+			tables []string
+		}{
+			{"matches", matchesSQL, []any{"world-cup", "2026"}, []string{"team_external_ref", "player_external_ref", "match_event"}},
+			{"team schedule", teamScheduleSQL, []any{"nat-civ", "world-cup", "2026"}, []string{"team_external_ref", "player_external_ref", "match_event"}},
+			{"summary", summarySQL, []any{uuid.Nil}, []string{"team_external_ref", "player_external_ref", "match_event", "match_detail"}},
+			{"bracket", bracketSQL, []any{"world-cup", "2026"}, []string{"match_detail"}},
+		} {
+			tx, err := pool.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var plan []byte
+			if _, err := tx.Exec(ctx, `SET LOCAL enable_seqscan = off`); err != nil {
+				t.Fatal(err)
+			}
+			err = tx.QueryRow(ctx, `EXPLAIN (FORMAT JSON) `+q.sql, q.args...).Scan(&plan)
+			_ = tx.Rollback(ctx)
+			if err != nil {
+				t.Fatalf("%s: %v", q.name, err)
+			}
+			used := map[string][]string{}
+			var walk func(node map[string]any)
+			walk = func(node map[string]any) {
+				if relation, ok := node["Relation Name"].(string); ok {
+					if _, tracked := want[relation]; tracked && node["Node Type"] == "Seq Scan" {
+						t.Fatalf("%s: sequential scan of %s", q.name, relation)
+					}
+				}
+				if index, ok := node["Index Name"].(string); ok {
+					for table := range want {
+						if strings.HasPrefix(index, table+"_") {
+							used[table] = append(used[table], index)
+						}
+					}
+				}
+				for _, child := range asSlice(node["Plans"]) {
+					walk(child.(map[string]any))
+				}
+			}
+			var root []map[string]any
+			if err := json.Unmarshal(plan, &root); err != nil {
+				t.Fatal(err)
+			}
+			walk(root[0]["Plan"].(map[string]any))
+			for _, table := range q.tables {
+				if len(used[table]) == 0 {
+					t.Fatalf("%s: no index lookup of %s in %s", q.name, table, plan)
+				}
+			}
+			for table, indexes := range used {
+				for _, index := range indexes {
+					if index != want[table] {
+						t.Fatalf("%s: %s reached through %s, want %s", q.name, table, index, want[table])
+					}
+				}
+			}
+		}
+	})
+
 	assertCharacterizedGaps(t, raw, "go-db", characterized)
+}
+
+func asSlice(value any) []any {
+	slice, _ := value.([]any)
+	return slice
 }
