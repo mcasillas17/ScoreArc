@@ -1,10 +1,11 @@
 /**
  * The player slug contract -- the public identity of a player in a URL.
  *
- * This algorithm is published in docs/backend/PLAYER_IDENTITY.md and the
- * backend mints the same slugs as canonical player ids. Changing it here
- * without changing it there breaks every player URL at the API cutover, so
- * treat the doc as the spec and this file as one of its two implementations.
+ * This algorithm is published in docs/backend/PLAYER_IDENTITY.md, under which
+ * the backend is to mint the same slugs as public player ids (proposed; today
+ * it keys players by UUIDv7 and serves no slug). Changing it here without
+ * changing it there breaks every player URL at the API cutover, so treat the
+ * doc as the spec and this file as one of its implementations.
  *
  * Provider ids (ESPN athlete numbers) never appear in URLs -- the same rule
  * team pages follow via teamIdentity.ts. The slug is the key; the provider id

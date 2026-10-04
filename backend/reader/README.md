@@ -4,8 +4,10 @@
 after the frontend's existing models from Postgres, except news, which remains a
 short-lived ESPN proxy. Each implemented difference is a registered gap, an
 intentional identity translation (canonical match UUIDs, team slugs,
-canonical-or-`null` scorer and card `teamId`s) or the additive
-`BracketRound.name` contract decision, all documented in
+canonical-or-`null` scorer and card `teamId`s) or a documented T16.2 contract
+decision (the additive `BracketRound.name`; no winner served for a match that
+is not finished, where the ESPN-backed mappers keep a provider winner flag),
+all documented in
 [`READER_CONTRACT`](../../docs/backend/READER_CONTRACT.md#t162-identity-and-dto-contract). The authoritative machine-readable contract is
 [`openapi.yaml`](openapi.yaml).
 

@@ -496,8 +496,9 @@ migration compatibility and separately approved rollout.
   - `GET /v1/competitions/{comp}/news`  → **live proxy to ESPN** (short TTL cache), NOT DB-served.
 - **Response shapes target the frontend types.** Each implemented difference is
   a registered gap (T16.1), an intentional identity translation (T16.2:
-  canonical match UUIDs, team slugs, canonical-or-`null` nested `teamId`s) or
-  the additive `BracketRound.name` contract decision, all in
+  canonical match UUIDs, team slugs, canonical-or-`null` nested `teamId`s) or a
+  documented T16.2 contract decision (the additive `BracketRound.name`; no
+  winner served for a match that is not finished), all in
   [READER_CONTRACT](READER_CONTRACT.md#t162-identity-and-dto-contract). Publish an
   **OpenAPI** doc as the shared contract. The implementation and OpenAPI 3.1 document live in
   `backend/reader/`; contract tests load the document and validate every public
