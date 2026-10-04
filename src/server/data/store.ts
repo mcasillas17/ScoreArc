@@ -371,7 +371,8 @@ export function createDataStore(deps: DataDeps): DataStore {
 
     async getStandings(rc): Promise<Group[]> {
       const k = key(rc, 'standings');
-      const cached = deps.cache.get(k) as Group[] | undefined;
+      const cached = deps.cache.get(k) as Group[] | Error | undefined;
+      if (cached instanceof Error) throw cached;
       if (cached) return cached;
       // Some competitions have no published table at all — ESPN's /standings
       // returns `{}` for the Leagues Cup even for finished seasons. Compute it
@@ -383,7 +384,16 @@ export function createDataStore(deps: DataDeps): DataStore {
         return groups;
       }
       const raw = await deps.fetchJson(standingsUrl(slug(rc)));
-      const groups = mapStandings(raw, rc.competition.shortName);
+      let groups: Group[];
+      try {
+        groups = mapStandings(raw, rc.competition.shortName);
+      } catch (error) {
+        // A rejected table is cached like an accepted one: the standings page
+        // and the team and player indexes all read it, and a provider that
+        // keeps serving it must not cost an upstream fetch per read.
+        deps.cache.set(k, error, 60_000);
+        throw error;
+      }
       // A conference-split league also races for something league-wide that no
       // provider tabulates — MLS's Supporters' Shield. Merge it here so the view
       // receives it as one more table and needs no special case.

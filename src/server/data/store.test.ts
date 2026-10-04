@@ -13,6 +13,9 @@ import athleteOverviewRaw from './__fixtures__/espn-athlete-overview.json';
 import athleteBioRaw from './__fixtures__/espn-athlete-bio.json';
 import teamScheduleRaw from './__fixtures__/espn-team-schedule.json';
 import teamFixturesRaw from './__fixtures__/espn-team-fixtures.json';
+import standingsRaw from './__fixtures__/espn-standings.json';
+import { StandingsStatsError } from './providers/espn-standings';
+import { standingTeams } from './teamIndex';
 
 const wc = resolveSeason('world-cup')!;
 const lc = resolveSeason('leagues-cup')!;
@@ -42,6 +45,25 @@ function fakeDeps() {
 }
 
 describe('EspnReadThroughStore', () => {
+  // A rejected table is cached like an accepted one: the standings page, the
+  // team index and the player index all read it, and a provider that keeps
+  // serving it must not cost one upstream fetch per read.
+  it.each([
+    ['a missing stat', (raw: any) => { delete raw.children[0].standings.entries[0].stats.find((s: any) => s.name === 'points').value; }],
+    ['no children array', (raw: any) => { delete raw.children; }],
+  ])('caches a standings payload rejected for %s', async (_name, corrupt) => {
+    const raw = structuredClone(standingsRaw);
+    corrupt(raw);
+    let fetches = 0;
+    const store = createDataStore({ cache: new TtlCache<unknown>(), fetchJson: async () => { fetches++; return raw; } });
+    const first = await store.getStandings(wc).catch((error: unknown) => error);
+    const second = await store.getStandings(wc).catch((error: unknown) => error);
+    expect(first).toBeInstanceOf(Error);
+    expect(second).toBe(first);
+    if (first instanceof StandingsStatsError) expect(await standingTeams(wc, store)).toEqual(first.teams);
+    expect(fetches).toBe(1);
+  });
+
   it("getMatches uses the competition's ESPN slug", async () => {
     const { deps, urls } = fakeDeps();
     await createDataStore(deps).getMatches(lc);
