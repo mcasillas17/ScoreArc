@@ -353,8 +353,12 @@ the seal is the intended single `match_pkey` probe with two shared-buffer hits.
 - Once a match finalizes, the ingester immediately attempts both additive
   full-time captures: officials and fixed odds. An explicit empty crew or a
   no-market odds response is a durable completion, not a missing row to retry.
-- Bracket metadata is authoritative for knockout round, placeholders, and
-  shootout winner. A bracket outage blocks only candidates still requiring that
+- Bracket metadata is authoritative for knockout round and placeholders. A
+  shootout winner follows the final shootout aggregate (summary header, else the
+  bracket's or scoreboard's structured totals, else the note), else ESPN's own
+  winner flag, as it finalizes
+  ([READER_CONTRACT, T16.2](READER_CONTRACT.md#t162-identity-and-dto-contract)).
+  A bracket outage blocks only candidates still requiring that
   metadata; group-stage matches continue finalizing, while knockout candidates
   require confirmation from the current successful bracket response before
   immutable finalization.
