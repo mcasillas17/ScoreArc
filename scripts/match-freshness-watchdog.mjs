@@ -54,11 +54,14 @@ const team = value => exact(value, 'id name abbr crestUrl') && [value.id, value.
 const scorer = value => record(value) &&
   ['teamId', 'player', 'minute', 'penalty', 'shootout'].every(key => Object.hasOwn(value, key)) &&
   Object.keys(value).every(key => ['teamId', 'player', 'minute', 'penalty', 'shootout', 'ownGoal', 'athleteId', 'playerSlug'].includes(key)) &&
-  (!Object.hasOwn(value, 'ownGoal') || typeof value.ownGoal === 'boolean') &&
+  // T16.2: null ownGoal is unknown (legacy row), null teamId names neither side;
+  // both are passed through as-is. Older scorers may omit ownGoal/athleteId/playerSlug.
+  (!Object.hasOwn(value, 'ownGoal') || nullable(value.ownGoal, flag => typeof flag === 'boolean')) &&
   ['athleteId', 'playerSlug'].every(key => !Object.hasOwn(value, key) || nullable(value[key], text)) &&
-  [value.teamId, value.player, value.minute].every(text) && typeof value.penalty === 'boolean' && typeof value.shootout === 'boolean';
+  nullable(value.teamId, text) && [value.player, value.minute].every(text) &&
+  typeof value.penalty === 'boolean' && typeof value.shootout === 'boolean';
 const card = value => exact(value, 'teamId player minute type') &&
-  [value.teamId, value.player, value.minute].every(text) && ['yellow', 'red'].includes(value.type);
+  nullable(value.teamId, text) && [value.player, value.minute].every(text) && ['yellow', 'red'].includes(value.type);
 const kick = value => exact(value, 'order player scored') && integer(value.order) && text(value.player) && typeof value.scored === 'boolean';
 const sideStats = value => exact(value, 'possession shots shotsOnTarget shotAccuracy corners offsides passes passAccuracy crosses crossAccuracy longBalls tackles tackleAccuracy interceptions clearances blockedShots saves fouls yellowCards redCards') &&
   Object.values(value).every(item => nullable(item, finite));

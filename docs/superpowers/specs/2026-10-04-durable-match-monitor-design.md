@@ -57,6 +57,10 @@ Precise nullable changes require T16.2 owner's confirmation; no speculative card
 or other DTO weakening. Shared roadmap/status edits require coordination; this
 slice documents operations in MATCH_FRESHNESS and the reader README.
 
+Amended after T16.2 merged (#203): its reader contract made scorer/card `teamId`
+and scorer `ownGoal` nullable, so the watchdog now accepts those explicit nulls
+(a present `teamId` is still required). MATCH_FRESHNESS has the current shape.
+
 ## Failure and acceptance
 
 Data incidents exit 1; state/API/config/upload/queue/delivery failures exit 2.

@@ -68,6 +68,30 @@ describe('durable match monitor', () => {
     await expect(monitor.prepareMonitor({ ...o, initialize: false, restoredRun: run, check })).rejects.toThrow(/order/i);
     expect(check).not.toHaveBeenCalled();
   });
+  it('opens no incident for valid T16.2 nulls through the real checker, but does for malformed ones', async () => {
+    const scorer = { teamId: null, player: 'Player', minute: "4'", penalty: false, shootout: false, ownGoal: null, athleteId: null };
+    let scorers: object[] = [scorer];
+    const reader = await endpoint((_req, res) => res.writeHead(200, {
+      'Content-Type': 'application/json', 'X-ScoreArc-Freshness': 'fresh', 'X-ScoreArc-Observed-At': '2026-10-04T11:59:00Z',
+      'X-ScoreArc-Poll-Status': 'ok', 'X-ScoreArc-Stale-Matches': '0', 'X-ScoreArc-Overdue-Matches': '0',
+    }).end(JSON.stringify([{
+      id: '018f0000-0000-7000-8000-000000000001', kickoff: '2026-10-04T11:00:00Z', state: 'live', minute: "4'",
+      statusDetail: "4'", statusName: 'STATUS_IN_PROGRESS', home: { id: 'arg', name: 'Argentina', abbr: 'ARG', crestUrl: null },
+      away: { id: 'fra', name: 'France', abbr: 'FRA', crestUrl: null }, homeScore: 1, awayScore: 0, winnerId: null, note: null,
+      scorers, cards: [{ teamId: null, player: 'Player', minute: "5'", type: 'yellow' }],
+      shootout: null, shootoutDetail: null, stats: null, winProbability: null,
+    }])));
+    const o = { ...(await options()), baseURL: new URL(reader).origin, check: undefined };
+    await monitor.prepareMonitor(o);
+    expect(await state(o.stateFile)).toMatchObject({ pending: [], dataIncident: false, incidents: { 'world-cup/2026': null } });
+
+    scorers = [{ ...scorer, ownGoal: 'unknown' }];
+    const previous = (await state(o.stateFile)).run;
+    await monitor.prepareMonitor({ ...o, initialize: false, restoredRun: previous, now: time + 300000, run: { ...previous, id: previous.id + 1, number: previous.number + 1 } });
+    const { pending, dataIncident } = await state(o.stateFile);
+    expect(dataIncident).toBe(true);
+    expect(pending).toMatchObject([{ status: 'OPEN', observation: { error: 'body-contract' } }]);
+  });
   it('rejects concurrent preparation and leaves the completed state usable', async () => {
     const o = await options(); let release!: () => void;
     const waiting = new Promise<void>(r => { release = r; });

@@ -117,18 +117,53 @@ describe('bounded match freshness watchdog', () => {
       expect((await checkScope({ baseURL, ...scope })).ok).toBe(false);
     }
   });
-  it('accepts current and additive T16.2 scorers while rejecting malformed fields', async () => {
-    const core = { teamId: 'arg', player: 'Player', minute: "4'", penalty: false, shootout: false };
+  // T16.2 (#203) made ownGoal null mean unknown (a legacy row) and teamId null
+  // mean the reference names neither side. An explicit null is legal; omitting
+  // teamId is not. Pre-T16.2 scorers without ownGoal/athleteId/playerSlug pass.
+  async function checkBody(body: object) {
+    const baseURL = await serve((_req, res) => res.writeHead(200, validHeaders).end(JSON.stringify([{ ...match, ...body }])));
+    return checkScope({ baseURL, ...scope });
+  }
+  it('accepts current, nullable and legacy T16.2 scorers while rejecting malformed fields', async () => {
+    const noTeam = { player: 'Player', minute: "4'", penalty: false, shootout: false };
+    const core = { teamId: 'arg', ...noTeam };
     for (const [scorer, ok] of [
       [core, true], [{ ...core, ownGoal: false, athleteId: null, playerSlug: null }, true],
       [{ ...core, ownGoal: true, athleteId: 'player-id', playerSlug: 'player-slug' }, true],
-      [{ ...core, ownGoal: null }, false], [{ ...core, athleteId: 23 }, false],
-      [{ ...core, playerSlug: false }, false], [{ ...core, extra: true }, false],
-      [{ ...core, penalty: undefined }, false],
+      [{ ...core, ownGoal: null }, true], [{ ...core, teamId: null }, true],
+      [{ ...core, teamId: null, ownGoal: null, athleteId: null, playerSlug: null }, true],
+      [{ ...core, teamId: null, ownGoal: null, athleteId: 'player-id', playerSlug: 'player-slug' }, true],
+      [{ ...core, ownGoal: 'false' }, false], [{ ...core, ownGoal: 0 }, false],
+      [{ ...core, ownGoal: [] }, false], [{ ...core, ownGoal: {} }, false],
+      [noTeam, false], [{ ...core, teamId: 1 }, false], [{ ...core, teamId: false }, false], [{ ...core, teamId: {} }, false],
+      [{ ...core, athleteId: 23 }, false], [{ ...core, playerSlug: false }, false],
+      [{ ...core, player: null }, false], [{ ...core, minute: null }, false], [{ ...core, minute: 4 }, false],
+      [{ ...core, extra: true }, false], [{ ...core, penalty: undefined }, false], [{ ...core, shootout: null }, false],
     ] as const) {
-      const baseURL = await serve((_req, res) => res.writeHead(200, validHeaders).end(JSON.stringify([{ ...match, scorers: [scorer] }])));
-      expect((await checkScope({ baseURL, ...scope })).ok).toBe(ok);
+      const result = await checkBody({ scorers: [scorer] });
+      expect(result.ok, JSON.stringify(scorer)).toBe(ok);
+      if (!ok) expect(result.observation.error).toBe('body-contract');
     }
+  });
+  it('accepts a card teamId string or explicit null while rejecting malformed cards', async () => {
+    const noTeam = { player: 'Player', minute: "5'", type: 'yellow' };
+    const core = { teamId: 'fra', ...noTeam };
+    for (const [card, ok] of [
+      [core, true], [{ ...core, teamId: null }, true], [{ ...core, teamId: null, type: 'red' }, true],
+      [noTeam, false], [{ ...core, teamId: 7 }, false], [{ ...core, teamId: true }, false], [{ ...core, teamId: [] }, false],
+      [{ ...core, player: null }, false], [{ ...core, minute: 5 }, false], [{ ...core, type: 'green' }, false],
+      [{ ...core, type: null }, false], [{ ...core, ownGoal: null }, false], [{ ...core, extra: true }, false],
+    ] as const) {
+      const result = await checkBody({ cards: [card] });
+      expect(result.ok, JSON.stringify(card)).toBe(ok);
+      if (!ok) expect(result.observation.error).toBe('body-contract');
+    }
+  });
+  it('accepts every newly nullable field together in one match', async () => {
+    expect((await checkBody({
+      scorers: [{ teamId: null, player: 'Player', minute: "4'", penalty: false, shootout: false, ownGoal: null, athleteId: null }],
+      cards: [{ teamId: null, player: 'Player', minute: "5'", type: 'red' }],
+    })).ok).toBe(true);
   });
   it('rejects healthy headers that contradict unresolved matches', async () => {
     for (const override of [
