@@ -1,5 +1,6 @@
 import type { Scorer, Card, Shootout, MatchStats, TeamStats, WinProbability, LineupPlayer, PlayerMatchStats, TeamLineup, MatchLineups, MatchVideo, PenaltyKick, ShootoutDetail, MatchInfo, FormResult, MatchForm, CommentaryItem, H2HMeeting } from '../types';
 import { shootoutTotals } from './espn-matches';
+import { mapState } from '../state';
 
 // Venue, city, referee and attendance from summary.gameInfo.
 export function mapSummaryInfo(raw: unknown): MatchInfo | null {
@@ -137,6 +138,14 @@ export function mapSummaryShootoutTotals(raw: unknown, eventId: string, homeId: 
   const away = competitors.find((c: any) => c?.homeAway === 'away');
   if (String(home?.team?.id) !== homeId || String(away?.team?.id) !== awayId) return null;
   return shootoutTotals(home.shootoutScore, away.shootoutScore);
+}
+
+// Whether the summary header has itself finished, by the scoreboard's state
+// rule. Only a final header may resolve a finished match (Go: ValidateSummary
+// with requireFinal); one read mid-shootout carries partial totals.
+export function summaryHeaderFinal(raw: unknown): boolean {
+  const type = (raw as any)?.header?.competitions?.[0]?.status?.type;
+  return mapState(type?.state, Boolean(type?.completed)) === 'finished';
 }
 
 // A clip is a "goal" clip (vs. analysis/interview/presser) when the headline

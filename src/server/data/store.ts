@@ -35,7 +35,7 @@ import { mapBracket } from './providers/espn-bracket';
 import { mapLeaders } from './providers/espn-stats';
 import {
   mapSummaryScorers, mapSummaryCards, mapSummaryStats, mapWinProbability, mapSummaryLineups,
-  mapSummaryVideos, mapSummaryShootout, mapSummaryShootoutTotals, mapSummaryInfo, mapSummaryForm, mapSummaryCommentary, mapSummaryH2H,
+  mapSummaryVideos, mapSummaryShootout, mapSummaryShootoutTotals, summaryHeaderFinal, mapSummaryInfo, mapSummaryForm, mapSummaryCommentary, mapSummaryH2H,
 } from './providers/espn-summary';
 import { TtlCache } from './cache';
 import { currentWeekRange, forwardRange, nowWindowRange } from './dateRange';
@@ -147,8 +147,9 @@ export function createDataStore(deps: DataDeps): DataStore {
   // holds this summary and the header outranks the scoreboard's evidence. The
   // sides are part of the key: the totals, stats, lineups and other per-side
   // fields are mapped for them, and the public match route passes its query's
-  // sides through unchecked.
-  type LoadedSummary = { data: MatchSummaryData; shootout: Shootout | null };
+  // sides through unchecked. `final` records whether the header itself had
+  // finished: a summary read mid-shootout must not resolve a finished match.
+  type LoadedSummary = { data: MatchSummaryData; shootout: Shootout | null; final: boolean };
   async function loadSummary(
     rc: CompetitionSeason, eventId: string, homeId: string, awayId: string, signal?: AbortSignal,
   ): Promise<LoadedSummary> {
@@ -171,7 +172,11 @@ export function createDataStore(deps: DataDeps): DataStore {
       commentary: mapSummaryCommentary(raw),
       h2h: mapSummaryH2H(raw),
     };
-    const loaded = { data: summary, shootout: mapSummaryShootoutTotals(raw, eventId, homeId, awayId) };
+    const loaded = {
+      data: summary,
+      shootout: mapSummaryShootoutTotals(raw, eventId, homeId, awayId),
+      final: summaryHeaderFinal(raw),
+    };
     deps.cache.set(k, loaded, 12_000);
     return loaded;
   }
@@ -205,21 +210,22 @@ export function createDataStore(deps: DataDeps): DataStore {
         readSignal.throwIfAborted();
         summaries.push(...await Promise.all(matches.slice(i, i + 4).map(m =>
           loadSummary(rc, m.id, m.home.id, m.away.id, readSignal)
-            .catch((): LoadedSummary => ({ data: emptySummary(), shootout: null })),
+            .catch((): LoadedSummary => ({ data: emptySummary(), shootout: null, final: false })),
         )));
       }
       readSignal.throwIfAborted();
       matches.forEach((m, i) => {
-        const { data, shootout } = summaries[i];
+        const { data, shootout, final } = summaries[i];
         m.scorers = data.scorers;
         m.cards = data.cards;
         m.stats = data.stats;
         m.winProbability = data.winProbability;
         m.shootoutDetail = data.shootoutDetail;
-        if (shootout) {
-          // The header outranks the scoreboard: a finished match's winner is the
-          // side it names, or ESPN's flag when it is level -- not the winner of
-          // the scoreboard aggregate it supersedes.
+        // The header outranks the scoreboard -- for a finished match only once
+        // the header is final too (Go's requireFinal) -- and a finished match's
+        // winner is then the side it names, or ESPN's flag when it is level,
+        // never the winner of the scoreboard aggregate it supersedes.
+        if (shootout && (m.state !== 'finished' || final)) {
           m.shootout = shootout;
           if (m.state === 'finished') m.winnerId = shootoutWinnerId(shootout, m.home.id, m.away.id) ?? flags.get(m.id) ?? null;
         }

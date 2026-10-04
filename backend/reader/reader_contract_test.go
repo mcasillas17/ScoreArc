@@ -489,6 +489,9 @@ func TestReaderContract(t *testing.T) {
 				side["id"] = id
 				side["team"].(map[string]any)["id"] = id
 			}
+			if status, ok := header["status"].(map[string]any); ok {
+				maps.Copy(competition["status"].(map[string]any)["type"].(map[string]any), status)
+			}
 			data, err := json.Marshal(summary)
 			if err != nil {
 				t.Fatal(err)

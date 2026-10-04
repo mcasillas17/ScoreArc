@@ -400,12 +400,32 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     for (const side of summary.header.competitions[0].competitors as { homeAway: string; id: string; team: { id: string } }[]) {
       side.id = side.team.id = c.header[side.homeAway as 'home' | 'away'];
     }
+    if ('status' in c.header) summary.header.competitions[0].status.type = { ...summary.header.competitions[0].status.type, ...c.header.status };
     const { store } = storeOver(url => url.includes('/summary') ? summary
       : { leagues: [{ slug: vectors.queries.leagueSlug }], events: url.includes('dates=202606') ? scoreboard.events.filter(e => e.id === h.scoreboardEventId) : [] });
     const [match] = await store.getMatches(wc, '20260629-20260629');
     expect(match.shootout).toEqual(c.expected.shootout);
     expect(match.winnerId).toBe(match[c.expected.winner as 'home' | 'away'].id);
     expect([match.homeScore, match.awayScore]).toEqual([1, 1]); // Regulation scores stay.
+  });
+
+  it('never resolves a finished match from a summary header held while it was live', async () => {
+    const h = s0.syntheticOverlay.headerIdentity;
+    const live = h.cases.find(c => 'status' in c.header)!;
+    const summary = overlaidSummary();
+    summary.header.id = summary.header.competitions[0].id = live.header.eventId;
+    for (const side of summary.header.competitions[0].competitors as { homeAway: string; id: string; team: { id: string } }[]) {
+      side.id = side.team.id = live.header[side.homeAway as 'home' | 'away'];
+    }
+    if ('status' in live.header) summary.header.competitions[0].status.type = { ...summary.header.competitions[0].status.type, ...live.header.status };
+    const { store, urls } = storeOver(url => url.includes('/summary') ? summary
+      : { leagues: [{ slug: vectors.queries.leagueSlug }], events: url.includes('dates=202606') ? scoreboard.events.filter(e => e.id === h.scoreboardEventId) : [] });
+    // The match page read the summary mid-shootout; the scoreboard has since finished.
+    await store.getMatchSummary(wc, live.header.eventId, live.header.home, live.header.away);
+    const [match] = await store.getMatches(wc, '20260629-20260629');
+    expect(urls.filter(url => url.includes('/summary'))).toHaveLength(1); // The held summary was reused.
+    expect(match.shootout).toEqual(live.expected.shootout);
+    expect(match.winnerId).toBe(match[live.expected.winner as 'home' | 'away'].id);
   });
 
   it.each(s0.syntheticOverlay.levelHeader.cases)('a level held summary header falls back to the winner flags, not the scoreboard aggregate it supersedes: $name', async (c) => {
