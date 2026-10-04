@@ -488,6 +488,11 @@ func TestReaderContract(t *testing.T) {
 				id := header[side["homeAway"].(string)]
 				side["id"] = id
 				side["team"].(map[string]any)["id"] = id
+				if scores, ok := header["scores"].(map[string]any); ok {
+					if score, ok := scores[side["homeAway"].(string)]; ok {
+						side["score"] = score
+					}
+				}
 			}
 			if status, ok := header["status"].(map[string]any); ok {
 				maps.Copy(competition["status"].(map[string]any)["type"].(map[string]any), status)

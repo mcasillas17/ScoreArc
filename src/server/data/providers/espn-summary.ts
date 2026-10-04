@@ -148,17 +148,27 @@ const UNFINISHED_STATUSES = new Set([
   'STATUS_IN_PROGRESS', 'STATUS_FIRST_HALF', 'STATUS_HALFTIME', 'STATUS_SECOND_HALF',
 ]);
 
-// Whether the summary header has itself finished, by Go's requireFinal
-// predicate (ValidateSummary -> observedMatchState): a STATUS_ name with a
-// boolean completion, then by name as above, and otherwise state post with
-// completion. Only a final header may resolve a finished match; one read
-// mid-shootout carries partial totals.
+// A final score as Go's scoreOf reads it: a string or number that parses as a
+// non-negative integer (strconv.Atoi).
+function isFinalScore(raw: unknown): boolean {
+  return (typeof raw === 'string' && /^[+-]?\d+$/.test(raw) && Number(raw) >= 0) ||
+    (typeof raw === 'number' && Number.isInteger(raw) && raw >= 0);
+}
+
+// Whether the summary header has itself finished, by Go's requireFinal gate
+// (ValidateSummary): observedMatchState's status predicate -- a STATUS_ name
+// with a boolean completion, then by name as above, and otherwise state post
+// with completion -- and a final score for both sides. Only a final header may
+// resolve a finished match; one read mid-shootout carries partial totals.
 export function summaryHeaderFinal(raw: unknown): boolean {
-  const type = (raw as any)?.header?.competitions?.[0]?.status?.type;
+  const competition = (raw as any)?.header?.competitions?.[0];
+  const type = competition?.status?.type;
   const name = String(type?.name);
   if (!name.startsWith('STATUS_') || typeof type?.completed !== 'boolean') return false;
-  if (TERMINAL_STATUSES.has(name)) return type.state === 'post';
-  return !UNFINISHED_STATUSES.has(name) && type.state === 'post' && type.completed;
+  const final = TERMINAL_STATUSES.has(name) ? type.state === 'post'
+    : !UNFINISHED_STATUSES.has(name) && type.state === 'post' && type.completed;
+  const competitors: any[] = competition.competitors ?? [];
+  return final && ['home', 'away'].every(side => isFinalScore(competitors.find(c => c?.homeAway === side)?.score));
 }
 
 // A clip is a "goal" clip (vs. analysis/interview/presser) when the headline

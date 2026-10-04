@@ -205,9 +205,19 @@ function overlaidSummary() {
   return { ...summaryRaw, ...o.raw, header, keyEvents: [...summaryRaw.keyEvents, ...o.appendKeyEvents] };
 }
 
-// A synthetic header status may carry values no recorded one does (completed: null).
-function withHeaderStatus(summary: ReturnType<typeof overlaidSummary>, status: Record<string, unknown>) {
-  Object.assign(summary.header.competitions[0].status.type, status);
+// The overlay summary with its header rewritten to a headerIdentity case: the
+// event, the side ids, and optionally the status and competitor scores, which
+// may carry values no recorded header does (completed: null, a missing score).
+type HeaderCase = { eventId: string; home: string; away: string; status?: Record<string, unknown>; scores?: Record<string, unknown> };
+function identitySummary(header: HeaderCase) {
+  const summary = overlaidSummary();
+  summary.header.id = summary.header.competitions[0].id = header.eventId;
+  for (const side of summary.header.competitions[0].competitors as { homeAway: 'home' | 'away'; id: string; team: { id: string }; score?: unknown }[]) {
+    side.id = side.team.id = header[side.homeAway];
+    if (header.scores && side.homeAway in header.scores) side.score = header.scores[side.homeAway];
+  }
+  if (header.status) Object.assign(summary.header.competitions[0].status.type, header.status);
+  return summary;
 }
 const months = (urls: string[]) => urls.filter(u => u.includes('/scoreboard')).map(u => new URL(u).searchParams.get('dates'));
 
@@ -399,13 +409,7 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
 
   it.each(s0.syntheticOverlay.headerIdentity.cases)('takes Match.shootout and the winner from a held summary header only for its own match: $name', async (c) => {
     const h = s0.syntheticOverlay.headerIdentity;
-    const summary = overlaidSummary();
-    summary.header.id = c.header.eventId;
-    summary.header.competitions[0].id = c.header.eventId;
-    for (const side of summary.header.competitions[0].competitors as { homeAway: string; id: string; team: { id: string } }[]) {
-      side.id = side.team.id = c.header[side.homeAway as 'home' | 'away'];
-    }
-    if (c.header.status) withHeaderStatus(summary, c.header.status);
+    const summary = identitySummary(c.header);
     const { store } = storeOver(url => url.includes('/summary') ? summary
       : { leagues: [{ slug: vectors.queries.leagueSlug }], events: url.includes('dates=202606') ? scoreboard.events.filter(e => e.id === h.scoreboardEventId) : [] });
     const [match] = await store.getMatches(wc, '20260629-20260629');
@@ -414,14 +418,9 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     expect([match.homeScore, match.awayScore]).toEqual([1, 1]); // Regulation scores stay.
   });
 
-  it.each(s0.syntheticOverlay.headerIdentity.cases.filter(c => c.header.status))('applies the same final-header rule to a summary held from an earlier read: $name', async (live) => {
+  it.each(s0.syntheticOverlay.headerIdentity.cases.filter(c => c.header.status || c.header.scores))('applies the same final-header rule to a summary held from an earlier read: $name', async (live) => {
     const h = s0.syntheticOverlay.headerIdentity;
-    const summary = overlaidSummary();
-    summary.header.id = summary.header.competitions[0].id = live.header.eventId;
-    for (const side of summary.header.competitions[0].competitors as { homeAway: string; id: string; team: { id: string } }[]) {
-      side.id = side.team.id = live.header[side.homeAway as 'home' | 'away'];
-    }
-    if (live.header.status) withHeaderStatus(summary, live.header.status);
+    const summary = identitySummary(live.header);
     const { store, urls } = storeOver(url => url.includes('/summary') ? summary
       : { leagues: [{ slug: vectors.queries.leagueSlug }], events: url.includes('dates=202606') ? scoreboard.events.filter(e => e.id === h.scoreboardEventId) : [] });
     // The match page read the summary earlier; the scoreboard has since finished.
