@@ -2,6 +2,7 @@ import type { Match, PlayerSeasonStats, SquadPlayer, Team, TeamProfile, TeamReco
 import { mapState } from '../state';
 import type { CompetitionSeason } from '../competitions';
 import { isMatchKickoff } from '../matchKickoff';
+import { isScoreboardCount, parseShootout, shootoutTotals, shootoutWinnerId } from './espn-matches';
 
 /** The profile without the two blocks that come from other endpoints. */
 type TeamIdentity = Omit<TeamProfile, 'squad' | 'schedule' | 'scheduleAvailability'>;
@@ -209,6 +210,15 @@ export function mapTeamSchedule(raw: unknown): Match[] {
       const status = comp.status ?? ev.status;
       const type = status?.type;
       const state = type ? mapState(type.state, Boolean(type.completed)) : 'scheduled';
+      const homeTeam = mapTeam(home.team);
+      const awayTeam = mapTeam(away.team);
+      const note = comp.notes?.[0]?.text ?? null;
+      // The scoreboard's shootout tiers and winner rule (T16.2). A lightweight
+      // feed never rejects: a malformed structured total is ignored here.
+      const structured = isScoreboardCount(home.shootoutScore) && isScoreboardCount(away.shootoutScore)
+        ? shootoutTotals(home.shootoutScore, away.shootoutScore) : null;
+      const shootout = structured ?? parseShootout(note, homeTeam.name, awayTeam.name);
+      const flagged = home.winner ? String(home.team?.id) : away.winner ? String(away.team?.id) : null;
 
       return [{
         id: String(ev.id),
@@ -217,19 +227,15 @@ export function mapTeamSchedule(raw: unknown): Match[] {
         minute: state === 'live' ? status?.displayClock || null : null,
         statusDetail: type?.shortDetail ?? '',
         statusName: type?.name ?? '',
-        home: mapTeam(home.team),
-        away: mapTeam(away.team),
+        home: homeTeam,
+        away: awayTeam,
         homeScore: score(home.score),
         awayScore: score(away.score),
-        winnerId: home.winner
-          ? String(home.team?.id)
-          : away.winner
-          ? String(away.team?.id)
-          : null,
-        note: comp.notes?.[0]?.text ?? null,
+        winnerId: (state === 'finished' ? shootoutWinnerId(shootout, homeTeam.id, awayTeam.id) : null) ?? flagged,
+        note,
         scorers: [],
         cards: [],
-        shootout: null,
+        shootout,
         shootoutDetail: null,
         stats: null,
         winProbability: null,

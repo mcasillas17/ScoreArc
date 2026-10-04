@@ -13,6 +13,17 @@ function shootoutTotal(raw: unknown): number | undefined {
 }
 
 /**
+ * A scoreboard competitor count (score or shootoutScore) as the scoreboard
+ * accepts it: absent, null, '', a digit string or a non-negative integer. The
+ * summary header's wider rule (shootoutTotal) does not apply to the
+ * scoreboard's competitor shape. Same as the Go scoreboardTotal.
+ */
+export function isScoreboardCount(raw: unknown): boolean {
+  return raw == null || raw === '' || (typeof raw === 'string' && /^\d+$/.test(raw)) ||
+    (typeof raw === 'number' && Number.isInteger(raw) && raw >= 0);
+}
+
+/**
  * A pair of provider shootout totals: both supplied and valid and not both
  * zero, or null. The structured tier of the shootout precedence (T16.2):
  * summary header > scoreboard competitors > note > null.

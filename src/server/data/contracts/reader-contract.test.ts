@@ -10,6 +10,7 @@ import { teamHref } from '@/components/teamHref';
 import { roundLabelKey } from '@/components/bracketShape';
 import { en } from '@/i18n/messages/en';
 import { mapTeamSchedule } from '../providers/espn-team';
+import { parseShootout } from '../providers/espn-matches';
 import { parseMatchFreshness, type MatchFreshness } from '@/lib/matchFreshness';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 import type {
@@ -448,6 +449,35 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     const [match] = await fixtures;
     expect(match.shootout).toEqual(c.expected);
     expect(match.winnerId).toBe(c.winner ? sideIds[c.winner] : null);
+    expect([match.homeScore, match.awayScore]).toEqual([1, 1]);
+  });
+
+  // The team schedule is a lightweight per-team feed with the scoreboard's
+  // competitor shape, so it takes the same scoreboard tiers and winner rule.
+  // It never rejects its feed: a malformed structured total is ignored there,
+  // leaving the note tier.
+  it.each(vectors.scoreboard.shootoutPrecedence.cases)('applies the shared shootout precedence to the team schedule: $name', (c) => {
+    const p = vectors.scoreboard.shootoutPrecedence;
+    const event = structuredClone(scoreboard.events.find(e => e.id === p.eventId)!);
+    const competition: { notes: unknown[]; competitors: Record<string, unknown>[] } = event.competitions[0];
+    const sideIds: Record<string, string> = {};
+    for (const competitor of competition.competitors) {
+      const side = competitor.homeAway as 'home' | 'away';
+      sideIds[side] = String((competitor.team as { id: string }).id);
+      const value = c.shootoutScore[side];
+      if (value === 'absent') delete competitor.shootoutScore;
+      else competitor.shootoutScore = value;
+      if ('winnerFlags' in c && c.winnerFlags) competitor.winner = c.winnerFlags[side];
+    }
+    competition.notes = c.note === null ? [] : [{ text: c.note }];
+    if ('status' in c && c.status) {
+      // The team schedule reads the competition's own status first.
+      for (const holder of [event, competition as unknown as { status: { type: object } }]) holder.status.type = { ...holder.status.type, ...c.status };
+    }
+    const [match] = mapTeamSchedule({ events: [event] });
+    const expected = c.expected === 'error' ? parseShootout(c.note, match.home.name, match.away.name) : c.expected;
+    expect(match.shootout).toEqual(expected);
+    if (c.expected !== 'error') expect(match.winnerId).toBe(c.winner ? sideIds[c.winner] : null);
     expect([match.homeScore, match.awayScore]).toEqual([1, 1]);
   });
 
