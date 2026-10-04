@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,10 +10,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/mcasillas17/scorearc-backend/config"
+	"github.com/mcasillas17/scorearc-backend/migrations"
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
 )
 
@@ -46,7 +45,7 @@ func run(logger *slog.Logger) error {
 	if err := pool.Ping(startupCtx); err != nil {
 		return err
 	}
-	if err := checkFreshnessSchema(startupCtx, pool, logger); err != nil {
+	if err := checkSchemaReadiness(startupCtx, pool); err != nil {
 		return err
 	}
 	processCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -100,29 +99,17 @@ func newHTTPServer(port string, handler http.Handler) *http.Server {
 	}
 }
 
-// A zero-row projection validates only the new freshness dependencies and their
-// reader grants. It is not a general schema audit or an ingester health check.
-func checkFreshnessSchema(ctx context.Context, db queryer, logger *slog.Logger) error {
-	rows, err := db.Query(ctx, `
+// A zero-row projection of the freshness dependencies, run as the reader role:
+// the ledger version alone does not prove this role can read them.
+const freshnessSchemaProbe = `
 SELECT sync.match_id, sync.source, sync.observed_at,
        poll.competition_id, poll.season_id, poll.source, poll.succeeded_at, poll.outcome
 FROM match_sync_status sync CROSS JOIN match_poll_status poll
-WHERE false`)
-	if err == nil {
-		rows.Close()
-		err = rows.Err()
-	}
-	if err != nil {
-		var pgErr *pgconn.PgError
-		sqlstate := ""
-		if errors.As(err, &pgErr) {
-			sqlstate = pgErr.Code
-		}
-		logger.Error("freshness schema readiness failed",
-			"error_type", fmt.Sprintf("%T", err), "sqlstate", sqlstate)
-		// main logs this error too. Never return dependency messages/details or
-		// a wrapped connection error that might contain a DSN.
-		return errors.New("freshness schema readiness failed")
-	}
-	return nil
+WHERE false`
+
+// checkSchemaReadiness is the reader's startup gate; it runs before the
+// listener opens. The returned *migrations.ReadinessError carries no driver
+// text or DSN, so main may log it as-is.
+func checkSchemaReadiness(ctx context.Context, db migrations.Querier) error {
+	return migrations.CheckReady(ctx, db, freshnessSchemaProbe)
 }

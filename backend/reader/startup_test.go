@@ -1,105 +1,51 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
+	"net"
+	"net/http"
+	"os"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/mcasillas17/scorearc-backend/migrations"
 )
 
-type schemaProbeRows struct {
-	pgx.Rows
-	closed bool
-	err    error
-}
-
-func (r *schemaProbeRows) Close()     { r.closed = true }
-func (r *schemaProbeRows) Err() error { return r.err }
-
-type schemaProbeDB struct {
-	database
-	rows     *schemaProbeRows
-	err      error
-	query    string
-	deadline bool
-}
-
-func (db *schemaProbeDB) Query(ctx context.Context, sql string, _ ...any) (pgx.Rows, error) {
-	db.query = sql
-	_, db.deadline = ctx.Deadline()
-	return db.rows, db.err
-}
-
-func TestFreshnessStartupSchemaProbe(t *testing.T) {
-	const secret = "postgres://synthetic:must-not-log@example.invalid/db"
-	for _, tc := range []struct {
-		name, sqlstate    string
-		queryErr, lateErr error
-	}{
-		{name: "empty schema ready"},
-		{name: "missing table", sqlstate: "42P01", queryErr: &pgconn.PgError{Code: "42P01", Message: secret, Detail: secret}},
-		{name: "connection failure", queryErr: errors.New(secret)},
-		{name: "late permission failure", sqlstate: "42501", lateErr: &pgconn.PgError{Code: "42501", Message: secret}},
+// The probe stays a column-specific, zero-row projection: a version number
+// does not prove the reader role can read what freshness needs, and the
+// startup check must never scan data.
+func TestFreshnessProbeIsColumnSpecificAndRowless(t *testing.T) {
+	if !strings.Contains(freshnessSchemaProbe, "WHERE false") || strings.Contains(freshnessSchemaProbe, "*") {
+		t.Fatalf("probe must be column-specific and rowless: %q", freshnessSchemaProbe)
+	}
+	for _, column := range []string{
+		"sync.match_id", "sync.source", "sync.observed_at", "poll.competition_id",
+		"poll.season_id", "poll.source", "poll.succeeded_at", "poll.outcome",
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			rows := &schemaProbeRows{err: tc.lateErr}
-			db := &schemaProbeDB{rows: rows, err: tc.queryErr}
-			var logs bytes.Buffer
-			logger := slog.New(slog.NewJSONHandler(&logs, nil))
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			defer cancel()
-			err := checkFreshnessSchema(ctx, db, logger)
-			if !db.deadline || !strings.Contains(db.query, "WHERE false") || strings.Contains(db.query, "SELECT *") {
-				t.Fatalf("probe must be bounded/column-specific/no-row: %q deadline=%v", db.query, db.deadline)
-			}
-			for _, column := range []string{
-				"sync.match_id", "sync.source", "sync.observed_at", "poll.competition_id",
-				"poll.season_id", "poll.source", "poll.succeeded_at", "poll.outcome",
-			} {
-				if !strings.Contains(db.query, column) {
-					t.Errorf("probe omitted %s", column)
-				}
-			}
-			if tc.queryErr == nil && !rows.closed {
-				t.Fatal("probe rows not closed")
-			}
-			if tc.queryErr == nil && tc.lateErr == nil {
-				if err != nil || logs.Len() != 0 {
-					t.Fatalf("healthy empty schema: %v %s", err, logs.String())
-				}
-				return
-			}
-			if err == nil || err.Error() != "freshness schema readiness failed" {
-				t.Fatalf("expected sanitized startup error, got %v", err)
-			}
-			// main logs the returned error: it too must be safe, not a wrapper
-			// around a connection string or PostgreSQL message/detail.
-			logger.Error("reader stopped", "err", err)
-			if strings.Contains(logs.String(), secret) || errors.Unwrap(err) != nil {
-				t.Fatalf("dependency error leaked: %s", logs.String())
-			}
-			if !strings.Contains(logs.String(), `"error_type":`) ||
-				!strings.Contains(logs.String(), `"sqlstate":"`+tc.sqlstate+`"`) {
-				t.Fatalf("safe diagnosis missing: %s", logs.String())
-			}
-		})
+		if !strings.Contains(freshnessSchemaProbe, column) {
+			t.Errorf("probe omitted %s", column)
+		}
 	}
 }
 
-func TestFreshnessStartupSchemaIntegration(t *testing.T) {
+func TestReaderSchemaGateRunsAsTheReaderRole(t *testing.T) {
 	store, admin := newIntegrationStore(t)
 	ctx := context.Background()
-	var logs bytes.Buffer
-	logger := slog.New(slog.NewJSONHandler(&logs, nil))
-	probe := func() error { return checkFreshnessSchema(ctx, store.db, logger) }
+	probe := func() error {
+		startup, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		return checkSchemaReadiness(startup, store.db)
+	}
 	if err := probe(); err != nil {
-		t.Fatalf("SELECT-only role on empty bookkeeping: %v", err)
+		t.Fatalf("SELECT-only role on a compatible schema: %v", err)
 	}
 	for _, table := range []string{"match_sync_status", "match_poll_status"} {
 		t.Run(table, func(t *testing.T) {
@@ -109,28 +55,118 @@ func TestFreshnessStartupSchemaIntegration(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			expect := func(category string) {
+				t.Helper()
+				var readiness *migrations.ReadinessError
+				if err := probe(); !errors.As(err, &readiness) || readiness.Category != category {
+					t.Fatalf("got %v, want %s", err, category)
+				}
+			}
 			exec("REVOKE SELECT ON " + table + " FROM scorearc_reader")
-			if err := probe(); err == nil {
-				t.Fatal("missing SELECT grant accepted")
-			}
+			expect("permission_denied")
 			exec("GRANT SELECT ON " + table + " TO scorearc_reader")
-			exec("ALTER TABLE " + table + " RENAME TO hidden_freshness")
-			if err := probe(); err == nil {
-				t.Fatal("missing table accepted")
-			}
-			exec("ALTER TABLE hidden_freshness RENAME TO " + table)
 			column := "observed_at"
 			if table == "match_poll_status" {
 				column = "succeeded_at"
 			}
 			exec("ALTER TABLE " + table + " RENAME COLUMN " + column + " TO hidden_timestamp")
-			if err := probe(); err == nil {
-				t.Fatal("missing required column accepted")
-			}
+			expect("objects_missing")
 			exec("ALTER TABLE " + table + " RENAME COLUMN hidden_timestamp TO " + column)
 			if err := probe(); err != nil {
 				t.Fatalf("restored schema rejected: %v", err)
 			}
 		})
 	}
+}
+
+func freePort(t *testing.T) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	return fmt.Sprint(listener.Addr().(*net.TCPAddr).Port)
+}
+
+// runReader calls the real entry point as the reader's least-privilege login.
+func runReader(t *testing.T, admin *pgxpool.Pool, port string) <-chan error {
+	t.Helper()
+	conn := admin.Config().ConnConfig
+	t.Setenv("DATABASE_URL", fmt.Sprintf("postgres://scorearc_reader_test:reader_test_password@%s:%d/%s?sslmode=disable",
+		conn.Host, conn.Port, conn.Database))
+	t.Setenv("PORT", port)
+	done := make(chan error, 1)
+	go func() { done <- run(slog.New(slog.NewJSONHandler(io.Discard, nil))) }()
+	return done
+}
+
+func TestReaderStartupFailsClosedBeforeListening(t *testing.T) {
+	_, admin := newIntegrationStore(t)
+	ctx := context.Background()
+	head, err := migrations.Latest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	setLedger := func(t *testing.T, version int) {
+		t.Helper()
+		if _, err := admin.Exec(ctx, `UPDATE schema_migrations SET version = $1`, version); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("behind schema never opens the listener", func(t *testing.T) {
+		setLedger(t, head-1)
+		port := freePort(t)
+		select {
+		case err := <-runReader(t, admin, port):
+			var readiness *migrations.ReadinessError
+			if !errors.As(err, &readiness) || readiness.Category != "behind" {
+				t.Fatalf("got %v, want behind", err)
+			}
+		case <-time.After(20 * time.Second):
+			t.Fatal("run did not return; it is serving against a behind schema")
+		}
+		if conn, err := net.DialTimeout("tcp", "127.0.0.1:"+port, time.Second); err == nil {
+			conn.Close()
+			t.Fatal("listener opened despite refused readiness")
+		}
+	})
+
+	t.Run("compatible schema serves and shuts down on SIGTERM", func(t *testing.T) {
+		setLedger(t, head)
+		port := freePort(t)
+		done := runReader(t, admin, port)
+		deadline := time.Now().Add(20 * time.Second)
+		for {
+			response, err := http.Get("http://127.0.0.1:" + port + "/healthz")
+			if err == nil {
+				response.Body.Close()
+				if response.StatusCode == http.StatusOK {
+					break
+				}
+			}
+			select {
+			case err := <-done:
+				t.Fatalf("run returned before serving: %v", err)
+			default:
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("reader never became healthy")
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		// Serving means run's signal handler is installed: SIGTERM is caught.
+		if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("graceful shutdown returned %v", err)
+			}
+		case <-time.After(20 * time.Second):
+			t.Fatal("reader did not shut down on SIGTERM")
+		}
+	})
 }
