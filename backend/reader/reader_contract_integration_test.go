@@ -708,11 +708,13 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		// projection that carries a winner, and leaves the sealed row unchanged.
 		// A match that is not finished has no winner: a live shootout's partial
 		// totals name none, and a provisional winner an earlier bracket mapper
-		// stored mid-shootout is not served.
+		// stored mid-shootout is not served. Until finalization replaces the
+		// detail, a finished row's stored aggregate may still be a live poll's
+		// partial, so only a sealed row's aggregate outranks its stored winner.
 		home, away := vectors.Summary.Sides["home"].CanonicalID, vectors.Summary.Sides["away"].CanonicalID
 		team(t, espn.Team{ID: "4789", Name: "Ivory Coast", Abbr: "CIV"}, home)
 		team(t, espn.Team{ID: "464", Name: "Norway", Abbr: "NOR"}, away)
-		seed := func(id, kickoff, state string, winner *string, shootout string) {
+		seed := func(id, kickoff, state string, winner *string, shootout string, sealed bool) {
 			if _, err := pool.Exec(ctx, `INSERT INTO match (id, competition_id, season_id, round, kickoff, state, home_team_id, away_team_id, home_score, away_score, winner_id, source)
 				VALUES ($1,'world-cup','2026','round-of-16',$2,$3,$4,$5,1,1,$6,'espn')`, id, kickoff, state, home, away, winner); err != nil {
 				t.Fatal(err)
@@ -720,17 +722,19 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			if _, err := pool.Exec(ctx, `INSERT INTO match_detail (match_id, scorers, cards, shootout) VALUES ($1,'[]','[]',$2)`, id, shootout); err != nil {
 				t.Fatal(err)
 			}
-			if state == "finished" {
+			if sealed {
 				if _, err := pool.Exec(ctx, `UPDATE match SET finalized_at=now() WHERE id=$1`, id); err != nil {
 					t.Fatal(err)
 				}
 			}
 		}
 		contradicted, live, level := "018f0000-0000-7000-8000-000000016025", "018f0000-0000-7000-8000-000000016026", "018f0000-0000-7000-8000-000000016027"
-		seed(contradicted, "2026-07-07T17:00:00Z", "finished", &away, `{"homeScore":4,"awayScore":3}`)
-		seed(live, "2026-07-08T17:00:00Z", "live", &home, `{"homeScore":3,"awayScore":2}`)
-		seed(level, "2026-07-09T17:00:00Z", "finished", &away, `{"homeScore":3,"awayScore":3}`)
-		want := map[string]any{contradicted: home, live: nil, level: away}
+		unsealed := "018f0000-0000-7000-8000-000000016028"
+		seed(contradicted, "2026-07-07T17:00:00Z", "finished", &away, `{"homeScore":4,"awayScore":3}`, true)
+		seed(live, "2026-07-08T17:00:00Z", "live", &home, `{"homeScore":3,"awayScore":2}`, false)
+		seed(level, "2026-07-09T17:00:00Z", "finished", &away, `{"homeScore":3,"awayScore":3}`, true)
+		seed(unsealed, "2026-07-10T17:00:00Z", "finished", &away, `{"homeScore":3,"awayScore":2}`, false)
+		want := map[string]any{contradicted: home, live: nil, level: away, unsealed: away}
 
 		var listed []map[string]any
 		get(t, "/v1/competitions/world-cup/2026/matches", &listed)
