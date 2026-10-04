@@ -726,7 +726,7 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			}
 			return matchID
 		}
-		finalize := func(matchID uuid.UUID, kickoff, status string, winner *string, detail model.MatchDetail) {
+		finalize := func(matchID uuid.UUID, kickoff, status string, winner *string, detail model.MatchDetail, resolved bool) {
 			if _, err := pool.Exec(ctx, `UPDATE match SET state='finished' WHERE id=$1`, matchID); err != nil {
 				t.Fatal(err)
 			}
@@ -735,7 +735,7 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 				writerstore.MatchIdentity{MatchID: matchID, CompetitionID: "world-cup", SeasonID: "2026",
 					HomeTeamID: home, AwayTeamID: away, WinnerTeamID: winner, Source: "espn"},
 				model.Match{ID: matchID.String(), Kickoff: kickoff, State: model.MatchStateFinished, Round: "round-of-16",
-					StatusName: status, HomeScore: &one, AwayScore: &one},
+					StatusName: status, HomeScore: &one, AwayScore: &one, WinnerResolved: resolved},
 				detail)
 			if err != nil || !finalized {
 				t.Fatalf("finalize %s: %v %v", matchID, finalized, err)
@@ -743,11 +743,19 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		}
 		live := row("018f0000-0000-7000-8000-000000016026", "2026-07-08T17:00:00Z", "live", &home)
 		noEvidence := row("018f0000-0000-7000-8000-000000016028", "2026-07-10T17:00:00Z", "live", nil)
-		finalize(noEvidence, "2026-07-10T17:00:00Z", "STATUS_FINAL_PEN", &away, model.MatchDetail{})
+		finalize(noEvidence, "2026-07-10T17:00:00Z", "STATUS_FINAL_PEN", &away, model.MatchDetail{}, false)
 		terminal := row("018f0000-0000-7000-8000-000000016029", "2026-07-11T17:00:00Z", "live", nil)
-		finalize(terminal, "2026-07-11T17:00:00Z", "STATUS_ABANDONED", nil, model.MatchDetail{})
+		finalize(terminal, "2026-07-11T17:00:00Z", "STATUS_ABANDONED", nil, model.MatchDetail{}, false)
 		decided := row("018f0000-0000-7000-8000-00000001602a", "2026-07-12T17:00:00Z", "live", nil)
-		finalize(decided, "2026-07-12T17:00:00Z", "STATUS_FINAL_PEN", &home, model.MatchDetail{Shootout: &model.Shootout{HomeScore: 4, AwayScore: 3}})
+		finalize(decided, "2026-07-12T17:00:00Z", "STATUS_FINAL_PEN", &home, model.MatchDetail{Shootout: &model.Shootout{HomeScore: 4, AwayScore: 3}}, true)
+		// A winner the final aggregate resolved is stored as resolved, null
+		// included, even on a match the bracket never confirmed: a level final
+		// aggregate with no ESPN flag clears the winner a superseded scoreboard
+		// aggregate stored. An unresolved finalization keeps the sparse rule.
+		superseded := row("018f0000-0000-7000-8000-00000001602b", "2026-07-13T17:00:00Z", "live", &home)
+		finalize(superseded, "2026-07-13T17:00:00Z", "STATUS_FINAL_PEN", nil, model.MatchDetail{Shootout: &model.Shootout{HomeScore: 3, AwayScore: 3}}, true)
+		sparse := row("018f0000-0000-7000-8000-00000001602c", "2026-07-14T17:00:00Z", "live", &home)
+		finalize(sparse, "2026-07-14T17:00:00Z", "STATUS_FINAL_PEN", nil, model.MatchDetail{}, false)
 		legacy := "018f0000-0000-7000-8000-000000016025"
 		if _, err := pool.Exec(ctx, `INSERT INTO match (id, competition_id, season_id, round, kickoff, state, home_team_id, away_team_id, home_score, away_score, winner_id, source)
 			VALUES ($1,'world-cup','2026','round-of-16','2026-07-07T17:00:00Z','finished',$2,$3,1,1,$3,'espn')`, legacy, home, away); err != nil {
@@ -768,6 +776,8 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			terminal.String():   {nil, nil},
 			decided.String():    {home, decisive},
 			legacy:              {away, decisive},
+			superseded.String(): {nil, map[string]any{"homeScore": float64(3), "awayScore": float64(3)}},
+			sparse.String():     {home, nil},
 		}
 		var listed []map[string]any
 		get(t, "/v1/competitions/world-cup/2026/matches", &listed)

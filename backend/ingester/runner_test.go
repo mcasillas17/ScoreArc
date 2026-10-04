@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -2972,29 +2973,36 @@ func TestFinalizedWinnerFollowsTheSummaryShootoutAggregate(t *testing.T) {
 		{"level header over a superseded aggregate, no flag", &model.Shootout{HomeScore: 3, AwayScore: 3}, away, none, none},
 		{"no aggregate", nil, away, home, away},
 	} {
-		t.Run(c.name, func(t *testing.T) {
-			match := finishedMatch()
-			required := false
-			match.BracketRequired = &required
-			match.BracketConfirmed = true
-			match.WinnerID, match.WinnerFlagID = c.derived(match), c.flag(match)
-			src := &fakeSource{matches: []model.Match{match}, summaryShootout: c.shootout}
-			repo := &fakeRepository{existing: map[string]store.MatchRow{}}
-			comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {ID: "2026"}}}
+		for _, confirmed := range []bool{true, false} {
+			t.Run(c.name+" confirmed="+strconv.FormatBool(confirmed), func(t *testing.T) {
+				match := finishedMatch()
+				required := false
+				match.BracketRequired = &required
+				match.BracketConfirmed = confirmed
+				match.WinnerID, match.WinnerFlagID = c.derived(match), c.flag(match)
+				src := &fakeSource{matches: []model.Match{match}, summaryShootout: c.shootout}
+				repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+				comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {ID: "2026"}}}
 
-			testRunner(src, repo, comp).runCycle(context.Background(), false)
+				testRunner(src, repo, comp).runCycle(context.Background(), false)
 
-			var want *string
-			if provider := c.winner(match); provider != nil {
-				id := fakeTeamID(*provider)
-				want = &id
-			}
-			got := repo.lastFinalized.WinnerID
-			if repo.finalizeCalls != 1 || (got == nil) != (want == nil) || (got != nil && *got != *want) ||
-				(repo.lastIdentity.WinnerTeamID == nil) != (want == nil) {
-				t.Fatalf("finalized winner %v / %v, want %v", got, repo.lastIdentity.WinnerTeamID, want)
-			}
-		})
+				var want *string
+				if provider := c.winner(match); provider != nil {
+					id := fakeTeamID(*provider)
+					want = &id
+				}
+				got := repo.lastFinalized.WinnerID
+				if repo.finalizeCalls != 1 || (got == nil) != (want == nil) || (got != nil && *got != *want) ||
+					(repo.lastIdentity.WinnerTeamID == nil) != (want == nil) {
+					t.Fatalf("finalized winner %v / %v, want %v", got, repo.lastIdentity.WinnerTeamID, want)
+				}
+				// A winner the final aggregate resolved -- null included -- is
+				// stored as resolved, whether or not the bracket confirmed it.
+				if repo.lastFinalized.WinnerResolved != (c.shootout != nil) {
+					t.Fatalf("winner resolved %t, want %t", repo.lastFinalized.WinnerResolved, c.shootout != nil)
+				}
+			})
+		}
 	}
 }
 

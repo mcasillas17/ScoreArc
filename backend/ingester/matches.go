@@ -302,6 +302,7 @@ func (r *runner) processMatches(
 				if detail.Shootout != nil {
 					winner := espn.ResolveWinner(detail.Shootout, match.Home.ID, match.Away.ID, match.WinnerFlagID)
 					match.WinnerID, identity.WinnerTeamID = winner, winner
+					match.WinnerResolved = true
 				}
 				match.HomeScore = summary.HomeScore
 				match.AwayScore = summary.AwayScore

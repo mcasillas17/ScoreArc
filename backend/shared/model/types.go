@@ -63,6 +63,10 @@ type Match struct {
 	// decisive aggregate derived: when a higher tier's aggregate supersedes
 	// that one and is level, the winner falls back to the flag.
 	WinnerFlagID *string `json:"-"`
+	// WinnerResolved marks a WinnerID resolved from the final shootout
+	// evidence: finalization stores it as given, null included, where a
+	// sparse observation's null would otherwise keep the stored winner.
+	WinnerResolved bool `json:"-"`
 }
 
 // BracketTeam is shaped after types.ts's BracketTeam. It is distinct from Team

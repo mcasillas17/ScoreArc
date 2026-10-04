@@ -318,7 +318,7 @@ func (s *Store) FinalizeMatch(
 		identity.HomeTeamID, identity.AwayTeamID, match.HomeScore, match.AwayScore,
 		match.Minute, match.StatusDetail, match.StatusName, identity.WinnerTeamID,
 		match.Note, match.HomePlaceholder, match.BracketRequired, match.BracketConfirmed,
-		match.AwayPlaceholder, identity.Source,
+		match.AwayPlaceholder, identity.Source, match.WinnerResolved,
 	}
 	command, err := tx.Exec(ctx, `
 UPDATE match SET
@@ -329,7 +329,7 @@ UPDATE match SET
 	kickoff=$3::timestamptz, state=$4, home_team_id=$5, away_team_id=$6,
 	home_score=COALESCE($7, home_score), away_score=COALESCE($8, away_score),
 	minute=$9, status_detail=$10, status_name=$11,
-	winner_id=CASE WHEN $16 THEN $12 ELSE COALESCE($12, winner_id) END,
+	winner_id=CASE WHEN $16 OR $19 THEN $12 ELSE COALESCE($12, winner_id) END,
 	note=COALESCE($13, note),
 	home_placeholder=CASE
 		WHEN NOT $16 AND home_team_id=$5 AND home_placeholder THEN true ELSE $14 END,
