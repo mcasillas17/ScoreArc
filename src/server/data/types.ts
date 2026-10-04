@@ -11,9 +11,10 @@ export interface Team {
 
 export interface Scorer {
   /**
-   * The credited side, in the same identity space as the match's own sides
-   * (provider ids from ESPN, canonical ids from the reader), or null when the
-   * reference names neither side. Never defaulted to home or away.
+   * The credited side. From ESPN, the provider team id ESPN credits: normally
+   * one of the match's sides, kept as sent even when it names neither. From
+   * the reader, the canonical id of that side, or null when the stored
+   * reference names neither side or both. Never defaulted to home or away.
    */
   teamId: string | null;
   player: string;
@@ -44,7 +45,7 @@ export interface Scorer {
 }
 
 export interface Card {
-  /** As Scorer.teamId: one of the match's sides, or null. */
+  /** As Scorer.teamId: ESPN's credited provider id as sent, or the reader's canonical side or null. */
   teamId: string | null;
   player: string;
   minute: string;

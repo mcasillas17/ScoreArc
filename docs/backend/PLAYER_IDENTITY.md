@@ -12,8 +12,8 @@ our API — silently, per player. This document exists so they cannot drift.
 A player's public identifier is a **name slug**, scoped to a competition
 season. Provider ids (ESPN athlete numbers) never appear in URLs, rendered
 HTML, or as a public identifier or link in an API response — same rule the team
-pages already follow (`mex-america`, never `227`). One provider-scoped value is
-served by design: see the exceptions below.
+pages already follow (`mex-america`, never `227`). Some response fields carry
+them as provider-scoped values, by design: see the exceptions below.
 
 ```
 /c/liga-mx/2026-apertura/player/ali-avila
@@ -63,7 +63,8 @@ are not collisions; the slug is season-scoped.
 The frontend test suite asserts no rendered `href` matches
 `/(player|team)/[0-9]+` — a bare provider number in a public link fails CI.
 The backend API contract tests should assert the same about the public ids and
-links in response bodies; `Scorer.athleteId` is the documented exception below.
+links in response bodies; the provider-scoped fields listed below are the
+documented exceptions.
 
 ## The deliberate exception
 
@@ -72,7 +73,9 @@ event ids. They are client plumbing, not shareable URLs, and are replaced
 wholesale by the API cutover (slice 1d). Do not extend this exception to
 players or teams.
 
-Match summaries serve `Scorer.athleteId`, the provider athlete id, as a nullable
-provider-scoped value (T16.2). The route layer resolves it to the player's slug
-for links; it is never a public id and never goes in a URL
-([READER_CONTRACT, T16.2](READER_CONTRACT.md#t162-identity-and-dto-contract)).
+Some responses carry the provider athlete id as a provider-scoped value, never
+a public id and never in a URL: `Scorer.athleteId`, `LineupPlayer.athleteId`
+and `StatLeader.athleteId`, which the route layer resolves to the player's slug
+for links, and, on the frontend API, `SquadPlayer.id` and `PlayerProfile.id`.
+The reader serves only `Scorer.athleteId` today, nullable (T16.2,
+[READER_CONTRACT](READER_CONTRACT.md#t162-identity-and-dto-contract)).
