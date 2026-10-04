@@ -49,6 +49,7 @@ type readerContractVectors struct {
 	} `json:"methods"`
 	Summary struct {
 		Fixture       string        `json:"fixture"`
+		EventID       string        `json:"eventId"`
 		ReaderMatchID string        `json:"readerMatchId"`
 		Competition   string        `json:"competition"`
 		Season        string        `json:"season"`
@@ -1069,7 +1070,9 @@ func TestReaderContract(t *testing.T) {
 		if store.calls != 0 {
 			t.Fatal("rejected requests reached storage")
 		}
-		gap("T16.2-match-id")
+		// Match ids are store-scoped: /v1/matches addresses the canonical UUID
+		// only, so the provider event id above is a 404 (match_external_ref
+		// translation is proved against Postgres in the go-db suite).
 		for _, path := range []string{"/v1/competitions/world-cup/2026/standings", "/v1/competitions/world-cup/2026/top-scorers", "/v1/competitions/world-cup/news"} {
 			response := performRequest(router, http.MethodGet, path)
 			if response.Code != http.StatusOK {

@@ -288,12 +288,13 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     exercise('getMatchSummary');
     const { store, urls } = storeOver(() => summaryRaw);
     const summary = await store.getMatchSummary(wc, s.eventId, s.sides.home.providerId, s.sides.away.providerId);
-    gap('T16.2-match-id', () => {
-      // The frontend addresses a summary by provider event id; the reader only by UUID.
-      expect(urls).toEqual([expect.stringMatching(new RegExp(`/summary\\?event=${s.eventId}$`))]);
-      expect(s.eventId).toMatch(/^\d+$/);
-      expect(s.readerMatchId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
-    });
+    // Match ids are store-scoped and translated, never equal: this store's list
+    // rows carry the provider event id and it addresses its own summary by it;
+    // the reader's are UUIDv7s, and the Go suite proves match_external_ref maps
+    // this eventId to this readerMatchId through the real resolver.
+    expect(urls).toEqual([expect.stringMatching(new RegExp(`/summary\\?event=${s.eventId}$`))]);
+    expect(s.eventId).toMatch(/^\d+$/);
+    expect(s.readerMatchId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     // Same top-level keys as the reader DTO; a one-sided field must become a registered gap.
     expect(Object.keys(summary).sort()).toEqual([...s.readerKeys].sort());
     expect(summary.scorers).toEqual(s.frontend.scorers);

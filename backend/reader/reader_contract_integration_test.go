@@ -472,6 +472,72 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		}
 	})
 
+	t.Run("provider event ids translate to served match ids through match_external_ref", func(t *testing.T) {
+		home, away := vectors.Summary.Sides["home"].CanonicalID, vectors.Summary.Sides["away"].CanonicalID
+		team(t, espn.Team{ID: "4789", Name: "Ivory Coast", Abbr: "CIV"}, home)
+		team(t, espn.Team{ID: "464", Name: "Norway", Abbr: "NOR"}, away)
+		kickoff, err := time.Parse(time.RFC3339, vectors.Summary.Kickoff)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ref := func(eventID string, kickoff time.Time) writerstore.MatchRef {
+			return writerstore.MatchRef{SourceID: eventID, CompetitionID: vectors.Summary.Competition, SeasonID: vectors.Summary.Season,
+				HomeTeamID: home, AwayTeamID: away, Kickoff: kickoff}
+		}
+		crosswalk := func(eventID string) string {
+			var matchID uuid.UUID
+			if err := pool.QueryRow(ctx, `SELECT match_id FROM match_external_ref WHERE source='espn' AND source_id=$1`, eventID).Scan(&matchID); err != nil {
+				t.Fatal(err)
+			}
+			return matchID.String()
+		}
+		// The recorded vector pair: the resolver adopts the served match on its
+		// natural key, so the provider event id maps to the reader's UUID.
+		if _, err := pool.Exec(ctx, `INSERT INTO match (id, competition_id, season_id, kickoff, state, home_team_id, away_team_id, source)
+			VALUES ($1,$2,$3,$4,'finished',$5,$6,'espn') ON CONFLICT DO NOTHING`,
+			vectors.Summary.ReaderMatchID, vectors.Summary.Competition, vectors.Summary.Season, kickoff, home, away); err != nil {
+			t.Fatal(err)
+		}
+		adopted, err := writer.Match(ctx, "espn", ref(vectors.Summary.EventID, kickoff))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if adopted.String() != vectors.Summary.ReaderMatchID || crosswalk(vectors.Summary.EventID) != vectors.Summary.ReaderMatchID {
+			t.Fatalf("event %s resolved to %s, crosswalk %s", vectors.Summary.EventID, adopted, crosswalk(vectors.Summary.EventID))
+		}
+		// A new event mints a UUIDv7 -- not derived from the provider id -- and
+		// resolves to it again on every later ingest.
+		minted, err := writer.Match(ctx, "espn", ref("9160001", kickoff.Add(72*time.Hour)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		again, err := writer.Match(ctx, "espn", ref("9160001", kickoff.Add(72*time.Hour)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if minted.Version() != 7 || again != minted || crosswalk("9160001") != minted.String() {
+			t.Fatalf("minted %s (v%d), again %s", minted, minted.Version(), again)
+		}
+		// The served list id addresses the summary route; the provider id does not.
+		if err := writer.UpsertMatchDetail(ctx, minted, model.MatchDetail{}); err != nil {
+			t.Fatal(err)
+		}
+		var listed []map[string]any
+		get(t, "/v1/competitions/world-cup/2026/matches", &listed)
+		found := false
+		for _, match := range listed {
+			found = found || match["id"] == minted.String()
+		}
+		if !found {
+			t.Fatal("minted match missing from the list route")
+		}
+		var summary map[string]any
+		get(t, "/v1/matches/"+minted.String(), &summary)
+		if response := performRequest(router, http.MethodGet, "/v1/matches/9160001"); response.Code != http.StatusNotFound {
+			t.Fatalf("provider event id addressed the reader: %d", response.Code)
+		}
+	})
+
 	t.Run("a sealed legacy detail row is served with canonical sides and unknown scorer identity", func(t *testing.T) {
 		// Synthetic: the shape match_detail held before T16.2 -- provider team ids,
 		// no ownGoal or athleteId -- finalized, so it can never be rewritten.

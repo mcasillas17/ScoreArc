@@ -51,11 +51,6 @@
    "mismatch": "Reader Group has no labelKey/zones and no Leagues Cup phase or MLS overall tables.",
    "suites": ["ts", "go"]
   },
-  "T16.2-match-id": {
-   "task": "T16.2",
-   "mismatch": "Reader match routes and list rows use canonical match UUIDs; the frontend uses provider event ids for list rows and summary addressing.",
-   "suites": ["ts", "go"]
-  },
   "T16.6-news": {
    "task": "T16.6",
    "mismatch": "Reader news is a live ESPN proxy (502 on upstream failure), not owned data; bodies match today.",
@@ -110,19 +105,19 @@
  "methods": {
   "getMatches": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T10.2-team-stats", "T16.2-match-id", "T21.4-dependency-error-logging"]
+   "gaps": ["T10.1-match-query", "T10.2-team-stats", "T21.4-dependency-error-logging"]
   },
   "getFixtures": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T16.2-match-id", "T21.4-dependency-error-logging"]
+   "gaps": ["T10.1-match-query", "T21.4-dependency-error-logging"]
   },
   "getLiveWindow": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T16.2-match-id", "T21.4-dependency-error-logging"]
+   "gaps": ["T10.1-match-query", "T21.4-dependency-error-logging"]
   },
   "getUpcoming": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T16.2-match-id", "T21.4-dependency-error-logging"]
+   "gaps": ["T10.1-match-query", "T21.4-dependency-error-logging"]
   },
   "getStandings": {
    "reader": "/v1/competitions/{comp}/{season}/standings",
@@ -130,11 +125,11 @@
   },
   "getBracket": {
    "reader": "/v1/competitions/{comp}/{season}/bracket",
-   "gaps": ["T16.2-match-id", "T21.4-dependency-error-logging"]
+   "gaps": ["T21.4-dependency-error-logging"]
   },
   "getMatchSummary": {
    "reader": "/v1/matches/{id}",
-   "gaps": ["T16.2-match-id", "T10.2-team-stats", "T10.2-lineups", "T21.4-dependency-error-logging"]
+   "gaps": ["T10.2-team-stats", "T10.2-lineups", "T21.4-dependency-error-logging"]
   },
   "getLeaders": {
    "reader": "/v1/competitions/{comp}/{season}/top-scorers",
@@ -146,7 +141,7 @@
   },
   "getTeam": {
    "reader": "/v1/competitions/{comp}/{season}/teams/{teamId}",
-   "gaps": ["T10.3-team", "T10.3-team-location", "T10.3-partial-failure", "T10.3-standing-summary", "T16.2-match-id", "T10.3-team-cache-doc", "T10.3-team-record", "T10.3-squad", "T10.3-squad-fields"]
+   "gaps": ["T10.3-team", "T10.3-team-location", "T10.3-partial-failure", "T10.3-standing-summary", "T10.3-team-cache-doc", "T10.3-team-record", "T10.3-squad", "T10.3-squad-fields"]
   },
   "getSquad": {
    "reader": "/v1/competitions/{comp}/{season}/teams/{teamId}",
