@@ -45,7 +45,9 @@ func (e *ReadinessError) Error() string {
 	if e.ErrorType != "" {
 		msg += " error_type=" + e.ErrorType
 	}
-	return msg
+	// The remedy depends on the category (apply, release, reconcile, grant,
+	// rebuild); the runbook's matrix holds it so both services stay consistent.
+	return msg + " runbook=docs/backend/RELEASES.md#schema-readiness"
 }
 
 // CheckReady is the startup gate the reader and ingester share. It passes only

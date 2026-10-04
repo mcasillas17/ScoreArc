@@ -71,8 +71,13 @@ initial guess that a `0024` grant was required was disproved by the test).
 - Modify `backend/reader/main.go`: `checkFreshnessSchema` → `checkSchemaReadiness`.
 - Test harnesses (store, reader, ingester) create the ledger before `0001`, as
   golang-migrate does, and record the last applied version.
-- Docs: SETUP §5, RELEASES (schema readiness section, rollback), MATCH_FRESHNESS,
-  reader README, CURRENT_STATE, PRODUCT_ROADMAP T21.2.
+- Docs: SETUP §5, RELEASES (schema readiness section, rollback), reader README,
+  BACKEND_HANDOFF, ARCHITECTURE §5, CURRENT_STATE, PRODUCT_ROADMAP T21.2.
+- Not edited: `docs/backend/MATCH_FRESHNESS.md` belongs to the parallel
+  match-freshness lane. Its line "This narrow prerequisite check is **not** the
+  full T21.2 head/dirty-ledger gate" becomes stale on merge (that probe now runs
+  inside `CheckReady`); RELEASES#schema-readiness and the PR record the handoff
+  to that lane's owner to reword it.
 
 ## Tasks
 

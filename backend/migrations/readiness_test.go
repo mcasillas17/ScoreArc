@@ -145,7 +145,10 @@ func TestCheckReadyPolicy(t *testing.T) {
 			if strings.Contains(text, "must-not-log") || errors.Unwrap(err) != nil {
 				t.Fatalf("dependency detail leaked: %q", text)
 			}
-			if !strings.Contains(text, "category="+tc.category) || !strings.Contains(text, fmt.Sprintf("expected=%d", head)) {
+			// Both services log this value verbatim, so the remedy pointer travels
+			// with it rather than living in per-service log messages.
+			if !strings.Contains(text, "category="+tc.category) || !strings.Contains(text, fmt.Sprintf("expected=%d", head)) ||
+				!strings.Contains(text, "runbook=docs/backend/RELEASES.md#schema-readiness") {
 				t.Fatalf("diagnostic missing: %q", text)
 			}
 			if tc.category == "behind" && len(db.queries) != 1 {

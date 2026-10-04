@@ -62,8 +62,7 @@ func run() int {
 			log.Info("shutdown complete")
 			return 0
 		}
-		log.Error("database schema not ready; verify and apply migrations before release",
-			"err", err, "runbook", "docs/backend/RELEASES.md#schema-readiness")
+		log.Error("ingester stopped", "err", err)
 		return 1
 	}
 	lease, acquired, err := store.AcquireIngesterLease(startupCtx, leaseDSN)
