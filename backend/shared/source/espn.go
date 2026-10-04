@@ -305,7 +305,7 @@ func mapSummary(raw []byte, match model.Match) (SummaryResult, error) {
 		Detail: detail, Participation: participation, Commentary: commentary,
 	}
 	if requireFinal {
-		result.HomeScore, result.AwayScore, err = espn.SummaryFinalScores(raw)
+		result.HomeScore, result.AwayScore, result.WinnerFlagID, err = espn.SummaryFinal(raw, match.Home.ID, match.Away.ID)
 		if err != nil {
 			return SummaryResult{}, err
 		}

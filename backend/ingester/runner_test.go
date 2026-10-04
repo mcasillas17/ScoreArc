@@ -75,6 +75,7 @@ type fakeSource struct {
 	live            bool
 	winProbability  *model.WinProbability
 	summaryShootout *model.Shootout
+	summaryFlag     *string
 }
 
 func (f *fakeSource) Name() string { return "fake" }
@@ -122,6 +123,7 @@ func (f *fakeSource) Summary(
 			WinProbability: f.winProbability,
 			Shootout:       f.summaryShootout,
 		},
+		WinnerFlagID: f.summaryFlag,
 		// Provider-shaped, exactly as a real source returns it: the team ids
 		// here are the provider's, and the ingester is responsible for handing
 		// the store canonical ones instead.
@@ -3003,6 +3005,54 @@ func TestFinalizedWinnerFollowsTheSummaryShootoutAggregate(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// A candidate this cycle did not observe -- a finished match retried from the
+// finalization backlog alone -- carries no winner flag of its own, so a level
+// final aggregate falls back to the final summary header's flag instead of
+// erasing the stored winner. An observed candidate keeps its own flag, nil
+// included, as the scoreboard path (and the frontend) read it.
+func TestBacklogFinalizationTakesTheSummaryHeaderFlag(t *testing.T) {
+	homeID, awayID := "home", "away"
+	level := &model.Shootout{HomeScore: 3, AwayScore: 3}
+	for _, c := range []struct {
+		name       string
+		observed   bool
+		shootout   *model.Shootout
+		headerFlag *string
+		want       *string
+	}{
+		{"backlog, level, header flags away", false, level, &awayID, &awayID},
+		{"backlog, level, header flags no one", false, level, nil, nil},
+		{"backlog, decisive aggregate outranks the header flag", false, &model.Shootout{HomeScore: 4, AwayScore: 3}, &awayID, &homeID},
+		{"observed, level, no scoreboard flag, header flags away", true, level, &awayID, nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			match := finishedMatch()
+			match.WinnerID = &homeID // the stored winner the backlog row carries
+			src := &fakeSource{summaryShootout: c.shootout, summaryFlag: c.headerFlag}
+			repo := &fakeRepository{existing: map[string]store.MatchRow{"m1": {}}, unfinalized: []model.Match{match}}
+			if c.observed {
+				observed := finishedMatch()
+				observed.WinnerID = &homeID
+				src.matches = []model.Match{observed}
+			}
+			comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {ID: "2026"}}}
+
+			testRunner(src, repo, comp).runCycle(context.Background(), true)
+
+			var want *string
+			if c.want != nil {
+				id := fakeTeamID(*c.want)
+				want = &id
+			}
+			got := repo.lastFinalized.WinnerID
+			if repo.finalizeCalls != 1 || (got == nil) != (want == nil) || (got != nil && *got != *want) ||
+				!repo.lastFinalized.WinnerResolved {
+				t.Fatalf("finalized winner %v resolved=%t, want %v resolved", got, repo.lastFinalized.WinnerResolved, want)
+			}
+		})
 	}
 }
 

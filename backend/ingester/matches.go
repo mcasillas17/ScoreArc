@@ -300,7 +300,14 @@ func (r *runner) processMatches(
 				// (T16.2): the winner that finalizes is the side it names, or
 				// ESPN's flag when it is level.
 				if detail.Shootout != nil {
-					winner := espn.ResolveWinner(detail.Shootout, match.Home.ID, match.Away.ID, match.WinnerFlagID)
+					flag := match.WinnerFlagID
+					if observations[match.ID].IsZero() {
+						// A candidate this cycle did not observe -- the
+						// finalization backlog -- carries no flag of its own;
+						// the final summary header's stands in.
+						flag = canonicalSide(summary.WinnerFlagID, providerHome.ID, providerAway.ID, identity.HomeTeamID, identity.AwayTeamID)
+					}
+					winner := espn.ResolveWinner(detail.Shootout, match.Home.ID, match.Away.ID, flag)
 					match.WinnerID, identity.WinnerTeamID = winner, winner
 					match.WinnerResolved = true
 				}

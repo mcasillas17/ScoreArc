@@ -151,3 +151,38 @@ func TestESPNSummaryShootoutPrecedence(t *testing.T) {
 		})
 	}
 }
+
+// A final summary carries ESPN's winner flag from its own header, for a
+// finalization whose candidate brought none of its own (the backlog).
+func TestESPNSummaryCarriesTheFinalHeaderWinnerFlag(t *testing.T) {
+	away := "94"
+	for _, tc := range []struct {
+		name    string
+		flagged bool
+		state   model.MatchState
+		want    *string
+	}{
+		{"final, away flagged", true, model.MatchStateFinished, &away},
+		{"final, no flag", false, model.MatchStateFinished, nil},
+		{"live, away flagged", true, model.MatchStateLive, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := shootoutSummary(`3`, `3`)
+			if tc.flagged {
+				raw = strings.Replace(raw, `"team":{"id":"94"},"score":"1"`, `"team":{"id":"94"},"score":"1","winner":true`, 1)
+			}
+			src := recoverySource(func(*http.Request) (*http.Response, error) {
+				return recoveryResponse(200, raw), nil
+			})
+			input := recoveryMatch()
+			input.State = tc.state
+			result, err := src.Summary(context.Background(), config.Competition{ESPNSlug: "esp.1"}, input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := result.WinnerFlagID; (got == nil) != (tc.want == nil) || (got != nil && *got != *tc.want) {
+				t.Fatalf("summary winner flag %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

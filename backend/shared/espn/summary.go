@@ -412,27 +412,30 @@ func hasSummaryDetail(detail MatchDetail) bool {
 		len(detail.H2H) > 0
 }
 
-func SummaryFinalScores(raw []byte) (*int, *int, error) {
+// SummaryFinal reads a validated final summary header: its two scores and
+// ESPN's own winner flag (homeID, awayID or nil), the same flag the scoreboard
+// carries, for a caller whose match brought none.
+func SummaryFinal(raw []byte, homeID, awayID string) (homeScore, awayScore *int, winnerFlag *string, err error) {
 	var summary rawSummary
 	if err := parseRawSummary(raw, &summary); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if len(summary.Header.Competitions) == 0 {
-		return nil, nil, fmt.Errorf("summary missing competition")
+		return nil, nil, nil, fmt.Errorf("summary missing competition")
 	}
-	var homeScore, awayScore *int
+	var homeWinner, awayWinner bool
 	for _, competitor := range summary.Header.Competitions[0].Competitors {
 		switch competitor.HomeAway {
 		case "home":
-			homeScore = scoreOf(competitor.Score)
+			homeScore, homeWinner = scoreOf(competitor.Score), competitor.Winner
 		case "away":
-			awayScore = scoreOf(competitor.Score)
+			awayScore, awayWinner = scoreOf(competitor.Score), competitor.Winner
 		}
 	}
 	if homeScore == nil || awayScore == nil {
-		return nil, nil, fmt.Errorf("summary missing final scores")
+		return nil, nil, nil, fmt.Errorf("summary missing final scores")
 	}
-	return homeScore, awayScore, nil
+	return homeScore, awayScore, flaggedWinnerID(homeID, awayID, homeWinner, awayWinner), nil
 }
 
 func ParseShootoutNote(note, homeName, awayName string) *Shootout {
