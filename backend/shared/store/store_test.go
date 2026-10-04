@@ -297,6 +297,11 @@ func TestMatchWritesNeverRegressStoredFacts(t *testing.T) {
 		if stored.BracketRequired == nil || !*stored.BracketRequired {
 			t.Fatalf("backlog bracket classification=%+v", stored.BracketRequired)
 		}
+		// The row keeps no ESPN winner flag, so the rebuilt candidate says so
+		// rather than claiming ESPN flagged no one.
+		if !stored.WinnerFlagUnknown || stored.WinnerFlagID != nil {
+			t.Fatalf("backlog winner flag unknown=%t flag=%v, want unknown", stored.WinnerFlagUnknown, stored.WinnerFlagID)
+		}
 		// The backlog re-enters the ingest pipeline beside live provider rows
 		// and is finalized by fetching the provider's summary, so every id on
 		// it has to be the provider's, not ours.

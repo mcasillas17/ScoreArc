@@ -474,6 +474,7 @@ func (s *Store) UnfinalizedMatches(
 			return nil, err
 		}
 		match.Kickoff = kickoff.UTC().Format(time.RFC3339)
+		match.WinnerFlagUnknown = true // match keeps no provider winner flag
 		matches = append(matches, match)
 	}
 	return matches, rows.Err()

@@ -301,10 +301,9 @@ func (r *runner) processMatches(
 				// ESPN's flag when it is level.
 				if detail.Shootout != nil {
 					flag := match.WinnerFlagID
-					if observations[match.ID].IsZero() {
-						// A candidate this cycle did not observe -- the
-						// finalization backlog -- carries no flag of its own;
-						// the final summary header's stands in.
+					if match.WinnerFlagUnknown {
+						// A candidate rebuilt from storage carries no flag of
+						// its own; the final summary header's stands in.
 						flag = canonicalSide(summary.WinnerFlagID, providerHome.ID, providerAway.ID, identity.HomeTeamID, identity.AwayTeamID)
 					}
 					winner := espn.ResolveWinner(detail.Shootout, match.Home.ID, match.Away.ID, flag)

@@ -3031,6 +3031,7 @@ func TestBacklogFinalizationTakesTheSummaryHeaderFlag(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			match := finishedMatch()
 			match.WinnerID = &homeID // the stored winner the backlog row carries
+			match.WinnerFlagUnknown = true
 			src := &fakeSource{summaryShootout: c.shootout, summaryFlag: c.headerFlag}
 			repo := &fakeRepository{existing: map[string]store.MatchRow{"m1": {}}, unfinalized: []model.Match{match}}
 			if c.observed {
@@ -3053,6 +3054,34 @@ func TestBacklogFinalizationTakesTheSummaryHeaderFlag(t *testing.T) {
 				t.Fatalf("finalized winner %v resolved=%t, want %v resolved", got, repo.lastFinalized.WinnerResolved, want)
 			}
 		})
+	}
+}
+
+// Two provider ids for one canonical match: the backlog row under the older id
+// survives the merge, but the match was still observed this cycle under the
+// other, so that observation's flag (none here) stands over the header's.
+func TestDuplicateProviderIDKeepsTheObservedWinnerFlag(t *testing.T) {
+	homeID, awayID := "home", "away"
+	backlog := finishedMatch()
+	backlog.ID = "a-older"
+	backlog.WinnerID = &homeID
+	backlog.WinnerFlagUnknown = true
+	observed := finishedMatch()
+	observed.ID = "b-current"
+	src := &fakeSource{matches: []model.Match{observed}, summaryShootout: &model.Shootout{HomeScore: 3, AwayScore: 3}, summaryFlag: &awayID}
+	repo := &fakeRepository{
+		existing:    map[string]store.MatchRow{"a-older": {}},
+		unfinalized: []model.Match{backlog},
+		matchAlias:  map[string]string{"b-current": "a-older"},
+	}
+	comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {ID: "2026"}}}
+
+	testRunner(src, repo, comp).runCycle(context.Background(), true)
+
+	if repo.finalizeCalls != 1 || repo.lastFinalized.ID != "a-older" || repo.lastFinalized.WinnerID != nil ||
+		!repo.lastFinalized.WinnerResolved || repo.lastFinalized.WinnerFlagUnknown {
+		t.Fatalf("finalized %q winner %v resolved=%t unknown=%t, want a-older, nil, resolved, known", repo.lastFinalized.ID,
+			repo.lastFinalized.WinnerID, repo.lastFinalized.WinnerResolved, repo.lastFinalized.WinnerFlagUnknown)
 	}
 }
 

@@ -535,6 +535,11 @@ func mergeCandidate(current, incoming model.Match) model.Match {
 	if sameStateRank {
 		incoming.BracketConfirmed =
 			incoming.BracketConfirmed || current.BracketConfirmed
+		// A row rebuilt from storage knows no flag; an observation of the
+		// same match does, nil included.
+		if incoming.WinnerFlagUnknown && !current.WinnerFlagUnknown {
+			incoming.WinnerFlagID, incoming.WinnerFlagUnknown = current.WinnerFlagID, false
+		}
 	}
 	incoming.HomePlaceholder = (incoming.HomePlaceholder || current.HomePlaceholder) &&
 		isUnresolvedTeam(incoming.Home)
