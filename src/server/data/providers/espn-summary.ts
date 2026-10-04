@@ -139,13 +139,26 @@ export function mapSummaryShootoutTotals(raw: unknown, eventId: string, homeId: 
   return shootoutTotals(home.shootoutScore, away.shootoutScore);
 }
 
+// The status names Go's observedMatchState (shared/espn/validation.go) treats
+// specially: terminal ones finish on state post alone; the others are never
+// finished, however the state and completion read.
+const TERMINAL_STATUSES = new Set(['STATUS_CANCELED', 'STATUS_ABANDONED', 'STATUS_FORFEIT']);
+const UNFINISHED_STATUSES = new Set([
+  'STATUS_SUSPENDED', 'STATUS_POSTPONED', 'STATUS_SCHEDULED', 'STATUS_DELAYED',
+  'STATUS_IN_PROGRESS', 'STATUS_FIRST_HALF', 'STATUS_HALFTIME', 'STATUS_SECOND_HALF',
+]);
+
 // Whether the summary header has itself finished, by Go's requireFinal
-// predicate (ValidateSummary): a STATUS_ name, state post and completed true.
-// Only a final header may resolve a finished match; one read mid-shootout
-// carries partial totals, and post alone never makes a header final.
+// predicate (ValidateSummary -> observedMatchState): a STATUS_ name with a
+// boolean completion, then by name as above, and otherwise state post with
+// completion. Only a final header may resolve a finished match; one read
+// mid-shootout carries partial totals.
 export function summaryHeaderFinal(raw: unknown): boolean {
   const type = (raw as any)?.header?.competitions?.[0]?.status?.type;
-  return String(type?.name).startsWith('STATUS_') && type?.state === 'post' && type?.completed === true;
+  const name = String(type?.name);
+  if (!name.startsWith('STATUS_') || typeof type?.completed !== 'boolean') return false;
+  if (TERMINAL_STATUSES.has(name)) return type.state === 'post';
+  return !UNFINISHED_STATUSES.has(name) && type.state === 'post' && type.completed;
 }
 
 // A clip is a "goal" clip (vs. analysis/interview/presser) when the headline

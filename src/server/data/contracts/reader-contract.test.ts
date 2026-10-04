@@ -414,7 +414,7 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     expect([match.homeScore, match.awayScore]).toEqual([1, 1]); // Regulation scores stay.
   });
 
-  it.each(s0.syntheticOverlay.headerIdentity.cases.filter(c => c.header.status))('never resolves a finished match from a summary header held before it was final: $name', async (live) => {
+  it.each(s0.syntheticOverlay.headerIdentity.cases.filter(c => c.header.status))('applies the same final-header rule to a summary held from an earlier read: $name', async (live) => {
     const h = s0.syntheticOverlay.headerIdentity;
     const summary = overlaidSummary();
     summary.header.id = summary.header.competitions[0].id = live.header.eventId;
@@ -424,7 +424,7 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     if (live.header.status) withHeaderStatus(summary, live.header.status);
     const { store, urls } = storeOver(url => url.includes('/summary') ? summary
       : { leagues: [{ slug: vectors.queries.leagueSlug }], events: url.includes('dates=202606') ? scoreboard.events.filter(e => e.id === h.scoreboardEventId) : [] });
-    // The match page read the summary mid-shootout; the scoreboard has since finished.
+    // The match page read the summary earlier; the scoreboard has since finished.
     await store.getMatchSummary(wc, live.header.eventId, live.header.home, live.header.away);
     const [match] = await store.getMatches(wc, '20260629-20260629');
     expect(urls.filter(url => url.includes('/summary'))).toHaveLength(1); // The held summary was reused.

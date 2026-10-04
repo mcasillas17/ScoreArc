@@ -1474,7 +1474,7 @@
     "away": 3
    },
    "headerIdentity": {
-    "note": "Synthetic: the overlay summary's header (shootoutScores home 4, away 3) is rewritten to the given event id and side ids and held for recorded scoreboard event 760489 (Germany 481 home, Paraguay 210 away; structured totals 3/4, winner flag Paraguay). Only a header that identifies the requested event and its sides may supply the aggregate (Go: ValidateSummary rejects any other); otherwise the scoreboard's evidence stands. A finished scoreboard match takes the header only once the header is itself final: a STATUS_ name, state post and completed true, Go's requireFinal predicate (ValidateSummary rejects anything else, including post without completion and completion while in play); a live header, even one held from an earlier read, never overrides it. A finished match's winner follows the aggregate it serves.",
+    "note": "Synthetic: the overlay summary's header (shootoutScores home 4, away 3) is rewritten to the given event id and side ids and held for recorded scoreboard event 760489 (Germany 481 home, Paraguay 210 away; structured totals 3/4, winner flag Paraguay). Only a header that identifies the requested event and its sides may supply the aggregate (Go: ValidateSummary rejects any other); otherwise the scoreboard's evidence stands. A finished scoreboard match takes the header only once the header is itself final by Go's requireFinal predicate (observedMatchState): a STATUS_ name with a boolean completion, where a known in-play, scheduled, suspended or postponed name is never final, a terminal name (canceled, abandoned, forfeit) is final on state post, and any other name is final on state post with completion; a live header, even one held from an earlier read, never overrides it. A finished match's winner follows the aggregate it serves.",
     "scoreboardEventId": "760489",
     "cases": [
      {
@@ -1612,6 +1612,146 @@
         "name": "FINAL",
         "state": "post",
         "completed": true
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, header STATUS_IN_PROGRESS contradicted by post and completion",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_IN_PROGRESS",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, header STATUS_FIRST_HALF contradicted by post and completion",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_FIRST_HALF",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, header STATUS_SUSPENDED contradicted by post and completion",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_SUSPENDED",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, header STATUS_POSTPONED contradicted by post and completion",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_POSTPONED",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, terminal header STATUS_ABANDONED, post without completion",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_ABANDONED",
+        "state": "post",
+        "completed": false
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 4,
+        "awayScore": 3
+       },
+       "winner": "home"
+      }
+     },
+     {
+      "name": "the requested event and sides, terminal header STATUS_ABANDONED, completion missing",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_ABANDONED",
+        "state": "post",
+        "completed": null
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, terminal header STATUS_ABANDONED, in play",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_ABANDONED",
+        "state": "in",
+        "completed": false
        }
       },
       "expected": {
