@@ -129,8 +129,9 @@ and the harness proves a translation instead of an equality. They are not gaps.
 | Player | `athleteId` = provider athlete id; `playerSlug` filled by the match route | the same provider `athleteId`; no `playerSlug` | `withSummaryPlayerSlugs` resolves the same slugs from either store's scorers; a `null` id gets no link. Public player identity is T10.3/T10.4 (`squad-fields`, `player`) |
 
 Match ids are store-scoped, so for T16.3 every method that produces or consumes
-them (the window methods, `getBracket`, `getMatchSummary` and the match route's
-`home`/`away` side ids) must read from the same source.
+them (the four window methods, `getBracket`, `getTeam`'s schedule, `getPlayer`'s
+game-log `eventId`, `getMatchSummary` and the match route's `home`/`away` side
+ids) must read from the same source and fall back together.
 
 ### Resolved gaps
 

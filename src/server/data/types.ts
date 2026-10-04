@@ -24,7 +24,8 @@ export interface Scorer {
   // opposition player who scored it. `teamId` is therefore correct as sent —
   // what is wrong without this flag is presenting that player as one of the
   // benefiting team's scorers. Null is unknown: a reader row stored before
-  // own goals were captured.
+  // own goals were captured whose scorers could not be aligned with its
+  // captured goal events.
   ownGoal: boolean | null;
   /**
    * The provider's athlete id, or null. It rides the API response body (the
