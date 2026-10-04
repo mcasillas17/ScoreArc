@@ -145,7 +145,7 @@ them (the window methods, `getBracket`, `getMatchSummary` and the match route's
 | `placeholder-crest` | an empty provider logo is no crest (`null`), on the bracket and on the match-list, team-schedule and leader mappers that shared the defect | both languages, on the recorded placeholder through the bracket and match-list mappers; TS mapper tests for the team schedule and leaders |
 | `round-slug-type` | OpenAPI `KnockoutRound` enum on `BracketRound.slug` and `BracketMatch.round`, equal to the Go round order and the TS slug union | Go and `tsc` |
 | `bracket-round-name` | contract decision: `name` is an additive English label for API consumers; the frontend localizes from `slug` | each reader name equals the frontend's English catalog label |
-| `shootout-source` | summary header → scoreboard structured `shootoutScore` → anchored note → `null`. A scoreboard total is a non-negative integer or a string of digits, and the two are not both zero; anything else rejects the scoreboard. The summary header keeps its existing wider numeric rule. A header supplies totals only for its own match: its id and its single competition's id equal the event, and its two competitors are the event's sides, else it is ignored. A finished match with a decisive aggregate is won by the side with more, overriding the scoreboard's winner flags; a live, partial shootout names no winner; the ingester finalizes with the summary's winner. Regulation scores are untouched; lightweight feeds never fetch summaries | shared precedence vectors (totals and winner) through both mappers; header identity vectors; an ingester finalization test |
+| `shootout-source` | summary header → scoreboard structured `shootoutScore` → anchored note → `null`. A scoreboard total is a non-negative integer or a string of digits (`''` and `null` read as 0), and the two are not both zero; anything else rejects the scoreboard. The summary header keeps its existing wider numeric rule. A header supplies totals only for its own match: its id and its single competition's id equal the event, and its two competitors are the event's sides, else it is ignored. A finished match with a decisive aggregate is won by the side with more, overriding the scoreboard's winner flags; a live, partial shootout names no winner, on the match list, the bracket (so no side advances early) and the ingester's summary recovery path alike; the ingester finalizes with the summary's winner, and the reader serves a finished row's winner from its stored decisive aggregate, so rows finalized earlier agree. The frontend caches a summary per event and sides, because its totals are mapped for those sides. Regulation scores are untouched; lightweight feeds never fetch summaries | shared precedence vectors (totals and winner) through both mappers; a live and a finished bracket shootout through both bracket mappers; header identity vectors, including a summary first read with other sides; an ingester finalization test; a summary-recovery unit test; go-db: a sealed row whose stored winner contradicts its aggregate, a live partial shootout and a level one, on the match, team-schedule and bracket projections |
 | `live-minute`, `bracket-live-minute` | a live match without a display clock is `minute: null`; the reader also serves a stored `''` as `null` | both mappers; go-db on match, bracket and team-schedule projections |
 
 The three T16.2 items that were never registered gaps:
@@ -181,7 +181,16 @@ side the reader cannot attribute, events from another poll than the summary —
 leaves every scorer in that match `null`. Nothing is matched by name. The cost
 is bounded: current rows pay one jsonpath test; a legacy row adds one
 primary-key range scan of `match_event` and one indexed `player_external_ref`
-lookup per goal.
+lookup per goal. A go-db test plans the match, team-schedule, summary and
+bracket queries with sequential scans disabled and requires every correlated
+lookup — each side's crosswalk ids, the goal events and their player ids, the
+bracket's stored aggregate — to use its expected index, `match_event` through its
+`(match_id, seq)` primary key rather than its type index.
+
+Rows finalized before T16.2 also kept the scoreboard's winner where the stored
+summary aggregate named the other side. For a finished match the reader serves
+the side the stored decisive aggregate names, on every projection that carries a
+winner, without touching the sealed row.
 
 Legacy rows without aligned events stay `null`; nothing else in the database
 holds their own-goal flag or athlete id. The production share of each case is
@@ -260,7 +269,10 @@ unknown scorer side defaulted to home, or the read-time translation removed; a
 URL-derived leader crest key; the CDN host or the port check removed; and a
 provider-derived match UUID. The review repairs were checked the same way: the
 scoreboard winner flags beating a decisive aggregate (both mappers and the
-ingester), a live partial shootout naming a winner, a summary header for another event or with reversed sides, a padded
+ingester), a live partial shootout naming a winner (match list, both bracket
+mappers and the summary recovery path), a summary cached without its sides, the
+reader serving the stored winner over a decisive stored aggregate or naming one
+for a live row, a correlated lookup without an index path, a summary header for another event or with reversed sides, a padded
 or fractional scoreboard total, a missing `children` array or an empty team id
 accepted, a stat failure hiding team identities, and legacy recovery ignoring
 the minute, the source or a second player id, or recovering a partial list.
