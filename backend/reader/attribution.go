@@ -115,3 +115,18 @@ func recoverLegacyScorers(scorers []espn.Scorer, raw []byte) error {
 	}
 	return nil
 }
+
+// servedWinner is the winner the reader serves: for a finished match, the side
+// a decisive stored shootout aggregate names, else the stored winner. Rows
+// finalized before T16.2 kept the scoreboard's winner flags even where the
+// stored summary aggregate -- the higher evidence -- named the other side;
+// they are sealed, so the precedence is applied here. A live shootout's
+// partial totals name no winner.
+func servedWinner(state espn.MatchState, shootout *espn.Shootout, homeID, awayID string, stored *string) *string {
+	if state == espn.MatchStateFinished {
+		if winner := espn.ShootoutWinner(shootout, homeID, awayID); winner != nil {
+			return winner
+		}
+	}
+	return stored
+}
