@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -200,10 +201,12 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 
 		homeTeam, awayTeam := mapTeam(home.Team), mapTeam(away.Team)
 		// A malformed total rejects the scoreboard, as an invalid score does
-		// below and as the frontend's window loader does.
+		// below. The rule is the frontend window loader's (scoreboardWindow.ts):
+		// a non-negative integer number or a digit string, null and "" read as
+		// 0. Summary-header totals keep their own, wider rule (#173).
 		for _, competitor := range []*rawCompetitor{home, away} {
-			if _, _, err := parseSuppliedShootoutScore(competitor.ShootoutScore); err != nil {
-				return nil, fmt.Errorf("scoreboard event %q: %w", ev.ID, err)
+			if !scoreboardTotal(competitor.ShootoutScore) {
+				return nil, fmt.Errorf("scoreboard event %q has an invalid shootout score", ev.ID)
 			}
 		}
 		// Structured totals outrank the prose note; the summary header outranks
@@ -211,6 +214,13 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 		shootout := shootoutTotals(home.ShootoutScore, away.ShootoutScore)
 		if shootout == nil && note != nil {
 			shootout = ParseShootoutNote(*note, homeTeam.Name, awayTeam.Name)
+		}
+		// A finished match's decisive aggregate names its winner ahead of the
+		// flags, as the bracket mapper's shootout-first rule does.
+		if state == MatchStateFinished {
+			if winner := ShootoutWinner(shootout, homeTeam.ID, awayTeam.ID); winner != nil {
+				winnerID = winner
+			}
 		}
 
 		homeScore, awayScore := scoreOf(home.Score), scoreOf(away.Score)
@@ -248,4 +258,20 @@ func parseESPNDate(value string) (time.Time, error) {
 		}
 	}
 	return time.Time{}, fmt.Errorf("unsupported ESPN timestamp %q", value)
+}
+
+var digitsRe = regexp.MustCompile(`^[0-9]+$`)
+
+// scoreboardTotal reports whether a scoreboard competitor's shootoutScore is
+// absent, null, "", a digit string, or a non-negative integer number.
+func scoreboardTotal(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return true
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		return text == "" || digitsRe.MatchString(text)
+	}
+	_, _, err := parseSuppliedShootoutScore(raw)
+	return err == nil
 }

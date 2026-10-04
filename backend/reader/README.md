@@ -6,10 +6,16 @@ short-lived ESPN proxy; the implemented differences are registered gaps in
 [`READER_CONTRACT`](../../docs/backend/READER_CONTRACT.md). The authoritative machine-readable contract is
 [`openapi.yaml`](openapi.yaml).
 
-Every id it serves is a **canonical ScoreArc id** — slugs for competitions,
-seasons, and teams; UUIDs for matches — not a provider's. Provider ids live only
-in the `*_external_ref` crosswalk tables, which the reader never joins. Ids stay
-opaque strings to consumers.
+Every entity id it serves is a **canonical ScoreArc id** — slugs for
+competitions, seasons, and teams; UUIDs for matches — not a provider's. Ids stay
+opaque strings to consumers. Provider ids live in the `*_external_ref` crosswalk
+tables; the reader reads them only to translate stored references: a scorer's or
+card's `teamId` becomes the canonical side it names (or `null`). The one
+provider-scoped value it serves is `Scorer.athleteId`, the source provider's
+athlete id, which a client may resolve to a player slug and must never put in a
+URL. For detail stored before T16.2 it is read from the scorer's aligned
+`match_event` player through `player_external_ref`. See
+[READER_CONTRACT, T16.2](../../docs/backend/READER_CONTRACT.md#t162-identity-and-dto-contract).
 
 ## Runtime configuration
 

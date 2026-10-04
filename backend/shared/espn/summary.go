@@ -490,6 +490,21 @@ func shootoutTotals(homeRaw, awayRaw json.RawMessage) *Shootout {
 	return &Shootout{HomeScore: home, AwayScore: away}
 }
 
+// ShootoutWinner is the side a decisive shootout aggregate names -- homeID or
+// awayID -- or nil when there is no aggregate or it is level. For a finished
+// match it outranks the provider's winner flags, which ESPN sets
+// inconsistently on shootouts (see shootoutFirstWinnerID).
+func ShootoutWinner(shootout *Shootout, homeID, awayID string) *string {
+	switch {
+	case shootout == nil || shootout.HomeScore == shootout.AwayScore:
+		return nil
+	case shootout.HomeScore > shootout.AwayScore:
+		return &homeID
+	default:
+		return &awayID
+	}
+}
+
 // headerTeamIDs reads OUR home/away team ids off
 // header.competitions[0].competitors, the same homeAway tagging
 // espn-matches.ts's mapScoreboard reads off the scoreboard payload.

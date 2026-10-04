@@ -1472,6 +1472,57 @@
    "shootoutScores": {
     "home": 4,
     "away": 3
+   },
+   "headerIdentity": {
+    "note": "Synthetic: the overlay summary's header (shootoutScores home 4, away 3) is rewritten to the given event id and side ids and held for recorded scoreboard event 760489 (Germany 481 home, Paraguay 210 away; structured totals 3/4, winner flag Paraguay). Only a header that identifies the requested event and its sides may supply the aggregate (Go: ValidateSummary rejects any other); otherwise the scoreboard's evidence stands. A finished match's winner follows the aggregate it serves.",
+    "scoreboardEventId": "760489",
+    "cases": [
+     {
+      "name": "the requested event and sides",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210"
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 4,
+        "awayScore": 3
+       },
+       "winner": "home"
+      }
+     },
+     {
+      "name": "another event's header",
+      "header": {
+       "eventId": "760490",
+       "home": "481",
+       "away": "210"
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "reversed sides",
+      "header": {
+       "eventId": "760489",
+       "home": "210",
+       "away": "481"
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     }
+    ]
    }
   },
   "readerKeys": ["cards", "commentary", "form", "h2h", "info", "lineups", "scorers", "shootoutDetail", "stats", "videos", "winProbability"],
@@ -1938,6 +1989,39 @@
      "frontend": "error",
      "reader": "error"
     }
+   },
+   "emptyTeamId": {
+    "name": "Group A",
+    "entries": [0, 1],
+    "blankTeamId": 1,
+    "expected": {
+     "frontend": "error",
+     "reader": "error"
+    }
+   },
+   "envelopes": {
+    "note": "ESPN omits `children` for a competition that publishes no tables (eng.fa, fifa.friendly on 2026-10-04); every configured competition publishes them, so a missing or null array is a rejected payload in both mappers. An empty array is an empty table set.",
+    "cases": [
+     {
+      "name": "no children array",
+      "payload": {},
+      "expected": "error"
+     },
+     {
+      "name": "null children",
+      "payload": {
+       "children": null
+      },
+      "expected": "error"
+     },
+     {
+      "name": "an empty table set",
+      "payload": {
+       "children": []
+      },
+      "expected": []
+     }
+    ]
    }
   }
  },
@@ -3943,7 +4027,7 @@
    ["760488", "2026-06-30T01:00Z", "finished", "FT-Pens", "STATUS_FINAL_PEN", "449", "2869", "NED", "MAR", 1, 1, "2869", "Morocco advance 3-2 on penalties"]
   ],
   "shootoutPrecedence": {
-   "note": "Synthetic: recorded event 760489 (Germany 1-1 Paraguay, structured shootoutScore 3/4 and the note 'Paraguay advance 4-3 on penalties') with its shootout evidence replaced per case. 'absent' removes the field; a null note removes the notes. One precedence in both languages: summary header (where a summary is held) > scoreboard structured totals > anchored note > null. Regulation scores never change.",
+   "note": "Synthetic: recorded event 760489 (Germany 1-1 Paraguay, finished, structured shootoutScore 3/4, winner flag on Paraguay and the note 'Paraguay advance 4-3 on penalties') with its shootout evidence replaced per case. 'absent' removes the field; a null note removes the notes; winnerFlags, when present, replaces both winner flags; status, when present, overrides the event's status type. One precedence in both languages: summary header (where a summary is held) > scoreboard structured totals > anchored note > null. A structured total is a non-negative integer number or a string of digits ('' and null read as 0); anything else rejects the scoreboard. A finished match's winner is the side a decisive aggregate names, else the winner flags; a live shootout's partial totals name no winner. Regulation scores never change.",
    "eventId": "760489",
    "cases": [
     {
@@ -3956,7 +4040,8 @@
      "expected": {
       "homeScore": 3,
       "awayScore": 4
-     }
+     },
+     "winner": "away"
     },
     {
      "name": "structured wins a conflicting note",
@@ -3968,7 +4053,8 @@
      "expected": {
       "homeScore": 5,
       "awayScore": 4
-     }
+     },
+     "winner": "home"
     },
     {
      "name": "the note when structured totals are absent",
@@ -3980,7 +4066,8 @@
      "expected": {
       "homeScore": 3,
       "awayScore": 4
-     }
+     },
+     "winner": "away"
     },
     {
      "name": "a malformed structured total rejects the scoreboard",
@@ -3992,13 +4079,32 @@
      "expected": "error"
     },
     {
+     "name": "a fractional string total rejects the scoreboard",
+     "shootoutScore": {
+      "home": "3.0",
+      "away": 4
+     },
+     "note": "Paraguay advance 4-3 on penalties",
+     "expected": "error"
+    },
+    {
+     "name": "a padded string total rejects the scoreboard",
+     "shootoutScore": {
+      "home": 3,
+      "away": " 4 "
+     },
+     "note": "Paraguay advance 4-3 on penalties",
+     "expected": "error"
+    },
+    {
      "name": "a note naming neither side is unknown",
      "shootoutScore": {
       "home": "absent",
       "away": "absent"
      },
      "note": "Somebody advance 4-3 on penalties",
-     "expected": null
+     "expected": null,
+     "winner": "away"
     },
     {
      "name": "no evidence",
@@ -4007,7 +4113,63 @@
       "away": "absent"
      },
      "note": null,
-     "expected": null
+     "expected": null,
+     "winner": "away"
+    },
+    {
+     "name": "decisive totals decide a missing winner flag",
+     "shootoutScore": {
+      "home": 3,
+      "away": 4
+     },
+     "note": null,
+     "winnerFlags": {
+      "home": false,
+      "away": false
+     },
+     "expected": {
+      "homeScore": 3,
+      "awayScore": 4
+     },
+     "winner": "away"
+    },
+    {
+     "name": "digit strings are totals",
+     "shootoutScore": {
+      "home": "5",
+      "away": ""
+     },
+     "note": null,
+     "expected": {
+      "homeScore": 5,
+      "awayScore": 0
+     },
+     "winner": "home"
+    },
+    {
+     "name": "a live shootout names no winner",
+     "status": {
+      "state": "in",
+      "completed": false,
+      "name": "STATUS_SHOOTOUT",
+      "description": "Shootout",
+      "detail": "Shootout",
+      "shortDetail": "Shootout"
+     },
+     "shootoutScore": {
+      "home": 3,
+      "away": 2
+     },
+     "winnerFlags": {
+      "home": false,
+      "away": false
+     },
+     "note": null,
+     "expected": {
+      "homeScore": 3,
+      "awayScore": 2
+     },
+     "winner": null
     }
    ]
   }

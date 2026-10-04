@@ -2,6 +2,7 @@ import type { CompetitionSeason } from './competitions';
 import type { MatchSummaryData, Team } from './types';
 import { dataStore, type DataStore } from './store';
 import { buildSlugMap, type ResolvedPlayer, type SlugEntry } from './playerIdentity';
+import { standingTeams } from './teamIndex';
 
 interface PlayerIndex {
   /** URL slug -> the player, for resolving a page request. */
@@ -21,7 +22,9 @@ interface PlayerIndex {
  * A standings failure, by contrast, PROPAGATES: an index built from zero
  * teams is not knowledge that a player does not exist, and a caller turning
  * it into a 404 would tell a reader their bookmark is dead during an
- * outage. The route maps the throw to a 502 instead.
+ * outage. The route maps the throw to a 502 instead. A table withheld only
+ * for a missing stat still names its clubs (standingTeams), so it is not a
+ * failure here.
  *
  * Provider ids stay inside the returned maps and never reach a URL -- the
  * slug contract is docs/backend/PLAYER_IDENTITY.md.
@@ -30,16 +33,14 @@ export async function competitionPlayerIndex(
   rc: CompetitionSeason,
   store: DataStore = dataStore,
 ): Promise<PlayerIndex> {
-  const groups = await store.getStandings(rc);
+  const standing = await standingTeams(rc, store);
 
   // Dedupe: MLS standings carry each club twice (conference AND overall
   // groups), and a duplicated roster makes every player collide with
   // himself -- Messi rendered as lionel-messi-mia-10.
   const teamById = new Map<string, Team>();
-  for (const group of groups) {
-    for (const standing of group.standings) {
-      if (!teamById.has(standing.team.id)) teamById.set(standing.team.id, standing.team);
-    }
+  for (const team of standing) {
+    if (!teamById.has(team.id)) teamById.set(team.id, team);
   }
   const teams = Array.from(teamById.values());
   const squads = await Promise.all(

@@ -560,6 +560,22 @@ describe('mapSummaryShootoutTotals', () => {
     ['fractional', 1.5, 3, null],
     ['not a number', 'x', 3, null],
   ])('%s', (_name, home, away, expected) => {
-    expect(mapSummaryShootoutTotals(withTotals(home, away))).toEqual(expected);
+    expect(mapSummaryShootoutTotals(withTotals(home, away), '760490', '4789', '464')).toEqual(expected);
+  });
+
+  // Only a header identifying the requested event and its sides supplies the
+  // aggregate, as Go's ValidateSummary requires.
+  it.each([
+    ['another event', '760489', '4789', '464'],
+    ['reversed sides', '760490', '464', '4789'],
+    ['another team', '760490', '4789', '999'],
+  ])('ignores a header for %s', (_name, eventId, homeId, awayId) => {
+    expect(mapSummaryShootoutTotals(withTotals(4, 3), eventId, homeId, awayId)).toBeNull();
+  });
+
+  it('ignores a header whose competitor and team ids disagree', () => {
+    const summary = withTotals(4, 3);
+    summary.header.competitions[0].competitors[0].id = '1';
+    expect(mapSummaryShootoutTotals(summary, '760490', '4789', '464')).toBeNull();
   });
 });

@@ -73,6 +73,7 @@ type fakeSource struct {
 	maxCalls        int
 	live            bool
 	winProbability  *model.WinProbability
+	summaryShootout *model.Shootout
 }
 
 func (f *fakeSource) Name() string { return "fake" }
@@ -118,6 +119,7 @@ func (f *fakeSource) Summary(
 		Detail: model.MatchDetail{
 			Scorers:        []model.Scorer{{Player: "Winner"}},
 			WinProbability: f.winProbability,
+			Shootout:       f.summaryShootout,
 		},
 		// Provider-shaped, exactly as a real source returns it: the team ids
 		// here are the provider's, and the ingester is responsible for handing
@@ -2905,6 +2907,40 @@ func TestNonBracketSeasonIgnoresProviderKnockoutClassification(t *testing.T) {
 		repo.lastFinalized.BracketRequired == nil ||
 		*repo.lastFinalized.BracketRequired {
 		t.Fatalf("finalized match=%+v", repo.lastFinalized)
+	}
+}
+
+// The summary's aggregate outranks the scoreboard's evidence, so a decisive
+// one names the winner the match finalizes with; a level one leaves the flags.
+func TestFinalizedWinnerFollowsTheSummaryShootoutAggregate(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		shootout *model.Shootout
+		winner   func(model.Match) string
+	}{
+		{"decisive header", &model.Shootout{HomeScore: 4, AwayScore: 3}, func(m model.Match) string { return m.Home.ID }},
+		{"level header", &model.Shootout{HomeScore: 3, AwayScore: 3}, func(m model.Match) string { return m.Away.ID }},
+		{"no aggregate", nil, func(m model.Match) string { return m.Away.ID }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			match := finishedMatch()
+			required := false
+			match.BracketRequired = &required
+			match.BracketConfirmed = true
+			flagged := match.Away.ID
+			match.WinnerID = &flagged
+			src := &fakeSource{matches: []model.Match{match}, summaryShootout: c.shootout}
+			repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+			comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {ID: "2026"}}}
+
+			testRunner(src, repo, comp).runCycle(context.Background(), false)
+
+			want := fakeTeamID(c.winner(match))
+			if repo.finalizeCalls != 1 || repo.lastFinalized.WinnerID == nil || *repo.lastFinalized.WinnerID != want ||
+				repo.lastIdentity.WinnerTeamID == nil || *repo.lastIdentity.WinnerTeamID != want {
+				t.Fatalf("finalized winner %v / %v, want %s", repo.lastFinalized.WinnerID, repo.lastIdentity.WinnerTeamID, want)
+			}
+		})
 	}
 }
 

@@ -89,6 +89,18 @@ type readerContractVectors struct {
 			EmptyTable struct {
 				Name string `json:"name"`
 			} `json:"emptyTable"`
+			EmptyTeamID struct {
+				Name        string `json:"name"`
+				Entries     []int  `json:"entries"`
+				BlankTeamID int    `json:"blankTeamId"`
+			} `json:"emptyTeamId"`
+			Envelopes struct {
+				Cases []struct {
+					Name     string `json:"name"`
+					Payload  any    `json:"payload"`
+					Expected any    `json:"expected"`
+				} `json:"cases"`
+			} `json:"envelopes"`
 		} `json:"synthetic"`
 	} `json:"standings"`
 	Queries struct {
@@ -447,6 +459,62 @@ func TestReaderContract(t *testing.T) {
 		assertWire(t, "summary shootout aggregate", wire(t, detail.Shootout), expected["readerShootout"])
 	})
 
+	t.Run("a summary header supplies the aggregate and winner only for its own match", func(t *testing.T) {
+		identity := vector(t, raw, "summary", "syntheticOverlay", "headerIdentity").(map[string]any)
+		eventID := identity["scoreboardEventId"].(string)
+		var scoreboardMatch espn.Match
+		matches, err := espn.MapScoreboard(contractFixture(t, fixtureName(t, raw, "scoreboard")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range matches {
+			if m.ID == eventID {
+				scoreboardMatch = m
+			}
+		}
+		for _, entry := range identity["cases"].([]any) {
+			c := entry.(map[string]any)
+			header := c["header"].(map[string]any)
+			var summary map[string]any
+			if err := json.Unmarshal(withSummaryOverlay(t, raw, vectors.Summary.Fixture), &summary); err != nil {
+				t.Fatal(err)
+			}
+			summary["header"].(map[string]any)["id"] = header["eventId"]
+			competition := summary["header"].(map[string]any)["competitions"].([]any)[0].(map[string]any)
+			competition["id"] = header["eventId"]
+			for _, competitor := range competition["competitors"].([]any) {
+				side := competitor.(map[string]any)
+				id := header[side["homeAway"].(string)]
+				side["id"] = id
+				side["team"].(map[string]any)["id"] = id
+			}
+			data, err := json.Marshal(summary)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The ingester's gate (shared/source mapSummary): a summary for any
+			// other event or side order is rejected, so the scoreboard's evidence
+			// stands; an accepted header outranks it.
+			shootout, winner := scoreboardMatch.Shootout, scoreboardMatch.WinnerID
+			if espn.ValidateSummary(data, eventID, scoreboardMatch.Home.ID, scoreboardMatch.Away.ID, true) == nil {
+				detail, err := espn.MapSummary(data)
+				if err != nil {
+					t.Fatal(err)
+				}
+				shootout = detail.Shootout
+				if decided := espn.ShootoutWinner(shootout, scoreboardMatch.Home.ID, scoreboardMatch.Away.ID); decided != nil {
+					winner = decided
+				}
+			}
+			expected := c["expected"].(map[string]any)
+			assertWire(t, c["name"].(string), wire(t, shootout), expected["shootout"])
+			sides := map[string]string{"home": scoreboardMatch.Home.ID, "away": scoreboardMatch.Away.ID}
+			if winner == nil || *winner != sides[expected["winner"].(string)] {
+				t.Fatalf("%s: winner %v", c["name"], winner)
+			}
+		}
+	})
+
 	t.Run("recorded scoreboard penalty aggregates agree", func(t *testing.T) {
 		matches, err := espn.MapScoreboard(contractFixture(t, fixtureName(t, raw, "scoreboard")))
 		if err != nil {
@@ -475,17 +543,26 @@ func TestReaderContract(t *testing.T) {
 				}
 			}
 			competition := event["competitions"].([]any)[0].(map[string]any)
+			sideIDs := map[string]string{}
 			for _, competitor := range competition["competitors"].([]any) {
 				side := competitor.(map[string]any)
-				if value := c["shootoutScore"].(map[string]any)[side["homeAway"].(string)]; value == "absent" {
+				homeAway := side["homeAway"].(string)
+				sideIDs[homeAway] = side["team"].(map[string]any)["id"].(string)
+				if value := c["shootoutScore"].(map[string]any)[homeAway]; value == "absent" {
 					delete(side, "shootoutScore")
 				} else {
 					side["shootoutScore"] = value
+				}
+				if flags, ok := c["winnerFlags"].(map[string]any); ok {
+					side["winner"] = flags[homeAway]
 				}
 			}
 			competition["notes"] = []any{}
 			if c["note"] != nil {
 				competition["notes"] = []any{map[string]any{"text": c["note"]}}
+			}
+			if status, ok := c["status"].(map[string]any); ok {
+				maps.Copy(event["status"].(map[string]any)["type"].(map[string]any), status)
 			}
 			data, err := json.Marshal(map[string]any{"leagues": recorded["leagues"], "events": []any{event}})
 			if err != nil {
@@ -502,6 +579,11 @@ func TestReaderContract(t *testing.T) {
 				t.Fatalf("%s: %v", c["name"], err)
 			}
 			assertWire(t, c["name"].(string), wire(t, mapped[0].Shootout), c["expected"])
+			var winner any
+			if side, ok := c["winner"].(string); ok {
+				winner = sideIDs[side]
+			}
+			assertWire(t, c["name"].(string)+" winner", wire(t, mapped[0].WinnerID), winner)
 			if *mapped[0].HomeScore != 1 || *mapped[0].AwayScore != 1 {
 				t.Fatalf("%s: shootout replaced regulation scores", c["name"])
 			}
@@ -710,7 +792,10 @@ func TestReaderContract(t *testing.T) {
 		missing := synthetic.MissingStat
 		malformed := buildTable(missing.Name, missing.Entries, nil, missing.DropStats)
 		emptyTable := buildTable(synthetic.EmptyTable.Name, nil, nil, nil)
-		for _, payload := range []any{malformed, emptyTable} {
+		blank := synthetic.EmptyTeamID
+		blankID := buildTable(blank.Name, blank.Entries, nil, nil)
+		blankID["standings"].(map[string]any)["entries"].([]any)[slices.Index(blank.Entries, blank.BlankTeamID)].(map[string]any)["team"].(map[string]any)["id"] = ""
+		for _, payload := range []any{malformed, emptyTable, blankID} {
 			data, err := json.Marshal(map[string]any{"children": []any{payload}})
 			if err != nil {
 				t.Fatal(err)
@@ -719,10 +804,24 @@ func TestReaderContract(t *testing.T) {
 				t.Fatalf("Go MapStandings accepts malformed table %v", payload.(map[string]any)["name"])
 			}
 		}
-		// No table at all is a legitimate empty answer: zero rows, no error
-		// (ReplaceStandings then refuses the empty replacement and keeps rows).
-		if rows, err := espn.MapStandings([]byte(`{"children":[]}`)); err != nil || len(rows) != 0 {
-			t.Fatalf("empty standings: %v %v", rows, err)
+		// Envelopes: a missing or null table array rejects the payload; an empty
+		// one is zero rows (ReplaceStandings then refuses the empty replacement
+		// and keeps the stored rows).
+		for _, c := range synthetic.Envelopes.Cases {
+			data, err := json.Marshal(c.Payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rows, err := espn.MapStandings(data)
+			if c.Expected == "error" {
+				if err == nil {
+					t.Fatalf("%s: accepted", c.Name)
+				}
+				continue
+			}
+			if err != nil || len(rows) != 0 || len(c.Expected.([]any)) != 0 {
+				t.Fatalf("%s: %v %v", c.Name, rows, err)
+			}
 		}
 	})
 
@@ -1181,10 +1280,10 @@ func withSummaryOverlay(t *testing.T, raw map[string]any, fixture string) []byte
 }
 
 // readerSummary is the reader DTO for an ingester-mapped detail: the same
-// fields the writer stores in match_detail and Store.MatchSummary reads back.
-// readerSummary is the reader's projection of a mapped detail, translated by
-// the production read-time attribution with the crosswalk row the seed gives
-// each side (go-db proves the same through team_external_ref and SQL).
+// fields the writer stores in match_detail and Store.MatchSummary reads back,
+// translated by the production read-time attribution with the crosswalk row
+// the seed gives each side (go-db proves the same through team_external_ref
+// and SQL).
 func readerSummary(detail espn.MatchDetail, sides contractSides) MatchSummary {
 	summary := MatchSummary{
 		Scorers: detail.Scorers, Cards: detail.Cards, Stats: detail.Stats, WinProbability: detail.WinProbability,

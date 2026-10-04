@@ -12,6 +12,7 @@ import (
 
 	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/shared/assets"
+	"github.com/mcasillas17/scorearc-backend/shared/espn"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 	"github.com/mcasillas17/scorearc-backend/shared/source"
 	"github.com/mcasillas17/scorearc-backend/shared/store"
@@ -289,6 +290,11 @@ func (r *runner) processMatches(
 
 			detail := summary.Detail
 			if match.State == model.MatchStateFinished {
+				// The summary's aggregate outranks the scoreboard's evidence
+				// (T16.2), so a decisive one names the winner that finalizes.
+				if winner := espn.ShootoutWinner(detail.Shootout, match.Home.ID, match.Away.ID); winner != nil {
+					match.WinnerID, identity.WinnerTeamID = winner, winner
+				}
 				match.HomeScore = summary.HomeScore
 				match.AwayScore = summary.AwayScore
 				if at, ok := observationIndex[identity.MatchID]; ok {

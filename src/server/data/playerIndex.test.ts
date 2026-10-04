@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { competitionPlayerIndex, withPlayerSlugs, withSummaryPlayerSlugs } from './playerIndex';
 import { resolveSeason } from './competitions';
+import { StandingsStatsError } from './providers/espn-standings';
 import type { DataStore } from './store';
 import type { Group, MatchSummaryData, SquadPlayer, Team } from './types';
 
@@ -81,6 +82,16 @@ describe('competitionPlayerIndex', () => {
       getStandings: async () => { throw new Error('502'); },
     } as unknown as DataStore;
     await expect(competitionPlayerIndex(rc, store)).rejects.toThrow();
+  });
+
+  // A missing measurement withholds the table, not the competition's clubs:
+  // player pages and links keep working.
+  it('builds from the clubs of a table rejected only for a missing stat', async () => {
+    const store = {
+      getStandings: async () => { throw new StandingsStatsError('invalid points', [team('222', 'QRO')]); },
+      getSquad: async () => [player('297287', 'Alí Ávila')],
+    } as unknown as DataStore;
+    expect((await competitionPlayerIndex(rc, store)).byProvider.get('297287')).toBe('ali-avila');
   });
 });
 

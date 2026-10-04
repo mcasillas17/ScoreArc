@@ -121,11 +121,22 @@ export function mapSummaryShootout(
 }
 
 // The summary header's per-competitor shootout totals: the top tier of the
-// shootout precedence (header > scoreboard competitors > note > null).
-export function mapSummaryShootoutTotals(raw: unknown): Shootout | null {
-  const competitors: any[] = (raw as any)?.header?.competitions?.[0]?.competitors ?? [];
-  const side = (homeAway: string) => competitors.find((c: any) => c?.homeAway === homeAway)?.shootoutScore;
-  return shootoutTotals(side('home'), side('away'));
+// shootout precedence (header > scoreboard competitors > note > null). Only a
+// header that identifies the requested event and its home/away teams counts,
+// the identity Go's ValidateSummary requires; otherwise null, so the
+// scoreboard's evidence stands.
+export function mapSummaryShootoutTotals(raw: unknown, eventId: string, homeId: string, awayId: string): Shootout | null {
+  const header = (raw as any)?.header;
+  const competitions: any[] = header?.competitions;
+  if (String(header?.id) !== eventId || !Array.isArray(competitions) || competitions.length !== 1 ||
+      String(competitions[0]?.id) !== eventId) return null;
+  const competitors: any[] = competitions[0].competitors;
+  if (!Array.isArray(competitors) || competitors.length !== 2 ||
+      competitors.some((c: any) => c?.id != null && String(c.id) !== String(c?.team?.id))) return null;
+  const home = competitors.find((c: any) => c?.homeAway === 'home');
+  const away = competitors.find((c: any) => c?.homeAway === 'away');
+  if (String(home?.team?.id) !== homeId || String(away?.team?.id) !== awayId) return null;
+  return shootoutTotals(home.shootoutScore, away.shootoutScore);
 }
 
 // A clip is a "goal" clip (vs. analysis/interview/presser) when the headline

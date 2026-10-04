@@ -391,30 +391,37 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     expect(o.expected.readerShootout).toEqual({ homeScore: o.shootoutScores.home, awayScore: o.shootoutScores.away });
   });
 
-  it('takes Match.shootout from a held summary header first, as the reader stores it', async () => {
-    const o = s0.syntheticOverlay;
-    // 760487 has no scoreboard evidence; 760489's structured totals {3,4} are
-    // outranked by the header's {4,3} wherever a summary is held.
-    for (const id of ['760487', '760489']) {
-      const { store } = storeOver(url => url.includes('/summary') ? overlaidSummary()
-        : { leagues: [{ slug: vectors.queries.leagueSlug }], events: url.includes('dates=202606') ? scoreboard.events.filter(e => e.id === id) : [] });
-      const [match] = await store.getMatches(wc, '20260629-20260629');
-      const recorded = vectors.scoreboard.matches.find(row => row[0] === id)!;
-      expect(match.shootout, id).toEqual(o.expected.readerShootout);
-      expect([match.homeScore, match.awayScore], id).toEqual([recorded[9], recorded[10]]); // Regulation scores stay.
+  it.each(s0.syntheticOverlay.headerIdentity.cases)('takes Match.shootout and the winner from a held summary header only for its own match: $name', async (c) => {
+    const h = s0.syntheticOverlay.headerIdentity;
+    const summary = overlaidSummary();
+    summary.header.id = c.header.eventId;
+    summary.header.competitions[0].id = c.header.eventId;
+    for (const side of summary.header.competitions[0].competitors as { homeAway: string; id: string; team: { id: string } }[]) {
+      side.id = side.team.id = c.header[side.homeAway as 'home' | 'away'];
     }
+    const { store } = storeOver(url => url.includes('/summary') ? summary
+      : { leagues: [{ slug: vectors.queries.leagueSlug }], events: url.includes('dates=202606') ? scoreboard.events.filter(e => e.id === h.scoreboardEventId) : [] });
+    const [match] = await store.getMatches(wc, '20260629-20260629');
+    expect(match.shootout).toEqual(c.expected.shootout);
+    expect(match.winnerId).toBe(match[c.expected.winner as 'home' | 'away'].id);
+    expect([match.homeScore, match.awayScore]).toEqual([1, 1]); // Regulation scores stay.
   });
 
   it.each(vectors.scoreboard.shootoutPrecedence.cases)('applies the shared scoreboard shootout precedence: $name', async (c) => {
     const p = vectors.scoreboard.shootoutPrecedence;
     const event = structuredClone(scoreboard.events.find(e => e.id === p.eventId)!);
     const competition: { notes: unknown[]; competitors: Record<string, unknown>[] } = event.competitions[0];
+    const sideIds: Record<string, string> = {};
     for (const competitor of competition.competitors) {
-      const value = c.shootoutScore[competitor.homeAway as 'home' | 'away'];
+      const side = competitor.homeAway as 'home' | 'away';
+      sideIds[side] = String((competitor.team as { id: string }).id);
+      const value = c.shootoutScore[side];
       if (value === 'absent') delete competitor.shootoutScore;
       else competitor.shootoutScore = value;
+      if ('winnerFlags' in c && c.winnerFlags) competitor.winner = c.winnerFlags[side];
     }
     competition.notes = c.note === null ? [] : [{ text: c.note }];
+    if ('status' in c && c.status) event.status.type = { ...event.status.type, ...c.status };
     const fixtures = storeOver(windowOver([event])).store.getFixtures(wc, '20260629-20260630');
     if (c.expected === 'error') {
       await expect(fixtures).rejects.toThrow(/Malformed scoreboard score/); // Go: MapScoreboard errors.
@@ -422,6 +429,7 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     }
     const [match] = await fixtures;
     expect(match.shootout).toEqual(c.expected);
+    expect(match.winnerId).toBe(c.winner ? sideIds[c.winner] : null);
     expect([match.homeScore, match.awayScore]).toEqual([1, 1]);
   });
 
@@ -553,17 +561,25 @@ describe('reader contract: standings, bracket, leaders, news', () => {
     gap('T16.2-standings-dedup', () => expect(sh.expected.reader).not.toEqual(Object.fromEntries(groups.map(g => [g.id, rows(g)]))));
   });
 
-  it('rejects a missing stat and an empty table, as the Go mapper does', async () => {
+  it('rejects a missing stat, an empty table and an empty team id, as the Go mapper does', async () => {
     // The ingester's acceptance rule is the contract: the payload is rejected
     // (the reader keeps its previous standings) rather than zero-filled.
     const m = syn.missingStat;
     const e = syn.emptyTable;
-    expect([m.expected, e.expected]).toEqual([{ frontend: 'error', reader: 'error' }, { frontend: 'error', reader: 'error' }]);
+    const b = syn.emptyTeamId;
+    for (const c of [m, e, b]) expect(c.expected).toEqual({ frontend: 'error', reader: 'error' });
     await expect(storeOver(() => ({ children: [table(m.name, m.entries, {}, m.dropStats)] })).store.getStandings(wc))
       .rejects.toThrow(/invalid points/);
     await expect(storeOver(() => ({ children: [table(e.name, [])] })).store.getStandings(wc)).rejects.toThrow(/no teams/);
-    // Publishing no table at all is a legitimate empty answer, not a malformed one.
-    expect(await storeOver(() => ({ children: [] })).store.getStandings(wc)).toEqual([]);
+    const blank = table(b.name, b.entries);
+    blank.standings.entries[b.entries.indexOf(b.blankTeamId)].team.id = '';
+    await expect(storeOver(() => ({ children: [blank] })).store.getStandings(wc)).rejects.toThrow(/team identity/);
+  });
+
+  it.each(syn.envelopes.cases)('treats the standings envelope "$name" as the Go mapper does', async (c) => {
+    const standings = storeOver(() => c.payload).store.getStandings(wc);
+    if (c.expected === 'error') await expect(standings).rejects.toThrow(/children/);
+    else expect(await standings).toEqual(c.expected);
   });
 
   it('labels an unnamed provider table with the competition short name, as the reader does', async () => {

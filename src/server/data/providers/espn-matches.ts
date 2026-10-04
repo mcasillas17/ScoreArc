@@ -25,6 +25,17 @@ export function shootoutTotals(home: unknown, away: unknown): Shootout | null {
 }
 
 /**
+ * The side a decisive shootout aggregate names -- homeId or awayId -- or null
+ * when there is none or it is level. For a finished match it outranks the
+ * provider's winner flags, which ESPN sets inconsistently on shootouts (the
+ * bracket mapper's shootout-first rule). Same as the Go ShootoutWinner.
+ */
+export function shootoutWinnerId(shootout: Shootout | null, homeId: string, awayId: string): string | null {
+  if (!shootout || shootout.homeScore === shootout.awayScore) return null;
+  return shootout.homeScore > shootout.awayScore ? homeId : awayId;
+}
+
+/**
  * The aggregate from a match note, e.g. "Paraguay advance 4-3 on penalties".
  * The note names its winner first; only an exact (case-insensitive) match to a
  * side's name attributes the score -- anything else is unknown (null), never a
@@ -63,11 +74,11 @@ export function mapScoreboard(raw: unknown): Match[] {
     const note = comp.notes?.[0]?.text ?? null;
     const homeTeam = mapTeam(home.team);
     const awayTeam = mapTeam(away.team);
-    const winnerId = home.winner
-      ? String(home.team.id)
-      : away.winner
-      ? String(away.team.id)
-      : null;
+    // Structured totals outrank the note; a held summary header outranks both
+    // (store.getMatches). Regulation scores below stay separate.
+    const shootout = shootoutTotals(home.shootoutScore, away.shootoutScore) ?? parseShootout(note, homeTeam.name, awayTeam.name);
+    const flagged = home.winner ? String(home.team.id) : away.winner ? String(away.team.id) : null;
+    const winnerId = (state === 'finished' ? shootoutWinnerId(shootout, homeTeam.id, awayTeam.id) : null) ?? flagged;
     return {
       id: String(ev.id),
       kickoff: ev.date,
@@ -83,9 +94,7 @@ export function mapScoreboard(raw: unknown): Match[] {
       note,
       scorers: [],
       cards: [],
-      // Structured totals outrank the note; a held summary header outranks both
-      // (store.getMatches). Regulation scores above stay separate.
-      shootout: shootoutTotals(home.shootoutScore, away.shootoutScore) ?? parseShootout(note, homeTeam.name, awayTeam.name),
+      shootout,
       shootoutDetail: null,
       stats: null,
       winProbability: null,

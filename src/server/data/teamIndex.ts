@@ -1,7 +1,22 @@
 import { listCompetitions, resolveSeason, type CompetitionSeason } from './competitions';
-import { dataStore } from './store';
+import { dataStore, type DataStore } from './store';
 import { canonicalTeamId } from './teamIdentity';
+import { StandingsStatsError } from './providers/espn-standings';
 import type { Team } from './types';
+
+/**
+ * Every team in a competition season's standings, in table order (repeats
+ * included). A table withheld only for a missing stat still names its teams,
+ * so membership consumers keep working; any other failure propagates.
+ */
+export async function standingTeams(rc: CompetitionSeason, store: DataStore = dataStore): Promise<Team[]> {
+  try {
+    return (await store.getStandings(rc)).flatMap((group) => group.standings.map((standing) => standing.team));
+  } catch (error) {
+    if (error instanceof StandingsStatsError) return error.teams;
+    throw error;
+  }
+}
 
 /** One competition a club appears in, and the page that describes it there. */
 interface TeamMembership {
@@ -38,9 +53,9 @@ export interface IndexedTeam {
  * they have no canonical id, so there is no page to send anyone to.
  */
 export async function competitionTeams(rc: CompetitionSeason): Promise<IndexedTeam[]> {
-  let groups;
+  let teams: Team[];
   try {
-    groups = await dataStore.getStandings(rc);
+    teams = await standingTeams(rc);
   } catch {
     // One competition's table being unavailable must not empty the whole
     // index -- the caller merges across competitions.
@@ -48,25 +63,22 @@ export async function competitionTeams(rc: CompetitionSeason): Promise<IndexedTe
   }
 
   const byId = new Map<string, IndexedTeam>();
-  for (const group of groups) {
-    for (const standing of group.standings) {
-      const team: Team = standing.team;
-      const canonical = canonicalTeamId(team.id);
-      if (!canonical || byId.has(canonical)) continue;
-      byId.set(canonical, {
-        id: canonical,
-        name: team.name,
-        abbr: team.abbr,
-        crestUrl: team.crestUrl,
-        memberships: [{
-          competitionId: rc.competition.id,
-          competitionName: rc.competition.shortName,
-          seasonId: rc.season.id,
-          seasonLabel: rc.season.label,
-          pathname: `/c/${rc.competition.id}/${rc.season.id}/team/${canonical}`,
-        }],
-      });
-    }
+  for (const team of teams) {
+    const canonical = canonicalTeamId(team.id);
+    if (!canonical || byId.has(canonical)) continue;
+    byId.set(canonical, {
+      id: canonical,
+      name: team.name,
+      abbr: team.abbr,
+      crestUrl: team.crestUrl,
+      memberships: [{
+        competitionId: rc.competition.id,
+        competitionName: rc.competition.shortName,
+        seasonId: rc.season.id,
+        seasonLabel: rc.season.label,
+        pathname: `/c/${rc.competition.id}/${rc.season.id}/team/${canonical}`,
+      }],
+    });
   }
   return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
 }

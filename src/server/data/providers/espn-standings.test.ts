@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapStandings } from './espn-standings';
+import { mapStandings, StandingsStatsError } from './espn-standings';
 import raw from '../__fixtures__/espn-standings.json';
 import mls from '../__fixtures__/espn-standings-mls-2026.json';
 
@@ -116,9 +116,52 @@ describe('mapStandings — malformed payloads', () => {
     expect(() => mapStandings(payload(rows), 'World Cup')).toThrow(/team identity/);
   });
 
-  // No published table is a legitimate empty answer, not a malformed one.
-  it.each([[{}], [{ children: [] }]])('maps %j to no tables', (empty) => {
-    expect(mapStandings(empty, 'World Cup')).toEqual([]);
+  it.each([[''], [null]])('rejects a team id of %j', (id) => {
+    const rows = entries();
+    rows[1].team.id = id;
+    expect(() => mapStandings(payload(rows), 'World Cup')).toThrow(/team identity/);
+  });
+
+  it('keeps a numeric team id', () => {
+    const rows = entries();
+    rows[0].team.id = 202;
+    expect(mapStandings(payload(rows), 'World Cup')[0].standings[0].team.id).toBe('202');
+  });
+
+  // ESPN omits `children` for a competition that publishes no tables; none is
+  // configured, so the payload is rejected as the Go mapper rejects it.
+  it.each([[{}], [{ children: null }], [{ children: {} }]])('rejects %j as malformed', (envelope) => {
+    expect(() => mapStandings(envelope, 'World Cup')).toThrow(/children/);
+  });
+
+  it('maps an empty table set to no tables', () => {
+    expect(mapStandings({ children: [] }, 'World Cup')).toEqual([]);
+  });
+
+  // A missing measurement rejects the table, but every team is still known:
+  // the error carries them for consumers that need only membership.
+  it('names the teams of a table rejected only for a stat', () => {
+    const rows = entries();
+    rows[1].stats = rows[1].stats.filter((s) => s.name !== 'points');
+    let error: unknown;
+    try {
+      mapStandings(payload(rows), 'World Cup');
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(StandingsStatsError);
+    expect((error as StandingsStatsError).teams.map((t) => t.abbr)).toEqual(['MEX', 'CZE']);
+  });
+
+  it('does not name teams when identity itself is malformed', () => {
+    const rows = entries();
+    delete rows[1].team.abbreviation;
+    expect(() => mapStandings(payload(rows), 'World Cup')).toThrow(/team identity/);
+    try {
+      mapStandings(payload(rows), 'World Cup');
+    } catch (e) {
+      expect(e).not.toBeInstanceOf(StandingsStatsError);
+    }
   });
 });
 

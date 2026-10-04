@@ -23,7 +23,7 @@ import {
   teamScheduleUrl,
   athleteUrl, athleteOverviewUrl, athleteBioUrl,
 } from './endpoints';
-import { mapScoreboard } from './providers/espn-matches';
+import { mapScoreboard, shootoutWinnerId } from './providers/espn-matches';
 import { mapTeamProfile, mapTeamRoster, mapScopedTeamSchedule, splitLeagueTeamIds } from './providers/espn-team';
 import { uniqueTeamMatches } from './teamPerformance';
 import { mapAthleteProfile, mapAthleteOverview, mapAthleteBio } from './providers/espn-athlete';
@@ -168,7 +168,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       commentary: mapSummaryCommentary(raw),
       h2h: mapSummaryH2H(raw),
     };
-    const loaded = { data: summary, shootout: mapSummaryShootoutTotals(raw) };
+    const loaded = { data: summary, shootout: mapSummaryShootoutTotals(raw, eventId, homeId, awayId) };
     deps.cache.set(k, loaded, 12_000);
     return loaded;
   }
@@ -213,6 +213,8 @@ export function createDataStore(deps: DataDeps): DataStore {
         m.winProbability = data.winProbability;
         m.shootoutDetail = data.shootoutDetail;
         m.shootout = shootout ?? m.shootout;
+        // The header outranks the scoreboard, so its decisive aggregate names the winner.
+        if (m.state === 'finished') m.winnerId = shootoutWinnerId(m.shootout, m.home.id, m.away.id) ?? m.winnerId;
       });
       deps.cache.set(k, matches, 10_000);
       return matches;
