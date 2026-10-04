@@ -153,23 +153,28 @@ type StatLeader struct {
 // These mirror types.ts's MatchSummaryData plus the goal/card/shootout
 // fields that live inline on the TS Match type. Port of providers/espn-summary.ts.
 
-// Scorer is shaped after types.ts's Scorer, without ownGoal/athleteId/playerSlug
-// (gap T16.2-scorer-identity).
+// Scorer mirrors types.ts's Scorer except playerSlug, which the frontend's
+// match route fills from AthleteID (withSummaryPlayerSlugs). match_detail
+// stores the provider's team id; the reader serves the canonical side it names,
+// or null (reader/attribution.go). An own goal is credited to the side that
+// benefits. OwnGoal and AthleteID (the provider athlete id) are null, unknown,
+// on rows stored before they were captured.
 type Scorer struct {
-	TeamID   string `json:"teamId"`
-	Player   string `json:"player"`
-	Minute   string `json:"minute"`
-	Penalty  bool   `json:"penalty"`
-	Shootout bool   `json:"shootout"`
+	TeamID    *string `json:"teamId"`
+	Player    string  `json:"player"`
+	Minute    string  `json:"minute"`
+	Penalty   bool    `json:"penalty"`
+	Shootout  bool    `json:"shootout"`
+	OwnGoal   *bool   `json:"ownGoal"`
+	AthleteID *string `json:"athleteId"`
 }
 
-// Card mirrors types.ts's Card, except that TeamID keeps the provider id while
-// the match sides are canonical (gap T16.2-nested-team-id).
+// Card mirrors types.ts's Card; TeamID is translated like Scorer's.
 type Card struct {
-	TeamID string `json:"teamId"`
-	Player string `json:"player"`
-	Minute string `json:"minute"`
-	Type   string `json:"type"` // "yellow" | "red"
+	TeamID *string `json:"teamId"`
+	Player string  `json:"player"`
+	Minute string  `json:"minute"`
+	Type   string  `json:"type"` // "yellow" | "red"
 }
 
 // TeamStats is shaped after types.ts's TeamStats, without the accuracy

@@ -5,6 +5,7 @@ import { createDataStore, dataStore, type DataStore } from '../store';
 import { resolveSeason, type OverallTableLabelKey, type ZoneKind, type ZoneLabelKey } from '../competitions';
 import { TtlCache } from '../cache';
 import { canonicalTeamId, providerTeamId } from '../teamIdentity';
+import { withSummaryPlayerSlugs } from '../playerIndex';
 import { teamHref } from '@/components/teamHref';
 import { roundLabelKey } from '@/components/bracketShape';
 import { en } from '@/i18n/messages/en';
@@ -54,10 +55,10 @@ afterAll(() => {
 // tsc evaluates expectTypeOf, so a renamed, retyped or added field fails the
 // typecheck even when every runtime assertion still passes.
 type CScorer = {
-  teamId: string; player: string; minute: string; penalty: boolean; shootout: boolean;
-  ownGoal: boolean; athleteId: string | null; playerSlug?: string | null;
+  teamId: string | null; player: string; minute: string; penalty: boolean; shootout: boolean;
+  ownGoal: boolean | null; athleteId: string | null; playerSlug?: string | null;
 };
-type CCard = { teamId: string; player: string; minute: string; type: 'yellow' | 'red' };
+type CCard = { teamId: string | null; player: string; minute: string; type: 'yellow' | 'red' };
 type N = number | null;
 type CTeamStats = {
   possession: N; shots: N; shotsOnTarget: N; shotAccuracy: N; corners: N; offsides: N; passes: N;
@@ -131,6 +132,15 @@ type CSummaryKeys = 'scorers' | 'cards' | 'stats' | 'winProbability' | 'lineups'
 
 const wc = resolveSeason(vectors.queries.competition, vectors.queries.season)!;
 const s0 = vectors.summary;
+// The nested team-id translation contract: a frontend reference names the side
+// whose provider id it carries; the reader serves that side's canonical id, or
+// null when neither side owns it.
+type Sides = { home: { providerId: string; canonicalId: string }; away: { providerId: string; canonicalId: string } };
+const translated = <T extends { teamId: string | null }>(sides: Sides, rows: T[]) => rows.map(row => ({
+  ...row,
+  teamId: row.teamId === sides.home.providerId ? sides.home.canonicalId
+    : row.teamId === sides.away.providerId ? sides.away.canonicalId : null,
+}));
 const mx = resolveSeason('liga-mx', '2026-apertura')!;
 
 // Executable gap registry: each characterization records its gap id, and the
@@ -287,8 +297,9 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     // Same top-level keys as the reader DTO; a one-sided field must become a registered gap.
     expect(Object.keys(summary).sort()).toEqual([...s.readerKeys].sort());
     expect(summary.scorers).toEqual(s.frontend.scorers);
+    expect(summary.cards).toEqual(s.frontend.cards);
     expect(summary.stats).toEqual(s.frontend.stats);
-    for (const key of ['cards', 'winProbability', 'shootoutDetail', 'info', 'form', 'h2h', 'videos'] as const) {
+    for (const key of ['winProbability', 'shootoutDetail', 'info', 'form', 'h2h', 'videos'] as const) {
       expect(summary[key], key).toEqual(s.shared[key]);
     }
     const commentary = summaryRaw.commentary
@@ -314,23 +325,13 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
   it('agrees with the reader on shared semantic fields and pins every incompatibility', async () => {
     // Every closure below checks the real frontend output against the Go-verified reader vectors.
     const real = await load(summaryRaw, s.eventId, s.sides.home.providerId, s.sides.away.providerId);
-    const base = ({ teamId, player, minute, penalty, shootout }: CScorer) => ({ teamId, player, minute, penalty, shootout });
-    expect(s.reader.scorers).toEqual(s.frontend.scorers.map(base));
-    gap('T16.2-scorer-identity', () => {
-      expect(real.scorers.map(base)).toEqual(s.reader.scorers);
-      for (const scorer of s.reader.scorers) {
-        expect(scorer).not.toHaveProperty('ownGoal');
-        expect(scorer).not.toHaveProperty('athleteId');
-      }
-      expect(real.scorers.every(sc => typeof sc.athleteId === 'string')).toBe(true);
-    });
-    gap('T16.2-nested-team-id', () => {
-      const canonicalSides = [s.sides.home.canonicalId, s.sides.away.canonicalId];
-      for (const scorer of [...s.reader.scorers, ...s.shared.cards]) {
-        expect(canonicalSides).not.toContain(scorer.teamId);
-        expect(canonicalSides).toContain(canonicalTeamId(scorer.teamId));
-      }
-    });
+    // Nested team ids are a tested translation, not an equality: each store
+    // names its own served sides, and both carry the same scorer identity.
+    expect(translated(s.sides, real.scorers)).toEqual(s.reader.scorers);
+    expect(translated(s.sides, real.cards)).toEqual(s.reader.cards);
+    for (const side of [s.sides.home, s.sides.away]) expect(canonicalTeamId(side.providerId)).toBe(side.canonicalId);
+    // playerSlug is route-layer enrichment in both stores, never a store field.
+    for (const scorer of [...real.scorers, ...s.reader.scorers]) expect(scorer).not.toHaveProperty('playerSlug');
     const counts = ['possession', 'shots', 'shotsOnTarget', 'corners', 'offsides', 'passes', 'crosses', 'longBalls',
       'tackles', 'interceptions', 'clearances', 'blockedShots', 'saves', 'fouls', 'yellowCards', 'redCards'] as const;
     gap('T10.2-team-stats', () => {
@@ -378,7 +379,11 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     expect(summary.shootoutDetail).toEqual(o.expected.shootoutDetail);
     expect(summary.h2h).toEqual(o.expected.h2h);
     expect(summary.scorers).toEqual([...s.frontend.scorers, ...o.expected.addedScorers]);
-    expect(summary.cards).toEqual([...s.shared.cards, ...o.expected.addedCards]);
+    expect(summary.cards).toEqual([...s.frontend.cards, ...o.expected.addedCards]);
+    // The unattributable pair: the frontend keeps 999999, which names neither
+    // of its sides; the reader serves null, never a default side.
+    expect(translated(s.sides, summary.scorers)).toEqual([...s.reader.scorers, ...o.expected.readerAddedScorers]);
+    expect(translated(s.sides, summary.cards)).toEqual([...s.reader.cards, ...o.expected.readerAddedCards]);
     // Neither summary DTO carries the aggregate (Go asserts readerKeys); it lives
     // on Match, from the header totals here (the reader stores the same {4,3}).
     expect(summary).not.toHaveProperty('shootout');
@@ -433,18 +438,34 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     expect(matches.map(m => ({ id: m.id, shootout: m.shootout }))).toEqual(vectors.scoreboard.shootouts);
   });
 
-  it('carries the own-goal flag the reader cannot express', async () => {
+  it('credits an own goal to the benefiting side with its flag in both stores', async () => {
     const o = vectors.ownGoal;
     const summary = await load(ownGoalRaw, o.eventId, o.sides.home.providerId, o.sides.away.providerId);
     expect(summary.scorers).toEqual(o.frontend.scorers);
     for (const side of [o.sides.home, o.sides.away]) expect(canonicalTeamId(side.providerId)).toBe(side.canonicalId);
     const own = o.frontend.scorers.filter(sc => sc.ownGoal);
     expect(own.map(sc => [sc.teamId, sc.player])).toEqual([[o.sides.away.providerId, 'Devin Padelford']]);
-    gap('T16.2-scorer-identity', () => {
-      expect(o.reader.scorers).toEqual(summary.scorers.map(({ teamId, player, minute, penalty, shootout }) =>
-        ({ teamId, player, minute, penalty, shootout })));
-      expect(summary.scorers.filter(sc => sc.ownGoal)).toHaveLength(1);
-    });
+    expect(translated(o.sides, summary.scorers)).toEqual(o.reader.scorers);
+    expect(o.reader.scorers.filter(sc => sc.ownGoal).map(sc => [sc.teamId, sc.athleteId]))
+      .toEqual([[o.sides.away.canonicalId, '337030']]);
+  });
+
+  it('links reader scorers to player pages through the same route-layer enrichment', async () => {
+    // The frontend's own index (playerIndex.ts), keyed by provider athlete id.
+    const real = await load(summaryRaw, s.eventId, s.sides.home.providerId, s.sides.away.providerId);
+    const side = (id: string, abbr: string) => ({ team: { id, name: abbr, abbr, crestUrl: null } });
+    const index = {
+      getStandings: async () => [{ id: 'g', name: 'g', standings: [side(s.sides.home.providerId, 'CIV'), side(s.sides.away.providerId, 'NOR')] }],
+      getSquad: async (_rc: unknown, teamId: string) => real.scorers.filter(sc => sc.teamId === teamId).map(sc => ({
+        id: sc.athleteId, name: sc.player, jersey: null, position: 'F', age: null, nationality: null, headshotUrl: null, stats: null,
+      })),
+    } as unknown as DataStore;
+    const legacy = { ...s.reader.scorers[0], ownGoal: null, athleteId: null }; // A row stored before T16.2.
+    const linked = async (scorers: CScorer[]) =>
+      (await withSummaryPlayerSlugs(wc, { ...real, scorers, lineups: null }, index)).scorers.map(sc => sc.playerSlug);
+    expect(await linked(s.reader.scorers)).toEqual(['antonio-nusa', 'amad-diallo', 'erling-haaland']);
+    expect(await linked(s.reader.scorers)).toEqual(await linked(real.scorers));
+    expect(await linked([legacy])).toEqual([null]); // No athlete id, no guessed link.
   });
 
   it('enriches getMatches with the same summary contract and nothing else', async () => {
@@ -462,7 +483,7 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     const [match] = await store.getMatches(wc, '20260629-20260629');
     expect(match.id).toBe(scoreboard.events[0].id);
     expect(match.scorers).toEqual(s.frontend.scorers);
-    expect(match.cards).toEqual(s.shared.cards);
+    expect(match.cards).toEqual(s.frontend.cards);
     expect(match.winProbability).toEqual(s.shared.winProbability);
     expect(match.stats).toEqual(s.frontend.stats);
     expect(match.shootoutDetail).toEqual(s.shared.shootoutDetail);

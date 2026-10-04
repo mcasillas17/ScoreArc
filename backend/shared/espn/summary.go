@@ -957,12 +957,22 @@ func mapSummaryScorers(rs rawSummary) []Scorer {
 		if !e.ScoringPlay || e.Team == nil || e.Team.ID == "" {
 			continue
 		}
+		teamID := string(e.Team.ID)
+		// ESPN has no own-goal boolean; type.type is its only signal.
+		ownGoal := e.Type.Type == "own-goal"
+		var athleteID *string
+		if len(e.Participants) > 0 && e.Participants[0].Athlete.ID != "" {
+			id := string(e.Participants[0].Athlete.ID)
+			athleteID = &id
+		}
 		out = append(out, Scorer{
-			TeamID:   string(e.Team.ID),
-			Player:   participantName(e.Participants),
-			Minute:   e.Clock.DisplayValue,
-			Penalty:  e.PenaltyKick,
-			Shootout: e.Shootout,
+			TeamID:    &teamID,
+			Player:    participantName(e.Participants),
+			Minute:    e.Clock.DisplayValue,
+			Penalty:   e.PenaltyKick,
+			Shootout:  e.Shootout,
+			OwnGoal:   &ownGoal,
+			AthleteID: athleteID,
 		})
 	}
 	return out
@@ -986,8 +996,9 @@ func mapSummaryCards(rs rawSummary) []Card {
 		if redCardRe.MatchString(e.Type.Text) {
 			cardType = "red"
 		}
+		teamID := string(e.Team.ID)
 		out = append(out, Card{
-			TeamID: string(e.Team.ID),
+			TeamID: &teamID,
 			Player: participantName(e.Participants),
 			Minute: e.Clock.DisplayValue,
 			Type:   cardType,

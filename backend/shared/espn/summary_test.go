@@ -124,7 +124,7 @@ func TestMapSummary(t *testing.T) {
 			if s.Minute == "" {
 				t.Error("scorer has empty minute")
 			}
-			if s.TeamID == "" {
+			if s.TeamID == nil || *s.TeamID == "" {
 				t.Error("scorer has empty teamId")
 			}
 			names = append(names, s.Player)
@@ -143,7 +143,7 @@ func TestMapSummary(t *testing.T) {
 			t.Fatal("expected at least one card")
 		}
 		for _, c := range detail.Cards {
-			if c.TeamID == "" {
+			if c.TeamID == nil || *c.TeamID == "" {
 				t.Error("card has empty teamId")
 			}
 			if c.Type != "yellow" && c.Type != "red" {

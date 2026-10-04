@@ -11,9 +11,9 @@ discarding information, rewriting finalized rows or cutting over the frontend.
 
 **Architecture:** canonical ids stay canonical. Provider ↔ canonical
 translation happens at named boundaries: the seed crosswalk for teams,
-`match_external_ref` for matches, and a shared side-attribution function for
-nested scorer/card team references, applied when the ingester writes detail
-and again when the reader serves stored detail (legacy rows).
+`match_external_ref` for matches, and a read-time side attribution for nested
+scorer/card team references: stored detail keeps the provider's ids (finalized
+rows are sealed), and the reader serves them as canonical sides.
 
 **Tech stack:** TypeScript/Vitest, Go 1.26, pgx, testcontainers Postgres,
 OpenAPI 3.1 (kin-openapi).
@@ -43,16 +43,16 @@ OpenAPI 3.1 (kin-openapi).
 | `match-id` | Intentional representation difference. Ids are opaque, store-scoped tokens: each store round-trips its own list-row ids into its own summary address; the crosswalk is `match_external_ref (source, source_id) → match.id`. Proved in Postgres through the real resolver. Per-method cutover must keep the window methods and `getMatchSummary` on the same source (recorded for T16.3/T16.5). |
 | `team-id` | Intentional representation difference. Translation is the curated seed crosswalk, identical in both languages (full-map Go test over `teamCrosswalk.json`). |
 | team helper | `canonicalTeamId` accepts a provider **or** canonical id (the two id spaces are disjoint: numeric vs slug), so `teamHref`, the team index and follows produce identical results for reader ids; provisional `prov-…` ids stay unlinked in both. |
-| `nested-team-id` | Shared Go `model.AttributeToSides`: a scorer/card team reference becomes the canonical id of the side it names, or `null` when it names neither side — never defaulted to home/away. Ingester applies it before writing detail; the reader applies it again with the sides' `team_external_ref` ids, so legacy provider ids in finalized rows are served canonically without rewriting sealed rows. `Scorer.teamId`/`Card.teamId` become `string \| null` in both contracts. |
+| `nested-team-id` | Read-time translation in the reader (`attribution.go`): a stored scorer/card team reference becomes the canonical id of the side it names, matched against each side's `team_external_ref` ids for the match's source (selected in the same statement), or `null` when it names neither side or both — never defaulted to home/away. `match_detail` keeps the provider's ids as written; one mechanism serves legacy, finalized and new rows alike without rewriting sealed rows, so the ingester write path is unchanged. `Scorer.teamId`/`Card.teamId` become `string \| null` in both contracts. |
 | `scorer-identity` | Stored and served `ownGoal` (`boolean \| null`) and `athleteId` (provider athlete id, `string \| null`). Rows written before this change decode to `null` (unknown), never `false`. `playerSlug` stays a route-layer enrichment: `withSummaryPlayerSlugs` resolves it from `athleteId` exactly as for the frontend store; no name-based matching. |
 | `standings-rank` | Go ports the TS rule: order by ESPN's `rank` stat when it is a complete 1..n permutation, else array order. |
-| `standings-dedup` | Go ranks become contiguous within each served table. Cross-table membership (a team kept in two provider tables) is **left open for an owner decision**: the one-row-per-team `standing` key (and `standing_snapshot`'s per-team uniqueness) cannot hold it; options are a multi-table standing model or a shared first-table rule. No configured competition publishes overlapping tables today. |
+| `standings-dedup` | Rows kept in a later table keep their true provider positions (not renumbered), so a zone cut never shifts. Cross-table membership (a team kept in two provider tables) is **left open for an owner decision**: the one-row-per-team `standing` key (and `standing_snapshot`'s per-team uniqueness) cannot hold it; options are a multi-table standing model or a shared first-table rule. No configured competition publishes overlapping tables today. |
 | `standings-malformed` | The ingester's rule is the contract: a table with no entries or a row missing team identity or one of the eight required stats rejects the payload. The frontend mapper stops zero-filling and throws; a payload with no tables stays a legitimate empty `[]`. |
 | `group-label` | An unnamed provider table is labeled with the competition short name in both (frontend adopts the reader's rule); named tables are unchanged. |
 | `placeholder-crest` | `null` in both (frontend stops passing ESPN's `""` through). |
 | `bracket-round-name` | Contract decision, no behavior change: `name` is an additive English label for API consumers; the frontend localizes from `slug`. Proved equal to the frontend's English catalog label for every slug. |
 | `round-slug-type` | OpenAPI `BracketRound.slug` and `BracketMatch.round` become the six-slug enum; Go mapper, reader order and the TS union are proved equal. |
-| `shootout-source` | One precedence everywhere: summary-header `shootoutScore` (where a summary is held) → scoreboard competitor `shootoutScore` → anchored scoreboard note → `null`. Structured values must be non-negative integers and not both zero. Lightweight feeds use the scoreboard tiers only (no summary fan-out). Regulation scores are untouched. |
+| `shootout-source` | One precedence everywhere: summary-header `shootoutScore` (where a summary is held) → scoreboard competitor `shootoutScore` → anchored scoreboard note → `null`. Structured values must be non-negative integers and not both zero; a malformed structured value rejects the scoreboard in both languages (the frontend window loader already did). Lightweight feeds use the scoreboard tiers only (no summary fan-out). Regulation scores are untouched. |
 | `live-minute`, `bracket-live-minute` | A live event without a display clock is `minute: null` in every mapper; the reader also serves stored `''` as `null`. |
 | leader crest keys | Leader crests mirror under the leader team's canonical id (`teams/<canonical>`), through the same path as team crests; a leader without a provider team id keeps its upstream URL unmirrored. |
 | CDN allowlist | `safeCrest` adds exactly `cdn.scorearc.futbol` (HTTPS, default port); lookalikes and other hosts stay rejected. `OG_VERSION` is unchanged: no URL the site generated before can render differently. |
@@ -60,41 +60,40 @@ OpenAPI 3.1 (kin-openapi).
 ## Tasks
 
 ### Task 1 — team identity helper and crosswalk parity
-- [ ] TS: failing tests in `teamIdentity.test.ts` (canonical input returns itself, provisional/unknown → null, provider/canonical spaces disjoint) and `teamHref` equality for reader vs frontend ids.
-- [ ] Implement in `src/server/data/teamIdentity.ts`; run `npx vitest run src/server/data/teamIdentity.test.ts`.
-- [ ] Go: `reader_contract_test.go` asserts `teamCrosswalk.json` equals the seed's ESPN map exactly.
-- [ ] Commit `fix: make the canonical team helper accept reader ids`.
+- [x] TS: failing tests in `teamIdentity.test.ts` (canonical input returns itself, provisional/unknown → null, provider/canonical spaces disjoint) and `teamHref` equality for reader vs frontend ids.
+- [x] Implement in `src/server/data/teamIdentity.ts`; run `npx vitest run src/server/data/teamIdentity.test.ts`.
+- [x] Go: `reader_contract_test.go` asserts `teamCrosswalk.json` equals the seed's ESPN map exactly.
+- [x] Commit `fix: make the canonical team helper accept reader ids`.
 
 ### Task 2 — clockless live minute
-- [ ] Failing tests: TS `espn-matches`/`espn-bracket` clockless and empty-clock cases; Go `matches_test`/`bracket_test`; reader integration serves stored `''` as `null`.
-- [ ] TS `status.displayClock || null`; Go set minute only for a non-empty clock; reader SQL `NULLIF(m.minute, '')` on match, bracket and team-schedule projections.
-- [ ] Harness: `queries.liveMinute` and `bracket.liveClockless` expect `null` in both; positive assertions replace the two characterizations.
-- [ ] Commit `fix: serve a clockless live minute as null`.
+- [x] Failing tests: TS `espn-matches`/`espn-bracket` clockless and empty-clock cases; Go `matches_test`/`bracket_test`; reader integration serves stored `''` as `null`.
+- [x] TS `status.displayClock || null`; Go set minute only for a non-empty clock; reader SQL `NULLIF(m.minute, '')` on match, bracket and team-schedule projections.
+- [x] Harness: `queries.liveMinute` and `bracket.liveClockless` expect `null` in both; positive assertions replace the two characterizations.
+- [x] Commit `fix: serve a clockless live minute as null`.
 
 ### Task 3 — bracket placeholder crest, round slugs and names
-- [ ] TS `mapBracketTeam` `t.logo || t.logos?.[0]?.href || null`; vector `frontendPlaceholder.away.crestUrl = null`.
-- [ ] OpenAPI enum on `BracketRound.slug` and `BracketMatch.round`; Go test: enum == `knockoutRoundOrder` == `bracketRoundOrder` == vector slugs; TS test: same list == `KnockoutRoundSlug` and `readerRoundNames[slug] === en[roundLabelKey(slug)]`.
-- [ ] Commit `fix: align bracket placeholder crests and round slug contract`.
+- [x] TS `mapBracketTeam` `t.logo || t.logos?.[0]?.href || null`; vector `frontendPlaceholder.away.crestUrl = null`.
+- [x] OpenAPI enum on `BracketRound.slug` and `BracketMatch.round`; Go test: enum == `knockoutRoundOrder` == `bracketRoundOrder` == vector slugs; TS test: same list == `KnockoutRoundSlug` and `readerRoundNames[slug] === en[roundLabelKey(slug)]`.
+- [x] Commit `fix: align bracket placeholder crests and round slug contract`.
 
 ### Task 4 — standings
-- [ ] Go: port `inTableOrder`; contiguous ranks after first-table dedup; tests for recorded order, duplicate/partial rank fallback, dedup ranks.
-- [ ] TS: reject empty tables and rows missing team identity or a required stat; legitimate-empty `{}`/`{children: []}` stays `[]`; unnamed table labeled with `rc.competition.shortName`.
-- [ ] Harness: `standings-rank`, `standings-malformed`, `group-label` become positive; `standings-dedup` narrowed to cross-table membership (stays registered, owner decision).
-- [ ] Commit `fix: align standings order, validation and labels`.
+- [x] Go: port `inTableOrder`; rows kept after first-table dedup keep their true positions; tests for recorded order, duplicate/partial rank fallback, dedup ranks.
+- [x] TS: reject empty tables and rows missing team identity or a required stat; legitimate-empty `{}`/`{children: []}` stays `[]`; unnamed table labeled with `rc.competition.shortName`.
+- [x] Harness: `standings-rank`, `standings-malformed`, `group-label` become positive; `standings-dedup` narrowed to cross-table membership (stays registered, owner decision).
+- [x] Commit `fix: align standings order, validation and labels`.
 
 ### Task 5 — shootout aggregate precedence
-- [ ] TS: `shootoutAggregate` + anchored `parseShootout` in `espn-matches.ts`; `mapScoreboard` applies scoreboard tiers; `getMatches` prefers the held summary header.
-- [ ] Go: scoreboard competitor `shootoutScore` carried on `model.Match` (not serialized) as the middle tier in `source.mapSummary`.
-- [ ] Shared synthetic precedence vectors (header-only, scoreboard-only, note-only, conflicts, invalid, both-zero) run in both languages.
-- [ ] Commit `fix: one shootout aggregate precedence in both languages`.
+- [x] TS: `shootoutAggregate` + anchored `parseShootout` in `espn-matches.ts`; `mapScoreboard` applies scoreboard tiers; `getMatches` prefers the held summary header.
+- [x] Go: scoreboard competitor `shootoutScore` carried on `model.Match` (not serialized) as the middle tier in `source.mapSummary`.
+- [x] Shared synthetic precedence vectors (header-only, scoreboard-only, note-only, conflicts, invalid, both-zero) run in both languages.
+- [x] Commit `fix: one shootout aggregate precedence in both languages`.
 
 ### Task 6 — scorer identity and nested team ids
-- [ ] Go model: `Scorer{TeamID *string, OwnGoal *bool, AthleteID *string}`, `Card{TeamID *string}`, `AttributeToSides`; mapper fills `ownGoal`/`athleteId`.
-- [ ] Ingester: attribute before `UpsertMatchDetail`/`FinalizeMatch` using the resolved provider sides.
-- [ ] Reader: match, schedule and summary SQL return each side's `team_external_ref` source ids for `m.source`; attribute on read.
-- [ ] OpenAPI `Scorer`/`Card`; TS types `teamId: string | null`, `ownGoal: boolean | null`.
-- [ ] Harness: positive TS/Go/go-db proofs (legacy provider ids and new canonical rows both served canonically; own goal; athlete id → `withSummaryPlayerSlugs`; unattributable → `null`; legacy `ownGoal` → `null`).
-- [ ] Commit `fix: canonical nested team ids and scorer identity`.
+- [x] Go model: `Scorer{TeamID *string, OwnGoal *bool, AthleteID *string}`, `Card{TeamID *string}`; mapper fills `ownGoal`/`athleteId`.
+- [x] Reader: match, schedule and summary SQL return each side's `team_external_ref` source ids for `m.source`; `attributeDetail` on read (no ingester write change).
+- [x] OpenAPI `Scorer`/`Card`; TS types `teamId: string | null`, `ownGoal: boolean | null`.
+- [x] Harness: positive TS/Go/go-db proofs (legacy provider ids and new canonical rows both served canonically; own goal; athlete id → `withSummaryPlayerSlugs`; unattributable → `null`; legacy `ownGoal` → `null`).
+- [x] Commit `fix: canonical nested team ids and scorer identity`.
 
 ### Task 7 — leader crest keys and CDN allowlist
 - [ ] Go: `StatLeader.TeamSourceID` (not serialized); `mirrorLeader` resolves the canonical team and reuses `mirrorCrest`; tests for curated, provisional and unresolved teams.
@@ -109,8 +108,9 @@ OpenAPI 3.1 (kin-openapi).
 
 ## Rollout and data notes
 
-- No migration. Reader-side translation is read-only; ingester changes affect
-  new writes only. Finalized rows keep their stored bytes; the reader serves
-  their team references canonically, their `ownGoal`/`athleteId` as `null`.
+- No migration. Reader-side translation is read-only; the new `ownGoal`/
+  `athleteId` keys reach new detail writes only. Finalized rows keep their
+  stored bytes; the reader serves their team references canonically, their
+  `ownGoal`/`athleteId` as `null`.
 - Ingester and reader can deploy in either order: an old reader ignores the new
   JSON keys, and a new reader translates both old and new rows.

@@ -51,16 +51,6 @@
    "mismatch": "Reader Group has no labelKey/zones and no Leagues Cup phase or MLS overall tables.",
    "suites": ["ts", "go"]
   },
-  "T16.2-scorer-identity": {
-   "task": "T16.2",
-   "mismatch": "Reader Scorer lacks ownGoal, athleteId and playerSlug; an own goal is indistinguishable from a goal by the benefiting side, and scorers cannot link to player pages.",
-   "suites": ["ts", "go"]
-  },
-  "T16.2-nested-team-id": {
-   "task": "T16.2",
-   "mismatch": "Reader scorers[].teamId/cards[].teamId keep provider ids while the match sides are canonical.",
-   "suites": ["ts", "go"]
-  },
   "T16.2-match-id": {
    "task": "T16.2",
    "mismatch": "Reader match routes and list rows use canonical match UUIDs; the frontend uses provider event ids for list rows and summary addressing.",
@@ -120,7 +110,7 @@
  "methods": {
   "getMatches": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T16.2-scorer-identity", "T16.2-nested-team-id", "T10.2-team-stats", "T16.2-match-id", "T21.4-dependency-error-logging"]
+   "gaps": ["T10.1-match-query", "T10.2-team-stats", "T16.2-match-id", "T21.4-dependency-error-logging"]
   },
   "getFixtures": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
@@ -144,7 +134,7 @@
   },
   "getMatchSummary": {
    "reader": "/v1/matches/{id}",
-   "gaps": ["T16.2-match-id", "T16.2-scorer-identity", "T16.2-nested-team-id", "T10.2-team-stats", "T10.2-lineups", "T21.4-dependency-error-logging"]
+   "gaps": ["T16.2-match-id", "T10.2-team-stats", "T10.2-lineups", "T21.4-dependency-error-logging"]
   },
   "getLeaders": {
    "reader": "/v1/competitions/{comp}/{season}/top-scorers",
@@ -185,14 +175,6 @@
    }
   },
   "shared": {
-   "cards": [
-    {
-     "teamId": "464",
-     "player": "Antonio Nusa",
-     "minute": "45'+1'",
-     "type": "yellow"
-    }
-   ],
    "winProbability": {
     "home": 26.6,
     "draw": 29,
@@ -317,6 +299,14 @@
      "shootout": false,
      "ownGoal": false,
      "athleteId": "253989"
+    }
+   ],
+   "cards": [
+    {
+     "teamId": "464",
+     "player": "Antonio Nusa",
+     "minute": "45'+1'",
+     "type": "yellow"
     }
    ],
    "stats": {
@@ -906,25 +896,39 @@
   "reader": {
    "scorers": [
     {
-     "teamId": "464",
+     "teamId": "nat-nor",
      "player": "Antonio Nusa",
      "minute": "39'",
      "penalty": false,
-     "shootout": false
+     "shootout": false,
+     "ownGoal": false,
+     "athleteId": "319368"
     },
     {
-     "teamId": "4789",
+     "teamId": "nat-civ",
      "player": "Amad Diallo",
      "minute": "74'",
      "penalty": false,
-     "shootout": false
+     "shootout": false,
+     "ownGoal": false,
+     "athleteId": "291630"
     },
     {
-     "teamId": "464",
+     "teamId": "nat-nor",
      "player": "Erling Haaland",
      "minute": "86'",
      "penalty": false,
-     "shootout": false
+     "shootout": false,
+     "ownGoal": false,
+     "athleteId": "253989"
+    }
+   ],
+   "cards": [
+    {
+     "teamId": "nat-nor",
+     "player": "Antonio Nusa",
+     "minute": "45'+1'",
+     "type": "yellow"
     }
    ],
    "stats": {
@@ -1119,7 +1123,7 @@
    }
   },
   "syntheticOverlay": {
-   "note": "Synthetic: merged over the recorded 760490 summary because no recorded payload has a shootout or head-to-head block. Norway (away) is listed first to prove side mapping by id; six meetings prove the five-row cap; one string, one numeric and one missing score. An absent provider score renders as 0 in both implementations ('CIV 4-0 NOR'): characterized shared behavior that collapses missing into zero, not an endorsed contract. Appended key events add the second state of each discriminator (a penalty goal, a shootout kick, a red card); header shootoutScores give the reader's summary-side shootout aggregate.",
+   "note": "Synthetic: merged over the recorded 760490 summary because no recorded payload has a shootout or head-to-head block. Norway (away) is listed first to prove side mapping by id; six meetings prove the five-row cap; one string, one numeric and one missing score. An absent provider score renders as 0 in both implementations ('CIV 4-0 NOR'): characterized shared behavior that collapses missing into zero, not an endorsed contract. Appended key events add the second state of each discriminator (a penalty goal, a shootout kick, a red card). A goal and a card credited to provider team 999999, which is neither side, prove an unattributable reference: the frontend keeps the provider id, which matches neither of its sides, and the reader serves null rather than a default side; header shootoutScores give the reader's summary-side shootout aggregate.",
    "raw": {
     "shootout": [
      {
@@ -1284,6 +1288,15 @@
       "shootout": true,
       "ownGoal": false,
       "athleteId": "900002"
+     },
+     {
+      "teamId": "999999",
+      "player": "Synthetic Unattributed Scorer",
+      "minute": "61'",
+      "penalty": false,
+      "shootout": false,
+      "ownGoal": false,
+      "athleteId": "900004"
      }
     ],
     "addedCards": [
@@ -1292,6 +1305,55 @@
       "player": "Synthetic Red",
       "minute": "88'",
       "type": "red"
+     },
+     {
+      "teamId": "999999",
+      "player": "Synthetic Unattributed Card",
+      "minute": "62'",
+      "type": "yellow"
+     }
+    ],
+    "readerAddedScorers": [
+     {
+      "teamId": "nat-civ",
+      "player": "Synthetic Penalty Taker",
+      "minute": "90'+3'",
+      "penalty": true,
+      "shootout": false,
+      "ownGoal": false,
+      "athleteId": "900001"
+     },
+     {
+      "teamId": "nat-nor",
+      "player": "Synthetic Shootout Taker",
+      "minute": "120'",
+      "penalty": false,
+      "shootout": true,
+      "ownGoal": false,
+      "athleteId": "900002"
+     },
+     {
+      "teamId": null,
+      "player": "Synthetic Unattributed Scorer",
+      "minute": "61'",
+      "penalty": false,
+      "shootout": false,
+      "ownGoal": false,
+      "athleteId": "900004"
+     }
+    ],
+    "readerAddedCards": [
+     {
+      "teamId": "nat-civ",
+      "player": "Synthetic Red",
+      "minute": "88'",
+      "type": "red"
+     },
+     {
+      "teamId": null,
+      "player": "Synthetic Unattributed Card",
+      "minute": "62'",
+      "type": "yellow"
      }
     ],
     "readerShootout": {
@@ -1365,6 +1427,50 @@
      "type": {
       "type": "red-card",
       "text": "Red Card"
+     }
+    },
+    {
+     "scoringPlay": true,
+     "penaltyKick": false,
+     "shootout": false,
+     "team": {
+      "id": "999999"
+     },
+     "participants": [
+      {
+       "athlete": {
+        "id": "900004",
+        "displayName": "Synthetic Unattributed Scorer"
+       }
+      }
+     ],
+     "clock": {
+      "displayValue": "61'"
+     },
+     "type": {
+      "type": "goal",
+      "text": "Goal"
+     }
+    },
+    {
+     "scoringPlay": false,
+     "team": {
+      "id": "999999"
+     },
+     "participants": [
+      {
+       "athlete": {
+        "id": "900005",
+        "displayName": "Synthetic Unattributed Card"
+       }
+      }
+     ],
+     "clock": {
+      "displayValue": "62'"
+     },
+     "type": {
+      "type": "yellow-card",
+      "text": "Yellow Card"
      }
     }
    ],
@@ -1447,32 +1553,40 @@
   "reader": {
    "scorers": [
     {
-     "teamId": "226",
+     "teamId": "mex-atlante",
      "player": "Devin Padelford",
      "minute": "32'",
      "penalty": false,
-     "shootout": false
+     "shootout": false,
+     "ownGoal": true,
+     "athleteId": "337030"
     },
     {
-     "teamId": "17362",
+     "teamId": "usa-minnesota-united-fc",
      "player": "Mauricio Gonzalez",
      "minute": "59'",
      "penalty": false,
-     "shootout": false
+     "shootout": false,
+     "ownGoal": false,
+     "athleteId": "353246"
     },
     {
-     "teamId": "17362",
+     "teamId": "usa-minnesota-united-fc",
      "player": "Joaquín Pereyra",
      "minute": "75'",
      "penalty": false,
-     "shootout": false
+     "shootout": false,
+     "ownGoal": false,
+     "athleteId": "233943"
     },
     {
-     "teamId": "17362",
+     "teamId": "usa-minnesota-united-fc",
      "player": "Joaquín Pereyra",
      "minute": "87'",
      "penalty": false,
-     "shootout": false
+     "shootout": false,
+     "ownGoal": false,
+     "athleteId": "233943"
     }
    ]
   }

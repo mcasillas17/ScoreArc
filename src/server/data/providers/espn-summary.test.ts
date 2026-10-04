@@ -73,7 +73,7 @@ describe('mapSummaryScorers', () => {
   });
 
   it('all scorers have a non-empty teamId', () => {
-    expect(scorers.every((s) => s.teamId.length > 0)).toBe(true);
+    expect(scorers.every((s) => typeof s.teamId === 'string' && s.teamId.length > 0)).toBe(true);
   });
 
   it('penalty and shootout fields are booleans', () => {

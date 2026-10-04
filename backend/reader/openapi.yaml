@@ -395,19 +395,29 @@ components:
     Scorer:
       type: object
       additionalProperties: false
-      required: [teamId, player, minute, penalty, shootout]
+      required: [teamId, player, minute, penalty, shootout, ownGoal, athleteId]
       properties:
-        teamId: { type: string }
+        teamId:
+          type: [string, "null"]
+          description: Canonical id of the match side credited with the goal (for an own goal, the side that benefits), or null when the stored provider reference names neither side.
         player: { type: string }
         minute: { type: string }
         penalty: { type: boolean }
         shootout: { type: boolean }
+        ownGoal:
+          type: [boolean, "null"]
+          description: Null (unknown) for a match stored before own goals were captured.
+        athleteId:
+          type: [string, "null"]
+          description: The source provider's athlete id, which the frontend match route resolves to a player slug; never a URL. Null when unknown, including matches stored before it was captured.
     Card:
       type: object
       additionalProperties: false
       required: [teamId, player, minute, type]
       properties:
-        teamId: { type: string }
+        teamId:
+          type: [string, "null"]
+          description: Canonical id of the carded player's match side, or null when the stored provider reference names neither side.
         player: { type: string }
         minute: { type: string }
         type: { type: string, enum: [yellow, red] }

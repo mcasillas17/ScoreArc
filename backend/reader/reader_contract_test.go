@@ -390,27 +390,27 @@ func TestReaderContract(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		actual := wire(t, readerSummary(detail)).(map[string]any)
+		actual := wire(t, readerSummary(detail, vectors.Summary.Sides)).(map[string]any)
 		validateSchema(t, document, "MatchSummary", actual)
 		assertWire(t, "MatchSummary keys", sortedKeys(actual), vector(t, raw, "summary", "readerKeys"))
 		assertSharedSummary(t, "", raw, actual)
-		for _, key := range []string{"scorers", "stats", "lineups"} {
+		for _, key := range []string{"scorers", "cards", "stats", "lineups"} {
 			assertWire(t, "reader "+key, actual[key], vector(t, raw, "summary", "reader", key))
 		}
+		// playerSlug stays route-layer enrichment (withSummaryPlayerSlugs), as in the frontend store.
 		for _, scorer := range actual["scorers"].([]any) {
-			assertAbsent(t, document, "Scorer", scorer.(map[string]any), "ownGoal", "athleteId", "playerSlug")
+			assertAbsent(t, document, "Scorer", scorer.(map[string]any), "playerSlug")
 		}
-		gap("T16.2-scorer-identity")
-		canonicalSides := map[string]bool{}
-		for _, ids := range vectors.Summary.Sides {
-			canonicalSides[ids.CanonicalID] = true
-		}
-		for _, scorer := range detail.Scorers {
-			if canonicalSides[scorer.TeamID] || !canonicalSides[crosswalk[scorer.TeamID]] {
-				t.Fatalf("gap changed: scorer team %q is no longer a provider id of a match side", scorer.TeamID)
+		// The served nested ids are the production seed's translation of the
+		// frontend's provider ids, row for row.
+		for _, kind := range []string{"scorers", "cards"} {
+			frontend := vector(t, raw, "summary", "frontend", kind).([]any)
+			for i, row := range actual[kind].([]any) {
+				if want := crosswalk[frontend[i].(map[string]any)["teamId"].(string)]; row.(map[string]any)["teamId"] != want {
+					t.Fatalf("%s[%d] team %v, seed says %q", kind, i, row.(map[string]any)["teamId"], want)
+				}
 			}
 		}
-		gap("T16.2-nested-team-id")
 		stats := actual["stats"].(map[string]any)
 		for _, side := range []string{"home", "away"} {
 			assertAbsent(t, document, "TeamStats", stats[side].(map[string]any), "passesAccurate", "crossesAccurate", "tacklesEffective")
@@ -437,7 +437,7 @@ func TestReaderContract(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		actual := wire(t, readerSummary(detail)).(map[string]any)
+		actual := wire(t, readerSummary(detail, vectors.Summary.Sides)).(map[string]any)
 		validateSchema(t, document, "MatchSummary", actual)
 		assertOverlaySummary(t, "", raw, actual)
 		expected := vector(t, raw, "summary", "syntheticOverlay", "expected").(map[string]any)
@@ -561,16 +561,18 @@ func TestReaderContract(t *testing.T) {
 		}
 	})
 
-	t.Run("recorded own goal loses its flag in the reader", func(t *testing.T) {
+	t.Run("recorded own goal keeps its flag and benefiting side in the reader", func(t *testing.T) {
 		detail, err := espn.MapSummary(contractFixture(t, vectors.OwnGoal.Fixture))
 		if err != nil {
 			t.Fatal(err)
 		}
-		assertWire(t, "own-goal scorers", wire(t, detail.Scorers), vector(t, raw, "ownGoal", "reader", "scorers"))
-		frontend := vector(t, raw, "ownGoal", "frontend", "scorers").([]any)
-		if frontend[0].(map[string]any)["ownGoal"] != true || detail.Scorers[0].TeamID != vectors.OwnGoal.Sides["away"].ProviderID {
+		// Stored as the provider credits it: the benefiting side's provider id.
+		if *detail.Scorers[0].TeamID != vectors.OwnGoal.Sides["away"].ProviderID || !*detail.Scorers[0].OwnGoal {
 			t.Fatal("own-goal vector no longer pins the benefiting-side credit")
 		}
+		actual := wire(t, readerSummary(detail, vectors.OwnGoal.Sides)).(map[string]any)
+		validateSchema(t, document, "MatchSummary", actual)
+		assertWire(t, "own-goal scorers", actual["scorers"], vector(t, raw, "ownGoal", "reader", "scorers"))
 	})
 
 	t.Run("recorded standings: same values and rank order", func(t *testing.T) {
@@ -1160,13 +1162,20 @@ func withSummaryOverlay(t *testing.T, raw map[string]any, fixture string) []byte
 
 // readerSummary is the reader DTO for an ingester-mapped detail: the same
 // fields the writer stores in match_detail and Store.MatchSummary reads back.
-func readerSummary(detail espn.MatchDetail) MatchSummary {
+// readerSummary is the reader's projection of a mapped detail, translated by
+// the production read-time attribution with the crosswalk row the seed gives
+// each side (go-db proves the same through team_external_ref and SQL).
+func readerSummary(detail espn.MatchDetail, sides contractSides) MatchSummary {
 	summary := MatchSummary{
 		Scorers: detail.Scorers, Cards: detail.Cards, Stats: detail.Stats, WinProbability: detail.WinProbability,
 		Lineups: detail.Lineups, Videos: detail.Videos, ShootoutDetail: detail.ShootoutDetail, Info: detail.Info,
 		Form: detail.Form, Commentary: detail.Commentary, H2H: detail.H2H,
 	}
 	normalizeMatchSummary(&summary)
+	side := func(name string) matchSide {
+		return matchSide{id: sides[name].CanonicalID, refs: []string{sides[name].ProviderID}}
+	}
+	attributeDetail(summary.Scorers, summary.Cards, side("home"), side("away"))
 	return summary
 }
 
@@ -1265,7 +1274,7 @@ func withoutEach(rows []any, fields ...string) []any {
 // for the mapper DTO and the stored route alike.
 func assertSharedSummary(t *testing.T, label string, raw map[string]any, summary map[string]any) {
 	t.Helper()
-	for _, key := range []string{"cards", "winProbability", "shootoutDetail", "info", "form", "h2h", "videos"} {
+	for _, key := range []string{"winProbability", "shootoutDetail", "info", "form", "h2h", "videos"} {
 		assertWire(t, label+"shared "+key, summary[key], vector(t, raw, "summary", "shared", key))
 	}
 	assertWire(t, label+"commentary", summary["commentary"], recordedCommentary(t, raw, fixtureName(t, raw, "summary")))
@@ -1277,11 +1286,11 @@ func assertOverlaySummary(t *testing.T, label string, raw map[string]any, summar
 	expected := vector(t, raw, "summary", "syntheticOverlay", "expected").(map[string]any)
 	assertWire(t, label+"shootoutDetail", summary["shootoutDetail"], expected["shootoutDetail"])
 	assertWire(t, label+"h2h", summary["h2h"], expected["h2h"])
-	// The reader Scorer lacks ownGoal and athleteId (T16.2-scorer-identity).
-	assertWire(t, label+"scorers with penalty and shootout", summary["scorers"], append(append([]any{},
-		vector(t, raw, "summary", "reader", "scorers").([]any)...), withoutEach(expected["addedScorers"].([]any), "ownGoal", "athleteId")...))
-	assertWire(t, label+"cards with a red", summary["cards"], append(append([]any{},
-		vector(t, raw, "summary", "shared", "cards").([]any)...), expected["addedCards"].([]any)...))
+	// Includes a goal and a card credited to a team that is neither side: null.
+	assertWire(t, label+"scorers with penalty, shootout and unattributable", summary["scorers"], append(append([]any{},
+		vector(t, raw, "summary", "reader", "scorers").([]any)...), expected["readerAddedScorers"].([]any)...))
+	assertWire(t, label+"cards with a red and unattributable", summary["cards"], append(append([]any{},
+		vector(t, raw, "summary", "reader", "cards").([]any)...), expected["readerAddedCards"].([]any)...))
 }
 
 // espnInstant parses ESPN's minute-precision kickoff form, the named

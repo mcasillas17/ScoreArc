@@ -57,6 +57,12 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			canonical, providerTeam.Name, providerTeam.Abbr, providerTeam.CrestURL); err != nil {
 			t.Fatal(err)
 		}
+		// The crosswalk row the seed gives the team; the reader translates
+		// stored nested team references through it.
+		if _, err := pool.Exec(ctx, `INSERT INTO team_external_ref (source, source_id, team_id) VALUES ('espn',$1,$2) ON CONFLICT DO NOTHING`,
+			providerTeam.ID, canonical); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	t.Run("recorded summary survives writer and reader SQL", func(t *testing.T) {
@@ -81,7 +87,7 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		validateSchema(t, document, "MatchSummary", summary)
 		assertWire(t, "stored MatchSummary keys", sortedKeys(summary), vector(t, raw, "summary", "readerKeys"))
 		assertSharedSummary(t, "stored ", raw, summary)
-		for _, key := range []string{"scorers", "stats", "lineups"} {
+		for _, key := range []string{"scorers", "cards", "stats", "lineups"} {
 			assertWire(t, "stored reader "+key, summary[key], vector(t, raw, "summary", "reader", key))
 		}
 		// No match observation exists, so the body is served as unavailable, not fresh.
@@ -120,19 +126,19 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			"home": side(home, "Ivory Coast", "CIV"), "away": side(away, "Norway", "NOR"),
 			"homeScore": 1.0, "awayScore": 2.0, "winnerId": away, "note": nil,
 			"scorers":        vector(t, raw, "summary", "reader", "scorers"),
-			"cards":          vector(t, raw, "summary", "shared", "cards"),
+			"cards":          vector(t, raw, "summary", "reader", "cards"),
 			"stats":          vector(t, raw, "summary", "reader", "stats"),
 			"winProbability": vector(t, raw, "summary", "shared", "winProbability"),
 			"shootout":       nil,
 			"shootoutDetail": vector(t, raw, "summary", "shared", "shootoutDetail"),
 		})
-		for _, scorer := range stored.Scorers {
-			if scorer.TeamID == stored.Home.ID || scorer.TeamID == stored.Away.ID {
-				t.Fatalf("gap changed: scorer team %s now canonical", scorer.TeamID)
-			}
-			if side := crosswalk[scorer.TeamID]; side != stored.Home.ID && side != stored.Away.ID {
-				t.Fatalf("scorer team %s maps to neither side", scorer.TeamID)
-			}
+		// Translated on read: match_detail still holds the provider's team id.
+		var storedTeam string
+		if err := pool.QueryRow(ctx, `SELECT scorers->0->>'teamId' FROM match_detail WHERE match_id=$1`, id).Scan(&storedTeam); err != nil {
+			t.Fatal(err)
+		}
+		if storedTeam != vectors.Summary.Sides["away"].ProviderID || crosswalk[storedTeam] != *stored.Scorers[0].TeamID {
+			t.Fatalf("stored %q served as %q", storedTeam, *stored.Scorers[0].TeamID)
 		}
 		// T10.1 at the SQL boundary: the query string changed nothing, and the
 		// competition/season scope still excludes the seeded Premier League row.
@@ -463,6 +469,61 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			if minute != nil {
 				t.Fatalf("%s minute %#v, want null", label, minute)
 			}
+		}
+	})
+
+	t.Run("a sealed legacy detail row is served with canonical sides and unknown scorer identity", func(t *testing.T) {
+		// Synthetic: the shape match_detail held before T16.2 -- provider team ids,
+		// no ownGoal or athleteId -- finalized, so it can never be rewritten.
+		home, away := vectors.Summary.Sides["home"].CanonicalID, vectors.Summary.Sides["away"].CanonicalID
+		team(t, espn.Team{ID: "4789", Name: "Ivory Coast", Abbr: "CIV"}, home)
+		team(t, espn.Team{ID: "464", Name: "Norway", Abbr: "NOR"}, away)
+		id := "018f0000-0000-7000-8000-000000016022"
+		if _, err := pool.Exec(ctx, `INSERT INTO match (id, competition_id, season_id, kickoff, state, home_team_id, away_team_id, home_score, away_score, source)
+			VALUES ($1,'world-cup','2026','2026-07-02T17:00:00Z','finished',$2,$3,1,2,'espn')`, id, home, away); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO match_detail (match_id, scorers, cards) VALUES ($1, $2, $3)`, id,
+			`[{"teamId":"4789","player":"Legacy Home","minute":"10'","penalty":false,"shootout":false},
+			  {"teamId":"464","player":"Legacy Away","minute":"20'","penalty":true,"shootout":false},
+			  {"teamId":"226","player":"Legacy Stranger","minute":"30'","penalty":false,"shootout":false}]`,
+			`[{"teamId":"464","player":"Legacy Card","minute":"40'","type":"yellow"}]`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `UPDATE match SET finalized_at=now() WHERE id=$1`, id); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `UPDATE match_detail SET scorers='[]' WHERE match_id=$1`, id); err == nil {
+			t.Fatal("a finalized detail row accepted a rewrite")
+		}
+		scorer := func(team any, player, minute string, penalty bool) map[string]any {
+			return map[string]any{"teamId": team, "player": player, "minute": minute, "penalty": penalty, "shootout": false, "ownGoal": nil, "athleteId": nil}
+		}
+		wantScorers := []any{scorer(home, "Legacy Home", "10'", false), scorer(away, "Legacy Away", "20'", true), scorer(nil, "Legacy Stranger", "30'", false)}
+		wantCards := []any{map[string]any{"teamId": away, "player": "Legacy Card", "minute": "40'", "type": "yellow"}}
+		var summary map[string]any
+		get(t, "/v1/matches/"+id, &summary)
+		validateSchema(t, document, "MatchSummary", summary)
+		assertWire(t, "legacy summary scorers", summary["scorers"], wantScorers)
+		assertWire(t, "legacy summary cards", summary["cards"], wantCards)
+		var listed []map[string]any
+		get(t, "/v1/competitions/world-cup/2026/matches", &listed)
+		var profile map[string]any
+		get(t, "/v1/competitions/world-cup/2026/teams/"+home, &profile)
+		schedule := profile["schedule"].([]any)
+		found := 0
+		for _, rows := range [][]any{wire(t, listed).([]any), schedule} {
+			for _, row := range rows {
+				if match := row.(map[string]any); match["id"] == id {
+					found++
+					validateSchema(t, document, "Match", match)
+					assertWire(t, "legacy list scorers", match["scorers"], wantScorers)
+					assertWire(t, "legacy list cards", match["cards"], wantCards)
+				}
+			}
+		}
+		if found != 2 {
+			t.Fatalf("legacy match on %d of 2 list projections", found)
 		}
 	})
 
