@@ -68,10 +68,11 @@ function mapBracketMatch(ev: any, slug: KnockoutRoundSlug): BracketMatch | null 
   // ahead of the `winner` flag — ESPN sets that flag inconsistently on shootout
   // matches: sometimes it's missing (1998), sometimes it's plain wrong (2010's
   // R16 marks Japan, not Paraguay, despite Paraguay winning the shootout 5–3).
+  // Only once the match is over: a live shootout's totals are partial.
   const hs = Number(home.shootoutScore);
   const as = Number(away.shootoutScore);
   const shootoutWinnerId =
-    Number.isFinite(hs) && Number.isFinite(as) && hs !== as
+    state === 'finished' && Number.isFinite(hs) && Number.isFinite(as) && hs !== as
       ? String((hs > as ? home : away).team.id)
       : null;
   const winnerId = shootoutWinnerId

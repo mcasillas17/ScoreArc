@@ -238,7 +238,7 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, error) {
 	}
 	winnerID, err := shootoutFirstWinnerID(
 		string(home.Team.ID), string(away.Team.ID),
-		home.ShootoutScore, away.ShootoutScore, home.Winner, away.Winner,
+		home.ShootoutScore, away.ShootoutScore, home.Winner, away.Winner, state == MatchStateFinished,
 	)
 	if err != nil {
 		return BracketMatch{}, err

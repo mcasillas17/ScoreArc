@@ -24,13 +24,15 @@ func parseSuppliedShootoutScore(raw json.RawMessage) (int, bool, error) {
 	return int(score), true, nil
 }
 
-// shootoutFirstWinnerID gives decisive validated totals precedence over provider
-// flags. Without decisive totals, two asserted winners are explicitly ambiguous.
-// Callers validate the home/away identities before resolving the winner.
+// shootoutFirstWinnerID gives a finished match's decisive validated totals
+// precedence over provider flags; a live shootout's totals are partial and name
+// no winner. Without decisive totals, two asserted winners are explicitly
+// ambiguous. Callers validate the home/away identities before resolving the
+// winner.
 func shootoutFirstWinnerID(
 	homeID, awayID string,
 	homeShootout, awayShootout json.RawMessage,
-	homeWinner, awayWinner bool,
+	homeWinner, awayWinner, finished bool,
 ) (*string, error) {
 	hs, homeSupplied, err := parseSuppliedShootoutScore(homeShootout)
 	if err != nil {
@@ -40,13 +42,18 @@ func shootoutFirstWinnerID(
 	if err != nil {
 		return nil, err
 	}
-	if homeSupplied && awaySupplied && hs != as {
+	decisive := homeSupplied && awaySupplied && hs != as
+	// A live shootout's totals are partial: only a finished one is the result.
+	if decisive && finished {
 		if hs > as {
 			return &homeID, nil
 		}
 		return &awayID, nil
 	}
 	if homeWinner && awayWinner {
+		if decisive {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("ambiguous winner flags without decisive shootout totals")
 	}
 	if homeWinner {
