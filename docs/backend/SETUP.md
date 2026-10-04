@@ -73,8 +73,10 @@ psql --version              # expect psql (PostgreSQL) 16.x or newer (matches Ne
 brew install golang-migrate
 migrate -version
 ```
-(Alternative: apply the `.sql` files directly with `psql -f` — see §5.3. `migrate`
-is nicer for versioned up/down.)
+Required for any database the reader or ingester runs against: both refuse to
+start without the `schema_migrations` ledger `migrate` keeps
+([schema readiness](RELEASES.md#schema-readiness)). Applying the `.sql` files with
+`psql -f` (§5.3) creates no ledger, so it suits only throwaway databases.
 
 ### 1.7 sqlc — optional for future generated query layers
 ```bash

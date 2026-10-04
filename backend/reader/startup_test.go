@@ -93,7 +93,7 @@ func freePort(t *testing.T) string {
 func runReader(t *testing.T, admin *pgxpool.Pool, port string) <-chan error {
 	t.Helper()
 	conn := admin.Config().ConnConfig
-	t.Setenv("DATABASE_URL", fmt.Sprintf("postgres://scorearc_reader_test:reader_test_password@%s:%d/%s?sslmode=disable",
+	t.Setenv("DATABASE_URL", fmt.Sprintf("postgres://scorearc_reader_test:reader_test_password@%s:%d/%s?sslmode=disable&application_name=reader_startup_test",
 		conn.Host, conn.Port, conn.Database))
 	t.Setenv("PORT", port)
 	done := make(chan error, 1)
@@ -130,6 +130,23 @@ func TestReaderStartupFailsClosedBeforeListening(t *testing.T) {
 		if conn, err := net.DialTimeout("tcp", "127.0.0.1:"+port, time.Second); err == nil {
 			conn.Close()
 			t.Fatal("listener opened despite refused readiness")
+		}
+		// The refused run's pool is closed, not leaked. Backend exit trails
+		// the client's Terminate, so allow a moment.
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			var sessions int
+			if err := admin.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity
+				WHERE application_name = 'reader_startup_test'`).Scan(&sessions); err != nil {
+				t.Fatal(err)
+			}
+			if sessions == 0 {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%d reader sessions still open after refused startup", sessions)
+			}
+			time.Sleep(50 * time.Millisecond)
 		}
 	})
 
