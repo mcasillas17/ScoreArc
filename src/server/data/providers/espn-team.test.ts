@@ -168,3 +168,14 @@ describe('mapTeamSchedule live minute', () => {
     expect([match.state, match.minute]).toEqual(['live', minute]);
   });
 });
+
+describe('mapTeamSchedule placeholder crest', () => {
+  it('serves an empty provider logo as a null crest, as the reader does', () => {
+    const event = structuredClone((scheduleRaw as any).events[0]);
+    const competitor = event.competitions[0].competitors[1];
+    delete competitor.team.logos;
+    competitor.team.logo = '';
+    const [match] = mapTeamSchedule({ ...(scheduleRaw as any), events: [event] });
+    expect(match[competitor.homeAway as 'home' | 'away'].crestUrl).toBeNull();
+  });
+});

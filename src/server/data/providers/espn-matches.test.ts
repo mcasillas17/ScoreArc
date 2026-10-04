@@ -100,3 +100,20 @@ describe('scoreboard shootout precedence', () => {
     expect([match.homeScore, match.awayScore]).toEqual([1, 1]);
   });
 });
+
+// ESPN sends a knockout placeholder ("Round of 32 5 Winner") with logo "".
+// Empty is absent, as in the Go mapper: the crest is null, never "".
+describe('placeholder crest', () => {
+  it.each([
+    [{ logo: '' }, null],
+    [{ logo: '', logos: [{ href: 'https://a.espncdn.com/x.png' }] }, 'https://a.espncdn.com/x.png'],
+    [{ logos: [{ href: '' }] }, null],
+  ])('maps team logo %j to crest %j', (logos, crest) => {
+    const event = structuredClone((raw as any).events[0]);
+    const team = event.competitions[0].competitors[1].team;
+    delete team.logo;
+    delete team.logos;
+    Object.assign(team, logos);
+    expect(mapScoreboard({ events: [event] })[0].away.crestUrl).toBe(crest);
+  });
+});

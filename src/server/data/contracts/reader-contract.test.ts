@@ -609,8 +609,11 @@ describe('reader contract: standings, bracket, leaders, news', () => {
     expect(lc.expected).toEqual({ frontend: null, reader: null });
     expect([liveMatch.state, liveMatch.minute]).toEqual(['live', null]);
     expect([liveSchedule.state, liveSchedule.minute]).toEqual(['live', null]);
-    // A placeholder slot has no crest: null in both contracts.
+    // A placeholder slot has no crest: null in both contracts, on the bracket
+    // and on the match list built from the same recorded scoreboard events.
     expect(placeholder!.away).toMatchObject({ placeholder: true, crestUrl: null });
+    const listed = (await store.getFixtures(wc, '20260704-20260704')).find(m => m.id === placeholder!.id)!;
+    expect(listed.away).toEqual({ id: placeholder!.away.id, name: placeholder!.away.name, abbr: placeholder!.away.abbr, crestUrl: null });
     // One knockout vocabulary: the reader's slugs (the Go mapper, reader order
     // and OpenAPI enum agree in the Go suite) are exactly the frontend union,
     // checked by tsc. The reader's additive BracketRound.name is the frontend's

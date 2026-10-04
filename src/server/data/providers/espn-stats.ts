@@ -34,7 +34,7 @@ export function mapLeaders(raw: unknown, category: string, limit = 20): StatLead
         teamId: team.id != null ? String(team.id) : null,
         teamAbbr: team.abbreviation ?? '',
         teamName: team.displayName ?? '',
-        teamCrestUrl: team.logo ?? team.logos?.[0]?.href ?? null,
+        teamCrestUrl: team.logo || team.logos?.[0]?.href || null,
         value: Number(l?.value ?? 0),
         matches: parseMatches(l?.displayValue),
       };

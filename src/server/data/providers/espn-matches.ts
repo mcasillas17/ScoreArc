@@ -46,7 +46,7 @@ function mapTeam(t: any): Team {
     id: String(t.id),
     name: t.displayName,
     abbr: t.abbreviation,
-    crestUrl: t.logo ?? t.logos?.[0]?.href ?? null,
+    crestUrl: t.logo || t.logos?.[0]?.href || null,
   };
 }
 

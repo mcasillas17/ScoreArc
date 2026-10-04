@@ -836,6 +836,23 @@ func TestReaderContract(t *testing.T) {
 				if away := actual["away"].(map[string]any); away["placeholder"] != true || away["crestUrl"] != nil {
 					t.Fatalf("placeholder slot %v, want a null crest", away)
 				}
+				// The match list maps the same recorded events: also null.
+				listed, err := espn.MapScoreboard(contractFixture(t, fixtureName(t, raw, "bracket")))
+				if err != nil {
+					t.Fatal(err)
+				}
+				found := false
+				for _, m := range listed {
+					if m.ID == frontend["id"] {
+						found = true
+						if m.Away.CrestURL != nil {
+							t.Fatalf("listed placeholder crest %q, want null", *m.Away.CrestURL)
+						}
+					}
+				}
+				if !found {
+					t.Fatal("placeholder missing from the mapped match list")
+				}
 			}
 			assertWire(t, name, actual, expected)
 		}
