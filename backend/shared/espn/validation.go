@@ -24,37 +24,19 @@ func parseSuppliedShootoutScore(raw json.RawMessage) (int, bool, error) {
 	return int(score), true, nil
 }
 
-// shootoutFirstWinnerID gives a finished match's decisive validated totals
+// shootoutFirstWinnerID gives a finished match's decisive shootout aggregate
 // precedence over provider flags; a live shootout's totals are partial and name
-// no winner. Where the structured totals name no aggregate (shootoutTotals'
-// rule), the note's aggregate stands in, as on the scoreboard; nil means no
-// note tier. Without a decisive aggregate, two asserted winners are explicitly
-// ambiguous. Callers validate the home/away identities before resolving the
-// winner.
+// no winner. The caller resolves the aggregate from its validated evidence.
+// Without a decisive aggregate, two asserted winners are explicitly ambiguous.
+// Callers validate the home/away identities before resolving the winner.
 func shootoutFirstWinnerID(
 	homeID, awayID string,
-	homeShootout, awayShootout json.RawMessage,
-	note *Shootout,
+	shootout *Shootout,
 	homeWinner, awayWinner, finished bool,
 ) (*string, error) {
-	hs, homeSupplied, err := parseSuppliedShootoutScore(homeShootout)
-	if err != nil {
-		return nil, err
-	}
-	as, awaySupplied, err := parseSuppliedShootoutScore(awayShootout)
-	if err != nil {
-		return nil, err
-	}
-	if (!homeSupplied || !awaySupplied || (hs == 0 && as == 0)) && note != nil {
-		hs, as, homeSupplied, awaySupplied = note.HomeScore, note.AwayScore, true, true
-	}
-	decisive := homeSupplied && awaySupplied && hs != as
-	// A live shootout's totals are partial: only a finished one is the result.
+	decisive := ShootoutWinner(shootout, homeID, awayID) != nil
 	if decisive && finished {
-		if hs > as {
-			return &homeID, nil
-		}
-		return &awayID, nil
+		return ShootoutWinner(shootout, homeID, awayID), nil
 	}
 	if homeWinner && awayWinner {
 		if decisive {
@@ -62,13 +44,7 @@ func shootoutFirstWinnerID(
 		}
 		return nil, fmt.Errorf("ambiguous winner flags without decisive shootout totals")
 	}
-	if homeWinner {
-		return &homeID, nil
-	}
-	if awayWinner {
-		return &awayID, nil
-	}
-	return nil, nil
+	return flaggedWinnerID(homeID, awayID, homeWinner, awayWinner), nil
 }
 
 // rawObservationStatus distinguishes explicit incompletion from missing/null

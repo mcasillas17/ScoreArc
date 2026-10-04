@@ -1,6 +1,6 @@
 import type { BracketRound, BracketMatch, BracketTeam, KnockoutRoundSlug } from '../types';
 import { mapState } from '../state';
-import { flaggedWinnerId, parseShootout, shootoutTotals, shootoutWinnerId } from './espn-matches';
+import { flaggedWinnerId, isScoreboardCount, parseShootout, shootoutTotals, shootoutWinnerId } from './espn-matches';
 
 const ROUND_ORDER = [
   'round-of-32',
@@ -63,6 +63,11 @@ function mapBracketMatch(ev: any, slug: KnockoutRoundSlug): BracketMatch | null 
   const status = ev.status;
   if (!status?.type) return null;
 
+  // A malformed structured total rejects the bracket by the scoreboard window's
+  // rule, also on a season without bracket dates, which reads one scoreboard.
+  for (const competitor of [home, away]) {
+    if (!isScoreboardCount(competitor.shootoutScore)) throw new Error('Malformed scoreboard score');
+  }
   const state = mapState(status.type.state, status.type.completed);
   const note = comp.notes?.[0]?.text ?? null;
   const homeTeam = mapBracketTeam(home.team);

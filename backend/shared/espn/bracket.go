@@ -242,19 +242,21 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, error) {
 		note = &text
 	}
 	homeTeam, awayTeam := mapBracketTeam(home.Team), mapBracketTeam(away.Team)
-	// The scoreboard's tiers: structured totals, then the anchored note. The
+	// The scoreboard's rule and tiers: a malformed structured total rejects the
+	// bracket; otherwise structured totals, then the anchored note. The
 	// aggregate rides to the ingester's candidate and decides a finished winner.
-	var noteShootout *Shootout
-	if note != nil {
-		noteShootout = ParseShootoutNote(*note, homeTeam.Name, awayTeam.Name)
+	for _, competitor := range []*rawBracketCompetitor{home, away} {
+		if !scoreboardTotal(competitor.ShootoutScore) {
+			return BracketMatch{}, fmt.Errorf("invalid shootout score")
+		}
 	}
 	shootout := shootoutTotals(home.ShootoutScore, away.ShootoutScore)
-	if shootout == nil {
-		shootout = noteShootout
+	if shootout == nil && note != nil {
+		shootout = ParseShootoutNote(*note, homeTeam.Name, awayTeam.Name)
 	}
 	winnerID, err := shootoutFirstWinnerID(
 		string(home.Team.ID), string(away.Team.ID),
-		home.ShootoutScore, away.ShootoutScore, noteShootout, home.Winner, away.Winner, state == MatchStateFinished,
+		shootout, home.Winner, away.Winner, state == MatchStateFinished,
 	)
 	if err != nil {
 		return BracketMatch{}, err

@@ -651,39 +651,40 @@ func TestReaderContract(t *testing.T) {
 			c := entry.(map[string]any)
 			data, sideIDs := withCase("scoreboard", c)
 			mapped, err := espn.MapScoreboard(data)
-			if c["expected"] == "error" {
-				if err == nil {
-					t.Fatalf("%s: malformed totals accepted", c["name"])
-				}
-				continue
-			}
-			if err != nil || len(mapped) != 1 {
-				t.Fatalf("%s: %v", c["name"], err)
-			}
-			assertWire(t, c["name"].(string), wire(t, mapped[0].Shootout), c["expected"])
 			var winner any
 			if side, ok := c["winner"].(string); ok {
 				winner = sideIDs[side]
 			}
-			assertWire(t, c["name"].(string)+" winner", wire(t, mapped[0].WinnerID), winner)
-			if *mapped[0].HomeScore != 1 || *mapped[0].AwayScore != 1 {
-				t.Fatalf("%s: shootout replaced regulation scores", c["name"])
+			if c["expected"] == "error" {
+				if err == nil {
+					t.Fatalf("%s: malformed totals accepted", c["name"])
+				}
+			} else {
+				if err != nil || len(mapped) != 1 {
+					t.Fatalf("%s: %v", c["name"], err)
+				}
+				assertWire(t, c["name"].(string), wire(t, mapped[0].Shootout), c["expected"])
+				assertWire(t, c["name"].(string)+" winner", wire(t, mapped[0].WinnerID), winner)
+				if *mapped[0].HomeScore != 1 || *mapped[0].AwayScore != 1 {
+					t.Fatalf("%s: shootout replaced regulation scores", c["name"])
+				}
 			}
 
-			// The bracket comes from the same scoreboard window, whose
-			// MapScoreboard rejects the malformed cases above before MapBracket
-			// runs, so the bracket takes every other case: the same aggregate
-			// for the ingester's candidate and the same finished winner.
+			// The bracket mapper takes every case too: the scoreboard's rule
+			// rejects a malformed total, and otherwise it yields the same
+			// aggregate for the ingester's candidate and the same finished winner.
 			data, sideIDs = withCase("bracket", c)
 			bracket, err := espn.MapBracket(data)
+			if c["expected"] == "error" {
+				if err == nil {
+					t.Fatalf("%s: bracket accepted malformed totals", c["name"])
+				}
+				continue
+			}
 			if err != nil || len(bracket) != 1 {
 				t.Fatalf("%s bracket: %v", c["name"], err)
 			}
 			assertWire(t, c["name"].(string)+" bracket aggregate", wire(t, bracket[0].Shootout), c["expected"])
-			winner = nil
-			if side, ok := c["winner"].(string); ok {
-				winner = sideIDs[side]
-			}
 			assertWire(t, c["name"].(string)+" bracket winner", wire(t, bracket[0].WinnerID), winner)
 		}
 	})

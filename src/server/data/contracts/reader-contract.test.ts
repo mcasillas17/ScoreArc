@@ -523,19 +523,25 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     expect([match.homeScore, match.awayScore]).toEqual([1, 1]);
   });
 
-  // The bracket reads the same scoreboard window, so its finished winner takes
-  // the same tiers: structured totals, then the anchored note, then the flags.
-  // The TS BracketMatch carries no aggregate (the Go suite checks that one).
+  // The bracket's finished winner takes the scoreboard's tiers: structured
+  // totals, then the anchored note, then the flags, and a malformed total
+  // rejects it -- through the dated scoreboard window, and through the single
+  // scoreboard a season without bracket dates (Leagues Cup 2026) reads. The TS
+  // BracketMatch carries no aggregate (the Go suite checks that one).
+  const undated = { ...wc, season: { ...wc.season, bracketDatesRange: undefined } };
   it.each(vectors.scoreboard.shootoutPrecedence.cases)('applies the shared shootout precedence to the bracket: $name', async (c) => {
     const { event, sideIds } = withShootoutCase(bracketRaw.events, c);
-    const bracket = storeOver(windowOver(bracketRaw.events.map(e => (e.id === event.id ? event : e)))).store.getBracket(wc);
-    if (c.expected === 'error') {
-      await expect(bracket).rejects.toThrow(/Malformed scoreboard score/);
-      return;
+    const events = bracketRaw.events.map(e => (e.id === event.id ? event : e));
+    for (const [rc, provider] of [[wc, windowOver(events)], [undated, () => ({ events })]] as const) {
+      const bracket = storeOver(provider).store.getBracket(rc);
+      if (c.expected === 'error') {
+        await expect(bracket).rejects.toThrow(/Malformed scoreboard score/);
+        continue;
+      }
+      const match = (await bracket).flatMap(r => r.matches).find(m => m.id === event.id)!;
+      expect(match.winnerId).toBe(c.winner ? sideIds[c.winner] : null);
+      expect([match.homeScore, match.awayScore]).toEqual([1, 1]);
     }
-    const match = (await bracket).flatMap(r => r.matches).find(m => m.id === event.id)!;
-    expect(match.winnerId).toBe(c.winner ? sideIds[c.winner] : null);
-    expect([match.homeScore, match.awayScore]).toEqual([1, 1]);
   });
 
   it('maps the recorded scoreboard core fields identically to the Go mapper vector', async () => {
