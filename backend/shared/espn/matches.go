@@ -189,8 +189,10 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 			winnerID = &id
 		}
 
+		// A live minute is ESPN's display clock; without one it is unknown (nil),
+		// never "" (T16.2 live-minute contract).
 		var minute *string
-		if state == MatchStateLive {
+		if state == MatchStateLive && status.DisplayClock != "" {
 			clock := status.DisplayClock
 			minute = &clock
 		}

@@ -507,10 +507,14 @@ func TestReaderContract(t *testing.T) {
 		}
 		withClock := live["withClock"].(map[string]any)
 		assertWire(t, "live minute", minuteOf(withClock["displayClock"]), withClock["expected"].(map[string]any)["reader"])
-		if got := minuteOf(nil); got != live["withoutClock"].(map[string]any)["expected"].(map[string]any)["reader"] {
-			t.Fatalf("gap changed: a clockless live minute is now %#v; update reader-contract.json", got)
+		// Unknown is an explicit JSON null in both contracts, never "" or omitted.
+		expected := live["withoutClock"].(map[string]any)["expected"].(map[string]any)
+		if expected["reader"] != nil || expected["frontend"] != nil {
+			t.Fatalf("clockless live minute vector %v, want null for both", expected)
 		}
-		gap("T16.2-live-minute")
+		if got := minuteOf(nil); got != nil {
+			t.Fatalf("a clockless live minute is %#v, want null", got)
+		}
 	})
 
 	t.Run("recorded own goal loses its flag in the reader", func(t *testing.T) {
@@ -693,7 +697,7 @@ func TestReaderContract(t *testing.T) {
 			t.Fatal("gap changed: reader BracketRound no longer carries a name; update reader-contract.json")
 		}
 		gap("T16.2-bracket-round-name")
-		// A clockless live knockout match: the Go mapper stores "" where the frontend has null.
+		// A clockless live knockout match is null in both contracts.
 		liveClockless := vector(t, raw, "bracket", "liveClockless").(map[string]any)
 		var bracketRaw map[string]any
 		if err := json.Unmarshal(contractFixture(t, fixtureName(t, raw, "bracket")), &bracketRaw); err != nil {
@@ -714,14 +718,23 @@ func TestReaderContract(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		expectedMinute := liveClockless["expected"].(map[string]any)["reader"]
+		if expected := liveClockless["expected"].(map[string]any); expected["reader"] != nil || expected["frontend"] != nil {
+			t.Fatalf("clockless bracket minute vector %v, want null for both", expected)
+		}
+		found := false
 		for _, match := range liveMatches {
 			if match.ID == liveClockless["eventId"] {
-				if match.State != espn.MatchStateLive || match.Minute == nil || *match.Minute != expectedMinute {
-					t.Fatalf("gap changed: clockless live bracket minute is %v; update reader-contract.json", match.Minute)
+				found = true
+				if match.State != espn.MatchStateLive || match.Minute != nil {
+					t.Fatalf("clockless live bracket match %s minute %v, want null", match.State, match.Minute)
 				}
-				gap("T16.2-bracket-live-minute")
+				if minute, ok := wire(t, match).(map[string]any)["minute"]; !ok || minute != nil {
+					t.Fatal("clockless live bracket minute must serialize as null")
+				}
 			}
+		}
+		if !found {
+			t.Fatal("clockless live bracket match missing")
 		}
 		for _, field := range []struct{ schema, property string }{{"BracketMatch", "round"}, {"BracketRound", "slug"}} {
 			property := schemaOf(t, document, field.schema).Properties[field.property]

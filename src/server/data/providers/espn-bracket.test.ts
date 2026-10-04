@@ -178,3 +178,14 @@ describe('mapBracket — club placeholders', () => {
     expect(match.away.placeholder).toBe(false);
   });
 });
+
+describe('mapBracket live minute', () => {
+  it.each([["60'", "60'"], [undefined, null], ['', null]])('maps display clock %j to %j', (clock, minute) => {
+    const event = structuredClone((raw as any).events[0]);
+    event.status.type = { ...event.status.type, state: 'in', completed: false, name: 'STATUS_FIRST_HALF' };
+    if (clock === undefined) delete event.status.displayClock;
+    else event.status.displayClock = clock;
+    const [match] = mapBracket({ events: [event] }).flatMap((r) => r.matches);
+    expect([match.state, match.minute]).toEqual(['live', minute]);
+  });
+});

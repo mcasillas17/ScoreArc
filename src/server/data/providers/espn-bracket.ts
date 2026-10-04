@@ -91,7 +91,7 @@ function mapBracketMatch(ev: any, slug: KnockoutRoundSlug): BracketMatch | null 
     state,
     statusDetail: status.type.shortDetail ?? '',
     statusName: status.type.name ?? '',
-    minute: state === 'live' ? (status.displayClock ?? null) : null,
+    minute: state === 'live' ? status.displayClock || null : null,
     winnerId,
     note,
   };

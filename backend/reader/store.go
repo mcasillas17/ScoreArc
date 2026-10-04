@@ -46,8 +46,10 @@ func jsonInto(raw []byte, destination any) error {
 	return json.Unmarshal(raw, destination)
 }
 
+// NULLIF: rows written before the T16.2 mapper fix hold '' for a live match
+// without ESPN's display clock; the contract is null (no known minute).
 const matchesSQL = `
-SELECT m.id, m.kickoff, m.state, m.minute, m.status_detail, m.status_name,
+SELECT m.id, m.kickoff, m.state, NULLIF(m.minute, ''), m.status_detail, m.status_name,
        m.home_score, m.away_score, m.winner_id, m.note,
        ht.id, ht.name, ht.abbr, ht.crest_url,
        at.id, at.name, at.abbr, at.crest_url,
@@ -177,7 +179,7 @@ var bracketRoundNames = map[string]string{
 }
 
 const bracketSQL = `
-SELECT m.id, m.round, m.kickoff, m.state, m.minute, m.status_detail, m.status_name,
+SELECT m.id, m.round, m.kickoff, m.state, NULLIF(m.minute, ''), m.status_detail, m.status_name,
        m.home_score, m.away_score, m.winner_id, m.note,
        m.home_placeholder, m.away_placeholder,
        ht.id, ht.name, ht.abbr, ht.crest_url,
@@ -473,7 +475,7 @@ func (s *Store) teamSquad(
 // the matches this team plays in. No new ingest -- match already carries both
 // team ids.
 const teamScheduleSQL = `
-SELECT m.id, m.kickoff, m.state, m.minute, m.status_detail, m.status_name,
+SELECT m.id, m.kickoff, m.state, NULLIF(m.minute, ''), m.status_detail, m.status_name,
        m.home_score, m.away_score, m.winner_id, m.note,
        ht.id, ht.name, ht.abbr, ht.crest_url,
        at.id, at.name, at.abbr, at.crest_url,

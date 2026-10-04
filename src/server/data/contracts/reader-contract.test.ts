@@ -544,7 +544,8 @@ describe('reader contract: standings, bracket, leaders, news', () => {
       .toEqual(vectors.bracket.table);
     const placeholder = rounds.flatMap(r => r.matches).find(m => m.id === vectors.bracket.frontendPlaceholder.id);
     expect(placeholder).toEqual(vectors.bracket.frontendPlaceholder);
-    // A clockless live knockout or team-schedule match keeps minute null here.
+    // A clockless live knockout or team-schedule match has minute null in both
+    // contracts (the reader also serves a stored '' as null; go-db proves it).
     const lc = vectors.bracket.liveClockless;
     const liveEvents = bracketRaw.events.map(e => (e.id === lc.eventId ? setLive(e, null) : e));
     const liveRounds = await storeOver(windowOver(liveEvents)).store.getBracket(wc);
@@ -552,11 +553,9 @@ describe('reader contract: standings, bracket, leaders, news', () => {
     const scheduleEvent = structuredClone(teamScheduleRaw.events[0]);
     scheduleEvent.competitions[0] = setLive(scheduleEvent.competitions[0], null); // Team schedules nest status here.
     const [liveSchedule] = mapTeamSchedule({ ...teamScheduleRaw, events: [scheduleEvent] });
-    gap('T16.2-bracket-live-minute', () => {
-      expect([liveMatch.state, liveMatch.minute]).toEqual(['live', lc.expected.frontend]);
-      expect([liveSchedule.state, liveSchedule.minute]).toEqual(['live', lc.expected.frontend]);
-      expect(lc.expected.reader).toBe('');
-    });
+    expect(lc.expected).toEqual({ frontend: null, reader: null });
+    expect([liveMatch.state, liveMatch.minute]).toEqual(['live', null]);
+    expect([liveSchedule.state, liveSchedule.minute]).toEqual(['live', null]);
     gap('T16.2-placeholder-crest', () => {
       expect(placeholder!.away).toMatchObject({ placeholder: true, crestUrl: '' });
     });
@@ -684,7 +683,7 @@ describe('reader contract: match windows and query semantics', () => {
     if (c.method === 'getUpcoming') expect(matches.every(m => m.state === 'scheduled')).toBe(true);
   });
 
-  it('leaves a live minute undefined without ESPN\'s display clock', async () => {
+  it('emits a null live minute without ESPN\'s display clock', async () => {
     const live = q.liveMinute;
     const minuteOf = async (clock: string | null) => {
       const [match] = await storeOver(windowOver([setLive(scoreboard.events[0], clock)])).store.getFixtures(wc, '20260629-20260629');
@@ -692,12 +691,11 @@ describe('reader contract: match windows and query semantics', () => {
     };
     expect((await minuteOf(live.withClock.displayClock)).minute).toBe(live.withClock.expected.frontend);
     const clockless = await minuteOf(null);
-    gap('T16.2-live-minute', () => {
-      // A frontend mapper defect: Match.minute is declared string | null (pinned above).
-      expect(clockless.minute).toBeUndefined();
-      expect(JSON.parse(JSON.stringify(clockless))).not.toHaveProperty('minute');
-      expect(live.withoutClock.expected).toEqual({ frontend: 'absent', reader: '' });
-    });
+    // Match.minute is string | null (pinned above): unknown is an explicit null
+    // that survives JSON, exactly what the Go mapper and the reader emit.
+    expect(live.withoutClock.expected).toEqual({ frontend: null, reader: null });
+    expect(clockless.minute).toBeNull();
+    expect(JSON.parse(JSON.stringify(clockless))).toHaveProperty('minute', null);
   });
 
   it.each(q.outOfSeason)('clamps $competition/$season to its own season without a provider call', async (o) => {

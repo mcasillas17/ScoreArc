@@ -214,7 +214,7 @@ export function mapTeamSchedule(raw: unknown): Match[] {
         id: String(ev.id),
         kickoff: ev.date,
         state,
-        minute: state === 'live' ? status?.displayClock ?? null : null,
+        minute: state === 'live' ? status?.displayClock || null : null,
         statusDetail: type?.shortDetail ?? '',
         statusName: type?.name ?? '',
         home: mapTeam(home.team),

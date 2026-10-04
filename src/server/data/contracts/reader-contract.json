@@ -141,11 +141,6 @@
    "mismatch": "A standings row missing a stat, or a table with no entries, is zero-filled or kept empty by the frontend mapper; Go MapStandings rejects the whole payload, so the reader keeps the previous standings.",
    "suites": ["ts", "go"]
   },
-  "T16.2-live-minute": {
-   "task": "T16.2",
-   "mismatch": "Three-way: the declared frontend contract is Match.minute string | null; the implemented frontend mapper (espn-matches.ts) yields undefined for a live event without ESPN's displayClock, which JSON drops (a frontend defect); the Go mapper stores an empty string. Closing the gap means both emit null, not teaching the reader to omit the field.",
-   "suites": ["ts", "go"]
-  },
   "T10.3-team-cache-doc": {
    "task": "T10.3",
    "mismatch": "handleTeam serves Cache-Control public, max-age=120, but OpenAPI documents the team route with StandardCacheControl (public, max-age=60).",
@@ -155,25 +150,20 @@
    "task": "T10.3",
    "mismatch": "The frontend TeamProfile.record is the provider's record item (summary string, gamesPlayed, points, goalDifference from provider stats); the reader derives W-D-L, games, points and goal difference from its own standing row.",
    "suites": ["go-db"]
-  },
-  "T16.2-bracket-live-minute": {
-   "task": "T16.2",
-   "mismatch": "For a live match without ESPN's displayClock, the frontend bracket and team-schedule mappers emit minute null, while the Go bracket mapper and the stored match minute are an empty string, which the reader serves on BracketMatch.minute and TeamProfile.schedule[].minute.",
-   "suites": ["ts", "go"]
   }
  },
  "methods": {
   "getMatches": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T16.2-scorer-identity", "T16.2-nested-team-id", "T10.2-team-stats", "T16.2-match-id", "T16.2-shootout-source", "T21.4-dependency-error-logging", "T16.2-live-minute"]
+   "gaps": ["T10.1-match-query", "T16.2-scorer-identity", "T16.2-nested-team-id", "T10.2-team-stats", "T16.2-match-id", "T16.2-shootout-source", "T21.4-dependency-error-logging"]
   },
   "getFixtures": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T16.2-match-id", "T16.2-shootout-source", "T21.4-dependency-error-logging", "T16.2-live-minute"]
+   "gaps": ["T10.1-match-query", "T16.2-match-id", "T16.2-shootout-source", "T21.4-dependency-error-logging"]
   },
   "getLiveWindow": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T16.2-match-id", "T16.2-shootout-source", "T21.4-dependency-error-logging", "T16.2-live-minute"]
+   "gaps": ["T10.1-match-query", "T16.2-match-id", "T16.2-shootout-source", "T21.4-dependency-error-logging"]
   },
   "getUpcoming": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
@@ -185,7 +175,7 @@
   },
   "getBracket": {
    "reader": "/v1/competitions/{comp}/{season}/bracket",
-   "gaps": ["T16.2-placeholder-crest", "T16.2-bracket-round-name", "T16.2-match-id", "T21.4-dependency-error-logging", "T16.2-round-slug-type", "T16.2-bracket-live-minute"]
+   "gaps": ["T16.2-placeholder-crest", "T16.2-bracket-round-name", "T16.2-match-id", "T21.4-dependency-error-logging", "T16.2-round-slug-type"]
   },
   "getMatchSummary": {
    "reader": "/v1/matches/{id}",
@@ -201,7 +191,7 @@
   },
   "getTeam": {
    "reader": "/v1/competitions/{comp}/{season}/teams/{teamId}",
-   "gaps": ["T10.3-team", "T10.3-team-location", "T10.3-partial-failure", "T10.3-standing-summary", "T16.2-match-id", "T10.3-team-cache-doc", "T10.3-team-record", "T16.2-bracket-live-minute", "T10.3-squad", "T10.3-squad-fields"]
+   "gaps": ["T10.3-team", "T10.3-team-location", "T10.3-partial-failure", "T10.3-standing-summary", "T16.2-match-id", "T10.3-team-cache-doc", "T10.3-team-record", "T10.3-squad", "T10.3-squad-fields"]
   },
   "getSquad": {
    "reader": "/v1/competitions/{comp}/{season}/teams/{teamId}",
@@ -2017,7 +2007,7 @@
    "eventId": "760486",
    "expected": {
     "frontend": null,
-    "reader": ""
+    "reader": null
    }
   }
  },
@@ -3533,8 +3523,8 @@
    },
    "withoutClock": {
     "expected": {
-     "frontend": "absent",
-     "reader": ""
+     "frontend": null,
+     "reader": null
     }
    }
   }

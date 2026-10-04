@@ -49,3 +49,22 @@ describe('mapScoreboard resilience', () => {
     expect(result).toEqual([]);
   });
 });
+
+// Match.minute is `string | null`: a live event ESPN sends without a display
+// clock has no known minute -- null, never undefined (which JSON drops) and
+// never '' (which renders as a blank clock).
+describe('live minute', () => {
+  const live = (clock?: string) => {
+    const event = structuredClone((raw as any).events[0]);
+    event.status.type = { ...event.status.type, state: 'in', completed: false, name: 'STATUS_FIRST_HALF' };
+    if (clock === undefined) delete event.status.displayClock;
+    else event.status.displayClock = clock;
+    return mapScoreboard({ events: [event] })[0];
+  };
+
+  it.each([["60'", "60'"], [undefined, null], ['', null]])('maps display clock %j to %j', (clock, minute) => {
+    const match = live(clock);
+    expect(match.state).toBe('live');
+    expect(match.minute).toBe(minute);
+  });
+});

@@ -428,5 +428,49 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		characterized["T10.3-team-location"] = true
 	})
 
+	t.Run("a stored clockless live minute is served as null on every projection", func(t *testing.T) {
+		// Rows written before the mapper fix hold '' for a live match without
+		// ESPN's display clock. Synthetic, scoped to its own kickoff date.
+		id := "018f0000-0000-7000-8000-000000016021"
+		if _, err := pool.Exec(ctx, `INSERT INTO match (id, competition_id, season_id, round, kickoff, state, home_team_id, away_team_id,
+			home_score, away_score, minute, status_detail, status_name, source)
+			VALUES ($1,'world-cup','2026','final','2026-07-18T19:00:00Z','live','nat-arg','nat-fra',0,0,'','HT','STATUS_FIRST_HALF','espn')`, id); err != nil {
+			t.Fatal(err)
+		}
+		minuteOf := func(matches []map[string]any) any {
+			for _, match := range matches {
+				if match["id"] == id {
+					if value, ok := match["minute"]; ok {
+						return value
+					}
+					t.Fatal("minute omitted")
+				}
+			}
+			t.Fatal("clockless match missing")
+			return nil
+		}
+		var listed []map[string]any
+		get(t, "/v1/competitions/world-cup/2026/matches", &listed)
+		var rounds []map[string]any
+		get(t, "/v1/competitions/world-cup/2026/bracket", &rounds)
+		var knockout []map[string]any
+		for _, round := range rounds {
+			for _, match := range round["matches"].([]any) {
+				knockout = append(knockout, match.(map[string]any))
+			}
+		}
+		var profile map[string]any
+		get(t, "/v1/competitions/world-cup/2026/teams/nat-arg", &profile)
+		var schedule []map[string]any
+		for _, match := range profile["schedule"].([]any) {
+			schedule = append(schedule, match.(map[string]any))
+		}
+		for label, minute := range map[string]any{"matches": minuteOf(listed), "bracket": minuteOf(knockout), "schedule": minuteOf(schedule)} {
+			if minute != nil {
+				t.Fatalf("%s minute %#v, want null", label, minute)
+			}
+		}
+	})
+
 	assertCharacterizedGaps(t, raw, "go-db", characterized)
 }

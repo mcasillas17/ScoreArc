@@ -156,3 +156,15 @@ describe('mapTeamSchedule', () => {
     expect(mapTeamSchedule(null)).toEqual([]);
   });
 });
+
+describe('mapTeamSchedule live minute', () => {
+  it.each([["60'", "60'"], [undefined, null], ['', null]])('maps display clock %j to %j', (clock, minute) => {
+    const event = structuredClone((scheduleRaw as any).events[0]);
+    const status = event.competitions[0].status;
+    status.type = { ...status.type, state: 'in', completed: false, name: 'STATUS_FIRST_HALF' };
+    if (clock === undefined) delete status.displayClock;
+    else status.displayClock = clock;
+    const [match] = mapTeamSchedule({ ...(scheduleRaw as any), events: [event] });
+    expect([match.state, match.minute]).toEqual(['live', minute]);
+  });
+});

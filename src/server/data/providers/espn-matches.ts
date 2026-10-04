@@ -30,7 +30,7 @@ export function mapScoreboard(raw: unknown): Match[] {
       id: String(ev.id),
       kickoff: ev.date,
       state,
-      minute: state === 'live' ? status.displayClock : null,
+      minute: state === 'live' ? status.displayClock || null : null,
       statusDetail: status.type.shortDetail,
       statusName: status.type.name ?? '',
       home: mapTeam(home.team),
