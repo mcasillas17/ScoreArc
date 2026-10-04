@@ -61,11 +61,6 @@
    "mismatch": "Reader scorers[].teamId/cards[].teamId keep provider ids while the match sides are canonical.",
    "suites": ["ts", "go"]
   },
-  "T16.2-standings-rank": {
-   "task": "T16.2",
-   "mismatch": "When ESPN's rank stat is a complete 1..n permutation (the recorded tables), the frontend orders rows by it and Go MapStandings keeps provider array order. With a duplicated or partial rank stat both keep array order.",
-   "suites": ["ts", "go"]
-  },
   "T16.2-match-id": {
    "task": "T16.2",
    "mismatch": "Reader match routes and list rows use canonical match UUIDs; the frontend uses provider event ids for list rows and summary addressing.",
@@ -96,11 +91,6 @@
    "mismatch": "Match.shootout provenance differs: the reader serves the aggregate the ingester stored from the summary header's shootoutScore (its match-note fallback is owned by backend/shared/source and not re-verified here); the frontend parses only the scoreboard note, and its MatchSummaryData has no aggregate field, so a summary-only shootout is null in the frontend.",
    "suites": ["ts", "go"]
   },
-  "T16.2-group-label": {
-   "task": "T16.2",
-   "mismatch": "An unnamed provider standings table keeps an empty Group id/name in the frontend, while the reader substitutes the competition short name (e.g. 'Premier League') for a NULL group.",
-   "suites": ["ts", "go-db"]
-  },
   "T10.3-partial-failure": {
    "task": "T10.3",
    "mismatch": "The frontend getTeam/getSquad degrade a failed roster or schedule to empty (squad [], schedule unavailable) and return null only when the profile fails; the reader fails the whole team request with 500 when any child query fails.",
@@ -118,12 +108,7 @@
   },
   "T16.2-standings-dedup": {
    "task": "T16.2",
-   "mismatch": "A team listed in two provider tables stays in both frontend groups with contiguous ranks; Go MapStandings drops the later row and leaves a hole in that group's ranks.",
-   "suites": ["ts", "go"]
-  },
-  "T16.2-standings-malformed": {
-   "task": "T16.2",
-   "mismatch": "A standings row missing a stat, or a table with no entries, is zero-filled or kept empty by the frontend mapper; Go MapStandings rejects the whole payload, so the reader keeps the previous standings.",
+   "mismatch": "A team listed in two provider tables stays in both frontend tables; the reader keeps one standing row per team per season, so it lists the team only in its first table (the remaining rows of a later table keep their true positions). Representing multi-table membership needs an owner decision: a multi-table standing model (standing and standing_snapshot keys) or a shared first-table rule. No configured competition published overlapping tables on 2026-10-04.",
    "suites": ["ts", "go"]
   },
   "T10.3-team-cache-doc": {
@@ -156,7 +141,7 @@
   },
   "getStandings": {
    "reader": "/v1/competitions/{comp}/{season}/standings",
-   "gaps": ["T16.2-standings-rank", "T10.10-derived-standings", "T17.3-freshness-coverage", "T16.2-group-label", "T21.4-dependency-error-logging", "T16.2-standings-dedup", "T16.2-standings-malformed"]
+   "gaps": ["T10.10-derived-standings", "T17.3-freshness-coverage", "T21.4-dependency-error-logging", "T16.2-standings-dedup"]
   },
   "getBracket": {
    "reader": "/v1/competitions/{comp}/{season}/bracket",
@@ -1663,21 +1648,21 @@
     },
     {
      "team": {
-      "id": "nat-cze",
-      "name": "Czechia",
-      "abbr": "CZE",
-      "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/cze.png"
+      "id": "nat-rsa",
+      "name": "South Africa",
+      "abbr": "RSA",
+      "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/rsa.png"
      },
      "rank": 2,
      "played": 3,
-     "wins": 0,
+     "wins": 1,
      "draws": 1,
-     "losses": 2,
+     "losses": 1,
      "goalsFor": 2,
-     "goalsAgainst": 6,
-     "goalDifference": -4,
-     "points": 1,
-     "advanced": false
+     "goalsAgainst": 3,
+     "goalDifference": -1,
+     "points": 4,
+     "advanced": true
     },
     {
      "team": {
@@ -1699,21 +1684,21 @@
     },
     {
      "team": {
-      "id": "nat-rsa",
-      "name": "South Africa",
-      "abbr": "RSA",
-      "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/rsa.png"
+      "id": "nat-cze",
+      "name": "Czechia",
+      "abbr": "CZE",
+      "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/cze.png"
      },
      "rank": 4,
      "played": 3,
-     "wins": 1,
+     "wins": 0,
      "draws": 1,
-     "losses": 1,
+     "losses": 2,
      "goalsFor": 2,
-     "goalsAgainst": 3,
-     "goalDifference": -1,
-     "points": 4,
-     "advanced": true
+     "goalsAgainst": 6,
+     "goalDifference": -4,
+     "points": 1,
+     "advanced": false
     }
    ]
   },
@@ -1771,11 +1756,7 @@
    "note": "Synthetic: the first two recorded Group A entries under one table with an empty name, as a single-table provider payload might arrive.",
    "competition": "premier-league",
    "season": "2026-27",
-   "frontendGroup": {
-    "id": "",
-    "name": ""
-   },
-   "readerGroup": {
+   "group": {
     "id": "Premier League",
     "name": "Premier League"
    }
@@ -1843,21 +1824,14 @@
      "1": "points"
     },
     "expected": {
-     "frontend": [
-      ["MEX", 1, 9],
-      ["CZE", 2, 0]
-     ],
+     "frontend": "error",
      "reader": "error"
     }
    },
    "emptyTable": {
     "name": "Group Z",
     "expected": {
-     "frontend": {
-      "id": "Z",
-      "name": "Group Z",
-      "standings": []
-     },
+     "frontend": "error",
      "reader": "error"
     }
    }

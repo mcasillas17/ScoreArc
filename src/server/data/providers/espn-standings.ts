@@ -29,31 +29,58 @@ function inTableOrder(entries: any[]): any[] {
     .map((x) => x.entry);
 }
 
-export function mapStandings(raw: unknown): Group[] {
+// The eight stats every row must carry, as the ingester requires them
+// (backend/shared/espn/standings.go). Only goal difference may be negative.
+const REQUIRED_STATS = ['gamesPlayed', 'wins', 'ties', 'losses', 'pointsFor', 'pointsAgainst', 'pointDifferential', 'points'] as const;
+
+/**
+ * ESPN standings children -> Group[].
+ *
+ * The acceptance rule is the ingester's (T16.2): a table with no teams, or a
+ * row without team identity or a required stat, throws rather than rendering a
+ * missing measurement as a zero; the reader keeps its previous standings for
+ * the same payload. No tables at all is a legitimate empty answer.
+ *
+ * `unnamedTable` labels a provider table that has no name -- a single-table
+ * competition -- with the competition's short name, as the reader does.
+ */
+export function mapStandings(raw: unknown, unnamedTable: string): Group[] {
   const children: any[] = (raw as any)?.children ?? [];
   return children.map((grp) => {
-    const entries: any[] = inTableOrder(grp.standings?.entries ?? []);
-    const standings: Standing[] = entries.map((entry, i) => {
+    const name: string = grp.name || unnamedTable;
+    const entries: any[] = grp.standings?.entries ?? [];
+    if (entries.length === 0) throw new Error(`standings table "${name}" has no teams`);
+    const standings: Standing[] = inTableOrder(entries).map((entry, i) => {
+      const team = entry.team ?? {};
+      if (team.id == null || !team.displayName || !team.abbreviation) {
+        throw new Error(`standings row ${i} in "${name}" lacks team identity`);
+      }
       const s = statMap(entry.stats);
+      for (const stat of REQUIRED_STATS) {
+        const value = s[stat];
+        if (!Number.isInteger(value) || (stat !== 'pointDifferential' && value < 0)) {
+          throw new Error(`standings row ${i} in "${name}" has invalid ${stat}`);
+        }
+      }
       return {
         team: {
-          id: String(entry.team.id),
-          name: entry.team.displayName,
-          abbr: entry.team.abbreviation,
-          crestUrl: entry.team.logos?.[0]?.href ?? null,
+          id: String(team.id),
+          name: team.displayName,
+          abbr: team.abbreviation,
+          crestUrl: team.logos?.[0]?.href || null,
         },
         rank: i + 1,
-        played: s.gamesPlayed ?? 0,
-        wins: s.wins ?? 0,
-        draws: s.ties ?? 0,
-        losses: s.losses ?? 0,
-        goalsFor: s.pointsFor ?? 0,
-        goalsAgainst: s.pointsAgainst ?? 0,
-        goalDifference: s.pointDifferential ?? 0,
-        points: s.points ?? 0,
+        played: s.gamesPlayed,
+        wins: s.wins,
+        draws: s.ties,
+        losses: s.losses,
+        goalsFor: s.pointsFor,
+        goalsAgainst: s.pointsAgainst,
+        goalDifference: s.pointDifferential,
+        points: s.points,
         advanced: (s.advanced ?? 0) === 1,
       };
     });
-    return { id: grp.name.replace('Group ', ''), name: grp.name, standings };
+    return { id: name.replace('Group ', ''), name, standings };
   });
 }

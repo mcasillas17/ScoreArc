@@ -3,6 +3,8 @@ package espn
 import (
 	"encoding/json"
 	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -206,4 +208,57 @@ func TestMapStandings(t *testing.T) {
 			t.Fatal("expected malformed standings error")
 		}
 	})
+}
+
+// ESPN does not promise table order: World Cup groups and MLS conferences
+// arrive in its own team order (verified against live payloads 2026-10-04),
+// with each entry's true position in a `rank` stat. Port of espn-standings.ts's
+// inTableOrder: use it when it is a complete 1..n permutation, else keep array
+// order -- a partial, duplicated or out-of-range rank is worse than the index.
+func TestMapStandingsOrdersByCompleteRankStat(t *testing.T) {
+	entry := func(id string, rank string) string {
+		stats := `{"name":"gamesPlayed","value":1},{"name":"wins","value":1},{"name":"ties","value":0},
+			{"name":"losses","value":0},{"name":"pointsFor","value":2},{"name":"pointsAgainst","value":1},
+			{"name":"pointDifferential","value":1},{"name":"points","value":3}`
+		if rank != "" {
+			stats += `,{"name":"rank","value":` + rank + `}`
+		}
+		return `{"team":{"id":"` + id + `","displayName":"Team ` + id + `","abbreviation":"T` + id + `"},"stats":[` + stats + `]}`
+	}
+	order := func(t *testing.T, ranks ...string) []string {
+		t.Helper()
+		var entries []string
+		for i, rank := range ranks {
+			entries = append(entries, entry(strconv.Itoa(i+1), rank))
+		}
+		standings, err := MapStandings([]byte(`{"children":[{"name":"Group A","standings":{"entries":[` + strings.Join(entries, ",") + `]}}]}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for i, s := range standings {
+			if s.Rank != i+1 {
+				t.Fatalf("row %d has rank %d; rank is the position in the table", i, s.Rank)
+			}
+			got = append(got, s.Team.ID)
+		}
+		return got
+	}
+	for _, c := range []struct {
+		name  string
+		ranks []string
+		want  []string
+	}{
+		{"complete permutation reorders", []string{"2", "3", "1"}, []string{"3", "1", "2"}},
+		{"duplicated rank keeps array order", []string{"2", "2", "1"}, []string{"1", "2", "3"}},
+		{"partial rank keeps array order", []string{"2", "", "1"}, []string{"1", "2", "3"}},
+		{"out-of-range rank keeps array order", []string{"2", "4", "1"}, []string{"1", "2", "3"}},
+		{"fractional rank keeps array order", []string{"2", "1.5", "1"}, []string{"1", "2", "3"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := order(t, c.ranks...); !slices.Equal(got, c.want) {
+				t.Fatalf("order %v, want %v", got, c.want)
+			}
+		})
+	}
 }

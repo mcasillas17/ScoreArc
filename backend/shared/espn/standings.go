@@ -14,10 +14,10 @@ import (
 // []Standing, carrying the group id/name onto each row (GroupID/GroupName
 // on Standing) so the `standing` table — keyed only by (competition_id,
 // season_id, team_id), one group per team per season — doesn't lose which group a
-// team belongs to. Rank is the provider entry index + 1 within each group,
-// so rows keep provider array order (the TS mapper reorders by ESPN's `rank`
-// stat when it is a complete 1..n permutation) and a dropped duplicate team
-// leaves a hole. See the T16.2-standings-rank/-dedup gaps.
+// team belongs to. Rank is a row's position in its provider table, ordered as
+// the TS mapper orders it (inTableOrder). A team repeated in a later table is
+// dropped there, and the rows that remain keep their true positions, so a
+// zone cut is never shifted (gap T16.2-standings-dedup: cross-table membership).
 
 type rawStandingsDoc struct {
 	Children []rawStandingsGroup `json:"children"`
@@ -71,13 +71,33 @@ func standingStatMap(stats []rawStat) map[string]*float64 {
 	return out
 }
 
+// inTableOrder ports espn-standings.ts's inTableOrder. ESPN does not promise
+// its entries arrive in table order (World Cup groups and MLS conferences come
+// back in its own team order), but every entry carries its true position in a
+// `rank` stat. Use it when the table supplies a complete 1..n permutation, and
+// keep array order otherwise: a partial, duplicated or fractional rank is worse
+// than the index, and dropping or duplicating a club is never acceptable.
+func inTableOrder(entries []rawStandingEntry) []rawStandingEntry {
+	ordered := make([]rawStandingEntry, len(entries))
+	placed := make([]bool, len(entries))
+	for _, entry := range entries {
+		rank := standingStatMap(entry.Stats)["rank"]
+		if rank == nil || *rank != math.Trunc(*rank) || *rank < 1 || *rank > float64(len(entries)) ||
+			placed[int(*rank)-1] {
+			return entries
+		}
+		placed[int(*rank)-1] = true
+		ordered[int(*rank)-1] = entry
+	}
+	return ordered
+}
+
 // MapStandings maps ESPN's raw standings JSON (children[].standings.entries[])
-// into a flat []Standing whose rank is the provider entry index + 1 within its
-// group. Unlike espn-standings.ts it never reorders by ESPN's `rank` stat (the
-// TS mapper does when that stat is a complete 1..n permutation), and a team
-// already seen in an earlier group is dropped, leaving a rank hole. Both are
-// characterized gaps (T16.2-standings-rank, T16.2-standings-dedup) in
-// src/server/data/contracts/reader-contract.json.
+// into a flat []Standing whose rank is the row's position in its provider
+// table (inTableOrder). A team already seen in an earlier group is dropped and
+// the remaining rows keep their positions; the reader therefore cannot list a
+// team in two tables (gap T16.2-standings-dedup in
+// src/server/data/contracts/reader-contract.json).
 func MapStandings(raw []byte) ([]Standing, error) {
 	if err := validateArrayEnvelope(raw, "children"); err != nil {
 		return nil, err
@@ -96,11 +116,11 @@ func MapStandings(raw []byte) ([]Standing, error) {
 	// overlapping tables for some competitions (an "Overall" table alongside
 	// conference tables). Keep the first occurrence — groups are emitted in
 	// fixture order, so the first is the primary table — and drop later
-	// repeats. Ranks are per-entry-index, so dropping a row does not shift
+	// repeats. Ranks are table positions, so dropping a row does not shift
 	// any other row's rank.
 	seenTeams := make(map[string]struct{})
 	for _, grp := range doc.Children {
-		entries := grp.Standings.Entries
+		entries := inTableOrder(grp.Standings.Entries)
 		if len(entries) == 0 {
 			return nil, fmt.Errorf("standings group %q contains no teams", grp.Name)
 		}

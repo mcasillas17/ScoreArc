@@ -529,7 +529,7 @@ func TestReaderContract(t *testing.T) {
 		}
 	})
 
-	t.Run("recorded standings: same values, provider-order ranks", func(t *testing.T) {
+	t.Run("recorded standings: same values and rank order", func(t *testing.T) {
 		exercise("getStandings")
 		rows, err := espn.MapStandings(contractFixture(t, fixtureName(t, raw, "standings")))
 		if err != nil {
@@ -553,8 +553,7 @@ func TestReaderContract(t *testing.T) {
 				t.Fatalf("group %s has %d rows, want %d", group.ID, counts[group.ID], group.Teams)
 			}
 		}
-		// Every recorded row's values agree with the frontend table; only order
-		// (rank) differs, which is the pinned T16.2-standings-rank gap.
+		// Every recorded row's values agree with the frontend table.
 		goRows := map[string]any{}
 		for _, row := range rows {
 			goRows[*row.GroupID+"/"+row.Team.Abbr] = wire(t, []any{*row.GroupID, row.Team.Abbr, row.Played, row.Wins, row.Draws,
@@ -576,10 +575,10 @@ func TestReaderContract(t *testing.T) {
 			readerOrder = append(readerOrder, groupA[i]["team"].(map[string]any)["abbr"].(string))
 			frontendOrder = append(frontendOrder, frontend[i].(map[string]any)["team"].(map[string]any)["abbr"].(string))
 		}
-		if reflect.DeepEqual(readerOrder, frontendOrder) {
-			t.Fatal("gap changed: Go standings now follow ESPN's rank stat; update reader-contract.json")
+		// ESPN's complete rank stat orders the table in both mappers.
+		if !reflect.DeepEqual(readerOrder, frontendOrder) {
+			t.Fatalf("reader group A order %v, frontend %v", readerOrder, frontendOrder)
 		}
-		gap("T16.2-standings-rank")
 		// The reader DTO the SQL grouping builds from these rows, not the vector itself.
 		var standings []Standing
 		rowsJSON, err := json.Marshal(groupA)
@@ -659,7 +658,8 @@ func TestReaderContract(t *testing.T) {
 		}
 		gap("T16.2-standings-dedup")
 
-		// Malformed tables: a missing stat or no entries is rejected outright.
+		// Malformed tables: a missing stat or no entries rejects the payload in
+		// both mappers (the writer then keeps the previous standings).
 		missing := synthetic.MissingStat
 		malformed := buildTable(missing.Name, missing.Entries, nil, missing.DropStats)
 		emptyTable := buildTable(synthetic.EmptyTable.Name, nil, nil, nil)
@@ -669,10 +669,14 @@ func TestReaderContract(t *testing.T) {
 				t.Fatal(err)
 			}
 			if _, err := espn.MapStandings(data); err == nil {
-				t.Fatalf("gap changed: Go MapStandings now accepts %v; update reader-contract.json", payload.(map[string]any)["name"])
+				t.Fatalf("Go MapStandings accepts malformed table %v", payload.(map[string]any)["name"])
 			}
 		}
-		gap("T16.2-standings-malformed")
+		// No table at all is a legitimate empty answer: zero rows, no error
+		// (ReplaceStandings then refuses the empty replacement and keeps rows).
+		if rows, err := espn.MapStandings([]byte(`{"children":[]}`)); err != nil || len(rows) != 0 {
+			t.Fatalf("empty standings: %v %v", rows, err)
+		}
 	})
 
 	t.Run("recorded bracket: instant-normalized parity and placeholder crest", func(t *testing.T) {

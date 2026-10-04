@@ -235,12 +235,12 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		}
 		var league []Group
 		get(t, "/v1/competitions/premier-league/2026-27/standings", &league)
-		unnamed := vector(t, raw, "standings", "unnamedTable", "readerGroup").(map[string]any)
+		unnamed := vector(t, raw, "standings", "unnamedTable", "group").(map[string]any)
 		if len(league) != 1 || league[0].ID != unnamed["id"] || league[0].Name != unnamed["name"] ||
 			len(league[0].Standings) != 2 || league[0].Standings[0].Team.ID != "nat-arg" || league[0].Standings[1].Team.ID != "nat-fra" {
 			t.Fatalf("tie-break or scope drifted: %+v", league)
 		}
-		characterized["T16.2-group-label"] = true // A NULL group is labeled with the competition short name.
+		// A NULL group is labeled with the competition short name, as the frontend labels an unnamed table.
 	})
 
 	t.Run("recorded leaders: goals only, value renamed goals", func(t *testing.T) {

@@ -446,7 +446,7 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
 });
 
 describe('reader contract: standings, bracket, leaders, news', () => {
-  it('orders recorded standings by ESPN rank and characterizes the reader rank gap', async () => {
+  it('orders recorded standings by ESPN rank in both contracts', async () => {
     exercise('getStandings');
     const groups = await storeOver(() => standingsRaw).store.getStandings(wc);
     expect(groups.map(g => ({ id: g.id, name: g.name, teams: g.standings.length }))).toEqual(vectors.standings.groups);
@@ -468,17 +468,19 @@ describe('reader contract: standings, bracket, leaders, news', () => {
       expect(canonicalTeamId(other!.team.id)).toBe(other!.team.id);
       expect(teamHref(teamBase, other!.team)).toBe(teamHref(teamBase, row.team));
       expect(teamHref(teamBase, other!.team)).toBe(`${teamBase}/${other!.team.id}`);
-      // Named normalizer: canonical team id back to the provider id; rank is the pinned gap below.
-      expect({ ...other!, rank: row.rank, team: { ...other!.team, id: row.team.id } }).toEqual(row);
+      // Named normalizer: canonical team id back to the provider id; everything else is equal.
+      expect({ ...other!, team: { ...other!.team, id: row.team.id } }).toEqual(row);
     }
     // A provisional reader id (an uncurated club) stays unlinked, like an uncurated provider id.
     expect(teamHref(teamBase, { id: 'prov-espn-131529' })).toBeUndefined();
-    gap('T16.2-standings-rank', () => {
-      const order = (rows: { team: { abbr: string } }[]) => rows.map(r => r.team.abbr);
-      expect(order(reader.standings)).not.toEqual(order(groups[0].standings));
-      expect(reader.standings.map(r => r.rank)).toEqual([1, 2, 3, 4]);
-      expect(groups[0].standings.map(r => r.points)).toEqual([9, 4, 3, 1]);
-    });
+    // ESPN's array order is not table order for this group; both mappers use its
+    // complete rank stat, so order and rank agree (the Go suite maps the same bytes).
+    const arrayOrder = standingsRaw.children[0].standings.entries.map(e => e.team.abbreviation);
+    const order = (rows: { team: { abbr: string } }[]) => rows.map(r => r.team.abbr);
+    expect(order(groups[0].standings)).not.toEqual(arrayOrder);
+    expect(order(reader.standings)).toEqual(order(groups[0].standings));
+    expect(reader.standings.map(r => r.rank)).toEqual([1, 2, 3, 4]);
+    expect(groups[0].standings.map(r => r.points)).toEqual([9, 4, 3, 1]);
   });
 
   // Same arguments as the Go buildTable: picked recorded Group A entries with a
@@ -504,23 +506,25 @@ describe('reader contract: standings, bracket, leaders, news', () => {
     gap('T16.2-standings-dedup', () => expect(sh.expected.reader).not.toEqual(Object.fromEntries(groups.map(g => [g.id, rows(g)]))));
   });
 
-  it('zero-fills a missing stat and keeps an empty table, where the Go mapper rejects both', async () => {
+  it('rejects a missing stat and an empty table, as the Go mapper does', async () => {
+    // The ingester's acceptance rule is the contract: the payload is rejected
+    // (the reader keeps its previous standings) rather than zero-filled.
     const m = syn.missingStat;
-    const [missing] = await storeOver(() => ({ children: [table(m.name, m.entries, {}, m.dropStats)] })).store.getStandings(wc);
     const e = syn.emptyTable;
-    const [empty] = await storeOver(() => ({ children: [table(e.name, [])] })).store.getStandings(wc);
-    gap('T16.2-standings-malformed', () => {
-      expect(missing.standings.map(r => [r.team.abbr, r.rank, r.points])).toEqual(m.expected.frontend);
-      expect(empty).toEqual(e.expected.frontend);
-      expect([m.expected.reader, e.expected.reader]).toEqual(['error', 'error']);
-    });
+    expect([m.expected, e.expected]).toEqual([{ frontend: 'error', reader: 'error' }, { frontend: 'error', reader: 'error' }]);
+    await expect(storeOver(() => ({ children: [table(m.name, m.entries, {}, m.dropStats)] })).store.getStandings(wc))
+      .rejects.toThrow(/invalid points/);
+    await expect(storeOver(() => ({ children: [table(e.name, [])] })).store.getStandings(wc)).rejects.toThrow(/no teams/);
+    // Publishing no table at all is a legitimate empty answer, not a malformed one.
+    expect(await storeOver(() => ({ children: [] })).store.getStandings(wc)).toEqual([]);
   });
 
-  it('keeps an unnamed provider table unlabeled, unlike the reader', async () => {
+  it('labels an unnamed provider table with the competition short name, as the reader does', async () => {
     const u = vectors.standings.unnamedTable;
-    const [group] = await storeOver(() => ({ children: [table('', [0, 1])] })).store.getStandings(resolveSeason(u.competition, u.season)!);
-    expect({ id: group.id, name: group.name }).toEqual(u.frontendGroup);
-    gap('T16.2-group-label', () => expect({ id: group.id, name: group.name }).not.toEqual(u.readerGroup));
+    const rc = resolveSeason(u.competition, u.season)!;
+    const [group] = await storeOver(() => ({ children: [table('', [0, 1])] })).store.getStandings(rc);
+    expect({ id: group.id, name: group.name }).toEqual(u.group);
+    expect(u.group.name).toBe(rc.competition.shortName); // The Go suite's default group name is the same field.
   });
 
   it('emits frontend-only derived tables the reader Group cannot represent', async () => {

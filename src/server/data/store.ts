@@ -382,7 +382,7 @@ export function createDataStore(deps: DataDeps): DataStore {
         return groups;
       }
       const raw = await deps.fetchJson(standingsUrl(slug(rc)));
-      const groups = mapStandings(raw);
+      const groups = mapStandings(raw, rc.competition.shortName);
       // A conference-split league also races for something league-wide that no
       // provider tabulates — MLS's Supporters' Shield. Merge it here so the view
       // receives it as one more table and needs no special case.
