@@ -120,13 +120,15 @@ func recoverLegacyScorers(scorers []espn.Scorer, raw []byte) error {
 // a decisive stored shootout aggregate names, else the stored winner. Rows
 // finalized before T16.2 kept the scoreboard's winner flags even where the
 // stored summary aggregate -- the higher evidence -- named the other side;
-// they are sealed, so the precedence is applied here. A live shootout's
-// partial totals name no winner.
+// they are sealed, so the precedence is applied here. A match that is not
+// finished has no winner: the bracket mapper before T16.2 stored one from a
+// live shootout's partial totals, and serving it would advance a side early.
 func servedWinner(state espn.MatchState, shootout *espn.Shootout, homeID, awayID string, stored *string) *string {
-	if state == espn.MatchStateFinished {
-		if winner := espn.ShootoutWinner(shootout, homeID, awayID); winner != nil {
-			return winner
-		}
+	if state != espn.MatchStateFinished {
+		return nil
+	}
+	if winner := espn.ShootoutWinner(shootout, homeID, awayID); winner != nil {
+		return winner
 	}
 	return stored
 }

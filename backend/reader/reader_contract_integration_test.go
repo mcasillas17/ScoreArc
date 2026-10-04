@@ -705,8 +705,10 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		// Synthetic: rows written before T16.2 finalized with the scoreboard's
 		// winner even when the stored summary aggregate named the other side.
 		// The reader serves the aggregate's side for a finished match, on every
-		// projection that carries a winner, and leaves the sealed row unchanged;
-		// a live shootout's partial totals name no winner.
+		// projection that carries a winner, and leaves the sealed row unchanged.
+		// A match that is not finished has no winner: a live shootout's partial
+		// totals name none, and a provisional winner an earlier bracket mapper
+		// stored mid-shootout is not served.
 		home, away := vectors.Summary.Sides["home"].CanonicalID, vectors.Summary.Sides["away"].CanonicalID
 		team(t, espn.Team{ID: "4789", Name: "Ivory Coast", Abbr: "CIV"}, home)
 		team(t, espn.Team{ID: "464", Name: "Norway", Abbr: "NOR"}, away)
@@ -726,7 +728,7 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		}
 		contradicted, live, level := "018f0000-0000-7000-8000-000000016025", "018f0000-0000-7000-8000-000000016026", "018f0000-0000-7000-8000-000000016027"
 		seed(contradicted, "2026-07-07T17:00:00Z", "finished", &away, `{"homeScore":4,"awayScore":3}`)
-		seed(live, "2026-07-08T17:00:00Z", "live", nil, `{"homeScore":3,"awayScore":2}`)
+		seed(live, "2026-07-08T17:00:00Z", "live", &home, `{"homeScore":3,"awayScore":2}`)
 		seed(level, "2026-07-09T17:00:00Z", "finished", &away, `{"homeScore":3,"awayScore":3}`)
 		want := map[string]any{contradicted: home, live: nil, level: away}
 
@@ -755,9 +757,11 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 				t.Fatalf("%s served %d of %d shootout matches", name, found, len(want))
 			}
 		}
-		var stored string
-		if err := pool.QueryRow(ctx, `SELECT winner_id FROM match WHERE id=$1`, contradicted).Scan(&stored); err != nil || stored != away {
-			t.Fatalf("sealed winner rewritten: %q %v", stored, err)
+		for id, kept := range map[string]string{contradicted: away, live: home} {
+			var stored string
+			if err := pool.QueryRow(ctx, `SELECT winner_id FROM match WHERE id=$1`, id).Scan(&stored); err != nil || stored != kept {
+				t.Fatalf("stored winner of %s rewritten: %q %v", id, stored, err)
+			}
 		}
 	})
 
