@@ -3,11 +3,8 @@ package espn
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"regexp"
 	"slices"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -137,38 +134,12 @@ type rawBracketCompetitor struct {
 	HomeAway string          `json:"homeAway"`
 	Winner   bool            `json:"winner"`
 	Score    *flexibleString `json:"score"`
-	// ShootoutScore is deliberately raw JSON: ESPN sends it as a bare number
-	// on modern payloads but the TS mapper (and older payloads) treat it as
-	// `any` and coerce via `Number(...)`, so it must accept a JSON number, a
-	// numeric string, null, or an absent key.
+	// ShootoutScore is deliberately raw JSON: ESPN sends a bare number on
+	// modern payloads and a digit string on older ones. The bracket takes the
+	// scoreboard's rule (scoreboardTotal, TS isScoreboardCount): absent, null,
+	// "", a digit string or a non-negative integer; anything else rejects it.
 	ShootoutScore json.RawMessage `json:"shootoutScore"`
 	Team          rawTeam         `json:"team"`
-}
-
-// jsNumber mirrors JS's `Number(x)` + `Number.isFinite(...)` coercion for
-// the shootoutScore value: an absent key is `undefined` -> NaN (not
-// finite); explicit `null` -> 0 (finite, matching `Number(null) === 0`); an
-// empty string -> 0 (finite, matching `Number("") === 0`); a numeric string
-// or bare JSON number parses to its value; anything else is NaN.
-func jsNumber(raw json.RawMessage) (value float64, finite bool) {
-	if len(raw) == 0 {
-		return 0, false
-	}
-	var f float64
-	if err := json.Unmarshal(raw, &f); err == nil {
-		return f, f >= 0 && math.Trunc(f) == f
-	}
-	var s string
-	if err := json.Unmarshal(raw, &s); err == nil {
-		s = strings.TrimSpace(s)
-		if s == "" {
-			return 0, true
-		}
-		if fv, err := strconv.ParseFloat(s, 64); err == nil {
-			return fv, fv >= 0 && math.Trunc(fv) == fv
-		}
-	}
-	return 0, false
 }
 
 // mapBracketTeam ports espn-bracket.ts's mapBracketTeam.

@@ -409,7 +409,7 @@ components:
           description: Null when unknown, a match stored before own goals were captured whose scorers could not be aligned with its captured goal events.
         athleteId:
           type: [string, "null"]
-          description: The source provider's athlete id, which the frontend match route resolves to a player slug; never a URL. Null when unknown, a match stored before it was captured whose scorers could not be aligned with its captured goal events, or a recovered player without a single id on the match's source.
+          description: The source provider's athlete id, which the frontend match route resolves to a player slug; never a URL. Null when the provider names no athlete for the goal, or when unknown, a match stored before it was captured whose scorers could not be aligned with its captured goal events, or a recovered player without a single id on the match's source.
     Card:
       type: object
       additionalProperties: false

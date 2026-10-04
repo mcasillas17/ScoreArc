@@ -24,6 +24,32 @@ func parseSuppliedShootoutScore(raw json.RawMessage) (int, bool, error) {
 	return int(score), true, nil
 }
 
+// jsNumber reads a summary header's shootout total by its wider numeric rule
+// (parseSuppliedShootoutScore): a non-negative integral JSON number, or a
+// string holding one after trimming, with null and "" read as 0; absent and
+// anything else are not finite. Scoreboard and bracket totals pass the narrower
+// scoreboardTotal first, which admits only digit strings.
+func jsNumber(raw json.RawMessage) (value float64, finite bool) {
+	if len(raw) == 0 {
+		return 0, false
+	}
+	var f float64
+	if err := json.Unmarshal(raw, &f); err == nil {
+		return f, f >= 0 && math.Trunc(f) == f
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return 0, true
+		}
+		if fv, err := strconv.ParseFloat(s, 64); err == nil {
+			return fv, fv >= 0 && math.Trunc(fv) == fv
+		}
+	}
+	return 0, false
+}
+
 // shootoutFirstWinnerID gives a finished match's decisive shootout aggregate
 // precedence over provider flags; a live shootout's totals are partial and name
 // no winner. The caller resolves the aggregate from its validated evidence.

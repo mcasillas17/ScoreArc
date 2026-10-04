@@ -83,7 +83,7 @@ OpenAPI 3.1 (kin-openapi).
 - [x] Commit `fix: align standings order, validation and labels`.
 
 ### Task 5 — shootout aggregate precedence
-- [x] TS: `shootoutAggregate` + anchored `parseShootout` in `espn-matches.ts`; `mapScoreboard` applies scoreboard tiers; `getMatches` prefers the held summary header.
+- [x] TS: `shootoutTotals` (validated by `isScoreboardCount`) + anchored `parseShootout` in `espn-matches.ts`; `mapScoreboard` applies scoreboard tiers; `getMatches` prefers the held summary header.
 - [x] Go: scoreboard competitor `shootoutScore` carried on `model.Match` (not serialized) as the middle tier in `source.mapSummary`.
 - [x] Shared synthetic precedence vectors (header-only, scoreboard-only, note-only, conflicts, invalid, both-zero) run in both languages.
 - [x] Commit `fix: one shootout aggregate precedence in both languages`.
