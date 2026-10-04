@@ -344,7 +344,7 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			}
 			// Named normalizers only: test UUID for the provider event id, seed or
 			// provisional canonical ids for sides/winner, RFC3339 seconds for the
-			// same kickoff instant. The placeholder crest gap is asserted, not erased.
+			// same kickoff instant. A placeholder's null crest is compared as is.
 			expected := maps.Clone(frontend)
 			expected["id"] = readerID
 			kickoff := espnInstant(t, frontend["kickoff"].(string))
@@ -355,12 +355,6 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			for _, key := range []string{"home", "away"} {
 				side := maps.Clone(frontend[key].(map[string]any))
 				side["id"] = canonical[side["id"].(string)]
-				if side["placeholder"] == true {
-					if side["crestUrl"] != "" || served[readerID][key].(map[string]any)["crestUrl"] != nil {
-						t.Fatal("gap changed: placeholder crest is no longer '' versus null")
-					}
-					side["crestUrl"] = nil
-				}
 				expected[key] = side
 			}
 			assertWire(t, "stored bracket "+provider, served[readerID], expected)

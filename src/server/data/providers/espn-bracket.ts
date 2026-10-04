@@ -39,7 +39,9 @@ const roundSlug = (ev: any): KnockoutRoundSlug | null =>
   EVENT_SLUG_OVERRIDE[String(ev?.id)] ?? normSlug(ev?.season?.slug ?? '');
 
 function mapBracketTeam(t: any): BracketTeam {
-  const crestUrl: string | null = t.logo ?? t.logos?.[0]?.href ?? null;
+  // `||`, not `??`: ESPN sends an empty logo string for a placeholder slot, and
+  // "no crest" is null in the contract (the Go mapper agrees).
+  const crestUrl: string | null = t.logo || t.logos?.[0]?.href || null;
   const name = t.displayName ?? t.name ?? t.abbreviation;
   return {
     id: String(t.id),

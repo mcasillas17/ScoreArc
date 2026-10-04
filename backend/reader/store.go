@@ -46,8 +46,8 @@ func jsonInto(raw []byte, destination any) error {
 	return json.Unmarshal(raw, destination)
 }
 
-// NULLIF: rows written before the T16.2 mapper fix hold '' for a live match
-// without ESPN's display clock; the contract is null (no known minute).
+// NULLIF: rows written before the T16.2 mapper fix hold an empty minute for a
+// live match without ESPN's display clock; the contract is null (unknown).
 const matchesSQL = `
 SELECT m.id, m.kickoff, m.state, NULLIF(m.minute, ''), m.status_detail, m.status_name,
        m.home_score, m.away_score, m.winner_id, m.note,
@@ -165,9 +165,7 @@ func (s *Store) Standings(ctx context.Context, competition, season, defaultGroup
 	return groups, rows.Err()
 }
 
-var bracketRoundOrder = []string{
-	"round-of-32", "round-of-16", "quarterfinals", "semifinals", "final", "3rd-place-match",
-}
+var bracketRoundOrder = espn.KnockoutRounds()
 
 var bracketRoundNames = map[string]string{
 	"round-of-32":     "Round of 32",

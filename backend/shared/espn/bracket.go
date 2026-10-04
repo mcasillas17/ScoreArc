@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -44,6 +45,10 @@ var knockoutRoundOrder = []string{
 // rounds across editions — older World Cups (1998-2010) tag the Round of 16
 // as `second-round`, and 2002 uses `third-place`. Normalize so every edition
 // buckets into the same canonical slugs.
+// KnockoutRounds returns the knockout round vocabulary in bracket order. The
+// reader serves exactly these slugs (OpenAPI enumerates them).
+func KnockoutRounds() []string { return slices.Clone(knockoutRoundOrder) }
+
 var roundSlugAlias = map[string]string{
 	"second-round": "round-of-16",
 	"third-place":  "3rd-place-match",

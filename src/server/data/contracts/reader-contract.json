@@ -66,11 +66,6 @@
    "mismatch": "When ESPN's rank stat is a complete 1..n permutation (the recorded tables), the frontend orders rows by it and Go MapStandings keeps provider array order. With a duplicated or partial rank stat both keep array order.",
    "suites": ["ts", "go"]
   },
-  "T16.2-placeholder-crest": {
-   "task": "T16.2",
-   "mismatch": "Placeholder bracket teams: frontend crestUrl is an empty string, reader crestUrl is null.",
-   "suites": ["ts", "go"]
-  },
   "T16.2-match-id": {
    "task": "T16.2",
    "mismatch": "Reader match routes and list rows use canonical match UUIDs; the frontend uses provider event ids for list rows and summary addressing.",
@@ -84,11 +79,6 @@
   "T17.3-freshness-coverage": {
    "task": "T17.3",
    "mismatch": "Standings, top-scorers and news responses carry no X-ScoreArc freshness headers.",
-   "suites": ["go"]
-  },
-  "T16.2-bracket-round-name": {
-   "task": "T16.2",
-   "mismatch": "Reader BracketRound adds a display name (e.g. 'Round of 32') that the frontend BracketRound {slug, matches} does not have.",
    "suites": ["go"]
   },
   "T10.3-team-location": {
@@ -131,11 +121,6 @@
    "mismatch": "A team listed in two provider tables stays in both frontend groups with contiguous ranks; Go MapStandings drops the later row and leaves a hole in that group's ranks.",
    "suites": ["ts", "go"]
   },
-  "T16.2-round-slug-type": {
-   "task": "T16.2",
-   "mismatch": "The frontend types bracket round and slug as the KnockoutRoundSlug union; the reader DTO and OpenAPI accept any string.",
-   "suites": ["go"]
-  },
   "T16.2-standings-malformed": {
    "task": "T16.2",
    "mismatch": "A standings row missing a stat, or a table with no entries, is zero-filled or kept empty by the frontend mapper; Go MapStandings rejects the whole payload, so the reader keeps the previous standings.",
@@ -175,7 +160,7 @@
   },
   "getBracket": {
    "reader": "/v1/competitions/{comp}/{season}/bracket",
-   "gaps": ["T16.2-placeholder-crest", "T16.2-bracket-round-name", "T16.2-match-id", "T21.4-dependency-error-logging", "T16.2-round-slug-type"]
+   "gaps": ["T16.2-match-id", "T21.4-dependency-error-logging"]
   },
   "getMatchSummary": {
    "reader": "/v1/matches/{id}",
@@ -1948,7 +1933,7 @@
     "id": "131529",
     "name": "Round of 32 5 Winner",
     "abbr": "RD32",
-    "crestUrl": "",
+    "crestUrl": null,
     "placeholder": true
    },
    "homeScore": 0,

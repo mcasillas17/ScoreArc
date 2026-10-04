@@ -685,7 +685,9 @@ func TestReaderContract(t *testing.T) {
 		for _, match := range matches {
 			byID[match.ID] = match
 		}
-		// The reader names each round; the frontend BracketRound has no name.
+		// Contract decision: BracketRound.name is an additive English label for
+		// API consumers. The frontend type has no name and localizes from slug;
+		// the TS suite proves each name equals the frontend's English label.
 		names := map[string]any{}
 		for slug, name := range bracketRoundNames {
 			names[slug] = name
@@ -693,10 +695,9 @@ func TestReaderContract(t *testing.T) {
 		assertWire(t, "reader round names", names, vector(t, raw, "bracket", "readerRoundNames"))
 		round := wire(t, BracketRound{Slug: "final", Name: bracketRoundNames["final"], Matches: []espn.BracketMatch{}}).(map[string]any)
 		validateSchema(t, document, "BracketRound", round)
-		if _, ok := round["name"]; !ok {
-			t.Fatal("gap changed: reader BracketRound no longer carries a name; update reader-contract.json")
+		if round["name"] != "Final" {
+			t.Fatalf("reader BracketRound name %v, want the English label", round["name"])
 		}
-		gap("T16.2-bracket-round-name")
 		// A clockless live knockout match is null in both contracts.
 		liveClockless := vector(t, raw, "bracket", "liveClockless").(map[string]any)
 		var bracketRaw map[string]any
@@ -736,16 +737,26 @@ func TestReaderContract(t *testing.T) {
 		if !found {
 			t.Fatal("clockless live bracket match missing")
 		}
+		// One knockout round vocabulary: the TS KnockoutRoundSlug union (pinned by
+		// the TS suite against readerRoundNames' keys), the Go mapper, the reader's
+		// round order and names, and the OpenAPI enums, in bracket order.
+		var slugs []any
+		for _, slug := range bracketRoundOrder {
+			slugs = append(slugs, slug)
+		}
+		assertWire(t, "reader round names", slices.Sorted(maps.Keys(bracketRoundNames)), slices.Sorted(maps.Keys(vector(t, raw, "bracket", "readerRoundNames").(map[string]any))))
 		for _, field := range []struct{ schema, property string }{{"BracketMatch", "round"}, {"BracketRound", "slug"}} {
 			property := schemaOf(t, document, field.schema).Properties[field.property]
 			if property == nil || property.Value == nil {
 				t.Fatalf("OpenAPI %s.%s missing", field.schema, field.property)
 			}
-			if len(property.Value.Enum) != 0 {
-				t.Fatalf("gap changed: OpenAPI %s.%s is now an enum; update reader-contract.json", field.schema, field.property)
+			assertWire(t, "OpenAPI "+field.schema+"."+field.property+" enum", property.Value.Enum, slugs)
+		}
+		for _, value := range []any{"group-stage", "second-round", ""} {
+			if schemaOf(t, document, "BracketRound").Properties["slug"].Value.VisitJSON(value) == nil {
+				t.Fatalf("OpenAPI BracketRound.slug accepts %q", value)
 			}
 		}
-		gap("T16.2-round-slug-type")
 		// All recorded matches, in the frontend's round order.
 		table := vector(t, raw, "bracket", "table").([]any)
 		if len(table) != len(matches) {
@@ -771,14 +782,9 @@ func TestReaderContract(t *testing.T) {
 			expected := maps.Clone(frontend)
 			expected["kickoff"] = actual["kickoff"]
 			if name == "frontendPlaceholder" {
-				away := actual["away"].(map[string]any)
-				if away["placeholder"] != true || away["crestUrl"] != nil || frontend["away"].(map[string]any)["crestUrl"] != "" {
-					t.Fatal("gap changed: placeholder crest is no longer '' (frontend) versus null (reader)")
+				if away := actual["away"].(map[string]any); away["placeholder"] != true || away["crestUrl"] != nil {
+					t.Fatalf("placeholder slot %v, want a null crest", away)
 				}
-				gap("T16.2-placeholder-crest")
-				side := maps.Clone(frontend["away"].(map[string]any))
-				side["crestUrl"] = nil // The pinned gap; name, abbr, id and placeholder stay compared.
-				expected["away"] = side
 			}
 			assertWire(t, name, actual, expected)
 		}

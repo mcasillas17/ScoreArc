@@ -536,7 +536,7 @@ components:
       required: [id, round, kickoff, home, away, homeScore, awayScore, state, statusDetail, statusName, minute, winnerId, note]
       properties:
         id: { type: string }
-        round: { type: string }
+        round: { $ref: "#/components/schemas/KnockoutRound" }
         kickoff: { type: string, format: date-time }
         home: { $ref: "#/components/schemas/BracketTeam" }
         away: { $ref: "#/components/schemas/BracketTeam" }
@@ -553,9 +553,15 @@ components:
       additionalProperties: false
       required: [slug, name, matches]
       properties:
-        slug: { type: string }
-        name: { type: string }
+        slug: { $ref: "#/components/schemas/KnockoutRound" }
+        name:
+          type: string
+          description: English display label for API consumers. Clients that localize derive their label from slug.
         matches: { type: array, items: { $ref: "#/components/schemas/BracketMatch" } }
+    KnockoutRound:
+      type: string
+      description: Knockout round slug. Historical aliases (second-round, third-place) are normalized before storage.
+      enum: [round-of-32, round-of-16, quarterfinals, semifinals, final, 3rd-place-match]
     TopScorer:
       type: object
       additionalProperties: false

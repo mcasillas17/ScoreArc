@@ -6,12 +6,14 @@ import { resolveSeason, type OverallTableLabelKey, type ZoneKind, type ZoneLabel
 import { TtlCache } from '../cache';
 import { canonicalTeamId, providerTeamId } from '../teamIdentity';
 import { teamHref } from '@/components/teamHref';
+import { roundLabelKey } from '@/components/bracketShape';
+import { en } from '@/i18n/messages/en';
 import { mapTeamSchedule } from '../providers/espn-team';
 import { parseMatchFreshness, type MatchFreshness } from '@/lib/matchFreshness';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 import type {
   BracketMatch, BracketRound, BracketTeam, Card, CareerStint, CommentaryItem, FormResult, GameLogRow, Group,
-  H2HMeeting, LineupPlayer, Match, MatchInfo, MatchLineups, MatchSummaryData, MatchVideo, NewsArticle, PenaltyKick,
+  H2HMeeting, KnockoutRoundSlug, LineupPlayer, Match, MatchInfo, MatchLineups, MatchSummaryData, MatchVideo, NewsArticle, PenaltyKick,
   PlayerMatchStats, PlayerProfile, PlayerSeasonStats, PlayerSeasonTotal, Scorer, ShootoutDetail, SquadPlayer, Standing,
   StatLeader, TeamLineup, TeamStats,
 } from '../types';
@@ -556,9 +558,18 @@ describe('reader contract: standings, bracket, leaders, news', () => {
     expect(lc.expected).toEqual({ frontend: null, reader: null });
     expect([liveMatch.state, liveMatch.minute]).toEqual(['live', null]);
     expect([liveSchedule.state, liveSchedule.minute]).toEqual(['live', null]);
-    gap('T16.2-placeholder-crest', () => {
-      expect(placeholder!.away).toMatchObject({ placeholder: true, crestUrl: '' });
-    });
+    // A placeholder slot has no crest: null in both contracts.
+    expect(placeholder!.away).toMatchObject({ placeholder: true, crestUrl: null });
+    // One knockout vocabulary: the reader's slugs (the Go mapper, reader order
+    // and OpenAPI enum agree in the Go suite) are exactly the frontend union,
+    // checked by tsc. The reader's additive BracketRound.name is the frontend's
+    // own English label for that slug; the frontend localizes from slug, so the
+    // label is presentation for other API consumers, not a second identity.
+    expectTypeOf<keyof typeof vectors.bracket.readerRoundNames>().toEqualTypeOf<KnockoutRoundSlug>();
+    expect(rounds.map(r => r.slug).every(slug => slug in vectors.bracket.readerRoundNames)).toBe(true);
+    for (const [slug, name] of Object.entries(vectors.bracket.readerRoundNames)) {
+      expect(name, slug).toBe(en[roundLabelKey(slug as KnockoutRoundSlug)]);
+    }
   });
 
   it('serves both leaderboards from one recorded payload', async () => {
