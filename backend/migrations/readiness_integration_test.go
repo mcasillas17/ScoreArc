@@ -143,6 +143,7 @@ func TestCheckReadyAgainstPostgresAsApplicationRoles(t *testing.T) {
 				{name: "two rows", category: "ledger_malformed", version: head,
 					setup: []string{`INSERT INTO schema_migrations VALUES (1, false)`}},
 				{name: "negative version", category: "ledger_malformed", version: -1},
+				{name: "dirty at nil version", category: "dirty", version: -1, dirty: true},
 				{name: "absent", category: "ledger_absent", version: head,
 					setup:   []string{`ALTER TABLE schema_migrations RENAME TO hidden_ledger`},
 					restore: []string{`ALTER TABLE hidden_ledger RENAME TO schema_migrations`}},

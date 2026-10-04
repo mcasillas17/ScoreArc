@@ -97,6 +97,9 @@ func TestCheckReadyPolicy(t *testing.T) {
 		{name: "empty ledger", db: fakeDB{}, category: "ledger_empty", applied: -1},
 		{name: "two rows", db: fakeDB{ledger: []ledgerRow{{int64(head), false}, {int64(head - 1), false}}}, category: "ledger_malformed", applied: -1},
 		{name: "negative version", db: fakeDB{ledger: []ledgerRow{{int64(-1), false}}}, category: "ledger_malformed", applied: -1},
+		// golang-migrate writes (-1, dirty) itself when version 1's down fails
+		// (upstream issue #330): that is a dirty schema, not a corrupt ledger.
+		{name: "dirty at nil version", db: fakeDB{ledger: []ledgerRow{{int64(-1), true}}}, category: "dirty", applied: -1},
 		{name: "null version", db: fakeDB{ledger: []ledgerRow{{nil, false}}}, category: "ledger_malformed", applied: -1},
 		{name: "absent ledger", db: fakeDB{ledgerErr: pgErr("42P01")}, category: "ledger_absent", sqlstate: "42P01", applied: -1},
 		{name: "ledger missing column", db: fakeDB{ledgerErr: pgErr("42703")}, category: "ledger_malformed", sqlstate: "42703", applied: -1},

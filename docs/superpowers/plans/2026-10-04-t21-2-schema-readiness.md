@@ -48,7 +48,7 @@ initial guess that a `0024` grant was required was disproved by the test).
 | at `Latest()`, clean, probes pass | ready (nil) | — |
 | `version < Latest()` | `behind` | — |
 | `version > Latest()` | `ahead` | — |
-| `dirty = true` | `dirty` | — |
+| `dirty = true`, including golang-migrate's own `(-1, dirty)` row | `dirty` | — |
 | table missing | `ledger_absent` | 42P01 |
 | zero rows | `ledger_empty` | — |
 | >1 row, negative version, NULL/wrong-typed columns | `ledger_malformed` | 42703 when a column is missing |

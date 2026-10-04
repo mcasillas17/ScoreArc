@@ -98,13 +98,17 @@ func CheckReady(ctx context.Context, db Querier, probes ...string) error {
 	switch {
 	case len(versions) == 0:
 		return refuse("ledger_empty", -1, false)
-	case len(versions) > 1 || versions[0] < 0:
+	case len(versions) > 1:
 		return refuse("ledger_malformed", -1, false)
 	}
 	applied := versions[0]
 	switch {
+	// Dirty first: golang-migrate itself records (-1, dirty) when version 1's
+	// down migration fails (upstream issue #330). Error() prints -1 as unknown.
 	case dirty:
 		return refuse("dirty", applied, true)
+	case applied < 0:
+		return refuse("ledger_malformed", -1, false)
 	case applied < int64(expected):
 		return refuse("behind", applied, false)
 	case applied > int64(expected):
