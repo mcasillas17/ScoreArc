@@ -19,6 +19,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/mcasillas17/scorearc-backend/config"
+	"github.com/mcasillas17/scorearc-backend/migrations"
 )
 
 // newIntegrationStore boots a throwaway Postgres, applies every migration in
@@ -62,6 +63,11 @@ func newIntegrationStoreDSN(t *testing.T) (*Store, *pgxpool.Pool, string) {
 		t.Fatal(err)
 	}
 	sort.Strings(files)
+	// golang-migrate creates its ledger before 0001, as production did, so the
+	// application roles' access to it comes from the migrations themselves.
+	if _, err := pool.Exec(ctx, `CREATE TABLE schema_migrations (version bigint NOT NULL PRIMARY KEY, dirty boolean NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
 	for _, file := range files {
 		raw, err := os.ReadFile(file)
 		if err != nil {
@@ -70,6 +76,13 @@ func newIntegrationStoreDSN(t *testing.T) (*Store, *pgxpool.Pool, string) {
 		if _, err := pool.Exec(ctx, string(raw)); err != nil {
 			t.Fatalf("apply %s: %v", filepath.Base(file), err)
 		}
+	}
+	head, err := migrations.Latest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO schema_migrations (version, dirty) VALUES ($1, false)`, head); err != nil {
+		t.Fatal(err)
 	}
 
 	store, err := New(ctx, dsn)
