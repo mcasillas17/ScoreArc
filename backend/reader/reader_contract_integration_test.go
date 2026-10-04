@@ -701,41 +701,74 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		}
 	})
 
-	t.Run("a stored decisive shootout names the served winner of a finished match only", func(t *testing.T) {
-		// Synthetic: rows written before T16.2 finalized with the scoreboard's
-		// winner even when the stored summary aggregate named the other side.
-		// The reader serves the aggregate's side for a finished match, on every
-		// projection that carries a winner, and leaves the sealed row unchanged.
-		// A match that is not finished has no winner: a live shootout's partial
-		// totals name none, and a provisional winner an earlier bracket mapper
-		// stored mid-shootout is not served. Until finalization replaces the
-		// detail, a finished row's stored aggregate may still be a live poll's
-		// partial, so only a sealed row's aggregate outranks its stored winner.
+	t.Run("a finished match's winner is the stored one, and finalization stores only final shootout evidence", func(t *testing.T) {
+		// A live poll stores the summary's partial aggregate; the final write
+		// must replace it with the final evidence or with nothing, through the
+		// ingester's own writer and the real detail upsert. The reader serves
+		// the stored winner of a finished match and none for a match that is
+		// not finished. Rows sealed before T16.2 keep their stored winner even
+		// where their stored aggregate names the other side: that aggregate
+		// may be a live partial that finalization retained, so neither field
+		// is provably final (READER_CONTRACT, historical data).
 		home, away := vectors.Summary.Sides["home"].CanonicalID, vectors.Summary.Sides["away"].CanonicalID
 		team(t, espn.Team{ID: "4789", Name: "Ivory Coast", Abbr: "CIV"}, home)
 		team(t, espn.Team{ID: "464", Name: "Norway", Abbr: "NOR"}, away)
-		seed := func(id, kickoff, state string, winner *string, shootout string, sealed bool) {
-			if _, err := pool.Exec(ctx, `INSERT INTO match (id, competition_id, season_id, round, kickoff, state, home_team_id, away_team_id, home_score, away_score, winner_id, source)
-				VALUES ($1,'world-cup','2026','round-of-16',$2,$3,$4,$5,1,1,$6,'espn')`, id, kickoff, state, home, away, winner); err != nil {
+		partial := &model.Shootout{HomeScore: 3, AwayScore: 2}
+		partialKicks := &model.ShootoutDetail{Home: []model.PenaltyKick{{Order: 1, Player: "Partial", Scored: true}}, Away: []model.PenaltyKick{}}
+		row := func(id, kickoff, state string, winner *string) uuid.UUID {
+			if _, err := pool.Exec(ctx, `INSERT INTO match (id, competition_id, season_id, round, kickoff, state, home_team_id, away_team_id, home_score, away_score, winner_id, status_name, source)
+				VALUES ($1,'world-cup','2026','round-of-16',$2,$3,$4,$5,1,1,$6,'STATUS_SHOOTOUT','espn')`, id, kickoff, state, home, away, winner); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := pool.Exec(ctx, `INSERT INTO match_detail (match_id, scorers, cards, shootout) VALUES ($1,'[]','[]',$2)`, id, shootout); err != nil {
+			matchID := uuid.MustParse(id)
+			if err := writer.UpsertMatchDetail(ctx, matchID, model.MatchDetail{Shootout: partial, ShootoutDetail: partialKicks}); err != nil {
 				t.Fatal(err)
 			}
-			if sealed {
-				if _, err := pool.Exec(ctx, `UPDATE match SET finalized_at=now() WHERE id=$1`, id); err != nil {
-					t.Fatal(err)
-				}
+			return matchID
+		}
+		finalize := func(matchID uuid.UUID, kickoff, status string, winner *string, detail model.MatchDetail) {
+			if _, err := pool.Exec(ctx, `UPDATE match SET state='finished' WHERE id=$1`, matchID); err != nil {
+				t.Fatal(err)
+			}
+			one := 1
+			finalized, err := writer.FinalizeMatch(ctx,
+				writerstore.MatchIdentity{MatchID: matchID, CompetitionID: "world-cup", SeasonID: "2026",
+					HomeTeamID: home, AwayTeamID: away, WinnerTeamID: winner, Source: "espn"},
+				model.Match{ID: matchID.String(), Kickoff: kickoff, State: model.MatchStateFinished, Round: "round-of-16",
+					StatusName: status, HomeScore: &one, AwayScore: &one},
+				detail)
+			if err != nil || !finalized {
+				t.Fatalf("finalize %s: %v %v", matchID, finalized, err)
 			}
 		}
-		contradicted, live, level := "018f0000-0000-7000-8000-000000016025", "018f0000-0000-7000-8000-000000016026", "018f0000-0000-7000-8000-000000016027"
-		unsealed := "018f0000-0000-7000-8000-000000016028"
-		seed(contradicted, "2026-07-07T17:00:00Z", "finished", &away, `{"homeScore":4,"awayScore":3}`, true)
-		seed(live, "2026-07-08T17:00:00Z", "live", &home, `{"homeScore":3,"awayScore":2}`, false)
-		seed(level, "2026-07-09T17:00:00Z", "finished", &away, `{"homeScore":3,"awayScore":3}`, true)
-		seed(unsealed, "2026-07-10T17:00:00Z", "finished", &away, `{"homeScore":3,"awayScore":2}`, false)
-		want := map[string]any{contradicted: home, live: nil, level: away, unsealed: away}
+		live := row("018f0000-0000-7000-8000-000000016026", "2026-07-08T17:00:00Z", "live", &home)
+		noEvidence := row("018f0000-0000-7000-8000-000000016028", "2026-07-10T17:00:00Z", "live", nil)
+		finalize(noEvidence, "2026-07-10T17:00:00Z", "STATUS_FINAL_PEN", &away, model.MatchDetail{})
+		terminal := row("018f0000-0000-7000-8000-000000016029", "2026-07-11T17:00:00Z", "live", nil)
+		finalize(terminal, "2026-07-11T17:00:00Z", "STATUS_ABANDONED", nil, model.MatchDetail{})
+		decided := row("018f0000-0000-7000-8000-00000001602a", "2026-07-12T17:00:00Z", "live", nil)
+		finalize(decided, "2026-07-12T17:00:00Z", "STATUS_FINAL_PEN", &home, model.MatchDetail{Shootout: &model.Shootout{HomeScore: 4, AwayScore: 3}})
+		legacy := "018f0000-0000-7000-8000-000000016025"
+		if _, err := pool.Exec(ctx, `INSERT INTO match (id, competition_id, season_id, round, kickoff, state, home_team_id, away_team_id, home_score, away_score, winner_id, source)
+			VALUES ($1,'world-cup','2026','round-of-16','2026-07-07T17:00:00Z','finished',$2,$3,1,1,$3,'espn')`, legacy, home, away); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO match_detail (match_id, scorers, cards, shootout) VALUES ($1,'[]','[]','{"homeScore":4,"awayScore":3}')`, legacy); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `UPDATE match SET finalized_at=now() WHERE id=$1`, legacy); err != nil {
+			t.Fatal(err)
+		}
 
+		type served struct{ winner, shootout any }
+		decisive := map[string]any{"homeScore": float64(4), "awayScore": float64(3)}
+		want := map[string]served{
+			live.String():       {nil, map[string]any{"homeScore": float64(3), "awayScore": float64(2)}},
+			noEvidence.String(): {away, nil},
+			terminal.String():   {nil, nil},
+			decided.String():    {home, decisive},
+			legacy:              {away, decisive},
+		}
 		var listed []map[string]any
 		get(t, "/v1/competitions/world-cup/2026/matches", &listed)
 		var profile map[string]any
@@ -750,21 +783,33 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			found := 0
 			for _, row := range rows {
 				match := row.(map[string]any)
-				if winner, ok := want[match["id"].(string)]; ok {
-					found++
-					if match["winnerId"] != winner {
-						t.Fatalf("%s %s served winner %v, want %v", name, match["id"], match["winnerId"], winner)
-					}
+				expected, ok := want[match["id"].(string)]
+				if !ok {
+					continue
+				}
+				found++
+				if match["winnerId"] != expected.winner {
+					t.Fatalf("%s %s served winner %v, want %v", name, match["id"], match["winnerId"], expected.winner)
+				}
+				if name != "bracket" && !reflect.DeepEqual(match["shootout"], expected.shootout) {
+					t.Fatalf("%s %s served shootout %v, want %v", name, match["id"], match["shootout"], expected.shootout)
 				}
 			}
 			if found != len(want) {
 				t.Fatalf("%s served %d of %d shootout matches", name, found, len(want))
 			}
 		}
-		for id, kept := range map[string]string{contradicted: away, live: home} {
-			var stored string
-			if err := pool.QueryRow(ctx, `SELECT winner_id FROM match WHERE id=$1`, id).Scan(&stored); err != nil || stored != kept {
-				t.Fatalf("stored winner of %s rewritten: %q %v", id, stored, err)
+		var stored *string
+		if err := pool.QueryRow(ctx, `SELECT winner_id FROM match WHERE id=$1`, live).Scan(&stored); err != nil || stored == nil || *stored != home {
+			t.Fatalf("live stored winner rewritten: %v %v", stored, err)
+		}
+		// The kick list follows the same rule: a live poll's partial list is
+		// never sealed as the final one.
+		for id, kicks := range map[uuid.UUID]bool{live: true, noEvidence: false, terminal: false} {
+			var summary map[string]any
+			get(t, "/v1/matches/"+id.String(), &summary)
+			if (summary["shootoutDetail"] != nil) != kicks {
+				t.Fatalf("match %s served shootout detail %v", id, summary["shootoutDetail"])
 			}
 		}
 	})
@@ -772,8 +817,8 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 	t.Run("read-time translation and recovery stay on indexed lookups", func(t *testing.T) {
 		// The bound READER_CONTRACT documents: every correlated lookup the read
 		// projections add -- each side's crosswalk ids, a legacy row's goal
-		// events and their player ids, a bracket row's stored aggregate -- has
-		// an index path keyed by the outer row. With sequential scans disabled,
+		// events and their player ids -- has an index path keyed by the outer
+		// row. With sequential scans disabled,
 		// a lookup without one still plans as a Seq Scan, so none may appear.
 		// match_event must be reached through its (match_id, seq) primary key,
 		// never by scanning every goal of every match through its type index.
@@ -792,7 +837,6 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			{"matches", matchesSQL, []any{"world-cup", "2026"}, []string{"team_external_ref", "player_external_ref", "match_event"}},
 			{"team schedule", teamScheduleSQL, []any{"nat-civ", "world-cup", "2026"}, []string{"team_external_ref", "player_external_ref", "match_event"}},
 			{"summary", summarySQL, []any{uuid.Nil}, []string{"team_external_ref", "player_external_ref", "match_event", "match_detail"}},
-			{"bracket", bracketSQL, []any{"world-cup", "2026"}, []string{"match_detail"}},
 		} {
 			tx, err := pool.Begin(ctx)
 			if err != nil {

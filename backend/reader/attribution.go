@@ -116,23 +116,15 @@ func recoverLegacyScorers(scorers []espn.Scorer, raw []byte) error {
 	return nil
 }
 
-// servedWinner is the winner the reader serves. A match that is not finished
-// has none: the bracket mapper before T16.2 stored one from a live shootout's
-// partial totals, and serving it would advance a side early. A finalized
-// (sealed) match is won by the side its decisive stored shootout aggregate
-// names, else by its stored winner: rows sealed before T16.2 kept the
-// scoreboard's winner flags even where the summary aggregate -- the higher
-// evidence -- named the other side, and they cannot be rewritten. Until
-// finalization replaces the detail, a finished match's stored aggregate may
-// still be a live poll's partial, so its stored winner stands.
-func servedWinner(state espn.MatchState, sealed bool, shootout *espn.Shootout, homeID, awayID string, stored *string) *string {
+// servedWinner is the winner the reader serves: the stored one, but none for a
+// match that is not finished. The bracket mapper before T16.2 stored a winner
+// from a live shootout's partial totals, and serving it would advance a side
+// early. A finished match's stored winner is not re-derived from its stored
+// shootout aggregate: on rows sealed before T16.2 that aggregate may be a live
+// poll's partial that finalization retained, so it is no stronger evidence.
+func servedWinner(state espn.MatchState, stored *string) *string {
 	if state != espn.MatchStateFinished {
 		return nil
-	}
-	if sealed {
-		if winner := espn.ShootoutWinner(shootout, homeID, awayID); winner != nil {
-			return winner
-		}
 	}
 	return stored
 }

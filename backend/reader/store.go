@@ -50,7 +50,7 @@ func jsonInto(raw []byte, destination any) error {
 // live match without ESPN's display clock; the contract is null (unknown).
 const matchesSQL = `
 SELECT m.id, m.kickoff, m.state, NULLIF(m.minute, ''), m.status_detail, m.status_name,
-       m.home_score, m.away_score, m.winner_id, m.finalized_at IS NOT NULL, m.note,
+       m.home_score, m.away_score, m.winner_id, m.note,
        ht.id, ht.name, ht.abbr, ht.crest_url,
        at.id, at.name, at.abbr, at.crest_url,
        d.scorers, d.cards, d.stats, d.win_probability, d.shootout, d.shootout_detail,` + sideRefsColumns + legacyGoalsColumn + `
@@ -83,10 +83,9 @@ func scanMatches(rows pgx.Rows) ([]Match, error) {
 		var state string
 		var scorers, cards, stats, winProbability, shootout, shootoutDetail, legacyGoals []byte
 		var homeRefs, awayRefs []string
-		var sealed bool
 		if err := rows.Scan(
 			&id, &kickoff, &state, &match.Minute, &match.StatusDetail, &match.StatusName,
-			&match.HomeScore, &match.AwayScore, &match.WinnerID, &sealed, &match.Note,
+			&match.HomeScore, &match.AwayScore, &match.WinnerID, &match.Note,
 			&match.Home.ID, &match.Home.Name, &match.Home.Abbr, &match.Home.CrestURL,
 			&match.Away.ID, &match.Away.Name, &match.Away.Abbr, &match.Away.CrestURL,
 			&scorers, &cards, &stats, &winProbability, &shootout, &shootoutDetail,
@@ -118,7 +117,7 @@ func scanMatches(rows pgx.Rows) ([]Match, error) {
 		if err := recoverLegacyScorers(match.Scorers, legacyGoals); err != nil {
 			return nil, err
 		}
-		match.WinnerID = servedWinner(match.State, sealed, match.Shootout, match.Home.ID, match.Away.ID, match.WinnerID)
+		match.WinnerID = servedWinner(match.State, match.WinnerID)
 		matches = append(matches, match)
 	}
 	return matches, rows.Err()
@@ -187,14 +186,13 @@ var bracketRoundNames = map[string]string{
 
 const bracketSQL = `
 SELECT m.id, m.round, m.kickoff, m.state, NULLIF(m.minute, ''), m.status_detail, m.status_name,
-       m.home_score, m.away_score, m.winner_id, m.finalized_at IS NOT NULL, m.note,
+       m.home_score, m.away_score, m.winner_id, m.note,
        m.home_placeholder, m.away_placeholder,
        ht.id, ht.name, ht.abbr, ht.crest_url,
-       at.id, at.name, at.abbr, at.crest_url, d.shootout
+       at.id, at.name, at.abbr, at.crest_url
 FROM match m
 JOIN team ht ON ht.id = m.home_team_id
 JOIN team at ON at.id = m.away_team_id
-LEFT JOIN match_detail d ON d.match_id = m.id
 WHERE m.competition_id = $1 AND m.season_id = $2 AND m.round IS NOT NULL AND m.round <> ''
 ORDER BY m.kickoff, m.id`
 
@@ -216,19 +214,13 @@ func (s *Store) Bracket(ctx context.Context, competition, season string) ([]Brac
 		var awayID, awayName, awayAbbr string
 		var awayCrest *string
 		var homePlaceholder, awayPlaceholder bool
-		var shootout []byte
-		var sealed bool
 		if err := rows.Scan(
 			&id, &match.Round, &kickoff, &state, &match.Minute, &match.StatusDetail,
-			&match.StatusName, &match.HomeScore, &match.AwayScore, &match.WinnerID, &sealed, &match.Note,
+			&match.StatusName, &match.HomeScore, &match.AwayScore, &match.WinnerID, &match.Note,
 			&homePlaceholder, &awayPlaceholder,
 			&homeID, &homeName, &homeAbbr, &homeCrest,
-			&awayID, &awayName, &awayAbbr, &awayCrest, &shootout,
+			&awayID, &awayName, &awayAbbr, &awayCrest,
 		); err != nil {
-			return nil, err
-		}
-		var stored *espn.Shootout
-		if err := jsonInto(shootout, &stored); err != nil {
 			return nil, err
 		}
 		match.ID = id.String()
@@ -236,7 +228,7 @@ func (s *Store) Bracket(ctx context.Context, competition, season string) ([]Brac
 		match.State = espn.MatchState(state)
 		match.Home = espn.BracketTeam{ID: homeID, Name: homeName, Abbr: homeAbbr, CrestURL: homeCrest, Placeholder: homePlaceholder}
 		match.Away = espn.BracketTeam{ID: awayID, Name: awayName, Abbr: awayAbbr, CrestURL: awayCrest, Placeholder: awayPlaceholder}
-		match.WinnerID = servedWinner(match.State, sealed, stored, homeID, awayID, match.WinnerID)
+		match.WinnerID = servedWinner(match.State, match.WinnerID)
 		bySlug[match.Round] = append(bySlug[match.Round], match)
 	}
 	if err := rows.Err(); err != nil {
@@ -499,7 +491,7 @@ func (s *Store) teamSquad(
 // team ids.
 const teamScheduleSQL = `
 SELECT m.id, m.kickoff, m.state, NULLIF(m.minute, ''), m.status_detail, m.status_name,
-       m.home_score, m.away_score, m.winner_id, m.finalized_at IS NOT NULL, m.note,
+       m.home_score, m.away_score, m.winner_id, m.note,
        ht.id, ht.name, ht.abbr, ht.crest_url,
        at.id, at.name, at.abbr, at.crest_url,
        d.scorers, d.cards, d.stats, d.win_probability, d.shootout, d.shootout_detail,` + sideRefsColumns + legacyGoalsColumn + `
