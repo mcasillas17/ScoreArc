@@ -50,6 +50,10 @@ func newRecoveryPostgres(t *testing.T) (*store.Store, *pgxpool.Pool, string) {
 		t.Fatal(err)
 	}
 	sort.Strings(files)
+	// golang-migrate creates its ledger before 0001, as production did.
+	if _, err := pool.Exec(ctx, `CREATE TABLE schema_migrations (version bigint NOT NULL PRIMARY KEY, dirty boolean NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
 	for _, path := range files {
 		raw, err := os.ReadFile(path)
 		if err != nil {

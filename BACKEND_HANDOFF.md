@@ -228,7 +228,8 @@ Hard rules (also in `AGENTS.md` — read it; Codex auto-loads it):
   acceptance is in `CURRENT_STATE`); the external watchdog is
   manual-only until separately authorized. See
   [`MATCH_FRESHNESS.md`](docs/backend/MATCH_FRESHNESS.md) for evidence, limits and
-  rollout acceptance. This narrow schema prerequisite is not all of T21.2.
+  rollout acceptance. Both services also run the T21.2 head/dirty-ledger startup
+  gate; see [schema readiness](docs/backend/RELEASES.md#schema-readiness).
 - **All frontend data-fetching is server-side** (Next.js server components + `/api` routes) — so the reader can be public without the browser ever holding a DB credential.
 - **Competitions/seasons** are config in `src/server/data/competitions.ts` (**ten** configured competitions). The Go side reads the generated `backend/config/competitions.json` — never hand-edit it; run `npm run export:competitions`. (Configured is not the same as uniformly ingested — see [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md).)
 

@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/mcasillas17/scorearc-backend/migrations"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
 
@@ -29,17 +30,15 @@ type MatchObservation struct {
 	ObservedAt time.Time
 }
 
-func (s *Store) CheckMatchSyncSchema(ctx context.Context) error {
+// CheckSchemaReady is the ingester's startup gate: the shared migration-ledger
+// policy plus a zero-row probe of the 0023 bookkeeping columns, run as this
+// store's role. Errors are *migrations.ReadinessError, safe to log as-is.
+func (s *Store) CheckSchemaReady(ctx context.Context) error {
 	ctx, cancel := boundedContext(ctx)
 	defer cancel()
-	rows, err := s.pool.Query(ctx, `SELECT s.observed_at,s.last_attempted_at,s.retry_at,s.attempts,s.last_error,
+	return migrations.CheckReady(ctx, s.pool, `SELECT s.observed_at,s.last_attempted_at,s.retry_at,s.attempts,s.last_error,
 		p.attempted_at,p.succeeded_at,p.outcome,p.event_count
 		FROM match_sync_status s CROSS JOIN match_poll_status p WHERE false`)
-	if err != nil {
-		return fmt.Errorf("match synchronization requires migration 0023: %w", err)
-	}
-	rows.Close()
-	return rows.Err()
 }
 
 // A missing crosswalk is returned explicitly, not filtered out of the queue.

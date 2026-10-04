@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -62,6 +63,12 @@ func newIntegrationStoreThrough(t *testing.T, lastMigration string) (*Store, *pg
 		t.Fatalf("list migrations: %v", err)
 	}
 	sort.Strings(migrations)
+	// golang-migrate creates its ledger before 0001, as production did, and
+	// records the last version applied.
+	if _, err := pool.Exec(ctx, `CREATE TABLE schema_migrations (version bigint NOT NULL PRIMARY KEY, dirty boolean NOT NULL)`); err != nil {
+		t.Fatalf("create migration ledger: %v", err)
+	}
+	applied := 0
 	for _, migration := range migrations {
 		if lastMigration != "" && filepath.Base(migration) > lastMigration {
 			break
@@ -73,6 +80,12 @@ func newIntegrationStoreThrough(t *testing.T, lastMigration string) (*Store, *pg
 		if _, err := pool.Exec(ctx, string(sql)); err != nil {
 			t.Fatalf("apply migration %s: %v", migration, err)
 		}
+		if applied, err = strconv.Atoi(filepath.Base(migration)[:4]); err != nil {
+			t.Fatalf("migration version %s: %v", migration, err)
+		}
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO schema_migrations (version, dirty) VALUES ($1, false)`, applied); err != nil {
+		t.Fatalf("record migration version: %v", err)
 	}
 
 	seedIntegrationData(t, pool)

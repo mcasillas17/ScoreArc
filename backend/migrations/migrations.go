@@ -22,8 +22,8 @@ var files embed.FS
 // That gap is real: on 2026-08-18 a deploy shipped an ingester expecting
 // match_final_capture_status against a database still at version 15, and the
 // only symptom was a per-competition warning on every tick that read like a
-// transient fault. Comparing this against schema_migrations turns that into one
-// unambiguous line at startup.
+// transient fault. CheckReady (readiness.go) requires schema_migrations to
+// equal this exactly, so that mismatch now refuses startup instead.
 func Latest() (int, error) {
 	entries, err := files.ReadDir(".")
 	if err != nil {

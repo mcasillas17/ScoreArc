@@ -73,8 +73,10 @@ psql --version              # expect psql (PostgreSQL) 16.x or newer (matches Ne
 brew install golang-migrate
 migrate -version
 ```
-(Alternative: apply the `.sql` files directly with `psql -f` — see §5.3. `migrate`
-is nicer for versioned up/down.)
+Required for any database the reader or ingester runs against: both refuse to
+start without the `schema_migrations` ledger `migrate` keeps
+([schema readiness](RELEASES.md#schema-readiness)). Applying the `.sql` files with
+`psql -f` (§5.3) creates no ledger, so it suits only throwaway databases.
 
 ### 1.7 sqlc — optional for future generated query layers
 ```bash
@@ -198,6 +200,11 @@ serving traffic. (Migration numbering has gaps — some pre-launch migrations we
 folded into `0001` before deployment — so trust the files on disk, not a
 contiguous count.)
 
+This is enforced at startup: both services refuse to run unless the ledger holds
+one clean row at exactly the head they embed, readable by their own role
+([schema readiness](RELEASES.md#schema-readiness), including the pre-release
+verify/apply/verify order).
+
 For an existing version-22 database, the separately approved 0023 apply/release
 sequence and narrow startup prerequisite checks are in
 [MATCH_FRESHNESS.md](MATCH_FRESHNESS.md#schema-and-separately-approved-release-order).
@@ -210,11 +217,12 @@ For a team-profile `500` with a healthy `/healthz`, follow the reader's
 before running migrations against an existing deployment. It separates read-only
 schema/ledger diagnosis from an explicitly authorized operator repair.
 
-### 5.3 (Option B) with psql directly — fresh database bootstrap only
+### 5.3 (Option B) with psql directly — throwaway databases only
 
 This path has no migration ledger and the SQL files are intentionally versioned,
-not re-runnable. Use it only on a fresh database. Use `golang-migrate` for every
-existing environment.
+not re-runnable. The reader and ingester refuse to start against such a database
+(`ledger_absent`), so use it only for a throwaway database that never runs the
+services. Use `golang-migrate` for every environment that does.
 
 ```bash
 cd backend

@@ -447,7 +447,8 @@ Match-bearing responses add freshness headers while retaining existing body
 shapes. Body, identity scope and metadata share a bounded read-only repeatable-read
 snapshot, released before response writes. Reader time detects stopped ingestion
 independently of worker logging. The website stays on its existing DataStore;
-broader E17 provenance and T21.2 readiness are not closed by this slice. See
+broader E17 provenance is not closed by this slice, and schema readiness is a
+separate startup gate ([RELEASES](RELEASES.md#schema-readiness)). See
 [MATCH_FRESHNESS.md](MATCH_FRESHNESS.md) for thresholds, independent watchdog,
 migration compatibility and separately approved rollout.
 

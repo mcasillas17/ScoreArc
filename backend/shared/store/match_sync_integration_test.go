@@ -2,9 +2,11 @@ package store
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/mcasillas17/scorearc-backend/migrations"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
 
@@ -153,17 +155,22 @@ func TestMatchSyncLeastPrivilegeAndFinalization(t *testing.T) {
 	}
 }
 
-func TestMatchSyncReadinessRequiresNewSchema(t *testing.T) {
-	st, pool := newSeededStore(t)
+// The gate runs as the ingester role (the owner would bypass the grants) and
+// still guards the 0023 bookkeeping columns this binary writes, not just the
+// ledger version.
+func TestIngesterSchemaGateRunsAsTheIngesterRole(t *testing.T) {
+	_, pool, dsn := newIntegrationStoreDSN(t)
+	st, _ := newIngesterRoleStore(t, pool, dsn)
 	ctx := context.Background()
-	if err := st.CheckMatchSyncSchema(ctx); err != nil {
+	if err := st.CheckSchemaReady(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `DROP TABLE match_sync_status`); err != nil {
+	if _, err := pool.Exec(ctx, `ALTER TABLE match_sync_status RENAME COLUMN last_error TO hidden_column`); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.CheckMatchSyncSchema(ctx); err == nil {
-		t.Fatal("old schema must not pass match synchronization readiness")
+	var readiness *migrations.ReadinessError
+	if err := st.CheckSchemaReady(ctx); !errors.As(err, &readiness) || readiness.Category != "objects_missing" {
+		t.Fatalf("got %v, want objects_missing", err)
 	}
 }
 

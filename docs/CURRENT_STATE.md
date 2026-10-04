@@ -177,7 +177,7 @@ that audit's mutable status conclusions where they conflict.
 | Frontend | Live at scorearc.futbol, fully ESPN-backed. #192/#193 are merged and released; October 2 Liga MX/LaLiga Now/calendar and September API-window checks passed within the limits above. No reader/backend fetch call sites exist in `src/server/data/` — the 1d cutover has not started. |
 | Ingester | **Recovery and monthly discovery repairs merged and released.** September 20 recovery resolved the original stale matches; #183 shipped September 26. October 2 match scopes reported nine fresh / one dormant, all polls OK and zero stale/overdue; Greece's `/matches` returned 182 and `fresh`. This does not establish current standings/top-scorers or ancillary collection coverage. Sustained completeness/reconciliation remains open. Do not rebuild #172/#173/#183 or repeat migration 0023/restart recovery. |
 | Reader API | 7 registered `/v1` data routes (`matches`, `standings`, `bracket`, `top-scorers`, `teams/{teamId}`, `news`, `matches/{id}`) + `/healthz`. The Liga MX team-profile **500 is repaired**: existing migration 0022 restored the full production response, accepted 2026-09-06 (§3). Broader reader parity remains open (§5). |
-| Operations | Credential delivery, project-token promotion and Fly verification repairs are merged, with later successful releases above; older §10 incidents are not work to repeat. **October 2 main `529460b` has passing tests but failed Fly eligibility (`runStatus`), not all-green CI; cause unresolved.** Retain PR/CI protections, recheck live approval holds before any new release, and keep migrations manual. Applied 0023 checks are not full T21.2 head/dirty-ledger readiness; broader T21.1 governance/acceptance also remains open. |
+| Operations | Credential delivery, project-token promotion and Fly verification repairs are merged, with later successful releases above; older §10 incidents are not work to repeat. **October 2 main `529460b` has passing tests but failed Fly eligibility (`runStatus`), not all-green CI; cause unresolved.** Retain PR/CI protections, recheck live approval holds before any new release, and keep migrations manual. T21.2's fail-closed head/dirty-ledger gate is implemented but not yet accepted as active in production; its pre-merge production checks are in [RELEASES](backend/RELEASES.md#activation-prerequisites-for-t212); broader T21.1 governance/acceptance also remains open. |
 | 1d (frontend cutover) | Absent. No spec has landed as an implementation; no `apiStore` exists. |
 | E6 (shot log) | T6.1 (coverage probe) complete. T6.2–T6.4 (extraction, reconciliation, rendering) pending. |
 | E7 (history & trends) | Writer code is implemented and deployed; continuing capture is not operationally accepted. September 13 recovery and September 14 machine readback are historical observations, not present-health proof. Production SQL has not been inspected in this pass; unexposed writer tables cannot be judged from reader responses alone. **T7.13 operational acceptance remains pending** (§4), and T7.21 participation retry work is separate from match-state recovery. |
@@ -615,8 +615,12 @@ held-byte reprocessing and new collection remain unchanged.
   Collect sustained reconciliation and transient-failure recovery evidence
   ([SETUP §7.5](backend/SETUP.md#75-verify)); the dated observations above do not
   close this acceptance or ancillary squad/player/archive coverage.
-- **T21.2 full schema readiness:** enforce head/dirty-ledger compatibility;
-  migration 0023 is already applied and its narrow startup checks are not this task.
+- **T21.2 full schema readiness:** the head/dirty-ledger gate is implemented
+  (October 4; no new migration). It protects production only after the owner
+  read-only verifies production's ledger and role access per
+  [RELEASES](backend/RELEASES.md#activation-prerequisites-for-t212) before the
+  merge that releases it, and a release containing it runs. Record that
+  acceptance here. Migration 0023 is already applied; do not repeat it.
 
 **After the existing contract/trust gates:** T16.3–T16.5 implement, shadow and
 soak the reader per method with fallback and immediate rollback, never a
