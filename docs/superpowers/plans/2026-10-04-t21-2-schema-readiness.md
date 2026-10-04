@@ -48,6 +48,7 @@ initial guess that a `0024` grant was required was disproved by the test).
 | deadline exceeded | `timeout` | — |
 | context cancelled | `canceled` | — |
 | anything else | `query_failed` | when a PgError |
+| binary embeds no readable migrations (build defect) | `embedded_migrations_invalid` | — |
 
 ## Files
 

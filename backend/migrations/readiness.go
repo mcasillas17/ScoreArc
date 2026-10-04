@@ -22,7 +22,7 @@ type Querier interface {
 type ReadinessError struct {
 	// One of: behind, ahead, dirty, ledger_absent, ledger_empty,
 	// ledger_malformed, permission_denied, objects_missing, timeout, canceled,
-	// query_failed.
+	// query_failed, embedded_migrations_invalid.
 	Category string
 	Expected int
 	// Applied is the ledger version, or -1 when it could not be read.
@@ -65,7 +65,8 @@ func (e *ReadinessError) Error() string {
 func CheckReady(ctx context.Context, db Querier, probes ...string) error {
 	expected, err := Latest()
 	if err != nil {
-		return &ReadinessError{Category: "query_failed", Applied: -1, ErrorType: fmt.Sprintf("%T", err)}
+		// A build defect, not a database fault: this binary carries no usable migrations.
+		return &ReadinessError{Category: "embedded_migrations_invalid", Applied: -1, ErrorType: fmt.Sprintf("%T", err)}
 	}
 	refuse := func(category string, applied int64, dirty bool) error {
 		return &ReadinessError{Category: category, Expected: expected, Applied: applied, Dirty: dirty}

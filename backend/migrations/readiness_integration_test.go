@@ -16,9 +16,9 @@ import (
 )
 
 // golangMigrateLedger is the DDL golang-migrate runs when it opens a database,
-// BEFORE applying 0001. Creating it first matters: 0001's default privileges
-// therefore never cover it, exactly as in production, so these tests prove
-// 0024's grant is what lets the application roles read it.
+// BEFORE applying 0001. Creating it first matters: role access to it then comes
+// only from 0001's GRANT ... ON ALL TABLES (default privileges never apply), as
+// in production, and these tests exercise exactly that.
 const golangMigrateLedger = `CREATE TABLE IF NOT EXISTS schema_migrations (version bigint NOT NULL PRIMARY KEY, dirty boolean NOT NULL)`
 
 const syncProbe = `SELECT s.observed_at, p.succeeded_at FROM match_sync_status s CROSS JOIN match_poll_status p WHERE false`
