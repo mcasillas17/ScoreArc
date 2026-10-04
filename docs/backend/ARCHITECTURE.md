@@ -146,7 +146,9 @@ through `team_external_ref` when it reads, and `Scorer.athleteId` is the source
 provider's athlete id, stored and served as a provider-scoped value (both T16.2,
 [READER_CONTRACT](READER_CONTRACT.md#t162-identity-and-dto-contract)); and
 `player_team_history.team_source_id` is a career club's provider id, never
-resolved because a career spans competitions we never curate.
+resolved because a career spans competitions we never curate. Stored lineup
+`jersey` URLs also embed the provider's event and athlete ids; that is the open
+`T10.2-lineups` gap, not a design choice.
 Provider content ids are not entities and are never resolved: they stay ESPN's
 own opaque ids, such as `match_play.source_id` (the play id) and
 `match_detail.videos[].id`.
@@ -488,8 +490,11 @@ migration compatibility and separately approved rollout.
   - `GET /v1/competitions/{comp}/{season}/teams/{teamId}`  (team profile)
   - `GET /v1/matches/{id}`  (summary/detail)
   - `GET /v1/competitions/{comp}/news`  → **live proxy to ESPN** (short TTL cache), NOT DB-served.
-- **Response shapes target the frontend types.** The implemented differences
-  are registered gaps in [READER_CONTRACT](READER_CONTRACT.md) (T16.1). Publish an
+- **Response shapes target the frontend types.** Each implemented difference is
+  a registered gap (T16.1), an intentional identity translation (T16.2:
+  canonical match UUIDs, team slugs, canonical-or-`null` nested `teamId`s) or
+  the additive `BracketRound.name` contract decision, all in
+  [READER_CONTRACT](READER_CONTRACT.md#t162-identity-and-dto-contract). Publish an
   **OpenAPI** doc as the shared contract. The implementation and OpenAPI 3.1 document live in
   `backend/reader/`; contract tests load the document and validate every public
   response model.
@@ -584,7 +589,8 @@ views must reach tested parity first (`CURRENT_STATE.md` §5). The intended desi
 
 - **Go mappers:** unit tests against the recorded ESPN JSON fixtures —
   copy/reference `src/server/data/__fixtures__/`. Their implemented differences
-  from the TS mappers are registered gaps in [READER_CONTRACT](READER_CONTRACT.md).
+  from the TS mappers are registered gaps or documented T16.2 contract
+  decisions in [READER_CONTRACT](READER_CONTRACT.md).
 - **Repository layer:** reader tests apply the real migrations to ephemeral
   Postgres 16 via **Testcontainers**, seed representative data, exercise every
   SQL read model, and prove the reader role cannot INSERT/UPDATE/DELETE/DDL.

@@ -81,9 +81,12 @@ publishes its complete OpenAPI 3.1 contract at
 | `GET /v1/matches/{id}` | Postgres | 30 s |
 
 Responses are shaped after the TypeScript models in `src/server/data/types.ts`,
-but DTO and query parity is not complete and the site still reads ESPN: the
-implemented differences are registered gaps in
-[`READER_CONTRACT`](docs/backend/READER_CONTRACT.md). Empty collections are JSON
+but DTO and query parity is not complete and the site still reads ESPN. Each
+implemented difference is a registered gap, an intentional identity translation
+(the reader serves canonical match UUIDs and team slugs where the site serves
+ESPN ids, and canonical-or-`null` scorer and card `teamId`s) or the additive
+`BracketRound.name` contract decision, all documented in
+[`READER_CONTRACT`](docs/backend/READER_CONTRACT.md#t162-identity-and-dto-contract). Empty collections are JSON
 arrays, never `null`. Competition and season identifiers
 are checked against the embedded registry before a query runs; every SQL value
 uses a pgx parameter.

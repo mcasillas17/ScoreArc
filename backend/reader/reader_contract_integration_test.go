@@ -166,6 +166,72 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		}
 	})
 
+	t.Run("recorded own goal survives writer and reader SQL", func(t *testing.T) {
+		// The recorded own goal through the ingester's writer and the reader's
+		// SQL: stored with the provider id of the side that benefits, served as
+		// that canonical side with ownGoal and the provider athleteId, on the
+		// summary and list projections alike.
+		detail, err := espn.MapSummary(contractFixture(t, vectors.OwnGoal.Fixture))
+		if err != nil {
+			t.Fatal(err)
+		}
+		home, away := vectors.OwnGoal.Sides["home"], vectors.OwnGoal.Sides["away"]
+		for _, side := range []struct{ key, name, abbr string }{{"home", "Minnesota United FC", "MIN"}, {"away", "Atlante", "ATL"}} {
+			ref := vectors.OwnGoal.Sides[side.key]
+			if _, err := pool.Exec(ctx, `INSERT INTO team (id, kind, name, abbr) VALUES ($1,'club',$2,$3) ON CONFLICT (id) DO NOTHING`,
+				ref.CanonicalID, side.name, side.abbr); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := pool.Exec(ctx, `INSERT INTO team_external_ref (source, source_id, team_id) VALUES ('espn',$1,$2) ON CONFLICT DO NOTHING`,
+				ref.ProviderID, ref.CanonicalID); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO competition (id, name, short_name, kind) VALUES ('leagues-cup','Leagues Cup','Leagues Cup','cup') ON CONFLICT DO NOTHING`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO season (competition_id, id, label, has_bracket) VALUES ('leagues-cup','2026','2026',false) ON CONFLICT DO NOTHING`); err != nil {
+			t.Fatal(err)
+		}
+		id := uuid.MustParse("018f0000-0000-7000-8000-000000016030")
+		if _, err := pool.Exec(ctx, `INSERT INTO match (id, competition_id, season_id, kickoff, state, home_team_id, away_team_id, home_score, away_score, winner_id, status_detail, status_name, source)
+			VALUES ($1,'leagues-cup','2026','2026-08-12T00:30:00Z','finished',$2,$3,3,1,$2,'FT','STATUS_FULL_TIME','espn')`,
+			id, home.CanonicalID, away.CanonicalID); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.UpsertMatchDetail(ctx, id, detail); err != nil {
+			t.Fatal(err)
+		}
+		expected := vector(t, raw, "ownGoal", "reader", "scorers")
+		var summary map[string]any
+		get(t, "/v1/matches/"+id.String(), &summary)
+		validateSchema(t, document, "MatchSummary", summary)
+		assertWire(t, "stored own-goal summary scorers", summary["scorers"], expected)
+		var listed []map[string]any
+		get(t, "/v1/competitions/leagues-cup/2026/matches", &listed)
+		found := false
+		for _, match := range listed {
+			if match["id"] == id.String() {
+				found = true
+				validateSchema(t, document, "Match", match)
+				assertWire(t, "stored own-goal list scorers", match["scorers"], expected)
+			}
+		}
+		if !found {
+			t.Fatal("stored own-goal match missing from the list route")
+		}
+		// match_detail keeps the provider id of the side that benefits.
+		var storedTeam string
+		var storedOwnGoal bool
+		if err := pool.QueryRow(ctx, `SELECT scorers->0->>'teamId', (scorers->0->>'ownGoal')::boolean FROM match_detail WHERE match_id=$1`, id).
+			Scan(&storedTeam, &storedOwnGoal); err != nil {
+			t.Fatal(err)
+		}
+		if storedTeam != away.ProviderID || !storedOwnGoal {
+			t.Fatalf("stored own goal teamId %q ownGoal %t", storedTeam, storedOwnGoal)
+		}
+	})
+
 	t.Run("synthetic shootout and head-to-head survive JSONB storage", func(t *testing.T) {
 		detail, err := espn.MapSummary(withSummaryOverlay(t, raw, vectors.Summary.Fixture))
 		if err != nil {

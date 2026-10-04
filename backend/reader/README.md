@@ -2,21 +2,26 @@
 
 `backend/reader` is a public, read-only Go HTTP service. It serves JSON shaped
 after the frontend's existing models from Postgres, except news, which remains a
-short-lived ESPN proxy; the implemented differences are registered gaps in
-[`READER_CONTRACT`](../../docs/backend/READER_CONTRACT.md). The authoritative machine-readable contract is
+short-lived ESPN proxy. Each implemented difference is a registered gap, an
+intentional identity translation (canonical match UUIDs, team slugs,
+canonical-or-`null` scorer and card `teamId`s) or the additive
+`BracketRound.name` contract decision, all documented in
+[`READER_CONTRACT`](../../docs/backend/READER_CONTRACT.md#t162-identity-and-dto-contract). The authoritative machine-readable contract is
 [`openapi.yaml`](openapi.yaml).
 
 Every entity id it serves is a **canonical ScoreArc id** — slugs for
 competitions, seasons, and teams; UUIDs for matches — not a provider's. Ids stay
 opaque strings to consumers. Provider ids live in the `*_external_ref` crosswalk
 tables; the reader reads them only to translate stored references: a scorer's or
-card's `teamId` becomes the canonical side it names (or `null`). The one
-provider-scoped player or team identity it serves is `Scorer.athleteId`, the
-source provider's athlete id, which a client may resolve to a player slug and
-must never put in a URL. For detail stored before T16.2 it is read from the
-scorer's aligned `match_event` player through `player_external_ref`. Content
-ids are a different kind of value: a video's or a news article's `id` is ESPN's
-own opaque id, served as received and never resolved. See
+card's `teamId` becomes the canonical side it names (or `null`). The only
+dedicated provider athlete-id field it serves is `Scorer.athleteId`, the source
+provider's athlete id, which a client may resolve to a player slug and must
+never put in a URL. For detail stored before T16.2 it is read from the
+scorer's aligned `match_event` player through `player_external_ref`. Lineup
+`jersey` URLs still embed the provider's event and athlete ids, on this API and
+the frontend's alike; that is the open `T10.2-lineups` gap, not a translation.
+Content ids are a different kind of value: a video's or a news article's `id`
+is ESPN's own opaque id, served as received and never resolved. See
 [READER_CONTRACT, T16.2](../../docs/backend/READER_CONTRACT.md#t162-identity-and-dto-contract).
 
 ## Runtime configuration

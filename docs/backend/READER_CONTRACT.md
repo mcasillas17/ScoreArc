@@ -139,7 +139,7 @@ ids) must read from the same source and fall back together.
 |---|---|---|
 | `match-id`, `team-id` | the translations above | TS round-trip and helper tests; Go seed equality; go-db resolver |
 | `nested-team-id` | reader serves canonical sides or `null`; `Scorer.teamId`/`Card.teamId` are `string \| null` in both contracts | TS translation of real store output equals the reader vectors; Go and OpenAPI over the seed; go-db over `team_external_ref`, including an unattributable pair |
-| `scorer-identity` | `ownGoal` (`boolean \| null`) and `athleteId` (`string \| null`) in both; an own goal credits the side that benefits | recorded own goal in every suite; route-layer slug parity; sealed legacy rows recover both from aligned match events, and serve `null` (not `false`) without them (below) |
+| `scorer-identity` | `ownGoal` (`boolean \| null`) and `athleteId` (`string \| null`) in both; an own goal credits the side that benefits | recorded own goal in every suite, in go-db through the ingester's writer and the reader's summary and list routes; route-layer slug parity; sealed legacy rows recover both from aligned match events, and serve `null` (not `false`) without them (below) |
 | `standings-rank` | each table ordered by ESPN's `rank` stat when it is a complete `1..n` permutation, else provider order | recorded World Cup groups arrive out of order; both languages |
 | `standings-malformed` | the ingester's rule: a table with no teams, or a row with no or an empty team id or a missing required stat, rejects the payload, and so does an envelope with no `children` array; `children: []` is a legitimate empty table set. In the frontend, a payload whose only defect is a stat still yields its team identities to the team and player indexes (`StandingsStatsError.teams`, read by `standingTeams`), so slug links survive it; the standings page itself rejects it. A rejected payload is cached for the same 60 s as an accepted one, so the page and both indexes cost one upstream fetch, not one per read | shared malformed and envelope vectors: TS throws where the Go mapper rejects; the ingester's existing replacement guards keep stored standings when a payload is rejected |
 | `group-label` | an unnamed table is labeled with the competition short name | both languages |
@@ -274,7 +274,8 @@ the team helper rejecting canonical ids; an empty live minute in the TS bracket,
 the Go mapper and the reader SQL; ESPN's empty placeholder logo; the round-slug
 enum removed; provider standings order; a zero-filled missing stat; scoreboard
 shootout totals or the summary header ignored; the own-goal flag dropped; an
-unknown scorer side defaulted to home, or the read-time translation removed; a
+unknown scorer side defaulted to home, or the read-time translation removed (the
+recorded own goal through Postgres catches both its flag and its side); a
 URL-derived leader crest key; the CDN host or the port check removed; and a
 provider-derived match UUID. The review repairs were checked the same way: the
 scoreboard winner flags beating a decisive aggregate (both mappers and the

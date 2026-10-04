@@ -13,7 +13,8 @@ A player's public identifier is a **name slug**, scoped to a competition
 season. Provider ids (ESPN athlete numbers) never appear in URLs, rendered
 HTML, or as a public identifier or link in an API response — same rule the team
 pages already follow (`mex-america`, never `227`). Some response fields carry
-them as provider-scoped values, by design: see the exceptions below.
+them as provider-scoped values, by design, and lineup jersey URLs still embed
+them as an open gap: see the exceptions below.
 
 ```
 /c/liga-mx/2026-apertura/player/ali-avila
@@ -77,5 +78,10 @@ Some responses carry the provider athlete id as a provider-scoped value, never
 a public id and never in a URL: `Scorer.athleteId`, `LineupPlayer.athleteId`
 and `StatLeader.athleteId`, which the route layer resolves to the player's slug
 for links, and, on the frontend API, `SquadPlayer.id` and `PlayerProfile.id`.
-The reader serves only `Scorer.athleteId` today, nullable (T16.2,
+Of those fields the reader serves only `Scorer.athleteId` today, nullable (T16.2,
 [READER_CONTRACT](READER_CONTRACT.md#t162-identity-and-dto-contract)).
+
+One remaining embedding is not an exception but an open gap: a lineup player's
+`jersey` URL embeds the provider event and athlete ids, on the reader and the
+frontend API alike. The harness registers it as `T10.2-lineups`, which owns
+the change; until then the rule above does not hold for those URLs.
