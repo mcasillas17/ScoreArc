@@ -228,18 +228,149 @@ OPEN/RESOLVED transition deduplication. Every unhealthy run still fails, even
 when its transition message is suppressed. Missing/corrupt state fails closed.
 It neither calls ESPN nor writes match data.
 
-The workflow is **manual only**. Follow the reader README's explicit first-run
-bootstrap and subsequent latest-state restore instructions. No cron, recipient,
-paid service or external notification was activated. Logs are not delivered
-alerts; native Actions failure notifications may repeat despite transition
-deduplication.
+## Durable match monitor (activation disabled)
 
-Before enabling a five-minute cadence, separately approve the scheduler,
-durable latest-state selection/retention and incident owner. Configure Actions
-failure notifications or an explicitly approved transition-aware notifier, then
-verify actual receipt for opening, continued failure, recovery and recurrence.
-Detection/notification latency includes the next check, request/cache time and
-platform scheduling; the mathematical threshold is not instantaneous delivery.
+The workflow remains manual-only; its job and CLI require exact repository
+variable `MATCH_FRESHNESS_ENABLED=true`. Absent/false means **zero reader checks
+and zero webhook sends**. Delivery additionally requires exact
+`MATCH_FRESHNESS_DELIVERY_ENABLED=true` and the owner-approved secret
+`MATCH_FRESHNESS_WEBHOOK_URL`. Neither variable nor secret is created by this
+change. A commented five-minute cron recipe is provided; no active schedule is
+installed. Only main first-attempt runs are trusted; use a new run, not rerun.
+
+### State restoration and ordering
+
+The version-2 envelope binds repository, workflow, main ref, run ID/number/attempt,
+SHA, reader origin, exact scope set, epoch, monotonically increasing event sequence
+and timestamps. It separates active incidents, FIFO pending events and the most
+recent 32 acknowledged event IDs. Recurrence has a new incident ID; recovery
+references its opening ID. A pending OPEN remains ahead of its later RESOLVED and
+recurrence. Valid empty/dormant results keep their existing reader semantics;
+timeouts, malformed payloads, unknown emptiness and active partial/failed polls
+cannot resolve an incident. No reader threshold changes are made.
+
+The selector uses the repository's trusted workflow metadata and authenticated
+GitHub API. It considers failed state-bearing runs, never just successful runs.
+Within the newest eligible run it prefers `match-freshness-state` (acknowledged)
+to `match-freshness-pending` (before send). It validates artifact/run provenance,
+expiry, sizes, ordering and bounded API results before download, then validates
+the JSON envelope before checks. A newer preparation attempt without a checkpoint
+is a lost-state barrier. Missing, corrupt, expired, ambiguous, incompatible or
+unreadable newest state never causes fallback to an older artifact or bootstrap.
+Only proven disabled/pre-preparation skipped runs may be passed over.
+
+`initialize_state=true` is for the first history only, after complete bounded
+history enumeration proves no prior state or uncertain preparation. Otherwise use
+false (default). The former `state_run_id` override is removed. Legacy version-1
+state, changed origin/scopes, exhausted retries and incompatible code versions
+require an owner-reviewed migration/reconciliation; the automation has no reset,
+drop-event or forced older-state switch. Preserve old incident IDs and pending
+ordering when designing such a migration. Do not describe resetting as recovery.
+
+### Delivery and crash boundaries
+
+1. Prepare uses the existing bounded checker, queues transitions, reserves attempts
+   and atomically saves local state under an exclusive lock.
+2. Upload `match-freshness-pending`. Failure prevents **all sends**. The next run
+   sees the attempted preparation and refuses rollback if no checkpoint survives.
+3. Send up to ten reserved events sequentially, stopping on the first unsuccessful
+   acknowledgment. The body contains only `eventId`, `incidentId`, competition,
+   season, OPEN/RESOLVED status, occurrence timestamp, original diagnostic run URL,
+   match/stale/overdue counts, freshness/poll enums and sanitized error category.
+   No payload, team/player values, dependency messages or credentials are sent.
+4. Save acknowledgments and upload `match-freshness-state`. If the process crashes
+   or this upload fails after the receiver accepted a message, the next run uses
+   the pending snapshot and may resend the **same event ID**.
+
+The one transport is HTTP POST to an owner-controlled HTTPS webhook (HTTP is
+accepted only for loopback tests). It sends `Content-Type: application/json` and
+`Idempotency-Key: <eventId>`. The receiver must return **HTTP 200** with JSON
+`{"eventId":"<same ID>"}` after durable acceptance. A generic Slack/Discord webhook
+is not automatically compatible with this acknowledgment contract. Redirects,
+timeouts, 429, all other status codes, malformed or mismatched acknowledgment are
+explicit delivery failures; response contents and secret URL are never logged.
+The receiver should deduplicate by event ID and preserve acceptance ordering.
+
+This is bounded **at-least-once retry**, subject to retained state and eventual
+receiver success within the retry budget, not guaranteed eventual delivery or
+exactly-once delivery. Without receiver deduplication, ambiguous outcomes produce
+duplicates. Even a valid webhook acknowledgment proves protocol acceptance, not
+human receipt. Workflow success alone is weaker still.
+
+Reservations persist before send, so a crash can consume an attempt without a
+send. Events behind a failed event may likewise consume their reserved attempt;
+this conservative accounting prevents crash-driven retry storms. No pending event
+is silently removed. Exhausted head events block FIFO until owner reconciliation.
+
+### Explicit budgets and failure signals
+
+| Resource | Bound |
+|---|---|
+| Reader | 32 sequential scopes maximum; current registry 10; 10 seconds, 8 MiB, 5,000 matches each; no retries |
+| GitHub JSON API | At most 3 pages × 20 runs; 2 metadata + 3 run-list + 120 artifact/job reads = 125 requests; 10 seconds / 1 MiB each, no retries |
+| Artifact transfer | One selected download, up to two uploads; state 256 KiB, artifact metadata size ceiling 256 KiB; action-internal transfer retries are governed by pinned actions and job timeout |
+| State | 128 pending events, 32 receipts, one current incident ID per scope; 256 KiB |
+| Notifications | At most 10 sequential sends per run, 5 seconds each, 1 KiB acknowledgment; 20 reserved attempts per event |
+| Backoff | Across runs: 5 minutes doubled to maximum 6 hours; no in-run retry, untrusted Retry-After cannot enlarge bounds |
+| Runtime | Entire Actions job 10 minutes; this may truncate API search/check/delivery before per-operation ceilings |
+| Proposed cadence | Five minutes, 288 nominal runs/day; current registry ≤2,880 reader requests/day; worst-case ≤2,880 notification attempts/day; actual platform timing can delay/drop runs |
+
+Normally selection requires only a few API requests, but worst-case nominal
+cadence permits 36,000 API calls/day before the job deadline/rate limits. This is
+a ceiling, not expected traffic; repeated history failures need intervention,
+not a larger scan. Disabled workflows allocate no check runner. GitHub cron offers
+no hard alert-latency SLA; thresholds, cadence, queue delay, backoff, platform
+delays and network time all contribute.
+
+If there is not room for one transition per scope, preparation pauses all checks
+and drains the existing queue; it does not report skipped observations as healthy.
+Events occurring entirely while monitoring is blocked cannot be reconstructed.
+Data incidents alone exit **1**; monitor/state/config/API/persistence/queue or
+pending/delivery failures exit **2**; clean healthy completion exits **0**.
+Upload failure independently fails Actions even when the final status step is
+healthy. Local stale locks fail closed; verify no process runs before repair.
+
+Artifacts expire after 90 days and are not permanent storage. Keep an independently
+retained checkpoint and operational owner for loss recovery. Deleting an artifact
+while its run remains is detected; deletion of the entire run or malicious edits
+by a repository administrator cannot be detected from this repository's history
+alone. Workflow/code rollback does not safely roll back incident history: disable
+execution first and validate the latest envelope against the rollback version;
+never choose an older state just because its code can read it. A monitor cannot
+detect its own permanent stoppage: a separately approved heartbeat/independent
+observer is still needed for monitor-not-running detection. Native Actions failure
+notifications may repeat and are not this transition transport.
+
+### Disabled-to-enabled owner checklist
+
+- [ ] Review/merge the exact PR SHA through normal CI (this change does not merge).
+- [ ] Confirm T16.2 compatibility with its owner. The watchdog accepts current
+  scorers plus optional `ownGoal:boolean`, `athleteId:string|null` and
+  `playerSlug:string|null`; required legacy fields and unknown-key rejection remain.
+  Any additional nullable/card/DTO changes need explicit tested agreement.
+- [ ] Select an incident owner, channel/recipient and HTTPS receiver satisfying the
+  acknowledgment/dedup protocol. No approved channel was found in repository config;
+  a local stub is the implementation acceptance destination only.
+- [ ] Approve checkpoint retention/backup, recovery procedure, cost/cadence and
+  independent monitor-not-running detection. Reconcile any existing v1 history
+  without resetting it; incompatible history deliberately blocks activation.
+- [ ] After external-configuration approval, configure the webhook secret and
+  delivery variable. Leave the main enablement variable false until authorized
+  manual check/delivery acceptance is ready.
+- [ ] With separate approval, set `MATCH_FRESHNESS_ENABLED=true`; run the reviewed
+  main workflow once with explicit initialization **only if no history exists**.
+  Subsequent new runs use false. Inspect pending/final artifacts and exact run SHA.
+- [ ] Verify real recipient receipt and stable-ID deduplication for opening,
+  continued failure, recovery, recurrence, ambiguous send and state/delivery failure
+  using an approved synthetic acceptance setup; do not disrupt production data.
+- [ ] Only after that acceptance, approve a follow-up PR enabling the commented
+  five-minute schedule under `on:`. Never use production dispatch for code tests.
+- [ ] Disable by clearing/setting `MATCH_FRESHNESS_ENABLED=false`; allow the current
+  serialized run to finish and retain its newest checkpoint. Do not delete history.
+
+This delivers code for the **match-endpoint slice only**. Scheduling, real delivery,
+recipient decisions, sustained operational acceptance and broader T17.4 coverage
+remain open. No database, ingester, T21.2 or release-pipeline behavior is changed.
 
 ## Schema and separately approved release order
 

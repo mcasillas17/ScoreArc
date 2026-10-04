@@ -1,18 +1,16 @@
-name: Match freshness watchdog (manual)
+name: Match freshness watchdog
 
-# No schedule. Bootstrap is explicit; later runs restore an operator-selected
-# state-bearing run. Nothing automatically selects the latest artifact.
+# Activation is NOT part of this change. After owner approval, add this trigger:
+# schedule:
+#   - cron: '3-58/5 * * * *'
+# Keep MATCH_FRESHNESS_ENABLED unset/false until bootstrap and channel acceptance.
 on:
   workflow_dispatch:
     inputs:
       initialize_state:
-        description: First run only; explicitly start new incident history instead of restoring
+        description: First history only; fails if any previous checkpoint or uncertain history exists
         type: boolean
         default: false
-        required: false
-      state_run_id:
-        description: Latest state-bearing run ID to restore; leave blank only for explicit bootstrap
-        type: string
         required: false
 
 permissions:
@@ -25,64 +23,64 @@ concurrency:
 
 jobs:
   check:
+    if: ${{ vars.MATCH_FRESHNESS_ENABLED == 'true' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      MATCH_FRESHNESS_ENABLED: ${{ vars.MATCH_FRESHNESS_ENABLED }}
+      MATCH_FRESHNESS_DELIVERY_ENABLED: ${{ vars.MATCH_FRESHNESS_DELIVERY_ENABLED }}
     steps:
-      - name: Require exactly one bootstrap or restore
-        id: validate
-        env:
-          INITIALIZE_STATE: ${{ inputs.initialize_state }}
-          STATE_RUN_ID: ${{ inputs.state_run_id }}
-        run: |
-          case "$INITIALIZE_STATE" in
-            true)
-              if [[ -n "$STATE_RUN_ID" ]]; then
-                echo "Choose bootstrap OR a prior state run, not both."
-                exit 1
-              fi
-              ;;
-            false)
-              if [[ ! "$STATE_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
-                echo "Restore requires a positive state_run_id; no automatic initialization."
-                exit 1
-              fi
-              ;;
-            *)
-              echo "initialize_state must be an explicit boolean."
-              exit 1
-              ;;
-          esac
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "26"
-      - name: Restore durable incident state
+      - name: Select newest trusted checkpoint, including failed runs
+        id: select
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          INITIALIZE_STATE: ${{ inputs.initialize_state || false }}
+        run: node scripts/match-freshness-monitor.mjs select
+      - name: Restore selected checkpoint
         id: restore
-        if: ${{ !inputs.initialize_state }}
+        if: steps.select.outputs.initialize == 'false'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: match-freshness-state
+          artifact-ids: ${{ steps.select.outputs.artifact_id }}
           path: watchdog-state
-          run-id: ${{ inputs.state_run_id }}
+          merge-multiple: true
+          run-id: ${{ steps.select.outputs.run_id }}
           github-token: ${{ github.token }}
-      - name: Check public reader using its independent clock
-        id: check
+      - name: Prepare pending state
+        id: prepare
+        run: node scripts/match-freshness-monitor.mjs prepare
+      - name: Commit pending checkpoint before any send
+        id: pending
+        if: ${{ success() && steps.prepare.outputs.state_written == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: match-freshness-pending
+          path: watchdog-state/state.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Deliver reserved transitions
+        id: deliver
+        if: ${{ success() && steps.pending.outcome == 'success' && vars.MATCH_FRESHNESS_DELIVERY_ENABLED == 'true' }}
         env:
-          INITIALIZE_STATE: ${{ inputs.initialize_state }}
-        run: |
-          mkdir -p watchdog-state
-          args=(--base-url https://scorearc-reader.fly.dev --state-file watchdog-state/state.json)
-          if [[ "$INITIALIZE_STATE" == "true" ]]; then
-            args+=(--init-state)
-          fi
-          node "$GITHUB_WORKSPACE/scripts/match-freshness-watchdog.mjs" "${args[@]}"
-      - name: Preserve state even while an incident is unresolved
-        if: always() && steps.check.outputs.state_written == 'true'
+          PENDING_ARTIFACT_ID: ${{ steps.pending.outputs.artifact-id }}
+          MATCH_FRESHNESS_WEBHOOK_URL: ${{ secrets.MATCH_FRESHNESS_WEBHOOK_URL }}
+        run: node scripts/match-freshness-monitor.mjs deliver
+      - name: Commit acknowledged checkpoint
+        id: final
+        if: ${{ always() && steps.deliver.outputs.state_written == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: match-freshness-state
           path: watchdog-state/state.json
           if-no-files-found: error
           retention-days: 90
+      - name: Report data and monitor status separately
+        id: result
+        if: ${{ always() && steps.prepare.outputs.state_written == 'true' }}
+        run: node scripts/match-freshness-monitor.mjs result

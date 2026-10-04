@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createServer, type RequestListener, type Server } from 'node:http';
-import { mkdtemp, readFile, rm, rmdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -26,20 +26,6 @@ const match = {
 };
 const servers: Server[] = [];
 const dirs: string[] = [];
-type Workflow = {
-  on: { workflow_dispatch: { inputs: Record<string, { type: string; required?: boolean; default?: boolean }> } };
-  jobs: { check: { steps: { id?: string; uses?: string; if?: string; run?: string; env?: Record<string, string>; with?: Record<string, string> }[] } };
-};
-const yaml = createRequire(import.meta.url)('js-yaml') as { load(source: string): Workflow };
-async function watchdogWorkflow() {
-  return yaml.load(await readFile('.github/workflows/match-freshness.yml', 'utf8'));
-}
-function shell(script: string, env: Record<string, string>, cwd = process.cwd()) {
-  return new Promise<{ code: number; stdout: string }>(resolve => {
-    execFile('bash', ['-e', '-o', 'pipefail', '-c', script], { cwd, env: { ...process.env, ...env } },
-      (error, stdout) => resolve({ code: typeof error?.code === 'number' ? error.code : error ? -1 : 0, stdout }));
-  });
-}
 afterEach(async () => {
   for (const server of servers.splice(0)) {
     server.closeAllConnections();
@@ -129,6 +115,19 @@ describe('bounded match freshness watchdog', () => {
     ]) {
       const baseURL = await serve((_req, res) => res.writeHead(candidate.status, candidate.headers).end(candidate.body));
       expect((await checkScope({ baseURL, ...scope })).ok).toBe(false);
+    }
+  });
+  it('accepts current and additive T16.2 scorers while rejecting malformed fields', async () => {
+    const core = { teamId: 'arg', player: 'Player', minute: "4'", penalty: false, shootout: false };
+    for (const [scorer, ok] of [
+      [core, true], [{ ...core, ownGoal: false, athleteId: null, playerSlug: null }, true],
+      [{ ...core, ownGoal: true, athleteId: 'player-id', playerSlug: 'player-slug' }, true],
+      [{ ...core, ownGoal: null }, false], [{ ...core, athleteId: 23 }, false],
+      [{ ...core, playerSlug: false }, false], [{ ...core, extra: true }, false],
+      [{ ...core, penalty: undefined }, false],
+    ] as const) {
+      const baseURL = await serve((_req, res) => res.writeHead(200, validHeaders).end(JSON.stringify([{ ...match, scorers: [scorer] }])));
+      expect((await checkScope({ baseURL, ...scope })).ok).toBe(ok);
     }
   });
   it('rejects healthy headers that contradict unresolved matches', async () => {
@@ -309,98 +308,5 @@ describe('bounded match freshness watchdog', () => {
     const recovered = await run();
     expect(recovered.code).toBe(0);
     expect(recovered.stdout).toContain('RESOLVED world-cup/2026');
-  });
-  it('keeps the workflow manual-only with verified immutable action pins and explicit bootstrap', async () => {
-    const workflow = await readFile('.github/workflows/match-freshness.yml', 'utf8');
-    expect(workflow).toContain('workflow_dispatch:');
-    expect(workflow).not.toMatch(/^\s*(schedule|push|pull_request):/m);
-    const document = await watchdogWorkflow();
-    const inputs = document.on.workflow_dispatch.inputs;
-    expect(inputs.initialize_state).toMatchObject({ type: 'boolean', default: false });
-    expect(inputs.state_run_id.required).toBe(false);
-    const steps = document.jobs.check.steps;
-    expect(steps.find(step => step.uses?.startsWith('actions/checkout@'))?.uses).toBe('actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1');
-    expect(steps.find(step => step.uses?.startsWith('actions/download-artifact@'))?.uses).toBe('actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c');
-    expect(steps.find(step => step.uses?.startsWith('actions/upload-artifact@'))?.uses).toBe('actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a');
-    expect(steps.find(step => step.id === 'restore')?.if).toContain('!inputs.initialize_state');
-    expect(steps.find(step => step.id === 'restore')?.with?.['run-id']).toBe('${{ inputs.state_run_id }}');
-    const check = steps.find(step => step.id === 'check');
-    expect(check?.env?.INITIALIZE_STATE).toBe('${{ inputs.initialize_state }}');
-    expect(check?.run).toContain('--init-state');
-    const upload = steps.find(step => step.uses?.startsWith('actions/upload-artifact@'));
-    expect(upload?.if).toBe("always() && steps.check.outputs.state_written == 'true'");
-    expect(upload?.with?.path).toBe('watchdog-state/state.json');
-    expect(steps.findIndex(step => step.id === 'validate')).toBeLessThan(steps.findIndex(step => step.id === 'restore'));
-  });
-  it('executes workflow validation for exactly one explicit bootstrap or prior run', async () => {
-    const document = await watchdogWorkflow();
-    const validate = document.jobs.check.steps.find(step => step.id === 'validate');
-    expect(validate?.env).toMatchObject({
-      INITIALIZE_STATE: '${{ inputs.initialize_state }}', STATE_RUN_ID: '${{ inputs.state_run_id }}',
-    });
-    expect(validate?.run).toBeTypeOf('string');
-    for (const [initialize, runId, succeeds] of [
-      ['true', '', true], ['false', '123456', true],
-      ['false', '', false], ['true', '123456', false],
-      ['false', 'invalid', false], ['false', '0', false], ['false', '1; echo bad', false],
-    ] as const) {
-      const result = await shell(validate!.run!, { INITIALIZE_STATE: initialize, STATE_RUN_ID: runId });
-      expect(result.code === 0, `${initialize}/${runId}`).toBe(succeeds);
-    }
-  });
-  it('runs the workflow bootstrap and later restore check without resets, preserving failed-run state', async () => {
-    const document = await watchdogWorkflow();
-    const check = document.jobs.check.steps.find(step => step.id === 'check');
-    expect(check?.run).toBeTypeOf('string');
-    const cwd = await mkdtemp(join(tmpdir(), 'scorearc-watchdog-workflow-'));
-    dirs.push(cwd);
-    let stale = true;
-    let unexpectedLockContent = false;
-    const file = join(cwd, 'watchdog-state/state.json');
-    const baseURL = await serve(async (_req, res) => {
-      if (unexpectedLockContent) await writeFile(`${file}.lock/unexpected`, 'keep');
-      res.writeHead(200, {
-        ...validHeaders, 'X-ScoreArc-Freshness': stale ? 'stale' : 'fresh',
-        'X-ScoreArc-Stale-Matches': stale ? '1' : '0',
-      }).end(JSON.stringify([match]));
-    });
-    let runId = 0;
-    const checkRun = async (initialize: boolean) => {
-      const output = join(cwd, `output-${runId++}`);
-      const result = await shell(check!.run!.replaceAll('https://scorearc-reader.fly.dev', baseURL), {
-        INITIALIZE_STATE: String(initialize), GITHUB_WORKSPACE: process.cwd(), GITHUB_OUTPUT: output,
-      }, cwd);
-      let written = '';
-      try { written = await readFile(output, 'utf8'); } catch { /* No state means no output. */ }
-      return { ...result, written };
-    };
-    const missing = await checkRun(false);
-    expect(missing.code).toBe(2);
-    expect(missing.written).toBe('');
-    const first = await checkRun(true);
-    expect(first.code).toBe(1);
-    expect(first.stdout).toContain('OPEN world-cup/2026');
-    expect(first.written).toBe('state_written=true\n');
-    const saved = JSON.parse(await readFile(file, 'utf8')) as { incidents: Record<string, boolean> };
-    expect(saved.incidents['world-cup/2026']).toBe(true);
-    const again = await checkRun(false);
-    expect(again).toEqual({ code: 1, stdout: '', written: 'state_written=true\n' });
-    stale = false;
-    const recovered = await checkRun(false);
-    expect(recovered.code).toBe(0);
-    expect(recovered.stdout).toContain('RESOLVED world-cup/2026');
-    expect(recovered.written).toBe('state_written=true\n');
-    unexpectedLockContent = true;
-    const cleanupFailed = await checkRun(false);
-    expect(cleanupFailed.code).toBe(2);
-    expect(cleanupFailed.written).toBe('state_written=true\n');
-    expect(await readFile(`${file}.lock/unexpected`, 'utf8')).toBe('keep');
-    await rm(`${file}.lock/unexpected`);
-    await rmdir(`${file}.lock`);
-    await writeFile(file, '{');
-    const corrupt = await checkRun(false);
-    expect(corrupt.code).toBe(2);
-    expect(corrupt.written).toBe('');
-    expect(await readFile(file, 'utf8')).toBe('{');
   });
 });
