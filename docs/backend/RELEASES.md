@@ -454,13 +454,16 @@ warn-only behaviour and needs no schema change.
 
 ### Activation prerequisites for T21.2
 
-The gate adds **no migration**; the expected head stays **23**
-(`0023_match_sync`). It still selects both Fly services on merge, and they then
+The gate adds **no migration**. The version it expects is the highest
+`backend/migrations/NNNN_*.up.sql` **at the exact commit being merged** — `23`
+(`0023_match_sync`) when this was written; check it on that SHA with
+`ls backend/migrations/*.up.sql | tail -1`, and recheck after any rebase onto a
+main that added a migration. Merging selects both Fly services, which then
 refuse to start unless production passes, so **before merge** the owner must
 read-only confirm, on the production database the services use:
 
-- `SELECT version, dirty FROM schema_migrations;` returns exactly one row:
-  `23`, `false` (September 20 reported clean 23; recheck).
+- `SELECT version, dirty FROM schema_migrations;` returns exactly one row: that
+  head, `false` (September 20 reported clean 23; recheck).
 - Both service roles can read it:
   `SELECT has_table_privilege('scorearc_reader','schema_migrations','SELECT'),
   has_table_privilege('scorearc_ingester','schema_migrations','SELECT');` → both
