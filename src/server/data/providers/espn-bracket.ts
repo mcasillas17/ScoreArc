@@ -1,5 +1,6 @@
 import type { BracketRound, BracketMatch, BracketTeam, KnockoutRoundSlug } from '../types';
 import { mapState } from '../state';
+import { flaggedWinnerId, isScoreboardCount, parseShootout, shootoutTotals, shootoutWinnerId } from './espn-matches';
 
 const ROUND_ORDER = [
   'round-of-32',
@@ -39,7 +40,9 @@ const roundSlug = (ev: any): KnockoutRoundSlug | null =>
   EVENT_SLUG_OVERRIDE[String(ev?.id)] ?? normSlug(ev?.season?.slug ?? '');
 
 function mapBracketTeam(t: any): BracketTeam {
-  const crestUrl: string | null = t.logo ?? t.logos?.[0]?.href ?? null;
+  // `||`, not `??`: ESPN sends an empty logo string for a placeholder slot, and
+  // "no crest" is null in the contract (the Go mapper agrees).
+  const crestUrl: string | null = t.logo || t.logos?.[0]?.href || null;
   const name = t.displayName ?? t.name ?? t.abbreviation;
   return {
     id: String(t.id),
@@ -60,38 +63,36 @@ function mapBracketMatch(ev: any, slug: KnockoutRoundSlug): BracketMatch | null 
   const status = ev.status;
   if (!status?.type) return null;
 
+  // A malformed structured total rejects the bracket by the scoreboard window's
+  // rule, also on a season without bracket dates, which reads one scoreboard.
+  for (const competitor of [home, away]) {
+    if (!isScoreboardCount(competitor.shootoutScore)) throw new Error('Malformed scoreboard score');
+  }
   const state = mapState(status.type.state, status.type.completed);
   const note = comp.notes?.[0]?.text ?? null;
+  const homeTeam = mapBracketTeam(home.team);
+  const awayTeam = mapBracketTeam(away.team);
   // A decisive penalty shootout IS the result, so its score decides the winner
   // ahead of the `winner` flag — ESPN sets that flag inconsistently on shootout
   // matches: sometimes it's missing (1998), sometimes it's plain wrong (2010's
   // R16 marks Japan, not Paraguay, despite Paraguay winning the shootout 5–3).
-  const hs = Number(home.shootoutScore);
-  const as = Number(away.shootoutScore);
-  const shootoutWinnerId =
-    Number.isFinite(hs) && Number.isFinite(as) && hs !== as
-      ? String((hs > as ? home : away).team.id)
-      : null;
-  const winnerId = shootoutWinnerId
-    ? shootoutWinnerId
-    : home.winner
-    ? String(home.team.id)
-    : away.winner
-    ? String(away.team.id)
-    : null;
+  // The scoreboard's tiers decide it (structured totals, then the anchored
+  // note), and only once the match is over: a live shootout's totals are partial.
+  const shootout = shootoutTotals(home.shootoutScore, away.shootoutScore) ?? parseShootout(note, homeTeam.name, awayTeam.name);
+  const winnerId = (state === 'finished' ? shootoutWinnerId(shootout, homeTeam.id, awayTeam.id) : null) ?? flaggedWinnerId(home, away);
 
   return {
     id: String(ev.id),
     round: slug,
     kickoff: ev.date ?? '',
-    home: mapBracketTeam(home.team),
-    away: mapBracketTeam(away.team),
+    home: homeTeam,
+    away: awayTeam,
     homeScore: home.score != null && home.score !== '' ? Number(home.score) : null,
     awayScore: away.score != null && away.score !== '' ? Number(away.score) : null,
     state,
     statusDetail: status.type.shortDetail ?? '',
     statusName: status.type.name ?? '',
-    minute: state === 'live' ? (status.displayClock ?? null) : null,
+    minute: state === 'live' ? status.displayClock || null : null,
     winnerId,
     note,
   };

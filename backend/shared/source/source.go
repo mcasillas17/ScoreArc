@@ -42,6 +42,11 @@ type SummaryResult struct {
 	Commentary []model.CommentaryLine
 	HomeScore  *int
 	AwayScore  *int
+	// WinnerFlagID is ESPN's winner flag on a final summary's header, in
+	// provider space: the flag for a finalization whose candidate brought
+	// none of its own. Nil when the header flags neither side or the summary
+	// is not final.
+	WinnerFlagID *string
 }
 
 // Source returns canonical ScoreArc models independent of provider payloads.

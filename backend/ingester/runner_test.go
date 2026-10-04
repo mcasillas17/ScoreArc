@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/shared/assets"
+	"github.com/mcasillas17/scorearc-backend/shared/espn"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 	"github.com/mcasillas17/scorearc-backend/shared/source"
 	"github.com/mcasillas17/scorearc-backend/shared/store"
@@ -73,6 +75,8 @@ type fakeSource struct {
 	maxCalls        int
 	live            bool
 	winProbability  *model.WinProbability
+	summaryShootout *model.Shootout
+	summaryFlag     *string
 }
 
 func (f *fakeSource) Name() string { return "fake" }
@@ -118,7 +122,9 @@ func (f *fakeSource) Summary(
 		Detail: model.MatchDetail{
 			Scorers:        []model.Scorer{{Player: "Winner"}},
 			WinProbability: f.winProbability,
+			Shootout:       f.summaryShootout,
 		},
+		WinnerFlagID: f.summaryFlag,
 		// Provider-shaped, exactly as a real source returns it: the team ids
 		// here are the provider's, and the ingester is responsible for handing
 		// the store canonical ones instead.
@@ -288,6 +294,7 @@ func statisticsPayload(
 ) []byte {
 	t.Helper()
 	type fixtureTeam struct {
+		ID           string  `json:"id,omitempty"`
 		Abbreviation string  `json:"abbreviation"`
 		DisplayName  string  `json:"displayName"`
 		Logo         *string `json:"logo,omitempty"`
@@ -319,6 +326,7 @@ func statisticsPayload(
 				Athlete: fixtureAthlete{
 					DisplayName: row.Player,
 					Team: fixtureTeam{
+						ID:           row.TeamSourceID,
 						Abbreviation: row.TeamAbbr,
 						DisplayName:  row.TeamName,
 						Logo:         row.TeamCrestURL,
@@ -393,8 +401,10 @@ type fakeRepository struct {
 	logged            []loggedRun
 	lastIdentity      store.MatchIdentity
 	teamKinds         map[string]string
+	teamErr           error
 	standingTeamIDs   map[string]string
 	matchAlias        map[string]string
+	teamAlias         map[string]string
 	upserted          []string
 	participation     []*model.MatchParticipation
 	participationTo   []string
@@ -556,6 +566,13 @@ func (f *fakeRepository) Team(_ context.Context, _ string, ref store.TeamRef) (s
 		f.teamKinds = map[string]string{}
 	}
 	f.teamKinds[ref.SourceID] = ref.Kind
+	if f.teamErr != nil {
+		return "", f.teamErr
+	}
+	// teamAlias makes two provider ids resolve to one canonical team.
+	if aliased, ok := f.teamAlias[ref.SourceID]; ok {
+		return fakeTeamID(aliased), nil
+	}
 	return fakeTeamID(ref.SourceID), nil
 }
 func (f *fakeRepository) Match(_ context.Context, _ string, ref store.MatchRef) (uuid.UUID, error) {
@@ -1727,6 +1744,82 @@ func TestBracketUsesRetryableMatchFinalization(t *testing.T) {
 	}
 }
 
+// A bracket-only match hands the summary the bracket's structured shootout
+// totals, which the summary precedence ranks above the scoreboard note, so a
+// summary without header totals cannot let a conflicting note name the winner.
+func TestBracketCandidateCarriesItsShootoutAggregate(t *testing.T) {
+	match := finishedMatch()
+	note := "Home advance 5-4 on penalties"
+	winner := match.Away.ID
+	aggregate := &model.Shootout{HomeScore: 3, AwayScore: 4}
+	src := &fakeSource{
+		bracket: []model.BracketMatch{{
+			ID: match.ID, Round: "final", Kickoff: match.Kickoff, State: match.State,
+			Home:     model.BracketTeam{ID: match.Home.ID, Name: match.Home.Name, Abbr: match.Home.Abbr},
+			Away:     model.BracketTeam{ID: match.Away.ID, Name: match.Away.Name, Abbr: match.Away.Abbr},
+			WinnerID: &winner, WinnerFlagID: &winner, Note: &note, Shootout: aggregate,
+		}},
+	}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026", HasBracket: true}},
+	}
+
+	testRunner(src, repo, comp).runCycle(context.Background(), true)
+	if src.summaryCalls != 1 || src.summaryMatch.Shootout == nil || *src.summaryMatch.Shootout != *aggregate {
+		t.Fatalf("summary saw shootout %+v, want %+v", src.summaryMatch.Shootout, aggregate)
+	}
+	if repo.finalizeCalls != 1 || repo.lastFinalized.WinnerID == nil || *repo.lastFinalized.WinnerID != fakeTeamID(winner) {
+		t.Fatalf("finalized winner %v, want %s", repo.lastFinalized.WinnerID, fakeTeamID(winner))
+	}
+
+	// Merged with a scoreboard observation, a confirming bracket keeps the
+	// aggregate that decided its winner.
+	scoreboard := match
+	scoreboard.Shootout = nil
+	merged := mergeBracketCandidate(scoreboard, bracketMatch(src.bracket[0]))
+	if merged.Shootout == nil || *merged.Shootout != *aggregate {
+		t.Fatalf("merged shootout %+v, want %+v", merged.Shootout, aggregate)
+	}
+	if merged.WinnerFlagID == nil || *merged.WinnerFlagID != winner {
+		t.Fatalf("merged winner flag %v, want %s", merged.WinnerFlagID, winner)
+	}
+}
+
+// Synthetic bracket payload: a finished shootout with no structured totals,
+// ESPN's flag on the home side and a note naming the away side. The real
+// bracket mapper takes the note tier, as the scoreboard does, so the candidate
+// hands the summary the note's aggregate and finalizes the side it names, not
+// the flag.
+func TestBracketNoteDecidesFinalizedWinnerOverOpposingFlag(t *testing.T) {
+	match := finishedMatch()
+	raw := []byte(`{"events":[{"id":"m1","date":"2026-06-11T18:00Z","season":{"slug":"final"},
+		"status":{"type":{"state":"post","completed":true,"name":"STATUS_FINAL_PEN","shortDetail":"FT-Pens"}},
+		"competitions":[{"notes":[{"text":"Away advance 4-3 on penalties"}],"competitors":[
+			{"homeAway":"home","winner":true,"score":"1","team":{"id":"home","displayName":"Home","abbreviation":"HOM"}},
+			{"homeAway":"away","winner":false,"score":"1","team":{"id":"away","displayName":"Away","abbreviation":"AWY"}}]}]}]}`)
+	bracket, err := espn.MapBracket(raw)
+	if err != nil || len(bracket) != 1 {
+		t.Fatalf("bracket %v: %v", bracket, err)
+	}
+	src := &fakeSource{bracket: bracket}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": {ID: "2026", HasBracket: true}},
+	}
+
+	testRunner(src, repo, comp).runCycle(context.Background(), true)
+	aggregate := model.Shootout{HomeScore: 3, AwayScore: 4}
+	if src.summaryCalls != 1 || src.summaryMatch.Shootout == nil || *src.summaryMatch.Shootout != aggregate {
+		t.Fatalf("summary saw shootout %+v, want %+v", src.summaryMatch.Shootout, aggregate)
+	}
+	if repo.finalizeCalls != 1 || repo.lastFinalized.WinnerID == nil || *repo.lastFinalized.WinnerID != fakeTeamID(match.Away.ID) {
+		t.Fatalf("finalized winner %v, want %s", repo.lastFinalized.WinnerID, fakeTeamID(match.Away.ID))
+	}
+}
+
 func TestFinalizingOneMatchDoesNotHideOtherActiveMatches(t *testing.T) {
 	scheduled := finishedMatch()
 	scheduled.ID = "scheduled"
@@ -2116,7 +2209,7 @@ func TestLeaderCrestMirrorsOnceAcrossRefreshes(t *testing.T) {
 	src := &fakeSource{statistics: statisticsPayload(
 		t,
 		[]model.StatLeader{{
-			Rank: 1, Player: "Winner", TeamAbbr: "WIN",
+			Rank: 1, Player: "Winner", TeamSourceID: "1", TeamAbbr: "WIN",
 			TeamCrestURL: &crest, Value: 1,
 		}},
 		[]model.StatLeader{{Rank: 1, Player: "Helper", Value: 1}},
@@ -2144,7 +2237,7 @@ func TestRefreshLeadersWritesEachCategoryExactlyOnce(t *testing.T) {
 	src := &fakeSource{statistics: statisticsPayload(
 		t,
 		[]model.StatLeader{{
-			Rank: 1, Player: "Winner", TeamAbbr: "WIN",
+			Rank: 1, Player: "Winner", TeamSourceID: "1", TeamAbbr: "WIN",
 			TeamCrestURL: &crest, Value: 1,
 		}},
 		[]model.StatLeader{{Rank: 1, Player: "Helper", Value: 1}},
@@ -2175,7 +2268,7 @@ func TestLeaderCrestOutageUsesSharedCircuit(t *testing.T) {
 	for index := range leaders {
 		crest := fmt.Sprintf("https://source.example/%d.png", index)
 		leaders[index] = model.StatLeader{
-			Rank: index + 1, Player: fmt.Sprintf("Player %d", index),
+			Rank: index + 1, Player: fmt.Sprintf("Player %d", index), TeamSourceID: fmt.Sprint(index),
 			TeamAbbr: fmt.Sprintf("T%d", index), TeamCrestURL: &crest, Value: 1,
 		}
 	}
@@ -2213,7 +2306,7 @@ func TestLeaderCrestRecoveryRewritesProviderURL(t *testing.T) {
 	src := &fakeSource{statistics: statisticsPayload(
 		t,
 		[]model.StatLeader{{
-			Rank: 1, Player: "Winner", TeamAbbr: "WIN",
+			Rank: 1, Player: "Winner", TeamSourceID: "1", TeamAbbr: "WIN",
 			TeamCrestURL: &crest, Value: 1,
 		}},
 		[]model.StatLeader{{Rank: 1, Player: "Helper", Value: 1}},
@@ -2899,6 +2992,166 @@ func TestNonBracketSeasonIgnoresProviderKnockoutClassification(t *testing.T) {
 		repo.lastFinalized.BracketRequired == nil ||
 		*repo.lastFinalized.BracketRequired {
 		t.Fatalf("finalized match=%+v", repo.lastFinalized)
+	}
+}
+
+// The summary's aggregate outranks the scoreboard's evidence, so the winner
+// the match finalizes with is the side it names. A level one names none, and
+// falls back to ESPN's own winner flag -- never to a winner the scoreboard
+// derived from the aggregate the header superseded.
+func TestFinalizedWinnerFollowsTheSummaryShootoutAggregate(t *testing.T) {
+	home := func(m model.Match) *string { return &m.Home.ID }
+	away := func(m model.Match) *string { return &m.Away.ID }
+	none := func(model.Match) *string { return nil }
+	for _, c := range []struct {
+		name          string
+		shootout      *model.Shootout
+		derived, flag func(model.Match) *string
+		winner        func(model.Match) *string
+	}{
+		{"decisive header", &model.Shootout{HomeScore: 4, AwayScore: 3}, away, away, home},
+		{"level header over a superseded aggregate, flag on the other side", &model.Shootout{HomeScore: 3, AwayScore: 3}, away, home, home},
+		{"level header over a superseded aggregate, no flag", &model.Shootout{HomeScore: 3, AwayScore: 3}, away, none, none},
+		{"no aggregate", nil, away, home, away},
+	} {
+		for _, confirmed := range []bool{true, false} {
+			t.Run(c.name+" confirmed="+strconv.FormatBool(confirmed), func(t *testing.T) {
+				match := finishedMatch()
+				required := false
+				match.BracketRequired = &required
+				match.BracketConfirmed = confirmed
+				match.WinnerID, match.WinnerFlagID = c.derived(match), c.flag(match)
+				src := &fakeSource{matches: []model.Match{match}, summaryShootout: c.shootout}
+				repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+				comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {ID: "2026"}}}
+
+				testRunner(src, repo, comp).runCycle(context.Background(), false)
+
+				var want *string
+				if provider := c.winner(match); provider != nil {
+					id := fakeTeamID(*provider)
+					want = &id
+				}
+				got := repo.lastFinalized.WinnerID
+				if repo.finalizeCalls != 1 || (got == nil) != (want == nil) || (got != nil && *got != *want) ||
+					(repo.lastIdentity.WinnerTeamID == nil) != (want == nil) {
+					t.Fatalf("finalized winner %v / %v, want %v", got, repo.lastIdentity.WinnerTeamID, want)
+				}
+				// A winner the final aggregate resolved -- null included -- is
+				// stored as resolved, whether or not the bracket confirmed it.
+				if repo.lastFinalized.WinnerResolved != (c.shootout != nil) {
+					t.Fatalf("winner resolved %t, want %t", repo.lastFinalized.WinnerResolved, c.shootout != nil)
+				}
+			})
+		}
+	}
+}
+
+// A candidate this cycle did not observe -- a finished match retried from the
+// finalization backlog alone -- carries no winner flag of its own, so a level
+// final aggregate falls back to the final summary header's flag instead of
+// erasing the stored winner. An observed candidate keeps its own flag, nil
+// included, as the scoreboard path (and the frontend) read it.
+func TestBacklogFinalizationTakesTheSummaryHeaderFlag(t *testing.T) {
+	homeID, awayID := "home", "away"
+	level := &model.Shootout{HomeScore: 3, AwayScore: 3}
+	for _, c := range []struct {
+		name       string
+		observed   bool
+		shootout   *model.Shootout
+		headerFlag *string
+		want       *string
+	}{
+		{"backlog, level, header flags away", false, level, &awayID, &awayID},
+		{"backlog, level, header flags no one", false, level, nil, nil},
+		{"backlog, decisive aggregate outranks the header flag", false, &model.Shootout{HomeScore: 4, AwayScore: 3}, &awayID, &homeID},
+		{"observed, level, no scoreboard flag, header flags away", true, level, &awayID, nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			match := finishedMatch()
+			match.WinnerID = &homeID // the stored winner the backlog row carries
+			match.FromStorage = true
+			src := &fakeSource{summaryShootout: c.shootout, summaryFlag: c.headerFlag}
+			repo := &fakeRepository{existing: map[string]store.MatchRow{"m1": {}}, unfinalized: []model.Match{match}}
+			if c.observed {
+				observed := finishedMatch()
+				observed.WinnerID = &homeID
+				src.matches = []model.Match{observed}
+			}
+			comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {ID: "2026"}}}
+
+			testRunner(src, repo, comp).runCycle(context.Background(), true)
+
+			var want *string
+			if c.want != nil {
+				id := fakeTeamID(*c.want)
+				want = &id
+			}
+			got := repo.lastFinalized.WinnerID
+			if repo.finalizeCalls != 1 || (got == nil) != (want == nil) || (got != nil && *got != *want) ||
+				!repo.lastFinalized.WinnerResolved {
+				t.Fatalf("finalized winner %v resolved=%t, want %v resolved", got, repo.lastFinalized.WinnerResolved, want)
+			}
+		})
+	}
+}
+
+// Two provider ids for one canonical match, one rebuilt from storage (the
+// backlog, under the older id, which sorts first) and one observed this cycle:
+// the observation survives the merge with its own team ids, winner flag (nil
+// included) and structured totals, so the header's flag never stands in for it
+// and its totals reach the summary precedence (source.mapSummary).
+func TestDuplicateProviderIDFinalizesTheObservation(t *testing.T) {
+	homeID, awayID, homeAlias := "home", "away", "home-current"
+	for _, c := range []struct {
+		name         string
+		observedHome string
+		flag         *string
+		want         *string
+	}{
+		{"observed with no flag", homeID, nil, nil},
+		{"observed with a flag on its own home alias", homeAlias, &homeAlias, &homeID},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			backlog := finishedMatch()
+			backlog.ID = "a-older"
+			backlog.WinnerID = &homeID
+			backlog.FromStorage = true
+			note := "Home advance 4-3 on penalties"
+			backlog.Note = &note
+			observed := finishedMatch()
+			observed.ID = "b-current"
+			observed.Home.ID = c.observedHome
+			observed.WinnerFlagID = c.flag
+			observed.Shootout = &model.Shootout{HomeScore: 3, AwayScore: 4}
+			src := &fakeSource{matches: []model.Match{observed}, summaryShootout: &model.Shootout{HomeScore: 3, AwayScore: 3}, summaryFlag: &awayID}
+			repo := &fakeRepository{
+				existing:    map[string]store.MatchRow{"a-older": {}},
+				unfinalized: []model.Match{backlog},
+				matchAlias:  map[string]string{"b-current": "a-older"},
+				teamAlias:   map[string]string{homeAlias: homeID},
+			}
+			comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {ID: "2026"}}}
+
+			testRunner(src, repo, comp).runCycle(context.Background(), true)
+
+			if src.summaryMatch.ID != "b-current" || src.summaryMatch.Home.ID != c.observedHome ||
+				src.summaryMatch.Shootout == nil || *src.summaryMatch.Shootout != *observed.Shootout {
+				t.Fatalf("summary fetched for %q home %q totals %v, want the observation's", src.summaryMatch.ID,
+					src.summaryMatch.Home.ID, src.summaryMatch.Shootout)
+			}
+			var want *string
+			if c.want != nil {
+				id := fakeTeamID(*c.want)
+				want = &id
+			}
+			got := repo.lastFinalized.WinnerID
+			if repo.finalizeCalls != 1 || repo.lastFinalized.ID != "b-current" || repo.lastFinalized.FromStorage ||
+				(got == nil) != (want == nil) || (got != nil && *got != *want) || !repo.lastFinalized.WinnerResolved {
+				t.Fatalf("finalized %q winner %v resolved=%t stored=%t, want b-current, %v, resolved", repo.lastFinalized.ID,
+					got, repo.lastFinalized.WinnerResolved, repo.lastFinalized.FromStorage, want)
+			}
+		})
 	}
 }
 
@@ -3887,7 +4140,7 @@ func TestMirroredLeaderBoardIsWrittenOnceWithCDNCrests(t *testing.T) {
 	src := &fakeSource{statistics: statisticsPayload(
 		t,
 		[]model.StatLeader{{
-			Rank: 1, Player: "Striker", TeamAbbr: "HOM",
+			Rank: 1, Player: "Striker", TeamSourceID: "1", TeamAbbr: "HOM",
 			TeamCrestURL: &crest, Value: 5,
 		}},
 		[]model.StatLeader{{Rank: 1, Player: "Playmaker", Value: 3}},

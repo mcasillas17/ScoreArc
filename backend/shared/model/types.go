@@ -9,9 +9,11 @@ package model
 // and season are added by the ingester (they're not present in a single
 // ESPN payload), and the "detail" fields the TS type inlines (scorers,
 // cards, stats, winProbability, shootout, shootoutDetail) live instead on
-// MatchDetail, stored separately as jsonb — the scoreboard/bracket mappers
-// (Tasks 2, 5) never populate them. Match additionally carries Round: the
-// bracket mapper (Task 5) tags knockout matches with a round slug (e.g.
+// MatchDetail, stored separately as jsonb. The scoreboard and bracket mappers
+// (Tasks 2, 5) fill no MatchDetail field; their own shootout evidence rides
+// off the wire on Match.Shootout (and BracketMatch.Shootout) into the summary
+// precedence, whose result MatchDetail stores. Match additionally carries
+// Round: the bracket mapper (Task 5) tags knockout matches with a round slug (e.g.
 // "round-of-16") before they're upserted into the same `match` table as
 // group-stage fixtures (Task 6); group-stage matches leave Round empty.
 
@@ -53,6 +55,23 @@ type Match struct {
 	AwayPlaceholder  bool       `json:"-"`
 	BracketRequired  *bool      `json:"-"`
 	BracketConfirmed bool       `json:"-"`
+	// Shootout is the scoreboard's own penalty-shootout evidence (structured
+	// competitor totals, else the note). It is carried to the summary mapper,
+	// where the summary header outranks it; MatchDetail stores the result.
+	Shootout *Shootout `json:"-"`
+	// WinnerFlagID is ESPN's own winner flag, kept apart from a WinnerID a
+	// decisive aggregate derived: when a higher tier's aggregate supersedes
+	// that one and is level, the winner falls back to the flag.
+	WinnerFlagID *string `json:"-"`
+	// FromStorage marks a candidate rebuilt from the stored row (the
+	// finalization backlog) rather than observed from the provider this cycle.
+	// The row keeps no flag, so its nil WinnerFlagID means unknown, not that
+	// ESPN flagged no one; an observation of the same match outranks it.
+	FromStorage bool `json:"-"`
+	// WinnerResolved marks a WinnerID resolved from the final shootout
+	// evidence: finalization stores it as given, null included, where a
+	// sparse observation's null would otherwise keep the stored winner.
+	WinnerResolved bool `json:"-"`
 }
 
 // BracketTeam is shaped after types.ts's BracketTeam. It is distinct from Team
@@ -60,8 +79,8 @@ type Match struct {
 // Winner 5") before the feeding match resolves; Placeholder flags that case
 // so the reader can render a TBD slot instead of a real crest.
 //
-// A placeholder's crestUrl is null here and an empty string in the frontend
-// (gap T16.2-placeholder-crest in src/server/data/contracts/reader-contract.json).
+// A placeholder's crestUrl is null, here and in the frontend: an empty provider
+// logo is no crest (T16.2).
 type BracketTeam struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
@@ -70,8 +89,9 @@ type BracketTeam struct {
 	Placeholder bool    `json:"placeholder"`
 }
 
-// BracketMatch is shaped after types.ts's BracketMatch (Round is a free string
-// here, a KnockoutRoundSlug union in TS; see reader-contract.json). It is the
+// BracketMatch is shaped after types.ts's BracketMatch. Round is a string here
+// but takes only the OpenAPI KnockoutRound values (espn.KnockoutRounds(), the
+// TS KnockoutRoundSlug union; T16.2). It is the
 // bracket mapper's (Task 5) output: a knockout match tagged with its round
 // slug, alongside BracketTeam legs that may still be placeholders. These
 // rows are upserted into the same `match` table as scoreboard matches
@@ -91,6 +111,13 @@ type BracketMatch struct {
 	Minute       *string     `json:"minute"`
 	WinnerID     *string     `json:"winnerId"`
 	Note         *string     `json:"note"`
+	// Shootout is the bracket observation's own penalty-shootout evidence
+	// (structured competitor totals, else the anchored note), carried to the
+	// ingester's candidate, where the summary header outranks it. Not part of
+	// the served bracket.
+	Shootout *Shootout `json:"-"`
+	// WinnerFlagID is ESPN's own winner flag (see Match.WinnerFlagID).
+	WinnerFlagID *string `json:"-"`
 }
 
 // Standing mirrors types.ts's Standing, plus GroupID/GroupName: the ESPN
@@ -135,9 +162,13 @@ type TopScorer struct {
 //
 // TopScorer stays for now: it is the shape the reader serializes today, and
 // removing it belongs to slice 1d's cutover, not here.
+//
+// TeamSourceID is the provider's team id, never serialized or stored: the
+// ingester resolves it to the canonical team whose key its crest mirrors under.
 type StatLeader struct {
 	Rank         int     `json:"rank"`
 	Player       string  `json:"player"`
+	TeamSourceID string  `json:"-"`
 	TeamAbbr     string  `json:"teamAbbr"`
 	TeamName     string  `json:"teamName"`
 	TeamCrestURL *string `json:"teamCrestUrl"`
@@ -149,23 +180,28 @@ type StatLeader struct {
 // These mirror types.ts's MatchSummaryData plus the goal/card/shootout
 // fields that live inline on the TS Match type. Port of providers/espn-summary.ts.
 
-// Scorer is shaped after types.ts's Scorer, without ownGoal/athleteId/playerSlug
-// (gap T16.2-scorer-identity).
+// Scorer mirrors types.ts's Scorer except playerSlug, which the frontend's
+// match route fills from AthleteID (withSummaryPlayerSlugs). match_detail
+// stores the provider's team id; the reader serves the canonical side it names,
+// or null (reader/attribution.go). An own goal is credited to the side that
+// benefits. OwnGoal and AthleteID (the provider athlete id) are null, unknown,
+// on rows stored before they were captured.
 type Scorer struct {
-	TeamID   string `json:"teamId"`
-	Player   string `json:"player"`
-	Minute   string `json:"minute"`
-	Penalty  bool   `json:"penalty"`
-	Shootout bool   `json:"shootout"`
+	TeamID    *string `json:"teamId"`
+	Player    string  `json:"player"`
+	Minute    string  `json:"minute"`
+	Penalty   bool    `json:"penalty"`
+	Shootout  bool    `json:"shootout"`
+	OwnGoal   *bool   `json:"ownGoal"`
+	AthleteID *string `json:"athleteId"`
 }
 
-// Card mirrors types.ts's Card, except that TeamID keeps the provider id while
-// the match sides are canonical (gap T16.2-nested-team-id).
+// Card mirrors types.ts's Card; TeamID is translated like Scorer's.
 type Card struct {
-	TeamID string `json:"teamId"`
-	Player string `json:"player"`
-	Minute string `json:"minute"`
-	Type   string `json:"type"` // "yellow" | "red"
+	TeamID *string `json:"teamId"`
+	Player string  `json:"player"`
+	Minute string  `json:"minute"`
+	Type   string  `json:"type"` // "yellow" | "red"
 }
 
 // TeamStats is shaped after types.ts's TeamStats, without the accuracy

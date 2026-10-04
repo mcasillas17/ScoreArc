@@ -76,3 +76,34 @@ func TestSummaryObservationDoesNotPromoteOldScheduledMatch(t *testing.T) {
 		t.Fatalf("elapsed time/candidate inferred a result: match=%+v err=%v", match, err)
 	}
 }
+
+// A recovered summary names a shootout winner only once the match is over:
+// during a live shootout its totals are partial.
+func TestSummaryObservationNamesAShootoutWinnerOnlyWhenFinished(t *testing.T) {
+	for _, c := range []struct {
+		status string
+		winner any
+	}{
+		{`{"type":{"name":"STATUS_SHOOTOUT","state":"in","completed":false,"shortDetail":"Shootout"}}`, nil},
+		{`{"type":{"name":"STATUS_FINAL_PEN","state":"post","completed":true,"shortDetail":"FT-Pens"}}`, "1"},
+	} {
+		raw := []byte(`{"header":{"id":123,"league":{"slug":"esp.1"},"season":{"year":2026},
+			"competitions":[{"id":123,"date":"2026-09-20T23:00Z","status":` + c.status + `,
+				"competitors":[
+					{"homeAway":"home","team":{"id":1},"score":1,"shootoutScore":3,"winner":false},
+					{"homeAway":"away","team":{"id":2},"score":1,"shootoutScore":2,"winner":false}
+				]}]}}`)
+		expected := Match{ID: "123", Home: Team{ID: "1"}, Away: Team{ID: "2"}}
+		match, err := MapSummaryObservation(raw, expected, "esp.1", 2026)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got any
+		if match.WinnerID != nil {
+			got = *match.WinnerID
+		}
+		if got != c.winner {
+			t.Fatalf("%s: winner %v, want %v", match.State, got, c.winner)
+		}
+	}
+}

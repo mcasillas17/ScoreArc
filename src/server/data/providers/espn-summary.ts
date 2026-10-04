@@ -1,4 +1,5 @@
-import type { Scorer, Card, MatchStats, TeamStats, WinProbability, LineupPlayer, PlayerMatchStats, TeamLineup, MatchLineups, MatchVideo, PenaltyKick, ShootoutDetail, MatchInfo, FormResult, MatchForm, CommentaryItem, H2HMeeting } from '../types';
+import type { Scorer, Card, Shootout, MatchStats, TeamStats, WinProbability, LineupPlayer, PlayerMatchStats, TeamLineup, MatchLineups, MatchVideo, PenaltyKick, ShootoutDetail, MatchInfo, FormResult, MatchForm, CommentaryItem, H2HMeeting } from '../types';
+import { shootoutTotals } from './espn-matches';
 
 // Venue, city, referee and attendance from summary.gameInfo.
 export function mapSummaryInfo(raw: unknown): MatchInfo | null {
@@ -117,6 +118,57 @@ export function mapSummaryShootout(
   } catch {
     return null;
   }
+}
+
+// The summary header's per-competitor shootout totals: the top tier of the
+// shootout precedence (header > scoreboard competitors > note > null). Only a
+// header that identifies the requested event and its home/away teams counts,
+// the identity Go's ValidateSummary requires; otherwise null, so the
+// scoreboard's evidence stands.
+export function mapSummaryShootoutTotals(raw: unknown, eventId: string, homeId: string, awayId: string): Shootout | null {
+  const header = (raw as any)?.header;
+  const competitions: any[] = header?.competitions;
+  if (String(header?.id) !== eventId || !Array.isArray(competitions) || competitions.length !== 1 ||
+      String(competitions[0]?.id) !== eventId) return null;
+  const competitors: any[] = competitions[0].competitors;
+  if (!Array.isArray(competitors) || competitors.length !== 2 ||
+      competitors.some((c: any) => c?.id != null && String(c.id) !== String(c?.team?.id))) return null;
+  const home = competitors.find((c: any) => c?.homeAway === 'home');
+  const away = competitors.find((c: any) => c?.homeAway === 'away');
+  if (String(home?.team?.id) !== homeId || String(away?.team?.id) !== awayId) return null;
+  return shootoutTotals(home.shootoutScore, away.shootoutScore);
+}
+
+// The status names Go's observedMatchState (shared/espn/validation.go) treats
+// specially: terminal ones finish on state post alone; the others are never
+// finished, however the state and completion read.
+const TERMINAL_STATUSES = new Set(['STATUS_CANCELED', 'STATUS_ABANDONED', 'STATUS_FORFEIT']);
+const UNFINISHED_STATUSES = new Set([
+  'STATUS_SUSPENDED', 'STATUS_POSTPONED', 'STATUS_SCHEDULED', 'STATUS_DELAYED',
+  'STATUS_IN_PROGRESS', 'STATUS_FIRST_HALF', 'STATUS_HALFTIME', 'STATUS_SECOND_HALF',
+]);
+
+// A final score as Go's scoreOf reads it: a string or number that parses as a
+// non-negative integer (strconv.Atoi).
+function isFinalScore(raw: unknown): boolean {
+  return (typeof raw === 'string' && /^[+-]?\d+$/.test(raw) && Number(raw) >= 0) ||
+    (typeof raw === 'number' && Number.isInteger(raw) && raw >= 0);
+}
+
+// Whether the summary header has itself finished, by Go's requireFinal gate
+// (ValidateSummary): observedMatchState's status predicate -- a STATUS_ name
+// with a boolean completion, then by name as above, and otherwise state post
+// with completion -- and a final score for both sides. Only a final header may
+// resolve a finished match; one read mid-shootout carries partial totals.
+export function summaryHeaderFinal(raw: unknown): boolean {
+  const competition = (raw as any)?.header?.competitions?.[0];
+  const type = competition?.status?.type;
+  const name = String(type?.name);
+  if (!name.startsWith('STATUS_') || typeof type?.completed !== 'boolean') return false;
+  const final = TERMINAL_STATUSES.has(name) ? type.state === 'post'
+    : !UNFINISHED_STATUSES.has(name) && type.state === 'post' && type.completed;
+  const competitors: any[] = competition.competitors ?? [];
+  return final && ['home', 'away'].every(side => isFinalScore(competitors.find(c => c?.homeAway === side)?.score));
 }
 
 // A clip is a "goal" clip (vs. analysis/interview/presser) when the headline

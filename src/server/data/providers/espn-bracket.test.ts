@@ -178,3 +178,34 @@ describe('mapBracket — club placeholders', () => {
     expect(match.away.placeholder).toBe(false);
   });
 });
+
+describe('mapBracket live minute', () => {
+  it.each([["60'", "60'"], [undefined, null], ['', null]])('maps display clock %j to %j', (clock, minute) => {
+    const event = structuredClone((raw as any).events[0]);
+    event.status.type = { ...event.status.type, state: 'in', completed: false, name: 'STATUS_FIRST_HALF' };
+    if (clock === undefined) delete event.status.displayClock;
+    else event.status.displayClock = clock;
+    const [match] = mapBracket({ events: [event] }).flatMap((r) => r.matches);
+    expect([match.state, match.minute]).toEqual(['live', minute]);
+  });
+});
+
+// BracketTeam.crestUrl is string | null: ESPN's empty logo string means "no
+// crest" and must not reach a consumer as a falsy-but-present URL.
+describe('mapBracket crest', () => {
+  const team = (patch: Record<string, unknown>) => {
+    const event = structuredClone((raw as any).events[0]);
+    Object.assign(event.competitions[0].competitors[1].team, patch);
+    return mapBracket({ events: [event] }).flatMap((r) => r.matches)[0].away;
+  };
+
+  it('gives a recorded placeholder slot a null crest', () => {
+    const slot = mapBracket(raw).flatMap((r) => r.matches).find((m) => m.id === '760503')!.away;
+    expect(slot).toMatchObject({ placeholder: true, crestUrl: null });
+  });
+
+  it('falls back from an empty logo to the first logo href, then to null', () => {
+    expect(team({ logo: '', logos: [{ href: 'https://a.espncdn.com/x.png' }] }).crestUrl).toBe('https://a.espncdn.com/x.png');
+    expect(team({ logo: '', logos: [] }).crestUrl).toBeNull();
+  });
+});

@@ -45,7 +45,7 @@ describe('compareByMlsRules', () => {
 });
 
 describe('computeOverallTable', () => {
-  const conferences = mapStandings(raw);
+  const conferences = mapStandings(raw, 'MLS');
   const shield = computeOverallTable(conferences, {
     id: 'supporters-shield',
     labelKey: 'standings.supportersShieldOverall',

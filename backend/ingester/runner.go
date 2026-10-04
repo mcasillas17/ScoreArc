@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"hash/fnv"
@@ -521,7 +520,11 @@ func mergeCandidate(current, incoming model.Match) model.Match {
 		return incoming
 	}
 	sameStateRank := matchStateRank(current.State) == matchStateRank(incoming.State)
-	if matchStateRank(current.State) >= matchStateRank(incoming.State) {
+	// The further state survives. At equal state an observation outranks a row
+	// rebuilt from storage -- its team ids, winner flag and totals are this
+	// cycle's -- and otherwise the current candidate survives.
+	if matchStateRank(current.State) > matchStateRank(incoming.State) ||
+		(sameStateRank && (!current.FromStorage || incoming.FromStorage)) {
 		incoming, current = current, incoming
 	}
 	if incoming.Round == "" {
@@ -557,7 +560,11 @@ func mergeBracketCandidate(scoreboard, bracket model.Match) model.Match {
 		merged.Round = bracket.Round
 	}
 	if merged.BracketConfirmed {
-		merged.WinnerID = bracket.WinnerID
+		merged.WinnerID, merged.WinnerFlagID = bracket.WinnerID, bracket.WinnerFlagID
+		// The aggregate that decided that winner, unless it has none.
+		if bracket.Shootout != nil {
+			merged.Shootout = bracket.Shootout
+		}
 	}
 	if bracket.Note != nil {
 		merged.Note = bracket.Note
@@ -810,7 +817,7 @@ func (r *runner) refreshLeaders(
 		// Mirror before replacing so each category is written exactly once.
 		// Writing provider crests first and mirrored crests second doubles the
 		// transactional delete-and-insert work for boards whose crests change.
-		mirrored := r.mirrorLeaders(ctx, board)
+		mirrored := r.mirrorLeaders(ctx, comp, board)
 
 		// The C3 guard (spec §4.1). A leader board is a pure function of the
 		// goals and assists scored in its competition, so it can only move when
@@ -853,8 +860,10 @@ func (r *runner) refreshLeaders(
 
 func (r *runner) mirrorLeaders(
 	ctx context.Context,
+	comp config.Competition,
 	rows []model.StatLeader,
 ) []model.StatLeader {
+	kind := config.TeamKind(comp)
 	mirrored := append([]model.StatLeader(nil), rows...)
 	semaphore := make(chan struct{}, 5)
 	var wg sync.WaitGroup
@@ -868,41 +877,35 @@ func (r *runner) mirrorLeaders(
 			case <-ctx.Done():
 				return
 			}
-			mirrored[index] = r.mirrorLeader(ctx, mirrored[index])
+			mirrored[index] = r.mirrorLeader(ctx, kind, mirrored[index])
 		}(index)
 	}
 	wg.Wait()
 	return mirrored
 }
 
-func (r *runner) mirrorLeader(ctx context.Context, leader model.StatLeader) model.StatLeader {
-	if r.mirror == nil || leader.TeamCrestURL == nil || *leader.TeamCrestURL == "" {
+// mirrorLeader mirrors a leader's crest under its team's canonical id -- the
+// key mirrorCrest gives every team crest -- so the URL is derivable from the
+// team, survives a change of upstream URL and is the team's own crest object.
+// The team resolves through the same crosswalk as standings rows (curated, or
+// provisional when unseeded). A leader without a provider team id, or whose
+// team cannot be resolved, keeps its upstream URL: no key is derived from the
+// URL or a display name.
+func (r *runner) mirrorLeader(ctx context.Context, kind string, leader model.StatLeader) model.StatLeader {
+	if r.mirror == nil || leader.TeamCrestURL == nil || *leader.TeamCrestURL == "" ||
+		isMirroredURL(*leader.TeamCrestURL, r.mirror.BaseURL()) || leader.TeamSourceID == "" {
 		return leader
 	}
-	if isMirroredURL(*leader.TeamCrestURL, r.mirror.BaseURL()) {
-		return leader
-	}
-	assetHash := sha256.Sum256([]byte(*leader.TeamCrestURL))
-	assetID := fmt.Sprintf("scorer-%x", assetHash[:8])
-	r.mu.Lock()
-	cachedURL := r.mirrored[assetID]
-	r.mu.Unlock()
-	if cachedURL != "" {
-		leader.TeamCrestURL = &cachedURL
-		return leader
-	}
-	cdnURL, err := r.mirrorAsset(ctx, "teams", assetID, *leader.TeamCrestURL)
-	if errors.Is(err, errMirrorUnavailable) {
-		return leader
-	}
+	teamID, err := r.repo.Team(ctx, sourceESPN, store.TeamRef{
+		SourceID: leader.TeamSourceID, Name: leader.TeamName, Abbr: leader.TeamAbbr, Kind: kind,
+	})
 	if err != nil {
-		r.log.Warn("mirror leader crest", "team", leader.TeamAbbr, "err", err)
+		r.log.Warn("resolve leader team", "team", leader.TeamSourceID, "err", err)
 		return leader
 	}
-	r.mu.Lock()
-	r.mirrored[assetID] = cdnURL
-	r.mu.Unlock()
-	leader.TeamCrestURL = &cdnURL
+	if cdnURL := r.mirrorCrest(ctx, model.Team{ID: teamID, CrestURL: leader.TeamCrestURL}); cdnURL != "" {
+		leader.TeamCrestURL = &cdnURL
+	}
 	return leader
 }
 

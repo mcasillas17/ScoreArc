@@ -1,6 +1,7 @@
 import type { CompetitionSeason } from './competitions';
 import { parseRange, seasonMonthBounds } from './dateRange';
 import { scoreboardUrl } from './endpoints';
+import { isScoreboardCount } from './providers/espn-matches';
 
 interface FetchOptions { signal: AbortSignal; maxBytes: number }
 export type ScoreboardFetchJson = (url: string, options?: FetchOptions) => Promise<unknown>;
@@ -114,11 +115,7 @@ function validateEvent(value: unknown): { event: Raw; id: string; at: number; se
     }
     sides.add(String(competitor.homeAway)); ids.add(team.id);
     for (const key of ['score', 'shootoutScore']) {
-      const score = competitor[key];
-      if (score != null && score !== '' &&
-          !((typeof score === 'string' && /^\d+$/.test(score)) || (typeof score === 'number' && Number.isInteger(score) && score >= 0))) {
-        throw new Error('Malformed scoreboard score');
-      }
+      if (!isScoreboardCount(competitor[key])) throw new Error('Malformed scoreboard score');
     }
     if (competitor.winner != null && typeof competitor.winner !== 'boolean') throw new Error('Malformed scoreboard winner');
   }

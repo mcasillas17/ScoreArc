@@ -23,7 +23,7 @@ import {
   teamScheduleUrl,
   athleteUrl, athleteOverviewUrl, athleteBioUrl,
 } from './endpoints';
-import { mapScoreboard } from './providers/espn-matches';
+import { mapScoreboard, scoreboardWinnerFlags, shootoutWinnerId } from './providers/espn-matches';
 import { mapTeamProfile, mapTeamRoster, mapScopedTeamSchedule, splitLeagueTeamIds } from './providers/espn-team';
 import { uniqueTeamMatches } from './teamPerformance';
 import { mapAthleteProfile, mapAthleteOverview, mapAthleteBio } from './providers/espn-athlete';
@@ -35,7 +35,7 @@ import { mapBracket } from './providers/espn-bracket';
 import { mapLeaders } from './providers/espn-stats';
 import {
   mapSummaryScorers, mapSummaryCards, mapSummaryStats, mapWinProbability, mapSummaryLineups,
-  mapSummaryVideos, mapSummaryShootout, mapSummaryInfo, mapSummaryForm, mapSummaryCommentary, mapSummaryH2H,
+  mapSummaryVideos, mapSummaryShootout, mapSummaryShootoutTotals, summaryHeaderFinal, mapSummaryInfo, mapSummaryForm, mapSummaryCommentary, mapSummaryH2H,
 } from './providers/espn-summary';
 import { TtlCache } from './cache';
 import { currentWeekRange, forwardRange, nowWindowRange } from './dateRange';
@@ -67,21 +67,8 @@ interface DataDeps {
   cache: TtlCache<unknown>;
 }
 
-// Penalty shootout aggregate parsed from a match note, e.g.
-// "Paraguay advance 4-3 on penalties".
-export function parseShootout(note: string | null, homeName: string, awayName: string): Shootout | null {
-  if (!note) return null;
-  const m = note.match(/(\d+)\s*[-–]\s*(\d+)\s+on penalties/i);
-  if (!m) return null;
-  const aNum = Number(m[1]);
-  const bNum = Number(m[2]);
-  const winnerScore = Math.max(aNum, bNum);
-  const loserScore = Math.min(aNum, bNum);
-  const noteLower = note.toLowerCase();
-  if (noteLower.includes(homeName.toLowerCase())) return { homeScore: winnerScore, awayScore: loserScore };
-  if (noteLower.includes(awayName.toLowerCase())) return { homeScore: loserScore, awayScore: winnerScore };
-  return { homeScore: aNum, awayScore: bNum };
-}
+// Re-exported: the scoreboard mapper owns the shootout precedence now.
+export { parseShootout } from './providers/espn-matches';
 
 // Fresh empty summary per call — never shared, so enrichment fallbacks can't
 // alias each other's arrays.
@@ -133,7 +120,6 @@ export function createDataStore(deps: DataDeps): DataStore {
     if (cached) return cached;
     const raw = await fetchScoreboardWindow(rc, range, deps.fetchJson, signal);
     const matches = mapScoreboard(raw)
-      .map((m) => ({ ...m, shootout: parseShootout(m.note, m.home.name, m.away.name) }))
       .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
     deps.cache.set(k, matches, ttlMs);
     return matches;
@@ -147,10 +133,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       fetchScoreboardWindow(rc, config.datesRange, deps.fetchJson),
       deps.fetchJson(teamsUrl(config.splitLeagueSlug)),
     ]);
-    const matches = mapScoreboard(rawPhase).map((m) => ({
-      ...m,
-      shootout: parseShootout(m.note, m.home.name, m.away.name),
-    }));
+    const matches = mapScoreboard(rawPhase);
     const groups = computePhaseTables(matches, splitLeagueTeamIds(rawSplit), config.cut);
     // Carry the configured display names so the view doesn't hardcode them.
     for (const g of groups) {
@@ -159,11 +142,19 @@ export function createDataStore(deps: DataDeps): DataStore {
     return groups;
   }
 
-  async function getMatchSummary(
+  // One summary read, cached with the header's shootout totals. MatchSummaryData
+  // has no aggregate (neither does the reader's summary), but getMatches already
+  // holds this summary and the header outranks the scoreboard's evidence. The
+  // sides are part of the key: the totals, stats, lineups and other per-side
+  // fields are mapped for them, and the public match route passes its query's
+  // sides through unchecked. `final` records whether the header itself had
+  // finished: a summary read mid-shootout must not resolve a finished match.
+  type LoadedSummary = { data: MatchSummaryData; shootout: Shootout | null; final: boolean };
+  async function loadSummary(
     rc: CompetitionSeason, eventId: string, homeId: string, awayId: string, signal?: AbortSignal,
-  ): Promise<MatchSummaryData> {
-    const k = key(rc, `summary:${eventId}`);
-    const cached = deps.cache.get(k) as MatchSummaryData | undefined;
+  ): Promise<LoadedSummary> {
+    const k = key(rc, `summary:${eventId}:${homeId}:${awayId}`);
+    const cached = deps.cache.get(k) as LoadedSummary | undefined;
     if (cached) return cached;
     signal?.throwIfAborted();
     const raw = await deps.fetchJson(summaryUrl(slug(rc), eventId), signal
@@ -181,8 +172,19 @@ export function createDataStore(deps: DataDeps): DataStore {
       commentary: mapSummaryCommentary(raw),
       h2h: mapSummaryH2H(raw),
     };
-    deps.cache.set(k, summary, 12_000);
-    return summary;
+    const loaded = {
+      data: summary,
+      shootout: mapSummaryShootoutTotals(raw, eventId, homeId, awayId),
+      final: summaryHeaderFinal(raw),
+    };
+    deps.cache.set(k, loaded, 12_000);
+    return loaded;
+  }
+
+  async function getMatchSummary(
+    rc: CompetitionSeason, eventId: string, homeId: string, awayId: string, signal?: AbortSignal,
+  ): Promise<MatchSummaryData> {
+    return (await loadSummary(rc, eventId, homeId, awayId, signal)).data;
   }
 
   return {
@@ -200,24 +202,34 @@ export function createDataStore(deps: DataDeps): DataStore {
       const readSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
       const raw = await fetchScoreboardWindow(rc, window, deps.fetchJson, readSignal);
       const matches = mapScoreboard(raw);
-      const summaries: MatchSummaryData[] = [];
+      const flags = scoreboardWinnerFlags(raw);
+      const summaries: LoadedSummary[] = [];
       // Only retained matches are enriched, four at a time under the same
       // read deadline. Individual provider summary failures remain best effort.
       for (let i = 0; i < matches.length; i += 4) {
         readSignal.throwIfAborted();
         summaries.push(...await Promise.all(matches.slice(i, i + 4).map(m =>
-          getMatchSummary(rc, m.id, m.home.id, m.away.id, readSignal).catch(() => emptySummary()),
+          loadSummary(rc, m.id, m.home.id, m.away.id, readSignal)
+            .catch((): LoadedSummary => ({ data: emptySummary(), shootout: null, final: false })),
         )));
       }
       readSignal.throwIfAborted();
       matches.forEach((m, i) => {
-        m.scorers = summaries[i].scorers;
-        m.cards = summaries[i].cards;
-        m.stats = summaries[i].stats;
-        m.winProbability = summaries[i].winProbability;
-        m.shootoutDetail = summaries[i].shootoutDetail;
+        const { data, shootout, final } = summaries[i];
+        m.scorers = data.scorers;
+        m.cards = data.cards;
+        m.stats = data.stats;
+        m.winProbability = data.winProbability;
+        m.shootoutDetail = data.shootoutDetail;
+        // The header outranks the scoreboard -- for a finished match only once
+        // the header is final too (Go's requireFinal) -- and a finished match's
+        // winner is then the side it names, or ESPN's flag when it is level,
+        // never the winner of the scoreboard aggregate it supersedes.
+        if (shootout && (m.state !== 'finished' || final)) {
+          m.shootout = shootout;
+          if (m.state === 'finished') m.winnerId = shootoutWinnerId(shootout, m.home.id, m.away.id) ?? flags.get(m.id) ?? null;
+        }
       });
-      for (const m of matches) m.shootout = parseShootout(m.note, m.home.name, m.away.name);
       deps.cache.set(k, matches, 10_000);
       return matches;
     },
@@ -370,7 +382,8 @@ export function createDataStore(deps: DataDeps): DataStore {
 
     async getStandings(rc): Promise<Group[]> {
       const k = key(rc, 'standings');
-      const cached = deps.cache.get(k) as Group[] | undefined;
+      const cached = deps.cache.get(k) as Group[] | Error | undefined;
+      if (cached instanceof Error) throw cached;
       if (cached) return cached;
       // Some competitions have no published table at all — ESPN's /standings
       // returns `{}` for the Leagues Cup even for finished seasons. Compute it
@@ -382,7 +395,16 @@ export function createDataStore(deps: DataDeps): DataStore {
         return groups;
       }
       const raw = await deps.fetchJson(standingsUrl(slug(rc)));
-      const groups = mapStandings(raw);
+      let groups: Group[];
+      try {
+        groups = mapStandings(raw, rc.competition.shortName);
+      } catch (error) {
+        // A rejected table is cached like an accepted one: the standings page
+        // and the team and player indexes all read it, and a provider that
+        // keeps serving it must not cost an upstream fetch per read.
+        deps.cache.set(k, error, 60_000);
+        throw error;
+      }
       // A conference-split league also races for something league-wide that no
       // provider tabulates — MLS's Supporters' Shield. Merge it here so the view
       // receives it as one more table and needs no special case.

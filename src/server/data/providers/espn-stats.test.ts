@@ -102,6 +102,13 @@ describe('leader team identity', () => {
     expect(leaders[0].athleteId).toBe('231388');
   });
 
+  it('serves an empty provider logo as a null crest, as the Go mapper does', () => {
+    const payload = structuredClone(raw as any);
+    const leader = payload.stats.find((s: any) => s.name === 'goalsLeaders').leaders[0];
+    leader.athlete.team.logo = '';
+    expect(mapLeaders(payload, 'goalsLeaders')[0].teamCrestUrl).toBeNull();
+  });
+
   it('carries the provider team id alongside the abbreviation', () => {
     const scorers = mapLeaders(raw, 'goalsLeaders');
     expect(scorers.length).toBeGreaterThan(0);

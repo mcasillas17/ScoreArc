@@ -9,6 +9,7 @@ vi.mock('./store', async (orig) => {
 import { dataStore } from './store';
 import { resolveSeason } from './competitions';
 import { competitionTeams, allTeams } from './teamIndex';
+import { StandingsStatsError } from './providers/espn-standings';
 
 function group(...teams: Array<{ id: string; name: string; abbr: string }>): Group {
   return {
@@ -55,6 +56,13 @@ describe('competitionTeams', () => {
   it('returns [] rather than throwing when standings fail', async () => {
     vi.spyOn(dataStore, 'getStandings').mockRejectedValue(new Error('502'));
     expect(await competitionTeams(resolveSeason('liga-mx')!)).toEqual([]);
+  });
+
+  // A table rejected for a missing stat still says who plays the competition.
+  it('lists the clubs of a table rejected only for a missing stat', async () => {
+    vi.spyOn(dataStore, 'getStandings').mockRejectedValue(
+      new StandingsStatsError('invalid points', [{ ...AMERICA, crestUrl: null }]));
+    expect((await competitionTeams(resolveSeason('liga-mx')!)).map((t) => t.id)).toEqual(['mex-america']);
   });
 });
 

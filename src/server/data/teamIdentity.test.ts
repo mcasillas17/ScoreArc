@@ -28,6 +28,31 @@ describe('team identity crosswalk', () => {
     expect(providerTeamId(id)).toBeNull();
   });
 
+  // The reader serves canonical ids where the ESPN store serves provider ids,
+  // and teamHref, the team index and follows all run ids through here. A
+  // canonical id must therefore canonicalize to itself, or every crest served
+  // by the reader would silently lose its link.
+  it('accepts an id that is already canonical', () => {
+    expect(canonicalTeamId('mex-america')).toBe('mex-america');
+    expect(canonicalTeamId(canonicalTeamId('227'))).toBe('mex-america');
+  });
+
+  // A provisional backend row is not curated: no page, no link, same as an
+  // uncurated provider id.
+  it('treats a provisional backend id as uncurated', () => {
+    expect(canonicalTeamId('prov-espn-131529')).toBeNull();
+    expect(providerTeamId('prov-espn-131529')).toBeNull();
+  });
+
+  // The lookup above is unambiguous only while no string is both a provider
+  // key and a canonical id.
+  it('keeps the provider and canonical id spaces disjoint', async () => {
+    const { default: crosswalk } = await import('./teamCrosswalk.json');
+    const providerIds = Object.keys(crosswalk);
+    expect(providerIds.every((id) => /^\d+$/.test(id))).toBe(true);
+    expect(Object.values(crosswalk).filter((id) => providerIds.includes(id))).toEqual([]);
+  });
+
   it('uses country-prefixed slugs, never bare provider numbers', () => {
     expect(canonicalTeamId('227')).toMatch(/^[a-z]{3}-[a-z0-9-]+$/);
     expect(canonicalTeamId('227')).not.toMatch(/^\d+$/);

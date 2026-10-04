@@ -412,27 +412,30 @@ func hasSummaryDetail(detail MatchDetail) bool {
 		len(detail.H2H) > 0
 }
 
-func SummaryFinalScores(raw []byte) (*int, *int, error) {
+// SummaryFinal reads a validated final summary header: its two scores and
+// ESPN's own winner flag (homeID, awayID or nil), the same flag the scoreboard
+// carries, for a caller whose match brought none.
+func SummaryFinal(raw []byte, homeID, awayID string) (homeScore, awayScore *int, winnerFlag *string, err error) {
 	var summary rawSummary
 	if err := parseRawSummary(raw, &summary); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if len(summary.Header.Competitions) == 0 {
-		return nil, nil, fmt.Errorf("summary missing competition")
+		return nil, nil, nil, fmt.Errorf("summary missing competition")
 	}
-	var homeScore, awayScore *int
+	var homeWinner, awayWinner bool
 	for _, competitor := range summary.Header.Competitions[0].Competitors {
 		switch competitor.HomeAway {
 		case "home":
-			homeScore = scoreOf(competitor.Score)
+			homeScore, homeWinner = scoreOf(competitor.Score), competitor.Winner
 		case "away":
-			awayScore = scoreOf(competitor.Score)
+			awayScore, awayWinner = scoreOf(competitor.Score), competitor.Winner
 		}
 	}
 	if homeScore == nil || awayScore == nil {
-		return nil, nil, fmt.Errorf("summary missing final scores")
+		return nil, nil, nil, fmt.Errorf("summary missing final scores")
 	}
-	return homeScore, awayScore, nil
+	return homeScore, awayScore, flaggedWinnerID(homeID, awayID, homeWinner, awayWinner), nil
 }
 
 func ParseShootoutNote(note, homeName, awayName string) *Shootout {
@@ -465,26 +468,67 @@ func mapSummaryShootout(rs rawSummary) *Shootout {
 	if len(rs.Header.Competitions) == 0 {
 		return nil
 	}
-	var home, away int
-	var homeOK, awayOK bool
+	var home, away json.RawMessage
 	for _, competitor := range rs.Header.Competitions[0].Competitors {
-		score, ok, err := parseSuppliedShootoutScore(competitor.ShootoutScore)
-		if err != nil {
-			// MapSummary remains tolerant; authoritative callers validate
-			// first and receive this error instead of accepting lost totals.
-			return nil
-		}
 		switch competitor.HomeAway {
 		case "home":
-			home, homeOK = score, ok
+			home = competitor.ShootoutScore
 		case "away":
-			away, awayOK = score, ok
+			away = competitor.ShootoutScore
 		}
 	}
-	if !homeOK || !awayOK || (home == 0 && away == 0) {
+	return shootoutTotals(home, away)
+}
+
+// shootoutTotals reads a pair of provider shootout totals, from the summary
+// header or the scoreboard's competitors. Both must be supplied and valid and
+// not both zero; anything else is no aggregate. Tolerant: authoritative
+// callers validate first (ValidateSummary) and reject malformed totals.
+func shootoutTotals(homeRaw, awayRaw json.RawMessage) *Shootout {
+	home, homeOK, homeErr := parseSuppliedShootoutScore(homeRaw)
+	away, awayOK, awayErr := parseSuppliedShootoutScore(awayRaw)
+	if homeErr != nil || awayErr != nil || !homeOK || !awayOK || (home == 0 && away == 0) {
 		return nil
 	}
 	return &Shootout{HomeScore: home, AwayScore: away}
+}
+
+// ResolveWinner is a finished match's winner: the side its served shootout
+// aggregate names when decisive, else ESPN's own winner flag. The flag, not a
+// winner derived from a lower tier's aggregate, so a level aggregate that
+// supersedes a decisive one cannot leave the superseded winner in place.
+func ResolveWinner(shootout *Shootout, homeID, awayID string, flagged *string) *string {
+	if winner := ShootoutWinner(shootout, homeID, awayID); winner != nil {
+		return winner
+	}
+	return flagged
+}
+
+// flaggedWinnerID is the side ESPN flags as the winner, home first.
+func flaggedWinnerID(homeID, awayID string, homeWinner, awayWinner bool) *string {
+	switch {
+	case homeWinner:
+		return &homeID
+	case awayWinner:
+		return &awayID
+	default:
+		return nil
+	}
+}
+
+// ShootoutWinner is the side a decisive shootout aggregate names -- homeID or
+// awayID -- or nil when there is no aggregate or it is level. For a finished
+// match it outranks the provider's winner flags, which ESPN sets
+// inconsistently on shootouts (see shootoutFirstWinnerID).
+func ShootoutWinner(shootout *Shootout, homeID, awayID string) *string {
+	switch {
+	case shootout == nil || shootout.HomeScore == shootout.AwayScore:
+		return nil
+	case shootout.HomeScore > shootout.AwayScore:
+		return &homeID
+	default:
+		return &awayID
+	}
 }
 
 // headerTeamIDs reads OUR home/away team ids off
@@ -954,12 +998,22 @@ func mapSummaryScorers(rs rawSummary) []Scorer {
 		if !e.ScoringPlay || e.Team == nil || e.Team.ID == "" {
 			continue
 		}
+		teamID := string(e.Team.ID)
+		// ESPN has no own-goal boolean; type.type is its only signal.
+		ownGoal := e.Type.Type == "own-goal"
+		var athleteID *string
+		if len(e.Participants) > 0 && e.Participants[0].Athlete.ID != "" {
+			id := string(e.Participants[0].Athlete.ID)
+			athleteID = &id
+		}
 		out = append(out, Scorer{
-			TeamID:   string(e.Team.ID),
-			Player:   participantName(e.Participants),
-			Minute:   e.Clock.DisplayValue,
-			Penalty:  e.PenaltyKick,
-			Shootout: e.Shootout,
+			TeamID:    &teamID,
+			Player:    participantName(e.Participants),
+			Minute:    e.Clock.DisplayValue,
+			Penalty:   e.PenaltyKick,
+			Shootout:  e.Shootout,
+			OwnGoal:   &ownGoal,
+			AthleteID: athleteID,
 		})
 	}
 	return out
@@ -983,8 +1037,9 @@ func mapSummaryCards(rs rawSummary) []Card {
 		if redCardRe.MatchString(e.Type.Text) {
 			cardType = "red"
 		}
+		teamID := string(e.Team.ID)
 		out = append(out, Card{
-			TeamID: string(e.Team.ID),
+			TeamID: &teamID,
 			Player: participantName(e.Participants),
 			Minute: e.Clock.DisplayValue,
 			Type:   cardType,

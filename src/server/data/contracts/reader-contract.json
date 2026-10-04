@@ -2,7 +2,7 @@
  "about": "T16.1 reader contract vectors. Consumed by reader-contract.test.ts and backend/reader/reader_contract_test.go. Not a parity claim: gaps are characterized, not normalized away. Per-method gap lists name the incompatibilities in the fields that frontend method actually populates (getFixtures and getLiveWindow do not enrich scorers or stats), not every field their shared reader route can return.",
  "evidence": {
   "recorded": "Unmodified recorded ESPN payloads under src/server/data/__fixtures__ (both languages read the same bytes).",
-  "synthetic": "Synthetic, labeled where they appear: queries.events and queries.liveMinute, freshness snapshots, transport paths, summary.syntheticOverlay, standings.unnamedTable and standings.synthetic, player.missingContext, the reader match/bracket UUIDs, the integration test's standings tie rows and provisional team, and the seedLigaTeam standing behind team.readerStandingSummary. None is a production crosswalk.",
+  "synthetic": "Synthetic, labeled where they appear: queries.events and queries.liveMinute, freshness snapshots, transport paths, summary.syntheticOverlay (with its headerIdentity and levelHeader cases), scoreboard.shootoutPrecedence, bracket.liveClockless and bracket.liveShootout, standings.unnamedTable and standings.synthetic, player.missingContext, the reader match/bracket UUIDs, the integration test's standings tie rows and provisional team, its stored clockless live row, sealed legacy detail rows (with their aligned match events and players), resolver-minted match, finalization winner rows and the Leagues Cup competition, teams and match row under the recorded own-goal detail, and the seedLigaTeam standing behind team.readerStandingSummary. None is a production crosswalk.",
   "crosswalk": "Provider-to-canonical team ids come from the production seed (backend/config/teams.seed.json, exported to src/server/data/teamCrosswalk.json). Summary and own-goal side ids are checked against it in both suites; standings ids through the group-A comparisons (TS crosswalk, Go seed); bracket side ids only in the Go database suite."
  },
  "gaps": {
@@ -51,31 +51,6 @@
    "mismatch": "Reader Group has no labelKey/zones and no Leagues Cup phase or MLS overall tables.",
    "suites": ["ts", "go"]
   },
-  "T16.2-scorer-identity": {
-   "task": "T16.2",
-   "mismatch": "Reader Scorer lacks ownGoal, athleteId and playerSlug; an own goal is indistinguishable from a goal by the benefiting side, and scorers cannot link to player pages.",
-   "suites": ["ts", "go"]
-  },
-  "T16.2-nested-team-id": {
-   "task": "T16.2",
-   "mismatch": "Reader scorers[].teamId/cards[].teamId keep provider ids while the match sides are canonical.",
-   "suites": ["ts", "go"]
-  },
-  "T16.2-standings-rank": {
-   "task": "T16.2",
-   "mismatch": "When ESPN's rank stat is a complete 1..n permutation (the recorded tables), the frontend orders rows by it and Go MapStandings keeps provider array order. With a duplicated or partial rank stat both keep array order.",
-   "suites": ["ts", "go"]
-  },
-  "T16.2-placeholder-crest": {
-   "task": "T16.2",
-   "mismatch": "Placeholder bracket teams: frontend crestUrl is an empty string, reader crestUrl is null.",
-   "suites": ["ts", "go"]
-  },
-  "T16.2-match-id": {
-   "task": "T16.2",
-   "mismatch": "Reader match routes and list rows use canonical match UUIDs; the frontend uses provider event ids for list rows and summary addressing.",
-   "suites": ["ts", "go"]
-  },
   "T16.6-news": {
    "task": "T16.6",
    "mismatch": "Reader news is a live ESPN proxy (502 on upstream failure), not owned data; bodies match today.",
@@ -84,11 +59,6 @@
   "T17.3-freshness-coverage": {
    "task": "T17.3",
    "mismatch": "Standings, top-scorers and news responses carry no X-ScoreArc freshness headers.",
-   "suites": ["go"]
-  },
-  "T16.2-bracket-round-name": {
-   "task": "T16.2",
-   "mismatch": "Reader BracketRound adds a display name (e.g. 'Round of 32') that the frontend BracketRound {slug, matches} does not have.",
    "suites": ["go"]
   },
   "T10.3-team-location": {
@@ -100,21 +70,6 @@
    "task": "T10.3",
    "mismatch": "Reader SquadPlayer.id is a canonical player UUID, not the provider athlete id; age and headshotUrl are always null (no column is selected); and the squad is served in shirt-number order rather than provider roster order.",
    "suites": ["go-db"]
-  },
-  "T16.2-shootout-source": {
-   "task": "T16.2",
-   "mismatch": "Match.shootout provenance differs: the reader serves the aggregate the ingester stored from the summary header's shootoutScore (its match-note fallback is owned by backend/shared/source and not re-verified here); the frontend parses only the scoreboard note, and its MatchSummaryData has no aggregate field, so a summary-only shootout is null in the frontend.",
-   "suites": ["ts", "go"]
-  },
-  "T16.2-team-id": {
-   "task": "T16.2",
-   "mismatch": "Top-level team ids are canonical slugs in the reader (standings rows, match and bracket sides, the team route) and provider ids in the frontend; equivalence needs the seed crosswalk.",
-   "suites": ["ts", "go"]
-  },
-  "T16.2-group-label": {
-   "task": "T16.2",
-   "mismatch": "An unnamed provider standings table keeps an empty Group id/name in the frontend, while the reader substitutes the competition short name (e.g. 'Premier League') for a NULL group.",
-   "suites": ["ts", "go-db"]
   },
   "T10.3-partial-failure": {
    "task": "T10.3",
@@ -133,22 +88,7 @@
   },
   "T16.2-standings-dedup": {
    "task": "T16.2",
-   "mismatch": "A team listed in two provider tables stays in both frontend groups with contiguous ranks; Go MapStandings drops the later row and leaves a hole in that group's ranks.",
-   "suites": ["ts", "go"]
-  },
-  "T16.2-round-slug-type": {
-   "task": "T16.2",
-   "mismatch": "The frontend types bracket round and slug as the KnockoutRoundSlug union; the reader DTO and OpenAPI accept any string.",
-   "suites": ["go"]
-  },
-  "T16.2-standings-malformed": {
-   "task": "T16.2",
-   "mismatch": "A standings row missing a stat, or a table with no entries, is zero-filled or kept empty by the frontend mapper; Go MapStandings rejects the whole payload, so the reader keeps the previous standings.",
-   "suites": ["ts", "go"]
-  },
-  "T16.2-live-minute": {
-   "task": "T16.2",
-   "mismatch": "Three-way: the declared frontend contract is Match.minute string | null; the implemented frontend mapper (espn-matches.ts) yields undefined for a live event without ESPN's displayClock, which JSON drops (a frontend defect); the Go mapper stores an empty string. Closing the gap means both emit null, not teaching the reader to omit the field.",
+   "mismatch": "A team listed in two provider tables stays in both frontend tables; the reader keeps one standing row per team per season, so it lists the team only in its first table (the remaining rows of a later table keep their true positions). Representing multi-table membership needs an owner decision: a multi-table standing model (standing and standing_snapshot keys) or a shared first-table rule. No configured competition published overlapping tables on 2026-10-04.",
    "suites": ["ts", "go"]
   },
   "T10.3-team-cache-doc": {
@@ -160,41 +100,36 @@
    "task": "T10.3",
    "mismatch": "The frontend TeamProfile.record is the provider's record item (summary string, gamesPlayed, points, goalDifference from provider stats); the reader derives W-D-L, games, points and goal difference from its own standing row.",
    "suites": ["go-db"]
-  },
-  "T16.2-bracket-live-minute": {
-   "task": "T16.2",
-   "mismatch": "For a live match without ESPN's displayClock, the frontend bracket and team-schedule mappers emit minute null, while the Go bracket mapper and the stored match minute are an empty string, which the reader serves on BracketMatch.minute and TeamProfile.schedule[].minute.",
-   "suites": ["ts", "go"]
   }
  },
  "methods": {
   "getMatches": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T16.2-scorer-identity", "T16.2-nested-team-id", "T10.2-team-stats", "T16.2-match-id", "T16.2-shootout-source", "T16.2-team-id", "T21.4-dependency-error-logging", "T16.2-live-minute"]
+   "gaps": ["T10.1-match-query", "T10.2-team-stats", "T21.4-dependency-error-logging"]
   },
   "getFixtures": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T16.2-match-id", "T16.2-shootout-source", "T16.2-team-id", "T21.4-dependency-error-logging", "T16.2-live-minute"]
+   "gaps": ["T10.1-match-query", "T21.4-dependency-error-logging"]
   },
   "getLiveWindow": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T16.2-match-id", "T16.2-shootout-source", "T16.2-team-id", "T21.4-dependency-error-logging", "T16.2-live-minute"]
+   "gaps": ["T10.1-match-query", "T21.4-dependency-error-logging"]
   },
   "getUpcoming": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T16.2-match-id", "T16.2-team-id", "T21.4-dependency-error-logging"]
+   "gaps": ["T10.1-match-query", "T21.4-dependency-error-logging"]
   },
   "getStandings": {
    "reader": "/v1/competitions/{comp}/{season}/standings",
-   "gaps": ["T16.2-standings-rank", "T10.10-derived-standings", "T17.3-freshness-coverage", "T16.2-team-id", "T16.2-group-label", "T21.4-dependency-error-logging", "T16.2-standings-dedup", "T16.2-standings-malformed"]
+   "gaps": ["T10.10-derived-standings", "T17.3-freshness-coverage", "T21.4-dependency-error-logging", "T16.2-standings-dedup"]
   },
   "getBracket": {
    "reader": "/v1/competitions/{comp}/{season}/bracket",
-   "gaps": ["T16.2-placeholder-crest", "T16.2-bracket-round-name", "T16.2-team-id", "T16.2-match-id", "T21.4-dependency-error-logging", "T16.2-round-slug-type", "T16.2-bracket-live-minute"]
+   "gaps": ["T21.4-dependency-error-logging"]
   },
   "getMatchSummary": {
    "reader": "/v1/matches/{id}",
-   "gaps": ["T16.2-match-id", "T16.2-scorer-identity", "T16.2-nested-team-id", "T10.2-team-stats", "T10.2-lineups", "T21.4-dependency-error-logging"]
+   "gaps": ["T10.2-team-stats", "T10.2-lineups", "T21.4-dependency-error-logging"]
   },
   "getLeaders": {
    "reader": "/v1/competitions/{comp}/{season}/top-scorers",
@@ -206,11 +141,11 @@
   },
   "getTeam": {
    "reader": "/v1/competitions/{comp}/{season}/teams/{teamId}",
-   "gaps": ["T10.3-team", "T10.3-team-location", "T16.2-team-id", "T10.3-partial-failure", "T10.3-standing-summary", "T16.2-match-id", "T10.3-team-cache-doc", "T10.3-team-record", "T16.2-bracket-live-minute", "T10.3-squad", "T10.3-squad-fields"]
+   "gaps": ["T10.3-team", "T10.3-team-location", "T10.3-partial-failure", "T10.3-standing-summary", "T10.3-team-cache-doc", "T10.3-team-record", "T10.3-squad", "T10.3-squad-fields"]
   },
   "getSquad": {
    "reader": "/v1/competitions/{comp}/{season}/teams/{teamId}",
-   "gaps": ["T10.3-squad", "T10.3-squad-fields", "T10.3-partial-failure", "T16.2-team-id"]
+   "gaps": ["T10.3-squad", "T10.3-squad-fields", "T10.3-partial-failure"]
   },
   "getPlayer": {
    "reader": null,
@@ -235,14 +170,6 @@
    }
   },
   "shared": {
-   "cards": [
-    {
-     "teamId": "464",
-     "player": "Antonio Nusa",
-     "minute": "45'+1'",
-     "type": "yellow"
-    }
-   ],
    "winProbability": {
     "home": 26.6,
     "draw": 29,
@@ -367,6 +294,14 @@
      "shootout": false,
      "ownGoal": false,
      "athleteId": "253989"
+    }
+   ],
+   "cards": [
+    {
+     "teamId": "464",
+     "player": "Antonio Nusa",
+     "minute": "45'+1'",
+     "type": "yellow"
     }
    ],
    "stats": {
@@ -956,25 +891,39 @@
   "reader": {
    "scorers": [
     {
-     "teamId": "464",
+     "teamId": "nat-nor",
      "player": "Antonio Nusa",
      "minute": "39'",
      "penalty": false,
-     "shootout": false
+     "shootout": false,
+     "ownGoal": false,
+     "athleteId": "319368"
     },
     {
-     "teamId": "4789",
+     "teamId": "nat-civ",
      "player": "Amad Diallo",
      "minute": "74'",
      "penalty": false,
-     "shootout": false
+     "shootout": false,
+     "ownGoal": false,
+     "athleteId": "291630"
     },
     {
-     "teamId": "464",
+     "teamId": "nat-nor",
      "player": "Erling Haaland",
      "minute": "86'",
      "penalty": false,
-     "shootout": false
+     "shootout": false,
+     "ownGoal": false,
+     "athleteId": "253989"
+    }
+   ],
+   "cards": [
+    {
+     "teamId": "nat-nor",
+     "player": "Antonio Nusa",
+     "minute": "45'+1'",
+     "type": "yellow"
     }
    ],
    "stats": {
@@ -1169,7 +1118,7 @@
    }
   },
   "syntheticOverlay": {
-   "note": "Synthetic: merged over the recorded 760490 summary because no recorded payload has a shootout or head-to-head block. Norway (away) is listed first to prove side mapping by id; six meetings prove the five-row cap; one string, one numeric and one missing score. An absent provider score renders as 0 in both implementations ('CIV 4-0 NOR'): characterized shared behavior that collapses missing into zero, not an endorsed contract. Appended key events add the second state of each discriminator (a penalty goal, a shootout kick, a red card); header shootoutScores give the reader's summary-side shootout aggregate.",
+   "note": "Synthetic: merged over the recorded 760490 summary because no recorded payload has a shootout or head-to-head block. Norway (away) is listed first to prove side mapping by id; six meetings prove the five-row cap; one string, one numeric and one missing score. An absent provider score renders as 0 in both implementations ('CIV 4-0 NOR'): characterized shared behavior that collapses missing into zero, not an endorsed contract. Appended key events add the second state of each discriminator (a penalty goal, a shootout kick, a red card). A goal and a card credited to provider team 999999, which is neither side, prove an unattributable reference: the frontend keeps the provider id, which matches neither of its sides, and the reader serves null rather than a default side; header shootoutScores give the reader's summary-side shootout aggregate.",
    "raw": {
     "shootout": [
      {
@@ -1334,6 +1283,15 @@
       "shootout": true,
       "ownGoal": false,
       "athleteId": "900002"
+     },
+     {
+      "teamId": "999999",
+      "player": "Synthetic Unattributed Scorer",
+      "minute": "61'",
+      "penalty": false,
+      "shootout": false,
+      "ownGoal": false,
+      "athleteId": "900004"
      }
     ],
     "addedCards": [
@@ -1342,6 +1300,55 @@
       "player": "Synthetic Red",
       "minute": "88'",
       "type": "red"
+     },
+     {
+      "teamId": "999999",
+      "player": "Synthetic Unattributed Card",
+      "minute": "62'",
+      "type": "yellow"
+     }
+    ],
+    "readerAddedScorers": [
+     {
+      "teamId": "nat-civ",
+      "player": "Synthetic Penalty Taker",
+      "minute": "90'+3'",
+      "penalty": true,
+      "shootout": false,
+      "ownGoal": false,
+      "athleteId": "900001"
+     },
+     {
+      "teamId": "nat-nor",
+      "player": "Synthetic Shootout Taker",
+      "minute": "120'",
+      "penalty": false,
+      "shootout": true,
+      "ownGoal": false,
+      "athleteId": "900002"
+     },
+     {
+      "teamId": null,
+      "player": "Synthetic Unattributed Scorer",
+      "minute": "61'",
+      "penalty": false,
+      "shootout": false,
+      "ownGoal": false,
+      "athleteId": "900004"
+     }
+    ],
+    "readerAddedCards": [
+     {
+      "teamId": "nat-civ",
+      "player": "Synthetic Red",
+      "minute": "88'",
+      "type": "red"
+     },
+     {
+      "teamId": null,
+      "player": "Synthetic Unattributed Card",
+      "minute": "62'",
+      "type": "yellow"
      }
     ],
     "readerShootout": {
@@ -1416,11 +1423,420 @@
       "type": "red-card",
       "text": "Red Card"
      }
+    },
+    {
+     "scoringPlay": true,
+     "penaltyKick": false,
+     "shootout": false,
+     "team": {
+      "id": "999999"
+     },
+     "participants": [
+      {
+       "athlete": {
+        "id": "900004",
+        "displayName": "Synthetic Unattributed Scorer"
+       }
+      }
+     ],
+     "clock": {
+      "displayValue": "61'"
+     },
+     "type": {
+      "type": "goal",
+      "text": "Goal"
+     }
+    },
+    {
+     "scoringPlay": false,
+     "team": {
+      "id": "999999"
+     },
+     "participants": [
+      {
+       "athlete": {
+        "id": "900005",
+        "displayName": "Synthetic Unattributed Card"
+       }
+      }
+     ],
+     "clock": {
+      "displayValue": "62'"
+     },
+     "type": {
+      "type": "yellow-card",
+      "text": "Yellow Card"
+     }
     }
    ],
    "shootoutScores": {
     "home": 4,
     "away": 3
+   },
+   "headerIdentity": {
+    "note": "Synthetic: the overlay summary's header (shootoutScores home 4, away 3) is rewritten to the given event id and side ids and held for recorded scoreboard event 760489 (Germany 481 home, Paraguay 210 away; structured totals 3/4, winner flag Paraguay). Only a header that identifies the requested event and its sides may supply the aggregate (Go: ValidateSummary rejects any other); otherwise the scoreboard's evidence stands. A finished scoreboard match takes the header only once the header is itself final by Go's requireFinal predicate (observedMatchState): a STATUS_ name with a boolean completion, where a known in-play, scheduled, suspended or postponed name is never final, a terminal name (canceled, abandoned, forfeit) is final on state post, and any other name is final on state post with completion; and both header competitors carry a final score Go's scoreOf reads as a count (scores overrides them); a live header, even one held from an earlier read, never overrides it. A finished match's winner follows the aggregate it serves.",
+    "scoreboardEventId": "760489",
+    "cases": [
+     {
+      "name": "the requested event and sides",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210"
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 4,
+        "awayScore": 3
+       },
+       "winner": "home"
+      }
+     },
+     {
+      "name": "another event's header",
+      "header": {
+       "eventId": "760490",
+       "home": "481",
+       "away": "210"
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "reversed sides",
+      "header": {
+       "eventId": "760489",
+       "home": "210",
+       "away": "481"
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, header still in the shootout",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_SHOOTOUT",
+        "state": "in",
+        "completed": false
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, header post but not completed",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_SHOOTOUT",
+        "state": "post",
+        "completed": false
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, header completion missing",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_FINAL_PEN",
+        "state": "post",
+        "completed": null
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, header completed while in play",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_FINAL_PEN",
+        "state": "in",
+        "completed": true
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, header status name unknown",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "FINAL",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, header STATUS_IN_PROGRESS contradicted by post and completion",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_IN_PROGRESS",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, header STATUS_FIRST_HALF contradicted by post and completion",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_FIRST_HALF",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, header STATUS_SUSPENDED contradicted by post and completion",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_SUSPENDED",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, header STATUS_POSTPONED contradicted by post and completion",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_POSTPONED",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, terminal header STATUS_ABANDONED, post without completion",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_ABANDONED",
+        "state": "post",
+        "completed": false
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 4,
+        "awayScore": 3
+       },
+       "winner": "home"
+      }
+     },
+     {
+      "name": "the requested event and sides, terminal header STATUS_ABANDONED, completion missing",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_ABANDONED",
+        "state": "post",
+        "completed": null
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, terminal header STATUS_ABANDONED, in play",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "status": {
+        "name": "STATUS_ABANDONED",
+        "state": "in",
+        "completed": false
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, final header missing a score",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "scores": {
+        "away": null
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     },
+     {
+      "name": "the requested event and sides, final header score not a count",
+      "header": {
+       "eventId": "760489",
+       "home": "481",
+       "away": "210",
+       "scores": {
+        "away": "1.5"
+       }
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 4
+       },
+       "winner": "away"
+      }
+     }
+    ]
+   },
+   "levelHeader": {
+    "note": "Synthetic: the overlay summary's header, rewritten to recorded scoreboard event 760489 and its sides with level totals 3-3, held over the scoreboard's decisive structured 3/4 (which names Paraguay). The served aggregate is the header's; being level it names no winner, so the winner is ESPN's own flag, never the winner of the superseded scoreboard aggregate. winnerFlags replaces both scoreboard flags.",
+    "scoreboardEventId": "760489",
+    "shootoutScores": {
+     "home": 3,
+     "away": 3
+    },
+    "cases": [
+     {
+      "name": "the flag names the other side",
+      "winnerFlags": {
+       "home": true,
+       "away": false
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 3
+       },
+       "winner": "home"
+      }
+     },
+     {
+      "name": "no flag",
+      "winnerFlags": {
+       "home": false,
+       "away": false
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 3
+       },
+       "winner": null
+      }
+     }
+    ]
    }
   },
   "readerKeys": ["cards", "commentary", "form", "h2h", "info", "lineups", "scorers", "shootoutDetail", "stats", "videos", "winProbability"],
@@ -1497,32 +1913,40 @@
   "reader": {
    "scorers": [
     {
-     "teamId": "226",
+     "teamId": "mex-atlante",
      "player": "Devin Padelford",
      "minute": "32'",
      "penalty": false,
-     "shootout": false
+     "shootout": false,
+     "ownGoal": true,
+     "athleteId": "337030"
     },
     {
-     "teamId": "17362",
+     "teamId": "usa-minnesota-united-fc",
      "player": "Mauricio Gonzalez",
      "minute": "59'",
      "penalty": false,
-     "shootout": false
+     "shootout": false,
+     "ownGoal": false,
+     "athleteId": "353246"
     },
     {
-     "teamId": "17362",
+     "teamId": "usa-minnesota-united-fc",
      "player": "Joaquín Pereyra",
      "minute": "75'",
      "penalty": false,
-     "shootout": false
+     "shootout": false,
+     "ownGoal": false,
+     "athleteId": "233943"
     },
     {
-     "teamId": "17362",
+     "teamId": "usa-minnesota-united-fc",
      "player": "Joaquín Pereyra",
      "minute": "87'",
      "penalty": false,
-     "shootout": false
+     "shootout": false,
+     "ownGoal": false,
+     "athleteId": "233943"
     }
    ]
   }
@@ -1693,21 +2117,21 @@
     },
     {
      "team": {
-      "id": "nat-cze",
-      "name": "Czechia",
-      "abbr": "CZE",
-      "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/cze.png"
+      "id": "nat-rsa",
+      "name": "South Africa",
+      "abbr": "RSA",
+      "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/rsa.png"
      },
      "rank": 2,
      "played": 3,
-     "wins": 0,
+     "wins": 1,
      "draws": 1,
-     "losses": 2,
+     "losses": 1,
      "goalsFor": 2,
-     "goalsAgainst": 6,
-     "goalDifference": -4,
-     "points": 1,
-     "advanced": false
+     "goalsAgainst": 3,
+     "goalDifference": -1,
+     "points": 4,
+     "advanced": true
     },
     {
      "team": {
@@ -1729,21 +2153,21 @@
     },
     {
      "team": {
-      "id": "nat-rsa",
-      "name": "South Africa",
-      "abbr": "RSA",
-      "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/rsa.png"
+      "id": "nat-cze",
+      "name": "Czechia",
+      "abbr": "CZE",
+      "crestUrl": "https://a.espncdn.com/i/teamlogos/countries/500/cze.png"
      },
      "rank": 4,
      "played": 3,
-     "wins": 1,
+     "wins": 0,
      "draws": 1,
-     "losses": 1,
+     "losses": 2,
      "goalsFor": 2,
-     "goalsAgainst": 3,
-     "goalDifference": -1,
-     "points": 4,
-     "advanced": true
+     "goalsAgainst": 6,
+     "goalDifference": -4,
+     "points": 1,
+     "advanced": false
     }
    ]
   },
@@ -1801,11 +2225,7 @@
    "note": "Synthetic: the first two recorded Group A entries under one table with an empty name, as a single-table provider payload might arrive.",
    "competition": "premier-league",
    "season": "2026-27",
-   "frontendGroup": {
-    "id": "",
-    "name": ""
-   },
-   "readerGroup": {
+   "group": {
     "id": "Premier League",
     "name": "Premier League"
    }
@@ -1873,23 +2293,49 @@
      "1": "points"
     },
     "expected": {
-     "frontend": [
-      ["MEX", 1, 9],
-      ["CZE", 2, 0]
-     ],
+     "frontend": "error",
      "reader": "error"
     }
    },
    "emptyTable": {
     "name": "Group Z",
     "expected": {
-     "frontend": {
-      "id": "Z",
-      "name": "Group Z",
-      "standings": []
-     },
+     "frontend": "error",
      "reader": "error"
     }
+   },
+   "emptyTeamId": {
+    "name": "Group A",
+    "entries": [0, 1],
+    "blankTeamId": 1,
+    "expected": {
+     "frontend": "error",
+     "reader": "error"
+    }
+   },
+   "envelopes": {
+    "note": "ESPN omits `children` for a competition that publishes no tables (eng.fa, fifa.friendly on 2026-10-04); every configured competition publishes them, so a missing or null array is a rejected payload in both mappers. An empty array is an empty table set.",
+    "cases": [
+     {
+      "name": "no children array",
+      "payload": {},
+      "expected": "error"
+     },
+     {
+      "name": "null children",
+      "payload": {
+       "children": null
+      },
+      "expected": "error"
+     },
+     {
+      "name": "an empty table set",
+      "payload": {
+       "children": []
+      },
+      "expected": []
+     }
+    ]
    }
   }
  },
@@ -1963,7 +2409,7 @@
     "id": "131529",
     "name": "Round of 32 5 Winner",
     "abbr": "RD32",
-    "crestUrl": "",
+    "crestUrl": null,
     "placeholder": true
    },
    "homeScore": 0,
@@ -2022,7 +2468,27 @@
    "eventId": "760486",
    "expected": {
     "frontend": null,
-    "reader": ""
+    "reader": null
+   }
+  },
+  "liveShootout": {
+   "note": "Synthetic: recorded bracket event 760489 (Germany 3-4 Paraguay on penalties, winner flag on Paraguay) with both winner flags cleared, then mapped as recorded (finished) and with its status set to a live shootout. A finished shootout's decisive totals name the winner; a live shootout's partial totals name none, so no side advances before the match is over. Both bracket mappers, and the Go summary recovery path, follow the scoreboard's rule. aggregate: the Go bracket mapper carries the scoreboard tiers (structured totals, else the anchored note) off the wire to the ingester's candidate, live or finished; the TS BracketMatch has none.",
+   "eventId": "760489",
+   "status": {
+    "state": "in",
+    "completed": false,
+    "name": "STATUS_SHOOTOUT",
+    "description": "Shootout",
+    "detail": "Shootout",
+    "shortDetail": "Shootout"
+   },
+   "expected": {
+    "finished": "away",
+    "live": null
+   },
+   "aggregate": {
+    "homeScore": 3,
+    "awayScore": 4
    }
   }
  },
@@ -3538,8 +4004,8 @@
    },
    "withoutClock": {
     "expected": {
-     "frontend": "absent",
-     "reader": ""
+     "frontend": null,
+     "reader": null
     }
    }
   }
@@ -3893,6 +4359,197 @@
    ["760487", "2026-06-29T17:00Z", "finished", "FT", "STATUS_FULL_TIME", "205", "627", "BRA", "JPN", 2, 1, "205", null],
    ["760489", "2026-06-29T20:30Z", "finished", "FT-Pens", "STATUS_FINAL_PEN", "481", "210", "GER", "PAR", 1, 1, "210", "Paraguay advance 4-3 on penalties"],
    ["760488", "2026-06-30T01:00Z", "finished", "FT-Pens", "STATUS_FINAL_PEN", "449", "2869", "NED", "MAR", 1, 1, "2869", "Morocco advance 3-2 on penalties"]
-  ]
+  ],
+  "shootoutPrecedence": {
+   "note": "Synthetic: recorded event 760489 (Germany 1-1 Paraguay, finished, structured shootoutScore 3/4, winner flag on Paraguay and the note 'Paraguay advance 4-3 on penalties') with its shootout evidence replaced per case. 'absent' removes the field; a null note removes the notes; winnerFlags, when present, replaces both winner flags; status, when present, overrides the event's status type. One precedence in both languages: summary header (where a summary is held) > scoreboard structured totals > anchored note > null. Every case runs through the match list, the team schedule and both bracket mappers; each bracket mapper rejects the malformed cases by the scoreboard's rule, whether the season's bracket comes through the dated scoreboard window or one undated scoreboard. A structured total is a non-negative integer number or a string of digits ('' and null read as 0); anything else rejects the scoreboard. A finished match's winner is the side a decisive aggregate names, else the winner flags; a live shootout's partial totals name no winner. Regulation scores never change.",
+   "eventId": "760489",
+   "cases": [
+    {
+     "name": "recorded: structured and note agree",
+     "shootoutScore": {
+      "home": 3,
+      "away": 4
+     },
+     "note": "Paraguay advance 4-3 on penalties",
+     "expected": {
+      "homeScore": 3,
+      "awayScore": 4
+     },
+     "winner": "away"
+    },
+    {
+     "name": "structured wins a conflicting note",
+     "shootoutScore": {
+      "home": 5,
+      "away": 4
+     },
+     "note": "Paraguay advance 4-3 on penalties",
+     "expected": {
+      "homeScore": 5,
+      "awayScore": 4
+     },
+     "winner": "home"
+    },
+    {
+     "name": "the note when structured totals are absent",
+     "shootoutScore": {
+      "home": "absent",
+      "away": "absent"
+     },
+     "note": "Paraguay advance 4-3 on penalties",
+     "expected": {
+      "homeScore": 3,
+      "awayScore": 4
+     },
+     "winner": "away"
+    },
+    {
+     "name": "the note outranks an opposing winner flag",
+     "shootoutScore": {
+      "home": "absent",
+      "away": "absent"
+     },
+     "note": "Paraguay advance 4-3 on penalties",
+     "winnerFlags": {
+      "home": true,
+      "away": false
+     },
+     "expected": {
+      "homeScore": 3,
+      "awayScore": 4
+     },
+     "winner": "away"
+    },
+    {
+     "name": "the note decides a missing winner flag",
+     "shootoutScore": {
+      "home": "absent",
+      "away": "absent"
+     },
+     "note": "Paraguay advance 4-3 on penalties",
+     "winnerFlags": {
+      "home": false,
+      "away": false
+     },
+     "expected": {
+      "homeScore": 3,
+      "awayScore": 4
+     },
+     "winner": "away"
+    },
+    {
+     "name": "a malformed structured total rejects the scoreboard",
+     "shootoutScore": {
+      "home": "x",
+      "away": 4
+     },
+     "note": "Paraguay advance 4-3 on penalties",
+     "expected": "error"
+    },
+    {
+     "name": "a fractional string total rejects the scoreboard",
+     "shootoutScore": {
+      "home": "3.0",
+      "away": 4
+     },
+     "note": "Paraguay advance 4-3 on penalties",
+     "expected": "error"
+    },
+    {
+     "name": "a padded string total rejects the scoreboard",
+     "shootoutScore": {
+      "home": 3,
+      "away": " 4 "
+     },
+     "note": "Paraguay advance 4-3 on penalties",
+     "expected": "error"
+    },
+    {
+     "name": "a note naming neither side is unknown",
+     "shootoutScore": {
+      "home": "absent",
+      "away": "absent"
+     },
+     "note": "Somebody advance 4-3 on penalties",
+     "expected": null,
+     "winner": "away"
+    },
+    {
+     "name": "no evidence",
+     "shootoutScore": {
+      "home": "absent",
+      "away": "absent"
+     },
+     "note": null,
+     "expected": null,
+     "winner": "away"
+    },
+    {
+     "name": "decisive totals decide a missing winner flag",
+     "shootoutScore": {
+      "home": 3,
+      "away": 4
+     },
+     "note": null,
+     "winnerFlags": {
+      "home": false,
+      "away": false
+     },
+     "expected": {
+      "homeScore": 3,
+      "awayScore": 4
+     },
+     "winner": "away"
+    },
+    {
+     "name": "digit strings are totals",
+     "shootoutScore": {
+      "home": "5",
+      "away": ""
+     },
+     "note": null,
+     "expected": {
+      "homeScore": 5,
+      "awayScore": 0
+     },
+     "winner": "home"
+    },
+    {
+     "name": "a live shootout names no winner",
+     "status": {
+      "state": "in",
+      "completed": false,
+      "name": "STATUS_SHOOTOUT",
+      "description": "Shootout",
+      "detail": "Shootout",
+      "shortDetail": "Shootout"
+     },
+     "shootoutScore": {
+      "home": 3,
+      "away": 2
+     },
+     "winnerFlags": {
+      "home": false,
+      "away": false
+     },
+     "note": null,
+     "expected": {
+      "homeScore": 3,
+      "awayScore": 2
+     },
+     "winner": null
+    },
+    {
+     "name": "null totals read as zero and name no shootout",
+     "shootoutScore": {
+      "home": null,
+      "away": null
+     },
+     "note": null,
+     "expected": null,
+     "winner": "away"
+    }
+   ]
+  }
  }
 }

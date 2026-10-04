@@ -12,6 +12,7 @@ import (
 
 	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/shared/assets"
+	"github.com/mcasillas17/scorearc-backend/shared/espn"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 	"github.com/mcasillas17/scorearc-backend/shared/source"
 	"github.com/mcasillas17/scorearc-backend/shared/store"
@@ -83,13 +84,18 @@ func (r *runner) resolveMatch(
 // against the two teams the match actually has. A winner that is neither is not
 // a winner: it would fail the foreign key, or worse, point at some other club.
 func canonicalWinner(match model.Match, homeID, awayID string) *string {
-	if match.WinnerID == nil {
+	return canonicalSide(match.WinnerID, match.Home.ID, match.Away.ID, homeID, awayID)
+}
+
+// canonicalSide translates a provider team id naming one of the match's sides.
+func canonicalSide(provider *string, homeSourceID, awaySourceID, homeID, awayID string) *string {
+	if provider == nil {
 		return nil
 	}
-	switch *match.WinnerID {
-	case match.Home.ID:
+	switch *provider {
+	case homeSourceID:
 		return &homeID
-	case match.Away.ID:
+	case awaySourceID:
 		return &awayID
 	default:
 		return nil
@@ -130,6 +136,7 @@ func (r *runner) processMatches(
 		// stored row is in — so the two can be compared and merged. The summary
 		// fetch below is the one thing that still needs provider ids, which is
 		// what providerHome/providerAway are held back for.
+		match.WinnerFlagID = canonicalSide(match.WinnerFlagID, providerHome.ID, providerAway.ID, identity.HomeTeamID, identity.AwayTeamID)
 		match.Home.ID = identity.HomeTeamID
 		match.Away.ID = identity.AwayTeamID
 		match.WinnerID = identity.WinnerTeamID
@@ -289,6 +296,20 @@ func (r *runner) processMatches(
 
 			detail := summary.Detail
 			if match.State == model.MatchStateFinished {
+				// The summary's aggregate outranks the scoreboard's evidence
+				// (T16.2): the winner that finalizes is the side it names, or
+				// ESPN's flag when it is level.
+				if detail.Shootout != nil {
+					flag := match.WinnerFlagID
+					if match.FromStorage {
+						// A candidate rebuilt from storage carries no flag of
+						// its own; the final summary header's stands in.
+						flag = canonicalSide(summary.WinnerFlagID, providerHome.ID, providerAway.ID, identity.HomeTeamID, identity.AwayTeamID)
+					}
+					winner := espn.ResolveWinner(detail.Shootout, match.Home.ID, match.Away.ID, flag)
+					match.WinnerID, identity.WinnerTeamID = winner, winner
+					match.WinnerResolved = true
+				}
 				match.HomeScore = summary.HomeScore
 				match.AwayScore = summary.AwayScore
 				if at, ok := observationIndex[identity.MatchID]; ok {
@@ -449,36 +470,39 @@ func requiresBracketConfirmation(match model.Match, season config.Season) bool {
 	return !kickoff.Before(start) && !kickoff.After(end.Add(24*time.Hour-time.Nanosecond))
 }
 
-func (r *runner) mirrorCrest(ctx context.Context, team model.Team) {
+// mirrorCrest mirrors a team crest under the team's canonical id and stores the
+// CDN URL on the team. It returns that URL, or "" when the crest stays upstream.
+func (r *runner) mirrorCrest(ctx context.Context, team model.Team) string {
 	if r.mirror == nil || team.CrestURL == nil || *team.CrestURL == "" {
-		return
+		return ""
 	}
 	if isMirroredURL(*team.CrestURL, r.mirror.BaseURL()) {
-		return
+		return *team.CrestURL
 	}
 
 	r.mu.Lock()
-	if r.mirrored[team.ID] != "" {
+	if cached := r.mirrored[team.ID]; cached != "" {
 		r.mu.Unlock()
-		return
+		return cached
 	}
 	r.mu.Unlock()
 
 	cdnURL, err := r.mirrorAsset(ctx, "teams", team.ID, *team.CrestURL)
 	if errors.Is(err, errMirrorUnavailable) {
-		return
+		return ""
 	}
 	if err != nil {
 		r.log.Warn("mirror crest", "team", team.ID, "err", err)
-		return
+		return ""
 	}
 	if err := r.repo.SetTeamCrest(ctx, team.ID, cdnURL); err != nil {
 		r.log.Warn("set team crest", "team", team.ID, "err", err)
-		return
+		return ""
 	}
 	r.mu.Lock()
 	r.mirrored[team.ID] = cdnURL
 	r.mu.Unlock()
+	return cdnURL
 }
 
 func (r *runner) mirrorAsset(
@@ -558,7 +582,7 @@ func bracketMatch(match model.BracketMatch) model.Match {
 			Abbr: match.Away.Abbr, CrestURL: match.Away.CrestURL,
 		},
 		HomeScore: match.HomeScore, AwayScore: match.AwayScore,
-		WinnerID: match.WinnerID, Note: match.Note,
+		WinnerID: match.WinnerID, WinnerFlagID: match.WinnerFlagID, Note: match.Note, Shootout: match.Shootout,
 		HomePlaceholder:  match.Home.Placeholder,
 		AwayPlaceholder:  match.Away.Placeholder,
 		BracketRequired:  &bracketRequired,

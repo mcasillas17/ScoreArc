@@ -12,6 +12,7 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -49,6 +50,7 @@ type readerContractVectors struct {
 	} `json:"methods"`
 	Summary struct {
 		Fixture       string        `json:"fixture"`
+		EventID       string        `json:"eventId"`
 		ReaderMatchID string        `json:"readerMatchId"`
 		Competition   string        `json:"competition"`
 		Season        string        `json:"season"`
@@ -88,6 +90,18 @@ type readerContractVectors struct {
 			EmptyTable struct {
 				Name string `json:"name"`
 			} `json:"emptyTable"`
+			EmptyTeamID struct {
+				Name        string `json:"name"`
+				Entries     []int  `json:"entries"`
+				BlankTeamID int    `json:"blankTeamId"`
+			} `json:"emptyTeamId"`
+			Envelopes struct {
+				Cases []struct {
+					Name     string `json:"name"`
+					Payload  any    `json:"payload"`
+					Expected any    `json:"expected"`
+				} `json:"cases"`
+			} `json:"envelopes"`
 		} `json:"synthetic"`
 	} `json:"standings"`
 	Queries struct {
@@ -368,6 +382,20 @@ func TestReaderContract(t *testing.T) {
 				}
 			}
 		}
+		// Team identity is a tested translation, not an equality: the frontend
+		// helper (teamIdentity.ts) and the ingester resolve provider ids through
+		// the same curated map, entry for entry.
+		data, err := os.ReadFile("../../src/server/data/teamCrosswalk.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var frontend map[string]string
+		if err := json.Unmarshal(data, &frontend); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(frontend, crosswalk) {
+			t.Fatalf("frontend crosswalk (%d entries) differs from the backend seed (%d)", len(frontend), len(crosswalk))
+		}
 	})
 
 	t.Run("recorded summary through the Go mapper and reader DTO", func(t *testing.T) {
@@ -376,27 +404,27 @@ func TestReaderContract(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		actual := wire(t, readerSummary(detail)).(map[string]any)
+		actual := wire(t, readerSummary(detail, vectors.Summary.Sides)).(map[string]any)
 		validateSchema(t, document, "MatchSummary", actual)
 		assertWire(t, "MatchSummary keys", sortedKeys(actual), vector(t, raw, "summary", "readerKeys"))
 		assertSharedSummary(t, "", raw, actual)
-		for _, key := range []string{"scorers", "stats", "lineups"} {
+		for _, key := range []string{"scorers", "cards", "stats", "lineups"} {
 			assertWire(t, "reader "+key, actual[key], vector(t, raw, "summary", "reader", key))
 		}
+		// playerSlug stays route-layer enrichment (withSummaryPlayerSlugs), as in the frontend store.
 		for _, scorer := range actual["scorers"].([]any) {
-			assertAbsent(t, document, "Scorer", scorer.(map[string]any), "ownGoal", "athleteId", "playerSlug")
+			assertAbsent(t, document, "Scorer", scorer.(map[string]any), "playerSlug")
 		}
-		gap("T16.2-scorer-identity")
-		canonicalSides := map[string]bool{}
-		for _, ids := range vectors.Summary.Sides {
-			canonicalSides[ids.CanonicalID] = true
-		}
-		for _, scorer := range detail.Scorers {
-			if canonicalSides[scorer.TeamID] || !canonicalSides[crosswalk[scorer.TeamID]] {
-				t.Fatalf("gap changed: scorer team %q is no longer a provider id of a match side", scorer.TeamID)
+		// The served nested ids are the production seed's translation of the
+		// frontend's provider ids, row for row.
+		for _, kind := range []string{"scorers", "cards"} {
+			frontend := vector(t, raw, "summary", "frontend", kind).([]any)
+			for i, row := range actual[kind].([]any) {
+				if want := crosswalk[frontend[i].(map[string]any)["teamId"].(string)]; row.(map[string]any)["teamId"] != want {
+					t.Fatalf("%s[%d] team %v, seed says %q", kind, i, row.(map[string]any)["teamId"], want)
+				}
 			}
 		}
-		gap("T16.2-nested-team-id")
 		stats := actual["stats"].(map[string]any)
 		for _, side := range []string{"home", "away"} {
 			assertAbsent(t, document, "TeamStats", stats[side].(map[string]any), "passesAccurate", "crossesAccurate", "tacklesEffective")
@@ -423,12 +451,145 @@ func TestReaderContract(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		actual := wire(t, readerSummary(detail)).(map[string]any)
+		actual := wire(t, readerSummary(detail, vectors.Summary.Sides)).(map[string]any)
 		validateSchema(t, document, "MatchSummary", actual)
 		assertOverlaySummary(t, "", raw, actual)
 		expected := vector(t, raw, "summary", "syntheticOverlay", "expected").(map[string]any)
+		// The header tier of the shared shootout precedence; neither summary DTO
+		// carries it (readerKeys), the reader serves it on Match.
 		assertWire(t, "summary shootout aggregate", wire(t, detail.Shootout), expected["readerShootout"])
-		gap("T16.2-shootout-source") // The frontend summary DTO has no aggregate; TS pins that side.
+	})
+
+	t.Run("a summary header supplies the aggregate and winner only for its own match", func(t *testing.T) {
+		identity := vector(t, raw, "summary", "syntheticOverlay", "headerIdentity").(map[string]any)
+		eventID := identity["scoreboardEventId"].(string)
+		var scoreboardMatch espn.Match
+		matches, err := espn.MapScoreboard(contractFixture(t, fixtureName(t, raw, "scoreboard")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range matches {
+			if m.ID == eventID {
+				scoreboardMatch = m
+			}
+		}
+		for _, entry := range identity["cases"].([]any) {
+			c := entry.(map[string]any)
+			header := c["header"].(map[string]any)
+			var summary map[string]any
+			if err := json.Unmarshal(withSummaryOverlay(t, raw, vectors.Summary.Fixture), &summary); err != nil {
+				t.Fatal(err)
+			}
+			summary["header"].(map[string]any)["id"] = header["eventId"]
+			competition := summary["header"].(map[string]any)["competitions"].([]any)[0].(map[string]any)
+			competition["id"] = header["eventId"]
+			for _, competitor := range competition["competitors"].([]any) {
+				side := competitor.(map[string]any)
+				id := header[side["homeAway"].(string)]
+				side["id"] = id
+				side["team"].(map[string]any)["id"] = id
+				if scores, ok := header["scores"].(map[string]any); ok {
+					if score, ok := scores[side["homeAway"].(string)]; ok {
+						side["score"] = score
+					}
+				}
+			}
+			if status, ok := header["status"].(map[string]any); ok {
+				maps.Copy(competition["status"].(map[string]any)["type"].(map[string]any), status)
+			}
+			data, err := json.Marshal(summary)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The ingester's gate (shared/source mapSummary): a summary for any
+			// other event or side order is rejected, so the scoreboard's evidence
+			// stands; an accepted header outranks it, and its finalization
+			// resolves the winner from the aggregate it serves.
+			shootout, winner := scoreboardMatch.Shootout, scoreboardMatch.WinnerID
+			if espn.ValidateSummary(data, eventID, scoreboardMatch.Home.ID, scoreboardMatch.Away.ID, true) == nil {
+				detail, err := espn.MapSummary(data)
+				if err != nil {
+					t.Fatal(err)
+				}
+				shootout = detail.Shootout
+				winner = espn.ResolveWinner(shootout, scoreboardMatch.Home.ID, scoreboardMatch.Away.ID, scoreboardMatch.WinnerFlagID)
+			}
+			expected := c["expected"].(map[string]any)
+			assertWire(t, c["name"].(string), wire(t, shootout), expected["shootout"])
+			sides := map[string]string{"home": scoreboardMatch.Home.ID, "away": scoreboardMatch.Away.ID}
+			if winner == nil || *winner != sides[expected["winner"].(string)] {
+				t.Fatalf("%s: winner %v", c["name"], winner)
+			}
+		}
+	})
+
+	t.Run("a level summary header falls back to the winner flags, not a superseded aggregate", func(t *testing.T) {
+		level := vector(t, raw, "summary", "syntheticOverlay", "levelHeader").(map[string]any)
+		eventID := level["scoreboardEventId"].(string)
+		totals := level["shootoutScores"].(map[string]any)
+		for _, entry := range level["cases"].([]any) {
+			c := entry.(map[string]any)
+			var recorded map[string]any
+			if err := json.Unmarshal(contractFixture(t, fixtureName(t, raw, "scoreboard")), &recorded); err != nil {
+				t.Fatal(err)
+			}
+			var event map[string]any
+			for _, candidate := range recorded["events"].([]any) {
+				if candidate.(map[string]any)["id"] == eventID {
+					event = candidate.(map[string]any)
+				}
+			}
+			sides := map[string]string{}
+			for _, competitor := range event["competitions"].([]any)[0].(map[string]any)["competitors"].([]any) {
+				side := competitor.(map[string]any)
+				homeAway := side["homeAway"].(string)
+				sides[homeAway] = side["team"].(map[string]any)["id"].(string)
+				side["winner"] = c["winnerFlags"].(map[string]any)[homeAway]
+			}
+			board, err := json.Marshal(map[string]any{"leagues": recorded["leagues"], "events": []any{event}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			mapped, err := espn.MapScoreboard(board)
+			if err != nil || len(mapped) != 1 {
+				t.Fatalf("%s: %v", c["name"], err)
+			}
+			match := mapped[0]
+			var summary map[string]any
+			if err := json.Unmarshal(withSummaryOverlay(t, raw, vectors.Summary.Fixture), &summary); err != nil {
+				t.Fatal(err)
+			}
+			header := summary["header"].(map[string]any)
+			header["id"] = eventID
+			competition := header["competitions"].([]any)[0].(map[string]any)
+			competition["id"] = eventID
+			for _, competitor := range competition["competitors"].([]any) {
+				side := competitor.(map[string]any)
+				homeAway := side["homeAway"].(string)
+				side["id"] = sides[homeAway]
+				side["team"].(map[string]any)["id"] = sides[homeAway]
+				side["shootoutScore"] = totals[homeAway]
+			}
+			data, err := json.Marshal(summary)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := espn.ValidateSummary(data, eventID, match.Home.ID, match.Away.ID, true); err != nil {
+				t.Fatal(err)
+			}
+			detail, err := espn.MapSummary(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected := c["expected"].(map[string]any)
+			assertWire(t, c["name"].(string), wire(t, detail.Shootout), expected["shootout"])
+			var want any
+			if side, ok := expected["winner"].(string); ok {
+				want = sides[side]
+			}
+			winner := espn.ResolveWinner(detail.Shootout, match.Home.ID, match.Away.ID, match.WinnerFlagID)
+			assertWire(t, c["name"].(string)+" winner", wire(t, winner), want)
+		}
 	})
 
 	t.Run("recorded scoreboard penalty aggregates agree", func(t *testing.T) {
@@ -438,15 +599,94 @@ func TestReaderContract(t *testing.T) {
 		}
 		var actual []any
 		for _, match := range matches {
-			// Mirrors shared/source/espn.go, which uses the note only when the
-			// summary-side aggregate is absent; that precedence is owned there.
-			var shootout *espn.Shootout
-			if match.Note != nil {
-				shootout = espn.ParseShootoutNote(*match.Note, match.Home.Name, match.Away.Name)
-			}
-			actual = append(actual, map[string]any{"id": match.ID, "shootout": wire(t, shootout)})
+			// The scoreboard tiers of the shared precedence, resolved by the mapper;
+			// shared/source lets a held summary header outrank them.
+			actual = append(actual, map[string]any{"id": match.ID, "shootout": wire(t, match.Shootout)})
 		}
 		assertWire(t, "scoreboard shootouts", actual, vector(t, raw, "scoreboard", "shootouts"))
+
+		// The shared precedence vectors, on the same recorded event as the TS
+		// suite, through the scoreboard and the bracket mappers alike.
+		precedence := vector(t, raw, "scoreboard", "shootoutPrecedence").(map[string]any)
+		withCase := func(fixture string, c map[string]any) ([]byte, map[string]string) {
+			var recorded map[string]any
+			if err := json.Unmarshal(contractFixture(t, fixtureName(t, raw, fixture)), &recorded); err != nil {
+				t.Fatal(err)
+			}
+			var event map[string]any
+			for _, candidate := range recorded["events"].([]any) {
+				if candidate.(map[string]any)["id"] == precedence["eventId"] {
+					event = wire(t, candidate).(map[string]any)
+				}
+			}
+			competition := event["competitions"].([]any)[0].(map[string]any)
+			sideIDs := map[string]string{}
+			for _, competitor := range competition["competitors"].([]any) {
+				side := competitor.(map[string]any)
+				homeAway := side["homeAway"].(string)
+				sideIDs[homeAway] = side["team"].(map[string]any)["id"].(string)
+				if value := c["shootoutScore"].(map[string]any)[homeAway]; value == "absent" {
+					delete(side, "shootoutScore")
+				} else {
+					side["shootoutScore"] = value
+				}
+				if flags, ok := c["winnerFlags"].(map[string]any); ok {
+					side["winner"] = flags[homeAway]
+				}
+			}
+			competition["notes"] = []any{}
+			if c["note"] != nil {
+				competition["notes"] = []any{map[string]any{"text": c["note"]}}
+			}
+			if status, ok := c["status"].(map[string]any); ok {
+				maps.Copy(event["status"].(map[string]any)["type"].(map[string]any), status)
+			}
+			data, err := json.Marshal(map[string]any{"leagues": recorded["leagues"], "events": []any{event}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return data, sideIDs
+		}
+		for _, entry := range precedence["cases"].([]any) {
+			c := entry.(map[string]any)
+			data, sideIDs := withCase("scoreboard", c)
+			mapped, err := espn.MapScoreboard(data)
+			var winner any
+			if side, ok := c["winner"].(string); ok {
+				winner = sideIDs[side]
+			}
+			if c["expected"] == "error" {
+				if err == nil {
+					t.Fatalf("%s: malformed totals accepted", c["name"])
+				}
+			} else {
+				if err != nil || len(mapped) != 1 {
+					t.Fatalf("%s: %v", c["name"], err)
+				}
+				assertWire(t, c["name"].(string), wire(t, mapped[0].Shootout), c["expected"])
+				assertWire(t, c["name"].(string)+" winner", wire(t, mapped[0].WinnerID), winner)
+				if *mapped[0].HomeScore != 1 || *mapped[0].AwayScore != 1 {
+					t.Fatalf("%s: shootout replaced regulation scores", c["name"])
+				}
+			}
+
+			// The bracket mapper takes every case too: the scoreboard's rule
+			// rejects a malformed total, and otherwise it yields the same
+			// aggregate for the ingester's candidate and the same finished winner.
+			data, sideIDs = withCase("bracket", c)
+			bracket, err := espn.MapBracket(data)
+			if c["expected"] == "error" {
+				if err == nil {
+					t.Fatalf("%s: bracket accepted malformed totals", c["name"])
+				}
+				continue
+			}
+			if err != nil || len(bracket) != 1 {
+				t.Fatalf("%s bracket: %v", c["name"], err)
+			}
+			assertWire(t, c["name"].(string)+" bracket aggregate", wire(t, bracket[0].Shootout), c["expected"])
+			assertWire(t, c["name"].(string)+" bracket winner", wire(t, bracket[0].WinnerID), winner)
+		}
 	})
 
 	t.Run("recorded scoreboard core fields agree with the frontend table", func(t *testing.T) {
@@ -493,25 +733,31 @@ func TestReaderContract(t *testing.T) {
 		}
 		withClock := live["withClock"].(map[string]any)
 		assertWire(t, "live minute", minuteOf(withClock["displayClock"]), withClock["expected"].(map[string]any)["reader"])
-		if got := minuteOf(nil); got != live["withoutClock"].(map[string]any)["expected"].(map[string]any)["reader"] {
-			t.Fatalf("gap changed: a clockless live minute is now %#v; update reader-contract.json", got)
+		// Unknown is an explicit JSON null in both contracts, never "" or omitted.
+		expected := live["withoutClock"].(map[string]any)["expected"].(map[string]any)
+		if expected["reader"] != nil || expected["frontend"] != nil {
+			t.Fatalf("clockless live minute vector %v, want null for both", expected)
 		}
-		gap("T16.2-live-minute")
+		if got := minuteOf(nil); got != nil {
+			t.Fatalf("a clockless live minute is %#v, want null", got)
+		}
 	})
 
-	t.Run("recorded own goal loses its flag in the reader", func(t *testing.T) {
+	t.Run("recorded own goal keeps its flag and benefiting side in the reader", func(t *testing.T) {
 		detail, err := espn.MapSummary(contractFixture(t, vectors.OwnGoal.Fixture))
 		if err != nil {
 			t.Fatal(err)
 		}
-		assertWire(t, "own-goal scorers", wire(t, detail.Scorers), vector(t, raw, "ownGoal", "reader", "scorers"))
-		frontend := vector(t, raw, "ownGoal", "frontend", "scorers").([]any)
-		if frontend[0].(map[string]any)["ownGoal"] != true || detail.Scorers[0].TeamID != vectors.OwnGoal.Sides["away"].ProviderID {
+		// Stored as the provider credits it: the benefiting side's provider id.
+		if *detail.Scorers[0].TeamID != vectors.OwnGoal.Sides["away"].ProviderID || !*detail.Scorers[0].OwnGoal {
 			t.Fatal("own-goal vector no longer pins the benefiting-side credit")
 		}
+		actual := wire(t, readerSummary(detail, vectors.OwnGoal.Sides)).(map[string]any)
+		validateSchema(t, document, "MatchSummary", actual)
+		assertWire(t, "own-goal scorers", actual["scorers"], vector(t, raw, "ownGoal", "reader", "scorers"))
 	})
 
-	t.Run("recorded standings: same values, provider-order ranks", func(t *testing.T) {
+	t.Run("recorded standings: same values and rank order", func(t *testing.T) {
 		exercise("getStandings")
 		rows, err := espn.MapStandings(contractFixture(t, fixtureName(t, raw, "standings")))
 		if err != nil {
@@ -535,8 +781,7 @@ func TestReaderContract(t *testing.T) {
 				t.Fatalf("group %s has %d rows, want %d", group.ID, counts[group.ID], group.Teams)
 			}
 		}
-		// Every recorded row's values agree with the frontend table; only order
-		// (rank) differs, which is the pinned T16.2-standings-rank gap.
+		// Every recorded row's values agree with the frontend table.
 		goRows := map[string]any{}
 		for _, row := range rows {
 			goRows[*row.GroupID+"/"+row.Team.Abbr] = wire(t, []any{*row.GroupID, row.Team.Abbr, row.Played, row.Wins, row.Draws,
@@ -552,22 +797,16 @@ func TestReaderContract(t *testing.T) {
 		}
 		reader := vector(t, raw, "standings", "readerGroupA").(map[string]any)
 		assertWire(t, "group A rows", wire(t, groupA), reader["standings"])
-		for i, row := range rows[:len(groupA)] {
-			if groupA[i]["team"].(map[string]any)["id"] == row.Team.ID {
-				t.Fatal("gap changed: reader standing team id equals the provider id")
-			}
-		}
-		gap("T16.2-team-id")
 		frontend := vector(t, raw, "standings", "frontendGroupA", "standings").([]any)
 		var readerOrder, frontendOrder []string
 		for i := range frontend {
 			readerOrder = append(readerOrder, groupA[i]["team"].(map[string]any)["abbr"].(string))
 			frontendOrder = append(frontendOrder, frontend[i].(map[string]any)["team"].(map[string]any)["abbr"].(string))
 		}
-		if reflect.DeepEqual(readerOrder, frontendOrder) {
-			t.Fatal("gap changed: Go standings now follow ESPN's rank stat; update reader-contract.json")
+		// ESPN's complete rank stat orders the table in both mappers.
+		if !reflect.DeepEqual(readerOrder, frontendOrder) {
+			t.Fatalf("reader group A order %v, frontend %v", readerOrder, frontendOrder)
 		}
-		gap("T16.2-standings-rank")
 		// The reader DTO the SQL grouping builds from these rows, not the vector itself.
 		var standings []Standing
 		rowsJSON, err := json.Marshal(groupA)
@@ -647,20 +886,42 @@ func TestReaderContract(t *testing.T) {
 		}
 		gap("T16.2-standings-dedup")
 
-		// Malformed tables: a missing stat or no entries is rejected outright.
+		// Malformed tables: a missing stat or no entries rejects the payload in
+		// both mappers (the writer then keeps the previous standings).
 		missing := synthetic.MissingStat
 		malformed := buildTable(missing.Name, missing.Entries, nil, missing.DropStats)
 		emptyTable := buildTable(synthetic.EmptyTable.Name, nil, nil, nil)
-		for _, payload := range []any{malformed, emptyTable} {
+		blank := synthetic.EmptyTeamID
+		blankID := buildTable(blank.Name, blank.Entries, nil, nil)
+		blankID["standings"].(map[string]any)["entries"].([]any)[slices.Index(blank.Entries, blank.BlankTeamID)].(map[string]any)["team"].(map[string]any)["id"] = ""
+		for _, payload := range []any{malformed, emptyTable, blankID} {
 			data, err := json.Marshal(map[string]any{"children": []any{payload}})
 			if err != nil {
 				t.Fatal(err)
 			}
 			if _, err := espn.MapStandings(data); err == nil {
-				t.Fatalf("gap changed: Go MapStandings now accepts %v; update reader-contract.json", payload.(map[string]any)["name"])
+				t.Fatalf("Go MapStandings accepts malformed table %v", payload.(map[string]any)["name"])
 			}
 		}
-		gap("T16.2-standings-malformed")
+		// Envelopes: a missing or null table array rejects the payload; an empty
+		// one is zero rows (ReplaceStandings then refuses the empty replacement
+		// and keeps the stored rows).
+		for _, c := range synthetic.Envelopes.Cases {
+			data, err := json.Marshal(c.Payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rows, err := espn.MapStandings(data)
+			if c.Expected == "error" {
+				if err == nil {
+					t.Fatalf("%s: accepted", c.Name)
+				}
+				continue
+			}
+			if err != nil || len(rows) != 0 || len(c.Expected.([]any)) != 0 {
+				t.Fatalf("%s: %v %v", c.Name, rows, err)
+			}
+		}
 	})
 
 	t.Run("recorded bracket: instant-normalized parity and placeholder crest", func(t *testing.T) {
@@ -673,7 +934,9 @@ func TestReaderContract(t *testing.T) {
 		for _, match := range matches {
 			byID[match.ID] = match
 		}
-		// The reader names each round; the frontend BracketRound has no name.
+		// Contract decision: BracketRound.name is an additive English label for
+		// API consumers. The frontend type has no name and localizes from slug;
+		// the TS suite proves each name equals the frontend's English label.
 		names := map[string]any{}
 		for slug, name := range bracketRoundNames {
 			names[slug] = name
@@ -681,11 +944,10 @@ func TestReaderContract(t *testing.T) {
 		assertWire(t, "reader round names", names, vector(t, raw, "bracket", "readerRoundNames"))
 		round := wire(t, BracketRound{Slug: "final", Name: bracketRoundNames["final"], Matches: []espn.BracketMatch{}}).(map[string]any)
 		validateSchema(t, document, "BracketRound", round)
-		if _, ok := round["name"]; !ok {
-			t.Fatal("gap changed: reader BracketRound no longer carries a name; update reader-contract.json")
+		if round["name"] != "Final" {
+			t.Fatalf("reader BracketRound name %v, want the English label", round["name"])
 		}
-		gap("T16.2-bracket-round-name")
-		// A clockless live knockout match: the Go mapper stores "" where the frontend has null.
+		// A clockless live knockout match is null in both contracts.
 		liveClockless := vector(t, raw, "bracket", "liveClockless").(map[string]any)
 		var bracketRaw map[string]any
 		if err := json.Unmarshal(contractFixture(t, fixtureName(t, raw, "bracket")), &bracketRaw); err != nil {
@@ -706,25 +968,108 @@ func TestReaderContract(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		expectedMinute := liveClockless["expected"].(map[string]any)["reader"]
+		if expected := liveClockless["expected"].(map[string]any); expected["reader"] != nil || expected["frontend"] != nil {
+			t.Fatalf("clockless bracket minute vector %v, want null for both", expected)
+		}
+		found := false
 		for _, match := range liveMatches {
 			if match.ID == liveClockless["eventId"] {
-				if match.State != espn.MatchStateLive || match.Minute == nil || *match.Minute != expectedMinute {
-					t.Fatalf("gap changed: clockless live bracket minute is %v; update reader-contract.json", match.Minute)
+				found = true
+				if match.State != espn.MatchStateLive || match.Minute != nil {
+					t.Fatalf("clockless live bracket match %s minute %v, want null", match.State, match.Minute)
 				}
-				gap("T16.2-bracket-live-minute")
+				if minute, ok := wire(t, match).(map[string]any)["minute"]; !ok || minute != nil {
+					t.Fatal("clockless live bracket minute must serialize as null")
+				}
 			}
 		}
+		if !found {
+			t.Fatal("clockless live bracket match missing")
+		}
+		// A shootout names a bracket winner only once the match is finished.
+		liveShootout := vector(t, raw, "bracket", "liveShootout").(map[string]any)
+		// ESPN's own flag rides with the aggregate-derived winner (recorded:
+		// Paraguay, flagged and the higher structured total).
+		for _, match := range matches {
+			if match.ID == liveShootout["eventId"] && (match.WinnerFlagID == nil || match.WinnerID == nil || *match.WinnerFlagID != *match.WinnerID) {
+				t.Fatalf("recorded bracket winner flag %v, winner %v", match.WinnerFlagID, match.WinnerID)
+			}
+		}
+		for _, live := range []bool{false, true} {
+			var shootoutRaw map[string]any
+			if err := json.Unmarshal(contractFixture(t, fixtureName(t, raw, "bracket")), &shootoutRaw); err != nil {
+				t.Fatal(err)
+			}
+			sides := map[string]string{}
+			for _, event := range shootoutRaw["events"].([]any) {
+				e := event.(map[string]any)
+				if e["id"] != liveShootout["eventId"] {
+					continue
+				}
+				for _, competitor := range e["competitions"].([]any)[0].(map[string]any)["competitors"].([]any) {
+					side := competitor.(map[string]any)
+					side["winner"] = false
+					sides[side["homeAway"].(string)] = side["team"].(map[string]any)["id"].(string)
+				}
+				if live {
+					maps.Copy(e["status"].(map[string]any)["type"].(map[string]any), liveShootout["status"].(map[string]any))
+				}
+			}
+			data, err := json.Marshal(shootoutRaw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mapped, err := espn.MapBracket(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := liveShootout["expected"].(map[string]any)["finished"]
+			if live {
+				want = liveShootout["expected"].(map[string]any)["live"]
+			}
+			if side, ok := want.(string); ok {
+				want = sides[side]
+			}
+			found := false
+			for _, match := range mapped {
+				if match.ID == liveShootout["eventId"] {
+					found = true
+					assertWire(t, "bracket shootout winner (live "+strconv.FormatBool(live)+")", wire(t, match.WinnerID), want)
+					// The structured aggregate rides off the wire to the ingester's
+					// candidate, where the summary precedence ranks it above the note.
+					assertWire(t, "bracket shootout aggregate", wire(t, match.Shootout), liveShootout["aggregate"])
+					if match.WinnerFlagID != nil {
+						t.Fatalf("cleared winner flags carried as %s", *match.WinnerFlagID)
+					}
+					if _, onWire := wire(t, match).(map[string]any)["shootout"]; onWire {
+						t.Fatal("the bracket aggregate reached the wire")
+					}
+				}
+			}
+			if !found {
+				t.Fatal("shootout bracket match missing")
+			}
+		}
+		// One knockout round vocabulary: the TS KnockoutRoundSlug union (pinned by
+		// the TS suite against readerRoundNames' keys), the Go mapper, the reader's
+		// round order and names, and the OpenAPI enums, in bracket order.
+		var slugs []any
+		for _, slug := range bracketRoundOrder {
+			slugs = append(slugs, slug)
+		}
+		assertWire(t, "reader round names", slices.Sorted(maps.Keys(bracketRoundNames)), slices.Sorted(maps.Keys(vector(t, raw, "bracket", "readerRoundNames").(map[string]any))))
 		for _, field := range []struct{ schema, property string }{{"BracketMatch", "round"}, {"BracketRound", "slug"}} {
 			property := schemaOf(t, document, field.schema).Properties[field.property]
 			if property == nil || property.Value == nil {
 				t.Fatalf("OpenAPI %s.%s missing", field.schema, field.property)
 			}
-			if len(property.Value.Enum) != 0 {
-				t.Fatalf("gap changed: OpenAPI %s.%s is now an enum; update reader-contract.json", field.schema, field.property)
+			assertWire(t, "OpenAPI "+field.schema+"."+field.property+" enum", property.Value.Enum, slugs)
+		}
+		for _, value := range []any{"group-stage", "second-round", ""} {
+			if schemaOf(t, document, "BracketRound").Properties["slug"].Value.VisitJSON(value) == nil {
+				t.Fatalf("OpenAPI BracketRound.slug accepts %q", value)
 			}
 		}
-		gap("T16.2-round-slug-type")
 		// All recorded matches, in the frontend's round order.
 		table := vector(t, raw, "bracket", "table").([]any)
 		if len(table) != len(matches) {
@@ -750,14 +1095,26 @@ func TestReaderContract(t *testing.T) {
 			expected := maps.Clone(frontend)
 			expected["kickoff"] = actual["kickoff"]
 			if name == "frontendPlaceholder" {
-				away := actual["away"].(map[string]any)
-				if away["placeholder"] != true || away["crestUrl"] != nil || frontend["away"].(map[string]any)["crestUrl"] != "" {
-					t.Fatal("gap changed: placeholder crest is no longer '' (frontend) versus null (reader)")
+				if away := actual["away"].(map[string]any); away["placeholder"] != true || away["crestUrl"] != nil {
+					t.Fatalf("placeholder slot %v, want a null crest", away)
 				}
-				gap("T16.2-placeholder-crest")
-				side := maps.Clone(frontend["away"].(map[string]any))
-				side["crestUrl"] = nil // The pinned gap; name, abbr, id and placeholder stay compared.
-				expected["away"] = side
+				// The match list maps the same recorded events: also null.
+				listed, err := espn.MapScoreboard(contractFixture(t, fixtureName(t, raw, "bracket")))
+				if err != nil {
+					t.Fatal(err)
+				}
+				found := false
+				for _, m := range listed {
+					if m.ID == frontend["id"] {
+						found = true
+						if m.Away.CrestURL != nil {
+							t.Fatalf("listed placeholder crest %q, want null", *m.Away.CrestURL)
+						}
+					}
+				}
+				if !found {
+					t.Fatal("placeholder missing from the mapped match list")
+				}
 			}
 			assertWire(t, name, actual, expected)
 		}
@@ -992,7 +1349,9 @@ func TestReaderContract(t *testing.T) {
 		if store.calls != 0 {
 			t.Fatal("rejected requests reached storage")
 		}
-		gap("T16.2-match-id")
+		// Match ids are store-scoped: /v1/matches addresses the canonical UUID
+		// only, so the provider event id above is a 404 (match_external_ref
+		// translation is proved against Postgres in the go-db suite).
 		for _, path := range []string{"/v1/competitions/world-cup/2026/standings", "/v1/competitions/world-cup/2026/top-scorers", "/v1/competitions/world-cup/news"} {
 			response := performRequest(router, http.MethodGet, path)
 			if response.Code != http.StatusOK {
@@ -1084,14 +1443,21 @@ func withSummaryOverlay(t *testing.T, raw map[string]any, fixture string) []byte
 }
 
 // readerSummary is the reader DTO for an ingester-mapped detail: the same
-// fields the writer stores in match_detail and Store.MatchSummary reads back.
-func readerSummary(detail espn.MatchDetail) MatchSummary {
+// fields the writer stores in match_detail and Store.MatchSummary reads back,
+// translated by the production read-time attribution with the crosswalk row
+// the seed gives each side (go-db proves the same through team_external_ref
+// and SQL).
+func readerSummary(detail espn.MatchDetail, sides contractSides) MatchSummary {
 	summary := MatchSummary{
 		Scorers: detail.Scorers, Cards: detail.Cards, Stats: detail.Stats, WinProbability: detail.WinProbability,
 		Lineups: detail.Lineups, Videos: detail.Videos, ShootoutDetail: detail.ShootoutDetail, Info: detail.Info,
 		Form: detail.Form, Commentary: detail.Commentary, H2H: detail.H2H,
 	}
 	normalizeMatchSummary(&summary)
+	side := func(name string) matchSide {
+		return matchSide{id: sides[name].CanonicalID, refs: []string{sides[name].ProviderID}}
+	}
+	attributeDetail(summary.Scorers, summary.Cards, side("home"), side("away"))
 	return summary
 }
 
@@ -1190,7 +1556,7 @@ func withoutEach(rows []any, fields ...string) []any {
 // for the mapper DTO and the stored route alike.
 func assertSharedSummary(t *testing.T, label string, raw map[string]any, summary map[string]any) {
 	t.Helper()
-	for _, key := range []string{"cards", "winProbability", "shootoutDetail", "info", "form", "h2h", "videos"} {
+	for _, key := range []string{"winProbability", "shootoutDetail", "info", "form", "h2h", "videos"} {
 		assertWire(t, label+"shared "+key, summary[key], vector(t, raw, "summary", "shared", key))
 	}
 	assertWire(t, label+"commentary", summary["commentary"], recordedCommentary(t, raw, fixtureName(t, raw, "summary")))
@@ -1202,11 +1568,11 @@ func assertOverlaySummary(t *testing.T, label string, raw map[string]any, summar
 	expected := vector(t, raw, "summary", "syntheticOverlay", "expected").(map[string]any)
 	assertWire(t, label+"shootoutDetail", summary["shootoutDetail"], expected["shootoutDetail"])
 	assertWire(t, label+"h2h", summary["h2h"], expected["h2h"])
-	// The reader Scorer lacks ownGoal and athleteId (T16.2-scorer-identity).
-	assertWire(t, label+"scorers with penalty and shootout", summary["scorers"], append(append([]any{},
-		vector(t, raw, "summary", "reader", "scorers").([]any)...), withoutEach(expected["addedScorers"].([]any), "ownGoal", "athleteId")...))
-	assertWire(t, label+"cards with a red", summary["cards"], append(append([]any{},
-		vector(t, raw, "summary", "shared", "cards").([]any)...), expected["addedCards"].([]any)...))
+	// Includes a goal and a card credited to a team that is neither side: null.
+	assertWire(t, label+"scorers with penalty, shootout and unattributable", summary["scorers"], append(append([]any{},
+		vector(t, raw, "summary", "reader", "scorers").([]any)...), expected["readerAddedScorers"].([]any)...))
+	assertWire(t, label+"cards with a red and unattributable", summary["cards"], append(append([]any{},
+		vector(t, raw, "summary", "reader", "cards").([]any)...), expected["readerAddedCards"].([]any)...))
 }
 
 // espnInstant parses ESPN's minute-precision kickoff form, the named

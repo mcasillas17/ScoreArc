@@ -1,4 +1,4 @@
-import type { Group, Standing } from '../types';
+import type { Group, Standing, Team } from '../types';
 
 function statMap(stats: any[]): Record<string, number> {
   const out: Record<string, number> = {};
@@ -29,31 +29,85 @@ function inTableOrder(entries: any[]): any[] {
     .map((x) => x.entry);
 }
 
-export function mapStandings(raw: unknown): Group[] {
-  const children: any[] = (raw as any)?.children ?? [];
-  return children.map((grp) => {
-    const entries: any[] = inTableOrder(grp.standings?.entries ?? []);
-    const standings: Standing[] = entries.map((entry, i) => {
-      const s = statMap(entry.stats);
+// The eight stats every row must carry, as the ingester requires them
+// (backend/shared/espn/standings.go). Only goal difference may be negative.
+const REQUIRED_STATS = ['gamesPlayed', 'wins', 'ties', 'losses', 'pointsFor', 'pointsAgainst', 'pointDifferential', 'points'] as const;
+
+/**
+ * A payload rejected only because a row lacks a required stat. The table must
+ * not render (a missing measurement is never a zero), but every row's team
+ * identity was valid, so consumers that need only competition membership --
+ * the player and team indexes -- can still use `teams`.
+ */
+export class StandingsStatsError extends Error {
+  readonly name = 'StandingsStatsError';
+  constructor(message: string, readonly teams: Team[]) {
+    super(message);
+  }
+}
+
+/**
+ * ESPN standings children -> Group[].
+ *
+ * The acceptance rule is the ingester's (T16.2): a missing or null `children`
+ * array, a table with no teams, or a row without team identity rejects the
+ * payload; a row without a required stat rejects it with StandingsStatsError.
+ * The reader keeps its previous standings for the same payload. An empty table
+ * set (`children: []`) is an empty answer.
+ *
+ * `unnamedTable` labels a provider table that has no name -- a single-table
+ * competition -- with the competition's short name, as the reader does.
+ */
+export function mapStandings(raw: unknown, unnamedTable: string): Group[] {
+  const children: unknown = (raw as any)?.children;
+  if (!Array.isArray(children)) throw new Error('standings payload has no children array');
+  const tables = children.map((grp: any) => {
+    const name: string = grp.name || unnamedTable;
+    const entries: any[] = grp.standings?.entries ?? [];
+    if (entries.length === 0) throw new Error(`standings table "${name}" has no teams`);
+    const rows = inTableOrder(entries).map((entry, i) => {
+      const team = entry.team ?? {};
+      if (team.id == null || String(team.id) === '' || !team.displayName || !team.abbreviation) {
+        throw new Error(`standings row ${i} in "${name}" lacks team identity`);
+      }
       return {
         team: {
-          id: String(entry.team.id),
-          name: entry.team.displayName,
-          abbr: entry.team.abbreviation,
-          crestUrl: entry.team.logos?.[0]?.href ?? null,
-        },
-        rank: i + 1,
-        played: s.gamesPlayed ?? 0,
-        wins: s.wins ?? 0,
-        draws: s.ties ?? 0,
-        losses: s.losses ?? 0,
-        goalsFor: s.pointsFor ?? 0,
-        goalsAgainst: s.pointsAgainst ?? 0,
-        goalDifference: s.pointDifferential ?? 0,
-        points: s.points ?? 0,
-        advanced: (s.advanced ?? 0) === 1,
+          id: String(team.id),
+          name: team.displayName,
+          abbr: team.abbreviation,
+          crestUrl: team.logos?.[0]?.href || null,
+        } as Team,
+        stats: statMap(entry.stats),
       };
     });
-    return { id: grp.name.replace('Group ', ''), name: grp.name, standings };
+    return { name, rows };
+  });
+  // Identity first, for every table, so a stat failure can still name the teams.
+  for (const { name, rows } of tables) {
+    rows.forEach(({ stats }, i) => {
+      for (const stat of REQUIRED_STATS) {
+        const value = stats[stat];
+        if (!Number.isInteger(value) || (stat !== 'pointDifferential' && value < 0)) {
+          throw new StandingsStatsError(`standings row ${i} in "${name}" has invalid ${stat}`,
+            tables.flatMap((t) => t.rows.map((r) => r.team)));
+        }
+      }
+    });
+  }
+  return tables.map(({ name, rows }) => {
+    const standings: Standing[] = rows.map(({ team, stats: s }, i) => ({
+      team,
+      rank: i + 1,
+      played: s.gamesPlayed,
+      wins: s.wins,
+      draws: s.ties,
+      losses: s.losses,
+      goalsFor: s.pointsFor,
+      goalsAgainst: s.pointsAgainst,
+      goalDifference: s.pointDifferential,
+      points: s.points,
+      advanced: (s.advanced ?? 0) === 1,
+    }));
+    return { id: name.replace('Group ', ''), name, standings };
   });
 }

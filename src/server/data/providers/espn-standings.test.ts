@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { mapStandings } from './espn-standings';
+import { mapStandings, StandingsStatsError } from './espn-standings';
 import raw from '../__fixtures__/espn-standings.json';
 import mls from '../__fixtures__/espn-standings-mls-2026.json';
 
 describe('mapStandings', () => {
-  const groups = mapStandings(raw);
+  const groups = mapStandings(raw, 'World Cup');
 
   it('returns 12 groups A..L', () => {
     expect(groups).toHaveLength(12);
@@ -31,7 +31,7 @@ describe('mapStandings', () => {
 // The World Cup fixture above happens to arrive sorted, which is exactly why
 // the array index looked like a rank for as long as it did.
 describe('mapStandings — MLS 2026 (entries not in table order)', () => {
-  const groups = mapStandings(mls);
+  const groups = mapStandings(mls, 'MLS');
   const east = groups[0];
   const west = groups[1];
 
@@ -73,9 +73,107 @@ describe('mapStandings — MLS 2026 (entries not in table order)', () => {
         },
       }],
     };
-    const out = mapStandings(broken);
+    const out = mapStandings(broken, 'MLS');
     expect(out[0].standings).toHaveLength(15);
     expect(out[0].standings[0].team.name).toBe('Chicago Fire FC');
     expect(out[0].standings.map((s) => s.rank)).toEqual(Array.from({ length: 15 }, (_, i) => i + 1));
+  });
+});
+
+// The ingester's acceptance rule is the contract (T16.2-standings-malformed):
+// a table with no teams, or a row without team identity or one of the eight
+// required stats, rejects the whole payload. A missing measurement never
+// becomes a zero that looks measured.
+describe('mapStandings — malformed payloads', () => {
+  type Row = { team: Record<string, unknown>; stats: { name: string; value: unknown }[] };
+  const entries = () => structuredClone(raw.children[0].standings.entries.slice(0, 2)) as unknown as Row[];
+  const payload = (rows: unknown[], name = 'Group A') => ({ children: [{ name, standings: { entries: rows } }] });
+
+  it('rejects a table with no entries', () => {
+    expect(() => mapStandings(payload([]), 'World Cup')).toThrow(/no teams/);
+  });
+
+  it.each(['gamesPlayed', 'wins', 'ties', 'losses', 'pointsFor', 'pointsAgainst', 'pointDifferential', 'points'])(
+    'rejects a row missing %s', (stat) => {
+      const rows = entries();
+      rows[1].stats = rows[1].stats.filter((s) => s.name !== stat);
+      expect(() => mapStandings(payload(rows), 'World Cup')).toThrow(new RegExp(stat));
+    });
+
+  it.each([[null], [1.5], ['3'], [-1]])('rejects a points value of %j', (value) => {
+    const rows = entries();
+    rows[0].stats = rows[0].stats.map((s) => (s.name === 'points' ? { ...s, value } : s));
+    expect(() => mapStandings(payload(rows), 'World Cup')).toThrow(/points/);
+  });
+
+  it('accepts a negative goal difference', () => {
+    expect(mapStandings(raw, 'World Cup')[0].standings.some((s) => s.goalDifference < 0)).toBe(true);
+  });
+
+  it.each(['id', 'displayName', 'abbreviation'])('rejects a row whose team lacks %s', (field) => {
+    const rows = entries();
+    delete rows[0].team[field];
+    expect(() => mapStandings(payload(rows), 'World Cup')).toThrow(/team identity/);
+  });
+
+  it.each([[''], [null]])('rejects a team id of %j', (id) => {
+    const rows = entries();
+    rows[1].team.id = id;
+    expect(() => mapStandings(payload(rows), 'World Cup')).toThrow(/team identity/);
+  });
+
+  it('keeps a numeric team id', () => {
+    const rows = entries();
+    rows[0].team.id = 202;
+    expect(mapStandings(payload(rows), 'World Cup')[0].standings[0].team.id).toBe('202');
+  });
+
+  // ESPN omits `children` for a competition that publishes no tables; none is
+  // configured, so the payload is rejected as the Go mapper rejects it.
+  it.each([[{}], [{ children: null }], [{ children: {} }]])('rejects %j as malformed', (envelope) => {
+    expect(() => mapStandings(envelope, 'World Cup')).toThrow(/children/);
+  });
+
+  it('maps an empty table set to no tables', () => {
+    expect(mapStandings({ children: [] }, 'World Cup')).toEqual([]);
+  });
+
+  // A missing measurement rejects the table, but every team is still known:
+  // the error carries them for consumers that need only membership.
+  it('names the teams of a table rejected only for a stat', () => {
+    const rows = entries();
+    rows[1].stats = rows[1].stats.filter((s) => s.name !== 'points');
+    let error: unknown;
+    try {
+      mapStandings(payload(rows), 'World Cup');
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(StandingsStatsError);
+    expect((error as StandingsStatsError).teams.map((t) => t.abbr)).toEqual(['MEX', 'CZE']);
+  });
+
+  it('does not name teams when identity itself is malformed', () => {
+    const rows = entries();
+    delete rows[1].team.abbreviation;
+    expect(() => mapStandings(payload(rows), 'World Cup')).toThrow(/team identity/);
+    try {
+      mapStandings(payload(rows), 'World Cup');
+    } catch (e) {
+      expect(e).not.toBeInstanceOf(StandingsStatsError);
+    }
+  });
+});
+
+// T16.2-group-label: a provider table with no name is the competition's single
+// table, labeled with the competition short name in both contracts.
+describe('mapStandings — unnamed table', () => {
+  it('labels an unnamed table with the given competition name', () => {
+    const [group] = mapStandings({ children: [{ name: '', standings: { entries: raw.children[0].standings.entries } }] }, 'Premier League');
+    expect({ id: group.id, name: group.name }).toEqual({ id: 'Premier League', name: 'Premier League' });
+  });
+
+  it('keeps a named table unchanged', () => {
+    expect(mapStandings(raw, 'World Cup').map((g) => g.id).slice(0, 2)).toEqual(['A', 'B']);
   });
 });

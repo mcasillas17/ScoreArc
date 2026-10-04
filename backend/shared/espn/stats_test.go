@@ -1,7 +1,9 @@
 package espn
 
 import (
+	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -45,6 +47,21 @@ func TestMapLeadersGoals(t *testing.T) {
 		}
 		if scorers[1].Rank != 2 {
 			t.Errorf("scorers[1].Rank = %d, want 2", scorers[1].Rank)
+		}
+	})
+
+	t.Run("keeps the provider team id for crest keying, off the wire", func(t *testing.T) {
+		for i, leader := range scorers {
+			if leader.TeamSourceID == "" {
+				t.Fatalf("scorers[%d] lost its provider team id", i)
+			}
+		}
+		if scorers[0].TeamSourceID != "478" {
+			t.Errorf("scorers[0].TeamSourceID = %q, want the recorded 478", scorers[0].TeamSourceID)
+		}
+		body, err := json.Marshal(scorers[0])
+		if err != nil || strings.Contains(string(body), "478") {
+			t.Errorf("provider team id serialized: %s %v", body, err)
 		}
 	})
 

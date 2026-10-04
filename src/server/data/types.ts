@@ -10,7 +10,13 @@ export interface Team {
 }
 
 export interface Scorer {
-  teamId: string;
+  /**
+   * The credited side. From ESPN, the provider team id ESPN credits: normally
+   * one of the match's sides, kept as sent even when it names neither. From
+   * the reader, the canonical id of that side, or null when the stored
+   * reference names neither side or both. Never defaulted to home or away.
+   */
+  teamId: string | null;
   player: string;
   minute: string;
   penalty: boolean;
@@ -18,8 +24,10 @@ export interface Scorer {
   // ESPN credits an own goal to the team that BENEFITS and names the
   // opposition player who scored it. `teamId` is therefore correct as sent —
   // what is wrong without this flag is presenting that player as one of the
-  // benefiting team's scorers.
-  ownGoal: boolean;
+  // benefiting team's scorers. Null is unknown: a reader row stored before
+  // own goals were captured whose scorers could not be aligned with its
+  // captured goal events.
+  ownGoal: boolean | null;
   /**
    * The provider's athlete id, or null. It rides the API response body (the
    * server also uses it to resolve playerSlug before responding), but it
@@ -37,7 +45,8 @@ export interface Scorer {
 }
 
 export interface Card {
-  teamId: string;
+  /** As Scorer.teamId: ESPN's credited provider id as sent, or the reader's canonical side or null. */
+  teamId: string | null;
   player: string;
   minute: string;
   type: 'yellow' | 'red';

@@ -282,6 +282,12 @@ func mapSummary(raw []byte, match model.Match) (SummaryResult, error) {
 	if err != nil {
 		return SummaryResult{}, err
 	}
+	// One precedence (T16.2): the summary header's totals, then the observation's
+	// own evidence (scoreboard or bracket: structured totals, else its note), then
+	// the note here for a caller whose match came from neither mapper.
+	if detail.Shootout == nil {
+		detail.Shootout = match.Shootout
+	}
 	if detail.Shootout == nil && match.Note != nil {
 		detail.Shootout = espn.ParseShootoutNote(*match.Note, match.Home.Name, match.Away.Name)
 	}
@@ -299,7 +305,7 @@ func mapSummary(raw []byte, match model.Match) (SummaryResult, error) {
 		Detail: detail, Participation: participation, Commentary: commentary,
 	}
 	if requireFinal {
-		result.HomeScore, result.AwayScore, err = espn.SummaryFinalScores(raw)
+		result.HomeScore, result.AwayScore, result.WinnerFlagID, err = espn.SummaryFinal(raw, match.Home.ID, match.Away.ID)
 		if err != nil {
 			return SummaryResult{}, err
 		}

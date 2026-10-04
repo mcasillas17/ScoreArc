@@ -3,16 +3,21 @@
 **Status:** Proposed · 2026-08-22
 **Applies to:** frontend player pages (E5) and the backend data model / API.
 **Owners:** both sides. The frontend derives these slugs from provider data
-today; the backend mints the same slugs as canonical player ids. If the two
-algorithms drift, every player URL 404s on the day the frontend migrates to
-our API — silently, per player. This document exists so they cannot drift.
+today; under this proposal the backend will mint the same slugs as public
+player ids. It does not yet: it keys players by canonical UUIDv7 through
+`player_external_ref` and serves no player slug (public player identity is
+T10.3/T10.4). If the two algorithms drift, every player URL 404s on the day
+the frontend migrates to our API — silently, per player. This document exists
+so they cannot drift.
 
 ## The rule
 
 A player's public identifier is a **name slug**, scoped to a competition
 season. Provider ids (ESPN athlete numbers) never appear in URLs, rendered
-HTML, or API responses — same rule the team pages already follow
-(`mex-america`, never `227`).
+HTML, or as a public identifier or link in an API response — same rule the team
+pages already follow (`mex-america`, never `227`). Some response fields carry
+them as provider-scoped values, by design, and lineup jersey URLs still embed
+them as an open gap: see the exceptions below.
 
 ```
 /c/liga-mx/2026-apertura/player/ali-avila
@@ -51,15 +56,20 @@ are not collisions; the slug is season-scoped.
   a different player.
 - A transfer does not change the slug — it contains no team component unless
   collision-forced, and a collision-forced suffix is frozen at mint time.
-- The backend stores the slug as the player's public id alongside its internal
-  UUIDv7; provider ids live only in `*_external_ref` crosswalk tables, per the
-  canonical-identity design.
+- Proposed: the backend will store the slug as the player's public id
+  alongside its internal UUIDv7. Implemented today: the UUIDv7 alone, which
+  provider player ids map to only through `player_external_ref`, per the
+  canonical-identity design. A scorer's `athleteId` is stored outside it as
+  a provider-scoped value, never resolved there
+  ([READER_CONTRACT, T16.2](READER_CONTRACT.md#t162-identity-and-dto-contract)).
 
 ## Enforcement
 
 The frontend test suite asserts no rendered `href` matches
 `/(player|team)/[0-9]+` — a bare provider number in a public link fails CI.
-The backend API contract tests should assert the same about response bodies.
+The backend API contract tests should assert the same about the public ids and
+links in response bodies; the provider-scoped fields listed below are the
+documented exceptions.
 
 ## The deliberate exception
 
@@ -67,3 +77,15 @@ Internal match-detail fetches (`/api/.../match/{eventId}`) still use provider
 event ids. They are client plumbing, not shareable URLs, and are replaced
 wholesale by the API cutover (slice 1d). Do not extend this exception to
 players or teams.
+
+Some responses carry the provider athlete id as a provider-scoped value, never
+a public id and never in a URL: `Scorer.athleteId`, `LineupPlayer.athleteId`
+and `StatLeader.athleteId`, which the route layer resolves to the player's slug
+for links, and, on the frontend API, `SquadPlayer.id` and `PlayerProfile.id`.
+Of those fields the reader serves only `Scorer.athleteId` today, nullable (T16.2,
+[READER_CONTRACT](READER_CONTRACT.md#t162-identity-and-dto-contract)).
+
+One remaining embedding is not an exception but an open gap: a lineup player's
+`jersey` URL embeds the provider event and athlete ids, on the reader and the
+frontend API alike. The harness registers it as `T10.2-lineups`, which owns
+the change; until then the rule above does not hold for those URLs.

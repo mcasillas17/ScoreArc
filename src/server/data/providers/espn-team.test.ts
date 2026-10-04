@@ -156,3 +156,68 @@ describe('mapTeamSchedule', () => {
     expect(mapTeamSchedule(null)).toEqual([]);
   });
 });
+
+// The scoreboard's shootout tiers on the team schedule's own payload shape
+// (score objects, status on the competition). Synthetic: the first recorded
+// event turned into a 1-1 shootout with its winner flag on the wrong side.
+describe('mapTeamSchedule shootout', () => {
+  const shootoutEvent = (patch: (competitors: any[], competition: any) => void) => {
+    const event = structuredClone((scheduleRaw as any).events[0]);
+    const competition = event.competitions[0];
+    for (const competitor of competition.competitors) {
+      competitor.score = { ...competitor.score, value: 1, displayValue: '1' };
+      competitor.winner = competitor.homeAway === 'home';
+    }
+    patch(competition.competitors, competition);
+    return mapTeamSchedule({ events: [event] })[0];
+  };
+
+  it('takes structured totals, and a finished decisive aggregate names the winner over the flags', () => {
+    const m = shootoutEvent((competitors) => {
+      for (const c of competitors) c.shootoutScore = c.homeAway === 'home' ? 2 : 4;
+    });
+    expect(m.shootout).toEqual({ homeScore: 2, awayScore: 4 });
+    expect(m.winnerId).toBe(m.away.id);
+    expect([m.homeScore, m.awayScore]).toEqual([1, 1]);
+  });
+
+  // '2.0' is a total under the summary header's wider rule, not under the
+  // scoreboard's, which this competitor shape follows.
+  it('falls back to an anchored note, and ignores a malformed structured total', () => {
+    const m = shootoutEvent((competitors, competition) => {
+      for (const c of competitors) c.shootoutScore = c.homeAway === 'home' ? '2.0' : 4;
+      competition.notes = [{ text: 'Atlético de San Luis advance 5-3 on penalties' }];
+    });
+    expect(m.shootout).toEqual({ homeScore: 3, awayScore: 5 });
+    expect(m.winnerId).toBe(m.away.id);
+  });
+
+  it('keeps the flags without shootout evidence', () => {
+    const m = shootoutEvent(() => {});
+    expect(m.shootout).toBeNull();
+    expect(m.winnerId).toBe(m.home.id);
+  });
+});
+
+describe('mapTeamSchedule live minute', () => {
+  it.each([["60'", "60'"], [undefined, null], ['', null]])('maps display clock %j to %j', (clock, minute) => {
+    const event = structuredClone((scheduleRaw as any).events[0]);
+    const status = event.competitions[0].status;
+    status.type = { ...status.type, state: 'in', completed: false, name: 'STATUS_FIRST_HALF' };
+    if (clock === undefined) delete status.displayClock;
+    else status.displayClock = clock;
+    const [match] = mapTeamSchedule({ ...(scheduleRaw as any), events: [event] });
+    expect([match.state, match.minute]).toEqual(['live', minute]);
+  });
+});
+
+describe('mapTeamSchedule placeholder crest', () => {
+  it('serves an empty provider logo as a null crest, as the reader does', () => {
+    const event = structuredClone((scheduleRaw as any).events[0]);
+    const competitor = event.competitions[0].competitors[1];
+    delete competitor.team.logos;
+    competitor.team.logo = '';
+    const [match] = mapTeamSchedule({ ...(scheduleRaw as any), events: [event] });
+    expect(match[competitor.homeAway as 'home' | 'away'].crestUrl).toBeNull();
+  });
+});

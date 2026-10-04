@@ -3,10 +3,8 @@ package espn
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"regexp"
-	"strconv"
-	"strings"
+	"slices"
 	"time"
 )
 
@@ -16,7 +14,7 @@ import (
 // tag ("round-of-32" ... "final") instead of belonging to a group.
 //
 // Divergence from the TS mapper (intentional, not a parity break): the TS
-// mapBracket groups matches into BracketRound[] (slug + name + matches) for
+// mapBracket groups matches into BracketRound[] (slug + matches) for
 // direct rendering. The Go port returns a flat []BracketMatch — each row
 // already carries its own Round slug (reusing the same vocabulary as
 // Match.Round) — because Task 6 upserts these as individual `match` rows;
@@ -39,6 +37,10 @@ var knockoutRoundOrder = []string{
 	"final",
 	"3rd-place-match",
 }
+
+// KnockoutRounds returns the knockout round vocabulary in bracket order. The
+// reader serves exactly these slugs (OpenAPI enumerates them).
+func KnockoutRounds() []string { return slices.Clone(knockoutRoundOrder) }
 
 // roundSlugAlias mirrors espn-bracket.ts's SLUG_ALIAS: ESPN renamed some
 // rounds across editions — older World Cups (1998-2010) tag the Round of 16
@@ -132,38 +134,12 @@ type rawBracketCompetitor struct {
 	HomeAway string          `json:"homeAway"`
 	Winner   bool            `json:"winner"`
 	Score    *flexibleString `json:"score"`
-	// ShootoutScore is deliberately raw JSON: ESPN sends it as a bare number
-	// on modern payloads but the TS mapper (and older payloads) treat it as
-	// `any` and coerce via `Number(...)`, so it must accept a JSON number, a
-	// numeric string, null, or an absent key.
+	// ShootoutScore is deliberately raw JSON: ESPN sends a bare number on
+	// modern payloads and a digit string on older ones. The bracket takes the
+	// scoreboard's rule (scoreboardTotal, TS isScoreboardCount): absent, null,
+	// "", a digit string or a non-negative integer; anything else rejects it.
 	ShootoutScore json.RawMessage `json:"shootoutScore"`
 	Team          rawTeam         `json:"team"`
-}
-
-// jsNumber mirrors JS's `Number(x)` + `Number.isFinite(...)` coercion for
-// the shootoutScore value: an absent key is `undefined` -> NaN (not
-// finite); explicit `null` -> 0 (finite, matching `Number(null) === 0`); an
-// empty string -> 0 (finite, matching `Number("") === 0`); a numeric string
-// or bare JSON number parses to its value; anything else is NaN.
-func jsNumber(raw json.RawMessage) (value float64, finite bool) {
-	if len(raw) == 0 {
-		return 0, false
-	}
-	var f float64
-	if err := json.Unmarshal(raw, &f); err == nil {
-		return f, f >= 0 && math.Trunc(f) == f
-	}
-	var s string
-	if err := json.Unmarshal(raw, &s); err == nil {
-		s = strings.TrimSpace(s)
-		if s == "" {
-			return 0, true
-		}
-		if fv, err := strconv.ParseFloat(s, 64); err == nil {
-			return fv, fv >= 0 && math.Trunc(fv) == fv
-		}
-	}
-	return 0, false
 }
 
 // mapBracketTeam ports espn-bracket.ts's mapBracketTeam.
@@ -231,9 +207,27 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, error) {
 		(away.Score != nil && *away.Score != "" && awayScore == nil) {
 		return BracketMatch{}, fmt.Errorf("invalid score")
 	}
+	var note *string
+	if len(comp.Notes) > 0 && comp.Notes[0].Text != "" {
+		text := comp.Notes[0].Text
+		note = &text
+	}
+	homeTeam, awayTeam := mapBracketTeam(home.Team), mapBracketTeam(away.Team)
+	// The scoreboard's rule and tiers: a malformed structured total rejects the
+	// bracket; otherwise structured totals, then the anchored note. The
+	// aggregate rides to the ingester's candidate and decides a finished winner.
+	for _, competitor := range []*rawBracketCompetitor{home, away} {
+		if !scoreboardTotal(competitor.ShootoutScore) {
+			return BracketMatch{}, fmt.Errorf("invalid shootout score")
+		}
+	}
+	shootout := shootoutTotals(home.ShootoutScore, away.ShootoutScore)
+	if shootout == nil && note != nil {
+		shootout = ParseShootoutNote(*note, homeTeam.Name, awayTeam.Name)
+	}
 	winnerID, err := shootoutFirstWinnerID(
 		string(home.Team.ID), string(away.Team.ID),
-		home.ShootoutScore, away.ShootoutScore, home.Winner, away.Winner,
+		shootout, home.Winner, away.Winner, state == MatchStateFinished,
 	)
 	if err != nil {
 		return BracketMatch{}, err
@@ -245,14 +239,10 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, error) {
 		return BracketMatch{}, fmt.Errorf("finished knockout match lacks winner")
 	}
 
-	var note *string
-	if len(comp.Notes) > 0 && comp.Notes[0].Text != "" {
-		text := comp.Notes[0].Text
-		note = &text
-	}
-
+	// A live minute is ESPN's display clock; without one it is unknown (nil),
+	// never "" (T16.2 live-minute contract).
 	var minute *string
-	if state == MatchStateLive {
+	if state == MatchStateLive && status.DisplayClock != "" {
 		clock := status.DisplayClock
 		minute = &clock
 	}
@@ -261,8 +251,8 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, error) {
 		ID:           string(ev.ID),
 		Round:        bracketRoundSlug(string(ev.ID), ev.Season.Slug),
 		Kickoff:      kickoff.Format(time.RFC3339),
-		Home:         mapBracketTeam(home.Team),
-		Away:         mapBracketTeam(away.Team),
+		Home:         homeTeam,
+		Away:         awayTeam,
 		HomeScore:    homeScore,
 		AwayScore:    awayScore,
 		State:        state,
@@ -271,6 +261,8 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, error) {
 		Minute:       minute,
 		WinnerID:     winnerID,
 		Note:         note,
+		Shootout:     shootout,
+		WinnerFlagID: flaggedWinnerID(string(home.Team.ID), string(away.Team.ID), home.Winner, away.Winner),
 	}, nil
 }
 

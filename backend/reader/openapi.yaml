@@ -395,19 +395,29 @@ components:
     Scorer:
       type: object
       additionalProperties: false
-      required: [teamId, player, minute, penalty, shootout]
+      required: [teamId, player, minute, penalty, shootout, ownGoal, athleteId]
       properties:
-        teamId: { type: string }
+        teamId:
+          type: [string, "null"]
+          description: Canonical id of the match side credited with the goal (for an own goal, the side that benefits), or null when the stored provider reference names neither side or both.
         player: { type: string }
         minute: { type: string }
         penalty: { type: boolean }
         shootout: { type: boolean }
+        ownGoal:
+          type: [boolean, "null"]
+          description: Null when unknown, a match stored before own goals were captured whose scorers could not be aligned with its captured goal events.
+        athleteId:
+          type: [string, "null"]
+          description: The source provider's athlete id, which the frontend match route resolves to a player slug; never a URL. Null when the provider names no athlete for the goal, or when unknown, a match stored before it was captured whose scorers could not be aligned with its captured goal events, or a recovered player without a single id on the match's source.
     Card:
       type: object
       additionalProperties: false
       required: [teamId, player, minute, type]
       properties:
-        teamId: { type: string }
+        teamId:
+          type: [string, "null"]
+          description: Canonical id of the carded player's match side, or null when the stored provider reference names neither side or both.
         player: { type: string }
         minute: { type: string }
         type: { type: string, enum: [yellow, red] }
@@ -536,7 +546,7 @@ components:
       required: [id, round, kickoff, home, away, homeScore, awayScore, state, statusDetail, statusName, minute, winnerId, note]
       properties:
         id: { type: string }
-        round: { type: string }
+        round: { $ref: "#/components/schemas/KnockoutRound" }
         kickoff: { type: string, format: date-time }
         home: { $ref: "#/components/schemas/BracketTeam" }
         away: { $ref: "#/components/schemas/BracketTeam" }
@@ -553,9 +563,15 @@ components:
       additionalProperties: false
       required: [slug, name, matches]
       properties:
-        slug: { type: string }
-        name: { type: string }
+        slug: { $ref: "#/components/schemas/KnockoutRound" }
+        name:
+          type: string
+          description: English display label for API consumers. Clients that localize derive their label from slug.
         matches: { type: array, items: { $ref: "#/components/schemas/BracketMatch" } }
+    KnockoutRound:
+      type: string
+      description: Knockout round slug. Historical aliases (second-round, third-place) are normalized before storage.
+      enum: [round-of-32, round-of-16, quarterfinals, semifinals, final, 3rd-place-match]
     TopScorer:
       type: object
       additionalProperties: false

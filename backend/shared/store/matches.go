@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -180,6 +181,14 @@ ON CONFLICT (match_id) DO UPDATE SET
 	commentary=CASE WHEN EXCLUDED.commentary='[]'::jsonb THEN match_detail.commentary ELSE EXCLUDED.commentary END,
 	updated_at=now()`
 
+// detailFinalizeSQL is detailUpsertSQL for the final write. A live poll's
+// shootout aggregate and kick list are partial, so the final detail's shootout
+// fields are its own evidence or nothing, never a value kept from a poll.
+var detailFinalizeSQL = strings.NewReplacer(
+	"shootout=COALESCE(EXCLUDED.shootout, match_detail.shootout),", "shootout=EXCLUDED.shootout,",
+	"shootout_detail=COALESCE(EXCLUDED.shootout_detail, match_detail.shootout_detail),", "shootout_detail=EXCLUDED.shootout_detail,",
+).Replace(detailUpsertSQL)
+
 type execer interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }
@@ -208,11 +217,15 @@ func (s *Store) UpsertMatchDetail(ctx context.Context, matchID uuid.UUID, detail
 }
 
 func upsertMatchDetail(ctx context.Context, db execer, matchID uuid.UUID, detail model.MatchDetail) error {
+	return writeMatchDetail(ctx, db, detailUpsertSQL, matchID, detail)
+}
+
+func writeMatchDetail(ctx context.Context, db execer, sql string, matchID uuid.UUID, detail model.MatchDetail) error {
 	values, err := detailArgs(matchID, detail)
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec(ctx, detailUpsertSQL, values...)
+	_, err = db.Exec(ctx, sql, values...)
 	return err
 }
 
@@ -292,7 +305,7 @@ func (s *Store) FinalizeMatch(
 	if finalizedAt.Valid {
 		return false, nil
 	}
-	if err := upsertMatchDetail(ctx, tx, identity.MatchID, detail); err != nil {
+	if err := writeMatchDetail(ctx, tx, detailFinalizeSQL, identity.MatchID, detail); err != nil {
 		return false, err
 	}
 
@@ -305,7 +318,7 @@ func (s *Store) FinalizeMatch(
 		identity.HomeTeamID, identity.AwayTeamID, match.HomeScore, match.AwayScore,
 		match.Minute, match.StatusDetail, match.StatusName, identity.WinnerTeamID,
 		match.Note, match.HomePlaceholder, match.BracketRequired, match.BracketConfirmed,
-		match.AwayPlaceholder, identity.Source,
+		match.AwayPlaceholder, identity.Source, match.WinnerResolved,
 	}
 	command, err := tx.Exec(ctx, `
 UPDATE match SET
@@ -316,7 +329,7 @@ UPDATE match SET
 	kickoff=$3::timestamptz, state=$4, home_team_id=$5, away_team_id=$6,
 	home_score=COALESCE($7, home_score), away_score=COALESCE($8, away_score),
 	minute=$9, status_detail=$10, status_name=$11,
-	winner_id=CASE WHEN $16 THEN $12 ELSE COALESCE($12, winner_id) END,
+	winner_id=CASE WHEN $16 OR $19 THEN $12 ELSE COALESCE($12, winner_id) END,
 	note=COALESCE($13, note),
 	home_placeholder=CASE
 		WHEN NOT $16 AND home_team_id=$5 AND home_placeholder THEN true ELSE $14 END,
@@ -461,6 +474,7 @@ func (s *Store) UnfinalizedMatches(
 			return nil, err
 		}
 		match.Kickoff = kickoff.UTC().Format(time.RFC3339)
+		match.FromStorage = true
 		matches = append(matches, match)
 	}
 	return matches, rows.Err()

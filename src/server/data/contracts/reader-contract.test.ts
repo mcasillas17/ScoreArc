@@ -4,13 +4,18 @@ import { afterAll, afterEach, beforeEach, describe, expect, expectTypeOf, it, vi
 import { createDataStore, dataStore, type DataStore } from '../store';
 import { resolveSeason, type OverallTableLabelKey, type ZoneKind, type ZoneLabelKey } from '../competitions';
 import { TtlCache } from '../cache';
-import { canonicalTeamId } from '../teamIdentity';
+import { canonicalTeamId, providerTeamId } from '../teamIdentity';
+import { withSummaryPlayerSlugs } from '../playerIndex';
+import { teamHref } from '@/components/teamHref';
+import { roundLabelKey } from '@/components/bracketShape';
+import { en } from '@/i18n/messages/en';
 import { mapTeamSchedule } from '../providers/espn-team';
+import { parseShootout } from '../providers/espn-matches';
 import { parseMatchFreshness, type MatchFreshness } from '@/lib/matchFreshness';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 import type {
   BracketMatch, BracketRound, BracketTeam, Card, CareerStint, CommentaryItem, FormResult, GameLogRow, Group,
-  H2HMeeting, LineupPlayer, Match, MatchInfo, MatchLineups, MatchSummaryData, MatchVideo, NewsArticle, PenaltyKick,
+  H2HMeeting, KnockoutRoundSlug, LineupPlayer, Match, MatchInfo, MatchLineups, MatchSummaryData, MatchVideo, NewsArticle, PenaltyKick,
   PlayerMatchStats, PlayerProfile, PlayerSeasonStats, PlayerSeasonTotal, Scorer, ShootoutDetail, SquadPlayer, Standing,
   StatLeader, TeamLineup, TeamStats,
 } from '../types';
@@ -51,10 +56,10 @@ afterAll(() => {
 // tsc evaluates expectTypeOf, so a renamed, retyped or added field fails the
 // typecheck even when every runtime assertion still passes.
 type CScorer = {
-  teamId: string; player: string; minute: string; penalty: boolean; shootout: boolean;
-  ownGoal: boolean; athleteId: string | null; playerSlug?: string | null;
+  teamId: string | null; player: string; minute: string; penalty: boolean; shootout: boolean;
+  ownGoal: boolean | null; athleteId: string | null; playerSlug?: string | null;
 };
-type CCard = { teamId: string; player: string; minute: string; type: 'yellow' | 'red' };
+type CCard = { teamId: string | null; player: string; minute: string; type: 'yellow' | 'red' };
 type N = number | null;
 type CTeamStats = {
   possession: N; shots: N; shotsOnTarget: N; shotAccuracy: N; corners: N; offsides: N; passes: N;
@@ -128,6 +133,15 @@ type CSummaryKeys = 'scorers' | 'cards' | 'stats' | 'winProbability' | 'lineups'
 
 const wc = resolveSeason(vectors.queries.competition, vectors.queries.season)!;
 const s0 = vectors.summary;
+// The nested team-id translation contract: a frontend reference names the side
+// whose provider id it carries; the reader serves that side's canonical id, or
+// null when neither side owns it.
+type Sides = { home: { providerId: string; canonicalId: string }; away: { providerId: string; canonicalId: string } };
+const translated = <T extends { teamId: string | null }>(sides: Sides, rows: T[]) => rows.map(row => ({
+  ...row,
+  teamId: row.teamId === sides.home.providerId ? sides.home.canonicalId
+    : row.teamId === sides.away.providerId ? sides.away.canonicalId : null,
+}));
 const mx = resolveSeason('liga-mx', '2026-apertura')!;
 
 // Executable gap registry: each characterization records its gap id, and the
@@ -189,6 +203,21 @@ function overlaidSummary() {
     (side as Record<string, unknown>).shootoutScore = o.shootoutScores[side.homeAway as 'home' | 'away'];
   }
   return { ...summaryRaw, ...o.raw, header, keyEvents: [...summaryRaw.keyEvents, ...o.appendKeyEvents] };
+}
+
+// The overlay summary with its header rewritten to a headerIdentity case: the
+// event, the side ids, and optionally the status and competitor scores, which
+// may carry values no recorded header does (completed: null, a missing score).
+type HeaderCase = { eventId: string; home: string; away: string; status?: Record<string, unknown>; scores?: Record<string, unknown> };
+function identitySummary(header: HeaderCase) {
+  const summary = overlaidSummary();
+  summary.header.id = summary.header.competitions[0].id = header.eventId;
+  for (const side of summary.header.competitions[0].competitors as { homeAway: 'home' | 'away'; id: string; team: { id: string }; score?: unknown }[]) {
+    side.id = side.team.id = header[side.homeAway];
+    if (header.scores && side.homeAway in header.scores) side.score = header.scores[side.homeAway];
+  }
+  if (header.status) Object.assign(summary.header.competitions[0].status.type, header.status);
+  return summary;
 }
 const months = (urls: string[]) => urls.filter(u => u.includes('/scoreboard')).map(u => new URL(u).searchParams.get('dates'));
 
@@ -275,17 +304,19 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     exercise('getMatchSummary');
     const { store, urls } = storeOver(() => summaryRaw);
     const summary = await store.getMatchSummary(wc, s.eventId, s.sides.home.providerId, s.sides.away.providerId);
-    gap('T16.2-match-id', () => {
-      // The frontend addresses a summary by provider event id; the reader only by UUID.
-      expect(urls).toEqual([expect.stringMatching(new RegExp(`/summary\\?event=${s.eventId}$`))]);
-      expect(s.eventId).toMatch(/^\d+$/);
-      expect(s.readerMatchId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
-    });
+    // Match ids are store-scoped and translated, never equal: this store's list
+    // rows carry the provider event id and it addresses its own summary by it;
+    // the reader's are UUIDv7s, and the Go suite proves match_external_ref maps
+    // this eventId to this readerMatchId through the real resolver.
+    expect(urls).toEqual([expect.stringMatching(new RegExp(`/summary\\?event=${s.eventId}$`))]);
+    expect(s.eventId).toMatch(/^\d+$/);
+    expect(s.readerMatchId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     // Same top-level keys as the reader DTO; a one-sided field must become a registered gap.
     expect(Object.keys(summary).sort()).toEqual([...s.readerKeys].sort());
     expect(summary.scorers).toEqual(s.frontend.scorers);
+    expect(summary.cards).toEqual(s.frontend.cards);
     expect(summary.stats).toEqual(s.frontend.stats);
-    for (const key of ['cards', 'winProbability', 'shootoutDetail', 'info', 'form', 'h2h', 'videos'] as const) {
+    for (const key of ['winProbability', 'shootoutDetail', 'info', 'form', 'h2h', 'videos'] as const) {
       expect(summary[key], key).toEqual(s.shared[key]);
     }
     const commentary = summaryRaw.commentary
@@ -311,23 +342,13 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
   it('agrees with the reader on shared semantic fields and pins every incompatibility', async () => {
     // Every closure below checks the real frontend output against the Go-verified reader vectors.
     const real = await load(summaryRaw, s.eventId, s.sides.home.providerId, s.sides.away.providerId);
-    const base = ({ teamId, player, minute, penalty, shootout }: CScorer) => ({ teamId, player, minute, penalty, shootout });
-    expect(s.reader.scorers).toEqual(s.frontend.scorers.map(base));
-    gap('T16.2-scorer-identity', () => {
-      expect(real.scorers.map(base)).toEqual(s.reader.scorers);
-      for (const scorer of s.reader.scorers) {
-        expect(scorer).not.toHaveProperty('ownGoal');
-        expect(scorer).not.toHaveProperty('athleteId');
-      }
-      expect(real.scorers.every(sc => typeof sc.athleteId === 'string')).toBe(true);
-    });
-    gap('T16.2-nested-team-id', () => {
-      const canonicalSides = [s.sides.home.canonicalId, s.sides.away.canonicalId];
-      for (const scorer of [...s.reader.scorers, ...s.shared.cards]) {
-        expect(canonicalSides).not.toContain(scorer.teamId);
-        expect(canonicalSides).toContain(canonicalTeamId(scorer.teamId));
-      }
-    });
+    // Nested team ids are a tested translation, not an equality: each store
+    // names its own served sides, and both carry the same scorer identity.
+    expect(translated(s.sides, real.scorers)).toEqual(s.reader.scorers);
+    expect(translated(s.sides, real.cards)).toEqual(s.reader.cards);
+    for (const side of [s.sides.home, s.sides.away]) expect(canonicalTeamId(side.providerId)).toBe(side.canonicalId);
+    // playerSlug is route-layer enrichment in both stores, never a store field.
+    for (const scorer of [...real.scorers, ...s.reader.scorers]) expect(scorer).not.toHaveProperty('playerSlug');
     const counts = ['possession', 'shots', 'shotsOnTarget', 'corners', 'offsides', 'passes', 'crosses', 'longBalls',
       'tackles', 'interceptions', 'clearances', 'blockedShots', 'saves', 'fouls', 'yellowCards', 'redCards'] as const;
     gap('T10.2-team-stats', () => {
@@ -375,20 +396,152 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     expect(summary.shootoutDetail).toEqual(o.expected.shootoutDetail);
     expect(summary.h2h).toEqual(o.expected.h2h);
     expect(summary.scorers).toEqual([...s.frontend.scorers, ...o.expected.addedScorers]);
-    expect(summary.cards).toEqual([...s.shared.cards, ...o.expected.addedCards]);
-    gap('T16.2-shootout-source', () => {
-      // The reader serves {4,3} from this header; the frontend summary cannot carry it.
-      expect(summary).not.toHaveProperty('shootout');
-      expect(o.expected.readerShootout).toEqual({ homeScore: o.shootoutScores.home, awayScore: o.shootoutScores.away });
-    });
+    expect(summary.cards).toEqual([...s.frontend.cards, ...o.expected.addedCards]);
+    // The unattributable pair: the frontend keeps 999999, which names neither
+    // of its sides; the reader serves null, never a default side.
+    expect(translated(s.sides, summary.scorers)).toEqual([...s.reader.scorers, ...o.expected.readerAddedScorers]);
+    expect(translated(s.sides, summary.cards)).toEqual([...s.reader.cards, ...o.expected.readerAddedCards]);
+    // Neither summary DTO carries the aggregate (Go asserts readerKeys); it lives
+    // on Match, from the header totals here (the reader stores the same {4,3}).
+    expect(summary).not.toHaveProperty('shootout');
+    expect(o.expected.readerShootout).toEqual({ homeScore: o.shootoutScores.home, awayScore: o.shootoutScores.away });
   });
 
-  it('keeps Match.shootout from the note only, even when the enriching summary has an aggregate', async () => {
-    const { store } = storeOver(url => url.includes('/summary') ? overlaidSummary()
-      : { leagues: [{ slug: vectors.queries.leagueSlug }], events: url.includes('dates=202606') ? scoreboard.events.slice(0, 1) : [] });
+  it.each(s0.syntheticOverlay.headerIdentity.cases)('takes Match.shootout and the winner from a held summary header only for its own match: $name', async (c) => {
+    const h = s0.syntheticOverlay.headerIdentity;
+    const summary = identitySummary(c.header);
+    const { store } = storeOver(url => url.includes('/summary') ? summary
+      : { leagues: [{ slug: vectors.queries.leagueSlug }], events: url.includes('dates=202606') ? scoreboard.events.filter(e => e.id === h.scoreboardEventId) : [] });
     const [match] = await store.getMatches(wc, '20260629-20260629');
-    expect(match.note).toBeNull();
-    expect(match.shootout).toBeNull();
+    expect(match.shootout).toEqual(c.expected.shootout);
+    expect(match.winnerId).toBe(match[c.expected.winner as 'home' | 'away'].id);
+    expect([match.homeScore, match.awayScore]).toEqual([1, 1]); // Regulation scores stay.
+  });
+
+  it.each(s0.syntheticOverlay.headerIdentity.cases.filter(c => c.header.status || c.header.scores))('applies the same final-header rule to a summary held from an earlier read: $name', async (live) => {
+    const h = s0.syntheticOverlay.headerIdentity;
+    const summary = identitySummary(live.header);
+    const { store, urls } = storeOver(url => url.includes('/summary') ? summary
+      : { leagues: [{ slug: vectors.queries.leagueSlug }], events: url.includes('dates=202606') ? scoreboard.events.filter(e => e.id === h.scoreboardEventId) : [] });
+    // The match page read the summary earlier; the scoreboard has since finished.
+    await store.getMatchSummary(wc, live.header.eventId, live.header.home, live.header.away);
+    const [match] = await store.getMatches(wc, '20260629-20260629');
+    expect(urls.filter(url => url.includes('/summary'))).toHaveLength(1); // The held summary was reused.
+    expect(match.shootout).toEqual(live.expected.shootout);
+    expect(match.winnerId).toBe(match[live.expected.winner as 'home' | 'away'].id);
+  });
+
+  it.each(s0.syntheticOverlay.levelHeader.cases)('a level held summary header falls back to the winner flags, not the scoreboard aggregate it supersedes: $name', async (c) => {
+    const l = s0.syntheticOverlay.levelHeader;
+    const summary = overlaidSummary();
+    const event = structuredClone(scoreboard.events.find(e => e.id === l.scoreboardEventId)!);
+    const sides: Record<string, string> = {};
+    for (const competitor of event.competitions[0].competitors) {
+      const side = competitor.homeAway as 'home' | 'away';
+      sides[side] = String(competitor.team.id);
+      competitor.winner = c.winnerFlags[side];
+    }
+    summary.header.id = summary.header.competitions[0].id = l.scoreboardEventId;
+    for (const side of summary.header.competitions[0].competitors as { homeAway: string; id: string; team: { id: string }; shootoutScore?: unknown }[]) {
+      const homeAway = side.homeAway as 'home' | 'away';
+      side.id = side.team.id = sides[homeAway];
+      side.shootoutScore = l.shootoutScores[homeAway];
+    }
+    const { store } = storeOver(url => url.includes('/summary') ? summary
+      : { leagues: [{ slug: vectors.queries.leagueSlug }], events: url.includes('dates=202606') ? [event] : [] });
+    const [match] = await store.getMatches(wc, '20260629-20260629');
+    expect(match.shootout).toEqual(c.expected.shootout);
+    expect(match.winnerId).toBe(c.expected.winner === null ? null : sides[c.expected.winner]);
+  });
+
+  it('keeps the header aggregate for the match list after the summary route was read with other sides', async () => {
+    const h = s0.syntheticOverlay.headerIdentity;
+    const [own] = h.cases;
+    const summary = overlaidSummary();
+    summary.header.id = summary.header.competitions[0].id = own.header.eventId;
+    for (const side of summary.header.competitions[0].competitors as { homeAway: string; id: string; team: { id: string } }[]) {
+      side.id = side.team.id = own.header[side.homeAway as 'home' | 'away'];
+    }
+    const { store, urls } = storeOver(url => url.includes('/summary') ? summary
+      : { leagues: [{ slug: vectors.queries.leagueSlug }], events: url.includes('dates=202606') ? scoreboard.events.filter(e => e.id === h.scoreboardEventId) : [] });
+    // The public match route passes its query's sides through unchecked.
+    await store.getMatchSummary(wc, h.scoreboardEventId, '', '');
+    const [match] = await store.getMatches(wc, '20260629-20260629');
+    expect(match.shootout).toEqual(own.expected.shootout);
+    expect(match.winnerId).toBe(match[own.expected.winner as 'home' | 'away'].id);
+    expect(urls.filter(url => url.includes('/summary'))).toHaveLength(2);
+  });
+
+  // One shared precedence case applied to recorded event 760489 (the
+  // scoreboard and bracket fixtures carry it identically).
+  type PrecedenceCase = (typeof vectors.scoreboard.shootoutPrecedence.cases)[number];
+  const withShootoutCase = <E extends { id: string; status: { type: object }; competitions: unknown[] }>(events: E[], c: PrecedenceCase) => {
+    const event = structuredClone(events.find(e => e.id === vectors.scoreboard.shootoutPrecedence.eventId)!);
+    const competition = event.competitions[0] as { notes: unknown[]; competitors: Record<string, unknown>[] };
+    const sideIds: Record<string, string> = {};
+    for (const competitor of competition.competitors) {
+      const side = competitor.homeAway as 'home' | 'away';
+      sideIds[side] = String((competitor.team as { id: string }).id);
+      const value = c.shootoutScore[side];
+      if (value === 'absent') delete competitor.shootoutScore;
+      else competitor.shootoutScore = value;
+      if ('winnerFlags' in c && c.winnerFlags) competitor.winner = c.winnerFlags[side];
+    }
+    competition.notes = c.note === null ? [] : [{ text: c.note }];
+    if ('status' in c && c.status) event.status.type = { ...event.status.type, ...c.status };
+    return { event, competition, sideIds };
+  };
+
+  it.each(vectors.scoreboard.shootoutPrecedence.cases)('applies the shared scoreboard shootout precedence: $name', async (c) => {
+    const { event, sideIds } = withShootoutCase(scoreboard.events, c);
+    const fixtures = storeOver(windowOver([event])).store.getFixtures(wc, '20260629-20260630');
+    if (c.expected === 'error') {
+      await expect(fixtures).rejects.toThrow(/Malformed scoreboard score/); // Go: MapScoreboard errors.
+      return;
+    }
+    const [match] = await fixtures;
+    expect(match.shootout).toEqual(c.expected);
+    expect(match.winnerId).toBe(c.winner ? sideIds[c.winner] : null);
+    expect([match.homeScore, match.awayScore]).toEqual([1, 1]);
+  });
+
+  // The team schedule is a lightweight per-team feed with the scoreboard's
+  // competitor shape, so it takes the same scoreboard tiers and winner rule.
+  // It never rejects its feed: a malformed structured total is ignored there,
+  // leaving the note tier.
+  it.each(vectors.scoreboard.shootoutPrecedence.cases)('applies the shared shootout precedence to the team schedule: $name', (c) => {
+    const { event, competition, sideIds } = withShootoutCase(scoreboard.events, c);
+    if ('status' in c && c.status) {
+      // The team schedule reads the competition's own status first.
+      const holder = competition as unknown as { status: { type: object } };
+      holder.status.type = { ...holder.status.type, ...c.status };
+    }
+    const [match] = mapTeamSchedule({ events: [event] });
+    const expected = c.expected === 'error' ? parseShootout(c.note, match.home.name, match.away.name) : c.expected;
+    expect(match.shootout).toEqual(expected);
+    if (c.expected !== 'error') expect(match.winnerId).toBe(c.winner ? sideIds[c.winner] : null);
+    expect([match.homeScore, match.awayScore]).toEqual([1, 1]);
+  });
+
+  // The bracket's finished winner takes the scoreboard's tiers: structured
+  // totals, then the anchored note, then the flags, and a malformed total
+  // rejects it -- through the dated scoreboard window, and through the single
+  // scoreboard a season without bracket dates (Leagues Cup 2026) reads. The TS
+  // BracketMatch carries no aggregate (the Go suite checks that one).
+  const undated = { ...wc, season: { ...wc.season, bracketDatesRange: undefined } };
+  it.each(vectors.scoreboard.shootoutPrecedence.cases)('applies the shared shootout precedence to the bracket: $name', async (c) => {
+    const { event, sideIds } = withShootoutCase(bracketRaw.events, c);
+    const events = bracketRaw.events.map(e => (e.id === event.id ? event : e));
+    for (const [rc, provider] of [[wc, windowOver(events)], [undated, () => ({ events })]] as const) {
+      const bracket = storeOver(provider).store.getBracket(rc);
+      if (c.expected === 'error') {
+        await expect(bracket).rejects.toThrow(/Malformed scoreboard score/);
+        continue;
+      }
+      const match = (await bracket).flatMap(r => r.matches).find(m => m.id === event.id)!;
+      expect(match.winnerId).toBe(c.winner ? sideIds[c.winner] : null);
+      expect([match.homeScore, match.awayScore]).toEqual([1, 1]);
+    }
   });
 
   it('maps the recorded scoreboard core fields identically to the Go mapper vector', async () => {
@@ -405,18 +558,34 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     expect(matches.map(m => ({ id: m.id, shootout: m.shootout }))).toEqual(vectors.scoreboard.shootouts);
   });
 
-  it('carries the own-goal flag the reader cannot express', async () => {
+  it('credits an own goal to the benefiting side with its flag in both stores', async () => {
     const o = vectors.ownGoal;
     const summary = await load(ownGoalRaw, o.eventId, o.sides.home.providerId, o.sides.away.providerId);
     expect(summary.scorers).toEqual(o.frontend.scorers);
     for (const side of [o.sides.home, o.sides.away]) expect(canonicalTeamId(side.providerId)).toBe(side.canonicalId);
     const own = o.frontend.scorers.filter(sc => sc.ownGoal);
     expect(own.map(sc => [sc.teamId, sc.player])).toEqual([[o.sides.away.providerId, 'Devin Padelford']]);
-    gap('T16.2-scorer-identity', () => {
-      expect(o.reader.scorers).toEqual(summary.scorers.map(({ teamId, player, minute, penalty, shootout }) =>
-        ({ teamId, player, minute, penalty, shootout })));
-      expect(summary.scorers.filter(sc => sc.ownGoal)).toHaveLength(1);
-    });
+    expect(translated(o.sides, summary.scorers)).toEqual(o.reader.scorers);
+    expect(o.reader.scorers.filter(sc => sc.ownGoal).map(sc => [sc.teamId, sc.athleteId]))
+      .toEqual([[o.sides.away.canonicalId, '337030']]);
+  });
+
+  it('links reader scorers to player pages through the same route-layer enrichment', async () => {
+    // The frontend's own index (playerIndex.ts), keyed by provider athlete id.
+    const real = await load(summaryRaw, s.eventId, s.sides.home.providerId, s.sides.away.providerId);
+    const side = (id: string, abbr: string) => ({ team: { id, name: abbr, abbr, crestUrl: null } });
+    const index = {
+      getStandings: async () => [{ id: 'g', name: 'g', standings: [side(s.sides.home.providerId, 'CIV'), side(s.sides.away.providerId, 'NOR')] }],
+      getSquad: async (_rc: unknown, teamId: string) => real.scorers.filter(sc => sc.teamId === teamId).map(sc => ({
+        id: sc.athleteId, name: sc.player, jersey: null, position: 'F', age: null, nationality: null, headshotUrl: null, stats: null,
+      })),
+    } as unknown as DataStore;
+    const legacy = { ...s.reader.scorers[0], ownGoal: null, athleteId: null }; // A row stored before T16.2.
+    const linked = async (scorers: CScorer[]) =>
+      (await withSummaryPlayerSlugs(wc, { ...real, scorers, lineups: null }, index)).scorers.map(sc => sc.playerSlug);
+    expect(await linked(s.reader.scorers)).toEqual(['antonio-nusa', 'amad-diallo', 'erling-haaland']);
+    expect(await linked(s.reader.scorers)).toEqual(await linked(real.scorers));
+    expect(await linked([legacy])).toEqual([null]); // No athlete id, no guessed link.
   });
 
   it('enriches getMatches with the same summary contract and nothing else', async () => {
@@ -434,7 +603,7 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     const [match] = await store.getMatches(wc, '20260629-20260629');
     expect(match.id).toBe(scoreboard.events[0].id);
     expect(match.scorers).toEqual(s.frontend.scorers);
-    expect(match.cards).toEqual(s.shared.cards);
+    expect(match.cards).toEqual(s.frontend.cards);
     expect(match.winProbability).toEqual(s.shared.winProbability);
     expect(match.stats).toEqual(s.frontend.stats);
     expect(match.shootoutDetail).toEqual(s.shared.shootoutDetail);
@@ -443,7 +612,7 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
 });
 
 describe('reader contract: standings, bracket, leaders, news', () => {
-  it('orders recorded standings by ESPN rank and characterizes the reader rank gap', async () => {
+  it('orders recorded standings by ESPN rank in both contracts', async () => {
     exercise('getStandings');
     const groups = await storeOver(() => standingsRaw).store.getStandings(wc);
     expect(groups.map(g => ({ id: g.id, name: g.name, teams: g.standings.length }))).toEqual(vectors.standings.groups);
@@ -454,19 +623,30 @@ describe('reader contract: standings, bracket, leaders, news', () => {
     const reader = vectors.standings.readerGroupA;
     expect(Object.keys(reader).sort()).toEqual(['id', 'name', 'standings']);
     const byTeam = new Map(reader.standings.map(row => [row.team.id, row]));
+    const teamBase = `/c/${wc.competition.id}/${wc.season.id}/team`;
     for (const row of vectors.standings.frontendGroupA.standings) {
       const other = byTeam.get(canonicalTeamId(row.team.id)!);
       expect(other, row.team.abbr).toBeDefined();
-      // Named normalizer: canonical team id back to the provider id; rank is the pinned gap below.
-      expect({ ...other!, rank: row.rank, team: { ...other!.team, id: row.team.id } }).toEqual(row);
-      gap('T16.2-team-id', () => expect(other!.team.id).not.toBe(row.team.id));
+      // Team identity is an intentional representation difference with a tested
+      // translation: the seed crosswalk maps each way, and every downstream
+      // helper treats the reader's canonical id exactly like the provider id.
+      expect(providerTeamId(other!.team.id)).toBe(row.team.id);
+      expect(canonicalTeamId(other!.team.id)).toBe(other!.team.id);
+      expect(teamHref(teamBase, other!.team)).toBe(teamHref(teamBase, row.team));
+      expect(teamHref(teamBase, other!.team)).toBe(`${teamBase}/${other!.team.id}`);
+      // Named normalizer: canonical team id back to the provider id; everything else is equal.
+      expect({ ...other!, team: { ...other!.team, id: row.team.id } }).toEqual(row);
     }
-    gap('T16.2-standings-rank', () => {
-      const order = (rows: { team: { abbr: string } }[]) => rows.map(r => r.team.abbr);
-      expect(order(reader.standings)).not.toEqual(order(groups[0].standings));
-      expect(reader.standings.map(r => r.rank)).toEqual([1, 2, 3, 4]);
-      expect(groups[0].standings.map(r => r.points)).toEqual([9, 4, 3, 1]);
-    });
+    // A provisional reader id (an uncurated club) stays unlinked, like an uncurated provider id.
+    expect(teamHref(teamBase, { id: 'prov-espn-131529' })).toBeUndefined();
+    // ESPN's array order is not table order for this group; both mappers use its
+    // complete rank stat, so order and rank agree (the Go suite maps the same bytes).
+    const arrayOrder = standingsRaw.children[0].standings.entries.map(e => e.team.abbreviation);
+    const order = (rows: { team: { abbr: string } }[]) => rows.map(r => r.team.abbr);
+    expect(order(groups[0].standings)).not.toEqual(arrayOrder);
+    expect(order(reader.standings)).toEqual(order(groups[0].standings));
+    expect(reader.standings.map(r => r.rank)).toEqual([1, 2, 3, 4]);
+    expect(groups[0].standings.map(r => r.points)).toEqual([9, 4, 3, 1]);
   });
 
   // Same arguments as the Go buildTable: picked recorded Group A entries with a
@@ -492,23 +672,33 @@ describe('reader contract: standings, bracket, leaders, news', () => {
     gap('T16.2-standings-dedup', () => expect(sh.expected.reader).not.toEqual(Object.fromEntries(groups.map(g => [g.id, rows(g)]))));
   });
 
-  it('zero-fills a missing stat and keeps an empty table, where the Go mapper rejects both', async () => {
+  it('rejects a missing stat, an empty table and an empty team id, as the Go mapper does', async () => {
+    // The ingester's acceptance rule is the contract: the payload is rejected
+    // (the reader keeps its previous standings) rather than zero-filled.
     const m = syn.missingStat;
-    const [missing] = await storeOver(() => ({ children: [table(m.name, m.entries, {}, m.dropStats)] })).store.getStandings(wc);
     const e = syn.emptyTable;
-    const [empty] = await storeOver(() => ({ children: [table(e.name, [])] })).store.getStandings(wc);
-    gap('T16.2-standings-malformed', () => {
-      expect(missing.standings.map(r => [r.team.abbr, r.rank, r.points])).toEqual(m.expected.frontend);
-      expect(empty).toEqual(e.expected.frontend);
-      expect([m.expected.reader, e.expected.reader]).toEqual(['error', 'error']);
-    });
+    const b = syn.emptyTeamId;
+    for (const c of [m, e, b]) expect(c.expected).toEqual({ frontend: 'error', reader: 'error' });
+    await expect(storeOver(() => ({ children: [table(m.name, m.entries, {}, m.dropStats)] })).store.getStandings(wc))
+      .rejects.toThrow(/invalid points/);
+    await expect(storeOver(() => ({ children: [table(e.name, [])] })).store.getStandings(wc)).rejects.toThrow(/no teams/);
+    const blank = table(b.name, b.entries);
+    blank.standings.entries[b.entries.indexOf(b.blankTeamId)].team.id = '';
+    await expect(storeOver(() => ({ children: [blank] })).store.getStandings(wc)).rejects.toThrow(/team identity/);
   });
 
-  it('keeps an unnamed provider table unlabeled, unlike the reader', async () => {
+  it.each(syn.envelopes.cases)('treats the standings envelope "$name" as the Go mapper does', async (c) => {
+    const standings = storeOver(() => c.payload).store.getStandings(wc);
+    if (c.expected === 'error') await expect(standings).rejects.toThrow(/children/);
+    else expect(await standings).toEqual(c.expected);
+  });
+
+  it('labels an unnamed provider table with the competition short name, as the reader does', async () => {
     const u = vectors.standings.unnamedTable;
-    const [group] = await storeOver(() => ({ children: [table('', [0, 1])] })).store.getStandings(resolveSeason(u.competition, u.season)!);
-    expect({ id: group.id, name: group.name }).toEqual(u.frontendGroup);
-    gap('T16.2-group-label', () => expect({ id: group.id, name: group.name }).not.toEqual(u.readerGroup));
+    const rc = resolveSeason(u.competition, u.season)!;
+    const [group] = await storeOver(() => ({ children: [table('', [0, 1])] })).store.getStandings(rc);
+    expect({ id: group.id, name: group.name }).toEqual(u.group);
+    expect(u.group.name).toBe(rc.competition.shortName); // The Go suite's default group name is the same field.
   });
 
   it('emits frontend-only derived tables the reader Group cannot represent', async () => {
@@ -520,6 +710,23 @@ describe('reader contract: standings, bracket, leaders, news', () => {
       expect(derived[0]).not.toHaveProperty('name');
       expect(resolveSeason('leagues-cup')!.season.computedTables).toBeDefined();
     });
+  });
+
+  it('names a bracket shootout winner only once the match is finished', async () => {
+    const ls = vectors.bracket.liveShootout;
+    const withStatus = (live: boolean) => bracketRaw.events.map((e) => {
+      if (e.id !== ls.eventId) return e;
+      const event = structuredClone(e);
+      for (const competitor of event.competitions[0].competitors) competitor.winner = false;
+      if (live) event.status.type = { ...event.status.type, ...ls.status };
+      return event;
+    });
+    for (const [live, expected] of [[false, ls.expected.finished], [true, ls.expected.live]] as const) {
+      const rounds = await storeOver(windowOver(withStatus(live))).store.getBracket(wc);
+      const match = rounds.flatMap(r => r.matches).find(m => m.id === ls.eventId)!;
+      expect(match.state).toBe(live ? 'live' : 'finished');
+      expect(match.winnerId).toBe(expected === null ? null : match[expected as 'home' | 'away'].id);
+    }
   });
 
   it('maps the recorded bracket through the real store window', async () => {
@@ -534,7 +741,8 @@ describe('reader contract: standings, bracket, leaders, news', () => {
       .toEqual(vectors.bracket.table);
     const placeholder = rounds.flatMap(r => r.matches).find(m => m.id === vectors.bracket.frontendPlaceholder.id);
     expect(placeholder).toEqual(vectors.bracket.frontendPlaceholder);
-    // A clockless live knockout or team-schedule match keeps minute null here.
+    // A clockless live knockout or team-schedule match has minute null in both
+    // contracts (the reader also serves a stored '' as null; go-db proves it).
     const lc = vectors.bracket.liveClockless;
     const liveEvents = bracketRaw.events.map(e => (e.id === lc.eventId ? setLive(e, null) : e));
     const liveRounds = await storeOver(windowOver(liveEvents)).store.getBracket(wc);
@@ -542,14 +750,24 @@ describe('reader contract: standings, bracket, leaders, news', () => {
     const scheduleEvent = structuredClone(teamScheduleRaw.events[0]);
     scheduleEvent.competitions[0] = setLive(scheduleEvent.competitions[0], null); // Team schedules nest status here.
     const [liveSchedule] = mapTeamSchedule({ ...teamScheduleRaw, events: [scheduleEvent] });
-    gap('T16.2-bracket-live-minute', () => {
-      expect([liveMatch.state, liveMatch.minute]).toEqual(['live', lc.expected.frontend]);
-      expect([liveSchedule.state, liveSchedule.minute]).toEqual(['live', lc.expected.frontend]);
-      expect(lc.expected.reader).toBe('');
-    });
-    gap('T16.2-placeholder-crest', () => {
-      expect(placeholder!.away).toMatchObject({ placeholder: true, crestUrl: '' });
-    });
+    expect(lc.expected).toEqual({ frontend: null, reader: null });
+    expect([liveMatch.state, liveMatch.minute]).toEqual(['live', null]);
+    expect([liveSchedule.state, liveSchedule.minute]).toEqual(['live', null]);
+    // A placeholder slot has no crest: null in both contracts, on the bracket
+    // and on the match list built from the same recorded scoreboard events.
+    expect(placeholder!.away).toMatchObject({ placeholder: true, crestUrl: null });
+    const listed = (await store.getFixtures(wc, '20260704-20260704')).find(m => m.id === placeholder!.id)!;
+    expect(listed.away).toEqual({ id: placeholder!.away.id, name: placeholder!.away.name, abbr: placeholder!.away.abbr, crestUrl: null });
+    // One knockout vocabulary: the reader's slugs (the Go mapper, reader order
+    // and OpenAPI enum agree in the Go suite) are exactly the frontend union,
+    // checked by tsc. The reader's additive BracketRound.name is the frontend's
+    // own English label for that slug; the frontend localizes from slug, so the
+    // label is presentation for other API consumers, not a second identity.
+    expectTypeOf<keyof typeof vectors.bracket.readerRoundNames>().toEqualTypeOf<KnockoutRoundSlug>();
+    expect(rounds.map(r => r.slug).every(slug => slug in vectors.bracket.readerRoundNames)).toBe(true);
+    for (const [slug, name] of Object.entries(vectors.bracket.readerRoundNames)) {
+      expect(name, slug).toBe(en[roundLabelKey(slug as KnockoutRoundSlug)]);
+    }
   });
 
   it('serves both leaderboards from one recorded payload', async () => {
@@ -674,7 +892,7 @@ describe('reader contract: match windows and query semantics', () => {
     if (c.method === 'getUpcoming') expect(matches.every(m => m.state === 'scheduled')).toBe(true);
   });
 
-  it('leaves a live minute undefined without ESPN\'s display clock', async () => {
+  it('emits a null live minute without ESPN\'s display clock', async () => {
     const live = q.liveMinute;
     const minuteOf = async (clock: string | null) => {
       const [match] = await storeOver(windowOver([setLive(scoreboard.events[0], clock)])).store.getFixtures(wc, '20260629-20260629');
@@ -682,12 +900,11 @@ describe('reader contract: match windows and query semantics', () => {
     };
     expect((await minuteOf(live.withClock.displayClock)).minute).toBe(live.withClock.expected.frontend);
     const clockless = await minuteOf(null);
-    gap('T16.2-live-minute', () => {
-      // A frontend mapper defect: Match.minute is declared string | null (pinned above).
-      expect(clockless.minute).toBeUndefined();
-      expect(JSON.parse(JSON.stringify(clockless))).not.toHaveProperty('minute');
-      expect(live.withoutClock.expected).toEqual({ frontend: 'absent', reader: '' });
-    });
+    // Match.minute is string | null (pinned above): unknown is an explicit null
+    // that survives JSON, exactly what the Go mapper and the reader emit.
+    expect(live.withoutClock.expected).toEqual({ frontend: null, reader: null });
+    expect(clockless.minute).toBeNull();
+    expect(JSON.parse(JSON.stringify(clockless))).toHaveProperty('minute', null);
   });
 
   it.each(q.outOfSeason)('clamps $competition/$season to its own season without a provider call', async (o) => {

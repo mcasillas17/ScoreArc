@@ -7,6 +7,7 @@ import {
   mapSummaryLineups,
   mapSummaryVideos,
   mapSummaryShootout,
+  mapSummaryShootoutTotals,
   mapSummaryInfo,
   mapSummaryForm,
   mapSummaryCommentary,
@@ -72,7 +73,7 @@ describe('mapSummaryScorers', () => {
   });
 
   it('all scorers have a non-empty teamId', () => {
-    expect(scorers.every((s) => s.teamId.length > 0)).toBe(true);
+    expect(scorers.every((s) => typeof s.teamId === 'string' && s.teamId.length > 0)).toBe(true);
   });
 
   it('penalty and shootout fields are booleans', () => {
@@ -529,5 +530,52 @@ describe('derived percentages', () => {
     ]), '1', '2')!.home;
     expect(stats.passesAccurate).toBe(339);
     expect(stats.passes).toBe(401);
+  });
+});
+
+// The summary header's per-competitor shootoutScore is the top tier of the
+// shootout precedence. Same totals rule as the Go mapper (and its source
+// tests): both supplied, non-negative integers, not both zero; null and ''
+// read as 0, as Go's parser reads them.
+describe('mapSummaryShootoutTotals', () => {
+  const withTotals = (home: unknown, away: unknown) => {
+    const header = structuredClone(raw.header);
+    header.competitions[0].competitors.forEach((c: Record<string, unknown>) => {
+      const value = c.homeAway === 'home' ? home : away;
+      if (value !== undefined) c.shootoutScore = value;
+    });
+    return { ...raw, header };
+  };
+  it.each([
+    ['numbers', 4, 3, { homeScore: 4, awayScore: 3 }],
+    ['strings', '4', '3', { homeScore: 4, awayScore: 3 }],
+    ['integral decimals', 4.0, '3.0', { homeScore: 4, awayScore: 3 }],
+    ['absent', undefined, undefined, null],
+    ['null both', null, null, null],
+    ['empty both', '', '', null],
+    ['mixed missing', undefined, 3, null],
+    ['null coerces zero', null, 3, { homeScore: 0, awayScore: 3 }],
+    ['empty coerces zero', '', 3, { homeScore: 0, awayScore: 3 }],
+    ['negative', -1, 3, null],
+    ['fractional', 1.5, 3, null],
+    ['not a number', 'x', 3, null],
+  ])('%s', (_name, home, away, expected) => {
+    expect(mapSummaryShootoutTotals(withTotals(home, away), '760490', '4789', '464')).toEqual(expected);
+  });
+
+  // Only a header identifying the requested event and its sides supplies the
+  // aggregate, as Go's ValidateSummary requires.
+  it.each([
+    ['another event', '760489', '4789', '464'],
+    ['reversed sides', '760490', '464', '4789'],
+    ['another team', '760490', '4789', '999'],
+  ])('ignores a header for %s', (_name, eventId, homeId, awayId) => {
+    expect(mapSummaryShootoutTotals(withTotals(4, 3), eventId, homeId, awayId)).toBeNull();
+  });
+
+  it('ignores a header whose competitor and team ids disagree', () => {
+    const summary = withTotals(4, 3);
+    summary.header.competitions[0].competitors[0].id = '1';
+    expect(mapSummaryShootoutTotals(summary, '760490', '4789', '464')).toBeNull();
   });
 });

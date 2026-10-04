@@ -24,38 +24,54 @@ func parseSuppliedShootoutScore(raw json.RawMessage) (int, bool, error) {
 	return int(score), true, nil
 }
 
-// shootoutFirstWinnerID gives decisive validated totals precedence over provider
-// flags. Without decisive totals, two asserted winners are explicitly ambiguous.
+// jsNumber reads a summary header's shootout total by its wider numeric rule
+// (parseSuppliedShootoutScore): a non-negative integral JSON number, or a
+// string holding one after trimming, with null and "" read as 0; absent and
+// anything else are not finite. Scoreboard and bracket totals pass the narrower
+// scoreboardTotal first: absent, null, "", a digit string or a non-negative
+// integer number.
+func jsNumber(raw json.RawMessage) (value float64, finite bool) {
+	if len(raw) == 0 {
+		return 0, false
+	}
+	var f float64
+	if err := json.Unmarshal(raw, &f); err == nil {
+		return f, f >= 0 && math.Trunc(f) == f
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return 0, true
+		}
+		if fv, err := strconv.ParseFloat(s, 64); err == nil {
+			return fv, fv >= 0 && math.Trunc(fv) == fv
+		}
+	}
+	return 0, false
+}
+
+// shootoutFirstWinnerID gives a finished match's decisive shootout aggregate
+// precedence over provider flags; a live shootout's totals are partial and name
+// no winner. The caller resolves the aggregate from its validated evidence.
+// Without a decisive aggregate, two asserted winners are explicitly ambiguous.
 // Callers validate the home/away identities before resolving the winner.
 func shootoutFirstWinnerID(
 	homeID, awayID string,
-	homeShootout, awayShootout json.RawMessage,
-	homeWinner, awayWinner bool,
+	shootout *Shootout,
+	homeWinner, awayWinner, finished bool,
 ) (*string, error) {
-	hs, homeSupplied, err := parseSuppliedShootoutScore(homeShootout)
-	if err != nil {
-		return nil, err
-	}
-	as, awaySupplied, err := parseSuppliedShootoutScore(awayShootout)
-	if err != nil {
-		return nil, err
-	}
-	if homeSupplied && awaySupplied && hs != as {
-		if hs > as {
-			return &homeID, nil
-		}
-		return &awayID, nil
+	decisive := ShootoutWinner(shootout, homeID, awayID) != nil
+	if decisive && finished {
+		return ShootoutWinner(shootout, homeID, awayID), nil
 	}
 	if homeWinner && awayWinner {
+		if decisive {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("ambiguous winner flags without decisive shootout totals")
 	}
-	if homeWinner {
-		return &homeID, nil
-	}
-	if awayWinner {
-		return &awayID, nil
-	}
-	return nil, nil
+	return flaggedWinnerID(homeID, awayID, homeWinner, awayWinner), nil
 }
 
 // rawObservationStatus distinguishes explicit incompletion from missing/null

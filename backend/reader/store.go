@@ -46,12 +46,14 @@ func jsonInto(raw []byte, destination any) error {
 	return json.Unmarshal(raw, destination)
 }
 
+// NULLIF: rows written before the T16.2 mapper fix hold an empty minute for a
+// live match without ESPN's display clock; the contract is null (unknown).
 const matchesSQL = `
-SELECT m.id, m.kickoff, m.state, m.minute, m.status_detail, m.status_name,
+SELECT m.id, m.kickoff, m.state, NULLIF(m.minute, ''), m.status_detail, m.status_name,
        m.home_score, m.away_score, m.winner_id, m.note,
        ht.id, ht.name, ht.abbr, ht.crest_url,
        at.id, at.name, at.abbr, at.crest_url,
-       d.scorers, d.cards, d.stats, d.win_probability, d.shootout, d.shootout_detail
+       d.scorers, d.cards, d.stats, d.win_probability, d.shootout, d.shootout_detail,` + sideRefsColumns + legacyGoalsColumn + `
 FROM match m
 JOIN team ht ON ht.id = m.home_team_id
 JOIN team at ON at.id = m.away_team_id
@@ -79,13 +81,15 @@ func scanMatches(rows pgx.Rows) ([]Match, error) {
 		var id uuid.UUID
 		var kickoff time.Time
 		var state string
-		var scorers, cards, stats, winProbability, shootout, shootoutDetail []byte
+		var scorers, cards, stats, winProbability, shootout, shootoutDetail, legacyGoals []byte
+		var homeRefs, awayRefs []string
 		if err := rows.Scan(
 			&id, &kickoff, &state, &match.Minute, &match.StatusDetail, &match.StatusName,
 			&match.HomeScore, &match.AwayScore, &match.WinnerID, &match.Note,
 			&match.Home.ID, &match.Home.Name, &match.Home.Abbr, &match.Home.CrestURL,
 			&match.Away.ID, &match.Away.Name, &match.Away.Abbr, &match.Away.CrestURL,
 			&scorers, &cards, &stats, &winProbability, &shootout, &shootoutDetail,
+			&homeRefs, &awayRefs, &legacyGoals,
 		); err != nil {
 			return nil, err
 		}
@@ -108,6 +112,12 @@ func scanMatches(rows pgx.Rows) ([]Match, error) {
 			}
 		}
 		normalizeMatch(&match)
+		attributeDetail(match.Scorers, match.Cards,
+			matchSide{id: match.Home.ID, refs: homeRefs}, matchSide{id: match.Away.ID, refs: awayRefs})
+		if err := recoverLegacyScorers(match.Scorers, legacyGoals); err != nil {
+			return nil, err
+		}
+		match.WinnerID = servedWinner(match.State, match.WinnerID)
 		matches = append(matches, match)
 	}
 	return matches, rows.Err()
@@ -163,9 +173,7 @@ func (s *Store) Standings(ctx context.Context, competition, season, defaultGroup
 	return groups, rows.Err()
 }
 
-var bracketRoundOrder = []string{
-	"round-of-32", "round-of-16", "quarterfinals", "semifinals", "final", "3rd-place-match",
-}
+var bracketRoundOrder = espn.KnockoutRounds()
 
 var bracketRoundNames = map[string]string{
 	"round-of-32":     "Round of 32",
@@ -177,7 +185,7 @@ var bracketRoundNames = map[string]string{
 }
 
 const bracketSQL = `
-SELECT m.id, m.round, m.kickoff, m.state, m.minute, m.status_detail, m.status_name,
+SELECT m.id, m.round, m.kickoff, m.state, NULLIF(m.minute, ''), m.status_detail, m.status_name,
        m.home_score, m.away_score, m.winner_id, m.note,
        m.home_placeholder, m.away_placeholder,
        ht.id, ht.name, ht.abbr, ht.crest_url,
@@ -220,6 +228,7 @@ func (s *Store) Bracket(ctx context.Context, competition, season string) ([]Brac
 		match.State = espn.MatchState(state)
 		match.Home = espn.BracketTeam{ID: homeID, Name: homeName, Abbr: homeAbbr, CrestURL: homeCrest, Placeholder: homePlaceholder}
 		match.Away = espn.BracketTeam{ID: awayID, Name: awayName, Abbr: awayAbbr, CrestURL: awayCrest, Placeholder: awayPlaceholder}
+		match.WinnerID = servedWinner(match.State, match.WinnerID)
 		bySlug[match.Round] = append(bySlug[match.Round], match)
 	}
 	if err := rows.Err(); err != nil {
@@ -238,10 +247,12 @@ func (s *Store) Bracket(ctx context.Context, competition, season string) ([]Brac
 }
 
 const summarySQL = `
-SELECT scorers, cards, stats, win_probability, shootout_detail,
-       lineups, videos, info, form, commentary, h2h
-FROM match_detail
-WHERE match_id = $1`
+SELECT d.scorers, d.cards, d.stats, d.win_probability, d.shootout_detail,
+       d.lineups, d.videos, d.info, d.form, d.commentary, d.h2h,
+       m.home_team_id, m.away_team_id,` + sideRefsColumns + legacyGoalsColumn + `
+FROM match_detail d
+JOIN match m ON m.id = d.match_id
+WHERE d.match_id = $1`
 
 // MatchSummary keeps a string parameter because the route parameter is one.
 // It is parsed rather than handed to Postgres: match_id is a uuid column, so an
@@ -253,10 +264,12 @@ func (s *Store) MatchSummary(ctx context.Context, id string) (*MatchSummary, err
 		return nil, ErrNotFound
 	}
 	var scorers, cards, stats, winProbability, shootoutDetail []byte
-	var lineups, videos, info, form, commentary, h2h []byte
+	var lineups, videos, info, form, commentary, h2h, legacyGoals []byte
+	var home, away matchSide
 	if err := s.db.QueryRow(ctx, summarySQL, matchID).Scan(
 		&scorers, &cards, &stats, &winProbability, &shootoutDetail,
 		&lineups, &videos, &info, &form, &commentary, &h2h,
+		&home.id, &away.id, &home.refs, &away.refs, &legacyGoals,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
@@ -293,6 +306,10 @@ func (s *Store) MatchSummary(ctx context.Context, id string) (*MatchSummary, err
 		}
 	}
 	normalizeMatchSummary(summary)
+	attributeDetail(summary.Scorers, summary.Cards, home, away)
+	if err := recoverLegacyScorers(summary.Scorers, legacyGoals); err != nil {
+		return nil, err
+	}
 	return summary, nil
 }
 
@@ -473,11 +490,11 @@ func (s *Store) teamSquad(
 // the matches this team plays in. No new ingest -- match already carries both
 // team ids.
 const teamScheduleSQL = `
-SELECT m.id, m.kickoff, m.state, m.minute, m.status_detail, m.status_name,
+SELECT m.id, m.kickoff, m.state, NULLIF(m.minute, ''), m.status_detail, m.status_name,
        m.home_score, m.away_score, m.winner_id, m.note,
        ht.id, ht.name, ht.abbr, ht.crest_url,
        at.id, at.name, at.abbr, at.crest_url,
-       d.scorers, d.cards, d.stats, d.win_probability, d.shootout, d.shootout_detail
+       d.scorers, d.cards, d.stats, d.win_probability, d.shootout, d.shootout_detail,` + sideRefsColumns + legacyGoalsColumn + `
 FROM match m
 JOIN team ht ON ht.id = m.home_team_id
 JOIN team at ON at.id = m.away_team_id

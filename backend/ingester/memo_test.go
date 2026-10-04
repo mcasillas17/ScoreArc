@@ -123,7 +123,7 @@ func TestLeadersFingerprintMovesWithEveryWrittenColumn(t *testing.T) {
 	t.Parallel()
 	base := leadersFingerprint(sourceESPN, "goals", []model.StatLeader{leaderFixture()})
 
-	mirrored := "https://cdn.scorearc.futbol/teams/scorer-abc.png"
+	mirrored := "https://cdn.scorearc.futbol/teams/nat-fra"
 	otherMatches := 4
 	mutations := map[string]func(*model.StatLeader){
 		"rank":      func(row *model.StatLeader) { row.Rank = 2 },

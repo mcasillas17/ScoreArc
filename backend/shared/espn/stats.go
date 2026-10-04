@@ -47,10 +47,11 @@ type rawLeaderAthlete struct {
 }
 
 type rawScorerTeam struct {
-	Abbreviation string    `json:"abbreviation"`
-	DisplayName  string    `json:"displayName"`
-	Logo         *string   `json:"logo"`
-	Logos        []rawLogo `json:"logos"`
+	ID           flexibleString `json:"id"`
+	Abbreviation string         `json:"abbreviation"`
+	DisplayName  string         `json:"displayName"`
+	Logo         *string        `json:"logo"`
+	Logos        []rawLogo      `json:"logos"`
 }
 
 // MapLeaders maps one board out of ESPN's /statistics response.
@@ -114,6 +115,7 @@ func MapLeaders(raw []byte, category string, limit int) ([]StatLeader, error) {
 		board = append(board, StatLeader{
 			Rank:         i + 1,
 			Player:       l.Athlete.DisplayName,
+			TeamSourceID: string(team.ID),
 			TeamAbbr:     team.Abbreviation,
 			TeamName:     team.DisplayName,
 			TeamCrestURL: crest,

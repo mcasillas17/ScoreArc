@@ -83,13 +83,20 @@ func MapSummaryObservation(raw []byte, expected Match, league string, seasonYear
 			away = competitor
 		}
 	}
+	// The summary header keeps its own, wider numeric rule for totals.
+	for _, competitor := range []rawHeaderCompetitor{home, away} {
+		if _, _, err := parseSuppliedShootoutScore(competitor.ShootoutScore); err != nil {
+			return Match{}, fmt.Errorf("summary event %q winner: %w", expected.ID, err)
+		}
+	}
 	match.WinnerID, err = shootoutFirstWinnerID(
 		expected.Home.ID, expected.Away.ID,
-		home.ShootoutScore, away.ShootoutScore, home.Winner, away.Winner,
+		shootoutTotals(home.ShootoutScore, away.ShootoutScore), home.Winner, away.Winner, state == MatchStateFinished,
 	)
 	if err != nil {
 		return Match{}, fmt.Errorf("summary event %q winner: %w", expected.ID, err)
 	}
+	match.WinnerFlagID = flaggedWinnerID(expected.Home.ID, expected.Away.ID, home.Winner, away.Winner)
 	if (state == MatchStateLive || (state == MatchStateFinished && !terminalMatchStatus(match.StatusName))) &&
 		(match.HomeScore == nil || match.AwayScore == nil) {
 		return Match{}, fmt.Errorf("summary event %q lacks scores", expected.ID)

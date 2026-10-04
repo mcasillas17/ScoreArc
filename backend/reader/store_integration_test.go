@@ -114,8 +114,9 @@ func newIntegrationStoreThrough(t *testing.T, lastMigration string) (*Store, *pg
 
 // Canonical ids throughout: slug-keyed teams with a kind, uuid-keyed matches
 // carrying provenance, and competition/season rows the match foreign keys need.
-// The reader is crosswalk-blind by design — it never joins *_external_ref — so
-// this fixture deliberately has none.
+// The reader reads team_external_ref only to translate stored nested scorer and
+// card team references (attribution.go); this fixture has no crosswalk rows, so
+// its stored references are already canonical.
 const (
 	finalMatchID   = "018f0000-0000-7000-8000-000000000001"
 	semiMatchID    = "018f0000-0000-7000-8000-000000000002"
