@@ -408,6 +408,29 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     expect([match.homeScore, match.awayScore]).toEqual([1, 1]); // Regulation scores stay.
   });
 
+  it.each(s0.syntheticOverlay.levelHeader.cases)('a level held summary header falls back to the winner flags, not the scoreboard aggregate it supersedes: $name', async (c) => {
+    const l = s0.syntheticOverlay.levelHeader;
+    const summary = overlaidSummary();
+    const event = structuredClone(scoreboard.events.find(e => e.id === l.scoreboardEventId)!);
+    const sides: Record<string, string> = {};
+    for (const competitor of event.competitions[0].competitors) {
+      const side = competitor.homeAway as 'home' | 'away';
+      sides[side] = String(competitor.team.id);
+      competitor.winner = c.winnerFlags[side];
+    }
+    summary.header.id = summary.header.competitions[0].id = l.scoreboardEventId;
+    for (const side of summary.header.competitions[0].competitors as { homeAway: string; id: string; team: { id: string }; shootoutScore?: unknown }[]) {
+      const homeAway = side.homeAway as 'home' | 'away';
+      side.id = side.team.id = sides[homeAway];
+      side.shootoutScore = l.shootoutScores[homeAway];
+    }
+    const { store } = storeOver(url => url.includes('/summary') ? summary
+      : { leagues: [{ slug: vectors.queries.leagueSlug }], events: url.includes('dates=202606') ? [event] : [] });
+    const [match] = await store.getMatches(wc, '20260629-20260629');
+    expect(match.shootout).toEqual(c.expected.shootout);
+    expect(match.winnerId).toBe(c.expected.winner === null ? null : sides[c.expected.winner]);
+  });
+
   it('keeps the header aggregate for the match list after the summary route was read with other sides', async () => {
     const h = s0.syntheticOverlay.headerIdentity;
     const [own] = h.cases;

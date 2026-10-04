@@ -556,7 +556,7 @@ func mergeBracketCandidate(scoreboard, bracket model.Match) model.Match {
 		merged.Round = bracket.Round
 	}
 	if merged.BracketConfirmed {
-		merged.WinnerID = bracket.WinnerID
+		merged.WinnerID, merged.WinnerFlagID = bracket.WinnerID, bracket.WinnerFlagID
 		// The aggregate that decided that winner, unless it has none.
 		if bracket.Shootout != nil {
 			merged.Shootout = bracket.Shootout

@@ -495,7 +495,8 @@ func TestReaderContract(t *testing.T) {
 			}
 			// The ingester's gate (shared/source mapSummary): a summary for any
 			// other event or side order is rejected, so the scoreboard's evidence
-			// stands; an accepted header outranks it.
+			// stands; an accepted header outranks it, and its finalization
+			// resolves the winner from the aggregate it serves.
 			shootout, winner := scoreboardMatch.Shootout, scoreboardMatch.WinnerID
 			if espn.ValidateSummary(data, eventID, scoreboardMatch.Home.ID, scoreboardMatch.Away.ID, true) == nil {
 				detail, err := espn.MapSummary(data)
@@ -503,9 +504,7 @@ func TestReaderContract(t *testing.T) {
 					t.Fatal(err)
 				}
 				shootout = detail.Shootout
-				if decided := espn.ShootoutWinner(shootout, scoreboardMatch.Home.ID, scoreboardMatch.Away.ID); decided != nil {
-					winner = decided
-				}
+				winner = espn.ResolveWinner(shootout, scoreboardMatch.Home.ID, scoreboardMatch.Away.ID, scoreboardMatch.WinnerFlagID)
 			}
 			expected := c["expected"].(map[string]any)
 			assertWire(t, c["name"].(string), wire(t, shootout), expected["shootout"])
@@ -513,6 +512,75 @@ func TestReaderContract(t *testing.T) {
 			if winner == nil || *winner != sides[expected["winner"].(string)] {
 				t.Fatalf("%s: winner %v", c["name"], winner)
 			}
+		}
+	})
+
+	t.Run("a level summary header falls back to the winner flags, not a superseded aggregate", func(t *testing.T) {
+		level := vector(t, raw, "summary", "syntheticOverlay", "levelHeader").(map[string]any)
+		eventID := level["scoreboardEventId"].(string)
+		totals := level["shootoutScores"].(map[string]any)
+		for _, entry := range level["cases"].([]any) {
+			c := entry.(map[string]any)
+			var recorded map[string]any
+			if err := json.Unmarshal(contractFixture(t, fixtureName(t, raw, "scoreboard")), &recorded); err != nil {
+				t.Fatal(err)
+			}
+			var event map[string]any
+			for _, candidate := range recorded["events"].([]any) {
+				if candidate.(map[string]any)["id"] == eventID {
+					event = candidate.(map[string]any)
+				}
+			}
+			sides := map[string]string{}
+			for _, competitor := range event["competitions"].([]any)[0].(map[string]any)["competitors"].([]any) {
+				side := competitor.(map[string]any)
+				homeAway := side["homeAway"].(string)
+				sides[homeAway] = side["team"].(map[string]any)["id"].(string)
+				side["winner"] = c["winnerFlags"].(map[string]any)[homeAway]
+			}
+			board, err := json.Marshal(map[string]any{"leagues": recorded["leagues"], "events": []any{event}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			mapped, err := espn.MapScoreboard(board)
+			if err != nil || len(mapped) != 1 {
+				t.Fatalf("%s: %v", c["name"], err)
+			}
+			match := mapped[0]
+			var summary map[string]any
+			if err := json.Unmarshal(withSummaryOverlay(t, raw, vectors.Summary.Fixture), &summary); err != nil {
+				t.Fatal(err)
+			}
+			header := summary["header"].(map[string]any)
+			header["id"] = eventID
+			competition := header["competitions"].([]any)[0].(map[string]any)
+			competition["id"] = eventID
+			for _, competitor := range competition["competitors"].([]any) {
+				side := competitor.(map[string]any)
+				homeAway := side["homeAway"].(string)
+				side["id"] = sides[homeAway]
+				side["team"].(map[string]any)["id"] = sides[homeAway]
+				side["shootoutScore"] = totals[homeAway]
+			}
+			data, err := json.Marshal(summary)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := espn.ValidateSummary(data, eventID, match.Home.ID, match.Away.ID, true); err != nil {
+				t.Fatal(err)
+			}
+			detail, err := espn.MapSummary(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected := c["expected"].(map[string]any)
+			assertWire(t, c["name"].(string), wire(t, detail.Shootout), expected["shootout"])
+			var want any
+			if side, ok := expected["winner"].(string); ok {
+				want = sides[side]
+			}
+			winner := espn.ResolveWinner(detail.Shootout, match.Home.ID, match.Away.ID, match.WinnerFlagID)
+			assertWire(t, c["name"].(string)+" winner", wire(t, winner), want)
 		}
 	})
 
@@ -890,6 +958,13 @@ func TestReaderContract(t *testing.T) {
 		}
 		// A shootout names a bracket winner only once the match is finished.
 		liveShootout := vector(t, raw, "bracket", "liveShootout").(map[string]any)
+		// ESPN's own flag rides with the aggregate-derived winner (recorded:
+		// Paraguay, flagged and the higher structured total).
+		for _, match := range matches {
+			if match.ID == liveShootout["eventId"] && (match.WinnerFlagID == nil || match.WinnerID == nil || *match.WinnerFlagID != *match.WinnerID) {
+				t.Fatalf("recorded bracket winner flag %v, winner %v", match.WinnerFlagID, match.WinnerID)
+			}
+		}
 		for _, live := range []bool{false, true} {
 			var shootoutRaw map[string]any
 			if err := json.Unmarshal(contractFixture(t, fixtureName(t, raw, "bracket")), &shootoutRaw); err != nil {
@@ -933,6 +1008,9 @@ func TestReaderContract(t *testing.T) {
 					// The structured aggregate rides off the wire to the ingester's
 					// candidate, where the summary precedence ranks it above the note.
 					assertWire(t, "bracket shootout aggregate", wire(t, match.Shootout), liveShootout["aggregate"])
+					if match.WinnerFlagID != nil {
+						t.Fatalf("cleared winner flags carried as %s", *match.WinnerFlagID)
+					}
 					if _, onWire := wire(t, match).(map[string]any)["shootout"]; onWire {
 						t.Fatal("the bracket aggregate reached the wire")
 					}

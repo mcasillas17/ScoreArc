@@ -490,6 +490,29 @@ func shootoutTotals(homeRaw, awayRaw json.RawMessage) *Shootout {
 	return &Shootout{HomeScore: home, AwayScore: away}
 }
 
+// ResolveWinner is a finished match's winner: the side its served shootout
+// aggregate names when decisive, else ESPN's own winner flag. The flag, not a
+// winner derived from a lower tier's aggregate, so a level aggregate that
+// supersedes a decisive one cannot leave the superseded winner in place.
+func ResolveWinner(shootout *Shootout, homeID, awayID string, flagged *string) *string {
+	if winner := ShootoutWinner(shootout, homeID, awayID); winner != nil {
+		return winner
+	}
+	return flagged
+}
+
+// flaggedWinnerID is the side ESPN flags as the winner, home first.
+func flaggedWinnerID(homeID, awayID string, homeWinner, awayWinner bool) *string {
+	switch {
+	case homeWinner:
+		return &homeID
+	case awayWinner:
+		return &awayID
+	default:
+		return nil
+	}
+}
+
 // ShootoutWinner is the side a decisive shootout aggregate names -- homeID or
 // awayID -- or nil when there is no aggregate or it is level. For a finished
 // match it outranks the provider's winner flags, which ESPN sets

@@ -59,6 +59,10 @@ type Match struct {
 	// competitor totals, else the note). It is carried to the summary mapper,
 	// where the summary header outranks it; MatchDetail stores the result.
 	Shootout *Shootout `json:"-"`
+	// WinnerFlagID is ESPN's own winner flag, kept apart from a WinnerID a
+	// decisive aggregate derived: when a higher tier's aggregate supersedes
+	// that one and is level, the winner falls back to the flag.
+	WinnerFlagID *string `json:"-"`
 }
 
 // BracketTeam is shaped after types.ts's BracketTeam. It is distinct from Team
@@ -102,6 +106,8 @@ type BracketMatch struct {
 	// ingester's candidate so the summary precedence ranks them above the note.
 	// Not part of the served bracket.
 	Shootout *Shootout `json:"-"`
+	// WinnerFlagID is ESPN's own winner flag (see Match.WinnerFlagID).
+	WinnerFlagID *string `json:"-"`
 }
 
 // Standing mirrors types.ts's Standing, plus GroupID/GroupName: the ESPN

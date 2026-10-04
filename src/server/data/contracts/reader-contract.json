@@ -1523,6 +1523,44 @@
       }
      }
     ]
+   },
+   "levelHeader": {
+    "note": "Synthetic: the overlay summary's header, rewritten to recorded scoreboard event 760489 and its sides with level totals 3-3, held over the scoreboard's decisive structured 3/4 (which names Paraguay). The served aggregate is the header's; being level it names no winner, so the winner is ESPN's own flag, never the winner of the superseded scoreboard aggregate. winnerFlags replaces both scoreboard flags.",
+    "scoreboardEventId": "760489",
+    "shootoutScores": {
+     "home": 3,
+     "away": 3
+    },
+    "cases": [
+     {
+      "name": "the flag names the other side",
+      "winnerFlags": {
+       "home": true,
+       "away": false
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 3
+       },
+       "winner": "home"
+      }
+     },
+     {
+      "name": "no flag",
+      "winnerFlags": {
+       "home": false,
+       "away": false
+      },
+      "expected": {
+       "shootout": {
+        "homeScore": 3,
+        "awayScore": 3
+       },
+       "winner": null
+      }
+     }
+    ]
    }
   },
   "readerKeys": ["cards", "commentary", "form", "h2h", "info", "lineups", "scorers", "shootoutDetail", "stats", "videos", "winProbability"],

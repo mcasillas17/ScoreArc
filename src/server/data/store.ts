@@ -23,7 +23,7 @@ import {
   teamScheduleUrl,
   athleteUrl, athleteOverviewUrl, athleteBioUrl,
 } from './endpoints';
-import { mapScoreboard, shootoutWinnerId } from './providers/espn-matches';
+import { mapScoreboard, scoreboardWinnerFlags, shootoutWinnerId } from './providers/espn-matches';
 import { mapTeamProfile, mapTeamRoster, mapScopedTeamSchedule, splitLeagueTeamIds } from './providers/espn-team';
 import { uniqueTeamMatches } from './teamPerformance';
 import { mapAthleteProfile, mapAthleteOverview, mapAthleteBio } from './providers/espn-athlete';
@@ -197,6 +197,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       const readSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
       const raw = await fetchScoreboardWindow(rc, window, deps.fetchJson, readSignal);
       const matches = mapScoreboard(raw);
+      const flags = scoreboardWinnerFlags(raw);
       const summaries: LoadedSummary[] = [];
       // Only retained matches are enriched, four at a time under the same
       // read deadline. Individual provider summary failures remain best effort.
@@ -215,9 +216,13 @@ export function createDataStore(deps: DataDeps): DataStore {
         m.stats = data.stats;
         m.winProbability = data.winProbability;
         m.shootoutDetail = data.shootoutDetail;
-        m.shootout = shootout ?? m.shootout;
-        // The header outranks the scoreboard, so its decisive aggregate names the winner.
-        if (m.state === 'finished') m.winnerId = shootoutWinnerId(m.shootout, m.home.id, m.away.id) ?? m.winnerId;
+        if (shootout) {
+          // The header outranks the scoreboard: a finished match's winner is the
+          // side it names, or ESPN's flag when it is level -- not the winner of
+          // the scoreboard aggregate it supersedes.
+          m.shootout = shootout;
+          if (m.state === 'finished') m.winnerId = shootoutWinnerId(shootout, m.home.id, m.away.id) ?? flags.get(m.id) ?? null;
+        }
       });
       deps.cache.set(k, matches, 10_000);
       return matches;

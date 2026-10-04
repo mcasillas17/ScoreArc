@@ -84,13 +84,18 @@ func (r *runner) resolveMatch(
 // against the two teams the match actually has. A winner that is neither is not
 // a winner: it would fail the foreign key, or worse, point at some other club.
 func canonicalWinner(match model.Match, homeID, awayID string) *string {
-	if match.WinnerID == nil {
+	return canonicalSide(match.WinnerID, match.Home.ID, match.Away.ID, homeID, awayID)
+}
+
+// canonicalSide translates a provider team id naming one of the match's sides.
+func canonicalSide(provider *string, homeSourceID, awaySourceID, homeID, awayID string) *string {
+	if provider == nil {
 		return nil
 	}
-	switch *match.WinnerID {
-	case match.Home.ID:
+	switch *provider {
+	case homeSourceID:
 		return &homeID
-	case match.Away.ID:
+	case awaySourceID:
 		return &awayID
 	default:
 		return nil
@@ -131,6 +136,7 @@ func (r *runner) processMatches(
 		// stored row is in — so the two can be compared and merged. The summary
 		// fetch below is the one thing that still needs provider ids, which is
 		// what providerHome/providerAway are held back for.
+		match.WinnerFlagID = canonicalSide(match.WinnerFlagID, providerHome.ID, providerAway.ID, identity.HomeTeamID, identity.AwayTeamID)
 		match.Home.ID = identity.HomeTeamID
 		match.Away.ID = identity.AwayTeamID
 		match.WinnerID = identity.WinnerTeamID
@@ -291,8 +297,10 @@ func (r *runner) processMatches(
 			detail := summary.Detail
 			if match.State == model.MatchStateFinished {
 				// The summary's aggregate outranks the scoreboard's evidence
-				// (T16.2), so a decisive one names the winner that finalizes.
-				if winner := espn.ShootoutWinner(detail.Shootout, match.Home.ID, match.Away.ID); winner != nil {
+				// (T16.2): the winner that finalizes is the side it names, or
+				// ESPN's flag when it is level.
+				if detail.Shootout != nil {
+					winner := espn.ResolveWinner(detail.Shootout, match.Home.ID, match.Away.ID, match.WinnerFlagID)
 					match.WinnerID, identity.WinnerTeamID = winner, winner
 				}
 				match.HomeScore = summary.HomeScore
@@ -567,7 +575,7 @@ func bracketMatch(match model.BracketMatch) model.Match {
 			Abbr: match.Away.Abbr, CrestURL: match.Away.CrestURL,
 		},
 		HomeScore: match.HomeScore, AwayScore: match.AwayScore,
-		WinnerID: match.WinnerID, Note: match.Note, Shootout: match.Shootout,
+		WinnerID: match.WinnerID, WinnerFlagID: match.WinnerFlagID, Note: match.Note, Shootout: match.Shootout,
 		HomePlaceholder:  match.Home.Placeholder,
 		AwayPlaceholder:  match.Away.Placeholder,
 		BracketRequired:  &bracketRequired,

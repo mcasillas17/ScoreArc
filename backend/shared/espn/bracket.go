@@ -279,6 +279,7 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, error) {
 		WinnerID:     winnerID,
 		Note:         note,
 		Shootout:     shootoutTotals(home.ShootoutScore, away.ShootoutScore),
+		WinnerFlagID: flaggedWinnerID(string(home.Team.ID), string(away.Team.ID), home.Winner, away.Winner),
 	}, nil
 }
 

@@ -1748,7 +1748,7 @@ func TestBracketCandidateCarriesItsShootoutAggregate(t *testing.T) {
 			ID: match.ID, Round: "final", Kickoff: match.Kickoff, State: match.State,
 			Home:     model.BracketTeam{ID: match.Home.ID, Name: match.Home.Name, Abbr: match.Home.Abbr},
 			Away:     model.BracketTeam{ID: match.Away.ID, Name: match.Away.Name, Abbr: match.Away.Abbr},
-			WinnerID: &winner, Note: &note, Shootout: aggregate,
+			WinnerID: &winner, WinnerFlagID: &winner, Note: &note, Shootout: aggregate,
 		}},
 	}
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
@@ -1772,6 +1772,9 @@ func TestBracketCandidateCarriesItsShootoutAggregate(t *testing.T) {
 	merged := mergeBracketCandidate(scoreboard, bracketMatch(src.bracket[0]))
 	if merged.Shootout == nil || *merged.Shootout != *aggregate {
 		t.Fatalf("merged shootout %+v, want %+v", merged.Shootout, aggregate)
+	}
+	if merged.WinnerFlagID == nil || *merged.WinnerFlagID != winner {
+		t.Fatalf("merged winner flag %v, want %s", merged.WinnerFlagID, winner)
 	}
 }
 
@@ -2950,35 +2953,46 @@ func TestNonBracketSeasonIgnoresProviderKnockoutClassification(t *testing.T) {
 	}
 }
 
-// The summary's aggregate outranks the scoreboard's evidence, so a decisive
-// one names the winner the match finalizes with; a level one leaves the flags.
+// The summary's aggregate outranks the scoreboard's evidence, so the winner
+// the match finalizes with is the side it names. A level one names none, and
+// falls back to ESPN's own winner flag -- never to a winner the scoreboard
+// derived from the aggregate the header superseded.
 func TestFinalizedWinnerFollowsTheSummaryShootoutAggregate(t *testing.T) {
+	home := func(m model.Match) *string { return &m.Home.ID }
+	away := func(m model.Match) *string { return &m.Away.ID }
+	none := func(model.Match) *string { return nil }
 	for _, c := range []struct {
-		name     string
-		shootout *model.Shootout
-		winner   func(model.Match) string
+		name          string
+		shootout      *model.Shootout
+		derived, flag func(model.Match) *string
+		winner        func(model.Match) *string
 	}{
-		{"decisive header", &model.Shootout{HomeScore: 4, AwayScore: 3}, func(m model.Match) string { return m.Home.ID }},
-		{"level header", &model.Shootout{HomeScore: 3, AwayScore: 3}, func(m model.Match) string { return m.Away.ID }},
-		{"no aggregate", nil, func(m model.Match) string { return m.Away.ID }},
+		{"decisive header", &model.Shootout{HomeScore: 4, AwayScore: 3}, away, away, home},
+		{"level header over a superseded aggregate, flag on the other side", &model.Shootout{HomeScore: 3, AwayScore: 3}, away, home, home},
+		{"level header over a superseded aggregate, no flag", &model.Shootout{HomeScore: 3, AwayScore: 3}, away, none, none},
+		{"no aggregate", nil, away, home, away},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			match := finishedMatch()
 			required := false
 			match.BracketRequired = &required
 			match.BracketConfirmed = true
-			flagged := match.Away.ID
-			match.WinnerID = &flagged
+			match.WinnerID, match.WinnerFlagID = c.derived(match), c.flag(match)
 			src := &fakeSource{matches: []model.Match{match}, summaryShootout: c.shootout}
 			repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 			comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {ID: "2026"}}}
 
 			testRunner(src, repo, comp).runCycle(context.Background(), false)
 
-			want := fakeTeamID(c.winner(match))
-			if repo.finalizeCalls != 1 || repo.lastFinalized.WinnerID == nil || *repo.lastFinalized.WinnerID != want ||
-				repo.lastIdentity.WinnerTeamID == nil || *repo.lastIdentity.WinnerTeamID != want {
-				t.Fatalf("finalized winner %v / %v, want %s", repo.lastFinalized.WinnerID, repo.lastIdentity.WinnerTeamID, want)
+			var want *string
+			if provider := c.winner(match); provider != nil {
+				id := fakeTeamID(*provider)
+				want = &id
+			}
+			got := repo.lastFinalized.WinnerID
+			if repo.finalizeCalls != 1 || (got == nil) != (want == nil) || (got != nil && *got != *want) ||
+				(repo.lastIdentity.WinnerTeamID == nil) != (want == nil) {
+				t.Fatalf("finalized winner %v / %v, want %v", got, repo.lastIdentity.WinnerTeamID, want)
 			}
 		})
 	}

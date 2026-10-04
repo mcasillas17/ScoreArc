@@ -218,9 +218,7 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 		// A finished match's decisive aggregate names its winner ahead of the
 		// flags, as the bracket mapper's shootout-first rule does.
 		if state == MatchStateFinished {
-			if winner := ShootoutWinner(shootout, homeTeam.ID, awayTeam.ID); winner != nil {
-				winnerID = winner
-			}
+			winnerID = ResolveWinner(shootout, homeTeam.ID, awayTeam.ID, winnerID)
 		}
 
 		homeScore, awayScore := scoreOf(home.Score), scoreOf(away.Score)
@@ -240,6 +238,7 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 			HomeScore:       homeScore,
 			AwayScore:       awayScore,
 			WinnerID:        winnerID,
+			WinnerFlagID:    flaggedWinnerID(string(home.Team.ID), string(away.Team.ID), home.Winner, away.Winner),
 			Note:            note,
 			Shootout:        shootout,
 			BracketRequired: bracketRequired,

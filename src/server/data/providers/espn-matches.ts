@@ -72,6 +72,26 @@ function mapTeam(t: any): Team {
   };
 }
 
+/** The side ESPN flags as the winner, home first (Go flaggedWinnerID). */
+export function flaggedWinnerId(home: any, away: any): string | null {
+  return home?.winner ? String(home.team?.id) : away?.winner ? String(away.team?.id) : null;
+}
+
+/**
+ * ESPN's own winner flag per scoreboard event. A finished match whose served
+ * aggregate is level falls back to it -- never to a winner a superseded
+ * aggregate derived (Go ResolveWinner).
+ */
+export function scoreboardWinnerFlags(raw: unknown): Map<string, string | null> {
+  const flags = new Map<string, string | null>();
+  for (const ev of (raw as any)?.events ?? []) {
+    const competitors: any[] = ev?.competitions?.[0]?.competitors ?? [];
+    flags.set(String(ev?.id), flaggedWinnerId(
+      competitors.find((c) => c?.homeAway === 'home'), competitors.find((c) => c?.homeAway === 'away')));
+  }
+  return flags;
+}
+
 export function mapScoreboard(raw: unknown): Match[] {
   const events: any[] = (raw as any)?.events ?? [];
   return events.flatMap((ev) => {
@@ -88,7 +108,7 @@ export function mapScoreboard(raw: unknown): Match[] {
     // Structured totals outrank the note; a held summary header outranks both
     // (store.getMatches). Regulation scores below stay separate.
     const shootout = shootoutTotals(home.shootoutScore, away.shootoutScore) ?? parseShootout(note, homeTeam.name, awayTeam.name);
-    const flagged = home.winner ? String(home.team.id) : away.winner ? String(away.team.id) : null;
+    const flagged = flaggedWinnerId(home, away);
     const winnerId = (state === 'finished' ? shootoutWinnerId(shootout, homeTeam.id, awayTeam.id) : null) ?? flagged;
     return {
       id: String(ev.id),

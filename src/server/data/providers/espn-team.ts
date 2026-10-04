@@ -2,7 +2,7 @@ import type { Match, PlayerSeasonStats, SquadPlayer, Team, TeamProfile, TeamReco
 import { mapState } from '../state';
 import type { CompetitionSeason } from '../competitions';
 import { isMatchKickoff } from '../matchKickoff';
-import { isScoreboardCount, parseShootout, shootoutTotals, shootoutWinnerId } from './espn-matches';
+import { flaggedWinnerId, isScoreboardCount, parseShootout, shootoutTotals, shootoutWinnerId } from './espn-matches';
 
 /** The profile without the two blocks that come from other endpoints. */
 type TeamIdentity = Omit<TeamProfile, 'squad' | 'schedule' | 'scheduleAvailability'>;
@@ -218,7 +218,7 @@ export function mapTeamSchedule(raw: unknown): Match[] {
       const structured = isScoreboardCount(home.shootoutScore) && isScoreboardCount(away.shootoutScore)
         ? shootoutTotals(home.shootoutScore, away.shootoutScore) : null;
       const shootout = structured ?? parseShootout(note, homeTeam.name, awayTeam.name);
-      const flagged = home.winner ? String(home.team?.id) : away.winner ? String(away.team?.id) : null;
+      const flagged = flaggedWinnerId(home, away);
 
       return [{
         id: String(ev.id),
