@@ -182,14 +182,8 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 			note = &text
 		}
 
-		var winnerID *string
-		if home.Winner {
-			id := string(home.Team.ID)
-			winnerID = &id
-		} else if away.Winner {
-			id := string(away.Team.ID)
-			winnerID = &id
-		}
+		flag := flaggedWinnerID(string(home.Team.ID), string(away.Team.ID), home.Winner, away.Winner)
+		winnerID := flag
 
 		// A live minute is ESPN's display clock; without one it is unknown (nil),
 		// never "" (T16.2 live-minute contract).
@@ -238,7 +232,7 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 			HomeScore:       homeScore,
 			AwayScore:       awayScore,
 			WinnerID:        winnerID,
-			WinnerFlagID:    flaggedWinnerID(string(home.Team.ID), string(away.Team.ID), home.Winner, away.Winner),
+			WinnerFlagID:    flag,
 			Note:            note,
 			Shootout:        shootout,
 			BracketRequired: bracketRequired,
