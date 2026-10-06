@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -30,7 +31,8 @@ func mustParticipationMatch(t *testing.T, store *Store, pool *pgxpool.Pool) uuid
 
 func sampleParticipation() *model.MatchParticipation {
 	nine := 9
-	return &model.MatchParticipation{
+	part := &model.MatchParticipation{
+		EventsPresent:    true,
 		HomeTeamSourceID: "359",
 		AwayTeamSourceID: "363",
 		Home: []model.SquadPlayer{
@@ -47,6 +49,12 @@ func sampleParticipation() *model.MatchParticipation {
 				Type: model.PlayerEventYellow, Minute: "55'", Detail: "Yellow Card"},
 		},
 	}
+	for i := 0; i < 10; i++ {
+		part.Home = append(part.Home, model.SquadPlayer{SourceID: fmt.Sprintf("home-starter-%d", i), Name: fmt.Sprintf("Home Starter %d", i), Starter: true})
+		part.Away = append(part.Away, model.SquadPlayer{SourceID: fmt.Sprintf("away-starter-%d", i), Name: fmt.Sprintf("Away Starter %d", i), Starter: true})
+	}
+	return part
+
 }
 
 func countRows(t *testing.T, pool *pgxpool.Pool, sql string, args ...any) int {
@@ -68,8 +76,8 @@ func TestWriteParticipationRecordsSquadAndEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WriteParticipation: %v", err)
 	}
-	if stats.Appearances != 3 || stats.Events != 2 {
-		t.Errorf("stats = %+v, want 3 appearances / 2 events", stats)
+	if stats.Appearances != 23 || stats.Events != 2 {
+		t.Errorf("stats = %+v, want 23 appearances / 2 events", stats)
 	}
 
 	// The substitute must be recorded — that is the whole point of reading the
@@ -80,8 +88,8 @@ func TestWriteParticipationRecordsSquadAndEvents(t *testing.T) {
 	}
 	// A player's team comes from their appearance, not from `player`.
 	if n := countRows(t, pool,
-		`SELECT count(*) FROM appearance WHERE match_id=$1 AND team_id='eng-chelsea'`, matchID); n != 1 {
-		t.Errorf("expected 1 Chelsea appearance, got %d", n)
+		`SELECT count(*) FROM appearance WHERE match_id=$1 AND team_id='eng-chelsea'`, matchID); n != 11 {
+		t.Errorf("expected 11 Chelsea appearances, got %d", n)
 	}
 	// The goal must belong to a person, not a string.
 	var scorer string
@@ -123,11 +131,11 @@ func TestWriteParticipationIsIdempotent(t *testing.T) {
 	if n := countRows(t, pool, `SELECT count(*) FROM match_event WHERE match_id=$1`, matchID); n != 2 {
 		t.Errorf("re-ingest multiplied events: got %d, want 2", n)
 	}
-	if n := countRows(t, pool, `SELECT count(*) FROM appearance WHERE match_id=$1`, matchID); n != 3 {
-		t.Errorf("re-ingest multiplied appearances: got %d, want 3", n)
+	if n := countRows(t, pool, `SELECT count(*) FROM appearance WHERE match_id=$1`, matchID); n != 23 {
+		t.Errorf("re-ingest multiplied appearances: got %d, want 23", n)
 	}
-	if n := countRows(t, pool, `SELECT count(*) FROM player`); n != 3 {
-		t.Errorf("re-ingest split canonical players: got %d, want 3", n)
+	if n := countRows(t, pool, `SELECT count(*) FROM player`); n != 23 {
+		t.Errorf("re-ingest split canonical players: got %d, want 23", n)
 	}
 	var again uuid.UUID
 	if err := pool.QueryRow(ctx,
@@ -163,13 +171,13 @@ func TestWriteParticipationDropsRetractedEvents(t *testing.T) {
 	}
 
 	// And a player dropped from a corrected roster loses their appearance.
-	shrunk.Home = shrunk.Home[:1]
+	shrunk.Home = append(shrunk.Home[:1], shrunk.Home[2:]...)
 	if _, err := store.WriteParticipation(ctx, "espn", matchID,
 		"eng-arsenal", "eng-chelsea", shrunk); err != nil {
 		t.Fatal(err)
 	}
-	if n := countRows(t, pool, `SELECT count(*) FROM appearance WHERE match_id=$1`, matchID); n != 2 {
-		t.Errorf("dropped squad member survived: got %d appearances, want 2", n)
+	if n := countRows(t, pool, `SELECT count(*) FROM appearance WHERE match_id=$1`, matchID); n != 22 {
+		t.Errorf("dropped squad member survived: got %d appearances, want 22", n)
 	}
 }
 
@@ -190,18 +198,17 @@ func TestWriteParticipationEmptyPayloadPreservesRows(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if n := countRows(t, pool, `SELECT count(*) FROM appearance WHERE match_id=$1`, matchID); n != 3 {
-		t.Errorf("empty payload destroyed appearances: got %d, want 3", n)
+	if n := countRows(t, pool, `SELECT count(*) FROM appearance WHERE match_id=$1`, matchID); n != 23 {
+		t.Errorf("empty payload destroyed appearances: got %d, want 23", n)
 	}
 	if n := countRows(t, pool, `SELECT count(*) FROM match_event WHERE match_id=$1`, matchID); n != 2 {
 		t.Errorf("empty payload destroyed events: got %d, want 2", n)
 	}
 }
 
-// A provider that omits athlete ids must still record the events, with the
-// person unknown — and must say so, or total capture failure is
-// indistinguishable from a match where nothing happened.
-func TestWriteParticipationDegradesWithoutAthleteIDs(t *testing.T) {
+// Missing athlete ids leave events untouched and report incomplete coverage;
+// ordinal event replacement is unsafe when the source omitted identities.
+func TestWriteParticipationPreservesEventsWithoutAthleteIDs(t *testing.T) {
 	store, pool := newIntegrationStore(t)
 	ctx := context.Background()
 	matchID := mustParticipationMatch(t, store, pool)
@@ -222,17 +229,17 @@ func TestWriteParticipationDegradesWithoutAthleteIDs(t *testing.T) {
 	if stats.EventsUnidentified != 2 {
 		t.Errorf("EventsUnidentified = %d, want 2", stats.EventsUnidentified)
 	}
-	if stats.SquadUnidentified != 2 {
-		t.Errorf("SquadUnidentified = %d, want 2", stats.SquadUnidentified)
+	if stats.SquadUnidentified != 12 {
+		t.Errorf("SquadUnidentified = %d, want 12", stats.SquadUnidentified)
 	}
 
 	if n := countRows(t, pool,
-		`SELECT count(*) FROM match_event WHERE match_id=$1 AND player_id IS NULL`, matchID); n != 2 {
-		t.Errorf("expected 2 unidentified events, got %d", n)
+		`SELECT count(*) FROM match_event WHERE match_id=$1`, matchID); n != 0 {
+		t.Errorf("expected incomplete event evidence to leave events unchanged, got %d", n)
 	}
 	// Critically: no player was invented from a display name.
-	if n := countRows(t, pool, `SELECT count(*) FROM player`); n != 1 {
-		t.Errorf("expected only the away player to exist, got %d players", n)
+	if n := countRows(t, pool, `SELECT count(*) FROM player`); n != 11 {
+		t.Errorf("expected only the eleven away players to exist, got %d players", n)
 	}
 	// The coverage gap must be visible without reading logs.
 	if n := countRows(t, pool,
@@ -258,7 +265,7 @@ func TestWriteParticipationAsTheIngesterRole(t *testing.T) {
 
 	shrunk := sampleParticipation()
 	shrunk.Events = shrunk.Events[:1]
-	shrunk.Home = shrunk.Home[:1]
+	shrunk.Home = append(shrunk.Home[:1], shrunk.Home[2:]...)
 	if _, err := roleStore.WriteParticipation(ctx, "espn", matchID,
 		"eng-arsenal", "eng-chelsea", shrunk); err != nil {
 		t.Fatalf("shrinking write as %s: %v", roleName, err)
@@ -270,8 +277,8 @@ func TestWriteParticipationAsTheIngesterRole(t *testing.T) {
 	if events != 1 {
 		t.Errorf("as %s: retracted event survived, got %d events want 1", roleName, events)
 	}
-	if appearances != 2 {
-		t.Errorf("as %s: dropped squad member survived, got %d want 2", roleName, appearances)
+	if appearances != 22 {
+		t.Errorf("as %s: dropped squad member survived, got %d want 22", roleName, appearances)
 	}
 }
 
@@ -345,14 +352,10 @@ func TestWriteParticipationUpdatesAClimbingBoxScore(t *testing.T) {
 	write := func(goals int) {
 		t.Helper()
 		g := goals
+		part := sampleParticipation()
+		part.Home[0].Stats = &model.PlayerMatchStats{Goals: &g}
 		if _, err := store.WriteParticipation(ctx, "espn", matchID,
-			"eng-arsenal", "eng-chelsea", &model.MatchParticipation{
-				HomeTeamSourceID: "359", AwayTeamSourceID: "363",
-				Home: []model.SquadPlayer{{
-					SourceID: "77", Name: "Striker", Position: "F", Starter: true,
-					Stats: &model.PlayerMatchStats{Goals: &g},
-				}},
-			}); err != nil {
+			"eng-arsenal", "eng-chelsea", part); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -361,7 +364,7 @@ func TestWriteParticipationUpdatesAClimbingBoxScore(t *testing.T) {
 
 	var goals *int
 	if err := pool.QueryRow(ctx,
-		`SELECT goals FROM appearance WHERE match_id=$1`, matchID).Scan(&goals); err != nil {
+		`SELECT a.goals FROM appearance a JOIN player_external_ref r ON r.player_id=a.player_id WHERE a.match_id=$1 AND r.source='espn' AND r.source_id='p1'`, matchID).Scan(&goals); err != nil {
 		t.Fatal(err)
 	}
 	if goals == nil || *goals != 3 {
@@ -473,8 +476,8 @@ func TestWriteParticipationToleratesADuplicatePlayer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a duplicate player failed the whole write: %v", err)
 	}
-	if stats.Appearances != 3 {
-		t.Fatalf("appearances = %d, want 3 distinct players", stats.Appearances)
+	if stats.Appearances != 23 {
+		t.Fatalf("appearances = %d, want 23 distinct players", stats.Appearances)
 	}
 	var starter bool
 	if err := pool.QueryRow(ctx, `
@@ -535,5 +538,135 @@ func TestParticipationCoverageIsReportedOncePerChange(t *testing.T) {
 		`SELECT count(*) FROM ingest_run WHERE kind='player_capture'`)
 	if reported != 1 {
 		t.Fatalf("player_capture audit rows = %d after four identical polls, want 1", reported)
+	}
+}
+
+func TestWriteParticipationPreservesFactsOnPartialOrUnresolvedInput(t *testing.T) {
+	st, pool := newIntegrationStore(t)
+	id := mustParticipationMatch(t, st, pool)
+	ctx := context.Background()
+	if _, err := st.WriteParticipation(ctx, "espn", id, "eng-arsenal", "eng-chelsea", sampleParticipation()); err != nil {
+		t.Fatal(err)
+	}
+	partial := sampleParticipation()
+	partial.Home = partial.Home[:1]
+	partial.Away = nil
+	partial.Events = partial.Events[:1]
+	partial.Events[0].PlayerSourceID = ""
+	if _, err := st.WriteParticipation(ctx, "espn", id, "eng-arsenal", "eng-chelsea", partial); err != nil {
+		t.Fatal(err)
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM appearance WHERE match_id=$1`, id); n != 23 {
+		t.Fatalf("partial roster pruned facts: %d", n)
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM match_event WHERE match_id=$1 AND player_id IS NOT NULL`, id); n != 2 {
+		t.Fatalf("partial events erased identity/facts: %d", n)
+	}
+	unresolved := sampleParticipation()
+	unresolved.Home[0].SourceID = "new-player"
+	if _, err := pool.Exec(ctx, `ALTER TABLE player ADD CONSTRAINT injected_failure CHECK (false) NOT VALID`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.WriteParticipation(ctx, "espn", id, "eng-arsenal", "eng-chelsea", unresolved); err == nil {
+		t.Fatal("resolution error silently reported success")
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM appearance WHERE match_id=$1`, id); n != 23 {
+		t.Fatal("unresolved input pruned valid facts")
+	}
+}
+
+func TestWriteParticipationPartialIdentifiedRostersCannotPrune(t *testing.T) {
+	st, pool := newIntegrationStore(t)
+	id := mustParticipationMatch(t, st, pool)
+	ctx := context.Background()
+	if _, err := st.WriteParticipation(ctx, "espn", id, "eng-arsenal", "eng-chelsea", sampleParticipation()); err != nil {
+		t.Fatal(err)
+	}
+	partial := sampleParticipation()
+	partial.Home = partial.Home[:len(partial.Home)-1]
+	partial.Away = partial.Away[:len(partial.Away)-1]
+	partial.Events = partial.Events[:1]
+	if _, err := st.WriteParticipation(ctx, "espn", id, "eng-arsenal", "eng-chelsea", partial); err != nil {
+		t.Fatal(err)
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM appearance WHERE match_id=$1`, id); n != 23 {
+		t.Fatalf("partial identified roster erased appearances: %d", n)
+	}
+	if n := countRows(t, pool, `SELECT count(*) FROM match_event WHERE match_id=$1`, id); n != 2 {
+		t.Fatalf("partial identified roster rewrote ordinal events: %d", n)
+	}
+}
+
+func TestWriteParticipationPartialInputPreservesAppearanceFields(t *testing.T) {
+	st, pool := newIntegrationStore(t)
+	id := mustParticipationMatch(t, st, pool)
+	ctx := context.Background()
+	full := sampleParticipation()
+	goals := 2
+	full.Home[0].Stats = &model.PlayerMatchStats{Goals: &goals}
+	if _, err := st.WriteParticipation(ctx, "espn", id, "eng-arsenal", "eng-chelsea", full); err != nil {
+		t.Fatal(err)
+	}
+	partial := sampleParticipation()
+	partial.Home = partial.Home[:1]
+	partial.Away = partial.Away[:1]
+	changed := &partial.Home[0]
+	changed.Starter = false
+	changed.Number = nil
+	changed.Position = ""
+	wrongGoals := 9
+	changed.Stats = &model.PlayerMatchStats{Goals: &wrongGoals}
+	if _, err := st.WriteParticipation(ctx, "espn", id, "eng-arsenal", "eng-chelsea", partial); err != nil {
+		t.Fatal(err)
+	}
+	var starter bool
+	var number, storedGoals *int
+	var position *string
+	if err := pool.QueryRow(ctx, `SELECT a.starter,a.shirt_number,a.position,a.goals FROM appearance a JOIN player_external_ref r ON r.player_id=a.player_id WHERE a.match_id=$1 AND r.source='espn' AND r.source_id='p1'`, id).Scan(&starter, &number, &position, &storedGoals); err != nil {
+		t.Fatal(err)
+	}
+	if !starter || number == nil || *number != 9 || position == nil || *position != "F" || storedGoals == nil || *storedGoals != 2 {
+		t.Fatalf("partial input replaced established fields: starter=%v number=%v position=%v goals=%v", starter, number, position, storedGoals)
+	}
+}
+
+func TestWriteParticipationPreservesFactsWhenEventsContradictRosters(t *testing.T) {
+	st, pool := newIntegrationStore(t)
+	id := mustParticipationMatch(t, st, pool)
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name, eventType, player string
+		omit                    bool
+	}{
+		{"omitted scorer", model.PlayerEventGoal, "p2", true},
+		{"omitted substitute on", model.PlayerEventSubOn, "p2", true},
+		{"omitted substitute off", model.PlayerEventSubOff, "p2", true},
+		{"opposition scorer", model.PlayerEventGoal, "p3", false},
+		{"opposition substitute on", model.PlayerEventSubOn, "p3", false},
+		{"opposition substitute off", model.PlayerEventSubOff, "p3", false},
+		{"opposition yellow", model.PlayerEventYellow, "p3", false},
+		{"opposition red", model.PlayerEventRed, "p3", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			prior := sampleParticipation()
+			prior.Events = append(prior.Events, model.PlayerEvent{Type: model.PlayerEventSubOn, TeamSourceID: "359", PlayerSourceID: "p2", PlayerName: "Reserve Keeper", Minute: "60"})
+			if _, err := st.WriteParticipation(ctx, "espn", id, "eng-arsenal", "eng-chelsea", prior); err != nil {
+				t.Fatal(err)
+			}
+			partial := sampleParticipation()
+			if tc.omit {
+				partial.Home = append(partial.Home[:1], partial.Home[2:]...)
+			}
+			partial.Events = []model.PlayerEvent{{Type: tc.eventType, TeamSourceID: "359", PlayerSourceID: tc.player, PlayerName: "Identified player", Minute: "70"}}
+			if _, err := st.WriteParticipation(ctx, "espn", id, "eng-arsenal", "eng-chelsea", partial); err != nil {
+				t.Fatal(err)
+			}
+			if n := countRows(t, pool, `SELECT count(*) FROM appearance WHERE match_id=$1`, id); n != 23 {
+				t.Fatalf("contradictory event pruned known appearance: %d", n)
+			}
+			if n := countRows(t, pool, `SELECT count(*) FROM match_event WHERE match_id=$1`, id); n != 3 {
+				t.Fatalf("contradictory event replaced known ordinal history: %d", n)
+			}
+		})
 	}
 }

@@ -106,6 +106,12 @@ func (f *sealFixture) finalize(t *testing.T, id uuid.UUID) {
 		`UPDATE match SET finalized_at=now() WHERE id=$1`, id); err != nil {
 		t.Fatal(err)
 	}
+	// This fixture represents fully sealed history; newly finalized production
+	// participation remains pending until its separate completion transaction.
+	if _, err := f.pool.Exec(context.Background(), `UPDATE match_participation_status SET last_attempted_at=now(),retry_at=now()+interval '1 hour',completed_at=now() WHERE match_id=$1`, id); err != nil {
+		t.Fatal(err)
+	}
+
 }
 
 // postFinalRows writes the three tables captured after finalization. That these

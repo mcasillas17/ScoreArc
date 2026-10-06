@@ -237,6 +237,9 @@ func (r *runner) runCycle(ctx context.Context, slowTick bool) cycleResult {
 	wg.Wait()
 
 	if slowTick && ctx.Err() == nil {
+		if err := r.retryParticipation(ctx); err != nil {
+			cycle.failures++
+		}
 		if err := r.refreshBios(ctx); err != nil {
 			cycle.failures++
 		}

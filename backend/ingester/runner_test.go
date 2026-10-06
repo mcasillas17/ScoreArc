@@ -1375,6 +1375,7 @@ func TestInitialCycleRunsAndPollingFailurePreservesActivity(t *testing.T) {
 // team foreign key — or worse, match a canonical id that happens to collide.
 func TestParticipationIsWrittenWithCanonicalTeamIDs(t *testing.T) {
 	match := finishedMatch()
+	match.State = model.MatchStateLive
 	src := &fakeSource{matches: []model.Match{match}}
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	runner := testRunner(src, repo, config.Competition{
@@ -1397,10 +1398,9 @@ func TestParticipationIsWrittenWithCanonicalTeamIDs(t *testing.T) {
 	}
 }
 
-// Player capture is additive. A match's scoreline is already written by the
-// time it runs, so a participation failure must be reported without stopping
-// the match from ingesting.
-func TestParticipationFailureDoesNotBlockTheMatch(t *testing.T) {
+// Final participation waits for the enrolled recovery transaction. Its
+// failure/restart behavior is covered against real Postgres.
+func TestFinalParticipationIsOwnedByDurableRecovery(t *testing.T) {
 	match := finishedMatch()
 	src := &fakeSource{matches: []model.Match{match}}
 	repo := &fakeRepository{
@@ -1417,8 +1417,8 @@ func TestParticipationFailureDoesNotBlockTheMatch(t *testing.T) {
 	if repo.finalizeCalls != 1 {
 		t.Errorf("participation failure blocked finalization: finalize=%d", repo.finalizeCalls)
 	}
-	if result.failures == 0 {
-		t.Error("participation failure was swallowed instead of reported")
+	if result.failures != 0 || len(repo.participation) != 0 {
+		t.Error("final participation used the non-atomic live writer")
 	}
 }
 

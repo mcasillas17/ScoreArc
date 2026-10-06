@@ -455,11 +455,38 @@ func (s *Store) Player(ctx context.Context, source string, ref PlayerRef) (uuid.
 	}
 	defer rollback(opCtx, tx)
 
+	id, err := resolvePlayer(opCtx, tx, source, ref)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if err := tx.Commit(opCtx); err != nil {
+		return uuid.Nil, err
+	}
+	return id, nil
+}
+
+// resolvePlayer uses a savepoint so a crosswalk race discards only its losing
+// mint. Participation calls it inside the facts/completion transaction.
+func resolvePlayer(ctx context.Context, parent pgx.Tx, source string, ref PlayerRef) (uuid.UUID, error) {
+	var existing uuid.UUID
+	err := parent.QueryRow(ctx, `SELECT player_id FROM player_external_ref WHERE source=$1 AND source_id=$2 FOR SHARE`, source, ref.SourceID).Scan(&existing)
+	if err == nil {
+		return existing, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, err
+	}
+	tx, err := parent.Begin(ctx)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	defer rollback(ctx, tx)
+
 	minted, err := uuid.NewV7()
 	if err != nil {
 		return uuid.Nil, err
 	}
-	if _, err := tx.Exec(opCtx, `
+	if _, err := tx.Exec(ctx, `
 INSERT INTO player (id, full_name, known_as, nationality, position, updated_at)
 VALUES ($1,$2,$3,$4,$5,now())`,
 		minted, ref.FullName, nullIfEmpty(ref.KnownAs),
@@ -471,7 +498,7 @@ VALUES ($1,$2,$3,$4,$5,now())`,
 	// DO UPDATE (not DO NOTHING) so the statement always returns a row: on a
 	// conflict it returns the incumbent player_id rather than ours.
 	var holder uuid.UUID
-	if err := tx.QueryRow(opCtx, `
+	if err := tx.QueryRow(ctx, `
 INSERT INTO player_external_ref (source, source_id, player_id, first_seen_at, last_seen_at)
 VALUES ($1,$2,$3,now(),now())
 ON CONFLICT (source, source_id) DO UPDATE SET last_seen_at = now()
@@ -483,9 +510,13 @@ RETURNING player_id`,
 	if holder != minted {
 		// Someone else got there first. Roll back, discarding the player we
 		// minted, and adopt theirs.
-		return holder, nil
+		if err := tx.Rollback(ctx); err != nil {
+			return uuid.Nil, err
+		}
+		err := parent.QueryRow(ctx, `SELECT player_id FROM player_external_ref WHERE source=$1 AND source_id=$2 FOR SHARE`, source, ref.SourceID).Scan(&holder)
+		return holder, err
 	}
-	if err := tx.Commit(opCtx); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return uuid.Nil, err
 	}
 	return minted, nil

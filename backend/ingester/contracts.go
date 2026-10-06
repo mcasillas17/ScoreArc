@@ -34,6 +34,10 @@ type repository interface {
 	UpsertMatchDetail(context.Context, uuid.UUID, model.MatchDetail) error
 	FinalizeMatch(context.Context, store.MatchIdentity, model.Match, model.MatchDetail) (bool, error)
 	WriteParticipation(context.Context, string, uuid.UUID, string, string, *model.MatchParticipation) (store.ParticipationStats, error)
+	PendingParticipation(context.Context, string, time.Time, int) ([]store.ParticipationRecovery, error)
+	BeginParticipation(context.Context, uuid.UUID, time.Time, time.Time) (bool, error)
+	FailParticipation(context.Context, uuid.UUID, time.Time, string) error
+	CompleteParticipation(context.Context, store.MatchIdentity, model.Match, *model.MatchParticipation, time.Time) (store.ParticipationStats, error)
 	// WriteWinProbSnapshot appends one point of a live match's probability
 	// curve. Like WriteParticipation it is additive: a failure is recorded and
 	// never blocks a scoreline.

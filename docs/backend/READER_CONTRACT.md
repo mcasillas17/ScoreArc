@@ -371,3 +371,12 @@ standings payload refetched on every read, a summary header for another event or
 or fractional scoreboard total, a missing `children` array or an empty team id
 accepted, a stat failure hiding team identities, and legacy recovery ignoring
 the minute, the source or a second player id, or recovering a partial list.
+
+### T7.21 participation persistence boundary
+
+[Durable participation recovery](PARTICIPATION_RECOVERY.md) enrolls only future
+ordinary finalization transitions under migration 0025. Scores/detail remain
+sealed while a bounded sweep validates and atomically completes participation.
+The retry ledger is private; reader queries/DTOs/freshness are unchanged.
+Already-finalized legacy rows are not enrolled or repaired. The attribution
+limitations above remain an open owner decision, not implicitly accepted loss.

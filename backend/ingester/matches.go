@@ -324,14 +324,14 @@ func (r *runner) processMatches(
 				existing[identity.MatchID] = current
 			}
 
-			// Player capture is additive: a match's scoreline and detail are
-			// already written above. Record the failure, but never let it stop
-			// a match from ingesting — the site does not read these tables yet,
-			// and a scoreline is worth more than an appearance row.
-			if _, err := r.repo.WriteParticipation(ctx, r.source.Name(), identity.MatchID,
-				match.Home.ID, match.Away.ID, summary.Participation); err != nil {
-				operationErrors = append(operationErrors,
-					fmt.Errorf("match %s participation: %w", match.ID, err))
+			// Final participation is owned by the durable completion transaction.
+			// FinalizeMatch atomically enrolls it; live rows remain provisional.
+			if match.State != model.MatchStateFinished {
+				if _, err := r.repo.WriteParticipation(ctx, r.source.Name(), identity.MatchID,
+					match.Home.ID, match.Away.ID, summary.Participation); err != nil {
+					operationErrors = append(operationErrors,
+						fmt.Errorf("match %s participation: %w", match.ID, err))
+				}
 			}
 
 			// The market only moves fast enough to be worth a curve while the

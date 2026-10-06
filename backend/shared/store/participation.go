@@ -19,8 +19,8 @@ const participationRunKind = "player_capture"
 type ParticipationStats struct {
 	Appearances int
 	Events      int
-	// EventsUnidentified counts events recorded with player_id NULL because the
-	// provider sent no athlete id.
+	// EventsUnidentified counts source events lacking athlete identity; an
+	// incomplete event set is preserved as coverage evidence, never converged.
 	EventsUnidentified int
 	// SquadUnidentified counts roster entries dropped entirely — an appearance
 	// with no player is meaningless, so unlike an event it cannot be recorded.
@@ -35,9 +35,8 @@ type appearanceRow struct {
 	player   model.SquadPlayer
 }
 
-// eventRow is one resolved event. playerID is nil when the provider sent no
-// athlete id -- the event still happened, and migration 0003 explains why it is
-// recorded with the person unknown rather than dropped.
+// eventRow is one resolved event. playerID remains nullable for compatibility
+// with legacy rows; current convergence requires identified event participants.
 type eventRow struct {
 	playerID *uuid.UUID
 	teamID   string
@@ -46,7 +45,8 @@ type eventRow struct {
 
 // appearanceConvergeSQL makes a match's appearances equal the incoming roster
 // in one statement, writing only rows that differ and pruning anyone the
-// corrected roster dropped.
+// corrected roster dropped. Incomplete input may insert a newly identified
+// player, but never updates or deletes an established appearance.
 //
 // The COALESCE in the SET list is load-bearing and is explained on the old
 // upsert: a live poll that comes back without a stats block must not NULL out
@@ -93,7 +93,7 @@ WITH incoming AS (
 		saves           = COALESCE(EXCLUDED.saves,           appearance.saves),
 		goals_conceded  = COALESCE(EXCLUDED.goals_conceded,  appearance.goals_conceded),
 		shots_faced     = COALESCE(EXCLUDED.shots_faced,     appearance.shots_faced)
-	WHERE (
+	WHERE $20::bool AND (
 		appearance.team_id, appearance.starter, appearance.shirt_number,
 		appearance.position, appearance.goals, appearance.assists,
 		appearance.shots, appearance.shots_on_target, appearance.offsides,
@@ -126,7 +126,7 @@ WITH incoming AS (
 	-- not change.
 	DELETE FROM appearance a
 	WHERE a.match_id = $1
-	  AND NOT (a.player_id = ANY(SELECT player_id FROM incoming))
+	  AND $20::bool AND NOT (a.player_id = ANY(SELECT player_id FROM incoming))
 	RETURNING 1
 )
 SELECT (SELECT count(*) FROM upserted), (SELECT count(*) FROM pruned)`
@@ -155,7 +155,7 @@ WITH incoming AS (
 		penalty   = EXCLUDED.penalty,
 		shootout  = EXCLUDED.shootout,
 		detail    = EXCLUDED.detail
-	WHERE (
+	WHERE $10::bool AND (
 		match_event.player_id, match_event.team_id, match_event.type,
 		match_event.minute, match_event.penalty, match_event.shootout,
 		match_event.detail
@@ -166,13 +166,13 @@ WITH incoming AS (
 	RETURNING 1
 ), pruned AS (
 	DELETE FROM match_event
-	WHERE match_id = $1 AND seq >= (SELECT count(*) FROM incoming)
+	WHERE match_id = $1 AND $10::bool AND seq >= (SELECT count(*) FROM incoming)
 	RETURNING 1
 )
 SELECT (SELECT count(*) FROM upserted), (SELECT count(*) FROM pruned)`
 
 // WriteParticipation resolves every player in a match to a canonical id and
-// replaces that match's appearances and events.
+// updates appearances, replacing rosters/events only with complete evidence.
 //
 // Players are resolved BEFORE the transaction opens. Store.Player commits its
 // own transaction, so the player row must already be durable when the
@@ -188,6 +188,9 @@ func (s *Store) WriteParticipation(
 	if part == nil {
 		return stats, nil
 	}
+	if part.CoverageIssue != "" {
+		return stats, fmt.Errorf("participation mapping incomplete")
+	}
 
 	// An empty payload is not a correction. A live summary can momentarily come
 	// back without rosters, and treating that as "this match now has nobody in
@@ -198,6 +201,7 @@ func (s *Store) WriteParticipation(
 		return stats, nil
 	}
 
+	var resolutionErr error
 	resolved := make(map[string]uuid.UUID)
 	resolve := func(sourceID, name, position string) (uuid.UUID, bool) {
 		if sourceID == "" || name == "" {
@@ -212,14 +216,14 @@ func (s *Store) WriteParticipation(
 			Position: position,
 		})
 		if err != nil {
-			slog.Warn("resolve player", "source", source, "sourceId", sourceID,
-				"name", name, "error", err)
+			resolutionErr = err
 			return uuid.Nil, false
 		}
 		resolved[sourceID] = id
 		return id, true
 	}
 
+	rosterTeams := make(map[uuid.UUID]string, len(part.Home)+len(part.Away))
 	rows := make([]appearanceRow, 0, len(part.Home)+len(part.Away))
 	for _, side := range []struct {
 		squad  []model.SquadPlayer
@@ -234,10 +238,12 @@ func (s *Store) WriteParticipation(
 				stats.SquadUnidentified++
 				continue
 			}
+			rosterTeams[id] = side.teamID
 			rows = append(rows, appearanceRow{playerID: id, teamID: side.teamID, player: p})
 		}
 	}
 
+	invalidEvents := false
 	events := make([]eventRow, 0, len(part.Events))
 	for _, e := range part.Events {
 		// The event's team is in provider shape. Map it onto a canonical side,
@@ -252,6 +258,7 @@ func (s *Store) WriteParticipation(
 			teamID = awayTeamID
 		}
 		if teamID == "" {
+			invalidEvents = true
 			continue
 		}
 		row := eventRow{teamID: teamID, event: e}
@@ -260,9 +267,19 @@ func (s *Store) WriteParticipation(
 		} else {
 			stats.EventsUnidentified++
 		}
+		if !eventMatchesCanonicalRoster(row, rosterTeams) {
+			invalidEvents = true
+		}
 		events = append(events, row)
 	}
 
+	if resolutionErr != nil {
+		return stats, fmt.Errorf("resolve participation player: %w", resolutionErr)
+	}
+	prune := model.ValidateParticipationEvidence(part) == nil && stats.SquadUnidentified == 0 && stats.EventsUnidentified == 0 && !invalidEvents
+	deduped := dedupeAppearances(rows)
+	prune = prune && len(deduped) == len(rows)
+	rows = deduped
 	opCtx, cancel := boundedContext(ctx)
 	defer cancel()
 	tx, err := s.pool.Begin(opCtx)
@@ -271,10 +288,13 @@ func (s *Store) WriteParticipation(
 	}
 	defer rollback(opCtx, tx)
 
+	// Keep the same match-before-facts lock order as final completion.
+	if _, err := tx.Exec(opCtx, `SELECT id FROM match WHERE id=$1 FOR UPDATE`, matchID); err != nil {
+		return stats, err
+	}
 	appearancesWritten, appearancesPruned := 0, 0
 	if squadPresent {
-		rows = dedupeAppearances(rows)
-		if err := tx.QueryRow(opCtx, appearanceConvergeSQL, appearanceArgs(matchID, rows)...).
+		if err := tx.QueryRow(opCtx, appearanceConvergeSQL, appearanceArgs(matchID, rows, prune)...).
 			Scan(&appearancesWritten, &appearancesPruned); err != nil {
 			return stats, fmt.Errorf("converge appearances: %w", err)
 		}
@@ -282,8 +302,8 @@ func (s *Store) WriteParticipation(
 	}
 
 	eventsWritten, eventsPruned := 0, 0
-	if len(events) > 0 {
-		if err := tx.QueryRow(opCtx, eventConvergeSQL, eventArgs(matchID, events)...).
+	if len(events) > 0 && prune {
+		if err := tx.QueryRow(opCtx, eventConvergeSQL, eventArgs(matchID, events, prune)...).
 			Scan(&eventsWritten, &eventsPruned); err != nil {
 			return stats, fmt.Errorf("converge match events: %w", err)
 		}
@@ -301,6 +321,22 @@ func (s *Store) WriteParticipation(
 		s.reportParticipation(ctx, matchID, stats)
 	}
 	return stats, nil
+}
+
+// A provider id absent from the roster may still alias a known roster player.
+// The staff-card exception applies to canonical identity, not only source ids.
+func eventMatchesCanonicalRoster(event eventRow, rosterTeams map[uuid.UUID]string) bool {
+	if event.playerID == nil {
+		return false
+	}
+	team, known := rosterTeams[*event.playerID]
+	if !known {
+		return event.event.Type == model.PlayerEventYellow || event.event.Type == model.PlayerEventRed
+	}
+	if event.event.Type == model.PlayerEventOwnGoal {
+		return team != event.teamID
+	}
+	return team == event.teamID
 }
 
 // dedupeAppearances keeps the LAST entry for each canonical player. Two roster
@@ -327,7 +363,7 @@ func dedupeAppearances(rows []appearanceRow) []appearanceRow {
 
 // appearanceArgs flattens the roster into the eighteen parallel arrays
 // appearanceConvergeSQL unnests, in the order its column list declares them.
-func appearanceArgs(matchID uuid.UUID, rows []appearanceRow) []any {
+func appearanceArgs(matchID uuid.UUID, rows []appearanceRow, prune bool) []any {
 	playerIDs := make([]uuid.UUID, len(rows))
 	teamIDs := make([]string, len(rows))
 	starters := make([]bool, len(rows))
@@ -351,13 +387,13 @@ func appearanceArgs(matchID uuid.UUID, rows []appearanceRow) []any {
 	for _, column := range columns {
 		args = append(args, column)
 	}
-	return args
+	return append(args, prune)
 }
 
 // eventArgs flattens the events into the eight parallel arrays
 // eventConvergeSQL unnests. The sequence is the position in mapper order, which
 // is what makes re-ingestion an upsert rather than a duplicate.
-func eventArgs(matchID uuid.UUID, events []eventRow) []any {
+func eventArgs(matchID uuid.UUID, events []eventRow, prune bool) []any {
 	seq := make([]int, len(events))
 	playerIDs := make([]*uuid.UUID, len(events))
 	teamIDs := make([]string, len(events))
@@ -377,7 +413,7 @@ func eventArgs(matchID uuid.UUID, events []eventRow) []any {
 		details[index] = event.event.Detail
 	}
 	return []any{
-		matchID, seq, playerIDs, teamIDs, types, minutes, penalties, shootouts, details,
+		matchID, seq, playerIDs, teamIDs, types, minutes, penalties, shootouts, details, prune,
 	}
 }
 
@@ -418,8 +454,8 @@ func (s *Store) reportParticipation(ctx context.Context, matchID uuid.UUID, stat
 	logCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	message := fmt.Sprintf(
-		"match %s: %d/%d events and %d squad entries had no athlete id",
-		matchID, stats.EventsUnidentified, stats.Events, stats.SquadUnidentified)
+		"match %s: %d events and %d squad entries had no athlete id",
+		matchID, stats.EventsUnidentified, stats.SquadUnidentified)
 	now := time.Now()
 	if err := s.LogIngestRun(logCtx, nil, participationRunKind, now, now, false, message); err != nil {
 		slog.Warn("record player capture coverage", "match", matchID, "error", err)
