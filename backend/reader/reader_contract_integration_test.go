@@ -100,7 +100,7 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		}
 		// The stored match sides are canonical; the nested scorer ids are not.
 		var matches []Match
-		get(t, "/v1/competitions/world-cup/2026/matches?range=20260630-20260630&limit=1", &matches)
+		get(t, "/v1/competitions/world-cup/2026/matches?range=20260630-20260630&limit=1&detail=summary", &matches)
 		var stored *Match
 		for i := range matches {
 			if matches[i].ID == id.String() {
@@ -113,7 +113,7 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		// The exact list-route wire object: row columns plus the JSONB detail
 		// the writer stored, compared field by field and against OpenAPI.
 		var wireMatches []map[string]any
-		get(t, "/v1/competitions/world-cup/2026/matches", &wireMatches)
+		get(t, "/v1/competitions/world-cup/2026/matches?range=20260630-20260630&detail=summary", &wireMatches)
 		var listed map[string]any
 		for _, match := range wireMatches {
 			if match["id"] == id.String() {
@@ -144,26 +144,20 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		if storedTeam != vectors.Summary.Sides["away"].ProviderID || crosswalk[storedTeam] != *stored.Scorers[0].TeamID {
 			t.Fatalf("stored %q served as %q", storedTeam, *stored.Scorers[0].TeamID)
 		}
-		// T10.1 at the SQL boundary: the query string changed nothing, and the
-		// competition/season scope still excludes the seeded Premier League row.
-		// Same no-query response as wireMatches, decoded into the DTO.
-		body, err := json.Marshal(wireMatches)
-		if err != nil {
-			t.Fatal(err)
+		// T10.1 at the SQL boundary: the explicit range selects this row alone
+		// (filtering, limits and ties are proved in match_query_integration_test.go),
+		// and the season scope keeps the seeded Premier League row out.
+		if len(matches) != 1 || matches[0].ID != id.String() {
+			t.Fatalf("range+limit returned %d rows", len(matches))
 		}
 		var all []Match
-		if err := json.Unmarshal(body, &all); err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(wire(t, all), wire(t, matches)) {
-			t.Fatal("gap changed: reader /matches now honors query parameters")
-		}
+		get(t, "/v1/competitions/world-cup/2026/matches?scope=season", &all)
 		for i, match := range all {
 			if match.ID == otherCompMatch {
 				t.Fatal("matches leaked across competitions")
 			}
-			if i > 0 && all[i-1].Kickoff > match.Kickoff {
-				t.Fatal("matches not ordered by kickoff")
+			if i > 0 && (all[i-1].Kickoff > match.Kickoff || (all[i-1].Kickoff == match.Kickoff && all[i-1].ID >= match.ID)) {
+				t.Fatal("matches not ordered by kickoff, then id")
 			}
 		}
 	})
@@ -210,7 +204,7 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		validateSchema(t, document, "MatchSummary", summary)
 		assertWire(t, "stored own-goal summary scorers", summary["scorers"], expected)
 		var listed []map[string]any
-		get(t, "/v1/competitions/leagues-cup/2026/matches", &listed)
+		get(t, "/v1/competitions/leagues-cup/2026/matches?range=20260812-20260812&detail=summary", &listed)
 		found := false
 		for _, match := range listed {
 			if match["id"] == id.String() {
@@ -257,7 +251,7 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		expected := vector(t, raw, "summary", "syntheticOverlay", "expected").(map[string]any)
 		// The list row carries the stored summary-side shootout aggregate.
 		var listed []map[string]any
-		get(t, "/v1/competitions/world-cup/2026/matches", &listed)
+		get(t, "/v1/competitions/world-cup/2026/matches?range=20260701-20260701&detail=summary", &listed)
 		found := false
 		for _, match := range listed {
 			if match["id"] == id.String() {
@@ -589,7 +583,7 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			return nil
 		}
 		var listed []map[string]any
-		get(t, "/v1/competitions/world-cup/2026/matches", &listed)
+		get(t, "/v1/competitions/world-cup/2026/matches?range=20260718-20260718&detail=summary", &listed)
 		var rounds []map[string]any
 		get(t, "/v1/competitions/world-cup/2026/bracket", &rounds)
 		var knockout []map[string]any
@@ -662,7 +656,7 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 		var listed []map[string]any
-		get(t, "/v1/competitions/world-cup/2026/matches", &listed)
+		get(t, "/v1/competitions/world-cup/2026/matches?range=20260630-20260703&detail=summary", &listed)
 		found := false
 		for _, match := range listed {
 			found = found || match["id"] == minted.String()
@@ -674,6 +668,10 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		get(t, "/v1/matches/"+minted.String(), &summary)
 		if response := performRequest(router, http.MethodGet, "/v1/matches/9160001"); response.Code != http.StatusNotFound {
 			t.Fatalf("provider event id addressed the reader: %d", response.Code)
+		}
+		// A stored row is reachable only through its canonical spelling.
+		if response := performRequest(router, http.MethodGet, "/v1/matches/"+strings.ToUpper(minted.String())); response.Code != http.StatusNotFound {
+			t.Fatalf("non-canonical alias addressed a stored match: %d", response.Code)
 		}
 	})
 
@@ -712,7 +710,7 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		assertWire(t, "legacy summary scorers", summary["scorers"], wantScorers)
 		assertWire(t, "legacy summary cards", summary["cards"], wantCards)
 		var listed []map[string]any
-		get(t, "/v1/competitions/world-cup/2026/matches", &listed)
+		get(t, "/v1/competitions/world-cup/2026/matches?range=20260702-20260702&detail=summary", &listed)
 		var profile map[string]any
 		get(t, "/v1/competitions/world-cup/2026/teams/"+home, &profile)
 		schedule := profile["schedule"].([]any)
@@ -814,7 +812,7 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			},
 		}
 		var listed []map[string]any
-		get(t, "/v1/competitions/world-cup/2026/matches", &listed)
+		get(t, "/v1/competitions/world-cup/2026/matches?range=20260705-20260706&detail=summary", &listed)
 		var profile map[string]any
 		get(t, "/v1/competitions/world-cup/2026/teams/"+home, &profile)
 		for id, scorers := range want {
@@ -917,7 +915,7 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			sparse.String():     {home, nil},
 		}
 		var listed []map[string]any
-		get(t, "/v1/competitions/world-cup/2026/matches", &listed)
+		get(t, "/v1/competitions/world-cup/2026/matches?range=20260707-20260714&detail=summary", &listed)
 		var profile map[string]any
 		get(t, "/v1/competitions/world-cup/2026/teams/"+home, &profile)
 		var bracket []map[string]any
@@ -975,13 +973,14 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			"match_event":         "match_event_pkey",
 			"match_detail":        "match_detail_pkey",
 		}
+		detailedMatchesSQL, detailedMatchesArgs := matchesStatement("world-cup", "2026", matchQuery{Season: true, Detail: true})
 		for _, q := range []struct {
 			name   string
 			sql    string
 			args   []any
 			tables []string
 		}{
-			{"matches", matchesSQL, []any{"world-cup", "2026"}, []string{"team_external_ref", "player_external_ref", "match_event"}},
+			{"matches", detailedMatchesSQL, detailedMatchesArgs, []string{"team_external_ref", "player_external_ref", "match_event"}},
 			{"team schedule", teamScheduleSQL, []any{"nat-civ", "world-cup", "2026"}, []string{"team_external_ref", "player_external_ref", "match_event"}},
 			{"summary", summarySQL, []any{uuid.Nil}, []string{"team_external_ref", "player_external_ref", "match_event", "match_detail"}},
 		} {

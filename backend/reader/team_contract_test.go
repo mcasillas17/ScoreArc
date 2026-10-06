@@ -117,8 +117,9 @@ func TestTeamContractHTTPQueriesAndErrors(t *testing.T) {
 	if err := teamSchema.VisitJSON(actualTeam); err != nil {
 		t.Fatal(err)
 	}
-	// Route inventory and the ignored match-query gap (T10.1) are owned by
-	// reader_contract_test.go and reader-contract.json.
+	// Route inventory and match-query parity (T10.1) are owned by
+	// reader_contract_test.go, match_query_integration_test.go and
+	// reader-contract.json.
 	for _, vector := range vectors.Errors {
 		response := performRequest(router, "GET", vector.Path)
 		var body map[string]string

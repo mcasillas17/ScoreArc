@@ -222,7 +222,9 @@ and metadata share a bounded read-only repeatable-read snapshot, released before
 any response write.
 
 The [external watchdog](../../backend/reader/README.md#independent-watchdog-and-incident-state)
-reads existing current-season match routes, fails for stale/unavailable data,
+reads each current season's complete `/matches?scope=season&detail=summary` read,
+with stored detail (the parameterless default is one lightweight week since
+T10.1), fails for stale/unavailable data,
 active partial/failed polling, HTTP errors and invalid contracts, and persists
 OPEN/RESOLVED transition deduplication. Every unhealthy run still fails, even
 when its transition message is suppressed. Missing/corrupt state fails closed.

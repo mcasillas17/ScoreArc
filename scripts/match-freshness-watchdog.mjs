@@ -107,7 +107,12 @@ export async function checkScope({ baseURL, competition, season, timeoutMs = 100
   let count = null;
   let freshness = null;
   try {
-    const response = await fetch(`${base}/v1/competitions/${competition}/${season}/matches`, {
+    // scope=season&detail=summary: every stored row, with its stored detail
+    // and season-wide freshness. The reader's parameterless default is one
+    // lightweight week, which would hide overdue matches outside it and skip
+    // the detail checks below. Readers predating T10.1 ignore both parameters
+    // and already return the whole season with detail.
+    const response = await fetch(`${base}/v1/competitions/${competition}/${season}/matches?scope=season&detail=summary`, {
       signal: controller.signal, redirect: 'error', cache: 'no-store',
       headers: { Accept: 'application/json', 'Cache-Control': 'no-cache, no-store' },
     });

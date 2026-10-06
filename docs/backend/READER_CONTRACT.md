@@ -46,6 +46,7 @@ in AGENTS.md first. All three run in CI (`npm test`, `tsc`, `go test ./...`).
 | `getFixtures` | same | Explicit and default ranges, date boundaries, clamping to split and historical seasons without a provider call |
 | `getLiveWindow` | same | Live window selection; live minute with and without ESPN's display clock |
 | `getUpcoming` | same | Scheduled-only rows, limit |
+| none (reader-only) | `…/calendar` | T10.1 season calendar, listed under `readerOnly` in the JSON; route inventory and OpenAPI include it |
 | `getStandings` | `…/standings` | Recorded groups and table rows (rank, stats, team identity), unnamed tables, MLS derived tables, synthetic duplicate-rank, missing-stat and empty tables; a team in two tables (stored, snapshotted and served in both); conflicting tables rejected |
 | `getBracket` | `…/bracket` | Recorded rounds and every match (id, round, state, sides, scores, winner), placeholders, clockless live match |
 | `getMatchSummary` | `/v1/matches/{id}` | Recorded scorers, cards, stats, lineups, win probability, info, form, head-to-head, videos and commentary; synthetic shootout detail, head-to-head, red card and unattributable scorer/card; own goal; canonical scorer/card sides on new and sealed legacy rows; route-layer player slugs; match-id translation; top-level key set |
@@ -287,6 +288,71 @@ The contract now:
 Release order and rollback are in
 [RELEASES.md](RELEASES.md#migration-0024-standing-table-membership).
 
+## T10.1 match-query contract
+
+**October 6.** The `T10.1-match-query` gap is closed with positive parity. The
+reader's `/matches` now validates and applies the frontend's query semantics in
+one choke-point, `backend/reader/params.go`:
+
+| Query | Reader behavior (frontend equivalent) |
+|---|---|
+| none | current Monday–Sunday UTC week, lightweight (`getFixtures(currentWeekRange)`) |
+| `range=YYYYMMDD-YYYYMMDD` | real UTC dates, ordered, at most 92 days between them (93 named days), years from 0100; served as `[start 00:00Z, day after end 00:00Z)` (`parseRange`) |
+| `detail=summary` | stored scorers, cards, stats, win probability and shootout detail; an explicit range is then limited to 14 named days (`getMatches`, `MAX_SUMMARY_DAYS`) |
+| `state=scheduled` | scheduled rows only; without `range`, today through 28 days ahead with a 12-row default (`getUpcoming`, `forwardRange`) |
+| `limit=N` | digits only, 1–100, earliest rows first |
+
+Rows are ordered by kickoff, then id. Filters and the limit run in
+parameterized SQL on `match_comp_season_idx` before teams, detail blobs and
+the correlated attribution lookups are joined. A lightweight row keeps empty
+detail fields, and only the returned rows pay for detail. Each request runs two
+statements, the body and its freshness metadata, in the existing repeatable-read
+snapshot. The freshness status, counts and observation describe exactly the
+returned ids. Poll health and the unresolved-season dormancy check stay
+season-wide, so an empty or limited window cannot report a healthy poll or a
+dormancy that the season lacks. A window can still be `fresh` while the season
+holds overdue rows outside it: those are visible only through `scope=season`,
+which the watchdog reads.
+
+**Deliberate divergences, each a labeled vector.** The reader rejects a
+duplicate, unknown, mis-cased or badly encoded parameter with a constant-message
+`400`. The frontend takes the first value or ignores the parameter, but a
+misspelt filter must not silently fall back to the default week. With
+`state=scheduled&detail=summary`, the reader also serves stored detail, which
+`getUpcoming` drops. `scope=season` is reader-only: the complete monitoring read,
+covering every stored row with season-wide freshness. It is unenriched unless
+`detail=summary` is also given, the only parameter it combines with. A season
+beyond 2,000 rows returns `500` rather than a truncated list. The
+match-freshness watchdog sends `scope=season&detail=summary`, so it still
+validates every stored row's detail, as it did against the old whole-season
+default. Before T10.1, readers ignored both parameters and already returned the
+whole season with detail.
+
+`GET /v1/competitions/{comp}/{season}/calendar` lists one entry per UTC match
+day (`kickoff_date`) with per-state counts and the first/last kickoff. It takes
+no parameters, carries season-wide freshness, and returns `500` past 2,000
+match days (distinct UTC dates, not rows).
+Its size comes from stored rows, not from an assumed number of days per season.
+
+Match ids address `/v1/matches/{id}` only in canonical lowercase hyphenated
+UUID form. Spellings that `uuid.Parse` also accepts (upper case, braces, `urn:`,
+32 digits) return `404`, as unknown ids do.
+
+**Proofs.** `params_test.go` covers dates, leap years, month and year edges,
+the cap edges, and empty, duplicate, unknown and combination rejections. The
+shared `queries.params` vectors (`paramsRule` in the JSON) run through the real
+frontend route in TypeScript. In Go they run through the reader parser and
+router (`TestReaderContract`, dispatch window, state, limit and detail) and
+through real SQL as the least-privilege login (`TestMatchQueryVectorsAgainstPostgres`,
+identical ids). `match_query_integration_test.go` uses a 380-row season beside
+3,800 archived rows. It proves scope isolation, filtering, the limit, id tie
+order, the lightweight and detailed projections and the calendar. It also proves
+body/freshness agreement under concurrent commits, an empty healthy window, a
+failed poll and overdue rows outside the window, and the 2,000-row fail-closed
+bound. From `EXPLAIN ANALYZE`, a one-day lightweight window reads 10 `match`
+rows with no subplans, a detailed limit-5 window runs attribution subplans only
+for its 5 rows, and requests are counted at two statements.
+
 ## Remaining gaps
 
 The full mismatch text for each gap is in `reader-contract.json` under `gaps`.
@@ -294,14 +360,13 @@ The gaps stay open until their tasks land.
 
 | Task | Gaps |
 |---|---|
-| **T10.1** match queries | `match-query`: the reader ignores range, state, detail and limit, even when malformed |
 | **T10.2** summary and leaders | `team-stats`, `lineups` (starters only), `leaders` (goals only, no assists route), `leaders-depth` (frontend shows 10 rows; the reader serves the whole stored board) |
 | **T10.3** team and squad | `team`, `team-location`, `team-record`, `standing-summary`, `squad`, `squad-fields`, `partial-failure`, `team-cache-doc` (OpenAPI documents 60s; the route serves 120s) |
 | **T10.4** player | `player`: no route or DTO |
 | **T10.10** derived standings | `derived-standings` (MLS overall, Leagues Cup phases) |
 | **T16.6** news | `news`: a live ESPN proxy, not owned data |
 | **T17.3** provenance and freshness | `freshness-coverage`: no freshness headers on standings, top-scorers or news |
-| **T21.4** observability | `dependency-error-logging`: six handlers log raw dependency text. `handleTeam`'s sanitized logging is the asserted reference |
+| **T21.4** observability | `dependency-error-logging`: six handlers log raw dependency text. `handleTeam`'s and `handleCalendar`'s sanitized logging is the asserted reference |
 
 Every check fails when its gap closes. To close one:
 

@@ -27,6 +27,23 @@ type Match struct {
 	WinProbability *espn.WinProbability `json:"winProbability"`
 }
 
+// CalendarDay is one UTC day of a season that holds at least one match.
+type CalendarDay struct {
+	Date      string `json:"date"` // YYYY-MM-DD, UTC
+	Matches   int    `json:"matches"`
+	Scheduled int    `json:"scheduled"`
+	Live      int    `json:"live"`
+	Finished  int    `json:"finished"`
+}
+
+// SeasonCalendar is a season's navigation without its matches. Both kickoff
+// fields are null for a season holding no matches.
+type SeasonCalendar struct {
+	FirstKickoff *string       `json:"firstKickoff"`
+	LastKickoff  *string       `json:"lastKickoff"`
+	Days         []CalendarDay `json:"days"`
+}
+
 type Standing struct {
 	Team           espn.Team `json:"team"`
 	Rank           int       `json:"rank"`
