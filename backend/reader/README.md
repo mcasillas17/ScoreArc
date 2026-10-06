@@ -58,6 +58,25 @@ curl -i http://localhost:8080/healthz
 curl -i http://localhost:8080/v1/competitions/world-cup/2026/matches
 ```
 
+## Match queries (T10.1)
+
+`/matches` accepts `range=YYYYMMDD-YYYYMMDD` (up to 93 named UTC days),
+`state=scheduled`, `detail=summary` (an explicit range of up to 14 days) and
+`limit=1..100`. With no parameters it serves the current UTC week. With
+`state=scheduled` and no range it serves today through 28 days ahead (29 UTC
+days), 12 rows by default.
+`scope=season` is the complete monitoring read; it combines only with `detail=summary`.
+A duplicate, unknown, empty or malformed parameter is a constant-message `400`.
+`/calendar` lists the season's UTC match days with per-state counts. Validation
+lives in `params.go`; the full contract and its proofs are in
+[READER_CONTRACT](../../docs/backend/READER_CONTRACT.md#t101-match-query-contract).
+
+```bash
+curl -i 'http://localhost:8080/v1/competitions/world-cup/2026/matches?range=20260628-20260705'
+curl -i 'http://localhost:8080/v1/competitions/world-cup/2026/matches?state=scheduled&limit=5'
+curl -i  http://localhost:8080/v1/competitions/world-cup/2026/calendar
+```
+
 ## Request behavior
 
 - CORS permits public `GET` and preflight requests.
@@ -82,8 +101,11 @@ curl -i http://localhost:8080/v1/competitions/world-cup/2026/matches
 
 ## Match freshness (additive, no body changes)
 
-The match list, bracket, match summary and team profile routes retain their exact
-existing JSON shapes (including bare list arrays and `scheduled|live|finished`).
+The match list, calendar, bracket, match summary and team profile routes keep
+their row shapes (including bare list arrays and `scheduled|live|finished`).
+Since T10.1, a parameterless `/matches` selects the current UTC week of
+lightweight rows rather than the whole season with detail (see
+[Match queries](#match-queries-t101)).
 They add CORS-exposed response headers:
 
 | Header | Contract |
@@ -122,7 +144,13 @@ An empty active collection is `empty` only after a recent successful full poll;
 stopped polling becomes `stale`/`unavailable`, not empty-success.
 `dormant` requires time outside valid shared `source.SeasonBounds` **and no
 unfinalized rows anywhere in that competition season**. Empty team/bracket
-subsets cannot conceal unresolved work. An explicit single finalized match
+subsets cannot conceal unresolved work. For `/matches` the counts and
+observation cover exactly the returned rows of the selected window, while poll
+health and the unresolved-season dormancy check stay season-wide, so an empty or
+limited window cannot report a healthy poll or a dormancy that the season lacks.
+A window can still be `fresh` while overdue rows sit outside it; only
+`scope=season` (which the watchdog reads) sees those. `scope=season` and
+`/calendar` carry whole-season metadata. An explicit single finalized match
 (the summary route) and genuine dormancy need no new heartbeat, but the last
 poll outcome remains visible. **Active list/team/bracket collections always
 require discovery polling**, even if every stored match is finalized: a stopped
@@ -131,7 +159,7 @@ produce `stale`; absent successful polls produce `unavailable`. Counts remain
 zero when the stored rows are all sealed, because those facts themselves have
 not expired.
 
-All four match-bearing routes read their body, summary identity scope where
+All five match-bearing routes (matches, calendar, bracket, summary, team) read their body, summary identity scope where
 needed, and freshness metadata inside one **read-only repeatable-read
 transaction**. Concurrent recovery cannot pair an older overdue body with newer
 finalized/healthy metadata. Queries share the existing ten-second request
@@ -157,7 +185,8 @@ no frontend DataStore cutover is included.
 
 `scripts/match-freshness-watchdog.mjs` runs **outside the ingester**, uses the
 configured current seasons in `backend/config/competitions.json`, and only GETs
-the existing public `/matches` route. It never calls ESPN or changes data rights.
+the public `/matches?scope=season&detail=summary` read, the complete season with
+stored detail (the parameterless default is one lightweight week since T10.1). It never calls ESPN or changes data rights.
 It rejects HTTP/redirect failures, missing/invalid/contradictory freshness
 headers, non-JSON or invalid match arrays, active-scope partial/failed polls,
 stale and unavailable responses. Valid `dormant` scopes are non-alerting even

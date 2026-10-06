@@ -485,10 +485,11 @@ migration compatibility and separately approved rollout.
 
 - Public and autoscaling, with one warm machine and an autostopped spare.
   Versioned under `/v1`.
-- **Seven `/v1` data routes plus `/healthz`** (they cover a subset of the 12
+- **Eight `/v1` data routes plus `/healthz`** (they cover a subset of the 12
   `DataStore` methods — the parity gap is in §2 and
   [`docs/CURRENT_STATE.md`](../CURRENT_STATE.md) §5):
-  - `GET /v1/competitions/{comp}/{season}/matches`
+  - `GET /v1/competitions/{comp}/{season}/matches`  (validated `range`/`state`/`detail`/`limit`; current UTC week by default; `scope=season` is the complete monitoring scope — T10.1)
+  - `GET /v1/competitions/{comp}/{season}/calendar`  (UTC match days with per-state counts — T10.1)
   - `GET /v1/competitions/{comp}/{season}/standings`
   - `GET /v1/competitions/{comp}/{season}/bracket`  (computed read-model)
   - `GET /v1/competitions/{comp}/{season}/top-scorers`
@@ -575,7 +576,7 @@ nested response locations.
 **Not started** — no `apiStore` exists on `main` (see
 [`docs/CURRENT_STATE.md`](../CURRENT_STATE.md)). This is a **contract/parity
 project, not a base-URL swap**: the 12 `DataStore` methods (§2) exceed the
-reader's 7 routes (§5), and canonical DTO shapes, query semantics, and derived
+reader's 8 data routes (§5), and canonical DTO shapes, query semantics, and derived
 views must reach tested parity first (`CURRENT_STATE.md` §5). The intended design:
 
 - Add `apiStore` implementing `DataStore` by calling the reader `/v1` endpoints
@@ -683,8 +684,8 @@ truth is the TS**: `src/server/data/types.ts` (shapes), `providers/espn-*.ts`
 - **Endpoint → type map:** each `/v1/…` response must deserialize into exactly
   the matching `types.ts` shape — `Match[]` / `Group[]` / `BracketRound[]` /
   `StatLeader[]` (`top-scorers`) / `TeamProfile` (`teams/{teamId}`) /
-  `MatchSummaryData` (`matches/{id}`) / `NewsArticle[]` (`news`). Seven data
-  routes today; the frontend's other `DataStore` methods (§2) have no reader
+  `MatchSummaryData` (`matches/{id}`) / `NewsArticle[]` (`news`), plus the
+  reader-only `calendar` (T10.1). Eight data routes today; the frontend's other `DataStore` methods (§2) have no reader
   route yet. Write a field-by-field map in the plan. This map is the target, not
   the implemented reader: [READER_CONTRACT](READER_CONTRACT.md) and the gap
   registry in `src/server/data/contracts/reader-contract.json` record every

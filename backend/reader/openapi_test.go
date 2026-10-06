@@ -107,6 +107,17 @@ func TestOpenAPIValidatesPublicResponseModels(t *testing.T) {
 func TestOpenAPIValidatesActualRouteResponses(t *testing.T) {
 	t.Parallel()
 	document := loadOpenAPI(t)
+	calendarKickoff := "2026-07-19T19:00:00Z"
+	// A season with no rows: nil days must still encode as [] with null kickoffs.
+	empty := performRequest(newTestApp(t, &fakeReaderStore{}, &fakeNewsReader{}).router(), "GET", "/v1/competitions/world-cup/2026/calendar")
+	var emptyCalendar any
+	if err := json.Unmarshal(empty.Body.Bytes(), &emptyCalendar); err != nil {
+		t.Fatal(err)
+	}
+	calendarSchema := document.Paths.Value("/v1/competitions/{comp}/{season}/calendar").Get.Responses.Status(200).Value.Content.Get("application/json").Schema
+	if err := calendarSchema.Value.VisitJSON(emptyCalendar); err != nil || empty.Body.String() != "{\"firstKickoff\":null,\"lastKickoff\":null,\"days\":[]}\n" {
+		t.Fatalf("empty calendar %s violates OpenAPI: %v", empty.Body.String(), err)
+	}
 	store := &fakeReaderStore{
 		matches:   []Match{{ID: "1", Kickoff: "2026-07-19T19:00:00Z", State: espn.MatchStateScheduled, Scorers: []espn.Scorer{}, Cards: []espn.Card{}}},
 		standings: []Group{{ID: "A", Name: "Group A", Standings: []Standing{{Team: espn.Team{ID: "arg", Name: "Argentina", Abbr: "ARG"}, Rank: 1}}}},
@@ -116,6 +127,8 @@ func TestOpenAPIValidatesActualRouteResponses(t *testing.T) {
 		}}}},
 		summary:    &MatchSummary{Scorers: []espn.Scorer{}, Cards: []espn.Card{}, Videos: []espn.MatchVideo{}, Commentary: []espn.CommentaryItem{}, H2H: []espn.H2HMeeting{}},
 		topScorers: []espn.TopScorer{{Rank: 1, Player: "Player", TeamAbbr: "ARG", TeamName: "Argentina", Goals: 7}},
+		calendar: SeasonCalendar{FirstKickoff: &calendarKickoff, LastKickoff: &calendarKickoff,
+			Days: []CalendarDay{{Date: "2026-07-19", Matches: 2, Scheduled: 1, Live: 1}}},
 		teams: map[string]*TeamProfile{"arg": {
 			Team: espn.Team{ID: "arg", Name: "Argentina", Abbr: "ARG"},
 			Squad: []SquadPlayer{
@@ -133,6 +146,7 @@ func TestOpenAPIValidatesActualRouteResponses(t *testing.T) {
 		template string
 	}{
 		{target: "/v1/competitions/world-cup/2026/matches", template: "/v1/competitions/{comp}/{season}/matches"},
+		{target: "/v1/competitions/world-cup/2026/calendar", template: "/v1/competitions/{comp}/{season}/calendar"},
 		{target: "/v1/competitions/world-cup/2026/standings", template: "/v1/competitions/{comp}/{season}/standings"},
 		{target: "/v1/competitions/world-cup/2026/bracket", template: "/v1/competitions/{comp}/{season}/bracket"},
 		{target: "/v1/competitions/world-cup/2026/top-scorers", template: "/v1/competitions/{comp}/{season}/top-scorers"},

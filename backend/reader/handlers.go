@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
@@ -35,6 +35,13 @@ func liveMaxAge(anyLive bool) int {
 	return 60
 }
 
+func (a *App) clock() time.Time {
+	if a.now != nil {
+		return a.now()
+	}
+	return time.Now()
+}
+
 func (a *App) handleMatches(writer http.ResponseWriter, request *http.Request) {
 	competition := chi.URLParam(request, "comp")
 	season := chi.URLParam(request, "season")
@@ -42,12 +49,17 @@ func (a *App) handleMatches(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusBadRequest, "unknown competition or season")
 		return
 	}
+	query, err := parseMatchQuery(request.URL.RawQuery, a.clock())
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
 	reader, finish, ok := a.beginMatchSnapshot(writer, request)
 	if !ok {
 		return
 	}
 	defer finish()
-	matches, err := reader.Matches(request.Context(), competition, season)
+	matches, err := reader.Matches(request.Context(), competition, season, query)
 	if err != nil {
 		finish()
 		a.logger.Error("matches", "competition", competition, "season", season, "err", err)
@@ -57,7 +69,16 @@ func (a *App) handleMatches(writer http.ResponseWriter, request *http.Request) {
 	if matches == nil {
 		matches = []Match{}
 	}
-	if !a.attachFreshness(writer, request, reader, finish, freshnessScope{Competition: competition, Season: season}) {
+	scope := freshnessScope{Competition: competition, Season: season}
+	if !query.Season {
+		// Metadata for exactly the rows served; poll health and unresolved
+		// work keep their season scope inside freshnessSQL.
+		scope.Selected = true
+		for _, match := range matches {
+			scope.MatchIDs = append(scope.MatchIDs, match.ID)
+		}
+	}
+	if !a.attachFreshness(writer, request, reader, finish, scope) {
 		return
 	}
 	anyLive := false
@@ -69,6 +90,48 @@ func (a *App) handleMatches(writer http.ResponseWriter, request *http.Request) {
 	}
 	cacheFor(writer, liveMaxAge(anyLive))
 	writeJSON(writer, http.StatusOK, matches)
+}
+
+// A season's match days without its matches: the calendar a month view
+// navigates by. The freshness metadata covers the whole season it counts.
+func (a *App) handleCalendar(writer http.ResponseWriter, request *http.Request) {
+	competition := chi.URLParam(request, "comp")
+	season := chi.URLParam(request, "season")
+	if _, _, ok := a.resolve(competition, season); !ok {
+		writeError(writer, http.StatusBadRequest, "unknown competition or season")
+		return
+	}
+	if err := parseNoQuery(request.URL.RawQuery); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	reader, finish, ok := a.beginMatchSnapshot(writer, request)
+	if !ok {
+		return
+	}
+	defer finish()
+	calendar, err := reader.Calendar(request.Context(), competition, season)
+	if err != nil {
+		finish()
+		// Dependency text can carry connection details; log the route and
+		// whether the constant row bound, rather than a dependency, failed.
+		a.logger.Error("calendar unavailable", "competition", competition, "season", season,
+			"row_bound_exceeded", errors.Is(err, errSeasonTooLarge))
+		writeError(writer, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if calendar.Days == nil {
+		calendar.Days = []CalendarDay{}
+	}
+	if !a.attachFreshness(writer, request, reader, finish, freshnessScope{Competition: competition, Season: season}) {
+		return
+	}
+	anyLive := false
+	for _, entry := range calendar.Days {
+		anyLive = anyLive || entry.Live > 0
+	}
+	cacheFor(writer, liveMaxAge(anyLive))
+	writeJSON(writer, http.StatusOK, calendar)
 }
 
 func (a *App) handleStandings(writer http.ResponseWriter, request *http.Request) {
@@ -172,7 +235,7 @@ func (a *App) handleNews(writer http.ResponseWriter, request *http.Request) {
 
 func (a *App) handleMatchSummary(writer http.ResponseWriter, request *http.Request) {
 	id := chi.URLParam(request, "id")
-	if _, err := uuid.Parse(id); err != nil {
+	if !isCanonicalMatchID(id) {
 		writeError(writer, http.StatusNotFound, "match not found")
 		return
 	}

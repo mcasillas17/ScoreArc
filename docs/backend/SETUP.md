@@ -636,7 +636,7 @@ against ESPN, which needs no credentials:
 set -o pipefail
 comp=premier-league; season=2026-27; slug=eng.1
 curl --fail --silent --show-error --max-time 15 \
-  "https://scorearc-reader.fly.dev/v1/competitions/$comp/$season/matches" |
+  "https://scorearc-reader.fly.dev/v1/competitions/$comp/$season/matches?scope=season" |
   python3 -c 'import json,sys; m=json.load(sys.stdin); f=sorted(x["kickoff"] for x in m if x["state"]=="finished"); print("reader finished:",len(f),"last:",f[-1] if f else "-"); print("stuck live:",sum(1 for x in m if x["state"]=="live"))'
 # Diagnostic sample only, NOT complete-season coverage. Hyphenated ranges
 # returned 400 on September 21; compact months are the measured working shape.
@@ -646,8 +646,10 @@ curl --fail --silent --show-error --max-time 15 --max-filesize 16777216 \
   python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["events"]; assert isinstance(e,list) and len(e)<1000; print("sample leagues:",[x["slug"] for x in d["leagues"]]); print("sample events:",len(e)); print([(x["id"],x["date"],x["season"]["year"],x["status"]["type"]) for x in e])'
 ```
 
-Compare the sampled event identities/dates/statuses, **not** the single-month
-count against the reader's whole-season count. Provider calendar dates can spill
+`scope=season` is the reader's complete monitoring read (T10.1): without it,
+`/matches` serves only the current UTC week and these counts would describe
+that week. Compare the sampled event identities/dates/statuses, **not** the
+single-month count against the reader's whole-season count. Provider calendar dates can spill
 into the next UTC month. The adapter covers adjacent calendar edges, validates
 every month, filters exact UTC/season bounds, and keeps postponed/suspended
 matches mutable. A 400, cap-sized response or missing month is not an empty

@@ -176,14 +176,14 @@ that audit's mutable status conclusions where they conflict.
 |---|---|
 | Frontend | Live at scorearc.futbol, fully ESPN-backed. #192/#193 are merged and released; October 2 Liga MX/LaLiga Now/calendar and September API-window checks passed within the limits above. No reader/backend fetch call sites exist in `src/server/data/` — the 1d cutover has not started. |
 | Ingester | **Recovery and monthly discovery repairs merged and released.** September 20 recovery resolved the original stale matches; #183 shipped September 26. October 2 match scopes reported nine fresh / one dormant, all polls OK and zero stale/overdue; Greece's `/matches` returned 182 and `fresh`. This does not establish current standings/top-scorers or ancillary collection coverage. Sustained completeness/reconciliation remains open. Do not rebuild #172/#173/#183 or repeat migration 0023/restart recovery. |
-| Reader API | 7 registered `/v1` data routes (`matches`, `standings`, `bracket`, `top-scorers`, `teams/{teamId}`, `news`, `matches/{id}`) + `/healthz`. The Liga MX team-profile **500 is repaired**: existing migration 0022 restored the full production response, accepted 2026-09-06 (§3). Broader reader parity remains open (§5). |
+| Reader API | 8 registered `/v1` data routes (`matches`, `calendar`, `standings`, `bracket`, `top-scorers`, `teams/{teamId}`, `news`, `matches/{id}`) + `/healthz`. T10.1 (October 6, in review, not deployed) added validated `/matches` queries and `calendar`. The Liga MX team-profile **500 is repaired**: existing migration 0022 restored the full production response, accepted 2026-09-06 (§3). Broader reader parity remains open (§5). |
 | Operations | Credential delivery, project-token promotion and Fly verification repairs are merged, with later successful releases above; older §10 incidents are not work to repeat. **October 2 main `529460b` has passing tests but failed Fly eligibility (`runStatus`), not all-green CI; cause unresolved.** Retain PR/CI protections, recheck live approval holds before any new release, and keep migrations manual. T21.2's fail-closed head/dirty-ledger gate is implemented but not yet accepted as active in production; its pre-merge production checks are in [RELEASES](backend/RELEASES.md#activation-prerequisites-for-t212); broader T21.1 governance/acceptance also remains open. |
 | 1d (frontend cutover) | Absent. No spec has landed as an implementation; no `apiStore` exists. |
 | E6 (shot log) | T6.1 (coverage probe) complete. T6.2–T6.4 (extraction, reconciliation, rendering) pending. |
 | E7 (history & trends) | Writer code is implemented and deployed; continuing capture is not operationally accepted. September 13 recovery and September 14 machine readback are historical observations, not present-health proof. Production SQL has not been inspected in this pass; unexposed writer tables cannot be judged from reader responses alone. **T7.13 operational acceptance remains pending** (§4), and T7.21 participation retry work is separate from match-state recovery. |
 | E8 (AI) | Spec/task list only. No recap, digest, or preview code exists in `src` or `backend`. |
 | E9 (expected goals) | No ScoreArc xG model and no public xG surface. Gated on T7.13's actual closure (not its writer existence), T9.1, a provider/model product decision, and data rights (§7, §9). |
-| E10 (public API read surface) | Expansion absent beyond the 7 routes above; `params.go` and the other 35 planned endpoints do not exist. |
+| E10 (public API read surface) | T10.1 added `params.go`, validated `/matches` queries and `calendar` (in review, not deployed). The other planned endpoints do not exist. |
 | MCP | Absent. No MCP server, tool, or client code exists anywhere in the repository; blocked on the same data-rights gate as E9 (§7). |
 
 ## 3. Verification evidence (this pass, 2026-09-01)
@@ -490,14 +490,18 @@ separate.
 - **`DataStore` has 12 methods** (`getMatches`, `getFixtures`,
   `getLiveWindow`, `getUpcoming`, `getStandings`, `getBracket`,
   `getMatchSummary`, `getLeaders`,
-  `getNews`, `getTeam`, `getSquad`, `getPlayer`) against **7 reader
-  routes**. #191 removed the redundant `getTopScorers`/`getTopAssists` wrappers,
+  `getNews`, `getTeam`, `getSquad`, `getPlayer`) against **8 reader
+  routes** (one, `calendar`, reader-only). #191 removed the redundant `getTopScorers`/`getTopAssists` wrappers,
   not their public product/API capabilities: both still use `getLeaders`.
   The count is corrected; the underlying parity gaps remain real.
-- **`matches` lacks range/state/detail/limit.** `handleMatches` takes no
-  query parameters; it returns every match for the season. The frontend's
-  `getMatches(range)`, `getFixtures(range)`, `getLiveWindow`, and
-  `getUpcoming(limit)` semantics have no reader-side equivalent yet.
+- **T10.1 match queries: closed in code October 6, not deployed.** `/matches`
+  validates and applies range/state/detail/limit with positive TypeScript,
+  Go and Postgres parity. Its stricter rejections and the reader-only
+  `scope=season` monitoring read are labeled vectors
+  ([READER_CONTRACT](backend/READER_CONTRACT.md#t101-match-query-contract)).
+  Deploying it changes the parameterless default from the whole season to the
+  current UTC week; the watchdog and the SETUP ingestion check already request
+  `scope=season`, which older readers ignore. Not an `apiStore` or cutover.
 - **The reader/OpenAPI DTOs are older than the ingested data**: lineup,
   stats, leader, and team-profile fields the ingester now writes are not
   all exposed in the current reader response shapes.
@@ -593,10 +597,9 @@ held-byte reprocessing and new collection remain unchanged.
 
 **Next implementation, in order:**
 
-1. **T10.1 — match-query parity (§5).** T16.2 closed in code on October 5
-   (`standings-dedup`: decision A, migration 0024 not yet applied to production;
-   release and production acceptance remain separate). Pin range/state/detail/limit behavior,
-   then the remaining T10.10 and T10.2–T10.4 derived-view/read contracts.
+1. **T10.10 and T10.2–T10.4 derived-view/read contracts (§5).** T10.1
+   match-query parity is closed in code (October 6, in review; its release is
+   separate).
 
 **Independent high-priority reliability/durability lanes, not new dependencies:**
 

@@ -37,6 +37,9 @@ type fakeReaderStore struct {
 	topScorersErr      error
 	teams              map[string]*TeamProfile
 	teamErr            error
+	query              matchQuery
+	calendar           SeasonCalendar
+	calendarErr        error
 	freshness          freshnessSnapshot
 	freshnessErr       error
 	calls              int
@@ -64,10 +67,15 @@ func (f *fakeReaderStore) Ping(ctx context.Context) error {
 	}
 	return f.pingErr
 }
-func (f *fakeReaderStore) Matches(ctx context.Context, _ string, _ string) ([]Match, error) {
+func (f *fakeReaderStore) Matches(ctx context.Context, _ string, _ string, query matchQuery) ([]Match, error) {
 	f.calls++
+	f.query = query
 	_, f.matchesHasDeadline = ctx.Deadline()
 	return f.matches, f.matchesErr
+}
+func (f *fakeReaderStore) Calendar(context.Context, string, string) (SeasonCalendar, error) {
+	f.calls++
+	return f.calendar, f.calendarErr
 }
 func (f *fakeReaderStore) Team(_ context.Context, teamID, _, _ string) (*TeamProfile, error) {
 	f.calls++
@@ -141,6 +149,7 @@ func TestPublicRoutesAndCachePolicies(t *testing.T) {
 		matches:    []Match{{ID: "1", State: espn.MatchStateLive, Scorers: []espn.Scorer{}, Cards: []espn.Card{}}},
 		standings:  []Group{{ID: "A", Name: "Group A", Standings: []Standing{}}},
 		bracket:    []BracketRound{{Slug: "final", Name: "Final", Matches: []espn.BracketMatch{}}},
+		calendar:   SeasonCalendar{Days: []CalendarDay{{Date: "2026-07-19", Matches: 1, Live: 1}}},
 		summary:    &MatchSummary{Scorers: []espn.Scorer{}, Cards: []espn.Card{}, Videos: []espn.MatchVideo{}, Commentary: []espn.CommentaryItem{}, H2H: []espn.H2HMeeting{}},
 		topScorers: []espn.TopScorer{},
 	}
@@ -153,6 +162,7 @@ func TestPublicRoutesAndCachePolicies(t *testing.T) {
 		array        bool
 	}{
 		{path: "/v1/competitions/world-cup/2026/matches", cacheControl: "public, max-age=10", array: true},
+		{path: "/v1/competitions/world-cup/2026/calendar", cacheControl: "public, max-age=10"},
 		{path: "/v1/competitions/world-cup/2026/standings", cacheControl: "public, max-age=60", array: true},
 		{path: "/v1/competitions/world-cup/2026/bracket", cacheControl: "public, max-age=60", array: true},
 		{path: "/v1/competitions/world-cup/2026/top-scorers", cacheControl: "public, max-age=60", array: true},

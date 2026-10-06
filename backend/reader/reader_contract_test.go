@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"net/url"
 	"os"
 	"reflect"
 	"slices"
@@ -47,6 +48,31 @@ type syntheticTable struct {
 	Entries []int   `json:"entries"`
 }
 
+// queryVector is one matches-route query string. Without Reader, the reader
+// must answer with the frontend's status and ids.
+type queryVector struct {
+	Query    string `json:"query"`
+	Frontend struct {
+		Status int      `json:"status"`
+		Method string   `json:"method"`
+		Args   []any    `json:"args"`
+		IDs    []string `json:"ids"`
+	} `json:"frontend"`
+	Reader *struct {
+		Status int      `json:"status"`
+		IDs    []string `json:"ids"`
+		Why    string   `json:"why"`
+	} `json:"reader"`
+}
+
+// expected returns the reader's required status and ids for the vector.
+func (v queryVector) expected() (int, []string) {
+	if v.Reader != nil {
+		return v.Reader.Status, v.Reader.IDs
+	}
+	return v.Frontend.Status, v.Frontend.IDs
+}
+
 type readerContractVectors struct {
 	Gaps map[string]struct {
 		Task   string   `json:"task"`
@@ -56,7 +82,8 @@ type readerContractVectors struct {
 		Reader *string  `json:"reader"`
 		Gaps   []string `json:"gaps"`
 	} `json:"methods"`
-	Summary struct {
+	ReaderOnly map[string]string `json:"readerOnly"`
+	Summary    struct {
 		Fixture       string        `json:"fixture"`
 		EventID       string        `json:"eventId"`
 		ReaderMatchID string        `json:"readerMatchId"`
@@ -117,14 +144,21 @@ type readerContractVectors struct {
 		} `json:"synthetic"`
 	} `json:"standings"`
 	Queries struct {
-		Competition string `json:"competition"`
-		Season      string `json:"season"`
-		Params      []struct {
-			Query    string `json:"query"`
-			Frontend struct {
-				Status int `json:"status"`
-			} `json:"frontend"`
-		} `json:"params"`
+		Competition string    `json:"competition"`
+		Season      string    `json:"season"`
+		Now         time.Time `json:"now"`
+		Events      []struct {
+			ID      string `json:"id"`
+			Kickoff string `json:"kickoff"`
+			Status  string `json:"status"`
+		} `json:"events"`
+		Params      []queryVector `json:"params"`
+		OutOfSeason []struct {
+			Competition string   `json:"competition"`
+			Season      string   `json:"season"`
+			Args        []string `json:"args"`
+			IDs         []string `json:"ids"`
+		} `json:"outOfSeason"`
 	} `json:"queries"`
 	Freshness struct {
 		Competition string `json:"competition"`
@@ -395,6 +429,9 @@ func TestReaderContract(t *testing.T) {
 			if contract.Reader != nil {
 				routes[*contract.Reader] = true
 			}
+		}
+		for route := range vectors.ReaderOnly {
+			routes[route] = true
 		}
 		if vectors.Methods["getPlayer"].Reader != nil {
 			t.Fatal("getPlayer gained a reader route; update reader-contract.json")
@@ -1257,32 +1294,80 @@ func TestReaderContract(t *testing.T) {
 		}
 	})
 
-	t.Run("matches route ignores every frontend query parameter", func(t *testing.T) {
+	t.Run("matches route selects the frontend's window for every query vector", func(t *testing.T) {
 		exercise("getMatches", "getFixtures", "getLiveWindow", "getUpcoming") // One shared reader route.
-		store := &fakeReaderStore{matches: []Match{{ID: "018f0000-0000-7000-8000-000000016101", State: espn.MatchStateScheduled, Kickoff: "2026-07-05T23:59:00Z"}}}
-		app := newTestApp(t, store, &fakeNewsReader{})
-		router := app.router()
 		base := "/v1/competitions/" + vectors.Queries.Competition + "/" + vectors.Queries.Season + "/matches"
-		baseline := performRequest(router, http.MethodGet, base).Body.String()
-		rejected := 0
-		for _, query := range vectors.Queries.Params {
-			response := performRequest(router, http.MethodGet, base+query.Query)
-			if response.Code != http.StatusOK || response.Body.String() != baseline {
-				t.Fatalf("gap changed: %q now returns %d %s (frontend %d)", query.Query, response.Code, response.Body.String(), query.Frontend.Status)
+		statuses := map[int]int{}
+		for _, vector := range vectors.Queries.Params {
+			store := &fakeReaderStore{matches: []Match{}}
+			app := newTestApp(t, store, &fakeNewsReader{})
+			app.now = func() time.Time { return vectors.Queries.Now }
+			response := performRequest(app.router(), http.MethodGet, base+vector.Query)
+			status, _ := vector.expected()
+			statuses[status]++
+			if response.Code != status {
+				t.Fatalf("%q: %d %s, want %d", vector.Query, response.Code, response.Body.String(), status)
 			}
-			if query.Frontend.Status == http.StatusBadRequest {
-				rejected++
+			if status == http.StatusBadRequest {
+				var body map[string]string
+				if json.Unmarshal(response.Body.Bytes(), &body) != nil || len(body) != 1 || body["error"] == "" ||
+					strings.Contains(response.Body.String(), vector.Query) || store.calls != 0 ||
+					response.Header().Get("Cache-Control") != "no-store" {
+					t.Fatalf("%q: rejection %s reached storage (%d calls) or echoed input", vector.Query, response.Body.String(), store.calls)
+				}
+				continue
+			}
+			if vector.Reader != nil {
+				continue // Its rows are pinned against Postgres (TestMatchQueryVectorsAgainstPostgres).
+			}
+			// The frontend dispatch the reader must reproduce: getMatches is the
+			// detailed window, getFixtures the lightweight one, getUpcoming the
+			// scheduled forward feed with its 12-row default. The route filters
+			// and caps a window after fetching it, so state and limit come from
+			// the query string itself, never from the reader's own parse.
+			values, err := url.ParseQuery(strings.TrimPrefix(vector.Query, "?"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := matchQuery{ScheduledOnly: values.Get("state") == "scheduled", Detail: values.Get("detail") == "summary"}
+			if raw := values.Get("limit"); raw != "" {
+				if want.Limit, err = strconv.Atoi(raw); err != nil {
+					t.Fatal(err)
+				}
+			}
+			switch vector.Frontend.Method {
+			case "getMatches", "getFixtures":
+				window := vector.Frontend.Args[0].(string)
+				want.From, want.To = day(window[:4]+"-"+window[4:6]+"-"+window[6:8]), day(window[9:13]+"-"+window[13:15]+"-"+window[15:17]).AddDate(0, 0, 1)
+				if want.Detail != (vector.Frontend.Method == "getMatches") {
+					t.Fatalf("%q: detail disagrees with the frontend dispatch %s", vector.Query, vector.Frontend.Method)
+				}
+			case "getUpcoming":
+				want.From, want.To = day("2026-07-01"), day("2026-07-30")
+				if len(vector.Frontend.Args) == 1 {
+					want.Limit = int(vector.Frontend.Args[0].(float64))
+				} else {
+					want.Limit = upcomingLimit
+				}
+			default:
+				t.Fatalf("%q: unknown frontend method %q", vector.Query, vector.Frontend.Method)
+			}
+			if got := store.query; got != want {
+				t.Fatalf("%q: reader query %+v, frontend dispatch %+v", vector.Query, got, want)
 			}
 		}
-		if rejected == 0 {
-			t.Fatal("no malformed query vectors exercised")
+		if statuses[http.StatusOK] < 10 || statuses[http.StatusBadRequest] < 10 {
+			t.Fatalf("query vectors exercise %v", statuses)
 		}
+		parameters := map[string]bool{}
 		for _, parameter := range okGet(t, document, "/v1/competitions/{comp}/{season}/matches").Parameters {
 			if parameter.Value.In == "query" {
-				t.Fatalf("gap changed: OpenAPI documents %s", parameter.Value.Name)
+				parameters[parameter.Value.Name] = true
 			}
 		}
-		gap("T10.1-match-query")
+		if !reflect.DeepEqual(parameters, map[string]bool{"range": true, "state": true, "detail": true, "limit": true, "scope": true}) {
+			t.Fatalf("OpenAPI documents query parameters %v", parameters)
+		}
 	})
 
 	t.Run("freshness headers from frozen-clock snapshots", func(t *testing.T) {
@@ -1338,24 +1423,27 @@ func TestReaderContract(t *testing.T) {
 			}
 		}
 		// A secret-bearing dependency error: every data route sanitizes the body,
-		// but all except handleTeam log the raw text (T21.4); handleTeam logs only
-		// the operation and error metadata, the reference the fix must match.
+		// but all except handleTeam and handleCalendar log the raw text (T21.4).
+		// Those two log only constant metadata (safeLog names a field each must
+		// carry), the reference the fix must match.
 		secret := errors.New("password=secret")
 		for _, route := range []struct {
-			path   string
-			status int
-			store  *fakeReaderStore
-			news   *fakeNewsReader
-			leaks  bool
+			path    string
+			status  int
+			store   *fakeReaderStore
+			news    *fakeNewsReader
+			leaks   bool
+			safeLog string
 		}{
-			{"/v1/competitions/world-cup/2026/matches", 500, &fakeReaderStore{matchesErr: secret}, &fakeNewsReader{}, true},
-			{"/v1/competitions/world-cup/2026/standings", 500, &fakeReaderStore{standingsErr: secret}, &fakeNewsReader{}, true},
-			{"/v1/competitions/world-cup/2026/bracket", 500, &fakeReaderStore{bracketErr: secret}, &fakeNewsReader{}, true},
-			{"/v1/competitions/world-cup/2026/top-scorers", 500, &fakeReaderStore{topScorersErr: secret}, &fakeNewsReader{}, true},
-			{"/v1/competitions/world-cup/news", 502, &fakeReaderStore{}, &fakeNewsReader{err: secret}, true},
-			{"/v1/matches/" + vectors.Summary.ReaderMatchID, 500, &fakeReaderStore{summaryErr: secret}, &fakeNewsReader{}, true},
+			{"/v1/competitions/world-cup/2026/matches", 500, &fakeReaderStore{matchesErr: secret}, &fakeNewsReader{}, true, ""},
+			{"/v1/competitions/world-cup/2026/standings", 500, &fakeReaderStore{standingsErr: secret}, &fakeNewsReader{}, true, ""},
+			{"/v1/competitions/world-cup/2026/bracket", 500, &fakeReaderStore{bracketErr: secret}, &fakeNewsReader{}, true, ""},
+			{"/v1/competitions/world-cup/2026/top-scorers", 500, &fakeReaderStore{topScorersErr: secret}, &fakeNewsReader{}, true, ""},
+			{"/v1/competitions/world-cup/news", 502, &fakeReaderStore{}, &fakeNewsReader{err: secret}, true, ""},
+			{"/v1/matches/" + vectors.Summary.ReaderMatchID, 500, &fakeReaderStore{summaryErr: secret}, &fakeNewsReader{}, true, ""},
 			{"/v1/competitions/liga-mx/2026-apertura/teams/mex-america", 500,
-				&fakeReaderStore{teamErr: &teamReadError{operation: "squad", err: secret}}, &fakeNewsReader{}, false},
+				&fakeReaderStore{teamErr: &teamReadError{operation: "squad", err: secret}}, &fakeNewsReader{}, false, `"operation":"squad"`},
+			{"/v1/competitions/world-cup/2026/calendar", 500, &fakeReaderStore{calendarErr: secret}, &fakeNewsReader{}, false, `"row_bound_exceeded":false`},
 		} {
 			app := newTestApp(t, route.store, route.news)
 			var logs bytes.Buffer
@@ -1367,8 +1455,8 @@ func TestReaderContract(t *testing.T) {
 			switch {
 			case route.leaks && !strings.Contains(logs.String(), "password=secret"):
 				t.Fatalf("gap changed: %s no longer logs raw dependency text; update reader-contract.json", route.path)
-			case !route.leaks && (strings.Contains(logs.String(), "secret") || !strings.Contains(logs.String(), `"operation":"squad"`)):
-				t.Fatalf("%s must log only the operation and error metadata: %s", route.path, logs.String())
+			case !route.leaks && (strings.Contains(logs.String(), "secret") || !strings.Contains(logs.String(), route.safeLog)):
+				t.Fatalf("%s must log only constant error metadata: %s", route.path, logs.String())
 			}
 		}
 		gap("T21.4-dependency-error-logging")

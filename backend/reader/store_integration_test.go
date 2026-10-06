@@ -201,7 +201,7 @@ func TestStoreIntegration(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("matches reconstruct exact detail and isolate competition", func(t *testing.T) {
-		matches, err := store.Matches(ctx, "world-cup", "2026")
+		matches, err := store.Matches(ctx, "world-cup", "2026", matchQuery{Season: true, Detail: true})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -214,7 +214,7 @@ func TestStoreIntegration(t *testing.T) {
 		if matches[0].Scorers == nil || matches[0].Cards == nil {
 			t.Fatalf("left-joined detail collections must be non-nil: %+v", matches[0])
 		}
-		empty, err := store.Matches(ctx, "world-cup", "1998")
+		empty, err := store.Matches(ctx, "world-cup", "1998", matchQuery{Season: true})
 		if err != nil || empty == nil || len(empty) != 0 {
 			t.Fatalf("empty matches = %#v, err %v", empty, err)
 		}
@@ -294,7 +294,7 @@ func TestStoreIntegration(t *testing.T) {
 			limiter:  newIPRateLimiter(100, 100),
 			health:   newHealthChecker(context.Background(), store.Ping),
 		}
-		request := httptest.NewRequest(http.MethodGet, "/v1/competitions/world-cup/2026/matches", nil)
+		request := httptest.NewRequest(http.MethodGet, "/v1/competitions/world-cup/2026/matches?scope=season", nil)
 		request.RemoteAddr = "192.0.2.1:1234"
 		response := httptest.NewRecorder()
 		app.router().ServeHTTP(response, request)
@@ -330,7 +330,7 @@ func TestStoreIntegration(t *testing.T) {
 	})
 
 	t.Run("parameter-looking input stays data", func(t *testing.T) {
-		matches, err := store.Matches(ctx, "world-cup' OR '1'='1", "2026")
+		matches, err := store.Matches(ctx, "world-cup' OR '1'='1", "2026", matchQuery{Season: true})
 		if err != nil || matches == nil || len(matches) != 0 {
 			t.Fatalf("injection-shaped query = %#v, err %v", matches, err)
 		}

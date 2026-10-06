@@ -73,7 +73,8 @@ publishes its complete OpenAPI 3.1 contract at
 | Route | Source | Cache policy |
 |---|---|---|
 | `GET /healthz` | coalesced Postgres ping | `no-store`, rate-limit exempt |
-| `GET /v1/competitions/{comp}/{season}/matches` | Postgres | 10 s live, otherwise 60 s |
+| `GET /v1/competitions/{comp}/{season}/matches` | Postgres; current UTC week by default, `range`/`state`/`detail`/`limit` filters, `scope=season` for monitoring | 10 s live, otherwise 60 s |
+| `GET /v1/competitions/{comp}/{season}/calendar` | Postgres; one entry per UTC match day | 10 s live, otherwise 60 s |
 | `GET /v1/competitions/{comp}/{season}/standings` | Postgres | 60 s |
 | `GET /v1/competitions/{comp}/{season}/bracket` | Postgres read model | 10 s live, otherwise 60 s |
 | `GET /v1/competitions/{comp}/{season}/top-scorers` | Postgres | 60 s |
