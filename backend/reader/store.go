@@ -123,14 +123,16 @@ func scanMatches(rows pgx.Rows) ([]Match, error) {
 	return matches, rows.Err()
 }
 
+// One group per stored table (table_key, T16.2): a team ranked in two tables
+// appears in both, and two tables sharing a display name stay two groups.
 const standingsSQL = `
-SELECT s.group_id, s.group_name, s.rank, s.played, s.wins, s.draws, s.losses,
+SELECT s.table_key, s.group_id, s.group_name, s.rank, s.played, s.wins, s.draws, s.losses,
        s.goals_for, s.goals_against, s.goal_difference, s.points, s.advanced,
        t.id, t.name, t.abbr, t.crest_url
 FROM standing s
 JOIN team t ON t.id = s.team_id
 WHERE s.competition_id = $1 AND s.season_id = $2
-ORDER BY COALESCE(s.group_name, ''), s.rank, t.id`
+ORDER BY COALESCE(s.group_name, ''), s.table_key, s.rank, t.id`
 
 func (s *Store) Standings(ctx context.Context, competition, season, defaultGroupName string) ([]Group, error) {
 	rows, err := s.db.Query(ctx, standingsSQL, competition, season)
@@ -142,10 +144,11 @@ func (s *Store) Standings(ctx context.Context, competition, season, defaultGroup
 	groups := make([]Group, 0)
 	index := make(map[string]int)
 	for rows.Next() {
+		var tableKey string
 		var groupID, groupName *string
 		var standing Standing
 		if err := rows.Scan(
-			&groupID, &groupName, &standing.Rank, &standing.Played, &standing.Wins,
+			&tableKey, &groupID, &groupName, &standing.Rank, &standing.Played, &standing.Wins,
 			&standing.Draws, &standing.Losses, &standing.GoalsFor, &standing.GoalsAgainst,
 			&standing.GoalDifference, &standing.Points, &standing.Advanced,
 			&standing.Team.ID, &standing.Team.Name, &standing.Team.Abbr, &standing.Team.CrestURL,
@@ -161,7 +164,7 @@ func (s *Store) Standings(ctx context.Context, competition, season, defaultGroup
 		if groupID != nil && *groupID != "" {
 			id = *groupID
 		}
-		key := id + "\x00" + name
+		key := tableKey + "\x00" + id + "\x00" + name
 		position, exists := index[key]
 		if !exists {
 			groups = append(groups, Group{ID: id, Name: name, Standings: []Standing{}})
@@ -349,7 +352,8 @@ func (s *Store) TopScorers(ctx context.Context, competition, season string) ([]e
 
 // One club inside one competition.
 //
-// Identity, colours and the season record come from team and standing; the
+// Identity, colours and the season record come from team and standing -- for a
+// team ranked in several tables, the first in the standings route's order; the
 // squad from squad_membership joined to player_season_stat; the matches from
 // match. Nothing here needs a new ingest -- every table is already written.
 //
@@ -362,7 +366,9 @@ SELECT t.id, t.name, t.abbr, t.crest_url, t.color, t.alternate_color,
 FROM team t
 LEFT JOIN standing s
        ON s.team_id = t.id AND s.competition_id = $2 AND s.season_id = $3
-WHERE t.id = $1`
+WHERE t.id = $1
+ORDER BY COALESCE(s.group_name, ''), s.table_key
+LIMIT 1`
 
 const teamSquadSQL = `
 SELECT p.id, COALESCE(p.known_as, p.full_name), sm.shirt_number, COALESCE(sm.position, ''),

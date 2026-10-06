@@ -50,8 +50,9 @@ export class StandingsStatsError extends Error {
  * ESPN standings children -> Group[].
  *
  * The acceptance rule is the ingester's (T16.2): a missing or null `children`
- * array, a table with no teams, or a row without team identity rejects the
- * payload; a row without a required stat rejects it with StandingsStatsError.
+ * array, a table with no teams, a row without team identity, a team listed
+ * twice in one table, or a table among several without a distinct id rejects
+ * the payload; a row without a required stat rejects it with StandingsStatsError.
  * The reader keeps its previous standings for the same payload. An empty table
  * set (`children: []`) is an empty answer.
  *
@@ -61,15 +62,26 @@ export class StandingsStatsError extends Error {
 export function mapStandings(raw: unknown, unnamedTable: string): Group[] {
   const children: unknown = (raw as any)?.children;
   if (!Array.isArray(children)) throw new Error('standings payload has no children array');
+  const tableIds = new Set<string>();
   const tables = children.map((grp: any) => {
     const name: string = grp.name || unnamedTable;
     const entries: any[] = grp.standings?.entries ?? [];
     if (entries.length === 0) throw new Error(`standings table "${name}" has no teams`);
+    // A team may be ranked in several tables (T16.2 decision A); the reader keys
+    // each membership by ESPN's table id, so every table of several needs a
+    // distinct one, and a team listed twice in one table is a conflict.
+    const tableId = grp.id == null ? '' : String(grp.id);
+    if (tableId === '' && children.length > 1) throw new Error(`standings table "${name}" has no id`);
+    if (tableIds.has(tableId)) throw new Error(`standings table id "${tableId}" is repeated`);
+    tableIds.add(tableId);
+    const teamIds = new Set<string>();
     const rows = inTableOrder(entries).map((entry, i) => {
       const team = entry.team ?? {};
       if (team.id == null || String(team.id) === '' || !team.displayName || !team.abbreviation) {
         throw new Error(`standings row ${i} in "${name}" lacks team identity`);
       }
+      if (teamIds.has(String(team.id))) throw new Error(`standings table "${name}" lists team ${team.id} twice`);
+      teamIds.add(String(team.id));
       return {
         team: {
           id: String(team.id),

@@ -165,6 +165,36 @@ describe('mapStandings — malformed payloads', () => {
   });
 });
 
+// T16.2 owner decision A: a team ranked in two tables is a member of both.
+// Conflicts reject the payload, as the Go mapper does, instead of letting
+// arrival order pick a row. Synthetic tables from the recorded Group A entries.
+describe('mapStandings — table membership', () => {
+  const pick = (...indices: number[]) => indices.map((i) => structuredClone(raw.children[0].standings.entries[i]));
+  const tbl = (id: string | undefined, name: string, rows: unknown[]) => ({ ...(id === undefined ? {} : { id }), name, standings: { entries: rows } });
+
+  it('keeps a team in each table it is ranked in, at its true position', () => {
+    const groups = mapStandings({ children: [tbl('7', 'Group X', pick(0, 1)), tbl('9', 'Group Y', pick(2, 0))] }, 'World Cup');
+    expect(groups.map((g) => [g.id, g.standings.map((s) => [s.team.abbr, s.rank])])).toEqual([
+      ['X', [['MEX', 1], ['CZE', 2]]],
+      ['Y', [['KOR', 1], ['MEX', 2]]],
+    ]);
+  });
+
+  it.each([
+    ['a team twice in one table', [tbl('7', 'Group X', pick(0, 1, 0))], /twice/],
+    ['a team twice in a lone unidentified table', [tbl(undefined, '', pick(0, 0))], /twice/],
+    ['two tables sharing an id', [tbl('7', 'Group X', pick(0)), tbl('7', 'Group Y', pick(1))], /repeated/],
+    ['a second table without an id', [tbl('7', 'Group X', pick(0)), tbl(undefined, 'Group Y', pick(1))], /no id/],
+    ['two tables without ids', [tbl(undefined, 'Group X', pick(0)), tbl(undefined, 'Group Y', pick(1))], /no id/],
+  ])('rejects %s', (_case, children, message) => {
+    expect(() => mapStandings({ children }, 'World Cup')).toThrow(message);
+  });
+
+  it('accepts a lone table without an id', () => {
+    expect(mapStandings({ children: [tbl(undefined, '', pick(0, 1))] }, 'Premier League')[0].standings).toHaveLength(2);
+  });
+});
+
 // T16.2-group-label: a provider table with no name is the competition's single
 // table, labeled with the competition short name in both contracts.
 describe('mapStandings — unnamed table', () => {

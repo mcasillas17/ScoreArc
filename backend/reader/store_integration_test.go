@@ -528,11 +528,15 @@ func TestTeamProfileMissingColoursMigration(t *testing.T) {
 	if _, err := pool.Exec(ctx, string(sql)); err != nil {
 		t.Fatal(err)
 	}
+	// 0024 keys standing by table; the current profile query orders by it.
+	if _, err := pool.Exec(ctx, mustRead(t, "0024_standing_table_membership.up.sql")); err != nil {
+		t.Fatal(err)
+	}
 	profileAfter := assertTeamResponse(t, performRequest(router, "GET", ligaTeamPath))
 	if profileAfter.Color != nil || profileAfter.AltColor != nil || len(profileAfter.Squad) != 3 || len(profileAfter.Schedule) != 2 {
 		t.Fatalf("profile after migration = %+v", profileAfter)
 	}
-	t.Log("after migrations 0022 + 0023: HTTP 200, complete OpenAPI-valid profile; colours remain null")
+	t.Log("after migrations 0022 + 0023 + 0024: HTTP 200, complete OpenAPI-valid profile; colours remain null")
 }
 
 func TestTeamProfileQueryFailures(t *testing.T) {

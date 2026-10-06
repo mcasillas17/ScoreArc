@@ -192,7 +192,9 @@ migrate -path migrations -database "$DIRECT_DSN" up
 
 Apply the **full ordered migration chain** — every file in `backend/migrations/`,
 in sequence, from `0001_init` through the latest committed migration (currently
-`0023_match_sync`) — before deploying the reader or ingester from this release.
+`0024_standing_table_membership`; for an existing database see
+[RELEASES](RELEASES.md#migration-0024-standing-table-membership)) — before
+deploying the reader or ingester from this release.
 The reader and ingester select columns and rely on constraints added across that
 chain, so deploy binaries only against a database migrated through the current
 head, and never roll a migration back while a binary that depends on it is

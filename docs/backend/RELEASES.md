@@ -452,6 +452,35 @@ need the higher version are gone, and then needs a released binary whose head
 matches the lowered ledger. Reverting the T21.2 gate itself restores the old
 warn-only behaviour and needs no schema change.
 
+### Migration 0024 (standing table membership)
+
+T16.2's `0024_standing_table_membership` adds `table_key` to the `standing`
+key and the `standing_snapshot` day key
+([decision](READER_CONTRACT.md#owner-decision-standings-dedup)). It raises the
+head to 24, so both services require it. It has not been applied to production.
+Applying it needs separate approval, and then follows the window steps above.
+
+- **Order:** apply 0024, then release both services at once.
+- **While the old binaries still serve:**
+  - The old reader keeps working.
+  - The old ingester still writes `standing`, with an empty key.
+  - The old ingester's snapshot upserts fail, because their conflict target was
+    the dropped index. The day stays pending and is written by the new ingester
+    the same day, so keep the window short.
+- **Rolling back the code is not safe while 0024 is applied.** A revert keeps
+  the migration file (above), so the reverted ingester starts at head 24. But
+  its snapshot upsert still targets the dropped index, so every daily
+  `standing_snapshot` write fails for as long as it runs — and a missed day can
+  never be recovered. Prefer a forward fix. A reader-only revert is safe. If the
+  ingester must run pre-T16.2 code, record the snapshot gap as an accepted loss.
+- **`migrate down` of 0024** refuses while any team has two rows under the old
+  key, and its message names the first one. A two-row team comes from one of:
+  - real multi-table memberships;
+  - on the migration day, a pre-0024 snapshot row beside a keyed one.
+
+  Resolving those rows means deleting stored history. That needs its own
+  approval; never do it just to make a rollback pass.
+
 ### Activation prerequisites for T21.2
 
 The gate adds **no migration**. The version it expects is the highest

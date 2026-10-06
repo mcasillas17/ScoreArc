@@ -39,6 +39,14 @@ type contractSides map[string]struct {
 	CanonicalID string `json:"canonicalId"`
 }
 
+// syntheticTable picks recorded Group A entries into one provider table; ID is
+// the provider table id (absent for an unidentified table).
+type syntheticTable struct {
+	ID      *string `json:"id"`
+	Name    string  `json:"name"`
+	Entries []int   `json:"entries"`
+}
+
 type readerContractVectors struct {
 	Gaps map[string]struct {
 		Task   string   `json:"task"`
@@ -76,12 +84,16 @@ type readerContractVectors struct {
 				Expected      struct{ Reader any } `json:"expected"`
 			} `json:"duplicateRank"`
 			SharedTeam struct {
-				Groups []struct {
-					Name    string `json:"name"`
-					Entries []int  `json:"entries"`
-				} `json:"groups"`
-				Expected struct{ Frontend, Reader any } `json:"expected"`
+				Groups   []syntheticTable `json:"groups"`
+				Expected any              `json:"expected"`
 			} `json:"sharedTeam"`
+			Conflicts struct {
+				Cases []struct {
+					Name     string           `json:"name"`
+					Groups   []syntheticTable `json:"groups"`
+					Expected string           `json:"expected"`
+				} `json:"cases"`
+			} `json:"conflicts"`
 			MissingStat struct {
 				Name      string         `json:"name"`
 				Entries   []int          `json:"entries"`
@@ -205,6 +217,64 @@ func okHeader(t *testing.T, document *openapi3.T, path, name string) *openapi3.H
 func contractFixture(t *testing.T, name string) []byte {
 	t.Helper()
 	data, err := os.ReadFile(contractFixtures + name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+// standingsTable copies the picked recorded Group A entries into one provider
+// table, overriding a rank stat or dropping one named stat per entry index, as
+// the TS suite's table() does. A nil id leaves the table unidentified.
+func standingsTable(t *testing.T, raw map[string]any, id *string, name string, picks []int, ranks map[int]float64, drops map[int]string) map[string]any {
+	t.Helper()
+	var recorded struct {
+		Children []struct {
+			Standings struct {
+				Entries []map[string]any `json:"entries"`
+			} `json:"standings"`
+		} `json:"children"`
+	}
+	if err := json.Unmarshal(contractFixture(t, fixtureName(t, raw, "standings")), &recorded); err != nil {
+		t.Fatal(err)
+	}
+	entries := []any{}
+	for _, pick := range picks {
+		entry := wire(t, recorded.Children[0].Standings.Entries[pick]).(map[string]any)
+		var stats []any
+		for _, stat := range entry["stats"].([]any) {
+			named := stat.(map[string]any)
+			if rank, ok := ranks[pick]; ok && named["name"] == "rank" {
+				named["value"] = rank
+			}
+			if drop, ok := drops[pick]; !ok || named["name"] != drop {
+				stats = append(stats, named)
+			}
+		}
+		entry["stats"] = stats
+		entries = append(entries, entry)
+	}
+	table := map[string]any{"name": name, "standings": map[string]any{"entries": entries}}
+	if id != nil {
+		table["id"] = *id
+	}
+	return table
+}
+
+// syntheticTables builds a standings payload from vector tables.
+func syntheticTables(t *testing.T, raw map[string]any, tables []syntheticTable) []byte {
+	t.Helper()
+	children := []any{}
+	for _, table := range tables {
+		children = append(children, standingsTable(t, raw, table.ID, table.Name, table.Entries, nil, nil))
+	}
+	return syntheticPayload(t, children...)
+}
+
+// syntheticPayload wraps tables in a standings envelope.
+func syntheticPayload(t *testing.T, children ...any) []byte {
+	t.Helper()
+	data, err := json.Marshal(map[string]any{"children": children})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -823,68 +893,43 @@ func TestReaderContract(t *testing.T) {
 		gap("T10.10-derived-standings")
 
 		// Synthetic tables from the recorded Group A entries: a duplicated rank
-		// stat (no rank gap) and a team listed in two tables (dedup gap).
+		// stat (no rank gap) and a team listed in two tables (T16.2 decision A).
 		synthetic := vectors.Standings.Synthetic
-		var recorded struct {
-			Children []struct {
-				Standings struct {
-					Entries []map[string]any `json:"entries"`
-				} `json:"standings"`
-			} `json:"children"`
-		}
-		if err := json.Unmarshal(contractFixture(t, fixtureName(t, raw, "standings")), &recorded); err != nil {
-			t.Fatal(err)
-		}
-		// buildTable copies the picked recorded entries, overriding a rank stat
-		// or dropping one named stat per entry index.
 		buildTable := func(name string, picks []int, ranks map[int]float64, drops map[int]string) map[string]any {
-			entries := []any{}
-			for _, pick := range picks {
-				entry := wire(t, recorded.Children[0].Standings.Entries[pick]).(map[string]any)
-				var stats []any
-				for _, stat := range entry["stats"].([]any) {
-					named := stat.(map[string]any)
-					if rank, ok := ranks[pick]; ok && named["name"] == "rank" {
-						named["value"] = rank
-					}
-					if drop, ok := drops[pick]; !ok || named["name"] != drop {
-						stats = append(stats, named)
-					}
-				}
-				entry["stats"] = stats
-				entries = append(entries, entry)
-			}
-			return map[string]any{"name": name, "standings": map[string]any{"entries": entries}}
+			return standingsTable(t, raw, nil, name, picks, ranks, drops)
 		}
-		mapped := func(children ...any) map[string][]any {
-			data, err := json.Marshal(map[string]any{"children": children})
-			if err != nil {
-				t.Fatal(err)
-			}
+		// mapped groups Go rows as [abbr, rank] per table id, with each table's key.
+		mapped := func(data []byte) (map[string][]any, map[string]string) {
 			rows, err := espn.MapStandings(data)
 			if err != nil {
 				t.Fatal(err)
 			}
-			byGroup := map[string][]any{}
+			byGroup, tableKeys := map[string][]any{}, map[string]string{}
 			for _, row := range rows {
 				byGroup[*row.GroupID] = append(byGroup[*row.GroupID], []any{row.Team.Abbr, float64(row.Rank)})
+				tableKeys[*row.GroupID] = row.TableKey
 			}
-			return byGroup
+			return byGroup, tableKeys
 		}
 		duplicate := synthetic.DuplicateRank
 		groupID := strings.TrimPrefix(duplicate.Name, "Group ")
-		assertWire(t, "duplicate rank stat",
-			mapped(buildTable(duplicate.Name, duplicate.Entries, duplicate.RankOverrides, nil))[groupID], duplicate.Expected.Reader)
-		shared := synthetic.SharedTeam
-		var children []any
-		for _, g := range shared.Groups {
-			children = append(children, buildTable(g.Name, g.Entries, nil, nil))
+		duplicateRows, _ := mapped(syntheticPayload(t, buildTable(duplicate.Name, duplicate.Entries, duplicate.RankOverrides, nil)))
+		assertWire(t, "duplicate rank stat", duplicateRows[groupID], duplicate.Expected.Reader)
+		// T16.2 decision A: a team in two tables is in both, at its true rank in
+		// each -- the vector the frontend suite asserts and the database suite
+		// stores and serves.
+		byGroup, tableKeys := mapped(syntheticTables(t, raw, synthetic.SharedTeam.Groups))
+		assertWire(t, "shared team", wire(t, byGroup), synthetic.SharedTeam.Expected)
+		for _, g := range synthetic.SharedTeam.Groups {
+			if key := tableKeys[strings.TrimPrefix(g.Name, "Group ")]; key != *g.ID {
+				t.Fatalf("table %s keyed %q, want its provider id %q", g.Name, key, *g.ID)
+			}
 		}
-		assertWire(t, "shared team", wire(t, mapped(children...)), shared.Expected.Reader)
-		if reflect.DeepEqual(shared.Expected.Reader, shared.Expected.Frontend) {
-			t.Fatal("dedup vectors no longer differ")
+		for _, c := range synthetic.Conflicts.Cases {
+			if rows, err := espn.MapStandings(syntheticTables(t, raw, c.Groups)); c.Expected != "error" || err == nil {
+				t.Fatalf("%s: Go MapStandings accepted %+v", c.Name, rows)
+			}
 		}
-		gap("T16.2-standings-dedup")
 
 		// Malformed tables: a missing stat or no entries rejects the payload in
 		// both mappers (the writer then keeps the previous standings).
@@ -894,13 +939,9 @@ func TestReaderContract(t *testing.T) {
 		blank := synthetic.EmptyTeamID
 		blankID := buildTable(blank.Name, blank.Entries, nil, nil)
 		blankID["standings"].(map[string]any)["entries"].([]any)[slices.Index(blank.Entries, blank.BlankTeamID)].(map[string]any)["team"].(map[string]any)["id"] = ""
-		for _, payload := range []any{malformed, emptyTable, blankID} {
-			data, err := json.Marshal(map[string]any{"children": []any{payload}})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := espn.MapStandings(data); err == nil {
-				t.Fatalf("Go MapStandings accepts malformed table %v", payload.(map[string]any)["name"])
+		for _, payload := range []map[string]any{malformed, emptyTable, blankID} {
+			if _, err := espn.MapStandings(syntheticPayload(t, payload)); err == nil {
+				t.Fatalf("Go MapStandings accepts malformed table %v", payload["name"])
 			}
 		}
 		// Envelopes: a missing or null table array rejects the payload; an empty

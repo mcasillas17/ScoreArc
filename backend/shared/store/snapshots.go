@@ -11,8 +11,8 @@ import (
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
 
-// WriteStandingSnapshot records one row per team for the UTC day capturedAt
-// falls in.
+// WriteStandingSnapshot records one row per team per table for the UTC day
+// capturedAt falls in.
 //
 // This is the only write in the whole system whose absence is irreversible.
 // ESPN publishes the current table, not yesterday's, so a day this does not
@@ -42,18 +42,9 @@ func (s *Store) WriteStandingSnapshot(
 		return 0, ErrEmptyReplacement
 	}
 
-	// Resolve every row before opening the transaction. A snapshot for an
-	// unresolved team would breach the foreign key and abort the day; failing
-	// here costs nothing and says which team was missing.
-	canonical := make([]string, len(standings))
-	for index, standing := range standings {
-		teamID, resolved := teamIDs[standing.Team.ID]
-		if !resolved || teamID == "" {
-			return 0, fmt.Errorf(
-				"standing snapshot for %s/%s references unresolved team %q",
-				competitionID, seasonID, standing.Team.ID)
-		}
-		canonical[index] = teamID
+	canonical, err := canonicalStandings("standing snapshot", competitionID, seasonID, standings, teamIDs)
+	if err != nil {
+		return 0, err
 	}
 	capturedAt = capturedAt.UTC()
 
@@ -69,7 +60,8 @@ func (s *Store) WriteStandingSnapshot(
 	for index, standing := range standings {
 		batch.Queue(standingSnapshotSQL,
 			competitionID, seasonID, canonical[index], capturedAt,
-			standing.Rank, standing.Points, standing.GoalDifference, standing.Played)
+			standing.Rank, standing.Points, standing.GoalDifference, standing.Played,
+			standing.TableKey)
 	}
 	results := tx.SendBatch(ctx, batch)
 	written := 0
@@ -96,9 +88,9 @@ func (s *Store) WriteStandingSnapshot(
 const standingSnapshotSQL = `
 INSERT INTO standing_snapshot (
 	competition_id, season_id, team_id, captured_at,
-	rank, points, goal_difference, played)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-ON CONFLICT (competition_id, season_id, team_id, captured_on) DO UPDATE SET
+	rank, points, goal_difference, played, table_key)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+ON CONFLICT (competition_id, season_id, table_key, team_id, captured_on) DO UPDATE SET
 	captured_at     = EXCLUDED.captured_at,
 	rank            = EXCLUDED.rank,
 	points          = EXCLUDED.points,

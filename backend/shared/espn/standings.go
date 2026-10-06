@@ -12,12 +12,10 @@ import (
 // The TS mapper returns Group[] (id/name/standings per ESPN "children"
 // group, e.g. "Group A"). The Go port flattens that into a single
 // []Standing, carrying the group id/name onto each row (GroupID/GroupName
-// on Standing) so the `standing` table — keyed only by (competition_id,
-// season_id, team_id), one group per team per season — doesn't lose which group a
-// team belongs to. Rank is a row's position in its provider table, ordered as
-// the TS mapper orders it (inTableOrder). A team repeated in a later table is
-// dropped there, and the rows that remain keep their true positions, so a
-// zone cut is never shifted (gap T16.2-standings-dedup: cross-table membership).
+// on Standing) and ESPN's table id (TableKey), so the `standing` table — keyed
+// (competition_id, season_id, table_key, team_id) — keeps every table a team
+// is ranked in (T16.2 owner decision A). Rank is a row's position in its
+// provider table, ordered as the TS mapper orders it (inTableOrder).
 
 type rawStandingsDoc struct {
 	Children []rawStandingsGroup `json:"children"`
@@ -38,7 +36,8 @@ func ValidateStandingsSeason(raw []byte, expectedYear int) error {
 }
 
 type rawStandingsGroup struct {
-	Name      string `json:"name"`
+	ID        flexibleString `json:"id"`
+	Name      string         `json:"name"`
 	Standings struct {
 		Entries []rawStandingEntry `json:"entries"`
 	} `json:"standings"`
@@ -94,10 +93,13 @@ func inTableOrder(entries []rawStandingEntry) []rawStandingEntry {
 
 // MapStandings maps ESPN's raw standings JSON (children[].standings.entries[])
 // into a flat []Standing whose rank is the row's position in its provider
-// table (inTableOrder). A team already seen in an earlier group is dropped and
-// the remaining rows keep their positions; the reader therefore cannot list a
-// team in two tables (gap T16.2-standings-dedup in
-// src/server/data/contracts/reader-contract.json).
+// table (inTableOrder). A team ranked in several tables gets one row per table,
+// each keyed by ESPN's table id (TableKey).
+//
+// Conflicts reject the payload rather than letting arrival order pick a row:
+// a team listed twice in one table, two tables sharing an id, or several
+// tables without one. The writer then keeps the stored standings. A lone
+// table may omit its id; it is keyed "".
 func MapStandings(raw []byte) ([]Standing, error) {
 	if err := validateArrayEnvelope(raw, "children"); err != nil {
 		return nil, err
@@ -108,22 +110,20 @@ func MapStandings(raw []byte) ([]Standing, error) {
 	}
 
 	standings := make([]Standing, 0)
-	// The `standing` table is keyed (comp_id, season_id, team_id) — one row per
-	// team per season — and ReplaceStandings INSERTs each row, so a team
-	// appearing in two ESPN groups would abort the whole replacement
-	// transaction and freeze that competition's standings indefinitely. ESPN
-	// normally partitions teams across children, but it also publishes
-	// overlapping tables for some competitions (an "Overall" table alongside
-	// conference tables). Keep the first occurrence — groups are emitted in
-	// fixture order, so the first is the primary table — and drop later
-	// repeats. Ranks are table positions, so dropping a row does not shift
-	// any other row's rank.
-	seenTeams := make(map[string]struct{})
+	seenTables := make(map[string]struct{})
 	for _, grp := range doc.Children {
 		entries := inTableOrder(grp.Standings.Entries)
 		if len(entries) == 0 {
 			return nil, fmt.Errorf("standings group %q contains no teams", grp.Name)
 		}
+		tableKey := string(grp.ID)
+		if tableKey == "" && len(doc.Children) > 1 {
+			return nil, fmt.Errorf("standings table %q has no id", grp.Name)
+		}
+		if _, duplicate := seenTables[tableKey]; duplicate {
+			return nil, fmt.Errorf("standings table id %q is repeated", tableKey)
+		}
+		seenTables[tableKey] = struct{}{}
 
 		// Mirror the TS mapper's `grp.name.replace('Group ', '')` for the
 		// id, e.g. "Group A" -> "A". A group with no name (single-table,
@@ -137,6 +137,7 @@ func MapStandings(raw []byte) ([]Standing, error) {
 			groupID = &id
 		}
 
+		seenTeams := make(map[string]struct{})
 		for i, entry := range entries {
 			if entry.Team.ID == "" || entry.Team.DisplayName == "" || entry.Team.Abbreviation == "" {
 				return nil, fmt.Errorf("standing row %d in %q missing team identity", i, grp.Name)
@@ -155,7 +156,7 @@ func MapStandings(raw []byte) ([]Standing, error) {
 
 			teamID := string(entry.Team.ID)
 			if _, duplicate := seenTeams[teamID]; duplicate {
-				continue
+				return nil, fmt.Errorf("standings table %q lists team %q twice", grp.Name, teamID)
 			}
 			seenTeams[teamID] = struct{}{}
 
@@ -172,6 +173,7 @@ func MapStandings(raw []byte) ([]Standing, error) {
 					Abbr:     entry.Team.Abbreviation,
 					CrestURL: crest,
 				},
+				TableKey:       tableKey,
 				GroupID:        groupID,
 				GroupName:      groupName,
 				Rank:           i + 1,

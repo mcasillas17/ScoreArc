@@ -8,9 +8,10 @@ reader, OpenAPI, SQL or migration behavior changed with the harness.
 
 **T16.2 (October 4)** changed behavior on both sides to resolve 13 of the 14 gaps
 the harness assigned it, plus its three unregistered items; see
-[T16.2 identity and DTO contract](#t162-identity-and-dto-contract). One T16.2 gap,
-`standings-dedup`, awaits an owner decision, and every E10/E17 gap below remains:
-this is still not parity or cutover readiness.
+[T16.2 identity and DTO contract](#t162-identity-and-dto-contract). Its last gap,
+`standings-dedup`, closed on October 5 with the owner's decision to keep every
+table membership ([below](#owner-decision-standings-dedup)). Every E10/E17 gap
+below remains: this is still not parity or cutover readiness.
 
 The harness separates three things:
 
@@ -45,7 +46,7 @@ in AGENTS.md first. All three run in CI (`npm test`, `tsc`, `go test ./...`).
 | `getFixtures` | same | Explicit and default ranges, date boundaries, clamping to split and historical seasons without a provider call |
 | `getLiveWindow` | same | Live window selection; live minute with and without ESPN's display clock |
 | `getUpcoming` | same | Scheduled-only rows, limit |
-| `getStandings` | `…/standings` | Recorded groups and table rows (rank, stats, team identity), unnamed tables, MLS derived tables, synthetic duplicate-rank, shared-team, missing-stat and empty tables |
+| `getStandings` | `…/standings` | Recorded groups and table rows (rank, stats, team identity), unnamed tables, MLS derived tables, synthetic duplicate-rank, missing-stat and empty tables; a team in two tables (stored, snapshotted and served in both); conflicting tables rejected |
 | `getBracket` | `…/bracket` | Recorded rounds and every match (id, round, state, sides, scores, winner), placeholders, clockless live match |
 | `getMatchSummary` | `/v1/matches/{id}` | Recorded scorers, cards, stats, lineups, win probability, info, form, head-to-head, videos and commentary; synthetic shootout detail, head-to-head, red card and unattributable scorer/card; own goal; canonical scorer/card sides on new and sealed legacy rows; route-layer player slugs; match-id translation; top-level key set |
 | `getLeaders` | `…/top-scorers` | Recorded scorer and assist boards (values, ties, identity) |
@@ -231,13 +232,60 @@ acceptance of these changes is a separate step.
 
 ### Owner decision: `standings-dedup`
 
-A team listed in two provider tables appears in both frontend tables but only in
-the first reader table, because `standing` holds one row per team per season
-(and `standing_snapshot` one per team per day). The rows left in a later reader
-table keep their true positions, so zone cuts never shift. Representing
-cross-table membership needs a multi-table standing model, or both sides must
-adopt a first-table rule; neither is a T16.2 engineering choice. No configured
-competition published overlapping tables on October 4, 2026.
+**Decision (owner, October 5, 2026): A — keep every valid table membership, on
+both sides.** The alternative was a first-table-only rule on both sides. It
+needed no migration, but it would have dropped valid standings for good. Until
+this change the frontend kept a team listed in two provider tables in both
+tables, while the reader kept only the first. That was because `standing` held
+one row per team per season, and `standing_snapshot` one per team per day.
+
+The contract now:
+
+- **Table identity** is the provider's own table id, ESPN's `children[].id`. It
+  is stored as `table_key`. It is never the translated display name, and never
+  the table's position alone.
+  - A lone table may omit the id; it is stored with an empty key.
+  - Several tables need distinct ids.
+- **Rejected as conflicts, in both mappers:** a team listed twice in one table,
+  two tables sharing an id, or a table without an id among several. The writer
+  also refuses two provider ids that resolve to one canonical club in the same
+  table. Rejection leaves the stored standings untouched; arrival order never
+  picks a row.
+- **Storage** — migration `0024_standing_table_membership`:
+  - `standing` is keyed `(competition_id, season_id, table_key, team_id)`.
+  - The `standing_snapshot` day key adds `table_key`.
+  - A refresh or a same-day snapshot rerun is idempotent per membership.
+  - The partial-replacement guard counts teams, as it did when a team had one
+    row. A refresh that drops a whole table but keeps every team is the
+    provider's current table set. A refresh that loses a team is still refused.
+- **Reading:**
+  - The reader returns one `Group` per stored table, ordered by name, then
+    table key, then rank and team. Each row keeps its true rank, so zone cuts
+    never shift.
+  - Two tables that share a display name stay two groups.
+  - The team profile's record and position come from the team's first table in
+    that same order.
+  - The wire shape is unchanged.
+
+**Historical limits.**
+
+- Rows stored before 0024 never recorded a table. They are kept unchanged with
+  an empty `table_key`, meaning "not recorded"; no membership is invented. The
+  next standings refresh replaces `standing` wholesale with keyed rows.
+- Snapshot days before the migration keep the empty key. A series that crosses
+  the migration therefore changes key.
+- On the migration day, a pre-0024 row can sit beside the keyed rows for the
+  same team. Prefer the keyed rows for that day. `standing_snapshot` is
+  append-only for the ingester, so nothing removes the earlier row.
+- The MLS overall table (T10.10, frontend-only) is unchanged. It merges the
+  conference tables and already counts a club once, even if a provider repeated
+  it across tables (`computeOverallTable`).
+- No configured competition published overlapping tables on October 4, 2026,
+  so the multi-table path is proven with labeled synthetic vectors, not
+  production data.
+
+Release order and rollback are in
+[RELEASES.md](RELEASES.md#migration-0024-standing-table-membership).
 
 ## Remaining gaps
 
@@ -246,7 +294,6 @@ The gaps stay open until their tasks land.
 
 | Task | Gaps |
 |---|---|
-| **T16.2** identity and DTO parity | `standings-dedup`: cross-table membership (owner decision, above) |
 | **T10.1** match queries | `match-query`: the reader ignores range, state, detail and limit, even when malformed |
 | **T10.2** summary and leaders | `team-stats`, `lineups` (starters only), `leaders` (goals only, no assists route), `leaders-depth` (frontend shows 10 rows; the reader serves the whole stored board) |
 | **T10.3** team and squad | `team`, `team-location`, `team-record`, `standing-summary`, `squad`, `squad-fields`, `partial-failure`, `team-cache-doc` (OpenAPI documents 60s; the route serves 120s) |
@@ -280,6 +327,16 @@ Mutations that would close a gap failed with `gap changed: … update
 reader-contract.json`. The logs are kept outside the repository.
 `go test -race` runs in CI. It could not run on the authoring host, where cgo
 was blocked by an unaccepted Xcode license.
+
+For `standings-dedup` (October 5), each of these mutations failed the intended
+suite:
+
+- the writer storing every row with an empty table key: the database contract
+  suite failed with a primary-key violation;
+- the reader grouping without the table key:
+  `TestStandingsServeEveryTableMembership` failed;
+- the TS mapper accepting a table without an id among several: the TS
+  conflicts vector failed.
 
 For T16.2, restoring each old behavior failed the intended positive assertion:
 the team helper rejecting canonical ids; an empty live minute in the TS bracket,
