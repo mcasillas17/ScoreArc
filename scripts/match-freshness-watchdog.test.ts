@@ -60,7 +60,9 @@ describe('bounded match freshness watchdog', () => {
   });
   it('uses existing scoped matches route and revalidates, no ingester dependency', async () => {
     const baseURL = await serve((req, res) => {
-      expect(req.url).toBe('/v1/competitions/world-cup/2026/matches');
+      // The complete season with stored detail: the reader's default is one
+      // lightweight week (T10.1), and the row checks below validate detail too.
+      expect(req.url).toBe('/v1/competitions/world-cup/2026/matches?scope=season&detail=summary');
       expect(req.headers['cache-control']).toContain('no-cache');
       res.writeHead(200, validHeaders).end(JSON.stringify([match]));
     });

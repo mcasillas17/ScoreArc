@@ -701,9 +701,10 @@ used to authorize modelling work.
 
 ### E10 · Public API read surface
 
-The read path for everything E7's ingester writes. The base reader ships **seven
-`/v1` data routes plus `/healthz`** today (paths unchanged); the T10.1–T10.9
-expansion is **not yet built**. The acceptance criterion is **use-case contract
+The read path for everything E7's ingester writes. The base reader ships **eight
+`/v1` data routes plus `/healthz`**. T10.1 (October 6, in review) added validated
+`/matches` queries and the `calendar` route; the T10.2–T10.9 expansion is **not
+yet built**. The acceptance criterion is **use-case contract
 parity, not a route count** — each endpoint exists to serve an E1–E8 feature and
 must satisfy the frontend's canonical DTO shapes, query semantics (range/state/
 detail/limit), and derived-view needs, so those feature specs are its
@@ -711,7 +712,7 @@ requirements. No spec of its own. Cutover (1d) depends on that DTO/query/
 derived-view parity being a tested contract — see
 [`docs/CURRENT_STATE.md`](CURRENT_STATE.md) §5 for the current gap.
 
-- **T10.1** Match reads — matches/results by range, calendar (E3, E2) · [plan](superpowers/plans/2026-08-15-api-match-reads.md)
+- **T10.1** Match reads — matches/results by range, calendar (E3, E2) · **closed in code October 6, in review** · [contract](backend/READER_CONTRACT.md#t101-match-query-contract) · [plan (superseded where it conflicts)](superpowers/plans/2026-08-15-api-match-reads.md)
 - **T10.2** Leaders & box scores (E1) · [plan](superpowers/plans/2026-08-15-api-leaders-and-box-scores.md)
 - **T10.3** Teams (E4) · [plan](superpowers/plans/2026-08-15-api-teams.md)
 - **T10.4** Players (E5) · [plan](superpowers/plans/2026-08-15-api-players.md)
@@ -1026,8 +1027,9 @@ every P0 behind one owner decision.
 | **B · Live trust** | **T17.1–T17.4** | team/Greece causes are resolved or gated; responses distinguish complete, empty, stale, and unavailable |
 | **C · Contract/read** | **T16.1–T16.2**, then **T10.1**, **T10.10**, **T10.2–T10.4** | the reader satisfies the first cutover methods with canonical, tested contracts |
 
-**Next implementation:** **T10.1** match-query parity (T16.2 closed in code on
-October 5), closing its gaps in the T16.1 harness.
+**Next implementation:** **T10.10** and **T10.2–T10.4** read contracts. T10.1
+match-query parity is closed in code (October 6, in review), with its harness
+gap replaced by positive vectors.
 The independent high-priority lanes remain explicit: archive/backfill durability
 under T18.1's classification, **T7.21** participation retry, **T17.4** scheduled
 freshness/notification delivery, and **T21.2** full schema readiness. Bounded

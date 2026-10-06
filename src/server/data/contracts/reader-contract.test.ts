@@ -244,6 +244,11 @@ describe('reader contract: inventory', () => {
     const used = new Set(Object.values(vectors.methods).flatMap(m => m.gaps));
     expect([...used].sort()).toEqual(Object.keys(vectors.gaps).sort());
     expect(vectors.methods.getPlayer.reader).toBeNull();
+    // Reader routes with no DataStore method are listed, never implied.
+    expect(Object.keys(vectors.readerOnly)).toEqual(['/v1/competitions/{comp}/{season}/calendar']);
+    for (const route of Object.keys(vectors.readerOnly)) {
+      expect(Object.values(vectors.methods).map(m => m.reader)).not.toContain(route);
+    }
   });
 
   it('pins independent field shapes, unions and nullability', () => {
@@ -935,7 +940,8 @@ describe('reader contract: match windows and query semantics', () => {
     const calls: [string, unknown[]][] = [];
     for (const method of ['getMatches', 'getFixtures', 'getUpcoming'] as const) {
       vi.spyOn(dataStore, method).mockImplementation(((rc: typeof wc, ...args: unknown[]) => {
-        calls.push([method, args.slice(0, 1)]);
+        // getUpcoming(rc, undefined) is the route's default-limit call: vectors write it as [].
+        calls.push([method, args.slice(0, 1).filter(a => a !== undefined)]);
         return (real[method] as (rc: typeof wc, ...a: unknown[]) => Promise<unknown>)(rc, ...args);
       }) as never);
     }
@@ -952,7 +958,23 @@ describe('reader contract: match windows and query semantics', () => {
     expect(calls).toEqual([[frontend.method, frontend.args]]);
     expect(response.headers.get('Cache-Control')).toBe(vectors.transport.successCache.frontend);
     expect(body.map((m: { id: string }) => m.id)).toEqual(frontend.ids);
-    // The reader ignores all of these parameters (T10.1); Go characterizes that side.
+    // The reader side of the same vector runs in Go (reader_contract_test.go
+    // through the parser and router, match_query_integration_test.go through SQL).
+  });
+
+  it('names every reader divergence from the frontend query contract', () => {
+    expect(q.params.length).toBeGreaterThan(30);
+    const divergences = q.params.filter((v): v is typeof v & { reader: { status: number; why: string } } => 'reader' in v);
+    // Reader-only stricter rejections and the monitoring scope; nothing else may diverge.
+    expect(divergences.map(v => v.query)).toEqual([
+      '?state=scheduled&detail=summary',
+      '?range=20260701-20260701&range=20260702-20260702',
+      '?foo=1',
+      '?scope=season',
+      '?scope=season&detail=summary',
+      '?scope=season&limit=5',
+    ]);
+    for (const v of divergences) expect(v.reader.why.length, v.query).toBeGreaterThan(20);
   });
 
   it('keeps the frontend transport envelopes distinct from the reader', async () => {

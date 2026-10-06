@@ -207,6 +207,7 @@ func TestFreshnessFailureIs500WithoutHealthyHeader(t *testing.T) {
 	for _, path := range []string{
 		"/v1/competitions/world-cup/2026/matches", "/v1/competitions/world-cup/2026/bracket",
 		"/v1/competitions/world-cup/2026/teams/arg", "/v1/matches/" + finalMatchID,
+		"/v1/competitions/world-cup/2026/calendar",
 	} {
 		response := performRequest(router, "GET", path)
 		if response.Code != 500 || response.Header().Get("Cache-Control") != "no-store" ||
@@ -243,10 +244,11 @@ func TestFreshnessRouteUsesReaderClock(t *testing.T) {
 
 func TestFreshnessHeadersPreserveMatchRouteBodies(t *testing.T) {
 	store := &fakeReaderStore{
-		matches: []Match{},
-		bracket: []BracketRound{},
-		summary: &MatchSummary{},
-		teams:   map[string]*TeamProfile{"arg": {Team: espn.Team{ID: "arg"}, Squad: []SquadPlayer{}, Schedule: []Match{}}},
+		matches:  []Match{},
+		bracket:  []BracketRound{},
+		summary:  &MatchSummary{},
+		teams:    map[string]*TeamProfile{"arg": {Team: espn.Team{ID: "arg"}, Squad: []SquadPlayer{}, Schedule: []Match{}}},
+		calendar: SeasonCalendar{Days: []CalendarDay{{Date: "2026-07-19", Matches: 1, Finished: 1}}},
 	}
 	router := newTestApp(t, store, &fakeNewsReader{}).router()
 	for _, tc := range []struct {
@@ -257,6 +259,7 @@ func TestFreshnessHeadersPreserveMatchRouteBodies(t *testing.T) {
 		{"/v1/competitions/world-cup/2026/bracket", store.bracket},
 		{"/v1/matches/" + finalMatchID, store.summary},
 		{"/v1/competitions/world-cup/2026/teams/arg", store.teams["arg"]},
+		{"/v1/competitions/world-cup/2026/calendar", store.calendar},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, tc.path, nil)
@@ -292,6 +295,7 @@ func TestOpenAPIFreshnessHeaders(t *testing.T) {
 		"/v1/competitions/{comp}/{season}/bracket",
 		"/v1/competitions/{comp}/{season}/teams/{teamId}",
 		"/v1/matches/{id}",
+		"/v1/competitions/{comp}/{season}/calendar",
 	} {
 		headers := document.Paths.Value(path).Get.Responses.Status(200).Value.Headers
 		for _, name := range []string{"Freshness", "Observed-At", "Poll-Status", "Stale-Matches", "Overdue-Matches"} {
