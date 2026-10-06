@@ -125,8 +125,13 @@ type BracketMatch struct {
 // type itself (the TS side carries it one level up, on Group.id/Group.name)
 // but persisted here per-row since the `standing` table has no nested
 // group concept. Nil for single-table competitions with no ESPN grouping.
+//
+// TableKey is the provider's id for that table ("" for a lone table without
+// one). It is the storage identity of a membership -- a team can be ranked in
+// more than one table -- and never a wire field.
 type Standing struct {
 	Team           Team    `json:"team"`
+	TableKey       string  `json:"-"`
 	GroupID        *string `json:"groupId"`
 	GroupName      *string `json:"groupName"`
 	Rank           int     `json:"rank"`

@@ -652,8 +652,8 @@ describe('reader contract: standings, bracket, leaders, news', () => {
   // Same arguments as the Go buildTable: picked recorded Group A entries with a
   // rank stat overridden or one named stat dropped, per entry index.
   const syn = vectors.standings.synthetic;
-  const table = (name: string, picks: number[], ranks: Record<string, number> = {}, drops: Record<string, string> = {}) => ({
-    name, standings: { entries: picks.map(i => {
+  const table = (name: string, picks: number[], ranks: Record<string, number> = {}, drops: Record<string, string> = {}, id?: string) => ({
+    ...(id === undefined ? {} : { id }), name, standings: { entries: picks.map(i => {
       const entry = structuredClone(standingsRaw.children[0].standings.entries[i]);
       for (const stat of entry.stats) if (stat.name === 'rank' && String(i) in ranks) stat.value = ranks[String(i)];
       return { ...entry, stats: entry.stats.filter(stat => stat.name !== drops[String(i)]) };
@@ -666,10 +666,16 @@ describe('reader contract: standings, bracket, leaders, news', () => {
     const [fallback] = await storeOver(() => ({ children: [table(d.name, d.entries, d.rankOverrides)] })).store.getStandings(wc);
     expect(rows(fallback)).toEqual(d.expected.frontend);
     expect(d.expected.reader).toEqual(d.expected.frontend); // No rank gap without a complete rank stat.
+    // T16.2 decision A: the same vector the Go suites store and serve.
     const sh = syn.sharedTeam;
-    const groups = await storeOver(() => ({ children: sh.groups.map(g => table(g.name, g.entries)) })).store.getStandings(wc);
-    expect(Object.fromEntries(groups.map(g => [g.id, rows(g)]))).toEqual(sh.expected.frontend);
-    gap('T16.2-standings-dedup', () => expect(sh.expected.reader).not.toEqual(Object.fromEntries(groups.map(g => [g.id, rows(g)]))));
+    const groups = await storeOver(() => ({ children: sh.groups.map(g => table(g.name, g.entries, {}, {}, g.id)) })).store.getStandings(wc);
+    expect(Object.fromEntries(groups.map(g => [g.id, rows(g)]))).toEqual(sh.expected);
+  });
+
+  it.each(syn.conflicts.cases)('rejects conflicting tables ($name), as the Go mapper does', async (c) => {
+    expect(c.expected).toBe('error');
+    const children = c.groups.map(g => table(g.name, g.entries, {}, {}, 'id' in g ? g.id : undefined));
+    await expect(storeOver(() => ({ children })).store.getStandings(wc)).rejects.toThrow(/twice|repeated|no id/);
   });
 
   it('rejects a missing stat, an empty table and an empty team id, as the Go mapper does', async () => {

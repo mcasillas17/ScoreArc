@@ -101,6 +101,7 @@ func standingsFingerprint(
 			teamIDs[row.Team.ID], row.GroupID, row.GroupName, row.Rank,
 			row.Played, row.Wins, row.Draws, row.Losses, row.GoalsFor,
 			row.GoalsAgainst, row.GoalDifference, row.Points, row.Advanced,
+			row.TableKey,
 		})
 	}
 	return contentDigest([]any{source, columns})

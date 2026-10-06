@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"maps"
 	"net/http"
 	"reflect"
@@ -315,6 +317,75 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			t.Fatalf("tie-break or scope drifted: %+v", league)
 		}
 		// A NULL group is labeled with the competition short name, as the frontend labels an unnamed table.
+	})
+
+	t.Run("synthetic shared team: every table membership stored, snapshotted and served", func(t *testing.T) {
+		// T16.2 decision A, written as the least-privilege ingester login and
+		// read through the reader login, into a season the recorded World Cup
+		// table does not share.
+		shared := vectors.Standings.Synthetic.SharedTeam
+		rows, err := espn.MapStandings(syntheticTables(t, raw, shared.Groups))
+		if err != nil {
+			t.Fatal(err)
+		}
+		teamIDs := map[string]string{}
+		for _, row := range rows {
+			teamIDs[row.Team.ID] = crosswalk[row.Team.ID]
+			team(t, row.Team, teamIDs[row.Team.ID])
+		}
+		if _, err := pool.Exec(ctx, `CREATE ROLE contract_ingester LOGIN PASSWORD 'contract_ingester'; GRANT scorearc_ingester TO contract_ingester`); err != nil {
+			t.Fatal(err)
+		}
+		config := pool.Config().ConnConfig
+		ingester, err := writerstore.New(ctx, fmt.Sprintf("postgres://contract_ingester:contract_ingester@%s:%d/%s?sslmode=disable", config.Host, config.Port, config.Database))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(ingester.Close)
+		at := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
+		for range 2 { // A repeated refresh and a same-day snapshot rerun are idempotent.
+			if err := ingester.ReplaceStandings(ctx, "premier-league", "2026-27", "espn", rows, teamIDs); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ingester.WriteStandingSnapshot(ctx, "premier-league", "2026-27", rows, teamIDs, at); err != nil {
+				t.Fatal(err)
+			}
+		}
+		served := func() map[string][]any {
+			t.Helper()
+			var groups []map[string]any
+			get(t, "/v1/competitions/premier-league/2026-27/standings", &groups)
+			byGroup := map[string][]any{}
+			for _, group := range groups {
+				validateSchema(t, document, "Group", group)
+				for _, row := range group["standings"].([]any) {
+					standing := row.(map[string]any)
+					byGroup[group["id"].(string)] = append(byGroup[group["id"].(string)],
+						[]any{standing["team"].(map[string]any)["abbr"], standing["rank"]})
+				}
+			}
+			return byGroup
+		}
+		assertWire(t, "served shared team", wire(t, served()), shared.Expected)
+		var snapshots, mexico int
+		if err := pool.QueryRow(ctx, `SELECT count(*), count(*) FILTER (WHERE team_id=$1) FROM standing_snapshot
+			WHERE competition_id='premier-league' AND season_id='2026-27'`, crosswalk[rows[0].Team.ID]).Scan(&snapshots, &mexico); err != nil {
+			t.Fatal(err)
+		}
+		if snapshots != len(rows) || mexico != 2 {
+			t.Fatalf("snapshot rows %d (MEX %d), want %d with MEX in both tables", snapshots, mexico, len(rows))
+		}
+		// A refresh that lost a team (KOR, only in table Y) is refused and the stored memberships survive.
+		if err := ingester.ReplaceStandings(ctx, "premier-league", "2026-27", "espn", rows[:2], teamIDs); !errors.Is(err, writerstore.ErrPartialReplacement) {
+			t.Fatalf("shrunken refresh: %v", err)
+		}
+		assertWire(t, "shared team after a refused refresh", wire(t, served()), shared.Expected)
+		// The other competition's recorded tables are untouched.
+		var worldCup []Group
+		get(t, "/v1/competitions/world-cup/2026/standings", &worldCup)
+		if len(worldCup) != len(vectors.Standings.Groups) {
+			t.Fatalf("world cup groups %d after another season's write", len(worldCup))
+		}
 	})
 
 	t.Run("recorded leaders: goals only, value renamed goals", func(t *testing.T) {

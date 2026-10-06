@@ -55,6 +55,7 @@ func TestStandingsFingerprintMovesWithEveryWrittenColumn(t *testing.T) {
 		"advanced":        func(row *model.Standing) { row.Advanced = false },
 		"group id":        func(row *model.Standing) { row.GroupID = &otherGroup },
 		"group name":      func(row *model.Standing) { row.GroupName = &otherName },
+		"table key":       func(row *model.Standing) { row.TableKey = "9" },
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {

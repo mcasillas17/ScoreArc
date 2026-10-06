@@ -471,7 +471,12 @@ allowlist, the canonical team helper) are resolved in code with positive
 TypeScript, Go/OpenAPI and Postgres proofs; match, team, nested team and player
 ids are tested translations, not equalities
 ([READER_CONTRACT](backend/READER_CONTRACT.md#t162-identity-and-dto-contract)).
-`T16.2-standings-dedup` (a team in two provider tables) awaits an owner decision.
+**October 5:** the last gap, `T16.2-standings-dedup`, is closed. The owner
+chose decision A: a team listed in two provider tables is kept in every table, in
+both the frontend and the reader. New migration 0024 adds a provider table key
+to `standing` and `standing_snapshot`, and the T16.1 vectors now assert the new
+behavior. 0024 is **not applied to production**: applying it needs separate
+approval and follows [RELEASES](backend/RELEASES.md#migration-0024-standing-table-membership).
 Detail rows stored before T16.2 serve canonical sides; their
 `ownGoal`/`athleteId` are recovered at read time from aligned `match_event`
 rows where participation was captured, and are `null` otherwise (a goal
@@ -493,9 +498,6 @@ separate.
   query parameters; it returns every match for the season. The frontend's
   `getMatches(range)`, `getFixtures(range)`, `getLiveWindow`, and
   `getUpcoming(limit)` semantics have no reader-side equivalent yet.
-- **A team in two provider tables** stays in both frontend tables but only the
-  first reader table (gap `T16.2-standings-dedup`), pending an owner decision
-  on a multi-table standing model or a shared first-table rule.
 - **The reader/OpenAPI DTOs are older than the ingested data**: lineup,
   stats, leader, and team-profile fields the ingester now writes are not
   all exposed in the current reader response shapes.
@@ -591,11 +593,9 @@ held-byte reprocessing and new collection remain unchanged.
 
 **Next implementation, in order:**
 
-1. **T16.2 — canonical identity and DTO parity (§5).** Every item but
-   `T16.2-standings-dedup` is resolved in code; that one needs an owner
-   decision (multi-table standings, or a shared first-table rule) before T16.2
-   can close. Release and production acceptance remain separate.
-2. **T10.1 — match-query parity (§5).** Pin range/state/detail/limit behavior,
+1. **T10.1 — match-query parity (§5).** T16.2 closed in code on October 5
+   (`standings-dedup`: decision A, migration 0024 not yet applied to production;
+   release and production acceptance remain separate). Pin range/state/detail/limit behavior,
    then the remaining T10.10 and T10.2–T10.4 derived-view/read contracts.
 
 **Independent high-priority reliability/durability lanes, not new dependencies:**
@@ -615,7 +615,10 @@ held-byte reprocessing and new collection remain unchanged.
   read-only verifies production's ledger and role access per
   [RELEASES](backend/RELEASES.md#activation-prerequisites-for-t212) before the
   merge that releases it, and a release containing it runs. Record that
-  acceptance here. Migration 0023 is already applied; do not repeat it.
+  acceptance here. Migration 0023 is already applied; do not repeat it. T16.2's
+  0024 raises the embedded head to 24, so a release containing it requires
+  0024 to be applied first, with approval. Otherwise both services refuse
+  `behind` ([RELEASES](backend/RELEASES.md#migration-0024-standing-table-membership)).
 
 **After the existing contract/trust gates:** T16.3–T16.5 implement, shadow and
 soak the reader per method with fallback and immediate rollback, never a
@@ -878,6 +881,9 @@ requires authorization; secret deletion is not token revocation.
 by the current path policy. Changes to `ci.yml` or release scripts select all
 three services. The match-recovery schema prerequisite (0023) was already
 accepted in production September 20; apply it only in an unmigrated environment.
+The T16.2 merge raises the embedded head to 24. Apply 0024 first, with separate
+approval, per [RELEASES](backend/RELEASES.md#migration-0024-standing-table-membership),
+before the merge that releases it; otherwise both services refuse `behind`.
 The old frontend incident is inactive, not a release hold. A new unresolved
 frontend entry would block that target, not either Fly job. Coordinate owner authorization for those effects before
 recommending merge. If presence checks must precede publication, confirm an

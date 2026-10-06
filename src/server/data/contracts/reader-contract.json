@@ -86,11 +86,6 @@
    "mismatch": "Every reader data handler except handleTeam (matches, standings, bracket, top-scorers, news, match summary) logs the raw dependency error text, which can carry connection details; handleTeam logs only operation, error type and SQLSTATE.",
    "suites": ["go"]
   },
-  "T16.2-standings-dedup": {
-   "task": "T16.2",
-   "mismatch": "A team listed in two provider tables stays in both frontend tables; the reader keeps one standing row per team per season, so it lists the team only in its first table (the remaining rows of a later table keep their true positions). Representing multi-table membership needs an owner decision: a multi-table standing model (standing and standing_snapshot keys) or a shared first-table rule. No configured competition published overlapping tables on 2026-10-04.",
-   "suites": ["ts", "go"]
-  },
   "T10.3-team-cache-doc": {
    "task": "T10.3",
    "mismatch": "handleTeam serves Cache-Control public, max-age=120, but OpenAPI documents the team route with StandardCacheControl (public, max-age=60).",
@@ -121,7 +116,7 @@
   },
   "getStandings": {
    "reader": "/v1/competitions/{comp}/{season}/standings",
-   "gaps": ["T10.10-derived-standings", "T17.3-freshness-coverage", "T21.4-dependency-error-logging", "T16.2-standings-dedup"]
+   "gaps": ["T10.10-derived-standings", "T17.3-freshness-coverage", "T21.4-dependency-error-logging"]
   },
   "getBracket": {
    "reader": "/v1/competitions/{comp}/{season}/bracket",
@@ -2254,37 +2249,76 @@
     }
    },
    "sharedTeam": {
+    "note": "T16.2 owner decision A (2026-10-05): a team ranked in two tables is a member of both, at its true position in each. The tables carry synthetic provider table ids; the reader stores one standing (and one snapshot row per day) per table membership, keyed by that id.",
     "groups": [
      {
+      "id": "7",
       "name": "Group X",
       "entries": [0, 1]
      },
      {
+      "id": "9",
       "name": "Group Y",
       "entries": [0, 2]
      }
     ],
     "expected": {
-     "frontend": {
-      "X": [
-       ["MEX", 1],
-       ["CZE", 2]
-      ],
-      "Y": [
-       ["MEX", 1],
-       ["KOR", 2]
-      ]
-     },
-     "reader": {
-      "X": [
-       ["MEX", 1],
-       ["CZE", 2]
-      ],
-      "Y": [
-       ["KOR", 2]
-      ]
-     }
+     "X": [
+      ["MEX", 1],
+      ["CZE", 2]
+     ],
+     "Y": [
+      ["MEX", 1],
+      ["KOR", 2]
+     ]
     }
+   },
+   "conflicts": {
+    "note": "Conflicting or unidentifiable tables reject the payload in both mappers, so arrival order never picks a row and the writer keeps the stored standings.",
+    "cases": [
+     {
+      "name": "team twice in one table",
+      "groups": [
+       {
+        "id": "7",
+        "name": "Group X",
+        "entries": [0, 1, 0]
+       }
+      ],
+      "expected": "error"
+     },
+     {
+      "name": "two tables share an id",
+      "groups": [
+       {
+        "id": "7",
+        "name": "Group X",
+        "entries": [0]
+       },
+       {
+        "id": "7",
+        "name": "Group Y",
+        "entries": [1]
+       }
+      ],
+      "expected": "error"
+     },
+     {
+      "name": "a table among several without an id",
+      "groups": [
+       {
+        "id": "7",
+        "name": "Group X",
+        "entries": [0]
+       },
+       {
+        "name": "Group Y",
+        "entries": [1]
+       }
+      ],
+      "expected": "error"
+     }
+    ]
    },
    "missingStat": {
     "name": "Group A",

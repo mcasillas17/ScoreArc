@@ -58,49 +58,67 @@ func TestMapStandingsRejectsNullRequiredStats(t *testing.T) {
 	}
 }
 
-// A team ESPN lists in two groups (e.g. an "Overall" table alongside
-// conference tables) must not produce two Standing rows: the `standing` table
-// is keyed (comp_id, season_id, team_id) and ReplaceStandings INSERTs every
-// row, so a duplicate would abort the replacement transaction and freeze that
-// competition's standings permanently.
-func TestMapStandingsDropsTeamsRepeatedAcrossGroups(t *testing.T) {
-	row := func(id, name, abbr string) string {
-		return `{"team":{"id":"` + id + `","displayName":"` + name + `","abbreviation":"` + abbr + `"},
-			"stats":[{"name":"gamesPlayed","value":1},{"name":"wins","value":1},
-			{"name":"ties","value":0},{"name":"losses","value":0},
-			{"name":"pointsFor","value":2},{"name":"pointsAgainst","value":1},
-			{"name":"pointDifferential","value":1},{"name":"points","value":3}]}`
-	}
-	raw := []byte(`{"children":[
-		{"name":"Eastern Conference","standings":{"entries":[` + row("1", "Miami", "MIA") + `,` + row("2", "Orlando", "ORL") + `]}},
-		{"name":"Overall","standings":{"entries":[` + row("1", "Miami", "MIA") + `,` + row("3", "Portland", "POR") + `]}}
-	]}`)
+func standingRow(id, name, abbr string) string {
+	return `{"team":{"id":"` + id + `","displayName":"` + name + `","abbreviation":"` + abbr + `"},
+		"stats":[{"name":"gamesPlayed","value":1},{"name":"wins","value":1},
+		{"name":"ties","value":0},{"name":"losses","value":0},
+		{"name":"pointsFor","value":2},{"name":"pointsAgainst","value":1},
+		{"name":"pointDifferential","value":1},{"name":"points","value":3}]}`
+}
 
+// A team ESPN lists in two tables (an "Overall" table alongside conference
+// tables) is a member of both (owner decision A, T16.2). Each row carries its
+// table's provider id as TableKey and keeps its true position in that table.
+func TestMapStandingsKeepsEveryTableMembership(t *testing.T) {
+	raw := []byte(`{"children":[
+		{"id":"7","name":"Eastern Conference","standings":{"entries":[` + standingRow("1", "Miami", "MIA") + `,` + standingRow("2", "Orlando", "ORL") + `]}},
+		{"id":"9","name":"Overall","standings":{"entries":[` + standingRow("3", "Portland", "POR") + `,` + standingRow("1", "Miami", "MIA") + `]}}
+	]}`)
 	standings, err := MapStandings(raw)
 	if err != nil {
 		t.Fatalf("MapStandings: %v", err)
 	}
-	if len(standings) != 3 {
-		t.Fatalf("len(standings) = %d, want 3 (the repeat of team 1 dropped): %+v", len(standings), standings)
-	}
-	seen := map[string]int{}
+	var got []string
 	for _, s := range standings {
-		seen[s.Team.ID]++
+		got = append(got, s.TableKey+"/"+*s.GroupName+"/"+s.Team.ID+"/"+strconv.Itoa(s.Rank))
 	}
-	for id, count := range seen {
-		if count != 1 {
-			t.Fatalf("team %s appears %d times, want exactly 1", id, count)
+	want := []string{"7/Eastern Conference/1/1", "7/Eastern Conference/2/2", "9/Overall/3/1", "9/Overall/1/2"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("memberships = %v, want %v", got, want)
+	}
+}
+
+// Conflicting or unidentifiable tables reject the payload, so the writer keeps
+// the stored standings instead of arrival order choosing a winner.
+func TestMapStandingsRejectsConflictingTables(t *testing.T) {
+	table := func(id, name string, rows ...string) string {
+		idField := ""
+		if id != "" {
+			idField = `"id":"` + id + `",`
 		}
+		return `{` + idField + `"name":"` + name + `","standings":{"entries":[` + strings.Join(rows, ",") + `]}}`
 	}
-	// The first occurrence wins, so team 1 keeps its Eastern Conference group
-	// and its rank there; the later duplicate is what gets dropped.
-	if standings[0].Team.ID != "1" || standings[0].Rank != 1 ||
-		standings[0].GroupName == nil || *standings[0].GroupName != "Eastern Conference" {
-		t.Fatalf("standings[0] = %+v, want team 1 rank 1 in Eastern Conference", standings[0])
+	miami, orlando := standingRow("1", "Miami", "MIA"), standingRow("2", "Orlando", "ORL")
+	for name, children := range map[string]string{
+		"team twice in one table":      table("7", "East", miami, orlando, miami),
+		"team twice in a lone table":   table("", "League", miami, miami),
+		"two tables share an id":       table("7", "East", miami) + `,` + table("7", "West", orlando),
+		"a second table has no id":     table("7", "East", miami) + `,` + table("", "West", orlando),
+		"neither of two tables has id": table("", "East", miami) + `,` + table("", "West", orlando),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if rows, err := MapStandings([]byte(`{"children":[` + children + `]}`)); err == nil {
+				t.Fatalf("accepted %+v", rows)
+			}
+		})
 	}
-	// Dropping a row must not shift the ranks of rows kept from a later group.
-	if standings[2].Team.ID != "3" || standings[2].Rank != 2 {
-		t.Fatalf("standings[2] = %+v, want team 3 keeping its rank 2 in Overall", standings[2])
+}
+
+// A lone table may omit its id: it is the season's only table, keyed "".
+func TestMapStandingsKeysALoneUnidentifiedTableEmpty(t *testing.T) {
+	standings, err := MapStandings([]byte(`{"children":[{"standings":{"entries":[` + standingRow("1", "Miami", "MIA") + `]}}]}`))
+	if err != nil || len(standings) != 1 || standings[0].TableKey != "" {
+		t.Fatalf("standings %+v err %v", standings, err)
 	}
 }
 
@@ -200,6 +218,10 @@ func TestMapStandings(t *testing.T) {
 		}
 		if s2.GroupID == nil || *s2.GroupID != "B" {
 			t.Fatalf("second group GroupID = %v, want \"B\"", s2.GroupID)
+		}
+		// The table key is ESPN's table id, not the translated name or position.
+		if s.TableKey != "1" || s2.TableKey != "2" {
+			t.Fatalf("table keys %q %q, want ESPN's table ids 1 and 2", s.TableKey, s2.TableKey)
 		}
 	})
 
