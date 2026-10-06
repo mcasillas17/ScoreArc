@@ -344,10 +344,14 @@ notifications may repeat and are not this transition transport.
 ### Disabled-to-enabled owner checklist
 
 - [ ] Review/merge the exact PR SHA through normal CI (this change does not merge).
-- [ ] Confirm T16.2 compatibility with its owner. The watchdog accepts current
-  scorers plus optional `ownGoal:boolean`, `athleteId:string|null` and
-  `playerSlug:string|null`; required legacy fields and unknown-key rejection remain.
-  Any additional nullable/card/DTO changes need explicit tested agreement.
+- [ ] Confirm T16.2 compatibility with its owner. The watchdog accepts the merged
+  T16.2 reader shape (#203): scorer and card `teamId:string|null` (null: the stored
+  reference names neither side) and scorer `ownGoal:boolean|null` (null: unknown, a
+  legacy row without aligned events), passed through without coercion. Pre-T16.2
+  scorers that omit `ownGoal`, `athleteId` and `playerSlug` stay accepted, and
+  `athleteId`/`playerSlug` remain optional `string|null`. `teamId` must still be
+  present, and required-field, type and unknown-key rejection remain. Any further
+  nullable/card/DTO changes need explicit tested agreement.
 - [ ] Select an incident owner, channel/recipient and HTTPS receiver satisfying the
   acknowledgment/dedup protocol. No approved channel was found in repository config;
   a local stub is the implementation acceptance destination only.
