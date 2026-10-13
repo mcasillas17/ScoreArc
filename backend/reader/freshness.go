@@ -19,10 +19,14 @@ var freshnessHeaders = []string{
 }
 
 // Filters only the returned matches; the poll and unresolved-work checks always
-// retain competition/season scope, including for empty team/bracket subsets.
+// retain competition/season scope, including for empty team/bracket/window
+// subsets. Selected restricts the metadata to MatchIDs -- exactly the rows a
+// filtered, limited body returned, even when that is none.
 type freshnessScope struct {
 	Competition, Season, MatchID, TeamID string
 	Bracket                              bool
+	Selected                             bool
+	MatchIDs                             []string
 }
 
 type freshnessMatch struct {
@@ -135,7 +139,7 @@ FROM season s
 LEFT JOIN match_poll_status p
   ON p.competition_id=$1 AND p.season_id=$2 AND p.source='espn'
 LEFT JOIN match m ON m.competition_id=$1 AND m.season_id=$2
-  AND ($3::uuid IS NULL OR m.id=$3)
+  AND ($3::uuid[] IS NULL OR m.id=ANY($3))
   AND ($4::text='' OR m.home_team_id=$4 OR m.away_team_id=$4)
   AND (NOT $5::boolean OR m.round=ANY($6::text[]))
 LEFT JOIN match_sync_status sync ON sync.match_id=m.id AND sync.source='espn'
@@ -143,16 +147,23 @@ WHERE s.competition_id=$1 AND s.id=$2`
 
 func (s *Store) Freshness(ctx context.Context, scope freshnessScope) (freshnessSnapshot, error) {
 	var snapshot freshnessSnapshot
-	var id *uuid.UUID
+	var ids []uuid.UUID // nil selects every row in scope
+	selected := scope.MatchIDs
 	if scope.MatchID != "" {
-		parsed, err := uuid.Parse(scope.MatchID)
-		if err != nil {
-			return snapshot, ErrNotFound
-		}
-		id = &parsed
+		selected = []string{scope.MatchID}
 		snapshot.SingleMatch = true
 	}
-	rows, err := s.db.Query(ctx, freshnessSQL, scope.Competition, scope.Season, id, scope.TeamID, scope.Bracket, bracketRoundOrder)
+	if scope.Selected || snapshot.SingleMatch {
+		ids = make([]uuid.UUID, 0, len(selected))
+		for _, raw := range selected {
+			parsed, err := uuid.Parse(raw)
+			if err != nil {
+				return snapshot, ErrNotFound
+			}
+			ids = append(ids, parsed)
+		}
+	}
+	rows, err := s.db.Query(ctx, freshnessSQL, scope.Competition, scope.Season, ids, scope.TeamID, scope.Bracket, bracketRoundOrder)
 	if err != nil {
 		return snapshot, err
 	}
@@ -195,11 +206,7 @@ func (a *App) readFreshness(ctx context.Context, reader matchReader, scope fresh
 	if err != nil {
 		return matchFreshness{}, err
 	}
-	now := time.Now()
-	if a.now != nil {
-		now = a.now()
-	}
-	return computeFreshness(now, start, end, snapshot), nil
+	return computeFreshness(a.clock(), start, end, snapshot), nil
 }
 
 func (a *App) attachFreshness(writer http.ResponseWriter, request *http.Request, reader matchReader, finish func(), scope freshnessScope) bool {

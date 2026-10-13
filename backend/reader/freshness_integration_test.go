@@ -47,7 +47,7 @@ func TestFreshnessFinalCollectionRoutes(t *testing.T) {
 				}
 			}
 			for _, path := range []string{
-				"/v1/competitions/world-cup/2026/matches",
+				"/v1/competitions/world-cup/2026/matches?scope=season",
 				"/v1/competitions/world-cup/2026/bracket",
 				"/v1/competitions/world-cup/2026/teams/nat-arg",
 				"/v1/matches/" + finalMatchID,
@@ -104,7 +104,7 @@ func TestFreshnessSQLIntegration(t *testing.T) {
 				t.Fatalf("unknown scope not rejected: %+v err=%v", invalid, err)
 			}
 		}
-		before, err := store.Matches(ctx, scope.Competition, scope.Season)
+		before, err := store.Matches(ctx, scope.Competition, scope.Season, matchQuery{Season: true})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -122,7 +122,7 @@ func TestFreshnessSQLIntegration(t *testing.T) {
 		if got := computeFreshness(clock, start, end, read(scope)); got.Status != "fresh" {
 			t.Fatalf("unchanged success: %+v", got)
 		}
-		after, err := store.Matches(ctx, scope.Competition, scope.Season)
+		after, err := store.Matches(ctx, scope.Competition, scope.Season, matchQuery{Season: true})
 		if err != nil || !reflect.DeepEqual(after, before) {
 			t.Fatalf("freshness changed match facts: %+v %v", after, err)
 		}
@@ -167,7 +167,7 @@ func TestFreshnessSQLIntegration(t *testing.T) {
 		app.store = store
 		app.now = func() time.Time { return now.Add(4 * time.Minute) }
 		router := app.router()
-		matches, err := store.Matches(ctx, scope.Competition, scope.Season)
+		matches, err := store.Matches(ctx, scope.Competition, scope.Season, matchQuery{Season: true})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -187,7 +187,7 @@ func TestFreshnessSQLIntegration(t *testing.T) {
 			path string
 			body any
 		}{
-			{"/v1/competitions/world-cup/2026/matches", matches},
+			{"/v1/competitions/world-cup/2026/matches?scope=season", matches},
 			{"/v1/competitions/world-cup/2026/bracket", bracket},
 			{"/v1/matches/" + finalMatchID, summary},
 			{"/v1/competitions/world-cup/2026/teams/nat-arg", team},

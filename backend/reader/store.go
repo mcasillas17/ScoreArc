@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
 )
@@ -48,33 +49,89 @@ func jsonInto(raw []byte, destination any) error {
 
 // NULLIF: rows written before the T16.2 mapper fix hold an empty minute for a
 // live match without ESPN's display clock; the contract is null (unknown).
-const matchesSQL = `
+const matchColumns = `
 SELECT m.id, m.kickoff, m.state, NULLIF(m.minute, ''), m.status_detail, m.status_name,
        m.home_score, m.away_score, m.winner_id, m.note,
        ht.id, ht.name, ht.abbr, ht.crest_url,
        at.id, at.name, at.abbr, at.crest_url,
-       d.scorers, d.cards, d.stats, d.win_probability, d.shootout, d.shootout_detail,` + sideRefsColumns + legacyGoalsColumn + `
-FROM match m
+       d.shootout`
+
+// The stored detail blobs and the correlated attribution lookups: selected
+// only for a detailed response, and only for rows that survived the filters.
+const matchDetailColumns = `,
+       d.scorers, d.cards, d.stats, d.win_probability, d.shootout_detail,` + sideRefsColumns + legacyGoalsColumn
+
+const matchJoins = `
 JOIN team ht ON ht.id = m.home_team_id
 JOIN team at ON at.id = m.away_team_id
-LEFT JOIN match_detail d ON d.match_id = m.id
-WHERE m.competition_id = $1 AND m.season_id = $2
+LEFT JOIN match_detail d ON d.match_id = m.id`
+
+// The page is chosen first -- scope, kickoff window, state, order and limit on
+// match_comp_season_idx -- and only its rows are joined to teams and detail.
+// A LIMIT subquery is never flattened, so the detail columns and correlated
+// lookups cannot run for rows the limit discards. NULL limit is no limit.
+const matchPageSQL = `
+FROM (SELECT * FROM match m
+      WHERE m.competition_id = $1 AND m.season_id = $2
+        AND m.kickoff >= $3 AND m.kickoff < $4
+        AND ($5::text IS NULL OR m.state = $5)
+      ORDER BY m.kickoff, m.id
+      LIMIT $6) m` + matchJoins + `
 ORDER BY m.kickoff, m.id`
 
-func (s *Store) Matches(ctx context.Context, competition, season string) ([]Match, error) {
-	rows, err := s.db.Query(ctx, matchesSQL, competition, season)
+var (
+	negativeInfinity = pgtype.Timestamptz{InfinityModifier: pgtype.NegativeInfinity, Valid: true}
+	positiveInfinity = pgtype.Timestamptz{InfinityModifier: pgtype.Infinity, Valid: true}
+)
+
+// matchesStatement builds the parameterized statement for one validated query.
+// The only variation is which constant column list is selected.
+func matchesStatement(competition, season string, query matchQuery) (string, []any) {
+	columns := matchColumns
+	if query.Detail {
+		columns += matchDetailColumns
+	}
+	var from, to any = query.From, query.To
+	var state *string
+	var limit *int
+	switch {
+	case query.Season:
+		// The monitoring scope: every stored row, one past the bound so an
+		// oversized season fails instead of being silently truncated.
+		from, to = negativeInfinity, positiveInfinity
+		bound := maxSeasonRows + 1
+		limit = &bound
+	case query.Limit > 0:
+		limit = &query.Limit
+	}
+	if query.ScheduledOnly {
+		scheduled := string(espn.MatchStateScheduled)
+		state = &scheduled
+	}
+	return columns + matchPageSQL, []any{competition, season, from, to, state, limit}
+}
+
+var errSeasonTooLarge = errors.New("season exceeds the reader's row bound")
+
+func (s *Store) Matches(ctx context.Context, competition, season string, query matchQuery) ([]Match, error) {
+	sql, args := matchesStatement(competition, season, query)
+	rows, err := s.db.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	return scanMatches(rows)
+	matches, err := scanMatches(rows, query.Detail)
+	if err == nil && query.Season && len(matches) > maxSeasonRows {
+		return nil, errSeasonTooLarge
+	}
+	return matches, err
 }
 
 // scanMatches reads the shared match projection. Extracted so the team page's
 // match list reads the same columns through the same normalisation as the
 // competition match list -- two copies of this would drift the first time a
-// detail column changed.
-func scanMatches(rows pgx.Rows) ([]Match, error) {
+// detail column changed. A lightweight row keeps its empty detail fields.
+func scanMatches(rows pgx.Rows, detail bool) ([]Match, error) {
 	matches := make([]Match, 0)
 	for rows.Next() {
 		match := Match{Scorers: []espn.Scorer{}, Cards: []espn.Card{}}
@@ -83,14 +140,18 @@ func scanMatches(rows pgx.Rows) ([]Match, error) {
 		var state string
 		var scorers, cards, stats, winProbability, shootout, shootoutDetail, legacyGoals []byte
 		var homeRefs, awayRefs []string
-		if err := rows.Scan(
+		destinations := []any{
 			&id, &kickoff, &state, &match.Minute, &match.StatusDetail, &match.StatusName,
 			&match.HomeScore, &match.AwayScore, &match.WinnerID, &match.Note,
 			&match.Home.ID, &match.Home.Name, &match.Home.Abbr, &match.Home.CrestURL,
 			&match.Away.ID, &match.Away.Name, &match.Away.Abbr, &match.Away.CrestURL,
-			&scorers, &cards, &stats, &winProbability, &shootout, &shootoutDetail,
-			&homeRefs, &awayRefs, &legacyGoals,
-		); err != nil {
+			&shootout,
+		}
+		if detail {
+			destinations = append(destinations,
+				&scorers, &cards, &stats, &winProbability, &shootoutDetail, &homeRefs, &awayRefs, &legacyGoals)
+		}
+		if err := rows.Scan(destinations...); err != nil {
 			return nil, err
 		}
 		match.ID = id.String()
@@ -112,15 +173,67 @@ func scanMatches(rows pgx.Rows) ([]Match, error) {
 			}
 		}
 		normalizeMatch(&match)
-		attributeDetail(match.Scorers, match.Cards,
-			matchSide{id: match.Home.ID, refs: homeRefs}, matchSide{id: match.Away.ID, refs: awayRefs})
-		if err := recoverLegacyScorers(match.Scorers, legacyGoals); err != nil {
-			return nil, err
+		if detail {
+			attributeDetail(match.Scorers, match.Cards,
+				matchSide{id: match.Home.ID, refs: homeRefs}, matchSide{id: match.Away.ID, refs: awayRefs})
+			if err := recoverLegacyScorers(match.Scorers, legacyGoals); err != nil {
+				return nil, err
+			}
 		}
 		match.WinnerID = servedWinner(match.State, match.WinnerID)
 		matches = append(matches, match)
 	}
 	return matches, rows.Err()
+}
+
+// One row per UTC day holding a match. Days with none are absent, so a month
+// renders without inferring anything from a zero row. A season has no fixed
+// day count (split, cross-year and tournament editions differ, and a delayed
+// match can move past its season), so the read is bounded like the season
+// scope: one row past maxSeasonRows fails rather than truncating.
+const calendarSQL = `
+SELECT m.kickoff_date,
+       count(*)::int,
+       (count(*) FILTER (WHERE m.state = 'scheduled'))::int,
+       (count(*) FILTER (WHERE m.state = 'live'))::int,
+       (count(*) FILTER (WHERE m.state = 'finished'))::int,
+       min(m.kickoff), max(m.kickoff)
+FROM match m
+WHERE m.competition_id = $1 AND m.season_id = $2
+GROUP BY m.kickoff_date
+ORDER BY m.kickoff_date
+LIMIT $3`
+
+func (s *Store) Calendar(ctx context.Context, competition, season string) (SeasonCalendar, error) {
+	rows, err := s.db.Query(ctx, calendarSQL, competition, season, maxSeasonRows+1)
+	if err != nil {
+		return SeasonCalendar{}, err
+	}
+	defer rows.Close()
+	calendar := SeasonCalendar{Days: []CalendarDay{}}
+	for rows.Next() {
+		var entry CalendarDay
+		var date, first, last time.Time
+		if err := rows.Scan(&date, &entry.Matches, &entry.Scheduled, &entry.Live, &entry.Finished, &first, &last); err != nil {
+			return SeasonCalendar{}, err
+		}
+		entry.Date = date.Format(time.DateOnly)
+		calendar.Days = append(calendar.Days, entry)
+		// Rows arrive in day order: the first holds the earliest kickoff.
+		if calendar.FirstKickoff == nil {
+			opening := isoTime(first)
+			calendar.FirstKickoff = &opening
+		}
+		closing := isoTime(last)
+		calendar.LastKickoff = &closing
+	}
+	if err := rows.Err(); err != nil {
+		return SeasonCalendar{}, err
+	}
+	if len(calendar.Days) > maxSeasonRows {
+		return SeasonCalendar{}, errSeasonTooLarge
+	}
+	return calendar, nil
 }
 
 // One group per stored table (table_key, T16.2): a team ranked in two tables
@@ -495,16 +608,8 @@ func (s *Store) teamSquad(
 // The club's matches and results: the same projection as Matches, filtered to
 // the matches this team plays in. No new ingest -- match already carries both
 // team ids.
-const teamScheduleSQL = `
-SELECT m.id, m.kickoff, m.state, NULLIF(m.minute, ''), m.status_detail, m.status_name,
-       m.home_score, m.away_score, m.winner_id, m.note,
-       ht.id, ht.name, ht.abbr, ht.crest_url,
-       at.id, at.name, at.abbr, at.crest_url,
-       d.scorers, d.cards, d.stats, d.win_probability, d.shootout, d.shootout_detail,` + sideRefsColumns + legacyGoalsColumn + `
-FROM match m
-JOIN team ht ON ht.id = m.home_team_id
-JOIN team at ON at.id = m.away_team_id
-LEFT JOIN match_detail d ON d.match_id = m.id
+const teamScheduleSQL = matchColumns + matchDetailColumns + `
+FROM match m` + matchJoins + `
 WHERE m.competition_id = $2 AND m.season_id = $3
   AND (m.home_team_id = $1 OR m.away_team_id = $1)
 ORDER BY m.kickoff, m.id`
@@ -518,5 +623,5 @@ func (s *Store) teamSchedule(
 		return nil, err
 	}
 	defer rows.Close()
-	return scanMatches(rows)
+	return scanMatches(rows, true)
 }

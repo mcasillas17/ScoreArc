@@ -65,8 +65,8 @@ These assertions fail when the gaps are implemented so the documented contract
 must be updated.
 
 `TestTeamContractHTTPQueriesAndErrors` uses actual routing and handlers with a
-fake storage dependency. (The ignored range/state/detail/limit gap and the
-route inventory moved to the reader contract harness, `reader_contract_test.go`.)
+fake storage dependency. (Route inventory and match-query parity (T10.1) are owned by
+`reader_contract_test.go`, `match_query_integration_test.go` and `reader-contract.json`.)
 It checks 400 unknown scope,
 404 unknown team, canonical rather than provider route addressing, 500 dependency
 failure, safe error body and `no-store`, and no database call for invalid scope.

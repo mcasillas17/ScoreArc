@@ -6,11 +6,6 @@
   "crosswalk": "Provider-to-canonical team ids come from the production seed (backend/config/teams.seed.json, exported to src/server/data/teamCrosswalk.json). Summary and own-goal side ids are checked against it in both suites; standings ids through the group-A comparisons (TS crosswalk, Go seed); bracket side ids only in the Go database suite."
  },
  "gaps": {
-  "T10.1-match-query": {
-   "task": "T10.1",
-   "mismatch": "Reader /matches ignores range/state/detail/limit (even malformed) and returns the whole season with 200; the frontend selects a window or returns 400.",
-   "suites": ["go"]
-  },
   "T10.2-team-stats": {
    "task": "T10.2",
    "mismatch": "Reader TeamStats lacks passesAccurate/crossesAccurate/tacklesEffective and its accuracy percentages are ESPN's one-digit fractions x100 (40) instead of operand-derived values (35.7).",
@@ -83,7 +78,7 @@
   },
   "T21.4-dependency-error-logging": {
    "task": "T21.4",
-   "mismatch": "Every reader data handler except handleTeam (matches, standings, bracket, top-scorers, news, match summary) logs the raw dependency error text, which can carry connection details; handleTeam logs only operation, error type and SQLSTATE.",
+   "mismatch": "Every reader data handler except handleTeam and handleCalendar (matches, standings, bracket, top-scorers, news, match summary) logs the raw dependency error text, which can carry connection details; handleTeam logs only operation, error type and SQLSTATE, and handleCalendar only its scope and whether the row bound was exceeded.",
    "suites": ["go"]
   },
   "T10.3-team-cache-doc": {
@@ -97,22 +92,25 @@
    "suites": ["go-db"]
   }
  },
+ "readerOnly": {
+  "/v1/competitions/{comp}/{season}/calendar": "T10.1 season calendar (one row per UTC match day). No DataStore method: the site builds month views from getFixtures today."
+ },
  "methods": {
   "getMatches": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T10.2-team-stats", "T21.4-dependency-error-logging"]
+   "gaps": ["T10.2-team-stats", "T21.4-dependency-error-logging"]
   },
   "getFixtures": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T21.4-dependency-error-logging"]
+   "gaps": ["T21.4-dependency-error-logging"]
   },
   "getLiveWindow": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T21.4-dependency-error-logging"]
+   "gaps": ["T21.4-dependency-error-logging"]
   },
   "getUpcoming": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.1-match-query", "T21.4-dependency-error-logging"]
+   "gaps": ["T21.4-dependency-error-logging"]
   },
   "getStandings": {
    "reader": "/v1/competitions/{comp}/{season}/standings",
@@ -3929,6 +3927,7 @@
     "fetches": 0
    }
   ],
+  "paramsRule": "Each params vector runs through the real frontend route (TS) and the real reader parser, router and SQL (Go). Without a reader entry the reader must return the frontend's status and ids; a reader entry is an explicit, documented divergence.",
   "params": [
    {
     "query": "",
@@ -4026,6 +4025,27 @@
      "status": 400
     }
    }
+,
+   {"query": "?detail=summary", "frontend": {"status": 200, "method": "getMatches", "args": ["20260629-20260705"], "ids": ["q-0629", "q-0701", "q-0705"]}},
+   {"query": "?state=scheduled", "frontend": {"status": 200, "method": "getUpcoming", "args": [], "ids": ["q-0705", "q-0706", "q-0720"]}},
+   {"query": "?state=scheduled&detail=summary", "frontend": {"status": 200, "method": "getUpcoming", "args": [], "ids": ["q-0705", "q-0706", "q-0720"]}, "reader": {"status": 200, "ids": ["q-0705", "q-0706", "q-0720"], "why": "Same rows; the reader also serves each row's stored detail, which getUpcoming drops (a scheduled match holds none)."}},
+   {"query": "?range=20260629-20260712&detail=summary", "frontend": {"status": 200, "method": "getMatches", "args": ["20260629-20260712"], "ids": ["q-0629", "q-0701", "q-0705", "q-0706"]}},
+   {"query": "?range=20260629-20260713&detail=summary", "frontend": {"status": 400}},
+   {"query": "?range=20260401-20260702", "frontend": {"status": 200, "method": "getFixtures", "args": ["20260401-20260702"], "ids": ["q-0623", "q-0628", "q-0629", "q-0701"]}},
+   {"query": "?range=20260401-20260703", "frontend": {"status": 400}},
+   {"query": "?range=20240229-20240229", "frontend": {"status": 200, "method": "getFixtures", "args": ["20240229-20240229"], "ids": []}},
+   {"query": "?range=20250229-20250301", "frontend": {"status": 400}},
+   {"query": "?range=", "frontend": {"status": 400}},
+   {"query": "?state=", "frontend": {"status": 400}},
+   {"query": "?detail=", "frontend": {"status": 400}},
+   {"query": "?limit=", "frontend": {"status": 400}},
+   {"query": "?limit=+5", "frontend": {"status": 400}},
+   {"query": "?limit=%2B5", "frontend": {"status": 400}},
+   {"query": "?range=20260701-20260701&range=20260702-20260702", "frontend": {"status": 200, "method": "getFixtures", "args": ["20260701-20260701"], "ids": ["q-0701"]}, "reader": {"status": 400, "why": "Duplicate parameter: the frontend takes the first value; the reader rejects the ambiguity."}},
+   {"query": "?foo=1", "frontend": {"status": 200, "method": "getFixtures", "args": ["20260629-20260705"], "ids": ["q-0629", "q-0701", "q-0705"]}, "reader": {"status": 400, "why": "Unknown parameter: the frontend ignores it; the reader rejects it so a misspelt filter cannot fall back to the default week."}},
+   {"query": "?scope=season", "frontend": {"status": 200, "method": "getFixtures", "args": ["20260629-20260705"], "ids": ["q-0629", "q-0701", "q-0705"]}, "reader": {"status": 200, "ids": ["q-0623", "q-0628", "q-0629", "q-0701", "q-0705", "q-0706", "q-0720", "q-0730"], "why": "Reader-only monitoring scope: every stored row of the season, unenriched. The frontend ignores the unknown name."}},
+   {"query": "?scope=season&detail=summary", "frontend": {"status": 200, "method": "getMatches", "args": ["20260629-20260705"], "ids": ["q-0629", "q-0701", "q-0705"]}, "reader": {"status": 200, "ids": ["q-0623", "q-0628", "q-0629", "q-0701", "q-0705", "q-0706", "q-0720", "q-0730"], "why": "The watchdog's read: every stored row of the season with its stored detail. The frontend ignores the unknown scope and serves the enriched week."}},
+   {"query": "?scope=season&limit=5", "frontend": {"status": 200, "method": "getFixtures", "args": ["20260629-20260705"], "ids": ["q-0629", "q-0701", "q-0705"]}, "reader": {"status": 400, "why": "The season scope takes no range, state or limit; only detail=summary combines with it."}}
   ],
   "liveMinute": {
    "note": "Synthetic: recorded event 760487 set live; one with ESPN's displayClock, one without.",

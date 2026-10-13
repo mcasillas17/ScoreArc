@@ -36,7 +36,7 @@ func (s *trackingSnapshotStore) Snapshot(ctx context.Context) (matchReader, func
 
 type panickingMatchReader struct{ matchReader }
 
-func (*panickingMatchReader) Matches(context.Context, string, string) ([]Match, error) {
+func (*panickingMatchReader) Matches(context.Context, string, string, matchQuery) ([]Match, error) {
 	panic("test panic")
 }
 
@@ -117,6 +117,15 @@ func TestMatchSnapshotsCleanupAndBeginErrors(t *testing.T) {
 		{"missing summary", paths[3], &fakeReaderStore{summaryErr: ErrNotFound}, false, 404, 1},
 		{"panic", paths[0], &fakeReaderStore{}, true, 500, 1},
 		{"invalid UUID", "/v1/matches/not-uuid", &fakeReaderStore{}, false, 404, 0},
+		// Aliases uuid.Parse accepts are not addresses: 404 before any snapshot,
+		// although the store would answer for the canonical id.
+		{"upper-case alias", "/v1/matches/" + strings.ToUpper(finalMatchID), &fakeReaderStore{summary: &MatchSummary{}}, false, 404, 0},
+		{"braced alias", "/v1/matches/%7B" + finalMatchID + "%7D", &fakeReaderStore{summary: &MatchSummary{}}, false, 404, 0},
+		{"32-digit alias", "/v1/matches/" + strings.ReplaceAll(finalMatchID, "-", ""), &fakeReaderStore{summary: &MatchSummary{}}, false, 404, 0},
+		{"invalid match query", paths[0] + "?range=20260231-20260301", &fakeReaderStore{}, false, 400, 0},
+		{"calendar query failure", "/v1/competitions/world-cup/2026/calendar", &fakeReaderStore{calendarErr: errors.New("read failed")}, false, 500, 1},
+		{"calendar metadata failure", "/v1/competitions/world-cup/2026/calendar", &fakeReaderStore{freshnessErr: errors.New("read failed")}, false, 500, 1},
+		{"calendar query string", "/v1/competitions/world-cup/2026/calendar?limit=1", &fakeReaderStore{}, false, 400, 0},
 		{"unknown scope", "/v1/competitions/unknown/2026/matches", &fakeReaderStore{}, false, 400, 0},
 		{"unknown bracket scope", "/v1/competitions/world-cup/unknown/bracket", &fakeReaderStore{}, false, 400, 0},
 		{"unknown team scope", "/v1/competitions/unknown/2026/teams/arg", &fakeReaderStore{}, false, 400, 0},
@@ -261,7 +270,13 @@ func TestMatchRoutesKeepBodyAndFreshnessInOneSnapshot(t *testing.T) {
 		name, path string
 		body       func(*Store) (any, error)
 	}{
-		{"matches", "/v1/competitions/world-cup/2026/matches", func(s *Store) (any, error) { return s.Matches(ctx, "world-cup", "2026") }},
+		{"matches window", "/v1/competitions/world-cup/2026/matches?range=20260719-20260720&detail=summary", func(s *Store) (any, error) {
+			return s.Matches(ctx, "world-cup", "2026", matchQuery{From: day("2026-07-19"), To: day("2026-07-21"), Detail: true})
+		}},
+		{"matches season", "/v1/competitions/world-cup/2026/matches?scope=season", func(s *Store) (any, error) {
+			return s.Matches(ctx, "world-cup", "2026", matchQuery{Season: true})
+		}},
+		{"calendar", "/v1/competitions/world-cup/2026/calendar", func(s *Store) (any, error) { return s.Calendar(ctx, "world-cup", "2026") }},
 		{"bracket", "/v1/competitions/world-cup/2026/bracket", func(s *Store) (any, error) { return s.Bracket(ctx, "world-cup", "2026") }},
 		{"summary", "/v1/matches/" + finalMatchID, func(s *Store) (any, error) { return s.MatchSummary(ctx, finalMatchID) }},
 		{"team", "/v1/competitions/world-cup/2026/teams/nat-arg", func(s *Store) (any, error) { return s.Team(ctx, "nat-arg", "world-cup", "2026") }},

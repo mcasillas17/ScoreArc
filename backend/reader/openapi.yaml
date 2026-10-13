@@ -32,12 +32,52 @@ paths:
     get:
       operationId: listMatches
       summary: List matches for a competition season
+      description: >-
+        Matches selected by kickoff, ordered by kickoff then id. Without range,
+        the current Monday-Sunday UTC week, or with state=scheduled today
+        through 28 days ahead (12 rows unless limit says otherwise). Each
+        parameter may appear once; an unknown, duplicate, empty or malformed
+        parameter is 400, never a fallback window. The freshness headers
+        describe exactly the returned rows; poll health and unresolved-season
+        dormancy checks always cover the whole season. scope=season is the
+        complete monitoring scope.
       parameters:
         - { $ref: "#/components/parameters/Comp" }
         - { $ref: "#/components/parameters/Season" }
+        - name: range
+          in: query
+          description: >-
+            Inclusive UTC dates YYYYMMDD-YYYYMMDD: real dates, ordered, at most 92
+            days between them (93 named days), years from 0100. Served as the
+            half-open interval [start 00:00Z, day after end 00:00Z), clipped to
+            the season's stored rows.
+          schema: { type: string, pattern: "^[0-9]{8}-[0-9]{8}$" }
+        - name: state
+          in: query
+          description: Only scheduled matches. Without range, the forward feed.
+          schema: { type: string, enum: [scheduled] }
+        - name: detail
+          in: query
+          description: >-
+            Include each row's stored scorers, cards, stats, win probability and
+            shootout detail (otherwise empty lists and nulls). An explicit range
+            is then limited to 14 named days.
+          schema: { type: string, enum: [summary] }
+        - name: limit
+          in: query
+          description: At most this many rows, the earliest first. Digits only.
+          schema: { type: integer, minimum: 1, maximum: 100 }
+        - name: scope
+          in: query
+          description: >-
+            season: every stored row of the season with season-wide freshness,
+            unenriched unless detail=summary is also given (the only parameter it
+            combines with; the watchdog sends both). A season beyond 2,000 rows
+            is 500, never a truncated list.
+          schema: { type: string, enum: [season] }
       responses:
         "200":
-          description: Matches ordered by kickoff
+          description: Matches ordered by kickoff, then id
           headers:
             X-ScoreArc-Freshness: { $ref: "#/components/headers/Freshness" }
             X-ScoreArc-Observed-At: { $ref: "#/components/headers/ObservedAt" }
@@ -48,6 +88,34 @@ paths:
           content:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/Match" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+  /v1/competitions/{comp}/{season}/calendar:
+    get:
+      operationId: getSeasonCalendar
+      summary: Days of a season that hold matches, with per-state counts
+      description: >-
+        One entry per UTC date holding at least one stored match, in date order.
+        Takes no query parameters. Freshness covers the whole season. A season
+        beyond 2,000 match days is 500, never a truncated calendar.
+      parameters:
+        - { $ref: "#/components/parameters/Comp" }
+        - { $ref: "#/components/parameters/Season" }
+      responses:
+        "200":
+          description: Season calendar
+          headers:
+            X-ScoreArc-Freshness: { $ref: "#/components/headers/Freshness" }
+            X-ScoreArc-Observed-At: { $ref: "#/components/headers/ObservedAt" }
+            X-ScoreArc-Poll-Status: { $ref: "#/components/headers/PollStatus" }
+            X-ScoreArc-Stale-Matches: { $ref: "#/components/headers/MatchCount" }
+            X-ScoreArc-Overdue-Matches: { $ref: "#/components/headers/MatchCount" }
+            Cache-Control: { $ref: "#/components/headers/LiveCacheControl" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SeasonCalendar" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
@@ -207,9 +275,10 @@ components:
       in: path
       required: true
       description: >-
-        Canonical ScoreArc match identifier — a UUID carried as a string, opaque to
-        consumers. Provider ids are not accepted here; they live in the
-        match_external_ref crosswalk.
+        Canonical ScoreArc match identifier — a UUID in its lowercase hyphenated
+        form, opaque to consumers. Any other spelling (upper case, braces, urn:)
+        and provider ids are 404; provider ids live in the match_external_ref
+        crosswalk.
       schema: { type: string, minLength: 1 }
   headers:
     Freshness:
@@ -261,7 +330,7 @@ components:
       schema: { type: string, example: no-store }
   responses:
     BadRequest:
-      description: Unknown competition or season
+      description: Unknown competition or season, or an invalid query string
       headers:
         Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
       content:
@@ -429,6 +498,24 @@ components:
         home: { type: number }
         draw: { type: number }
         away: { type: number }
+    CalendarDay:
+      type: object
+      additionalProperties: false
+      required: [date, matches, scheduled, live, finished]
+      properties:
+        date: { type: string, format: date, description: UTC date. }
+        matches: { type: integer, minimum: 1 }
+        scheduled: { type: integer, minimum: 0 }
+        live: { type: integer, minimum: 0 }
+        finished: { type: integer, minimum: 0 }
+    SeasonCalendar:
+      type: object
+      additionalProperties: false
+      required: [firstKickoff, lastKickoff, days]
+      properties:
+        firstKickoff: { oneOf: [{ type: string, format: date-time }, { type: "null" }] }
+        lastKickoff: { oneOf: [{ type: string, format: date-time }, { type: "null" }] }
+        days: { type: array, items: { $ref: "#/components/schemas/CalendarDay" } }
     Shootout:
       type: object
       additionalProperties: false
