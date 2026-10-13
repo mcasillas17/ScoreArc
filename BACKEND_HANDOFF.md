@@ -101,8 +101,11 @@ build/test gate is `cd backend && go build ./... && go test ./...`.
 3. **Postgres migrations** — the canonical schema, the forward history surfaces,
    the active snapshot tables (standings, win-prob, odds), replacement/retention
    grants, and the finalization guards; the migration head is
-   `0024_standing_table_membership`, which keys `standing` and
-   `standing_snapshot` by provider table (T16.2; not yet applied to production —
+   `0025_participation_recovery` on this branch; the owner reports production
+   at 24. [Participation recovery](docs/backend/PARTICIPATION_RECOVERY.md)
+   defines its separate pre-release apply and exact-head compatibility window.
+   `0024_standing_table_membership` keys `standing` and
+   `standing_snapshot` by provider table (T16.2; applied/released per owner —
    [RELEASES](docs/backend/RELEASES.md#migration-0024-standing-table-membership)).
    `0023_match_sync` adds source-observation/poll evidence and durable
    overdue-match retry bookkeeping. `0022_team_colours` adds team colours, with

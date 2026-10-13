@@ -26,6 +26,7 @@ func MapParticipation(raw []byte, homeSourceID, awaySourceID string) (*MatchPart
 	}
 
 	part := &MatchParticipation{
+		EventsPresent:    rs.KeyEvents != nil,
 		HomeTeamSourceID: homeSourceID,
 		AwayTeamSourceID: awaySourceID,
 		Home:             make([]SquadPlayer, 0),
@@ -33,8 +34,14 @@ func MapParticipation(raw []byte, homeSourceID, awaySourceID string) (*MatchPart
 		Events:           make([]PlayerEvent, 0),
 	}
 
+	seenRosters := make(map[string]bool)
 	for i := range rs.Rosters {
 		entry := &rs.Rosters[i]
+		id := string(entry.Team.ID)
+		if seenRosters[id] || (id != homeSourceID && id != awaySourceID) {
+			part.CoverageIssue = "coverage_partial"
+		}
+		seenRosters[id] = true
 		squad := mapSquad(entry)
 		switch string(entry.Team.ID) {
 		case homeSourceID:
@@ -47,7 +54,13 @@ func MapParticipation(raw []byte, homeSourceID, awaySourceID string) (*MatchPart
 	}
 
 	for _, e := range rs.KeyEvents {
-		part.Events = append(part.Events, mapPlayerEvents(e)...)
+		events := mapPlayerEvents(e)
+		kind := strings.ToLower(e.Type.Type)
+		playerAction := e.ScoringPlay || kind == "substitution" || strings.Contains(kind, "own") || strings.Contains(kind, "red-card") || redCardRe.MatchString(e.Type.Text) || strings.Contains(kind, "yellow-card") || cardTypeRe.MatchString(e.Type.Text)
+		if playerAction && (len(events) == 0 || e.Team == nil || (string(e.Team.ID) != homeSourceID && string(e.Team.ID) != awaySourceID)) {
+			part.CoverageIssue = "coverage_partial"
+		}
+		part.Events = append(part.Events, events...)
 	}
 
 	return part, nil

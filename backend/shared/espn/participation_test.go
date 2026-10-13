@@ -3,6 +3,8 @@ package espn
 import (
 	"os"
 	"testing"
+
+	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
 
 // The fixture's home roster is 4789, away 464 — the same ids TestMapSummary uses.
@@ -442,5 +444,48 @@ func TestOwnGoalIsClassifiedFromTheMachineValue(t *testing.T) {
 	if len(part.Events) != 1 || part.Events[0].Type != PlayerEventOwnGoal {
 		t.Fatalf("events = %#v, want one own_goal classified from type.type despite "+
 			"non-English display text", part.Events)
+	}
+}
+
+func TestMapParticipationCoverageEvidence(t *testing.T) {
+	for _, tc := range []struct {
+		name, raw string
+		present   bool
+		issue     string
+	}{
+		{"absent", `{}`, false, ""},
+		{"null", `{"keyEvents":null}`, false, ""},
+		{"zero", `{"keyEvents":[]}`, true, ""},
+		{"foreign roster", `{"rosters":[{"team":{"id":"x"}}],"keyEvents":[]}`, true, "coverage_partial"},
+		{"duplicate roster", `{"rosters":[{"team":{"id":"h"}},{"team":{"id":"h"}}],"keyEvents":[]}`, true, "coverage_partial"},
+		{"missing goal side", `{"keyEvents":[{"scoringPlay":true}]}`, true, "coverage_partial"},
+		{"foreign card", `{"keyEvents":[{"type":{"type":"yellow-card"},"team":{"id":"x"}}]}`, true, "coverage_partial"},
+		{"malformed substitution", `{"keyEvents":[{"type":{"type":"substitution"},"team":{"id":"h"}}]}`, true, "coverage_partial"},
+		{"nonplayer action", `{"keyEvents":[{"type":{"type":"kickoff"}}]}`, true, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p, err := MapParticipation([]byte(tc.raw), "h", "a")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if p.EventsPresent != tc.present || p.CoverageIssue != tc.issue {
+				t.Fatalf("coverage present=%v issue=%q", p.EventsPresent, p.CoverageIssue)
+			}
+		})
+	}
+}
+
+func TestRecordedParticipationPassesFinalEvidence(t *testing.T) {
+	raw := loadSummaryFixture(t)
+	part, err := MapParticipation(raw, fixtureHomeID, fixtureAwayID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	home, away, _, err := SummaryFinal(raw, fixtureHomeID, fixtureAwayID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := model.ValidateParticipation(part, home, away); err != nil {
+		t.Fatal(err)
 	}
 }

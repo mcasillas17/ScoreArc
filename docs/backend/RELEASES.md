@@ -775,3 +775,18 @@ Primary references: [GitHub reusable workflows](https://docs.github.com/en/actio
 [Vercel CLI environment-token authentication](https://vercel.com/docs/cli/global-options#token),
 [Vercel roles](https://vercel.com/docs/rbac/access-roles),
 [Fly app-scoped tokens](https://fly.io/docs/launch/continuous-deployment-with-github-actions/).
+
+## Migration 0025: participation recovery
+
+Production 0024/schema 24 is already applied/released per the owner's October 6
+report. Do not repeat it. The T7.21 binaries embed head 25 and require a separately
+authorized apply of 0025 before startup, coordinated with both services: old 24
+binaries reject 25 as ahead, new 25 binaries reject 24 as behind. No mixed-head
+restart compatibility is promised. The enrollment trigger covers finalizations
+by an already-running old writer during the controlled transition.
+
+The [participation runbook](PARTICIPATION_RECOVERY.md#schema-rollout-and-rollback)
+defines prerequisites, preserved facts, legacy limits and rollback risks. Down
+restores old seals but drops pending recovery evidence; preserve that ledger and
+resolve outstanding work before any separately authorized rollback. This code
+change authorizes no production SQL, merge or deployment.

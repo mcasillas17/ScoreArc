@@ -219,12 +219,18 @@ legitimately captured after the match finalization transition:
 
 | Table | Seal | Rejected after the seal |
 |---|---|---|
-| `appearance` | `match.finalized_at` | `INSERT`, `UPDATE`, `DELETE` |
-| `match_event` | `match.finalized_at` | `INSERT`, `UPDATE`, `DELETE` |
+| `appearance` | participation completion for 0025-enrolled rows; `match.finalized_at` for legacy | `INSERT`, `UPDATE`, `DELETE` |
+| `match_event` | participation completion for 0025-enrolled rows; `match.finalized_at` for legacy | `INSERT`, `UPDATE`, `DELETE` |
 | `match_commentary` | `match.finalized_at` | `INSERT`, `UPDATE`, `DELETE` |
 | `match_play` | matching `match_play_archive` ledger row | `INSERT`, `UPDATE`, `DELETE` |
 | `match_official` | `match.finalized_at` | `UPDATE`, `DELETE` |
 | `match_odds` | `match.finalized_at` | `UPDATE`, `DELETE` |
+
+Migration 0025 enrolls future ordinary finals atomically in the private
+`match_participation_status` ledger. Pending participation is validated and
+replaced together with its completion marker; completed and legacy rows stay
+sealed. [Participation recovery](PARTICIPATION_RECOVERY.md) defines coverage,
+limits, grants and the unresolved legacy owner decision. No reader surface changes.
 
 The play archive ledger is the play-stream completion marker: sealing
 `match_play` at `finalized_at` would prevent the durable retry path from filling

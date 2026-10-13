@@ -188,6 +188,7 @@ func TestCommentaryTickCostDoesNotGrowWithTheTranscript(t *testing.T) {
 // lines a tick, a substitute appears at tick 6, and a goal is scored at tick 8.
 func livePoll(tick int) *model.MatchParticipation {
 	part := &model.MatchParticipation{
+		EventsPresent:    true,
 		HomeTeamSourceID: "359",
 		AwayTeamSourceID: "363",
 		Home: []model.SquadPlayer{
@@ -201,6 +202,10 @@ func livePoll(tick int) *model.MatchParticipation {
 			{TeamSourceID: "359", PlayerSourceID: "p1", PlayerName: "Bukayo Saka",
 				Type: model.PlayerEventYellow, Minute: "12'", Detail: "Yellow Card"},
 		},
+	}
+	for i := 0; i < 10; i++ {
+		part.Home = append(part.Home, model.SquadPlayer{SourceID: fmt.Sprintf("home-starter-%d", i), Name: fmt.Sprintf("Home Starter %d", i), Starter: true})
+		part.Away = append(part.Away, model.SquadPlayer{SourceID: fmt.Sprintf("away-starter-%d", i), Name: fmt.Sprintf("Away Starter %d", i), Starter: true})
 	}
 	if tick >= 6 {
 		part.Away = append(part.Away, model.SquadPlayer{
@@ -256,16 +261,16 @@ func TestLivePathStatementsScaleWithNewRowsNotAccumulatedOnes(t *testing.T) {
 		t.Fatalf("commentary rows = %d, want %d", got, ticks*3)
 	}
 	if got := countRows(t, pool,
-		`SELECT count(*) FROM appearance WHERE match_id=$1`, matchID); got != 4 {
-		t.Fatalf("appearances = %d, want 4 (three from kickoff, one substitute)", got)
+		`SELECT count(*) FROM appearance WHERE match_id=$1`, matchID); got != 24 {
+		t.Fatalf("appearances = %d, want 24 (twenty-three from kickoff, one substitute)", got)
 	}
 	if got := countRows(t, pool,
 		`SELECT count(*) FROM match_event WHERE match_id=$1`, matchID); got != 3 {
 		t.Fatalf("events = %d, want 3", got)
 	}
 
-	// Tuple versions are the real cost. Four appearances polled twelve times
-	// must not be forty-eight tuple versions: p1 changes once (the goal at tick
+	// Tuple versions are the real cost. Twenty-four appearances polled twelve
+	// times must not be 288 tuple versions: p1 changes once (the goal at tick
 	// 8), p4 is inserted once (tick 6), p2 and p3 never change at all.
 	versions := tupleVersions(t, pool,
 		`SELECT DISTINCT xmin::text FROM appearance WHERE match_id=$1`, matchID)

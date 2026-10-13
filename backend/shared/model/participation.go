@@ -1,5 +1,7 @@
 package model
 
+import "errors"
+
 // Types in this file are INGESTER-INTERNAL. Unlike everything in types.go they
 // are never serialized into `match_detail`'s jsonb columns and never reach the
 // reader, so they carry no json tags and adding a field here cannot change an
@@ -100,6 +102,10 @@ type PlayerEvent struct {
 // MatchParticipation is everything about a match that concerns people rather
 // than teams.
 type MatchParticipation struct {
+	// Coverage evidence stays private; absence is not a measured zero.
+	EventsPresent bool
+	CoverageIssue string
+
 	// The provider ids the squads were matched on, echoed back so the ingester
 	// can map an event's TeamSourceID onto a canonical side without re-deriving
 	// which team was home.
@@ -108,4 +114,111 @@ type MatchParticipation struct {
 	Home             []SquadPlayer
 	Away             []SquadPlayer
 	Events           []PlayerEvent
+}
+
+// ValidateParticipation defines evidence sufficient to seal a final capture.
+// ESPN provides no authoritative roster/event total; this rejects detectable
+// gaps without claiming the upstream feed contains every bench player or card.
+func ValidateParticipation(part *MatchParticipation, homeScore, awayScore *int) error {
+	if err := ValidateParticipationEvidence(part); err != nil {
+		return err
+	}
+	homeGoals, awayGoals := 0, 0
+	for _, event := range part.Events {
+		if (event.Type == PlayerEventGoal || event.Type == PlayerEventOwnGoal) && !event.Shootout {
+			if event.TeamSourceID == part.HomeTeamSourceID {
+				homeGoals++
+			} else {
+				awayGoals++
+			}
+		}
+	}
+	if homeScore == nil || awayScore == nil || *homeScore != homeGoals || *awayScore != awayGoals {
+		return errors.New("score_conflict")
+	}
+	return nil
+}
+
+// ValidateParticipationEvidence gates both live replacement and final capture.
+// Event identities can expose roster omissions even with eleven starters.
+// Final score reconciliation is deliberately separate from this shared check.
+func ValidateParticipationEvidence(part *MatchParticipation) error {
+	if part == nil || !part.EventsPresent {
+		return errors.New("coverage_unavailable")
+	}
+	if err := ValidateParticipationRosters(part); err != nil {
+		return err
+	}
+	rosterSides := make(map[string]string, len(part.Home)+len(part.Away))
+	for _, player := range part.Home {
+		rosterSides[player.SourceID] = part.HomeTeamSourceID
+	}
+	for _, player := range part.Away {
+		rosterSides[player.SourceID] = part.AwayTeamSourceID
+	}
+	for _, event := range part.Events {
+		if event.PlayerSourceID == "" || event.PlayerName == "" {
+			return errors.New("identity_unresolved")
+		}
+		if event.TeamSourceID != part.HomeTeamSourceID && event.TeamSourceID != part.AwayTeamSourceID {
+			return errors.New("identity_conflict")
+		}
+		playerSide := rosterSides[event.PlayerSourceID]
+		switch event.Type {
+		case PlayerEventGoal, PlayerEventOwnGoal, PlayerEventSubOn, PlayerEventSubOff:
+			if playerSide == "" {
+				return errors.New("coverage_partial")
+			}
+			expectedSide := event.TeamSourceID
+			if event.Type == PlayerEventOwnGoal {
+				expectedSide = part.HomeTeamSourceID
+				if event.TeamSourceID == part.HomeTeamSourceID {
+					expectedSide = part.AwayTeamSourceID
+				}
+			}
+			if playerSide != expectedSide {
+				return errors.New("identity_conflict")
+			}
+		case PlayerEventYellow, PlayerEventRed:
+			// Identified staff can receive cards outside the player roster; a known
+			// roster player must still match the team receiving the card.
+			if playerSide != "" && playerSide != event.TeamSourceID {
+				return errors.New("identity_conflict")
+			}
+		default:
+			return errors.New("coverage_partial")
+		}
+	}
+	return nil
+}
+
+// ValidateParticipationRosters rejects detectable missing or conflicting roster
+// evidence before a replacement may prune already-known players.
+func ValidateParticipationRosters(part *MatchParticipation) error {
+	if part == nil {
+		return errors.New("coverage_unavailable")
+	}
+	if part.CoverageIssue != "" {
+		return errors.New("coverage_partial")
+	}
+	if part.HomeTeamSourceID == "" || part.AwayTeamSourceID == "" || part.HomeTeamSourceID == part.AwayTeamSourceID {
+		return errors.New("identity_conflict")
+	}
+	players := make(map[string]bool)
+	for _, squad := range [][]SquadPlayer{part.Home, part.Away} {
+		starters := 0
+		for _, player := range squad {
+			if player.SourceID == "" || player.Name == "" || players[player.SourceID] {
+				return errors.New("identity_unresolved")
+			}
+			players[player.SourceID] = true
+			if player.Starter {
+				starters++
+			}
+		}
+		if starters != 11 {
+			return errors.New("coverage_partial")
+		}
+	}
+	return nil
 }

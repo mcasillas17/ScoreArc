@@ -143,6 +143,20 @@ image was unchanged. Other observations retain their original date.
 its local validation evidence. It was partial T16.1 (completed October 3 by the
 reader contract harness, §5) and remains partial T19.1, not reader cutover.
 
+### T7.21 participation recovery — local branch, October 6
+
+The owner reports migration 0024 already applied and released, with production
+schema verified at 24; older "not yet applied" statements below are superseded
+by that report. This task performed no production SQL, migration or deployment.
+
+The T7.21 branch adds migration 0025 and future-only durable enrollment plus
+atomic, bounded participation completion after score finality. See
+[the participation contract/runbook](backend/PARTICIPATION_RECOVERY.md).
+It has not been merged or operationally accepted. **Already-finalized legacy gaps
+remain sealed and unmeasured; the owner must separately authorize evidence-backed
+repair or explicitly accept the remaining gaps. Neither is assumed here.**
+T7.21 therefore remains open for that decision and production acceptance.
+
 ## 1. Authority
 
 This document is the single canonical source for **what is deployed, working,
