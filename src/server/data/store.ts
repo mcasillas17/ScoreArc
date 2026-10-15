@@ -10,7 +10,7 @@ import type {
   SquadPlayer,
   PlayerProfile,
 } from './types';
-import type { CompetitionSeason } from './competitions';
+import { COMPETITIONS, type CompetitionSeason } from './competitions';
 import {
   scoreboardUrl,
   standingsUrl,
@@ -27,7 +27,7 @@ import { mapScoreboard, scoreboardWinnerFlags, shootoutWinnerId } from './provid
 import { mapTeamProfile, mapTeamRoster, mapScopedTeamSchedule, splitLeagueTeamIds } from './providers/espn-team';
 import { uniqueTeamMatches } from './teamPerformance';
 import { mapAthleteProfile, mapAthleteOverview, mapAthleteBio } from './providers/espn-athlete';
-import { computePhaseTables } from './leaguesCupTables';
+import { configuredPhaseTables } from './leaguesCupTables';
 import { computeOverallTable } from './mlsTables';
 import { mapNews } from './providers/espn-news';
 import { mapStandings } from './providers/espn-standings';
@@ -131,15 +131,10 @@ export function createDataStore(deps: DataDeps): DataStore {
   ): Promise<Group[]> {
     const [rawPhase, rawSplit] = await Promise.all([
       fetchScoreboardWindow(rc, config.datesRange, deps.fetchJson),
-      deps.fetchJson(teamsUrl(config.splitLeagueSlug)),
+      deps.fetchJson(teamsUrl(COMPETITIONS[config.membership.split.competitionId].espnSlug)),
     ]);
-    const matches = mapScoreboard(rawPhase);
-    const groups = computePhaseTables(matches, splitLeagueTeamIds(rawSplit), config.cut);
-    // Carry the configured display names so the view doesn't hardcode them.
-    for (const g of groups) {
-      g.name = g.id === 'liga-mx' ? config.groupLabels.split : config.groupLabels.primary;
-    }
-    return groups;
+    // The configured display names are carried so the view doesn't hardcode them.
+    return configuredPhaseTables(mapScoreboard(rawPhase), config, splitLeagueTeamIds(rawSplit));
   }
 
   // One summary read, cached with the header's shootout totals. MatchSummaryData

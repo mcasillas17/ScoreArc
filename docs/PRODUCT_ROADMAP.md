@@ -723,7 +723,9 @@ derived-view parity being a tested contract — see
 - **T10.9** Officials · [plan](superpowers/plans/2026-08-15-api-officials.md)
 - **T10.10** Derived standings parity — Leagues Cup phase tables and MLS overall
   table as reader read-models, or an explicit tested decision to retain their
-  existing TypeScript derivation in `apiStore`
+  existing TypeScript derivation in `apiStore` · **closed in code October 14, in
+  review: the TypeScript derivation is retained (option B)** ·
+  [contract](backend/READER_CONTRACT.md#t1010-derived-standings-contract)
 - **T10.11** Canonical team/player/competition search for E12, bounded and
   competition-aware; public promotion remains subject to E18
 
@@ -1027,9 +1029,10 @@ every P0 behind one owner decision.
 | **B · Live trust** | **T17.1–T17.4** | team/Greece causes are resolved or gated; responses distinguish complete, empty, stale, and unavailable |
 | **C · Contract/read** | **T16.1–T16.2**, then **T10.1**, **T10.10**, **T10.2–T10.4** | the reader satisfies the first cutover methods with canonical, tested contracts |
 
-**Next implementation:** **T10.10** and **T10.2–T10.4** read contracts. T10.1
-match-query parity is closed in code (October 6, in review), with its harness
-gap replaced by positive vectors.
+**Next implementation:** **T10.2–T10.4** read contracts. T10.1 match-query
+parity (October 6) and T10.10 derived-standings parity (October 14, option B)
+are closed in code, in review, with their harness gaps replaced by positive
+vectors.
 The independent high-priority lanes remain explicit: archive/backfill durability
 under T18.1's classification, **T7.21** participation retry, **T17.4** scheduled
 freshness/notification delivery, and **T21.2** full schema readiness. Bounded

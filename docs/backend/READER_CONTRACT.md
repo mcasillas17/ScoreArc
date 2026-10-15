@@ -30,6 +30,7 @@ The gaps are characterized, not normalized away.
 | [`src/server/data/contracts/reader-contract.json`](../../src/server/data/contracts/reader-contract.json) | Shared vectors and the single source of truth: method inventory, gap registry, recorded-payload expectations, labeled synthetic cases |
 | `src/server/data/contracts/reader-contract.test.ts` | Runs the real `createDataStore`, the ESPN mappers, the matches route and `parseMatchFreshness`. Pins full independent type shapes with `expectTypeOf`, checked by `tsc` |
 | `backend/reader/reader_contract_test.go` | Runs the Go mappers on the same bytes, the reader DTO wire JSON, OpenAPI schema validation, and the real router and handlers over fake storage |
+| [`src/server/data/contracts/derived-standings.json`](../../src/server/data/contracts/derived-standings.json) | T10.10: the reader's actual derived-standings inputs, written and asserted by `backend/reader/derived_standings_integration_test.go`, derived by `src/server/data/derivedStandings.test.ts` |
 | `backend/reader/reader_contract_integration_test.go` | Testcontainers Postgres: ingester writer (`shared/store`), then reader SQL as the least-privilege `scorearc_reader_test` login, then HTTP |
 
 Run them with `npx vitest run src/server/data/contracts`, `npx tsc --noEmit` and
@@ -47,7 +48,7 @@ in AGENTS.md first. All three run in CI (`npm test`, `tsc`, `go test ./...`).
 | `getLiveWindow` | same | Live window selection; live minute with and without ESPN's display clock |
 | `getUpcoming` | same | Scheduled-only rows, limit |
 | none (reader-only) | `…/calendar` | T10.1 season calendar, listed under `readerOnly` in the JSON; route inventory and OpenAPI include it |
-| `getStandings` | `…/standings` | Recorded groups and table rows (rank, stats, team identity), unnamed tables, MLS derived tables, synthetic duplicate-rank, missing-stat and empty tables; a team in two tables (stored, snapshotted and served in both); conflicting tables rejected |
+| `getStandings` | `…/standings` | Recorded groups and table rows (rank, stats, team identity), unnamed tables, synthetic duplicate-rank, missing-stat and empty tables; a team in two tables (stored, snapshotted and served in both); conflicting tables rejected; the MLS overall and Leagues Cup phase tables derived from reader responses ([T10.10](#t1010-derived-standings-contract)) |
 | `getBracket` | `…/bracket` | Recorded rounds and every match (id, round, state, sides, scores, winner), placeholders, clockless live match |
 | `getMatchSummary` | `/v1/matches/{id}` | Recorded scorers, cards, stats, lineups, win probability, info, form, head-to-head, videos and commentary; synthetic shootout detail, head-to-head, red card and unattributable scorer/card; own goal; canonical scorer/card sides on new and sealed legacy rows; route-layer player slugs; match-id translation; top-level key set |
 | `getLeaders` | `…/top-scorers` | Recorded scorer and assist boards (values, ties, identity) |
@@ -278,9 +279,9 @@ The contract now:
 - On the migration day, a pre-0024 row can sit beside the keyed rows for the
   same team. Prefer the keyed rows for that day. `standing_snapshot` is
   append-only for the ingester, so nothing removes the earlier row.
-- The MLS overall table (T10.10, frontend-only) is unchanged. It merges the
-  conference tables and already counts a club once, even if a provider repeated
-  it across tables (`computeOverallTable`).
+- The MLS overall table is unchanged. It merges the conference tables and
+  counts a club once, even if a provider repeated it across tables
+  (`computeOverallTable`); T10.10 reports a repeat whose records disagree.
 - No configured competition published overlapping tables on October 4, 2026,
   so the multi-table path is proven with labeled synthetic vectors, not
   production data.
@@ -353,6 +354,133 @@ bound. From `EXPLAIN ANALYZE`, a one-day lightweight window reads 10 `match`
 rows with no subplans, a detailed limit-5 window runs attribution subplans only
 for its 5 rows, and requests are counted at two statements.
 
+## T10.10 derived-standings contract
+
+**October 14.** The `T10.10-derived-standings` gap is closed with roadmap
+**option B**: the TypeScript derivation is retained, and the reader serves its
+inputs through routes it already has. No reader SQL, DTO, route or migration
+changed, and the ESPN-backed site renders exactly what it did.
+
+Option B was chosen because no provider publishes these tables, and porting
+the rules to Go would mean two copies of the points, shootout, tie-break and
+cut rules. The inputs are all in the reader already. Keeping the rules in
+TypeScript keeps one copy, shared by both stores.
+
+**The adapter.** `deriveReaderStandings(rc, inputs)` in
+`src/server/data/derivedStandings.ts` is what a future `apiStore.getStandings`
+calls. The ESPN store calls the same rules (`computeOverallTable`,
+`configuredPhaseTables`). Its inputs are reader response bodies, unmodified:
+
+| Season config | Inputs | Output |
+|---|---|---|
+| `overallTable` (MLS) | `/standings` for the season | the provider tables, then the overall table with its `labelKey` and `zones` |
+| `computedTables` (Leagues Cup) | `/matches?range=<datesRange>` for the season (`PhaseMatch`: kickoff, state, sides, scores, shootout), plus `/standings` for `computedTables.membership.primary` and `.split` | the two phase tables, named from `groupLabels`, with `advanced` from `cut` |
+| neither | `/standings` | unchanged |
+
+It returns `{ status, groups, issues }`:
+
+- **`complete`**: every input was accounted for.
+- **`partial`**: `issues` names what the tables could not account for.
+  - `missing-shootout`: a finished match level after regulation with no
+    decisive shootout. It still pays one point to each side. That is the ESPN
+    store's existing rule, kept and now reported rather than changed.
+  - `incomplete-score`: a finished match without both scores. It is not
+    counted.
+  - `unclassified-team`: a club in neither membership table, or in both. It
+    is in no table, and its opponents keep their results.
+  - `conflicting-row`: an MLS club listed in two provider tables with
+    different records. The first table's row is merged.
+- **`unavailable`**: a required input is missing (the phase matches, a
+  membership table, or, for MLS, any conference row), so the result has no
+  tables, not empty ones. Per T16.3, that status may fall back to ESPN.
+  A Leagues Cup phase with no finished match yet is a complete empty result;
+  whether the window itself is current is for the matches route's freshness
+  headers, which the adapter does not read.
+
+**Membership.** Clubs are assigned to a side from authoritative scoped data.
+They are never assigned by country, by name, or by "not Liga MX means MLS".
+
+- The source is the stored standings of one league season per side, named
+  per edition in `computedTables.membership`. For 2026 that is `mls/2026` and
+  `liga-mx/2026-apertura`.
+- Reader team ids are canonical in both routes, so a match side and a
+  standings row of the same club carry the same id. That holds for a
+  provisional (unseeded) club too: both resolve its provider id to the same
+  `prov-…` row.
+- An edition whose league seasons are not stored has no membership. It is
+  `unavailable`, not guessed. Historical editions are not configured.
+- The ESPN path keeps its existing source: the split league's current team
+  list, with every other club in MLS. A club unknown to both leagues is
+  therefore in the MLS table on ESPN and in no table (`partial`) on the
+  reader. This is a deliberate, tested divergence.
+
+**Window and exclusions.** The phase window is the reader's validated
+`range`: `[start 00:00Z, day after end 00:00Z)`. That is the same UTC window
+as `fetchScoreboardWindow`, whose one-day provider-calendar guard only widens
+what it fetches. The reader serves no round on a match, so a knockout match is
+excluded by the window alone. A config test requires every window to close
+before `nextRound.startDate`. Only `finished` matches count.
+
+**Ordering.** The MLS name fallback is `localeCompare` on the served name in
+the host's default locale, exactly as today. Reader names are the stored team
+names. A tie that reaches the name fallback therefore orders identically only
+where those names equal ESPN's, which they do for every recorded club.
+
+**Proofs.**
+
+- `backend/reader/derived_standings_integration_test.go` (go-db) stores the
+  recorded data through the Go mappers and the ingester's writer: the
+  54-match 2026 phase and the MLS conference tables. Beside them it stores a
+  synthetic Liga MX Apertura membership in two tables (two clubs repeated, per
+  decision A), plus rows the inputs must not see:
+  - kickoffs at `2026-08-03T23:59:59Z` and `2026-08-15T00:00:00Z`;
+  - a quarterfinal;
+  - an MLS match inside the window;
+  - another Liga MX season listing an MLS club.
+
+  It then reads the three inputs as the least-privilege login through the
+  HTTP routes. The decoded bodies must equal `src/server/data/contracts/derived-standings.json`
+  exactly, with exactly 54 phase matches. Statements are counted: two
+  for the phase window (body and freshness, one snapshot) and one per
+  standings read, independent of the match count.
+- `src/server/data/derivedStandings.test.ts` feeds that vector to the
+  adapter. The result must equal today's `createDataStore().getStandings` over
+  the same recorded payloads, compared on every field. The only normalizer is
+  the production crosswalk on team ids. The match ids are fixed test UUIDs.
+  It reproduces the published qualifiers and both MLS conference tables plus
+  the Supporters' Shield table.
+- Synthetic adapter vectors in the same file cover:
+  - for MLS: ties down to the name fallback, identical and conflicting
+    repeats, a pre-derived or same-id input table, unmutated input ranks and
+    empty input;
+  - for the Leagues Cup: regulation and shootout points, the regulation draw
+    column, a level or missing shootout, an incomplete score, live and
+    scheduled matches, an unclassified or doubly classified club, missing
+    membership, the qualification cut and the empty phase.
+- Both contract suites replace the gap with positive assertions. A reader
+  `Group` is a provider table, with no `labelKey`/`zones` in the DTO or in
+  OpenAPI. The store's MLS output equals the adapter's over the provider
+  tables.
+
+**Limitations.**
+
+- The three reads are separate requests, so they are three snapshots, not
+  one. Membership changes only on a standings refresh, which refuses to
+  shrink the season's distinct team count. A same-size refresh that swaps a
+  club can still land between the reads; the swapped club then surfaces as
+  `unclassified-team` (`partial`), never in the wrong table.
+- The adapter claims no freshness. The matches route's headers describe the
+  window; standings carry none (`T17.3-freshness-coverage`).
+- The Liga MX membership in the vector is synthetic (no recorded Apertura
+  table). Production membership is whatever the ingester stored.
+- Unchanged ESPN-path behaviors:
+  - the missing-shootout point split;
+  - "not Liga MX means MLS";
+  - the host-locale name fallback.
+
+To regenerate the vector after an intended reader change, run the go-db test
+with `SCOREARC_UPDATE_DERIVED_STANDINGS=1` and review the diff.
+
 ## Remaining gaps
 
 The full mismatch text for each gap is in `reader-contract.json` under `gaps`.
@@ -363,7 +491,6 @@ The gaps stay open until their tasks land.
 | **T10.2** summary and leaders | `team-stats`, `lineups` (starters only), `leaders` (goals only, no assists route), `leaders-depth` (frontend shows 10 rows; the reader serves the whole stored board) |
 | **T10.3** team and squad | `team`, `team-location`, `team-record`, `standing-summary`, `squad`, `squad-fields`, `partial-failure`, `team-cache-doc` (OpenAPI documents 60s; the route serves 120s) |
 | **T10.4** player | `player`: no route or DTO |
-| **T10.10** derived standings | `derived-standings` (MLS overall, Leagues Cup phases) |
 | **T16.6** news | `news`: a live ESPN proxy, not owned data |
 | **T17.3** provenance and freshness | `freshness-coverage`: no freshness headers on standings, top-scorers or news |
 | **T21.4** observability | `dependency-error-logging`: six handlers log raw dependency text. `handleTeam`'s and `handleCalendar`'s sanitized logging is the asserted reference |

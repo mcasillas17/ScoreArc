@@ -1,0 +1,2591 @@
+{
+ "about": "T10.10 reader inputs for the derived standings (roadmap option B). Written by backend/reader/derived_standings_integration_test.go from the reader's actual HTTP responses (SCOREARC_UPDATE_DERIVED_STANDINGS=1) and asserted by it (as decoded JSON); consumed by src/server/data/derivedStandings.test.ts, which derives the MLS overall and Leagues Cup phase tables from them and compares the result with today's ESPN-backed store over the same recorded payloads.",
+ "evidence": {
+  "crosswalk": "Provider team ids become canonical through the production seed (backend/config/teams.seed.json).",
+  "recorded": "phaseMatches: the 54-match 2026 Leagues Cup phase (leagues-cup-phase-2026.json) through the Go scoreboard mapper and the ingester's writer. membership.mls: the recorded MLS conference tables (espn-standings-mls-2026.json) through the Go standings mapper and ReplaceStandings.",
+  "synthetic": "membership.ligaMx: the recorded Liga MX club ids (liga-mx-team-ids-2026.json) as a zero-stat Apertura 2026 table, plus a second table repeating two of them. The test match UUIDs. The excluded window-edge, knockout, other-competition and other-season rows the test stores beside them."
+ },
+ "phaseRoute": "/v1/competitions/leagues-cup/2026/matches?range=20260804-20260814",
+ "phaseMatches": [
+  {
+   "away": {
+    "abbr": "ATS",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/216.png",
+    "id": "mex-atlas",
+    "name": "Atlas"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "CLB",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/183.png",
+    "id": "usa-columbus-crew",
+    "name": "Columbus Crew"
+   },
+   "homeScore": 3,
+   "id": "018f0000-0000-7000-8000-000001010000",
+   "kickoff": "2026-08-04T23:45:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-columbus-crew"
+  },
+  {
+   "away": {
+    "abbr": "PAC",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/234.png",
+    "id": "mex-pachuca",
+    "name": "Pachuca"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "CIN",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/18267.png",
+    "id": "usa-fc-cincinnati",
+    "name": "FC Cincinnati"
+   },
+   "homeScore": 3,
+   "id": "018f0000-0000-7000-8000-000001010001",
+   "kickoff": "2026-08-04T23:45:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-fc-cincinnati"
+  },
+  {
+   "away": {
+    "abbr": "JUA",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/17851.png",
+    "id": "mex-fc-juarez",
+    "name": "FC Juarez"
+   },
+   "awayScore": 2,
+   "cards": [],
+   "home": {
+    "abbr": "MIN",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/17362.png",
+    "id": "usa-minnesota-united-fc",
+    "name": "Minnesota United FC"
+   },
+   "homeScore": 1,
+   "id": "018f0000-0000-7000-8000-000001010002",
+   "kickoff": "2026-08-05T00:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "mex-fc-juarez"
+  },
+  {
+   "away": {
+    "abbr": "UNAM",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/233.png",
+    "id": "mex-pumas-unam",
+    "name": "Pumas UNAM"
+   },
+   "awayScore": 0,
+   "cards": [],
+   "home": {
+    "abbr": "CLT",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/21300.png",
+    "id": "usa-charlotte-fc",
+    "name": "Charlotte FC"
+   },
+   "homeScore": 3,
+   "id": "018f0000-0000-7000-8000-000001010003",
+   "kickoff": "2026-08-05T01:22:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-charlotte-fc"
+  },
+  {
+   "away": {
+    "abbr": "RSL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/4771.png",
+    "id": "usa-real-salt-lake",
+    "name": "Real Salt Lake"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "UANL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/232.png",
+    "id": "mex-tigres-uanl",
+    "name": "Tigres UANL"
+   },
+   "homeScore": 1,
+   "id": "018f0000-0000-7000-8000-000001010004",
+   "kickoff": "2026-08-05T02:00:00Z",
+   "minute": null,
+   "note": "Tigres UANL win 6-5 on penalties",
+   "scorers": [],
+   "shootout": {
+    "awayScore": 5,
+    "homeScore": 6
+   },
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT-Pens",
+   "statusName": "STATUS_FINAL_PEN",
+   "winProbability": null,
+   "winnerId": "mex-tigres-uanl"
+  },
+  {
+   "away": {
+    "abbr": "ATL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/226.png",
+    "id": "mex-atlante",
+    "name": "Atlante"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "VAN",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/9727.png",
+    "id": "can-vancouver-whitecaps",
+    "name": "Vancouver Whitecaps"
+   },
+   "homeScore": 0,
+   "id": "018f0000-0000-7000-8000-000001010005",
+   "kickoff": "2026-08-05T02:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "mex-atlante"
+  },
+  {
+   "away": {
+    "abbr": "ASL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/15720.png",
+    "id": "mex-atletico-de-san-luis",
+    "name": "Atlético de San Luis"
+   },
+   "awayScore": 2,
+   "cards": [],
+   "home": {
+    "abbr": "MIA",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/20232.png",
+    "id": "usa-inter-miami-cf",
+    "name": "Inter Miami CF"
+   },
+   "homeScore": 4,
+   "id": "018f0000-0000-7000-8000-000001010006",
+   "kickoff": "2026-08-05T23:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-inter-miami-cf"
+  },
+  {
+   "away": {
+    "abbr": "QRO",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/222.png",
+    "id": "mex-queretaro",
+    "name": "Querétaro"
+   },
+   "awayScore": 0,
+   "cards": [],
+   "home": {
+    "abbr": "DAL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/185.png",
+    "id": "usa-fc-dallas",
+    "name": "FC Dallas"
+   },
+   "homeScore": 2,
+   "id": "018f0000-0000-7000-8000-000001010007",
+   "kickoff": "2026-08-06T00:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-fc-dallas"
+  },
+  {
+   "away": {
+    "abbr": "LEO",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/228.png",
+    "id": "mex-leon",
+    "name": "León"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "NSH",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/18986.png",
+    "id": "usa-nashville-sc",
+    "name": "Nashville SC"
+   },
+   "homeScore": 0,
+   "id": "018f0000-0000-7000-8000-000001010008",
+   "kickoff": "2026-08-06T00:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "mex-leon"
+  },
+  {
+   "away": {
+    "abbr": "ORL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/12011.png",
+    "id": "usa-orlando-city-sc",
+    "name": "Orlando City SC"
+   },
+   "awayScore": 2,
+   "cards": [],
+   "home": {
+    "abbr": "MTY",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/220.png",
+    "id": "mex-monterrey",
+    "name": "Monterrey"
+   },
+   "homeScore": 1,
+   "id": "018f0000-0000-7000-8000-000001010009",
+   "kickoff": "2026-08-06T00:55:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-orlando-city-sc"
+  },
+  {
+   "away": {
+    "abbr": "SEA",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/9726.png",
+    "id": "usa-seattle-sounders-fc",
+    "name": "Seattle Sounders FC"
+   },
+   "awayScore": 0,
+   "cards": [],
+   "home": {
+    "abbr": "TOL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/223.png",
+    "id": "mex-toluca",
+    "name": "Toluca"
+   },
+   "homeScore": 3,
+   "id": "018f0000-0000-7000-8000-00000101000a",
+   "kickoff": "2026-08-06T02:00:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "mex-toluca"
+  },
+  {
+   "away": {
+    "abbr": "GDL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/219.png",
+    "id": "mex-guadalajara",
+    "name": "Guadalajara"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "LAFC",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/18966.png",
+    "id": "usa-lafc",
+    "name": "LAFC"
+   },
+   "homeScore": 1,
+   "id": "018f0000-0000-7000-8000-00000101000b",
+   "kickoff": "2026-08-06T02:30:00Z",
+   "minute": null,
+   "note": "LAFC win 5-4 on penalties",
+   "scorers": [],
+   "shootout": {
+    "awayScore": 4,
+    "homeScore": 5
+   },
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT-Pens",
+   "statusName": "STATUS_FINAL_PEN",
+   "winProbability": null,
+   "winnerId": "usa-lafc"
+  },
+  {
+   "away": {
+    "abbr": "SAN",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/225.png",
+    "id": "mex-santos",
+    "name": "Santos"
+   },
+   "awayScore": 0,
+   "cards": [],
+   "home": {
+    "abbr": "NYC",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/17606.png",
+    "id": "usa-new-york-city-fc",
+    "name": "New York City FC"
+   },
+   "homeScore": 2,
+   "id": "018f0000-0000-7000-8000-00000101000c",
+   "kickoff": "2026-08-06T23:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-new-york-city-fc"
+  },
+  {
+   "away": {
+    "abbr": "PHI",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/10739.png",
+    "id": "usa-philadelphia-union",
+    "name": "Philadelphia Union"
+   },
+   "awayScore": 0,
+   "cards": [],
+   "home": {
+    "abbr": "CAZ",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/218.png",
+    "id": "mex-cruz-azul",
+    "name": "Cruz Azul"
+   },
+   "homeScore": 1,
+   "id": "018f0000-0000-7000-8000-00000101000d",
+   "kickoff": "2026-08-07T00:00:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "mex-cruz-azul"
+  },
+  {
+   "away": {
+    "abbr": "NCX",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/229.png",
+    "id": "mex-necaxa",
+    "name": "Necaxa"
+   },
+   "awayScore": 0,
+   "cards": [],
+   "home": {
+    "abbr": "CHI",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/182.png",
+    "id": "usa-chicago-fire-fc",
+    "name": "Chicago Fire FC"
+   },
+   "homeScore": 2,
+   "id": "018f0000-0000-7000-8000-00000101000e",
+   "kickoff": "2026-08-07T00:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-chicago-fire-fc"
+  },
+  {
+   "away": {
+    "abbr": "TIJ",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/10125.png",
+    "id": "mex-tijuana",
+    "name": "Tijuana"
+   },
+   "awayScore": 0,
+   "cards": [],
+   "home": {
+    "abbr": "ATX",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/20906.png",
+    "id": "usa-austin-fc",
+    "name": "Austin FC"
+   },
+   "homeScore": 2,
+   "id": "018f0000-0000-7000-8000-00000101000f",
+   "kickoff": "2026-08-07T01:00:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-austin-fc"
+  },
+  {
+   "away": {
+    "abbr": "SD",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/22529.png",
+    "id": "usa-san-diego-fc",
+    "name": "San Diego FC"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "AME",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/227.png",
+    "id": "mex-america",
+    "name": "América"
+   },
+   "homeScore": 3,
+   "id": "018f0000-0000-7000-8000-000001010010",
+   "kickoff": "2026-08-07T02:00:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "mex-america"
+  },
+  {
+   "away": {
+    "abbr": "PUE",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/231.png",
+    "id": "mex-puebla",
+    "name": "Puebla"
+   },
+   "awayScore": 2,
+   "cards": [],
+   "home": {
+    "abbr": "POR",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/9723.png",
+    "id": "usa-portland-timbers",
+    "name": "Portland Timbers"
+   },
+   "homeScore": 5,
+   "id": "018f0000-0000-7000-8000-000001010011",
+   "kickoff": "2026-08-07T02:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-portland-timbers"
+  },
+  {
+   "away": {
+    "abbr": "ATS",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/216.png",
+    "id": "mex-atlas",
+    "name": "Atlas"
+   },
+   "awayScore": 0,
+   "cards": [],
+   "home": {
+    "abbr": "CLT",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/21300.png",
+    "id": "usa-charlotte-fc",
+    "name": "Charlotte FC"
+   },
+   "homeScore": 2,
+   "id": "018f0000-0000-7000-8000-000001010012",
+   "kickoff": "2026-08-07T23:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-charlotte-fc"
+  },
+  {
+   "away": {
+    "abbr": "PAC",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/234.png",
+    "id": "mex-pachuca",
+    "name": "Pachuca"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "CLB",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/183.png",
+    "id": "usa-columbus-crew",
+    "name": "Columbus Crew"
+   },
+   "homeScore": 2,
+   "id": "018f0000-0000-7000-8000-000001010013",
+   "kickoff": "2026-08-07T23:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-columbus-crew"
+  },
+  {
+   "away": {
+    "abbr": "UNAM",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/233.png",
+    "id": "mex-pumas-unam",
+    "name": "Pumas UNAM"
+   },
+   "awayScore": 0,
+   "cards": [],
+   "home": {
+    "abbr": "CIN",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/18267.png",
+    "id": "usa-fc-cincinnati",
+    "name": "FC Cincinnati"
+   },
+   "homeScore": 2,
+   "id": "018f0000-0000-7000-8000-000001010014",
+   "kickoff": "2026-08-08T00:27:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-fc-cincinnati"
+  },
+  {
+   "away": {
+    "abbr": "MIN",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/17362.png",
+    "id": "usa-minnesota-united-fc",
+    "name": "Minnesota United FC"
+   },
+   "awayScore": 0,
+   "cards": [],
+   "home": {
+    "abbr": "UANL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/232.png",
+    "id": "mex-tigres-uanl",
+    "name": "Tigres UANL"
+   },
+   "homeScore": 0,
+   "id": "018f0000-0000-7000-8000-000001010015",
+   "kickoff": "2026-08-08T01:00:00Z",
+   "minute": null,
+   "note": "Tigres UANL win 4-2 on penalties",
+   "scorers": [],
+   "shootout": {
+    "awayScore": 2,
+    "homeScore": 4
+   },
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT-Pens",
+   "statusName": "STATUS_FINAL_PEN",
+   "winProbability": null,
+   "winnerId": "mex-tigres-uanl"
+  },
+  {
+   "away": {
+    "abbr": "JUA",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/17851.png",
+    "id": "mex-fc-juarez",
+    "name": "FC Juarez"
+   },
+   "awayScore": 3,
+   "cards": [],
+   "home": {
+    "abbr": "VAN",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/9727.png",
+    "id": "can-vancouver-whitecaps",
+    "name": "Vancouver Whitecaps"
+   },
+   "homeScore": 1,
+   "id": "018f0000-0000-7000-8000-000001010016",
+   "kickoff": "2026-08-08T02:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "mex-fc-juarez"
+  },
+  {
+   "away": {
+    "abbr": "LEO",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/228.png",
+    "id": "mex-leon",
+    "name": "León"
+   },
+   "awayScore": 2,
+   "cards": [],
+   "home": {
+    "abbr": "ORL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/12011.png",
+    "id": "usa-orlando-city-sc",
+    "name": "Orlando City SC"
+   },
+   "homeScore": 1,
+   "id": "018f0000-0000-7000-8000-000001010017",
+   "kickoff": "2026-08-08T22:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "mex-leon"
+  },
+  {
+   "away": {
+    "abbr": "MTY",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/220.png",
+    "id": "mex-monterrey",
+    "name": "Monterrey"
+   },
+   "awayScore": 2,
+   "cards": [],
+   "home": {
+    "abbr": "MIA",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/20232.png",
+    "id": "usa-inter-miami-cf",
+    "name": "Inter Miami CF"
+   },
+   "homeScore": 1,
+   "id": "018f0000-0000-7000-8000-000001010018",
+   "kickoff": "2026-08-09T00:00:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "mex-monterrey"
+  },
+  {
+   "away": {
+    "abbr": "DAL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/185.png",
+    "id": "usa-fc-dallas",
+    "name": "FC Dallas"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "GDL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/219.png",
+    "id": "mex-guadalajara",
+    "name": "Guadalajara"
+   },
+   "homeScore": 0,
+   "id": "018f0000-0000-7000-8000-000001010019",
+   "kickoff": "2026-08-09T01:00:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-fc-dallas"
+  },
+  {
+   "away": {
+    "abbr": "ATL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/226.png",
+    "id": "mex-atlante",
+    "name": "Atlante"
+   },
+   "awayScore": 0,
+   "cards": [],
+   "home": {
+    "abbr": "RSL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/4771.png",
+    "id": "usa-real-salt-lake",
+    "name": "Real Salt Lake"
+   },
+   "homeScore": 4,
+   "id": "018f0000-0000-7000-8000-00000101001a",
+   "kickoff": "2026-08-09T02:00:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-real-salt-lake"
+  },
+  {
+   "away": {
+    "abbr": "LAFC",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/18966.png",
+    "id": "usa-lafc",
+    "name": "LAFC"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "TOL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/223.png",
+    "id": "mex-toluca",
+    "name": "Toluca"
+   },
+   "homeScore": 0,
+   "id": "018f0000-0000-7000-8000-00000101001b",
+   "kickoff": "2026-08-09T03:10:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-lafc"
+  },
+  {
+   "away": {
+    "abbr": "QRO",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/222.png",
+    "id": "mex-queretaro",
+    "name": "Querétaro"
+   },
+   "awayScore": 0,
+   "cards": [],
+   "home": {
+    "abbr": "SEA",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/9726.png",
+    "id": "usa-seattle-sounders-fc",
+    "name": "Seattle Sounders FC"
+   },
+   "homeScore": 3,
+   "id": "018f0000-0000-7000-8000-00000101001c",
+   "kickoff": "2026-08-09T19:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-seattle-sounders-fc"
+  },
+  {
+   "away": {
+    "abbr": "NYC",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/17606.png",
+    "id": "usa-new-york-city-fc",
+    "name": "New York City FC"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "CAZ",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/218.png",
+    "id": "mex-cruz-azul",
+    "name": "Cruz Azul"
+   },
+   "homeScore": 2,
+   "id": "018f0000-0000-7000-8000-00000101001d",
+   "kickoff": "2026-08-09T23:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "mex-cruz-azul"
+  },
+  {
+   "away": {
+    "abbr": "NCX",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/229.png",
+    "id": "mex-necaxa",
+    "name": "Necaxa"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "PHI",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/10739.png",
+    "id": "usa-philadelphia-union",
+    "name": "Philadelphia Union"
+   },
+   "homeScore": 3,
+   "id": "018f0000-0000-7000-8000-00000101001e",
+   "kickoff": "2026-08-09T23:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-philadelphia-union"
+  },
+  {
+   "away": {
+    "abbr": "SAN",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/225.png",
+    "id": "mex-santos",
+    "name": "Santos"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "CHI",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/182.png",
+    "id": "usa-chicago-fire-fc",
+    "name": "Chicago Fire FC"
+   },
+   "homeScore": 3,
+   "id": "018f0000-0000-7000-8000-00000101001f",
+   "kickoff": "2026-08-10T00:00:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-chicago-fire-fc"
+  },
+  {
+   "away": {
+    "abbr": "ASL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/15720.png",
+    "id": "mex-atletico-de-san-luis",
+    "name": "Atlético de San Luis"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "NSH",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/18986.png",
+    "id": "usa-nashville-sc",
+    "name": "Nashville SC"
+   },
+   "homeScore": 4,
+   "id": "018f0000-0000-7000-8000-000001010020",
+   "kickoff": "2026-08-10T00:00:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-nashville-sc"
+  },
+  {
+   "away": {
+    "abbr": "PUE",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/231.png",
+    "id": "mex-puebla",
+    "name": "Puebla"
+   },
+   "awayScore": 0,
+   "cards": [],
+   "home": {
+    "abbr": "ATX",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/20906.png",
+    "id": "usa-austin-fc",
+    "name": "Austin FC"
+   },
+   "homeScore": 3,
+   "id": "018f0000-0000-7000-8000-000001010021",
+   "kickoff": "2026-08-10T01:00:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-austin-fc"
+  },
+  {
+   "away": {
+    "abbr": "TIJ",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/10125.png",
+    "id": "mex-tijuana",
+    "name": "Tijuana"
+   },
+   "awayScore": 0,
+   "cards": [],
+   "home": {
+    "abbr": "SD",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/22529.png",
+    "id": "usa-san-diego-fc",
+    "name": "San Diego FC"
+   },
+   "homeScore": 1,
+   "id": "018f0000-0000-7000-8000-000001010022",
+   "kickoff": "2026-08-10T02:00:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-san-diego-fc"
+  },
+  {
+   "away": {
+    "abbr": "POR",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/9723.png",
+    "id": "usa-portland-timbers",
+    "name": "Portland Timbers"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "AME",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/227.png",
+    "id": "mex-america",
+    "name": "América"
+   },
+   "homeScore": 3,
+   "id": "018f0000-0000-7000-8000-000001010023",
+   "kickoff": "2026-08-10T02:15:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "mex-america"
+  },
+  {
+   "away": {
+    "abbr": "UNAM",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/233.png",
+    "id": "mex-pumas-unam",
+    "name": "Pumas UNAM"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "CLB",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/183.png",
+    "id": "usa-columbus-crew",
+    "name": "Columbus Crew"
+   },
+   "homeScore": 1,
+   "id": "018f0000-0000-7000-8000-000001010024",
+   "kickoff": "2026-08-11T23:30:00Z",
+   "minute": null,
+   "note": "Columbus Crew win 3-2 on penalties",
+   "scorers": [],
+   "shootout": {
+    "awayScore": 2,
+    "homeScore": 3
+   },
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT-Pens",
+   "statusName": "STATUS_FINAL_PEN",
+   "winProbability": null,
+   "winnerId": "usa-columbus-crew"
+  },
+  {
+   "away": {
+    "abbr": "ATS",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/216.png",
+    "id": "mex-atlas",
+    "name": "Atlas"
+   },
+   "awayScore": 2,
+   "cards": [],
+   "home": {
+    "abbr": "CIN",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/18267.png",
+    "id": "usa-fc-cincinnati",
+    "name": "FC Cincinnati"
+   },
+   "homeScore": 1,
+   "id": "018f0000-0000-7000-8000-000001010025",
+   "kickoff": "2026-08-12T00:00:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "mex-atlas"
+  },
+  {
+   "away": {
+    "abbr": "ATL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/226.png",
+    "id": "mex-atlante",
+    "name": "Atlante"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "MIN",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/17362.png",
+    "id": "usa-minnesota-united-fc",
+    "name": "Minnesota United FC"
+   },
+   "homeScore": 3,
+   "id": "018f0000-0000-7000-8000-000001010026",
+   "kickoff": "2026-08-12T00:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-minnesota-united-fc"
+  },
+  {
+   "away": {
+    "abbr": "PAC",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/234.png",
+    "id": "mex-pachuca",
+    "name": "Pachuca"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "CLT",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/21300.png",
+    "id": "usa-charlotte-fc",
+    "name": "Charlotte FC"
+   },
+   "homeScore": 0,
+   "id": "018f0000-0000-7000-8000-000001010027",
+   "kickoff": "2026-08-12T00:52:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "mex-pachuca"
+  },
+  {
+   "away": {
+    "abbr": "JUA",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/17851.png",
+    "id": "mex-fc-juarez",
+    "name": "FC Juarez"
+   },
+   "awayScore": 0,
+   "cards": [],
+   "home": {
+    "abbr": "RSL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/4771.png",
+    "id": "usa-real-salt-lake",
+    "name": "Real Salt Lake"
+   },
+   "homeScore": 3,
+   "id": "018f0000-0000-7000-8000-000001010028",
+   "kickoff": "2026-08-12T01:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-real-salt-lake"
+  },
+  {
+   "away": {
+    "abbr": "VAN",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/9727.png",
+    "id": "can-vancouver-whitecaps",
+    "name": "Vancouver Whitecaps"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "UANL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/232.png",
+    "id": "mex-tigres-uanl",
+    "name": "Tigres UANL"
+   },
+   "homeScore": 1,
+   "id": "018f0000-0000-7000-8000-000001010029",
+   "kickoff": "2026-08-12T02:00:00Z",
+   "minute": null,
+   "note": "Tigres UANL win 5-4 on penalties",
+   "scorers": [],
+   "shootout": {
+    "awayScore": 4,
+    "homeScore": 5
+   },
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT-Pens",
+   "statusName": "STATUS_FINAL_PEN",
+   "winProbability": null,
+   "winnerId": "mex-tigres-uanl"
+  },
+  {
+   "away": {
+    "abbr": "LEO",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/228.png",
+    "id": "mex-leon",
+    "name": "León"
+   },
+   "awayScore": 3,
+   "cards": [],
+   "home": {
+    "abbr": "MIA",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/20232.png",
+    "id": "usa-inter-miami-cf",
+    "name": "Inter Miami CF"
+   },
+   "homeScore": 2,
+   "id": "018f0000-0000-7000-8000-00000101002a",
+   "kickoff": "2026-08-12T23:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "mex-leon"
+  },
+  {
+   "away": {
+    "abbr": "ASL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/15720.png",
+    "id": "mex-atletico-de-san-luis",
+    "name": "Atlético de San Luis"
+   },
+   "awayScore": 2,
+   "cards": [],
+   "home": {
+    "abbr": "ORL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/12011.png",
+    "id": "usa-orlando-city-sc",
+    "name": "Orlando City SC"
+   },
+   "homeScore": 2,
+   "id": "018f0000-0000-7000-8000-00000101002b",
+   "kickoff": "2026-08-12T23:30:00Z",
+   "minute": null,
+   "note": "Orlando City SC win 5-3 on penalties",
+   "scorers": [],
+   "shootout": {
+    "awayScore": 3,
+    "homeScore": 5
+   },
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT-Pens",
+   "statusName": "STATUS_FINAL_PEN",
+   "winProbability": null,
+   "winnerId": "usa-orlando-city-sc"
+  },
+  {
+   "away": {
+    "abbr": "NSH",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/18986.png",
+    "id": "usa-nashville-sc",
+    "name": "Nashville SC"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "MTY",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/220.png",
+    "id": "mex-monterrey",
+    "name": "Monterrey"
+   },
+   "homeScore": 2,
+   "id": "018f0000-0000-7000-8000-00000101002c",
+   "kickoff": "2026-08-13T00:00:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "mex-monterrey"
+  },
+  {
+   "away": {
+    "abbr": "DAL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/185.png",
+    "id": "usa-fc-dallas",
+    "name": "FC Dallas"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "TOL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/223.png",
+    "id": "mex-toluca",
+    "name": "Toluca"
+   },
+   "homeScore": 3,
+   "id": "018f0000-0000-7000-8000-00000101002d",
+   "kickoff": "2026-08-13T02:00:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "mex-toluca"
+  },
+  {
+   "away": {
+    "abbr": "PUE",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/231.png",
+    "id": "mex-puebla",
+    "name": "Puebla"
+   },
+   "awayScore": 2,
+   "cards": [],
+   "home": {
+    "abbr": "SD",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/22529.png",
+    "id": "usa-san-diego-fc",
+    "name": "San Diego FC"
+   },
+   "homeScore": 3,
+   "id": "018f0000-0000-7000-8000-00000101002e",
+   "kickoff": "2026-08-13T02:15:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-san-diego-fc"
+  },
+  {
+   "away": {
+    "abbr": "QRO",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/222.png",
+    "id": "mex-queretaro",
+    "name": "Querétaro"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "LAFC",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/18966.png",
+    "id": "usa-lafc",
+    "name": "LAFC"
+   },
+   "homeScore": 1,
+   "id": "018f0000-0000-7000-8000-00000101002f",
+   "kickoff": "2026-08-13T02:30:00Z",
+   "minute": null,
+   "note": "LAFC win 5-3 on penalties",
+   "scorers": [],
+   "shootout": {
+    "awayScore": 3,
+    "homeScore": 5
+   },
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT-Pens",
+   "statusName": "STATUS_FINAL_PEN",
+   "winProbability": null,
+   "winnerId": "usa-lafc"
+  },
+  {
+   "away": {
+    "abbr": "GDL",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/219.png",
+    "id": "mex-guadalajara",
+    "name": "Guadalajara"
+   },
+   "awayScore": 2,
+   "cards": [],
+   "home": {
+    "abbr": "SEA",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/9726.png",
+    "id": "usa-seattle-sounders-fc",
+    "name": "Seattle Sounders FC"
+   },
+   "homeScore": 1,
+   "id": "018f0000-0000-7000-8000-000001010030",
+   "kickoff": "2026-08-13T02:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "mex-guadalajara"
+  },
+  {
+   "away": {
+    "abbr": "SAN",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/225.png",
+    "id": "mex-santos",
+    "name": "Santos"
+   },
+   "awayScore": 2,
+   "cards": [],
+   "home": {
+    "abbr": "PHI",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/10739.png",
+    "id": "usa-philadelphia-union",
+    "name": "Philadelphia Union"
+   },
+   "homeScore": 0,
+   "id": "018f0000-0000-7000-8000-000001010031",
+   "kickoff": "2026-08-13T23:00:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "mex-santos"
+  },
+  {
+   "away": {
+    "abbr": "NCX",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/229.png",
+    "id": "mex-necaxa",
+    "name": "Necaxa"
+   },
+   "awayScore": 2,
+   "cards": [],
+   "home": {
+    "abbr": "NYC",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/17606.png",
+    "id": "usa-new-york-city-fc",
+    "name": "New York City FC"
+   },
+   "homeScore": 1,
+   "id": "018f0000-0000-7000-8000-000001010032",
+   "kickoff": "2026-08-13T23:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "mex-necaxa"
+  },
+  {
+   "away": {
+    "abbr": "ATX",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/20906.png",
+    "id": "usa-austin-fc",
+    "name": "Austin FC"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "AME",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/227.png",
+    "id": "mex-america",
+    "name": "América"
+   },
+   "homeScore": 1,
+   "id": "018f0000-0000-7000-8000-000001010033",
+   "kickoff": "2026-08-14T00:30:00Z",
+   "minute": null,
+   "note": "Austin FC win 6-5 on penalties",
+   "scorers": [],
+   "shootout": {
+    "awayScore": 6,
+    "homeScore": 5
+   },
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT-Pens",
+   "statusName": "STATUS_FINAL_PEN",
+   "winProbability": null,
+   "winnerId": "usa-austin-fc"
+  },
+  {
+   "away": {
+    "abbr": "CHI",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/182.png",
+    "id": "usa-chicago-fire-fc",
+    "name": "Chicago Fire FC"
+   },
+   "awayScore": 2,
+   "cards": [],
+   "home": {
+    "abbr": "CAZ",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/218.png",
+    "id": "mex-cruz-azul",
+    "name": "Cruz Azul"
+   },
+   "homeScore": 1,
+   "id": "018f0000-0000-7000-8000-000001010034",
+   "kickoff": "2026-08-14T01:00:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-chicago-fire-fc"
+  },
+  {
+   "away": {
+    "abbr": "TIJ",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/10125.png",
+    "id": "mex-tijuana",
+    "name": "Tijuana"
+   },
+   "awayScore": 1,
+   "cards": [],
+   "home": {
+    "abbr": "POR",
+    "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/9723.png",
+    "id": "usa-portland-timbers",
+    "name": "Portland Timbers"
+   },
+   "homeScore": 3,
+   "id": "018f0000-0000-7000-8000-000001010035",
+   "kickoff": "2026-08-14T02:30:00Z",
+   "minute": null,
+   "note": null,
+   "scorers": [],
+   "shootout": null,
+   "shootoutDetail": null,
+   "state": "finished",
+   "stats": null,
+   "statusDetail": "FT",
+   "statusName": "STATUS_FULL_TIME",
+   "winProbability": null,
+   "winnerId": "usa-portland-timbers"
+  }
+ ],
+ "membership": {
+  "ligaMx": {
+   "route": "/v1/competitions/liga-mx/2026-apertura/standings",
+   "groups": [
+    {
+     "id": "1",
+     "name": "Liga MX",
+     "standings": [
+      {
+       "advanced": false,
+       "draws": 0,
+       "goalDifference": 0,
+       "goalsAgainst": 0,
+       "goalsFor": 0,
+       "losses": 0,
+       "played": 0,
+       "points": 0,
+       "rank": 1,
+       "team": {
+        "abbr": "AME",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/227.png",
+        "id": "mex-america",
+        "name": "América"
+       },
+       "wins": 0
+      },
+      {
+       "advanced": false,
+       "draws": 0,
+       "goalDifference": 0,
+       "goalsAgainst": 0,
+       "goalsFor": 0,
+       "losses": 0,
+       "played": 0,
+       "points": 0,
+       "rank": 2,
+       "team": {
+        "abbr": "ATL",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/226.png",
+        "id": "mex-atlante",
+        "name": "Atlante"
+       },
+       "wins": 0
+      },
+      {
+       "advanced": false,
+       "draws": 0,
+       "goalDifference": 0,
+       "goalsAgainst": 0,
+       "goalsFor": 0,
+       "losses": 0,
+       "played": 0,
+       "points": 0,
+       "rank": 3,
+       "team": {
+        "abbr": "ATS",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/216.png",
+        "id": "mex-atlas",
+        "name": "Atlas"
+       },
+       "wins": 0
+      },
+      {
+       "advanced": false,
+       "draws": 0,
+       "goalDifference": 0,
+       "goalsAgainst": 0,
+       "goalsFor": 0,
+       "losses": 0,
+       "played": 0,
+       "points": 0,
+       "rank": 4,
+       "team": {
+        "abbr": "ASL",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/15720.png",
+        "id": "mex-atletico-de-san-luis",
+        "name": "Atlético de San Luis"
+       },
+       "wins": 0
+      },
+      {
+       "advanced": false,
+       "draws": 0,
+       "goalDifference": 0,
+       "goalsAgainst": 0,
+       "goalsFor": 0,
+       "losses": 0,
+       "played": 0,
+       "points": 0,
+       "rank": 5,
+       "team": {
+        "abbr": "CAZ",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/218.png",
+        "id": "mex-cruz-azul",
+        "name": "Cruz Azul"
+       },
+       "wins": 0
+      },
+      {
+       "advanced": false,
+       "draws": 0,
+       "goalDifference": 0,
+       "goalsAgainst": 0,
+       "goalsFor": 0,
+       "losses": 0,
+       "played": 0,
+       "points": 0,
+       "rank": 6,
+       "team": {
+        "abbr": "JUA",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/17851.png",
+        "id": "mex-fc-juarez",
+        "name": "FC Juarez"
+       },
+       "wins": 0
+      },
+      {
+       "advanced": false,
+       "draws": 0,
+       "goalDifference": 0,
+       "goalsAgainst": 0,
+       "goalsFor": 0,
+       "losses": 0,
+       "played": 0,
+       "points": 0,
+       "rank": 7,
+       "team": {
+        "abbr": "GDL",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/219.png",
+        "id": "mex-guadalajara",
+        "name": "Guadalajara"
+       },
+       "wins": 0
+      },
+      {
+       "advanced": false,
+       "draws": 0,
+       "goalDifference": 0,
+       "goalsAgainst": 0,
+       "goalsFor": 0,
+       "losses": 0,
+       "played": 0,
+       "points": 0,
+       "rank": 8,
+       "team": {
+        "abbr": "LEO",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/228.png",
+        "id": "mex-leon",
+        "name": "León"
+       },
+       "wins": 0
+      },
+      {
+       "advanced": false,
+       "draws": 0,
+       "goalDifference": 0,
+       "goalsAgainst": 0,
+       "goalsFor": 0,
+       "losses": 0,
+       "played": 0,
+       "points": 0,
+       "rank": 9,
+       "team": {
+        "abbr": "MTY",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/220.png",
+        "id": "mex-monterrey",
+        "name": "Monterrey"
+       },
+       "wins": 0
+      },
+      {
+       "advanced": false,
+       "draws": 0,
+       "goalDifference": 0,
+       "goalsAgainst": 0,
+       "goalsFor": 0,
+       "losses": 0,
+       "played": 0,
+       "points": 0,
+       "rank": 10,
+       "team": {
+        "abbr": "NCX",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/229.png",
+        "id": "mex-necaxa",
+        "name": "Necaxa"
+       },
+       "wins": 0
+      },
+      {
+       "advanced": false,
+       "draws": 0,
+       "goalDifference": 0,
+       "goalsAgainst": 0,
+       "goalsFor": 0,
+       "losses": 0,
+       "played": 0,
+       "points": 0,
+       "rank": 11,
+       "team": {
+        "abbr": "PAC",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/234.png",
+        "id": "mex-pachuca",
+        "name": "Pachuca"
+       },
+       "wins": 0
+      },
+      {
+       "advanced": false,
+       "draws": 0,
+       "goalDifference": 0,
+       "goalsAgainst": 0,
+       "goalsFor": 0,
+       "losses": 0,
+       "played": 0,
+       "points": 0,
+       "rank": 12,
+       "team": {
+        "abbr": "PUE",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/231.png",
+        "id": "mex-puebla",
+        "name": "Puebla"
+       },
+       "wins": 0
+      },
+      {
+       "advanced": false,
+       "draws": 0,
+       "goalDifference": 0,
+       "goalsAgainst": 0,
+       "goalsFor": 0,
+       "losses": 0,
+       "played": 0,
+       "points": 0,
+       "rank": 13,
+       "team": {
+        "abbr": "UNAM",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/233.png",
+        "id": "mex-pumas-unam",
+        "name": "Pumas UNAM"
+       },
+       "wins": 0
+      },
+      {
+       "advanced": false,
+       "draws": 0,
+       "goalDifference": 0,
+       "goalsAgainst": 0,
+       "goalsFor": 0,
+       "losses": 0,
+       "played": 0,
+       "points": 0,
+       "rank": 14,
+       "team": {
+        "abbr": "QRO",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/222.png",
+        "id": "mex-queretaro",
+        "name": "Querétaro"
+       },
+       "wins": 0
+      },
+      {
+       "advanced": false,
+       "draws": 0,
+       "goalDifference": 0,
+       "goalsAgainst": 0,
+       "goalsFor": 0,
+       "losses": 0,
+       "played": 0,
+       "points": 0,
+       "rank": 15,
+       "team": {
+        "abbr": "SAN",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/225.png",
+        "id": "mex-santos",
+        "name": "Santos"
+       },
+       "wins": 0
+      },
+      {
+       "advanced": false,
+       "draws": 0,
+       "goalDifference": 0,
+       "goalsAgainst": 0,
+       "goalsFor": 0,
+       "losses": 0,
+       "played": 0,
+       "points": 0,
+       "rank": 16,
+       "team": {
+        "abbr": "UANL",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/232.png",
+        "id": "mex-tigres-uanl",
+        "name": "Tigres UANL"
+       },
+       "wins": 0
+      },
+      {
+       "advanced": false,
+       "draws": 0,
+       "goalDifference": 0,
+       "goalsAgainst": 0,
+       "goalsFor": 0,
+       "losses": 0,
+       "played": 0,
+       "points": 0,
+       "rank": 17,
+       "team": {
+        "abbr": "TIJ",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/10125.png",
+        "id": "mex-tijuana",
+        "name": "Tijuana"
+       },
+       "wins": 0
+      },
+      {
+       "advanced": false,
+       "draws": 0,
+       "goalDifference": 0,
+       "goalsAgainst": 0,
+       "goalsFor": 0,
+       "losses": 0,
+       "played": 0,
+       "points": 0,
+       "rank": 18,
+       "team": {
+        "abbr": "TOL",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/223.png",
+        "id": "mex-toluca",
+        "name": "Toluca"
+       },
+       "wins": 0
+      }
+     ]
+    },
+    {
+     "id": "2",
+     "name": "Liga MX second table",
+     "standings": [
+      {
+       "advanced": false,
+       "draws": 0,
+       "goalDifference": 0,
+       "goalsAgainst": 0,
+       "goalsFor": 0,
+       "losses": 0,
+       "played": 0,
+       "points": 0,
+       "rank": 1,
+       "team": {
+        "abbr": "AME",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/227.png",
+        "id": "mex-america",
+        "name": "América"
+       },
+       "wins": 0
+      },
+      {
+       "advanced": false,
+       "draws": 0,
+       "goalDifference": 0,
+       "goalsAgainst": 0,
+       "goalsFor": 0,
+       "losses": 0,
+       "played": 0,
+       "points": 0,
+       "rank": 2,
+       "team": {
+        "abbr": "ATL",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/226.png",
+        "id": "mex-atlante",
+        "name": "Atlante"
+       },
+       "wins": 0
+      }
+     ]
+    }
+   ]
+  },
+  "mls": {
+   "route": "/v1/competitions/mls/2026/standings",
+   "groups": [
+    {
+     "id": "Eastern Conference",
+     "name": "Eastern Conference",
+     "standings": [
+      {
+       "advanced": false,
+       "draws": 4,
+       "goalDifference": 21,
+       "goalsAgainst": 14,
+       "goalsFor": 35,
+       "losses": 2,
+       "played": 18,
+       "points": 40,
+       "rank": 1,
+       "team": {
+        "abbr": "NSH",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/18986.png",
+        "id": "usa-nashville-sc",
+        "name": "Nashville SC"
+       },
+       "wins": 12
+      },
+      {
+       "advanced": false,
+       "draws": 5,
+       "goalDifference": 13,
+       "goalsAgainst": 32,
+       "goalsFor": 45,
+       "losses": 2,
+       "played": 18,
+       "points": 38,
+       "rank": 2,
+       "team": {
+        "abbr": "MIA",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/20232.png",
+        "id": "usa-inter-miami-cf",
+        "name": "Inter Miami CF"
+       },
+       "wins": 11
+      },
+      {
+       "advanced": false,
+       "draws": 3,
+       "goalDifference": 5,
+       "goalsAgainst": 23,
+       "goalsFor": 28,
+       "losses": 6,
+       "played": 18,
+       "points": 30,
+       "rank": 3,
+       "team": {
+        "abbr": "NE",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/189.png",
+        "id": "usa-new-england-revolution",
+        "name": "New England Revolution"
+       },
+       "wins": 9
+      },
+      {
+       "advanced": false,
+       "draws": 2,
+       "goalDifference": 9,
+       "goalsAgainst": 23,
+       "goalsFor": 32,
+       "losses": 6,
+       "played": 17,
+       "points": 29,
+       "rank": 4,
+       "team": {
+        "abbr": "CHI",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/182.png",
+        "id": "usa-chicago-fire-fc",
+        "name": "Chicago Fire FC"
+       },
+       "wins": 9
+      },
+      {
+       "advanced": false,
+       "draws": 5,
+       "goalDifference": 7,
+       "goalsAgainst": 24,
+       "goalsFor": 31,
+       "losses": 6,
+       "played": 18,
+       "points": 26,
+       "rank": 5,
+       "team": {
+        "abbr": "NYC",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/17606.png",
+        "id": "usa-new-york-city-fc",
+        "name": "New York City FC"
+       },
+       "wins": 7
+      },
+      {
+       "advanced": false,
+       "draws": 5,
+       "goalDifference": 1,
+       "goalsAgainst": 44,
+       "goalsFor": 45,
+       "losses": 6,
+       "played": 18,
+       "points": 26,
+       "rank": 6,
+       "team": {
+        "abbr": "CIN",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/18267.png",
+        "id": "usa-fc-cincinnati",
+        "name": "FC Cincinnati"
+       },
+       "wins": 7
+      },
+      {
+       "advanced": false,
+       "draws": 4,
+       "goalDifference": 2,
+       "goalsAgainst": 27,
+       "goalsFor": 29,
+       "losses": 7,
+       "played": 18,
+       "points": 25,
+       "rank": 7,
+       "team": {
+        "abbr": "CLT",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/21300.png",
+        "id": "usa-charlotte-fc",
+        "name": "Charlotte FC"
+       },
+       "wins": 7
+      },
+      {
+       "advanced": false,
+       "draws": 4,
+       "goalDifference": -10,
+       "goalsAgainst": 39,
+       "goalsFor": 29,
+       "losses": 7,
+       "played": 18,
+       "points": 25,
+       "rank": 8,
+       "team": {
+        "abbr": "RBNY",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/190.png",
+        "id": "usa-red-bull-new-york",
+        "name": "Red Bull New York"
+       },
+       "wins": 7
+      },
+      {
+       "advanced": false,
+       "draws": 8,
+       "goalDifference": -3,
+       "goalsAgainst": 29,
+       "goalsFor": 26,
+       "losses": 5,
+       "played": 18,
+       "points": 23,
+       "rank": 9,
+       "team": {
+        "abbr": "DC",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/193.png",
+        "id": "usa-dc-united",
+        "name": "D.C. United"
+       },
+       "wins": 5
+      },
+      {
+       "advanced": false,
+       "draws": 2,
+       "goalDifference": -17,
+       "goalsAgainst": 47,
+       "goalsFor": 30,
+       "losses": 10,
+       "played": 18,
+       "points": 20,
+       "rank": 10,
+       "team": {
+        "abbr": "ORL",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/12011.png",
+        "id": "usa-orlando-city-sc",
+        "name": "Orlando City SC"
+       },
+       "wins": 6
+      },
+      {
+       "advanced": false,
+       "draws": 5,
+       "goalDifference": -2,
+       "goalsAgainst": 28,
+       "goalsFor": 26,
+       "losses": 8,
+       "played": 18,
+       "points": 20,
+       "rank": 11,
+       "team": {
+        "abbr": "CLB",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/183.png",
+        "id": "usa-columbus-crew",
+        "name": "Columbus Crew"
+       },
+       "wins": 5
+      },
+      {
+       "advanced": false,
+       "draws": 8,
+       "goalDifference": -8,
+       "goalsAgainst": 32,
+       "goalsFor": 24,
+       "losses": 7,
+       "played": 18,
+       "points": 17,
+       "rank": 12,
+       "team": {
+        "abbr": "TOR",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/7318.png",
+        "id": "can-toronto-fc",
+        "name": "Toronto FC"
+       },
+       "wins": 3
+      },
+      {
+       "advanced": false,
+       "draws": 4,
+       "goalDifference": -8,
+       "goalsAgainst": 33,
+       "goalsFor": 25,
+       "losses": 10,
+       "played": 18,
+       "points": 16,
+       "rank": 13,
+       "team": {
+        "abbr": "PHI",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/10739.png",
+        "id": "usa-philadelphia-union",
+        "name": "Philadelphia Union"
+       },
+       "wins": 4
+      },
+      {
+       "advanced": false,
+       "draws": 4,
+       "goalDifference": -11,
+       "goalsAgainst": 35,
+       "goalsFor": 24,
+       "losses": 10,
+       "played": 18,
+       "points": 16,
+       "rank": 14,
+       "team": {
+        "abbr": "MTL",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/9720.png",
+        "id": "can-cf-montreal",
+        "name": "CF Montréal"
+       },
+       "wins": 4
+      },
+      {
+       "advanced": false,
+       "draws": 3,
+       "goalDifference": -14,
+       "goalsAgainst": 33,
+       "goalsFor": 19,
+       "losses": 12,
+       "played": 18,
+       "points": 12,
+       "rank": 15,
+       "team": {
+        "abbr": "ATL",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/18418.png",
+        "id": "usa-atlanta-united-fc",
+        "name": "Atlanta United FC"
+       },
+       "wins": 3
+      }
+     ]
+    },
+    {
+     "id": "Western Conference",
+     "name": "Western Conference",
+     "standings": [
+      {
+       "advanced": false,
+       "draws": 4,
+       "goalDifference": 21,
+       "goalsAgainst": 17,
+       "goalsFor": 38,
+       "losses": 3,
+       "played": 17,
+       "points": 34,
+       "rank": 1,
+       "team": {
+        "abbr": "VAN",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/9727.png",
+        "id": "can-vancouver-whitecaps",
+        "name": "Vancouver Whitecaps"
+       },
+       "wins": 10
+      },
+      {
+       "advanced": false,
+       "draws": 4,
+       "goalDifference": 16,
+       "goalsAgainst": 19,
+       "goalsFor": 35,
+       "losses": 5,
+       "played": 19,
+       "points": 34,
+       "rank": 2,
+       "team": {
+        "abbr": "LAFC",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/18966.png",
+        "id": "usa-lafc",
+        "name": "LAFC"
+       },
+       "wins": 10
+      },
+      {
+       "advanced": false,
+       "draws": 3,
+       "goalDifference": 13,
+       "goalsAgainst": 24,
+       "goalsFor": 37,
+       "losses": 5,
+       "played": 18,
+       "points": 33,
+       "rank": 3,
+       "team": {
+        "abbr": "SJ",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/191.png",
+        "id": "usa-san-jose-earthquakes",
+        "name": "San Jose Earthquakes"
+       },
+       "wins": 10
+      },
+      {
+       "advanced": false,
+       "draws": 2,
+       "goalDifference": 3,
+       "goalsAgainst": 24,
+       "goalsFor": 27,
+       "losses": 6,
+       "played": 18,
+       "points": 32,
+       "rank": 4,
+       "team": {
+        "abbr": "HOU",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/6077.png",
+        "id": "usa-houston-dynamo-fc",
+        "name": "Houston Dynamo FC"
+       },
+       "wins": 10
+      },
+      {
+       "advanced": false,
+       "draws": 3,
+       "goalDifference": 4,
+       "goalsAgainst": 25,
+       "goalsFor": 29,
+       "losses": 6,
+       "played": 17,
+       "points": 27,
+       "rank": 5,
+       "team": {
+        "abbr": "RSL",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/4771.png",
+        "id": "usa-real-salt-lake",
+        "name": "Real Salt Lake"
+       },
+       "wins": 8
+      },
+      {
+       "advanced": false,
+       "draws": 6,
+       "goalDifference": 7,
+       "goalsAgainst": 25,
+       "goalsFor": 32,
+       "losses": 5,
+       "played": 18,
+       "points": 27,
+       "rank": 6,
+       "team": {
+        "abbr": "DAL",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/185.png",
+        "id": "usa-fc-dallas",
+        "name": "FC Dallas"
+       },
+       "wins": 7
+      },
+      {
+       "advanced": false,
+       "draws": 5,
+       "goalDifference": 0,
+       "goalsAgainst": 24,
+       "goalsFor": 24,
+       "losses": 6,
+       "played": 18,
+       "points": 26,
+       "rank": 7,
+       "team": {
+        "abbr": "STL",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/21812.png",
+        "id": "usa-st-louis-city-sc",
+        "name": "St. Louis CITY SC"
+       },
+       "wins": 7
+      },
+      {
+       "advanced": false,
+       "draws": 3,
+       "goalDifference": 0,
+       "goalsAgainst": 33,
+       "goalsFor": 33,
+       "losses": 8,
+       "played": 18,
+       "points": 24,
+       "rank": 8,
+       "team": {
+        "abbr": "POR",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/9723.png",
+        "id": "usa-portland-timbers",
+        "name": "Portland Timbers"
+       },
+       "wins": 7
+      },
+      {
+       "advanced": false,
+       "draws": 3,
+       "goalDifference": -2,
+       "goalsAgainst": 22,
+       "goalsFor": 20,
+       "losses": 7,
+       "played": 17,
+       "points": 24,
+       "rank": 9,
+       "team": {
+        "abbr": "SEA",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/9726.png",
+        "id": "usa-seattle-sounders-fc",
+        "name": "Seattle Sounders FC"
+       },
+       "wins": 7
+      },
+      {
+       "advanced": false,
+       "draws": 6,
+       "goalDifference": -5,
+       "goalsAgainst": 25,
+       "goalsFor": 20,
+       "losses": 6,
+       "played": 18,
+       "points": 24,
+       "rank": 10,
+       "team": {
+        "abbr": "MIN",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/17362.png",
+        "id": "usa-minnesota-united-fc",
+        "name": "Minnesota United FC"
+       },
+       "wins": 6
+      },
+      {
+       "advanced": false,
+       "draws": 1,
+       "goalDifference": 2,
+       "goalsAgainst": 25,
+       "goalsFor": 27,
+       "losses": 10,
+       "played": 18,
+       "points": 22,
+       "rank": 11,
+       "team": {
+        "abbr": "COL",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/184.png",
+        "id": "usa-colorado-rapids",
+        "name": "Colorado Rapids"
+       },
+       "wins": 7
+      },
+      {
+       "advanced": false,
+       "draws": 7,
+       "goalDifference": -5,
+       "goalsAgainst": 29,
+       "goalsFor": 24,
+       "losses": 7,
+       "played": 19,
+       "points": 22,
+       "rank": 12,
+       "team": {
+        "abbr": "LA",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/187.png",
+        "id": "usa-la-galaxy",
+        "name": "LA Galaxy"
+       },
+       "wins": 5
+      },
+      {
+       "advanced": false,
+       "draws": 6,
+       "goalDifference": 3,
+       "goalsAgainst": 29,
+       "goalsFor": 32,
+       "losses": 7,
+       "played": 18,
+       "points": 21,
+       "rank": 13,
+       "team": {
+        "abbr": "SD",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/22529.png",
+        "id": "usa-san-diego-fc",
+        "name": "San Diego FC"
+       },
+       "wins": 5
+      },
+      {
+       "advanced": false,
+       "draws": 5,
+       "goalDifference": -14,
+       "goalsAgainst": 36,
+       "goalsFor": 22,
+       "losses": 9,
+       "played": 18,
+       "points": 17,
+       "rank": 14,
+       "team": {
+        "abbr": "ATX",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/20906.png",
+        "id": "usa-austin-fc",
+        "name": "Austin FC"
+       },
+       "wins": 4
+      },
+      {
+       "advanced": false,
+       "draws": 2,
+       "goalDifference": -28,
+       "goalsAgainst": 46,
+       "goalsFor": 18,
+       "losses": 12,
+       "played": 18,
+       "points": 14,
+       "rank": 15,
+       "team": {
+        "abbr": "SKC",
+        "crestUrl": "https://a.espncdn.com/i/teamlogos/soccer/500/186.png",
+        "id": "usa-sporting-kansas-city",
+        "name": "Sporting Kansas City"
+       },
+       "wins": 4
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

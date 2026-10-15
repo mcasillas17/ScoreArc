@@ -124,6 +124,12 @@ paths:
     get:
       operationId: listStandings
       summary: List standings grouped for display
+      description: >-
+        The stored provider tables only. Tables no provider publishes -- the MLS
+        overall (Supporters' Shield) table and the Leagues Cup phase tables -- are
+        derived by the consumer from this route and the phase window of the
+        matches route (docs/backend/READER_CONTRACT.md, T10.10); Leagues Cup
+        stores no table, so its list is empty.
       parameters:
         - { $ref: "#/components/parameters/Comp" }
         - { $ref: "#/components/parameters/Season" }
