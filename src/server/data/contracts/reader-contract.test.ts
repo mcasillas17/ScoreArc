@@ -6,6 +6,7 @@ import { resolveSeason, type OverallTableLabelKey, type ZoneKind, type ZoneLabel
 import { TtlCache } from '../cache';
 import { canonicalTeamId, providerTeamId } from '../teamIdentity';
 import { withSummaryPlayerSlugs } from '../playerIndex';
+import { deriveReaderStandings } from '../derivedStandings';
 import { teamHref } from '@/components/teamHref';
 import { roundLabelKey } from '@/components/bracketShape';
 import { en } from '@/i18n/messages/en';
@@ -712,15 +713,16 @@ describe('reader contract: standings, bracket, leaders, news', () => {
     expect(u.group.name).toBe(rc.competition.shortName); // The Go suite's default group name is the same field.
   });
 
-  it('emits frontend-only derived tables the reader Group cannot represent', async () => {
+  // T10.10 (option B): the reader serves provider tables and the derivation
+  // inputs; the frontend derives the rest with the rules the store uses. The
+  // reader-byte parity for both competitions is in derivedStandings.test.ts.
+  it('derives the frontend-only tables from provider tables with the shared adapter', async () => {
     const mls = resolveSeason('mls')!;
     const groups = await storeOver(() => mlsStandingsRaw).store.getStandings(mls);
-    gap('T10.10-derived-standings', () => {
-      const derived = groups.filter(g => g.labelKey !== undefined);
-      expect(derived.map(g => g.id)).toEqual([mls.season.overallTable!.id]);
-      expect(derived[0]).not.toHaveProperty('name');
-      expect(resolveSeason('leagues-cup')!.season.computedTables).toBeDefined();
-    });
+    const provider = groups.filter(g => g.labelKey === undefined);
+    expect(groups.map(g => g.id)).toEqual([...provider.map(g => g.id), mls.season.overallTable!.id]);
+    expect(deriveReaderStandings(mls, { standings: provider })).toEqual({ status: 'complete', groups, issues: [] });
+    expect(deriveReaderStandings(resolveSeason('leagues-cup')!, { standings: [] }).status).toBe('unavailable');
   });
 
   it('names a bracket shootout winner only once the match is finished', async () => {

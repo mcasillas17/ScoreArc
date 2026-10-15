@@ -41,11 +41,6 @@
    "mismatch": "No player route or DTO.",
    "suites": ["go"]
   },
-  "T10.10-derived-standings": {
-   "task": "T10.10",
-   "mismatch": "Reader Group has no labelKey/zones and no Leagues Cup phase or MLS overall tables.",
-   "suites": ["ts", "go"]
-  },
   "T16.6-news": {
    "task": "T16.6",
    "mismatch": "Reader news is a live ESPN proxy (502 on upstream failure), not owned data; bodies match today.",
@@ -114,7 +109,7 @@
   },
   "getStandings": {
    "reader": "/v1/competitions/{comp}/{season}/standings",
-   "gaps": ["T10.10-derived-standings", "T17.3-freshness-coverage", "T21.4-dependency-error-logging"]
+   "gaps": ["T17.3-freshness-coverage", "T21.4-dependency-error-logging"]
   },
   "getBracket": {
    "reader": "/v1/competitions/{comp}/{season}/bracket",

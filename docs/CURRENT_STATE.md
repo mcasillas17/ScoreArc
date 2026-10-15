@@ -519,9 +519,14 @@ separate.
 - **The reader/OpenAPI DTOs are older than the ingested data**: lineup,
   stats, leader, and team-profile fields the ingester now writes are not
   all exposed in the current reader response shapes.
-- **Leagues Cup computed group tables and the MLS overall table are
-  frontend-only** derived views; the reader has no equivalent computed
-  endpoint.
+- **T10.10 derived standings: closed in code October 14 (option B), not
+  deployed.** The Leagues Cup phase tables and the MLS overall table stay a
+  TypeScript derivation. The reader serves only their inputs, and a future
+  `apiStore` calls `deriveReaderStandings` over them. Parity with the ESPN path
+  and the input contract are tested
+  ([READER_CONTRACT](backend/READER_CONTRACT.md#t1010-derived-standings-contract)).
+  The three input reads are separate snapshots, and the derivation makes no
+  freshness claim. No reader behavior changed. Not an `apiStore` or cutover.
 - **Availability/provenance coverage is still partial.** #173's deployed
   match-specific freshness headers distinguish complete/empty/stale/unavailable
   states without changing bodies; October 2 checks observed them. Greece's
@@ -611,9 +616,10 @@ held-byte reprocessing and new collection remain unchanged.
 
 **Next implementation, in order:**
 
-1. **T10.10 and T10.2–T10.4 derived-view/read contracts (§5).** T10.1
-   match-query parity is closed in code (October 6, in review; its release is
-   separate).
+1. **T10.2–T10.4 read contracts (§5).** T10.1 match-query parity (October 6)
+   and T10.10 derived-standings parity (October 14, option B: the TypeScript
+   derivation is kept and fed reader inputs) are closed in code, in review;
+   their releases are separate.
 
 **Independent high-priority reliability/durability lanes, not new dependencies:**
 
