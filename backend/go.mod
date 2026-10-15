@@ -3,10 +3,10 @@ module github.com/mcasillas17/scorearc-backend
 go 1.26.0
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.47.1
+	github.com/aws/aws-sdk-go-v2 v1.47.2
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.6
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.113.4
-	github.com/aws/smithy-go v1.28.2
+	github.com/aws/smithy-go v1.28.4
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/google/uuid v1.6.0
