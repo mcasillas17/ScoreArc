@@ -1,3 +1,4 @@
+import type { Season } from './competitions';
 import type { Group, Match, Standing, Team } from './types';
 
 // Leagues Cup phase-one tables.
@@ -16,13 +17,10 @@ import type { Group, Match, Standing, Team } from './types';
 //     Every phase-one match is MLS v Liga MX, so an MLS club's table position
 //     is decided entirely by results against Liga MX opposition.
 
-interface PhasePoints {
-  win: number;
-  shootoutWin: number;
-  shootoutLoss: number;
-}
+/** The match fields the phase tables read -- all a reader input must carry. */
+export type PhaseMatch = Pick<Match, 'kickoff' | 'state' | 'home' | 'away' | 'homeScore' | 'awayScore' | 'shootout'>;
 
-const LEAGUES_CUP_POINTS: PhasePoints = { win: 3, shootoutWin: 2, shootoutLoss: 1 };
+const LEAGUES_CUP_POINTS = { win: 3, shootoutWin: 2, shootoutLoss: 1 };
 
 interface Row {
   team: Team;
@@ -82,12 +80,16 @@ function rank(rows: Row[]): Standing[] {
  * supplied by the caller (from ESPN's Liga MX team list) rather than inferred:
  * splitting on country would drop Vancouver Whitecaps, a Canadian club that
  * plays in MLS.
+ *
+ * Without `mlsTeamIds` every other club is MLS (the ESPN store's rule). With
+ * it, a club in neither set or in both is in no table; its opponents keep
+ * their results.
  */
 export function computePhaseTables(
-  matches: Match[],
+  matches: PhaseMatch[],
   ligaMxTeamIds: ReadonlySet<string>,
   cut: number,
-  points: PhasePoints = LEAGUES_CUP_POINTS,
+  mlsTeamIds?: ReadonlySet<string>,
 ): Group[] {
   const rows = new Map<string, Row>();
   const rowFor = (team: Team) => {
@@ -113,13 +115,13 @@ export function computePhaseTables(
 
     if (m.homeScore > m.awayScore) {
       home.wins += 1;
-      home.points += points.win;
+      home.points += LEAGUES_CUP_POINTS.win;
       away.losses += 1;
       continue;
     }
     if (m.homeScore < m.awayScore) {
       away.wins += 1;
-      away.points += points.win;
+      away.points += LEAGUES_CUP_POINTS.win;
       home.losses += 1;
       continue;
     }
@@ -133,17 +135,19 @@ export function computePhaseTables(
     const so = m.shootout;
     if (so && so.homeScore !== so.awayScore) {
       const homeWon = so.homeScore > so.awayScore;
-      home.points += homeWon ? points.shootoutWin : points.shootoutLoss;
-      away.points += homeWon ? points.shootoutLoss : points.shootoutWin;
+      home.points += homeWon ? LEAGUES_CUP_POINTS.shootoutWin : LEAGUES_CUP_POINTS.shootoutLoss;
+      away.points += homeWon ? LEAGUES_CUP_POINTS.shootoutLoss : LEAGUES_CUP_POINTS.shootoutWin;
     } else {
-      home.points += points.shootoutLoss;
-      away.points += points.shootoutLoss;
+      home.points += LEAGUES_CUP_POINTS.shootoutLoss;
+      away.points += LEAGUES_CUP_POINTS.shootoutLoss;
     }
   }
 
   const all = Array.from(rows.values());
-  const mls = rank(all.filter((r) => !ligaMxTeamIds.has(r.team.id)));
-  const ligaMx = rank(all.filter((r) => ligaMxTeamIds.has(r.team.id)));
+  const inMls = (id: string) => (mlsTeamIds ? mlsTeamIds.has(id) : true) && !ligaMxTeamIds.has(id);
+  const inLigaMx = (id: string) => ligaMxTeamIds.has(id) && !mlsTeamIds?.has(id);
+  const mls = rank(all.filter((r) => inMls(r.team.id)));
+  const ligaMx = rank(all.filter((r) => inLigaMx(r.team.id)));
   for (const table of [mls, ligaMx]) {
     for (const s of table) s.advanced = s.rank <= cut;
   }
@@ -152,6 +156,20 @@ export function computePhaseTables(
   if (mls.length) groups.push({ id: 'mls', name: 'MLS', standings: mls });
   if (ligaMx.length) groups.push({ id: 'liga-mx', name: 'Liga MX', standings: ligaMx });
   return groups;
+}
+
+/** The phase tables under the season's configured cut and display names. */
+export function configuredPhaseTables(
+  matches: PhaseMatch[],
+  config: Pick<NonNullable<Season['computedTables']>, 'cut' | 'groupLabels'>,
+  ligaMxTeamIds: ReadonlySet<string>,
+  mlsTeamIds?: ReadonlySet<string>,
+): Group[] {
+  return computePhaseTables(matches, ligaMxTeamIds, config.cut, mlsTeamIds).map(({ id, standings }) => ({
+    id,
+    name: id === 'liga-mx' ? config.groupLabels.split : config.groupLabels.primary,
+    standings,
+  }));
 }
 
 interface SeededTie {

@@ -377,10 +377,10 @@ func assertAbsent(t *testing.T, document *openapi3.T, schema string, object map[
 	t.Helper()
 	for _, field := range fields {
 		if _, ok := object[field]; ok {
-			t.Fatalf("gap changed: reader %s now emits %s; update reader-contract.json", schema, field)
+			t.Fatalf("gap or contract changed: reader %s now emits %s; update reader-contract.json", schema, field)
 		}
 		if _, ok := schemaOf(t, document, schema).Properties[field]; ok {
-			t.Fatalf("gap changed: OpenAPI %s now defines %s; update reader-contract.json", schema, field)
+			t.Fatalf("gap or contract changed: OpenAPI %s now defines %s; update reader-contract.json", schema, field)
 		}
 	}
 }
@@ -926,8 +926,10 @@ func TestReaderContract(t *testing.T) {
 		group := wire(t, Group{ID: "A", Name: "Group A", Standings: standings}).(map[string]any)
 		assertWire(t, "group A", group, reader)
 		validateSchema(t, document, "Group", group)
+		// T10.10 option B: a reader Group is a provider table. The MLS overall
+		// and Leagues Cup phase tables, which carry labelKey/zones, are derived
+		// by the frontend from reader inputs (derived_standings_integration_test.go).
 		assertAbsent(t, document, "Group", group, "labelKey", "zones")
-		gap("T10.10-derived-standings")
 
 		// Synthetic tables from the recorded Group A entries: a duplicated rank
 		// stat (no rank gap) and a team listed in two tables (T16.2 decision A).

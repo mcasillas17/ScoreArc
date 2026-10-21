@@ -185,3 +185,27 @@ describe('world-cup seasons', () => {
     expect(ids).toEqual(['1998','2002','2006','2010','2014','2018','2022','2026']);
   });
 });
+
+describe('computed-table membership (T10.10)', () => {
+  const computed = Object.values(COMPETITIONS).flatMap(c =>
+    Object.values(c.seasons).flatMap(s => (s.computedTables ? [{ c, s, t: s.computedTables }] : [])));
+
+  it('scopes each side to a configured league season', () => {
+    expect(computed.length).toBeGreaterThan(0);
+    for (const { t } of computed) {
+      for (const scope of [t.membership.primary, t.membership.split]) {
+        expect(resolveSeason(scope.competitionId, scope.seasonId)?.season.id).toBe(scope.seasonId);
+      }
+      expect(t.membership.primary.competitionId).not.toBe(t.membership.split.competitionId);
+    }
+  });
+
+  // The phase window is the only knockout exclusion the inputs allow (no round
+  // is served on a match), so it must close before the first knockout day.
+  it('closes the phase window before the next round starts', () => {
+    for (const { t } of computed) {
+      const end = t.datesRange.slice(9);
+      expect(`${end.slice(0, 4)}-${end.slice(4, 6)}-${end.slice(6)}` < t.nextRound!.startDate).toBe(true);
+    }
+  });
+});
