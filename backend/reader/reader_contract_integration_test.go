@@ -382,7 +382,7 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		}
 	})
 
-	t.Run("recorded leaders: goals only, value renamed goals", func(t *testing.T) {
+	t.Run("recorded leaders: both metrics and frozen legacy projection", func(t *testing.T) {
 		for _, board := range []struct{ category, stored string }{{"goalsLeaders", "goals"}, {"assistsLeaders", "assists"}} {
 			leaders, err := espn.MapLeaders(contractFixture(t, fixtureName(t, raw, "leaders")), board.category, 10)
 			if err != nil {
@@ -397,7 +397,7 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		var expected []any
 		for _, row := range vector(t, raw, "leaders", "frontend", "scorers").([]any) {
 			leader := row.(map[string]any)
-			// Named projection: value -> goals; athleteId/teamId have no reader field (T10.2/T16.2).
+			// Frozen compatibility projection deliberately omits identity and uses goals.
 			expected = append(expected, map[string]any{
 				"rank": leader["rank"], "player": leader["player"], "teamAbbr": leader["teamAbbr"], "teamName": leader["teamName"],
 				"teamCrestUrl": leader["teamCrestUrl"], "goals": leader["value"], "matches": leader["matches"],
@@ -407,9 +407,8 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		for _, scorer := range scorers {
 			validateSchema(t, document, "TopScorer", scorer)
 		}
-		// Store the recorded board at full depth: the reader serves every stored
-		// row, where the frontend shows only the first len(expected).
-		full, err := espn.MapLeaders(contractFixture(t, fixtureName(t, raw, "leaders")), "goalsLeaders", 1000)
+		// Store the actual ingester depth (30), never the obsolete 50-row plan.
+		full, err := espn.MapLeaders(contractFixture(t, fixtureName(t, raw, "leaders")), "goalsLeaders", 30)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -418,10 +417,32 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		}
 		get(t, "/v1/competitions/world-cup/2026/top-scorers", &scorers)
 		if len(scorers) != len(full) || len(full) <= len(expected) {
-			t.Fatalf("gap changed: reader serves %d of %d stored leaders (frontend %d); update reader-contract.json", len(scorers), len(full), len(expected))
+			t.Fatalf("legacy reader serves %d of %d stored leaders (frontend %d)", len(scorers), len(full), len(expected))
 		}
 		assertWire(t, "top of the full board", scorers[:len(expected)], expected)
-		characterized["T10.2-leaders-depth"] = true
+		var leaders []map[string]any
+		get(t, "/v1/competitions/world-cup/2026/leaders", &leaders)
+		if len(leaders) != 10 {
+			t.Fatalf("default leaders %d", len(leaders))
+		}
+		get(t, "/v1/competitions/world-cup/2026/leaders?limit=30", &leaders)
+		if len(leaders) != len(full) || len(full) != 30 {
+			t.Fatalf("stored depth %d/%d", len(leaders), len(full))
+		}
+		for _, board := range []struct{ metric, key string }{{"goals", "scorers"}, {"assists", "assists"}} {
+			get(t, "/v1/competitions/world-cup/2026/leaders?metric="+board.metric, &leaders)
+			for i, row := range leaders {
+				expected := maps.Clone(vector(t, raw, "leaders", "frontend", board.key).([]any)[i].(map[string]any))
+				expected["playerId"], expected["playerSlug"] = nil, nil
+				var canonical *string
+				if err := pool.QueryRow(ctx, `SELECT (SELECT team_id FROM team_external_ref WHERE source='espn' AND source_id=$1)`, expected["teamId"]).Scan(&canonical); err != nil {
+					t.Fatal(err)
+				}
+				expected["teamId"] = canonical
+				assertWire(t, "leader identity and value", row, wire(t, expected))
+				validateSchema(t, document, "StatLeader", row)
+			}
+		}
 	})
 
 	t.Run("bracket projection keeps placeholders, rounds and canonical sides", func(t *testing.T) {

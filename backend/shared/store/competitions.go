@@ -132,10 +132,10 @@ func (s *Store) ReplaceLeaders(
 		if _, err := tx.Exec(ctx, `
 INSERT INTO top_scorer (
 	competition_id, season_id, category, rank, player, team_abbr, team_name,
-	team_crest_url, goals, matches, source)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+	team_crest_url, goals, matches, source, athlete_source_id, team_source_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NULLIF($12,''),NULLIF($13,''))`,
 			competitionID, seasonID, category, leader.Rank, leader.Player, leader.TeamAbbr,
-			leader.TeamName, leader.TeamCrestURL, leader.Value, leader.Matches, source,
+			leader.TeamName, leader.TeamCrestURL, leader.Value, leader.Matches, source, leader.AthleteSourceID, leader.TeamSourceID,
 		); err != nil {
 			return err
 		}

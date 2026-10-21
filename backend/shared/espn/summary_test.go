@@ -182,9 +182,9 @@ func TestMapSummary(t *testing.T) {
 		assertFloatPtr(t, "away.passes", away.Passes, 473)
 		assertFloatPtr(t, "away.corners", away.Corners, 3)
 		assertFloatPtr(t, "away.fouls", away.Fouls, 7)
-		// fraction-scale accuracy stats normalize to 0-100
-		assertFloatPtr(t, "home.passAccuracy", home.PassAccuracy, 80)
-		assertFloatPtr(t, "away.passAccuracy", away.PassAccuracy, 90)
+		// Captured counts avoid the provider's rounded fractions.
+		assertFloatPtr(t, "home.passAccuracy", home.PassAccuracy, 84.5)
+		assertFloatPtr(t, "away.passAccuracy", away.PassAccuracy, 87.7)
 	})
 
 	t.Run("shootout is nil for a fixture with no shootout", func(t *testing.T) {
@@ -200,11 +200,11 @@ func TestMapSummary(t *testing.T) {
 		if detail.Lineups.Home.Formation == "" {
 			t.Error("expected non-empty home formation")
 		}
-		if len(detail.Lineups.Home.Players) != 11 {
-			t.Errorf("expected 11 home starters, got %d", len(detail.Lineups.Home.Players))
+		if len(detail.Lineups.Home.Players) != 26 {
+			t.Errorf("expected 26 home roster players, got %d", len(detail.Lineups.Home.Players))
 		}
-		if len(detail.Lineups.Away.Players) != 11 {
-			t.Errorf("expected 11 away starters, got %d", len(detail.Lineups.Away.Players))
+		if len(detail.Lineups.Away.Players) != 26 {
+			t.Errorf("expected 26 away roster players, got %d", len(detail.Lineups.Away.Players))
 		}
 		var withJersey int
 		for _, p := range detail.Lineups.Home.Players {

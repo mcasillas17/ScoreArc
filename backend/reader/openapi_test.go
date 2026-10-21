@@ -119,6 +119,8 @@ func TestOpenAPIValidatesActualRouteResponses(t *testing.T) {
 		t.Fatalf("empty calendar %s violates OpenAPI: %v", empty.Body.String(), err)
 	}
 	store := &fakeReaderStore{
+		leaders:   []espn.StatLeader{{Rank: 1, Player: "Player", Value: 7}},
+		boxScore:  &BoxScore{MatchID: finalMatchID, Availability: "pending", Home: BoxScoreTeam{TeamID: "nat-arg", Players: []espn.LineupPlayer{}}, Away: BoxScoreTeam{TeamID: "nat-fra", Players: []espn.LineupPlayer{}}},
 		matches:   []Match{{ID: "1", Kickoff: "2026-07-19T19:00:00Z", State: espn.MatchStateScheduled, Scorers: []espn.Scorer{}, Cards: []espn.Card{}}},
 		standings: []Group{{ID: "A", Name: "Group A", Standings: []Standing{{Team: espn.Team{ID: "arg", Name: "Argentina", Abbr: "ARG"}, Rank: 1}}}},
 		bracket: []BracketRound{{Slug: "final", Name: "Final", Matches: []espn.BracketMatch{{
@@ -149,6 +151,9 @@ func TestOpenAPIValidatesActualRouteResponses(t *testing.T) {
 		{target: "/v1/competitions/world-cup/2026/calendar", template: "/v1/competitions/{comp}/{season}/calendar"},
 		{target: "/v1/competitions/world-cup/2026/standings", template: "/v1/competitions/{comp}/{season}/standings"},
 		{target: "/v1/competitions/world-cup/2026/bracket", template: "/v1/competitions/{comp}/{season}/bracket"},
+		{target: "/v1/competitions/world-cup/2026/leaders?metric=goals", template: "/v1/competitions/{comp}/{season}/leaders"},
+		{target: "/v1/competitions/world-cup/2026/leaders?metric=assists", template: "/v1/competitions/{comp}/{season}/leaders"},
+		{target: "/v1/matches/" + finalMatchID + "/box-score", template: "/v1/matches/{id}/box-score"},
 		{target: "/v1/competitions/world-cup/2026/top-scorers", template: "/v1/competitions/{comp}/{season}/top-scorers"},
 		{target: "/v1/competitions/world-cup/news", template: "/v1/competitions/{comp}/news"},
 		{target: "/v1/competitions/world-cup/2026/teams/arg", template: "/v1/competitions/{comp}/{season}/teams/{teamId}"},
@@ -169,6 +174,25 @@ func TestOpenAPIValidatesActualRouteResponses(t *testing.T) {
 				t.Fatalf("actual route response violates OpenAPI: %v\nJSON: %s", err, response.Body.String())
 			}
 		})
+	}
+}
+
+func TestOpenAPIBoxScoreRejectedQuery(t *testing.T) {
+	document := loadOpenAPI(t)
+	response := performRequest(newTestApp(t, &fakeReaderStore{}, &fakeNewsReader{}).router(), "GET", "/v1/matches/"+finalMatchID+"/box-score?limit=1")
+	if response.Code != 400 {
+		t.Fatalf("status=%d", response.Code)
+	}
+	contract := document.Paths.Value("/v1/matches/{id}/box-score").Get.Responses.Status(response.Code)
+	if contract == nil {
+		t.Fatal("box-score query rejection is undocumented")
+	}
+	var body any
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if err := contract.Value.Content.Get("application/json").Schema.Value.VisitJSON(body); err != nil {
+		t.Fatal(err)
 	}
 }
 

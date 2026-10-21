@@ -210,7 +210,7 @@ func (a *App) handleTopScorers(writer http.ResponseWriter, request *http.Request
 		scorers = []espn.TopScorer{}
 	}
 	cacheFor(writer, 60)
-	writeJSON(writer, http.StatusOK, scorers)
+	writeContractJSON(writer, scorers)
 }
 
 func (a *App) handleNews(writer http.ResponseWriter, request *http.Request) {
@@ -272,7 +272,7 @@ func (a *App) handleMatchSummary(writer http.ResponseWriter, request *http.Reque
 		return
 	}
 	cacheFor(writer, 30)
-	writeJSON(writer, http.StatusOK, summary)
+	writeContractJSON(writer, summary)
 }
 
 // One club inside one competition: identity, colours, season record, squad

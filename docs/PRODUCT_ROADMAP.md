@@ -703,8 +703,8 @@ used to authorize modelling work.
 
 The read path for everything E7's ingester writes. The base reader ships **eight
 `/v1` data routes plus `/healthz`**. T10.1 (October 6, in review) added validated
-`/matches` queries and the `calendar` route; the T10.2–T10.9 expansion is **not
-yet built**. The acceptance criterion is **use-case contract
+`/matches` queries and the `calendar` route; T10.2 adds leaders and box scores (ten data routes). T10.3–T10.9 remain
+unbuilt. The acceptance criterion is **use-case contract
 parity, not a route count** — each endpoint exists to serve an E1–E8 feature and
 must satisfy the frontend's canonical DTO shapes, query semantics (range/state/
 detail/limit), and derived-view needs, so those feature specs are its
@@ -713,7 +713,7 @@ derived-view parity being a tested contract — see
 [`docs/CURRENT_STATE.md`](CURRENT_STATE.md) §5 for the current gap.
 
 - **T10.1** Match reads — matches/results by range, calendar (E3, E2) · **closed in code October 6, in review** · [contract](backend/READER_CONTRACT.md#t101-match-query-contract) · [plan (superseded where it conflicts)](superpowers/plans/2026-08-15-api-match-reads.md)
-- **T10.2** Leaders & box scores (E1) · [plan](superpowers/plans/2026-08-15-api-leaders-and-box-scores.md)
+- **T10.2** Leaders & box scores (E1) · **implemented October 20, pending review/release** · [reconciled plan](superpowers/plans/2026-10-20-t10-2-reader-contracts.md) · [contract](backend/READER_CONTRACT.md#t102-leaders-statistics-and-participation-contract)
 - **T10.3** Teams (E4) · [plan](superpowers/plans/2026-08-15-api-teams.md)
 - **T10.4** Players (E5) · [plan](superpowers/plans/2026-08-15-api-players.md)
 - **T10.5** History & trends (E7, E8) · [plan](superpowers/plans/2026-08-15-api-history.md)
@@ -772,7 +772,7 @@ code rather than pasted from a dated plan.
 | **T9.4** | Publish Brier score, reliability curve, sample, and model version. | No xG value ships without user-visible validation and a base-rate comparison. | T9.3 |
 | **T9.5** | Gate and render xG only for supported competitions. | Unsupported competitions render no xG, never zero or a misleading disabled number. | T9.4, owner product choice |
 | **T10.1** | Add validated range/state/detail/limit match reads and calendar queries through one `params.go` layer. | Bad input is `400`; UUIDv7 match ids are accepted; all-season dumps are never an accidental default. | first E10 task, E16.1 |
-| **T10.2** | Generalize leaders and expose per-match box scores, closing the T10.2 gaps in the T16.1 harness (`src/server/data/contracts/reader-contract.json`: team stats, lineups, leaders, leader board depth). | Goals/assists share one typed shape; unknown stats stay null and percentages are derived from operands; the served board depth is an explicit decision (the frontend shows 10, the reader serves every stored row). | T10.1 |
+| **T10.2** (implemented; release pending) | Generalize leaders and expose per-match box scores, closing the T10.2 gaps in the T16.1 harness (`src/server/data/contracts/reader-contract.json`: team stats, lineups, leaders, leader board depth). | Goals/assists share one typed shape; unknown stats stay null and percentages are derived from operands; leaders default 10/max 30, legacy top-scorers serves 30; explicit participation availability and historical nulls. Migration 0026 requires separate rollout. | T10.1 |
 | **T10.3** | Complete team profile, squad, and schedule reads. | Unknown teams are `404`; unexpected DB errors retain request-id diagnostics; no speculative fixes for query failures; a failed squad/schedule child query either degrades to an empty block with available/unavailable signalling (as the frontend does) or is explicitly accepted as a 500, closing `T10.3-partial-failure` and the other T10.3 gaps in `src/server/data/contracts/reader-contract.json`. | T10.1, T17.1 |
 | **T10.4** | Serve canonical player profiles, seasons, and full game logs. | Slug resolution never leaks provider ids; missing optional blocks degrade without losing identity. | T10.1, E16.2 |
 | **T10.5** | Expose bounded standings history, form/streaks, held seasons, percentiles, win-probability, and odds series. | Every list is bounded and every derived metric names its period/sample. | T10.1, E17.3 |
