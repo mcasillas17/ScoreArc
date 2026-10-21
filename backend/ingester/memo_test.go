@@ -127,10 +127,12 @@ func TestLeadersFingerprintMovesWithEveryWrittenColumn(t *testing.T) {
 	mirrored := "https://cdn.scorearc.futbol/teams/nat-fra"
 	otherMatches := 4
 	mutations := map[string]func(*model.StatLeader){
-		"rank":      func(row *model.StatLeader) { row.Rank = 2 },
-		"player":    func(row *model.StatLeader) { row.Player = "Someone Else" },
-		"team abbr": func(row *model.StatLeader) { row.TeamAbbr = "AWY" },
-		"team name": func(row *model.StatLeader) { row.TeamName = "Away" },
+		"athlete source": func(row *model.StatLeader) { row.AthleteSourceID = "123" },
+		"team source":    func(row *model.StatLeader) { row.TeamSourceID = "456" },
+		"rank":           func(row *model.StatLeader) { row.Rank = 2 },
+		"player":         func(row *model.StatLeader) { row.Player = "Someone Else" },
+		"team abbr":      func(row *model.StatLeader) { row.TeamAbbr = "AWY" },
+		"team name":      func(row *model.StatLeader) { row.TeamName = "Away" },
 		// The mirrored crest is the whole reason the fingerprint is taken
 		// AFTER mirrorLeaders: the URL is a stored column.
 		"crest":          func(row *model.StatLeader) { row.TeamCrestURL = &mirrored },

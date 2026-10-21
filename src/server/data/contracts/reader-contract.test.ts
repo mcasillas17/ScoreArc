@@ -113,6 +113,16 @@ type CTeam = CStanding['team'];
 type CMatchInfo = { venue: string | null; city: string | null; referee: string | null; attendance: number | null };
 type CMatchVideo = { id: string; headline: string; duration: number | null; thumbnail: string | null; mp4Url: string | null; isGoal: boolean };
 type CFormResult = { result: 'W' | 'L' | 'D'; opponent: string; score: string };
+// Reader additions and historical nullable starter are explicit translation,
+// not changes to the ESPN-backed frontend's production type.
+type CReaderLineupPlayer = Omit<CLineupPlayer, 'starter' | 'playerSlug'> & {
+  starter: boolean | null; playerId: string | null; playerSlug: string | null;
+};
+type CReaderLineups = {
+  availability: string;
+  home: { teamId: string | null; formation: string; players: CReaderLineupPlayer[] };
+  away: { teamId: string | null; formation: string; players: CReaderLineupPlayer[] };
+};
 type CTeamLineup = { formation: string; players: CLineupPlayer[] };
 type CGameLogRow = {
   eventId: string; appearance: string; stats: Record<string, number | null>; date: string | null; atVs: string;
@@ -246,7 +256,7 @@ describe('reader contract: inventory', () => {
     expect([...used].sort()).toEqual(Object.keys(vectors.gaps).sort());
     expect(vectors.methods.getPlayer.reader).toBeNull();
     // Reader routes with no DataStore method are listed, never implied.
-    expect(Object.keys(vectors.readerOnly)).toEqual(['/v1/competitions/{comp}/{season}/calendar']);
+    expect(Object.keys(vectors.readerOnly)).toEqual(['/v1/competitions/{comp}/{season}/calendar', '/v1/competitions/{comp}/{season}/top-scorers', '/v1/matches/{id}/box-score']);
     for (const route of Object.keys(vectors.readerOnly)) {
       expect(Object.values(vectors.methods).map(m => m.reader)).not.toContain(route);
     }
@@ -263,6 +273,10 @@ describe('reader contract: inventory', () => {
     expectTypeOf<BracketMatch>().toEqualTypeOf<CBracketMatch>();
     expectTypeOf<BracketRound>().toEqualTypeOf<{ slug: CRound; matches: CBracketMatch[] }>();
     expectTypeOf<StatLeader>().toEqualTypeOf<CStatLeader>();
+    expectTypeOf<keyof typeof vectors.summary.reader.lineups.home.players[number]>().toEqualTypeOf<keyof CReaderLineupPlayer>();
+    expectTypeOf<keyof typeof vectors.summary.reader.lineups>().toEqualTypeOf<keyof CReaderLineups>();
+    const readerLineups: CReaderLineups = vectors.summary.reader.lineups;
+    expect(readerLineups.home.players.length).toBe(26);
     expectTypeOf<NewsArticle>().toEqualTypeOf<CNews>();
     expectTypeOf<PlayerSeasonStats>().toEqualTypeOf<CSeasonStats>();
     expectTypeOf<SquadPlayer>().toEqualTypeOf<CSquadPlayer>();
@@ -355,45 +369,18 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
     for (const side of [s.sides.home, s.sides.away]) expect(canonicalTeamId(side.providerId)).toBe(side.canonicalId);
     // playerSlug is route-layer enrichment in both stores, never a store field.
     for (const scorer of [...real.scorers, ...s.reader.scorers]) expect(scorer).not.toHaveProperty('playerSlug');
-    const counts = ['possession', 'shots', 'shotsOnTarget', 'corners', 'offsides', 'passes', 'crosses', 'longBalls',
-      'tackles', 'interceptions', 'clearances', 'blockedShots', 'saves', 'fouls', 'yellowCards', 'redCards'] as const;
-    gap('T10.2-team-stats', () => {
-      for (const side of ['home', 'away'] as const) {
-        const f = real.stats![side];
-        const r = s.reader.stats[side];
-        for (const key of counts) expect(r[key], `${side}.${key}`).toBe(f[key]);
-        // Frontend percentages are derived from operands, independently recomputed here.
-        const pct = (num: N, den: N) => (num === null || den === null ? null : Math.round((num / den) * 1000) / 10);
-        expect(f.shotAccuracy).toBe(pct(f.shotsOnTarget, f.shots));
-        expect(f.passAccuracy).toBe(pct(f.passesAccurate, f.passes));
-        expect(f.crossAccuracy).toBe(pct(f.crossesAccurate, f.crosses));
-        expect(f.tackleAccuracy).toBe(pct(f.tacklesEffective, f.tackles));
-        for (const key of ['passesAccurate', 'crossesAccurate', 'tacklesEffective']) expect(r).not.toHaveProperty(key);
-        // Reader percentages are the recorded provider fractions x100, read here
-        // straight from the payload rather than from either mapper.
-        const box = summaryRaw.boxscore.teams.find(team => team.team.id === s.sides[side].providerId)!;
-        const fraction = (name: string) => Number(box.statistics.find(stat => stat.name === name)!.displayValue);
-        for (const [key, name] of [['shotAccuracy', 'shotPct'], ['passAccuracy', 'passPct'], ['crossAccuracy', 'crossPct'], ['tackleAccuracy', 'tacklePct']] as const) {
-          expect(r[key], `${side}.${key}`).toBe(Math.round(fraction(name) * 100));
-        }
-      }
-      expect(s.reader.stats.home.shotAccuracy).not.toBe(real.stats!.home.shotAccuracy);
-    });
-    gap('T10.2-lineups', () => {
-      for (const side of ['home', 'away'] as const) {
-        const players = real.lineups![side].players;
-        const starters = players.filter(p => p.starter);
-        expect(s.reader.lineups[side].formation).toBe(real.lineups![side].formation);
-        expect(s.reader.lineups[side].players.map(({ name, number, position }) => ({ name, number, position })))
-          .toEqual(starters.map(({ name, number, position }) => ({ name, number, position })));
-        expect(players.length).toBeGreaterThan(starters.length);
-        expect(s.reader.lineups[side].players[0].jersey).toBe(players[0].jersey);
-        // The reader keeps provider identity only inside each jersey URL.
-        s.reader.lineups[side].players.forEach((p, i) =>
-          expect(p.jersey).toContain(`/events/${s.eventId}/athletes/${starters[i].athleteId}/`));
-        for (const key of ['starter', 'stats', 'athleteId']) expect(s.reader.lineups[side].players[0]).not.toHaveProperty(key);
-      }
-    });
+    expect(s.reader.stats).toEqual(real.stats);
+    for (const side of ['home', 'away'] as const) {
+      const expected = real.lineups![side];
+      const served = s.reader.lineups[side];
+      expect(served.formation).toBe(expected.formation);
+      expect(served.teamId).toBe(s.sides[side].canonicalId);
+      expect(served.players).toEqual(expected.players.map(p => ({ ...p, playerId: null, playerSlug: null })));
+      expect(served.players.filter(p => p.starter)).toHaveLength(11);
+      expect(served.players.some(p => !p.starter && p.stats?.appearances === 0)).toBe(true);
+    }
+    expect(s.reader.lineups.availability).toBe('partial');
+
   });
 
   it('maps the second state of every summary discriminator from the labeled synthetic overlay', async () => {
@@ -790,7 +777,7 @@ describe('reader contract: standings, bracket, leaders, news', () => {
     expect(urls).toHaveLength(1);
     expect(boards).toEqual(vectors.leaders.frontend);
     expect(boards.scorers.map(l => l.rank)).toEqual([...boards.scorers.keys()].map(i => i + 1));
-    expect(boards.assists.length).toBeGreaterThan(0); // The reader has no assists board (T10.2, Go-characterized).
+    expect(boards.assists.length).toBeGreaterThan(0); // Both boards are independently exercised through reader SQL in Go.
   });
 
   it('maps recorded news identically to the reader proxy vector', async () => {

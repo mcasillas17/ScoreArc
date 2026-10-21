@@ -169,6 +169,35 @@ paths:
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
+  /v1/competitions/{comp}/{season}/leaders:
+    get:
+      operationId: listLeaders
+      summary: List goals or assists (default 10, maximum 30)
+      parameters:
+        - { $ref: "#/components/parameters/Comp" }
+        - { $ref: "#/components/parameters/Season" }
+        - in: query
+          name: metric
+          schema: { type: string, enum: [goals, assists], default: goals }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 30, default: 10 }
+      description: >-
+        Unknown, duplicate, empty or malformed parameters return a constant-message
+        400. Rank is the stored ordinal, unique per board; equal values retain
+        provider order. Values and identity are read in one bounded query.
+      responses:
+        "200":
+          description: Players ordered by rank
+          headers:
+            Cache-Control: { $ref: "#/components/headers/StandardCacheControl" }
+          content:
+            application/json:
+              schema: { type: array, maxItems: 30, items: { $ref: "#/components/schemas/StatLeader" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
   /v1/competitions/{comp}/{season}/top-scorers:
     get:
       operationId: listTopScorers
@@ -183,7 +212,7 @@ paths:
             Cache-Control: { $ref: "#/components/headers/StandardCacheControl" }
           content:
             application/json:
-              schema: { type: array, items: { $ref: "#/components/schemas/TopScorer" } }
+              schema: { type: array, maxItems: 30, items: { $ref: "#/components/schemas/TopScorer" } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
@@ -231,6 +260,31 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "502": { $ref: "#/components/responses/UpstreamError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+  /v1/matches/{id}/box-score:
+    get:
+      operationId: getBoxScore
+      summary: Get the bounded roster and nullable player statistics for one match
+      description: >-
+        Canonical lowercase match UUID required; invalid aliases and unknown
+        matches return 404. Query parameters are rejected. A known match without
+        participation returns 200 with explicit availability, never inferred
+        complete from empty arrays. At most 64 roster rows across both teams;
+        excess evidence fails closed. No provider network requests.
+      parameters:
+        - $ref: "#/components/parameters/MatchID"
+      responses:
+        "200":
+          description: Match box score
+          headers:
+            Cache-Control: { $ref: "#/components/headers/DetailCacheControl" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoxScore" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
   /v1/matches/{id}:
@@ -547,7 +601,12 @@ components:
     TeamStats:
       type: object
       additionalProperties: false
-      required: [possession, shots, shotsOnTarget, shotAccuracy, corners, offsides, passes, passAccuracy, crosses, crossAccuracy, longBalls, tackles, tackleAccuracy, interceptions, clearances, blockedShots, saves, fouls, yellowCards, redCards]
+      required: [possession, shots, shotsOnTarget, shotAccuracy, corners, offsides, passes, passesAccurate, passAccuracy, crosses, crossesAccurate, crossAccuracy, longBalls, tackles, tacklesEffective, tackleAccuracy, interceptions, clearances, blockedShots, saves, fouls, yellowCards, redCards]
+      description: >-
+        Percentages use 0-100, rounded to one decimal. Valid nonnegative operands
+        with a positive denominator and numerator no greater than denominator
+        take precedence. Missing operands may use a valid stored provider percent;
+        invalid or zero denominators yield null. Unknown operands stay null.
       properties:
         possession: { type: [number, "null"] }
         shots: { type: [number, "null"] }
@@ -556,11 +615,14 @@ components:
         corners: { type: [number, "null"] }
         offsides: { type: [number, "null"] }
         passes: { type: [number, "null"] }
+        passesAccurate: { type: [number, "null"] }
         passAccuracy: { type: [number, "null"] }
         crosses: { type: [number, "null"] }
+        crossesAccurate: { type: [number, "null"] }
         crossAccuracy: { type: [number, "null"] }
         longBalls: { type: [number, "null"] }
         tackles: { type: [number, "null"] }
+        tacklesEffective: { type: [number, "null"] }
         tackleAccuracy: { type: [number, "null"] }
         interceptions: { type: [number, "null"] }
         clearances: { type: [number, "null"] }
@@ -665,6 +727,22 @@ components:
       type: string
       description: Knockout round slug. Historical aliases (second-round, third-place) are normalized before storage.
       enum: [round-of-32, round-of-16, quarterfinals, semifinals, final, 3rd-place-match]
+    StatLeader:
+      type: object
+      additionalProperties: false
+      required: [rank, player, athleteId, playerId, playerSlug, teamId, teamAbbr, teamName, teamCrestUrl, value, matches]
+      properties:
+        rank: { type: integer }
+        player: { type: string }
+        athleteId: { type: [string, "null"], description: "ESPN athlete reference; never a public URL key." }
+        playerId: { type: [string, "null"], format: uuid }
+        teamId: { type: [string, "null"], description: "Canonical team id from the source-qualified crosswalk." }
+        playerSlug: { type: [string, "null"], description: "Unavailable; render plain text, never invent a link." }
+        teamAbbr: { type: string }
+        teamName: { type: string }
+        teamCrestUrl: { type: [string, "null"] }
+        value: { type: integer }
+        matches: { type: [integer, "null"] }
     TopScorer:
       type: object
       additionalProperties: false
@@ -689,29 +767,81 @@ components:
         image: { type: [string, "null"] }
         url: { type: string }
         byline: { type: string }
+    LineupPlayerStats:
+      type: object
+      additionalProperties: false
+      required: [appearances, subIns, totalGoals, goalAssists, totalShots, shotsOnTarget, offsides, foulsCommitted, foulsSuffered, yellowCards, redCards, ownGoals, saves, goalsConceded, shotsFaced]
+      description: Nullable measurements; roster membership alone does not prove an appearance.
+      properties:
+        appearances: { type: [integer, "null"] }
+        subIns: { type: [integer, "null"] }
+        totalGoals: { type: [integer, "null"] }
+        goalAssists: { type: [integer, "null"] }
+        totalShots: { type: [integer, "null"] }
+        shotsOnTarget: { type: [integer, "null"] }
+        offsides: { type: [integer, "null"] }
+        foulsCommitted: { type: [integer, "null"] }
+        foulsSuffered: { type: [integer, "null"] }
+        yellowCards: { type: [integer, "null"] }
+        redCards: { type: [integer, "null"] }
+        ownGoals: { type: [integer, "null"] }
+        saves: { type: [integer, "null"] }
+        goalsConceded: { type: [integer, "null"] }
+        shotsFaced: { type: [integer, "null"] }
     LineupPlayer:
       type: object
       additionalProperties: false
-      required: [name, number, position, jersey]
+      required: [name, number, position, jersey, starter, stats, athleteId, playerId, playerSlug]
       properties:
         name: { type: string }
         number: { type: [integer, "null"] }
         position: { type: string }
         jersey: { type: [string, "null"] }
+        starter: { type: [boolean, "null"] }
+        stats: { oneOf: [{ $ref: "#/components/schemas/LineupPlayerStats" }, { type: "null" }] }
+        athleteId: { type: [string, "null"], description: "ESPN reference; never a public URL key." }
+        playerId: { type: [string, "null"], format: uuid }
+        playerSlug: { type: [string, "null"], description: "Unavailable; display an unlinked name." }
     TeamLineup:
       type: object
       additionalProperties: false
-      required: [formation, players]
+      required: [teamId, formation, players]
       properties:
+        teamId: { type: [string, "null"] }
         formation: { type: string }
-        players: { type: array, items: { $ref: "#/components/schemas/LineupPlayer" } }
+        players: { type: array, maxItems: 64, items: { $ref: "#/components/schemas/LineupPlayer" } }
+    ParticipationAvailability:
+      type: string
+      enum: [complete, pending, partial, unavailable]
+      description: >-
+        complete requires the completion ledger's public projection; pending
+        means enrolled but incomplete (including failed attempts); partial means
+        held rows without completion evidence; unavailable means no held rows or
+        enrollment. Completion does not imply all optional statistics are known.
     MatchLineups:
       type: object
       additionalProperties: false
-      required: [home, away]
+      required: [availability, home, away]
       properties:
+        availability: { $ref: "#/components/schemas/ParticipationAvailability" }
         home: { $ref: "#/components/schemas/TeamLineup" }
         away: { $ref: "#/components/schemas/TeamLineup" }
+    TeamBoxScore:
+      type: object
+      additionalProperties: false
+      required: [teamId, players]
+      properties:
+        teamId: { type: string }
+        players: { type: array, maxItems: 64, items: { $ref: "#/components/schemas/LineupPlayer" } }
+    BoxScore:
+      type: object
+      additionalProperties: false
+      required: [matchId, availability, home, away]
+      properties:
+        matchId: { type: string, format: uuid }
+        availability: { $ref: "#/components/schemas/ParticipationAvailability" }
+        home: { $ref: "#/components/schemas/TeamBoxScore" }
+        away: { $ref: "#/components/schemas/TeamBoxScore" }
     MatchVideo:
       type: object
       additionalProperties: false

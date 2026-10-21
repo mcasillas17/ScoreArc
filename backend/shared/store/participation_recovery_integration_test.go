@@ -140,9 +140,9 @@ func TestParticipationRecoveryCompletesAtomicallyAndStaysSealed(t *testing.T) {
 func TestParticipationMigrationLegacyBoundaryAndRollback(t *testing.T) {
 	owner, pool, dsn := newIntegrationStoreDSN(t)
 	ctx := context.Background()
-	apply := func(direction string) {
+	apply := func(migration, direction string) {
 		t.Helper()
-		raw, err := os.ReadFile("../../migrations/0025_participation_recovery." + direction + ".sql")
+		raw, err := os.ReadFile("../../migrations/" + migration + "." + direction + ".sql")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -150,12 +150,14 @@ func TestParticipationMigrationLegacyBoundaryAndRollback(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	apply("down")
+	// Remove the dependent reader view before testing the historical boundary.
+	apply("0026_reader_contracts", "down")
+	apply("0025_participation_recovery", "down")
 	id := mustParticipationMatch(t, owner, pool)
 	if _, err := pool.Exec(ctx, `UPDATE match SET state='finished',status_name='STATUS_FULL_TIME',home_score=0,away_score=0,finalized_at=now() WHERE id=$1`, id); err != nil {
 		t.Fatal(err)
 	}
-	apply("up")
+	apply("0025_participation_recovery", "up")
 	if n := countRows(t, pool, `SELECT count(*) FROM match_participation_status`); n != 0 {
 		t.Fatal("migration enrolled legacy history")
 	}
@@ -190,14 +192,15 @@ func TestParticipationMigrationLegacyBoundaryAndRollback(t *testing.T) {
 	if _, err := role.pool.Exec(ctx, `UPDATE match SET finalized_at=now() WHERE id=$1`, next); err != nil {
 		t.Fatal(err)
 	}
-	apply("down")
+	apply("0025_participation_recovery", "down")
 	if _, err := role.pool.Exec(ctx, `INSERT INTO appearance(match_id,player_id,team_id,starter) VALUES($1,$2,'eng-arsenal',true)`, next, player); !IsImmutableViolation(err) {
 		t.Fatalf("rollback did not reseal: %v", err)
 	}
-	apply("up")
+	apply("0025_participation_recovery", "up")
 	if n := countRows(t, pool, `SELECT count(*) FROM match_participation_status`); n != 0 {
 		t.Fatal("reapply enrolled old pending history")
 	}
+	apply("0026_reader_contracts", "up")
 }
 
 func TestParticipationCompletionSerializesLateFactWrites(t *testing.T) {

@@ -421,6 +421,10 @@ func (s *Store) MatchSummary(ctx context.Context, id string) (*MatchSummary, err
 			return nil, err
 		}
 	}
+	summary.Lineups, err = s.summaryLineups(ctx, id, summary.Lineups)
+	if err != nil {
+		return nil, err
+	}
 	normalizeMatchSummary(summary)
 	attributeDetail(summary.Scorers, summary.Cards, home, away)
 	if err := recoverLegacyScorers(summary.Scorers, legacyGoals); err != nil {
@@ -429,38 +433,16 @@ func (s *Store) MatchSummary(ctx context.Context, id string) (*MatchSummary, err
 	return summary, nil
 }
 
-const topScorersSQL = `
-SELECT rank, player, goals, matches, team_abbr, team_name, team_crest_url
-FROM top_scorer
-WHERE competition_id = $1 AND season_id = $2 AND category = 'goals'
-ORDER BY rank`
-
 func (s *Store) TopScorers(ctx context.Context, competition, season string) ([]espn.TopScorer, error) {
-	rows, err := s.db.Query(ctx, topScorersSQL, competition, season)
+	leaders, err := s.Leaders(ctx, competition, season, leaderQuery{Metric: "goals", Limit: maxLeaderLimit})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	scorers := make([]espn.TopScorer, 0)
-	for rows.Next() {
-		var scorer espn.TopScorer
-		var teamAbbr, teamName *string
-		if err := rows.Scan(
-			&scorer.Rank, &scorer.Player, &scorer.Goals, &scorer.Matches,
-			&teamAbbr, &teamName, &scorer.TeamCrestURL,
-		); err != nil {
-			return nil, err
-		}
-		if teamAbbr != nil {
-			scorer.TeamAbbr = *teamAbbr
-		}
-		if teamName != nil {
-			scorer.TeamName = *teamName
-		}
-		scorers = append(scorers, scorer)
+	scorers := make([]espn.TopScorer, 0, len(leaders))
+	for _, leader := range leaders {
+		scorers = append(scorers, espn.TopScorer{Rank: leader.Rank, Player: leader.Player, Goals: leader.Value, Matches: leader.Matches, TeamAbbr: leader.TeamAbbr, TeamName: leader.TeamName, TeamCrestURL: leader.TeamCrestURL})
 	}
-	return scorers, rows.Err()
+	return scorers, nil
 }
 
 // One club inside one competition.

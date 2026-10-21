@@ -865,18 +865,6 @@ func parseStat(stats []rawStatEntry, name string) *float64 {
 	return nil
 }
 
-// parsePct ports parsePct: accuracy stats (passPct, shotPct, …) arrive as
-// 0-1 fractions from ESPN, unlike possessionPct which is already 0-100.
-// Normalizes to a 0-100 percent.
-func parsePct(stats []rawStatEntry, name string) *float64 {
-	v := parseStat(stats, name)
-	if v == nil {
-		return nil
-	}
-	r := math.Round(*v * 100)
-	return &r
-}
-
 // moneylineToProb ports moneylineToProb: American moneyline -> implied
 // probability (0..1).
 func moneylineToProb(ml *float64) (float64, bool) {
@@ -932,33 +920,6 @@ func mapWinProbability(rs rawSummary, awayID string) *WinProbability {
 		}
 	}
 	return nil
-}
-
-// buildTeamStats ports buildTeamStats: pulls the fixed stat set out of a
-// boxscore team's `statistics` array.
-func buildTeamStats(stats []rawStatEntry) TeamStats {
-	return TeamStats{
-		Possession:     parseStat(stats, "possessionPct"),
-		Shots:          parseStat(stats, "totalShots"),
-		ShotsOnTarget:  parseStat(stats, "shotsOnTarget"),
-		ShotAccuracy:   parsePct(stats, "shotPct"),
-		Corners:        parseStat(stats, "wonCorners"),
-		Offsides:       parseStat(stats, "offsides"),
-		Passes:         parseStat(stats, "totalPasses"),
-		PassAccuracy:   parsePct(stats, "passPct"),
-		Crosses:        parseStat(stats, "totalCrosses"),
-		CrossAccuracy:  parsePct(stats, "crossPct"),
-		LongBalls:      parseStat(stats, "totalLongBalls"),
-		Tackles:        parseStat(stats, "totalTackles"),
-		TackleAccuracy: parsePct(stats, "tacklePct"),
-		Interceptions:  parseStat(stats, "interceptions"),
-		Clearances:     parseStat(stats, "totalClearance"),
-		BlockedShots:   parseStat(stats, "blockedShots"),
-		Saves:          parseStat(stats, "saves"),
-		Fouls:          parseStat(stats, "foulsCommitted"),
-		YellowCards:    parseStat(stats, "yellowCards"),
-		RedCards:       parseStat(stats, "redCards"),
-	}
 }
 
 // mapSummaryStats ports mapSummaryStats: boxscore.teams[] mapped to OUR
@@ -1082,7 +1043,7 @@ func jerseyImage(images []rawJerseyImage) *string {
 	return &href
 }
 
-// mapSummaryLineups ports mapSummaryLineups: starting XI + formation from
+// mapSummaryLineups retains the full roster and explicit provider identity from
 // summary.rosters, mapped to OUR home/away by team id. Rosters can be
 // present before lineups are published (no starters yet) — that's treated
 // as "no lineup" so the UI doesn't render an empty XI.
@@ -1103,9 +1064,6 @@ func mapSummaryLineups(rs rawSummary, homeID, awayID string) *MatchLineups {
 	toTeamLineup := func(entry *rawRosterEntry) TeamLineup {
 		players := make([]LineupPlayer, 0)
 		for _, p := range entry.Roster {
-			if !p.Starter {
-				continue
-			}
 			var number *int
 			if p.Jersey != "" {
 				if n, err := strconv.Atoi(p.Jersey); err == nil {
@@ -1113,10 +1071,13 @@ func mapSummaryLineups(rs rawSummary, homeID, awayID string) *MatchLineups {
 				}
 			}
 			players = append(players, LineupPlayer{
-				Name:     p.Athlete.DisplayName,
-				Number:   number,
-				Position: p.Position.Abbreviation,
-				Jersey:   jerseyImage(p.Athlete.JerseyImages),
+				Name:      p.Athlete.DisplayName,
+				Number:    number,
+				Position:  p.Position.Abbreviation,
+				Jersey:    jerseyImage(p.Athlete.JerseyImages),
+				Starter:   &p.Starter,
+				AthleteID: nullableAthleteID(string(p.Athlete.ID)),
+				Stats:     mapLineupStats(p.Stats),
 			})
 		}
 		return TeamLineup{Formation: entry.Formation, Players: players}
@@ -1127,7 +1088,7 @@ func mapSummaryLineups(rs rawSummary, homeID, awayID string) *MatchLineups {
 	if len(home.Players) == 0 || len(away.Players) == 0 {
 		return nil
 	}
-	return &MatchLineups{Home: home, Away: away}
+	return &MatchLineups{Availability: "partial", Home: home, Away: away}
 }
 
 // asNumber reports whether raw holds a JSON number (as opposed to a string,

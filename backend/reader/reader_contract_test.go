@@ -532,25 +532,19 @@ func TestReaderContract(t *testing.T) {
 				}
 			}
 		}
-		stats := actual["stats"].(map[string]any)
-		for _, side := range []string{"home", "away"} {
-			assertAbsent(t, document, "TeamStats", stats[side].(map[string]any), "passesAccurate", "crossesAccurate", "tacklesEffective")
-			frontend := vector(t, raw, "summary", "frontend", "stats", side).(map[string]any)
-			if reflect.DeepEqual(stats[side].(map[string]any)["shotAccuracy"], frontend["shotAccuracy"]) {
-				t.Fatal("gap changed: reader shot accuracy now matches the operand-derived frontend value")
-			}
-		}
-		gap("T10.2-team-stats")
+		assertWire(t, "operand-derived team statistics", actual["stats"], vector(t, raw, "summary", "frontend", "stats"))
 		lineups := actual["lineups"].(map[string]any)
 		for _, side := range []string{"home", "away"} {
 			players := lineups[side].(map[string]any)["players"].([]any)
 			roster := vector(t, raw, "summary", "frontend", "lineups", side, "roster").([]any)
-			if len(players) != 11 || len(roster) <= len(players) {
-				t.Fatalf("gap changed: %s reader lineup has %d of %d players", side, len(players), len(roster))
+			if len(players) != len(roster) {
+				t.Fatalf("%s full roster: %d != %d", side, len(players), len(roster))
 			}
-			assertAbsent(t, document, "LineupPlayer", players[0].(map[string]any), "starter", "stats", "athleteId", "playerSlug")
+			for _, player := range players {
+				validateSchema(t, document, "LineupPlayer", player)
+			}
 		}
-		gap("T10.2-lineups")
+
 	})
 
 	t.Run("synthetic shootout and head-to-head through the Go mapper", func(t *testing.T) {
@@ -1200,7 +1194,7 @@ func TestReaderContract(t *testing.T) {
 		}
 	})
 
-	t.Run("recorded leaders: same rows without identity, goals-only reader", func(t *testing.T) {
+	t.Run("recorded leaders: both metrics retain explicit identity and legacy shape", func(t *testing.T) {
 		exercise("getLeaders")
 		for _, board := range []struct{ category, vectorKey string }{{"goalsLeaders", "scorers"}, {"assistsLeaders", "assists"}} {
 			leaders, err := espn.MapLeaders(contractFixture(t, fixtureName(t, raw, "leaders")), board.category, 10)
@@ -1208,12 +1202,19 @@ func TestReaderContract(t *testing.T) {
 				t.Fatal(err)
 			}
 			frontend := vector(t, raw, "leaders", "frontend", board.vectorKey).([]any)
-			assertWire(t, board.category, wire(t, leaders), withoutEach(frontend, "athleteId", "teamId"))
+			for i, row := range wire(t, leaders).([]any) {
+				expected := maps.Clone(frontend[i].(map[string]any))
+				// Mapper provider ids remain internal until the reader crosswalk join.
+				expected["teamId"] = nil
+				expected["playerId"] = nil
+				expected["playerSlug"] = nil
+				assertWire(t, board.category, row, expected)
+				validateSchema(t, document, "StatLeader", row)
+			}
 		}
 		topScorer := wire(t, espn.TopScorer{Rank: 1, Player: "x", Goals: 6}).(map[string]any)
 		validateSchema(t, document, "TopScorer", topScorer)
 		assertAbsent(t, document, "TopScorer", topScorer, "value", "athleteId", "teamId", "playerSlug")
-		gap("T10.2-leaders") // With the inventory's no-assists-path check above.
 	})
 
 	t.Run("recorded news is identical through the real reader proxy", func(t *testing.T) {
@@ -1587,6 +1588,10 @@ func readerSummary(detail espn.MatchDetail, sides contractSides) MatchSummary {
 	normalizeMatchSummary(&summary)
 	side := func(name string) matchSide {
 		return matchSide{id: sides[name].CanonicalID, refs: []string{sides[name].ProviderID}}
+	}
+	if summary.Lineups != nil {
+		home, away := sides["home"].CanonicalID, sides["away"].CanonicalID
+		summary.Lineups.Home.TeamID, summary.Lineups.Away.TeamID = &home, &away
 	}
 	attributeDetail(summary.Scorers, summary.Cards, side("home"), side("away"))
 	return summary

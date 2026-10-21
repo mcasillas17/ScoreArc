@@ -42,8 +42,9 @@ type rawLeader struct {
 }
 
 type rawLeaderAthlete struct {
-	DisplayName string        `json:"displayName"`
-	Team        rawScorerTeam `json:"team"`
+	ID          flexibleString `json:"id"`
+	DisplayName string         `json:"displayName"`
+	Team        rawScorerTeam  `json:"team"`
 }
 
 type rawScorerTeam struct {
@@ -112,15 +113,21 @@ func MapLeaders(raw []byte, category string, limit int) ([]StatLeader, error) {
 			href := team.Logos[0].Href
 			crest = &href
 		}
+		var athleteID *string
+		if id := string(l.Athlete.ID); id != "" {
+			athleteID = &id
+		}
 		board = append(board, StatLeader{
-			Rank:         i + 1,
-			Player:       l.Athlete.DisplayName,
-			TeamSourceID: string(team.ID),
-			TeamAbbr:     team.Abbreviation,
-			TeamName:     team.DisplayName,
-			TeamCrestURL: crest,
-			Value:        int(l.Value),
-			Matches:      parseMatches(l.DisplayValue),
+			AthleteID:       athleteID,
+			AthleteSourceID: string(l.Athlete.ID),
+			Rank:            i + 1,
+			Player:          l.Athlete.DisplayName,
+			TeamSourceID:    string(team.ID),
+			TeamAbbr:        team.Abbreviation,
+			TeamName:        team.DisplayName,
+			TeamCrestURL:    crest,
+			Value:           int(l.Value),
+			Matches:         parseMatches(l.DisplayValue),
 		})
 	}
 	return board, nil

@@ -124,7 +124,7 @@ func leadersFingerprint(
 	for _, row := range rows {
 		columns = append(columns, []any{
 			row.Rank, row.Player, row.TeamAbbr, row.TeamName,
-			row.TeamCrestURL, row.Value, row.Matches,
+			row.TeamCrestURL, row.Value, row.Matches, row.AthleteSourceID, row.TeamSourceID,
 		})
 	}
 	return contentDigest([]any{source, category, columns})

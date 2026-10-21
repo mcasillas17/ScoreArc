@@ -7,11 +7,9 @@ import "errors"
 // reader, so they carry no json tags and adding a field here cannot change an
 // API response.
 //
-// They exist because the shapes that DO reach the reader — LineupPlayer,
-// Scorer, Card — identify a player by display name. That is fine for rendering
-// and useless for identity: two players who share a name are one string, and
-// one player in two competitions is two strings. These carry the provider's
-// athlete id alongside, so the ingester can resolve a canonical player.
+// These persistence inputs carry explicit provider identity and coverage
+// evidence separately from the public lineup projection. Older sealed public
+// blobs may lack identity; they are never a substitute for these inputs.
 //
 // They stay in PROVIDER shape (SourceID, not a canonical uuid). Resolution
 // belongs to the ingester, where the Store lives — the same seam TeamRef and
@@ -52,9 +50,8 @@ type PlayerMatchStats struct {
 
 // SquadPlayer is one roster entry as the provider reported it.
 //
-// Unlike LineupPlayer this includes substitutes. The lineups blob keeps
-// starters only because that is what the site renders; appearances need the
-// whole sheet, since a player who came off the bench still played.
+// It includes the entire reported roster. Membership alone does not prove a
+// player entered the match; starters and substitution events provide that evidence.
 type SquadPlayer struct {
 	SourceID string // "" when the provider omitted the athlete id
 	Name     string

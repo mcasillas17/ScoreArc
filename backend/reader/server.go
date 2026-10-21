@@ -19,6 +19,7 @@ type matchReader interface {
 	Calendar(context.Context, string, string) (SeasonCalendar, error)
 	Bracket(context.Context, string, string) ([]BracketRound, error)
 	MatchSummary(context.Context, string) (*MatchSummary, error)
+	BoxScore(context.Context, string) (*BoxScore, error)
 	Team(ctx context.Context, teamID, competition, season string) (*TeamProfile, error)
 	Freshness(context.Context, freshnessScope) (freshnessSnapshot, error)
 	MatchScope(context.Context, string) (freshnessScope, error)
@@ -29,6 +30,7 @@ type readerStore interface {
 	Ping(context.Context) error
 	Standings(context.Context, string, string, string) ([]Group, error)
 	TopScorers(context.Context, string, string) ([]espn.TopScorer, error)
+	Leaders(context.Context, string, string, leaderQuery) ([]espn.StatLeader, error)
 	Snapshot(context.Context) (matchReader, func() error, error)
 }
 
@@ -63,9 +65,11 @@ func (a *App) router() http.Handler {
 		router.Get("/competitions/{comp}/{season}/standings", a.handleStandings)
 		router.Get("/competitions/{comp}/{season}/bracket", a.handleBracket)
 		router.Get("/competitions/{comp}/{season}/top-scorers", a.handleTopScorers)
+		router.Get("/competitions/{comp}/{season}/leaders", a.handleLeaders)
 		router.Get("/competitions/{comp}/{season}/teams/{teamId}", a.handleTeam)
 		router.Get("/competitions/{comp}/news", a.handleNews)
 		router.Get("/matches/{id}", a.handleMatchSummary)
+		router.Get("/matches/{id}/box-score", a.handleBoxScore)
 	})
 	router.NotFound(func(writer http.ResponseWriter, _ *http.Request) {
 		writeError(writer, http.StatusNotFound, "not found")

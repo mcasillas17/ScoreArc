@@ -51,7 +51,8 @@ in AGENTS.md first. All three run in CI (`npm test`, `tsc`, `go test ./...`).
 | `getStandings` | `…/standings` | Recorded groups and table rows (rank, stats, team identity), unnamed tables, synthetic duplicate-rank, missing-stat and empty tables; a team in two tables (stored, snapshotted and served in both); conflicting tables rejected; the MLS overall and Leagues Cup phase tables derived from reader responses ([T10.10](#t1010-derived-standings-contract)) |
 | `getBracket` | `…/bracket` | Recorded rounds and every match (id, round, state, sides, scores, winner), placeholders, clockless live match |
 | `getMatchSummary` | `/v1/matches/{id}` | Recorded scorers, cards, stats, lineups, win probability, info, form, head-to-head, videos and commentary; synthetic shootout detail, head-to-head, red card and unattributable scorer/card; own goal; canonical scorer/card sides on new and sealed legacy rows; route-layer player slugs; match-id translation; top-level key set |
-| `getLeaders` | `…/top-scorers` | Recorded scorer and assist boards (values, ties, identity) |
+| `getLeaders` | `…/leaders` | Recorded scorer and assist boards (values, ties, identity); defaults and actual persisted depth 30 |
+| none (reader-only) | `…/top-scorers`, `/matches/{id}/box-score` | Frozen legacy goals shape; bounded participation with completion evidence, canonical identity and nullable statistics |
 | `getNews` | `/v1/competitions/{comp}/news` | Recorded articles, identical through the real reader proxy |
 | `getTeam` | `…/teams/{teamId}` | Identity, location, record, colors, standing summary, squad, schedule ids, order and scope, partial-failure behavior, cache header |
 | `getSquad` | same, embedded squad | Recorded roster order, ids, jersey, position, nationality, stats, age and headshots |
@@ -481,6 +482,116 @@ where those names equal ESPN's, which they do for every recorded club.
 To regenerate the vector after an intended reader change, run the go-db test
 with `SCOREARC_UPDATE_DERIVED_STANDINGS=1` and review the diff.
 
+## T10.2 leaders, statistics and participation contract
+
+October 20, 2026, implementation against `6664aea` including merged T10.10
+(#225). Four harness gaps are replaced with positive assertions:
+`T10.2-team-stats`, `T10.2-lineups`, `T10.2-leaders`, and
+`T10.2-leaders-depth`. This does not establish full reader parity or production
+recovery; the frontend remains ESPN-backed.
+
+### Routes and identity
+
+- `GET /v1/competitions/{comp}/{season}/leaders?metric=goals|assists&limit=1..30`:
+  absent metric means goals; absent limit means 10. Unsupported, empty,
+  duplicate, unknown and malformed query values return constant-message 400s.
+  Both metrics use `StatLeader`: rank, player, athleteId, playerId, playerSlug,
+  teamId, teamAbbr, teamName, teamCrestUrl, value, matches. Nullable identity
+  and counts are serialized, not omitted. The ingester captures **30** per
+  board, not the obsolete plan's 50. Rank is the provider's unique ordinal;
+  ties in value retain its order. The primary key makes repeated ranks impossible.
+- `/top-scorers` retains its goals-only shape (`goals`, without the new identity
+  fields), 60-second cache and full stored depth, bounded at 30. Its historical
+  ignored-query behavior is retained; strict parameters belong to `/leaders`.
+- `/matches/{id}` retains summary fields and adds full roster fields under
+  lineups, including nullable starter, statistics and identities. `lineups`
+  adds availability and each side adds canonical teamId. Formation comes from
+  stored summary data. Jersey images are copied only using explicit identity
+  when overlaying appearances; asset URLs are never parsed to establish identity.
+- `/matches/{id}/box-score` serves matchId, availability, home and away; each side
+  has canonical teamId and players using the same lineup player shape. Unknown
+  or noncanonical UUID addresses return 404; query parameters return 400. A known
+  match without participation is a 200 with explicit unavailable state. Cache is
+  30 seconds. No new freshness-header claim is made on this route.
+
+Canonical player UUIDs and team IDs come from source-qualified crosswalks.
+`athleteId` remains the documented ESPN provider-reference exception; it is
+never a public link. An ambiguous reverse player reference is null. `playerSlug`
+is null: clients render plain text until an approved slug lookup exists.
+Existing leader rows lack source identities until their ordinary future refresh;
+no name, abbreviation, asset URL, guessed slug, or provider UUID substitution
+repairs them. No new upstream leader requests are introduced.
+
+### Measurements and availability
+
+Team statistics add passesAccurate, crossesAccurate and tacklesEffective.
+Ratios prefer valid finite nonnegative operands, with numerator no greater than
+denominator and a positive denominator; results are percentages on 0–100,
+rounded to one decimal. A real zero numerator gives zero. Zero denominators or invalid
+operands invalidate the ratio; genuinely missing operands may use a valid
+provider fallback. Unknown operands remain null. The existing Go writer already
+stored percentages on 0–100: legacy 0.5 stays 0.5, never guessed to mean 50.
+Old stored shots/shotsOnTarget allow recomputation; missing old pass/cross/tackle
+numerators cannot be recovered from rounded percentages. The reader never
+updates sealed facts. The recorded frontend and reader results agree; for
+malformed synthetic operands the reader is stricter, and sparse provider
+fallbacks retain one decimal rather than the frontend's whole-percent rounding.
+
+Player statistics carry the frontend's fifteen nullable fields. The thirteen
+stored measurements are read from `appearance`; appearances/subIns use starter
+and source-qualified sub_on evidence. A roster row alone never means played.
+For a bench player with neither positive evidence nor proven completion these
+fields stay null; completed event coverage allows an unused bench player's zero
+only when neither on-pitch events nor positive measurements contradict it.
+Bench cards alone do not prove play.
+Goalkeepers and outfielders retain unreported statistics as null, even when the
+capture is complete.
+
+The public `match_participation_availability(match_id, completed)` view exposes
+only enrollment and completion, not attempt counts, retry times or failures.
+Reader access to the private ledger remains denied, and the projection is
+SELECT-only with inherited writer/PUBLIC privileges revoked. Availability is:
+
+| Value | Evidence |
+|---|---|
+| complete | Transactionally recorded participation completion from #213 |
+| pending | Enrolled but incomplete, including failed or partially captured attempts |
+| partial | Held roster facts without completion evidence (including legacy facts) |
+| unavailable | Neither held roster facts nor enrollment |
+
+Summary-only historical rosters may be partial even where the dedicated
+appearance-backed box score is unavailable. A partial capture for one side does
+not erase the other side’s stored roster. Historical lineup fields never
+stored remain null. Neither finalization, a player count nor empty arrays proves
+completion. No retry/finalization logic, trigger bypass, ordinary-writer
+`allow_final_writes`, blanket backfill or historical collection is introduced.
+
+### Cost and rollout
+
+Leaders use one SQL query: a scoped primary-key scan and limit of 30 precede
+source-qualified joins. The isolated EXPLAIN test confirms that limit and index
+plan. Box scores use three bounded reads (match/completion, at most 65 roster
+rows, at most 513 events); the extra row fails closed beyond 64/512. Summary
+adds this shared read and one batched explicit-identity lookup to its existing
+query, never a network request or per-player SQL call. Existing snapshot,
+timeout, CORS and rate-limit controls remain. Leaders (including legacy top-scorers), box scores and summaries
+reject serialized responses larger than 1 MiB before writing a response body.
+This is an output bound, not a claim that database text allocations are capped.
+
+Migration **0026_reader_contracts** adds nullable leader identity columns and the
+restricted participation view; it reuses `top_scorer.category` (0010) and
+`appearance` (0006). Applied migrations are unchanged. Both binaries embed an
+**exact schema head of 26** and refuse a different or dirty ledger. An older
+25-expecting binary also refuses 26 on restart: coordinate a maintenance rollout
+of both binaries and schema under separate operator authorization. From a
+verified 24 environment, apply 0025 per its recovery runbook, then 0026; do not
+repeat 0024. Verify actual version first; neither 25 nor 26 is asserted deployed.
+No production SQL was run. Roll back 0026 before 0025; dropping 0026 loses newly
+captured leader reference columns but leaves existing leader counts and
+participation facts unchanged. Reverting binaries/schema requires the same
+exact-version coordination. Production availability and historical acceptance
+remain separate gates.
+
 ## Remaining gaps
 
 The full mismatch text for each gap is in `reader-contract.json` under `gaps`.
@@ -488,7 +599,6 @@ The gaps stay open until their tasks land.
 
 | Task | Gaps |
 |---|---|
-| **T10.2** summary and leaders | `team-stats`, `lineups` (starters only), `leaders` (goals only, no assists route), `leaders-depth` (frontend shows 10 rows; the reader serves the whole stored board) |
 | **T10.3** team and squad | `team`, `team-location`, `team-record`, `standing-summary`, `squad`, `squad-fields`, `partial-failure`, `team-cache-doc` (OpenAPI documents 60s; the route serves 120s) |
 | **T10.4** player | `player`: no route or DTO |
 | **T16.6** news | `news`: a live ESPN proxy, not owned data |

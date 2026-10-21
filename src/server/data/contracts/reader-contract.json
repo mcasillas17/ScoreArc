@@ -6,94 +6,102 @@
   "crosswalk": "Provider-to-canonical team ids come from the production seed (backend/config/teams.seed.json, exported to src/server/data/teamCrosswalk.json). Summary and own-goal side ids are checked against it in both suites; standings ids through the group-A comparisons (TS crosswalk, Go seed); bracket side ids only in the Go database suite."
  },
  "gaps": {
-  "T10.2-team-stats": {
-   "task": "T10.2",
-   "mismatch": "Reader TeamStats lacks passesAccurate/crossesAccurate/tacklesEffective and its accuracy percentages are ESPN's one-digit fractions x100 (40) instead of operand-derived values (35.7).",
-   "suites": ["ts", "go"]
-  },
-  "T10.2-lineups": {
-   "task": "T10.2",
-   "mismatch": "Reader lineups hold starters only (11 per side, 26 in the frontend) and LineupPlayer lacks starter/stats/athleteId/playerSlug, though each reader jersey URL still embeds the provider event and athlete ids.",
-   "suites": ["ts", "go"]
-  },
-  "T10.2-leaders-depth": {
-   "task": "T10.2",
-   "mismatch": "The frontend caps each leader board at 10 rows (TOP_SCORERS_SHOWN in store.ts); the reader's top-scorers SQL has no limit and serves every stored row (the ingester stores 30 per board, topScorerLimit).",
-   "suites": ["go-db"]
-  },
-  "T10.2-leaders": {
-   "task": "T10.2",
-   "mismatch": "Reader serves goals only as TopScorer{goals}; the frontend StatLeader uses value plus athleteId/teamId/playerSlug and an assists board. No assists route.",
-   "suites": ["go"]
-  },
   "T10.3-team": {
    "task": "T10.3",
    "mismatch": "Reader TeamProfile lacks standing, scheduleAvailability and per-match scope (pinned in team-insights.json).",
-   "suites": ["go"]
+   "suites": [
+    "go"
+   ]
   },
   "T10.3-squad": {
    "task": "T10.3",
    "mismatch": "No standalone squad route; the squad exists only inside TeamProfile.",
-   "suites": ["go"]
+   "suites": [
+    "go"
+   ]
   },
   "T10.4-player": {
    "task": "T10.4",
    "mismatch": "No player route or DTO.",
-   "suites": ["go"]
+   "suites": [
+    "go"
+   ]
   },
   "T16.6-news": {
    "task": "T16.6",
    "mismatch": "Reader news is a live ESPN proxy (502 on upstream failure), not owned data; bodies match today.",
-   "suites": ["go"]
+   "suites": [
+    "go"
+   ]
   },
   "T17.3-freshness-coverage": {
    "task": "T17.3",
    "mismatch": "Standings, top-scorers and news responses carry no X-ScoreArc freshness headers.",
-   "suites": ["go"]
+   "suites": [
+    "go"
+   ]
   },
   "T10.3-team-location": {
    "task": "T10.3",
    "mismatch": "Reader TeamProfile.location is always null (no column is selected); the frontend maps the provider location.",
-   "suites": ["go-db"]
+   "suites": [
+    "go-db"
+   ]
   },
   "T10.3-squad-fields": {
    "task": "T10.3",
    "mismatch": "Reader SquadPlayer.id is a canonical player UUID, not the provider athlete id; age and headshotUrl are always null (no column is selected); and the squad is served in shirt-number order rather than provider roster order.",
-   "suites": ["go-db"]
+   "suites": [
+    "go-db"
+   ]
   },
   "T10.3-partial-failure": {
    "task": "T10.3",
    "mismatch": "The frontend getTeam/getSquad degrade a failed roster or schedule to empty (squad [], schedule unavailable) and return null only when the profile fails; the reader fails the whole team request with 500 when any child query fails.",
-   "suites": ["ts", "go"]
+   "suites": [
+    "ts",
+    "go"
+   ]
   },
   "T10.3-standing-summary": {
    "task": "T10.3",
    "mismatch": "Reader standingSummary is generated as '<rank> in <competition id>' from the standing row; the frontend serves the provider's own string.",
-   "suites": ["ts", "go-db"]
+   "suites": [
+    "ts",
+    "go-db"
+   ]
   },
   "T21.4-dependency-error-logging": {
    "task": "T21.4",
    "mismatch": "Every reader data handler except handleTeam and handleCalendar (matches, standings, bracket, top-scorers, news, match summary) logs the raw dependency error text, which can carry connection details; handleTeam logs only operation, error type and SQLSTATE, and handleCalendar only its scope and whether the row bound was exceeded.",
-   "suites": ["go"]
+   "suites": [
+    "go"
+   ]
   },
   "T10.3-team-cache-doc": {
    "task": "T10.3",
    "mismatch": "handleTeam serves Cache-Control public, max-age=120, but OpenAPI documents the team route with StandardCacheControl (public, max-age=60).",
-   "suites": ["go"]
+   "suites": [
+    "go"
+   ]
   },
   "T10.3-team-record": {
    "task": "T10.3",
    "mismatch": "The frontend TeamProfile.record is the provider's record item (summary string, gamesPlayed, points, goalDifference from provider stats); the reader derives W-D-L, games, points and goal difference from its own standing row.",
-   "suites": ["go-db"]
+   "suites": [
+    "go-db"
+   ]
   }
  },
  "readerOnly": {
-  "/v1/competitions/{comp}/{season}/calendar": "T10.1 season calendar (one row per UTC match day). No DataStore method: the site builds month views from getFixtures today."
+  "/v1/competitions/{comp}/{season}/calendar": "T10.1 season calendar (one row per UTC match day). No DataStore method: the site builds month views from getFixtures today.",
+  "/v1/competitions/{comp}/{season}/top-scorers": "T10.2 legacy goals-only shape, full stored board bounded to 30; new consumers use leaders.",
+  "/v1/matches/{id}/box-score": "T10.2 bounded participation read with explicit availability and canonical identity; no DataStore cutover."
  },
  "methods": {
   "getMatches": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T10.2-team-stats", "T21.4-dependency-error-logging"]
+   "gaps": ["T21.4-dependency-error-logging"]
   },
   "getFixtures": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
@@ -117,11 +125,11 @@
   },
   "getMatchSummary": {
    "reader": "/v1/matches/{id}",
-   "gaps": ["T10.2-team-stats", "T10.2-lineups", "T21.4-dependency-error-logging"]
+   "gaps": ["T21.4-dependency-error-logging"]
   },
   "getLeaders": {
-   "reader": "/v1/competitions/{comp}/{season}/top-scorers",
-   "gaps": ["T10.2-leaders", "T10.2-leaders-depth", "T17.3-freshness-coverage", "T21.4-dependency-error-logging"]
+   "reader": "/v1/competitions/{comp}/{season}/leaders",
+   "gaps": ["T17.3-freshness-coverage", "T21.4-dependency-error-logging"]
   },
   "getNews": {
    "reader": "/v1/competitions/{comp}/news",
@@ -919,16 +927,19 @@
      "possession": 47.1,
      "shots": 14,
      "shotsOnTarget": 5,
-     "shotAccuracy": 40,
+     "shotAccuracy": 35.7,
      "corners": 14,
      "offsides": 2,
      "passes": 401,
-     "passAccuracy": 80,
+     "passesAccurate": 339,
+     "passAccuracy": 84.5,
      "crosses": 29,
-     "crossAccuracy": 20,
+     "crossesAccurate": 7,
+     "crossAccuracy": 24.1,
      "longBalls": 38,
      "tackles": 24,
-     "tackleAccuracy": 80,
+     "tacklesEffective": 18,
+     "tackleAccuracy": 75,
      "interceptions": 4,
      "clearances": 11,
      "blockedShots": 1,
@@ -941,16 +952,19 @@
      "possession": 52.9,
      "shots": 9,
      "shotsOnTarget": 4,
-     "shotAccuracy": 40,
+     "shotAccuracy": 44.4,
      "corners": 3,
      "offsides": 2,
      "passes": 473,
-     "passAccuracy": 90,
+     "passesAccurate": 415,
+     "passAccuracy": 87.7,
      "crosses": 10,
+     "crossesAccurate": 5,
      "crossAccuracy": 50,
      "longBalls": 32,
      "tackles": 19,
-     "tackleAccuracy": 60,
+     "tacklesEffective": 11,
+     "tackleAccuracy": 57.9,
      "interceptions": 6,
      "clearances": 37,
      "blockedShots": 3,
@@ -961,6 +975,7 @@
     }
    },
    "lineups": {
+    "availability": "partial",
     "home": {
      "formation": "4-1-4-1",
      "players": [
@@ -968,69 +983,706 @@
        "name": "Yahia Fofana",
        "number": 1,
        "position": "G",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/261595/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/261595/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": null,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": 1,
+        "goalsConceded": 2,
+        "shotsFaced": 0
+       },
+       "athleteId": "261595",
+       "playerId": null,
+       "playerSlug": null
       },
       {
        "name": "Emmanuel Agbadou",
        "number": 20,
        "position": "CD-L",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/308449/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/308449/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 3,
+        "shotsOnTarget": 1,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 2,
+        "shotsFaced": 0
+       },
+       "athleteId": "308449",
+       "playerId": null,
+       "playerSlug": null
       },
       {
        "name": "Odilon Kossounou",
        "number": 7,
        "position": "CD-R",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/284822/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/284822/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 2,
+        "shotsFaced": 0
+       },
+       "athleteId": "284822",
+       "playerId": null,
+       "playerSlug": null
       },
       {
        "name": "Ibrahim Sangaré",
        "number": 18,
        "position": "DM",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/213718/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/213718/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 1,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 1,
+        "foulsSuffered": 1,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 2,
+        "shotsFaced": 0
+       },
+       "athleteId": "213718",
+       "playerId": null,
+       "playerSlug": null
       },
       {
        "name": "Ghislain Konan",
        "number": 3,
        "position": "LB",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/250888/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/250888/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 2,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 1,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 2,
+        "shotsFaced": 0
+       },
+       "athleteId": "250888",
+       "playerId": null,
+       "playerSlug": null
       },
       {
        "name": "Guela Doué",
        "number": 17,
        "position": "RB",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/346636/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/346636/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 1,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 2,
+        "foulsSuffered": 1,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 2,
+        "shotsFaced": 0
+       },
+       "athleteId": "346636",
+       "playerId": null,
+       "playerSlug": null
       },
       {
        "name": "Christ Inao Oulaï",
        "number": 26,
        "position": "CM-L",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/386989/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/386989/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 1,
+        "shotsFaced": 0
+       },
+       "athleteId": "386989",
+       "playerId": null,
+       "playerSlug": null
       },
       {
        "name": "Franck Kessié",
        "number": 8,
        "position": "CM-R",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/194711/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/194711/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 1,
+        "shotsOnTarget": 1,
+        "offsides": 0,
+        "foulsCommitted": 2,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 2,
+        "shotsFaced": 0
+       },
+       "athleteId": "194711",
+       "playerId": null,
+       "playerSlug": null
       },
       {
        "name": "Yan Diomande",
        "number": 11,
        "position": "LM",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/402479/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/402479/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 1,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 1,
+        "foulsSuffered": 3,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 2,
+        "shotsFaced": 0
+       },
+       "athleteId": "402479",
+       "playerId": null,
+       "playerSlug": null
       },
       {
        "name": "Nicolas Pépé",
        "number": 19,
        "position": "RM",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/210397/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/210397/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 1,
+        "totalShots": 2,
+        "shotsOnTarget": 1,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 1,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 2,
+        "shotsFaced": 0
+       },
+       "athleteId": "210397",
+       "playerId": null,
+       "playerSlug": null
       },
       {
        "name": "Ange-Yoan Bonny",
        "number": 9,
        "position": "F",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/309185/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/309185/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 1,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 1,
+        "shotsFaced": 0
+       },
+       "athleteId": "309185",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Jean Michaël Seri",
+       "number": 4,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/193539/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "193539",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Alban Lafont",
+       "number": 23,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/231282/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": null,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": 0,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "231282",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Seko Fofana",
+       "number": 6,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/184118/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "184118",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Mohamed Koné",
+       "number": 16,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/323997/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": null,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": 0,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "323997",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Evann Guessand",
+       "number": 22,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/288924/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 1,
+        "subIns": 1,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 1,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "288924",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Christopher Operi",
+       "number": 13,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/249072/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "249072",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Evan Ndicka",
+       "number": 21,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/242593/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "242593",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Bazoumana Touré",
+       "number": 24,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/359108/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 1,
+        "subIns": 1,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "359108",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Ousmane Diomande",
+       "number": 2,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/343964/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "343964",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Elye Wahi",
+       "number": 12,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/311118/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 1,
+        "subIns": 1,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 1,
+        "shotsFaced": 0
+       },
+       "athleteId": "311118",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Oumar Diakité",
+       "number": 14,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/329483/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 1,
+        "subIns": 1,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "329483",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Wilfried Singo",
+       "number": 5,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/286569/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "286569",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Parfait Guiagon",
+       "number": 25,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/257055/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "257055",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Simon Adingra",
+       "number": 10,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/317404/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "317404",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Amad Diallo",
+       "number": 15,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/291630/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 1,
+        "subIns": 1,
+        "totalGoals": 1,
+        "goalAssists": 0,
+        "totalShots": 2,
+        "shotsOnTarget": 2,
+        "offsides": 1,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 1,
+        "shotsFaced": 0
+       },
+       "athleteId": "291630",
+       "playerId": null,
+       "playerSlug": null
       }
-     ]
+     ],
+     "teamId": "nat-civ"
     },
     "away": {
      "formation": "4-3-3",
@@ -1039,69 +1691,706 @@
        "name": "Ørjan Nyland",
        "number": 1,
        "position": "G",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/193610/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/193610/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": null,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": 4,
+        "goalsConceded": 1,
+        "shotsFaced": 0
+       },
+       "athleteId": "193610",
+       "playerId": null,
+       "playerSlug": null
       },
       {
        "name": "Torbjørn Heggem",
        "number": 17,
        "position": "CD-L",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/272867/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/272867/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 1,
+        "shotsOnTarget": 1,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 1,
+        "shotsFaced": 0
+       },
+       "athleteId": "272867",
+       "playerId": null,
+       "playerSlug": null
       },
       {
        "name": "Kristoffer Ajer",
        "number": 3,
        "position": "CD-R",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/206173/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/206173/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 1,
+        "shotsFaced": 0
+       },
+       "athleteId": "206173",
+       "playerId": null,
+       "playerSlug": null
       },
       {
        "name": "David Møller Wolfe",
        "number": 5,
        "position": "LB",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/313361/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/313361/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 2,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 1,
+        "shotsFaced": 0
+       },
+       "athleteId": "313361",
+       "playerId": null,
+       "playerSlug": null
       },
       {
        "name": "Marcus Holmgren Pedersen",
        "number": 16,
        "position": "RB",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/129285/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/129285/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 1,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 1,
+        "shotsFaced": 0
+       },
+       "athleteId": "129285",
+       "playerId": null,
+       "playerSlug": null
       },
       {
        "name": "Sander Berge",
        "number": 8,
        "position": "CM",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/218998/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/218998/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 1,
+        "shotsFaced": 0
+       },
+       "athleteId": "218998",
+       "playerId": null,
+       "playerSlug": null
       },
       {
        "name": "Patrick Berg",
        "number": 6,
        "position": "LM",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/205924/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/205924/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 1,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 1,
+        "shotsFaced": 0
+       },
+       "athleteId": "205924",
+       "playerId": null,
+       "playerSlug": null
       },
       {
        "name": "Martin Ødegaard",
        "number": 10,
        "position": "RM",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/203669/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/203669/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 1,
+        "totalShots": 1,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 2,
+        "foulsSuffered": 1,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 1,
+        "shotsFaced": 0
+       },
+       "athleteId": "203669",
+       "playerId": null,
+       "playerSlug": null
       },
       {
        "name": "Erling Haaland",
        "number": 9,
        "position": "F",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/253989/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/253989/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 1,
+        "goalAssists": 0,
+        "totalShots": 4,
+        "shotsOnTarget": 2,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 1,
+        "shotsFaced": 0
+       },
+       "athleteId": "253989",
+       "playerId": null,
+       "playerSlug": null
       },
       {
        "name": "Antonio Nusa",
        "number": 20,
        "position": "LF",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/319368/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/319368/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 1,
+        "goalAssists": 0,
+        "totalShots": 1,
+        "shotsOnTarget": 1,
+        "offsides": 1,
+        "foulsCommitted": 1,
+        "foulsSuffered": 1,
+        "yellowCards": 1,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "319368",
+       "playerId": null,
+       "playerSlug": null
       },
       {
        "name": "Alexander Sørloth",
        "number": 7,
        "position": "RF",
-       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/188230/jersey.png?darkMode=false"
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/188230/jersey.png?darkMode=false",
+       "starter": true,
+       "stats": {
+        "appearances": 1,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 1,
+        "shotsOnTarget": 0,
+        "offsides": 1,
+        "foulsCommitted": 1,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "188230",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Sondre Langas",
+       "number": 24,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/366455/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "366455",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Sander Tangvik",
+       "number": 12,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/304258/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": null,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": 0,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "304258",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Jens Petter Hauge",
+       "number": 23,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/235789/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "235789",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Oscar Bobb",
+       "number": 22,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/307111/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 1,
+        "subIns": 1,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 1,
+        "shotsFaced": 0
+       },
+       "athleteId": "307111",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Fredrik Aursnes",
+       "number": 14,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/212900/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 1,
+        "subIns": 1,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 1,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "212900",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Leo Østigard",
+       "number": 4,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/281736/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "281736",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Egil Selvik",
+       "number": 13,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/286433/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": null,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": 0,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "286433",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Fredrik André Bjørkan",
+       "number": 15,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/238088/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "238088",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Morten Thorsby",
+       "number": 2,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/202686/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "202686",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Andreas Schjelderup",
+       "number": 21,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/313415/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 1,
+        "subIns": 1,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 1,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 1,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 1,
+        "shotsFaced": 0
+       },
+       "athleteId": "313415",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Jørgen Strand Larsen",
+       "number": 11,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/252747/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "252747",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Julian Ryerson",
+       "number": 26,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/222991/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "222991",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Thelo Aasgaard",
+       "number": 19,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/307477/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "307477",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Henrik Falchener",
+       "number": 25,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/303281/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "303281",
+       "playerId": null,
+       "playerSlug": null
+      },
+      {
+       "name": "Kristian Thorstvedt",
+       "number": 18,
+       "position": "SUB",
+       "jersey": "https://stitcher.espn.com/sports/soccer/leagues/fifa.world/events/760490/athletes/284212/jersey.png?darkMode=false",
+       "starter": false,
+       "stats": {
+        "appearances": 0,
+        "subIns": 0,
+        "totalGoals": 0,
+        "goalAssists": 0,
+        "totalShots": 0,
+        "shotsOnTarget": 0,
+        "offsides": 0,
+        "foulsCommitted": 0,
+        "foulsSuffered": 0,
+        "yellowCards": 0,
+        "redCards": 0,
+        "ownGoals": 0,
+        "saves": null,
+        "goalsConceded": 0,
+        "shotsFaced": 0
+       },
+       "athleteId": "284212",
+       "playerId": null,
+       "playerSlug": null
       }
-     ]
+     ],
+     "teamId": "nat-nor"
     }
    }
   },
