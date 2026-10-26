@@ -10,7 +10,7 @@ import { deriveReaderStandings } from '../derivedStandings';
 import { teamHref } from '@/components/teamHref';
 import { roundLabelKey } from '@/components/bracketShape';
 import { en } from '@/i18n/messages/en';
-import { mapTeamSchedule } from '../providers/espn-team';
+import { mapTeamProfile, mapTeamSchedule } from '../providers/espn-team';
 import { parseShootout } from '../providers/espn-matches';
 import { parseMatchFreshness, type MatchFreshness } from '@/lib/matchFreshness';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
@@ -155,13 +155,6 @@ const translated = <T extends { teamId: string | null }>(sides: Sides, rows: T[]
 }));
 const mx = resolveSeason('liga-mx', '2026-apertura')!;
 
-// Executable gap registry: each characterization records its gap id, and the
-// last test demands the set equal the JSON's TypeScript-checked gaps.
-const characterized = new Set<string>();
-function gap(id: keyof typeof vectors.gaps, check: () => void) {
-  check();
-  characterized.add(id);
-}
 
 // Executable method coverage: each per-method test records the DataStore method
 // it drives; the closing test demands all 12, so a deleted test fails too.
@@ -791,11 +784,11 @@ describe('reader contract: squad and player', () => {
     exercise('getSquad');
     const squad = await storeOver(() => rosterRaw).store.getSquad(mx, '227');
     expect(squad.map(p => p.id)).toEqual(vectors.squad.players.map(p => p.id));
-    // Fully pinned players: the shared row plus the frontend-only age and headshot.
+    // Fully pinned players: the shared row plus age and headshot, which the reader serves from the same roster facts (go-db).
     expect(squad.filter(p => vectors.squad.frontend.some(v => v.id === p.id)))
       .toEqual(vectors.squad.frontend.map(v => ({ ...vectors.squad.players.find(p => p.id === v.id)!, ...v })));
     expect(squad.map(({ id, name, jersey, position, nationality, stats }) => ({ id, name, jersey, position, nationality, stats }))).toEqual(vectors.squad.players);
-    // Frontend-populated fields the reader always serves as null (T10.3, Go-characterized).
+    // Age and headshot: the reader serves the same values from stored roster facts (go-db).
     expect(squad.filter(p => p.age !== null)).toHaveLength(vectors.squad.withAge);
     expect(Object.fromEntries(squad.filter(p => p.headshotUrl !== null).map(p => [p.id, p.headshotUrl]))).toEqual(vectors.squad.headshots);
     expect(vectors.squad.players.find(p => p.id === vectors.squad.frontend[1].id)!.stats).toBeNull();
@@ -808,14 +801,19 @@ describe('reader contract: squad and player', () => {
     const team = await storeOver(url => url.endsWith('/roster') ? rosterRaw : url.includes('/schedule')
       ? (url.includes('fixture=true') ? teamFixturesRaw : teamScheduleRaw) : teamProfileRaw).store.getTeam(mx, v.providerId);
     expect(team!.team.id).toBe(v.providerId);
-    expect(team!.location).toBe(v.location); // The reader's location is always null (T10.3, Go-characterized).
-    expect(team!.record).toEqual(v.frontendRecord); // The provider's record item; the reader derives its own (T10.3).
+    expect(team!.location).toBe(v.location); // The reader serves the roster's stored location (go-db).
+    // The provider's record item; the reader derives the same from the equal standing row (go-db).
+    expect(team!.record).toEqual(v.record);
     expect([team!.color, team!.altColor]).toEqual([expect.stringMatching(/^#[0-9a-fA-F]{6}$/), expect.stringMatching(/^#[0-9a-fA-F]{6}$/)]);
-    gap('T10.3-standing-summary', () => {
-      expect(team!.standingSummary).toBe(v.frontendStandingSummary);
-      expect(team!.standingSummary).not.toMatch(/^\d+ in [a-z0-9-]+$/); // The reader's generated format.
-      expect(v.readerStandingSummary).toMatch(/^\d+ in [a-z0-9-]+$/);
-    });
+    // One sentence shape: the frontend's own parser reads the reader's derived
+    // sentence as the reader's structured standing, at the provider's rank.
+    expect(team!.standingSummary).toBe(v.frontendStandingSummary);
+    expect(team!.standing!.rank).toBe(v.readerStanding.rank);
+    // The label rule: a single-table season is named by the competition's own
+    // registry name (go-db names a multi-table season's rank by its table).
+    expect(v.readerStanding.competition).toBe(mx.competition.name);
+    expect(mapTeamProfile({ team: { id: v.providerId, displayName: 'x', standingSummary: v.readerStandingSummary } })!.standing)
+      .toEqual(v.readerStanding);
     expect(team!.squad.map(({ id, name, jersey, position, nationality, stats }) => ({ id, name, jersey, position, nationality, stats }))).toEqual(vectors.squad.players);
     expect(team!.scheduleAvailability).toEqual({ results: 'available', upcoming: 'available' });
     expect(team!.schedule.map(m => m.id)).toEqual(v.scheduleIds);
@@ -838,14 +836,14 @@ describe('reader contract: squad and player', () => {
     };
     const teamOk = (url: string) => url.endsWith('/roster') ? rosterRaw : url.includes('/schedule') ? teamScheduleRaw : teamProfileRaw;
     const partial = await storeOver(fail(/\/roster|\/schedule/, teamOk)).store.getTeam(mx, vectors.team.providerId);
-    gap('T10.3-partial-failure', () => {
-      expect(partial!.team.id).toBe(vectors.team.providerId);
-      expect([partial!.squad, partial!.schedule, partial!.scheduleAvailability])
-        .toEqual([[], [], { results: 'unavailable', upcoming: 'unavailable' }]);
-      expect(partial!.standingSummary).toBe(vectors.team.frontendStandingSummary);
-    });
+    // The reader serves the same degraded blocks for a failed child query (Go).
+    expect(partial!.team.id).toBe(vectors.team.providerId);
+    expect({ squad: partial!.squad, schedule: partial!.schedule, scheduleAvailability: partial!.scheduleAvailability })
+      .toEqual(vectors.team.partialFailure);
+    expect(partial!.standingSummary).toBe(vectors.team.frontendStandingSummary);
     expect(await storeOver(fail(/\/teams\/227$/, teamOk)).store.getTeam(mx, vectors.team.providerId)).toBeNull();
-    expect(await storeOver(fail(/\/roster/, teamOk)).store.getSquad(mx, vectors.team.providerId)).toEqual([]);
+    // The reader's squad route serves the same degraded squad (Go).
+    expect(await storeOver(fail(/\/roster/, teamOk)).store.getSquad(mx, vectors.team.providerId)).toEqual(vectors.team.partialFailure.squad);
     const playerOk = (url: string) => url.includes('/overview') ? overviewRaw : url.includes('/bio') ? bioRaw : athleteRaw;
     const player = await storeOver(fail(/\/overview|\/bio/, playerOk)).store.getPlayer(mx, '297287');
     expect([player!.id, player!.gameLog, player!.career]).toEqual([vectors.player.frontend.identity.id, [], []]);
@@ -1011,14 +1009,16 @@ describe('reader contract: freshness headers', () => {
   // Invalid and contradictory metadata rejection is owned by src/lib/matchFreshness.test.ts.
 });
 
-// Runs last (vitest keeps file order): a gap whose characterization was
-// removed, renamed, skipped in any form or never executed fails here. It never
-// skips itself; a `-t` filter that selects it with only some tests fails it.
-it('exercises every DataStore method and characterizes every TypeScript-assigned gap', () => {
+// Runs last (vitest keeps file order): a method whose test was removed,
+// skipped in any form or never executed fails here. It never skips itself; a
+// `-t` filter that selects it with only some tests fails it. No gap is
+// assigned to this suite today, so registering one fails here. Its author must
+// add an executable characterization to this file and replace the empty-list
+// check below with one that proves each assigned gap was characterized.
+it('exercises every DataStore method; no TypeScript-assigned gap is open', () => {
   const source = readFileSync(fileURLToPath(import.meta.url), 'utf8');
   expect(source).not.toMatch(/\b(?:it|describe|test|suite)(?:\.\w+)*\.(?:skip|todo|only|skipIf|runIf)\b/);
   expect(source).not.toMatch(/\{\s*(?:skip|todo|only)\s*:\s*true/);
   expect([...exercised].sort()).toEqual(Object.keys(vectors.methods).sort());
-  const expected = Object.entries(vectors.gaps).filter(([, g]) => g.suites.includes('ts')).map(([id]) => id).sort();
-  expect([...characterized].sort()).toEqual(expected);
+  expect(Object.entries(vectors.gaps).filter(([, g]) => g.suites.includes('ts')).map(([id]) => id)).toEqual([]);
 });

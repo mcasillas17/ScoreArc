@@ -76,7 +76,7 @@ This is a **monorepo**. The frontend and backend live together; Vercel ignores
   migrations/             Postgres schema, hardening, roles, and rollback files
   ingester/               [IMPLEMENTED] private worker/store/cadence/assets
                           + Dockerfile/fly.toml (always-on singleton worker)
-  reader/                 [IMPLEMENTED — slice 1c] public REST API (8 /v1 data routes + /healthz)
+  reader/                 [IMPLEMENTED — slice 1c] public REST API (11 /v1 data routes + /healthz)
                           + Dockerfile/fly.toml (public, one warm machine + autostopped spare)
   shared/espn/            tested Go ESPN client, domain types, and mappers
 /docs/
@@ -101,11 +101,14 @@ build/test gate is `cd backend && go build ./... && go test ./...`.
 3. **Postgres migrations** — the canonical schema, the forward history surfaces,
    the active snapshot tables (standings, win-prob, odds), replacement/retention
    grants, and the finalization guards; the migration head is
-   `0026_reader_contracts` on this branch; it adds nullable leader identity and a
-   reader-safe participation availability view. The owner reports production
+   `0027_team_squad_contract` on this branch: nullable team location, player
+   headshot and squad roster order for the T10.3 team routes
+   ([rollout](docs/backend/READER_CONTRACT.md#rollout-migration-0027); apply
+   it before the merge that ships head 27). `0026_reader_contracts` adds nullable
+   leader identity and a reader-safe participation availability view. The owner reports production
    at 24. [Participation recovery](docs/backend/PARTICIPATION_RECOVERY.md)
-   defines migration 0025’s separate pre-release apply window. Apply 0025 then
-   0026 before starting this exact-head binary; do not repeat 0024. See
+   defines migration 0025’s separate pre-release apply window. Apply 0025, then
+   0026, then 0027 before starting this exact-head binary; do not repeat 0024. See
    [T10.2 rollout](docs/backend/READER_CONTRACT.md#t102-leaders-statistics-and-participation-contract).
    `0024_standing_table_membership` keys `standing` and
    `standing_snapshot` by provider table (T16.2; applied/released per owner —
@@ -127,8 +130,8 @@ build/test gate is `cd backend && go build ./... && go test ./...`.
    recover it from history at `c6d382e` if ever needed.
 5. **Shared ESPN layer** — Go endpoint builders, response models, and fixture-tested
    mappers for scoreboard, standings, bracket, summary, statistics, and news.
-6. **Public reader API (slice 1c)** — ten versioned `/v1` data routes (T10.2 added leaders and
-   box scores; T10.1 added
+6. **Public reader API (slice 1c)** — eleven versioned `/v1` data routes (T10.3 added the team squad
+   route; T10.2 added leaders and box scores; T10.1 added
    validated `/matches` queries and the reader-only `calendar`) plus
    `/healthz`, parameterized pgx read models, registry validation, SELECT-only role
    enforcement, CORS, per-client limiting, defensive process timeouts, a
@@ -216,7 +219,7 @@ Hard rules (also in `AGENTS.md` — read it; Codex auto-loads it):
 ## 7. Key facts an agent needs
 
 - **The seam:** the frontend reads everything through `DataStore` (**12 methods**) in `src/server/data/store.ts`. Phase 1 adds a second implementation (`apiStore`) that calls our reader. Nothing else in the frontend changes.
-- **The 12 methods:** `getMatches`, `getFixtures`, `getLiveWindow`, `getUpcoming`, `getStandings`, `getBracket`, `getMatchSummary`, `getLeaders`, `getNews`, `getTeam`, `getSquad`, `getPlayer`. PR #191 removed the redundant `getTopScorers`/`getTopAssists` store wrappers, not the public scorer/assist capabilities: both use `getLeaders`. Types are in `src/server/data/types.ts` — the reader's JSON must deserialize into these. The reader exposes **8 data routes** (one, `calendar`, reader-only), so the methods do not map 1:1 onto it; the cutover gaps remain in [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) §5.
+- **The 12 methods:** `getMatches`, `getFixtures`, `getLiveWindow`, `getUpcoming`, `getStandings`, `getBracket`, `getMatchSummary`, `getLeaders`, `getNews`, `getTeam`, `getSquad`, `getPlayer`. PR #191 removed the redundant `getTopScorers`/`getTopAssists` store wrappers, not the public scorer/assist capabilities: both use `getLeaders`. Types are in `src/server/data/types.ts` — the reader's JSON must deserialize into these. The reader exposes **11 data routes** on this branch (`calendar`, legacy `top-scorers` and `box-score` are reader-only; `getSquad` maps to `teams/{teamId}/squad` since T10.3), so the methods do not map 1:1 onto it; the cutover gaps remain in [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) §5.
 - **Ingester durability:** final match/detail writes are atomic; migration 0021
   gives every finalized-fact table a database seal appropriate to its write
   lifecycle; unresolved finals remain in a durable backlog; bracket

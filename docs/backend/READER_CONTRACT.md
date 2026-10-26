@@ -55,7 +55,7 @@ in AGENTS.md first. All three run in CI (`npm test`, `tsc`, `go test ./...`).
 | none (reader-only) | `…/top-scorers`, `/matches/{id}/box-score` | Frozen legacy goals shape; bounded participation with completion evidence, canonical identity and nullable statistics |
 | `getNews` | `/v1/competitions/{comp}/news` | Recorded articles, identical through the real reader proxy |
 | `getTeam` | `…/teams/{teamId}` | Identity, location, record, colors, standing summary, squad, schedule ids, order and scope, partial-failure behavior, cache header |
-| `getSquad` | same, embedded squad | Recorded roster order, ids, jersey, position, nationality, stats, age and headshots |
+| `getSquad` | `…/teams/{teamId}/squad` (the same rows `getTeam` embeds) | Recorded roster order, ids, jersey, position, nationality, stats, age and headshots; degraded failure |
 | `getPlayer` | none | Recorded identity, game log and career, with missing-context degradation |
 
 Adding or removing a `DataStore` method fails `tsc`: two-way
@@ -63,9 +63,12 @@ Adding or removing a `DataStore` method fails `tsc`: two-way
 check on the store object. The Go suite requires the inventory routes plus
 `/healthz` to equal the OpenAPI paths and the chi router's routes. The
 TypeScript suite and `TestReaderContract` each end by requiring that they
-exercised all 12 methods. Every suite (`ts`, `go` and `go-db`) ends by requiring
-that the gaps it characterized equal the gaps the JSON assigns to it. A deleted
-or skipped characterization therefore fails, in any skip form; the TypeScript
+exercised all 12 methods. Every suite ends by checking the gaps the JSON assigns
+to it. The `go` suite requires its characterized gaps to equal them, so a deleted
+or skipped characterization fails. Since T10.3 no gap is assigned to `ts` or
+`go-db`, and both require exactly that: a new gap for either fails until its
+author adds an executable characterization and replaces the empty-list check.
+Skips are caught in any form; the TypeScript
 ledger never skips itself, and the file also rejects declared `.skip`, `.todo`,
 `.only`, `.skipIf`, `.runIf` and `{ skip: true }`-style options. A Vitest `-t`
 filter that selects the ledger together with only some tests fails it; a Go
@@ -134,7 +137,7 @@ and the harness proves a translation instead of an equality. They are not gaps.
 | Match | ESPN event id; list rows and its own summary fetch use it | UUIDv7; `/v1/matches/{id}` accepts nothing else (a provider id is 404) | `match_external_ref (source, source_id) → match.id` through the real resolver: the recorded event adopts the served match on its natural key, and a new event mints a stable UUIDv7 that the list route serves and the summary route addresses |
 | Team | ESPN team id | canonical slug (`nat-civ`) | the curated seed, identical in both languages (`teamCrosswalk.json` equals the seed's ESPN map); `canonicalTeamId` accepts either space, so links and follows built from reader ids match |
 | Scorer/card `teamId` | the provider id ESPN credits, normally a match side (kept as sent even when it names neither) | the canonical id of that side, or `null` | stored `match_detail` keeps the provider id; the reader translates at read time through each side's `team_external_ref` ids for the match's source (one statement, no per-event queries). A reference naming neither side, or both, is `null` — never a default side |
-| Player | `athleteId` = provider athlete id; `playerSlug` filled by the match route | the same provider `athleteId`; no `playerSlug` | `withSummaryPlayerSlugs` resolves the same slugs from either store's scorers; a `null` id gets no link. Public player identity is T10.3/T10.4 (`squad-fields`, `player`) |
+| Player | `athleteId` = provider athlete id; `playerSlug` filled by the match route | the same provider `athleteId`; no `playerSlug` | `withSummaryPlayerSlugs` resolves the same slugs from either store's scorers; a `null` id gets no link. `SquadPlayer.id` follows the same rule since T10.3 ([below](#t103-team-and-squad-contract)); public player identity is T10.4 (`player`) |
 
 Match ids are store-scoped, so for T16.3 every method that produces or consumes
 them (the four window methods, `getBracket`, `getTeam`'s schedule, `getPlayer`'s
@@ -580,8 +583,9 @@ This is an output bound, not a claim that database text allocations are capped.
 
 Migration **0026_reader_contracts** adds nullable leader identity columns and the
 restricted participation view; it reuses `top_scorer.category` (0010) and
-`appearance` (0006). Applied migrations are unchanged. Both binaries embed an
-**exact schema head of 26** and refuse a different or dirty ledger. An older
+`appearance` (0006). Applied migrations are unchanged. T10.2's binaries embedded an
+**exact schema head of 26** (27 since T10.3, [below](#rollout-migration-0027)) and
+refuse a different or dirty ledger. An older
 25-expecting binary also refuses 26 on restart: coordinate a maintenance rollout
 of both binaries and schema under separate operator authorization. From a
 verified 24 environment, apply 0025 per its recovery runbook, then 0026; do not
@@ -592,6 +596,60 @@ participation facts unchanged. Reverting binaries/schema requires the same
 exact-version coordination. Production availability and historical acceptance
 remain separate gates.
 
+## T10.3 team and squad contract
+
+**October 26.** The eight T10.3 gaps are closed with positive assertions in
+all three suites (TypeScript, Go and OpenAPI, real Postgres). The website still
+reads ESPN; nothing in the frontend changed except the contract tests.
+
+| Field or behavior | Contract | Proof |
+|---|---|---|
+| `SquadPlayer.id` | The provider athlete id on the membership's source, from `player_external_ref`: the id the frontend keys player slugs by, never the canonical UUID. Several refs: the earliest `first_seen_at`, then `source_id`. A member with no ref fails the squad block closed | go-db: the recorded roster through `ReplaceSquad` serves exactly the vector's ids in provider order; a later second ref does not displace the first; a missing ref degrades the squad |
+| `age` | Whole years since `player.birth_date` on the request's UTC date (the handler's clock); a future birth date is `null` | go-db at the roster's recorded date reproduces all 31 recorded ESPN ages; a future birth date is `null` |
+| `headshotUrl` | The roster's `headshot.href`, kept only when it is https media on ESPN's CDN (`shared/cdnurl`, the rule asset mirroring uses) | go-db: the 2 recorded headshots; the mapper and `cdnurl` tests reject other hosts, credentials, ports and schemes |
+| Squad order | Provider roster order (`squad_membership.roster_order`); rows written before 0027 fall back to shirt number, then name | go-db: the vector's order |
+| `location` | The roster's `team.location` | go-db and TS: `América` |
+| `record` | W-D-L, games, points and goal difference from the team's first stored standing row | go-db: a standing row built from the recorded profile's record item serves exactly the frontend's record (`3-1-0`, 4, 10, +7) |
+| `standing`, `standingSummary` | `{rank, competition}` and `"<ordinal> in <competition>"` from that row, where `competition` carries the label. The label is the team's table name when the season holds several stored tables (`Group B`, `Apertura`), else the competition's stored name; an unnamed table among several serves both as `null` | TS: the frontend's own parser reads the reader sentence back as the reader standing; go-db: single-table, multi-table and unnamed-table cases; `TestOrdinal` |
+| `scheduleAvailability`, schedule `scope` | `available`/`available` with `scope` `{competitionId, seasonId}` on every schedule row (`TeamMatch` = `Match` + `scope`) | team-insights.json `readerTeam`; Go drift test between the two OpenAPI schemas |
+| Partial failure | Only the identity, snapshot or freshness read, or a cancelled or timed-out request, fails the request with 500. A failed squad read serves `squad: []`; a failed schedule read serves `schedule: []` with both availabilities `unavailable`. Either way the response is `no-store` and the failure is logged with request id, operation, error type, SQLSTATE and the `row_bound_exceeded`/`missing_provider_id` flags, never dependency text | go-db: revoking the squad or schedule table and malformed detail JSON serve the vector's degraded blocks; TS: the frontend's same degradation equals the vector |
+| `GET …/teams/{teamId}/squad` | The frontend's `getSquad`: the same rows, `public, max-age=300`. Unknown team 404; a failed squad read is `200 []` `no-store`; a failed identity read, or a cancelled or timed-out request, is 500 | fake routing, go-db and the transport vectors |
+| Bounds and input | Squad at most 100 rows, schedule at most 200; one row past either fails that block closed rather than truncating. Both routes reject any query string with 400 | go-db at and one past each bound; a squad `EXPLAIN` reaches `player_external_ref` only through its index |
+| Cache headers | Team `public, max-age=120`, squad `public, max-age=300`, both documented in OpenAPI | transport vectors against OpenAPI |
+
+The standing label is a contract decision, not parity. ESPN's sentence names
+its sponsor label (`1st in Mexican Liga BBVA MX`); the reader cannot know that
+label and uses the stored names instead.
+
+The roster's colour and location are written before its squad, so a squad
+write the shrink guard refuses still records them.
+
+### Rollout: migration 0027
+
+**Migration `0027_team_squad_contract` must be applied to production before
+this change is merged.** It is additive: nullable `team.location`,
+`player.headshot_url` and `squad_membership.roster_order` (non-negative). It
+needs no new grants; the existing table grants cover the new columns. Both
+binaries embed an exact head of 27, so an older binary refuses 27 on restart.
+Follow the [version policy window](RELEASES.md#version-policy-and-its-cost):
+
+1. Verify the ledger. Apply 0027 alone only from 26. Below 26, finish the T10.2
+   rollout first: from 24 (the last owner report), 0025 per its
+   [recovery runbook](PARTICIPATION_RECOVERY.md#schema-rollout-and-rollback) and
+   then 0026; from 25, 0026 ([above](#cost-and-rollout)). Never `goto 27` across
+   that window.
+2. Apply 0027 under separate authorization.
+3. Merge so both services release.
+
+Existing rows hold `NULL` until the next roster refresh. Until then the reader
+serves `location` and `headshotUrl` as `null` and falls back to shirt-number
+order. Squads in leagues whose roster writes the shrink guard refuses keep
+their old memberships, so they get no roster order or headshots until those
+writes succeed. Their location and colour still update.
+
+Rolling back 0027 drops only those three columns. Do it after the 27 binaries
+are gone.
+
 ## Remaining gaps
 
 The full mismatch text for each gap is in `reader-contract.json` under `gaps`.
@@ -599,11 +657,10 @@ The gaps stay open until their tasks land.
 
 | Task | Gaps |
 |---|---|
-| **T10.3** team and squad | `team`, `team-location`, `team-record`, `standing-summary`, `squad`, `squad-fields`, `partial-failure`, `team-cache-doc` (OpenAPI documents 60s; the route serves 120s) |
 | **T10.4** player | `player`: no route or DTO |
 | **T16.6** news | `news`: a live ESPN proxy, not owned data |
 | **T17.3** provenance and freshness | `freshness-coverage`: no freshness headers on standings, top-scorers or news |
-| **T21.4** observability | `dependency-error-logging`: six handlers log raw dependency text. `handleTeam`'s and `handleCalendar`'s sanitized logging is the asserted reference |
+| **T21.4** observability | `dependency-error-logging`: six handlers log raw dependency text. The sanitized logging of `handleTeam`, `handleSquad` and `handleCalendar` is the asserted reference |
 
 Every check fails when its gap closes. To close one:
 

@@ -77,9 +77,13 @@ publishes its complete OpenAPI 3.1 contract at
 | `GET /v1/competitions/{comp}/{season}/calendar` | Postgres; one entry per UTC match day | 10 s live, otherwise 60 s |
 | `GET /v1/competitions/{comp}/{season}/standings` | Postgres | 60 s |
 | `GET /v1/competitions/{comp}/{season}/bracket` | Postgres read model | 10 s live, otherwise 60 s |
-| `GET /v1/competitions/{comp}/{season}/top-scorers` | Postgres | 60 s |
+| `GET /v1/competitions/{comp}/{season}/top-scorers` | Postgres; legacy goals-only board | 60 s |
+| `GET /v1/competitions/{comp}/{season}/leaders` | Postgres; goals/assists boards | 60 s |
+| `GET /v1/competitions/{comp}/{season}/teams/{teamId}` | Postgres; profile, squad and matches | 120 s; `no-store` when a squad or schedule block degrades |
+| `GET /v1/competitions/{comp}/{season}/teams/{teamId}/squad` | Postgres | 300 s; `no-store` when the squad read fails |
 | `GET /v1/competitions/{comp}/news` | live ESPN proxy, 90 s internal TTL | 60 s |
 | `GET /v1/matches/{id}` | Postgres | 30 s |
+| `GET /v1/matches/{id}/box-score` | Postgres; participation with availability | 30 s |
 
 Responses are shaped after the TypeScript models in `src/server/data/types.ts`,
 but DTO and query parity is not complete and the site still reads ESPN. Each

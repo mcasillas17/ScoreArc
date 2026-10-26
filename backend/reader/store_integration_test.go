@@ -364,6 +364,10 @@ func seedLigaTeam(t *testing.T, pool *pgxpool.Pool) {
 		('018f0000-0000-7000-8000-000000000101', 'Measured Player', 'Captain', 'Mexico'),
 		('018f0000-0000-7000-8000-000000000102', 'Unmeasured Player', NULL, NULL),
 		('018f0000-0000-7000-8000-000000000103', 'Null Statistics', NULL, NULL);
+		INSERT INTO player_external_ref (source, source_id, player_id) VALUES
+		('espn', '9101', '018f0000-0000-7000-8000-000000000101'),
+		('espn', '9102', '018f0000-0000-7000-8000-000000000102'),
+		('espn', '9103', '018f0000-0000-7000-8000-000000000103');
 		INSERT INTO squad_membership (competition_id, season_id, team_id, player_id, shirt_number, position, source) VALUES
 		('liga-mx', '2026-apertura', 'mex-america', '018f0000-0000-7000-8000-000000000101', 9, 'F', 'espn'),
 		('liga-mx', '2026-apertura', 'mex-america', '018f0000-0000-7000-8000-000000000102', NULL, NULL, 'espn'),
@@ -397,7 +401,13 @@ func teamIntegrationApp(t *testing.T, store *Store, logs *bytes.Buffer) *App {
 
 func assertTeamResponse(t *testing.T, response *httptest.ResponseRecorder) TeamProfile {
 	t.Helper()
-	if response.Code != 200 || response.Header().Get("Cache-Control") != "public, max-age=120" {
+	return teamResponse(t, response, "public, max-age=120")
+}
+
+// teamResponse: a 200 OpenAPI-valid profile with the given Cache-Control.
+func teamResponse(t *testing.T, response *httptest.ResponseRecorder, cacheControl string) TeamProfile {
+	t.Helper()
+	if response.Code != 200 || response.Header().Get("Cache-Control") != cacheControl {
 		t.Fatalf("team response: status=%d headers=%v body=%s", response.Code, response.Header(), response.Body.String())
 	}
 	var value any
@@ -442,17 +452,30 @@ func TestTeamProfileIntegration(t *testing.T) {
 	if _, err := pool.Exec(context.Background(), `UPDATE team SET color='ffff91', alternate_color='000080' WHERE id='mex-america'`); err != nil {
 		t.Fatal(err)
 	}
+	// Ages come from birth_date on the request's UTC date; a birth date after
+	// it is a data error, served as an unknown age, never a negative one.
+	if _, err := pool.Exec(context.Background(), `
+		UPDATE player SET birth_date = '2001-06-17' WHERE id = '018f0000-0000-7000-8000-000000000101';
+		UPDATE player SET birth_date = current_date + 365 WHERE id = '018f0000-0000-7000-8000-000000000102'`); err != nil {
+		t.Fatal(err)
+	}
+	// A second, later ref on the same source never displaces the first.
+	if _, err := pool.Exec(context.Background(), `INSERT INTO player_external_ref (source, source_id, player_id, first_seen_at)
+		VALUES ('espn', '0001', '018f0000-0000-7000-8000-000000000101', now() + interval '1 hour')`); err != nil {
+		t.Fatal(err)
+	}
 	var logs bytes.Buffer
 	router := teamIntegrationApp(t, store, &logs).router()
 	profile := assertTeamResponse(t, performRequest(router, "GET", ligaTeamPath))
-	if profile.Team.ID != "mex-america" || profile.Color == nil || *profile.Color != "#ffff91" || profile.AltColor == nil || *profile.AltColor != "#000080" || profile.Record == nil || profile.Record.Summary != "3-1-1" || profile.Record.Points == nil || *profile.Record.Points != 10 || profile.StandingSummary == nil || *profile.StandingSummary != "2 in liga-mx" {
+	if profile.Team.ID != "mex-america" || profile.Color == nil || *profile.Color != "#ffff91" || profile.AltColor == nil || *profile.AltColor != "#000080" || profile.Record == nil || profile.Record.Summary != "3-1-1" || profile.Record.Points == nil || *profile.Record.Points != 10 ||
+		profile.StandingSummary == nil || *profile.StandingSummary != "2nd in Liga MX" || profile.Standing == nil || *profile.Standing != (TeamStanding{Rank: 2, Competition: "Liga MX"}) {
 		t.Fatalf("identity/standing = %+v", profile)
 	}
 	if len(profile.Squad) != 3 {
 		t.Fatalf("squad length = %d", len(profile.Squad))
 	}
 	measured, nullStats, unmeasured := profile.Squad[0], profile.Squad[1], profile.Squad[2]
-	if measured.ID != "018f0000-0000-7000-8000-000000000101" || measured.Name != "Captain" || measured.Stats == nil || measured.Stats.Appearances == nil || *measured.Stats.Appearances != 5 || measured.Stats.TotalGoals == nil || *measured.Stats.TotalGoals != 3 || measured.Stats.GoalAssists == nil || *measured.Stats.GoalAssists != 0 || measured.Stats.TotalShots != nil {
+	if measured.Age == nil || *measured.Age < 25 || measured.ID != "9101" || measured.Name != "Captain" || measured.Stats == nil || measured.Stats.Appearances == nil || *measured.Stats.Appearances != 5 || measured.Stats.TotalGoals == nil || *measured.Stats.TotalGoals != 3 || measured.Stats.GoalAssists == nil || *measured.Stats.GoalAssists != 0 || measured.Stats.TotalShots != nil {
 		t.Fatalf("measured player = %+v stats=%+v", measured, measured.Stats)
 	}
 	if nullStats.Stats == nil || *nullStats.Stats != (PlayerSeasonStats{}) {
@@ -460,6 +483,9 @@ func TestTeamProfileIntegration(t *testing.T) {
 	}
 	if unmeasured.Name != "Unmeasured Player" || unmeasured.Stats != nil || unmeasured.Jersey != nil || unmeasured.Position != "" || unmeasured.Nationality != nil || unmeasured.Age != nil || unmeasured.HeadshotURL != nil {
 		t.Fatalf("unmeasured player = %+v", unmeasured)
+	}
+	if profile.ScheduleAvailability != (ScheduleAvailability{Results: "available", Upcoming: "available"}) {
+		t.Fatalf("schedule availability = %+v", profile.ScheduleAvailability)
 	}
 	if len(profile.Schedule) != 2 || profile.Schedule[0].Home.ID != "mex-america" || profile.Schedule[1].Away.ID != "mex-america" || profile.Schedule[0].Kickoff >= profile.Schedule[1].Kickoff {
 		t.Fatalf("schedule order/scope = %+v", profile.Schedule)
@@ -473,7 +499,7 @@ func TestTeamProfileIntegration(t *testing.T) {
 		t.Fatalf("shootout normalization = %+v", detail)
 	}
 	empty := assertTeamResponse(t, performRequest(router, "GET", strings.Replace(ligaTeamPath, "mex-america", "mex-empty", 1)))
-	if empty.Squad == nil || len(empty.Squad) != 0 || empty.Schedule == nil || len(empty.Schedule) != 0 || empty.Record != nil || empty.StandingSummary != nil || empty.Color != nil || empty.AltColor != nil || empty.Team.CrestURL != nil {
+	if empty.Squad == nil || len(empty.Squad) != 0 || empty.Schedule == nil || len(empty.Schedule) != 0 || empty.Record != nil || empty.Standing != nil || empty.StandingSummary != nil || empty.Color != nil || empty.AltColor != nil || empty.Team.CrestURL != nil {
 		t.Fatalf("legitimate empty team = %+v", empty)
 	}
 	for _, tc := range []struct {
@@ -483,6 +509,10 @@ func TestTeamProfileIntegration(t *testing.T) {
 		{strings.Replace(ligaTeamPath, "mex-america", "unknown", 1), "{\"error\":\"unknown team\"}\n", 404},
 		{strings.Replace(ligaTeamPath, "liga-mx", "unknown", 1), "{\"error\":\"unknown competition or season\"}\n", 400},
 		{strings.Replace(ligaTeamPath, "2026-apertura", "unknown", 1), "{\"error\":\"unknown competition or season\"}\n", 400},
+		{ligaTeamPath + "?detail=summary", "{\"error\":\"unknown query parameter\"}\n", 400},
+		{strings.Replace(ligaTeamPath, "mex-america", "unknown", 1) + "/squad", "{\"error\":\"unknown team\"}\n", 404},
+		{strings.Replace(ligaTeamPath, "liga-mx", "unknown", 1) + "/squad", "{\"error\":\"unknown competition or season\"}\n", 400},
+		{ligaTeamPath + "/squad?limit=1", "{\"error\":\"unknown query parameter\"}\n", 400},
 	} {
 		response := performRequest(router, "GET", tc.path)
 		if response.Code != tc.status || response.Body.String() != tc.body || response.Header().Get("Cache-Control") != "no-store" {
@@ -495,7 +525,7 @@ func TestTeamProfileMissingColoursMigration(t *testing.T) {
 	store, pool := newIntegrationStoreThrough(t, "0021_finalization_invariants.up.sql")
 	seedLigaTeam(t, pool)
 	ctx := context.Background()
-	profile, err := store.Team(ctx, "mex-america", "liga-mx", "2026-apertura")
+	profile, err := store.Team(ctx, "mex-america", "liga-mx", "2026-apertura", time.Now())
 	var pgErr *pgconn.PgError
 	if profile != nil || !errors.As(err, &pgErr) || pgErr.Code != "42703" || pgErr.Message != "column t.color does not exist" {
 		t.Fatalf("expected production regression, got profile=%+v err=%v", profile, err)
@@ -529,20 +559,26 @@ func TestTeamProfileMissingColoursMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 0024 keys standing by table; the current profile query orders by it.
-	if _, err := pool.Exec(ctx, mustRead(t, "0024_standing_table_membership.up.sql")); err != nil {
-		t.Fatal(err)
+	// 0027 holds the location, headshot and roster order it selects.
+	for _, migration := range []string{"0024_standing_table_membership.up.sql", "0027_team_squad_contract.up.sql"} {
+		if _, err := pool.Exec(ctx, mustRead(t, migration)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	profileAfter := assertTeamResponse(t, performRequest(router, "GET", ligaTeamPath))
 	if profileAfter.Color != nil || profileAfter.AltColor != nil || len(profileAfter.Squad) != 3 || len(profileAfter.Schedule) != 2 {
 		t.Fatalf("profile after migration = %+v", profileAfter)
 	}
-	t.Log("after migrations 0022 + 0023 + 0024: HTTP 200, complete OpenAPI-valid profile; colours remain null")
+	t.Log("after migrations 0022 + 0023 + 0024 + 0027: HTTP 200, complete OpenAPI-valid profile; colours remain null")
 }
 
+// Of the profile's own reads, only identity fails the request. A failed squad or schedule query
+// is served as an empty block (the schedule as unavailable) with the same
+// request-linked, safe diagnostics.
 func TestTeamProfileQueryFailures(t *testing.T) {
 	store, pool := newIntegrationStore(t)
 	seedLigaTeam(t, pool)
-	for _, tc := range []struct{ table, operation string }{{"standing", "identity"}, {"squad_membership", "squad"}, {"match", "schedule"}} {
+	for _, tc := range []struct{ table, operation string }{{"standing", "identity"}, {"squad_membership", "squad"}, {"match_detail", "schedule"}} {
 		t.Run(tc.operation, func(t *testing.T) {
 			// The table name is a fixed test-owned value, never caller input.
 			if _, err := pool.Exec(context.Background(), "REVOKE SELECT ON "+tc.table+" FROM scorearc_reader"); err != nil {
@@ -555,7 +591,12 @@ func TestTeamProfileQueryFailures(t *testing.T) {
 			})
 			var logs bytes.Buffer
 			router := teamIntegrationApp(t, store, &logs).router()
-			assertTeamFailure(t, performRequest(router, "GET", ligaTeamPath), &logs, tc.operation, "42501")
+			response := performRequest(router, "GET", ligaTeamPath)
+			if tc.operation == "identity" {
+				assertTeamFailure(t, response, &logs, tc.operation, "42501")
+				return
+			}
+			assertDegradedTeam(t, response, &logs, tc.operation, "42501")
 		})
 	}
 	t.Run("malformed schedule JSON", func(t *testing.T) {
@@ -564,6 +605,112 @@ func TestTeamProfileQueryFailures(t *testing.T) {
 		}
 		var logs bytes.Buffer
 		router := teamIntegrationApp(t, store, &logs).router()
-		assertTeamFailure(t, performRequest(router, "GET", ligaTeamPath), &logs, "schedule", "")
+		assertDegradedTeam(t, performRequest(router, "GET", ligaTeamPath), &logs, "schedule", "")
 	})
+	t.Run("a member without a provider id fails the squad closed", func(t *testing.T) {
+		// A canonical UUID must never stand in for the provider id.
+		if _, err := pool.Exec(context.Background(), `DELETE FROM player_external_ref WHERE source_id='9103'`); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if _, err := pool.Exec(context.Background(), `INSERT INTO player_external_ref (source, source_id, player_id)
+				VALUES ('espn','9103','018f0000-0000-7000-8000-000000000103')`); err != nil {
+				t.Error(err)
+			}
+		})
+		var logs bytes.Buffer
+		router := teamIntegrationApp(t, store, &logs).router()
+		profile := teamResponse(t, performRequest(router, "GET", ligaTeamPath), "no-store")
+		if len(profile.Squad) != 0 || !strings.Contains(logs.String(), `"operation":"squad"`) ||
+			!strings.Contains(logs.String(), `"missing_provider_id":true`) {
+			t.Fatalf("squad %+v logs %s", profile.Squad, logs.String())
+		}
+		if response := performRequest(router, "GET", ligaTeamPath+"/squad"); response.Code != 200 ||
+			response.Body.String() != "[]\n" || response.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("squad route: %d %s", response.Code, response.Body.String())
+		}
+	})
+	// Both blocks are served whole at their bound and fail closed one row past
+	// it, never truncated. mex-empty holds nothing else.
+	bulk := func(t *testing.T, from, count int, statements ...string) {
+		t.Helper()
+		for _, statement := range statements {
+			if _, err := pool.Exec(context.Background(), statement+` FROM generate_series($1::int, $1::int + $2::int - 1) n`, from, count); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	const id = `('018f0000-0000-7000-8000-' || lpad(n::text, 12, '0'))::uuid`
+	squadAt := func(t *testing.T, from, count int) {
+		bulk(t, from, count,
+			`INSERT INTO player (id, full_name) SELECT `+id+`, 'Bulk ' || n`,
+			`INSERT INTO player_external_ref (source, source_id, player_id) SELECT 'espn', 'bulk-' || n, `+id,
+			`INSERT INTO squad_membership (competition_id, season_id, team_id, player_id, source)
+			 SELECT 'liga-mx', '2026-apertura', 'mex-empty', `+id+`, 'espn'`)
+	}
+	scheduleAt := func(t *testing.T, from, count int) {
+		bulk(t, from, count, `INSERT INTO match (id, competition_id, season_id, kickoff, state, home_team_id, away_team_id, source)
+			SELECT `+id+`, 'liga-mx', '2026-apertura', '2020-01-01T00:00:00Z'::timestamptz + n * interval '1 day',
+			       'scheduled', 'mex-empty', 'nat-arg', 'espn'`)
+	}
+	emptyPath := strings.Replace(ligaTeamPath, "mex-america", "mex-empty", 1)
+	t.Run("both blocks are served whole at their row bound", func(t *testing.T) {
+		squadAt(t, 1001, maxSquadRows)
+		scheduleAt(t, 2001, maxTeamScheduleRows)
+		router := teamIntegrationApp(t, store, &bytes.Buffer{}).router()
+		profile := assertTeamResponse(t, performRequest(router, "GET", emptyPath))
+		if len(profile.Squad) != maxSquadRows || len(profile.Schedule) != maxTeamScheduleRows {
+			t.Fatalf("served %d players and %d matches", len(profile.Squad), len(profile.Schedule))
+		}
+	})
+	t.Run("one row past either bound fails that block closed", func(t *testing.T) {
+		squadAt(t, 1001+maxSquadRows, 1)
+		scheduleAt(t, 2001+maxTeamScheduleRows, 1)
+		var logs bytes.Buffer
+		router := teamIntegrationApp(t, store, &logs).router()
+		profile := teamResponse(t, performRequest(router, "GET", emptyPath), "no-store")
+		if len(profile.Squad) != 0 || len(profile.Schedule) != 0 ||
+			profile.ScheduleAvailability != (ScheduleAvailability{Results: "unavailable", Upcoming: "unavailable"}) ||
+			strings.Count(logs.String(), `"row_bound_exceeded":true`) != 2 {
+			t.Fatalf("served %d players, %d matches; logs %s", len(profile.Squad), len(profile.Schedule), logs.String())
+		}
+		if response := performRequest(router, "GET", emptyPath+"/squad"); response.Code != 200 ||
+			response.Body.String() != "[]\n" || response.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("squad route: %d %s", response.Code, response.Body.String())
+		}
+	})
+}
+
+// assertDegradedTeam: an uncached 200 profile whose failed block is empty
+// (the other block intact) and a request-linked log naming only the operation.
+func assertDegradedTeam(t *testing.T, response *httptest.ResponseRecorder, logs *bytes.Buffer, operation, sqlstate string) {
+	t.Helper()
+	profile := teamResponse(t, response, "no-store")
+	unavailable := ScheduleAvailability{Results: "unavailable", Upcoming: "unavailable"}
+	switch operation {
+	case "squad":
+		if len(profile.Squad) != 0 || len(profile.Schedule) != 2 || profile.ScheduleAvailability == unavailable {
+			t.Fatalf("squad failure = %+v", profile)
+		}
+	case "schedule":
+		if len(profile.Squad) != 3 || len(profile.Schedule) != 0 || profile.ScheduleAvailability != unavailable {
+			t.Fatalf("schedule failure = %+v", profile)
+		}
+	}
+	if profile.Record == nil {
+		t.Fatal("profile lost with its block")
+	}
+	logged := map[string]any{}
+	for _, line := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatal(err)
+		}
+		if entry["msg"] == "team" {
+			logged = entry
+		}
+	}
+	if logged["request_id"] != response.Header().Get("X-Request-Id") || logged["operation"] != operation || logged["sqlstate"] != sqlstate {
+		t.Fatalf("degraded block lacks request-linked diagnostics: %v", logged)
+	}
 }

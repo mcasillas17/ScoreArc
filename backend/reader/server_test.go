@@ -82,7 +82,7 @@ func (f *fakeReaderStore) Calendar(context.Context, string, string) (SeasonCalen
 	f.calls++
 	return f.calendar, f.calendarErr
 }
-func (f *fakeReaderStore) Team(_ context.Context, teamID, _, _ string) (*TeamProfile, error) {
+func (f *fakeReaderStore) Team(_ context.Context, teamID, _, _ string, _ time.Time) (*TeamProfile, error) {
 	f.calls++
 	if f.teamErr != nil {
 		return nil, f.teamErr
@@ -92,6 +92,17 @@ func (f *fakeReaderStore) Team(_ context.Context, teamID, _, _ string) (*TeamPro
 		return nil, nil
 	}
 	return profile, nil
+}
+func (f *fakeReaderStore) Squad(_ context.Context, teamID, _, _ string, _ time.Time) ([]SquadPlayer, error) {
+	f.calls++
+	if f.teamErr != nil {
+		return nil, f.teamErr
+	}
+	profile, known := f.teams[teamID]
+	if !known {
+		return nil, ErrNotFound
+	}
+	return profile.Squad, nil
 }
 func (f *fakeReaderStore) Standings(context.Context, string, string, string) ([]Group, error) {
 	f.calls++

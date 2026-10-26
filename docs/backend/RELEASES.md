@@ -790,3 +790,14 @@ defines prerequisites, preserved facts, legacy limits and rollback risks. Down
 restores old seals but drops pending recovery evidence; preserve that ledger and
 resolve outstanding work before any separately authorized rollback. This code
 change authorizes no production SQL, merge or deployment.
+
+## Migrations 0026 and 0027: reader contracts and team squad contract
+
+T10.2 adds `0026_reader_contracts` and T10.3 adds `0027_team_squad_contract`;
+both are additive. The T10.3 binaries embed head 27. **0027 must be applied to
+production before the merge that ships it**, in order after 0025 and 0026 and
+never by `goto 27` across 0025's recovery window. The version window above
+applies, and each step needs separate authorization. Steps, preconditions per
+ledger version and rollback:
+[T10.2 rollout](READER_CONTRACT.md#cost-and-rollout) and
+[0027 rollout](READER_CONTRACT.md#rollout-migration-0027).

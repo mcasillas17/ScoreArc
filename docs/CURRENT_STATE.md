@@ -504,8 +504,8 @@ separate.
 - **`DataStore` has 12 methods** (`getMatches`, `getFixtures`,
   `getLiveWindow`, `getUpcoming`, `getStandings`, `getBracket`,
   `getMatchSummary`, `getLeaders`,
-  `getNews`, `getTeam`, `getSquad`, `getPlayer`) against **10 reader
-  routes** (calendar, legacy top-scorers and box-score have no direct store method). #191 removed the redundant `getTopScorers`/`getTopAssists` wrappers,
+  `getNews`, `getTeam`, `getSquad`, `getPlayer`) against **11 reader
+  routes** on the T10.3 branch (calendar, legacy top-scorers and box-score have no direct store method). #191 removed the redundant `getTopScorers`/`getTopAssists` wrappers,
   not their public product/API capabilities: both still use `getLeaders`.
   The count is corrected; the underlying parity gaps remain real.
 - **T10.1 match queries: closed in code October 6, not deployed.** `/matches`
@@ -519,11 +519,20 @@ separate.
 - **T10.2 implementation October 20, pending review/release:** leaders/assists
   (default 10/max 30), operand-derived team statistics, full captured lineups and
   bounded appearance-backed box scores with explicit availability. Four harness
-  gaps are replaced by positive assertions. Migration 0026 is local only;
-  exact schema 26 is required for these binaries. The last owner-reported schema
-  was 24, with 0025 missing; neither 25 nor 26 is verified deployed. Do not repeat 0024.
+  gaps are replaced by positive assertions. Migration 0026 is local only. The last
+  owner-reported schema was 24, with 0025 missing; neither 25 nor 26 is verified
+  deployed. Do not repeat 0024.
   See [contract and rollout](backend/READER_CONTRACT.md#t102-leaders-statistics-and-participation-contract).
-  Team/player expansion, broader freshness and cutover remain open.
+  Player expansion, broader freshness and cutover remain open.
+- **T10.3 teams: implemented October 26, pending review/release.** The team
+  profile gains location, standing, `scheduleAvailability`, schedule scope and
+  degraded (not failed) squad/schedule blocks, and its existing derived record
+  is now contract-tested against the frontend's record item; a standalone `getSquad` route
+  serves provider-id players with age, headshot and roster order. All eight
+  T10.3 harness gaps are positive assertions. Migration 0027 is local only, and
+  these binaries require **exact schema 27**: apply 0025, 0026, then 0027 per
+  the [rollout](backend/READER_CONTRACT.md#rollout-migration-0027) before the
+  merge. Not an `apiStore` or cutover.
 - **T10.10 derived standings: closed in code October 14 (option B), not
   deployed.** The Leagues Cup phase tables and the MLS overall table stay a
   TypeScript derivation. The reader serves only their inputs, and a future
@@ -540,8 +549,9 @@ separate.
   T17.3/cutover work.
 - **Six reader handlers log raw dependency error text** (matches, standings,
   bracket, top-scorers, news, match summary), which can carry connection
-  details; response bodies stay sanitized. `handleTeam` logs only operation,
-  error type and SQLSTATE and is the reference. Owned by T21.4; pinned as gap
+  details; response bodies stay sanitized. `handleTeam` and `handleSquad` log
+  only operation, error type, SQLSTATE and two fail-closed flags, and with
+  `handleCalendar` are the reference. Owned by T21.4; pinned as gap
   `T21.4-dependency-error-logging`.
 
 ## 6. Durability blockers

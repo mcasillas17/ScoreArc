@@ -6,7 +6,7 @@
 today; under this proposal the backend will mint the same slugs as public
 player ids. It does not yet: it keys players by canonical UUIDv7 through
 `player_external_ref` and serves no player slug (public player identity is
-T10.3/T10.4). If the two algorithms drift, every player URL 404s on the day
+T10.4). If the two algorithms drift, every player URL 404s on the day
 the frontend migrates to our API — silently, per player. This document exists
 so they cannot drift.
 
@@ -82,10 +82,13 @@ Some responses carry the provider athlete id as a provider-scoped value, never
 a public id and never in a URL: `Scorer.athleteId`, `LineupPlayer.athleteId`
 and `StatLeader.athleteId`, which the route layer resolves to the player's slug
 for links, and, on the frontend API, `SquadPlayer.id` and `PlayerProfile.id`.
-Of those fields the reader serves only `Scorer.athleteId` today, nullable (T16.2,
-[READER_CONTRACT](READER_CONTRACT.md#t162-identity-and-dto-contract)).
+The reader serves all of them except `PlayerProfile.id` (T10.4):
+`Scorer.athleteId` (nullable, T16.2,
+[READER_CONTRACT](READER_CONTRACT.md#t162-identity-and-dto-contract)),
+`LineupPlayer.athleteId` and `StatLeader.athleteId` (T10.2), and
+`SquadPlayer.id` (T10.3, [READER_CONTRACT](READER_CONTRACT.md#t103-team-and-squad-contract)).
 
-One remaining embedding is not an exception but an open gap: a lineup player's
-`jersey` URL embeds the provider event and athlete ids, on the reader and the
-frontend API alike. The harness registers it as `T10.2-lineups`, which owns
-the change; until then the rule above does not hold for those URLs.
+One remaining embedding is not an exception: a lineup player's `jersey` URL
+embeds the provider event and athlete ids, on the reader and the frontend API
+alike. T10.2 closed `T10.2-lineups` without changing it, so no gap registers it
+today; until one does, the rule above does not hold for those URLs.

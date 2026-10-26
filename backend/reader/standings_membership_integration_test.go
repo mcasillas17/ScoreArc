@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -157,8 +158,17 @@ func TestTeamProfileUsesTheFirstTableMembership(t *testing.T) {
 		('liga-mx','2026-apertura','mex-america','9','Apertura',2,5,3,1,1,10,'espn')`); err != nil {
 		t.Fatal(err)
 	}
-	profile, err := store.Team(context.Background(), "mex-america", "liga-mx", "2026-apertura")
-	if err != nil || profile == nil || profile.StandingSummary == nil || *profile.StandingSummary != "2 in liga-mx" || profile.Record.Summary != "3-1-1" {
+	profile, err := store.Team(context.Background(), "mex-america", "liga-mx", "2026-apertura", time.Now())
+	if err != nil || profile == nil || profile.StandingSummary == nil || *profile.StandingSummary != "2nd in Apertura" || profile.Record.Summary != "3-1-1" {
 		t.Fatalf("profile %+v err %v, want the Apertura membership", profile, err)
+	}
+	// An unnamed table among several has no truthful label: the record stays,
+	// the standing is not served under the competition's name.
+	if _, err := pool.Exec(context.Background(), `UPDATE standing SET group_name = NULL WHERE table_key = '9'`); err != nil {
+		t.Fatal(err)
+	}
+	profile, err = store.Team(context.Background(), "mex-america", "liga-mx", "2026-apertura", time.Now())
+	if err != nil || profile.Standing != nil || profile.StandingSummary != nil || profile.Record == nil {
+		t.Fatalf("unnamed table profile %+v err %v", profile, err)
 	}
 }

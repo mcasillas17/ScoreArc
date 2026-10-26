@@ -247,7 +247,7 @@ func TestFreshnessHeadersPreserveMatchRouteBodies(t *testing.T) {
 		matches:  []Match{},
 		bracket:  []BracketRound{},
 		summary:  &MatchSummary{},
-		teams:    map[string]*TeamProfile{"arg": {Team: espn.Team{ID: "arg"}, Squad: []SquadPlayer{}, Schedule: []Match{}}},
+		teams:    map[string]*TeamProfile{"arg": {Team: espn.Team{ID: "arg"}, Squad: []SquadPlayer{}, Schedule: []TeamMatch{}}},
 		calendar: SeasonCalendar{Days: []CalendarDay{{Date: "2026-07-19", Matches: 1, Finished: 1}}},
 	}
 	router := newTestApp(t, store, &fakeNewsReader{}).router()

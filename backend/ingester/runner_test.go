@@ -211,6 +211,7 @@ func (f *fakeSource) Roster(
 		squad = model.Squad{
 			TeamSourceID: teamSourceID,
 			Color:        "ffff91",
+			Location:     "Club Town",
 			Players: []model.SquadMember{{
 				SourceID: teamSourceID + "-player",
 				FullName: teamSourceID + " Player",
@@ -387,6 +388,7 @@ type fakeRepository struct {
 	squadCalls        int
 	squadTeams        []string
 	teamColours       map[string]string
+	teamLocations     map[string]string
 	colourErrors      map[string]error
 	squadErrors       map[string]error
 	bioCandidates     map[string]uuid.UUID
@@ -1038,13 +1040,15 @@ func (f *fakeRepository) ReplaceSquad(
 	f.squadTeams = append(f.squadTeams, teamID)
 	return f.squadErrors[teamID]
 }
-func (f *fakeRepository) SetTeamColour(_ context.Context, teamID, colour string) error {
+func (f *fakeRepository) SetTeamRosterIdentity(_ context.Context, teamID, colour, location string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	// Recorded exactly as passed: the never-blank rule belongs to the store.
 	if f.teamColours == nil {
-		f.teamColours = make(map[string]string)
+		f.teamColours, f.teamLocations = make(map[string]string), make(map[string]string)
 	}
 	f.teamColours[teamID] = colour
+	f.teamLocations[teamID] = location
 	return f.colourErrors[teamID]
 }
 
@@ -5791,8 +5795,8 @@ func TestLiveCycleWritesMatchDetailOncePerPoll(t *testing.T) {
 	}
 }
 
-// The club's colour rides along on the roster payload the squad refresh
-// already fetches, so capturing it must cost no extra request.
+// The club's colour and location ride along on the roster payload the squad
+// refresh already fetches, so capturing them must cost no extra request.
 func TestSquadRefreshCapturesClubColour(t *testing.T) {
 	src := &fakeSource{standings: squadTestStandings("one", "two", "three")}
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
@@ -5810,8 +5814,8 @@ func TestSquadRefreshCapturesClubColour(t *testing.T) {
 			len(repo.teamColours), len(repo.standingTeamIDs))
 	}
 	for teamID, colour := range repo.teamColours {
-		if colour != "ffff91" {
-			t.Fatalf("team %s colour = %q, want ffff91", teamID, colour)
+		if colour != "ffff91" || repo.teamLocations[teamID] != "Club Town" {
+			t.Fatalf("team %s colour %q location %q, want ffff91 and Club Town", teamID, colour, repo.teamLocations[teamID])
 		}
 	}
 	// One roster request per club, and nothing else: the colour is free.
@@ -5821,9 +5825,44 @@ func TestSquadRefreshCapturesClubColour(t *testing.T) {
 	}
 }
 
-// A club whose colour the provider omits is not a failure. Blanking a colour
-// already held would lose good data to a bad response.
-func TestSquadRefreshSkipsAnEmptyColour(t *testing.T) {
+// Colour and location are club identity: a squad write the shrink guard
+// rejects must not cost them.
+func TestSquadRefreshRecordsRosterIdentityWhenTheSquadWriteIsRejected(t *testing.T) {
+	src := &fakeSource{standings: squadTestStandings("one")}
+	repo := &fakeRepository{
+		existing:    map[string]store.MatchRow{},
+		squadErrors: map[string]error{fakeTeamID("one"): store.ErrPartialReplacement},
+	}
+	worker := testRunner(src, repo, squadTestCompetition())
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.teamColours[fakeTeamID("one")] != "ffff91" || repo.teamLocations[fakeTeamID("one")] != "Club Town" {
+		t.Fatalf("identity after a rejected squad: colours %v locations %v", repo.teamColours, repo.teamLocations)
+	}
+}
+
+// Identity is written first, so its failure must not cost the squad write.
+func TestSquadRefreshWritesTheSquadWhenTheIdentityWriteFails(t *testing.T) {
+	src := &fakeSource{standings: squadTestStandings("one")}
+	repo := &fakeRepository{
+		existing:     map[string]store.MatchRow{},
+		colourErrors: map[string]error{fakeTeamID("one"): errors.New("identity write failed")},
+	}
+	worker := testRunner(src, repo, squadTestCompetition())
+	worker.runCycle(context.Background(), true)
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.squadCalls != 1 {
+		t.Fatalf("squad writes = %d, want 1 despite the failed identity write", repo.squadCalls)
+	}
+}
+
+// A roster without a colour or location is not a failure: its empty values
+// go to the store, which keeps what it already holds.
+func TestSquadRefreshPassesAnEmptyIdentityThrough(t *testing.T) {
 	src := &fakeSource{
 		standings: squadTestStandings("one"),
 		rosters: map[string]model.Squad{
@@ -5839,8 +5878,11 @@ func TestSquadRefreshSkipsAnEmptyColour(t *testing.T) {
 
 	repo.mu.Lock()
 	defer repo.mu.Unlock()
-	if _, wrote := repo.teamColours["one"]; wrote {
-		t.Fatalf("wrote a colour for a club that sent none: %q", repo.teamColours["one"])
+	// Passed through empty, for the store's no-op to keep what it holds
+	// (TestReplaceSquadStoresRosterOrderHeadshotAndTeamIdentity).
+	colour, wrote := repo.teamColours[fakeTeamID("one")]
+	if !wrote || colour != "" || repo.teamLocations[fakeTeamID("one")] != "" {
+		t.Fatalf("identity call = %q/%q (called %v), want the roster's empty values", colour, repo.teamLocations[fakeTeamID("one")], wrote)
 	}
 	if repo.squadCalls == 0 {
 		t.Fatal("squad was not written at all -- the missing colour must not block it")

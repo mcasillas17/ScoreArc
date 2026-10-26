@@ -73,28 +73,30 @@ WHERE competition_id=$1 AND season_id=$2 AND team_id=$3`,
 	}
 
 	keep := make([]uuid.UUID, 0, len(resolved))
-	for _, row := range resolved {
+	for order, row := range resolved {
 		if _, err := tx.Exec(opCtx, `
 UPDATE player SET
-  birth_date  = COALESCE($2, birth_date),
-  nationality = COALESCE(NULLIF($3, ''), nationality),
-  updated_at  = now()
+  birth_date   = COALESCE($2, birth_date),
+  nationality  = COALESCE(NULLIF($3, ''), nationality),
+  headshot_url = COALESCE(NULLIF($4, ''), headshot_url),
+  updated_at   = now()
 WHERE id=$1`,
-			row.playerID, row.member.BirthDate, row.member.Nationality,
+			row.playerID, row.member.BirthDate, row.member.Nationality, row.member.HeadshotURL,
 		); err != nil {
 			return fmt.Errorf("update squad player demographics: %w", err)
 		}
 		if _, err := tx.Exec(opCtx, `
 INSERT INTO squad_membership
-  (competition_id, season_id, team_id, player_id, shirt_number, position, source)
-VALUES ($1,$2,$3,$4,$5,$6,$7)
+  (competition_id, season_id, team_id, player_id, shirt_number, position, source, roster_order)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 ON CONFLICT (competition_id, season_id, team_id, player_id) DO UPDATE SET
   shirt_number = EXCLUDED.shirt_number,
   position     = EXCLUDED.position,
   source       = EXCLUDED.source,
+  roster_order = EXCLUDED.roster_order,
   updated_at   = now()`,
 			competitionID, seasonID, teamID, row.playerID, row.member.Number,
-			nullIfEmpty(row.member.Position), source,
+			nullIfEmpty(row.member.Position), source, order,
 		); err != nil {
 			return fmt.Errorf("upsert squad membership: %w", err)
 		}
@@ -157,25 +159,28 @@ WHERE competition_id=$1 AND season_id=$2 AND team_id=$3
 	return nil
 }
 
-// SetTeamColour records a club's primary colour, captured from the roster
-// payload the squad refresh already fetches.
+// SetTeamRosterIdentity records a club's primary colour and location label,
+// captured from the roster payload the squad refresh already fetches.
 //
-// Deliberately not folded into ReplaceSquad: a club's colour is identity, not
-// squad membership, and it must survive a squad write being rejected for
-// shrinking too far. It is also a no-op for an empty colour rather than an
-// error -- a club whose colour the provider omits is not a failure, and
-// blanking a colour we already hold would lose good data to a bad response.
-func (s *Store) SetTeamColour(ctx context.Context, teamID, colour string) error {
-	if teamID == "" || colour == "" {
+// Deliberately not folded into ReplaceSquad: both are club identity, not
+// squad membership, and the squad refresh writes them first so they survive
+// a squad write being rejected for shrinking too far. An empty value is a no-op rather than an error -- a club
+// whose colour or location the provider omits is not a failure, and blanking
+// a value we already hold would lose good data to a bad response.
+func (s *Store) SetTeamRosterIdentity(ctx context.Context, teamID, colour, location string) error {
+	if teamID == "" || (colour == "" && location == "") {
 		return nil
 	}
 	_, err := s.pool.Exec(ctx, `
 UPDATE team
-   SET color = $2, updated_at = now()
+   SET color      = COALESCE(NULLIF($2, ''), color),
+       location   = COALESCE(NULLIF($3, ''), location),
+       updated_at = now()
  WHERE id = $1
-   AND (color IS DISTINCT FROM $2)`, teamID, colour)
+   AND (color IS DISTINCT FROM COALESCE(NULLIF($2, ''), color)
+        OR location IS DISTINCT FROM COALESCE(NULLIF($3, ''), location))`, teamID, colour, location)
 	if err != nil {
-		return fmt.Errorf("set team colour: %w", err)
+		return fmt.Errorf("set team roster identity: %w", err)
 	}
 	return nil
 }

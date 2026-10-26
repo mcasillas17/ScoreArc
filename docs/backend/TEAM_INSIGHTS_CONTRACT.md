@@ -58,11 +58,9 @@ split. Broader performance eligibility tests live separately.
 Go consumes the same JSON. Exact DTO serialization detects dropped/changed
 fields, then the committed OpenAPI schemas validate the serialized objects.
 Negative schema checks reject a missing required nullable score and a string
-score. Explicit gap assertions pin absent per-match `scope` in both reader
-objects and OpenAPI; absent `standing` and `scheduleAvailability` are pinned by
-the reader contract harness (gap T10.3-team in `reader_contract_test.go`).
-These assertions fail when the gaps are implemented so the documented contract
-must be updated.
+score. Since T10.3 the reader team carries `standing` and `scheduleAvailability`,
+and each schedule row its `scope` (OpenAPI `TeamMatch`), pinned in `readerTeam`.
+Matches-route rows carry no `scope`, in both the vectors and the `Match` schema.
 
 `TestTeamContractHTTPQueriesAndErrors` uses actual routing and handlers with a
 fake storage dependency. (Route inventory and match-query parity (T10.1) are owned by

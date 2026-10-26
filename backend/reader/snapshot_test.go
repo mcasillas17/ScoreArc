@@ -279,7 +279,7 @@ func TestMatchRoutesKeepBodyAndFreshnessInOneSnapshot(t *testing.T) {
 		{"calendar", "/v1/competitions/world-cup/2026/calendar", func(s *Store) (any, error) { return s.Calendar(ctx, "world-cup", "2026") }},
 		{"bracket", "/v1/competitions/world-cup/2026/bracket", func(s *Store) (any, error) { return s.Bracket(ctx, "world-cup", "2026") }},
 		{"summary", "/v1/matches/" + finalMatchID, func(s *Store) (any, error) { return s.MatchSummary(ctx, finalMatchID) }},
-		{"team", "/v1/competitions/world-cup/2026/teams/nat-arg", func(s *Store) (any, error) { return s.Team(ctx, "nat-arg", "world-cup", "2026") }},
+		{"team", "/v1/competitions/world-cup/2026/teams/nat-arg", func(s *Store) (any, error) { return s.Team(ctx, "nat-arg", "world-cup", "2026", time.Now()) }},
 	} {
 		t.Run(route.name, func(t *testing.T) {
 			store, admin := newIntegrationStore(t)

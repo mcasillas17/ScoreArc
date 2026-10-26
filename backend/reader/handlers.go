@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -279,8 +280,10 @@ func (a *App) handleMatchSummary(writer http.ResponseWriter, request *http.Reque
 // with season statistics, and the club's matches and results.
 //
 // A team we do not hold is 404, not 500: the request was well-formed and the
-// answer is that there is no such team here. An unknown competition stays 400,
-// matching the other handlers -- that is a malformed request, not a miss.
+// answer is that there is no such team here. An unknown competition or a query
+// string stays 400, matching the other handlers. A failed identity, snapshot
+// or freshness read is a 500; a failed squad or schedule is served empty,
+// logged and not cached.
 func (a *App) handleTeam(writer http.ResponseWriter, request *http.Request) {
 	competition := chi.URLParam(request, "comp")
 	season := chi.URLParam(request, "season")
@@ -289,30 +292,19 @@ func (a *App) handleTeam(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusBadRequest, "unknown competition or season")
 		return
 	}
+	if err := parseNoQuery(request.URL.RawQuery); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
 	reader, finish, ok := a.beginMatchSnapshot(writer, request)
 	if !ok {
 		return
 	}
 	defer finish()
-	profile, err := reader.Team(request.Context(), teamID, competition, season)
+	profile, err := reader.Team(request.Context(), teamID, competition, season, a.clock())
 	if err != nil {
 		finish()
-		id, _ := request.Context().Value(requestIDKey).(string)
-		operation, cause := "unknown", err
-		var readErr *teamReadError
-		if errors.As(err, &readErr) {
-			operation, cause = readErr.operation, readErr.err
-		}
-		var pgErr *pgconn.PgError
-		sqlstate := ""
-		if errors.As(err, &pgErr) {
-			sqlstate = pgErr.Code
-		}
-		// Connection errors may include DSNs; PostgreSQL messages/detail may
-		// include row values. Log the operation and safe error metadata only.
-		a.logger.Error("team",
-			"request_id", id, "competition", competition, "season", season, "team", teamID,
-			"operation", operation, "error_type", fmt.Sprintf("%T", cause), "sqlstate", sqlstate)
+		a.logTeamError(request, competition, season, teamID, err)
 		writeError(writer, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -321,15 +313,98 @@ func (a *App) handleTeam(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusNotFound, "unknown team")
 		return
 	}
+	for _, failure := range profile.failures {
+		a.logTeamError(request, competition, season, teamID, failure)
+		if cancelled(request, failure) {
+			finish()
+			writeError(writer, http.StatusInternalServerError, "internal error")
+			return
+		}
+	}
 	if profile.Squad == nil {
 		profile.Squad = []SquadPlayer{}
 	}
 	if profile.Schedule == nil {
-		profile.Schedule = []Match{}
+		profile.Schedule = []TeamMatch{}
 	}
 	if !a.attachFreshness(writer, request, reader, finish, freshnessScope{Competition: competition, Season: season, TeamID: teamID}) {
 		return
 	}
-	cacheFor(writer, 120)
+	if len(profile.failures) > 0 {
+		// A transient child failure must not be cached as the team's state.
+		writer.Header().Set("Cache-Control", "no-store")
+	} else {
+		cacheFor(writer, 120)
+	}
 	writeJSON(writer, http.StatusOK, profile)
+}
+
+// One club's squad without its profile or matches: the frontend's getSquad,
+// which the player index calls for every club in a competition. Not match
+// data, so no freshness headers; cached as long as the frontend caches it.
+// As in getSquad and the team profile, a failed squad read is an empty squad,
+// logged and not cached; a failed identity read or a cancelled or timed-out
+// request is a 500.
+func (a *App) handleSquad(writer http.ResponseWriter, request *http.Request) {
+	competition := chi.URLParam(request, "comp")
+	season := chi.URLParam(request, "season")
+	teamID := chi.URLParam(request, "teamId")
+	if _, _, ok := a.resolve(competition, season); !ok {
+		writeError(writer, http.StatusBadRequest, "unknown competition or season")
+		return
+	}
+	if err := parseNoQuery(request.URL.RawQuery); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	squad, err := a.store.Squad(request.Context(), teamID, competition, season, a.clock())
+	if errors.Is(err, ErrNotFound) {
+		writeError(writer, http.StatusNotFound, "unknown team")
+		return
+	}
+	var readErr *teamReadError
+	switch {
+	case errors.As(err, &readErr) && readErr.operation == "squad" && !cancelled(request, err):
+		a.logTeamError(request, competition, season, teamID, err)
+		writer.Header().Set("Cache-Control", "no-store")
+		squad = []SquadPlayer{}
+	case err != nil:
+		a.logTeamError(request, competition, season, teamID, err)
+		writeError(writer, http.StatusInternalServerError, "internal error")
+		return
+	default:
+		cacheFor(writer, 300)
+	}
+	if squad == nil {
+		squad = []SquadPlayer{}
+	}
+	writeJSON(writer, http.StatusOK, squad)
+}
+
+// cancelled reports a cancelled or timed-out request. Its failed blocks are a
+// 500, never served as empty.
+func cancelled(request *http.Request, err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || request.Context().Err() != nil
+}
+
+// Connection errors may include DSNs; PostgreSQL messages/detail may include
+// row values. Log the operation and safe error metadata only.
+func (a *App) logTeamError(request *http.Request, competition, season, teamID string, err error) {
+	id, _ := request.Context().Value(requestIDKey).(string)
+	operation, cause := "unknown", err
+	var readErr *teamReadError
+	if errors.As(err, &readErr) {
+		operation, cause = readErr.operation, readErr.err
+	}
+	var pgErr *pgconn.PgError
+	sqlstate := ""
+	if errors.As(err, &pgErr) {
+		sqlstate = pgErr.Code
+	}
+	a.logger.Error("team",
+		"request_id", id, "competition", competition, "season", season, "team", teamID,
+		"operation", operation, "error_type", fmt.Sprintf("%T", cause), "sqlstate", sqlstate,
+		// The two fail-closed reader rules carry no SQLSTATE; name them.
+		"row_bound_exceeded", errors.Is(err, errTeamBlockTooLarge),
+		"missing_provider_id", errors.Is(err, errSquadIdentity))
 }
