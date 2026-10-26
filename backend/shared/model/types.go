@@ -158,27 +158,22 @@ type TopScorer struct {
 	Matches      *int    `json:"matches"`
 }
 
-// StatLeader is one row of any season leaderboard.
-//
-// It is shaped after the TypeScript StatLeader in src/server/data/types.ts,
-// without its athleteId/teamId/playerSlug (gap T10.2-leaders). The metric-specific `Goals` on
-// TopScorer becomes `Value`, because a field called Goals holding an assist
-// count is a lie that every reader of this struct then has to remember.
-//
-// TopScorer stays for now: it is the shape the reader serializes today, and
-// removing it belongs to slice 1d's cutover, not here.
-//
-// TeamSourceID is the provider's team id, never serialized or stored: the
-// ingester resolves it to the canonical team whose key its crest mirrors under.
+// StatLeader is a metric-independent board row. Source IDs are retained for
+// crosswalk joins; unresolved canonical identity stays null.
 type StatLeader struct {
-	Rank         int     `json:"rank"`
-	Player       string  `json:"player"`
-	TeamSourceID string  `json:"-"`
-	TeamAbbr     string  `json:"teamAbbr"`
-	TeamName     string  `json:"teamName"`
-	TeamCrestURL *string `json:"teamCrestUrl"`
-	Value        int     `json:"value"`
-	Matches      *int    `json:"matches"`
+	Rank            int     `json:"rank"`
+	Player          string  `json:"player"`
+	AthleteID       *string `json:"athleteId"`
+	PlayerID        *string `json:"playerId"`
+	TeamID          *string `json:"teamId"`
+	PlayerSlug      *string `json:"playerSlug"`
+	AthleteSourceID string  `json:"-"`
+	TeamSourceID    string  `json:"-"`
+	TeamAbbr        string  `json:"teamAbbr"`
+	TeamName        string  `json:"teamName"`
+	TeamCrestURL    *string `json:"teamCrestUrl"`
+	Value           int     `json:"value"`
+	Matches         *int    `json:"matches"`
 }
 
 // ===== MatchDetail sub-shapes (stored as jsonb) =====
@@ -209,33 +204,34 @@ type Card struct {
 	Type   string  `json:"type"` // "yellow" | "red"
 }
 
-// TeamStats is shaped after types.ts's TeamStats, without the accuracy
-// numerators and with provider-fraction percentages (gap T10.2-team-stats).
+// TeamStats mirrors types.ts's TeamStats. Accuracy is on the 0–100 scale.
 type TeamStats struct {
-	Possession     *float64 `json:"possession"`
-	Shots          *float64 `json:"shots"`
-	ShotsOnTarget  *float64 `json:"shotsOnTarget"`
-	ShotAccuracy   *float64 `json:"shotAccuracy"`
-	Corners        *float64 `json:"corners"`
-	Offsides       *float64 `json:"offsides"`
-	Passes         *float64 `json:"passes"`
-	PassAccuracy   *float64 `json:"passAccuracy"`
-	Crosses        *float64 `json:"crosses"`
-	CrossAccuracy  *float64 `json:"crossAccuracy"`
-	LongBalls      *float64 `json:"longBalls"`
-	Tackles        *float64 `json:"tackles"`
-	TackleAccuracy *float64 `json:"tackleAccuracy"`
-	Interceptions  *float64 `json:"interceptions"`
-	Clearances     *float64 `json:"clearances"`
-	BlockedShots   *float64 `json:"blockedShots"`
-	Saves          *float64 `json:"saves"`
-	Fouls          *float64 `json:"fouls"`
-	YellowCards    *float64 `json:"yellowCards"`
-	RedCards       *float64 `json:"redCards"`
+	Possession       *float64 `json:"possession"`
+	Shots            *float64 `json:"shots"`
+	ShotsOnTarget    *float64 `json:"shotsOnTarget"`
+	ShotAccuracy     *float64 `json:"shotAccuracy"`
+	Corners          *float64 `json:"corners"`
+	Offsides         *float64 `json:"offsides"`
+	Passes           *float64 `json:"passes"`
+	PassesAccurate   *float64 `json:"passesAccurate"`
+	PassAccuracy     *float64 `json:"passAccuracy"`
+	Crosses          *float64 `json:"crosses"`
+	CrossesAccurate  *float64 `json:"crossesAccurate"`
+	CrossAccuracy    *float64 `json:"crossAccuracy"`
+	LongBalls        *float64 `json:"longBalls"`
+	Tackles          *float64 `json:"tackles"`
+	TacklesEffective *float64 `json:"tacklesEffective"`
+	TackleAccuracy   *float64 `json:"tackleAccuracy"`
+	Interceptions    *float64 `json:"interceptions"`
+	Clearances       *float64 `json:"clearances"`
+	BlockedShots     *float64 `json:"blockedShots"`
+	Saves            *float64 `json:"saves"`
+	Fouls            *float64 `json:"fouls"`
+	YellowCards      *float64 `json:"yellowCards"`
+	RedCards         *float64 `json:"redCards"`
 }
 
-// MatchStats is shaped after types.ts's MatchStats; its TeamStats sides carry
-// gap T10.2-team-stats.
+// MatchStats mirrors types.ts's MatchStats.
 type MatchStats struct {
 	Home TeamStats `json:"home"`
 	Away TeamStats `json:"away"`
@@ -267,26 +263,48 @@ type ShootoutDetail struct {
 	Away []PenaltyKick `json:"away"`
 }
 
-// LineupPlayer is shaped after types.ts's LineupPlayer, without
-// starter/stats/athleteId/playerSlug (gap T10.2-lineups).
-type LineupPlayer struct {
-	Name     string  `json:"name"`
-	Number   *int    `json:"number"`
-	Position string  `json:"position"`
-	Jersey   *string `json:"jersey"`
+// LineupStats preserves the provider's measured counts; nil is not zero.
+type LineupStats struct {
+	Appearances    *int `json:"appearances"`
+	SubIns         *int `json:"subIns"`
+	TotalGoals     *int `json:"totalGoals"`
+	GoalAssists    *int `json:"goalAssists"`
+	TotalShots     *int `json:"totalShots"`
+	ShotsOnTarget  *int `json:"shotsOnTarget"`
+	Offsides       *int `json:"offsides"`
+	FoulsCommitted *int `json:"foulsCommitted"`
+	FoulsSuffered  *int `json:"foulsSuffered"`
+	YellowCards    *int `json:"yellowCards"`
+	RedCards       *int `json:"redCards"`
+	OwnGoals       *int `json:"ownGoals"`
+	Saves          *int `json:"saves"`
+	GoalsConceded  *int `json:"goalsConceded"`
+	ShotsFaced     *int `json:"shotsFaced"`
 }
 
-// TeamLineup is shaped after types.ts's TeamLineup; its players carry gap
-// T10.2-lineups.
+// LineupPlayer has nullable identity and starter evidence for sealed legacy rows.
+type LineupPlayer struct {
+	Name       string       `json:"name"`
+	Number     *int         `json:"number"`
+	Position   string       `json:"position"`
+	Jersey     *string      `json:"jersey"`
+	Starter    *bool        `json:"starter"`
+	Stats      *LineupStats `json:"stats"`
+	AthleteID  *string      `json:"athleteId"`
+	PlayerID   *string      `json:"playerId"`
+	PlayerSlug *string      `json:"playerSlug"`
+}
+
 type TeamLineup struct {
+	TeamID    *string        `json:"teamId"`
 	Formation string         `json:"formation"`
 	Players   []LineupPlayer `json:"players"`
 }
 
-// MatchLineups is shaped after types.ts's MatchLineups (gap T10.2-lineups).
 type MatchLineups struct {
-	Home TeamLineup `json:"home"`
-	Away TeamLineup `json:"away"`
+	Availability string     `json:"availability"`
+	Home         TeamLineup `json:"home"`
+	Away         TeamLineup `json:"away"`
 }
 
 // MatchVideo mirrors types.ts's MatchVideo.

@@ -242,3 +242,33 @@ func TestMapLeadersStillRejectsAnImpossibleRow(t *testing.T) {
 		t.Fatal("want an error for a row with no player identity")
 	}
 }
+
+func TestMapLeadersRetainsExplicitAthleteIdentity(t *testing.T) {
+	for _, identity := range []string{`"123"`, `123`, `null`} {
+		raw := []byte(`{"stats":[{"name":"goalsLeaders","leaders":[{"value":3,"athlete":{"id":` + identity + `,"displayName":"Player","team":{"id":"456"}}}]}]}`)
+		rows, err := MapLeaders(raw, "goalsLeaders", 30)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := json.Marshal(rows[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		var row map[string]any
+		if err := json.Unmarshal(data, &row); err != nil {
+			t.Fatal(err)
+		}
+		want := any("123")
+		if identity == "null" {
+			want = nil
+		}
+		if value, ok := row["athleteId"]; !ok || value != want {
+			t.Fatalf("athleteId=%v exists=%v want=%v", value, ok, want)
+		}
+		for _, key := range []string{"playerId", "teamId", "playerSlug"} {
+			if value, ok := row[key]; !ok || value != nil {
+				t.Fatalf("%s=%v exists=%v", key, value, ok)
+			}
+		}
+	}
+}

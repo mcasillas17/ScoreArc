@@ -21,6 +21,11 @@ import (
 )
 
 type fakeReaderStore struct {
+	boxScore           *BoxScore
+	boxScoreErr        error
+	leaders            []espn.StatLeader
+	leadersErr         error
+	leaderQuery        leaderQuery
 	pingErr            error
 	pingCalls          atomic.Int32
 	pingBlock          <-chan struct{}
@@ -499,4 +504,15 @@ func TestTeamInvalidScopeDoesNotQueryStore(t *testing.T) {
 			t.Fatalf("invalid scope: status=%d store calls=%d", response.Code, store.calls)
 		}
 	}
+}
+
+func (f *fakeReaderStore) Leaders(_ context.Context, _, _ string, query leaderQuery) ([]espn.StatLeader, error) {
+	f.calls++
+	f.leaderQuery = query
+	return f.leaders, f.leadersErr
+}
+
+func (f *fakeReaderStore) BoxScore(context.Context, string) (*BoxScore, error) {
+	f.calls++
+	return f.boxScore, f.boxScoreErr
 }

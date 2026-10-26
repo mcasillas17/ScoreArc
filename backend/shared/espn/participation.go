@@ -12,10 +12,9 @@ const maxPostgresInt4 = 1<<31 - 1
 // MapParticipation extracts the people from an ESPN match summary: the full
 // squads (starters AND substitutes) and one event per player-action.
 //
-// It is deliberately a sibling of MapSummary rather than part of it. MapSummary
-// produces MatchDetail, every field of which is serialized into match_detail's
-// jsonb and served to the site; adding to it would change an API response.
-// Nothing here is serialized, so this can grow without touching the contract.
+// It is a sibling of MapSummary: these provider-shaped inputs include private
+// coverage evidence for persistence, while MapSummary produces public detail.
+// Both retain the full roster; only these inputs drive participation completion.
 //
 // A summary with no rosters and no key events is not an error — plenty of
 // scheduled matches have neither. The caller gets empty slices.
@@ -113,9 +112,8 @@ func mapPlayerStats(entries []rawPlayerStat) *PlayerMatchStats {
 		"goalsConceded":  &stats.GoalsConceded,
 		"shotsFaced":     &stats.ShotsFaced,
 	}
-	// `appearances` is always 1 on a row that exists, and `subIns` is
-	// derivable from Starter plus the sub_on events. Both are dropped rather
-	// than stored a second and third time.
+	// The reader derives appearances/subIns from starters, substitution events
+	// and completion evidence. Roster membership alone cannot establish either.
 	for _, entry := range entries {
 		target, wanted := targets[entry.Name]
 		if !wanted {

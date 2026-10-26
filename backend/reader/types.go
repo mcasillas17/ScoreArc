@@ -1,6 +1,9 @@
 package main
 
-import "github.com/mcasillas17/scorearc-backend/shared/espn"
+import (
+	"github.com/mcasillas17/scorearc-backend/shared/espn"
+	"github.com/mcasillas17/scorearc-backend/shared/model"
+)
 
 // Match is shaped after src/server/data/types.ts's Match; the remaining
 // incompatibilities are characterized in
@@ -88,6 +91,10 @@ type MatchSummary struct {
 }
 
 func normalizeMatch(match *Match) {
+	if match.Stats != nil {
+		model.NormalizeTeamStats(&match.Stats.Home)
+		model.NormalizeTeamStats(&match.Stats.Away)
+	}
 	if match.Scorers == nil {
 		match.Scorers = []espn.Scorer{}
 	}
@@ -105,6 +112,10 @@ func normalizeMatch(match *Match) {
 }
 
 func normalizeMatchSummary(summary *MatchSummary) {
+	if summary.Stats != nil {
+		model.NormalizeTeamStats(&summary.Stats.Home)
+		model.NormalizeTeamStats(&summary.Stats.Away)
+	}
 	if summary.Scorers == nil {
 		summary.Scorers = []espn.Scorer{}
 	}

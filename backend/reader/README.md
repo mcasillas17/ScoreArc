@@ -15,16 +15,30 @@ Every entity id it serves is a **canonical ScoreArc id** — slugs for
 competitions, seasons, and teams; UUIDs for matches — not a provider's. Ids stay
 opaque strings to consumers. Provider ids live in the `*_external_ref` crosswalk
 tables; the reader reads them only to translate stored references: a scorer's or
-card's `teamId` becomes the canonical side it names (or `null`). The only
-dedicated provider athlete-id field it serves is `Scorer.athleteId`, the source
-provider's athlete id, which a client may resolve to a player slug and must
+card's `teamId` becomes the canonical side it names (or `null`). The provider-reference fields `Scorer.athleteId` and the leader/lineup
+`athleteId` are source-qualified athlete ids, which a client may resolve to a player slug and must
 never put in a URL. For detail stored before T16.2 it is read from the
 scorer's aligned `match_event` player through `player_external_ref`. Lineup
 `jersey` URLs still embed the provider's event and athlete ids, on this API and
-the frontend's alike; that is the open `T10.2-lineups` gap, not a translation.
+the frontend's alike; they are presentation assets, never identity keys.
 Content ids are a different kind of value: a video's or a news article's `id`
 is ESPN's own opaque id, served as received and never resolved. See
 [READER_CONTRACT, T16.2](../../docs/backend/READER_CONTRACT.md#t162-identity-and-dto-contract).
+
+## Leaders and box scores (T10.2)
+
+`/v1/competitions/{comp}/{season}/leaders` accepts `metric=goals|assists`
+(default goals) and `limit=1..30` (default 10). `/top-scorers` keeps its legacy
+goals shape and full stored depth 30. `/v1/matches/{id}/box-score` accepts a
+canonical UUID and returns explicit complete/pending/partial/unavailable status.
+Summary lineups include the full captured roster, nullable player statistics,
+canonical identity and completion evidence. Unused bench membership is distinct
+from appearing. Missing identities never produce guessed player links.
+
+See [the T10.2 contract](../../docs/backend/READER_CONTRACT.md#t102-leaders-statistics-and-participation-contract)
+for null/percentage rules, query bounds and migration 0026's **exact schema 26**
+startup requirement. Migration 0025 remains a prerequisite where missing;
+production migration/deployment is separately authorized, not performed here.
 
 ## Runtime configuration
 

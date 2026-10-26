@@ -504,8 +504,8 @@ separate.
 - **`DataStore` has 12 methods** (`getMatches`, `getFixtures`,
   `getLiveWindow`, `getUpcoming`, `getStandings`, `getBracket`,
   `getMatchSummary`, `getLeaders`,
-  `getNews`, `getTeam`, `getSquad`, `getPlayer`) against **8 reader
-  routes** (one, `calendar`, reader-only). #191 removed the redundant `getTopScorers`/`getTopAssists` wrappers,
+  `getNews`, `getTeam`, `getSquad`, `getPlayer`) against **10 reader
+  routes** (calendar, legacy top-scorers and box-score have no direct store method). #191 removed the redundant `getTopScorers`/`getTopAssists` wrappers,
   not their public product/API capabilities: both still use `getLeaders`.
   The count is corrected; the underlying parity gaps remain real.
 - **T10.1 match queries: closed in code October 6, not deployed.** `/matches`
@@ -516,9 +516,14 @@ separate.
   Deploying it changes the parameterless default from the whole season to the
   current UTC week; the watchdog and the SETUP ingestion check already request
   `scope=season`, which older readers ignore. Not an `apiStore` or cutover.
-- **The reader/OpenAPI DTOs are older than the ingested data**: lineup,
-  stats, leader, and team-profile fields the ingester now writes are not
-  all exposed in the current reader response shapes.
+- **T10.2 implementation October 20, pending review/release:** leaders/assists
+  (default 10/max 30), operand-derived team statistics, full captured lineups and
+  bounded appearance-backed box scores with explicit availability. Four harness
+  gaps are replaced by positive assertions. Migration 0026 is local only;
+  exact schema 26 is required for these binaries. The last owner-reported schema
+  was 24, with 0025 missing; neither 25 nor 26 is verified deployed. Do not repeat 0024.
+  See [contract and rollout](backend/READER_CONTRACT.md#t102-leaders-statistics-and-participation-contract).
+  Team/player expansion, broader freshness and cutover remain open.
 - **T10.10 derived standings: closed in code October 14 (option B), not
   deployed.** The Leagues Cup phase tables and the MLS overall table stay a
   TypeScript derivation. The reader serves only their inputs, and a future

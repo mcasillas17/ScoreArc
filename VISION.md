@@ -249,8 +249,9 @@ duplicating it. Two identity spaces coexist until cutover: the site's ESPN-backe
 store still serves ESPN's match and team ids, while our reader serves canonical
 match UUIDs and team slugs. A few provider references are also kept unresolved by
 design — stored scorer/card team ids (the reader translates them),
-`Scorer.athleteId`, and a player's career-club ids — and lineup jersey URLs still
-embed ESPN's event and athlete ids (the open `T10.2-lineups` gap). See
+`Scorer.athleteId`, and a player's career-club ids — and lineup jersey URLs remain provider assets. T10.2 exposes explicit nullable
+lineup player identities through source-qualified crosswalks; URLs are never
+parsed to infer identity. See
 `docs/superpowers/specs/2026-08-12-canonical-identity-design.md` and
 [READER_CONTRACT, T16.2](docs/backend/READER_CONTRACT.md#t162-identity-and-dto-contract).
 

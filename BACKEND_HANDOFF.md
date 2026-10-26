@@ -101,9 +101,12 @@ build/test gate is `cd backend && go build ./... && go test ./...`.
 3. **Postgres migrations** — the canonical schema, the forward history surfaces,
    the active snapshot tables (standings, win-prob, odds), replacement/retention
    grants, and the finalization guards; the migration head is
-   `0025_participation_recovery` on this branch; the owner reports production
+   `0026_reader_contracts` on this branch; it adds nullable leader identity and a
+   reader-safe participation availability view. The owner reports production
    at 24. [Participation recovery](docs/backend/PARTICIPATION_RECOVERY.md)
-   defines its separate pre-release apply and exact-head compatibility window.
+   defines migration 0025’s separate pre-release apply window. Apply 0025 then
+   0026 before starting this exact-head binary; do not repeat 0024. See
+   [T10.2 rollout](docs/backend/READER_CONTRACT.md#t102-leaders-statistics-and-participation-contract).
    `0024_standing_table_membership` keys `standing` and
    `standing_snapshot` by provider table (T16.2; applied/released per owner —
    [RELEASES](docs/backend/RELEASES.md#migration-0024-standing-table-membership)).
@@ -124,7 +127,8 @@ build/test gate is `cd backend && go build ./... && go test ./...`.
    recover it from history at `c6d382e` if ever needed.
 5. **Shared ESPN layer** — Go endpoint builders, response models, and fixture-tested
    mappers for scoreboard, standings, bracket, summary, statistics, and news.
-6. **Public reader API (slice 1c)** — eight versioned `/v1` data routes (T10.1 added
+6. **Public reader API (slice 1c)** — ten versioned `/v1` data routes (T10.2 added leaders and
+   box scores; T10.1 added
    validated `/matches` queries and the reader-only `calendar`) plus
    `/healthz`, parameterized pgx read models, registry validation, SELECT-only role
    enforcement, CORS, per-client limiting, defensive process timeouts, a
