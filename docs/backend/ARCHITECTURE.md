@@ -480,8 +480,9 @@ sequenceDiagram
 
 ## 5. Reader (slice 1c — implemented public Go REST API)
 
-Match-bearing responses add freshness headers while retaining existing body
-shapes. Body, identity scope and metadata share a bounded read-only repeatable-read
+Match lists, calendars, brackets, summaries and team profiles add freshness
+headers while retaining existing body shapes. Those responses, box scores and
+player profiles share a bounded read-only repeatable-read
 snapshot, released before response writes. Reader time detects stopped ingestion
 independently of worker logging. The website stays on its existing DataStore;
 broader E17 provenance is not closed by this slice, and schema readiness is a
@@ -491,16 +492,19 @@ migration compatibility and separately approved rollout.
 
 - Public and autoscaling, with one warm machine and an autostopped spare.
   Versioned under `/v1`.
-- **Eight `/v1` data routes plus `/healthz`** (they cover a subset of the 12
+- **Eleven `/v1` data routes plus `/healthz`** (they cover a subset of the 12
   `DataStore` methods — the parity gap is in §2 and
   [`docs/CURRENT_STATE.md`](../CURRENT_STATE.md) §5):
   - `GET /v1/competitions/{comp}/{season}/matches`  (validated `range`/`state`/`detail`/`limit`; current UTC week by default; `scope=season` is the complete monitoring scope — T10.1)
   - `GET /v1/competitions/{comp}/{season}/calendar`  (UTC match days with per-state counts — T10.1)
   - `GET /v1/competitions/{comp}/{season}/standings`
   - `GET /v1/competitions/{comp}/{season}/bracket`  (computed read-model)
-  - `GET /v1/competitions/{comp}/{season}/top-scorers`
+  - `GET /v1/competitions/{comp}/{season}/top-scorers` (legacy goals shape)
+  - `GET /v1/competitions/{comp}/{season}/leaders` (goals/assists — T10.2)
   - `GET /v1/competitions/{comp}/{season}/teams/{teamId}`  (team profile)
+  - `GET /v1/competitions/{comp}/{season}/players/{playerId}` (canonical UUID profile, season totals, latest-five game log and bounded career — T10.4)
   - `GET /v1/matches/{id}`  (summary/detail)
+  - `GET /v1/matches/{id}/box-score` (bounded participation — T10.2)
   - `GET /v1/competitions/{comp}/news`  → **live proxy to ESPN** (short TTL cache), NOT DB-served.
 - **Response shapes target the frontend types.** Each implemented difference is
   a registered gap (T16.1), an intentional identity translation (T16.2:
@@ -582,7 +586,7 @@ nested response locations.
 **Not started** — no `apiStore` exists on `main` (see
 [`docs/CURRENT_STATE.md`](../CURRENT_STATE.md)). This is a **contract/parity
 project, not a base-URL swap**: the 12 `DataStore` methods (§2) exceed the
-reader's 8 data routes (§5), and canonical DTO shapes, query semantics, and derived
+reader's 11 data routes (§5), and canonical DTO shapes, query semantics, and derived
 views must reach tested parity first (`CURRENT_STATE.md` §5). The intended design:
 
 - Add `apiStore` implementing `DataStore` by calling the reader `/v1` endpoints
@@ -687,16 +691,16 @@ truth is the TS**: `src/server/data/types.ts` (shapes), `providers/espn-*.ts`
   `docs/superpowers/plans/2026-08-10-internal-ingester-service.md`.
 
 **1c — Reader (implemented)**
-- **Endpoint → type map:** each `/v1/…` response must deserialize into exactly
-  the matching `types.ts` shape — `Match[]` / `Group[]` / `BracketRound[]` /
-  `StatLeader[]` (`top-scorers`) / `TeamProfile` (`teams/{teamId}`) /
-  `MatchSummaryData` (`matches/{id}`) / `NewsArticle[]` (`news`), plus the
-  reader-only `calendar` (T10.1). Eight data routes today; the frontend's other `DataStore` methods (§2) have no reader
-  route yet. Write a field-by-field map in the plan. This map is the target, not
-  the implemented reader: [READER_CONTRACT](READER_CONTRACT.md) and the gap
-  registry in `src/server/data/contracts/reader-contract.json` record every
-  characterized difference (e.g. `top-scorers` serves `TopScorer[]`, not
-  `StatLeader[]`; gap `T10.2-leaders`).
+- **Endpoint → type map:** eleven versioned routes serve `Match[]`, `Group[]`,
+  `BracketRound[]`, legacy `TopScorer[]` (`top-scorers`), `StatLeader[]`
+  (`leaders`), `TeamProfile`, `PlayerProfile`, `MatchSummary`, `NewsArticle[]`,
+  `SeasonCalendar` and `BoxScore`. The twelve frontend `DataStore` methods do
+  not map one-to-one to these routes: calendar, legacy top-scorers and box score
+  are reader-only; squad remains embedded in the team profile. This is not
+  cutover readiness. [READER_CONTRACT](READER_CONTRACT.md) and
+  `src/server/data/contracts/reader-contract.json` record remaining gaps and
+  intentional translations, including canonical player/match UUIDs, nullable
+  career-team links and the competition/season-scoped five-match player log.
 - **`/news` drops season:** `newsUrl(slug)` is comp-only; the endpoint is
   `/v1/competitions/{comp}/news` and `apiStore.getNews` builds it from
   `rc.competition`, ignoring season.

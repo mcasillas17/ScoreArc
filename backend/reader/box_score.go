@@ -135,17 +135,7 @@ func (s *Store) BoxScore(ctx context.Context, id string) (*BoxScore, error) {
 	for _, side := range []*BoxScoreTeam{&box.Home, &box.Away} {
 		for i := range side.Players {
 			player := &side.Players[i]
-			zero, one := 0, 1
-			if *player.Starter {
-				player.Stats.Appearances = &one
-				player.Stats.SubIns = &zero
-			} else if subbed[*player.PlayerID] == side.TeamID {
-				player.Stats.Appearances = &one
-				player.Stats.SubIns = &one
-			} else if box.Availability == "complete" && !onPitch[*player.PlayerID] && !hasOnPitchMeasurements(player.Stats) {
-				player.Stats.Appearances = &zero
-				player.Stats.SubIns = &zero
-			}
+			setParticipationStats(player.Stats, *player.Starter, subbed[*player.PlayerID] == side.TeamID, box.Availability == "complete", onPitch[*player.PlayerID])
 		}
 	}
 	return box, nil
@@ -193,4 +183,19 @@ func (a *App) handleBoxScore(writer http.ResponseWriter, request *http.Request) 
 	finish()
 	cacheFor(writer, 30)
 	writeContractJSON(writer, box)
+}
+
+// Shared by the box score and player log: roster membership is not proof of play.
+func setParticipationStats(stats *model.LineupStats, starter, subbed, complete, onPitch bool) {
+	zero, one := 0, 1
+	if starter {
+		stats.Appearances = &one
+		stats.SubIns = &zero
+	} else if subbed {
+		stats.Appearances = &one
+		stats.SubIns = &one
+	} else if complete && !onPitch && !hasOnPitchMeasurements(stats) {
+		stats.Appearances = &zero
+		stats.SubIns = &zero
+	}
 }

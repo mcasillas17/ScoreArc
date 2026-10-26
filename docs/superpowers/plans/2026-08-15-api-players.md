@@ -1,5 +1,7 @@
 # Reader API — Players, Season Stats and the Full Game Log Implementation Plan
 
+> T10.4 implementation is reconciled in [the October 26 plan](2026-10-26-t10-4-player-reader.md): existing schema, one composite route, latest-five log. The full-history expansion below is deferred to T7.4/T10.5.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Put people in the reader API. Three endpoints: a competition-agnostic player profile with career club history, a competition-scoped season stat line, and — the one that matters — **a game log covering every match we hold**, not the last five ESPN is willing to give away.
