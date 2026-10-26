@@ -79,15 +79,42 @@ export function planRelease({ service, sha, mainSha, baseSha, paths, manual }) {
 
 /**
  * @param {{fly?: string, stage?: string, promote?: string,
- * precheckCurrent?: string, promoteCurrent?: string}} outcomes
+ * precheckCurrent?: string, promoteCurrent?: string, flyAbortedBeforeMachines?: string}} outcomes
  */
 export function releaseStatus(outcomes) {
   if (outcomes.fly === 'success' || outcomes.promote === 'success') return 'success';
   if (outcomes.precheckCurrent === 'false' || outcomes.promoteCurrent === 'false' ||
       outcomes.stage === 'failure') return 'inactive';
+  // Only a step that ran to completion: a cancelled one may have killed flyctl mid-update.
+  if (outcomes.fly === 'failure' && outcomes.flyAbortedBeforeMachines === 'true') return 'inactive';
   if (outcomes.fly === 'skipped' && outcomes.promote === 'skipped' &&
       ['skipped', 'success'].includes(outcomes.stage)) return 'inactive';
   return 'failure';
+}
+
+/**
+ * The flyctl release whose source proves the abort line below. In v0.4.83,
+ * internal/command/deploy/machines_deploymachinesapp.go returns this error when
+ * release_command fails, before it removes, creates or updates any app machine, and
+ * internal/cli prints it at the start of a line. Release-machine log lines are
+ * timestamp-prefixed, so they cannot begin a line with it. Re-verify on upgrade.
+ */
+export const flyAbortVerifiedVersion = '0.4.83';
+const releaseCommandAbort = /^Error: release command failed - aborting deployment\. /m;
+const schemaVerdict = /database schema (?:not ready: (category=[a-z_]+ expected=\d+ applied=(?:-?\d+|unknown) dirty=(?:true|false))|not checked: ([A-Z_]+ is required))/;
+
+/**
+ * Decides whether a failed `flyctl deploy` provably changed no machine, and
+ * extracts the -check-schema verdict's fixed fields when the log streamed.
+ * @param {string} output flyctl stdout and stderr @param {number} exitCode
+ */
+export function assessFlyDeployFailure(output, exitCode) {
+  const text = output.replace(/\x1b\[[0-9;]*m/g, '');
+  const verdict = text.match(schemaVerdict);
+  return {
+    abortedBeforeMachines: exitCode !== 0 && releaseCommandAbort.test(text),
+    verdict: verdict?.[1] ?? verdict?.[2] ?? null,
+  };
 }
 
 export const ingesterApp = 'scorearc-ingester';

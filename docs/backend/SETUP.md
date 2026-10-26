@@ -205,7 +205,9 @@ contiguous count.)
 This is enforced at startup: both services refuse to run unless the ledger holds
 one clean row at exactly the head they embed, readable by their own role
 ([schema readiness](RELEASES.md#schema-readiness), including the pre-release
-verify/apply/verify order).
+verify/apply/verify order). Every Fly deploy runs the same check first, as
+`release_command` from the new image, and stops before replacing any service machine
+when it fails ([release-time gate](RELEASES.md#release-time-schema-gate)).
 
 For an existing version-22 database, the separately approved 0023 apply/release
 sequence and narrow startup prerequisite checks are in
@@ -379,7 +381,9 @@ flyctl deploy backend \
 This is the invocation contract used by gated CI, **not a supported direct
 production command**. `backend` (positional) is the build context;
 `--config`/`--dockerfile` are relative to that context. `--remote-only` builds on Fly's builders, so no local Docker
-is needed to deploy. `competitions.json` is `//go:embed`-ed, so the runtime
+is needed to deploy. Both `fly.toml` files run `-check-schema` as
+`release_command` before any service machine changes; never add `--skip-release-command`.
+`competitions.json` is `//go:embed`-ed, so the runtime
 images carry only the binary (~20 MB each).
 
 ### 7.2 Create the app records (once)

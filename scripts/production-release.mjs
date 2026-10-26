@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { execFile, execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
-import { assertReleaseContext, assertSha, assertVercelProject, assessIngesterMachines, ingesterApp, planRelease, releaseStatus, repository, services } from './production-policy.mjs';
+import { assertReleaseContext, assertSha, assertVercelProject, assessFlyDeployFailure, assessIngesterMachines, ingesterApp, planRelease, releaseStatus, repository, services } from './production-policy.mjs';
 
 /** @param {string} token @param {typeof fetch} fetcher */
 export function githubClient(token, fetcher = fetch) {
@@ -346,18 +346,39 @@ async function main() {
       `${ingesterVerification.stableObservations} consecutive observations. This does not prove data freshness or complete ingestion.`);
     return;
   }
+  if (command === 'record-fly-failure') {
+    if (service === 'frontend') throw new Error('Fly failure classification is Fly-only');
+    const { abortedBeforeMachines, verdict } = assessFlyDeployFailure(
+      readFileSync(join(env.RUNNER_TEMP, 'flyctl-deploy.log'), 'utf8'), Number(process.argv[3]));
+    outputs({ aborted_before_machines: abortedBeforeMachines });
+    appendFileSync(env.GITHUB_STEP_SUMMARY, abortedBeforeMachines
+      ? `\n### ${service}: release_command stopped the deploy\n\n` +
+        'flyctl aborted at the schema gate before any service machine change. No service machine was created, updated or ' +
+        'destroyed (only Fly\'s temporary release_command machine ran); the running release keeps serving. The ledger records `inactive`, so the next release is not wedged.\n\n' +
+        (verdict ? `Verdict: \`${verdict}\`.`
+          : 'No schema verdict line was found: read the release_command output in this job\'s log, or ' +
+            `\`fly logs --app scorearc-${service}\` if the deploy token could not stream it.`) +
+        ' For `behind`, apply the reviewed migrations with authorization; for a missing secret, restore it. Then dispatch CI on main ' +
+        '(docs/backend/RELEASES.md#release-time-schema-gate).\n'
+      : `\n### ${service}: Fly deploy failed\n\nflyctl did not report a release_command abort, so "no service machine changed" is not proven. ` +
+        'The ledger stays unresolved: reconcile per docs/backend/RELEASES.md#interrupted-release-recovery.\n');
+    return;
+  }
   const api = githubClient(env.GH_TOKEN);
   if (command === 'finish') {
     if (!/^\d+$/.test(env.RELEASE_ID ?? '')) throw new Error('A deployment ledger ID is required');
     const state = releaseStatus({
       fly: env.FLY_OUTCOME, stage: env.STAGE_OUTCOME, promote: env.PROMOTE_OUTCOME,
       precheckCurrent: env.PRECHECK_CURRENT, promoteCurrent: env.PROMOTE_CURRENT,
+      flyAbortedBeforeMachines: env.FLY_ABORTED_BEFORE_MACHINES,
     });
     await api(`deployments/${env.RELEASE_ID}/statuses`, {
       state,
       description: state === 'success' ? 'Production publication confirmed'
-        : state === 'inactive' ? 'No publication started; superseded or inert build failed'
-          : 'Release unresolved; operator must reconcile before retry',
+        : state === 'inactive' && env.FLY_OUTCOME === 'failure'
+          ? 'release_command stopped the deploy before any service machine changed; nothing published'
+          : state === 'inactive' ? 'No publication started; superseded or inert build failed'
+            : 'Release unresolved; operator must reconcile before retry',
       log_url: logUrl, auto_inactive: false,
     });
     return;

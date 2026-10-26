@@ -10,6 +10,15 @@ primary_region = "iad"   # MUST match the Neon region (see SETUP §4/§7)
 [env]
   PORT = "8080"
 
+# Schema gate: Fly runs this from the NEW image, with the app's secrets, before
+# creating or updating any app machine; a non-zero exit aborts the deploy. It is
+# the reader's own startup check (same login, same probe), printing one line.
+# Only CMD is replaced: the image ENTRYPOINT ["/reader"] still runs, so the
+# value is the flag alone -- "/reader -check-schema" would start the server.
+# Never deploy with --skip-release-command (docs/backend/RELEASES.md).
+[deploy]
+  release_command = "-check-schema"
+
 [http_service]
   internal_port = 8080
   force_https = true

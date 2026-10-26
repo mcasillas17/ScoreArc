@@ -65,6 +65,38 @@ jobs:
       - name: Verify database migration rollback
         run: for migration in $(find backend/migrations -name '*.down.sql' | sort -r); do psql "$DIRECT_DSN" -v ON_ERROR_STOP=1 -f "$migration"; done
 
+  # PR-time signal: both Fly services require exactly the highest migration, and
+  # their release_command refuses an older production schema, so merging before
+  # the production apply produces a refused (inactive) release, not a deploy.
+  migration-notice:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Warn when this PR raises the schema head
+        run: |
+          # The checkout is the PR merge commit; HEAD^1 is the base it merges into.
+          added=$(git diff --name-only --no-renames --diff-filter=A HEAD^1 HEAD -- 'backend/migrations/*.up.sql')
+          [ -n "$added" ] || exit 0
+          head=$(cd backend/migrations && ls -- *.up.sql | sort -n | tail -n 1)
+          head=${head%.up.sql}
+          {
+            echo "### Schema head \`$head\`: apply this migration to production before merging"
+            echo
+            printf '%s\n' "$added" | sed 's/.*/- `&`/'
+            echo
+            echo "Apply it with authorization and read it back as each service login, then merge: the release's"
+            echo "\`-check-schema\` release_command refuses an older production schema without changing any service machine."
+            echo "See docs/backend/RELEASES.md#release-time-schema-gate."
+          } >> "$GITHUB_STEP_SUMMARY"
+          # git quotes paths with newlines, so each name stays on its own command line.
+          printf '%s\n' "$added" | while IFS= read -r file; do
+            echo "::warning file=$file,line=1,title=Schema migration::New schema head $head: apply this migration to production before merging."
+          done
+
   production:
     needs: test
     if: >-
@@ -154,12 +186,21 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ matrix.service == 'reader' && secrets.FLY_API_TOKEN_READER || matrix.service == 'ingester' && secrets.FLY_API_TOKEN_INGESTER || '' }}
         run: |
+          # flyctl's own exit status and output decide whether the ledger may
+          # record that release_command stopped the deploy before any service machine changed.
+          set -o pipefail
+          publish() {
+            flyctl deploy backend "$@" 2>&1 | tee "$RUNNER_TEMP/flyctl-deploy.log" && return 0
+            status=$?
+            node scripts/production-release.mjs record-fly-failure "$status"
+            return "$status"
+          }
           case "$RELEASE_SERVICE" in
             reader)
-              flyctl deploy backend --config reader/fly.toml --dockerfile reader/Dockerfile --remote-only
+              publish --config reader/fly.toml --dockerfile reader/Dockerfile --remote-only
               ;;
             ingester)
-              flyctl deploy backend --config ingester/fly.toml --dockerfile ingester/Dockerfile --remote-only --ha=false
+              publish --config ingester/fly.toml --dockerfile ingester/Dockerfile --remote-only --ha=false
               node scripts/production-release.mjs verify-ingester
               ;;
             *) echo "::error::Unknown release service"; exit 1 ;;
@@ -199,6 +240,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_ID: ${{ steps.begin.outputs.id }}
           FLY_OUTCOME: ${{ steps.fly.outcome }}
+          FLY_ABORTED_BEFORE_MACHINES: ${{ steps.fly.outputs.aborted_before_machines }}
           STAGE_OUTCOME: ${{ steps.stage.outcome }}
           PROMOTE_OUTCOME: ${{ steps.promote.outcome }}
           PRECHECK_CURRENT: ${{ steps.precheck.outputs.current }}
