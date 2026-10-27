@@ -243,6 +243,53 @@ paths:
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
+  /v1/competitions/{comp}/{season}/players/{playerId}:
+    get:
+      operationId: getPlayer
+      summary: Get a canonical player's identity, season totals, recent matches and career
+      description: >-
+        Requires a canonical lowercase hyphenated player UUID. Malformed ids,
+        provider ids and all query parameters return 400; an unknown canonical
+        UUID returns 404. Identity is returned even without optional scoped rows.
+        Totals and the latest five played matches belong only to the requested
+        competition and season. Totals use stored aggregates, never sums of
+        incomplete appearances. Game-log evidence excludes unused or uncertain
+        bench memberships and is ordered by kickoff descending, then match UUID
+        descending. At most 2,000 candidate roster rows and 512 events per
+        candidate are inspected; excess evidence fails closed. Career contains
+        at most 50 rows in provider order with stable tie-breaks. The complete
+        response is capped at 1 MiB; database query, evidence-bound and serialization
+        failures return sanitized 500 with no-store. The existing ten-second
+        request deadline and per-client rate limit apply. No provider requests.
+      parameters:
+        - { $ref: "#/components/parameters/Comp" }
+        - { $ref: "#/components/parameters/Season" }
+        - { $ref: "#/components/parameters/PlayerID" }
+      responses:
+        "200":
+          description: Player identity with nullable metadata and bounded optional collections
+          headers:
+            Cache-Control: { $ref: "#/components/headers/StandardCacheControl" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlayerProfile" }
+        "400":
+          description: Unknown competition or season, malformed player UUID, or any query parameter
+          headers:
+            Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Canonical player UUID not found
+          headers:
+            Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
   /v1/competitions/{comp}/news:
     get:
       operationId: listNews
@@ -330,6 +377,17 @@ components:
       required: true
       description: Our canonical team identifier, such as nat-mex.
       schema: { type: string, minLength: 1 }
+    PlayerID:
+      name: playerId
+      in: path
+      required: true
+      description: >-
+        Canonical ScoreArc player UUID in lowercase hyphenated form. Aliases,
+        provider ids and other UUID spellings return 400; an unknown UUID is 404.
+      schema:
+        type: string
+        format: uuid
+        pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
     MatchID:
       name: id
       in: path
@@ -521,6 +579,93 @@ components:
         standingSummary: { type: [string, "null"] }
         squad: { type: array, items: { $ref: "#/components/schemas/SquadPlayer" } }
         schedule: { type: array, items: { $ref: "#/components/schemas/Match" } }
+    PlayerProfile:
+      type: object
+      additionalProperties: false
+      required: [id, playerSlug, name, age, position, jersey, nationality, flagUrl, headshotUrl, team, seasonLabel, totals, gameLogLabel, gameLog, career]
+      properties:
+        id:
+          type: string
+          format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        playerSlug:
+          type: [string, "null"]
+          enum: [null]
+          description: Always null until an approved slug lookup exists; never guessed from a name or provider id.
+        name: { type: string }
+        age: { type: [integer, "null"], description: "Age derived from the stored birth date in UTC, or null when unknown." }
+        position: { type: string }
+        jersey: { type: [string, "null"], description: "Jersey from the latest scoped squad membership, or null." }
+        nationality: { type: [string, "null"] }
+        flagUrl: { type: [string, "null"], description: "Null because no player flag URL is held in the current schema." }
+        headshotUrl: { type: [string, "null"], description: "Null because no player headshot URL is held in the current schema." }
+        team:
+          description: Canonical season-stat team, falling back to the latest scoped squad membership; null when absent.
+          oneOf:
+            - { $ref: "#/components/schemas/Team" }
+            - { type: "null" }
+        seasonLabel: { type: string }
+        totals:
+          type: array
+          maxItems: 15
+          description: Up to 15 named stored season measurements by default; empty without a scoped aggregate row. Unknown values remain null and measured zero remains zero.
+          items: { $ref: "#/components/schemas/PlayerSeasonTotal" }
+        gameLogLabel: { type: string, enum: ["Last 5 Matches"] }
+        gameLog:
+          type: array
+          maxItems: 5
+          description: Up to five played matches by default in the requested competition and season, newest kickoff first with descending match UUID tie-break; empty when no play is evidenced.
+          items: { $ref: "#/components/schemas/GameLogRow" }
+        career:
+          type: array
+          maxItems: 50
+          description: Up to 50 career rows by default in stored provider order with stable tie-breaks; empty when absent.
+          items: { $ref: "#/components/schemas/CareerStint" }
+    PlayerSeasonTotal:
+      type: object
+      additionalProperties: false
+      required: [name, label, display, value]
+      properties:
+        name: { type: string }
+        label: { type: string }
+        display: { type: string }
+        value: { type: [integer, "null"] }
+    GameLogRow:
+      type: object
+      additionalProperties: false
+      required: [eventId, appearance, stats, date, atVs, opponent, score, result, homeTeamId, awayTeamId, teamId, teamAbbr]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          description: Canonical stored match UUID, not the frontend provider event id; consumers cut over with all match-id methods.
+        appearance:
+          type: string
+          enum: [Started, Sub, ""]
+          description: Started or Sub when entry status is known; empty when on-pitch events or a positive non-card measurement prove play without known entry status. Roster membership alone is insufficient.
+        stats: { $ref: "#/components/schemas/LineupPlayerStats" }
+        date: { type: [string, "null"], format: date-time }
+        atVs: { type: string, enum: [vs, "@"] }
+        opponent:
+          oneOf:
+            - { $ref: "#/components/schemas/Team" }
+            - { type: "null" }
+        score: { type: string, description: "Home-away regulation score, or empty when scores are unavailable; excludes shootout scores." }
+        result: { type: string, enum: [W, L, D, ""], description: "Result from this match's player team perspective; empty when unavailable." }
+        homeTeamId: { type: [string, "null"], description: Canonical home team id. }
+        awayTeamId: { type: [string, "null"], description: Canonical away team id. }
+        teamId: { type: [string, "null"], description: "Canonical team represented in this match, preserved across transfers." }
+        teamAbbr: { type: string }
+    CareerStint:
+      type: object
+      additionalProperties: false
+      required: [teamId, teamName, crestUrl, seasons]
+      properties:
+        teamId: { type: [string, "null"], description: "Canonical team id resolved through the source-qualified crosswalk; null for unresolved teams." }
+        teamName: { type: string, description: Stored team name retained even when identity is unresolved. }
+        crestUrl: { type: [string, "null"], description: "Canonical team's crest, or null when the team is unresolved or the crest is absent." }
+        seasons: { type: string }
     Scorer:
       type: object
       additionalProperties: false
