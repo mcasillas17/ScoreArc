@@ -94,7 +94,9 @@ If main advances before publication, skip the old candidate without changing its
 SHA. If it advances during an inert Vercel staged build, do not promote that
 build. If publication already started, finish that tested SHA under the service
 lock; only then may a newer same-service job start. Reader and ingester retain
-the `backend` build context and context-relative Dockerfile/config paths.
+the `backend` build context and context-relative Dockerfile/config paths, and
+each Fly deploy runs the [release-time schema gate](#release-time-schema-gate)
+before any service machine changes.
 The singleton ingester retains `--ha=false` and its non-cancelling queue. Its
 publishing step then runs the read-only
 [machine-contract check](#post-deployment-ingester-verification); the reader
@@ -366,8 +368,9 @@ Use **Re-run all jobs**, not **Re-run failed jobs**: the release gate requires
 Rollback means a new feature-branch **revert PR**, PR validation, human merge,
 then full CI on the new main SHA. Preserve delivery-control files when reverting
 product code. Do not revert this gate to recover an application regression.
-Migrations stay manual (no auto-migrate). Both Fly services refuse to start
-unless the ledger matches the head they embed, so a revert must keep every
+Migrations stay manual (no auto-migrate). Both Fly services refuse to deploy
+(at the [release-time gate](#release-time-schema-gate)) and to start unless the
+ledger matches the head they embed, so a revert must keep every
 applied migration file and must not drop a schema dependency under a serving
 binary; see [rollback compatibility](#rollback-compatibility). Missing Vercel
 credentials block frontend rollback too:
@@ -385,13 +388,66 @@ constant to keep in step), and each service's zero-row probe of the objects it
 needs succeeds **as its own least-privilege role**. The gate only reads; there
 is no auto-migrate, ledger write or bypass flag.
 
-**Startup enforcement is not deployment safety.** A refused start does not stop
-Fly replacing a working machine with a refusing one: verify the schema *before*
-anything selects a release (below). The ingester (`strategy = "immediate"`,
-restart `always`) has no overlap, so a release against an unready schema stops
-the old worker and the new one crash-loops — play-stream capture, the one
-dataset ESPN prunes, halts until fixed. That is the deliberate trade: no writes
-against a schema the binary was not built for, over degraded writes.
+**Startup enforcement alone is not deployment safety.** A refused start does not
+stop Fly replacing a working machine with a refusing one. On October 13, merging
+#213 (migration 0025) released both services through main CI while production
+was at 24: Fly replaced the machines, the reader timed out and the ingester
+stopped for 13 days, and the failed release records then blocked later releases
+until an operator reconciled them. #226 (0026) nearly repeated it. The
+[release-time schema gate](#release-time-schema-gate) now runs this same check
+from the new image before any service machine changes. Once a release passes it, the
+ingester (`strategy = "immediate"`, restart `always`) still has no overlap —
+the deliberate trade: no writes against a schema the binary was not built for,
+over degraded writes.
+
+### Release-time schema gate
+
+Both `fly.toml` files set `[deploy] release_command = "-check-schema"`. Fly runs
+it once per deploy in a temporary machine from the **new** image, with the app's
+environment and secrets, before it creates, updates or destroys any of the app's
+machines; a non-zero exit stops the deploy
+([Fly reference](https://fly.io/docs/reference/configuration/#run-one-off-commands-before-releasing-a-deployment)).
+That temporary machine is the only one created and is destroyed after the
+command; below, a **service machine** is one of the app's own deployed machines.
+`-check-schema` is the service's startup gate and nothing else — same login,
+probe and deadline — and needs only the DSN it reads the ledger over:
+
+- **Reader:** `DATABASE_URL`; never opens the listener, so `PORT` is not read.
+- **Ingester:** `POOLED_DSN`; needs no lease DSN and never takes the advisory
+  lease, seeds or polls, so it cannot contend with the live worker. The old
+  worker is stopped only after the gate passes.
+
+It prints one line — `database schema ready: expected=N applied=N dirty=false`,
+the [failure matrix](#failure-matrix) line, or `database schema not checked:
+<VAR> is required` for a missing DSN — and exits 0 only when ready. Fly
+replaces only the image's `CMD`; the `ENTRYPOINT` (`/reader`, `/ingester`) still
+runs, so the value is the flag alone: `"/reader -check-schema"` would run
+`/reader /reader -check-schema`, which starts the real service. Never deploy with
+`--skip-release-command`. An operator's `flyctl deploy` with these configs runs
+the gate too.
+
+**Recording the outcome.** The CI publishing step tees flyctl's output. When
+flyctl exits non-zero, `production-release.mjs record-fly-failure` looks for
+flyctl's own `Error: release command failed - aborting deployment.` at the start
+of a line. In the pinned flyctl `0.4.83`, `deployMachinesApp` returns that error
+from the release-command step before it removes, creates or updates any app machine,
+and the release machine's streamed log lines are timestamp-prefixed, so they
+cannot begin a line with it. Only then does the step output
+`aborted_before_machines=true` and the ledger record **`inactive`**, never
+success. The job summary carries the verdict line when the release machine's
+log streamed; with none, read the release_command output in the job log, or
+`fly logs --app scorearc-<service>` if the deploy token could not stream it.
+`inactive` leaves no diff baseline, so the
+next eligible main release — a later push, or a `changed` dispatch — deploys that
+service in full; until the schema is ready it is refused again, changing
+nothing. `flyAbortVerifiedVersion` in `production-policy.mjs` pins the verified
+flyctl, and a test fails if CI's pin moves: re-verify the source before
+upgrading.
+
+Anything else stays **unresolved** and blocks that service: a failure without
+that line, a cancelled or timed-out step (flyctl may have been killed after
+machines started changing), or a failed ingester machine check. Reconcile under
+[interrupted-release recovery](#interrupted-release-recovery).
 
 ### Failure matrix
 
@@ -418,26 +474,35 @@ message/detail.
 
 The version must match **exactly**; `ahead` is refused like `behind`. A binary
 cannot know whether a migration it does not carry is additive, and "any newer
-version is safe" fails the first time a migration contracts a column. The cost
-is a window: between applying migration *N+1* and releasing the binary that
-embeds it, any old binary that (re)starts refuses `ahead`. That is routine here,
-not rare — the reader autostarts stopped spare machines on load
-(`auto_stop_machines = "stop"`, `min_machines_running = 1`) and the ingester
-restarts after any crash. Keep the window to minutes:
+version is safe" fails the first time a migration contracts a column. The gate
+therefore fixes the order: **apply migration N, merge, then the normal release.**
 
-1. Read-only verify the target (database, schema, a single clean ledger row at
+1. The PR that adds migration N gets CI's `migration-notice` warning: "Schema
+   head `NNNN_name`: apply this migration to production before merging".
+   Review it as usual; do not merge yet.
+2. Read-only verify the target (database, schema, a single clean ledger row at
    the currently released head, role grants). A different, missing, dirty or
    multi-row ledger requires reconciliation, never a forced version.
-2. With explicit authorization, apply exactly the reviewed migrations from the
-   reviewed commit over the direct owner connection:
+3. With explicit authorization, apply exactly the reviewed migrations from the
+   PR's reviewed commit over the direct owner connection:
    `migrate -path backend/migrations -database "$DIRECT_DSN" goto <head>`.
-3. Read back `migrate … version` → `<head>`, not dirty. Then, as **each service
+4. Read back `migrate … version` → `<head>`, not dirty. Then, as **each service
    login** over its pooled DSN (never the owner),
    `SELECT version, dirty FROM schema_migrations;` → exactly one row, `<head>`,
    `false`.
-4. Merge immediately so the release follows, or dispatch it now if already
-   merged. If the release is blocked, the running binaries keep serving until
-   they restart — finish the release rather than migrate down.
+5. Merge immediately. The normal release follows; each service's gate passes and
+   Fly replaces its machines.
+
+A PR merged before step 3 is refused at the gate with nothing replaced and the
+ledger `inactive`; do steps 2–4, then dispatch CI on main with `changed`.
+
+**The remaining window.** The gate covers deploys, not restarts. Between step 3
+and the release landing, any old-binary machine that (re)starts refuses `ahead`.
+For the reader that is its autostopped spare (`auto_stop_machines = "stop"`,
+`min_machines_running = 1`), which Fly autostarts under load; the warm machine
+keeps serving unless it restarts too. For the ingester it is any crash restart.
+Keep the window to minutes by merging right after step 4; if the release is
+blocked, finish it rather than migrate down.
 
 If that window ever bites, the upgrade path is a compatibility floor recorded in
 the database by migrations and read by older binaries. It is not built and not
@@ -446,8 +511,8 @@ needed while releases follow migrations promptly.
 ### Rollback compatibility
 
 Roll back code with a revert PR that **keeps every applied migration file**:
-removing one lowers the embedded head and the rolled-back binary refuses
-`ahead`. Schema rollback (`migrate down`) happens only after the binaries that
+removing one lowers the embedded head, so the gate refuses the rolled-back
+binary `ahead` and nothing is replaced. Schema rollback (`migrate down`) happens only after the binaries that
 need the higher version are gone, and then needs a released binary whose head
 matches the lowered ledger. Reverting the T21.2 gate itself restores the old
 warn-only behaviour and needs no schema change.
@@ -510,6 +575,20 @@ read-only confirm, on the production database the services use:
 Passing tests do not activate this protection. It is active only once a release
 containing it runs against a verified database.
 
+### Activating the release-time gate
+
+The gate adds no migration and no grant: it reads exactly what startup reads.
+Its merge changes `ci.yml`, `scripts/production-*` and both services, so it
+selects all three targets. Against a production schema at the merged head, both
+Fly releases pass the gate and proceed as before. Against an older schema —
+CURRENT_STATE last records an owner report of 24 while main embeds 26 — both are
+refused at the gate: nothing is replaced, the ledgers record `inactive`, and the
+running binaries keep serving. That is the gate working; follow the
+[safe sequence](#version-policy-and-its-cost) rather than forcing anything. An
+older unresolved ledger record still stops `prepare` before any gate runs:
+reconcile it under [interrupted-release recovery](#interrupted-release-recovery)
+first. Like the startup gate, it is active only once a release containing it runs.
+
 ### Known follow-ups (not fixed by T21.2)
 
 - The same `GRANT … ON ALL TABLES` gives `scorearc_ingester` INSERT/UPDATE on
@@ -534,7 +613,8 @@ containing it runs against a verified database.
 | Vercel token or IDs absent | Explicit failure before the ledger. A known-missing identity/token follows [SETUP](SETUP.md#vercel-deployment-identity) after owner consent; verify identifiers against the existing project. A name that exists but delivers no value requires preflight diagnosis. Neither outcome is a success or path skip. |
 | Vercel automatic domain assignment ON, unexpected repo link/hooks | Fail closed before publication. Restore the audited settings, then rerun CI. |
 | Inert staged build fails or publishing steps both skipped | Ledger `inactive`; no publishing command started. The next eligible attempt does a full service deployment. |
-| Fly deploy / Vercel promotion fails, times out, or is cancelled | May have continuing provider-side effects. Ledger remains unresolved and blocks all later releases for that target until reconciled. |
+| Job summary "release_command stopped the deploy" | The [schema gate](#release-time-schema-gate) refused, and flyctl's own abort line proves no service machine changed. Ledger `inactive`; the running release keeps serving. Act on the verdict's category ([failure matrix](#failure-matrix)) — for `behind`, follow the [safe sequence](#version-policy-and-its-cost) — then dispatch CI on main. `not checked: <VAR> is required` means a missing secret; with no verdict line, read the release_command output in the job log (a crash or missing secret stops before the ledger). Never `--skip-release-command`. |
+| Fly deploy / Vercel promotion fails, times out, or is cancelled | May have continuing provider-side effects. Ledger remains unresolved and blocks all later releases for that target until reconciled. This includes a Fly failure whose summary says "no machine changed" is not proven. |
 | `Ingester machine contract not met ...` | The deploy ran, but the [machine check](#post-deployment-ingester-verification) failed. The ledger is `failure` (unresolved), never success. Read the named conditions and machine IDs. Reconcile the machine ([SETUP §7.4](SETUP.md#74-first-deploy) for standby/singleton problems), then acknowledge the ledger under [Interrupted-release recovery](#interrupted-release-recovery). Nothing was repaired automatically. |
 | Ledger/confirmation API failure | Inspect the record and actual provider state; never manufacture a success. A missing outcome remains unresolved. |
 | `Unrecognized production ledger entry` | Provenance/schema did not match. Do not erase records or mark them inactive to bypass validation. Older code incorrectly required optional app metadata; see the Actions-creator contract below and main run `34741032755`. |
@@ -726,8 +806,17 @@ gh api --method POST repos/mcasillas17/ScoreArc/deployments/DEPLOYMENT_ID/status
 
 Do not mark an uncertain release `success`, delete its record, or acknowledge an
 active run. `inactive` never authorizes old code: it forces a full deployment on
-the next **current-main, fully tested** attempt. Known-inert workflow aborts can
-record inactive automatically. Newest-first ledger reads are bounded to the
+the next **current-main, fully tested** attempt. Known-inert workflow aborts —
+a superseded candidate, a failed inert Vercel build, and a
+[release-command abort](#release-time-schema-gate) proven by flyctl's own line —
+record inactive automatically. A Fly failure without that proof (the step was
+cancelled or timed out during `release_command`, or the line is missing) stays
+unresolved. After the run is terminal, establish from provider state that no
+service machine changed: `fly releases --app scorearc-<service> --image` shows the
+newest release `failed` or `interrupted`, not `running`, and
+`fly machines list --app scorearc-<service> --json` shows every machine still
+on the image of the last `complete` release. Only then acknowledge `inactive`
+as above, citing that evidence. Newest-first ledger reads are bounded to the
 latest record/status; unknown ledger identity/schema fails loudly.
 
 ## Post-merge production acceptance

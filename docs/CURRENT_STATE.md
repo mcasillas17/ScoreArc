@@ -662,6 +662,12 @@ held-byte reprocessing and new collection remain unchanged.
   0024 raises the embedded head to 24, so a release containing it requires
   0024 to be applied first, with approval. Otherwise both services refuse
   `behind` ([RELEASES](backend/RELEASES.md#migration-0024-standing-table-membership)).
+  **October 26 follow-up (PR, not merged or active):** a release-time gate runs
+  the same check as Fly `release_command` before any service machine changes; a refusal
+  proven by flyctl's own abort line records `inactive`, so later releases are not
+  wedged. The order becomes apply, merge, release; it covers deploys, not
+  restarts of old binaries after an apply
+  ([RELEASES](backend/RELEASES.md#release-time-schema-gate)).
 
 **After the existing contract/trust gates:** T16.3–T16.5 implement, shadow and
 soak the reader per method with fallback and immediate rollback, never a

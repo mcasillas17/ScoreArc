@@ -85,9 +85,16 @@ or PostgreSQL message/detail. Empty bookkeeping tables pass and still yield
 `unavailable` for active scopes at request time. The existing `/healthz`
 connectivity behavior is unchanged.
 
+`-check-schema` runs only that gate — same login, probe and deadline, reading
+only `DATABASE_URL` — prints one line and exits 0 only when ready, never
+listening. Fly runs it from the new image
+as `release_command`, so an incompatible schema stops a deploy before any service
+machine is replaced ([release-time schema gate](../../docs/backend/RELEASES.md#release-time-schema-gate)).
+
 ```bash
 cd backend/reader
 DATABASE_URL="$READER_DSN" PORT=8080 go run .
+DATABASE_URL="$READER_DSN" go run . -check-schema   # one line; exit 0 = ready
 curl -i http://localhost:8080/healthz
 curl -i http://localhost:8080/v1/competitions/world-cup/2026/matches
 ```

@@ -164,3 +164,52 @@ func TestCheckReadyPolicy(t *testing.T) {
 		})
 	}
 }
+
+// ReportReadiness is the whole contract of the services' -check-schema mode,
+// which Fly runs as release_command and streams into the CI log: exactly one
+// line, no DSN or driver text, and exit 0 only for a ready schema.
+func TestReportReadinessPrintsOneSafeLineAndExitCode(t *testing.T) {
+	head, err := Latest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused := func(version int64, dirty bool) error {
+		db := fakeDB{ledger: []ledgerRow{{version, dirty}}}
+		return CheckReady(context.Background(), &db)
+	}
+	refusal := func(fields string) string {
+		return "database schema not ready: " + fields + " runbook=docs/backend/RELEASES.md#schema-readiness\n"
+	}
+	// Exact lines: anything appended — driver text, a DSN — fails the match.
+	for _, tc := range []struct {
+		name string
+		err  error
+		code int
+		line string
+	}{
+		{"ready", refused(int64(head), false), 0,
+			fmt.Sprintf("database schema ready: expected=%d applied=%d dirty=false\n", head, head)},
+		{"behind", refused(int64(head-1), false), 1,
+			refusal(fmt.Sprintf("category=behind expected=%d applied=%d dirty=false", head, head-1))},
+		{"ahead", refused(int64(head+1), false), 1,
+			refusal(fmt.Sprintf("category=ahead expected=%d applied=%d dirty=false", head, head+1))},
+		{"dirty", refused(int64(head), true), 1,
+			refusal(fmt.Sprintf("category=dirty expected=%d applied=%d dirty=true", head, head))},
+		// Failures before CheckReady runs (a refused login, an unparsable DSN)
+		// carry driver text; they are classified like CheckReady's own.
+		{"connect failure", fmt.Errorf("ping postgres: %w", &pgconn.PgError{Code: "28P01", Message: secret}), 1,
+			refusal(fmt.Sprintf("category=query_failed expected=%d applied=unknown dirty=false sqlstate=28P01 error_type=*fmt.wrapError", head))},
+		{"connect timeout", fmt.Errorf("dial %s: %w", secret, context.DeadlineExceeded), 1,
+			refusal(fmt.Sprintf("category=timeout expected=%d applied=unknown dirty=false error_type=*fmt.wrapError", head))},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out strings.Builder
+			if code := ReportReadiness(context.Background(), &out, tc.err); code != tc.code {
+				t.Fatalf("exit %d, want %d", code, tc.code)
+			}
+			if out.String() != tc.line {
+				t.Fatalf("got %q, want %q", out.String(), tc.line)
+			}
+		})
+	}
+}

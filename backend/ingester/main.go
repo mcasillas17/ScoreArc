@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mcasillas17/scorearc-backend/config"
+	"github.com/mcasillas17/scorearc-backend/migrations"
 	"github.com/mcasillas17/scorearc-backend/shared/assets"
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
 	"github.com/mcasillas17/scorearc-backend/shared/source"
@@ -24,17 +26,22 @@ func main() {
 
 func run() int {
 	once := flag.Bool("once", false, "run one complete ingest cycle")
+	checkSchema := flag.Bool("check-schema", false,
+		"check the database schema against this binary over POOLED_DSN, print one line, exit 0 only if ready; needs no lease DSN and never takes the lease, seeds or ingests")
 	flag.Parse()
 
-	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 	dsn := os.Getenv("POOLED_DSN")
+	if *checkSchema {
+		return checkSchemaOnly(ctx, os.Stdout, dsn)
+	}
+	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	leaseDSN := os.Getenv("INGESTER_LEASE_DSN")
 	if dsn == "" || leaseDSN == "" {
 		log.Error("POOLED_DSN and INGESTER_LEASE_DSN are required")
 		return 1
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	registry, err := config.Load()
 	if err != nil {
@@ -224,6 +231,25 @@ func run() int {
 		}
 	}
 
+}
+
+// checkSchemaOnly is the release_command in fly.toml: Fly runs it from the new
+// image before stopping the running worker. It is the startup gate alone, over
+// the same pooled login and budget, and stops before the lease, seeding and
+// polling, so it needs no lease DSN and cannot contend with the live worker.
+func checkSchemaOnly(ctx context.Context, out io.Writer, dsn string) int {
+	if dsn == "" {
+		fmt.Fprintln(out, "database schema not checked: POOLED_DSN is required")
+		return 1
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	repo, err := store.New(ctx, dsn)
+	if err == nil {
+		defer repo.Close()
+		err = repo.CheckSchemaReady(ctx)
+	}
+	return migrations.ReportReadiness(ctx, out, err)
 }
 
 // applySeeds writes the curated registries before any ingest, and returns a

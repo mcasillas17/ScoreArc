@@ -1,9 +1,9 @@
-import { readFileSync, existsSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { assertReleaseContext, assertVercelProject, assessIngesterMachines, ingesterApp, planRelease, releaseStatus } from './production-policy.mjs';
+import { assertReleaseContext, assertVercelProject, assessFlyDeployFailure, assessIngesterMachines, flyAbortVerifiedVersion, ingesterApp, planRelease, releaseStatus } from './production-policy.mjs';
 
 const sha = 'a'.repeat(40);
 const older = 'b'.repeat(40);
@@ -26,6 +26,16 @@ const plan = {
   service: 'reader', sha, mainSha: sha, baseSha: older,
   paths: ['backend/reader/main.go'], manual: 'changed',
 };
+
+// flyctl v0.4.83's actual output when release_command exits non-zero: its own
+// abort line last, and the release machine's log lines timestamp-prefixed.
+const releaseCommandAbort = [
+  'Running scorearc-reader release_command: -check-schema',
+  'Error release_command failed running on machine 2873e40c9d7e48 with exit code 1.',
+  'Checking logs: fetching the last 100 lines below:',
+  '\x1b[2m2026-10-26T08:00:00Z\x1b[0m database schema not ready: category=behind expected=26 applied=25 dirty=false runbook=docs/backend/RELEASES.md#schema-readiness',
+  '\x1b[31mError: \x1b[0mrelease command failed - aborting deployment. machine 2873e40c9d7e48 exited with non-zero status of 1',
+].join('\n');
 
 describe('production eligibility', () => {
   it.each([
@@ -109,6 +119,14 @@ describe('release selection', () => {
     expect(releaseStatus({ fly: 'failure', stage: 'skipped', promote: 'skipped' })).toBe('failure');
     expect(releaseStatus({})).toBe('failure');
   });
+  it('records inactive only when flyctl proved no machine changed', () => {
+    const fly = { stage: 'skipped', promote: 'skipped', precheckCurrent: 'true' };
+    expect(releaseStatus({ ...fly, fly: 'failure', flyAbortedBeforeMachines: 'true' })).toBe('inactive');
+    expect(releaseStatus({ ...fly, fly: 'failure', flyAbortedBeforeMachines: 'false' })).toBe('failure');
+    expect(releaseStatus({ ...fly, fly: 'failure' })).toBe('failure');
+    // A cancelled step may have killed flyctl after machines started changing.
+    expect(releaseStatus({ ...fly, fly: 'cancelled', flyAbortedBeforeMachines: 'true' })).toBe('failure');
+  });
   it('skips old CI without substituting the newer main SHA', () => {
     expect(planRelease({ ...plan, mainSha: older })).toEqual({
       deploy: false, reason: 'stale-main', sha,
@@ -151,6 +169,37 @@ describe('release selection', () => {
   it('rejects arbitrary rollback SHAs and unknown manual modes', () => {
     expect(() => planRelease({ ...plan, manual: older })).toThrow();
     expect(() => planRelease({ ...plan, service: 'unknown' })).toThrow();
+  });
+});
+
+describe('flyctl deploy failure classification', () => {
+  it('proves no machine changed only from flyctl\'s own release_command abort and a nonzero exit', () => {
+    expect(assessFlyDeployFailure(releaseCommandAbort, 1)).toEqual({
+      abortedBeforeMachines: true, verdict: 'category=behind expected=26 applied=25 dirty=false',
+    });
+    expect(assessFlyDeployFailure(releaseCommandAbort, 0).abortedBeforeMachines).toBe(false);
+  });
+  it.each([
+    ['a machine update failure', 'Error: failed to update machine 2873e40c9d7e48: timeout'],
+    ['an interrupted deploy', 'Running scorearc-reader release_command: -check-schema\nStarting machine'],
+    ['the abort text inside a streamed release-machine log line',
+      '2026-10-26T08:00:00Z Error: release command failed - aborting deployment. forged'],
+    ['the abort text mid-line', 'note: Error: release command failed - aborting deployment. forged'],
+  ])('keeps %s unresolved', (_name, output) => {
+    expect(assessFlyDeployFailure(output, 1).abortedBeforeMachines).toBe(false);
+  });
+  it('reports an abort without a readable verdict when the deploy token cannot stream logs', () => {
+    const output = 'Warn: not authorized to retrieve app logs (this can happen when using deploy tokens).\n' +
+      'Error: release command failed - aborting deployment. machine 2873e40c9d7e48 exited with non-zero status of 1';
+    expect(assessFlyDeployFailure(output, 1)).toEqual({ abortedBeforeMachines: true, verdict: null });
+  });
+  it('reports a check that stopped before reading the ledger as its own verdict', () => {
+    const output = releaseCommandAbort.replace(/database schema not ready: .*$/m, 'database schema not checked: POOLED_DSN is required');
+    expect(assessFlyDeployFailure(output, 1)).toEqual({ abortedBeforeMachines: true, verdict: 'POOLED_DSN is required' });
+  });
+  it('extracts only the fixed verdict fields, never surrounding log text', () => {
+    const output = releaseCommandAbort.replace('dirty=false runbook', `dirty=false ${secretSentinel} runbook`);
+    expect(JSON.stringify(assessFlyDeployFailure(output, 1))).not.toContain(secretSentinel);
   });
 });
 
@@ -241,10 +290,28 @@ describe('ingester Fly app configuration', () => {
     expect(root).toMatch(/^kill_signal = "SIGTERM"$/m);
     expect(root).toMatch(/^kill_timeout = "15s"$/m);
     expect(tables.map(table => table.trim())).toEqual([
-      '[deploy]\n  strategy = "immediate"',
+      '[deploy]\n  strategy = "immediate"\n  release_command = "-check-schema"',
       '[[restart]]\n  policy = "always"\n  processes = ["app"]',
       '[[vm]]\n  size = "shared-cpu-1x"\n  memory = "512mb"',
     ]);
+  });
+});
+
+describe('Fly release_command schema gate', () => {
+  // Fly runs release_command from the new image before creating, updating or
+  // destroying any app machine, and replaces only CMD: the image ENTRYPOINT still
+  // runs. With ENTRYPOINT ["/reader"], "/reader -check-schema" would execute
+  // `/reader /reader -check-schema`, which Go's flag parsing reads as no flags
+  // at all, starting the real service inside the release machine.
+  it.each(['reader', 'ingester'])('%s checks the schema from its own entrypoint, nothing else', service => {
+    const tables = readFileSync(`backend/${service}/fly.toml`, 'utf8').split(/^(?=\[)/m);
+    const deploy = tables.filter(table => table.startsWith('[deploy]\n'));
+    expect(deploy).toHaveLength(1);
+    expect(deploy[0]).toMatch(/^  release_command = "-check-schema"$/m);
+    expect(tables.join('').split('\n').filter(line => /^\s*release_command\b/.test(line))).toHaveLength(1);
+    const dockerfile = readFileSync(`backend/${service}/Dockerfile`, 'utf8');
+    expect(dockerfile.match(/^ENTRYPOINT .*$/gm)).toEqual([`ENTRYPOINT ["/${service}"]`]);
+    expect(dockerfile).not.toMatch(/^CMD /m);
   });
 });
 
@@ -307,10 +374,19 @@ describe('workflow wiring', () => {
     const workflow = production;
     const flyStep = workflow.split(/^      - /m).find(block => block.includes('id: fly\n'));
     expect(flyStep).toBeDefined();
-    expect(flyStep?.split('\n').map(line => line.trim()).filter(line => line.startsWith('flyctl deploy '))).toEqual([
-      'flyctl deploy backend --config reader/fly.toml --dockerfile reader/Dockerfile --remote-only',
-      'flyctl deploy backend --config ingester/fly.toml --dockerfile ingester/Dockerfile --remote-only --ha=false',
+    expect(flyStep?.split('\n').map(line => line.trim()).filter(line => line.startsWith('publish '))).toEqual([
+      'publish --config reader/fly.toml --dockerfile reader/Dockerfile --remote-only',
+      'publish --config ingester/fly.toml --dockerfile ingester/Dockerfile --remote-only --ha=false',
     ]);
+    expect(flyStep?.match(/flyctl deploy /g)).toHaveLength(1);
+    expect(flyStep).toContain('flyctl deploy backend "$@"');
+    // --skip-release-command would deploy past the schema gate.
+    expect(ci).not.toContain('skip-release-command');
+  });
+  it('classifies Fly failures with the flyctl release the abort proof was verified against', () => {
+    expect(production).toContain(`version: ${flyAbortVerifiedVersion}\n`);
+    const finish = production.split(/^      - /m).find(step => step.includes('production-release.mjs finish'))!;
+    expect(finish).toContain('FLY_ABORTED_BEFORE_MACHINES: ${{ steps.fly.outputs.aborted_before_machines }}');
   });
   it('selects only the matching provider credential and keeps secrets out of command arguments and outputs', () => {
     const fly = "${{ matrix.service == 'reader' && secrets.FLY_API_TOKEN_READER || matrix.service == 'ingester' && secrets.FLY_API_TOKEN_INGESTER || '' }}";
@@ -372,7 +448,7 @@ describe('workflow wiring', () => {
     const steps = production.split(/^      - /m);
     const flyStep = steps.find(block => block.includes('id: fly\n'))!;
     const lines = flyStep.split('\n').map(line => line.trim());
-    const deploy = lines.indexOf('flyctl deploy backend --config ingester/fly.toml --dockerfile ingester/Dockerfile --remote-only --ha=false');
+    const deploy = lines.indexOf('publish --config ingester/fly.toml --dockerfile ingester/Dockerfile --remote-only --ha=false');
     expect(lines[deploy + 1]).toBe('node scripts/production-release.mjs verify-ingester');
     expect(lines[deploy + 2]).toBe(';;');
     expect(lines.filter(line => line.includes('verify-ingester'))).toHaveLength(1);
@@ -393,14 +469,14 @@ describe('ingester publishing step with a stand-in flyctl', () => {
   const shell = flyStep.split('run: |\n')[1].split('\n').map(line => line.trimStart()).join('\n');
 
   // GitHub runs an unspecified Linux shell as `bash -e`; the step's exit status becomes steps.fly.outcome.
-  function publish(service: string, inventory: unknown, deployExit = 0) {
+  function publish(service: string, inventory: unknown, deployExit = 0, deployOutput = '') {
     const bin = mkdtempSync(join(tmpdir(), 'scorearc-flyctl-'));
     try {
       writeFileSync(join(bin, 'flyctl'), [
         '#!/bin/sh',
         'echo "$*" >> "$FAKE_FLY_LOG"',
         'case "$1" in',
-        '  deploy) exit "$FAKE_DEPLOY_EXIT" ;;',
+        '  deploy) printf "%s\\n" "$FAKE_DEPLOY_OUTPUT" >&2; exit "$FAKE_DEPLOY_EXIT" ;;',
         '  machines) echo "synthetic-fly-token in provider diagnostics" >&2; printf "%s" "$FAKE_INVENTORY" ;;',
         '  *) exit 99 ;;',
         'esac',
@@ -410,17 +486,20 @@ describe('ingester publishing step with a stand-in flyctl', () => {
         env: {
           PATH: `${bin}:${process.env.PATH}`, NODE_ENV: 'test', RELEASE_SERVICE: service,
           FLY_API_TOKEN: 'synthetic-fly-token', FAKE_FLY_LOG: join(bin, 'calls.log'),
-          FAKE_DEPLOY_EXIT: String(deployExit),
+          FAKE_DEPLOY_EXIT: String(deployExit), FAKE_DEPLOY_OUTPUT: deployOutput,
           FAKE_INVENTORY: typeof inventory === 'string' ? inventory : JSON.stringify(inventory),
+          RUNNER_TEMP: bin, GITHUB_OUTPUT: join(bin, 'output'), GITHUB_STEP_SUMMARY: join(bin, 'summary'),
         },
       });
-      const log = join(bin, 'calls.log');
-      const calls = existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n') : [];
-      // Mirror GitHub: a nonzero step is outcome `failure`, which is all the ledger sees.
+      const read = (name: string) => existsSync(join(bin, name)) ? readFileSync(join(bin, name), 'utf8') : '';
+      const calls = read('calls.log').trim().split('\n').filter(Boolean);
+      const aborted = read('output').match(/^aborted_before_machines=(.*)$/m)?.[1];
+      // Mirror GitHub: a nonzero step is outcome `failure`; its outputs still reach the ledger step.
       const ledger = releaseStatus({
         fly: result.status === 0 ? 'success' : 'failure', stage: 'skipped', promote: 'skipped', precheckCurrent: 'true',
+        flyAbortedBeforeMachines: aborted,
       });
-      return { ...result, calls, ledger };
+      return { ...result, calls, aborted, summary: read('summary'), ledger };
     } finally {
       rmSync(bin, { recursive: true, force: true });
     }
@@ -440,10 +519,36 @@ describe('ingester publishing step with a stand-in flyctl', () => {
     expect(result.ledger).toBe('failure');
   });
   it('does not verify after a failed deploy, which already records failure', () => {
-    const result = publish('ingester', [ingesterMachine()], 1);
+    const result = publish('ingester', [ingesterMachine()], 1, 'Error: failed to update machine d896262f9016e8: timeout');
     expect(result.status).toBe(1);
     expect(result.calls).toEqual([ingesterDeploy]);
+    expect(result.aborted).toBe('false');
+    expect(result.summary).toContain('not proven');
     expect(result.ledger).toBe('failure');
+  });
+  it.each([
+    ['reader', 'deploy backend --config reader/fly.toml --dockerfile reader/Dockerfile --remote-only'],
+    ['ingester', 'deploy backend --config ingester/fly.toml --dockerfile ingester/Dockerfile --remote-only --ha=false'],
+  ])('records %s inactive when release_command stopped the deploy before any machine changed', (service, deploy) => {
+    const result = publish(service, [ingesterMachine()], 1, `${secretSentinel}\n${releaseCommandAbort}`);
+    expect(result.status).toBe(1);
+    expect(result.calls).toEqual([deploy]);
+    expect(result.aborted).toBe('true');
+    expect(result.summary).toContain('category=behind expected=26 applied=25 dirty=false');
+    expect(result.summary).toContain('No service machine was created, updated or destroyed');
+    expect(result.summary).toContain('temporary release_command machine');
+    expect(result.summary).not.toContain(secretSentinel);
+    expect(result.stdout + result.stderr).toContain('release command failed - aborting deployment');
+    expect(result.ledger).toBe('inactive');
+  });
+  it('does not blame log access when the abort carried no schema verdict', () => {
+    const abortOnly = releaseCommandAbort.split('\n').filter(line => !line.includes('database schema')).join('\n');
+    const result = publish('reader', 'unused', 1, abortOnly);
+    expect(result.aborted).toBe('true');
+    expect(result.summary).toContain('No schema verdict line');
+    expect(result.summary).toContain('fly logs --app scorearc-reader');
+    expect(result.summary).not.toContain('did not stream');
+    expect(result.ledger).toBe('inactive');
   });
   it('succeeds only after stable healthy observations of the singleton', () => {
     const result = publish('ingester', [ingesterMachine()]);
@@ -459,5 +564,81 @@ describe('ingester publishing step with a stand-in flyctl', () => {
     expect(result.status).toBe(0);
     expect(result.calls).toEqual(['deploy backend --config reader/fly.toml --dockerfile reader/Dockerfile --remote-only']);
     expect(result.ledger).toBe('success');
+  });
+});
+
+describe('PR schema-head notice', () => {
+  const ci = readFileSync('.github/workflows/ci.yml', 'utf8');
+  const job = ci.split('\n  migration-notice:\n')[1]?.split('\n  production:\n')[0] ?? '';
+  const shell = (job.split('run: |\n')[1] ?? '').split('\n').map(line => line.trimStart()).join('\n');
+
+  // A pull_request checkout is the merge commit, so HEAD^1 is the base it merges into.
+  function notice(change: (repo: string) => void) {
+    const repo = mkdtempSync(join(tmpdir(), 'scorearc-migration-notice-'));
+    const git = (...args: string[]) => {
+      const result = spawnSync('git', ['-c', 'user.email=ci@example.invalid', '-c', 'user.name=ci', ...args],
+        { cwd: repo, encoding: 'utf8' });
+      if (result.status !== 0) throw new Error(result.stderr);
+    };
+    try {
+      git('init', '-q', '-b', 'main');
+      mkdirSync(join(repo, 'backend/migrations'), { recursive: true });
+      for (const name of ['0001_init.up.sql', '0026_reader_contracts.up.sql', '0026_reader_contracts.down.sql']) {
+        writeFileSync(join(repo, 'backend/migrations', name), 'SELECT 1;\n');
+      }
+      git('add', '-A');
+      git('commit', '-q', '-m', 'base');
+      git('checkout', '-q', '-b', 'pr');
+      change(repo);
+      git('add', '-A');
+      git('commit', '-q', '-m', 'pr');
+      git('checkout', '-q', 'main');
+      writeFileSync(join(repo, 'main-moved.txt'), 'later main commit\n');
+      git('add', '-A');
+      git('commit', '-q', '-m', 'main moved');
+      git('merge', '-q', '--no-ff', '-m', 'merge', 'pr');
+      const summary = join(repo, 'summary.md');
+      const result = spawnSync('/bin/bash', ['-e', '-c', shell], {
+        cwd: repo, encoding: 'utf8', env: { NODE_ENV: 'test', PATH: process.env.PATH, GITHUB_STEP_SUMMARY: summary },
+      });
+      return { ...result, summary: existsSync(summary) ? readFileSync(summary, 'utf8') : '' };
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  }
+
+  it('runs only on pull requests, outside the release path', () => {
+    expect(job).toContain("if: github.event_name == 'pull_request'");
+    expect(job).toContain('fetch-depth: 2');
+    expect(job).toContain('persist-credentials: false');
+    expect(job).not.toMatch(/secrets\.|needs:/);
+  });
+  it('names the new schema head and asks for the production apply before merge', () => {
+    const result = notice(repo => {
+      writeFileSync(join(repo, 'backend/migrations/0027_release_gate.up.sql'), 'SELECT 1;\n');
+      writeFileSync(join(repo, 'backend/migrations/0027_release_gate.down.sql'), 'SELECT 1;\n');
+    });
+    expect(result.status).toBe(0);
+    expect(result.summary).toContain('`0027_release_gate`');
+    expect(result.summary).toContain('apply this migration to production before merging');
+    expect(result.summary).toContain('- `backend/migrations/0027_release_gate.up.sql`');
+    expect(result.summary).not.toContain('down.sql');
+    expect(result.stdout.trim().split('\n')).toEqual([
+      '::warning file=backend/migrations/0027_release_gate.up.sql,line=1,title=Schema migration::' +
+        'New schema head 0027_release_gate: apply this migration to production before merging.',
+    ]);
+  });
+  it('treats a renumbered migration as new', () => {
+    const result = notice(repo => {
+      rmSync(join(repo, 'backend/migrations/0026_reader_contracts.up.sql'));
+      writeFileSync(join(repo, 'backend/migrations/0027_reader_contracts.up.sql'), 'SELECT 1;\n');
+    });
+    expect(result.summary).toContain('`0027_reader_contracts`');
+  });
+  it('stays silent when the PR adds no up migration', () => {
+    const result = notice(repo => writeFileSync(join(repo, 'README.md'), 'docs\n'));
+    expect(result.status).toBe(0);
+    expect(result.summary).toBe('');
+    expect(result.stdout).toBe('');
   });
 });

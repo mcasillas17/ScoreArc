@@ -31,8 +31,16 @@ kill_timeout = "15s"
 # the database lease" and exits 1. A strategy that runs old and new machines
 # concurrently (canary/bluegreen) therefore guarantees a failed deploy, so stop
 # the old machine before starting the new one.
+#
+# Schema gate: release_command runs from the NEW image, with the app's secrets,
+# BEFORE "immediate" stops the running worker; a non-zero exit aborts the deploy
+# with the old worker untouched. -check-schema is the startup gate alone over
+# POOLED_DSN -- no lease, seeding or polling -- so it cannot contend with the
+# live worker. Only CMD is replaced: ENTRYPOINT ["/ingester"] still runs, so
+# the value is the flag alone. Never deploy with --skip-release-command.
 [deploy]
   strategy = "immediate"
+  release_command = "-check-schema"
 
 [[restart]]
   policy = "always"
