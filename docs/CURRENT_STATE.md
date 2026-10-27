@@ -504,7 +504,7 @@ separate.
 - **`DataStore` has 12 methods** (`getMatches`, `getFixtures`,
   `getLiveWindow`, `getUpcoming`, `getStandings`, `getBracket`,
   `getMatchSummary`, `getLeaders`,
-  `getNews`, `getTeam`, `getSquad`, `getPlayer`) against **10 reader
+  `getNews`, `getTeam`, `getSquad`, `getPlayer`) against **11 reader
   routes** (calendar, legacy top-scorers and box-score have no direct store method). #191 removed the redundant `getTopScorers`/`getTopAssists` wrappers,
   not their public product/API capabilities: both still use `getLeaders`.
   The count is corrected; the underlying parity gaps remain real.
@@ -523,7 +523,13 @@ separate.
   exact schema 26 is required for these binaries. The last owner-reported schema
   was 24, with 0025 missing; neither 25 nor 26 is verified deployed. Do not repeat 0024.
   See [contract and rollout](backend/READER_CONTRACT.md#t102-leaders-statistics-and-participation-contract).
-  Team/player expansion, broader freshness and cutover remain open.
+  Team expansion, broader freshness and cutover remain open.
+- **T10.4 implementation October 26, pending review/release:** canonical UUID
+  player profile, scoped season totals, latest-five game log and bounded career.
+  Positive TypeScript/Go/OpenAPI/Postgres assertions replace `T10.4-player`.
+  Missing optional rows preserve identity; unknown slugs remain null. No
+  migration, production access or frontend data-source change; schema head
+  stays 26. [Contract](backend/READER_CONTRACT.md#t104-player-contract).
 - **T10.10 derived standings: closed in code October 14 (option B), not
   deployed.** The Leagues Cup phase tables and the MLS overall table stay a
   TypeScript derivation. The reader serves only their inputs, and a future

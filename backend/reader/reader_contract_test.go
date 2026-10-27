@@ -433,18 +433,17 @@ func TestReaderContract(t *testing.T) {
 		for route := range vectors.ReaderOnly {
 			routes[route] = true
 		}
-		if vectors.Methods["getPlayer"].Reader != nil {
-			t.Fatal("getPlayer gained a reader route; update reader-contract.json")
+		if vectors.Methods["getPlayer"].Reader == nil || *vectors.Methods["getPlayer"].Reader != "/v1/competitions/{comp}/{season}/players/{playerId}" {
+			t.Fatal("missing canonical getPlayer route")
 		}
-		gap("T10.4-player")
-		exercise("getPlayer") // No route: absence from OpenAPI and the router is the contract.
+		exercise("getPlayer")
 		documented := map[string]bool{}
 		for path, item := range document.Paths.Map() {
 			if item.Get == nil {
 				t.Fatalf("%s lacks GET", path)
 			}
 			documented[path] = true
-			if strings.Contains(path, "player") || strings.Contains(path, "squad") || strings.Contains(path, "assist") {
+			if strings.Contains(path, "squad") || strings.Contains(path, "assist") {
 				t.Fatalf("gap changed: OpenAPI now documents %s", path)
 			}
 		}
@@ -1280,7 +1279,7 @@ func TestReaderContract(t *testing.T) {
 		}
 	})
 
-	t.Run("recorded career agrees; no reader player route", func(t *testing.T) {
+	t.Run("recorded career source names and seasons agree", func(t *testing.T) {
 		history, err := espn.MapAthleteBio(contractFixture(t, vector(t, raw, "player", "bioFixture").(string)))
 		if err != nil {
 			t.Fatal(err)

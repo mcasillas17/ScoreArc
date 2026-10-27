@@ -6,6 +6,6 @@ panels:
     - id: knights-sol
       model: gpt-6.1-sol
       fallback: null
-    - id: panel-terra
-      model: gpt-5.6-terra
+    - id: knights-luna
+      model: gpt-6-luna
       fallback: null
