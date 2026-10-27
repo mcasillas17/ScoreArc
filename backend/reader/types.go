@@ -30,6 +30,19 @@ type Match struct {
 	WinProbability *espn.WinProbability `json:"winProbability"`
 }
 
+// TeamMatch is a team schedule row: a Match plus its scope. The team route's
+// URL already scopes the rows; the field is here because the frontend's
+// TeamProfile carries it on every schedule match.
+type TeamMatch struct {
+	Match
+	Scope MatchScope `json:"scope"`
+}
+
+type MatchScope struct {
+	CompetitionID string `json:"competitionId"`
+	SeasonID      string `json:"seasonId"`
+}
+
 // CalendarDay is one UTC day of a season that holds at least one match.
 type CalendarDay struct {
 	Date      string `json:"date"` // YYYY-MM-DD, UTC
@@ -179,9 +192,10 @@ type PlayerSeasonStats struct {
 	GoalsConceded  *int `json:"goalsConceded"`
 }
 
-// SquadPlayer is shaped after src/server/data/types.ts's SquadPlayer; its id,
-// age, headshotUrl and served order differ (gap T10.3-squad-fields in
-// src/server/data/contracts/reader-contract.json).
+// SquadPlayer matches src/server/data/types.ts's SquadPlayer. ID is the
+// provider athlete id on the membership's source (player_external_ref), the
+// id the frontend's player slugs are keyed by -- never the canonical UUID.
+// Age is whole years since player.birth_date on the request's UTC date.
 //
 // Stats is a pointer to the whole block, separately from each stat inside it
 // being nullable: a player with no player_season_stat row has never been
@@ -205,17 +219,40 @@ type TeamRecord struct {
 	GoalDifference *int   `json:"goalDifference"`
 }
 
-// TeamProfile is shaped after src/server/data/types.ts's TeamProfile. It is
-// not yet a drop-in replacement: the remaining incompatibilities are
-// characterized in src/server/data/contracts/reader-contract.json and
-// team-insights.json.
+// TeamStanding's Competition is the label the rank is within: the team's
+// table name when the season holds several tables, else the competition name.
+type TeamStanding struct {
+	Rank        int    `json:"rank"`
+	Competition string `json:"competition"`
+}
+
+// ScheduleAvailability says whether the schedule block could be read, not
+// whether it is fresh or complete. One stored query serves both halves.
+type ScheduleAvailability struct {
+	Results  string `json:"results"`
+	Upcoming string `json:"upcoming"`
+}
+
+// TeamProfile matches src/server/data/types.ts's TeamProfile
+// (reader-contract.json and team-insights.json pin it). Record, standing and
+// standingSummary are derived from the stored standing row, not echoed from a
+// provider string.
 type TeamProfile struct {
-	Team            espn.Team     `json:"team"`
-	Location        *string       `json:"location"`
-	Color           *string       `json:"color"`
-	AltColor        *string       `json:"altColor"`
-	Record          *TeamRecord   `json:"record"`
-	StandingSummary *string       `json:"standingSummary"`
-	Squad           []SquadPlayer `json:"squad"`
-	Schedule        []Match       `json:"schedule"`
+	Team                 espn.Team            `json:"team"`
+	Location             *string              `json:"location"`
+	Color                *string              `json:"color"`
+	AltColor             *string              `json:"altColor"`
+	Record               *TeamRecord          `json:"record"`
+	Standing             *TeamStanding        `json:"standing"`
+	StandingSummary      *string              `json:"standingSummary"`
+	Squad                []SquadPlayer        `json:"squad"`
+	Schedule             []TeamMatch          `json:"schedule"`
+	ScheduleAvailability ScheduleAvailability `json:"scheduleAvailability"`
+	// Child blocks that failed and were served empty; the handler logs them.
+	failures []*teamReadError
+}
+
+func degradeSchedule(profile *TeamProfile) {
+	profile.Schedule = []TeamMatch{}
+	profile.ScheduleAvailability = ScheduleAvailability{Results: "unavailable", Upcoming: "unavailable"}
 }

@@ -205,3 +205,64 @@ func TestReplaceSquadAsTheIngesterRole(t *testing.T) {
 		t.Fatalf("as %s: season stats = %d, want 2", roleName, got)
 	}
 }
+
+// Roster order and headshots are stored per membership/player, and a later
+// payload without a headshot keeps the one already held. Team location and
+// colour follow the same never-blank rule.
+func TestReplaceSquadStoresRosterOrderHeadshotAndTeamIdentity(t *testing.T) {
+	squadStore, pool := newIntegrationStore(t)
+	mustSeedTwoTeams(t, squadStore)
+	mustSeedSeason(t, pool)
+	ctx := context.Background()
+
+	members := sampleSquadMembers()
+	members[1].HeadshotURL = "https://a.espncdn.com/p2.png"
+	replaceTestSquad(t, squadStore, []model.SquadMember{members[1], members[0]})
+	members[1].HeadshotURL = ""
+	replaceTestSquad(t, squadStore, []model.SquadMember{members[1], members[0]})
+
+	rows, err := pool.Query(ctx, `
+SELECT r.source_id, sm.roster_order, p.headshot_url
+FROM squad_membership sm
+JOIN player p ON p.id = sm.player_id
+JOIN player_external_ref r ON r.player_id = p.id AND r.source = 'espn'
+WHERE sm.team_id = 'eng-arsenal' ORDER BY sm.roster_order`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for rows.Next() {
+		var id string
+		var order int
+		var headshot *string
+		if err := rows.Scan(&id, &order, &headshot); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, fmt.Sprintf("%d:%s:%v", order, id, headshot != nil && *headshot == "https://a.espncdn.com/p2.png"))
+	}
+	if rows.Err() != nil || fmt.Sprint(got) != "[0:p2:true 1:p1:false]" {
+		t.Fatalf("rows = %v (%v)", got, rows.Err())
+	}
+
+	if err := squadStore.SetTeamRosterIdentity(ctx, "eng-arsenal", "ff0000", "London"); err != nil {
+		t.Fatal(err)
+	}
+	// Each value is kept when a later roster omits it: colour-only and
+	// location-only updates go through the UPDATE, an all-empty one does not.
+	for _, update := range []struct{ colour, location, wantColour, wantLocation string }{
+		{"", "", "ff0000", "London"},
+		{"", "Islington", "ff0000", "Islington"},
+		{"00ff00", "", "00ff00", "Islington"},
+	} {
+		if err := squadStore.SetTeamRosterIdentity(ctx, "eng-arsenal", update.colour, update.location); err != nil {
+			t.Fatal(err)
+		}
+		var colour, location string
+		if err := pool.QueryRow(ctx, `SELECT color, location FROM team WHERE id='eng-arsenal'`).Scan(&colour, &location); err != nil {
+			t.Fatal(err)
+		}
+		if colour != update.wantColour || location != update.wantLocation {
+			t.Fatalf("after %+v: team identity %q/%q", update, colour, location)
+		}
+	}
+}

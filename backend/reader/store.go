@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -447,17 +448,21 @@ func (s *Store) TopScorers(ctx context.Context, competition, season string) ([]e
 
 // One club inside one competition.
 //
-// Identity, colours and the season record come from team and standing -- for a
-// team ranked in several tables, the first in the standings route's order; the
-// squad from squad_membership joined to player_season_stat; the matches from
-// match. Nothing here needs a new ingest -- every table is already written.
-//
-// The squad join is LEFT: a player in the squad with no player_season_stat row
-// has never been measured, and must still appear. An INNER join would silently
-// drop exactly the players the "has not appeared" row exists to show.
+// Identity, colours, location and the season record come from team and
+// standing -- for a team ranked in several tables, the first in the standings
+// route's order; the squad from squad_membership joined to player_season_stat;
+// the matches from match. The record, standing and standing sentence are
+// derived from that standing row. Its rank is within its own table, so the
+// label is that table's name when the season holds several (a World Cup
+// group, an MLS conference) and the competition's own name otherwise. An
+// unnamed table among several has no truthful label: no standing is served.
 const teamProfileSQL = `
-SELECT t.id, t.name, t.abbr, t.crest_url, t.color, t.alternate_color,
-       s.rank, s.played, s.wins, s.draws, s.losses, s.points, s.goal_difference
+SELECT t.id, t.name, t.abbr, t.crest_url, t.color, t.alternate_color, t.location,
+       s.rank, s.played, s.wins, s.draws, s.losses, s.points, s.goal_difference,
+       CASE WHEN (SELECT count(DISTINCT st.table_key) FROM standing st
+                  WHERE st.competition_id = $2 AND st.season_id = $3) > 1
+            THEN NULLIF(s.group_name, '')
+            ELSE (SELECT c.name FROM competition c WHERE c.id = $2) END
 FROM team t
 LEFT JOIN standing s
        ON s.team_id = t.id AND s.competition_id = $2 AND s.season_id = $3
@@ -465,21 +470,47 @@ WHERE t.id = $1
 ORDER BY COALESCE(s.group_name, ''), s.table_key
 LIMIT 1`
 
+// Bounds on the two child blocks: well above any real squad or season, and
+// one row past them fails the block instead of silently truncating it.
+const (
+	maxSquadRows        = 100
+	maxTeamScheduleRows = 200
+)
+
+var errTeamBlockTooLarge = errors.New("team block exceeds the reader's row bound")
+
+// The squad join is LEFT: a player in the squad with no player_season_stat row
+// has never been measured, and must still appear. An INNER join would silently
+// drop exactly the players the "has not appeared" row exists to show.
+//
+// The served id is the athlete's id on the membership's own source; when the
+// player holds several refs there, the earliest first_seen_at (then
+// source_id) is served. Age is whole years on $4, the
+// request's UTC date. Provider roster order wins; rows written before it was
+// stored fall back to shirt number, then name.
 const teamSquadSQL = `
-SELECT p.id, COALESCE(p.known_as, p.full_name), sm.shirt_number, COALESCE(sm.position, ''),
-       p.nationality,
+SELECT ref.source_id, COALESCE(p.known_as, p.full_name), sm.shirt_number, COALESCE(sm.position, ''),
+       CASE WHEN p.birth_date <= $4::date
+            THEN date_part('year', age($4::date, p.birth_date))::int END,
+       p.nationality, p.headshot_url,
        st.appearances, st.sub_ins, st.goals, st.assists, st.shots, st.shots_on_target,
        st.offsides, st.fouls_committed, st.fouls_suffered, st.yellow_cards,
        st.red_cards, st.own_goals, st.saves, st.shots_faced, st.goals_conceded,
        (st.player_id IS NOT NULL) AS has_stats
 FROM squad_membership sm
 JOIN player p ON p.id = sm.player_id
+LEFT JOIN LATERAL (
+       SELECT r.source_id FROM player_external_ref r
+       WHERE r.player_id = sm.player_id AND r.source = sm.source
+       ORDER BY r.first_seen_at, r.source_id
+       LIMIT 1) ref ON true
 LEFT JOIN player_season_stat st
        ON st.player_id = sm.player_id
       AND st.competition_id = sm.competition_id
       AND st.season_id = sm.season_id
 WHERE sm.competition_id = $2 AND sm.season_id = $3 AND sm.team_id = $1
-ORDER BY sm.shirt_number NULLS LAST, p.full_name`
+ORDER BY sm.roster_order NULLS LAST, sm.shirt_number NULLS LAST, p.full_name, p.id
+LIMIT $5`
 
 // Preserve the original error for inspection while naming the failed block.
 // The HTTP handler logs only safe metadata, not the dependency's error text.
@@ -491,18 +522,24 @@ type teamReadError struct {
 func (e *teamReadError) Error() string { return fmt.Sprintf("team %s: %v", e.operation, e.err) }
 func (e *teamReadError) Unwrap() error { return e.err }
 
+// Team returns nil for a team we do not hold. Only the identity read is fatal:
+// a failed squad or schedule is served empty (the schedule as unavailable) and
+// recorded in failures, as the frontend's getTeam degrades its blocks.
+//
+// asOf is the request time; squad ages are whole years on its UTC date.
 func (s *Store) Team(
 	ctx context.Context,
 	teamID, competition, season string,
+	asOf time.Time,
 ) (*TeamProfile, error) {
 	var profile TeamProfile
-	var colour, altColour *string
+	var colour, altColour, tableName *string
 	var rank, played, wins, draws, losses, points, goalDifference *int
 
 	err := s.db.QueryRow(ctx, teamProfileSQL, teamID, competition, season).Scan(
 		&profile.Team.ID, &profile.Team.Name, &profile.Team.Abbr, &profile.Team.CrestURL,
-		&colour, &altColour,
-		&rank, &played, &wins, &draws, &losses, &points, &goalDifference,
+		&colour, &altColour, &profile.Location,
+		&rank, &played, &wins, &draws, &losses, &points, &goalDifference, &tableName,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -533,30 +570,80 @@ func (s *Store) Team(
 			GoalDifference: goalDifference,
 		}
 	}
-	if rank != nil {
-		standing := fmt.Sprintf("%d in %s", *rank, competition)
-		profile.StandingSummary = &standing
+	// The provider's sentence shape ("1st in <competition>"), which the
+	// frontend's parser reads back as the same structured standing.
+	if rank != nil && tableName != nil {
+		profile.Standing = &TeamStanding{Rank: *rank, Competition: *tableName}
+		summary := ordinal(*rank) + " in " + *tableName
+		profile.StandingSummary = &summary
 	}
 
-	squad, err := s.teamSquad(ctx, teamID, competition, season)
+	err = s.child(ctx, func(block *Store) (err error) {
+		profile.Squad, err = block.teamSquad(ctx, teamID, competition, season, asOf)
+		return err
+	})
+	if err != nil {
+		profile.Squad = []SquadPlayer{}
+		profile.failures = append(profile.failures, &teamReadError{operation: "squad", err: err})
+	}
+
+	err = s.child(ctx, func(block *Store) (err error) {
+		profile.Schedule, err = block.teamSchedule(ctx, teamID, competition, season)
+		return err
+	})
+	profile.ScheduleAvailability = ScheduleAvailability{Results: "available", Upcoming: "available"}
+	if err != nil {
+		degradeSchedule(&profile)
+		profile.failures = append(profile.failures, &teamReadError{operation: "schedule", err: err})
+	}
+	return &profile, nil
+}
+
+// child runs one optional block. Inside a snapshot it runs under a savepoint,
+// so a failed block leaves the transaction usable for the next block and the
+// freshness read; PostgreSQL aborts the whole transaction otherwise.
+func (s *Store) child(ctx context.Context, read func(*Store) error) error {
+	tx, ok := s.db.(pgx.Tx)
+	if !ok {
+		return read(s)
+	}
+	savepoint, err := tx.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	if err := read(&Store{db: savepoint}); err != nil {
+		_ = savepoint.Rollback(ctx)
+		return err
+	}
+	return savepoint.Commit(ctx)
+}
+
+// Squad is one club's squad on its own, for callers that need players but not
+// the profile or matches. ErrNotFound for a team we do not hold.
+func (s *Store) Squad(ctx context.Context, teamID, competition, season string, asOf time.Time) ([]SquadPlayer, error) {
+	var known bool
+	if err := s.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM team WHERE id = $1)`, teamID).Scan(&known); err != nil {
+		return nil, &teamReadError{operation: "identity", err: err}
+	}
+	if !known {
+		return nil, ErrNotFound
+	}
+	squad, err := s.teamSquad(ctx, teamID, competition, season, asOf)
 	if err != nil {
 		return nil, &teamReadError{operation: "squad", err: err}
 	}
-	profile.Squad = squad
-
-	schedule, err := s.teamSchedule(ctx, teamID, competition, season)
-	if err != nil {
-		return nil, &teamReadError{operation: "schedule", err: err}
-	}
-	profile.Schedule = schedule
-	return &profile, nil
+	return squad, nil
 }
+
+var errSquadIdentity = errors.New("squad member has no provider id on its membership source")
 
 func (s *Store) teamSquad(
 	ctx context.Context,
 	teamID, competition, season string,
+	asOf time.Time,
 ) ([]SquadPlayer, error) {
-	rows, err := s.db.Query(ctx, teamSquadSQL, teamID, competition, season)
+	rows, err := s.db.Query(ctx, teamSquadSQL, teamID, competition, season,
+		asOf.UTC().Format(time.DateOnly), maxSquadRows+1)
 	if err != nil {
 		return nil, err
 	}
@@ -565,10 +652,12 @@ func (s *Store) teamSquad(
 	squad := make([]SquadPlayer, 0)
 	for rows.Next() {
 		var player SquadPlayer
+		var id *string
 		var stats PlayerSeasonStats
 		var hasStats bool
 		if err := rows.Scan(
-			&player.ID, &player.Name, &player.Jersey, &player.Position, &player.Nationality,
+			&id, &player.Name, &player.Jersey, &player.Position, &player.Age,
+			&player.Nationality, &player.HeadshotURL,
 			&stats.Appearances, &stats.SubIns, &stats.TotalGoals, &stats.GoalAssists,
 			&stats.TotalShots, &stats.ShotsOnTarget, &stats.Offsides,
 			&stats.FoulsCommitted, &stats.FoulsSuffered, &stats.YellowCards,
@@ -577,6 +666,12 @@ func (s *Store) teamSquad(
 		); err != nil {
 			return nil, err
 		}
+		// ReplaceSquad writes the ref with every membership. Without one the
+		// row has no public id at all, and a canonical UUID must not stand in.
+		if id == nil {
+			return nil, errSquadIdentity
+		}
+		player.ID = *id
 		// No row at all means never measured, which the page shows as "has not
 		// appeared". A row of nulls would read as a measurement that failed.
 		if hasStats {
@@ -584,7 +679,13 @@ func (s *Store) teamSquad(
 		}
 		squad = append(squad, player)
 	}
-	return squad, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(squad) > maxSquadRows {
+		return nil, errTeamBlockTooLarge
+	}
+	return squad, nil
 }
 
 // The club's matches and results: the same projection as Matches, filtered to
@@ -594,16 +695,45 @@ const teamScheduleSQL = matchColumns + matchDetailColumns + `
 FROM match m` + matchJoins + `
 WHERE m.competition_id = $2 AND m.season_id = $3
   AND (m.home_team_id = $1 OR m.away_team_id = $1)
-ORDER BY m.kickoff, m.id`
+ORDER BY m.kickoff, m.id
+LIMIT $4`
 
 func (s *Store) teamSchedule(
 	ctx context.Context,
 	teamID, competition, season string,
-) ([]Match, error) {
-	rows, err := s.db.Query(ctx, teamScheduleSQL, teamID, competition, season)
+) ([]TeamMatch, error) {
+	rows, err := s.db.Query(ctx, teamScheduleSQL, teamID, competition, season, maxTeamScheduleRows+1)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	return scanMatches(rows, true)
+	matches, err := scanMatches(rows, true)
+	if err != nil {
+		return nil, err
+	}
+	if len(matches) > maxTeamScheduleRows {
+		return nil, errTeamBlockTooLarge
+	}
+	scope := MatchScope{CompetitionID: competition, SeasonID: season}
+	scheduled := make([]TeamMatch, 0, len(matches))
+	for _, match := range matches {
+		scheduled = append(scheduled, TeamMatch{Match: match, Scope: scope})
+	}
+	return scheduled, nil
+}
+
+// ordinal is the English ordinal of a positive rank: 1st, 2nd, 3rd, 11th, 22nd.
+func ordinal(n int) string {
+	suffix := "th"
+	if n%100 < 11 || n%100 > 13 {
+		switch n % 10 {
+		case 1:
+			suffix = "st"
+		case 2:
+			suffix = "nd"
+		case 3:
+			suffix = "rd"
+		}
+	}
+	return strconv.Itoa(n) + suffix
 }

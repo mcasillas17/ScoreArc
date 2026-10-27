@@ -7,6 +7,7 @@ import (
 	"os"
 	"reflect"
 	"testing"
+	"time"
 )
 
 type teamContractVectors struct {
@@ -62,8 +63,8 @@ func TestTeamContractSerialization(t *testing.T) {
 	if err := schema.VisitJSON(actual); err != nil {
 		t.Fatal(err)
 	}
-	// The absent standing/scheduleAvailability gap (T10.3-team) is owned by
-	// reader_contract_test.go and reader-contract.json.
+	// The matches route is scoped by its URL and serves no per-match scope; the
+	// team schedule carries it (readerTeam.schedule pins the values).
 	for i, match := range vectors.ReaderMatches {
 		data, err := json.Marshal(match)
 		if err != nil {
@@ -81,10 +82,10 @@ func TestTeamContractSerialization(t *testing.T) {
 			t.Fatal(err)
 		}
 		if _, exists := actual["scope"]; exists {
-			t.Fatal("reader scope gap changed")
+			t.Fatal("a matches-route row must not carry a team schedule scope")
 		}
 		if _, exists := schema.Properties["scope"]; exists {
-			t.Fatal("OpenAPI scope gap changed")
+			t.Fatal("a matches-route row must not document a scope")
 		}
 		// Prove the schema rejects a missing required nullable value and a wrong type.
 		delete(actual, "homeScore")
@@ -94,6 +95,16 @@ func TestTeamContractSerialization(t *testing.T) {
 		actual["homeScore"] = "3"
 		if err := schema.VisitJSON(actual); err == nil {
 			t.Fatal("string homeScore accepted")
+		}
+	}
+}
+
+func TestOrdinal(t *testing.T) {
+	// The frontend parses the sentence back with /^([1-9]\d*)(?:st|nd|rd|th) in /.
+	for rank, want := range map[int]string{1: "1st", 2: "2nd", 3: "3rd", 4: "4th", 11: "11th", 12: "12th", 13: "13th",
+		21: "21st", 22: "22nd", 23: "23rd", 101: "101st", 111: "111th", 112: "112th"} {
+		if got := ordinal(rank); got != want {
+			t.Errorf("ordinal(%d) = %q, want %q", rank, got, want)
 		}
 	}
 }
@@ -175,7 +186,7 @@ func TestTeamContractStoreIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	profile, err := store.Team(ctx, vectors.Identity.CanonicalID, vectors.Scope.CompetitionID, vectors.Scope.SeasonID)
+	profile, err := store.Team(ctx, vectors.Identity.CanonicalID, vectors.Scope.CompetitionID, vectors.Scope.SeasonID, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +203,8 @@ func TestTeamContractStoreIntegration(t *testing.T) {
 		// The seed's América crest is NULL. Set identity metadata explicitly from the
 		// real team table expectation; do not normalize match scores or state.
 		expected.Home.CrestURL = nil
-		if !reflect.DeepEqual(actual, expected) {
+		scope := MatchScope{CompetitionID: vectors.Scope.CompetitionID, SeasonID: vectors.Scope.SeasonID}
+		if !reflect.DeepEqual(actual, TeamMatch{Match: expected, Scope: scope}) {
 			t.Fatalf("stored match %d: got %+v want %+v", i, actual, expected)
 		}
 	}

@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/mcasillas17/scorearc-backend/shared/cdnurl"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
 
@@ -19,7 +21,8 @@ type rawRosterDocument struct {
 		// the roster payload the ingester already fetches, so capturing it
 		// costs no extra request. alternateColor is NOT here -- it appears
 		// only on /teams/{id}, which this ingester does not call.
-		Color string `json:"color"`
+		Color    string `json:"color"`
+		Location string `json:"location"`
 	} `json:"team"`
 	Athletes []rawRosterAthlete `json:"athletes"`
 }
@@ -34,7 +37,10 @@ type rawRosterAthlete struct {
 	} `json:"position"`
 	DateOfBirth string `json:"dateOfBirth"`
 	Citizenship string `json:"citizenship"`
-	Statistics  *struct {
+	Headshot    struct {
+		Href string `json:"href"`
+	} `json:"headshot"`
+	Statistics *struct {
 		Splits struct {
 			Categories []struct {
 				Stats []rawRosterStat `json:"stats"`
@@ -66,6 +72,7 @@ func MapRoster(raw []byte) (model.Squad, error) {
 	squad := model.Squad{
 		TeamSourceID: string(document.Team.ID),
 		Color:        normaliseHexColour(document.Team.Color),
+		Location:     strings.TrimSpace(document.Team.Location),
 		Players:      make([]model.SquadMember, 0, len(document.Athletes)),
 	}
 	for index, athlete := range document.Athletes {
@@ -99,6 +106,7 @@ func MapRoster(raw []byte) (model.Squad, error) {
 			Position:    athlete.Position.Abbreviation,
 			BirthDate:   birthDate,
 			Nationality: athlete.Citizenship,
+			HeadshotURL: headshotURL(athlete.Headshot.Href),
 		}
 		if athlete.Statistics != nil {
 			values := make(map[string]*int)
@@ -136,6 +144,16 @@ func MapRoster(raw []byte) (model.Squad, error) {
 		squad.Players = append(squad.Players, member)
 	}
 	return squad, nil
+}
+
+// headshotURL returns value when it is provider CDN media (cdnurl), else "".
+// The reader serves it to browsers as an image source.
+func headshotURL(value string) string {
+	parsed, err := url.Parse(value)
+	if err != nil || !cdnurl.ProviderMedia(parsed) {
+		return ""
+	}
+	return value
 }
 
 // normaliseHexColour returns six hex digits without a '#', or "" if the value

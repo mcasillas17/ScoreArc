@@ -21,7 +21,7 @@ type matchReader interface {
 	Bracket(context.Context, string, string) ([]BracketRound, error)
 	MatchSummary(context.Context, string) (*MatchSummary, error)
 	BoxScore(context.Context, string) (*BoxScore, error)
-	Team(ctx context.Context, teamID, competition, season string) (*TeamProfile, error)
+	Team(ctx context.Context, teamID, competition, season string, asOf time.Time) (*TeamProfile, error)
 	Freshness(context.Context, freshnessScope) (freshnessSnapshot, error)
 	MatchScope(context.Context, string) (freshnessScope, error)
 }
@@ -32,6 +32,7 @@ type readerStore interface {
 	Standings(context.Context, string, string, string) ([]Group, error)
 	TopScorers(context.Context, string, string) ([]espn.TopScorer, error)
 	Leaders(context.Context, string, string, leaderQuery) ([]espn.StatLeader, error)
+	Squad(ctx context.Context, teamID, competition, season string, asOf time.Time) ([]SquadPlayer, error)
 	Snapshot(context.Context) (matchReader, func() error, error)
 }
 
@@ -68,6 +69,7 @@ func (a *App) router() http.Handler {
 		router.Get("/competitions/{comp}/{season}/top-scorers", a.handleTopScorers)
 		router.Get("/competitions/{comp}/{season}/leaders", a.handleLeaders)
 		router.Get("/competitions/{comp}/{season}/teams/{teamId}", a.handleTeam)
+		router.Get("/competitions/{comp}/{season}/teams/{teamId}/squad", a.handleSquad)
 		router.Get("/competitions/{comp}/{season}/players/{playerId}", a.handlePlayer)
 		router.Get("/competitions/{comp}/news", a.handleNews)
 		router.Get("/matches/{id}", a.handleMatchSummary)

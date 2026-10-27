@@ -6,7 +6,10 @@ type Squad struct {
 	TeamSourceID string
 	// Club primary colour, six hex digits without '#', or "" when the provider
 	// did not send a usable one.
-	Color   string
+	Color string
+	// The provider's location label for the club ("América", "Tijuana"), or "".
+	Location string
+	// In provider roster order; the writer stores each member's index.
 	Players []SquadMember
 }
 
@@ -17,6 +20,9 @@ type SquadMember struct {
 	Position    string
 	BirthDate   *time.Time
 	Nationality string
+	// Provider CDN media only (cdnurl.ProviderMedia), or "" when the provider
+	// sent none or sent anything else.
+	HeadshotURL string
 	Stats       *PlayerSeasonStats
 }
 

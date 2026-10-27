@@ -2,24 +2,10 @@
  "about": "T16.1 reader contract vectors. Consumed by reader-contract.test.ts and backend/reader/reader_contract_test.go. Not a parity claim: gaps are characterized, not normalized away. Per-method gap lists name the incompatibilities in the fields that frontend method actually populates (getFixtures and getLiveWindow do not enrich scorers or stats), not every field their shared reader route can return.",
  "evidence": {
   "recorded": "Unmodified recorded ESPN payloads under src/server/data/__fixtures__ (both languages read the same bytes).",
-  "synthetic": "Synthetic, labeled where they appear: queries.events and queries.liveMinute, freshness snapshots, transport paths, summary.syntheticOverlay (with its headerIdentity and levelHeader cases), scoreboard.shootoutPrecedence, bracket.liveClockless and bracket.liveShootout, standings.unnamedTable and standings.synthetic, player.missingContext, the reader match/bracket UUIDs, the integration test's standings tie rows and provisional team, its stored clockless live row, sealed legacy detail rows (with their aligned match events and players), resolver-minted match, finalization winner rows and the Leagues Cup competition, teams and match row under the recorded own-goal detail, and the seedLigaTeam standing behind team.readerStandingSummary. None is a production crosswalk.",
+  "synthetic": "Synthetic, labeled where they appear: queries.events and queries.liveMinute, freshness snapshots, transport paths, summary.syntheticOverlay (with its headerIdentity and levelHeader cases), scoreboard.shootoutPrecedence, bracket.liveClockless and bracket.liveShootout, standings.unnamedTable and standings.synthetic, player.missingContext, the reader match/bracket UUIDs, the integration test's standings tie rows and provisional team, its stored clockless live row, sealed legacy detail rows (with their aligned match events and players), resolver-minted match, finalization winner rows and the Leagues Cup competition, teams and match row under the recorded own-goal detail, the standing row built from the recorded profile's record item (team.standingRow), and the team.partialFailure body. None is a production crosswalk.",
   "crosswalk": "Provider-to-canonical team ids come from the production seed (backend/config/teams.seed.json, exported to src/server/data/teamCrosswalk.json). Summary and own-goal side ids are checked against it in both suites; standings ids through the group-A comparisons (TS crosswalk, Go seed); bracket side ids only in the Go database suite."
  },
  "gaps": {
-  "T10.3-team": {
-   "task": "T10.3",
-   "mismatch": "Reader TeamProfile lacks standing, scheduleAvailability and per-match scope (pinned in team-insights.json).",
-   "suites": [
-    "go"
-   ]
-  },
-  "T10.3-squad": {
-   "task": "T10.3",
-   "mismatch": "No standalone squad route; the squad exists only inside TeamProfile.",
-   "suites": [
-    "go"
-   ]
-  },
   "T16.6-news": {
    "task": "T16.6",
    "mismatch": "Reader news is a live ESPN proxy (502 on upstream failure), not owned data; bodies match today.",
@@ -34,55 +20,11 @@
     "go"
    ]
   },
-  "T10.3-team-location": {
-   "task": "T10.3",
-   "mismatch": "Reader TeamProfile.location is always null (no column is selected); the frontend maps the provider location.",
-   "suites": [
-    "go-db"
-   ]
-  },
-  "T10.3-squad-fields": {
-   "task": "T10.3",
-   "mismatch": "Reader SquadPlayer.id is a canonical player UUID, not the provider athlete id; age and headshotUrl are always null (no column is selected); and the squad is served in shirt-number order rather than provider roster order.",
-   "suites": [
-    "go-db"
-   ]
-  },
-  "T10.3-partial-failure": {
-   "task": "T10.3",
-   "mismatch": "The frontend getTeam/getSquad degrade a failed roster or schedule to empty (squad [], schedule unavailable) and return null only when the profile fails; the reader fails the whole team request with 500 when any child query fails.",
-   "suites": [
-    "ts",
-    "go"
-   ]
-  },
-  "T10.3-standing-summary": {
-   "task": "T10.3",
-   "mismatch": "Reader standingSummary is generated as '<rank> in <competition id>' from the standing row; the frontend serves the provider's own string.",
-   "suites": [
-    "ts",
-    "go-db"
-   ]
-  },
   "T21.4-dependency-error-logging": {
    "task": "T21.4",
-   "mismatch": "Every reader data handler except handleTeam and handleCalendar (matches, standings, bracket, top-scorers, news, match summary) logs the raw dependency error text, which can carry connection details; handleTeam logs only operation, error type and SQLSTATE, and handleCalendar only its scope and whether the row bound was exceeded.",
+   "mismatch": "Six reader data handlers (matches, standings, bracket, top-scorers, news, match summary) log the raw dependency error text, which can carry connection details; handleTeam and handleSquad log only operation, error type, SQLSTATE and the two fail-closed flags (row_bound_exceeded, missing_provider_id), handleCalendar only its scope and whether the row bound was exceeded; leaders and box-score log no error value.",
    "suites": [
     "go"
-   ]
-  },
-  "T10.3-team-cache-doc": {
-   "task": "T10.3",
-   "mismatch": "handleTeam serves Cache-Control public, max-age=120, but OpenAPI documents the team route with StandardCacheControl (public, max-age=60).",
-   "suites": [
-    "go"
-   ]
-  },
-  "T10.3-team-record": {
-   "task": "T10.3",
-   "mismatch": "The frontend TeamProfile.record is the provider's record item (summary string, gamesPlayed, points, goalDifference from provider stats); the reader derives W-D-L, games, points and goal difference from its own standing row.",
-   "suites": [
-    "go-db"
    ]
   }
  },
@@ -130,11 +72,11 @@
   },
   "getTeam": {
    "reader": "/v1/competitions/{comp}/{season}/teams/{teamId}",
-   "gaps": ["T10.3-team", "T10.3-team-location", "T10.3-partial-failure", "T10.3-standing-summary", "T10.3-team-cache-doc", "T10.3-team-record", "T10.3-squad", "T10.3-squad-fields"]
+   "gaps": []
   },
   "getSquad": {
-   "reader": "/v1/competitions/{comp}/{season}/teams/{teamId}",
-   "gaps": ["T10.3-squad", "T10.3-squad-fields", "T10.3-partial-failure"]
+   "reader": "/v1/competitions/{comp}/{season}/teams/{teamId}/squad",
+   "gaps": []
   },
   "getPlayer": {
    "reader": "/v1/competitions/{comp}/{season}/players/{playerId}",
@@ -4109,8 +4051,8 @@
    }
   ],
   "withAge": 31,
-  "readerOrder": ["Ángel Malagón", "Emilio Lara", "Israel Reyes", "Sebastián Cáceres", "Kevin Álvarez", "Brian Rodríguez", "Henry Martín", "Alejandro Zendejas", "Isaías Violante", "Alan Cervantes", "Raúl Zúñiga", "Alexis Gutierrez", "Fernando Tapia", "Óscar Perea", "Raphael Veiga", "Franco Rossano", "Cristian Borja", "Ícaro ca Conceição", "Érick Sánchez", "Ramón Juarez", "Rodolfo Cota", "César Lugo", "Miguel Vazquez", "Patricio Salas", "Dagoberto Espinoza", "Santiago Naveda", "Miguel Ramírez", "Esteban Lozano", "Osvaldo Arriaga", "Santiago Gael Camarena Rosales", "Alejandro Cárdenas", "Adrián Fernández", "Andrés Marioni Araujo Muñoz", "Ricardo Gonzalez", "Edwin Cerrillo"],
-  "readerOrderNote": "Reader order (teamSquadSQL: shirt number, nulls last, then name). The recorded roster has unique numbers and one null, so collation never decides it.",
+  "asOf": "2026-08-20",
+  "asOfNote": "The roster's recorded UTC date. ESPN's age is whole years since dateOfBirth on that date; the reader derives the same from player.birth_date on the request's UTC date.",
   "players": [
    {
     "id": "49306",
@@ -5954,6 +5896,11 @@
      "path": "/v1/competitions/liga-mx/2026-apertura/teams/mex-america",
      "cacheControl": "public, max-age=120",
      "openapiPath": "/v1/competitions/{comp}/{season}/teams/{teamId}"
+    },
+    {
+     "path": "/v1/competitions/liga-mx/2026-apertura/teams/mex-america/squad",
+     "cacheControl": "public, max-age=300",
+     "openapiPath": "/v1/competitions/{comp}/{season}/teams/{teamId}/squad"
     }
    ]
   }
@@ -5964,21 +5911,18 @@
   "scheduleIds": ["401877037", "401877033", "401877020", "401877014", "401877008", "401876995", "401876986", "401876981", "401876968", "401876956", "401876950", "401876941", "401876932", "401876922", "401876913", "401876904", "401877048"],
   "location": "América",
   "frontendStandingSummary": "1st in Mexican Liga BBVA MX",
-  "readerStandingSummary": "2 in liga-mx",
-  "readerStandingNote": "The reader value is from the synthetic seedLigaTeam standing row (rank 2), so the strings differ in format and source, not only rank.",
-  "frontendRecord": {
+  "record": {
    "summary": "3-1-0",
    "gamesPlayed": 4,
    "points": 10,
    "goalDifference": 7
   },
-  "readerRecord": {
-   "summary": "3-1-1",
-   "gamesPlayed": 5,
-   "points": 10,
-   "goalDifference": 5
-  },
-  "readerRecordNote": "From the synthetic seedLigaTeam standing row (W3 D1 L1, played 5, 10 points, +5): the reader derives the record from its standing row, not the provider's record item."
+  "standingRow": {"rank": 1, "played": 4, "wins": 3, "draws": 1, "losses": 0, "goalsFor": 8, "goalsAgainst": 1, "goalDifference": 7, "points": 10},
+  "standingRowNote": "Synthetic: the recorded profile's own record item (W3 D1 L0, played 4, 8-1, +7, 10 points) and rank (1st), stored as one standing row so both stores describe the same facts.",
+  "readerStanding": {"rank": 1, "competition": "Liga MX"},
+  "readerStandingSummary": "1st in Liga MX",
+  "standingNote": "The reader derives record, standing and standingSummary from that row; the label is the team's table name when the season holds several stored tables, else the stored competition name (this vector is the single-table case). The frontend reads the provider's record item and sentence ('1st in Mexican Liga BBVA MX'): the same record, rank and sentence shape; only the competition label is ours.",
+  "partialFailure": {"squad": [], "schedule": [], "scheduleAvailability": {"results": "unavailable", "upcoming": "unavailable"}}
  },
  "scoreboard": {
   "fixture": "espn-scoreboard.json",

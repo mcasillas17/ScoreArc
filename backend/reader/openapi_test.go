@@ -139,7 +139,8 @@ func TestOpenAPIValidatesActualRouteResponses(t *testing.T) {
 				// null, not as a block of nulls.
 				{ID: "p2", Name: "Unplayed Player", Position: "D"},
 			},
-			Schedule: []Match{},
+			Schedule:             []TeamMatch{},
+			ScheduleAvailability: ScheduleAvailability{Results: "available", Upcoming: "unavailable"},
 		}},
 	}
 	router := newTestApp(t, store, &fakeNewsReader{articles: []espn.NewsArticle{{ID: "1", Headline: "Headline", URL: "https://example.com/article"}}}).router()
@@ -157,6 +158,7 @@ func TestOpenAPIValidatesActualRouteResponses(t *testing.T) {
 		{target: "/v1/competitions/world-cup/2026/top-scorers", template: "/v1/competitions/{comp}/{season}/top-scorers"},
 		{target: "/v1/competitions/world-cup/news", template: "/v1/competitions/{comp}/news"},
 		{target: "/v1/competitions/world-cup/2026/teams/arg", template: "/v1/competitions/{comp}/{season}/teams/{teamId}"},
+		{target: "/v1/competitions/world-cup/2026/teams/arg/squad", template: "/v1/competitions/{comp}/{season}/teams/{teamId}/squad"},
 		{target: "/v1/matches/" + finalMatchID, template: "/v1/matches/{id}"},
 	}
 	for _, tt := range tests {

@@ -69,7 +69,7 @@ describe('bounded team insights contract (not reader parity)', () => {
       .toEqual({ matches: [], available: false });
   });
 
-  it('asserts identity and scope gaps without dropping incompatible fields', () => {
+  it('asserts identity translations and the reader team scope without dropping incompatible fields', () => {
     for (const [i, reader] of vectors.readerMatches.entries()) {
       const espn = vectors.espnMatches[i];
       expect(reader.id).not.toBe(espn.id); // Test UUID is not a production event crosswalk.
@@ -81,9 +81,14 @@ describe('bounded team insights contract (not reader parity)', () => {
       expect(reader.awayScore).toBe(espn.awayScore);
       expect(reader.state).toBe(espn.state);
       expect(reader.statusName).toBe(espn.statusName);
+      // The matches route is already scoped by its URL; only the team schedule
+      // carries scope, as the frontend's getTeam does.
       expect(reader).not.toHaveProperty('scope');
     }
-    expect(vectors.readerTeam).not.toHaveProperty('standing');
-    expect(vectors.readerTeam).not.toHaveProperty('scheduleAvailability');
+    expect(vectors.readerTeam.schedule.map(m => m.scope)).toEqual(vectors.readerTeam.schedule.map(() => vectors.scope));
+    expect(vectors.readerTeam.standing).toBeNull(); // No standing row behind this vector.
+    expect(vectors.readerTeam.scheduleAvailability).toEqual({ results: 'available', upcoming: 'available' });
+    // Exact key parity with the frontend TeamProfile (scheduleAvailability is optional there).
+    expectTypeOf<keyof typeof vectors.readerTeam>().toEqualTypeOf<keyof TeamProfile>();
   });
 });

@@ -11,13 +11,16 @@ all documented in
 [`READER_CONTRACT`](../../docs/backend/READER_CONTRACT.md#t162-identity-and-dto-contract). The authoritative machine-readable contract is
 [`openapi.yaml`](openapi.yaml).
 
-Every entity id it serves is a **canonical ScoreArc id** — slugs for
-competitions, seasons, and teams; UUIDs for matches — not a provider's. Ids stay
-opaque strings to consumers. Provider ids live in the `*_external_ref` crosswalk
-tables; the reader reads them only to translate stored references: a scorer's or
-card's `teamId` becomes the canonical side it names (or `null`). The provider-reference fields `Scorer.athleteId` and the leader/lineup
-`athleteId` are source-qualified athlete ids, which a client may resolve to a player slug and must
-never put in a URL. For detail stored before T16.2 it is read from the
+Competition, season, team and match ids are **canonical ScoreArc ids** —
+slugs for competitions, seasons, and teams; UUIDs for matches — not a
+provider's. Ids stay opaque strings to consumers. Provider ids live in the
+`*_external_ref` crosswalk tables. The reader translates stored references
+through them (a scorer's or card's `teamId` becomes the canonical side it names,
+or `null`) and serves provider athlete ids from them. The provider-reference
+fields `Scorer.athleteId`, the leader/lineup `athleteId` and `SquadPlayer.id`
+(read from `player_external_ref`, [T10.3](../../docs/backend/READER_CONTRACT.md#t103-team-and-squad-contract))
+are source-qualified athlete ids, which a client may resolve to a player slug
+and must never put in a URL. For detail stored before T16.2 it is read from the
 scorer's aligned `match_event` player through `player_external_ref`. Lineup
 `jersey` URLs still embed the provider's event and athlete ids, on this API and
 the frontend's alike; they are presentation assets, never identity keys.
@@ -36,9 +39,11 @@ canonical identity and completion evidence. Unused bench membership is distinct
 from appearing. Missing identities never produce guessed player links.
 
 See [the T10.2 contract](../../docs/backend/READER_CONTRACT.md#t102-leaders-statistics-and-participation-contract)
-for null/percentage rules, query bounds and migration 0026's **exact schema 26**
-startup requirement. Migration 0025 remains a prerequisite where missing;
-production migration/deployment is separately authorized, not performed here.
+for null/percentage rules and query bounds. The binaries require the **exact
+embedded schema head, 27 since T10.3** (migration 0027,
+[rollout](../../docs/backend/READER_CONTRACT.md#rollout-migration-0027)); 0025 and
+0026 remain prerequisites where missing. Production migration and deployment are
+separately authorized, not performed here.
 
 ## Players (T10.4)
 
@@ -325,17 +330,25 @@ ledger is clean and at exactly the migration head they embed; follow
 deploying them.
 
 `GET /v1/competitions/{comp}/{season}/teams/{teamId}` reads identity and standing,
-then squad/statistics, then the team's schedule. Every block must succeed before
-HTTP 200. A missing team is 404; an invalid competition/season is 400. Existing
-teams with empty squad/schedule return arrays; absent statistics rows return
-`stats: null`, and individual unknown statistics stay null. The reader does not
-omit a failed block or convert a query error into an empty profile.
+then squad/statistics, then the team's schedule, each child block under its own
+savepoint in the request's snapshot. A failed identity, snapshot or freshness
+read, or a cancelled or timed-out request, is a 500. A failed squad read serves `squad: []`. A failed schedule read
+serves `schedule: []` with `scheduleAvailability` unavailable. Either is logged
+below and sent `no-store`, as the frontend's `getTeam` degrades the same blocks
+([T10.3](../../docs/backend/READER_CONTRACT.md#t103-team-and-squad-contract)).
+`GET …/teams/{teamId}/squad` serves the squad alone, degrading the same way. A
+missing team is 404; an invalid competition/season or any query string is
+400. Existing teams with empty squad/schedule return arrays; absent statistics
+rows return `stats: null`, and individual unknown statistics stay null.
 
 A successful `/healthz` tests connectivity, not these SQL projections. Capture
 UTC time and `X-Request-Id` from both the health and actual team requests. Look up
 the corresponding request and team error records in restricted Fly logs. Team
 errors include request_id, competition, season, team, operation (`identity`,
-`squad`, `schedule`), error_type, and sqlstate (empty for non-Postgres errors).
+`squad`, `schedule`), error_type, sqlstate (empty for non-Postgres errors), and
+`row_bound_exceeded`/`missing_provider_id` for the two fail-closed squad and
+schedule rules. A 200 with an empty block and a `team` error line is a degraded
+block, not an empty team.
 They omit raw dependency messages and detail, which can contain credentials or
 row values. Use the operation to locate the query in [`store.go`](store.go) and
 investigate with authorized read-only diagnostics; keep DSNs and raw logs out of tickets.
@@ -360,10 +373,13 @@ The migration test applies migrations through 0021 to disposable Postgres 16,
 seeds a representative Liga MX team, and
 checks health=200 versus team=500/42703. It then applies existing migration 0022
 to that same disposable database, verifies the current reader still refuses
-success without freshness schema, applies 0023, and requires HTTP 200 with all profile blocks
-validated against [OpenAPI](openapi.yaml). Colour values remain null until actually
-supplied. The other cases cover populated/null/empty data, UUID players, validation,
-scoped schedules, permission failures at each query, and malformed schedule JSON.
+success without freshness schema, applies 0023, then 0024 and 0027, and requires
+HTTP 200 with all profile blocks validated against [OpenAPI](openapi.yaml). Colour
+values remain null until actually supplied. The other cases cover
+populated/null/empty data, provider-id squad players and ages, validation, scoped
+schedules, an identity permission failure (500), squad and schedule failures
+(degraded `no-store` blocks), the row bounds, a missing provider id, and
+malformed schedule JSON.
 
 ### Operator verification and repair
 

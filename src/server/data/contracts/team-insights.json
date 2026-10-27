@@ -364,6 +364,7 @@
     "color": null,
     "altColor": null,
     "record": null,
+    "standing": null,
     "standingSummary": null,
     "squad": [],
     "schedule": [
@@ -395,7 +396,11 @@
         "shootout": null,
         "shootoutDetail": null,
         "stats": null,
-        "winProbability": null
+        "winProbability": null,
+        "scope": {
+          "competitionId": "liga-mx",
+          "seasonId": "2026-apertura"
+        }
       },
       {
         "id": "018f0000-0000-7000-8000-000000000302",
@@ -425,9 +430,17 @@
         "shootout": null,
         "shootoutDetail": null,
         "stats": null,
-        "winProbability": null
+        "winProbability": null,
+        "scope": {
+          "competitionId": "liga-mx",
+          "seasonId": "2026-apertura"
+        }
       }
-    ]
+    ],
+    "scheduleAvailability": {
+      "results": "available",
+      "upcoming": "available"
+    }
   },
   "errors": [
     {

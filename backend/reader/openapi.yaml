@@ -221,6 +221,11 @@ paths:
     get:
       operationId: getTeam
       summary: Get one club's profile, squad and matches within a competition
+      description: >-
+        Takes no query parameters. A failed identity, snapshot or freshness
+        read, or a cancelled or timed-out request, is a 500. A failed squad read is served as an empty squad, and a
+        failed schedule read as an empty schedule with scheduleAvailability
+        unavailable; either makes the response no-store.
       parameters:
         - { $ref: "#/components/parameters/Comp" }
         - { $ref: "#/components/parameters/Season" }
@@ -234,10 +239,39 @@ paths:
             X-ScoreArc-Poll-Status: { $ref: "#/components/headers/PollStatus" }
             X-ScoreArc-Stale-Matches: { $ref: "#/components/headers/MatchCount" }
             X-ScoreArc-Overdue-Matches: { $ref: "#/components/headers/MatchCount" }
-            Cache-Control: { $ref: "#/components/headers/StandardCacheControl" }
+            Cache-Control: { $ref: "#/components/headers/TeamCacheControl" }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/TeamProfile" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+  /v1/competitions/{comp}/{season}/teams/{teamId}/squad:
+    get:
+      operationId: getSquad
+      summary: Get one club's squad within a competition, without its profile or matches
+      description: >-
+        Takes no query parameters. The same rows TeamProfile.squad embeds. As
+        there, a failed squad read is served as an empty squad with
+        Cache-Control no-store; a failed identity read or a cancelled or
+        timed-out request is a 500.
+      parameters:
+        - { $ref: "#/components/parameters/Comp" }
+        - { $ref: "#/components/parameters/Season" }
+        - { $ref: "#/components/parameters/TeamID" }
+      responses:
+        "200":
+          description: >-
+            Squad players in provider roster order (rows written before
+            migration 0027 fall back to shirt number, then name, until the next
+            roster refresh), with season statistics
+          headers:
+            Cache-Control: { $ref: "#/components/headers/SquadCacheControl" }
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/SquadPlayer" } }
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
@@ -375,7 +409,7 @@ components:
       name: teamId
       in: path
       required: true
-      description: Our canonical team identifier, such as nat-mex.
+      description: Our canonical team identifier, such as nat-mex. A provider id returns 404.
       schema: { type: string, minLength: 1 }
     PlayerID:
       name: playerId
@@ -440,6 +474,12 @@ components:
     StandardCacheControl:
       description: public, max-age=60.
       schema: { type: string }
+    TeamCacheControl:
+      description: public, max-age=120; no-store when a squad or schedule block is degraded.
+      schema: { type: string }
+    SquadCacheControl:
+      description: public, max-age=300; no-store when the squad read failed.
+      schema: { type: string }
     DetailCacheControl:
       description: public, max-age=30.
       schema: { type: string }
@@ -455,7 +495,7 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
     NotFound:
-      description: Match not found
+      description: Match or team not found
       headers:
         Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
       content:
@@ -542,13 +582,20 @@ components:
       additionalProperties: false
       required: [id, name, jersey, position, age, nationality, headshotUrl, stats]
       properties:
-        id: { type: string }
+        id:
+          type: string
+          description: >-
+            The provider athlete id on the squad's source, as the frontend
+            serves it (player slugs are keyed by it). Never the canonical
+            player UUID.
         name: { type: string }
         jersey: { type: [integer, "null"] }
         position: { type: string }
-        age: { type: [integer, "null"] }
+        age:
+          type: [integer, "null"]
+          description: Whole years since the stored birth date, on the request's UTC date.
         nationality: { type: [string, "null"] }
-        headshotUrl: { type: [string, "null"] }
+        headshotUrl: { type: [string, "null"], description: "An https image URL on the providers CDN (espncdn.com); anything else is dropped at ingest." }
         stats:
           description: Null when the player has no season statistics at all, which is not the same as every stat being null.
           oneOf:
@@ -563,22 +610,60 @@ components:
         gamesPlayed: { type: [integer, "null"] }
         points: { type: [integer, "null"] }
         goalDifference: { type: [integer, "null"] }
+    TeamStanding:
+      type: object
+      additionalProperties: false
+      required: [rank, competition]
+      properties:
+        rank: { type: integer, minimum: 1 }
+        competition:
+          type: string
+          description: >-
+            The label the rank is within: the team's table name (Group B,
+            Apertura) when the season holds more than one stored table, else
+            the competition's own name (Liga MX). An unnamed table among
+            several has no label, so standing and standingSummary are null.
+    ScheduleAvailability:
+      type: object
+      additionalProperties: false
+      required: [results, upcoming]
+      description: Whether the schedule could be read; not a claim of freshness or full coverage.
+      properties:
+        results: { type: string, enum: [available, unavailable] }
+        upcoming: { type: string, enum: [available, unavailable] }
+    MatchScope:
+      type: object
+      additionalProperties: false
+      required: [competitionId, seasonId]
+      properties:
+        competitionId: { type: string }
+        seasonId: { type: string }
     TeamProfile:
       type: object
       additionalProperties: false
-      required: [team, location, color, altColor, record, standingSummary, squad, schedule]
+      required: [team, location, color, altColor, record, standing, standingSummary, squad, schedule, scheduleAvailability]
       properties:
         team: { $ref: "#/components/schemas/Team" }
         location: { type: [string, "null"] }
         color: { type: [string, "null"] }
         altColor: { type: [string, "null"] }
         record:
+          description: Derived from the team's first stored standing row (W-D-L, games, points, goal difference).
           oneOf:
             - { $ref: "#/components/schemas/TeamRecord" }
             - { type: "null" }
-        standingSummary: { type: [string, "null"] }
+        standing:
+          oneOf:
+            - { $ref: "#/components/schemas/TeamStanding" }
+            - { type: "null" }
+        standingSummary:
+          type: [string, "null"]
+          description: >-
+            The standing as an English sentence in the provider's shape, from
+            the same rank and label: "1st in Liga MX", "2nd in Group B".
         squad: { type: array, items: { $ref: "#/components/schemas/SquadPlayer" } }
-        schedule: { type: array, items: { $ref: "#/components/schemas/Match" } }
+        schedule: { type: array, items: { $ref: "#/components/schemas/TeamMatch" } }
+        scheduleAvailability: { $ref: "#/components/schemas/ScheduleAvailability" }
     PlayerProfile:
       type: object
       additionalProperties: false
@@ -598,7 +683,7 @@ components:
         jersey: { type: [string, "null"], description: "Jersey from the latest scoped squad membership, or null." }
         nationality: { type: [string, "null"] }
         flagUrl: { type: [string, "null"], description: "Null because no player flag URL is held in the current schema." }
-        headshotUrl: { type: [string, "null"], description: "Null because no player headshot URL is held in the current schema." }
+        headshotUrl: { type: [string, "null"], description: "Always null: player.headshot_url (migration 0027) is served on SquadPlayer, not yet here." }
         team:
           description: Canonical season-stat team, falling back to the latest scoped squad membership; null when absent.
           oneOf:
@@ -783,6 +868,8 @@ components:
       properties:
         home: { $ref: "#/components/schemas/TeamStats" }
         away: { $ref: "#/components/schemas/TeamStats" }
+    # TeamMatch repeats every property below plus scope (additionalProperties:
+    # false rules out allOf); edit both. reader_contract_test.go fails on drift.
     Match:
       type: object
       additionalProperties: false
@@ -806,6 +893,32 @@ components:
         shootoutDetail: { oneOf: [{ $ref: "#/components/schemas/ShootoutDetail" }, { type: "null" }] }
         stats: { oneOf: [{ $ref: "#/components/schemas/MatchStats" }, { type: "null" }] }
         winProbability: { oneOf: [{ $ref: "#/components/schemas/WinProbability" }, { type: "null" }] }
+    # Match plus scope; keep in step with Match above.
+    TeamMatch:
+      description: A Match on a team schedule, with the competition season it belongs to.
+      type: object
+      additionalProperties: false
+      required: [scope, id, kickoff, state, minute, statusDetail, statusName, home, away, homeScore, awayScore, winnerId, note, scorers, cards, shootout, shootoutDetail, stats, winProbability]
+      properties:
+        id: { type: string }
+        kickoff: { type: string, format: date-time }
+        state: { type: string, enum: [scheduled, live, finished] }
+        minute: { type: [string, "null"] }
+        statusDetail: { type: string }
+        statusName: { type: string }
+        home: { $ref: "#/components/schemas/Team" }
+        away: { $ref: "#/components/schemas/Team" }
+        homeScore: { type: [integer, "null"] }
+        awayScore: { type: [integer, "null"] }
+        winnerId: { type: [string, "null"] }
+        note: { type: [string, "null"] }
+        scorers: { type: array, items: { $ref: "#/components/schemas/Scorer" } }
+        cards: { type: array, items: { $ref: "#/components/schemas/Card" } }
+        shootout: { oneOf: [{ $ref: "#/components/schemas/Shootout" }, { type: "null" }] }
+        shootoutDetail: { oneOf: [{ $ref: "#/components/schemas/ShootoutDetail" }, { type: "null" }] }
+        stats: { oneOf: [{ $ref: "#/components/schemas/MatchStats" }, { type: "null" }] }
+        winProbability: { oneOf: [{ $ref: "#/components/schemas/WinProbability" }, { type: "null" }] }
+        scope: { $ref: "#/components/schemas/MatchScope" }
     Standing:
       type: object
       additionalProperties: false

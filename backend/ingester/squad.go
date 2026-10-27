@@ -97,23 +97,24 @@ func (r *runner) refreshSquads(
 				recordError(fmt.Errorf("team %s roster: %w", providerTeamID, err))
 				return
 			}
+			// The club's colour and location ride along on the roster
+			// payload, so this costs no extra request. Written before the
+			// squad so a squad write the shrink guard rejects still records
+			// them; a failure here is logged for the run but does not block
+			// the squad, which is the point of this refresh.
+			// The store ignores empty values, so a roster without them
+			// never blanks what is already held.
+			if err := r.repo.SetTeamRosterIdentity(
+				ctx, teamIDs[providerTeamID], squad.Color, squad.Location,
+			); err != nil {
+				recordError(fmt.Errorf("team %s roster identity: %w", providerTeamID, err))
+			}
 			if err := r.repo.ReplaceSquad(
 				ctx, comp.ID, season.ID, teamIDs[providerTeamID], sourceESPN,
 				squad.Players, make(map[string]uuid.UUID),
 			); err != nil {
 				recordError(fmt.Errorf("team %s squad write: %w", providerTeamID, err))
 				return
-			}
-			// The club's colour rides along on the roster payload, so this
-			// costs no extra request. A failure here is logged as an error
-			// for the run but does not undo the squad write: the squad is the
-			// point of this refresh and a missing tint is cosmetic.
-			if squad.Color != "" {
-				if err := r.repo.SetTeamColour(
-					ctx, teamIDs[providerTeamID], squad.Color,
-				); err != nil {
-					recordError(fmt.Errorf("team %s colour: %w", providerTeamID, err))
-				}
 			}
 			r.mu.Lock()
 			r.squadsRefreshed[comp.ID+"/"+season.ID+"/"+providerTeamID] = today

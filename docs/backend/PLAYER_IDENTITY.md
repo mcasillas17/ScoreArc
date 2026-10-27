@@ -86,7 +86,9 @@ for links, and, on the frontend API, `SquadPlayer.id` and `PlayerProfile.id`.
 The reader serves source-qualified nullable `Scorer.athleteId`,
 `LineupPlayer.athleteId` and `StatLeader.athleteId`; its T10.4 profile `id` is
 a canonical UUID. See [the T16.2 contract](READER_CONTRACT.md#t162-identity-and-dto-contract).
+Its `SquadPlayer.id` is the provider athlete id (T10.3,
+[READER_CONTRACT](READER_CONTRACT.md#t103-team-and-squad-contract)).
 
 Existing lineup `jersey` image URLs can embed provider event and athlete ids;
 T10.2 preserves those stored asset URLs. They are not public player route
-identifiers. T10.4 does not synthesize headshot or flag URLs from provider ids.
+identifiers. Neither T10.3 nor T10.4 synthesizes headshot or flag URLs from provider ids.

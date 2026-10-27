@@ -179,7 +179,7 @@ func TestFreshnessSQLIntegration(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		team, err := store.Team(ctx, "nat-arg", scope.Competition, scope.Season)
+		team, err := store.Team(ctx, "nat-arg", scope.Competition, scope.Season, time.Now())
 		if err != nil {
 			t.Fatal(err)
 		}

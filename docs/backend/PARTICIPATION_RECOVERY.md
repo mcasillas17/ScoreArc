@@ -94,6 +94,10 @@ by this implementation. Local tests do not claim production gaps were filled.
 
 ## Schema rollout and rollback
 
+Later binaries embed a higher head (27 since T10.3): apply 0025, then 0026,
+then 0027 in order before starting them
+([rollout](READER_CONTRACT.md#rollout-migration-0027)).
+
 The owner reports production schema **24**, with 0024 already applied/released.
 Do not repeat or renumber it. 0025 must be applied separately under an authorized
 controlled rollout before starting binaries embedding head 25. Both reader and
