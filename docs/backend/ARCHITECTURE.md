@@ -419,6 +419,10 @@ the seal is the intended single `match_pkey` probe with two shared-buffer hits.
   finalization, and do not change the existing live CURRENT-price sampling.
 - `go run ./ingester -once` performs one complete slow reconciliation without a
   fixed whole-cycle deadline; individual operations remain bounded.
+- `-check-schema` runs only the startup schema gate over `POOLED_DSN` — no lease,
+  seeding or polling — prints one line and exits 0 only when ready. Fly runs it
+  as `release_command` ([RELEASES](RELEASES.md#release-time-schema-gate)); the
+  reader has the same mode.
 
 ### Live write reduction policy
 - `commentary`, `appearance`, and `event` tables converge the whole latest
@@ -748,8 +752,12 @@ flowchart TD
   Recheck -->|"No"| Inert["Inactive: no production publication started"]
   Recheck -->|"Yes"| Promote["Project API: one promotion POST"]
   Promote --> Poll["Bounded exact-job polling + exact SHA/domain confirmation"]
-  ReaderRelease --> Ledger["Actual release result ledger"]
-  IngesterRelease --> MachineCheck["Same step: read-only machine contract<br/>one started machine, no standbys, restart always"]
+  ReaderRelease --> ReaderGate{"release_command -check-schema<br/>new image, reader login"}
+  IngesterRelease --> IngesterGate{"release_command -check-schema<br/>new image, pooled login, no lease"}
+  ReaderGate -->|"Refused before any service machine changes"| GateRefused["Inactive: flyctl's own abort line; nothing replaced"]
+  IngesterGate -->|"Refused before any service machine changes"| GateRefused
+  ReaderGate -->|"Ready"| Ledger["Actual release result ledger"]
+  IngesterGate -->|"Ready"| MachineCheck["Same step: read-only machine contract<br/>one started machine, no standbys, restart always"]
   MachineCheck --> Ledger
   Poll --> Ledger
   Git["Vercel Git integration"] -->|"main deployment disabled; auto-domain assignment OFF"| NoBypass["No independent production publication"]
@@ -779,7 +787,10 @@ The ledger uses GitHub deployment task `scorearc-release` and environment
 are disabled so a path skip cannot masquerade as an actual success. No baseline
 means a full bootstrap for that service. Only an actual success supplies the
 next diff base; a known-inert or reconciled `inactive` release forces a full
-retry. Failed/unknown publishing operations lock further releases, including
+retry. A Fly release refused by its
+[schema gate](RELEASES.md#release-time-schema-gate) is known-inert only when
+flyctl's own abort line proves it stopped before any service machine changed.
+Failed/unknown publishing operations lock further releases, including
 manual dispatch, until the operator has confirmed provider-side termination.
 
 The separate `production-credentials.yml` diagnostic uses ordinary matrix jobs,

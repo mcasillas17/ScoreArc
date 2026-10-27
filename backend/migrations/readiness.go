@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -128,8 +129,28 @@ func CheckReady(ctx context.Context, db Querier, probes ...string) error {
 	return nil
 }
 
+// ReportReadiness writes the outcome of a -check-schema run as one line and
+// returns its exit code: 0 only when err is nil (CheckReady passed). Fly runs
+// that mode as release_command and streams its output into the CI log, so a
+// failure from before CheckReady — an unparsable DSN, a refused login — keeps
+// only its category, SQLSTATE and Go type, like CheckReady's own failures.
+func ReportReadiness(ctx context.Context, w io.Writer, err error) int {
+	// Latest cannot fail here when err is nil: CheckReady refuses first.
+	expected, _ := Latest()
+	if err == nil {
+		fmt.Fprintf(w, "database schema ready: expected=%d applied=%d dirty=false\n", expected, expected)
+		return 0
+	}
+	var readiness *ReadinessError
+	if !errors.As(err, &readiness) {
+		readiness = classify(ctx, err, expected, -1, "query_failed", "query_failed")
+	}
+	fmt.Fprintln(w, readiness.Error())
+	return 1
+}
+
 // classify maps a query failure to a category without keeping its text.
-func classify(ctx context.Context, err error, expected int, applied int64, undefinedTable, undefinedColumn string) error {
+func classify(ctx context.Context, err error, expected int, applied int64, undefinedTable, undefinedColumn string) *ReadinessError {
 	e := &ReadinessError{Category: "query_failed", Expected: expected, Applied: applied,
 		ErrorType: fmt.Sprintf("%T", err)}
 	var pgErr *pgconn.PgError

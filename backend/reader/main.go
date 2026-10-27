@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -18,11 +21,37 @@ import (
 )
 
 func main() {
+	checkSchema := flag.Bool("check-schema", false,
+		"check the database schema against this binary as the reader login (DATABASE_URL only), print one line, exit 0 only if ready; never listens")
+	flag.Parse()
+	if *checkSchema {
+		os.Exit(checkSchemaOnly(os.Stdout))
+	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	if err := run(logger); err != nil {
 		logger.Error("reader stopped", "err", err)
 		os.Exit(1)
 	}
+}
+
+// checkSchemaOnly is the release_command in fly.toml: Fly runs it from the new
+// image before any service machine changes, so a schema this binary would refuse at
+// startup aborts the deploy instead of replacing a serving machine. It needs
+// only the DSN: PORT configures a listener this mode never opens.
+func checkSchemaOnly(out io.Writer) int {
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		fmt.Fprintln(out, "database schema not checked: DATABASE_URL is required")
+		return 1
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err == nil {
+		defer pool.Close()
+		err = migrations.CheckReady(ctx, pool, freshnessSchemaProbe)
+	}
+	return migrations.ReportReadiness(ctx, out, err)
 }
 
 func run(logger *slog.Logger) error {

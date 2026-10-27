@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 	"syscall"
 	"testing"
@@ -89,12 +90,18 @@ func freePort(t *testing.T) string {
 	return fmt.Sprint(listener.Addr().(*net.TCPAddr).Port)
 }
 
+// readerLoginDSN is the reader's least-privilege login, never the owner,
+// tagged with an application_name so its sessions can be counted.
+func readerLoginDSN(admin *pgxpool.Pool, application string) string {
+	conn := admin.Config().ConnConfig
+	return fmt.Sprintf("postgres://scorearc_reader_test:reader_test_password@%s:%d/%s?sslmode=disable&application_name=%s",
+		conn.Host, conn.Port, conn.Database, application)
+}
+
 // runReader calls the real entry point as the reader's least-privilege login.
 func runReader(t *testing.T, admin *pgxpool.Pool, port string) <-chan error {
 	t.Helper()
-	conn := admin.Config().ConnConfig
-	t.Setenv("DATABASE_URL", fmt.Sprintf("postgres://scorearc_reader_test:reader_test_password@%s:%d/%s?sslmode=disable&application_name=reader_startup_test",
-		conn.Host, conn.Port, conn.Database))
+	t.Setenv("DATABASE_URL", readerLoginDSN(admin, "reader_startup_test"))
 	t.Setenv("PORT", port)
 	done := make(chan error, 1)
 	go func() { done <- run(slog.New(slog.NewJSONHandler(io.Discard, nil))) }()
@@ -186,4 +193,71 @@ func TestReaderStartupFailsClosedBeforeListening(t *testing.T) {
 			t.Fatal("reader did not shut down on SIGTERM")
 		}
 	})
+}
+
+// TestMain lets TestReaderCheckSchemaModeExitsWithoutServing run the real
+// main — flag parsing, stdout and exit code — as Fly's release_command does.
+func TestMain(m *testing.M) {
+	if os.Getenv("SCOREARC_READER_RUN_MAIN") == "1" {
+		main()
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
+func TestReaderCheckSchemaModeExitsWithoutServing(t *testing.T) {
+	_, admin := newIntegrationStore(t)
+	ctx := context.Background()
+	head, err := migrations.Latest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name    string
+		version int
+		dirty   bool
+		code    int
+		line    string
+	}{
+		{"ready", head, false, 0, fmt.Sprintf("database schema ready: expected=%d applied=%d dirty=false\n", head, head)},
+		{"behind", head - 1, false, 1, fmt.Sprintf("category=behind expected=%d applied=%d dirty=false", head, head-1)},
+		{"ahead", head + 1, false, 1, fmt.Sprintf("category=ahead expected=%d applied=%d dirty=false", head, head+1)},
+		{"dirty", head, true, 1, fmt.Sprintf("category=dirty expected=%d applied=%d dirty=true", head, head)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := admin.Exec(ctx, `UPDATE schema_migrations SET version = $1, dirty = $2`, tc.version, tc.dirty); err != nil {
+				t.Fatal(err)
+			}
+			// A ready schema is the case that proves the mode: given a free, valid
+			// PORT, the serving path would open its listener and block until the
+			// deadline instead of exiting. (TestCheckSchemaOnlyNeedsOnlyTheDatabaseURL
+			// pins that check mode ignores PORT.)
+			runCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(runCtx, os.Args[0], "-check-schema")
+			cmd.Env = append(os.Environ(), "SCOREARC_READER_RUN_MAIN=1", "PORT="+freePort(t),
+				"DATABASE_URL="+readerLoginDSN(admin, "reader_check_schema_test"))
+			out, err := cmd.Output()
+			if runCtx.Err() != nil {
+				t.Fatal("-check-schema did not exit within 30s; it is serving")
+			}
+			code := 0
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) {
+				code = exitErr.ExitCode()
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			text := string(out)
+			// The plain line itself, not a JSON log record that merely quotes it:
+			// normal startup also exits 1 on these ledgers.
+			if code != tc.code || strings.Count(text, "\n") != 1 || !strings.HasPrefix(text, "database schema ") ||
+				!strings.Contains(text, tc.line) {
+				t.Fatalf("exit %d output %q, want exit %d and one line containing %q", code, text, tc.code, tc.line)
+			}
+			if strings.Contains(text, "reader_test_password") || strings.Contains(text, "reader listening") {
+				t.Fatalf("check mode leaked a credential or served: %q", text)
+			}
+		})
+	}
 }
