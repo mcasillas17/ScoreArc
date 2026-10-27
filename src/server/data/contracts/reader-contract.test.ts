@@ -136,6 +136,11 @@ type CPlayerProfile = {
   flagUrl: string | null; headshotUrl: string | null; team: CTeam | null; seasonLabel: string; totals: CSeasonTotal[];
   gameLogLabel: string; gameLog: CGameLogRow[]; career: CCareerStint[];
 };
+// The reader keeps canonical identity and explicitly nullable unresolved career links.
+type CReaderPlayerProfile = Omit<CPlayerProfile, 'career'> & {
+  playerSlug: string | null;
+  career: (Omit<CCareerStint, 'teamId'> & { teamId: string | null })[];
+};
 // Zone vocabularies are configuration, so they are reused; the structure is pinned.
 type CZone = { from: number; to: number; kind: ZoneKind; labelKey: ZoneLabelKey };
 type CGroup = { id: string; standings: CStanding[]; zones?: CZone[] }
@@ -247,7 +252,7 @@ describe('reader contract: inventory', () => {
     }
     const used = new Set(Object.values(vectors.methods).flatMap(m => m.gaps));
     expect([...used].sort()).toEqual(Object.keys(vectors.gaps).sort());
-    expect(vectors.methods.getPlayer.reader).toBeNull();
+    expect(vectors.methods.getPlayer.reader).toBe('/v1/competitions/{comp}/{season}/players/{playerId}');
     // Reader routes with no DataStore method are listed, never implied.
     expect(Object.keys(vectors.readerOnly)).toEqual(['/v1/competitions/{comp}/{season}/calendar', '/v1/competitions/{comp}/{season}/top-scorers', '/v1/matches/{id}/box-score']);
     for (const route of Object.keys(vectors.readerOnly)) {
@@ -853,12 +858,44 @@ describe('reader contract: squad and player', () => {
     expect(enriched.map(m => [m.id, m.scorers, m.stats])).toEqual([[scoreboard.events[0].id, [], null]]);
   });
 
-  it('maps the recorded player through the real store; the reader has no route', async () => {
+  it('maps the recorded player through the real store', async () => {
     exercise('getPlayer');
     const player = await storeOver(url =>
       url.includes('/overview') ? overviewRaw : url.includes('/bio') ? bioRaw : athleteRaw).store.getPlayer(mx, '297287');
     const p = vectors.player.frontend;
     expect(player).toEqual({ ...p.identity, gameLogLabel: p.gameLogLabel, gameLog: p.gameLog, career: p.career });
+  });
+
+  it('pins the canonical reader player shape and store-scoped match translation', async () => {
+    const reader: CReaderPlayerProfile = vectors.player.reader.profile;
+    expectTypeOf<CReaderPlayerProfile>().toEqualTypeOf<Omit<PlayerProfile, 'career'> & {
+      playerSlug: string | null;
+      career: (Omit<CareerStint, 'teamId'> & { teamId: string | null })[];
+    }>();
+    expect(vectors.methods.getPlayer.reader).toBe('/v1/competitions/{comp}/{season}/players/{playerId}');
+    const identity = vectors.player.reader.identityTranslation;
+    const provider = await storeOver(url =>
+      url.includes('/overview') ? overviewRaw : url.includes('/bio') ? bioRaw : athleteRaw).store.getPlayer(mx, identity.providerAthleteId);
+    expect(provider!.id).toBe(identity.providerAthleteId);
+    expect(provider!.gameLog[0].eventId).toBe(identity.providerEventId);
+    expect(reader.id).toBe(identity.canonicalPlayerId);
+    expect(reader.gameLog[0].eventId).toBe(identity.canonicalMatchId);
+    expect(reader.id).not.toBe(provider!.id);
+    expect(reader.gameLog[0].eventId).not.toBe(provider!.gameLog[0].eventId);
+    expect(reader.playerSlug).toBeNull();
+    expect(reader.career[1]).toEqual({ teamId: null, teamName: 'Uncurated FC', crestUrl: null, seasons: '2024' });
+    expect(reader.gameLog).toHaveLength(5);
+    for (const row of reader.gameLog) {
+      expect(row.eventId).toMatch(/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/);
+      expect(row.homeTeamId).toBe('nat-arg');
+      expect(row.awayTeamId).toBe('nat-fra');
+      expect(Object.keys(row.stats).sort()).toEqual(['appearances', 'subIns', 'totalGoals', 'goalAssists', 'totalShots', 'shotsOnTarget', 'offsides', 'foulsCommitted', 'foulsSuffered', 'yellowCards', 'redCards', 'ownGoals', 'saves', 'shotsFaced', 'goalsConceded'].sort());
+      expect(row.stats.saves).toBeNull();
+      expect(row.stats.totalGoals).toBe(0);
+    }
+    expect(reader.totals).toHaveLength(15);
+    expect(reader.totals.find(s => s.name === 'goalAssists')!.value).toBe(0);
+    expect(reader.totals.find(s => s.name === 'saves')!.value).toBeNull();
   });
 
   it('keeps a game-log row whose match context is missing, with null context', async () => {

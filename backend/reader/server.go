@@ -15,6 +15,7 @@ import (
 )
 
 type matchReader interface {
+	Player(context.Context, string, string, string) (*PlayerProfile, error)
 	Matches(context.Context, string, string, matchQuery) ([]Match, error)
 	Calendar(context.Context, string, string) (SeasonCalendar, error)
 	Bracket(context.Context, string, string) ([]BracketRound, error)
@@ -69,6 +70,7 @@ func (a *App) router() http.Handler {
 		router.Get("/competitions/{comp}/{season}/leaders", a.handleLeaders)
 		router.Get("/competitions/{comp}/{season}/teams/{teamId}", a.handleTeam)
 		router.Get("/competitions/{comp}/{season}/teams/{teamId}/squad", a.handleSquad)
+		router.Get("/competitions/{comp}/{season}/players/{playerId}", a.handlePlayer)
 		router.Get("/competitions/{comp}/news", a.handleNews)
 		router.Get("/matches/{id}", a.handleMatchSummary)
 		router.Get("/matches/{id}/box-score", a.handleBoxScore)

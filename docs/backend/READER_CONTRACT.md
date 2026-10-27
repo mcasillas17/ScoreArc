@@ -56,7 +56,7 @@ in AGENTS.md first. All three run in CI (`npm test`, `tsc`, `go test ./...`).
 | `getNews` | `/v1/competitions/{comp}/news` | Recorded articles, identical through the real reader proxy |
 | `getTeam` | `…/teams/{teamId}` | Identity, location, record, colors, standing summary, squad, schedule ids, order and scope, partial-failure behavior, cache header |
 | `getSquad` | `…/teams/{teamId}/squad` (the same rows `getTeam` embeds) | Recorded roster order, ids, jersey, position, nationality, stats, age and headshots; degraded failure |
-| `getPlayer` | none | Recorded identity, game log and career, with missing-context degradation |
+| `getPlayer` | `…/players/{playerId}` | Canonical profile, scoped totals and latest five game-log rows; optional-data absence, source-qualified career links, snapshot/query/output bounds and error handling |
 
 Adding or removing a `DataStore` method fails `tsc`: two-way
 `Exclude<keyof DataStore, …>` checks against the inventory, plus a runtime key
@@ -137,7 +137,7 @@ and the harness proves a translation instead of an equality. They are not gaps.
 | Match | ESPN event id; list rows and its own summary fetch use it | UUIDv7; `/v1/matches/{id}` accepts nothing else (a provider id is 404) | `match_external_ref (source, source_id) → match.id` through the real resolver: the recorded event adopts the served match on its natural key, and a new event mints a stable UUIDv7 that the list route serves and the summary route addresses |
 | Team | ESPN team id | canonical slug (`nat-civ`) | the curated seed, identical in both languages (`teamCrosswalk.json` equals the seed's ESPN map); `canonicalTeamId` accepts either space, so links and follows built from reader ids match |
 | Scorer/card `teamId` | the provider id ESPN credits, normally a match side (kept as sent even when it names neither) | the canonical id of that side, or `null` | stored `match_detail` keeps the provider id; the reader translates at read time through each side's `team_external_ref` ids for the match's source (one statement, no per-event queries). A reference naming neither side, or both, is `null` — never a default side |
-| Player | `athleteId` = provider athlete id; `playerSlug` filled by the match route | the same provider `athleteId`; no `playerSlug` | `withSummaryPlayerSlugs` resolves the same slugs from either store's scorers; a `null` id gets no link. `SquadPlayer.id` follows the same rule since T10.3 ([below](#t103-team-and-squad-contract)); public player identity is T10.4 (`player`) |
+| Player | Provider athlete id in `PlayerProfile.id`; route-layer slugs drive website links | `PlayerProfile.id` is the canonical UUID; `playerSlug` stays null | Explicit `player_external_ref (source, source_id)` crosswalk; no provider-id or name-derived URL fallback. T10.4 proves canonical addressing; a persistent slug lookup is still proposed, not implemented. Existing source-qualified `athleteId` fields, and `SquadPlayer.id` since T10.3 ([below](#t103-team-and-squad-contract)), remain non-link provider values. |
 
 Match ids are store-scoped, so for T16.3 every method that produces or consumes
 them (the four window methods, `getBracket`, `getTeam`'s schedule, `getPlayer`'s
@@ -650,6 +650,77 @@ writes succeed. Their location and colour still update.
 Rolling back 0027 drops only those three columns. Do it after the 27 binaries
 are gone.
 
+## T10.4 player contract
+
+October 26 implementation; no migration or source switch. `T10.4-player` is
+replaced with positive TypeScript, Go/OpenAPI and least-privilege Postgres
+assertions. T10.4 adds no migration of its own and does not assert production readiness.
+
+`GET /v1/competitions/{comp}/{season}/players/{playerId}` serves one composite
+profile. `playerId` must be a lowercase hyphenated canonical UUID. Malformed
+identifiers, provider athlete numbers, slug strings and any query parameter are
+400; an unknown canonical UUID is 404. Slug persistence/lookup is not held in the
+schema: `playerSlug` is explicitly null, and no name or provider id is promoted
+into a URL. The existing website slug resolver and ESPN data source are unchanged.
+
+Identity is read even when the requested season has no squad, aggregate, career
+or appearance rows. `age` is computed from the stored birth date using the UTC
+calendar; absent/future dates are null. Position uses the held player position
+(or an empty string). Flag and headshot URLs remain null: flags are not stored, and the
+headshot T10.3 stores (migration 0027) is served on `SquadPlayer`, not yet here; they are never manufactured from a provider id. The scoped season
+aggregate's team takes precedence over the latest scoped squad membership;
+jersey comes only from the selected team's membership. Missing team is null.
+
+| List | Default / maximum | Meaning |
+|---|---|---|
+| `totals` | 15 / 15 (empty without an aggregate row) | The fifteen stored `player_season_stat` measurements, in documented schema order; null stays null, zero stays zero. Display is the decimal value or empty for unknown. No summing incomplete appearances or guessing ESPN's combined starts/substitute display. |
+| `gameLog` | 5 / 5 | Latest live/finished rows with positive play evidence in the requested competition/season, ordered by kickoff descending then match UUID descending. No pagination or larger limit in this slice. |
+| `career` | 50 / 50 | First fifty held stints by provider `ord`, then team source id and seasons. Source-qualified team crosswalk joins yield a canonical team id and held crest; unresolved teams retain name/seasons with null id/crest. |
+
+The nullable career `teamId` is an intentional translation from the frontend's
+provider string. Callers must keep unknown clubs unlinked. The season label uses
+the stored season label and competition short name. These are held-data
+projections, not a promise to reproduce a provider's display wording or fields
+it never supplied to ingestion.
+
+Game-log `eventId` is a canonical **match UUID**, despite the frontend field's
+provider-oriented name. Shared vectors identify both spaces; real Postgres
+assertions prove that the crosswalk's UUID is served and addresses match detail,
+while the provider event id is rejected there. T16.3 must switch `getPlayer`
+together with the other match-id methods and fall back as a group. This reader
+log is competition/season scoped; ESPN's overview can mix competitions. Scores
+are home-away regulation scores; W/L/D is from the player's per-match team and
+regulation score for finished matches only (a shootout draw stays D). Live or
+missing scores leave result empty. Transfers do not rewrite past teams.
+
+The box score and player log share participation-stat inference. Starters and
+same-team `sub_on` evidence establish appearances/substitute counts. A positive
+on-pitch measurement or goal/own-goal/sub-off event admits a row even if entry
+status is unknown: its appearance label is empty and inferred counts remain
+null. Bench cards alone and unproven roster membership never admit a log row.
+The restricted `match_participation_availability` view supplies completion;
+private retry state remains inaccessible.
+
+One repeatable-read snapshot performs four SQL statements (identity/bounds,
+aggregate, career, log), independent of match count. The candidate guard reads
+at most 2,001 scoped live/finished roster rows and rejects more than 2,000.
+Game-log event evidence aggregates at most 513 events per candidate and rejects
+an overflowing selected match rather than using truncated evidence. The log
+returns at most five rows; career limits before joins. Parameters are bound,
+not interpolated. The ten-second deadline, rate limiter and 1 MiB serialized
+response ceiling apply. Success is cached for 60 seconds; every error is
+sanitized and `no-store`. Missing optional rows degrade; SQL failures remain
+500 and never pretend to be empty data.
+
+The synthetic `player.reader` vectors deliberately use independent persisted
+inputs, not the recorded athlete's real season or a production crosswalk. The
+recorded frontend mapper remains asserted separately, and recorded career
+payloads additionally pass through the ingester writer and reader. Tests cover
+unknown/colliding provider identity, null/zero stats, transfers, incomplete and
+complete participation, opposite-side substitutions, own goals, 5/50 output
+caps, 2,000/512 internal boundaries, cancellation, snapshot release and sanitized
+failures. No change to the known empty-bio ingestion condition is included.
+
 ## Remaining gaps
 
 The full mismatch text for each gap is in `reader-contract.json` under `gaps`.
@@ -657,7 +728,6 @@ The gaps stay open until their tasks land.
 
 | Task | Gaps |
 |---|---|
-| **T10.4** player | `player`: no route or DTO |
 | **T16.6** news | `news`: a live ESPN proxy, not owned data |
 | **T17.3** provenance and freshness | `freshness-coverage`: no freshness headers on standings, top-scorers or news |
 | **T21.4** observability | `dependency-error-logging`: six handlers log raw dependency text. The sanitized logging of `handleTeam`, `handleSquad` and `handleCalendar` is the asserted reference |

@@ -505,7 +505,7 @@ separate.
   `getLiveWindow`, `getUpcoming`, `getStandings`, `getBracket`,
   `getMatchSummary`, `getLeaders`,
   `getNews`, `getTeam`, `getSquad`, `getPlayer`) against **11 reader
-  routes** on the T10.3 branch (calendar, legacy top-scorers and box-score have no direct store method). #191 removed the redundant `getTopScorers`/`getTopAssists` wrappers,
+  routes** (calendar, legacy top-scorers and box-score have no direct store method). #191 removed the redundant `getTopScorers`/`getTopAssists` wrappers,
   not their public product/API capabilities: both still use `getLeaders`.
   The count is corrected; the underlying parity gaps remain real.
 - **T10.1 match queries: closed in code October 6, not deployed.** `/matches`
@@ -523,7 +523,12 @@ separate.
   owner-reported schema was 24, with 0025 missing; neither 25 nor 26 is verified
   deployed. Do not repeat 0024.
   See [contract and rollout](backend/READER_CONTRACT.md#t102-leaders-statistics-and-participation-contract).
-  Player expansion, broader freshness and cutover remain open.
+  Team expansion, broader freshness and cutover remain open.
+- **T10.4 implementation October 26, pending review/release:** canonical UUID
+  player profile, scoped season totals, latest-five game log and bounded career.
+  Positive TypeScript/Go/OpenAPI/Postgres assertions replace `T10.4-player`.
+  Missing optional rows preserve identity; unknown slugs remain null. No
+  migration of its own, production access or frontend data-source change. [Contract](backend/READER_CONTRACT.md#t104-player-contract).
 - **T10.3 teams: implemented October 26, pending review/release.** The team
   profile gains location, standing, `scheduleAvailability`, schedule scope and
   degraded (not failed) squad/schedule blocks, and its existing derived record

@@ -45,6 +45,21 @@ embedded schema head, 27 since T10.3** (migration 0027,
 0026 remain prerequisites where missing. Production migration and deployment are
 separately authorized, not performed here.
 
+## Players (T10.4)
+
+`GET /v1/competitions/{comp}/{season}/players/{playerId}` returns a canonical
+profile with scoped season totals, the latest five played-evidence match rows,
+and at most fifty career stints. It accepts a canonical lowercase UUID and no
+query parameters. Unknown UUIDs are 404; invalid/provider identifiers are 400.
+Missing bio, team or statistics never removes player identity. `playerSlug`,
+unstored headshots/flags and unresolved career-team links stay null.
+
+The game log's `eventId` is a canonical match UUID and must cut over with the
+other match-id methods in T16.3. Four reads share the existing snapshot; caps,
+nullable fields, identity translations and the 60-second success cache are
+specified in [the player contract](../../docs/backend/READER_CONTRACT.md#t104-player-contract).
+No new migration or frontend source change is part of this endpoint.
+
 ## Runtime configuration
 
 | Variable | Required | Meaning |
@@ -178,7 +193,7 @@ produce `stale`; absent successful polls produce `unavailable`. Counts remain
 zero when the stored rows are all sealed, because those facts themselves have
 not expired.
 
-All five match-bearing routes (matches, calendar, bracket, summary, team) read their body, summary identity scope where
+The match-bearing routes (matches, calendar, bracket, summary, team, box score and player) read their body, summary identity scope where
 needed, and freshness metadata inside one **read-only repeatable-read
 transaction**. Concurrent recovery cannot pair an older overdue body with newer
 finalized/healthy metadata. Queries share the existing ten-second request

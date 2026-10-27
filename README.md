@@ -81,6 +81,7 @@ publishes its complete OpenAPI 3.1 contract at
 | `GET /v1/competitions/{comp}/{season}/leaders` | Postgres; goals/assists boards | 60 s |
 | `GET /v1/competitions/{comp}/{season}/teams/{teamId}` | Postgres; profile, squad and matches | 120 s; `no-store` when a squad or schedule block degrades |
 | `GET /v1/competitions/{comp}/{season}/teams/{teamId}/squad` | Postgres | 300 s; `no-store` when the squad read fails |
+| `GET /v1/competitions/{comp}/{season}/players/{playerId}` | Postgres; canonical UUID profile | 60 s; errors `no-store` |
 | `GET /v1/competitions/{comp}/news` | live ESPN proxy, 90 s internal TTL | 60 s |
 | `GET /v1/matches/{id}` | Postgres | 30 s |
 | `GET /v1/matches/{id}/box-score` | Postgres; participation with availability | 30 s |

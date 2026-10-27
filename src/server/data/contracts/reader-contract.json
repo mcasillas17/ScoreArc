@@ -6,13 +6,6 @@
   "crosswalk": "Provider-to-canonical team ids come from the production seed (backend/config/teams.seed.json, exported to src/server/data/teamCrosswalk.json). Summary and own-goal side ids are checked against it in both suites; standings ids through the group-A comparisons (TS crosswalk, Go seed); bracket side ids only in the Go database suite."
  },
  "gaps": {
-  "T10.4-player": {
-   "task": "T10.4",
-   "mismatch": "No player route or DTO.",
-   "suites": [
-    "go"
-   ]
-  },
   "T16.6-news": {
    "task": "T16.6",
    "mismatch": "Reader news is a live ESPN proxy (502 on upstream failure), not owned data; bodies match today.",
@@ -86,8 +79,8 @@
    "gaps": []
   },
   "getPlayer": {
-   "reader": null,
-   "gaps": ["T10.4-player"]
+   "reader": "/v1/competitions/{comp}/{season}/players/{playerId}",
+   "gaps": []
   }
  },
  "summary": {
@@ -5043,7 +5036,325 @@
     "teamAbbr": ""
    }
   },
-  "bioFixture": "espn-athlete-bio.json"
+  "bioFixture": "espn-athlete-bio.json",
+  "reader": {
+   "note": "Synthetic: independent Postgres inputs in TestPlayerReadIntegration, with eight scoped appearances and an unrelated source sharing the athlete id. This is not the recorded athlete season or a production crosswalk. Shapes and explicit identity translations, not equality of unrelated measurements, are asserted. Missing stored flag/headshot stay null, season totals have 15 separately named measurements, and log scope is the requested competition/season.",
+   "profile": {
+    "id": "01890000-0000-7000-8000-000000000444",
+    "playerSlug": null,
+    "name": "Ali Avila",
+    "age": null,
+    "position": "Forward",
+    "jersey": "9",
+    "nationality": "Mexico",
+    "flagUrl": null,
+    "headshotUrl": null,
+    "team": {
+     "id": "nat-arg",
+     "name": "Argentina",
+     "abbr": "ARG",
+     "crestUrl": "https://cdn.scorearc.futbol/arg.png"
+    },
+    "seasonLabel": "2026 World Cup Stats",
+    "totals": [
+     {
+      "name": "appearances",
+      "label": "Appearances",
+      "display": "5",
+      "value": 5
+     },
+     {
+      "name": "subIns",
+      "label": "Substitute Appearances",
+      "display": "0",
+      "value": 0
+     },
+     {
+      "name": "totalGoals",
+      "label": "Total Goals",
+      "display": "3",
+      "value": 3
+     },
+     {
+      "name": "goalAssists",
+      "label": "Assists",
+      "display": "0",
+      "value": 0
+     },
+     {
+      "name": "totalShots",
+      "label": "Shots",
+      "display": "12",
+      "value": 12
+     },
+     {
+      "name": "shotsOnTarget",
+      "label": "Shots on Target",
+      "display": "",
+      "value": null
+     },
+     {
+      "name": "offsides",
+      "label": "Offsides",
+      "display": "",
+      "value": null
+     },
+     {
+      "name": "foulsCommitted",
+      "label": "Fouls Committed",
+      "display": "",
+      "value": null
+     },
+     {
+      "name": "foulsSuffered",
+      "label": "Fouls Suffered",
+      "display": "",
+      "value": null
+     },
+     {
+      "name": "yellowCards",
+      "label": "Yellow Cards",
+      "display": "",
+      "value": null
+     },
+     {
+      "name": "redCards",
+      "label": "Red Cards",
+      "display": "",
+      "value": null
+     },
+     {
+      "name": "ownGoals",
+      "label": "Own Goals",
+      "display": "",
+      "value": null
+     },
+     {
+      "name": "saves",
+      "label": "Saves",
+      "display": "",
+      "value": null
+     },
+     {
+      "name": "shotsFaced",
+      "label": "Shots Faced",
+      "display": "",
+      "value": null
+     },
+     {
+      "name": "goalsConceded",
+      "label": "Goals Conceded",
+      "display": "",
+      "value": null
+     }
+    ],
+    "gameLogLabel": "Last 5 Matches",
+    "gameLog": [
+     {
+      "eventId": "01890000-0000-7000-8000-000000000008",
+      "appearance": "Started",
+      "stats": {
+       "appearances": 1,
+       "subIns": 0,
+       "totalGoals": 0,
+       "goalAssists": null,
+       "totalShots": 2,
+       "shotsOnTarget": null,
+       "offsides": null,
+       "foulsCommitted": null,
+       "foulsSuffered": null,
+       "yellowCards": null,
+       "redCards": null,
+       "ownGoals": null,
+       "saves": null,
+       "shotsFaced": null,
+       "goalsConceded": null
+      },
+      "date": "2026-07-09T00:00:00Z",
+      "atVs": "@",
+      "opponent": {
+       "id": "nat-arg",
+       "name": "Argentina",
+       "abbr": "ARG",
+       "crestUrl": "https://cdn.scorearc.futbol/arg.png"
+      },
+      "score": "2-1",
+      "result": "L",
+      "homeTeamId": "nat-arg",
+      "awayTeamId": "nat-fra",
+      "teamId": "nat-fra",
+      "teamAbbr": "FRA"
+     },
+     {
+      "eventId": "01890000-0000-7000-8000-000000000007",
+      "appearance": "Sub",
+      "stats": {
+       "appearances": 1,
+       "subIns": 1,
+       "totalGoals": 0,
+       "goalAssists": null,
+       "totalShots": 2,
+       "shotsOnTarget": null,
+       "offsides": null,
+       "foulsCommitted": null,
+       "foulsSuffered": null,
+       "yellowCards": null,
+       "redCards": null,
+       "ownGoals": null,
+       "saves": null,
+       "shotsFaced": null,
+       "goalsConceded": null
+      },
+      "date": "2026-07-08T00:00:00Z",
+      "atVs": "vs",
+      "opponent": {
+       "id": "nat-fra",
+       "name": "France",
+       "abbr": "FRA",
+       "crestUrl": "https://cdn.scorearc.futbol/fra.png"
+      },
+      "score": "2-1",
+      "result": "W",
+      "homeTeamId": "nat-arg",
+      "awayTeamId": "nat-fra",
+      "teamId": "nat-arg",
+      "teamAbbr": "ARG"
+     },
+     {
+      "eventId": "01890000-0000-7000-8000-000000000006",
+      "appearance": "Started",
+      "stats": {
+       "appearances": 1,
+       "subIns": 0,
+       "totalGoals": 0,
+       "goalAssists": null,
+       "totalShots": 2,
+       "shotsOnTarget": null,
+       "offsides": null,
+       "foulsCommitted": null,
+       "foulsSuffered": null,
+       "yellowCards": null,
+       "redCards": null,
+       "ownGoals": null,
+       "saves": null,
+       "shotsFaced": null,
+       "goalsConceded": null
+      },
+      "date": "2026-07-07T00:00:00Z",
+      "atVs": "vs",
+      "opponent": {
+       "id": "nat-fra",
+       "name": "France",
+       "abbr": "FRA",
+       "crestUrl": "https://cdn.scorearc.futbol/fra.png"
+      },
+      "score": "2-1",
+      "result": "W",
+      "homeTeamId": "nat-arg",
+      "awayTeamId": "nat-fra",
+      "teamId": "nat-arg",
+      "teamAbbr": "ARG"
+     },
+     {
+      "eventId": "01890000-0000-7000-8000-000000000005",
+      "appearance": "Started",
+      "stats": {
+       "appearances": 1,
+       "subIns": 0,
+       "totalGoals": 0,
+       "goalAssists": null,
+       "totalShots": 2,
+       "shotsOnTarget": null,
+       "offsides": null,
+       "foulsCommitted": null,
+       "foulsSuffered": null,
+       "yellowCards": null,
+       "redCards": null,
+       "ownGoals": null,
+       "saves": null,
+       "shotsFaced": null,
+       "goalsConceded": null
+      },
+      "date": "2026-07-06T00:00:00Z",
+      "atVs": "vs",
+      "opponent": {
+       "id": "nat-fra",
+       "name": "France",
+       "abbr": "FRA",
+       "crestUrl": "https://cdn.scorearc.futbol/fra.png"
+      },
+      "score": "2-1",
+      "result": "W",
+      "homeTeamId": "nat-arg",
+      "awayTeamId": "nat-fra",
+      "teamId": "nat-arg",
+      "teamAbbr": "ARG"
+     },
+     {
+      "eventId": "01890000-0000-7000-8000-000000000004",
+      "appearance": "Started",
+      "stats": {
+       "appearances": 1,
+       "subIns": 0,
+       "totalGoals": 0,
+       "goalAssists": null,
+       "totalShots": 2,
+       "shotsOnTarget": null,
+       "offsides": null,
+       "foulsCommitted": null,
+       "foulsSuffered": null,
+       "yellowCards": null,
+       "redCards": null,
+       "ownGoals": null,
+       "saves": null,
+       "shotsFaced": null,
+       "goalsConceded": null
+      },
+      "date": "2026-07-05T00:00:00Z",
+      "atVs": "vs",
+      "opponent": {
+       "id": "nat-fra",
+       "name": "France",
+       "abbr": "FRA",
+       "crestUrl": "https://cdn.scorearc.futbol/fra.png"
+      },
+      "score": "2-1",
+      "result": "W",
+      "homeTeamId": "nat-arg",
+      "awayTeamId": "nat-fra",
+      "teamId": "nat-arg",
+      "teamAbbr": "ARG"
+     }
+    ],
+    "career": [
+     {
+      "teamId": "nat-arg",
+      "teamName": "Argentina",
+      "crestUrl": "https://cdn.scorearc.futbol/arg.png",
+      "seasons": "2025-CURRENT"
+     },
+     {
+      "teamId": null,
+      "teamName": "Uncurated FC",
+      "crestUrl": null,
+      "seasons": "2024"
+     }
+    ]
+   },
+   "identityTranslation": {
+    "providerAthleteId": "297287",
+    "canonicalPlayerId": "01890000-0000-7000-8000-000000000444",
+    "providerEventId": "401877007",
+    "canonicalMatchId": "01890000-0000-7000-8000-000000000008"
+   },
+   "limits": {
+    "totals": 15,
+    "gameLog": 5,
+    "career": 50,
+    "candidates": 2000,
+    "eventsPerMatch": 512
+   }
+  }
  },
  "queries": {
   "competition": "world-cup",
@@ -5524,8 +5835,8 @@
    },
    {
     "path": "/v1/competitions/world-cup/2026/players/297287",
-    "status": 404,
-    "error": "not found"
+    "status": 400,
+    "error": "playerId must be a canonical UUID"
    },
    {
     "path": "/v1/competitions/world-cup/2026/top-assists",

@@ -483,8 +483,9 @@ sequenceDiagram
 
 ## 5. Reader (slice 1c — implemented public Go REST API)
 
-Match-bearing responses add freshness headers while retaining existing body
-shapes. Body, identity scope and metadata share a bounded read-only repeatable-read
+Match lists, calendars, brackets, summaries and team profiles add freshness
+headers while retaining existing body shapes. Those responses, box scores and
+player profiles share a bounded read-only repeatable-read
 snapshot, released before response writes. Reader time detects stopped ingestion
 independently of worker logging. The website stays on its existing DataStore;
 broader E17 provenance is not closed by this slice, and schema readiness is a
@@ -505,6 +506,7 @@ migration compatibility and separately approved rollout.
   - `GET /v1/competitions/{comp}/{season}/leaders`  (goals/assists boards — T10.2)
   - `GET /v1/competitions/{comp}/{season}/teams/{teamId}`  (team profile; failed squad/schedule blocks degrade — T10.3)
   - `GET /v1/competitions/{comp}/{season}/teams/{teamId}/squad`  (squad alone — T10.3)
+  - `GET /v1/competitions/{comp}/{season}/players/{playerId}` (canonical UUID profile, season totals, latest-five game log and bounded career — T10.4)
   - `GET /v1/matches/{id}`  (summary/detail)
   - `GET /v1/matches/{id}/box-score`  (participation — T10.2)
   - `GET /v1/competitions/{comp}/news`  → **live proxy to ESPN** (short TTL cache), NOT DB-served.
@@ -693,17 +695,16 @@ truth is the TS**: `src/server/data/types.ts` (shapes), `providers/espn-*.ts`
   `docs/superpowers/plans/2026-08-10-internal-ingester-service.md`.
 
 **1c — Reader (implemented)**
-- **Endpoint → type map:** each `/v1/…` response must deserialize into exactly
-  the matching `types.ts` shape — `Match[]` / `Group[]` / `BracketRound[]` /
-  `StatLeader[]` (`leaders`) / `TeamProfile` (`teams/{teamId}`) /
-  `SquadPlayer[]` (`teams/{teamId}/squad`) / `MatchSummaryData` (`matches/{id}`) /
-  `NewsArticle[]` (`news`), plus the reader-only `calendar` (T10.1), legacy
-  `top-scorers` and `box-score` (T10.2). Eleven data routes today; the frontend's other `DataStore` methods (§2) have no reader
-  route yet. Write a field-by-field map in the plan. This map is the target, not
-  the implemented reader: [READER_CONTRACT](READER_CONTRACT.md) and the gap
-  registry in `src/server/data/contracts/reader-contract.json` record every
-  characterized difference (`top-scorers` keeps the legacy `TopScorer[]`;
-  `leaders` serves `StatLeader[]`, T10.2).
+- **Endpoint → type map:** twelve versioned routes serve `Match[]`, `Group[]`,
+  `BracketRound[]`, legacy `TopScorer[]` (`top-scorers`), `StatLeader[]`
+  (`leaders`), `TeamProfile`, `SquadPlayer[]` (`teams/{teamId}/squad`), `PlayerProfile`, `MatchSummary`, `NewsArticle[]`,
+  `SeasonCalendar` and `BoxScore`. The twelve frontend `DataStore` methods do
+  not map one-to-one to these routes: calendar, legacy top-scorers and box score
+  are reader-only. This is not
+  cutover readiness. [READER_CONTRACT](READER_CONTRACT.md) and
+  `src/server/data/contracts/reader-contract.json` record remaining gaps and
+  intentional translations, including canonical player/match UUIDs, nullable
+  career-team links and the competition/season-scoped five-match player log.
 - **`/news` drops season:** `newsUrl(slug)` is comp-only; the endpoint is
   `/v1/competitions/{comp}/news` and `apiStore.getNews` builds it from
   `rc.competition`, ignoring season.

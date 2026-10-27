@@ -5,8 +5,9 @@
 **Owners:** both sides. The frontend derives these slugs from provider data
 today; under this proposal the backend will mint the same slugs as public
 player ids. It does not yet: it keys players by canonical UUIDv7 through
-`player_external_ref` and serves no player slug (public player identity is
-T10.4). If the two algorithms drift, every player URL 404s on the day
+`player_external_ref` and serves no player slug. T10.4 adds a canonical UUID profile route with
+`playerSlug: null`; the proposed slug URL below is not an implemented reader
+address. See [the player read contract](READER_CONTRACT.md#t104-player-contract). If the two algorithms drift, every player URL 404s on the day
 the frontend migrates to our API — silently, per player. This document exists
 so they cannot drift.
 
@@ -82,13 +83,12 @@ Some responses carry the provider athlete id as a provider-scoped value, never
 a public id and never in a URL: `Scorer.athleteId`, `LineupPlayer.athleteId`
 and `StatLeader.athleteId`, which the route layer resolves to the player's slug
 for links, and, on the frontend API, `SquadPlayer.id` and `PlayerProfile.id`.
-The reader serves all of them except `PlayerProfile.id` (T10.4):
-`Scorer.athleteId` (nullable, T16.2,
-[READER_CONTRACT](READER_CONTRACT.md#t162-identity-and-dto-contract)),
-`LineupPlayer.athleteId` and `StatLeader.athleteId` (T10.2), and
-`SquadPlayer.id` (T10.3, [READER_CONTRACT](READER_CONTRACT.md#t103-team-and-squad-contract)).
+The reader serves source-qualified nullable `Scorer.athleteId`,
+`LineupPlayer.athleteId` and `StatLeader.athleteId`; its T10.4 profile `id` is
+a canonical UUID. See [the T16.2 contract](READER_CONTRACT.md#t162-identity-and-dto-contract).
+Its `SquadPlayer.id` is the provider athlete id (T10.3,
+[READER_CONTRACT](READER_CONTRACT.md#t103-team-and-squad-contract)).
 
-One remaining embedding is not an exception: a lineup player's `jersey` URL
-embeds the provider event and athlete ids, on the reader and the frontend API
-alike. T10.2 closed `T10.2-lineups` without changing it, so no gap registers it
-today; until one does, the rule above does not hold for those URLs.
+Existing lineup `jersey` image URLs can embed provider event and athlete ids;
+T10.2 preserves those stored asset URLs. They are not public player route
+identifiers. Neither T10.3 nor T10.4 synthesizes headshot or flag URLs from provider ids.

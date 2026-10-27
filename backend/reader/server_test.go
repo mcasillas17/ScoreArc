@@ -21,6 +21,8 @@ import (
 )
 
 type fakeReaderStore struct {
+	player             *PlayerProfile
+	playerErr          error
 	boxScore           *BoxScore
 	boxScoreErr        error
 	leaders            []espn.StatLeader
@@ -526,4 +528,15 @@ func (f *fakeReaderStore) Leaders(_ context.Context, _, _ string, query leaderQu
 func (f *fakeReaderStore) BoxScore(context.Context, string) (*BoxScore, error) {
 	f.calls++
 	return f.boxScore, f.boxScoreErr
+}
+
+func (f *fakeReaderStore) Player(context.Context, string, string, string) (*PlayerProfile, error) {
+	f.calls++
+	if f.playerErr != nil {
+		return nil, f.playerErr
+	}
+	if f.player == nil {
+		return nil, ErrNotFound
+	}
+	return f.player, nil
 }

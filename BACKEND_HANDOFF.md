@@ -130,7 +130,7 @@ build/test gate is `cd backend && go build ./... && go test ./...`.
    recover it from history at `c6d382e` if ever needed.
 5. **Shared ESPN layer** — Go endpoint builders, response models, and fixture-tested
    mappers for scoreboard, standings, bracket, summary, statistics, and news.
-6. **Public reader API (slice 1c)** — eleven versioned `/v1` data routes (T10.3 added the team squad
+6. **Public reader API (slice 1c)** — twelve versioned `/v1` data routes (T10.4 added the canonical player profile; T10.3 added the team squad
    route; T10.2 added leaders and box scores; T10.1 added
    validated `/matches` queries and the reader-only `calendar`) plus
    `/healthz`, parameterized pgx read models, registry validation, SELECT-only role
@@ -219,7 +219,7 @@ Hard rules (also in `AGENTS.md` — read it; Codex auto-loads it):
 ## 7. Key facts an agent needs
 
 - **The seam:** the frontend reads everything through `DataStore` (**12 methods**) in `src/server/data/store.ts`. Phase 1 adds a second implementation (`apiStore`) that calls our reader. Nothing else in the frontend changes.
-- **The 12 methods:** `getMatches`, `getFixtures`, `getLiveWindow`, `getUpcoming`, `getStandings`, `getBracket`, `getMatchSummary`, `getLeaders`, `getNews`, `getTeam`, `getSquad`, `getPlayer`. PR #191 removed the redundant `getTopScorers`/`getTopAssists` store wrappers, not the public scorer/assist capabilities: both use `getLeaders`. Types are in `src/server/data/types.ts` — the reader's JSON must deserialize into these. The reader exposes **11 data routes** on this branch (`calendar`, legacy `top-scorers` and `box-score` are reader-only; `getSquad` maps to `teams/{teamId}/squad` since T10.3), so the methods do not map 1:1 onto it; the cutover gaps remain in [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) §5.
+- **The 12 methods:** `getMatches`, `getFixtures`, `getLiveWindow`, `getUpcoming`, `getStandings`, `getBracket`, `getMatchSummary`, `getLeaders`, `getNews`, `getTeam`, `getSquad`, `getPlayer`. PR #191 removed the redundant `getTopScorers`/`getTopAssists` store wrappers, not the public scorer/assist capabilities: both use `getLeaders`. Types are in `src/server/data/types.ts` — the reader's JSON must deserialize into these. The reader exposes **12 data routes** (`calendar`, legacy `top-scorers` and `box-score` are reader-only; `getSquad` maps to `teams/{teamId}/squad` since T10.3; `getPlayer` maps to `players/{playerId}` since T10.4), so the methods do not map 1:1 onto it; the cutover gaps remain in [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) §5.
 - **Ingester durability:** final match/detail writes are atomic; migration 0021
   gives every finalized-fact table a database seal appropriate to its write
   lifecycle; unresolved finals remain in a durable backlog; bracket
