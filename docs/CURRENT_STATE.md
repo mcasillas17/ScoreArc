@@ -80,6 +80,10 @@ at the owner's request; its deleted code stays deleted. The integrated state pas
 The frontend still uses ESPN; no E16 cutover or backend recovery
 was performed. See [the evidence, request budgets and remaining limits](FRONTEND_SCOREBOARD_WINDOWS.md).
 
+**Standings form (T7.3), 2026-10-30:** implemented on a feature branch, pending
+review and release, on today's ESPN-backed `DataStore`. No Go, migration or production
+change. See [scope, coverage and budgets](FRONTEND_STANDINGS_FORM.md).
+
 **Match reliability update, 2026-09-21:** implementation began on freshly fetched
 `2a5ae77`; before final review the isolated branch fast-forwarded to
 dependency-only `488f5d9` (#166, `package-lock.json` only).
@@ -678,7 +682,7 @@ switch and fall back as one group
 ([READER_CONTRACT](backend/READER_CONTRACT.md#identity-translations)). Initial E10 history/player/shot reads keep their roadmap
 dependencies. No reader cutover has occurred.
 
-**Then, roughly in order:** E6/E7 UI (T6.2–T6.4, T7.3–T7.5), E9's
+**Then, roughly in order:** E6/E7 UI (T6.2–T6.4, T7.4–T7.5), E9's
 provider/model decision (post-rights, post-T7.13-closure). **Later:**
 anything requiring validated models or real data — AI recaps (E8), a
 real-data MCP, an LED board, match simulation, personalization.

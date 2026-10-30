@@ -93,6 +93,21 @@ const migratedRouteCases = [
     ),
   },
   {
+    name: 'standings form',
+    telemetry: 'standings-form',
+    comp: wc.comp,
+    season: wc.season,
+    rejectProvider: () => vi.spyOn(dataStore, 'getStandings').mockRejectedValueOnce(sensitiveProviderFailure),
+    getValid: async () => (await import('./[comp]/[season]/standings/form/route')).GET(
+      new Request('http://x/api/world-cup/2026/standings/form'),
+      { params: Promise.resolve(wc) },
+    ),
+    getMissing: async () => (await import('./[comp]/[season]/standings/form/route')).GET(
+      new Request('http://x/api/nope/2026/standings/form'),
+      { params: Promise.resolve({ comp: 'nope', season: '2026' }) },
+    ),
+  },
+  {
     name: 'standings',
     telemetry: 'standings',
     comp: wc.comp,

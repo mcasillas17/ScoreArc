@@ -143,7 +143,7 @@ export function mapSummaryShootoutTotals(raw: unknown, eventId: string, homeId: 
 // specially: terminal ones finish on state post alone; the others are never
 // finished, however the state and completion read.
 const TERMINAL_STATUSES = new Set(['STATUS_CANCELED', 'STATUS_ABANDONED', 'STATUS_FORFEIT']);
-const UNFINISHED_STATUSES = new Set([
+export const UNFINISHED_STATUSES = new Set([
   'STATUS_SUSPENDED', 'STATUS_POSTPONED', 'STATUS_SCHEDULED', 'STATUS_DELAYED',
   'STATUS_IN_PROGRESS', 'STATUS_FIRST_HALF', 'STATUS_HALFTIME', 'STATUS_SECOND_HALF',
 ]);

@@ -9,6 +9,7 @@ type APIEndpoint =
   | 'standings'
   | 'team'
   | 'top-assists'
+  | 'standings-form'
   | 'top-scorers';
 
 const eventIntervalMs = 60_000;

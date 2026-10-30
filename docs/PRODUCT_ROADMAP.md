@@ -595,8 +595,10 @@ implemented-vs-pending breakdown; the task IDs and plans below are kept stable.
 
 **Read/render tasks — remaining** (they need the writers below, which have run):
 
-- **T7.3** Form column (last five) in every table. It reads finalized matches and
-  can ship on today's `DataStore`; standings snapshots are not its gate.
+- **T7.3** Form (last five) in every table. **Implemented October 30, pending
+  review/release.** It reads finalized matches on today's
+  `DataStore`; standings snapshots are not its gate. Decisions and budgets:
+  [`FRONTEND_STANDINGS_FORM.md`](FRONTEND_STANDINGS_FORM.md).
 - **T7.4** Player game log and per-position percentiles
 - **T7.5** Previous seasons, including non-numeric season ids such as
   `2026-apertura` and `2026-27`

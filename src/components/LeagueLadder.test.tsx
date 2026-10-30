@@ -45,7 +45,7 @@ describe('LeagueLadder before kick-off', () => {
     expect(html).not.toContain('ll-band-label--in');
   });
 
-  // The inverse claim is just as false. `.ll-band--out .ll-row` sets
+  // The inverse claim is just as false. `.ll-band--out .ll-row` cells get
   // opacity 0.5, so wrapping an unplayed table in it says every club is
   // eliminated.
   it('does not dim every club as eliminated', () => {
