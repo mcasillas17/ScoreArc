@@ -173,13 +173,21 @@ describe('durable match monitor', () => {
     const s = await state(o.stateFile); expect(s.pending).toHaveLength(1); expect(s.pending[0].attempts).toBe(1);
     expect(Date.parse(s.pending[0].nextAttemptAt) - o.now).toBe(300000);
   });
-  it('bounds timeout and rejects ambiguous success acknowledgment', async () => {
-    for (const mode of ['timeout','ambiguous']) {
-      const o = await options(); await monitor.prepareMonitor(o);
-      const webhookURL = await endpoint((_req, res) => { if (mode === 'ambiguous') res.writeHead(200, { 'Content-Type': 'application/json' }).end('{"eventId":"wrong"}'); });
-      const result = await monitor.deliverMonitor({ ...o, webhookURL, pendingArtifactId: 1, timeoutMs: 25 });
-      expect(result.exitCode).toBe(2); expect((await state(o.stateFile)).pending).toHaveLength(1);
-    }
+  it.each(['timeout', 'body-timeout', 'ambiguous', 'oversized'])('rejects %s acknowledgment within the delivery bounds', async mode => {
+    const o = await options(); await monitor.prepareMonitor(o);
+    const eventId = (await state(o.stateFile)).pending[0].id;
+    const webhookURL = await endpoint((_req, res) => {
+      if (mode === 'timeout') return;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      if (mode === 'body-timeout') res.write('{');
+      else if (mode === 'ambiguous') res.end('{"eventId":"wrong"}');
+      else { res.write(' '.repeat(1024)); res.end(JSON.stringify({ eventId })); }
+    });
+    const started = Date.now();
+    const result = await monitor.deliverMonitor({ ...o, webhookURL, pendingArtifactId: 1, timeoutMs: 25 });
+    expect(result).toMatchObject({ exitCode: 2, monitorFailure: 'delivery-failed', pending: 1 });
+    expect((await state(o.stateFile)).pending[0]).toMatchObject({ id: eventId, attempts: 1 });
+    expect(Date.now() - started).toBeLessThan(2000);
   });
   it('reserves attempts before sending, obeys persistent backoff and exhausts at 20', async () => {
     const o = await options(); await monitor.prepareMonitor(o);
