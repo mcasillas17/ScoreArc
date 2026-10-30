@@ -1461,32 +1461,31 @@ func TestReaderContract(t *testing.T) {
 			}
 		}
 		// A secret-bearing dependency error: every route below sanitizes the
-		// body, but the six marked leaks log the raw text (T21.4). handleTeam,
-		// handleSquad and handleCalendar log only constant metadata (safeLog names
-		// a field each must carry), the reference the fix must match.
+		// body and logs. T21.4 retains safe diagnostic metadata; safeLog names
+		// a field each route must carry, including the existing team/squad and
+		// calendar references.
 		secret := errors.New("password=secret")
 		for _, route := range []struct {
 			path    string
 			status  int
 			store   *fakeReaderStore
 			news    *fakeNewsReader
-			leaks   bool
 			safeLog string
 		}{
-			{"/v1/competitions/world-cup/2026/matches", 500, &fakeReaderStore{matchesErr: secret}, &fakeNewsReader{}, true, ""},
-			{"/v1/competitions/world-cup/2026/standings", 500, &fakeReaderStore{standingsErr: secret}, &fakeNewsReader{}, true, ""},
-			{"/v1/competitions/world-cup/2026/bracket", 500, &fakeReaderStore{bracketErr: secret}, &fakeNewsReader{}, true, ""},
-			{"/v1/competitions/world-cup/2026/top-scorers", 500, &fakeReaderStore{topScorersErr: secret}, &fakeNewsReader{}, true, ""},
-			{"/v1/competitions/world-cup/news", 502, &fakeReaderStore{}, &fakeNewsReader{err: secret}, true, ""},
-			{"/v1/matches/" + vectors.Summary.ReaderMatchID, 500, &fakeReaderStore{summaryErr: secret}, &fakeNewsReader{}, true, ""},
+			{"/v1/competitions/world-cup/2026/matches", 500, &fakeReaderStore{matchesErr: secret}, &fakeNewsReader{}, `"operation":"matches"`},
+			{"/v1/competitions/world-cup/2026/standings", 500, &fakeReaderStore{standingsErr: secret}, &fakeNewsReader{}, `"operation":"standings"`},
+			{"/v1/competitions/world-cup/2026/bracket", 500, &fakeReaderStore{bracketErr: secret}, &fakeNewsReader{}, `"operation":"bracket"`},
+			{"/v1/competitions/world-cup/2026/top-scorers", 500, &fakeReaderStore{topScorersErr: secret}, &fakeNewsReader{}, `"operation":"top scorers"`},
+			{"/v1/competitions/world-cup/news", 502, &fakeReaderStore{}, &fakeNewsReader{err: secret}, `"operation":"news"`},
+			{"/v1/matches/" + vectors.Summary.ReaderMatchID, 500, &fakeReaderStore{summaryErr: secret}, &fakeNewsReader{}, `"operation":"match summary"`},
 			{"/v1/competitions/liga-mx/2026-apertura/teams/mex-america", 500,
-				&fakeReaderStore{teamErr: &teamReadError{operation: "identity", err: secret}}, &fakeNewsReader{}, false, `"operation":"identity"`},
+				&fakeReaderStore{teamErr: &teamReadError{operation: "identity", err: secret}}, &fakeNewsReader{}, `"operation":"identity"`},
 			// A failed squad read degrades to 200 []; identity alone is a 500.
 			{"/v1/competitions/liga-mx/2026-apertura/teams/mex-america/squad", 200,
-				&fakeReaderStore{teamErr: &teamReadError{operation: "squad", err: secret}}, &fakeNewsReader{}, false, `"operation":"squad"`},
+				&fakeReaderStore{teamErr: &teamReadError{operation: "squad", err: secret}}, &fakeNewsReader{}, `"operation":"squad"`},
 			{"/v1/competitions/liga-mx/2026-apertura/teams/mex-america/squad", 500,
-				&fakeReaderStore{teamErr: &teamReadError{operation: "identity", err: secret}}, &fakeNewsReader{}, false, `"operation":"identity"`},
-			{"/v1/competitions/world-cup/2026/calendar", 500, &fakeReaderStore{calendarErr: secret}, &fakeNewsReader{}, false, `"row_bound_exceeded":false`},
+				&fakeReaderStore{teamErr: &teamReadError{operation: "identity", err: secret}}, &fakeNewsReader{}, `"operation":"identity"`},
+			{"/v1/competitions/world-cup/2026/calendar", 500, &fakeReaderStore{calendarErr: secret}, &fakeNewsReader{}, `"row_bound_exceeded":false`},
 		} {
 			app := newTestApp(t, route.store, route.news)
 			var logs bytes.Buffer
@@ -1495,14 +1494,10 @@ func TestReaderContract(t *testing.T) {
 			if response.Code != route.status || strings.Contains(response.Body.String(), "secret") {
 				t.Fatalf("%s: %d %s", route.path, response.Code, response.Body.String())
 			}
-			switch {
-			case route.leaks && !strings.Contains(logs.String(), "password=secret"):
-				t.Fatalf("gap changed: %s no longer logs raw dependency text; update reader-contract.json", route.path)
-			case !route.leaks && (strings.Contains(logs.String(), "secret") || !strings.Contains(logs.String(), route.safeLog)):
-				t.Fatalf("%s must log only constant error metadata: %s", route.path, logs.String())
+			if strings.Contains(logs.String(), "secret") || !strings.Contains(logs.String(), route.safeLog) {
+				t.Fatalf("%s must log only safe error metadata: %s", route.path, logs.String())
 			}
 		}
-		gap("T21.4-dependency-error-logging")
 	})
 
 	t.Run("reader transport errors and freshness coverage", func(t *testing.T) {

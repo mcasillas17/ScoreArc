@@ -721,6 +721,33 @@ complete participation, opposite-side substitutions, own goals, 5/50 output
 caps, 2,000/512 internal boundaries, cancellation, snapshot release and sanitized
 failures. No change to the known empty-bio ingestion condition is included.
 
+## T21.4 dependency-error logging slice
+
+**October 30.** `T21.4-dependency-error-logging` is replaced by positive
+assertions. The six handlers for matches, standings, bracket, top-scorers, news
+and match summary retain an error event with `request_id`, `operation`,
+`error_type` (the Go error type) and `sqlstate` (empty for non-Postgres errors).
+`errors.As` extracts SQLSTATE through wrapped PostgreSQL errors; the type still
+identifies the outer error or wrapper. Competition routes retain validated
+`competition`/`season`; news has only `competition`, and summary has the
+validated canonical match UUID in `id`. Operation labels match the existing
+event names, including `top scorers` and `match summary`.
+
+No error message, PostgreSQL Message/Detail, connection URL, query/arguments,
+request headers or upstream response body is logged by these calls. The
+server-generated request id correlates each diagnostic with its existing access
+record. Team/squad logging and the `row_bound_exceeded`/`missing_provider_id`
+flags are unchanged.
+
+`TestDependencyErrorLogging` covers all six handlers with synthetic secrets,
+hostile newlines, generic/provider/PostgreSQL errors, cancellation, deadlines
+and wrappers. It asserts safe fields, exactly one diagnostic plus one access
+event, and unchanged 500/502 bodies and `no-store` headers. Existing success,
+validation and freshness assertions remain. Response and data behavior did not
+change. No migration, source switch or production action is part of this slice;
+the website remains ESPN-backed. Metrics, dashboards and the rest of T21.4
+remain separate work, as do the news and freshness gaps below.
+
 ## Remaining gaps
 
 The full mismatch text for each gap is in `reader-contract.json` under `gaps`.
@@ -730,7 +757,6 @@ The gaps stay open until their tasks land.
 |---|---|
 | **T16.6** news | `news`: a live ESPN proxy, not owned data |
 | **T17.3** provenance and freshness | `freshness-coverage`: no freshness headers on standings, top-scorers or news |
-| **T21.4** observability | `dependency-error-logging`: six handlers log raw dependency text. The sanitized logging of `handleTeam`, `handleSquad` and `handleCalendar` is the asserted reference |
 
 Every check fails when its gap closes. To close one:
 
