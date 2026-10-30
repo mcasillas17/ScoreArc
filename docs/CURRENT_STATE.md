@@ -552,12 +552,14 @@ separate.
   ambiguous empty match response in §3 is historical, not the present contract.
   Equivalent coverage across all reader surfaces and consumer handling remain
   T17.3/cutover work.
-- **Six reader handlers log raw dependency error text** (matches, standings,
-  bracket, top-scorers, news, match summary), which can carry connection
-  details; response bodies stay sanitized. `handleTeam` and `handleSquad` log
-  only operation, error type, SQLSTATE and two fail-closed flags, and with
-  `handleCalendar` are the reference. Owned by T21.4; pinned as gap
-  `T21.4-dependency-error-logging`.
+- **T21.4 dependency-error logging slice: implemented October 30, pending
+  integration/release.** Matches, standings, bracket, top-scorers, news and
+  match-summary failures now log request id, operation, validated scope, Go
+  error type and SQLSTATE without dependency text. The registered logging gap
+  is replaced by positive assertions; team/squad fail-closed flags and access
+  logs are preserved. Response and data behavior did not change. No migration
+  or production action; the website remains ESPN-backed. Metrics, dashboards
+  and the rest of T21.4 remain open. [Contract](backend/READER_CONTRACT.md#t214-dependency-error-logging-slice).
 
 ## 6. Durability blockers
 
