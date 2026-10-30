@@ -321,6 +321,15 @@ request id, method, path, route, and stack trace. Healthy `/healthz` probes are
 intentionally omitted to keep application traffic visible. Ingester logs
 similarly record each cycle's live state, failure count, duration, and sleep.
 
+Matches, standings, bracket, top-scorers, news and match-summary dependency
+failures log `request_id`, `operation`, validated scope, `error_type` and
+`sqlstate`, never the dependency's text. SQLSTATE is extracted through wrapped
+PostgreSQL errors; it is empty for non-Postgres errors. Use the response's
+`X-Request-Id` to correlate the error with its access record. Scope is
+`competition`/`season`, only `competition` for news, or canonical match `id` for
+summary. See the [T21.4 logging slice](../../docs/backend/READER_CONTRACT.md#t214-dependency-error-logging-slice);
+response/data behavior and team/squad diagnostics below are unchanged.
+
 ## Team-profile failures and schema repair
 
 The 0022 colour repair below is a historical prerequisite, not sufficient schema

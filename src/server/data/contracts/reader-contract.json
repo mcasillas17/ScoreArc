@@ -19,13 +19,6 @@
    "suites": [
     "go"
    ]
-  },
-  "T21.4-dependency-error-logging": {
-   "task": "T21.4",
-   "mismatch": "Six reader data handlers (matches, standings, bracket, top-scorers, news, match summary) log the raw dependency error text, which can carry connection details; handleTeam and handleSquad log only operation, error type, SQLSTATE and the two fail-closed flags (row_bound_exceeded, missing_provider_id), handleCalendar only its scope and whether the row bound was exceeded; leaders and box-score log no error value.",
-   "suites": [
-    "go"
-   ]
   }
  },
  "readerOnly": {
@@ -36,39 +29,39 @@
  "methods": {
   "getMatches": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T21.4-dependency-error-logging"]
+   "gaps": []
   },
   "getFixtures": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T21.4-dependency-error-logging"]
+   "gaps": []
   },
   "getLiveWindow": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T21.4-dependency-error-logging"]
+   "gaps": []
   },
   "getUpcoming": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T21.4-dependency-error-logging"]
+   "gaps": []
   },
   "getStandings": {
    "reader": "/v1/competitions/{comp}/{season}/standings",
-   "gaps": ["T17.3-freshness-coverage", "T21.4-dependency-error-logging"]
+   "gaps": ["T17.3-freshness-coverage"]
   },
   "getBracket": {
    "reader": "/v1/competitions/{comp}/{season}/bracket",
-   "gaps": ["T21.4-dependency-error-logging"]
+   "gaps": []
   },
   "getMatchSummary": {
    "reader": "/v1/matches/{id}",
-   "gaps": ["T21.4-dependency-error-logging"]
+   "gaps": []
   },
   "getLeaders": {
    "reader": "/v1/competitions/{comp}/{season}/leaders",
-   "gaps": ["T17.3-freshness-coverage", "T21.4-dependency-error-logging"]
+   "gaps": ["T17.3-freshness-coverage"]
   },
   "getNews": {
    "reader": "/v1/competitions/{comp}/news",
-   "gaps": ["T16.6-news", "T17.3-freshness-coverage", "T21.4-dependency-error-logging"]
+   "gaps": ["T16.6-news", "T17.3-freshness-coverage"]
   },
   "getTeam": {
    "reader": "/v1/competitions/{comp}/{season}/teams/{teamId}",

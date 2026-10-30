@@ -63,7 +63,7 @@ func (a *App) handleMatches(writer http.ResponseWriter, request *http.Request) {
 	matches, err := reader.Matches(request.Context(), competition, season, query)
 	if err != nil {
 		finish()
-		a.logger.Error("matches", "competition", competition, "season", season, "err", err)
+		a.logDependencyError(request, "matches", err, "competition", competition, "season", season)
 		writeError(writer, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -145,7 +145,7 @@ func (a *App) handleStandings(writer http.ResponseWriter, request *http.Request)
 	}
 	groups, err := a.store.Standings(request.Context(), competition, season, comp.ShortName)
 	if err != nil {
-		a.logger.Error("standings", "competition", competition, "season", season, "err", err)
+		a.logDependencyError(request, "standings", err, "competition", competition, "season", season)
 		writeError(writer, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -171,7 +171,7 @@ func (a *App) handleBracket(writer http.ResponseWriter, request *http.Request) {
 	rounds, err := reader.Bracket(request.Context(), competition, season)
 	if err != nil {
 		finish()
-		a.logger.Error("bracket", "competition", competition, "season", season, "err", err)
+		a.logDependencyError(request, "bracket", err, "competition", competition, "season", season)
 		writeError(writer, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -203,7 +203,7 @@ func (a *App) handleTopScorers(writer http.ResponseWriter, request *http.Request
 	}
 	scorers, err := a.store.TopScorers(request.Context(), competition, season)
 	if err != nil {
-		a.logger.Error("top scorers", "competition", competition, "season", season, "err", err)
+		a.logDependencyError(request, "top scorers", err, "competition", competition, "season", season)
 		writeError(writer, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -223,7 +223,7 @@ func (a *App) handleNews(writer http.ResponseWriter, request *http.Request) {
 	}
 	articles, err := a.news.Get(request.Context(), comp.ESPNSlug)
 	if err != nil {
-		a.logger.Error("news", "competition", competition, "err", err)
+		a.logDependencyError(request, "news", err, "competition", competition)
 		writeError(writer, http.StatusBadGateway, "upstream error")
 		return
 	}
@@ -253,7 +253,7 @@ func (a *App) handleMatchSummary(writer http.ResponseWriter, request *http.Reque
 	}
 	if err != nil {
 		finish()
-		a.logger.Error("match summary", "id", id, "err", err)
+		a.logDependencyError(request, "match summary", err, "id", id)
 		writeError(writer, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -385,6 +385,20 @@ func (a *App) handleSquad(writer http.ResponseWriter, request *http.Request) {
 // 500, never served as empty.
 func cancelled(request *http.Request, err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || request.Context().Err() != nil
+}
+
+// Like logTeamError, retain only safe metadata, never dependency text. Scope
+// must contain only the handler's validated identifiers.
+func (a *App) logDependencyError(request *http.Request, operation string, err error, scope ...any) {
+	id, _ := request.Context().Value(requestIDKey).(string)
+	var pgErr *pgconn.PgError
+	sqlstate := ""
+	if errors.As(err, &pgErr) {
+		sqlstate = pgErr.Code
+	}
+	attrs := []any{"request_id", id, "operation", operation,
+		"error_type", fmt.Sprintf("%T", err), "sqlstate", sqlstate}
+	a.logger.Error(operation, append(attrs, scope...)...)
 }
 
 // Connection errors may include DSNs; PostgreSQL messages/detail may include
