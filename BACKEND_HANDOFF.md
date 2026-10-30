@@ -101,15 +101,12 @@ build/test gate is `cd backend && go build ./... && go test ./...`.
 3. **Postgres migrations** — the canonical schema, the forward history surfaces,
    the active snapshot tables (standings, win-prob, odds), replacement/retention
    grants, and the finalization guards; the migration head is
-   `0027_team_squad_contract` on this branch: nullable team location, player
-   headshot and squad roster order for the T10.3 team routes
-   ([rollout](docs/backend/READER_CONTRACT.md#rollout-migration-0027); apply
-   it before the merge that ships head 27). `0026_reader_contracts` adds nullable
-   leader identity and a reader-safe participation availability view. The owner reports production
-   at 24. [Participation recovery](docs/backend/PARTICIPATION_RECOVERY.md)
-   defines migration 0025’s separate pre-release apply window. Apply 0025, then
-   0026, then 0027 before starting this exact-head binary; do not repeat 0024. See
-   [T10.2 rollout](docs/backend/READER_CONTRACT.md#t102-leaders-statistics-and-participation-contract).
+   `0028_resource_observation` on this branch: scoped accepted collection
+   observations and reader-safe participation completion time for T17.3.
+   **The owner reports production already at 0027 with Teams/Players/Leaders
+   deployed.** Do not repeat those migrations. The separate authorized 0028
+   apply must precede merging this exact-head binary; see
+   [T17.3 rollout](docs/backend/READER_CONTRACT.md#migration-and-production-acceptance).
    `0024_standing_table_membership` keys `standing` and
    `standing_snapshot` by provider table (T16.2; applied/released per owner —
    [RELEASES](docs/backend/RELEASES.md#migration-0024-standing-table-membership)).

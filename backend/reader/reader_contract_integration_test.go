@@ -47,6 +47,8 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		if err := json.Unmarshal(response.Body.Bytes(), into); err != nil {
 			t.Fatal(err)
 		}
+		metadata := resourceHeader(t, response.Header())
+		validateSchema(t, document, "ReaderResources", wire(t, metadata))
 		return response.Header()
 	}
 	// Canonical team rows carry the recorded provider metadata explicitly;
@@ -277,6 +279,15 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		if err := writer.ReplaceStandings(ctx, "world-cup", "2026", "espn", rows, teamIDs); err != nil {
 			t.Fatal(err)
 		}
+		var observed time.Time
+		if err := pool.QueryRow(ctx, `SELECT observed_at FROM resource_observation
+			WHERE competition_id='world-cup' AND season_id='2026' AND source='espn' AND resource='standings' AND subject=''`).Scan(&observed); err != nil {
+			t.Fatal(err)
+		}
+		// The VM and host clocks can differ; test acceptance with a deterministic
+		// reader instant while separate vectors require future times to fail closed.
+		app.now = func() time.Time { return observed.Add(time.Second) }
+		defer func() { app.now = nil }()
 		var groups []map[string]any
 		headers := get(t, "/v1/competitions/world-cup/2026/standings", &groups)
 		if len(groups) != len(vectors.Standings.Groups) {
@@ -289,8 +300,9 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			}
 		}
 		assertWire(t, "stored group A", groups[0], vector(t, raw, "standings", "readerGroupA"))
-		if headers.Get("X-ScoreArc-Freshness") != "" {
-			t.Fatal("gap changed: standings now carry freshness")
+		evidence := resourceHeader(t, headers).Resources["standings"]
+		if evidence.Availability != "complete" || evidence.ObservedAt == nil || !evidence.ObservedAt.Equal(observed) || evidence.Source != "espn" || evidence.Scope != "competition-season" {
+			t.Fatalf("standings evidence does not describe accepted scoped write: %+v; accepted=%s reader=%s", evidence, observed.UTC(), app.clock().UTC())
 		}
 		// Equal rank inside one table: team id is the reader's tie-breaker. The
 		// rows are synthetic and scoped to another competition season.

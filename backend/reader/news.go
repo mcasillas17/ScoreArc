@@ -17,8 +17,9 @@ type espnJSONClient interface {
 }
 
 type newsCacheEntry struct {
-	articles []espn.NewsArticle
-	expires  time.Time
+	articles  []espn.NewsArticle
+	expires   time.Time
+	fetchedAt time.Time
 }
 
 type newsService struct {
@@ -60,27 +61,28 @@ func cloneArticles(articles []espn.NewsArticle) []espn.NewsArticle {
 	return cloned
 }
 
-func (s *newsService) cached(slug string) ([]espn.NewsArticle, bool) {
+func (s *newsService) cached(slug string) (newsCacheEntry, bool) {
 	s.mu.RLock()
 	entry, exists := s.cache[slug]
 	s.mu.RUnlock()
 	if !exists || !s.now().Before(entry.expires) {
-		return nil, false
+		return newsCacheEntry{}, false
 	}
-	return cloneArticles(entry.articles), true
+	entry.articles = cloneArticles(entry.articles)
+	return entry, true
 }
 
-func (s *newsService) Get(ctx context.Context, slug string) ([]espn.NewsArticle, error) {
+func (s *newsService) GetWithObservation(ctx context.Context, slug string) ([]espn.NewsArticle, time.Time, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
-	if articles, ok := s.cached(slug); ok {
-		return articles, nil
+	if entry, ok := s.cached(slug); ok {
+		return entry.articles, entry.fetchedAt, nil
 	}
 
 	result := s.group.DoChan(slug, func() (any, error) {
-		if articles, ok := s.cached(slug); ok {
-			return articles, nil
+		if entry, ok := s.cached(slug); ok {
+			return entry, nil
 		}
 
 		fetchCtx, cancel := context.WithTimeout(s.serviceCtx, s.fetchTimeout)
@@ -89,26 +91,34 @@ func (s *newsService) Get(ctx context.Context, slug string) ([]espn.NewsArticle,
 		if err := s.client.GetJSON(fetchCtx, espn.NewsURL(slug), &raw); err != nil {
 			return nil, fmt.Errorf("fetch ESPN news: %w", err)
 		}
-		articles, err := espn.MapNews(raw)
+		articles, err := espn.MapNewsObservation(raw)
 		if err != nil {
 			return nil, err
 		}
+		fetchedAt := s.now()
 		entry := newsCacheEntry{
-			articles: cloneArticles(articles),
-			expires:  s.now().Add(s.ttl),
+			articles:  cloneArticles(articles),
+			expires:   fetchedAt.Add(s.ttl),
+			fetchedAt: fetchedAt,
 		}
 		s.mu.Lock()
 		s.cache[slug] = entry
 		s.mu.Unlock()
-		return cloneArticles(articles), nil
+		return entry, nil
 	})
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, time.Time{}, ctx.Err()
 	case completed := <-result:
 		if completed.Err != nil {
-			return nil, completed.Err
+			return nil, time.Time{}, completed.Err
 		}
-		return cloneArticles(completed.Val.([]espn.NewsArticle)), nil
+		entry := completed.Val.(newsCacheEntry)
+		return cloneArticles(entry.articles), entry.fetchedAt, nil
 	}
+}
+
+func (s *newsService) Get(ctx context.Context, slug string) ([]espn.NewsArticle, error) {
+	articles, _, err := s.GetWithObservation(ctx, slug)
+	return articles, err
 }

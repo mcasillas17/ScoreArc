@@ -72,8 +72,8 @@ func TestPlayerReadIntegration(t *testing.T) {
 	}
 	exec(`INSERT INTO match_detail(match_id) VALUES ('01890000-0000-7000-8000-000000000008')`)
 	p := get(playerPath)
-	if queries.Load() != 4 {
-		t.Fatalf("player read used %d queries, want four independent of log length", queries.Load())
+	if queries.Load() != 5 {
+		t.Fatalf("player read used %d queries, want five including resource metadata, independent of log length", queries.Load())
 	}
 	_, raw := loadReaderContract(t)
 	assertWire(t, "persisted player contract", p, vector(t, raw, "player", "reader", "profile"))

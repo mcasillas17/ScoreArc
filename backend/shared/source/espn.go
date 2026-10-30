@@ -365,7 +365,10 @@ func (e *ESPN) Roster(
 		return model.Squad{}, fmt.Errorf(
 			"roster team %q does not match %q", squad.TeamSourceID, teamSourceID)
 	}
-	if len(squad.Players) < minimumRosterPlayers {
+	// Explicit empty rosters may establish empty observation evidence; the
+	// store still refuses them over retained memberships. Short nonempty
+	// rosters remain partial, never acceptable replacement evidence.
+	if len(squad.Players) > 0 && len(squad.Players) < minimumRosterPlayers {
 		return model.Squad{}, fmt.Errorf(
 			"roster team %q has only %d players", teamSourceID, len(squad.Players))
 	}

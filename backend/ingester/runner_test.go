@@ -441,6 +441,9 @@ type fakeRepository struct {
 	oddsSnapshotAt    []time.Time
 	oddsSnapshotErr   error
 
+	resourceObservations   []resourceObservationCall
+	resourceObservationErr error
+
 	// finalCaptureCandidates is the fake's stand-in for the store's real,
 	// SQL-driven candidate set: every match FinalizeMatch claimed that is
 	// eligible for a post-finalization capture (i.e. not terminal-without-

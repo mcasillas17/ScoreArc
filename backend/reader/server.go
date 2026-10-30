@@ -15,6 +15,11 @@ import (
 )
 
 type matchReader interface {
+	Resources(context.Context, resourceScope) (resourceSnapshot, error)
+	Standings(context.Context, string, string, string) ([]Group, error)
+	TopScorers(context.Context, string, string) ([]espn.TopScorer, error)
+	Leaders(context.Context, string, string, leaderQuery) ([]espn.StatLeader, error)
+	Squad(ctx context.Context, teamID, competition, season string, asOf time.Time) ([]SquadPlayer, error)
 	Player(context.Context, string, string, string) (*PlayerProfile, error)
 	Matches(context.Context, string, string, matchQuery) ([]Match, error)
 	Calendar(context.Context, string, string) (SeasonCalendar, error)
@@ -29,15 +34,12 @@ type matchReader interface {
 type readerStore interface {
 	matchReader
 	Ping(context.Context) error
-	Standings(context.Context, string, string, string) ([]Group, error)
-	TopScorers(context.Context, string, string) ([]espn.TopScorer, error)
-	Leaders(context.Context, string, string, leaderQuery) ([]espn.StatLeader, error)
-	Squad(ctx context.Context, teamID, competition, season string, asOf time.Time) ([]SquadPlayer, error)
 	Snapshot(context.Context) (matchReader, func() error, error)
 }
 
 type newsReader interface {
 	Get(context.Context, string) ([]espn.NewsArticle, error)
+	GetWithObservation(context.Context, string) ([]espn.NewsArticle, time.Time, error)
 }
 
 type App struct {
@@ -97,7 +99,7 @@ func (a *App) resolve(competition, season string) (config.Competition, config.Se
 	return comp, resolvedSeason, true
 }
 
-var exposedHeaders = strings.Join(freshnessHeaders, ", ")
+var exposedHeaders = strings.Join(append(append([]string{}, freshnessHeaders...), resourcesHeader), ", ")
 
 // corsHeaders opens the read-only API to every origin. A preflight is answered
 // here, before the rate limiter, and never reaches a route.

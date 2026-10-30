@@ -74,14 +74,22 @@ func (a *App) handlePlayer(w http.ResponseWriter, r *http.Request) {
 	}
 	defer finish()
 	player, err := reader.Player(r.Context(), id, comp, season)
-	finish()
 	if errors.Is(err, ErrNotFound) {
+		finish()
 		writeError(w, 404, "player not found")
 		return
 	}
 	if err != nil {
+		finish()
 		a.logger.Error("player unavailable")
 		writeError(w, 500, "internal error")
+		return
+	}
+	scope := resourceScope{freshnessScope: freshnessScope{Competition: comp, Season: season}, Route: "player", PlayerID: id}
+	for _, game := range player.GameLog {
+		scope.GameIDs = append(scope.GameIDs, game.EventID)
+	}
+	if !a.attachResources(w, r, reader, finish, scope) {
 		return
 	}
 	cacheFor(w, 60)

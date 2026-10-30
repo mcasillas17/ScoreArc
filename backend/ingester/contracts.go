@@ -75,6 +75,7 @@ type repository interface {
 	CompleteMatchRecovery(context.Context, uuid.UUID, string, time.Time, bool) error
 	RecordMatchObservations(context.Context, []store.MatchObservation) error
 	RecordMatchPoll(context.Context, string, string, string, time.Time, string, int) error
+	RecordResourceObservation(context.Context, string, string, string, string, string, int) error
 	ReplaceStandings(context.Context, string, string, string, []model.Standing, map[string]string) error
 	// WriteStandingSnapshot is the only write here whose absence is
 	// irreversible: ESPN publishes the current table, not yesterday's, so a day

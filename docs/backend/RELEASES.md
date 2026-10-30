@@ -1,5 +1,12 @@
 # Production release runbook
 
+**T17.3 migration-before-merge prerequisite:** production is already at 0027 per
+the owner. The additive `0028_resource_observation` migration requires a separate
+authorized apply and exact-head transition before its PR merges. Do not repeat
+0025–0027. Both service probes include the new metadata; no auto-migration,
+owner application credentials or weakened schema gate is introduced. See
+[T17.3 rollout and acceptance](READER_CONTRACT.md#migration-and-production-acceptance).
+
 Scope: T21.1 delivery of source code to Fly reader/ingester and Vercel frontend.
 The [decision](../decisions/2026-09-05-ci-production-gates.md) owns the invariant;
 [CURRENT_STATE §10](../CURRENT_STATE.md#10-t211-delivery-controls) records what
