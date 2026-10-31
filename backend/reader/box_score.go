@@ -180,7 +180,16 @@ func (a *App) handleBoxScore(writer http.ResponseWriter, request *http.Request) 
 		writeError(writer, http.StatusInternalServerError, "internal error")
 		return
 	}
-	finish()
+	scope, err := reader.MatchScope(request.Context(), id)
+	if err != nil {
+		finish()
+		a.logDependencyError(request, "box score scope", err, "id", id)
+		writeError(writer, 500, "internal error")
+		return
+	}
+	if !a.attachResources(writer, request, reader, finish, resourceScope{freshnessScope: scope, Route: "box-score"}) {
+		return
+	}
 	cacheFor(writer, 30)
 	writeContractJSON(writer, box)
 }

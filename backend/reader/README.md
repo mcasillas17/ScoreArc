@@ -40,10 +40,10 @@ from appearing. Missing identities never produce guessed player links.
 
 See [the T10.2 contract](../../docs/backend/READER_CONTRACT.md#t102-leaders-statistics-and-participation-contract)
 for null/percentage rules and query bounds. The binaries require the **exact
-embedded schema head, 27 since T10.3** (migration 0027,
-[rollout](../../docs/backend/READER_CONTRACT.md#rollout-migration-0027)); 0025 and
-0026 remain prerequisites where missing. Production migration and deployment are
-separately authorized, not performed here.
+embedded schema head, 28 with T17.3**. The owner reports 0027 and the team/player/
+leader contracts already deployed; do not repeat their rollout. Apply 0028 only
+under separate authorization before merging the dependent binary; see
+[resource freshness rollout](../../docs/backend/READER_CONTRACT.md#migration-and-production-acceptance).
 
 ## Players (T10.4)
 
@@ -55,7 +55,7 @@ Missing bio, team or statistics never removes player identity. `playerSlug`,
 unstored headshots/flags and unresolved career-team links stay null.
 
 The game log's `eventId` is a canonical match UUID and must cut over with the
-other match-id methods in T16.3. Four reads share the existing snapshot; caps,
+other match-id methods in T16.3. Four body reads plus one resource-evidence read share the snapshot; caps,
 nullable fields, identity translations and the 60-second success cache are
 specified in [the player contract](../../docs/backend/READER_CONTRACT.md#t104-player-contract).
 No new migration or frontend source change is part of this endpoint.
@@ -141,6 +141,14 @@ curl -i  http://localhost:8080/v1/competitions/world-cup/2026/calendar
   sanitized JSON error with `Cache-Control: no-store`.
 
 ## Match freshness (additive, no body changes)
+
+All twelve data routes additionally expose the bounded, versioned
+`X-ScoreArc-Resources` JSON header through CORS. It reports independent
+freshness/availability, source, derivation and accepted/finalized times for each
+component. A fresh core score or team schedule does not attest participation,
+detail or squad freshness. See the [T17.3 resource contract](../../docs/backend/READER_CONTRACT.md#t173-resource-freshness-contract)
+for the route matrix, thresholds, query costs and intentionally unavailable
+legacy evidence. The existing five headers below retain their core-match meaning.
 
 The match list, calendar, bracket, match summary and team profile routes keep
 their row shapes (including bare list arrays and `scheduled|live|finished`).

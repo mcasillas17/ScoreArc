@@ -112,17 +112,17 @@ WHERE h.player_id=$1 AND h.source=$2
 		return fmt.Errorf("prune player team history: %w", err)
 	}
 	tag, err := tx.Exec(opCtx,
-		`UPDATE player SET bio_fetched_at=now(), updated_at=now() WHERE id=$1`,
+		`UPDATE player SET bio_fetched_at=now(), bio_observed_at=clock_timestamp(), updated_at=now() WHERE id=$1`,
 		playerID,
 	)
 	if err != nil {
-		return fmt.Errorf("stamp player bio refresh: %w", err)
+		return observationFailure(err)
 	}
 	if tag.RowsAffected() != 1 {
 		return fmt.Errorf("stamp player bio refresh: player %s not found", playerID)
 	}
 	if err := tx.Commit(opCtx); err != nil {
-		return err
+		return observationFailure(err)
 	}
 	return nil
 }

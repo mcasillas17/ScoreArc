@@ -371,6 +371,37 @@ func validateSchema(t *testing.T, document *openapi3.T, name string, value any) 
 	}
 }
 
+func TestReaderResourceOpenAPI(t *testing.T) {
+	document := loadOpenAPI(t)
+	for path := range document.Paths.Map() {
+		if !strings.HasPrefix(path, "/v1/") {
+			continue
+		}
+		header := okHeader(t, document, path, "X-ScoreArc-Resources")
+		if header == nil || header.Value == nil || !header.Value.Required {
+			t.Errorf("%s must document required resource metadata", path)
+		}
+	}
+	resource := map[string]any{"status": "fresh", "availability": "complete", "source": "espn",
+		"derivation": "direct", "scope": "competition-season", "observedAt": "2026-10-30T12:00:00Z", "finalizedAt": nil}
+	validateSchema(t, document, "ResourceEvidence", resource)
+	for field, invalid := range map[string]any{"status": "healthy", "availability": "fresh", "source": "guessed",
+		"derivation": "invented", "scope": "all-history", "observedAt": "yesterday"} {
+		changed := maps.Clone(resource)
+		changed[field] = invalid
+		if err := schemaOf(t, document, "ResourceEvidence").VisitJSON(changed); err == nil {
+			t.Errorf("OpenAPI accepted invalid resource %s", field)
+		}
+	}
+	for _, field := range []string{"observedAt", "finalizedAt", "availability"} {
+		changed := maps.Clone(resource)
+		delete(changed, field)
+		if err := schemaOf(t, document, "ResourceEvidence").VisitJSON(changed); err == nil {
+			t.Errorf("OpenAPI accepted missing resource %s", field)
+		}
+	}
+}
+
 // Characterized gaps: absent fields stay absent in the reader object AND the
 // committed schema. Implementing one fails here until the contract changes.
 func assertAbsent(t *testing.T, document *openapi3.T, schema string, object map[string]any, fields ...string) {
@@ -1524,18 +1555,19 @@ func TestReaderContract(t *testing.T) {
 			if response.Code != http.StatusOK {
 				t.Fatalf("%s: %d", path, response.Code)
 			}
+			metadata := resourceHeader(t, response.Header())
+			validateSchema(t, document, "ReaderResources", wire(t, metadata))
 			for _, name := range freshnessHeaders {
 				if response.Header().Get(name) != "" {
-					t.Fatalf("gap changed: %s now sends %s", path, name)
+					t.Fatalf("non-match route %s incorrectly sends core-match header %s", path, name)
 				}
 			}
 		}
 		for _, path := range []string{"/v1/competitions/{comp}/{season}/standings", "/v1/competitions/{comp}/{season}/top-scorers", "/v1/competitions/{comp}/news"} {
 			if okHeader(t, document, path, "X-ScoreArc-Freshness") != nil {
-				t.Fatalf("gap changed: OpenAPI documents freshness for %s", path)
+				t.Fatalf("OpenAPI incorrectly assigns core-match freshness to %s", path)
 			}
 		}
-		gap("T17.3-freshness-coverage")
 		for _, vector := range vectors.Transport.SuccessCache.Reader {
 			state := espn.MatchStateScheduled
 			if vector.Live {

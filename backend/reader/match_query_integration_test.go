@@ -34,6 +34,14 @@ type countingTx struct {
 	queries *atomic.Int32
 }
 
+func (t countingTx) Begin(ctx context.Context) (pgx.Tx, error) {
+	tx, err := t.Tx.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return countingTx{Tx: tx, queries: t.queries}, nil
+}
+
 func (t countingTx) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
 	t.queries.Add(1)
 	return t.Tx.Query(ctx, sql, args...)

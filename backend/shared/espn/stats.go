@@ -26,17 +26,13 @@ func parseMatches(displayValue string) *int {
 	return &n
 }
 
-type rawStatistics struct {
-	Stats []rawStatBlock `json:"stats"`
-}
-
 type rawStatBlock struct {
 	Name    string      `json:"name"`
 	Leaders []rawLeader `json:"leaders"`
 }
 
 type rawLeader struct {
-	Value        float64          `json:"value"`
+	Value        *float64         `json:"value"`
 	DisplayValue string           `json:"displayValue"`
 	Athlete      rawLeaderAthlete `json:"athlete"`
 }
@@ -66,31 +62,58 @@ type rawScorerTeam struct {
 // varies by competition, and failing here would take the whole competition's
 // ingest down over a leaderboard nobody requested.
 func MapLeaders(raw []byte, category string, limit int) ([]StatLeader, error) {
+	return mapLeaders(raw, category, limit, false)
+}
+
+// MapLeadersObservation requires an explicit category and leaders array before
+// the ingester may renew its accepted observation, including a zero-row board.
+func MapLeadersObservation(raw []byte, category string, limit int) ([]StatLeader, error) {
+	return mapLeaders(raw, category, limit, true)
+}
+
+func mapLeaders(raw []byte, category string, limit int, observation bool) ([]StatLeader, error) {
 	var envelope map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return nil, err
 	}
 	stats, exists := envelope["stats"]
 	if !exists || string(stats) == "null" {
+		if observation {
+			return nil, fmt.Errorf("statistics missing stats array")
+		}
 		return []StatLeader{}, nil
 	}
-	if err := validateArrayEnvelope(raw, "stats"); err != nil {
-		return nil, err
-	}
-	var doc rawStatistics
-	if err := json.Unmarshal(raw, &doc); err != nil {
+	blocks, err := validateCollection(raw, "stats")
+	if err != nil {
 		return nil, err
 	}
 
 	var leaders []rawLeader
-	for _, block := range doc.Stats {
-		if block.Name == category {
+	found := false
+	for _, rawBlock := range blocks {
+		var name struct {
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal(rawBlock, &name); err != nil {
+			return nil, err
+		}
+		if name.Name == category {
+			if found {
+				return nil, fmt.Errorf("statistics repeats %s", category)
+			}
+			found = true
+			if _, err := validateCollection(rawBlock, "leaders"); err != nil {
+				return nil, err
+			}
+			var block rawStatBlock
+			if err := json.Unmarshal(rawBlock, &block); err != nil {
+				return nil, err
+			}
 			leaders = block.Leaders
-			break
 		}
 	}
-	if limit >= 0 && len(leaders) > limit {
-		leaders = leaders[:limit]
+	if !found && observation {
+		return nil, fmt.Errorf("statistics missing %s", category)
 	}
 
 	board := make([]StatLeader, 0, len(leaders))
@@ -102,7 +125,7 @@ func MapLeaders(raw []byte, category string, limit int) ([]StatLeader, error) {
 		if l.Athlete.DisplayName == "" {
 			return nil, fmt.Errorf("%s row %d missing player identity", category, i)
 		}
-		if l.Value < 0 || math.Trunc(l.Value) != l.Value {
+		if l.Value == nil || *l.Value < 0 || *l.Value >= float64(int(^uint(0)>>1)) || math.Trunc(*l.Value) != *l.Value {
 			return nil, fmt.Errorf("%s row %d has an invalid count", category, i)
 		}
 
@@ -126,9 +149,12 @@ func MapLeaders(raw []byte, category string, limit int) ([]StatLeader, error) {
 			TeamAbbr:        team.Abbreviation,
 			TeamName:        team.DisplayName,
 			TeamCrestURL:    crest,
-			Value:           int(l.Value),
+			Value:           int(*l.Value),
 			Matches:         parseMatches(l.DisplayValue),
 		})
+	}
+	if limit >= 0 && len(board) > limit {
+		board = board[:limit]
 	}
 	return board, nil
 }

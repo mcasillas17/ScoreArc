@@ -133,15 +133,9 @@ func leadersFingerprint(
 // contentUnchanged reports whether `digest` is the fingerprint this PROCESS
 // last committed for scope.
 //
-// A ZERO-ROW SET IS NEVER UNCHANGED, and that is the load-bearing half of this
-// function. ReplaceStandings and ReplaceLeaders reject an empty replacement
-// (ErrEmptyReplacement) and the runner turns that into a "..._preserved" audit
-// row while keeping the rows already stored -- normal, because not every
-// competition publishes every board. Nothing is committed on that path, so
-// letting an empty set take the skip would (a) stop the absent-board audit
-// firing after the first tick and (b) have the memo assert that the table holds
-// nothing when it in fact holds last week's board. The store, not the memo,
-// decides what an absent board means.
+// A zero-row set is never unchanged: it must pass the store's persisted-count
+// check on every accepted empty response. The memo records committed facts,
+// never an empty observation that may have preserved last week's board.
 func (r *runner) contentUnchanged(scope string, rowCount int, digest uint64) bool {
 	if rowCount == 0 {
 		return false

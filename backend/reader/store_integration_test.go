@@ -560,7 +560,7 @@ func TestTeamProfileMissingColoursMigration(t *testing.T) {
 	}
 	// 0024 keys standing by table; the current profile query orders by it.
 	// 0027 holds the location, headshot and roster order it selects.
-	for _, migration := range []string{"0024_standing_table_membership.up.sql", "0027_team_squad_contract.up.sql"} {
+	for _, migration := range []string{"0024_standing_table_membership.up.sql", "0025_participation_recovery.up.sql", "0026_reader_contracts.up.sql", "0027_team_squad_contract.up.sql", "0028_resource_observation.up.sql"} {
 		if _, err := pool.Exec(ctx, mustRead(t, migration)); err != nil {
 			t.Fatal(err)
 		}
@@ -569,7 +569,7 @@ func TestTeamProfileMissingColoursMigration(t *testing.T) {
 	if profileAfter.Color != nil || profileAfter.AltColor != nil || len(profileAfter.Squad) != 3 || len(profileAfter.Schedule) != 2 {
 		t.Fatalf("profile after migration = %+v", profileAfter)
 	}
-	t.Log("after migrations 0022 + 0023 + 0024 + 0027: HTTP 200, complete OpenAPI-valid profile; colours remain null")
+	t.Log("after migrations 0022 through 0028: HTTP 200, complete OpenAPI-valid profile; colours remain null")
 }
 
 // Of the profile's own reads, only identity fails the request. A failed squad or schedule query

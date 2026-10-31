@@ -751,7 +751,7 @@ func TestIngesterRoleCanRunAFullCycleAndHoldsASingletonLease(t *testing.T) {
 		t.Fatalf("seed leaders as ingester: %v", err)
 	}
 	if err := roleStore.ReplaceLeaders(ctx, testCompetition, testSeason, testSource, "goals",
-		[]model.StatLeader{{Rank: 1, Player: "One"}}); err != nil {
+		[]model.StatLeader{{Rank: 1, Player: "Two"}, {Rank: 2, Player: "One"}}); err != nil {
 		t.Fatalf("replace leaders as ingester: %v", err)
 	}
 

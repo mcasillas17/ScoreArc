@@ -650,22 +650,13 @@ func (r *runner) refreshStandings(
 		}
 	}
 	if err == nil {
-		// The C3 guard (spec §4.1). A standings table is a pure function of the
-		// finished matches in its competition, so it can only move when a match
-		// finalizes -- ~60 times a day across all nine competitions, against
-		// 2,592 competition-slow-ticks. Measured on production across three
-		// windows spanning confirmed delete-and-reinsert ticks: nine tables,
-		// zero changes. Everything below this block is unchanged; the guard only
-		// decides whether to open the transaction at all.
-		//
-		// Note what is NOT gated on it: the crest mirroring below, the
-		// `standings` ingest_run (T10.10 reads it with a 20-minute threshold and
-		// a skip must not read as stale), snapshotStandings -- which is C4, the
-		// class where writing the same value twice is CORRECT -- and
-		// refreshSquads. A skip keeps err == nil precisely so all four still run.
+		// Keep the C3 fact-write guard, but renew accepted source evidence on
+		// every successful fetch. The store verifies the persisted scope count,
+		// so an empty source cannot make retained standings look freshly empty.
 		scope := standingsScope(comp.ID, season.ID)
 		digest := standingsFingerprint(sourceESPN, rows, teamIDs)
-		if r.contentUnchanged(scope, len(rows), digest) {
+		if len(rows) == 0 || r.contentUnchanged(scope, len(rows), digest) {
+			err = r.repo.RecordResourceObservation(ctx, comp.ID, season.ID, sourceESPN, "standings", "", len(rows))
 			r.log.Debug("standings unchanged; replacement skipped",
 				"comp", comp.ID, "season", season.ID, "rows", len(rows))
 		} else {
@@ -706,6 +697,10 @@ func (r *runner) refreshStandings(
 		// upstream blip; recording the blip as a day of history would bake it
 		// in permanently, and unlike `standing` this table is never rewritten.
 		return err
+	}
+	if len(rows) == 0 {
+		// An accepted empty table has no daily history or roster work to write.
+		return nil
 	}
 	snapshotErr := r.snapshotStandings(ctx, comp, season, rows, teamIDs, tableChanged)
 	if !slowTick {
@@ -812,7 +807,7 @@ func (r *runner) refreshLeaders(
 	}
 	var errs []error
 	for espnName, category := range leaderCategories {
-		board, mapErr := espn.MapLeaders(raw, espnName, topScorerLimit)
+		board, mapErr := espn.MapLeadersObservation(raw, espnName, topScorerLimit)
 		if mapErr != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", category, mapErr))
 			continue
@@ -829,22 +824,22 @@ func (r *runner) refreshLeaders(
 		scope := leadersScope(comp.ID, season.ID, category)
 		digest := leadersFingerprint(sourceESPN, category, mirrored)
 		if r.contentUnchanged(scope, len(mirrored), digest) {
+			if err := r.repo.RecordResourceObservation(ctx, comp.ID, season.ID, sourceESPN, "leaders", category, len(mirrored)); err != nil {
+				errs = append(errs, fmt.Errorf("%s observation: %w", category, err))
+			}
 			r.log.Debug("leader board unchanged; replacement skipped",
 				"comp", comp.ID, "category", category, "rows", len(mirrored))
 			continue
 		}
-		writeErr := r.repo.ReplaceLeaders(
-			ctx, comp.ID, season.ID, sourceESPN, category, mirrored,
-		)
-		if errors.Is(writeErr, store.ErrEmptyReplacement) {
-			// Normal. Not every competition publishes every board, and an
-			// absent assists table must not take the Golden Boot down with it.
-			//
-			// DELIBERATELY NOT MEMOISED: nothing was committed, and the rows
-			// already in the table survive. contentUnchanged refuses a zero-row
-			// set for the same reason, so this branch stays reachable on every
-			// tick and keeps auditing the missing board.
-			r.log.Info("leader board unavailable; preserving existing rows",
+		var writeErr error
+		if len(mirrored) == 0 {
+			writeErr = r.repo.RecordResourceObservation(ctx, comp.ID, season.ID, sourceESPN, "leaders", category, 0)
+		} else {
+			writeErr = r.repo.ReplaceLeaders(ctx, comp.ID, season.ID, sourceESPN, category, mirrored)
+		}
+		if len(mirrored) == 0 && (writeErr == nil || errors.Is(writeErr, store.ErrEmptyReplacement)) {
+			// Empty boards are never memoised or substituted for retained facts.
+			r.log.Info("leader board empty; preserving existing rows",
 				"comp", comp.ID, "category", category)
 			r.recordRun(ctx, comp.ID, "leaders_preserved", start, nil)
 			continue

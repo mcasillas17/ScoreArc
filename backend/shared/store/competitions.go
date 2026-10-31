@@ -31,7 +31,10 @@ func (s *Store) ReplaceStandings(
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer rollback(ctx, tx)
+	if err := lockResourceCollection(ctx, tx, competitionID, seasonID, "standings", ""); err != nil {
+		return err
+	}
 
 	// The shrink guard counts teams, not rows: a team ranked in two tables is
 	// one team, so a refresh that drops an overlapping table but keeps every
@@ -71,7 +74,10 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,now())`,
 			return err
 		}
 	}
-	return tx.Commit(ctx)
+	if err := recordResourceObservation(ctx, tx, competitionID, seasonID, source, "standings", "", len(standings)); err != nil {
+		return err
+	}
+	return observationFailure(tx.Commit(ctx))
 }
 
 // canonicalStandings resolves every row's canonical team before a write opens
@@ -118,7 +124,18 @@ func (s *Store) ReplaceLeaders(
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer rollback(ctx, tx)
+	if err := lockResourceCollection(ctx, tx, competitionID, seasonID, "leaders", category); err != nil {
+		return err
+	}
+	var existingCount int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM top_scorer WHERE competition_id=$1 AND season_id=$2 AND category=$3`,
+		competitionID, seasonID, category).Scan(&existingCount); err != nil {
+		return observationFailure(err)
+	}
+	if existingCount > len(leaders) {
+		return ErrPartialReplacement
+	}
 
 	if _, err := tx.Exec(ctx,
 		// Scoped by category. A category-blind DELETE here would wipe the goals
@@ -140,5 +157,8 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NULLIF($12,''),NULLIF($13,''))`,
 			return err
 		}
 	}
-	return tx.Commit(ctx)
+	if err := recordResourceObservation(ctx, tx, competitionID, seasonID, source, "leaders", category, len(leaders)); err != nil {
+		return err
+	}
+	return observationFailure(tx.Commit(ctx))
 }

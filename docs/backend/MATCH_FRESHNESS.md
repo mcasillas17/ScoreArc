@@ -4,6 +4,13 @@ This runbook does not authorize a production change. The website still uses
 its existing ESPN DataStore. Reader response bodies and the three match states
 are unchanged; freshness is additive metadata.
 
+T17.3 now implements independent resource metadata for all twelve data routes;
+see the [resource contract](READER_CONTRACT.md#t173-resource-freshness-contract).
+Its migration 0028 and production acceptance remain separately authorized work.
+This adds no watchdog scheduling/delivery and changes none of the match
+thresholds below. Broader resource metadata does not retroactively establish
+complete detail, roster, player or archive capture.
+
 ## Current release evidence — October 2, 2026
 
 #173 recovery is merged and released; #183's monthly scoreboard repair
