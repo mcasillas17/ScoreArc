@@ -628,7 +628,11 @@ func (s *Store) Squad(ctx context.Context, teamID, competition, season string, a
 	if !known {
 		return nil, ErrNotFound
 	}
-	squad, err := s.teamSquad(ctx, teamID, competition, season, asOf)
+	var squad []SquadPlayer
+	err := s.child(ctx, func(block *Store) (err error) {
+		squad, err = block.teamSquad(ctx, teamID, competition, season, asOf)
+		return err
+	})
 	if err != nil {
 		return nil, &teamReadError{operation: "squad", err: err}
 	}

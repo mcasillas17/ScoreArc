@@ -58,6 +58,9 @@ func (s *Store) ReplaceSquad(
 		return err
 	}
 	defer rollback(opCtx, tx)
+	if err := lockResourceCollection(opCtx, tx, competitionID, seasonID, "squad", teamID); err != nil {
+		return err
+	}
 
 	var existingCount int
 	if err := tx.QueryRow(opCtx, `
@@ -111,9 +114,9 @@ INSERT INTO player_season_stat (
   competition_id, season_id, player_id, team_id, appearances, sub_ins,
   goals, assists, shots, shots_on_target, offsides, fouls_committed,
   fouls_suffered, own_goals, yellow_cards, red_cards, saves,
-  goals_conceded, shots_faced, source
+  goals_conceded, shots_faced, source, observed_at
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20
+  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,clock_timestamp()
 )
 ON CONFLICT (competition_id, season_id, player_id) DO UPDATE SET
   team_id         = EXCLUDED.team_id,
@@ -133,6 +136,7 @@ ON CONFLICT (competition_id, season_id, player_id) DO UPDATE SET
   goals_conceded  = EXCLUDED.goals_conceded,
   shots_faced     = EXCLUDED.shots_faced,
   source          = EXCLUDED.source,
+  observed_at     = clock_timestamp(),
   updated_at      = now()`,
 			competitionID, seasonID, row.playerID, teamID,
 			stats.Appearances, stats.SubIns, stats.Goals, stats.Assists,
@@ -141,7 +145,7 @@ ON CONFLICT (competition_id, season_id, player_id) DO UPDATE SET
 			stats.YellowCards, stats.RedCards, stats.Saves,
 			stats.GoalsConceded, stats.ShotsFaced, source,
 		); err != nil {
-			return fmt.Errorf("upsert player season stats: %w", err)
+			return observationFailure(err)
 		}
 	}
 
@@ -153,8 +157,11 @@ WHERE competition_id=$1 AND season_id=$2 AND team_id=$3
 	); err != nil {
 		return fmt.Errorf("prune squad membership: %w", err)
 	}
-	if err := tx.Commit(opCtx); err != nil {
+	if err := recordResourceObservation(opCtx, tx, competitionID, seasonID, source, "squad", teamID, len(members)); err != nil {
 		return err
+	}
+	if err := tx.Commit(opCtx); err != nil {
+		return observationFailure(err)
 	}
 	return nil
 }

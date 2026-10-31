@@ -13,6 +13,7 @@ import { en } from '@/i18n/messages/en';
 import { mapTeamProfile, mapTeamSchedule } from '../providers/espn-team';
 import { parseShootout } from '../providers/espn-matches';
 import { parseMatchFreshness, type MatchFreshness } from '@/lib/matchFreshness';
+import { parseReaderResources } from '@/lib/readerResources';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 import type {
   BracketMatch, BracketRound, BracketTeam, Card, CareerStint, CommentaryItem, FormResult, GameLogRow, Group,
@@ -1012,6 +1013,23 @@ describe('reader contract: match windows and query semantics', () => {
     const [notFound, , upstream] = vectors.transport.frontend;
     expect([unknown.status, await unknown.json()]).toEqual([notFound.status, notFound.body]);
     expect([failed.status, await failed.json()]).toEqual([upstream.status, upstream.body]);
+  });
+});
+
+describe('reader contract: resource metadata', () => {
+  it.each(vectors.resourceFreshness.cases)('accepts Go-computed resource evidence: $name', ({ expected }) => {
+    const headers = new Headers({ 'X-ScoreArc-Resources': JSON.stringify(expected) });
+    expect(parseReaderResources(headers)).toEqual(expected);
+  });
+
+  it('keeps dormant availability and successful empty evidence distinct', () => {
+    const parsed = vectors.resourceFreshness.cases.map(({ expected }) => parseReaderResources(new Headers({
+      'X-ScoreArc-Resources': JSON.stringify(expected),
+    })));
+    const resources = parsed.flatMap(envelope => Object.values(envelope.resources));
+    expect(new Set(resources.map(resource => resource.status))).toEqual(new Set(['fresh', 'stale', 'empty', 'unavailable', 'dormant']));
+    expect(resources.find(resource => resource.status === 'dormant')?.availability).toBe('unavailable');
+    expect(resources.find(resource => resource.status === 'empty')?.observedAt).not.toBeNull();
   });
 });
 

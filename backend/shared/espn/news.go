@@ -69,6 +69,23 @@ func MapNews(raw []byte) ([]NewsArticle, error) {
 	return articles, nil
 }
 
+// MapNewsObservation requires a complete, usable articles collection before a
+// successful proxy fetch can renew freshness, including an explicit empty feed.
+func MapNewsObservation(raw []byte) ([]NewsArticle, error) {
+	supplied, err := validateCollection(raw, "articles")
+	if err != nil {
+		return nil, err
+	}
+	articles, err := MapNews(raw)
+	if err != nil {
+		return nil, err
+	}
+	if len(articles) != len(supplied) {
+		return nil, fmt.Errorf("incomplete news collection")
+	}
+	return articles, nil
+}
+
 func newsArticleID(raw json.RawMessage, headline string) string {
 	trimmed := strings.TrimSpace(string(raw))
 	if trimmed == "" || trimmed == "null" {

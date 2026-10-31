@@ -12,15 +12,7 @@
    "suites": [
     "go"
    ]
-  },
-  "T17.3-freshness-coverage": {
-   "task": "T17.3",
-   "mismatch": "Standings, top-scorers and news responses carry no X-ScoreArc freshness headers.",
-   "suites": [
-    "go"
-   ]
-  }
- },
+  } },
  "readerOnly": {
   "/v1/competitions/{comp}/{season}/calendar": "T10.1 season calendar (one row per UTC match day). No DataStore method: the site builds month views from getFixtures today.",
   "/v1/competitions/{comp}/{season}/top-scorers": "T10.2 legacy goals-only shape, full stored board bounded to 30; new consumers use leaders.",
@@ -45,7 +37,7 @@
   },
   "getStandings": {
    "reader": "/v1/competitions/{comp}/{season}/standings",
-   "gaps": ["T17.3-freshness-coverage"]
+   "gaps": []
   },
   "getBracket": {
    "reader": "/v1/competitions/{comp}/{season}/bracket",
@@ -57,11 +49,11 @@
   },
   "getLeaders": {
    "reader": "/v1/competitions/{comp}/{season}/leaders",
-   "gaps": ["T17.3-freshness-coverage"]
+   "gaps": []
   },
   "getNews": {
    "reader": "/v1/competitions/{comp}/news",
-   "gaps": ["T16.6-news", "T17.3-freshness-coverage"]
+   "gaps": ["T16.6-news"]
   },
   "getTeam": {
    "reader": "/v1/competitions/{comp}/{season}/teams/{teamId}",
@@ -5593,6 +5585,360 @@
     }
    }
   }
+ },
+ "resourceFreshness": {
+  "routes": {
+   "/v1/competitions/{comp}/{season}/matches": [
+    "identity",
+    "matches"
+   ],
+   "/v1/competitions/{comp}/{season}/calendar": [
+    "calendar"
+   ],
+   "/v1/competitions/{comp}/{season}/standings": [
+    "identity",
+    "standings"
+   ],
+   "/v1/competitions/{comp}/{season}/bracket": [
+    "bracket",
+    "identity"
+   ],
+   "/v1/competitions/{comp}/{season}/leaders": [
+    "identity",
+    "leaders"
+   ],
+   "/v1/competitions/{comp}/{season}/top-scorers": [
+    "identity",
+    "leaders"
+   ],
+   "/v1/competitions/{comp}/{season}/teams/{teamId}": [
+    "detail",
+    "identity",
+    "matches",
+    "seasonStats",
+    "squad",
+    "standings"
+   ],
+   "/v1/competitions/{comp}/{season}/teams/{teamId}/squad": [
+    "identity",
+    "seasonStats",
+    "squad"
+   ],
+   "/v1/competitions/{comp}/{season}/players/{playerId}": [
+    "career",
+    "gameLog",
+    "identity",
+    "participation",
+    "seasonStats"
+   ],
+   "/v1/matches/{id}": [
+    "detail",
+    "identity",
+    "matches",
+    "participation"
+   ],
+   "/v1/matches/{id}/box-score": [
+    "identity",
+    "participation"
+   ],
+   "/v1/competitions/{comp}/news": [
+    "news"
+   ]
+  },
+  "about": "Synthetic frozen-clock T17.3 observations. Go computes and emits these exact resource envelopes; TypeScript parses them and OpenAPI validates them. Route coverage includes all data routes; health is separate. No production observations.",
+  "cases": [
+   {
+    "name": "standings before expiry",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "standings",
+    "ttlSeconds": 1200,
+    "scope": "competition-season",
+    "derivation": "direct",
+    "dormant": false,
+    "evidence": {
+     "observedAt": "2026-10-30T11:40:00.000000001Z",
+     "rowCount": 20
+    },
+    "expected": {
+     "version": 1,
+     "resources": {
+      "standings": {
+       "status": "fresh",
+       "availability": "complete",
+       "source": "espn",
+       "derivation": "direct",
+       "scope": "competition-season",
+       "observedAt": "2026-10-30T11:40:00.000000001Z",
+       "finalizedAt": null
+      }
+     }
+    }
+   },
+   {
+    "name": "standings at expiry",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "standings",
+    "ttlSeconds": 1200,
+    "scope": "competition-season",
+    "derivation": "direct",
+    "dormant": false,
+    "evidence": {
+     "observedAt": "2026-10-30T11:40:00Z",
+     "rowCount": 20
+    },
+    "expected": {
+     "version": 1,
+     "resources": {
+      "standings": {
+       "status": "stale",
+       "availability": "complete",
+       "source": "espn",
+       "derivation": "direct",
+       "scope": "competition-season",
+       "observedAt": "2026-10-30T11:40:00Z",
+       "finalizedAt": null
+      }
+     }
+    }
+   },
+   {
+    "name": "leader explicit successful empty",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "leaders",
+    "ttlSeconds": 1200,
+    "scope": "competition-season",
+    "derivation": "direct",
+    "dormant": false,
+    "evidence": {
+     "observedAt": "2026-10-30T11:59:00Z",
+     "rowCount": 0
+    },
+    "expected": {
+     "version": 1,
+     "resources": {
+      "leaders": {
+       "status": "empty",
+       "availability": "empty",
+       "source": "espn",
+       "derivation": "direct",
+       "scope": "competition-season",
+       "observedAt": "2026-10-30T11:59:00Z",
+       "finalizedAt": null
+      }
+     }
+    }
+   },
+   {
+    "name": "leader failed empty has no evidence",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "leaders",
+    "ttlSeconds": 1200,
+    "scope": "competition-season",
+    "derivation": "direct",
+    "dormant": false,
+    "evidence": null,
+    "expected": {
+     "version": 1,
+     "resources": {
+      "leaders": {
+       "status": "unavailable",
+       "availability": "unavailable",
+       "source": "espn",
+       "derivation": "direct",
+       "scope": "competition-season",
+       "observedAt": null,
+       "finalizedAt": null
+      }
+     }
+    }
+   },
+   {
+    "name": "empty also expires",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "leaders",
+    "ttlSeconds": 1200,
+    "scope": "competition-season",
+    "derivation": "direct",
+    "dormant": false,
+    "evidence": {
+     "observedAt": "2026-10-30T11:40:00Z",
+     "rowCount": 0
+    },
+    "expected": {
+     "version": 1,
+     "resources": {
+      "leaders": {
+       "status": "stale",
+       "availability": "empty",
+       "source": "espn",
+       "derivation": "direct",
+       "scope": "competition-season",
+       "observedAt": "2026-10-30T11:40:00Z",
+       "finalizedAt": null
+      }
+     }
+    }
+   },
+   {
+    "name": "future observation unavailable",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "standings",
+    "ttlSeconds": 1200,
+    "scope": "competition-season",
+    "derivation": "direct",
+    "dormant": false,
+    "evidence": {
+     "observedAt": "2026-10-30T12:00:01Z",
+     "rowCount": 20
+    },
+    "expected": {
+     "version": 1,
+     "resources": {
+      "standings": {
+       "status": "unavailable",
+       "availability": "unavailable",
+       "source": "espn",
+       "derivation": "direct",
+       "scope": "competition-season",
+       "observedAt": null,
+       "finalizedAt": null
+      }
+     }
+    }
+   },
+   {
+    "name": "dormant retains missing coverage",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "standings",
+    "ttlSeconds": 1200,
+    "scope": "competition-season",
+    "derivation": "direct",
+    "dormant": true,
+    "evidence": null,
+    "expected": {
+     "version": 1,
+     "resources": {
+      "standings": {
+       "status": "dormant",
+       "availability": "unavailable",
+       "source": "espn",
+       "derivation": "direct",
+       "scope": "competition-season",
+       "observedAt": null,
+       "finalizedAt": null
+      }
+     }
+    }
+   },
+   {
+    "name": "roster before daily expiry",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "squad",
+    "ttlSeconds": 90000,
+    "scope": "team-season",
+    "derivation": "current-roster",
+    "dormant": false,
+    "evidence": {
+     "observedAt": "2026-10-29T11:00:00.000000001Z",
+     "rowCount": 24
+    },
+    "expected": {
+     "version": 1,
+     "resources": {
+      "squad": {
+       "status": "fresh",
+       "availability": "complete",
+       "source": "espn",
+       "derivation": "current-roster",
+       "scope": "team-season",
+       "observedAt": "2026-10-29T11:00:00.000000001Z",
+       "finalizedAt": null
+      }
+     }
+    }
+   },
+   {
+    "name": "roster at daily expiry",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "squad",
+    "ttlSeconds": 90000,
+    "scope": "team-season",
+    "derivation": "current-roster",
+    "dormant": false,
+    "evidence": {
+     "observedAt": "2026-10-29T11:00:00Z",
+     "rowCount": 24
+    },
+    "expected": {
+     "version": 1,
+     "resources": {
+      "squad": {
+       "status": "stale",
+       "availability": "complete",
+       "source": "espn",
+       "derivation": "current-roster",
+       "scope": "team-season",
+       "observedAt": "2026-10-29T11:00:00Z",
+       "finalizedAt": null
+      }
+     }
+    }
+   },
+   {
+    "name": "career before bounded sweep expiry",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "career",
+    "ttlSeconds": 2764800,
+    "scope": "player",
+    "derivation": "direct",
+    "dormant": false,
+    "evidence": {
+     "observedAt": "2026-09-28T12:00:00.000000001Z",
+     "rowCount": 4
+    },
+    "expected": {
+     "version": 1,
+     "resources": {
+      "career": {
+       "status": "fresh",
+       "availability": "complete",
+       "source": "espn",
+       "derivation": "direct",
+       "scope": "player",
+       "observedAt": "2026-09-28T12:00:00.000000001Z",
+       "finalizedAt": null
+      }
+     }
+    }
+   },
+   {
+    "name": "career at bounded sweep expiry",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "career",
+    "ttlSeconds": 2764800,
+    "scope": "player",
+    "derivation": "direct",
+    "dormant": false,
+    "evidence": {
+     "observedAt": "2026-09-28T12:00:00Z",
+     "rowCount": 4
+    },
+    "expected": {
+     "version": 1,
+     "resources": {
+      "career": {
+       "status": "stale",
+       "availability": "complete",
+       "source": "espn",
+       "derivation": "direct",
+       "scope": "player",
+       "observedAt": "2026-09-28T12:00:00Z",
+       "finalizedAt": null
+      }
+     }
+    }
+   }
+  ]
  },
  "freshness": {
   "competition": "world-cup",

@@ -109,10 +109,13 @@ func (r *runner) refreshSquads(
 			); err != nil {
 				recordError(fmt.Errorf("team %s roster identity: %w", providerTeamID, err))
 			}
-			if err := r.repo.ReplaceSquad(
-				ctx, comp.ID, season.ID, teamIDs[providerTeamID], sourceESPN,
-				squad.Players, make(map[string]uuid.UUID),
-			); err != nil {
+			if len(squad.Players) == 0 {
+				err = r.repo.RecordResourceObservation(ctx, comp.ID, season.ID, sourceESPN, "squad", teamIDs[providerTeamID], 0)
+			} else {
+				err = r.repo.ReplaceSquad(ctx, comp.ID, season.ID, teamIDs[providerTeamID], sourceESPN,
+					squad.Players, make(map[string]uuid.UUID))
+			}
+			if err != nil {
 				recordError(fmt.Errorf("team %s squad write: %w", providerTeamID, err))
 				return
 			}

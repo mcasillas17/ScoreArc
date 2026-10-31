@@ -50,14 +50,23 @@ func (a *App) handleLeaders(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusBadRequest, err.Error())
 		return
 	}
-	rows, err := a.store.Leaders(request.Context(), competition, season, query)
+	reader, finish, ok := a.beginMatchSnapshot(writer, request)
+	if !ok {
+		return
+	}
+	defer finish()
+	rows, err := reader.Leaders(request.Context(), competition, season, query)
 	if err != nil {
+		finish()
 		a.logger.Error("leaders", "competition", competition, "season", season)
 		writeError(writer, http.StatusInternalServerError, "internal error")
 		return
 	}
 	if rows == nil {
 		rows = []espn.StatLeader{}
+	}
+	if !a.attachResources(writer, request, reader, finish, resourceScope{freshnessScope: freshnessScope{Competition: competition, Season: season}, Route: "leaders", Metric: query.Metric}) {
+		return
 	}
 	cacheFor(writer, 60)
 	writeContractJSON(writer, rows)

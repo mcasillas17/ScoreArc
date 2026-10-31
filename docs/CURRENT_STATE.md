@@ -654,8 +654,10 @@ held-byte reprocessing and new collection remain unchanged.
   perishable capture/coverage remains urgent, not proved by fresh match headers.
 - **T7.21 participation retry (§6a):** provide durable recovery for finalized
   matches with missing participation; match-state recovery does not repair it.
-- **T17.3/T17.4 trust and notification delivery:** finish broader provenance,
-  scheduled freshness checks and notification activation with explicit approval.
+- **T17.3/T17.4 trust and notification delivery:** broader resource provenance is
+  implemented in the October 30 T17.3 slice ([contract and limits](backend/READER_CONTRACT.md#t173-resource-freshness-contract)); production acceptance requires separately
+  authorized migration 0028 and exact-head rollout. Scheduled freshness checks
+  and notification activation still require explicit approval.
   Collect sustained reconciliation and transient-failure recovery evidence
   ([SETUP §7.5](backend/SETUP.md#75-verify)); the dated observations above do not
   close this acceptance or ancillary squad/player/archive coverage.

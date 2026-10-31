@@ -259,6 +259,11 @@ type interleavingSnapshot struct {
 	beforeFreshness func()
 }
 
+func (s *interleavingSnapshot) Resources(ctx context.Context, scope resourceScope) (resourceSnapshot, error) {
+	s.beforeFreshness()
+	return s.matchReader.Resources(ctx, scope)
+}
+
 func (s *interleavingSnapshot) Freshness(ctx context.Context, scope freshnessScope) (freshnessSnapshot, error) {
 	s.beforeFreshness()
 	return s.matchReader.Freshness(ctx, scope)
