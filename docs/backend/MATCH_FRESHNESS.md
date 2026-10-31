@@ -239,6 +239,14 @@ It neither calls ESPN nor writes match data.
 
 ## Durable match monitor (activation disabled)
 
+**PREPARATION ONLY — production activation still disabled.** This T17.4 slice
+provides offline acceptance and an operator handoff for the **current match
+contract**. It does not complete T17.4 or the monitoring epic. Broader checks wait
+for the separately owned T17.3 contract to settle; reader contract-registry,
+news and safe-logging gaps remain with their owners. Production migration 0027
+is already applied per the owner's October 30 report; this slice needs no schema
+or release operation.
+
 The workflow remains manual-only; its job and CLI require exact repository
 variable `MATCH_FRESHNESS_ENABLED=true`. Absent/false means **zero reader checks
 and zero webhook sends**. Delivery additionally requires exact
@@ -246,6 +254,68 @@ and zero webhook sends**. Delivery additionally requires exact
 `MATCH_FRESHNESS_WEBHOOK_URL`. Neither variable nor secret is created by this
 change. A commented five-minute cron recipe is provided; no active schedule is
 installed. Only main first-attempt runs are trusted; use a new run, not rerun.
+
+### Offline readiness acceptance
+
+From the repository root with Node 26 and lockfile dependencies installed:
+
+```bash
+npm ci
+npx vitest run scripts/match-freshness-watchdog.test.ts scripts/match-freshness-monitor.test.ts scripts/match-freshness-state.test.ts scripts/match-freshness-workflow.test.ts
+npm test
+npx tsc --noEmit
+npm run lint
+```
+
+The four focused suites are the acceptance path: no new helper or service is
+needed. They use synthetic reader responses, in-memory GitHub run/artifact/job
+history, temporary local checkpoints and a receiver bound to `127.0.0.1` on an
+ephemeral port. GitHub transport tests stub `fetch`; they do not call GitHub.
+The workflow harness executes the real exported CLI phases and parsed YAML
+conditions, replacing artifact transfers with local copies. It does **not**
+exercise GitHub's hosted scheduler or the pinned artifact actions themselves.
+Tests clean up their listeners and temporary files. No variables/secrets,
+production reader or real notification destination are needed.
+
+Do not use the standalone v1 watchdog CLI as a dry run: it defaults to the
+production reader and is not governed by the v2 monitor's enablement variables.
+Do not dispatch the production workflow to test code. A passing local suite
+proves neither live delivery nor scheduled monitoring nor human receipt.
+
+Existing acceptance evidence (test names are searchable within the linked files):
+
+| Scenario | Test evidence |
+|---|---|
+| Absent/false enablement: zero checks/sends; delivery-only disablement retains events | [workflow tests](../../scripts/match-freshness-workflow.test.ts): `disabled ... CLI`, `disabled job`, `delivery gate`; [monitor tests](../../scripts/match-freshness-monitor.test.ts): `is disabled before filesystem, production checks or sends` |
+| Healthy, genuinely empty and dormant do not open false incidents; invalid emptiness stays unhealthy | [watchdog tests](../../scripts/match-freshness-watchdog.test.ts): `uses existing scoped matches route`, `accepts explicit empty and dormant`, `suppresses expected dormant scope`, `rejects count contradictions`; monitor: `opens no incident for valid T16.2 nulls` |
+| OPEN, repeat failure, RESOLVED and recurrence retain FIFO and deduplication | monitor: `preserves pending OPEN through recovery and orders recurrence with stable identifiers`; watchdog: `deduplicates openings, resolves once and reopens recurrence`; workflow: `executes checks and delivery only after successful pending upload` |
+| Timeout, 429, redirect and wrong acknowledgment fail; reader/API/ack body sizes and body deadlines stay bounded | monitor: `retains retryable state for HTTP`, `rejects ... acknowledgment within the delivery bounds`; watchdog: `bounds response bytes`, `does not follow redirects`; [state tests](../../scripts/match-freshness-state.test.ts): `bounded GitHub JSON transport` |
+| Acceptance followed by loss of the local acknowledged state replays the same event ID | monitor: `retries a successful-but-uncheckpointed acknowledgment with the same ID` simulates the crash boundary by restoring the pre-send checkpoint; workflow: `failed final upload restores pending and retries stable IDs after backoff` |
+| Pending upload failure prevents sends; final upload failure preserves replay | workflow: `failed pending upload prohibits sends and blocks silent rollback`, `failed final upload restores pending` |
+| Missing/corrupt/expired/incompatible newest history blocks rather than falling back or initializing | monitor: `rejects missing, corrupt, incompatible, wrong-origin/scope and rollback state`; state: `does not roll back past an invalid newest artifact`, `fails when the final checkpoint expired`, `treats preparation without upload as a barrier`, `rejects initialization when durable state already exists` |
+| Finite queues, history, bytes, attempts and execution | monitor: `backpressure keeps bounded queue`, `reserves attempts before sending ... exhausts at 20`; state: `fails closed at the three-page budget`; watchdog: `uses only configured current seasons`; workflow: job timeout/manual-only assertions |
+
+Retain the focused test summary, full-suite/typecheck/lint results and reviewed
+commit SHA with the later activation record. An expected incident/delivery error
+inside a test is a passing assertion, not evidence of a live incident. No build
+or backend gate is needed for changes confined to these tests and this runbook.
+
+### Configuration inventory for later approval
+
+| Setting | Source and required behavior |
+|---|---|
+| `MATCH_FRESHNESS_ENABLED` | Repository Actions variable. Only literal `true` enables the job and CLI; absent/false means zero checks/sends. Keep absent/false during preparation. |
+| `MATCH_FRESHNESS_DELIVERY_ENABLED` | Repository Actions variable. Only literal `true` permits reservations/sends. Absent/false still allows checks and queued transitions when the main gate is true; it is **not** an offline dry run and pending events make the result exit 2. |
+| `MATCH_FRESHNESS_WEBHOOK_URL` | Repository Actions secret, supplied only to the delivery step. Owner-approved HTTPS receiver implementing the protocol below; do not put its URL/token in logs, PRs or acceptance records. |
+| `initialize_state` | Sole manual input, boolean, default false. True only for proven first history; never a repair flag. |
+| Run identity and API access | Actions supplies `GITHUB_*` provenance and its token with `contents: read` / `actions: read`. Do not substitute another repository/ref/run identity or a personal token to bypass validation. |
+| Reader and scopes | Fixed CLI origin `https://scorearc-reader.fly.dev`; exact current seasons from `backend/config/competitions.json`. No workflow input overrides these. A changed origin/scope set requires a reviewed state migration, not initialization. |
+
+The local harness injects its loopback origin directly into `runPhase`; that is
+test wiring, not a configurable production endpoint. Production reader-origin
+validation and redirect rejection stay in force. There is no approved incident
+owner, recipient, receiver provider or independent observer selected by this
+preparation work.
 
 ### State restoration and ordering
 
@@ -331,6 +401,20 @@ not a larger scan. Disabled workflows allocate no check runner. GitHub cron offe
 no hard alert-latency SLA; thresholds, cadence, queue delay, backoff, platform
 delays and network time all contribute.
 
+For cadence approval, record measured job duration, response bytes, artifact
+bytes and receiver requests from the later authorized acceptance. At the proposed
+five-minute cadence, 30 days gives 8,640 nominal runs and up to 86,400 current-ten
+reader requests. Two 256-KiB state files per run give at most 144 MiB/day of raw
+checkpoint bytes, or about 12.66 GiB across 90 days before archive/billing
+overhead; actual states are normally much smaller. The 8-MiB reader cap permits
+up to 22.5 GiB/day of response bodies at 2,880 requests, not an expected load.
+Runner usage is `runs × measured billable minutes per job`; the ten-minute job
+ceiling can cause backlog under serialized execution and is not a five-minute
+completion promise. Apply the owner's current Actions allowance/rates, artifact
+retention charges, Fly/Neon read load and receiver fees; no dollar price or free
+tier is assumed. Backups and independent detection have separate owner-approved
+costs. None of these costs is approved by this document.
+
 If there is not room for one transition per scope, preparation pauses all checks
 and drains the existing queue; it does not report skipped observations as healthy.
 Events occurring entirely while monitoring is blocked cannot be reconstructed.
@@ -349,6 +433,36 @@ never choose an older state just because its code can read it. A monitor cannot
 detect its own permanent stoppage: a separately approved heartbeat/independent
 observer is still needed for monitor-not-running detection. Native Actions failure
 notifications may repeat and are not this transition transport.
+
+### Disable and recover without losing history
+
+These are procedures for a separately authorized operator, not actions performed
+by this preparation PR. To stop checks **and** sends, clear/set
+`MATCH_FRESHNESS_ENABLED=false`. This gates subsequent jobs; an already running
+job has captured its environment. Normally let that serialized run finish and
+retain its newest pending/final checkpoints. If urgent containment requires
+cancellation, record the run and assume ambiguous delivery until reconciled;
+cancellation is not a safe reset. Disabling only delivery leaves checks/queue
+growth active, so it is not the full kill switch.
+
+| Observed failure | Recovery boundary |
+|---|---|
+| Reader incident, exit 1 after delivery | Investigate competition/season/run context using the existing diagnostics. Do not modify scores or thresholds to clear it. Repeated failure stays nonzero without another OPEN. |
+| Delivery failure, exit 2, valid retained checkpoint | Fix the approved receiver/configuration. Start a **new** authorized main run after backoff; retain IDs and let FIFO replay the pending head before later events. Do not rerun the old attempt or send a replacement event manually. |
+| Final upload failure or crash after receiver acceptance | Preserve the pending snapshot and receiver acceptance ledger. The selector may replay it only with proven failed/skipped final upload; receiver deduplication must tolerate the same ID. A successful/ambiguous/cancelled final-upload record with missing state blocks automatic recovery. |
+| Pending upload failed; no checkpoint survives | No sends occurred from that run, but newly observed transitions may be lost. Stop and reconcile that preparation barrier; never select an older run or initialize around it. |
+| Missing/corrupt/expired/incompatible state, exhausted retry head or history-scan budget | Disable and preserve artifacts, run/job metadata, logs and receiver receipts. An owner-reviewed recovery/migration must preserve the latest epoch, sequence, incident IDs and ordered pending events. There is no backup-import, reset, retry-budget override or older-checkpoint switch in the current automation. Remain disabled until a reviewed procedure can establish continuity. |
+
+Before activation, name who retains independently verified copies of the newest
+checkpoint **and its run/artifact provenance**, where they are kept, the backup
+interval, expiry margin, access policy and restore rehearsal. Retain both pending
+and final evidence when delivery is ambiguous; a backup is not permission to
+substitute stale state. The YAML requests 90-day retention, but the operator must
+verify effective repository/account retention and actual `expires_at` values.
+A pause approaching that expiry needs intervention before the checkpoint is lost.
+The independent observer must also have a named owner, expected-run deadline,
+escalation recipient and acceptance proof; a failed workflow can report an error,
+but a workflow that never starts cannot report its own absence.
 
 ### Disabled-to-enabled owner checklist
 
@@ -377,9 +491,22 @@ notifications may repeat and are not this transition transport.
   continued failure, recovery, recurrence, ambiguous send and state/delivery failure
   using an approved synthetic acceptance setup; do not disrupt production data.
 - [ ] Only after that acceptance, approve a follow-up PR enabling the commented
-  five-minute schedule under `on:`. Never use production dispatch for code tests.
+  five-minute schedule under `on:`. That PR must intentionally update the
+  manual-only workflow test, retain both exact-true gates, main/attempt provenance,
+  serialization and upload-before-send ordering, and link the signed-off
+  activation evidence. Never use production dispatch for code tests.
 - [ ] Disable by clearing/setting `MATCH_FRESHNESS_ENABLED=false`; allow the current
   serialized run to finish and retain its newest checkpoint. Do not delete history.
+
+The activation record must identify the approving owner and reviewed SHA, incident
+owner and recipient, receiver compatibility/dedup evidence, **human receipt proof**
+for the synthetic OPEN/RESOLVED/recurrence, checkpoint backup/recovery acceptance,
+cadence/cost acceptance, independent not-running detection, approved variable and
+secret changes (names only), and the first authorized manual run ID/initialization
+choice/artifact IDs. Protocol HTTP 200 alone does not satisfy receipt proof.
+Record unresolved decisions as blockers, not accepted defaults. Real acceptance
+uses separately approved synthetic inputs/destination; this PR neither provisions
+that setup nor authorizes changing the fixed production reader for a test.
 
 This delivers code for the **match-endpoint slice only**. Scheduling, real delivery,
 recipient decisions, sustained operational acceptance and broader T17.4 coverage

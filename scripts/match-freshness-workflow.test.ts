@@ -7,7 +7,7 @@ const document = () => readFile('.github/workflows/match-freshness.yml', 'utf8')
 describe('opt-in durable match workflow', () => {
   it('gates the whole job before checks, downloads, secrets and delivery', async () => {
     const workflow = await document();
-    expect(workflow.on.schedule).toBeUndefined();
+    expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch']);
     expect(workflow.on.workflow_dispatch.inputs.initialize_state.default).toBe(false);
     expect(workflow.jobs.check.if).toContain("vars.MATCH_FRESHNESS_ENABLED == 'true'");
     expect(workflow.jobs.check.if).toContain("github.ref == 'refs/heads/main'");
@@ -36,12 +36,14 @@ describe('opt-in durable match workflow', () => {
     expect(steps.filter((s: any) => s.uses).every((s: any) => /@[0-9a-f]{40}$/.test(s.uses))).toBe(true);
     expect(steps.findIndex((s: any) => s.id === 'pending')).toBeLessThan(steps.findIndex((s: any) => s.id === 'deliver'));
   });
-  it.each(['select','prepare','deliver','result'])('disabled %s CLI performs no filesystem or network work with invalid production config', async phase => {
+  it.each([undefined, 'false'].flatMap(enabled => ['select','prepare','deliver','result'].map(phase => ({ enabled, phase }))))(
+    'disabled $phase CLI (enabled=$enabled) performs no filesystem or network work with invalid production config', async ({ enabled, phase }) => {
+    const env = { ...process.env, MATCH_FRESHNESS_ENABLED: enabled, MATCH_FRESHNESS_DELIVERY_ENABLED: 'true',
+      GITHUB_TOKEN: '', GITHUB_REF: 'invalid', MATCH_FRESHNESS_WEBHOOK_URL: 'invalid' };
+    if (enabled === undefined) delete env.MATCH_FRESHNESS_ENABLED;
     const result = await new Promise<{code: number; stdout: string}>(resolve => {
-      execFile(process.execPath, ['scripts/match-freshness-monitor.mjs', phase], { env: {
-        ...process.env, MATCH_FRESHNESS_ENABLED: 'false', MATCH_FRESHNESS_DELIVERY_ENABLED: 'true',
-        GITHUB_TOKEN: '', GITHUB_REF: 'invalid', MATCH_FRESHNESS_WEBHOOK_URL: 'invalid',
-      } }, (error, stdout) => resolve({ code: error ? 1 : 0, stdout }));
+      execFile(process.execPath, ['scripts/match-freshness-monitor.mjs', phase], { env },
+        (error, stdout) => resolve({ code: error ? 1 : 0, stdout }));
     });
     expect(result).toEqual({ code: 0, stdout: 'Match monitor disabled; no checks or delivery.\n' });
   });
@@ -92,13 +94,13 @@ async function harness() {
     const payload = JSON.parse(raw); notifications.push(payload);
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ eventId: payload.eventId }));
   });
-  async function run({ enabled = true, failUpload = '', initialize = false } = {}) {
+  async function run({ enabled = 'true', deliveryEnabled = 'true', failUpload = '', initialize = false } = {}) {
     now += 600000;
     const id = history.length + 100;
     const iso = new Date(now).toISOString();
     const current = { id, run_number: id, run_attempt: 1, workflow_id: 7, path: '.github/workflows/match-freshness.yml', head_branch: 'main', head_sha: 'a'.repeat(40),
       event: 'workflow_dispatch', status: 'in_progress', conclusion: null, repository: { id: 1, full_name: 'mcasillas17/ScoreArc' }, head_repository: { id: 1, full_name: 'mcasillas17/ScoreArc' }, created_at: new Date(now-60000).toISOString(), updated_at: iso };
-    const vars = { MATCH_FRESHNESS_ENABLED: String(enabled), MATCH_FRESHNESS_DELIVERY_ENABLED: 'true' };
+    const vars = { MATCH_FRESHNESS_ENABLED: enabled, MATCH_FRESHNESS_DELIVERY_ENABLED: deliveryEnabled };
     const steps: Record<string, any> = {};
     const github = vi.fn(async (path: string) => {
       const root = '/repos/mcasillas17/ScoreArc/actions';
@@ -153,9 +155,23 @@ async function harness() {
   return { run, artifacts, notifications, checks: () => checks, healthy: () => { healthy = true; } };
 }
 describe('enabled workflow artifact boundaries', () => {
+  it.each(['', 'false'])('disabled job (enabled=%s) makes no reader, GitHub or receiver requests', async enabled => {
+    const h = await harness(); const disabled = await h.run({ enabled });
+    expect(disabled.steps).toEqual({}); expect(disabled.github).not.toHaveBeenCalled();
+    expect(h.checks()).toBe(0); expect(h.notifications).toEqual([]); expect(h.artifacts.size).toBe(0);
+  });
+  it.each(['', 'false'])('delivery gate (%s) retains unreserved events for a later enabled run', async deliveryEnabled => {
+    const h = await harness(); const first = await h.run({ initialize: true, deliveryEnabled });
+    expect(h.checks()).toBe(10); expect(h.notifications).toEqual([]);
+    expect(first.steps.pending.outcome).toBe('success'); expect(first.steps.deliver.outcome).toBe('skipped');
+    expect(first.steps.final.outcome).toBe('skipped'); expect(first.steps.result.outcome).toBe('failure');
+    const pending = JSON.parse(h.artifacts.get(first.id)![0].bytes);
+    expect(pending).toMatchObject({ reserved: [], pending: Array.from({ length: 10 }, () => ({ attempts: 0 })) });
+    const next = await h.run(); expect(next.steps.restore.outcome).toBe('success');
+    expect(next.steps.final.outcome).toBe('success'); expect(h.notifications).toHaveLength(10);
+  });
   it('executes checks and delivery only after successful pending upload, preserving failed incident runs', async () => {
     const h = await harness();
-    const disabled = await h.run({ enabled: false }); expect(disabled.github).not.toHaveBeenCalled(); expect(h.checks()).toBe(0);
     const first = await h.run({ initialize: true });
     expect(first.steps.prepare.outcome).toBe('success'); expect(first.steps.pending.outcome).toBe('success');
     expect(first.steps.deliver.outcome).toBe('success'); expect(first.steps.final.outcome).toBe('success');
