@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import type { Group, StatLeader } from '@/server/data/types';
 import type { QualificationLabelKey, Zone } from '@/server/data/competitions';
 import GroupTable from './GroupTable';
@@ -11,6 +11,11 @@ import LeagueZoneTable from './LeagueZoneTable';
 import { trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
 import { useTranslations } from '@/i18n/I18nProvider';
 import { translatedGroupName } from './translatedGroupName';
+import { StandingsFormContext } from './FormBadges';
+import { useStandingsForm } from './useStandingsForm';
+import { useMatchDetails } from './useMatchDetails';
+import MatchDetailPopup from './MatchDetailPopup';
+import { toMatchDetailInput } from './upcomingWindow';
 
 interface Props {
   initialGroups: Group[];
@@ -48,6 +53,9 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
   const [groups, setGroups] = useState<Group[]>(initialGroups);
   const [scorers, setScorers] = useState<StatLeader[]>(initialScorers);
   const [assists, setAssists] = useState<StatLeader[]>(initialAssists);
+  const standingsForm = useStandingsForm(apiBase, initialGroups);
+  const formTick = standingsForm.tick;
+  const details = useMatchDetails(apiBase, 'standings-form');
   const feedFailures = useRef<Record<string, boolean>>({
     standings: false,
     'top-scorers': false,
@@ -108,13 +116,16 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
           feedFailures.current[feed] = true;
         }
       });
+      // Optional, so after the required feeds.
+      const standings = parsed[0].status === 'fulfilled' ? parsed[0].value : null;
+      formTick(Array.isArray(standings) ? standings as Group[] : undefined);
     }
     const id = setInterval(poll, REFRESH_MS);
     return () => {
       mounted = false;
       clearInterval(id);
     };
-  }, []);
+  }, [formTick]);
 
   const topScorersBlock = (
     <div className="std-block">
@@ -130,9 +141,28 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
     </div>
   );
 
+  const { form, status: formStatus } = standingsForm;
+  // Notices describe form this page could show: stale and catching-up need badges,
+  // and nothing is missing before kick-off or on an edition with no form.
+  const formShown = Boolean(form?.scope && Object.keys(form.teams).length > 0);
+  const tablePlayed = groups.some((group) => group.standings.some((row) => row.played > 0));
+  const formNotice = !tablePlayed || form?.scope === null ? null
+    : formStatus === 'stale' && formShown ? 'standings.formStale' as const
+    : formStatus === 'stale' || formStatus === 'unavailable' ? 'standings.formUnavailable' as const
+    : formStatus === 'updating' && formShown ? 'standings.formUpdating' as const
+    : null;
+  const formNotes = (
+    <>
+      {formNotice ? <p className="sf-note" role="status">{t(formNotice)}</p> : null}
+      {form?.scope && formShown ? (
+        <p className="sf-note">{t(`standings.formScope.${form.scope}`)}</p>
+      ) : null}
+    </>
+  );
   const standingsBlock = (
     <div className="std-block">
       <h2 className="std-block-title">{t(showThirdPlace ? 'standings.groupStageResults' : 'standings.title')}</h2>
+      {showThirdPlace ? null : formNotes}
       {zones && zones.length > 0 && !showThirdPlace ? (
         groups.map((group) => (
           <div key={group.id} className="std-ladder" data-group={group.id}>
@@ -176,9 +206,22 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
   // Group-stage tournaments (World Cup) lead with the scorers + best-third
   // columns, then the group results below. Leagues lead with the standings —
   // the headline table — and put the Golden Boot beneath it.
+  const formPopup = details.detail && (
+    <MatchDetailPopup match={toMatchDetailInput(details.detail)} summary={details.summary} loading={details.loadingDetail}
+      onClose={details.closeDetails} teamBase={teamBase} playerBase={playerBase} />
+  );
+  const withForm = (content: ReactNode) => (
+    <StandingsFormContext.Provider value={form ? { form, onOpen: (match) => void details.openDetails(match) } : null}>
+      {content}
+      {formPopup}
+    </StandingsFormContext.Provider>
+  );
+
   if (showThirdPlace) {
-    return (
+    return withForm(
       <>
+        {/* The best-third table is the first to carry badges here. */}
+        {formNotes}
         <div className="std-columns">
           {topScorersBlock}
           <div className="std-block">
@@ -196,7 +239,7 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
     );
   }
 
-  return (
+  return withForm(
     <>
       {standingsBlock}
       {/* No scorers is a real state for competitions the provider gives no

@@ -12,7 +12,7 @@ const WINDOW_BYTES = 16 * 1024 * 1024;
 // the encoded JSON size. Weak keys do not retain responses beyond their caller.
 const responseBytes = new WeakMap<object, number>();
 
-function abortable<T>(pending: Promise<T>, signal: AbortSignal): Promise<T> {
+export function abortable<T>(pending: Promise<T>, signal: AbortSignal): Promise<T> {
   signal.throwIfAborted();
   return new Promise((resolve, reject) => {
     const abort = () => reject(signal.reason);
@@ -122,7 +122,7 @@ function validateEvent(value: unknown): { event: Raw; id: string; at: number; se
   if (sides.size !== 2 || ids.size !== 2) throw new Error('Malformed scoreboard teams');
   return { event, id: event.id, at, season };
 }
-const utcDate = (compact: string) => Date.UTC(Number(compact.slice(0, 4)), Number(compact.slice(4, 6)) - 1, Number(compact.slice(6, 8)));
+export const utcDate = (compact: string) => Date.UTC(Number(compact.slice(0, 4)), Number(compact.slice(4, 6)) - 1, Number(compact.slice(6, 8)));
 
 /** Monthly provider partitions, one-day calendar guards, then exact UTC/season scope. */
 export async function fetchScoreboardWindow(

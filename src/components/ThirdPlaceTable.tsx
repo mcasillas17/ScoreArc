@@ -2,6 +2,7 @@ import { useTranslations } from '@/i18n/I18nProvider';
 import type { Group } from "@/server/data/types";
 import { thirdPlacedRanking, QUALIFYING_THIRDS } from "@/lib/standings";
 import TeamBadge from "./TeamBadge";
+import FormBadges from './FormBadges';
 import { teamHref } from './teamHref';
 
 function fmtGD(gd: number): string {
@@ -57,6 +58,7 @@ export default function ThirdPlaceTable({
                   <TeamBadge team={r.team} size={22} style={teamStyle} href={teamHref(teamBase, r.team)} />
                   <span className="team-name">{r.team.name}</span>
                 </div>
+                <FormBadges teamId={r.team.id} teamName={r.team.name} />
               </td>
               <td className="std-muted">{r.groupId}</td>
               <td>{r.played}</td>

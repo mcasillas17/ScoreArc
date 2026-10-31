@@ -66,11 +66,17 @@ function period(matches: PerformanceMatch[]): PerformancePeriod {
     goalsAgainstPerMatch: sample ? goalsAgainst / sample : null };
 }
 
-export function teamPerformance(matches: Match[], teamId: string, scope: MatchScope) {
-  const eligible = uniqueTeamMatches(matches).flatMap((match) => {
+/** A team's countable matches from `uniqueTeamMatches` output, newest first:
+ *  the one W/D/L definition. */
+export function eligibleTeamMatches(unique: Match[], teamId: string, scope: MatchScope): PerformanceMatch[] {
+  return unique.flatMap((match) => {
     const result = performanceMatch(match, teamId, scope);
     return result ? [result] : [];
   });
+}
+
+export function teamPerformance(matches: Match[], teamId: string, scope: MatchScope) {
+  const eligible = eligibleTeamMatches(uniqueTeamMatches(matches), teamId, scope);
   const recent = period(eligible.slice(0, 5));
   const previous = eligible.length >= 10 ? period(eligible.slice(5, 10)) : null;
   return { recent, previous, eligibleCount: eligible.length, change: previous ? {

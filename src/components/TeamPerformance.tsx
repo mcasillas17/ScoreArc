@@ -2,7 +2,7 @@
 
 import type { Match, TeamProfile } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
-import { teamPerformance, type MatchScope, type PerformancePeriod, type TeamResult } from '@/server/data/teamPerformance';
+import { teamPerformance, type MatchScope, type PerformancePeriod } from '@/server/data/teamPerformance';
 import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import { formatDate } from '@/i18n/format';
 import { intlLocale } from '@/i18n/config';
@@ -10,6 +10,7 @@ import { useMatchDetails } from './useMatchDetails';
 import MatchDetailPopup from './MatchDetailPopup';
 import MatchRow from './MatchRow';
 import { toMatchDetailInput } from './upcomingWindow';
+import { FormChips, resultAbbreviation, resultLabel } from './FormBadges';
 
 interface Props {
   matches: Match[];
@@ -28,8 +29,6 @@ export default function TeamPerformance({ matches, teamId, scope, competitionNam
   const base = `/${locale}/c/${scope.competitionId}/${scope.seasonId}`;
   const details = useMatchDetails(`/api/${scope.competitionId}/${scope.seasonId}`, 'team-page');
   const available = availability?.results === 'available';
-  const resultLabel = (r: TeamResult) => t(r === 'W' ? 'performance.win' : r === 'D' ? 'performance.draw' : 'performance.loss');
-  const abbreviation = (r: TeamResult) => t(r === 'W' ? 'team.formWinAbbreviation' : r === 'D' ? 'team.formDrawAbbreviation' : 'team.formLossAbbreviation');
   const number = (n: number, signed = false, fractionDigits = 1) => new Intl.NumberFormat(intlLocale(locale), {
     maximumFractionDigits: fractionDigits, minimumFractionDigits: fractionDigits, signDisplay: signed ? 'exceptZero' : 'auto',
   }).format(n);
@@ -44,7 +43,7 @@ export default function TeamPerformance({ matches, teamId, scope, competitionNam
   function evidence(period: PerformancePeriod) {
     return <ul className="tp-evidence">
       {period.matches.map(({ match, result }) => <li key={match.id}>
-        <span className={`tm-chip tm-chip--${result}`} title={resultLabel(result)}>{abbreviation(result)}</span>
+        <span className={`tm-chip tm-chip--${result}`} title={resultLabel(t, result)}>{resultAbbreviation(t, result)}</span>
         <MatchRow match={match} teamStyle={teamStyle} showDate onOpen={() => void details.openDetails(match)} />
       </li>)}
     </ul>;
@@ -58,13 +57,10 @@ export default function TeamPerformance({ matches, teamId, scope, competitionNam
       : <>
         <div className="tp-period-head">
           <div><h3>{t('performance.recent', recent.sample)}</h3><p>{periodLabel(recent)}</p></div>
-          <ol className="tm-form" aria-label={t('performance.form', recent.wins, recent.draws, recent.losses)}>
-            {recent.matches.map(({ match, result }) => <li key={match.id}>
-              <button type="button" className={`tm-chip tp-form-button tm-chip--${result}`}
-                aria-label={t('performance.openMatch', resultLabel(result), match.home.name, match.away.name, `${match.homeScore}–${match.awayScore}`)}
-                onClick={() => void details.openDetails(match)}>{abbreviation(result)}</button>
-            </li>)}
-          </ol>
+          <FormChips buttonClassName="tp-form-button" label={t('performance.form', recent.wins, recent.draws, recent.losses)}
+            onOpen={(match) => void details.openDetails(match)}
+            items={recent.matches.map(({ match, result }) => ({ match, result,
+              label: t('performance.openMatch', resultLabel(t, result), match.home.name, match.away.name, `${match.homeScore}–${match.awayScore}`) }))} />
         </div>
         <p className="tp-record">{t('performance.form', recent.wins, recent.draws, recent.losses)}</p>
         <dl className="tp-metrics">

@@ -14,18 +14,19 @@ export function apiError(code: ApiErrorCode, status: number): Response {
  */
 export function seasonRoute<T>(
   endpoint: Parameters<typeof trackAPIRequestFailure>[0],
-  load: (rc: CompetitionSeason) => Promise<T>,
+  load: (rc: CompetitionSeason, signal: AbortSignal) => Promise<T>,
 ) {
-  return async (_req: Request, { params }: { params: Promise<{ comp: string; season: string }> }) => {
+  return async (req: Request, { params }: { params: Promise<{ comp: string; season: string }> }) => {
     const { comp, season } = await params;
     const rc = resolveSeason(comp, season);
     if (!rc) {
       return apiError('NOT_FOUND', 404);
     }
     try {
-      return Response.json(await load(rc), { headers: { 'Cache-Control': 'no-store, max-age=0' } });
-    } catch {
-      await trackAPIRequestFailure(endpoint, 502, comp, season);
+      return Response.json(await load(rc, req.signal), { headers: { 'Cache-Control': 'no-store, max-age=0' } });
+    } catch (error) {
+      // A reader leaving mid-read is not an upstream failure.
+      if (!req.signal.aborted || error !== req.signal.reason) await trackAPIRequestFailure(endpoint, 502, comp, season);
       return apiError('UPSTREAM_UNAVAILABLE', 502);
     }
   };
