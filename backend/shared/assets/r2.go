@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -19,6 +18,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+
+	"github.com/mcasillas17/scorearc-backend/shared/cdnurl"
 )
 
 const (
@@ -216,21 +217,8 @@ func (m *Mirror) Mirror(ctx context.Context, kind, id, sourceURL string) (string
 }
 
 func validateAssetURL(candidate *url.URL) error {
-	if candidate.Scheme != "https" {
-		return fmt.Errorf("%w: asset URL must use HTTPS", ErrAssetRejected)
-	}
-	host := strings.ToLower(candidate.Hostname())
-	if candidate.User != nil || (candidate.Port() != "" && candidate.Port() != "443") {
-		return fmt.Errorf(
-			"%w: asset URL credentials and non-HTTPS ports are not allowed",
-			ErrAssetRejected,
-		)
-	}
-	if ip := net.ParseIP(host); ip != nil {
-		return fmt.Errorf("%w: asset URL IP hosts are not allowed", ErrAssetRejected)
-	}
-	if host != "espncdn.com" && !strings.HasSuffix(host, ".espncdn.com") {
-		return fmt.Errorf("%w: asset URL host %q is not allowed", ErrAssetRejected, host)
+	if !cdnurl.ProviderMedia(candidate) {
+		return fmt.Errorf("%w: asset URL %q is not https provider CDN media", ErrAssetRejected, candidate.Redacted())
 	}
 	return nil
 }

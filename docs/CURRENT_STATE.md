@@ -80,6 +80,10 @@ at the owner's request; its deleted code stays deleted. The integrated state pas
 The frontend still uses ESPN; no E16 cutover or backend recovery
 was performed. See [the evidence, request budgets and remaining limits](FRONTEND_SCOREBOARD_WINDOWS.md).
 
+**Standings form (T7.3), 2026-10-30:** implemented on a feature branch, pending
+review and release, on today's ESPN-backed `DataStore`. No Go, migration or production
+change. See [scope, coverage and budgets](FRONTEND_STANDINGS_FORM.md).
+
 **Match reliability update, 2026-09-21:** implementation began on freshly fetched
 `2a5ae77`; before final review the isolated branch fast-forwarded to
 dependency-only `488f5d9` (#166, `package-lock.json` only).
@@ -519,17 +523,25 @@ separate.
 - **T10.2 implementation October 20, pending review/release:** leaders/assists
   (default 10/max 30), operand-derived team statistics, full captured lineups and
   bounded appearance-backed box scores with explicit availability. Four harness
-  gaps are replaced by positive assertions. Migration 0026 is local only;
-  exact schema 26 is required for these binaries. The last owner-reported schema
-  was 24, with 0025 missing; neither 25 nor 26 is verified deployed. Do not repeat 0024.
+  gaps are replaced by positive assertions. Migration 0026 is local only. The last
+  owner-reported schema was 24, with 0025 missing; neither 25 nor 26 is verified
+  deployed. Do not repeat 0024.
   See [contract and rollout](backend/READER_CONTRACT.md#t102-leaders-statistics-and-participation-contract).
   Team expansion, broader freshness and cutover remain open.
 - **T10.4 implementation October 26, pending review/release:** canonical UUID
   player profile, scoped season totals, latest-five game log and bounded career.
   Positive TypeScript/Go/OpenAPI/Postgres assertions replace `T10.4-player`.
   Missing optional rows preserve identity; unknown slugs remain null. No
-  migration, production access or frontend data-source change; schema head
-  stays 26. [Contract](backend/READER_CONTRACT.md#t104-player-contract).
+  migration of its own, production access or frontend data-source change. [Contract](backend/READER_CONTRACT.md#t104-player-contract).
+- **T10.3 teams: implemented October 26, pending review/release.** The team
+  profile gains location, standing, `scheduleAvailability`, schedule scope and
+  degraded (not failed) squad/schedule blocks, and its existing derived record
+  is now contract-tested against the frontend's record item; a standalone `getSquad` route
+  serves provider-id players with age, headshot and roster order. All eight
+  T10.3 harness gaps are positive assertions. Migration 0027 is local only, and
+  these binaries require **exact schema 27**: apply 0025, 0026, then 0027 per
+  the [rollout](backend/READER_CONTRACT.md#rollout-migration-0027) before the
+  merge. Not an `apiStore` or cutover.
 - **T10.10 derived standings: closed in code October 14 (option B), not
   deployed.** The Leagues Cup phase tables and the MLS overall table stay a
   TypeScript derivation. The reader serves only their inputs, and a future
@@ -544,11 +556,14 @@ separate.
   ambiguous empty match response in §3 is historical, not the present contract.
   Equivalent coverage across all reader surfaces and consumer handling remain
   T17.3/cutover work.
-- **Six reader handlers log raw dependency error text** (matches, standings,
-  bracket, top-scorers, news, match summary), which can carry connection
-  details; response bodies stay sanitized. `handleTeam` logs only operation,
-  error type and SQLSTATE and is the reference. Owned by T21.4; pinned as gap
-  `T21.4-dependency-error-logging`.
+- **T21.4 dependency-error logging slice: implemented October 30, pending
+  integration/release.** Matches, standings, bracket, top-scorers, news and
+  match-summary failures now log request id, operation, validated scope, Go
+  error type and SQLSTATE without dependency text. The registered logging gap
+  is replaced by positive assertions; team/squad fail-closed flags and access
+  logs are preserved. Response and data behavior did not change. No migration
+  or production action; the website remains ESPN-backed. Metrics, dashboards
+  and the rest of T21.4 remain open. [Contract](backend/READER_CONTRACT.md#t214-dependency-error-logging-slice).
 
 ## 6. Durability blockers
 
@@ -639,8 +654,10 @@ held-byte reprocessing and new collection remain unchanged.
   perishable capture/coverage remains urgent, not proved by fresh match headers.
 - **T7.21 participation retry (§6a):** provide durable recovery for finalized
   matches with missing participation; match-state recovery does not repair it.
-- **T17.3/T17.4 trust and notification delivery:** finish broader provenance,
-  scheduled freshness checks and notification activation with explicit approval.
+- **T17.3/T17.4 trust and notification delivery:** broader resource provenance is
+  implemented in the October 30 T17.3 slice ([contract and limits](backend/READER_CONTRACT.md#t173-resource-freshness-contract)); production acceptance requires separately
+  authorized migration 0028 and exact-head rollout. Scheduled freshness checks
+  and notification activation still require explicit approval.
   Collect sustained reconciliation and transient-failure recovery evidence
   ([SETUP §7.5](backend/SETUP.md#75-verify)); the dated observations above do not
   close this acceptance or ancillary squad/player/archive coverage.
@@ -667,7 +684,7 @@ switch and fall back as one group
 ([READER_CONTRACT](backend/READER_CONTRACT.md#identity-translations)). Initial E10 history/player/shot reads keep their roadmap
 dependencies. No reader cutover has occurred.
 
-**Then, roughly in order:** E6/E7 UI (T6.2–T6.4, T7.3–T7.5), E9's
+**Then, roughly in order:** E6/E7 UI (T6.2–T6.4, T7.4–T7.5), E9's
 provider/model decision (post-rights, post-T7.13-closure). **Later:**
 anything requiring validated models or real data — AI recaps (E8), a
 real-data MCP, an LED board, match simulation, personalization.

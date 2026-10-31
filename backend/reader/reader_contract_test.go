@@ -371,6 +371,37 @@ func validateSchema(t *testing.T, document *openapi3.T, name string, value any) 
 	}
 }
 
+func TestReaderResourceOpenAPI(t *testing.T) {
+	document := loadOpenAPI(t)
+	for path := range document.Paths.Map() {
+		if !strings.HasPrefix(path, "/v1/") {
+			continue
+		}
+		header := okHeader(t, document, path, "X-ScoreArc-Resources")
+		if header == nil || header.Value == nil || !header.Value.Required {
+			t.Errorf("%s must document required resource metadata", path)
+		}
+	}
+	resource := map[string]any{"status": "fresh", "availability": "complete", "source": "espn",
+		"derivation": "direct", "scope": "competition-season", "observedAt": "2026-10-30T12:00:00Z", "finalizedAt": nil}
+	validateSchema(t, document, "ResourceEvidence", resource)
+	for field, invalid := range map[string]any{"status": "healthy", "availability": "fresh", "source": "guessed",
+		"derivation": "invented", "scope": "all-history", "observedAt": "yesterday"} {
+		changed := maps.Clone(resource)
+		changed[field] = invalid
+		if err := schemaOf(t, document, "ResourceEvidence").VisitJSON(changed); err == nil {
+			t.Errorf("OpenAPI accepted invalid resource %s", field)
+		}
+	}
+	for _, field := range []string{"observedAt", "finalizedAt", "availability"} {
+		changed := maps.Clone(resource)
+		delete(changed, field)
+		if err := schemaOf(t, document, "ResourceEvidence").VisitJSON(changed); err == nil {
+			t.Errorf("OpenAPI accepted missing resource %s", field)
+		}
+	}
+}
+
 // Characterized gaps: absent fields stay absent in the reader object AND the
 // committed schema. Implementing one fails here until the contract changes.
 func assertAbsent(t *testing.T, document *openapi3.T, schema string, object map[string]any, fields ...string) {
@@ -443,7 +474,7 @@ func TestReaderContract(t *testing.T) {
 				t.Fatalf("%s lacks GET", path)
 			}
 			documented[path] = true
-			if strings.Contains(path, "squad") || strings.Contains(path, "assist") {
+			if strings.Contains(path, "assist") {
 				t.Fatalf("gap changed: OpenAPI now documents %s", path)
 			}
 		}
@@ -463,11 +494,12 @@ func TestReaderContract(t *testing.T) {
 		if !reflect.DeepEqual(served, documented) {
 			t.Fatalf("router serves %v, OpenAPI documents %v", served, documented)
 		}
-		// No standalone squad route: the roster exists only inside TeamProfile.
-		if _, ok := schemaOf(t, document, "TeamProfile").Properties["squad"]; !ok {
-			t.Fatal("TeamProfile lost its embedded squad")
+		// getSquad has its own route; getTeam embeds the same SquadPlayer rows.
+		squadRoute := okGet(t, document, *vectors.Methods["getSquad"].Reader).Responses.Status(http.StatusOK).Value.Content.Get("application/json").Schema.Value
+		if squadRoute.Items == nil || squadRoute.Items.Ref != "#/components/schemas/SquadPlayer" ||
+			schemaOf(t, document, "TeamProfile").Properties["squad"].Value.Items.Ref != "#/components/schemas/SquadPlayer" {
+			t.Fatal("the squad route and TeamProfile.squad must both serve SquadPlayer[]")
 		}
-		gap("T10.3-squad")
 		for id, g := range vectors.Gaps {
 			if !strings.HasPrefix(id, g.Task+"-") {
 				t.Fatalf("gap %s is not keyed by its task %s", id, g.Task)
@@ -1277,6 +1309,16 @@ func TestReaderContract(t *testing.T) {
 				t.Fatalf("pinned player %v missing", expected["id"])
 			}
 		}
+		headshots := map[string]any{}
+		for _, player := range squad.Players {
+			if player.HeadshotURL != "" {
+				headshots[player.SourceID] = player.HeadshotURL
+			}
+		}
+		assertWire(t, "roster headshots", headshots, vector(t, raw, "squad", "headshots"))
+		if location := vector(t, raw, "team", "location"); squad.Location != location {
+			t.Fatalf("roster location %q, want %v", squad.Location, location)
+		}
 	})
 
 	t.Run("recorded career source names and seasons agree", func(t *testing.T) {
@@ -1405,47 +1447,76 @@ func TestReaderContract(t *testing.T) {
 		}
 	})
 
-	t.Run("a failed team child query fails the whole reader request", func(t *testing.T) {
-		store := &fakeReaderStore{teamErr: &teamReadError{operation: "squad", err: errors.New("relation squad_membership unavailable")}}
-		response := performRequest(newTestApp(t, store, &fakeNewsReader{}).router(), http.MethodGet,
-			"/v1/competitions/liga-mx/2026-apertura/teams/mex-america")
-		if response.Code != http.StatusInternalServerError || response.Body.String() != "{\"error\":\"internal error\"}\n" {
-			t.Fatalf("gap changed: a failed squad query now returns %d %s; update reader-contract.json", response.Code, response.Body.String())
+	t.Run("a failed team child block is served empty and unavailable, logged safely", func(t *testing.T) {
+		// The store degrades the block (proved against Postgres in the go-db
+		// suite); the handler serves it as 200 and logs only safe metadata.
+		secret := errors.New("password=secret")
+		profile := &TeamProfile{
+			Team:     espn.Team{ID: "mex-america", Name: "América", Abbr: "AME"},
+			failures: []*teamReadError{{operation: "squad", err: secret}, {operation: "schedule", err: secret}},
 		}
-		gap("T10.3-partial-failure") // The frontend keeps the profile with an empty squad (TS pins it).
+		profile.Squad = []SquadPlayer{}
+		degradeSchedule(profile)
+		app := newTestApp(t, &fakeReaderStore{teams: map[string]*TeamProfile{"mex-america": profile}}, &fakeNewsReader{})
+		var logs bytes.Buffer
+		app.logger = slog.New(slog.NewJSONHandler(&logs, nil))
+		response := performRequest(app.router(), http.MethodGet, "/v1/competitions/liga-mx/2026-apertura/teams/mex-america")
+		var body map[string]any
+		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || response.Code != http.StatusOK {
+			t.Fatalf("%d %s", response.Code, response.Body.String())
+		}
+		validateSchema(t, document, "TeamProfile", body)
+		assertWire(t, "degraded blocks", map[string]any{"squad": body["squad"], "schedule": body["schedule"],
+			"scheduleAvailability": body["scheduleAvailability"]}, vector(t, raw, "team", "partialFailure"))
+		if strings.Contains(logs.String(), "secret") || !strings.Contains(logs.String(), `"operation":"squad"`) ||
+			!strings.Contains(logs.String(), `"operation":"schedule"`) || response.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("child failures must be logged with safe metadata only: %s", logs.String())
+		}
 	})
 
 	t.Run("dependency errors and cancellation return a sanitized 500 body, never empty", func(t *testing.T) {
 		for _, cause := range []error{context.Canceled, context.DeadlineExceeded} {
-			app := newTestApp(t, &fakeReaderStore{matchesErr: cause}, &fakeNewsReader{})
-			response := performRequest(app.router(), http.MethodGet, "/v1/competitions/world-cup/2026/matches")
-			if response.Code != http.StatusInternalServerError || response.Body.String() != "{\"error\":\"internal error\"}\n" ||
-				response.Header().Get("Cache-Control") != "no-store" || response.Header().Get("X-ScoreArc-Freshness") != "" {
-				t.Fatalf("%v: %d %s %v", cause, response.Code, response.Body.String(), response.Header())
+			// The squad route degrades a failed read, but never a cancelled one.
+			for path, store := range map[string]*fakeReaderStore{
+				"/v1/competitions/world-cup/2026/matches":                        {matchesErr: cause},
+				"/v1/competitions/liga-mx/2026-apertura/teams/mex-america/squad": {teamErr: &teamReadError{operation: "squad", err: cause}},
+				"/v1/competitions/liga-mx/2026-apertura/teams/mex-america": {teams: map[string]*TeamProfile{"mex-america": {
+					Squad: []SquadPlayer{}, failures: []*teamReadError{{operation: "squad", err: cause}}}}},
+			} {
+				app := newTestApp(t, store, &fakeNewsReader{})
+				response := performRequest(app.router(), http.MethodGet, path)
+				if response.Code != http.StatusInternalServerError || response.Body.String() != "{\"error\":\"internal error\"}\n" ||
+					response.Header().Get("Cache-Control") != "no-store" || response.Header().Get("X-ScoreArc-Freshness") != "" {
+					t.Fatalf("%s %v: %d %s %v", path, cause, response.Code, response.Body.String(), response.Header())
+				}
 			}
 		}
-		// A secret-bearing dependency error: every data route sanitizes the body,
-		// but all except handleTeam and handleCalendar log the raw text (T21.4).
-		// Those two log only constant metadata (safeLog names a field each must
-		// carry), the reference the fix must match.
+		// A secret-bearing dependency error: every route below sanitizes the
+		// body and logs. T21.4 retains safe diagnostic metadata; safeLog names
+		// a field each route must carry, including the existing team/squad and
+		// calendar references.
 		secret := errors.New("password=secret")
 		for _, route := range []struct {
 			path    string
 			status  int
 			store   *fakeReaderStore
 			news    *fakeNewsReader
-			leaks   bool
 			safeLog string
 		}{
-			{"/v1/competitions/world-cup/2026/matches", 500, &fakeReaderStore{matchesErr: secret}, &fakeNewsReader{}, true, ""},
-			{"/v1/competitions/world-cup/2026/standings", 500, &fakeReaderStore{standingsErr: secret}, &fakeNewsReader{}, true, ""},
-			{"/v1/competitions/world-cup/2026/bracket", 500, &fakeReaderStore{bracketErr: secret}, &fakeNewsReader{}, true, ""},
-			{"/v1/competitions/world-cup/2026/top-scorers", 500, &fakeReaderStore{topScorersErr: secret}, &fakeNewsReader{}, true, ""},
-			{"/v1/competitions/world-cup/news", 502, &fakeReaderStore{}, &fakeNewsReader{err: secret}, true, ""},
-			{"/v1/matches/" + vectors.Summary.ReaderMatchID, 500, &fakeReaderStore{summaryErr: secret}, &fakeNewsReader{}, true, ""},
+			{"/v1/competitions/world-cup/2026/matches", 500, &fakeReaderStore{matchesErr: secret}, &fakeNewsReader{}, `"operation":"matches"`},
+			{"/v1/competitions/world-cup/2026/standings", 500, &fakeReaderStore{standingsErr: secret}, &fakeNewsReader{}, `"operation":"standings"`},
+			{"/v1/competitions/world-cup/2026/bracket", 500, &fakeReaderStore{bracketErr: secret}, &fakeNewsReader{}, `"operation":"bracket"`},
+			{"/v1/competitions/world-cup/2026/top-scorers", 500, &fakeReaderStore{topScorersErr: secret}, &fakeNewsReader{}, `"operation":"top scorers"`},
+			{"/v1/competitions/world-cup/news", 502, &fakeReaderStore{}, &fakeNewsReader{err: secret}, `"operation":"news"`},
+			{"/v1/matches/" + vectors.Summary.ReaderMatchID, 500, &fakeReaderStore{summaryErr: secret}, &fakeNewsReader{}, `"operation":"match summary"`},
 			{"/v1/competitions/liga-mx/2026-apertura/teams/mex-america", 500,
-				&fakeReaderStore{teamErr: &teamReadError{operation: "squad", err: secret}}, &fakeNewsReader{}, false, `"operation":"squad"`},
-			{"/v1/competitions/world-cup/2026/calendar", 500, &fakeReaderStore{calendarErr: secret}, &fakeNewsReader{}, false, `"row_bound_exceeded":false`},
+				&fakeReaderStore{teamErr: &teamReadError{operation: "identity", err: secret}}, &fakeNewsReader{}, `"operation":"identity"`},
+			// A failed squad read degrades to 200 []; identity alone is a 500.
+			{"/v1/competitions/liga-mx/2026-apertura/teams/mex-america/squad", 200,
+				&fakeReaderStore{teamErr: &teamReadError{operation: "squad", err: secret}}, &fakeNewsReader{}, `"operation":"squad"`},
+			{"/v1/competitions/liga-mx/2026-apertura/teams/mex-america/squad", 500,
+				&fakeReaderStore{teamErr: &teamReadError{operation: "identity", err: secret}}, &fakeNewsReader{}, `"operation":"identity"`},
+			{"/v1/competitions/world-cup/2026/calendar", 500, &fakeReaderStore{calendarErr: secret}, &fakeNewsReader{}, `"row_bound_exceeded":false`},
 		} {
 			app := newTestApp(t, route.store, route.news)
 			var logs bytes.Buffer
@@ -1454,14 +1525,10 @@ func TestReaderContract(t *testing.T) {
 			if response.Code != route.status || strings.Contains(response.Body.String(), "secret") {
 				t.Fatalf("%s: %d %s", route.path, response.Code, response.Body.String())
 			}
-			switch {
-			case route.leaks && !strings.Contains(logs.String(), "password=secret"):
-				t.Fatalf("gap changed: %s no longer logs raw dependency text; update reader-contract.json", route.path)
-			case !route.leaks && (strings.Contains(logs.String(), "secret") || !strings.Contains(logs.String(), route.safeLog)):
-				t.Fatalf("%s must log only constant error metadata: %s", route.path, logs.String())
+			if strings.Contains(logs.String(), "secret") || !strings.Contains(logs.String(), route.safeLog) {
+				t.Fatalf("%s must log only safe error metadata: %s", route.path, logs.String())
 			}
 		}
-		gap("T21.4-dependency-error-logging")
 	})
 
 	t.Run("reader transport errors and freshness coverage", func(t *testing.T) {
@@ -1488,18 +1555,19 @@ func TestReaderContract(t *testing.T) {
 			if response.Code != http.StatusOK {
 				t.Fatalf("%s: %d", path, response.Code)
 			}
+			metadata := resourceHeader(t, response.Header())
+			validateSchema(t, document, "ReaderResources", wire(t, metadata))
 			for _, name := range freshnessHeaders {
 				if response.Header().Get(name) != "" {
-					t.Fatalf("gap changed: %s now sends %s", path, name)
+					t.Fatalf("non-match route %s incorrectly sends core-match header %s", path, name)
 				}
 			}
 		}
 		for _, path := range []string{"/v1/competitions/{comp}/{season}/standings", "/v1/competitions/{comp}/{season}/top-scorers", "/v1/competitions/{comp}/news"} {
 			if okHeader(t, document, path, "X-ScoreArc-Freshness") != nil {
-				t.Fatalf("gap changed: OpenAPI documents freshness for %s", path)
+				t.Fatalf("OpenAPI incorrectly assigns core-match freshness to %s", path)
 			}
 		}
-		gap("T17.3-freshness-coverage")
 		for _, vector := range vectors.Transport.SuccessCache.Reader {
 			state := espn.MatchStateScheduled
 			if vector.Live {
@@ -1510,10 +1578,13 @@ func TestReaderContract(t *testing.T) {
 			app := newTestApp(t, &fakeReaderStore{
 				matches: []Match{match}, standings: []Group{}, topScorers: []espn.TopScorer{},
 				bracket: bracket, summary: &MatchSummary{},
-				teams: map[string]*TeamProfile{"mex-america": {}},
+				teams: map[string]*TeamProfile{"mex-america": {Squad: []SquadPlayer{}}},
 			}, &fakeNewsReader{})
 			response := performRequest(app.router(), http.MethodGet, vector.Path)
-			if strings.Contains(vector.Path, "/teams/") {
+			switch {
+			case strings.HasSuffix(vector.Path, "/squad"):
+				exercise("getSquad") // Rows are pinned against Postgres in the go-db suite.
+			case strings.Contains(vector.Path, "/teams/"):
 				exercise("getTeam") // Wire shape and SQL are pinned by team_contract_test.go.
 			}
 			if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != vector.CacheControl {
@@ -1525,17 +1596,28 @@ func TestReaderContract(t *testing.T) {
 				t.Fatalf("OpenAPI no longer documents Cache-Control for %s", vector.OpenAPIPath)
 			}
 			documented := header.Value.Description
-			if strings.Contains(vector.Path, "/teams/") {
-				if strings.Contains(documented, vector.CacheControl) || !strings.Contains(documented, "max-age=60") {
-					t.Fatalf("gap changed: OpenAPI now documents team caching as %q; update reader-contract.json", documented)
-				}
-				gap("T10.3-team-cache-doc")
-			} else if !strings.Contains(documented, vector.CacheControl) {
+			if !strings.Contains(documented, vector.CacheControl) {
 				t.Fatalf("%s serves %q but OpenAPI documents %q", vector.Path, vector.CacheControl, documented)
 			}
 		}
-		assertAbsent(t, document, "TeamProfile", wire(t, TeamProfile{}).(map[string]any), "standing", "scheduleAvailability")
-		gap("T10.3-team")
+		// standing and scheduleAvailability are required reader fields, and a team
+		// schedule row is exactly a Match plus its scope (team-insights.json
+		// pins the values). The two schemas are spelled out separately, so a
+		// Match property added without its TeamMatch twin fails here; equal
+		// required lists follow from TestOpenAPIObjectSchemasAreExact.
+		profile := schemaOf(t, document, "TeamProfile")
+		if !slices.Contains(profile.Required, "standing") || !slices.Contains(profile.Required, "scheduleAvailability") {
+			t.Fatal("OpenAPI lost TeamProfile standing/scheduleAvailability")
+		}
+		match, teamMatch := schemaOf(t, document, "Match"), schemaOf(t, document, "TeamMatch")
+		if len(teamMatch.Properties) != len(match.Properties)+1 || teamMatch.Properties["scope"] == nil {
+			t.Fatal("TeamMatch must be Match plus scope")
+		}
+		for name, property := range match.Properties {
+			if !reflect.DeepEqual(teamMatch.Properties[name], property) {
+				t.Fatalf("TeamMatch.%s drifted from Match", name)
+			}
+		}
 	})
 
 	if !subtestRun() {

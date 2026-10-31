@@ -55,7 +55,7 @@ in AGENTS.md first. All three run in CI (`npm test`, `tsc`, `go test ./...`).
 | none (reader-only) | `…/top-scorers`, `/matches/{id}/box-score` | Frozen legacy goals shape; bounded participation with completion evidence, canonical identity and nullable statistics |
 | `getNews` | `/v1/competitions/{comp}/news` | Recorded articles, identical through the real reader proxy |
 | `getTeam` | `…/teams/{teamId}` | Identity, location, record, colors, standing summary, squad, schedule ids, order and scope, partial-failure behavior, cache header |
-| `getSquad` | same, embedded squad | Recorded roster order, ids, jersey, position, nationality, stats, age and headshots |
+| `getSquad` | `…/teams/{teamId}/squad` (the same rows `getTeam` embeds) | Recorded roster order, ids, jersey, position, nationality, stats, age and headshots; degraded failure |
 | `getPlayer` | `…/players/{playerId}` | Canonical profile, scoped totals and latest five game-log rows; optional-data absence, source-qualified career links, snapshot/query/output bounds and error handling |
 
 Adding or removing a `DataStore` method fails `tsc`: two-way
@@ -63,9 +63,12 @@ Adding or removing a `DataStore` method fails `tsc`: two-way
 check on the store object. The Go suite requires the inventory routes plus
 `/healthz` to equal the OpenAPI paths and the chi router's routes. The
 TypeScript suite and `TestReaderContract` each end by requiring that they
-exercised all 12 methods. Every suite (`ts`, `go` and `go-db`) ends by requiring
-that the gaps it characterized equal the gaps the JSON assigns to it. A deleted
-or skipped characterization therefore fails, in any skip form; the TypeScript
+exercised all 12 methods. Every suite ends by checking the gaps the JSON assigns
+to it. The `go` suite requires its characterized gaps to equal them, so a deleted
+or skipped characterization fails. Since T10.3 no gap is assigned to `ts` or
+`go-db`, and both require exactly that: a new gap for either fails until its
+author adds an executable characterization and replaces the empty-list check.
+Skips are caught in any form; the TypeScript
 ledger never skips itself, and the file also rejects declared `.skip`, `.todo`,
 `.only`, `.skipIf`, `.runIf` and `{ skip: true }`-style options. A Vitest `-t`
 filter that selects the ledger together with only some tests fails it; a Go
@@ -134,7 +137,7 @@ and the harness proves a translation instead of an equality. They are not gaps.
 | Match | ESPN event id; list rows and its own summary fetch use it | UUIDv7; `/v1/matches/{id}` accepts nothing else (a provider id is 404) | `match_external_ref (source, source_id) → match.id` through the real resolver: the recorded event adopts the served match on its natural key, and a new event mints a stable UUIDv7 that the list route serves and the summary route addresses |
 | Team | ESPN team id | canonical slug (`nat-civ`) | the curated seed, identical in both languages (`teamCrosswalk.json` equals the seed's ESPN map); `canonicalTeamId` accepts either space, so links and follows built from reader ids match |
 | Scorer/card `teamId` | the provider id ESPN credits, normally a match side (kept as sent even when it names neither) | the canonical id of that side, or `null` | stored `match_detail` keeps the provider id; the reader translates at read time through each side's `team_external_ref` ids for the match's source (one statement, no per-event queries). A reference naming neither side, or both, is `null` — never a default side |
-| Player | Provider athlete id in `PlayerProfile.id`; route-layer slugs drive website links | `PlayerProfile.id` is the canonical UUID; `playerSlug` stays null | Explicit `player_external_ref (source, source_id)` crosswalk; no provider-id or name-derived URL fallback. T10.4 proves canonical addressing; a persistent slug lookup is still proposed, not implemented. Existing source-qualified `athleteId` fields remain non-link values. |
+| Player | Provider athlete id in `PlayerProfile.id`; route-layer slugs drive website links | `PlayerProfile.id` is the canonical UUID; `playerSlug` stays null | Explicit `player_external_ref (source, source_id)` crosswalk; no provider-id or name-derived URL fallback. T10.4 proves canonical addressing; a persistent slug lookup is still proposed, not implemented. Existing source-qualified `athleteId` fields, and `SquadPlayer.id` since T10.3 ([below](#t103-team-and-squad-contract)), remain non-link provider values. |
 
 Match ids are store-scoped, so for T16.3 every method that produces or consumes
 them (the four window methods, `getBracket`, `getTeam`'s schedule, `getPlayer`'s
@@ -470,8 +473,9 @@ where those names equal ESPN's, which they do for every recorded club.
   shrink the season's distinct team count. A same-size refresh that swaps a
   club can still land between the reads; the swapped club then surfaces as
   `unclassified-team` (`partial`), never in the wrong table.
-- The adapter claims no freshness. The matches route's headers describe the
-  window; standings carry none (`T17.3-freshness-coverage`).
+- The adapter claims no freshness. Core match headers describe the window;
+  standings expose their independent observation through `X-ScoreArc-Resources`
+  (T17.3 below). A derived table needs both input resources checked.
 - The Liga MX membership in the vector is synthetic (no recorded Apertura
   table). Production membership is whatever the ingester stored.
 - Unchanged ESPN-path behaviors:
@@ -580,8 +584,9 @@ This is an output bound, not a claim that database text allocations are capped.
 
 Migration **0026_reader_contracts** adds nullable leader identity columns and the
 restricted participation view; it reuses `top_scorer.category` (0010) and
-`appearance` (0006). Applied migrations are unchanged. Both binaries embed an
-**exact schema head of 26** and refuse a different or dirty ledger. An older
+`appearance` (0006). Applied migrations are unchanged. T10.2's binaries embedded an
+**exact schema head of 26** (27 since T10.3, [below](#rollout-migration-0027)) and
+refuse a different or dirty ledger. An older
 25-expecting binary also refuses 26 on restart: coordinate a maintenance rollout
 of both binaries and schema under separate operator authorization. From a
 verified 24 environment, apply 0025 per its recovery runbook, then 0026; do not
@@ -592,12 +597,65 @@ participation facts unchanged. Reverting binaries/schema requires the same
 exact-version coordination. Production availability and historical acceptance
 remain separate gates.
 
+## T10.3 team and squad contract
+
+**October 26.** The eight T10.3 gaps are closed with positive assertions in
+all three suites (TypeScript, Go and OpenAPI, real Postgres). The website still
+reads ESPN; nothing in the frontend changed except the contract tests.
+
+| Field or behavior | Contract | Proof |
+|---|---|---|
+| `SquadPlayer.id` | The provider athlete id on the membership's source, from `player_external_ref`: the id the frontend keys player slugs by, never the canonical UUID. Several refs: the earliest `first_seen_at`, then `source_id`. A member with no ref fails the squad block closed | go-db: the recorded roster through `ReplaceSquad` serves exactly the vector's ids in provider order; a later second ref does not displace the first; a missing ref degrades the squad |
+| `age` | Whole years since `player.birth_date` on the request's UTC date (the handler's clock); a future birth date is `null` | go-db at the roster's recorded date reproduces all 31 recorded ESPN ages; a future birth date is `null` |
+| `headshotUrl` | The roster's `headshot.href`, kept only when it is https media on ESPN's CDN (`shared/cdnurl`, the rule asset mirroring uses) | go-db: the 2 recorded headshots; the mapper and `cdnurl` tests reject other hosts, credentials, ports and schemes |
+| Squad order | Provider roster order (`squad_membership.roster_order`); rows written before 0027 fall back to shirt number, then name | go-db: the vector's order |
+| `location` | The roster's `team.location` | go-db and TS: `América` |
+| `record` | W-D-L, games, points and goal difference from the team's first stored standing row | go-db: a standing row built from the recorded profile's record item serves exactly the frontend's record (`3-1-0`, 4, 10, +7) |
+| `standing`, `standingSummary` | `{rank, competition}` and `"<ordinal> in <competition>"` from that row, where `competition` carries the label. The label is the team's table name when the season holds several stored tables (`Group B`, `Apertura`), else the competition's stored name; an unnamed table among several serves both as `null` | TS: the frontend's own parser reads the reader sentence back as the reader standing; go-db: single-table, multi-table and unnamed-table cases; `TestOrdinal` |
+| `scheduleAvailability`, schedule `scope` | `available`/`available` with `scope` `{competitionId, seasonId}` on every schedule row (`TeamMatch` = `Match` + `scope`) | team-insights.json `readerTeam`; Go drift test between the two OpenAPI schemas |
+| Partial failure | Only the identity, snapshot or freshness read, or a cancelled or timed-out request, fails the request with 500. A failed squad read serves `squad: []`; a failed schedule read serves `schedule: []` with both availabilities `unavailable`. Either way the response is `no-store` and the failure is logged with request id, operation, error type, SQLSTATE and the `row_bound_exceeded`/`missing_provider_id` flags, never dependency text | go-db: revoking the squad or schedule table and malformed detail JSON serve the vector's degraded blocks; TS: the frontend's same degradation equals the vector |
+| `GET …/teams/{teamId}/squad` | The frontend's `getSquad`: the same rows, `public, max-age=300`. Unknown team 404; a failed squad read is `200 []` `no-store`; a failed identity read, or a cancelled or timed-out request, is 500 | fake routing, go-db and the transport vectors |
+| Bounds and input | Squad at most 100 rows, schedule at most 200; one row past either fails that block closed rather than truncating. Both routes reject any query string with 400 | go-db at and one past each bound; a squad `EXPLAIN` reaches `player_external_ref` only through its index |
+| Cache headers | Team `public, max-age=120`, squad `public, max-age=300`, both documented in OpenAPI | transport vectors against OpenAPI |
+
+The standing label is a contract decision, not parity. ESPN's sentence names
+its sponsor label (`1st in Mexican Liga BBVA MX`); the reader cannot know that
+label and uses the stored names instead.
+
+The roster's colour and location are written before its squad, so a squad
+write the shrink guard refuses still records them.
+
+### Rollout: migration 0027
+
+**Migration `0027_team_squad_contract` must be applied to production before
+this change is merged.** It is additive: nullable `team.location`,
+`player.headshot_url` and `squad_membership.roster_order` (non-negative). It
+needs no new grants; the existing table grants cover the new columns. Both
+binaries embed an exact head of 27, so an older binary refuses 27 on restart.
+Follow the [version policy window](RELEASES.md#version-policy-and-its-cost):
+
+1. Verify the ledger. Apply 0027 alone only from 26. Below 26, finish the T10.2
+   rollout first: from 24 (the last owner report), 0025 per its
+   [recovery runbook](PARTICIPATION_RECOVERY.md#schema-rollout-and-rollback) and
+   then 0026; from 25, 0026 ([above](#cost-and-rollout)). Never `goto 27` across
+   that window.
+2. Apply 0027 under separate authorization.
+3. Merge so both services release.
+
+Existing rows hold `NULL` until the next roster refresh. Until then the reader
+serves `location` and `headshotUrl` as `null` and falls back to shirt-number
+order. Squads in leagues whose roster writes the shrink guard refuses keep
+their old memberships, so they get no roster order or headshots until those
+writes succeed. Their location and colour still update.
+
+Rolling back 0027 drops only those three columns. Do it after the 27 binaries
+are gone.
+
 ## T10.4 player contract
 
 October 26 implementation; no migration or source switch. `T10.4-player` is
 replaced with positive TypeScript, Go/OpenAPI and least-privilege Postgres
-assertions. The existing schema head remains 26; this change neither applies it
-nor asserts production readiness.
+assertions. T10.4 adds no migration of its own and does not assert production readiness.
 
 `GET /v1/competitions/{comp}/{season}/players/{playerId}` serves one composite
 profile. `playerId` must be a lowercase hyphenated canonical UUID. Malformed
@@ -609,8 +667,8 @@ into a URL. The existing website slug resolver and ESPN data source are unchange
 Identity is read even when the requested season has no squad, aggregate, career
 or appearance rows. `age` is computed from the stored birth date using the UTC
 calendar; absent/future dates are null. Position uses the held player position
-(or an empty string). Flag and headshot URLs remain null because those facts are
-not stored; they are never manufactured from a provider id. The scoped season
+(or an empty string). Flag and headshot URLs remain null: flags are not stored, and the
+headshot T10.3 stores (migration 0027) is served on `SquadPlayer`, not yet here; they are never manufactured from a provider id. The scoped season
 aggregate's team takes precedence over the latest scoped squad membership;
 jersey comes only from the selected team's membership. Missing team is null.
 
@@ -664,6 +722,191 @@ complete participation, opposite-side substitutions, own goals, 5/50 output
 caps, 2,000/512 internal boundaries, cancellation, snapshot release and sanitized
 failures. No change to the known empty-bio ingestion condition is included.
 
+## T21.4 dependency-error logging slice
+
+**October 30.** `T21.4-dependency-error-logging` is replaced by positive
+assertions. The six handlers for matches, standings, bracket, top-scorers, news
+and match summary retain an error event with `request_id`, `operation`,
+`error_type` (the Go error type) and `sqlstate` (empty for non-Postgres errors).
+`errors.As` extracts SQLSTATE through wrapped PostgreSQL errors; the type still
+identifies the outer error or wrapper. Competition routes retain validated
+`competition`/`season`; news has only `competition`, and summary has the
+validated canonical match UUID in `id`. Operation labels match the existing
+event names, including `top scorers` and `match summary`.
+
+No error message, PostgreSQL Message/Detail, connection URL, query/arguments,
+request headers or upstream response body is logged by these calls. The
+server-generated request id correlates each diagnostic with its existing access
+record. Team/squad logging and the `row_bound_exceeded`/`missing_provider_id`
+flags are unchanged.
+
+`TestDependencyErrorLogging` covers all six handlers with synthetic secrets,
+hostile newlines, generic/provider/PostgreSQL errors, cancellation, deadlines
+and wrappers. It asserts safe fields, exactly one diagnostic plus one access
+event, and unchanged 500/502 bodies and `no-store` headers. Existing success,
+validation and freshness assertions remain. Response and data behavior did not
+change. No migration, source switch or production action is part of this slice;
+the website remains ESPN-backed. Metrics, dashboards and the rest of T21.4
+remain separate work, as does the news ownership gap below.
+
+## T17.3 resource freshness contract
+
+**October 30 implementation; production acceptance pending.** Every successful
+data route exposes `X-ScoreArc-Resources` through CORS. Its value is compact JSON
+`{"version":1,"resources":{...}}`, bounded to eight fixed components and 8 KiB.
+The five existing match headers and their thresholds remain unchanged. JSON
+bodies, identities, football state, query validation and HTTP cache policies are
+unchanged. No `apiStore`, fallback or source switch is implemented.
+
+Each component has required `status`, `availability`, `source`, `derivation`,
+`scope`, `observedAt` and `finalizedAt`; the two timestamps are nullable RFC3339.
+Status is `fresh|empty|stale|unavailable|dormant`; availability independently is
+`complete|empty|partial|pending|unavailable`. Complete describes accepted resource
+coverage, not a claim that every nullable statistic exists. Dormant does not
+prove availability. No observation is invented for legacy rows.
+
+| Route (competition/season prefix omitted) | Independent components |
+|---|---|
+| matches | selected core matches, identity; retained detail only with detail=summary |
+| calendar | UTC calendar derived from core matches |
+| bracket | reconstructed core bracket and identity/placeholders |
+| standings | provider table observation and identity |
+| leaders | requested metric's board and identity |
+| top-scorers | goals board projected to legacy shape and identity |
+| teams/{teamId} | core schedule, retained detail, identity, provider standings, squad, season statistics |
+| teams/{teamId}/squad | identity, squad membership, season statistics |
+| players/{playerId} | identity/context, season statistics, career, held game log, selected participation |
+| /v1/matches/{id} | core match, identity, retained detail, participation |
+| /v1/matches/{id}/box-score | identity and participation |
+| /v1/competitions/{comp}/news | existing ESPN proxy fetch |
+
+`/healthz` remains process/database health and has no data-freshness claim.
+The exact fixed component names and every route are in `resourceFreshness` in
+the shared contract JSON. Go emits the shared frozen-clock vectors; TypeScript's
+strict `parseReaderResources` parses them, OpenAPI validates the decoded value,
+and real Postgres reads prove accepted writes and least-privilege access.
+
+### Accepted evidence and limits
+
+- `resource_observation` stores a durable accepted observation and row count per
+  competition, season, source, resource and subject. Standings, goals, assists
+  and each team's squad are independent. Changed facts and evidence commit in
+  one transaction; a memo hit renews only metadata after checking the stored
+  scope/source/count. Count/source mismatches cannot inherit an ESPN clock.
+- Explicit validated empty input establishes empty only when the stored
+  collection is also empty. Missing/null leader categories, malformed rows,
+  supplied incomplete pagination, failed writes and rejected shrinkage do not
+  renew evidence or erase stored rows. Every supplied leader row is validated
+  before the top thirty are selected. A legitimate smaller leader board is
+  conservatively retained rather than silently accepted as complete.
+- Audits are not heartbeats: `ingest_run` lacks season/category/entity scope,
+  can be sampled/pruned, is best effort, and may report successful preservation
+  of an absent board. Retry timestamps and `match.updated_at` are not evidence.
+- Squad membership uses its accepted collection observation. Its provider URL
+  is a **current roster**, attributed to the configured ingest season, not a
+  historical roster endpoint. Player totals use their own scoped accepted-write
+  `player_season_stat.observed_at`; missing stats or a fresh roster never renew old totals. A mixture
+  of known and missing totals is partial/unavailable, not wholly fresh.
+  Supplied statistics must contain validated nested collections; an empty object
+  is not an empty observation. Malformed or explicitly incomplete nested input
+  preserves retained values and their observation time. Nullable measurements
+  remain valid inside a complete collection.
+- Career uses `player.bio_observed_at`, atomically written with history, including a
+  validated empty history. Supplied history completeness and every row are validated
+  before replacement. It is player-global, not made dormant by the season
+  in the route. The existing provider's explicit athlete-not-found response
+  still maps to an accepted empty career; bio eligibility and cadence are unchanged.
+- Both new player observation columns start null. Older `updated_at` and
+  `bio_fetched_at` values could have been renewed by malformed input accepted by
+  prior mappers, so neither is backfilled as validated evidence. Refresh scheduling
+  keeps its existing clocks and cadence: unknown statistics usually await the next
+  daily roster refresh, and career evidence may await the existing 30-day eligibility
+  plus bounded sweep (up to the declared 32-day window). No extra fetch sweep is added.
+- Identity combines curated and provider data and has no complete observation
+  clock. Retained detail may contain older sections because its writer preserves
+  omitted/null source sections. Both disclose unavailable freshness rather than
+  borrowing the core score's clock. Likewise, a bounded held game log cannot
+  prove all missing appearances were discovered.
+- Participation uses the reader-safe view's own completion timestamp as its
+  accepted observation, plus the match's actual finalization timestamp. A sealed
+  score alone proves nothing about participation. Pending, partial and legacy
+  unavailable capture states stay distinct; completed terminal capture does not
+  expire. Exceptional terminals excluded from participation enrollment do not
+  create fictitious pending work.
+- News remains the same ESPN proxy. Successful fetch time travels with the
+  cached article clone and survives cache hits and singleflight sharing. Article
+  publication time and request time are not fetch observations. Timeout,
+  cancellation and upstream failures retain existing behavior; there is no
+  stale-on-error service. Supplied truncation, count and pagination contradictions
+  cannot establish a successful empty fetch. T16.6 and rights/ownership decisions
+  remain open.
+
+### Expiry, failures and cost
+
+| Resource | Expired at equality | Basis |
+|---|---|---|
+| standings; each leader metric | 20 minutes | four nominal five-minute slow ticks |
+| squad; supplied season statistics | 25 hours | daily roster refresh plus alignment/processing margin |
+| career | 32 days | 30-day eligibility plus bounded 20-player/five-minute sweep (~30 hours for 6,300 players) |
+| news | 90 seconds | existing process cache TTL |
+| core matches | unchanged | existing match freshness contract |
+| completed final participation | never | separately sealed capture |
+
+Reader time detects a stopped worker. Missing/future/nonfinite observation
+timestamps are unavailable; a future timestamp in any contributing aggregate
+row cannot hide behind a valid older minimum. A season-scoped resource is
+dormant only outside its configured bounds with no unresolved match or required
+participation work. Availability continues to expose missing evidence.
+The unchanged core match headers can therefore report dormant while a broader
+resource component remains unavailable because required participation is unresolved.
+
+Missing evidence is a normal 200 with explicit metadata. A metadata SQL/schema
+failure is sanitized 500/no-store, not empty or fresh. New observation-write
+failures carry safe loggable text while retaining wrapped causes for classification.
+Degraded team/squad child
+blocks keep their existing 200/no-store behavior and name the unavailable
+component. Body and metadata share one ten-second read-only repeatable-read
+snapshot, released before any success/error write; rollback survives request
+cancellation with a bounded cleanup context.
+
+Measured statement counts (excluding transaction/savepoint control) are two for
+standings/leaders/top-scorers, three for squad, four for team, five for player
+and five for box score. Existing match/calendar/bracket paths retain two; the
+summary retains its existing body/scope reads plus one combined metadata read.
+There is no per-player/match query loop or second full-season body read. Physical
+collection probes stop at 10,001 standings memberships, 31 leaders or 101 squad
+members; overflow cannot produce healthy evidence. Selected participation is
+bounded by the single match or five returned game-log matches. Header output is
+fixed by component count, not season size.
+
+Ingestion adds no provider request. Each accepted collection transaction adds
+one scoped transaction lock, one count/source check and one observation upsert;
+changed leader boards also check the previous size to reject shrinkage. Memo
+hits do not rewrite facts. At ten competitions and two leader metrics plus
+standings every five minutes, the baseline ceiling is 8,640 observation upserts
+per day, plus per-team daily roster observations and finalization-triggered
+board refreshes. These are bounded write counts, not measured production billing
+or latency. Failed/missing categories can only lower successful write counts.
+Silent upstream omissions without contradictory counts remain unknowable.
+
+### Migration and production acceptance
+
+**Apply additive migration `0028_resource_observation` before merging this PR,
+under separate authorization.** The owner's current baseline is already clean
+0027 with Teams/Players/Leaders deployed. Do not repeat their migrations or
+rebuild their endpoints. The new table has reader SELECT-only and ingester
+SELECT/INSERT/UPDATE grants; the participation view exposes only match id,
+completed boolean and completed time. No history is backfilled, no facts are
+changed, and no owner credentials enter application or CI configuration.
+
+Both binaries embed exact head 28. Follow the separately authorized
+[exact-head transition](RELEASES.md#version-policy-and-its-cost); schema gates
+and release checks remain enforced. After deployment, independently verify
+scope-specific observations advance on unchanged payloads, different leader
+metrics and squads retain separate clocks, empty/retained cases are honest and
+service roles retain their grants. Local tests are not production acceptance.
+No watchdog scheduling or delivery is changed here.
+
 ## Remaining gaps
 
 The full mismatch text for each gap is in `reader-contract.json` under `gaps`.
@@ -671,10 +914,7 @@ The gaps stay open until their tasks land.
 
 | Task | Gaps |
 |---|---|
-| **T10.3** team and squad | `team`, `team-location`, `team-record`, `standing-summary`, `squad`, `squad-fields`, `partial-failure`, `team-cache-doc` (OpenAPI documents 60s; the route serves 120s) |
 | **T16.6** news | `news`: a live ESPN proxy, not owned data |
-| **T17.3** provenance and freshness | `freshness-coverage`: no freshness headers on standings, top-scorers or news |
-| **T21.4** observability | `dependency-error-logging`: six handlers log raw dependency text. `handleTeam`'s and `handleCalendar`'s sanitized logging is the asserted reference |
 
 Every check fails when its gap closes. To close one:
 

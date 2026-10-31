@@ -170,6 +170,7 @@ func TestSquadAndBioMigrationsRollbackInReverseOrder(t *testing.T) {
 	}
 
 	for _, name := range []string{
+		"0028_resource_observation.down.sql",
 		"0012_player_bio.down.sql",
 		"0011_squad_and_season_stats.down.sql",
 	} {
@@ -199,6 +200,7 @@ WHERE table_name='player' AND column_name IN ('birth_date','nationality')`); got
 	for _, name := range []string{
 		"0011_squad_and_season_stats.up.sql",
 		"0012_player_bio.up.sql",
+		"0028_resource_observation.up.sql",
 	} {
 		if _, err := pool.Exec(ctx, read(name)); err != nil {
 			t.Fatalf("reapply %s: %v", name, err)

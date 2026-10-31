@@ -2,6 +2,7 @@ package espn
 
 import (
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -177,6 +178,27 @@ func TestNormaliseHexColour(t *testing.T) {
 	for _, c := range cases {
 		if got := normaliseHexColour(c.in); got != c.want {
 			t.Errorf("normaliseHexColour(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// The wiring to cdnurl.ProviderMedia, which owns the full URL rule matrix:
+// an ESPN CDN headshot is kept, anything else is dropped.
+func TestMapRosterKeepsOnlyESPNCDNHeadshots(t *testing.T) {
+	kept := "https://a.espncdn.com/i/headshots/soccer/players/full/1.png"
+	for href, want := range map[string]string{
+		kept:                         kept,
+		"https://evil.example/1.png": "",
+		"":                           "",
+	} {
+		raw := []byte(`{"status":"success","team":{"id":"1","location":" Club Town "},"athletes":[{"id":"9","fullName":"P","headshot":{"href":` +
+			strconv.Quote(href) + `}}]}`)
+		squad, err := MapRoster(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if squad.Players[0].HeadshotURL != want || squad.Location != "Club Town" {
+			t.Fatalf("%q: headshot %q location %q", href, squad.Players[0].HeadshotURL, squad.Location)
 		}
 	}
 }

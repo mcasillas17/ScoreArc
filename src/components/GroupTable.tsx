@@ -1,5 +1,6 @@
 import type { Group } from "@/server/data/types";
 import TeamBadge from "./TeamBadge";
+import FormBadges from './FormBadges';
 import { teamHref } from './teamHref';
 import { groupRowClass } from "./groupRowClass";
 import { useTranslations } from '@/i18n/I18nProvider';
@@ -48,6 +49,7 @@ export default function GroupTable({ group, teamStyle, teamBase }: GroupTablePro
                   <TeamBadge team={s.team} size={22} style={teamStyle} href={teamHref(teamBase, s.team)} />
                   <span className="team-name">{s.team.name}</span>
                 </div>
+                <FormBadges teamId={s.team.id} teamName={s.team.name} />
               </td>
               <td>{s.played}</td>
               <td>{s.wins}</td>

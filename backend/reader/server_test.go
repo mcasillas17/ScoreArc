@@ -21,6 +21,9 @@ import (
 )
 
 type fakeReaderStore struct {
+	resources          resourceSnapshot
+	resourcesErr       error
+	resourceScope      resourceScope
 	player             *PlayerProfile
 	playerErr          error
 	boxScore           *BoxScore
@@ -50,6 +53,17 @@ type fakeReaderStore struct {
 	freshness          freshnessSnapshot
 	freshnessErr       error
 	calls              int
+}
+
+func (f *fakeReaderStore) Resources(_ context.Context, scope resourceScope) (resourceSnapshot, error) {
+	f.resourceScope = scope
+	snapshot := f.resources
+	snapshot.Core = f.freshness
+	snapshot.CoreFound = true
+	if f.resourcesErr != nil {
+		return snapshot, f.resourcesErr
+	}
+	return snapshot, f.freshnessErr
 }
 
 func (f *fakeReaderStore) Snapshot(context.Context) (matchReader, func() error, error) {
@@ -84,7 +98,7 @@ func (f *fakeReaderStore) Calendar(context.Context, string, string) (SeasonCalen
 	f.calls++
 	return f.calendar, f.calendarErr
 }
-func (f *fakeReaderStore) Team(_ context.Context, teamID, _, _ string) (*TeamProfile, error) {
+func (f *fakeReaderStore) Team(_ context.Context, teamID, _, _ string, _ time.Time) (*TeamProfile, error) {
 	f.calls++
 	if f.teamErr != nil {
 		return nil, f.teamErr
@@ -94,6 +108,17 @@ func (f *fakeReaderStore) Team(_ context.Context, teamID, _, _ string) (*TeamPro
 		return nil, nil
 	}
 	return profile, nil
+}
+func (f *fakeReaderStore) Squad(_ context.Context, teamID, _, _ string, _ time.Time) ([]SquadPlayer, error) {
+	f.calls++
+	if f.teamErr != nil {
+		return nil, f.teamErr
+	}
+	profile, known := f.teams[teamID]
+	if !known {
+		return nil, ErrNotFound
+	}
+	return profile.Squad, nil
 }
 func (f *fakeReaderStore) Standings(context.Context, string, string, string) ([]Group, error) {
 	f.calls++
@@ -123,6 +148,11 @@ func (f *fakeNewsReader) Get(_ context.Context, slug string) ([]espn.NewsArticle
 	f.calls++
 	f.slug = slug
 	return f.articles, f.err
+}
+
+func (f *fakeNewsReader) GetWithObservation(ctx context.Context, slug string) ([]espn.NewsArticle, time.Time, error) {
+	articles, err := f.Get(ctx, slug)
+	return articles, time.Time{}, err
 }
 
 func newTestApp(t *testing.T, store *fakeReaderStore, news *fakeNewsReader) *App {

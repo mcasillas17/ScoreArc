@@ -101,8 +101,22 @@ func inTableOrder(entries []rawStandingEntry) []rawStandingEntry {
 // tables without one. The writer then keeps the stored standings. A lone
 // table may omit its id; it is keyed "".
 func MapStandings(raw []byte) ([]Standing, error) {
-	if err := validateArrayEnvelope(raw, "children"); err != nil {
+	groups, err := validateCollection(raw, "children")
+	if err != nil {
 		return nil, err
+	}
+	for _, rawGroup := range groups {
+		var group map[string]json.RawMessage
+		if err := json.Unmarshal(rawGroup, &group); err != nil {
+			return nil, err
+		}
+		entries, err := validateCollection(group["standings"], "entries")
+		if err != nil {
+			return nil, err
+		}
+		if err := validateCollectionMetadata(group, len(entries)); err != nil {
+			return nil, err
+		}
 	}
 	var doc rawStandingsDoc
 	if err := json.Unmarshal(raw, &doc); err != nil {

@@ -2,90 +2,17 @@
  "about": "T16.1 reader contract vectors. Consumed by reader-contract.test.ts and backend/reader/reader_contract_test.go. Not a parity claim: gaps are characterized, not normalized away. Per-method gap lists name the incompatibilities in the fields that frontend method actually populates (getFixtures and getLiveWindow do not enrich scorers or stats), not every field their shared reader route can return.",
  "evidence": {
   "recorded": "Unmodified recorded ESPN payloads under src/server/data/__fixtures__ (both languages read the same bytes).",
-  "synthetic": "Synthetic, labeled where they appear: queries.events and queries.liveMinute, freshness snapshots, transport paths, summary.syntheticOverlay (with its headerIdentity and levelHeader cases), scoreboard.shootoutPrecedence, bracket.liveClockless and bracket.liveShootout, standings.unnamedTable and standings.synthetic, player.missingContext, the reader match/bracket UUIDs, the integration test's standings tie rows and provisional team, its stored clockless live row, sealed legacy detail rows (with their aligned match events and players), resolver-minted match, finalization winner rows and the Leagues Cup competition, teams and match row under the recorded own-goal detail, and the seedLigaTeam standing behind team.readerStandingSummary. None is a production crosswalk.",
+  "synthetic": "Synthetic, labeled where they appear: queries.events and queries.liveMinute, freshness snapshots, transport paths, summary.syntheticOverlay (with its headerIdentity and levelHeader cases), scoreboard.shootoutPrecedence, bracket.liveClockless and bracket.liveShootout, standings.unnamedTable and standings.synthetic, player.missingContext, the reader match/bracket UUIDs, the integration test's standings tie rows and provisional team, its stored clockless live row, sealed legacy detail rows (with their aligned match events and players), resolver-minted match, finalization winner rows and the Leagues Cup competition, teams and match row under the recorded own-goal detail, the standing row built from the recorded profile's record item (team.standingRow), and the team.partialFailure body. None is a production crosswalk.",
   "crosswalk": "Provider-to-canonical team ids come from the production seed (backend/config/teams.seed.json, exported to src/server/data/teamCrosswalk.json). Summary and own-goal side ids are checked against it in both suites; standings ids through the group-A comparisons (TS crosswalk, Go seed); bracket side ids only in the Go database suite."
  },
  "gaps": {
-  "T10.3-team": {
-   "task": "T10.3",
-   "mismatch": "Reader TeamProfile lacks standing, scheduleAvailability and per-match scope (pinned in team-insights.json).",
-   "suites": [
-    "go"
-   ]
-  },
-  "T10.3-squad": {
-   "task": "T10.3",
-   "mismatch": "No standalone squad route; the squad exists only inside TeamProfile.",
-   "suites": [
-    "go"
-   ]
-  },
   "T16.6-news": {
    "task": "T16.6",
    "mismatch": "Reader news is a live ESPN proxy (502 on upstream failure), not owned data; bodies match today.",
    "suites": [
     "go"
    ]
-  },
-  "T17.3-freshness-coverage": {
-   "task": "T17.3",
-   "mismatch": "Standings, top-scorers and news responses carry no X-ScoreArc freshness headers.",
-   "suites": [
-    "go"
-   ]
-  },
-  "T10.3-team-location": {
-   "task": "T10.3",
-   "mismatch": "Reader TeamProfile.location is always null (no column is selected); the frontend maps the provider location.",
-   "suites": [
-    "go-db"
-   ]
-  },
-  "T10.3-squad-fields": {
-   "task": "T10.3",
-   "mismatch": "Reader SquadPlayer.id is a canonical player UUID, not the provider athlete id; age and headshotUrl are always null (no column is selected); and the squad is served in shirt-number order rather than provider roster order.",
-   "suites": [
-    "go-db"
-   ]
-  },
-  "T10.3-partial-failure": {
-   "task": "T10.3",
-   "mismatch": "The frontend getTeam/getSquad degrade a failed roster or schedule to empty (squad [], schedule unavailable) and return null only when the profile fails; the reader fails the whole team request with 500 when any child query fails.",
-   "suites": [
-    "ts",
-    "go"
-   ]
-  },
-  "T10.3-standing-summary": {
-   "task": "T10.3",
-   "mismatch": "Reader standingSummary is generated as '<rank> in <competition id>' from the standing row; the frontend serves the provider's own string.",
-   "suites": [
-    "ts",
-    "go-db"
-   ]
-  },
-  "T21.4-dependency-error-logging": {
-   "task": "T21.4",
-   "mismatch": "Every reader data handler except handleTeam and handleCalendar (matches, standings, bracket, top-scorers, news, match summary) logs the raw dependency error text, which can carry connection details; handleTeam logs only operation, error type and SQLSTATE, and handleCalendar only its scope and whether the row bound was exceeded.",
-   "suites": [
-    "go"
-   ]
-  },
-  "T10.3-team-cache-doc": {
-   "task": "T10.3",
-   "mismatch": "handleTeam serves Cache-Control public, max-age=120, but OpenAPI documents the team route with StandardCacheControl (public, max-age=60).",
-   "suites": [
-    "go"
-   ]
-  },
-  "T10.3-team-record": {
-   "task": "T10.3",
-   "mismatch": "The frontend TeamProfile.record is the provider's record item (summary string, gamesPlayed, points, goalDifference from provider stats); the reader derives W-D-L, games, points and goal difference from its own standing row.",
-   "suites": [
-    "go-db"
-   ]
-  }
- },
+  } },
  "readerOnly": {
   "/v1/competitions/{comp}/{season}/calendar": "T10.1 season calendar (one row per UTC match day). No DataStore method: the site builds month views from getFixtures today.",
   "/v1/competitions/{comp}/{season}/top-scorers": "T10.2 legacy goals-only shape, full stored board bounded to 30; new consumers use leaders.",
@@ -94,47 +21,47 @@
  "methods": {
   "getMatches": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T21.4-dependency-error-logging"]
+   "gaps": []
   },
   "getFixtures": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T21.4-dependency-error-logging"]
+   "gaps": []
   },
   "getLiveWindow": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T21.4-dependency-error-logging"]
+   "gaps": []
   },
   "getUpcoming": {
    "reader": "/v1/competitions/{comp}/{season}/matches",
-   "gaps": ["T21.4-dependency-error-logging"]
+   "gaps": []
   },
   "getStandings": {
    "reader": "/v1/competitions/{comp}/{season}/standings",
-   "gaps": ["T17.3-freshness-coverage", "T21.4-dependency-error-logging"]
+   "gaps": []
   },
   "getBracket": {
    "reader": "/v1/competitions/{comp}/{season}/bracket",
-   "gaps": ["T21.4-dependency-error-logging"]
+   "gaps": []
   },
   "getMatchSummary": {
    "reader": "/v1/matches/{id}",
-   "gaps": ["T21.4-dependency-error-logging"]
+   "gaps": []
   },
   "getLeaders": {
    "reader": "/v1/competitions/{comp}/{season}/leaders",
-   "gaps": ["T17.3-freshness-coverage", "T21.4-dependency-error-logging"]
+   "gaps": []
   },
   "getNews": {
    "reader": "/v1/competitions/{comp}/news",
-   "gaps": ["T16.6-news", "T17.3-freshness-coverage", "T21.4-dependency-error-logging"]
+   "gaps": ["T16.6-news"]
   },
   "getTeam": {
    "reader": "/v1/competitions/{comp}/{season}/teams/{teamId}",
-   "gaps": ["T10.3-team", "T10.3-team-location", "T10.3-partial-failure", "T10.3-standing-summary", "T10.3-team-cache-doc", "T10.3-team-record", "T10.3-squad", "T10.3-squad-fields"]
+   "gaps": []
   },
   "getSquad": {
-   "reader": "/v1/competitions/{comp}/{season}/teams/{teamId}",
-   "gaps": ["T10.3-squad", "T10.3-squad-fields", "T10.3-partial-failure"]
+   "reader": "/v1/competitions/{comp}/{season}/teams/{teamId}/squad",
+   "gaps": []
   },
   "getPlayer": {
    "reader": "/v1/competitions/{comp}/{season}/players/{playerId}",
@@ -4109,8 +4036,8 @@
    }
   ],
   "withAge": 31,
-  "readerOrder": ["Ángel Malagón", "Emilio Lara", "Israel Reyes", "Sebastián Cáceres", "Kevin Álvarez", "Brian Rodríguez", "Henry Martín", "Alejandro Zendejas", "Isaías Violante", "Alan Cervantes", "Raúl Zúñiga", "Alexis Gutierrez", "Fernando Tapia", "Óscar Perea", "Raphael Veiga", "Franco Rossano", "Cristian Borja", "Ícaro ca Conceição", "Érick Sánchez", "Ramón Juarez", "Rodolfo Cota", "César Lugo", "Miguel Vazquez", "Patricio Salas", "Dagoberto Espinoza", "Santiago Naveda", "Miguel Ramírez", "Esteban Lozano", "Osvaldo Arriaga", "Santiago Gael Camarena Rosales", "Alejandro Cárdenas", "Adrián Fernández", "Andrés Marioni Araujo Muñoz", "Ricardo Gonzalez", "Edwin Cerrillo"],
-  "readerOrderNote": "Reader order (teamSquadSQL: shirt number, nulls last, then name). The recorded roster has unique numbers and one null, so collation never decides it.",
+  "asOf": "2026-08-20",
+  "asOfNote": "The roster's recorded UTC date. ESPN's age is whole years since dateOfBirth on that date; the reader derives the same from player.birth_date on the request's UTC date.",
   "players": [
    {
     "id": "49306",
@@ -5659,6 +5586,360 @@
    }
   }
  },
+ "resourceFreshness": {
+  "routes": {
+   "/v1/competitions/{comp}/{season}/matches": [
+    "identity",
+    "matches"
+   ],
+   "/v1/competitions/{comp}/{season}/calendar": [
+    "calendar"
+   ],
+   "/v1/competitions/{comp}/{season}/standings": [
+    "identity",
+    "standings"
+   ],
+   "/v1/competitions/{comp}/{season}/bracket": [
+    "bracket",
+    "identity"
+   ],
+   "/v1/competitions/{comp}/{season}/leaders": [
+    "identity",
+    "leaders"
+   ],
+   "/v1/competitions/{comp}/{season}/top-scorers": [
+    "identity",
+    "leaders"
+   ],
+   "/v1/competitions/{comp}/{season}/teams/{teamId}": [
+    "detail",
+    "identity",
+    "matches",
+    "seasonStats",
+    "squad",
+    "standings"
+   ],
+   "/v1/competitions/{comp}/{season}/teams/{teamId}/squad": [
+    "identity",
+    "seasonStats",
+    "squad"
+   ],
+   "/v1/competitions/{comp}/{season}/players/{playerId}": [
+    "career",
+    "gameLog",
+    "identity",
+    "participation",
+    "seasonStats"
+   ],
+   "/v1/matches/{id}": [
+    "detail",
+    "identity",
+    "matches",
+    "participation"
+   ],
+   "/v1/matches/{id}/box-score": [
+    "identity",
+    "participation"
+   ],
+   "/v1/competitions/{comp}/news": [
+    "news"
+   ]
+  },
+  "about": "Synthetic frozen-clock T17.3 observations. Go computes and emits these exact resource envelopes; TypeScript parses them and OpenAPI validates them. Route coverage includes all data routes; health is separate. No production observations.",
+  "cases": [
+   {
+    "name": "standings before expiry",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "standings",
+    "ttlSeconds": 1200,
+    "scope": "competition-season",
+    "derivation": "direct",
+    "dormant": false,
+    "evidence": {
+     "observedAt": "2026-10-30T11:40:00.000000001Z",
+     "rowCount": 20
+    },
+    "expected": {
+     "version": 1,
+     "resources": {
+      "standings": {
+       "status": "fresh",
+       "availability": "complete",
+       "source": "espn",
+       "derivation": "direct",
+       "scope": "competition-season",
+       "observedAt": "2026-10-30T11:40:00.000000001Z",
+       "finalizedAt": null
+      }
+     }
+    }
+   },
+   {
+    "name": "standings at expiry",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "standings",
+    "ttlSeconds": 1200,
+    "scope": "competition-season",
+    "derivation": "direct",
+    "dormant": false,
+    "evidence": {
+     "observedAt": "2026-10-30T11:40:00Z",
+     "rowCount": 20
+    },
+    "expected": {
+     "version": 1,
+     "resources": {
+      "standings": {
+       "status": "stale",
+       "availability": "complete",
+       "source": "espn",
+       "derivation": "direct",
+       "scope": "competition-season",
+       "observedAt": "2026-10-30T11:40:00Z",
+       "finalizedAt": null
+      }
+     }
+    }
+   },
+   {
+    "name": "leader explicit successful empty",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "leaders",
+    "ttlSeconds": 1200,
+    "scope": "competition-season",
+    "derivation": "direct",
+    "dormant": false,
+    "evidence": {
+     "observedAt": "2026-10-30T11:59:00Z",
+     "rowCount": 0
+    },
+    "expected": {
+     "version": 1,
+     "resources": {
+      "leaders": {
+       "status": "empty",
+       "availability": "empty",
+       "source": "espn",
+       "derivation": "direct",
+       "scope": "competition-season",
+       "observedAt": "2026-10-30T11:59:00Z",
+       "finalizedAt": null
+      }
+     }
+    }
+   },
+   {
+    "name": "leader failed empty has no evidence",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "leaders",
+    "ttlSeconds": 1200,
+    "scope": "competition-season",
+    "derivation": "direct",
+    "dormant": false,
+    "evidence": null,
+    "expected": {
+     "version": 1,
+     "resources": {
+      "leaders": {
+       "status": "unavailable",
+       "availability": "unavailable",
+       "source": "espn",
+       "derivation": "direct",
+       "scope": "competition-season",
+       "observedAt": null,
+       "finalizedAt": null
+      }
+     }
+    }
+   },
+   {
+    "name": "empty also expires",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "leaders",
+    "ttlSeconds": 1200,
+    "scope": "competition-season",
+    "derivation": "direct",
+    "dormant": false,
+    "evidence": {
+     "observedAt": "2026-10-30T11:40:00Z",
+     "rowCount": 0
+    },
+    "expected": {
+     "version": 1,
+     "resources": {
+      "leaders": {
+       "status": "stale",
+       "availability": "empty",
+       "source": "espn",
+       "derivation": "direct",
+       "scope": "competition-season",
+       "observedAt": "2026-10-30T11:40:00Z",
+       "finalizedAt": null
+      }
+     }
+    }
+   },
+   {
+    "name": "future observation unavailable",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "standings",
+    "ttlSeconds": 1200,
+    "scope": "competition-season",
+    "derivation": "direct",
+    "dormant": false,
+    "evidence": {
+     "observedAt": "2026-10-30T12:00:01Z",
+     "rowCount": 20
+    },
+    "expected": {
+     "version": 1,
+     "resources": {
+      "standings": {
+       "status": "unavailable",
+       "availability": "unavailable",
+       "source": "espn",
+       "derivation": "direct",
+       "scope": "competition-season",
+       "observedAt": null,
+       "finalizedAt": null
+      }
+     }
+    }
+   },
+   {
+    "name": "dormant retains missing coverage",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "standings",
+    "ttlSeconds": 1200,
+    "scope": "competition-season",
+    "derivation": "direct",
+    "dormant": true,
+    "evidence": null,
+    "expected": {
+     "version": 1,
+     "resources": {
+      "standings": {
+       "status": "dormant",
+       "availability": "unavailable",
+       "source": "espn",
+       "derivation": "direct",
+       "scope": "competition-season",
+       "observedAt": null,
+       "finalizedAt": null
+      }
+     }
+    }
+   },
+   {
+    "name": "roster before daily expiry",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "squad",
+    "ttlSeconds": 90000,
+    "scope": "team-season",
+    "derivation": "current-roster",
+    "dormant": false,
+    "evidence": {
+     "observedAt": "2026-10-29T11:00:00.000000001Z",
+     "rowCount": 24
+    },
+    "expected": {
+     "version": 1,
+     "resources": {
+      "squad": {
+       "status": "fresh",
+       "availability": "complete",
+       "source": "espn",
+       "derivation": "current-roster",
+       "scope": "team-season",
+       "observedAt": "2026-10-29T11:00:00.000000001Z",
+       "finalizedAt": null
+      }
+     }
+    }
+   },
+   {
+    "name": "roster at daily expiry",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "squad",
+    "ttlSeconds": 90000,
+    "scope": "team-season",
+    "derivation": "current-roster",
+    "dormant": false,
+    "evidence": {
+     "observedAt": "2026-10-29T11:00:00Z",
+     "rowCount": 24
+    },
+    "expected": {
+     "version": 1,
+     "resources": {
+      "squad": {
+       "status": "stale",
+       "availability": "complete",
+       "source": "espn",
+       "derivation": "current-roster",
+       "scope": "team-season",
+       "observedAt": "2026-10-29T11:00:00Z",
+       "finalizedAt": null
+      }
+     }
+    }
+   },
+   {
+    "name": "career before bounded sweep expiry",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "career",
+    "ttlSeconds": 2764800,
+    "scope": "player",
+    "derivation": "direct",
+    "dormant": false,
+    "evidence": {
+     "observedAt": "2026-09-28T12:00:00.000000001Z",
+     "rowCount": 4
+    },
+    "expected": {
+     "version": 1,
+     "resources": {
+      "career": {
+       "status": "fresh",
+       "availability": "complete",
+       "source": "espn",
+       "derivation": "direct",
+       "scope": "player",
+       "observedAt": "2026-09-28T12:00:00.000000001Z",
+       "finalizedAt": null
+      }
+     }
+    }
+   },
+   {
+    "name": "career at bounded sweep expiry",
+    "now": "2026-10-30T12:00:00Z",
+    "resource": "career",
+    "ttlSeconds": 2764800,
+    "scope": "player",
+    "derivation": "direct",
+    "dormant": false,
+    "evidence": {
+     "observedAt": "2026-09-28T12:00:00Z",
+     "rowCount": 4
+    },
+    "expected": {
+     "version": 1,
+     "resources": {
+      "career": {
+       "status": "stale",
+       "availability": "complete",
+       "source": "espn",
+       "derivation": "direct",
+       "scope": "player",
+       "observedAt": "2026-09-28T12:00:00Z",
+       "finalizedAt": null
+      }
+     }
+    }
+   }
+  ]
+ },
  "freshness": {
   "competition": "world-cup",
   "season": "2026",
@@ -5954,6 +6235,11 @@
      "path": "/v1/competitions/liga-mx/2026-apertura/teams/mex-america",
      "cacheControl": "public, max-age=120",
      "openapiPath": "/v1/competitions/{comp}/{season}/teams/{teamId}"
+    },
+    {
+     "path": "/v1/competitions/liga-mx/2026-apertura/teams/mex-america/squad",
+     "cacheControl": "public, max-age=300",
+     "openapiPath": "/v1/competitions/{comp}/{season}/teams/{teamId}/squad"
     }
    ]
   }
@@ -5964,21 +6250,18 @@
   "scheduleIds": ["401877037", "401877033", "401877020", "401877014", "401877008", "401876995", "401876986", "401876981", "401876968", "401876956", "401876950", "401876941", "401876932", "401876922", "401876913", "401876904", "401877048"],
   "location": "América",
   "frontendStandingSummary": "1st in Mexican Liga BBVA MX",
-  "readerStandingSummary": "2 in liga-mx",
-  "readerStandingNote": "The reader value is from the synthetic seedLigaTeam standing row (rank 2), so the strings differ in format and source, not only rank.",
-  "frontendRecord": {
+  "record": {
    "summary": "3-1-0",
    "gamesPlayed": 4,
    "points": 10,
    "goalDifference": 7
   },
-  "readerRecord": {
-   "summary": "3-1-1",
-   "gamesPlayed": 5,
-   "points": 10,
-   "goalDifference": 5
-  },
-  "readerRecordNote": "From the synthetic seedLigaTeam standing row (W3 D1 L1, played 5, 10 points, +5): the reader derives the record from its standing row, not the provider's record item."
+  "standingRow": {"rank": 1, "played": 4, "wins": 3, "draws": 1, "losses": 0, "goalsFor": 8, "goalsAgainst": 1, "goalDifference": 7, "points": 10},
+  "standingRowNote": "Synthetic: the recorded profile's own record item (W3 D1 L0, played 4, 8-1, +7, 10 points) and rank (1st), stored as one standing row so both stores describe the same facts.",
+  "readerStanding": {"rank": 1, "competition": "Liga MX"},
+  "readerStandingSummary": "1st in Liga MX",
+  "standingNote": "The reader derives record, standing and standingSummary from that row; the label is the team's table name when the season holds several stored tables, else the stored competition name (this vector is the single-table case). The frontend reads the provider's record item and sentence ('1st in Mexican Liga BBVA MX'): the same record, rank and sentence shape; only the competition label is ours.",
+  "partialFailure": {"squad": [], "schedule": [], "scheduleAvailability": {"results": "unavailable", "upcoming": "unavailable"}}
  },
  "scoreboard": {
   "fixture": "espn-scoreboard.json",

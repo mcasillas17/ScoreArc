@@ -595,8 +595,10 @@ implemented-vs-pending breakdown; the task IDs and plans below are kept stable.
 
 **Read/render tasks — remaining** (they need the writers below, which have run):
 
-- **T7.3** Form column (last five) in every table. It reads finalized matches and
-  can ship on today's `DataStore`; standings snapshots are not its gate.
+- **T7.3** Form (last five) in every table. **Implemented October 30, pending
+  review/release.** It reads finalized matches on today's
+  `DataStore`; standings snapshots are not its gate. Decisions and budgets:
+  [`FRONTEND_STANDINGS_FORM.md`](FRONTEND_STANDINGS_FORM.md).
 - **T7.4** Player game log and per-position percentiles
 - **T7.5** Previous seasons, including non-numeric season ids such as
   `2026-apertura` and `2026-27`
@@ -701,10 +703,11 @@ used to authorize modelling work.
 
 ### E10 · Public API read surface
 
-The read path for everything E7's ingester writes. The base reader ships **eight
+The read path for everything E7's ingester writes. The base reader shipped **seven
 `/v1` data routes plus `/healthz`**. T10.1 (October 6, in review) added validated
-`/matches` queries and the `calendar` route; T10.2 adds leaders and box scores (ten data routes). T10.3–T10.9 remain
-unbuilt. The acceptance criterion is **use-case contract
+`/matches` queries and the `calendar` route (eight); T10.2 adds leaders and box scores (ten data routes); T10.3 adds the
+team squad route (eleven) and is implemented, pending release behind migration 0027; T10.4 adds the
+player profile route (twelve), also pending release. T10.5–T10.9 remain unbuilt. The acceptance criterion is **use-case contract
 parity, not a route count** — each endpoint exists to serve an E1–E8 feature and
 must satisfy the frontend's canonical DTO shapes, query semantics (range/state/
 detail/limit), and derived-view needs, so those feature specs are its
@@ -714,7 +717,7 @@ derived-view parity being a tested contract — see
 
 - **T10.1** Match reads — matches/results by range, calendar (E3, E2) · **closed in code October 6, in review** · [contract](backend/READER_CONTRACT.md#t101-match-query-contract) · [plan (superseded where it conflicts)](superpowers/plans/2026-08-15-api-match-reads.md)
 - **T10.2** Leaders & box scores (E1) · **implemented October 20, pending review/release** · [reconciled plan](superpowers/plans/2026-10-20-t10-2-reader-contracts.md) · [contract](backend/READER_CONTRACT.md#t102-leaders-statistics-and-participation-contract)
-- **T10.3** Teams (E4) · [plan](superpowers/plans/2026-08-15-api-teams.md)
+- **T10.3** Teams (E4) · **implemented October 26, pending review/release (migration 0027 first)** · [contract](backend/READER_CONTRACT.md#t103-team-and-squad-contract) · [plan (superseded where it conflicts)](superpowers/plans/2026-08-15-api-teams.md)
 - **T10.4** Players (E5) · **implemented October 26, pending review/release** · [bounded player contract](backend/READER_CONTRACT.md#t104-player-contract) · [reconciled plan](superpowers/plans/2026-10-26-t10-4-player-reader.md)
 - **T10.5** History & trends (E7, E8) · [plan](superpowers/plans/2026-08-15-api-history.md)
 - **T10.6** Commentary & shots (E6) · [plan](superpowers/plans/2026-08-15-api-commentary-and-shots.md)
@@ -773,7 +776,7 @@ code rather than pasted from a dated plan.
 | **T9.5** | Gate and render xG only for supported competitions. | Unsupported competitions render no xG, never zero or a misleading disabled number. | T9.4, owner product choice |
 | **T10.1** | Add validated range/state/detail/limit match reads and calendar queries through one `params.go` layer. | Bad input is `400`; UUIDv7 match ids are accepted; all-season dumps are never an accidental default. | first E10 task, E16.1 |
 | **T10.2** (implemented; release pending) | Generalize leaders and expose per-match box scores, closing the T10.2 gaps in the T16.1 harness (`src/server/data/contracts/reader-contract.json`: team stats, lineups, leaders, leader board depth). | Goals/assists share one typed shape; unknown stats stay null and percentages are derived from operands; leaders default 10/max 30, legacy top-scorers serves 30; explicit participation availability and historical nulls. Migration 0026 requires separate rollout. | T10.1 |
-| **T10.3** | Complete team profile, squad, and schedule reads. | Unknown teams are `404`; unexpected DB errors retain request-id diagnostics; no speculative fixes for query failures; a failed squad/schedule child query either degrades to an empty block with available/unavailable signalling (as the frontend does) or is explicitly accepted as a 500, closing `T10.3-partial-failure` and the other T10.3 gaps in `src/server/data/contracts/reader-contract.json`. | T10.1, T17.1 |
+| **T10.3** (implemented; release pending) | Complete team profile, squad, and schedule reads. | Unknown teams are `404`; unexpected DB errors retain request-id diagnostics; no speculative fixes for query failures; a failed squad/schedule child query either degrades to an empty block with available/unavailable signalling (as the frontend does) or is explicitly accepted as a 500, closing `T10.3-partial-failure` and the other T10.3 gaps in `src/server/data/contracts/reader-contract.json`. All eight closed October 26 with degradation and removed from the registry; see the [contract](backend/READER_CONTRACT.md#t103-team-and-squad-contract). | T10.1, T17.1 |
 | **T10.4** | Serve canonical player profiles, season totals, and bounded game logs (latest five in this slice; full history stays T7.4/T10.5). | Slug resolution never leaks provider ids; missing optional blocks degrade without losing identity. | T10.1, E16.2 |
 | **T10.5** | Expose bounded standings history, form/streaks, held seasons, percentiles, win-probability, and odds series. | Every list is bounded and every derived metric names its period/sample. | T10.1, E17.3 |
 | **T10.6** | Serve reconciled shots and relational commentary. | Coverage/fidelity accompany the response; no shot surface where T6.3 fails. | T10.1, T6.3 |
@@ -837,7 +840,7 @@ cutover gate are unchanged.
 |---|---|---|---|
 | **T17.1** | Reproduce, diagnose, and fix the Liga MX team-profile 500 in reader store/handler integration tests. | Root cause is evidence from a real-Postgres reproduction, not a UUID hypothesis; seeded teams return `200` or intentional `404`, never unexplained `500`. | none |
 | **T17.2** | Diagnose Greece across config, source, ingester, database, and reader; populate it or gate it out honestly. **#173 recovery and #183 bounded monthly discovery are merged and released; the September 20 recovery completed the original stale matches. October 2 reader checks found all ten match scopes responding with `poll=ok`, nine fresh and World Cup dormant; Greece's `/matches` returned 182 and `fresh`. This match-only evidence does not establish current standings/top-scorers or other collection coverage, or close sustained ingestion acceptance.** Frontend #192/#193 are also merged and released, still ESPN-backed; see [CURRENT_STATE](CURRENT_STATE.md#october-2-reconciliation) and [frontend evidence](FRONTEND_SCOREBOARD_WINDOWS.md). | Never assert a missing row count in advance; a configured-but-unproven competition is not presented as healthy. | diagnosis: none. Population: [SETUP §7.5](backend/SETUP.md#75-verify) freshness acceptance (zero-failure cycles, advancing data including Greece) |
-| **T17.3** | Add source, observed/finalized time, derivation, and complete/empty/stale/unavailable semantics to reader contracts. **#173's match-specific additive freshness headers, accepted-observation timestamps and stopped-worker detection are merged and released; October 2 checks observed those headers. Broader endpoint/provenance coverage remains open.** | Consumers can distinguish a genuine empty window from broken ingestion from the response alone; all reader routes have contract coverage. | T16.1 |
+| **T17.3** | Add source, observed/finalized time, derivation, and complete/empty/stale/unavailable semantics to reader contracts. **#173's match-specific headers remain unchanged. October 30 implementation adds scoped resource metadata to all 12 reader routes, durable collection observations and positive TS/Go/OpenAPI/Postgres coverage. Production acceptance remains pending separately authorized migration 0028 and exact-head rollout; see [contract and limits](backend/READER_CONTRACT.md#t173-resource-freshness-contract).** | Consumers can distinguish a genuine empty window from broken ingestion from the response alone; all reader routes have contract coverage. | T16.1 |
 | **T17.4** | Define per-competition freshness/completeness SLOs, alerts, and runbooks from ingest evidence. **September 19: bounded match watchdog, durable transition deduplication and [runbook](backend/MATCH_FRESHNESS.md) are implemented; schedule/notification delivery and live acceptance are not activated or complete.** | Dormant seasons do not page; active competitions crossing their declared threshold do, with competition/season/run context. | T17.3; T21.4 later exports richer metrics |
 
 **T17.1 production repair accepted (2026-09-06):** the missing `t.color`
@@ -937,7 +940,7 @@ The data-rights decision and all source-cutover boundaries remain in force.
 | **T21.1** | Protect `main`; require PR/CI integration and exact-SHA main CI before Fly or Vercel publication. [Release contract](decisions/2026-09-05-ci-production-gates.md), [operations](backend/RELEASES.md). | No direct push/force push/deletion; failed or skipped tests cannot release. Manual delivery reruns CI; rollback uses a revert PR. Closure requires live settings evidence and post-merge acceptance for all three targets, not just a green PR. | owner GitHub/Vercel access and a non-owner Vercel deployment identity; activation ledger in CURRENT_STATE §10 |
 | **T21.2** | Fail service readiness when the database migration head is behind code and document the controlled apply path. **September 19: the recovery slice checks its 0023 tables/columns/read access at startup. October 4: the fail-closed head/dirty-ledger gate is implemented (no new migration). It protects production only after the owner completes the [activation prerequisites](backend/RELEASES.md#activation-prerequisites-for-t212) and a release containing it runs; record that acceptance in CURRENT_STATE. October 26 follow-up: Fly runs the same check as `release_command` (`-check-schema`) before any service machine changes, and a proven refusal records `inactive` ([release-time gate](backend/RELEASES.md#release-time-schema-gate)).** | First slice does not auto-migrate production; reader/ingester refuse mismatched schema with an actionable error. | none |
 | **T21.3** | Complete provisional-team curation and safe identity promotion in both operator tooling and the ingester promotion path. | Repoint match, standing, appearance, and match-event references before deletion; promotion never ends in FK `23503`. | T21.2 |
-| **T21.4** | Add reader/ingester metrics, bounded audit retention, dashboards, and operator runbooks, and sanitize reader dependency-error logs (gap `T21.4-dependency-error-logging` in the T16.1 harness). | Metrics omit secrets/high-cardinality ids; reader handlers log operation, error type and SQLSTATE rather than raw dependency text, as `handleTeam` already does; each E17 alert links to a diagnostic and recovery action. | none |
+| **T21.4** | Add reader/ingester metrics, bounded audit retention, dashboards, and operator runbooks, and sanitize reader dependency-error logs ([logging slice contract](backend/READER_CONTRACT.md#t214-dependency-error-logging-slice); integration/release status in CURRENT_STATE). The logging slice alone does not complete this task. | Metrics omit secrets/high-cardinality ids; reader handlers log request id, operation, validated scope, error type and SQLSTATE rather than raw dependency text; each E17 alert links to a diagnostic and recovery action. | none |
 
 **T21.1 activation remains open (September 13 readback):** PR #161 merged as
 `0f75102`; main run `34663184517` passed full tests and all three actual credential

@@ -3,6 +3,7 @@
 import type { Standing } from '@/server/data/types';
 import type { TeamStyle, Zone } from '@/server/data/competitions';
 import TeamBadge from './TeamBadge';
+import { LadderTeamName } from './FormBadges';
 import { teamHref } from './teamHref';
 import ZoneRing from './ZoneRing';
 import { toBands, ZONE_VAR } from './zoneBands';
@@ -91,7 +92,7 @@ function Row({ s, teamStyle, marked, started, teamBase }: { s: Standing; teamSty
     <div className={`ll-row lz-row${marked ? ' lz-row--marked' : ''}${started ? '' : ' lz-row--preseason'}`}>
       {started ? <span className="ll-rank">{s.rank}</span> : null}
       <TeamBadge team={s.team} size={26} style={teamStyle} href={teamHref(teamBase, s.team)} />
-      <span className="ll-name">{s.team.name}</span>
+      <LadderTeamName team={s.team} />
       <span className="lz-pl">{s.played}</span>
       <span className="ll-gd">{fmtGD(s.goalDifference)}</span>
       <span className="ll-pts">{s.points}</span>

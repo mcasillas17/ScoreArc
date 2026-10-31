@@ -31,14 +31,17 @@ type MatchObservation struct {
 }
 
 // CheckSchemaReady is the ingester's startup gate: the shared migration-ledger
-// policy plus a zero-row probe of the 0023 bookkeeping columns, run as this
+// policy plus a zero-row probe of the durable observation columns, run as this
 // store's role. Errors are *migrations.ReadinessError, safe to log as-is.
 func (s *Store) CheckSchemaReady(ctx context.Context) error {
 	ctx, cancel := boundedContext(ctx)
 	defer cancel()
 	return migrations.CheckReady(ctx, s.pool, `SELECT s.observed_at,s.last_attempted_at,s.retry_at,s.attempts,s.last_error,
-		p.attempted_at,p.succeeded_at,p.outcome,p.event_count
-		FROM match_sync_status s CROSS JOIN match_poll_status p WHERE false`)
+		p.attempted_at,p.succeeded_at,p.outcome,p.event_count,
+		r.competition_id,r.season_id,r.source,r.resource,r.subject,r.observed_at,r.row_count,
+		bio.bio_observed_at,stats.observed_at
+		FROM match_sync_status s CROSS JOIN match_poll_status p CROSS JOIN resource_observation r
+		CROSS JOIN player bio CROSS JOIN player_season_stat stats WHERE false`)
 }
 
 // A missing crosswalk is returned explicitly, not filtered out of the queue.

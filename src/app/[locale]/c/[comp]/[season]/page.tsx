@@ -203,6 +203,7 @@ export default async function Workspace({ params }: { params: SeasonParams }) {
           </header>
           <StandingsLive
             teamBase={teamBase}
+            playerBase={`/${locale}/c/${rc.competition.id}/${rc.season.id}/player`}
             initialGroups={phaseGroups}
             initialScorers={[]}
             initialAssists={[]}

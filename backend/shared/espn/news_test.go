@@ -108,3 +108,32 @@ func TestMapNewsRecordedFixture(t *testing.T) {
 		t.Fatalf("fixture articles = %+v", articles)
 	}
 }
+
+func TestMapNewsObservationRequiresCompleteCollection(t *testing.T) {
+	const article = `{"headline":"News","links":{"web":{"href":"https://example.com/news"}}}`
+	for _, tc := range []struct {
+		name, raw string
+		count     int
+		valid     bool
+	}{
+		{"explicit empty", `{"articles":[],"count":0,"pagination":{"total":0,"pageCount":0}}`, 0, true},
+		{"complete page", `{"articles":[` + article + `],"count":1,"pagination":{"total":1,"pageCount":1,"pageIndex":1,"next":null}}`, 1, true},
+		{"missing collection", `{}`, 0, false},
+		{"null collection", `{"articles":null}`, 0, false},
+		{"unusable article", `{"articles":[{}]}`, 0, false},
+		{"partial empty", `{"articles":[],"pagination":{"total":1,"pageCount":2}}`, 0, false},
+		{"truncated nonempty", `{"articles":[` + article + `],"truncated":true}`, 0, false},
+		{"filled page unknown total", `{"articles":[` + article + `],"pagination":{"pageSize":1}}`, 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			articles, err := MapNewsObservation([]byte(tc.raw))
+			if tc.valid {
+				if err != nil || articles == nil || len(articles) != tc.count {
+					t.Fatalf("accepted collection=%+v err=%v", articles, err)
+				}
+			} else if err == nil {
+				t.Fatalf("partial collection accepted: %+v", articles)
+			}
+		})
+	}
+}

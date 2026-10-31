@@ -168,8 +168,8 @@ func TestBoxScoreParticipationEvidence(t *testing.T) {
 	queries := &atomic.Int32{}
 	counted := NewStore(countingPool{Pool: reader.pool.(*pgxpool.Pool), queries: queries})
 	response := performRequest(teamIntegrationApp(t, counted, &bytes.Buffer{}).router(), http.MethodGet, "/v1/matches/"+finalMatchID+"/box-score")
-	if queries.Load() != 3 {
-		t.Fatalf("box-score ran %d statements; want context, bounded roster, bounded events", queries.Load())
+	if queries.Load() != 5 {
+		t.Fatalf("box-score ran %d statements; want context, bounded roster, bounded events, scope and resource metadata", queries.Load())
 	}
 	var served BoxScore
 	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &served) != nil || served.Availability != "complete" {

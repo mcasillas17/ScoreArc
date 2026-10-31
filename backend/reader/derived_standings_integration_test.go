@@ -229,5 +229,5 @@ func TestDerivedStandingsInputsAgainstPostgres(t *testing.T) {
 	}
 	// Bounded: the body and freshness in one snapshot, one statement per table
 	// read -- the same for 54 matches as for one.
-	assertWire(t, "statement counts", statements, map[string]int{"phaseMatches": 2, "mls": 1, "ligaMx": 1})
+	assertWire(t, "statement counts", statements, map[string]int{"phaseMatches": 2, "mls": 2, "ligaMx": 2})
 }

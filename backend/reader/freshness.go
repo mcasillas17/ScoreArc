@@ -3,14 +3,10 @@ package main
 import (
 	"context"
 	"errors"
-	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-
-	"github.com/mcasillas17/scorearc-backend/shared/source"
 )
 
 var freshnessHeaders = []string{
@@ -191,41 +187,4 @@ func (s *Store) Freshness(ctx context.Context, scope freshnessScope) (freshnessS
 		return snapshot, ErrNotFound
 	}
 	return snapshot, nil
-}
-
-func (a *App) readFreshness(ctx context.Context, reader matchReader, scope freshnessScope) (matchFreshness, error) {
-	_, season, ok := a.resolve(scope.Competition, scope.Season)
-	if !ok {
-		return matchFreshness{}, errors.New("unknown freshness scope")
-	}
-	start, end, err := source.SeasonBounds(season)
-	if err != nil {
-		return matchFreshness{}, err
-	}
-	snapshot, err := reader.Freshness(ctx, scope)
-	if err != nil {
-		return matchFreshness{}, err
-	}
-	return computeFreshness(a.clock(), start, end, snapshot), nil
-}
-
-func (a *App) attachFreshness(writer http.ResponseWriter, request *http.Request, reader matchReader, finish func(), scope freshnessScope) bool {
-	freshness, err := a.readFreshness(request.Context(), reader, scope)
-	// Release before any response write, including error JSON. A slow client
-	// must not keep this request's database snapshot/pooled connection open.
-	finish()
-	if err != nil {
-		// Do not log dependency text: it can include connection credentials.
-		a.logger.Error("match freshness unavailable", "competition", scope.Competition, "season", scope.Season)
-		writeError(writer, http.StatusInternalServerError, "internal error")
-		return false
-	}
-	writer.Header().Set("X-ScoreArc-Freshness", freshness.Status)
-	writer.Header().Set("X-ScoreArc-Poll-Status", freshness.PollStatus)
-	writer.Header().Set("X-ScoreArc-Stale-Matches", strconv.Itoa(freshness.StaleMatches))
-	writer.Header().Set("X-ScoreArc-Overdue-Matches", strconv.Itoa(freshness.OverdueMatches))
-	if freshness.ObservedAt != nil {
-		writer.Header().Set("X-ScoreArc-Observed-At", freshness.ObservedAt.UTC().Format(time.RFC3339Nano))
-	}
-	return true
 }

@@ -1,5 +1,12 @@
 # Production release runbook
 
+**T17.3 migration-before-merge prerequisite:** production is already at 0027 per
+the owner. The additive `0028_resource_observation` migration requires a separate
+authorized apply and exact-head transition before its PR merges. Do not repeat
+0025–0027. Both service probes include the new metadata; no auto-migration,
+owner application credentials or weakened schema gate is introduced. See
+[T17.3 rollout and acceptance](READER_CONTRACT.md#migration-and-production-acceptance).
+
 Scope: T21.1 delivery of source code to Fly reader/ingester and Vercel frontend.
 The [decision](../decisions/2026-09-05-ci-production-gates.md) owns the invariant;
 [CURRENT_STATE §10](../CURRENT_STATE.md#10-t211-delivery-controls) records what
@@ -879,3 +886,14 @@ defines prerequisites, preserved facts, legacy limits and rollback risks. Down
 restores old seals but drops pending recovery evidence; preserve that ledger and
 resolve outstanding work before any separately authorized rollback. This code
 change authorizes no production SQL, merge or deployment.
+
+## Migrations 0026 and 0027: reader contracts and team squad contract
+
+T10.2 adds `0026_reader_contracts` and T10.3 adds `0027_team_squad_contract`;
+both are additive. The T10.3 binaries embed head 27. **0027 must be applied to
+production before the merge that ships it**, in order after 0025 and 0026 and
+never by `goto 27` across 0025's recovery window. The version window above
+applies, and each step needs separate authorization. Steps, preconditions per
+ledger version and rollback:
+[T10.2 rollout](READER_CONTRACT.md#cost-and-rollout) and
+[0027 rollout](READER_CONTRACT.md#rollout-migration-0027).

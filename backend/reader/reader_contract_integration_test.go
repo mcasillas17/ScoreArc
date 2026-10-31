@@ -36,9 +36,8 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(writer.Close)
-	router := teamIntegrationApp(t, reader, &bytes.Buffer{}).router()
-	// Gaps only real SQL can show are tracked in their own ledger.
-	characterized := map[string]bool{}
+	app := teamIntegrationApp(t, reader, &bytes.Buffer{})
+	router := app.router()
 	get := func(t *testing.T, path string, into any) http.Header {
 		t.Helper()
 		response := performRequest(router, http.MethodGet, path)
@@ -48,6 +47,8 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		if err := json.Unmarshal(response.Body.Bytes(), into); err != nil {
 			t.Fatal(err)
 		}
+		metadata := resourceHeader(t, response.Header())
+		validateSchema(t, document, "ReaderResources", wire(t, metadata))
 		return response.Header()
 	}
 	// Canonical team rows carry the recorded provider metadata explicitly;
@@ -278,6 +279,15 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		if err := writer.ReplaceStandings(ctx, "world-cup", "2026", "espn", rows, teamIDs); err != nil {
 			t.Fatal(err)
 		}
+		var observed time.Time
+		if err := pool.QueryRow(ctx, `SELECT observed_at FROM resource_observation
+			WHERE competition_id='world-cup' AND season_id='2026' AND source='espn' AND resource='standings' AND subject=''`).Scan(&observed); err != nil {
+			t.Fatal(err)
+		}
+		// The VM and host clocks can differ; test acceptance with a deterministic
+		// reader instant while separate vectors require future times to fail closed.
+		app.now = func() time.Time { return observed.Add(time.Second) }
+		defer func() { app.now = nil }()
 		var groups []map[string]any
 		headers := get(t, "/v1/competitions/world-cup/2026/standings", &groups)
 		if len(groups) != len(vectors.Standings.Groups) {
@@ -290,8 +300,9 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			}
 		}
 		assertWire(t, "stored group A", groups[0], vector(t, raw, "standings", "readerGroupA"))
-		if headers.Get("X-ScoreArc-Freshness") != "" {
-			t.Fatal("gap changed: standings now carry freshness")
+		evidence := resourceHeader(t, headers).Resources["standings"]
+		if evidence.Availability != "complete" || evidence.ObservedAt == nil || !evidence.ObservedAt.Equal(observed) || evidence.Source != "espn" || evidence.Scope != "competition-season" {
+			t.Fatalf("standings evidence does not describe accepted scoped write: %+v; accepted=%s reader=%s", evidence, observed.UTC(), app.clock().UTC())
 		}
 		// Equal rank inside one table: team id is the reader's tie-breaker. The
 		// rows are synthetic and scoped to another competition season.
@@ -521,65 +532,133 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		}
 	})
 
-	t.Run("recorded roster through ReplaceSquad and the reader squad projection", func(t *testing.T) {
+	t.Run("recorded roster and record through the writer equal the frontend team and squad", func(t *testing.T) {
 		seedLigaTeam(t, pool)
-		squad, err := espn.MapRoster(contractFixture(t, fixtureName(t, raw, "squad")))
+		recorded := contractFixture(t, fixtureName(t, raw, "squad"))
+		squad, err := espn.MapRoster(recorded)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if err := writer.ReplaceSquad(ctx, "liga-mx", "2026-apertura", "mex-america", "espn", squad.Players, nil); err != nil {
 			t.Fatal(err)
 		}
+		if err := writer.SetTeamRosterIdentity(ctx, "mex-america", squad.Color, squad.Location); err != nil {
+			t.Fatal(err)
+		}
+		// The same facts the provider's record item and sentence describe.
+		row := vector(t, raw, "team", "standingRow").(map[string]any)
+		if _, err := pool.Exec(ctx, `UPDATE standing SET rank=$1, played=$2, wins=$3, draws=$4, losses=$5,
+			goals_for=$6, goals_against=$7, goal_difference=$8, points=$9
+			WHERE competition_id='liga-mx' AND season_id='2026-apertura' AND team_id='mex-america'`,
+			row["rank"], row["played"], row["wins"], row["draws"], row["losses"],
+			row["goalsFor"], row["goalsAgainst"], row["goalDifference"], row["points"]); err != nil {
+			t.Fatal(err)
+		}
+		// Ages are whole years on the request's UTC date: on the recording date
+		// they are ESPN's own.
+		asOf, err := time.Parse(time.DateOnly, vector(t, raw, "squad", "asOf").(string))
+		if err != nil {
+			t.Fatal(err)
+		}
+		app.now = func() time.Time { return asOf.Add(23 * time.Hour) }
+		t.Cleanup(func() { app.now = nil })
+
+		// Expected: the shared rows plus age and headshot read straight from the
+		// recorded payload, in provider roster order.
+		var payload struct {
+			Athletes []struct {
+				ID       string `json:"id"`
+				Age      *int   `json:"age"`
+				Headshot *struct {
+					Href string `json:"href"`
+				} `json:"headshot"`
+			} `json:"athletes"`
+		}
+		if err := json.Unmarshal(recorded, &payload); err != nil {
+			t.Fatal(err)
+		}
+		players := vector(t, raw, "squad", "players").([]any)
+		var expected []any
+		withAge := 0
+		for i, athlete := range payload.Athletes {
+			want := maps.Clone(players[i].(map[string]any))
+			if want["id"] != athlete.ID {
+				t.Fatalf("vector row %d is %v, roster has %s", i, want["id"], athlete.ID)
+			}
+			want["age"], want["headshotUrl"] = nil, nil
+			if athlete.Age != nil {
+				want["age"] = float64(*athlete.Age)
+				withAge++
+			}
+			if athlete.Headshot != nil {
+				want["headshotUrl"] = athlete.Headshot.Href
+			}
+			expected = append(expected, want)
+		}
+		if withAge != int(vector(t, raw, "squad", "withAge").(float64)) {
+			t.Fatalf("recorded ages %d", withAge)
+		}
 		var profile map[string]any
 		get(t, ligaTeamPath, &profile)
 		validateSchema(t, document, "TeamProfile", profile)
-		expected := map[string]map[string]any{}
-		for _, entry := range vector(t, raw, "squad", "players").([]any) {
-			row := entry.(map[string]any)
-			expected[row["name"].(string)] = row
+		assertWire(t, "served squad", profile["squad"], expected)
+		var standalone []any
+		headers := get(t, ligaTeamPath+"/squad", &standalone)
+		assertWire(t, "standalone squad route", standalone, expected)
+		if headers.Get("Cache-Control") != "public, max-age=300" {
+			t.Fatalf("squad Cache-Control %q", headers.Get("Cache-Control"))
 		}
-		var order []any
-		for _, player := range profile["squad"].([]any) {
-			p := player.(map[string]any)
-			order = append(order, p["name"])
-			want := expected[p["name"].(string)]
-			if want == nil {
-				t.Fatalf("served unexpected player %v", p["name"])
+		for _, player := range standalone {
+			validateSchema(t, document, "SquadPlayer", player)
+		}
+
+		assertWire(t, "location", profile["location"], vector(t, raw, "team", "location"))
+		assertWire(t, "record", profile["record"], vector(t, raw, "team", "record"))
+		assertWire(t, "standing", profile["standing"], vector(t, raw, "team", "readerStanding"))
+		assertWire(t, "standingSummary", profile["standingSummary"], vector(t, raw, "team", "readerStandingSummary"))
+		assertWire(t, "scheduleAvailability", profile["scheduleAvailability"], map[string]any{"results": "available", "upcoming": "available"})
+		for _, match := range profile["schedule"].([]any) {
+			assertWire(t, "schedule scope", match.(map[string]any)["scope"], map[string]any{"competitionId": "liga-mx", "seasonId": "2026-apertura"})
+		}
+	})
+
+	t.Run("a failed squad or schedule query degrades its block, not the team", func(t *testing.T) {
+		// Real query failures: the reader role loses SELECT on one table each
+		// block reads and nothing else (freshness reads neither).
+		if _, err := pool.Exec(ctx, `REVOKE SELECT ON squad_membership, match_detail FROM scorearc_reader`); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if _, err := pool.Exec(context.Background(), `GRANT SELECT ON squad_membership, match_detail TO scorearc_reader`); err != nil {
+				t.Error(err)
 			}
-			// Measured, all-zero and absent statistics blocks plus shirt number
-			// (null included), position and nationality, as the reader SQL serves them.
-			for _, field := range []string{"stats", "jersey", "position", "nationality"} {
-				assertWire(t, "served "+field+" of "+p["name"].(string), p[field], want[field])
+		})
+		var logs bytes.Buffer
+		degraded := teamIntegrationApp(t, reader, &logs).router()
+		response := performRequest(degraded, http.MethodGet, ligaTeamPath)
+		var profile map[string]any
+		if err := json.Unmarshal(response.Body.Bytes(), &profile); err != nil || response.Code != http.StatusOK {
+			t.Fatalf("%d %s", response.Code, response.Body.String())
+		}
+		validateSchema(t, document, "TeamProfile", profile)
+		assertWire(t, "degraded blocks", map[string]any{"squad": profile["squad"], "schedule": profile["schedule"],
+			"scheduleAvailability": profile["scheduleAvailability"]}, vector(t, raw, "team", "partialFailure"))
+		if profile["record"] == nil || response.Header().Get("X-ScoreArc-Freshness") == "" || response.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("profile or freshness lost with the blocks: %v %v", profile["record"], response.Header())
+		}
+		for _, operation := range []string{"squad", "schedule"} {
+			if !strings.Contains(logs.String(), `"operation":"`+operation+`"`) || !strings.Contains(logs.String(), `"sqlstate":"42501"`) {
+				t.Fatalf("%s failure not logged with safe metadata: %s", operation, logs.String())
 			}
-			if p["age"] != nil || p["headshotUrl"] != nil {
-				t.Fatal("gap changed: reader SquadPlayer age/headshotUrl populated; update reader-contract.json")
-			}
 		}
-		assertWire(t, "served squad order", order, vector(t, raw, "squad", "readerOrder"))
-		providerIDs := map[string]bool{}
-		for _, player := range vector(t, raw, "squad", "players").([]any) {
-			providerIDs[player.(map[string]any)["id"].(string)] = true
+		// The standalone route degrades the same way, as the frontend's getSquad does.
+		response = performRequest(degraded, http.MethodGet, ligaTeamPath+"/squad")
+		var squad any
+		if err := json.Unmarshal(response.Body.Bytes(), &squad); err != nil || response.Code != http.StatusOK ||
+			response.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("squad route: %d %s", response.Code, response.Body.String())
 		}
-		for _, player := range profile["squad"].([]any) {
-			id := player.(map[string]any)["id"].(string)
-			if _, err := uuid.Parse(id); err != nil || providerIDs[id] {
-				t.Fatalf("gap changed: served squad id %q is no longer a canonical UUID", id)
-			}
-		}
-		characterized["T10.3-squad-fields"] = true
-		if profile["location"] != nil {
-			t.Fatal("gap changed: reader TeamProfile.location is populated; update reader-contract.json")
-		}
-		if profile["standingSummary"] != vector(t, raw, "team", "readerStandingSummary") {
-			t.Fatalf("gap changed: reader standingSummary is %v; update reader-contract.json", profile["standingSummary"])
-		}
-		characterized["T10.3-standing-summary"] = true
-		assertWire(t, "served team record", profile["record"], vector(t, raw, "team", "readerRecord"))
-		if reflect.DeepEqual(profile["record"], vector(t, raw, "team", "frontendRecord")) {
-			t.Fatal("record vectors no longer differ")
-		}
-		characterized["T10.3-team-record"] = true
-		characterized["T10.3-team-location"] = true
+		assertWire(t, "degraded squad route", squad, vector(t, raw, "team", "partialFailure", "squad"))
 	})
 
 	t.Run("a stored clockless live minute is served as null on every projection", func(t *testing.T) {
@@ -736,11 +815,11 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		get(t, "/v1/competitions/world-cup/2026/teams/"+home, &profile)
 		schedule := profile["schedule"].([]any)
 		found := 0
-		for _, rows := range [][]any{wire(t, listed).([]any), schedule} {
+		for i, rows := range [][]any{wire(t, listed).([]any), schedule} {
 			for _, row := range rows {
 				if match := row.(map[string]any); match["id"] == id {
 					found++
-					validateSchema(t, document, "Match", match)
+					validateSchema(t, document, []string{"Match", "TeamMatch"}[i], match)
 					assertWire(t, "legacy list scorers", match["scorers"], wantScorers)
 					assertWire(t, "legacy list cards", match["cards"], wantCards)
 				}
@@ -842,11 +921,11 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			validateSchema(t, document, "MatchSummary", summary)
 			assertWire(t, "summary scorers "+id, summary["scorers"], scorers)
 			found := 0
-			for _, rows := range [][]any{wire(t, listed).([]any), profile["schedule"].([]any)} {
+			for i, rows := range [][]any{wire(t, listed).([]any), profile["schedule"].([]any)} {
 				for _, row := range rows {
 					if match := row.(map[string]any); match["id"] == id {
 						found++
-						validateSchema(t, document, "Match", match)
+						validateSchema(t, document, []string{"Match", "TeamMatch"}[i], match)
 						assertWire(t, "list scorers "+id, match["scorers"], scorers)
 					}
 				}
@@ -1002,7 +1081,9 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			tables []string
 		}{
 			{"matches", detailedMatchesSQL, detailedMatchesArgs, []string{"team_external_ref", "player_external_ref", "match_event"}},
-			{"team schedule", teamScheduleSQL, []any{"nat-civ", "world-cup", "2026"}, []string{"team_external_ref", "player_external_ref", "match_event"}},
+			{"team schedule", teamScheduleSQL, []any{"nat-civ", "world-cup", "2026", maxTeamScheduleRows + 1}, []string{"team_external_ref", "player_external_ref", "match_event"}},
+			// Each member's provider id is one indexed lookup, never a scan.
+			{"team squad", teamSquadSQL, []any{"mex-america", "liga-mx", "2026-apertura", "2026-08-20", maxSquadRows + 1}, []string{"player_external_ref"}},
 			{"summary", summarySQL, []any{uuid.Nil}, []string{"team_external_ref", "player_external_ref", "match_event", "match_detail"}},
 		} {
 			tx, err := pool.Begin(ctx)
@@ -1057,7 +1138,9 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		}
 	})
 
-	assertCharacterizedGaps(t, raw, "go-db", characterized)
+	// No go-db gap is open: registering one fails here until its author adds
+	// a characterization ledger to this suite.
+	assertCharacterizedGaps(t, raw, "go-db", nil)
 }
 
 func asSlice(value any) []any {

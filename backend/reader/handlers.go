@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -62,7 +63,7 @@ func (a *App) handleMatches(writer http.ResponseWriter, request *http.Request) {
 	matches, err := reader.Matches(request.Context(), competition, season, query)
 	if err != nil {
 		finish()
-		a.logger.Error("matches", "competition", competition, "season", season, "err", err)
+		a.logDependencyError(request, "matches", err, "competition", competition, "season", season)
 		writeError(writer, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -78,7 +79,7 @@ func (a *App) handleMatches(writer http.ResponseWriter, request *http.Request) {
 			scope.MatchIDs = append(scope.MatchIDs, match.ID)
 		}
 	}
-	if !a.attachFreshness(writer, request, reader, finish, scope) {
+	if !a.attachResources(writer, request, reader, finish, resourceScope{freshnessScope: scope, Route: "matches", Detail: query.Detail}) {
 		return
 	}
 	anyLive := false
@@ -123,7 +124,7 @@ func (a *App) handleCalendar(writer http.ResponseWriter, request *http.Request) 
 	if calendar.Days == nil {
 		calendar.Days = []CalendarDay{}
 	}
-	if !a.attachFreshness(writer, request, reader, finish, freshnessScope{Competition: competition, Season: season}) {
+	if !a.attachResources(writer, request, reader, finish, resourceScope{freshnessScope: freshnessScope{Competition: competition, Season: season}, Route: "calendar"}) {
 		return
 	}
 	anyLive := false
@@ -142,14 +143,23 @@ func (a *App) handleStandings(writer http.ResponseWriter, request *http.Request)
 		writeError(writer, http.StatusBadRequest, "unknown competition or season")
 		return
 	}
-	groups, err := a.store.Standings(request.Context(), competition, season, comp.ShortName)
+	reader, finish, ok := a.beginMatchSnapshot(writer, request)
+	if !ok {
+		return
+	}
+	defer finish()
+	groups, err := reader.Standings(request.Context(), competition, season, comp.ShortName)
 	if err != nil {
-		a.logger.Error("standings", "competition", competition, "season", season, "err", err)
+		finish()
+		a.logDependencyError(request, "standings", err, "competition", competition, "season", season)
 		writeError(writer, http.StatusInternalServerError, "internal error")
 		return
 	}
 	if groups == nil {
 		groups = []Group{}
+	}
+	if !a.attachResources(writer, request, reader, finish, resourceScope{freshnessScope: freshnessScope{Competition: competition, Season: season}, Route: "standings"}) {
+		return
 	}
 	cacheFor(writer, 60)
 	writeJSON(writer, http.StatusOK, groups)
@@ -170,14 +180,14 @@ func (a *App) handleBracket(writer http.ResponseWriter, request *http.Request) {
 	rounds, err := reader.Bracket(request.Context(), competition, season)
 	if err != nil {
 		finish()
-		a.logger.Error("bracket", "competition", competition, "season", season, "err", err)
+		a.logDependencyError(request, "bracket", err, "competition", competition, "season", season)
 		writeError(writer, http.StatusInternalServerError, "internal error")
 		return
 	}
 	if rounds == nil {
 		rounds = []BracketRound{}
 	}
-	if !a.attachFreshness(writer, request, reader, finish, freshnessScope{Competition: competition, Season: season, Bracket: true}) {
+	if !a.attachResources(writer, request, reader, finish, resourceScope{freshnessScope: freshnessScope{Competition: competition, Season: season, Bracket: true}, Route: "bracket"}) {
 		return
 	}
 	anyLive := false
@@ -200,14 +210,23 @@ func (a *App) handleTopScorers(writer http.ResponseWriter, request *http.Request
 		writeError(writer, http.StatusBadRequest, "unknown competition or season")
 		return
 	}
-	scorers, err := a.store.TopScorers(request.Context(), competition, season)
+	reader, finish, ok := a.beginMatchSnapshot(writer, request)
+	if !ok {
+		return
+	}
+	defer finish()
+	scorers, err := reader.TopScorers(request.Context(), competition, season)
 	if err != nil {
-		a.logger.Error("top scorers", "competition", competition, "season", season, "err", err)
+		finish()
+		a.logDependencyError(request, "top scorers", err, "competition", competition, "season", season)
 		writeError(writer, http.StatusInternalServerError, "internal error")
 		return
 	}
 	if scorers == nil {
 		scorers = []espn.TopScorer{}
+	}
+	if !a.attachResources(writer, request, reader, finish, resourceScope{freshnessScope: freshnessScope{Competition: competition, Season: season}, Route: "top-scorers", Metric: "goals"}) {
+		return
 	}
 	cacheFor(writer, 60)
 	writeContractJSON(writer, scorers)
@@ -220,14 +239,19 @@ func (a *App) handleNews(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusBadRequest, "unknown competition")
 		return
 	}
-	articles, err := a.news.Get(request.Context(), comp.ESPNSlug)
+	articles, observedAt, err := a.news.GetWithObservation(request.Context(), comp.ESPNSlug)
 	if err != nil {
-		a.logger.Error("news", "competition", competition, "err", err)
+		a.logDependencyError(request, "news", err, "competition", competition)
 		writeError(writer, http.StatusBadGateway, "upstream error")
 		return
 	}
 	if articles == nil {
 		articles = []espn.NewsArticle{}
+	}
+	evidence := collectionResource(a.clock(), &collectionEvidence{ObservedAt: &observedAt, RowCount: len(articles)}, defaultNewsTTL, "competition", "proxy", false)
+	if err := writeResources(writer, resourceEnvelope{Version: 1, Resources: map[string]resourceMetadata{"news": evidence}}); err != nil {
+		writeError(writer, 500, "internal error")
+		return
 	}
 	cacheFor(writer, 60)
 	writeJSON(writer, http.StatusOK, articles)
@@ -252,7 +276,7 @@ func (a *App) handleMatchSummary(writer http.ResponseWriter, request *http.Reque
 	}
 	if err != nil {
 		finish()
-		a.logger.Error("match summary", "id", id, "err", err)
+		a.logDependencyError(request, "match summary", err, "id", id)
 		writeError(writer, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -268,7 +292,7 @@ func (a *App) handleMatchSummary(writer http.ResponseWriter, request *http.Reque
 		writeError(writer, http.StatusInternalServerError, "internal error")
 		return
 	}
-	if !a.attachFreshness(writer, request, reader, finish, scope) {
+	if !a.attachResources(writer, request, reader, finish, resourceScope{freshnessScope: scope, Route: "summary"}) {
 		return
 	}
 	cacheFor(writer, 30)
@@ -279,8 +303,10 @@ func (a *App) handleMatchSummary(writer http.ResponseWriter, request *http.Reque
 // with season statistics, and the club's matches and results.
 //
 // A team we do not hold is 404, not 500: the request was well-formed and the
-// answer is that there is no such team here. An unknown competition stays 400,
-// matching the other handlers -- that is a malformed request, not a miss.
+// answer is that there is no such team here. An unknown competition or a query
+// string stays 400, matching the other handlers. A failed identity, snapshot
+// or freshness read is a 500; a failed squad or schedule is served empty,
+// logged and not cached.
 func (a *App) handleTeam(writer http.ResponseWriter, request *http.Request) {
 	competition := chi.URLParam(request, "comp")
 	season := chi.URLParam(request, "season")
@@ -289,30 +315,19 @@ func (a *App) handleTeam(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusBadRequest, "unknown competition or season")
 		return
 	}
+	if err := parseNoQuery(request.URL.RawQuery); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
 	reader, finish, ok := a.beginMatchSnapshot(writer, request)
 	if !ok {
 		return
 	}
 	defer finish()
-	profile, err := reader.Team(request.Context(), teamID, competition, season)
+	profile, err := reader.Team(request.Context(), teamID, competition, season, a.clock())
 	if err != nil {
 		finish()
-		id, _ := request.Context().Value(requestIDKey).(string)
-		operation, cause := "unknown", err
-		var readErr *teamReadError
-		if errors.As(err, &readErr) {
-			operation, cause = readErr.operation, readErr.err
-		}
-		var pgErr *pgconn.PgError
-		sqlstate := ""
-		if errors.As(err, &pgErr) {
-			sqlstate = pgErr.Code
-		}
-		// Connection errors may include DSNs; PostgreSQL messages/detail may
-		// include row values. Log the operation and safe error metadata only.
-		a.logger.Error("team",
-			"request_id", id, "competition", competition, "season", season, "team", teamID,
-			"operation", operation, "error_type", fmt.Sprintf("%T", cause), "sqlstate", sqlstate)
+		a.logTeamError(request, competition, season, teamID, err)
 		writeError(writer, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -321,15 +336,138 @@ func (a *App) handleTeam(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusNotFound, "unknown team")
 		return
 	}
+	for _, failure := range profile.failures {
+		a.logTeamError(request, competition, season, teamID, failure)
+		if cancelled(request, failure) {
+			finish()
+			writeError(writer, http.StatusInternalServerError, "internal error")
+			return
+		}
+	}
 	if profile.Squad == nil {
 		profile.Squad = []SquadPlayer{}
 	}
 	if profile.Schedule == nil {
-		profile.Schedule = []Match{}
+		profile.Schedule = []TeamMatch{}
 	}
-	if !a.attachFreshness(writer, request, reader, finish, freshnessScope{Competition: competition, Season: season, TeamID: teamID}) {
+	degraded := map[string]bool{}
+	for _, failure := range profile.failures {
+		var readErr *teamReadError
+		if errors.As(failure, &readErr) {
+			if readErr.operation == "squad" {
+				degraded["squad"], degraded["seasonStats"] = true, true
+			}
+			if readErr.operation == "schedule" {
+				degraded["matches"], degraded["detail"] = true, true
+			}
+		}
+	}
+	if !a.attachResources(writer, request, reader, finish, resourceScope{freshnessScope: freshnessScope{Competition: competition, Season: season, TeamID: teamID}, Route: "team", Degraded: degraded}) {
 		return
 	}
-	cacheFor(writer, 120)
+	if len(profile.failures) > 0 {
+		// A transient child failure must not be cached as the team's state.
+		writer.Header().Set("Cache-Control", "no-store")
+	} else {
+		cacheFor(writer, 120)
+	}
 	writeJSON(writer, http.StatusOK, profile)
+}
+
+// One club's squad without its profile or matches: the frontend's getSquad,
+// which the player index calls for every club in a competition. Resource
+// metadata separates roster membership from independently observed totals.
+// As in getSquad and the team profile, a failed squad read is an empty squad,
+// logged and not cached; a failed identity read or a cancelled or timed-out
+// request is a 500.
+func (a *App) handleSquad(writer http.ResponseWriter, request *http.Request) {
+	competition := chi.URLParam(request, "comp")
+	season := chi.URLParam(request, "season")
+	teamID := chi.URLParam(request, "teamId")
+	if _, _, ok := a.resolve(competition, season); !ok {
+		writeError(writer, http.StatusBadRequest, "unknown competition or season")
+		return
+	}
+	if err := parseNoQuery(request.URL.RawQuery); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	reader, finish, ok := a.beginMatchSnapshot(writer, request)
+	if !ok {
+		return
+	}
+	defer finish()
+	squad, err := reader.Squad(request.Context(), teamID, competition, season, a.clock())
+	if errors.Is(err, ErrNotFound) {
+		finish()
+		writeError(writer, http.StatusNotFound, "unknown team")
+		return
+	}
+	var readErr *teamReadError
+	switch {
+	case errors.As(err, &readErr) && readErr.operation == "squad" && !cancelled(request, err):
+		a.logTeamError(request, competition, season, teamID, err)
+		writer.Header().Set("Cache-Control", "no-store")
+		squad = []SquadPlayer{}
+	case err != nil:
+		finish()
+		a.logTeamError(request, competition, season, teamID, err)
+		writeError(writer, http.StatusInternalServerError, "internal error")
+		return
+	default:
+		cacheFor(writer, 300)
+	}
+	if squad == nil {
+		squad = []SquadPlayer{}
+	}
+	degraded := map[string]bool{}
+	if err != nil {
+		degraded["squad"], degraded["seasonStats"] = true, true
+	}
+	if !a.attachResources(writer, request, reader, finish, resourceScope{freshnessScope: freshnessScope{Competition: competition, Season: season, TeamID: teamID}, Route: "squad", Degraded: degraded}) {
+		return
+	}
+	writeJSON(writer, http.StatusOK, squad)
+}
+
+// cancelled reports a cancelled or timed-out request. Its failed blocks are a
+// 500, never served as empty.
+func cancelled(request *http.Request, err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || request.Context().Err() != nil
+}
+
+// Like logTeamError, retain only safe metadata, never dependency text. Scope
+// must contain only the handler's validated identifiers.
+func (a *App) logDependencyError(request *http.Request, operation string, err error, scope ...any) {
+	id, _ := request.Context().Value(requestIDKey).(string)
+	var pgErr *pgconn.PgError
+	sqlstate := ""
+	if errors.As(err, &pgErr) {
+		sqlstate = pgErr.Code
+	}
+	attrs := []any{"request_id", id, "operation", operation,
+		"error_type", fmt.Sprintf("%T", err), "sqlstate", sqlstate}
+	a.logger.Error(operation, append(attrs, scope...)...)
+}
+
+// Connection errors may include DSNs; PostgreSQL messages/detail may include
+// row values. Log the operation and safe error metadata only.
+func (a *App) logTeamError(request *http.Request, competition, season, teamID string, err error) {
+	id, _ := request.Context().Value(requestIDKey).(string)
+	operation, cause := "unknown", err
+	var readErr *teamReadError
+	if errors.As(err, &readErr) {
+		operation, cause = readErr.operation, readErr.err
+	}
+	var pgErr *pgconn.PgError
+	sqlstate := ""
+	if errors.As(err, &pgErr) {
+		sqlstate = pgErr.Code
+	}
+	a.logger.Error("team",
+		"request_id", id, "competition", competition, "season", season, "team", teamID,
+		"operation", operation, "error_type", fmt.Sprintf("%T", cause), "sqlstate", sqlstate,
+		// The two fail-closed reader rules carry no SQLSTATE; name them.
+		"row_bound_exceeded", errors.Is(err, errTeamBlockTooLarge),
+		"missing_provider_id", errors.Is(err, errSquadIdentity))
 }

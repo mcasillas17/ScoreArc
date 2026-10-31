@@ -165,12 +165,23 @@ func TestIngesterSchemaGateRunsAsTheIngesterRole(t *testing.T) {
 	if err := st.CheckSchemaReady(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `ALTER TABLE match_sync_status RENAME COLUMN last_error TO hidden_column`); err != nil {
-		t.Fatal(err)
-	}
-	var readiness *migrations.ReadinessError
-	if err := st.CheckSchemaReady(ctx); !errors.As(err, &readiness) || readiness.Category != "objects_missing" {
-		t.Fatalf("got %v, want objects_missing", err)
+	for _, tc := range []struct{ table, column string }{
+		{"match_sync_status", "last_error"},
+		{"resource_observation", "row_count"},
+		{"resource_observation", "observed_at"},
+		{"player", "bio_observed_at"},
+		{"player_season_stat", "observed_at"},
+	} {
+		if _, err := pool.Exec(ctx, `ALTER TABLE `+tc.table+` RENAME COLUMN `+tc.column+` TO hidden_column`); err != nil {
+			t.Fatal(err)
+		}
+		var readiness *migrations.ReadinessError
+		if err := st.CheckSchemaReady(ctx); !errors.As(err, &readiness) || readiness.Category != "objects_missing" {
+			t.Fatalf("missing %s.%s: got %v, want objects_missing", tc.table, tc.column, err)
+		}
+		if _, err := pool.Exec(ctx, `ALTER TABLE `+tc.table+` RENAME COLUMN hidden_column TO `+tc.column); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
