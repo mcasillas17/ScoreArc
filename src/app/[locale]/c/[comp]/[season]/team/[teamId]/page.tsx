@@ -5,6 +5,7 @@ import { getTranslator } from '@/i18n/translate';
 import { ogUrl, shareMetadata } from '@/lib/ogUrl';
 import { resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
+import { isReaderOperationStore, runDataOperation } from '@/server/data/sourceSelection';
 import { providerTeamId } from '@/server/data/teamIdentity';
 import { competitionPlayerIndex } from '@/server/data/playerIndex';
 import TeamPerformance from '@/components/TeamPerformance';
@@ -68,19 +69,21 @@ export default async function TeamPage({ params }: Params) {
   // A slug we do not know is a 404, not an upstream call with a bad id.
   const upstreamId = providerTeamId(resolvedParams.teamId);
   if (!upstreamId) notFound();
-  const profile = await dataStore.getTeam(rc, upstreamId);
+  const { profile, playerSlugs } = await runDataOperation(dataStore, async (source) => {
+    const profile = await source.getTeam(rc, upstreamId);
+    let playerSlugs: Record<string, string> = {};
+    if (profile) {
+      try {
+        const index = await competitionPlayerIndex(rc, source);
+        playerSlugs = Object.fromEntries(index.byProvider);
+      } catch (error) {
+        if (isReaderOperationStore(source)) throw error;
+      }
+    }
+    return { profile, playerSlugs };
+  });
   if (!profile) notFound();
-
-  // Squad names link by slug (PLAYER_IDENTITY.md). Best-effort: a failed
-  // index costs the links, not the page.
   const playerBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/player`;
-  let playerSlugs: Record<string, string> = {};
-  try {
-    const index = await competitionPlayerIndex(rc);
-    playerSlugs = Object.fromEntries(Array.from(index.byProvider.entries()));
-  } catch {
-    // leaderboard-style degradation: plain text names
-  }
 
   // The next match comes from the schedule, never from the profile's
   // nextEvent: that array is empty on this provider while the schedule carries

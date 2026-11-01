@@ -21,6 +21,9 @@ import (
 )
 
 type fakeReaderStore struct {
+	identities         []IdentityReference
+	identitiesErr      error
+	identityQuery      identityQuery
 	resources          resourceSnapshot
 	resourcesErr       error
 	resourceScope      resourceScope
@@ -53,6 +56,12 @@ type fakeReaderStore struct {
 	freshness          freshnessSnapshot
 	freshnessErr       error
 	calls              int
+}
+
+func (f *fakeReaderStore) Identities(_ context.Context, _, _ string, query identityQuery) ([]IdentityReference, error) {
+	f.calls++
+	f.identityQuery = query
+	return f.identities, f.identitiesErr
 }
 
 func (f *fakeReaderStore) Resources(_ context.Context, scope resourceScope) (resourceSnapshot, error) {

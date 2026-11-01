@@ -1,21 +1,23 @@
 # Player identity — the slug contract
 
-**Status:** Proposed · 2026-08-22
+**Status:** Frontend slug algorithm implemented; persisted backend slug proposal remains open. T16.3 addressing update: 2026-11-01.
 **Applies to:** frontend player pages (E5) and the backend data model / API.
 **Owners:** both sides. The frontend derives these slugs from provider data
 today; under this proposal the backend will mint the same slugs as public
 player ids. It does not yet: it keys players by canonical UUIDv7 through
 `player_external_ref` and serves no player slug. T10.4 adds a canonical UUID profile route with
 `playerSlug: null`; the proposed slug URL below is not an implemented reader
-address. See [the player read contract](READER_CONTRACT.md#t104-player-contract). If the two algorithms drift, every player URL 404s on the day
-the frontend migrates to our API — silently, per player. This document exists
-so they cannot drift.
+address. T16.3 keeps frontend slug generation unchanged, resolves the resulting
+provider athlete reference through the reader's persisted `/identities`
+crosswalk, then calls the UUID profile route. See [the player read
+contract](READER_CONTRACT.md#t104-player-contract) and [adapter
+identity policy](READER_DATASTORE.md#identity-and-source-operations).
 
 ## The rule
 
 A player's public identifier is a **name slug**, scoped to a competition
-season. Provider ids (ESPN athlete numbers) never appear in URLs, rendered
-HTML, or as a public identifier or link in an API response — same rule the team
+season. Provider ids (ESPN athlete numbers) never appear as public navigation
+identifiers or links — same rule the team
 pages already follow (`mex-america`, never `227`). Some response fields carry
 them as provider-scoped values, by design, and lineup jersey URLs still embed
 them as an open gap: see the exceptions below.
@@ -74,13 +76,15 @@ documented exceptions.
 
 ## The deliberate exception
 
-Internal match-detail fetches (`/api/.../match/{eventId}`) still use provider
-event ids. They are client plumbing, not shareable URLs, and are replaced
-wholesale by the API cutover (slice 1d). Do not extend this exception to
-players or teams.
+Internal match-detail fetches (`/api/.../match/{eventId}`) use provider event
+ids. T16.3 deliberately preserves this client plumbing: reader lists and player
+game logs are normalized through persisted crosswalks before reaching the
+frontend, and each popup resolves its provider reference back to a reader UUID.
+Previously returned references work after a cold start or rollback to ESPN.
+Public player/team links still use their slug contracts.
 
 Some responses carry the provider athlete id as a provider-scoped value, never
-a public id and never in a URL: `Scorer.athleteId`, `LineupPlayer.athleteId`
+a public player link: `Scorer.athleteId`, `LineupPlayer.athleteId`
 and `StatLeader.athleteId`, which the route layer resolves to the player's slug
 for links, and, on the frontend API, `SquadPlayer.id` and `PlayerProfile.id`.
 The reader serves source-qualified nullable `Scorer.athleteId`,
@@ -88,6 +92,9 @@ The reader serves source-qualified nullable `Scorer.athleteId`,
 a canonical UUID. See [the T16.2 contract](READER_CONTRACT.md#t162-identity-and-dto-contract).
 Its `SquadPlayer.id` is the provider athlete id (T10.3,
 [READER_CONTRACT](READER_CONTRACT.md#t103-team-and-squad-contract)).
+The server-only T16.3 crosswalk request addresses provider references through
+`/identities?kind=player&from=espn&ids=…`; it does not expose a numeric player
+navigation route.
 
 Existing lineup `jersey` image URLs can embed provider event and athlete ids;
 T10.2 preserves those stored asset URLs. They are not public player route

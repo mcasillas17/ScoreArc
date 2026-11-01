@@ -704,10 +704,12 @@ used to authorize modelling work.
 ### E10 · Public API read surface
 
 The read path for everything E7's ingester writes. The base reader shipped **seven
-`/v1` data routes plus `/healthz`**. T10.1 (October 6, in review) added validated
-`/matches` queries and the `calendar` route (eight); T10.2 adds leaders and box scores (ten data routes); T10.3 adds the
-team squad route (eleven) and is implemented, pending release behind migration 0027; T10.4 adds the
-player profile route (twelve), also pending release. T10.5–T10.9 remain unbuilt. The acceptance criterion is **use-case contract
+`/v1` data routes plus `/healthz`**. Implemented T10.1 adds validated `/matches`
+queries and `calendar` (eight); T10.2 adds leaders and box scores (ten), T10.3
+adds squad (eleven), and T10.4 adds player profiles (twelve). T16.3 adds the
+read-only persisted `identities` resolver (thirteen), pending its integration and
+release. The owner confirms migration 0028 and T17.3 deployed October 31; earlier
+migration prerequisites are not work to repeat. T10.5–T10.9 remain unbuilt. The acceptance criterion is **use-case contract
 parity, not a route count** — each endpoint exists to serve an E1–E8 feature and
 must satisfy the frontend's canonical DTO shapes, query semantics (range/state/
 detail/limit), and derived-view needs, so those feature specs are its
@@ -715,10 +717,10 @@ requirements. No spec of its own. Cutover (1d) depends on that DTO/query/
 derived-view parity being a tested contract — see
 [`docs/CURRENT_STATE.md`](CURRENT_STATE.md) §5 for the current gap.
 
-- **T10.1** Match reads — matches/results by range, calendar (E3, E2) · **closed in code October 6, in review** · [contract](backend/READER_CONTRACT.md#t101-match-query-contract) · [plan (superseded where it conflicts)](superpowers/plans/2026-08-15-api-match-reads.md)
-- **T10.2** Leaders & box scores (E1) · **implemented October 20, pending review/release** · [reconciled plan](superpowers/plans/2026-10-20-t10-2-reader-contracts.md) · [contract](backend/READER_CONTRACT.md#t102-leaders-statistics-and-participation-contract)
-- **T10.3** Teams (E4) · **implemented October 26, pending review/release (migration 0027 first)** · [contract](backend/READER_CONTRACT.md#t103-team-and-squad-contract) · [plan (superseded where it conflicts)](superpowers/plans/2026-08-15-api-teams.md)
-- **T10.4** Players (E5) · **implemented October 26, pending review/release** · [bounded player contract](backend/READER_CONTRACT.md#t104-player-contract) · [reconciled plan](superpowers/plans/2026-10-26-t10-4-player-reader.md)
+- **T10.1** Match reads — matches/results by range, calendar (E3, E2) · **implemented October 6** · [contract](backend/READER_CONTRACT.md#t101-match-query-contract) · [plan (superseded where it conflicts)](superpowers/plans/2026-08-15-api-match-reads.md)
+- **T10.2** Leaders & box scores (E1) · **implemented October 20** · [reconciled plan](superpowers/plans/2026-10-20-t10-2-reader-contracts.md) · [contract](backend/READER_CONTRACT.md#t102-leaders-statistics-and-participation-contract)
+- **T10.3** Teams (E4) · **implemented October 26** · [contract](backend/READER_CONTRACT.md#t103-team-and-squad-contract) · [plan (superseded where it conflicts)](superpowers/plans/2026-08-15-api-teams.md)
+- **T10.4** Players (E5) · **implemented October 26** · [bounded player contract](backend/READER_CONTRACT.md#t104-player-contract) · [reconciled plan](superpowers/plans/2026-10-26-t10-4-player-reader.md)
 - **T10.5** History & trends (E7, E8) · [plan](superpowers/plans/2026-08-15-api-history.md)
 - **T10.6** Commentary & shots (E6) · [plan](superpowers/plans/2026-08-15-api-commentary-and-shots.md)
 - **T10.7** Generated content (E8) · [plan](superpowers/plans/2026-08-15-api-generated-content.md)
@@ -726,13 +728,12 @@ derived-view parity being a tested contract — see
 - **T10.9** Officials · [plan](superpowers/plans/2026-08-15-api-officials.md)
 - **T10.10** Derived standings parity — Leagues Cup phase tables and MLS overall
   table as reader read-models, or an explicit tested decision to retain their
-  existing TypeScript derivation in `apiStore` · **closed in code October 14, in
-  review: the TypeScript derivation is retained (option B)** ·
+  existing TypeScript derivation in `apiStore` · **implemented October 14: the TypeScript derivation is retained (option B)** ·
   [contract](backend/READER_CONTRACT.md#t1010-derived-standings-contract)
 - **T10.11** Canonical team/player/competition search for E12, bounded and
   competition-aware; public promotion remains subject to E18
 
-**T10.1 lands first.** It creates `params.go`, the single validation choke-point
+**T10.1 established `params.go`**, the single validation choke-point
 the later endpoint handlers import — so building them first means duplicating
 validation and reconciling it later. Its entity-id parser
 must accept ScoreArc's UUIDv7 match ids; a provider-number-only parser would
@@ -775,8 +776,8 @@ code rather than pasted from a dated plan.
 | **T9.4** | Publish Brier score, reliability curve, sample, and model version. | No xG value ships without user-visible validation and a base-rate comparison. | T9.3 |
 | **T9.5** | Gate and render xG only for supported competitions. | Unsupported competitions render no xG, never zero or a misleading disabled number. | T9.4, owner product choice |
 | **T10.1** | Add validated range/state/detail/limit match reads and calendar queries through one `params.go` layer. | Bad input is `400`; UUIDv7 match ids are accepted; all-season dumps are never an accidental default. | first E10 task, E16.1 |
-| **T10.2** (implemented; release pending) | Generalize leaders and expose per-match box scores, closing the T10.2 gaps in the T16.1 harness (`src/server/data/contracts/reader-contract.json`: team stats, lineups, leaders, leader board depth). | Goals/assists share one typed shape; unknown stats stay null and percentages are derived from operands; leaders default 10/max 30, legacy top-scorers serves 30; explicit participation availability and historical nulls. Migration 0026 requires separate rollout. | T10.1 |
-| **T10.3** (implemented; release pending) | Complete team profile, squad, and schedule reads. | Unknown teams are `404`; unexpected DB errors retain request-id diagnostics; no speculative fixes for query failures; a failed squad/schedule child query either degrades to an empty block with available/unavailable signalling (as the frontend does) or is explicitly accepted as a 500, closing `T10.3-partial-failure` and the other T10.3 gaps in `src/server/data/contracts/reader-contract.json`. All eight closed October 26 with degradation and removed from the registry; see the [contract](backend/READER_CONTRACT.md#t103-team-and-squad-contract). | T10.1, T17.1 |
+| **T10.2** (implemented) | Generalize leaders and expose per-match box scores, closing the T10.2 gaps in the T16.1 harness (`src/server/data/contracts/reader-contract.json`: team stats, lineups, leaders, leader board depth). | Goals/assists share one typed shape; unknown stats stay null and percentages are derived from operands; leaders default 10/max 30, legacy top-scorers serves 30; explicit participation availability and historical nulls. The owner-confirmed October 31 baseline is at 0028; do not repeat 0026. | T10.1 |
+| **T10.3** (implemented) | Complete team profile, squad, and schedule reads. | Unknown teams are `404`; unexpected DB errors retain request-id diagnostics; no speculative fixes for query failures; a failed squad/schedule child query either degrades to an empty block with available/unavailable signalling (as the frontend does) or is explicitly accepted as a 500, closing `T10.3-partial-failure` and the other T10.3 gaps in `src/server/data/contracts/reader-contract.json`. All eight closed October 26 with degradation and removed from the registry; see the [contract](backend/READER_CONTRACT.md#t103-team-and-squad-contract). | T10.1, T17.1 |
 | **T10.4** | Serve canonical player profiles, season totals, and bounded game logs (latest five in this slice; full history stays T7.4/T10.5). | Slug resolution never leaks provider ids; missing optional blocks degrade without losing identity. | T10.1, E16.2 |
 | **T10.5** | Expose bounded standings history, form/streaks, held seasons, percentiles, win-probability, and odds series. | Every list is bounded and every derived metric names its period/sample. | T10.1, E17.3 |
 | **T10.6** | Serve reconciled shots and relational commentary. | Coverage/fidelity accompany the response; no shot surface where T6.3 fails. | T10.1, T6.3 |
@@ -815,7 +816,7 @@ its three unregistered items, with match, team, nested team and player ids as
 tested translations ([contract](backend/READER_CONTRACT.md#t162-identity-and-dto-contract)).
 The last gap, `T16.2-standings-dedup`, closed on October 5. The owner chose
 decision A: every table membership is kept on both sides, stored with a provider
-table key by migration 0024. 0024 is not applied to production
+table key by migration 0024. The owner-confirmed October 31 baseline is at 0028; do not repeat 0024
 ([decision](backend/READER_CONTRACT.md#owner-decision-standings-dedup)). Rows
 stored earlier recover `ownGoal`/`athleteId` only from aligned captured match
 events, else `null` (a goal re-credited or reclassified after the last captured
@@ -828,10 +829,10 @@ cutover gate are unchanged.
 | Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
 |---|---|---|---|
 | **T16.1** ✅ | Build one cross-language contract harness over TypeScript types, OpenAPI, Go DTOs, query vectors, and recorded payloads. **Done October 3 — [READER_CONTRACT](backend/READER_CONTRACT.md); gaps stay open under their tasks.** | Any field/nullability/query drift fails CI; canonical equivalence is required, not byte equality with provider JSON. | none |
-| **T16.2** ✅ | Fix canonical nested team ids, `ownGoal`/`athleteId`, slug-stable leader crests, and the ScoreArc CDN allowlist, and close (or explicitly accept) the other DTO-parity gaps the T16.1 harness assigns to T16.2: match/team identity, standings rank/dedup/malformed-row handling and unnamed-table labels, bracket round names/slug type/placeholder crests, shootout aggregate source and the clockless live minute (`src/server/data/contracts/reader-contract.json`). **Done in code October 5: `standings-dedup` closed with the owner's decision A (every table membership kept; migration 0024, not yet applied to production) ([contract](backend/READER_CONTRACT.md#owner-decision-standings-dedup)).** | Unknown crest hosts are dropped, not proxied; contract fixtures prove scorer/card-to-side and player identity; each closed gap's harness characterization is updated. | T16.1 |
-| **T16.3** | Implement a strict `apiStore` satisfying all 12 `DataStore` methods with per-method source flags. | 5xx, timeout, parse error, or explicit stale/unavailable status may fall back to ESPN; a valid empty result never does. Methods that produce or consume match ids (the four window methods, `getBracket`, `getTeam`'s schedule, `getPlayer`'s game log, `getMatchSummary` and the match route's side ids) share one source flag and fall back together, because match ids are store-scoped ([READER_CONTRACT](backend/READER_CONTRACT.md#identity-translations)). | T10.1–T10.4, T10.10, T17.3 |
+| **T16.2** ✅ | Fix canonical nested team ids, `ownGoal`/`athleteId`, slug-stable leader crests, and the ScoreArc CDN allowlist, and close (or explicitly accept) the other DTO-parity gaps the T16.1 harness assigns to T16.2: match/team identity, standings rank/dedup/malformed-row handling and unnamed-table labels, bracket round names/slug type/placeholder crests, shootout aggregate source and the clockless live minute (`src/server/data/contracts/reader-contract.json`). **Done in code October 5: `standings-dedup` closed with the owner's decision A (every table membership kept; migration 0024, satisfied before the owner-confirmed October 31 baseline at 0028) ([contract](backend/READER_CONTRACT.md#owner-decision-standings-dedup)).** | Unknown crest hosts are dropped, not proxied; contract fixtures prove scorer/card-to-side and player identity; each closed gap's harness characterization is updated. | T16.1 |
+| **T16.3** (implemented; PR integration pending) | Strict `apiStore` for all 12 methods, with `SCOREARC_DATA_SOURCE=reader` selecting one joined group of all eleven non-news methods. Unset/empty/`espn` makes zero reader requests. News explicitly delegates to ESPN. [Policy, identity and local evidence](backend/READER_DATASTORE.md). | Eligible reader failures retry the whole logical operation once on ESPN; valid empty results never fall back for emptiness. Persisted crosswalks normalize match/player/team references to the existing frontend seam, preserving popups, slugs, follows and rollback across requests. Standings/form/squad/index joins share the source group. No production source switch, shadow traffic or migration. | T10.1–T10.4, T10.10, T17.3 |
 | **T16.4** | Shadow reader and ESPN per method with named normalizers and ignore rules. | Diffs never affect the user; each method gets a documented threshold based on semantic fields, not provider/canonical id equality. | T16.3 |
-| **T16.5** | Cut over one method at a time (the match-id methods as one group, per T16.3), dogfood, and retain immediate rollback. | No one-step flip; each method completes an owner-approved soak without correctness/freshness SLO breach before the next. | T16.4, T17.4 |
+| **T16.5** | Define and execute an owner-approved staged soak/cutover with immediate rollback, respecting T16.3's joined non-news group. Any later group split must prove its joins remain coherent. | No production activation in T16.3; shadow evidence and correctness/freshness SLO acceptance precede a public source change. | T16.4, T17.4 |
 | **T16.6** | Decide the reader news route: explicit current proxy, rights-permitted owned ingest, or removal. | This blocks only `getNews`; the other 11 methods continue independently. The ingest branch requires E18; keep/drop records the existing exposure. | before `getNews` flips |
 
 ### E17 · Data reliability, freshness & provenance
@@ -840,7 +841,7 @@ cutover gate are unchanged.
 |---|---|---|---|
 | **T17.1** | Reproduce, diagnose, and fix the Liga MX team-profile 500 in reader store/handler integration tests. | Root cause is evidence from a real-Postgres reproduction, not a UUID hypothesis; seeded teams return `200` or intentional `404`, never unexplained `500`. | none |
 | **T17.2** | Diagnose Greece across config, source, ingester, database, and reader; populate it or gate it out honestly. **#173 recovery and #183 bounded monthly discovery are merged and released; the September 20 recovery completed the original stale matches. October 2 reader checks found all ten match scopes responding with `poll=ok`, nine fresh and World Cup dormant; Greece's `/matches` returned 182 and `fresh`. This match-only evidence does not establish current standings/top-scorers or other collection coverage, or close sustained ingestion acceptance.** Frontend #192/#193 are also merged and released, still ESPN-backed; see [CURRENT_STATE](CURRENT_STATE.md#october-2-reconciliation) and [frontend evidence](FRONTEND_SCOREBOARD_WINDOWS.md). | Never assert a missing row count in advance; a configured-but-unproven competition is not presented as healthy. | diagnosis: none. Population: [SETUP §7.5](backend/SETUP.md#75-verify) freshness acceptance (zero-failure cycles, advancing data including Greece) |
-| **T17.3** | Add source, observed/finalized time, derivation, and complete/empty/stale/unavailable semantics to reader contracts. **#173's match-specific headers remain unchanged. October 30 implementation adds scoped resource metadata to all 12 reader routes, durable collection observations and positive TS/Go/OpenAPI/Postgres coverage. Production acceptance remains pending separately authorized migration 0028 and exact-head rollout; see [contract and limits](backend/READER_CONTRACT.md#t173-resource-freshness-contract).** | Consumers can distinguish a genuine empty window from broken ingestion from the response alone; all reader routes have contract coverage. | T16.1 |
+| **T17.3** | Add source, observed/finalized time, derivation, and complete/empty/stale/unavailable semantics to reader contracts. **#173's match-specific headers remain unchanged. October 30 implementation adds scoped resource metadata to all 12 reader routes, durable collection observations and positive TS/Go/OpenAPI/Postgres coverage. The owner confirms deployment with migration 0028 on October 31; sustained coverage and monitoring acceptance remain separate. Do not repeat the migration; see [contract and limits](backend/READER_CONTRACT.md#t173-resource-freshness-contract).** | Consumers can distinguish a genuine empty window from broken ingestion from the response alone; all reader routes have contract coverage. | T16.1 |
 | **T17.4** | Define per-competition freshness/completeness SLOs, alerts, and runbooks from ingest evidence. **September 19: bounded match watchdog, durable transition deduplication and [runbook](backend/MATCH_FRESHNESS.md) are implemented; schedule/notification delivery and live acceptance are not activated or complete.** | Dormant seasons do not page; active competitions crossing their declared threshold do, with competition/season/run context. | T17.3; T21.4 later exports richer metrics |
 
 **T17.1 production repair accepted (2026-09-06):** the missing `t.color`
@@ -1032,10 +1033,10 @@ every P0 behind one owner decision.
 | **B · Live trust** | **T17.1–T17.4** | team/Greece causes are resolved or gated; responses distinguish complete, empty, stale, and unavailable |
 | **C · Contract/read** | **T16.1–T16.2**, then **T10.1**, **T10.10**, **T10.2–T10.4** | the reader satisfies the first cutover methods with canonical, tested contracts |
 
-**Next implementation:** **T10.2–T10.4** read contracts. T10.1 match-query
-parity (October 6) and T10.10 derived-standings parity (October 14, option B)
-are closed in code, in review, with their harness gaps replaced by positive
-vectors.
+**Next integration/evaluation:** T10.1–T10.4, T10.10 and T17.3 are implemented.
+T16.3 adds the reader adapter with unchanged ESPN default; after its PR integration,
+T16.4 owns shadow evaluation. Local adapter readiness is separate from rollout
+acceptance.
 The independent high-priority lanes remain explicit: archive/backfill durability
 under T18.1's classification, **T7.21** participation retry, **T17.4** scheduled
 freshness/notification delivery, and **T21.2** full schema readiness. Bounded
@@ -1043,16 +1044,17 @@ October 2 freshness observations do not close these lanes or change task depende
 
 ### Next — own and dogfood the contract
 
-1. **T16.3** implements `apiStore` with per-method fallback, the methods that
-   produce or consume store-scoped match ids as one group. A valid empty result
-   never falls back; stale/unavailable requires T17.3's explicit signal.
+1. **T16.3** implements `apiStore` and one joined non-news source group,
+   including match IDs, standings/form, squads and slug indexes. A valid empty
+   result never falls back for emptiness; T17.3 evidence is evaluated per method.
+   Implementation is pending PR integration; production still selects ESPN.
 2. **T16.4** shadows semantic fields per method with documented normalizers and
    ignore rules.
-3. **T16.5** cuts over and soaks one method (or that match-id group) at a time
-   with rollback. **T16.6**
-   blocks only `getNews`; every other method continues independently.
-4. **T10.5/T10.6** expose held history and shots, while **T7.3** may ship earlier
-   on finalized matches through today's store.
+3. **T16.5** owns staged soak/cutover and rollback after shadow acceptance,
+   respecting the implemented source group. **T16.6** blocks only `getNews`;
+   the other eleven methods can be evaluated together without resolving news.
+4. **T10.5/T10.6** expose held history and shots; **T7.3** already serves form
+   from finalized matches through the current store.
 
 ### Then — prove differentiated product value
 

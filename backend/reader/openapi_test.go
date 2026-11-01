@@ -38,6 +38,15 @@ func TestOpenAPIObjectSchemasAreExact(t *testing.T) {
 		}
 		sort.Strings(properties)
 		required := append([]string(nil), schema.Required...)
+		// The additive live context is deliberately absent on finished/legacy rows.
+		if name == "GameLogRow" {
+			for _, property := range required {
+				if property == "liveMatch" {
+					t.Error("GameLogRow.liveMatch must remain optional")
+				}
+			}
+			required = append(required, "liveMatch")
+		}
 		sort.Strings(required)
 		if !reflect.DeepEqual(required, properties) {
 			t.Errorf("schema %s required=%v, properties=%v", name, required, properties)

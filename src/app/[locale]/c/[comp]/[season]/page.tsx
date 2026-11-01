@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
 import { resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
+import { isSelectedDataStore, runDataOperation } from '@/server/data/sourceSelection';
 import type { BracketRound, Group } from '@/server/data/types';
 import UpcomingBanner from '@/components/UpcomingBanner';
 import { getBannerFeed } from '@/server/data/banner';
@@ -96,8 +97,30 @@ export default async function Workspace({ params }: { params: SeasonParams }) {
   // A finished (non-current) edition is view-only.
   const readOnly = rc.season.id !== rc.competition.currentSeasonId;
 
-  // The fixture band leads every competition page.
-  const feed = await getBannerFeed(rc);
+  // The band, bracket and its supporting tables share one source attempt.
+  const computed = rc.season.computedTables;
+  const projection = !rc.season.format.hasBracket && rc.season.projection === 'liguilla';
+  const { feed, groups, bracket, phaseGroups } = await runDataOperation(dataStore, async source => {
+    const feed = await getBannerFeed(rc, source);
+    let groups: Group[] = [];
+    let bracket: BracketRound[] = [];
+    let phaseGroups: Group[] = [];
+    if (projection) {
+      try { groups = await source.getStandings(rc); } catch (error) {
+        if (isSelectedDataStore(source)) throw error;
+      }
+    } else {
+      try { bracket = await source.getBracket(rc); } catch (error) {
+        if (isSelectedDataStore(source)) throw error;
+      }
+      if (computed) {
+        try { phaseGroups = await source.getStandings(rc); } catch (error) {
+          if (isSelectedDataStore(source)) throw error;
+        }
+      }
+    }
+    return { feed, groups, bracket, phaseGroups };
+  });
   // Null rather than an empty section: a competition that really has no
   // fixtures left (a finished edition) should show no band at all, not a
   // heading over nothing. Kept as a nullable value, not an always-truthy
@@ -110,9 +133,7 @@ export default async function Workspace({ params }: { params: SeasonParams }) {
   // knockout; only the data is synthetic, and the note says so. When the real
   // draw is published, hasBracket flips true in config and this branch's own
   // !hasBracket retires it.
-  if (!rc.season.format.hasBracket && rc.season.projection === 'liguilla') {
-    let groups: Group[] = [];
-    try { groups = await dataStore.getStandings(rc); } catch {}
+  if (projection) {
     const projected = projectLiguilla(groups);
     return (
       <main className="main">
@@ -158,18 +179,10 @@ export default async function Workspace({ params }: { params: SeasonParams }) {
     );
   }
 
-  let bracket: BracketRound[] = [];
-  try { bracket = await dataStore.getBracket(rc); } catch {}
-
   // A cross-league cup whose table the provider never publishes (Leagues Cup).
   // Its phase-one tables ARE the competition until the knockout starts, and
   // they also determine the knockout, so they lead the page rather than
   // sitting under an empty bracket.
-  const computed = rc.season.computedTables;
-  let phaseGroups: Group[] = [];
-  if (computed) {
-    try { phaseGroups = await dataStore.getStandings(rc); } catch {}
-  }
   // Not `bracket.length === 0`: one published fixture is not a knockout. That
   // test handed the page over on the Leagues Cup's second quarterfinal of four,
   // replacing a complete set of phase tables with a bracket holding half a

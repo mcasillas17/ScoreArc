@@ -13,7 +13,7 @@ import { en } from '@/i18n/messages/en';
 import { mapTeamProfile, mapTeamSchedule } from '../providers/espn-team';
 import { parseShootout } from '../providers/espn-matches';
 import { parseMatchFreshness, type MatchFreshness } from '@/lib/matchFreshness';
-import { parseReaderResources } from '@/lib/readerResources';
+import { parseReaderResources, type ReaderResources } from '@/lib/readerResources';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 import type {
   BracketMatch, BracketRound, BracketTeam, Card, CareerStint, CommentaryItem, FormResult, GameLogRow, Group,
@@ -74,7 +74,8 @@ type CPlayerMatchStats = {
   foulsCommitted: N; foulsSuffered: N; yellowCards: N; redCards: N; ownGoals: N; saves: N; goalsConceded: N; shotsFaced: N;
 };
 type CLineupPlayer = {
-  name: string; number: number | null; position: string; jersey: string | null; starter: boolean;
+  playerId?: string | null;
+  name: string; number: number | null; position: string; jersey: string | null; starter: boolean | null;
   stats: CPlayerMatchStats | null; athleteId: string | null; playerSlug?: string | null;
 };
 type CStanding = {
@@ -90,6 +91,7 @@ type CBracketMatch = {
   winnerId: string | null; note: string | null;
 };
 type CStatLeader = {
+  playerId?: string | null;
   rank: number; player: string; athleteId: string | null; playerSlug?: string | null; teamId: string | null;
   teamAbbr: string; teamName: string; teamCrestUrl: string | null; value: number; matches: number | null;
 };
@@ -103,6 +105,7 @@ type CPenaltyKick = { order: number; player: string; scored: boolean };
 type CH2H = { date: string; label: string };
 // The window methods' output: 4 of the 12 methods return Match[].
 type CMatch = {
+  readerResources?: ReaderResources;
   id: string; scope?: { competitionId: string; seasonId: string }; kickoff: string;
   state: 'scheduled' | 'live' | 'finished'; minute: string | null; statusDetail: string; statusName: string;
   home: CStanding['team']; away: CStanding['team']; homeScore: N; awayScore: N; winnerId: string | null;
@@ -114,8 +117,8 @@ type CTeam = CStanding['team'];
 type CMatchInfo = { venue: string | null; city: string | null; referee: string | null; attendance: number | null };
 type CMatchVideo = { id: string; headline: string; duration: number | null; thumbnail: string | null; mp4Url: string | null; isGoal: boolean };
 type CFormResult = { result: 'W' | 'L' | 'D'; opponent: string; score: string };
-// Reader additions and historical nullable starter are explicit translation,
-// not changes to the ESPN-backed frontend's production type.
+// Reader additions remain required on the wire; optional frontend fields also
+// accommodate ESPN, whose historical starter is always known.
 type CReaderLineupPlayer = Omit<CLineupPlayer, 'starter' | 'playerSlug'> & {
   starter: boolean | null; playerId: string | null; playerSlug: string | null;
 };
@@ -124,15 +127,18 @@ type CReaderLineups = {
   home: { teamId: string | null; formation: string; players: CReaderLineupPlayer[] };
   away: { teamId: string | null; formation: string; players: CReaderLineupPlayer[] };
 };
-type CTeamLineup = { formation: string; players: CLineupPlayer[] };
+type CTeamLineup = { teamId?: string | null; formation: string; players: CLineupPlayer[] };
+type CMatchLineups = { availability?: 'complete' | 'pending' | 'partial' | 'unavailable'; home: CTeamLineup; away: CTeamLineup };
 type CGameLogRow = {
   eventId: string; appearance: string; stats: Record<string, number | null>; date: string | null; atVs: string;
   opponent: CTeam | null; score: string; result: string; homeTeamId: string | null; awayTeamId: string | null;
   teamId: string | null; teamAbbr: string;
+  liveMatch?: { state: 'live'; homeScore: number | null; awayScore: number | null; minute: string | null; statusDetail: string; statusName: string };
 };
-type CCareerStint = { teamId: string; teamName: string; crestUrl: string | null; seasons: string };
+type CCareerStint = { teamId: string | null; teamName: string; crestUrl: string | null; seasons: string };
 type CSeasonTotal = { name: string; label: string; display: string; value: number | null };
 type CPlayerProfile = {
+  readerResources?: ReaderResources; playerSlug?: string | null;
   id: string; name: string; age: number | null; position: string; jersey: string | null; nationality: string | null;
   flagUrl: string | null; headshotUrl: string | null; team: CTeam | null; seasonLabel: string; totals: CSeasonTotal[];
   gameLogLabel: string; gameLog: CGameLogRow[]; career: CCareerStint[];
@@ -144,9 +150,9 @@ type CReaderPlayerProfile = Omit<CPlayerProfile, 'career'> & {
 };
 // Zone vocabularies are configuration, so they are reused; the structure is pinned.
 type CZone = { from: number; to: number; kind: ZoneKind; labelKey: ZoneLabelKey };
-type CGroup = { id: string; standings: CStanding[]; zones?: CZone[] }
+type CGroup = { readerResources?: ReaderResources; readerDerivation?: { status: 'complete' | 'partial'; issues: import('../derivedStandings').DerivedIssue[]; inputs?: { competitionId: string; seasonId: string; resources: ReaderResources }[] }; id: string; standings: CStanding[]; zones?: CZone[] }
   & ({ name: string; labelKey?: never } | { name?: never; labelKey: OverallTableLabelKey });
-type CSummaryKeys = 'scorers' | 'cards' | 'stats' | 'winProbability' | 'lineups' | 'videos' | 'shootoutDetail' | 'info' | 'form' | 'commentary' | 'h2h';
+type CSummaryKeys = 'readerResources' | 'scorers' | 'cards' | 'stats' | 'winProbability' | 'lineups' | 'videos' | 'shootoutDetail' | 'info' | 'form' | 'commentary' | 'h2h';
 
 const wc = resolveSeason(vectors.queries.competition, vectors.queries.season)!;
 const s0 = vectors.summary;
@@ -255,7 +261,7 @@ describe('reader contract: inventory', () => {
     expect([...used].sort()).toEqual(Object.keys(vectors.gaps).sort());
     expect(vectors.methods.getPlayer.reader).toBe('/v1/competitions/{comp}/{season}/players/{playerId}');
     // Reader routes with no DataStore method are listed, never implied.
-    expect(Object.keys(vectors.readerOnly)).toEqual(['/v1/competitions/{comp}/{season}/calendar', '/v1/competitions/{comp}/{season}/top-scorers', '/v1/matches/{id}/box-score']);
+    expect(Object.keys(vectors.readerOnly).sort()).toEqual(['/v1/competitions/{comp}/{season}/calendar', '/v1/competitions/{comp}/{season}/top-scorers', '/v1/matches/{id}/box-score', '/v1/competitions/{comp}/{season}/identities'].sort());
     for (const route of Object.keys(vectors.readerOnly)) {
       expect(Object.values(vectors.methods).map(m => m.reader)).not.toContain(route);
     }
@@ -300,11 +306,11 @@ describe('reader contract: inventory', () => {
     expectTypeOf<FormResult>().toEqualTypeOf<CFormResult>();
     expectTypeOf<CommentaryItem>().toEqualTypeOf<{ minute: string; text: string }>();
     expectTypeOf<TeamLineup>().toEqualTypeOf<CTeamLineup>();
-    expectTypeOf<MatchLineups>().toEqualTypeOf<{ home: CTeamLineup; away: CTeamLineup }>();
+    expectTypeOf<MatchLineups>().toEqualTypeOf<CMatchLineups>();
     expectTypeOf<MatchSummaryData['info']>().toEqualTypeOf<CMatchInfo | null>();
     expectTypeOf<MatchSummaryData['videos']>().toEqualTypeOf<CMatchVideo[]>();
     expectTypeOf<MatchSummaryData['form']>().toEqualTypeOf<{ home: CFormResult[]; away: CFormResult[] } | null>();
-    expectTypeOf<MatchSummaryData['lineups']>().toEqualTypeOf<{ home: CTeamLineup; away: CTeamLineup } | null>();
+    expectTypeOf<MatchSummaryData['lineups']>().toEqualTypeOf<CMatchLineups | null>();
     expectTypeOf<Group['standings']>().toEqualTypeOf<CStanding[]>();
     expectTypeOf<Group>().toEqualTypeOf<CGroup>();
     expectTypeOf<MatchFreshness>().toEqualTypeOf<{

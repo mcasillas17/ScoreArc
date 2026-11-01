@@ -1,6 +1,5 @@
-import { dataStore } from '@/server/data/store';
 import { resolveSeason } from '@/server/data/competitions';
-import { competitionPlayerIndex } from '@/server/data/playerIndex';
+import { loadPlayerBySlug } from '@/server/data/playerIndex';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 import { apiError } from '@/app/api/errorResponse';
 
@@ -9,7 +8,7 @@ export const dynamic = 'force-dynamic';
 type RouteParams = Promise<{ comp: string; season: string; playerSlug: string }>;
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: RouteParams },
 ) {
   const { comp, season, playerSlug } = await params;
@@ -18,16 +17,7 @@ export async function GET(
     return apiError('NOT_FOUND', 404);
   }
   try {
-    // Addressed by slug per the PLAYER_IDENTITY.md contract -- the same shape
-    // the reader API will serve, so this route's public face survives the
-    // cutover. A slug the index does not know is a 404 without an athlete
-    // request upstream.
-    const index = await competitionPlayerIndex(rc);
-    const resolved = index.bySlug.get(playerSlug);
-    if (!resolved) {
-      return apiError('NOT_FOUND', 404);
-    }
-    const player = await dataStore.getPlayer(rc, resolved.providerId);
+    const player = await loadPlayerBySlug(rc, playerSlug, undefined, req.signal);
     if (!player) {
       return apiError('NOT_FOUND', 404);
     }

@@ -157,7 +157,8 @@ function CardChips({ player }: { player: LineupPlayer }) {
 // Starters first, then the bench, each by shirt number. Unnumbered players go
 // last rather than sorting as zero and jumping the goalkeeper.
 function boxOrder(a: LineupPlayer, b: LineupPlayer): number {
-  if (a.starter !== b.starter) return a.starter ? -1 : 1;
+  if (a.starter === true && b.starter !== true) return -1;
+  if (b.starter === true && a.starter !== true) return 1;
   return (a.number ?? 999) - (b.number ?? 999);
 }
 
@@ -196,7 +197,7 @@ function BoxScoreTable({ team, abbr, playerBase }: { team: TeamLineup; abbr: str
               <td className="rank-cell">{p.number ?? '–'}</td>
               <td className="team-cell">
                 <PlayerName name={p.name} slug={p.playerSlug} playerBase={playerBase} className="team-name" />
-                {!p.starter && <span className="ls-box-sub">{t('matchDetails.substitute')}</span>}
+                {p.starter === false && <span className="ls-box-sub">{t('matchDetails.substitute')}</span>}
               </td>
               <td className="std-muted">{p.position}</td>
               <StatCell value={p.stats!.totalGoals} />

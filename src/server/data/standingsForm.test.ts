@@ -185,6 +185,21 @@ describe('standings form coverage', () => {
 
 describe('shared standings form read', () => {
   afterEach(() => { vi.useRealTimers(); });
+  it('never shares an in-flight result between different source stores', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(october);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const firstStore = store([table('t', row('a', 1), row('b', 1))], [game('reader', '2026-10-01T12:00:00Z', 'a', 'b')]);
+    const secondStore = store([table('t', row('a', 1), row('b', 1))], [game('espn', '2026-10-01T12:00:00Z', 'a', 'b', 0, 1)]);
+    firstStore.getStandings.mockImplementation(async () => { await gate; return [table('t', row('a', 1), row('b', 1))]; });
+    const first = sharedStandingsForm(firstStore, laliga, new AbortController().signal);
+    const second = sharedStandingsForm(secondStore, laliga, new AbortController().signal);
+    release();
+    const [reader, espn] = await Promise.all([first, second]);
+    expect(results(reader, 'a')).toEqual(['reader:W']);
+    expect(results(espn, 'a')).toEqual(['espn:L']);
+  });
   it('coalesces concurrent readers into one read and survives one reader leaving', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(october);

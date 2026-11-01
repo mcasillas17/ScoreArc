@@ -3,7 +3,8 @@ import { notFound } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
 import { resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
-import { withPlayerSlugs } from '@/server/data/playerIndex';
+import { isSelectedDataStore, runDataOperation } from '@/server/data/sourceSelection';
+import { loadLeadersWithSlugs } from '@/server/data/playerIndex';
 import { getBannerFeed } from '@/server/data/banner';
 import type { Group, StatLeader } from '@/server/data/types';
 import StandingsLive from '@/components/StandingsLive';
@@ -52,28 +53,24 @@ export default async function StandingsPage({ params }: { params: SeasonParams }
   // A finished (non-current) edition is view-only — no "what's next" band.
   const readOnly = rc.season.id !== rc.competition.currentSeasonId;
 
-  const feed = readOnly ? { matches: [], weekOnly: false } : await getBannerFeed(rc);
-
-  let groups: Group[] = [];
-  let scorers: StatLeader[] = [];
-  let assists: StatLeader[] = [];
-  try {
-    groups = await dataStore.getStandings(rc);
-  } catch {
-    // ESPN feed unavailable — render empty state
-  }
-  try {
-    // One fetch, both boards.
-    const boards = await dataStore.getLeaders(rc);
-    // Best-effort slug enrichment: a failed player index costs the name
-    // links, never the boards.
-    [scorers, assists] = await Promise.all([
-      withPlayerSlugs(rc, boards.scorers),
-      withPlayerSlugs(rc, boards.assists),
-    ]);
-  } catch {
-    // ESPN stats unavailable — tables render their own empty state
-  }
+  const { feed, groups, scorers, assists } = await runDataOperation(dataStore, async source => {
+    const feed = readOnly ? { matches: [], weekOnly: false } : await getBannerFeed(rc, source);
+    let groups: Group[] = [];
+    let scorers: StatLeader[] = [];
+    let assists: StatLeader[] = [];
+    try {
+      groups = await source.getStandings(rc);
+    } catch (error) {
+      if (isSelectedDataStore(source)) throw error;
+      // ESPN-only mode preserves its existing empty-state degradation.
+    }
+    try {
+      ({ scorers, assists } = await loadLeadersWithSlugs(rc, source));
+    } catch (error) {
+      if (isSelectedDataStore(source)) throw error;
+    }
+    return { feed, groups, scorers, assists };
+  });
 
   // A single-cut league (Liga MX → Liguilla) or a multi-outcome one (the
   // European leagues' UCL/UEL/relegation zones) needs the wide layout, because
