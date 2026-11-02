@@ -33,6 +33,9 @@ func TestReaderResourceContractRoutes(t *testing.T) {
 	for route, expected := range routes {
 		t.Run(route, func(t *testing.T) {
 			path := strings.NewReplacer("{comp}", "world-cup", "{season}", "2026", "{teamId}", "nat-arg", "{playerId}", finalMatchID, "{id}", finalMatchID).Replace(route)
+			if strings.HasSuffix(path, "/identities") {
+				path += "?kind=match&from=espn&ids=401877007"
+			}
 			request := httptest.NewRequest(http.MethodGet, path, nil)
 			request.Header.Set("Origin", "https://scorearc.futbol")
 			response := httptest.NewRecorder()

@@ -22,13 +22,24 @@ type GameLogRow struct {
 	AwayTeamID *string           `json:"awayTeamId"`
 	TeamID     *string           `json:"teamId"`
 	TeamAbbr   string            `json:"teamAbbr"`
+	LiveMatch  *LiveGameLogMatch `json:"liveMatch,omitempty"`
+}
+
+type LiveGameLogMatch struct {
+	State        string  `json:"state"`
+	HomeScore    *int    `json:"homeScore"`
+	AwayScore    *int    `json:"awayScore"`
+	Minute       *string `json:"minute"`
+	StatusDetail string  `json:"statusDetail"`
+	StatusName   string  `json:"statusName"`
 }
 
 // Identity preflights at most 2,001 scoped roster rows in the same snapshot.
 // Event evidence is bounded before aggregation; all five matches use one query.
 const playerGameLogSQL = `
 WITH candidates AS MATERIALIZED (
- SELECT a.*,m.kickoff,m.state,m.home_team_id,m.away_team_id,m.home_score,m.away_score
+ SELECT a.*,m.kickoff,m.state,m.home_team_id,m.away_team_id,m.home_score,m.away_score,
+ m.minute AS match_minute,m.status_detail AS match_status_detail,m.status_name AS match_status_name
  FROM appearance a JOIN match m ON m.id=a.match_id
  WHERE a.player_id=$1 AND m.competition_id=$2 AND m.season_id=$3
  AND m.state IN ('live','finished')
@@ -49,7 +60,8 @@ WITH candidates AS MATERIALIZED (
  ORDER BY a.kickoff DESC,a.match_id DESC LIMIT 5
 )
 SELECT a.match_id::text,a.kickoff,a.state,a.home_team_id,a.away_team_id,a.team_id,own.abbr,
- a.home_score,a.away_score,a.starter,a.subbed,a.on_pitch,coalesce(a.completed,false),a.event_count,
+ a.home_score,a.away_score,NULLIF(a.match_minute,''),a.match_status_detail,a.match_status_name,
+ a.starter,a.subbed,a.on_pitch,coalesce(a.completed,false),a.event_count,
  a.goals,a.assists,a.shots,a.shots_on_target,a.offsides,a.fouls_committed,a.fouls_suffered,
  a.yellow_cards,a.red_cards,a.own_goals,a.saves,a.goals_conceded,a.shots_faced,
  opp.id,opp.name,opp.abbr,opp.crest_url
@@ -69,12 +81,14 @@ func (s *Store) playerGameLog(ctx context.Context, id, competition, season strin
 		var kickoff time.Time
 		var state, home, away, team string
 		var homeScore, awayScore *int
+		var liveMatch LiveGameLogMatch
 		var starter, subbed, onPitch, complete bool
 		var events int
 		opponent := &espn.Team{}
 		stats := &row.Stats
 		if err := rows.Scan(&row.EventID, &kickoff, &state, &home, &away, &team, &row.TeamAbbr,
-			&homeScore, &awayScore, &starter, &subbed, &onPitch, &complete, &events,
+			&homeScore, &awayScore, &liveMatch.Minute, &liveMatch.StatusDetail, &liveMatch.StatusName,
+			&starter, &subbed, &onPitch, &complete, &events,
 			&stats.TotalGoals, &stats.GoalAssists, &stats.TotalShots, &stats.ShotsOnTarget, &stats.Offsides, &stats.FoulsCommitted, &stats.FoulsSuffered,
 			&stats.YellowCards, &stats.RedCards, &stats.OwnGoals, &stats.Saves, &stats.GoalsConceded, &stats.ShotsFaced,
 			&opponent.ID, &opponent.Name, &opponent.Abbr, &opponent.CrestURL); err != nil {
@@ -85,6 +99,10 @@ func (s *Store) playerGameLog(ctx context.Context, id, competition, season strin
 		}
 		if team != home && team != away {
 			return nil, fmt.Errorf("player match side mismatch")
+		}
+		if state == "live" {
+			liveMatch.State, liveMatch.HomeScore, liveMatch.AwayScore = state, homeScore, awayScore
+			row.LiveMatch = &liveMatch
 		}
 		setParticipationStats(stats, starter, subbed, complete, onPitch)
 		if starter {

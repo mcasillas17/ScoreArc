@@ -15,6 +15,7 @@ import (
 )
 
 type matchReader interface {
+	Identities(context.Context, string, string, identityQuery) ([]IdentityReference, error)
 	Resources(context.Context, resourceScope) (resourceSnapshot, error)
 	Standings(context.Context, string, string, string) ([]Group, error)
 	TopScorers(context.Context, string, string) ([]espn.TopScorer, error)
@@ -65,6 +66,7 @@ func (a *App) router() http.Handler {
 	router.Route("/v1", func(router chi.Router) {
 		router.Use(a.requestTimeout)
 		router.Get("/competitions/{comp}/{season}/matches", a.handleMatches)
+		router.Get("/competitions/{comp}/{season}/identities", a.handleIdentities)
 		router.Get("/competitions/{comp}/{season}/calendar", a.handleCalendar)
 		router.Get("/competitions/{comp}/{season}/standings", a.handleStandings)
 		router.Get("/competitions/{comp}/{season}/bracket", a.handleBracket)

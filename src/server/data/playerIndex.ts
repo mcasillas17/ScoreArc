@@ -1,14 +1,57 @@
 import type { CompetitionSeason } from './competitions';
-import type { MatchSummaryData, Team } from './types';
+import type { MatchSummaryData, PlayerProfile, Team } from './types';
 import { dataStore, type DataStore } from './store';
 import { buildSlugMap, type ResolvedPlayer, type SlugEntry } from './playerIdentity';
 import { standingTeams } from './teamIndex';
+import { isReaderOperationStore, runDataOperation } from './sourceSelection';
 
 interface PlayerIndex {
   /** URL slug -> the player, for resolving a page request. */
   bySlug: Map<string, ResolvedPlayer>;
   /** Provider athlete id -> slug, for generating links where we hold the id. */
   byProvider: Map<string, string>;
+}
+
+/** Resolve and load together so fallback repeats the complete slug lookup. */
+export function loadPlayerBySlug(
+  rc: CompetitionSeason,
+  slug: string,
+  store: DataStore = dataStore,
+  signal?: AbortSignal,
+): Promise<PlayerProfile | null> {
+  return runDataOperation(store, async (source) => {
+    const index = await competitionPlayerIndex(rc, source);
+    const resolved = index.bySlug.get(slug);
+    return resolved ? source.getPlayer(rc, resolved.providerId) : null;
+  }, signal);
+}
+
+export function loadLeadersWithSlugs(rc: CompetitionSeason, store: DataStore = dataStore, signal?: AbortSignal) {
+  return runDataOperation(store, async (source) => {
+    const boards = await source.getLeaders(rc);
+    const linked = await withPlayerSlugs(rc, [...boards.scorers, ...boards.assists], source);
+    return { scorers: linked.slice(0, boards.scorers.length), assists: linked.slice(boards.scorers.length) };
+  }, signal);
+}
+
+/** Reader joins share the operation deadline; ESPN keeps its 800ms optional-link budget. */
+export function loadMatchSummaryWithSlugs(
+  rc: CompetitionSeason, id: string, home: string, away: string,
+  store: DataStore = dataStore, signal?: AbortSignal,
+): Promise<MatchSummaryData> {
+  return runDataOperation(store, async (source) => {
+    const summary = await source.getMatchSummary(rc, id, home, away);
+    if (isReaderOperationStore(source)) return withSummaryPlayerSlugs(rc, summary, source);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        withSummaryPlayerSlugs(rc, summary, source),
+        new Promise<typeof summary>((resolve) => { timer = setTimeout(() => resolve(summary), 800); }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }, signal);
 }
 
 /**
@@ -33,43 +76,45 @@ export async function competitionPlayerIndex(
   rc: CompetitionSeason,
   store: DataStore = dataStore,
 ): Promise<PlayerIndex> {
-  const standing = await standingTeams(rc, store);
+  return runDataOperation(store, async (source) => {
+    const standing = await standingTeams(rc, source);
 
-  // Dedupe: MLS standings carry each club twice (conference AND overall
-  // groups), and a duplicated roster makes every player collide with
-  // himself -- Messi rendered as lionel-messi-mia-10.
-  const teamById = new Map<string, Team>();
-  for (const team of standing) {
-    if (!teamById.has(team.id)) teamById.set(team.id, team);
-  }
-  const teams = Array.from(teamById.values());
-  const squads = await Promise.all(
-    teams.map(async (team) => ({ team, squad: await store.getSquad(rc, team.id) })),
-  );
-
-  const entries: SlugEntry[] = [];
-  const seenAthletes = new Set<string>();
-  for (const { team, squad } of squads) {
-    for (const player of squad) {
-      // The same belt-and-suspenders at athlete level: a player listed on two
-      // rosters (mid-window transfer) is one identity, not a collision.
-      if (seenAthletes.has(player.id)) continue;
-      seenAthletes.add(player.id);
-      entries.push({
-        name: player.name,
-        providerId: player.id,
-        teamAbbr: team.abbr,
-        jersey: player.jersey != null ? String(player.jersey) : null,
-      });
+    // Dedupe: MLS standings carry each club twice (conference AND overall
+    // groups), and a duplicated roster makes every player collide with
+    // himself -- Messi rendered as lionel-messi-mia-10.
+    const teamById = new Map<string, Team>();
+    for (const team of standing) {
+      if (!teamById.has(team.id)) teamById.set(team.id, team);
     }
-  }
+    const teams = Array.from(teamById.values());
+    const squads = await Promise.all(
+      teams.map(async (team) => ({ team, squad: await source.getSquad(rc, team.id) })),
+    );
 
-  const bySlug = buildSlugMap(entries);
-  const byProvider = new Map<string, string>();
-  for (const [slug, player] of Array.from(bySlug.entries())) {
-    byProvider.set(player.providerId, slug);
-  }
-  return { bySlug, byProvider };
+    const entries: SlugEntry[] = [];
+    const seenAthletes = new Set<string>();
+    for (const { team, squad } of squads) {
+      for (const player of squad) {
+        // The same belt-and-suspenders at athlete level: a player listed on two
+        // rosters (mid-window transfer) is one identity, not a collision.
+        if (seenAthletes.has(player.id)) continue;
+        seenAthletes.add(player.id);
+        entries.push({
+          name: player.name,
+          providerId: player.id,
+          teamAbbr: team.abbr,
+          jersey: player.jersey != null ? String(player.jersey) : null,
+        });
+      }
+    }
+
+    const bySlug = buildSlugMap(entries);
+    const byProvider = new Map<string, string>();
+    for (const [slug, player] of Array.from(bySlug.entries())) {
+      byProvider.set(player.providerId, slug);
+    }
+    return { bySlug, byProvider };
+  });
 }
 
 /**
@@ -91,7 +136,8 @@ export async function withPlayerSlugs<T extends { athleteId: string | null; play
       ...leader,
       playerSlug: leader.athleteId ? index.byProvider.get(leader.athleteId) ?? null : null,
     }));
-  } catch {
+  } catch (error) {
+    if (isReaderOperationStore(store)) throw error;
     return leaders;
   }
 }
@@ -123,11 +169,13 @@ export async function withSummaryPlayerSlugs(
       ...summary,
       scorers: summary.scorers.map(withSlug),
       lineups: summary.lineups && {
+        ...summary.lineups,
         home: { ...summary.lineups.home, players: summary.lineups.home.players.map(withSlug) },
         away: { ...summary.lineups.away, players: summary.lineups.away.players.map(withSlug) },
       },
     };
-  } catch {
+  } catch (error) {
+    if (isReaderOperationStore(store)) throw error;
     return summary;
   }
 }

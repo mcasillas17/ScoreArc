@@ -14,6 +14,7 @@
    ]
   } },
  "readerOnly": {
+  "/v1/competitions/{comp}/{season}/identities": "T16.3 bounded read-only persisted ESPN identity references; match scope and sides, explicit missing/ambiguous outcomes; no search or DataStore method.",
   "/v1/competitions/{comp}/{season}/calendar": "T10.1 season calendar (one row per UTC match day). No DataStore method: the site builds month views from getFixtures today.",
   "/v1/competitions/{comp}/{season}/top-scorers": "T10.2 legacy goals-only shape, full stored board bounded to 30; new consumers use leaders.",
   "/v1/matches/{id}/box-score": "T10.2 bounded participation read with explicit availability and canonical identity; no DataStore cutover."
@@ -5588,6 +5589,7 @@
  },
  "resourceFreshness": {
   "routes": {
+   "/v1/competitions/{comp}/{season}/identities": ["identity"],
    "/v1/competitions/{comp}/{season}/matches": [
     "identity",
     "matches"

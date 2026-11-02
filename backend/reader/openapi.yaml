@@ -28,6 +28,57 @@ paths:
               schema: { $ref: "#/components/schemas/Health" }
         "500": { $ref: "#/components/responses/InternalError" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
+  /v1/competitions/{comp}/{season}/identities:
+    get:
+      operationId: resolveIdentities
+      summary: Resolve bounded persisted ESPN references without guessing identities
+      description: >-
+        Returns one row per supplied ID in input order. A resolution requires
+        exactly one ESPN reference for the canonical entity; multiple aliases
+        are ambiguous in both directions. Missing or ambiguous rows keep every
+        output reference null. Matches must belong to the route's competition
+        and season, and resolved matches include their actual canonical sides.
+        Team and player identity is global and may lack scoped statistics.
+        These are held references, not search or a freshness observation.
+        All parameters are required exactly once; unknown, duplicate, empty,
+        malformed and over-limit queries are 400. No writes or upstream calls.
+      parameters:
+        - { $ref: "#/components/parameters/Comp" }
+        - { $ref: "#/components/parameters/Season" }
+        - name: kind
+          in: query
+          required: true
+          schema: { type: string, enum: [match, player, team] }
+        - name: from
+          in: query
+          required: true
+          schema: { type: string, enum: [canonical, espn] }
+        - name: ids
+          in: query
+          required: true
+          description: >-
+            Comma-separated list of 1 to 100 unique identifiers. ESPN IDs are
+            positive decimal references of at most 32 digits. Canonical match
+            and player IDs are lowercase hyphenated UUIDs; team IDs are lowercase
+            alphanumeric slug segments separated by hyphens, at most 128 bytes.
+          schema: { type: string, minLength: 1, maxLength: 12899 }
+      responses:
+        "200":
+          description: Ordered identity outcomes with explicit nulls and unknown observation clocks
+          headers:
+            X-ScoreArc-Resources: { $ref: "#/components/headers/Resources" }
+            Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
+          content:
+            application/json:
+              schema:
+                type: array
+                minItems: 1
+                maxItems: 100
+                items: { $ref: "#/components/schemas/IdentityReference" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
   /v1/competitions/{comp}/{season}/matches:
     get:
       operationId: listMatches
@@ -563,6 +614,25 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
   schemas:
+    IdentityReference:
+      type: object
+      additionalProperties: false
+      required: [id, status, canonicalId, providerId, competitionId, seasonId, homeId, awayId]
+      description: >-
+        id echoes the exact requested identifier. Only resolved carries references.
+        For missing or ambiguous all reference and scope fields are null
+        (id remains the input). Resolved matches carry scope and canonical sides;
+        player and team rows have null scope and sides. A missing reference is
+        not proof the provider entity does not exist.
+      properties:
+        id: { type: string, minLength: 1, maxLength: 128 }
+        status: { type: string, enum: [resolved, missing, ambiguous] }
+        canonicalId: { type: [string, "null"], maxLength: 128 }
+        providerId: { type: [string, "null"], pattern: "^[1-9][0-9]{0,31}$" }
+        competitionId: { type: [string, "null"] }
+        seasonId: { type: [string, "null"] }
+        homeId: { type: [string, "null"], maxLength: 128 }
+        awayId: { type: [string, "null"], maxLength: 128 }
     ReaderResources:
       type: object
       additionalProperties: false
@@ -823,6 +893,18 @@ components:
         awayTeamId: { type: [string, "null"], description: Canonical away team id. }
         teamId: { type: [string, "null"], description: "Canonical team represented in this match, preserved across transfers." }
         teamAbbr: { type: string }
+        liveMatch:
+          description: Present only for a live held match; explicit popup facts from the same snapshot as the game log. Omitted on finished rows and older reader responses.
+          type: object
+          additionalProperties: false
+          required: [state, homeScore, awayScore, minute, statusDetail, statusName]
+          properties:
+            state: { type: string, enum: [live] }
+            homeScore: { type: [integer, "null"], minimum: 0 }
+            awayScore: { type: [integer, "null"], minimum: 0 }
+            minute: { type: [string, "null"] }
+            statusDetail: { type: string }
+            statusName: { type: string }
     CareerStint:
       type: object
       additionalProperties: false

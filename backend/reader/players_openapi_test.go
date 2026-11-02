@@ -74,6 +74,13 @@ func TestOpenAPIPlayerProfileWireValues(t *testing.T) {
 	if err := schema.VisitJSON(full); err != nil {
 		t.Fatalf("populated player profile rejected: %v", err)
 	}
+	live := wire(t, json.RawMessage(playerOpenAPIJSON)).(map[string]any)
+	liveRow := live["gameLog"].([]any)[0].(map[string]any)
+	liveRow["result"], liveRow["score"] = "", "2-1"
+	liveRow["liveMatch"] = map[string]any{"state": "live", "homeScore": 2, "awayScore": 1, "minute": "63", "statusDetail": "63'", "statusName": "STATUS_IN_PROGRESS"}
+	if err := schema.VisitJSON(live); err != nil {
+		t.Fatalf("live game-log context rejected: %v", err)
+	}
 	empty := wire(t, json.RawMessage(`{"id":"0194d500-3e48-7000-8000-00000000000a","playerSlug":null,"name":"Held Player","age":null,"position":"","jersey":null,"nationality":null,"flagUrl":null,"headshotUrl":null,"team":null,"seasonLabel":"2026","totals":[],"gameLogLabel":"Last 5 Matches","gameLog":[],"career":[]}`))
 	if err := schema.VisitJSON(empty); err != nil {
 		t.Fatalf("identity with no optional rows rejected: %v", err)

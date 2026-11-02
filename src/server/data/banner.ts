@@ -1,6 +1,7 @@
 import type { Match } from './types';
 import type { CompetitionSeason } from './competitions';
-import { dataStore } from './store';
+import { dataStore, type DataStore } from './store';
+import { isSelectedDataStore, runDataOperation } from './sourceSelection';
 
 export interface BannerFeed {
   matches: Match[];
@@ -26,14 +27,25 @@ export interface BannerFeed {
  * Returns an empty `matches` for a finished edition, which callers render as
  * no band at all rather than a heading over nothing.
  */
-export async function getBannerFeed(rc: CompetitionSeason): Promise<BannerFeed> {
-  let matches: Match[] = [];
-  try { matches = await dataStore.getMatches(rc); } catch {}
+export async function getBannerFeed(rc: CompetitionSeason, store: DataStore = dataStore): Promise<BannerFeed> {
+  try {
+    return await runDataOperation(store, async (source) => {
+      let matches: Match[] = [];
+      try { matches = await source.getMatches(rc); } catch (error) {
+        if (isSelectedDataStore(source)) throw error;
+      }
 
-  const weekOnly = matches.some((m) => m.state === 'scheduled');
-  if (weekOnly) return { matches, weekOnly };
+      const weekOnly = matches.some((m) => m.state === 'scheduled');
+      if (weekOnly) return { matches, weekOnly };
 
-  let upcoming: Match[] = [];
-  try { upcoming = await dataStore.getUpcoming(rc); } catch {}
-  return { matches: upcoming, weekOnly };
+      let upcoming: Match[] = [];
+      try { upcoming = await source.getUpcoming(rc); } catch (error) {
+        if (isSelectedDataStore(source)) throw error;
+      }
+      return { matches: upcoming, weekOnly };
+    });
+  } catch (error) {
+    if (isSelectedDataStore(store)) throw error;
+    return { matches: [], weekOnly: false };
+  }
 }

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { track } from '@vercel/analytics/server';
-import { trackAPIRequestFailure } from './server';
+import { trackAPIRequestFailure, trackReaderFallback } from './server';
 
 vi.mock('@vercel/analytics/server', () => ({ track: vi.fn() }));
 
@@ -34,4 +34,12 @@ describe('trackAPIRequestFailure', () => {
       vi.useRealTimers();
     }
   });
+});
+
+it('records bounded fallback reason enums without dependency details', () => {
+  vi.mocked(track).mockReset();
+  trackReaderFallback('network');
+  trackReaderFallback('network');
+  expect(track).toHaveBeenCalledTimes(1);
+  expect(track).toHaveBeenCalledWith('Reader fallback', { group: 'core', reason: 'network' }, { headers: {} });
 });

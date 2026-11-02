@@ -1,4 +1,5 @@
 import type { OverallTableLabelKey, Zone } from './competitions';
+import type { ReaderResources } from '@/lib/readerResources';
 
 export type MatchState = 'scheduled' | 'live' | 'finished';
 
@@ -111,6 +112,7 @@ export interface ShootoutDetail {
 }
 
 export interface Match {
+  readerResources?: ReaderResources;
   id: string;
   /** Present only when the data seam has verified this match's edition. */
   scope?: { competitionId: string; seasonId: string };
@@ -148,6 +150,9 @@ export interface Standing {
 }
 
 interface GroupTable {
+  readerDerivation?: { status: 'complete' | 'partial'; issues: import('./derivedStandings').DerivedIssue[];
+    inputs?: { competitionId: string; seasonId: string; resources: ReaderResources }[] };
+  readerResources?: ReaderResources;
   id: string;               // stable provider or ScoreArc table identifier
   standings: Standing[];
   // Per-table outcome zones, overriding the competition-wide ones. Almost every
@@ -217,6 +222,8 @@ export interface NewsArticle {
 // named field so goals, assists and every board E7 adds share one type and one
 // component. ESPN ships them all in the same shape, in the same response.
 export interface StatLeader {
+  /** Canonical reader reference; public links use playerSlug. */
+  playerId?: string | null;
   rank: number;
   player: string;
   /**
@@ -271,11 +278,13 @@ export interface PlayerMatchStats {
 }
 
 export interface LineupPlayer {
+  /** Canonical reader reference; public links use playerSlug. */
+  playerId?: string | null;
   name: string;
   number: number | null;
   position: string;
   jersey: string | null;
-  starter: boolean;
+  starter: boolean | null;
   stats: PlayerMatchStats | null;
   /**
    * The provider's athlete id, or null. It rides the API response body (the
@@ -292,8 +301,11 @@ export interface LineupPlayer {
    */
   playerSlug?: string | null;
 }
-export interface TeamLineup { formation: string; players: LineupPlayer[] }
-export interface MatchLineups { home: TeamLineup; away: TeamLineup }
+export interface TeamLineup { teamId?: string | null; formation: string; players: LineupPlayer[] }
+export interface MatchLineups {
+  availability?: 'complete' | 'pending' | 'partial' | 'unavailable';
+  home: TeamLineup; away: TeamLineup;
+}
 
 export interface MatchVideo {
   id: string;
@@ -334,6 +346,7 @@ export interface H2HMeeting {
 
 // The on-demand detail we fetch for one match (shared by service + popup).
 export interface MatchSummaryData {
+  readerResources?: ReaderResources;
   scorers: Scorer[];
   cards: Card[];
   stats: MatchStats | null;
@@ -398,6 +411,7 @@ export interface TeamStanding {
 }
 
 export interface TeamProfile {
+  readerResources?: ReaderResources;
   team: Team;
   location: string | null;
   color: string | null;
@@ -438,16 +452,20 @@ export interface GameLogRow {
   awayTeamId: string | null;
   teamId: string | null; // the player's club in THIS match (transfers move it)
   teamAbbr: string;
+  /** Held live facts; finished/legacy ESPN rows keep their result-based interpretation. */
+  liveMatch?: { state: 'live'; homeScore: number | null; awayScore: number | null; minute: string | null; statusDetail: string; statusName: string };
 }
 
 export interface CareerStint {
-  teamId: string;
+  teamId: string | null;
   teamName: string;
   crestUrl: string | null;
   seasons: string; // e.g. "2025-CURRENT"
 }
 
 export interface PlayerProfile {
+  playerSlug?: string | null;
+  readerResources?: ReaderResources;
   id: string;
   name: string;
   age: number | null;

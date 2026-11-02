@@ -3,6 +3,7 @@ import { dataStore, type DataStore } from './store';
 import { canonicalTeamId } from './teamIdentity';
 import { StandingsStatsError } from './providers/espn-standings';
 import type { Team } from './types';
+import { isSelectedDataStore, runDataOperation } from './sourceSelection';
 
 /**
  * Every team in a competition season's standings, in table order (repeats
@@ -52,13 +53,13 @@ export interface IndexedTeam {
  * nothing extra on a warm cache. Clubs the seed has not curated are dropped:
  * they have no canonical id, so there is no page to send anyone to.
  */
-export async function competitionTeams(rc: CompetitionSeason): Promise<IndexedTeam[]> {
+export async function competitionTeams(rc: CompetitionSeason, store: DataStore = dataStore): Promise<IndexedTeam[]> {
   let teams: Team[];
   try {
-    teams = await standingTeams(rc);
-  } catch {
-    // One competition's table being unavailable must not empty the whole
-    // index -- the caller merges across competitions.
+    teams = await standingTeams(rc, store);
+  } catch (error) {
+    if (isSelectedDataStore(store)) throw error;
+    // Preserve the ESPN-only directory's best-effort membership policy.
     return [];
   }
 
@@ -88,15 +89,16 @@ export async function competitionTeams(rc: CompetitionSeason): Promise<IndexedTe
  *
  * Built by merging the per-competition lists, so a club in two competitions is
  * one entry with two memberships rather than two entries with the same name.
- * Competitions are fetched in parallel and a failing one contributes nothing
- * rather than failing the page.
+ * Competitions are fetched in parallel. In reader mode the whole membership
+ * collection falls back together; ESPN-only mode keeps its best-effort index.
  */
 export async function allTeams(): Promise<IndexedTeam[]> {
   const seasons = listCompetitions()
     .map((competition) => resolveSeason(competition.id))
     .filter((rc): rc is CompetitionSeason => rc !== undefined);
 
-  const lists = await Promise.all(seasons.map((rc) => competitionTeams(rc)));
+  const lists = await runDataOperation(dataStore, source =>
+    Promise.all(seasons.map((rc) => competitionTeams(rc, source))));
 
   const merged = new Map<string, IndexedTeam>();
   for (const list of lists) {
