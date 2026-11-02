@@ -93,7 +93,7 @@ versus pending.
 | **E9** | Expected goals (xG) | T7.13 op-closure · T9.1 · product choice · rights | [spec](superpowers/specs/2026-08-15-expected-goals-design.md) | after T9.1 |
 | **E10** | Public API read surface | reader DTO/query parity + rights for new public exposure | — (serves product epics) | T10.1–T10.11, see task index |
 | **E11** | Dynamic home & now-first matches | **shipped** | [spec](superpowers/specs/2026-08-18-dynamic-home-and-matches-design.md) | T11.1–T11.3, see task index |
-| **E12** | Discovery & search | team discovery shipped; player directory/search remains | see E12 below | player UI may precede reader parity |
+| **E12** | Discovery & search | team discovery shipped; scoped player directory implemented | see E12 below | player UI may precede reader parity |
 | **E13** | Competition simulation | E7 history + product contract + published validation | not designed | T13.1 first |
 | **E14** | Home digest and global navigation | **shipped** | [spec](superpowers/specs/2026-08-21-home-digest-and-global-nav-design.md) | shipped |
 | **E15** | Typed English/Spanish localization | **shipped** | [spec](superpowers/specs/2026-08-21-typed-localization-and-locale-routing-design.md) | [plan](superpowers/plans/2026-08-21-typed-localization-and-locale-routing.md) |
@@ -344,9 +344,11 @@ shipped:
   masthead. Accent-folded, so "america" finds "América".
 - **T12.3 Navigation** — done. Team pages carry a link back to their
   competition's team list.
-- **T12.4 Player directory and search UI** — pending. May ship first against the
-  existing provider-backed player index; reader search parity follows rather
-  than blocking the UI through E10.11.
+- **T12.4 Player directory and search UI** — implemented. Competition-scoped
+  current-roster search at `/c/[comp]/[season]/players`, with EN/ES, existing slug
+  links, explicit coverage and historical limitations, and grouped reader fallback.
+  [Scope, verification and measured costs](PLAYER_DIRECTORY.md). Canonical entity
+  search remains E10.11; this does not activate reader traffic.
 
 **The blocker for search:** a team page is competition-scoped on purpose
 (América's record in Liga MX is not their record in the Leagues Cup), so a
@@ -786,7 +788,7 @@ code rather than pasted from a dated plan.
 | **T10.9** | Expose match/official profiles and bounded match lists. | Canonical official ids only; unknown ids are `404`, list filters are validated. | T10.1 |
 | **T10.10** | Close derived-standings parity for Leagues Cup and MLS overall tables. | A fixed snapshot matches today's TypeScript computation; if derivation remains in `apiStore`, that decision is contract-tested and documented. | T10.1, E16.1 |
 | **T10.11** | Search canonical team, player, and competition identities through one bounded reader query. | Empty query is rejected; no-result is an empty result, and public promotion remains subject to E18. | E16.2, T10.1 |
-| **T12.4** | Add an accent-folded player directory/search UI with competition-aware links. | Ambiguous names show their competitions; provider-backed UI may precede reader parity. | player index now; T10.11 later |
+| **T12.4** | **Implemented:** accent-folded player directory/search within a competition. | Current-roster coverage, historical limitations, EN/ES and existing profile slugs; [evidence](PLAYER_DIRECTORY.md). | Existing index + source operation; T10.11 canonical search later |
 | **T13.1** | Decide deterministic/probabilistic inputs, tie-breaks, persistence, and sharing in an approved design. | No engine work begins with unresolved scoreline or tie-break semantics. | owner design approval |
 | **T13.2** | Recompute league/group tables from fixed played matches plus user-entered remaining results. | Pure golden scenarios cover points, goal difference, qualification cuts, and split-season rules. | T13.1 |
 | **T13.3** | Feed simulated group qualifiers into the existing knockout prediction tree. | Invalid or incomplete seed sets are rejected rather than guessed. | T13.2 |

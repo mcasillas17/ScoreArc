@@ -173,6 +173,8 @@ export function competitionSections(rc: CompetitionSeason, locale: Locale, prefi
       // a real route with nothing in the nav lit up at all.
       match: (p) => under('/teams')(p) || under('/team/')(p),
     },
+    { href: link('/players'), label: t('nav.players'), icon: playersIcon,
+      match: (p) => under('/players')(p) || under('/player/')(p) },
     { href: link('/news'), label: t('sidebar.news'), icon: newsIcon, match: under('/news') },
   ];
   // A projected Liguilla gives a league's root real content of its own, so
@@ -233,9 +235,8 @@ export interface BottomBarItem {
  * — the pattern `main` had before E14, where the fixed bar was the section nav
  * and nothing else competed with it. Off a competition there are no sections to
  * show, so it carries the site's three real pages plus a way into the full
- * list. Players and Simulate are deliberately absent: they are labels, not
- * destinations, and a bottom bar of four thumb targets is the wrong place to
- * advertise something you cannot tap.
+ * list. Player discovery belongs to each competition; there is no global
+ * roster fan-out. Simulate remains a label rather than a destination.
  *
  * Pure and path-derived, like every other matcher here, so which items a path
  * produces is testable without rendering.
@@ -276,7 +277,6 @@ export default function SiteNav() {
   // Named, not linked. The nav is where the site says what it is, and a link
   // to a 404 is worse than an honest label.
   const soonItems = [
-    { label: t('nav.players'), icon: playersIcon },
     { label: t('nav.simulate'), icon: simulateIcon },
   ];
 
@@ -346,7 +346,7 @@ export default function SiteNav() {
           ))}
           {/* No `aria-disabled`: it is ignored on a bare span with no role, so
               it only ever reassured us. The visible "soon" badge is real text
-              inside the item, so a screen reader reads "Players soon" and the
+              inside the item, so a screen reader reads "Simulate soon" and the
               absence of a link does the rest. */}
           {soonItems.map((item) => (
             <span key={item.label} className="sn-item sn-item--soon" title={collapsed ? item.label : undefined}>
