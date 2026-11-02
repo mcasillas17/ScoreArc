@@ -1,0 +1,18 @@
+{
+  "name": "scorearc-alert-receiver",
+  "main": "worker.ts",
+  "compatibility_date": "2026-08-01",
+  // Request URLs contain the receiver token, so invocation logs stay off. Only the
+  // Worker's own sanitized failure lines are kept.
+  "observability": { "enabled": true, "logs": { "invocation_logs": false } },
+  // No recipient here: this repository is public. RECEIVER_TOKEN and ALERT_RECIPIENT
+  // are Worker secrets. The sending domain is deliberately not onboarded, so this
+  // binding can reach verified destination addresses only.
+  "send_email": [{ "name": "EMAIL" }],
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "scorearc-alert-receiver",
+    "database_id": "SET_AFTER_D1_CREATE",
+    "migrations_dir": "migrations"
+  }]
+}

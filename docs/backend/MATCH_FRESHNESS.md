@@ -261,13 +261,13 @@ From the repository root with Node 26 and lockfile dependencies installed:
 
 ```bash
 npm ci
-npx vitest run scripts/match-freshness-watchdog.test.ts scripts/match-freshness-monitor.test.ts scripts/match-freshness-state.test.ts scripts/match-freshness-workflow.test.ts
+npx vitest run scripts/match-freshness-watchdog.test.ts scripts/match-freshness-monitor.test.ts scripts/match-freshness-state.test.ts scripts/match-freshness-workflow.test.ts infra/alert-receiver/worker.test.ts
 npm test
 npx tsc --noEmit
 npm run lint
 ```
 
-The four focused suites are the acceptance path: no new helper or service is
+The focused suites are the acceptance path: no new helper or service is
 needed. They use synthetic reader responses, in-memory GitHub run/artifact/job
 history, temporary local checkpoints and a receiver bound to `127.0.0.1` on an
 ephemeral port. GitHub transport tests stub `fetch`; they do not call GitHub.
@@ -293,12 +293,15 @@ Existing acceptance evidence (test names are searchable within the linked files)
 | Acceptance followed by loss of the local acknowledged state replays the same event ID | monitor: `retries a successful-but-uncheckpointed acknowledgment with the same ID` simulates the crash boundary by restoring the pre-send checkpoint; workflow: `failed final upload restores pending and retries stable IDs after backoff` |
 | Pending upload failure prevents sends; final upload failure preserves replay | workflow: `failed pending upload prohibits sends and blocks silent rollback`, `failed final upload restores pending` |
 | Missing/corrupt/expired/incompatible newest history blocks rather than falling back or initializing | monitor: `rejects missing, corrupt, incompatible, wrong-origin/scope and rollback state`; state: `does not roll back past an invalid newest artifact`, `fails when the final checkpoint expired`, `treats preparation without upload as a barrier`, `rejects initialization when durable state already exists` |
+| Receiver protocol with the real sender: OPEN, repeat, RESOLVED, recurrence, timeout, wrong acknowledgment, crash, ordering, cap | [receiver tests](../../infra/alert-receiver/worker.test.ts): `real monitor sender against the receiver`, `daily cap` |
 | Finite queues, history, bytes, attempts and execution | monitor: `backpressure keeps bounded queue`, `reserves attempts before sending ... exhausts at 20`; state: `fails closed at the three-page budget`; watchdog: `uses only configured current seasons`; workflow: job timeout/manual-only assertions |
 
 Retain the focused test summary, full-suite/typecheck/lint results and reviewed
 commit SHA with the later activation record. An expected incident/delivery error
 inside a test is a passing assertion, not evidence of a live incident. No build
 or backend gate is needed for changes confined to these tests and this runbook.
+Changes under `infra/alert-receiver` also run `npm run build`, because the root
+typecheck includes the Worker.
 
 ### Configuration inventory for later approval
 
@@ -315,7 +318,9 @@ The local harness injects its loopback origin directly into `runPhase`; that is
 test wiring, not a configurable production endpoint. Production reader-origin
 validation and redirect rejection stay in force. There is no approved incident
 owner, recipient, receiver provider or independent observer selected by this
-preparation work.
+preparation work. The owner has since selected email and approved the
+[alert receiver](#alert-receiver) design; it is not deployed. The checkpoint
+backup owner and independent observer are still unselected.
 
 ### State restoration and ordering
 
@@ -381,6 +386,76 @@ send. Events behind a failed event may likewise consume their reserved attempt;
 this conservative accounting prevents crash-driven retry storms. No pending event
 is silently removed. Exhausted head events block FIFO until owner reconciliation.
 
+### Alert receiver
+
+**Local code only: not deployed, and no real alert has been sent.** On November 1,
+2026 the owner selected email to one owner-chosen address, named themselves
+incident owner, and approved this design. That approval does not cover deployment,
+DNS, secrets or sends, which need their own approval.
+
+[`infra/alert-receiver`](../../infra/alert-receiver/worker.ts) is a Cloudflare
+Worker with a D1 table. The sender is unchanged. For each event the Worker:
+
+1. Checks the secret token in the URL path (`/events/<token>`); a wrong token gets 404.
+2. Accepts only a JSON body of at most 4 KiB with the exact expected fields, whose
+   `Idempotency-Key` equals `eventId`. Strict patterns keep headers and markup out
+   of the email.
+3. Saves the event. The same ID with different content gets 409.
+4. Sends the email unless that ID was already emailed, then records the send.
+5. Returns 200 with `{"eventId":"<same ID>"}`. Any failure returns a non-200 with
+   an empty body, so the sender keeps the event and retries the same ID in order.
+
+A crash after the email goes out but before the send is recorded can produce a second
+email with the same event ID in its body. That is the deliberate trade-off: a possible
+duplicate instead of a possible lost alert. A sender timeout causes this only if the
+send has not finished within the roughly 30 seconds `waitUntil` allows after the
+disconnect; otherwise the Worker still records the send.
+Once the send is recorded, retries are acknowledged without another email. Two simultaneous
+deliveries of one ID could also both send, but the workflow serializes runs.
+
+| Item | Decision |
+|---|---|
+| Recipient | Worker secret `ALERT_RECIPIENT`. Never commit it: this repository is public. |
+| Reach | The sending domain is **not** onboarded to Email Sending, so the binding can reach verified destination addresses only. Do not run `wrangler email sending enable`: it also removes this limit. |
+| Sender | `alerts@scorearc.futbol`, which requires Email Routing on the domain. |
+| Flood bound | At most 300 new events per rolling 24 hours, enforced in the insert itself, then 503 with no acknowledgment. This bounds rows and D1 writes as well as email. A retry of an already accepted event is not capped, so an accepted alert still arrives. Refused events wait in order in the sender's queue, about 29 hours at worst with its retry backoff, and sustained flapping can fill that queue and pause checks (`queue-full`). Real transitions should stay far below this ceiling; if the cap trips during a real incident, raise it through a reviewed change. A cap with no matching incident means rotating the token. |
+| Retention | D1 rows are kept with no automatic deletion: event ID, event content and timestamps, no personal data. Roughly one small row per transition. |
+| Logs | Invocation logs stay off because request URLs contain the token. The Worker's own lines are kept and name only the failing stage, known `E_*` codes or a rejection status. Because the sender reports every non-200 as `delivery-failed`, check these lines first when the queue is stuck: a repeated `rejected` status means the sender and receiver disagree, not an outage. A wrong token writes no line, so with no lines at all, first check that `MATCH_FRESHNESS_WEBHOOK_URL` carries the current `RECEIVER_TOKEN`. After deployment, confirm in the Cloudflare log view that retained lines carry no URL. `wrangler tail` output can include the URL, so never paste it anywhere. |
+| Cost | Expected $0 per Cloudflare's published terms, checked November 1, 2026: sends to verified addresses are free on all plans; Workers Free allows 100,000 requests/day and D1 Free 100,000 writes/day and 5 GB. Requests with a wrong token count toward that allowance, so a flood could block real deliveries until the daily reset; the sender keeps those events and retries them, but sustained blocking can exhaust an event's retry budget. No rate limit is configured. |
+
+Emails may land in spam at first because the domain is new as a sender. Acceptance
+must check the real inbox, not just the acknowledgment.
+
+Tests are in [`worker.test.ts`](../../infra/alert-receiver/worker.test.ts): the real
+monitor sender runs against the receiver on real SQLite using the real migration,
+covering OPEN, repeated failure, RESOLVED, recurrence, timeouts, wrong acknowledgments
+and acceptance followed by a crash. D1 and the email service are stand-ins there. A
+`wrangler@4.123.0 dev --local` smoke run confirmed the Worker starts on `workerd`,
+deduplicates on local D1 and calls the local email simulator; it does not prove real
+delivery. To repeat it, put test-only `RECEIVER_TOKEN` and `ALERT_RECIPIENT` values in
+the gitignored `infra/alert-receiver/.dev.vars` (the token needs at least 32 characters,
+or the Worker answers 500; `openssl rand -hex 32` works), then from that directory run
+`npx wrangler@4.123.0 d1 migrations apply scorearc-alert-receiver --local` and
+`npx wrangler@4.123.0 dev --local`. Posting one event twice should return two 200
+acknowledgments and call the email simulator once.
+
+**Deployment steps, for a separately approved operator run** (from `infra/alert-receiver`,
+after `npx wrangler@4.123.0 login` on the account that owns `scorearc.futbol`):
+
+1. Enable Email Routing on the domain, reviewing the DNS records it adds, and verify
+   the recipient as a destination address from that inbox.
+2. `npx wrangler@4.123.0 d1 create scorearc-alert-receiver`, then put its ID in `wrangler.jsonc`.
+3. `npx wrangler@4.123.0 d1 migrations apply scorearc-alert-receiver --remote`.
+4. `npx wrangler@4.123.0 secret put ALERT_RECIPIENT` and `npx wrangler@4.123.0 secret put RECEIVER_TOKEN`,
+   with the token from `openssl rand -hex 32`, which is URL-path safe. Use the
+   interactive prompts, so values stay out of shell history and chat.
+5. `npx wrangler@4.123.0 deploy`.
+6. Store `https://<worker-host>/events/<token>` as the `MATCH_FRESHNESS_WEBHOOK_URL`
+   repository secret, using the interactive `gh secret set` prompt.
+
+To stop alerts, follow the disable procedure below. Rotating the token requires
+updating both secrets together; deliveries fail and retry in between.
+
 ### Explicit budgets and failure signals
 
 | Resource | Bound |
@@ -411,9 +486,9 @@ up to 22.5 GiB/day of response bodies at 2,880 requests, not an expected load.
 Runner usage is `runs × measured billable minutes per job`; the ten-minute job
 ceiling can cause backlog under serialized execution and is not a five-minute
 completion promise. Apply the owner's current Actions allowance/rates, artifact
-retention charges, Fly/Neon read load and receiver fees; no dollar price or free
-tier is assumed. Backups and independent detection have separate owner-approved
-costs. None of these costs is approved by this document.
+retention charges and Fly/Neon read load; no dollar price or free tier is assumed.
+The receiver's expected cost is recorded under [alert receiver](#alert-receiver). Backups and independent detection have
+separate costs that the owner has not yet approved. None of these costs is approved by this document.
 
 If there is not room for one transition per scope, preparation pauses all checks
 and drains the existing queue; it does not report skipped observations as healthy.
@@ -475,9 +550,10 @@ but a workflow that never starts cannot report its own absence.
   `athleteId`/`playerSlug` remain optional `string|null`. `teamId` must still be
   present, and required-field, type and unknown-key rejection remain. Any further
   nullable/card/DTO changes need explicit tested agreement.
-- [ ] Select an incident owner, channel/recipient and HTTPS receiver satisfying the
-  acknowledgment/dedup protocol. No approved channel was found in repository config;
-  a local stub is the implementation acceptance destination only.
+- [x] Select an incident owner and channel/recipient. The owner selected email and
+  approved the [alert receiver](#alert-receiver) design on November 1, 2026.
+- [ ] Deploy the receiver, verify the recipient address, and confirm the deployed
+  receiver satisfies the acknowledgment/dedup protocol.
 - [ ] Approve checkpoint retention/backup, recovery procedure, cost/cadence and
   independent monitor-not-running detection. Reconcile any existing v1 history
   without resetting it; incompatible history deliberately blocks activation.
@@ -499,7 +575,8 @@ but a workflow that never starts cannot report its own absence.
   serialized run to finish and retain its newest checkpoint. Do not delete history.
 
 The activation record must identify the approving owner and reviewed SHA, incident
-owner and recipient, receiver compatibility/dedup evidence, **human receipt proof**
+owner, confirmation that the verified recipient was used (never the address itself:
+this repository is public), receiver compatibility/dedup evidence, **human receipt proof**
 for the synthetic OPEN/RESOLVED/recurrence, checkpoint backup/recovery acceptance,
 cadence/cost acceptance, independent not-running detection, approved variable and
 secret changes (names only), and the first authorized manual run ID/initialization
@@ -509,7 +586,7 @@ uses separately approved synthetic inputs/destination; this PR neither provision
 that setup nor authorizes changing the fixed production reader for a test.
 
 This delivers code for the **match-endpoint slice only**. Scheduling, real delivery,
-recipient decisions, sustained operational acceptance and broader T17.4 coverage
+recipient verification, sustained operational acceptance and broader T17.4 coverage
 remain open. No database, ingester, T21.2 or release-pipeline behavior is changed.
 
 ## Schema and separately approved release order

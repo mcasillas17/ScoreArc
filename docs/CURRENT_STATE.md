@@ -678,7 +678,9 @@ held-byte reprocessing and new collection remain unchanged.
 - **T17.3/T17.4 trust and notification delivery:** broader resource provenance is
   implemented in the October 30 T17.3 slice, deployed with 0028 on October 31
   per owner ([contract and limits](backend/READER_CONTRACT.md#t173-resource-freshness-contract)). Scheduled freshness checks
-  and notification activation still require explicit approval.
+  and notification activation still require explicit approval. An email
+  [alert receiver](backend/MATCH_FRESHNESS.md#alert-receiver) design is
+  owner-approved with local code only: nothing is deployed, configured or sent.
   Collect sustained reconciliation and transient-failure recovery evidence
   ([SETUP §7.5](backend/SETUP.md#75-verify)); the dated observations above do not
   close this acceptance or ancillary squad/player/archive coverage.
