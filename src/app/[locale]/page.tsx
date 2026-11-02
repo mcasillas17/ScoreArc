@@ -3,6 +3,7 @@ import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
 import { ongoingCompetitions, resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
+import { isSelectedDataStore, runDataOperation } from '@/server/data/sourceSelection';
 import { competitionLabel, type LiveEntry } from '@/server/data/liveFeed';
 import { prioritiseBy } from '@/server/data/matchPriority';
 import type { Match, StatLeader } from '@/server/data/types';
@@ -61,16 +62,22 @@ export default async function Home({ params }: { params: PageParams }) {
   // match cards, no scorer board and no stories here.
   const ongoing = ongoingCompetitions();
   const [per, stories] = await Promise.all([
-    Promise.all(
+    runDataOperation(dataStore, source => Promise.all(
       ongoing.map(async (comp) => {
         const rc = resolveSeason(comp.id)!;
-        // Every read is independently optional: a dead feed for one competition
-        // must cost that competition's rows, not the page.
+        // ESPN-only mode keeps independent best-effort feeds. A controlled
+        // source attempt must repeat this whole collection on fallback.
         const [matches, leaders] = await Promise.all([
           // The unenriched read, deliberately — getMatches buys one /summary per
           // match for scorers and cards this page never renders.
-          dataStore.getLiveWindow(rc).catch((): Match[] => []),
-          dataStore.getLeaders(rc).catch(() => ({ scorers: [] as StatLeader[], assists: [] as StatLeader[] })),
+          source.getLiveWindow(rc).catch((error): Match[] => {
+            if (isSelectedDataStore(source)) throw error;
+            return [];
+          }),
+          source.getLeaders(rc).catch(error => {
+            if (isSelectedDataStore(source)) throw error;
+            return { scorers: [] as StatLeader[], assists: [] as StatLeader[] };
+          }),
         ]);
         return {
           competition: competitionLabel(comp, rc.season.id),
@@ -79,7 +86,7 @@ export default async function Home({ params }: { params: PageParams }) {
           scorers: leaders.scorers,
         };
       }),
-    ),
+    )),
     // ===== News ===== the same collection /news renders (minus concluded
     // competitions), at the digest's size.
     collectDatedStories(

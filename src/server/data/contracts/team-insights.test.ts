@@ -3,6 +3,7 @@ import { mapScopedTeamSchedule, mapTeamProfile, mapTeamSchedule } from '../provi
 import { canonicalTeamId, providerTeamId } from '../teamIdentity';
 import { resolveSeason } from '../competitions';
 import type { Match, SquadPlayer, Team, TeamProfile } from '../types';
+import type { ReaderResources } from '@/lib/readerResources';
 import recordedProfile from '../__fixtures__/espn-team-profile.json';
 import recordedSchedule from '../__fixtures__/espn-team-schedule.json';
 import vectors from './team-insights.json';
@@ -13,6 +14,7 @@ import vectors from './team-insights.json';
 // Match and Team are pinned exhaustively in reader-contract.test.ts.
 type ContractTeam = { id: string; name: string; abbr: string; crestUrl: string | null };
 type ContractProfile = {
+  readerResources?: ReaderResources;
   team: ContractTeam;
   location: string | null;
   color: string | null;
@@ -88,7 +90,7 @@ describe('bounded team insights contract (not reader parity)', () => {
     expect(vectors.readerTeam.schedule.map(m => m.scope)).toEqual(vectors.readerTeam.schedule.map(() => vectors.scope));
     expect(vectors.readerTeam.standing).toBeNull(); // No standing row behind this vector.
     expect(vectors.readerTeam.scheduleAvailability).toEqual({ results: 'available', upcoming: 'available' });
-    // Exact key parity with the frontend TeamProfile (scheduleAvailability is optional there).
-    expectTypeOf<keyof typeof vectors.readerTeam>().toEqualTypeOf<keyof TeamProfile>();
+    // Reader resources travel in the header; the adapter may attach them to its frontend output.
+    expectTypeOf<keyof typeof vectors.readerTeam>().toEqualTypeOf<Exclude<keyof TeamProfile, 'readerResources'>>();
   });
 });

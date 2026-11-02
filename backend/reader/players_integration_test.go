@@ -253,6 +253,10 @@ func TestPlayerParticipationAndBounds(t *testing.T) {
 	if row.Appearance != "" || row.Stats.Appearances != nil || row.Stats.SubIns != nil || row.Result != "" {
 		t.Fatalf("invented participation/result: %+v", row)
 	}
+	live, ok := wire(t, row).(map[string]any)["liveMatch"].(map[string]any)
+	if !ok || live["state"] != "live" || live["homeScore"] != float64(2) || live["awayScore"] != float64(2) || live["minute"] != "84'" || live["statusDetail"] != "84'" || live["statusName"] != "STATUS_IN_PROGRESS" {
+		t.Fatalf("live game log lost held match context: %+v", live)
+	}
 	exec(`UPDATE appearance SET shots=NULL WHERE match_id=$1 AND player_id=$2`, finalMatchID, testPlayerID)
 	exec(`UPDATE match_event SET type='sub_on',team_id='nat-fra' WHERE match_id=$1`, finalMatchID)
 	if len(read().GameLog) != 0 {

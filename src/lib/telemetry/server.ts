@@ -33,3 +33,12 @@ export function trackAPIRequestFailure(
     season,
   }, { headers: {} });
 }
+
+// Finite reason vocabulary and one event per reason/minute; never dependency text.
+export function trackReaderFallback(reason: import('@/server/data/readerTransport').ReaderFailureReason) {
+  const key = `reader-fallback:${reason}`;
+  const now = Date.now();
+  if ((lastTrackedAt.get(key) ?? 0) + eventIntervalMs > now) return;
+  lastTrackedAt.set(key, now);
+  void track('Reader fallback', { group: 'core', reason }, { headers: {} });
+}

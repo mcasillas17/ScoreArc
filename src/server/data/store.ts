@@ -1,3 +1,6 @@
+import { configuredDataStore } from './configuredStore';
+import { ReaderFailure } from './readerTransport';
+import { trackReaderFallback } from '@/lib/telemetry/server';
 import type {
   Match,
   BracketRound,
@@ -63,6 +66,8 @@ export interface DataStore {
 const TOP_SCORERS_SHOWN = 10;
 
 interface DataDeps {
+  /** Enabled-mode fallback must not turn a dependency outage into an entity 404. */
+  propagateUnavailable?: boolean;
   fetchJson: ScoreboardFetchJson;
   cache: TtlCache<unknown>;
 }
@@ -318,7 +323,8 @@ export function createDataStore(deps: DataDeps): DataStore {
         };
         deps.cache.set(k, profile, 120_000);
         return profile;
-      } catch {
+      } catch (error) {
+        if (deps.propagateUnavailable && !(error instanceof ReaderFailure && error.status === 404)) throw error;
         return null;
       }
     },
@@ -335,7 +341,8 @@ export function createDataStore(deps: DataDeps): DataStore {
         const squad = mapTeamRoster(raw);
         deps.cache.set(k, squad, 300_000);
         return squad;
-      } catch {
+      } catch (error) {
+        if (deps.propagateUnavailable) throw error;
         return [];
       }
     },
@@ -370,7 +377,8 @@ export function createDataStore(deps: DataDeps): DataStore {
         };
         deps.cache.set(k, profile, 120_000);
         return profile;
-      } catch {
+      } catch (error) {
+        if (deps.propagateUnavailable && !(error instanceof ReaderFailure && error.status === 404)) throw error;
         return null;
       }
     },
@@ -440,7 +448,16 @@ export function createDataStore(deps: DataDeps): DataStore {
   };
 }
 
-export const dataStore: DataStore = createDataStore({
-  fetchJson: boundedFetchJson,
-  cache: new TtlCache(),
+const espnCache = new TtlCache<unknown>();
+export const espnDataStore: DataStore = createDataStore({ fetchJson: boundedFetchJson, cache: espnCache });
+export const dataStore: DataStore = configuredDataStore({
+  espn: espnDataStore,
+  env: process.env,
+  onFallback: reason => trackReaderFallback(reason),
+  fallback: ({ signal, budget }) => createDataStore({
+    propagateUnavailable: true,
+    cache: espnCache,
+    fetchJson: async (url, options) => (await budget.json(url, options
+      ? AbortSignal.any([signal, options.signal]) : signal)).body,
+  }),
 });

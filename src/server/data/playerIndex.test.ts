@@ -134,6 +134,19 @@ describe('withSummaryPlayerSlugs', () => {
     '227': [],
   });
 
+  it('preserves participation evidence while adding player links', async () => {
+    const summary = {
+      ...emptySummary(),
+      lineups: {
+        availability: 'partial' as const,
+        home: { teamId: '222', formation: '', players: [] },
+        away: { teamId: '227', formation: '', players: [] },
+      },
+    };
+    const out = await withSummaryPlayerSlugs(rc, summary, store);
+    expect(out.lineups).toMatchObject({ availability: 'partial', home: { teamId: '222' }, away: { teamId: '227' } });
+  });
+
   it('resolves slugs for scorers and lineup players, null for strangers', async () => {
     const summary: MatchSummaryData = {
       ...emptySummary(),

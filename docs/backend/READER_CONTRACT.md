@@ -1,17 +1,21 @@
-# Reader contract harness (T16.1)
+# Reader contracts and adapter (T16.1–T16.3)
 
-October 3, 2026. The executable contract between the frontend `DataStore`
+The October 3, 2026 harness established the executable contract between `DataStore`
 (`src/server/data/store.ts`), the Go reader (`backend/reader`) and
-`backend/reader/openapi.yaml`. **This is not reader parity, an `apiStore`, or
-permission to cut over.** ESPN remains the production source, and no application,
-reader, OpenAPI, SQL or migration behavior changed with the harness.
+`backend/reader/openapi.yaml`. That harness alone changed no runtime behavior.
+T16.3 now adds a strict adapter and controlled source selection; see
+[configuration, method policy and local verification](READER_DATASTORE.md).
+**ESPN remains the default and production source.** Adapter implementation does
+not authorize shadow traffic, cutover, monitoring or close the rights gates.
 
 **T16.2 (October 4)** changed behavior on both sides to resolve 13 of the 14 gaps
 the harness assigned it, plus its three unregistered items; see
 [T16.2 identity and DTO contract](#t162-identity-and-dto-contract). Its last gap,
 `standings-dedup`, closed on October 5 with the owner's decision to keep every
-table membership ([below](#owner-decision-standings-dedup)). Every E10/E17 gap
-below remains: this is still not parity or cutover readiness.
+table membership ([below](#owner-decision-standings-dedup)). Later E10/E17 slices
+replace their characterized gaps with positive assertions; the current registry
+is under [Remaining gaps](#remaining-gaps). Local contract coverage is separate
+from rollout acceptance.
 
 The harness separates three things:
 
@@ -48,6 +52,7 @@ in AGENTS.md first. All three run in CI (`npm test`, `tsc`, `go test ./...`).
 | `getLiveWindow` | same | Live window selection; live minute with and without ESPN's display clock |
 | `getUpcoming` | same | Scheduled-only rows, limit |
 | none (reader-only) | `…/calendar` | T10.1 season calendar, listed under `readerOnly` in the JSON; route inventory and OpenAPI include it |
+| none (reader-only) | `…/identities` | T16.3 bounded persisted match/player/team crosswalks; unique bidirectional references, match scope/sides, missing/ambiguous rows, and least-privilege Postgres coverage |
 | `getStandings` | `…/standings` | Recorded groups and table rows (rank, stats, team identity), unnamed tables, synthetic duplicate-rank, missing-stat and empty tables; a team in two tables (stored, snapshotted and served in both); conflicting tables rejected; the MLS overall and Leagues Cup phase tables derived from reader responses ([T10.10](#t1010-derived-standings-contract)) |
 | `getBracket` | `…/bracket` | Recorded rounds and every match (id, round, state, sides, scores, winner), placeholders, clockless live match |
 | `getMatchSummary` | `/v1/matches/{id}` | Recorded scorers, cards, stats, lineups, win probability, info, form, head-to-head, videos and commentary; synthetic shootout detail, head-to-head, red card and unattributable scorer/card; own goal; canonical scorer/card sides on new and sealed legacy rows; route-layer player slugs; match-id translation; top-level key set |
@@ -129,8 +134,10 @@ zero and `false` are compared exactly.
 
 ### Identity translations
 
-These differences are intentional: each store serves its own identity space,
-and the harness proves a translation instead of an equality. They are not gaps.
+These differences are intentional between the raw ESPN and reader surfaces;
+the harness proves a translation instead of an equality. T16.3 performs that
+translation at the frontend seam, preserving the provider references existing
+callers already use. They are not gaps.
 
 | Identity | Frontend (ESPN-backed) | Reader | Proven translation |
 |---|---|---|---|
@@ -139,10 +146,14 @@ and the harness proves a translation instead of an equality. They are not gaps.
 | Scorer/card `teamId` | the provider id ESPN credits, normally a match side (kept as sent even when it names neither) | the canonical id of that side, or `null` | stored `match_detail` keeps the provider id; the reader translates at read time through each side's `team_external_ref` ids for the match's source (one statement, no per-event queries). A reference naming neither side, or both, is `null` — never a default side |
 | Player | Provider athlete id in `PlayerProfile.id`; route-layer slugs drive website links | `PlayerProfile.id` is the canonical UUID; `playerSlug` stays null | Explicit `player_external_ref (source, source_id)` crosswalk; no provider-id or name-derived URL fallback. T10.4 proves canonical addressing; a persistent slug lookup is still proposed, not implemented. Existing source-qualified `athleteId` fields, and `SquadPlayer.id` since T10.3 ([below](#t103-team-and-squad-contract)), remain non-link provider values. |
 
-Match ids are store-scoped, so for T16.3 every method that produces or consumes
-them (the four window methods, `getBracket`, `getTeam`'s schedule, `getPlayer`'s
-game-log `eventId`, `getMatchSummary` and the match route's `home`/`away` side
-ids) must read from the same source and fall back together.
+T16.3 selects all eleven non-news methods with one source flag. Match-producing
+and consuming methods, standings/form joins, squads and slug indexes run in
+source-bound logical operations and fall back as complete operations. Reader
+match UUIDs and canonical sides are validated against persisted crosswalks and
+normalized to the existing provider-reference seam. A later popup re-resolves
+its reference, so correctness does not depend on process memory or on the source
+remaining unchanged between requests. See [identity and source
+operations](READER_DATASTORE.md#identity-and-source-operations).
 
 ### Resolved gaps
 
@@ -371,8 +382,8 @@ cut rules. The inputs are all in the reader already. Keeping the rules in
 TypeScript keeps one copy, shared by both stores.
 
 **The adapter.** `deriveReaderStandings(rc, inputs)` in
-`src/server/data/derivedStandings.ts` is what a future `apiStore.getStandings`
-calls. The ESPN store calls the same rules (`computeOverallTable`,
+`src/server/data/derivedStandings.ts` is called by T16.3's `apiStore.getStandings`.
+The ESPN store calls the same rules (`computeOverallTable`,
 `configuredPhaseTables`). Its inputs are reader response bodies, unmodified:
 
 | Season config | Inputs | Output |
@@ -398,8 +409,9 @@ It returns `{ status, groups, issues }`:
   membership table, or, for MLS, any conference row), so the result has no
   tables, not empty ones. Per T16.3, that status may fall back to ESPN.
   A Leagues Cup phase with no finished match yet is a complete empty result;
-  whether the window itself is current is for the matches route's freshness
-  headers, which the adapter does not read.
+  whether the window itself is current is established by T16.3's resource and
+  match-freshness checks before invoking this pure derivation. Required input
+  reads are separate snapshots, not a globally atomic collection.
 
 **Membership.** Clubs are assigned to a side from authoritative scoped data.
 They are never assigned by country, by name, or by "not Liga MX means MLS".
@@ -584,7 +596,9 @@ This is an output bound, not a claim that database text allocations are capped.
 
 Migration **0026_reader_contracts** adds nullable leader identity columns and the
 restricted participation view; it reuses `top_scorer.category` (0010) and
-`appearance` (0006). Applied migrations are unchanged. T10.2's binaries embedded an
+`appearance` (0006). The following describes the historical T10.2 transition;
+the owner-confirmed October 31 baseline is now 0028, so do not repeat it for
+T16.3. T10.2's binaries embedded an
 **exact schema head of 26** (27 since T10.3, [below](#rollout-migration-0027)) and
 refuse a different or dirty ledger. An older
 25-expecting binary also refuses 26 on restart: coordinate a maintenance rollout
@@ -627,8 +641,9 @@ write the shrink guard refuses still records them.
 
 ### Rollout: migration 0027
 
-**Migration `0027_team_squad_contract` must be applied to production before
-this change is merged.** It is additive: nullable `team.location`,
+**Historical T10.3 rollout procedure; already satisfied per the owner's
+October 31 baseline, now at 0028. Do not repeat this apply for T16.3.** Migration
+`0027_team_squad_contract` is additive: nullable `team.location`,
 `player.headshot_url` and `squad_membership.roster_order` (non-negative). It
 needs no new grants; the existing table grants cover the new columns. Both
 binaries embed an exact head of 27, so an older binary refuses 27 on restart.
@@ -687,12 +702,24 @@ it never supplied to ingestion.
 Game-log `eventId` is a canonical **match UUID**, despite the frontend field's
 provider-oriented name. Shared vectors identify both spaces; real Postgres
 assertions prove that the crosswalk's UUID is served and addresses match detail,
-while the provider event id is rejected there. T16.3 must switch `getPlayer`
-together with the other match-id methods and fall back as a group. This reader
+while the provider event id is rejected there. T16.3 resolves the provider
+athlete reference to the canonical profile, then normalizes game-log match/side
+references through the read-only crosswalk endpoint. `getPlayer` belongs to the
+same source group as the other match-id methods. This reader
 log is competition/season scoped; ESPN's overview can mix competitions. Scores
 are home-away regulation scores; W/L/D is from the player's per-match team and
 regulation score for finished matches only (a shootout draw stays D). Live or
 missing scores leave result empty. Transfers do not rewrite past teams.
+
+T16.3 adds the optional `liveMatch` object only on live game-log rows:
+`{state: "live", homeScore, awayScore, minute, statusDetail, statusName}`. Scores
+and minute stay null when unknown. These facts come from the existing log query's
+match row in the same snapshot, with no extra read or migration; finished rows
+and the existing shared vectors are unchanged. The adapter validates this object
+and its agreement with the row's empty result and formatted score. Player popups
+use these explicit live facts instead of claiming full time. Reader rows lacking
+both live context and a known W/L/D result retain their statistics but remain
+unlinked; the legacy ESPN result/score interpretation is unchanged.
 
 The box score and player log share participation-stat inference. Starters and
 same-team `sub_on` evidence establish appearances/substitute counts. A positive
@@ -751,12 +778,15 @@ remain separate work, as does the news ownership gap below.
 
 ## T17.3 resource freshness contract
 
-**October 30 implementation; production acceptance pending.** Every successful
+**October 30 implementation; deployment with migration 0028 confirmed by the
+owner on October 31.** Sustained coverage and monitoring acceptance remain
+separate. Every successful
 data route exposes `X-ScoreArc-Resources` through CORS. Its value is compact JSON
 `{"version":1,"resources":{...}}`, bounded to eight fixed components and 8 KiB.
 The five existing match headers and their thresholds remain unchanged. JSON
 bodies, identities, football state, query validation and HTTP cache policies are
-unchanged. No `apiStore`, fallback or source switch is implemented.
+unchanged by T17.3. T16.3 separately consumes this evidence in the adapter;
+the default source remains ESPN.
 
 Each component has required `status`, `availability`, `source`, `derivation`,
 `scope`, `observedAt` and `finalizedAt`; the two timestamps are nullable RFC3339.
@@ -891,21 +921,44 @@ Silent upstream omissions without contradictory counts remain unknowable.
 
 ### Migration and production acceptance
 
-**Apply additive migration `0028_resource_observation` before merging this PR,
-under separate authorization.** The owner's current baseline is already clean
-0027 with Teams/Players/Leaders deployed. Do not repeat their migrations or
-rebuild their endpoints. The new table has reader SELECT-only and ingester
+**The owner confirms additive migration `0028_resource_observation` and T17.3
+were deployed successfully October 31, after Teams/Players/Leaders.** This is
+owner-provided operational context, not a production inspection performed by
+T16.3. Do not repeat those migrations or rebuild their endpoints. T16.3 adds no
+migration. The observation table has reader SELECT-only and ingester
 SELECT/INSERT/UPDATE grants; the participation view exposes only match id,
 completed boolean and completed time. No history is backfilled, no facts are
 changed, and no owner credentials enter application or CI configuration.
 
-Both binaries embed exact head 28. Follow the separately authorized
-[exact-head transition](RELEASES.md#version-policy-and-its-cost); schema gates
-and release checks remain enforced. After deployment, independently verify
+Both binaries embed exact head 28. Future schema transitions follow the separately
+authorized [exact-head transition](RELEASES.md#version-policy-and-its-cost);
+schema gates and release checks remain enforced. Sustained acceptance must verify
 scope-specific observations advance on unchanged payloads, different leader
 metrics and squads retain separate clocks, empty/retained cases are honest and
 service roles retain their grants. Local tests are not production acceptance.
 No watchdog scheduling or delivery is changed here.
+
+## T16.3 reader DataStore and identity resolver
+
+`createDataStore` and `espnDataStore` remain directly callable ESPN paths.
+`dataStore` uses the configured composition: absent/empty/`espn` source selects
+ESPN without constructing or probing the reader; `reader` explicitly enables
+the joined non-news group. No production setting changes are part of this task.
+
+The only additional reader surface is
+`GET /v1/competitions/{comp}/{season}/identities?kind=match|player|team&from=canonical|espn&ids=…`.
+It reads existing persisted crosswalks, accepts at most 100 unique IDs, preserves
+input order, and returns resolved/missing/ambiguous status with explicit nullable
+references and match scope/sides. Both lookup directions require a unique ESPN
+mapping. It uses no DB migration or new grants and is not a search endpoint.
+The contract inventory, OpenAPI, router tests and real-Postgres tests cover it.
+
+The [adapter runbook](READER_DATASTORE.md) records configuration, required versus
+optional resource policy, whole-operation fallback, bounded transport/caching,
+local preview evidence and rollback. The [method matrix](../superpowers/specs/2026-11-01-t16-3-reader-datastore-design.md#method-and-resource-policy-matrix)
+maps all twelve methods. Null/unknown references and partial evidence remain
+explicit; decoder tests do not alter shared vectors to force parity. News remains
+an ESPN delegate under T16.6. T16.4 evaluation and T16.5 public cutover remain open.
 
 ## Remaining gaps
 

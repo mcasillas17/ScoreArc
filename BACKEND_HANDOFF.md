@@ -103,10 +103,11 @@ build/test gate is `cd backend && go build ./... && go test ./...`.
    grants, and the finalization guards; the migration head is
    `0028_resource_observation` on this branch: scoped accepted collection
    observations and reader-safe participation completion time for T17.3.
-   **The owner reports production already at 0027 with Teams/Players/Leaders
-   deployed.** Do not repeat those migrations. The separate authorized 0028
-   apply must precede merging this exact-head binary; see
-   [T17.3 rollout](docs/backend/READER_CONTRACT.md#migration-and-production-acceptance).
+   **The owner confirms migration 0028 and T17.3 were deployed October 31,
+   following Teams/Players/Leaders.** Do not repeat those migrations. T16.3 adds
+   no migration; deployment and source activation remain separate gates. See
+   [the current reconciliation](docs/CURRENT_STATE.md#november-1-t163-reconciliation)
+   and [T17.3 acceptance limits](docs/backend/READER_CONTRACT.md#migration-and-production-acceptance).
    `0024_standing_table_membership` keys `standing` and
    `standing_snapshot` by provider table (T16.2; applied/released per owner —
    [RELEASES](docs/backend/RELEASES.md#migration-0024-standing-table-membership)).
@@ -170,13 +171,15 @@ build/test gate is `cd backend && go build ./... && go test ./...`.
   direct/unpooled lease DSN (`INGESTER_LEASE_DSN`) using the same least-privilege
   login.
 - **1c — Reader**: uses the SELECT-only reader DSN.
-- **1d — Frontend cutover**: add an `apiStore` implementation of `DataStore` (in
-  `src/server/data/`) that calls the reader; select it via a `DATA_SOURCE=api|espn`
-  flag with ESPN fallback; verify parity; cut over method-by-method. This is a
-  **contract/parity project, not a base-URL swap** — the 12 `DataStore` methods do
-  not yet map onto the reader's routes 1:1, and DTO/query/derived-view parity must
-  be a tested contract first. See
-  [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) §5 for the blockers.
+- **1d — Frontend adapter and staged cutover**: T16.3 implements `apiStore` in
+  `src/server/data/`. Server-only `SCOREARC_DATA_SOURCE=reader` with
+  `SCOREARC_READER_ORIGIN` enables the joined eleven-method reader group; absent,
+  empty, or `espn` selects ESPN and makes zero reader requests. News remains an
+  explicit ESPN delegate. Rollback uses `espn` or unsets the source flag. The
+  additive read-only identity route must be released before evaluating against
+  that reader; no migration is required. This is implementation readiness for
+  T16.4, not production activation. See [configuration, policy and local
+  verification](docs/backend/READER_DATASTORE.md); shadow/soak/cutover stay T16.4–T16.5.
 - **Phase 2+** (later): the snapshot writers exist in the tree (standings,
   win-prob, odds); what remains is richer history/analytics reads and a possible
   dedicated analytics store (BigQuery cross-cloud, R2+DuckDB, or partitioned
@@ -215,8 +218,8 @@ Hard rules (also in `AGENTS.md` — read it; Codex auto-loads it):
 
 ## 7. Key facts an agent needs
 
-- **The seam:** the frontend reads everything through `DataStore` (**12 methods**) in `src/server/data/store.ts`. Phase 1 adds a second implementation (`apiStore`) that calls our reader. Nothing else in the frontend changes.
-- **The 12 methods:** `getMatches`, `getFixtures`, `getLiveWindow`, `getUpcoming`, `getStandings`, `getBracket`, `getMatchSummary`, `getLeaders`, `getNews`, `getTeam`, `getSquad`, `getPlayer`. PR #191 removed the redundant `getTopScorers`/`getTopAssists` store wrappers, not the public scorer/assist capabilities: both use `getLeaders`. Types are in `src/server/data/types.ts` — the reader's JSON must deserialize into these. The reader exposes **12 data routes** (`calendar`, legacy `top-scorers` and `box-score` are reader-only; `getSquad` maps to `teams/{teamId}/squad` since T10.3; `getPlayer` maps to `players/{playerId}` since T10.4), so the methods do not map 1:1 onto it; the cutover gaps remain in [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) §5.
+- **The seam:** the frontend reads through `DataStore` (**12 methods**) in `src/server/data/store.ts`. T16.3 adds `apiStore`, runtime validation and whole-operation source selection. Joined loaders use a bound store; public URLs and the default ESPN path remain compatible. `createDataStore` still directly constructs the independently testable ESPN adapter.
+- **The 12 methods:** `getMatches`, `getFixtures`, `getLiveWindow`, `getUpcoming`, `getStandings`, `getBracket`, `getMatchSummary`, `getLeaders`, `getNews`, `getTeam`, `getSquad`, `getPlayer`. PR #191 removed the redundant `getTopScorers`/`getTopAssists` store wrappers, not the public scorer/assist capabilities: both use `getLeaders`. Types are in `src/server/data/types.ts`. The reader has **13 data routes** after T16.3's read-only `identities` addition (`calendar`, legacy `top-scorers`, `box-score` and `identities` are reader-only). Methods do not map 1:1 to routes; see the [method/resource policy matrix](docs/superpowers/specs/2026-11-01-t16-3-reader-datastore-design.md#method-and-resource-policy-matrix).
 - **Ingester durability:** final match/detail writes are atomic; migration 0021
   gives every finalized-fact table a database seal appropriate to its write
   lifecycle; unresolved finals remain in a durable backlog; bracket

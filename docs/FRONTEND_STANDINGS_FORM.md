@@ -1,10 +1,12 @@
 # Standings form (T7.3)
 
 Up to five recent results beside each team in the standings, each opening its
-existing match popup. It reads ESPN through existing `DataStore` methods
-(`getStandings`, `getFixtures`). It adds no `DataStore` method, reader-contract
-entry, Go code or migration. When a reader-backed store serves those two methods,
-this route needs no change beyond their parity.
+existing match popup. It uses `getStandings` and `getFixtures`; the default
+`DataStore` remains ESPN-backed. T7.3 added no store method or migration. T16.3
+binds the tables and every window to one source operation, so an eligible reader
+failure reruns the entire form read on ESPN. Its normalized match/team references
+keep badge joins and later popup requests compatible across reader mode and
+rollback. See the [reader adapter policy](backend/READER_DATASTORE.md).
 
 - Server: `src/server/data/standingsForm.ts`, served at
   `GET /api/{comp}/{season}/standings/form` through the shared `seasonRoute` envelope.
@@ -60,7 +62,7 @@ and it must not blur the boundary.
 Any failed window fails the whole response, so a partial read cannot become a
 "last five". The standings stay on screen and a notice says form is unavailable.
 
-## Budgets
+## Default ESPN budgets
 
 Each `getFixtures` window spans at most 92 days and reads provider months with its
 existing bounds: 15 seconds, 4 MiB per response, 16 MiB per window. Windows run
@@ -84,7 +86,7 @@ was out of scope. Its table re-reads that month every 60 seconds while viewed, a
 did before this feature. A warm read makes no upstream
 call: results stay in the existing 120-second `getFixtures` cache, keyed by UTC-date
 range. No summary is requested until a badge is clicked. Concurrent readers of one
-competition season share one read per server instance. Its scoreboard windows are
+competition season and store instance share one read per server instance. Its scoreboard windows are
 cancelled when the last reader leaves. The standings read is not, because `getStandings`
 takes no signal: the form stops waiting for it, and the request itself runs to the
 platform's fetch timeout. So one instance runs at most one set of cold calls at a time per
@@ -99,6 +101,22 @@ because it would hold back the read that follows a table change.
 
 Measured response bodies on October 30, 2026, uncompressed: Liga MX 31 KB, LaLiga
 35 KB, Leagues Cup 38 KB, World Cup 49 KB, MLS 52 KB.
+
+## Enabled reader budgets
+
+T16.3 keeps in-flight sharing isolated by store identity. Standings plus all form
+windows share the reader attempt's 5-second deadline and the complete operation's
+25-second deadline, including at most one full ESPN fallback. Caller cancellation
+aborts the selected attempt and never starts fallback. Transport is bounded to
+four concurrent calls, 128 calls, 4 MiB per response and 32 MiB total.
+
+Reader windows are lightweight and revalidated each operation; no summary is
+requested until a badge is clicked. Standings inputs may reuse their 15-second
+reader cache only after freshness evidence is rechecked. The shared fixture
+navigation test measures 6 cold reader calls for Leagues Cup form and 2 for its
+separate popup; the derived standings operation alone costs 4 cold / 2 warm.
+These are local contract measurements, not live completeness or latency claims.
+The default ESPN budgets above and frontend response/cache envelopes are unchanged.
 
 ## Refresh
 

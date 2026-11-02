@@ -86,6 +86,23 @@ describe('BoxScoreBlock', () => {
     expect(html.split('<tr').length - 1).toBe(2 + 45); // 2 header rows
   });
 
+  it('keeps unknown entry status visible without labeling it a substitute', () => {
+    const unknown: MatchLineups = {
+      home: { formation: '', players: [
+        { ...cardLineups.home.players[0], name: 'Unknown Entry', number: 3, starter: null },
+        { ...cardLineups.home.players[0], name: 'Known Sub', number: 7, starter: false },
+        { ...cardLineups.home.players[0], name: 'Known Starter', number: 9, starter: true },
+      ] },
+      away: { formation: '', players: [] },
+    };
+    const markup = renderLocalized(<BoxScoreBlock lineups={unknown} homeAbbr="HOM" awayAbbr="AWY" />);
+    expect(markup).toContain('Unknown Entry');
+    expect(markup.split('ls-box-sub')).toHaveLength(2);
+    const at = markup.indexOf('Unknown Entry');
+    expect(markup.slice(at, markup.indexOf('</tr>', at))).not.toContain('ls-box-sub');
+    expect(markup.indexOf('Known Starter')).toBeLessThan(at);
+  });
+
   // The keeper has no offsides entry and the outfielder has no saves entry, so
   // each renders a dash where the other renders a number.
   it('shows a dash where the provider sent no such stat', () => {

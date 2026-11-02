@@ -1,5 +1,6 @@
 import type { CompetitionSeason } from './competitions';
 import type { DataStore } from './store';
+import { runDataOperation } from './sourceSelection';
 import type { Group, Match } from './types';
 import { seasonMonthBounds } from './dateRange';
 import { abortable, utcDate } from './scoreboardWindow';
@@ -76,7 +77,16 @@ function tableScope(rc: CompetitionSeason, now: Date, tables: number) {
     start: seasonStart, end: today };
 }
 
-export async function loadStandingsForm(
+export function loadStandingsForm(
+  store: Pick<DataStore, 'getStandings' | 'getFixtures'>,
+  rc: CompetitionSeason,
+  signal: AbortSignal = new AbortController().signal,
+  now = new Date(),
+): Promise<StandingsForm> {
+  return runDataOperation(store, (source) => loadSourceStandingsForm(source, rc, signal, now), signal);
+}
+
+async function loadSourceStandingsForm(
   store: Pick<DataStore, 'getStandings' | 'getFixtures'>,
   rc: CompetitionSeason,
   signal: AbortSignal = new AbortController().signal,
@@ -161,7 +171,8 @@ export async function loadStandingsForm(
 }
 
 const READ_DEADLINE_MS = 25_000;
-const inFlight = new Map<string, { result: Promise<StandingsForm>; controller: AbortController; readers: number }>();
+type SharedRead = { result: Promise<StandingsForm>; controller: AbortController; readers: number };
+const storeReads = new WeakMap<object, Map<string, SharedRead>>();
 
 /** One read per competition season at a time: the route is public and a cold
  *  read is many upstream calls. It is cancelled when its last reader leaves. */
@@ -169,6 +180,11 @@ export async function sharedStandingsForm(
   store: Pick<DataStore, 'getStandings' | 'getFixtures'>, rc: CompetitionSeason, signal: AbortSignal,
 ): Promise<StandingsForm> {
   signal.throwIfAborted();
+  let inFlight = storeReads.get(store);
+  if (!inFlight) {
+    inFlight = new Map();
+    storeReads.set(store, inFlight);
+  }
   const key = `${rc.competition.id}:${rc.season.id}`;
   let read = inFlight.get(key);
   if (!read) {

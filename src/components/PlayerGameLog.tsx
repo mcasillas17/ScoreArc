@@ -15,7 +15,10 @@ import LocalTime from './LocalTime';
  * raw name instead of shifting columns.
  */
 const STAT_LABELS: Record<string, { abbr: MessageKey; full: MessageKey }> = {
+  appearances: { abbr: 'squad.appearancesAbbreviation', full: 'squad.appearances' },
+  subIns: { abbr: 'player.subInsAbbreviation', full: 'player.subIns' },
   totalGoals: { abbr: 'squad.goalsAbbreviation', full: 'squad.goals' },
+  ownGoals: { abbr: 'matchDetails.ownGoal', full: 'player.ownGoals' },
   goalAssists: { abbr: 'squad.assistsAbbreviation', full: 'squad.assists' },
   totalShots: { abbr: 'squad.shotsAbbreviation', full: 'squad.shots' },
   shotsOnTarget: { abbr: 'squad.shotsOnTargetAbbreviation', full: 'squad.shotsOnTarget' },
@@ -24,6 +27,9 @@ const STAT_LABELS: Record<string, { abbr: MessageKey; full: MessageKey }> = {
   offsides: { abbr: 'player.offsidesAbbreviation', full: 'player.offsides' },
   yellowCards: { abbr: 'squad.yellowCardsAbbreviation', full: 'squad.yellowCards' },
   redCards: { abbr: 'squad.redCardsAbbreviation', full: 'squad.redCards' },
+  saves: { abbr: 'squad.savesAbbreviation', full: 'squad.saves' },
+  shotsFaced: { abbr: 'player.shotsFacedAbbreviation', full: 'player.shotsFaced' },
+  goalsConceded: { abbr: 'squad.goalsConcededAbbreviation', full: 'squad.goalsConceded' },
 };
 
 /**
@@ -46,6 +52,23 @@ function deriveScores(row: GameLogRow): { home: number | null; away: number | nu
   return ownIsHome ? { home: own, away: other } : { home: other, away: own };
 }
 
+export function gameLogDetailInput(row: GameLogRow, playerTeam: Team | null, requireResultEvidence = false): MatchDetailInput | null {
+  if (!row.opponent || !row.teamId || !row.homeTeamId || !row.awayTeamId) return null;
+  if (requireResultEvidence && !row.liveMatch && !['W', 'L', 'D'].includes(row.result)) return null;
+  const own: Team = playerTeam && playerTeam.id === row.teamId
+    ? playerTeam : { id: row.teamId, name: row.teamAbbr, abbr: row.teamAbbr, crestUrl: null };
+  const scores = deriveScores(row);
+  return {
+    kickoff: row.date ?? '',
+    home: row.teamId === row.homeTeamId ? own : row.opponent,
+    away: row.teamId === row.homeTeamId ? row.opponent : own,
+    homeScore: scores.home, awayScore: scores.away,
+    state: 'finished', statusDetail: 'FT', statusName: 'STATUS_FULL_TIME', minute: null,
+    ...row.liveMatch,
+    note: null,
+  };
+}
+
 export default function PlayerGameLog({
   rows,
   playerTeam,
@@ -53,6 +76,7 @@ export default function PlayerGameLog({
   teamBase,
   playerBase,
   teamStyle,
+  requireResultEvidence = false,
 }: {
   rows: GameLogRow[];
   playerTeam: Team | null;
@@ -60,6 +84,7 @@ export default function PlayerGameLog({
   teamBase?: string;
   playerBase?: string;
   teamStyle?: 'crest' | 'flag';
+  requireResultEvidence?: boolean;
 }) {
   const t = useTranslations();
   const { detail, summary, loadingDetail, openDetails, closeDetails } =
@@ -67,29 +92,6 @@ export default function PlayerGameLog({
 
   // Columns come from the first row's stat keys, in payload order.
   const columns = rows.length > 0 ? Object.keys(rows[0].stats) : [];
-
-  function toDetailInput(row: GameLogRow): MatchDetailInput | null {
-    if (!row.opponent || !row.teamId || !row.homeTeamId || !row.awayTeamId) return null;
-    const own: Team =
-      playerTeam && playerTeam.id === row.teamId
-        ? playerTeam
-        : { id: row.teamId, name: row.teamAbbr, abbr: row.teamAbbr, crestUrl: null };
-    const home = row.teamId === row.homeTeamId ? own : row.opponent;
-    const away = row.teamId === row.homeTeamId ? row.opponent : own;
-    const scores = deriveScores(row);
-    return {
-      kickoff: row.date ?? '',
-      home,
-      away,
-      homeScore: scores.home,
-      awayScore: scores.away,
-      state: 'finished',
-      statusDetail: 'FT',
-      statusName: 'STATUS_FULL_TIME',
-      minute: null,
-      note: null,
-    };
-  }
 
   if (rows.length === 0) {
     return <p className="pl-none">{t('player.noGameLog')}</p>;
@@ -115,8 +117,8 @@ export default function PlayerGameLog({
           {rows.map((row) => (
             <tr key={row.eventId}>
               <td className="pl-log-match">
-                <button type="button" className="pl-log-open" onClick={() => {
-                  const input = toDetailInput(row);
+                <button type="button" className="pl-log-open" disabled={requireResultEvidence && !gameLogDetailInput(row, playerTeam, true)} onClick={() => {
+                  const input = gameLogDetailInput(row, playerTeam, requireResultEvidence);
                   if (input) void openDetails({ ...input, id: row.eventId });
                 }}>
                   {row.opponent && (

@@ -5,8 +5,7 @@ import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
 import { ogUrl, shareMetadata } from '@/lib/ogUrl';
 import { resolveSeason } from '@/server/data/competitions';
-import { dataStore } from '@/server/data/store';
-import { competitionPlayerIndex } from '@/server/data/playerIndex';
+import { loadPlayerBySlug } from '@/server/data/playerIndex';
 import type { PlayerProfile } from '@/server/data/types';
 import PlayerHeader from '@/components/PlayerHeader';
 import PlayerGameLog from '@/components/PlayerGameLog';
@@ -30,10 +29,7 @@ interface Params {
 async function loadPlayer(params: PlayerParams): Promise<PlayerProfile | null> {
   const rc = resolveSeason(params.comp, params.season);
   if (!rc) return null;
-  const index = await competitionPlayerIndex(rc);
-  const resolved = index.bySlug.get(params.playerSlug);
-  if (!resolved) return null;
-  return dataStore.getPlayer(rc, resolved.providerId);
+  return loadPlayerBySlug(rc, params.playerSlug);
 }
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
@@ -145,6 +141,7 @@ export default async function PlayerPage({ params }: Params) {
             teamBase={teamBase}
             playerBase={playerBase}
             teamStyle={rc.competition.teamStyle}
+            requireResultEvidence={Boolean(player.readerResources)}
           />
           {/* The ceiling, stated: five matches must not read as a season. */}
           <p className="pl-ceiling">{t('player.gameLogCeiling')}</p>
@@ -155,12 +152,12 @@ export default async function PlayerPage({ params }: Params) {
             <h2 className="section-label">{t('player.career')}</h2>
             <ul className="pl-career">
               {player.career.map((stint) => (
-                <li key={`${stint.teamId}:${stint.seasons}`} className="pl-stint">
-                  <TeamBadge
+                <li key={`${stint.teamId ?? stint.teamName}:${stint.seasons}`} className="pl-stint">
+                  {stint.teamId !== null && <TeamBadge
                     team={{ id: stint.teamId, name: stint.teamName, abbr: stint.teamName, crestUrl: stint.crestUrl }}
                     size={22}
                     style="crest"
-                  />
+                  />}
                   <span className="pl-stint-club">{stint.teamName}</span>
                   <span className="pl-stint-years">{stint.seasons}</span>
                 </li>
