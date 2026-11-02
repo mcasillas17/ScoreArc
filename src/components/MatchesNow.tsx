@@ -192,6 +192,7 @@ export default function MatchesNow({
 
       {detail && (
         <MatchDetailPopup
+          teamStyle={teamStyle}
           teamBase={teamBase}
           playerBase={playerBase}
           match={toMatchDetailInput(detail)}

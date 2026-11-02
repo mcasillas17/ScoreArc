@@ -325,6 +325,7 @@ export default function MatchWheel({
 
       {detail && (
         <MatchDetailPopup
+          teamStyle={teamStyle}
           teamBase={teamBase}
           playerBase={playerBase}
           match={toMatchDetailInput(detail)}

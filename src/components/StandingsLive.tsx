@@ -208,7 +208,7 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
   // the headline table — and put the Golden Boot beneath it.
   const formPopup = details.detail && (
     <MatchDetailPopup match={toMatchDetailInput(details.detail)} summary={details.summary} loading={details.loadingDetail}
-      onClose={details.closeDetails} teamBase={teamBase} playerBase={playerBase} />
+      onClose={details.closeDetails} teamStyle={teamStyle} teamBase={teamBase} playerBase={playerBase} />
   );
   const withForm = (content: ReactNode) => (
     <StandingsFormContext.Provider value={form ? { form, onOpen: (match) => void details.openDetails(match) } : null}>

@@ -288,6 +288,7 @@ export default function MatchCalendar({
 
       {detail && (
         <MatchDetailPopup
+          teamStyle={teamStyle}
           teamBase={teamBase}
           playerBase={playerBase}
           match={toMatchDetailInput(detail)}

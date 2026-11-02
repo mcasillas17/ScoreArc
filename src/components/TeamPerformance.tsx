@@ -90,6 +90,6 @@ export default function TeamPerformance({ matches, teamId, scope, competitionNam
       </>}
     <p className="tp-definitions">{t('performance.definitions')}</p>
     {details.detail && <MatchDetailPopup match={toMatchDetailInput(details.detail)} summary={details.summary}
-      loading={details.loadingDetail} onClose={details.closeDetails} teamBase={`${base}/team`} playerBase={`${base}/player`} />}
+      loading={details.loadingDetail} onClose={details.closeDetails} teamStyle={teamStyle} teamBase={`${base}/team`} playerBase={`${base}/player`} />}
   </section>;
 }

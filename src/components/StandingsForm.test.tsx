@@ -102,6 +102,24 @@ it('opens the match in the competition scope with its real sides only when click
   expect(screen.getByRole('dialog')).toBeTruthy();
 });
 
+it('preserves club crests from a Leagues Cup form badge into its popup', async () => {
+  const cruzAzul = { id: '218', name: 'Cruz Azul', abbr: 'CAZ', crestUrl: 'https://a.espncdn.com/i/teamlogos/soccer/500/218.png' };
+  const chicago = { id: '182', name: 'Chicago Fire FC', abbr: 'CHI', crestUrl: 'https://a.espncdn.com/i/teamlogos/soccer/500/182.png' };
+  formResponses = [{ scope: 'phase', matches: [{ ...match('club-final', cruzAzul, chicago, 1, 2), scope: { competitionId: 'leagues-cup', seasonId: '2026' } }],
+    teams: { '218': { status: 'available', results: [{ matchId: 'club-final', result: 'L' }] } } }];
+  render(<I18nProvider locale="en">
+    <StandingsLive initialGroups={[{ id: 'liga-mx', name: 'Liga MX', standings: [row(cruzAzul)] }]} initialScorers={[]} initialAssists={[]}
+      apiBase="/api/leagues-cup/2026" teamStyle="crest" showThirdPlace={false} teamBase="/en/c/leagues-cup/2026/team" />
+  </I18nProvider>);
+  const list = await screen.findByRole('list', { name: /Cruz Azul/ });
+  await act(async () => { fireEvent.click(within(list).getByRole('button')); });
+  const dialog = screen.getByRole('dialog');
+  expect(within(dialog).getByRole('img', { name: 'Cruz Azul' }).getAttribute('src'))
+    .toBe('https://a.espncdn.com/i/teamlogos/soccer/500/218.png');
+  expect(within(dialog).getByRole('img', { name: 'Chicago Fire FC' }).getAttribute('src'))
+    .toBe('https://a.espncdn.com/i/teamlogos/soccer/500/182.png');
+});
+
 it('does not refetch form on quiet polls and refreshes once when the table changes, then settles', async () => {
   mount();
   await screen.findAllByRole('list', { name: /Austin FC/ });
