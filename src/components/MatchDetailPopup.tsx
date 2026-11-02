@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Match, MatchSummaryData } from '@/server/data/types';
+import type { TeamStyle } from '@/server/data/competitions';
 import { flagUrl } from '@/lib/flags';
 import { ScorersRow, CardsRow, MatchStatsBlock, WinProbBar, LineupView, PenaltyShootout, isBeforeKickoff } from './MatchStats';
 import MatchHighlights from './MatchHighlights';
@@ -37,6 +38,7 @@ interface Props {
   summary: MatchSummary | null;
   loading: boolean;
   onClose: () => void;
+  teamStyle?: TeamStyle;
   /**
    * Competition-scoped prefix for team pages. Optional: without it the crests
    * render exactly as before, unlinked -- which is what bracket placeholders
@@ -76,7 +78,7 @@ function TeamLink({
   );
 }
 
-export default function MatchDetailPopup({ match, summary, loading, onClose, teamBase, playerBase }: Props) {
+export default function MatchDetailPopup({ match, summary, loading, onClose, teamStyle = 'flag', teamBase, playerBase }: Props) {
   const locale = useLocale();
   const t = useTranslations();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -103,8 +105,9 @@ export default function MatchDetailPopup({ match, summary, loading, onClose, tea
   }, [mounted, onClose]);
 
   const { home, away } = match;
-  const homeFlag = flagUrl(home.abbr);
-  const awayFlag = flagUrl(away.abbr);
+  const homeImage = teamStyle === 'crest' ? home.crestUrl : flagUrl(home.abbr);
+  const awayImage = teamStyle === 'crest' ? away.crestUrl : flagUrl(away.abbr);
+  const imageClass = teamStyle === 'crest' ? 'md-flag md-crest' : 'md-flag';
   const upcoming = match.state === 'scheduled';
 
   const inPlayScorers = (summary?.scorers ?? []).filter((s) => !s.shootout);
@@ -152,14 +155,14 @@ export default function MatchDetailPopup({ match, summary, loading, onClose, tea
           ×
         </button>
 
-        {/* Header: flags + score */}
+        {/* Header: teams + score */}
         <div className="md-header">
           <TeamLink team={home} teamBase={teamBase} className="md-team">
-            {homeFlag ? (
+            {homeImage ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                className="md-flag"
-                src={homeFlag}
+                className={imageClass}
+                src={homeImage}
                 alt={home.name}
                 loading="lazy"
                 referrerPolicy="no-referrer"
@@ -185,11 +188,11 @@ export default function MatchDetailPopup({ match, summary, loading, onClose, tea
           </div>
 
           <TeamLink team={away} teamBase={teamBase} className="md-team md-team-away">
-            {awayFlag ? (
+            {awayImage ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                className="md-flag"
-                src={awayFlag}
+                className={imageClass}
+                src={awayImage}
                 alt={away.name}
                 loading="lazy"
                 referrerPolicy="no-referrer"

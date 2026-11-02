@@ -158,5 +158,7 @@ Postgres tests cover the other failure/identity cases. Run the frontend and
 backend gates from AGENTS.md before delivery; use bounded Vitest workers if
 concurrent local builds cause subprocess-test timeouts.
 
-T16.4 shadow evaluation, T16.5 owner-approved soak/cutover, T16.6 news ownership,
+T16.4 adds a disabled-by-default [explicit evaluation runner](READER_EVALUATION.md);
+its offline evidence does not enable production traffic. T16.5 owner-approved
+soak/cutover, T16.6 news ownership,
 sustained coverage, notification activation and rights gates remain separate.

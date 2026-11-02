@@ -122,6 +122,19 @@ function validateEvent(value: unknown): { event: Raw; id: string; at: number; se
   if (sides.size !== 2 || ids.size !== 2) throw new Error('Malformed scoreboard teams');
   return { event, id: event.id, at, season };
 }
+// Evaluation reuses this validation for the bracket's undated scoreboard path.
+export { validateEvent as validateScoreboardEvent };
+export function validateScoreboardEnvelope(raw: unknown, league: string): unknown[] {
+  const envelope = object(raw);
+  if (!Array.isArray(envelope.leagues) || envelope.leagues.length !== 1 || object(envelope.leagues[0]).slug !== league) {
+    throw new Error('Scoreboard league mismatch');
+  }
+  if (!Array.isArray(envelope.events) || envelope.events.length >= 1000) throw new Error('Scoreboard events missing or truncated');
+  for (const key of ['count', 'total', 'pageCount']) {
+    if (key in envelope && envelope[key] !== (key === 'pageCount' ? 1 : envelope.events.length)) throw new Error('Scoreboard pagination is incomplete');
+  }
+  return envelope.events;
+}
 export const utcDate = (compact: string) => Date.UTC(Number(compact.slice(0, 4)), Number(compact.slice(4, 6)) - 1, Number(compact.slice(6, 8)));
 
 /** Monthly provider partitions, one-day calendar guards, then exact UTC/season scope. */
@@ -174,15 +187,9 @@ export async function fetchScoreboardWindow(
       const size = responseBytes.get(envelope) ?? new TextEncoder().encode(JSON.stringify(envelope)).byteLength;
       bytes += size;
       if (size > RESPONSE_BYTES || bytes > WINDOW_BYTES) throw new Error('Scoreboard window exceeds bytes budget');
-      if (!Array.isArray(envelope.leagues) || envelope.leagues.length !== 1 || object(envelope.leagues[0]).slug !== rc.competition.espnSlug) {
-        throw new Error('Scoreboard league mismatch');
-      }
-      if (!Array.isArray(envelope.events) || envelope.events.length >= 1000) throw new Error('Scoreboard events missing or truncated');
-      for (const key of ['count', 'total', 'pageCount']) {
-        if (key in envelope && envelope[key] !== (key === 'pageCount' ? 1 : envelope.events.length)) throw new Error('Scoreboard pagination is incomplete');
-      }
+      const events = validateScoreboardEnvelope(envelope, rc.competition.espnSlug);
       const monthEnd = Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1);
-      for (const value of envelope.events) {
+      for (const value of events) {
         const { event, id, at, season } = validateEvent(value);
         if (at < monthStart - DAY || at >= monthEnd + DAY) throw new Error('Scoreboard event outside requested month');
         const previous = seen.get(id);

@@ -841,6 +841,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
 
       {detail && (
         <MatchDetailPopup
+          teamStyle={teamStyle}
           teamBase={teamBase}
           playerBase={playerBase}
           match={detail}

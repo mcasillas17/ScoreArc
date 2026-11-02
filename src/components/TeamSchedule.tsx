@@ -19,6 +19,6 @@ export default function TeamSchedule({ matches, competitionId, seasonId, teamSty
       <MatchRow match={match} teamStyle={teamStyle} showDate onOpen={() => void details.openDetails(match)} />
     </li>)}</ul>
     {details.detail && <MatchDetailPopup match={toMatchDetailInput(details.detail)} summary={details.summary}
-      loading={details.loadingDetail} onClose={details.closeDetails} teamBase={`${base}/team`} playerBase={`${base}/player`} />}
+      loading={details.loadingDetail} onClose={details.closeDetails} teamStyle={teamStyle} teamBase={`${base}/team`} playerBase={`${base}/player`} />}
   </>;
 }

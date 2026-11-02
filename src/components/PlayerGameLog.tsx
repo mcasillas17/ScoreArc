@@ -154,6 +154,7 @@ export default function PlayerGameLog({
 
       {detail && (
         <MatchDetailPopup
+          teamStyle={teamStyle ?? 'crest'}
           match={detail}
           summary={summary}
           loading={loadingDetail}
