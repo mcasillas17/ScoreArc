@@ -2,6 +2,8 @@
   "name": "scorearc-alert-receiver",
   "main": "worker.ts",
   "compatibility_date": "2026-08-01",
+  // Not-running check: alerts when no monitor heartbeat arrived for 60 minutes.
+  "triggers": { "crons": ["*/15 * * * *"] },
   // Request URLs contain the receiver token, so invocation logs stay off. Only the
   // Worker's own sanitized failure lines are kept.
   "observability": { "enabled": true, "logs": { "invocation_logs": false } },

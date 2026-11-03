@@ -83,4 +83,9 @@ jobs:
       - name: Report data and monitor status separately
         id: result
         if: ${{ always() && steps.prepare.outputs.state_written == 'true' }}
+        env:
+          # Scheduled runs send a heartbeat to the receiver's not-running check, only
+          # after both checkpoints were uploaded.
+          MATCH_FRESHNESS_WEBHOOK_URL: ${{ secrets.MATCH_FRESHNESS_WEBHOOK_URL }}
+          CHECKPOINT_COMMITTED: ${{ steps.pending.outcome == 'success' && steps.final.outcome == 'success' }}
         run: node scripts/match-freshness-monitor.mjs result
