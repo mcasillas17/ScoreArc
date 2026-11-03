@@ -1,6 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { competitionPlayerIndex, withPlayerSlugs, withSummaryPlayerSlugs } from './playerIndex';
 import { resolveSeason } from './competitions';
+import { createSelectedDataStore } from './sourceSelection';
+import { ReaderFailure } from './readerTransport';
 import { StandingsStatsError } from './providers/espn-standings';
 import type { DataStore } from './store';
 import type { Group, MatchSummaryData, SquadPlayer, Team } from './types';
@@ -186,5 +188,85 @@ describe('withSummaryPlayerSlugs', () => {
     };
     const out = await withSummaryPlayerSlugs(rc, summary, broken);
     expect(out).toEqual(summary);
+  });
+});
+
+
+describe('player directory', () => {
+  it('uses one roster per distinct team, keeps first roster context, and never loads profiles', async () => {
+    const store = fakeStore([...groups, ...groups], {
+      '222': [player('1', 'Alí Ávila'), player('2', 'Rodrigo López', 9)],
+      '227': [player('1', 'Alí Ávila'), player('3', 'Rodrigo Lopez', 10)],
+    });
+    store.getSquad = vi.fn(store.getSquad);
+    store.getPlayer = vi.fn();
+    const index = await competitionPlayerIndex(rc, store);
+    expect(index.directory).toEqual({ totalTeams: 2, teamsWithRoster: 2, players: [
+      { name: 'Alí Ávila', slug: 'ali-avila', teamName: 'QRO', teamAbbr: 'QRO' },
+      { name: 'Rodrigo López', slug: 'rodrigo-lopez-qro', teamName: 'QRO', teamAbbr: 'QRO' },
+      { name: 'Rodrigo Lopez', slug: 'rodrigo-lopez-ame', teamName: 'AME', teamAbbr: 'AME' },
+    ] });
+    expect(store.getSquad).toHaveBeenCalledTimes(2);
+    expect(store.getPlayer).not.toHaveBeenCalled();
+    for (const row of index.directory.players) expect(index.bySlug.get(row.slug!)?.name).toBe(row.name);
+  });
+
+  it('reports partial roster coverage separately from an empty membership list', async () => {
+    expect((await competitionPlayerIndex(rc, fakeStore(groups, { '222': [player('1', 'Alí')] }))).directory)
+      .toMatchObject({ totalTeams: 2, teamsWithRoster: 1 });
+    expect((await competitionPlayerIndex(rc, fakeStore(groups, {}))).directory)
+      .toEqual({ totalTeams: 2, teamsWithRoster: 0, players: [] });
+    expect((await competitionPlayerIndex(rc, fakeStore([], {}))).directory)
+      .toEqual({ totalTeams: 0, teamsWithRoster: 0, players: [] });
+  });
+
+  it('keeps unresolved existing slug collisions visible without inventing a URL', async () => {
+    const index = await competitionPlayerIndex(rc, fakeStore(groups, {
+      '222': [player('1', 'Same Name'), player('2', 'Same Name')],
+    }));
+    expect(index.directory.players.map(row => row.slug)).toEqual([null, 'same-name-qro']);
+    expect(index.byProvider.get('1')).toBeUndefined();
+  });
+
+  it('discards reader names, teams and collision links together when one roster fails', async () => {
+    const reader = fakeStore(groups, { '222': [player('r', 'Reader Name')] });
+    reader.getSquad = async (_rc, id) => {
+      if (id === '227') throw new ReaderFailure('stale');
+      return [player('r', 'Reader Name')];
+    };
+    const fallback = fakeStore([{ ...groups[0], standings: [groups[0].standings[1]] }], {
+      '227': [player('e', 'ESPN Name')],
+    });
+    const onFallback = vi.fn();
+    const selected = createSelectedDataStore({ source: 'reader', espn: fallback, reader: () => reader, onFallback });
+    const index = await competitionPlayerIndex(rc, selected);
+    expect(index.directory).toEqual({ totalTeams: 1, teamsWithRoster: 1, players: [
+      { name: 'ESPN Name', slug: 'espn-name', teamName: 'AME', teamAbbr: 'AME' },
+    ] });
+    expect([...index.bySlug.keys()]).toEqual(['espn-name']);
+    expect(onFallback).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['standings', 'squad'])('propagates exhausted %s failures instead of returning an empty directory', async failure => {
+    const reader = fakeStore(groups, {});
+    reader.getSquad = async () => { throw new ReaderFailure('network'); };
+    const fallback = fakeStore(groups, {});
+    if (failure === 'standings') fallback.getStandings = async () => { throw new Error('fallback unavailable'); };
+    else fallback.getSquad = async () => { throw new Error('fallback unavailable'); };
+    const selected = createSelectedDataStore({ source: 'reader', espn: fallback, reader: () => reader });
+    await expect(competitionPlayerIndex(rc, selected)).rejects.toThrow('fallback unavailable');
+  });
+
+  it('forwards caller cancellation without starting a fallback', async () => {
+    const controller = new AbortController();
+    const onFallback = vi.fn();
+    const source = createSelectedDataStore({ source: 'reader', espn: fakeStore([], {}), onFallback,
+      reader: ({ signal }) => ({ ...fakeStore(groups, {}), getSquad: () => new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        controller.abort();
+      }) }),
+    });
+    await expect(competitionPlayerIndex(rc, source, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+    expect(onFallback).not.toHaveBeenCalled();
   });
 });
