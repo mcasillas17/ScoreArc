@@ -14,7 +14,7 @@
   "d1_databases": [{
     "binding": "DB",
     "database_name": "scorearc-alert-receiver",
-    "database_id": "SET_AFTER_D1_CREATE",
+    "database_id": "31dcc498-699d-42ff-a051-f10e1534d0b5",
     "migrations_dir": "migrations"
   }]
 }
