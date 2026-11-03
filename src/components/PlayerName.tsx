@@ -16,6 +16,7 @@ export default function PlayerName({
   playerBase,
   className,
   linkClassName,
+  prefetch,
 }: {
   name: string;
   slug?: string | null;
@@ -23,11 +24,12 @@ export default function PlayerName({
   className?: string;
   /** Extra class(es) appended only when the name renders as a link. */
   linkClassName?: string;
+  prefetch?: boolean;
 }) {
   if (playerBase && slug) {
     const cls = linkClassName ? [className, linkClassName].filter(Boolean).join(' ') : className;
     return (
-      <Link className={cls} href={`${playerBase}/${encodeURIComponent(slug)}`}>
+      <Link prefetch={prefetch} className={cls} href={`${playerBase}/${encodeURIComponent(slug)}`}>
         {name}
       </Link>
     );

@@ -93,7 +93,7 @@ describe('competitionSections', () => {
   it('gives a projected league a Liguilla root item', () => {
     const rc = resolveSeason('liga-mx')!;
     expect(competitionSections(rc, 'en').map((s) => s.label)).toEqual([
-      'Liguilla', 'Standings', 'Matches', 'Teams', 'News',
+      'Liguilla', 'Standings', 'Matches', 'Teams', 'Players', 'News',
     ]);
   });
 
@@ -103,7 +103,7 @@ describe('competitionSections', () => {
   it('still gives a league with no projection no root item', () => {
     const rc = resolveSeason('premier-league')!;
     expect(competitionSections(rc, 'en').map((s) => s.label)).toEqual([
-      'Standings', 'Matches', 'Teams', 'News',
+      'Standings', 'Matches', 'Teams', 'Players', 'News',
     ]);
   });
 
@@ -264,6 +264,7 @@ describe('locale-preserving hrefs', () => {
       '/c/world-cup/2026/standings',
       '/c/world-cup/2026/matches',
       '/c/world-cup/2026/teams',
+      '/c/world-cup/2026/players',
       '/c/world-cup/2026/news',
     ]);
     expect(competitionHref(rc.competition, undefined)).toBe('/c/world-cup/2026');
@@ -354,7 +355,7 @@ describe('bottomBarItems', () => {
 
   it('shows the open competition\'s own sections inside it', () => {
     const tabs = bottomBarItems('/c/liga-mx/2026-apertura/standings', 'en');
-    expect(tabs.map((t) => t.label)).toEqual(['Liguilla', 'Standings', 'Matches', 'Teams', 'News']);
+    expect(tabs.map((t) => t.label)).toEqual(['Liguilla', 'Standings', 'Matches', 'Teams', 'Players', 'News']);
     // No menu slot inside a competition: the sections fill the bar and the
     // masthead hamburger is the way to the full list.
     expect(tabs.every((t) => t.href !== undefined)).toBe(true);
@@ -364,12 +365,12 @@ describe('bottomBarItems', () => {
   // stays in the bar rather than being the one thing hidden behind a hamburger.
   it('keeps a cup root in the bar', () => {
     expect(bottomBarItems('/c/world-cup/2026/matches', 'en').map((t) => t.label)).toEqual([
-      'Bracket', 'Standings', 'Matches', 'Teams', 'News',
+      'Bracket', 'Standings', 'Matches', 'Teams', 'Players', 'News',
     ]);
     expect(bottomBarItems('/c/leagues-cup/2026/matches', 'en')[0].label).toBe('Knockout');
   });
 
-  it('never carries more than five slots on any route', () => {
+  it('never carries more than six slots on any route', () => {
     const paths = ['/', '/teams', '/news'];
     for (const c of listCompetitions()) {
       const rc = resolveSeason(c.id)!;
@@ -378,7 +379,7 @@ describe('bottomBarItems', () => {
     for (const path of paths) {
       const n = bottomBarItems(path, 'en').length;
       expect(n).toBeGreaterThanOrEqual(4);
-      expect(n).toBeLessThanOrEqual(5);
+      expect(n).toBeLessThanOrEqual(6);
     }
   });
 
@@ -414,7 +415,7 @@ describe('bottomBarItems', () => {
       'Inicio', 'Equipos', 'Noticias', 'Menú',
     ]);
     expect(bottomBarItems('/c/liga-mx/2026-apertura/standings', 'es').map((t) => t.label)).toEqual([
-      'Liguilla', 'Clasificación', 'Partidos', 'Equipos', 'Noticias',
+      'Liguilla', 'Clasificación', 'Partidos', 'Equipos', 'Jugadores', 'Noticias',
     ]);
   });
 
@@ -452,4 +453,11 @@ describe('bottomBarItems', () => {
       expect(new Set(keys).size).toBe(keys.length);
     }
   });
+});
+
+it.each(['en', 'es'])('highlights Players for directory and singular profile in %s', locale => {
+  for (const suffix of ['players', 'player/ali-avila']) {
+    const tabs = bottomBarItems(`/${locale}/c/world-cup/2026/${suffix}`, locale as 'en' | 'es');
+    expect(tabs.filter(tab => tab.active).map(tab => tab.href)).toEqual([`/${locale}/c/world-cup/2026/players`]);
+  }
 });

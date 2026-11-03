@@ -3818,3 +3818,14 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
     white-space: nowrap;
   }
 }
+
+/* Player discovery shares the directory field and list; rows carry roster context. */
+.ps { margin-top: 16px; }
+.ps-item { flex-wrap: wrap; gap: 4px 16px; }
+.ps-name { color: var(--text); font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.ps-team { margin-left: auto; color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
+.ps a:focus-visible, .ps input:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 3px; }
+@media (max-width: 560px) {
+  .ps-item { align-items: flex-start; flex-direction: column; }
+  .ps-team { margin-left: 0; }
+}

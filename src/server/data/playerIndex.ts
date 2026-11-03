@@ -5,7 +5,15 @@ import { buildSlugMap, type ResolvedPlayer, type SlugEntry } from './playerIdent
 import { standingTeams } from './teamIndex';
 import { isReaderOperationStore, runDataOperation } from './sourceSelection';
 
+export interface DirectoryPlayer {
+  name: string;
+  slug: string | null;
+  teamName: string;
+  teamAbbr: string;
+}
+
 interface PlayerIndex {
+  directory: { players: DirectoryPlayer[]; totalTeams: number; teamsWithRoster: number };
   /** URL slug -> the player, for resolving a page request. */
   bySlug: Map<string, ResolvedPlayer>;
   /** Provider athlete id -> slug, for generating links where we hold the id. */
@@ -75,6 +83,7 @@ export function loadMatchSummaryWithSlugs(
 export async function competitionPlayerIndex(
   rc: CompetitionSeason,
   store: DataStore = dataStore,
+  signal?: AbortSignal,
 ): Promise<PlayerIndex> {
   return runDataOperation(store, async (source) => {
     const standing = await standingTeams(rc, source);
@@ -92,13 +101,13 @@ export async function competitionPlayerIndex(
     );
 
     const entries: SlugEntry[] = [];
-    const seenAthletes = new Set<string>();
+    const seenAthletes = new Map<string, Omit<DirectoryPlayer, 'slug'>>();
     for (const { team, squad } of squads) {
       for (const player of squad) {
         // The same belt-and-suspenders at athlete level: a player listed on two
         // rosters (mid-window transfer) is one identity, not a collision.
         if (seenAthletes.has(player.id)) continue;
-        seenAthletes.add(player.id);
+        seenAthletes.set(player.id, { name: player.name, teamName: team.name, teamAbbr: team.abbr });
         entries.push({
           name: player.name,
           providerId: player.id,
@@ -113,8 +122,12 @@ export async function competitionPlayerIndex(
     for (const [slug, player] of Array.from(bySlug.entries())) {
       byProvider.set(player.providerId, slug);
     }
-    return { bySlug, byProvider };
-  });
+    return { bySlug, byProvider, directory: {
+      players: Array.from(seenAthletes, ([id, player]) => ({ ...player, slug: byProvider.get(id) ?? null })),
+      totalTeams: teams.length,
+      teamsWithRoster: squads.filter(({ squad }) => squad.length > 0).length,
+    } };
+  }, signal);
 }
 
 /**
