@@ -1,6 +1,8 @@
 // Receives match-monitor events (scripts/match-freshness-monitor.mjs) and emails the
 // owner. Contract: docs/backend/MATCH_FRESHNESS.md#alert-receiver. HTTP 200 with
 // {"eventId"} means saved and emailed; anything else makes the sender retry the same id.
+// It also takes scheduled-run heartbeats and, on a cron, emails when they stop
+// (docs/backend/MATCH_FRESHNESS.md#not-running-check).
 
 interface Statement {
   first<T>(): Promise<T | null>;
@@ -19,6 +21,9 @@ const MIN_TOKEN_LENGTH = 32;
 // ponytail: one fixed cap on new work, a leaked token can still use it up. Rotate the
 // token if the cap trips without a matching incident.
 const MAX_EVENTS_PER_DAY = 300;
+// The schedule runs every 5 minutes but GitHub often starts it late, so allow an hour.
+const HEARTBEAT_MAX_AGE_MS = 60 * 60_000;
+const WORKFLOW_URL = 'https://github.com/mcasillas17/ScoreArc/actions/workflows/match-freshness.yml';
 
 const eventId = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}:[1-9][0-9]{0,15}$/;
 const slug = /^[a-z0-9][a-z0-9-]{0,79}$/;
@@ -73,7 +78,50 @@ function message(event: Event, env: Env) {
     `Matches: ${event.count ?? 'unknown'}`, `Stale: ${event.stale ?? 'unknown'}`, `Overdue: ${event.overdue ?? 'unknown'}`,
     `Check error: ${event.error ?? 'none'}`, '', `Run: ${event.runUrl}`, `Event: ${event.eventId}`, `Incident: ${event.incidentId}`,
   ].join('\n');
-  return { to: env.ALERT_RECIPIENT, from: ALERT_SENDER, subject: `[ScoreArc] ${event.status}: ${event.competition} ${event.season}`, text, html: `<pre>${text}</pre>` };
+  return mail(env, `[ScoreArc] ${event.status}: ${event.competition} ${event.season}`, text);
+}
+const mail = (env: Env, subject: string, text: string) => ({ to: env.ALERT_RECIPIENT, from: ALERT_SENDER, subject, text, html: `<pre>${text}</pre>` });
+
+function monitorMessage(down: boolean, at: string, env: Env) {
+  const text = down
+    ? `The match monitor has not completed a scheduled run since ${at}.\n\nCheck the workflow: ${WORKFLOW_URL}`
+    : `The match monitor completed a scheduled run again at ${at}.\n\nWorkflow: ${WORKFLOW_URL}`;
+  return mail(env, `[ScoreArc] Monitor ${down ? 'not running' : 'recovered'}`, text);
+}
+
+// A heartbeat after a down alert is the recovery. Until that email is recorded the alert
+// stays set, so the next heartbeat retries it: like events, at least once. At most one
+// write a minute: a leaked token can spend at most 1,440 D1 writes a day here.
+async function heartbeat(env: Env) {
+  const now = new Date();
+  const row = await env.DB.prepare('INSERT INTO monitor_heartbeat(id, last_at) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET last_at = excluded.last_at WHERE last_at < ? RETURNING alerted_at')
+    .bind(now.toISOString(), new Date(now.getTime() - 60_000).toISOString()).first<{ alerted_at: string | null }>();
+  if (row?.alerted_at) {
+    try {
+      await env.EMAIL.send(monitorMessage(false, now.toISOString(), env));
+    } catch (error) {
+      logFailure('email', error);
+      return empty(503);
+    }
+    await env.DB.prepare('UPDATE monitor_heartbeat SET alerted_at = NULL WHERE alerted_at = ?').bind(row.alerted_at).run();
+  }
+  return empty(204);
+}
+
+// An alert newer than the last heartbeat is the current outage. An older one was followed
+// by a heartbeat, whatever became of its recovery email, so a stale row is a new outage.
+// Recorded after the send, so a failed update repeats the alert next check: at least once.
+// It records the detection time, unconditionally, so a heartbeat landing during the
+// send gets its recovery from the next heartbeat, and a silence after it is a new outage.
+// ponytail: a failed record followed by a heartbeat leaves one down email with no
+// recovery; claiming first would close that but can lose the alert (see the runbook).
+async function checkHeartbeat(env: Env) {
+  if (!env.ALERT_RECIPIENT) return console.error('alert-receiver: configuration incomplete');
+  const detected = new Date().toISOString();
+  const row = await env.DB.prepare('SELECT last_at, alerted_at FROM monitor_heartbeat WHERE id = 1').bind().first<{ last_at: string; alerted_at: string | null }>();
+  if (!row || Date.now() - Date.parse(row.last_at) <= HEARTBEAT_MAX_AGE_MS || (row.alerted_at && row.alerted_at > row.last_at)) return;
+  await env.EMAIL.send(monitorMessage(true, row.last_at, env));
+  await env.DB.prepare('UPDATE monitor_heartbeat SET alerted_at = ? WHERE id = 1').bind(detected).run();
 }
 
 // Provider and database errors can quote configuration, so only a known code is logged.
@@ -96,8 +144,10 @@ async function handle(request: Request, env: Env) {
     return empty(500);
   }
   const path = new URL(request.url).pathname;
-  if (!path.startsWith('/events/') || !(await sameToken(path.slice('/events/'.length), env.RECEIVER_TOKEN))) return empty(404);
+  const route = ['/events/', '/heartbeat/'].find(prefix => path.startsWith(prefix));
+  if (!route || !(await sameToken(path.slice(route.length), env.RECEIVER_TOKEN))) return empty(404);
   if (request.method !== 'POST') return rejected(405);
+  if (route === '/heartbeat/') return heartbeat(env);
   if (!/^application\/json(\s*;|$)/i.test(request.headers.get('content-type') ?? '')) return rejected(415);
   const raw = await boundedText(request);
   if (raw === null) return rejected(413);
@@ -146,6 +196,10 @@ const worker = {
     });
     ctx.waitUntil(work);
     return work;
+  },
+  // Cron trigger in wrangler.jsonc. A failure here is retried by the next run.
+  async scheduled(_controller: unknown, env: Env) {
+    await checkHeartbeat(env).catch(error => logFailure('heartbeat check', error));
   },
 };
 export default worker;
