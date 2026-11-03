@@ -10,3 +10,7 @@ build/
 
 # Claude Code agent worktrees — embedded git repos, never commit
 .claude/worktrees/
+
+# Cloudflare Worker local state and secrets
+.wrangler/
+.dev.vars
