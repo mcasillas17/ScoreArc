@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { checkScope, currentScopes, runWatchdog } from './match-freshness-watchdog.mjs';
+import { load } from 'js-yaml';
+import { CONTRACT_KEYS, checkScope, currentScopes, runWatchdog } from './match-freshness-watchdog.mjs';
 
 const scope = { competition: 'world-cup', season: '2026' };
 const validHeaders = {
@@ -159,6 +160,34 @@ describe('bounded match freshness watchdog', () => {
       const result = await checkBody({ cards: [card] });
       expect(result.ok, JSON.stringify(card)).toBe(ok);
       if (!ok) expect(result.observation.error).toBe('body-contract');
+    }
+  });
+  // The reader's published TeamStats is the contract; a hand-kept list drifted once
+  // (#226 added three keys) and failed every scope on the first production run.
+  it('accepts exactly the reader OpenAPI TeamStats keys', async () => {
+    const spec = load(await readFile('backend/reader/openapi.yaml', 'utf8')) as {
+      components: { schemas: { TeamStats: { required: string[]; properties: object } } };
+    };
+    const keys = spec.components.schemas.TeamStats.required;
+
+    const side = Object.fromEntries(keys.map((key, i) => [key, i % 2 ? null : 1]));
+    expect((await checkBody({ stats: { home: side, away: side } })).ok).toBe(true);
+    const missing = { ...side }; delete missing[keys[0]];
+    for (const bad of [missing, { ...side, extra: 1 }, { ...side, [keys[0]]: '1' }]) {
+      const result = await checkBody({ stats: { home: side, away: bad } });
+      expect(result.observation.error).toBe('body-contract');
+    }
+  });
+  it('pins every exact-key validator to its reader OpenAPI schema', async () => {
+    const { components: { schemas } } = load(await readFile('backend/reader/openapi.yaml', 'utf8')) as {
+      components: { schemas: Record<string, { required: string[]; properties: object; additionalProperties?: boolean }> };
+    };
+    for (const [name, keys] of Object.entries(CONTRACT_KEYS)) {
+      const expected = keys.split(' ').sort();
+      // additionalProperties:false: an optional key would still be emitted and rejected.
+      expect(schemas[name].additionalProperties, name).toBe(false);
+      expect(Object.keys(schemas[name].properties).sort(), name).toEqual(expected);
+      expect([...schemas[name].required].sort(), name).toEqual(expected);
     }
   });
   it('accepts every newly nullable field together in one match', async () => {

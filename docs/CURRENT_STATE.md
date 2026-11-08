@@ -680,8 +680,10 @@ held-byte reprocessing and new collection remain unchanged.
   per owner ([contract and limits](backend/READER_CONTRACT.md#t173-resource-freshness-contract)). Scheduled freshness checks
   and notification activation still require explicit approval. An email
   [alert receiver](backend/MATCH_FRESHNESS.md#alert-receiver) was deployed
-  November 3 and passed one synthetic send that the owner received. The monitor
-  is not connected to it, and its not-running check is not deployed.
+  November 3 and passed one synthetic send that the owner received. On November 7
+  its not-running check was deployed (unarmed), the monitor was connected and
+  enabled for manual runs only, and the [first manual run](backend/MATCH_FRESHNESS.md#first-manual-run-november-7-2026)
+  exposed two monitor defects, fixed in the change that records it. No schedule exists; monitoring is not active.
   Collect sustained reconciliation and transient-failure recovery evidence
   ([SETUP §7.5](backend/SETUP.md#75-verify)); the dated observations above do not
   close this acceptance or ancillary squad/player/archive coverage.

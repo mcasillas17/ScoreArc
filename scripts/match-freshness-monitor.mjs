@@ -13,6 +13,9 @@ const positive = v => Number.isSafeInteger(v) && v > 0;
 const count = v => v === null || (Number.isSafeInteger(v) && v >= 0 && v <= 5000);
 const eventPattern = /^[0-9a-f-]{36}:([1-9][0-9]*)$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+// The receiver acknowledges only after its email goes out (4.5-5.1 s in production).
+// 10 sends + 1 heartbeat at this limit stay well inside the 10-minute job timeout.
+const SEND_TIMEOUT_MS = 15000;
 const errors = /^(http-\d{3}|content-type|response-size|body|json|body-contract|counts-contract|headers-contract|request|timeout)$/;
 const equalRun = (a, b) => record(a) && record(b) && Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(k => a[k] === b[k]);
 
@@ -198,7 +201,7 @@ export async function sendHeartbeat({ webhookURL, fetchImpl = fetch }) {
   const url = webhook(webhookURL);
   if (!/^\/events\/[^/]+$/.test(url.pathname) || url.search) throw new Error('Invalid webhook configuration');
   url.pathname = url.pathname.replace('/events/', '/heartbeat/');
-  const response = await fetchImpl(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5000) });
+  const response = await fetchImpl(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(SEND_TIMEOUT_MS) });
   if (response.status !== 204) throw new Error('not-acknowledged');
 }
 export async function deliverMonitor(options) {
@@ -206,8 +209,8 @@ export async function deliverMonitor(options) {
   config(options);
   if (!positive(options.pendingArtifactId)) throw new Error('Pending checkpoint upload required');
   const url = webhook(options.webhookURL);
-  const timeoutMs = options.timeoutMs ?? 5000;
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 5000) throw new Error('Invalid notifier timeout');
+  const timeoutMs = options.timeoutMs ?? SEND_TIMEOUT_MS;
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > SEND_TIMEOUT_MS) throw new Error('Invalid notifier timeout');
   return locked(options.stateFile, async () => {
     const state = validateState(await load(options.stateFile), options);
     if (!equalRun(state.run, options.run) || state.phase !== 'pending') throw new Error('State delivery provenance/phase mismatch');
