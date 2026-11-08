@@ -188,7 +188,7 @@ async function handle(request: Request, env: Env) {
 
 const worker = {
   async fetch(request: Request, env: Env, ctx: { waitUntil(work: Promise<unknown>): void }) {
-    // The sender gives up after 5 seconds. Without waitUntil that disconnect could cancel
+    // The sender gives up after 15 seconds. Without waitUntil that disconnect could cancel
     // the work between the email and its record, so every retry would email again.
     const work = handle(request, env).catch(error => {
       logFailure('request', error);
