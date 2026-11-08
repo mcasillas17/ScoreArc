@@ -394,16 +394,18 @@ is silently removed. Exhausted head events block FIFO until owner reconciliation
 
 ### Alert receiver
 
-**Deployed, but the monitor is not connected to it yet.** On November 1, 2026 the
+**Deployed and connected for manual runs only; no schedule exists.** On November 1, 2026 the
 owner selected email to one owner-chosen address, named themselves incident owner,
 and approved this design. On November 3, with separate approval, Email Routing was
 enabled, the Worker and its D1 database were deployed, and one synthetic event sent
 twice got two matching acknowledgments, one D1 row and one email that the owner
-confirmed receiving. A wrong token got 404. The monitor's webhook secret and
-variables are still unset.
+confirmed receiving. A wrong token got 404. On November 7, with approval, migration
+`0002` and the cron trigger were deployed (the heartbeat table stays empty, so the
+check is unarmed), the webhook secret and both variables were set, and the first
+manual run is recorded under [first manual run](#first-manual-run-november-7-2026).
 
 [`infra/alert-receiver`](../../infra/alert-receiver/worker.ts) is a Cloudflare
-Worker with D1. Once migration `0002` and its cron trigger are deployed, it also runs the
+Worker with D1. With migration `0002` and its cron trigger, it also runs the
 scheduled-run [not-running check](#not-running-check) on its own route and table. For each event the Worker:
 
 1. Checks the secret token in the URL path (`/events/<token>`); a wrong token gets 404.
@@ -530,8 +532,8 @@ do not stop production to prove them.
 | GitHub JSON API | At most 3 pages × 20 runs; 2 metadata + 3 run-list + 120 artifact/job reads = 125 requests; 10 seconds / 1 MiB each, no retries |
 | Artifact transfer | One selected download, up to two uploads; state 256 KiB, artifact metadata size ceiling 256 KiB; action-internal transfer retries are governed by pinned actions and job timeout |
 | State | 128 pending events, 32 receipts, one current incident ID per scope; 256 KiB |
-| Notifications | At most 10 sequential sends per run, 5 seconds each, 1 KiB acknowledgment; 20 reserved attempts per event |
-| Heartbeat | At most one POST per scheduled run, 5 seconds, 204 expected, never retried |
+| Notifications | At most 10 sequential sends per run, 15 seconds each (the receiver acknowledges only after its email, about 5 seconds), 1 KiB acknowledgment; 20 reserved attempts per event |
+| Heartbeat | At most one POST per scheduled run, 15 seconds, 204 expected, never retried |
 | Backoff | Across runs: 5 minutes doubled to maximum 6 hours; no in-run retry, untrusted Retry-After cannot enlarge bounds |
 | Runtime | Entire Actions job 10 minutes; this may truncate API search/check/delivery before per-operation ceilings |
 | Proposed cadence | Five minutes, 288 nominal runs/day; current registry ≤2,880 reader requests/day; worst-case ≤2,880 notification attempts/day plus ≤288 heartbeats; actual platform timing can delay/drop runs |
@@ -628,12 +630,13 @@ but a workflow that never starts cannot report its own absence.
 - [ ] Approve checkpoint retention/backup, recovery procedure, cost/cadence and
   independent monitor-not-running detection. Reconcile any existing v1 history
   without resetting it; incompatible history deliberately blocks activation.
-- [ ] After external-configuration approval, configure the webhook secret and
-  delivery variable. Leave the main enablement variable false until authorized
-  manual check/delivery acceptance is ready.
-- [ ] With separate approval, set `MATCH_FRESHNESS_ENABLED=true`; run the reviewed
+- [x] After external-configuration approval, configure the webhook secret and
+  delivery variable, leaving the main enablement variable false until authorized
+  manual check/delivery acceptance is ready. Done November 7, 2026.
+- [x] With separate approval, set `MATCH_FRESHNESS_ENABLED=true`; run the reviewed
   main workflow once with explicit initialization **only if no history exists**.
   Subsequent new runs use false. Inspect pending/final artifacts and exact run SHA.
+  Done November 7, 2026; see [first manual run](#first-manual-run-november-7-2026).
 - [ ] Verify real recipient receipt and stable-ID deduplication for opening,
   continued failure, recovery, recurrence, ambiguous send and state/delivery failure
   using an approved synthetic acceptance setup; do not disrupt production data.
@@ -662,6 +665,39 @@ This delivers code for the **match-endpoint slice only**. Scheduling, real deliv
 recipient verification, sustained operational acceptance and broader T17.4 coverage
 remain open. No Postgres or reader database, ingester, T21.2 or release-pipeline behavior is
 changed; the receiver's D1 gains the `monitor_heartbeat` table.
+
+### First manual run (November 7, 2026)
+
+Run [42453155126](https://github.com/mcasillas17/ScoreArc/actions/runs/42453155126)
+on `8e7df54`, `initialize_state=true` (no history existed), checkpoints
+`match-freshness-pending` 13606740421 (06:03:32Z) and `match-freshness-state`
+13606003542 (06:03:37Z); GitHub artifact IDs are not ordered by upload time. It
+exited 2 with `data_incident=true pending=10 monitor=delivery-failed`, from two
+monitor defects rather than reader data:
+
+- Every scope failed `body-contract`: the reader's `TeamStats` gained
+  `passesAccurate`, `crossesAccurate` and `tacklesEffective` in #226, and the
+  watchdog's exact key list was not updated. A test now pins the list to the
+  OpenAPI schema.
+- The receiver accepted and emailed the first OPEN, but its email send took about
+  5.1 seconds, past the 5-second acknowledgment limit, so the event stayed pending.
+  The limit is now 15 seconds.
+
+All 10 OPEN events are false alarms and stay queued, as never discarding pending
+events requires. A run sends at most 10 reserved events, oldest first, so after the
+fix two more manual runs (`initialize_state=false`) drain the queue. With the fix,
+a local check against the live reader on November 7 passed all 10 scopes. If they
+are still healthy:
+
+1. The second run sends the 10 OPEN events (9 new emails; the receiver deduplicates
+   the first) and queues 10 RESOLVED events. It exits 2 with `pending=10`. It must
+   start at least five minutes after the first run finished (its prepare step set that
+   retry delay); an earlier run sends nothing and exits 2 with `pending=20`.
+2. The third run sends the 10 RESOLVED emails and exits 0. Together they are real
+   OPEN, RESOLVED and dedup protocol evidence; receipt proof still needs the owner's
+   inbox confirmation (see the checklist).
+
+A scope that is genuinely unhealthy by then stays open and queues no RESOLVED event.
 
 ## Schema and separately approved release order
 
