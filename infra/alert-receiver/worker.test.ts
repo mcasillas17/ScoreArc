@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { copyFile, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { copyFile, mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -20,7 +20,8 @@ afterEach(async () => {
 async function database() {
   const failing = { statement: '' };
   const sqlite = new DatabaseSync(':memory:');
-  sqlite.exec(await readFile(new URL('./migrations/0001_alert_event.sql', import.meta.url), 'utf8'));
+  const migrations = new URL('./migrations/', import.meta.url);
+  for (const file of (await readdir(migrations)).sort()) sqlite.exec(await readFile(new URL(file, migrations), 'utf8'));
   return {
     sqlite,
     failing,
@@ -357,5 +358,167 @@ describe('real monitor sender against the receiver', () => {
     await copyFile(pendingCheckpoint, s.stateFile); // final checkpoint lost
     expect((await s.deliver()).pending).toBe(0);
     expect(send).toHaveBeenCalledOnce();
+  });
+});
+
+describe('monitor heartbeat', () => {
+  const HEARTBEAT = `http://127.0.0.1/heartbeat/${TOKEN}`;
+  const beat = (env: Env, url = HEARTBEAT) => worker.fetch(new Request(url, { method: 'POST' }), env, ctx);
+  const check = (env: Env) => worker.scheduled({}, env);
+  const row = (db: Awaited<ReturnType<typeof database>>) => db.sqlite.prepare('SELECT last_at, alerted_at FROM monitor_heartbeat').all();
+  const at = (iso: string) => vi.useFakeTimers({ now: Date.parse(iso), toFake: ['Date'] });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('is wired to a 15-minute cron, which the 60-to-75-minute alert timing assumes', async () => {
+    const config = await readFile(new URL('./wrangler.jsonc', import.meta.url), 'utf8');
+    expect(config).toMatch(/"crons":\s*\["\*\/15 \* \* \* \*"\]/);
+    expect(typeof worker.scheduled).toBe('function');
+  });
+  it('stays silent until the first heartbeat arms it', async () => {
+    const { send, env } = await setup();
+    at('2026-11-01T12:00:00Z'); await check(env);
+    at('2026-11-09T12:00:00Z'); await check(env);
+    expect(send).not.toHaveBeenCalled();
+  });
+  it('records a heartbeat with 204 and no email', async () => {
+    const { db, send, env } = await setup();
+    at('2026-11-01T12:00:00Z');
+    const response = await beat(env);
+    expect(response.status).toBe(204); expect(await response.text()).toBe('');
+    expect(row(db)).toEqual([{ last_at: '2026-11-01T12:00:00.000Z', alerted_at: null }]);
+    expect(send).not.toHaveBeenCalled();
+  });
+  it('alerts once after 60 minutes without a heartbeat, then once on recovery', async () => {
+    const { db, send, env } = await setup();
+    at('2026-11-01T12:00:00Z'); await beat(env);
+    at('2026-11-01T13:00:00Z'); await check(env);
+    expect(send).not.toHaveBeenCalled();
+    at('2026-11-01T13:00:01Z'); await check(env);
+    at('2026-11-01T14:00:00Z'); await check(env);
+    expect(send).toHaveBeenCalledOnce();
+    const down = send.mock.calls[0][0];
+    expect(down.to).toBe('owner@example.test'); expect(down.subject).toBe('[ScoreArc] Monitor not running');
+    expect(down.text).toContain('2026-11-01T12:00:00.000Z'); expect(down.text).toContain('actions/workflows/match-freshness.yml');
+    at('2026-11-01T14:05:00Z'); expect((await beat(env)).status).toBe(204);
+    expect(send).toHaveBeenCalledTimes(2); expect(send.mock.calls[1][0].subject).toBe('[ScoreArc] Monitor recovered');
+    await beat(env); expect(send).toHaveBeenCalledTimes(2);
+    expect(row(db)).toEqual([{ last_at: '2026-11-01T14:05:00.000Z', alerted_at: null }]);
+  });
+  it('retries a failed down alert on the next check, and a failed recovery on the next heartbeat', async () => {
+    const { send, env } = await setup();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    at('2026-11-01T12:00:00Z'); await beat(env);
+    send.mockRejectedValueOnce(Object.assign(new Error(`provider said ${TOKEN}`), { code: 'E_DELIVERY_FAILED' }));
+    at('2026-11-01T13:15:00Z'); await check(env);
+    at('2026-11-01T13:30:00Z'); await check(env);
+    expect(send.mock.calls.map(([m]) => m.subject)).toEqual(['[ScoreArc] Monitor not running', '[ScoreArc] Monitor not running']);
+    send.mockRejectedValueOnce(new Error('down'));
+    at('2026-11-01T13:35:00Z'); expect((await beat(env)).status).toBe(503);
+    at('2026-11-01T13:40:00Z'); expect((await beat(env)).status).toBe(204);
+    expect(send.mock.calls.slice(2).map(([m]) => m.subject)).toEqual(['[ScoreArc] Monitor recovered', '[ScoreArc] Monitor recovered']);
+    expect(JSON.stringify(log.mock.calls)).not.toContain(TOKEN);
+  });
+  it('repeats an email whose record failed instead of losing it: at least once', async () => {
+    const { db, send, env } = await setup();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    at('2026-11-01T12:00:00Z'); await beat(env);
+    db.failing.statement = 'UPDATE';
+    at('2026-11-01T13:15:00Z'); await check(env);
+    db.failing.statement = '';
+    at('2026-11-01T13:30:00Z'); await check(env);
+    db.failing.statement = 'UPDATE';
+    at('2026-11-01T13:35:00Z'); expect((await beat(env)).status).toBe(503);
+    db.failing.statement = '';
+    at('2026-11-01T13:40:00Z'); expect((await beat(env)).status).toBe(204);
+    expect(send.mock.calls.map(([m]) => m.subject)).toEqual(['[ScoreArc] Monitor not running', '[ScoreArc] Monitor not running', '[ScoreArc] Monitor recovered', '[ScoreArc] Monitor recovered']);
+    expect(row(db)).toEqual([{ last_at: '2026-11-01T13:40:00.000Z', alerted_at: null }]);
+  });
+  it('fails closed on weak configuration for both the route and the check', async () => {
+    const { db, send, env } = await setup();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (const broken of [{ RECEIVER_TOKEN: 'short' }, { ALERT_RECIPIENT: '' }]) {
+      const url = `http://127.0.0.1/heartbeat/${broken.RECEIVER_TOKEN ?? TOKEN}`;
+      expect((await beat({ ...env, ...broken }, url)).status).toBe(500);
+    }
+    expect(row(db)).toEqual([]);
+    at('2026-11-01T12:00:00Z'); await beat(env);
+    at('2026-11-01T14:00:00Z'); await check({ ...env, ALERT_RECIPIENT: '' });
+    expect(send).not.toHaveBeenCalled();
+    expect(JSON.stringify(log.mock.calls)).toContain('configuration incomplete');
+  });
+  it('a failing check sends nothing and logs no secret', async () => {
+    const { db, send, env } = await setup();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    at('2026-11-01T12:00:00Z'); await beat(env);
+    db.failing.statement = 'SELECT';
+    at('2026-11-01T14:00:00Z'); await check(env);
+    expect(send).not.toHaveBeenCalled();
+    expect(JSON.stringify(log.mock.calls)).toContain('heartbeat check');
+    expect(JSON.stringify(log.mock.calls)).not.toContain(TOKEN);
+  });
+  it.each(['send', 'record'])('a recovery whose %s failed still lets the next outage alert', async failing => {
+    const { db, send, env } = await setup();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    at('2026-11-01T12:00:00Z'); await beat(env);
+    at('2026-11-01T13:15:00Z'); await check(env);
+    if (failing === 'send') send.mockRejectedValueOnce(new Error('down')); else db.failing.statement = 'UPDATE';
+    at('2026-11-01T13:20:00Z'); expect((await beat(env)).status).toBe(503);
+    db.failing.statement = '';
+    at('2026-11-01T14:30:00Z'); await check(env);
+    expect(send.mock.calls.map(([m]) => m.subject).filter(s => s.endsWith('not running'))).toHaveLength(2);
+    at('2026-11-01T14:45:00Z'); await check(env);
+    expect(send.mock.calls.map(([m]) => m.subject).filter(s => s.endsWith('not running'))).toHaveLength(2);
+  });
+  it('a heartbeat landing during the down email gets its recovery from the next heartbeat', async () => {
+    const { db, send, env } = await setup();
+    at('2026-11-01T12:00:00Z'); await beat(env);
+    send.mockImplementationOnce(async () => {
+      db.sqlite.exec("UPDATE monitor_heartbeat SET last_at = '2026-11-01T13:15:00.500Z'");
+      return { messageId: 'm' };
+    });
+    at('2026-11-01T13:15:00Z'); await check(env);
+    at('2026-11-01T13:20:00Z'); await beat(env);
+    expect(send.mock.calls.map(([m]) => m.subject)).toEqual(['[ScoreArc] Monitor not running', '[ScoreArc] Monitor recovered']);
+  });
+  it('a silence after a heartbeat that landed during the down email is a new outage', async () => {
+    const { db, send, env } = await setup();
+    at('2026-11-01T12:00:00Z'); await beat(env);
+    send.mockImplementationOnce(async () => {
+      db.sqlite.exec("UPDATE monitor_heartbeat SET last_at = '2026-11-01T13:15:00.500Z'");
+      return { messageId: 'm' };
+    });
+    at('2026-11-01T13:15:00Z'); await check(env);
+    at('2026-11-01T14:20:00Z'); await check(env);
+    expect(send.mock.calls.map(([m]) => m.subject)).toEqual(['[ScoreArc] Monitor not running', '[ScoreArc] Monitor not running']);
+  });
+  it('writes at most once a minute', async () => {
+    const { db, env } = await setup();
+    at('2026-11-01T12:00:00Z'); await beat(env);
+    at('2026-11-01T12:00:59Z'); expect((await beat(env)).status).toBe(204);
+    expect(row(db)).toEqual([{ last_at: '2026-11-01T12:00:00.000Z', alerted_at: null }]);
+    at('2026-11-01T12:01:01Z'); await beat(env);
+    expect(row(db)).toEqual([{ last_at: '2026-11-01T12:01:01.000Z', alerted_at: null }]);
+  });
+  it('is paused by deleting the row and re-armed by the next heartbeat', async () => {
+    const { db, send, env } = await setup();
+    at('2026-11-01T12:00:00Z'); await beat(env);
+    db.sqlite.exec('DELETE FROM monitor_heartbeat');
+    at('2026-11-02T12:00:00Z'); await check(env);
+    expect(send).not.toHaveBeenCalled();
+    await beat(env); expect(row(db)).toHaveLength(1);
+  });
+  it('shares the token gate: wrong token 404, wrong method 405, nothing recorded', async () => {
+    const { db, send, env } = await setup();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await beat(env, `http://127.0.0.1/heartbeat/${'x'.repeat(40)}`)).status).toBe(404);
+    expect((await beat(env, `${HEARTBEAT}/extra`)).status).toBe(404);
+    expect(log).not.toHaveBeenCalled();
+    expect((await worker.fetch(new Request(HEARTBEAT), env, ctx)).status).toBe(405);
+    expect(row(db)).toEqual([]); expect(send).not.toHaveBeenCalled();
+  });
+  it('the real monitor heartbeat sender reaches the receiver', async () => {
+    const { db, env } = await setup();
+    await monitor.sendHeartbeat({ webhookURL: URL_OK, fetchImpl: (input, init) => worker.fetch(new Request(input, init), env, ctx) });
+    expect(row(db)).toHaveLength(1);
   });
 });
