@@ -1,10 +1,11 @@
 name: Match freshness watchdog
 
-# Activation is NOT part of this change. After owner approval, add this trigger:
-# schedule:
-#   - cron: '3-58/5 * * * *'
-# Keep MATCH_FRESHNESS_ENABLED unset/false until bootstrap and channel acceptance.
+# Schedule added by the activation change the owner accepted on November 7, 2026
+# (docs/backend/MATCH_FRESHNESS.md, "Activation record"). MATCH_FRESHNESS_ENABLED
+# absent/false still means zero checks.
 on:
+  schedule:
+    - cron: '3-58/5 * * * *'
   workflow_dispatch:
     inputs:
       initialize_state:
@@ -54,6 +55,10 @@ jobs:
           github-token: ${{ github.token }}
       - name: Prepare pending state
         id: prepare
+        # Select records a decision only when the CLI is enabled (exact 'true'). Without one
+        # (e.g. 'TRUE' passed the case-insensitive job gate) Prepare is skipped, which the
+        # selector passes over, instead of succeeding without a checkpoint (a barrier).
+        if: ${{ success() && (steps.select.outputs.initialize == 'true' || steps.select.outputs.initialize == 'false') }}
         run: node scripts/match-freshness-monitor.mjs prepare
       - name: Commit pending checkpoint before any send
         id: pending

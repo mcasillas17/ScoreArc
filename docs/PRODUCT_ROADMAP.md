@@ -844,7 +844,7 @@ cutover gate are unchanged.
 | **T17.1** | Reproduce, diagnose, and fix the Liga MX team-profile 500 in reader store/handler integration tests. | Root cause is evidence from a real-Postgres reproduction, not a UUID hypothesis; seeded teams return `200` or intentional `404`, never unexplained `500`. | none |
 | **T17.2** | Diagnose Greece across config, source, ingester, database, and reader; populate it or gate it out honestly. **#173 recovery and #183 bounded monthly discovery are merged and released; the September 20 recovery completed the original stale matches. October 2 reader checks found all ten match scopes responding with `poll=ok`, nine fresh and World Cup dormant; Greece's `/matches` returned 182 and `fresh`. This match-only evidence does not establish current standings/top-scorers or other collection coverage, or close sustained ingestion acceptance.** Frontend #192/#193 are also merged and released, still ESPN-backed; see [CURRENT_STATE](CURRENT_STATE.md#october-2-reconciliation) and [frontend evidence](FRONTEND_SCOREBOARD_WINDOWS.md). | Never assert a missing row count in advance; a configured-but-unproven competition is not presented as healthy. | diagnosis: none. Population: [SETUP §7.5](backend/SETUP.md#75-verify) freshness acceptance (zero-failure cycles, advancing data including Greece) |
 | **T17.3** | Add source, observed/finalized time, derivation, and complete/empty/stale/unavailable semantics to reader contracts. **#173's match-specific headers remain unchanged. October 30 implementation adds scoped resource metadata to all 12 reader routes, durable collection observations and positive TS/Go/OpenAPI/Postgres coverage. The owner confirms deployment with migration 0028 on October 31; sustained coverage and monitoring acceptance remain separate. Do not repeat the migration; see [contract and limits](backend/READER_CONTRACT.md#t173-resource-freshness-contract).** | Consumers can distinguish a genuine empty window from broken ingestion from the response alone; all reader routes have contract coverage. | T16.1 |
-| **T17.4** | Define per-competition freshness/completeness SLOs, alerts, and runbooks from ingest evidence. **September 19: bounded match watchdog, durable transition deduplication and [runbook](backend/MATCH_FRESHNESS.md) are implemented; schedule/notification delivery and live acceptance are not activated or complete.** | Dormant seasons do not page; active competitions crossing their declared threshold do, with competition/season/run context. | T17.3; T21.4 later exports richer metrics |
+| **T17.4** | Define per-competition freshness/completeness SLOs, alerts, and runbooks from ingest evidence. **September 19: bounded match watchdog, durable transition deduplication and [runbook](backend/MATCH_FRESHNESS.md) are implemented; schedule/notification delivery and live acceptance are not activated or complete. November 7: the owner accepted activation and live email delivery began; the five-minute schedule is added by the activation change ([activation record](backend/MATCH_FRESHNESS.md#activation-record-november-7-2026)); scheduled heartbeat acceptance, the R2 checkpoint copy and broader coverage remain open.** | Dormant seasons do not page; active competitions crossing their declared threshold do, with competition/season/run context. | T17.3; T21.4 later exports richer metrics |
 
 **T17.1 production repair accepted (2026-09-06):** the missing `t.color`
 projection was reproduced with real Postgres; regression/contract coverage
@@ -892,9 +892,11 @@ September 13 07:06 UTC, and later frontend ledger `6432468280` records successfu
 publication on September 14 at 07:32 UTC. Those old delivery incidents are not
 pending repairs. The September 20 recovery subsequently resolved the original
 stale-match incidents; #183's monthly discovery repair was released September 26.
-Match-specific T17.3 signals are deployed, while T17.4's watchdog remains
-manual-only. Sustained ingestion acceptance, scheduled notification delivery
-and broader endpoint coverage remain open. Coordinate authorization
+Match-specific T17.3 signals are deployed. T17.4's watchdog was manual-only until the
+activation the owner accepted on November 7: live email delivery began that day and
+the five-minute schedule is added by the activation change (see the
+[activation record](backend/MATCH_FRESHNESS.md#activation-record-november-7-2026)).
+Sustained ingestion acceptance and broader endpoint coverage remain open. Coordinate authorization
 for any new release using the current path policy, not the historical ledger.
 
 ### E18 · Rights & multi-source platform
@@ -1040,8 +1042,8 @@ T16.3 (#239) adds the reader adapter with unchanged ESPN default.
 T16.4 adds explicit evaluation tooling; production shadow traffic remains disabled. Local adapter readiness is separate from rollout
 acceptance.
 The independent high-priority lanes remain explicit: archive/backfill durability
-under T18.1's classification, **T7.21** participation retry, **T17.4** scheduled
-freshness/notification delivery, and **T21.2** full schema readiness. Bounded
+under T18.1's classification, **T7.21** participation retry, **T17.4** scheduled-heartbeat acceptance,
+R2 checkpoint copy and broader coverage, and **T21.2** full schema readiness. Bounded
 October 2 freshness observations do not close these lanes or change task dependencies.
 
 ### Next — own and dogfood the contract

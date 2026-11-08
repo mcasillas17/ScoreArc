@@ -26,7 +26,8 @@ incidents finalized. Do not reapply that migration. The new monthly scoreboard
 repair needed no schema change and subsequently merged/released as #183 on
 September 26. Shared source changes still select both Fly services after an
 authorized merge/full CI gate. Sustained complete-poll and transient-failure
-acceptance remains open; the freshness watchdog remains manual-only.
+acceptance remains open; the freshness watchdog's status is in its
+[activation record](MATCH_FRESHNESS.md#activation-record-november-7-2026).
 
 **October 2 update:** later actual-success records exist for both Fly services
 at `9a65d8c` and the frontend at `4b50299`. Main `529460b` run `36976840786`
@@ -679,8 +680,9 @@ Vercel preview is not evidence of a production deployment.
 
 This verifies the machine contract, not ongoing source observations. For the
 independent data-freshness check and exact post-deployment acceptance, see
-[MATCH_FRESHNESS.md](MATCH_FRESHNESS.md#post-deployment-acceptance). Its manual
-watchdog is not an activated production schedule or proof of delivered alerts.
+[MATCH_FRESHNESS.md](MATCH_FRESHNESS.md#post-deployment-acceptance). Its watchdog's
+schedule and delivery status are in the
+[activation record](MATCH_FRESHNESS.md#activation-record-november-7-2026).
 
 The ingester case of **Publish tested Fly commit** runs
 `node scripts/production-release.mjs verify-ingester` right after

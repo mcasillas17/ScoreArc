@@ -7,7 +7,11 @@ const document = () => readFile('.github/workflows/match-freshness.yml', 'utf8')
 describe('opt-in durable match workflow', () => {
   it('gates the whole job before checks, downloads, secrets and delivery', async () => {
     const workflow = await document();
-    expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch']);
+    // Owner-accepted activation (November 7, 2026): five-minute schedule plus manual runs.
+    expect(Object.keys(workflow.on).sort()).toEqual(['schedule', 'workflow_dispatch']);
+    expect(workflow.on.schedule).toEqual([{ cron: '3-58/5 * * * *' }]);
+    // Scheduled runs have no inputs, so this must fall back to false: never initialize history.
+    expect(workflow.jobs.check.steps.find((s: any) => s.id === 'select').env.INITIALIZE_STATE).toBe('${{ inputs.initialize_state || false }}');
     expect(workflow.on.workflow_dispatch.inputs.initialize_state.default).toBe(false);
     expect(workflow.jobs.check.if).toContain("vars.MATCH_FRESHNESS_ENABLED == 'true'");
     expect(workflow.jobs.check.if).toContain("github.ref == 'refs/heads/main'");
@@ -39,7 +43,7 @@ describe('opt-in durable match workflow', () => {
     expect(steps.filter((s: any) => s.uses).every((s: any) => /@[0-9a-f]{40}$/.test(s.uses))).toBe(true);
     expect(steps.findIndex((s: any) => s.id === 'pending')).toBeLessThan(steps.findIndex((s: any) => s.id === 'deliver'));
   });
-  it.each([undefined, 'false'].flatMap(enabled => ['select','prepare','deliver','result'].map(phase => ({ enabled, phase }))))(
+  it.each([undefined, 'false', 'TRUE'].flatMap(enabled => ['select','prepare','deliver','result'].map(phase => ({ enabled, phase }))))(
     'disabled $phase CLI (enabled=$enabled) performs no filesystem or network work with invalid production config', async ({ enabled, phase }) => {
     const env = { ...process.env, MATCH_FRESHNESS_ENABLED: enabled, MATCH_FRESHNESS_DELIVERY_ENABLED: 'true',
       GITHUB_TOKEN: '', GITHUB_REF: 'invalid', MATCH_FRESHNESS_WEBHOOK_URL: 'invalid' };
@@ -78,7 +82,8 @@ function condition(expression: string | undefined, steps: Record<string, any>, v
   const source = expression.replace(/^\$\{\{\s*|\s*\}\}$/g, '')
     .replaceAll('success()', String(success)).replaceAll('always()', 'true')
     .replace(/steps\.([\w]+)\.outputs\.([\w]+)|steps\.([\w]+)\.outcome|vars\.([\w]+)|github\.ref/g,
-      (_all, id, output, outcome, variable) => JSON.stringify(id ? steps[id]?.outputs[output] ?? '' : outcome ? steps[outcome]?.outcome ?? '' : variable ? vars[variable] ?? '' : ref));
+      // GitHub compares strings case-insensitively; this workflow's literals are lowercase.
+      (_all, id, output, outcome, variable) => JSON.stringify(id ? steps[id]?.outputs[output] ?? '' : outcome ? steps[outcome]?.outcome ?? '' : variable ? (vars[variable] ?? '').toLowerCase() : ref));
   // Test-only evaluation of this repository's parsed workflow expressions.
   return Boolean(Function(`"use strict"; return (${source});`)());
 }
@@ -101,7 +106,7 @@ async function harness() {
     const payload = JSON.parse(raw); notifications.push(payload);
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ eventId: payload.eventId }));
   })}/events/${'t'.repeat(40)}`;
-  async function run({ enabled = 'true', deliveryEnabled = 'true', failUpload = '', initialize = false, event = 'workflow_dispatch', checkpointCommitted = '' } = {}) {
+  async function run({ enabled = 'true', deliveryEnabled = 'true', failUpload = '', initialize = false, event = 'workflow_dispatch', checkpointCommitted = '', ref = 'refs/heads/main' } = {}) {
     now += 600000;
     const id = history.length + 100;
     const iso = new Date(now).toISOString();
@@ -119,7 +124,7 @@ async function harness() {
       const values = prior[2] === 'artifacts' ? artifacts.get(+prior[1]) ?? [] : jobs.get(+prior[1]) ?? [];
       return { total_count: values.length, [prior[2] === 'artifacts' ? 'artifacts' : 'jobs']: values };
     });
-    if (!condition(workflow.jobs.check.if, steps, vars, 'refs/heads/main')) return { steps, github, id };
+    if (!condition(workflow.jobs.check.if, steps, vars, ref)) return { steps, github, id };
     const dir = await mkdtemp(join(tmpdir(), 'monitor-workflow-')); dirs.push(dir);
     const workDir = join(dir, 'watchdog-state'); const output = join(dir, 'output');
     const env = { ...vars, NODE_ENV: 'test' as const, GITHUB_REPOSITORY: current.repository.full_name, GITHUB_REF: 'refs/heads/main', GITHUB_SHA: current.head_sha,
@@ -163,6 +168,11 @@ async function harness() {
   return { run, artifacts, notifications, heartbeats, checks: () => checks, healthy: () => { healthy = true; }, unhealthy: () => { healthy = false; }, receiverDown: (down: boolean) => { receiverDown = down; }, heartbeatDown: (down: boolean) => { heartbeatDown = down; } };
 }
 describe('enabled workflow artifact boundaries', () => {
+  it('a manual dispatch from another branch makes no reader, GitHub or receiver requests', async () => {
+    const h = await harness(); const other = await h.run({ ref: 'refs/heads/feature' });
+    expect(other.steps).toEqual({}); expect(other.github).not.toHaveBeenCalled();
+    expect(h.checks()).toBe(0); expect(h.notifications).toEqual([]); expect(h.artifacts.size).toBe(0);
+  });
   it.each(['', 'false'])('disabled job (enabled=%s) makes no reader, GitHub or receiver requests', async enabled => {
     const h = await harness(); const disabled = await h.run({ enabled, event: 'schedule' });
     expect(disabled.steps).toEqual({}); expect(disabled.github).not.toHaveBeenCalled();
@@ -187,6 +197,18 @@ describe('enabled workflow artifact boundaries', () => {
     const continued = await h.run(); expect(continued.steps.restore.outcome).toBe('success'); expect(h.notifications).toHaveLength(10);
     h.healthy(); const recovered = await h.run(); expect(recovered.steps.result.outcome).toBe('success');
     expect(h.notifications.slice(10).every(e => e.status === 'RESOLVED')).toBe(true);
+  });
+  // The job gate lets 'TRUE' start a job whose CLI does nothing; its Prepare step must be
+  // skipped so the run is not mistaken for a lost preparation by the next real run.
+  it("a job started by 'TRUE' prepares nothing and does not block the next run", async () => {
+    const h = await harness(); await h.run({ initialize: true });
+    const upper = await h.run({ enabled: 'TRUE', event: 'schedule' });
+    expect(upper.steps.select.outcome).toBe('success'); expect(upper.steps.prepare.outcome).toBe('skipped');
+    expect(h.artifacts.has(upper.id)).toBe(false);
+    // Documented consequence: no heartbeat, so an armed not-running check emails.
+    expect(upper.steps.result.outcome).toBe('skipped'); expect(h.heartbeats).toEqual([]);
+    const next = await h.run({ event: 'schedule' });
+    expect(next.steps.restore.outcome).toBe('success'); expect(next.steps.prepare.outcome).toBe('success');
   });
   it('failed pending upload prohibits sends and blocks silent rollback on next run', async () => {
     const h = await harness(); const first = await h.run({ initialize: true, failUpload: 'pending' });

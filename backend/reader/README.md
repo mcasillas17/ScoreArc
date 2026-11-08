@@ -284,11 +284,13 @@ Both reject missing/corrupt/incompatible state. Do not feed a v1 file to the v2
 monitor or bootstrap over it: migration requires an owner-reviewed preservation
 of active incidents and pending delivery history.
 
-`.github/workflows/match-freshness.yml` remains **manual-only and disabled by
-default**. The job requires repository variable `MATCH_FRESHNESS_ENABLED=true`
-and `refs/heads/main`; the CLI independently checks enablement before state or
-network work. A commented five-minute schedule is an activation recipe, not an
-active trigger. No production settings, recipients or notifications are configured.
+`.github/workflows/match-freshness.yml` runs on a schedule and on manual dispatch;
+its status is in the
+[activation record](../../docs/backend/MATCH_FRESHNESS.md#activation-record-november-7-2026).
+The job requires repository variable `MATCH_FRESHNESS_ENABLED=true` and
+`refs/heads/main`; the CLI independently checks enablement before state or network
+work. Alerts go to the owner through the email receiver; no recipient address or
+secret is stored in the repository.
 
 The only input is `initialize_state` (default false). Explicit initialization is
 allowed only after bounded API enumeration proves there is no prior checkpoint or
@@ -305,7 +307,7 @@ upload successfully before delivery. Delivery additionally requires
 `match-freshness-state`. Both artifacts retain for 90 days. Failed final upload
 leaves the pending checkpoint authoritative, with a documented duplicate risk.
 
-See [the operational contract and activation checklist](../../docs/backend/MATCH_FRESHNESS.md#durable-match-monitor-activation-disabled)
+See [the operational contract and activation checklist](../../docs/backend/MATCH_FRESHNESS.md#durable-match-monitor)
 for the single webhook protocol, costs, state barriers, rollback, scope migration,
 retry exhaustion and separate recipient acceptance. Workflow success is never
 proof that a person received an alert.

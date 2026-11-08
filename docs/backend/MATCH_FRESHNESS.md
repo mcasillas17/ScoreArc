@@ -1,14 +1,15 @@
 # Match recovery and freshness
 
-This runbook does not authorize a production change. The website still uses
+This runbook does not itself authorize a production change; the match monitor's
+owner-accepted activation is recorded in its
+[activation record](#activation-record-november-7-2026). The website still uses
 its existing ESPN DataStore. Reader response bodies and the three match states
 are unchanged; freshness is additive metadata.
 
 T17.3 now implements independent resource metadata for all twelve data routes;
 see the [resource contract](READER_CONTRACT.md#t173-resource-freshness-contract).
 Its migration 0028 and production acceptance remain separately authorized work.
-This adds no watchdog scheduling/delivery and changes none of the match
-thresholds below. Broader resource metadata does not retroactively establish
+T17.3 changes none of the match thresholds below. Broader resource metadata does not retroactively establish
 complete detail, roster, player or archive capture.
 
 ## Current release evidence — October 2, 2026
@@ -237,26 +238,28 @@ OPEN/RESOLVED transition deduplication. Every unhealthy run still fails, even
 when its transition message is suppressed. Missing/corrupt state fails closed.
 It neither calls ESPN nor writes match data.
 
-## Durable match monitor (activation disabled)
+## Durable match monitor
 
-**PREPARATION ONLY — production activation still disabled.** This T17.4 slice
-provides offline acceptance and an operator handoff for the **current match
-contract**. It does not complete T17.4 or the monitoring epic. Broader checks wait
+**Scheduled every five minutes** by the activation change the owner accepted on
+November 7, 2026 (see the [activation record](#activation-record-november-7-2026)). This T17.4 slice covers
+the **current match contract**. It does not complete T17.4 or the monitoring epic. Broader checks wait
 for the separately owned T17.3 contract to settle; reader contract-registry,
 news and safe-logging gaps remain with their owners. Production migration 0027
 is already applied per the owner's October 30 report; this slice needs no reader schema
-or release operation. The receiver's [not-running check](#not-running-check) needs its
-own D1 migration `0002` and Worker redeploy, separately approved.
+or release operation. The receiver's [not-running check](#not-running-check) (D1
+migration `0002`) was deployed on November 7.
 
-The workflow remains manual-only; its job and CLI require exact repository
-variable `MATCH_FRESHNESS_ENABLED=true`. Absent/false means **zero reader checks
+The workflow runs every five minutes and on manual dispatch. Its CLI requires the exact
+repository variable `MATCH_FRESHNESS_ENABLED=true` (for `TRUE` and other values, see
+[disable and recover](#disable-and-recover-without-losing-history)). Absent/false means **zero reader checks
 and zero webhook sends**. The receiver cannot see that variable: once scheduled runs
 have armed its [not-running check](#not-running-check), it emails once after the
-heartbeats stop unless the check is paused. Delivery additionally requires exact
-`MATCH_FRESHNESS_DELIVERY_ENABLED=true` and the owner-approved secret
-`MATCH_FRESHNESS_WEBHOOK_URL`. Neither variable nor secret is created by this
-change. A commented five-minute cron recipe is provided; no active schedule is
-installed. Only main first-attempt runs are trusted; use a new run, not rerun.
+heartbeats stop unless the check is paused. Delivery additionally requires
+`MATCH_FRESHNESS_DELIVERY_ENABLED=true` (exact in the CLI) and the owner-approved secret
+`MATCH_FRESHNESS_WEBHOOK_URL`. Only main
+first-attempt runs are trusted; the job's `refs/heads/main` comparison is also
+case-insensitive, so the CLI's exact ref check (before any state, network or
+webhook work) is the enforcement; use a new run, not rerun.
 
 ### Offline readiness acceptance
 
@@ -298,7 +301,7 @@ Existing acceptance evidence (test names are searchable within the linked files)
 | Missing/corrupt/expired/incompatible newest history blocks rather than falling back or initializing | monitor: `rejects missing, corrupt, incompatible, wrong-origin/scope and rollback state`; state: `does not roll back past an invalid newest artifact`, `fails when the final checkpoint expired`, `treats preparation without upload as a barrier`, `rejects initialization when durable state already exists` |
 | Receiver protocol with the real sender: OPEN, repeat, RESOLVED, recurrence, timeout, wrong acknowledgment, crash, ordering, cap | [receiver tests](../../infra/alert-receiver/worker.test.ts): `real monitor sender against the receiver`, `daily cap` |
 | Not-running check: inert until armed, one down email after 60 minutes, one recovery, at-least-once retries, write floor, token gate; heartbeats only from scheduled runs with delivery and both checkpoints committed | receiver: `monitor heartbeat`; workflow: `scheduled heartbeat`, `disabled job` |
-| Finite queues, history, bytes, attempts and execution | monitor: `backpressure keeps bounded queue`, `reserves attempts before sending ... exhausts at 20`; state: `fails closed at the three-page budget`; watchdog: `uses only configured current seasons`; workflow: job timeout/manual-only assertions |
+| Finite queues, history, bytes, attempts and execution | monitor: `backpressure keeps bounded queue`, `reserves attempts before sending ... exhausts at 20`; state: `fails closed at the three-page budget`; watchdog: `uses only configured current seasons`; workflow: job timeout and exact trigger (schedule plus manual dispatch) assertions; state: `skips a run cancelled before it started` |
 
 Retain the focused test summary, full-suite/typecheck/lint results and reviewed
 commit SHA with the later activation record. An expected incident/delivery error
@@ -307,11 +310,11 @@ or backend gate is needed for changes confined to these tests and this runbook.
 Changes under `infra/alert-receiver` also run `npm run build`, because the root
 typecheck includes the Worker.
 
-### Configuration inventory for later approval
+### Configuration inventory
 
 | Setting | Source and required behavior |
 |---|---|
-| `MATCH_FRESHNESS_ENABLED` | Repository Actions variable. Only literal `true` enables the job and CLI; absent/false means zero checks/sends. Keep absent/false during preparation. An armed [not-running check](#not-running-check) still emails once after a disable unless paused with `DELETE FROM monitor_heartbeat`. |
+| `MATCH_FRESHNESS_ENABLED` | Repository Actions variable. Only literal `true` enables the CLI; absent/false means zero checks/sends ([`TRUE` and pauses](#disable-and-recover-without-losing-history)). A deliberate pause follows [disable and recover](#disable-and-recover-without-losing-history). An armed [not-running check](#not-running-check) still emails once after a disable unless paused with `DELETE FROM monitor_heartbeat`. |
 | `MATCH_FRESHNESS_DELIVERY_ENABLED` | Repository Actions variable. Only literal `true` permits reservations/sends. Absent/false still allows checks and queued transitions when the main gate is true; it is **not** an offline dry run and pending events make the result exit 2. It also stops heartbeats, so pause an armed [not-running check](#not-running-check) the same way. |
 | `MATCH_FRESHNESS_WEBHOOK_URL` | Repository Actions secret, supplied only to the delivery and result steps; the result step uses it only for the scheduled-run [heartbeat](#not-running-check). Owner-approved HTTPS receiver implementing the protocol below; do not put its URL/token in logs, PRs or acceptance records. |
 | `initialize_state` | Sole manual input, boolean, default false. True only for proven first history; never a repair flag. |
@@ -347,7 +350,12 @@ expiry, sizes, ordering and bounded API results before download, then validates
 the JSON envelope before checks. A newer preparation attempt without a checkpoint
 is a lost-state barrier. Missing, corrupt, expired, ambiguous, incompatible or
 unreadable newest state never causes fallback to an older artifact or bootstrap.
-Only proven disabled/pre-preparation skipped runs may be passed over.
+Only runs proven not to have prepared state may be passed over: a skipped
+preparation step, a cancelled or skipped run with no jobs, or jobs that ran no workflow step (disabled, cancelled while
+waiting when a newer run queued, never given a runner, or failed in GitHub's own
+"Set up job"), listing at most "Set up job" and "Complete job". A run newer than the current one
+may also be listed under the schedule; it is passed over only while queued, pending, waiting or requested (never started),
+or once completed as cancelled with jobs that ran no workflow step (the same rule).
 
 `initialize_state=true` is for the first history only, after complete bounded
 history enumeration proves no prior state or uncertain preparation. Otherwise use
@@ -394,7 +402,7 @@ is silently removed. Exhausted head events block FIFO until owner reconciliation
 
 ### Alert receiver
 
-**Deployed and connected for manual runs only; no schedule exists.** On November 1, 2026 the
+**Deployed and connected; the five-minute schedule feeds it.** On November 1, 2026 the
 owner selected email to one owner-chosen address, named themselves incident owner,
 and approved this design. On November 3, with separate approval, Email Routing was
 enabled, the Worker and its D1 database were deployed, and one synthetic event sent
@@ -512,9 +520,9 @@ drop an alert.
 
 | Item | Decision |
 |---|---|
-| Arming | No row means no check. The first scheduled heartbeat arms it, so it cannot alarm before the schedule is enabled. |
-| Pausing | To stop the monitor on purpose, first set `MATCH_FRESHNESS_ENABLED=false` (or `MATCH_FRESHNESS_DELIVERY_ENABLED=false`, which also stops heartbeats) and let any running job finish, then within 60 minutes of its last heartbeat run `npx wrangler@4.123.0 d1 execute scorearc-alert-receiver --remote --command "DELETE FROM monitor_heartbeat"` from `infra/alert-receiver`. Deleting first lets a run still in flight re-arm the check. Without the delete, one "not running" email follows, which is the correct signal for an unplanned stop. The next scheduled heartbeat re-arms it. |
-| Independence | It catches GitHub not running or failing the monitor. It shares Cloudflare with the receiver, so a Cloudflare outage silences both. Anyone holding the webhook token can also keep it quiet by sending heartbeats; rotating the token restores it. |
+| Arming | No row means no check. The first scheduled heartbeat arms it, so it cannot alarm before the schedule is enabled, and equally cannot alarm until a qualifying scheduled run (exit 0 or 1, delivery on, both checkpoints committed) first sends one: a schedule that never fires, or whose runs all fail or run with delivery off from the start, is silent apart from GitHub's failure emails. After the enabling merge, confirm a scheduled run appears and the heartbeat row exists (acceptance command below) within about an hour. |
+| Pausing | To stop the monitor on purpose, disable the workflow (`gh workflow disable match-freshness.yml`, see [disable and recover](#disable-and-recover-without-losing-history)) and let any running job finish, then within 60 minutes of its last heartbeat run `npx wrangler@4.123.0 d1 execute scorearc-alert-receiver --remote --command "DELETE FROM monitor_heartbeat"` from `infra/alert-receiver`. Deleting first lets a run still in flight re-arm the check. Without the delete, one "not running" email follows, which is the correct signal for an unplanned stop. The next scheduled heartbeat re-arms it. |
+| Independence | It catches GitHub not running or failing the monitor, including GitHub's automatic disabling of scheduled workflows in a public repository after 60 days without repository activity; recover with `gh workflow enable match-freshness.yml`. It shares Cloudflare with the receiver, so a Cloudflare outage silences both. Anyone holding the webhook token can also keep it quiet by sending heartbeats; rotating the token restores it. |
 | Owner | The owner is the incident owner and recipient. Deadline: 60 minutes without a scheduled heartbeat. |
 | Cost | 96 cron runs a day, within Workers Free. |
 
@@ -529,14 +537,14 @@ do not stop production to prove them.
 | Resource | Bound |
 |---|---|
 | Reader | 32 sequential scopes maximum; current registry 10; 10 seconds, 8 MiB, 5,000 matches each; no retries |
-| GitHub JSON API | At most 3 pages × 20 runs; 2 metadata + 3 run-list + 120 artifact/job reads = 125 requests; 10 seconds / 1 MiB each, no retries |
+| GitHub JSON API | At most 3 pages × 20 runs; 2 metadata + 3 run-list + 120 artifact/job reads = 125 requests; 10 seconds / 1 MiB each, no retries; steady state is about 4 per run (~1,150/day). `GITHUB_TOKEN` is limited to 1,000 requests per hour per repository, so twelve degraded full scans an hour (~1,500) would hit that limit; repeated budget failures need intervention, not more runs |
 | Artifact transfer | One selected download, up to two uploads; state 256 KiB, artifact metadata size ceiling 256 KiB; action-internal transfer retries are governed by pinned actions and job timeout |
 | State | 128 pending events, 32 receipts, one current incident ID per scope; 256 KiB |
 | Notifications | At most 10 sequential sends per run, 15 seconds each (the receiver acknowledges only after its email, about 5 seconds), 1 KiB acknowledgment; 20 reserved attempts per event |
 | Heartbeat | At most one POST per scheduled run, 15 seconds, 204 expected, never retried |
-| Backoff | Across runs: 5 minutes doubled to maximum 6 hours; no in-run retry, untrusted Retry-After cannot enlarge bounds |
+| Backoff | Across runs: 5 minutes doubled to maximum 6 hours; no in-run retry, untrusted Retry-After cannot enlarge bounds. A retry is sent by the first scheduled run whose Prepare is at or after its due time, so with five-minute runs a 5-minute backoff lands 5 to 10 minutes later (latency only) |
 | Runtime | Entire Actions job 10 minutes; this may truncate API search/check/delivery before per-operation ceilings |
-| Proposed cadence | Five minutes, 288 nominal runs/day; current registry ≤2,880 reader requests/day; worst-case ≤2,880 notification attempts/day plus ≤288 heartbeats; actual platform timing can delay/drop runs |
+| Cadence (owner-accepted November 7, 2026) | Five minutes, 288 nominal runs/day; current registry ≤2,880 reader requests/day; worst-case ≤2,880 notification attempts/day plus ≤288 heartbeats; actual platform timing can delay/drop runs |
 
 Normally selection requires only a few API requests, but worst-case nominal
 cadence permits 36,000 API calls/day before the job deadline/rate limits. This is
@@ -545,8 +553,8 @@ not a larger scan. Disabled workflows allocate no check runner. GitHub cron offe
 no hard alert-latency SLA; thresholds, cadence, queue delay, backoff, platform
 delays and network time all contribute.
 
-For cadence approval, record measured job duration, response bytes, artifact
-bytes and receiver requests from the later authorized acceptance. At the proposed
+The [activation record](#activation-record-november-7-2026) holds the measured job
+durations and artifact sizes behind the owner's cadence acceptance. At the
 five-minute cadence, 30 days gives 8,640 nominal runs and up to 86,400 current-ten
 reader requests. Two 256-KiB state files per run give at most 144 MiB/day of raw
 checkpoint bytes, or about 12.66 GiB across 90 days before archive/billing
@@ -556,9 +564,10 @@ Runner usage is `runs × measured billable minutes per job`; the ten-minute job
 ceiling can cause backlog under serialized execution and is not a five-minute
 completion promise. Apply the owner's current Actions allowance/rates, artifact
 retention charges and Fly/Neon read load; no dollar price or free tier is assumed.
-The receiver's expected cost is recorded under [alert receiver](#alert-receiver). Checkpoint backups have
-separate costs that the owner has not yet approved; the
-[not-running check](#not-running-check) runs within Workers Free. None of these costs is approved by this document.
+The receiver's expected cost is recorded under [alert receiver](#alert-receiver), and the
+[not-running check](#not-running-check) runs within Workers Free. The owner accepted the
+cadence and these costs on November 7; the weekly R2 checkpoint copy has its own
+cost, approved with that copy but not yet incurred because it is not built.
 
 If there is not room for one transition per scope, preparation pauses all checks
 and drains the existing queue; it does not report skipped observations as healthy.
@@ -577,13 +586,31 @@ execution first and validate the latest envelope against the rollback version;
 never choose an older state just because its code can read it. A monitor cannot
 detect its own permanent stoppage: the receiver's
 [not-running check](#not-running-check) covers that once the schedule feeds it. Native Actions failure
-notifications may repeat and are not this transition transport.
+notifications may repeat and are not this transition transport: GitHub emails the
+user who last edited the cron or re-enabled the workflow about every failed scheduled
+run, so a sustained incident (exit 1 or 2) adds about 12 undeduplicated emails an
+hour beside the single OPEN. Turn them off under GitHub Settings > Notifications >
+Actions if the receiver's emails are enough. **Never use GitHub's "Re-run" on a
+monitor run** (failure emails link to it): see the re-run row below.
 
 ### Disable and recover without losing history
 
-These are procedures for a separately authorized operator, not actions performed
-by this preparation PR. To stop checks **and** sends, clear/set
-`MATCH_FRESHNESS_ENABLED=false`. Once the schedule feeds the receiver, then pause the
+These are procedures for the owner or an authorized operator. To stop checks **and**
+sends, disable the workflow with `gh workflow disable match-freshness.yml` (re-enable
+with `gh workflow enable match-freshness.yml`), and also set
+`MATCH_FRESHNESS_ENABLED=false` if the pause must survive an accidental re-enable.
+Setting only the variable is not enough for more than a few hours: scheduled runs
+are still created, and the selector only looks for the newest checkpoint among the
+newest 60 workflow runs (three pages of 20). About five hours of skipped runs at
+this cadence push it out of that window, so re-enabling fails closed with the
+history-scan budget error. The job gate compares case-insensitively, so `TRUE`
+starts a job whose CLI (exact `true` only) does nothing and whose Prepare step is
+skipped; one such run does not block later runs, but a persistent `TRUE` behaves like
+a variable-only pause and also sends no heartbeats, so an armed not-running check
+emails. Set exactly `true`. An armed not-running check emails within 60-75 minutes of the
+last heartbeat, which leaves about four hours to disable the workflow before the
+newest checkpoint leaves the window. A disabled workflow creates no runs. The same window
+applies to about five hours of consecutive runs that fail before preparation, for example during a long GitHub API outage. Then pause the
 [not-running check](#not-running-check) after the last run finishes, or expect one
 "Monitor not running" email 60 to 75 minutes later. This gates subsequent jobs; an already running
 job has captured its environment. Normally let that serialized run finish and
@@ -595,12 +622,15 @@ growth active, so it is not the full kill switch.
 | Observed failure | Recovery boundary |
 |---|---|
 | Reader incident, exit 1 after delivery | Investigate competition/season/run context using the existing diagnostics. Do not modify scores or thresholds to clear it. Repeated failure stays nonzero without another OPEN. |
-| Delivery failure, exit 2, valid retained checkpoint | Fix the approved receiver/configuration. Start a **new** authorized main run after backoff; retain IDs and let FIFO replay the pending head before later events. Do not rerun the old attempt or send a replacement event manually. |
+| Delivery failure, exit 2, valid retained checkpoint | Fix the approved receiver/configuration. The next scheduled run replays the pending head automatically once its backoff passes; a manual dispatch only hastens it. Retain IDs and let FIFO replay the head before later events. Do not rerun the old attempt or send a replacement event manually. |
 | Final upload failure or crash after receiver acceptance | Preserve the pending snapshot and receiver acceptance ledger. The selector may replay it only with proven failed/skipped final upload; receiver deduplication must tolerate the same ID. A successful/ambiguous/cancelled final-upload record with missing state blocks automatic recovery. |
+| Prepare failed or was cancelled after it started (no checkpoint) | Attempted preparation without a checkpoint is a barrier: every later run fails at selection until owner-reviewed recovery that preserves the newest checkpoint (last row). Investigate the Prepare error first. |
 | Pending upload failed; no checkpoint survives | No sends occurred from that run, but newly observed transitions may be lost. Stop and reconcile that preparation barrier; never select an older run or initialize around it. |
+| A monitor run was re-run in GitHub (`run_attempt` > 1) | Selection trusts only first attempts, so every later run fails at selection while that run is in the 60-run window, and once it leaves the window the checkpoint behind it is out of reach too. Monitoring halts until owner-reviewed recovery that preserves the newest checkpoint (last row). Never re-run; dispatch a new run, and never use `initialize_state` to get around it. |
+| Run ended `startup_failure` (for example invalid workflow YAML on main) | Its job shape is unverified on this repository, so selection fails closed on it. Every later run then fails at selection without a checkpoint, so it does not age out: monitoring halts until owner-reviewed recovery that preserves the newest checkpoint (next row). Fix the workflow first. |
 | Missing/corrupt/expired/incompatible state, exhausted retry head or history-scan budget | Disable and preserve artifacts, run/job metadata, logs and receiver receipts. An owner-reviewed recovery/migration must preserve the latest epoch, sequence, incident IDs and ordered pending events. There is no backup-import, reset, retry-budget override or older-checkpoint switch in the current automation. Remain disabled until a reviewed procedure can establish continuity. |
 
-Before activation, name who retains independently verified copies of the newest
+Before full T17.4 acceptance (open in the [activation record](#activation-record-november-7-2026)), name who retains independently verified copies of the newest
 checkpoint **and its run/artifact provenance**, where they are kept, the backup
 interval, expiry margin, access policy and restore rehearsal. Retain both pending
 and final evidence when delivery is ambiguous; a backup is not permission to
@@ -613,8 +643,8 @@ but a workflow that never starts cannot report its own absence.
 
 ### Disabled-to-enabled owner checklist
 
-- [ ] Review/merge the exact PR SHA through normal CI (this change does not merge).
-- [ ] Confirm T16.2 compatibility with its owner. The watchdog accepts the merged
+- [x] Review/merge the exact PR SHA through normal CI. #235, #242-#245 merged.
+- [x] Confirm T16.2 compatibility with its owner (owner, November 7, 2026). The watchdog accepts the merged
   T16.2 reader shape (#203): scorer and card `teamId:string|null` (null: the stored
   reference names neither side) and scorer `ownGoal:boolean|null` (null: unknown, a
   legacy row without aligned events), passed through without coercion. Pre-T16.2
@@ -627,8 +657,11 @@ but a workflow that never starts cannot report its own absence.
 - [x] Deploy the receiver, verify the recipient address, and confirm the deployed
   receiver satisfies the acknowledgment/dedup protocol. Done November 3, 2026 with
   one synthetic event; the owner confirmed receipt.
-- [ ] Approve checkpoint retention/backup, recovery procedure, cost/cadence and
-  independent monitor-not-running detection. Reconcile any existing v1 history
+- [x] Approve checkpoint retention/backup, recovery procedure, cost/cadence and
+  independent monitor-not-running detection. Owner approvals November 2-7, 2026
+  cover retention, the backup plan, cadence/cost, not-running detection and the
+  disable/recover runbook; the weekly R2 backup copy, a restore rehearsal and a
+  written reconciliation procedure remain open (see the activation record). Reconcile any existing v1 history
   without resetting it; incompatible history deliberately blocks activation.
 - [x] After external-configuration approval, configure the webhook secret and
   delivery variable, leaving the main enablement variable false until authorized
@@ -637,15 +670,20 @@ but a workflow that never starts cannot report its own absence.
   main workflow once with explicit initialization **only if no history exists**.
   Subsequent new runs use false. Inspect pending/final artifacts and exact run SHA.
   Done November 7, 2026; see [first manual run](#first-manual-run-november-7-2026).
-- [ ] Verify real recipient receipt and stable-ID deduplication for opening,
+- [x] Verify real recipient receipt and stable-ID deduplication for opening,
   continued failure, recovery, recurrence, ambiguous send and state/delivery failure
   using an approved synthetic acceptance setup; do not disrupt production data.
-- [ ] Only after that acceptance, approve a follow-up PR enabling the commented
-  five-minute schedule under `on:`. That PR must intentionally update the
-  manual-only workflow test, retain both exact-true gates, main/attempt provenance,
-  serialization and upload-before-send ordering, and link the signed-off
-  activation evidence. Never use production dispatch for code tests.
-- [ ] Disable by clearing/setting `MATCH_FRESHNESS_ENABLED=false`; allow the current
+  Owner accepted the live and offline evidence in the
+  [activation record](#activation-record-november-7-2026) instead of a separate
+  synthetic setup.
+- [x] Only after that acceptance, approve a follow-up PR enabling the five-minute
+  schedule under `on:`. Done by the activation change: it pinned the schedule in the
+  workflow test, kept the exact-true CLI gates and the job's `true` gate (GitHub
+  compares it case-insensitively), main/attempt provenance, serialization
+  and upload-before-send ordering, and links the activation record. Never use
+  production dispatch for code tests.
+- [ ] Disable by `gh workflow disable match-freshness.yml` (plus
+  `MATCH_FRESHNESS_ENABLED=false` for a long pause); allow the current
   serialized run to finish and retain its newest checkpoint. Then pause the not-running
   check with the command in its [Pausing row](#not-running-check). Never delete
   checkpoint artifacts or run history.
@@ -655,15 +693,16 @@ owner, confirmation that the verified recipient was used (never the address itse
 this repository is public), receiver compatibility/dedup evidence, **human receipt proof**
 for the synthetic OPEN/RESOLVED/recurrence, checkpoint backup/recovery acceptance,
 cadence/cost acceptance, independent not-running detection, approved variable and
-secret changes (names only), and the first authorized manual run ID/initialization
+secret changes (secret names only; variable values are not secret), and the first authorized manual run ID/initialization
 choice/artifact IDs. Protocol HTTP 200 alone does not satisfy receipt proof.
-Record unresolved decisions as blockers, not accepted defaults. Real acceptance
-uses separately approved synthetic inputs/destination; this PR neither provisions
-that setup nor authorizes changing the fixed production reader for a test.
+Record unresolved decisions as blockers, not accepted defaults. On November 7 the
+owner accepted live plus offline evidence instead of a synthetic setup (see the
+activation record); nothing authorizes pointing the fixed production reader at test
+inputs.
 
-This delivers code for the **match-endpoint slice only**. Scheduling, real delivery,
-recipient verification, sustained operational acceptance and broader T17.4 coverage
-remain open. No Postgres or reader database, ingester, T21.2 or release-pipeline behavior is
+This covers the **match-endpoint slice only**. Sustained operational acceptance,
+the scheduled heartbeat acceptance in the [not-running check](#not-running-check), the R2 backup copy and broader T17.4
+coverage remain open. No Postgres or reader database, ingester, T21.2 or release-pipeline behavior is
 changed; the receiver's D1 gains the `monitor_heartbeat` table.
 
 ### First manual run (November 7, 2026)
@@ -698,6 +737,61 @@ are still healthy:
    inbox confirmation (see the checklist).
 
 A scope that is genuinely unhealthy by then stays open and queues no RESOLVED event.
+
+### Activation record (November 7, 2026)
+
+- **Owner and incident owner:** the repository owner, who approved each step and
+  then all remaining activation steps on November 7.
+- **Recipient:** the owner's verified Email Routing destination (address not
+  recorded; this repository is public).
+- **Configuration (secret names only; variable values are not secret):** secret `MATCH_FRESHNESS_WEBHOOK_URL`, variables
+  `MATCH_FRESHNESS_DELIVERY_ENABLED=true` and `MATCH_FRESHNESS_ENABLED=true`.
+- **Runs:** first run above (`8e7df54`, initialized); after #245 merged,
+  [42457078062](https://github.com/mcasillas17/ScoreArc/actions/runs/42457078062)
+  on `d33a16d` exited 2 with `data_incident=false pending=10 monitor=delivery-pending`
+  (artifacts 13608550141 pending, 13607584540 state), and
+  [42457169294](https://github.com/mcasillas17/ScoreArc/actions/runs/42457169294)
+  exited 0 with `pending=0 monitor=ok` (13607508628 pending, 13608172391 state).
+- **Receiver:** D1 holds 10 OPEN and 10 RESOLVED events, each emailed exactly once;
+  the World Cup OPEN, first acknowledged late in run 1, was deduplicated in run 2.
+- **Human receipt:** the owner's inbox screenshot (shared in the activation
+  session) showed all 10 RESOLVED emails and the five most recent OPEN emails; the
+  other OPEN emails were scrolled out of view, and the receiver recorded all 10 as
+  emailed once. The owner had already confirmed the first (World Cup) OPEN.
+- **Covered live:** opening, recovery, stable-ID deduplication and an ambiguous send
+  (run 1's late acknowledgment). **Covered offline only:** continued failure,
+  recurrence and state/delivery failure, by the tests in
+  [offline readiness acceptance](#offline-readiness-acceptance). The owner accepted
+  this instead of a synthetic setup; reproducing those live would need a production
+  outage, which is out of bounds.
+- **Cadence and cost:** measured jobs took 19-59 s with 686-1,051-byte artifacts; at
+  five minutes that is about 288 jobs and at most about 4.7 runner-hours a day
+  (288 x 59 s). Each run makes 10 reader requests (about 2,880 a day) and
+  about 4 GitHub API calls in steady state (about 1,150 a day). The repository is
+  public, so standard GitHub-hosted runner minutes are not billed. GitHub's own
+  failure email for each failed scheduled run is on by default; the owner's
+  notification setting is not yet confirmed (open).
+- **Not-running check:** deployed and unarmed; the first scheduled heartbeat arms it.
+  Until then a schedule that never fires raises no alarm, so after the enabling merge
+  the owner or operator confirms a scheduled run and the heartbeat row within about
+  an hour. Its acceptance (heartbeat row advancing) follows the schedule.
+- **Checkpoint backup and recovery (open):** the owner retains checkpoints and
+  approved a weekly copy of the newest checkpoint and run metadata to a private R2
+  bucket. That copy is not built and no restore has been rehearsed, so until it
+  ships checkpoints rely on 90-day GitHub artifacts plus the run and artifact IDs
+  recorded here. This is an open blocker for full T17.4, not an accepted default.
+- **Halts needing manual recovery (open):** a failed pending upload with no surviving
+  checkpoint, a Prepare step that failed or was cancelled after starting, a
+  `startup_failure` run, a GitHub re-run of a monitor run,
+  missing/corrupt newest state, or a newest checkpoint pushed out of the selector's
+  history window (see [disable and recover](#disable-and-recover-without-losing-history))
+  makes every later scheduled run fail at selection until the owner performs a
+  reviewed recovery; the not-running email (and GitHub's failure emails) report it,
+  but no written reconciliation procedure exists yet. This is an open blocker, not an
+  accepted default.
+- **Validation:** on the enabling change's reviewed tree, `npm test` passed 118 files
+  and 2,121 tests, `npx tsc --noEmit` was clean and `npm run lint` reported 0 errors.
+  The pull request records the review and the merged SHA.
 
 ## Schema and separately approved release order
 

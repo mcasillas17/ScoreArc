@@ -677,13 +677,9 @@ held-byte reprocessing and new collection remain unchanged.
   matches with missing participation; match-state recovery does not repair it.
 - **T17.3/T17.4 trust and notification delivery:** broader resource provenance is
   implemented in the October 30 T17.3 slice, deployed with 0028 on October 31
-  per owner ([contract and limits](backend/READER_CONTRACT.md#t173-resource-freshness-contract)). Scheduled freshness checks
-  and notification activation still require explicit approval. An email
-  [alert receiver](backend/MATCH_FRESHNESS.md#alert-receiver) was deployed
-  November 3 and passed one synthetic send that the owner received. On November 7
-  its not-running check was deployed (unarmed), the monitor was connected and
-  enabled for manual runs only, and the [first manual run](backend/MATCH_FRESHNESS.md#first-manual-run-november-7-2026)
-  exposed two monitor defects, fixed in the change that records it. No schedule exists; monitoring is not active.
+  per owner ([contract and limits](backend/READER_CONTRACT.md#t173-resource-freshness-contract)). T17.4 match
+  monitoring status, evidence and open items are in its
+  [activation record](backend/MATCH_FRESHNESS.md#activation-record-november-7-2026).
   Collect sustained reconciliation and transient-failure recovery evidence
   ([SETUP §7.5](backend/SETUP.md#75-verify)); the dated observations above do not
   close this acceptance or ancillary squad/player/archive coverage.
