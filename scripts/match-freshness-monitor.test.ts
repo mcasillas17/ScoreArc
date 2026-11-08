@@ -37,6 +37,12 @@ async function prepareNext(o: Awaited<ReturnType<typeof options>>, result = stal
 }
 
 describe('durable match monitor', () => {
+  // GitHub's job-level `github.ref == 'refs/heads/main'` is case-insensitive; this exact check,
+  // which runPhase applies before any state, network or webhook work, is the enforcement.
+  it.each(['refs/heads/Main', 'refs/heads/MAIN', 'refs/heads/feature'])('rejects run provenance with ref %s', (ref) => {
+    expect(() => monitor.validateRun({ ...run, ref })).toThrow('Invalid run provenance');
+    expect(() => monitor.validateRun(run)).not.toThrow();
+  });
   it('is disabled before filesystem, production checks or sends', async () => {
     const check = vi.fn(); const fetchImpl = vi.fn();
     expect(await monitor.prepareMonitor({ enabled: false, check })).toEqual({ disabled: true });

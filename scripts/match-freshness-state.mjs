@@ -80,19 +80,24 @@ export async function selectState({ github, run, initialize = false, now = Date.
   requireValid(workflow && positive(workflow.id) && workflow.path === WORKFLOW, 'Invalid trusted workflow metadata');
   const current = await github(`${root}/runs/${run.id}`);
   const repositoryId = current?.repository?.id;
-  function validateRun(source) {
+  // `bounded: false` only for runs newer than this one, which may be created after `now` was read.
+  function validateRun(source, bounded = true) {
     requireValid(source && positive(source.id) && positive(source.run_number) && source.run_attempt === 1
       && source.workflow_id === workflow.id && [WORKFLOW, `${WORKFLOW}@main`, `${WORKFLOW}@refs/heads/main`].includes(source.path) && source.head_branch === 'main'
       && sha(source.head_sha) && ['schedule', 'workflow_dispatch'].includes(source.event)
       && positive(repositoryId) && source.repository?.id === repositoryId && source.repository.full_name === REPOSITORY
       && source.head_repository?.id === repositoryId && source.head_repository.full_name === REPOSITORY
-      && Number.isFinite(timestamp(source.created_at)) && timestamp(source.created_at) <= now
-      && timestamp(source.updated_at) >= timestamp(source.created_at) && timestamp(source.updated_at) <= now,
+      && Number.isFinite(timestamp(source.created_at)) && (!bounded || timestamp(source.created_at) <= now)
+      && timestamp(source.updated_at) >= timestamp(source.created_at) && (!bounded || timestamp(source.updated_at) <= now),
     'Invalid workflow run provenance or chronology');
   }
+  // Only GitHub runner bookkeeping listed (or nothing): no workflow step ran, so nothing was prepared.
+  const ranNoWorkflowStep = (job) => job.steps.every((step) => ['Set up job', 'Complete job'].includes(step?.name));
   async function loadJobs(source) {
     const jobs = list(await github(`${root}/runs/${source.id}/attempts/1/jobs?per_page=10`), 'jobs', 10);
-    requireValid(jobs.length > 0, 'Missing job history cannot prove checkpoint status');
+    // A run cancelled while waiting, or wholly skipped by the job gate, can have no jobs at all;
+    // neither ran a step. Any other empty job list cannot prove checkpoint status.
+    requireValid(jobs.length > 0 || ['cancelled', 'skipped'].includes(source.conclusion), 'Missing job history cannot prove checkpoint status');
     const ids = new Set();
     for (const job of jobs) {
       requireValid(job && positive(job.id) && !ids.has(job.id) && job.run_id === source.id
@@ -106,7 +111,7 @@ export async function selectState({ github, run, initialize = false, now = Date.
   validateRun(current);
   requireValid(current.id === run.id && current.run_number === run.number && current.head_sha === run.sha,
     'Current workflow run does not match invocation');
-  let previousNumber = run.number + 1;
+  let previousNumber = Infinity;
   let previousCreated = timestamp(current.created_at);
   let enumerated = 0;
   let total;
@@ -118,7 +123,22 @@ export async function selectState({ github, run, initialize = false, now = Date.
     requireValid(total === response.total_count && enumerated + runs.length <= total, 'Changing workflow run history');
     // Validate the complete page before accepting an artifact, so reordered results cannot hide a newer run.
     for (const source of runs) {
-      validateRun(source);
+      validateRun(source, !(source.run_number > run.number));
+      if (source.run_number > run.number) {
+        // Under the schedule a newer run can already be listed. The concurrency group runs one
+        // job at a time, so while this run is active a newer one is still waiting or was
+        // cancelled before it started; either way it holds no state. Anything else fails closed.
+        requireValid(!seenIds.has(source.id) && source.run_number < previousNumber && source.id > run.id
+          && timestamp(source.created_at) >= timestamp(current.created_at)
+          && (['queued', 'pending', 'waiting', 'requested'].includes(source.status)
+            || (source.status === 'completed' && source.conclusion === 'cancelled')), 'Invalid or nonmonotonic workflow run history');
+        if (source.status === 'completed') {
+          requireValid((await loadJobs(source)).every(ranNoWorkflowStep), 'Newer cancelled run started');
+        }
+        seenIds.add(source.id);
+        previousNumber = source.run_number;
+        continue;
+      }
       const isCurrent = source.id === run.id;
       requireValid(!seenIds.has(source.id) && source.run_number < previousNumber
         && source.run_number <= run.number && timestamp(source.created_at) <= previousCreated
@@ -130,7 +150,7 @@ export async function selectState({ github, run, initialize = false, now = Date.
       previousCreated = timestamp(source.created_at);
     }
     for (const source of runs) {
-      if (source.id === run.id) continue;
+      if (source.id === run.id || source.run_number > run.number) continue;
       const artifacts = list(await github(`${root}/runs/${source.id}/artifacts?per_page=10`), 'artifacts', 10);
       const checkpoints = artifacts.filter((item) => ['match-freshness-state', 'match-freshness-pending'].includes(item?.name));
       if (checkpoints.length) {
@@ -168,7 +188,8 @@ export async function selectState({ github, run, initialize = false, now = Date.
       }
       const jobs = await loadJobs(source);
       for (const job of jobs) {
-        if (job.conclusion === 'skipped' && job.steps.length === 0) continue;
+        // Disabled, cancelled while waiting, no runner, or failed in GitHub's own job setup.
+        if (ranNoWorkflowStep(job)) continue;
         const prepare = job.steps.filter((step) => step?.name === 'Prepare pending state');
         requireValid(prepare.length === 1 && prepare[0].status === 'completed' && prepare[0].conclusion === 'skipped',
           'Missing checkpoint after attempted or unproven preparation');

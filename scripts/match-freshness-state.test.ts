@@ -66,6 +66,14 @@ describe('trusted state selection', () => {
     responses[`${root}/runs/99/attempts/1/jobs?per_page=10`] = jobs;
     await expect(selectState({ github, run, now })).rejects.toThrow();
   });
+  // An empty job list is allowed only to prove a cancelled run never started; a cancelled run
+  // that left a pending checkpoint still needs its commit step to prove the final upload status.
+  it('rejects pending fallback for a cancelled run with no jobs', async () => {
+    const { github, responses } = api([{ ...prior(), conclusion: 'cancelled' }]);
+    responses[`${root}/runs/99/artifacts?per_page=10`] = { total_count: 1, artifacts: [artifact(prior(), 'match-freshness-pending')] };
+    responses[`${root}/runs/99/attempts/1/jobs?per_page=10`] = { total_count: 0, jobs: [] };
+    await expect(selectState({ github, run, now })).rejects.toThrow(/final checkpoint/i);
+  });
   it('rejects final state created before the pending checkpoint', async () => {
     const { github, responses } = api();
     responses[`${root}/runs/99/artifacts?per_page=10`] = { total_count: 2, artifacts: [{ ...artifact(prior(), 'match-freshness-pending'), created_at: '2026-10-04T10:45:00Z', updated_at: '2026-10-04T10:45:00Z' }, { ...artifact(), id: 401 }] };
@@ -101,6 +109,16 @@ describe('trusted state selection', () => {
   it('rejects initialization when durable state already exists', async () => {
     const { github } = api();
     await expect(selectState({ github, run, initialize: true, now })).rejects.toThrow(/initializ/i);
+  });
+  // GitHub lists a job skipped by its `if` as completed/skipped with no steps (this repo's CI
+  // push run 42461773808, job migration-notice); a wholly skipped run could also list no jobs.
+  it.each([
+    { total_count: 1, jobs: [{ id: 1, run_id: 99, run_attempt: 1, status: 'completed', conclusion: 'skipped', steps: [] }] },
+    { total_count: 0, jobs: [] },
+  ])('skips a disabled (skipped) run and preserves earlier state: %j', async (jobs) => {
+    const { github, responses } = api([{ ...prior(), conclusion: 'skipped' }, prior(8)]); noArtifacts(responses);
+    responses[`${root}/runs/99/attempts/1/jobs?per_page=10`] = jobs;
+    expect((await selectState({ github, run, now }))?.run.number).toBe(8);
   });
   it('permits explicit initialization after proven disabled runs', async () => {
     const { github, responses } = api(); noArtifacts(responses);
@@ -150,6 +168,121 @@ describe('trusted state selection', () => {
     const { github, responses } = api([prior(), prior(8)]); noArtifacts(responses);
     responses[`${root}/runs/99/attempts/1/jobs?per_page=10`] = { total_count: 1, jobs: [{ id: 1, run_id: 99, run_attempt: 1, status: 'completed', conclusion: 'failure', steps: [{ name: 'Prepare pending state', status: 'completed', conclusion: 'skipped' }] }] };
     expect((await selectState({ github, run, now }))?.run.number).toBe(8);
+  });
+  // The concurrency group cancels a waiting run when a newer one queues. On GitHub such a run is
+  // conclusion 'cancelled' with no jobs (seen on this repo's deploy runs, 2026-08-31), or with
+  // jobs that never ran a step. It never prepared state, so it must not block selection.
+  it.each([
+    ['no jobs', { total_count: 0, jobs: [] }],
+    ['jobs without steps', { total_count: 1, jobs: [{ id: 1, run_id: 99, run_attempt: 1, status: 'completed', conclusion: 'cancelled', steps: [] }] }],
+  ])('skips a run cancelled before it started (%s) and preserves earlier state', async (_label, jobs) => {
+    const { github, responses } = api([{ ...prior(), conclusion: 'cancelled' }, prior(8)]); noArtifacts(responses);
+    responses[`${root}/runs/99/attempts/1/jobs?per_page=10`] = jobs;
+    expect((await selectState({ github, run, now }))?.run.number).toBe(8);
+  });
+  it.each([
+    [{ name: 'Run actions/checkout', status: 'completed', conclusion: 'success' }],
+    [{ name: 'Prepare pending state', status: 'completed', conclusion: 'cancelled' }],
+    [{ name: 'Prepare pending state', status: 'completed', conclusion: 'success' }],
+    [{ name: 'Prepare pending state', status: 'completed', conclusion: 'failure' }],
+  ])('keeps a cancelled run that started as a barrier: %j', async (step) => {
+    const { github, responses } = api([{ ...prior(), conclusion: 'cancelled' }, prior(8)]); noArtifacts(responses);
+    responses[`${root}/runs/99/attempts/1/jobs?per_page=10`] = { total_count: 1, jobs: [{ id: 1, run_id: 99, run_attempt: 1, status: 'completed', conclusion: 'cancelled', steps: [step] }] };
+    await expect(selectState({ github, run, now })).rejects.toThrow(/checkpoint|prepar/i);
+  });
+  // Under the schedule a newer run can already be listed while this one selects. The concurrency
+  // group keeps it waiting, or cancels it before it starts, so it cannot hold state.
+  const newer = (change: object) => ({ ...prior(10), id: 101, run_number: 11, created_at: '2026-10-04T11:35:00Z', updated_at: '2026-10-04T11:35:00Z', ...change });
+  it.each([
+    { status: 'queued', conclusion: null }, { status: 'pending', conclusion: null }, { status: 'waiting', conclusion: null },
+    { status: 'completed', conclusion: 'cancelled' },
+  ])('passes over a newer run that never started (%j)', async (change) => {
+    const { github, responses } = api();
+    responses[`${root}/workflows/7/runs?branch=main&per_page=20&page=1`] = { total_count: 3, workflow_runs: [newer(change), responses[`${root}/runs/100`], prior()] };
+    if (change.status === 'completed') responses[`${root}/runs/101/attempts/1/jobs?per_page=10`] = { total_count: 0, jobs: [] };
+    expect((await selectState({ github, run, now }))?.run.id).toBe(99);
+    expect(github).not.toHaveBeenCalledWith(`${root}/runs/101/artifacts?per_page=10`);
+    // A cancelled newer run is proven never started from its jobs, not assumed.
+    if (change.status === 'completed') expect(github).toHaveBeenCalledWith(`${root}/runs/101/attempts/1/jobs?per_page=10`);
+  });
+  it('passes over a newer cancelled run whose job lists only runner bookkeeping', async () => {
+    const { github, responses } = api();
+    responses[`${root}/workflows/7/runs?branch=main&per_page=20&page=1`] = { total_count: 3, workflow_runs: [newer({ status: 'completed', conclusion: 'cancelled' }), responses[`${root}/runs/100`], prior()] };
+    responses[`${root}/runs/101/attempts/1/jobs?per_page=10`] = { total_count: 1, jobs: [{ id: 2, run_id: 101, run_attempt: 1, status: 'completed', conclusion: 'cancelled', steps: [{ name: 'Set up job', status: 'completed', conclusion: 'success' }, { name: 'Complete job', status: 'completed', conclusion: 'success' }] }] };
+    expect((await selectState({ github, run, now }))?.run.id).toBe(99);
+  });
+  it('rejects a newer cancelled run whose job ran a step', async () => {
+    const { github, responses } = api();
+    responses[`${root}/workflows/7/runs?branch=main&per_page=20&page=1`] = { total_count: 3, workflow_runs: [newer({ status: 'completed', conclusion: 'cancelled' }), responses[`${root}/runs/100`], prior()] };
+    responses[`${root}/runs/101/attempts/1/jobs?per_page=10`] = { total_count: 1, jobs: [{ id: 2, run_id: 101, run_attempt: 1, status: 'completed', conclusion: 'cancelled', steps: [{ name: 'Prepare pending state', status: 'completed', conclusion: 'success' }] }] };
+    await expect(selectState({ github, run, now })).rejects.toThrow(/started|nonmonotonic|prepar/i);
+  });
+  // The empty step list is the proof, whatever the conclusion: a hosted job that never
+  // acquired a runner ends as a failure with no steps.
+  it.each([
+    [[{ name: 'Set up job', status: 'completed', conclusion: 'failure' }]],
+    [[{ name: 'Set up job', status: 'completed', conclusion: 'failure' }, { name: 'Complete job', status: 'completed', conclusion: 'success' }]],
+  ])('skips a job that failed in GitHub setup before any workflow step: %j', async (steps) => {
+    const { github, responses } = api([prior(), prior(8)]); noArtifacts(responses);
+    responses[`${root}/runs/99/attempts/1/jobs?per_page=10`] = { total_count: 1, jobs: [{ id: 1, run_id: 99, run_attempt: 1, status: 'completed', conclusion: 'failure', steps }] };
+    expect((await selectState({ github, run, now }))?.run.number).toBe(8);
+  });
+  // GitHub's recorded shape for a job cancelled or timed out mid-run (seen on this repo's CI run
+  // 40282541137): the running step is 'cancelled' and every later step 'skipped'.
+  it('skips a run cancelled during select, whose Prepare is recorded as skipped', async () => {
+    const { github, responses } = api([{ ...prior(), conclusion: 'cancelled' }, prior(8)]); noArtifacts(responses);
+    responses[`${root}/runs/99/attempts/1/jobs?per_page=10`] = { total_count: 1, jobs: [{ id: 1, run_id: 99, run_attempt: 1, status: 'completed', conclusion: 'cancelled', steps: [
+      { name: 'Set up job', status: 'completed', conclusion: 'success' },
+      { name: 'Select newest trusted checkpoint, including failed runs', status: 'completed', conclusion: 'cancelled' },
+      { name: 'Restore selected checkpoint', status: 'completed', conclusion: 'skipped' },
+      { name: 'Prepare pending state', status: 'completed', conclusion: 'skipped' },
+    ] }] };
+    expect((await selectState({ github, run, now }))?.run.number).toBe(8);
+  });
+  it('still blocks a failed job that ran a workflow step without preparing', async () => {
+    const { github, responses } = api([prior(), prior(8)]); noArtifacts(responses);
+    responses[`${root}/runs/99/attempts/1/jobs?per_page=10`] = { total_count: 1, jobs: [{ id: 1, run_id: 99, run_attempt: 1, status: 'completed', conclusion: 'failure', steps: [{ name: 'Set up job', status: 'completed', conclusion: 'success' }, { name: 'Run actions/checkout', status: 'completed', conclusion: 'failure' }] }] };
+    await expect(selectState({ github, run, now })).rejects.toThrow(/checkpoint|prepar/i);
+  });
+  it('skips a failed job that never ran a step and preserves earlier state', async () => {
+    const { github, responses } = api([prior(), prior(8)]); noArtifacts(responses);
+    responses[`${root}/runs/99/attempts/1/jobs?per_page=10`] = { total_count: 1, jobs: [{ id: 1, run_id: 99, run_attempt: 1, status: 'completed', conclusion: 'failure', steps: [] }] };
+    expect((await selectState({ github, run, now }))?.run.number).toBe(8);
+  });
+  // The usual listing while a run is active: N+2 waiting, N+1 cancelled by it, N current.
+  it('passes over a waiting and a cancelled newer run together', async () => {
+    const { github, responses } = api();
+    responses[`${root}/workflows/7/runs?branch=main&per_page=20&page=1`] = { total_count: 4, workflow_runs: [newer({ id: 102, run_number: 12, status: 'queued', conclusion: null, created_at: '2026-10-04T11:40:00Z', updated_at: '2026-10-04T11:40:00Z' }), newer({ status: 'completed', conclusion: 'cancelled' }), responses[`${root}/runs/100`], prior()] };
+    responses[`${root}/runs/101/attempts/1/jobs?per_page=10`] = { total_count: 0, jobs: [] };
+    expect((await selectState({ github, run, now }))?.run.id).toBe(99);
+  });
+  it.each([
+    [{ id: 101, run_number: 12 }, 'repeated id'], [{ id: 102, run_number: 11 }, 'repeated run number'],
+  ])('rejects newer runs that are not strictly ordered (%j, %s)', async (first) => {
+    const { github, responses } = api();
+    responses[`${root}/workflows/7/runs?branch=main&per_page=20&page=1`] = { total_count: 4, workflow_runs: [newer({ ...first, status: 'queued', conclusion: null }), newer({ status: 'queued', conclusion: null }), responses[`${root}/runs/100`], prior()] };
+    await expect(selectState({ github, run, now })).rejects.toThrow(/nonmonotonic/i);
+  });
+  it.each([
+    { run_attempt: 2 }, { event: 'pull_request' }, { head_branch: 'feature' }, { workflow_id: 8 },
+    { repository: { id: 2, full_name: 'attacker/fork' } }, { head_sha: 'bad' },
+  ])('rejects a newer run with untrusted provenance %j', async (change) => {
+    const { github, responses } = api();
+    responses[`${root}/workflows/7/runs?branch=main&per_page=20&page=1`] = { total_count: 3, workflow_runs: [newer({ status: 'queued', conclusion: null, ...change }), responses[`${root}/runs/100`], prior()] };
+    await expect(selectState({ github, run, now })).rejects.toThrow(/provenance/i);
+  });
+  it('passes over a newer run queued after this process read the clock', async () => {
+    const { github, responses } = api();
+    responses[`${root}/workflows/7/runs?branch=main&per_page=20&page=1`] = { total_count: 3, workflow_runs: [newer({ status: 'queued', conclusion: null, created_at: '2026-10-04T12:01:00Z', updated_at: '2026-10-04T12:01:00Z' }), responses[`${root}/runs/100`], prior()] };
+    expect((await selectState({ github, run, now }))?.run.id).toBe(99);
+  });
+  it.each([
+    { status: 'in_progress', conclusion: null }, { status: 'completed', conclusion: 'success' }, { status: 'completed', conclusion: 'failure' },
+    { status: 'queued', conclusion: null, id: 98 }, { status: 'queued', conclusion: null, created_at: '2026-10-04T11:00:00Z' },
+  ])('rejects a newer run that could have run or is out of order (%j)', async (change) => {
+    const { github, responses } = api();
+    responses[`${root}/workflows/7/runs?branch=main&per_page=20&page=1`] = { total_count: 3, workflow_runs: [newer(change), responses[`${root}/runs/100`], prior()] };
+    await expect(selectState({ github, run, now })).rejects.toThrow(/nonmonotonic/i);
   });
   it('does not interpret unknown or unavailable job history as initialization', async () => {
     const { github, responses } = api(); noArtifacts(responses);
