@@ -33,6 +33,9 @@ describe('opt-in durable match workflow', () => {
     expect(step('final').with.name).toBe('match-freshness-state');
     expect(step('final').if).toContain("steps.deliver.outputs.state_written == 'true'");
     expect(step('result').if).toContain('always()');
+    // The heartbeat needs the same secret as delivery; a missing line would fail silently.
+    for (const id of ['deliver', 'result']) expect(step(id).env.MATCH_FRESHNESS_WEBHOOK_URL).toBe('${{ secrets.MATCH_FRESHNESS_WEBHOOK_URL }}');
+    expect(step('result').env.CHECKPOINT_COMMITTED).toBe("${{ steps.pending.outcome == 'success' && steps.final.outcome == 'success' }}");
     expect(steps.filter((s: any) => s.uses).every((s: any) => /@[0-9a-f]{40}$/.test(s.uses))).toBe(true);
     expect(steps.findIndex((s: any) => s.id === 'pending')).toBeLessThan(steps.findIndex((s: any) => s.id === 'deliver'));
   });
@@ -89,17 +92,21 @@ async function harness() {
       'X-ScoreArc-Poll-Status': healthy ? 'ok' : 'failed', 'X-ScoreArc-Observed-At': '2026-10-04T12:00:00Z',
       'X-ScoreArc-Stale-Matches': '0', 'X-ScoreArc-Overdue-Matches': '0' }).end('[]');
   });
-  const webhookURL = await local(async (req, res) => {
+  const heartbeats: string[] = []; let receiverDown = false; let heartbeatDown = false;
+  const webhookURL = `${await local(async (req, res) => {
+    // Every heartbeat attempt is recorded, even refused ones, so "none" means none sent.
+    if (req.url?.startsWith('/heartbeat/')) { heartbeats.push(req.url); return res.writeHead(heartbeatDown ? 503 : 204).end(); }
+    if (receiverDown) return res.writeHead(503).end();
     let raw = ''; for await (const chunk of req) raw += chunk;
     const payload = JSON.parse(raw); notifications.push(payload);
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ eventId: payload.eventId }));
-  });
-  async function run({ enabled = 'true', deliveryEnabled = 'true', failUpload = '', initialize = false } = {}) {
+  })}/events/${'t'.repeat(40)}`;
+  async function run({ enabled = 'true', deliveryEnabled = 'true', failUpload = '', initialize = false, event = 'workflow_dispatch', checkpointCommitted = '' } = {}) {
     now += 600000;
     const id = history.length + 100;
     const iso = new Date(now).toISOString();
     const current = { id, run_number: id, run_attempt: 1, workflow_id: 7, path: '.github/workflows/match-freshness.yml', head_branch: 'main', head_sha: 'a'.repeat(40),
-      event: 'workflow_dispatch', status: 'in_progress', conclusion: null, repository: { id: 1, full_name: 'mcasillas17/ScoreArc' }, head_repository: { id: 1, full_name: 'mcasillas17/ScoreArc' }, created_at: new Date(now-60000).toISOString(), updated_at: iso };
+      event, status: 'in_progress', conclusion: null, repository: { id: 1, full_name: 'mcasillas17/ScoreArc' }, head_repository: { id: 1, full_name: 'mcasillas17/ScoreArc' }, created_at: new Date(now-60000).toISOString(), updated_at: iso };
     const vars = { MATCH_FRESHNESS_ENABLED: enabled, MATCH_FRESHNESS_DELIVERY_ENABLED: deliveryEnabled };
     const steps: Record<string, any> = {};
     const github = vi.fn(async (path: string) => {
@@ -117,7 +124,7 @@ async function harness() {
     const workDir = join(dir, 'watchdog-state'); const output = join(dir, 'output');
     const env = { ...vars, NODE_ENV: 'test' as const, GITHUB_REPOSITORY: current.repository.full_name, GITHUB_REF: 'refs/heads/main', GITHUB_SHA: current.head_sha,
       GITHUB_RUN_ID: String(id), GITHUB_RUN_NUMBER: String(id), GITHUB_RUN_ATTEMPT: '1', GITHUB_OUTPUT: output,
-      INITIALIZE_STATE: String(initialize), MATCH_FRESHNESS_WEBHOOK_URL: webhookURL, PENDING_ARTIFACT_ID: '' };
+      INITIALIZE_STATE: String(initialize), MATCH_FRESHNESS_WEBHOOK_URL: webhookURL, PENDING_ARTIFACT_ID: '', GITHUB_EVENT_NAME: event, CHECKPOINT_COMMITTED: '' };
     const executed: any[] = [];
     for (const step of workflow.jobs.check.steps) {
       if (!step.id) continue;
@@ -128,6 +135,7 @@ async function harness() {
           if (step.run) {
             const phase = step.run.split(' ').at(-1);
             env.PENDING_ARTIFACT_ID = steps.pending?.outputs['artifact-id'] ?? '';
+            if (step.env?.CHECKPOINT_COMMITTED) env.CHECKPOINT_COMMITTED = checkpointCommitted || String(condition(step.env.CHECKPOINT_COMMITTED, steps, vars, env.GITHUB_REF));
             const result = await monitor.runPhase({ phase, env, workDir, now, baseURL, github });
             if (result.exitCode) throw new Error('Phase failed');
             entry.outputs = Object.fromEntries((await readFile(output, 'utf8')).trim().split('\n').filter(Boolean).map(line => line.split('=')));
@@ -152,13 +160,13 @@ async function harness() {
     history.push({ ...current, status: 'completed', conclusion: 'failure' });
     return { steps, github, id };
   }
-  return { run, artifacts, notifications, checks: () => checks, healthy: () => { healthy = true; } };
+  return { run, artifacts, notifications, heartbeats, checks: () => checks, healthy: () => { healthy = true; }, unhealthy: () => { healthy = false; }, receiverDown: (down: boolean) => { receiverDown = down; }, heartbeatDown: (down: boolean) => { heartbeatDown = down; } };
 }
 describe('enabled workflow artifact boundaries', () => {
   it.each(['', 'false'])('disabled job (enabled=%s) makes no reader, GitHub or receiver requests', async enabled => {
-    const h = await harness(); const disabled = await h.run({ enabled });
+    const h = await harness(); const disabled = await h.run({ enabled, event: 'schedule' });
     expect(disabled.steps).toEqual({}); expect(disabled.github).not.toHaveBeenCalled();
-    expect(h.checks()).toBe(0); expect(h.notifications).toEqual([]); expect(h.artifacts.size).toBe(0);
+    expect(h.checks()).toBe(0); expect(h.notifications).toEqual([]); expect(h.artifacts.size).toBe(0); expect(h.heartbeats).toEqual([]);
   });
   it.each(['', 'false'])('delivery gate (%s) retains unreserved events for a later enabled run', async deliveryEnabled => {
     const h = await harness(); const first = await h.run({ initialize: true, deliveryEnabled });
@@ -192,5 +200,52 @@ describe('enabled workflow artifact boundaries', () => {
     const original = structuredClone(h.notifications);
     const next = await h.run(); expect(next.steps.restore.outcome).toBe('success'); expect(next.steps.final.outcome).toBe('success');
     expect(h.notifications.slice(10)).toEqual(original);
+  });
+});
+
+describe('scheduled heartbeat', () => {
+  it('pings after scheduled runs that delivered, including data incidents, and never on manual runs', async () => {
+    const h = await harness();
+    const manual = await h.run({ initialize: true }); expect(manual.steps.result.outcome).toBe('failure');
+    expect(h.heartbeats).toEqual([]);
+    const incident = await h.run({ event: 'schedule' }); expect(incident.steps.result.outcome).toBe('failure');
+    expect(h.heartbeats).toEqual([`/heartbeat/${'t'.repeat(40)}`]);
+    h.healthy(); const healthy = await h.run({ event: 'schedule' }); expect(healthy.steps.result.outcome).toBe('success');
+    expect(h.heartbeats).toHaveLength(2);
+  });
+  it('sends nothing when delivery is off or delivery failed', async () => {
+    const h = await harness(); h.healthy();
+    // Healthy, so the run exits 0 and only the missing final checkpoint blocks the ping.
+    const off = await h.run({ initialize: true, event: 'schedule', deliveryEnabled: 'false' });
+    expect(off.steps.result.outcome).toBe('success'); expect(off.steps.final.outcome).toBe('skipped'); expect(h.heartbeats).toEqual([]);
+    // The CLI enforces delivery-only heartbeats on its own, even if the workflow claimed commit.
+    await h.run({ event: 'schedule', deliveryEnabled: 'false', checkpointCommitted: 'true' }); expect(h.heartbeats).toEqual([]);
+    h.unhealthy();
+    h.receiverDown(true); const failed = await h.run({ event: 'schedule' });
+    expect(failed.steps.deliver.outcome).toBe('success'); expect(h.heartbeats).toEqual([]);
+    h.receiverDown(false); await h.run({ event: 'schedule' }); expect(h.heartbeats).toHaveLength(1);
+  });
+  it.each(['pending', 'final'])('sends nothing after a failed %s checkpoint upload', async failUpload => {
+    const h = await harness(); h.healthy();
+    await h.run({ initialize: true, event: 'schedule', failUpload });
+    expect(h.heartbeats).toEqual([]);
+  });
+  it('a failed ping leaves the run result unchanged', async () => {
+    const h = await harness(); h.healthy(); h.heartbeatDown(true);
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const run = await h.run({ initialize: true, event: 'schedule' });
+    expect(run.steps.final.outcome).toBe('success'); expect(run.steps.result.outcome).toBe('success');
+    expect(h.heartbeats).toHaveLength(1);
+    expect(JSON.stringify(log.mock.calls)).toContain('heartbeat not acknowledged');
+    expect(JSON.stringify(log.mock.calls)).not.toContain('t'.repeat(40));
+  });
+  it('heartbeat sender refuses a webhook it cannot map, and needs 204', async () => {
+    const ok = vi.fn(async (_input: URL | RequestInfo, _init?: RequestInit) => new Response(null, { status: 204 }));
+    await monitor.sendHeartbeat({ webhookURL: 'https://r.example/events/abc', fetchImpl: ok });
+    expect(String(ok.mock.calls[0][0])).toBe('https://r.example/heartbeat/abc');
+    for (const webhookURL of ['https://r.example/', 'https://r.example/events/abc?x=1', 'http://r.example/events/abc', 'https://r.example/events/a/b']) {
+      await expect(monitor.sendHeartbeat({ webhookURL, fetchImpl: ok })).rejects.toThrow('Invalid webhook configuration');
+    }
+    await expect(monitor.sendHeartbeat({ webhookURL: 'https://r.example/events/abc', fetchImpl: async () => new Response('{}', { status: 200 }) })).rejects.toThrow();
   });
 });

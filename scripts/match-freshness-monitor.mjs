@@ -186,13 +186,26 @@ function notification(event) {
   return { eventId: event.id, incidentId: event.incidentId, competition, season, status: event.status,
     occurredAt: event.occurredAt, runUrl: event.runUrl, count: event.count, ...event.observation };
 }
+function webhook(value) {
+  const url = new URL(value);
+  const local = url.protocol === 'http:' && ['127.0.0.1','localhost','[::1]'].includes(url.hostname);
+  if ((!local && url.protocol !== 'https:') || url.username || url.password || url.hash) throw new Error('Invalid webhook configuration');
+  return url;
+}
+// T17.4: tells the receiver a scheduled run finished its checks and delivery. The
+// receiver emails the owner when these stop, so it lives at the same secret token.
+export async function sendHeartbeat({ webhookURL, fetchImpl = fetch }) {
+  const url = webhook(webhookURL);
+  if (!/^\/events\/[^/]+$/.test(url.pathname) || url.search) throw new Error('Invalid webhook configuration');
+  url.pathname = url.pathname.replace('/events/', '/heartbeat/');
+  const response = await fetchImpl(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5000) });
+  if (response.status !== 204) throw new Error('not-acknowledged');
+}
 export async function deliverMonitor(options) {
   if (options.enabled !== true || options.deliveryEnabled !== true) return { disabled: true };
   config(options);
   if (!positive(options.pendingArtifactId)) throw new Error('Pending checkpoint upload required');
-  const url = new URL(options.webhookURL);
-  const local = url.protocol === 'http:' && ['127.0.0.1','localhost','[::1]'].includes(url.hostname);
-  if ((!local && url.protocol !== 'https:') || url.username || url.password || url.hash) throw new Error('Invalid webhook configuration');
+  const url = webhook(options.webhookURL);
   const timeoutMs = options.timeoutMs ?? 5000;
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 5000) throw new Error('Invalid notifier timeout');
   return locked(options.stateFile, async () => {
@@ -268,6 +281,17 @@ export async function runPhase({ phase, env = process.env, workDir = 'watchdog-s
     if (!equalRun(state.run, run)) throw new Error('State result provenance mismatch');
     const result = outcome(state);
     console.log(`Match monitor: data_incident=${state.dataIncident} pending=${result.pending} monitor=${result.monitorFailure ?? 'ok'}`);
+    // Data incidents (exit 1) were delivered, so the monitor itself worked, but only once
+    // both checkpoints are committed, and only with delivery on (the workflow also implies
+    // it: the final checkpoint needs the delivery step). Manual runs never arm the check.
+    if (result.exitCode < 2 && options.deliveryEnabled && env.CHECKPOINT_COMMITTED === 'true' && env.GITHUB_EVENT_NAME === 'schedule') {
+      try {
+        await sendHeartbeat({ webhookURL: env.MATCH_FRESHNESS_WEBHOOK_URL });
+        console.log('Match monitor heartbeat acknowledged.');
+      } catch {
+        console.error('Match monitor heartbeat not acknowledged; check the alert receiver logs.');
+      }
+    }
     return result;
   } else throw new Error('Invalid monitor phase');
   return { exitCode: 0 };
