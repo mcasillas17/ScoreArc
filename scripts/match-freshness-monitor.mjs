@@ -195,7 +195,7 @@ function webhook(value) {
   if ((!local && url.protocol !== 'https:') || url.username || url.password || url.hash) throw new Error('Invalid webhook configuration');
   return url;
 }
-// T17.4: tells the receiver a scheduled run finished its checks and delivery. The
+// T17.4: tells the receiver a monitor run finished its checks and delivery. The
 // receiver emails the owner when these stop, so it lives at the same secret token.
 export async function sendHeartbeat({ webhookURL, fetchImpl = fetch }) {
   const url = webhook(webhookURL);
@@ -286,8 +286,9 @@ export async function runPhase({ phase, env = process.env, workDir = 'watchdog-s
     console.log(`Match monitor: data_incident=${state.dataIncident} pending=${result.pending} monitor=${result.monitorFailure ?? 'ok'}`);
     // Data incidents (exit 1) were delivered, so the monitor itself worked, but only once
     // both checkpoints are committed, and only with delivery on (the workflow also implies
-    // it: the final checkpoint needs the delivery step). Manual runs never arm the check.
-    if (result.exitCode < 2 && options.deliveryEnabled && env.CHECKPOINT_COMMITTED === 'true' && env.GITHUB_EVENT_NAME === 'schedule') {
+    // it: the final checkpoint needs the delivery step). Select already admitted only
+    // schedule and dispatch events; the receiver's cron dispatches the regular runs.
+    if (result.exitCode < 2 && options.deliveryEnabled && env.CHECKPOINT_COMMITTED === 'true') {
       try {
         await sendHeartbeat({ webhookURL: env.MATCH_FRESHNESS_WEBHOOK_URL });
         console.log('Match monitor heartbeat acknowledged.');

@@ -190,8 +190,9 @@ describe('trusted state selection', () => {
     responses[`${root}/runs/99/attempts/1/jobs?per_page=10`] = { total_count: 1, jobs: [{ id: 1, run_id: 99, run_attempt: 1, status: 'completed', conclusion: 'cancelled', steps: [step] }] };
     await expect(selectState({ github, run, now })).rejects.toThrow(/checkpoint|prepar/i);
   });
-  // Under the schedule a newer run can already be listed while this one selects. The concurrency
-  // group keeps it waiting, or cancels it before it starts, so it cannot hold state.
+  // Runs start every five minutes (the receiver's dispatch, or a manual one), so a newer
+  // run can already be listed while this one selects. The concurrency group keeps it
+  // waiting, or cancels it before it starts, so it cannot hold state.
   const newer = (change: object) => ({ ...prior(10), id: 101, run_number: 11, created_at: '2026-10-04T11:35:00Z', updated_at: '2026-10-04T11:35:00Z', ...change });
   it.each([
     { status: 'queued', conclusion: null }, { status: 'pending', conclusion: null }, { status: 'waiting', conclusion: null },

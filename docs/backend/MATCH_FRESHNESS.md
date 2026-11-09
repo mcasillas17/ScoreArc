@@ -240,8 +240,10 @@ It neither calls ESPN nor writes match data.
 
 ## Durable match monitor
 
-**Scheduled every five minutes** by the activation change the owner accepted on
-November 7, 2026 (see the [activation record](#activation-record-november-7-2026)). This T17.4 slice covers
+**Five-minute cadence** accepted by the owner on November 7, 2026 (see the
+[activation record](#activation-record-november-7-2026)). Once the
+[Worker dispatch](#worker-dispatch-november-8-2026) is deployed, the receiver's cron
+starts the runs; until then the workflow has no automatic trigger. This T17.4 slice covers
 the **current match contract**. It does not complete T17.4 or the monitoring epic. Broader checks wait
 for the separately owned T17.3 contract to settle; reader contract-registry,
 news and safe-logging gaps remain with their owners. Production migration 0027
@@ -249,10 +251,12 @@ is already applied per the owner's October 30 report; this slice needs no reader
 or release operation. The receiver's [not-running check](#not-running-check) (D1
 migration `0002`) was deployed on November 7.
 
-The workflow runs every five minutes and on manual dispatch. Its CLI requires the exact
+The workflow has one trigger, `workflow_dispatch`. Once the
+[Worker dispatch](#worker-dispatch-november-8-2026) is deployed, the receiver's cron
+dispatches it every five minutes; manual dispatches work the same way. Its CLI requires the exact
 repository variable `MATCH_FRESHNESS_ENABLED=true` (for `TRUE` and other values, see
 [disable and recover](#disable-and-recover-without-losing-history)). Absent/false means **zero reader checks
-and zero webhook sends**. The receiver cannot see that variable: once scheduled runs
+and zero webhook sends**. The receiver cannot see that variable: once runs
 have armed its [not-running check](#not-running-check), it emails once after the
 heartbeats stop unless the check is paused. Delivery additionally requires
 `MATCH_FRESHNESS_DELIVERY_ENABLED=true` (exact in the CLI) and the owner-approved secret
@@ -279,7 +283,7 @@ history, temporary local checkpoints and a receiver bound to `127.0.0.1` on an
 ephemeral port. GitHub transport tests stub `fetch`; they do not call GitHub.
 The workflow harness executes the real exported CLI phases and parsed YAML
 conditions, replacing artifact transfers with local copies. It does **not**
-exercise GitHub's hosted scheduler or the pinned artifact actions themselves.
+exercise the receiver's real dispatch to GitHub or the pinned artifact actions themselves.
 Tests clean up their listeners and temporary files. No variables/secrets,
 production reader or real notification destination are needed.
 
@@ -300,8 +304,8 @@ Existing acceptance evidence (test names are searchable within the linked files)
 | Pending upload failure prevents sends; final upload failure preserves replay | workflow: `failed pending upload prohibits sends and blocks silent rollback`, `failed final upload restores pending` |
 | Missing/corrupt/expired/incompatible newest history blocks rather than falling back or initializing | monitor: `rejects missing, corrupt, incompatible, wrong-origin/scope and rollback state`; state: `does not roll back past an invalid newest artifact`, `fails when the final checkpoint expired`, `treats preparation without upload as a barrier`, `rejects initialization when durable state already exists` |
 | Receiver protocol with the real sender: OPEN, repeat, RESOLVED, recurrence, timeout, wrong acknowledgment, crash, ordering, cap | [receiver tests](../../infra/alert-receiver/worker.test.ts): `real monitor sender against the receiver`, `daily cap` |
-| Not-running check: inert until armed, one down email after 60 minutes, one recovery, at-least-once retries, write floor, token gate; heartbeats only from scheduled runs with delivery and both checkpoints committed | receiver: `monitor heartbeat`; workflow: `scheduled heartbeat`, `disabled job` |
-| Finite queues, history, bytes, attempts and execution | monitor: `backpressure keeps bounded queue`, `reserves attempts before sending ... exhausts at 20`; state: `fails closed at the three-page budget`; watchdog: `uses only configured current seasons`; workflow: job timeout and exact trigger (schedule plus manual dispatch) assertions; state: `skips a run cancelled before it started` |
+| Not-running check: inert until armed, one down email after 60 minutes, one recovery, at-least-once retries, write floor, token gate; heartbeats from runs with delivery and both checkpoints committed; the cron dispatches one main run, and a missing token, rejected or failed dispatch logs no secret while the check still alerts | receiver: `monitor heartbeat` (`dispatches one monitor run`, `logs no secret`); workflow: `heartbeat` (`pings after dispatched and scheduled runs that delivered`), `disabled job` |
+| Finite queues, history, bytes, attempts and execution | monitor: `backpressure keeps bounded queue`, `reserves attempts before sending ... exhausts at 20`; state: `fails closed at the three-page budget`; watchdog: `uses only configured current seasons`; workflow: job timeout and exact trigger (dispatch only) assertions; state: `skips a run cancelled before it started` |
 
 Retain the focused test summary, full-suite/typecheck/lint results and reviewed
 commit SHA with the later activation record. An expected incident/delivery error
@@ -316,7 +320,8 @@ typecheck includes the Worker.
 |---|---|
 | `MATCH_FRESHNESS_ENABLED` | Repository Actions variable. Only literal `true` enables the CLI; absent/false means zero checks/sends ([`TRUE` and pauses](#disable-and-recover-without-losing-history)). A deliberate pause follows [disable and recover](#disable-and-recover-without-losing-history). An armed [not-running check](#not-running-check) still emails once after a disable unless paused with `DELETE FROM monitor_heartbeat`. |
 | `MATCH_FRESHNESS_DELIVERY_ENABLED` | Repository Actions variable. Only literal `true` permits reservations/sends. Absent/false still allows checks and queued transitions when the main gate is true; it is **not** an offline dry run and pending events make the result exit 2. It also stops heartbeats, so pause an armed [not-running check](#not-running-check) the same way. |
-| `MATCH_FRESHNESS_WEBHOOK_URL` | Repository Actions secret, supplied only to the delivery and result steps; the result step uses it only for the scheduled-run [heartbeat](#not-running-check). Owner-approved HTTPS receiver implementing the protocol below; do not put its URL/token in logs, PRs or acceptance records. |
+| `MATCH_FRESHNESS_WEBHOOK_URL` | Repository Actions secret, supplied only to the delivery and result steps; the result step uses it only for the [heartbeat](#not-running-check). Owner-approved HTTPS receiver implementing the protocol below; do not put its URL/token in logs, PRs or acceptance records. |
+| `GITHUB_DISPATCH_TOKEN` | Receiver Worker secret (`npx wrangler@4.123.0 secret put GITHUB_DISPATCH_TOKEN` from `infra/alert-receiver`, interactive prompt). Fine-grained personal access token for this repository only with the **Actions: write** permission, nothing else; the Worker uses it only to dispatch `match-freshness.yml` on `main`. It never reaches the workflow. GitHub cannot narrow it to one workflow: the same permission can dispatch any workflow here (including `ci.yml`'s release input, whose production environments only require `main`), cancel or re-run runs, delete artifacts and disable workflows, and the runbook treats a re-run, a cancelled Prepare or a deleted checkpoint as a halt needing manual recovery. Keep it only in the Worker secret, give it the shortest expiry you will maintain, and revoke it in GitHub at once if it may have leaked. The owner accepted this reach on November 8, 2026 (the token is the owner's, expiry the owner's choice). When it expires or is revoked, dispatches are rejected and the not-running check emails; create a new one and replace the secret. |
 | `initialize_state` | Sole manual input, boolean, default false. True only for proven first history; never a repair flag. |
 | Run identity and API access | Actions supplies `GITHUB_*` provenance and its token with `contents: read` / `actions: read`. Do not substitute another repository/ref/run identity or a personal token to bypass validation. |
 | Reader and scopes | Fixed CLI origin `https://scorearc-reader.fly.dev`; exact current seasons from `backend/config/competitions.json`. No workflow input overrides these. A changed origin/scope set requires a reviewed state migration, not initialization. |
@@ -354,7 +359,7 @@ Only runs proven not to have prepared state may be passed over: a skipped
 preparation step, a cancelled or skipped run with no jobs, or jobs that ran no workflow step (disabled, cancelled while
 waiting when a newer run queued, never given a runner, or failed in GitHub's own
 "Set up job"), listing at most "Set up job" and "Complete job". A run newer than the current one
-may also be listed under the schedule; it is passed over only while queued, pending, waiting or requested (never started),
+may also be listed when dispatches arrive while it runs; it is passed over only while queued, pending, waiting or requested (never started),
 or once completed as cancelled with jobs that ran no workflow step (the same rule).
 
 `initialize_state=true` is for the first history only, after complete bounded
@@ -402,7 +407,7 @@ is silently removed. Exhausted head events block FIFO until owner reconciliation
 
 ### Alert receiver
 
-**Deployed and connected; the five-minute schedule feeds it.** On November 1, 2026 the
+**Deployed and connected; its cron watches the monitor's heartbeats and, once the [Worker dispatch](#worker-dispatch-november-8-2026) is deployed, starts the monitor.** On November 1, 2026 the
 owner selected email to one owner-chosen address, named themselves incident owner,
 and approved this design. On November 3, with separate approval, Email Routing was
 enabled, the Worker and its D1 database were deployed, and one synthetic event sent
@@ -414,7 +419,8 @@ manual run is recorded under [first manual run](#first-manual-run-november-7-202
 
 [`infra/alert-receiver`](../../infra/alert-receiver/worker.ts) is a Cloudflare
 Worker with D1. With migration `0002` and its cron trigger, it also runs the
-scheduled-run [not-running check](#not-running-check) on its own route and table. For each event the Worker:
+[not-running check](#not-running-check) on its own route and table, and the same
+cron [dispatches the monitor](#worker-dispatch-november-8-2026) once that is deployed. For each event the Worker:
 
 1. Checks the secret token in the URL path (`/events/<token>`); a wrong token gets 404.
 2. Accepts only a JSON body of at most 4 KiB with the exact expected fields, whose
@@ -459,7 +465,9 @@ or the Worker answers 500; `openssl rand -hex 32` works), then from that directo
 `npx wrangler@4.123.0 dev --local --test-scheduled`. Posting one event twice should return
 two 200 acknowledgments and call the email simulator once. A POST to
 `/heartbeat/<token>` should return 204 and write the `monitor_heartbeat` row, and a GET
-of `/__scheduled` should return 200.
+of `/__scheduled` should return 200. **Never put a real `GITHUB_DISPATCH_TOKEN` in
+`.dev.vars`**: `/__scheduled` dispatches the production workflow with it. A dummy value
+exercises the call safely (GitHub answers 401, logged as `dispatch rejected 401`).
 
 **Deployment steps, for a separately approved operator run** (from `infra/alert-receiver`,
 after `npx wrangler@4.123.0 login` on the account that owns `scorearc.futbol`):
@@ -476,7 +484,9 @@ after `npx wrangler@4.123.0 login` on the account that owns `scorearc.futbol`):
    repository secret, using the interactive `gh secret set` prompt.
 
 The [not-running check](#not-running-check) adds migration `0002` and a cron
-trigger: deploying it is step 3 then step 5 again, after separate approval.
+trigger: deploying it is step 3 then step 5 again, after separate approval. The
+[dispatch](#worker-dispatch-november-8-2026) adds the `GITHUB_DISPATCH_TOKEN` secret
+(step 4's prompt; see the inventory) and is step 5 again.
 
 To stop alerts, follow the disable procedure below, including the not-running
 check's pause step. Rotating the token requires
@@ -485,29 +495,30 @@ updating both secrets together; deliveries fail and retry in between.
 #### Not-running check
 
 A monitor that never starts cannot report its own absence, so the receiver watches
-for it. After each **scheduled** run whose checks, delivery and both checkpoint uploads
+for it. After each run whose checks, delivery and both checkpoint uploads
 worked, including a data incident (exit 1), the result step posts to `/heartbeat/<token>` at the same
-host and token as the webhook, expecting 204. A monitor failure (exit 2), a manual
-run or delivery switched off sends no heartbeat, and a failed heartbeat only logs
-a line without changing the run's result.
+host and token as the webhook, expecting 204. A monitor failure (exit 2) or delivery
+switched off sends no heartbeat, and a failed heartbeat only logs
+a line without changing the run's result. A manual dispatch counts like the
+receiver's own dispatches (and so did the scheduled runs before November 8).
 
 The receiver keeps the last heartbeat time in D1 (`monitor_heartbeat`). A cron
-trigger every 15 minutes emails "Monitor not running" once no heartbeat has arrived
-for 60 minutes, so the alert comes 60 to 75 minutes after the last good run. Scheduled
-runs that keep ending with exit 2 (delivery, queue or state failure) or a failed
+trigger every 5 minutes emails "Monitor not running" once no heartbeat has arrived
+for 60 minutes, so the alert comes 60 to 65 minutes after the last good run. Runs that keep ending with exit 2 (delivery, queue or state failure) or a failed
 checkpoint upload send no heartbeat either, so they lead to the same email. A backlog
 still pending after a run is also exit 2, so after a receiver outage the recovery email
 follows the queue drain, about five minutes per ten pending transitions. Read the
 newest run's step list and its `Match monitor: data_incident=... pending=... monitor=...`
-line before concluding that GitHub stopped the schedule. The
-five-minute schedule often starts late, which is why the limit is an hour. The next
+line before concluding that no run started; with no new runs at all, check the
+Worker's `dispatch` log lines (a missing, expired or revoked token, or a disabled
+workflow). Runs can queue behind a slow one, which is why the limit is an hour. The next
 heartbeat sends one "Monitor recovered" email. A failed down email is retried by the next
 check, and a failed recovery by the next heartbeat more than a minute after the last. Each email is recorded after it is sent, so a database failure in
 between repeats it once the database is back: at least once, like events. The receiver
 writes the heartbeat at most once a minute, so a leaked token can spend at most 1,440
 D1 writes a day through this route, about 1.4% of the free allowance. The 300-event
 cap does not cover these emails: a token holder alternating heartbeats and hour-long
-silences could cause about 40 down and recovery emails a day (one pair per 60 to 75 minutes), which also means the
+silences could cause about 45 down and recovery emails a day (one pair per 60 to 65 minutes), which also means the
 token leaked and needs rotating. Any heartbeat after an alert ends that outage, even if
 its recovery email failed, so a later outage always alerts again. A heartbeat that
 lands while a down email is being sent gets its recovery from the next heartbeat, five
@@ -520,14 +531,13 @@ drop an alert.
 
 | Item | Decision |
 |---|---|
-| Arming | No row means no check. The first scheduled heartbeat arms it, so it cannot alarm before the schedule is enabled, and equally cannot alarm until a qualifying scheduled run (exit 0 or 1, delivery on, both checkpoints committed) first sends one: a schedule that never fires, or whose runs all fail or run with delivery off from the start, is silent apart from GitHub's failure emails. After the enabling merge, confirm a scheduled run appears and the heartbeat row exists (acceptance command below) within about an hour. |
-| Pausing | To stop the monitor on purpose, disable the workflow (`gh workflow disable match-freshness.yml`, see [disable and recover](#disable-and-recover-without-losing-history)) and let any running job finish, then within 60 minutes of its last heartbeat run `npx wrangler@4.123.0 d1 execute scorearc-alert-receiver --remote --command "DELETE FROM monitor_heartbeat"` from `infra/alert-receiver`. Deleting first lets a run still in flight re-arm the check. Without the delete, one "not running" email follows, which is the correct signal for an unplanned stop. The next scheduled heartbeat re-arms it. |
-| Independence | It catches GitHub not running or failing the monitor, including GitHub's automatic disabling of scheduled workflows in a public repository after 60 days without repository activity; recover with `gh workflow enable match-freshness.yml`. It shares Cloudflare with the receiver, so a Cloudflare outage silences both. Anyone holding the webhook token can also keep it quiet by sending heartbeats; rotating the token restores it. |
-| Owner | The owner is the incident owner and recipient. Deadline: 60 minutes without a scheduled heartbeat. |
-| Cost | 96 cron runs a day, within Workers Free. |
+| Arming | No row means no check. The first heartbeat arms it (it was armed on November 8, 2026), and it cannot alarm until a qualifying run (exit 0 or 1, delivery on, both checkpoints committed) first sends one: runs that never start, or all fail or run with delivery off from the start, are silent apart from GitHub's failure emails. After deleting the row, confirm a run appears and the heartbeat row exists again (acceptance command below) within about an hour. |
+| Pausing | To stop the monitor on purpose, disable the workflow (`gh workflow disable match-freshness.yml`, see [disable and recover](#disable-and-recover-without-losing-history)) and let any running job finish, then within 60 minutes of its last heartbeat run `npx wrangler@4.123.0 d1 execute scorearc-alert-receiver --remote --command "DELETE FROM monitor_heartbeat"` from `infra/alert-receiver`. Deleting first lets a run still in flight re-arm the check. Without the delete, one "not running" email follows, which is the correct signal for an unplanned stop. While the workflow is disabled the Worker's dispatches are rejected and logged; that is expected. The next heartbeat after re-enabling re-arms it. |
+| Independence | It catches GitHub not running or failing the monitor, as it caught GitHub skipping its schedule on November 8, and a rejected Worker dispatch (expired or revoked token, or a disabled workflow; recover with `gh workflow enable match-freshness.yml`). The dispatcher and this check are the same cron in the same Worker, so a Cloudflare outage, or the cron stopping, stops runs and silences the alarm together; nothing else reports that. Anyone holding the webhook token can also keep it quiet by sending heartbeats; rotating the token restores it. |
+| Owner | The owner is the incident owner and recipient. Deadline: 60 minutes without a heartbeat. |
+| Cost | 288 cron runs and 288 GitHub dispatch requests a day (the token's limit is 5,000 an hour), within Workers Free. |
 
-Acceptance, after the schedule is enabled: confirm the `monitor_heartbeat` row
-advances with scheduled runs, using `npx wrangler@4.123.0 d1 execute
+Acceptance: confirm the `monitor_heartbeat` row advances with dispatched runs, using `npx wrangler@4.123.0 d1 execute
 scorearc-alert-receiver --remote --command "SELECT last_at, alerted_at FROM monitor_heartbeat"`
 from `infra/alert-receiver`. The same command shows the state behind a "not running" email. The alert and recovery paths are covered by tests;
 do not stop production to prove them.
@@ -541,16 +551,17 @@ do not stop production to prove them.
 | Artifact transfer | One selected download, up to two uploads; state 256 KiB, artifact metadata size ceiling 256 KiB; action-internal transfer retries are governed by pinned actions and job timeout |
 | State | 128 pending events, 32 receipts, one current incident ID per scope; 256 KiB |
 | Notifications | At most 10 sequential sends per run, 15 seconds each (the receiver acknowledges only after its email, about 5 seconds), 1 KiB acknowledgment; 20 reserved attempts per event |
-| Heartbeat | At most one POST per scheduled run, 15 seconds, 204 expected, never retried |
-| Backoff | Across runs: 5 minutes doubled to maximum 6 hours; no in-run retry, untrusted Retry-After cannot enlarge bounds. A retry is sent by the first scheduled run whose Prepare is at or after its due time, so with five-minute runs a 5-minute backoff lands 5 to 10 minutes later (latency only) |
+| Heartbeat | At most one POST per run, 15 seconds, 204 expected, never retried |
+| Dispatch | One POST from the receiver's cron every 5 minutes, 10 seconds, any 2xx accepted, never retried; runs serialize in the workflow's concurrency group, where a newer waiting run replaces an older one |
+| Backoff | Across runs: 5 minutes doubled to maximum 6 hours; no in-run retry, untrusted Retry-After cannot enlarge bounds. A retry is sent by the first run whose Prepare is at or after its due time, so with five-minute runs a 5-minute backoff lands 5 to 10 minutes later (latency only) |
 | Runtime | Entire Actions job 10 minutes; this may truncate API search/check/delivery before per-operation ceilings |
 | Cadence (owner-accepted November 7, 2026) | Five minutes, 288 nominal runs/day; current registry ≤2,880 reader requests/day; worst-case ≤2,880 notification attempts/day plus ≤288 heartbeats; actual platform timing can delay/drop runs |
 
 Normally selection requires only a few API requests, but worst-case nominal
 cadence permits 36,000 API calls/day before the job deadline/rate limits. This is
 a ceiling, not expected traffic; repeated history failures need intervention,
-not a larger scan. Disabled workflows allocate no check runner. GitHub cron offers
-no hard alert-latency SLA; thresholds, cadence, queue delay, backoff, platform
+not a larger scan. Disabled workflows allocate no check runner. Neither Cloudflare cron nor GitHub dispatch offers
+a hard alert-latency SLA; thresholds, cadence, queue delay, backoff, platform
 delays and network time all contribute.
 
 The [activation record](#activation-record-november-7-2026) holds the measured job
@@ -585,10 +596,9 @@ alone. Workflow/code rollback does not safely roll back incident history: disabl
 execution first and validate the latest envelope against the rollback version;
 never choose an older state just because its code can read it. A monitor cannot
 detect its own permanent stoppage: the receiver's
-[not-running check](#not-running-check) covers that once the schedule feeds it. Native Actions failure
+[not-running check](#not-running-check) covers that. Native Actions failure
 notifications may repeat and are not this transition transport: GitHub emails the
-user who last edited the cron or re-enabled the workflow about every failed scheduled
-run, so a sustained incident (exit 1 or 2) adds about 12 undeduplicated emails an
+user who triggered each failed run (for dispatched runs, the token's owner), so a sustained incident (exit 1 or 2) adds about 12 undeduplicated emails an
 hour beside the single OPEN. Turn them off under GitHub Settings > Notifications >
 Actions if the receiver's emails are enough. **Never use GitHub's "Re-run" on a
 monitor run** (failure emails link to it): see the re-run row below.
@@ -599,7 +609,7 @@ These are procedures for the owner or an authorized operator. To stop checks **a
 sends, disable the workflow with `gh workflow disable match-freshness.yml` (re-enable
 with `gh workflow enable match-freshness.yml`), and also set
 `MATCH_FRESHNESS_ENABLED=false` if the pause must survive an accidental re-enable.
-Setting only the variable is not enough for more than a few hours: scheduled runs
+Setting only the variable is not enough for more than a few hours: dispatched runs
 are still created, and the selector only looks for the newest checkpoint among the
 newest 60 workflow runs (three pages of 20). About five hours of skipped runs at
 this cadence push it out of that window, so re-enabling fails closed with the
@@ -607,12 +617,12 @@ history-scan budget error. The job gate compares case-insensitively, so `TRUE`
 starts a job whose CLI (exact `true` only) does nothing and whose Prepare step is
 skipped; one such run does not block later runs, but a persistent `TRUE` behaves like
 a variable-only pause and also sends no heartbeats, so an armed not-running check
-emails. Set exactly `true`. An armed not-running check emails within 60-75 minutes of the
+emails. Set exactly `true`. An armed not-running check emails within 60-65 minutes of the
 last heartbeat, which leaves about four hours to disable the workflow before the
 newest checkpoint leaves the window. A disabled workflow creates no runs. The same window
 applies to about five hours of consecutive runs that fail before preparation, for example during a long GitHub API outage. Then pause the
 [not-running check](#not-running-check) after the last run finishes, or expect one
-"Monitor not running" email 60 to 75 minutes later. This gates subsequent jobs; an already running
+"Monitor not running" email 60 to 65 minutes later. This gates subsequent jobs; an already running
 job has captured its environment. Normally let that serialized run finish and
 retain its newest pending/final checkpoints. If urgent containment requires
 cancellation, record the run and assume ambiguous delivery until reconciled;
@@ -622,7 +632,7 @@ growth active, so it is not the full kill switch.
 | Observed failure | Recovery boundary |
 |---|---|
 | Reader incident, exit 1 after delivery | Investigate competition/season/run context using the existing diagnostics. Do not modify scores or thresholds to clear it. Repeated failure stays nonzero without another OPEN. |
-| Delivery failure, exit 2, valid retained checkpoint | Fix the approved receiver/configuration. The next scheduled run replays the pending head automatically once its backoff passes; a manual dispatch only hastens it. Retain IDs and let FIFO replay the head before later events. Do not rerun the old attempt or send a replacement event manually. |
+| Delivery failure, exit 2, valid retained checkpoint | Fix the approved receiver/configuration. The next run replays the pending head automatically once its backoff passes; a manual dispatch only hastens it. Retain IDs and let FIFO replay the head before later events. Do not rerun the old attempt or send a replacement event manually. |
 | Final upload failure or crash after receiver acceptance | Preserve the pending snapshot and receiver acceptance ledger. The selector may replay it only with proven failed/skipped final upload; receiver deduplication must tolerate the same ID. A successful/ambiguous/cancelled final-upload record with missing state blocks automatic recovery. |
 | Prepare failed or was cancelled after it started (no checkpoint) | Attempted preparation without a checkpoint is a barrier: every later run fails at selection until owner-reviewed recovery that preserves the newest checkpoint (last row). Investigate the Prepare error first. |
 | Pending upload failed; no checkpoint survives | No sends occurred from that run, but newly observed transitions may be lost. Stop and reconcile that preparation barrier; never select an older run or initialize around it. |
@@ -681,7 +691,8 @@ but a workflow that never starts cannot report its own absence.
   workflow test, kept the exact-true CLI gates and the job's `true` gate (GitHub
   compares it case-insensitively), main/attempt provenance, serialization
   and upload-before-send ordering, and links the activation record. Never use
-  production dispatch for code tests.
+  production dispatch for code tests. On November 8 the
+  [Worker dispatch](#worker-dispatch-november-8-2026) replaced that schedule.
 - [ ] Disable by `gh workflow disable match-freshness.yml` (plus
   `MATCH_FRESHNESS_ENABLED=false` for a long pause); allow the current
   serialized run to finish and retain its newest checkpoint. Then pause the not-running
@@ -701,7 +712,7 @@ activation record); nothing authorizes pointing the fixed production reader at t
 inputs.
 
 This covers the **match-endpoint slice only**. Sustained operational acceptance,
-the scheduled heartbeat acceptance in the [not-running check](#not-running-check), the R2 backup copy and broader T17.4
+the heartbeat acceptance in the [not-running check](#not-running-check), the R2 backup copy and broader T17.4
 coverage remain open. No Postgres or reader database, ingester, T21.2 or release-pipeline behavior is
 changed; the receiver's D1 gains the `monitor_heartbeat` table.
 
@@ -769,12 +780,14 @@ A scope that is genuinely unhealthy by then stays open and queues no RESOLVED ev
   (288 x 59 s). Each run makes 10 reader requests (about 2,880 a day) and
   about 4 GitHub API calls in steady state (about 1,150 a day). The repository is
   public, so standard GitHub-hosted runner minutes are not billed. GitHub's own
-  failure email for each failed scheduled run is on by default; the owner's
+  failure email for each failed run is on by default; the owner's
   notification setting is not yet confirmed (open).
 - **Not-running check:** deployed and unarmed; the first scheduled heartbeat arms it.
   Until then a schedule that never fires raises no alarm, so after the enabling merge
   the owner or operator confirms a scheduled run and the heartbeat row within about
-  an hour. Its acceptance (heartbeat row advancing) follows the schedule.
+  an hour. Its acceptance (heartbeat row advancing) follows the schedule. On November 8
+  the first scheduled heartbeat armed it, and its acceptance moved to the
+  [Worker dispatch](#worker-dispatch-november-8-2026) deployment.
 - **Checkpoint backup and recovery (open):** the owner retains checkpoints and
   approved a weekly copy of the newest checkpoint and run metadata to a private R2
   bucket. That copy is not built and no restore has been rehearsed, so until it
@@ -785,13 +798,36 @@ A scope that is genuinely unhealthy by then stays open and queues no RESOLVED ev
   `startup_failure` run, a GitHub re-run of a monitor run,
   missing/corrupt newest state, or a newest checkpoint pushed out of the selector's
   history window (see [disable and recover](#disable-and-recover-without-losing-history))
-  makes every later scheduled run fail at selection until the owner performs a
+  makes every later run fail at selection until the owner performs a
   reviewed recovery; the not-running email (and GitHub's failure emails) report it,
   but no written reconciliation procedure exists yet. This is an open blocker, not an
   accepted default.
 - **Validation:** on the enabling change's reviewed tree, `npm test` passed 118 files
   and 2,121 tests, `npx tsc --noEmit` was clean and `npm run lint` reported 0 errors.
   The pull request records the review and the merged SHA.
+
+### Worker dispatch (November 8, 2026)
+
+The schedule (#246) merged at 19:06 UTC. GitHub started its first scheduled run,
+[42532374732](https://github.com/mcasillas17/ScoreArc/actions/runs/42532374732), only
+at 22:52 (exit 0, heartbeat 22:52:37) and none after it, so the not-running check sent
+its first real "Monitor not running" email at 00:00:59 on November 9. The check worked;
+GitHub's five-minute schedule did not. The owner approved making the receiver's cron
+the scheduler: every 5 minutes it dispatches `match-freshness.yml` on `main` with the
+`GITHUB_DISPATCH_TOKEN` Worker secret, dispatched runs send heartbeats, and the check
+runs on the same 5-minute cron. GitHub's schedule is removed from the workflow, so the
+two cannot both create runs and double the accepted cadence. Dispatched runs pass the
+same gates (`MATCH_FRESHNESS_ENABLED`, main, first attempt, one at a time) as scheduled
+ones did, and the selector still accepts the earlier scheduled runs in its history. The
+owner accepted the token's repository-wide Actions reach (see the inventory) the same day. Order: store the token secret first, then merge,
+then deploy the Worker from merged `main` right away. Merging removes the schedule, so
+no runs start until that deploy. If the check has already alerted for this outage
+(`alerted_at` later than `last_at`), the gap sends no new email and the first
+dispatched run's heartbeat sends "Monitor recovered". Otherwise one "Monitor not running"
+email follows once a cron tick runs more than 60 minutes after the last heartbeat
+(every 15 minutes until this deploy, every 5 after it), unless a dispatched heartbeat
+lands first; any such email is followed by the recovery email. Acceptance is the heartbeat row
+advancing every few minutes.
 
 ## Schema and separately approved release order
 

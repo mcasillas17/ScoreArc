@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { copyFile, mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,6 +9,7 @@ import worker, { type Env } from './worker';
 const MAX_EVENTS_PER_DAY = 300;
 const ctx = { waitUntil: vi.fn() };
 const TOKEN = 't'.repeat(40);
+const DISPATCH_TOKEN = 'g'.repeat(40);
 const URL_OK = `http://127.0.0.1/events/${TOKEN}`;
 const dirs: string[] = [];
 afterEach(async () => {
@@ -42,7 +43,7 @@ async function database() {
 async function setup() {
   const db = await database();
   const send = vi.fn(async (_message: { to: string; subject: string; text: string; html: string }) => ({ messageId: 'm' }));
-  const env: Env = { DB: db, EMAIL: { send }, RECEIVER_TOKEN: TOKEN, ALERT_RECIPIENT: 'owner@example.test' };
+  const env: Env = { DB: db, EMAIL: { send }, RECEIVER_TOKEN: TOKEN, ALERT_RECIPIENT: 'owner@example.test', GITHUB_DISPATCH_TOKEN: DISPATCH_TOKEN };
   return { db, send, env };
 }
 const event = (overrides: Record<string, unknown> = {}) => ({
@@ -367,12 +368,49 @@ describe('monitor heartbeat', () => {
   const check = (env: Env) => worker.scheduled({}, env);
   const row = (db: Awaited<ReturnType<typeof database>>) => db.sqlite.prepare('SELECT last_at, alerted_at FROM monitor_heartbeat').all();
   const at = (iso: string) => vi.useFakeTimers({ now: Date.parse(iso), toFake: ['Date'] });
-  afterEach(() => { vi.useRealTimers(); });
+  // The cron also dispatches the workflow; no test reaches GitHub.
+  let github: ReturnType<typeof vi.fn>;
+  beforeEach(() => { github = vi.fn(async () => new Response(null, { status: 204 })); vi.stubGlobal('fetch', github); });
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-  it('is wired to a 15-minute cron, which the 60-to-75-minute alert timing assumes', async () => {
+  it('is wired to a 5-minute cron, which the 60-to-65-minute alert timing assumes', async () => {
     const config = await readFile(new URL('./wrangler.jsonc', import.meta.url), 'utf8');
-    expect(config).toMatch(/"crons":\s*\["\*\/15 \* \* \* \*"\]/);
+    expect(config).toMatch(/"crons":\s*\["\*\/5 \* \* \* \*"\]/);
     expect(typeof worker.scheduled).toBe('function');
+  });
+  it('dispatches one monitor run on main every cron run', async () => {
+    const { env } = await setup();
+    await check(env); await check(env);
+    expect(github).toHaveBeenCalledTimes(2);
+    const [url, init] = github.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://api.github.com/repos/mcasillas17/ScoreArc/actions/workflows/match-freshness.yml/dispatches');
+    expect(init.method).toBe('POST'); expect(init.redirect).toBe('manual'); expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(init.body).toBe('{"ref":"main"}');
+    expect(init.headers).toMatchObject({ Authorization: `Bearer ${DISPATCH_TOKEN}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'scorearc-alert-receiver' });
+  });
+  it("accepts GitHub's current 200-with-run-details answer without logging a rejection", async () => {
+    const { send, env } = await setup();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    github.mockResolvedValue(new Response(JSON.stringify({ workflow_run_id: 1 }), { status: 200 }));
+    at('2026-11-01T12:00:00Z'); await beat(env);
+    at('2026-11-01T12:05:00Z'); await check(env);
+    expect(github).toHaveBeenCalledOnce(); expect(log).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled();
+  });
+  it.each([
+    ['a redirected dispatch', (env: Env) => { github.mockResolvedValue(new Response(null, { status: 302, headers: { Location: 'https://example.test/' } })); return env; }, 'dispatch rejected'],
+    ['a missing token', (env: Env) => ({ ...env, GITHUB_DISPATCH_TOKEN: '' }), 'dispatch token missing'],
+    ['a rejected dispatch', (env: Env) => { github.mockResolvedValue(new Response(`bad ${DISPATCH_TOKEN}`, { status: 401 })); return env; }, 'dispatch rejected'],
+    ['a dispatch that throws', (env: Env) => { github.mockRejectedValue(new Error(`net ${DISPATCH_TOKEN} ${TOKEN}`)); return env; }, 'dispatch failed'],
+  ])('%s logs no secret and the not-running check still alerts', async (_name, breakIt, line) => {
+    const { send, env } = await setup();
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    at('2026-11-01T12:00:00Z'); await beat(env);
+    const broken = breakIt(env);
+    at('2026-11-01T13:05:00Z'); await check(broken);
+    expect(send.mock.calls.map(([m]) => m.subject)).toEqual(['[ScoreArc] Monitor not running']);
+    expect(JSON.stringify(log.mock.calls)).toContain(line);
+    expect(JSON.stringify(log.mock.calls)).not.toContain(DISPATCH_TOKEN);
+    expect(JSON.stringify(log.mock.calls)).not.toContain(TOKEN);
   });
   it('stays silent until the first heartbeat arms it', async () => {
     const { send, env } = await setup();
@@ -398,7 +436,7 @@ describe('monitor heartbeat', () => {
     expect(send).toHaveBeenCalledOnce();
     const down = send.mock.calls[0][0];
     expect(down.to).toBe('owner@example.test'); expect(down.subject).toBe('[ScoreArc] Monitor not running');
-    expect(down.text).toContain('2026-11-01T12:00:00.000Z'); expect(down.text).toContain('actions/workflows/match-freshness.yml');
+    expect(down.text).toContain('has not completed a monitor run since 2026-11-01T12:00:00.000Z'); expect(down.text).toContain('actions/workflows/match-freshness.yml');
     at('2026-11-01T14:05:00Z'); expect((await beat(env)).status).toBe(204);
     expect(send).toHaveBeenCalledTimes(2); expect(send.mock.calls[1][0].subject).toBe('[ScoreArc] Monitor recovered');
     await beat(env); expect(send).toHaveBeenCalledTimes(2);
@@ -453,6 +491,7 @@ describe('monitor heartbeat', () => {
     db.failing.statement = 'SELECT';
     at('2026-11-01T14:00:00Z'); await check(env);
     expect(send).not.toHaveBeenCalled();
+    expect(github).toHaveBeenCalledOnce(); // the dispatch is independent of the check
     expect(JSON.stringify(log.mock.calls)).toContain('heartbeat check');
     expect(JSON.stringify(log.mock.calls)).not.toContain(TOKEN);
   });
