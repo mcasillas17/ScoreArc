@@ -1,8 +1,9 @@
 // Receives match-monitor events (scripts/match-freshness-monitor.mjs) and emails the
 // owner. Contract: docs/backend/MATCH_FRESHNESS.md#alert-receiver. HTTP 200 with
 // {"eventId"} means saved and emailed; anything else makes the sender retry the same id.
-// It also takes scheduled-run heartbeats and, on a cron, emails when they stop
-// (docs/backend/MATCH_FRESHNESS.md#not-running-check).
+// It also takes monitor-run heartbeats and, on a cron, emails when they stop
+// (docs/backend/MATCH_FRESHNESS.md#not-running-check). The same cron starts the
+// monitor workflow, because GitHub's own schedule starts it late or not at all.
 
 interface Statement {
   first<T>(): Promise<T | null>;
@@ -13,6 +14,8 @@ export interface Env {
   EMAIL: { send(message: { to: string; from: string; subject: string; text: string; html: string }): Promise<unknown> };
   RECEIVER_TOKEN: string;
   ALERT_RECIPIENT: string;
+  // Fine-grained token for this repository only, Actions read and write.
+  GITHUB_DISPATCH_TOKEN?: string;
 }
 
 const ALERT_SENDER = 'alerts@scorearc.futbol';
@@ -21,9 +24,12 @@ const MIN_TOKEN_LENGTH = 32;
 // ponytail: one fixed cap on new work, a leaked token can still use it up. Rotate the
 // token if the cap trips without a matching incident.
 const MAX_EVENTS_PER_DAY = 300;
-// The schedule runs every 5 minutes but GitHub often starts it late, so allow an hour.
+// The cron dispatches a run every 5 minutes, but a run can queue behind a slow one
+// (10-minute job limit) and GitHub can start it late, so allow an hour.
 const HEARTBEAT_MAX_AGE_MS = 60 * 60_000;
 const WORKFLOW_URL = 'https://github.com/mcasillas17/ScoreArc/actions/workflows/match-freshness.yml';
+const DISPATCH_URL = 'https://api.github.com/repos/mcasillas17/ScoreArc/actions/workflows/match-freshness.yml/dispatches';
+const DISPATCH_TIMEOUT_MS = 10_000;
 
 const eventId = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}:[1-9][0-9]{0,15}$/;
 const slug = /^[a-z0-9][a-z0-9-]{0,79}$/;
@@ -84,8 +90,8 @@ const mail = (env: Env, subject: string, text: string) => ({ to: env.ALERT_RECIP
 
 function monitorMessage(down: boolean, at: string, env: Env) {
   const text = down
-    ? `The match monitor has not completed a scheduled run since ${at}.\n\nCheck the workflow: ${WORKFLOW_URL}`
-    : `The match monitor completed a scheduled run again at ${at}.\n\nWorkflow: ${WORKFLOW_URL}`;
+    ? `The match monitor has not completed a monitor run since ${at}.\n\nCheck the workflow: ${WORKFLOW_URL}`
+    : `The match monitor completed a monitor run again at ${at}.\n\nWorkflow: ${WORKFLOW_URL}`;
   return mail(env, `[ScoreArc] Monitor ${down ? 'not running' : 'recovered'}`, text);
 }
 
@@ -122,6 +128,21 @@ async function checkHeartbeat(env: Env) {
   if (!row || Date.now() - Date.parse(row.last_at) <= HEARTBEAT_MAX_AGE_MS || (row.alerted_at && row.alerted_at > row.last_at)) return;
   await env.EMAIL.send(monitorMessage(true, row.last_at, env));
   await env.DB.prepare('UPDATE monitor_heartbeat SET alerted_at = ? WHERE id = 1').bind(detected).run();
+}
+
+// Starts one run on main. The workflow's own gates (MATCH_FRESHNESS_ENABLED, main only,
+// one run at a time) still decide what it does. A failed start only logs: the missing
+// heartbeats are what the check above alerts on.
+async function dispatchMonitor(env: Env) {
+  if (!env.GITHUB_DISPATCH_TOKEN) return console.error('alert-receiver: dispatch token missing');
+  const response = await fetch(DISPATCH_URL, {
+    // workerd rejects redirect 'error'; a 3xx is not ok, so it is logged as rejected.
+    method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(DISPATCH_TIMEOUT_MS),
+    headers: { Authorization: `Bearer ${env.GITHUB_DISPATCH_TOKEN}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json', 'User-Agent': 'scorearc-alert-receiver', 'X-GitHub-Api-Version': '2022-11-28' },
+    body: JSON.stringify({ ref: 'main' }),
+  });
+  await response.body?.cancel();
+  if (!response.ok) console.error('alert-receiver: dispatch rejected', response.status);
 }
 
 // Provider and database errors can quote configuration, so only a known code is logged.
@@ -199,7 +220,10 @@ const worker = {
   },
   // Cron trigger in wrangler.jsonc. A failure here is retried by the next run.
   async scheduled(_controller: unknown, env: Env) {
-    await checkHeartbeat(env).catch(error => logFailure('heartbeat check', error));
+    await Promise.all([
+      dispatchMonitor(env).catch(error => logFailure('dispatch', error)),
+      checkHeartbeat(env).catch(error => logFailure('heartbeat check', error)),
+    ]);
   },
 };
 export default worker;

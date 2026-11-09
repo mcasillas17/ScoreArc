@@ -125,9 +125,10 @@ export async function selectState({ github, run, initialize = false, now = Date.
     for (const source of runs) {
       validateRun(source, !(source.run_number > run.number));
       if (source.run_number > run.number) {
-        // Under the schedule a newer run can already be listed. The concurrency group runs one
-        // job at a time, so while this run is active a newer one is still waiting or was
-        // cancelled before it started; either way it holds no state. Anything else fails closed.
+        // Runs start every five minutes (the receiver's dispatch, or a manual one), so a
+        // newer run can already be listed. The concurrency group runs one job at a time,
+        // so while this run is active a newer one is still waiting or was cancelled
+        // before it started; either way it holds no state. Anything else fails closed.
         requireValid(!seenIds.has(source.id) && source.run_number < previousNumber && source.id > run.id
           && timestamp(source.created_at) >= timestamp(current.created_at)
           && (['queued', 'pending', 'waiting', 'requested'].includes(source.status)

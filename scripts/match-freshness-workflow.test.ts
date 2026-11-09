@@ -7,10 +7,10 @@ const document = () => readFile('.github/workflows/match-freshness.yml', 'utf8')
 describe('opt-in durable match workflow', () => {
   it('gates the whole job before checks, downloads, secrets and delivery', async () => {
     const workflow = await document();
-    // Owner-accepted activation (November 7, 2026): five-minute schedule plus manual runs.
-    expect(Object.keys(workflow.on).sort()).toEqual(['schedule', 'workflow_dispatch']);
-    expect(workflow.on.schedule).toEqual([{ cron: '3-58/5 * * * *' }]);
-    // Scheduled runs have no inputs, so this must fall back to false: never initialize history.
+    // Dispatch only: the receiver's cron dispatches every five minutes (November 8, 2026).
+    // GitHub's schedule is gone, so it cannot double the accepted cadence.
+    expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch']);
+    // The receiver dispatches with no inputs, so this must fall back to false: never initialize history.
     expect(workflow.jobs.check.steps.find((s: any) => s.id === 'select').env.INITIALIZE_STATE).toBe('${{ inputs.initialize_state || false }}');
     expect(workflow.on.workflow_dispatch.inputs.initialize_state.default).toBe(false);
     expect(workflow.jobs.check.if).toContain("vars.MATCH_FRESHNESS_ENABLED == 'true'");
@@ -129,7 +129,7 @@ async function harness() {
     const workDir = join(dir, 'watchdog-state'); const output = join(dir, 'output');
     const env = { ...vars, NODE_ENV: 'test' as const, GITHUB_REPOSITORY: current.repository.full_name, GITHUB_REF: 'refs/heads/main', GITHUB_SHA: current.head_sha,
       GITHUB_RUN_ID: String(id), GITHUB_RUN_NUMBER: String(id), GITHUB_RUN_ATTEMPT: '1', GITHUB_OUTPUT: output,
-      INITIALIZE_STATE: String(initialize), MATCH_FRESHNESS_WEBHOOK_URL: webhookURL, PENDING_ARTIFACT_ID: '', GITHUB_EVENT_NAME: event, CHECKPOINT_COMMITTED: '' };
+      INITIALIZE_STATE: String(initialize), MATCH_FRESHNESS_WEBHOOK_URL: webhookURL, PENDING_ARTIFACT_ID: '', CHECKPOINT_COMMITTED: '' };
     const executed: any[] = [];
     for (const step of workflow.jobs.check.steps) {
       if (!step.id) continue;
@@ -174,7 +174,7 @@ describe('enabled workflow artifact boundaries', () => {
     expect(h.checks()).toBe(0); expect(h.notifications).toEqual([]); expect(h.artifacts.size).toBe(0);
   });
   it.each(['', 'false'])('disabled job (enabled=%s) makes no reader, GitHub or receiver requests', async enabled => {
-    const h = await harness(); const disabled = await h.run({ enabled, event: 'schedule' });
+    const h = await harness(); const disabled = await h.run({ enabled });
     expect(disabled.steps).toEqual({}); expect(disabled.github).not.toHaveBeenCalled();
     expect(h.checks()).toBe(0); expect(h.notifications).toEqual([]); expect(h.artifacts.size).toBe(0); expect(h.heartbeats).toEqual([]);
   });
@@ -201,13 +201,13 @@ describe('enabled workflow artifact boundaries', () => {
   // The job gate lets 'TRUE' start a job whose CLI does nothing; its Prepare step must be
   // skipped so the run is not mistaken for a lost preparation by the next real run.
   it("a job started by 'TRUE' prepares nothing and does not block the next run", async () => {
-    const h = await harness(); await h.run({ initialize: true });
-    const upper = await h.run({ enabled: 'TRUE', event: 'schedule' });
+    const h = await harness(); await h.run({ initialize: true }); h.heartbeats.length = 0;
+    const upper = await h.run({ enabled: 'TRUE' });
     expect(upper.steps.select.outcome).toBe('success'); expect(upper.steps.prepare.outcome).toBe('skipped');
     expect(h.artifacts.has(upper.id)).toBe(false);
     // Documented consequence: no heartbeat, so an armed not-running check emails.
     expect(upper.steps.result.outcome).toBe('skipped'); expect(h.heartbeats).toEqual([]);
-    const next = await h.run({ event: 'schedule' });
+    const next = await h.run();
     expect(next.steps.restore.outcome).toBe('success'); expect(next.steps.prepare.outcome).toBe('success');
   });
   it('failed pending upload prohibits sends and blocks silent rollback on next run', async () => {
@@ -225,37 +225,40 @@ describe('enabled workflow artifact boundaries', () => {
   });
 });
 
-describe('scheduled heartbeat', () => {
-  it('pings after scheduled runs that delivered, including data incidents, and never on manual runs', async () => {
+describe('heartbeat', () => {
+  it('pings after dispatched and scheduled runs that delivered, including data incidents', async () => {
     const h = await harness();
-    const manual = await h.run({ initialize: true }); expect(manual.steps.result.outcome).toBe('failure');
-    expect(h.heartbeats).toEqual([]);
-    const incident = await h.run({ event: 'schedule' }); expect(incident.steps.result.outcome).toBe('failure');
+    // The receiver's cron dispatches the regular runs, so a dispatched run counts.
+    const dispatched = await h.run({ initialize: true }); expect(dispatched.steps.result.outcome).toBe('failure');
     expect(h.heartbeats).toEqual([`/heartbeat/${'t'.repeat(40)}`]);
-    h.healthy(); const healthy = await h.run({ event: 'schedule' }); expect(healthy.steps.result.outcome).toBe('success');
+    // A scheduled run from before November 8 still pings, and the next run selects its checkpoint.
+    const incident = await h.run({ event: 'schedule' }); expect(incident.steps.result.outcome).toBe('failure');
     expect(h.heartbeats).toHaveLength(2);
+    const next = await h.run(); expect(next.steps.restore.outcome).toBe('success'); expect(next.steps.prepare.outcome).toBe('success');
+    expect(next.steps.select.outputs.run_id).toBe(String(incident.id));
+    expect(h.heartbeats).toHaveLength(3);
   });
   it('sends nothing when delivery is off or delivery failed', async () => {
     const h = await harness(); h.healthy();
     // Healthy, so the run exits 0 and only the missing final checkpoint blocks the ping.
-    const off = await h.run({ initialize: true, event: 'schedule', deliveryEnabled: 'false' });
+    const off = await h.run({ initialize: true, deliveryEnabled: 'false' });
     expect(off.steps.result.outcome).toBe('success'); expect(off.steps.final.outcome).toBe('skipped'); expect(h.heartbeats).toEqual([]);
     // The CLI enforces delivery-only heartbeats on its own, even if the workflow claimed commit.
-    await h.run({ event: 'schedule', deliveryEnabled: 'false', checkpointCommitted: 'true' }); expect(h.heartbeats).toEqual([]);
+    await h.run({ deliveryEnabled: 'false', checkpointCommitted: 'true' }); expect(h.heartbeats).toEqual([]);
     h.unhealthy();
-    h.receiverDown(true); const failed = await h.run({ event: 'schedule' });
+    h.receiverDown(true); const failed = await h.run();
     expect(failed.steps.deliver.outcome).toBe('success'); expect(h.heartbeats).toEqual([]);
-    h.receiverDown(false); await h.run({ event: 'schedule' }); expect(h.heartbeats).toHaveLength(1);
+    h.receiverDown(false); await h.run(); expect(h.heartbeats).toHaveLength(1);
   });
   it.each(['pending', 'final'])('sends nothing after a failed %s checkpoint upload', async failUpload => {
     const h = await harness(); h.healthy();
-    await h.run({ initialize: true, event: 'schedule', failUpload });
+    await h.run({ initialize: true, failUpload });
     expect(h.heartbeats).toEqual([]);
   });
   it('a failed ping leaves the run result unchanged', async () => {
     const h = await harness(); h.healthy(); h.heartbeatDown(true);
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const run = await h.run({ initialize: true, event: 'schedule' });
+    const run = await h.run({ initialize: true });
     expect(run.steps.final.outcome).toBe('success'); expect(run.steps.result.outcome).toBe('success');
     expect(h.heartbeats).toHaveLength(1);
     expect(JSON.stringify(log.mock.calls)).toContain('heartbeat not acknowledged');

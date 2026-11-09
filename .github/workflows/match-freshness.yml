@@ -1,11 +1,9 @@
 name: Match freshness watchdog
 
-# Schedule added by the activation change the owner accepted on November 7, 2026
-# (docs/backend/MATCH_FRESHNESS.md, "Activation record"). MATCH_FRESHNESS_ENABLED
-# absent/false still means zero checks.
+# Once deployed, the alert receiver's cron dispatches this workflow on main every five
+# minutes, because GitHub's own schedule started it late or not at all
+# (docs/backend/MATCH_FRESHNESS.md, "Worker dispatch"). MATCH_FRESHNESS_ENABLED absent/false still means zero checks.
 on:
-  schedule:
-    - cron: '3-58/5 * * * *'
   workflow_dispatch:
     inputs:
       initialize_state:
@@ -89,8 +87,8 @@ jobs:
         id: result
         if: ${{ always() && steps.prepare.outputs.state_written == 'true' }}
         env:
-          # Scheduled runs send a heartbeat to the receiver's not-running check, only
-          # after both checkpoints were uploaded.
+          # Runs send a heartbeat to the receiver's not-running check, only after both
+          # checkpoints were uploaded.
           MATCH_FRESHNESS_WEBHOOK_URL: ${{ secrets.MATCH_FRESHNESS_WEBHOOK_URL }}
           CHECKPOINT_COMMITTED: ${{ steps.pending.outcome == 'success' && steps.final.outcome == 'success' }}
         run: node scripts/match-freshness-monitor.mjs result

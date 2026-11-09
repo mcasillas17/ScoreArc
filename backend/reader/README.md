@@ -284,8 +284,10 @@ Both reject missing/corrupt/incompatible state. Do not feed a v1 file to the v2
 monitor or bootstrap over it: migration requires an owner-reviewed preservation
 of active incidents and pending delivery history.
 
-`.github/workflows/match-freshness.yml` runs on a schedule and on manual dispatch;
-its status is in the
+`.github/workflows/match-freshness.yml` runs only on dispatch: every five minutes from
+the alert receiver's cron once that is deployed
+([Worker dispatch](../../docs/backend/MATCH_FRESHNESS.md#worker-dispatch-november-8-2026)),
+or manually; its status is in the
 [activation record](../../docs/backend/MATCH_FRESHNESS.md#activation-record-november-7-2026).
 The job requires repository variable `MATCH_FRESHNESS_ENABLED=true` and
 `refs/heads/main`; the CLI independently checks enablement before state or network

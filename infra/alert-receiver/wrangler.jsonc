@@ -2,13 +2,14 @@
   "name": "scorearc-alert-receiver",
   "main": "worker.ts",
   "compatibility_date": "2026-08-01",
-  // Not-running check: alerts when no monitor heartbeat arrived for 60 minutes.
-  "triggers": { "crons": ["*/15 * * * *"] },
+  // Every 5 minutes: starts the monitor workflow (GitHub's schedule is unreliable) and
+  // alerts when no monitor heartbeat arrived for 60 minutes.
+  "triggers": { "crons": ["*/5 * * * *"] },
   // Request URLs contain the receiver token, so invocation logs stay off. Only the
   // Worker's own sanitized failure lines are kept.
   "observability": { "enabled": true, "logs": { "invocation_logs": false } },
-  // No recipient here: this repository is public. RECEIVER_TOKEN and ALERT_RECIPIENT
-  // are Worker secrets. The sending domain is deliberately not onboarded, so this
+  // No recipient here: this repository is public. RECEIVER_TOKEN, ALERT_RECIPIENT and
+  // GITHUB_DISPATCH_TOKEN are Worker secrets. The sending domain is deliberately not onboarded, so this
   // binding can reach verified destination addresses only.
   "send_email": [{ "name": "EMAIL" }],
   "d1_databases": [{
