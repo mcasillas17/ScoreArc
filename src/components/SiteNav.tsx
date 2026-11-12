@@ -40,6 +40,7 @@ const simulateIcon = <svg {...ICON}><path d="M4 18V6M10 18v-7M16 18v-4M20 18V9" 
 const bracketIcon = <svg {...ICON}><path d="M6 4v4a3 3 0 0 0 3 3h2" /><path d="M6 20v-4a3 3 0 0 1 3-3h2" /><circle cx="18" cy="12" r="2" /><path d="M11 12h5" /><circle cx="5" cy="4" r="1.5" /><circle cx="5" cy="20" r="1.5" /></svg>;
 const tableIcon = <svg {...ICON}><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="14" y2="18" /></svg>;
 const matchesIcon = <svg {...ICON}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" /></svg>;
+const competitionsIcon = <svg {...ICON}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="4" r="1.6" fill="currentColor" /><circle cx="19" cy="16" r="1.6" fill="currentColor" /><circle cx="5" cy="16" r="1.6" fill="currentColor" /></svg>;
 const newsIcon = <svg {...ICON}><path d="M4 5h16v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>;
 
 export interface NavItem {
@@ -319,12 +320,16 @@ export default function SiteNav() {
   // wheel opens, and the wheel's own position among them.
   const [letters, setLetters] = useState<string[]>([]);
   const [letterFocus, setLetterFocus] = useState(0);
+  // On Teams the dial is the team list's, and the competitions would have
+  // nowhere to be: the Competitions item hands the dial back to them.
+  const [showCompetitions, setShowCompetitions] = useState(false);
   // The dial returns to rest, and the wheel closes, on every navigation.
   const [lastPath, setLastPath] = useState(pathname);
   if (lastPath !== pathname) {
     setLastPath(pathname);
     setFocus(resting);
     setOpen(false);
+    setShowCompetitions(false);
   }
 
   const centreRef = useRef<HTMLButtonElement>(null);
@@ -359,6 +364,7 @@ export default function SiteNav() {
   const openWheel = () => {
     setFocus(resting);
     readLetters();
+    setShowCompetitions(false);
     setOpen(true);
   };
   // Focus goes back to the centre button in the effect below, which hears
@@ -411,7 +417,7 @@ export default function SiteNav() {
   }, [open]);
 
   // Turning the letter dial scrolls the team list to that initial.
-  const lettersOn = letters.length > 0;
+  const lettersOn = letters.length > 0 && !showCompetitions;
   const turnLetters = (next: number) => {
     const at = (f: number) => Math.round(f) % letters.length;
     if (at(next) !== at(letterFocus)) document.getElementById(teamLetterId(letters[at(next)]))?.scrollIntoView();
@@ -567,6 +573,8 @@ export default function SiteNav() {
               title={item.label}
               onClick={() => {
                 trackEvent('Section opened', { section: item.label, surface: 'sitenav' });
+                // Teams, on Teams: back to the team list's dial.
+                setShowCompetitions(false);
               }}
             >
               <span className="sn-icon">{item.icon}</span>
@@ -575,6 +583,20 @@ export default function SiteNav() {
             </Link>
           );
         })}
+        {letters.length > 0 && (
+          <button
+            type="button"
+            className={`sn-item${showCompetitions ? ' sn-item--active' : ''}`}
+            aria-pressed={showCompetitions}
+            aria-label={t('nav.competitions')}
+            title={t('nav.competitions')}
+            onClick={() => setShowCompetitions(!showCompetitions)}
+          >
+            <span className="sn-icon">{competitionsIcon}</span>
+            <span className="sn-label">{t('nav.competitions')}</span>
+            {showCompetitions && <ArcMark />}
+          </button>
+        )}
         {/* No `aria-disabled`: it is ignored on a bare span with no role, so
             it only ever reassured us. The visible "soon" badge is real text
             inside the item, so a screen reader reads "Simulate soon" and the
@@ -704,6 +726,14 @@ export default function SiteNav() {
                 {item.label}
               </Link>
             ))}
+          </div>
+        )}
+        {lettersOn && (
+          <div className="sn-wheel-site">
+            <button type="button" className="sn-wheel-site-link" onClick={() => setShowCompetitions(true)}>
+              {competitionsIcon}
+              {t('nav.competitions')}
+            </button>
           </div>
         )}
         <div className="sn-wheel-disc" aria-hidden />
