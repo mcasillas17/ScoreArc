@@ -398,50 +398,55 @@ a.sn-item:hover { color: var(--text); }
    Hover, keyboard focus or the pin. `:has(:focus-visible)` rather than
    `:focus-within`: a clicked crest keeps focus after the navigation, and
    :focus-within would hold the rail open over the page until the reader
-   clicked somewhere else. */
+   clicked somewhere else.
+
+   Hover is `[data-hover]`, set by SiteNav from pointer events, not `:hover`:
+   a tap on a touch screen sets :hover too, and would throw a 312px overlay
+   over the page and eat the tap. The attribute is only set by a pointer that
+   can actually hover. */
 @media (min-width: 761px) {
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) {
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) {
     /* Expanded, the rim meets the rail at x = 190. */
     --dial-cx: -110px;
     width: var(--sidebar-open-w);
     box-shadow: 12px 0 40px rgba(0, 0, 0, 0.55);
   }
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-brand {
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-brand {
     left: 24px;
     top: 20px;
     width: auto;
   }
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-mark { display: none; }
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-lockup { display: block; }
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-mark { display: none; }
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-lockup { display: block; }
 
   /* The site links move inside the dial, beside its centre, and trade their
      icons for labels. */
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-site {
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-site {
     left: 24px;
     top: var(--dial-cy);
     transform: translateY(-50%);
     gap: 0;
   }
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-item {
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-item {
     width: auto;
     justify-content: flex-start;
     gap: 8px;
   }
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-icon { display: none; }
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-label { display: block; }
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-item--soon { display: flex; }
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-item .sn-arc {
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-icon { display: none; }
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-label { display: block; }
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-item--soon { display: flex; }
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-item .sn-arc {
     display: block;
     position: absolute;
     left: -2px;
     bottom: 2px;
   }
 
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-dial-slot { --crest: 44px; }
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-current] { --crest: 60px; }
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-dial-slot { --crest: 44px; }
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-current] { --crest: 60px; }
   /* Two lines at most: "Super League Greece" does not fit the 110px between
      its crest and the rail's edge on one. */
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-crest-name {
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-crest-name {
     display: block;
     /* The crest hangs off a zero-width slot, so without an explicit width the
        name shrinks to its longest word. */
@@ -450,7 +455,7 @@ a.sn-item:hover { color: var(--text); }
     line-height: 1.2;
     white-space: normal;
   }
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-current] .sn-crest {
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-current] .sn-crest {
     gap: 12px;
     color: var(--text);
     font-size: 14px;
@@ -458,15 +463,15 @@ a.sn-item:hover { color: var(--text); }
   }
   /* The larger crest leaves 80px before the rail's edge: "Bundesliga" in one
      line at this size, everything longer in two. */
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-current] .sn-crest-name {
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-current] .sn-crest-name {
     max-width: 80px;
   }
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-current] .sn-crest-mark {
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-current] .sn-crest-mark {
     box-shadow: 0 0 0 6px var(--bg);
   }
 
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-pin { left: 24px; }
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-credit {
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-pin { left: 24px; }
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-credit {
     position: absolute;
     left: 80px;
     bottom: 20px;
@@ -489,7 +494,7 @@ a.sn-item:hover { color: var(--text); }
    a shorter window keeps the collapsed reach; the rest are a turn of the dial
    away. Scale --dial-r with the viewport if short windows start to matter. */
 @media (min-width: 761px) and (min-height: 761px) {
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-far]:not([data-off]) {
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-far]:not([data-off]) {
     opacity: 1;
     pointer-events: auto;
   }
@@ -497,7 +502,7 @@ a.sn-item:hover { color: var(--text); }
 /* Expanded, the site links are a column centred on the dial. Under 540px of
    height four rows of it reach the pin; the label that is not a link goes. */
 @media (min-width: 761px) and (max-height: 540px) {
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-item--soon { display: none; }
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-item--soon { display: none; }
 }
 
 /* ===== Main ===== */

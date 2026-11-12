@@ -293,6 +293,7 @@ export default function SiteNav() {
   );
 
   const [pinned, setPinned] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const [open, setOpen] = useState(false);
   const [shrunk, setShrunk] = useState(false);
   const [focus, setFocus] = useState(resting);
@@ -418,10 +419,21 @@ export default function SiteNav() {
     <nav
       className="sn"
       data-pinned={pinned || undefined}
+      data-hover={hovered || undefined}
       aria-label={t('nav.main')}
+      // Hover expands the rail, but only for a pointer that can hover: a touch
+      // also "enters", and expanding under a tap would eat it. Touch readers
+      // have the pin.
+      onPointerEnter={(e) => {
+        if (e.pointerType !== 'touch') setHovered(true);
+      }}
       // Left alone, a dial turned away from the open competition would leave
-      // the collapsed rail showing some other crest in the middle.
-      onMouseLeave={() => {
+      // the collapsed rail showing some other crest in the middle. Not for
+      // touch, where lifting the finger is also a leave and would undo the
+      // drag that just turned the dial.
+      onPointerLeave={(e) => {
+        if (e.pointerType === 'touch') return;
+        setHovered(false);
         if (!pinned) setFocus(resting);
       }}
       // The same for the keyboard: focusing a crest turns the dial to it, and
