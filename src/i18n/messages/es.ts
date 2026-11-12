@@ -194,6 +194,7 @@ export const es = {
   'standings.metaTitle': (edition: string) => `Clasificación · ${edition}`,
   'standings.metaDescription': (edition: string) => `Clasificación, máximos goleadores y máximos asistentes de ${edition}.`,
   'standings.tournamentDescription': 'Goleadores, asistencias, la carrera por el tercer puesto y tablas de grupos completas.',
+  'standings.groupsDescription': 'Goleadores, asistencias y tablas de grupos completas.',
   'standings.leagueDescription': 'Goleadores, asistencias y la tabla completa de la liga.',
   'standings.groupStageResults': 'Resultados de la fase de grupos',
   'standings.goldenBoot': 'Bota de Oro · Máximos goleadores',

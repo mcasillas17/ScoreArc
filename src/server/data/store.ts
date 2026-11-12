@@ -430,7 +430,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       const cached = deps.cache.get(k) as BracketRound[] | undefined;
       if (cached) return cached;
       const raw = rc.season.bracketDatesRange
-        ? await fetchScoreboardWindow(rc, rc.season.bracketDatesRange, deps.fetchJson)
+        ? await fetchScoreboardWindow(rc, rc.season.bracketDatesRange, deps.fetchJson, undefined, 184)
         : await deps.fetchJson(scoreboardUrl(slug(rc)), {
           signal: AbortSignal.timeout(15_000), maxBytes: 4 * 1024 * 1024,
         });

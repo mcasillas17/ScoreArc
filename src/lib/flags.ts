@@ -20,6 +20,13 @@ const FLAG_MAP: Record<string, string> = {
   IRQ: 'iq', JOR: 'jo', UAE: 'ae', CHN: 'cn',
   // CONCACAF / OFC
   CRC: 'cr', PAN: 'pa', HON: 'hn', JAM: 'jm', HAI: 'ht', NZL: 'nz', CUW: 'cw',
+  TRI: 'tt', DOM: 'do', NCA: 'ni', SLV: 'sv', GUA: 'gt', SUR: 'sr', CAY: 'ky',
+  GUY: 'gy', PUR: 'pr', DMA: 'dm', BRB: 'bb', BER: 'bm', LCA: 'lc', CUB: 'cu',
+  GRN: 'gd', SKN: 'kn', BLZ: 'bz', VIN: 'vc', SMA: 'sx', BVI: 'vg', MSR: 'ms',
+  TCA: 'tc', ATG: 'ag', ARU: 'aw', AIA: 'ai', BAH: 'bs', USVI: 'vi',
+  // Deliberately unmapped: Martinique, Guadeloupe, French Guiana, St. Martin
+  // and Bonaire. flagcdn draws France's / the Netherlands' flag for them, so
+  // they fall back to ESPN's own country logo instead.
 };
 
 export function flagUrl(abbr?: string | null): string | null {

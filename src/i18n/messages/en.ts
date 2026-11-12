@@ -206,6 +206,7 @@ export const en = {
   'standings.metaTitle': (edition: string) => `Standings · ${edition}`,
   'standings.metaDescription': (edition: string) => `${edition} table, top scorers and top assists.`,
   'standings.tournamentDescription': 'Scorers, assists, the third-place race, and full group tables.',
+  'standings.groupsDescription': 'Scorers, assists, and full group tables.',
   'standings.leagueDescription': 'Scorers, assists, and the full league table.',
   'standings.groupStageResults': 'Group Stage Results',
   'standings.goldenBoot': 'Golden Boot · Top Scorers',
