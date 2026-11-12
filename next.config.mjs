@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // The dev indicator defaults to bottom-left, which is exactly where the
+  // rail's pin button and the phone bar's first tab are. Dev only.
+  devIndicators: { position: 'top-right' },
   async redirects() {
     return [
       // The calendar page was /fixtures until 2026-08-18. "Fixtures" is British

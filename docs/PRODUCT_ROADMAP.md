@@ -105,6 +105,7 @@ versus pending.
 | **E21** | Operations, admin & governance | pre-cutover operations | implementation contract below | T21.1–T21.4 |
 | **E22** | Developer & device platform | 1d dogfood + rights + auth/quotas | [MCP decision](decisions/2026-09-01-mcp-timing-and-boundary.md) | T22.1–T22.5 |
 | **E23** | Global competition onboarding | E17 honesty + E18 rights/source | implementation contract below | T23.1–T23.5 |
+| **E24** | Dial navigation | implemented on `feat/dial-nav` — awaiting review | [spec](superpowers/specs/2026-11-12-dial-navigation-design.md) | [plan](superpowers/plans/2026-11-12-dial-navigation.md) |
 
 E6, E8, E9, and the new E16–E23 work use the same measure-before-building rule.
 This roadmap records task intent, implementation boundaries, failure rules,
@@ -1002,6 +1003,24 @@ neither E16 cutover nor full T21.2 schema readiness, and T17.1 stays closed.
 | **T23.3** | Certify ingestion, reader parity, history, assets, and optional shot/xG capability per competition. | A competition is not promoted as live until required reads pass or an explicit gated-out capability is shown. | E16/E17 |
 | **T23.4** | Verify locale copy, naming, timezone/date formatting, competition rules, responsive layouts, and share metadata. | English/Spanish framing is complete; provider prose remains labeled; domain rules have golden tests. | T23.2/T23.3 |
 | **T23.5** | Add prioritized competition batches only after rights and current-ten honesty are proven. | No named league is scheduled by this task itself; every addition has an owner, source rights, coverage report, and rollback. | E18, T23.1–T23.4 |
+
+### E24 · Dial navigation — implemented, awaiting review
+
+Branch `feat/dial-nav`.
+[spec](superpowers/specs/2026-11-12-dial-navigation-design.md) ·
+[plan](superpowers/plans/2026-11-12-dial-navigation.md)
+
+Replaces E14's sidebar, drawer and bottom tab bar with one radial control in
+the bracket's own language. Desktop: a 96px rail whose competition list is the
+rim of a dial, expanding to 312px as an overlay on hover, keyboard focus or
+pin, with the open competition's sections moved to a sticky tab row above the
+content. Phone: a lockup-only masthead and a single arched bottom bar that
+shrinks while scrolling and raises a wheel of competitions and sections.
+
+No data dependency and no backend gate: everything is still derived from the
+pathname and `competitions.ts`. Telemetry event names and properties are
+unchanged. Not in scope, by decision: global search (E12), the Archivo
+typeface, persisting the pin, and a language toggle in the nav.
 
 ---
 
