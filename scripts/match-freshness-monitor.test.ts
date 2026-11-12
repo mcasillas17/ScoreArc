@@ -37,6 +37,17 @@ async function prepareNext(o: Awaited<ReturnType<typeof options>>, result = stal
 }
 
 describe('durable match monitor', () => {
+  it('adopts a competition added to the registry, and still refuses a removed one', async () => {
+    const o = await options(); o.check = async () => fresh;
+    await monitor.prepareMonitor(o);
+    o.scopes = [scopeFor('world-cup'), scopeFor('nations-league')];
+    await prepareNext(o, fresh);
+    const added = await state(o.stateFile);
+    expect(added.incidents).toEqual({ 'nations-league/2026': null, 'world-cup/2026': null });
+    expect(added.pending).toEqual([]);
+    o.scopes = [scopeFor('nations-league')];
+    await expect(prepareNext(o, fresh)).rejects.toThrow(/state/i);
+  });
   // GitHub's job-level `github.ref == 'refs/heads/main'` is case-insensitive; this exact check,
   // which runPhase applies before any state, network or webhook work, is the enforcement.
   it.each(['refs/heads/Main', 'refs/heads/MAIN', 'refs/heads/feature'])('rejects run provenance with ref %s', (ref) => {
@@ -246,7 +257,7 @@ describe('durable match monitor', () => {
       res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ eventId: JSON.parse(raw).eventId }));
     });
     await monitor.deliverMonitor({ ...o, run: prepared.run, webhookURL, pendingArtifactId: 1 });
-    expect((await state(o.stateFile)).pending.length).toBe(saved.pending.length - 10);
+    expect((await state(o.stateFile)).pending.length).toBe(saved.pending.length - 16);
     expect(check).not.toHaveBeenCalled();
 
   });

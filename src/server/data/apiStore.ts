@@ -15,6 +15,7 @@ import {
   decodeReaderMatches, decodeReaderStandings, decodeReaderBracket, decodeReaderSummary,
   decodeReaderLeaders, decodeReaderTeam, decodeReaderSquad, decodeReaderPlayer,
 } from './readerDecode';
+import { mergeLegs } from './providers/espn-bracket';
 
 export interface ReaderDataDependencies {
   read: ReaderTransport;
@@ -166,11 +167,12 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
       const matches = body.flatMap(round => round.matches);
       collectionEvidence(evidence, 'bracket', matches.length); unique(matches.map(m => m.id)); unique(body.map(round => round.slug));
       const [refs, teams] = await Promise.all([identities.lookup(rc, 'match', 'canonical', matches.map(m => m.id)), identities.teams(rc, matches.flatMap(m => [m.home.id, m.away.id]))]);
-      return body.map(round => ({ ...round, matches: round.matches.map(match => {
+      // Two-legged ties fold into one, exactly as on the ESPN path.
+      return body.map(round => ({ ...round, matches: mergeLegs(round.matches.map(match => {
         if (match.round !== round.slug) throw new ReaderFailure('scope', false);
         const ref = refs.get(match.id)!; verifySides(match, ref);
         return { ...match, id: ref.providerId, home: { ...match.home, id: remap(teams, match.home.id) }, away: { ...match.away, id: remap(teams, match.away.id) }, winnerId: nullableId(teams, match.winnerId) };
-      }) }));
+      })) }));
     },
     async getMatchSummary(rc, eventId, homeId, awayId): Promise<MatchSummaryData> {
       const identity = (await identities.lookup(rc, 'match', 'espn', [eventId], 'addressed')).get(eventId)!;

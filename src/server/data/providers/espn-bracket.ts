@@ -123,7 +123,7 @@ export function mapBracket(raw: unknown): BracketRound[] {
 // events between the same pair. The bracket draws one tie per pair, so fold
 // the legs into one match carrying the aggregate. Single-match rounds pass
 // through untouched.
-function mergeLegs(matches: BracketMatch[]): BracketMatch[] {
+export function mergeLegs(matches: BracketMatch[]): BracketMatch[] {
   const ties = new Map<string, BracketMatch[]>();
   for (const m of matches) {
     const k = [m.home.id, m.away.id].sort().join('|');

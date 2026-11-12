@@ -3,6 +3,14 @@ import { readFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 const yaml = createRequire(import.meta.url)('js-yaml');
+// One scope per registry competition; counted, not hardcoded, so adding a
+// competition does not break these tests. The monitor's MAX_SENDS must stay
+// at or above it, which this guards.
+const SCOPES: number = createRequire(import.meta.url)('../backend/config/competitions.json').length;
+it('sends every scope\'s alert in one run', async () => {
+  const source = await readFile(new URL('./match-freshness-monitor.mjs', import.meta.url), 'utf8');
+  expect(Number(/const MAX_SENDS = (\d+);/.exec(source)?.[1])).toBeGreaterThanOrEqual(SCOPES);
+});
 const document = () => readFile('.github/workflows/match-freshness.yml', 'utf8').then(s => yaml.load(s));
 describe('opt-in durable match workflow', () => {
   it('gates the whole job before checks, downloads, secrets and delivery', async () => {
@@ -180,23 +188,23 @@ describe('enabled workflow artifact boundaries', () => {
   });
   it.each(['', 'false'])('delivery gate (%s) retains unreserved events for a later enabled run', async deliveryEnabled => {
     const h = await harness(); const first = await h.run({ initialize: true, deliveryEnabled });
-    expect(h.checks()).toBe(10); expect(h.notifications).toEqual([]);
+    expect(h.checks()).toBe(SCOPES); expect(h.notifications).toEqual([]);
     expect(first.steps.pending.outcome).toBe('success'); expect(first.steps.deliver.outcome).toBe('skipped');
     expect(first.steps.final.outcome).toBe('skipped'); expect(first.steps.result.outcome).toBe('failure');
     const pending = JSON.parse(h.artifacts.get(first.id)![0].bytes);
-    expect(pending).toMatchObject({ reserved: [], pending: Array.from({ length: 10 }, () => ({ attempts: 0 })) });
+    expect(pending).toMatchObject({ reserved: [], pending: Array.from({ length: SCOPES }, () => ({ attempts: 0 })) });
     const next = await h.run(); expect(next.steps.restore.outcome).toBe('success');
-    expect(next.steps.final.outcome).toBe('success'); expect(h.notifications).toHaveLength(10);
+    expect(next.steps.final.outcome).toBe('success'); expect(h.notifications).toHaveLength(SCOPES);
   });
   it('executes checks and delivery only after successful pending upload, preserving failed incident runs', async () => {
     const h = await harness();
     const first = await h.run({ initialize: true });
     expect(first.steps.prepare.outcome).toBe('success'); expect(first.steps.pending.outcome).toBe('success');
     expect(first.steps.deliver.outcome).toBe('success'); expect(first.steps.final.outcome).toBe('success');
-    expect(first.steps.result.outcome).toBe('failure'); expect(h.notifications).toHaveLength(10);
-    const continued = await h.run(); expect(continued.steps.restore.outcome).toBe('success'); expect(h.notifications).toHaveLength(10);
+    expect(first.steps.result.outcome).toBe('failure'); expect(h.notifications).toHaveLength(SCOPES);
+    const continued = await h.run(); expect(continued.steps.restore.outcome).toBe('success'); expect(h.notifications).toHaveLength(SCOPES);
     h.healthy(); const recovered = await h.run(); expect(recovered.steps.result.outcome).toBe('success');
-    expect(h.notifications.slice(10).every(e => e.status === 'RESOLVED')).toBe(true);
+    expect(h.notifications.slice(SCOPES).every(e => e.status === 'RESOLVED')).toBe(true);
   });
   // The job gate lets 'TRUE' start a job whose CLI does nothing; its Prepare step must be
   // skipped so the run is not mistaken for a lost preparation by the next real run.
@@ -218,10 +226,10 @@ describe('enabled workflow artifact boundaries', () => {
   });
   it('failed final upload restores pending and retries stable IDs after backoff', async () => {
     const h = await harness(); const first = await h.run({ initialize: true, failUpload: 'final' });
-    expect(first.steps.final.outcome).toBe('failure'); expect(h.notifications).toHaveLength(10);
+    expect(first.steps.final.outcome).toBe('failure'); expect(h.notifications).toHaveLength(SCOPES);
     const original = structuredClone(h.notifications);
     const next = await h.run(); expect(next.steps.restore.outcome).toBe('success'); expect(next.steps.final.outcome).toBe('success');
-    expect(h.notifications.slice(10)).toEqual(original);
+    expect(h.notifications.slice(SCOPES)).toEqual(original);
   });
 });
 

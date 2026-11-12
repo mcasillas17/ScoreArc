@@ -192,7 +192,7 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
       ) : groups.length > 0 ? (
         <div className="groups-grid">
           {groups.map((group) => (
-            <GroupTable key={group.id} group={group} teamStyle={teamStyle} teamBase={teamBase} />
+            <GroupTable key={group.id} group={group} teamStyle={teamStyle} teamBase={teamBase} thirdPlaceRace={showThirdPlace} />
           ))}
         </div>
       ) : (
