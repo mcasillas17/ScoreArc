@@ -380,14 +380,17 @@ export default function SiteNav() {
     return () => window.removeEventListener('scroll', onScroll);
   }, [open]);
 
-  const tabLink = (tab: BottomBarItem) => (
+  // The fan in the wheel shows the bar's items, but it stands where the old
+  // drawer stood, and the drawer reported `sitenav`. `bottom-bar` stays the
+  // resting bar alone, so neither dashboard series changes meaning.
+  const tabLink = (tab: BottomBarItem, surface: 'bottom-bar' | 'sitenav') => (
     <Link
       key={tab.key}
       href={tab.href}
       className={`sn-tab${tab.active ? ' sn-tab--active' : ''}`}
       aria-current={tab.active ? 'page' : undefined}
       onClick={() => {
-        trackEvent('Section opened', { section: tab.label, surface: 'bottom-bar' });
+        trackEvent('Section opened', { section: tab.label, surface });
         close();
       }}
     >
@@ -542,7 +545,7 @@ export default function SiteNav() {
         <path className="sn-tabs-arch-fill" d="M0 26Q195 2 390 26V84H0Z" />
         <path className="sn-tabs-arch-edge" d="M0 26Q195 2 390 26" />
       </svg>
-      <div className="sn-tabs-group">{barLeft.map(tabLink)}</div>
+      <div className="sn-tabs-group">{barLeft.map((tab) => tabLink(tab, 'bottom-bar'))}</div>
       <button
         ref={centreRef}
         type="button"
@@ -555,7 +558,7 @@ export default function SiteNav() {
         <span className="sn-centre-mark">{centreMark}</span>
         {!active && <span className="sn-centre-label">{t('nav.competitions')}</span>}
       </button>
-      <div className="sn-tabs-group">{barRight.map(tabLink)}</div>
+      <div className="sn-tabs-group">{barRight.map((tab) => tabLink(tab, 'bottom-bar'))}</div>
     </nav>
 
     {open && (
@@ -608,11 +611,20 @@ export default function SiteNav() {
               className="sn-fan-slot"
               style={{ ['--a' as string]: `${fanAngle(i, barItems.length, SECTION_STEP_DEG)}deg` }}
             >
-              {tabLink(tab)}
+              {tabLink(tab, 'sitenav')}
             </div>
           ))}
         </div>
-        <Link href={withLocale(prefix, '/')} className="sn-wheel-hub" aria-label={t('common.scoreArcHome')} onClick={close}>
+        <Link
+          href={items[0].href}
+          className="sn-wheel-hub"
+          aria-label={t('common.scoreArcHome')}
+          // The hub is the old drawer's Home item, and reports as it did.
+          onClick={() => {
+            trackEvent('Section opened', { section: items[0].label, surface: 'sitenav' });
+            close();
+          }}
+        >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={MARK_SRC} alt="" width={40} height={40} />
         </Link>
