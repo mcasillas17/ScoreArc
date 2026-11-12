@@ -8,6 +8,9 @@
  *
  * A dial position ("focus") is an index into the competition list. It is
  * fractional while a drag is in flight and an integer at rest.
+ *
+ * The dial is a ring: past the last competition comes the first. A list that
+ * stopped at its ends left the last competition with an empty half-rim.
  */
 
 /** Radius of the competition rim, in px. Must match `--dial-r` in globals.css. */
@@ -20,7 +23,7 @@ export const WHEEL_STEP_DEG = 14;
 export const SECTION_STEP_DEG = 20;
 /** Crests visible either side of the centre: collapsed rail, expanded rail, wheel. */
 export const RAIL_REACH_COLLAPSED = 3;
-export const RAIL_REACH_EXPANDED = 5;
+export const RAIL_REACH_EXPANDED = 4;
 export const WHEEL_REACH = 3;
 
 /** Arc length between two neighbours: the drag distance that moves the dial by one. */
@@ -28,10 +31,25 @@ export function stepPx(radius: number, stepDeg: number): number {
   return (radius * stepDeg * Math.PI) / 180;
 }
 
-/** Keep a dial position on the list. */
+/** Keep an index on the list. */
 export function clampFocus(focus: number, count: number): number {
   if (count <= 0) return 0;
   return Math.min(count - 1, Math.max(0, focus));
+}
+
+/** A dial position normalised onto the ring: into [0, count). */
+export function wrapFocus(focus: number, count: number): number {
+  if (count <= 0) return 0;
+  return ((focus % count) + count) % count;
+}
+
+/**
+ * How far crest `index` sits from the dial position, the short way round the
+ * ring: negative before it, positive after, within half the ring either side.
+ */
+export function wrapOffset(index: number, focus: number, count: number): number {
+  if (count <= 0) return 0;
+  return wrapFocus(index - focus + count / 2, count) - count / 2;
 }
 
 /** Where the dial rests: on the open competition, else the middle of the list. */
@@ -52,17 +70,17 @@ export function dragFocus(
   pxPerStep: number,
   count: number,
 ): number {
-  return clampFocus(startFocus - deltaPx / pxPerStep, count);
+  return wrapFocus(startFocus - deltaPx / pxPerStep, count);
 }
 
 /** The resting position nearest to wherever a drag let go. */
 export function snapFocus(focus: number, count: number): number {
-  return clampFocus(Math.round(focus), count);
+  return wrapFocus(Math.round(focus), count);
 }
 
 /** Whether a crest is on the visible part of the rim. */
-export function isOnRim(index: number, focus: number, reach: number): boolean {
-  return Math.abs(index - focus) <= reach + 0.5;
+export function isOnRim(index: number, focus: number, reach: number, count: number): boolean {
+  return Math.abs(wrapOffset(index, focus, count)) <= reach + 0.5;
 }
 
 /**

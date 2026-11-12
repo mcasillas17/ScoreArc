@@ -35,11 +35,15 @@ Three constraints from the owner:
   with seven crests on it. The open competition sits in the middle, larger,
   ringed in its accent.
 - **Hovering, focusing or pinning the rail expands it to 312px** as an overlay.
-  The page underneath does not reflow. Expanded, the dial shows up to eleven
-  crests with their names, the site links gain labels, and the lockup replaces
-  the mark. A pin button keeps it open; the pin is not persisted.
+  The page underneath does not reflow. Expanded, the dial shows up to nine
+  crests with their names (the rest come round as it turns), the site links
+  gain labels, and the lockup replaces the mark. A pin button keeps it open;
+  the pin is not persisted.
 - **Scrolling the mouse wheel or dragging on the rim rotates the dial.** It
   snaps to the nearest crest. Arrow Up and Arrow Down move between crests.
+- **The dial is circular.** Past the last competition comes the first, so the
+  open competition always has neighbours on both sides — including Liga MX,
+  which is last in the list.
 - **A competition's sections move out of the rail** into a tab row at the top
   of the content column (Liguilla, Standings, Matches, Teams, Players, News).
   The active tab is marked by a small arc in the competition's accent. Off a
@@ -93,7 +97,7 @@ one control at the bottom of the screen, which has three states:
 
 | Unit | Responsibility |
 |---|---|
-| `src/components/dialModel.ts` | Pure gesture and layout maths: clamp, snap, drag-to-position, bar split, fan angles, scroll-to-shrunk. |
+| `src/components/dialModel.ts` | Pure gesture and layout maths: ring offset, snap, drag-to-position, bar split, fan angles, scroll-to-shrunk. |
 | `src/components/NavDial.tsx` | One rim of crests. Takes the competitions, the dial position and a variant (`rail` or `wheel`). Owns pointer drag, wheel and arrow keys. |
 | `src/components/SiteNav.tsx` | Composes the rail, the phone bar and the wheel. Keeps every existing exported helper (`siteItems`, `competitionSections`, `bottomBarItems`, `accentStyle`, the locale helpers). |
 | `src/components/SectionTabs.tsx` | The desktop tab row for the open competition. Rendered by `AppShell`. |

@@ -248,7 +248,8 @@ a.sn-item:hover { color: var(--text); }
   transition: transform 0.25s ease, opacity 0.2s ease, left 0.2s ease;
 }
 .sn-dial-slot[data-current] { --crest: 52px; z-index: 1; }
-.sn-dial--dragging .sn-dial-slot { transition: none; }
+.sn-dial--dragging .sn-dial-slot,
+.sn-dial-slot[data-seam] { transition: none; }
 /* Off the visible rim. Transparent, not removed: every competition stays a
    focusable link, and focusing one turns the dial to it. `data-far` is the
    same for the collapsed rail's shorter reach. */
@@ -462,7 +463,7 @@ a.sn-item:hover { color: var(--text); }
   .sn-credit-text strong { font-weight: 700; color: var(--text); }
   .sn-credit:hover .sn-credit-text strong { color: var(--accent); }
 }
-/* The expanded rail's full reach: five crests either side instead of three.
+/* The expanded rail's full reach: four crests either side instead of three.
    ponytail: it needs about 760px of height to clear the pin and the brand, so
    a shorter window keeps the collapsed reach; the rest are a turn of the dial
    away. Scale --dial-r with the viewport if short windows start to matter. */

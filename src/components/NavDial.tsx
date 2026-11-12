@@ -15,6 +15,7 @@ import {
   isOnRim,
   snapFocus,
   stepPx,
+  wrapOffset,
 } from './dialModel';
 
 /** Pointer travel, in px, past which a press is a drag and not a tap. */
@@ -41,7 +42,8 @@ interface NavDialProps {
 /**
  * One rim of competition crests.
  *
- * Positioning is CSS: each slot carries its offset from the centre as `--k`.
+ * Positioning is CSS: each slot carries its offset from the centre as `--k`,
+ * measured the short way round — the dial is a ring.
  * Every competition is a real link in list order whatever the dial position —
  * a crest off the visible rim is transparent, never removed — and focusing one
  * turns the dial to it.
@@ -69,8 +71,12 @@ export default function NavDial({
   // The native wheel listener below is attached once; it reads the current
   // position through this.
   const latest = useRef({ focus, onFocusChange, n });
+  // The position the slots were last painted at, to tell which of them a turn
+  // of the dial has carried across the ring's seam.
+  const shown = useRef(focus);
   useEffect(() => {
     latest.current = { focus, onFocusChange, n };
+    shown.current = focus;
   });
 
   // React's onWheel is passive and cannot preventDefault, so the page would
@@ -150,24 +156,29 @@ export default function NavDial({
           : 0;
         if (!dir) return;
         const links = Array.from(ref.current?.querySelectorAll<HTMLAnchorElement>('a.sn-crest') ?? []);
-        const next = links[links.indexOf(document.activeElement as HTMLAnchorElement) + dir];
-        if (!next) return;
+        const at = links.indexOf(document.activeElement as HTMLAnchorElement);
+        if (at < 0) return;
         e.preventDefault();
-        next.focus();
+        // Round the ring, like the dial itself.
+        links[(at + dir + links.length) % links.length].focus();
       }}
     >
       {competitions.map((c, i) => {
         const isActive = active?.competition.id === c.id;
         const seasonId = competitionSeasonId(c, active);
+        const k = wrapOffset(i, focus, n);
         return (
           <div
             key={c.id}
             className="sn-dial-slot"
-            style={{ ['--k' as string]: i - focus }}
-            data-off={isOnRim(i, focus, reach) ? undefined : ''}
-            data-far={variant === 'rail' && !isOnRim(i, focus, RAIL_REACH_COLLAPSED) ? '' : undefined}
+            style={{ ['--k' as string]: k }}
+            data-off={isOnRim(i, focus, reach, n) ? undefined : ''}
+            data-far={variant === 'rail' && !isOnRim(i, focus, RAIL_REACH_COLLAPSED, n) ? '' : undefined}
             data-current={isActive ? '' : undefined}
-            data-centre={Math.round(focus) === i ? '' : undefined}
+            data-centre={snapFocus(focus, n) === i ? '' : undefined}
+            // A crest that has just gone round the back of the ring: its offset
+            // flipped sign, and animating that would sweep it across the rim.
+            data-seam={Math.abs(k - wrapOffset(i, shown.current, n)) > n / 2 ? '' : undefined}
           >
             <Link
               href={competitionHref(c, active, prefix)}

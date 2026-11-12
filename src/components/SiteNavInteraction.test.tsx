@@ -87,13 +87,18 @@ describe('SiteNav interaction', () => {
     const links = () => within(dial).getAllByRole('link');
 
     expect(links()).toHaveLength(total);
-    // World Cup is first, so the far end of the list starts off the rim.
-    expect(dial.querySelectorAll('[data-off]').length).toBeGreaterThan(0);
+    // World Cup is first; the crests opposite it on the ring start off the rim.
+    const far = Math.floor(total / 2);
+    const slot = (i: number) => links()[i].closest('.sn-dial-slot')!;
+    expect(slot(far).hasAttribute('data-off')).toBe(true);
+    expect(slot(0).hasAttribute('data-off')).toBe(false);
+    // The ring: the last competition is World Cup's neighbour, not its far end.
+    expect(slot(total - 1).hasAttribute('data-off')).toBe(false);
 
-    // Focusing the last crest turns the dial to it, and the list is still whole.
-    fireEvent.focus(links()[total - 1]);
-    expect(links()[total - 1].closest('.sn-dial-slot')!.hasAttribute('data-off')).toBe(false);
-    expect(links()[0].closest('.sn-dial-slot')!.hasAttribute('data-off')).toBe(true);
+    // Focusing a hidden crest turns the dial to it, and the list is still whole.
+    fireEvent.focus(links()[far]);
+    expect(slot(far).hasAttribute('data-off')).toBe(false);
+    expect(slot(0).hasAttribute('data-off')).toBe(true);
     expect(links()).toHaveLength(total);
     for (const a of links()) expect(a.getAttribute('href')).toMatch(/^\/es\/c\//);
   });
