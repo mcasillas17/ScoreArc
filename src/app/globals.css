@@ -192,8 +192,7 @@ a.sn-item:hover { color: var(--text); }
    rail. */
 .sn-item--soon { display: none; cursor: default; opacity: 0.7; }
 .sn-label,
-.sn-item .sn-arc,
-.sn-credit { display: none; }
+.sn-item .sn-arc { display: none; }
 .sn-soon {
   font-size: 8.5px;
   font-weight: 700;
@@ -344,6 +343,30 @@ a.sn-item:hover { color: var(--text); }
 .sn-pin[aria-pressed='true'] { color: var(--accent); border-color: var(--accent); }
 .sn-pin[aria-pressed='true'] svg { transform: rotate(180deg); }
 
+/* Shown in the expanded rail only, but hidden by transparency, not
+   display:none. Tab from the pin lands here; the rail is momentarily collapsed
+   between the two (nothing is focused, so `:has(:focus-visible)` is false),
+   and an undisplayed link cannot take focus -- it fell to <body>. */
+.sn-credit {
+  position: absolute;
+  left: 80px;
+  bottom: 20px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: color 0.15s;
+}
+.sn-credit:hover { color: var(--accent); }
+.sn-credit-text strong { font-weight: 700; color: var(--text); }
+.sn-credit:hover .sn-credit-text strong { color: var(--accent); }
+
 /* The arc that marks the active section, wherever it is drawn. */
 .sn-arc { display: block; color: var(--accent); pointer-events: none; }
 
@@ -472,22 +495,9 @@ a.sn-item:hover { color: var(--text); }
 
   .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-pin { left: 24px; }
   .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-credit {
-    position: absolute;
-    left: 80px;
-    bottom: 20px;
-    z-index: 2;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    height: 44px;
-    color: var(--text-muted);
-    font-size: 11.5px;
-    white-space: nowrap;
-    transition: color 0.15s;
+    opacity: 1;
+    pointer-events: auto;
   }
-  .sn-credit:hover { color: var(--accent); }
-  .sn-credit-text strong { font-weight: 700; color: var(--text); }
-  .sn-credit:hover .sn-credit-text strong { color: var(--accent); }
 }
 /* The expanded rail's full reach: four crests either side instead of three.
    ponytail: it needs about 760px of height to clear the pin and the brand, so
@@ -1172,7 +1182,8 @@ a.sn-item:hover { color: var(--text); }
   .sn-lockup { display: block; width: 132px; }
   .sn-site,
   .sn .sn-dial,
-  .sn-pin { display: none; }
+  .sn-pin,
+  .sn-credit { display: none; }
 
   .sn-sections { display: none; }
 
