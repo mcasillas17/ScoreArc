@@ -20,6 +20,22 @@ import {
 
 /** Pointer travel, in px, past which a press is a drag and not a tap. */
 const DRAG_SLOP_PX = 6;
+/**
+ * Run `fn` once, when the pointer `pointerId` is released or cancelled —
+ * wherever that happens. A handler on the pressed element alone never hears a
+ * release that lands outside it, and the press it recorded goes stale.
+ */
+export function onPointerRelease(pointerId: number, fn: (e: PointerEvent) => void): void {
+  const done = (e: PointerEvent) => {
+    if (e.pointerId !== pointerId) return;
+    window.removeEventListener('pointerup', done);
+    window.removeEventListener('pointercancel', done);
+    fn(e);
+  };
+  window.addEventListener('pointerup', done);
+  window.addEventListener('pointercancel', done);
+}
+
 /** Wheel delta that turns the dial by one crest. */
 const WHEEL_STEP = 60;
 
@@ -100,12 +116,16 @@ export default function NavDial({
     return () => el.removeEventListener('wheel', onWheel);
   }, [variant]);
 
-  const endDrag = () => {
+  // Idempotent, and safe to call from a handler created renders ago: it reads
+  // the dial position through `latest`, not from the closure.
+  const endDrag = (released: boolean) => {
     const d = drag.current;
     drag.current = null;
     if (!d?.moved) return;
     setDragging(false);
-    onFocusChange(snapFocus(focus, n));
+    const l = latest.current;
+    l.onFocusChange(snapFocus(l.focus, l.n));
+    if (!released) return;
     // A drag never navigates. The click, if one follows, is dispatched in this
     // same turn, so the flag cannot outlive it and eat a later real click.
     swallowClick.current = true;
@@ -123,10 +143,19 @@ export default function NavDial({
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         drag.current = { start: along(e), focus, moved: false };
+        // The release is heard on the window: a press that slides off the rail
+        // and lets go over the page must still end here.
+        onPointerRelease(e.pointerId, (up) => endDrag(up.type === 'pointerup'));
       }}
       onPointerMove={(e) => {
         const d = drag.current;
         if (!d) return;
+        // Belt and braces for a release nothing reported (another window, a
+        // lost capture): a pointer with no button down is not dragging.
+        if (e.buttons === 0) {
+          endDrag(false);
+          return;
+        }
         const delta = along(e) - d.start;
         if (!d.moved) {
           if (Math.abs(delta) <= DRAG_SLOP_PX) return;
@@ -138,8 +167,7 @@ export default function NavDial({
         }
         onFocusChange(dragFocus(d.focus, delta, stepPx(DIAL_RADIUS, step), n));
       }}
-      onPointerUp={endDrag}
-      onPointerCancel={endDrag}
+      onLostPointerCapture={() => endDrag(false)}
       onClickCapture={(e) => {
         if (!swallowClick.current) return;
         swallowClick.current = false;

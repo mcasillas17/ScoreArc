@@ -10,7 +10,7 @@ import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import type { Locale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
 import CompetitionMark from './CompetitionMark';
-import NavDial from './NavDial';
+import NavDial, { onPointerRelease } from './NavDial';
 import {
   RAIL_REACH_EXPANDED,
   SCROLL_INTENT_PX,
@@ -306,7 +306,6 @@ export default function SiteNav() {
 
   const centreRef = useRef<HTMLButtonElement>(null);
   const wheelRef = useRef<HTMLDivElement>(null);
-  const swipeStart = useRef<number | null>(null);
   const swallowClick = useRef(false);
 
   const items = siteItems(locale, prefix);
@@ -510,22 +509,19 @@ export default function SiteNav() {
       data-shrunk={shrunk || undefined}
       data-site={active ? undefined : ''}
       aria-label={t('nav.sections')}
+      // A swipe up opens the wheel. The release is heard on the window, so one
+      // that ends above the bar still counts and a press is never left stale.
       onPointerDown={(e) => {
-        swipeStart.current = e.clientY;
-      }}
-      onPointerCancel={() => {
-        swipeStart.current = null;
-      }}
-      onPointerUp={(e) => {
-        const start = swipeStart.current;
-        swipeStart.current = null;
-        if (start === null || start - e.clientY <= 24) return;
-        // A swipe that ends on a tab must not also follow it.
-        swallowClick.current = true;
-        setTimeout(() => {
-          swallowClick.current = false;
-        }, 0);
-        openWheel();
+        const start = e.clientY;
+        onPointerRelease(e.pointerId, (up) => {
+          if (up.type !== 'pointerup' || start - up.clientY <= 24) return;
+          // A swipe that ends on a tab must not also follow it.
+          swallowClick.current = true;
+          setTimeout(() => {
+            swallowClick.current = false;
+          }, 0);
+          openWheel();
+        });
       }}
       onClickCapture={(e) => {
         if (!swallowClick.current) return;
