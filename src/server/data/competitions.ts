@@ -265,6 +265,36 @@ export const COMPETITIONS: Record<string, Competition> = {
       },
     },
   },
+  // 2026-27: League A/B/C groups (Sep–Nov), then a two-legged League A
+  // quarterfinal (Nov 12–17) where Mexico, USA, Canada and Panama enter, and a
+  // single-match Finals in March 2027. Checked against ESPN 2026-11-11.
+  //
+  // ESPN has no dark variant of this logo (500-dark/2406.png 404s), so this is
+  // the light one: the swirl reads on dark, the navy "CNL" wordmark is muted.
+  'nations-league': {
+    id: 'nations-league',
+    name: 'Concacaf Nations League',
+    shortName: 'Nations League',
+    espnSlug: 'concacaf.nations.league',
+    kind: 'national',
+    teamStyle: 'flag',
+    emblem: '🌎',
+    logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/2406.png',
+    accent: { base: '#2b9fe0', bright: '#6cc4f2', soft: 'rgba(43,159,224,0.16)' },
+    currentSeasonId: '2026-27',
+    seasons: {
+      '2026-27': {
+        id: '2026-27',
+        label: '2026-27',
+        sections: ['bracket', 'standings', 'scores', 'news'],
+        format: { hasBracket: true, hasGroups: true, hasThirdPlaceRace: false },
+        bracketDatesRange: '20261112-20270331',
+        // Semifinal pairings are not published yet; no bracketOrder, so the
+        // leaf order is ESPN's event order until the tree can be derived.
+        knockoutRounds: ['quarterfinals', 'semifinals', 'final'],
+      },
+    },
+  },
   ...leagueCompetition('premier-league', 'Premier League', 'Premier League', 'eng.1', '🦁', 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/23.png', '2026-27', '2026-27', { base: '#d4344a', bright: '#ff6b7e', soft: 'rgba(212,52,74,0.16)' }, undefined, [
     // 2026-27: 20 clubs, bottom three relegated to the Championship. These
     // ranges are what a finishing position earns *by itself* — England's other

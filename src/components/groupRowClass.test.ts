@@ -44,4 +44,8 @@ describe('groupRowClass', () => {
   it('does not mark an advanced flag before the group has started', () => {
     expect(groupRowClass(row(1, 0, true), false)).toBe('');
   });
+  it('leaves third unmarked where the competition has no third-place race', () => {
+    expect(groupRowClass(row(3), true, false)).toBe('');
+    expect(groupRowClass(row(2), true, false)).toBe('row-qualify');
+  });
 });

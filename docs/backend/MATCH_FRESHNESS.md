@@ -324,7 +324,7 @@ typecheck includes the Worker.
 | `GITHUB_DISPATCH_TOKEN` | Receiver Worker secret (`npx wrangler@4.123.0 secret put GITHUB_DISPATCH_TOKEN` from `infra/alert-receiver`, interactive prompt). Fine-grained personal access token for this repository only with the **Actions: write** permission, nothing else; the Worker uses it only to dispatch `match-freshness.yml` on `main`. It never reaches the workflow. GitHub cannot narrow it to one workflow: the same permission can dispatch any workflow here (including `ci.yml`'s release input, whose production environments only require `main`), cancel or re-run runs, delete artifacts and disable workflows, and the runbook treats a re-run, a cancelled Prepare or a deleted checkpoint as a halt needing manual recovery. Keep it only in the Worker secret, give it the shortest expiry you will maintain, and revoke it in GitHub at once if it may have leaked. The owner accepted this reach on November 8, 2026 (the token is the owner's, expiry the owner's choice). When it expires or is revoked, dispatches are rejected and the not-running check emails; create a new one and replace the secret. |
 | `initialize_state` | Sole manual input, boolean, default false. True only for proven first history; never a repair flag. |
 | Run identity and API access | Actions supplies `GITHUB_*` provenance and its token with `contents: read` / `actions: read`. Do not substitute another repository/ref/run identity or a personal token to bypass validation. |
-| Reader and scopes | Fixed CLI origin `https://scorearc-reader.fly.dev`; exact current seasons from `backend/config/competitions.json`. No workflow input overrides these. A changed origin/scope set requires a reviewed state migration, not initialization. |
+| Reader and scopes | Fixed CLI origin `https://scorearc-reader.fly.dev`; exact current seasons from `backend/config/competitions.json`. No workflow input overrides these. A changed origin requires a reviewed state migration, not initialization. A competition added to the registry joins the restored state as healthy on the next run; a removed one is still refused, since dropping it could discard an open incident. |
 
 The local harness injects its loopback origin directly into `runPhase`; that is
 test wiring, not a configurable production endpoint. Production reader-origin
@@ -546,11 +546,11 @@ do not stop production to prove them.
 
 | Resource | Bound |
 |---|---|
-| Reader | 32 sequential scopes maximum; current registry 10; 10 seconds, 8 MiB, 5,000 matches each; no retries |
+| Reader | 32 sequential scopes maximum; current registry 11; 10 seconds, 8 MiB, 5,000 matches each; no retries |
 | GitHub JSON API | At most 3 pages × 20 runs; 2 metadata + 3 run-list + 120 artifact/job reads = 125 requests; 10 seconds / 1 MiB each, no retries; steady state is about 4 per run (~1,150/day). `GITHUB_TOKEN` is limited to 1,000 requests per hour per repository, so twelve degraded full scans an hour (~1,500) would hit that limit; repeated budget failures need intervention, not more runs |
 | Artifact transfer | One selected download, up to two uploads; state 256 KiB, artifact metadata size ceiling 256 KiB; action-internal transfer retries are governed by pinned actions and job timeout |
 | State | 128 pending events, 32 receipts, one current incident ID per scope; 256 KiB |
-| Notifications | At most 10 sequential sends per run, 15 seconds each (the receiver acknowledges only after its email, about 5 seconds), 1 KiB acknowledgment; 20 reserved attempts per event |
+| Notifications | At most 16 sequential sends per run (must stay at or above the registry size, so one run carries every scope's transition and its heartbeat; a test guards it), 15 seconds each (the receiver acknowledges only after its email, about 5 seconds), 1 KiB acknowledgment; 20 reserved attempts per event |
 | Heartbeat | At most one POST per run, 15 seconds, 204 expected, never retried |
 | Dispatch | One POST from the receiver's cron every 5 minutes, 10 seconds, any 2xx accepted, never retried; runs serialize in the workflow's concurrency group, where a newer waiting run replaces an older one |
 | Backoff | Across runs: 5 minutes doubled to maximum 6 hours; no in-run retry, untrusted Retry-After cannot enlarge bounds. A retry is sent by the first run whose Prepare is at or after its due time, so with five-minute runs a 5-minute backoff lands 5 to 10 minutes later (latency only) |

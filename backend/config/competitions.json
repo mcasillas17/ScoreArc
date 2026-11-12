@@ -126,6 +126,26 @@
     }
   },
   {
+    "id": "nations-league",
+    "name": "Concacaf Nations League",
+    "shortName": "Nations League",
+    "espnSlug": "concacaf.nations.league",
+    "currentSeasonId": "2026-27",
+    "seasons": {
+      "2026-27": {
+        "id": "2026-27",
+        "label": "2026-27",
+        "hasBracket": true,
+        "bracketDatesRange": "20261112-20270331",
+        "knockoutRounds": [
+          "quarterfinals",
+          "semifinals",
+          "final"
+        ]
+      }
+    }
+  },
+  {
     "id": "premier-league",
     "name": "Premier League",
     "shortName": "Premier League",

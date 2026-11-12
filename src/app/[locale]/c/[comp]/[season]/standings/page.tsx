@@ -91,9 +91,11 @@ export default async function StandingsPage({ params }: { params: SeasonParams }
               having clicked the wrong thing. The subtitle carries what differs. */}
           <h1 className="bracket-title">{t('standings.title')}</h1>
           <p className="page-subtitle">
-            {hasBracket
+            {rc.season.format.hasThirdPlaceRace
               ? t('standings.tournamentDescription')
-              : t('standings.leagueDescription')}
+              : hasBracket
+                ? t('standings.groupsDescription')
+                : t('standings.leagueDescription')}
           </p>
         </header>
 
@@ -110,7 +112,7 @@ export default async function StandingsPage({ params }: { params: SeasonParams }
           initialAssists={assists}
           apiBase={apiBase}
           teamStyle={rc.competition.teamStyle}
-          showThirdPlace={hasBracket}
+          showThirdPlace={rc.season.format.hasThirdPlaceRace}
           qualification={rc.season.qualification}
           zones={rc.season.zones}
           rounds={rc.season.rounds}

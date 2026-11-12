@@ -115,6 +115,52 @@ export function mapBracket(raw: unknown): BracketRound[] {
   // return rounds in fixed order, only including those present
   return ROUND_ORDER.filter((slug) => bySlug.has(slug)).map((slug) => ({
     slug,
-    matches: bySlug.get(slug)!,
+    matches: mergeLegs(bySlug.get(slug)!),
   }));
+}
+
+// A two-legged tie (Nations League quarterfinals, a Liguilla) arrives as two
+// events between the same pair. The bracket draws one tie per pair, so fold
+// the legs into one match carrying the aggregate. Single-match rounds pass
+// through untouched.
+export function mergeLegs(matches: BracketMatch[]): BracketMatch[] {
+  const ties = new Map<string, BracketMatch[]>();
+  for (const m of matches) {
+    const k = [m.home.id, m.away.id].sort().join('|');
+    ties.set(k, [...(ties.get(k) ?? []), m]);
+  }
+  return [...ties.values()].map((legs) => {
+    if (legs.length !== 2) return legs[0];
+    const [first, second] = [...legs].sort((a, b) => a.kickoff.localeCompare(b.kickoff));
+    const scoreFor = (m: BracketMatch, teamId: string) =>
+      m.home.id === teamId ? m.homeScore : m.awayScore;
+    const total = (teamId: string) => {
+      const a = scoreFor(first, teamId);
+      const b = scoreFor(second, teamId);
+      return a == null ? null : a + (b ?? 0);
+    };
+    const homeScore = total(first.home.id);
+    const awayScore = total(first.away.id);
+    // Decided only once the second leg is over: the higher aggregate, else the
+    // second leg's own winner (a shootout, already resolved by mapBracketMatch).
+    let winnerId: string | null = null;
+    if (second.state === 'finished' && homeScore != null && awayScore != null) {
+      winnerId = homeScore > awayScore ? first.home.id
+        : awayScore > homeScore ? first.away.id
+        : second.winnerId;
+    }
+    const current = first.state === 'finished' ? second : first;
+    return {
+      ...first,
+      id: second.id,
+      homeScore,
+      awayScore,
+      state: current.state,
+      statusDetail: current.statusDetail,
+      statusName: current.statusName,
+      minute: current.minute,
+      winnerId,
+      note: second.note ?? first.note,
+    };
+  });
 }
