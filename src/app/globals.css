@@ -320,6 +320,9 @@ a.sn-item:hover { color: var(--text); }
   box-shadow: 0 0 0 4px var(--bg);
 }
 .sn-crest-name { display: none; }
+/* The Teams dial: initials on the rim, the one at the centre lit. */
+.sn-crest-letter { font-size: 17px; font-weight: 800; color: var(--text-muted); }
+.sn-dial-slot[data-centre] .sn-crest-letter { color: var(--brand); }
 
 .sn-pin {
   position: absolute;
@@ -1368,9 +1371,6 @@ a.sn-item:hover { color: var(--text); }
   .sn-dial--wheel .sn-dial-slot { --crest: 44px; }
   .sn-dial--wheel .sn-dial-slot[data-current] { --crest: 56px; }
   .sn-dial--wheel .sn-dial-slot[data-current] .sn-crest-mark { box-shadow: 0 0 0 5px var(--surface-1); }
-  /* The Teams wheel: initials on the rim, the one at the top lit. */
-  .sn-crest-letter { font-size: 17px; font-weight: 800; color: var(--text-muted); }
-  .sn-dial--wheel .sn-dial-slot[data-centre] .sn-crest-letter { color: var(--brand); }
   /* Only the crest at the top of the wheel is named. */
   .sn-dial--wheel .sn-dial-slot[data-centre] .sn-crest-name {
     display: block;

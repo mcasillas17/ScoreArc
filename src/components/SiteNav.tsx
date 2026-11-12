@@ -344,15 +344,21 @@ export default function SiteNav() {
   const onTeams = page?.href === items[1].href;
   const onNews = page?.href === items[2].href;
 
-  const openWheel = () => {
-    setFocus(resting);
-    // On Teams the wheel turns the list on the page, by initial. The list
-    // marks the first team under each one; under a search it may mark none,
-    // and the wheel falls back to the competitions.
+  // On Teams the dial turns the list on the page, by initial. The list marks
+  // the first team under each one; under a search it marks none, and the dial
+  // falls back to the competitions. Read from the page, so it is re-read
+  // whenever the reader reaches for the dial.
+  const readLetters = () => {
     const marks = onTeams ? Array.from(document.querySelectorAll<HTMLElement>('[data-team-letter]')) : [];
     setLetters(marks.map((el) => el.dataset.teamLetter ?? ''));
-    // Start on the initial the reader has scrolled to.
+    // Rest on the initial the reader has scrolled to.
     setLetterFocus(Math.max(0, marks.findLastIndex((el) => el.getBoundingClientRect().top < 120)));
+  };
+  useEffect(readLetters, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openWheel = () => {
+    setFocus(resting);
+    readLetters();
     setOpen(true);
   };
   // Focus goes back to the centre button in the effect below, which hears
@@ -404,20 +410,26 @@ export default function SiteNav() {
     };
   }, [open]);
 
-  // Turning the letter wheel scrolls the team list to that initial. Not on
-  // opening: the wheel opens on the initial already on screen.
-  const letterWheel = open && letters.length > 0;
-  const letterAt = Math.round(letterFocus) % (letters.length || 1);
-  const turned = useRef(false);
+  // Turning the letter dial scrolls the team list to that initial.
+  const lettersOn = letters.length > 0;
+  const turnLetters = (next: number) => {
+    const at = (f: number) => Math.round(f) % letters.length;
+    if (at(next) !== at(letterFocus)) document.getElementById(teamLetterId(letters[at(next)]))?.scrollIntoView();
+    setLetterFocus(next);
+  };
+
+  // Left alone, the letter dial follows the page: it rests on the initial the
+  // reader has scrolled to. Not while they are on the dial, which is then what
+  // is moving the page.
   useEffect(() => {
-    if (!letterWheel) {
-      turned.current = false;
-      return;
-    }
-    if (turned.current) document.getElementById(teamLetterId(letters[letterAt]))?.scrollIntoView();
-    turned.current = true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [letterWheel, letterAt]);
+    if (!lettersOn || hovered || open) return;
+    const onScroll = () => {
+      const marks = Array.from(document.querySelectorAll<HTMLElement>('[data-team-letter]'));
+      setLetterFocus(Math.max(0, marks.findLastIndex((el) => el.getBoundingClientRect().top < 120)));
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [lettersOn, hovered, open]);
 
   // The phone bar shrinks while the reader scrolls down and returns when they
   // scroll up. `lastY` only moves on a deliberate scroll, so a slow one adds up
@@ -514,6 +526,7 @@ export default function SiteNav() {
       // have the pin.
       onPointerEnter={(e) => {
         if (e.pointerType !== 'touch') setHovered(true);
+        readLetters();
       }}
       // Left alone, a dial turned away from the open competition would leave
       // the collapsed rail showing some other crest in the middle. Not for
@@ -575,9 +588,11 @@ export default function SiteNav() {
       </div>
 
       <NavDial
-        items={competitionItems()}
-        focus={focus}
-        onFocusChange={setFocus}
+        // Keyed: the two collections have different lengths and positions.
+        key={lettersOn ? 'letters' : 'competitions'}
+        items={lettersOn ? letterItems : competitionItems()}
+        focus={lettersOn ? letterFocus : focus}
+        onFocusChange={lettersOn ? turnLetters : setFocus}
         variant="rail"
         reach={RAIL_REACH_EXPANDED}
         onNavigate={close}
@@ -666,7 +681,7 @@ export default function SiteNav() {
         className="sn-wheel"
         role="dialog"
         aria-modal="true"
-        aria-label={letterWheel && page ? page.label : t('nav.competitions')}
+        aria-label={lettersOn && page ? page.label : t('nav.competitions')}
       >
         <button type="button" className="sn-wheel-backdrop" aria-label={t('nav.closeWheel')} onClick={closeWheel} />
         {/* Inside a competition the fan below is that competition's sections,
@@ -692,11 +707,11 @@ export default function SiteNav() {
           </div>
         )}
         <div className="sn-wheel-disc" aria-hidden />
-        {letterWheel ? (
+        {lettersOn ? (
           <NavDial
             items={letterItems}
             focus={letterFocus}
-            onFocusChange={setLetterFocus}
+            onFocusChange={turnLetters}
             variant="wheel"
             reach={WHEEL_REACH}
             onNavigate={close}
