@@ -231,6 +231,11 @@ export default async function Workspace({ params }: { params: SeasonParams }) {
     );
   }
 
+  // "Build your bracket" is open while the current edition still has a
+  // champion to decide. Once the final has a winner there is nothing to pick.
+  const predictionEnabled = !readOnly
+    && !bracket.some(r => r.slug === 'final' && r.matches.some(m => m.winnerId));
+
   return (
     <main className="main">
       <section id="bracket" className="bracket-section">
@@ -240,7 +245,7 @@ export default async function Workspace({ params }: { params: SeasonParams }) {
           <SeasonSwitcher competition={rc.competition} activeSeasonId={rc.season.id} />
         </header>
         {bracket.length > 0
-          ? <div key={rc.season.id} className="edition-fade"><BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} emblem={rc.competition.emblem} logo={rc.competition.logo} logoInvert={rc.competition.logoInvert} trophyImage={rc.competition.trophyImage} championTitleKey={rc.competition.championTitleKey} accent={rc.competition.bracketAccent} shape={bracketShapeFor(rc.season)} readOnly={readOnly} /></div>
+          ? <div key={rc.season.id} className="edition-fade"><BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} emblem={rc.competition.emblem} logo={rc.competition.logo} logoInvert={rc.competition.logoInvert} trophyImage={rc.competition.trophyImage} championTitleKey={rc.competition.championTitleKey} accent={rc.competition.bracketAccent} shape={bracketShapeFor(rc.season)} readOnly={readOnly} predictionEnabled={predictionEnabled} /></div>
           : <div className="empty-section"><p className="empty-text">{t('bracket.unavailable')}</p></div>}
       </section>
       {!readOnly && liveSection}
