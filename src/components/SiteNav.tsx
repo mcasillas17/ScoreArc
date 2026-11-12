@@ -322,10 +322,9 @@ export default function SiteNav() {
     setFocus(resting);
     setOpen(true);
   };
-  const closeWheel = () => {
-    setOpen(false);
-    centreRef.current?.focus();
-  };
+  // Focus goes back to the centre button in the effect below, which hears
+  // every way the wheel closes.
+  const closeWheel = () => setOpen(false);
   /** After a destination is chosen. A no-op on desktop, where nothing is open. */
   const close = () => {
     if (open) closeWheel();
@@ -336,6 +335,7 @@ export default function SiteNav() {
   useEffect(() => {
     if (!open) return;
     const root = wheelRef.current;
+    const centre = centreRef.current;
     if (!root) return;
     // The crest at the top of the wheel: the open competition, or off one the
     // middle of the list. Not simply the first link — focusing a crest turns
@@ -344,23 +344,31 @@ export default function SiteNav() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setOpen(false);
-        centreRef.current?.focus();
         return;
       }
       if (e.key !== 'Tab') return;
       const stops = root.querySelectorAll<HTMLElement>('a, button');
       const first = stops[0];
       const last = stops[stops.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
+      const at = document.activeElement;
+      // From an end, round to the other. From outside the wheel altogether --
+      // focus falls to <body> after a tap on an empty part of the disc -- back
+      // in, rather than on to the page behind.
+      if (e.shiftKey && (at === first || !root.contains(at))) {
         e.preventDefault();
         last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
+      } else if (!e.shiftKey && (at === last || !root.contains(at))) {
         e.preventDefault();
         first.focus();
       }
     };
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      // Every close path ends here: Escape, the backdrop, a chosen
+      // destination, and a path that changed underneath (browser back).
+      centre?.focus();
+    };
   }, [open]);
 
   // The phone bar shrinks while the reader scrolls down and returns when they

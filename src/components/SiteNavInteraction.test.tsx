@@ -77,6 +77,36 @@ describe('SiteNav interaction', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('brings Tab back into the wheel when focus has fallen out of it', () => {
+    renderNav('/es');
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir navegación' }));
+    const wheel = screen.getByRole('dialog');
+    (document.activeElement as HTMLElement).blur();
+    expect(wheel.contains(document.activeElement)).toBe(false);
+
+    fireEvent.keyDown(document.body, { key: 'Tab' });
+
+    expect(wheel.contains(document.activeElement)).toBe(true);
+  });
+
+  it('returns focus to the centre button when a path change closes the wheel', () => {
+    const view = renderNav('/es');
+    const centre = screen.getByRole('button', { name: 'Abrir navegación' });
+    fireEvent.click(centre);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+
+    // Browser back: the path changes with no click inside the wheel.
+    path.current = '/es/teams';
+    view.rerender(
+      <I18nProvider locale="es">
+        <SiteNav />
+      </I18nProvider>,
+    );
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(centre);
+  });
+
   // The rotation is presentation only: a crest off the visible rim is
   // transparent, never removed, so the list a screen reader or a Tab key walks
   // is always the whole list.
