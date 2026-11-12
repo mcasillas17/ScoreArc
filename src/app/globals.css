@@ -1298,6 +1298,9 @@ a.sn-item:hover { color: var(--text); }
     overflow: hidden;
   }
   .sn-centre-mark .cm-mark { flex: 0 1 auto; min-width: 0; }
+  /* Off a competition the centre is the page the reader is on (Teams, News). */
+  .sn-centre-icon { display: flex; }
+  .sn-centre-icon svg { width: 24px; height: 24px; }
   .sn-tabs[data-site] .sn-centre { border: 1px solid var(--border); }
   .sn-centre-label {
     position: absolute;
@@ -1365,6 +1368,9 @@ a.sn-item:hover { color: var(--text); }
   .sn-dial--wheel .sn-dial-slot { --crest: 44px; }
   .sn-dial--wheel .sn-dial-slot[data-current] { --crest: 56px; }
   .sn-dial--wheel .sn-dial-slot[data-current] .sn-crest-mark { box-shadow: 0 0 0 5px var(--surface-1); }
+  /* The Teams wheel: initials on the rim, the one at the top lit. */
+  .sn-crest-letter { font-size: 17px; font-weight: 800; color: var(--text-muted); }
+  .sn-dial--wheel .sn-dial-slot[data-centre] .sn-crest-letter { color: var(--brand); }
   /* Only the crest at the top of the wheel is named. */
   .sn-dial--wheel .sn-dial-slot[data-centre] .sn-crest-name {
     display: block;
@@ -3817,6 +3823,8 @@ a.sn-item:hover { color: var(--text); }
 
 .ts-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .ts-item {
+  /* Clear of the sticky phone masthead when the letter wheel scrolls here. */
+  scroll-margin-top: 68px;
   display: flex;
   align-items: center;
   gap: 12px;

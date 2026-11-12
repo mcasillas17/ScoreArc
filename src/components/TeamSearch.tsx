@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import { replacePathLocale } from '@/i18n/pathnames';
 import type { IndexedTeam } from '@/server/data/teamIndex';
 import TeamBadge from './TeamBadge';
+import { teamLetterId } from './SiteNav';
 
 /**
  * Fold accents so "america" finds "América".
@@ -80,8 +81,19 @@ export default function TeamSearch({ teams }: { teams: IndexedTeam[] }) {
         </p>
       ) : (
         <ul className="ts-list">
-          {results.map((team) => (
-            <li key={team.id} className="ts-item">
+          {results.map((team, i) => {
+            // The first team under each initial is where the phone's letter
+            // wheel scrolls to. Only the unfiltered list is in alphabetical
+            // order, so only it is marked.
+            const letter = fold(team.name).charAt(0).toUpperCase();
+            const first = !query && (i === 0 || fold(results[i - 1].name).charAt(0).toUpperCase() !== letter);
+            return (
+            <li
+              key={team.id}
+              className="ts-item"
+              id={first ? teamLetterId(letter) : undefined}
+              data-team-letter={first ? letter : undefined}
+            >
               <span className="ts-crest">
                 <TeamBadge team={{ ...team, id: team.id }} size={30} style="crest" />
               </span>
@@ -103,7 +115,8 @@ export default function TeamSearch({ teams }: { teams: IndexedTeam[] }) {
                 </span>
               </span>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </div>

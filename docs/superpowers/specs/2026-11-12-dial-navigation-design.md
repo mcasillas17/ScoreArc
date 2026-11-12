@@ -62,8 +62,13 @@ one control at the bottom of the screen, which has three states:
 
 - **Resting.** A bar with an arched top edge. Inside a competition the centre
   is that competition's crest and the sections split around it. Off a
-  competition the centre is the ScoreArc mark and the items are Home, Teams and
-  News.
+  competition the centre is the page the reader is on and the other two site
+  pages sit one either side: on Teams the centre is Teams, between Home and
+  News. On Home the centre is the ScoreArc mark, labelled Competitions.
+- **The centre always opens a dial of what the reader is looking at.** In a
+  competition and on Home that is the competitions. On Teams it is the team
+  list's initials: turning the wheel scrolls the list, tapping an initial jumps
+  to it. On News the crests open each competition's news.
 - **Open.** Tapping the centre, or swiping up on the bar, raises the wheel:
   competitions on the outer rim, the current context's sections fanned on an
   inner rim, and the ScoreArc mark at the hub linking home. A row of site links

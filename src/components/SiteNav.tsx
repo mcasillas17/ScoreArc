@@ -10,7 +10,7 @@ import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import type { Locale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
 import CompetitionMark from './CompetitionMark';
-import NavDial, { onPointerRelease } from './NavDial';
+import NavDial, { onPointerRelease, type DialItem } from './NavDial';
 import {
   RAIL_REACH_EXPANDED,
   SCROLL_INTENT_PX,
@@ -262,7 +262,25 @@ export function bottomBarItems(pathname: string, locale: Locale): BottomBarItem[
   });
   const rc = activeCompetition(pathname);
   if (rc) return competitionSections(rc, locale, prefix).map(entry);
-  return siteItems(locale, prefix).map(entry);
+  // The page the reader is on is the bar's centre button, so it is not also a
+  // tab: the other two pages sit one either side of it.
+  const site = siteItems(locale, prefix);
+  return site.filter((i) => !i.match(pathname) || site.every((o) => !o.match(pathname))).map(entry);
+}
+
+/**
+ * The site page the bar's centre button stands for, off a competition: Teams
+ * on `/teams`, News on `/news`. Undefined on Home and anywhere else, where the
+ * centre is the ScoreArc mark and opens the competitions.
+ */
+export function centrePage(pathname: string, locale: Locale): NavItem | undefined {
+  if (activeCompetition(pathname)) return undefined;
+  return siteItems(locale, localePrefix(pathname)).slice(1).find((i) => i.match(pathname));
+}
+
+/** The id the team list gives the first team under an initial. */
+export function teamLetterId(letter: string): string {
+  return `ts-${letter}`;
 }
 
 /** The arc that marks the active section: under a desktop tab, over a phone one. */
@@ -297,6 +315,10 @@ export default function SiteNav() {
   const [open, setOpen] = useState(false);
   const [shrunk, setShrunk] = useState(false);
   const [focus, setFocus] = useState(resting);
+  // The initials the team list on this page carries, read from it when the
+  // wheel opens, and the wheel's own position among them.
+  const [letters, setLetters] = useState<string[]>([]);
+  const [letterFocus, setLetterFocus] = useState(0);
   // The dial returns to rest, and the wheel closes, on every navigation.
   const [lastPath, setLastPath] = useState(pathname);
   if (lastPath !== pathname) {
@@ -318,8 +340,19 @@ export default function SiteNav() {
   const barItems = bottomBarItems(pathname, locale);
   const [barLeft, barRight] = splitAround(barItems);
 
+  const page = centrePage(pathname, locale);
+  const onTeams = page?.href === items[1].href;
+  const onNews = page?.href === items[2].href;
+
   const openWheel = () => {
     setFocus(resting);
+    // On Teams the wheel turns the list on the page, by initial. The list
+    // marks the first team under each one; under a search it may mark none,
+    // and the wheel falls back to the competitions.
+    const marks = onTeams ? Array.from(document.querySelectorAll<HTMLElement>('[data-team-letter]')) : [];
+    setLetters(marks.map((el) => el.dataset.teamLetter ?? ''));
+    // Start on the initial the reader has scrolled to.
+    setLetterFocus(Math.max(0, marks.findLastIndex((el) => el.getBoundingClientRect().top < 120)));
     setOpen(true);
   };
   // Focus goes back to the centre button in the effect below, which hears
@@ -371,6 +404,21 @@ export default function SiteNav() {
     };
   }, [open]);
 
+  // Turning the letter wheel scrolls the team list to that initial. Not on
+  // opening: the wheel opens on the initial already on screen.
+  const letterWheel = open && letters.length > 0;
+  const letterAt = Math.round(letterFocus) % (letters.length || 1);
+  const turned = useRef(false);
+  useEffect(() => {
+    if (!letterWheel) {
+      turned.current = false;
+      return;
+    }
+    if (turned.current) document.getElementById(teamLetterId(letters[letterAt]))?.scrollIntoView();
+    turned.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [letterWheel, letterAt]);
+
   // The phone bar shrinks while the reader scrolls down and returns when they
   // scroll up. `lastY` only moves on a deliberate scroll, so a slow one adds up
   // to a change of state instead of being forgotten a few pixels at a time.
@@ -409,7 +457,39 @@ export default function SiteNav() {
     </Link>
   );
 
-  const centreMark = active ? (
+  const competitionItems = (section = ''): DialItem[] =>
+    competitions.map((c) => {
+      const isActive = active?.competition.id === c.id;
+      const seasonId = competitionSeasonId(c, active);
+      return {
+        key: c.id,
+        href: competitionHref(c, active, prefix) + section,
+        label: c.shortName,
+        current: isActive,
+        mark: (
+          <CompetitionMark
+            logo={c.logo}
+            logoInvert={c.logoInvert}
+            emblem={c.emblem}
+            name={c.name}
+            size={isActive ? 30 : 22}
+          />
+        ),
+        onOpen: () => trackEvent('Competition opened', { competition: c.id, season: seasonId, source: 'sitenav' }),
+      };
+    });
+  const letterItems: DialItem[] = letters.map((letter) => ({
+    key: letter,
+    href: `#${teamLetterId(letter)}`,
+    // The initial is the crest itself; a name under it would say it twice.
+    label: '',
+    current: false,
+    mark: <span className="sn-crest-letter">{letter}</span>,
+  }));
+
+  const centreMark = page ? (
+    <span className="sn-centre-icon">{page.icon}</span>
+  ) : active ? (
     <CompetitionMark
       logo={active.competition.logo}
       logoInvert={active.competition.logoInvert}
@@ -495,13 +575,11 @@ export default function SiteNav() {
       </div>
 
       <NavDial
-        competitions={competitions}
-        active={active}
+        items={competitionItems()}
         focus={focus}
         onFocusChange={setFocus}
         variant="rail"
         reach={RAIL_REACH_EXPANDED}
-        prefix={prefix}
         onNavigate={close}
         hint={t('nav.dialHint')}
       />
@@ -576,7 +654,7 @@ export default function SiteNav() {
         onClick={openWheel}
       >
         <span className="sn-centre-mark">{centreMark}</span>
-        {!active && <span className="sn-centre-label">{t('nav.competitions')}</span>}
+        {!active && <span className="sn-centre-label">{page?.label ?? t('nav.competitions')}</span>}
       </button>
       <div className="sn-tabs-group">{barRight.map((tab) => tabLink(tab, 'bottom-bar'))}</div>
     </nav>
@@ -588,7 +666,7 @@ export default function SiteNav() {
         className="sn-wheel"
         role="dialog"
         aria-modal="true"
-        aria-label={t('nav.competitions')}
+        aria-label={letterWheel && page ? page.label : t('nav.competitions')}
       >
         <button type="button" className="sn-wheel-backdrop" aria-label={t('nav.closeWheel')} onClick={closeWheel} />
         {/* Inside a competition the fan below is that competition's sections,
@@ -614,16 +692,26 @@ export default function SiteNav() {
           </div>
         )}
         <div className="sn-wheel-disc" aria-hidden />
-        <NavDial
-          competitions={competitions}
-          active={active}
-          focus={focus}
-          onFocusChange={setFocus}
-          variant="wheel"
-          reach={WHEEL_REACH}
-          prefix={prefix}
-          onNavigate={close}
-        />
+        {letterWheel ? (
+          <NavDial
+            items={letterItems}
+            focus={letterFocus}
+            onFocusChange={setLetterFocus}
+            variant="wheel"
+            reach={WHEEL_REACH}
+            onNavigate={close}
+          />
+        ) : (
+          <NavDial
+            // From News, a crest opens that competition's news.
+            items={competitionItems(onNews ? '/news' : '')}
+            focus={focus}
+            onFocusChange={setFocus}
+            variant="wheel"
+            reach={WHEEL_REACH}
+            onNavigate={close}
+          />
+        )}
         <div className="sn-wheel-sections">
           {barItems.map((tab, i) => (
             <div
