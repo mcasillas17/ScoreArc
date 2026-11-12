@@ -110,26 +110,32 @@ describe('SiteNav interaction', () => {
   // The rotation is presentation only: a crest off the visible rim is
   // transparent, never removed, so the list a screen reader or a Tab key walks
   // is always the whole list.
-  it('renders every competition as a link wherever the dial is turned', () => {
-    const total = listCompetitions().length;
+  it('renders every page and competition as a link wherever the dial is turned', () => {
+    // The rail's dial is the whole menu: Home, Teams, News, then the competitions.
+    const SITE = 3;
+    const total = SITE + listCompetitions().length;
     const { container } = renderNav('/es/c/world-cup/2026');
     const dial = container.querySelector<HTMLElement>('.sn .sn-dial')!;
     const links = () => within(dial).getAllByRole('link');
 
     expect(links()).toHaveLength(total);
-    // World Cup is first; the crests opposite it on the ring start off the rim.
-    const far = Math.floor(total / 2);
+    expect(links().slice(0, SITE).map((a) => a.getAttribute('href'))).toEqual(['/es', '/es/teams', '/es/news']);
+    // World Cup is the first competition; the crests opposite it start off the rim.
+    const here = SITE;
+    const far = (here + Math.floor(total / 2)) % total;
     const slot = (i: number) => links()[i].closest('.sn-dial-slot')!;
+    expect(slot(here).hasAttribute('data-current')).toBe(true);
     expect(slot(far).hasAttribute('data-off')).toBe(true);
-    expect(slot(0).hasAttribute('data-off')).toBe(false);
-    // The ring: the last competition is World Cup's neighbour, not its far end.
-    expect(slot(total - 1).hasAttribute('data-off')).toBe(false);
+    expect(slot(here).hasAttribute('data-off')).toBe(false);
+    // Its neighbours on the ring are either side of it: News before, the next competition after.
+    expect(slot(here - 1).hasAttribute('data-off')).toBe(false);
+    expect(slot(here + 1).hasAttribute('data-off')).toBe(false);
 
     // Focusing a hidden crest turns the dial to it, and the list is still whole.
     fireEvent.focus(links()[far]);
     expect(slot(far).hasAttribute('data-off')).toBe(false);
-    expect(slot(0).hasAttribute('data-off')).toBe(true);
+    expect(slot(here).hasAttribute('data-off')).toBe(true);
     expect(links()).toHaveLength(total);
-    for (const a of links()) expect(a.getAttribute('href')).toMatch(/^\/es\/c\//);
+    for (const a of links()) expect(a.getAttribute('href')).toMatch(/^\/es(\/|$)/);
   });
 });

@@ -182,8 +182,37 @@ a {
   white-space: nowrap;
   transition: color 0.15s;
 }
-a.sn-item:hover, button.sn-item:hover { color: var(--text); }
-button.sn-item { padding: 0; border: 0; background: none; font-family: inherit; cursor: pointer; }
+a.sn-item:hover { color: var(--text); }
+/* The back crest: on Teams, where the dial is the team list's initials, it
+   returns the dial to the menu. It sits under the brand. */
+.sn-back {
+  position: absolute;
+  left: 26px;
+  top: 76px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sn-back:hover { color: var(--text); border-color: var(--text-muted); }
+.sn-back-label { display: none; }
+/* A site page on the dial: an icon where a competition has its crest. */
+.sn-crest-icon { display: flex; }
+.sn-crest-icon svg { width: 20px; height: 20px; }
+.sn-dial-slot[data-current] .sn-crest-icon svg { width: 26px; height: 26px; }
+.sn-dial-slot[data-current] .sn-crest-icon { color: var(--accent); }
 button.sn-wheel-site-link { font-family: inherit; cursor: pointer; }
 .sn-item--active { color: var(--text); }
 .sn-item--active .sn-icon { color: var(--accent); }
@@ -446,6 +475,13 @@ button.sn-wheel-site-link { font-family: inherit; cursor: pointer; }
   }
   .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-mark { display: none; }
   .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-lockup { display: block; }
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-back {
+    left: 24px;
+    top: 84px;
+    width: auto;
+    padding: 0 14px;
+  }
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-back-label { display: block; }
 
   /* The site links move inside the dial, beside its centre, and trade their
      icons for labels. */
@@ -1186,6 +1222,7 @@ button.sn-wheel-site-link { font-family: inherit; cursor: pointer; }
   .sn-mark { display: none; }
   .sn-lockup { display: block; width: 132px; }
   .sn-site,
+  .sn-back,
   .sn .sn-dial,
   .sn-pin,
   .sn-credit { display: none; }

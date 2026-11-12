@@ -354,6 +354,7 @@ export const es = {
   'nav.dialHint': 'Desliza o arrastra para girar el dial',
   'nav.sections': 'Secciones',
   'nav.soon': 'pronto',
+  'nav.menu': 'Menú',
   'nav.competitions': 'Competiciones',
   'hub.group.playingNow': 'Jugando ahora',
   'hub.group.ongoing': 'En curso',

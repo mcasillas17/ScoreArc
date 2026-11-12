@@ -31,9 +31,14 @@ Three constraints from the owner:
 ### Desktop (above 760px)
 
 - **The rail is 96px wide** (was 230px, or 64px collapsed). It shows the
-  ScoreArc mark, icon links for Home, Teams and News, and the rim of the dial
-  with seven crests on it. The open competition sits in the middle, larger,
-  ringed in its accent.
+  ScoreArc mark and the rim of the dial with seven crests on it. The dial is
+  the rail's only menu: Home, Teams and News are crests on it, ahead of the
+  competitions. The page the reader is on sits in the middle, larger, ringed
+  in its accent.
+- **On Teams the dial is the team list's.** It carries the list's initials;
+  turning it scrolls the list, and left alone it rests on the initial on
+  screen. A back crest under the mark returns the dial to the menu, and the
+  Teams crest there returns it to the initials.
 - **Hovering, focusing or pinning the rail expands it to 312px** as an overlay.
   The page underneath does not reflow. Expanded, the dial shows up to nine
   crests with their names (the rest come round as it turns), the site links
