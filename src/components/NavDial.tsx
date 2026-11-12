@@ -206,6 +206,9 @@ export default function NavDial({
             style={{ ['--k' as string]: k }}
             data-off={isOnRim(i, focus, reach, n) ? undefined : ''}
             data-far={variant === 'rail' && !isOnRim(i, focus, RAIL_REACH_COLLAPSED, n) ? '' : undefined}
+            // How many crests out from the centre: the reach it takes to show
+            // this one. A short window allows the rail less of it (CSS).
+            data-ring={variant === 'rail' ? Math.max(0, Math.ceil(Math.abs(k) - 0.5)) : undefined}
             data-current={isActive ? '' : undefined}
             data-centre={snapFocus(focus, n) === i ? '' : undefined}
             // A crest that has just gone round the back of the ring: its offset

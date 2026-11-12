@@ -256,6 +256,27 @@ a.sn-item:hover { color: var(--text); }
 .sn-dial-slot[data-off],
 .sn-dial--rail .sn-dial-slot[data-far] { opacity: 0; pointer-events: none; }
 
+/* ---- Short windows ----
+   A landscape phone is wide enough for the rail and about 430px tall. The
+   dial has to live between the site icons (which end at 208px) and the pin
+   (which starts 64px above the bottom), so on a short window it centres on
+   that gap instead of on the rail, and shows only as many crests either side
+   as the gap holds: 183px for three, 132 for two, 77 for one, 26 for the open
+   competition alone. The rest are a turn of the dial away. These apply to the
+   expanded rail too. */
+@media (max-height: 660px) {
+  .sn { --dial-cy: calc(50% + 72px); }
+}
+@media (max-height: 640px) {
+  .sn-dial--rail .sn-dial-slot[data-ring='3'] { opacity: 0; pointer-events: none; }
+}
+@media (max-height: 540px) {
+  .sn-dial--rail .sn-dial-slot[data-ring='2'] { opacity: 0; pointer-events: none; }
+}
+@media (max-height: 425px) {
+  .sn-dial--rail .sn-dial-slot[data-ring='1'] { opacity: 0; pointer-events: none; }
+}
+
 .sn-crest {
   position: absolute;
   left: 0;
@@ -472,6 +493,11 @@ a.sn-item:hover { color: var(--text); }
     opacity: 1;
     pointer-events: auto;
   }
+}
+/* Expanded, the site links are a column centred on the dial. Under 540px of
+   height four rows of it reach the pin; the label that is not a link goes. */
+@media (min-width: 761px) and (max-height: 540px) {
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-item--soon { display: none; }
 }
 
 /* ===== Main ===== */
