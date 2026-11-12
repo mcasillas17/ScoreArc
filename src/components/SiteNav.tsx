@@ -421,6 +421,11 @@ export default function SiteNav() {
       onMouseLeave={() => {
         if (!pinned) setFocus(resting);
       }}
+      // The same for the keyboard: focusing a crest turns the dial to it, and
+      // tabbing on into the page would leave it there.
+      onBlur={(e) => {
+        if (!pinned && !e.currentTarget.contains(e.relatedTarget)) setFocus(resting);
+      }}
     >
       <Link href={withLocale(prefix, '/')} className="sn-brand" aria-label={t('common.scoreArcHome')}>
         {/* The delivered artwork, used as images: the lockup's kerning and its
