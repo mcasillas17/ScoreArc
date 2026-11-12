@@ -344,21 +344,22 @@ describe('accentStyle', () => {
  * pure function rather than discovering in a browser at one width.
  */
 describe('bottomBarItems', () => {
-  it('shows the site pages plus a way into the menu off a competition', () => {
+  it('shows the site pages, and no Menu entry, off a competition', () => {
     for (const path of ['/', '/teams', '/news']) {
       const tabs = bottomBarItems(path, 'en');
-      expect(tabs.map((t) => t.label)).toEqual(['Home', 'Teams', 'News', 'Menu']);
-      // The menu slot opens the drawer; it is the one entry with no href.
-      expect(tabs.filter((t) => t.href === undefined).map((t) => t.key)).toEqual(['menu']);
+      // The bar's centre button opens the wheel; it replaced the Menu slot, so
+      // every item is a destination.
+      expect(tabs.map((t) => t.label)).toEqual(['Home', 'Teams', 'News']);
+      expect(tabs.map((t) => t.href)).toEqual(['/', '/teams', '/news']);
     }
   });
 
   it('shows the open competition\'s own sections inside it', () => {
     const tabs = bottomBarItems('/c/liga-mx/2026-apertura/standings', 'en');
     expect(tabs.map((t) => t.label)).toEqual(['Liguilla', 'Standings', 'Matches', 'Teams', 'Players', 'News']);
-    // No menu slot inside a competition: the sections fill the bar and the
-    // masthead hamburger is the way to the full list.
-    expect(tabs.every((t) => t.href !== undefined)).toBe(true);
+    // Every slot is a destination: the centre button, not an item, is the way
+    // to the full list.
+    expect(tabs.every((t) => t.href.startsWith('/c/liga-mx/2026-apertura'))).toBe(true);
   });
 
   // A cup has a fifth section (its bracket), and it is the headline one. It
@@ -378,7 +379,8 @@ describe('bottomBarItems', () => {
     }
     for (const path of paths) {
       const n = bottomBarItems(path, 'en').length;
-      expect(n).toBeGreaterThanOrEqual(4);
+      // Three off a competition: the Menu slot became the centre button.
+      expect(n).toBeGreaterThanOrEqual(3);
       expect(n).toBeLessThanOrEqual(6);
     }
   });
@@ -412,7 +414,7 @@ describe('bottomBarItems', () => {
 
   it('translates every label', () => {
     expect(bottomBarItems('/', 'es').map((t) => t.label)).toEqual([
-      'Inicio', 'Equipos', 'Noticias', 'Menú',
+      'Inicio', 'Equipos', 'Noticias',
     ]);
     expect(bottomBarItems('/c/liga-mx/2026-apertura/standings', 'es').map((t) => t.label)).toEqual([
       'Liguilla', 'Clasificación', 'Partidos', 'Equipos', 'Jugadores', 'Noticias',
@@ -423,13 +425,13 @@ describe('bottomBarItems', () => {
   // invented, so the bar cannot drop a Spanish reader back into English.
   it('carries a locale prefix onto every slot, and only when there is one', () => {
     expect(bottomBarItems('/es/teams', 'es').map((t) => t.href)).toEqual([
-      '/es', '/es/teams', '/es/news', undefined,
+      '/es', '/es/teams', '/es/news',
     ]);
     expect(bottomBarItems('/teams', 'en').map((t) => t.href)).toEqual([
-      '/', '/teams', '/news', undefined,
+      '/', '/teams', '/news',
     ]);
     for (const t of bottomBarItems('/es/c/world-cup/2026/standings', 'es')) {
-      expect(t.href!.startsWith('/es/c/world-cup/2026')).toBe(true);
+      expect(t.href.startsWith('/es/c/world-cup/2026')).toBe(true);
     }
   });
 
@@ -443,7 +445,7 @@ describe('bottomBarItems', () => {
   // not bounce a reader browsing 2018 back to 2026.
   it('keeps the season you are on', () => {
     for (const t of bottomBarItems('/c/world-cup/2018/standings', 'en')) {
-      expect(t.href!.startsWith('/c/world-cup/2018')).toBe(true);
+      expect(t.href.startsWith('/c/world-cup/2018')).toBe(true);
     }
   });
 
