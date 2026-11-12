@@ -80,7 +80,7 @@ export function fanAngle(index: number, count: number, stepDeg: number): number 
 }
 
 /** Scroll distance, in px, that counts as a deliberate change of direction. */
-const SCROLL_INTENT_PX = 8;
+export const SCROLL_INTENT_PX = 8;
 /** Above this scroll position the bar never shrinks. */
 const SHRINK_AFTER_PX = 80;
 
