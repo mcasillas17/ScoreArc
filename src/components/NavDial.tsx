@@ -104,6 +104,10 @@ export default function NavDial({
     if (!el || variant !== 'rail') return;
     let acc = 0;
     const onWheel = (e: WheelEvent) => {
+      // Not when the dial is not on screen: on a phone-width window `nav` is
+      // the masthead, and the page must scroll under it. And never a pinch or
+      // ctrl+wheel, which is the reader zooming.
+      if (e.ctrlKey || ref.current?.offsetParent === null) return;
       e.preventDefault();
       acc += e.deltaY;
       const steps = Math.trunc(acc / WHEEL_STEP);
