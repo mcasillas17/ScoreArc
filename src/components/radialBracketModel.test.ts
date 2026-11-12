@@ -111,6 +111,17 @@ describe('deriveLeafOrder', () => {
     ];
     expect(deriveLeafOrder(rounds, ['round-of-16', 'final'])).toEqual([0, 1]);
   });
+
+  it('orders the leaves from the published semifinals before the final is set', () => {
+    // Nations League: the semifinal pairings are drawn after the quarterfinals,
+    // so they are known only from the semifinal matches themselves.
+    const qf = (id: string, h: string, a: string) => dm('quarterfinals', id, h, a, h);
+    const rounds: BracketRound[] = [
+      { slug: 'quarterfinals', matches: [qf('q0', 'PAN', 'CUW'), qf('q1', 'CAN', 'GUA'), qf('q2', 'USA', 'HAI'), qf('q3', 'MEX', 'JAM')] },
+      { slug: 'semifinals', matches: [dm('semifinals', 's0', 'PAN', 'USA', ''), dm('semifinals', 's1', 'MEX', 'CAN', '')] },
+    ];
+    expect(deriveLeafOrder(rounds, ['quarterfinals', 'semifinals', 'final'])).toEqual([0, 2, 3, 1]);
+  });
 });
 
 import { buildRings } from './radialBracketModel';
