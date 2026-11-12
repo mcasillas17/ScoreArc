@@ -53,8 +53,11 @@
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
-  --sidebar-w: 230px;
-  --sidebar-collapsed-w: 64px;
+  /* The rail, collapsed and expanded, and the radius of its dial. --dial-r
+     must match DIAL_RADIUS in dialModel.ts. */
+  --sidebar-w: 96px;
+  --sidebar-open-w: 312px;
+  --dial-r: 300px;
 }
 
 /* ===== Reset ===== */
@@ -112,235 +115,359 @@ a {
 }
 
 /* ===== Global nav ===== */
-/* One nav for the whole site: site sections, then the competitions, and the
-   open competition's own sections nested beneath it. Mounted at the root, so
-   it is the same component on the home page as inside a competition. */
+/* The dial. One nav for the whole site, mounted at the root: a 96px rail whose
+   competition list is the rim of a large circle peeking in from the screen
+   edge, the same radial language as the bracket. Hovering, focusing or pinning
+   the rail expands it as an overlay; the page underneath never reflows.
+
+   The rules outside a media query are the collapsed desktop rail. The expanded
+   rail lives in the `min-width: 761px` block below so that a sticky :hover on
+   a phone can never trigger it, and the phone layout lives in the
+   `max-width: 760px` block further down the file. */
 .sn {
+  /* The dial's centre, shared by the rim, the crests and the site links.
+     Collapsed, the rim meets the rail at x = 64. The floor on cy keeps the
+     dial clear of the site icons above it on a short window. */
+  --dial-cx: -236px;
+  --dial-cy: max(50%, 410px);
   position: fixed;
   top: 0;
   left: 0;
   width: var(--sidebar-w);
   height: 100vh;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  padding: 18px 12px;
-  background: #0d0d10;
+  background: var(--bg);
   border-right: 1px solid var(--hairline);
   z-index: 50;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  transition: width 0.2s ease;
-}
-
-.sn-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 2px 4px;
+  overflow: clip;
+  transition: width 0.2s ease, box-shadow 0.2s ease;
 }
 
 .sn-brand {
+  position: absolute;
+  left: 26px;
+  top: 16px;
+  z-index: 2;
   display: flex;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
-  text-decoration: none;
-}
-
-/* The delivered artwork at its own proportions. The lockup carries the
-   wordmark AND the underline arc; the mark is the ring-and-dot alone, which is
-   what survives a 64px rail. */
-.sn-lockup { width: 100%; max-width: 168px; height: auto; display: block; }
-.sn-mark { width: 30px; height: 30px; display: block; }
-
-.sn-collapse,
-.sn-burger {
-  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  flex: none;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: background-color 0.15s, color 0.15s;
+  width: 44px;
+  height: 44px;
 }
-.sn-collapse:hover,
-.sn-burger:hover { background: rgba(255, 255, 255, 0.06); color: var(--text); }
-/* The hamburger only exists at the phone breakpoint. */
-.sn-burger { display: none; }
+/* The delivered artwork at its own proportions. The lockup carries the
+   wordmark AND the underline arc; the mark is the ring-and-dot alone, which is
+   what survives a 96px rail. Both are in the DOM; exactly one shows. */
+.sn-mark { width: 34px; height: 34px; display: block; }
+.sn-lockup { width: 168px; height: auto; display: none; }
 
-.sn-panel {
+.sn-site {
+  position: absolute;
+  left: 26px;
+  top: 76px;
+  z-index: 2;
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  flex: 1;
-  min-height: 0;
-}
-
-.sn-group { display: flex; flex-direction: column; gap: 2px; }
-
-.sn-heading {
-  font-size: 9.5px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  font-weight: 700;
-  padding: 0 9px;
-  margin-bottom: 6px;
+  gap: 4px;
 }
 
 .sn-item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 9px;
-  border-radius: 9px;
-  color: var(--text-muted);
-  font-size: 13.5px;
-  font-weight: 500;
-  text-decoration: none;
-  transition: background-color 0.15s, color 0.15s;
-}
-a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
-
-.sn-item--active {
-  color: var(--text);
-  background: var(--surface-2);
-  font-weight: 600;
-  box-shadow: inset 2px 0 0 var(--accent);
-}
-.sn-item--active .sn-icon { color: var(--accent); }
-/* The competition you are inside, as opposed to the section you are on. */
-.sn-item--current { color: var(--text); font-weight: 600; }
-
-/* Named, never linked: these sections do not exist yet, and a link to a 404 is
-   worse than an honest label. */
-.sn-item--soon { cursor: default; opacity: 0.7; }
-
-.sn-icon {
-  display: inline-flex;
-  align-items: center;
   justify-content: center;
-  width: 18px;
-  flex: none;
-  color: inherit;
-}
-
-.sn-label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  width: 44px;
+  height: 44px;
+  color: var(--text-muted);
+  font-size: 15px;
+  font-weight: 600;
   white-space: nowrap;
+  transition: color 0.15s;
 }
-
+a.sn-item:hover { color: var(--text); }
+.sn-item--active { color: var(--text); }
+.sn-item--active .sn-icon { color: var(--accent); }
+.sn-icon { display: inline-flex; }
+.sn-icon svg { width: 20px; height: 20px; }
+/* Named, never linked: these sections do not exist yet, and a link to a 404 is
+   worse than an honest label. A label needs room, so it waits for the expanded
+   rail. */
+.sn-item--soon { display: none; cursor: default; opacity: 0.7; }
+.sn-label,
+.sn-item .sn-arc,
+.sn-credit { display: none; }
 .sn-soon {
   font-size: 8.5px;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--text-muted);
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 1px 6px;
-  flex: none;
 }
 
-.sn-sub {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  margin: 3px 0 7px 13px;
-  padding-left: 10px;
-  border-left: 1px solid var(--hairline);
-}
-.sn-item--sub { font-size: 12.5px; padding: 6px 9px; }
+/* ---- The orbit ----
+   Each slot is a zero-size box at the dial's centre, swung out to the rim by
+   its offset from the dial position (`--k`, set inline) and then counter-
+   rotated so the crest stays upright. This is the whole positioning
+   technique; the only JavaScript geometry is the gesture maths. */
+.sn-dial { --step: 11deg; --base: 0deg; touch-action: none; }
+.sn-dial--wheel { --step: 14deg; --base: -90deg; }
+.sn-dial--rail { position: absolute; inset: 0; z-index: 1; }
 
-.sn-credit {
+/* The rim, and on it the arc that marks where the open competition rests. */
+.sn-dial::before,
+.sn-dial::after {
+  content: '';
+  position: absolute;
+  left: calc(var(--dial-cx) - var(--dial-r));
+  top: calc(var(--dial-cy) - var(--dial-r));
+  width: calc(var(--dial-r) * 2);
+  height: calc(var(--dial-r) * 2);
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  pointer-events: none;
+  transition: left 0.2s ease;
+}
+.sn-dial--rail::before { background: var(--surface-1); }
+.sn-dial::after {
+  display: none;
+  border: 3px solid var(--accent);
+  -webkit-mask: conic-gradient(from calc(var(--base) + 83deg), black 0 14deg, transparent 0);
+  mask: conic-gradient(from calc(var(--base) + 83deg), black 0 14deg, transparent 0);
+}
+.sn-dial[data-has-current]::after { display: block; }
+
+.sn-dial-slot {
+  --crest: 40px;
+  position: absolute;
+  left: var(--dial-cx);
+  top: var(--dial-cy);
+  width: 0;
+  height: 0;
+  --angle: calc(var(--base) + var(--k) * var(--step));
+  transform: rotate(var(--angle)) translateX(var(--dial-r)) rotate(calc(var(--angle) * -1));
+  transition: transform 0.25s ease, opacity 0.2s ease, left 0.2s ease;
+}
+.sn-dial-slot[data-current] { --crest: 52px; z-index: 1; }
+.sn-dial--dragging .sn-dial-slot { transition: none; }
+/* Off the visible rim. Transparent, not removed: every competition stays a
+   focusable link, and focusing one turns the dial to it. `data-far` is the
+   same for the collapsed rail's shorter reach. */
+.sn-dial-slot[data-off],
+.sn-dial--rail .sn-dial-slot[data-far] { opacity: 0; pointer-events: none; }
+
+.sn-crest {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(calc(var(--crest) / -2), -50%);
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: auto;
-  padding: 10px 9px 0;
-  border-top: 1px solid var(--hairline);
+  gap: 10px;
+  height: var(--crest);
   color: var(--text-muted);
-  font-size: 11.5px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-drag: none;
   transition: color 0.15s;
 }
-.sn-credit:hover { color: var(--accent); }
-.sn-credit-text strong { font-weight: 700; color: var(--text); }
-.sn-credit:hover .sn-credit-text strong { color: var(--accent); }
-
-/* ===== The phone's bottom tab bar ===== */
-/* Desktop has the rail and needs no second nav, so this is display:none until
-   the phone query below turns it on. On a phone it is the *only* navigation
-   standing at rest: four or five thumb-reachable sections, contextual to where
-   you are. It is what `main` had before E14 (`.mobile-tabbar`), restored,
-   because the row-plus-drawer that replaced it showed both at once. */
-.sn-tabs { display: none; }
-
-.sn-tab {
-  flex: 1;
-  min-width: 0;
+.sn-crest:hover { color: var(--text); }
+.sn-crest:focus-visible { outline: none; }
+.sn-crest:focus-visible .sn-crest-mark { outline: 2px solid var(--accent); outline-offset: 3px; }
+.sn-crest-mark {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  padding: 8px 4px;
-  border: 0;
-  background: transparent;
-  font: inherit;
-  cursor: pointer;
-  color: var(--text-muted);
-  text-decoration: none;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-.sn-tab-icon { display: inline-flex; }
-.sn-tab-icon svg { width: 21px; height: 21px; }
-/* The bar divides the width evenly, so the longest label ("Clasificación")
-   decides. Let it shrink rather than wrap or spill into its neighbour. */
-.sn-tab-label {
-  max-width: 100%;
+  flex: none;
+  width: var(--crest);
+  height: var(--crest);
+  padding: 5px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 2px solid var(--border);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  transition: border-color 0.15s;
 }
-.sn-tab--active { color: var(--accent); }
-.sn-tab--active .sn-tab-icon { color: var(--accent); }
+.sn-crest:hover .sn-crest-mark { border-color: var(--text-muted); }
+/* CompetitionMark fixes a height and lets a wide wordmark run to 2.8x that.
+   In a round crest it has to shrink to fit instead; object-fit keeps its
+   proportions. */
+.sn-crest-mark .cm-mark { flex: 0 1 auto; min-width: 0; -webkit-user-drag: none; }
+.sn-dial-slot[data-current] .sn-crest-mark {
+  border: 3px solid var(--accent);
+  box-shadow: 0 0 0 4px var(--bg);
+}
+.sn-crest-name { display: none; }
 
-/* The content column beside the fixed rail. */
+.sn-pin {
+  position: absolute;
+  left: 26px;
+  bottom: 20px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.sn-pin:hover { color: var(--text); }
+.sn-pin svg { transition: transform 0.2s ease; }
+.sn-pin[aria-pressed='true'] { color: var(--accent); border-color: var(--accent); }
+.sn-pin[aria-pressed='true'] svg { transform: rotate(180deg); }
+
+/* The arc that marks the active section, wherever it is drawn. */
+.sn-arc { display: block; color: var(--accent); pointer-events: none; }
+
+/* ---- Section tabs ----
+   The open competition's sections, across the top of the content column. They
+   used to nest under the competition in the sidebar; a 96px rail has no room
+   for them and the content they switch is right below. */
+.sn-sections {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 64px;
+  padding: 0 36px 0 20px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--hairline);
+}
+.sn-section {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 16px;
+  color: var(--text-muted);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: color 0.15s;
+}
+.sn-section:hover,
+.sn-section[aria-current] { color: var(--text); }
+.sn-section .sn-arc { position: absolute; left: 50%; bottom: 0; margin-left: -22px; }
+
+/* The phone's bar and wheel. Desktop has the rail and the tab row, so these
+   are display:none until the phone query below turns them on. */
+.sn-tabs,
+.sn-wheel { display: none; }
+
+/* The content column beside the fixed rail. Its offset is the collapsed
+   rail's width and never changes: the expanded rail is an overlay, because a
+   rail that pushes content sideways on hover makes tables jump under the
+   pointer. */
 .app-content {
   flex: 1;
   min-width: 0;
   margin-left: var(--sidebar-w);
-  transition: margin-left 0.2s ease;
 }
 
-/* Collapsing is a desktop affordance only — on a phone the nav is a masthead
-   plus a bottom bar, and a 64px rail has nowhere to be. Keeping every
-   collapsed rule inside this query is what stops the icon-only rail leaking
-   onto the phone layout. */
+/* ---- The expanded rail ----
+   Hover, keyboard focus or the pin. `:has(:focus-visible)` rather than
+   `:focus-within`: a clicked crest keeps focus after the navigation, and
+   :focus-within would hold the rail open over the page until the reader
+   clicked somewhere else. */
 @media (min-width: 761px) {
-  .sn--collapsed { width: var(--sidebar-collapsed-w); padding: 18px 8px; }
-  .sn--collapsed .sn-top { flex-direction: column; gap: 6px; padding: 2px 0; }
-  .sn--collapsed .sn-brand { flex: none; justify-content: center; }
-  .sn--collapsed .sn-heading { display: none; }
-  .sn--collapsed .sn-item { justify-content: center; padding: 9px 0; }
-  .sn--collapsed .sn-label,
-  .sn--collapsed .sn-soon,
-  .sn--collapsed .sn-credit-text { display: none; }
-  .sn--collapsed .sn-sub { margin-left: 0; padding-left: 0; border-left: none; }
-  .sn--collapsed .sn-credit { justify-content: center; }
-  .app-shell:has(.sn--collapsed) .app-content { margin-left: var(--sidebar-collapsed-w); }
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) {
+    /* Expanded, the rim meets the rail at x = 190. */
+    --dial-cx: -110px;
+    width: var(--sidebar-open-w);
+    box-shadow: 12px 0 40px rgba(0, 0, 0, 0.55);
+  }
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-brand {
+    left: 24px;
+    top: 20px;
+    width: auto;
+  }
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-mark { display: none; }
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-lockup { display: block; }
+
+  /* The site links move inside the dial, beside its centre, and trade their
+     icons for labels. */
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-site {
+    left: 24px;
+    top: var(--dial-cy);
+    transform: translateY(-50%);
+    gap: 0;
+  }
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-item {
+    width: auto;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-icon { display: none; }
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-label { display: block; }
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-item--soon { display: flex; }
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-item .sn-arc {
+    display: block;
+    position: absolute;
+    left: -2px;
+    bottom: 2px;
+  }
+
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-dial-slot { --crest: 44px; }
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-current] { --crest: 60px; }
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-crest-name { display: block; }
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-current] .sn-crest {
+    gap: 12px;
+    color: var(--text);
+    font-size: 16px;
+    font-weight: 800;
+  }
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-current] .sn-crest-mark {
+    box-shadow: 0 0 0 6px var(--bg);
+  }
+
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-pin { left: 24px; }
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-credit {
+    position: absolute;
+    left: 80px;
+    bottom: 20px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 44px;
+    color: var(--text-muted);
+    font-size: 11.5px;
+    white-space: nowrap;
+    transition: color 0.15s;
+  }
+  .sn-credit:hover { color: var(--accent); }
+  .sn-credit-text strong { font-weight: 700; color: var(--text); }
+  .sn-credit:hover .sn-credit-text strong { color: var(--accent); }
+}
+/* The expanded rail's full reach: five crests either side instead of three.
+   ponytail: it needs about 760px of height to clear the pin and the brand, so
+   a shorter window keeps the collapsed reach; the rest are a turn of the dial
+   away. Scale --dial-r with the viewport if short windows start to matter. */
+@media (min-width: 761px) and (min-height: 761px) {
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-far]:not([data-off]) {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sn,
+  .sn-dial::before,
+  .sn-dial::after,
+  .sn-dial-slot,
+  .sn-pin svg,
+  .sn-tabs,
+  .sn-tabs *,
+  .sn-wheel,
+  .sn-wheel * { transition: none; animation: none; }
 }
 
 /* ===== Main ===== */
@@ -984,66 +1111,300 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
   color: var(--brand-bright);
 }
 
-/* ===== Responsive: the nav becomes a masthead plus a bottom bar ===== */
-/* E14 shipped two navigations on a phone at the same time: a permanently
-   visible horizontally scrolling `.sn-panel` row *and* a hamburger opening the
-   same items as a vertical list. It did that to satisfy a spec criterion --
-   "no nav item at width: 0 on a phone" -- which was itself a mis-measurement:
-   the items it found at zero size were inside a closed menu, which is where a
-   closed menu's items belong. That criterion has been deleted from the spec.
-   So: `.sn` keeps only the brand and the hamburger, `.sn-panel` is a drawer
-   and stays closed until opened, and the standing navigation is `.sn-tabs`
-   fixed to the bottom of the viewport. Exactly one of the two is ever on
-   screen -- the tab bar hides while the drawer is open. */
+/* ===== Responsive: the nav becomes a masthead plus one bottom control ===== */
+/* On a phone the rail has nowhere to be. `.sn` keeps only the lockup, as a
+   sticky masthead, and everything else lives in `.sn-tabs`, fixed to the
+   bottom of the viewport: a bar with an arched top edge that shrinks to its
+   centre crest while the reader scrolls down, and whose centre raises the
+   wheel (`.sn-wheel`) -- competitions on the outer rim, the current context's
+   sections fanned inside it. Exactly one navigation is ever on screen: the
+   wheel covers the bar while it is open, and the desktop tab row is hidden. */
 @media (max-width: 760px) {
   .app-shell { flex-direction: column; }
 
   .sn {
     position: sticky;
+    display: flex;
+    align-items: center;
     width: 100%;
-    height: auto;
-    max-height: 100vh;
-    flex-direction: column;
-    gap: 0;
-    padding: 8px 12px;
+    height: 56px;
+    padding: 0 16px;
     border-right: none;
     border-bottom: 1px solid var(--hairline);
-    overflow-y: auto;
   }
+  .sn-brand { position: static; width: auto; }
+  .sn-mark { display: none; }
+  .sn-lockup { display: block; width: 132px; }
+  .sn-site,
+  .sn .sn-dial,
+  .sn-pin { display: none; }
 
-  .sn-top { padding: 0; }
-  .sn-lockup { max-width: 132px; }
-  .sn-collapse { display: none; }
-  .sn-burger { display: inline-flex; }
+  .sn-sections { display: none; }
 
-  /* A drawer is closed until you open it. Open, it is the same vertical list
-     the desktop rail renders, so no shape rules are needed -- only padding to
-     part it from the masthead. */
-  .sn-panel { display: none; }
-  .sn--open .sn-panel { display: flex; padding-top: 12px; }
-
+  /* ---- The bar ---- */
   .sn-tabs {
     display: flex;
+    justify-content: space-between;
     position: fixed;
     left: 0;
     right: 0;
     bottom: 0;
     z-index: 60;
-    background: var(--surface-1);
-    border-top: 1px solid var(--hairline);
+    height: calc(84px + env(safe-area-inset-bottom));
+    padding-top: 24px;
     padding-bottom: env(safe-area-inset-bottom);
-    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.35);
+    /* The bar is also the swipe-up target; without this the browser claims
+       the gesture as a page scroll and the pointer events are cancelled. */
+    touch-action: none;
+    transition: transform 0.25s ease;
   }
-  /* Two navigations at once is the bug. While the drawer is open it is the
-     navigation, and the bar underneath it would both duplicate it and cover
-     its last rows. */
-  .sn--open ~ .sn-tabs { display: none; }
+  /* The arched top edge. The SVG is the bar's top 84px; below it, the home
+     indicator's inset is plain fill. */
+  .sn-tabs-arch {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: -1;
+    width: 100%;
+    height: 84px;
+    filter: drop-shadow(0 -2px 10px rgba(0, 0, 0, 0.4));
+  }
+  .sn-tabs-arch-fill { fill: var(--surface-1); }
+  .sn-tabs-arch-edge { stroke: var(--border); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+  .sn-tabs::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 83px;
+    bottom: 0;
+    z-index: -1;
+    background: var(--surface-1);
+  }
+
+  .sn-tabs-group {
+    display: flex;
+    width: calc(50% - 34px);
+    height: 56px;
+    transition: opacity 0.2s ease, visibility 0.2s;
+  }
+  .sn-tab {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 44px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    color: var(--text-muted);
+    font-size: 10.5px;
+    font-weight: 600;
+  }
+  .sn-tab-icon { display: inline-flex; }
+  .sn-tab-icon svg { width: 20px; height: 20px; }
+  /* The longest label ("Clasificación") decides. Let it shrink rather than
+     wrap or spill into its neighbour. */
+  .sn-tab-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sn-tab--active { color: var(--text); }
+  /* Drawn for the underside of a desktop tab; flipped, it arches over this one. */
+  .sn-tab .sn-arc {
+    position: absolute;
+    top: -3px;
+    left: 50%;
+    width: 36px;
+    height: 8px;
+    margin-left: -18px;
+    transform: scaleY(-1);
+  }
+
+  /* The centre: the open competition's crest, or the ScoreArc mark off one. */
+  .sn-centre {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    width: 56px;
+    height: 56px;
+    margin-left: -28px;
+    padding: 0;
+    border-radius: 50%;
+    border: 3px solid var(--accent);
+    background: var(--surface-2);
+    box-shadow: 0 0 0 5px var(--bg);
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+    transition: transform 0.25s ease;
+  }
+  .sn-centre-mark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding: 6px;
+    border-radius: 50%;
+    overflow: hidden;
+  }
+  .sn-centre-mark .cm-mark { flex: 0 1 auto; min-width: 0; }
+  .sn-tabs[data-site] .sn-centre { border: 1px solid var(--border); }
+  .sn-centre-label {
+    position: absolute;
+    left: 50%;
+    top: calc(100% + 7px);
+    transform: translateX(-50%);
+    font-size: 10.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: opacity 0.2s ease;
+  }
+
+  /* Shrunk: the bar slides down until only the crown of its arch shows, and
+     the centre rides up it, smaller. 84px of bar becomes about 48. */
+  .sn-tabs[data-shrunk] { transform: translateY(50px); }
+  .sn-tabs[data-shrunk] .sn-tabs-group { opacity: 0; visibility: hidden; }
+  .sn-tabs[data-shrunk] .sn-centre { transform: translateY(-20px) scale(0.786); }
+  .sn-tabs[data-shrunk] .sn-centre-label { opacity: 0; }
+
+  /* ---- The wheel ---- */
+  .sn-wheel {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    overflow: clip;
+    touch-action: none;
+  }
+  .sn-wheel-backdrop {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: rgba(0, 0, 0, 0.6);
+    cursor: default;
+    animation: sn-fade 0.2s ease;
+  }
+  /* The dial is its own disc: 340px of radius centred 60px below the screen,
+     so about 280px of it shows. Bands, outward: the hub, the section fan, the
+     competition rim. Sized to the disc rather than the viewport so a tap
+     beside it still lands on the backdrop. */
+  .sn-dial--wheel {
+    --dial-cx: 340px;
+    --dial-cy: 340px;
+    position: absolute;
+    left: calc(50% - 340px);
+    top: calc(100% - 280px);
+    width: 680px;
+    height: 680px;
+    border-radius: 50%;
+    /* A shadow, not a border: a border would move the padding box the slots
+       are placed in off the gradient's centre. */
+    box-shadow: 0 0 0 1.5px var(--border);
+    background: radial-gradient(
+      circle,
+      var(--surface-1) 0 149px,
+      var(--border) 149px 150.5px,
+      var(--bg) 150.5px 249px,
+      var(--border) 249px 250.5px,
+      var(--surface-1) 250.5px
+    );
+    animation: sn-rise 0.25s ease;
+  }
+  .sn-dial--wheel .sn-dial-slot { --crest: 44px; }
+  .sn-dial--wheel .sn-dial-slot[data-current] { --crest: 56px; }
+  .sn-dial--wheel .sn-dial-slot[data-current] .sn-crest-mark { box-shadow: 0 0 0 5px var(--surface-1); }
+  /* Only the crest at the top of the wheel is named. */
+  .sn-dial--wheel .sn-dial-slot[data-centre] .sn-crest-name {
+    display: block;
+    position: absolute;
+    left: 50%;
+    top: calc(100% + 8px);
+    transform: translateX(-50%);
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 800;
+  }
+
+  /* The section fan: the same orbit, radius 210, `--a` degrees from the top. */
+  .sn-wheel-sections {
+    position: absolute;
+    left: 50%;
+    top: calc(100% + 60px);
+    width: 0;
+    height: 0;
+    animation: sn-rise 0.25s ease;
+  }
+  .sn-fan-slot {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 0;
+    height: 0;
+    --fan: calc(var(--a) * var(--fan-scale, 1));
+    transform: rotate(calc(var(--fan) - 90deg)) translateX(210px) rotate(calc(90deg - var(--fan)));
+  }
+  .sn-fan-slot .sn-tab {
+    position: absolute;
+    left: -32px;
+    top: -22px;
+    width: 64px;
+    height: 44px;
+    gap: 3px;
+    font-size: 11px;
+  }
+  .sn-fan-slot .sn-tab-label { overflow: visible; }
+
+  .sn-wheel-hub {
+    position: absolute;
+    left: 50%;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    margin-left: -24px;
+    animation: sn-rise 0.25s ease;
+  }
+
+  /* The site's own pages, above the wheel, while its fan is a competition's. */
+  .sn-wheel-site {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 300px;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    pointer-events: none;
+    animation: sn-rise 0.25s ease;
+  }
+  .sn-wheel-site-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 16px;
+    border-radius: 22px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    pointer-events: auto;
+  }
 
   .app-content {
     margin-left: 0;
-    /* Clears the fixed bar so it never covers the last row or the footer.
-       ~57px of bar (21px icon + label + padding) plus the home indicator. */
-    padding-bottom: calc(62px + env(safe-area-inset-bottom));
+    /* Clears the bar at rest, its tallest standing state, so it never covers
+       the last row or the footer. */
+    padding-bottom: calc(84px + env(safe-area-inset-bottom));
   }
 
   .main {
@@ -1051,6 +1412,18 @@ a.sn-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
     gap: 32px;
     max-width: 100%;
   }
+}
+/* Six sections at 20 degrees reach 161px either side of the centre, plus half
+   a 64px label: 2px to spare at 390 and 13px over at 360. */
+@media (max-width: 389px) {
+  .sn-fan-slot { --fan-scale: 0.9; }
+}
+
+@keyframes sn-rise {
+  from { translate: 0 80px; opacity: 0; }
+}
+@keyframes sn-fade {
+  from { opacity: 0; }
 }
 
 @media (max-width: 560px) {
