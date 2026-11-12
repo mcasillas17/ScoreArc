@@ -44,11 +44,17 @@ describe('SiteNav interaction', () => {
     expect(document.activeElement?.getAttribute('href')).toBe('/es/c/liga-mx/2026-apertura');
   });
 
-  it('moves focus to the first link when no competition is open', () => {
+  // Off a competition nothing is current, and focusing a crest turns the dial
+  // to it -- so focus goes to the crest already at the top, leaving the wheel
+  // at rest on the middle of the list rather than turned to its first entry.
+  it('moves focus to the centre crest when no competition is open', () => {
     renderNav('/es');
     fireEvent.click(screen.getByRole('button', { name: 'Abrir navegación' }));
     const wheel = screen.getByRole('dialog');
-    expect(document.activeElement).toBe(wheel.querySelector('a'));
+    const links = Array.from(wheel.querySelectorAll('.sn-dial a'));
+    expect(links.indexOf(document.activeElement as HTMLAnchorElement)).toBe(
+      Math.floor((listCompetitions().length - 1) / 2),
+    );
   });
 
   it('closes the wheel on Escape and returns focus to the centre button', () => {

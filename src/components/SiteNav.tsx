@@ -337,7 +337,10 @@ export default function SiteNav() {
     if (!open) return;
     const root = wheelRef.current;
     if (!root) return;
-    (root.querySelector<HTMLElement>('.sn-dial [aria-current="true"]') ?? root.querySelector<HTMLElement>('a'))?.focus();
+    // The crest at the top of the wheel: the open competition, or off one the
+    // middle of the list. Not simply the first link — focusing a crest turns
+    // the dial to it, and the wheel would open already turned to one end.
+    (root.querySelector<HTMLElement>('.sn-dial [data-centre] a') ?? root.querySelector<HTMLElement>('a'))?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setOpen(false);
@@ -368,8 +371,11 @@ export default function SiteNav() {
     let lastY = window.scrollY;
     const onScroll = () => {
       const y = window.scrollY;
-      setShrunk((prev) => nextShrunk(prev, lastY, y));
-      if (Math.abs(y - lastY) > SCROLL_INTENT_PX) lastY = y;
+      // Captured per event: the updater below runs later, after `lastY` has
+      // moved, and would otherwise always see a scroll of zero.
+      const from = lastY;
+      if (Math.abs(y - from) > SCROLL_INTENT_PX) lastY = y;
+      setShrunk((prev) => nextShrunk(prev, from, y));
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
@@ -527,6 +533,9 @@ export default function SiteNav() {
         e.preventDefault();
         e.stopPropagation();
       }}
+      // With a mouse, a swipe that starts on a tab would otherwise become the
+      // browser's own link drag, which cancels the pointer.
+      onDragStart={(e) => e.preventDefault()}
     >
       <svg className="sn-tabs-arch" viewBox="0 0 390 84" preserveAspectRatio="none" fill="none" aria-hidden>
         <path className="sn-tabs-arch-fill" d="M0 26Q195 2 390 26V84H0Z" />

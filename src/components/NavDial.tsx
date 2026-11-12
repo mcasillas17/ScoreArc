@@ -76,7 +76,9 @@ export default function NavDial({
   // React's onWheel is passive and cannot preventDefault, so the page would
   // scroll under the pointer while the dial turned.
   useEffect(() => {
-    const el = ref.current;
+    // The whole rail, not just the dial: the site links sit on top of the dial
+    // and a wheel event over them never reaches it.
+    const el = ref.current?.closest('nav');
     if (!el || variant !== 'rail') return;
     let acc = 0;
     const onWheel = (e: WheelEvent) => {

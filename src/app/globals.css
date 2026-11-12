@@ -417,12 +417,27 @@ a.sn-item:hover { color: var(--text); }
 
   .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-dial-slot { --crest: 44px; }
   .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-current] { --crest: 60px; }
-  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-crest-name { display: block; }
+  /* Two lines at most: "Super League Greece" does not fit the 110px between
+     its crest and the rail's edge on one. */
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-crest-name {
+    display: block;
+    /* The crest hangs off a zero-width slot, so without an explicit width the
+       name shrinks to its longest word. */
+    width: max-content;
+    max-width: 100px;
+    line-height: 1.2;
+    white-space: normal;
+  }
   .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-current] .sn-crest {
     gap: 12px;
     color: var(--text);
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 800;
+  }
+  /* The larger crest leaves 80px before the rail's edge: "Bundesliga" in one
+     line at this size, everything longer in two. */
+  .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-current] .sn-crest-name {
+    max-width: 80px;
   }
   .sn:is(:hover, :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-current] .sn-crest-mark {
     box-shadow: 0 0 0 6px var(--bg);
@@ -456,18 +471,6 @@ a.sn-item:hover { color: var(--text); }
     opacity: 1;
     pointer-events: auto;
   }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sn,
-  .sn-dial::before,
-  .sn-dial::after,
-  .sn-dial-slot,
-  .sn-pin svg,
-  .sn-tabs,
-  .sn-tabs *,
-  .sn-wheel,
-  .sn-wheel * { transition: none; animation: none; }
 }
 
 /* ===== Main ===== */
@@ -1424,6 +1427,23 @@ a.sn-item:hover { color: var(--text); }
 }
 @keyframes sn-fade {
   from { opacity: 0; }
+}
+
+/* After the phone block on purpose: the bar's and the wheel's transitions are
+   declared there, and at equal specificity the later rule wins. */
+@media (prefers-reduced-motion: reduce) {
+  .sn,
+  .sn-dial::before,
+  .sn-dial::after,
+  .sn-dial-slot,
+  .sn-crest,
+  .sn-crest-mark,
+  .sn-pin,
+  .sn-pin svg,
+  .sn-tabs,
+  .sn-tabs *,
+  .sn-wheel,
+  .sn-wheel * { transition: none; animation: none; }
 }
 
 @media (max-width: 560px) {
