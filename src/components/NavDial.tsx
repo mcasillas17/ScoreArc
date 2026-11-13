@@ -3,14 +3,14 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
-  DIAL_RADIUS,
   RAIL_REACH_COLLAPSED,
   RAIL_STEP_DEG,
   WHEEL_STEP_DEG,
   dragFocus,
   isOnRim,
+  glideDecay,
   snapFocus,
-  stepPx,
+  wrapFocus,
   wrapOffset,
 } from './dialModel';
 
@@ -31,6 +31,15 @@ export function onPointerRelease(pointerId: number, fn: (e: PointerEvent) => voi
   window.addEventListener('pointerup', done);
   window.addEventListener('pointercancel', done);
 }
+
+/** A release counts as a flick only if the pointer was still moving this recently. */
+const FLICK_WINDOW_MS = 100;
+/** Slowest flick that glides, fastest one allowed, and where a glide stops: crests per ms. */
+const GLIDE_MIN = 0.0015;
+const GLIDE_MAX = 0.015;
+const GLIDE_STOP = 0.0006;
+/** Set once the reader has turned a dial; until then it shows them that it turns. */
+const TURNED_KEY = 'sn-dial-turned';
 
 /** Wheel delta that turns the dial by one crest. */
 const WHEEL_STEP = 60;
@@ -81,13 +90,45 @@ export default function NavDial({
   hint,
 }: NavDialProps) {
   const ref = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ start: number; focus: number; moved: boolean } | null>(null);
+  // `angle` is the pointer's bearing from the dial's centre and `turned` the
+  // degrees it has swept since the press; `trail` is the last moments of that,
+  // for the speed it is let go at.
+  const drag = useRef<{
+    x: number;
+    y: number;
+    focus: number;
+    moved: boolean;
+    angle: number;
+    turned: number;
+    trail: { t: number; turned: number }[];
+  } | null>(null);
+  const glide = useRef(0);
   const swallowClick = useRef(false);
   const [dragging, setDragging] = useState(false);
   const n = items.length;
   const step = variant === 'rail' ? RAIL_STEP_DEG : WHEEL_STEP_DEG;
-  const along = (e: { clientX: number; clientY: number }) =>
-    variant === 'rail' ? e.clientY : e.clientX;
+  // The pointer's bearing from the centre of the dial, in degrees. The slots
+  // are zero-size boxes laid out at that centre, so the first one says where
+  // it is — whatever the breakpoint or the rail's width.
+  const bearing = (e: { clientX: number; clientY: number }) => {
+    const el = ref.current;
+    const slot = el?.firstElementChild as HTMLElement | null;
+    if (!el || !slot) return 0;
+    const box = el.getBoundingClientRect();
+    return (
+      (Math.atan2(e.clientY - box.top - slot.offsetTop, e.clientX - box.left - slot.offsetLeft) * 180) /
+      Math.PI
+    );
+  };
+  // The reader has turned the dial: it need not show them again.
+  const learned = () => {
+    ref.current?.removeAttribute('data-nudge');
+    try {
+      localStorage.setItem(TURNED_KEY, '1');
+    } catch {
+      // Private window: the nudge plays again next time, which is harmless.
+    }
+  };
 
   // The native wheel listener below is attached once; it reads the current
   // position through this.
@@ -99,6 +140,18 @@ export default function NavDial({
     latest.current = { focus, onFocusChange, n };
     shown.current = focus;
   });
+
+  // Until the reader has turned a dial once, it rocks on arrival to show that
+  // it turns. Set on the element, not in state: the rail is server-rendered
+  // and storage is only readable here.
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem(TURNED_KEY)) ref.current?.setAttribute('data-nudge', '');
+    } catch {
+      // No storage, no nudge.
+    }
+    return () => cancelAnimationFrame(glide.current);
+  }, []);
 
   // React's onWheel is passive and cannot preventDefault, so the page would
   // scroll under the pointer while the dial turned.
@@ -118,6 +171,7 @@ export default function NavDial({
       const steps = Math.trunc(acc / WHEEL_STEP);
       if (!steps) return;
       acc -= steps * WHEEL_STEP;
+      learned();
       const l = latest.current;
       l.onFocusChange(snapFocus(l.focus + steps, l.n));
     };
@@ -131,9 +185,37 @@ export default function NavDial({
     const d = drag.current;
     drag.current = null;
     if (!d?.moved) return;
-    setDragging(false);
-    const l = latest.current;
-    l.onFocusChange(snapFocus(l.focus, l.n));
+    const settle = (at: number) => {
+      setDragging(false);
+      const l = latest.current;
+      l.onFocusChange(snapFocus(at, l.n));
+    };
+    // Let go while moving, the dial carries on and slows, as a wheel would.
+    const now = performance.now();
+    const trail = d.trail.filter((p) => now - p.t <= FLICK_WINDOW_MS);
+    const [first, last] = [trail[0], trail[trail.length - 1]];
+    let v = trail.length > 1 && last.t > first.t ? -(last.turned - first.turned) / step / (last.t - first.t) : 0;
+    v = Math.max(-GLIDE_MAX, Math.min(GLIDE_MAX, v));
+    const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (!released || still || Math.abs(v) < GLIDE_MIN) {
+      settle(latest.current.focus);
+    } else {
+      let at = latest.current.focus;
+      let then = now;
+      const tick = (t: number) => {
+        const dt = Math.max(0, t - then);
+        then = t;
+        v = glideDecay(v, dt);
+        at = wrapFocus(at + v * dt, latest.current.n);
+        if (Math.abs(v) < GLIDE_STOP) {
+          settle(at);
+          return;
+        }
+        latest.current.onFocusChange(at);
+        glide.current = requestAnimationFrame(tick);
+      };
+      glide.current = requestAnimationFrame(tick);
+    }
     if (!released) return;
     // A drag never navigates. The click, if one follows, is dispatched in this
     // same turn, so the flag cannot outlive it and eat a later real click.
@@ -147,11 +229,23 @@ export default function NavDial({
     <div
       ref={ref}
       className={`sn-dial sn-dial--${variant}${dragging ? ' sn-dial--dragging' : ''}`}
-      data-has-current={items.some((item) => item.current) ? '' : undefined}
+      // The accent arc marks the rest position, so it shows only while the
+      // current page is resting there: turned away, it was a stray green line.
+      data-has-current={items[snapFocus(focus, n)]?.current ? '' : undefined}
       title={hint}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
-        drag.current = { start: along(e), focus, moved: false };
+        // A press stops a glide where it is.
+        cancelAnimationFrame(glide.current);
+        drag.current = {
+          x: e.clientX,
+          y: e.clientY,
+          focus,
+          moved: false,
+          angle: bearing(e),
+          turned: 0,
+          trail: [],
+        };
         // The release is heard on the window: a press that slides off the rail
         // and lets go over the page must still end here.
         onPointerRelease(e.pointerId, (up) => endDrag(up.type === 'pointerup'));
@@ -165,16 +259,25 @@ export default function NavDial({
           endDrag(false);
           return;
         }
-        const delta = along(e) - d.start;
         if (!d.moved) {
-          if (Math.abs(delta) <= DRAG_SLOP_PX) return;
+          if (Math.hypot(e.clientX - d.x, e.clientY - d.y) <= DRAG_SLOP_PX) return;
           d.moved = true;
           setDragging(true);
+          learned();
           // Captured only once it is a drag: capturing on pointerdown would
           // retarget the click of a plain tap away from the link.
           e.currentTarget.setPointerCapture?.(e.pointerId);
         }
-        onFocusChange(dragFocus(d.focus, delta, stepPx(DIAL_RADIUS, step), n));
+        // Round the centre, not along an axis: the crest under the finger
+        // stays under it wherever on the rim the finger is. Summed a move at a
+        // time, the short way, so the bearing's ±180° seam is never crossed.
+        const angle = bearing(e);
+        d.turned += wrapOffset(angle, d.angle, 360);
+        d.angle = angle;
+        const now = performance.now();
+        d.trail.push({ t: now, turned: d.turned });
+        if (d.trail.length > 8) d.trail.shift();
+        onFocusChange(dragFocus(d.focus, d.turned, step, n));
       }}
       // Only the dial's own capture. A finger is captured by the crest it
       // lands on, and taking the capture over makes that crest report losing

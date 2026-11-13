@@ -3,6 +3,7 @@ import {
   clampFocus,
   dragFocus,
   fanAngle,
+  glideDecay,
   isOnRim,
   nextShrunk,
   restingFocus,
@@ -122,5 +123,21 @@ describe('dialModel', () => {
   it('never shrinks near the top of the page', () => {
     expect(nextShrunk(true, 0, 60)).toBe(false);
     expect(nextShrunk(false, 20, 79)).toBe(false);
+  });
+
+  // The drag is measured round the centre, in degrees, with the same maths.
+  it('turns by the angle swept, one crest per step of the rim', () => {
+    expect(dragFocus(5, 28, 14, 11)).toBeCloseTo(3);
+    expect(dragFocus(5, -14, 14, 11)).toBeCloseTo(6);
+    // Across the bearing's seam the sweep is still the short way.
+    expect(wrapOffset(-175, 175, 360)).toBe(10);
+    expect(wrapOffset(175, -175, 360)).toBe(-10);
+  });
+
+  it('slows a flicked dial without ever reversing it', () => {
+    expect(glideDecay(0.01, 0)).toBe(0.01);
+    expect(glideDecay(0.01, 325)).toBeCloseTo(0.01 / Math.E);
+    expect(glideDecay(-0.01, 1000)).toBeLessThan(0);
+    expect(Math.abs(glideDecay(-0.01, 1000))).toBeLessThan(0.001);
   });
 });

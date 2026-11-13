@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { listCompetitions } from '@/server/data/competitions';
 import SiteNav from './SiteNav';
@@ -150,12 +150,44 @@ describe('SiteNav interaction', () => {
     const centre = () => slots.findIndex((s) => s.hasAttribute('data-centre'));
     const crest = slots[centre()].querySelector('a') as HTMLElement;
 
-    fireEvent.pointerDown(crest, { button: 0, buttons: 1, clientX: 300, pointerId: 1 });
-    fireEvent.pointerMove(crest, { buttons: 1, clientX: 200, pointerId: 1 });
+    // jsdom lays nothing out, so the dial's centre is the origin: these are
+    // points on a circle round it, a quarter turn in all.
+    fireEvent.pointerDown(crest, { button: 0, buttons: 1, clientX: 300, clientY: 0, pointerId: 1 });
+    fireEvent.pointerMove(crest, { buttons: 1, clientX: 260, clientY: 150, pointerId: 1 });
     fireEvent.lostPointerCapture(crest, { pointerId: 1 });
     const afterHandover = centre();
-    fireEvent.pointerMove(dial, { buttons: 1, clientX: 50, pointerId: 1 });
+    fireEvent.pointerMove(dial, { buttons: 1, clientX: 0, clientY: 300, pointerId: 1 });
 
     expect(centre()).not.toBe(afterHandover);
+  });
+
+  it('carries on turning after a flick, then comes to rest on a crest', () => {
+    vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'setTimeout'] });
+    try {
+      renderNav('/es');
+      fireEvent.click(screen.getByRole('button', { name: 'Abrir navegación' }));
+      const dial = screen.getByRole('dialog').querySelector('.sn-dial') as HTMLElement;
+      const slots = Array.from(dial.querySelectorAll<HTMLElement>('.sn-dial-slot'));
+      const centre = () => slots.findIndex((s) => s.hasAttribute('data-centre'));
+
+      fireEvent.pointerDown(dial, { button: 0, buttons: 1, clientX: 300, clientY: 0, pointerId: 1 });
+      for (let deg = 5; deg <= 30; deg += 5) {
+        vi.advanceTimersByTime(16);
+        const a = (deg * Math.PI) / 180;
+        fireEvent.pointerMove(dial, { buttons: 1, clientX: 300 * Math.cos(a), clientY: 300 * Math.sin(a), pointerId: 1 });
+      }
+      const atRelease = centre();
+      fireEvent.pointerUp(window, { pointerId: 1 });
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+
+      expect(centre()).not.toBe(atRelease);
+      expect(dial.className).not.toContain('sn-dial--dragging');
+      // At rest every offset is whole: the dial is on a crest, not between two.
+      for (const s of slots) expect(Math.abs(Number(s.style.getPropertyValue('--k')) % 1)).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

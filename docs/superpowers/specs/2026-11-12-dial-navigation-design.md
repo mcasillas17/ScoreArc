@@ -94,6 +94,13 @@ one control at the bottom of the screen, which has three states:
 - **Nothing is hidden from assistive technology.** Every competition is a real
   link in DOM order whether or not it is currently on the visible part of the
   rim. Focusing a link rotates it into view. The rotation is presentation only.
+- **The dial turns round its centre.** A drag is measured as the angle the
+  pointer sweeps, so the crest under a finger stays under it anywhere on the
+  rim. Let go while moving and the dial glides on, slows and settles on a
+  crest; with reduced motion it settles at once.
+- **The dial shows that it turns.** Until the reader has turned one (drag or
+  mouse wheel, remembered in `localStorage`), the rail's dial rocks once on
+  load and the phone wheel rocks once each time it opens.
 - **The dial is positioned in CSS.** Each crest carries its offset from the
   centre as a custom property and CSS places it with
   `rotate() translateX() rotate()`. The only JavaScript geometry is the gesture

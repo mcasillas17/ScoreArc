@@ -1513,6 +1513,20 @@ button.sn-wheel-site-link { font-family: inherit; cursor: pointer; }
 @keyframes sn-rise {
   from { translate: 0 80px; opacity: 0; }
 }
+/* The dial rocks once on arrival, until the reader has turned one. On the
+   `rotate` property, so it composes with the wheel's rise (a translate). */
+@keyframes sn-nudge {
+  35% { rotate: -9deg; }
+  70% { rotate: 4deg; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sn-dial[data-nudge] {
+    transform-origin: var(--dial-cx) var(--dial-cy);
+    animation: sn-nudge 0.9s ease 0.6s;
+  }
+  /* The wheel is still rising when the attribute arrives: keep that going. */
+  .sn-dial--wheel[data-nudge] { animation: sn-rise 0.25s ease, sn-nudge 0.9s ease 0.6s; }
+}
 @keyframes sn-fade {
   from { opacity: 0; }
 }
