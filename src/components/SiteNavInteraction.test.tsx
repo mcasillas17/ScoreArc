@@ -110,25 +110,22 @@ describe('SiteNav interaction', () => {
   // The rotation is presentation only: a crest off the visible rim is
   // transparent, never removed, so the list a screen reader or a Tab key walks
   // is always the whole list.
-  it('renders every page and competition as a link wherever the dial is turned', () => {
-    // The rail's dial is the whole menu: Home, Teams, News, then the competitions.
-    const SITE = 3;
-    const total = SITE + listCompetitions().length;
+  it('renders every competition as a link wherever the dial is turned', () => {
+    const total = listCompetitions().length;
     const { container } = renderNav('/es/c/world-cup/2026');
     const dial = container.querySelector<HTMLElement>('.sn .sn-dial')!;
     const links = () => within(dial).getAllByRole('link');
 
     expect(links()).toHaveLength(total);
-    expect(links().slice(0, SITE).map((a) => a.getAttribute('href'))).toEqual(['/es', '/es/teams', '/es/news']);
     // World Cup is the first competition; the crests opposite it start off the rim.
-    const here = SITE;
-    const far = (here + Math.floor(total / 2)) % total;
+    const here = 0;
+    const far = Math.floor(total / 2);
     const slot = (i: number) => links()[i].closest('.sn-dial-slot')!;
     expect(slot(here).hasAttribute('data-current')).toBe(true);
     expect(slot(far).hasAttribute('data-off')).toBe(true);
     expect(slot(here).hasAttribute('data-off')).toBe(false);
-    // Its neighbours on the ring are either side of it: News before, the next competition after.
-    expect(slot(here - 1).hasAttribute('data-off')).toBe(false);
+    // Its neighbours on the ring are either side of it: the last competition before, the next after.
+    expect(slot(total - 1).hasAttribute('data-off')).toBe(false);
     expect(slot(here + 1).hasAttribute('data-off')).toBe(false);
 
     // Focusing a hidden crest turns the dial to it, and the list is still whole.
@@ -137,6 +134,50 @@ describe('SiteNav interaction', () => {
     expect(slot(here).hasAttribute('data-off')).toBe(true);
     expect(links()).toHaveLength(total);
     for (const a of links()) expect(a.getAttribute('href')).toMatch(/^\/es(\/|$)/);
+  });
+
+  // Two levels: the sections inside, and outside them the dial of whichever
+  // section is picked. Pages and leagues never share a ring.
+  it('keeps the sections off the dial, and turns the dial to the section picked', () => {
+    const { container } = renderNav('/es');
+    const rail = container.querySelector<HTMLElement>('.sn')!;
+    const levels = within(rail.querySelector<HTMLElement>('.sn-levels')!);
+    const hrefs = () =>
+      Array.from(rail.querySelectorAll('.sn-dial a')).map((a) => a.getAttribute('href'));
+    const selected = () => rail.querySelector('.sn-sec[data-selected]')?.textContent;
+
+    expect(levels.getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/es', '/es/teams', '/es/news']);
+    expect(levels.getAllByRole('button').map((b) => b.textContent)).toEqual(['Ligas', 'Jugadores']);
+    // Home opens on the leagues, plain: each crest leads to its competition.
+    expect(selected()).toBe('Ligas');
+    expect(hrefs()).toHaveLength(listCompetitions().length);
+    for (const h of hrefs()) expect(h).toMatch(/^\/es\/c\/[^/]+\/[^/]+$/);
+    expect(rail.querySelector('.sn-crest-badge')).toBeNull();
+
+    // Players has no page of its own: its dial is the leagues again, but every
+    // crest is badged and named for where it leads.
+    fireEvent.click(levels.getByRole('button', { name: 'Jugadores' }));
+    expect(selected()).toBe('Jugadores');
+    for (const h of hrefs()) expect(h).toMatch(/\/players$/);
+    expect(rail.querySelectorAll('.sn-crest-badge')).toHaveLength(listCompetitions().length);
+    expect(within(rail).getByRole('link', { name: 'Jugadores de Liga MX' })).toBeTruthy();
+
+    fireEvent.click(levels.getByRole('button', { name: 'Ligas' }));
+    expect(selected()).toBe('Ligas');
+    expect(rail.querySelector('.sn-crest-badge')).toBeNull();
+  });
+
+  it('opens News and Teams on their own dials', () => {
+    const news = renderNav('/es/news').container.querySelector<HTMLElement>('.sn')!;
+    expect(news.querySelector('.sn-sec[data-selected]')?.textContent).toBe('Noticias');
+    for (const a of news.querySelectorAll('.sn-dial a')) expect(a.getAttribute('href')).toMatch(/\/news$/);
+    cleanup();
+
+    // Nothing is listed in this render, so the Teams dial has nothing to index
+    // -- and it does not fall back to the leagues.
+    const teams = renderNav('/es/teams').container.querySelector<HTMLElement>('.sn')!;
+    expect(teams.querySelector('.sn-sec[data-selected]')?.textContent).toBe('Equipos');
+    expect(teams.querySelectorAll('.sn-dial a')).toHaveLength(0);
   });
 
   // A finger is captured by the crest it lands on. When the dial takes the

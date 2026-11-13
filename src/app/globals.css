@@ -125,11 +125,10 @@ a {
    a phone can never trigger it, and the phone layout lives in the
    `max-width: 760px` block further down the file. */
 .sn {
-  /* The dial's centre, shared by the rim, the crests and the site links.
-     Collapsed, the rim meets the rail at x = 64. The floor on cy keeps the
-     dial clear of the site icons above it on a short window. */
+  /* The dial's centre, shared by the rim, the crests and the sections.
+     Collapsed, the rim meets the rail at x = 64. */
   --dial-cx: -236px;
-  --dial-cy: max(50%, 410px);
+  --dial-cy: 50%;
   position: fixed;
   top: 0;
   left: 0;
@@ -183,37 +182,62 @@ a {
   transition: color 0.15s;
 }
 a.sn-item:hover { color: var(--text); }
-/* The back crest: on Teams, where the dial is the team list's initials, it
-   returns the dial to the menu. It sits under the brand. */
-.sn-back {
+/* ---- The inner level ----
+   The site's sections, fanned on a smaller circle inside the rim. Same orbit
+   as the crests: `--a` degrees from the dial's centre line, counter-rotated
+   upright. They do not turn; picking one changes what the rim holds. */
+.sn { --level-r: 258px; --sec: 26px; }
+.sn .sn-level-slot {
   position: absolute;
-  left: 26px;
-  top: 76px;
+  left: var(--dial-cx);
+  top: var(--dial-cy);
   z-index: 2;
+  width: 0;
+  height: 0;
+  --fan: calc(var(--a) * var(--level-spread, 1));
+  transform: rotate(var(--fan)) translateX(var(--level-r)) rotate(calc(var(--fan) * -1));
+  transition: left 0.2s ease, transform 0.2s ease;
+}
+/* Hung from its icon, which sits on the circle; the label runs inward. */
+.sn-sec {
+  position: absolute;
+  right: calc(var(--sec) / -2);
+  top: calc(var(--sec) / -2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--sec);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.sn-sec:hover,
+.sn-sec[aria-current] { color: var(--text); }
+.sn-sec:focus-visible { outline: none; }
+.sn-sec:focus-visible .sn-sec-icon { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sn-sec-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 22px;
-  background: var(--surface-2);
-  color: var(--text-muted);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
+  flex: none;
+  width: var(--sec);
+  height: var(--sec);
+  border: 1px solid transparent;
+  border-radius: 50%;
+  transition: border-color 0.15s, background-color 0.15s;
 }
-.sn-back:hover { color: var(--text); border-color: var(--text-muted); }
-.sn-back-label { display: none; }
-/* A site page on the dial: an icon where a competition has its crest. */
-.sn-crest-icon { display: flex; }
-.sn-crest-icon svg { width: 20px; height: 20px; }
-.sn-dial-slot[data-current] .sn-crest-icon svg { width: 26px; height: 26px; }
-.sn-dial-slot[data-current] .sn-crest-icon { color: var(--accent); }
-button.sn-wheel-site-link { font-family: inherit; cursor: pointer; }
+.sn-sec-icon svg { width: 16px; height: 16px; }
+.sn-sec-label { display: none; }
+/* The section whose dial is on the rim. */
+.sn-sec[data-selected] { color: var(--accent); }
+.sn-sec[data-selected] .sn-sec-icon { border-color: var(--accent); background: var(--accent-soft); }
 .sn-item--active { color: var(--text); }
 .sn-item--active .sn-icon { color: var(--accent); }
 .sn-icon { display: inline-flex; }
@@ -288,22 +312,17 @@ button.sn-wheel-site-link { font-family: inherit; cursor: pointer; }
 
 /* ---- Short windows ----
    A landscape phone is wide enough for the rail and about 430px tall. The
-   dial has to live between the site icons (which end at 216px) and the pin
-   (which starts 64px above the bottom), so on a short window it centres on
-   that gap instead of on the rail, and shows only as many crests either side
-   as the gap holds: 183px for three, 132 for two, 77 for one, 26 for the open
-   competition alone. The rest are a turn of the dial away. These apply to the
-   expanded rail too. */
-@media (max-height: 660px) {
-  .sn { --dial-cy: calc(50% + 76px); }
-}
-@media (max-height: 645px) {
+   dial lives between the brand (which ends at 64px) and the pin (which starts
+   64px above the bottom), so a short window shows only as many crests either
+   side as that holds: 195px for three, 137 for two, 80 for one. The rest are a
+   turn of the dial away. These apply to the expanded rail too. */
+@media (max-height: 540px) {
   .sn-dial--rail .sn-dial-slot[data-ring='3'] { opacity: 0; pointer-events: none; }
 }
-@media (max-height: 543px) {
+@media (max-height: 424px) {
   .sn-dial--rail .sn-dial-slot[data-ring='2'] { opacity: 0; pointer-events: none; }
 }
-@media (max-height: 433px) {
+@media (max-height: 310px) {
   .sn-dial--rail .sn-dial-slot[data-ring='1'] { opacity: 0; pointer-events: none; }
 }
 
@@ -351,6 +370,26 @@ button.sn-wheel-site-link { font-family: inherit; cursor: pointer; }
   box-shadow: 0 0 0 4px var(--bg);
 }
 .sn-crest-name { display: none; }
+/* A crest that leads somewhere other than the competition it pictures says so
+   twice: a badge on its corner, and at the centre its name in full. */
+.sn-crest-badge {
+  position: absolute;
+  left: calc(var(--crest) - 14px);
+  bottom: -4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--text);
+}
+.sn-crest-badge svg { width: 11px; height: 11px; }
+.sn-crest-full,
+.sn-dial-slot[data-centre] .sn-crest-short { display: none; }
+.sn-dial-slot[data-centre] .sn-crest-full { display: inline; }
 /* The Teams dial: initials on the rim, the one at the centre lit. */
 .sn-crest-letter { font-size: 17px; font-weight: 800; color: var(--text-muted); }
 .sn-dial-slot[data-centre] .sn-crest-letter { color: var(--brand); }
@@ -475,20 +514,17 @@ button.sn-wheel-site-link { font-family: inherit; cursor: pointer; }
   }
   .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-mark { display: none; }
   .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-lockup { display: block; }
-  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-back {
-    left: 24px;
-    top: 84px;
-    width: auto;
-    padding: 0 14px;
-  }
-  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-back-label { display: block; }
 
-  /* The site links move inside the dial, beside its centre, and trade their
-     icons for labels. */
+  /* Expanded, the sections move further in and gain their names. */
+  /* Larger, so further apart: 38px between neighbours. */
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) { --level-r: 232px; --sec: 34px; --level-spread: 1.35; }
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-sec-label { display: block; }
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-sec-icon svg { width: 18px; height: 18px; }
+
+  /* What is coming, named under the lockup. */
   .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-site {
     left: 24px;
-    top: var(--dial-cy);
-    transform: translateY(-50%);
+    top: 84px;
     gap: 0;
   }
   .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-item {
@@ -525,6 +561,10 @@ button.sn-wheel-site-link { font-family: inherit; cursor: pointer; }
     font-size: 14px;
     font-weight: 800;
   }
+  /* The crest at the centre is the furthest right, with 84px before the rail's
+     edge, and it is the one whose name is given in full ("Serie A players"). */
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-centre] .sn-crest { color: var(--text); }
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-centre] .sn-crest-name { max-width: 84px; }
   /* The larger crest leaves 80px before the rail's edge: "Bundesliga" in one
      line at this size, everything longer in two. */
   .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-dial-slot[data-current] .sn-crest-name {
@@ -550,9 +590,8 @@ button.sn-wheel-site-link { font-family: inherit; cursor: pointer; }
     pointer-events: auto;
   }
 }
-/* Expanded, the site links are a column centred on the dial. Under 544px of
-   height four rows of it reach the pin; the label that is not a link goes. */
-@media (min-width: 761px) and (max-height: 543px) {
+/* On a short window the label that is not a link goes: the dial needs the room. */
+@media (min-width: 761px) and (max-height: 659px) {
   .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-item--soon { display: none; }
 }
 
@@ -1222,7 +1261,7 @@ button.sn-wheel-site-link { font-family: inherit; cursor: pointer; }
   .sn-mark { display: none; }
   .sn-lockup { display: block; width: 132px; }
   .sn-site,
-  .sn-back,
+  .sn-levels,
   .sn .sn-dial,
   .sn-pin,
   .sn-credit { display: none; }
@@ -1422,7 +1461,8 @@ button.sn-wheel-site-link { font-family: inherit; cursor: pointer; }
     font-weight: 800;
   }
 
-  /* The section fan: the same orbit, radius 210, `--a` degrees from the top. */
+  /* The inner level: the sections on the same orbit, radius 210, `--a`
+     degrees from the top. */
   .sn-wheel-sections {
     position: absolute;
     left: 50%;
@@ -1431,7 +1471,7 @@ button.sn-wheel-site-link { font-family: inherit; cursor: pointer; }
     height: 0;
     animation: sn-rise 0.25s ease;
   }
-  .sn-fan-slot {
+  .sn-wheel-sections .sn-level-slot {
     position: absolute;
     left: 0;
     top: 0;
@@ -1440,16 +1480,21 @@ button.sn-wheel-site-link { font-family: inherit; cursor: pointer; }
     --fan: calc(var(--a) * var(--fan-scale, 1));
     transform: rotate(calc(var(--fan) - 90deg)) translateX(210px) rotate(calc(90deg - var(--fan)));
   }
-  .sn-fan-slot .sn-tab {
-    position: absolute;
+  /* Icon over name, centred on the orbit. */
+  .sn-wheel-sections .sn-sec {
+    --sec: 30px;
     left: -32px;
-    top: -22px;
+    right: auto;
+    top: -26px;
+    flex-direction: column-reverse;
+    justify-content: center;
+    gap: 2px;
     width: 64px;
-    height: 44px;
-    gap: 3px;
+    height: 52px;
     font-size: 11px;
   }
-  .sn-fan-slot .sn-tab-label { overflow: visible; }
+  .sn-wheel-sections .sn-sec-label { display: block; }
+  .sn-wheel-sections .sn-sec-icon svg { width: 18px; height: 18px; }
 
   .sn-wheel-hub {
     position: absolute;
@@ -1462,33 +1507,6 @@ button.sn-wheel-site-link { font-family: inherit; cursor: pointer; }
     height: 48px;
     margin-left: -24px;
     animation: sn-rise 0.25s ease;
-  }
-
-  /* The site's own pages, above the wheel, while its fan is a competition's. */
-  .sn-wheel-site {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 300px;
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    pointer-events: none;
-    animation: sn-rise 0.25s ease;
-  }
-  .sn-wheel-site-link {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    height: 44px;
-    padding: 0 16px;
-    border-radius: 22px;
-    border: 1px solid var(--border);
-    background: var(--surface-2);
-    color: var(--text);
-    font-size: 13px;
-    font-weight: 600;
-    pointer-events: auto;
   }
 
   .app-content {
@@ -1504,10 +1522,10 @@ button.sn-wheel-site-link { font-family: inherit; cursor: pointer; }
     max-width: 100%;
   }
 }
-/* Six sections at 20 degrees reach 161px either side of the centre, plus half
-   a 64px label: 2px to spare at 390 and 13px over at 360. */
-@media (max-width: 389px) {
-  .sn-fan-slot { --fan-scale: 0.9; }
+/* Five sections at 20 degrees reach 135px either side of the centre, plus half
+   a 64px label: 13px to spare at 360. Drawn in a little below that. */
+@media (max-width: 359px) {
+  .sn-wheel-sections .sn-level-slot { --fan-scale: 0.9; }
 }
 
 @keyframes sn-rise {

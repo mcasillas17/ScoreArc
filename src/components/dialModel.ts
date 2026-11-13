@@ -21,6 +21,8 @@ export const RAIL_STEP_DEG = 11;
 export const WHEEL_STEP_DEG = 14;
 /** Degrees between neighbouring sections on the phone wheel's inner rim. */
 export const SECTION_STEP_DEG = 20;
+/** Degrees between neighbouring sections on the rail's inner level. */
+export const LEVEL_STEP_DEG = 7;
 /** Crests visible either side of the centre: collapsed rail, expanded rail, wheel. */
 export const RAIL_REACH_COLLAPSED = 3;
 export const RAIL_REACH_EXPANDED = 4;
