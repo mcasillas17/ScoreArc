@@ -176,7 +176,12 @@ export default function NavDial({
         }
         onFocusChange(dragFocus(d.focus, delta, stepPx(DIAL_RADIUS, step), n));
       }}
-      onLostPointerCapture={() => endDrag(false)}
+      // Only the dial's own capture. A finger is captured by the crest it
+      // lands on, and taking the capture over makes that crest report losing
+      // it — which bubbles here and used to end the drag it had just begun.
+      onLostPointerCapture={(e) => {
+        if (e.target === e.currentTarget) endDrag(false);
+      }}
       onClickCapture={(e) => {
         if (!swallowClick.current) return;
         swallowClick.current = false;

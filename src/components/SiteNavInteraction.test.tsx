@@ -138,4 +138,24 @@ describe('SiteNav interaction', () => {
     expect(links()).toHaveLength(total);
     for (const a of links()) expect(a.getAttribute('href')).toMatch(/^\/es(\/|$)/);
   });
+
+  // A finger is captured by the crest it lands on. When the dial takes the
+  // capture over, the crest reports losing it, and that report bubbles: the
+  // dial must not read it as its own drag ending.
+  it('keeps turning when the drag began on a crest, as a finger does', () => {
+    renderNav('/es');
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir navegación' }));
+    const dial = screen.getByRole('dialog').querySelector('.sn-dial') as HTMLElement;
+    const slots = Array.from(dial.querySelectorAll('.sn-dial-slot'));
+    const centre = () => slots.findIndex((s) => s.hasAttribute('data-centre'));
+    const crest = slots[centre()].querySelector('a') as HTMLElement;
+
+    fireEvent.pointerDown(crest, { button: 0, buttons: 1, clientX: 300, pointerId: 1 });
+    fireEvent.pointerMove(crest, { buttons: 1, clientX: 200, pointerId: 1 });
+    fireEvent.lostPointerCapture(crest, { pointerId: 1 });
+    const afterHandover = centre();
+    fireEvent.pointerMove(dial, { buttons: 1, clientX: 50, pointerId: 1 });
+
+    expect(centre()).not.toBe(afterHandover);
+  });
 });
