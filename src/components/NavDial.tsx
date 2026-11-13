@@ -50,6 +50,13 @@ export interface DialItem {
   href: string;
   /** Shown beside or under the crest, and its accessible name. */
   label: string;
+  /**
+   * Where the crest leads when that is not the thing it pictures ("Liga MX
+   * news"). Its accessible name, and what the crest at the centre is called.
+   */
+  full?: string;
+  /** A small mark on the crest's corner saying the same at a glance. */
+  badge?: React.ReactNode;
   mark: React.ReactNode;
   /** The page the reader is on. */
   current: boolean;
@@ -331,6 +338,7 @@ export default function NavDial({
               href={item.href}
               className="sn-crest"
               aria-current={isActive ? 'true' : undefined}
+              aria-label={item.full}
               draggable={false}
               // Tabbing turns the dial to the crest. Not while a pointer is
               // down: turning it under a press would move the crest out from
@@ -344,7 +352,17 @@ export default function NavDial({
               }}
             >
               <span className="sn-crest-mark">{item.mark}</span>
-              <span className="sn-crest-name">{item.label}</span>
+              {item.badge && <span className="sn-crest-badge">{item.badge}</span>}
+              <span className="sn-crest-name">
+                {item.full ? (
+                  <>
+                    <span className="sn-crest-short">{item.label}</span>
+                    <span className="sn-crest-full">{item.full}</span>
+                  </>
+                ) : (
+                  item.label
+                )}
+              </span>
             </Link>
           </div>
         );

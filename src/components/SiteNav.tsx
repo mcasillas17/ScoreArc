@@ -14,6 +14,7 @@ import NavDial, { onPointerRelease, type DialItem } from './NavDial';
 import {
   RAIL_REACH_EXPANDED,
   SCROLL_INTENT_PX,
+  LEVEL_STEP_DEG,
   SECTION_STEP_DEG,
   WHEEL_REACH,
   fanAngle,
@@ -41,7 +42,6 @@ const bracketIcon = <svg {...ICON}><path d="M6 4v4a3 3 0 0 0 3 3h2" /><path d="M
 const tableIcon = <svg {...ICON}><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="14" y2="18" /></svg>;
 const matchesIcon = <svg {...ICON}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" /></svg>;
 const competitionsIcon = <svg {...ICON}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="4" r="1.6" fill="currentColor" /><circle cx="19" cy="16" r="1.6" fill="currentColor" /><circle cx="5" cy="16" r="1.6" fill="currentColor" /></svg>;
-const backIcon = <svg {...ICON}><path d="M9 7l-5 5 5 5" /><path d="M4 12h10a6 6 0 0 1 6 6" /></svg>;
 const newsIcon = <svg {...ICON}><path d="M4 5h16v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>;
 
 export interface NavItem {
@@ -280,6 +280,22 @@ export function centrePage(pathname: string, locale: Locale): NavItem | undefine
   return siteItems(locale, localePrefix(pathname)).slice(1).find((i) => i.match(pathname));
 }
 
+/** A section of the site that has a dial of its own. */
+export type DialSection = 'leagues' | 'teams' | 'players' | 'news';
+
+/**
+ * The section whose dial a path opens on.
+ *
+ * Teams and News have pages, and their dials belong to them. Everything else
+ * — Home, and every page of a competition — opens on the leagues. Players has
+ * no page of its own: its dial is only ever picked.
+ */
+export function pathSection(pathname: string): DialSection {
+  const page = centrePage(pathname, 'en');
+  if (!page) return 'leagues';
+  return stripLocale(page.href) === '/teams' ? 'teams' : 'news';
+}
+
 /** The id the team list gives the first team under an initial. */
 export function teamLetterId(letter: string): string {
   return `ts-${letter}`;
@@ -309,36 +325,28 @@ export default function SiteNav() {
   const prefix = localePrefix(pathname);
   const items = siteItems(locale, prefix);
   const competitionAt = active ? competitions.findIndex((c) => c.id === active.competition.id) : -1;
-  // The phone wheel turns the competitions alone.
+  // Every dial of competitions rests on the open one, else mid-list.
   const resting = restingFocus(competitionAt, competitions.length);
-  // The rail's dial is the whole menu: the site's pages, then the competitions.
-  const siteAt = items.findIndex((i) => i.match(pathname));
-  const railResting = restingFocus(
-    competitionAt >= 0 ? items.length + competitionAt : siteAt,
-    items.length + competitions.length,
-  );
 
   const [pinned, setPinned] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [open, setOpen] = useState(false);
   const [shrunk, setShrunk] = useState(false);
   const [focus, setFocus] = useState(resting);
-  const [railFocus, setRailFocus] = useState(railResting);
   // The initials the team list on this page carries, read from it when the
   // wheel opens, and the wheel's own position among them.
   const [letters, setLetters] = useState<string[]>([]);
   const [letterFocus, setLetterFocus] = useState(0);
-  // On Teams the dial is the team list's, and the rest of the menu would have
-  // nowhere to be: the back crest hands the dial back to it.
-  const [showCompetitions, setShowCompetitions] = useState(false);
+  // The section the reader picked from the inner level, until they navigate.
+  // Null is the section the page itself opens on.
+  const [picked, setPicked] = useState<DialSection | null>(null);
   // The dial returns to rest, and the wheel closes, on every navigation.
   const [lastPath, setLastPath] = useState(pathname);
   if (lastPath !== pathname) {
     setLastPath(pathname);
     setFocus(resting);
-    setRailFocus(railResting);
     setOpen(false);
-    setShowCompetitions(false);
+    setPicked(null);
   }
 
   const centreRef = useRef<HTMLButtonElement>(null);
@@ -355,12 +363,11 @@ export default function SiteNav() {
 
   const page = centrePage(pathname, locale);
   const onTeams = page?.href === items[1].href;
-  const onNews = page?.href === items[2].href;
 
   // On Teams the dial turns the list on the page, by initial. The list marks
-  // the first team under each one; under a search it marks none, and the dial
-  // falls back to the competitions. Read from the page, so it is re-read
-  // whenever the reader reaches for the dial.
+  // the first team under each one; under a search it marks none, and there is
+  // nothing to index. Read from the page, so it is re-read whenever the reader
+  // reaches for the dial.
   const readLetters = () => {
     const marks = onTeams ? Array.from(document.querySelectorAll<HTMLElement>('[data-team-letter]')) : [];
     setLetters(marks.map((el) => el.dataset.teamLetter ?? ''));
@@ -372,7 +379,7 @@ export default function SiteNav() {
   const openWheel = () => {
     setFocus(resting);
     readLetters();
-    setShowCompetitions(false);
+    setPicked(null);
     setOpen(true);
   };
   // Focus goes back to the centre button in the effect below, which hears
@@ -425,10 +432,11 @@ export default function SiteNav() {
   }, [open]);
 
   // Turning the letter dial scrolls the team list to that initial.
-  const lettersOn = letters.length > 0 && !showCompetitions;
+  const section = picked ?? pathSection(pathname);
+  const lettersOn = section === 'teams';
   const turnLetters = (next: number) => {
     const at = (f: number) => Math.round(f) % letters.length;
-    if (at(next) !== at(letterFocus)) document.getElementById(teamLetterId(letters[at(next)]))?.scrollIntoView();
+    if (letters.length && at(next) !== at(letterFocus)) document.getElementById(teamLetterId(letters[at(next)]))?.scrollIntoView();
     setLetterFocus(next);
   };
 
@@ -483,14 +491,21 @@ export default function SiteNav() {
     </Link>
   );
 
-  const competitionItems = (section = ''): DialItem[] =>
+  // A dial of competitions. `into` is where its crests lead when that is not
+  // the competition itself; the badge and the full name then say so, because a
+  // league's crest looks the same wherever it leads.
+  const competitionItems = (
+    into?: { suffix: string; badge: React.ReactNode; full: (name: string) => string },
+  ): DialItem[] =>
     competitions.map((c) => {
       const isActive = active?.competition.id === c.id;
       const seasonId = competitionSeasonId(c, active);
       return {
         key: c.id,
-        href: competitionHref(c, active, prefix) + section,
+        href: competitionHref(c, active, prefix) + (into?.suffix ?? ''),
         label: c.shortName,
+        full: into?.full(c.shortName),
+        badge: into?.badge,
         current: isActive,
         mark: (
           <CompetitionMark
@@ -504,22 +519,6 @@ export default function SiteNav() {
         onOpen: () => trackEvent('Competition opened', { competition: c.id, season: seasonId, source: 'sitenav' }),
       };
     });
-  // The rail's one menu. The site's pages are crests like any other; Teams,
-  // on Teams, turns the dial back to the team list.
-  const mainItems: DialItem[] = [
-    ...items.map((item) => ({
-      key: item.href,
-      href: item.href,
-      label: item.label,
-      current: item.match(pathname),
-      mark: <span className="sn-crest-icon">{item.icon}</span>,
-      onOpen: () => {
-        trackEvent('Section opened', { section: item.label, surface: 'sitenav' });
-        setShowCompetitions(false);
-      },
-    })),
-    ...competitionItems(),
-  ];
   const letterItems: DialItem[] = letters.map((letter) => ({
     key: letter,
     href: `#${teamLetterId(letter)}`,
@@ -528,6 +527,74 @@ export default function SiteNav() {
     current: false,
     mark: <span className="sn-crest-letter">{letter}</span>,
   }));
+  // The outer level: what the picked section's dial holds. Never a whole list
+  // of teams or players — an index of at most a couple of dozen, and the page
+  // it leads to holds the rest.
+  const dialItems: DialItem[] =
+    section === 'teams' ? letterItems
+    : section === 'news' ? competitionItems({ suffix: '/news', badge: newsIcon, full: (n) => t('nav.newsOf', n) })
+    : section === 'players' ? competitionItems({ suffix: '/players', badge: playersIcon, full: (n) => t('nav.playersOf', n) })
+    : competitionItems();
+  const dial = (variant: 'rail' | 'wheel') => (
+    <NavDial
+      // Keyed: the collections differ in length and position.
+      key={section}
+      items={dialItems}
+      focus={lettersOn ? letterFocus : focus}
+      onFocusChange={lettersOn ? turnLetters : setFocus}
+      variant={variant}
+      reach={variant === 'rail' ? RAIL_REACH_EXPANDED : WHEEL_REACH}
+      onNavigate={close}
+      hint={variant === 'rail' ? t('nav.dialHint') : undefined}
+    />
+  );
+
+  // The inner level: the site's sections. One with a page is a link to it, and
+  // its dial comes with the page; Leagues and Players have no page, so they
+  // only turn the dial. Home has no dial: it is a link and nothing more.
+  const levels: { key: string; label: string; icon: React.ReactNode; href?: string; section?: DialSection }[] = [
+    { key: 'home', label: items[0].label, icon: items[0].icon, href: items[0].href },
+    { key: 'teams', label: items[1].label, icon: items[1].icon, href: items[1].href, section: 'teams' },
+    { key: 'leagues', label: t('nav.leagues'), icon: competitionsIcon, section: 'leagues' },
+    { key: 'players', label: t('nav.players'), icon: playersIcon, section: 'players' },
+    { key: 'news', label: items[2].label, icon: items[2].icon, href: items[2].href, section: 'news' },
+  ];
+  const levelSlots = (stepDeg: number) =>
+    levels.map((lv, i) => {
+      const selected = lv.section === section;
+      const body = (
+        <>
+          <span className="sn-sec-label">{lv.label}</span>
+          <span className="sn-sec-icon">{lv.icon}</span>
+        </>
+      );
+      const pick = (next: DialSection | null) => {
+        trackEvent('Section opened', { section: lv.label, surface: 'sitenav' });
+        setPicked(next);
+        setFocus(resting);
+      };
+      return (
+        <div key={lv.key} className="sn-level-slot" style={{ ['--a' as string]: `${fanAngle(i, levels.length, stepDeg)}deg` }}>
+          {lv.href ? (
+            <Link
+              href={lv.href}
+              className="sn-sec"
+              data-selected={selected ? '' : undefined}
+              aria-current={stripLocale(lv.href) === stripLocale(pathname) ? 'page' : undefined}
+              // Its dial is the page's own, so the pick is dropped: on the
+              // page already, that turns the dial back to it.
+              onClick={() => pick(null)}
+            >
+              {body}
+            </Link>
+          ) : (
+            <button type="button" className="sn-sec" data-selected={selected ? '' : undefined} aria-pressed={selected} onClick={() => pick(lv.section ?? null)}>
+              {body}
+            </button>
+          )}
+        </div>
+      );
+    });
 
   const centreMark = page ? (
     <span className="sn-centre-icon">{page.icon}</span>
@@ -565,12 +632,18 @@ export default function SiteNav() {
       onPointerLeave={(e) => {
         if (e.pointerType === 'touch') return;
         setHovered(false);
-        if (!pinned) setRailFocus(railResting);
+        if (!pinned) {
+          setFocus(resting);
+          setPicked(null);
+        }
       }}
       // The same for the keyboard: focusing a crest turns the dial to it, and
       // tabbing on into the page would leave it there.
       onBlur={(e) => {
-        if (!pinned && !e.currentTarget.contains(e.relatedTarget)) setRailFocus(railResting);
+        if (!pinned && !e.currentTarget.contains(e.relatedTarget)) {
+          setFocus(resting);
+          setPicked(null);
+        }
       }}
     >
       <Link href={withLocale(prefix, '/')} className="sn-brand" aria-label={t('common.scoreArcHome')}>
@@ -583,21 +656,6 @@ export default function SiteNav() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="sn-lockup" src="/brand/scorearc-lockup-3a-dark.svg" alt="" width={300} height={104} />
       </Link>
-
-      {/* On Teams the dial is the team list's initials; this flips it back to
-          the menu. A crest, not a second menu. */}
-      {lettersOn && (
-        <button
-          type="button"
-          className="sn-back"
-          aria-label={t('nav.menu')}
-          title={t('nav.menu')}
-          onClick={() => setShowCompetitions(true)}
-        >
-          {backIcon}
-          <span className="sn-back-label">{t('nav.menu')}</span>
-        </button>
-      )}
 
       <div className="sn-site">
         {/* No `aria-disabled`: it is ignored on a bare span with no role, so
@@ -612,17 +670,9 @@ export default function SiteNav() {
         ))}
       </div>
 
-      <NavDial
-        // Keyed: the two collections have different lengths and positions.
-        key={lettersOn ? 'letters' : 'competitions'}
-        items={lettersOn ? letterItems : mainItems}
-        focus={lettersOn ? letterFocus : railFocus}
-        onFocusChange={lettersOn ? turnLetters : setRailFocus}
-        variant="rail"
-        reach={RAIL_REACH_EXPANDED}
-        onNavigate={close}
-        hint={t('nav.dialHint')}
-      />
+      {/* Two levels: the sections inside, the picked section's dial outside. */}
+      <div className="sn-levels">{levelSlots(LEVEL_STEP_DEG)}</div>
+      {dial('rail')}
 
       <button
         type="button"
@@ -706,71 +756,13 @@ export default function SiteNav() {
         className="sn-wheel"
         role="dialog"
         aria-modal="true"
-        aria-label={lettersOn && page ? page.label : t('nav.competitions')}
+        aria-label={levels.find((lv) => lv.section === section)?.label}
       >
         <button type="button" className="sn-wheel-backdrop" aria-label={t('nav.closeWheel')} onClick={closeWheel} />
-        {/* Inside a competition the fan below is that competition's sections,
-            so the site's own pages need somewhere else to be. Off one, the fan
-            already is the site's pages and a second copy would be the
-            two-navigations bug again. */}
-        {active && (
-          <div className="sn-wheel-site">
-            {items.slice(1).map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="sn-wheel-site-link"
-                onClick={() => {
-                  trackEvent('Section opened', { section: item.label, surface: 'sitenav' });
-                  close();
-                }}
-              >
-                {item.icon}
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        )}
-        {lettersOn && (
-          <div className="sn-wheel-site">
-            <button type="button" className="sn-wheel-site-link" onClick={() => setShowCompetitions(true)}>
-              {competitionsIcon}
-              {t('nav.competitions')}
-            </button>
-          </div>
-        )}
         <div className="sn-wheel-disc" aria-hidden />
-        {lettersOn ? (
-          <NavDial
-            items={letterItems}
-            focus={letterFocus}
-            onFocusChange={turnLetters}
-            variant="wheel"
-            reach={WHEEL_REACH}
-            onNavigate={close}
-          />
-        ) : (
-          <NavDial
-            // From News, a crest opens that competition's news.
-            items={competitionItems(onNews ? '/news' : '')}
-            focus={focus}
-            onFocusChange={setFocus}
-            variant="wheel"
-            reach={WHEEL_REACH}
-            onNavigate={close}
-          />
-        )}
-        <div className="sn-wheel-sections">
-          {barItems.map((tab, i) => (
-            <div
-              key={tab.key}
-              className="sn-fan-slot"
-              style={{ ['--a' as string]: `${fanAngle(i, barItems.length, SECTION_STEP_DEG)}deg` }}
-            >
-              {tabLink(tab, 'sitenav')}
-            </div>
-          ))}
-        </div>
+        {dial('wheel')}
+        {/* The same two levels as the rail: the sections fan inside the rim. */}
+        <div className="sn-wheel-sections">{levelSlots(SECTION_STEP_DEG)}</div>
         <Link
           href={items[0].href}
           className="sn-wheel-hub"

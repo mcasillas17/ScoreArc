@@ -7,6 +7,7 @@ import {
   competitionHref,
   competitionSections,
   localePrefix,
+  pathSection,
   siteItems,
   stripLocale,
   withLocale,
@@ -359,6 +360,16 @@ describe('bottomBarItems', () => {
     expect(centrePage('/es/news', 'es')?.label).toBe('Noticias');
     expect(centrePage('/', 'en')).toBeUndefined();
     expect(centrePage('/c/liga-mx/2026-apertura/teams', 'en')).toBeUndefined();
+  });
+
+  it('opens each path on the dial of its section', () => {
+    expect(pathSection('/')).toBe('leagues');
+    expect(pathSection('/es')).toBe('leagues');
+    expect(pathSection('/teams')).toBe('teams');
+    expect(pathSection('/es/news')).toBe('news');
+    // A competition's own Teams and News are that competition's, not the site's.
+    expect(pathSection('/c/liga-mx/2026-apertura/teams')).toBe('leagues');
+    expect(pathSection('/es/c/liga-mx/2026-apertura/news')).toBe('leagues');
   });
 
   it('shows the open competition\'s own sections inside it', () => {

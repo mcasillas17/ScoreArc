@@ -26,23 +26,52 @@ Three constraints from the owner:
 3. **The colour system does not change.** Green is the brand, gold is the
    prize, and each competition keeps its accent from `competitions.ts`.
 
+## Two levels
+
+The nav is two concentric levels, the same on desktop and phone.
+
+- **Inner level: the sections.** Home, Teams, Leagues, Players, News. They do
+  not turn. Home, Teams and News are links to their pages; Leagues and Players
+  have no page of their own and only change what the dial holds.
+- **Outer level: the dial** of whichever section is picked. Pages and leagues
+  never share a ring.
+
+| Section | The dial holds | A crest opens |
+|---|---|---|
+| Leagues | the competitions | that competition |
+| News | the competitions | that competition's news |
+| Players | the competitions | that competition's players |
+| Teams | the team list's initials | that initial in the list |
+
+**The dial is an index, never a list.** It holds a couple of dozen things at
+most; the page it leads to holds the rest. There is no dial of every team or
+every player, and the nav fetches nothing.
+
+**A league's crest looks the same wherever it leads**, so a dial that leads
+somewhere other than the competition itself says so three ways: a section badge
+on the corner of every crest, the crest at the centre named in full ("Liga MX
+news"), and the section lit on the inner level. The plain Leagues dial has no
+badge. Crests are never recoloured: a competition keeps its accent everywhere.
+
+A path opens on its own section's dial: `/teams` on Teams, `/news` on News,
+everything else (Home, and every page of a competition) on Leagues. A pick lasts
+until the reader navigates or leaves the rail.
+
 ## What changes for the reader
 
 ### Desktop (above 760px)
 
 - **The rail is 96px wide** (was 230px, or 64px collapsed). It shows the
-  ScoreArc mark and the rim of the dial with seven crests on it. The dial is
-  the rail's only menu: Home, Teams and News are crests on it, ahead of the
-  competitions. The page the reader is on sits in the middle, larger, ringed
-  in its accent.
+  ScoreArc mark, the five sections as icons down its inner edge, and the rim
+  of the dial with seven crests on it. The open competition sits in the
+  middle, larger, ringed in its accent.
 - **On Teams the dial is the team list's.** It carries the list's initials;
   turning it scrolls the list, and left alone it rests on the initial on
-  screen. A back crest under the mark returns the dial to the menu, and the
-  Teams crest there returns it to the initials.
+  screen. Under a search the list marks no initials and the dial is empty.
 - **Hovering, focusing or pinning the rail expands it to 312px** as an overlay.
   The page underneath does not reflow. Expanded, the dial shows up to nine
-  crests with their names (the rest come round as it turns), the site links
-  gain labels, and the lockup replaces the mark. A pin button keeps it open;
+  crests with their names (the rest come round as it turns), the sections
+  gain their names, and the lockup replaces the mark. A pin button keeps it open;
   the pin is not persisted.
 - **Scrolling the mouse wheel or dragging on the rim rotates the dial.** It
   snaps to the nearest crest. Arrow Up and Arrow Down move between crests.
@@ -70,15 +99,12 @@ one control at the bottom of the screen, which has three states:
   competition the centre is the page the reader is on and the other two site
   pages sit one either side: on Teams the centre is Teams, between Home and
   News. On Home the centre is the ScoreArc mark, labelled Competitions.
-- **The centre always opens a dial of what the reader is looking at.** In a
-  competition and on Home that is the competitions. On Teams it is the team
-  list's initials: turning the wheel scrolls the list, tapping an initial jumps
-  to it. On News the crests open each competition's news.
+- **The centre always opens the dial of what the reader is looking at**: the
+  page's own section (see Two levels).
 - **Open.** Tapping the centre, or swiping up on the bar, raises the wheel:
-  competitions on the outer rim, the current context's sections fanned on an
-  inner rim, and the ScoreArc mark at the hub linking home. A row of site links
-  (Teams, News) sits above the wheel so they stay reachable from inside a
-  competition. Dragging along the rim rotates it. Tapping outside, pressing
+  the dial on the outer rim, the five sections fanned on an inner rim, and the
+  ScoreArc mark at the hub linking home. A competition's own sections stay on
+  the resting bar. Dragging along the rim rotates it. Tapping outside, pressing
   Escape or choosing a destination closes it.
 - **Shrunk.** Scrolling down more than a few pixels past the first 80px shrinks
   the bar to the crest alone; scrolling up restores it. Tapping the crest in
@@ -105,7 +131,7 @@ one control at the bottom of the screen, which has three states:
   centre as a custom property and CSS places it with
   `rotate() translateX() rotate()`. The only JavaScript geometry is the gesture
   maths in `dialModel.ts`, which is pure and unit-tested.
-- **"Simulate, soon" stays** as a label in the expanded rail. The nav is still
+- **"Simulate, soon" stays** as a label under the lockup in the expanded rail. The nav is still
   where the site says what it is.
 - **Reduced motion.** With `prefers-reduced-motion: reduce` the dial and the
   bar change state without transitions.
