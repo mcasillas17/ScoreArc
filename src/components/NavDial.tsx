@@ -229,7 +229,9 @@ export default function NavDial({
     <div
       ref={ref}
       className={`sn-dial sn-dial--${variant}${dragging ? ' sn-dial--dragging' : ''}`}
-      data-has-current={items.some((item) => item.current) ? '' : undefined}
+      // The accent arc marks the rest position, so it shows only while the
+      // current page is resting there: turned away, it was a stray green line.
+      data-has-current={items[snapFocus(focus, n)]?.current ? '' : undefined}
       title={hint}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
