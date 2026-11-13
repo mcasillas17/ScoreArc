@@ -115,3 +115,11 @@ export function nextShrunk(prev: boolean, lastY: number, y: number): boolean {
   if (delta < -SCROLL_INTENT_PX) return false;
   return prev;
 }
+
+/** How long, in ms, a flicked dial takes to lose about two thirds of its speed. */
+const GLIDE_TAU_MS = 325;
+
+/** The speed of a gliding dial `dtMs` later: it slows like something with weight. */
+export function glideDecay(velocity: number, dtMs: number): number {
+  return velocity * Math.exp(-dtMs / GLIDE_TAU_MS);
+}
