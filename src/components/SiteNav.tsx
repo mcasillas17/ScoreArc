@@ -10,7 +10,7 @@ import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import type { Locale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
 import CompetitionMark from './CompetitionMark';
-import NavDial, { onPointerRelease } from './NavDial';
+import NavDial, { onPointerRelease, type DialItem } from './NavDial';
 import {
   RAIL_REACH_EXPANDED,
   SCROLL_INTENT_PX,
@@ -40,6 +40,8 @@ const simulateIcon = <svg {...ICON}><path d="M4 18V6M10 18v-7M16 18v-4M20 18V9" 
 const bracketIcon = <svg {...ICON}><path d="M6 4v4a3 3 0 0 0 3 3h2" /><path d="M6 20v-4a3 3 0 0 1 3-3h2" /><circle cx="18" cy="12" r="2" /><path d="M11 12h5" /><circle cx="5" cy="4" r="1.5" /><circle cx="5" cy="20" r="1.5" /></svg>;
 const tableIcon = <svg {...ICON}><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="14" y2="18" /></svg>;
 const matchesIcon = <svg {...ICON}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" /></svg>;
+const competitionsIcon = <svg {...ICON}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="4" r="1.6" fill="currentColor" /><circle cx="19" cy="16" r="1.6" fill="currentColor" /><circle cx="5" cy="16" r="1.6" fill="currentColor" /></svg>;
+const backIcon = <svg {...ICON}><path d="M9 7l-5 5 5 5" /><path d="M4 12h10a6 6 0 0 1 6 6" /></svg>;
 const newsIcon = <svg {...ICON}><path d="M4 5h16v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>;
 
 export interface NavItem {
@@ -262,7 +264,25 @@ export function bottomBarItems(pathname: string, locale: Locale): BottomBarItem[
   });
   const rc = activeCompetition(pathname);
   if (rc) return competitionSections(rc, locale, prefix).map(entry);
-  return siteItems(locale, prefix).map(entry);
+  // The page the reader is on is the bar's centre button, so it is not also a
+  // tab: the other two pages sit one either side of it.
+  const site = siteItems(locale, prefix);
+  return site.filter((i) => !i.match(pathname) || site.every((o) => !o.match(pathname))).map(entry);
+}
+
+/**
+ * The site page the bar's centre button stands for, off a competition: Teams
+ * on `/teams`, News on `/news`. Undefined on Home and anywhere else, where the
+ * centre is the ScoreArc mark and opens the competitions.
+ */
+export function centrePage(pathname: string, locale: Locale): NavItem | undefined {
+  if (activeCompetition(pathname)) return undefined;
+  return siteItems(locale, localePrefix(pathname)).slice(1).find((i) => i.match(pathname));
+}
+
+/** The id the team list gives the first team under an initial. */
+export function teamLetterId(letter: string): string {
+  return `ts-${letter}`;
 }
 
 /** The arc that marks the active section: under a desktop tab, over a phone one. */
@@ -287,9 +307,15 @@ export default function SiteNav() {
   // Whatever locale segment the reader is already under, carried onto every
   // href below so the nav cannot silently return them to English.
   const prefix = localePrefix(pathname);
-  const resting = restingFocus(
-    active ? competitions.findIndex((c) => c.id === active.competition.id) : -1,
-    competitions.length,
+  const items = siteItems(locale, prefix);
+  const competitionAt = active ? competitions.findIndex((c) => c.id === active.competition.id) : -1;
+  // The phone wheel turns the competitions alone.
+  const resting = restingFocus(competitionAt, competitions.length);
+  // The rail's dial is the whole menu: the site's pages, then the competitions.
+  const siteAt = items.findIndex((i) => i.match(pathname));
+  const railResting = restingFocus(
+    competitionAt >= 0 ? items.length + competitionAt : siteAt,
+    items.length + competitions.length,
   );
 
   const [pinned, setPinned] = useState(false);
@@ -297,19 +323,28 @@ export default function SiteNav() {
   const [open, setOpen] = useState(false);
   const [shrunk, setShrunk] = useState(false);
   const [focus, setFocus] = useState(resting);
+  const [railFocus, setRailFocus] = useState(railResting);
+  // The initials the team list on this page carries, read from it when the
+  // wheel opens, and the wheel's own position among them.
+  const [letters, setLetters] = useState<string[]>([]);
+  const [letterFocus, setLetterFocus] = useState(0);
+  // On Teams the dial is the team list's, and the rest of the menu would have
+  // nowhere to be: the back crest hands the dial back to it.
+  const [showCompetitions, setShowCompetitions] = useState(false);
   // The dial returns to rest, and the wheel closes, on every navigation.
   const [lastPath, setLastPath] = useState(pathname);
   if (lastPath !== pathname) {
     setLastPath(pathname);
     setFocus(resting);
+    setRailFocus(railResting);
     setOpen(false);
+    setShowCompetitions(false);
   }
 
   const centreRef = useRef<HTMLButtonElement>(null);
   const wheelRef = useRef<HTMLDivElement>(null);
   const swallowClick = useRef(false);
 
-  const items = siteItems(locale, prefix);
   // Named, not linked. The nav is where the site says what it is, and a link
   // to a 404 is worse than an honest label.
   const soonItems = [
@@ -318,8 +353,26 @@ export default function SiteNav() {
   const barItems = bottomBarItems(pathname, locale);
   const [barLeft, barRight] = splitAround(barItems);
 
+  const page = centrePage(pathname, locale);
+  const onTeams = page?.href === items[1].href;
+  const onNews = page?.href === items[2].href;
+
+  // On Teams the dial turns the list on the page, by initial. The list marks
+  // the first team under each one; under a search it marks none, and the dial
+  // falls back to the competitions. Read from the page, so it is re-read
+  // whenever the reader reaches for the dial.
+  const readLetters = () => {
+    const marks = onTeams ? Array.from(document.querySelectorAll<HTMLElement>('[data-team-letter]')) : [];
+    setLetters(marks.map((el) => el.dataset.teamLetter ?? ''));
+    // Rest on the initial the reader has scrolled to.
+    setLetterFocus(Math.max(0, marks.findLastIndex((el) => el.getBoundingClientRect().top < 120)));
+  };
+  useEffect(readLetters, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const openWheel = () => {
     setFocus(resting);
+    readLetters();
+    setShowCompetitions(false);
     setOpen(true);
   };
   // Focus goes back to the centre button in the effect below, which hears
@@ -371,6 +424,27 @@ export default function SiteNav() {
     };
   }, [open]);
 
+  // Turning the letter dial scrolls the team list to that initial.
+  const lettersOn = letters.length > 0 && !showCompetitions;
+  const turnLetters = (next: number) => {
+    const at = (f: number) => Math.round(f) % letters.length;
+    if (at(next) !== at(letterFocus)) document.getElementById(teamLetterId(letters[at(next)]))?.scrollIntoView();
+    setLetterFocus(next);
+  };
+
+  // Left alone, the letter dial follows the page: it rests on the initial the
+  // reader has scrolled to. Not while they are on the dial, which is then what
+  // is moving the page.
+  useEffect(() => {
+    if (!lettersOn || hovered || open) return;
+    const onScroll = () => {
+      const marks = Array.from(document.querySelectorAll<HTMLElement>('[data-team-letter]'));
+      setLetterFocus(Math.max(0, marks.findLastIndex((el) => el.getBoundingClientRect().top < 120)));
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [lettersOn, hovered, open]);
+
   // The phone bar shrinks while the reader scrolls down and returns when they
   // scroll up. `lastY` only moves on a deliberate scroll, so a slow one adds up
   // to a change of state instead of being forgotten a few pixels at a time.
@@ -409,7 +483,55 @@ export default function SiteNav() {
     </Link>
   );
 
-  const centreMark = active ? (
+  const competitionItems = (section = ''): DialItem[] =>
+    competitions.map((c) => {
+      const isActive = active?.competition.id === c.id;
+      const seasonId = competitionSeasonId(c, active);
+      return {
+        key: c.id,
+        href: competitionHref(c, active, prefix) + section,
+        label: c.shortName,
+        current: isActive,
+        mark: (
+          <CompetitionMark
+            logo={c.logo}
+            logoInvert={c.logoInvert}
+            emblem={c.emblem}
+            name={c.name}
+            size={isActive ? 30 : 22}
+          />
+        ),
+        onOpen: () => trackEvent('Competition opened', { competition: c.id, season: seasonId, source: 'sitenav' }),
+      };
+    });
+  // The rail's one menu. The site's pages are crests like any other; Teams,
+  // on Teams, turns the dial back to the team list.
+  const mainItems: DialItem[] = [
+    ...items.map((item) => ({
+      key: item.href,
+      href: item.href,
+      label: item.label,
+      current: item.match(pathname),
+      mark: <span className="sn-crest-icon">{item.icon}</span>,
+      onOpen: () => {
+        trackEvent('Section opened', { section: item.label, surface: 'sitenav' });
+        setShowCompetitions(false);
+      },
+    })),
+    ...competitionItems(),
+  ];
+  const letterItems: DialItem[] = letters.map((letter) => ({
+    key: letter,
+    href: `#${teamLetterId(letter)}`,
+    // The initial is the crest itself; a name under it would say it twice.
+    label: '',
+    current: false,
+    mark: <span className="sn-crest-letter">{letter}</span>,
+  }));
+
+  const centreMark = page ? (
+    <span className="sn-centre-icon">{page.icon}</span>
+  ) : active ? (
     <CompetitionMark
       logo={active.competition.logo}
       logoInvert={active.competition.logoInvert}
@@ -434,6 +556,7 @@ export default function SiteNav() {
       // have the pin.
       onPointerEnter={(e) => {
         if (e.pointerType !== 'touch') setHovered(true);
+        readLetters();
       }}
       // Left alone, a dial turned away from the open competition would leave
       // the collapsed rail showing some other crest in the middle. Not for
@@ -442,12 +565,12 @@ export default function SiteNav() {
       onPointerLeave={(e) => {
         if (e.pointerType === 'touch') return;
         setHovered(false);
-        if (!pinned) setFocus(resting);
+        if (!pinned) setRailFocus(railResting);
       }}
       // The same for the keyboard: focusing a crest turns the dial to it, and
       // tabbing on into the page would leave it there.
       onBlur={(e) => {
-        if (!pinned && !e.currentTarget.contains(e.relatedTarget)) setFocus(resting);
+        if (!pinned && !e.currentTarget.contains(e.relatedTarget)) setRailFocus(railResting);
       }}
     >
       <Link href={withLocale(prefix, '/')} className="sn-brand" aria-label={t('common.scoreArcHome')}>
@@ -461,27 +584,22 @@ export default function SiteNav() {
         <img className="sn-lockup" src="/brand/scorearc-lockup-3a-dark.svg" alt="" width={300} height={104} />
       </Link>
 
+      {/* On Teams the dial is the team list's initials; this flips it back to
+          the menu. A crest, not a second menu. */}
+      {lettersOn && (
+        <button
+          type="button"
+          className="sn-back"
+          aria-label={t('nav.menu')}
+          title={t('nav.menu')}
+          onClick={() => setShowCompetitions(true)}
+        >
+          {backIcon}
+          <span className="sn-back-label">{t('nav.menu')}</span>
+        </button>
+      )}
+
       <div className="sn-site">
-        {items.map((item) => {
-          const on = item.match(pathname);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`sn-item${on ? ' sn-item--active' : ''}`}
-              aria-label={item.label}
-              aria-current={on ? 'page' : undefined}
-              title={item.label}
-              onClick={() => {
-                trackEvent('Section opened', { section: item.label, surface: 'sitenav' });
-              }}
-            >
-              <span className="sn-icon">{item.icon}</span>
-              <span className="sn-label">{item.label}</span>
-              {on && <ArcMark />}
-            </Link>
-          );
-        })}
         {/* No `aria-disabled`: it is ignored on a bare span with no role, so
             it only ever reassured us. The visible "soon" badge is real text
             inside the item, so a screen reader reads "Simulate soon" and the
@@ -495,13 +613,13 @@ export default function SiteNav() {
       </div>
 
       <NavDial
-        competitions={competitions}
-        active={active}
-        focus={focus}
-        onFocusChange={setFocus}
+        // Keyed: the two collections have different lengths and positions.
+        key={lettersOn ? 'letters' : 'competitions'}
+        items={lettersOn ? letterItems : mainItems}
+        focus={lettersOn ? letterFocus : railFocus}
+        onFocusChange={lettersOn ? turnLetters : setRailFocus}
         variant="rail"
         reach={RAIL_REACH_EXPANDED}
-        prefix={prefix}
         onNavigate={close}
         hint={t('nav.dialHint')}
       />
@@ -576,7 +694,7 @@ export default function SiteNav() {
         onClick={openWheel}
       >
         <span className="sn-centre-mark">{centreMark}</span>
-        {!active && <span className="sn-centre-label">{t('nav.competitions')}</span>}
+        {!active && <span className="sn-centre-label">{page?.label ?? t('nav.competitions')}</span>}
       </button>
       <div className="sn-tabs-group">{barRight.map((tab) => tabLink(tab, 'bottom-bar'))}</div>
     </nav>
@@ -588,7 +706,7 @@ export default function SiteNav() {
         className="sn-wheel"
         role="dialog"
         aria-modal="true"
-        aria-label={t('nav.competitions')}
+        aria-label={lettersOn && page ? page.label : t('nav.competitions')}
       >
         <button type="button" className="sn-wheel-backdrop" aria-label={t('nav.closeWheel')} onClick={closeWheel} />
         {/* Inside a competition the fan below is that competition's sections,
@@ -613,17 +731,35 @@ export default function SiteNav() {
             ))}
           </div>
         )}
+        {lettersOn && (
+          <div className="sn-wheel-site">
+            <button type="button" className="sn-wheel-site-link" onClick={() => setShowCompetitions(true)}>
+              {competitionsIcon}
+              {t('nav.competitions')}
+            </button>
+          </div>
+        )}
         <div className="sn-wheel-disc" aria-hidden />
-        <NavDial
-          competitions={competitions}
-          active={active}
-          focus={focus}
-          onFocusChange={setFocus}
-          variant="wheel"
-          reach={WHEEL_REACH}
-          prefix={prefix}
-          onNavigate={close}
-        />
+        {lettersOn ? (
+          <NavDial
+            items={letterItems}
+            focus={letterFocus}
+            onFocusChange={turnLetters}
+            variant="wheel"
+            reach={WHEEL_REACH}
+            onNavigate={close}
+          />
+        ) : (
+          <NavDial
+            // From News, a crest opens that competition's news.
+            items={competitionItems(onNews ? '/news' : '')}
+            focus={focus}
+            onFocusChange={setFocus}
+            variant="wheel"
+            reach={WHEEL_REACH}
+            onNavigate={close}
+          />
+        )}
         <div className="sn-wheel-sections">
           {barItems.map((tab, i) => (
             <div

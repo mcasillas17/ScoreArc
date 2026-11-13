@@ -3,6 +3,7 @@ import {
   accentStyle,
   activeCompetition,
   bottomBarItems,
+  centrePage,
   competitionHref,
   competitionSections,
   localePrefix,
@@ -344,14 +345,20 @@ describe('accentStyle', () => {
  * pure function rather than discovering in a browser at one width.
  */
 describe('bottomBarItems', () => {
-  it('shows the site pages, and no Menu entry, off a competition', () => {
-    for (const path of ['/', '/teams', '/news']) {
-      const tabs = bottomBarItems(path, 'en');
-      // The bar's centre button opens the wheel; it replaced the Menu slot, so
-      // every item is a destination.
-      expect(tabs.map((t) => t.label)).toEqual(['Home', 'Teams', 'News']);
-      expect(tabs.map((t) => t.href)).toEqual(['/', '/teams', '/news']);
-    }
+  // The page the reader is on is the centre button, so the other two flank it.
+  it('shows the other two site pages off a competition', () => {
+    expect(bottomBarItems('/', 'en').map((t) => t.label)).toEqual(['Teams', 'News']);
+    expect(bottomBarItems('/teams', 'en').map((t) => t.label)).toEqual(['Home', 'News']);
+    expect(bottomBarItems('/es/news', 'es').map((t) => t.href)).toEqual(['/es', '/es/teams']);
+    // Nowhere in particular: every page is a destination.
+    expect(bottomBarItems('/nope', 'en').map((t) => t.label)).toEqual(['Home', 'Teams', 'News']);
+  });
+
+  it('puts Teams and News, and nothing else, in the centre', () => {
+    expect(centrePage('/teams', 'en')?.label).toBe('Teams');
+    expect(centrePage('/es/news', 'es')?.label).toBe('Noticias');
+    expect(centrePage('/', 'en')).toBeUndefined();
+    expect(centrePage('/c/liga-mx/2026-apertura/teams', 'en')).toBeUndefined();
   });
 
   it('shows the open competition\'s own sections inside it', () => {
@@ -379,14 +386,18 @@ describe('bottomBarItems', () => {
     }
     for (const path of paths) {
       const n = bottomBarItems(path, 'en').length;
-      // Three off a competition: the Menu slot became the centre button.
-      expect(n).toBeGreaterThanOrEqual(3);
+      // Two off a competition: the page itself is the centre button.
+      expect(n).toBeGreaterThanOrEqual(2);
       expect(n).toBeLessThanOrEqual(6);
     }
   });
 
-  it('marks exactly one slot active on every real route', () => {
-    const paths = ['/', '/teams', '/news'];
+  // Off a competition the page the reader is on is the centre, not a slot.
+  it('marks exactly one slot active inside a competition, and none off one', () => {
+    for (const path of ['/', '/teams', '/news']) {
+      expect(bottomBarItems(path, 'en').filter((t) => t.active)).toHaveLength(0);
+    }
+    const paths: string[] = [];
     for (const c of listCompetitions()) {
       const rc = resolveSeason(c.id)!;
       for (const s of competitionSections(rc, 'en')) paths.push(s.href);
@@ -399,10 +410,6 @@ describe('bottomBarItems', () => {
   // The bar is the whole nav on a phone: a slot that links somewhere it would
   // not then highlight leaves the reader on a live page with nothing lit.
   it('highlights the slot it links to', () => {
-    for (const path of ['/', '/teams', '/news']) {
-      const hit = bottomBarItems(path, 'en').find((t) => t.active)!;
-      expect(hit.href).toBe(path);
-    }
     const tabs = bottomBarItems('/c/mls/2026/matches', 'en');
     expect(tabs.find((t) => t.active)!.href).toBe('/c/mls/2026/matches');
   });
@@ -413,9 +420,7 @@ describe('bottomBarItems', () => {
   });
 
   it('translates every label', () => {
-    expect(bottomBarItems('/', 'es').map((t) => t.label)).toEqual([
-      'Inicio', 'Equipos', 'Noticias',
-    ]);
+    expect(bottomBarItems('/es/teams', 'es').map((t) => t.label)).toEqual(['Inicio', 'Noticias']);
     expect(bottomBarItems('/c/liga-mx/2026-apertura/standings', 'es').map((t) => t.label)).toEqual([
       'Liguilla', 'Clasificación', 'Partidos', 'Equipos', 'Jugadores', 'Noticias',
     ]);
@@ -425,10 +430,10 @@ describe('bottomBarItems', () => {
   // invented, so the bar cannot drop a Spanish reader back into English.
   it('carries a locale prefix onto every slot, and only when there is one', () => {
     expect(bottomBarItems('/es/teams', 'es').map((t) => t.href)).toEqual([
-      '/es', '/es/teams', '/es/news',
+      '/es', '/es/news',
     ]);
     expect(bottomBarItems('/teams', 'en').map((t) => t.href)).toEqual([
-      '/', '/teams', '/news',
+      '/', '/news',
     ]);
     for (const t of bottomBarItems('/es/c/world-cup/2026/standings', 'es')) {
       expect(t.href.startsWith('/es/c/world-cup/2026')).toBe(true);
@@ -436,9 +441,8 @@ describe('bottomBarItems', () => {
   });
 
   it('still marks one slot active under a locale prefix', () => {
-    for (const path of ['/es', '/es/teams', '/es/c/liga-mx/2026-apertura/matches']) {
-      expect(bottomBarItems(path, 'es').filter((t) => t.active)).toHaveLength(1);
-    }
+    expect(bottomBarItems('/es/c/liga-mx/2026-apertura/matches', 'es').filter((t) => t.active)).toHaveLength(1);
+    expect(centrePage('/es/teams', 'es')?.href).toBe('/es/teams');
   });
 
   // The competition you are inside keeps the season you are on -- the bar must

@@ -366,6 +366,7 @@ export const en = {
   'nav.dialHint': 'Scroll or drag to turn the dial',
   'nav.sections': 'Sections',
   'nav.soon': 'soon',
+  'nav.menu': 'Menu',
   'nav.competitions': 'Competitions',
   'hub.group.playingNow': 'Playing now',
   'hub.group.ongoing': 'Ongoing',

@@ -183,6 +183,37 @@ a {
   transition: color 0.15s;
 }
 a.sn-item:hover { color: var(--text); }
+/* The back crest: on Teams, where the dial is the team list's initials, it
+   returns the dial to the menu. It sits under the brand. */
+.sn-back {
+  position: absolute;
+  left: 26px;
+  top: 76px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sn-back:hover { color: var(--text); border-color: var(--text-muted); }
+.sn-back-label { display: none; }
+/* A site page on the dial: an icon where a competition has its crest. */
+.sn-crest-icon { display: flex; }
+.sn-crest-icon svg { width: 20px; height: 20px; }
+.sn-dial-slot[data-current] .sn-crest-icon svg { width: 26px; height: 26px; }
+.sn-dial-slot[data-current] .sn-crest-icon { color: var(--accent); }
+button.sn-wheel-site-link { font-family: inherit; cursor: pointer; }
 .sn-item--active { color: var(--text); }
 .sn-item--active .sn-icon { color: var(--accent); }
 .sn-icon { display: inline-flex; }
@@ -320,6 +351,9 @@ a.sn-item:hover { color: var(--text); }
   box-shadow: 0 0 0 4px var(--bg);
 }
 .sn-crest-name { display: none; }
+/* The Teams dial: initials on the rim, the one at the centre lit. */
+.sn-crest-letter { font-size: 17px; font-weight: 800; color: var(--text-muted); }
+.sn-dial-slot[data-centre] .sn-crest-letter { color: var(--brand); }
 
 .sn-pin {
   position: absolute;
@@ -441,6 +475,13 @@ a.sn-item:hover { color: var(--text); }
   }
   .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-mark { display: none; }
   .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-lockup { display: block; }
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-back {
+    left: 24px;
+    top: 84px;
+    width: auto;
+    padding: 0 14px;
+  }
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-back-label { display: block; }
 
   /* The site links move inside the dial, beside its centre, and trade their
      icons for labels. */
@@ -1181,6 +1222,7 @@ a.sn-item:hover { color: var(--text); }
   .sn-mark { display: none; }
   .sn-lockup { display: block; width: 132px; }
   .sn-site,
+  .sn-back,
   .sn .sn-dial,
   .sn-pin,
   .sn-credit { display: none; }
@@ -1298,6 +1340,9 @@ a.sn-item:hover { color: var(--text); }
     overflow: hidden;
   }
   .sn-centre-mark .cm-mark { flex: 0 1 auto; min-width: 0; }
+  /* Off a competition the centre is the page the reader is on (Teams, News). */
+  .sn-centre-icon { display: flex; }
+  .sn-centre-icon svg { width: 24px; height: 24px; }
   .sn-tabs[data-site] .sn-centre { border: 1px solid var(--border); }
   .sn-centre-label {
     position: absolute;
@@ -3817,6 +3862,8 @@ a.sn-item:hover { color: var(--text); }
 
 .ts-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .ts-item {
+  /* Clear of the sticky phone masthead when the letter wheel scrolls here. */
+  scroll-margin-top: 68px;
   display: flex;
   align-items: center;
   gap: 12px;

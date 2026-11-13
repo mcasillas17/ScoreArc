@@ -2,10 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import type { Competition, CompetitionSeason } from '@/server/data/competitions';
-import { trackEvent } from '@/lib/telemetry/client';
-import CompetitionMark from './CompetitionMark';
-import { competitionHref, competitionSeasonId } from './SiteNav';
 import {
   DIAL_RADIUS,
   RAIL_REACH_COLLAPSED,
@@ -39,39 +35,48 @@ export function onPointerRelease(pointerId: number, fn: (e: PointerEvent) => voi
 /** Wheel delta that turns the dial by one crest. */
 const WHEEL_STEP = 60;
 
+/** One crest on the rim. */
+export interface DialItem {
+  key: string;
+  href: string;
+  /** Shown beside or under the crest, and its accessible name. */
+  label: string;
+  mark: React.ReactNode;
+  /** The page the reader is on. */
+  current: boolean;
+  /** Called when the crest is activated, before `onNavigate`. */
+  onOpen?: () => void;
+}
+
 interface NavDialProps {
-  competitions: Competition[];
-  active: CompetitionSeason | undefined;
+  items: DialItem[];
   /** Dial position; fractional mid-drag. */
   focus: number;
   onFocusChange: (focus: number) => void;
   variant: 'rail' | 'wheel';
   /** Crests visible either side of the centre. */
   reach: number;
-  prefix: string;
-  /** Called after a competition link is activated. */
+  /** Called after a crest is activated. */
   onNavigate: () => void;
   /** Tooltip saying how the dial turns. */
   hint?: string;
 }
 
 /**
- * One rim of competition crests.
+ * One rim of crests: competitions, or any other collection.
  *
  * Positioning is CSS: each slot carries its offset from the centre as `--k`,
  * measured the short way round — the dial is a ring.
- * Every competition is a real link in list order whatever the dial position —
+ * Every item is a real link in list order whatever the dial position —
  * a crest off the visible rim is transparent, never removed — and focusing one
  * turns the dial to it.
  */
 export default function NavDial({
-  competitions,
-  active,
+  items,
   focus,
   onFocusChange,
   variant,
   reach,
-  prefix,
   onNavigate,
   hint,
 }: NavDialProps) {
@@ -79,7 +84,7 @@ export default function NavDial({
   const drag = useRef<{ start: number; focus: number; moved: boolean } | null>(null);
   const swallowClick = useRef(false);
   const [dragging, setDragging] = useState(false);
-  const n = competitions.length;
+  const n = items.length;
   const step = variant === 'rail' ? RAIL_STEP_DEG : WHEEL_STEP_DEG;
   const along = (e: { clientX: number; clientY: number }) =>
     variant === 'rail' ? e.clientY : e.clientX;
@@ -142,7 +147,7 @@ export default function NavDial({
     <div
       ref={ref}
       className={`sn-dial sn-dial--${variant}${dragging ? ' sn-dial--dragging' : ''}`}
-      data-has-current={active ? '' : undefined}
+      data-has-current={items.some((item) => item.current) ? '' : undefined}
       title={hint}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
@@ -171,7 +176,12 @@ export default function NavDial({
         }
         onFocusChange(dragFocus(d.focus, delta, stepPx(DIAL_RADIUS, step), n));
       }}
-      onLostPointerCapture={() => endDrag(false)}
+      // Only the dial's own capture. A finger is captured by the crest it
+      // lands on, and taking the capture over makes that crest report losing
+      // it — which bubbles here and used to end the drag it had just begun.
+      onLostPointerCapture={(e) => {
+        if (e.target === e.currentTarget) endDrag(false);
+      }}
       onClickCapture={(e) => {
         if (!swallowClick.current) return;
         swallowClick.current = false;
@@ -195,13 +205,12 @@ export default function NavDial({
         links[(at + dir + links.length) % links.length].focus();
       }}
     >
-      {competitions.map((c, i) => {
-        const isActive = active?.competition.id === c.id;
-        const seasonId = competitionSeasonId(c, active);
+      {items.map((item, i) => {
+        const isActive = item.current;
         const k = wrapOffset(i, focus, n);
         return (
           <div
-            key={c.id}
+            key={item.key}
             className="sn-dial-slot"
             style={{ ['--k' as string]: k }}
             data-off={isOnRim(i, focus, reach, n) ? undefined : ''}
@@ -216,7 +225,7 @@ export default function NavDial({
             data-seam={Math.abs(k - wrapOffset(i, shown.current, n)) > n / 2 ? '' : undefined}
           >
             <Link
-              href={competitionHref(c, active, prefix)}
+              href={item.href}
               className="sn-crest"
               aria-current={isActive ? 'true' : undefined}
               draggable={false}
@@ -227,20 +236,12 @@ export default function NavDial({
                 if (!drag.current) onFocusChange(i);
               }}
               onClick={() => {
-                trackEvent('Competition opened', { competition: c.id, season: seasonId, source: 'sitenav' });
+                item.onOpen?.();
                 onNavigate();
               }}
             >
-              <span className="sn-crest-mark">
-                <CompetitionMark
-                  logo={c.logo}
-                  logoInvert={c.logoInvert}
-                  emblem={c.emblem}
-                  name={c.name}
-                  size={isActive ? 30 : 22}
-                />
-              </span>
-              <span className="sn-crest-name">{c.shortName}</span>
+              <span className="sn-crest-mark">{item.mark}</span>
+              <span className="sn-crest-name">{item.label}</span>
             </Link>
           </div>
         );
