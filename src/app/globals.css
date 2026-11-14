@@ -4462,7 +4462,10 @@ a.sn-item:hover { color: var(--text); }
      measured on Liga MX (JUA/GDL). Pinning the max lets the meta text wrap
      to two short lines instead of stealing width from the sides. */
   .mw-meta { min-width: 76px; max-width: 76px; font-size: 12px; }
-  .mw-mid { min-width: 68px; font-size: 15px; }
+  /* 60, not 68: the 8px goes to the two side tracks, which were exactly as
+     wide as crest + gap + a three-letter code and clipped it to "M…" whenever
+     the text measured a pixel over. */
+  .mw-mid { min-width: 60px; font-size: 15px; }
   /* .mw-abbr is `flex: none` by default (full, unclipped width — there is
      room for it at ≥761px). Below 760px a `1fr` side track can be narrower
      than crest + gap + abbr even with the meta fix above (a 4-char abbr like
@@ -4472,7 +4475,7 @@ a.sn-item:hover { color: var(--text); }
   .mw-abbr {
     flex: 0 1 auto;
     min-width: 0;
-    max-width: 40px;
+    max-width: 44px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -4495,5 +4498,10 @@ a.sn-item:hover { color: var(--text); }
 }
 .ps-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0 24px; }
 .ps-item { display: flex; }
+/* One column made a 600-player directory 24,000px tall on a phone. */
+@media (max-width: 560px) {
+  .ps-list { grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  .ps-group { margin-top: 22px; }
+}
 .ps-name { color: var(--text); font-size: 14px; font-weight: 600; overflow-wrap: anywhere; padding: 8px 0; flex: 1; }
 .ps a:focus-visible, .ps input:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 3px; }
