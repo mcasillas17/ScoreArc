@@ -63,6 +63,22 @@ function LiveArc() {
   );
 }
 
+/**
+ * Turn the drum so `row` sits at its centre, moving nothing else.
+ *
+ * This was `row.scrollIntoView({ block: 'center' })`, which scrolls every
+ * scrollable ancestor, the page included. Wherever the wheel sits below the
+ * fold (under a bracket) that dragged the whole page down to it on load, and
+ * the reader had to scroll back up to see the bracket they came for.
+ *
+ * offsetTop, not getBoundingClientRect: the rows are tilted and scaled, and a
+ * transformed rect is not where the row sits in the scroll.
+ */
+function centreInDrum(drum: HTMLElement, row: HTMLElement): void {
+  const top = row.offsetTop - (row.offsetParent === drum ? 0 : drum.offsetTop);
+  drum.scrollTop = top - (drum.clientHeight - row.offsetHeight) / 2;
+}
+
 export default function MatchWheel({
   initialMatches, apiBase, teamBase, playerBase, teamStyle = 'flag', weekOnly = true,
 }: Props) {
@@ -194,7 +210,7 @@ export default function MatchWheel({
       if (node) {
         // Synchronous: layout updates immediately even though the DOM
         // `scroll` event that (re)fires our own listener below does not.
-        node.scrollIntoView({ block: 'center' });
+        centreInDrum(el, node);
         scrolledRef.current = true;
       }
     }
@@ -288,7 +304,7 @@ export default function MatchWheel({
                   ].filter(Boolean).join(' ')}
                   aria-label={ariaLabel}
                   onClick={() => void openDetails(m)}
-                  onFocus={(e) => e.currentTarget.scrollIntoView({ block: 'center' })}
+                  onFocus={(e) => { if (scrollerRef.current) centreInDrum(scrollerRef.current, e.currentTarget); }}
                 >
                   <span className="mw-side">
                     <span className="mw-name">{m.home.name}</span>
