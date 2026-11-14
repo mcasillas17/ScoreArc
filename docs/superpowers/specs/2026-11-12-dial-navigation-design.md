@@ -48,10 +48,10 @@ most; the page it leads to holds the rest. There is no dial of every team or
 every player, and the nav fetches nothing.
 
 **A league's crest looks the same wherever it leads**, so a dial that leads
-somewhere other than the competition itself says so three ways: a section badge
-on the corner of every crest, the crest at the centre named in full ("Liga MX
-news"), and the section lit on the inner level. The plain Leagues dial has no
-badge. Crests are never recoloured: a competition keeps its accent everywhere.
+somewhere other than the competition itself says so: the crest at the centre is
+named in full ("Liga MX news") and the section is lit on the inner level. The
+phone wheel, which has no names beside its crests, adds a section badge on the
+corner of each. The plain Leagues dial has no badge. Crests are never recoloured: a competition keeps its accent everywhere.
 
 A path opens on its own section's dial: `/teams` on Teams, `/news` on News,
 everything else (Home, and every page of a competition) on Leagues. A pick lasts
@@ -61,10 +61,12 @@ until the reader navigates or leaves the rail.
 
 ### Desktop (above 760px)
 
-- **The rail is 96px wide** (was 230px, or 64px collapsed). It shows the
-  ScoreArc mark, the five sections as icons down its inner edge, and the rim
-  of the dial with seven crests on it. The open competition sits in the
-  middle, larger, ringed in its accent.
+- **The rail is 96px wide** (was 230px, or 64px collapsed). Collapsed it shows
+  the ScoreArc mark and the five sections as icons on a faint arc, the current
+  one lit. The dial is not drawn until the rail expands: two levels do not fit
+  in 96px.
+- **Pages are one centred column** on a wide screen, and a competition's tab
+  row lines up with it. The news page runs its list in columns.
 - **On Teams the dial is the team list's.** It carries the list's initials;
   turning it scrolls the list, and left alone it rests on the initial on
   screen. Under a search the list marks no initials and the dial is empty.
