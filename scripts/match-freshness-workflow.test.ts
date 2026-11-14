@@ -19,8 +19,13 @@ describe('opt-in durable match workflow', () => {
     // GitHub's schedule is gone, so it cannot double the accepted cadence.
     expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch']);
     // The receiver dispatches with no inputs, so this must fall back to false: never initialize history.
-    expect(workflow.jobs.check.steps.find((s: any) => s.id === 'select').env.INITIALIZE_STATE).toBe('${{ inputs.initialize_state || false }}');
+    const select = workflow.jobs.check.steps.find((s: any) => s.id === 'select');
+    expect(select.env.INITIALIZE_STATE).toBe('${{ inputs.initialize_state || false }}');
+    expect(select.env.RECOVERY_RUN_ID).toBe("${{ inputs.recovery_run_id || '' }}");
+    expect(select.env.RECOVERY_ARTIFACT_ID).toBe("${{ inputs.recovery_artifact_id || '' }}");
     expect(workflow.on.workflow_dispatch.inputs.initialize_state.default).toBe(false);
+    expect(workflow.on.workflow_dispatch.inputs.recovery_run_id.default).toBe('');
+    expect(workflow.on.workflow_dispatch.inputs.recovery_artifact_id.default).toBe('');
     expect(workflow.jobs.check.if).toContain("vars.MATCH_FRESHNESS_ENABLED == 'true'");
     expect(workflow.jobs.check.if).toContain("github.ref == 'refs/heads/main'");
     expect(workflow.concurrency).toEqual({ group: 'match-freshness-watchdog', 'cancel-in-progress': false });
@@ -114,7 +119,8 @@ async function harness() {
     const payload = JSON.parse(raw); notifications.push(payload);
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ eventId: payload.eventId }));
   })}/events/${'t'.repeat(40)}`;
-  async function run({ enabled = 'true', deliveryEnabled = 'true', failUpload = '', initialize = false, event = 'workflow_dispatch', checkpointCommitted = '', ref = 'refs/heads/main' } = {}) {
+  async function run({ enabled = 'true', deliveryEnabled = 'true', failUpload = '', initialize = false, event = 'workflow_dispatch',
+    checkpointCommitted = '', ref = 'refs/heads/main', recoveryRunId = '', recoveryArtifactId = '' } = {}) {
     now += 600000;
     const id = history.length + 100;
     const iso = new Date(now).toISOString();
@@ -127,6 +133,8 @@ async function harness() {
       if (path === `${root}/workflows/match-freshness.yml`) return { id: 7, path: current.path };
       if (path === `${root}/runs/${id}`) return current;
       if (path.includes('/workflows/7/runs?')) return { total_count: history.length+1, workflow_runs: [current, ...history.toReversed()] };
+      const runLookup = new RegExp(`^${root}/runs/(\\d+)$`).exec(path);
+      if (runLookup) return history.find(source => source.id === Number(runLookup[1]));
       const prior = /\/runs\/(\d+)\/(artifacts|attempts\/1\/jobs)/.exec(path);
       if (!prior) throw new Error('Unexpected GitHub request');
       const values = prior[2] === 'artifacts' ? artifacts.get(+prior[1]) ?? [] : jobs.get(+prior[1]) ?? [];
@@ -137,7 +145,8 @@ async function harness() {
     const workDir = join(dir, 'watchdog-state'); const output = join(dir, 'output');
     const env = { ...vars, NODE_ENV: 'test' as const, GITHUB_REPOSITORY: current.repository.full_name, GITHUB_REF: 'refs/heads/main', GITHUB_SHA: current.head_sha,
       GITHUB_RUN_ID: String(id), GITHUB_RUN_NUMBER: String(id), GITHUB_RUN_ATTEMPT: '1', GITHUB_OUTPUT: output,
-      INITIALIZE_STATE: String(initialize), MATCH_FRESHNESS_WEBHOOK_URL: webhookURL, PENDING_ARTIFACT_ID: '', CHECKPOINT_COMMITTED: '' };
+      INITIALIZE_STATE: String(initialize), RECOVERY_RUN_ID: recoveryRunId, RECOVERY_ARTIFACT_ID: recoveryArtifactId,
+      MATCH_FRESHNESS_WEBHOOK_URL: webhookURL, PENDING_ARTIFACT_ID: '', CHECKPOINT_COMMITTED: '' };
     const executed: any[] = [];
     for (const step of workflow.jobs.check.steps) {
       if (!step.id) continue;
@@ -230,6 +239,31 @@ describe('enabled workflow artifact boundaries', () => {
     const original = structuredClone(h.notifications);
     const next = await h.run(); expect(next.steps.restore.outcome).toBe('success'); expect(next.steps.final.outcome).toBe('success');
     expect(h.notifications.slice(SCOPES)).toEqual(original);
+  });
+  it('restores an explicitly reviewed checkpoint after the normal history budget is exhausted', async () => {
+    const h = await harness(); h.healthy();
+    const first = await h.run({ initialize: true });
+    const checkpoint = h.artifacts.get(first.id)?.find(artifact => artifact.name === 'match-freshness-state');
+    expect(checkpoint).toBeDefined();
+    for (let i = 0; i < 61; i++) await h.run({ enabled: 'TRUE' });
+    const recovered = await h.run({ recoveryRunId: String(first.id), recoveryArtifactId: String(checkpoint.id) });
+    expect(recovered.steps.select.outcome).toBe('success');
+    expect(recovered.steps.select.outputs.run_id).toBe(String(first.id));
+    expect(recovered.steps.restore.outcome).toBe('success');
+    expect(recovered.steps.prepare.outcome).toBe('success');
+    expect(recovered.steps.final.outcome).toBe('success');
+    expect(recovered.steps.result.outcome).toBe('success');
+  });
+  it.each([
+    { recoveryRunId: '99' },
+    { recoveryArtifactId: '400' },
+    { recoveryRunId: 'bad', recoveryArtifactId: '400' },
+  ])('rejects incomplete or malformed explicit recovery input %j', async recovery => {
+    const h = await harness(); h.healthy();
+    await h.run({ initialize: true });
+    const attempted = await h.run(recovery);
+    expect(attempted.steps.select.outcome).toBe('failure');
+    expect(attempted.steps.prepare.outcome).toBe('skipped');
   });
 });
 

@@ -3,6 +3,33 @@
 **Broad inventory baseline:** 2026-09-01, against `main` @ `49bf68d`.
 Unrelated inventory observations below retain their original dates.
 
+### November 14 match-monitor incident
+
+The production match watchdog is **manually disabled** as of 08:01 UTC to stop
+five-minute failure churn while preserving all run and artifact history. Its last
+healthy heartbeat was
+[run 43094733866](https://github.com/mcasillas17/ScoreArc/actions/runs/43094733866)
+at 20:15:42 UTC November 11, with final checkpoint artifact `13891075249`.
+Six GitHub `startup_failure` runs with zero jobs began at
+[run 43095404456](https://github.com/mcasillas17/ScoreArc/actions/runs/43095404456);
+the selector rejected that previously unrecorded no-job conclusion, and later
+runs failed before Prepare. The final failed run before the pause was
+[run 43573685522](https://github.com/mcasillas17/ScoreArc/actions/runs/43573685522)
+(number 1429) at 08:00 UTC November 14.
+
+An authenticated audit covered all 716 intervening runs: 6 `startup_failure`
+with zero jobs, 709 failures whose Select step failed and Prepare step skipped,
+and 1 cancellation with no preparation. It found no barrier and no checkpoint
+newer than run 43094733866. The downloaded final checkpoint also passed the
+current Prepare path locally: sequence 20 was preserved, the ten-scope envelope
+adopted the eleventh configured scope, and healthy synthetic observations
+produced zero pending events or monitor failure. A feature-branch repair adds
+the verified `startup_failure` shape and an owner-reviewed
+exact-final-checkpoint recovery input. Until that PR is reviewed and merged, the
+workflow remains disabled and the monitor sends no checks or heartbeats. The
+exact recovery record and commands are in
+[MATCH_FRESHNESS](backend/MATCH_FRESHNESS.md#november-14-2026-startup-failure-recovery).
+
 ### November 1 T16.3 reconciliation
 
 The owner confirms migration **0028** and T17.3 resource metadata were deployed
@@ -680,6 +707,9 @@ held-byte reprocessing and new collection remain unchanged.
   per owner ([contract and limits](backend/READER_CONTRACT.md#t173-resource-freshness-contract)). T17.4 match
   monitoring status, evidence and open items are in its
   [activation record](backend/MATCH_FRESHNESS.md#activation-record-november-7-2026).
+  The watchdog is currently disabled for the
+  [November 14 startup-failure recovery](backend/MATCH_FRESHNESS.md#november-14-2026-startup-failure-recovery);
+  do not describe T17.4 as active until that recovery and its heartbeat evidence complete.
   Collect sustained reconciliation and transient-failure recovery evidence
   ([SETUP §7.5](backend/SETUP.md#75-verify)); the dated observations above do not
   close this acceptance or ancillary squad/player/archive coverage.
