@@ -3990,30 +3990,87 @@ a.sn-item:hover { color: var(--text); }
 }
 .ts-empty { color: var(--text-muted); font-size: 13px; }
 
-.ts-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-.ts-chip {
-  --chip-accent: var(--accent);
-  display: inline-flex;
+/* --- /teams: the competition arc --- */
+/* The nav dial's roundels, laid along an arc. Each sits t*t*depth below the
+   apex (t runs -1..1 across the row), which is a parabola, and the rim is the
+   same parabola drawn as a quadratic curve, so the line passes through every
+   roundel's centre at any width. */
+.ts-arc {
+  --roundel: 46px;
+  --depth: 34px;
+  position: relative;
+  max-width: 760px;
+  margin: 6px auto 18px;
+  padding-bottom: 6px;
+}
+.ts-arc-row { position: relative; display: flex; justify-content: space-between; height: calc(var(--roundel) + var(--depth)); }
+.ts-arc-rim {
+  position: absolute;
+  left: calc(var(--roundel) / 2);
+  right: calc(var(--roundel) / 2);
+  top: calc(var(--roundel) / 2);
+  width: calc(100% - var(--roundel));
+  height: var(--depth);
+  overflow: visible;
+}
+.ts-arc-rim path { fill: none; stroke: var(--border); stroke-width: 1; }
+.ts-roundel {
+  --chip-accent: var(--brand);
+  --t: calc((var(--i) - (var(--n) - 1) / 2) / ((var(--n) - 1) / 2));
+  flex: none;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: 34px;
-  padding: 4px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--hairline);
-  background: transparent;
+  justify-content: center;
+  width: var(--roundel);
+  height: var(--roundel);
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--surface-2);
   color: var(--text-muted);
   font: inherit;
-  font-size: 13px;
-  font-weight: 600;
   cursor: pointer;
+  overflow: hidden;
+  translate: 0 calc(var(--t) * var(--t) * var(--depth));
+  transition: border-color 0.15s, scale 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.ts-chip:hover { color: var(--text); }
-.ts-chip[aria-pressed='true'] {
+.ts-roundel .cm-mark { flex: 0 1 auto; min-width: 0; max-width: 70%; object-fit: contain; }
+.ts-roundel-all { font-size: 12px; font-weight: 800; letter-spacing: 0.02em; }
+.ts-roundel:hover { border-color: var(--text-muted); color: var(--text); }
+.ts-roundel[aria-pressed='true'] {
+  border: 3px solid var(--chip-accent);
+  box-shadow: 0 0 0 4px var(--bg);
   color: var(--text);
-  border-color: var(--chip-accent);
-  background: color-mix(in srgb, var(--chip-accent) 14%, transparent);
+  scale: 1.14;
 }
-.ts-chip:focus-visible { outline: 2px solid var(--chip-accent); outline-offset: 2px; }
+.ts-roundel:focus-visible { outline: 2px solid var(--chip-accent); outline-offset: 5px; }
+/* The selected competition, named in the hollow under the apex. */
+.ts-arc-name {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  translate: -50% 0;
+  margin: 0;
+  max-width: 60%;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  white-space: nowrap;
+}
+/* Twelve roundels do not fit a phone at a touchable size, so the row scrolls
+   flat there; the phone's own nav already carries the dial. */
+@media (max-width: 640px) {
+  .ts-arc { --depth: 0px; margin: 0 -14px 14px; padding-bottom: 0; }
+  .ts-arc-rim { display: none; }
+  .ts-arc-row { justify-content: flex-start; gap: 10px; overflow-x: auto; padding: 8px 14px; height: auto; scrollbar-width: none; }
+  .ts-arc-row::-webkit-scrollbar { display: none; }
+  .ts-arc-name { position: static; translate: none; max-width: none; margin: 6px 14px 0; text-align: left; font-size: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ts-roundel { transition: none; }
+}
 .ts-group { margin-top: 22px; }
 .ts-group-title {
   display: flex;

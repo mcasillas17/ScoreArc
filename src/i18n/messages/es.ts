@@ -135,6 +135,7 @@ export const es = {
   'players.historicalMetaDescription': (edition: string) => `No hay plantillas históricas disponibles de ${edition}. Consulta el directorio de plantillas actuales.`,
 
   'teams.title': 'Equipos',
+  'teams.everyCompetition': 'Todas las competiciones',
   'teams.allFilter': 'Todos',
   'teams.filterLabel': 'Filtrar por competición',
   'teams.competitionTitle': (edition: string) => `Equipos de ${edition}`,

@@ -85,6 +85,7 @@ export default function TeamSearch({
     [competitions, compId, results],
   );
 
+  const selected = competitions.find((c) => c.id === compId) ?? null;
   const shown = new Set(groups.flatMap((g) => g.tiles.map((tile) => tile.team.id))).size;
   const total = compId
     ? teams.filter((tm) => tm.memberships.some((m) => m.competitionId === compId)).length
@@ -92,23 +93,41 @@ export default function TeamSearch({
 
   return (
     <div className="ts">
-      <div className="ts-chips" role="group" aria-label={t('teams.filterLabel')}>
-        <button type="button" className="ts-chip" aria-pressed={compId === null} onClick={() => setCompId(null)}>
-          {t('teams.allFilter')}
-        </button>
-        {competitions.map((c) => (
+      {/* The same roundels as the nav dial, on an arc: the selected one is
+          ringed in its competition's colour and named in the hollow below. */}
+      <div className="ts-arc" style={{ '--n': competitions.length + 1 } as CSSProperties}>
+        <svg className="ts-arc-rim" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M0,100 Q50,-100 100,100" vectorEffect="non-scaling-stroke" />
+        </svg>
+        <div className="ts-arc-row" role="group" aria-label={t('teams.filterLabel')}>
           <button
-            key={c.id}
             type="button"
-            className="ts-chip"
-            style={{ '--chip-accent': c.accent } as CSSProperties}
-            aria-pressed={compId === c.id}
-            onClick={() => setCompId(compId === c.id ? null : c.id)}
+            className="ts-roundel"
+            style={{ '--i': 0 } as CSSProperties}
+            aria-pressed={compId === null}
+            aria-label={t('teams.everyCompetition')}
+            onClick={() => setCompId(null)}
           >
-            <CompetitionMark logo={c.logo} logoInvert={c.logoInvert} emblem={c.emblem} name="" size={16} />
-            {c.shortName}
+            <span className="ts-roundel-all">{t('teams.allFilter')}</span>
           </button>
-        ))}
+          {competitions.map((c, i) => (
+            <button
+              key={c.id}
+              type="button"
+              className="ts-roundel"
+              style={{ '--i': i + 1, '--chip-accent': c.accent } as CSSProperties}
+              aria-pressed={compId === c.id}
+              aria-label={c.name}
+              title={c.name}
+              onClick={() => setCompId(compId === c.id ? null : c.id)}
+            >
+              <CompetitionMark logo={c.logo} logoInvert={c.logoInvert} emblem={c.emblem} name="" size={22} />
+            </button>
+          ))}
+        </div>
+        <p className="ts-arc-name" style={selected ? ({ '--chip-accent': selected.accent } as CSSProperties) : undefined}>
+          {selected ? selected.name : t('teams.everyCompetition')}
+        </p>
       </div>
 
       <label className="ts-field">

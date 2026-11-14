@@ -147,6 +147,7 @@ export const en = {
   'players.historicalMetaDescription': (edition: string) => `Historical player rosters are not available for ${edition}. Browse the current roster directory.`,
 
   'teams.title': 'Teams',
+  'teams.everyCompetition': 'All competitions',
   'teams.allFilter': 'All',
   'teams.filterLabel': 'Filter by competition',
   'teams.competitionTitle': (edition: string) => `${edition} teams`,
