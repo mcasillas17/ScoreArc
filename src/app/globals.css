@@ -186,7 +186,21 @@ a.sn-item:hover { color: var(--text); }
    The site's sections, fanned on a smaller circle inside the rim. Same orbit
    as the crests: `--a` degrees from the dial's centre line, counter-rotated
    upright. They do not turn; picking one changes what the rim holds. */
-.sn { --level-r: 258px; --sec: 26px; }
+.sn { --level-r: 284px; --sec: 38px; --level-spread: 1.3; }
+/* Collapsed, the rail is the sections alone, on a faint arc of their circle.
+   The dial stays in the DOM and focusable (focusing a crest expands the rail)
+   but is not drawn: two levels do not fit in 96px. */
+.sn-levels::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--dial-cx) - var(--level-r));
+  top: calc(var(--dial-cy) - var(--level-r));
+  width: calc(var(--level-r) * 2);
+  height: calc(var(--level-r) * 2);
+  border-radius: 50%;
+  border: 1px solid var(--hairline);
+  pointer-events: none;
+}
 .sn .sn-level-slot {
   position: absolute;
   left: var(--dial-cx);
@@ -233,7 +247,10 @@ a.sn-item:hover { color: var(--text); }
   border-radius: 50%;
   transition: border-color 0.15s, background-color 0.15s;
 }
-.sn-sec-icon svg { width: 16px; height: 16px; }
+.sn-sec-icon svg { width: 18px; height: 18px; }
+/* Opaque on the rail, so the arc passes behind the icons. */
+.sn-levels .sn-sec-icon { background: var(--bg); }
+.sn-levels .sn-sec[data-selected] .sn-sec-icon { background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--bg); }
 .sn-sec-label { display: none; }
 /* The section whose dial is on the rim. */
 .sn-sec[data-selected] { color: var(--accent); }
@@ -265,7 +282,7 @@ a.sn-item:hover { color: var(--text); }
    technique; the only JavaScript geometry is the gesture maths. */
 .sn-dial { --step: 11deg; --base: 0deg; touch-action: none; }
 .sn-dial--wheel { --step: 14deg; --base: -90deg; }
-.sn-dial--rail { position: absolute; inset: 0; z-index: 1; }
+.sn-dial--rail { position: absolute; inset: 0; z-index: 1; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
 
 /* The rim, and on it the arc that marks where the open competition rests. */
 .sn-dial::before,
@@ -455,7 +472,8 @@ a.sn-item:hover { color: var(--text); }
   align-items: center;
   gap: 4px;
   height: 64px;
-  padding: 0 36px 0 20px;
+  /* Lined up with the centred page column (.main, 1280px) on a wide screen. */
+  padding: 0 36px 0 max(20px, calc((100% - 1280px) / 2 + 20px));
   background: var(--bg);
   border-bottom: 1px solid var(--hairline);
 }
@@ -518,8 +536,11 @@ a.sn-item:hover { color: var(--text); }
   /* Expanded, the sections move further in and gain their names. */
   /* Larger, so further apart: 38px between neighbours. */
   .sn:is([data-hover], :has(:focus-visible), [data-pinned]) { --level-r: 232px; --sec: 34px; --level-spread: 1.35; }
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-dial--rail { opacity: 1; pointer-events: auto; }
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-levels::before { display: none; }
+  /* The lit section and the centred name already say where a crest leads. */
+  .sn-dial--rail .sn-crest-badge { display: none; }
   .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-sec-label { display: block; }
-  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-sec-icon svg { width: 18px; height: 18px; }
 
   /* What is coming, named under the lockup. */
   .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-site {
@@ -604,6 +625,7 @@ a.sn-item:hover { color: var(--text); }
   flex-direction: column;
   gap: 44px;
   max-width: 1280px;
+  margin-inline: auto;
 }
 
 /* ===== Section Label ===== */
@@ -1538,9 +1560,11 @@ a.sn-item:hover { color: var(--text); }
   70% { rotate: 4deg; }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .sn-dial[data-nudge] {
+  /* On the rail the dial is only drawn expanded, so it rocks as it opens. */
+  .sn-dial--wheel[data-nudge],
+  .sn:is([data-hover], :has(:focus-visible), [data-pinned]) .sn-dial--rail[data-nudge] {
     transform-origin: var(--dial-cx) var(--dial-cy);
-    animation: sn-nudge 0.9s ease 0.6s;
+    animation: sn-nudge 0.9s ease 0.3s;
   }
   /* The wheel is still rising when the attribute arrives: keep that going. */
   .sn-dial--wheel[data-nudge] { animation: sn-rise 0.25s ease, sn-nudge 0.9s ease 0.6s; }
@@ -2850,6 +2874,7 @@ a.sn-item:hover { color: var(--text); }
   background: var(--bg);
   padding: 30px 30px 56px;
   max-width: 1180px;
+  margin-inline: auto;
 }
 
 .dg-head { margin-bottom: 24px; }
@@ -2890,7 +2915,14 @@ a.sn-item:hover { color: var(--text); }
 .dg-more:hover { text-decoration: underline; }
 /* The standalone news page: one column, held to a reading measure rather than
    the digest's full 1180px. */
-.dg-onecol { max-width: 720px; }
+.dg-onecol { max-width: none; }
+/* The news page is the list and nothing else: let it run in columns. */
+.dg-onecol .dg-news {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr));
+  column-gap: 36px;
+}
+.dg-onecol .dg-nw:first-child { border-top: 1px solid var(--hairline); padding-top: 9px; }
 
 .dg-mgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--dg-gap); }
 .dg-two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--dg-gap); align-items: start; }
