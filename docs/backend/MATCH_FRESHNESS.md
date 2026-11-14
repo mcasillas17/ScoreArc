@@ -678,9 +678,9 @@ There is therefore no preparation barrier after the final checkpoint. The
 downloaded final artifact also passed the current Prepare path locally: sequence
 20 remained 20, its ten-scope envelope adopted the current eleventh scope, and
 healthy synthetic observations produced zero pending events with no monitor
-failure. Once the repair PR is merged, confirm the workflow remains disabled and
-artifact `13891075249` remains unexpired, then enable and dispatch the exact
-reviewed recovery:
+failure. #265 merged as `55c7f0b` after PR and main CI. The operator then
+confirmed artifact `13891075249` remained unexpired, enabled the workflow and
+dispatched the exact reviewed recovery:
 
 ```bash
 gh workflow enable match-freshness.yml
@@ -690,17 +690,25 @@ gh workflow run match-freshness.yml --ref main \
   -f recovery_artifact_id=13891075249
 ```
 
-The receiver cron may queue an ordinary run after enablement; workflow
-concurrency serializes it, and only the explicitly parameterized run bypasses
-the old history window. Inspect that run rather than relying on its overall
-conclusion: exit 1 is valid when a current data incident was delivered. Recovery
-requires successful Select, Restore, Prepare, both checkpoint uploads, no monitor
-failure or pending delivery, and `Match monitor heartbeat acknowledged.` Verify
-the new final artifact and the receiver's recovery email, then observe at least
-three ordinary dispatched runs restoring the new checkpoint. If recovery does
-not meet every condition, disable the workflow again and preserve the failed
-run; never initialize, rerun an old attempt, delete history or substitute the
-pending artifact.
+Recovery run
+[43577788015](https://github.com/mcasillas17/ScoreArc/actions/runs/43577788015)
+(number 1430) succeeded at every state/delivery boundary, wrote pending/final
+artifacts `14107316783` / `14107042384`, reported
+`data_incident=true pending=0 monitor=ok`, and acknowledged its heartbeat. Its
+exit 1 is the delivered Nations League data incident, not monitor failure.
+Ordinary receiver-dispatched runs
+[1431](https://github.com/mcasillas17/ScoreArc/actions/runs/43578053938),
+[1432](https://github.com/mcasillas17/ScoreArc/actions/runs/43578419227) and
+[1433](https://github.com/mcasillas17/ScoreArc/actions/runs/43578842507)
+each restored the new checkpoint, reported `pending=0 monitor=ok`, and
+acknowledged a heartbeat. The workflow remains active.
+
+The OPEN itself is real: Nations League reads report 106 matches,
+`poll=failed`, `freshness=stale`, 26 stale and zero overdue. Live source
+reproduction found match discovery healthy but Go bracket mapping rejected
+finished first leg `401929776` (Curaçao 0–0 Panama) because a two-legged tie has
+no individual winner after leg one. That ingestion fix is separate from this
+completed monitor recovery.
 
 Before full T17.4 acceptance (open in the [activation record](#activation-record-november-7-2026)), name who retains independently verified copies of the newest
 checkpoint **and its run/artifact provenance**, where they are kept, the backup
@@ -761,9 +769,11 @@ but a workflow that never starts cannot report its own absence.
   check with the command in its [Pausing row](#not-running-check). Never delete
   checkpoint artifacts or run history. The workflow was disabled November 14 at
   08:01 UTC after run 1429; the not-running alert remains the accurate incident state.
-- [ ] Merge the November 14 repair, perform the exact reviewed recovery above,
-  verify its new final checkpoint, heartbeat/recovery email and three ordinary
-  dispatched runs, then record the recovered run and artifact IDs here.
+- [x] Merge the November 14 repair, perform the exact reviewed recovery above,
+  verify its new final checkpoint, acknowledged heartbeat/recovery send and three ordinary
+  dispatched runs, then record the recovered run and artifact IDs here. Done:
+  run 1430, artifacts `14107316783` / `14107042384`, followed by runs 1431–1433.
+  Human inbox receipt of the recovery email was not independently rechecked.
 
 The activation record must identify the approving owner and reviewed SHA, incident
 owner, confirmation that the verified recipient was used (never the address itself:
@@ -859,13 +869,13 @@ A scope that is genuinely unhealthy by then stays open and queues no RESOLVED ev
   bucket. That copy is not built and no restore has been rehearsed, so until it
   ships checkpoints rely on 90-day GitHub artifacts plus the run and artifact IDs
   recorded here. This is an open blocker for full T17.4, not an accepted default.
-- **Halts needing manual recovery (partially addressed, pending merge):** the
+- **Halts needing manual recovery (partially addressed):** the
   November 14 repair recognizes the observed no-job `startup_failure` shape and
   adds exact-final-checkpoint recovery after an audited non-state-bearing gap.
-  The incident-specific reconciliation is written above but is not active until
-  merge and recovery. A failed pending upload, Prepare that started without a
-  checkpoint, rerun attempt, missing/corrupt newest state, pending-only recovery
-  or exhausted retry head still needs a separately reviewed reconciliation.
+  The incident-specific reconciliation above completed successfully. A failed
+  pending upload, Prepare that started without a checkpoint, rerun attempt,
+  missing/corrupt newest state, pending-only recovery or exhausted retry head
+  still needs a separately reviewed reconciliation.
 - **Validation:** on the enabling change's reviewed tree, `npm test` passed 118 files
   and 2,121 tests, `npx tsc --noEmit` was clean and `npm run lint` reported 0 errors.
   The pull request records the review and the merged SHA.

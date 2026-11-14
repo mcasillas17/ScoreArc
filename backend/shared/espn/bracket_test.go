@@ -349,3 +349,36 @@ func TestMapBracketRejectsFinishedMatchWithoutWinner(t *testing.T) {
 		t.Fatal("accepted finished knockout match without winner")
 	}
 }
+
+func TestMapBracketAllowsFinishedFirstLegWithoutWinner(t *testing.T) {
+	raw := []byte(`{"events":[{"id":"401929776","date":"2026-11-13T00:30Z",
+		"season":{"slug":"quarterfinals"},
+		"status":{"type":{"state":"post","completed":true,"name":"STATUS_FULL_TIME","shortDetail":"FT"}},
+		"competitions":[{"leg":{"value":1,"displayValue":"1st Leg"},"notes":[{"text":"1st Leg"}],"competitors":[
+			{"homeAway":"home","winner":false,"score":"0","team":{"id":"11678","displayName":"Curaçao","abbreviation":"CUW"}},
+			{"homeAway":"away","winner":false,"score":"0","team":{"id":"2659","displayName":"Panama","abbreviation":"PAN"}}
+		]}]}]}`)
+	matches, err := MapBracket(raw)
+	if err != nil {
+		t.Fatalf("finished first leg rejected: %v", err)
+	}
+	if len(matches) != 1 || matches[0].State != MatchStateFinished ||
+		matches[0].WinnerID != nil || matches[0].HomeScore == nil ||
+		matches[0].AwayScore == nil || *matches[0].HomeScore != 0 ||
+		*matches[0].AwayScore != 0 {
+		t.Fatalf("first leg=%+v", matches)
+	}
+}
+
+func TestMapBracketRejectsFinishedSecondLegWithoutWinner(t *testing.T) {
+	raw := []byte(`{"events":[{"id":"2","date":"2026-11-18T03:00Z",
+		"season":{"slug":"quarterfinals"},
+		"status":{"type":{"state":"post","completed":true,"name":"STATUS_FULL_TIME"}},
+		"competitions":[{"leg":{"value":2,"displayValue":"2nd Leg"},"competitors":[
+			{"homeAway":"home","winner":false,"score":"0","team":{"id":"2659","displayName":"Panama","abbreviation":"PAN"}},
+			{"homeAway":"away","winner":false,"score":"0","team":{"id":"11678","displayName":"Curaçao","abbreviation":"CUW"}}
+		]}]}]}`)
+	if _, err := MapBracket(raw); err == nil {
+		t.Fatal("accepted finished second leg without winner")
+	}
+}
