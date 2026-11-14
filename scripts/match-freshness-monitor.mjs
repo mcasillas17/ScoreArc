@@ -199,6 +199,15 @@ function notification(event) {
   return { eventId: event.id, incidentId: event.incidentId, competition, season, status: event.status,
     occurredAt: event.occurredAt, runUrl: event.runUrl, count: event.count, ...event.observation };
 }
+function parseExplicitRecovery(env) {
+  const runId = env.RECOVERY_RUN_ID ?? '';
+  const artifactId = env.RECOVERY_ARTIFACT_ID ?? '';
+  if (runId === '' && artifactId === '') return null;
+  if (!/^[1-9][0-9]{0,15}$/.test(runId) || !/^[1-9][0-9]{0,15}$/.test(artifactId)) throw new Error('Invalid explicit recovery configuration');
+  const recovery = { runId: Number(runId), artifactId: Number(artifactId) };
+  if (!positive(recovery.runId) || !positive(recovery.artifactId)) throw new Error('Invalid explicit recovery configuration');
+  return recovery;
+}
 function webhook(value) {
   const url = new URL(value);
   const local = url.protocol === 'http:' && ['127.0.0.1','localhost','[::1]'].includes(url.hostname);
@@ -272,7 +281,7 @@ export async function runPhase({ phase, env = process.env, workDir = 'watchdog-s
   if (phase === 'select') {
     const initialize = env.INITIALIZE_STATE === 'true';
     if (!['true','false'].includes(env.INITIALIZE_STATE)) throw new Error('Explicit initialization choice required');
-    const selection = await selectState({ github: github ?? githubJSON(env.GITHUB_TOKEN), run, initialize, now });
+    const selection = await selectState({ github: github ?? githubJSON(env.GITHUB_TOKEN), run, initialize, recovery: parseExplicitRecovery(env), now });
     await mkdir(workDir, { recursive: true });
     await writeFile(selectionFile, JSON.stringify(selection), { flag: 'wx', mode: 0o600 });
     await output({ initialize: selection === null, artifact_id: selection?.artifactId ?? '', run_id: selection?.run.id ?? '' });
