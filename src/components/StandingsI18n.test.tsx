@@ -89,7 +89,7 @@ describe('Spanish standings surfaces', () => {
       </>,
     );
 
-    for (const expected of ['Clasificación', 'LÍDER', 'clubes', 'jugados', 'Mejores terceros', 'Club América']) {
+    for (const expected of ['LÍDER', 'clubes', 'jugados', 'Mejores terceros', 'Club América']) {
       expect(html).toContain(expected);
     }
     for (const english of ['>Standings<', '>LEADER<', ' clubs<', ' played<', 'Best Third-Placed Teams']) {

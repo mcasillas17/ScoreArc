@@ -11,6 +11,16 @@ on:
         type: boolean
         default: false
         required: false
+      recovery_run_id:
+        description: Owner-reviewed recovery only; exact prior run holding the final checkpoint
+        type: string
+        default: ""
+        required: false
+      recovery_artifact_id:
+        description: Owner-reviewed recovery only; exact match-freshness-state artifact
+        type: string
+        default: ""
+        required: false
 
 permissions:
   contents: read
@@ -40,6 +50,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           INITIALIZE_STATE: ${{ inputs.initialize_state || false }}
+          RECOVERY_RUN_ID: ${{ inputs.recovery_run_id || '' }}
+          RECOVERY_ARTIFACT_ID: ${{ inputs.recovery_artifact_id || '' }}
         run: node scripts/match-freshness-monitor.mjs select
       - name: Restore selected checkpoint
         id: restore

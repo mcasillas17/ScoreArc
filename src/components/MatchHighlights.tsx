@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { MatchVideo } from '@/server/data/types';
 import { useTranslations } from '@/i18n/I18nProvider';
+import { BallIcon } from './MatchIcons';
 
 function fmtDuration(s: number | null): string {
   if (!s || s <= 0) return '';
@@ -53,7 +54,7 @@ function Clip({ video }: { video: MatchVideo }) {
                 <path d="M8 5v14l11-7z" />
               </svg>
             </span>
-            {video.isGoal && <span className="mh-goal">⚽ {t('matchDetails.goal')}</span>}
+            {video.isGoal && <span className="mh-goal"><BallIcon size={12} />{t('matchDetails.goal')}</span>}
             {dur && <span className="mh-dur">{dur}</span>}
           </button>
         )}

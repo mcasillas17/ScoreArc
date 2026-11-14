@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Match } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
 import { monthRange, shiftMonth } from '@/server/data/dateRange';
@@ -34,6 +34,8 @@ interface Props {
   teamBase?: string;
   playerBase?: string;
   teamStyle?: TeamStyle;
+  /** The page's view switch; shares one row with the month controls. */
+  controls?: ReactNode;
 }
 
 interface DayGroup {
@@ -73,6 +75,7 @@ export default function MatchCalendar({
   teamBase,
   playerBase,
   teamStyle = 'flag',
+  controls,
 }: Props) {
   const locale = useLocale();
   const t = useTranslations();
@@ -231,24 +234,27 @@ export default function MatchCalendar({
 
   return (
     <>
-      <div className="mc-nav">
-        <button
-          type="button"
-          onClick={() => setCursor((date) => shiftMonth(date, -1))}
-          disabled={!canGoBack}
-          aria-label={t('calendar.previousMonth')}
-        >
-          {t('calendar.previous')}
-        </button>
-        <h2 className="mc-month">{cursorLabel}</h2>
-        <button
-          type="button"
-          onClick={() => setCursor((date) => shiftMonth(date, 1))}
-          disabled={!canGoForward}
-          aria-label={t('calendar.nextMonth')}
-        >
-          {t('calendar.next')}
-        </button>
+      <div className="mn-bar">
+        {controls}
+        <div className="mc-nav">
+          <button
+            type="button"
+            onClick={() => setCursor((date) => shiftMonth(date, -1))}
+            disabled={!canGoBack}
+            aria-label={t('calendar.previousMonth')}
+          >
+            <span aria-hidden>‹</span>
+          </button>
+          <h2 className="mc-month">{cursorLabel}</h2>
+          <button
+            type="button"
+            onClick={() => setCursor((date) => shiftMonth(date, 1))}
+            disabled={!canGoForward}
+            aria-label={t('calendar.nextMonth')}
+          >
+            <span aria-hidden>›</span>
+          </button>
+        </div>
       </div>
 
       <p className="mc-status" aria-live="polite">

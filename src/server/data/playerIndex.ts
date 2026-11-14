@@ -10,6 +10,8 @@ export interface DirectoryPlayer {
   slug: string | null;
   teamName: string;
   teamAbbr: string;
+  teamId: string;
+  crestUrl: string | null;
 }
 
 interface PlayerIndex {
@@ -107,7 +109,9 @@ export async function competitionPlayerIndex(
         // The same belt-and-suspenders at athlete level: a player listed on two
         // rosters (mid-window transfer) is one identity, not a collision.
         if (seenAthletes.has(player.id)) continue;
-        seenAthletes.set(player.id, { name: player.name, teamName: team.name, teamAbbr: team.abbr });
+        seenAthletes.set(player.id, {
+          name: player.name, teamName: team.name, teamAbbr: team.abbr, teamId: team.id, crestUrl: team.crestUrl,
+        });
         entries.push({
           name: player.name,
           providerId: player.id,

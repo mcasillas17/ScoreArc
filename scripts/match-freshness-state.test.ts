@@ -32,6 +32,53 @@ function noArtifacts(responses: Record<string, unknown>, source = prior()) {
 }
 
 describe('trusted state selection', () => {
+  it('restores an explicitly reviewed final checkpoint without scanning newer history', async () => {
+    const source = prior(8);
+    const selected = { ...artifact(source), id: 402 };
+    const { github, responses } = api([]);
+    responses[`${root}/runs/${source.id}`] = source;
+    responses[`${root}/runs/${source.id}/artifacts?per_page=10`] = { total_count: 1, artifacts: [selected] };
+    expect(await selectState({ github, run, now, recovery: { runId: source.id, artifactId: selected.id } })).toEqual({
+      run: { ...run, id: source.id, number: source.run_number },
+      artifactId: selected.id,
+      artifactName: 'match-freshness-state',
+    });
+    expect(github.mock.calls.some(([path]) => path.includes('/workflows/7/runs?'))).toBe(false);
+  });
+  it.each([
+    [{ runId: 98 }, /recovery/i],
+    [{ runId: 98, artifactId: 0 }, /recovery/i],
+    [{ runId: 100, artifactId: 402 }, /prior|recovery/i],
+  ])('rejects invalid explicit recovery input %j', async (recovery, message) => {
+    const { github } = api([]);
+    await expect(selectState({ github, run, now, recovery })).rejects.toThrow(message);
+  });
+  it.each([
+    { name: 'match-freshness-pending' },
+    { expired: true },
+    { workflow_run: { ...artifact(prior(8)).workflow_run, id: 97 } },
+  ])('rejects an invalid explicit recovery artifact %j', async (change) => {
+    const source = prior(8);
+    const selected = { ...artifact(source), id: 402, ...change };
+    const { github, responses } = api([]);
+    responses[`${root}/runs/${source.id}`] = source;
+    responses[`${root}/runs/${source.id}/artifacts?per_page=10`] = { total_count: 1, artifacts: [selected] };
+    await expect(selectState({ github, run, now, recovery: { runId: source.id, artifactId: 402 } })).rejects.toThrow(/artifact|checkpoint|recovery/i);
+  });
+  it('does not combine explicit recovery with initialization', async () => {
+    const { github } = api([]);
+    await expect(selectState({ github, run, now, initialize: true, recovery: { runId: 98, artifactId: 402 } })).rejects.toThrow(/initial|recovery/i);
+  });
+  it('accepts explicit recovery only from a dispatch run', async () => {
+    const source = prior(8);
+    const selected = { ...artifact(source), id: 402 };
+    const { github, responses } = api([]);
+    responses[`${root}/runs/100`] = { ...prior(10), id: 100, event: 'schedule', status: 'in_progress', conclusion: null,
+      created_at: '2026-10-04T11:30:00Z', updated_at: '2026-10-04T11:30:00Z' };
+    responses[`${root}/runs/${source.id}`] = source;
+    responses[`${root}/runs/${source.id}/artifacts?per_page=10`] = { total_count: 1, artifacts: [selected] };
+    await expect(selectState({ github, run, now, recovery: { runId: source.id, artifactId: selected.id } })).rejects.toThrow(/dispatch|recovery/i);
+  });
   it('restores final state from the newest failed run and normalizes provenance', async () => {
     const { github, responses } = api();
     responses[`${root}/runs/99/artifacts?per_page=10`] = { total_count: 2, artifacts: [artifact(prior(), 'match-freshness-pending'), { ...artifact(), id: 401 }] };
@@ -180,6 +227,11 @@ describe('trusted state selection', () => {
     responses[`${root}/runs/99/attempts/1/jobs?per_page=10`] = jobs;
     expect((await selectState({ github, run, now }))?.run.number).toBe(8);
   });
+  it('skips a startup failure with no jobs and preserves earlier state', async () => {
+    const { github, responses } = api([{ ...prior(), conclusion: 'startup_failure' }, prior(8)]); noArtifacts(responses);
+    responses[`${root}/runs/99/attempts/1/jobs?per_page=10`] = { total_count: 0, jobs: [] };
+    expect((await selectState({ github, run, now }))?.run.number).toBe(8);
+  });
   it.each([
     [{ name: 'Run actions/checkout', status: 'completed', conclusion: 'success' }],
     [{ name: 'Prepare pending state', status: 'completed', conclusion: 'cancelled' }],
@@ -196,7 +248,7 @@ describe('trusted state selection', () => {
   const newer = (change: object) => ({ ...prior(10), id: 101, run_number: 11, created_at: '2026-10-04T11:35:00Z', updated_at: '2026-10-04T11:35:00Z', ...change });
   it.each([
     { status: 'queued', conclusion: null }, { status: 'pending', conclusion: null }, { status: 'waiting', conclusion: null },
-    { status: 'completed', conclusion: 'cancelled' },
+    { status: 'completed', conclusion: 'cancelled' }, { status: 'completed', conclusion: 'startup_failure' },
   ])('passes over a newer run that never started (%j)', async (change) => {
     const { github, responses } = api();
     responses[`${root}/workflows/7/runs?branch=main&per_page=20&page=1`] = { total_count: 3, workflow_runs: [newer(change), responses[`${root}/runs/100`], prior()] };

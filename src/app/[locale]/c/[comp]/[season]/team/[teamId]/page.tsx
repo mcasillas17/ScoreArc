@@ -12,8 +12,6 @@ import TeamPerformance from '@/components/TeamPerformance';
 import TeamSchedule from '@/components/TeamSchedule';
 import TeamHeader from '@/components/TeamHeader';
 import SquadTable from '@/components/SquadTable';
-import TeamBadge from '@/components/TeamBadge';
-import LocalTime from '@/components/LocalTime';
 import Link from 'next/link';
 import SiteFooter from '@/components/SiteFooter';
 
@@ -117,34 +115,8 @@ export default async function TeamPage({ params }: Params) {
 
       <TeamPerformance matches={profile.schedule} teamId={profile.team.id}
         scope={{ competitionId: rc.competition.id, seasonId: rc.season.id }}
-        competitionName={rc.competition.shortName} seasonLabel={rc.season.label}
+        next={next}
         teamStyle={rc.competition.teamStyle} availability={profile.scheduleAvailability} />
-
-      <section className="tm-section">
-        <h2 className="section-label">{t('team.next')}</h2>
-        <div className="tm-form-row">
-          {next ? (
-            <p className="tm-next">
-              <TeamBadge team={next.home} size={20} style={rc.competition.teamStyle} />
-              <span className="tm-next-teams">
-                {next.home.abbr} {t('match.versusShort')} {next.away.abbr}
-              </span>
-              <LocalTime iso={next.kickoff} mode="dayTime" />
-            </p>
-          ) : (
-            <p className="tm-none">
-              {t(profile.scheduleAvailability?.upcoming === 'unavailable' ? 'performance.upcomingUnavailable' : 'team.noUpcomingMatch')}
-            </p>
-          )}
-        </div>
-      </section>
-
-      <section className="tm-section">
-        <h2 className="section-label">
-          {t('team.squad')}
-        </h2>
-        <SquadTable squad={profile.squad} playerBase={playerBase} playerSlugs={playerSlugs} />
-      </section>
 
       <section className="tm-section">
         <h2 className="section-label">
@@ -158,8 +130,15 @@ export default async function TeamPage({ params }: Params) {
           </p>
         ) : (
           <TeamSchedule matches={profile.schedule} competitionId={rc.competition.id}
-            seasonId={rc.season.id} teamStyle={rc.competition.teamStyle} />
+            seasonId={rc.season.id} teamStyle={rc.competition.teamStyle} nextId={next?.id} />
         )}
+      </section>
+
+      <section className="tm-section">
+        <h2 className="section-label">
+          {t('team.squad')}
+        </h2>
+        <SquadTable squad={profile.squad} playerBase={playerBase} playerSlugs={playerSlugs} />
       </section>
 
       <SiteFooter />

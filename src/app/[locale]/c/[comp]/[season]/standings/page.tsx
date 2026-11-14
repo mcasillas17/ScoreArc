@@ -49,12 +49,16 @@ export default async function StandingsPage({ params }: { params: SeasonParams }
   // record and squad only mean something inside one competition.
   const teamBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/team`;
   const playerBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/player`;
-  const hasBracket = rc.season.format.hasBracket;
-  // A finished (non-current) edition is view-only — no "what's next" band.
-  const readOnly = rc.season.id !== rc.competition.currentSeasonId;
+  const playersHref = `/${locale}/c/${rc.competition.id}/${rc.season.id}/players`;
+
+  // A league with no bracket lands here (its bare URL redirects to this page),
+  // so this is where its "what's next" lives. A cup's lives on its bracket, and
+  // a finished edition has none.
+  const isLanding = !rc.season.format.hasBracket && rc.season.projection !== 'liguilla';
+  const current = rc.season.id === rc.competition.currentSeasonId;
 
   const { feed, groups, scorers, assists } = await runDataOperation(dataStore, async source => {
-    const feed = readOnly ? { matches: [], weekOnly: false } : await getBannerFeed(rc, source);
+    const feed = isLanding && current ? await getBannerFeed(rc, source) : { matches: [], weekOnly: false };
     let groups: Group[] = [];
     let scorers: StatLeader[] = [];
     let assists: StatLeader[] = [];
@@ -79,25 +83,16 @@ export default async function StandingsPage({ params }: { params: SeasonParams }
 
   return (
     <main className="main">
-      {/* This is a league's landing page now, so the fixture band leads it the
-          same way it leads a cup's bracket. */}
-      {feed.matches.length > 0 && <UpcomingBanner feed={feed} rc={rc} />}
-
       <section id="standings" className={wide ? 'std-wide' : undefined}>
         <header className="page-head">
           <p className="bracket-eyebrow">{rc.competition.name}</p>
           {/* The same heading for every competition: the nav item says
               "Standings", so landing on a page titled "League Table" reads as
-              having clicked the wrong thing. The subtitle carries what differs. */}
+              having clicked the wrong thing. */}
           <h1 className="bracket-title">{t('standings.title')}</h1>
-          <p className="page-subtitle">
-            {rc.season.format.hasThirdPlaceRace
-              ? t('standings.tournamentDescription')
-              : hasBracket
-                ? t('standings.groupsDescription')
-                : t('standings.leagueDescription')}
-          </p>
         </header>
+
+        {feed.matches.length > 0 && <UpcomingBanner feed={feed} rc={rc} />}
 
         {/* qualification and zones were missing here while this page was a
             duplicate nothing linked to. Without them Liga MX renders a plain
@@ -107,6 +102,7 @@ export default async function StandingsPage({ params }: { params: SeasonParams }
         <StandingsLive
           teamBase={teamBase}
           playerBase={playerBase}
+          playersHref={playersHref}
           initialGroups={groups}
           initialScorers={scorers}
           initialAssists={assists}

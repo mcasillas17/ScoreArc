@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache';
 import { configuredDataStore } from './configuredStore';
 import { ReaderFailure } from './readerTransport';
 import { trackReaderFallback } from '@/lib/telemetry/server';
@@ -85,6 +86,10 @@ function emptySummary(): MatchSummaryData {
     scorers: [], cards: [], stats: null, winProbability: null, lineups: null,
     videos: [], shootoutDetail: null, info: null, form: null, commentary: [], h2h: [],
   };
+}
+
+async function fetchSquad(league: string, teamId: string, fetchJson: ScoreboardFetchJson) {
+  return mapTeamRoster(await fetchJson(teamRosterUrl(league, teamId)));
 }
 
 export function createDataStore(deps: DataDeps): DataStore {
@@ -342,8 +347,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       const cached = deps.cache.get(k) as SquadPlayer[] | undefined;
       if (cached) return cached;
       try {
-        const raw = await deps.fetchJson(teamRosterUrl(slug(rc), teamId));
-        const squad = mapTeamRoster(raw);
+        const squad = await fetchSquad(slug(rc), teamId, deps.fetchJson);
         deps.cache.set(k, squad, 300_000);
         return squad;
       } catch (error) {
@@ -454,7 +458,19 @@ export function createDataStore(deps: DataDeps): DataStore {
 }
 
 const espnCache = new TtlCache<unknown>();
-export const espnDataStore: DataStore = createDataStore({ fetchJson: boundedFetchJson, cache: espnCache });
+// A cold player lookup reads every roster. Cache the small mapped squads across
+// function instances. Catch provider failures outside the cache so a retry can recover.
+const loadEspnSquad = unstable_cache(
+  (scope: { league: string; season: string }, teamId: string) =>
+    fetchSquad(scope.league, teamId, boundedFetchJson),
+  ['espn-squad-v1'],
+  { revalidate: 300 },
+);
+export const espnDataStore: DataStore = {
+  ...createDataStore({ fetchJson: boundedFetchJson, cache: espnCache }),
+  getSquad: (rc, teamId) =>
+    loadEspnSquad({ league: rc.competition.espnSlug, season: rc.season.id }, teamId).catch(() => []),
+};
 export const dataStore: DataStore = configuredDataStore({
   espn: espnDataStore,
   env: process.env,
