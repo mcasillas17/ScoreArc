@@ -3,7 +3,7 @@
 **Broad inventory baseline:** 2026-09-01, against `main` @ `49bf68d`.
 Unrelated inventory observations below retain their original dates.
 
-### November 14 match-monitor recovery and Nations League incident
+### November 14 match-monitor and Nations League recovery
 
 The production match watchdog's stopped-run incident is **recovered**. Its last
 healthy heartbeat before the outage was
@@ -37,9 +37,16 @@ zero overdue, with its last accepted observation at 2026-11-12 06:51:38 UTC.
 The Go ESPN source reproduced the cause: regular match discovery succeeds, but
 bracket mapping rejected finished first leg `401929776` (Curaçao 0–0 Panama)
 because neither team is an individual-leg winner. The TypeScript/reader path
-already folds two-legged ties; a backend feature-branch fix retains both
-provider match rows while allowing only structured first legs to finish without
-a winner. The exact monitor recovery record is in
+already folds two-legged ties; #266 (`093f6cf`) retained both provider match
+rows while allowing only structured first legs to finish without a winner.
+[Main CI 43581222695](https://github.com/mcasillas17/ScoreArc/actions/runs/43581222695)
+passed and released the ingester and reader. At 09:51 UTC the same reader scope
+reported `poll=ok`, `freshness=fresh`, zero stale and zero overdue. Monitor
+[run 43582787634](https://github.com/mcasillas17/ScoreArc/actions/runs/43582787634)
+(number 1443) delivered the Nations League `RESOLVED`, wrote pending/final
+artifacts `14108832957` / `14108209067`, reported
+`data_incident=false pending=0 monitor=ok`, and acknowledged its heartbeat.
+The exact monitor recovery record is in
 [MATCH_FRESHNESS](backend/MATCH_FRESHNESS.md#november-14-2026-startup-failure-recovery).
 
 ### November 1 T16.3 reconciliation
@@ -721,7 +728,7 @@ held-byte reprocessing and new collection remain unchanged.
   [activation record](backend/MATCH_FRESHNESS.md#activation-record-november-7-2026).
   The watchdog is active after the
   [November 14 startup-failure recovery](backend/MATCH_FRESHNESS.md#november-14-2026-startup-failure-recovery);
-  its current Nations League OPEN is a real ingestion incident, not a stopped-monitor recurrence.
+  its real Nations League OPEN was resolved by #266 and monitor run 1443.
   Collect sustained reconciliation and transient-failure recovery evidence
   ([SETUP §7.5](backend/SETUP.md#75-verify)); the dated observations above do not
   close this acceptance or ancillary squad/player/archive coverage.

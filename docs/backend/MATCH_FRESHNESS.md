@@ -703,12 +703,21 @@ Ordinary receiver-dispatched runs
 each restored the new checkpoint, reported `pending=0 monitor=ok`, and
 acknowledged a heartbeat. The workflow remains active.
 
-The OPEN itself is real: Nations League reads report 106 matches,
+The OPEN itself was real: Nations League reads reported 106 matches,
 `poll=failed`, `freshness=stale`, 26 stale and zero overdue. Live source
 reproduction found match discovery healthy but Go bracket mapping rejected
 finished first leg `401929776` (Curaçao 0–0 Panama) because a two-legged tie has
-no individual winner after leg one. That ingestion fix is separate from this
-completed monitor recovery.
+no individual winner after leg one. #266 (`093f6cf`) fixed that boundary while
+retaining individual provider legs. Main
+[CI 43581222695](https://github.com/mcasillas17/ScoreArc/actions/runs/43581222695)
+passed and released the ingester/reader. At 09:51 UTC the reader reported
+`poll=ok`, `freshness=fresh`, zero stale and zero overdue. Monitor
+[run 43582787634](https://github.com/mcasillas17/ScoreArc/actions/runs/43582787634)
+(number 1443) delivered event
+`682196c6-0ed2-49d5-9713-8e3cd4ffe994:22` as `RESOLVED`, wrote pending/final
+artifacts `14108832957` / `14108209067`, cleared every active incident and
+reported `data_incident=false pending=0 monitor=ok` with an acknowledged
+heartbeat.
 
 Before full T17.4 acceptance (open in the [activation record](#activation-record-november-7-2026)), name who retains independently verified copies of the newest
 checkpoint **and its run/artifact provenance**, where they are kept, the backup
