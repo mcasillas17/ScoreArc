@@ -120,7 +120,7 @@ export function CommentaryFeed({ items }: { items: CommentaryItem[] }) {
   // Latest first — most useful during a live match.
   const feed = [...items].reverse();
   return (
-    <CollapsibleSection title={t('matchDetails.commentary', items.length)} tone="#a78bfa">
+    <CollapsibleSection title={t('matchDetails.commentary', items.length)}>
       <ul className="cm-list">
         {feed.map((c, i) => (
           <li key={i} className="cm-item">
@@ -243,9 +243,10 @@ export function BoxScoreBlock({
   const hasStats = [lineups.home, lineups.away].some((t) => t.players.some((p) => p.stats != null));
   if (!hasStats) return null;
   return (
-    <CollapsibleSection title={t('matchDetails.boxScore')} tone="#38bdf8">
+    <section className="md-boxscore">
+      <h3 className="md-subhead">{t('matchDetails.boxScore')}</h3>
       <BoxScoreTable team={lineups.home} abbr={homeAbbr} playerBase={playerBase} />
       <BoxScoreTable team={lineups.away} abbr={awayAbbr} playerBase={playerBase} />
-    </CollapsibleSection>
+    </section>
   );
 }

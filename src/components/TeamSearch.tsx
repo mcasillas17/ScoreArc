@@ -1,12 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import { replacePathLocale } from '@/i18n/pathnames';
 import type { IndexedTeam } from '@/server/data/teamIndex';
 import TeamBadge from './TeamBadge';
-import { teamLetterId } from './SiteNav';
+import CompetitionMark from './CompetitionMark';
+import type { TeamStyle } from '@/server/data/competitions';
 
 /**
  * Fold accents so "america" finds "América".
@@ -23,24 +24,42 @@ function fold(value: string): string {
     .trim();
 }
 
-export default function TeamSearch({ teams }: { teams: IndexedTeam[] }) {
+/** The slice of a competition's config the chips and group headings need. */
+export interface DirectoryCompetition {
+  id: string;
+  name: string;
+  shortName: string;
+  emblem: string;
+  logo?: string;
+  logoInvert?: boolean;
+  teamStyle: TeamStyle;
+  accent: string;
+}
+
+export default function TeamSearch({
+  teams,
+  competitions,
+}: {
+  teams: IndexedTeam[];
+  competitions: DirectoryCompetition[];
+}) {
   const locale = useLocale();
   const t = useTranslations();
   const [query, setQuery] = useState('');
+  const [compId, setCompId] = useState<string | null>(null);
 
   const folded = useMemo(
     () => teams.map((team) => ({ team, haystack: `${fold(team.name)} ${fold(team.abbr)}` })),
     [teams],
   );
 
+  // Alphabetical already (allTeams sorts); a search puts names that start with
+  // the query first, so typing "atl" reaches Atlas before Atlético de San Luis.
   const results = useMemo(() => {
     const needle = fold(query);
-    if (!needle) return folded.map((entry) => entry.team);
+    if (!needle) return teams;
     return folded
       .filter((entry) => entry.haystack.includes(needle))
-      // A club whose name starts with the query is the likelier target than one
-      // that merely contains it: typing "atl" should reach Atlas before
-      // Atlético de San Luis appears above it by alphabet alone.
       .sort((a, b) => {
         const aStarts = fold(a.team.name).startsWith(needle) ? 0 : 1;
         const bStarts = fold(b.team.name).startsWith(needle) ? 0 : 1;
@@ -48,10 +67,50 @@ export default function TeamSearch({ teams }: { teams: IndexedTeam[] }) {
         return a.team.name.localeCompare(b.team.name);
       })
       .map((entry) => entry.team);
-  }, [folded, query]);
+  }, [teams, folded, query]);
+
+  // One group per competition; a club in several appears under each.
+  const groups = useMemo(
+    () =>
+      competitions
+        .filter((c) => !compId || c.id === compId)
+        .map((c) => ({
+          competition: c,
+          tiles: results.flatMap((team) => {
+            const membership = team.memberships.find((m) => m.competitionId === c.id);
+            return membership ? [{ team, pathname: membership.pathname }] : [];
+          }),
+        }))
+        .filter((g) => g.tiles.length > 0),
+    [competitions, compId, results],
+  );
+
+  const shown = new Set(groups.flatMap((g) => g.tiles.map((tile) => tile.team.id))).size;
+  const total = compId
+    ? teams.filter((tm) => tm.memberships.some((m) => m.competitionId === compId)).length
+    : teams.length;
 
   return (
     <div className="ts">
+      <div className="ts-chips" role="group" aria-label={t('teams.filterLabel')}>
+        <button type="button" className="ts-chip" aria-pressed={compId === null} onClick={() => setCompId(null)}>
+          {t('teams.allFilter')}
+        </button>
+        {competitions.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            className="ts-chip"
+            style={{ '--chip-accent': c.accent } as CSSProperties}
+            aria-pressed={compId === c.id}
+            onClick={() => setCompId(compId === c.id ? null : c.id)}
+          >
+            <CompetitionMark logo={c.logo} logoInvert={c.logoInvert} emblem={c.emblem} name="" size={16} />
+            {c.shortName}
+          </button>
+        ))}
+      </div>
+
       <label className="ts-field">
         <span className="sr-only">
           {t('teams.search')}
@@ -68,56 +127,34 @@ export default function TeamSearch({ teams }: { teams: IndexedTeam[] }) {
       </label>
 
       <p className="ts-count" id="ts-count" aria-live="polite">
-        {results.length === teams.length ? (
-          t('teams.count', teams.length)
-        ) : (
-          t('teams.filteredCount', results.length, teams.length)
-        )}
+        {shown === total ? t('teams.count', total) : t('teams.filteredCount', shown, total)}
       </p>
 
-      {results.length === 0 ? (
+      {groups.length === 0 ? (
         <p className="ts-empty">
           {t('teams.noSearchResult')}
         </p>
       ) : (
-        <ul className="ts-list">
-          {results.map((team, i) => {
-            // The first team under each initial is where the phone's letter
-            // wheel scrolls to. Only the unfiltered list is in alphabetical
-            // order, so only it is marked.
-            const letter = fold(team.name).charAt(0).toUpperCase();
-            const first = !query && (i === 0 || fold(results[i - 1].name).charAt(0).toUpperCase() !== letter);
-            return (
-            <li
-              key={team.id}
-              className="ts-item"
-              id={first ? teamLetterId(letter) : undefined}
-              data-team-letter={first ? letter : undefined}
-            >
-              <span className="ts-crest">
-                <TeamBadge team={{ ...team, id: team.id }} size={30} style="crest" />
-              </span>
-              <span className="ts-id">
-                <span className="ts-name">{team.name}</span>
-                {/* A club is one identity with several pages, one per
-                    competition -- its record differs in each, so there is no
-                    single "the" page to link to. */}
-                <span className="ts-comps">
-                  {team.memberships.map((membership) => (
-                    <Link
-                      key={`${membership.competitionId}:${membership.seasonId}`}
-                      href={replacePathLocale(membership.pathname, locale)}
-                      className="ts-comp"
-                    >
-                      {membership.competitionName}
-                    </Link>
-                  ))}
-                </span>
-              </span>
-            </li>
-            );
-          })}
-        </ul>
+        groups.map(({ competition: c, tiles }) => (
+          <section key={c.id} className="ts-group">
+            {!compId && (
+              <h2 className="ts-group-title">
+                <CompetitionMark logo={c.logo} logoInvert={c.logoInvert} emblem={c.emblem} name="" size={18} />
+                {c.name}
+              </h2>
+            )}
+            <ul className="tsp-grid">
+              {tiles.map(({ team, pathname }) => (
+                <li key={team.id}>
+                  <Link href={replacePathLocale(pathname, locale)} className="tsp-card">
+                    <TeamBadge team={team} size={34} style={c.teamStyle} />
+                    <span className="tsp-card-name">{team.name}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))
       )}
     </div>
   );

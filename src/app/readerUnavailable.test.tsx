@@ -72,7 +72,8 @@ const pages: { name: string; method: CollectionMethod; read: () => Promise<unkno
 
 describe('enabled reader unavailability reaches website consumers', () => {
   it.each([
-    { name: 'standings page', fail: 'getStandings' as const, read: () => StandingsPage(season('world-cup')) },
+    // A league: only where standings is the landing page does it read matches.
+    { name: 'standings page', fail: 'getStandings' as const, read: () => StandingsPage(season('premier-league', '2026-27')) },
     { name: 'cup page', fail: 'getBracket' as const, read: () => Workspace(season('world-cup')) },
   ])('repeats the banner with the rest of the $name after a later read fails', async ({ fail, read }) => {
     const reader = emptyStore(); const espn = emptyStore();
