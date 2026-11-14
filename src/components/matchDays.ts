@@ -19,7 +19,7 @@ export interface DayGroup {
  * Caller must pass the reader's clock — see LocalTime for why this must never
  * run on the server.
  */
-export function relativeDay(iso: string, now: Date, locale: Locale): string | null {
+export function relativeDay(iso: string, now: Date, locale: Locale, short = false): string | null {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime()) || Number.isNaN(now.getTime())) return null;
   const days = Math.round(
@@ -32,8 +32,10 @@ export function relativeDay(iso: string, now: Date, locale: Locale): string | nu
   if (days === 0) return t('time.today');
   if (days === 1) return t('time.tomorrow');
   if (days === -1) return t('time.yesterday');
-  if (days > 1 && days < 7) return formatDate(d, locale, { weekday: 'long' });
-  return formatDate(d, locale, { weekday: 'long', month: 'short', day: 'numeric' });
+  // `short` is for cells too narrow for "Saturday, Nov 21" on one line.
+  const weekday = short ? 'short' : 'long';
+  if (days > 1 && days < 7) return formatDate(d, locale, { weekday });
+  return formatDate(d, locale, { weekday, month: 'short', day: 'numeric' });
 }
 
 export function groupByDay(matches: Match[], now: Date, locale: Locale): DayGroup[] {

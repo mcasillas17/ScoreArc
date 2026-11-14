@@ -23,9 +23,9 @@ type PageParams = { locale: string } | Promise<{ locale: string }>;
  *  way into a competition's full list. This is also the whole page's match
  *  budget — no match may appear twice on it. */
 const WHATS_ON_SHOWN = 6;
-/** Boards and stories: the same reasoning, per block. */
-const BOARDS_SHOWN = 6;
-const SCORERS_PER_BOARD = 3;
+/** Stories and scorers: the same reasoning, per block. The scorer card shows
+ *  one competition at a time, so every competition with a board is offered. */
+const SCORERS_PER_BOARD = 5;
 const STORIES_SHOWN = 6;
 const STORIES_PER_COMPETITION = 2;
 
@@ -117,7 +117,6 @@ export default async function Home({ params }: { params: PageParams }) {
   // ===== Leading scorers =====
   const boards: ScorerBoard[] = per
     .filter((p) => p.scorers.length > 0)
-    .slice(0, BOARDS_SHOWN)
     .map((p) => ({
       competition: p.competition,
       seasonLabel: p.seasonLabel,
@@ -126,15 +125,11 @@ export default async function Home({ params }: { params: PageParams }) {
 
   return (
     <main className="dg">
-      <header className="dg-head">
-        <h1 className="dg-title">{t('home.digest.title')}</h1>
-        <p className="dg-sub">{headline}</p>
-      </header>
+      <h1 className="dg-title dg-lead">{headline}</h1>
 
       <YourTeams />
 
       <section className="dg-sec">
-        <h2 className="dg-lab">{t('home.digest.whatsOn')}</h2>
         {shown.length > 0 ? (
           <DigestMatches entries={shown} />
         ) : (
@@ -143,10 +138,6 @@ export default async function Home({ params }: { params: PageParams }) {
       </section>
 
       <div className="dg-two">
-        <section className="dg-sec">
-          <h2 className="dg-lab">{t('home.digest.leadingScorers')}</h2>
-          <DigestScorers boards={boards} />
-        </section>
         <section className="dg-sec">
           {/* Every story row leaves for ESPN in a new tab. Without this the
               block was a dead end: nothing on it led anywhere inside ScoreArc. */}
@@ -162,6 +153,10 @@ export default async function Home({ params }: { params: PageParams }) {
             </TrackedLink>
           </div>
           <DigestNews items={stories} surface="digest" />
+        </section>
+        <section className="dg-sec">
+          <h2 className="dg-lab">{t('home.digest.leadingScorers')}</h2>
+          <DigestScorers boards={boards} />
         </section>
       </div>
 

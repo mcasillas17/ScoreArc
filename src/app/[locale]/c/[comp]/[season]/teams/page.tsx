@@ -45,11 +45,13 @@ export default async function CompetitionTeamsPage({ params }: Params) {
 
   return (
     <main className="main tsp">
-      <header className="tsp-head">
-        <p className="tsp-eyebrow">{rc.competition.name} · {rc.season.label}</p>
+      <header className="tsp-head tsp-head--row">
         <h1 className="tsp-title">
-          {t('teams.title')}
+          {t('teams.competitionTitle', `${rc.competition.shortName} ${rc.season.label}`)}
         </h1>
+        <Link href={`/${locale}/teams`} className="tsp-link">
+          {t('teams.searchAll')}
+        </Link>
       </header>
 
       {teams.length === 0 ? (
@@ -76,11 +78,6 @@ export default async function CompetitionTeamsPage({ params }: Params) {
         </ul>
       )}
 
-      <p className="tsp-all">
-        <Link href={`/${locale}/teams`}>
-          {t('teams.searchAll')}
-        </Link>
-      </p>
       <SiteFooter />
     </main>
   );

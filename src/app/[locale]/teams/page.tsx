@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { allTeams } from '@/server/data/teamIndex';
+import { listCompetitions } from '@/server/data/competitions';
 import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
 import TeamSearch from '@/components/TeamSearch';
@@ -29,6 +30,20 @@ export default async function TeamsPage({ params }: { params: PageParams }) {
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
   const teams = await allTeams();
+  // Only competitions that contributed a team get a chip.
+  const present = new Set(teams.flatMap((team) => team.memberships.map((m) => m.competitionId)));
+  const competitions = listCompetitions()
+    .filter((c) => present.has(c.id))
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      shortName: c.shortName,
+      emblem: c.emblem,
+      logo: c.logo,
+      logoInvert: c.logoInvert,
+      teamStyle: c.teamStyle,
+      accent: c.accent.base,
+    }));
 
   return (
     <main className="tsp">
@@ -40,7 +55,7 @@ export default async function TeamsPage({ params }: { params: PageParams }) {
           {t('teams.directoryDescription')}
         </p>
       </header>
-      <TeamSearch teams={teams} />
+      <TeamSearch teams={teams} competitions={competitions} />
       <SiteFooter />
     </main>
   );

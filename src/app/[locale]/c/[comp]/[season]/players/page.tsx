@@ -47,9 +47,10 @@ export default async function PlayersPage({ params }: Params) {
   return (
     <main className="main tsp">
       <header className="tsp-head">
-        <p className="tsp-eyebrow">{rc.competition.shortName} · {rc.season.label}</p>
         <h1 className="tsp-title">{t('nav.players')}</h1>
-        {!historical && <p className="tsp-sub">{t('players.scope')}</p>}
+        {!historical && directory && directory.teamsWithRoster < directory.totalTeams && directory.players.length > 0 && (
+          <p className="tsp-sub">{t('players.coverage', directory.teamsWithRoster, directory.totalTeams)}</p>
+        )}
       </header>
       {historical ? (
         <div>
@@ -62,9 +63,7 @@ export default async function PlayersPage({ params }: Params) {
         : directory.totalTeams === 0 ? <p className="tsp-empty">{t('teams.noSeasonTeams')}</p>
           : directory.players.length === 0 ? <p className="tsp-empty">{t('players.noRosters')}</p> : (
             <>
-              <p className="tsp-sub">{t('players.coverage', directory.teamsWithRoster, directory.totalTeams)}</p>
-              {directory.teamsWithRoster < directory.totalTeams && <p className="tsp-empty">{t('players.partial')}</p>}
-              <PlayerSearch players={directory.players} playerBase={`${base}/player`} />
+              <PlayerSearch players={directory.players} playerBase={`${base}/player`} teamStyle={rc.competition.teamStyle} />
             </>
           )}
       <SiteFooter />
