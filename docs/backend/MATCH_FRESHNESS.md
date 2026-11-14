@@ -356,19 +356,27 @@ the JSON envelope before checks. A newer preparation attempt without a checkpoin
 is a lost-state barrier. Missing, corrupt, expired, ambiguous, incompatible or
 unreadable newest state never causes fallback to an older artifact or bootstrap.
 Only runs proven not to have prepared state may be passed over: a skipped
-preparation step, a cancelled or skipped run with no jobs, or jobs that ran no workflow step (disabled, cancelled while
-waiting when a newer run queued, never given a runner, or failed in GitHub's own
+preparation step, a cancelled, skipped or `startup_failure` run with no jobs, or jobs that ran no workflow step (disabled, cancelled while
+waiting when a newer run queued, rejected during hosted-runner startup, never given a runner, or failed in GitHub's own
 "Set up job"), listing at most "Set up job" and "Complete job". A run newer than the current one
 may also be listed when dispatches arrive while it runs; it is passed over only while queued, pending, waiting or requested (never started),
-or once completed as cancelled with jobs that ran no workflow step (the same rule).
+or once completed as cancelled or `startup_failure` with jobs that ran no workflow step (the same rule).
 
 `initialize_state=true` is for the first history only, after complete bounded
 history enumeration proves no prior state or uncertain preparation. Otherwise use
-false (default). The former `state_run_id` override is removed. Legacy version-1
-state, changed origin/scopes, exhausted retries and incompatible code versions
-require an owner-reviewed migration/reconciliation; the automation has no reset,
-drop-event or forced older-state switch. Preserve old incident IDs and pending
-ordering when designing such a migration. Do not describe resetting as recovery.
+false (default). When an owner-reviewed audit proves every intervening run was
+non-state-bearing but the newest final checkpoint has left the 60-run search
+window, a manual dispatch may provide both `recovery_run_id` and
+`recovery_artifact_id`. The selector bypasses history enumeration only for that
+explicit request, requires the current run itself to be `workflow_dispatch`,
+validates the exact completed trusted run and exact unexpired
+`match-freshness-state` artifact, then the ordinary download and envelope
+validation preserve the epoch, sequence, incidents and pending ordering. It
+never chooses an older artifact automatically, accepts a pending artifact, or
+combines recovery with initialization. Legacy version-1 state, changed
+origin/scopes, exhausted retries and incompatible code versions still require
+an owner-reviewed migration/reconciliation; the automation has no reset,
+drop-event or retry-budget override. Do not describe resetting as recovery.
 
 ### Delivery and crash boundaries
 
@@ -560,7 +568,10 @@ do not stop production to prove them.
 Normally selection requires only a few API requests, but worst-case nominal
 cadence permits 36,000 API calls/day before the job deadline/rate limits. This is
 a ceiling, not expected traffic; repeated history failures need intervention,
-not a larger scan. Disabled workflows allocate no check runner. Neither Cloudflare cron nor GitHub dispatch offers
+not a larger scan. An explicitly reviewed recovery uses four metadata reads
+(workflow, current run, named prior run and its artifacts) before the ordinary
+artifact download; it does not enumerate the skipped history again. Disabled
+workflows allocate no check runner. Neither Cloudflare cron nor GitHub dispatch offers
 a hard alert-latency SLA; thresholds, cadence, queue delay, backoff, platform
 delays and network time all contribute.
 
@@ -637,8 +648,59 @@ growth active, so it is not the full kill switch.
 | Prepare failed or was cancelled after it started (no checkpoint) | Attempted preparation without a checkpoint is a barrier: every later run fails at selection until owner-reviewed recovery that preserves the newest checkpoint (last row). Investigate the Prepare error first. |
 | Pending upload failed; no checkpoint survives | No sends occurred from that run, but newly observed transitions may be lost. Stop and reconcile that preparation barrier; never select an older run or initialize around it. |
 | A monitor run was re-run in GitHub (`run_attempt` > 1) | Selection trusts only first attempts, so every later run fails at selection while that run is in the 60-run window, and once it leaves the window the checkpoint behind it is out of reach too. Monitoring halts until owner-reviewed recovery that preserves the newest checkpoint (last row). Never re-run; dispatch a new run, and never use `initialize_state` to get around it. |
-| Run ended `startup_failure` (for example invalid workflow YAML on main) | Its job shape is unverified on this repository, so selection fails closed on it. Every later run then fails at selection without a checkpoint, so it does not age out: monitoring halts until owner-reviewed recovery that preserves the newest checkpoint (next row). Fix the workflow first. |
-| Missing/corrupt/expired/incompatible state, exhausted retry head or history-scan budget | Disable and preserve artifacts, run/job metadata, logs and receiver receipts. An owner-reviewed recovery/migration must preserve the latest epoch, sequence, incident IDs and ordered pending events. There is no backup-import, reset, retry-budget override or older-checkpoint switch in the current automation. Remain disabled until a reviewed procedure can establish continuity. |
+| Run ended `startup_failure` | A first-attempt trusted run with zero jobs, or jobs containing only GitHub runner bookkeeping, is proven non-state-bearing and skipped. Any other shape fails closed for owner review. |
+| Missing/corrupt/expired/incompatible state, exhausted retry head or history-scan budget | Disable and preserve artifacts, run/job metadata, logs and receiver receipts. If every intervening run is audited as non-state-bearing and an exact unexpired final checkpoint survives, use the explicit recovery inputs below; otherwise an owner-reviewed migration must preserve the latest epoch, sequence, incident IDs and ordered pending events. There is no reset, pending-artifact recovery or retry-budget override. |
+
+#### November 14, 2026 startup-failure recovery
+
+The last healthy run was
+[43094733866](https://github.com/mcasillas17/ScoreArc/actions/runs/43094733866)
+(number 713), which acknowledged its heartbeat at 20:15:42 UTC November 11.
+Its pending checkpoint is `13889424307` and its final acknowledged checkpoint
+is `13891075249`; both were unexpired when inspected November 14, with the final
+expiring February 9, 2027. Run
+[43095404456](https://github.com/mcasillas17/ScoreArc/actions/runs/43095404456)
+(number 714) then ended `startup_failure` with zero jobs. Five more identical
+startup failures followed before ordinary jobs resumed and failed in Select.
+
+At 08:01 UTC November 14 the workflow was manually disabled after final failed
+run [43573685522](https://github.com/mcasillas17/ScoreArc/actions/runs/43573685522)
+(number 1429). The continuity audit made 724 authenticated API reads and covered
+all 716 runs from 714 through 1429:
+
+- 6 `startup_failure` runs had zero jobs;
+- 709 failed runs had Select failed and Prepare skipped;
+- 1 cancelled run had no successful or attempted Prepare;
+- no run had a pending or final checkpoint; repository artifact enumeration
+  confirmed run 43094733866 still owns the newest artifacts of both names.
+
+There is therefore no preparation barrier after the final checkpoint. The
+downloaded final artifact also passed the current Prepare path locally: sequence
+20 remained 20, its ten-scope envelope adopted the current eleventh scope, and
+healthy synthetic observations produced zero pending events with no monitor
+failure. Once the repair PR is merged, confirm the workflow remains disabled and
+artifact `13891075249` remains unexpired, then enable and dispatch the exact
+reviewed recovery:
+
+```bash
+gh workflow enable match-freshness.yml
+gh workflow run match-freshness.yml --ref main \
+  -f initialize_state=false \
+  -f recovery_run_id=43094733866 \
+  -f recovery_artifact_id=13891075249
+```
+
+The receiver cron may queue an ordinary run after enablement; workflow
+concurrency serializes it, and only the explicitly parameterized run bypasses
+the old history window. Inspect that run rather than relying on its overall
+conclusion: exit 1 is valid when a current data incident was delivered. Recovery
+requires successful Select, Restore, Prepare, both checkpoint uploads, no monitor
+failure or pending delivery, and `Match monitor heartbeat acknowledged.` Verify
+the new final artifact and the receiver's recovery email, then observe at least
+three ordinary dispatched runs restoring the new checkpoint. If recovery does
+not meet every condition, disable the workflow again and preserve the failed
+run; never initialize, rerun an old attempt, delete history or substitute the
+pending artifact.
 
 Before full T17.4 acceptance (open in the [activation record](#activation-record-november-7-2026)), name who retains independently verified copies of the newest
 checkpoint **and its run/artifact provenance**, where they are kept, the backup
@@ -693,11 +755,15 @@ but a workflow that never starts cannot report its own absence.
   and upload-before-send ordering, and links the activation record. Never use
   production dispatch for code tests. On November 8 the
   [Worker dispatch](#worker-dispatch-november-8-2026) replaced that schedule.
-- [ ] Disable by `gh workflow disable match-freshness.yml` (plus
+- [x] Disable by `gh workflow disable match-freshness.yml` (plus
   `MATCH_FRESHNESS_ENABLED=false` for a long pause); allow the current
   serialized run to finish and retain its newest checkpoint. Then pause the not-running
   check with the command in its [Pausing row](#not-running-check). Never delete
-  checkpoint artifacts or run history.
+  checkpoint artifacts or run history. The workflow was disabled November 14 at
+  08:01 UTC after run 1429; the not-running alert remains the accurate incident state.
+- [ ] Merge the November 14 repair, perform the exact reviewed recovery above,
+  verify its new final checkpoint, heartbeat/recovery email and three ordinary
+  dispatched runs, then record the recovered run and artifact IDs here.
 
 The activation record must identify the approving owner and reviewed SHA, incident
 owner, confirmation that the verified recipient was used (never the address itself:
@@ -793,15 +859,13 @@ A scope that is genuinely unhealthy by then stays open and queues no RESOLVED ev
   bucket. That copy is not built and no restore has been rehearsed, so until it
   ships checkpoints rely on 90-day GitHub artifacts plus the run and artifact IDs
   recorded here. This is an open blocker for full T17.4, not an accepted default.
-- **Halts needing manual recovery (open):** a failed pending upload with no surviving
-  checkpoint, a Prepare step that failed or was cancelled after starting, a
-  `startup_failure` run, a GitHub re-run of a monitor run,
-  missing/corrupt newest state, or a newest checkpoint pushed out of the selector's
-  history window (see [disable and recover](#disable-and-recover-without-losing-history))
-  makes every later run fail at selection until the owner performs a
-  reviewed recovery; the not-running email (and GitHub's failure emails) report it,
-  but no written reconciliation procedure exists yet. This is an open blocker, not an
-  accepted default.
+- **Halts needing manual recovery (partially addressed, pending merge):** the
+  November 14 repair recognizes the observed no-job `startup_failure` shape and
+  adds exact-final-checkpoint recovery after an audited non-state-bearing gap.
+  The incident-specific reconciliation is written above but is not active until
+  merge and recovery. A failed pending upload, Prepare that started without a
+  checkpoint, rerun attempt, missing/corrupt newest state, pending-only recovery
+  or exhausted retry head still needs a separately reviewed reconciliation.
 - **Validation:** on the enabling change's reviewed tree, `npm test` passed 118 files
   and 2,121 tests, `npx tsc --noEmit` was clean and `npm run lint` reported 0 errors.
   The pull request records the review and the merged SHA.
