@@ -117,43 +117,39 @@ export default async function MatchesPage({
   }
   const { minMonth, maxMonth } = seasonMonthBounds(rc.season.id);
 
+  // The mode lives in the URL so a link to either is shareable and the back
+  // button behaves. Rendered only for the current edition, where both modes
+  // have something to show. Handed to the views, which put it on the same row
+  // as their own controls.
+  const controls = isCurrentEdition ? (
+    <nav className="mn-tabs" aria-label={t('matches.views')}>
+      <Link
+        // Explicit, not the bare path: when Now is empty the bare path
+        // resolves to the calendar, so a bare-path tab would be a link
+        // that does nothing for exactly the states it exists to reach.
+        href={`${basePath}?view=now`}
+        className={`mn-tab${view === 'now' ? ' mn-tab--on' : ''}`}
+        aria-current={view === 'now' ? 'page' : undefined}
+      >
+        {t('matches.now')}
+      </Link>
+      <Link
+        href={`${basePath}?view=calendar`}
+        className={`mn-tab${view === 'calendar' ? ' mn-tab--on' : ''}`}
+        aria-current={view === 'calendar' ? 'page' : undefined}
+      >
+        {t('matches.fullCalendar')}
+      </Link>
+    </nav>
+  ) : null;
+
   return (
     <main className="main">
       <section id="matches">
         <header className="page-head">
           <p className="bracket-eyebrow">{editionName}</p>
           <h1 className="bracket-title">{t('matches.title')}</h1>
-          <p className="page-subtitle">
-            {view === 'now'
-              ? t('matches.nowDescription')
-              : t('matches.calendarDescription')}
-          </p>
         </header>
-
-        {/* The mode lives in the URL so a link to either is shareable and the
-            back button behaves. Rendered only for the current edition, where
-            both modes have something to show. */}
-        {isCurrentEdition && (
-          <nav className="mn-tabs" aria-label={t('matches.views')}>
-            <Link
-              // Explicit, not the bare path: when Now is empty the bare path
-              // resolves to the calendar, so a bare-path tab would be a link
-              // that does nothing for exactly the states it exists to reach.
-              href={`${basePath}?view=now`}
-              className={`mn-tab${view === 'now' ? ' mn-tab--on' : ''}`}
-              aria-current={view === 'now' ? 'page' : undefined}
-            >
-              {t('matches.now')}
-            </Link>
-            <Link
-              href={`${basePath}?view=calendar`}
-              className={`mn-tab${view === 'calendar' ? ' mn-tab--on' : ''}`}
-              aria-current={view === 'calendar' ? 'page' : undefined}
-            >
-              {t('matches.fullCalendar')}
-            </Link>
-          </nav>
-        )}
 
         {view === 'now' ? (
           <MatchesNow
@@ -165,6 +161,7 @@ export default async function MatchesPage({
             range={nowRange}
             teamStyle={rc.competition.teamStyle}
             calendarHref={`${basePath}?view=calendar`}
+            controls={controls}
           />
         ) : (
           <MatchCalendar
@@ -177,6 +174,7 @@ export default async function MatchesPage({
             maxMonth={maxMonth}
             apiBase={apiBase}
             teamStyle={rc.competition.teamStyle}
+            controls={controls}
           />
         )}
       </section>

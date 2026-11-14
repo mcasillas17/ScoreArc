@@ -208,12 +208,13 @@ export default async function Workspace({ params }: { params: SeasonParams }) {
     );
     return (
       <main className="main">
-        {!readOnly && banner}
         <section id="phase" className="std-wide">
           <header className="bracket-head">
             <p className="bracket-eyebrow">{rc.competition.name} · {rc.season.label}</p>
             <h1 className="bracket-title">{t('standings.qualifiedFor', t(computed.labelKey))}</h1>
           </header>
+          {/* Below the heading, never above it: the page opens on its title. */}
+          {!readOnly && banner}
           <StandingsLive
             teamBase={teamBase}
             playerBase={`/${locale}/c/${rc.competition.id}/${rc.season.id}/player`}

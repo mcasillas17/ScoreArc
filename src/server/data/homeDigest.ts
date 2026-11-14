@@ -1,19 +1,17 @@
 import type { Locale } from '@/i18n/config';
 import { type Competition, resolveSeason } from '@/server/data/competitions';
-import { dataStore } from '@/server/data/store';
+import { dataStore, type DataStore } from '@/server/data/store';
 import { isSelectedDataStore, runDataOperation } from '@/server/data/sourceSelection';
 import { competitionLabel, type LiveEntry } from '@/server/data/liveFeed';
 import { prioritiseBy } from '@/server/data/matchPriority';
-import type { Match, StatLeader } from '@/server/data/types';
 import { chooseWhatsOn, whatsOnHeadline } from '@/lib/digest';
 
 /** How many match cards the digest shows. A digest is a glance; the nav is the
  *  way into a competition's full list. This is also the whole page's match
  *  budget — no match may appear twice on it. */
 const WHATS_ON_SHOWN = 6;
-/** Keep the scorer boards at digest size. */
-const BOARDS_SHOWN = 6;
-const SCORERS_PER_BOARD = 3;
+/** The switcher shows the top five for whichever competition is selected. */
+const SCORERS_PER_BOARD = 5;
 
 /** One match, once. Two competitions can carry the same provider event id (a
  *  club plays in a league and a cup), and the same match rendered twice is the
@@ -31,38 +29,43 @@ function dedupeByMatch(entries: LiveEntry[]): LiveEntry[] {
   });
 }
 
-/** Matches and scorers must come from the same source attempt on fallback. */
-export async function loadDigestSports(ongoing: Competition[], now: Date, locale: Locale) {
-  const per = await runDataOperation(dataStore, source => Promise.all(
-    ongoing.map(async (comp) => {
-      const rc = resolveSeason(comp.id)!;
-      // ESPN-only mode keeps independent best-effort feeds. A controlled
-      // source attempt must repeat this whole collection on fallback.
-      const [matches, leaders] = await Promise.all([
-        // The unenriched read, deliberately — getMatches buys one /summary per
-        // match for scorers and cards this page never renders.
-        source.getLiveWindow(rc).catch((error): Match[] => {
-          if (isSelectedDataStore(source)) throw error;
-          return [];
-        }),
-        source.getLeaders(rc).catch(error => {
-          if (isSelectedDataStore(source)) throw error;
-          return { scorers: [] as StatLeader[], assists: [] as StatLeader[] };
-        }),
-      ]);
-      return {
-        competition: competitionLabel(comp, rc.season.id),
-        seasonLabel: rc.season.label,
-        matches,
-        scorers: leaders.scorers,
-      };
-    }),
-  ));
+function optionalRows<T>(source: DataStore, read: Promise<T[]>): Promise<T[]> {
+  return isSelectedDataStore(source) ? read : read.catch(() => []);
+}
 
-  // ===== What's on =====
-  const entries: LiveEntry[] = dedupeByMatch(
-    per.flatMap((p) => p.matches.map((match) => ({ competition: p.competition, match }))),
-  );
+export function loadDigestSports(ongoing: Competition[], now: Date, locale: Locale) {
+  const seasons = ongoing.map(comp => resolveSeason(comp.id)!);
+  function read(source: DataStore) {
+    const windows = Promise.all(seasons.map(async rc => {
+      const competition = competitionLabel(rc.competition, rc.season.id);
+      const matches = await optionalRows(source, source.getLiveWindow(rc));
+      return matches.map(match => ({ competition, match }));
+    }));
+    const boards = Promise.all(seasons.map(async rc => {
+      const scorers = await optionalRows(source, source.getLeaders(rc).then(leaders => leaders.scorers));
+      return {
+        competition: competitionLabel(rc.competition, rc.season.id),
+        seasonLabel: rc.season.label,
+        leaders: scorers.slice(0, SCORERS_PER_BOARD),
+      };
+    }));
+    return {
+      matches: windows.then(rows => digestMatches(rows.flat(), now, locale)),
+      boards: boards.then(rows => rows.filter(row => row.leaders.length > 0)),
+    };
+  }
+
+  if (!isSelectedDataStore(dataStore)) return read(dataStore);
+  // A reader fallback retries both sets together so the two sections share one source.
+  const attempt = runDataOperation(dataStore, async source => {
+    const { matches, boards } = read(source);
+    return Promise.all([matches, boards] as const);
+  });
+  return { matches: attempt.then(([matches]) => matches), boards: attempt.then(([, boards]) => boards) };
+}
+
+function digestMatches(rows: LiveEntry[], now: Date, locale: Locale) {
+  const entries = dedupeByMatch(rows);
   const buckets = prioritiseBy(entries, (e) => e.match, now);
   // A duration, not a wall clock: the difference between two instants means
   // the same thing to every reader, so unlike "Thursday 8pm" it is safe to
@@ -76,15 +79,5 @@ export async function loadDigestSports(ongoing: Competition[], now: Date, locale
   // The count the heading quotes is the number of cards below it.
   const headline = whatsOnHeadline(mode, shown.length, msToNext, locale);
 
-  // ===== Leading scorers =====
-  const boards = per
-    .filter((p) => p.scorers.length > 0)
-    .slice(0, BOARDS_SHOWN)
-    .map((p) => ({
-      competition: p.competition,
-      seasonLabel: p.seasonLabel,
-      leaders: p.scorers.slice(0, SCORERS_PER_BOARD),
-    }));
-
-  return { headline, shown, boards };
+  return { headline, shown };
 }

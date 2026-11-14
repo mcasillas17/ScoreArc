@@ -58,21 +58,27 @@ const group = (name: string): Group => ({ id: name, name, standings: [{
   team: { id: '227', name, abbr: 'AME', crestUrl: null }, rank: 1, played: 0, wins: 0, draws: 0,
   losses: 0, goalsFor: 0, goalsAgainst: 0, goalDifference: 0, points: 0, advanced: false,
 }] });
+function readHomeSports() {
+  const { matches, boards } = loadDigestSports(ongoingCompetitions(), new Date(), 'en');
+  return Promise.all([matches, boards]);
+}
+
 const pages: { name: string; method: CollectionMethod; read: () => Promise<unknown> }[] = [
   { name: 'standings', method: 'getStandings', read: () => StandingsPage(season('world-cup')) },
   { name: 'standings leaders', method: 'getLeaders', read: () => StandingsPage(season('world-cup')) },
   { name: 'cup bracket', method: 'getBracket', read: () => Workspace(season('world-cup')) },
   { name: 'projected bracket', method: 'getStandings', read: () => Workspace(season('liga-mx', '2026-apertura')) },
   { name: 'derived phase tables', method: 'getStandings', read: () => Workspace(season('leagues-cup')) },
-  { name: 'home matches', method: 'getLiveWindow', read: () => loadDigestSports(ongoingCompetitions(), new Date(), 'en') },
-  { name: 'home leaders', method: 'getLeaders', read: () => loadDigestSports(ongoingCompetitions(), new Date(), 'en') },
+  { name: 'home matches', method: 'getLiveWindow', read: () => readHomeSports() },
+  { name: 'home leaders', method: 'getLeaders', read: () => readHomeSports() },
   { name: 'competition directory', method: 'getStandings', read: () => CompetitionTeamsPage(season('world-cup')) },
   { name: 'all-team directory', method: 'getStandings', read: () => TeamsPage({ params: { locale: 'en' } }) },
 ];
 
 describe('enabled reader unavailability reaches website consumers', () => {
   it.each([
-    { name: 'standings page', fail: 'getStandings' as const, read: () => StandingsPage(season('world-cup')) },
+    // A league: only where standings is the landing page does it read matches.
+    { name: 'standings page', fail: 'getStandings' as const, read: () => StandingsPage(season('premier-league', '2026-27')) },
     { name: 'cup page', fail: 'getBracket' as const, read: () => Workspace(season('world-cup')) },
   ])('repeats the banner with the rest of the $name after a later read fails', async ({ fail, read }) => {
     const reader = emptyStore(); const espn = emptyStore();
@@ -94,7 +100,7 @@ describe('enabled reader unavailability reaches website consumers', () => {
       return { scorers: [], assists: [] };
     };
     selected.store = createSelectedDataStore({ source: 'reader', espn, reader: () => reader });
-    const rendered = JSON.stringify(await loadDigestSports(ongoingCompetitions(), new Date(), 'en'));
+    const rendered = JSON.stringify(await readHomeSports());
     expect(rendered).toContain('espn-only');
     expect(rendered).not.toContain('reader-only');
     expect(espn.getLiveWindow).toHaveBeenCalledTimes(ongoingCompetitions().length);
@@ -138,7 +144,7 @@ describe('enabled reader unavailability reaches website consumers', () => {
   });
 
   it.each([
-    { name: 'homepage', read: () => loadDigestSports(ongoingCompetitions(), new Date(), 'en'), cold: ongoingCompetitions().length * 4, warm: ongoingCompetitions().length * 2 },
+    { name: 'homepage', read: () => readHomeSports(), cold: ongoingCompetitions().length * 4, warm: ongoingCompetitions().length * 2 },
     { name: 'merged team directory', read: () => TeamsPage({ params: { locale: 'en' } }), cold: listCompetitions().length + 3, warm: 2 },
   ])('keeps cold and warm $name reads inside the shared transport budget', async ({ read, cold, warm }) => {
     // Synthetic current-scope responses reuse shared contract vectors. This

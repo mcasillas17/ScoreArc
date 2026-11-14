@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import type { Match, Team } from '@/server/data/types';
 import type { TeamResult } from '@/server/data/teamPerformance';
 import type { StandingsForm } from '@/server/data/standingsForm';
@@ -16,12 +16,14 @@ export const resultAbbreviation = (t: Translator, r: TeamResult) =>
 export const StandingsFormContext = createContext<{ form: StandingsForm; onOpen: (match: Match) => void } | null>(null);
 
 /** The result chips of a form row: each is a button opening its match. */
-export function FormChips({ items, label, className, buttonClassName, onOpen }: {
+export function FormChips({ items, label, className, buttonClassName, onOpen, trailing }: {
   items: { match: Match; result: TeamResult; label: string }[];
   label: string;
   className?: string;
   buttonClassName: string;
   onOpen: (match: Match) => void;
+  /** An extra, non-result item after the chips (the next match). */
+  trailing?: ReactNode;
 }) {
   const t = useTranslations();
   return <ol className={`tm-form${className ? ` ${className}` : ''}`} aria-label={label}>
@@ -29,6 +31,7 @@ export function FormChips({ items, label, className, buttonClassName, onOpen }: 
       <button type="button" className={`tm-chip ${buttonClassName} tm-chip--${result}`} aria-label={itemLabel}
         onClick={() => onOpen(match)}>{resultAbbreviation(t, result)}</button>
     </li>)}
+    {trailing && <li>{trailing}</li>}
   </ol>;
 }
 

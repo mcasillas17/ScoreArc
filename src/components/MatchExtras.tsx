@@ -5,6 +5,7 @@ import type { Locale } from '@/i18n/config';
 import type { Translator } from '@/i18n/translate';
 import { CollapsibleSection } from './Collapsible';
 import PlayerName from './PlayerName';
+import { CrowdIcon, PinIcon } from './MatchIcons';
 
 function fmtYear(iso: string, locale: Locale, t: Translator): string {
   return formatDate(iso, locale, { year: 'numeric', month: 'short' }) ?? t('common.unavailable');
@@ -15,7 +16,7 @@ export function MatchInfoRow({ info }: { info: MatchInfo }) {
   const place = [info.venue, info.city].filter(Boolean).join(' · ');
   return (
     <div className="mi-row">
-      {place && <span className="mi-item">📍 {place}</span>}
+      {place && <span className="mi-item mi-ref"><PinIcon />{place}</span>}
       {info.referee && (
         <span className="mi-item mi-ref">
           <svg
@@ -38,7 +39,7 @@ export function MatchInfoRow({ info }: { info: MatchInfo }) {
         </span>
       )}
       {info.attendance != null && (
-        <span className="mi-item">👥 {formatNumber(info.attendance, locale)}</span>
+        <span className="mi-item mi-ref"><CrowdIcon />{formatNumber(info.attendance, locale)}</span>
       )}
     </div>
   );
@@ -120,7 +121,7 @@ export function CommentaryFeed({ items }: { items: CommentaryItem[] }) {
   // Latest first — most useful during a live match.
   const feed = [...items].reverse();
   return (
-    <CollapsibleSection title={t('matchDetails.commentary', items.length)} tone="#a78bfa">
+    <CollapsibleSection title={t('matchDetails.commentary', items.length)}>
       <ul className="cm-list">
         {feed.map((c, i) => (
           <li key={i} className="cm-item">
@@ -243,9 +244,10 @@ export function BoxScoreBlock({
   const hasStats = [lineups.home, lineups.away].some((t) => t.players.some((p) => p.stats != null));
   if (!hasStats) return null;
   return (
-    <CollapsibleSection title={t('matchDetails.boxScore')} tone="#38bdf8">
+    <section className="md-boxscore">
+      <h3 className="md-subhead">{t('matchDetails.boxScore')}</h3>
       <BoxScoreTable team={lineups.home} abbr={homeAbbr} playerBase={playerBase} />
       <BoxScoreTable team={lineups.away} abbr={awayAbbr} playerBase={playerBase} />
-    </CollapsibleSection>
+    </section>
   );
 }

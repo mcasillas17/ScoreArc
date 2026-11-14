@@ -23,37 +23,27 @@ export default async function Home({ params }: { params: PageParams }) {
   const now = new Date();
 
   const ongoing = ongoingCompetitions();
-  const sports = loadDigestSports(ongoing, now, locale);
+  const { matches, boards } = loadDigestSports(ongoing, now, locale);
   const stories = collectDatedStories(now, locale, { perFeed: 2, limit: 6 }, ongoing);
   const loading = <p className="dg-empty" aria-busy="true">{t('common.loading')}</p>;
 
   return (
     <main className="dg">
-      <header className="dg-head">
-        <h1 className="dg-title">{t('home.digest.title')}</h1>
-        <p className="dg-sub">
-          <Suspense fallback={null}>{sports.then(({ headline }) => headline)}</Suspense>
-        </p>
-      </header>
+      <Suspense fallback={<h1 className="dg-title dg-lead" aria-busy="true">{t('sidebar.matches')}</h1>}>
+        {matches.then(({ headline }) => <h1 className="dg-title dg-lead">{headline}</h1>)}
+      </Suspense>
 
       <YourTeams />
 
       <section className="dg-sec">
-        <h2 className="dg-lab">{t('home.digest.whatsOn')}</h2>
         <Suspense fallback={<div className="dg-mgrid--loading">{loading}</div>}>
-          {sports.then(({ shown }) => shown.length > 0
+          {matches.then(({ shown }) => shown.length > 0
             ? <DigestMatches entries={shown} />
             : <p className="dg-empty">{t('home.digest.emptyMatches')}</p>)}
         </Suspense>
       </section>
 
       <div className="dg-two">
-        <section className="dg-sec">
-          <h2 className="dg-lab">{t('home.digest.leadingScorers')}</h2>
-          <Suspense fallback={loading}>
-            {sports.then(({ boards }) => <DigestScorers boards={boards} />)}
-          </Suspense>
-        </section>
         <section className="dg-sec">
           {/* Every story row leaves for ESPN in a new tab. Without this the
               block was a dead end: nothing on it led anywhere inside ScoreArc. */}
@@ -70,6 +60,12 @@ export default async function Home({ params }: { params: PageParams }) {
           </div>
           <Suspense fallback={loading}>
             {stories.then(items => <DigestNews items={items} surface="digest" />)}
+          </Suspense>
+        </section>
+        <section className="dg-sec">
+          <h2 className="dg-lab">{t('home.digest.leadingScorers')}</h2>
+          <Suspense fallback={loading}>
+            {boards.then(rows => <DigestScorers boards={rows} />)}
           </Suspense>
         </section>
       </div>

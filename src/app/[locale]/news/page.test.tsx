@@ -38,8 +38,8 @@ function byCompetition(map: Record<string, NewsArticle[]>) {
 }
 
 const count = (html: string, needle: string) => html.split(needle).length - 1;
+const rows = (html: string) => count(html, 'class="dg-nw"') + count(html, 'class="dg-nw dg-nw--text"');
 const PER_COMPETITION = 4;
-const SHOWN = 30;
 
 const renderPage = async (locale: 'en' | 'es' = 'en') =>
   renderToStaticMarkup(
@@ -69,7 +69,7 @@ describe('localized news directory', () => {
     vi.spyOn(dataStore, 'getNews').mockResolvedValue([]);
     const html = await renderPage('es');
     expect(html).toContain('<h1 class="dg-title">Noticias</h1>');
-    expect(html).toContain('Lo último de todas las competiciones');
+    expect(html).toContain('Las últimas dos semanas, competición por competición.');
   });
 
   it("reads every competition's feed exactly once", async () => {
@@ -110,25 +110,41 @@ describe('localized news directory', () => {
       byCompetition({ [FIRST]: [1, 2, 3, 4, 5, 6].map((n) => article(`a${n}`)) }),
     );
     const html = await renderPage();
-    expect(count(html, 'class="dg-nw"')).toBe(PER_COMPETITION);
+    expect(rows(html)).toBe(PER_COMPETITION);
     expect(html).toContain('Headline a4');
     expect(html).not.toContain('Headline a5');
   });
 
-  it('caps the page at thirty stories', async () => {
-    vi.spyOn(dataStore, 'getNews').mockImplementation(async (rc: CompetitionSeason) =>
-      [1, 2, 3, 4].map((n) => article(`${rc.competition.id}-${n}`)),
+  it('leaves out stories older than two weeks, and a competition left with none', async () => {
+    vi.spyOn(dataStore, 'getNews').mockImplementation(
+      byCompetition({
+        [FIRST]: [article('stale', '2026-07-20T10:00:00Z')],
+        [SECOND]: [article('fresh'), article('older', '2026-08-01T10:00:00Z')],
+      }),
     );
     const html = await renderPage();
-    expect(COMPETITIONS.length * PER_COMPETITION).toBeGreaterThan(SHOWN);
-    expect(count(html, 'class="dg-nw"')).toBe(SHOWN);
+    expect(html).toContain('Headline fresh');
+    expect(html).not.toContain('Headline stale');
+    expect(html).not.toContain('Headline older');
+    expect(count(html, 'class="nwx-sec"')).toBe(1);
+  });
+
+  it('heads each list with its competition and pictures only its newest story', async () => {
+    vi.spyOn(dataStore, 'getNews').mockImplementation(
+      byCompetition({ [SECOND]: [article('a'), article('b', '2026-08-17T10:00:00Z')] }),
+    );
+    const html = await renderPage();
+    expect(html).toContain(COMPETITIONS[1].shortName);
+    expect(html).toContain(`href="/en/c/${SECOND}/${COMPETITIONS[1].currentSeasonId}"`);
+    expect(count(html, 'class="dg-nw"')).toBe(1);
+    expect(count(html, 'class="dg-nw dg-nw--text"')).toBe(1);
   });
 
   it('shows more than the digest does', async () => {
     vi.spyOn(dataStore, 'getNews').mockImplementation(async (rc: CompetitionSeason) =>
       [1, 2, 3, 4].map((n) => article(`${rc.competition.id}-${n}`)),
     );
-    expect(count(await renderPage(), 'class="dg-nw"')).toBeGreaterThan(6);
+    expect(rows(await renderPage())).toBeGreaterThan(6);
   });
 
   it('orders stories newest first across competitions', async () => {
