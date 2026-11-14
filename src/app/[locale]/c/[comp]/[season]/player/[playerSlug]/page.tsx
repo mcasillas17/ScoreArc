@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
@@ -26,11 +27,11 @@ interface Params {
  * provider's athlete number. A slug the index does not know is a 404 without
  * an upstream athlete request.
  */
-async function loadPlayer(params: PlayerParams): Promise<PlayerProfile | null> {
-  const rc = resolveSeason(params.comp, params.season);
+const loadPlayer = cache(async (comp: string, season: string, slug: string) => {
+  const rc = resolveSeason(comp, season);
   if (!rc) return null;
-  return loadPlayerBySlug(rc, params.playerSlug);
-}
+  return loadPlayerBySlug(rc, slug);
+});
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const resolvedParams = await params;
@@ -41,7 +42,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   if (!rc) return { title: t('player.metaFallbackTitle') };
   let player: PlayerProfile | null = null;
   try {
-    player = await loadPlayer(resolvedParams);
+    player = await loadPlayer(resolvedParams.comp, resolvedParams.season, resolvedParams.playerSlug);
   } catch {
     return { title: t('player.metaFallbackTitle') };
   }
@@ -77,7 +78,7 @@ export default async function PlayerPage({ params }: Params) {
   const t = getTranslator(locale);
   const rc = resolveSeason(resolvedParams.comp, resolvedParams.season);
   if (!rc) notFound();
-  const player = await loadPlayer(resolvedParams);
+  const player = await loadPlayer(resolvedParams.comp, resolvedParams.season, resolvedParams.playerSlug);
   if (!player) notFound();
 
   const teamBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/team`;

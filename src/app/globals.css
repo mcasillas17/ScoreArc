@@ -2885,7 +2885,7 @@ a.sn-item:hover { color: var(--text); }
   letter-spacing: -0.4px;
   color: var(--text);
 }
-.dg-sub { margin: 0; color: var(--text-muted); font-size: 13px; }
+.dg-sub { min-height: 1.5em; margin: 0; color: var(--text-muted); font-size: 13px; }
 
 .dg-sec { margin-bottom: 28px; min-width: 0; }
 .dg-lab {
@@ -2925,6 +2925,8 @@ a.sn-item:hover { color: var(--text); }
 .dg-onecol .dg-nw:first-child { border-top: 1px solid var(--hairline); padding-top: 9px; }
 
 .dg-mgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--dg-gap); }
+/* Reserve the usual three rows while scores stream so an early news headline stays put. */
+.dg-mgrid--loading { min-height: calc(3 * 68px + 2 * var(--dg-gap)); }
 .dg-two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--dg-gap); align-items: start; }
 
 /* --- What's on --- */
@@ -3090,6 +3092,7 @@ a.sn-item:hover { color: var(--text); }
 @media (max-width: 760px) {
   .dg { padding: 18px 14px 44px; }
   .dg-mgrid { grid-template-columns: 1fr; }
+  .dg-mgrid--loading { min-height: calc(6 * 68px + 5 * var(--dg-gap)); }
   .dg-boards { grid-template-columns: 1fr; }
 }
 

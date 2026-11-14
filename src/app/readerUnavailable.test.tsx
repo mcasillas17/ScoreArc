@@ -10,7 +10,7 @@ import vectors from '@/server/data/contracts/reader-contract.json';
 import { listCompetitions, ongoingCompetitions, resolveSeason } from '@/server/data/competitions';
 import type { Group, Match } from '@/server/data/types';
 import { getBannerFeed } from '@/server/data/banner';
-import Home from './[locale]/page';
+import { loadDigestSports } from '@/server/data/homeDigest';
 import Workspace from './[locale]/c/[comp]/[season]/page';
 import StandingsPage from './[locale]/c/[comp]/[season]/standings/page';
 import CompetitionTeamsPage from './[locale]/c/[comp]/[season]/teams/page';
@@ -64,8 +64,8 @@ const pages: { name: string; method: CollectionMethod; read: () => Promise<unkno
   { name: 'cup bracket', method: 'getBracket', read: () => Workspace(season('world-cup')) },
   { name: 'projected bracket', method: 'getStandings', read: () => Workspace(season('liga-mx', '2026-apertura')) },
   { name: 'derived phase tables', method: 'getStandings', read: () => Workspace(season('leagues-cup')) },
-  { name: 'home matches', method: 'getLiveWindow', read: () => Home({ params: { locale: 'en' } }) },
-  { name: 'home leaders', method: 'getLeaders', read: () => Home({ params: { locale: 'en' } }) },
+  { name: 'home matches', method: 'getLiveWindow', read: () => loadDigestSports(ongoingCompetitions(), new Date(), 'en') },
+  { name: 'home leaders', method: 'getLeaders', read: () => loadDigestSports(ongoingCompetitions(), new Date(), 'en') },
   { name: 'competition directory', method: 'getStandings', read: () => CompetitionTeamsPage(season('world-cup')) },
   { name: 'all-team directory', method: 'getStandings', read: () => TeamsPage({ params: { locale: 'en' } }) },
 ];
@@ -94,7 +94,7 @@ describe('enabled reader unavailability reaches website consumers', () => {
       return { scorers: [], assists: [] };
     };
     selected.store = createSelectedDataStore({ source: 'reader', espn, reader: () => reader });
-    const rendered = JSON.stringify(await Home({ params: { locale: 'en' } }));
+    const rendered = JSON.stringify(await loadDigestSports(ongoingCompetitions(), new Date(), 'en'));
     expect(rendered).toContain('espn-only');
     expect(rendered).not.toContain('reader-only');
     expect(espn.getLiveWindow).toHaveBeenCalledTimes(ongoingCompetitions().length);
@@ -138,7 +138,7 @@ describe('enabled reader unavailability reaches website consumers', () => {
   });
 
   it.each([
-    { name: 'homepage', read: () => Home({ params: { locale: 'en' } }), cold: ongoingCompetitions().length * 4, warm: ongoingCompetitions().length * 2 },
+    { name: 'homepage', read: () => loadDigestSports(ongoingCompetitions(), new Date(), 'en'), cold: ongoingCompetitions().length * 4, warm: ongoingCompetitions().length * 2 },
     { name: 'merged team directory', read: () => TeamsPage({ params: { locale: 'en' } }), cold: listCompetitions().length + 3, warm: 2 },
   ])('keeps cold and warm $name reads inside the shared transport budget', async ({ read, cold, warm }) => {
     // Synthetic current-scope responses reuse shared contract vectors. This
