@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import type { Scorer, Card, MatchStats, WinProbability, MatchLineups, TeamLineup, ShootoutDetail, PenaltyKick } from '@/server/data/types';
 import { useTranslations } from '@/i18n/I18nProvider';
 import PlayerName from './PlayerName';
+import { BallIcon } from './MatchIcons';
 
 // Win probability is a pre-match prediction (derived from pre-match odds), so it
 // only makes sense before kickoff — not for live or finished/past matches.
@@ -63,7 +64,7 @@ function ScorerLine({ scorer, playerBase }: { scorer: Scorer; playerBase?: strin
   const t = useTranslations();
   return (
     <span className="ls-scorer-line">
-      <span className="ls-scorer-ball">⚽</span>
+      <span className="ls-scorer-ball"><BallIcon /></span>
       <PlayerName name={scorer.player} slug={scorer.playerSlug} playerBase={playerBase} className="ls-scorer-name" />
       <span className="ls-scorer-minute">
         {scorer.minute}

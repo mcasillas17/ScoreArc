@@ -119,7 +119,11 @@ export default function TeamSearch({
               aria-pressed={compId === c.id}
               aria-label={c.name}
               title={c.name}
-              onClick={() => setCompId(compId === c.id ? null : c.id)}
+              onClick={(event) => {
+                setCompId(compId === c.id ? null : c.id);
+                // On a phone the row scrolls; keep the pick in view.
+                event.currentTarget.scrollIntoView?.({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+              }}
             >
               <CompetitionMark logo={c.logo} logoInvert={c.logoInvert} emblem={c.emblem} name="" size={22} />
             </button>

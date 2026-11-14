@@ -2658,6 +2658,10 @@ a.sn-item:hover { color: var(--text); }
 }
 .mi-item { white-space: nowrap; }
 .mi-ref { display: inline-flex; align-items: center; gap: 4px; }
+.mx-icon { flex-shrink: 0; color: var(--text-muted); }
+.ls-scorer-ball { display: inline-flex; }
+.mh-goal { display: inline-flex; align-items: center; gap: 4px; }
+.mh-goal .mx-icon { color: inherit; }
 .mi-ref-icon { flex-shrink: 0; color: var(--text-muted); }
 
 /* Form + head-to-head sit side by side under one toggle; collapses to a single
@@ -4462,6 +4466,9 @@ a.sn-item:hover { color: var(--text); }
      measured on Liga MX (JUA/GDL). Pinning the max lets the meta text wrap
      to two short lines instead of stealing width from the sides. */
   .mw-meta { min-width: 76px; max-width: 76px; font-size: 12px; }
+  /* Day over time, each on its own line, instead of one string breaking
+     wherever 76px happened to fall. */
+  .mw-day, .mw-clock { display: block; white-space: nowrap; }
   /* 60, not 68: the 8px goes to the two side tracks, which were exactly as
      wide as crest + gap + a three-letter code and clipped it to "M…" whenever
      the text measured a pixel over. */
@@ -4485,23 +4492,38 @@ a.sn-item:hover { color: var(--text); }
 /* Player discovery shares the directory field and list; rows carry roster context. */
 .ps { margin-top: 16px; }
 .ps-count { margin: 8px 2px 0; font-size: 12px; color: var(--text-muted); }
-.ps-group { margin-top: 28px; }
+.ps-group { border-bottom: 1px solid var(--hairline); }
+.ps-group:first-of-type { margin-top: 18px; border-top: 1px solid var(--hairline); }
 .ps-team {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 0 0 6px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--hairline);
-  font-size: 15px;
-  font-weight: 700;
+  padding: 13px 2px;
+  cursor: pointer;
+  list-style: none;
 }
+.ps-team::-webkit-details-marker { display: none; }
+.ps-team-name { margin: 0; font-size: 15px; font-weight: 700; }
+.ps-team-n { margin-left: auto; color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ps-team::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  margin: 0 4px 3px 6px;
+  border: solid var(--text-muted);
+  border-width: 0 1.5px 1.5px 0;
+  rotate: 45deg;
+  transition: rotate 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.ps-group[open] > .ps-team::after { rotate: -135deg; margin-bottom: -3px; }
+.ps-team:hover .ps-team-name { color: var(--accent-bright); }
+.ps-team:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 2px; border-radius: 4px; }
+.ps-group[open] > .ps-list { padding-bottom: 12px; }
 .ps-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0 24px; }
 .ps-item { display: flex; }
 /* One column made a 600-player directory 24,000px tall on a phone. */
 @media (max-width: 560px) {
   .ps-list { grid-template-columns: 1fr 1fr; gap: 0 16px; }
-  .ps-group { margin-top: 22px; }
 }
 .ps-name { color: var(--text); font-size: 14px; font-weight: 600; overflow-wrap: anywhere; padding: 8px 0; flex: 1; }
 .ps a:focus-visible, .ps input:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 3px; }

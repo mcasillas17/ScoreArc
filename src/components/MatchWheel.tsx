@@ -313,7 +313,10 @@ export default function MatchWheel({
                     ) : finished ? (
                       <span className="mw-final">{matchStatusText(m, t)}</span>
                     ) : (
-                      <span className="mw-time"><LocalTime iso={m.kickoff} mode="dayTime" /></span>
+                      <span className="mw-time">
+                        <span className="mw-day"><LocalTime iso={m.kickoff} mode="dayShort" /></span>{' '}
+                        <span className="mw-clock"><LocalTime iso={m.kickoff} mode="time" /></span>
+                      </span>
                     )}
                   </span>
                 </button>

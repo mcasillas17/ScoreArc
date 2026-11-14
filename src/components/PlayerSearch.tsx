@@ -42,12 +42,16 @@ export default function PlayerSearch({ players, playerBase, teamStyle = 'crest' 
       {/* Always announced, only shown while a search is narrowing the list. */}
       <p className={query ? 'ps-count' : 'sr-only'} id="ps-count" role="status">{t('players.count', results.length, players.length)}</p>
       {results.length === 0 ? <p className="ts-empty">{t('players.noSearchResult')}</p> : groups.map(({ team, members }) => (
-        <section className="ps-group" key={team.teamName}>
-          <h2 className="ps-team">
+        // Closed until asked for: twenty teams is an index, six hundred names
+        // is a scroll. A search opens whatever it matched (the key remounts
+        // the element so the new default applies).
+        <details className="ps-group" key={`${team.teamName}:${needle ? 'q' : ''}`} open={needle !== '' || groups.length === 1}>
+          <summary className="ps-team">
             <span aria-hidden="true"><TeamBadge team={{ id: team.teamId, name: team.teamName, abbr: team.teamAbbr, crestUrl: team.crestUrl }}
               size={22} style={teamStyle} /></span>
-            {team.teamName}
-          </h2>
+            <h2 className="ps-team-name">{team.teamName}</h2>
+            <span className="ps-team-n">{members.length}</span>
+          </summary>
           <ul className="ps-list">
             {members.map((player, index) => (
               <li className="ps-item" key={player.slug ?? `unlinked-${index}`}>
@@ -55,7 +59,7 @@ export default function PlayerSearch({ players, playerBase, teamStyle = 'crest' 
               </li>
             ))}
           </ul>
-        </section>
+        </details>
       ))}
     </div>
   );

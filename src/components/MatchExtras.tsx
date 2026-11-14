@@ -5,6 +5,7 @@ import type { Locale } from '@/i18n/config';
 import type { Translator } from '@/i18n/translate';
 import { CollapsibleSection } from './Collapsible';
 import PlayerName from './PlayerName';
+import { CrowdIcon, PinIcon } from './MatchIcons';
 
 function fmtYear(iso: string, locale: Locale, t: Translator): string {
   return formatDate(iso, locale, { year: 'numeric', month: 'short' }) ?? t('common.unavailable');
@@ -15,7 +16,7 @@ export function MatchInfoRow({ info }: { info: MatchInfo }) {
   const place = [info.venue, info.city].filter(Boolean).join(' · ');
   return (
     <div className="mi-row">
-      {place && <span className="mi-item">📍 {place}</span>}
+      {place && <span className="mi-item mi-ref"><PinIcon />{place}</span>}
       {info.referee && (
         <span className="mi-item mi-ref">
           <svg
@@ -38,7 +39,7 @@ export function MatchInfoRow({ info }: { info: MatchInfo }) {
         </span>
       )}
       {info.attendance != null && (
-        <span className="mi-item">👥 {formatNumber(info.attendance, locale)}</span>
+        <span className="mi-item mi-ref"><CrowdIcon />{formatNumber(info.attendance, locale)}</span>
       )}
     </div>
   );
