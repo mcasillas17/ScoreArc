@@ -1,6 +1,7 @@
 import type { Messages } from './en';
 
 export const es = {
+  'common.loading': 'Cargando…',
   'common.close': 'Cerrar',
   'common.unavailable': 'No disponible',
   'common.scoreArcHome': 'Inicio de ScoreArc',

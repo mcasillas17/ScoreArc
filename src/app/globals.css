@@ -2898,6 +2898,9 @@ a.sn-item:hover { color: var(--text); }
 }
 .dg-card--lead .dg-mmeta { font-size: 12px; margin-top: 12px; }
 .dg-card:focus-visible { outline: 2px solid var(--brand-bright); outline-offset: 2px; }
+/* Reserve two lines for the status and space for the lead card and match rows. */
+.dg-lead[aria-busy] { min-height: 2lh; }
+.dg-mgrid--loading { min-height: 290px; }
 .dg-two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--dg-gap); align-items: start; }
 
 /* --- What's on --- */
@@ -3124,6 +3127,7 @@ a.sn-item:hover { color: var(--text); }
 @media (max-width: 760px) {
   .dg { padding: 18px 14px 44px; }
   .dg-mgrid { grid-template-columns: minmax(0, 1fr); }
+  .dg-mgrid--loading { min-height: 450px; }
 }
 
 /* Season / edition picker — a proper proportional year timeline. Editions are

@@ -13,6 +13,7 @@ function ordinal(rank: number): string {
 }
 
 export const en = {
+  'common.loading': 'Loading…',
   'common.close': 'Close',
   'common.unavailable': 'Unavailable',
   'common.scoreArcHome': 'ScoreArc home',
