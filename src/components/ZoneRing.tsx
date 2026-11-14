@@ -65,6 +65,10 @@ export default function ZoneRing({
     : t('standings.playedRange', `${minimumPlayed}\u2013${maximumPlayed}`);
   const step = 360 / n;
   const bands = toBands(standings, zones, { rounds }).filter((b) => b.kind !== 'mid');
+  const leader = maximumPlayed > 0 ? (standings.find((s) => s.rank === 1) ?? standings[0]) : null;
+  const leaderSrc = leader
+    ? (teamStyle === 'flag' ? (flagUrl(leader.team.abbr) ?? leader.team.crestUrl) : leader.team.crestUrl)
+    : null;
 
   return (
     <svg className="lld lzr" viewBox={`0 0 ${SIZE} ${SIZE}`} role="img" aria-label={t('standings.ringLabel')}>
@@ -135,13 +139,33 @@ export default function ZoneRing({
         );
       })}
 
-      <circle cx={CX} cy={CY} r={62} fill="var(--surface-2)" stroke="var(--hairline)" />
-      <text x={CX} y={CY - 6} textAnchor="middle" fontSize={13} fill="var(--text-muted)">
-        {t('standings.clubs', n)}
-      </text>
-      <text x={CX} y={CY + 16} textAnchor="middle" fontSize={13} fill="var(--text-muted)">
-        {playedLabel}
-      </text>
+      {/* Centre: the club on top, then what it has earned. Before kick-off the
+          order is alphabetical, so there is no leader to name. */}
+      <circle cx={CX} cy={CY} r={84} fill="var(--surface-2)" stroke="var(--hairline)" />
+      {leader ? (
+        <>
+          <defs>
+            <clipPath id={`lzr-hub-${uid}`}>
+              <circle cx={CX} cy={CY - 38} r={24} />
+            </clipPath>
+          </defs>
+          <circle cx={CX} cy={CY - 38} r={24} fill="#f4f4f6" stroke="var(--text)" strokeWidth={2} />
+          {leaderSrc ? (
+            <image href={leaderSrc} x={CX - 24} y={CY - 62} width={48} height={48}
+              clipPath={`url(#lzr-hub-${uid})`} preserveAspectRatio="xMidYMid slice" />
+          ) : null}
+          <text x={CX} y={CY + 9} textAnchor="middle" fontSize={14} fontWeight={700} fill="var(--text)">{leader.team.name}</text>
+          <text x={CX} y={CY + 28} textAnchor="middle" fontSize={13} fontWeight={800} fill="var(--text)">
+            {leader.points} {t('standings.pointsAbbreviation')}
+          </text>
+          <text x={CX} y={CY + 46} textAnchor="middle" fontSize={11} fill="var(--text-muted)">{playedLabel}</text>
+        </>
+      ) : (
+        <>
+          <text x={CX} y={CY - 6} textAnchor="middle" fontSize={13} fill="var(--text-muted)">{t('standings.clubs', n)}</text>
+          <text x={CX} y={CY + 16} textAnchor="middle" fontSize={13} fill="var(--text-muted)">{playedLabel}</text>
+        </>
+      )}
     </svg>
   );
 }

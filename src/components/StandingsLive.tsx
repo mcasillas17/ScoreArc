@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, type ReactNode } from 'react';
 import type { Group, StatLeader } from '@/server/data/types';
 import type { QualificationLabelKey, Zone } from '@/server/data/competitions';
 import GroupTable from './GroupTable';
-import LeaderTable from './LeaderTable';
+import LeadersBlock from './LeadersBlock';
 import ThirdPlaceTable from './ThirdPlaceTable';
 import LeagueLadder from './LeagueLadder';
 import LeagueZoneTable from './LeagueZoneTable';
@@ -29,6 +29,8 @@ interface Props {
    */
   teamBase?: string;
   playerBase?: string;
+  /** The competition's Players page; the leaders block links to it. */
+  playersHref?: string;
   teamStyle?: 'flag' | 'crest';
   // Group-stage tournaments race for best third place; leagues don't.
   showThirdPlace?: boolean;
@@ -48,7 +50,7 @@ interface Props {
 
 const REFRESH_MS = 30_000;
 
-export default function StandingsLive({ initialGroups, initialScorers, initialAssists, apiBase, teamBase, playerBase, teamStyle = 'flag', showThirdPlace = true, qualification, zones, rounds }: Props) {
+export default function StandingsLive({ initialGroups, initialScorers, initialAssists, apiBase, teamBase, playerBase, playersHref, teamStyle = 'flag', showThirdPlace = true, qualification, zones, rounds }: Props) {
   const t = useTranslations();
   const [groups, setGroups] = useState<Group[]>(initialGroups);
   const [scorers, setScorers] = useState<StatLeader[]>(initialScorers);
@@ -127,18 +129,10 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
     };
   }, [formTick]);
 
-  const topScorersBlock = (
-    <div className="std-block">
-      <h2 className="std-block-title">{t('standings.goldenBoot')}</h2>
-      <LeaderTable leaders={scorers} metric="goals" teamStyle={teamStyle} teamBase={teamBase} playerBase={playerBase} />
-    </div>
-  );
-
-  const topAssistsBlock = (
-    <div className="std-block">
-      <h2 className="std-block-title">{t('standings.playmakers')}</h2>
-      <LeaderTable leaders={assists} metric="assists" teamStyle={teamStyle} teamBase={teamBase} playerBase={playerBase} />
-    </div>
+  // No scorers is a real state for competitions the provider gives no
+  // statistics for — the block renders nothing rather than an empty table.
+  const leadersBlock = (
+    <LeadersBlock scorers={scorers} assists={assists} teamStyle={teamStyle} teamBase={teamBase} playerBase={playerBase} playersHref={playersHref} />
   );
 
   const { form, status: formStatus } = standingsForm;
@@ -151,22 +145,20 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
     : formStatus === 'stale' || formStatus === 'unavailable' ? 'standings.formUnavailable' as const
     : formStatus === 'updating' && formShown ? 'standings.formUpdating' as const
     : null;
-  const formNotes = (
-    <>
-      {formNotice ? <p className="sf-note" role="status">{t(formNotice)}</p> : null}
-      {form?.scope && formShown ? (
-        <p className="sf-note">{t(`standings.formScope.${form.scope}`)}</p>
-      ) : null}
-    </>
-  );
+  // One caption: the live status (if any) followed by the standing scope note.
+  const formCaption = [
+    formNotice ? t(formNotice) : null,
+    form?.scope && formShown ? t(`standings.formScope.${form.scope}`) : null,
+  ].filter(Boolean).join(' ');
+  const formNotes = formCaption ? (
+    <p className="sf-note" role={formNotice ? 'status' : undefined}>{formCaption}</p>
+  ) : null;
   const standingsBlock = (
     <div className="std-block">
-      <h2 className="std-block-title">{t(showThirdPlace ? 'standings.groupStageResults' : 'standings.title')}</h2>
-      {showThirdPlace ? null : formNotes}
       {zones && zones.length > 0 && !showThirdPlace ? (
         groups.map((group) => (
           <div key={group.id} className="std-ladder" data-group={group.id}>
-            {groups.length > 1 ? <h3 className="std-ladder-title">{translatedGroupName(group, t)}</h3> : null}
+            {groups.length > 1 ? <h2 className="std-ladder-title">{translatedGroupName(group, t)}</h2> : null}
             {/* A table may carry its own zones. Almost none do — one league, one
                 set of outcomes — but MLS's Supporters' Shield table is ranked
                 across both conferences, so the conference playoff cut means
@@ -180,7 +172,7 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
         // only the first would silently drop half the competition.
         groups.map((group) => (
           <div key={group.id} className="std-ladder" data-group={group.id}>
-            {groups.length > 1 ? <h3 className="std-ladder-title">{translatedGroupName(group, t)}</h3> : null}
+            {groups.length > 1 ? <h2 className="std-ladder-title">{translatedGroupName(group, t)}</h2> : null}
             <LeagueLadder
               standings={group.standings}
               qualification={qualification}
@@ -203,9 +195,6 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
     </div>
   );
 
-  // Group-stage tournaments (World Cup) lead with the scorers + best-third
-  // columns, then the group results below. Leagues lead with the standings —
-  // the headline table — and put the Golden Boot beneath it.
   const formPopup = details.detail && (
     <MatchDetailPopup match={toMatchDetailInput(details.detail)} summary={details.summary} loading={details.loadingDetail}
       onClose={details.closeDetails} teamStyle={teamStyle} teamBase={teamBase} playerBase={playerBase} />
@@ -217,35 +206,23 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
     </StandingsFormContext.Provider>
   );
 
-  if (showThirdPlace) {
-    return withForm(
-      <>
-        {/* The best-third table is the first to carry badges here. */}
-        {formNotes}
-        <div className="std-columns">
-          {topScorersBlock}
-          <div className="std-block">
-            <h2 className="std-block-title">{t('standings.bestThirdPlaced')}</h2>
-            {groups.length > 0 ? (
-              <ThirdPlaceTable groups={groups} teamStyle={teamStyle} teamBase={teamBase} />
-            ) : (
-              <p className="empty-text">{t('standings.groupsUnavailable')}</p>
-            )}
-          </div>
-        </div>
-        {standingsBlock}
-        {assists.length > 0 ? topAssistsBlock : null}
-      </>
-    );
-  }
-
+  // Group tables lead (a World Cup's best-third race follows them); leaders
+  // close the page as one compact block.
   return withForm(
     <>
+      {formNotes}
       {standingsBlock}
-      {/* No scorers is a real state for competitions the provider gives no
-          statistics for — render nothing rather than an empty table. */}
-      {scorers.length > 0 ? topScorersBlock : null}
-      {assists.length > 0 ? topAssistsBlock : null}
+      {showThirdPlace ? (
+        <div className="std-block">
+          <h2 className="std-block-title">{t('standings.bestThirdPlaced')}</h2>
+          {groups.length > 0 ? (
+            <ThirdPlaceTable groups={groups} teamStyle={teamStyle} teamBase={teamBase} />
+          ) : (
+            <p className="empty-text">{t('standings.groupsUnavailable')}</p>
+          )}
+        </div>
+      ) : null}
+      {leadersBlock}
     </>
   );
 }

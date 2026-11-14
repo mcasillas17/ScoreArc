@@ -1,8 +1,8 @@
 'use client';
 
 import type { DigestNewsItem } from '@/lib/digest';
-import { trackEvent } from '@/lib/telemetry/client';
 import { useTranslations } from '@/i18n/I18nProvider';
+import NewsRow from './NewsRow';
 
 /**
  * A compact list with small thumbnails, deliberately NOT a hero.
@@ -11,8 +11,20 @@ import { useTranslations } from '@/i18n/I18nProvider';
  * object on the home page. The day this was designed that was "Adidas drops
  * dog kits", which is exactly the editorial decision we are not in a position
  * to make.
+ *
+ * `thumbs="first"` pictures only the newest story and lists the rest as
+ * headlines: thirty thumbnails in a column is thirty things asking to be
+ * looked at, and it was the reason /news read as clutter.
  */
-export default function DigestNews({ items, surface }: { items: DigestNewsItem[]; surface: string }) {
+export default function DigestNews({
+  items,
+  surface,
+  thumbs = 'all',
+}: {
+  items: DigestNewsItem[];
+  surface: string;
+  thumbs?: 'all' | 'first';
+}) {
   const t = useTranslations();
   if (items.length === 0) {
     return (
@@ -21,28 +33,14 @@ export default function DigestNews({ items, surface }: { items: DigestNewsItem[]
   }
   return (
     <div className="dg-news">
-      {items.map(({ article, ago }) => (
-        <a
-          className="dg-nw"
+      {items.map(({ article, ago }, i) => (
+        <NewsRow
           key={article.id}
-          href={article.url}
-          target="_blank"
-          rel="noreferrer"
-          onClick={() => trackEvent('News article opened', { surface })}
-        >
-          {article.image ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img className="dg-nwimg" src={article.image} alt="" loading="lazy" referrerPolicy="no-referrer" />
-          ) : (
-            <span className="dg-nwimg dg-nwimg--blank" aria-hidden>⚽</span>
-          )}
-          <span className="dg-nwbody">
-            <span className="dg-nwhead">{article.headline}</span>
-            {ago && (
-              <span className="dg-nwsrc">{ago}</span>
-            )}
-          </span>
-        </a>
+          article={article}
+          ago={ago}
+          surface={surface}
+          image={thumbs === 'all' || i === 0}
+        />
       ))}
     </div>
   );

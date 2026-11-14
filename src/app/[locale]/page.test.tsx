@@ -123,7 +123,7 @@ describe('Home digest', () => {
     vi.spyOn(dataStore, 'getLeaders').mockRejectedValue(new Error('upstream unavailable'));
     vi.spyOn(dataStore, 'getNews').mockRejectedValue(new Error('upstream unavailable'));
     const html = renderLocalized(await Home({ params: { locale: 'en' } }));
-    expect(html).toContain('What&#x27;s new in ScoreArc');
+    expect(html).toContain('<h1 class="dg-title dg-lead">');
   });
 
   it('renders Spanish digest copy and locale-prefixed internal links in the first response', async () => {
@@ -133,8 +133,7 @@ describe('Home digest', () => {
 
     const html = renderLocalized(await Home({ params: { locale: 'es' } }), 'es');
 
-    expect(html).toContain('Nuevo en ScoreArc');
-    expect(html).toContain('Qué hay hoy');
+    expect(html).toContain('<h1 class="dg-title dg-lead">Nada en vivo');
     expect(html).toContain('href="/es/news"');
     expect(html).not.toContain('href="/news"');
   });
@@ -293,25 +292,25 @@ describe('Home digest', () => {
   });
 
   describe('leading scorers', () => {
-    it('shows the top three of each competition board', async () => {
+    it('shows the top five of the chosen competition board', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
       vi.spyOn(dataStore, 'getLeaders').mockResolvedValue({
-        scorers: [1, 2, 3, 4, 5].map((r) => leader(r, `Player ${r}`)),
+        scorers: [1, 2, 3, 4, 5, 6].map((r) => leader(r, `Player ${r}`)),
         assists: [],
       });
       const html = renderLocalized(await Home({ params: { locale: 'en' } }));
-      expect(html).toContain('Player 3');
-      expect(html).not.toContain('Player 4');
+      expect(html).toContain('Player 5');
+      expect(html).not.toContain('Player 6');
     });
 
-    // Nine competitions publish boards; six fit. Without the cap the block
-    // would be longer than the news column beside it.
-    it('caps the number of boards', async () => {
+    // Six boards used to fill the page; now one card is switched between them.
+    it('renders one card with a switcher button per competition', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
       vi.spyOn(dataStore, 'getLeaders').mockResolvedValue({ scorers: [leader(1, 'Solo')], assists: [] });
       const html = renderLocalized(await Home({ params: { locale: 'en' } }));
-      expect(ONGOING.length).toBeGreaterThan(6);
-      expect(count(html, 'class="dg-board"')).toBe(6);
+      expect(count(html, 'class="dg-board"')).toBe(1);
+      expect(count(html, 'class="dg-pick"')).toBe(ONGOING.length);
+      expect(count(html, 'class="dg-pick" aria-pressed="true"')).toBe(1);
     });
 
     // A board saying only "WORLD CUP" beside in-progress league boards gives

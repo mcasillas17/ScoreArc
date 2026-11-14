@@ -99,7 +99,10 @@ describe('Spanish team and news surfaces', () => {
         <TeamHeader profile={profile} teamStyle="crest" locale="es" />
         <TeamNewsHeadings />
         <SquadTable squad={squad} />
-        <TeamSearch teams={teams} />
+        <TeamSearch
+          teams={teams}
+          competitions={[{ id: 'liga-mx', name: 'Liga MX', shortName: 'Liga MX', emblem: 'x', teamStyle: 'crest', accent: '#0a0' }]}
+        />
         <NewsList articles={articles} />
       </>,
     );
