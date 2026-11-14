@@ -1137,78 +1137,6 @@ a.sn-item:hover { color: var(--text); }
   flex-shrink: 0;
 }
 
-/* ===== News ===== */
-.nw-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 18px;
-}
-.nw-card {
-  display: flex;
-  flex-direction: column;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  text-decoration: none;
-  color: inherit;
-  transition: border-color 0.15s, transform 0.15s;
-}
-.nw-card:hover {
-  border-color: var(--accent);
-  transform: translateY(-2px);
-}
-.nw-img {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
-  display: block;
-  background: var(--surface-2);
-}
-.nw-img-fallback {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 40px;
-  opacity: 0.4;
-}
-.nw-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 14px 16px 16px;
-  flex: 1;
-}
-.nw-headline {
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1.3;
-  color: var(--text);
-}
-.nw-desc {
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--text-muted);
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.nw-meta {
-  margin-top: auto;
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-.nw-time {
-  color: var(--accent);
-}
-
 /* ===== Empty States ===== */
 .empty-section {
   text-align: center;
@@ -3062,6 +2990,7 @@ a.sn-item:hover { color: var(--text); }
 }
 .dg-nw:first-child { border-top: 0; padding-top: 0; }
 .dg-nw:hover .dg-nwhead { color: var(--brand-bright); }
+.dg-nw:focus-visible { outline: 2px solid var(--brand-bright); outline-offset: 3px; border-radius: 4px; }
 .dg-nwimg {
   width: 74px;
   aspect-ratio: 16 / 9;
@@ -3070,9 +2999,8 @@ a.sn-item:hover { color: var(--text); }
   flex: none;
   background: var(--surface-2);
 }
-.dg-nwimg--blank { display: flex; align-items: center; justify-content: center; font-size: 18px; }
 .dg-nwbody { display: block; min-width: 0; }
-.dg-nwhead { display: block; font-size: 12.5px; line-height: 1.35; font-weight: 600; }
+.dg-nwhead { display: block; font-size: 12.5px; line-height: 1.35; font-weight: 600; text-wrap: pretty; }
 .dg-nwsrc {
   display: block;
   margin-top: 4px;
@@ -3080,6 +3008,57 @@ a.sn-item:hover { color: var(--text); }
   font-size: 9.5px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
+}
+/* A competition's own news page: fewer stories, so each one can say more. */
+.dg-news--detail .dg-nw { gap: 16px; padding: 16px 0; }
+.dg-news--detail .dg-nwimg { width: 148px; border-radius: 9px; }
+.dg-news--detail .dg-nwhead { font-size: 15px; line-height: 1.3; font-weight: 700; }
+.dg-nwdesc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 5px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.dg-news--detail .dg-nwsrc { margin-top: 8px; }
+@media (max-width: 560px) {
+  .dg-news--detail .dg-nw { gap: 12px; }
+  .dg-news--detail .dg-nwimg { width: 96px; }
+}
+
+/* --- /news: one short list per competition --- */
+/* Columns rather than a grid: the lists are different lengths (a quiet
+   competition has one story, a busy one four) and a grid would leave a hole
+   beside every short one. */
+.nwx { columns: 2 340px; column-gap: 48px; }
+.nwx-sec { break-inside: avoid; padding-bottom: 34px; }
+/* The competition's accent draws the first stretch of the rule, the way the
+   qualification cut draws the first stretch of the standings dial. */
+.nwx-h {
+  margin: 0 0 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+  background: linear-gradient(var(--accent), var(--accent)) left top / 44px 2px no-repeat;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.nwx-h a { display: inline-flex; align-items: center; gap: 9px; color: var(--text); text-decoration: none; }
+.nwx-h a:hover { color: var(--accent); }
+.nwx-h a:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+/* The pictured story leads its list; the rest are headlines. */
+.nwx .dg-nw:first-child { gap: 14px; padding-bottom: 14px; }
+.nwx .dg-nw:first-child .dg-nwimg { width: 132px; border-radius: 9px; }
+.nwx .dg-nw:first-child .dg-nwhead { font-size: 15px; line-height: 1.3; font-weight: 700; }
+.nwx .dg-nw--text { justify-content: space-between; gap: 16px; align-items: baseline; }
+.nwx .dg-nw--text .dg-nwbody { display: flex; flex: 1; gap: 16px; justify-content: space-between; align-items: baseline; }
+.nwx .dg-nw--text .dg-nwhead { font-size: 13px; }
+.nwx .dg-nw--text .dg-nwsrc { margin-top: 0; flex: none; white-space: nowrap; }
+@media (max-width: 560px) {
+  .nwx .dg-nw:first-child .dg-nwimg { width: 104px; }
 }
 
 /* The two columns stop being readable side by side well before the nav needs
