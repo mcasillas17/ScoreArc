@@ -116,6 +116,13 @@ go build ./...
 go vet ./...
 ```
 
+Keep `eslint-config-next` aligned with `next`: its React version detection
+supports ESLint 10 without disabling plugin rules. The npm override for
+`@typescript-eslint/typescript-estree@8` selects patched `minimatch` 11.x for
+[GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249).
+That parser uses the retained `minimatch()` API, not the regex APIs removed in
+11.x; the override does not replace legacy plugins' separate 3.x dependencies.
+
 The website uses explicit locale-prefixed routes. Open
 `http://localhost:3000/en` for English or `http://localhost:3000/es` for
 Spanish; an unprefixed page redirects from the saved language preference,
