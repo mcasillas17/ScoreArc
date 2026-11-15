@@ -1,7 +1,7 @@
 import type { Translator } from '@/i18n/translate';
 import type { Group } from '@/server/data/types';
 
-const SIMPLE_GROUP_ID = /^(?:[A-Za-z]|\d+)$/;
+const SIMPLE_GROUP_ID = /^(?:[A-Za-z]\d*|\d+)$/;
 
 export function translatedGroupName(group: Group, t: Translator): string {
   if (group.labelKey !== undefined) return t(group.labelKey);

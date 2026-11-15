@@ -102,6 +102,7 @@ describe('Spanish standings surfaces', () => {
       <StandingsLive
         initialGroups={[
           group('A', 'Provider Group A'),
+          group('D2', 'Group D2'),
           group('conference-east', 'East <script>alert(1)</script>'),
         ]}
         initialScorers={[]}
@@ -113,6 +114,7 @@ describe('Spanish standings surfaces', () => {
 
     expect(html).toContain('Grupo A');
     expect(html).not.toContain('Provider Group A');
+    expect(html).toContain('Grupo D2');
     expect(html).toContain('East &lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).not.toContain('<script>');
   });

@@ -8,6 +8,7 @@ const out = Object.values(COMPETITIONS).map((c) => ({
   name: c.name,
   shortName: c.shortName,
   espnSlug: c.espnSlug,
+  kind: c.kind,
   currentSeasonId: c.currentSeasonId,
   seasons: Object.fromEntries(
     Object.entries(c.seasons).map(([sid, s]) => [sid, {

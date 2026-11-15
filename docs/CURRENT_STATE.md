@@ -49,6 +49,27 @@ artifacts `14108832957` / `14108209067`, reported
 The exact monitor recovery record is in
 [MATCH_FRESHNESS](backend/MATCH_FRESHNESS.md#november-14-2026-startup-failure-recovery).
 
+### November 15 Nations League recurring poll alerts
+
+The earlier recovery did not establish sustained health. At 04:45 and 05:20 UTC,
+runs [43678116389](https://github.com/mcasillas17/ScoreArc/actions/runs/43678116389)
+and [43680628295](https://github.com/mcasillas17/ScoreArc/actions/runs/43680628295)
+delivered distinct Nations League OPEN events with `poll=failed`, 20 stale
+matches, zero overdue, and no delivery backlog; subsequent runs recovered.
+The feed's eight `gold-cup-play-in-prelims` matches were treated as requiring
+Nations League title-bracket confirmation, but that bracket excludes them.
+Full-season reconciliation therefore fails and retries every 30 minutes,
+while intervening rolling polls can report healthy.
+
+**Branch fix, not yet released:** explicitly classify those play-ins outside
+the title bracket and supersede their stored unknown-round requirement.
+Recorded-payload and real-Postgres regressions cover full/rolling/full poll
+recovery, unchanged 0-0 facts and sealed finalization. No monitor state reset,
+notification suppression, threshold change, migration or production write was
+performed. Acceptance requires a normal ingester release followed by sustained
+monitor observations beyond the 30-minute retry interval; see
+[the runbook](backend/MATCH_FRESHNESS.md#november-15-2026-recurring-nations-league-polls).
+
 ### November 1 T16.3 reconciliation
 
 The owner confirms migration **0028** and T17.3 resource metadata were deployed

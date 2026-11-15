@@ -43,15 +43,14 @@ func (r *runner) resolveMatch(
 	seasonID string,
 	match model.Match,
 ) (store.MatchIdentity, error) {
-	kind := config.TeamKind(comp)
 	homeID, err := r.repo.Team(ctx, sourceESPN, store.TeamRef{
-		SourceID: match.Home.ID, Name: match.Home.Name, Abbr: match.Home.Abbr, Kind: kind,
+		SourceID: match.Home.ID, Name: match.Home.Name, Abbr: match.Home.Abbr, Kind: comp.Kind,
 	})
 	if err != nil {
 		return store.MatchIdentity{}, fmt.Errorf("resolve home team: %w", err)
 	}
 	awayID, err := r.repo.Team(ctx, sourceESPN, store.TeamRef{
-		SourceID: match.Away.ID, Name: match.Away.Name, Abbr: match.Away.Abbr, Kind: kind,
+		SourceID: match.Away.ID, Name: match.Away.Name, Abbr: match.Away.Abbr, Kind: comp.Kind,
 	})
 	if err != nil {
 		return store.MatchIdentity{}, fmt.Errorf("resolve away team: %w", err)
