@@ -1330,6 +1330,26 @@
     }
   },
   {
+    "id": "nat-aia",
+    "kind": "national",
+    "name": "Anguilla",
+    "abbr": "AIA",
+    "country": "aia",
+    "refs": {
+      "espn": "8942"
+    }
+  },
+  {
+    "id": "nat-alb",
+    "kind": "national",
+    "name": "Albania",
+    "abbr": "ALB",
+    "country": "alb",
+    "refs": {
+      "espn": "585"
+    }
+  },
+  {
     "id": "nat-alg",
     "kind": "national",
     "name": "Algeria",
@@ -1340,6 +1360,16 @@
     }
   },
   {
+    "id": "nat-and",
+    "kind": "national",
+    "name": "Andorra",
+    "abbr": "AND",
+    "country": "and",
+    "refs": {
+      "espn": "587"
+    }
+  },
+  {
     "id": "nat-arg",
     "kind": "national",
     "name": "Argentina",
@@ -1347,6 +1377,36 @@
     "country": "arg",
     "refs": {
       "espn": "202"
+    }
+  },
+  {
+    "id": "nat-arm",
+    "kind": "national",
+    "name": "Armenia",
+    "abbr": "ARM",
+    "country": "arm",
+    "refs": {
+      "espn": "579"
+    }
+  },
+  {
+    "id": "nat-aru",
+    "kind": "national",
+    "name": "Aruba",
+    "abbr": "ARU",
+    "country": "aru",
+    "refs": {
+      "espn": "2642"
+    }
+  },
+  {
+    "id": "nat-atg",
+    "kind": "national",
+    "name": "Antigua and Barbuda",
+    "abbr": "ATG",
+    "country": "atg",
+    "refs": {
+      "espn": "2638"
     }
   },
   {
@@ -1370,6 +1430,26 @@
     }
   },
   {
+    "id": "nat-aze",
+    "kind": "national",
+    "name": "Azerbaijan",
+    "abbr": "AZE",
+    "country": "aze",
+    "refs": {
+      "espn": "581"
+    }
+  },
+  {
+    "id": "nat-bah",
+    "kind": "national",
+    "name": "Bahamas",
+    "abbr": "BAH",
+    "country": "bah",
+    "refs": {
+      "espn": "2640"
+    }
+  },
+  {
     "id": "nat-bel",
     "kind": "national",
     "name": "Belgium",
@@ -1377,6 +1457,16 @@
     "country": "bel",
     "refs": {
       "espn": "459"
+    }
+  },
+  {
+    "id": "nat-ber",
+    "kind": "national",
+    "name": "Bermuda",
+    "abbr": "BER",
+    "country": "ber",
+    "refs": {
+      "espn": "2643"
     }
   },
   {
@@ -1390,6 +1480,36 @@
     }
   },
   {
+    "id": "nat-blr",
+    "kind": "national",
+    "name": "Belarus",
+    "abbr": "BLR",
+    "country": "blr",
+    "refs": {
+      "espn": "583"
+    }
+  },
+  {
+    "id": "nat-blz",
+    "kind": "national",
+    "name": "Belize",
+    "abbr": "BLZ",
+    "country": "blz",
+    "refs": {
+      "espn": "2641"
+    }
+  },
+  {
+    "id": "nat-boe",
+    "kind": "national",
+    "name": "Bonaire",
+    "abbr": "BOE",
+    "country": "boe",
+    "refs": {
+      "espn": "19314"
+    }
+  },
+  {
     "id": "nat-bra",
     "kind": "national",
     "name": "Brazil",
@@ -1400,6 +1520,36 @@
     }
   },
   {
+    "id": "nat-brb",
+    "kind": "national",
+    "name": "Barbados",
+    "abbr": "BRB",
+    "country": "brb",
+    "refs": {
+      "espn": "2637"
+    }
+  },
+  {
+    "id": "nat-bul",
+    "kind": "national",
+    "name": "Bulgaria",
+    "abbr": "BUL",
+    "country": "bul",
+    "refs": {
+      "espn": "462"
+    }
+  },
+  {
+    "id": "nat-bvi",
+    "kind": "national",
+    "name": "British Virgin Islands",
+    "abbr": "BVI",
+    "country": "bvi",
+    "refs": {
+      "espn": "2644"
+    }
+  },
+  {
     "id": "nat-can",
     "kind": "national",
     "name": "Canada",
@@ -1407,6 +1557,16 @@
     "country": "can",
     "refs": {
       "espn": "206"
+    }
+  },
+  {
+    "id": "nat-cay",
+    "kind": "national",
+    "name": "Cayman Islands",
+    "abbr": "CAY",
+    "country": "cay",
+    "refs": {
+      "espn": "2646"
     }
   },
   {
@@ -1450,6 +1610,16 @@
     }
   },
   {
+    "id": "nat-crc",
+    "kind": "national",
+    "name": "Costa Rica",
+    "abbr": "CRC",
+    "country": "crc",
+    "refs": {
+      "espn": "214"
+    }
+  },
+  {
     "id": "nat-cro",
     "kind": "national",
     "name": "Croatia",
@@ -1457,6 +1627,16 @@
     "country": "cro",
     "refs": {
       "espn": "477"
+    }
+  },
+  {
+    "id": "nat-cub",
+    "kind": "national",
+    "name": "Cuba",
+    "abbr": "CUB",
+    "country": "cub",
+    "refs": {
+      "espn": "2647"
     }
   },
   {
@@ -1470,6 +1650,16 @@
     }
   },
   {
+    "id": "nat-cyp",
+    "kind": "national",
+    "name": "Cyprus",
+    "abbr": "CYP",
+    "country": "cyp",
+    "refs": {
+      "espn": "445"
+    }
+  },
+  {
     "id": "nat-cze",
     "kind": "national",
     "name": "Czechia",
@@ -1477,6 +1667,36 @@
     "country": "cze",
     "refs": {
       "espn": "450"
+    }
+  },
+  {
+    "id": "nat-den",
+    "kind": "national",
+    "name": "Denmark",
+    "abbr": "DEN",
+    "country": "den",
+    "refs": {
+      "espn": "479"
+    }
+  },
+  {
+    "id": "nat-dma",
+    "kind": "national",
+    "name": "Dominica",
+    "abbr": "DMA",
+    "country": "dma",
+    "refs": {
+      "espn": "13582"
+    }
+  },
+  {
+    "id": "nat-dom",
+    "kind": "national",
+    "name": "Dominican Republic",
+    "abbr": "DOM",
+    "country": "dom",
+    "refs": {
+      "espn": "2649"
     }
   },
   {
@@ -1520,6 +1740,26 @@
     }
   },
   {
+    "id": "nat-est",
+    "kind": "national",
+    "name": "Estonia",
+    "abbr": "EST",
+    "country": "est",
+    "refs": {
+      "espn": "444"
+    }
+  },
+  {
+    "id": "nat-fin",
+    "kind": "national",
+    "name": "Finland",
+    "abbr": "FIN",
+    "country": "fin",
+    "refs": {
+      "espn": "458"
+    }
+  },
+  {
     "id": "nat-fra",
     "kind": "national",
     "name": "France",
@@ -1527,6 +1767,36 @@
     "country": "fra",
     "refs": {
       "espn": "478"
+    }
+  },
+  {
+    "id": "nat-fro",
+    "kind": "national",
+    "name": "Faroe Islands",
+    "abbr": "FRO",
+    "country": "fro",
+    "refs": {
+      "espn": "447"
+    }
+  },
+  {
+    "id": "nat-gdl",
+    "kind": "national",
+    "name": "Guadeloupe",
+    "abbr": "GDL",
+    "country": "gdl",
+    "refs": {
+      "espn": "7657"
+    }
+  },
+  {
+    "id": "nat-geo",
+    "kind": "national",
+    "name": "Georgia",
+    "abbr": "GEO",
+    "country": "geo",
+    "refs": {
+      "espn": "584"
     }
   },
   {
@@ -1550,6 +1820,66 @@
     }
   },
   {
+    "id": "nat-gib",
+    "kind": "national",
+    "name": "Gibraltar",
+    "abbr": "GIB",
+    "country": "gib",
+    "refs": {
+      "espn": "16721"
+    }
+  },
+  {
+    "id": "nat-gre",
+    "kind": "national",
+    "name": "Greece",
+    "abbr": "GRE",
+    "country": "gre",
+    "refs": {
+      "espn": "455"
+    }
+  },
+  {
+    "id": "nat-grn",
+    "kind": "national",
+    "name": "Grenada",
+    "abbr": "GRN",
+    "country": "grn",
+    "refs": {
+      "espn": "2651"
+    }
+  },
+  {
+    "id": "nat-gua",
+    "kind": "national",
+    "name": "Guatemala",
+    "abbr": "GUA",
+    "country": "gua",
+    "refs": {
+      "espn": "2652"
+    }
+  },
+  {
+    "id": "nat-guf",
+    "kind": "national",
+    "name": "French Guiana",
+    "abbr": "GUF",
+    "country": "guf",
+    "refs": {
+      "espn": "10532"
+    }
+  },
+  {
+    "id": "nat-guy",
+    "kind": "national",
+    "name": "Guyana",
+    "abbr": "GUY",
+    "country": "guy",
+    "refs": {
+      "espn": "2653"
+    }
+  },
+  {
     "id": "nat-hai",
     "kind": "national",
     "name": "Haiti",
@@ -1557,6 +1887,36 @@
     "country": "hai",
     "refs": {
       "espn": "2654"
+    }
+  },
+  {
+    "id": "nat-hon",
+    "kind": "national",
+    "name": "Honduras",
+    "abbr": "HON",
+    "country": "hon",
+    "refs": {
+      "espn": "215"
+    }
+  },
+  {
+    "id": "nat-hun",
+    "kind": "national",
+    "name": "Hungary",
+    "abbr": "HUN",
+    "country": "hun",
+    "refs": {
+      "espn": "480"
+    }
+  },
+  {
+    "id": "nat-irl",
+    "kind": "national",
+    "name": "Republic of Ireland",
+    "abbr": "IRL",
+    "country": "irl",
+    "refs": {
+      "espn": "476"
     }
   },
   {
@@ -1580,6 +1940,46 @@
     }
   },
   {
+    "id": "nat-isl",
+    "kind": "national",
+    "name": "Iceland",
+    "abbr": "ISL",
+    "country": "isl",
+    "refs": {
+      "espn": "470"
+    }
+  },
+  {
+    "id": "nat-isr",
+    "kind": "national",
+    "name": "Israel",
+    "abbr": "ISR",
+    "country": "isr",
+    "refs": {
+      "espn": "461"
+    }
+  },
+  {
+    "id": "nat-ita",
+    "kind": "national",
+    "name": "Italy",
+    "abbr": "ITA",
+    "country": "ita",
+    "refs": {
+      "espn": "162"
+    }
+  },
+  {
+    "id": "nat-jam",
+    "kind": "national",
+    "name": "Jamaica",
+    "abbr": "JAM",
+    "country": "jam",
+    "refs": {
+      "espn": "1038"
+    }
+  },
+  {
     "id": "nat-jor",
     "kind": "national",
     "name": "Jordan",
@@ -1600,6 +2000,16 @@
     }
   },
   {
+    "id": "nat-kaz",
+    "kind": "national",
+    "name": "Kazakhstan",
+    "abbr": "KAZ",
+    "country": "kaz",
+    "refs": {
+      "espn": "2619"
+    }
+  },
+  {
     "id": "nat-kor",
     "kind": "national",
     "name": "South Korea",
@@ -1607,6 +2017,16 @@
     "country": "kor",
     "refs": {
       "espn": "451"
+    }
+  },
+  {
+    "id": "nat-kos",
+    "kind": "national",
+    "name": "Kosovo",
+    "abbr": "KOS",
+    "country": "kos",
+    "refs": {
+      "espn": "18272"
     }
   },
   {
@@ -1620,6 +2040,56 @@
     }
   },
   {
+    "id": "nat-lca",
+    "kind": "national",
+    "name": "St. Lucia",
+    "abbr": "LCA",
+    "country": "lca",
+    "refs": {
+      "espn": "2661"
+    }
+  },
+  {
+    "id": "nat-lie",
+    "kind": "national",
+    "name": "Liechtenstein",
+    "abbr": "LIE",
+    "country": "lie",
+    "refs": {
+      "espn": "589"
+    }
+  },
+  {
+    "id": "nat-ltu",
+    "kind": "national",
+    "name": "Lithuania",
+    "abbr": "LTU",
+    "country": "ltu",
+    "refs": {
+      "espn": "460"
+    }
+  },
+  {
+    "id": "nat-lux",
+    "kind": "national",
+    "name": "Luxembourg",
+    "abbr": "LUX",
+    "country": "lux",
+    "refs": {
+      "espn": "582"
+    }
+  },
+  {
+    "id": "nat-lva",
+    "kind": "national",
+    "name": "Latvia",
+    "abbr": "LVA",
+    "country": "lva",
+    "refs": {
+      "espn": "456"
+    }
+  },
+  {
     "id": "nat-mar",
     "kind": "national",
     "name": "Morocco",
@@ -1627,6 +2097,16 @@
     "country": "mar",
     "refs": {
       "espn": "2869"
+    }
+  },
+  {
+    "id": "nat-mda",
+    "kind": "national",
+    "name": "Moldova",
+    "abbr": "MDA",
+    "country": "mda",
+    "refs": {
+      "espn": "483"
     }
   },
   {
@@ -1640,6 +2120,66 @@
     }
   },
   {
+    "id": "nat-mkd",
+    "kind": "national",
+    "name": "North Macedonia",
+    "abbr": "MKD",
+    "country": "mkd",
+    "refs": {
+      "espn": "463"
+    }
+  },
+  {
+    "id": "nat-mlt",
+    "kind": "national",
+    "name": "Malta",
+    "abbr": "MLT",
+    "country": "mlt",
+    "refs": {
+      "espn": "453"
+    }
+  },
+  {
+    "id": "nat-mne",
+    "kind": "national",
+    "name": "Montenegro",
+    "abbr": "MNE",
+    "country": "mne",
+    "refs": {
+      "espn": "6775"
+    }
+  },
+  {
+    "id": "nat-msr",
+    "kind": "national",
+    "name": "Montserrat",
+    "abbr": "MSR",
+    "country": "msr",
+    "refs": {
+      "espn": "2655"
+    }
+  },
+  {
+    "id": "nat-mtq",
+    "kind": "national",
+    "name": "Martinique",
+    "abbr": "MTQ",
+    "country": "mtq",
+    "refs": {
+      "espn": "2728"
+    }
+  },
+  {
+    "id": "nat-nca",
+    "kind": "national",
+    "name": "Nicaragua",
+    "abbr": "NCA",
+    "country": "nca",
+    "refs": {
+      "espn": "2658"
+    }
+  },
+  {
     "id": "nat-ned",
     "kind": "national",
     "name": "Netherlands",
@@ -1647,6 +2187,16 @@
     "country": "ned",
     "refs": {
       "espn": "449"
+    }
+  },
+  {
+    "id": "nat-nir",
+    "kind": "national",
+    "name": "Northern Ireland",
+    "abbr": "NIR",
+    "country": "nir",
+    "refs": {
+      "espn": "586"
     }
   },
   {
@@ -1690,6 +2240,16 @@
     }
   },
   {
+    "id": "nat-pol",
+    "kind": "national",
+    "name": "Poland",
+    "abbr": "POL",
+    "country": "pol",
+    "refs": {
+      "espn": "471"
+    }
+  },
+  {
     "id": "nat-por",
     "kind": "national",
     "name": "Portugal",
@@ -1700,6 +2260,16 @@
     }
   },
   {
+    "id": "nat-pur",
+    "kind": "national",
+    "name": "Puerto Rico",
+    "abbr": "PUR",
+    "country": "pur",
+    "refs": {
+      "espn": "11766"
+    }
+  },
+  {
     "id": "nat-qat",
     "kind": "national",
     "name": "Qatar",
@@ -1707,6 +2277,16 @@
     "country": "qat",
     "refs": {
       "espn": "4398"
+    }
+  },
+  {
+    "id": "nat-rou",
+    "kind": "national",
+    "name": "Romania",
+    "abbr": "ROU",
+    "country": "rou",
+    "refs": {
+      "espn": "473"
     }
   },
   {
@@ -1740,6 +2320,66 @@
     }
   },
   {
+    "id": "nat-skn",
+    "kind": "national",
+    "name": "St. Kitts and Nevis",
+    "abbr": "SKN",
+    "country": "skn",
+    "refs": {
+      "espn": "2662"
+    }
+  },
+  {
+    "id": "nat-slv",
+    "kind": "national",
+    "name": "El Salvador",
+    "abbr": "SLV",
+    "country": "slv",
+    "refs": {
+      "espn": "2650"
+    }
+  },
+  {
+    "id": "nat-sma",
+    "kind": "national",
+    "name": "Sint Maarten",
+    "abbr": "SMA",
+    "country": "sma",
+    "refs": {
+      "espn": "18243"
+    }
+  },
+  {
+    "id": "nat-smn",
+    "kind": "national",
+    "name": "St. Martin",
+    "abbr": "SMN",
+    "country": "smn",
+    "refs": {
+      "espn": "10596"
+    }
+  },
+  {
+    "id": "nat-smr",
+    "kind": "national",
+    "name": "San Marino",
+    "abbr": "SMR",
+    "country": "smr",
+    "refs": {
+      "espn": "588"
+    }
+  },
+  {
+    "id": "nat-srb",
+    "kind": "national",
+    "name": "Serbia",
+    "abbr": "SRB",
+    "country": "srb",
+    "refs": {
+      "espn": "6757"
+    }
+  },
+  {
     "id": "nat-sui",
     "kind": "national",
     "name": "Switzerland",
@@ -1750,6 +2390,36 @@
     }
   },
   {
+    "id": "nat-sur",
+    "kind": "national",
+    "name": "Suriname",
+    "abbr": "SUR",
+    "country": "sur",
+    "refs": {
+      "espn": "2664"
+    }
+  },
+  {
+    "id": "nat-svk",
+    "kind": "national",
+    "name": "Slovakia",
+    "abbr": "SVK",
+    "country": "svk",
+    "refs": {
+      "espn": "468"
+    }
+  },
+  {
+    "id": "nat-svn",
+    "kind": "national",
+    "name": "Slovenia",
+    "abbr": "SVN",
+    "country": "svn",
+    "refs": {
+      "espn": "472"
+    }
+  },
+  {
     "id": "nat-swe",
     "kind": "national",
     "name": "Sweden",
@@ -1757,6 +2427,26 @@
     "country": "swe",
     "refs": {
       "espn": "466"
+    }
+  },
+  {
+    "id": "nat-tca",
+    "kind": "national",
+    "name": "Turks and Caicos Islands",
+    "abbr": "TCA",
+    "country": "tca",
+    "refs": {
+      "espn": "2665"
+    }
+  },
+  {
+    "id": "nat-tri",
+    "kind": "national",
+    "name": "Trinidad and Tobago",
+    "abbr": "TRI",
+    "country": "tri",
+    "refs": {
+      "espn": "2627"
     }
   },
   {
@@ -1777,6 +2467,16 @@
     "country": "tur",
     "refs": {
       "espn": "465"
+    }
+  },
+  {
+    "id": "nat-ukr",
+    "kind": "national",
+    "name": "Ukraine",
+    "abbr": "UKR",
+    "country": "ukr",
+    "refs": {
+      "espn": "457"
     }
   },
   {
@@ -1807,6 +2507,36 @@
     "country": "uzb",
     "refs": {
       "espn": "2570"
+    }
+  },
+  {
+    "id": "nat-vin",
+    "kind": "national",
+    "name": "St. Vincent and the Grenadines",
+    "abbr": "VIN",
+    "country": "vin",
+    "refs": {
+      "espn": "13584"
+    }
+  },
+  {
+    "id": "nat-vir",
+    "kind": "national",
+    "name": "US Virgin Islands",
+    "abbr": "USVI",
+    "country": "vir",
+    "refs": {
+      "espn": "2645"
+    }
+  },
+  {
+    "id": "nat-wal",
+    "kind": "national",
+    "name": "Wales",
+    "abbr": "WAL",
+    "country": "wal",
+    "refs": {
+      "espn": "578"
     }
   },
   {

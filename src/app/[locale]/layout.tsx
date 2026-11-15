@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
 import { notFound } from "next/navigation";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
@@ -8,17 +7,6 @@ import { isLocale, SUPPORTED_LOCALES } from "@/i18n/config";
 import { getTranslator } from "@/i18n/translate";
 import AppShell from "@/components/AppShell";
 import "../globals.css";
-
-const geistSans = localFont({
-  src: "../fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
-  weight: "100 900",
-});
-const geistMono = localFont({
-  src: "../fonts/GeistMonoVF.woff",
-  variable: "--font-geist-mono",
-  weight: "100 900",
-});
 
 export function generateStaticParams() {
   return SUPPORTED_LOCALES.map((locale) => ({ locale }));
@@ -74,7 +62,7 @@ export default async function RootLayout({
   if (!isLocale(locale)) notFound();
   return (
     <html lang={locale}>
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>
+      <body>
         <I18nProvider locale={locale}>
           <AppShell>{children}</AppShell>
         </I18nProvider>

@@ -37,6 +37,23 @@ async function prepareNext(o: Awaited<ReturnType<typeof options>>, result = stal
 }
 
 describe('durable match monitor', () => {
+  it('adopts a competition added to the registry, and still refuses a removed one', async () => {
+    const o = await options(); o.check = async () => fresh;
+    await monitor.prepareMonitor(o);
+    o.scopes = [scopeFor('world-cup'), scopeFor('nations-league')];
+    await prepareNext(o, fresh);
+    const added = await state(o.stateFile);
+    expect(added.incidents).toEqual({ 'nations-league/2026': null, 'world-cup/2026': null });
+    expect(added.pending).toEqual([]);
+    o.scopes = [scopeFor('nations-league')];
+    await expect(prepareNext(o, fresh)).rejects.toThrow(/state/i);
+  });
+  // GitHub's job-level `github.ref == 'refs/heads/main'` is case-insensitive; this exact check,
+  // which runPhase applies before any state, network or webhook work, is the enforcement.
+  it.each(['refs/heads/Main', 'refs/heads/MAIN', 'refs/heads/feature'])('rejects run provenance with ref %s', (ref) => {
+    expect(() => monitor.validateRun({ ...run, ref })).toThrow('Invalid run provenance');
+    expect(() => monitor.validateRun(run)).not.toThrow();
+  });
   it('is disabled before filesystem, production checks or sends', async () => {
     const check = vi.fn(); const fetchImpl = vi.fn();
     expect(await monitor.prepareMonitor({ enabled: false, check })).toEqual({ disabled: true });
@@ -189,6 +206,32 @@ describe('durable match monitor', () => {
     expect((await state(o.stateFile)).pending[0]).toMatchObject({ id: eventId, attempts: 1 });
     expect(Date.now() - started).toBeLessThan(2000);
   });
+  // The deployed receiver acknowledges only after its email send, which took 4.5-5.1 s
+  // in production; a 5 s limit failed the first real delivery.
+  it('aborts each acknowledgment and heartbeat at 15 seconds, not 5', async () => {
+    const o = await options(); await monitor.prepareMonitor(o);
+    const eventId = (await state(o.stateFile)).pending[0].id;
+    const timer = vi.spyOn(globalThis, 'setTimeout');
+    const ack = async () => new Response(JSON.stringify({ eventId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    await expect(monitor.deliverMonitor({ ...o, webhookURL: 'https://r.example/events/abc', pendingArtifactId: 1, timeoutMs: 15001, fetchImpl: ack })).rejects.toThrow('Invalid notifier timeout');
+    // The 15 s timer is the one that aborts the signal handed to this send.
+    // Recorded, not asserted, inside the send: its catch-all would turn a failed expect into delivery-failed.
+    const seen: (boolean | undefined)[] = [];
+    const send = async (_url: unknown, init?: RequestInit) => {
+      const [abort] = timer.mock.calls.filter(([, ms]) => ms === 15000).at(-1) ?? [];
+      seen.push(init?.signal?.aborted);
+      (abort as (() => void) | undefined)?.();
+      seen.push(init?.signal?.aborted);
+      return ack();
+    };
+    expect(await monitor.deliverMonitor({ ...o, webhookURL: 'https://r.example/events/abc', pendingArtifactId: 1, fetchImpl: send })).toMatchObject({ pending: 0 });
+    expect(seen).toEqual([false, true]);
+    const signal = vi.spyOn(AbortSignal, 'timeout');
+    let sent: AbortSignal | null | undefined;
+    await monitor.sendHeartbeat({ webhookURL: 'https://r.example/events/abc', fetchImpl: async (_url: unknown, init?: RequestInit) => { sent = init?.signal; return new Response(null, { status: 204 }); } });
+    expect(signal).toHaveBeenCalledWith(15000);
+    expect(sent).toBe(signal.mock.results[0].value);
+  });
   it('reserves attempts before sending, obeys persistent backoff and exhausts at 20', async () => {
     const o = await options(); await monitor.prepareMonitor(o);
     for (let i = 1; i < 20; i++) await prepareNext(o, stale, 21600000);
@@ -214,7 +257,7 @@ describe('durable match monitor', () => {
       res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ eventId: JSON.parse(raw).eventId }));
     });
     await monitor.deliverMonitor({ ...o, run: prepared.run, webhookURL, pendingArtifactId: 1 });
-    expect((await state(o.stateFile)).pending.length).toBe(saved.pending.length - 10);
+    expect((await state(o.stateFile)).pending.length).toBe(saved.pending.length - 16);
     expect(check).not.toHaveBeenCalled();
 
   });

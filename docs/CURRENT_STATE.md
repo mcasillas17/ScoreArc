@@ -3,6 +3,87 @@
 **Broad inventory baseline:** 2026-09-01, against `main` @ `49bf68d`.
 Unrelated inventory observations below retain their original dates.
 
+### November 14 match-monitor and Nations League recovery
+
+The production match watchdog's stopped-run incident is **recovered**. Its last
+healthy heartbeat before the outage was
+[run 43094733866](https://github.com/mcasillas17/ScoreArc/actions/runs/43094733866)
+at 20:15:42 UTC November 11, with final checkpoint artifact `13891075249`.
+Six GitHub `startup_failure` runs with zero jobs began at
+[run 43095404456](https://github.com/mcasillas17/ScoreArc/actions/runs/43095404456);
+the selector rejected that previously unrecorded no-job conclusion, and later
+runs failed before Prepare. The final failed run before the pause was
+[run 43573685522](https://github.com/mcasillas17/ScoreArc/actions/runs/43573685522)
+(number 1429) at 08:00 UTC November 14.
+
+An authenticated audit covered all 716 intervening runs: 6 `startup_failure`
+with zero jobs, 709 failures whose Select step failed and Prepare step skipped,
+and 1 cancellation with no preparation. It found no barrier and no checkpoint
+newer than run 43094733866. The downloaded final checkpoint also passed the
+current Prepare path locally: sequence 20 was preserved, the ten-scope envelope
+adopted the eleventh configured scope, and healthy synthetic observations
+produced zero pending events or monitor failure. #265 merged as `55c7f0b`;
+[main CI 43576957367](https://github.com/mcasillas17/ScoreArc/actions/runs/43576957367)
+passed. Exact recovery
+[run 43577788015](https://github.com/mcasillas17/ScoreArc/actions/runs/43577788015)
+restored the old checkpoint, wrote pending/final artifacts `14107316783` /
+`14107042384`, reported `pending=0 monitor=ok`, and acknowledged its heartbeat.
+The workflow is active. Ordinary runs 1431–1433 each restored the new state,
+reported `pending=0 monitor=ok`, and acknowledged a heartbeat.
+
+Recovery correctly opened a separate **Nations League data incident**: the
+reader serves 106 matches with `poll=failed`, `freshness=stale`, 26 stale and
+zero overdue, with its last accepted observation at 2026-11-12 06:51:38 UTC.
+The Go ESPN source reproduced the cause: regular match discovery succeeds, but
+bracket mapping rejected finished first leg `401929776` (Curaçao 0–0 Panama)
+because neither team is an individual-leg winner. The TypeScript/reader path
+already folds two-legged ties; #266 (`093f6cf`) retained both provider match
+rows while allowing only structured first legs to finish without a winner.
+[Main CI 43581222695](https://github.com/mcasillas17/ScoreArc/actions/runs/43581222695)
+passed and released the ingester and reader. At 09:51 UTC the same reader scope
+reported `poll=ok`, `freshness=fresh`, zero stale and zero overdue. Monitor
+[run 43582787634](https://github.com/mcasillas17/ScoreArc/actions/runs/43582787634)
+(number 1443) delivered the Nations League `RESOLVED`, wrote pending/final
+artifacts `14108832957` / `14108209067`, reported
+`data_incident=false pending=0 monitor=ok`, and acknowledged its heartbeat.
+The exact monitor recovery record is in
+[MATCH_FRESHNESS](backend/MATCH_FRESHNESS.md#november-14-2026-startup-failure-recovery).
+
+### November 15 Nations League recurring poll alerts
+
+The earlier CONCACAF recovery did not establish sustained health. At 04:45 and 05:20 UTC,
+runs [43678116389](https://github.com/mcasillas17/ScoreArc/actions/runs/43678116389)
+and [43680628295](https://github.com/mcasillas17/ScoreArc/actions/runs/43680628295)
+delivered distinct Nations League OPEN events with `poll=failed`, 20 stale
+matches, zero overdue, and no delivery backlog; subsequent runs recovered.
+The feed's eight `gold-cup-play-in-prelims` matches were treated as requiring
+Nations League title-bracket confirmation, but that bracket excludes them.
+Full-season reconciliation therefore fails and retries every 30 minutes,
+while intervening rolling polls can report healthy.
+
+**Branch fix, not yet released:** explicitly classify those play-ins outside
+the title bracket and supersede their stored unknown-round requirement.
+Recorded-payload and real-Postgres regressions cover full/rolling/full poll
+recovery, unchanged 0-0 facts and sealed finalization. No monitor state reset,
+notification suppression, threshold change, migration or production write was
+performed. Acceptance requires a normal ingester release followed by sustained
+monitor observations beyond the 30-minute retry interval; see
+[the runbook](backend/MATCH_FRESHNESS.md#november-15-2026-recurring-nations-league-polls).
+
+#### UEFA rollout and recovery, November 15
+
+At 08:45 UTC, the watchdog adopted the twelfth competition from #269.
+Only `uefa-nations-league/2026-27` opened an incident. The production reader
+returned HTTP 400 for the new scope while the release was still running.
+CONCACAF's separate scope served 106 matches with a healthy poll.
+[Opening run](https://github.com/mcasillas17/ScoreArc/actions/runs/43695956484) ·
+[Release](https://github.com/mcasillas17/ScoreArc/actions/runs/43695872061).
+
+The 08:55 UTC run recorded 156 UEFA matches, zero stale and zero overdue.
+The receiver acknowledged the matching RESOLVED event and heartbeat. The final
+watchdog checkpoint had all 12 scopes, zero open incidents and zero pending deliveries.
+[Recovery run](https://github.com/mcasillas17/ScoreArc/actions/runs/43696721041).
+
 ### November 1 T16.3 reconciliation
 
 The owner confirms migration **0028** and T17.3 resource metadata were deployed
@@ -677,8 +758,12 @@ held-byte reprocessing and new collection remain unchanged.
   matches with missing participation; match-state recovery does not repair it.
 - **T17.3/T17.4 trust and notification delivery:** broader resource provenance is
   implemented in the October 30 T17.3 slice, deployed with 0028 on October 31
-  per owner ([contract and limits](backend/READER_CONTRACT.md#t173-resource-freshness-contract)). Scheduled freshness checks
-  and notification activation still require explicit approval.
+  per owner ([contract and limits](backend/READER_CONTRACT.md#t173-resource-freshness-contract)). T17.4 match
+  monitoring status, evidence and open items are in its
+  [activation record](backend/MATCH_FRESHNESS.md#activation-record-november-7-2026).
+  The watchdog is active after the
+  [November 14 startup-failure recovery](backend/MATCH_FRESHNESS.md#november-14-2026-startup-failure-recovery);
+  its real Nations League OPEN was resolved by #266 and monitor run 1443.
   Collect sustained reconciliation and transient-failure recovery evidence
   ([SETUP §7.5](backend/SETUP.md#75-verify)); the dated observations above do not
   close this acceptance or ancillary squad/player/archive coverage.

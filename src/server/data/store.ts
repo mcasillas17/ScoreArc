@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache';
 import { configuredDataStore } from './configuredStore';
 import { ReaderFailure } from './readerTransport';
 import { trackReaderFallback } from '@/lib/telemetry/server';
@@ -66,6 +67,9 @@ export interface DataStore {
 const TOP_SCORERS_SHOWN = 10;
 
 interface DataDeps {
+  now?: () => number;
+  /** Evaluation observes the actual sides, including private bulk enrichment. */
+  onSummaryRequest?: (eventId: string, homeId: string, awayId: string) => void;
   /** Enabled-mode fallback must not turn a dependency outage into an entity 404. */
   propagateUnavailable?: boolean;
   fetchJson: ScoreboardFetchJson;
@@ -84,7 +88,12 @@ function emptySummary(): MatchSummaryData {
   };
 }
 
+async function fetchSquad(league: string, teamId: string, fetchJson: ScoreboardFetchJson) {
+  return mapTeamRoster(await fetchJson(teamRosterUrl(league, teamId)));
+}
+
 export function createDataStore(deps: DataDeps): DataStore {
+  const now = deps.now ?? Date.now;
   // Cache keys are scoped per competition AND season so editions never collide.
   const key = (rc: CompetitionSeason, k: string) => `${rc.competition.id}:${rc.season.id}:${k}`;
   const slug = (rc: CompetitionSeason) => rc.competition.espnSlug;
@@ -157,6 +166,7 @@ export function createDataStore(deps: DataDeps): DataStore {
     const cached = deps.cache.get(k) as LoadedSummary | undefined;
     if (cached) return cached;
     signal?.throwIfAborted();
+    deps.onSummaryRequest?.(eventId, homeId, awayId);
     const raw = await deps.fetchJson(summaryUrl(slug(rc), eventId), signal
       ? { signal, maxBytes: 4 * 1024 * 1024 } : undefined);
     const summary: MatchSummaryData = {
@@ -192,7 +202,7 @@ export function createDataStore(deps: DataDeps): DataStore {
 
     async getMatches(rc, range?: string, signal?: AbortSignal): Promise<Match[]> {
       signal?.throwIfAborted();
-      const window = range ?? currentWeekRange(new Date());
+      const window = range ?? currentWeekRange(new Date(now()));
       // The range is part of the identity of this result. Without it in the
       // key, the first window fetched is served for every later one.
       const k = key(rc, `matches:${window}`);
@@ -253,7 +263,7 @@ export function createDataStore(deps: DataDeps): DataStore {
     // the band polls every 30s, and serving it a 120s-old entry would render
     // "67'" beside a two-minute-old scoreline.
     async getLiveWindow(rc): Promise<Match[]> {
-      const range = nowWindowRange(new Date());
+      const range = nowWindowRange(new Date(now()));
       return loadWindow(rc, range, `live:${range}`, 15_000);
     },
 
@@ -270,7 +280,7 @@ export function createDataStore(deps: DataDeps): DataStore {
     // turn one request into thirty.
     async getUpcoming(rc, limit = 12, signal?: AbortSignal): Promise<Match[]> {
       signal?.throwIfAborted();
-      const range = forwardRange(new Date());
+      const range = forwardRange(new Date(now()));
       const k = key(rc, `upcoming:${range}:${limit}`);
       const cached = deps.cache.get(k) as Match[] | undefined;
       if (cached) return cached;
@@ -337,8 +347,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       const cached = deps.cache.get(k) as SquadPlayer[] | undefined;
       if (cached) return cached;
       try {
-        const raw = await deps.fetchJson(teamRosterUrl(slug(rc), teamId));
-        const squad = mapTeamRoster(raw);
+        const squad = await fetchSquad(slug(rc), teamId, deps.fetchJson);
         deps.cache.set(k, squad, 300_000);
         return squad;
       } catch (error) {
@@ -425,7 +434,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       const cached = deps.cache.get(k) as BracketRound[] | undefined;
       if (cached) return cached;
       const raw = rc.season.bracketDatesRange
-        ? await fetchScoreboardWindow(rc, rc.season.bracketDatesRange, deps.fetchJson)
+        ? await fetchScoreboardWindow(rc, rc.season.bracketDatesRange, deps.fetchJson, undefined, 184)
         : await deps.fetchJson(scoreboardUrl(slug(rc)), {
           signal: AbortSignal.timeout(15_000), maxBytes: 4 * 1024 * 1024,
         });
@@ -449,7 +458,19 @@ export function createDataStore(deps: DataDeps): DataStore {
 }
 
 const espnCache = new TtlCache<unknown>();
-export const espnDataStore: DataStore = createDataStore({ fetchJson: boundedFetchJson, cache: espnCache });
+// A cold player lookup reads every roster. Cache the small mapped squads across
+// function instances. Catch provider failures outside the cache so a retry can recover.
+const loadEspnSquad = unstable_cache(
+  (scope: { league: string; season: string }, teamId: string) =>
+    fetchSquad(scope.league, teamId, boundedFetchJson),
+  ['espn-squad-v1'],
+  { revalidate: 300 },
+);
+export const espnDataStore: DataStore = {
+  ...createDataStore({ fetchJson: boundedFetchJson, cache: espnCache }),
+  getSquad: (rc, teamId) =>
+    loadEspnSquad({ league: rc.competition.espnSlug, season: rc.season.id }, teamId).catch(() => []),
+};
 export const dataStore: DataStore = configuredDataStore({
   espn: espnDataStore,
   env: process.env,

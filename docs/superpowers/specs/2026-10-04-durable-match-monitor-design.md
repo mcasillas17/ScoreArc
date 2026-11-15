@@ -21,7 +21,7 @@ upload, restore pending and retry with the same ID. Delivery is retryable at lea
 once within stated budgets, not exactly once or proof of human receipt.
 
 Limits: 32 scopes; existing 10s/8MiB reader request limits; 128 pending events;
-32 retained receipts; 256KiB state; 10 sends per run, 5s each; 20 reserved attempts
+32 retained receipts; 256KiB state; 10 sends per run, 5s each (15s since November 7, 2026: the receiver acknowledges after its ~5s email send); 20 reserved attempts
 per event, exponential retry spacing 5min–6h; no in-run retry. Exhaustion blocks
 FIFO with explicit failure. Near-full queues pause observations while draining,
 without pretending missed observations are healthy. Lost transitions while the

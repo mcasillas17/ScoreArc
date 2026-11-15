@@ -1,9 +1,8 @@
 name: Match freshness watchdog
 
-# Activation is NOT part of this change. After owner approval, add this trigger:
-# schedule:
-#   - cron: '3-58/5 * * * *'
-# Keep MATCH_FRESHNESS_ENABLED unset/false until bootstrap and channel acceptance.
+# Once deployed, the alert receiver's cron dispatches this workflow on main every five
+# minutes, because GitHub's own schedule started it late or not at all
+# (docs/backend/MATCH_FRESHNESS.md, "Worker dispatch"). MATCH_FRESHNESS_ENABLED absent/false still means zero checks.
 on:
   workflow_dispatch:
     inputs:
@@ -11,6 +10,16 @@ on:
         description: First history only; fails if any previous checkpoint or uncertain history exists
         type: boolean
         default: false
+        required: false
+      recovery_run_id:
+        description: Owner-reviewed recovery only; exact prior run holding the final checkpoint
+        type: string
+        default: ""
+        required: false
+      recovery_artifact_id:
+        description: Owner-reviewed recovery only; exact match-freshness-state artifact
+        type: string
+        default: ""
         required: false
 
 permissions:
@@ -41,6 +50,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           INITIALIZE_STATE: ${{ inputs.initialize_state || false }}
+          RECOVERY_RUN_ID: ${{ inputs.recovery_run_id || '' }}
+          RECOVERY_ARTIFACT_ID: ${{ inputs.recovery_artifact_id || '' }}
         run: node scripts/match-freshness-monitor.mjs select
       - name: Restore selected checkpoint
         id: restore
@@ -54,6 +65,10 @@ jobs:
           github-token: ${{ github.token }}
       - name: Prepare pending state
         id: prepare
+        # Select records a decision only when the CLI is enabled (exact 'true'). Without one
+        # (e.g. 'TRUE' passed the case-insensitive job gate) Prepare is skipped, which the
+        # selector passes over, instead of succeeding without a checkpoint (a barrier).
+        if: ${{ success() && (steps.select.outputs.initialize == 'true' || steps.select.outputs.initialize == 'false') }}
         run: node scripts/match-freshness-monitor.mjs prepare
       - name: Commit pending checkpoint before any send
         id: pending
@@ -83,4 +98,9 @@ jobs:
       - name: Report data and monitor status separately
         id: result
         if: ${{ always() && steps.prepare.outputs.state_written == 'true' }}
+        env:
+          # Runs send a heartbeat to the receiver's not-running check, only after both
+          # checkpoints were uploaded.
+          MATCH_FRESHNESS_WEBHOOK_URL: ${{ secrets.MATCH_FRESHNESS_WEBHOOK_URL }}
+          CHECKPOINT_COMMITTED: ${{ steps.pending.outcome == 'success' && steps.final.outcome == 'success' }}
         run: node scripts/match-freshness-monitor.mjs result

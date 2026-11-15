@@ -8,6 +8,7 @@
  * This intentionally small dataset is browser test evidence, not a production snapshot.
  */
 import assert from 'node:assert/strict';
+import { pathToFileURL } from 'node:url';
 import { createServer, type Server } from 'node:http';
 import { decodeReaderMatches, decodeReaderStandings, decodeReaderSummary, decodeReaderBracket,
   decodeReaderLeaders, decodeReaderTeam, decodeReaderSquad, decodeReaderPlayer } from '../src/server/data/readerDecode';
@@ -143,7 +144,7 @@ function identityRows(scope: Scope, kind: string | null, from: string | null, id
   });
 }
 
-function createPreviewServer(): Server {
+export function createPreviewServer(): Server {
   const faults = new Set<RouteName>();
   const calls = Object.fromEntries(routeNames.map(name => [name, 0]));
   const recent: { route: RouteName; scope: string; status: number }[] = [];
@@ -367,4 +368,6 @@ async function main() {
   server.on('error', error => { console.error(error.message); process.exitCode = 1; });
   server.listen(port, '127.0.0.1', () => console.log(`LOCAL SYNTHETIC reader listening at http://127.0.0.1:${port}; counters at /__test/state`));
 }
-void main().catch(error => { console.error(error); process.exitCode = 1; });
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  void main().catch(error => { console.error(error); process.exitCode = 1; });
+}

@@ -72,8 +72,8 @@ describe('StandingsPage', () => {
     expect(html).toContain('Best Third-Placed Teams');
   });
 
-  it('leads with the fixture band, as a landing page should', async () => {
-    stubStore([group('liga-mx', 18)]);
+  it("shows what's next under the heading where standings is the landing page", async () => {
+    stubStore([group('premier-league', 20)]);
     vi.spyOn(dataStore, 'getMatches').mockResolvedValue([
       {
         id: '1', state: 'scheduled', date: '2026-08-20T00:00:00Z',
@@ -83,10 +83,10 @@ describe('StandingsPage', () => {
       } as never,
     ]);
     const html = renderLocalized(await StandingsPage({
-      params: { locale: 'en', comp: 'liga-mx', season: '2026-apertura' },
+      params: { locale: 'en', comp: 'premier-league', season: '2026-27' },
     }));
     expect(html).toContain('Upcoming This Week');
-    expect(html.indexOf('Upcoming This Week')).toBeLessThan(html.indexOf('Standings'));
+    expect(html.indexOf('Upcoming This Week')).toBeGreaterThan(html.indexOf('</h1>'));
   });
 
   // A finished edition has no "what's next".

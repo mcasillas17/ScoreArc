@@ -5,6 +5,10 @@ import { dataStore } from '@/server/data/store';
 import type { Match, TeamProfile } from '@/server/data/types';
 import TeamPage from './page';
 
+vi.mock('@/server/data/playerIndex', () => ({
+  competitionPlayerIndex: vi.fn(async () => ({ byProvider: new Map(), bySlug: new Map() })),
+}));
+
 vi.mock('next/navigation', () => ({
   notFound: vi.fn(() => { throw new Error('NEXT_NOT_FOUND'); }),
   usePathname: () => '/es/c/liga-mx/2026-apertura/team/mex-america',

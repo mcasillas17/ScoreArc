@@ -1,4 +1,4 @@
-import { collectStories, type DigestNewsItem } from '@/lib/digest';
+import { collectStories, groupStories, type DigestNewsItem } from '@/lib/digest';
 import { formatRelativeTime } from '@/i18n/format';
 import type { Locale } from '@/i18n/config';
 import { listCompetitions, resolveSeason, type Competition } from './competitions';
@@ -30,19 +30,50 @@ export async function collectDatedStories(
   { perFeed, limit }: { perFeed: number; limit: number },
   competitions: Competition[] = listCompetitions(),
 ): Promise<DigestNewsItem[]> {
-  const feeds = await Promise.all(
+  const feeds = await readFeeds(competitions);
+  return collectStories(feeds, { perFeed, limit }).map((article) => dated(article, now, locale));
+}
+
+function readFeeds(competitions: Competition[]): Promise<NewsArticle[][]> {
+  return Promise.all(
     competitions.map((comp) =>
       dataStore.getNews(resolveSeason(comp.id)!).catch((): NewsArticle[] => []),
     ),
   );
-  return collectStories(feeds, { perFeed, limit }).map((article) => {
-    const published = new Date(article.published);
-    return {
-      article,
-      // A duration, not a wall clock: safe to format on a server running UTC
-      // because it means the same thing to a reader in any timezone. A publish
-      // time in the future is a provider defect, not a duration.
-      ago: published > now ? null : formatRelativeTime(published, now, locale),
-    };
-  });
+}
+
+function dated(article: NewsArticle, now: Date, locale: Locale): DigestNewsItem {
+  const published = new Date(article.published);
+  return {
+    article,
+    // A duration, not a wall clock: safe to format on a server running UTC
+    // because it means the same thing to a reader in any timezone. A publish
+    // time in the future is a provider defect, not a duration.
+    ago: published > now ? null : formatRelativeTime(published, now, locale),
+  };
+}
+
+export interface CompetitionStories {
+  competition: Competition;
+  items: DigestNewsItem[];
+}
+
+/**
+ * /news: recent stories under the competition whose feed carried them, the
+ * competition with the newest story first. Competitions with nothing inside
+ * the window are left out rather than shown with old stories.
+ */
+export async function collectStoriesByCompetition(
+  now: Date,
+  locale: Locale,
+  { perFeed, maxAgeDays }: { perFeed: number; maxAgeDays: number },
+  competitions: Competition[] = listCompetitions(),
+): Promise<CompetitionStories[]> {
+  const feeds = await readFeeds(competitions);
+  return groupStories(feeds, { perFeed, maxAgeMs: maxAgeDays * 86_400_000, now }).map(
+    ({ feed, articles }) => ({
+      competition: competitions[feed],
+      items: articles.map((article) => dated(article, now, locale)),
+    }),
+  );
 }

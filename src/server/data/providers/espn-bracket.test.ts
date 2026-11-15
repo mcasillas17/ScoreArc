@@ -209,3 +209,46 @@ describe('mapBracket crest', () => {
     expect(team({ logo: '', logos: [] }).crestUrl).toBeNull();
   });
 });
+
+describe('mapBracket two-legged ties', () => {
+  const team = (id: string, abbr: string, score: string | null, winner = false) => ({
+    homeAway: '', team: { id, abbreviation: abbr, displayName: abbr, logo: `https://x/${abbr}.png` }, score, winner,
+  });
+  const leg = (id: string, date: string, state: 'pre' | 'post', home: ReturnType<typeof team>, away: ReturnType<typeof team>, note?: string) => ({
+    id, date, season: { slug: 'quarterfinals' },
+    status: { type: { state, completed: state === 'post', name: state === 'post' ? 'STATUS_FULL_TIME' : 'STATUS_SCHEDULED', detail: '' } },
+    competitions: [{ competitors: [{ ...home, homeAway: 'home' }, { ...away, homeAway: 'away' }], notes: note ? [{ text: note }] : [] }],
+  });
+
+  it('merges the two legs of a tie into one match with the aggregate', () => {
+    const [qf] = mapBracket({ events: [
+      leg('1', '2026-11-13T00:30Z', 'post', team('10', 'CUW', '2'), team('20', 'PAN', '1', false)),
+      leg('2', '2026-11-15T23:00Z', 'post', team('20', 'PAN', '2', true), team('10', 'CUW', '0'), 'Panama win 3-2 on aggregate'),
+    ] });
+    expect(qf.matches).toHaveLength(1);
+    const tie = qf.matches[0];
+    expect(tie.id).toBe('2');
+    expect(tie.kickoff).toBe('2026-11-13T00:30Z');
+    expect([tie.home.abbr, tie.homeScore, tie.away.abbr, tie.awayScore]).toEqual(['CUW', 2, 'PAN', 3]);
+    expect(tie.state).toBe('finished');
+    expect(tie.winnerId).toBe('20');
+    expect(tie.note).toBe('Panama win 3-2 on aggregate');
+  });
+
+  it('shows the first leg score and no winner while the second leg is to come', () => {
+    const [qf] = mapBracket({ events: [
+      leg('1', '2026-11-13T00:30Z', 'post', team('10', 'CUW', '2', true), team('20', 'PAN', '1')),
+      leg('2', '2026-11-15T23:00Z', 'pre', team('20', 'PAN', null), team('10', 'CUW', null)),
+    ] });
+    const tie = qf.matches[0];
+    expect([tie.homeScore, tie.awayScore, tie.winnerId]).toEqual([2, 1, null]);
+    expect(tie.state).toBe('scheduled');
+  });
+
+  it('leaves a single-match tie untouched', () => {
+    const [qf] = mapBracket({ events: [
+      leg('1', '2026-11-13T00:30Z', 'post', team('10', 'CUW', '2', true), team('20', 'PAN', '1')),
+    ] });
+    expect(qf.matches[0]).toMatchObject({ id: '1', homeScore: 2, awayScore: 1, winnerId: '10' });
+  });
+});

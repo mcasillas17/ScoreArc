@@ -239,8 +239,8 @@ Hard rules (also in `AGENTS.md` — read it; Codex auto-loads it):
   for rolling/current-season windows; any incomplete retrieval preserves honest
   partial/unavailable evidence and targeted recovery. Apply the schema before
   dependent binaries in unmigrated environments (production's September 20
-  acceptance is in `CURRENT_STATE`); the external watchdog is
-  manual-only until separately authorized. See
+  acceptance is in `CURRENT_STATE`); the external watchdog's status is in its
+  [activation record](docs/backend/MATCH_FRESHNESS.md#activation-record-november-7-2026). See
   [`MATCH_FRESHNESS.md`](docs/backend/MATCH_FRESHNESS.md) for evidence, limits and
   rollout acceptance. Both services also run the T21.2 head/dirty-ledger startup
   gate, and every Fly deploy runs it first as `release_command`

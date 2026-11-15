@@ -93,7 +93,7 @@ versus pending.
 | **E9** | Expected goals (xG) | T7.13 op-closure · T9.1 · product choice · rights | [spec](superpowers/specs/2026-08-15-expected-goals-design.md) | after T9.1 |
 | **E10** | Public API read surface | reader DTO/query parity + rights for new public exposure | — (serves product epics) | T10.1–T10.11, see task index |
 | **E11** | Dynamic home & now-first matches | **shipped** | [spec](superpowers/specs/2026-08-18-dynamic-home-and-matches-design.md) | T11.1–T11.3, see task index |
-| **E12** | Discovery & search | team discovery shipped; player directory/search remains | see E12 below | player UI may precede reader parity |
+| **E12** | Discovery & search | team discovery shipped; scoped player directory implemented | see E12 below | player UI may precede reader parity |
 | **E13** | Competition simulation | E7 history + product contract + published validation | not designed | T13.1 first |
 | **E14** | Home digest and global navigation | **shipped** | [spec](superpowers/specs/2026-08-21-home-digest-and-global-nav-design.md) | shipped |
 | **E15** | Typed English/Spanish localization | **shipped** | [spec](superpowers/specs/2026-08-21-typed-localization-and-locale-routing-design.md) | [plan](superpowers/plans/2026-08-21-typed-localization-and-locale-routing.md) |
@@ -105,6 +105,7 @@ versus pending.
 | **E21** | Operations, admin & governance | pre-cutover operations | implementation contract below | T21.1–T21.4 |
 | **E22** | Developer & device platform | 1d dogfood + rights + auth/quotas | [MCP decision](decisions/2026-09-01-mcp-timing-and-boundary.md) | T22.1–T22.5 |
 | **E23** | Global competition onboarding | E17 honesty + E18 rights/source | implementation contract below | T23.1–T23.5 |
+| **E24** | Dial navigation | implemented on `feat/dial-nav` — awaiting review | [spec](superpowers/specs/2026-11-12-dial-navigation-design.md) | [plan](superpowers/plans/2026-11-12-dial-navigation.md) |
 
 E6, E8, E9, and the new E16–E23 work use the same measure-before-building rule.
 This roadmap records task intent, implementation boundaries, failure rules,
@@ -344,9 +345,11 @@ shipped:
   masthead. Accent-folded, so "america" finds "América".
 - **T12.3 Navigation** — done. Team pages carry a link back to their
   competition's team list.
-- **T12.4 Player directory and search UI** — pending. May ship first against the
-  existing provider-backed player index; reader search parity follows rather
-  than blocking the UI through E10.11.
+- **T12.4 Player directory and search UI** — implemented. Competition-scoped
+  current-roster search at `/c/[comp]/[season]/players`, with EN/ES, existing slug
+  links, explicit coverage and historical limitations, and grouped reader fallback.
+  [Scope, verification and measured costs](PLAYER_DIRECTORY.md). Canonical entity
+  search remains E10.11; this does not activate reader traffic.
 
 **The blocker for search:** a team page is competition-scoped on purpose
 (América's record in Liga MX is not their record in the Leagues Cup), so a
@@ -786,7 +789,7 @@ code rather than pasted from a dated plan.
 | **T10.9** | Expose match/official profiles and bounded match lists. | Canonical official ids only; unknown ids are `404`, list filters are validated. | T10.1 |
 | **T10.10** | Close derived-standings parity for Leagues Cup and MLS overall tables. | A fixed snapshot matches today's TypeScript computation; if derivation remains in `apiStore`, that decision is contract-tested and documented. | T10.1, E16.1 |
 | **T10.11** | Search canonical team, player, and competition identities through one bounded reader query. | Empty query is rejected; no-result is an empty result, and public promotion remains subject to E18. | E16.2, T10.1 |
-| **T12.4** | Add an accent-folded player directory/search UI with competition-aware links. | Ambiguous names show their competitions; provider-backed UI may precede reader parity. | player index now; T10.11 later |
+| **T12.4** | **Implemented:** accent-folded player directory/search within a competition. | Current-roster coverage, historical limitations, EN/ES and existing profile slugs; [evidence](PLAYER_DIRECTORY.md). | Existing index + source operation; T10.11 canonical search later |
 | **T13.1** | Decide deterministic/probabilistic inputs, tie-breaks, persistence, and sharing in an approved design. | No engine work begins with unresolved scoreline or tie-break semantics. | owner design approval |
 | **T13.2** | Recompute league/group tables from fixed played matches plus user-entered remaining results. | Pure golden scenarios cover points, goal difference, qualification cuts, and split-season rules. | T13.1 |
 | **T13.3** | Feed simulated group qualifiers into the existing knockout prediction tree. | Invalid or incomplete seed sets are rejected rather than guessed. | T13.2 |
@@ -830,8 +833,8 @@ cutover gate are unchanged.
 |---|---|---|---|
 | **T16.1** ✅ | Build one cross-language contract harness over TypeScript types, OpenAPI, Go DTOs, query vectors, and recorded payloads. **Done October 3 — [READER_CONTRACT](backend/READER_CONTRACT.md); gaps stay open under their tasks.** | Any field/nullability/query drift fails CI; canonical equivalence is required, not byte equality with provider JSON. | none |
 | **T16.2** ✅ | Fix canonical nested team ids, `ownGoal`/`athleteId`, slug-stable leader crests, and the ScoreArc CDN allowlist, and close (or explicitly accept) the other DTO-parity gaps the T16.1 harness assigns to T16.2: match/team identity, standings rank/dedup/malformed-row handling and unnamed-table labels, bracket round names/slug type/placeholder crests, shootout aggregate source and the clockless live minute (`src/server/data/contracts/reader-contract.json`). **Done in code October 5: `standings-dedup` closed with the owner's decision A (every table membership kept; migration 0024, satisfied before the owner-confirmed October 31 baseline at 0028) ([contract](backend/READER_CONTRACT.md#owner-decision-standings-dedup)).** | Unknown crest hosts are dropped, not proxied; contract fixtures prove scorer/card-to-side and player identity; each closed gap's harness characterization is updated. | T16.1 |
-| **T16.3** (implemented; PR integration pending) | Strict `apiStore` for all 12 methods, with `SCOREARC_DATA_SOURCE=reader` selecting one joined group of all eleven non-news methods. Unset/empty/`espn` makes zero reader requests. News explicitly delegates to ESPN. [Policy, identity and local evidence](backend/READER_DATASTORE.md). | Eligible reader failures retry the whole logical operation once on ESPN; valid empty results never fall back for emptiness. Persisted crosswalks normalize match/player/team references to the existing frontend seam, preserving popups, slugs, follows and rollback across requests. Standings/form/squad/index joins share the source group. No production source switch, shadow traffic or migration. | T10.1–T10.4, T10.10, T17.3 |
-| **T16.4** | Shadow reader and ESPN per method with named normalizers and ignore rules. | Diffs never affect the user; each method gets a documented threshold based on semantic fields, not provider/canonical id equality. | T16.3 |
+| **T16.3** ✅ (merged #239) | Strict `apiStore` for all 12 methods, with `SCOREARC_DATA_SOURCE=reader` selecting one joined group of all eleven non-news methods. Unset/empty/`espn` makes zero reader requests. News explicitly delegates to ESPN. [Policy, identity and local evidence](backend/READER_DATASTORE.md). | Eligible reader failures retry the whole logical operation once on ESPN; valid empty results never fall back for emptiness. Persisted crosswalks normalize match/player/team references to the existing frontend seam, preserving popups, slugs, follows and rollback across requests. Standings/form/squad/index joins share the source group. No production source switch, shadow traffic or migration. | T10.1–T10.4, T10.10, T17.3 |
+| **T16.4** (implemented; PR integration pending) | Bounded opt-in direct-reader vs explicit-ESPN evaluation, with eleven methods and joined navigation; [matrix, normalizers, criteria and offline evidence](backend/READER_EVALUATION.md). | Disabled means zero work; fallback cannot become a match. Reports retain timing/resource evidence, coverage/errors and costs. News excluded; live evaluation, soak/SLO decisions and cutover need separate owner approval. | T16.3 |
 | **T16.5** | Define and execute an owner-approved staged soak/cutover with immediate rollback, respecting T16.3's joined non-news group. Any later group split must prove its joins remain coherent. | No production activation in T16.3; shadow evidence and correctness/freshness SLO acceptance precede a public source change. | T16.4, T17.4 |
 | **T16.6** | Decide the reader news route: explicit current proxy, rights-permitted owned ingest, or removal. | This blocks only `getNews`; the other 11 methods continue independently. The ingest branch requires E18; keep/drop records the existing exposure. | before `getNews` flips |
 
@@ -842,7 +845,7 @@ cutover gate are unchanged.
 | **T17.1** | Reproduce, diagnose, and fix the Liga MX team-profile 500 in reader store/handler integration tests. | Root cause is evidence from a real-Postgres reproduction, not a UUID hypothesis; seeded teams return `200` or intentional `404`, never unexplained `500`. | none |
 | **T17.2** | Diagnose Greece across config, source, ingester, database, and reader; populate it or gate it out honestly. **#173 recovery and #183 bounded monthly discovery are merged and released; the September 20 recovery completed the original stale matches. October 2 reader checks found all ten match scopes responding with `poll=ok`, nine fresh and World Cup dormant; Greece's `/matches` returned 182 and `fresh`. This match-only evidence does not establish current standings/top-scorers or other collection coverage, or close sustained ingestion acceptance.** Frontend #192/#193 are also merged and released, still ESPN-backed; see [CURRENT_STATE](CURRENT_STATE.md#october-2-reconciliation) and [frontend evidence](FRONTEND_SCOREBOARD_WINDOWS.md). | Never assert a missing row count in advance; a configured-but-unproven competition is not presented as healthy. | diagnosis: none. Population: [SETUP §7.5](backend/SETUP.md#75-verify) freshness acceptance (zero-failure cycles, advancing data including Greece) |
 | **T17.3** | Add source, observed/finalized time, derivation, and complete/empty/stale/unavailable semantics to reader contracts. **#173's match-specific headers remain unchanged. October 30 implementation adds scoped resource metadata to all 12 reader routes, durable collection observations and positive TS/Go/OpenAPI/Postgres coverage. The owner confirms deployment with migration 0028 on October 31; sustained coverage and monitoring acceptance remain separate. Do not repeat the migration; see [contract and limits](backend/READER_CONTRACT.md#t173-resource-freshness-contract).** | Consumers can distinguish a genuine empty window from broken ingestion from the response alone; all reader routes have contract coverage. | T16.1 |
-| **T17.4** | Define per-competition freshness/completeness SLOs, alerts, and runbooks from ingest evidence. **September 19: bounded match watchdog, durable transition deduplication and [runbook](backend/MATCH_FRESHNESS.md) are implemented; schedule/notification delivery and live acceptance are not activated or complete.** | Dormant seasons do not page; active competitions crossing their declared threshold do, with competition/season/run context. | T17.3; T21.4 later exports richer metrics |
+| **T17.4** | Define per-competition freshness/completeness SLOs, alerts, and runbooks from ingest evidence. **September 19: bounded match watchdog, durable transition deduplication and [runbook](backend/MATCH_FRESHNESS.md) are implemented; schedule/notification delivery and live acceptance are not activated or complete. November 7: the owner accepted activation and live email delivery began; the five-minute schedule was added by the activation change ([activation record](backend/MATCH_FRESHNESS.md#activation-record-november-7-2026)). November 8: GitHub barely ran that schedule, so the schedule is removed and the alert receiver's cron dispatches the runs once deployed ([Worker dispatch](backend/MATCH_FRESHNESS.md#worker-dispatch-november-8-2026)); heartbeat acceptance, the R2 checkpoint copy and broader coverage remain open.** | Dormant seasons do not page; active competitions crossing their declared threshold do, with competition/season/run context. | T17.3; T21.4 later exports richer metrics |
 
 **T17.1 production repair accepted (2026-09-06):** the missing `t.color`
 projection was reproduced with real Postgres; regression/contract coverage
@@ -890,9 +893,14 @@ September 13 07:06 UTC, and later frontend ledger `6432468280` records successfu
 publication on September 14 at 07:32 UTC. Those old delivery incidents are not
 pending repairs. The September 20 recovery subsequently resolved the original
 stale-match incidents; #183's monthly discovery repair was released September 26.
-Match-specific T17.3 signals are deployed, while T17.4's watchdog remains
-manual-only. Sustained ingestion acceptance, scheduled notification delivery
-and broader endpoint coverage remain open. Coordinate authorization
+Match-specific T17.3 signals are deployed. T17.4's watchdog was manual-only until the
+activation the owner accepted on November 7: live email delivery began that day and
+the five-minute schedule was added by the activation change (see the
+[activation record](backend/MATCH_FRESHNESS.md#activation-record-november-7-2026)).
+On November 8 the owner approved replacing GitHub's schedule with the alert receiver's
+cron as the [dispatcher](backend/MATCH_FRESHNESS.md#worker-dispatch-november-8-2026),
+effective once that Worker is deployed.
+Sustained ingestion acceptance and broader endpoint coverage remain open. Coordinate authorization
 for any new release using the current path policy, not the historical ledger.
 
 ### E18 · Rights & multi-source platform
@@ -996,6 +1004,24 @@ neither E16 cutover nor full T21.2 schema readiness, and T17.1 stays closed.
 | **T23.4** | Verify locale copy, naming, timezone/date formatting, competition rules, responsive layouts, and share metadata. | English/Spanish framing is complete; provider prose remains labeled; domain rules have golden tests. | T23.2/T23.3 |
 | **T23.5** | Add prioritized competition batches only after rights and current-ten honesty are proven. | No named league is scheduled by this task itself; every addition has an owner, source rights, coverage report, and rollback. | E18, T23.1–T23.4 |
 
+### E24 · Dial navigation — implemented, awaiting review
+
+Branch `feat/dial-nav`.
+[spec](superpowers/specs/2026-11-12-dial-navigation-design.md) ·
+[plan](superpowers/plans/2026-11-12-dial-navigation.md)
+
+Replaces E14's sidebar, drawer and bottom tab bar with one radial control in
+the bracket's own language. Desktop: a 96px rail whose competition list is the
+rim of a dial, expanding to 312px as an overlay on hover, keyboard focus or
+pin, with the open competition's sections moved to a sticky tab row above the
+content. Phone: a lockup-only masthead and a single arched bottom bar that
+shrinks while scrolling and raises a wheel of competitions and sections.
+
+No data dependency and no backend gate: everything is still derived from the
+pathname and `competitions.ts`. Telemetry event names and properties are
+unchanged. Not in scope, by decision: global search (E12), the Archivo
+typeface, persisting the pin, and a language toggle in the nav.
+
 ---
 
 ## Not building, and why
@@ -1034,12 +1060,12 @@ every P0 behind one owner decision.
 | **C · Contract/read** | **T16.1–T16.2**, then **T10.1**, **T10.10**, **T10.2–T10.4** | the reader satisfies the first cutover methods with canonical, tested contracts |
 
 **Next integration/evaluation:** T10.1–T10.4, T10.10 and T17.3 are implemented.
-T16.3 adds the reader adapter with unchanged ESPN default; after its PR integration,
-T16.4 owns shadow evaluation. Local adapter readiness is separate from rollout
+T16.3 (#239) adds the reader adapter with unchanged ESPN default.
+T16.4 adds explicit evaluation tooling; production shadow traffic remains disabled. Local adapter readiness is separate from rollout
 acceptance.
 The independent high-priority lanes remain explicit: archive/backfill durability
-under T18.1's classification, **T7.21** participation retry, **T17.4** scheduled
-freshness/notification delivery, and **T21.2** full schema readiness. Bounded
+under T18.1's classification, **T7.21** participation retry, **T17.4** dispatched-heartbeat acceptance,
+R2 checkpoint copy and broader coverage, and **T21.2** full schema readiness. Bounded
 October 2 freshness observations do not close these lanes or change task dependencies.
 
 ### Next — own and dogfood the contract
