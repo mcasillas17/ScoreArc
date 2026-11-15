@@ -289,10 +289,17 @@ export async function runPhase({ phase, env = process.env, workDir = 'watchdog-s
   }
   const registry = JSON.parse(await readFile(new URL('../backend/config/competitions.json', import.meta.url), 'utf8'));
   const options = { enabled: true, deliveryEnabled: env.MATCH_FRESHNESS_DELIVERY_ENABLED === 'true',
-    baseURL, check, scopes: currentScopes(registry), stateFile, run, now };
+    baseURL, scopes: currentScopes(registry), stateFile, run, now };
   if (phase === 'prepare') {
     const selection = JSON.parse(await readFile(selectionFile, 'utf8'));
-    await prepareMonitor({ ...options, initialize: selection === null, restoredRun: selection?.run });
+    await prepareMonitor({ ...options, initialize: selection === null, restoredRun: selection?.run,
+      check: async scope => {
+        const result = await check(scope);
+        const name = registry.find(comp => comp.id === scope.competition).name;
+        console.log(`${result.ok ? 'OK' : 'UNHEALTHY'} ${name} | ${result.context}`);
+        return result;
+      },
+    });
     await output({ state_written: true });
   } else if (phase === 'deliver') {
     const result = await deliverMonitor({ ...options, webhookURL: env.MATCH_FRESHNESS_WEBHOOK_URL,

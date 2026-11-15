@@ -51,7 +51,7 @@ The exact monitor recovery record is in
 
 ### November 15 Nations League recurring poll alerts
 
-The earlier recovery did not establish sustained health. At 04:45 and 05:20 UTC,
+The earlier CONCACAF recovery did not establish sustained health. At 04:45 and 05:20 UTC,
 runs [43678116389](https://github.com/mcasillas17/ScoreArc/actions/runs/43678116389)
 and [43680628295](https://github.com/mcasillas17/ScoreArc/actions/runs/43680628295)
 delivered distinct Nations League OPEN events with `poll=failed`, 20 stale
@@ -69,6 +69,20 @@ notification suppression, threshold change, migration or production write was
 performed. Acceptance requires a normal ingester release followed by sustained
 monitor observations beyond the 30-minute retry interval; see
 [the runbook](backend/MATCH_FRESHNESS.md#november-15-2026-recurring-nations-league-polls).
+
+#### UEFA rollout and recovery, November 15
+
+At 08:45 UTC, the watchdog adopted the twelfth competition from #269.
+Only `uefa-nations-league/2026-27` opened an incident. The production reader
+returned HTTP 400 for the new scope while the release was still running.
+CONCACAF's separate scope served 106 matches with a healthy poll.
+[Opening run](https://github.com/mcasillas17/ScoreArc/actions/runs/43695956484) ·
+[Release](https://github.com/mcasillas17/ScoreArc/actions/runs/43695872061).
+
+The 08:55 UTC run recorded 156 UEFA matches, zero stale and zero overdue.
+The receiver acknowledged the matching RESOLVED event and heartbeat. The final
+watchdog checkpoint had all 12 scopes, zero open incidents and zero pending deliveries.
+[Recovery run](https://github.com/mcasillas17/ScoreArc/actions/runs/43696721041).
 
 ### November 1 T16.3 reconciliation
 

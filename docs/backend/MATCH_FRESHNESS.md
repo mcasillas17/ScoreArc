@@ -326,6 +326,14 @@ typecheck includes the Worker.
 | Run identity and API access | Actions supplies `GITHUB_*` provenance and its token with `contents: read` / `actions: read`. Do not substitute another repository/ref/run identity or a personal token to bypass validation. |
 | Reader and scopes | Fixed CLI origin `https://scorearc-reader.fly.dev`; exact current seasons from `backend/config/competitions.json`. No workflow input overrides these. A changed origin requires a reviewed state migration, not initialization. A competition added to the registry joins the restored state as healthy on the next run; a removed one is still refused, since dropping it could discard an open incident. |
 
+The **Prepare pending state** log lists the competition name, scope and result
+of each completed reader check. For a newly added competition, compare an
+`http-400` with the reader release for the merge SHA. The watchdog reads the
+registry from `main` immediately, and the running reader gets its registry at
+deployment. If the reader still returns `unknown competition or season` after
+that deployment, check the deployed revision. A later healthy observation
+resolves the original incident automatically.
+
 The local harness injects its loopback origin directly into `runPhase`; that is
 test wiring, not a configurable production endpoint. Production reader-origin
 validation and redirect rejection stay in force. There is no approved incident
@@ -554,7 +562,7 @@ do not stop production to prove them.
 
 | Resource | Bound |
 |---|---|
-| Reader | 32 sequential scopes maximum; current registry 11; 10 seconds, 8 MiB, 5,000 matches each; no retries |
+| Reader | One check per current competition (12 as of November 15), up to 32 sequential scopes. Each allows 10 seconds, 8 MiB and 5,000 matches, with no retries. |
 | GitHub JSON API | At most 3 pages × 20 runs; 2 metadata + 3 run-list + 120 artifact/job reads = 125 requests; 10 seconds / 1 MiB each, no retries; steady state is about 4 per run (~1,150/day). `GITHUB_TOKEN` is limited to 1,000 requests per hour per repository, so twelve degraded full scans an hour (~1,500) would hit that limit; repeated budget failures need intervention, not more runs |
 | Artifact transfer | One selected download, up to two uploads; state 256 KiB, artifact metadata size ceiling 256 KiB; action-internal transfer retries are governed by pinned actions and job timeout |
 | State | 128 pending events, 32 receipts, one current incident ID per scope; 256 KiB |
@@ -563,7 +571,7 @@ do not stop production to prove them.
 | Dispatch | One POST from the receiver's cron every 5 minutes, 10 seconds, any 2xx accepted, never retried; runs serialize in the workflow's concurrency group, where a newer waiting run replaces an older one |
 | Backoff | Across runs: 5 minutes doubled to maximum 6 hours; no in-run retry, untrusted Retry-After cannot enlarge bounds. A retry is sent by the first run whose Prepare is at or after its due time, so with five-minute runs a 5-minute backoff lands 5 to 10 minutes later (latency only) |
 | Runtime | Entire Actions job 10 minutes; this may truncate API search/check/delivery before per-operation ceilings |
-| Cadence (owner-accepted November 7, 2026) | Five minutes, 288 nominal runs/day; current registry ≤2,880 reader requests/day; worst-case ≤2,880 notification attempts/day plus ≤288 heartbeats; actual platform timing can delay/drop runs |
+| Cadence (owner-accepted November 7, 2026) | Five minutes, 288 nominal runs/day. Twelve competitions give 3,456 reader requests/day. The 16-send limit allows up to 4,608 notification attempts/day including backlog, plus 288 heartbeats. Platform timing can delay or drop runs. |
 
 Normally selection requires only a few API requests, but worst-case nominal
 cadence permits 36,000 API calls/day before the job deadline/rate limits. This is
@@ -577,11 +585,11 @@ delays and network time all contribute.
 
 The [activation record](#activation-record-november-7-2026) holds the measured job
 durations and artifact sizes behind the owner's cadence acceptance. At the
-five-minute cadence, 30 days gives 8,640 nominal runs and up to 86,400 current-ten
-reader requests. Two 256-KiB state files per run give at most 144 MiB/day of raw
+five-minute cadence, 30 days gives 8,640 nominal runs and up to 103,680
+reader requests for 12 competitions. Two 256-KiB state files per run give at most 144 MiB/day of raw
 checkpoint bytes, or about 12.66 GiB across 90 days before archive/billing
 overhead; actual states are normally much smaller. The 8-MiB reader cap permits
-up to 22.5 GiB/day of response bodies at 2,880 requests, not an expected load.
+up to 27 GiB/day of response bodies at 3,456 requests.
 Runner usage is `runs × measured billable minutes per job`; the ten-minute job
 ceiling can cause backlog under serialized execution and is not a five-minute
 completion promise. Apply the owner's current Actions allowance/rates, artifact
@@ -732,7 +740,7 @@ but a workflow that never starts cannot report its own absence.
 
 #### November 15, 2026 recurring Nations League polls
 
-Pending artifacts from runs
+For CONCACAF (`nations-league/2026-27`), pending artifacts from runs
 [43678116389](https://github.com/mcasillas17/ScoreArc/actions/runs/43678116389)
 and [43680628295](https://github.com/mcasillas17/ScoreArc/actions/runs/43680628295)
 contain distinct OPEN sequences 63 and 65 for `nations-league/2026-27`,
