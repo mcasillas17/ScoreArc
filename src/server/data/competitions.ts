@@ -1,6 +1,12 @@
 import type { KnockoutRoundSlug } from './types';
 
 type CompetitionKind = 'national' | 'club';
+/** Which game a competition belongs to. Declared, never inferred from a name
+ *  or slug: it scopes the matchday, the dial and the directories, and it picks
+ *  the canonical-id namespace for the competition's teams. */
+export type Category = 'women' | 'men';
+/** What a collection page is showing: one category, or both. */
+export type View = 'all' | Category;
 export type TeamStyle = 'flag' | 'crest';
 export type Section = 'bracket' | 'standings' | 'scores' | 'news';
 export type ChampionTitleKey = 'champion.world' | 'champion.competition';
@@ -43,6 +49,7 @@ export type ZoneLabelKey =
   | 'zone.mlsRoundOne'
   | 'zone.wildCard'
   | 'zone.supportersShield'
+  | 'zone.nwslShield'
   | 'zone.promotion';
 
 export type QualificationLabelKey = 'standings.liguilla' | 'round.knockout';
@@ -141,6 +148,7 @@ export interface Competition {
   shortName: string;
   espnSlug: string; // ESPN league slug — durable across seasons
   kind: CompetitionKind;
+  category: Category;
   teamStyle: TeamStyle;
   emblem: string;
   /** The competition's real logo, where the provider has one that is legible
@@ -192,6 +200,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     shortName: 'World Cup',
     espnSlug: 'fifa.world',
     kind: 'national',
+    category: 'men',
     teamStyle: 'flag',
     emblem: '🌍',
     logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/4.png',
@@ -227,6 +236,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     shortName: 'Leagues Cup',
     espnSlug: 'concacaf.leagues.cup',
     kind: 'club',
+    category: 'men',
     teamStyle: 'crest',
     emblem: '🏆',
     logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/2410.png',
@@ -277,6 +287,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     shortName: 'CONCACAF Nations League',
     espnSlug: 'concacaf.nations.league',
     kind: 'national',
+    category: 'men',
     teamStyle: 'flag',
     emblem: '🌎',
     logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/2406.png',
@@ -301,6 +312,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     shortName: 'UEFA Nations League',
     espnSlug: 'uefa.nations',
     kind: 'national',
+    category: 'men',
     teamStyle: 'flag',
     emblem: '🌍',
     logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/2395.png',
@@ -537,6 +549,93 @@ export const COMPETITIONS: Record<string, Competition> = {
   // on transparent — illegible at the bracket hub. TheSportsDB carries the real
   // tricolor Liga MX mark, same CDN the team crests already use.
   ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', 'https://r2.thesportsdb.com/images/media/league/badge/mav5rx1686157960.png', '2026-apertura', 'Apertura 2026', { base: '#e9edeb', bright: '#ffffff', soft: 'rgba(233,237,235,0.14)' }, { cut: 8, labelKey: 'standings.liguilla' }, undefined, undefined, 'liguilla', '#0b9e52'),
+  // The Women's Super League: fourteen clubs, 26 rounds. Bands mirror ESPN's
+  // standings notes for 2026-27 (checked 2026-11-15) rather than a format
+  // guess: Champions League for the top two, Champions League qualifying for
+  // third, a relegation playoff for twelfth. ESPN marks nothing on 13th and
+  // 14th, so neither do we. Accent is the orange of the league's own mark.
+  ...leagueCompetition(
+    'wsl', "Women's Super League", 'WSL', 'eng.w.1', '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
+    'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/2314.png', '2026-27', '2026-27',
+    { base: '#f2622e', bright: '#ff9a70', soft: 'rgba(242,98,46,0.16)' },
+    undefined,
+    [
+      { from: 1, to: 1, kind: 'champion', labelKey: 'zone.champion' },
+      { from: 2, to: 2, kind: 'ucl', labelKey: 'zone.championsLeague' },
+      { from: 3, to: 3, kind: 'ucl', labelKey: 'zone.championsLeagueQualifying' },
+      { from: 12, to: 12, kind: 'relegation-playoff', labelKey: 'zone.relegationPlayoff' },
+    ],
+    undefined, undefined, undefined, 26, 'women',
+  ),
+  // The NWSL is one 16-club table and then a single-elimination championship:
+  // the top eight play quarterfinals, semifinals and a final, one match each.
+  // First place is also the NWSL Shield, the regular-season title — a separate
+  // prize from the championship, so it wears the champion band on the table
+  // while the bracket crowns the champion. 30 rounds (16 clubs, home and away).
+  // Verified against ESPN's standings notes and playoff slugs, 2026-11-15.
+  nwsl: {
+    id: 'nwsl',
+    name: 'NWSL',
+    shortName: 'NWSL',
+    espnSlug: 'usa.nwsl',
+    kind: 'club',
+    category: 'women',
+    teamStyle: 'crest',
+    emblem: '🇺🇸',
+    logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/2323.png',
+    accent: { base: '#3aa0e6', bright: '#8fcdf7', soft: 'rgba(58,160,230,0.16)' },
+    currentSeasonId: '2026',
+    seasons: {
+      '2026': {
+        id: '2026',
+        label: '2026',
+        sections: ['bracket', 'standings', 'scores', 'news'],
+        format: { hasBracket: true, hasGroups: true, hasThirdPlaceRace: false },
+        bracketDatesRange: '20261106-20261130',
+        knockoutRounds: ['quarterfinals', 'semifinals', 'final'],
+        zones: [
+          { from: 1, to: 1, kind: 'champion', labelKey: 'zone.nwslShield' },
+          { from: 2, to: 8, kind: 'playoff', labelKey: 'zone.championshipPlayoff' },
+        ],
+        rounds: 30,
+      },
+    },
+  },
+  // Liga MX Femenil's Apertura 2026 is two groups of nine, and the Liguilla
+  // takes the top FOUR OF EACH into cross-group, two-leg quarterfinals — not
+  // the men's top eight overall, so the men's `projection: 'liguilla'` would
+  // send the wrong clubs through. The draw is published, so the bracket is the
+  // real one. Verified against ESPN's two standings groups and its
+  // `apertura---quarterfinals` legs, 2026-11-15.
+  //
+  // No logo: ESPN publishes none for this league. No news section: its feed
+  // returned general fútbol stories carrying no Liga MX Femenil tag (the first
+  // was about Manchester United), so it is left out of the tab and the digest
+  // until its articles can be attributed.
+  'liga-mx-femenil': {
+    id: 'liga-mx-femenil',
+    name: 'Liga MX Femenil',
+    shortName: 'Liga MX Femenil',
+    espnSlug: 'mex.w.1',
+    kind: 'club',
+    category: 'women',
+    teamStyle: 'crest',
+    emblem: '🇲🇽',
+    // The league's own magenta, as Liga MX above wears its own white.
+    accent: { base: '#e0409a', bright: '#f58cc4', soft: 'rgba(224,64,154,0.16)' },
+    currentSeasonId: '2026-apertura',
+    seasons: {
+      '2026-apertura': {
+        id: '2026-apertura',
+        label: 'Apertura 2026',
+        sections: ['bracket', 'standings', 'scores'],
+        format: { hasBracket: true, hasGroups: true, hasThirdPlaceRace: false },
+        bracketDatesRange: '20261110-20261231',
+        knockoutRounds: ['quarterfinals', 'semifinals', 'final'],
+        qualification: { cut: 4, labelKey: 'standings.liguilla' },
+      },
+    },
+  },
 };
 
 // A past 32-team WC edition — R16 knockout, view-only, no seed order -> derived
@@ -573,6 +672,7 @@ function leagueCompetition(
   projection?: 'liguilla',
   bracketAccent?: string,
   rounds?: number,
+  category: Category = 'men',
 ): Record<string, Competition> {
   return {
     [id]: {
@@ -581,6 +681,7 @@ function leagueCompetition(
       shortName,
       espnSlug,
       kind: 'club',
+      category,
       teamStyle: 'crest',
       emblem,
       logo,
@@ -617,6 +718,33 @@ export function getCompetition(id: string): Competition | undefined {
 
 export function listCompetitions(): Competition[] {
   return Object.values(COMPETITIONS);
+}
+
+/**
+ * The `view` search parameter of a collection page. Absent, unknown and
+ * repeated values all mean All, so a mangled link still opens a page.
+ */
+export function parseView(value: string | string[] | undefined): View {
+  return value === 'women' || value === 'men' ? value : 'all';
+}
+
+export function inView(competition: Competition, view: View): boolean {
+  return view === 'all' || competition.category === view;
+}
+
+/** The category links are only worth showing once there is a choice to make. */
+export function hasBothCategories(competitions: Competition[] = listCompetitions()): boolean {
+  return new Set(competitions.map((c) => c.category)).size > 1;
+}
+
+/** Whether the competition's news can be shown: its current season says so. */
+export function hasNews(competition: Competition): boolean {
+  return competition.seasons[competition.currentSeasonId]?.sections.includes('news') ?? false;
+}
+
+/** `?view=women` for a narrowed view, nothing for All. */
+export function viewQuery(view: View): string {
+  return view === 'all' ? '' : `?view=${view}`;
 }
 
 /** Competitions whose current season is still being played — the home

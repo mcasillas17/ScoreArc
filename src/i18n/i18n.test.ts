@@ -50,3 +50,16 @@ describe('i18n contracts', () => {
     expect(getTranslator('es')('standings.playedRange', '1–2')).toBe('1–2 jugados');
   });
 });
+
+describe("women's competitions", () => {
+  it('reads feminine Spanish forms inside a women\'s competition and nowhere else', async () => {
+    const { getTranslator } = await import('./translate');
+    expect(getTranslator('es', 'liga-mx-femenil')('nav.players')).toBe('Jugadoras');
+    expect(getTranslator('es', 'liga-mx-femenil')('standings.scorers')).toBe('Goleadoras');
+    expect(getTranslator('es', 'liga-mx')('nav.players')).toBe('Jugadores');
+    expect(getTranslator('es')('nav.players')).toBe('Jugadores');
+    // Keys with no feminine form fall through; English has none at all.
+    expect(getTranslator('es', 'liga-mx-femenil')('nav.home')).toBe('Inicio');
+    expect(getTranslator('en', 'liga-mx-femenil')('nav.players')).toBe(getTranslator('en')('nav.players'));
+  });
+});

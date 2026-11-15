@@ -18,7 +18,7 @@ type LayoutParams =
 export async function generateMetadata({ params }: { params: LayoutParams }): Promise<Metadata> {
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
-  const t = getTranslator(locale);
+  const t = getTranslator(locale, comp);
   const rc = resolveSeason(comp, season);
   if (!rc) return {};
   const label = `${rc.competition.shortName} ${rc.season.label}`;

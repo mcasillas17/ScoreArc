@@ -21,7 +21,7 @@ type SeasonParams =
 export async function generateMetadata({ params }: { params: SeasonParams }): Promise<Metadata> {
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
-  const t = getTranslator(locale);
+  const t = getTranslator(locale, comp);
   const rc = resolveSeason(comp, season);
   if (!rc) return { title: t('standings.title') };
   const editionName = `${rc.competition.shortName} ${rc.season.label}`;
@@ -41,7 +41,7 @@ export async function generateMetadata({ params }: { params: SeasonParams }): Pr
 export default async function StandingsPage({ params }: { params: SeasonParams }) {
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
-  const t = getTranslator(locale);
+  const t = getTranslator(locale, comp);
   const rc = resolveSeason(comp, season);
   if (!rc) notFound();
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;

@@ -4,24 +4,30 @@ import { notFound } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
 import { collectStoriesByCompetition } from '@/server/data/newsFeed';
+import { inView, listCompetitions, parseView, viewQuery } from '@/server/data/competitions';
 import CompetitionMark from '@/components/CompetitionMark';
 import DigestNews from '@/components/DigestNews';
 import SiteFooter from '@/components/SiteFooter';
+import ViewLinks, { type SearchParams } from '@/components/ViewLinks';
 
 export const dynamic = 'force-dynamic';
 
 type PageParams = { locale: string } | Promise<{ locale: string }>;
+type PageSearch = SearchParams | Promise<SearchParams>;
+type PageProps = { params: PageParams; searchParams?: PageSearch };
 
-export async function generateMetadata({ params }: { params: PageParams }): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { locale } = await params;
+  // Each valid view is its own page to a crawler and to a share preview.
+  const query = viewQuery(parseView(((await searchParams) ?? {}).view));
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
   return {
     title: t('news.directoryTitle'),
     description: t('news.directoryDescription'),
     alternates: {
-      canonical: `/${locale}/news`,
-      languages: { en: '/en/news', es: '/es/news' },
+      canonical: `/${locale}/news${query}`,
+      languages: { en: `/en/news${query}`, es: `/es/news${query}` },
     },
   };
 }
@@ -44,14 +50,16 @@ const MAX_AGE_DAYS = 14;
  * change much more slowly than scores. The page is force-dynamic, so arrival
  * and reload already fetch current stories.
  */
-export default async function NewsPage({ params }: { params: PageParams }) {
+export default async function NewsPage({ params, searchParams }: PageProps) {
   const { locale } = await params;
+  const search = (await searchParams) ?? {};
+  const view = parseView(search.view);
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
   const groups = await collectStoriesByCompetition(new Date(), locale, {
     perFeed: STORIES_PER_COMPETITION,
     maxAgeDays: MAX_AGE_DAYS,
-  });
+  }, listCompetitions().filter((c) => inView(c, view)));
 
   return (
     <main className="dg">
@@ -59,6 +67,7 @@ export default async function NewsPage({ params }: { params: PageParams }) {
         <h1 className="dg-title">{t('news.title')}</h1>
         <p className="dg-sub">{t('news.directoryIntro')}</p>
       </header>
+      <ViewLinks locale={locale} path="/news" view={view} params={search} />
       {groups.length === 0 ? (
         <p className="dg-empty">{t('news.unavailable')}</p>
       ) : (

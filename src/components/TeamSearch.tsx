@@ -69,6 +69,16 @@ export default function TeamSearch({
       .map((entry) => entry.team);
   }, [teams, folded, query]);
 
+  // Names two different teams share — América and América. Those cards say
+  // which competition they belong to, so a screen reader hears two links
+  // rather than the same one twice.
+  const shared = useMemo(() => {
+    const seen = new Set<string>();
+    const twice = new Set<string>();
+    for (const team of teams) (seen.has(team.name) ? twice : seen).add(team.name);
+    return twice;
+  }, [teams]);
+
   // One group per competition; a club in several appears under each.
   const groups = useMemo(
     () =>
@@ -169,7 +179,11 @@ export default function TeamSearch({
             <ul className="tsp-grid">
               {tiles.map(({ team, pathname }) => (
                 <li key={team.id}>
-                  <Link href={replacePathLocale(pathname, locale)} className="tsp-card">
+                  <Link
+                    href={replacePathLocale(pathname, locale)}
+                    className="tsp-card"
+                    aria-label={shared.has(team.name) ? `${team.name}, ${c.name}` : undefined}
+                  >
                     <TeamBadge team={team} size={34} style={c.teamStyle} />
                     <span className="tsp-card-name">{team.name}</span>
                   </Link>

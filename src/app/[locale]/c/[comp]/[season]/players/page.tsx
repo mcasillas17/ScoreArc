@@ -16,7 +16,7 @@ interface Params { params: RouteParams | Promise<RouteParams> }
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
-  const t = getTranslator(locale);
+  const t = getTranslator(locale, comp);
   const rc = resolveSeason(comp, season);
   if (!rc) return { title: t('nav.players') };
   const edition = `${rc.competition.shortName} ${rc.season.label}`;
@@ -36,7 +36,7 @@ export default async function PlayersPage({ params }: Params) {
   if (!isLocale(locale)) notFound();
   const rc = resolveSeason(comp, season);
   if (!rc) notFound();
-  const t = getTranslator(locale);
+  const t = getTranslator(locale, comp);
   const historical = rc.season.id !== rc.competition.currentSeasonId;
   let directory: Awaited<ReturnType<typeof competitionPlayerIndex>>['directory'] | null = null;
   if (!historical) {

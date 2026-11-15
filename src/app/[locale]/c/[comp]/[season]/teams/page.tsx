@@ -20,7 +20,7 @@ interface Params {
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
-  const t = getTranslator(locale);
+  const t = getTranslator(locale, comp);
   const rc = resolveSeason(comp, season);
   if (!rc) return { title: t('teams.title') };
   const edition = `${rc.competition.shortName} ${rc.season.label}`;
@@ -38,7 +38,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 export default async function CompetitionTeamsPage({ params }: Params) {
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
-  const t = getTranslator(locale);
+  const t = getTranslator(locale, comp);
   const rc = resolveSeason(comp, season);
   if (!rc) notFound();
   const teams = await competitionTeams(rc);

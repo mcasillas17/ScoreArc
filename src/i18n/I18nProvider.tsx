@@ -26,9 +26,12 @@ export function I18nProvider({ locale, children }: { locale: Locale; children: R
     },
     [pathname, router],
   );
+  // Client components inside a competition speak about that competition, so
+  // they read the same catalog its server-rendered page did.
+  const competitionId = /\/c\/([^/]+)/.exec(pathname ?? '')?.[1];
   const value = useMemo(
-    () => ({ locale, t: getTranslator(locale), setLocale }),
-    [locale, setLocale],
+    () => ({ locale, t: getTranslator(locale, competitionId), setLocale }),
+    [locale, competitionId, setLocale],
   );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;

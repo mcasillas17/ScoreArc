@@ -8,8 +8,8 @@ func TestLoadRegistry(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if got := len(r.List()); got != 12 {
-		t.Fatalf("competitions = %d, want 12", got)
+	if got := len(r.List()); got != 15 {
+		t.Fatalf("competitions = %d, want 15", got)
 	}
 	gr, ok := r.Get("super-league-greece")
 	if !ok {
@@ -28,6 +28,11 @@ func TestLoadRegistry(t *testing.T) {
 	if lm.CurrentSeasonId != "2026-apertura" {
 		t.Errorf("liga-mx currentSeasonId = %q", lm.CurrentSeasonId)
 	}
+	for _, c := range r.List() {
+		if c.Category != "men" && c.Category != "women" {
+			t.Errorf("%s category = %q", c.ID, c.Category)
+		}
+	}
 	wc, _ := r.Get("world-cup")
 	s := wc.Seasons["2026"]
 	if !s.HasBracket {
@@ -38,11 +43,13 @@ func TestLoadRegistry(t *testing.T) {
 func TestParseRegistryRejectsInvalidConfiguration(t *testing.T) {
 	for _, input := range []string{
 		`[]`,
-		`[{"id":"x","espnSlug":"x","kind":"unknown","currentSeasonId":"2026","seasons":{"2026":{"id":"2026"}}}]`,
-		`[{"id":"x","espnSlug":"x","kind":"club","currentSeasonId":"2026","seasons":{}}]`,
+		`[{"id":"x","espnSlug":"x","kind":"club","currentSeasonId":"2026","seasons":{"2026":{"id":"2026"}}}]`,
+		`[{"id":"x","espnSlug":"x","kind":"club","category":"mixed","currentSeasonId":"2026","seasons":{"2026":{"id":"2026"}}}]`,
+		`[{"id":"x","espnSlug":"x","category":"men","kind":"unknown","currentSeasonId":"2026","seasons":{"2026":{"id":"2026"}}}]`,
+		`[{"id":"x","espnSlug":"x","category":"men","kind":"club","currentSeasonId":"2026","seasons":{}}]`,
 		`[
-			{"id":"x","espnSlug":"x","kind":"club","currentSeasonId":"2026","seasons":{"2026":{"id":"2026"}}},
-			{"id":"x","espnSlug":"y","kind":"national","currentSeasonId":"2026","seasons":{"2026":{"id":"2026"}}}
+			{"id":"x","espnSlug":"x","category":"men","kind":"club","currentSeasonId":"2026","seasons":{"2026":{"id":"2026"}}},
+			{"id":"x","espnSlug":"y","category":"men","kind":"national","currentSeasonId":"2026","seasons":{"2026":{"id":"2026"}}}
 		]`,
 	} {
 		if _, err := parseRegistry([]byte(input)); err == nil {

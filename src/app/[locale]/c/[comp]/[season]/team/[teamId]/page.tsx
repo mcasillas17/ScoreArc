@@ -27,7 +27,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const resolvedParams = await params;
   if (!isLocale(resolvedParams.locale)) notFound();
   const locale = resolvedParams.locale;
-  const t = getTranslator(locale);
+  const t = getTranslator(locale, resolvedParams.comp);
   const rc = resolveSeason(resolvedParams.comp, resolvedParams.season);
   if (!rc) return { title: t('team.metaFallbackTitle') };
   const upstreamId = providerTeamId(resolvedParams.teamId);
@@ -60,7 +60,7 @@ export default async function TeamPage({ params }: Params) {
   const resolvedParams = await params;
   if (!isLocale(resolvedParams.locale)) notFound();
   const locale = resolvedParams.locale;
-  const t = getTranslator(locale);
+  const t = getTranslator(locale, resolvedParams.comp);
   const rc = resolveSeason(resolvedParams.comp, resolvedParams.season);
   if (!rc) notFound();
   // The URL carries our canonical id; the provider is asked by its own number.

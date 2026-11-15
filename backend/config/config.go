@@ -23,6 +23,7 @@ type Competition struct {
 	ShortName       string            `json:"shortName"`
 	ESPNSlug        string            `json:"espnSlug"`
 	Kind            string            `json:"kind"`
+	Category        string            `json:"category"` // "women" | "men"
 	CurrentSeasonId string            `json:"currentSeasonId"`
 	Seasons         map[string]Season `json:"seasons"`
 }
@@ -52,6 +53,9 @@ func parseRegistry(input []byte) (*Registry, error) {
 		}
 		if c.Kind != "national" && c.Kind != "club" {
 			return nil, fmt.Errorf("competition %q has invalid kind %q", c.ID, c.Kind)
+		}
+		if c.Category != "women" && c.Category != "men" {
+			return nil, fmt.Errorf("competition %q has invalid category %q", c.ID, c.Category)
 		}
 		if _, exists := byID[c.ID]; exists {
 			return nil, fmt.Errorf("duplicate competition id %q", c.ID)

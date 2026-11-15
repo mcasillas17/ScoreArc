@@ -382,3 +382,19 @@ func TestMapBracketRejectsFinishedSecondLegWithoutWinner(t *testing.T) {
 		t.Fatal("accepted finished second leg without winner")
 	}
 }
+
+func TestNormRoundSlugReadsPhasePrefixedAndHyphenatedRounds(t *testing.T) {
+	for raw, want := range map[string]string{
+		"playoffs---quarterfinals":  "quarterfinals",
+		"apertura---semifinals":     "semifinals",
+		"playoffs---regular-season": "regular-season",
+		"quarter-finals":            "quarterfinals",
+		"semi-finals":               "semifinals",
+		"3rd-place":                 "3rd-place-match",
+		"final":                     "final",
+	} {
+		if got := normRoundSlug(raw); got != want {
+			t.Errorf("normRoundSlug(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}

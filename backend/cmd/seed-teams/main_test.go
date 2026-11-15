@@ -98,7 +98,7 @@ func TestDeriveSlugFallsBackToProvisional(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := deriveSlug("ger", tc.kind, tc.team)
+			got := deriveSlug("ger", tc.kind, "men", tc.team)
 			want := "prov-espn-" + tc.team.ID
 			if got != want {
 				t.Errorf("deriveSlug(%q, %+v) = %q, want %q", tc.kind, tc.team, got, want)
@@ -111,14 +111,14 @@ func TestDeriveSlugFallsBackToProvisional(t *testing.T) {
 }
 
 func TestDeriveSlugNamesTeamsNormally(t *testing.T) {
-	club := deriveSlug("eng", "club", model.Team{ID: "360", Name: "Manchester United", Abbr: "MAN"})
+	club := deriveSlug("eng", "club", "men", model.Team{ID: "360", Name: "Manchester United", Abbr: "MAN"})
 	if club != "eng-manchester-united" {
 		t.Errorf("club slug = %q", club)
 	}
 	if isProvisional(club) {
 		t.Errorf("%q should not be provisional", club)
 	}
-	national := deriveSlug("fifa", "national", model.Team{ID: "203", Name: "Mexico", Abbr: "MEX"})
+	national := deriveSlug("fifa", "national", "men", model.Team{ID: "203", Name: "Mexico", Abbr: "MEX"})
 	if national != "nat-mex" {
 		t.Errorf("national slug = %q", national)
 	}
@@ -141,7 +141,7 @@ func TestProposeTeamPreservesCuratedIdentity(t *testing.T) {
 	}
 	live := model.Team{ID: "218", Name: "Cruz Azul", Abbr: "CAZ"}
 
-	got := proposeTeam(curated, "concacaf", "club", live)
+	got := proposeTeam(curated, "concacaf", "club", "men", live)
 	if got.ID != "mex-cruz-azul" {
 		t.Errorf("curated slug was re-derived: got %q, want %q", got.ID, "mex-cruz-azul")
 	}
@@ -161,7 +161,7 @@ func TestProposeTeamRefreshesProviderFields(t *testing.T) {
 			Country: "mex", Refs: map[string]string{"espn": "218"},
 		},
 	}
-	got := proposeTeam(curated, "concacaf", "club",
+	got := proposeTeam(curated, "concacaf", "club", "men",
 		model.Team{ID: "218", Name: "Cruz Azul", Abbr: "CAZ", CrestURL: &crest})
 
 	if got.Name != "Cruz Azul" || got.Abbr != "CAZ" {
@@ -189,7 +189,7 @@ func TestProposeTeamPreservesHandSetCrestAndShortName(t *testing.T) {
 			Refs: map[string]string{"espn": "218"},
 		},
 	}
-	got := proposeTeam(curated, "concacaf", "club",
+	got := proposeTeam(curated, "concacaf", "club", "men",
 		model.Team{ID: "218", Name: "Cruz Azul", Abbr: "CAZ", CrestURL: &espnCrest})
 
 	if got.CrestURL == nil || *got.CrestURL != handSet {
@@ -203,7 +203,7 @@ func TestProposeTeamPreservesHandSetCrestAndShortName(t *testing.T) {
 // A team the seed has never seen is the only case that gets a machine slug.
 func TestProposeTeamDerivesUnseenTeams(t *testing.T) {
 	crest := "https://a.espncdn.com/i/teamlogos/soccer/500/227.png"
-	got := proposeTeam(map[string]config.SeedTeam{}, "concacaf", "club",
+	got := proposeTeam(map[string]config.SeedTeam{}, "concacaf", "club", "men",
 		model.Team{ID: "227", Name: "América", Abbr: "AME", CrestURL: &crest})
 
 	if got.ID != "concacaf-america" {
@@ -229,7 +229,7 @@ func TestProposeTeamDerivesUnseenTeams(t *testing.T) {
 // being proposed they must not reappear as `"crestUrl": null` noise either.
 func TestProposedSeedOmitsUnsetDisplayFields(t *testing.T) {
 	encoded, err := json.Marshal([]config.SeedTeam{
-		proposeTeam(map[string]config.SeedTeam{}, "eng", "club",
+		proposeTeam(map[string]config.SeedTeam{}, "eng", "club", "men",
 			model.Team{ID: "359", Name: "Arsenal", Abbr: "ARS"}),
 	})
 	if err != nil {
@@ -412,5 +412,20 @@ func TestMergeBaseRefusesToRegenerateWithoutABase(t *testing.T) {
 				t.Fatalf("bootstrap base should be empty, got %d rows", len(got))
 			}
 		})
+	}
+}
+
+func TestDeriveSlugNamespacesWomensTeams(t *testing.T) {
+	club := deriveSlug("mex", "club", "women", model.Team{ID: "22415", Name: "América", Abbr: "AME"})
+	if club != "mex-w-america" {
+		t.Errorf("club slug = %q", club)
+	}
+	national := deriveSlug("fifa", "national", "women", model.Team{ID: "2765", Name: "Mexico", Abbr: "MEX"})
+	if national != "nat-w-mex" {
+		t.Errorf("national slug = %q", national)
+	}
+	// A name that cannot be slugged is still the provisional shape, unsuffixed.
+	if got := deriveSlug("mex", "club", "women", model.Team{ID: "9", Name: "Зенит", Abbr: "ZEN"}); got != "prov-espn-9" {
+		t.Errorf("provisional slug = %q", got)
 	}
 }

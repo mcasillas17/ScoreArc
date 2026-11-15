@@ -5,6 +5,7 @@
     "shortName": "World Cup",
     "espnSlug": "fifa.world",
     "kind": "national",
+    "category": "men",
     "currentSeasonId": "2026",
     "seasons": {
       "1998": {
@@ -112,6 +113,7 @@
     "shortName": "Leagues Cup",
     "espnSlug": "concacaf.leagues.cup",
     "kind": "club",
+    "category": "men",
     "currentSeasonId": "2026",
     "seasons": {
       "2026": {
@@ -133,6 +135,7 @@
     "shortName": "CONCACAF Nations League",
     "espnSlug": "concacaf.nations.league",
     "kind": "national",
+    "category": "men",
     "currentSeasonId": "2026-27",
     "seasons": {
       "2026-27": {
@@ -154,6 +157,7 @@
     "shortName": "UEFA Nations League",
     "espnSlug": "uefa.nations",
     "kind": "national",
+    "category": "men",
     "currentSeasonId": "2026-27",
     "seasons": {
       "2026-27": {
@@ -175,6 +179,7 @@
     "shortName": "Premier League",
     "espnSlug": "eng.1",
     "kind": "club",
+    "category": "men",
     "currentSeasonId": "2026-27",
     "seasons": {
       "2026-27": {
@@ -192,6 +197,7 @@
     "shortName": "LaLiga",
     "espnSlug": "esp.1",
     "kind": "club",
+    "category": "men",
     "currentSeasonId": "2026-27",
     "seasons": {
       "2026-27": {
@@ -209,6 +215,7 @@
     "shortName": "Serie A",
     "espnSlug": "ita.1",
     "kind": "club",
+    "category": "men",
     "currentSeasonId": "2026-27",
     "seasons": {
       "2026-27": {
@@ -226,6 +233,7 @@
     "shortName": "Bundesliga",
     "espnSlug": "ger.1",
     "kind": "club",
+    "category": "men",
     "currentSeasonId": "2026-27",
     "seasons": {
       "2026-27": {
@@ -243,6 +251,7 @@
     "shortName": "Ligue 1",
     "espnSlug": "fra.1",
     "kind": "club",
+    "category": "men",
     "currentSeasonId": "2026-27",
     "seasons": {
       "2026-27": {
@@ -260,6 +269,7 @@
     "shortName": "Super League Greece",
     "espnSlug": "gre.1",
     "kind": "club",
+    "category": "men",
     "currentSeasonId": "2026-27",
     "seasons": {
       "2026-27": {
@@ -277,6 +287,7 @@
     "shortName": "MLS",
     "espnSlug": "usa.1",
     "kind": "club",
+    "category": "men",
     "currentSeasonId": "2026",
     "seasons": {
       "2026": {
@@ -294,6 +305,7 @@
     "shortName": "Liga MX",
     "espnSlug": "mex.1",
     "kind": "club",
+    "category": "men",
     "currentSeasonId": "2026-apertura",
     "seasons": {
       "2026-apertura": {
@@ -301,6 +313,68 @@
         "label": "Apertura 2026",
         "hasBracket": false,
         "bracketDatesRange": null,
+        "knockoutRounds": [
+          "quarterfinals",
+          "semifinals",
+          "final"
+        ]
+      }
+    }
+  },
+  {
+    "id": "wsl",
+    "name": "Women's Super League",
+    "shortName": "WSL",
+    "espnSlug": "eng.w.1",
+    "kind": "club",
+    "category": "women",
+    "currentSeasonId": "2026-27",
+    "seasons": {
+      "2026-27": {
+        "id": "2026-27",
+        "label": "2026-27",
+        "hasBracket": false,
+        "bracketDatesRange": null,
+        "knockoutRounds": null
+      }
+    }
+  },
+  {
+    "id": "nwsl",
+    "name": "NWSL",
+    "shortName": "NWSL",
+    "espnSlug": "usa.nwsl",
+    "kind": "club",
+    "category": "women",
+    "currentSeasonId": "2026",
+    "seasons": {
+      "2026": {
+        "id": "2026",
+        "label": "2026",
+        "hasBracket": true,
+        "bracketDatesRange": "20261106-20261130",
+        "knockoutRounds": [
+          "quarterfinals",
+          "semifinals",
+          "final"
+        ]
+      }
+    }
+  },
+  {
+    "id": "liga-mx-femenil",
+    "name": "Liga MX Femenil",
+    "shortName": "Liga MX Femenil",
+    "espnSlug": "mex.w.1",
+    "kind": "club",
+    "category": "women",
+    "currentSeasonId": "2026-apertura",
+    "seasons": {
+      "2026-apertura": {
+        "id": "2026-apertura",
+        "label": "Apertura 2026",
+        "hasBracket": true,
+        "bracketDatesRange": "20261110-20261231",
         "knockoutRounds": [
           "quarterfinals",
           "semifinals",

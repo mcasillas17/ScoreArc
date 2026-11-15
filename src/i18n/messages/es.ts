@@ -314,6 +314,7 @@ export const es = {
   'zone.mlsRoundOne': 'Primera ronda (al mejor de 3)',
   'zone.wildCard': 'Comodín',
   'zone.supportersShield': "Supporters' Shield",
+  'zone.nwslShield': 'NWSL Shield · Playoffs',
   'zone.promotion': 'Ascenso',
   'home.tagline': 'Fútbol en vivo — cuadros, resultados y clasificaciones, en cada arco.',
   'home.digest.emptyMatches': 'No hay partidos en la ventana actual.',
@@ -336,6 +337,10 @@ export const es = {
   'home.digest.emptyHeadline': 'Nada en vivo, nada por jugarse, nada recién jugado — la ventana está vacía.',
   'home.digest.recentHeadline': 'Nada en vivo ahora mismo — estos son los últimos resultados.',
   'nav.skipToContent': 'Saltar al contenido',
+  'view.label': 'Mostrar',
+  'view.all': 'Todo',
+  'view.women': 'Femenil',
+  'view.men': 'Varonil',
   'nav.home': 'Inicio',
   'nav.players': 'Jugadores',
   'nav.simulate': 'Simular',
@@ -473,3 +478,35 @@ export const es = {
   'meta.competition.description': (competition: string, season: string) =>
     `${competition} ${season} — resultados en vivo, clasificaciones y más en ScoreArc.`,
 } satisfies Messages;
+
+/**
+ * What changes when the page is about a women's competition. Spanish marks
+ * gender on the nouns for the people on the pitch, so "Jugadores" over a
+ * Liga MX Femenil squad is simply wrong. Only the keys that differ live here;
+ * everything else falls through to `es`. English needs no such table.
+ */
+export const esWomen = {
+  'squad.player': 'Jugadora',
+  'players.search': 'Buscar jugadoras o equipos',
+  'players.count': (count: number, total: number) => `${count} de ${total} jugadoras`,
+  'players.noSearchResult': 'No hay jugadoras que coincidan en las plantillas disponibles.',
+  'players.unavailable': 'El directorio de jugadoras no está disponible por ahora. Inténtalo más tarde.',
+  'players.currentDirectory': 'Directorio actual de jugadoras →',
+  'players.metaTitle': (edition: string) => `Jugadoras · ${edition}`,
+  'players.metaDescription': (edition: string) => `Plantillas actuales de los equipos de ${edition}. Busca jugadoras disponibles por nombre o equipo; la cobertura puede ser incompleta.`,
+  'player.metaFallbackTitle': 'Jugadora',
+  'standings.scorers': 'Goleadoras',
+  'standings.allPlayers': 'Todas las jugadoras →',
+  'standings.player': 'Jugadora',
+  'bracket.championFlag': 'Bandera de las campeonas',
+  'champion.world': 'CAMPEONAS DEL MUNDO',
+  'champion.competition': 'CAMPEONAS',
+  'meta.predictedChampion.title': (competition: string, champion: string) =>
+    `Mis campeonas de ${competition}: ${champion} 🏆`,
+  'zone.champion': 'Campeonas',
+  'nav.players': 'Jugadoras',
+  'nav.playersOf': (name: string) => `Jugadoras de ${name}`,
+  'hub.champion': (champion: string) => `${champion} — campeonas`,
+  'matchDetails.boxScore': 'Estadísticas por jugadora',
+  'matchDetails.player': 'Jugadora',
+} satisfies Partial<Messages>;

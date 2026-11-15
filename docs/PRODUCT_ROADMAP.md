@@ -996,6 +996,8 @@ neither E16 cutover nor full T21.2 schema readiness, and T17.1 stays closed.
 
 ### E23 · Global competition onboarding
 
+The [women’s fútbol coverage audit](WOMENS_FOOTBALL_COVERAGE.md) inventories 45 ESPN feeds and tests the NWSL, Liga MX Femenil and WSL against the existing data path. It records candidate batches, identity collisions, playoff rules and service limits for T23.1–T23.4.
+
 | Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
 |---|---|---|---|
 | **T23.1** | Define a competition capability/format matrix for league, groups, knockout, split season, and future formats. | Unsupported shapes are explicit; no “just config” claim without every required capability. | none |

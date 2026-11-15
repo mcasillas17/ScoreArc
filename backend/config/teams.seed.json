@@ -250,6 +250,146 @@
     }
   },
   {
+    "id": "eng-w-arsenal",
+    "kind": "club",
+    "name": "Arsenal",
+    "abbr": "ARS",
+    "country": "eng",
+    "refs": {
+      "espn": "19973"
+    }
+  },
+  {
+    "id": "eng-w-aston-villa",
+    "kind": "club",
+    "name": "Aston Villa",
+    "abbr": "AVL",
+    "country": "eng",
+    "refs": {
+      "espn": "20707"
+    }
+  },
+  {
+    "id": "eng-w-birmingham-city",
+    "kind": "club",
+    "name": "Birmingham City",
+    "abbr": "BIR",
+    "country": "eng",
+    "refs": {
+      "espn": "19968"
+    }
+  },
+  {
+    "id": "eng-w-brighton-hove-albion",
+    "kind": "club",
+    "name": "Brighton & Hove Albion",
+    "abbr": "BHA",
+    "country": "eng",
+    "refs": {
+      "espn": "19976"
+    }
+  },
+  {
+    "id": "eng-w-charlton-athletic",
+    "kind": "club",
+    "name": "Charlton Athletic",
+    "abbr": "CHA",
+    "country": "eng",
+    "refs": {
+      "espn": "21035"
+    }
+  },
+  {
+    "id": "eng-w-chelsea",
+    "kind": "club",
+    "name": "Chelsea",
+    "abbr": "CHE",
+    "country": "eng",
+    "refs": {
+      "espn": "19970"
+    }
+  },
+  {
+    "id": "eng-w-crystal-palace",
+    "kind": "club",
+    "name": "Crystal Palace",
+    "abbr": "CRY",
+    "country": "eng",
+    "refs": {
+      "espn": "21037"
+    }
+  },
+  {
+    "id": "eng-w-everton",
+    "kind": "club",
+    "name": "Everton",
+    "abbr": "EVE",
+    "country": "eng",
+    "refs": {
+      "espn": "19972"
+    }
+  },
+  {
+    "id": "eng-w-liverpool",
+    "kind": "club",
+    "name": "Liverpool",
+    "abbr": "LIV",
+    "country": "eng",
+    "refs": {
+      "espn": "19971"
+    }
+  },
+  {
+    "id": "eng-w-london-city-lionesses",
+    "kind": "club",
+    "name": "London City Lionesses",
+    "abbr": "LCL",
+    "country": "eng",
+    "refs": {
+      "espn": "21053"
+    }
+  },
+  {
+    "id": "eng-w-manchester-city",
+    "kind": "club",
+    "name": "Manchester City",
+    "abbr": "MNC",
+    "country": "eng",
+    "refs": {
+      "espn": "19257"
+    }
+  },
+  {
+    "id": "eng-w-manchester-united",
+    "kind": "club",
+    "name": "Manchester United",
+    "abbr": "MAN",
+    "country": "eng",
+    "refs": {
+      "espn": "20061"
+    }
+  },
+  {
+    "id": "eng-w-tottenham-hotspur",
+    "kind": "club",
+    "name": "Tottenham Hotspur",
+    "abbr": "TOT",
+    "country": "eng",
+    "refs": {
+      "espn": "20062"
+    }
+  },
+  {
+    "id": "eng-w-west-ham-united",
+    "kind": "club",
+    "name": "West Ham United",
+    "abbr": "WHU",
+    "country": "eng",
+    "refs": {
+      "espn": "19975"
+    }
+  },
+  {
     "id": "esp-alaves",
     "kind": "club",
     "name": "Alavés",
@@ -1327,6 +1467,186 @@
     "country": "mex",
     "refs": {
       "espn": "223"
+    }
+  },
+  {
+    "id": "mex-w-america",
+    "kind": "club",
+    "name": "América",
+    "abbr": "AME",
+    "country": "mex",
+    "refs": {
+      "espn": "22415"
+    }
+  },
+  {
+    "id": "mex-w-atlante",
+    "kind": "club",
+    "name": "Atlante",
+    "abbr": "ATL",
+    "country": "mex",
+    "refs": {
+      "espn": "133989"
+    }
+  },
+  {
+    "id": "mex-w-atlas",
+    "kind": "club",
+    "name": "Atlas",
+    "abbr": "ATS",
+    "country": "mex",
+    "refs": {
+      "espn": "133990"
+    }
+  },
+  {
+    "id": "mex-w-atletico-de-san-luis",
+    "kind": "club",
+    "name": "Atlético de San Luis",
+    "abbr": "ASL",
+    "country": "mex",
+    "refs": {
+      "espn": "133992"
+    }
+  },
+  {
+    "id": "mex-w-cruz-azul",
+    "kind": "club",
+    "name": "Cruz Azul",
+    "abbr": "CAZ",
+    "country": "mex",
+    "refs": {
+      "espn": "133982"
+    }
+  },
+  {
+    "id": "mex-w-fc-juarez",
+    "kind": "club",
+    "name": "FC Juárez",
+    "abbr": "JUA",
+    "country": "mex",
+    "refs": {
+      "espn": "133984"
+    }
+  },
+  {
+    "id": "mex-w-guadalajara",
+    "kind": "club",
+    "name": "Guadalajara",
+    "abbr": "GUA",
+    "country": "mex",
+    "refs": {
+      "espn": "22416"
+    }
+  },
+  {
+    "id": "mex-w-leon",
+    "kind": "club",
+    "name": "León",
+    "abbr": "LEO",
+    "country": "mex",
+    "refs": {
+      "espn": "133986"
+    }
+  },
+  {
+    "id": "mex-w-monterrey",
+    "kind": "club",
+    "name": "Monterrey",
+    "abbr": "MON",
+    "country": "mex",
+    "refs": {
+      "espn": "21537"
+    }
+  },
+  {
+    "id": "mex-w-necaxa",
+    "kind": "club",
+    "name": "Necaxa",
+    "abbr": "NCX",
+    "country": "mex",
+    "refs": {
+      "espn": "133983"
+    }
+  },
+  {
+    "id": "mex-w-pachuca",
+    "kind": "club",
+    "name": "Pachuca",
+    "abbr": "PAC",
+    "country": "mex",
+    "refs": {
+      "espn": "22414"
+    }
+  },
+  {
+    "id": "mex-w-puebla",
+    "kind": "club",
+    "name": "Puebla",
+    "abbr": "PUE",
+    "country": "mex",
+    "refs": {
+      "espn": "133991"
+    }
+  },
+  {
+    "id": "mex-w-pumas-unam",
+    "kind": "club",
+    "name": "Pumas UNAM",
+    "abbr": "UNAM",
+    "country": "mex",
+    "refs": {
+      "espn": "133981"
+    }
+  },
+  {
+    "id": "mex-w-queretaro",
+    "kind": "club",
+    "name": "Querétaro",
+    "abbr": "QRO",
+    "country": "mex",
+    "refs": {
+      "espn": "133987"
+    }
+  },
+  {
+    "id": "mex-w-santos",
+    "kind": "club",
+    "name": "Santos",
+    "abbr": "SAN",
+    "country": "mex",
+    "refs": {
+      "espn": "133985"
+    }
+  },
+  {
+    "id": "mex-w-tigres-uanl",
+    "kind": "club",
+    "name": "Tigres UANL",
+    "abbr": "TIG",
+    "country": "mex",
+    "refs": {
+      "espn": "22413"
+    }
+  },
+  {
+    "id": "mex-w-tijuana",
+    "kind": "club",
+    "name": "Tijuana",
+    "abbr": "TIJ",
+    "country": "mex",
+    "refs": {
+      "espn": "22417"
+    }
+  },
+  {
+    "id": "mex-w-toluca",
+    "kind": "club",
+    "name": "Toluca",
+    "abbr": "TOL",
+    "country": "mex",
+    "refs": {
+      "espn": "133988"
     }
   },
   {
@@ -2807,6 +3127,166 @@
     "country": "usa",
     "refs": {
       "espn": "21812"
+    }
+  },
+  {
+    "id": "usa-w-angel-city-fc",
+    "kind": "club",
+    "name": "Angel City FC",
+    "abbr": "LA",
+    "country": "usa",
+    "refs": {
+      "espn": "21422"
+    }
+  },
+  {
+    "id": "usa-w-bay-fc",
+    "kind": "club",
+    "name": "Bay FC",
+    "abbr": "BAY",
+    "country": "usa",
+    "refs": {
+      "espn": "22187"
+    }
+  },
+  {
+    "id": "usa-w-boston-legacy-fc",
+    "kind": "club",
+    "name": "Boston Legacy FC",
+    "abbr": "BOS",
+    "country": "usa",
+    "refs": {
+      "espn": "131562"
+    }
+  },
+  {
+    "id": "usa-w-chicago-stars-fc",
+    "kind": "club",
+    "name": "Chicago Stars FC",
+    "abbr": "CHI",
+    "country": "usa",
+    "refs": {
+      "espn": "15360"
+    }
+  },
+  {
+    "id": "usa-w-denver-summit-fc",
+    "kind": "club",
+    "name": "Denver Summit FC",
+    "abbr": "DEN",
+    "country": "usa",
+    "refs": {
+      "espn": "131563"
+    }
+  },
+  {
+    "id": "usa-w-gotham-fc",
+    "kind": "club",
+    "name": "Gotham FC",
+    "abbr": "GFC",
+    "country": "usa",
+    "refs": {
+      "espn": "15364"
+    }
+  },
+  {
+    "id": "usa-w-houston-dash",
+    "kind": "club",
+    "name": "Houston Dash",
+    "abbr": "HOU",
+    "country": "usa",
+    "refs": {
+      "espn": "17346"
+    }
+  },
+  {
+    "id": "usa-w-kansas-city-current",
+    "kind": "club",
+    "name": "Kansas City Current",
+    "abbr": "KC",
+    "country": "usa",
+    "refs": {
+      "espn": "20907"
+    }
+  },
+  {
+    "id": "usa-w-north-carolina-courage",
+    "kind": "club",
+    "name": "North Carolina Courage",
+    "abbr": "NC",
+    "country": "usa",
+    "refs": {
+      "espn": "15366"
+    }
+  },
+  {
+    "id": "usa-w-orlando-pride",
+    "kind": "club",
+    "name": "Orlando Pride",
+    "abbr": "ORL",
+    "country": "usa",
+    "refs": {
+      "espn": "18206"
+    }
+  },
+  {
+    "id": "usa-w-portland-thorns-fc",
+    "kind": "club",
+    "name": "Portland Thorns FC",
+    "abbr": "POR",
+    "country": "usa",
+    "refs": {
+      "espn": "15362"
+    }
+  },
+  {
+    "id": "usa-w-racing-louisville-fc",
+    "kind": "club",
+    "name": "Racing Louisville FC",
+    "abbr": "LOU",
+    "country": "usa",
+    "refs": {
+      "espn": "20905"
+    }
+  },
+  {
+    "id": "usa-w-san-diego-wave-fc",
+    "kind": "club",
+    "name": "San Diego Wave FC",
+    "abbr": "SD",
+    "country": "usa",
+    "refs": {
+      "espn": "21423"
+    }
+  },
+  {
+    "id": "usa-w-seattle-reign-fc",
+    "kind": "club",
+    "name": "Seattle Reign FC",
+    "abbr": "SEA",
+    "country": "usa",
+    "refs": {
+      "espn": "15363"
+    }
+  },
+  {
+    "id": "usa-w-utah-royals",
+    "kind": "club",
+    "name": "Utah Royals",
+    "abbr": "UTA",
+    "country": "usa",
+    "refs": {
+      "espn": "19141"
+    }
+  },
+  {
+    "id": "usa-w-washington-spirit",
+    "kind": "club",
+    "name": "Washington Spirit",
+    "abbr": "WAS",
+    "country": "usa",
+    "refs": {
+      "espn": "15365"
     }
   }
 ]

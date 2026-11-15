@@ -36,7 +36,7 @@ export async function generateMetadata({ params, searchParams }: { params: Seaso
   if (!isLocale(locale)) notFound();
   const rc = resolveSeason(comp, season);
   if (!rc) return {};
-  const t = getTranslator(locale);
+  const t = getTranslator(locale, comp);
   const label = `${rc.competition.shortName} ${rc.season.label}`;
   const champ = firstSearchParam(query.c);
   const name = firstSearchParam(query.name) ?? champ;
@@ -80,7 +80,7 @@ export async function generateMetadata({ params, searchParams }: { params: Seaso
 export default async function Workspace({ params }: { params: SeasonParams }) {
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
-  const t = getTranslator(locale);
+  const t = getTranslator(locale, comp);
   const rc = resolveSeason(comp, season);
   if (!rc) notFound();
   // A league's headline view IS its table, and the table lives at /standings

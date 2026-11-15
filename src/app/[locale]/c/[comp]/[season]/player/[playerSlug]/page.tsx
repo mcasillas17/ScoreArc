@@ -37,7 +37,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const resolvedParams = await params;
   if (!isLocale(resolvedParams.locale)) notFound();
   const locale = resolvedParams.locale;
-  const t = getTranslator(locale);
+  const t = getTranslator(locale, resolvedParams.comp);
   const rc = resolveSeason(resolvedParams.comp, resolvedParams.season);
   if (!rc) return { title: t('player.metaFallbackTitle') };
   let player: PlayerProfile | null = null;
@@ -75,7 +75,7 @@ export default async function PlayerPage({ params }: Params) {
   const resolvedParams = await params;
   if (!isLocale(resolvedParams.locale)) notFound();
   const locale = resolvedParams.locale;
-  const t = getTranslator(locale);
+  const t = getTranslator(locale, resolvedParams.comp);
   const rc = resolveSeason(resolvedParams.comp, resolvedParams.season);
   if (!rc) notFound();
   const player = await loadPlayer(resolvedParams.comp, resolvedParams.season, resolvedParams.playerSlug);

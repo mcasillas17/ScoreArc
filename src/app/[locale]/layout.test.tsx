@@ -9,6 +9,7 @@ vi.mock('@vercel/speed-insights/next', () => ({ SpeedInsights: () => null }));
 vi.mock('next/navigation', () => ({
   notFound: vi.fn(() => { throw new Error('NEXT_NOT_FOUND'); }),
   usePathname: () => '/es',
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push: vi.fn() }),
 }));
 

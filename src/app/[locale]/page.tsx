@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
-import { ongoingCompetitions } from '@/server/data/competitions';
+import { inView, ongoingCompetitions, parseView } from '@/server/data/competitions';
 import { loadDigestSports } from '@/server/data/homeDigest';
 import { collectDatedStories } from '@/server/data/newsFeed';
 import DigestMatches from '@/components/DigestMatches';
@@ -11,18 +11,24 @@ import DigestNews from '@/components/DigestNews';
 import TrackedLink from '@/components/TrackedLink';
 import SiteFooter from '@/components/SiteFooter';
 import YourTeams from '@/components/YourTeams';
+import ViewLinks, { type SearchParams } from '@/components/ViewLinks';
 
 export const dynamic = 'force-dynamic';
 type PageParams = { locale: string } | Promise<{ locale: string }>;
+type PageSearch = SearchParams | Promise<SearchParams>;
 
-export default async function Home({ params }: { params: PageParams }) {
+export default async function Home({ params, searchParams }: { params: PageParams; searchParams?: PageSearch }) {
   const { locale } = await params;
+  const search = (await searchParams) ?? {};
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
   // One clock for the whole render, so two blocks cannot disagree about "now".
   const now = new Date();
 
-  const ongoing = ongoingCompetitions();
+  // The category narrows the competitions BEFORE the digest picks its headline
+  // and its six cards, so a filtered page neither reads nor ranks the rest.
+  const view = parseView(search.view);
+  const ongoing = ongoingCompetitions().filter((c) => inView(c, view));
   const { matches, boards } = loadDigestSports(ongoing, now, locale);
   const stories = collectDatedStories(now, locale, { perFeed: 2, limit: 6 }, ongoing);
   const loading = <p className="dg-empty" aria-busy="true">{t('common.loading')}</p>;
@@ -33,7 +39,9 @@ export default async function Home({ params }: { params: PageParams }) {
         {matches.then(({ headline }) => <h1 className="dg-title dg-lead">{headline}</h1>)}
       </Suspense>
 
-      <YourTeams />
+      <ViewLinks locale={locale} path="/" view={view} params={search} />
+
+      <YourTeams view={view} />
 
       <section className="dg-sec">
         <Suspense fallback={<div className="dg-mgrid--loading">{loading}</div>}>

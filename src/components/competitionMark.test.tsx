@@ -35,7 +35,8 @@ describe('CompetitionMark', () => {
     const without = listCompetitions().filter((c) => !c.logo).map((c) => c.id);
     // gre.1's sole ESPN asset has a white ground baked in (no dark variant) —
     // the emblem carries it. Adding an id here requires a note in the config.
-    expect(without).toEqual(['super-league-greece']);
+    // ESPN publishes no mark at all for Liga MX Femenil.
+    expect(without).toEqual(['super-league-greece', 'liga-mx-femenil']);
   });
 
   // Inverting is for monochrome marks only — it would recolour a colour logo

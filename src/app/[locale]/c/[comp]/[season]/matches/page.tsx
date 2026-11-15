@@ -33,7 +33,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
-  const t = getTranslator(locale);
+  const t = getTranslator(locale, comp);
   const rc = resolveSeason(comp, season);
   if (!rc) return { title: t('matches.title') };
   const editionName = `${rc.competition.shortName} ${rc.season.label}`;
@@ -60,7 +60,7 @@ export default async function MatchesPage({
   const { locale, comp, season } = await params;
   const query = searchParams ? await searchParams : undefined;
   if (!isLocale(locale)) notFound();
-  const t = getTranslator(locale);
+  const t = getTranslator(locale, comp);
   const rc = resolveSeason(comp, season);
   if (!rc) notFound();
 
