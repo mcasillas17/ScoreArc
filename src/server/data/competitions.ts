@@ -273,8 +273,8 @@ export const COMPETITIONS: Record<string, Competition> = {
   // the light one: the swirl reads on dark, the navy "CNL" wordmark is muted.
   'nations-league': {
     id: 'nations-league',
-    name: 'Concacaf Nations League',
-    shortName: 'Nations League',
+    name: 'CONCACAF Nations League',
+    shortName: 'CONCACAF Nations League',
     espnSlug: 'concacaf.nations.league',
     kind: 'national',
     teamStyle: 'flag',
@@ -291,6 +291,29 @@ export const COMPETITIONS: Record<string, Competition> = {
         bracketDatesRange: '20261112-20270331',
         // Semifinal pairings are not published yet; no bracketOrder, so the
         // leaf order is ESPN's event order until the tree can be derived.
+        knockoutRounds: ['quarterfinals', 'semifinals', 'final'],
+      },
+    },
+  },
+  'uefa-nations-league': {
+    id: 'uefa-nations-league',
+    name: 'UEFA Nations League',
+    shortName: 'UEFA Nations League',
+    espnSlug: 'uefa.nations',
+    kind: 'national',
+    teamStyle: 'flag',
+    emblem: '🌍',
+    logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/2395.png',
+    accent: { base: '#e64e64', bright: '#ff8593', soft: 'rgba(230,78,100,0.16)' },
+    currentSeasonId: '2026-27',
+    seasons: {
+      '2026-27': {
+        id: '2026-27',
+        label: '2026-27',
+        sections: ['bracket', 'standings', 'scores', 'news'],
+        format: { hasBracket: true, hasGroups: true, hasThirdPlaceRace: false },
+        // League A quarterfinals and finals. Promotion/relegation ties share the March window.
+        bracketDatesRange: '20270325-20270613',
         knockoutRounds: ['quarterfinals', 'semifinals', 'final'],
       },
     },

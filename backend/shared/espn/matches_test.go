@@ -241,8 +241,42 @@ func TestScoreboardUnknownRoundRequiresBracketClassification(t *testing.T) {
 	}
 }
 
+func TestNationsLeaguePlayInIsExcludedFromTitleBracket(t *testing.T) {
+	raw, err := os.ReadFile("../../../src/server/data/__fixtures__/espn-nations-league-play-in.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches, err := MapScoreboard(raw)
+	if err != nil || len(matches) != 2 {
+		t.Fatalf("matches=%+v err=%v", matches, err)
+	}
+	playIn, quarterfinal := matches[0], matches[1]
+	if playIn.ID != "401929779" || playIn.BracketRequired == nil || *playIn.BracketRequired ||
+		!playIn.BracketConfirmed || playIn.Round != "" {
+		t.Fatalf("play-in still requires title bracket confirmation: %+v", playIn)
+	}
+	if playIn.State != MatchStateFinished || playIn.HomeScore == nil || *playIn.HomeScore != 0 ||
+		playIn.AwayScore == nil || *playIn.AwayScore != 0 || playIn.WinnerID != nil {
+		t.Fatalf("drawn first-leg facts changed: %+v", playIn)
+	}
+	if quarterfinal.BracketRequired == nil || !*quarterfinal.BracketRequired || quarterfinal.BracketConfirmed {
+		t.Fatalf("title knockout bypassed bracket confirmation: %+v", quarterfinal)
+	}
+	bracket, err := MapBracket(raw)
+	if err != nil || len(bracket) != 1 || bracket[0].ID != "401929776" || bracket[0].Round != "quarterfinals" {
+		t.Fatalf("play-in leaked into title bracket: %+v err=%v", bracket, err)
+	}
+}
+
 func TestGroupStageDoesNotRequireBracketClassification(t *testing.T) {
 	required := bracketRequirement("group", "group-stage")
+	if required == nil || *required {
+		t.Fatalf("required=%v", required)
+	}
+}
+
+func TestUEFANationsLeaguePlayoffsDoNotRequireTitleBracketConfirmation(t *testing.T) {
+	required := bracketRequirement("playoff", "relegation-playoffs")
 	if required == nil || *required {
 		t.Fatalf("required=%v", required)
 	}

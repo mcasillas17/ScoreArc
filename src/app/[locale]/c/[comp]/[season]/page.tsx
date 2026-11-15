@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
+import { formatDate } from '@/i18n/format';
 import { resolveSeason } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import { isSelectedDataStore, runDataOperation } from '@/server/data/sourceSelection';
@@ -17,6 +19,7 @@ import { getTranslator } from '@/i18n/translate';
 import { ogUrl, safeCrest, shareMetadata } from '@/lib/ogUrl';
 import { firstSearchParam } from '@/lib/searchParams';
 import { projectLiguilla } from '@/server/data/liguillaProjection';
+import { utcDate } from '@/server/data/scoreboardWindow';
 
 export const dynamic = 'force-dynamic';
 
@@ -236,6 +239,10 @@ export default async function Workspace({ params }: { params: SeasonParams }) {
   // champion to decide. Once the final has a winner there is nothing to pick.
   const predictionEnabled = !readOnly
     && !bracket.some(r => r.slug === 'final' && r.matches.some(m => m.winnerId));
+  const start = rc.season.bracketDatesRange && utcDate(rc.season.bracketDatesRange.slice(0, 8));
+  const upcomingKnockoutDate = start && start > Date.now() && rc.season.sections.includes('standings')
+    ? formatDate(new Date(start), locale, { dateStyle: 'long', timeZone: 'UTC' })
+    : null;
 
   return (
     <main className="main">
@@ -247,7 +254,10 @@ export default async function Workspace({ params }: { params: SeasonParams }) {
         </header>
         {bracket.length > 0
           ? <div key={rc.season.id} className="edition-fade"><BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} emblem={rc.competition.emblem} logo={rc.competition.logo} logoInvert={rc.competition.logoInvert} trophyImage={rc.competition.trophyImage} championTitleKey={rc.competition.championTitleKey} accent={rc.competition.bracketAccent} shape={bracketShapeFor(rc.season)} readOnly={readOnly} predictionEnabled={predictionEnabled} /></div>
-          : <div className="empty-section"><p className="empty-text">{t('bracket.unavailable')}</p></div>}
+          : <div className="empty-section">
+              <p className="empty-text">{upcomingKnockoutDate ? t('bracket.startsOn', upcomingKnockoutDate) : t('bracket.unavailable')}</p>
+              {upcomingKnockoutDate && <Link href={`/${locale}/c/${comp}/${season}/standings`}>{t('bracket.viewGroups')}</Link>}
+            </div>}
       </section>
       {!readOnly && liveSection}
       {footer}

@@ -55,14 +55,18 @@ var roundSlugAlias = map[string]string{
 }
 
 var nonKnockoutRound = map[string]struct{}{
-	"group-stage":       {},
-	"league-phase":      {},
-	"league-stage":      {},
-	"preliminary-round": {},
-	"qualification":     {},
-	"qualifying":        {},
-	"regular-season":    {},
+	"group-stage":         {},
+	"league-phase":        {},
+	"league-stage":        {},
+	"preliminary-round":   {},
+	"qualification":       {},
+	"qualifying":          {},
+	"regular-season":      {},
+	"relegation-playoffs": {}, // UEFA Nations League promotion/relegation ties
 }
+
+// These ties qualify for the Gold Cup, not the Nations League title bracket.
+const goldCupPlayInRound = "gold-cup-play-in-prelims"
 
 func normRoundSlug(slug string) string {
 	if v, ok := roundSlugAlias[slug]; ok {
@@ -101,7 +105,7 @@ func bracketRequirement(eventID, seasonSlug string) *bool {
 		required := true
 		return &required
 	}
-	if _, ok := nonKnockoutRound[slug]; ok {
+	if _, ok := nonKnockoutRound[slug]; ok || slug == goldCupPlayInRound {
 		required := false
 		return &required
 	}
