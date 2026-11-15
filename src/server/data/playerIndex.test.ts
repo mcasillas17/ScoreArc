@@ -202,9 +202,9 @@ describe('player directory', () => {
     store.getPlayer = vi.fn();
     const index = await competitionPlayerIndex(rc, store);
     expect(index.directory).toEqual({ totalTeams: 2, teamsWithRoster: 2, players: [
-      { name: 'Alí Ávila', slug: 'ali-avila', teamName: 'QRO', teamAbbr: 'QRO' },
-      { name: 'Rodrigo López', slug: 'rodrigo-lopez-qro', teamName: 'QRO', teamAbbr: 'QRO' },
-      { name: 'Rodrigo Lopez', slug: 'rodrigo-lopez-ame', teamName: 'AME', teamAbbr: 'AME' },
+      { name: 'Alí Ávila', slug: 'ali-avila', teamName: 'QRO', teamAbbr: 'QRO', teamId: '222', crestUrl: null },
+      { name: 'Rodrigo López', slug: 'rodrigo-lopez-qro', teamName: 'QRO', teamAbbr: 'QRO', teamId: '222', crestUrl: null },
+      { name: 'Rodrigo Lopez', slug: 'rodrigo-lopez-ame', teamName: 'AME', teamAbbr: 'AME', teamId: '227', crestUrl: null },
     ] });
     expect(store.getSquad).toHaveBeenCalledTimes(2);
     expect(store.getPlayer).not.toHaveBeenCalled();
@@ -241,7 +241,7 @@ describe('player directory', () => {
     const selected = createSelectedDataStore({ source: 'reader', espn: fallback, reader: () => reader, onFallback });
     const index = await competitionPlayerIndex(rc, selected);
     expect(index.directory).toEqual({ totalTeams: 1, teamsWithRoster: 1, players: [
-      { name: 'ESPN Name', slug: 'espn-name', teamName: 'AME', teamAbbr: 'AME' },
+      { name: 'ESPN Name', slug: 'espn-name', teamName: 'AME', teamAbbr: 'AME', teamId: '227', crestUrl: null },
     ] });
     expect([...index.bySlug.keys()]).toEqual(['espn-name']);
     expect(onFallback).toHaveBeenCalledTimes(1);

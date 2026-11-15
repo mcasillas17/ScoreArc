@@ -10,13 +10,15 @@ interface GroupTableProps {
   group: Group;
   teamStyle?: 'flag' | 'crest';
   teamBase?: string;
+  /** Mark 3rd place as still in the race (World Cup best thirds). */
+  thirdPlaceRace?: boolean;
 }
 
 function fmtGD(gd: number): string {
   return gd > 0 ? `+${gd}` : String(gd);
 }
 
-export default function GroupTable({ group, teamStyle, teamBase }: GroupTableProps) {
+export default function GroupTable({ group, teamStyle, teamBase, thirdPlaceRace }: GroupTableProps) {
   const t = useTranslations();
   const started = group.standings.some((s) => s.played > 0);
   return (
@@ -42,7 +44,7 @@ export default function GroupTable({ group, teamStyle, teamBase }: GroupTablePro
         </thead>
         <tbody>
           {group.standings.map((s) => (
-            <tr key={s.team.id} className={groupRowClass(s, started)}>
+            <tr key={s.team.id} className={groupRowClass(s, started, thirdPlaceRace)}>
               <td className="rank-cell">{started ? s.rank : ''}</td>
               <td className="team-cell">
                 <div className="team-cell-inner">

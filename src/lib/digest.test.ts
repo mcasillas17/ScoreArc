@@ -3,6 +3,7 @@ import type { NewsArticle } from '@/server/data/types';
 import {
   chooseWhatsOn,
   collectStories,
+  groupStories,
   untilKickoff,
   whatsOnHeadline,
   UPCOMING_HORIZON_MS,
@@ -178,5 +179,36 @@ describe('collectStories', () => {
   it('applies the overall limit last', () => {
     const feeds = ['a', 'b', 'c', 'd'].map((id) => [article(id, '2026-08-18T12:00:00Z')]);
     expect(collectStories(feeds, { perFeed: 2, limit: 3 })).toHaveLength(3);
+  });
+});
+
+describe('groupStories', () => {
+  const now = new Date('2026-08-18T12:00:00Z');
+  const opts = { perFeed: 2, maxAgeMs: 14 * 86_400_000, now };
+
+  it('keeps stories under their own feed, the freshest feed first', () => {
+    const out = groupStories(
+      [[article('old', '2026-08-10T12:00:00Z')], [article('new', '2026-08-18T11:00:00Z')]],
+      opts,
+    );
+    expect(out.map((g) => [g.feed, g.articles.map((a) => a.id)])).toEqual([[1, ['new']], [0, ['old']]]);
+  });
+
+  it('drops stale and undatable stories, and the feeds left empty by that', () => {
+    const out = groupStories(
+      [
+        [article('stale', '2026-07-01T12:00:00Z'), article('bad', 'not-a-date')],
+        [article('fresh', '2026-08-17T12:00:00Z')],
+      ],
+      opts,
+    );
+    expect(out).toEqual([{ feed: 1, articles: [expect.objectContaining({ id: 'fresh' })] }]);
+  });
+
+  it('shows a syndicated story once and caps each feed', () => {
+    const feed = ['a', 'b', 'c'].map((id) => article(id, '2026-08-18T10:00:00Z'));
+    const out = groupStories([feed, feed], opts);
+    expect(out).toHaveLength(1);
+    expect(out[0].articles.map((a) => a.id)).toEqual(['a', 'b']);
   });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { listCompetitions, resolveSeason } from '@/server/data/competitions';
@@ -10,6 +10,18 @@ import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import type { Locale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
 import CompetitionMark from './CompetitionMark';
+import NavDial, { onPointerRelease, type DialItem } from './NavDial';
+import {
+  RAIL_REACH_EXPANDED,
+  SCROLL_INTENT_PX,
+  LEVEL_STEP_DEG,
+  SECTION_STEP_DEG,
+  WHEEL_REACH,
+  fanAngle,
+  nextShrunk,
+  restingFocus,
+  splitAround,
+} from './dialModel';
 
 const ICON = {
   width: 17,
@@ -29,8 +41,8 @@ const simulateIcon = <svg {...ICON}><path d="M4 18V6M10 18v-7M16 18v-4M20 18V9" 
 const bracketIcon = <svg {...ICON}><path d="M6 4v4a3 3 0 0 0 3 3h2" /><path d="M6 20v-4a3 3 0 0 1 3-3h2" /><circle cx="18" cy="12" r="2" /><path d="M11 12h5" /><circle cx="5" cy="4" r="1.5" /><circle cx="5" cy="20" r="1.5" /></svg>;
 const tableIcon = <svg {...ICON}><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="14" y2="18" /></svg>;
 const matchesIcon = <svg {...ICON}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" /></svg>;
+const competitionsIcon = <svg {...ICON}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="4" r="1.6" fill="currentColor" /><circle cx="19" cy="16" r="1.6" fill="currentColor" /><circle cx="5" cy="16" r="1.6" fill="currentColor" /></svg>;
 const newsIcon = <svg {...ICON}><path d="M4 5h16v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>;
-const menuIcon = <svg {...ICON}><path d="M4 7h16M4 12h16M4 17h16" /></svg>;
 
 export interface NavItem {
   href: string;
@@ -217,13 +229,12 @@ export function competitionHref(
   return withLocale(prefix, `/c/${c.id}/${competitionSeasonId(c, active)}`);
 }
 
-/** One slot in the phone's fixed bottom bar: a destination, or the menu. */
+/** One slot in the phone's bottom bar. */
 export interface BottomBarItem {
   key: string;
   label: string;
   icon: React.ReactNode;
-  /** Where it goes. Absent on the one entry that opens the drawer instead. */
-  href?: string;
+  href: string;
   active: boolean;
 }
 
@@ -234,15 +245,15 @@ export interface BottomBarItem {
  * contextual: inside a competition it carries that competition's own sections
  * — the pattern `main` had before E14, where the fixed bar was the section nav
  * and nothing else competed with it. Off a competition there are no sections to
- * show, so it carries the site's three real pages plus a way into the full
- * list. Player discovery belongs to each competition; there is no global
- * roster fan-out. Simulate remains a label rather than a destination.
+ * show, so it carries the site's three real pages; the way into the full list
+ * of competitions is the bar's centre button, not an item. Player discovery
+ * belongs to each competition; there is no global roster fan-out. Simulate
+ * remains a label rather than a destination.
  *
  * Pure and path-derived, like every other matcher here, so which items a path
  * produces is testable without rendering.
  */
 export function bottomBarItems(pathname: string, locale: Locale): BottomBarItem[] {
-  const t = getTranslator(locale);
   const prefix = localePrefix(pathname);
   const entry = (i: NavItem): BottomBarItem => ({
     key: i.href,
@@ -253,16 +264,56 @@ export function bottomBarItems(pathname: string, locale: Locale): BottomBarItem[
   });
   const rc = activeCompetition(pathname);
   if (rc) return competitionSections(rc, locale, prefix).map(entry);
-  return [
-    ...siteItems(locale, prefix).map(entry),
-    { key: 'menu', label: t('nav.menu'), icon: menuIcon, active: false },
-  ];
+  // The page the reader is on is the bar's centre button, so it is not also a
+  // tab: the other two pages sit one either side of it.
+  const site = siteItems(locale, prefix);
+  return site.filter((i) => !i.match(pathname) || site.every((o) => !o.match(pathname))).map(entry);
 }
 
+/**
+ * The site page the bar's centre button stands for, off a competition: Teams
+ * on `/teams`, News on `/news`. Undefined on Home and anywhere else, where the
+ * centre is the ScoreArc mark and opens the competitions.
+ */
+export function centrePage(pathname: string, locale: Locale): NavItem | undefined {
+  if (activeCompetition(pathname)) return undefined;
+  return siteItems(locale, localePrefix(pathname)).slice(1).find((i) => i.match(pathname));
+}
+
+/** A section of the site that has a dial of its own. */
+export type DialSection = 'leagues' | 'teams' | 'players' | 'news';
+
+/**
+ * The section whose dial a path opens on.
+ *
+ * Teams and News have pages, and their dials belong to them. Everything else
+ * — Home, and every page of a competition — opens on the leagues. Players has
+ * no page of its own: its dial is only ever picked.
+ */
+export function pathSection(pathname: string): DialSection {
+  const page = centrePage(pathname, 'en');
+  if (!page) return 'leagues';
+  return stripLocale(page.href) === '/teams' ? 'teams' : 'news';
+}
+
+/** The id the team list gives the first team under an initial. */
+export function teamLetterId(letter: string): string {
+  return `ts-${letter}`;
+}
+
+/** The arc that marks the active section: under a desktop tab, over a phone one. */
+export function ArcMark() {
+  return (
+    <svg className="sn-arc" width="44" height="10" viewBox="0 0 44 10" fill="none" aria-hidden>
+      <path d="M3 3Q22 11 41 3" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+
+const MARK_SRC = '/brand/scorearc-mark-dark.svg';
+
 export default function SiteNav() {
-  const [collapsed, setCollapsed] = useState(false);
-  const [open, setOpen] = useState(false);
-  const mastheadMenuRef = useRef<HTMLButtonElement>(null);
   const pathname = usePathname() ?? '/';
   const locale = useLocale();
   const t = useTranslations();
@@ -272,183 +323,461 @@ export default function SiteNav() {
   // Whatever locale segment the reader is already under, carried onto every
   // href below so the nav cannot silently return them to English.
   const prefix = localePrefix(pathname);
-
   const items = siteItems(locale, prefix);
+  const competitionAt = active ? competitions.findIndex((c) => c.id === active.competition.id) : -1;
+  // Every dial of competitions rests on the open one, else mid-list.
+  const resting = restingFocus(competitionAt, competitions.length);
+
+  const [pinned, setPinned] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [shrunk, setShrunk] = useState(false);
+  const [focus, setFocus] = useState(resting);
+  // The initials the team list on this page carries, read from it when the
+  // wheel opens, and the wheel's own position among them.
+  const [letters, setLetters] = useState<string[]>([]);
+  const [letterFocus, setLetterFocus] = useState(0);
+  // The section the reader picked from the inner level, until they navigate.
+  // Null is the section the page itself opens on.
+  const [picked, setPicked] = useState<DialSection | null>(null);
+  // The dial returns to rest, and the wheel closes, on every navigation.
+  const [lastPath, setLastPath] = useState(pathname);
+  if (lastPath !== pathname) {
+    setLastPath(pathname);
+    setFocus(resting);
+    setOpen(false);
+    setPicked(null);
+  }
+
+  const centreRef = useRef<HTMLButtonElement>(null);
+  const wheelRef = useRef<HTMLDivElement>(null);
+  const swallowClick = useRef(false);
+
   // Named, not linked. The nav is where the site says what it is, and a link
   // to a 404 is worse than an honest label.
   const soonItems = [
     { label: t('nav.simulate'), icon: simulateIcon },
   ];
+  const barItems = bottomBarItems(pathname, locale);
+  const [barLeft, barRight] = splitAround(barItems);
 
-  const close = () => setOpen(false);
+  const page = centrePage(pathname, locale);
+  const onTeams = page?.href === items[1].href;
+
+  // On Teams the dial turns the list on the page, by initial. The list marks
+  // the first team under each one; under a search it marks none, and there is
+  // nothing to index. Read from the page, so it is re-read whenever the reader
+  // reaches for the dial.
+  const readLetters = () => {
+    const marks = onTeams ? Array.from(document.querySelectorAll<HTMLElement>('[data-team-letter]')) : [];
+    setLetters(marks.map((el) => el.dataset.teamLetter ?? ''));
+    // Rest on the initial the reader has scrolled to.
+    setLetterFocus(Math.max(0, marks.findLastIndex((el) => el.getBoundingClientRect().top < 120)));
+  };
+  useEffect(readLetters, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openWheel = () => {
+    setFocus(resting);
+    readLetters();
+    setPicked(null);
+    setOpen(true);
+  };
+  // Focus goes back to the centre button in the effect below, which hears
+  // every way the wheel closes.
+  const closeWheel = () => setOpen(false);
+  /** After a destination is chosen. A no-op on desktop, where nothing is open. */
+  const close = () => {
+    if (open) closeWheel();
+  };
+
+  // Open, the wheel is a modal: focus moves into it, Escape leaves it, and Tab
+  // stays inside it.
+  useEffect(() => {
+    if (!open) return;
+    const root = wheelRef.current;
+    const centre = centreRef.current;
+    if (!root) return;
+    // The crest at the top of the wheel: the open competition, or off one the
+    // middle of the list. Not simply the first link — focusing a crest turns
+    // the dial to it, and the wheel would open already turned to one end.
+    (root.querySelector<HTMLElement>('.sn-dial [data-centre] a') ?? root.querySelector<HTMLElement>('a'))?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false);
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const stops = root.querySelectorAll<HTMLElement>('a, button');
+      const first = stops[0];
+      const last = stops[stops.length - 1];
+      const at = document.activeElement;
+      // From an end, round to the other. From outside the wheel altogether --
+      // focus falls to <body> after a tap on an empty part of the disc -- back
+      // in, rather than on to the page behind.
+      if (e.shiftKey && (at === first || !root.contains(at))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (at === last || !root.contains(at))) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      // Every close path ends here: Escape, the backdrop, a chosen
+      // destination, and a path that changed underneath (browser back).
+      centre?.focus();
+    };
+  }, [open]);
+
+  // Turning the letter dial scrolls the team list to that initial.
+  const section = picked ?? pathSection(pathname);
+  const lettersOn = section === 'teams';
+  const turnLetters = (next: number) => {
+    const at = (f: number) => Math.round(f) % letters.length;
+    if (letters.length && at(next) !== at(letterFocus)) document.getElementById(teamLetterId(letters[at(next)]))?.scrollIntoView();
+    setLetterFocus(next);
+  };
+
+  // Left alone, the letter dial follows the page: it rests on the initial the
+  // reader has scrolled to. Not while they are on the dial, which is then what
+  // is moving the page.
+  useEffect(() => {
+    if (!lettersOn || hovered || open) return;
+    const onScroll = () => {
+      const marks = Array.from(document.querySelectorAll<HTMLElement>('[data-team-letter]'));
+      setLetterFocus(Math.max(0, marks.findLastIndex((el) => el.getBoundingClientRect().top < 120)));
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [lettersOn, hovered, open]);
+
+  // The phone bar shrinks while the reader scrolls down and returns when they
+  // scroll up. `lastY` only moves on a deliberate scroll, so a slow one adds up
+  // to a change of state instead of being forgotten a few pixels at a time.
+  useEffect(() => {
+    if (open) return;
+    let lastY = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      // Captured per event: the updater below runs later, after `lastY` has
+      // moved, and would otherwise always see a scroll of zero.
+      const from = lastY;
+      if (Math.abs(y - from) > SCROLL_INTENT_PX) lastY = y;
+      setShrunk((prev) => nextShrunk(prev, from, y));
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [open]);
+
+  // The fan in the wheel shows the bar's items, but it stands where the old
+  // drawer stood, and the drawer reported `sitenav`. `bottom-bar` stays the
+  // resting bar alone, so neither dashboard series changes meaning.
+  const tabLink = (tab: BottomBarItem, surface: 'bottom-bar' | 'sitenav') => (
+    <Link
+      key={tab.key}
+      href={tab.href}
+      className={`sn-tab${tab.active ? ' sn-tab--active' : ''}`}
+      aria-current={tab.active ? 'page' : undefined}
+      onClick={() => {
+        trackEvent('Section opened', { section: tab.label, surface });
+        close();
+      }}
+    >
+      {tab.active && <ArcMark />}
+      <span className="sn-tab-icon">{tab.icon}</span>
+      <span className="sn-tab-label">{tab.label}</span>
+    </Link>
+  );
+
+  // A dial of competitions. `into` is where its crests lead when that is not
+  // the competition itself; the badge and the full name then say so, because a
+  // league's crest looks the same wherever it leads.
+  const competitionItems = (
+    into?: { suffix: string; badge: React.ReactNode; full: (name: string) => string },
+  ): DialItem[] =>
+    competitions.map((c) => {
+      const isActive = active?.competition.id === c.id;
+      const seasonId = competitionSeasonId(c, active);
+      return {
+        key: c.id,
+        href: competitionHref(c, active, prefix) + (into?.suffix ?? ''),
+        label: c.shortName,
+        full: into?.full(c.shortName),
+        badge: into?.badge,
+        current: isActive,
+        mark: (
+          <CompetitionMark
+            logo={c.logo}
+            logoInvert={c.logoInvert}
+            emblem={c.emblem}
+            name={c.name}
+            size={isActive ? 30 : 22}
+          />
+        ),
+        onOpen: () => trackEvent('Competition opened', { competition: c.id, season: seasonId, source: 'sitenav' }),
+      };
+    });
+  const letterItems: DialItem[] = letters.map((letter) => ({
+    key: letter,
+    href: `#${teamLetterId(letter)}`,
+    // The initial is the crest itself; a name under it would say it twice.
+    label: '',
+    current: false,
+    mark: <span className="sn-crest-letter">{letter}</span>,
+  }));
+  // The outer level: what the picked section's dial holds. Never a whole list
+  // of teams or players — an index of at most a couple of dozen, and the page
+  // it leads to holds the rest.
+  const dialItems: DialItem[] =
+    section === 'teams' ? letterItems
+    : section === 'news' ? competitionItems({ suffix: '/news', badge: newsIcon, full: (n) => t('nav.newsOf', n) })
+    : section === 'players' ? competitionItems({ suffix: '/players', badge: playersIcon, full: (n) => t('nav.playersOf', n) })
+    : competitionItems();
+  const dial = (variant: 'rail' | 'wheel') => (
+    <NavDial
+      // Keyed: the collections differ in length and position.
+      key={section}
+      items={dialItems}
+      focus={lettersOn ? letterFocus : focus}
+      onFocusChange={lettersOn ? turnLetters : setFocus}
+      variant={variant}
+      reach={variant === 'rail' ? RAIL_REACH_EXPANDED : WHEEL_REACH}
+      onNavigate={close}
+      hint={variant === 'rail' ? t('nav.dialHint') : undefined}
+    />
+  );
+
+  // The inner level: the site's sections. One with a page is a link to it, and
+  // its dial comes with the page; Leagues and Players have no page, so they
+  // only turn the dial. Home has no dial: it is a link and nothing more.
+  const levels: { key: string; label: string; icon: React.ReactNode; href?: string; section?: DialSection }[] = [
+    { key: 'home', label: items[0].label, icon: items[0].icon, href: items[0].href },
+    { key: 'teams', label: items[1].label, icon: items[1].icon, href: items[1].href, section: 'teams' },
+    { key: 'leagues', label: t('nav.leagues'), icon: competitionsIcon, section: 'leagues' },
+    { key: 'players', label: t('nav.players'), icon: playersIcon, section: 'players' },
+    { key: 'news', label: items[2].label, icon: items[2].icon, href: items[2].href, section: 'news' },
+  ];
+  const levelSlots = (stepDeg: number) =>
+    levels.map((lv, i) => {
+      const selected = lv.section === section;
+      const body = (
+        <>
+          <span className="sn-sec-label">{lv.label}</span>
+          <span className="sn-sec-icon">{lv.icon}</span>
+        </>
+      );
+      const pick = (next: DialSection | null) => {
+        trackEvent('Section opened', { section: lv.label, surface: 'sitenav' });
+        setPicked(next);
+        setFocus(resting);
+      };
+      return (
+        <div key={lv.key} className="sn-level-slot" style={{ ['--a' as string]: `${fanAngle(i, levels.length, stepDeg)}deg` }}>
+          {lv.href ? (
+            <Link
+              href={lv.href}
+              className="sn-sec"
+              data-selected={selected ? '' : undefined}
+              aria-current={stripLocale(lv.href) === stripLocale(pathname) ? 'page' : undefined}
+              // Its dial is the page's own, so the pick is dropped: on the
+              // page already, that turns the dial back to it.
+              onClick={() => pick(null)}
+            >
+              {body}
+            </Link>
+          ) : (
+            <button type="button" className="sn-sec" data-selected={selected ? '' : undefined} aria-pressed={selected} onClick={() => pick(lv.section ?? null)}>
+              {body}
+            </button>
+          )}
+        </div>
+      );
+    });
+
+  const centreMark = page ? (
+    <span className="sn-centre-icon">{page.icon}</span>
+  ) : active ? (
+    <CompetitionMark
+      logo={active.competition.logo}
+      logoInvert={active.competition.logoInvert}
+      emblem={active.competition.emblem}
+      name={active.competition.name}
+      size={30}
+    />
+  ) : (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={MARK_SRC} alt="" width={36} height={36} />
+  );
 
   return (
     <>
-    <nav className={`sn${collapsed ? ' sn--collapsed' : ''}${open ? ' sn--open' : ''}`} aria-label={t('nav.main')}>
-      <div className="sn-top">
-        <Link href={withLocale(prefix, '/')} className="sn-brand" aria-label={t('common.scoreArcHome')} onClick={close}>
-          {/* The delivered artwork, used as an image: the lockup's kerning and
-              its underline arc are the designer's. The wordmark cannot survive
-              a 64px rail, so the collapsed rail shows the mark alone. */}
-          {collapsed ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img className="sn-mark" src="/brand/scorearc-mark-dark.svg" alt="ScoreArc" width={30} height={30} />
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img className="sn-lockup" src="/brand/scorearc-lockup-3a-dark.svg" alt="ScoreArc" width={300} height={104} />
-          )}
-        </Link>
-        <button
-          type="button"
-          className="sn-collapse"
-          aria-expanded={!collapsed}
-          aria-label={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
+    <nav
+      className="sn"
+      data-pinned={pinned || undefined}
+      data-hover={hovered || undefined}
+      aria-label={t('nav.main')}
+      // Hover expands the rail, but only for a pointer that can hover: a touch
+      // also "enters", and expanding under a tap would eat it. Touch readers
+      // have the pin.
+      onPointerEnter={(e) => {
+        if (e.pointerType !== 'touch') setHovered(true);
+        readLetters();
+      }}
+      // Left alone, a dial turned away from the open competition would leave
+      // the collapsed rail showing some other crest in the middle. Not for
+      // touch, where lifting the finger is also a leave and would undo the
+      // drag that just turned the dial.
+      onPointerLeave={(e) => {
+        if (e.pointerType === 'touch') return;
+        setHovered(false);
+        if (!pinned) {
+          setFocus(resting);
+          setPicked(null);
+        }
+      }}
+      // The same for the keyboard: focusing a crest turns the dial to it, and
+      // tabbing on into the page would leave it there.
+      onBlur={(e) => {
+        if (!pinned && !e.currentTarget.contains(e.relatedTarget)) {
+          setFocus(resting);
+          setPicked(null);
+        }
+      }}
+    >
+      <Link href={withLocale(prefix, '/')} className="sn-brand" aria-label={t('common.scoreArcHome')}>
+        {/* The delivered artwork, used as images: the lockup's kerning and its
+            underline arc are the designer's. The wordmark cannot survive a
+            96px rail, so CSS shows the mark alone there and the lockup when
+            the rail is expanded or is the phone masthead. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="sn-mark" src={MARK_SRC} alt="" width={34} height={34} />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="sn-lockup" src="/brand/scorearc-lockup-3a-dark.svg" alt="" width={300} height={104} />
+      </Link>
+
+      <div className="sn-site">
+        {/* No `aria-disabled`: it is ignored on a bare span with no role, so
+            it only ever reassured us. The visible "soon" badge is real text
+            inside the item, so a screen reader reads "Simulate soon" and the
+            absence of a link does the rest. */}
+        {soonItems.map((item) => (
+          <span key={item.label} className="sn-item sn-item--soon">
+            <span className="sn-label">{item.label}</span>
+            <span className="sn-soon">{t('nav.soon')}</span>
+          </span>
+        ))}
+      </div>
+
+      {/* Two levels: the sections inside, the picked section's dial outside. */}
+      <div className="sn-levels">{levelSlots(LEVEL_STEP_DEG)}</div>
+      {dial('rail')}
+
+      <button
+        type="button"
+        className="sn-pin"
+        aria-pressed={pinned}
+        aria-label={pinned ? t('nav.unpin') : t('nav.pin')}
+        onClick={() => {
+          const next = !pinned;
+          trackEvent('Nav toggled', { collapsed: !next });
+          setPinned(next);
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <polyline points="9 6 15 12 9 18" />
+        </svg>
+      </button>
+
+      <a className="sn-credit" href="https://github.com/mcasillas17" target="_blank" rel="noreferrer">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.22-3.37-1.22-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.36 9.36 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.6.69.49A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2z" /></svg>
+        <span className="sn-credit-text">{t('sidebar.credit')} <strong>elOpenMike</strong></span>
+      </a>
+    </nav>
+
+    {/* The phone's one control: fixed to the bottom, inside thumb reach. At
+        rest it carries the current context's sections either side of a centre
+        button; scrolling down shrinks it to the button alone; the button, or a
+        swipe up, raises the wheel. Hidden on desktop (CSS). */}
+    <nav
+      className="sn-tabs"
+      data-shrunk={shrunk || undefined}
+      data-site={active ? undefined : ''}
+      aria-label={t('nav.sections')}
+      // A swipe up opens the wheel. The release is heard on the window, so one
+      // that ends above the bar still counts and a press is never left stale.
+      onPointerDown={(e) => {
+        const start = e.clientY;
+        onPointerRelease(e.pointerId, (up) => {
+          if (up.type !== 'pointerup' || start - up.clientY <= 24) return;
+          // A swipe that ends on a tab must not also follow it.
+          swallowClick.current = true;
+          setTimeout(() => {
+            swallowClick.current = false;
+          }, 0);
+          openWheel();
+        });
+      }}
+      onClickCapture={(e) => {
+        if (!swallowClick.current) return;
+        swallowClick.current = false;
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      // With a mouse, a swipe that starts on a tab would otherwise become the
+      // browser's own link drag, which cancels the pointer.
+      onDragStart={(e) => e.preventDefault()}
+    >
+      <svg className="sn-tabs-arch" viewBox="0 0 390 84" preserveAspectRatio="none" fill="none" aria-hidden>
+        <path className="sn-tabs-arch-fill" d="M0 26Q195 2 390 26V84H0Z" />
+        <path className="sn-tabs-arch-edge" d="M0 26Q195 2 390 26" />
+      </svg>
+      <div className="sn-tabs-group">{barLeft.map((tab) => tabLink(tab, 'bottom-bar'))}</div>
+      <button
+        ref={centreRef}
+        type="button"
+        className="sn-centre"
+        aria-expanded={open}
+        aria-controls="sn-wheel"
+        aria-label={t('nav.openWheel')}
+        onClick={openWheel}
+      >
+        <span className="sn-centre-mark">{centreMark}</span>
+        {!active && <span className="sn-centre-label">{page?.label ?? t('nav.competitions')}</span>}
+      </button>
+      <div className="sn-tabs-group">{barRight.map((tab) => tabLink(tab, 'bottom-bar'))}</div>
+    </nav>
+
+    {open && (
+      <div
+        id="sn-wheel"
+        ref={wheelRef}
+        className="sn-wheel"
+        role="dialog"
+        aria-modal="true"
+        aria-label={levels.find((lv) => lv.section === section)?.label}
+      >
+        <button type="button" className="sn-wheel-backdrop" aria-label={t('nav.closeWheel')} onClick={closeWheel} />
+        <div className="sn-wheel-disc" aria-hidden />
+        {dial('wheel')}
+        {/* The same two levels as the rail: the sections fan inside the rim. */}
+        <div className="sn-wheel-sections">{levelSlots(SECTION_STEP_DEG)}</div>
+        <Link
+          href={items[0].href}
+          className="sn-wheel-hub"
+          aria-label={t('common.scoreArcHome')}
+          // The hub is the old drawer's Home item, and reports as it did.
           onClick={() => {
-            trackEvent('Nav toggled', { collapsed: !collapsed });
-            setCollapsed(!collapsed);
+            trackEvent('Section opened', { section: items[0].label, surface: 'sitenav' });
+            close();
           }}
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            {collapsed ? <polyline points="9 6 15 12 9 18" /> : <polyline points="15 6 9 12 15 18" />}
-          </svg>
-        </button>
-        <button
-          ref={mastheadMenuRef}
-          type="button"
-          className="sn-burger"
-          aria-expanded={open}
-          aria-controls="sn-panel"
-          aria-label={open ? t('nav.closeMenu') : t('nav.openMenu')}
-          onClick={() => setOpen((v) => !v)}
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-            {open ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
-          </svg>
-        </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={MARK_SRC} alt="" width={40} height={40} />
+        </Link>
       </div>
-
-      <div className="sn-panel" id="sn-panel">
-        <div className="sn-group">
-          {items.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`sn-item${item.match(pathname) ? ' sn-item--active' : ''}`}
-              title={collapsed ? item.label : undefined}
-              onClick={() => {
-                trackEvent('Section opened', { section: item.label, surface: 'sitenav' });
-                close();
-              }}
-            >
-              <span className="sn-icon">{item.icon}</span>
-              <span className="sn-label">{item.label}</span>
-            </Link>
-          ))}
-          {/* No `aria-disabled`: it is ignored on a bare span with no role, so
-              it only ever reassured us. The visible "soon" badge is real text
-              inside the item, so a screen reader reads "Simulate soon" and the
-              absence of a link does the rest. */}
-          {soonItems.map((item) => (
-            <span key={item.label} className="sn-item sn-item--soon" title={collapsed ? item.label : undefined}>
-              <span className="sn-icon">{item.icon}</span>
-              <span className="sn-label">{item.label}</span>
-              <span className="sn-soon">{t('nav.soon')}</span>
-            </span>
-          ))}
-        </div>
-
-        <div className="sn-group">
-          <span className="sn-heading">{t('nav.competitions')}</span>
-          {competitions.map((c) => {
-            const isActive = active?.competition.id === c.id;
-            const href = competitionHref(c, active, prefix);
-            const seasonId = competitionSeasonId(c, active);
-            return (
-              <div key={c.id} className="sn-comp">
-                <Link
-                  href={href}
-                  className={`sn-item${isActive ? ' sn-item--current' : ''}`}
-                  title={collapsed ? c.shortName : undefined}
-                  onClick={() => {
-                    trackEvent('Competition opened', { competition: c.id, season: seasonId, source: 'sitenav' });
-                    close();
-                  }}
-                >
-                  <span className="sn-icon sn-icon--comp">
-                    <CompetitionMark logo={c.logo} logoInvert={c.logoInvert} emblem={c.emblem} name={c.name} size={16} />
-                  </span>
-                  <span className="sn-label">{c.shortName}</span>
-                </Link>
-                {isActive && (
-                  <div className="sn-sub">
-                    {competitionSections(active, locale, prefix).map((s) => (
-                      <Link
-                        key={s.href}
-                        href={s.href}
-                        className={`sn-item sn-item--sub${s.match(pathname) ? ' sn-item--active' : ''}`}
-                        title={collapsed ? s.label : undefined}
-                        onClick={() => {
-                          trackEvent('Section opened', { section: s.label, surface: 'sitenav' });
-                          close();
-                        }}
-                      >
-                        <span className="sn-icon">{s.icon}</span>
-                        <span className="sn-label">{s.label}</span>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        <a className="sn-credit" href="https://github.com/mcasillas17" target="_blank" rel="noreferrer" title={collapsed ? t('nav.creditTitle', 'elOpenMike') : undefined}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.22-3.37-1.22-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.36 9.36 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.6.69.49A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2z" /></svg>
-          <span className="sn-credit-text">{t('sidebar.credit')} <strong>elOpenMike</strong></span>
-        </a>
-      </div>
-    </nav>
-
-    {/* The phone's standing navigation: fixed to the bottom, inside thumb
-        reach, and the only nav visible at rest. It is hidden on desktop and
-        while the drawer is open (CSS), so the two never show at once -- the
-        defect this replaced was a permanent scrolling row *plus* a drawer
-        holding the same items. */}
-    <nav className="sn-tabs" aria-label={t('nav.sections')}>
-      {bottomBarItems(pathname, locale).map((tab) =>
-        tab.href === undefined ? (
-          <button
-            key={tab.key}
-            type="button"
-            className="sn-tab"
-            aria-expanded={open}
-            aria-controls="sn-panel"
-            onClick={() => {
-              setOpen(true);
-              mastheadMenuRef.current?.focus();
-            }}
-          >
-            <span className="sn-tab-icon">{tab.icon}</span>
-            <span className="sn-tab-label">{tab.label}</span>
-          </button>
-        ) : (
-          <Link
-            key={tab.key}
-            href={tab.href}
-            className={`sn-tab${tab.active ? ' sn-tab--active' : ''}`}
-            aria-current={tab.active ? 'page' : undefined}
-            onClick={() => {
-              trackEvent('Section opened', { section: tab.label, surface: 'bottom-bar' });
-              close();
-            }}
-          >
-            <span className="sn-tab-icon">{tab.icon}</span>
-            <span className="sn-tab-label">{tab.label}</span>
-          </Link>
-        ),
-      )}
-    </nav>
+    )}
     </>
   );
 }

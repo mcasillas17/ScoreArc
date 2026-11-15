@@ -140,9 +140,13 @@ export const utcDate = (compact: string) => Date.UTC(Number(compact.slice(0, 4))
 /** Monthly provider partitions, one-day calendar guards, then exact UTC/season scope. */
 export async function fetchScoreboardWindow(
   rc: CompetitionSeason, range: string, fetchJson: ScoreboardFetchJson, signal?: AbortSignal,
+  // Request ranges keep parseRange's 92 days. A configured bracket window may
+  // span a winter break (Nations League: Nov quarterfinals, March finals); the
+  // six-month partition budget below still bounds what it costs.
+  maxDays?: number,
 ): Promise<{ events: Raw[] }> {
   signal?.throwIfAborted();
-  if (!parseRange(range)) throw new Error('Invalid scoreboard range');
+  if (!parseRange(range, maxDays)) throw new Error('Invalid scoreboard range');
   const bounds = seasonMonthBounds(rc.season.id);
   const seasonStart = Date.parse(`${bounds.minMonth}T00:00:00Z`);
   const lastMonth = new Date(`${bounds.maxMonth}T00:00:00Z`);

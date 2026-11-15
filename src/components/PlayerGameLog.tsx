@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useTranslations } from '@/i18n/I18nProvider';
 import type { MessageKey } from '@/i18n/messages/en';
 import type { GameLogRow, Team } from '@/server/data/types';
@@ -69,6 +70,9 @@ export function gameLogDetailInput(row: GameLogRow, playerTeam: Team | null, req
   };
 }
 
+/** Shown on a phone before "All stats": the two numbers a match log is read for. */
+const CORE_COLUMNS = ['totalGoals', 'goalAssists'];
+
 export default function PlayerGameLog({
   rows,
   playerTeam,
@@ -87,6 +91,7 @@ export default function PlayerGameLog({
   requireResultEvidence?: boolean;
 }) {
   const t = useTranslations();
+  const [expanded, setExpanded] = useState(false);
   const { detail, summary, loadingDetail, openDetails, closeDetails } =
     useMatchDetails<MatchDetailInput & { id: string }>(apiBase, 'player-game-log');
 
@@ -97,16 +102,27 @@ export default function PlayerGameLog({
     return <p className="pl-none">{t('player.noGameLog')}</p>;
   }
 
+  const more = (key: string) => (CORE_COLUMNS.includes(key) ? '' : ' pl-log-more');
+  // Only offered when the phone layout actually hides something.
+  const hasMore = columns.some((key) => !CORE_COLUMNS.includes(key));
+
   return (
+    <div>
+      {hasMore && (
+        <button type="button" className="pl-log-toggle" aria-expanded={expanded} aria-controls="pl-log-table"
+          onClick={() => setExpanded((v) => !v)}>
+          {expanded ? t('player.fewerStats') : t('player.moreStats')}
+        </button>
+      )}
     <div className="pl-log-wrap">
-      <table className="pl-log">
+      <table className={`pl-log${expanded ? ' pl-log--all' : ''}`} id="pl-log-table">
         <thead>
           <tr>
             <th scope="col" className="pl-log-match">{t('player.matchColumn')}</th>
             {columns.map((key) => {
               const label = STAT_LABELS[key];
               return (
-                <th key={key} scope="col" title={label ? t(label.full) : key}>
+                <th key={key} scope="col" className={more(key).trim() || undefined} title={label ? t(label.full) : key}>
                   <abbr>{label ? t(label.abbr) : key}</abbr>
                 </th>
               );
@@ -130,20 +146,22 @@ export default function PlayerGameLog({
                   </span>
                   {row.result && <span className={`pl-log-result pl-log-result--${row.result}`}>{row.result}</span>}
                   {row.score && <span className="pl-log-score">{row.score}</span>}
-                  <span className="pl-log-app">
-                    {row.appearance === 'Started' && t('player.started')}
-                    {row.appearance === 'Sub' && t('player.sub')}
-                    {row.appearance !== 'Started' && row.appearance !== 'Sub' && row.appearance}
-                  </span>
-                  {row.date && (
-                    <span className="pl-log-date">
-                      <LocalTime iso={row.date} mode="day" />
+                  <span className="pl-log-sub">
+                    <span className="pl-log-app">
+                      {row.appearance === 'Started' && t('player.started')}
+                      {row.appearance === 'Sub' && t('player.sub')}
+                      {row.appearance !== 'Started' && row.appearance !== 'Sub' && row.appearance}
                     </span>
-                  )}
+                    {row.date && (
+                      <span className="pl-log-date">
+                        <LocalTime iso={row.date} mode="day" />
+                      </span>
+                    )}
+                  </span>
                 </button>
               </td>
               {columns.map((key) => (
-                <td key={key} className="pl-log-stat">
+                <td key={key} className={`pl-log-stat${more(key)}`}>
                   {row.stats[key] ?? '–'}
                 </td>
               ))}
@@ -163,6 +181,7 @@ export default function PlayerGameLog({
           playerBase={playerBase}
         />
       )}
+    </div>
     </div>
   );
 }

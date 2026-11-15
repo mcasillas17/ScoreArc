@@ -1,12 +1,34 @@
 /* eslint-disable @next/next/no-img-element */
 import Link from 'next/link';
-import type { PlayerProfile } from '@/server/data/types';
+import type { PlayerProfile, PlayerSeasonTotal } from '@/server/data/types';
 import type { Translator } from '@/i18n/translate';
 import { teamHref } from './teamHref';
 import TeamBadge from './TeamBadge';
 
+const APPEARANCES = 'starts-subIns';
+
 /**
- * Identity block for a player page. Server-rendered.
+ * Split the provider's totals into the figures, the one to lead with, and the
+ * appearances ("3 (7)" = starts and substitute appearances) as numbers.
+ * Goals lead when scored, then assists, else the first figure the provider
+ * sends (a goalkeeper's clean sheets).
+ */
+export function splitTotals(totals: PlayerSeasonTotal[]) {
+  const figures = totals.filter((total) => total.name !== APPEARANCES);
+  const lead = figures.find((f) => f.name === 'totalGoals' && (f.value ?? 0) > 0)
+    ?? figures.find((f) => f.name === 'goalAssists' && (f.value ?? 0) > 0)
+    ?? figures[0];
+  const raw = totals.find((total) => total.name === APPEARANCES)?.display ?? '';
+  const m = /^(\d+)\s*\((\d+)\)$/.exec(raw.trim());
+  return {
+    lead,
+    rest: figures.filter((f) => f !== lead),
+    apps: m ? { starts: Number(m[1]), subs: Number(m[2]) } : null,
+  };
+}
+
+/**
+ * Identity and season totals for a player page, one band. Server-rendered.
  *
  * Headshots are frequently null on this provider (the recorded fixture player
  * has none), so the portrait slot is designed around absence: initials on the
@@ -23,6 +45,9 @@ export default function PlayerHeader({
   teamStyle?: 'crest' | 'flag';
   t: Translator;
 }) {
+  const { lead, rest, apps } = splitTotals(player.totals);
+  const label = (f: PlayerSeasonTotal) =>
+    f.name === 'totalGoals' ? t('squad.goals') : f.name === 'goalAssists' ? t('squad.assists') : f.label;
   const initials = player.name
     .split(/\s+/)
     .filter(Boolean)
@@ -66,6 +91,35 @@ export default function PlayerHeader({
               <span>{player.team.name}</span>
             )}
           </p>
+        )}
+      </div>
+
+      <div className="ph-stats">
+        {!lead && !apps ? (
+          <p className="pl-none">{t('player.noSeasonStats')}</p>
+        ) : (
+          <>
+            <div className="ph-figs">
+              {lead && (
+                <p className="ph-fig ph-fig--lead">
+                  <strong>{lead.display || '–'}</strong>
+                  <span>{label(lead)}</span>
+                </p>
+              )}
+              {rest.map((f) => (
+                <p key={f.name} className="ph-fig">
+                  <strong>{f.display || '–'}</strong>
+                  <span>{label(f)}</span>
+                </p>
+              ))}
+            </div>
+            <p className="ph-apps">
+              {apps ? t('player.startsSubs', apps.starts, apps.subs) : null}
+              {apps && ' · '}
+              {/* The provider labels the season itself ("2026-27 Liga MX Stats"). */}
+              {player.seasonLabel || t('player.seasonStats')}
+            </p>
+          </>
         )}
       </div>
     </header>

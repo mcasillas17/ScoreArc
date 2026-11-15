@@ -10,10 +10,9 @@ import ChampionCelebration from './ChampionCelebration';
 import type { BracketShape } from './bracketShape';
 import { trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
 
-// "Build your bracket" (predict mode) is disabled now that the 2026 World Cup is
-// finished — the knockout is decided, so there's nothing left to predict. The
-// feature is kept intact and can be re-enabled for the next tournament by
-// flipping this to true. Hides the mode tabs and ignores shared ?b= brackets.
+// "Build your bracket" (predict mode) is off unless the page turns it on: the
+// page passes `predictionEnabled` while the current edition's final is
+// undecided. Off hides the mode tabs and ignores shared ?b= brackets.
 const PREDICT_ENABLED = false;
 
 interface Props {

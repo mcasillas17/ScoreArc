@@ -19,10 +19,13 @@ import (
 // already carries its own Round slug (reusing the same vocabulary as
 // Match.Round) — because Task 6 upserts these as individual `match` rows;
 // the reader reconstructs BracketRound[] (adding round display names) from
-// the stored rows in slice 1c. The round *ordering and membership* rules are
-// ported exactly: matches are grouped by round internally and only rounds
-// present in the canonical knockoutRounds vocabulary are emitted, in
-// canonical order, preserving each round's original (bracket) match order.
+// the stored rows in slice 1c, and the frontend folds two-legged ties for
+// presentation. The Go mapper therefore retains each provider leg separately;
+// a completed first leg may legitimately have no winner. The round *ordering
+// and membership* rules are ported exactly: matches are grouped by round
+// internally and only rounds present in the canonical knockoutRounds
+// vocabulary are emitted, in canonical order, preserving each round's original
+// (bracket) match order.
 
 // knockoutRoundOrder mirrors espn-bracket.ts's ROUND_ORDER: the canonical
 // knockoutRounds vocabulary, in bracket order. A match whose round slug
@@ -52,14 +55,18 @@ var roundSlugAlias = map[string]string{
 }
 
 var nonKnockoutRound = map[string]struct{}{
-	"group-stage":       {},
-	"league-phase":      {},
-	"league-stage":      {},
-	"preliminary-round": {},
-	"qualification":     {},
-	"qualifying":        {},
-	"regular-season":    {},
+	"group-stage":         {},
+	"league-phase":        {},
+	"league-stage":        {},
+	"preliminary-round":   {},
+	"qualification":       {},
+	"qualifying":          {},
+	"regular-season":      {},
+	"relegation-playoffs": {}, // UEFA Nations League promotion/relegation ties
 }
+
+// These ties qualify for the Gold Cup, not the Nations League title bracket.
+const goldCupPlayInRound = "gold-cup-play-in-prelims"
 
 func normRoundSlug(slug string) string {
 	if v, ok := roundSlugAlias[slug]; ok {
@@ -98,7 +105,7 @@ func bracketRequirement(eventID, seasonSlug string) *bool {
 		required := true
 		return &required
 	}
-	if _, ok := nonKnockoutRound[slug]; ok {
+	if _, ok := nonKnockoutRound[slug]; ok || slug == goldCupPlayInRound {
 		required := false
 		return &required
 	}
@@ -128,6 +135,11 @@ type rawBracketSeason struct {
 type rawBracketCompetition struct {
 	Competitors []rawBracketCompetitor `json:"competitors"`
 	Notes       []rawNote              `json:"notes"`
+	Leg         *rawBracketLeg         `json:"leg"`
+}
+
+type rawBracketLeg struct {
+	Value int `json:"value"`
 }
 
 type rawBracketCompetitor struct {
@@ -232,7 +244,11 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, error) {
 	if err != nil {
 		return BracketMatch{}, err
 	}
-	if state == MatchStateFinished && winnerID == nil &&
+	// A completed first leg can legitimately have no winner: the tie is decided
+	// only after leg two. Unpaired matches and completed second legs remain
+	// strict because their missing winner would lose a decided knockout result.
+	firstLeg := comp.Leg != nil && comp.Leg.Value == 1
+	if state == MatchStateFinished && winnerID == nil && !firstLeg &&
 		status.Type.Name != "STATUS_CANCELED" &&
 		status.Type.Name != "STATUS_ABANDONED" &&
 		status.Type.Name != "STATUS_FORFEIT" {

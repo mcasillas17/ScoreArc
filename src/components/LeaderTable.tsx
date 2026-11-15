@@ -10,12 +10,15 @@ import PlayerName from './PlayerName';
 export default function LeaderTable({
   leaders,
   metric,
+  limit,
   teamStyle = 'flag',
   teamBase,
   playerBase,
 }: {
   leaders: StatLeader[];
   metric: 'goals' | 'assists';
+  /** Show only the first `limit` rows (the compact leaders block). */
+  limit?: number;
   teamStyle?: 'flag' | 'crest';
   teamBase?: string;
   /** Competition-scoped prefix for player pages; without it names stay text. */
@@ -46,7 +49,7 @@ export default function LeaderTable({
           </tr>
         </thead>
         <tbody>
-          {leaders.map((s) => (
+          {(limit ? leaders.slice(0, limit) : leaders).map((s) => (
             <tr key={`${s.rank}-${s.player}`} className={s.rank === 1 ? "row-qualify" : ""}>
               <td className="rank-cell">{s.rank}</td>
               <td className="team-cell">

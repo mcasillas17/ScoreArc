@@ -324,7 +324,15 @@ typecheck includes the Worker.
 | `GITHUB_DISPATCH_TOKEN` | Receiver Worker secret (`npx wrangler@4.123.0 secret put GITHUB_DISPATCH_TOKEN` from `infra/alert-receiver`, interactive prompt). Fine-grained personal access token for this repository only with the **Actions: write** permission, nothing else; the Worker uses it only to dispatch `match-freshness.yml` on `main`. It never reaches the workflow. GitHub cannot narrow it to one workflow: the same permission can dispatch any workflow here (including `ci.yml`'s release input, whose production environments only require `main`), cancel or re-run runs, delete artifacts and disable workflows, and the runbook treats a re-run, a cancelled Prepare or a deleted checkpoint as a halt needing manual recovery. Keep it only in the Worker secret, give it the shortest expiry you will maintain, and revoke it in GitHub at once if it may have leaked. The owner accepted this reach on November 8, 2026 (the token is the owner's, expiry the owner's choice). When it expires or is revoked, dispatches are rejected and the not-running check emails; create a new one and replace the secret. |
 | `initialize_state` | Sole manual input, boolean, default false. True only for proven first history; never a repair flag. |
 | Run identity and API access | Actions supplies `GITHUB_*` provenance and its token with `contents: read` / `actions: read`. Do not substitute another repository/ref/run identity or a personal token to bypass validation. |
-| Reader and scopes | Fixed CLI origin `https://scorearc-reader.fly.dev`; exact current seasons from `backend/config/competitions.json`. No workflow input overrides these. A changed origin/scope set requires a reviewed state migration, not initialization. |
+| Reader and scopes | Fixed CLI origin `https://scorearc-reader.fly.dev`; exact current seasons from `backend/config/competitions.json`. No workflow input overrides these. A changed origin requires a reviewed state migration, not initialization. A competition added to the registry joins the restored state as healthy on the next run; a removed one is still refused, since dropping it could discard an open incident. |
+
+The **Prepare pending state** log lists the competition name, scope and result
+of each completed reader check. For a newly added competition, compare an
+`http-400` with the reader release for the merge SHA. The watchdog reads the
+registry from `main` immediately, and the running reader gets its registry at
+deployment. If the reader still returns `unknown competition or season` after
+that deployment, check the deployed revision. A later healthy observation
+resolves the original incident automatically.
 
 The local harness injects its loopback origin directly into `runPhase`; that is
 test wiring, not a configurable production endpoint. Production reader-origin
@@ -356,19 +364,27 @@ the JSON envelope before checks. A newer preparation attempt without a checkpoin
 is a lost-state barrier. Missing, corrupt, expired, ambiguous, incompatible or
 unreadable newest state never causes fallback to an older artifact or bootstrap.
 Only runs proven not to have prepared state may be passed over: a skipped
-preparation step, a cancelled or skipped run with no jobs, or jobs that ran no workflow step (disabled, cancelled while
-waiting when a newer run queued, never given a runner, or failed in GitHub's own
+preparation step, a cancelled, skipped or `startup_failure` run with no jobs, or jobs that ran no workflow step (disabled, cancelled while
+waiting when a newer run queued, rejected during hosted-runner startup, never given a runner, or failed in GitHub's own
 "Set up job"), listing at most "Set up job" and "Complete job". A run newer than the current one
 may also be listed when dispatches arrive while it runs; it is passed over only while queued, pending, waiting or requested (never started),
-or once completed as cancelled with jobs that ran no workflow step (the same rule).
+or once completed as cancelled or `startup_failure` with jobs that ran no workflow step (the same rule).
 
 `initialize_state=true` is for the first history only, after complete bounded
 history enumeration proves no prior state or uncertain preparation. Otherwise use
-false (default). The former `state_run_id` override is removed. Legacy version-1
-state, changed origin/scopes, exhausted retries and incompatible code versions
-require an owner-reviewed migration/reconciliation; the automation has no reset,
-drop-event or forced older-state switch. Preserve old incident IDs and pending
-ordering when designing such a migration. Do not describe resetting as recovery.
+false (default). When an owner-reviewed audit proves every intervening run was
+non-state-bearing but the newest final checkpoint has left the 60-run search
+window, a manual dispatch may provide both `recovery_run_id` and
+`recovery_artifact_id`. The selector bypasses history enumeration only for that
+explicit request, requires the current run itself to be `workflow_dispatch`,
+validates the exact completed trusted run and exact unexpired
+`match-freshness-state` artifact, then the ordinary download and envelope
+validation preserve the epoch, sequence, incidents and pending ordering. It
+never chooses an older artifact automatically, accepts a pending artifact, or
+combines recovery with initialization. Legacy version-1 state, changed
+origin/scopes, exhausted retries and incompatible code versions still require
+an owner-reviewed migration/reconciliation; the automation has no reset,
+drop-event or retry-budget override. Do not describe resetting as recovery.
 
 ### Delivery and crash boundaries
 
@@ -546,31 +562,34 @@ do not stop production to prove them.
 
 | Resource | Bound |
 |---|---|
-| Reader | 32 sequential scopes maximum; current registry 10; 10 seconds, 8 MiB, 5,000 matches each; no retries |
+| Reader | One check per current competition (12 as of November 15), up to 32 sequential scopes. Each allows 10 seconds, 8 MiB and 5,000 matches, with no retries. |
 | GitHub JSON API | At most 3 pages × 20 runs; 2 metadata + 3 run-list + 120 artifact/job reads = 125 requests; 10 seconds / 1 MiB each, no retries; steady state is about 4 per run (~1,150/day). `GITHUB_TOKEN` is limited to 1,000 requests per hour per repository, so twelve degraded full scans an hour (~1,500) would hit that limit; repeated budget failures need intervention, not more runs |
 | Artifact transfer | One selected download, up to two uploads; state 256 KiB, artifact metadata size ceiling 256 KiB; action-internal transfer retries are governed by pinned actions and job timeout |
 | State | 128 pending events, 32 receipts, one current incident ID per scope; 256 KiB |
-| Notifications | At most 10 sequential sends per run, 15 seconds each (the receiver acknowledges only after its email, about 5 seconds), 1 KiB acknowledgment; 20 reserved attempts per event |
+| Notifications | At most 16 sequential sends per run (must stay at or above the registry size, so one run carries every scope's transition and its heartbeat; a test guards it), 15 seconds each (the receiver acknowledges only after its email, about 5 seconds), 1 KiB acknowledgment; 20 reserved attempts per event |
 | Heartbeat | At most one POST per run, 15 seconds, 204 expected, never retried |
 | Dispatch | One POST from the receiver's cron every 5 minutes, 10 seconds, any 2xx accepted, never retried; runs serialize in the workflow's concurrency group, where a newer waiting run replaces an older one |
 | Backoff | Across runs: 5 minutes doubled to maximum 6 hours; no in-run retry, untrusted Retry-After cannot enlarge bounds. A retry is sent by the first run whose Prepare is at or after its due time, so with five-minute runs a 5-minute backoff lands 5 to 10 minutes later (latency only) |
 | Runtime | Entire Actions job 10 minutes; this may truncate API search/check/delivery before per-operation ceilings |
-| Cadence (owner-accepted November 7, 2026) | Five minutes, 288 nominal runs/day; current registry ≤2,880 reader requests/day; worst-case ≤2,880 notification attempts/day plus ≤288 heartbeats; actual platform timing can delay/drop runs |
+| Cadence (owner-accepted November 7, 2026) | Five minutes, 288 nominal runs/day. Twelve competitions give 3,456 reader requests/day. The 16-send limit allows up to 4,608 notification attempts/day including backlog, plus 288 heartbeats. Platform timing can delay or drop runs. |
 
 Normally selection requires only a few API requests, but worst-case nominal
 cadence permits 36,000 API calls/day before the job deadline/rate limits. This is
 a ceiling, not expected traffic; repeated history failures need intervention,
-not a larger scan. Disabled workflows allocate no check runner. Neither Cloudflare cron nor GitHub dispatch offers
+not a larger scan. An explicitly reviewed recovery uses four metadata reads
+(workflow, current run, named prior run and its artifacts) before the ordinary
+artifact download; it does not enumerate the skipped history again. Disabled
+workflows allocate no check runner. Neither Cloudflare cron nor GitHub dispatch offers
 a hard alert-latency SLA; thresholds, cadence, queue delay, backoff, platform
 delays and network time all contribute.
 
 The [activation record](#activation-record-november-7-2026) holds the measured job
 durations and artifact sizes behind the owner's cadence acceptance. At the
-five-minute cadence, 30 days gives 8,640 nominal runs and up to 86,400 current-ten
-reader requests. Two 256-KiB state files per run give at most 144 MiB/day of raw
+five-minute cadence, 30 days gives 8,640 nominal runs and up to 103,680
+reader requests for 12 competitions. Two 256-KiB state files per run give at most 144 MiB/day of raw
 checkpoint bytes, or about 12.66 GiB across 90 days before archive/billing
 overhead; actual states are normally much smaller. The 8-MiB reader cap permits
-up to 22.5 GiB/day of response bodies at 2,880 requests, not an expected load.
+up to 27 GiB/day of response bodies at 3,456 requests.
 Runner usage is `runs × measured billable minutes per job`; the ten-minute job
 ceiling can cause backlog under serialized execution and is not a five-minute
 completion promise. Apply the owner's current Actions allowance/rates, artifact
@@ -637,8 +656,76 @@ growth active, so it is not the full kill switch.
 | Prepare failed or was cancelled after it started (no checkpoint) | Attempted preparation without a checkpoint is a barrier: every later run fails at selection until owner-reviewed recovery that preserves the newest checkpoint (last row). Investigate the Prepare error first. |
 | Pending upload failed; no checkpoint survives | No sends occurred from that run, but newly observed transitions may be lost. Stop and reconcile that preparation barrier; never select an older run or initialize around it. |
 | A monitor run was re-run in GitHub (`run_attempt` > 1) | Selection trusts only first attempts, so every later run fails at selection while that run is in the 60-run window, and once it leaves the window the checkpoint behind it is out of reach too. Monitoring halts until owner-reviewed recovery that preserves the newest checkpoint (last row). Never re-run; dispatch a new run, and never use `initialize_state` to get around it. |
-| Run ended `startup_failure` (for example invalid workflow YAML on main) | Its job shape is unverified on this repository, so selection fails closed on it. Every later run then fails at selection without a checkpoint, so it does not age out: monitoring halts until owner-reviewed recovery that preserves the newest checkpoint (next row). Fix the workflow first. |
-| Missing/corrupt/expired/incompatible state, exhausted retry head or history-scan budget | Disable and preserve artifacts, run/job metadata, logs and receiver receipts. An owner-reviewed recovery/migration must preserve the latest epoch, sequence, incident IDs and ordered pending events. There is no backup-import, reset, retry-budget override or older-checkpoint switch in the current automation. Remain disabled until a reviewed procedure can establish continuity. |
+| Run ended `startup_failure` | A first-attempt trusted run with zero jobs, or jobs containing only GitHub runner bookkeeping, is proven non-state-bearing and skipped. Any other shape fails closed for owner review. |
+| Missing/corrupt/expired/incompatible state, exhausted retry head or history-scan budget | Disable and preserve artifacts, run/job metadata, logs and receiver receipts. If every intervening run is audited as non-state-bearing and an exact unexpired final checkpoint survives, use the explicit recovery inputs below; otherwise an owner-reviewed migration must preserve the latest epoch, sequence, incident IDs and ordered pending events. There is no reset, pending-artifact recovery or retry-budget override. |
+
+#### November 14, 2026 startup-failure recovery
+
+The last healthy run was
+[43094733866](https://github.com/mcasillas17/ScoreArc/actions/runs/43094733866)
+(number 713), which acknowledged its heartbeat at 20:15:42 UTC November 11.
+Its pending checkpoint is `13889424307` and its final acknowledged checkpoint
+is `13891075249`; both were unexpired when inspected November 14, with the final
+expiring February 9, 2027. Run
+[43095404456](https://github.com/mcasillas17/ScoreArc/actions/runs/43095404456)
+(number 714) then ended `startup_failure` with zero jobs. Five more identical
+startup failures followed before ordinary jobs resumed and failed in Select.
+
+At 08:01 UTC November 14 the workflow was manually disabled after final failed
+run [43573685522](https://github.com/mcasillas17/ScoreArc/actions/runs/43573685522)
+(number 1429). The continuity audit made 724 authenticated API reads and covered
+all 716 runs from 714 through 1429:
+
+- 6 `startup_failure` runs had zero jobs;
+- 709 failed runs had Select failed and Prepare skipped;
+- 1 cancelled run had no successful or attempted Prepare;
+- no run had a pending or final checkpoint; repository artifact enumeration
+  confirmed run 43094733866 still owns the newest artifacts of both names.
+
+There is therefore no preparation barrier after the final checkpoint. The
+downloaded final artifact also passed the current Prepare path locally: sequence
+20 remained 20, its ten-scope envelope adopted the current eleventh scope, and
+healthy synthetic observations produced zero pending events with no monitor
+failure. #265 merged as `55c7f0b` after PR and main CI. The operator then
+confirmed artifact `13891075249` remained unexpired, enabled the workflow and
+dispatched the exact reviewed recovery:
+
+```bash
+gh workflow enable match-freshness.yml
+gh workflow run match-freshness.yml --ref main \
+  -f initialize_state=false \
+  -f recovery_run_id=43094733866 \
+  -f recovery_artifact_id=13891075249
+```
+
+Recovery run
+[43577788015](https://github.com/mcasillas17/ScoreArc/actions/runs/43577788015)
+(number 1430) succeeded at every state/delivery boundary, wrote pending/final
+artifacts `14107316783` / `14107042384`, reported
+`data_incident=true pending=0 monitor=ok`, and acknowledged its heartbeat. Its
+exit 1 is the delivered Nations League data incident, not monitor failure.
+Ordinary receiver-dispatched runs
+[1431](https://github.com/mcasillas17/ScoreArc/actions/runs/43578053938),
+[1432](https://github.com/mcasillas17/ScoreArc/actions/runs/43578419227) and
+[1433](https://github.com/mcasillas17/ScoreArc/actions/runs/43578842507)
+each restored the new checkpoint, reported `pending=0 monitor=ok`, and
+acknowledged a heartbeat. The workflow remains active.
+
+The OPEN itself was real: Nations League reads reported 106 matches,
+`poll=failed`, `freshness=stale`, 26 stale and zero overdue. Live source
+reproduction found match discovery healthy but Go bracket mapping rejected
+finished first leg `401929776` (Curaçao 0–0 Panama) because a two-legged tie has
+no individual winner after leg one. #266 (`093f6cf`) fixed that boundary while
+retaining individual provider legs. Main
+[CI 43581222695](https://github.com/mcasillas17/ScoreArc/actions/runs/43581222695)
+passed and released the ingester/reader. At 09:51 UTC the reader reported
+`poll=ok`, `freshness=fresh`, zero stale and zero overdue. Monitor
+[run 43582787634](https://github.com/mcasillas17/ScoreArc/actions/runs/43582787634)
+(number 1443) delivered event
+`682196c6-0ed2-49d5-9713-8e3cd4ffe994:22` as `RESOLVED`, wrote pending/final
+artifacts `14108832957` / `14108209067`, cleared every active incident and
+reported `data_incident=false pending=0 monitor=ok` with an acknowledged
+heartbeat.
 
 Before full T17.4 acceptance (open in the [activation record](#activation-record-november-7-2026)), name who retains independently verified copies of the newest
 checkpoint **and its run/artifact provenance**, where they are kept, the backup
@@ -650,6 +737,42 @@ A pause approaching that expiry needs intervention before the checkpoint is lost
 The independent observer must also have a named owner, expected-run deadline,
 escalation recipient and acceptance proof; a failed workflow can report an error,
 but a workflow that never starts cannot report its own absence.
+
+#### November 15, 2026 recurring Nations League polls
+
+For CONCACAF (`nations-league/2026-27`), pending artifacts from runs
+[43678116389](https://github.com/mcasillas17/ScoreArc/actions/runs/43678116389)
+and [43680628295](https://github.com/mcasillas17/ScoreArc/actions/runs/43680628295)
+contain distinct OPEN sequences 63 and 65 for `nations-league/2026-27`,
+each reporting 106 matches, `stale/failed`, 20 stale and zero overdue.
+Delivery completed with `pending=0 monitor=ok`; the following runs resolved.
+These are repeated data-state transitions, not duplicate event delivery.
+
+The November scoreboard contains eight `gold-cup-play-in-prelims` events in
+addition to the eight quarterfinal legs. The classifier conservatively required
+bracket confirmation for the unrecognized play-in slug, while `MapBracket`
+correctly omitted it from the Nations League title bracket. Full reconciliation
+then failed with `bracket response missing knockout match "401929779"` and
+retried after 30 minutes. Rolling polls do not run that completeness check,
+explaining the intervening recoveries.
+
+The branch correction recognizes only this exact play-in stage as outside the
+title bracket and marks that exclusion authoritative, so existing unfinalized
+rows lose their old bracket requirement through normal writes. Unknown stages
+and title knockouts remain guarded; no scores, alert thresholds, event IDs or
+checkpoints change. The reduced recorded payload
+`src/server/data/__fixtures__/espn-nations-league-play-in.json` was captured from
+the November ESPN scoreboard on November 15 UTC; it retains the classification,
+status and score fields for the drawn Aruba--Martinique play-in and
+Curacao--Panama quarterfinal first legs.
+
+**Not yet released.** After the approved ingester release, confirm successful
+full-season reconciliation and observe ordinary monitor runs for at least
+35 minutes. A single healthy read is insufficient. Keep incident history intact
+and let the existing monitor deliver any remaining resolution. Fly log access
+was unavailable during this investigation because the local login had expired;
+the reproduction used the live source adapter and an isolated Postgres database,
+not production database access.
 
 ### Disabled-to-enabled owner checklist
 
@@ -693,11 +816,17 @@ but a workflow that never starts cannot report its own absence.
   and upload-before-send ordering, and links the activation record. Never use
   production dispatch for code tests. On November 8 the
   [Worker dispatch](#worker-dispatch-november-8-2026) replaced that schedule.
-- [ ] Disable by `gh workflow disable match-freshness.yml` (plus
+- [x] Disable by `gh workflow disable match-freshness.yml` (plus
   `MATCH_FRESHNESS_ENABLED=false` for a long pause); allow the current
   serialized run to finish and retain its newest checkpoint. Then pause the not-running
   check with the command in its [Pausing row](#not-running-check). Never delete
-  checkpoint artifacts or run history.
+  checkpoint artifacts or run history. The workflow was disabled November 14 at
+  08:01 UTC after run 1429; the not-running alert remains the accurate incident state.
+- [x] Merge the November 14 repair, perform the exact reviewed recovery above,
+  verify its new final checkpoint, acknowledged heartbeat/recovery send and three ordinary
+  dispatched runs, then record the recovered run and artifact IDs here. Done:
+  run 1430, artifacts `14107316783` / `14107042384`, followed by runs 1431–1433.
+  Human inbox receipt of the recovery email was not independently rechecked.
 
 The activation record must identify the approving owner and reviewed SHA, incident
 owner, confirmation that the verified recipient was used (never the address itself:
@@ -793,15 +922,13 @@ A scope that is genuinely unhealthy by then stays open and queues no RESOLVED ev
   bucket. That copy is not built and no restore has been rehearsed, so until it
   ships checkpoints rely on 90-day GitHub artifacts plus the run and artifact IDs
   recorded here. This is an open blocker for full T17.4, not an accepted default.
-- **Halts needing manual recovery (open):** a failed pending upload with no surviving
-  checkpoint, a Prepare step that failed or was cancelled after starting, a
-  `startup_failure` run, a GitHub re-run of a monitor run,
-  missing/corrupt newest state, or a newest checkpoint pushed out of the selector's
-  history window (see [disable and recover](#disable-and-recover-without-losing-history))
-  makes every later run fail at selection until the owner performs a
-  reviewed recovery; the not-running email (and GitHub's failure emails) report it,
-  but no written reconciliation procedure exists yet. This is an open blocker, not an
-  accepted default.
+- **Halts needing manual recovery (partially addressed):** the
+  November 14 repair recognizes the observed no-job `startup_failure` shape and
+  adds exact-final-checkpoint recovery after an audited non-state-bearing gap.
+  The incident-specific reconciliation above completed successfully. A failed
+  pending upload, Prepare that started without a checkpoint, rerun attempt,
+  missing/corrupt newest state, pending-only recovery or exhausted retry head
+  still needs a separately reviewed reconciliation.
 - **Validation:** on the enabling change's reviewed tree, `npm test` passed 118 files
   and 2,121 tests, `npx tsc --noEmit` was clean and `npm run lint` reported 0 errors.
   The pull request records the review and the merged SHA.

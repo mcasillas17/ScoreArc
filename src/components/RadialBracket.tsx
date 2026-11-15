@@ -7,6 +7,7 @@ import MatchDetailPopup, { type MatchSummary } from './MatchDetailPopup';
 import { useMatchDetails } from './useMatchDetails';
 import BracketZoom from './BracketZoom';
 import { accentTint } from './accentTint';
+import { flagUrl } from '@/lib/flags';
 import {
   teamJourney, buildRings, ellipse, colorFor, roundSvgCoordinate, C,
   type RingNode, type JourneyStop, type BracketMode,
@@ -48,20 +49,6 @@ interface Props {
 // Outer crest sits just beyond its flag along the same radial, and is SMALLER
 // than the flag (as in the reference: federation logo smaller than the flag).
 const CREST_R = 25;
-
-// FIFA 3-letter code -> ISO 3166-1 alpha-2 (lowercase) for flagcdn.
-const FLAG_MAP: Record<string, string> = {
-  RSA: 'za', CAN: 'ca', BRA: 'br', JPN: 'jp', GER: 'de', PAR: 'py', NED: 'nl',
-  MAR: 'ma', CIV: 'ci', NOR: 'no', FRA: 'fr', SWE: 'se', MEX: 'mx', ECU: 'ec',
-  ENG: 'gb-eng', COD: 'cd', BEL: 'be', SEN: 'sn', USA: 'us', BIH: 'ba',
-  ESP: 'es', AUT: 'at', POR: 'pt', CRO: 'hr', SUI: 'ch', ALG: 'dz', AUS: 'au',
-  EGY: 'eg', ARG: 'ar', CPV: 'cv', COL: 'co', GHA: 'gh', NGA: 'ng', CMR: 'cm',
-  URU: 'uy', CHI: 'cl', PER: 'pe', KOR: 'kr', IRN: 'ir', KSA: 'sa', QAT: 'qa',
-  SRB: 'rs', DEN: 'dk', POL: 'pl', WAL: 'gb-wls', SCO: 'gb-sct', ITA: 'it',
-  TUR: 'tr', UKR: 'ua', CZE: 'cz', RUS: 'ru', GRE: 'gr', ROU: 'ro', HUN: 'hu',
-  NZL: 'nz', CRC: 'cr', PAN: 'pa', HON: 'hn', JAM: 'jm', HAI: 'ht', VEN: 've',
-  BOL: 'bo', TUN: 'tn',
-};
 
 // FIFA 3-letter code -> federation crest URL (outer ring badge).
 const CREST_MAP: Record<string, string> = {
@@ -131,11 +118,6 @@ const CREST_MAP: Record<string, string> = {
   NGA: 'https://r2.thesportsdb.com/images/media/team/badge/qruyxr1455466056.png',
   CMR: 'https://r2.thesportsdb.com/images/media/team/badge/txqspw1455463989.png',
 };
-
-function flagUrl(abbr: string): string | null {
-  const iso = FLAG_MAP[abbr.toUpperCase()];
-  return iso ? `https://flagcdn.com/w160/${iso}.png` : null;
-}
 
 function crestSrc(abbr: string): string | null {
   return CREST_MAP[abbr.toUpperCase()] ?? null;

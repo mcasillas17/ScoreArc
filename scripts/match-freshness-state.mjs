@@ -70,7 +70,8 @@ export function githubJSON(token) {
 }
 
 /** Select metadata only. The caller must download and validate the v2 envelope. */
-export async function selectState({ github, run, initialize = false, now = Date.now() }) {
+export async function selectState({ github, run, initialize = false,
+  recovery = /** @type {{ runId?: unknown, artifactId?: unknown } | null} */ (null), now = Date.now() }) {
   requireValid(run && run.repository === REPOSITORY && run.workflow === WORKFLOW
     && run.ref === 'refs/heads/main' && positive(run.id) && positive(run.number)
     && run.attempt === 1 && sha(run.sha) && Number.isFinite(now)
@@ -95,9 +96,9 @@ export async function selectState({ github, run, initialize = false, now = Date.
   const ranNoWorkflowStep = (job) => job.steps.every((step) => ['Set up job', 'Complete job'].includes(step?.name));
   async function loadJobs(source) {
     const jobs = list(await github(`${root}/runs/${source.id}/attempts/1/jobs?per_page=10`), 'jobs', 10);
-    // A run cancelled while waiting, or wholly skipped by the job gate, can have no jobs at all;
-    // neither ran a step. Any other empty job list cannot prove checkpoint status.
-    requireValid(jobs.length > 0 || ['cancelled', 'skipped'].includes(source.conclusion), 'Missing job history cannot prove checkpoint status');
+    // A run cancelled while waiting, wholly skipped by the job gate, or rejected during
+    // hosted-runner startup can have no jobs at all; none ran a workflow step.
+    requireValid(jobs.length > 0 || ['cancelled', 'skipped', 'startup_failure'].includes(source.conclusion), 'Missing job history cannot prove checkpoint status');
     const ids = new Set();
     for (const job of jobs) {
       requireValid(job && positive(job.id) && !ids.has(job.id) && job.run_id === source.id
@@ -108,9 +109,49 @@ export async function selectState({ github, run, initialize = false, now = Date.
     }
     return jobs;
   }
+  async function loadCheckpoints(source) {
+    const artifacts = list(await github(`${root}/runs/${source.id}/artifacts?per_page=10`), 'artifacts', 10);
+    const checkpoints = artifacts.filter((item) => ['match-freshness-state', 'match-freshness-pending'].includes(item?.name));
+    const names = new Set();
+    const ids = new Set();
+    for (const item of checkpoints) {
+      const origin = item.workflow_run;
+      requireValid(!names.has(item.name) && !ids.has(item.id) && positive(item.id)
+        && item.expired === false && Number.isSafeInteger(item.size_in_bytes) && item.size_in_bytes > 0
+        && item.size_in_bytes <= MAX_STATE_BYTES && timestamp(item.expires_at) > now
+        && timestamp(item.created_at) >= timestamp(source.created_at)
+        && timestamp(item.updated_at) >= timestamp(item.created_at)
+        && timestamp(item.updated_at) <= timestamp(source.updated_at)
+        && origin?.id === source.id && origin.repository_id === repositoryId && origin.head_repository_id === repositoryId
+        && origin.head_branch === 'main' && origin.head_sha === source.head_sha, 'Invalid, expired or ambiguous checkpoint');
+      names.add(item.name);
+      ids.add(item.id);
+    }
+    const final = checkpoints.find((item) => item.name === 'match-freshness-state');
+    const pending = checkpoints.find((item) => item.name === 'match-freshness-pending');
+    // API timestamps can share a second; final must never predate pending completion.
+    requireValid(!final || !pending || timestamp(final.created_at) >= timestamp(pending.updated_at),
+      'Invalid checkpoint chronology: final predates pending');
+    return { checkpoints, final, pending };
+  }
   validateRun(current);
   requireValid(current.id === run.id && current.run_number === run.number && current.head_sha === run.sha,
     'Current workflow run does not match invocation');
+  if (recovery !== null) {
+    requireValid(current.event === 'workflow_dispatch' && !initialize
+      && recovery && typeof recovery === 'object' && !Array.isArray(recovery)
+      && Object.keys(recovery).sort().join(' ') === 'artifactId runId'
+      && positive(recovery.runId) && positive(recovery.artifactId), 'Invalid explicit recovery input');
+    const source = await github(`${root}/runs/${recovery.runId}`);
+    validateRun(source);
+    requireValid(source.id === recovery.runId && source.status === 'completed'
+      && source.id < current.id && source.run_number < current.run_number
+      && timestamp(source.created_at) < timestamp(current.created_at), 'Explicit recovery must name a completed prior run');
+    const { final } = await loadCheckpoints(source);
+    requireValid(final?.id === recovery.artifactId, 'Invalid explicit recovery artifact');
+    return { run: { repository: REPOSITORY, workflow: WORKFLOW, ref: 'refs/heads/main', id: source.id,
+      number: source.run_number, attempt: source.run_attempt, sha: source.head_sha }, artifactId: final.id, artifactName: final.name };
+  }
   let previousNumber = Infinity;
   let previousCreated = timestamp(current.created_at);
   let enumerated = 0;
@@ -127,14 +168,14 @@ export async function selectState({ github, run, initialize = false, now = Date.
       if (source.run_number > run.number) {
         // Runs start every five minutes (the receiver's dispatch, or a manual one), so a
         // newer run can already be listed. The concurrency group runs one job at a time,
-        // so while this run is active a newer one is still waiting or was cancelled
-        // before it started; either way it holds no state. Anything else fails closed.
+        // so while this run is active a newer one is still waiting, was cancelled before
+        // it started, or failed during hosted-runner startup; none can hold state.
         requireValid(!seenIds.has(source.id) && source.run_number < previousNumber && source.id > run.id
           && timestamp(source.created_at) >= timestamp(current.created_at)
           && (['queued', 'pending', 'waiting', 'requested'].includes(source.status)
-            || (source.status === 'completed' && source.conclusion === 'cancelled')), 'Invalid or nonmonotonic workflow run history');
+            || (source.status === 'completed' && ['cancelled', 'startup_failure'].includes(source.conclusion))), 'Invalid or nonmonotonic workflow run history');
         if (source.status === 'completed') {
-          requireValid((await loadJobs(source)).every(ranNoWorkflowStep), 'Newer cancelled run started');
+          requireValid((await loadJobs(source)).every(ranNoWorkflowStep), 'Newer no-state run started');
         }
         seenIds.add(source.id);
         previousNumber = source.run_number;
@@ -152,30 +193,9 @@ export async function selectState({ github, run, initialize = false, now = Date.
     }
     for (const source of runs) {
       if (source.id === run.id || source.run_number > run.number) continue;
-      const artifacts = list(await github(`${root}/runs/${source.id}/artifacts?per_page=10`), 'artifacts', 10);
-      const checkpoints = artifacts.filter((item) => ['match-freshness-state', 'match-freshness-pending'].includes(item?.name));
+      const { checkpoints, final, pending } = await loadCheckpoints(source);
       if (checkpoints.length) {
         requireValid(!initialize, 'Initialization is forbidden when durable state exists');
-        const names = new Set();
-        const ids = new Set();
-        for (const item of checkpoints) {
-          const origin = item.workflow_run;
-          requireValid(!names.has(item.name) && !ids.has(item.id) && positive(item.id)
-            && item.expired === false && Number.isSafeInteger(item.size_in_bytes) && item.size_in_bytes > 0
-            && item.size_in_bytes <= MAX_STATE_BYTES && timestamp(item.expires_at) > now
-            && timestamp(item.created_at) >= timestamp(source.created_at)
-            && timestamp(item.updated_at) >= timestamp(item.created_at)
-            && timestamp(item.updated_at) <= timestamp(source.updated_at)
-            && origin?.id === source.id && origin.repository_id === repositoryId && origin.head_repository_id === repositoryId
-            && origin.head_branch === 'main' && origin.head_sha === source.head_sha, 'Invalid, expired or ambiguous newest checkpoint');
-          names.add(item.name);
-          ids.add(item.id);
-        }
-        const final = checkpoints.find((item) => item.name === 'match-freshness-state');
-        const pending = checkpoints.find((item) => item.name === 'match-freshness-pending');
-        // API timestamps can share a second; final must never predate pending completion.
-        requireValid(!final || !pending || timestamp(final.created_at) >= timestamp(pending.updated_at),
-          'Invalid checkpoint chronology: final predates pending');
         if (!final) {
           const jobs = await loadJobs(source);
           const commits = jobs.flatMap((job) => job.steps.filter((step) => step?.name === 'Commit acknowledged checkpoint'));

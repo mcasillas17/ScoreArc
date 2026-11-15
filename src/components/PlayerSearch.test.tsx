@@ -9,9 +9,9 @@ vi.mock('next/link', () => ({ default: ({ prefetch, children, ...props }: React.
   <a {...props} data-prefetch={String(prefetch)}>{children}</a> }));
 afterEach(cleanup);
 const players = [
-  { name: 'Alí Ávila', slug: 'ali-avila', teamName: 'Querétaro', teamAbbr: 'QRO' },
-  { name: 'Martin Ødegaard', slug: 'martin-odegaard', teamName: 'Arsenal', teamAbbr: 'ARS' },
-  { name: 'Same Name', slug: null, teamName: 'América', teamAbbr: 'AME' },
+  { name: 'Alí Ávila', slug: 'ali-avila', teamName: 'Querétaro', teamAbbr: 'QRO', teamId: 'qro', crestUrl: null },
+  { name: 'Martin Ødegaard', slug: 'martin-odegaard', teamName: 'Arsenal', teamAbbr: 'ARS', teamId: 'ars', crestUrl: null },
+  { name: 'Same Name', slug: null, teamName: 'América', teamAbbr: 'AME', teamId: 'ame', crestUrl: null },
 ];
 it.each(['en', 'es'] as const)('searches accents and teams locally with singular %s profile links', locale => {
   const fetcher = vi.spyOn(globalThis, 'fetch');
@@ -31,6 +31,7 @@ it.each(['en', 'es'] as const)('searches accents and teams locally with singular
   fireEvent.change(input, { target: { value: '' } });
   expect(screen.getAllByRole('listitem')).toHaveLength(3);
   expect(screen.queryByRole('link', { name: 'Same Name' })).toBeNull();
+  expect(screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent?.replace(/^[A-Z]{3}/, ''))).toEqual(['América', 'Arsenal', 'Querétaro']);
   expect(fetcher).not.toHaveBeenCalled();
   fetcher.mockRestore();
 });

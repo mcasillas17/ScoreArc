@@ -81,10 +81,10 @@ describe('match details localization', () => {
     await waitFor(() => expect(screen.getByRole('dialog')).toBeTruthy());
 
     const text = document.body.textContent ?? '';
-    for (const label of ['Estadísticas del partido', 'Tiros', 'A puerta', 'Pases', 'Defensa', 'Disciplina', 'Empate', 'Próximo', 'No disponible']) {
+    for (const label of ['Tiros', 'A puerta', 'Pases', 'Defensa', 'Disciplina', 'Empate', 'Próximo', 'No disponible']) {
       expect(text).toContain(label);
     }
-    for (const label of ['Match stats', 'Shots', 'On Target', 'Passing', 'Defending', 'Discipline', 'Draw', 'Upcoming']) {
+    for (const label of ['Shots', 'On Target', 'Passing', 'Defending', 'Discipline', 'Draw', 'Upcoming']) {
       expect(text).not.toContain(label);
     }
   });
@@ -129,7 +129,7 @@ describe('match details localization', () => {
     await waitFor(() => expect(screen.getByRole('dialog')).toBeTruthy());
     const dialog = screen.getByRole('dialog');
     const text = dialog.textContent ?? '';
-    for (const label of ['Penaltis', 'Tanda de penaltis', 'Resumen', 'Forma y enfrentamientos directos', 'Forma reciente', 'Enfrentamientos directos', 'Comentarios · 1']) {
+    for (const label of ['Penaltis', 'Tanda de penaltis', 'Resumen', 'Forma reciente', 'Enfrentamientos directos', 'Comentarios · 1']) {
       expect(text).toContain(label);
     }
     for (const providerText of ['Provider match note', 'Provider Stadium', 'Provider City', 'Provider Referee', 'Provider commentary text', 'Provider video headline', 'SRC 2-1 TST']) {
@@ -180,5 +180,27 @@ describe('match details localization', () => {
     unmount();
     expect(document.activeElement).toBe(trigger);
     trigger.remove();
+  });
+
+  it('shows one panel at a time behind a single tablist', async () => {
+    const match = { ...scheduledMatch, state: 'finished' as const, statusName: 'STATUS_FINAL', homeScore: 1, awayScore: 0 };
+    const summary: MatchSummaryData = {
+      ...emptySummary,
+      stats,
+      h2h: [{ label: 'SRC 2-1 TST', date: '2026-06-15T12:00:00.000Z' }],
+    };
+    renderPopup(match, summary);
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeTruthy());
+
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Resumen', 'Estadísticas']);
+    expect(tabs[0].getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tabpanel').textContent).toContain('SRC 2-1 TST');
+    expect(screen.getByRole('tabpanel').textContent).not.toContain('Tiros');
+
+    fireEvent.click(tabs[1]);
+    expect(screen.getByRole('tabpanel').textContent).toContain('Tiros');
+    expect(screen.getByRole('tabpanel').textContent).not.toContain('SRC 2-1 TST');
+    expect(document.querySelector('details')).toBeNull();
   });
 });

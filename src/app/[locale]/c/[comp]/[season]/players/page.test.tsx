@@ -9,7 +9,7 @@ afterEach(() => vi.resetAllMocks());
 const params = { locale: 'en', comp: 'world-cup', season: '2026' };
 function index(totalTeams: number, teamsWithRoster: number) {
   vi.mocked(competitionPlayerIndex).mockResolvedValue({ bySlug: new Map(), byProvider: new Map(),
-    directory: { totalTeams, teamsWithRoster, players: teamsWithRoster ? [{ name: 'Alí Ávila', slug: 'ali-avila', teamName: 'Mexico', teamAbbr: 'MEX' }] : [] } });
+    directory: { totalTeams, teamsWithRoster, players: teamsWithRoster ? [{ name: 'Alí Ávila', slug: 'ali-avila', teamName: 'Mexico', teamAbbr: 'MEX', teamId: 'nat-mex', crestUrl: null }] : [] } });
 }
 describe('player directory page', () => {
   it('does not fetch historical rosters and links to the current localized directory', async () => {
@@ -18,7 +18,6 @@ describe('player directory page', () => {
     expect(html).toContain('No hay plantillas históricas');
     expect(html).toContain('/es/c/world-cup/2026/players');
     expect(html).not.toContain('Search results');
-    expect(html).not.toContain('Plantillas actuales de los equipos');
   });
   it('describes the supported scope in metadata without loading any players', async () => {
     const current = await generateMetadata({ params });
@@ -35,10 +34,11 @@ describe('player directory page', () => {
     const unavailable = renderToStaticMarkup(await Page({ params }));
     expect(unavailable).toContain('No roster data is available right now.');
     expect(unavailable).not.toContain('Search results');
+    index(2, 2);
+    expect(renderToStaticMarkup(await Page({ params }))).not.toContain('Roster data from');
     index(2, 1);
     const partial = renderToStaticMarkup(await Page({ params }));
     expect(partial).toContain('Roster data from 1 of 2 listed teams');
-    expect(partial).toContain('Some teams have no roster data');
     expect(partial).toContain('Search results');
   });
   it('renders an explicit unavailable state after both-source failure', async () => {

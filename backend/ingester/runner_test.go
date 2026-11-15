@@ -3441,22 +3441,27 @@ func TestWinnerIsTranslatedToACanonicalTeamID(t *testing.T) {
 
 func ptr(value string) *string { return &value }
 
-// The World Cup fields national teams; everything else we ingest is contested
-// by clubs. The kind decides which canonical team a provider id can resolve to,
-// so it has to reach the resolver.
+// The registry's team kind must reach the canonical identity resolver.
 func TestCompetitionDecidesTeamKind(t *testing.T) {
-	for slug, want := range map[string]string{"fifa.world": "national", "eng.1": "club"} {
+	registry, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]string{
+		"world-cup": "national", "uefa-nations-league": "national",
+		"nations-league": "national", "leagues-cup": "club",
+	} {
 		repo := &fakeRepository{existing: map[string]store.MatchRow{}}
-		comp := config.Competition{
-			ID: "test", ESPNSlug: slug, CurrentSeasonId: "2026",
-			Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		comp, ok := registry.Get(id)
+		if !ok {
+			t.Fatalf("missing competition %q", id)
 		}
 		runner := testRunner(&fakeSource{matches: []model.Match{finishedMatch()}}, repo, comp)
 
 		runner.runCycle(context.Background(), false)
 
 		if got := repo.teamKinds["home"]; got != want {
-			t.Fatalf("%s resolved teams as kind %q, want %q", slug, got, want)
+			t.Fatalf("%s resolved teams as kind %q, want %q", id, got, want)
 		}
 	}
 }

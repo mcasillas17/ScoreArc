@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { renderToReadableStream } from 'react-dom/server';
 import type { ReactNode } from 'react';
 import { dataStore } from '@/server/data/store';
 import { getCompetition, ongoingCompetitions, resolveSeason, type CompetitionSeason } from '@/server/data/competitions';
@@ -85,8 +85,11 @@ const matchIds = (html: string) =>
   (html.match(/data-match-id="[^"]+"/g) ?? []).map((a) => a.slice(15, -1));
 const count = (html: string, needle: string) => html.split(needle).length - 1;
 
-const renderLocalized = (node: ReactNode, locale: Locale = 'en') =>
-  renderToStaticMarkup(<I18nProvider locale={locale}>{node}</I18nProvider>);
+async function renderLocalized(node: ReactNode, locale: Locale = 'en') {
+  const stream = await renderToReadableStream(<I18nProvider locale={locale}>{node}</I18nProvider>);
+  await stream.allReady;
+  return new Response(stream).text();
+}
 
 describe('Home digest', () => {
   beforeEach(() => {
@@ -98,6 +101,46 @@ describe('Home digest', () => {
   });
   afterEach(() => vi.useRealTimers());
 
+  it('streams news while match data is still pending', async () => {
+    vi.useRealTimers();
+    const matches = Promise.withResolvers<Match[]>();
+    vi.spyOn(dataStore, 'getLiveWindow').mockReturnValue(matches.promise);
+    vi.spyOn(dataStore, 'getNews').mockResolvedValue([article('early')]);
+    const page = await Home({ params: { locale: 'en' } });
+    const stream = await renderToReadableStream(<I18nProvider locale="en">{page}</I18nProvider>);
+    let html = '';
+    let sawEarlyNews = false;
+    for await (const chunk of stream.pipeThrough(new TextDecoderStream())) {
+      html += chunk;
+      if (!sawEarlyNews && html.includes('Headline early')) {
+        expect(html).toContain('Loading…');
+        expect(matchIds(html)).toEqual([]);
+        sawEarlyNews = true;
+        matches.resolve([{ ...match('later', 2), kickoff: new Date(Date.now() + 2 * H).toISOString() }]);
+      }
+    }
+    expect(sawEarlyNews).toBe(true);
+    expect(matchIds(html)).toEqual(['later']);
+  });
+
+  it('sends the status headline and match cards before ESPN leaderboards finish', async () => {
+    const leaders = Promise.withResolvers<Awaited<ReturnType<typeof dataStore.getLeaders>>>();
+    vi.spyOn(dataStore, 'getLeaders').mockReturnValue(leaders.promise);
+    vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([match('early', 0, 'live')]);
+
+    const page = await Home({ params: { locale: 'en' } });
+    const stream = await renderToReadableStream(<I18nProvider locale="en">{page}</I18nProvider>);
+    let html = '';
+    for await (const chunk of stream.pipeThrough(new TextDecoderStream())) {
+      html += chunk;
+      if (html.includes('1 match live right now.') && matchIds(html).includes('early')) {
+        leaders.resolve({ scorers: [leader(1, 'Late Scorer')], assists: [] });
+      }
+    }
+    expect(html.indexOf('1 match live right now.')).toBeLessThan(html.indexOf('Late Scorer'));
+    expect(html).toContain('Late Scorer');
+  });
+
   // One render used to cost 95 upstream ESPN requests, 77 of them per-match
   // /summary calls bought by getMatches and then discarded -- the digest reads
   // only what the scoreboard already carries.
@@ -105,7 +148,7 @@ describe('Home digest', () => {
     const enriching = vi.spyOn(dataStore, 'getMatches');
     const cheap = vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
 
-    renderLocalized(await Home({ params: { locale: 'en' } }));
+    await renderLocalized(await Home({ params: { locale: 'en' } }));
 
     expect(enriching).not.toHaveBeenCalled();
     expect(cheap).toHaveBeenCalled();
@@ -113,7 +156,7 @@ describe('Home digest', () => {
 
   it("reads each competition's window exactly once", async () => {
     const cheap = vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
-    renderLocalized(await Home({ params: { locale: 'en' } }));
+    await renderLocalized(await Home({ params: { locale: 'en' } }));
     expect(cheap).toHaveBeenCalledTimes(ONGOING.length);
   });
 
@@ -122,8 +165,8 @@ describe('Home digest', () => {
     vi.spyOn(dataStore, 'getLiveWindow').mockRejectedValue(new Error('upstream unavailable'));
     vi.spyOn(dataStore, 'getLeaders').mockRejectedValue(new Error('upstream unavailable'));
     vi.spyOn(dataStore, 'getNews').mockRejectedValue(new Error('upstream unavailable'));
-    const html = renderLocalized(await Home({ params: { locale: 'en' } }));
-    expect(html).toContain('What&#x27;s new in ScoreArc');
+    const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
+    expect(html).toContain('<h1 class="dg-title dg-lead">');
   });
 
   it('renders Spanish digest copy and locale-prefixed internal links in the first response', async () => {
@@ -131,10 +174,9 @@ describe('Home digest', () => {
     vi.spyOn(dataStore, 'getLeaders').mockResolvedValue({ scorers: [], assists: [] });
     vi.spyOn(dataStore, 'getNews').mockResolvedValue([]);
 
-    const html = renderLocalized(await Home({ params: { locale: 'es' } }), 'es');
+    const html = await renderLocalized(await Home({ params: { locale: 'es' } }), 'es');
 
-    expect(html).toContain('Nuevo en ScoreArc');
-    expect(html).toContain('Qué hay hoy');
+    expect(html).toContain('<h1 class="dg-title dg-lead">Nada en vivo');
     expect(html).toContain('href="/es/news"');
     expect(html).not.toContain('href="/news"');
   });
@@ -148,7 +190,7 @@ describe('Home digest', () => {
       match('m2', 3),
       match('m3', -4, 'finished'),
     ]);
-    const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+    const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
     const ids = matchIds(html);
     expect(ids.length).toBeGreaterThan(0);
     expect(new Set(ids).size).toBe(ids.length);
@@ -169,7 +211,7 @@ describe('Home digest', () => {
     vi.spyOn(dataStore, 'getNews').mockImplementation(
       byCompetition({ [wc.id]: [article('wc-story')] }),
     );
-    const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+    const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
     expect(matchIds(html)).not.toContain('wc-match');
     expect(html).not.toContain('Concluded Scorer');
     expect(html).not.toContain('Headline wc-story');
@@ -183,7 +225,7 @@ describe('Home digest', () => {
     // nine live matches above one card.
     it('counts one when nine competitions return the same live match', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([match('shared', 0, 'live')]);
-      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+      const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(matchIds(html)).toEqual(['shared']);
       expect(html).toContain('1 match live right now.');
     });
@@ -193,7 +235,7 @@ describe('Home digest', () => {
     it('counts the cap, not the pool, when more are live than fit', async () => {
       const live = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => match(`live${n}`, 0, 'live'));
       vi.spyOn(dataStore, 'getLiveWindow').mockImplementation(byCompetition({ [FIRST]: live }));
-      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+      const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(matchIds(html)).toHaveLength(6);
       expect(html).toContain('6 matches live right now.');
       expect(html).not.toContain('8 matches live right now.');
@@ -205,7 +247,7 @@ describe('Home digest', () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockImplementation(
         byCompetition({ [FIRST]: [match('inplay', 0, 'live')], [SECOND]: [match('soon', 2)] }),
       );
-      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+      const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(matchIds(html)).toEqual(['inplay']);
       expect(html).toContain('1 match live right now.');
     });
@@ -218,7 +260,7 @@ describe('Home digest', () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockImplementation(
         byCompetition({ [FIRST]: [match('faraway', 9 * 24)], [SECOND]: [match('done', -4, 'finished')] }),
       );
-      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+      const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(matchIds(html)).toEqual(['done']);
       expect(html).toContain('latest results');
       expect(html).not.toContain('in about 9 days');
@@ -232,7 +274,7 @@ describe('Home digest', () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockImplementation(
         byCompetition({ [FIRST]: [match('soon', 2), match('sameday', 9), match('nextweek', 7 * 24)] }),
       );
-      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+      const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(matchIds(html)).toEqual(['soon', 'sameday']);
       expect(html).toContain('next kickoff in about 2 hours');
     });
@@ -240,7 +282,7 @@ describe('Home digest', () => {
     // With no results either, a distant fixture still beats an empty block.
     it('falls back to a distant fixture when there is no result to show', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([match('faraway', 9 * 24)]);
-      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+      const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(matchIds(html)).toEqual(['faraway']);
       expect(html).toContain('next kickoff in about 9 days');
     });
@@ -250,14 +292,14 @@ describe('Home digest', () => {
   // as a broken site -- so the digest leads with results and says so.
   it('falls back to recent results and names them', async () => {
     vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([match('done', -4, 'finished')]);
-    const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+    const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
     expect(html).toContain('latest results');
     expect(html).toContain('data-match-id="done"');
   });
 
   it('says how far off the next kickoff is when nothing is live', async () => {
     vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([match('next', 4)]);
-    const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+    const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
     expect(html).toContain('next kickoff in about 4 hours');
   });
 
@@ -267,7 +309,7 @@ describe('Home digest', () => {
     vi.spyOn(dataStore, 'getLiveWindow').mockImplementation(
       byCompetition({ [FIRST]: [match('later', 9)], [SECOND]: [match('sooner', 4)] }),
     );
-    const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+    const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
     expect(html).toContain('next kickoff in about 4 hours');
     expect(html).not.toContain('in about 9 hours');
   });
@@ -275,7 +317,7 @@ describe('Home digest', () => {
   describe('empty states', () => {
     it('says so in every block when nothing is available', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
-      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+      const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(html).toContain('No matches in the current window.');
       expect(html).toContain('No scoring boards are published yet.');
       expect(html).toContain('News is unavailable right now.');
@@ -286,32 +328,32 @@ describe('Home digest', () => {
     // matches in the current window."
     it('does not promise results above an empty block', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
-      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+      const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(html).toContain('window is empty');
       expect(html).not.toContain('latest results');
     });
   });
 
   describe('leading scorers', () => {
-    it('shows the top three of each competition board', async () => {
+    it('shows the top five of the chosen competition board', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
       vi.spyOn(dataStore, 'getLeaders').mockResolvedValue({
-        scorers: [1, 2, 3, 4, 5].map((r) => leader(r, `Player ${r}`)),
+        scorers: [1, 2, 3, 4, 5, 6].map((r) => leader(r, `Player ${r}`)),
         assists: [],
       });
-      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
-      expect(html).toContain('Player 3');
-      expect(html).not.toContain('Player 4');
+      const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
+      expect(html).toContain('Player 5');
+      expect(html).not.toContain('Player 6');
     });
 
-    // Nine competitions publish boards; six fit. Without the cap the block
-    // would be longer than the news column beside it.
-    it('caps the number of boards', async () => {
+    // Six boards used to fill the page; now one card is switched between them.
+    it('renders one card with a switcher button per competition', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
       vi.spyOn(dataStore, 'getLeaders').mockResolvedValue({ scorers: [leader(1, 'Solo')], assists: [] });
-      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
-      expect(ONGOING.length).toBeGreaterThan(6);
-      expect(count(html, 'class="dg-board"')).toBe(6);
+      const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
+      expect(count(html, 'class="dg-board"')).toBe(1);
+      expect(count(html, 'class="dg-pick"')).toBe(ONGOING.length);
+      expect(count(html, 'class="dg-pick" aria-pressed="true"')).toBe(1);
     });
 
     // A board saying only "WORLD CUP" beside in-progress league boards gives
@@ -319,7 +361,7 @@ describe('Home digest', () => {
     it('names the season each board is for', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
       vi.spyOn(dataStore, 'getLeaders').mockResolvedValue({ scorers: [leader(1, 'Solo')], assists: [] });
-      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+      const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
       const label = resolveSeason(FIRST)!.season.label;
       expect(html).toContain(`<span class="dg-bseason">${label}</span>`);
     });
@@ -329,7 +371,7 @@ describe('Home digest', () => {
     it('lists news across competitions', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
       vi.spyOn(dataStore, 'getNews').mockResolvedValue([article('a'), article('b'), article('c')]);
-      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+      const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(html).toContain('Headline a');
       // Two per competition, so the third from one feed never crowds out another
       // competition's lead story.
@@ -341,7 +383,7 @@ describe('Home digest', () => {
     it('shows a syndicated story exactly once', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
       vi.spyOn(dataStore, 'getNews').mockResolvedValue([article('shared')]);
-      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+      const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(count(html, 'Headline shared')).toBe(1);
       expect(count(html, 'class="dg-nw"')).toBe(1);
     });
@@ -355,7 +397,7 @@ describe('Home digest', () => {
           [ONGOING[2].id]: [article('middle', '2026-08-18T09:00:00Z')],
         }),
       );
-      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+      const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(html.indexOf('Headline newest')).toBeLessThan(html.indexOf('Headline middle'));
       expect(html.indexOf('Headline middle')).toBeLessThan(html.indexOf('Headline old'));
     });
@@ -366,7 +408,7 @@ describe('Home digest', () => {
         article(`${rc.competition.id}-1`),
         article(`${rc.competition.id}-2`),
       ]);
-      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+      const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(ONGOING.length * 2).toBeGreaterThan(6);
       expect(count(html, 'class="dg-nw"')).toBe(6);
     });
@@ -379,7 +421,7 @@ describe('Home digest', () => {
       vi.spyOn(dataStore, 'getNews').mockImplementation(
         byCompetition({ [FIRST]: [article('a', '2026-08-18T10:00:00Z')] }),
       );
-      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+      const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(html).toContain('2 hr. ago');
       expect(html).not.toContain(`<span class="dg-nwsrc">${ONGOING[0].shortName}</span>`);
     });
@@ -388,7 +430,7 @@ describe('Home digest', () => {
     // nowhere inside ScoreArc at all.
     it('offers a way into the app', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
-      const html = renderLocalized(await Home({ params: { locale: 'en' } }));
+      const html = await renderLocalized(await Home({ params: { locale: 'en' } }));
       expect(html).toContain('href="/en/news"');
     });
   });
