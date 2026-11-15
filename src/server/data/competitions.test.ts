@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { currentScopes } from '../../../scripts/match-freshness-watchdog.mjs';
 import {
   COMPETITIONS,
+  listCompetitionDefinitions,
   getCompetition,
   listCompetitions,
   ongoingCompetitions,
@@ -9,6 +11,68 @@ import {
 } from './competitions';
 
 describe('competition registry', () => {
+  it('keeps candidate definitions hidden', () => {
+    const allDefinitions = listCompetitionDefinitions();
+    expect([allDefinitions.length, new Set(allDefinitions.map(c => c.espnSlug)).size]).toEqual([57, 57]);
+    expect(ongoingCompetitions().map(c => c.id)).toEqual(['leagues-cup', 'nations-league', 'uefa-nations-league', 'premier-league', 'laliga', 'serie-a', 'bundesliga', 'ligue-1', 'super-league-greece', 'mls', 'liga-mx', 'wsl', 'nwsl', 'liga-mx-femenil']);
+    expect(listCompetitions().map(c => c.id)).toEqual(['world-cup', 'leagues-cup', 'nations-league', 'uefa-nations-league', 'premier-league', 'laliga', 'serie-a', 'bundesliga', 'ligue-1', 'super-league-greece', 'mls', 'liga-mx', 'wsl', 'nwsl', 'liga-mx-femenil']);
+  });
+  it('preserves the public season, landing link and monitored-scope baseline', () => {
+    const baseline: [string, string, string[]][] = [
+      ['world-cup', '2026', ['1998', '2002', '2006', '2010', '2014', '2018', '2022', '2026']],
+      ['leagues-cup', '2026', ['2026']], ['nations-league', '2026-27', ['2026-27']],
+      ['uefa-nations-league', '2026-27', ['2026-27']], ['premier-league', '2026-27', ['2026-27']],
+      ['laliga', '2026-27', ['2026-27']], ['serie-a', '2026-27', ['2026-27']],
+      ['bundesliga', '2026-27', ['2026-27']], ['ligue-1', '2026-27', ['2026-27']],
+      ['super-league-greece', '2026-27', ['2026-27']], ['mls', '2026', ['2026']],
+      ['liga-mx', '2026-apertura', ['2026-apertura']], ['wsl', '2026-27', ['2026-27']],
+      ['nwsl', '2026', ['2026']], ['liga-mx-femenil', '2026-apertura', ['2026-apertura']],
+    ];
+    expect(listCompetitions().map(c => [c.id, c.currentSeasonId, Object.keys(c.seasons)])).toEqual(baseline);
+    for (const [id, season, seasons] of baseline) {
+      expect(resolveSeason(id)?.season.id).toBe(season);
+      for (const sid of seasons) expect(resolveSeason(id, sid)?.season.id).toBe(sid);
+    }
+    // The current monitor reads the current season of every public competition, including concluded editions.
+    expect(currentScopes(listCompetitions())).toEqual(baseline.map(([competition, season]) => ({ competition, season })));
+  });
+
+  it('keeps a staging-only definition off public routes', () => {
+    const candidate = listCompetitionDefinitions().find(c => c.espnSlug === 'fifa.wwc')!;
+    candidate.seasons['2023'] = { ...COMPETITIONS['world-cup'].seasons['2026'], id: '2023', publication: 'staging' };
+    try {
+      expect(getCompetition(candidate.id)).toBeUndefined();
+      expect(resolveSeason(candidate.id, '2023')).toBeUndefined();
+      expect(listCompetitions().some(c => c.id === candidate.id)).toBe(false);
+    } finally { delete candidate.seasons['2023']; }
+  });
+
+  it('publishes a candidate only after its landing edition and presentation are ready', () => {
+    const candidate = listCompetitionDefinitions().find(c => c.id === 'womens-world-cup')!;
+    const before = { ...candidate };
+    candidate.seasons = { '2023': { ...COMPETITIONS['world-cup'].seasons['2026'], id: '2023', publication: 'archive' } };
+    candidate.currentSeasonId = '2023';
+    try {
+      expect(getCompetition(candidate.id)).toBeUndefined();
+      Object.assign(candidate, { teamStyle: 'flag', emblem: '🌍', accent: COMPETITIONS['world-cup'].accent });
+      expect(resolveSeason(candidate.id)?.season.id).toBe('2023');
+      expect(listCompetitions().some(c => c.id === candidate.id)).toBe(true);
+    } finally {
+      delete candidate.currentSeasonId; delete candidate.teamStyle; delete candidate.emblem; delete candidate.accent;
+      Object.assign(candidate, before);
+    }
+  });
+
+  it('keeps staged editions hidden without displacing the landing season', () => {
+    const comp = COMPETITIONS['world-cup'];
+    comp.seasons['future'] = { ...comp.seasons['2026'], id: 'future', publication: 'staging' };
+    try {
+      expect(resolveSeason('world-cup')?.season.id).toBe('2026');
+      expect(resolveSeason('world-cup', 'future')).toBeUndefined();
+      expect(getCompetition('world-cup')?.seasons.future).toBeUndefined();
+    } finally { delete comp.seasons['future']; }
+  });
+
   it('has world-cup and leagues-cup with correct ESPN slugs', () => {
     expect(COMPETITIONS['world-cup'].espnSlug).toBe('fifa.world');
     expect(COMPETITIONS['leagues-cup'].espnSlug).toBe('concacaf.leagues.cup');
