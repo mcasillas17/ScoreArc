@@ -19,6 +19,19 @@ describe('competition registry', () => {
     expect(COMPETITIONS['leagues-cup'].teamStyle).toBe('crest');
   });
 
+  it.each([
+    ['nations-league', 'CONCACAF Nations League', 'concacaf.nations.league'],
+    ['uefa-nations-league', 'UEFA Nations League', 'uefa.nations'],
+  ])('keeps %s distinct in routes, feeds and compact labels', (id, name, espnSlug) => {
+    const rc = resolveSeason(id);
+    expect(rc?.competition).toMatchObject({ id, name, shortName: name, espnSlug, kind: 'national', teamStyle: 'flag' });
+    expect(rc?.season).toMatchObject({
+      id: '2026-27',
+      format: { hasBracket: true, hasGroups: true, hasThirdPlaceRace: false },
+      knockoutRounds: ['quarterfinals', 'semifinals', 'final'],
+    });
+  });
+
   it('each competition declares a current season that exists', () => {
     for (const comp of listCompetitions()) {
       expect(comp.seasons[comp.currentSeasonId]).toBeDefined();

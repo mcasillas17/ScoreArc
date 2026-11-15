@@ -90,6 +90,11 @@ describe('seasonMonthBounds', () => {
       ).toEqual(new Date(2026, 6, 1));
     });
 
+    it('opens the match calendar on the ongoing group phase before the quarterfinals', () => {
+      expect(seasonInitialMonth(new Date(2026, 10, 15), '2026-27', '20270325-20270613'))
+        .toEqual(new Date(2026, 10, 1));
+    });
+
     it('clamps to the nearest season bound without an active range', () => {
       expect(seasonInitialMonth(now, '2027-clausura')).toEqual(new Date(2027, 0, 1));
       expect(seasonInitialMonth(now, '2025-26')).toEqual(new Date(2026, 5, 1));

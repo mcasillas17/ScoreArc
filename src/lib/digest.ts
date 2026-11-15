@@ -171,3 +171,40 @@ export function collectStories(
     .sort((a, b) => (at(b) !== at(a) ? at(b) - at(a) : a.id.localeCompare(b.id)))
     .slice(0, limit);
 }
+
+/**
+ * The same stories, kept under the feed they came from instead of merged.
+ *
+ * Returns one entry per feed that still has something to show, as the feed's
+ * index into `perCompetition` plus its articles newest first; the entries are
+ * ordered by their newest story, so the competition with something happening
+ * leads. A story syndicated into several feeds stays in the first one that
+ * carries it.
+ *
+ * `maxAgeMs` is why this exists: the feeds do not age at the same rate. On the
+ * day this was written the Premier League's six stories were all from that
+ * day, Liga MX's newest was a month old and Super League Greece's newest was
+ * eight months old. Merged into one list, the stale ones read as news.
+ */
+export function groupStories(
+  perCompetition: NewsArticle[][],
+  { perFeed, maxAgeMs, now }: { perFeed: number; maxAgeMs: number; now: Date },
+): { feed: number; articles: NewsArticle[] }[] {
+  const at = (article: NewsArticle) => new Date(article.published).getTime();
+  const oldest = now.getTime() - maxAgeMs;
+  const seen = new Set<string>();
+  const groups: { feed: number; articles: NewsArticle[] }[] = [];
+  perCompetition.forEach((feed, index) => {
+    const articles: NewsArticle[] = [];
+    for (const article of feed) {
+      // An unparseable date fails this comparison too, which is what we want:
+      // a story we cannot date cannot be shown as recent.
+      if (!(at(article) >= oldest) || seen.has(article.id)) continue;
+      seen.add(article.id);
+      articles.push(article);
+    }
+    articles.sort((a, b) => (at(b) !== at(a) ? at(b) - at(a) : a.id.localeCompare(b.id)));
+    if (articles.length) groups.push({ feed: index, articles: articles.slice(0, perFeed) });
+  });
+  return groups.sort((a, b) => at(b.articles[0]) - at(a.articles[0]) || a.feed - b.feed);
+}

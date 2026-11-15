@@ -99,6 +99,39 @@ describe('competition season root', () => {
     expect(html).not.toContain('Knockout Bracket');
     expect(html).not.toContain('Bracket data is unavailable right now.');
   });
+
+  it('points to the UEFA groups while the knockout stage is still ahead', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 10, 15));
+    try {
+      vi.spyOn(dataStore, 'getMatches').mockResolvedValue([]);
+      vi.spyOn(dataStore, 'getUpcoming').mockResolvedValue([]);
+      vi.spyOn(dataStore, 'getBracket').mockResolvedValue([]);
+      const node = await Workspace({ params: { locale: 'es', comp: 'uefa-nations-league', season: '2026-27' } });
+      const html = renderToStaticMarkup(<I18nProvider locale="es">{node}</I18nProvider>);
+      expect(html).toContain('25 de marzo de 2027');
+      expect(html).toContain('href="/es/c/uefa-nations-league/2026-27/standings"');
+    } finally {
+      vi.mocked(Date.now).mockRestore();
+    }
+  });
+
+  // The Nations League shipped without "Build your bracket": predict mode was
+  // switched off globally when the World Cup ended, and only the projected
+  // Liguilla turned it back on.
+  it.each([
+    { winnerId: undefined, open: true },
+    { winnerId: '1', open: false },
+  ])('offers bracket predictions only while the final is undecided (winner: $winnerId)', async ({ winnerId, open }) => {
+    const side = (id: string) => ({ id, name: `Team ${id}`, abbr: `T${id}`, placeholder: false });
+    vi.spyOn(dataStore, 'getMatches').mockResolvedValue([]);
+    vi.spyOn(dataStore, 'getUpcoming').mockResolvedValue([]);
+    vi.spyOn(dataStore, 'getBracket').mockResolvedValue([
+      { slug: 'final', matches: [{ id: 'f', home: side('1'), away: side('2'), state: winnerId ? 'finished' : 'scheduled', winnerId }] },
+    ] as never);
+    const node = await Workspace({ params: { locale: 'en', comp: 'nations-league', season: '2026-27' } });
+    const html = renderToStaticMarkup(<I18nProvider locale="en">{node}</I18nProvider>);
+    expect(html.includes('Build your bracket')).toBe(open);
+  });
 });
 
 describe('competition bracket metadata', () => {

@@ -4,6 +4,7 @@
     "name": "World Cup 2026",
     "shortName": "World Cup",
     "espnSlug": "fifa.world",
+    "kind": "national",
     "currentSeasonId": "2026",
     "seasons": {
       "1998": {
@@ -110,6 +111,7 @@
     "name": "Leagues Cup",
     "shortName": "Leagues Cup",
     "espnSlug": "concacaf.leagues.cup",
+    "kind": "club",
     "currentSeasonId": "2026",
     "seasons": {
       "2026": {
@@ -126,10 +128,53 @@
     }
   },
   {
+    "id": "nations-league",
+    "name": "CONCACAF Nations League",
+    "shortName": "CONCACAF Nations League",
+    "espnSlug": "concacaf.nations.league",
+    "kind": "national",
+    "currentSeasonId": "2026-27",
+    "seasons": {
+      "2026-27": {
+        "id": "2026-27",
+        "label": "2026-27",
+        "hasBracket": true,
+        "bracketDatesRange": "20261112-20270331",
+        "knockoutRounds": [
+          "quarterfinals",
+          "semifinals",
+          "final"
+        ]
+      }
+    }
+  },
+  {
+    "id": "uefa-nations-league",
+    "name": "UEFA Nations League",
+    "shortName": "UEFA Nations League",
+    "espnSlug": "uefa.nations",
+    "kind": "national",
+    "currentSeasonId": "2026-27",
+    "seasons": {
+      "2026-27": {
+        "id": "2026-27",
+        "label": "2026-27",
+        "hasBracket": true,
+        "bracketDatesRange": "20270325-20270613",
+        "knockoutRounds": [
+          "quarterfinals",
+          "semifinals",
+          "final"
+        ]
+      }
+    }
+  },
+  {
     "id": "premier-league",
     "name": "Premier League",
     "shortName": "Premier League",
     "espnSlug": "eng.1",
+    "kind": "club",
     "currentSeasonId": "2026-27",
     "seasons": {
       "2026-27": {
@@ -146,6 +191,7 @@
     "name": "LaLiga",
     "shortName": "LaLiga",
     "espnSlug": "esp.1",
+    "kind": "club",
     "currentSeasonId": "2026-27",
     "seasons": {
       "2026-27": {
@@ -162,6 +208,7 @@
     "name": "Serie A",
     "shortName": "Serie A",
     "espnSlug": "ita.1",
+    "kind": "club",
     "currentSeasonId": "2026-27",
     "seasons": {
       "2026-27": {
@@ -178,6 +225,7 @@
     "name": "Bundesliga",
     "shortName": "Bundesliga",
     "espnSlug": "ger.1",
+    "kind": "club",
     "currentSeasonId": "2026-27",
     "seasons": {
       "2026-27": {
@@ -194,6 +242,7 @@
     "name": "Ligue 1",
     "shortName": "Ligue 1",
     "espnSlug": "fra.1",
+    "kind": "club",
     "currentSeasonId": "2026-27",
     "seasons": {
       "2026-27": {
@@ -210,6 +259,7 @@
     "name": "Super League Greece",
     "shortName": "Super League Greece",
     "espnSlug": "gre.1",
+    "kind": "club",
     "currentSeasonId": "2026-27",
     "seasons": {
       "2026-27": {
@@ -226,6 +276,7 @@
     "name": "MLS",
     "shortName": "MLS",
     "espnSlug": "usa.1",
+    "kind": "club",
     "currentSeasonId": "2026",
     "seasons": {
       "2026": {
@@ -242,6 +293,7 @@
     "name": "Liga MX",
     "shortName": "Liga MX",
     "espnSlug": "mex.1",
+    "kind": "club",
     "currentSeasonId": "2026-apertura",
     "seasons": {
       "2026-apertura": {

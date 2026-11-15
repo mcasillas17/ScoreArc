@@ -806,7 +806,7 @@ func TestZeroValueStoreHasALazyIdentityCache(t *testing.T) {
 // equally fresh forever and a TTL can never fire. match_detail.updated_at has
 // existed since 0001_init; this only teaches Go to read it back.
 func TestExistingMatchesReportsDetailFreshness(t *testing.T) {
-	store, _ := newSeededStore(t)
+	store, pool := newSeededStore(t)
 	ctx := context.Background()
 	kickoff := time.Date(2026, 9, 10, 19, 0, 0, 0, time.UTC)
 	identity := resolveFixture(t, store, "detail-age-1", kickoff)
@@ -824,7 +824,10 @@ func TestExistingMatchesReportsDetailFreshness(t *testing.T) {
 		t.Fatal("no match_detail row exists yet -- DetailUpdatedAt must be invalid, not a zero timestamp")
 	}
 
-	before := time.Now().UTC()
+	var before time.Time
+	if err := pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.UpsertMatchDetail(ctx, identity.MatchID, model.MatchDetail{
 		Scorers: []model.Scorer{{Player: "Nobody yet"}},
 	}); err != nil {

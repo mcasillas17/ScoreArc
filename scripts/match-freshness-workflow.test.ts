@@ -3,6 +3,16 @@ import { readFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 const yaml = createRequire(import.meta.url)('js-yaml');
+// One scope per registry competition; counted, not hardcoded, so adding a
+// competition does not break these tests. The monitor's MAX_SENDS must stay
+// at or above it, which this guards.
+const registry: { id: string; name: string; currentSeasonId: string }[] =
+  createRequire(import.meta.url)('../backend/config/competitions.json');
+const SCOPES = registry.length;
+it('sends every scope\'s alert in one run', async () => {
+  const source = await readFile(new URL('./match-freshness-monitor.mjs', import.meta.url), 'utf8');
+  expect(Number(/const MAX_SENDS = (\d+);/.exec(source)?.[1])).toBeGreaterThanOrEqual(SCOPES);
+});
 const document = () => readFile('.github/workflows/match-freshness.yml', 'utf8').then(s => yaml.load(s));
 describe('opt-in durable match workflow', () => {
   it('gates the whole job before checks, downloads, secrets and delivery', async () => {
@@ -11,8 +21,13 @@ describe('opt-in durable match workflow', () => {
     // GitHub's schedule is gone, so it cannot double the accepted cadence.
     expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch']);
     // The receiver dispatches with no inputs, so this must fall back to false: never initialize history.
-    expect(workflow.jobs.check.steps.find((s: any) => s.id === 'select').env.INITIALIZE_STATE).toBe('${{ inputs.initialize_state || false }}');
+    const select = workflow.jobs.check.steps.find((s: any) => s.id === 'select');
+    expect(select.env.INITIALIZE_STATE).toBe('${{ inputs.initialize_state || false }}');
+    expect(select.env.RECOVERY_RUN_ID).toBe("${{ inputs.recovery_run_id || '' }}");
+    expect(select.env.RECOVERY_ARTIFACT_ID).toBe("${{ inputs.recovery_artifact_id || '' }}");
     expect(workflow.on.workflow_dispatch.inputs.initialize_state.default).toBe(false);
+    expect(workflow.on.workflow_dispatch.inputs.recovery_run_id.default).toBe('');
+    expect(workflow.on.workflow_dispatch.inputs.recovery_artifact_id.default).toBe('');
     expect(workflow.jobs.check.if).toContain("vars.MATCH_FRESHNESS_ENABLED == 'true'");
     expect(workflow.jobs.check.if).toContain("github.ref == 'refs/heads/main'");
     expect(workflow.concurrency).toEqual({ group: 'match-freshness-watchdog', 'cancel-in-progress': false });
@@ -29,7 +44,7 @@ describe('opt-in durable match workflow', () => {
     expect(step('restore').with['run-id']).toBe('${{ steps.select.outputs.run_id }}');
     for (const id of ['pending', 'final']) {
       const upload = step(id);
-      expect(upload.uses).toBe('actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a');
+      expect(upload.uses).toBe('actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9');
       expect(upload.with['if-no-files-found']).toBe('error'); expect(upload.with['retention-days']).toBe(90);
       expect(upload['continue-on-error']).toBeUndefined(); expect(upload.with.path).toBe('watchdog-state/state.json');
     }
@@ -91,8 +106,11 @@ async function harness() {
   const workflow = await document(); const artifacts = new Map<number, any[]>(); const history: any[] = [];
   const jobs = new Map<number, any[]>(); const notifications: any[] = [];
   let now = Date.parse('2026-10-04T12:00:00Z'); let nextArtifact = 1000; let checks = 0; let healthy = false;
-  const baseURL = await local((_req, res) => {
+  const missingScopes = new Set<string>();
+  const baseURL = await local((req, res) => {
     checks++;
+    const path = new URL(req.url ?? '/', 'http://localhost').pathname;
+    if (missingScopes.has(path)) return res.writeHead(400).end('{"error":"unknown competition or season"}');
     res.writeHead(200, { 'Content-Type': 'application/json', 'X-ScoreArc-Freshness': healthy ? 'empty' : 'unavailable',
       'X-ScoreArc-Poll-Status': healthy ? 'ok' : 'failed', 'X-ScoreArc-Observed-At': '2026-10-04T12:00:00Z',
       'X-ScoreArc-Stale-Matches': '0', 'X-ScoreArc-Overdue-Matches': '0' }).end('[]');
@@ -106,7 +124,8 @@ async function harness() {
     const payload = JSON.parse(raw); notifications.push(payload);
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ eventId: payload.eventId }));
   })}/events/${'t'.repeat(40)}`;
-  async function run({ enabled = 'true', deliveryEnabled = 'true', failUpload = '', initialize = false, event = 'workflow_dispatch', checkpointCommitted = '', ref = 'refs/heads/main' } = {}) {
+  async function run({ enabled = 'true', deliveryEnabled = 'true', failUpload = '', initialize = false, event = 'workflow_dispatch',
+    checkpointCommitted = '', ref = 'refs/heads/main', recoveryRunId = '', recoveryArtifactId = '' } = {}) {
     now += 600000;
     const id = history.length + 100;
     const iso = new Date(now).toISOString();
@@ -119,6 +138,8 @@ async function harness() {
       if (path === `${root}/workflows/match-freshness.yml`) return { id: 7, path: current.path };
       if (path === `${root}/runs/${id}`) return current;
       if (path.includes('/workflows/7/runs?')) return { total_count: history.length+1, workflow_runs: [current, ...history.toReversed()] };
+      const runLookup = new RegExp(`^${root}/runs/(\\d+)$`).exec(path);
+      if (runLookup) return history.find(source => source.id === Number(runLookup[1]));
       const prior = /\/runs\/(\d+)\/(artifacts|attempts\/1\/jobs)/.exec(path);
       if (!prior) throw new Error('Unexpected GitHub request');
       const values = prior[2] === 'artifacts' ? artifacts.get(+prior[1]) ?? [] : jobs.get(+prior[1]) ?? [];
@@ -129,7 +150,8 @@ async function harness() {
     const workDir = join(dir, 'watchdog-state'); const output = join(dir, 'output');
     const env = { ...vars, NODE_ENV: 'test' as const, GITHUB_REPOSITORY: current.repository.full_name, GITHUB_REF: 'refs/heads/main', GITHUB_SHA: current.head_sha,
       GITHUB_RUN_ID: String(id), GITHUB_RUN_NUMBER: String(id), GITHUB_RUN_ATTEMPT: '1', GITHUB_OUTPUT: output,
-      INITIALIZE_STATE: String(initialize), MATCH_FRESHNESS_WEBHOOK_URL: webhookURL, PENDING_ARTIFACT_ID: '', CHECKPOINT_COMMITTED: '' };
+      INITIALIZE_STATE: String(initialize), RECOVERY_RUN_ID: recoveryRunId, RECOVERY_ARTIFACT_ID: recoveryArtifactId,
+      MATCH_FRESHNESS_WEBHOOK_URL: webhookURL, PENDING_ARTIFACT_ID: '', CHECKPOINT_COMMITTED: '' };
     const executed: any[] = [];
     for (const step of workflow.jobs.check.steps) {
       if (!step.id) continue;
@@ -165,9 +187,33 @@ async function harness() {
     history.push({ ...current, status: 'completed', conclusion: 'failure' });
     return { steps, github, id };
   }
-  return { run, artifacts, notifications, heartbeats, checks: () => checks, healthy: () => { healthy = true; }, unhealthy: () => { healthy = false; }, receiverDown: (down: boolean) => { receiverDown = down; }, heartbeatDown: (down: boolean) => { heartbeatDown = down; } };
+  return { run, artifacts, notifications, heartbeats, missingScopes, checks: () => checks, healthy: () => { healthy = true; }, unhealthy: () => { healthy = false; }, receiverDown: (down: boolean) => { receiverDown = down; }, heartbeatDown: (down: boolean) => { heartbeatDown = down; } };
 }
 describe('enabled workflow artifact boundaries', () => {
+  it('reports both Nations Leagues and opens and resolves only the missing reader scope', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const h = await harness();
+    h.healthy();
+    const uefa = registry.find(c => c.id === 'uefa-nations-league')!;
+    expect(registry.find(c => c.id === 'nations-league')?.name).toBe('CONCACAF Nations League');
+    h.missingScopes.add(`/v1/competitions/${uefa.id}/${uefa.currentSeasonId}/matches`);
+    const first = await h.run({ initialize: true });
+    expect(first.steps.result.outcome).toBe('failure');
+    for (const comp of registry) {
+      const status = comp === uefa ? 'UNHEALTHY' : 'OK';
+      expect(log).toHaveBeenCalledWith(expect.stringContaining(`${status} ${comp.name} | ${comp.id}/${comp.currentSeasonId} `));
+    }
+    await h.run();
+    expect(h.notifications).toMatchObject([{ competition: uefa.id, season: uefa.currentSeasonId, status: 'OPEN', error: 'http-400' }]);
+    h.missingScopes.clear();
+    const recovered = await h.run();
+    expect(recovered.steps.result.outcome).toBe('success');
+    expect(h.notifications).toMatchObject([
+      { status: 'OPEN' },
+      { competition: uefa.id, status: 'RESOLVED', incidentId: h.notifications[0].incidentId },
+    ]);
+    expect(h.checks()).toBe(3 * SCOPES);
+  });
   it('a manual dispatch from another branch makes no reader, GitHub or receiver requests', async () => {
     const h = await harness(); const other = await h.run({ ref: 'refs/heads/feature' });
     expect(other.steps).toEqual({}); expect(other.github).not.toHaveBeenCalled();
@@ -180,23 +226,23 @@ describe('enabled workflow artifact boundaries', () => {
   });
   it.each(['', 'false'])('delivery gate (%s) retains unreserved events for a later enabled run', async deliveryEnabled => {
     const h = await harness(); const first = await h.run({ initialize: true, deliveryEnabled });
-    expect(h.checks()).toBe(10); expect(h.notifications).toEqual([]);
+    expect(h.checks()).toBe(SCOPES); expect(h.notifications).toEqual([]);
     expect(first.steps.pending.outcome).toBe('success'); expect(first.steps.deliver.outcome).toBe('skipped');
     expect(first.steps.final.outcome).toBe('skipped'); expect(first.steps.result.outcome).toBe('failure');
     const pending = JSON.parse(h.artifacts.get(first.id)![0].bytes);
-    expect(pending).toMatchObject({ reserved: [], pending: Array.from({ length: 10 }, () => ({ attempts: 0 })) });
+    expect(pending).toMatchObject({ reserved: [], pending: Array.from({ length: SCOPES }, () => ({ attempts: 0 })) });
     const next = await h.run(); expect(next.steps.restore.outcome).toBe('success');
-    expect(next.steps.final.outcome).toBe('success'); expect(h.notifications).toHaveLength(10);
+    expect(next.steps.final.outcome).toBe('success'); expect(h.notifications).toHaveLength(SCOPES);
   });
   it('executes checks and delivery only after successful pending upload, preserving failed incident runs', async () => {
     const h = await harness();
     const first = await h.run({ initialize: true });
     expect(first.steps.prepare.outcome).toBe('success'); expect(first.steps.pending.outcome).toBe('success');
     expect(first.steps.deliver.outcome).toBe('success'); expect(first.steps.final.outcome).toBe('success');
-    expect(first.steps.result.outcome).toBe('failure'); expect(h.notifications).toHaveLength(10);
-    const continued = await h.run(); expect(continued.steps.restore.outcome).toBe('success'); expect(h.notifications).toHaveLength(10);
+    expect(first.steps.result.outcome).toBe('failure'); expect(h.notifications).toHaveLength(SCOPES);
+    const continued = await h.run(); expect(continued.steps.restore.outcome).toBe('success'); expect(h.notifications).toHaveLength(SCOPES);
     h.healthy(); const recovered = await h.run(); expect(recovered.steps.result.outcome).toBe('success');
-    expect(h.notifications.slice(10).every(e => e.status === 'RESOLVED')).toBe(true);
+    expect(h.notifications.slice(SCOPES).every(e => e.status === 'RESOLVED')).toBe(true);
   });
   // The job gate lets 'TRUE' start a job whose CLI does nothing; its Prepare step must be
   // skipped so the run is not mistaken for a lost preparation by the next real run.
@@ -218,10 +264,35 @@ describe('enabled workflow artifact boundaries', () => {
   });
   it('failed final upload restores pending and retries stable IDs after backoff', async () => {
     const h = await harness(); const first = await h.run({ initialize: true, failUpload: 'final' });
-    expect(first.steps.final.outcome).toBe('failure'); expect(h.notifications).toHaveLength(10);
+    expect(first.steps.final.outcome).toBe('failure'); expect(h.notifications).toHaveLength(SCOPES);
     const original = structuredClone(h.notifications);
     const next = await h.run(); expect(next.steps.restore.outcome).toBe('success'); expect(next.steps.final.outcome).toBe('success');
-    expect(h.notifications.slice(10)).toEqual(original);
+    expect(h.notifications.slice(SCOPES)).toEqual(original);
+  });
+  it('restores an explicitly reviewed checkpoint after the normal history budget is exhausted', async () => {
+    const h = await harness(); h.healthy();
+    const first = await h.run({ initialize: true });
+    const checkpoint = h.artifacts.get(first.id)?.find(artifact => artifact.name === 'match-freshness-state');
+    expect(checkpoint).toBeDefined();
+    for (let i = 0; i < 61; i++) await h.run({ enabled: 'TRUE' });
+    const recovered = await h.run({ recoveryRunId: String(first.id), recoveryArtifactId: String(checkpoint.id) });
+    expect(recovered.steps.select.outcome).toBe('success');
+    expect(recovered.steps.select.outputs.run_id).toBe(String(first.id));
+    expect(recovered.steps.restore.outcome).toBe('success');
+    expect(recovered.steps.prepare.outcome).toBe('success');
+    expect(recovered.steps.final.outcome).toBe('success');
+    expect(recovered.steps.result.outcome).toBe('success');
+  });
+  it.each([
+    { recoveryRunId: '99' },
+    { recoveryArtifactId: '400' },
+    { recoveryRunId: 'bad', recoveryArtifactId: '400' },
+  ])('rejects incomplete or malformed explicit recovery input %j', async recovery => {
+    const h = await harness(); h.healthy();
+    await h.run({ initialize: true });
+    const attempted = await h.run(recovery);
+    expect(attempted.steps.select.outcome).toBe('failure');
+    expect(attempted.steps.prepare.outcome).toBe('skipped');
   });
 });
 

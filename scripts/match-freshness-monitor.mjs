@@ -5,7 +5,10 @@ import { isISOInstant } from '../src/lib/matchFreshness.ts';
 
 const MAX_STATE = 256 * 1024;
 const MAX_PENDING = 128;
-const MAX_SENDS = 10;
+// Must stay >= the registry size: a run that cannot send one transition per
+// scope holds alerts back and skips its heartbeat. 10 was exactly the old
+// registry; the Nations League made 11. 16 x SEND_TIMEOUT_MS is 4 minutes.
+const MAX_SENDS = 16;
 const MAX_ATTEMPTS = 20;
 const record = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const exact = (v, keys) => record(v) && Object.keys(v).sort().join(' ') === keys.split(' ').sort().join(' ');
@@ -14,7 +17,7 @@ const count = v => v === null || (Number.isSafeInteger(v) && v >= 0 && v <= 5000
 const eventPattern = /^[0-9a-f-]{36}:([1-9][0-9]*)$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 // The receiver acknowledges only after its email goes out (4.5-5.1 s in production).
-// 10 sends + 1 heartbeat at this limit stay well inside the 10-minute job timeout.
+// MAX_SENDS sends + 1 heartbeat at this limit stay well inside the 10-minute job timeout.
 const SEND_TIMEOUT_MS = 15000;
 const errors = /^(http-\d{3}|content-type|response-size|body|json|body-contract|counts-contract|headers-contract|request|timeout)$/;
 const equalRun = (a, b) => record(a) && record(b) && Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(k => a[k] === b[k]);
@@ -131,6 +134,13 @@ async function locked(path, operation) {
     return await operation();
   } finally { await rm(`${lock}/owner`, { force: true }); await rmdir(lock); }
 }
+// A competition added to the registry since the last run joins as healthy:
+// it has no history to lose. A removed one still fails validation, because
+// dropping it could silently discard an open incident.
+function adoptScopes(state, keys) {
+  if (record(state?.incidents)) for (const key of keys) if (!(key in state.incidents)) state.incidents[key] = null;
+  return state;
+}
 const outcome = s => ({ exitCode: s.monitorFailure || s.pending.length ? 2 : s.dataIncident ? 1 : 0, pending: s.pending.length, monitorFailure: s.monitorFailure });
 
 export async function prepareMonitor(options) {
@@ -146,7 +156,7 @@ export async function prepareMonitor(options) {
       state = { version: 2, origin: base, epoch: randomUUID(), run, sequence: 0, updatedAt: new Date(now).toISOString(), phase: 'pending',
         incidents: Object.fromEntries(keys.map(k => [k, null])), pending: [], delivered: [], reserved: [], dataIncident: false, monitorFailure: null };
     } else {
-      state = validateState(await load(stateFile), options);
+      state = validateState(adoptScopes(await load(stateFile), keys), options);
       if (!equalRun(state.run, restoredRun)) throw new Error('State provenance mismatch');
       if (run.number <= state.run.number || run.id <= state.run.id) throw new Error('State ordering violation');
     }
@@ -188,6 +198,15 @@ function notification(event) {
   const [competition, season] = event.scope.split('/');
   return { eventId: event.id, incidentId: event.incidentId, competition, season, status: event.status,
     occurredAt: event.occurredAt, runUrl: event.runUrl, count: event.count, ...event.observation };
+}
+function parseExplicitRecovery(env) {
+  const runId = env.RECOVERY_RUN_ID ?? '';
+  const artifactId = env.RECOVERY_ARTIFACT_ID ?? '';
+  if (runId === '' && artifactId === '') return null;
+  if (!/^[1-9][0-9]{0,15}$/.test(runId) || !/^[1-9][0-9]{0,15}$/.test(artifactId)) throw new Error('Invalid explicit recovery configuration');
+  const recovery = { runId: Number(runId), artifactId: Number(artifactId) };
+  if (!positive(recovery.runId) || !positive(recovery.artifactId)) throw new Error('Invalid explicit recovery configuration');
+  return recovery;
 }
 function webhook(value) {
   const url = new URL(value);
@@ -262,7 +281,7 @@ export async function runPhase({ phase, env = process.env, workDir = 'watchdog-s
   if (phase === 'select') {
     const initialize = env.INITIALIZE_STATE === 'true';
     if (!['true','false'].includes(env.INITIALIZE_STATE)) throw new Error('Explicit initialization choice required');
-    const selection = await selectState({ github: github ?? githubJSON(env.GITHUB_TOKEN), run, initialize, now });
+    const selection = await selectState({ github: github ?? githubJSON(env.GITHUB_TOKEN), run, initialize, recovery: parseExplicitRecovery(env), now });
     await mkdir(workDir, { recursive: true });
     await writeFile(selectionFile, JSON.stringify(selection), { flag: 'wx', mode: 0o600 });
     await output({ initialize: selection === null, artifact_id: selection?.artifactId ?? '', run_id: selection?.run.id ?? '' });
@@ -270,10 +289,17 @@ export async function runPhase({ phase, env = process.env, workDir = 'watchdog-s
   }
   const registry = JSON.parse(await readFile(new URL('../backend/config/competitions.json', import.meta.url), 'utf8'));
   const options = { enabled: true, deliveryEnabled: env.MATCH_FRESHNESS_DELIVERY_ENABLED === 'true',
-    baseURL, check, scopes: currentScopes(registry), stateFile, run, now };
+    baseURL, scopes: currentScopes(registry), stateFile, run, now };
   if (phase === 'prepare') {
     const selection = JSON.parse(await readFile(selectionFile, 'utf8'));
-    await prepareMonitor({ ...options, initialize: selection === null, restoredRun: selection?.run });
+    await prepareMonitor({ ...options, initialize: selection === null, restoredRun: selection?.run,
+      check: async scope => {
+        const result = await check(scope);
+        const name = registry.find(comp => comp.id === scope.competition).name;
+        console.log(`${result.ok ? 'OK' : 'UNHEALTHY'} ${name} | ${result.context}`);
+        return result;
+      },
+    });
     await output({ state_written: true });
   } else if (phase === 'deliver') {
     const result = await deliverMonitor({ ...options, webhookURL: env.MATCH_FRESHNESS_WEBHOOK_URL,

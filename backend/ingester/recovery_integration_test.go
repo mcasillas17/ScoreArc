@@ -71,6 +71,80 @@ func newRecoveryPostgres(t *testing.T) (*store.Store, *pgxpool.Pool, string) {
 	return repo, pool, dsn
 }
 
+func TestNationsLeaguePlayInRecoversStoredClassification(t *testing.T) {
+	ctx := context.Background()
+	repo, pool, _ := newRecoveryPostgres(t)
+	registry, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	comp, ok := registry.Get("nations-league")
+	if !ok {
+		t.Fatal("missing Nations League")
+	}
+	season := comp.Seasons["2026-27"]
+	if err := repo.ApplyCompetitionSeed(ctx, []config.Competition{comp}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile("../../src/server/data/__fixtures__/espn-nations-league-play-in.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches, err := espn.MapScoreboard(raw)
+	if err != nil || len(matches) != 2 {
+		t.Fatalf("matches=%+v err=%v", matches, err)
+	}
+	playIn := matches[0]
+	src := &fakeSource{
+		matches:     []model.Match{playIn},
+		summaryHome: playIn.HomeScore, summaryAway: playIn.AwayScore,
+	}
+	r := testRunner(src, &fakeRepository{}, comp)
+	now := time.Date(2026, 11, 15, 6, 0, 0, 0, time.UTC)
+	r.repo, r.now = repo, func() time.Time { return now }
+	id, err := r.resolveMatch(ctx, comp, season.ID, playIn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Recreate the existing unfinalized row from before this classification was known.
+	stored := playIn
+	required := true
+	stored.BracketRequired, stored.BracketConfirmed = &required, false
+	if err := repo.UpsertMatch(ctx, id, stored); err != nil {
+		t.Fatal(err)
+	}
+	var firstFinalized time.Time
+	for _, full := range []bool{true, false, true} {
+		result := r.ingestCompSeason(ctx, comp, season, activity{}, true, full)
+		if result.err != nil || !result.backfillDone {
+			t.Fatalf("full=%t season poll failed: %v (backfillDone=%t)", full, result.err, result.backfillDone)
+		}
+		var outcome, state string
+		var bracketRequired bool
+		var round, winner *string
+		var homeScore, awayScore int
+		var finalized *time.Time
+		if err := pool.QueryRow(ctx, `SELECT p.outcome, m.state, m.bracket_required,
+			m.round, m.winner_id, m.home_score, m.away_score, m.finalized_at
+			FROM match m JOIN match_poll_status p
+			  ON p.competition_id=m.competition_id AND p.season_id=m.season_id AND p.source='espn'
+			WHERE m.id=$1`, id.MatchID).Scan(&outcome, &state, &bracketRequired,
+			&round, &winner, &homeScore, &awayScore, &finalized); err != nil {
+			t.Fatal(err)
+		}
+		if outcome != "ok" || state != "finished" || bracketRequired || round != nil ||
+			winner != nil || homeScore != 0 || awayScore != 0 || finalized == nil {
+			t.Fatalf("full=%t recovery incomplete: poll=%s state=%s bracket=%t round=%v winner=%v score=%d-%d finalized=%v",
+				full, outcome, state, bracketRequired, round, winner, homeScore, awayScore, finalized)
+		}
+		if !firstFinalized.IsZero() && !finalized.Equal(firstFinalized) {
+			t.Fatal("subsequent poll rewrote finalized play-in")
+		}
+		firstFinalized = *finalized
+		now = now.Add(5 * time.Minute)
+	}
+}
+
 func TestRecoveryPipelineWithPostgresAcrossRestart(t *testing.T) {
 	ctx := context.Background()
 	repo, pool, _ := newRecoveryPostgres(t)

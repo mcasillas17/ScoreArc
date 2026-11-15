@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import type { Match } from '@/server/data/types';
 import type { TeamStyle } from '@/server/data/competitions';
@@ -26,36 +26,32 @@ interface Props {
   teamStyle?: TeamStyle;
   /** Where "the full calendar" lives, so the empty state is not a dead end. */
   calendarHref: string;
+  /** The page's view switch, rendered as the one row of controls. */
+  controls?: ReactNode;
 }
 
 interface Section {
   key: string;
   title: string;
-  tone: 'live' | 'today' | 'week' | 'recent';
+  tone: 'live' | 'week' | 'recent';
   matches: Match[];
   /** Split into day headings. "Coming up" spans a fortnight, and without a
    *  day label a Friday 6pm kickoff and a Saturday 6pm kickoff are
-   *  indistinguishable rows. Live and today are one day by definition. */
+   *  indistinguishable rows. Live is one day by definition. */
   byDay?: boolean;
 }
 
-function isSameLocalDay(iso: string, now: Date): boolean {
-  return new Date(iso).toDateString() === now.toDateString();
-}
-
 /**
- * "What is happening" for one competition: live, later today, this week, and
- * the latest results.
+ * "What is happening" for one competition. One match leads: the live one, or
+ * else the next to kick off. The rest follow: anything else live, what is
+ * coming up grouped by day, and the latest results.
  *
- * The local-date split lives here rather than in `matchPriority` because it is
- * the only part of the ordering that depends on the reader's timezone. Vercel
- * runs UTC; an 8pm Mexico City kickoff is 02:00 UTC the next day, so a "later
- * today" computed on the server would disagree with the one the browser
- * computes — on exactly the matches people care about most. Until mount the
- * two render as one combined "Coming up", which is correct under either clock.
- *
- * The priority bucketing above it does run on both passes, and that is fine:
- * `matchPriority` compares instants only.
+ * The day grouping depends on the reader's timezone. Vercel runs UTC; an 8pm
+ * Mexico City kickoff is 02:00 UTC the next day, so day headings computed on
+ * the server would disagree with the browser's — on exactly the matches people
+ * care about most. Until mount "Coming up" is one flat list, which is correct
+ * under either clock. The lead needs no such care: `matchPriority` compares
+ * instants only, so both passes pick the same match.
  */
 export default function MatchesNow({
   initialMatches,
@@ -66,6 +62,7 @@ export default function MatchesNow({
   range,
   teamStyle = 'crest',
   calendarHref,
+  controls,
 }: Props) {
   const locale = useLocale();
   const t = useTranslations();
@@ -73,7 +70,7 @@ export default function MatchesNow({
   const [error, setError] = useState<string | null>(initialError);
   const [mounted, setMounted] = useState(false);
   // Advanced on every successful poll so a page left open across midnight
-  // re-splits "later today" instead of keeping yesterday's.
+  // re-groups "coming up" by day instead of keeping yesterday's.
   const [now, setNow] = useState<Date | null>(null);
   const { detail, summary, loadingDetail, openDetails, closeDetails } = useMatchDetails(apiBase, 'matches-now');
   const failing = useRef(false);
@@ -111,35 +108,27 @@ export default function MatchesNow({
     };
   }, [apiBase, range]);
 
-  const sections = useMemo<Section[]>(() => {
+  const { lead, sections } = useMemo(() => {
     const clock = now ?? new Date();
     const { live, upcoming, recent } = matchPriority(matches, clock);
+    const lead = live[0] ?? upcoming[0] ?? null;
 
+    // The lead stays inside its own section, as that section's first and
+    // larger row, so the heading above it still says what it is.
     const out: Section[] = [];
     if (live.length) out.push({ key: 'live', title: t('match.live'), tone: 'live', matches: live });
-
-    if (!mounted) {
-      // Server pass: no local-date split, so the two upcoming sections are one.
-      if (upcoming.length) {
-        out.push({ key: 'upcoming', title: t('matches.comingUp'), tone: 'week', matches: upcoming });
-      }
-    } else {
-      const today = upcoming.filter((m) => isSameLocalDay(m.kickoff, clock));
-      const later = upcoming.filter((m) => !isSameLocalDay(m.kickoff, clock));
-      if (today.length) out.push({ key: 'today', title: t('matches.laterToday'), tone: 'today', matches: today });
-      if (later.length) {
-        out.push({ key: 'week', title: t('matches.comingUp'), tone: 'week', matches: later, byDay: true });
-      }
+    if (upcoming.length) {
+      out.push({ key: 'upcoming', title: t('matches.comingUp'), tone: 'week', matches: upcoming, byDay: mounted });
     }
-
     if (recent.length) {
       out.push({ key: 'recent', title: t('matches.latestResults'), tone: 'recent', matches: recent, byDay: mounted });
     }
-    return out;
+    return { lead, sections: out };
   }, [matches, mounted, now, t]);
 
   return (
     <>
+      {controls && <div className="mn-bar">{controls}</div>}
       {error && <p className="mc-status" aria-live="polite">{error}</p>}
 
       {sections.length === 0 && !error && (
@@ -155,11 +144,15 @@ export default function MatchesNow({
             <h2 className="mn-title">
               {section.tone === 'live' && <span className="lb-ping" aria-hidden />}
               {section.title}
-              <span className="mn-count">{section.matches.length}</span>
             </h2>
+            {lead && section.matches[0] === lead && (
+              <div className="mn-lead">
+                <MatchRow match={lead} lead teamStyle={teamStyle} onOpen={() => void openDetails(lead)} />
+              </div>
+            )}
             {/* A grid, not a list: Liga MX kicks off seven matches at once. */}
             {section.byDay ? (
-              groupByDay(section.matches, now ?? new Date(), locale).map((day) => (
+              groupByDay(section.matches.filter((m) => m !== lead), now ?? new Date(), locale).map((day) => (
                 <div key={day.key} className="mn-day">
                   <h3 className="mn-day-label">{day.label}</h3>
                   <div className="match-grid">
@@ -176,7 +169,7 @@ export default function MatchesNow({
               ))
             ) : (
               <div className="match-grid">
-                {section.matches.map((match) => (
+                {section.matches.filter((m) => m !== lead).map((match) => (
                   <MatchRow
                     key={match.id}
                     match={match}

@@ -9,6 +9,7 @@ import { intlLocale } from '@/i18n/config';
 import { useMatchDetails } from './useMatchDetails';
 import MatchDetailPopup from './MatchDetailPopup';
 import MatchRow from './MatchRow';
+import LocalTime from './LocalTime';
 import { toMatchDetailInput } from './upcomingWindow';
 import { FormChips, resultAbbreviation, resultLabel } from './FormBadges';
 
@@ -16,13 +17,12 @@ interface Props {
   matches: Match[];
   teamId: string;
   scope: MatchScope;
-  competitionName: string;
-  seasonLabel: string;
+  next: Match | null;
   teamStyle: TeamStyle;
   availability: TeamProfile['scheduleAvailability'];
 }
 
-export default function TeamPerformance({ matches, teamId, scope, competitionName, seasonLabel, teamStyle, availability }: Props) {
+export default function TeamPerformance({ matches, teamId, scope, next, teamStyle, availability }: Props) {
   const t = useTranslations();
   const locale = useLocale();
   const { recent, previous, eligibleCount, change } = teamPerformance(matches, teamId, scope);
@@ -49,28 +49,36 @@ export default function TeamPerformance({ matches, teamId, scope, competitionNam
     </ul>;
   }
 
+  const nextLabel = next && `${t('team.next')}: ${next.home.name} ${t('match.versus')} ${next.away.name}`;
+  const opponent = next && (next.home.id === teamId ? next.away : next.home);
+
   return <section className="tm-section tp" id="performance" aria-labelledby="performance-title">
-    <h2 className="section-label" id="performance-title">{t('performance.title')}</h2>
-    <p className="tp-scope">{t('performance.scope', competitionName, seasonLabel)}</p>
+    <h2 className="section-label" id="performance-title">{t('team.formAndNextMatch')}</h2>
     {!available ? <p className="tp-notice" role="status">{t('performance.unavailable')}</p>
       : recent.sample === 0 ? <p className="tp-notice">{t('performance.noEligible')}</p>
       : <>
-        <div className="tp-period-head">
-          <div><h3>{t('performance.recent', recent.sample)}</h3><p>{periodLabel(recent)}</p></div>
-          <FormChips buttonClassName="tp-form-button" label={t('performance.form', recent.wins, recent.draws, recent.losses)}
-            onOpen={(match) => void details.openDetails(match)}
-            items={recent.matches.map(({ match, result }) => ({ match, result,
-              label: t('performance.openMatch', resultLabel(t, result), match.home.name, match.away.name, `${match.homeScore}–${match.awayScore}`) }))} />
-        </div>
-        <p className="tp-record">{t('performance.form', recent.wins, recent.draws, recent.losses)}</p>
-        <dl className="tp-metrics">
-          <div><dt>{t('performance.goalsFor')}</dt><dd>{recent.goalsFor}<small>{t('performance.rate', number(recent.goalsForPerMatch!))}</small></dd></div>
-          <div><dt>{t('performance.goalsAgainst')}</dt><dd>{recent.goalsAgainst}<small>{t('performance.rate', number(recent.goalsAgainstPerMatch!))}</small></dd></div>
-          <div><dt>{t('performance.cleanSheets')}</dt><dd>{recent.cleanSheets}</dd></div>
-        </dl>
-        {previous && change ? <div className="tp-comparison">
-          <h3>{t('performance.comparison')}</h3>
-          <p className="tp-period-caption">{t('performance.previous')}: {periodLabel(previous)}</p>
+        <FormChips buttonClassName="tp-form-button" label={t('performance.form', recent.wins, recent.draws, recent.losses)}
+          onOpen={(match) => void details.openDetails(match)}
+          items={recent.matches.map(({ match, result }) => ({ match, result,
+            label: t('performance.openMatch', resultLabel(t, result), match.home.name, match.away.name, `${match.homeScore}–${match.awayScore}`) }))}
+          trailing={next && <button type="button" className="tm-chip tp-form-button tp-next-chip" aria-label={nextLabel!}
+            onClick={() => void details.openDetails(next)}>{opponent!.abbr}</button>} />
+        <p className="tp-figures">
+          <span>{t('performance.goalsFor')} <strong>{recent.goalsFor}</strong></span>
+          <span>{t('performance.goalsAgainst')} <strong>{recent.goalsAgainst}</strong></span>
+          <span>{t('performance.cleanSheets')} <strong>{recent.cleanSheets}</strong></span>
+        </p>
+      </>}
+    {/* Outside the form branch: a team with no results yet still has a next match. */}
+    {next && <button type="button" className="tp-next" onClick={() => void details.openDetails(next)}>
+      <span className="tp-next-label">{t('team.next')}</span>
+      <span>{next.home.abbr} {t('match.versusShort')} {next.away.abbr}</span>
+      <span className="tp-next-when"><LocalTime iso={next.kickoff} mode="dayTime" /></span>
+    </button>}
+    {available && recent.sample > 0 && <details className="tp-compare"><summary>{t('performance.compare')}</summary>
+      {previous && change ? <>
+        <p className="tp-period-caption">{t('performance.previous')}: {periodLabel(previous)}</p>
+        <div className="tp-comparison">
           <table>
             <caption>{t('performance.change')}</caption>
             <thead><tr><th scope="col"><span className="sr-only">{t('performance.comparison')}</span></th>
@@ -82,13 +90,11 @@ export default function TeamPerformance({ matches, teamId, scope, competitionNam
               <tr><th scope="row">{t('performance.goalsAgainstRate')}</th><td>{number(previous.goalsAgainstPerMatch!)}</td><td>{number(recent.goalsAgainstPerMatch!)} <span>({number(change.goalsAgainstPerMatch, true)})</span></td></tr>
             </tbody>
           </table>
-        </div> : <p className="tp-notice">{t('performance.insufficient', eligibleCount)}</p>}
-        <h3 className="tp-evidence-title">{t('performance.evidence')}</h3>
-        {evidence(recent)}
-        {previous && <details className="tp-previous"><summary>{t('performance.previousEvidence')}</summary>
-          <p className="tp-period-caption">{periodLabel(previous)}</p>{evidence(previous)}</details>}
-      </>}
-    <p className="tp-definitions">{t('performance.definitions')}</p>
+        </div>
+        {evidence(previous)}
+      </> : <p className="tp-notice">{t('performance.insufficient', eligibleCount)}</p>}
+      <p className="tp-definitions">{t('performance.definitions')}</p>
+    </details>}
     {details.detail && <MatchDetailPopup match={toMatchDetailInput(details.detail)} summary={details.summary}
       loading={details.loadingDetail} onClose={details.closeDetails} teamStyle={teamStyle} teamBase={`${base}/team`} playerBase={`${base}/player`} />}
   </section>;
