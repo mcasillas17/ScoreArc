@@ -636,11 +636,10 @@ func (r *runner) refreshStandings(
 	rows, err := r.source.Standings(ctx, comp, season)
 	teamIDs := make(map[string]string, len(rows))
 	if err == nil {
-		kind := config.TeamKind(comp)
 		for _, row := range rows {
 			canonical, resolveErr := r.repo.Team(ctx, sourceESPN, store.TeamRef{
 				SourceID: row.Team.ID, Name: row.Team.Name,
-				Abbr: row.Team.Abbr, Kind: kind,
+				Abbr: row.Team.Abbr, Kind: comp.Kind,
 			})
 			if resolveErr != nil {
 				err = fmt.Errorf("resolve standings team %s: %w", row.Team.ID, resolveErr)
@@ -861,7 +860,6 @@ func (r *runner) mirrorLeaders(
 	comp config.Competition,
 	rows []model.StatLeader,
 ) []model.StatLeader {
-	kind := config.TeamKind(comp)
 	mirrored := append([]model.StatLeader(nil), rows...)
 	semaphore := make(chan struct{}, 5)
 	var wg sync.WaitGroup
@@ -875,7 +873,7 @@ func (r *runner) mirrorLeaders(
 			case <-ctx.Done():
 				return
 			}
-			mirrored[index] = r.mirrorLeader(ctx, kind, mirrored[index])
+			mirrored[index] = r.mirrorLeader(ctx, comp.Kind, mirrored[index])
 		}(index)
 	}
 	wg.Wait()

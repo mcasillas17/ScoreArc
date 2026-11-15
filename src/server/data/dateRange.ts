@@ -125,7 +125,8 @@ export function seasonInitialMonth(now: Date, seasonId: string, activeRange?: st
     const activeMonth = new Date(Number(end.slice(0, 4)), Number(end.slice(4, 6)) - 1, 1);
     const activeStart = activeStartMonth < min ? min : activeStartMonth;
     const activeEnd = activeMonth > max ? max : activeMonth;
-    if (current < activeStart) return activeStart;
+    // Inside the season, matches can already be underway in the group phase.
+    if (current < min) return activeStart;
     if (current > activeEnd) return activeEnd;
     return current;
   }

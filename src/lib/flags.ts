@@ -11,6 +11,10 @@ const FLAG_MAP: Record<string, string> = {
   SCO: 'gb-sct', WAL: 'gb-wls', NIR: 'gb-nir', CZE: 'cz', DEN: 'dk', POL: 'pl',
   SRB: 'rs', UKR: 'ua', TUR: 'tr', BIH: 'ba', GRE: 'gr', ROU: 'ro', HUN: 'hu',
   RUS: 'ru', SVK: 'sk', SVN: 'si', ALB: 'al', IRL: 'ie',
+  AND: 'ad', ARM: 'am', AZE: 'az', BLR: 'by', BUL: 'bg', CYP: 'cy', EST: 'ee',
+  FIN: 'fi', FRO: 'fo', GEO: 'ge', GIB: 'gi', ISL: 'is', ISR: 'il', KAZ: 'kz',
+  KOS: 'xk', LIE: 'li', LTU: 'lt', LUX: 'lu', LVA: 'lv', MDA: 'md', MKD: 'mk',
+  MLT: 'mt', MNE: 'me', SMR: 'sm',
   // CAF
   MAR: 'ma', SEN: 'sn', CIV: 'ci', EGY: 'eg', ALG: 'dz', GHA: 'gh', CPV: 'cv',
   RSA: 'za', CMR: 'cm', NGA: 'ng', COD: 'cd', TUN: 'tn', MLI: 'ml', BFA: 'bf',

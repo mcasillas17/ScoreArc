@@ -100,6 +100,21 @@ describe('competition season root', () => {
     expect(html).not.toContain('Bracket data is unavailable right now.');
   });
 
+  it('points to the UEFA groups while the knockout stage is still ahead', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 10, 15));
+    try {
+      vi.spyOn(dataStore, 'getMatches').mockResolvedValue([]);
+      vi.spyOn(dataStore, 'getUpcoming').mockResolvedValue([]);
+      vi.spyOn(dataStore, 'getBracket').mockResolvedValue([]);
+      const node = await Workspace({ params: { locale: 'es', comp: 'uefa-nations-league', season: '2026-27' } });
+      const html = renderToStaticMarkup(<I18nProvider locale="es">{node}</I18nProvider>);
+      expect(html).toContain('25 de marzo de 2027');
+      expect(html).toContain('href="/es/c/uefa-nations-league/2026-27/standings"');
+    } finally {
+      vi.mocked(Date.now).mockRestore();
+    }
+  });
+
   // The Nations League shipped without "Build your bracket": predict mode was
   // switched off globally when the World Cup ended, and only the projected
   // Liguilla turned it back on.
