@@ -123,6 +123,14 @@ supports ESLint 10 without disabling plugin rules. The npm override for
 That parser uses the retained `minimatch()` API, not the regex APIs removed in
 11.x; the override does not replace legacy plugins' separate 3.x dependencies.
 
+TypeScript follows Microsoft's
+[side-by-side setup](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6.0):
+`@typescript/native` provides TypeScript 7's `tsc`, while `typescript` aliases
+`@typescript/typescript6` for ESLint, the Next.js integration, and the UI-copy
+audit's JavaScript compiler API. The compatibility executable is named `tsc6`;
+`npx tsc --noEmit` remains the native TypeScript 7 gate. Next.js also retains
+its compatibility type check during `npm run build`.
+
 The website uses explicit locale-prefixed routes. Open
 `http://localhost:3000/en` for English or `http://localhost:3000/es` for
 Spanish; an unprefixed page redirects from the saved language preference,
