@@ -32,7 +32,12 @@ export default function YourTeams({ view = 'all' }: { view?: View }) {
       <ul className="your-teams-list">
         {teams.map((team) => (
           <li className="your-teams-item" key={team.teamId}>
-            <Link href={teamFollowHref(team, locale)} prefetch={false}>{team.name}</Link>
+            <Link href={teamFollowHref(team, locale)} prefetch={false}>
+              {team.name}
+              {/* Following both Américas: say which is which. */}
+              {teams.some((other) => other.name === team.name && other.teamId !== team.teamId)
+                && ` · ${getCompetition(team.competitionId)?.shortName ?? ''}`}
+            </Link>
             <button
               className="your-teams-remove"
               type="button"

@@ -111,8 +111,10 @@ describe('SiteNav interaction', () => {
   // The rotation is presentation only: a crest off the visible rim is
   // transparent, never removed, so the list a screen reader or a Tab key walks
   // is always the whole list.
-  it('renders every competition as a link wherever the dial is turned', () => {
-    const total = listCompetitions().length;
+  it('renders every competition of the open one\'s category as a link wherever the dial is turned', () => {
+    // A competition page has a category-free URL, so its own category narrows
+    // the dial: the World Cup's dial carries the men's competitions.
+    const total = listCompetitions().filter((c) => c.category === 'men').length;
     const { container } = renderNav('/es/c/world-cup/2026');
     const dial = container.querySelector<HTMLElement>('.sn .sn-dial')!;
     const links = () => within(dial).getAllByRole('link');

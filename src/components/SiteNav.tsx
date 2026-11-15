@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { hasBothCategories, inView, listCompetitions, parseView, resolveSeason, viewQuery } from '@/server/data/competitions';
+import { hasBothCategories, hasNews, inView, listCompetitions, parseView, resolveSeason, viewQuery } from '@/server/data/competitions';
 import type { Competition, CompetitionSeason, View } from '@/server/data/competitions';
 import { trackEvent } from '@/lib/telemetry/client';
 import { useLocale, useTranslations } from '@/i18n/I18nProvider';
@@ -158,7 +158,7 @@ export function siteItems(locale: Locale, prefix = '', query = ''): NavItem[] {
  * Liguilla, which gives the root real content and a "Liguilla" item.
  */
 export function competitionSections(rc: CompetitionSeason, locale: Locale, prefix = ''): NavItem[] {
-  const t = getTranslator(locale);
+  const t = getTranslator(locale, rc.competition.id);
   // Two bases: the one the matchers compare against, which is always
   // locale-free because `stripLocale` runs first, and the one the hrefs are
   // built from, which keeps whatever prefix the reader arrived under.
@@ -187,7 +187,11 @@ export function competitionSections(rc: CompetitionSeason, locale: Locale, prefi
     },
     { href: link('/players'), label: t('nav.players'), icon: playersIcon,
       match: (p) => under('/players')(p) || under('/player/')(p) },
-    { href: link('/news'), label: t('sidebar.news'), icon: newsIcon, match: under('/news') },
+    // No News item where the competition publishes no news section: its feed
+    // cannot be attributed to it (see Liga MX Femenil in competitions.ts).
+    ...(hasNews(rc.competition)
+      ? [{ href: link('/news'), label: t('sidebar.news'), icon: newsIcon, match: under('/news') }]
+      : []),
   ];
   // A projected Liguilla gives a league's root real content of its own, so
   // it earns the root nav item leagues otherwise lack. The label stays

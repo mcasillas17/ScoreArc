@@ -326,6 +326,7 @@ export const en = {
   'zone.mlsRoundOne': 'Round One (best-of-3)',
   'zone.wildCard': 'Wild Card',
   'zone.supportersShield': "Supporters' Shield",
+  'zone.nwslShield': 'NWSL Shield · Playoffs',
   'zone.promotion': 'Promotion',
   'home.tagline': 'Live football — brackets, scores & standings, every arc.',
   'home.digest.emptyMatches': 'No matches in the current window.',

@@ -132,6 +132,17 @@ describe('mapBracket — slug normalization (older editions)', () => {
     expect(slugs).not.toContain('third-place');
   });
 
+  it('reads the round out of a phase-prefixed slug and the hyphenated older spellings', () => {
+    const rounds = mapBracket({ events: [
+      ev('playoffs---quarterfinals', 'a'), ev('apertura---semifinals', 'b'),
+      ev('quarter-finals', 'c'), ev('semi-finals', 'd'), ev('3rd-place', 'e'),
+      ev('playoffs---regular-season', 'f'),
+    ] });
+    // Same two sides in every event, so each round's records fold into one
+    // tie; what matters is which rounds they landed in.
+    expect(rounds.map((r) => r.slug)).toEqual(['quarterfinals', 'semifinals', '3rd-place-match']);
+  });
+
   it('ignores unsupported provider round records instead of exposing arbitrary keys', () => {
     expect(mapBracket({ events: [ev('conference-final', 'unsupported')] })).toEqual([]);
   });

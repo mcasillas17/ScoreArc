@@ -4537,14 +4537,25 @@ a.sn-item:hover { color: var(--text); }
    uses the same brand underline — gold is reserved for prizes and
    qualification, and a colour per category would compete with each
    competition's own accent. */
-.vw { display: flex; gap: 22px; margin: 0 0 18px; }
+.vw { display: flex; gap: 22px; margin: 0 0 10px; }
 .vw-link {
-  padding: 6px 0 5px;
-  border-bottom: 2px solid transparent;
+  /* 44px tall: these are the page's primary filter on a phone. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
   color: var(--text-muted);
   font-size: 13px;
   font-weight: 700;
   text-decoration: none;
 }
 .vw-link:hover { color: var(--text); }
-.vw-link[aria-current] { color: var(--text); border-bottom-color: var(--brand); }
+/* An underline on the word, not a border on the 44px box, so it sits under
+   the text at every size. */
+.vw-link[aria-current] {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--brand);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 7px;
+}

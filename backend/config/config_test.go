@@ -8,8 +8,8 @@ func TestLoadRegistry(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if got := len(r.List()); got != 12 {
-		t.Fatalf("competitions = %d, want 12", got)
+	if got := len(r.List()); got != 15 {
+		t.Fatalf("competitions = %d, want 15", got)
 	}
 	gr, ok := r.Get("super-league-greece")
 	if !ok {

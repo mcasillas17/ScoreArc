@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -52,6 +53,10 @@ func KnockoutRounds() []string { return slices.Clone(knockoutRoundOrder) }
 var roundSlugAlias = map[string]string{
 	"second-round": "round-of-16",
 	"third-place":  "3rd-place-match",
+	// Women's World Cup: `3rd-place` (2015-23), hyphenated rounds (2003-15).
+	"3rd-place":      "3rd-place-match",
+	"quarter-finals": "quarterfinals",
+	"semi-finals":    "semifinals",
 }
 
 var nonKnockoutRound = map[string]struct{}{
@@ -69,6 +74,12 @@ var nonKnockoutRound = map[string]struct{}{
 const goldCupPlayInRound = "gold-cup-play-in-prelims"
 
 func normRoundSlug(slug string) string {
+	// Leagues with a post-season prefix the round with its phase:
+	// `playoffs---quarterfinals` (NWSL), `apertura---quarterfinals` (Liga MX).
+	// The round is what follows; the phase is the season's business.
+	if i := strings.LastIndex(slug, "---"); i >= 0 {
+		slug = slug[i+3:]
+	}
 	if v, ok := roundSlugAlias[slug]; ok {
 		return v
 	}

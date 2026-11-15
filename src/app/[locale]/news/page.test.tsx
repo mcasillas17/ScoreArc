@@ -75,7 +75,11 @@ describe('localized news directory', () => {
   it("reads every competition's feed exactly once", async () => {
     const read = vi.spyOn(dataStore, 'getNews').mockResolvedValue([]);
     await renderPage();
-    expect(read).toHaveBeenCalledTimes(COMPETITIONS.length);
+    // A competition without a news section has a feed we cannot attribute to
+    // it, and is never asked.
+    const withNews = COMPETITIONS.filter((c) => c.seasons[c.currentSeasonId].sections.includes('news'));
+    expect(withNews.length).toBeLessThan(COMPETITIONS.length);
+    expect(read).toHaveBeenCalledTimes(withNews.length);
   });
 
   it('keeps the other feeds when one competition throws', async () => {

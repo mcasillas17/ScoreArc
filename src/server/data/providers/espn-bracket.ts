@@ -17,12 +17,21 @@ const ROUND_ORDER = [
 const SLUG_ALIAS: Record<string, KnockoutRoundSlug> = {
   'second-round': 'round-of-16',
   'third-place': '3rd-place-match',
+  // Women's World Cup: `3rd-place` (2015-23), hyphenated rounds (2003-15).
+  '3rd-place': '3rd-place-match',
+  'quarter-finals': 'quarterfinals',
+  'semi-finals': 'semifinals',
 };
 const isKnockoutRoundSlug = (slug: string): slug is KnockoutRoundSlug =>
   (ROUND_ORDER as readonly string[]).includes(slug);
 
 const normSlug = (slug: string): KnockoutRoundSlug | null => {
-  const normalized = SLUG_ALIAS[slug] ?? slug;
+  // Leagues with a post-season prefix the round with its phase:
+  // `playoffs---quarterfinals` (NWSL), `apertura---quarterfinals` (Liga MX).
+  // The round is what follows; the phase is the season's business.
+  const at = slug.lastIndexOf('---');
+  const round = at < 0 ? slug : slug.slice(at + 3);
+  const normalized = SLUG_ALIAS[round] ?? round;
   return isKnockoutRoundSlug(normalized) ? normalized : null;
 };
 

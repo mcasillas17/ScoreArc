@@ -320,5 +320,67 @@
         ]
       }
     }
+  },
+  {
+    "id": "wsl",
+    "name": "Women's Super League",
+    "shortName": "WSL",
+    "espnSlug": "eng.w.1",
+    "kind": "club",
+    "category": "women",
+    "currentSeasonId": "2026-27",
+    "seasons": {
+      "2026-27": {
+        "id": "2026-27",
+        "label": "2026-27",
+        "hasBracket": false,
+        "bracketDatesRange": null,
+        "knockoutRounds": null
+      }
+    }
+  },
+  {
+    "id": "nwsl",
+    "name": "NWSL",
+    "shortName": "NWSL",
+    "espnSlug": "usa.nwsl",
+    "kind": "club",
+    "category": "women",
+    "currentSeasonId": "2026",
+    "seasons": {
+      "2026": {
+        "id": "2026",
+        "label": "2026",
+        "hasBracket": true,
+        "bracketDatesRange": "20261106-20261130",
+        "knockoutRounds": [
+          "quarterfinals",
+          "semifinals",
+          "final"
+        ]
+      }
+    }
+  },
+  {
+    "id": "liga-mx-femenil",
+    "name": "Liga MX Femenil",
+    "shortName": "Liga MX Femenil",
+    "espnSlug": "mex.w.1",
+    "kind": "club",
+    "category": "women",
+    "currentSeasonId": "2026-apertura",
+    "seasons": {
+      "2026-apertura": {
+        "id": "2026-apertura",
+        "label": "Apertura 2026",
+        "hasBracket": true,
+        "bracketDatesRange": "20261110-20261231",
+        "knockoutRounds": [
+          "quarterfinals",
+          "semifinals",
+          "final"
+        ]
+      }
+    }
   }
 ]

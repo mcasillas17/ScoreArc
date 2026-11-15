@@ -1,7 +1,7 @@
 import { collectStories, groupStories, type DigestNewsItem } from '@/lib/digest';
 import { formatRelativeTime } from '@/i18n/format';
 import type { Locale } from '@/i18n/config';
-import { listCompetitions, resolveSeason, type Competition } from './competitions';
+import { hasNews, listCompetitions, resolveSeason, type Competition } from './competitions';
 import { dataStore } from './store';
 import type { NewsArticle } from './types';
 
@@ -36,9 +36,13 @@ export async function collectDatedStories(
 
 function readFeeds(competitions: Competition[]): Promise<NewsArticle[][]> {
   return Promise.all(
-    competitions.map((comp) =>
-      dataStore.getNews(resolveSeason(comp.id)!).catch((): NewsArticle[] => []),
-    ),
+    competitions.map((comp) => {
+      const rc = resolveSeason(comp.id)!;
+      // A competition with no news section has a feed we cannot attribute to
+      // it, so it contributes nothing here either — and costs no request.
+      if (!hasNews(comp)) return Promise.resolve<NewsArticle[]>([]);
+      return dataStore.getNews(rc).catch((): NewsArticle[] => []);
+    }),
   );
 }
 
