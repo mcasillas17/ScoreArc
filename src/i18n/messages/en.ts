@@ -272,6 +272,8 @@ export const en = {
   'bracket.knockout': 'Knockout Bracket',
   'bracket.diagramLabel': (rounds: string) => `Knockout bracket: ${rounds}`,
   'bracket.unavailable': 'Bracket data is unavailable right now.',
+  'bracket.startsOn': (date: string) => `The knockout stage begins on ${date}.`,
+  'bracket.viewGroups': 'View group standings',
   'bracket.projectionTitle': 'Liguilla today',
   'bracket.projectionNote': 'If the Liguilla started today, seeded from the live table. The real bracket takes over when the draw is published.',
   'bracket.projectionTab': 'Projection',

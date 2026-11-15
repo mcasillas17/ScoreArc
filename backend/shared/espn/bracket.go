@@ -55,13 +55,14 @@ var roundSlugAlias = map[string]string{
 }
 
 var nonKnockoutRound = map[string]struct{}{
-	"group-stage":       {},
-	"league-phase":      {},
-	"league-stage":      {},
-	"preliminary-round": {},
-	"qualification":     {},
-	"qualifying":        {},
-	"regular-season":    {},
+	"group-stage":         {},
+	"league-phase":        {},
+	"league-stage":        {},
+	"preliminary-round":   {},
+	"qualification":       {},
+	"qualifying":          {},
+	"regular-season":      {},
+	"relegation-playoffs": {}, // UEFA Nations League promotion/relegation ties
 }
 
 // These ties qualify for the Gold Cup, not the Nations League title bracket.

@@ -260,6 +260,8 @@ export const es = {
   'bracket.knockout': 'Cuadro de eliminatorias',
   'bracket.diagramLabel': (rounds: string) => `Cuadro de eliminatorias: ${rounds}`,
   'bracket.unavailable': 'El cuadro no está disponible en este momento.',
+  'bracket.startsOn': (date: string) => `La fase eliminatoria empieza el ${date}.`,
+  'bracket.viewGroups': 'Ver la clasificación de grupos',
   'bracket.projectionTitle': 'Liguilla hoy',
   'bracket.projectionNote': 'Si la Liguilla empezara hoy, según la tabla general. El cuadro real la reemplaza cuando se publiquen los cruces.',
   'bracket.projectionTab': 'Proyección',

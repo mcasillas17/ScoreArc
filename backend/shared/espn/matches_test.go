@@ -274,3 +274,10 @@ func TestGroupStageDoesNotRequireBracketClassification(t *testing.T) {
 		t.Fatalf("required=%v", required)
 	}
 }
+
+func TestUEFANationsLeaguePlayoffsDoNotRequireTitleBracketConfirmation(t *testing.T) {
+	required := bracketRequirement("playoff", "relegation-playoffs")
+	if required == nil || *required {
+		t.Fatalf("required=%v", required)
+	}
+}
