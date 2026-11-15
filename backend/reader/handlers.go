@@ -46,7 +46,8 @@ func (a *App) clock() time.Time {
 func (a *App) handleMatches(writer http.ResponseWriter, request *http.Request) {
 	competition := chi.URLParam(request, "comp")
 	season := chi.URLParam(request, "season")
-	if _, _, ok := a.resolve(competition, season); !ok {
+	_, edition, ok := a.resolve(competition, season)
+	if !ok {
 		writeError(writer, http.StatusBadRequest, "unknown competition or season")
 		return
 	}
@@ -55,12 +56,17 @@ func (a *App) handleMatches(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusBadRequest, err.Error())
 		return
 	}
+	if !edition.Supports("scores") {
+		writeUnavailable(writer, "scores")
+		return
+	}
+	query.Detail = query.Detail && edition.Supports("summary")
 	reader, finish, ok := a.beginMatchSnapshot(writer, request)
 	if !ok {
 		return
 	}
 	defer finish()
-	matches, err := reader.Matches(request.Context(), competition, season, query)
+	matches, err := reader.Matches(a.withEdition(request.Context(), edition, ""), competition, season, query)
 	if err != nil {
 		finish()
 		a.logDependencyError(request, "matches", err, "competition", competition, "season", season)
@@ -98,12 +104,17 @@ func (a *App) handleMatches(writer http.ResponseWriter, request *http.Request) {
 func (a *App) handleCalendar(writer http.ResponseWriter, request *http.Request) {
 	competition := chi.URLParam(request, "comp")
 	season := chi.URLParam(request, "season")
-	if _, _, ok := a.resolve(competition, season); !ok {
+	_, edition, ok := a.resolve(competition, season)
+	if !ok {
 		writeError(writer, http.StatusBadRequest, "unknown competition or season")
 		return
 	}
 	if err := parseNoQuery(request.URL.RawQuery); err != nil {
 		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !edition.Supports("scores") {
+		writeUnavailable(writer, "scores")
 		return
 	}
 	reader, finish, ok := a.beginMatchSnapshot(writer, request)
@@ -138,9 +149,13 @@ func (a *App) handleCalendar(writer http.ResponseWriter, request *http.Request) 
 func (a *App) handleStandings(writer http.ResponseWriter, request *http.Request) {
 	competition := chi.URLParam(request, "comp")
 	season := chi.URLParam(request, "season")
-	comp, _, ok := a.resolve(competition, season)
+	comp, edition, ok := a.resolve(competition, season)
 	if !ok {
 		writeError(writer, http.StatusBadRequest, "unknown competition or season")
+		return
+	}
+	if !edition.Supports("standings") {
+		writeUnavailable(writer, "standings")
 		return
 	}
 	reader, finish, ok := a.beginMatchSnapshot(writer, request)
@@ -168,8 +183,13 @@ func (a *App) handleStandings(writer http.ResponseWriter, request *http.Request)
 func (a *App) handleBracket(writer http.ResponseWriter, request *http.Request) {
 	competition := chi.URLParam(request, "comp")
 	season := chi.URLParam(request, "season")
-	if _, _, ok := a.resolve(competition, season); !ok {
+	_, edition, ok := a.resolve(competition, season)
+	if !ok {
 		writeError(writer, http.StatusBadRequest, "unknown competition or season")
+		return
+	}
+	if !edition.Supports("bracket") {
+		writeUnavailable(writer, "bracket")
 		return
 	}
 	reader, finish, ok := a.beginMatchSnapshot(writer, request)
@@ -206,8 +226,13 @@ func (a *App) handleBracket(writer http.ResponseWriter, request *http.Request) {
 func (a *App) handleTopScorers(writer http.ResponseWriter, request *http.Request) {
 	competition := chi.URLParam(request, "comp")
 	season := chi.URLParam(request, "season")
-	if _, _, ok := a.resolve(competition, season); !ok {
+	_, edition, ok := a.resolve(competition, season)
+	if !ok {
 		writeError(writer, http.StatusBadRequest, "unknown competition or season")
+		return
+	}
+	if !edition.Supports("leaders") {
+		writeUnavailable(writer, "leaders")
 		return
 	}
 	reader, finish, ok := a.beginMatchSnapshot(writer, request)
@@ -234,9 +259,13 @@ func (a *App) handleTopScorers(writer http.ResponseWriter, request *http.Request
 
 func (a *App) handleNews(writer http.ResponseWriter, request *http.Request) {
 	competition := chi.URLParam(request, "comp")
-	comp, ok := a.registry.Get(competition)
+	comp, edition, ok := a.registry.Landing(competition)
 	if !ok {
 		writeError(writer, http.StatusBadRequest, "unknown competition")
+		return
+	}
+	if !edition.Supports("news") {
+		writeUnavailable(writer, "news")
 		return
 	}
 	articles, observedAt, err := a.news.GetWithObservation(request.Context(), comp.ESPNSlug)
@@ -257,6 +286,28 @@ func (a *App) handleNews(writer http.ResponseWriter, request *http.Request) {
 	writeJSON(writer, http.StatusOK, articles)
 }
 
+func (a *App) visibleMatchScope(w http.ResponseWriter, r *http.Request, reader matchReader, finish func(), id, resource string) (freshnessScope, bool) {
+	scope, err := reader.MatchScope(r.Context(), id)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		finish()
+		a.logDependencyError(r, "match scope", err, "id", id)
+		writeError(w, 500, "internal error")
+		return scope, false
+	}
+	_, edition, ok := a.resolve(scope.Competition, scope.Season)
+	if err != nil || !ok {
+		finish()
+		writeError(w, 404, "match not found")
+		return scope, false
+	}
+	if !edition.Supports(resource) {
+		finish()
+		writeUnavailable(w, resource)
+		return scope, false
+	}
+	return scope, true
+}
+
 func (a *App) handleMatchSummary(writer http.ResponseWriter, request *http.Request) {
 	id := chi.URLParam(request, "id")
 	if !isCanonicalMatchID(id) {
@@ -268,7 +319,12 @@ func (a *App) handleMatchSummary(writer http.ResponseWriter, request *http.Reque
 		return
 	}
 	defer finish()
-	summary, err := reader.MatchSummary(request.Context(), id)
+	scope, ok := a.visibleMatchScope(writer, request, reader, finish, id, "summary")
+	if !ok {
+		return
+	}
+	_, edition, _ := a.resolve(scope.Competition, scope.Season)
+	summary, err := reader.MatchSummary(a.withEdition(request.Context(), edition, ""), id)
 	if errors.Is(err, ErrNotFound) {
 		finish()
 		writeError(writer, http.StatusNotFound, "match not found")
@@ -277,18 +333,6 @@ func (a *App) handleMatchSummary(writer http.ResponseWriter, request *http.Reque
 	if err != nil {
 		finish()
 		a.logDependencyError(request, "match summary", err, "id", id)
-		writeError(writer, http.StatusInternalServerError, "internal error")
-		return
-	}
-	scope, err := reader.MatchScope(request.Context(), id)
-	if errors.Is(err, ErrNotFound) {
-		finish()
-		writeError(writer, http.StatusNotFound, "match not found")
-		return
-	}
-	if err != nil {
-		finish()
-		a.logger.Error("match scope unavailable")
 		writeError(writer, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -311,7 +355,8 @@ func (a *App) handleTeam(writer http.ResponseWriter, request *http.Request) {
 	competition := chi.URLParam(request, "comp")
 	season := chi.URLParam(request, "season")
 	teamID := chi.URLParam(request, "teamId")
-	if _, _, ok := a.resolve(competition, season); !ok {
+	_, edition, ok := a.resolve(competition, season)
+	if !ok {
 		writeError(writer, http.StatusBadRequest, "unknown competition or season")
 		return
 	}
@@ -319,12 +364,16 @@ func (a *App) handleTeam(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusBadRequest, err.Error())
 		return
 	}
+	if !edition.Supports("teams") {
+		writeUnavailable(writer, "teams")
+		return
+	}
 	reader, finish, ok := a.beginMatchSnapshot(writer, request)
 	if !ok {
 		return
 	}
 	defer finish()
-	profile, err := reader.Team(request.Context(), teamID, competition, season, a.clock())
+	profile, err := reader.Team(a.withEdition(request.Context(), edition, "teams"), teamID, competition, season, a.clock())
 	if err != nil {
 		finish()
 		a.logTeamError(request, competition, season, teamID, err)
@@ -384,7 +433,8 @@ func (a *App) handleSquad(writer http.ResponseWriter, request *http.Request) {
 	competition := chi.URLParam(request, "comp")
 	season := chi.URLParam(request, "season")
 	teamID := chi.URLParam(request, "teamId")
-	if _, _, ok := a.resolve(competition, season); !ok {
+	_, edition, ok := a.resolve(competition, season)
+	if !ok {
 		writeError(writer, http.StatusBadRequest, "unknown competition or season")
 		return
 	}
@@ -392,12 +442,16 @@ func (a *App) handleSquad(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusBadRequest, err.Error())
 		return
 	}
+	if !edition.Supports("squad") {
+		writeUnavailable(writer, "squad")
+		return
+	}
 	reader, finish, ok := a.beginMatchSnapshot(writer, request)
 	if !ok {
 		return
 	}
 	defer finish()
-	squad, err := reader.Squad(request.Context(), teamID, competition, season, a.clock())
+	squad, err := reader.Squad(a.withEdition(request.Context(), edition, "teams"), teamID, competition, season, a.clock())
 	if errors.Is(err, ErrNotFound) {
 		finish()
 		writeError(writer, http.StatusNotFound, "unknown team")

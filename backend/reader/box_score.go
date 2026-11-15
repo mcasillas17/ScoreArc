@@ -168,6 +168,10 @@ func (a *App) handleBoxScore(writer http.ResponseWriter, request *http.Request) 
 		return
 	}
 	defer finish()
+	scope, ok := a.visibleMatchScope(writer, request, reader, finish, id, "participation")
+	if !ok {
+		return
+	}
 	box, err := reader.BoxScore(request.Context(), id)
 	if errors.Is(err, ErrNotFound) {
 		finish()
@@ -178,13 +182,6 @@ func (a *App) handleBoxScore(writer http.ResponseWriter, request *http.Request) 
 		finish()
 		a.logger.Error("box score unavailable")
 		writeError(writer, http.StatusInternalServerError, "internal error")
-		return
-	}
-	scope, err := reader.MatchScope(request.Context(), id)
-	if err != nil {
-		finish()
-		a.logDependencyError(request, "box score scope", err, "id", id)
-		writeError(writer, 500, "internal error")
 		return
 	}
 	if !a.attachResources(writer, request, reader, finish, resourceScope{freshnessScope: scope, Route: "box-score"}) {

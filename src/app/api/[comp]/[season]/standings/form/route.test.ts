@@ -26,7 +26,7 @@ it('records no upstream failure when the reader leaves mid-read', async () => {
 it('still records an upstream failure that outlives the reader', async () => {
   const controller = new AbortController();
   vi.spyOn(dataStore, 'getStandings').mockImplementationOnce(async () => { controller.abort(); throw new Error('upstream'); });
-  await (await import('@/app/api/errorResponse')).seasonRoute('standings', async (rc) => dataStore.getStandings(rc))(
+  await (await import('@/app/api/errorResponse')).seasonRoute('standings', 'standings', async (rc) => dataStore.getStandings(rc))(
     new Request('http://x/api/standings', { signal: controller.signal }),
     { params: Promise.resolve({ comp: 'mls', season: '2026' }) },
   );

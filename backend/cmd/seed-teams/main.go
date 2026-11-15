@@ -201,20 +201,21 @@ func mergeBase(seed []config.SeedTeam, loadErr error, bootstrap bool) (map[strin
 // competitionFetch is one competition's contribution to a regenerate: the teams
 // ESPN named, and whether each of the two fetches that could name them worked.
 type competitionFetch struct {
-	compID        string
-	prefix        string
-	kind          string
-	category      string
-	teams         []model.Team
-	scoreboardErr error
-	standingsErr  error
+	compID               string
+	prefix               string
+	kind                 string
+	category             string
+	teams                []model.Team
+	scoreboardErr        error
+	standingsErr         error
+	standingsUnsupported bool
 }
 
 // blind reports that this competition told us nothing at all. One failed fetch
 // is survivable — a club in a league's standings is normally in its scoreboard
 // too — but both failing means the run has no idea what is in the competition.
 func (f competitionFetch) blind() bool {
-	return f.scoreboardErr != nil && f.standingsErr != nil
+	return f.scoreboardErr != nil && (f.standingsErr != nil || f.standingsUnsupported)
 }
 
 // buildSeed produces the proposed seed by OVERLAYING what was fetched onto the
@@ -328,16 +329,17 @@ func run(bootstrap bool) error {
 	defer cancel()
 
 	fetches := make([]competitionFetch, 0, len(registry.List()))
-	for _, comp := range registry.List() {
+	for _, comp := range registry.Active("scores") {
 		season, ok := comp.Seasons[comp.CurrentSeasonId]
 		if !ok {
 			continue
 		}
 		fetch := competitionFetch{
-			compID:   comp.ID,
-			prefix:   countryPrefix(comp.ESPNSlug),
-			kind:     comp.Kind,
-			category: comp.Category,
+			compID:               comp.ID,
+			prefix:               countryPrefix(comp.ESPNSlug),
+			kind:                 comp.Kind,
+			category:             comp.Category,
+			standingsUnsupported: !season.Supports("standings"),
 		}
 		matches, err := src.Scoreboard(ctx, comp, season, true)
 		if err != nil {
@@ -347,13 +349,15 @@ func run(bootstrap bool) error {
 		for _, match := range matches {
 			fetch.teams = append(fetch.teams, match.Home, match.Away)
 		}
-		standings, err := src.Standings(ctx, comp, season)
-		if err != nil {
-			fetch.standingsErr = err
-			fmt.Fprintf(os.Stderr, "warn: standings %s: %v\n", comp.ID, err)
-		}
-		for _, standing := range standings {
-			fetch.teams = append(fetch.teams, standing.Team)
+		if season.Supports("standings") {
+			standings, err := src.Standings(ctx, comp, season)
+			if err != nil {
+				fetch.standingsErr = err
+				fmt.Fprintf(os.Stderr, "warn: standings %s: %v\n", comp.ID, err)
+			}
+			for _, standing := range standings {
+				fetch.teams = append(fetch.teams, standing.Team)
+			}
 		}
 		fetches = append(fetches, fetch)
 	}

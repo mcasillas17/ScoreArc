@@ -22,13 +22,18 @@ export function scopeKey(scope) {
 }
 
 export function currentScopes(registry) {
-  if (!Array.isArray(registry) || registry.length === 0 || registry.length > MAX_SCOPES) throw new Error('Invalid scope registry');
-  const scopes = registry.map(comp => {
-    if (!comp.seasons?.[comp.currentSeasonId] || comp.seasons[comp.currentSeasonId].id !== comp.currentSeasonId) {
-      throw new Error('Invalid current season');
+  if (!Array.isArray(registry) || !registry.length) throw new Error('Invalid scope registry');
+  const scopes = [];
+  for (const comp of registry) {
+    if (!idPattern.test(comp.id) || typeof comp.id !== 'string' || !comp.seasons ||
+        (comp.currentSeasonId && comp.seasons[comp.currentSeasonId]?.id !== comp.currentSeasonId)) throw new Error('Invalid current season');
+    for (const [id, season] of Object.entries(comp.seasons)) {
+      if (!season.monitored) continue;
+      if (id !== season.id || season.publication !== 'live' || !season.resources?.includes('scores')) throw new Error('Invalid monitored edition');
+      scopes.push({ competition: comp.id, season: id });
     }
-    return { competition: comp.id, season: comp.currentSeasonId };
-  });
+  }
+  if (!scopes.length || scopes.length > MAX_SCOPES) throw new Error('Invalid monitored scope count');
   if (new Set(scopes.map(scopeKey)).size !== scopes.length) throw new Error('Duplicate scopes');
   return scopes;
 }

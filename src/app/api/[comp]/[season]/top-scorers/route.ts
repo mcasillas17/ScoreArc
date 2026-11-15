@@ -6,6 +6,6 @@ import { seasonRoute } from '@/app/api/errorResponse';
 export const dynamic = 'force-dynamic';
 
 // Slug enrichment is best-effort: a failed index costs the links, not the board.
-export const GET = seasonRoute('top-scorers', async (rc, signal) =>
+export const GET = seasonRoute('top-scorers', 'leaders', async (rc, signal) =>
   runDataOperation(dataStore, async (source) => withPlayerSlugs(rc, (await source.getLeaders(rc)).scorers, source), signal),
 );

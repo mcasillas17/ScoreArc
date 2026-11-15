@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
 import { ogUrl, shareMetadata } from '@/lib/ogUrl';
-import { resolveSeason } from '@/server/data/competitions';
+import { resolveResource } from '@/server/data/editionResources';
 import { dataStore } from '@/server/data/store';
 import { isReaderOperationStore, runDataOperation } from '@/server/data/sourceSelection';
 import { providerTeamId } from '@/server/data/teamIdentity';
@@ -28,7 +28,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   if (!isLocale(resolvedParams.locale)) notFound();
   const locale = resolvedParams.locale;
   const t = getTranslator(locale, resolvedParams.comp);
-  const rc = resolveSeason(resolvedParams.comp, resolvedParams.season);
+  const rc = resolveResource(resolvedParams.comp, resolvedParams.season, 'teams');
   if (!rc) return { title: t('team.metaFallbackTitle') };
   const upstreamId = providerTeamId(resolvedParams.teamId);
   if (!upstreamId) return { title: t('team.metaFallbackTitle') };
@@ -61,7 +61,7 @@ export default async function TeamPage({ params }: Params) {
   if (!isLocale(resolvedParams.locale)) notFound();
   const locale = resolvedParams.locale;
   const t = getTranslator(locale, resolvedParams.comp);
-  const rc = resolveSeason(resolvedParams.comp, resolvedParams.season);
+  const rc = resolveResource(resolvedParams.comp, resolvedParams.season, 'teams');
   if (!rc) notFound();
   // The URL carries our canonical id; the provider is asked by its own number.
   // A slug we do not know is a 404, not an upstream call with a bad id.

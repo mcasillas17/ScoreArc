@@ -35,7 +35,7 @@ function isStandingsForm(value: unknown): value is StandingsForm {
 
 /** Optional form beside the standings. Owns no timer: `tick` runs from the
  *  standings poll, so a page has exactly one poller and one request at a time. */
-export function useStandingsForm(apiBase: string, initialGroups: Group[]) {
+export function useStandingsForm(apiBase: string, initialGroups: Group[], enabled = true) {
   const [form, setForm] = useState<StandingsForm | null>(null);
   const answered = useRef(false);
   const changedDuringRead = useRef(false);
@@ -49,7 +49,7 @@ export function useStandingsForm(apiBase: string, initialGroups: Group[]) {
   const settleAt = useRef(0);
 
   const load = useCallback(async () => {
-    if (request.current) return;
+    if (!enabled || request.current) return;
     const controller = new AbortController();
     request.current = controller;
     let failureStatus: number | undefined;
@@ -85,7 +85,7 @@ export function useStandingsForm(apiBase: string, initialGroups: Group[]) {
       clearTimeout(deadline);
       if (request.current === controller) request.current = null;
     }
-  }, [apiBase]);
+  }, [apiBase, enabled]);
 
   useEffect(() => {
     if (nextAt.current === 0) void load();

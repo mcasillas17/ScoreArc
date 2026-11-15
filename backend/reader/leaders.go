@@ -41,13 +41,18 @@ func parseLeaderQuery(raw string) (leaderQuery, error) {
 
 func (a *App) handleLeaders(writer http.ResponseWriter, request *http.Request) {
 	competition, season := chi.URLParam(request, "comp"), chi.URLParam(request, "season")
-	if _, _, ok := a.resolve(competition, season); !ok {
+	_, edition, ok := a.resolve(competition, season)
+	if !ok {
 		writeError(writer, http.StatusBadRequest, "unknown competition or season")
 		return
 	}
 	query, err := parseLeaderQuery(request.URL.RawQuery)
 	if err != nil {
 		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !edition.Supports("leaders") {
+		writeUnavailable(writer, "leaders")
 		return
 	}
 	reader, finish, ok := a.beginMatchSnapshot(writer, request)

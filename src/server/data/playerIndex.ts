@@ -1,4 +1,4 @@
-import type { CompetitionSeason } from './competitions';
+import { supportsResource, type CompetitionSeason } from './competitions';
 import type { MatchSummaryData, PlayerProfile, Team } from './types';
 import { dataStore, type DataStore } from './store';
 import { buildSlugMap, type ResolvedPlayer, type SlugEntry } from './playerIdentity';
@@ -146,7 +146,7 @@ export async function withPlayerSlugs<T extends { athleteId: string | null; play
   leaders: T[],
   store: DataStore = dataStore,
 ): Promise<T[]> {
-  if (leaders.length === 0) return leaders;
+  if (leaders.length === 0 || !supportsResource(rc.season, 'players') || !supportsResource(rc.season, 'squad')) return leaders;
   try {
     const index = await competitionPlayerIndex(rc, store);
     return leaders.map((leader) => ({
@@ -175,6 +175,7 @@ export async function withSummaryPlayerSlugs(
   summary: MatchSummaryData,
   store: DataStore = dataStore,
 ): Promise<MatchSummaryData> {
+  if (!supportsResource(rc.season, 'players') || !supportsResource(rc.season, 'squad')) return summary;
   try {
     const index = await competitionPlayerIndex(rc, store);
     const slugFor = (athleteId: string | null) => (athleteId ? index.byProvider.get(athleteId) ?? null : null);

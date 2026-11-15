@@ -73,7 +73,7 @@ func TestPendingFinalCapturesSelectsFinishedFinalizedMatches(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pending, err := store.PendingFinalCaptures(ctx, testCompetition, testSeason, testSource, dueAt, 100)
+	pending, err := store.PendingFinalCaptures(ctx, testCompetition, testSeason, testSource, dueAt, 100, []string{"officials", "fixed_odds"})
 	if err != nil {
 		t.Fatalf("PendingFinalCaptures: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestPendingFinalCapturesOrdersDeterministicallyAndRespectsLimit(t *testing.
 	_ = finalizeFixture(t, store, "order-2",
 		time.Date(2026, 8, 20, 18, 0, 0, 0, time.UTC), "STATUS_FULL_TIME")
 
-	pending, err := store.PendingFinalCaptures(ctx, testCompetition, testSeason, testSource, dueAt, 2)
+	pending, err := store.PendingFinalCaptures(ctx, testCompetition, testSeason, testSource, dueAt, 2, []string{"officials", "fixed_odds"})
 	if err != nil {
 		t.Fatalf("PendingFinalCaptures: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestFinalCaptureCompletionAndRetryLifecycle(t *testing.T) {
 	}
 
 	beforeDue := retryAt.Add(-time.Minute)
-	pending, err := store.PendingFinalCaptures(ctx, testCompetition, testSeason, testSource, beforeDue, 10)
+	pending, err := store.PendingFinalCaptures(ctx, testCompetition, testSeason, testSource, beforeDue, 10, []string{"officials", "fixed_odds"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestFinalCaptureCompletionAndRetryLifecycle(t *testing.T) {
 	defer restarted.Close()
 
 	afterDue := retryAt.Add(time.Second)
-	pending, err = restarted.PendingFinalCaptures(ctx, testCompetition, testSeason, testSource, afterDue, 10)
+	pending, err = restarted.PendingFinalCaptures(ctx, testCompetition, testSeason, testSource, afterDue, 10, []string{"officials", "fixed_odds"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func TestFinalCaptureCompletionAndRetryLifecycle(t *testing.T) {
 		t.Fatalf("CompleteFinalCapture fixed_odds: %v", err)
 	}
 	pending, err = restarted.PendingFinalCaptures(
-		ctx, testCompetition, testSeason, testSource, fixedOddsCompletedAt.Add(time.Hour), 10)
+		ctx, testCompetition, testSeason, testSource, fixedOddsCompletedAt.Add(time.Hour), 10, []string{"officials", "fixed_odds"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,7 +356,7 @@ func TestFinalCaptureAsIngesterRoleWithoutDeleteAndReaderCannotSelect(t *testing
 		t.Fatalf("schedule final capture retry as scorearc_ingester: %v", err)
 	}
 	pending, err := asIngester.PendingFinalCaptures(
-		ctx, testCompetition, testSeason, testSource, now.Add(time.Hour), 10)
+		ctx, testCompetition, testSeason, testSource, now.Add(time.Hour), 10, []string{"officials", "fixed_odds"})
 	if err != nil {
 		t.Fatalf("PendingFinalCaptures as scorearc_ingester: %v", err)
 	}
@@ -440,22 +440,22 @@ func TestFinalCaptureValidation(t *testing.T) {
 		t.Fatal("ScheduleFinalCaptureRetry must reject a nil cause")
 	}
 
-	if _, err := st.PendingFinalCaptures(ctx, "", testSeason, testSource, validTime, 10); err == nil {
+	if _, err := st.PendingFinalCaptures(ctx, "", testSeason, testSource, validTime, 10, []string{"officials", "fixed_odds"}); err == nil {
 		t.Fatal("PendingFinalCaptures must reject an empty competition id")
 	}
-	if _, err := st.PendingFinalCaptures(ctx, testCompetition, "", testSource, validTime, 10); err == nil {
+	if _, err := st.PendingFinalCaptures(ctx, testCompetition, "", testSource, validTime, 10, []string{"officials", "fixed_odds"}); err == nil {
 		t.Fatal("PendingFinalCaptures must reject an empty season id")
 	}
-	if _, err := st.PendingFinalCaptures(ctx, testCompetition, testSeason, "", validTime, 10); err == nil {
+	if _, err := st.PendingFinalCaptures(ctx, testCompetition, testSeason, "", validTime, 10, []string{"officials", "fixed_odds"}); err == nil {
 		t.Fatal("PendingFinalCaptures must reject an empty source")
 	}
 	if _, err := st.PendingFinalCaptures(
-		ctx, testCompetition, testSeason, testSource, time.Time{}, 10,
+		ctx, testCompetition, testSeason, testSource, time.Time{}, 10, []string{"officials", "fixed_odds"},
 	); err == nil {
 		t.Fatal("PendingFinalCaptures must reject a zero due_at")
 	}
 	if _, err := st.PendingFinalCaptures(
-		ctx, testCompetition, testSeason, testSource, validTime, 0,
+		ctx, testCompetition, testSeason, testSource, validTime, 0, []string{"officials", "fixed_odds"},
 	); err == nil {
 		t.Fatal("PendingFinalCaptures must reject a non-positive limit")
 	}

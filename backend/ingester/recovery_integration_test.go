@@ -353,7 +353,7 @@ func TestGroupRecoveryFinalizesShootoutWinnerBeforeProviderFlags(t *testing.T) {
 				repo, pool, _ := newRecoveryPostgres(t)
 				comp, _, src, now := recoveryFixture()
 				comp.ESPNSlug = "concacaf.leagues.cup"
-				comp.Seasons["2026"] = config.Season{ID: "2026", HasBracket: true}
+				comp.Seasons["2026"] = config.Season{Publication: "live", Resources: testResources, ID: "2026", HasBracket: true}
 				if err := repo.ApplyCompetitionSeed(ctx, []config.Competition{comp}); err != nil {
 					t.Fatal(err)
 				}

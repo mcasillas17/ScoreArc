@@ -1,4 +1,5 @@
-import { resolveSeason, type CompetitionSeason } from '@/server/data/competitions';
+import type { CompetitionSeason, EditionResource } from '@/server/data/competitions';
+import { resolveResource } from '@/server/data/editionResources';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 
 export type ApiErrorCode = 'INVALID_REQUEST' | 'NOT_FOUND' | 'UPSTREAM_UNAVAILABLE';
@@ -14,11 +15,12 @@ export function apiError(code: ApiErrorCode, status: number): Response {
  */
 export function seasonRoute<T>(
   endpoint: Parameters<typeof trackAPIRequestFailure>[0],
+  resource: EditionResource | EditionResource[],
   load: (rc: CompetitionSeason, signal: AbortSignal) => Promise<T>,
 ) {
   return async (req: Request, { params }: { params: Promise<{ comp: string; season: string }> }) => {
     const { comp, season } = await params;
-    const rc = resolveSeason(comp, season);
+    const rc = resolveResource(comp, season, ...(Array.isArray(resource) ? resource : [resource]));
     if (!rc) {
       return apiError('NOT_FOUND', 404);
     }

@@ -24,7 +24,7 @@ func (f *fakeRepository) RecordResourceObservation(_ context.Context, comp, seas
 func TestResourceObservationsRenewMemoHitsInTheirSeason(t *testing.T) {
 	ctx := context.Background()
 	comp := config.Competition{ID: "test"}
-	season := config.Season{ID: "2026"}
+	season := testEdition("2026")
 	src, repo := &fakeSource{}, &fakeRepository{}
 	worker := testRunner(src, repo, comp)
 	for range 2 {
@@ -43,7 +43,7 @@ func TestResourceObservationsRenewMemoHitsInTheirSeason(t *testing.T) {
 			t.Fatalf("incorrect observation scope: %+v", call)
 		}
 	}
-	if err := worker.refreshLeaders(ctx, comp, config.Season{ID: "2027"}); err != nil {
+	if err := worker.refreshLeaders(ctx, comp, config.Season{Publication: "live", Resources: testResources, ID: "2027"}); err != nil {
 		t.Fatal(err)
 	}
 	if len(repo.resourceObservations) != 3 || len(repo.leaderCategories) != 4 {
@@ -62,7 +62,7 @@ func TestResourceObservationsRenewMemoHitsInTheirSeason(t *testing.T) {
 
 func TestResourceObservationsIsolateFailedLeaderMetric(t *testing.T) {
 	ctx := context.Background()
-	comp, season := config.Competition{ID: "test"}, config.Season{ID: "2026"}
+	comp, season := config.Competition{ID: "test"}, testEdition("2026")
 	src, repo := &fakeSource{}, &fakeRepository{}
 	worker := testRunner(src, repo, comp)
 	if err := worker.refreshLeaders(ctx, comp, season); err != nil {
@@ -82,7 +82,7 @@ func TestResourceObservationRejectsAbsentOrNullLeaderCollections(t *testing.T) {
 		t.Run(raw, func(t *testing.T) {
 			repo := &fakeRepository{}
 			worker := testRunner(&fakeSource{statistics: []byte(raw)}, repo, config.Competition{ID: "test"})
-			if err := worker.refreshLeaders(context.Background(), config.Competition{ID: "test"}, config.Season{ID: "2026"}); err == nil {
+			if err := worker.refreshLeaders(context.Background(), config.Competition{ID: "test"}, testEdition("2026")); err == nil {
 				t.Fatal("missing collection accepted as successful empty")
 			}
 			if len(repo.resourceObservations) != 0 {
@@ -94,7 +94,7 @@ func TestResourceObservationRejectsAbsentOrNullLeaderCollections(t *testing.T) {
 
 func TestResourceObservationAcceptsExplicitEmptyWithoutSnapshot(t *testing.T) {
 	ctx := context.Background()
-	comp, season := config.Competition{ID: "test"}, config.Season{ID: "2026"}
+	comp, season := config.Competition{ID: "test"}, testEdition("2026")
 	src := &fakeSource{standings: []model.Standing{}, statistics: statisticsPayload(t, nil, nil), rosters: map[string]model.Squad{"home": {TeamSourceID: "home", Players: []model.SquadMember{}}}}
 	repo := &fakeRepository{}
 	worker := testRunner(src, repo, comp)
@@ -121,7 +121,7 @@ func TestResourceObservationAcceptsExplicitEmptyWithoutSnapshot(t *testing.T) {
 }
 
 func TestResourceObservationRenewalFailureIsReturned(t *testing.T) {
-	comp, season := config.Competition{ID: "test"}, config.Season{ID: "2026"}
+	comp, season := config.Competition{ID: "test"}, testEdition("2026")
 	repo := &fakeRepository{}
 	worker := testRunner(&fakeSource{}, repo, comp)
 	if err := worker.refreshStandings(context.Background(), comp, season, false, false); err != nil {

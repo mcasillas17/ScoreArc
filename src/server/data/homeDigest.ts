@@ -1,5 +1,5 @@
 import type { Locale } from '@/i18n/config';
-import { type Competition, resolveSeason } from '@/server/data/competitions';
+import { type Competition, resolveSeason, supportsResource } from '@/server/data/competitions';
 import { dataStore, type DataStore } from '@/server/data/store';
 import { isSelectedDataStore, runDataOperation } from '@/server/data/sourceSelection';
 import { competitionLabel, type LiveEntry } from '@/server/data/liveFeed';
@@ -36,12 +36,12 @@ function optionalRows<T>(source: DataStore, read: Promise<T[]>): Promise<T[]> {
 export function loadDigestSports(ongoing: Competition[], now: Date, locale: Locale) {
   const seasons = ongoing.map(comp => resolveSeason(comp.id)!);
   function read(source: DataStore) {
-    const windows = Promise.all(seasons.map(async rc => {
+    const windows = Promise.all(seasons.filter(rc => supportsResource(rc.season, 'scores')).map(async rc => {
       const competition = competitionLabel(rc.competition, rc.season.id);
       const matches = await optionalRows(source, source.getLiveWindow(rc));
       return matches.map(match => ({ competition, match }));
     }));
-    const boards = Promise.all(seasons.map(async rc => {
+    const boards = Promise.all(seasons.filter(rc => supportsResource(rc.season, 'leaders')).map(async rc => {
       const scorers = await optionalRows(source, source.getLeaders(rc).then(leaders => leaders.scorers));
       return {
         competition: competitionLabel(rc.competition, rc.season.id),

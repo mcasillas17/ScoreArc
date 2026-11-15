@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { currentScopes } from '../../../scripts/match-freshness-watchdog.mjs';
 import {
   COMPETITIONS,
@@ -71,6 +71,23 @@ describe('competition registry', () => {
       expect(resolveSeason('world-cup', 'future')).toBeUndefined();
       expect(getCompetition('world-cup')?.seasons.future).toBeUndefined();
     } finally { delete comp.seasons['future']; }
+  });
+
+  it('admits an allowlisted staging edition only in a staging website build', async () => {
+    const comp = COMPETITIONS['world-cup'];
+    comp.seasons.next = { ...comp.seasons['2026'], id: 'next', publication: 'staging', monitored: false };
+    try {
+      vi.stubEnv('SCOREARC_ENV', 'staging');
+      vi.stubEnv('SCOREARC_STAGING_EDITIONS', 'world-cup/next');
+      for (const environment of ['preview', 'production']) {
+        vi.stubEnv('VERCEL_ENV', environment);
+        vi.resetModules();
+        const { default: build } = await import('../../../next.config.mjs');
+        vi.stubEnv('SCOREARC_WEBSITE_STAGING_EDITIONS', build.env?.SCOREARC_WEBSITE_STAGING_EDITIONS ?? '');
+        expect(Boolean(resolveSeason('world-cup','next'))).toBe(environment === 'preview');
+        expect(resolveSeason('world-cup')?.season.id).toBe('2026');
+      }
+    } finally { delete comp.seasons.next; vi.unstubAllEnvs(); }
   });
 
   it('has world-cup and leagues-cup with correct ESPN slugs', () => {

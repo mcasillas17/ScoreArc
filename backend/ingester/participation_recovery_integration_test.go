@@ -21,7 +21,7 @@ func (s failingParticipationCompletion) CompleteParticipation(context.Context, s
 func TestParticipationFinalizationFailureRecoversAfterRestart(t *testing.T) {
 	ctx := context.Background()
 	repo, pool, dsn := newRecoveryPostgres(t)
-	comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {ID: "2026"}}}
+	comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": testEdition("2026")}}
 	if err := repo.ApplyCompetitionSeed(ctx, []config.Competition{comp}); err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestParticipationFinalizationFailureRecoversAfterRestart(t *testing.T) {
 	if err := r.retryParticipation(ctx); err == nil {
 		t.Fatal("injected failure hidden")
 	}
-	pending, err := repo.PendingParticipation(ctx, sourceESPN, now.Add(time.Hour), 10)
+	pending, err := repo.PendingParticipation(ctx, sourceESPN, now.Add(time.Hour), 10, []string{"test/2026"})
 	if err != nil || len(pending) != 1 || pending[0].Attempts != 1 {
 		t.Fatalf("lost retry: %+v %v", pending, err)
 	}

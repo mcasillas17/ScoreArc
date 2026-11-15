@@ -17,8 +17,9 @@ var providerIdentityPattern = regexp.MustCompile(`^[1-9][0-9]{0,31}$`)
 var teamIdentityPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
 type identityQuery struct {
-	Kind, From string
-	IDs        []string
+	participantsOnly bool
+	Kind, From       string
+	IDs              []string
 }
 
 type IdentityReference struct {
@@ -61,7 +62,8 @@ func parseIdentityQuery(raw string) (identityQuery, error) {
 
 func (a *App) handleIdentities(w http.ResponseWriter, r *http.Request) {
 	comp, season := chi.URLParam(r, "comp"), chi.URLParam(r, "season")
-	if _, _, ok := a.resolve(comp, season); !ok {
+	_, edition, ok := a.resolve(comp, season)
+	if !ok {
 		writeError(w, http.StatusBadRequest, "unknown competition or season")
 		return
 	}
@@ -70,12 +72,21 @@ func (a *App) handleIdentities(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid query")
 		return
 	}
+	resource := map[string]string{"team": "teams", "match": "scores", "player": "players"}[query.Kind]
+	if query.Kind == "team" && !edition.Supports("teams") && edition.Supports("scores") {
+		resource = "scores"
+		query.participantsOnly = true
+	}
+	if !edition.Supports(resource) {
+		writeUnavailable(w, resource)
+		return
+	}
 	reader, finish, ok := a.beginMatchSnapshot(w, r)
 	if !ok {
 		return
 	}
 	defer finish()
-	refs, err := reader.Identities(r.Context(), comp, season, query)
+	refs, err := reader.Identities(a.withEdition(r.Context(), edition, resource), comp, season, query)
 	finish()
 	if err != nil {
 		a.logger.Error("identity references unavailable")
@@ -93,6 +104,21 @@ func (a *App) handleIdentities(w http.ResponseWriter, r *http.Request) {
 	writeContractJSON(w, refs)
 }
 
+// A global identity with no season facts retains its historic lookup. Once evidence
+// exists, at least one resource-eligible edition must vouch for the identity.
+const playerVisibleSQL = `($4::text[] IS NULL OR coalesce((SELECT bool_or((v.competition_id||'/'||v.season_id)=ANY($4::text[]))
+ FROM (SELECT competition_id,season_id FROM squad_membership WHERE player_id=p.id
+ UNION ALL SELECT competition_id,season_id FROM player_season_stat WHERE player_id=p.id
+ UNION ALL SELECT m.competition_id,m.season_id FROM appearance a JOIN match m ON m.id=a.match_id WHERE a.player_id=p.id) v),true))`
+
+const teamVisibleSQL = `($4::text[] IS NULL OR coalesce((SELECT bool_or((v.competition_id||'/'||v.season_id)=ANY($4::text[]))
+ FROM (SELECT competition_id,season_id FROM standing WHERE team_id=t.id
+ UNION ALL SELECT competition_id,season_id FROM match WHERE home_team_id=t.id OR away_team_id=t.id
+ UNION ALL SELECT competition_id,season_id FROM squad_membership WHERE team_id=t.id
+ UNION ALL SELECT competition_id,season_id FROM player_season_stat WHERE team_id=t.id
+ UNION ALL SELECT b.competition_id,b.season_id FROM top_scorer b JOIN team_external_ref r
+ ON r.source=b.source AND r.source_id=b.team_source_id WHERE r.team_id=t.id) v),true))`
+
 func (s *Store) Identities(ctx context.Context, competition, season string, query identityQuery) ([]IdentityReference, error) {
 	// Only these fixed fragments select SQL identifiers. All request values bind below.
 	table, target, cast, scope, contextFields := "", "", "", "", "NULL::text,NULL::text,NULL::text,NULL::text"
@@ -103,8 +129,14 @@ func (s *Store) Identities(ctx context.Context, competition, season string, quer
 		contextFields = "e.competition_id,e.season_id,e.home_team_id,e.away_team_id"
 	case "player":
 		table, target, cast = "player", "player_id", "::uuid"
+		scope = " AND " + strings.ReplaceAll(playerVisibleSQL, "p.id", "e.id")
 	case "team":
 		table, target = "team", "team_id"
+		if query.participantsOnly {
+			scope = " AND EXISTS (SELECT 1 FROM match m WHERE m.competition_id=$2 AND m.season_id=$3 AND (m.home_team_id=e.id OR m.away_team_id=e.id))"
+		} else {
+			scope = " AND " + strings.ReplaceAll(teamVisibleSQL, "t.id", "e.id")
+		}
 	default:
 		return nil, errors.New("invalid identity kind")
 	}
@@ -127,7 +159,11 @@ func (s *Store) Identities(ctx context.Context, competition, season string, quer
  ) refs ON true
  WHERE $2::text IS NOT NULL AND $3::text IS NOT NULL
  ORDER BY input.ord`, contextFields, table, address, scope, table, target)
-	rows, err := s.db.Query(ctx, sql, query.IDs, competition, season)
+	args := []any{query.IDs, competition, season}
+	if query.Kind != "match" && !query.participantsOnly {
+		args = append(args, visibleEntityScopes(ctx))
+	}
+	rows, err := s.db.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
 import { ogUrl, shareMetadata } from '@/lib/ogUrl';
-import { resolveSeason } from '@/server/data/competitions';
+import { resolveResource } from '@/server/data/editionResources';
 import { loadPlayerBySlug } from '@/server/data/playerIndex';
 import type { PlayerProfile } from '@/server/data/types';
 import PlayerHeader from '@/components/PlayerHeader';
@@ -28,7 +28,7 @@ interface Params {
  * an upstream athlete request.
  */
 const loadPlayer = cache(async (comp: string, season: string, slug: string) => {
-  const rc = resolveSeason(comp, season);
+  const rc = resolveResource(comp, season, 'players');
   if (!rc) return null;
   return loadPlayerBySlug(rc, slug);
 });
@@ -38,7 +38,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   if (!isLocale(resolvedParams.locale)) notFound();
   const locale = resolvedParams.locale;
   const t = getTranslator(locale, resolvedParams.comp);
-  const rc = resolveSeason(resolvedParams.comp, resolvedParams.season);
+  const rc = resolveResource(resolvedParams.comp, resolvedParams.season, 'players');
   if (!rc) return { title: t('player.metaFallbackTitle') };
   let player: PlayerProfile | null = null;
   try {
@@ -76,7 +76,7 @@ export default async function PlayerPage({ params }: Params) {
   if (!isLocale(resolvedParams.locale)) notFound();
   const locale = resolvedParams.locale;
   const t = getTranslator(locale, resolvedParams.comp);
-  const rc = resolveSeason(resolvedParams.comp, resolvedParams.season);
+  const rc = resolveResource(resolvedParams.comp, resolvedParams.season, 'players');
   if (!rc) notFound();
   const player = await loadPlayer(resolvedParams.comp, resolvedParams.season, resolvedParams.playerSlug);
   if (!player) notFound();

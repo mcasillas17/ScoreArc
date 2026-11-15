@@ -4,6 +4,10 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"os"
+	"slices"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -11,6 +15,7 @@ import (
 var raw []byte
 
 type Season struct {
+	Monitored         bool     `json:"monitored"`
 	Publication       string   `json:"publication"`
 	Resources         []string `json:"resources"`
 	ProviderYear      *int     `json:"providerYear"`
@@ -38,13 +43,25 @@ type Competition struct {
 }
 
 type Registry struct {
-	comps []Competition
-	byID  map[string]Competition
+	staged map[string]bool
+	comps  []Competition
+	byID   map[string]Competition
 }
 
 // Load parses the embedded competitions.json (generated from competitions.ts).
 func Load() (*Registry, error) {
-	return parseRegistry(raw)
+	reg, err := parseRegistry(raw)
+	if err != nil {
+		return nil, err
+	}
+	app := os.Getenv("FLY_APP_NAME")
+	if os.Getenv("SCOREARC_ENV") == "staging" && app != "scorearc-reader" && app != "scorearc-ingester" && os.Getenv("VERCEL_ENV") != "production" {
+		reg.staged = map[string]bool{}
+		for _, key := range strings.Split(os.Getenv("SCOREARC_STAGING_EDITIONS"), ",") {
+			reg.staged[strings.TrimSpace(key)] = true
+		}
+	}
+	return reg, nil
 }
 
 func parseRegistry(input []byte) (*Registry, error) {
@@ -85,11 +102,17 @@ func parseRegistry(input []byte) (*Registry, error) {
 			return nil, fmt.Errorf("competition %q has invalid level", c.ID)
 		}
 		for id, season := range c.Seasons {
+			if c.CurrentSeasonId == "" && (season.Publication == "live" || season.Publication == "archive") {
+				return nil, fmt.Errorf("competition %q missing published landing edition", c.ID)
+			}
 			if id != season.ID {
 				return nil, fmt.Errorf("competition %q has invalid season id", c.ID)
 			}
 			if season.Resources == nil {
 				return nil, fmt.Errorf("competition %q season %q has no resources list", c.ID, id)
+			}
+			if season.Monitored && (season.Publication != "live" || !season.Supports("scores")) {
+				return nil, fmt.Errorf("invalid monitored edition %s/%s", c.ID, id)
 			}
 			switch season.Publication {
 			case "candidate", "staging", "live", "archive":
@@ -120,4 +143,84 @@ func (r *Registry) List() []Competition { return r.comps }
 func (r *Registry) Get(id string) (Competition, bool) {
 	c, ok := r.byID[id]
 	return c, ok
+}
+
+func (s Season) Supports(resource string) bool {
+	return slices.Contains(s.Resources, resource) && (resource != "news" || s.Publication != "archive")
+}
+
+func (r *Registry) ActiveEdition(c string, s Season) bool {
+	return s.Publication == "live" || (s.Publication == "staging" && r != nil && r.staged[c+"/"+s.ID])
+}
+
+func (r *Registry) Readable(c string, s Season) bool {
+	return r.ActiveEdition(c, s) || s.Publication == "archive"
+}
+
+// Visible includes retained archive rows when seeding or resolving a public edition.
+func (r *Registry) Visible() []Competition {
+	var result []Competition
+	for _, c := range r.comps {
+		c, ok := r.visibleCompetition(c)
+		if !ok {
+			continue
+		}
+		result = append(result, c)
+	}
+	return result
+}
+
+func (r *Registry) visibleCompetition(c Competition) (Competition, bool) {
+	visible := map[string]Season{}
+	for id, s := range c.Seasons {
+		if r.Readable(c.ID, s) {
+			visible[id] = s
+		}
+	}
+	if len(visible) == 0 {
+		return Competition{}, false
+	}
+	c.Seasons = visible
+	if _, found := visible[c.CurrentSeasonId]; !found {
+		var ids []string
+		for id := range visible {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		c.CurrentSeasonId = ids[0]
+	}
+	return c, true
+}
+
+func (r *Registry) Landing(id string) (Competition, Season, bool) {
+	c, ok := r.Get(id)
+	if !ok {
+		return Competition{}, Season{}, false
+	}
+	c, ok = r.visibleCompetition(c)
+	if !ok {
+		return Competition{}, Season{}, false
+	}
+	return c, c.Seasons[c.CurrentSeasonId], true
+}
+
+// Active returns one work item per admitted edition, independent of its landing link.
+func (r *Registry) Active(resource string) []Competition {
+	var result []Competition
+	for _, c := range r.comps {
+		var ids []string
+		for id, s := range c.Seasons {
+			if r.ActiveEdition(c.ID, s) && s.Supports(resource) {
+				ids = append(ids, id)
+			}
+		}
+		sort.Strings(ids)
+		for _, id := range ids {
+			work := c
+			work.CurrentSeasonId = id
+			work.Seasons = map[string]Season{id: c.Seasons[id]}
+			result = append(result, work)
+		}
+	}
+	return result
 }

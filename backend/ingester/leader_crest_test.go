@@ -14,7 +14,7 @@ import (
 // crests use, so its mirrored URL is derivable from the team and does not move
 // when the upstream logo URL does.
 func TestLeaderCrestKeysFollowTheCanonicalTeam(t *testing.T) {
-	comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {ID: "2026"}}}
+	comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": testEdition("2026")}}
 	leader := func(crest string) model.StatLeader {
 		return model.StatLeader{Rank: 1, Player: "Scorer", TeamSourceID: "478", TeamAbbr: "FRA", TeamName: "France", TeamCrestURL: &crest, Value: 1}
 	}
@@ -39,7 +39,7 @@ func TestLeaderCrestKeysFollowTheCanonicalTeam(t *testing.T) {
 // frontend's host allowlist still screens) rather than a key derived from the
 // URL or the team's display name.
 func TestLeaderCrestWithoutAResolvableTeamIsNotMirrored(t *testing.T) {
-	comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {ID: "2026"}}}
+	comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": testEdition("2026")}}
 	crest := "https://a.espncdn.com/i/teamlogos/0.png"
 	for name, c := range map[string]struct {
 		sourceID string

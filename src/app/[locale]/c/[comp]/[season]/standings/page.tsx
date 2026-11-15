@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
-import { resolveSeason } from '@/server/data/competitions';
+import { supportsResource } from '@/server/data/competitions';
+import { resolveResource } from '@/server/data/editionResources';
 import { dataStore } from '@/server/data/store';
 import { isSelectedDataStore, runDataOperation } from '@/server/data/sourceSelection';
 import { loadLeadersWithSlugs } from '@/server/data/playerIndex';
@@ -22,7 +23,7 @@ export async function generateMetadata({ params }: { params: SeasonParams }): Pr
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale, comp);
-  const rc = resolveSeason(comp, season);
+  const rc = resolveResource(comp, season, 'standings');
   if (!rc) return { title: t('standings.title') };
   const editionName = `${rc.competition.shortName} ${rc.season.label}`;
   return {
@@ -42,23 +43,25 @@ export default async function StandingsPage({ params }: { params: SeasonParams }
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale, comp);
-  const rc = resolveSeason(comp, season);
+  const rc = resolveResource(comp, season, 'standings');
   if (!rc) notFound();
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
   // Crests in the tables below link here. Competition-scoped because a club's
   // record and squad only mean something inside one competition.
-  const teamBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/team`;
-  const playerBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/player`;
-  const playersHref = `/${locale}/c/${rc.competition.id}/${rc.season.id}/players`;
+  const teamBase = supportsResource(rc.season, 'teams') ? `/${locale}/c/${rc.competition.id}/${rc.season.id}/team` : undefined;
+  const playerBase = supportsResource(rc.season, 'players') ? `/${locale}/c/${rc.competition.id}/${rc.season.id}/player` : undefined;
+  const playersHref = playerBase && `/${locale}/c/${rc.competition.id}/${rc.season.id}/players`;
 
   // A league with no bracket lands here (its bare URL redirects to this page),
   // so this is where its "what's next" lives. A cup's lives on its bracket, and
   // a finished edition has none.
   const isLanding = !rc.season.format.hasBracket && rc.season.projection !== 'liguilla';
-  const current = rc.season.id === rc.competition.currentSeasonId;
+  const current = rc.season.publication !== 'archive' && rc.season.id === rc.competition.currentSeasonId;
 
+  const hasScores = supportsResource(rc.season, 'scores');
+  const hasLeaders = supportsResource(rc.season, 'leaders');
   const { feed, groups, scorers, assists } = await runDataOperation(dataStore, async source => {
-    const feed = isLanding && current ? await getBannerFeed(rc, source) : { matches: [], weekOnly: false };
+    const feed = isLanding && current && hasScores ? await getBannerFeed(rc, source) : { matches: [], weekOnly: false };
     let groups: Group[] = [];
     let scorers: StatLeader[] = [];
     let assists: StatLeader[] = [];
@@ -69,7 +72,7 @@ export default async function StandingsPage({ params }: { params: SeasonParams }
       // ESPN-only mode preserves its existing empty-state degradation.
     }
     try {
-      ({ scorers, assists } = await loadLeadersWithSlugs(rc, source));
+      if (hasLeaders) ({ scorers, assists } = await loadLeadersWithSlugs(rc, source));
     } catch (error) {
       if (isSelectedDataStore(source)) throw error;
     }
@@ -103,6 +106,9 @@ export default async function StandingsPage({ params }: { params: SeasonParams }
           teamBase={teamBase}
           playerBase={playerBase}
           playersHref={playersHref}
+          live={current}
+          hasLeaders={hasLeaders}
+          hasScores={hasScores}
           initialGroups={groups}
           initialScorers={scorers}
           initialAssists={assists}

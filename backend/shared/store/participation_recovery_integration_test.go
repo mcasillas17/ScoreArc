@@ -60,7 +60,7 @@ func TestParticipationRecoveryCompletesAtomicallyAndStaysSealed(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	pending, err := role.PendingParticipation(ctx, "espn", now, 10)
+	pending, err := role.PendingParticipation(ctx, "espn", now, 10, []string{"premier-league/2026-27", "premier-league/2025-26", "la-liga/2025-26"})
 	if err != nil || len(pending) != 1 {
 		t.Fatalf("pending=%+v err=%v", pending, err)
 	}
@@ -78,7 +78,7 @@ func TestParticipationRecoveryCompletesAtomicallyAndStaysSealed(t *testing.T) {
 	if err := role.FailParticipation(ctx, id, now, "provider_failure"); err != nil {
 		t.Fatal(err)
 	}
-	if list, err := role.PendingParticipation(ctx, "espn", now.Add(time.Minute), 10); err != nil || len(list) != 0 {
+	if list, err := role.PendingParticipation(ctx, "espn", now.Add(time.Minute), 10, []string{"premier-league/2026-27", "premier-league/2025-26", "la-liga/2025-26"}); err != nil || len(list) != 0 {
 		t.Fatalf("backoff lost: %+v %v", list, err)
 	}
 	bad := item.Match
@@ -132,7 +132,7 @@ func TestParticipationRecoveryCompletesAtomicallyAndStaysSealed(t *testing.T) {
 	if _, err := role.pool.Exec(ctx, `DELETE FROM appearance WHERE match_id=$1`, id); !IsImmutableViolation(err) {
 		t.Fatalf("completed facts mutable: %v", err)
 	}
-	if list, err := role.PendingParticipation(ctx, "espn", now.Add(24*time.Hour), 10); err != nil || len(list) != 0 {
+	if list, err := role.PendingParticipation(ctx, "espn", now.Add(24*time.Hour), 10, []string{"premier-league/2026-27", "premier-league/2025-26", "la-liga/2025-26"}); err != nil || len(list) != 0 {
 		t.Fatalf("completed work requeued: %+v %v", list, err)
 	}
 }
@@ -262,7 +262,7 @@ func TestParticipationRechecksIdentityAndPreservesExistingFacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now()
-	items, err := role.PendingParticipation(ctx, "espn", now, 10)
+	items, err := role.PendingParticipation(ctx, "espn", now, 10, []string{"premier-league/2026-27", "premier-league/2025-26", "la-liga/2025-26"})
 	if err != nil || len(items) != 1 {
 		t.Fatalf("pending %v %v", items, err)
 	}
@@ -379,7 +379,10 @@ func TestParticipationQueueIsFairAcrossSeasonsAndExcludesExceptionalFinals(t *te
 			}
 		}
 	}
-	items, err := st.PendingParticipation(ctx, "espn", time.Now(), 10)
+	if scoped, err := st.PendingParticipation(ctx, "espn", time.Now(), 1, []string{"la-liga/2025-26"}); err != nil || len(scoped) != 1 || scoped[0].Identity.CompetitionID != "la-liga" {
+		t.Fatalf("eligible work starved by excluded rows: %v %v", scoped, err)
+	}
+	items, err := st.PendingParticipation(ctx, "espn", time.Now(), 10, []string{"premier-league/2026-27", "premier-league/2025-26", "la-liga/2025-26"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -409,7 +412,7 @@ func TestParticipationConcurrentCompletionWritesOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now()
-	items, err := st.PendingParticipation(ctx, "espn", now, 10)
+	items, err := st.PendingParticipation(ctx, "espn", now, 10, []string{"premier-league/2026-27", "premier-league/2025-26", "la-liga/2025-26"})
 	if err != nil || len(items) != 1 {
 		t.Fatalf("pending %v %v", items, err)
 	}
@@ -463,7 +466,7 @@ func TestParticipationOmittedPlayingParticipantPreservesFactsAndPendingState(t *
 				t.Fatal(err)
 			}
 			now := time.Now()
-			items, err := st.PendingParticipation(ctx, "espn", now, 10)
+			items, err := st.PendingParticipation(ctx, "espn", now, 10, []string{"premier-league/2026-27", "premier-league/2025-26", "la-liga/2025-26"})
 			if err != nil || len(items) != 1 {
 				t.Fatalf("pending=%v err=%v", items, err)
 			}
@@ -496,7 +499,7 @@ func TestParticipationOwnGoalKeepsOppositionPlayerAndBeneficiarySide(t *testing.
 		t.Fatal(err)
 	}
 	now := time.Now()
-	items, err := st.PendingParticipation(ctx, "espn", now, 10)
+	items, err := st.PendingParticipation(ctx, "espn", now, 10, []string{"premier-league/2026-27", "premier-league/2025-26", "la-liga/2025-26"})
 	if err != nil || len(items) != 1 {
 		t.Fatalf("pending=%v err=%v", items, err)
 	}
@@ -528,7 +531,7 @@ func TestParticipationCardSideConflictPreservesFactsButStaffCardsComplete(t *tes
 				t.Fatal(err)
 			}
 			now := time.Now()
-			items, err := st.PendingParticipation(ctx, "espn", now, 10)
+			items, err := st.PendingParticipation(ctx, "espn", now, 10, []string{"premier-league/2026-27", "premier-league/2025-26", "la-liga/2025-26"})
 			if err != nil || len(items) != 1 {
 				t.Fatalf("pending=%v err=%v", items, err)
 			}
@@ -589,7 +592,7 @@ func TestParticipationCanonicalStaffAliasCannotReattributeRosterPlayer(t *testin
 				t.Fatal(err)
 			}
 			now := time.Now()
-			items, err := st.PendingParticipation(ctx, "espn", now, 10)
+			items, err := st.PendingParticipation(ctx, "espn", now, 10, []string{"premier-league/2026-27", "premier-league/2025-26", "la-liga/2025-26"})
 			if err != nil || len(items) != 1 {
 				t.Fatalf("pending=%v err=%v", items, err)
 			}

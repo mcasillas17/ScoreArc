@@ -103,16 +103,15 @@ export async function GET(req: NextRequest) {
   const requestedLocale = searchParams.get('locale');
   const locale = isLocale(requestedLocale) ? requestedLocale : DEFAULT_LOCALE;
   const t = getTranslator(locale);
-  const champ = searchParams.get('champ')?.toUpperCase() ?? '';
+  const competitionId = searchParams.get('compId');
+  const competition = getCompetition(competitionId ?? '');
+  const generic = competitionId !== null && !competition;
+  const champ = generic ? '' : searchParams.get('champ')?.toUpperCase() ?? '';
   // Length-capped: nameSize() floors at 28px, so an arbitrarily long crafted
   // value would bleed off both card edges. Real names top out near 30.
   const name = (searchParams.get('name') ?? '').slice(0, 60);
-  const subject = (searchParams.get('subject') ?? '').slice(0, 60);
-  const comp = searchParams.get('comp') || t('og.liveFootball');
-  // getCompetition, not a bare index: COMPETITIONS is a plain object, and a
-  // crafted ?compId=toString would come back truthy and crash the accent
-  // read — a public, unauthenticated 500.
-  const competition = getCompetition(searchParams.get('compId') ?? '');
+  const subject = generic ? '' : (searchParams.get('subject') ?? '').slice(0, 60);
+  const comp = (!generic && searchParams.get('comp')) || t('og.liveFootball');
   // A club abbreviation can collide with a FIFA code — Portland is POR, which
   // is also Portugal. The competition says which world we are in: flags only
   // where teams ARE nations. Legacy share URLs without compId are all World
@@ -127,10 +126,10 @@ export async function GET(req: NextRequest) {
   // mark would turn every card on that deployment into an aborted render.
   // The 1.5s timeout bounds what the self-round-trip can cost.
   const [crest, flag, cardLogo, mark] = await Promise.all([
-    liveImage(safeCrest(searchParams.get('crest'))),
+    liveImage(generic ? null : safeCrest(searchParams.get('crest'))),
     liveImage(champ && flagStyle ? flagUrl(champ) : null),
     liveImage(competition?.logo ?? null),
-    liveImage(`${req.nextUrl.origin}/brand/scorearc-mark-512.png`),
+    liveImage(generic ? null : `${req.nextUrl.origin}/brand/scorearc-mark-512.png`),
   ]);
 
   return new ImageResponse(

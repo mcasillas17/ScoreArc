@@ -110,7 +110,7 @@ export default function MatchRow({
 }: {
   match: Match;
   teamStyle: TeamStyle;
-  onOpen: () => void;
+  onOpen?: () => void;
   showDate?: boolean;
   /** The one match a view leads with: rendered larger. */
   lead?: boolean;
@@ -136,9 +136,10 @@ export default function MatchRow({
       : null,
   ].filter(Boolean).join(', ');
 
+  const Row = onOpen ? 'button' : 'div';
   return (
-    <button
-      type="button"
+    <Row
+      type={onOpen ? 'button' : undefined}
       className={`mc-match mc-match--${match.state}${lead ? ' mc-match--lead' : ''}`}
       onClick={onOpen}
       aria-label={label}
@@ -164,6 +165,6 @@ export default function MatchRow({
         <TeamMark team={match.away} style={teamStyle} />
       </span>
       {showDate && <span className="mc-match-date"><LocalTime iso={match.kickoff} mode="dayTime" /></span>}
-    </button>
+    </Row>
   );
 }

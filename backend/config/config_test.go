@@ -81,3 +81,37 @@ func TestParseRegistryEditionValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestEditionEligibility(t *testing.T) {
+	t.Setenv("SCOREARC_ENV", "staging")
+	t.Setenv("SCOREARC_STAGING_EDITIONS", "pilot/next, pilot/hidden")
+	t.Setenv("FLY_APP_NAME", "scorearc-reader-staging")
+	t.Setenv("VERCEL_ENV", "preview")
+	// Load reads the deployment settings; attach synthetic editions to the same registry.
+	r, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := Competition{ID: "pilot", CurrentSeasonId: "current", Seasons: map[string]Season{}}
+	for id, state := range map[string]string{"current": "live", "past": "archive", "next": "staging", "other": "staging", "hidden": "candidate"} {
+		c.Seasons[id] = Season{ID: id, Publication: state, Resources: []string{"scores"}}
+	}
+	r.comps = []Competition{c}
+	if got := r.Active("scores"); len(got) != 2 || got[0].CurrentSeasonId != "current" || got[1].CurrentSeasonId != "next" {
+		t.Fatalf("work %+v", got)
+	}
+	visible := r.Visible()
+	if len(visible) != 1 || len(visible[0].Seasons) != 3 || visible[0].CurrentSeasonId != "current" {
+		t.Fatalf("visible %+v", visible)
+	}
+	if len(r.Active("summary")) != 0 {
+		t.Fatal("unsupported resource admitted")
+	}
+	for _, app := range []string{"scorearc-reader", "scorearc-ingester"} {
+		t.Setenv("FLY_APP_NAME", app)
+		prod, e := Load()
+		if e != nil || prod.Readable("pilot", c.Seasons["next"]) {
+			t.Fatal("production admitted staging", e)
+		}
+	}
+}

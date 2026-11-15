@@ -2,6 +2,11 @@
 const nextConfig = {
   // The dev indicator defaults to bottom-left, which is exactly where the
   // rail's pin button and the phone bar's first tab are. Dev only.
+  env: {
+    SCOREARC_WEBSITE_STAGING_EDITIONS: process.env.SCOREARC_ENV === 'staging' && process.env.VERCEL_ENV !== 'production'
+      ? (process.env.SCOREARC_STAGING_EDITIONS ?? '').split(',').map(scope => scope.trim()).join(',')
+      : '',
+  },
   devIndicators: { position: 'top-right' },
   async redirects() {
     return [

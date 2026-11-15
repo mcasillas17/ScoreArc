@@ -42,6 +42,15 @@ function harness(custom?: (path: string, query?: Record<string, string>) => Read
   return { store: createReaderDataStore({ read, cache, cacheNamespace: 'test', now: () => now, signal: new AbortController().signal, news: async () => [] }), calls, read, cache };
 }
 describe('reader DataStore', () => {
+  it('serves scores without detail and rejects an unsupported leaderboard before reading', async () => {
+    const { store, calls } = harness();
+    const scope = { ...rc, season: { ...rc.season, resources: ['scores' as const] } };
+    await expect(store.getLeaders(scope)).rejects.toThrow();
+    expect(calls).toEqual([]);
+    expect(await store.getMatches(scope, '20260804-20260814')).toHaveLength(1);
+    expect(calls[0]).not.toContain('detail=');
+  });
+
   it('normalizes collection ids from persisted refs without summary fan-out', async () => {
     const { store, calls } = harness();
     const matches = await store.getMatches(rc, '20260804-20260814');

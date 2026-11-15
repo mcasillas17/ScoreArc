@@ -9,6 +9,14 @@ export type Category = 'women' | 'men';
 export type View = 'all' | Category;
 export type TeamStyle = 'flag' | 'crest';
 export type Section = 'bracket' | 'standings' | 'scores' | 'news';
+const editionResources = ["scores", "standings", "bracket", "news", "summary", "leaders", "teams", "squad", "players", "participation", "plays", "officials", "odds", "career"] as const;
+export type EditionResource = typeof editionResources[number];
+
+export function supportsResource(season: Season, resource: EditionResource): boolean {
+  return (season.resources?.includes(resource) ?? false) &&
+    (resource !== 'news' || (season.publication !== 'archive' && season.sections.includes('news')));
+}
+
 export type ChampionTitleKey = 'champion.world' | 'champion.competition';
 
 // Fixed official WC2026 R32 leaf order (identity-based). Data, not UI — lives
@@ -70,7 +78,8 @@ export interface Zone {
 // for split leagues like Liga MX.
 export interface Season {
   publication?: 'candidate' | 'staging' | 'live' | 'archive';
-  resources?: Section[];
+  resources?: EditionResource[];
+  monitored?: boolean;
   providerYear?: number;
   startsAt?: string;
   endsAt?: string;
@@ -720,13 +729,44 @@ function leagueCompetition(
   };
 }
 
+const legacyMonitored = new Set([
+  'world-cup/2026',
+  'leagues-cup/2026',
+  'nations-league/2026-27',
+  'uefa-nations-league/2026-27',
+  'premier-league/2026-27',
+  'laliga/2026-27',
+  'serie-a/2026-27',
+  'bundesliga/2026-27',
+  'ligue-1/2026-27',
+  'super-league-greece/2026-27',
+  'mls/2026',
+  'liga-mx/2026-apertura',
+  'wsl/2026-27',
+  'nwsl/2026',
+  'liga-mx-femenil/2026-apertura',
+]);
+const legacyArchives = new Set([
+  'world-cup/1998',
+  'world-cup/2002',
+  'world-cup/2006',
+  'world-cup/2010',
+  'world-cup/2014',
+  'world-cup/2018',
+  'world-cup/2022',
+]);
+
 // Existing editions were already public before publication states were introduced.
 for (const competition of Object.values(COMPETITIONS)) {
   competition.directoryGroup ??= competition.kind === 'national' ? 'national' : competition.id === 'leagues-cup' ? 'club-cup' : 'domestic';
   competition.level ??= 'senior';
   for (const season of Object.values(competition.seasons)) {
-    season.publication ??= season.id === competition.currentSeasonId ? 'live' : 'archive';
-    season.resources ??= [...season.sections];
+    const key = competition.id + '/' + season.id;
+    season.publication ??= legacyMonitored.has(key) ? 'live' : legacyArchives.has(key) ? 'archive' : 'candidate';
+    season.monitored ??= legacyMonitored.has(key);
+    season.resources ??= legacyMonitored.has(key) || legacyArchives.has(key)
+      ? editionResources.filter(r => r !== 'news' || (season.publication !== 'archive' && season.sections.includes('news')))
+      : [];
   }
 }
 
@@ -791,10 +831,13 @@ export function getCompetition(id: string): Competition | undefined {
 }
 
 export function listCompetitions(): Competition[] {
+  // next.config embeds only the exact staging scopes admitted for this website build.
+  const staged = new Set((process.env.SCOREARC_WEBSITE_STAGING_EDITIONS ?? '').split(','));
   return listCompetitionDefinitions().flatMap((competition) => {
-    const seasons = Object.fromEntries(Object.entries(competition.seasons).filter(([, season]) => season.publication === 'live' || season.publication === 'archive'));
-    if (!competition.currentSeasonId || !seasons[competition.currentSeasonId] || !competition.teamStyle || !competition.emblem || !competition.accent) return [];
-    return [{ ...competition, currentSeasonId: competition.currentSeasonId, teamStyle: competition.teamStyle, emblem: competition.emblem, accent: competition.accent, seasons }];
+    const seasons = Object.fromEntries(Object.entries(competition.seasons).filter(([, season]) => season.publication === 'live' || season.publication === 'archive' || (season.publication === 'staging' && staged.has(competition.id + '/' + season.id))));
+    const landing = competition.currentSeasonId ?? Object.keys(seasons).filter(id => seasons[id].publication === 'staging').sort()[0];
+    if (!landing || !seasons[landing] || !competition.teamStyle || !competition.emblem || !competition.accent) return [];
+    return [{ ...competition, currentSeasonId: landing, teamStyle: competition.teamStyle, emblem: competition.emblem, accent: competition.accent, seasons }];
   });
 }
 
@@ -817,7 +860,8 @@ export function hasBothCategories(competitions: Competition[] = listCompetitions
 
 /** Whether the competition's news can be shown: its current season says so. */
 export function hasNews(competition: Competition): boolean {
-  return competition.seasons[competition.currentSeasonId]?.sections.includes('news') ?? false;
+  const season = competition.seasons[competition.currentSeasonId];
+  return Boolean(season && supportsResource(season, 'news'));
 }
 
 /** `?view=women` for a narrowed view, nothing for All. */
@@ -828,7 +872,7 @@ export function viewQuery(view: View): string {
 /** Competitions whose current season is still being played — the home
  *  digest's universe. Everything else stays browsable, just not promoted. */
 export function ongoingCompetitions(): Competition[] {
-  return listCompetitions().filter((c) => !c.seasons[c.currentSeasonId]?.concluded);
+  return listCompetitions().filter((c) => c.seasons[c.currentSeasonId]?.publication !== 'archive' && !c.seasons[c.currentSeasonId]?.concluded);
 }
 
 // Resolve a (competition, season) pair. `seasonId` defaults to the competition's

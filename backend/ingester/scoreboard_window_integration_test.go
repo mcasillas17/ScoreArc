@@ -78,7 +78,7 @@ func testMonthlyScoreboardPipeline(t *testing.T, recovery bool) {
 	now := time.Now().UTC().Truncate(time.Second)
 	providerNow := now
 	year := strconv.Itoa(now.Year())
-	season := config.Season{ID: year}
+	season := config.Season{Publication: "live", Resources: testResources, ID: year}
 	comp := config.Competition{
 		ID: "window-test", ESPNSlug: "esp.1", CurrentSeasonId: year,
 		Seasons: map[string]config.Season{year: season},
