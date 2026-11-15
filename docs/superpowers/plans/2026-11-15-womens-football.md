@@ -39,42 +39,44 @@
 
 The audit uses commit `08c4e2d`. The integration check against main `9415524` also covers per-competition monitor reporting and the updated CI toolchain. Land tasks 1 and 2 together: an older consumer of the expanded JSON would poll candidates or reject the registry. Deploy the eligibility-aware consumers before admitting any new live scope.
 
+PR #271 merged before execution at `b5a231b`. It added the three public pilot editions, curated IDs, first category links and some playoff mappings. Preserve those routes, IDs and monitored scopes. In tasks 3–10, verify what shipped and implement the remaining acceptance cases. Task 10 certifies the three existing pilots and records evidence; it does not toggle them off and back on.
+
 Tasks run in order. An out-of-season tournament can be classified archive-only while active competitions advance. Before importing historical editions, record a current disposition for all 45 feeds and establish healthy live service for the approved current cohorts. Record a blocked current edition and its precise dependency separately so it can re-enter its own queue. It does not turn into an archive by waiting.
 
 **Test and commit convention.** Commands start at the repo root. For each implementation task, add the named test first, run the stated command red, implement, then rerun that command green before committing the named change with the repo’s agent trailer. A red run must fail the new assertion or the missing interface, not an unrelated environment check. Use the Docker/Colima instructions in [AGENTS.md](../../../AGENTS.md) for database tests. Cohort tasks use a failing evidence comparison in place of inventing another unit test. Use one commit per certified scope or independently reviewable code slice.
 
 ## Catalog and ingestion controls
 
-### 1. Describe all 45 candidates without publishing them
+### Task 1. Describe all 45 candidates without publishing them
 
 **Files / interface.** Extend `src/server/data/competitions.ts`, `scripts/export-competitions.mjs`, `backend/config/config.go` and their existing tests. Add `category: 'women' | 'men'`, directory group, and level (senior, U17 or college). Keep `kind: 'club' | 'national'`. On a known edition add `publication: 'candidate' | 'staging' | 'live' | 'archive'`, an explicit list of supported resources and, when verified, its provider year, UTC bounds and phase. Permit a catalog-only entry with no known season and no current ID. Public accessors return a competition with a resolvable published landing edition.
 
-- [ ] Give the complete registry the exported accessor `listCompetitionDefinitions()`. Set `const allDefinitions = listCompetitionDefinitions()` in the registry test and assert `expect([allDefinitions.length, new Set(allDefinitions.map(c => c.espnSlug)).size]).toEqual([57,57])` and `expect(listCompetitions().map(c => c.id)).toEqual(previousPublicIds)`. Record the 12 existing IDs as the regression baseline. Verify the Go parser rejects unknown states, duplicate slugs and a published edition with invalid bounds.
+- [ ] Give the complete registry the exported accessor `listCompetitionDefinitions()`. Set `const allDefinitions = listCompetitionDefinitions()` in the registry test and assert `expect([allDefinitions.length, new Set(allDefinitions.map(c => c.espnSlug)).size]).toEqual([57,57])` and `expect(listCompetitions().map(c => c.id)).toEqual(previousPublicIds)`. Record all 15 IDs on main as the regression baseline. Verify the Go parser rejects unknown states, duplicate slugs and a published edition with invalid bounds.
 - [ ] Run `npx vitest run src/server/data/competitions.test.ts` and `(cd backend && go test ./config)`. Expect the catalog/visibility assertions to fail initially.
-- [ ] Make the existing `getCompetition`, `listCompetitions`, `resolveSeason` and `ongoingCompetitions` public projections. Keep the exporter on the complete registry. Include each slug in the audit exactly once. Assign the 12 existing competitions explicitly to men. Snapshot their public seasons, default links, digest exclusions and monitored scopes before rollout. Preserve the legacy behavior of already-concluded monitored competitions until separately reconciled. A future staged season must not displace the published landing season.
+- [ ] Make the existing `getCompetition`, `listCompetitions`, `resolveSeason` and `ongoingCompetitions` public projections. Keep the exporter on the complete registry. Include each slug in the audit exactly once. Preserve the 12 men’s and three women’s categories already on main. Add the remaining 42 feeds as candidates. Snapshot their public seasons, default links, digest exclusions and monitored scopes before rollout. Preserve the legacy behavior of already-concluded monitored competitions until separately reconciled. A future staged season must not displace the published landing season.
 - [ ] Run `npm run export:competitions` twice. Expect 57 definitions, byte-identical outputs and both test commands green. Commit `feat: model competition categories and edition publication`.
 
-### 2. Apply eligibility at every service boundary
+### Task 2. Apply eligibility at every service boundary
 
-**Files / interface.** `backend/ingester/{main,runner,matches,squad,final_captures,participation_recovery}.go`, `backend/reader/{server,handlers,box_score,resources,news}.go`, `scripts/match-freshness-{watchdog,monitor}.mjs`, `src/app/api/errorResponse.ts`, competition routes and `src/app/api/og/route.tsx`. Derive public, live, staging and resource eligibility from task 1. Add a per-edition `monitored` switch with separate, reviewed activation. Keep it true for the 12 existing scopes and false for new editions until the deployed reader passes its smoke test. Reject enabling it for new archives, staging and candidates. Staging uses an explicit environment-only allowlist of competition/season pairs on staging deployments, including the staging website. Production ignores staging selections.
+**Files / interface.** `backend/ingester/{main,runner,matches,squad,final_captures,participation_recovery}.go`, `backend/reader/{server,handlers,box_score,resources,news}.go`, `scripts/match-freshness-{watchdog,monitor}.mjs`, `src/app/api/errorResponse.ts`, competition routes and `src/app/api/og/route.tsx`. Derive public, live, staging and resource eligibility from task 1. Add a per-edition `monitored` switch with separate, reviewed activation. Keep it true for the 15 existing scopes and false for new editions until the deployed reader passes its smoke test. Reject enabling it for new archives, staging and candidates. Staging uses an explicit environment-only allowlist of competition/season pairs on staging deployments, including the staging website. Production ignores staging selections.
 
-- [ ] Add `TestEditionEligibility` to Go runner and reader tests and a matching route/monitor test. For a synthetic candidate, staging edition, live scores-only edition and published archive assert e.g. `expect(currentScopes(registry)).toEqual([{competition:'pilot',season:'live'}])`. A guessed hidden match UUID returns the normal unknown-match response for summary and box score. A hidden season is indistinguishable from an unknown one on public routes. A synthetic registry with 57 definitions and 12 monitored editions is accepted.
+- [ ] Add `TestEditionEligibility` to Go runner and reader tests and a matching route/monitor test. For a synthetic candidate, staging edition, live scores-only edition and published archive assert e.g. `expect(currentScopes(registry)).toEqual([{competition:'pilot',season:'live'}])`. A guessed hidden match UUID returns the normal unknown-match response for summary and box score. A hidden season is indistinguishable from an unknown one on public routes. A synthetic registry with 57 definitions and 15 monitored editions is accepted.
 - [ ] Run `(cd backend && go test ./ingester ./reader -run TestEditionEligibility)` and `npx vitest run scripts/match-freshness-watchdog.test.ts src/app/api/routes.test.ts`. Expect hidden calls or an invalid registry before the change.
 - [ ] Filter before seeding fetches, scheduling, retry/recovery scans, news proxying, resource reads, alert checks and public lookups. Match-ID-only handlers resolve stored competition and season before returning payloads. For a published unsupported resource, use the established unavailable metadata or omit the UI entry point. An upstream timeout changes observed availability only. Keep supported recovery on already-enrolled live finals.
 - [ ] Re-run the commands and the existing freshness-monitor tests. Expect zero hidden calls, zero archive live work, unchanged baseline scopes and working public archive reads. Commit `feat: enforce edition eligibility across ScoreArc services`.
 
-### 3. Curate identities before collecting new matches
+### Task 3. Curate identities before collecting new matches
 
 **Files / interface.** `backend/cmd/seed-teams/{main,main_test}.go`, `backend/config/teams.seed.json`, `backend/shared/store/{seed,identity}.go`, `scripts/export-team-crosswalk.mjs`, `src/server/data/{teamCrosswalk.json,teamIdentity.test.ts}`, `.github/workflows/seed-drift.yml`. Curated provider refs remain authoritative, team IDs remain durable slugs, player IDs remain UUIDs.
 
-- [ ] In `TestWomensTeamIdentity`, assert ESPN `227 → mex-america` and `22415 → mex-america-femenil`; assert two Manchester United teams and three Mexico sides (men, senior women, U17 women) keep distinct IDs. Gotham `15364` in the league and continental cup resolves to one club. In a store integration test write the same athlete ref for club and country and assert one player UUID. Verify unchanged stored follows still resolve.
+- [ ] In `TestWomensTeamIdentity`, assert ESPN `227 → mex-america` and `22415 → mex-w-america`; assert two Manchester United teams and three Mexico sides (men, senior women, U17 women) keep distinct IDs. Gotham `15364` in the league and continental cup resolves to one club. In a store integration test write the same athlete ref for club and country and assert one player UUID. Verify unchanged stored follows still resolve.
 - [ ] Run `(cd backend && go test ./cmd/seed-teams ./shared/store -run 'WomensTeamIdentity|Seed')` and `npx vitest run src/server/data/teamIdentity.test.ts src/lib/teamFollows.test.ts`. Expect the current proposed same-name slug to collide.
 - [ ] Pass category and level to proposal logic, prefer already-curated refs across cups, retain actual country, and use explicit staging scopes for newly reviewed seeds. Keep ambiguity provisional and unlinked. Review any already-provisional stored refs against the current seed writer before promotion. Generate into a temp file, review the diff, then install it and run `npm run export:teams`. The weekly drift job considers eligible scopes only.
 - [ ] Run both suites again and export a second time. Expect identical crosswalk, preserved prior refs and correct URLs for both América teams. Commit `feat: distinguish women’s club and national team identities`.
 
 ## Current matchday and teams
 
-### 4. Make upstream reads prove the edition and resource
+### Task 4. Make upstream reads prove the edition and resource
 
 **Files / interface.** `src/server/data/{endpoints,store,scoreboardWindow,dateRange}.ts`, `src/server/data/providers/{espn-standings,espn-stats,espn-team,espn-news}.ts`, `backend/shared/source/{espn,season_bounds,scoreboard_window}.go`, `backend/shared/espn/news.go`, `backend/reader/news.go` and `src/server/data/evaluation/evaluate.ts`. Extend the standings/statistics URL builders with the verified provider year. Carry explicit phase/bounds where a public season ID alone is insufficient.
 
@@ -83,7 +85,7 @@ Tasks run in order. An out-of-season tournament can be classified archive-only w
 - [ ] Honor the proven provider year and phase for standings, leaders, summaries, schedule, rolling window, stored reads and evaluation. Retain existing season conventions when no override is configured. Validate the news league **category ID** against the verified news/standings ID, including in the Go proxy, before caching. Keep existing competition behavior while adopting the stricter rule for new sources. Emit separate valid-empty, partial, stale and unavailable evidence.
 - [ ] Re-run both commands. Cache keys must distinguish editions, repeated wrong-year or unrelated data must stay unavailable. Commit `fix: scope women’s competition resources to verified editions`.
 
-### 5. Represent the NWSL playoffs and Femenil Liguilla correctly
+### Task 5. Represent the NWSL playoffs and Femenil Liguilla correctly
 
 **Files / interface.** `src/server/data/providers/espn-bracket.ts`, `backend/shared/espn/bracket.go`, `backend/ingester/{matches,schedule}.go`, `src/server/data/{competitions,liguillaProjection}.ts`, `src/components/{LeagueDial,RadialBracket}.tsx`. Add an edition-specific projection for the Femenil format alongside the existing men’s projection. Keep one Go match per leg.
 
@@ -92,7 +94,7 @@ Tasks run in order. An out-of-season tournament can be classified archive-only w
 - [ ] Normalize verified prefixed phase labels in the TS and Go bracket paths and in the ingester’s confirmation/finalization path. Encode the NWSL top eight and single elimination, Apertura 2026 Femenil’s cross-group pairings, two legs and certified tiebreak rules. Use a verified WSL edition format. Give Clausura its own evidence before enabling its projection.
 - [ ] Rerun, include the existing men’s Liguilla and World Cup regressions, and regenerate competition JSON when the registry changes. Expect correct rings and champion. Commit `feat: support women’s playoff formats by edition`.
 
-### 6. Give standings-free cups a team and player directory
+### Task 6. Give standings-free cups a team and player directory
 
 **Files / interface.** `src/server/data/{teamIndex,playerIndex,store,apiStore,readerDecode,sourceSelection}.ts`, `backend/ingester/{runner,squad}.go`, `backend/reader/{server,store,resources}.go` and `backend/reader/openapi.yaml`. Add `DataStore.getEditionTeams(rc: CompetitionSeason): Promise<Team[]>` and the scoped reader collection `GET /v1/competitions/{comp}/{season}/teams`; extend both store facades and mocks. Use the existing match or standings evidence for the membership derivation; declare it in the reader contract, decoder and evaluation harness. A failed source read cannot certify a complete entrant list.
 
@@ -101,7 +103,7 @@ Tasks run in order. An out-of-season tournament can be classified archive-only w
 - [ ] Prefer validated edition standings where supported. Otherwise take distinct, identified participants from verified season matches or a certified edition entrant list. A provider’s all-time team directory is insufficient. Scope queries to competition and season. Feed the same membership to team discovery, roster refresh and player indexing. Use bounded reads, canonical club IDs and existing player slug collision rules. Apply task 12’s paging before enabling NCAA.
 - [ ] Verify both source paths and the reader OpenAPI tests. A match → team → player journey resolves and standings-free membership triggers no synthetic standings or global roster scan. Commit `feat: resolve edition teams and players in knockout competitions`.
 
-### 7. Scope the matchday before ranking matches
+### Task 7. Scope the matchday before ranking matches
 
 **Files / interface.** `src/lib/searchParams.ts`, `src/server/data/{homeDigest,newsFeed,competitions}.ts`, `src/app/[locale]/page.tsx`, `src/components/{DigestMatches,YourTeams}.tsx` and both `src/i18n/messages/{en,es}.ts`. Add `type CompetitionView = 'all' | 'women' | 'men'` and `parseCompetitionView(value: string | string[] | undefined): CompetitionView`. An absent, invalid or repeated value resolves to All. Pass eligible competitions to the existing digest loader.
 
@@ -111,7 +113,7 @@ Tasks run in order. An out-of-season tournament can be classified archive-only w
 - [ ] Match the approved previews: the competition name sits directly above each pair of teams. Verify the two América matches in All become one in Women. Use real dates, local kickoffs and existing loading states in the app. Once H1 is published, show “From the archive” in All and Women beside the matches on desktop and below them on phone. Link to the internal 2023 edition, use a cleared image or the existing emblem fallback, and build the card from published metadata with zero live requests. Hide that card until its edition is published.
 - [ ] Re-run the suite. Confirm clearing the filter restores both sets of follows without writing local storage. Commit `feat: add shareable women’s and men’s matchdays`.
 
-### 8. Carry the selection through navigation and discovery
+### Task 8. Carry the selection through navigation and discovery
 
 **Files / interface.** Create `src/components/CompetitionViewLinks.tsx` and `src/app/[locale]/competitions/page.tsx`. Update `src/components/{SiteNav,NavDial,TeamSearch,YourTeams}.tsx`, `src/app/[locale]/{teams,news}/page.tsx`, `src/server/data/{teamIndex,newsFeed}.ts`, `src/i18n/pathnames.ts` and `src/app/globals.css`. Use `allTeams(view: CompetitionView = 'all')` and `collectionHref(path: string, params: URLSearchParams, view: CompetitionView): string`; the latter removes all old view values and omits All.
 
@@ -120,7 +122,7 @@ Tasks run in order. An out-of-season tournament can be classified archive-only w
 - [ ] Make server-rendered collection links for Home, Teams, News and the grouped competition directory. Group by domestic leagues, club cups, national teams and youth/college. List each published competition once, including an archive-only competition. On detail routes derive category from the published competition; keep detail links canonical and Back native. Filter before calculating rail/wheel rest, focus, keyboard targets and the Teams letter dial. Preserve the active view in language alternates, canonical metadata and locale links. Keep both sets of follows stored and give same-name team links/follow controls distinct accessible names and destinations.
 - [ ] Verify the tests and browser at 320, 390, 560 and 1280 px, in EN and ES. Open `/en?view=women` cold, browse competitions, switch locale, use Back/Forward, scroll and operate the phone wheel and desktop rail by keyboard. Expect no horizontal overflow and a visible active link and focus indicator. Commit `feat: scope the dial and directories to the selected matchday`.
 
-### 9. Finish edition-aware detail, copy and shares
+### Task 9. Finish edition-aware detail, copy and shares
 
 **Files / interface.** `src/app/[locale]/c/[comp]/[season]/` (layout, team, player, players, matches, standings and landing pages), `src/components/{SeasonSwitcher,CompetitionMark,ChampionCelebration}.tsx`, `src/i18n/messages/{en,es}.ts`, `src/lib/ogUrl.ts`, `src/app/api/og/route.tsx`. Read the resolved edition and entity IDs from tasks 1 and 3.
 
@@ -131,7 +133,7 @@ Tasks run in order. An out-of-season tournament can be classified archive-only w
 
 ## Current coverage rollout
 
-### 10. Certify and promote the three current pilot leagues
+### Task 10. Certify and promote the three current pilot leagues
 
 **Files / interface.** `src/server/data/competitions.ts`, generated Go registry, curated team seed/crosswalk, `scripts/reader-evaluate.ts`, `docs/backend/READER_EVALUATION.md` and the evidence records described below. Release order is **NWSL → Liga MX Femenil → English WSL**. Proposed public IDs are `nwsl/2026`, `liga-mx-femenil/2026-apertura` and `wsl/2026-27`. If the active edition has rolled over, record and certify the new edition; keep the audited one as historical evidence.
 
@@ -140,7 +142,7 @@ Tasks run in order. An out-of-season tournament can be classified archive-only w
 - [ ] For each edition run `npx tsx scripts/reader-evaluate.ts --offline` first, then `npx tsx scripts/reader-evaluate.ts --live --manifest="$PILOT_MANIFEST" --reader-origin="$STAGING_READER_ORIGIN"` with the edition’s bounded scenario manifest. Inspect the report contents: every required sample comparable and matched, no unexplained mismatches/errors; document omitted capabilities. Live reports use at most four scopes per manifest. Record one live → finished transition and one existing healthy competition through the same window.
 - [ ] Compare cold Home/Teams/News calls, reader 429s, ingester cycles/final backlog, Neon pool/writes and R2 public crest vs private play bytes against the pre-pilot baseline. Preserve the 18-second fast and 4m30s slow-cycle budgets and existing freshness objectives. Rehearse withdrawing this promotion in staging, including alert-state reconciliation and retained IDs. On rollout, arm the new monitoring scope only after the deployed reader recognizes it and serves the expected data; preserve existing monitors throughout. Compare release revisions across Fly, Vercel and the watchdog, because their deployments run independently. Promote one edition per change, export both registries as applicable and rerun the checks. Commit `feat: publish <competition> current coverage` with that edition’s evidence.
 
-### 11. Expand monitoring without losing pending alerts
+### Task 11. Expand monitoring without losing pending alerts
 
 **Files / interface.** `scripts/match-freshness-{watchdog,monitor,state}.mjs`, their tests, `.github/workflows/match-freshness.yml`, `docs/backend/MATCH_FRESHNESS.md`. Preserve the per-competition OK/UNHEALTHY report from main. The existing sender admits 16 sends per run; the watchdog and monitor admit 32 scopes. Count monitored live editions, independently of the 57 catalog entries.
 
@@ -149,7 +151,7 @@ Tasks run in order. An out-of-season tournament can be classified archive-only w
 - [ ] Keep bounded delivery and its checkpoint/ack protocol. Before a 17+ cohort, verify worst-case time to drain within the alert cadence. For 33+ scopes, admit a larger **measured, bounded** scope set consistently in validation, serialized-state size, queue capacity, workflow deadline and the read budget. Page the checks or split independently checkpointed runs only if the single run misses those budgets. Reconcile removal explicitly, drain or account for queued events and rehearse restoring a withdrawn scope. Never reset the whole checkpoint to onboard a league.
 - [ ] Simulate in a temp directory with a fake receiver and no production sends. Expect 33 live scopes checked within the configured deadline, no archived scopes checked and every test incident eventually acknowledged. An installation below either threshold only needs its applicable checks before its next promotion. Commit `feat: preserve alert delivery as live coverage expands`.
 
-### 12. Support dense scoreboards and paged season reads
+### Task 12. Support dense scoreboards and paged season reads
 
 **Files / interface.** `src/server/data/{scoreboardWindow,apiStore,readerTransport}.ts`, `backend/shared/source/scoreboard_window.go`, `backend/reader/{params,handlers,store}.go`, `backend/reader/openapi.yaml`, freshness watchdog and reader contract tests. Add opt-in pagination on the existing season matches route while preserving the existing response for legacy callers.
 
@@ -158,7 +160,7 @@ Tasks run in order. An out-of-season tournament can be classified archive-only w
 - [ ] Subdivide only capped partitions, preserving UTC/local guard days, request/byte limits, cancellation, deduplication and edition checks. For the reader allow `scope=season&pageSize=100[&cursor=…]`, keep the JSON array and return the next opaque cursor in an exposed `X-ScoreArc-Next-Cursor` header. Bind it to scope/detail and stable order; use keyset paging by immutable match UUID for whole-season traversal so a changed kickoff cannot move a row between pages. Keep the existing unpaged ordering and bounds. Update OpenAPI and clients that need the full season, including the monitor. Guard repeated cursors, total bytes and pages; partial traversal cannot establish healthy coverage. Reconcile against a stable edition/window or retry when the source changes during traversal.
 - [ ] Re-run both suites and the reader OpenAPI tests. Against an approved sample recheck September’s 1,009 and the August–December 3,390 audit counts with their observation date; record any provider revisions by ID. Commit `feat: page dense competition seasons without dropping matches`.
 
-### 13. Roll out the rest of the current inventory by format
+### Task 13. Roll out the rest of the current inventory by format
 
 **Files / interface.** Same registry, identity exports and per-edition evidence record as task 10. The audit’s four inventory tables are the worklist. The numbers below count distinct feeds, regardless of how many have a current edition.
 
@@ -175,7 +177,7 @@ Tasks run in order. An out-of-season tournament can be classified archive-only w
 
 ## Historical editions
 
-### 14. Import a bounded historical window and resume it safely
+### Task 14. Import a bounded historical window and resume it safely
 
 **Files / interface.** Create `backend/ingester/archive.go`, `backend/shared/store/archive_progress.go` and `backend/migrations/0029_archive_progress.{up,down}.sql` (use the next free migration number at execution). Extend `backend/ingester/{main,contracts,matches}.go` and the bounded ESPN source. Leave `backend/cmd/play-backfill` as the tool for plays on already-stored matches. The archive work item has a source, competition ID, edition ID and approved inclusive UTC date bounds.
 
@@ -185,7 +187,7 @@ Tasks run in order. An out-of-season tournament can be classified archive-only w
 - [ ] Run one explicitly queued archive slice at a time in the existing lease holder, within unused time before the next live cycle. Bound each unit by events and deadline; yield or cancel on a due live cycle, lost lease or shutdown. Reuse completed work on resume. Staging and production queues are separate; a published archive alone cannot enqueue itself. Reconcile the staged source manifest against Neon by provider event IDs and statuses after ingestion. Follow the repo’s migration/readiness release order and rehearse pausing just the archive queue.
 - [ ] Re-run the tests with Docker and `go test -race ./ingester ./shared/store` from `backend`. Expect one copy of each match/appearance and uninterrupted existing-scope freshness under synthetic competing load. Commit `feat: resume bounded edition imports in the leased ingester`.
 
-### 15. Serve historical teams and players from matchday evidence
+### Task 15. Serve historical teams and players from matchday evidence
 
 **Files / interface.** `backend/reader/{players,player_game_log,store,resources,freshness}.go`, `src/server/data/readerPolicy.ts`, `src/server/data/{store,apiStore,playerIndex,playerIdentity}.ts` and competition-scoped `players`, `player/[playerSlug]`, `team/[teamId]` and match-detail surfaces. Extend the edition team/player index to take observed historical participants. Reuse `appearance`, `match`, existing player refs and validated lineup evidence. Show a named bench player as a squad member unless a recorded appearance establishes that they played.
 
@@ -194,7 +196,7 @@ Tasks run in order. An out-of-season tournament can be classified archive-only w
 - [ ] On the reader, query by stored competition/season and matchday team. On ESPN, use only dated, validated summaries for that edition, with edition-scoped cached indexes; page the work by team/match window when needed and mark partial when the source or budget prevents full coverage. Keep aggregate pages free of archive fan-out. Make historical pages accept a verified matchday player slug or give an honest partial/unavailable state. Keep known names visible when identity is unresolved; link only a positively resolved player. Keep source operations, cache keys and coverage counts specific to the edition. Where the archive directory is partial, link a player from a validated matchday entry without requiring membership on a modern team. Separate historical appearance evidence from current-roster derivation in resource metadata. In a certified archive, final or explicitly accounted-for postponed rows must not require a recent live heartbeat. Exercise both complete dormant reads and an unresolved result that stays partial. Exclude current roster stats and present-day bios from historical match facts.
 - [ ] Exercise match → team → player and back under reader and ESPN, including a missing historical lineup. Expect recorded participation, real coverage counts and zero unscoped roster lookups. Commit `feat: serve archived participants from edition match evidence`.
 
-### 16. Reconcile the historical inventory before importing a wave
+### Task 16. Reconcile the historical inventory before importing a wave
 
 **Files / interface.** Create `scripts/reconcile-edition-inventory.mjs` and its Vitest test alongside the existing evaluation scripts. Keep the queue in `docs/backend/coverage/editions.json`, with one entry per ESPN slug, provider edition and ScoreArc phase. Keep substantive evidence in the per-edition records from task 10. The checker compares a supplied, dated source inventory and a per-edition source/stored event manifest offline; it makes no implicit network calls. Use edition keys (ESPN slug, provider year, phase, ScoreArc season ID) and normalized event records containing provider event ID, UTC kickoff, provider team refs, provider status/completed flag and nullable home/away score. Keep the edition’s identified teams and dated player/match evidence in separate sets so one club/athlete can legitimately recur. Export the stored set using the existing external-ref tables; compare the same ID namespace on both sides.
 
@@ -202,7 +204,7 @@ Tasks run in order. An out-of-season tournament can be classified archive-only w
 - [ ] Run `npx vitest run scripts/reconcile-edition-inventory.test.ts`. Implement the checker and use the invocation `node scripts/reconcile-edition-inventory.mjs --inventory "$EDITION_INVENTORY" --source "$SOURCE_MANIFEST" --stored "$STORED_MANIFEST"`. Expect nonzero on unexplained ID, score, status, membership or scope drift; zero only for a fully accounted comparison. Optional missing fields remain explicit in its report. Record each conflicting ID with both observations. Commit `feat: reconcile edition manifests and track historical coverage`.
 - [ ] Enumerate paginated provider season indexes for **all 45 slugs** and cross-check dated scoreboard/core events and known finals, including editions absent from an index. Preserve source URLs, as-of date, bounds, distinct events/statuses, entrants, identified players, feature gaps and outcome per edition. Keep catalog-only, rights-blocked, unverified/partial and published outcomes distinguishable. An empty index is never evidence of historical completion by itself.
 
-### 17. Publish the World Cup archive in two waves
+### Task 17. Publish the World Cup archive in two waves
 
 **Files / interface.** `src/server/data/competitions.ts`, both bracket mappers from task 5, archive progress from task 14, the edition pages and per-edition evidence records. Use one competition ID, `womens-world-cup`, with six separate edition URLs.
 
@@ -211,7 +213,7 @@ Tasks run in order. An out-of-season tournament can be classified archive-only w
 - [ ] **H1 — 2023.** Stage, import, rerun and reconcile all 64 completed event IDs, 32 participating teams, 48 group matches and 16 knockout/placement matches. Check the final `622586`, Spain 1–0 England, the two 23-member named squads, winner path, local kickoff and EN/ES share. Publish its archive URL and directory entry only after evidence matches. Verify no live polls or alerts are added. Commit `feat: publish the 2023 Women’s World Cup archive`.
 - [ ] **H2 — older World Cups.** Repeat for 2019 (24 teams/52 completed), 2015 (24/52), 2011 (16/32), 2007 (16/32 plus two postponed source records) and 2003 (16/32). Validate edition-specific groups, opening knockout round, champion, third-place result, observed player depth and available standings/leaders. Reconcile **264 distinct completed matches across the six editions** against their source ID sets. Publish and commit each passing edition independently. Record 1991/1995/1999 as lacking verified ESPN events on the audit date; new dated evidence can reopen them.
 
-### 18. Work through every verifiable edition of the other 44 feeds
+### Task 18. Work through every verifiable edition of the other 44 feeds
 
 **Files / interface.** Use the edition ledger, manifests and checker from task 16, the worker from task 14 and the scoped directories from task 15. Repeat the same comparison and publication steps used for the senior World Cup.
 
