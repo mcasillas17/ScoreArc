@@ -162,7 +162,7 @@ func (e *ESPN) Scoreboard(
 		if err != nil {
 			return nil, errors.Join(partial.Err, fmt.Errorf("current-date scoreboard fallback: %w", err))
 		}
-		fallback, err = validateScoreboardEnvelope(raw, comp.ESPNSlug)
+		fallback, err = validateScoreboardEnvelope(raw, comp.ESPNSlug, RequiresEditionEvidence(comp, season))
 		if err != nil {
 			return nil, errors.Join(partial.Err, fmt.Errorf("current-date scoreboard fallback: %w", err))
 		}
@@ -175,7 +175,7 @@ func (e *ESPN) Scoreboard(
 		return nil, err
 	}
 	if partial != nil {
-		year, err := seasonStartYear(season.ID)
+		year, err := providerYear(season)
 		if err != nil {
 			return nil, errors.Join(partial.Err, err)
 		}
@@ -185,7 +185,7 @@ func (e *ESPN) Scoreboard(
 		for i, match := range matches {
 			added, err := mergeScoreboardEvent(seen, match.ID, fallback.Events[i])
 			if err == nil {
-				err = validateScoreboardEventYear(fallback.Events[i], match.ID, year)
+				err = validateScoreboardEventEdition(fallback.Events[i], match.ID, year, phaseOf(comp, season), season.ID)
 			}
 			if err != nil {
 				return nil, errors.Join(partial.Err, fmt.Errorf("current-date scoreboard fallback: %w", err))
@@ -220,10 +220,19 @@ func mapScoreboard(raw []byte, season config.Season) ([]model.Match, error) {
 	return matches, nil
 }
 
-func (e *ESPN) Summary(ctx context.Context, comp config.Competition, match model.Match) (SummaryResult, error) {
+func (e *ESPN) Summary(ctx context.Context, comp config.Competition, season config.Season, match model.Match) (SummaryResult, error) {
 	raw, err := e.get(ctx, espn.SummaryURL(comp.ESPNSlug, match.ID))
 	if err != nil {
 		return SummaryResult{}, err
+	}
+	if RequiresEditionEvidence(comp, season) {
+		year, err := providerYear(season)
+		if err != nil {
+			return SummaryResult{}, err
+		}
+		if err := validateSummaryEdition(raw, comp, season, year); err != nil {
+			return SummaryResult{}, err
+		}
 	}
 	return mapSummary(raw, match)
 }
@@ -235,17 +244,22 @@ func (e *ESPN) RecoverMatch(
 		match.Away.ID == "" || match.Home.ID == match.Away.ID {
 		return model.Match{}, SummaryResult{}, fmt.Errorf("summary recovery requires league, event and distinct team identities")
 	}
-	expectedYear, err := seasonStartYear(season.ID)
+	expectedYear, err := providerYear(season)
 	if err != nil {
 		return model.Match{}, SummaryResult{}, err
 	}
-	seasonRange, err := fullSeasonRange(season.ID)
+	start, end, err := SeasonBounds(season)
 	if err != nil {
 		return model.Match{}, SummaryResult{}, err
 	}
 	raw, err := e.get(ctx, espn.SummaryURL(comp.ESPNSlug, match.ID))
 	if err != nil {
 		return model.Match{}, SummaryResult{}, fmt.Errorf("recover match %s: %w", match.ID, err)
+	}
+	if RequiresEditionEvidence(comp, season) {
+		if err := validateSummaryEdition(raw, comp, season, expectedYear); err != nil {
+			return model.Match{}, SummaryResult{}, err
+		}
 	}
 	observed, err := espn.MapSummaryObservation(raw, match, comp.ESPNSlug, expectedYear)
 	if err != nil {
@@ -255,8 +269,7 @@ func (e *ESPN) RecoverMatch(
 	if err != nil {
 		return model.Match{}, SummaryResult{}, err
 	}
-	day := kickoff.UTC().Format("20060102")
-	if day < seasonRange[:8] || day > seasonRange[9:] {
+	if kickoff.Before(start) || !kickoff.Before(end) {
 		return model.Match{}, SummaryResult{}, fmt.Errorf("summary event %q kickoff outside season %q", match.ID, season.ID)
 	}
 	result, err := mapSummary(raw, observed)
@@ -314,13 +327,18 @@ func mapSummary(raw []byte, match model.Match) (SummaryResult, error) {
 }
 
 func (e *ESPN) Standings(ctx context.Context, comp config.Competition, season config.Season) ([]model.Standing, error) {
-	expectedYear, err := seasonStartYear(season.ID)
+	expectedYear, err := providerYear(season)
 	if err != nil {
 		return nil, err
 	}
 	raw, err := e.get(ctx, espn.StandingsURL(comp.ESPNSlug, expectedYear))
 	if err != nil {
 		return nil, err
+	}
+	if RequiresEditionEvidence(comp, season) {
+		if err := validateEditionResource(raw, comp, season, expectedYear, "standings"); err != nil {
+			return nil, err
+		}
 	}
 	if err := espn.ValidateStandingsSeason(raw, expectedYear); err != nil {
 		return nil, err
@@ -335,7 +353,7 @@ func (e *ESPN) Statistics(
 	comp config.Competition,
 	season config.Season,
 ) ([]byte, error) {
-	expectedYear, err := seasonStartYear(season.ID)
+	expectedYear, err := providerYear(season)
 	if err != nil {
 		return nil, err
 	}
@@ -343,7 +361,12 @@ func (e *ESPN) Statistics(
 	if err != nil {
 		return nil, err
 	}
-	// ESPN's statistics season metadata is not reliably tied to the requested
+	if RequiresEditionEvidence(comp, season) {
+		if err := validateEditionResource(raw, comp, season, expectedYear, "statistics"); err != nil {
+			return nil, err
+		}
+	}
+	// For legacy scopes, ESPN's statistics season metadata is not reliably tied to the requested
 	// league year; the season-scoped URL is the only stable provider contract.
 	return raw, nil
 }
@@ -555,6 +578,18 @@ func (e *ESPN) Bracket(
 			return nil, fmt.Errorf("invalid bracket date range")
 		}
 		end = end.AddDate(0, 0, 1)
+	}
+	if season.StartsAt != "" || season.EndsAt != "" {
+		first, last, err := SeasonBounds(season)
+		if err != nil {
+			return nil, err
+		}
+		if start.Before(first) {
+			start = first
+		}
+		if end.After(last) {
+			end = last
+		}
 	}
 	raw, err := e.scoreboardWindow(ctx, comp, season, start, end)
 	if err != nil {

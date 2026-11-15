@@ -53,7 +53,7 @@ type SummaryResult struct {
 type Source interface {
 	Name() string
 	Scoreboard(context.Context, config.Competition, config.Season, bool) ([]model.Match, error)
-	Summary(context.Context, config.Competition, model.Match) (SummaryResult, error)
+	Summary(context.Context, config.Competition, config.Season, model.Match) (SummaryResult, error)
 	// RecoverMatch observes fresh provider match fields and detail in one
 	// lookup. Input identities are provider-shaped, not canonical IDs.
 	RecoverMatch(context.Context, config.Competition, config.Season, model.Match) (model.Match, SummaryResult, error)

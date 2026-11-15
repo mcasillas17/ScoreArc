@@ -30,16 +30,18 @@ type Season struct {
 }
 
 type Competition struct {
-	ID              string            `json:"id"`
-	Name            string            `json:"name"`
-	ShortName       string            `json:"shortName"`
-	ESPNSlug        string            `json:"espnSlug"`
-	Kind            string            `json:"kind"`
-	DirectoryGroup  string            `json:"directoryGroup"`
-	Level           string            `json:"level"`
-	Category        string            `json:"category"` // "women" | "men"
-	CurrentSeasonId string            `json:"currentSeasonId"`
-	Seasons         map[string]Season `json:"seasons"`
+	ID               string            `json:"id"`
+	Name             string            `json:"name"`
+	ShortName        string            `json:"shortName"`
+	ESPNSlug         string            `json:"espnSlug"`
+	ESPNLeagueID     string            `json:"espnLeagueId,omitempty"`
+	ESPNScoreboardID string            `json:"espnScoreboardId,omitempty"`
+	Kind             string            `json:"kind"`
+	DirectoryGroup   string            `json:"directoryGroup"`
+	Level            string            `json:"level"`
+	Category         string            `json:"category"` // "women" | "men"
+	CurrentSeasonId  string            `json:"currentSeasonId"`
+	Seasons          map[string]Season `json:"seasons"`
 }
 
 type Registry struct {

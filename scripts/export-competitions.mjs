@@ -8,6 +8,8 @@ const out = listCompetitionDefinitions().map((c) => ({
   name: c.name,
   shortName: c.shortName,
   espnSlug: c.espnSlug,
+  espnLeagueId: c.espnLeagueId,
+  espnScoreboardId: c.espnScoreboardId,
   kind: c.kind,
   category: c.category,
   directoryGroup: c.directoryGroup,

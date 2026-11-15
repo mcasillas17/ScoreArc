@@ -27,8 +27,8 @@ func (s windowPipelineSource) Name() string { return "espn" }
 func (s windowPipelineSource) Scoreboard(ctx context.Context, c config.Competition, season config.Season, backfill bool) ([]model.Match, error) {
 	return s.provider.Scoreboard(ctx, c, season, backfill)
 }
-func (s windowPipelineSource) Summary(ctx context.Context, c config.Competition, match model.Match) (source.SummaryResult, error) {
-	return s.provider.Summary(ctx, c, match)
+func (s windowPipelineSource) Summary(ctx context.Context, c config.Competition, season config.Season, match model.Match) (source.SummaryResult, error) {
+	return s.provider.Summary(ctx, c, season, match)
 }
 func (s windowPipelineSource) RecoverMatch(ctx context.Context, c config.Competition, season config.Season, match model.Match) (model.Match, source.SummaryResult, error) {
 	return s.provider.RecoverMatch(ctx, c, season, match)

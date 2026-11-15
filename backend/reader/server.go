@@ -70,7 +70,7 @@ type readerStore interface {
 
 type newsReader interface {
 	Get(context.Context, string) ([]espn.NewsArticle, error)
-	GetWithObservation(context.Context, string) ([]espn.NewsArticle, time.Time, error)
+	GetWithObservation(context.Context, string, string) ([]espn.NewsArticle, time.Time, error)
 }
 
 type App struct {

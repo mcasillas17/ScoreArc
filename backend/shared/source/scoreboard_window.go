@@ -37,8 +37,14 @@ func scoreboardBounds(now time.Time, season config.Season, backfill bool) (time.
 		seasonStart, seasonEnd, _ := SeasonBounds(season)
 		if day.Before(seasonStart) {
 			start, end = seasonStart, seasonStart.AddDate(0, 0, 1)
+			if end.After(seasonEnd) {
+				end = seasonEnd
+			}
 		} else {
 			start, end = seasonEnd.AddDate(0, 0, -1), seasonEnd
+			if start.Before(seasonStart) {
+				start = seasonStart
+			}
 		}
 	}
 	return start, end, nil
@@ -67,7 +73,8 @@ func scoreboardMonths(start, end time.Time) ([]time.Time, error) {
 
 type scoreboardEnvelope struct {
 	Leagues []struct {
-		Slug string `json:"slug"`
+		Slug   string        `json:"slug"`
+		Season editionSeason `json:"season"`
 	} `json:"leagues"`
 	Events    []json.RawMessage `json:"events"`
 	Count     *int              `json:"count"`
@@ -75,7 +82,7 @@ type scoreboardEnvelope struct {
 	PageCount *int              `json:"pageCount"`
 }
 
-func validateScoreboardEnvelope(raw []byte, slug string) (scoreboardEnvelope, error) {
+func validateScoreboardEnvelope(raw []byte, slug string, strict bool) (scoreboardEnvelope, error) {
 	var envelope scoreboardEnvelope
 	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return envelope, err
@@ -86,6 +93,9 @@ func validateScoreboardEnvelope(raw []byte, slug string) (scoreboardEnvelope, er
 	n := len(envelope.Events)
 	if envelope.Events == nil || n >= scoreboardEventLimit {
 		return envelope, fmt.Errorf("scoreboard events missing or reached limit %d", scoreboardEventLimit)
+	}
+	if strict {
+		return envelope, espn.ValidateCollectionCompleteness(raw, n)
 	}
 	if (envelope.Count != nil && *envelope.Count != n) ||
 		(envelope.Total != nil && *envelope.Total != n) ||
@@ -100,7 +110,7 @@ func (e *ESPN) scoreboardWindow(ctx context.Context, comp config.Competition, se
 	if err != nil {
 		return nil, err
 	}
-	year, err := seasonStartYear(season.ID)
+	year, err := providerYear(season)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +131,7 @@ func (e *ESPN) scoreboardWindow(ctx context.Context, comp config.Competition, se
 		if totalBytes > maxScoreboardBytes {
 			return nil, fmt.Errorf("scoreboard window exceeds %d bytes", maxScoreboardBytes)
 		}
-		envelope, err := validateScoreboardEnvelope(raw, comp.ESPNSlug)
+		envelope, err := validateScoreboardEnvelope(raw, comp.ESPNSlug, RequiresEditionEvidence(comp, season))
 		if err != nil {
 			return nil, err
 		}
@@ -129,6 +139,7 @@ func (e *ESPN) scoreboardWindow(ctx context.Context, comp config.Competition, se
 		if err != nil {
 			return nil, err
 		}
+		retained := false
 		for i, match := range matches {
 			at, err := time.Parse(time.RFC3339, match.Kickoff)
 			if err != nil {
@@ -143,10 +154,14 @@ func (e *ESPN) scoreboardWindow(ctx context.Context, comp config.Competition, se
 			if at.Before(start) || !at.Before(end) {
 				continue
 			}
-			if err := validateScoreboardEventYear(envelope.Events[i], match.ID, year); err != nil {
+			if err := validateScoreboardEventEdition(envelope.Events[i], match.ID, year, phaseOf(comp, season), season.ID); err != nil {
 				return nil, err
 			}
+			retained = true
 			events[match.ID] = envelope.Events[i]
+		}
+		if !retained && RequiresEditionEvidence(comp, season) && month.Before(end) && month.AddDate(0, 1, 0).After(start) && !envelope.Leagues[0].Season.matches(year, phaseOf(comp, season), season.ID) {
+			return nil, fmt.Errorf("empty scoreboard partition for %s/%s lacks edition evidence", comp.ID, season.ID)
 		}
 	}
 	ids := make([]string, 0, len(events))
@@ -166,16 +181,14 @@ func (e *ESPN) scoreboardWindow(ctx context.Context, comp config.Competition, se
 	return out.Bytes(), nil
 }
 
-func validateScoreboardEventYear(raw json.RawMessage, id string, year int) error {
+func validateScoreboardEventEdition(raw json.RawMessage, id string, year int, phase, publicID string) error {
 	var event struct {
-		Season struct {
-			Year int `json:"year"`
-		} `json:"season"`
+		Season editionSeason `json:"season"`
 	}
 	if err := json.Unmarshal(raw, &event); err != nil {
 		return err
 	}
-	if event.Season.Year != year {
+	if !event.Season.matches(year, phase, publicID) {
 		return fmt.Errorf("scoreboard event %q season %d does not match %d", id, event.Season.Year, year)
 	}
 	return nil

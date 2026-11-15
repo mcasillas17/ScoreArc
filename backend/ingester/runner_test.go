@@ -109,6 +109,7 @@ func (f *fakeSource) Scoreboard(ctx context.Context, _ config.Competition, _ con
 func (f *fakeSource) Summary(
 	_ context.Context,
 	_ config.Competition,
+	_ config.Season,
 	match model.Match,
 ) (source.SummaryResult, error) {
 	f.mu.Lock()

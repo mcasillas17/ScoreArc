@@ -222,3 +222,17 @@ it('keeps malformed dated scoreboard events as dependency errors through the exi
   expect(result.counts).toMatchObject({ attempted: 1, matched: 0, error: 1 });
   expect(result.samples[0].categories).toContain('dependency');
 });
+
+it('distinguishes a verified empty pilot table from foreign standings', async () => {
+  const resources: ReaderResources = { version: 1, resources: {
+    standings: { ...evidence().resources.matches!, scope: 'competition-season' }, identity: evidence().resources.identity!,
+  } };
+  for (const year of [2026, 2025]) {
+    const result = await evaluate({ ...options, manifest: { version: 1, samples: [{ competition: 'nwsl', season: '2026', kind: 'getStandings' }] },
+      fetch: async url => String(url).startsWith(origin)
+        ? Response.json([], { headers: { 'X-ScoreArc-Resources': JSON.stringify(resources) } })
+        : Response.json({ id: '2323', uid: 's:600~l:8301', season: { year }, children: [] }) });
+    expect(result.samples[0].outcome).toBe(year === 2026 ? 'matched' : 'unavailable');
+    expect(result.samples[0].categories).toContain(year === 2026 ? 'valid_empty' : 'scope_mismatch');
+  }
+});

@@ -430,8 +430,8 @@ type validatedMatchSource struct {
 	provider *source.ESPN
 }
 
-func (s validatedMatchSource) Summary(ctx context.Context, comp config.Competition, match model.Match) (source.SummaryResult, error) {
-	return s.provider.Summary(ctx, comp, match)
+func (s validatedMatchSource) Summary(ctx context.Context, comp config.Competition, season config.Season, match model.Match) (source.SummaryResult, error) {
+	return s.provider.Summary(ctx, comp, season, match)
 }
 
 func (s validatedMatchSource) Bracket(ctx context.Context, comp config.Competition, season config.Season, backfill bool) ([]model.BracketMatch, error) {

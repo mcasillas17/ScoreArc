@@ -104,7 +104,7 @@ export default async function MatchesPage({
     ? 'calendar'
     : (requested ?? (nowHasContent ? 'now' : 'calendar'));
 
-  const initialDate = seasonInitialMonth(new Date(), rc.season.id, rc.season.bracketDatesRange);
+  const initialDate = seasonInitialMonth(new Date(), rc.season, rc.season.bracketDatesRange);
   const range = monthRange(initialDate);
   const initialMonth = `${range.slice(0, 4)}-${range.slice(4, 6)}-01`;
   let initialMatches: Match[] = [];
@@ -117,7 +117,7 @@ export default async function MatchesPage({
       initialError = t('matches.unavailableCalendar');
     }
   }
-  const { minMonth, maxMonth } = seasonMonthBounds(rc.season.id);
+  const { minMonth, maxMonth } = seasonMonthBounds(rc.season);
 
   // The mode lives in the URL so a link to either is shareable and the back
   // button behaves. Rendered only for the current edition, where both modes

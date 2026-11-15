@@ -265,6 +265,7 @@ func TestESPNSummaryRejectsPayloadWithoutTeams(t *testing.T) {
 	_, err := NewESPN(client).Summary(
 		context.Background(),
 		config.Competition{ESPNSlug: "eng.1"},
+		config.Season{},
 		model.Match{
 			ID: "match-1", State: model.MatchStateFinished,
 			Home: model.Team{ID: "home"}, Away: model.Team{ID: "away"},
@@ -294,6 +295,7 @@ func TestESPNSummaryReturnsStructuredCommentary(t *testing.T) {
 	result, err := NewESPN(client).Summary(
 		context.Background(),
 		config.Competition{ESPNSlug: "fifa.world"},
+		config.Season{},
 		model.Match{
 			ID: "760490", State: model.MatchStateFinished,
 			Home: model.Team{ID: "4789"}, Away: model.Team{ID: "464"},
@@ -337,6 +339,7 @@ func TestESPNSummaryKeepsCoreDataWhenCommentaryMetadataIsMalformed(t *testing.T)
 	result, err := NewESPN(client).Summary(
 		context.Background(),
 		config.Competition{ESPNSlug: "fifa.world"},
+		config.Season{},
 		model.Match{
 			ID: "760490", State: model.MatchStateFinished,
 			Home: model.Team{ID: "4789"}, Away: model.Team{ID: "464"},
@@ -413,6 +416,7 @@ func TestESPNSummaryKeepsCoreDataWhenCommentaryMetadataHasWrongTypes(t *testing.
 	result, err := NewESPN(client).Summary(
 		context.Background(),
 		config.Competition{ESPNSlug: "fifa.world"},
+		config.Season{},
 		model.Match{
 			ID: "760490", State: model.MatchStateFinished,
 			Home: model.Team{ID: "4789"}, Away: model.Team{ID: "464"},
@@ -466,6 +470,7 @@ func TestESPNSummaryKeepsCoreDataWhenCommentarySequenceIsFractional(t *testing.T
 	result, err := NewESPN(client).Summary(
 		context.Background(),
 		config.Competition{ESPNSlug: "fifa.world"},
+		config.Season{},
 		model.Match{
 			ID: "760490", State: model.MatchStateFinished,
 			Home: model.Team{ID: "4789"}, Away: model.Team{ID: "464"},

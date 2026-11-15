@@ -2,7 +2,7 @@ import type { CompetitionSeason } from './competitions';
 import type { DataStore } from './store';
 import { runDataOperation } from './sourceSelection';
 import type { Group, Match } from './types';
-import { seasonMonthBounds } from './dateRange';
+import { editionBounds } from './dateRange';
 import { abortable, utcDate } from './scoreboardWindow';
 import { UNFINISHED_STATUSES } from './providers/espn-summary';
 import { eligibleTeamMatches, uniqueTeamMatches, type TeamResult } from './teamPerformance';
@@ -40,23 +40,15 @@ const NEVER_PLAYED = new Set([...UNFINISHED_STATUSES, 'STATUS_CANCELED']);
 
 const compactDate = (ms: number) => new Date(ms).toISOString().slice(0, 10).replaceAll('-', '');
 
-function seasonEnded(seasonId: string, now: Date) {
-  const lastMonth = new Date(`${seasonMonthBounds(seasonId).maxMonth}T00:00:00Z`);
-  return now.getTime() >= Date.UTC(lastMonth.getUTCFullYear(), lastMonth.getUTCMonth() + 1, 1);
-}
-
-/** Editions with no form, decided before any read so they cost and risk nothing.
- *  ESPN's table has no season selector, so past this edition it may be the next one's.
- *  A tournament's table stays until its next edition; a league's rolls at season end. */
 function offersNoForm({ competition, season }: CompetitionSeason, now: Date) {
   if (!season.sections.includes('standings') || season.id !== competition.currentSeasonId) return true;
-  return !season.computedTables && !season.format.hasBracket && seasonEnded(season.id, now);
+  return !season.computedTables && !season.format.hasBracket && now.getTime() >= editionBounds(season).end;
 }
 
 function tableScope(rc: CompetitionSeason, now: Date, tables: number) {
   const { season } = rc;
   const today = utcDate(compactDate(now.getTime()));
-  const seasonStart = Date.parse(`${seasonMonthBounds(season.id).minMonth}T00:00:00Z`);
+  const seasonStart = editionBounds(season).start;
   const computed = season.computedTables;
   if (computed) {
     return { scope: 'phase' as const, start: utcDate(computed.datesRange.slice(0, 8)),
@@ -72,7 +64,7 @@ function tableScope(rc: CompetitionSeason, now: Date, tables: number) {
       end: Math.min(today, utcDate(season.bracketDatesRange.slice(0, 8))) };
   }
   // A single-table league with a bracket only reaches this after its table is read.
-  if (seasonEnded(season.id, now)) return null;
+  if (now.getTime() >= editionBounds(season).end) return null;
   return { scope: laterPhase ? 'regular-season' as const : 'season' as const,
     start: seasonStart, end: today };
 }
