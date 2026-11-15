@@ -42,6 +42,19 @@ export function origin(baseURL) {
   return url.origin;
 }
 
+// Exact key sets of the reader's OpenAPI schemas (backend/reader/openapi.yaml); a test
+// pins each to the schema. Scorer is separate: it also accepts T16.2 legacy shapes.
+export const CONTRACT_KEYS = {
+  Team: 'id name abbr crestUrl',
+  Card: 'teamId player minute type',
+  TeamStats: 'possession shots shotsOnTarget shotAccuracy corners offsides passes passesAccurate passAccuracy crosses crossesAccurate crossAccuracy longBalls tackles tacklesEffective tackleAccuracy interceptions clearances blockedShots saves fouls yellowCards redCards',
+  PenaltyKick: 'order player scored',
+  Shootout: 'homeScore awayScore',
+  ShootoutDetail: 'home away',
+  MatchStats: 'home away',
+  WinProbability: 'home draw away',
+  Match: 'id kickoff state minute statusDetail statusName home away homeScore awayScore winnerId note scorers cards shootout shootoutDetail stats winProbability',
+};
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const nullable = (value, valid) => value === null || valid(value);
 const text = value => typeof value === 'string';
@@ -49,7 +62,7 @@ const integer = value => Number.isSafeInteger(value) && value >= 0;
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const list = (value, valid) => Array.isArray(value) && value.every(valid);
 const exact = (value, keys) => record(value) && Object.keys(value).sort().join(',') === keys.split(' ').sort().join(',');
-const team = value => exact(value, 'id name abbr crestUrl') && [value.id, value.name, value.abbr].every(text) &&
+const team = value => exact(value, CONTRACT_KEYS.Team) && [value.id, value.name, value.abbr].every(text) &&
   value.id.length > 0 && nullable(value.crestUrl, text);
 const scorer = value => record(value) &&
   ['teamId', 'player', 'minute', 'penalty', 'shootout'].every(key => Object.hasOwn(value, key)) &&
@@ -60,22 +73,22 @@ const scorer = value => record(value) &&
   ['athleteId', 'playerSlug'].every(key => !Object.hasOwn(value, key) || nullable(value[key], text)) &&
   nullable(value.teamId, text) && [value.player, value.minute].every(text) &&
   typeof value.penalty === 'boolean' && typeof value.shootout === 'boolean';
-const card = value => exact(value, 'teamId player minute type') &&
+const card = value => exact(value, CONTRACT_KEYS.Card) &&
   nullable(value.teamId, text) && [value.player, value.minute].every(text) && ['yellow', 'red'].includes(value.type);
-const kick = value => exact(value, 'order player scored') && integer(value.order) && text(value.player) && typeof value.scored === 'boolean';
-const sideStats = value => exact(value, 'possession shots shotsOnTarget shotAccuracy corners offsides passes passAccuracy crosses crossAccuracy longBalls tackles tackleAccuracy interceptions clearances blockedShots saves fouls yellowCards redCards') &&
+const kick = value => exact(value, CONTRACT_KEYS.PenaltyKick) && integer(value.order) && text(value.player) && typeof value.scored === 'boolean';
+const sideStats = value => exact(value, CONTRACT_KEYS.TeamStats) &&
   Object.values(value).every(item => nullable(item, finite));
 
 function validMatch(value) {
-  if (!exact(value, 'id kickoff state minute statusDetail statusName home away homeScore awayScore winnerId note scorers cards shootout shootoutDetail stats winProbability')) return false;
+  if (!exact(value, CONTRACT_KEYS.Match)) return false;
   return uuidPattern.test(value.id) && isISOInstant(value.kickoff) && ['scheduled', 'live', 'finished'].includes(value.state) &&
     nullable(value.minute, text) && text(value.statusDetail) && text(value.statusName) &&
     team(value.home) && team(value.away) && nullable(value.homeScore, integer) && nullable(value.awayScore, integer) &&
     nullable(value.winnerId, text) && nullable(value.note, text) && list(value.scorers, scorer) && list(value.cards, card) &&
-    nullable(value.shootout, item => exact(item, 'homeScore awayScore') && integer(item.homeScore) && integer(item.awayScore)) &&
-    nullable(value.shootoutDetail, item => exact(item, 'home away') && list(item.home, kick) && list(item.away, kick)) &&
-    nullable(value.stats, item => exact(item, 'home away') && sideStats(item.home) && sideStats(item.away)) &&
-    nullable(value.winProbability, item => exact(item, 'home draw away') && [item.home, item.draw, item.away].every(finite));
+    nullable(value.shootout, item => exact(item, CONTRACT_KEYS.Shootout) && integer(item.homeScore) && integer(item.awayScore)) &&
+    nullable(value.shootoutDetail, item => exact(item, CONTRACT_KEYS.ShootoutDetail) && list(item.home, kick) && list(item.away, kick)) &&
+    nullable(value.stats, item => exact(item, CONTRACT_KEYS.MatchStats) && sideStats(item.home) && sideStats(item.away)) &&
+    nullable(value.winProbability, item => exact(item, CONTRACT_KEYS.WinProbability) && [item.home, item.draw, item.away].every(finite));
 }
 
 export async function boundedJSON(response, maxBytes) {

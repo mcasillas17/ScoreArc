@@ -67,19 +67,21 @@ describe('MatchCalendar', () => {
     vi.unstubAllGlobals();
   });
 
-  it('labels a scheduled row without repeating its kickoff time', async () => {
+  it('shows a scheduled row as its kickoff time with no caption', async () => {
     const { container } = render(calendarElement());
-    await waitFor(() => expect(container.innerHTML).toContain('<small>Scheduled</small>'));
+    await waitFor(() => expect(container.querySelector('.mc-match')).not.toBeNull());
+    expect(container.innerHTML).not.toContain('Scheduled');
+    expect(container.querySelector('.mc-match small')).toBeNull();
   });
 
-  it('uses the explicit Spanish locale for calendar copy, dates, and scheduled state', async () => {
+  it('uses the explicit Spanish locale for calendar copy and dates', async () => {
     const { container } = render(calendarElement({}, 'es'));
-    await waitFor(() => expect(container.innerHTML).toContain('<small>Programado</small>'));
+    await waitFor(() => expect(container.querySelector('.mc-match')).not.toBeNull());
     const html = container.innerHTML;
 
     expect(html).toContain('agosto de 2026');
     expect(html).toContain('aria-label="Mes anterior"');
-    expect(html).toContain('<small>Programado</small>');
+    expect(html).not.toContain('Programado');
     expect(html).toContain('Home contra Away');
     expect(html).not.toContain('8/18 - 3:00 PM EDT');
   });
@@ -114,7 +116,8 @@ describe('MatchCalendar', () => {
     const html = container.innerHTML;
     expect(html).toContain('<small>Descanso</small>');
     expect(html).toContain('<small>Penaltis</small>');
-    expect(html).toContain('<small>Final</small>');
+    // A plain full-time result is its score; it carries no caption.
+    expect(html).not.toContain('<small>Final</small>');
     expect(html).not.toContain('Half Time');
     expect(html).not.toContain('Penalty Shootout');
     expect(html).not.toContain('Full Time');

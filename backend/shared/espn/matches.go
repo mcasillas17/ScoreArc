@@ -236,6 +236,8 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 			Note:            note,
 			Shootout:        shootout,
 			BracketRequired: bracketRequired,
+			// Explicit play-in exclusion also repairs a stored unknown-round requirement.
+			BracketConfirmed: ev.Season.Slug == goldCupPlayInRound,
 		})
 	}
 	if len(sb.Events) > 0 && len(matches) == 0 {

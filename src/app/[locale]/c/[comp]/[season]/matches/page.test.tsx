@@ -103,7 +103,6 @@ describe('MatchesPage', () => {
     });
 
     expect(html).toContain('Partidos');
-    expect(html).toContain('Todos los partidos, mes a mes.');
     expect(html).toContain('Los partidos no están disponibles en este momento.');
     expect(html).toContain('/es/c/premier-league/2026-27/matches?view=now');
     expect(html).not.toContain('provider secret');

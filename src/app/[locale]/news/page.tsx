@@ -1,8 +1,10 @@
+import type { CSSProperties } from 'react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
-import { collectDatedStories } from '@/server/data/newsFeed';
+import { collectStoriesByCompetition } from '@/server/data/newsFeed';
+import CompetitionMark from '@/components/CompetitionMark';
 import DigestNews from '@/components/DigestNews';
 import SiteFooter from '@/components/SiteFooter';
 
@@ -25,16 +27,16 @@ export async function generateMetadata({ params }: { params: PageParams }): Prom
 }
 
 /**
- * Where the digest's News block goes.
+ * Where the digest's News block goes: the same feeds, kept apart.
  *
- * The digest showed six stories and every one of them left for ESPN in a new
- * tab, so the block was a dead end — there was no route into ScoreArc's own
- * news at all from the home page. This is the same feed, uncapped by the
- * digest's six-row budget: four stories per competition rather than two, and
- * thirty rows rather than six.
+ * This used to be one merged list of thirty rows, each with a thumbnail and
+ * none saying which competition it belonged to, so a story from this morning
+ * and one from last month looked the same. Now each competition heads its own
+ * short list, only the newest story is pictured, and anything older than two
+ * weeks is left out (a competition with nothing newer is left out with it).
  */
 const STORIES_PER_COMPETITION = 4;
-const STORIES_SHOWN = 30;
+const MAX_AGE_DAYS = 14;
 
 /**
  * This page does not poll while a competition news page does: polling here
@@ -46,9 +48,9 @@ export default async function NewsPage({ params }: { params: PageParams }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
-  const stories = await collectDatedStories(new Date(), locale, {
+  const groups = await collectStoriesByCompetition(new Date(), locale, {
     perFeed: STORIES_PER_COMPETITION,
-    limit: STORIES_SHOWN,
+    maxAgeDays: MAX_AGE_DAYS,
   });
 
   return (
@@ -57,9 +59,27 @@ export default async function NewsPage({ params }: { params: PageParams }) {
         <h1 className="dg-title">{t('news.title')}</h1>
         <p className="dg-sub">{t('news.directoryIntro')}</p>
       </header>
-      <section className="dg-sec dg-onecol">
-        <DigestNews items={stories} surface="news" />
-      </section>
+      {groups.length === 0 ? (
+        <p className="dg-empty">{t('news.unavailable')}</p>
+      ) : (
+        <div className="nwx">
+          {groups.map(({ competition: c, items }) => (
+            <section
+              className="nwx-sec"
+              key={c.id}
+              style={{ ['--accent' as string]: c.accent.base } as CSSProperties}
+            >
+              <h2 className="nwx-h">
+                <a href={`/${locale}/c/${c.id}/${c.currentSeasonId}`}>
+                  <CompetitionMark logo={c.logo} logoInvert={c.logoInvert} emblem={c.emblem} name="" size={18} />
+                  {c.shortName}
+                </a>
+              </h2>
+              <DigestNews items={items} surface="news" thumbs="first" />
+            </section>
+          ))}
+        </div>
+      )}
       <SiteFooter />
     </main>
   );

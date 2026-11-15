@@ -6,7 +6,7 @@ import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import type { Locale } from '@/i18n/config';
 import { formatTime } from '@/i18n/format';
 
-export type LocalTimeMode = 'time' | 'day' | 'dayTime';
+export type LocalTimeMode = 'time' | 'day' | 'dayShort' | 'dayTime';
 
 /**
  * The reader's clock, null until mount.
@@ -32,9 +32,9 @@ export function localTimeText(
   const time = formatTime(iso, locale);
   if (!time) return null;
   if (mode === 'time') return time;
-  const day = relativeDay(iso, now, locale);
+  const day = relativeDay(iso, now, locale, mode === 'dayShort');
   if (!day) return null;
-  return mode === 'day' ? day : `${day} ${time}`;
+  return mode === 'dayTime' ? `${day} ${time}` : day;
 }
 
 /**

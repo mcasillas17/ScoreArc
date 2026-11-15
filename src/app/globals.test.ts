@@ -112,6 +112,7 @@ describe('responsive competition main layout', () => {
     expect(selectorProperty('body', 'overflow-x', 360)).toBe('clip');
     expect(selectorProperty('.sn', 'position', 360)).toBe('sticky');
     expect(selectorProperty('.sn-tabs', 'position', 360)).toBe('fixed');
-    expect(selectorProperty('.sn--open ~ .sn-tabs', 'display', 360)).toBe('none');
+    // The desktop tab row carries the same sections as the bar.
+    expect(selectorProperty('.sn-sections', 'display', 360)).toBe('none');
   });
 });

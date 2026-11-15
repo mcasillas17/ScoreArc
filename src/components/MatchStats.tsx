@@ -1,8 +1,8 @@
 import type { CSSProperties } from 'react';
 import type { Scorer, Card, MatchStats, WinProbability, MatchLineups, TeamLineup, ShootoutDetail, PenaltyKick } from '@/server/data/types';
 import { useTranslations } from '@/i18n/I18nProvider';
-import { CollapsibleSection } from './Collapsible';
 import PlayerName from './PlayerName';
+import { BallIcon } from './MatchIcons';
 
 // Win probability is a pre-match prediction (derived from pre-match odds), so it
 // only makes sense before kickoff — not for live or finished/past matches.
@@ -64,7 +64,7 @@ function ScorerLine({ scorer, playerBase }: { scorer: Scorer; playerBase?: strin
   const t = useTranslations();
   return (
     <span className="ls-scorer-line">
-      <span className="ls-scorer-ball">⚽</span>
+      <span className="ls-scorer-ball"><BallIcon /></span>
       <PlayerName name={scorer.player} slug={scorer.playerSlug} playerBase={playerBase} className="ls-scorer-name" />
       <span className="ls-scorer-minute">
         {scorer.minute}
@@ -347,13 +347,11 @@ export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
 
   const hasGroups = groups.some((g) => hasData(g.rows));
   const hasPossession = h.possession != null || a.possession != null;
-  // Everything is collapsed by default — the only thing shown pre-expand is the
-  // win-probability bar (a sibling component, live/upcoming matches only).
   if (!hasGroups && !hasPossession) return null;
 
   return (
     <div className="ls-stat-block">
-      <CollapsibleSection title={t('matchDetails.matchStats')}>
+      <>
         {hasPossession && (
           <div className="ls-stat-poss-bar-wrap">
             <span className="ls-stat-poss-label">{homePct.toFixed(0)}%</span>
@@ -365,7 +363,7 @@ export function MatchStatsBlock({ stats }: { stats: MatchStats }) {
           </div>
         )}
         {groups.map((g) => <StatGroup key={g.title} title={g.title} tone={g.tone} rows={g.rows} />)}
-      </CollapsibleSection>
+      </>
     </div>
   );
 }

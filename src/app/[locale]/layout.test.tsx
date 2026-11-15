@@ -3,10 +3,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import RootLayout, { generateMetadata, generateStaticParams } from './layout';
 
-vi.mock('next/font/local', () => ({
-  default: () => ({ variable: 'test-font' }),
-}));
-
 vi.mock('@vercel/analytics/next', () => ({ Analytics: () => null }));
 vi.mock('@vercel/speed-insights/next', () => ({ SpeedInsights: () => null }));
 

@@ -50,3 +50,13 @@ describe('reader transport', () => {
     expect(new ReaderFailure('scope', false).fallback).toBe(false);
   });
 });
+
+it('stops queued and later requests after the shared byte budget is exhausted', async () => {
+  const signal = new AbortController().signal;
+  const budget = createRequestBudget({ fetch: async () => Response.json('x'.repeat(30)), signal, maxBytes: 64 });
+  await Promise.allSettled(Array.from({ length: 12 }, () => budget.json('https://reader.example/v1/test')));
+  expect(budget.calls).toBeLessThanOrEqual(4);
+  const calls = budget.calls;
+  await expect(budget.json('https://reader.example/v1/test')).rejects.toMatchObject({ reason: 'budget' });
+  expect(budget.calls).toBe(calls);
+});

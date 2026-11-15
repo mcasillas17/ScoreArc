@@ -59,12 +59,12 @@ export function createRequestBudget(options: {
     async json(url, requestSignal) {
       const signal = requestSignal ? AbortSignal.any([options.signal, requestSignal]) : options.signal;
       signal.throwIfAborted();
-      if (admitted >= maxCalls) throw new ReaderFailure('budget');
+      if (admitted >= maxCalls || bytes >= maxBytes) throw new ReaderFailure('budget');
       admitted++;
       await acquire(signal);
       try {
         signal.throwIfAborted();
-        if (calls >= maxCalls) throw new ReaderFailure('budget');
+        if (calls >= maxCalls || bytes >= maxBytes) throw new ReaderFailure('budget');
         calls++;
         let response: Response;
         try {

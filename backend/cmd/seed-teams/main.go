@@ -326,7 +326,7 @@ func run(bootstrap bool) error {
 		fetch := competitionFetch{
 			compID: comp.ID,
 			prefix: countryPrefix(comp.ESPNSlug),
-			kind:   config.TeamKind(comp),
+			kind:   comp.Kind,
 		}
 		matches, err := src.Scoreboard(ctx, comp, season, true)
 		if err != nil {

@@ -11,6 +11,10 @@ const FLAG_MAP: Record<string, string> = {
   SCO: 'gb-sct', WAL: 'gb-wls', NIR: 'gb-nir', CZE: 'cz', DEN: 'dk', POL: 'pl',
   SRB: 'rs', UKR: 'ua', TUR: 'tr', BIH: 'ba', GRE: 'gr', ROU: 'ro', HUN: 'hu',
   RUS: 'ru', SVK: 'sk', SVN: 'si', ALB: 'al', IRL: 'ie',
+  AND: 'ad', ARM: 'am', AZE: 'az', BLR: 'by', BUL: 'bg', CYP: 'cy', EST: 'ee',
+  FIN: 'fi', FRO: 'fo', GEO: 'ge', GIB: 'gi', ISL: 'is', ISR: 'il', KAZ: 'kz',
+  KOS: 'xk', LIE: 'li', LTU: 'lt', LUX: 'lu', LVA: 'lv', MDA: 'md', MKD: 'mk',
+  MLT: 'mt', MNE: 'me', SMR: 'sm',
   // CAF
   MAR: 'ma', SEN: 'sn', CIV: 'ci', EGY: 'eg', ALG: 'dz', GHA: 'gh', CPV: 'cv',
   RSA: 'za', CMR: 'cm', NGA: 'ng', COD: 'cd', TUN: 'tn', MLI: 'ml', BFA: 'bf',
@@ -20,6 +24,13 @@ const FLAG_MAP: Record<string, string> = {
   IRQ: 'iq', JOR: 'jo', UAE: 'ae', CHN: 'cn',
   // CONCACAF / OFC
   CRC: 'cr', PAN: 'pa', HON: 'hn', JAM: 'jm', HAI: 'ht', NZL: 'nz', CUW: 'cw',
+  TRI: 'tt', DOM: 'do', NCA: 'ni', SLV: 'sv', GUA: 'gt', SUR: 'sr', CAY: 'ky',
+  GUY: 'gy', PUR: 'pr', DMA: 'dm', BRB: 'bb', BER: 'bm', LCA: 'lc', CUB: 'cu',
+  GRN: 'gd', SKN: 'kn', BLZ: 'bz', VIN: 'vc', SMA: 'sx', BVI: 'vg', MSR: 'ms',
+  TCA: 'tc', ATG: 'ag', ARU: 'aw', AIA: 'ai', BAH: 'bs', USVI: 'vi',
+  // Deliberately unmapped: Martinique, Guadeloupe, French Guiana, St. Martin
+  // and Bonaire. flagcdn draws France's / the Netherlands' flag for them, so
+  // they fall back to ESPN's own country logo instead.
 };
 
 export function flagUrl(abbr?: string | null): string | null {

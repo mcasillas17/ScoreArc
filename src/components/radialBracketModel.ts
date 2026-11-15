@@ -310,18 +310,17 @@ export function buildRings(
 }
 
 /**
- * Reconstruct the leaf-round match order for a FINISHED bracket by unfolding the
- * tree from the final outward: a match at depth d has home/away teams that each
+ * Reconstruct the leaf-round match order by unfolding the tree from the
+ * innermost round with known pairings (the final, else the semifinals...): a match at depth d has home/away teams that each
  * WON a match one round below; recurse and emit leaf indices left-to-right.
  * `knockoutRounds` is outer->inner (leaf first, final last). Falls back to plain
- * event order (0,1,2,...) if the bracket isn't fully/consistently decided.
+ * event order (0,1,2,...) if no round's pairings are fully/consistently known.
  */
 export function deriveLeafOrder(rounds: BracketRound[], knockoutRounds: KnockoutRoundSlug[]): number[] {
   const N = knockoutRounds.length;
   const leaf = rounds.find((r) => r.slug === knockoutRounds[0]);
   const fallback = leaf ? leaf.matches.map((_, i) => i) : [];
-  const finalRound = rounds.find((r) => r.slug === knockoutRounds[N - 1]);
-  if (!leaf || N < 1 || !finalRound || finalRound.matches.length !== 1) return fallback;
+  if (!leaf || N < 1) return fallback;
 
   const key = (m: BracketMatch) => [m.home.id, m.away.id].sort().join('|');
   const leafIndex = new Map<string, number>();
@@ -335,7 +334,7 @@ export function deriveLeafOrder(rounds: BracketRound[], knockoutRounds: Knockout
     return r ? r.matches.find((mm) => winnerOf(mm) === teamId) ?? null : null;
   };
 
-  const order: number[] = [];
+  let order: number[] = [];
   let ok = true;
   const unfold = (match: BracketMatch, depth: number): void => {
     if (!ok) return;
@@ -351,10 +350,16 @@ export function deriveLeafOrder(rounds: BracketRound[], knockoutRounds: Knockout
       unfold(child, depth - 1);
     });
   };
-  unfold(finalRound.matches[0], N - 1);
-
-  if (!ok || order.length !== leaf.matches.length || new Set(order).size !== leaf.matches.length) {
-    return fallback;
+  // Unfold from the innermost round whose pairings are all known: the final
+  // once it is set, else the semifinals, and so on outward. Concacaf draws the
+  // Nations League semifinals only after the quarterfinals, so the semifinal
+  // matches are the first place their pairing exists.
+  for (let depth = N - 1; depth >= 1; depth--) {
+    const round = rounds.find((r) => r.slug === knockoutRounds[depth]);
+    if (!round || round.matches.length !== leaf.matches.length / 2 ** depth) continue;
+    order = []; ok = true;
+    round.matches.forEach((m) => unfold(m, depth));
+    if (ok && order.length === leaf.matches.length && new Set(order).size === leaf.matches.length) return order;
   }
-  return order;
+  return fallback;
 }
