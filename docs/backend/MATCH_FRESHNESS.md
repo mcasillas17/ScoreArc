@@ -730,6 +730,42 @@ The independent observer must also have a named owner, expected-run deadline,
 escalation recipient and acceptance proof; a failed workflow can report an error,
 but a workflow that never starts cannot report its own absence.
 
+#### November 15, 2026 recurring Nations League polls
+
+Pending artifacts from runs
+[43678116389](https://github.com/mcasillas17/ScoreArc/actions/runs/43678116389)
+and [43680628295](https://github.com/mcasillas17/ScoreArc/actions/runs/43680628295)
+contain distinct OPEN sequences 63 and 65 for `nations-league/2026-27`,
+each reporting 106 matches, `stale/failed`, 20 stale and zero overdue.
+Delivery completed with `pending=0 monitor=ok`; the following runs resolved.
+These are repeated data-state transitions, not duplicate event delivery.
+
+The November scoreboard contains eight `gold-cup-play-in-prelims` events in
+addition to the eight quarterfinal legs. The classifier conservatively required
+bracket confirmation for the unrecognized play-in slug, while `MapBracket`
+correctly omitted it from the Nations League title bracket. Full reconciliation
+then failed with `bracket response missing knockout match "401929779"` and
+retried after 30 minutes. Rolling polls do not run that completeness check,
+explaining the intervening recoveries.
+
+The branch correction recognizes only this exact play-in stage as outside the
+title bracket and marks that exclusion authoritative, so existing unfinalized
+rows lose their old bracket requirement through normal writes. Unknown stages
+and title knockouts remain guarded; no scores, alert thresholds, event IDs or
+checkpoints change. The reduced recorded payload
+`src/server/data/__fixtures__/espn-nations-league-play-in.json` was captured from
+the November ESPN scoreboard on November 15 UTC; it retains the classification,
+status and score fields for the drawn Aruba--Martinique play-in and
+Curacao--Panama quarterfinal first legs.
+
+**Not yet released.** After the approved ingester release, confirm successful
+full-season reconciliation and observe ordinary monitor runs for at least
+35 minutes. A single healthy read is insufficient. Keep incident history intact
+and let the existing monitor deliver any remaining resolution. Fly log access
+was unavailable during this investigation because the local login had expired;
+the reproduction used the live source adapter and an isolated Postgres database,
+not production database access.
+
 ### Disabled-to-enabled owner checklist
 
 - [x] Review/merge the exact PR SHA through normal CI. #235, #242-#245 merged.

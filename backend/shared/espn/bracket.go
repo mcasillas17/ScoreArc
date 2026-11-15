@@ -64,6 +64,9 @@ var nonKnockoutRound = map[string]struct{}{
 	"regular-season":    {},
 }
 
+// These ties qualify for the Gold Cup, not the Nations League title bracket.
+const goldCupPlayInRound = "gold-cup-play-in-prelims"
+
 func normRoundSlug(slug string) string {
 	if v, ok := roundSlugAlias[slug]; ok {
 		return v
@@ -101,7 +104,7 @@ func bracketRequirement(eventID, seasonSlug string) *bool {
 		required := true
 		return &required
 	}
-	if _, ok := nonKnockoutRound[slug]; ok {
+	if _, ok := nonKnockoutRound[slug]; ok || slug == goldCupPlayInRound {
 		required := false
 		return &required
 	}
