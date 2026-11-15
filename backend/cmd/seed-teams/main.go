@@ -90,15 +90,22 @@ func slugify(name string) string {
 	return strings.Trim(nonSlug.ReplaceAllString(lowered, "-"), "-")
 }
 
-// countryPrefix derives a namespace from the ESPN competition slug, so two
-// clubs with the same name in different countries cannot collide:
-// "eng.1" -> "eng", "concacaf.leagues.cup" -> "concacaf".
-func countryPrefix(espnSlug string) string {
-	parts := strings.Split(espnSlug, ".")
-	if len(parts) == 0 || parts[0] == "" {
-		return "x"
+// A cup can cross borders. For a new cup entrant the domestic observation or
+// a reviewed provider ref supplies the country; the federation slug cannot.
+func proposalCountry(comp config.Competition, team model.Team) string {
+	if comp.Kind == "national" {
+		return slugify(team.Abbr)
 	}
-	return parts[0]
+	// These domestic leagues admit teams from more than one country.
+	switch comp.ESPNSlug {
+	case "usa.1", "aus.w.1", "eng.1", "fra.1":
+		return ""
+	}
+	if comp.DirectoryGroup == "domestic" || comp.DirectoryGroup == "college" {
+		country, _, _ := strings.Cut(comp.ESPNSlug, ".")
+		return country
+	}
+	return ""
 }
 
 // provisionalSlug is the reserved id shape for a team that cannot be named
@@ -109,30 +116,22 @@ func provisionalSlug(sourceID string) string { return "prov-" + sourceName + "-"
 // real canonical id, so the caller can flag it for review.
 func isProvisional(slug string) bool { return strings.HasPrefix(slug, "prov-"+sourceName+"-") }
 
-// deriveSlug proposes an id for a team the seed does not yet carry. A name (or
-// abbreviation) with no Latin content slugs to nothing, which would otherwise
-// yield a meaningless bare-prefix id like "ger-"; those fall back to the
-// provisional shape so a human is forced to name them.
-//
-// A women's team is its own canonical team, and ESPN names it exactly as it
-// names the men's ("América", "MEX"), so the category is part of the namespace:
-// "mex-w-america", "nat-w-mex". Without it every proposal collides with the
-// men's row and the run refuses to emit.
-func deriveSlug(prefix, kind, category string, team model.Team) string {
-	ns := "-"
-	if category == "women" {
-		ns = "-w-"
+// deriveSlug keeps senior URLs stable and separates same-name youth and college sides.
+func deriveSlug(comp config.Competition, country string, team model.Team) string {
+	prefix, body := country, slugify(team.Name)
+	if comp.Kind == "national" {
+		prefix, body = "nat", country
 	}
-	if kind == "national" {
-		if abbr := slugify(team.Abbr); abbr != "" {
-			return "nat" + ns + abbr
-		}
+	if country == "" || body == "" {
 		return provisionalSlug(team.ID)
 	}
-	if body := slugify(team.Name); body != "" {
-		return prefix + ns + body
+	if comp.Category == "women" {
+		prefix += "-w"
 	}
-	return provisionalSlug(team.ID)
+	if comp.Level != "senior" {
+		prefix += "-" + comp.Level
+	}
+	return prefix + "-" + body
 }
 
 // proposeTeam returns the seed row for one ESPN team. When the curated seed
@@ -145,18 +144,19 @@ func deriveSlug(prefix, kind, category string, team model.Team) string {
 // emitting the provider hotlink here only put 194 URLs in front of every human
 // reading a diff of the seed. A hand-set value of either is preserved, because
 // the curated row is returned whole.
-func proposeTeam(curated map[string]config.SeedTeam, prefix, kind, category string, team model.Team) config.SeedTeam {
+func proposeTeam(curated map[string]config.SeedTeam, comp config.Competition, team model.Team) config.SeedTeam {
 	if row, found := curated[team.ID]; found {
 		row.Name = team.Name
 		row.Abbr = team.Abbr
 		return row
 	}
+	country := proposalCountry(comp, team)
 	return config.SeedTeam{
-		ID:      deriveSlug(prefix, kind, category, team),
-		Kind:    kind,
+		ID:      deriveSlug(comp, country, team),
+		Kind:    comp.Kind,
 		Name:    team.Name,
 		Abbr:    team.Abbr,
-		Country: prefix,
+		Country: country,
 		Refs:    map[string]string{sourceName: team.ID},
 	}
 }
@@ -201,10 +201,7 @@ func mergeBase(seed []config.SeedTeam, loadErr error, bootstrap bool) (map[strin
 // competitionFetch is one competition's contribution to a regenerate: the teams
 // ESPN named, and whether each of the two fetches that could name them worked.
 type competitionFetch struct {
-	compID               string
-	prefix               string
-	kind                 string
-	category             string
+	comp                 config.Competition
 	teams                []model.Team
 	scoreboardErr        error
 	standingsErr         error
@@ -237,16 +234,27 @@ func buildSeed(
 		rows[sourceID] = team
 	}
 	// A club appearing in two competitions (a Liga MX side also in Leagues Cup)
-	// is proposed once, by the first competition to name it.
+	// is proposed once. A domestic proposal can supply the country a cup lacks.
 	proposed := make(map[string]struct{}, len(curated))
+	uncuratedScopes := make(map[string]config.Competition)
 
 	var blind []string
 	for _, fetch := range fetches {
 		if fetch.blind() {
-			blind = append(blind, fetch.compID)
+			blind = append(blind, fetch.comp.ID+"/"+fetch.comp.CurrentSeasonId)
 		}
 		for _, team := range fetch.teams {
-			if team.ID == "" || team.Name == "" {
+			if team.ID == "" || espn.IsBracketPlaceholder(team.Name, team.CrestURL) {
+				continue
+			}
+			if _, known := curated[team.ID]; !known {
+				c := fetch.comp
+				if prior, seen := uncuratedScopes[team.ID]; seen && (prior.Kind != c.Kind || prior.Category != c.Category || prior.Level != c.Level) {
+					return nil, fmt.Errorf("espn:%s appears in incompatible competitions %s and %s; review its identity", team.ID, prior.ID, c.ID)
+				}
+				uncuratedScopes[team.ID] = c
+			}
+			if team.Name == "" {
 				continue
 			}
 			// The loader requires an abbreviation, so emitting a team without
@@ -256,14 +264,13 @@ func buildSeed(
 					"warn: skipping espn:%s (%q) — no abbreviation\n", team.ID, team.Name)
 				continue
 			}
-			if _, exists := proposed[team.ID]; exists {
+			row := proposeTeam(curated, fetch.comp, team)
+			if _, exists := proposed[team.ID]; exists && !isProvisional(rows[team.ID].ID) {
+				previous := rows[team.ID]
+				if !isProvisional(row.ID) && previous.ID != row.ID {
+					return nil, fmt.Errorf("espn:%s has conflicting proposals %q and %q; review its identity", team.ID, previous.ID, row.ID)
+				}
 				continue
-			}
-			row := proposeTeam(curated, fetch.prefix, fetch.kind, fetch.category, team)
-			if isProvisional(row.ID) {
-				fmt.Fprintf(warn,
-					"warn: espn:%s (%q) has no slug-able name — emitted as %q, name it by hand\n",
-					team.ID, team.Name, row.ID)
 			}
 			proposed[team.ID] = struct{}{}
 			rows[team.ID] = row
@@ -281,6 +288,10 @@ func buildSeed(
 	slugs := make(map[string]string, len(out))
 	collisions := 0
 	for _, team := range out {
+		if isProvisional(team.ID) {
+			return nil, fmt.Errorf("espn:%s (%q) needs a reviewed country and canonical slug; refusing to seed provisional ID %q",
+				team.Refs[sourceName], team.Name, team.ID)
+		}
 		if existing, dup := slugs[team.ID]; dup {
 			collisions++
 			fmt.Fprintf(warn,
@@ -304,17 +315,31 @@ func buildSeed(
 	return out, nil
 }
 
+func seedEditions(registry *config.Registry, edition string) ([]config.Competition, error) {
+	eligible := registry.Active("scores")
+	if edition == "" {
+		return eligible, nil
+	}
+	for _, comp := range eligible {
+		if comp.ID+"/"+comp.CurrentSeasonId == edition {
+			return []config.Competition{comp}, nil
+		}
+	}
+	return nil, fmt.Errorf("edition %q is not eligible for score collection", edition)
+}
+
 func main() {
 	bootstrap := flag.Bool("bootstrap", false,
 		"propose every team from scratch instead of merging with the committed seed")
+	edition := flag.String("edition", "", "limit proposals to one eligible competition/season (staging requires SCOREARC_STAGING_EDITIONS)")
 	flag.Parse()
-	if err := run(*bootstrap); err != nil {
+	if err := run(*bootstrap, *edition); err != nil {
 		fmt.Fprintln(os.Stderr, "seed-teams:", err)
 		os.Exit(1)
 	}
 }
 
-func run(bootstrap bool) error {
+func run(bootstrap bool, edition string) error {
 	registry, err := config.Load()
 	if err != nil {
 		return err
@@ -328,17 +353,18 @@ func run(bootstrap bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	fetches := make([]competitionFetch, 0, len(registry.List()))
-	for _, comp := range registry.Active("scores") {
+	editions, err := seedEditions(registry, edition)
+	if err != nil {
+		return err
+	}
+	fetches := make([]competitionFetch, 0, len(editions))
+	for _, comp := range editions {
 		season, ok := comp.Seasons[comp.CurrentSeasonId]
 		if !ok {
 			continue
 		}
 		fetch := competitionFetch{
-			compID:               comp.ID,
-			prefix:               countryPrefix(comp.ESPNSlug),
-			kind:                 comp.Kind,
-			category:             comp.Category,
+			comp:                 comp,
 			standingsUnsupported: !season.Supports("standings"),
 		}
 		matches, err := src.Scoreboard(ctx, comp, season, true)
