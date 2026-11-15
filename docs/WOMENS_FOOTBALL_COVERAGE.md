@@ -26,6 +26,25 @@ The existing TypeScript ESPN store returned both scorers and assists (10 each pe
 
 **News needs a relevance check.** All six sampled NWSL and all six WSL articles carried their competition’s league tag. None of the ten Liga MX Femenil articles did. The first was about Manchester United’s ownership era. Check article category IDs against ESPN’s news/standings league ID (which can differ from the scoreboard league ID). Apply coverage to the home digest as well as the competition news tab. [ESPN NWSL news](https://site.api.espn.com/apis/site/v2/sports/soccer/usa.nwsl/news) · [ESPN Liga MX Femenil news](https://site.api.espn.com/apis/site/v2/sports/soccer/mex.w.1/news)
 
+## FIFA Women's World Cup
+
+**The 2023 Women's World Cup is a strong first national-team release alongside the club pilots.** ESPN's `fifa.wwc` feed carries six senior editions. Across those editions the site scoreboards contain **264 completed matches** after deduplication by ESPN event ID and filtering on completed status. The core event index returned zero records for the 1991, 1995 and 1999 calendar years on this check. [ESPN edition index](https://sports.core.api.espn.com/v2/sports/soccer/leagues/fifa.wwc/seasons?limit=100)
+
+| Edition | Teams appearing in completed matches | Completed matches |
+|---|---:|---:|
+| 2003 | 16 | 32 |
+| 2007 | 16 | 32 |
+| 2011 | 16 | 32 |
+| 2015 | 24 | 52 |
+| 2019 | 24 | 52 |
+| 2023 | 32 | 64 |
+
+For **2023**, ESPN returned all 48 group matches, eight round-of-16 matches, four quarterfinals, two semifinals, the third-place match and the final. Spain’s 1–0 win over England has 23 named squad entries for each side and 14 key events. That gives the radial bracket a real destination, with a matchday squad preserved in the final itself. Historical player-profile and lineup depth still need checks across the other matches and editions. [July scoreboard](https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.wwc/scoreboard?dates=202307&limit=1000) · [August scoreboard](https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.wwc/scoreboard?dates=202308&limit=1000) · [Final match detail](https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.wwc/summary?event=622586)
+
+The archive brings two specific regression cases. Both bracket mappers need to recognize ESPN’s `3rd-place` for 2015–23 and `quarter-finals` / `semi-finals` for 2003–15. Also, 2007 has two postponed event records alongside its 32 completed games. Keep the postponed records out of completed-match totals. [2007 scoreboard](https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.wwc/scoreboard?dates=200709&limit=1000)
+
+For **2027**, ESPN already lists scheduled matches in the UEFA qualifying and intercontinental playoff feeds. On November 15, 2026 the senior final-tournament feed returned zero events for June–July 2027 in both the core event index and the site scoreboards. Give qualifying matches their own competition IDs and use the final-tournament feed when its draw and matches appear. [UEFA qualifying](https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.wworldq.uefa/scoreboard) · [Intercontinental playoffs](https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.wwcq.ply/scoreboard) · [2027 final-tournament event index](https://sports.core.api.espn.com/v2/sports/soccer/leagues/fifa.wwc/events?dates=20270601-20270731&limit=1)
+
 ## Changes by system
 
 | Surface | What to reuse, what to change, and how to verify it |
