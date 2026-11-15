@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { listCompetitions, resolveSeason } from '@/server/data/competitions';
-import type { Competition, CompetitionSeason } from '@/server/data/competitions';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { hasBothCategories, inView, listCompetitions, parseView, resolveSeason, viewQuery } from '@/server/data/competitions';
+import type { Competition, CompetitionSeason, View } from '@/server/data/competitions';
 import { trackEvent } from '@/lib/telemetry/client';
 import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import type { Locale } from '@/i18n/config';
@@ -133,7 +133,7 @@ export function accentStyle(pathname: string): React.CSSProperties | undefined {
  * only be exercised by rendering the whole nav, which is why the strict
  * equality below went unnoticed as a locale-prefix hazard.
  */
-export function siteItems(locale: Locale, prefix = ''): NavItem[] {
+export function siteItems(locale: Locale, prefix = '', query = ''): NavItem[] {
   const t = getTranslator(locale);
   // Exactly this page, or something below it. `startsWith('/news')` would also
   // light News on a hypothetical `/newsletter`.
@@ -142,9 +142,9 @@ export function siteItems(locale: Locale, prefix = ''): NavItem[] {
     return path === route || path.startsWith(`${route}/`);
   };
   return [
-    { href: withLocale(prefix, '/'), label: t('nav.home'), icon: homeIcon, match: (p) => stripLocale(p) === '/' },
-    { href: withLocale(prefix, '/teams'), label: t('teams.title'), icon: teamsIcon, match: at('/teams') },
-    { href: withLocale(prefix, '/news'), label: t('news.title'), icon: newsIcon, match: at('/news') },
+    { href: withLocale(prefix, '/') + query, label: t('nav.home'), icon: homeIcon, match: (p) => stripLocale(p) === '/' },
+    { href: withLocale(prefix, '/teams') + query, label: t('teams.title'), icon: teamsIcon, match: at('/teams') },
+    { href: withLocale(prefix, '/news') + query, label: t('news.title'), icon: newsIcon, match: at('/news') },
   ];
 }
 
@@ -253,7 +253,7 @@ export interface BottomBarItem {
  * Pure and path-derived, like every other matcher here, so which items a path
  * produces is testable without rendering.
  */
-export function bottomBarItems(pathname: string, locale: Locale): BottomBarItem[] {
+export function bottomBarItems(pathname: string, locale: Locale, query = ''): BottomBarItem[] {
   const prefix = localePrefix(pathname);
   const entry = (i: NavItem): BottomBarItem => ({
     key: i.href,
@@ -266,7 +266,7 @@ export function bottomBarItems(pathname: string, locale: Locale): BottomBarItem[
   if (rc) return competitionSections(rc, locale, prefix).map(entry);
   // The page the reader is on is the bar's centre button, so it is not also a
   // tab: the other two pages sit one either side of it.
-  const site = siteItems(locale, prefix);
+  const site = siteItems(locale, prefix, query);
   return site.filter((i) => !i.match(pathname) || site.every((o) => !o.match(pathname))).map(entry);
 }
 
@@ -313,17 +313,33 @@ export function ArcMark() {
 
 const MARK_SRC = '/brand/scorearc-mark-dark.svg';
 
+/**
+ * Which category the nav is showing. A collection page says so in its URL; a
+ * competition, team or player page keeps a category-free URL, so there the
+ * open competition's own category decides. With one category in the registry
+ * there is nothing to narrow and no query to carry.
+ */
+export function navView(active: CompetitionSeason | undefined, viewParams: string[]): View {
+  if (!hasBothCategories()) return 'all';
+  if (active) return active.competition.category;
+  return parseView(viewParams.length === 1 ? viewParams[0] : undefined);
+}
+
 export default function SiteNav() {
   const pathname = usePathname() ?? '/';
   const locale = useLocale();
   const t = useTranslations();
 
   const active = activeCompetition(pathname);
-  const competitions = listCompetitions();
+  const view = navView(active, useSearchParams().getAll('view'));
+  // Narrowed before focus, rest position and keyboard targets are computed,
+  // so the dial never rests on a crest the view has hidden.
+  const competitions = listCompetitions().filter((c) => inView(c, view));
   // Whatever locale segment the reader is already under, carried onto every
   // href below so the nav cannot silently return them to English.
   const prefix = localePrefix(pathname);
-  const items = siteItems(locale, prefix);
+  // Home, Teams and News keep the view the reader is in.
+  const items = siteItems(locale, prefix, viewQuery(view));
   const competitionAt = active ? competitions.findIndex((c) => c.id === active.competition.id) : -1;
   // Every dial of competitions rests on the open one, else mid-list.
   const resting = restingFocus(competitionAt, competitions.length);
@@ -358,7 +374,7 @@ export default function SiteNav() {
   const soonItems = [
     { label: t('nav.simulate'), icon: simulateIcon },
   ];
-  const barItems = bottomBarItems(pathname, locale);
+  const barItems = bottomBarItems(pathname, locale, viewQuery(view));
   const [barLeft, barRight] = splitAround(barItems);
 
   const page = centrePage(pathname, locale);

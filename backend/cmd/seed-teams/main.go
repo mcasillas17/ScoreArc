@@ -113,15 +113,24 @@ func isProvisional(slug string) bool { return strings.HasPrefix(slug, "prov-"+so
 // abbreviation) with no Latin content slugs to nothing, which would otherwise
 // yield a meaningless bare-prefix id like "ger-"; those fall back to the
 // provisional shape so a human is forced to name them.
-func deriveSlug(prefix, kind string, team model.Team) string {
+//
+// A women's team is its own canonical team, and ESPN names it exactly as it
+// names the men's ("América", "MEX"), so the category is part of the namespace:
+// "mex-w-america", "nat-w-mex". Without it every proposal collides with the
+// men's row and the run refuses to emit.
+func deriveSlug(prefix, kind, category string, team model.Team) string {
+	ns := "-"
+	if category == "women" {
+		ns = "-w-"
+	}
 	if kind == "national" {
 		if abbr := slugify(team.Abbr); abbr != "" {
-			return "nat-" + abbr
+			return "nat" + ns + abbr
 		}
 		return provisionalSlug(team.ID)
 	}
 	if body := slugify(team.Name); body != "" {
-		return prefix + "-" + body
+		return prefix + ns + body
 	}
 	return provisionalSlug(team.ID)
 }
@@ -136,14 +145,14 @@ func deriveSlug(prefix, kind string, team model.Team) string {
 // emitting the provider hotlink here only put 194 URLs in front of every human
 // reading a diff of the seed. A hand-set value of either is preserved, because
 // the curated row is returned whole.
-func proposeTeam(curated map[string]config.SeedTeam, prefix, kind string, team model.Team) config.SeedTeam {
+func proposeTeam(curated map[string]config.SeedTeam, prefix, kind, category string, team model.Team) config.SeedTeam {
 	if row, found := curated[team.ID]; found {
 		row.Name = team.Name
 		row.Abbr = team.Abbr
 		return row
 	}
 	return config.SeedTeam{
-		ID:      deriveSlug(prefix, kind, team),
+		ID:      deriveSlug(prefix, kind, category, team),
 		Kind:    kind,
 		Name:    team.Name,
 		Abbr:    team.Abbr,
@@ -195,6 +204,7 @@ type competitionFetch struct {
 	compID        string
 	prefix        string
 	kind          string
+	category      string
 	teams         []model.Team
 	scoreboardErr error
 	standingsErr  error
@@ -248,7 +258,7 @@ func buildSeed(
 			if _, exists := proposed[team.ID]; exists {
 				continue
 			}
-			row := proposeTeam(curated, fetch.prefix, fetch.kind, team)
+			row := proposeTeam(curated, fetch.prefix, fetch.kind, fetch.category, team)
 			if isProvisional(row.ID) {
 				fmt.Fprintf(warn,
 					"warn: espn:%s (%q) has no slug-able name — emitted as %q, name it by hand\n",
@@ -324,9 +334,10 @@ func run(bootstrap bool) error {
 			continue
 		}
 		fetch := competitionFetch{
-			compID: comp.ID,
-			prefix: countryPrefix(comp.ESPNSlug),
-			kind:   comp.Kind,
+			compID:   comp.ID,
+			prefix:   countryPrefix(comp.ESPNSlug),
+			kind:     comp.Kind,
+			category: comp.Category,
 		}
 		matches, err := src.Scoreboard(ctx, comp, season, true)
 		if err != nil {

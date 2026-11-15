@@ -1,6 +1,12 @@
 import type { KnockoutRoundSlug } from './types';
 
 type CompetitionKind = 'national' | 'club';
+/** Which game a competition belongs to. Declared, never inferred from a name
+ *  or slug: it scopes the matchday, the dial and the directories, and it picks
+ *  the canonical-id namespace for the competition's teams. */
+export type Category = 'women' | 'men';
+/** What a collection page is showing: one category, or both. */
+export type View = 'all' | Category;
 export type TeamStyle = 'flag' | 'crest';
 export type Section = 'bracket' | 'standings' | 'scores' | 'news';
 export type ChampionTitleKey = 'champion.world' | 'champion.competition';
@@ -141,6 +147,7 @@ export interface Competition {
   shortName: string;
   espnSlug: string; // ESPN league slug — durable across seasons
   kind: CompetitionKind;
+  category: Category;
   teamStyle: TeamStyle;
   emblem: string;
   /** The competition's real logo, where the provider has one that is legible
@@ -192,6 +199,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     shortName: 'World Cup',
     espnSlug: 'fifa.world',
     kind: 'national',
+    category: 'men',
     teamStyle: 'flag',
     emblem: '🌍',
     logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/4.png',
@@ -227,6 +235,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     shortName: 'Leagues Cup',
     espnSlug: 'concacaf.leagues.cup',
     kind: 'club',
+    category: 'men',
     teamStyle: 'crest',
     emblem: '🏆',
     logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/2410.png',
@@ -277,6 +286,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     shortName: 'CONCACAF Nations League',
     espnSlug: 'concacaf.nations.league',
     kind: 'national',
+    category: 'men',
     teamStyle: 'flag',
     emblem: '🌎',
     logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500/2406.png',
@@ -301,6 +311,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     shortName: 'UEFA Nations League',
     espnSlug: 'uefa.nations',
     kind: 'national',
+    category: 'men',
     teamStyle: 'flag',
     emblem: '🌍',
     logo: 'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/2395.png',
@@ -573,6 +584,7 @@ function leagueCompetition(
   projection?: 'liguilla',
   bracketAccent?: string,
   rounds?: number,
+  category: Category = 'men',
 ): Record<string, Competition> {
   return {
     [id]: {
@@ -581,6 +593,7 @@ function leagueCompetition(
       shortName,
       espnSlug,
       kind: 'club',
+      category,
       teamStyle: 'crest',
       emblem,
       logo,
@@ -617,6 +630,28 @@ export function getCompetition(id: string): Competition | undefined {
 
 export function listCompetitions(): Competition[] {
   return Object.values(COMPETITIONS);
+}
+
+/**
+ * The `view` search parameter of a collection page. Absent, unknown and
+ * repeated values all mean All, so a mangled link still opens a page.
+ */
+export function parseView(value: string | string[] | undefined): View {
+  return value === 'women' || value === 'men' ? value : 'all';
+}
+
+export function inView(competition: Competition, view: View): boolean {
+  return view === 'all' || competition.category === view;
+}
+
+/** The category links are only worth showing once there is a choice to make. */
+export function hasBothCategories(competitions: Competition[] = listCompetitions()): boolean {
+  return new Set(competitions.map((c) => c.category)).size > 1;
+}
+
+/** `?view=women` for a narrowed view, nothing for All. */
+export function viewQuery(view: View): string {
+  return view === 'all' ? '' : `?view=${view}`;
 }
 
 /** Competitions whose current season is still being played — the home

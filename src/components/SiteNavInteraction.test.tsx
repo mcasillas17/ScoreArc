@@ -10,6 +10,7 @@ const path = vi.hoisted(() => ({ current: '/es' }));
 
 vi.mock('next/navigation', () => ({
   usePathname: () => path.current,
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push: vi.fn() }),
 }));
 

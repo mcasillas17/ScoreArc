@@ -4531,3 +4531,20 @@ a.sn-item:hover { color: var(--text); }
 }
 .ps-name { color: var(--text); font-size: 14px; font-weight: 600; overflow-wrap: anywhere; padding: 8px 0; flex: 1; }
 .ps a:focus-visible, .ps input:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 3px; }
+
+/* --- All · Women · Men ---
+   Three text links, not a control: the selection is the URL. Every category
+   uses the same brand underline — gold is reserved for prizes and
+   qualification, and a colour per category would compete with each
+   competition's own accent. */
+.vw { display: flex; gap: 22px; margin: 0 0 18px; }
+.vw-link {
+  padding: 6px 0 5px;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.vw-link:hover { color: var(--text); }
+.vw-link[aria-current] { color: var(--text); border-bottom-color: var(--brand); }

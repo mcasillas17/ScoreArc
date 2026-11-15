@@ -1,4 +1,4 @@
-import { listCompetitions, resolveSeason, type CompetitionSeason } from './competitions';
+import { listCompetitions, resolveSeason, type Competition, type CompetitionSeason } from './competitions';
 import { dataStore, type DataStore } from './store';
 import { canonicalTeamId } from './teamIdentity';
 import { StandingsStatsError } from './providers/espn-standings';
@@ -92,8 +92,8 @@ export async function competitionTeams(rc: CompetitionSeason, store: DataStore =
  * Competitions are fetched in parallel. In reader mode the whole membership
  * collection falls back together; ESPN-only mode keeps its best-effort index.
  */
-export async function allTeams(): Promise<IndexedTeam[]> {
-  const seasons = listCompetitions()
+export async function allTeams(competitions: Competition[] = listCompetitions()): Promise<IndexedTeam[]> {
+  const seasons = competitions
     .map((competition) => resolveSeason(competition.id))
     .filter((rc): rc is CompetitionSeason => rc !== undefined);
 
