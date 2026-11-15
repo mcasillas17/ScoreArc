@@ -44,7 +44,7 @@ describe('opt-in durable match workflow', () => {
     expect(step('restore').with['run-id']).toBe('${{ steps.select.outputs.run_id }}');
     for (const id of ['pending', 'final']) {
       const upload = step(id);
-      expect(upload.uses).toBe('actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a');
+      expect(upload.uses).toBe('actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9');
       expect(upload.with['if-no-files-found']).toBe('error'); expect(upload.with['retention-days']).toBe(90);
       expect(upload['continue-on-error']).toBeUndefined(); expect(upload.with.path).toBe('watchdog-state/state.json');
     }
