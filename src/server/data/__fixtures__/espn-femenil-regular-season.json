@@ -1,0 +1,19 @@
+{
+  "leagues": [{ "slug": "mex.w.1" }],
+  "events": [{
+    "id": "401924354",
+    "date": "2026-09-28T21:45Z",
+    "season": { "year": 2026, "type": 14587, "slug": "torneo-apertura" },
+    "status": {
+      "clock": 5400, "displayClock": "90'+7'", "period": 2,
+      "type": { "id": "28", "name": "STATUS_FULL_TIME", "state": "post", "completed": true, "description": "Full Time", "detail": "FT", "shortDetail": "FT" }
+    },
+    "competitions": [{
+      "id": "401924354",
+      "competitors": [
+        { "id": "133989", "homeAway": "home", "winner": false, "score": "0", "team": { "id": "133989", "abbreviation": "ATL", "displayName": "Atlante" } },
+        { "id": "133981", "homeAway": "away", "winner": false, "score": "0", "team": { "id": "133981", "abbreviation": "UNAM", "displayName": "Pumas UNAM" } }
+      ]
+    }]
+  }]
+}
