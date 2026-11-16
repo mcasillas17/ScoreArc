@@ -5,7 +5,8 @@ import { createDataStore, type DataStore } from '../store';
 import { TtlCache } from '../cache';
 import { nowWindowRange, forwardRange } from '../dateRange';
 import { createOfflineEvaluation } from '../../../../scripts/reader-evaluation-fixtures';
-import { evaluate } from './evaluate';
+import { evaluate, parseManifest } from './evaluate';
+import { compareSemantic } from './normalize';
 import phase from '../__fixtures__/leagues-cup-phase-2026.json';
 
 const rc = resolveSeason('world-cup', '2026')!;
@@ -13,6 +14,18 @@ const signal = new AbortController().signal;
 const now = Date.parse('2026-08-15T12:00:00Z');
 
 describe('bounded addressed navigation', () => {
+  it('compares edition membership by team identity regardless of match or table order', async () => {
+    const a = { id: '15364', name: 'Gotham FC', abbr: 'GFC', crestUrl: null };
+    const b = { id: '15365', name: 'Washington Spirit', abbr: 'WAS', crestUrl: null };
+    const sample = { competition: 'nwsl', season: '2026', kind: 'getEditionTeams' } as const;
+    expect(parseManifest({ version: 1, samples: [sample] }).samples).toEqual([sample]);
+    const store = { getEditionTeams: async () => [a, b] } as unknown as DataStore;
+    const answer = await runScenario(store, sample, resolveSeason('nwsl')!, signal, now, 'reader');
+    expect(answer.value).toEqual([a, b]);
+    expect(compareSemantic(sample.kind, answer.value, [b, a]).differences).toEqual([]);
+    expect(compareSemantic(sample.kind, answer.value, [a]).differences.length).toBeGreaterThan(0);
+  });
+
   it('uses injected clock for both implicit ESPN method windows without changing defaults', async () => {
     const windows: string[] = [];
     const store = createDataStore({ cache: new TtlCache(), now: () => now, fetchJson: async url => {
@@ -33,7 +46,7 @@ describe('bounded addressed navigation', () => {
   it('bounds squad-index fan-out before creating any roster promise', async () => {
     const getSquad = vi.fn();
     const store = { getLeaders: async () => ({ scorers: [], assists: [] }),
-      getStandings: async () => [{ standings: Array.from({ length: 65 }, (_, i) => ({ team: { id: String(i) } })) }], getSquad } as unknown as DataStore;
+      getEditionTeams: async () => Array.from({ length: 65 }, (_, i) => ({ id: String(i) })), getSquad } as unknown as DataStore;
     await expect(runScenario(store, { competition: 'world-cup', season: '2026', kind: 'leaderLinks' }, rc, signal, now, 'reader')).rejects.toMatchObject({ reason: 'budget' });
     expect(getSquad).not.toHaveBeenCalled();
   });

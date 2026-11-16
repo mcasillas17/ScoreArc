@@ -81,8 +81,10 @@ function verifyLeague(raw: unknown, rc: CompetitionSeason): Record<string, unkno
 export function verifyStandingsEdition(raw: unknown, rc: CompetitionSeason) {
   const doc = verifyLeague(raw, rc);
   const { espnLeagueId, espnScoreboardId } = rc.competition;
-  if (!espnLeagueId || doc.id === undefined) throw new EspnEditionError('scope_unverified');
-  if (!matchesId(doc.id, espnLeagueId)) throw new EspnEditionError('scope_mismatch');
+  if (espnLeagueId || requiresEditionEvidence(rc)) {
+    if (!espnLeagueId || doc.id === undefined) throw new EspnEditionError('scope_unverified');
+    if (!matchesId(doc.id, espnLeagueId)) throw new EspnEditionError('scope_mismatch');
+  }
   if (espnScoreboardId && doc.uid !== 's:600~l:' + espnScoreboardId) {
     throw new EspnEditionError(doc.uid === undefined ? 'scope_unverified' : 'scope_mismatch');
   }
@@ -94,8 +96,18 @@ export function verifyStandingsEdition(raw: unknown, rc: CompetitionSeason) {
   const seasons = Array.isArray(doc.seasons) ? doc.seasons.filter(s => object(s) && s.year === year) : [];
   const groups = completeCollection(doc, 'children');
   if (!groups.length && issue) throw new EspnEditionError(issue);
+  // Legacy competitions lack configured ESPN league IDs. Their published
+  // standings link names the league even when the payload has no league object.
+  const legacyLeagueMissing = !espnLeagueId && (!object(doc.league) || doc.league.slug !== rc.competition.espnSlug);
+  if (!groups.length && legacyLeagueMissing) throw new EspnEditionError('scope_unverified');
   for (const group of groups) {
     const table = object(group) && object(group.standings) ? group.standings : {};
+    if (!espnLeagueId) {
+      const links = Array.isArray(table.links) ? table.links.filter(link => object(link) && Array.isArray(link.rel) && link.rel.includes('standings')) : [];
+      const href = 'https://www.espn.com/soccer/table/_/league/' + rc.competition.espnSlug;
+      if (links.some(link => link.href !== href)) throw new EspnEditionError('scope_mismatch');
+      if (legacyLeagueMissing && !links.length) throw new EspnEditionError('scope_unverified');
+    }
     const entries = completeCollection(table, 'entries');
     if (!object(group) || !completeCollectionMetadata(group, entries.length)) throw new EspnEditionError('partial', 'standings group');
     if (table.season !== undefined && table.season !== year) throw new EspnEditionError('scope_mismatch');
@@ -134,4 +146,16 @@ export function verifySummaryEdition(raw: unknown, rc: CompetitionSeason, event:
   if (home === away || sides.length !== 2 || sides.find(side => side.homeAway === 'home')?.id !== home ||
       sides.find(side => side.homeAway === 'away')?.id !== away ||
       sides.some(side => object(side.team) && side.team.id !== undefined && side.team.id !== side.id)) throw new EspnEditionError('scope_mismatch');
+}
+
+export function verifyRosterEdition(raw: unknown, rc: CompetitionSeason, teamId: string): number {
+  const doc = verifyLeague(raw, rc);
+  if (doc.status !== 'success' || !object(doc.team) || !matchesId(doc.team.id, teamId)) throw new EspnEditionError('scope_mismatch', 'roster');
+  requireSeason(doc.season, rc.season);
+  const rows = completeCollection(doc, 'athletes');
+  if (!rows.some(row => object(row) && 'items' in row)) return rows.length;
+  return rows.reduce<number>((count, group) => {
+    if (!object(group)) throw new EspnEditionError('partial', 'roster');
+    return count + completeCollection(group, 'items').length;
+  }, 0);
 }

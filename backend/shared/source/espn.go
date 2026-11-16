@@ -386,11 +386,21 @@ func (e *ESPN) Statistics(
 func (e *ESPN) Roster(
 	ctx context.Context,
 	comp config.Competition,
+	season config.Season,
 	teamSourceID string,
 ) (model.Squad, error) {
 	raw, err := e.get(ctx, espn.TeamRosterURL(comp.ESPNSlug, teamSourceID))
 	if err != nil {
 		return model.Squad{}, err
+	}
+	if season.MatchDerivedTeams() {
+		year, err := providerYear(season)
+		if err != nil {
+			return model.Squad{}, err
+		}
+		if err := validateEditionResource(raw, comp, season, year, "squad"); err != nil {
+			return model.Squad{}, err
+		}
 	}
 	squad, err := espn.MapRoster(raw)
 	if err != nil {

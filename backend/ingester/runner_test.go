@@ -180,6 +180,7 @@ func (f *fakeSource) Bracket(context.Context, config.Competition, config.Season,
 func (f *fakeSource) Roster(
 	ctx context.Context,
 	_ config.Competition,
+	_ config.Season,
 	teamSourceID string,
 ) (model.Squad, error) {
 	f.mu.Lock()
@@ -1048,6 +1049,10 @@ func (f *fakeRepository) ReplaceSquad(
 	f.squadTeams = append(f.squadTeams, teamID)
 	return f.squadErrors[teamID]
 }
+func (f *fakeRepository) MatchSquadTeams(context.Context, string, string) (map[string]string, error) {
+	return nil, nil
+}
+
 func (f *fakeRepository) SetTeamRosterIdentity(_ context.Context, teamID, colour, location string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

@@ -129,6 +129,10 @@ func (f *fakeReaderStore) Squad(_ context.Context, teamID, _, _ string, _ time.T
 	}
 	return profile.Squad, nil
 }
+func (f *fakeReaderStore) EditionTeams(context.Context, string, string, bool) ([]espn.Team, error) {
+	f.calls++
+	return nil, nil
+}
 func (f *fakeReaderStore) Standings(context.Context, string, string, string) ([]Group, error) {
 	f.calls++
 	return f.standings, f.standingsErr

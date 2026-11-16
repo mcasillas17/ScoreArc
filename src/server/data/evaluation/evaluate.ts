@@ -21,7 +21,7 @@ const kinds: readonly string[] = [...METHODS, ...SCENARIOS];
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const providerId = (value: unknown) => typeof value === 'string' && /^[1-9][0-9]{0,31}$/.test(value);
 const args: Record<SampleKind, readonly string[]> = {
-  getMatches: ['range'], getFixtures: ['range'], getLiveWindow: [], getUpcoming: ['limit'], getStandings: [], getBracket: [],
+  getMatches: ['range'], getFixtures: ['range'], getLiveWindow: [], getUpcoming: ['limit'], getStandings: [], getEditionTeams: [], getBracket: [],
   getMatchSummary: ['eventId', 'homeId', 'awayId'], getLeaders: [], getTeam: ['teamId'], getSquad: ['teamId'], getPlayer: ['playerId'],
   listPopup: ['range', 'eventId'], playerPopup: ['playerId', 'eventId'], teamSchedule: ['teamId', 'eventId'], leaderLinks: [], formPopup: ['eventId', 'teamId'],
 };
@@ -111,6 +111,7 @@ function valueEvidence(value: unknown): { categories: string[]; live: boolean } 
 }
 function supported(sample: Sample, rc: CompetitionSeason | undefined): boolean {
   if (!rc) return false;
+  if (sample.kind === 'getEditionTeams') return supportsResource(rc.season, 'teams');
   if (requiresEditionEvidence(rc) && sample.kind === 'getStandings') return supportsResource(rc.season, 'standings');
   if (requiresEditionEvidence(rc) && sample.kind === 'getLeaders') return supportsResource(rc.season, 'leaders');
   if (['getStandings', 'getLeaders', 'getTeam', 'getSquad', 'getPlayer', 'playerPopup', 'teamSchedule', 'leaderLinks', 'formPopup'].includes(sample.kind) && rc.season.id !== rc.competition.currentSeasonId) return false;

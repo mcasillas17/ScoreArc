@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/mcasillas17/scorearc-backend/config"
+	"github.com/mcasillas17/scorearc-backend/shared/source"
 )
 
 const (
@@ -23,6 +24,27 @@ const (
 	// squads on each of the 288 slow ticks.
 	squadRetryInterval = 30 * time.Minute
 )
+
+// ESPN's roster is current. A past or future cup cannot borrow today's squad.
+func (r *runner) refreshMatchSquads(ctx context.Context, comp config.Competition, season config.Season) error {
+	start, end, err := source.SeasonBounds(season)
+	if err != nil {
+		return err
+	}
+	now := r.clock()
+	if now.Before(start) || !now.Before(end) {
+		return nil
+	}
+	teams, err := r.repo.MatchSquadTeams(ctx, comp.ID, season.ID)
+	if err != nil {
+		r.recordRun(ctx, comp.ID, "squads", now, err)
+		return err
+	}
+	if len(teams) == 0 {
+		return nil
+	}
+	return r.refreshSquads(ctx, comp, season, teams)
+}
 
 func (r *runner) refreshSquads(
 	ctx context.Context,
@@ -38,7 +60,7 @@ func (r *runner) refreshSquads(
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 
 	if len(teamIDs) == 0 {
-		err := fmt.Errorf("no standings teams available for squad refresh")
+		err := fmt.Errorf("no edition teams available for squad refresh")
 		r.recordRun(ctx, comp.ID, "squads", start, err)
 		return err
 	}
@@ -92,7 +114,7 @@ func (r *runner) refreshSquads(
 				return
 			}
 
-			squad, err := r.source.Roster(ctx, comp, providerTeamID)
+			squad, err := r.source.Roster(ctx, comp, season, providerTeamID)
 			if err != nil {
 				recordError(fmt.Errorf("team %s roster: %w", providerTeamID, err))
 				return

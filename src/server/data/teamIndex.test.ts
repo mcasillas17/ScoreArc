@@ -1,38 +1,34 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Group } from './types';
 
 vi.mock('./store', async (orig) => {
   const mod = (await orig()) as typeof import('./store');
   return { ...mod, dataStore: { ...mod.dataStore } };
 });
 
-import { dataStore } from './store';
+import { dataStore, type DataStore } from './store';
 import { resolveSeason } from './competitions';
 import { competitionTeams, allTeams } from './teamIndex';
-import { StandingsStatsError } from './providers/espn-standings';
 
-function group(...teams: Array<{ id: string; name: string; abbr: string }>): Group {
-  return {
-    id: 'A',
-    name: 'Group A',
-    standings: teams.map((team, i) => ({
-      team: { ...team, crestUrl: null },
-      rank: i + 1, played: 0, wins: 0, draws: 0, losses: 0,
-      goalsFor: 0, goalsAgainst: 0, goalDifference: 0, points: 0, advanced: false,
-    })),
-  } as Group;
-}
 
-const AMERICA = { id: '227', name: 'América', abbr: 'AME' };
-const ATLAS = { id: '216', name: 'Atlas', abbr: 'ATL' };
+const AMERICA = { id: '227', name: 'América', abbr: 'AME', crestUrl: null };
+const ATLAS = { id: '216', name: 'Atlas', abbr: 'ATL', crestUrl: null };
 // Not in teams.seed.json, so it has no canonical id and therefore no page.
-const UNCURATED = { id: '999999', name: 'Somebody FC', abbr: 'SFC' };
+const UNCURATED = { id: '999999', name: 'Somebody FC', abbr: 'SFC', crestUrl: null };
 
 describe('competitionTeams', () => {
   beforeEach(() => vi.restoreAllMocks());
 
+  it('links each curated knockout entrant to this edition, once', async () => {
+    const nwsl = resolveSeason('nwsl', '2026')!;
+    const rc = { ...nwsl, season: { ...nwsl.season, resources: nwsl.season.resources!.filter(r => r !== 'standings') } };
+    const gotham = { id: '15364', name: 'Gotham FC', abbr: 'GFC', crestUrl: null };
+    const source = { getEditionTeams: async () => [gotham, { ...UNCURATED, crestUrl: null }, gotham] } as unknown as DataStore;
+    const rows = await competitionTeams(rc, source);
+    expect(rows.map(t => t.memberships[0].pathname)).toEqual(['/c/nwsl/2026/team/usa-w-gotham-fc']);
+  });
+
   it('lists clubs alphabetically with a locale-neutral semantic pathname', async () => {
-    vi.spyOn(dataStore, 'getStandings').mockResolvedValue([group(ATLAS, AMERICA)]);
+    vi.spyOn(dataStore, 'getEditionTeams').mockResolvedValue([ATLAS, AMERICA]);
     const teams = await competitionTeams(resolveSeason('liga-mx')!);
     expect(teams.map((t) => t.name)).toEqual(['América', 'Atlas']);
     expect(teams[0].id).toBe('mex-america');
@@ -46,24 +42,16 @@ describe('competitionTeams', () => {
   // An uncurated club has no canonical id, so there is no page to send anyone
   // to. Listing it with a dead link is worse than not listing it.
   it('drops clubs the seed has not curated', async () => {
-    vi.spyOn(dataStore, 'getStandings').mockResolvedValue([group(AMERICA, UNCURATED)]);
+    vi.spyOn(dataStore, 'getEditionTeams').mockResolvedValue([AMERICA, UNCURATED]);
     const teams = await competitionTeams(resolveSeason('liga-mx')!);
     expect(teams.map((t) => t.name)).toEqual(['América']);
   });
 
-  // One competition's table being unavailable must not empty the index that
-  // merges across all of them.
-  it('returns [] rather than throwing when standings fail', async () => {
-    vi.spyOn(dataStore, 'getStandings').mockRejectedValue(new Error('502'));
-    expect(await competitionTeams(resolveSeason('liga-mx')!)).toEqual([]);
+  it('propagates unavailable membership instead of certifying an empty edition', async () => {
+    vi.spyOn(dataStore, 'getEditionTeams').mockRejectedValue(new Error('502'));
+    await expect(competitionTeams(resolveSeason('liga-mx')!)).rejects.toThrow('502');
   });
 
-  // A table rejected for a missing stat still says who plays the competition.
-  it('lists the clubs of a table rejected only for a missing stat', async () => {
-    vi.spyOn(dataStore, 'getStandings').mockRejectedValue(
-      new StandingsStatsError('invalid points', [{ ...AMERICA, crestUrl: null }]));
-    expect((await competitionTeams(resolveSeason('liga-mx')!)).map((t) => t.id)).toEqual(['mex-america']);
-  });
 });
 
 describe('allTeams', () => {
@@ -73,7 +61,7 @@ describe('allTeams', () => {
   // one page per competition, because its record differs in each. Two entries
   // with the same name would make the reader pick blind.
   it('merges a club appearing in two competitions into one entry', async () => {
-    vi.spyOn(dataStore, 'getStandings').mockResolvedValue([group(AMERICA)]);
+    vi.spyOn(dataStore, 'getEditionTeams').mockResolvedValue([AMERICA]);
     const teams = await allTeams();
     const america = teams.filter((t) => t.id === 'mex-america');
     expect(america).toHaveLength(1);

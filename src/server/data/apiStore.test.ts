@@ -14,7 +14,7 @@ const rawMatch = derived.phaseMatches[0];
 function resource(name: ReaderResourceName, scope: ReaderResource['scope'], empty = false): ReaderResource {
   const retained = ['identity', 'detail', 'career', 'gameLog', 'participation', 'seasonStats'].includes(name);
   return { status: retained ? 'unavailable' : empty ? 'empty' : 'fresh', availability: retained ? 'partial' : empty ? 'empty' : 'complete',
-    source: name === 'identity' ? 'mixed' : 'espn', derivation: name === 'identity' ? 'mixed' : name === 'detail' ? 'retained' : name === 'squad' ? 'current-roster' : ['bracket', 'gameLog', 'participation'].includes(name) ? 'derived' : 'direct', scope, observedAt: retained ? null : new Date(now).toISOString(), finalizedAt: null };
+    source: name === 'identity' ? 'mixed' : 'espn', derivation: name === 'identity' ? 'mixed' : name === 'detail' ? 'retained' : name === 'squad' ? 'current-roster' : ['bracket', 'editionTeams', 'gameLog', 'participation'].includes(name) ? 'derived' : 'direct', scope, observedAt: retained ? null : new Date(now).toISOString(), finalizedAt: null };
 }
 function result(body: unknown, names: Partial<Record<ReaderResourceName, ReaderResource['scope']>>): ReaderResponse {
   const resources: ReaderResponse['resources'] = { version: 1, resources: {} };
@@ -216,4 +216,29 @@ it.each([true, false])('separates a Femenil final shootout from both reader matc
   expect((await store.getBracket(scope))[0].matches[0]).toMatchObject({
     winnerId: '133981', detailMatch: { id: providerIds[1], winnerId: drawn ? null : '22413', shootout: { homeScore: 3, awayScore: 4 } },
   });
+});
+
+it('reads the scoped team collection, normalizes its canonical IDs and requires complete evidence', async () => {
+  const path = '/v1/competitions/leagues-cup/2026/teams';
+  const read = (body: unknown, override: Partial<ReaderResource> = {}) => harness(actual => {
+    if (actual !== path) throw new Error('Unexpected route');
+    const reply = result(body, { editionTeams: 'competition-season' });
+    Object.assign(reply.resources.resources.editionTeams!, override);
+    return reply;
+  });
+  const team = rawMatch.home;
+  const { store, calls } = read([team]);
+  expect(await store.getEditionTeams(rc)).toEqual([{ ...team, id: providerTeamId(team.id) }]);
+  await store.getEditionTeams(rc);
+  expect(calls).toEqual([path + '?']);
+  await expect(read([team], { observedAt: new Date(now - 25 * 3_600_000).toISOString() }).store.getEditionTeams(rc))
+    .rejects.toMatchObject({ reason: 'stale' });
+  const missing = read([team], { availability: 'partial' });
+  await expect(missing.store.getEditionTeams(rc)).rejects.toMatchObject({ reason: 'unavailable' });
+  await expect(missing.store.getEditionTeams(rc)).rejects.toMatchObject({ reason: 'unavailable' });
+  expect(missing.calls).toHaveLength(2);
+  expect(await read([]).store.getEditionTeams(rc)).toEqual([]);
+  await expect(read([team, team]).store.getEditionTeams(rc)).rejects.toMatchObject({ reason: 'body' });
+  await expect(read([team], { availability: 'partial' }).store.getEditionTeams(rc)).rejects.toMatchObject({ reason: 'unavailable' });
+  await expect(read([], { availability: 'complete', status: 'fresh' }).store.getEditionTeams(rc)).rejects.toMatchObject({ reason: 'metadata' });
 });

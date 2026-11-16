@@ -59,6 +59,7 @@ coverage disagreement, never an ignored row. No universal percentage is defined.
 | `getBracket` | Round slugs and order, event membership, placeholders, sides, kickoff/state/scores/shootout/winner; only round display name excluded |
 | `getMatchSummary` | Same addressed event and supplied home/away; every scorer/card identity and side, own-goal/penalty flags, stats, lineups, nullable starter, retained media/form/H2H/participation fields |
 | `getLeaders` | Both goals and assists, each rank/order, athlete/team references, values and appearance counts; no legacy top-scorers substitute |
+| `getEditionTeams` | Complete or verified empty membership for the addressed edition. Compare every team ID, name, abbreviation and crest after ordering by identity. |
 | `getTeam` | Requested entity, record/rank, squad, complete scoped schedule and availability, all nonexcluded profile fields; schedule rows remain compared |
 | `getSquad` | Complete roster membership, provider roster order, athlete identity, nullable statistics, jersey, position and held profile fields |
 | `getPlayer` | Requested identity, held totals, career order, exact log membership/chronology, per-match team/opponent/sides and score/result. The ESPN overview's mixed scope is unverified, never intersected with the reader's five held rows |

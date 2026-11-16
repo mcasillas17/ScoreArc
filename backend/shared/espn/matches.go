@@ -239,6 +239,8 @@ func MapSeasonScoreboard(raw []byte, season config.Season) ([]Match, error) {
 			StatusName:      status.Type.Name,
 			Home:            homeTeam,
 			Away:            awayTeam,
+			HomePlaceholder: IsBracketPlaceholder(homeTeam.Name, homeTeam.CrestURL),
+			AwayPlaceholder: IsBracketPlaceholder(awayTeam.Name, awayTeam.CrestURL),
 			HomeScore:       homeScore,
 			AwayScore:       awayScore,
 			WinnerID:        winnerID,

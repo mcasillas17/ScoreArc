@@ -76,6 +76,7 @@ paths:
                 maxItems: 100
                 items: { $ref: "#/components/schemas/IdentityReference" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/ResourceUnavailable" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
@@ -141,6 +142,7 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/Match" } }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/ResourceUnavailable" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
@@ -170,6 +172,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/SeasonCalendar" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/ResourceUnavailable" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
@@ -196,6 +199,7 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/Group" } }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/ResourceUnavailable" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
@@ -225,6 +229,7 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/BracketRound" } }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/ResourceUnavailable" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
@@ -255,6 +260,7 @@ paths:
             application/json:
               schema: { type: array, maxItems: 30, items: { $ref: "#/components/schemas/StatLeader" } }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/ResourceUnavailable" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
@@ -275,6 +281,38 @@ paths:
             application/json:
               schema: { type: array, maxItems: 30, items: { $ref: "#/components/schemas/TopScorer" } }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/ResourceUnavailable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+  /v1/competitions/{comp}/{season}/teams:
+    get:
+      operationId: listEditionTeams
+      summary: List identified teams in one competition season
+      description: >-
+        Requires the teams capability. Returns distinct canonical teams ordered by ID,
+        from accepted provider standings or observed match participants when the
+        edition lacks provider tables. Placeholders are excluded. The editionTeams
+        resource is derived at competition-season scope. Standings evidence lasts
+        20 minutes. Match membership requires a successful full-season discovery
+        with a matching count of verified matches for complete or empty coverage.
+        A nonempty match season with no identified entrants remains unavailable. Its clock expires after 25 hours. Known entrants can be
+        partial, and missing or failed evidence cannot establish an empty field.
+        An oversized collection fails instead of truncating.
+      parameters:
+        - { $ref: "#/components/parameters/Comp" }
+        - { $ref: "#/components/parameters/Season" }
+      responses:
+        "200":
+          description: Canonical edition entrants
+          headers:
+            X-ScoreArc-Resources: { $ref: "#/components/headers/Resources" }
+            Cache-Control: { $ref: "#/components/headers/StandardCacheControl" }
+          content:
+            application/json:
+              schema: { type: array, maxItems: 100, items: { $ref: "#/components/schemas/Team" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/ResourceUnavailable" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
@@ -378,13 +416,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
-        "404":
-          description: Canonical player UUID not found
-          headers:
-            Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
         "405": { $ref: "#/components/responses/MethodNotAllowed" }
@@ -404,6 +436,7 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/NewsArticle" } }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/ResourceUnavailable" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "502": { $ref: "#/components/responses/UpstreamError" }
         "500": { $ref: "#/components/responses/InternalError" }
@@ -576,9 +609,20 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
-    NotFound:
-      description: Match or team not found
+    ResourceUnavailable:
+      description: Resource unavailable for the requested edition
       headers:
+        X-ScoreArc-Resources: { $ref: "#/components/headers/Resources" }
+        Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Unknown entity or resource unavailable for its edition
+      headers:
+        X-ScoreArc-Resources:
+          description: Present when the edition lacks the requested resource.
+          schema: { type: string, maxLength: 8192 }
         Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
       content:
         application/json:
@@ -653,6 +697,7 @@ components:
             calendar: { $ref: "#/components/schemas/ResourceEvidence" }
             bracket: { $ref: "#/components/schemas/ResourceEvidence" }
             standings: { $ref: "#/components/schemas/ResourceEvidence" }
+            editionTeams: { $ref: "#/components/schemas/ResourceEvidence" }
             leaders: { $ref: "#/components/schemas/ResourceEvidence" }
             identity: { $ref: "#/components/schemas/ResourceEvidence" }
             detail: { $ref: "#/components/schemas/ResourceEvidence" }

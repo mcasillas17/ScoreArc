@@ -1,8 +1,7 @@
 import { supportsResource, type CompetitionSeason } from './competitions';
-import type { MatchSummaryData, PlayerProfile, Team } from './types';
+import type { MatchSummaryData, PlayerProfile, SquadPlayer, Team } from './types';
 import { dataStore, type DataStore } from './store';
 import { buildSlugMap, type ResolvedPlayer, type SlugEntry } from './playerIdentity';
-import { standingTeams } from './teamIndex';
 import { isReaderOperationStore, runDataOperation } from './sourceSelection';
 
 export interface DirectoryPlayer {
@@ -72,12 +71,8 @@ export function loadMatchSummaryWithSlugs(
  * roster is unavailable contributes no players rather than failing the
  * index; its players' pages 404 until the roster returns, which is honest.
  *
- * A standings failure, by contrast, PROPAGATES: an index built from zero
- * teams is not knowledge that a player does not exist, and a caller turning
- * it into a 404 would tell a reader their bookmark is dead during an
- * outage. The route maps the throw to a 502 instead. A table withheld only
- * for a missing stat still names its clubs (standingTeams), so it is not a
- * failure here.
+ * Membership failures propagate so a temporary upstream outage cannot turn
+ * a bookmarked player page into a 404.
  *
  * Provider ids stay inside the returned maps and never reach a URL -- the
  * slug contract is docs/backend/PLAYER_IDENTITY.md.
@@ -88,19 +83,13 @@ export async function competitionPlayerIndex(
   signal?: AbortSignal,
 ): Promise<PlayerIndex> {
   return runDataOperation(store, async (source) => {
-    const standing = await standingTeams(rc, source);
-
-    // Dedupe: MLS standings carry each club twice (conference AND overall
-    // groups), and a duplicated roster makes every player collide with
-    // himself -- Messi rendered as lionel-messi-mia-10.
-    const teamById = new Map<string, Team>();
-    for (const team of standing) {
-      if (!teamById.has(team.id)) teamById.set(team.id, team);
+    const teams = await source.getEditionTeams(rc);
+    const squads: { team: Team; squad: SquadPlayer[] }[] = [];
+    for (let i = 0; i < teams.length; i += 4) {
+      squads.push(...await Promise.all(teams.slice(i, i + 4).map(async team => ({
+        team, squad: await source.getSquad(rc, team.id),
+      }))));
     }
-    const teams = Array.from(teamById.values());
-    const squads = await Promise.all(
-      teams.map(async (team) => ({ team, squad: await source.getSquad(rc, team.id) })),
-    );
 
     const entries: SlugEntry[] = [];
     const seenAthletes = new Map<string, Omit<DirectoryPlayer, 'slug'>>();

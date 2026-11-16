@@ -1,6 +1,13 @@
 import { resolveSeason, supportsResource, type CompetitionSeason, type EditionResource } from './competitions';
 import type { DataStore } from './store';
 
+// Larger fields require paged membership and roster reads before onboarding.
+export const MAX_EDITION_TEAMS = 100;
+
+export function matchDerivedMembership(rc: CompetitionSeason) {
+  return !supportsResource(rc.season, 'standings') || !!rc.season.computedTables;
+}
+
 export function resolveResource(competition: string, season: string, ...resources: EditionResource[]) {
   const scope = resolveSeason(competition, season);
   return scope && resources.every(resource => supportsResource(scope.season, resource)) ? scope : undefined;
@@ -23,6 +30,7 @@ export function withEditionResources(source: DataStore): DataStore {
     getFixtures: resourceRead('scores', source.getFixtures),
     getLiveWindow: resourceRead('scores', source.getLiveWindow),
     getUpcoming: resourceRead('scores', source.getUpcoming),
+    getEditionTeams: resourceRead('teams', source.getEditionTeams),
     getStandings: resourceRead('standings', source.getStandings),
     getBracket: resourceRead('bracket', source.getBracket),
     getMatchSummary: resourceRead('summary', source.getMatchSummary),

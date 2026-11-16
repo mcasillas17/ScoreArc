@@ -6,6 +6,7 @@ import { resolveSeason } from './competitions';
 const rc = resolveSeason('mls', '2026')!;
 const stub = (value: string): DataStore => ({
   getMatches: async () => [], getFixtures: async () => [], getLiveWindow: async () => [], getUpcoming: async () => [],
+  getEditionTeams: async () => [{ id: '227', name: value, abbr: 'AME', crestUrl: null }],
   getStandings: async () => [{ id: value, name: value, standings: [] }], getBracket: async () => [],
   getMatchSummary: async () => { throw new Error('unused'); }, getLeaders: async () => ({ scorers: [], assists: [] }),
   getNews: async () => [], getTeam: async () => null, getSquad: async () => [], getPlayer: async () => null,
@@ -79,4 +80,14 @@ it('keeps reader configuration inert while disabled, including malformed unused 
     expect(store).toBe(espn); await store.getStandings(rc); await store.getNews(rc);
   }
   expect(calls).toBe(0);
+});
+
+it('selects the source for edition membership and preserves a failed fallback', async () => {
+  const reader = stub('reader');
+  reader.getEditionTeams = async () => { throw new ReaderFailure('unavailable'); };
+  const espn = stub('espn');
+  const store = createSelectedDataStore({ source: 'reader', espn, reader: () => reader });
+  expect((await store.getEditionTeams(rc))[0].name).toBe('espn');
+  espn.getEditionTeams = async () => { throw new Error('incomplete edition'); };
+  await expect(store.getEditionTeams(rc)).rejects.toThrow('incomplete edition');
 });

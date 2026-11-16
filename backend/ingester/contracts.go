@@ -84,6 +84,7 @@ type repository interface {
 	// replacement actually accepted.
 	WriteStandingSnapshot(context.Context, string, string, []model.Standing, map[string]string, time.Time) (int, error)
 	ReplaceLeaders(context.Context, string, string, string, string, []model.StatLeader) error
+	MatchSquadTeams(context.Context, string, string) (map[string]string, error)
 	ReplaceSquad(context.Context, string, string, string, string, []model.SquadMember, map[string]uuid.UUID) error
 	SetTeamRosterIdentity(ctx context.Context, teamID, colour, location string) error
 	PlayersNeedingBio(context.Context, string, time.Time, int, []string) (map[string]uuid.UUID, error)

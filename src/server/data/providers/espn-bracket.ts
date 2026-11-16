@@ -52,6 +52,10 @@ const EVENT_SLUG_OVERRIDE: Record<string, KnockoutRoundSlug> = {
 const roundSlug = (ev: any, format?: PlayoffFormat): KnockoutRoundSlug | null =>
   EVENT_SLUG_OVERRIDE[String(ev?.id)] ?? normSlug(ev?.season?.slug ?? '', format);
 
+export function isBracketPlaceholder(name: string, crestUrl: string | null): boolean {
+  return !crestUrl && /\b(winner|loser|tbd|to be determined)\b/i.test(name);
+}
+
 function mapBracketTeam(t: any): BracketTeam {
   // `||`, not `??`: ESPN sends an empty logo string for a placeholder slot, and
   // "no crest" is null in the contract (the Go mapper agrees).
@@ -62,7 +66,7 @@ function mapBracketTeam(t: any): BracketTeam {
     name,
     abbr: t.abbreviation,
     crestUrl,
-    placeholder: !crestUrl && /\b(winner|loser|tbd|to be determined)\b/i.test(name),
+    placeholder: isBracketPlaceholder(name, crestUrl),
   };
 }
 

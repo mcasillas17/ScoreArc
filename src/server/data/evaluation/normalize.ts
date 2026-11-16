@@ -7,7 +7,7 @@ export type Difference = {
 
 type Role =
   | 'generic' | 'joined' | 'matches' | 'orderedMatches' | 'match' | 'sideTeam'
-  | 'groups' | 'group' | 'standings' | 'standing' | 'rounds' | 'round'
+  | 'teams' | 'groups' | 'group' | 'standings' | 'standing' | 'rounds' | 'round'
   | 'summary' | 'lineups' | 'lineup' | 'lineupPlayers' | 'lineupPlayer'
   | 'boards' | 'leaders' | 'leader' | 'teamProfile' | 'squad' | 'squadPlayer'
   | 'player' | 'logs' | 'log' | 'career' | 'stint' | 'totals' | 'total'
@@ -16,7 +16,7 @@ type Role =
 
 const roots: Record<string, Role> = {
   getMatches: 'matches', getFixtures: 'matches', getLiveWindow: 'matches', getUpcoming: 'orderedMatches',
-  getStandings: 'groups', getBracket: 'rounds', getMatchSummary: 'summary', getLeaders: 'boards',
+  getStandings: 'groups', getEditionTeams: 'teams', getBracket: 'rounds', getMatchSummary: 'summary', getLeaders: 'boards',
   getTeam: 'teamProfile', getSquad: 'squad', getPlayer: 'player',
   listPopup: 'joined', playerPopup: 'joined', teamSchedule: 'joined', leaderLinks: 'joined', formPopup: 'joined',
 };
@@ -122,8 +122,8 @@ export function compareSemantic(kind: string, reader: unknown, espn: unknown): {
     return value;
   }
   function ordered(values: unknown[], role: Role): unknown[] {
-    if (role !== 'matches' && role !== 'groups') return values;
-    normalizers.add(role === 'matches' ? 'match-set-order-v1' : 'group-set-order-v1');
+    if (role !== 'matches' && role !== 'groups' && role !== 'teams') return values;
+    normalizers.add({ matches: 'match-set-order-v1', groups: 'group-set-order-v1', teams: 'team-set-order-v1' }[role]);
     const key = (value: unknown) => object(value)
       ? `${typeof value.id === 'string' ? value.id : ''}\0${role === 'groups' && typeof value.name === 'string' ? value.name : ''}` : '';
     return [...values].sort((a, b) => lexicographic(key(a), key(b)));

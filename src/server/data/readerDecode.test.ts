@@ -6,7 +6,7 @@ import { mapTeamRoster } from './providers/espn-team';
 import { canonicalTeamId } from './teamIdentity';
 import {
   decodeReaderMatches, decodeReaderBracket, decodeReaderStandings, decodeReaderSummary,
-  decodeReaderLeaders, decodeReaderTeam, decodeReaderSquad, decodeReaderPlayer,
+  decodeReaderEditionTeams, decodeReaderLeaders, decodeReaderTeam, decodeReaderSquad, decodeReaderPlayer,
 } from './readerDecode';
 
 const summary = { ...vectors.summary.shared, ...vectors.summary.reader, commentary: [vectors.summary.commentary.first] };
@@ -31,6 +31,7 @@ const bracket = [{
 }];
 const cases = [
   ['matches', decodeReaderMatches, derived.phaseMatches],
+  ['editionTeams', decodeReaderEditionTeams, [match.home, match.away]],
   ['standings', decodeReaderStandings, derived.membership.mls.groups],
   ['summary', decodeReaderSummary, summary],
   ['leaders', decodeReaderLeaders, leaders],

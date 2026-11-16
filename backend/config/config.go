@@ -22,6 +22,7 @@ type Season struct {
 	StartsAt          string   `json:"startsAt"`
 	EndsAt            string   `json:"endsAt"`
 	Phase             string   `json:"phase"`
+	ComputedTables    bool     `json:"computedTables,omitempty"`
 	PlayoffFormat     string   `json:"playoffFormat,omitempty"`
 	ID                string   `json:"id"`
 	Label             string   `json:"label"`
@@ -155,6 +156,11 @@ func (r *Registry) Get(id string) (Competition, bool) {
 
 func (s Season) Supports(resource string) bool {
 	return slices.Contains(s.Resources, resource) && (resource != "news" || s.Publication != "archive")
+}
+
+// A computed table has no provider standings collection for its entrants.
+func (s Season) MatchDerivedTeams() bool {
+	return s.Supports("scores") && (!s.Supports("standings") || s.ComputedTables)
 }
 
 func (r *Registry) ActiveEdition(c string, s Season) bool {

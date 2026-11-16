@@ -41,7 +41,7 @@ export default async function CompetitionTeamsPage({ params }: Params) {
   const t = getTranslator(locale, comp);
   const rc = resolveResource(comp, season, 'teams');
   if (!rc) notFound();
-  const teams = await competitionTeams(rc);
+  const teams = await competitionTeams(rc).catch(() => null);
 
   return (
     <main className="main tsp">
@@ -54,10 +54,9 @@ export default async function CompetitionTeamsPage({ params }: Params) {
         </Link>
       </header>
 
-      {teams.length === 0 ? (
-        // Empty rather than an error: a competition with no published table yet
-        // has no club list to show, and saying so is better than an empty grid
-        // that looks like a failed load.
+      {teams === null ? (
+        <p className="tsp-empty" role="status">{t('teams.unavailable')}</p>
+      ) : teams.length === 0 ? (
         <p className="tsp-empty">
           {t('teams.noSeasonTeams')}
         </p>

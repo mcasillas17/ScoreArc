@@ -69,7 +69,7 @@ describe('offline fixture boundary', () => {
 
   it('covers every non-news method and joined path in four bounded scopes', () => {
     const kinds = OFFLINE_MANIFEST.samples.map(sample => sample.kind);
-    expect(kinds).toEqual(expect.arrayContaining(['getMatches', 'getFixtures', 'getLiveWindow', 'getUpcoming', 'getStandings', 'getBracket', 'getMatchSummary', 'getLeaders', 'getTeam', 'getSquad', 'getPlayer', 'listPopup', 'playerPopup', 'teamSchedule', 'leaderLinks', 'formPopup']));
+    expect(kinds).toEqual(expect.arrayContaining(['getMatches', 'getFixtures', 'getLiveWindow', 'getUpcoming', 'getEditionTeams', 'getStandings', 'getBracket', 'getMatchSummary', 'getLeaders', 'getTeam', 'getSquad', 'getPlayer', 'listPopup', 'playerPopup', 'teamSchedule', 'leaderLinks', 'formPopup']));
     expect(kinds).not.toContain('getNews');
     expect(OFFLINE_MANIFEST.samples.length).toBeLessThanOrEqual(32);
     expect(new Set(OFFLINE_MANIFEST.samples.map(sample => `${sample.competition}/${sample.season}`)).size).toBeLessThanOrEqual(4);

@@ -62,7 +62,7 @@ type Source interface {
 	Standings(context.Context, config.Competition, config.Season) ([]model.Standing, error)
 	Statistics(context.Context, config.Competition, config.Season) ([]byte, error)
 	Bracket(context.Context, config.Competition, config.Season, bool) ([]model.BracketMatch, error)
-	Roster(context.Context, config.Competition, string) (model.Squad, error)
+	Roster(context.Context, config.Competition, config.Season, string) (model.Squad, error)
 	AthleteBio(context.Context, config.Competition, string) ([]model.TeamHistoryEntry, error)
 	// Plays returns a match's full touch-level stream AND the raw pages that
 	// produced it. The raw bytes are what gets archived: re-serialising our own

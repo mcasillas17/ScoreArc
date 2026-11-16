@@ -96,6 +96,7 @@ func TestESPNRosterRejectsImplausiblyShortSuccess(t *testing.T) {
 	if _, err := NewESPN(client).Roster(
 		context.Background(),
 		config.Competition{ESPNSlug: "mex.1"},
+		config.Season{},
 		"227",
 	); err == nil {
 		t.Fatal("expected implausibly short roster to fail")

@@ -59,6 +59,7 @@ in AGENTS.md first. All three run in CI (`npm test`, `tsc`, `go test ./...`).
 | `getLeaders` | `…/leaders` | Recorded scorer and assist boards (values, ties, identity); defaults and actual persisted depth 30 |
 | none (reader-only) | `…/top-scorers`, `/matches/{id}/box-score` | Frozen legacy goals shape; bounded participation with completion evidence, canonical identity and nullable statistics |
 | `getNews` | `/v1/competitions/{comp}/news` | Recorded articles, identical through the real reader proxy |
+| `getEditionTeams` | `…/teams` | Distinct entrants in this competition and season. The `editionTeams` resource reports membership evidence. The wire uses canonical team IDs and the adapter translates them for existing callers. |
 | `getTeam` | `…/teams/{teamId}` | Identity, location, record, colors, standing summary, squad, schedule ids, order and scope, partial-failure behavior, cache header |
 | `getSquad` | `…/teams/{teamId}/squad` (the same rows `getTeam` embeds) | Recorded roster order, ids, jersey, position, nationality, stats, age and headshots; degraded failure |
 | `getPlayer` | `…/players/{playerId}` | Canonical profile, scoped totals and latest five game-log rows; optional-data absence, source-qualified career links, snapshot/query/output bounds and error handling |
@@ -68,7 +69,7 @@ Adding or removing a `DataStore` method fails `tsc`: two-way
 check on the store object. The Go suite requires the inventory routes plus
 `/healthz` to equal the OpenAPI paths and the chi router's routes. The
 TypeScript suite and `TestReaderContract` each end by requiring that they
-exercised all 12 methods. Every suite ends by checking the gaps the JSON assigns
+exercised every inventoried method. Every suite ends by checking the gaps the JSON assigns
 to it. The `go` suite requires its characterized gaps to equal them, so a deleted
 or skipped characterization fails. Since T10.3 no gap is assigned to `ts` or
 `go-db`, and both require exactly that: a new gap for either fails until its

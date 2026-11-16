@@ -1,7 +1,8 @@
+import { MAX_EDITION_TEAMS } from './editionResources';
 import { isISOInstant } from '@/lib/matchFreshness';
 import type {
   Match, Group, BracketRound, MatchSummaryData, MatchLineups, TeamLineup, LineupPlayer,
-  StatLeader, TeamProfile, SquadPlayer, PlayerProfile, GameLogRow,
+  StatLeader, Team, TeamProfile, SquadPlayer, PlayerProfile, GameLogRow,
 } from './types';
 
 type Decoder<T> = (value: unknown) => T;
@@ -44,6 +45,7 @@ const state = oneOf(['scheduled', 'live', 'finished'] as const);
 const round = oneOf(['round-of-32', 'round-of-16', 'quarterfinals', 'semifinals', '3rd-place-match', 'final'] as const);
 const teamShape = { id: teamId, name: text, abbr: string, crestUrl: nullable(string) };
 const team = object(teamShape);
+export const decodeReaderEditionTeams: Decoder<Team[]> = array(team, MAX_EDITION_TEAMS);
 const scorer = object({
   teamId: nullable(teamId), player: string, minute: string, penalty: boolean, shootout: boolean,
   ownGoal: nullable(boolean), athleteId: nullable(providerId),

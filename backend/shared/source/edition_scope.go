@@ -187,7 +187,7 @@ func validateEditionResource(raw []byte, c config.Competition, s config.Season, 
 			return fmt.Errorf("standings phase unverified for %s/%s", c.ID, s.ID)
 		}
 		return nil
-	} else if doc.League.Slug != c.ESPNSlug {
+	} else if resource != "squad" && doc.League.Slug != c.ESPNSlug {
 		return fmt.Errorf("%s league not verified for %s", resource, c.ID)
 	}
 	if !doc.Season.matches(year, phaseOf(c, s), s.ID) {

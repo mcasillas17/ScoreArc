@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
+	writerstore "github.com/mcasillas17/scorearc-backend/shared/store"
 )
 
 type queryer interface {
@@ -645,6 +646,12 @@ func (s *Store) child(ctx context.Context, read func(*Store) error) error {
 // Most requests name a match or standings participant in the requested edition.
 // That proof remains available even when the optional squad read is degraded.
 func (s *Store) readTeamIdentity(ctx context.Context, query string, args []any, dest ...any) error {
+	if policy, ok := ctx.Value(editionPolicyKey{}).(editionPolicy); ok && policy.edition.MatchDerivedTeams() && policy.edition.Supports("teams") {
+		// This identity is edition-scoped even when another published competition knows the club.
+		members := strings.NewReplacer("$1", "$2", "$2", "$3").Replace(writerstore.EditionMatchTeamsSQL)
+		predicate := "($2::text||'/'||$3::text)=ANY($4::text[]) AND t.id IN (" + members + ")"
+		return s.db.QueryRow(ctx, strings.Replace(query, "{{teamVisibility}}", predicate, 1), args...).Scan(dest...)
+	}
 	const participant = `($2::text||'/'||$3::text)=ANY($4::text[]) AND
  (EXISTS(SELECT 1 FROM match m WHERE m.competition_id=$2 AND m.season_id=$3 AND (m.home_team_id=t.id OR m.away_team_id=t.id))
  OR EXISTS(SELECT 1 FROM standing st WHERE st.competition_id=$2 AND st.season_id=$3 AND st.team_id=t.id))`

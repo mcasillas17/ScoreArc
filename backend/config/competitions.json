@@ -278,6 +278,7 @@
           "odds",
           "career"
         ],
+        "computedTables": true,
         "hasBracket": true,
         "bracketDatesRange": null,
         "knockoutRounds": [

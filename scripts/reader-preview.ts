@@ -121,7 +121,7 @@ const routeNames = ['matches', 'standings', 'bracket', 'summary', 'leaders', 'te
 type RouteName = typeof routeNames[number];
 const isRoute = (value: string | null): value is RouteName => routeNames.some(route => route === value);
 const derivations: Partial<Record<ReaderResourceName, ReaderResource['derivation']>> = {
-  identity: 'mixed', detail: 'retained', squad: 'current-roster', bracket: 'derived', gameLog: 'derived', participation: 'derived',
+  editionTeams: 'derived', identity: 'mixed', detail: 'retained', squad: 'current-roster', bracket: 'derived', gameLog: 'derived', participation: 'derived',
 };
 function resource(name: ReaderResourceName, scope: ReaderResource['scope'], count?: number): ReaderResource {
   return { status: count === undefined ? 'unavailable' : count === 0 ? 'empty' : 'fresh',
@@ -233,6 +233,13 @@ export function createPreviewServer(): Server {
         const resources = evidence(['matches', 'selection', rows.length], ['identity', 'competition-season']);
         if (detail) resources.resources.detail = resource('detail', 'competition-season');
         return send(200, rows, resources);
+      }
+      if (route === 'teams' && !id) {
+        const entrants = groups.length
+          ? groups.flatMap(group => group.standings.map(row => row.team))
+          : scopedMatches.flatMap(match => [match.home, match.away]);
+        const rows = [...new Map(entrants.map(team => [team.id, team])).values()];
+        return send(200, rows, evidence(['editionTeams', 'competition-season', rows.length]));
       }
       if (route === 'standings') return send(200, groups, evidence(['standings', 'competition-season', groups.reduce((n, group) => n + group.standings.length, 0)], ['identity', 'competition-season']));
       if (route === 'bracket') {

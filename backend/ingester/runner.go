@@ -306,6 +306,12 @@ func (r *runner) ingestCompSeason(
 		}
 		recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 		defer cancel()
+		if backfill && season.MatchDerivedTeams() && season.Supports("teams") {
+			if err := r.repo.RecordMatchPoll(recordCtx, comp.ID, season.ID, store.SeasonScoreboardPoll, scoreboardStart, pollOutcome, pollCount); err != nil {
+				result.backfillDone = false
+				result.err = errors.Join(result.err, fmt.Errorf("record edition discovery: %w", err))
+			}
+		}
 		if err := r.repo.RecordMatchPoll(recordCtx, comp.ID, season.ID, sourceESPN, scoreboardStart, pollOutcome, pollCount); err != nil {
 			r.log.Warn("record match poll", "comp", comp.ID, "season", season.ID, "error_type", fmt.Sprintf("%T", err))
 			result.err = errors.Join(result.err, fmt.Errorf("record match poll: %w", err))
@@ -492,6 +498,9 @@ func (r *runner) ingestCompSeason(
 	if matchResult.finalized || slowTick {
 		if season.Supports("standings") {
 			refreshErrors = append(refreshErrors, r.refreshStandings(ctx, comp, season, slowTick, matchResult.finalized))
+		}
+		if slowTick && season.MatchDerivedTeams() && season.Supports("teams") && season.Supports("squad") {
+			refreshErrors = append(refreshErrors, r.refreshMatchSquads(ctx, comp, season))
 		}
 		if season.Supports("leaders") {
 			refreshErrors = append(refreshErrors, r.refreshLeaders(ctx, comp, season))
@@ -728,7 +737,7 @@ func (r *runner) refreshStandings(
 		return nil
 	}
 	snapshotErr := r.snapshotStandings(ctx, comp, season, rows, teamIDs, tableChanged)
-	if !slowTick || !season.Supports("squad") {
+	if !slowTick || !season.Supports("squad") || season.MatchDerivedTeams() {
 		return snapshotErr
 	}
 	return errors.Join(snapshotErr, r.refreshSquads(ctx, comp, season, teamIDs))

@@ -35,10 +35,10 @@ describe('source-bound frontend operations', () => {
       teamAbbr: 'a', teamName: 'Team a', teamCrestUrl: null, value: 2, matches: null });
     const source = selected(stub({
       getLeaders: async () => ({ scorers: [leader('Reader')], assists: [leader('Reader Assist')] }),
-      getStandings: async () => { throw new ReaderFailure('stale'); },
+      getEditionTeams: async () => { throw new ReaderFailure('stale'); },
     }), stub({
       getLeaders: async () => ({ scorers: [leader('ESPN')], assists: [leader('ESPN Assist')] }),
-      getStandings: async () => groups(),
+      getEditionTeams: async () => [team('a'), team('b')],
       getSquad: async (_rc, id) => id === 'a' ? [player('1', 'Linked Player')] : [],
     }));
     const boards = await loadLeadersWithSlugs(rc, source);
@@ -54,10 +54,10 @@ describe('source-bound frontend operations', () => {
     });
     const source = selected(stub({
       getMatchSummary: async () => summary('Reader'),
-      getStandings: async () => { throw new ReaderFailure('stale'); },
+      getEditionTeams: async () => { throw new ReaderFailure('stale'); },
     }), stub({
       getMatchSummary: async () => summary('ESPN'),
-      getStandings: async () => groups(),
+      getEditionTeams: async () => [team('a'), team('b')],
       getSquad: async (_rc, id) => id === 'a' ? [player('1', 'Linked Player')] : [],
     }));
     const result = await loadMatchSummaryWithSlugs(rc, 'event', 'a', 'b', source);
@@ -70,10 +70,10 @@ describe('source-bound frontend operations', () => {
     let cancelled = false;
     let fallbackReads = 0;
     const espn = stub({ getMatchSummary: async () => { fallbackReads++; return { ...empty, commentary: [{ minute: '', text: 'ESPN' }] }; },
-      getStandings: async () => [] });
+      getEditionTeams: async () => [] });
     const source = createSelectedDataStore({ source: 'reader', espn, readerTimeoutMs: 850, totalTimeoutMs: 2000,
       reader: ({ signal }) => stub({ getMatchSummary: async () => empty,
-        getStandings: () => new Promise((_resolve, reject) => signal.addEventListener('abort', () => {
+        getEditionTeams: () => new Promise((_resolve, reject) => signal.addEventListener('abort', () => {
           cancelled = true; reject(signal.reason);
         }, { once: true })),
       }),
@@ -89,11 +89,11 @@ describe('source-bound frontend operations', () => {
       nationality: null, flagUrl: null, headshotUrl: null, team: null, seasonLabel: '', totals: [],
       gameLogLabel: '', gameLog: [], career: [] };
     const source = selected(stub({
-      getStandings: async () => groups(),
+      getEditionTeams: async () => [team('a'), team('b')],
       getSquad: async (_rc, id) => id === 'a' ? [player('1', 'Same Player')] : [],
       getPlayer: async () => { throw new ReaderFailure('network'); },
     }), stub({
-      getStandings: async () => groups(),
+      getEditionTeams: async () => [team('a'), team('b')],
       getSquad: async (_rc, id) => id === 'a' ? [player('2', 'Same Player')] : [],
       getPlayer: async (_rc, id) => id === '2' ? profile : null,
     }));
@@ -104,10 +104,10 @@ describe('source-bound frontend operations', () => {
     let readerTables = 0;
     let espnTables = 0;
     const source = selected(stub({
-      getStandings: async () => { readerTables += 1; return groups(); },
+      getEditionTeams: async () => { readerTables += 1; return [team('a'), team('b')]; },
       getSquad: async (_rc, id) => { if (id === 'b') throw new ReaderFailure('stale'); return [player('1', 'Reader Player')]; },
     }), stub({
-      getStandings: async () => { espnTables += 1; return groups(); },
+      getEditionTeams: async () => { espnTables += 1; return [team('a'), team('b')]; },
       getSquad: async (_rc, id) => id === 'a' ? [player('2', 'ESPN Player')] : [],
     }));
     const index = await competitionPlayerIndex(rc, source);
