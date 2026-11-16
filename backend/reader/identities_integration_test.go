@@ -224,12 +224,16 @@ func TestEditionEligibilityJoinedSummaryFields(t *testing.T) {
 	if _, err := db.Exec(context.Background(), `UPDATE match_detail SET info=info||'{"referee":"Masked official"}' WHERE match_id=$1`, finalMatchID); err != nil {
 		t.Fatal(err)
 	}
+	// France is the identified away side. The seed deliberately marks its opponent as a placeholder.
+	if _, err := db.Exec(context.Background(), `INSERT INTO match_sync_status(match_id,source,observed_at) VALUES ($1,'espn',now())`, finalMatchID); err != nil {
+		t.Fatal(err)
+	}
 	app := teamIntegrationApp(t, reader, &bytes.Buffer{})
 	comp, _ := app.registry.Get("world-cup")
 	s := comp.Seasons["2026"]
 	s.Resources = []string{"scores", "summary", "teams"}
 	comp.Seasons["2026"] = s
-	for _, path := range []string{"/v1/matches/" + finalMatchID, "/v1/competitions/world-cup/2026/matches?scope=season&detail=summary", "/v1/competitions/world-cup/2026/teams/nat-arg"} {
+	for _, path := range []string{"/v1/matches/" + finalMatchID, "/v1/competitions/world-cup/2026/matches?scope=season&detail=summary", "/v1/competitions/world-cup/2026/teams/nat-fra"} {
 		r := performRequest(app.router(), "GET", path)
 		body := r.Body.String()
 		if r.Code != 200 || strings.Contains(body, "Masked official") || strings.Contains(body, `"winProbability":{`) || !strings.Contains(body, "Lionel Messi") {
