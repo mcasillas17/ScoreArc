@@ -441,7 +441,7 @@ func TestWomensPlayoffRoundsAndLegs(t *testing.T) {
 	if len(want) != 0 {
 		t.Fatalf("missing games: %v", want)
 	}
-	if requirement := bracketRequirement("401924388", "torneo-apertura"); requirement == nil || *requirement {
+	if requirement := bracketRequirement("torneo-apertura", "torneo-apertura"); requirement == nil || *requirement {
 		t.Fatal("Apertura regular-season result requires a knockout confirmation")
 	}
 }
@@ -508,5 +508,30 @@ func TestFemenilBracketOrdinalEvidence(t *testing.T) {
 		if (err != nil) != (tc.want == "") || (err == nil && (note == nil || *note != tc.want)) {
 			t.Errorf("ordinal %s %q %q gave %v %v", tc.leg, tc.copy, tc.secondary, note, err)
 		}
+	}
+}
+
+func TestNWSLChampionshipCompletesBracket(t *testing.T) {
+	raw, err := os.ReadFile("../../../src/server/data/__fixtures__/nwsl-championship.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	season := config.Season{PlayoffFormat: "nwsl"}
+	matches, err := MapSeasonScoreboard(raw, season)
+	if err != nil || len(matches) != 1 || matches[0].BracketRequired == nil || !*matches[0].BracketRequired {
+		t.Fatalf("scoreboard: %+v, %v", matches, err)
+	}
+	bracket, err := MapSeasonBracket(raw, season)
+	if err != nil || len(bracket) != 1 {
+		t.Fatalf("bracket: %+v, %v", bracket, err)
+	}
+	final := bracket[0]
+	if final.ID != matches[0].ID || final.ID != "401934232" || final.Round != "final" || final.State != MatchStateScheduled || final.WinnerID != nil ||
+		final.Home.ID != "15365" || final.Away.ID != "20907" {
+		t.Fatalf("final: %+v", final)
+	}
+	other, err := MapBracket(raw)
+	if err != nil || len(other) != 0 {
+		t.Fatalf("unscoped bracket: %+v, %v", other, err)
 	}
 }

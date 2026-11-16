@@ -28,7 +28,8 @@ const SLUG_ALIAS: Record<string, KnockoutRoundSlug> = {
 const isKnockoutRoundSlug = (slug: string): slug is KnockoutRoundSlug =>
   (ROUND_ORDER as readonly string[]).includes(slug);
 
-const normSlug = (slug: string): KnockoutRoundSlug | null => {
+const normSlug = (slug: string, format?: PlayoffFormat): KnockoutRoundSlug | null => {
+  if (format === 'nwsl' && slug === 'playoffs---championship') return 'final';
   // Leagues with a post-season prefix the round with its phase:
   // `playoffs---quarterfinals` (NWSL), `apertura---quarterfinals` (Liga MX).
   // The round is what follows; the phase is the season's business.
@@ -48,8 +49,8 @@ const EVENT_SLUG_OVERRIDE: Record<string, KnockoutRoundSlug> = {
 
 // Canonical round slug for an event: a per-event correction wins over the
 // season-slug alias mapping.
-const roundSlug = (ev: any): KnockoutRoundSlug | null =>
-  EVENT_SLUG_OVERRIDE[String(ev?.id)] ?? normSlug(ev?.season?.slug ?? '');
+const roundSlug = (ev: any, format?: PlayoffFormat): KnockoutRoundSlug | null =>
+  EVENT_SLUG_OVERRIDE[String(ev?.id)] ?? normSlug(ev?.season?.slug ?? '', format);
 
 function mapBracketTeam(t: any): BracketTeam {
   // `||`, not `??`: ESPN sends an empty logo string for a placeholder slot, and
@@ -111,7 +112,7 @@ export function mapBracket(raw: unknown, format?: PlayoffFormat, groups: Group[]
   // group events by round slug, preserving bracket order within each round
   const bySlug = new Map<KnockoutRoundSlug, BracketMatch[]>();
   for (const ev of events) {
-    const slug = roundSlug(ev);
+    const slug = roundSlug(ev, format);
     if (!slug) continue;
     const match = mapBracketMatch(ev, slug, format);
     if (!match) continue;
