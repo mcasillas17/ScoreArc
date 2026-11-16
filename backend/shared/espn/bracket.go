@@ -108,23 +108,25 @@ func IsBracketPlaceholder(name string, crest *string) bool {
 
 // bracketRoundSlug ports espn-bracket.ts's roundSlug: a per-event correction
 // wins over the season-slug alias mapping.
-func bracketRoundSlug(eventID, seasonSlug string) string {
+func bracketRoundSlug(eventID, seasonSlug string, season config.Season) string {
 	if v, ok := eventRoundSlugOverride[eventID]; ok {
 		return v
+	}
+	if season.PlayoffFormat == "nwsl" && seasonSlug == "playoffs---championship" {
+		return "final"
 	}
 	return normRoundSlug(seasonSlug)
 }
 
-func bracketRequirement(eventID, seasonSlug string) *bool {
+func bracketRequirement(seasonSlug, round string) *bool {
 	if seasonSlug == "" {
 		return nil
 	}
-	slug := bracketRoundSlug(eventID, seasonSlug)
-	if isKnockoutRound(slug) {
+	if isKnockoutRound(round) {
 		required := true
 		return &required
 	}
-	if _, ok := nonKnockoutRound[slug]; ok || slug == goldCupPlayInRound {
+	if _, ok := nonKnockoutRound[round]; ok || round == goldCupPlayInRound {
 		required := false
 		return &required
 	}
@@ -162,7 +164,7 @@ func mapBracketTeam(t rawTeam) BracketTeam {
 // mapBracketMatch validates a bracket observation before mapping its facts.
 // Invalid status or incomplete identity must fail the whole bracket response,
 // not become candidates or a successful empty observation.
-func mapBracketMatch(ev rawEvent, season config.Season) (BracketMatch, error) {
+func mapBracketMatch(ev rawEvent, season config.Season, round string) (BracketMatch, error) {
 	if len(ev.Competitions) == 0 {
 		return BracketMatch{}, fmt.Errorf("missing competition")
 	}
@@ -197,7 +199,6 @@ func mapBracketMatch(ev rawEvent, season config.Season) (BracketMatch, error) {
 		(away.Score != nil && *away.Score != "" && awayScore == nil) {
 		return BracketMatch{}, fmt.Errorf("invalid score")
 	}
-	round := bracketRoundSlug(string(ev.ID), ev.Season.Slug)
 	leg := IsFemenilLeg(season, round, nil)
 	note, err := competitionNote(comp.Notes, comp.Leg, leg)
 	if err != nil {
@@ -290,12 +291,12 @@ func MapSeasonBracket(raw []byte, season config.Season) ([]BracketMatch, error) 
 	byRound := make(map[string][]BracketMatch, len(knockoutRoundOrder))
 	eligibleEvents := 0
 	for _, ev := range sb.Events {
-		slug := bracketRoundSlug(string(ev.ID), ev.Season.Slug)
+		slug := bracketRoundSlug(string(ev.ID), ev.Season.Slug, season)
 		if !isKnockoutRound(slug) {
 			continue
 		}
 		eligibleEvents++
-		match, err := mapBracketMatch(ev, season)
+		match, err := mapBracketMatch(ev, season, slug)
 		if err != nil {
 			return nil, fmt.Errorf("ESPN bracket event %q: %w", ev.ID, err)
 		}

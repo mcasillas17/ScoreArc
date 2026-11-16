@@ -1,3 +1,4 @@
+import nwslFinal from '../__fixtures__/nwsl-championship.json';
 import playoffGames from '../__fixtures__/womens-playoff-games.json';
 import { projectLiguilla } from '../liguillaProjection';
 import { resolveSeason, supportsResource } from '../competitions';
@@ -14,6 +15,16 @@ import raw from '../__fixtures__/espn-bracket.json';
 
 describe('mapBracket', () => {
   const rounds = mapBracket(raw);
+
+  it('places the NWSL championship in the scheduled final without awarding the title', () => {
+    const rounds = mapBracket(nwslFinal, 'nwsl');
+    expect(rounds).toHaveLength(1);
+    expect(rounds[0]).toMatchObject({ slug: 'final', matches: [{
+      id: '401934232', round: 'final', state: 'scheduled', winnerId: null,
+      home: { id: '15365' }, away: { id: '20907' },
+    }] });
+    expect(mapBracket(nwslFinal)).toEqual([]);
+  });
 
   it('returns 6 rounds', () => {
     expect(rounds).toHaveLength(6);

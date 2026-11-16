@@ -182,9 +182,8 @@ func MapSeasonScoreboard(raw []byte, season config.Season) ([]Match, error) {
 			return nil, fmt.Errorf("scoreboard event %q: %w", ev.ID, err)
 		}
 
-		bracketRequired := bracketRequirement(string(ev.ID), ev.Season.Slug)
-
-		round := bracketRoundSlug(string(ev.ID), ev.Season.Slug)
+		round := bracketRoundSlug(string(ev.ID), ev.Season.Slug, season)
+		bracketRequired := bracketRequirement(ev.Season.Slug, round)
 		leg := IsFemenilLeg(season, round, nil)
 		note, err := competitionNote(comp.Notes, comp.Leg, leg)
 		if err != nil {
