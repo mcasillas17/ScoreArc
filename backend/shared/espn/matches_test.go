@@ -269,14 +269,14 @@ func TestNationsLeaguePlayInIsExcludedFromTitleBracket(t *testing.T) {
 }
 
 func TestGroupStageDoesNotRequireBracketClassification(t *testing.T) {
-	required := bracketRequirement("group", "group-stage")
+	required := bracketRequirement("group-stage", "group-stage")
 	if required == nil || *required {
 		t.Fatalf("required=%v", required)
 	}
 }
 
 func TestUEFANationsLeaguePlayoffsDoNotRequireTitleBracketConfirmation(t *testing.T) {
-	required := bracketRequirement("playoff", "relegation-playoffs")
+	required := bracketRequirement("relegation-playoffs", "relegation-playoffs")
 	if required == nil || *required {
 		t.Fatalf("required=%v", required)
 	}

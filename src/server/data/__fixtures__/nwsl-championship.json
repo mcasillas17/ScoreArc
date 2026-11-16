@@ -1,0 +1,45 @@
+{
+  "events": [
+    {
+      "id": "401934232",
+      "date": "2026-11-22T01:00Z",
+      "season": {
+        "year": 2026,
+        "slug": "playoffs---championship"
+      },
+      "status": {
+        "type": {
+          "name": "STATUS_SCHEDULED",
+          "state": "pre",
+          "completed": false,
+          "shortDetail": "Scheduled"
+        }
+      },
+      "competitions": [
+        {
+          "id": "401934232",
+          "competitors": [
+            {
+              "homeAway": "home",
+              "score": "0",
+              "team": {
+                "id": "15365",
+                "displayName": "Washington Spirit",
+                "abbreviation": "WAS"
+              }
+            },
+            {
+              "homeAway": "away",
+              "score": "0",
+              "team": {
+                "id": "20907",
+                "displayName": "Kansas City Current",
+                "abbreviation": "KC"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
