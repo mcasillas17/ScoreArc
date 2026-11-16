@@ -6,6 +6,7 @@ import raw from './__fixtures__/espn-scoreboard.json';
 import bracket from './__fixtures__/espn-bracket-2022.json';
 import phase from './__fixtures__/leagues-cup-phase-2026.json';
 import split from './__fixtures__/liga-mx-team-ids-2026.json';
+import playoffGames from './__fixtures__/womens-playoff-games.json';
 import recorded from './__fixtures__/scoreboard-window-recorded.json';
 
 const mx = resolveSeason('liga-mx')!;
@@ -134,4 +135,80 @@ it('bounds summary enrichment concurrency after filtering', async () => {
   const store = createDataStore({ ...p, cache: new TtlCache() });
   expect(await store.getMatches(mx, '20260915-20260915')).toHaveLength(9);
   expect(peak).toBeLessThanOrEqual(4);
+});
+
+it('keeps a verified Femenil aggregate when its auxiliary table is unavailable', async () => {
+  const { default: games } = await import('./__fixtures__/womens-playoff-games.json');
+  const rc = resolveSeason('liga-mx-femenil', '2026-apertura')!;
+  const store = createDataStore({ cache: new TtlCache(), fetchJson: async url => {
+    if (url.includes('/standings')) throw new Error('Table unavailable');
+    return { leagues: [{ id: '23541', slug: 'mex.w.1', season: { year: 2026, type: { name: 'Torneo Apertura' } } }],
+      events: url.includes('dates=202611') ? games.events.slice(1) : [] };
+  } });
+  const rounds = await store.getBracket(rc);
+  expect(rounds[0].matches[0]).toMatchObject({ id: '401932077', winnerId: '133981', homeScore: 7, awayScore: 3 });
+});
+
+describe('Femenil playoff leg results', () => {
+  const scope = resolveSeason('liga-mx-femenil')!;
+  const range = '20261110-20261115';
+  const league = { id: '23541', slug: 'mex.w.1', season: { year: 2026, type: { name: 'Torneo Apertura' } } };
+
+  // Vary the two recorded games to exercise a final whose second-leg winner loses on penalties.
+  function series() {
+    return structuredClone(playoffGames.events.slice(1)).map((event, i) => {
+      const game = event.competitions[0];
+      event.season.slug = 'apertura---final';
+      event.status.type.name = i ? 'STATUS_FINAL_PEN' : 'STATUS_FULL_TIME';
+      game.status = event.status;
+      game.notes = [{ ...game.notes[0], text: i ? '2nd Leg - Pumas UNAM win 4-3 on penalties' : '1st Leg' }];
+      for (const side of game.competitors) {
+        side.score = side.homeAway === 'home' ? '1' : '0';
+        side.winner = side.team.id === '133981';
+      }
+      return event;
+    });
+  }
+  function makeStore(events: ReturnType<typeof series>) {
+    return createDataStore({ cache: new TtlCache(), now: () => Date.parse('2026-11-14T23:05Z'), fetchJson: async url => {
+      if (url.includes('/summary')) {
+        const e = events.find(e => url.endsWith('=' + e.id))!;
+        const game = e.competitions[0];
+        return { header: { id: e.id, league, season: e.season, competitions: [{ ...game,
+          competitors: game.competitors.map(side => ({ ...side, ...(e.id === '401932077' && { shootoutScore: side.homeAway === 'home' ? 2 : 5 }) })),
+        }] } };
+      }
+      if (url.includes('/standings')) throw new Error('table unavailable');
+      if (url.includes('/schedule')) return { requestedSeason: league.season, league, team: { id: '133981' },
+        events: url.includes('fixture=true') ? [] : events.map(e => ({ ...e, league, season: { year: 2026 },
+          seasonType: { name: 'Apertura - Final' }, competitions: [{ ...e.competitions[0],
+            notes: e.competitions[0].notes.map(note => ({ type: 'event', headline: note.text })),
+            competitors: e.competitions[0].competitors.map(side => ({ ...side, score: { displayValue: side.score } })) }] })) };
+      if (url.includes('/teams/')) return { team: { id: '133981', displayName: 'Pumas UNAM' } };
+      return { leagues: [league], events: url.includes('dates=202611') ? events : [] };
+    } });
+  }
+  it('preserves the return-leg result alongside series penalties through every ESPN view', async () => {
+    const store = makeStore(series());
+    const leg = { id: '401932077', winnerId: '22413', homeScore: 1, awayScore: 0, shootout: { homeScore: 3, awayScore: 4 } };
+    expect.soft((await store.getBracket(scope))[0].matches[0]).toMatchObject({ homeScore: 1, awayScore: 1, winnerId: '133981', detailMatch: leg });
+    expect.soft((await store.getFixtures(scope, range)).at(-1)).toMatchObject(leg);
+    expect.soft((await store.getLiveWindow(scope)).at(-1)).toMatchObject(leg);
+    expect.soft((await store.getTeam(scope, '133981'))?.schedule.find(m => m.id === leg.id)).toMatchObject(leg);
+    expect.soft((await store.getMatches(scope, range)).at(-1)).toMatchObject({ ...leg, shootout: { homeScore: 2, awayScore: 5 } });
+  });
+
+  it.each(['drawn', 'STATUS_CANCELED', 'STATUS_ABANDONED'])('retains no leg winner for %s despite an advancing flag', async status => {
+    const events = series();
+    for (const event of events) {
+      if (status === 'drawn') event.competitions[0].competitors.forEach(side => { side.score = '0'; });
+      else event.status.type.name = status;
+    }
+    const store = makeStore(events);
+    expect.soft((await store.getMatches(scope, range)).map(m => m.winnerId)).toEqual([null, null]);
+    expect.soft((await store.getFixtures(scope, range)).map(m => m.winnerId)).toEqual([null, null]);
+    expect.soft((await store.getBracket(scope))[0].matches[0].detailMatch?.winnerId).toBeNull();
+    expect.soft((await makeStore([events[0]]).getBracket(scope))[0].matches[0].detailMatch?.winnerId).toBeNull();
+    expect.soft((await store.getTeam(scope, '133981'))?.schedule.map(m => m.winnerId)).toEqual([null, null]);
+  });
 });

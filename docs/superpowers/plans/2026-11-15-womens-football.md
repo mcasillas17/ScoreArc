@@ -47,6 +47,10 @@ Tasks run in order. An out-of-season tournament can be classified archive-only w
 
 Tasks 1–2 passed independent review in [PR #272](https://github.com/mcasillas17/ScoreArc/pull/272). Task 3 passed independent review in [PR #273](https://github.com/mcasillas17/ScoreArc/pull/273). Identity checks replayed retained mappings and used synthetic national-team cases where ESPN identity evidence was unavailable. No additional edition was activated.
 
+Task 4 passed independent review in [PR #274](https://github.com/mcasillas17/ScoreArc/pull/274). The local Spanish Apertura page linked all 18 clubs across the two groups. The NWSL and WSL each returned six articles tagged to the competition. Staging parity and live transitions are tracked under task 10.
+
+Task 5 passed independent review at `2f01cca`. The NWSL and Apertura brackets distinguish a match winner from the club that advances. The Femenil match popup was verified against the two Pumas–Tigres scores. Drawn or unplayed return legs, tied finals and the WSL promotion playoff have regression coverage.
+
 ## Catalog and ingestion controls
 
 ### Task 1. Describe all 45 candidates without publishing them
@@ -82,19 +86,19 @@ Tasks 1–2 passed independent review in [PR #272](https://github.com/mcasillas1
 
 **Files / interface.** `src/server/data/{endpoints,store,scoreboardWindow,dateRange}.ts`, `src/server/data/providers/{espn-standings,espn-stats,espn-team,espn-news}.ts`, `backend/shared/source/{espn,season_bounds,scoreboard_window}.go`, `backend/shared/espn/news.go`, `backend/reader/news.go` and `src/server/data/evaluation/evaluate.ts`. Extend the standings/statistics URL builders with the verified provider year. Carry explicit phase/bounds where a public season ID alone is insufficient.
 
-- [ ] Record scoped, wrong-season, untagged-news and empty-but-unidentified examples. Assert `new URL(standingsUrl('fifa.wwc', 2023)).searchParams.get('season') === '2023'`. A modern table or mismatching year cannot fill 2023. An untagged Manchester United story from the Femenil feed contributes zero articles. A tagged NWSL story survives. A response with no edition identity cannot prove an empty team schedule.
-- [ ] Run `npx vitest run src/server/data/endpoints.test.ts src/server/data/store.test.ts src/server/data/providers/espn-news.test.ts` and `(cd backend && go test ./shared/source ./shared/espn ./reader -run 'Season|News')`. Expect the new scope and attribution cases to fail.
-- [ ] Honor the proven provider year and phase for standings, leaders, summaries, schedule, rolling window, stored reads and evaluation. Retain existing season conventions when no override is configured. Validate the news league **category ID** against the verified news/standings ID, including in the Go proxy, before caching. Keep existing competition behavior while adopting the stricter rule for new sources. Emit separate valid-empty, partial, stale and unavailable evidence.
-- [ ] Re-run both commands. Cache keys must distinguish editions, repeated wrong-year or unrelated data must stay unavailable. Commit `fix: scope women’s competition resources to verified editions`.
+- [x] Record scoped, wrong-season, untagged-news and empty-but-unidentified examples. Assert `new URL(standingsUrl('fifa.wwc', 2023)).searchParams.get('season') === '2023'`. A modern table or mismatching year cannot fill 2023. An untagged Manchester United story from the Femenil feed contributes zero articles. A tagged NWSL story survives. A response with no edition identity cannot prove an empty team schedule.
+- [x] Run `npx vitest run src/server/data/endpoints.test.ts src/server/data/store.test.ts src/server/data/providers/espn-news.test.ts` and `(cd backend && go test ./shared/source ./shared/espn ./reader -run 'Season|News')`. Expect the new scope and attribution cases to fail.
+- [x] Honor the proven provider year and phase for standings, leaders, summaries, schedule, rolling window, stored reads and evaluation. Retain existing season conventions when no override is configured. Validate the news league **category ID** against the verified news/standings ID, including in the Go proxy, before caching. Keep existing competition behavior while adopting the stricter rule for new sources. Emit separate valid-empty, partial, stale and unavailable evidence.
+- [x] Re-run both commands. Cache keys must distinguish editions, repeated wrong-year or unrelated data must stay unavailable. Commit `fix: scope women’s competition resources to verified editions`.
 
 ### Task 5. Represent the NWSL playoffs and Femenil Liguilla correctly
 
 **Files / interface.** `src/server/data/providers/espn-bracket.ts`, `backend/shared/espn/bracket.go`, `backend/ingester/{matches,schedule}.go`, `src/server/data/{competitions,liguillaProjection}.ts`, `src/components/{LeagueDial,RadialBracket}.tsx`. Add an edition-specific projection for the Femenil format alongside the existing men’s projection. Keep one Go match per leg.
 
-- [ ] Pin provider games `401932958` and `401932077` to `quarterfinals` in both mappers. Assert the NWSL Shield winner and playoff champion can differ. In a two-group example where a fifth-place team outscores the other group’s fourth, expect four qualifiers per group and none from rank five. A drawn first leg has no winner; the second leg’s verified aggregate determines advancement. Test a promotion tie that awards no champion.
-- [ ] Run `npx vitest run src/server/data/providers/espn-bracket.test.ts src/server/data/liguillaProjection.test.ts` and `(cd backend && go test ./shared/espn ./ingester -run 'Bracket|Final|Round')`. Expect the two real round aliases to drop out initially.
-- [ ] Normalize verified prefixed phase labels in the TS and Go bracket paths and in the ingester’s confirmation/finalization path. Encode the NWSL top eight and single elimination, Apertura 2026 Femenil’s cross-group pairings, two legs and certified tiebreak rules. Use a verified WSL edition format. Give Clausura its own evidence before enabling its projection.
-- [ ] Rerun, include the existing men’s Liguilla and World Cup regressions, and regenerate competition JSON when the registry changes. Expect correct rings and champion. Commit `feat: support women’s playoff formats by edition`.
+- [x] Pin provider games `401932958` and `401932077` to `quarterfinals` in both mappers. Assert the NWSL Shield winner and playoff champion can differ. In a two-group example where a fifth-place team outscores the other group’s fourth, expect four qualifiers per group and none from rank five. A drawn first leg has no winner; the second leg’s verified aggregate determines advancement. Test a promotion tie that awards no champion.
+- [x] Run `npx vitest run src/server/data/providers/espn-bracket.test.ts src/server/data/liguillaProjection.test.ts` and `(cd backend && go test ./shared/espn ./ingester -run 'Bracket|Final|Round')`. Expect the two real round aliases to drop out initially.
+- [x] Normalize verified prefixed phase labels in the TS and Go bracket paths and in the ingester’s confirmation/finalization path. Encode the NWSL top eight and single elimination, Apertura 2026 Femenil’s cross-group pairings, two legs and certified tiebreak rules. Use a verified WSL edition format. Give Clausura its own evidence before enabling its projection.
+- [x] Rerun, include the existing men’s Liguilla and World Cup regressions, and regenerate competition JSON when the registry changes. Expect correct rings and champion. Commit `feat: support women’s playoff formats by edition`.
 
 ### Task 6. Give standings-free cups a team and player directory
 

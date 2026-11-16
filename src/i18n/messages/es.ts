@@ -262,6 +262,8 @@ export const es = {
   'bracket.unavailable': 'El cuadro no está disponible en este momento.',
   'bracket.startsOn': (date: string) => `La fase eliminatoria empieza el ${date}.`,
   'bracket.viewGroups': 'Ver la clasificación de grupos',
+  'bracket.nwslFormat': 'Los ocho primeros equipos juegan a eliminación directa por el campeonato de la NWSL. El líder de la fase regular gana el Shield.',
+  'bracket.femenilFormat': 'Clasifican cuatro equipos por grupo. Todas las series son de ida y vuelta. En cuartos, el empate global favorece al mejor de su grupo. La tabla general define los cruces y desempates de semifinales. Una final empatada se decide en penales.',
   'bracket.projectionTitle': 'Liguilla hoy',
   'bracket.projectionNote': 'Si la Liguilla empezara hoy, según la tabla general. El cuadro real la reemplaza cuando se publiquen los cruces.',
   'bracket.projectionTab': 'Proyección',

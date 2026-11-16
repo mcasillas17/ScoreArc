@@ -17,7 +17,7 @@ import {
   decodeReaderMatches, decodeReaderStandings, decodeReaderBracket, decodeReaderSummary,
   decodeReaderLeaders, decodeReaderTeam, decodeReaderSquad, decodeReaderPlayer,
 } from './readerDecode';
-import { mergeLegs } from './providers/espn-bracket';
+import { buildPlayoffBracket } from './providers/espn-bracket';
 
 export interface ReaderDataDependencies {
   read: ReaderTransport;
@@ -164,18 +164,29 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
         standings: group.standings.map(row => ({ ...row, team: mappedTeam(teams, row.team) })) }));
     },
     async getBracket(rc): Promise<BracketRound[]> {
-      const { body, evidence } = await request(`${readerScopePath(rc)}/bracket`, undefined, decodeReaderBracket,
+      const query = rc.season.playoffFormat === 'femenil-apertura' ? { shootout: 'true' } : undefined;
+      const { body, evidence } = await request(`${readerScopePath(rc)}/bracket`, query, decodeReaderBracket,
         { bracket: 'competition-season', identity: 'competition-season' }, ['bracket']);
       const matches = body.flatMap(round => round.matches);
       if (requiresEditionEvidence(rc) && matches.some(m => !datedInEdition(m.kickoff, rc.season))) throw new ReaderFailure('scope', false);
       collectionEvidence(evidence, 'bracket', matches.length); unique(matches.map(m => m.id)); unique(body.map(round => round.slug));
       const [refs, teams] = await Promise.all([identities.lookup(rc, 'match', 'canonical', matches.map(m => m.id)), identities.teams(rc, matches.flatMap(m => [m.home.id, m.away.id]))]);
       // Two-legged ties fold into one, exactly as on the ESPN path.
-      return body.map(round => ({ ...round, matches: mergeLegs(round.matches.map(match => {
+      const rounds = body.map(round => ({ ...round, matches: round.matches.map(match => {
         if (match.round !== round.slug) throw new ReaderFailure('scope', false);
         const ref = refs.get(match.id)!; verifySides(match, ref);
         return { ...match, id: ref.providerId, home: { ...match.home, id: remap(teams, match.home.id) }, away: { ...match.away, id: remap(teams, match.away.id) }, winnerId: nullableId(teams, match.winnerId) };
-      })) }));
+      }) }));
+      let groups: Group[] = [];
+      if (rc.season.playoffFormat && supportsResource(rc.season, 'standings')) {
+        try {
+          groups = await store.getStandings(rc);
+        } catch (error) {
+          deps.signal.throwIfAborted();
+          if (!matches.length) throw error;
+        }
+      }
+      return buildPlayoffBracket(rounds, rc.season.playoffFormat, groups);
     },
     async getMatchSummary(rc, eventId, homeId, awayId): Promise<MatchSummaryData> {
       const identity = (await identities.lookup(rc, 'match', 'espn', [eventId], 'addressed')).get(eventId)!;

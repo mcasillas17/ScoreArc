@@ -185,6 +185,14 @@ func (r *runner) processMatches(
 			}
 		}
 
+		// ESPN's winner flag on a leg can name the advancing team. Recompute
+		// even a backlog row's winner before it is written back to storage.
+		leg := espn.IsFemenilLeg(season, match.Round, match.Note) || (season.PlayoffFormat == config.FemenilApertura && match.WinnerResolved)
+		if leg && match.Home.ID == observedIdentity.HomeTeamID && match.Away.ID == observedIdentity.AwayTeamID {
+			match.WinnerID = espn.LegWinner(match.StatusName, match.Round, match.Note, match.Home.ID, match.Away.ID, match.HomeScore, match.AwayScore)
+			match.WinnerFlagID, match.WinnerResolved = nil, true
+		}
+
 		// The preservation rules above can hand the match back its STORED teams
 		// and winner, which are canonical too. What gets written follows the
 		// match, not the provider payload that started the loop.
@@ -258,7 +266,11 @@ func (r *runner) processMatches(
 
 		scoreOnlyFinal := !season.Supports("summary") && match.HomeScore != nil && match.AwayScore != nil && !observations[match.ID].IsZero()
 		if match.State == model.MatchStateFinished && canFinalize && (isTerminalWithoutSummary(match) || scoreOnlyFinal) {
-			didFinalize, err := r.repo.FinalizeMatch(ctx, identity, match, model.MatchDetail{})
+			detail := model.MatchDetail{}
+			if leg && scoreOnlyFinal && !isTerminalWithoutSummary(match) {
+				detail.Shootout = match.Shootout
+			}
+			didFinalize, err := r.repo.FinalizeMatch(ctx, identity, match, detail)
 			if err != nil {
 				operationErrors = append(operationErrors, fmt.Errorf("match %s finalize terminal status: %w", match.ID, err))
 			} else if didFinalize {
@@ -294,6 +306,10 @@ func (r *runner) processMatches(
 				continue
 			}
 
+			if summary.LegNote != nil {
+				match.Note = summary.LegNote
+				leg = espn.IsFemenilLeg(season, match.Round, match.Note)
+			}
 			detail := summary.Detail
 			if !season.Supports("participation") {
 				detail.Lineups = nil
@@ -307,10 +323,13 @@ func (r *runner) processMatches(
 				detail.WinProbability = nil
 			}
 			if match.State == model.MatchStateFinished {
-				// The summary's aggregate outranks the scoreboard's evidence
-				// (T16.2): the winner that finalizes is the side it names, or
-				// ESPN's flag when it is level.
-				if detail.Shootout != nil {
+				match.HomeScore = summary.HomeScore
+				match.AwayScore = summary.AwayScore
+				if leg {
+					winner := espn.LegWinner(match.StatusName, match.Round, match.Note, match.Home.ID, match.Away.ID, match.HomeScore, match.AwayScore)
+					match.WinnerID, identity.WinnerTeamID, match.WinnerResolved = winner, winner, true
+				} else if detail.Shootout != nil {
+					// A single match's final shootout outranks the scoreboard's earlier evidence.
 					flag := match.WinnerFlagID
 					if match.FromStorage {
 						// A candidate rebuilt from storage carries no flag of
@@ -321,8 +340,6 @@ func (r *runner) processMatches(
 					match.WinnerID, identity.WinnerTeamID = winner, winner
 					match.WinnerResolved = true
 				}
-				match.HomeScore = summary.HomeScore
-				match.AwayScore = summary.AwayScore
 				if at, ok := observationIndex[identity.MatchID]; ok {
 					acceptedObservations[at].Match = match
 				}

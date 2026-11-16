@@ -128,3 +128,9 @@ describe('reader DTO decoding', () => {
     expect(() => decodeReaderMatches([{ ...match, sourceId: 'not-a-contract-field' }])).toThrow('Invalid reader body');
   });
 });
+
+it('accepts retained bracket shootout evidence and rejects invalid totals', () => {
+  const withPens = (homeScore: number) => [{ ...bracket[0], matches: [{ ...bracket[0].matches[0], shootout: { homeScore, awayScore: 4 } }] }];
+  expect(decodeReaderBracket(withPens(3))).toEqual(withPens(3));
+  expect(() => decodeReaderBracket(withPens(-1))).toThrow('Invalid reader body');
+});

@@ -1,4 +1,4 @@
-import type { Season } from '@/server/data/competitions';
+import type { PlayoffFormat, Season } from '@/server/data/competitions';
 import { OFFICIAL_R32_ORDER } from '@/server/data/competitions';
 import type { KnockoutRoundSlug } from '@/server/data/types';
 
@@ -10,6 +10,7 @@ export interface RingGeom {
 }
 
 export interface BracketShape {
+  playoffFormat?: PlayoffFormat;
   ringGeometry: RingGeom[]; // depth 0 (outer flag ring) .. N-1 (final)
   knockoutRounds: KnockoutRoundSlug[]; // slugs, outer->inner; parallel to ringGeometry
   bracketOrder?: [string, string][]; // present -> use as seeds; absent -> derive
@@ -66,7 +67,7 @@ export function bracketShapeFor(season: Season): BracketShape {
     ry: preset[i].rx,
     discR: preset[i].discR,
   }));
-  return { ringGeometry, knockoutRounds, bracketOrder: season.bracketOrder };
+  return { ringGeometry, knockoutRounds, bracketOrder: season.bracketOrder, ...(season.playoffFormat && { playoffFormat: season.playoffFormat }) };
 }
 
 // The 2026 5-ring shape — used as the default when no `shape` prop is passed,

@@ -282,7 +282,7 @@ func TestMatchRoutesKeepBodyAndFreshnessInOneSnapshot(t *testing.T) {
 			return s.Matches(ctx, "world-cup", "2026", matchQuery{Season: true})
 		}},
 		{"calendar", "/v1/competitions/world-cup/2026/calendar", func(s *Store) (any, error) { return s.Calendar(ctx, "world-cup", "2026") }},
-		{"bracket", "/v1/competitions/world-cup/2026/bracket", func(s *Store) (any, error) { return s.Bracket(ctx, "world-cup", "2026") }},
+		{"bracket", "/v1/competitions/world-cup/2026/bracket", func(s *Store) (any, error) { return s.Bracket(ctx, "world-cup", "2026", false) }},
 		{"summary", "/v1/matches/" + finalMatchID, func(s *Store) (any, error) { return s.MatchSummary(ctx, finalMatchID) }},
 		{"team", "/v1/competitions/world-cup/2026/teams/nat-arg", func(s *Store) (any, error) { return s.Team(ctx, "nat-arg", "world-cup", "2026", time.Now()) }},
 	} {

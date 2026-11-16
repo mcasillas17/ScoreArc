@@ -171,7 +171,7 @@ func TestFreshnessSQLIntegration(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		bracket, err := store.Bracket(ctx, scope.Competition, scope.Season)
+		bracket, err := store.Bracket(ctx, scope.Competition, scope.Season, false)
 		if err != nil {
 			t.Fatal(err)
 		}

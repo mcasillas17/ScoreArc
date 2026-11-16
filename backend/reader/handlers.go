@@ -189,6 +189,12 @@ func (a *App) handleBracket(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusBadRequest, "unknown competition or season")
 		return
 	}
+	values, err := singleValues(request.URL.RawQuery, "shootout")
+	shootout, optedIn := values["shootout"]
+	if err != nil || (optedIn && shootout != "true") {
+		writeError(writer, http.StatusBadRequest, errQueryInvalid)
+		return
+	}
 	if !edition.Supports("bracket") {
 		writeUnavailable(writer, "bracket")
 		return
@@ -198,7 +204,7 @@ func (a *App) handleBracket(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	defer finish()
-	rounds, err := reader.Bracket(request.Context(), competition, season)
+	rounds, err := reader.Bracket(request.Context(), competition, season, optedIn && edition.Supports("summary"))
 	if err != nil {
 		finish()
 		a.logDependencyError(request, "bracket", err, "competition", competition, "season", season)

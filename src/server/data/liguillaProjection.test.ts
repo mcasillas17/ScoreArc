@@ -83,3 +83,19 @@ describe('projectLiguilla', () => {
     expect(projectLiguilla([fractional])).toBeNull();
   });
 });
+
+describe('Apertura 2026 Femenil', () => {
+  it('pairs four from each nine-team group across groups even when fifth has more points', () => {
+    const groups = [table(9, 'A'), table(9, 'B')];
+    groups[1].id = 'B';
+    groups[0].standings[4].points = 25;
+    groups[1].standings[3].points = 19;
+    const draw = projectLiguilla(groups, 'femenil-apertura');
+    expect(draw?.[0].matches.map(m => [m.home.abbr, m.away.abbr])).toEqual([
+      ['A1', 'B4'], ['B1', 'A4'], ['A2', 'B3'], ['B2', 'A3'],
+    ]);
+    expect(projectLiguilla(groups.slice(0, 1), 'femenil-apertura')).toBeNull();
+    groups[1].standings[2].team = groups[0].standings[2].team;
+    expect(projectLiguilla(groups, 'femenil-apertura')).toBeNull();
+  });
+});

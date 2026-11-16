@@ -206,7 +206,7 @@ func (e *ESPN) Scoreboard(
 }
 
 func mapScoreboard(raw []byte, season config.Season) ([]model.Match, error) {
-	matches, err := espn.MapScoreboard(raw)
+	matches, err := espn.MapSeasonScoreboard(raw, season)
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +234,7 @@ func (e *ESPN) Summary(ctx context.Context, comp config.Competition, season conf
 			return SummaryResult{}, err
 		}
 	}
-	return mapSummary(raw, match)
+	return mapSummary(raw, match, season)
 }
 
 func (e *ESPN) RecoverMatch(
@@ -272,16 +272,27 @@ func (e *ESPN) RecoverMatch(
 	if kickoff.Before(start) || !kickoff.Before(end) {
 		return model.Match{}, SummaryResult{}, fmt.Errorf("summary event %q kickoff outside season %q", match.ID, season.ID)
 	}
-	result, err := mapSummary(raw, observed)
+	if espn.IsFemenilLeg(season, match.Round, match.Note) && match.Note != nil {
+		observed.Note = match.Note // Reconcile the stored ordinal against the fresh header below.
+	}
+	result, err := mapSummary(raw, observed, season)
 	if err != nil {
 		return model.Match{}, SummaryResult{}, fmt.Errorf("recover match %s detail: %w", match.ID, err)
+	}
+	if result.LegNote != nil {
+		observed.Note = result.LegNote
+	}
+	if espn.IsFemenilLeg(season, observed.Round, observed.Note) {
+		observed.WinnerID = espn.LegWinner(observed.StatusName, observed.Round, observed.Note, observed.Home.ID, observed.Away.ID, observed.HomeScore, observed.AwayScore)
+		observed.WinnerFlagID, observed.WinnerResolved = nil, true
+		observed.Shootout = result.Detail.Shootout
 	}
 	return observed, result, nil
 }
 
 // Both summary paths parse the same fetched body. Final validation follows the
 // observed state for recovery, never the stale candidate's state.
-func mapSummary(raw []byte, match model.Match) (SummaryResult, error) {
+func mapSummary(raw []byte, match model.Match, season config.Season) (SummaryResult, error) {
 	requireFinal := match.State == model.MatchStateFinished
 	switch match.StatusName {
 	case "STATUS_CANCELED", "STATUS_ABANDONED", "STATUS_FORFEIT":
@@ -291,18 +302,9 @@ func mapSummary(raw []byte, match model.Match) (SummaryResult, error) {
 		requireFinal); err != nil {
 		return SummaryResult{}, err
 	}
-	detail, err := espn.MapSummary(raw)
+	detail, note, err := espn.MapSeasonSummary(raw, match, season)
 	if err != nil {
 		return SummaryResult{}, err
-	}
-	// One precedence (T16.2): the summary header's totals, then the observation's
-	// own evidence (scoreboard or bracket: structured totals, else its note), then
-	// the note here for a caller whose match came from neither mapper.
-	if detail.Shootout == nil {
-		detail.Shootout = match.Shootout
-	}
-	if detail.Shootout == nil && match.Note != nil {
-		detail.Shootout = espn.ParseShootoutNote(*match.Note, match.Home.Name, match.Away.Name)
 	}
 	// match here is the caller's provider-shaped copy, so its team ids are the
 	// ones the payload's rosters and events are keyed on.
@@ -317,11 +319,18 @@ func mapSummary(raw []byte, match model.Match) (SummaryResult, error) {
 	result := SummaryResult{
 		Detail: detail, Participation: participation, Commentary: commentary,
 	}
+	leg := espn.IsFemenilLeg(season, match.Round, note)
+	if leg {
+		result.LegNote = note
+	}
 	if requireFinal {
 		result.HomeScore, result.AwayScore, result.WinnerFlagID, err = espn.SummaryFinal(raw, match.Home.ID, match.Away.ID)
 		if err != nil {
 			return SummaryResult{}, err
 		}
+	}
+	if leg {
+		result.WinnerFlagID = nil
 	}
 	return result, nil
 }
@@ -342,6 +351,9 @@ func (e *ESPN) Standings(ctx context.Context, comp config.Competition, season co
 	}
 	if err := espn.ValidateStandingsSeason(raw, expectedYear); err != nil {
 		return nil, err
+	}
+	if season.PlayoffFormat != "" {
+		return espn.MapRankedStandings(raw)
 	}
 	return espn.MapStandings(raw)
 }
@@ -595,7 +607,7 @@ func (e *ESPN) Bracket(
 	if err != nil {
 		return nil, err
 	}
-	return espn.MapBracket(raw)
+	return espn.MapSeasonBracket(raw, season)
 }
 
 var _ Source = (*ESPN)(nil)

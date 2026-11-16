@@ -1,10 +1,11 @@
 import type { Match, PlayerSeasonStats, SquadPlayer, Team, TeamProfile, TeamRecord, TeamStanding } from '../types';
 import { mapState } from '../state';
-import type { CompetitionSeason } from '../competitions';
+import type { CompetitionSeason, PlayoffFormat } from '../competitions';
 import { completeCollectionMetadata } from './espn-collection';
 import { datedInEdition, requiresEditionEvidence, seasonIssue } from './espn-edition';
 import { isMatchKickoff } from '../matchKickoff';
-import { flaggedWinnerId, isScoreboardCount, parseShootout, shootoutTotals, shootoutWinnerId } from './espn-matches';
+import { flaggedWinnerId, isScoreboardCount, matchResult, shootoutTotals } from './espn-matches';
+import { femenilLegRound, providerLeg } from './espn-leg';
 
 /** The profile without the two blocks that come from other endpoints. */
 type TeamIdentity = Omit<TeamProfile, 'squad' | 'schedule' | 'scheduleAvailability'>;
@@ -199,7 +200,7 @@ export function mapTeamRoster(raw: unknown): SquadPlayer[] {
  * competitor.score is an object rather than a scalar, so its Number(score)
  * yields NaN where this reads the object's displayValue.
  */
-export function mapTeamSchedule(raw: unknown): Match[] {
+export function mapTeamSchedule(raw: unknown, format?: PlayoffFormat): Match[] {
   try {
     const events: any[] = (raw as any)?.events ?? [];
     const matches = events.flatMap((ev) => {
@@ -212,32 +213,30 @@ export function mapTeamSchedule(raw: unknown): Match[] {
       const status = comp.status ?? ev.status;
       const type = status?.type;
       const state = type ? mapState(type.state, Boolean(type.completed)) : 'scheduled';
-      const homeTeam = mapTeam(home.team);
-      const awayTeam = mapTeam(away.team);
-      const note = comp.notes?.[0]?.text ?? null;
+      const round = femenilLegRound(format, ev.seasonType?.slug ?? ev.seasonType?.name ?? ev.season?.slug);
+      // Team schedules can put the leg and its aggregate result in the event headline.
+      const note = comp.notes?.[0]?.text ?? (round ? comp.notes?.[0]?.headline : null) ?? null;
+      const legNumber = round ? providerLeg(comp.leg, (comp.notes ?? []).flatMap((n: { text?: string; headline?: string }) =>
+        [n, { text: n.headline }])) : null;
       // The scoreboard's shootout tiers and winner rule (T16.2). A lightweight
       // feed never rejects: a malformed structured total is ignored here.
       const structured = isScoreboardCount(home.shootoutScore) && isScoreboardCount(away.shootoutScore)
         ? shootoutTotals(home.shootoutScore, away.shootoutScore) : null;
-      const shootout = structured ?? parseShootout(note, homeTeam.name, awayTeam.name);
-      const flagged = flaggedWinnerId(home, away);
+      const scoreline = {
+        home: mapTeam(home.team), away: mapTeam(away.team),
+        homeScore: score(home.score), awayScore: score(away.score),
+        state, statusName: type?.name ?? '', note,
+      };
 
       return [{
         id: String(ev.id),
         kickoff: ev.date,
-        state,
+        ...scoreline,
         minute: state === 'live' ? status?.displayClock || null : null,
         statusDetail: type?.shortDetail ?? '',
-        statusName: type?.name ?? '',
-        home: homeTeam,
-        away: awayTeam,
-        homeScore: score(home.score),
-        awayScore: score(away.score),
-        winnerId: (state === 'finished' ? shootoutWinnerId(shootout, homeTeam.id, awayTeam.id) : null) ?? flagged,
-        note,
+        ...matchResult(scoreline, structured, flaggedWinnerId(home, away), round, legNumber),
         scorers: [],
         cards: [],
-        shootout,
         shootoutDetail: null,
         stats: null,
         winProbability: null,
@@ -283,7 +282,7 @@ export function mapScopedTeamSchedule(
     if (!valid) available = false;
     return valid;
   });
-  return { available, matches: mapTeamSchedule({ events }).map((match) => ({
+  return { available, matches: mapTeamSchedule({ events }, rc.season.playoffFormat).map((match) => ({
     ...match, scope: { competitionId: rc.competition.id, seasonId: rc.season.id },
   })) };
 }

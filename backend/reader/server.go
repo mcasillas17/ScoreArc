@@ -54,7 +54,7 @@ type matchReader interface {
 	Player(context.Context, string, string, string) (*PlayerProfile, error)
 	Matches(context.Context, string, string, matchQuery) ([]Match, error)
 	Calendar(context.Context, string, string) (SeasonCalendar, error)
-	Bracket(context.Context, string, string) ([]BracketRound, error)
+	Bracket(context.Context, string, string, bool) ([]BracketRound, error)
 	MatchSummary(context.Context, string) (*MatchSummary, error)
 	BoxScore(context.Context, string) (*BoxScore, error)
 	Team(ctx context.Context, teamID, competition, season string, asOf time.Time) (*TeamProfile, error)

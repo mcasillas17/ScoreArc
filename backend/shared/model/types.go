@@ -68,8 +68,8 @@ type Match struct {
 	// The row keeps no flag, so its nil WinnerFlagID means unknown, not that
 	// ESPN flagged no one; an observation of the same match outranks it.
 	FromStorage bool `json:"-"`
-	// WinnerResolved marks a WinnerID resolved from the final shootout
-	// evidence: finalization stores it as given, null included, where a
+	// WinnerResolved marks a WinnerID resolved from a leg score or final shootout.
+	// Persistence stores it as given, null included, where a
 	// sparse observation's null would otherwise keep the stored winner.
 	WinnerResolved bool `json:"-"`
 }
@@ -113,9 +113,8 @@ type BracketMatch struct {
 	Note         *string     `json:"note"`
 	// Shootout is the bracket observation's own penalty-shootout evidence
 	// (structured competitor totals, else the anchored note), carried to the
-	// ingester's candidate, where the summary header outranks it. Not part of
-	// the served bracket.
-	Shootout *Shootout `json:"-"`
+	// ingester's candidate. The reader serves retained totals when available.
+	Shootout *Shootout `json:"shootout,omitempty"`
 	// WinnerFlagID is ESPN's own winner flag (see Match.WinnerFlagID).
 	WinnerFlagID *string `json:"-"`
 }

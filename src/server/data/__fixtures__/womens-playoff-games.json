@@ -1,0 +1,236 @@
+{
+  "events": [
+    {
+      "id": "401932958",
+      "date": "2026-11-08T17:30Z",
+      "season": {
+        "year": 2026,
+        "type": 14023,
+        "slug": "playoffs---quarterfinals"
+      },
+      "status": {
+        "clock": 5400.0,
+        "displayClock": "90'+3'",
+        "period": 2,
+        "type": {
+          "id": "28",
+          "name": "STATUS_FULL_TIME",
+          "state": "post",
+          "completed": true,
+          "description": "Full Time",
+          "detail": "FT",
+          "shortDetail": "FT"
+        }
+      },
+      "competitions": [
+        {
+          "id": "401932958",
+          "notes": [],
+          "status": {
+            "clock": 5400.0,
+            "displayClock": "90'+3'",
+            "period": 2,
+            "type": {
+              "id": "28",
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "description": "Full Time",
+              "detail": "FT",
+              "shortDetail": "FT"
+            }
+          },
+          "date": "2026-11-08T17:30Z",
+          "competitors": [
+            {
+              "id": "15364",
+              "homeAway": "home",
+              "winner": true,
+              "score": "1",
+              "team": {
+                "id": "15364",
+                "abbreviation": "GFC",
+                "displayName": "Gotham FC",
+                "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/15364.png"
+              }
+            },
+            {
+              "id": "15363",
+              "homeAway": "away",
+              "winner": false,
+              "score": "0",
+              "team": {
+                "id": "15363",
+                "abbreviation": "SEA",
+                "displayName": "Seattle Reign FC",
+                "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/15363.png"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "401932079",
+      "date": "2026-11-11T01:00Z",
+      "season": {
+        "year": 2026,
+        "type": 14588,
+        "slug": "apertura---quarterfinals"
+      },
+      "status": {
+        "clock": 5400.0,
+        "displayClock": "90'+7'",
+        "period": 2,
+        "type": {
+          "id": "28",
+          "name": "STATUS_FULL_TIME",
+          "state": "post",
+          "completed": true,
+          "description": "Full Time",
+          "detail": "FT",
+          "shortDetail": "FT"
+        }
+      },
+      "competitions": [
+        {
+          "id": "401932079",
+          "leg": {
+            "value": 1,
+            "displayValue": "1st Leg"
+          },
+          "notes": [
+            {
+              "text": "1st Leg",
+              "headline": "1st Leg",
+              "type": "event"
+            }
+          ],
+          "status": {
+            "clock": 5400.0,
+            "displayClock": "90'+7'",
+            "period": 2,
+            "type": {
+              "id": "28",
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "description": "Full Time",
+              "detail": "FT",
+              "shortDetail": "FT"
+            }
+          },
+          "date": "2026-11-11T01:00Z",
+          "competitors": [
+            {
+              "id": "133981",
+              "homeAway": "home",
+              "winner": false,
+              "score": "2",
+              "team": {
+                "id": "133981",
+                "abbreviation": "UNAM",
+                "displayName": "Pumas UNAM",
+                "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/133981.png"
+              }
+            },
+            {
+              "id": "22413",
+              "homeAway": "away",
+              "winner": true,
+              "score": "3",
+              "team": {
+                "id": "22413",
+                "abbreviation": "TIG",
+                "displayName": "Tigres UANL",
+                "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/22413.png"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "401932077",
+      "date": "2026-11-14T23:00Z",
+      "season": {
+        "year": 2026,
+        "type": 14588,
+        "slug": "apertura---quarterfinals"
+      },
+      "status": {
+        "clock": 5400.0,
+        "displayClock": "90'+4'",
+        "period": 2,
+        "type": {
+          "id": "28",
+          "name": "STATUS_FULL_TIME",
+          "state": "post",
+          "completed": true,
+          "description": "Full Time",
+          "detail": "FT",
+          "shortDetail": "FT"
+        }
+      },
+      "competitions": [
+        {
+          "id": "401932077",
+          "leg": {
+            "value": 2,
+            "displayValue": "2nd Leg"
+          },
+          "notes": [
+            {
+              "text": "2nd Leg - Pumas UNAM win 7-3 on aggregate",
+              "headline": "2nd Leg - Pumas UNAM win 7-3 on aggregate",
+              "type": "event"
+            }
+          ],
+          "status": {
+            "clock": 5400.0,
+            "displayClock": "90'+4'",
+            "period": 2,
+            "type": {
+              "id": "28",
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true,
+              "description": "Full Time",
+              "detail": "FT",
+              "shortDetail": "FT"
+            }
+          },
+          "date": "2026-11-14T23:00Z",
+          "competitors": [
+            {
+              "id": "22413",
+              "homeAway": "home",
+              "winner": false,
+              "score": "0",
+              "aggregateScore": 3.0,
+              "team": {
+                "id": "22413",
+                "abbreviation": "TIG",
+                "displayName": "Tigres UANL",
+                "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/22413.png"
+              }
+            },
+            {
+              "id": "133981",
+              "homeAway": "away",
+              "winner": true,
+              "score": "5",
+              "aggregateScore": 7.0,
+              "team": {
+                "id": "133981",
+                "abbreviation": "UNAM",
+                "displayName": "Pumas UNAM",
+                "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/133981.png"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"slices"
 	"sort"
 	"testing"
 
@@ -38,14 +39,12 @@ func TestOpenAPIObjectSchemasAreExact(t *testing.T) {
 		}
 		sort.Strings(properties)
 		required := append([]string(nil), schema.Required...)
-		// The additive live context is deliberately absent on finished/legacy rows.
-		if name == "GameLogRow" {
-			for _, property := range required {
-				if property == "liveMatch" {
-					t.Error("GameLogRow.liveMatch must remain optional")
-				}
+		// Both observations are absent from older responses and from games without that evidence.
+		if optional := map[string]string{"GameLogRow": "liveMatch", "BracketMatch": "shootout"}[name]; optional != "" {
+			if slices.Contains(required, optional) {
+				t.Errorf("%s.%s must remain optional", name, optional)
 			}
-			required = append(required, "liveMatch")
+			required = append(required, optional)
 		}
 		sort.Strings(required)
 		if !reflect.DeepEqual(required, properties) {

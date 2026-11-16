@@ -26,6 +26,7 @@ const out = listCompetitionDefinitions().map((c) => ({
       startsAt: s.startsAt,
       endsAt: s.endsAt,
       phase: s.phase,
+      playoffFormat: s.playoffFormat,
       hasBracket: s.format.hasBracket,
       bracketDatesRange: s.bracketDatesRange ?? null,
       knockoutRounds: s.knockoutRounds ?? null,
