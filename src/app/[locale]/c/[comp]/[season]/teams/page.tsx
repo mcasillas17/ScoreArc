@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { resolveSeason } from '@/server/data/competitions';
+import { resolveResource } from '@/server/data/editionResources';
 import { competitionTeams } from '@/server/data/teamIndex';
 import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale, comp);
-  const rc = resolveSeason(comp, season);
+  const rc = resolveResource(comp, season, 'teams');
   if (!rc) return { title: t('teams.title') };
   const edition = `${rc.competition.shortName} ${rc.season.label}`;
   const pathname = `/c/${rc.competition.id}/${rc.season.id}/teams`;
@@ -39,7 +39,7 @@ export default async function CompetitionTeamsPage({ params }: Params) {
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale, comp);
-  const rc = resolveSeason(comp, season);
+  const rc = resolveResource(comp, season, 'teams');
   if (!rc) notFound();
   const teams = await competitionTeams(rc);
 

@@ -3,12 +3,10 @@ import { readFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 const yaml = createRequire(import.meta.url)('js-yaml');
-// One scope per registry competition; counted, not hardcoded, so adding a
-// competition does not break these tests. The monitor's MAX_SENDS must stay
-// at or above it, which this guards.
-const registry: { id: string; name: string; currentSeasonId: string }[] =
+// The catalog can grow independently of the alert delivery budget.
+const registry: { id: string; name: string; currentSeasonId: string; seasons: Record<string, { monitored: boolean }> }[] =
   createRequire(import.meta.url)('../backend/config/competitions.json');
-const SCOPES = registry.length;
+const SCOPES = registry.flatMap(c => Object.values(c.seasons)).filter(s => s?.monitored).length;
 it('sends every scope\'s alert in one run', async () => {
   const source = await readFile(new URL('./match-freshness-monitor.mjs', import.meta.url), 'utf8');
   expect(Number(/const MAX_SENDS = (\d+);/.exec(source)?.[1])).toBeGreaterThanOrEqual(SCOPES);
@@ -199,7 +197,7 @@ describe('enabled workflow artifact boundaries', () => {
     h.missingScopes.add(`/v1/competitions/${uefa.id}/${uefa.currentSeasonId}/matches`);
     const first = await h.run({ initialize: true });
     expect(first.steps.result.outcome).toBe('failure');
-    for (const comp of registry) {
+    for (const comp of registry.filter(c => c.seasons[c.currentSeasonId]?.monitored)) {
       const status = comp === uefa ? 'UNHEALTHY' : 'OK';
       expect(log).toHaveBeenCalledWith(expect.stringContaining(`${status} ${comp.name} | ${comp.id}/${comp.currentSeasonId} `));
     }

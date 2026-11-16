@@ -50,3 +50,28 @@ func TestStatisticsObservationFetchKeepsRequestedSeasonScope(t *testing.T) {
 		t.Fatalf("season source URLs = %v", urls)
 	}
 }
+
+func TestStatisticsAttestsSelectedProviderYearAndLeague(t *testing.T) {
+	year := 2023
+	s := config.Season{ID: "finals", ProviderYear: &year}
+	c := config.Competition{ID: "womens-world-cup", Category: "women", ESPNSlug: "fifa.wwc"}
+	for _, tc := range []struct {
+		body string
+		ok   bool
+	}{
+		{`{"season":{"year":2023},"league":{"slug":"fifa.wwc"},"stats":[]}`, true},
+		{`{"season":{"year":2026},"league":{"slug":"fifa.wwc"},"stats":[]}`, false},
+		{`{"season":{"year":2023},"league":{"slug":"fifa.world"},"stats":[]}`, false},
+		{`{"stats":[]}`, false},
+	} {
+		client := espn.NewWithOptions(espn.Options{MaxAttempts: 1, HTTP: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Query().Get("season") != "2023" {
+				t.Fatalf("wrong upstream year: %s", req.URL)
+			}
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(tc.body))}, nil
+		})}})
+		if _, err := NewESPN(client).Statistics(context.Background(), c, s); (err == nil) != tc.ok {
+			t.Fatalf("%s: %v", tc.body, err)
+		}
+	}
+}

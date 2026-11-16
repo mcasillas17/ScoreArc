@@ -1,4 +1,6 @@
 import type { Match, Shootout, Team } from '../types';
+import type { PlayoffFormat } from '../competitions';
+import { femenilLegRound, legPrefix, playedLegStatus, providerLeg } from './espn-leg';
 import { mapState } from '../state';
 
 // A provider shootout total (summary header or scoreboard competitor), read the
@@ -52,7 +54,8 @@ export function shootoutWinnerId(shootout: Shootout | null, homeId: string, away
  * side's name attributes the score -- anything else is unknown (null), never a
  * guessed orientation. Same rule as the Go ParseShootoutNote.
  */
-export function parseShootout(note: string | null, homeName: string, awayName: string): Shootout | null {
+export function parseShootout(note: string | null, homeName: string, awayName: string, twoLegged = false): Shootout | null {
+  if (twoLegged) note = note?.replace(legPrefix, '').replace(/^[\s–—-]+/, '') ?? null;
   const score = note?.match(/(\d+)\s*[-–]\s*(\d+)\s+on penalties/i);
   if (!score) return null;
   const winner = Math.max(Number(score[1]), Number(score[2]));
@@ -61,6 +64,24 @@ export function parseShootout(note: string | null, homeName: string, awayName: s
   if (homeName && named === homeName.trim().toLowerCase()) return { homeScore: winner, awayScore: loser };
   if (awayName && named === awayName.trim().toLowerCase()) return { homeScore: loser, awayScore: winner };
   return null;
+}
+
+// A series shootout can advance the side that lost the individual match.
+export function matchResult(
+  match: Pick<Match, 'home' | 'away' | 'homeScore' | 'awayScore' | 'state' | 'statusName' | 'note'>,
+  structured: Shootout | null, flagged: string | null, round: ReturnType<typeof femenilLegRound>, ordinal: number | null,
+) {
+  const { home, away, homeScore, awayScore, state, statusName, note } = match;
+  const shootout = structured ?? parseShootout(note, home.name, away.name, !!round);
+  if (round) {
+    let winnerId = null;
+    if (state === 'finished' && playedLegStatus(statusName, round, ordinal) && homeScore != null && awayScore != null) {
+      if (homeScore > awayScore) winnerId = home.id;
+      if (awayScore > homeScore) winnerId = away.id;
+    }
+    return { winnerId, shootout };
+  }
+  return { winnerId: (state === 'finished' ? shootoutWinnerId(shootout, home.id, away.id) : null) ?? flagged, shootout };
 }
 
 function mapTeam(t: any): Team {
@@ -80,11 +101,12 @@ export function flaggedWinnerId(home: any, away: any): string | null {
 /**
  * ESPN's own winner flag per scoreboard event. A finished match whose served
  * aggregate is level falls back to it -- never to a winner a superseded
- * aggregate derived (Go ResolveWinner).
+ * aggregate derived (Go ResolveWinner). Aggregate shootouts never override a Femenil leg result.
  */
-export function scoreboardWinnerFlags(raw: unknown): Map<string, string | null> {
+export function scoreboardWinnerFlags(raw: unknown, format?: PlayoffFormat): Map<string, string | null> {
   const flags = new Map<string, string | null>();
   for (const ev of (raw as any)?.events ?? []) {
+    if (femenilLegRound(format, ev?.season?.slug)) continue;
     const competitors: any[] = ev?.competitions?.[0]?.competitors ?? [];
     flags.set(String(ev?.id), flaggedWinnerId(
       competitors.find((c) => c?.homeAway === 'home'), competitors.find((c) => c?.homeAway === 'away')));
@@ -92,7 +114,7 @@ export function scoreboardWinnerFlags(raw: unknown): Map<string, string | null> 
   return flags;
 }
 
-export function mapScoreboard(raw: unknown): Match[] {
+export function mapScoreboard(raw: unknown, format?: PlayoffFormat): Match[] {
   const events: any[] = (raw as any)?.events ?? [];
   return events.flatMap((ev) => {
     const comp = ev.competitions?.[0];
@@ -103,29 +125,22 @@ export function mapScoreboard(raw: unknown): Match[] {
     const status = ev.status;
     const state = mapState(status.type.state, status.type.completed);
     const note = comp.notes?.[0]?.text ?? null;
-    const homeTeam = mapTeam(home.team);
-    const awayTeam = mapTeam(away.team);
-    // Structured totals outrank the note; a held summary header outranks both
-    // (store.getMatches). Regulation scores below stay separate.
-    const shootout = shootoutTotals(home.shootoutScore, away.shootoutScore) ?? parseShootout(note, homeTeam.name, awayTeam.name);
-    const flagged = flaggedWinnerId(home, away);
-    const winnerId = (state === 'finished' ? shootoutWinnerId(shootout, homeTeam.id, awayTeam.id) : null) ?? flagged;
-    return {
-      id: String(ev.id),
-      kickoff: ev.date,
-      state,
-      minute: state === 'live' ? status.displayClock || null : null,
-      statusDetail: status.type.shortDetail,
-      statusName: status.type.name ?? '',
-      home: homeTeam,
-      away: awayTeam,
+    const scoreline = {
+      home: mapTeam(home.team), away: mapTeam(away.team),
       homeScore: home.score != null && home.score !== '' ? Number(home.score) : null,
       awayScore: away.score != null && away.score !== '' ? Number(away.score) : null,
-      winnerId,
-      note,
+      state, statusName: status.type.name ?? '', note,
+    };
+    const round = femenilLegRound(format, ev.season?.slug);
+    return {
+      id: String(ev.id), kickoff: ev.date,
+      minute: state === 'live' ? status.displayClock || null : null,
+      statusDetail: status.type.shortDetail,
+      ...scoreline,
+      ...matchResult(scoreline, shootoutTotals(home.shootoutScore, away.shootoutScore),
+        flaggedWinnerId(home, away), round, round ? providerLeg(comp.leg, comp.notes ?? []) : null),
       scorers: [],
       cards: [],
-      shootout,
       shootoutDetail: null,
       stats: null,
       winProbability: null,

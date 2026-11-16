@@ -76,19 +76,19 @@ func standingStatMap(stats []rawStat) map[string]*float64 {
 // `rank` stat. Use it when the table supplies a complete 1..n permutation, and
 // keep array order otherwise: a partial, duplicated or fractional rank is worse
 // than the index, and dropping or duplicating a club is never acceptable.
-func inTableOrder(entries []rawStandingEntry) []rawStandingEntry {
+func inTableOrder(entries []rawStandingEntry) ([]rawStandingEntry, bool) {
 	ordered := make([]rawStandingEntry, len(entries))
 	placed := make([]bool, len(entries))
 	for _, entry := range entries {
 		rank := standingStatMap(entry.Stats)["rank"]
 		if rank == nil || *rank != math.Trunc(*rank) || *rank < 1 || *rank > float64(len(entries)) ||
 			placed[int(*rank)-1] {
-			return entries
+			return entries, false
 		}
 		placed[int(*rank)-1] = true
 		ordered[int(*rank)-1] = entry
 	}
-	return ordered
+	return ordered, true
 }
 
 // MapStandings maps ESPN's raw standings JSON (children[].standings.entries[])
@@ -101,6 +101,15 @@ func inTableOrder(entries []rawStandingEntry) []rawStandingEntry {
 // tables without one. The writer then keeps the stored standings. A lone
 // table may omit its id; it is keyed "".
 func MapStandings(raw []byte) ([]Standing, error) {
+	return mapStandings(raw, false)
+}
+
+// MapRankedStandings requires explicit provider positions for playoff qualification.
+func MapRankedStandings(raw []byte) ([]Standing, error) {
+	return mapStandings(raw, true)
+}
+
+func mapStandings(raw []byte, requireRanks bool) ([]Standing, error) {
 	groups, err := validateCollection(raw, "children")
 	if err != nil {
 		return nil, err
@@ -126,7 +135,10 @@ func MapStandings(raw []byte) ([]Standing, error) {
 	standings := make([]Standing, 0)
 	seenTables := make(map[string]struct{})
 	for _, grp := range doc.Children {
-		entries := inTableOrder(grp.Standings.Entries)
+		entries, ranked := inTableOrder(grp.Standings.Entries)
+		if requireRanks && !ranked {
+			return nil, fmt.Errorf("standings group %q has incomplete ranks", grp.Name)
+		}
 		if len(entries) == 0 {
 			return nil, fmt.Errorf("standings group %q contains no teams", grp.Name)
 		}

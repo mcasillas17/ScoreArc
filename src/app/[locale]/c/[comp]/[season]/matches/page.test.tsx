@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as competitionRegistry from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 import type { Match, MatchState } from '@/server/data/types';
@@ -51,6 +52,16 @@ describe('MatchesPage', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
+  });
+
+  it('shows scores-only matches without offering a details request', async () => {
+    const rc = competitionRegistry.resolveSeason('premier-league', '2026-27')!;
+    vi.spyOn(competitionRegistry, 'resolveSeason').mockReturnValue({ ...rc, season: { ...rc.season, resources: ['scores'] } });
+    vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([match('42', 'live', NOW)]);
+    const page = await MatchesPage({ params: { locale: 'en', comp: rc.competition.id, season: rc.season.id } });
+    const html = renderLocalized(page);
+    expect(html).toContain('Arsenal');
+    expect(html).not.toMatch(/<button[^>]*class="mc-match/);
   });
 
   it('opens a historical World Cup in its last active month with the edition label', async () => {

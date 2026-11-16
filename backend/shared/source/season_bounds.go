@@ -11,6 +11,17 @@ import (
 // SeasonBounds shares the provider's calendar scope with freshness checks.
 // End is exclusive; an explicit knockout end may close a cup earlier.
 func SeasonBounds(season config.Season) (start, end time.Time, err error) {
+	if season.StartsAt != "" || season.EndsAt != "" {
+		start, err = time.Parse(time.RFC3339, season.StartsAt)
+		if err != nil {
+			return start, end, err
+		}
+		end, err = time.Parse(time.RFC3339, season.EndsAt)
+		if err == nil && !end.After(start) {
+			err = fmt.Errorf("invalid edition bounds for %s", season.ID)
+		}
+		return start.UTC(), end.UTC(), err
+	}
 	window, err := fullSeasonRange(season.ID)
 	if err != nil {
 		return start, end, err

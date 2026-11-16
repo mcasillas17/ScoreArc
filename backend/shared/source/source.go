@@ -29,7 +29,9 @@ func IsPartialScoreboard(err error) bool {
 }
 
 type SummaryResult struct {
-	Detail model.MatchDetail
+	// LegNote preserves a reconciled bracket ordinal for the match row.
+	LegNote *string
+	Detail  model.MatchDetail
 	// Participation is the people in the match — squads and per-player events —
 	// in provider shape. Nil when the source can't supply it. It is separate
 	// from Detail because Detail is serialized wholesale into match_detail's
@@ -53,7 +55,7 @@ type SummaryResult struct {
 type Source interface {
 	Name() string
 	Scoreboard(context.Context, config.Competition, config.Season, bool) ([]model.Match, error)
-	Summary(context.Context, config.Competition, model.Match) (SummaryResult, error)
+	Summary(context.Context, config.Competition, config.Season, model.Match) (SummaryResult, error)
 	// RecoverMatch observes fresh provider match fields and detail in one
 	// lookup. Input identities are provider-shaped, not canonical IDs.
 	RecoverMatch(context.Context, config.Competition, config.Season, model.Match) (model.Match, SummaryResult, error)

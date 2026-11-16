@@ -5,7 +5,7 @@ import { isISOInstant } from '../src/lib/matchFreshness.ts';
 
 const MAX_STATE = 256 * 1024;
 const MAX_PENDING = 128;
-// Must stay >= the registry size: a run that cannot send one transition per
+// Must stay >= the monitored edition count: a run that cannot send one transition per
 // scope holds alerts back and skips its heartbeat. 10 was exactly the old
 // registry; the Nations League made 11. 16 x SEND_TIMEOUT_MS is 4 minutes.
 const MAX_SENDS = 16;

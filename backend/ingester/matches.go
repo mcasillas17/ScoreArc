@@ -148,7 +148,7 @@ func (r *runner) processMatches(
 			if match.Note == nil {
 				match.Note = current.Note
 			}
-			if season.HasBracket &&
+			if season.HasBracket && season.Supports("bracket") &&
 				current.BracketRequired != nil && *current.BracketRequired &&
 				!match.BracketConfirmed {
 				match.Round = current.Round
@@ -183,6 +183,14 @@ func (r *runner) processMatches(
 				match.State = current.State
 				skipMatchUpsert = true
 			}
+		}
+
+		// ESPN's winner flag on a leg can name the advancing team. Recompute
+		// even a backlog row's winner before it is written back to storage.
+		leg := espn.IsFemenilLeg(season, match.Round, match.Note) || (season.PlayoffFormat == config.FemenilApertura && match.WinnerResolved)
+		if leg && match.Home.ID == observedIdentity.HomeTeamID && match.Away.ID == observedIdentity.AwayTeamID {
+			match.WinnerID = espn.LegWinner(match.StatusName, match.Round, match.Note, match.Home.ID, match.Away.ID, match.HomeScore, match.AwayScore)
+			match.WinnerFlagID, match.WinnerResolved = nil, true
 		}
 
 		// The preservation rules above can hand the match back its STORED teams
@@ -256,8 +264,13 @@ func (r *runner) processMatches(
 		}
 		canFinalize := !requiresBracketConfirmation(match, season) || match.BracketConfirmed
 
-		if match.State == model.MatchStateFinished && isTerminalWithoutSummary(match) && canFinalize {
-			didFinalize, err := r.repo.FinalizeMatch(ctx, identity, match, model.MatchDetail{})
+		scoreOnlyFinal := !season.Supports("summary") && match.HomeScore != nil && match.AwayScore != nil && !observations[match.ID].IsZero()
+		if match.State == model.MatchStateFinished && canFinalize && (isTerminalWithoutSummary(match) || scoreOnlyFinal) {
+			detail := model.MatchDetail{}
+			if leg && scoreOnlyFinal && !isTerminalWithoutSummary(match) {
+				detail.Shootout = match.Shootout
+			}
+			didFinalize, err := r.repo.FinalizeMatch(ctx, identity, match, detail)
 			if err != nil {
 				operationErrors = append(operationErrors, fmt.Errorf("match %s finalize terminal status: %w", match.ID, err))
 			} else if didFinalize {
@@ -270,7 +283,7 @@ func (r *runner) processMatches(
 			continue
 		}
 
-		if !(backfill && match.State == model.MatchStateScheduled) &&
+		if season.Supports("summary") && !(backfill && match.State == model.MatchStateScheduled) &&
 			(match.State != model.MatchStateFinished || canFinalize) &&
 			needsSummary(match, currentPtr, time.Now(), slowTick) {
 			summaryMatch := match
@@ -282,7 +295,7 @@ func (r *runner) processMatches(
 				if targetedRecovery {
 					err = fmt.Errorf("recovery match %s lacks its validated summary", match.ID)
 				} else {
-					summary, err = r.source.Summary(ctx, comp, summaryMatch)
+					summary, err = r.source.Summary(ctx, comp, season, summaryMatch)
 				}
 			}
 			if err != nil {
@@ -293,12 +306,30 @@ func (r *runner) processMatches(
 				continue
 			}
 
+			if summary.LegNote != nil {
+				match.Note = summary.LegNote
+				leg = espn.IsFemenilLeg(season, match.Round, match.Note)
+			}
 			detail := summary.Detail
+			if !season.Supports("participation") {
+				detail.Lineups = nil
+			}
+			if detail.Info != nil && !season.Supports("officials") {
+				info := *detail.Info
+				info.Referee = nil
+				detail.Info = &info
+			}
+			if !season.Supports("odds") {
+				detail.WinProbability = nil
+			}
 			if match.State == model.MatchStateFinished {
-				// The summary's aggregate outranks the scoreboard's evidence
-				// (T16.2): the winner that finalizes is the side it names, or
-				// ESPN's flag when it is level.
-				if detail.Shootout != nil {
+				match.HomeScore = summary.HomeScore
+				match.AwayScore = summary.AwayScore
+				if leg {
+					winner := espn.LegWinner(match.StatusName, match.Round, match.Note, match.Home.ID, match.Away.ID, match.HomeScore, match.AwayScore)
+					match.WinnerID, identity.WinnerTeamID, match.WinnerResolved = winner, winner, true
+				} else if detail.Shootout != nil {
+					// A single match's final shootout outranks the scoreboard's earlier evidence.
 					flag := match.WinnerFlagID
 					if match.FromStorage {
 						// A candidate rebuilt from storage carries no flag of
@@ -309,8 +340,6 @@ func (r *runner) processMatches(
 					match.WinnerID, identity.WinnerTeamID = winner, winner
 					match.WinnerResolved = true
 				}
-				match.HomeScore = summary.HomeScore
-				match.AwayScore = summary.AwayScore
 				if at, ok := observationIndex[identity.MatchID]; ok {
 					acceptedObservations[at].Match = match
 				}
@@ -325,7 +354,7 @@ func (r *runner) processMatches(
 
 			// Final participation is owned by the durable completion transaction.
 			// FinalizeMatch atomically enrolls it; live rows remain provisional.
-			if match.State != model.MatchStateFinished {
+			if season.Supports("participation") && match.State != model.MatchStateFinished {
 				if _, err := r.repo.WriteParticipation(ctx, r.source.Name(), identity.MatchID,
 					match.Home.ID, match.Away.ID, summary.Participation); err != nil {
 					operationErrors = append(operationErrors,
@@ -339,7 +368,7 @@ func (r *runner) processMatches(
 			// no usable three-way moneyline -- writing 0/0/0 for those would
 			// invent a market a reader could not distinguish from a real one.
 			if match.State == model.MatchStateLive {
-				if detail.WinProbability != nil {
+				if season.Supports("odds") && detail.WinProbability != nil {
 					probability := *detail.WinProbability
 					if !r.sampleUnchanged(identity.MatchID, winProbSnapshotRunKind,
 						summaryStartedAt, sampleDigest(
@@ -361,7 +390,7 @@ func (r *runner) processMatches(
 				// the books' raw prices, and the competitions whose market
 				// mapWinProbability cannot normalize are exactly the ones whose
 				// market would otherwise never be recorded at all.
-				if !targetedRecovery {
+				if !targetedRecovery && season.Supports("odds") {
 					r.captureOdds(ctx, comp, identity, match.ID, oddsCaptureLive)
 				}
 			}
@@ -390,12 +419,18 @@ func (r *runner) processMatches(
 					// Recovery reserves its provider budget for core facts;
 					// existing durable backlogs own the follow-up captures.
 					if !targetedRecovery {
-						if err := r.capturePlays(ctx, comp, season, identity, match.ID); err != nil {
-							operationErrors = append(operationErrors,
-								fmt.Errorf("match %s play stream: %w", match.ID, err))
+						if season.Supports("plays") {
+							if err := r.capturePlays(ctx, comp, season, identity, match.ID); err != nil {
+								operationErrors = append(operationErrors,
+									fmt.Errorf("match %s play stream: %w", match.ID, err))
+							}
 						}
-						r.captureOfficials(ctx, comp, identity, match.ID)
-						r.captureOdds(ctx, comp, identity, match.ID, oddsCaptureFinal)
+						if season.Supports("officials") {
+							r.captureOfficials(ctx, comp, identity, match.ID)
+						}
+						if season.Supports("odds") {
+							r.captureOdds(ctx, comp, identity, match.ID, oddsCaptureFinal)
+						}
 					}
 					r.forgetSamples(identity.MatchID)
 					existing[identity.MatchID] = store.MatchRow{
@@ -443,7 +478,7 @@ func isPostponedTransition(current model.MatchState, incoming model.Match) bool 
 }
 
 func requiresBracketConfirmation(match model.Match, season config.Season) bool {
-	if !season.HasBracket {
+	if !season.HasBracket || !season.Supports("bracket") {
 		return false
 	}
 	if match.Round != "" {

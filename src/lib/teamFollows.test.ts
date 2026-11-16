@@ -28,6 +28,17 @@ describe('browser-local team follows', () => {
     store.followTeam(arsenal);
     expect(JSON.parse(window.localStorage.getItem(store.TEAM_FOLLOWS_KEY)!).teams).toEqual([america, arsenal]);
   });
+  it('opens saved follows for both América clubs at their original URLs', () => {
+    const femenil = { ...america, teamId: 'mex-w-america', competitionId: 'liga-mx-femenil' };
+    const raw = saved([america, femenil]);
+    window.localStorage.setItem(store.TEAM_FOLLOWS_KEY, raw);
+    const hrefs = store.getTeamFollowsSnapshot().teams.map(team => store.teamFollowHref(team, 'es'));
+    expect(hrefs).toEqual([
+      '/es/c/liga-mx/2026-apertura/team/mex-america#performance',
+      '/es/c/liga-mx-femenil/2026-apertura/team/mex-w-america#performance',
+    ]);
+    expect(window.localStorage.getItem(store.TEAM_FOLLOWS_KEY)).toBe(raw);
+  });
   it('deduplicates canonical teams across competitions and removes them globally', () => {
     store.followTeam(america);
     store.followTeam({ ...america, competitionId: 'premier-league' });

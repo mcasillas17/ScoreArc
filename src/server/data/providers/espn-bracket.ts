@@ -1,6 +1,9 @@
-import type { BracketRound, BracketMatch, BracketTeam, KnockoutRoundSlug } from '../types';
+import type { PlayoffFormat } from '../competitions';
+import { overallOrder, playoffTable, projectLiguilla } from '../liguillaProjection';
+import type { Group, Standing, BracketRound, BracketMatch, BracketTeam, KnockoutRoundSlug } from '../types';
 import { mapState } from '../state';
-import { flaggedWinnerId, isScoreboardCount, parseShootout, shootoutTotals, shootoutWinnerId } from './espn-matches';
+import { flaggedWinnerId, isScoreboardCount, matchResult, parseShootout, shootoutTotals, shootoutWinnerId } from './espn-matches';
+import { femenilLegRound, noteLeg, playedLegStatus, providerLeg } from './espn-leg';
 
 const ROUND_ORDER = [
   'round-of-32',
@@ -62,7 +65,7 @@ function mapBracketTeam(t: any): BracketTeam {
   };
 }
 
-function mapBracketMatch(ev: any, slug: KnockoutRoundSlug): BracketMatch | null {
+function mapBracketMatch(ev: any, slug: KnockoutRoundSlug, format?: PlayoffFormat): BracketMatch | null {
   const comp = ev.competitions?.[0];
   const competitors: any[] = comp?.competitors ?? [];
   const home = competitors.find((c: any) => c.homeAway === 'home');
@@ -79,35 +82,30 @@ function mapBracketMatch(ev: any, slug: KnockoutRoundSlug): BracketMatch | null 
   }
   const state = mapState(status.type.state, status.type.completed);
   const note = comp.notes?.[0]?.text ?? null;
-  const homeTeam = mapBracketTeam(home.team);
-  const awayTeam = mapBracketTeam(away.team);
-  // A decisive penalty shootout IS the result, so its score decides the winner
-  // ahead of the `winner` flag — ESPN sets that flag inconsistently on shootout
-  // matches: sometimes it's missing (1998), sometimes it's plain wrong (2010's
-  // R16 marks Japan, not Paraguay, despite Paraguay winning the shootout 5–3).
-  // The scoreboard's tiers decide it (structured totals, then the anchored
-  // note), and only once the match is over: a live shootout's totals are partial.
-  const shootout = shootoutTotals(home.shootoutScore, away.shootoutScore) ?? parseShootout(note, homeTeam.name, awayTeam.name);
-  const winnerId = (state === 'finished' ? shootoutWinnerId(shootout, homeTeam.id, awayTeam.id) : null) ?? flaggedWinnerId(home, away);
-
+  const round = femenilLegRound(format, slug);
+  const legNumber = round ? providerLeg(comp.leg, comp.notes ?? []) : null;
+  const scoreline = {
+    home: mapBracketTeam(home.team), away: mapBracketTeam(away.team),
+    homeScore: home.score != null && home.score !== '' ? Number(home.score) : null,
+    awayScore: away.score != null && away.score !== '' ? Number(away.score) : null,
+    state, statusName: status.type.name ?? '', note,
+  };
+  const { winnerId, shootout } = matchResult(scoreline, shootoutTotals(home.shootoutScore, away.shootoutScore),
+    flaggedWinnerId(home, away), round, legNumber);
   return {
     id: String(ev.id),
     round: slug,
     kickoff: ev.date ?? '',
-    home: homeTeam,
-    away: awayTeam,
-    homeScore: home.score != null && home.score !== '' ? Number(home.score) : null,
-    awayScore: away.score != null && away.score !== '' ? Number(away.score) : null,
-    state,
+    ...scoreline,
     statusDetail: status.type.shortDetail ?? '',
-    statusName: status.type.name ?? '',
     minute: state === 'live' ? status.displayClock || null : null,
     winnerId,
-    note,
+    ...(round && { legNumber }),
+    ...(round && shootout ? { shootout } : {}),
   };
 }
 
-export function mapBracket(raw: unknown): BracketRound[] {
+export function mapBracket(raw: unknown, format?: PlayoffFormat, groups: Group[] = []): BracketRound[] {
   const events: any[] = (raw as any)?.events ?? [];
 
   // group events by round slug, preserving bracket order within each round
@@ -115,53 +113,90 @@ export function mapBracket(raw: unknown): BracketRound[] {
   for (const ev of events) {
     const slug = roundSlug(ev);
     if (!slug) continue;
-    const match = mapBracketMatch(ev, slug);
+    const match = mapBracketMatch(ev, slug, format);
     if (!match) continue;
     if (!bySlug.has(slug)) bySlug.set(slug, []);
     bySlug.get(slug)!.push(match);
   }
 
   // return rounds in fixed order, only including those present
-  return ROUND_ORDER.filter((slug) => bySlug.has(slug)).map((slug) => ({
-    slug,
-    matches: mergeLegs(bySlug.get(slug)!),
-  }));
+  return buildPlayoffBracket(ROUND_ORDER.filter(slug => bySlug.has(slug)).map(slug => ({ slug, matches: bySlug.get(slug)! })), format, groups);
+}
+
+/** Both stores present the same bracket from individual matches and the edition's regular-season tables. */
+export function buildPlayoffBracket(rounds: BracketRound[], format?: PlayoffFormat, groups: Group[] = []): BracketRound[] {
+  if (!format) return rounds.map(r => ({ ...r, matches: mergeLegs(r.matches) }));
+  const rows = playoffTable(groups, format);
+  const finalTable = (format === 'nwsl' || rows.every(s => s.played === 14)) ? rows : [];
+  const byTeam = new Map(finalTable.map(s => [s.team.id, s]));
+  const seededTeam = (team: BracketTeam): BracketTeam => {
+    const row = byTeam.get(team.id);
+    return row ? { ...team, overallSeed: format === 'nwsl' ? row.rank : 1 + finalTable.filter(s => overallOrder(s, row) < 0).length } : team;
+  };
+  return (rounds.length ? rounds : projectLiguilla(groups, format) ?? []).map(round => {
+    const matches = format === 'femenil-apertura' && rounds.length ? mergeLegs(round.matches, byTeam) : round.matches;
+    return { ...round, matches: matches.map(m => ({ ...m, home: seededTeam(m.home), away: seededTeam(m.away) })) };
+  });
+}
+
+function femenilTiebreak(second: BracketMatch, table: Map<string, Standing>): string | null {
+  const { home, away } = second;
+  if (second.round === 'final') {
+    const pens = second.shootout ?? parseShootout(second.note, home.name, away.name, true);
+    return shootoutWinnerId(pens, home.id, away.id);
+  }
+  const a = table.get(home.id), b = table.get(away.id);
+  if (!a || !b) return null;
+  const order = second.round === 'quarterfinals' ? a.rank - b.rank : overallOrder(a, b);
+  return order < 0 ? home.id : order > 0 ? away.id : null;
+}
+
+// Reader rows retain the provider's ordinal in the note. If both sources
+// name a leg they must agree, even when both matches ended with real scores.
+function playedLeg(match: BracketMatch, ordinal: number): boolean {
+  const number = match.legNumber === undefined ? noteLeg(match.note) : match.legNumber;
+  return match.state === 'finished' && number === ordinal && playedLegStatus(match.statusName, match.round, ordinal);
 }
 
 // A two-legged tie (Nations League quarterfinals, a Liguilla) arrives as two
 // events between the same pair. The bracket draws one tie per pair, so fold
 // the legs into one match carrying the aggregate. Single-match rounds pass
 // through untouched.
-export function mergeLegs(matches: BracketMatch[]): BracketMatch[] {
+export function mergeLegs(matches: BracketMatch[], femenilTable?: Map<string, Standing>): BracketMatch[] {
   const ties = new Map<string, BracketMatch[]>();
   for (const m of matches) {
     const k = [m.home.id, m.away.id].sort().join('|');
     ties.set(k, [...(ties.get(k) ?? []), m]);
   }
   return [...ties.values()].map((legs) => {
-    if (legs.length !== 2) return legs[0];
-    const [first, second] = [...legs].sort((a, b) => a.kickoff.localeCompare(b.kickoff));
+    if (legs.length !== 2) return femenilTable ? { ...legs[0], detailMatch: legs[0], winnerId: null } : legs[0];
+    const [first, second] = [...legs].sort((a, b) => Date.parse(a.kickoff) - Date.parse(b.kickoff));
     const scoreFor = (m: BracketMatch, teamId: string) =>
       m.home.id === teamId ? m.homeScore : m.awayScore;
     const total = (teamId: string) => {
       const a = scoreFor(first, teamId);
       const b = scoreFor(second, teamId);
-      return a == null ? null : a + (b ?? 0);
+      return a == null || (b == null && second.state === 'finished') ? null : a + (b ?? 0);
     };
     const homeScore = total(first.home.id);
     const awayScore = total(first.away.id);
     // Decided only once the second leg is over: the higher aggregate, else the
     // second leg's own winner (a shootout, already resolved by mapBracketMatch).
     let winnerId: string | null = null;
-    if (second.state === 'finished' && homeScore != null && awayScore != null) {
+    const complete = femenilTable
+      ? playedLeg(first, 1) && playedLeg(second, 2) && first.id !== second.id && Date.parse(first.kickoff) < Date.parse(second.kickoff) &&
+        first.home.id === second.away.id && first.away.id === second.home.id
+      : first.state === 'finished' && second.state === 'finished';
+    if (complete && homeScore != null && awayScore != null) {
       winnerId = homeScore > awayScore ? first.home.id
         : awayScore > homeScore ? first.away.id
-        : second.winnerId;
+        : femenilTable ? femenilTiebreak(second, femenilTable) : second.winnerId;
     }
     const current = first.state === 'finished' ? second : first;
     return {
       ...first,
       id: second.id,
+      ...(femenilTable && { detailMatch: current }),
       homeScore,
       awayScore,
       state: current.state,

@@ -83,9 +83,11 @@ type CStanding = {
   wins: number; draws: number; losses: number; goalsFor: number; goalsAgainst: number; goalDifference: number;
   points: number; advanced: boolean;
 };
-type CBracketTeam = { id: string; name: string; abbr: string; crestUrl: string | null; placeholder: boolean };
+type CBracketTeam = { overallSeed?: number; id: string; name: string; abbr: string; crestUrl: string | null; placeholder: boolean };
 type CRound = 'round-of-32' | 'round-of-16' | 'quarterfinals' | 'semifinals' | '3rd-place-match' | 'final';
 type CBracketMatch = {
+  legNumber?: number | null;
+  detailMatch?: CBracketMatch; shootout?: { homeScore: number; awayScore: number };
   id: string; round: CRound; kickoff: string; home: CBracketTeam; away: CBracketTeam; homeScore: N; awayScore: N;
   state: 'scheduled' | 'live' | 'finished'; statusDetail: string; statusName: string; minute: string | null;
   winnerId: string | null; note: string | null;
@@ -524,8 +526,7 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
   // The bracket's finished winner takes the scoreboard's tiers: structured
   // totals, then the anchored note, then the flags, and a malformed total
   // rejects it -- through the dated scoreboard window, and through the single
-  // scoreboard a season without bracket dates (Leagues Cup 2026) reads. The TS
-  // BracketMatch carries no aggregate (the Go suite checks that one).
+  // scoreboard a season without bracket dates (Leagues Cup 2026) reads.
   const undated = { ...wc, season: { ...wc.season, bracketDatesRange: undefined } };
   it.each(vectors.scoreboard.shootoutPrecedence.cases)('applies the shared shootout precedence to the bracket: $name', async (c) => {
     const { event, sideIds } = withShootoutCase(bracketRaw.events, c);

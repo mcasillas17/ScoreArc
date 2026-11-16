@@ -1,3 +1,6 @@
+import { isISOInstant } from '@/lib/matchFreshness';
+import type { Season } from './competitions';
+
 // ScoreArc window strings are inclusive YYYYMMDD-YYYYMMDD dates. Calendar
 // controls choose local dates; the data layer interprets their endpoints in UTC
 // and translates them to padded provider month selectors.
@@ -66,7 +69,18 @@ export function shiftMonth(d: Date, delta: number): Date {
 /**
  * Inclusive month bounds derived from ScoreArc's season-id conventions.
  */
-export function seasonMonthBounds(seasonId: string): { minMonth: string; maxMonth: string } {
+type EditionDates = Pick<Season, 'id' | 'startsAt' | 'endsAt'>;
+
+export function seasonMonthBounds(season: string | EditionDates): { minMonth: string; maxMonth: string } {
+  if (typeof season !== 'string' && (season.startsAt || season.endsAt)) {
+    const { start, end } = editionBounds(season);
+    const month = (ms: number) => new Date(ms).toISOString().slice(0, 7) + '-01';
+    return { minMonth: month(start), maxMonth: month(end - 1) };
+  }
+  return conventionalMonths(typeof season === 'string' ? season : season.id);
+}
+
+function conventionalMonths(seasonId: string) {
   const crossYear = /^(\d{4})-(\d{2})$/.exec(seasonId);
   if (crossYear) {
     const startYear = Number(crossYear[1]);
@@ -96,6 +110,19 @@ export function seasonMonthBounds(seasonId: string): { minMonth: string; maxMont
   throw new Error(`Unsupported season id: ${seasonId}`);
 }
 
+export function editionBounds(season: EditionDates): { start: number; end: number } {
+  if (season.startsAt !== undefined || season.endsAt !== undefined) {
+    const start = Date.parse(season.startsAt ?? '');
+    const end = Date.parse(season.endsAt ?? '');
+    if (!(start < end) || !isISOInstant(season.startsAt) || !isISOInstant(season.endsAt) ||
+        !season.startsAt.endsWith('Z') || !season.endsAt.endsWith('Z')) throw new Error('Invalid edition bounds');
+    return { start, end };
+  }
+  const bounds = conventionalMonths(season.id);
+  const last = new Date(bounds.maxMonth + 'T00:00:00Z');
+  return { start: Date.parse(bounds.minMonth + 'T00:00:00Z'), end: Date.UTC(last.getUTCFullYear(), last.getUTCMonth() + 1, 1) };
+}
+
 const RANGE_RE = /^(\d{4})(\d{2})(\d{2})-(\d{4})(\d{2})(\d{2})$/;
 
 function parseMonthStart(value: string): Date {
@@ -107,8 +134,8 @@ function parseMonthStart(value: string): Date {
  * Choose an initial month inside the season. Completed tournament editions use
  * their last active bracket month rather than an empty calendar-year endpoint.
  */
-export function seasonInitialMonth(now: Date, seasonId: string, activeRange?: string): Date {
-  const { minMonth, maxMonth } = seasonMonthBounds(seasonId);
+export function seasonInitialMonth(now: Date, season: string | EditionDates, activeRange?: string): Date {
+  const { minMonth, maxMonth } = seasonMonthBounds(season);
   const min = parseMonthStart(minMonth);
   const max = parseMonthStart(maxMonth);
   const current = new Date(now.getFullYear(), now.getMonth(), 1);

@@ -204,17 +204,17 @@ func TestNewsObservationUsesOriginalFetchAndRejectsUnknownEmpty(t *testing.T) {
 	client := &fakeESPNClient{raw: []byte(`{"articles":[]}`)}
 	service := newNewsService(context.Background(), client, 90*time.Second)
 	service.now = func() time.Time { return now }
-	_, first, err := service.GetWithObservation(context.Background(), "fifa.world")
+	_, first, err := service.GetWithObservation(context.Background(), "fifa.world", "")
 	if err != nil || !first.Equal(now) {
 		t.Fatalf("successful empty missing fetch observation: %v %v", first, err)
 	}
 	now = now.Add(89 * time.Second)
-	_, second, err := service.GetWithObservation(context.Background(), "fifa.world")
+	_, second, err := service.GetWithObservation(context.Background(), "fifa.world", "")
 	if err != nil || !second.Equal(first) || client.calls.Load() != 1 {
 		t.Fatalf("cache hit renewed fetch observation: %v %v calls=%d", second, err, client.calls.Load())
 	}
 	now = now.Add(time.Second)
-	_, third, err := service.GetWithObservation(context.Background(), "fifa.world")
+	_, third, err := service.GetWithObservation(context.Background(), "fifa.world", "")
 	if err != nil || !third.Equal(now) || client.calls.Load() != 2 {
 		t.Fatalf("expiry not inclusive: %v %v", third, err)
 	}
@@ -238,14 +238,14 @@ func TestNewsIncompleteRefreshCannotRenewObservation(t *testing.T) {
 				client := &fakeESPNClient{raw: []byte(accepted)}
 				service := newNewsService(context.Background(), client, defaultNewsTTL)
 				service.now = func() time.Time { return now }
-				_, observed, err := service.GetWithObservation(context.Background(), "fifa.world")
+				_, observed, err := service.GetWithObservation(context.Background(), "fifa.world", "")
 				if err != nil {
 					t.Fatal(err)
 				}
 				now = now.Add(defaultNewsTTL)
 				client.raw = []byte(`{"articles":` + rows + `,` + metadata + `}`)
 				for range 2 {
-					articles, at, err := service.GetWithObservation(context.Background(), "fifa.world")
+					articles, at, err := service.GetWithObservation(context.Background(), "fifa.world", "")
 					if err == nil || articles != nil || !at.IsZero() {
 						t.Fatalf("incomplete refresh renewed evidence: articles=%+v at=%v err=%v", articles, at, err)
 					}
@@ -260,11 +260,28 @@ func TestNewsIncompleteRefreshCannotRenewObservation(t *testing.T) {
 					t.Fatalf("failed refresh changed accepted cache: %+v", entry)
 				}
 				client.raw = []byte(accepted)
-				_, renewed, err := service.GetWithObservation(context.Background(), "fifa.world")
+				_, renewed, err := service.GetWithObservation(context.Background(), "fifa.world", "")
 				if err != nil || !renewed.Equal(now) {
 					t.Fatalf("valid retry failed to renew: at=%v err=%v", renewed, err)
 				}
 			})
 		}
+	}
+}
+
+func TestNewsAttributionIsolatedBeforeCache(t *testing.T) {
+	f := &fakeESPNClient{raw: []byte(`{"articles":[{"headline":"League report","links":{"web":{"href":"https://example.com/sport"}},"categories":[{"type":"league","leagueId":"2323"}]}]}`)}
+	s := newNewsService(context.Background(), f, time.Hour)
+	for _, c := range []struct {
+		id string
+		ok bool
+	}{{"", true}, {"2323", true}, {"8675309", false}, {"2323", true}} {
+		got, observed, err := s.GetWithObservation(context.Background(), "usa.nwsl", c.id)
+		if (err == nil) != c.ok || (c.ok && (observed.IsZero() || len(got) != 1)) || (!c.ok && !observed.IsZero()) {
+			t.Fatalf("id %s: %v %v %v", c.id, got, observed, err)
+		}
+	}
+	if f.calls.Load() != 3 {
+		t.Fatalf("cache made %d reads", f.calls.Load())
 	}
 }

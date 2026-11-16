@@ -4,6 +4,6 @@ import { seasonRoute } from '@/app/api/errorResponse';
 
 export const dynamic = 'force-dynamic';
 
-export const GET = seasonRoute('standings', (rc, signal) =>
+export const GET = seasonRoute('standings', 'standings', (rc, signal) =>
   runDataOperation(dataStore, source => source.getStandings(rc), signal),
 );

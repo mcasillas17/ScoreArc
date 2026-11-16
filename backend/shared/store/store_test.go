@@ -216,6 +216,29 @@ func TestMatchWritesNeverRegressStoredFacts(t *testing.T) {
 		}
 	})
 
+	t.Run("a drawn leg clears the provisional aggregate winner before bracket confirmation", func(t *testing.T) {
+		kickoff := time.Date(2026, 8, 31, 19, 0, 0, 0, time.UTC)
+		identity := resolveFixture(t, store, "drawn-leg", kickoff)
+		match := fixtureMatch(identity, "drawn-leg", kickoff)
+		identity.WinnerTeamID = &identity.HomeTeamID
+		if err := store.UpsertMatch(ctx, identity, match); err != nil {
+			t.Fatal(err)
+		}
+		zero := 0
+		match.HomeScore, match.AwayScore, match.WinnerResolved = &zero, &zero, true
+		identity.WinnerTeamID = nil
+		if err := store.UpsertMatch(ctx, identity, match); err != nil {
+			t.Fatal(err)
+		}
+		row, err := store.ExistingMatches(ctx, identity.CompetitionID, identity.SeasonID, []uuid.UUID{identity.MatchID})
+		if err != nil || len(row) != 1 || row[identity.MatchID].WinnerID != nil {
+			t.Fatalf("resolved draw kept previous winner: %+v %v", row, err)
+		}
+		if finalized, err := store.FinalizeMatch(ctx, identity, match, model.MatchDetail{}); err != nil || !finalized {
+			t.Fatalf("finalized draw=%t err=%v", finalized, err)
+		}
+	})
+
 	t.Run("a scoreboard-only update keeps bracket placeholders and detail", func(t *testing.T) {
 		kickoff := time.Date(2026, 8, 22, 19, 0, 0, 0, time.UTC)
 		identity := resolveFixture(t, store, "cascade-1", kickoff)

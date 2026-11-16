@@ -24,7 +24,7 @@ WITH due AS (
  row_number() OVER (PARTITION BY m.competition_id ORDER BY coalesce(p.retry_at,p.enrolled_at),p.match_id) AS competition_rank
  FROM match_participation_status p JOIN match m ON m.id=p.match_id
  WHERE p.completed_at IS NULL AND (p.retry_at IS NULL OR p.retry_at <= $2)
- AND m.source=$1
+ AND m.source=$1 AND (m.competition_id || '/' || m.season_id) = ANY($4::text[])
 )
 SELECT m.id,m.competition_id,m.season_id,m.home_team_id,m.away_team_id,
  coalesce(mr.source_id,''),coalesce(hr.source_id,''),coalesce(ar.source_id,''),
@@ -36,13 +36,13 @@ LEFT JOIN LATERAL (SELECT source_id FROM team_external_ref WHERE team_id=m.away_
 WHERE p.competition_rank <= 2
 ORDER BY coalesce(p.retry_at,p.enrolled_at),p.match_id LIMIT $3`
 
-func (s *Store) PendingParticipation(ctx context.Context, source string, dueAt time.Time, limit int) ([]ParticipationRecovery, error) {
+func (s *Store) PendingParticipation(ctx context.Context, source string, dueAt time.Time, limit int, scopes []string) ([]ParticipationRecovery, error) {
 	if source == "" || dueAt.IsZero() || limit < 1 || limit > 10 {
 		return nil, fmt.Errorf("invalid participation recovery scope")
 	}
 	ctx, cancel := boundedContext(ctx)
 	defer cancel()
-	rows, err := s.pool.Query(ctx, pendingParticipationSQL, source, dueAt, limit)
+	rows, err := s.pool.Query(ctx, pendingParticipationSQL, source, dueAt, limit, scopes)
 	if err != nil {
 		return nil, err
 	}

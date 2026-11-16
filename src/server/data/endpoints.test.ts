@@ -54,3 +54,8 @@ describe('athlete endpoints', () => {
     expect(athleteBioUrl('mex.1', '../x')).not.toContain('../');
   });
 });
+
+it('selects the provider year on both edition resources', () => {
+  expect(new URL(standingsUrl('fifa.wwc', 2023)).searchParams.get('season')).toBe('2023');
+  expect(new URL(statisticsUrl('fifa.wwc', 2023)).searchParams.get('season')).toBe('2023');
+});

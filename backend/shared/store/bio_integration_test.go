@@ -49,8 +49,11 @@ func TestPlayersNeedingBioHonorsLimitAndRequiresAppearance(t *testing.T) {
 	}
 	mustBioPlayer(t, bioStore, pool, matchID, "never-appeared", false)
 
+	if hidden, err := bioStore.PlayersNeedingBio(context.Background(), "espn", time.Now(), 20, []string{"pilot/live"}); err != nil || len(hidden) != 0 {
+		t.Fatalf("selected outside eligible editions: %v %v", hidden, err)
+	}
 	candidates, err := bioStore.PlayersNeedingBio(
-		context.Background(), "espn", time.Now(), 20,
+		context.Background(), "espn", time.Now(), 20, []string{"premier-league/2026-27"},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +77,7 @@ func TestReplaceTeamHistoryEmptyResultStampsTTLAndIsNotReselected(t *testing.T) 
 		t.Fatal(err)
 	}
 	candidates, err := bioStore.PlayersNeedingBio(
-		context.Background(), "espn", time.Now().Add(-30*24*time.Hour), 20,
+		context.Background(), "espn", time.Now().Add(-30*24*time.Hour), 20, []string{"premier-league/2026-27"},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -131,7 +134,7 @@ func TestReplaceTeamHistoryAsTheIngesterRole(t *testing.T) {
 	roleStore, roleName := newIngesterRoleStore(t, pool, dsn)
 
 	candidates, err := roleStore.PlayersNeedingBio(
-		context.Background(), "espn", time.Now(), 20,
+		context.Background(), "espn", time.Now(), 20, []string{"premier-league/2026-27"},
 	)
 	if err != nil {
 		t.Fatalf("PlayersNeedingBio as %s: %v", roleName, err)

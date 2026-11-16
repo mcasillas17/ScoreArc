@@ -304,8 +304,11 @@ func promoteProvisionalTeam(ctx context.Context, tx pgx.Tx, provisionalID, curat
 		`UPDATE standing SET team_id=$2 WHERE team_id=$1`,
 		`UPDATE standing_snapshot SET team_id=$2 WHERE team_id=$1`,
 		`UPDATE squad_membership SET team_id=$2, updated_at=now() WHERE team_id=$1`,
+		`UPDATE resource_observation SET subject=$2 WHERE resource='squad' AND subject=$1`,
 		`UPDATE player_season_stat SET team_id=$2, updated_at=now() WHERE team_id=$1`,
 		`UPDATE match_play SET team_id=$2 WHERE team_id=$1`,
+		`UPDATE appearance SET team_id=$2 WHERE team_id=$1`,
+		`UPDATE match_event SET team_id=$2 WHERE team_id=$1`,
 	}
 	for _, statement := range repoints {
 		if _, err := tx.Exec(ctx, statement, provisionalID, curatedID); err != nil {

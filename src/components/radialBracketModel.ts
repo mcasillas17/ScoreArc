@@ -4,6 +4,8 @@ import type { BracketShape } from './bracketShape';
 // Moved out of RadialBracket.tsx so the pure model logic is unit-testable
 // without pulling the React component tree into the test.
 export interface RingNode {
+  feederIndex?: number; // quarterfinal routing can change after the semifinal reseed
+  pairingPending?: boolean;
   depth: number; // 0 (outer, 32 teams) .. 4 (inner, final pair)
   index: number; // slot index within the ring
   angle: number; // degrees on the circle
@@ -185,6 +187,8 @@ function findMatch(round: BracketRound | undefined, idA: string, idB: string): B
 }
 
 interface Slot {
+  feederIndex?: number;
+  pairingPending?: boolean;
   team: BracketTeam;
   match: BracketMatch | null; // the match this team plays at this depth
   isHome: boolean;
@@ -275,19 +279,73 @@ export function buildRings(
       advancing.push(a.isWinner ? a.team : b.isWinner ? b.team : null);
     }
 
+    let feeders = advancing.map((_, i) => i);
+    let seated = advancing;
+    let pairingPending = false;
+    if (depth === 1 && shape.playoffFormat) {
+      if (shape.playoffFormat === 'nwsl') {
+        // Each higher seed identifies one fixed quarterfinal even in a partial draw.
+        feeders = [1, 4, 2, 3].map(seed => Math.floor(prev.findIndex(n => n.team.overallSeed === seed) / 2));
+        if (feeders.every(i => i < 0)) {
+          pairingPending = true;
+          feeders = advancing.map((_, i) => i);
+        }
+        seated = feeders.map(i => advancing[i] ?? null);
+      } else {
+        const ranked = [...feeders].sort((a, b) => (advancing[a]?.overallSeed ?? 0) - (advancing[b]?.overallSeed ?? 0));
+        const seeds = advancing.map(t => t?.overallSeed);
+        if (nSlots === 4 && seeds.every(s => s !== undefined) && new Set(seeds).size === 4) {
+          feeders = [ranked[0], ranked[3], ranked[1], ranked[2]];
+        } else {
+          pairingPending = true;
+        }
+        seated = feeders.map(i => advancing[i] ?? null);
+      }
+
+      // A published tie fixes its participants and orientation. Each other
+      // quarterfinal still supplies one entrant to the remaining semifinal.
+      const published = round?.matches.filter(m => !m.home.placeholder && !m.away.placeholder) ?? [];
+      if (published.length) {
+        const known = published.flatMap(m => [m.home, m.away]);
+        const sources = known.map(team => Math.floor(prev.findIndex(n => n.team.id === team.id) / 2));
+        if (published.length === 1) {
+          const remaining = feeders.filter(i => i >= 0 && !sources.includes(i)).slice(0, 2);
+          while (remaining.length < 2) remaining.push(-1);
+          const others = remaining.map(i => advancing[i] ?? null);
+          const secondHalf = !pairingPending && sources.some(i => i >= 0 && feeders.slice(2).includes(i))
+            && !sources.some(i => i >= 0 && feeders.slice(0, 2).includes(i));
+          seated = secondHalf ? [...others, ...known] : [...known, ...others];
+          feeders = secondHalf ? [...remaining, ...sources] : [...sources, ...remaining];
+        } else {
+          seated = known;
+          feeders = sources;
+        }
+        pairingPending = false;
+      }
+    }
+    // A published final establishes its participants even if a semifinal
+    // tiebreak cannot be reconstructed from the retained table.
+    if (shape.playoffFormat && round?.slug === 'final') {
+      const final = round.matches.find(m => !m.home.placeholder && !m.away.placeholder);
+      if (final) {
+        const finalists = [final.home, final.away];
+        seated = finalists;
+        feeders = finalists.map(team => Math.floor(prev.findIndex(n => n.team.id === team.id) / 2));
+      }
+    }
     const slots: Slot[] = [];
-    for (let k = 0; k < nSlots; k++) {
+    for (let k = 0; k < seated.length; k++) {
       const pair = Math.floor(k / 2);
-      const tA = advancing[2 * pair] ?? null;
-      const tB = advancing[2 * pair + 1] ?? null;
+      const tA = seated[2 * pair] ?? null;
+      const tB = seated[2 * pair + 1] ?? null;
       const matchR = tA && tB ? findMatch(round, tA.id, tB.id) : null;
-      const team = advancing[k] ?? makePlaceholder(depth, k);
-      const eff = effectiveWinner(matchR, depth, pair, picks, mode, tA, tB);
+      const team = seated[k] ?? makePlaceholder(depth, k);
+      const eff = pairingPending ? null : effectiveWinner(matchR, depth, pair, picks, mode, tA, tB);
       slots.push({
-        team, match: matchR, isHome: k % 2 === 0,
+        feederIndex: feeders[k], pairingPending, team, match: matchR, isHome: k % 2 === 0,
         isWinner: eff != null && eff.id === team.id,
         eliminated: !team.placeholder && eff != null && eff.id !== team.id,
-        clickable: mode === 'predict' && isDecidable(matchR, tA, tB),
+        clickable: !pairingPending && mode === 'predict' && isDecidable(matchR, tA, tB),
       });
     }
     ringSlots.push(slots);
@@ -301,7 +359,7 @@ export function buildRings(
       const flag = ellipse(cfg.rx, cfg.ry, angle);
       const crest = ellipse(cfg.rx * CREST_SCALE, cfg.ry * CREST_SCALE, angle);
       return {
-        depth, index, angle, match: slot.match, team: slot.team, isHome: slot.isHome,
+        depth, index, angle, feederIndex: slot.feederIndex, pairingPending: slot.pairingPending, match: slot.match, team: slot.team, isHome: slot.isHome,
         x: flag.x, y: flag.y, crestX: crest.x, crestY: crest.y, discR: cfg.discR,
         isWinner: slot.isWinner, eliminated: slot.eliminated, clickable: slot.clickable,
       };

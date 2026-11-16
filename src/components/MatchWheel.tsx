@@ -15,6 +15,7 @@ import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 
 interface Props {
   initialMatches: Match[];
+  hasSummary?: boolean;
   apiBase: string;
   teamBase?: string;
   playerBase?: string;
@@ -80,7 +81,7 @@ function centreInDrum(drum: HTMLElement, row: HTMLElement): void {
 }
 
 export default function MatchWheel({
-  initialMatches, apiBase, teamBase, playerBase, teamStyle = 'flag', weekOnly = true,
+  initialMatches, apiBase, hasSummary = true, teamBase, playerBase, teamStyle = 'flag', weekOnly = true,
 }: Props) {
   const t = useTranslations();
   const locale = useLocale();
@@ -166,7 +167,7 @@ export default function MatchWheel({
   const ordered = useMemo(() => wheelOrder(matches), [matches]);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
-  const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const rowRefs = useRef<Map<string, HTMLElement>>(new Map());
   const scrolledRef = useRef(false);
   // True once the drum has applied a tilt pass at least once. Distinguishes
   // the entrance pass (staggered transition-delay, so rows cascade in) from
@@ -289,11 +290,12 @@ export default function MatchWheel({
                   ? (localTimeText(m.kickoff, 'dayTime', now, locale) ?? t('common.unavailable'))
                   : null,
               ].filter(Boolean).join(', ');
+              const Row = hasSummary ? 'button' : 'div';
               return (
-                <button
-                  type="button"
+                <Row
+                  type={hasSummary ? 'button' : undefined}
                   key={m.id}
-                  ref={(node) => {
+                  ref={(node: HTMLElement | null) => {
                     if (node) rowRefs.current.set(m.id, node);
                     else rowRefs.current.delete(m.id);
                   }}
@@ -303,7 +305,7 @@ export default function MatchWheel({
                     flashIds.has(m.id) && 'mw-row--flash',
                   ].filter(Boolean).join(' ')}
                   aria-label={ariaLabel}
-                  onClick={() => void openDetails(m)}
+                  onClick={hasSummary ? () => void openDetails(m) : undefined}
                   onFocus={(e) => { if (scrollerRef.current) centreInDrum(scrollerRef.current, e.currentTarget); }}
                 >
                   <span className="mw-side">
@@ -335,7 +337,7 @@ export default function MatchWheel({
                       </span>
                     )}
                   </span>
-                </button>
+                </Row>
               );
             })}
           </div>

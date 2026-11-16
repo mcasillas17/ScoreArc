@@ -1,11 +1,14 @@
+import type { Season } from './competitions';
+
 const site = (slug: string) => `https://site.api.espn.com/apis/site/v2/sports/soccer/${slug}`;
 
 export const scoreboardUrl = (slug: string, range?: string) =>
   `${site(slug)}/scoreboard${range ? `?dates=${range}` : ''}`;
-export const standingsUrl = (slug: string) =>
-  `https://site.api.espn.com/apis/v2/sports/soccer/${slug}/standings`;
+const seasonQuery = (year?: number) => year === undefined ? '' : '?season=' + year;
+export const standingsUrl = (slug: string, year?: number) =>
+  `https://site.api.espn.com/apis/v2/sports/soccer/${slug}/standings${seasonQuery(year)}`;
 export const summaryUrl = (slug: string, event: string) => `${site(slug)}/summary?event=${event}`;
-export const statisticsUrl = (slug: string) => `${site(slug)}/statistics`;
+export const statisticsUrl = (slug: string, year?: number) => `${site(slug)}/statistics${seasonQuery(year)}`;
 export const newsUrl = (slug: string) => `${site(slug)}/news`;
 // Every club in a league. Used to decide which of a cross-league cup's two
 // tables a club belongs to, since the cup's own payload carries no league
@@ -33,15 +36,16 @@ export const teamRosterUrl = (slug: string, teamId: string) =>
 // 13 all upcoming. A page wanting upcoming AND played has to ask twice, and
 // the next match comes from the second call (the profile's nextEvent array
 // is empty on this provider).
-export const teamScheduleUrl = (slug: string, teamId: string, upcoming = false, seasonId?: string) => {
+export const teamScheduleUrl = (slug: string, teamId: string, upcoming = false, season?: Pick<Season, 'id' | 'providerYear' | 'phase'> | string) => {
   const query = new URLSearchParams();
   if (upcoming) query.set('fixture', 'true');
-  if (seasonId) {
-    query.set('season', seasonId.slice(0, 4));
+  if (season) {
+    const { id, providerYear, phase } = typeof season === 'string' ? { id: season } : season;
+    query.set('season', String(providerYear ?? id.slice(0, 4)));
     // ESPN's public schedule selects the split by ordinal, not its internal
     // season-type id (14277). Verified against the recorded Apertura payload.
-    if (seasonId.endsWith('-apertura')) query.set('seasontype', '1');
-    if (seasonId.endsWith('-clausura')) query.set('seasontype', '2');
+    if ((phase ?? id.split('-')[1]) === 'apertura') query.set('seasontype', '1');
+    if ((phase ?? id.split('-')[1]) === 'clausura') query.set('seasontype', '2');
   }
   return `${site(slug)}/teams/${encodeURIComponent(teamId)}/schedule${query.size ? `?${query}` : ''}`;
 };

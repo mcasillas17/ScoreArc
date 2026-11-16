@@ -14,7 +14,7 @@ import (
 	"github.com/mcasillas17/scorearc-backend/shared/store"
 )
 
-func (f *fakeRepository) PendingParticipation(context.Context, string, time.Time, int) ([]store.ParticipationRecovery, error) {
+func (f *fakeRepository) PendingParticipation(context.Context, string, time.Time, int, []string) ([]store.ParticipationRecovery, error) {
 	return nil, nil
 }
 func (f *fakeRepository) BeginParticipation(context.Context, uuid.UUID, time.Time, time.Time) (bool, error) {
@@ -60,7 +60,7 @@ type participationRepository struct {
 	claimErr   bool
 }
 
-func (f *participationRepository) PendingParticipation(_ context.Context, _ string, now time.Time, limit int) ([]store.ParticipationRecovery, error) {
+func (f *participationRepository) PendingParticipation(_ context.Context, _ string, now time.Time, limit int, scopes []string) ([]store.ParticipationRecovery, error) {
 	var out []store.ParticipationRecovery
 	for _, p := range f.pending {
 		if !f.completed[p.Identity.MatchID] && !f.next[p.Identity.MatchID].After(now) {
@@ -95,7 +95,7 @@ func participationPayload(home, away string) *model.MatchParticipation {
 }
 func TestParticipationRecoveryBudgetsBackoffAndCancellation(t *testing.T) {
 	now := time.Now().UTC()
-	comp := config.Competition{ID: "test", CurrentSeasonId: "2027", Seasons: map[string]config.Season{"2026": {ID: "2026"}, "2027": {ID: "2027"}}}
+	comp := config.Competition{ID: "test", CurrentSeasonId: "2027", Seasons: map[string]config.Season{"2026": testEdition("2026"), "2027": testEdition("2027")}}
 	makeRunner := func() (*runner, *participationRepository, *participationSource) {
 		repo := &participationRepository{fakeRepository: &fakeRepository{}, next: map[uuid.UUID]time.Time{}, completed: map[uuid.UUID]bool{}}
 		zero := 0
@@ -160,7 +160,7 @@ func TestParticipationRecoveryGlobalLimit(t *testing.T) {
 	r.competitions = nil
 	for i := 0; i < 12; i++ {
 		comp := fmt.Sprint("c", i)
-		r.competitions = append(r.competitions, config.Competition{ID: comp, Seasons: map[string]config.Season{"2026": {ID: "2026"}}})
+		r.competitions = append(r.competitions, config.Competition{ID: comp, Seasons: map[string]config.Season{"2026": testEdition("2026")}})
 		repo.pending = append(repo.pending, store.ParticipationRecovery{Identity: store.MatchIdentity{MatchID: uuid.New(), CompetitionID: comp, SeasonID: "2026"}, Match: model.Match{ID: fmt.Sprint(i), Home: model.Team{ID: "h"}, Away: model.Team{ID: "a"}, HomeScore: &zero, AwayScore: &zero, State: model.MatchStateFinished}})
 	}
 	if err := r.retryParticipation(context.Background()); err != nil {

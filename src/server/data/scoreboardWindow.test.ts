@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resolveSeason } from './competitions';
-import { boundedFetchJson, fetchScoreboardWindow } from './scoreboardWindow';
+import { boundedFetchJson, fetchScoreboardWindow, verifyUndatedScoreboard } from './scoreboardWindow';
 import recorded from './__fixtures__/scoreboard-window-recorded.json';
 
 const mx = resolveSeason('liga-mx', '2026-apertura')!;
@@ -186,4 +186,31 @@ describe('bounded native transport',()=>{
     await assertion;
     expect(cancelled).toBe(true);
   });
+});
+
+it('uses explicit UTC boundaries, provider year and phase for a dated window', async () => {
+  const season = { ...mx.season, id: '2027', providerYear: 2026, phase: 'apertura',
+    startsAt: '2026-09-15T02:00:00Z', endsAt: '2026-09-15T03:00:00Z' };
+  const rc = { ...mx, season };
+  const accepted = event('inside');
+  const outside = event('end', season.endsAt);
+  const fetch = loader({ 202609: envelope([accepted, outside]) });
+  await expect(fetchScoreboardWindow(rc, '20260915-20260915', fetch)).resolves.toEqual({ events: [accepted] });
+  const wrong = { ...accepted, season: { year: 2026, slug: 'torneo-clausura' } };
+  await expect(fetchScoreboardWindow(rc, '20260915-20260915', loader({ 202609: envelope([wrong]) }))).rejects.toThrow();
+});
+
+it('accepts a zero-page strict scoreboard only for an identified empty list', async () => {
+  const rc = resolveSeason('nwsl')!;
+  const leagues = [{ slug: rc.competition.espnSlug, season: { year: 2026 } }];
+  const raw = { leagues, events: [], total: 0, pageCount: 0 };
+  const window = (body: unknown) => fetchScoreboardWindow(rc, '20260915-20260915', async () => body);
+  await expect(window(raw)).resolves.toEqual({ events: [] });
+  expect(() => verifyUndatedScoreboard(raw, rc)).not.toThrow();
+  for (const invalid of [{ ...raw, leagues: [{ slug: rc.competition.espnSlug }] },
+    { ...raw, events: [event()], total: 1 }]) {
+    await expect(window(invalid)).rejects.toThrow();
+    expect(() => verifyUndatedScoreboard(invalid, rc)).toThrow();
+  }
+  await expect(fetchScoreboardWindow(mx, '20260915-20260915', async () => ({ ...raw, leagues: [{ slug: 'mex.1' }] }))).rejects.toThrow();
 });

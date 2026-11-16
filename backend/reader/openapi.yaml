@@ -206,6 +206,10 @@ paths:
       parameters:
         - { $ref: "#/components/parameters/Comp" }
         - { $ref: "#/components/parameters/Season" }
+        - in: query
+          name: shootout
+          schema: { type: string, enum: ["true"] }
+          description: Include retained penalty totals where the edition supports match detail.
       responses:
         "200":
           description: Canonically ordered knockout rounds
@@ -1132,6 +1136,7 @@ components:
         statusDetail: { type: string }
         statusName: { type: string }
         minute: { type: [string, "null"] }
+        shootout: { $ref: "#/components/schemas/Shootout" }
         winnerId: { type: [string, "null"] }
         note: { type: [string, "null"] }
     BracketRound:

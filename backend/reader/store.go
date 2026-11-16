@@ -121,7 +121,7 @@ func (s *Store) Matches(ctx context.Context, competition, season string, query m
 		return nil, err
 	}
 	defer rows.Close()
-	matches, err := scanMatches(rows, query.Detail)
+	matches, err := scanMatches(rows, query.Detail, canRead(ctx, "odds"))
 	if err == nil && query.Season && len(matches) > maxSeasonRows {
 		return nil, errSeasonTooLarge
 	}
@@ -132,7 +132,7 @@ func (s *Store) Matches(ctx context.Context, competition, season string, query m
 // match list reads the same columns through the same normalisation as the
 // competition match list -- two copies of this would drift the first time a
 // detail column changed. A lightweight row keeps its empty detail fields.
-func scanMatches(rows pgx.Rows, detail bool) ([]Match, error) {
+func scanMatches(rows pgx.Rows, detail, odds bool) ([]Match, error) {
 	matches := make([]Match, 0)
 	for rows.Next() {
 		match := Match{Scorers: []espn.Scorer{}, Cards: []espn.Card{}}
@@ -154,6 +154,9 @@ func scanMatches(rows pgx.Rows, detail bool) ([]Match, error) {
 		}
 		if err := rows.Scan(destinations...); err != nil {
 			return nil, err
+		}
+		if !odds {
+			winProbability = nil
 		}
 		match.ID = id.String()
 		match.Kickoff = isoTime(kickoff)
@@ -303,18 +306,19 @@ var bracketRoundNames = map[string]string{
 
 const bracketSQL = `
 SELECT m.id, m.round, m.kickoff, m.state, NULLIF(m.minute, ''), m.status_detail, m.status_name,
-       m.home_score, m.away_score, m.winner_id, m.note,
+       m.home_score, m.away_score, m.winner_id, m.note, d.shootout,
        m.home_placeholder, m.away_placeholder,
        ht.id, ht.name, ht.abbr, ht.crest_url,
        at.id, at.name, at.abbr, at.crest_url
 FROM match m
+LEFT JOIN match_detail d ON $3 AND d.match_id = m.id
 JOIN team ht ON ht.id = m.home_team_id
 JOIN team at ON at.id = m.away_team_id
 WHERE m.competition_id = $1 AND m.season_id = $2 AND m.round IS NOT NULL AND m.round <> ''
 ORDER BY m.kickoff, m.id`
 
-func (s *Store) Bracket(ctx context.Context, competition, season string) ([]BracketRound, error) {
-	rows, err := s.db.Query(ctx, bracketSQL, competition, season)
+func (s *Store) Bracket(ctx context.Context, competition, season string, includeShootout bool) ([]BracketRound, error) {
+	rows, err := s.db.Query(ctx, bracketSQL, competition, season, includeShootout)
 	if err != nil {
 		return nil, err
 	}
@@ -331,13 +335,17 @@ func (s *Store) Bracket(ctx context.Context, competition, season string) ([]Brac
 		var awayID, awayName, awayAbbr string
 		var awayCrest *string
 		var homePlaceholder, awayPlaceholder bool
+		var shootout []byte
 		if err := rows.Scan(
 			&id, &match.Round, &kickoff, &state, &match.Minute, &match.StatusDetail,
-			&match.StatusName, &match.HomeScore, &match.AwayScore, &match.WinnerID, &match.Note,
+			&match.StatusName, &match.HomeScore, &match.AwayScore, &match.WinnerID, &match.Note, &shootout,
 			&homePlaceholder, &awayPlaceholder,
 			&homeID, &homeName, &homeAbbr, &homeCrest,
 			&awayID, &awayName, &awayAbbr, &awayCrest,
 		); err != nil {
+			return nil, err
+		}
+		if err := jsonInto(shootout, &match.Shootout); err != nil {
 			return nil, err
 		}
 		match.ID = id.String()
@@ -422,9 +430,19 @@ func (s *Store) MatchSummary(ctx context.Context, id string) (*MatchSummary, err
 			return nil, err
 		}
 	}
-	summary.Lineups, err = s.summaryLineups(ctx, id, summary.Lineups)
-	if err != nil {
-		return nil, err
+	if summary.Info != nil && !canRead(ctx, "officials") {
+		summary.Info.Referee = nil
+	}
+	if !canRead(ctx, "odds") {
+		summary.WinProbability = nil
+	}
+	if canRead(ctx, "participation") {
+		summary.Lineups, err = s.summaryLineups(ctx, id, summary.Lineups)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		summary.Lineups = nil
 	}
 	normalizeMatchSummary(summary)
 	attributeDetail(summary.Scorers, summary.Cards, home, away)
@@ -465,8 +483,8 @@ SELECT t.id, t.name, t.abbr, t.crest_url, t.color, t.alternate_color, t.location
             ELSE (SELECT c.name FROM competition c WHERE c.id = $2) END
 FROM team t
 LEFT JOIN standing s
-       ON s.team_id = t.id AND s.competition_id = $2 AND s.season_id = $3
-WHERE t.id = $1
+       ON $5 AND s.team_id = t.id AND s.competition_id = $2 AND s.season_id = $3
+WHERE t.id = $1 AND {{teamVisibility}}
 ORDER BY COALESCE(s.group_name, ''), s.table_key
 LIMIT 1`
 
@@ -536,7 +554,7 @@ func (s *Store) Team(
 	var colour, altColour, tableName *string
 	var rank, played, wins, draws, losses, points, goalDifference *int
 
-	err := s.db.QueryRow(ctx, teamProfileSQL, teamID, competition, season).Scan(
+	err := s.readTeamIdentity(ctx, teamProfileSQL, []any{teamID, competition, season, visibleEntityScopes(ctx), canRead(ctx, "standings")},
 		&profile.Team.ID, &profile.Team.Name, &profile.Team.Abbr, &profile.Team.CrestURL,
 		&colour, &altColour, &profile.Location,
 		&rank, &played, &wins, &draws, &losses, &points, &goalDifference, &tableName,
@@ -578,23 +596,29 @@ func (s *Store) Team(
 		profile.StandingSummary = &summary
 	}
 
-	err = s.child(ctx, func(block *Store) (err error) {
-		profile.Squad, err = block.teamSquad(ctx, teamID, competition, season, asOf)
-		return err
-	})
-	if err != nil {
-		profile.Squad = []SquadPlayer{}
-		profile.failures = append(profile.failures, &teamReadError{operation: "squad", err: err})
-	}
+	if canRead(ctx, "squad") {
+		err = s.child(ctx, func(block *Store) (err error) {
+			profile.Squad, err = block.teamSquad(ctx, teamID, competition, season, asOf)
+			return err
+		})
+		if err != nil {
+			profile.Squad = []SquadPlayer{}
+			profile.failures = append(profile.failures, &teamReadError{operation: "squad", err: err})
+		}
 
-	err = s.child(ctx, func(block *Store) (err error) {
-		profile.Schedule, err = block.teamSchedule(ctx, teamID, competition, season)
-		return err
-	})
-	profile.ScheduleAvailability = ScheduleAvailability{Results: "available", Upcoming: "available"}
-	if err != nil {
+	}
+	if canRead(ctx, "scores") {
+		err = s.child(ctx, func(block *Store) (err error) {
+			profile.Schedule, err = block.teamSchedule(ctx, teamID, competition, season)
+			return err
+		})
+		profile.ScheduleAvailability = ScheduleAvailability{Results: "available", Upcoming: "available"}
+		if err != nil {
+			degradeSchedule(&profile)
+			profile.failures = append(profile.failures, &teamReadError{operation: "schedule", err: err})
+		}
+	} else {
 		degradeSchedule(&profile)
-		profile.failures = append(profile.failures, &teamReadError{operation: "schedule", err: err})
 	}
 	return &profile, nil
 }
@@ -618,18 +642,34 @@ func (s *Store) child(ctx context.Context, read func(*Store) error) error {
 	return savepoint.Commit(ctx)
 }
 
+// Most requests name a match or standings participant in the requested edition.
+// That proof remains available even when the optional squad read is degraded.
+func (s *Store) readTeamIdentity(ctx context.Context, query string, args []any, dest ...any) error {
+	const participant = `($2::text||'/'||$3::text)=ANY($4::text[]) AND
+ (EXISTS(SELECT 1 FROM match m WHERE m.competition_id=$2 AND m.season_id=$3 AND (m.home_team_id=t.id OR m.away_team_id=t.id))
+ OR EXISTS(SELECT 1 FROM standing st WHERE st.competition_id=$2 AND st.season_id=$3 AND st.team_id=t.id))`
+	if visibleEntityScopes(ctx) != nil {
+		err := s.db.QueryRow(ctx, strings.Replace(query, "{{teamVisibility}}", participant, 1), args...).Scan(dest...)
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+	}
+	return s.db.QueryRow(ctx, strings.Replace(query, "{{teamVisibility}}", "$2::text IS NOT NULL AND $3::text IS NOT NULL AND "+teamVisibleSQL, 1), args...).Scan(dest...)
+}
+
 // Squad is one club's squad on its own, for callers that need players but not
 // the profile or matches. ErrNotFound for a team we do not hold.
 func (s *Store) Squad(ctx context.Context, teamID, competition, season string, asOf time.Time) ([]SquadPlayer, error) {
 	var known bool
-	if err := s.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM team WHERE id = $1)`, teamID).Scan(&known); err != nil {
-		return nil, &teamReadError{operation: "identity", err: err}
-	}
-	if !known {
+	err := s.readTeamIdentity(ctx, `SELECT true FROM team t WHERE t.id=$1 AND {{teamVisibility}}`, []any{teamID, competition, season, visibleEntityScopes(ctx)}, &known)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
+	if err != nil {
+		return nil, &teamReadError{operation: "identity", err: err}
+	}
 	var squad []SquadPlayer
-	err := s.child(ctx, func(block *Store) (err error) {
+	err = s.child(ctx, func(block *Store) (err error) {
 		squad, err = block.teamSquad(ctx, teamID, competition, season, asOf)
 		return err
 	})
@@ -695,23 +735,31 @@ func (s *Store) teamSquad(
 // The club's matches and results: the same projection as Matches, filtered to
 // the matches this team plays in. No new ingest -- match already carries both
 // team ids.
-const teamScheduleSQL = matchColumns + matchDetailColumns + `
+const teamScheduleFromSQL = `
 FROM match m` + matchJoins + `
 WHERE m.competition_id = $2 AND m.season_id = $3
   AND (m.home_team_id = $1 OR m.away_team_id = $1)
 ORDER BY m.kickoff, m.id
 LIMIT $4`
 
+func teamScheduleStatement(detail bool) string {
+	if detail {
+		return matchColumns + matchDetailColumns + teamScheduleFromSQL
+	}
+	return matchColumns + teamScheduleFromSQL
+}
+
 func (s *Store) teamSchedule(
 	ctx context.Context,
 	teamID, competition, season string,
 ) ([]TeamMatch, error) {
-	rows, err := s.db.Query(ctx, teamScheduleSQL, teamID, competition, season, maxTeamScheduleRows+1)
+	detail := canRead(ctx, "summary")
+	rows, err := s.db.Query(ctx, teamScheduleStatement(detail), teamID, competition, season, maxTeamScheduleRows+1)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	matches, err := scanMatches(rows, true)
+	matches, err := scanMatches(rows, detail, canRead(ctx, "odds"))
 	if err != nil {
 		return nil, err
 	}

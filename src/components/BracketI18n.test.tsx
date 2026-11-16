@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { COMPETITIONS } from '@/server/data/competitions';
 import type { BracketMatch, BracketRound } from '@/server/data/types';
-import BracketInteractive from './BracketInteractive';
+import BracketInteractive, { mergeRounds } from './BracketInteractive';
 import { bracketShapeFor } from './bracketShape';
 
 vi.mock('next/navigation', () => ({
@@ -125,6 +125,25 @@ describe('bracket localization', () => {
     cleanup();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it('labels the Femenil projection and explains two legs in Spanish', () => {
+    const edition = COMPETITIONS['liga-mx-femenil'].seasons['2026-apertura'];
+    const projected = [{ ...rounds[0], matches: rounds[0].matches.map(m => ({ ...m, id: 'proj-' + m.id })) }];
+    render(<I18nProvider locale="es"><BracketInteractive rounds={projected} apiBase="/api/x/y" compId="liga-mx-femenil"
+      seasonId={edition.id} compShortName="Liga MX Femenil" seasonLabel={edition.label} emblem="🇲🇽"
+      shape={bracketShapeFor(edition)} predictionEnabled /></I18nProvider>);
+    expect(screen.getByRole('tab', { name: 'Proyección' })).toBeDefined();
+    expect(screen.getByText(/ida y vuelta/)).toBeDefined();
+  });
+
+  it('accepts newly available seeds after a poll while preserving the decided match', () => {
+    const decided = { ...match(0), state: 'finished' as const, homeScore: 2, awayScore: 1, winnerId: 'h0' };
+    const polled = { ...match(0), home: { ...decided.home, overallSeed: 2 }, away: { ...decided.away, overallSeed: 4 } };
+    const round = (m: BracketMatch): BracketRound[] => [{ slug: 'quarterfinals', matches: [m] }];
+    expect(mergeRounds(round(decided), round(polled))[0].matches[0]).toMatchObject({
+      winnerId: 'h0', homeScore: 2, state: 'finished', home: { overallSeed: 2 }, away: { overallSeed: 4 },
+    });
   });
 
   it('renders read-only bracket and accessibility text from the Spanish catalog', () => {

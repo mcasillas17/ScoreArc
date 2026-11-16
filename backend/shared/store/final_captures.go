@@ -174,7 +174,7 @@ func (s *Store) ScheduleFinalCaptureRetry(
 const pendingFinalCapturesSQL = `
 SELECT m.id, ref.source_id, k.kind
 FROM match m
-CROSS JOIN (VALUES ('officials'), ('fixed_odds')) AS k(kind)
+CROSS JOIN unnest($6::text[]) AS k(kind)
 JOIN LATERAL (
 	SELECT r.source_id FROM match_external_ref r
 	WHERE r.match_id=m.id AND r.source=$3
@@ -198,7 +198,7 @@ func (s *Store) PendingFinalCaptures(
 	ctx context.Context,
 	competitionID, seasonID, source string,
 	dueAt time.Time,
-	limit int,
+	limit int, kinds []string,
 ) ([]PendingFinalCapture, error) {
 	const op = "list pending final captures"
 	if competitionID == "" || seasonID == "" || source == "" {
@@ -213,7 +213,7 @@ func (s *Store) PendingFinalCaptures(
 
 	opCtx, cancel := boundedContext(ctx)
 	defer cancel()
-	rows, err := s.pool.Query(opCtx, pendingFinalCapturesSQL, competitionID, seasonID, source, dueAt, limit)
+	rows, err := s.pool.Query(opCtx, pendingFinalCapturesSQL, competitionID, seasonID, source, dueAt, limit, kinds)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}

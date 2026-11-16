@@ -1,8 +1,10 @@
+import { withEditionResources } from './editionResources';
 import type { DataStore } from './store';
-import { resolveSeason, type CompetitionSeason } from './competitions';
+import { resolveSeason, supportsResource, type CompetitionSeason } from './competitions';
 import type { BracketRound, Group, Match, MatchSummaryData, Team } from './types';
 import { TtlCache } from './cache';
-import { currentWeekRange, forwardRange, nowWindowRange, parseRange, seasonMonthBounds } from './dateRange';
+import { currentWeekRange, forwardRange, nowWindowRange, parseRange, editionBounds } from './dateRange';
+import { datedInEdition, requiresEditionEvidence } from './providers/espn-edition';
 import { utcDate } from './scoreboardWindow';
 import { canonicalTeamId } from './teamIdentity';
 import { deriveReaderStandings } from './derivedStandings';
@@ -15,7 +17,7 @@ import {
   decodeReaderMatches, decodeReaderStandings, decodeReaderBracket, decodeReaderSummary,
   decodeReaderLeaders, decodeReaderTeam, decodeReaderSquad, decodeReaderPlayer,
 } from './readerDecode';
-import { mergeLegs } from './providers/espn-bracket';
+import { buildPlayoffBracket } from './providers/espn-bracket';
 
 export interface ReaderDataDependencies {
   read: ReaderTransport;
@@ -63,10 +65,9 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
   }
   function verifyWindow(rc: CompetitionSeason, matches: Match[], range: string, scheduled = false, limit?: number) {
     if (!parseRange(range)) throw new ReaderFailure('scope', false);
-    const bounds = seasonMonthBounds(rc.season.id);
-    const start = Math.max(utcDate(range.slice(0, 8)), Date.parse(`${bounds.minMonth}T00:00:00Z`));
-    const last = new Date(`${bounds.maxMonth}T00:00:00Z`);
-    const end = Math.min(utcDate(range.slice(9)) + 86_400_000, Date.UTC(last.getUTCFullYear(), last.getUTCMonth() + 1, 1));
+    const bounds = editionBounds(rc.season);
+    const start = Math.max(utcDate(range.slice(0, 8)), bounds.start);
+    const end = Math.min(utcDate(range.slice(9)) + 86_400_000, bounds.end);
     unique(matches.map(m => m.id));
     if (limit !== undefined && matches.length > limit) throw new ReaderFailure('body');
     for (const match of matches) {
@@ -89,7 +90,7 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
     return rows.map(row => {
       const identity = refs.get(row.id)!; verifySides(row, identity);
       if (row.scope && (row.scope.competitionId !== rc.competition.id || row.scope.seasonId !== rc.season.id)) throw new ReaderFailure('scope', false);
-      return { ...row, id: identity.providerId, scope: { competitionId: rc.competition.id, seasonId: rc.season.id },
+      return { ...row, winProbability: supportsResource(rc.season, 'odds') ? row.winProbability : null, id: identity.providerId, scope: { competitionId: rc.competition.id, seasonId: rc.season.id },
         home: mappedTeam(teams, row.home), away: mappedTeam(teams, row.away), winnerId: nullableId(teams, row.winnerId),
         scorers: events(row.scorers, row.home.id, row.away.id, teams), cards: events(row.cards, row.home.id, row.away.id, teams) };
     });
@@ -121,7 +122,7 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
     return { body, evidence };
   }
   const store: DataStore = {
-    getMatches: (rc, range, signal) => { signal?.throwIfAborted(); return window(rc, range ?? currentWeekRange(new Date(now())), true); },
+    getMatches: (rc, range, signal) => { signal?.throwIfAborted(); return window(rc, range ?? currentWeekRange(new Date(now())), supportsResource(rc.season, 'summary')); },
     getFixtures: (rc, range, signal) => { signal?.throwIfAborted(); return window(rc, range); },
     getLiveWindow: rc => window(rc, nowWindowRange(new Date(now()))),
     getUpcoming: (rc, limit = 12, signal) => { signal?.throwIfAborted(); return window(rc, forwardRange(new Date(now())), false, true, limit); },
@@ -133,7 +134,8 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
       if (computed) {
         const primary = resolveSeason(computed.membership.primary.competitionId, computed.membership.primary.seasonId);
         const split = resolveSeason(computed.membership.split.competitionId, computed.membership.split.seasonId);
-        if (!primary || !split) throw new ReaderFailure('scope', false);
+        if (!primary || !split || !supportsResource(rc.season, 'scores') ||
+            !supportsResource(primary.season, 'standings') || !supportsResource(split.season, 'standings')) throw new ReaderFailure('scope', false);
         const [phase, first, second] = await Promise.all([
           request(`${readerScopePath(rc)}/matches`, { range: computed.datesRange }, decodeReaderMatches, matchScopes, ['matches']),
           standingsInput(primary), standingsInput(split),
@@ -162,17 +164,29 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
         standings: group.standings.map(row => ({ ...row, team: mappedTeam(teams, row.team) })) }));
     },
     async getBracket(rc): Promise<BracketRound[]> {
-      const { body, evidence } = await request(`${readerScopePath(rc)}/bracket`, undefined, decodeReaderBracket,
+      const query = rc.season.playoffFormat === 'femenil-apertura' ? { shootout: 'true' } : undefined;
+      const { body, evidence } = await request(`${readerScopePath(rc)}/bracket`, query, decodeReaderBracket,
         { bracket: 'competition-season', identity: 'competition-season' }, ['bracket']);
       const matches = body.flatMap(round => round.matches);
+      if (requiresEditionEvidence(rc) && matches.some(m => !datedInEdition(m.kickoff, rc.season))) throw new ReaderFailure('scope', false);
       collectionEvidence(evidence, 'bracket', matches.length); unique(matches.map(m => m.id)); unique(body.map(round => round.slug));
       const [refs, teams] = await Promise.all([identities.lookup(rc, 'match', 'canonical', matches.map(m => m.id)), identities.teams(rc, matches.flatMap(m => [m.home.id, m.away.id]))]);
       // Two-legged ties fold into one, exactly as on the ESPN path.
-      return body.map(round => ({ ...round, matches: mergeLegs(round.matches.map(match => {
+      const rounds = body.map(round => ({ ...round, matches: round.matches.map(match => {
         if (match.round !== round.slug) throw new ReaderFailure('scope', false);
         const ref = refs.get(match.id)!; verifySides(match, ref);
         return { ...match, id: ref.providerId, home: { ...match.home, id: remap(teams, match.home.id) }, away: { ...match.away, id: remap(teams, match.away.id) }, winnerId: nullableId(teams, match.winnerId) };
-      })) }));
+      }) }));
+      let groups: Group[] = [];
+      if (rc.season.playoffFormat && supportsResource(rc.season, 'standings')) {
+        try {
+          groups = await store.getStandings(rc);
+        } catch (error) {
+          deps.signal.throwIfAborted();
+          if (!matches.length) throw error;
+        }
+      }
+      return buildPlayoffBracket(rounds, rc.season.playoffFormat, groups);
     },
     async getMatchSummary(rc, eventId, homeId, awayId): Promise<MatchSummaryData> {
       const identity = (await identities.lookup(rc, 'match', 'espn', [eventId], 'addressed')).get(eventId)!;
@@ -189,9 +203,11 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
       }
       const { body, evidence } = loaded;
       collectionEvidence(evidence, 'matches', 1);
-      const lineups = body.lineups;
+      const lineups = supportsResource(rc.season, 'participation') ? body.lineups : null;
       if (lineups && ((lineups.home.teamId !== null && lineups.home.teamId !== identity.homeId) || (lineups.away.teamId !== null && lineups.away.teamId !== identity.awayId))) throw new ReaderFailure('scope', false);
       return { ...body, readerResources: evidence,
+        winProbability: supportsResource(rc.season, 'odds') ? body.winProbability : null,
+        info: body.info && !supportsResource(rc.season, 'officials') ? { ...body.info, referee: null } : body.info,
         scorers: events(body.scorers, identity.homeId!, identity.awayId!, teams), cards: events(body.cards, identity.homeId!, identity.awayId!, teams),
         lineups: lineups && { ...lineups, home: { ...lineups.home, teamId: nullableId(teams, lineups.home.teamId) }, away: { ...lineups.away, teamId: nullableId(teams, lineups.away.teamId) } } };
     },
@@ -216,13 +232,14 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
         { identity: 'team-season', matches: 'team-season', detail: 'team-season', standings: 'competition-season', squad: 'team-season', seasonStats: 'team-season' }, []); }
       catch (error) { if (error instanceof ReaderFailure && error.status === 404) return null; throw error; }
       const { body, evidence } = loaded;
+      if (requiresEditionEvidence(rc) && body.schedule.some(m => !datedInEdition(m.kickoff, rc.season))) throw new ReaderFailure('scope', false);
       if (body.team.id !== canonical || body.schedule.some(m => !m.scope || m.scope.competitionId !== rc.competition.id || m.scope.seasonId !== rc.season.id || (m.home.id !== canonical && m.away.id !== canonical))) throw new ReaderFailure('scope', false);
       const teams = await identities.teams(rc, [canonical]);
-      const scheduleAvailable = resourceUsable(evidence.resources.matches);
-      const squadAvailable = resourceUsable(evidence.resources.squad);
+      const scheduleAvailable = supportsResource(rc.season, 'scores') && resourceUsable(evidence.resources.matches);
+      const squadAvailable = supportsResource(rc.season, 'squad') && resourceUsable(evidence.resources.squad);
       if (scheduleAvailable) collectionEvidence(evidence, 'matches', body.schedule.length);
       if (squadAvailable) collectionEvidence(evidence, 'squad', body.squad.length);
-      const standingsAvailable = resourceUsable(evidence.resources.standings);
+      const standingsAvailable = supportsResource(rc.season, 'standings') && resourceUsable(evidence.resources.standings);
       return { ...body, readerResources: evidence, team: mappedTeam(teams, body.team),
         squad: squadAvailable ? body.squad : [], schedule: scheduleAvailable ? await normalizeMatches(rc, body.schedule) : [],
         scheduleAvailability: scheduleAvailable ? body.scheduleAvailability : { results: 'unavailable', upcoming: 'unavailable' },
@@ -244,15 +261,17 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
       catch (error) { if (error instanceof ReaderFailure && error.status === 404) return null; throw error; }
       const { body, evidence } = loaded;
       if (body.id !== identity.canonicalId) throw new ReaderFailure('identity', false);
-      unique(body.gameLog.map(row => row.eventId));
+      const gameLog = supportsResource(rc.season, 'participation') ? body.gameLog : [];
+      const career = supportsResource(rc.season, 'career') ? body.career : [];
+      unique(gameLog.map(row => row.eventId));
       const [refs, teams, careerTeams] = await Promise.all([
-        identities.lookup(rc, 'match', 'canonical', body.gameLog.map(row => row.eventId)),
-        identities.teams(rc, [body.team?.id ?? null, ...body.gameLog.flatMap(row => [row.homeTeamId, row.awayTeamId, row.teamId, row.opponent?.id ?? null])]),
-        identities.teams(rc, body.career.map(row => row.teamId), 'optional-team'),
+        identities.lookup(rc, 'match', 'canonical', gameLog.map(row => row.eventId)),
+        identities.teams(rc, [body.team?.id ?? null, ...gameLog.flatMap(row => [row.homeTeamId, row.awayTeamId, row.teamId, row.opponent?.id ?? null])]),
+        identities.teams(rc, career.map(row => row.teamId), 'optional-team'),
       ]);
-      const profile = { ...body, id: athleteId, readerResources: evidence, team: body.team && mappedTeam(teams, body.team),
-        career: body.career.map(row => ({ ...row, teamId: row.teamId === null ? null : careerTeams.get(row.teamId) ?? null })),
-        gameLog: body.gameLog.map(row => {
+      const profile = { ...body, totals: supportsResource(rc.season, 'squad') ? body.totals : [], id: athleteId, readerResources: evidence, team: body.team && mappedTeam(teams, body.team),
+        career: career.map(row => ({ ...row, teamId: row.teamId === null ? null : careerTeams.get(row.teamId) ?? null })),
+        gameLog: gameLog.map(row => {
           const match = refs.get(row.eventId)!;
           if ((row.homeTeamId !== null && row.homeTeamId !== match.homeId) || (row.awayTeamId !== null && row.awayTeamId !== match.awayId) ||
               (row.teamId !== null && row.teamId !== match.homeId && row.teamId !== match.awayId) ||
@@ -263,5 +282,5 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
       return profile;
     },
   };
-  return store;
+  return withEditionResources(store);
 }

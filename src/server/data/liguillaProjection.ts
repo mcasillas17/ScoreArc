@@ -1,3 +1,4 @@
+import type { PlayoffFormat } from './competitions';
 import type { BracketMatch, BracketRound, BracketTeam, Group, Standing } from './types';
 
 /**
@@ -40,32 +41,47 @@ function fixture(
   };
 }
 
-/**
- * Live standings -> a synthetic Liguilla bracket, or null when the table
- * cannot honestly seat 8 (missing, short, or carrying duplicate ranks).
- * Null means the caller shows the bracket-unavailable state — a fabricated
- * bracket is worse than none.
- */
-export function projectLiguilla(groups: Group[]): BracketRound[] | null {
-  const general = groups.find((g) => g.standings.length >= 8);
-  if (!general) return null;
-
-  const bySeed = new Map<number, Standing>();
-  for (const s of general.standings) {
-    if (!Number.isInteger(s.rank) || s.rank < 1 || s.rank > 8) continue;
-    if (bySeed.has(s.rank)) return null;
-    bySeed.set(s.rank, s);
+/** Require distinct clubs and explicit positions in the edition's full tables. */
+export function playoffTable(groups: Group[], format: PlayoffFormat): Standing[] {
+  const size = format === 'nwsl' ? 16 : 9;
+  if (groups.length !== (format === 'nwsl' ? 1 : 2)) return [];
+  const rows = groups.flatMap(g => g.standings);
+  if (new Set(rows.map(s => s.team.id)).size !== rows.length ||
+      new Set(groups.map(g => g.id)).size !== groups.length) return [];
+  for (const { standings } of groups) {
+    if (standings.length !== size || standings.every(s => !s.played) ||
+        new Set(standings.map(s => s.rank)).size !== size ||
+        standings.some(s => !Number.isInteger(s.rank) || s.rank < 1 || s.rank > size)) return [];
   }
-  if (bySeed.size !== 8) return null;
+  return rows;
+}
 
-  const seed = (n: number) => toBracketTeam(bySeed.get(n)!);
+// Article 30's next criteria are away goals, fair play and a draw. Equal keys
+// represent an unresolved order until the league publishes the semifinal ties.
+export function overallOrder(a: Standing, b: Standing): number {
+  return b.points - a.points || b.goalDifference - a.goalDifference || b.goalsFor - a.goalsFor;
+}
+
+/** Project the quarterfinals from the edition's table; inward slots stay open. */
+export function projectLiguilla(groups: Group[], format?: PlayoffFormat): BracketRound[] | null {
+  if (format && !playoffTable(groups, format).length) return null;
+  const general = groups.find(g => g.standings.length >= 8);
+  if (!general) return null;
+  const seed = (g: Group, rank: number) => {
+    const rows = g.standings.filter(s => s.rank === rank);
+    return rows.length === 1 ? toBracketTeam(rows[0]) : null;
+  };
+  const [a, b] = groups;
+  const pairs = format === 'femenil-apertura'
+    ? [[seed(a, 1), seed(b, 4)], [seed(b, 1), seed(a, 4)], [seed(a, 2), seed(b, 3)], [seed(b, 2), seed(a, 3)]]
+    : QF_PAIRS.map(([hi, lo]) => [seed(general, hi), seed(general, lo)]);
+  const matches: BracketMatch[] = [];
+  for (const [home, away] of pairs) {
+    if (!home || !away) return null;
+    matches.push(fixture('proj-qf-' + (matches.length + 1), 'quarterfinals', home, away));
+  }
   return [
-    {
-      slug: 'quarterfinals',
-      matches: QF_PAIRS.map(([hi, lo], i) =>
-        fixture(`proj-qf-${i + 1}`, 'quarterfinals', seed(hi), seed(lo)),
-      ),
-    },
+    { slug: 'quarterfinals', matches },
     {
       slug: 'semifinals',
       matches: [

@@ -238,7 +238,7 @@ func TestStoreIntegration(t *testing.T) {
 	})
 
 	t.Run("bracket uses canonical round order and placeholder state", func(t *testing.T) {
-		rounds, err := store.Bracket(ctx, "world-cup", "2026")
+		rounds, err := store.Bracket(ctx, "world-cup", "2026", false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -712,5 +712,55 @@ func assertDegradedTeam(t *testing.T, response *httptest.ResponseRecorder, logs 
 	}
 	if logged["request_id"] != response.Header().Get("X-Request-Id") || logged["operation"] != operation || logged["sqlstate"] != sqlstate {
 		t.Fatalf("degraded block lacks request-linked diagnostics: %v", logged)
+	}
+}
+
+func TestBracketRetainsVerifiedPenaltyTotals(t *testing.T) {
+	store, pool := newIntegrationStore(t)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `UPDATE match_detail SET shootout='{"homeScore":5,"awayScore":4}' WHERE match_id=$1`, finalMatchID); err != nil {
+		t.Fatal(err)
+	}
+	router := teamIntegrationApp(t, store, &bytes.Buffer{}).router()
+	for _, tc := range []struct {
+		query     string
+		status    int
+		hasTotals bool
+	}{{"", 200, false}, {"?shootout=true", 200, true}, {"?shootout=yes", 400, false}, {"?shootout=true&shootout=true", 400, false}} {
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest("GET", "/v1/competitions/world-cup/2026/bracket"+tc.query, nil))
+		if response.Code != tc.status {
+			t.Fatalf("query %q: status %d: %s", tc.query, response.Code, response.Body)
+		}
+		if tc.status != 200 {
+			continue
+		}
+		var rounds []struct {
+			Matches []struct {
+				ID       string
+				Shootout *struct{ HomeScore, AwayScore int }
+			}
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &rounds); err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, round := range rounds {
+			for _, match := range round.Matches {
+				if match.ID == finalMatchID {
+					found = true
+				}
+				if tc.hasTotals && match.ID == finalMatchID {
+					if match.Shootout == nil || match.Shootout.HomeScore != 5 || match.Shootout.AwayScore != 4 {
+						t.Fatalf("retained totals: %+v", match.Shootout)
+					}
+				} else if match.Shootout != nil {
+					t.Fatalf("unexpected totals in %q: %+v", tc.query, match)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("missing final match")
+		}
 	}
 }

@@ -133,7 +133,7 @@ func (f *fakeReaderStore) Standings(context.Context, string, string, string) ([]
 	f.calls++
 	return f.standings, f.standingsErr
 }
-func (f *fakeReaderStore) Bracket(context.Context, string, string) ([]BracketRound, error) {
+func (f *fakeReaderStore) Bracket(context.Context, string, string, bool) ([]BracketRound, error) {
 	f.calls++
 	return f.bracket, f.bracketErr
 }
@@ -159,7 +159,7 @@ func (f *fakeNewsReader) Get(_ context.Context, slug string) ([]espn.NewsArticle
 	return f.articles, f.err
 }
 
-func (f *fakeNewsReader) GetWithObservation(ctx context.Context, slug string) ([]espn.NewsArticle, time.Time, error) {
+func (f *fakeNewsReader) GetWithObservation(ctx context.Context, slug, _ string) ([]espn.NewsArticle, time.Time, error) {
 	articles, err := f.Get(ctx, slug)
 	return articles, time.Time{}, err
 }
@@ -567,4 +567,27 @@ func (f *fakeReaderStore) Player(context.Context, string, string, string) (*Play
 		return nil, ErrNotFound
 	}
 	return f.player, nil
+}
+
+func TestEditionEligibility(t *testing.T) {
+	st := &fakeReaderStore{}
+	a := newTestApp(t, st, &fakeNewsReader{})
+	// The fake match UUID resolves to this edition even when its public status changes.
+	comp, _ := a.registry.Get("world-cup")
+	season := comp.Seasons["2026"]
+	season.Publication = "candidate"
+	comp.Seasons["2026"] = season
+	for _, suffix := range []string{"", "/box-score"} {
+		res := performRequest(a.router(), "GET", "/v1/matches/00000000-0000-4000-8000-000000000001"+suffix)
+		if res.Code != 404 || res.Body.String() != "{\"error\":\"match not found\"}\n" {
+			t.Fatalf("%s: %d %s", suffix, res.Code, res.Body.String())
+		}
+	}
+	season.Publication = "live"
+	season.Resources = []string{"scores"}
+	comp.Seasons["2026"] = season
+	res := performRequest(a.router(), "GET", "/v1/competitions/world-cup/2026/standings")
+	if res.Header().Get(resourcesHeader) == "" || !strings.Contains(res.Header().Get(resourcesHeader), "unavailable") {
+		t.Fatalf("unsupported standings %d %s", res.Code, res.Header())
+	}
 }

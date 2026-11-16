@@ -346,8 +346,18 @@ describe('bounded match freshness watchdog', () => {
     await expect(runWatchdog({ baseURL, scopes: [scope], stateFile: file, initialize: true })).rejects.toThrow();
     expect(await readFile(`${file}.lock/unexpected`, 'utf8')).toBe('keep');
   });
+  it('applies edition eligibility before the monitor scope bound', () => {
+    const registry = Array.from({ length: 57 }, (_, i) => ({
+      id: `comp-${i}`, seasons: i < 15 ? { live: { id: 'live', monitored: true, publication: 'live', resources: ['scores'] } } : {},
+      currentSeasonId: i < 15 ? 'live' : undefined,
+    }));
+    expect(currentScopes(registry)).toHaveLength(15);
+    for (const publication of ['archive', 'staging', 'candidate']) {
+      expect(() => currentScopes([{ ...registry[0], seasons: { live: { ...registry[0].seasons.live, publication } } }])).toThrow();
+    }
+  });
   it('uses only configured current seasons with finite validated scope', () => {
-    expect(currentScopes([{ id: 'world-cup', currentSeasonId: '2026', seasons: { '2026': { id: '2026' }, '1998': { id: '1998' } } }])).toEqual([scope]);
+    expect(currentScopes([{ id: 'world-cup', currentSeasonId: '2026', seasons: { '2026': { id: '2026', publication: 'live', resources: ['scores'], monitored: true }, '1998': { id: '1998' } } }])).toEqual([scope]);
     for (const config of [[], [{}], Array(33).fill({ id: 'x', currentSeasonId: 'x', seasons: { x: { id: 'x' } } })]) {
       expect(() => currentScopes(config)).toThrow();
     }

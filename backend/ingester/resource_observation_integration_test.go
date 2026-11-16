@@ -14,7 +14,7 @@ func TestResourceObservationsWithPostgresAcrossMemoAndRestart(t *testing.T) {
 	ctx := context.Background()
 	repo, pool, _ := newRecoveryPostgres(t)
 	comp := config.Competition{ID: "observations", Name: "Observations", ShortName: "OBS", ESPNSlug: "test.1", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026", Label: "2026"}, "2027": {ID: "2027", Label: "2027"}}}
+		Seasons: map[string]config.Season{"2026": {Publication: "live", Resources: testResources, ID: "2026", Label: "2026"}, "2027": {Publication: "live", Resources: testResources, ID: "2027", Label: "2027"}}}
 	if err := repo.ApplyCompetitionSeed(ctx, []config.Competition{comp}); err != nil {
 		t.Fatal(err)
 	}

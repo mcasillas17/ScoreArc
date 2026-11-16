@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
 import { ogUrl, shareMetadata } from '@/lib/ogUrl';
-import { resolveSeason } from '@/server/data/competitions';
+import { resolveResource } from '@/server/data/editionResources';
 import { competitionPlayerIndex } from '@/server/data/playerIndex';
 import PlayerSearch from '@/components/PlayerSearch';
 import SiteFooter from '@/components/SiteFooter';
@@ -17,12 +17,12 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale, comp);
-  const rc = resolveSeason(comp, season);
+  const rc = resolveResource(comp, season, 'players');
   if (!rc) return { title: t('nav.players') };
   const edition = `${rc.competition.shortName} ${rc.season.label}`;
   const pathname = `/c/${rc.competition.id}/${rc.season.id}/players`;
   const title = t('players.metaTitle', edition);
-  const description = t(rc.season.id === rc.competition.currentSeasonId ? 'players.metaDescription' : 'players.historicalMetaDescription', edition);
+  const description = t(rc.season.publication !== 'archive' && rc.season.id === rc.competition.currentSeasonId ? 'players.metaDescription' : 'players.historicalMetaDescription', edition);
   return {
     title,
     description,
@@ -34,10 +34,10 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 export default async function PlayersPage({ params }: Params) {
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
-  const rc = resolveSeason(comp, season);
+  const rc = resolveResource(comp, season, 'players');
   if (!rc) notFound();
   const t = getTranslator(locale, comp);
-  const historical = rc.season.id !== rc.competition.currentSeasonId;
+  const historical = rc.season.publication === 'archive' || rc.season.id !== rc.competition.currentSeasonId;
   let directory: Awaited<ReturnType<typeof competitionPlayerIndex>>['directory'] | null = null;
   if (!historical) {
     try { directory = (await competitionPlayerIndex(rc)).directory; }

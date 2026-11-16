@@ -56,7 +56,7 @@ func TestESPNSummaryRejectsInvalidFinalObservationStatus(t *testing.T) {
 			})
 			match := recoveryMatch()
 			match.State, match.StatusName = model.MatchStateFinished, "STATUS_FULL_TIME"
-			result, err := src.Summary(context.Background(), config.Competition{ESPNSlug: "esp.1"}, match)
+			result, err := src.Summary(context.Background(), config.Competition{ESPNSlug: "esp.1"}, config.Season{}, match)
 			if err == nil || result.HomeScore != nil || result.AwayScore != nil || result.Detail.Info != nil {
 				t.Fatalf("ordinary final summary accepted invalid observation: result=%+v err=%v", result, err)
 			}
@@ -76,7 +76,7 @@ func TestESPNSummaryAcceptsKnownAndFutureFinalObservationStatus(t *testing.T) {
 			})
 			match := recoveryMatch()
 			match.State, match.StatusName = model.MatchStateFinished, "STATUS_FULL_TIME"
-			result, err := src.Summary(context.Background(), config.Competition{ESPNSlug: "esp.1"}, match)
+			result, err := src.Summary(context.Background(), config.Competition{ESPNSlug: "esp.1"}, config.Season{}, match)
 			if err != nil || result.HomeScore == nil || *result.HomeScore != 0 ||
 				result.AwayScore == nil || *result.AwayScore != 1 || result.Detail.Info == nil {
 				t.Fatalf("valid ordinary final summary rejected: result=%+v err=%v", result, err)
@@ -97,7 +97,7 @@ func TestESPNSummaryPreservesTerminalNoDetailPolicy(t *testing.T) {
 			})
 			match := recoveryMatch()
 			match.State, match.StatusName = model.MatchStateFinished, name
-			result, err := src.Summary(context.Background(), config.Competition{ESPNSlug: "esp.1"}, match)
+			result, err := src.Summary(context.Background(), config.Competition{ESPNSlug: "esp.1"}, config.Season{}, match)
 			if err != nil || result.HomeScore != nil || result.AwayScore != nil || result.Detail.Info != nil {
 				t.Fatalf("terminal no-detail policy changed: result=%+v err=%v", result, err)
 			}

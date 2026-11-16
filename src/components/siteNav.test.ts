@@ -35,6 +35,12 @@ function activeItems(pathname: string): string[] {
 describe('stripLocale', () => {
   // Locale-prefixed routes are arriving with the i18n middleware. Nothing here
   // implements them; these matchers only have to stop assuming their absence.
+  it('shows only admitted sections in a scores-only edition', () => {
+    const rc = resolveSeason('world-cup')!;
+    const scope = { ...rc, season: { ...rc.season, resources: ['scores' as const] } };
+    expect(competitionSections(scope, 'en').map(s => s.href)).toEqual(['/c/world-cup/2026/matches']);
+  });
+
   it('removes a leading two-letter locale segment', () => {
     expect(stripLocale('/es/c/liga-mx/2026-apertura/standings')).toBe('/c/liga-mx/2026-apertura/standings');
     expect(stripLocale('/es/teams')).toBe('/teams');

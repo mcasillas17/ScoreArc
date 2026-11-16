@@ -72,16 +72,20 @@ func (s *newsService) cached(slug string) (newsCacheEntry, bool) {
 	return entry, true
 }
 
-func (s *newsService) GetWithObservation(ctx context.Context, slug string) ([]espn.NewsArticle, time.Time, error) {
+func (s *newsService) GetWithObservation(ctx context.Context, slug, leagueID string) ([]espn.NewsArticle, time.Time, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, time.Time{}, err
 	}
-	if entry, ok := s.cached(slug); ok {
+	key := slug
+	if leagueID != "" {
+		key += "/" + leagueID
+	}
+	if entry, ok := s.cached(key); ok {
 		return entry.articles, entry.fetchedAt, nil
 	}
 
-	result := s.group.DoChan(slug, func() (any, error) {
-		if entry, ok := s.cached(slug); ok {
+	result := s.group.DoChan(key, func() (any, error) {
+		if entry, ok := s.cached(key); ok {
 			return entry, nil
 		}
 
@@ -91,7 +95,7 @@ func (s *newsService) GetWithObservation(ctx context.Context, slug string) ([]es
 		if err := s.client.GetJSON(fetchCtx, espn.NewsURL(slug), &raw); err != nil {
 			return nil, fmt.Errorf("fetch ESPN news: %w", err)
 		}
-		articles, err := espn.MapNewsObservation(raw)
+		articles, err := espn.MapLeagueNewsObservation(raw, leagueID)
 		if err != nil {
 			return nil, err
 		}
@@ -102,7 +106,7 @@ func (s *newsService) GetWithObservation(ctx context.Context, slug string) ([]es
 			fetchedAt: fetchedAt,
 		}
 		s.mu.Lock()
-		s.cache[slug] = entry
+		s.cache[key] = entry
 		s.mu.Unlock()
 		return entry, nil
 	})
@@ -119,6 +123,6 @@ func (s *newsService) GetWithObservation(ctx context.Context, slug string) ([]es
 }
 
 func (s *newsService) Get(ctx context.Context, slug string) ([]espn.NewsArticle, error) {
-	articles, _, err := s.GetWithObservation(ctx, slug)
+	articles, _, err := s.GetWithObservation(ctx, slug, "")
 	return articles, err
 }

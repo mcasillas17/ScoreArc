@@ -28,3 +28,12 @@ describe('mapNews', () => {
     expect(mapNews(null)).toEqual([]);
   });
 });
+
+it('keeps only a league category matching the news league ID', () => {
+  const story = { headline: 'Manchester United ownership', links: { web: { href: 'https://example.org/story' } } };
+  const nwsl = { ...story, headline: 'NWSL playoffs', categories: [{ type: 'league', leagueId: 600 }, { type: 'league', leagueId: 2323 }] };
+  const feed = { articles: [story, nwsl, { ...story, categories: [{ type: 'team', leagueId: 2323 }] },
+    { ...story, categories: [{ type: 'league', leagueId: 8301, id: 2323 }] }] };
+  expect(mapNews(feed, '2323').map(a => a.headline)).toEqual(['NWSL playoffs']);
+  expect(mapNews(feed, '8675309')).toEqual([]);
+});

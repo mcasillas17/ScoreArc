@@ -17,6 +17,7 @@ import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 const REFRESH_MS = 30_000;
 
 interface Props {
+  hasSummary?: boolean;
   initialMatches: Match[];
   initialError?: string | null;
   apiBase: string;
@@ -57,6 +58,7 @@ export default function MatchesNow({
   initialMatches,
   initialError = null,
   apiBase,
+  hasSummary = true,
   teamBase,
   playerBase,
   range,
@@ -147,7 +149,7 @@ export default function MatchesNow({
             </h2>
             {lead && section.matches[0] === lead && (
               <div className="mn-lead">
-                <MatchRow match={lead} lead teamStyle={teamStyle} onOpen={() => void openDetails(lead)} />
+                <MatchRow match={lead} lead teamStyle={teamStyle} onOpen={hasSummary ? () => void openDetails(lead) : undefined} />
               </div>
             )}
             {/* A grid, not a list: Liga MX kicks off seven matches at once. */}
@@ -161,7 +163,7 @@ export default function MatchesNow({
                         key={match.id}
                         match={match}
                         teamStyle={teamStyle}
-                        onOpen={() => void openDetails(match)}
+                        onOpen={hasSummary ? () => void openDetails(match) : undefined}
                       />
                     ))}
                   </div>
@@ -174,7 +176,7 @@ export default function MatchesNow({
                     key={match.id}
                     match={match}
                     teamStyle={teamStyle}
-                    onOpen={() => void openDetails(match)}
+                    onOpen={hasSummary ? () => void openDetails(match) : undefined}
                   />
                 ))}
               </div>

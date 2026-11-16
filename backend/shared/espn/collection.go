@@ -26,6 +26,15 @@ func validateCollection(raw []byte, field string) ([]json.RawMessage, error) {
 	return rows, nil
 }
 
+// ValidateCollectionCompleteness checks a decoded row count against the provider's pagination and truncation signals.
+func ValidateCollectionCompleteness(raw []byte, count int) error {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return err
+	}
+	return validateCollectionMetadata(envelope, count)
+}
+
 func validateCollectionMetadata(envelope map[string]json.RawMessage, count int) error {
 	for _, key := range []string{"count", "total", "totalCount", "pageCount", "pageIndex", "offset", "pageSize", "limit"} {
 		raw, exists := envelope[key]

@@ -142,14 +142,19 @@ func run(args []string) int {
 	}
 	provider := source.NewESPN(espn.New())
 
-	competitions := registry.List()
+	competitions := registry.Active("plays")
 	if !options.all {
-		comp, found := registry.Get(options.competitionID)
-		if !found {
+		var selected []config.Competition
+		for _, comp := range competitions {
+			if comp.ID == options.competitionID {
+				selected = append(selected, comp)
+			}
+		}
+		if len(selected) == 0 {
 			log.Error("unknown competition", "comp", options.competitionID)
 			return 1
 		}
-		competitions = []config.Competition{comp}
+		competitions = selected
 	}
 
 	failures := backfillPlayStreams(

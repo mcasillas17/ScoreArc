@@ -1,10 +1,10 @@
 # Women's fútbol and the shared matchday
 
-Design for owner review · November 15, 2026 · E23
+Design and mockups approved · November 15, 2026 · E23 · [Implementation plan](../plans/2026-11-15-womens-football.md)
 
 ## Product decision
 
-One ScoreArc home covers women’s and men’s fútbol. A fan arriving for the first time sees **All**. Choosing **Women** or **Men** narrows the matchday, competition dial and directory. The Women view has an address a fan can bookmark or send to someone else. The owner selected this approach. The URL spelling, control placement, rollout batches and engineering details below are proposals for design approval.
+One ScoreArc home covers women’s and men’s fútbol. A fan arriving for the first time sees **All**. Choosing **Women** or **Men** narrows the matchday, competition dial and directory. The Women view has an address a fan can bookmark or send to someone else. The owner approved the shared matchday design and its desktop and phone mockups.
 
 The catalog target is every one of the **45 women’s feeds** in the [coverage audit](../../WOMENS_FOOTBALL_COVERAGE.md#espn-competition-inventory), including college, youth, qualifiers and historical tournaments. The senior Women’s World Cup is one competition with six verified editions and 264 completed matches. The end result includes the teams and players ESPN can identify and the matches they actually played. Coverage can vary by edition and by feature.
 

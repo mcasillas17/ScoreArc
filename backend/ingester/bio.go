@@ -22,14 +22,12 @@ func (r *runner) refreshBios(ctx context.Context) error {
 		return ctx.Err()
 	}
 	start := time.Now()
-	if len(r.competitions) == 0 {
-		err := fmt.Errorf("no competition configured for athlete bio requests")
-		r.recordGlobalRun(ctx, "player_bios", start, err)
-		return err
+	scopes, comp := r.workScopes("career")
+	if len(scopes) == 0 {
+		return nil
 	}
-
 	candidates, err := r.repo.PlayersNeedingBio(
-		ctx, sourceESPN, time.Now().Add(-bioTTL), bioBatchSize,
+		ctx, sourceESPN, time.Now().Add(-bioTTL), bioBatchSize, scopes,
 	)
 	if err != nil {
 		r.recordGlobalRun(ctx, "player_bios", start, err)
@@ -50,7 +48,7 @@ func (r *runner) refreshBios(ctx context.Context) error {
 
 	// Athlete ids are provider-global; common/v3 still requires a competition
 	// segment in the URL, so use one configured ESPN slug for the global sweep.
-	comp := r.competitions[0]
+
 	var refreshErrors []error
 	for _, athleteSourceID := range athleteSourceIDs {
 		if ctx.Err() != nil {

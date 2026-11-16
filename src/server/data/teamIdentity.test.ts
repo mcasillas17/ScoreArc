@@ -12,6 +12,15 @@ describe('team identity crosswalk', () => {
     expect(providerTeamId(canonicalTeamId('216'))).toBe('216');
   });
 
+  it.each([
+    ['227', 'mex-america'], ['22415', 'mex-w-america'],
+    ['360', 'eng-manchester-united'], ['20061', 'eng-w-manchester-united'],
+    ['15364', 'usa-w-gotham-fc'],
+  ])('preserves both directions of the curated %s identity', (ref, id) => {
+    expect(canonicalTeamId(ref)).toBe(id);
+    expect(providerTeamId(id)).toBe(ref);
+  });
+
   // A club ESPN knows and the seed does not has no canonical id yet. That is a
   // real answer: it gets no URL and its crest stays unlinked, rather than
   // linking to a page that cannot resolve.

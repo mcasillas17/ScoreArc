@@ -4,4 +4,4 @@ import { sharedStandingsForm } from '@/server/data/standingsForm';
 
 export const dynamic = 'force-dynamic';
 
-export const GET = seasonRoute('standings-form', (rc, signal) => sharedStandingsForm(dataStore, rc, signal));
+export const GET = seasonRoute('standings-form', ['standings', 'scores'], (rc, signal) => sharedStandingsForm(dataStore, rc, signal));

@@ -34,7 +34,7 @@ type repository interface {
 	UpsertMatchDetail(context.Context, uuid.UUID, model.MatchDetail) error
 	FinalizeMatch(context.Context, store.MatchIdentity, model.Match, model.MatchDetail) (bool, error)
 	WriteParticipation(context.Context, string, uuid.UUID, string, string, *model.MatchParticipation) (store.ParticipationStats, error)
-	PendingParticipation(context.Context, string, time.Time, int) ([]store.ParticipationRecovery, error)
+	PendingParticipation(context.Context, string, time.Time, int, []string) ([]store.ParticipationRecovery, error)
 	BeginParticipation(context.Context, uuid.UUID, time.Time, time.Time) (bool, error)
 	FailParticipation(context.Context, uuid.UUID, time.Time, string) error
 	CompleteParticipation(context.Context, store.MatchIdentity, model.Match, *model.MatchParticipation, time.Time) (store.ParticipationStats, error)
@@ -63,7 +63,7 @@ type repository interface {
 	ScheduleFinalCaptureRetry(context.Context, uuid.UUID, store.FinalCaptureKind, time.Time, time.Time, error) error
 	// PendingFinalCaptures returns the oldest-due officials/fixed-odds
 	// captures still outstanding for a competition/season, bounded by limit.
-	PendingFinalCaptures(context.Context, string, string, string, time.Time, int) ([]store.PendingFinalCapture, error)
+	PendingFinalCaptures(context.Context, string, string, string, time.Time, int, []string) ([]store.PendingFinalCapture, error)
 	WritePlays(context.Context, uuid.UUID, []model.Play, map[string]string, map[string]uuid.UUID) (int, error)
 	ResolveKnownPlayers(context.Context, string, []string) (map[string]uuid.UUID, error)
 	RecordPlayArchive(context.Context, uuid.UUID, string, int, int, bool) error
@@ -86,7 +86,7 @@ type repository interface {
 	ReplaceLeaders(context.Context, string, string, string, string, []model.StatLeader) error
 	ReplaceSquad(context.Context, string, string, string, string, []model.SquadMember, map[string]uuid.UUID) error
 	SetTeamRosterIdentity(ctx context.Context, teamID, colour, location string) error
-	PlayersNeedingBio(context.Context, string, time.Time, int) (map[string]uuid.UUID, error)
+	PlayersNeedingBio(context.Context, string, time.Time, int, []string) (map[string]uuid.UUID, error)
 	ReplaceTeamHistory(context.Context, uuid.UUID, string, []model.TeamHistoryEntry) error
 	LogIngestRun(context.Context, *string, string, time.Time, time.Time, bool, string) error
 	PruneIngestRuns(context.Context, time.Time) (int64, error)
