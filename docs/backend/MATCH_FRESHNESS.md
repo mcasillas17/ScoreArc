@@ -563,7 +563,7 @@ do not stop production to prove them.
 | Resource | Bound |
 |---|---|
 | Reader | One check per current competition (12 as of November 15), up to 32 sequential scopes. Each allows 10 seconds, 8 MiB and 5,000 matches, with no retries. |
-| GitHub JSON API | At most 3 pages × 20 runs; 2 metadata + 3 run-list + 120 artifact/job reads = 125 requests; 10 seconds / 1 MiB each, no retries; steady state is about 4 per run (~1,150/day). `GITHUB_TOKEN` is limited to 1,000 requests per hour per repository, so twelve degraded full scans an hour (~1,500) would hit that limit; repeated budget failures need intervention, not more runs |
+| GitHub JSON API | At most 6 pages × 10 runs; 2 metadata + 6 run-list + 120 artifact/job reads = 128 requests; 10 seconds / 1 MiB each, no retries; steady state is about 4 per run (~1,150/day). `GITHUB_TOKEN` is limited to 1,000 requests per hour per repository, so twelve degraded full scans an hour (~1,536) would hit that limit; repeated budget failures need intervention, not more runs |
 | Artifact transfer | One selected download, up to two uploads; state 256 KiB, artifact metadata size ceiling 256 KiB; action-internal transfer retries are governed by pinned actions and job timeout |
 | State | 128 pending events, 32 receipts, one current incident ID per scope; 256 KiB |
 | Notifications | At most 16 sequential sends per run (must stay at or above the registry size, so one run carries every scope's transition and its heartbeat; a test guards it), 15 seconds each (the receiver acknowledges only after its email, about 5 seconds), 1 KiB acknowledgment; 20 reserved attempts per event |
@@ -630,7 +630,7 @@ with `gh workflow enable match-freshness.yml`), and also set
 `MATCH_FRESHNESS_ENABLED=false` if the pause must survive an accidental re-enable.
 Setting only the variable is not enough for more than a few hours: dispatched runs
 are still created, and the selector only looks for the newest checkpoint among the
-newest 60 workflow runs (three pages of 20). About five hours of skipped runs at
+newest 60 workflow runs (six pages of 10). About five hours of skipped runs at
 this cadence push it out of that window, so re-enabling fails closed with the
 history-scan budget error. The job gate compares case-insensitively, so `TRUE`
 starts a job whose CLI (exact `true` only) does nothing and whose Prepare step is
