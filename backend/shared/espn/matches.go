@@ -247,8 +247,9 @@ func MapSeasonScoreboard(raw []byte, season config.Season) ([]Match, error) {
 			Note:            note,
 			Shootout:        shootout,
 			BracketRequired: bracketRequired,
-			// Explicit play-in exclusion also repairs a stored unknown-round requirement.
-			BracketConfirmed: ev.Season.Slug == goldCupPlayInRound,
+			// These explicit non-knockout tags supersede a stored unknown-round requirement.
+			BracketConfirmed: ev.Season.Slug == goldCupPlayInRound ||
+				(season.PlayoffFormat == config.FemenilApertura && ev.Season.Slug == "torneo-apertura"),
 		})
 	}
 	if len(sb.Events) > 0 && len(matches) == 0 {
