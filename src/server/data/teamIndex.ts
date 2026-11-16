@@ -1,4 +1,4 @@
-import { listCompetitions, resolveSeason, type Competition, type CompetitionSeason } from './competitions';
+import { supportsResource, listCompetitions, resolveSeason, type Competition, type CompetitionSeason } from './competitions';
 import { dataStore, type DataStore } from './store';
 import { canonicalTeamId } from './teamIdentity';
 import { StandingsStatsError } from './providers/espn-standings';
@@ -95,7 +95,7 @@ export async function competitionTeams(rc: CompetitionSeason, store: DataStore =
 export async function allTeams(competitions: Competition[] = listCompetitions()): Promise<IndexedTeam[]> {
   const seasons = competitions
     .map((competition) => resolveSeason(competition.id))
-    .filter((rc): rc is CompetitionSeason => rc !== undefined);
+    .filter((rc): rc is CompetitionSeason => rc !== undefined && supportsResource(rc.season, 'teams'));
 
   const lists = await runDataOperation(dataStore, source =>
     Promise.all(seasons.map((rc) => competitionTeams(rc, source))));

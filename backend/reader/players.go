@@ -56,7 +56,8 @@ func isCanonicalPlayerID(raw string) bool {
 
 func (a *App) handlePlayer(w http.ResponseWriter, r *http.Request) {
 	comp, season, id := chi.URLParam(r, "comp"), chi.URLParam(r, "season"), chi.URLParam(r, "playerId")
-	if _, _, ok := a.resolve(comp, season); !ok {
+	_, edition, ok := a.resolve(comp, season)
+	if !ok {
 		writeError(w, 400, "unknown competition or season")
 		return
 	}
@@ -68,12 +69,16 @@ func (a *App) handlePlayer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid query")
 		return
 	}
+	if !edition.Supports("players") {
+		writeUnavailable(w, "players")
+		return
+	}
 	reader, finish, ok := a.beginMatchSnapshot(w, r)
 	if !ok {
 		return
 	}
 	defer finish()
-	player, err := reader.Player(r.Context(), id, comp, season)
+	player, err := reader.Player(a.withEdition(r.Context(), edition, "players"), id, comp, season)
 	if errors.Is(err, ErrNotFound) {
 		finish()
 		writeError(w, 404, "player not found")
@@ -106,15 +111,15 @@ SELECT p.id::text,p.full_name,
  WHERE a.player_id=p.id AND m.competition_id=$2 AND m.season_id=$3
  AND m.state IN ('live','finished') LIMIT 2001) candidates)
 FROM player p
-LEFT JOIN player_season_stat ps ON ps.player_id=p.id AND ps.competition_id=$2 AND ps.season_id=$3
+LEFT JOIN player_season_stat ps ON $5 AND ps.player_id=p.id AND ps.competition_id=$2 AND ps.season_id=$3
 LEFT JOIN LATERAL (SELECT * FROM squad_membership
- WHERE player_id=p.id AND competition_id=$2 AND season_id=$3
+ WHERE $5 AND player_id=p.id AND competition_id=$2 AND season_id=$3
  AND (ps.team_id IS NULL OR team_id=ps.team_id)
  ORDER BY updated_at DESC,team_id LIMIT 1) sm ON true
 LEFT JOIN team t ON t.id=coalesce(ps.team_id,sm.team_id)
 LEFT JOIN competition c ON c.id=$2
 LEFT JOIN season sn ON sn.competition_id=$2 AND sn.id=$3
-WHERE p.id=$1`
+WHERE p.id=$1 AND ` + playerVisibleSQL
 
 func (s *Store) Player(ctx context.Context, id, competition, season string) (*PlayerProfile, error) {
 	if !isCanonicalPlayerID(id) {
@@ -123,7 +128,7 @@ func (s *Store) Player(ctx context.Context, id, competition, season string) (*Pl
 	p := &PlayerProfile{Totals: []PlayerSeasonTotal{}, GameLog: []GameLogRow{}, Career: []CareerStint{}, GameLogLabel: "Last 5 Matches"}
 	var teamID, name, abbr, crest *string
 	var candidates int
-	err := s.db.QueryRow(ctx, playerIdentitySQL, id, competition, season).Scan(&p.ID, &p.Name, &p.Age, &p.Position, &p.Nationality, &p.Jersey, &teamID, &name, &abbr, &crest, &p.SeasonLabel, &candidates)
+	err := s.db.QueryRow(ctx, playerIdentitySQL, id, competition, season, visibleEntityScopes(ctx), canRead(ctx, "squad")).Scan(&p.ID, &p.Name, &p.Age, &p.Position, &p.Nationality, &p.Jersey, &teamID, &name, &abbr, &crest, &p.SeasonLabel, &candidates)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -136,17 +141,23 @@ func (s *Store) Player(ctx context.Context, id, competition, season string) (*Pl
 	if teamID != nil {
 		p.Team = &espn.Team{ID: *teamID, Name: *name, Abbr: *abbr, CrestURL: crest}
 	}
-	p.Totals, err = s.playerTotals(ctx, id, competition, season)
-	if err != nil {
-		return nil, err
+	if canRead(ctx, "squad") {
+		p.Totals, err = s.playerTotals(ctx, id, competition, season)
+		if err != nil {
+			return nil, err
+		}
 	}
-	p.Career, err = s.playerCareer(ctx, id)
-	if err != nil {
-		return nil, err
+	if canRead(ctx, "career") {
+		p.Career, err = s.playerCareer(ctx, id)
+		if err != nil {
+			return nil, err
+		}
 	}
-	p.GameLog, err = s.playerGameLog(ctx, id, competition, season)
-	if err != nil {
-		return nil, err
+	if canRead(ctx, "participation") {
+		p.GameLog, err = s.playerGameLog(ctx, id, competition, season)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return p, nil
 }

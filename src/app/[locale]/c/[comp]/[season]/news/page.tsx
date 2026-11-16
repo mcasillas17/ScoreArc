@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
-import { hasNews, resolveSeason } from '@/server/data/competitions';
+import { resolveResource } from '@/server/data/editionResources';
 import { dataStore } from '@/server/data/store';
 import type { NewsArticle } from '@/server/data/types';
 import NewsLive from '@/components/NewsLive';
@@ -20,7 +20,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale, comp);
-  const rc = resolveSeason(comp, season);
+  const rc = resolveResource(comp, season, 'news');
   if (!rc) return { title: t('news.title') };
   const edition = `${rc.competition.shortName} ${rc.season.label}`;
   const pathname = `/c/${rc.competition.id}/${rc.season.id}/news`;
@@ -38,8 +38,8 @@ export default async function NewsPage({ params }: Params) {
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale, comp);
-  const rc = resolveSeason(comp, season);
-  if (!rc || !hasNews(rc.competition)) notFound();
+  const rc = resolveResource(comp, season, 'news');
+  if (!rc) notFound();
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
   let news: NewsArticle[] = [];
   try {

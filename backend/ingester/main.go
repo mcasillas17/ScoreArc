@@ -134,7 +134,8 @@ func run() int {
 			"hint", "set R2_RAW_BUCKET and the R2 credentials via fly secrets")
 	}
 	worker := &runner{
-		competitions:      registry.List(),
+		registry:          registry,
+		competitions:      registry.Active("scores"),
 		source:            source.NewESPN(espn.New()),
 		repo:              repo,
 		mirror:            mirror,
@@ -264,7 +265,7 @@ func checkSchemaOnly(ctx context.Context, out io.Writer, dsn string) int {
 func applySeeds(ctx context.Context, repo *store.Store, registry *config.Registry) error {
 	seedCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	if err := repo.ApplyCompetitionSeed(seedCtx, registry.List()); err != nil {
+	if err := repo.ApplyCompetitionSeed(seedCtx, registry.Visible()); err != nil {
 		return fmt.Errorf("apply competition seed: %w", err)
 	}
 	teams, err := config.LoadTeams()

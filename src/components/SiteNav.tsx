@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { hasBothCategories, hasNews, inView, listCompetitions, parseView, resolveSeason, viewQuery } from '@/server/data/competitions';
-import type { Competition, CompetitionSeason, View } from '@/server/data/competitions';
+import { hasBothCategories, inView, listCompetitions, parseView, resolveSeason, supportsResource, viewQuery } from '@/server/data/competitions';
+import type { Competition, CompetitionSeason, EditionResource, View } from '@/server/data/competitions';
 import { trackEvent } from '@/lib/telemetry/client';
 import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import type { Locale } from '@/i18n/config';
@@ -173,10 +173,10 @@ export function competitionSections(rc: CompetitionSeason, locale: Locale, prefi
     icon: tableIcon,
     match: under('/standings'),
   };
-  const rest: NavItem[] = [
-    standings,
-    { href: link('/matches'), label: t('sidebar.matches'), icon: matchesIcon, match: under('/matches') },
-    {
+  const sections: [EditionResource, NavItem][] = [
+    ['standings', standings],
+    ['scores', { href: link('/matches'), label: t('sidebar.matches'), icon: matchesIcon, match: under('/matches') }],
+    ['teams', {
       href: link('/teams'),
       label: t('sidebar.teams'),
       icon: teamsIcon,
@@ -184,20 +184,17 @@ export function competitionSections(rc: CompetitionSeason, locale: Locale, prefi
       // is reached from /teams, so matching only the plural left the reader on
       // a real route with nothing in the nav lit up at all.
       match: (p) => under('/teams')(p) || under('/team/')(p),
-    },
-    { href: link('/players'), label: t('nav.players'), icon: playersIcon,
-      match: (p) => under('/players')(p) || under('/player/')(p) },
-    // No News item where the competition publishes no news section: its feed
-    // cannot be attributed to it (see Liga MX Femenil in competitions.ts).
-    ...(hasNews(rc.competition)
-      ? [{ href: link('/news'), label: t('sidebar.news'), icon: newsIcon, match: under('/news') }]
-      : []),
+    }],
+    ['players', { href: link('/players'), label: t('nav.players'), icon: playersIcon,
+      match: (p) => under('/players')(p) || under('/player/')(p) }],
+    ['news', { href: link('/news'), label: t('sidebar.news'), icon: newsIcon, match: under('/news') }],
   ];
+  const rest = sections.filter(([resource]) => supportsResource(rc.season, resource)).map(([, item]) => item);
   // A projected Liguilla gives a league's root real content of its own, so
   // it earns the root nav item leagues otherwise lack. The label stays
   // "Liguilla" after the real draw lands — truer than "Bracket" either way.
   const projection = rc.season.projection === 'liguilla';
-  if (!hasBracket && !projection) return rest;
+  if (!(hasBracket && supportsResource(rc.season, 'bracket')) && !(projection && supportsResource(rc.season, 'standings'))) return rest;
   return [
     {
       href: link(),
@@ -515,14 +512,18 @@ export default function SiteNav() {
   // the competition itself; the badge and the full name then say so, because a
   // league's crest looks the same wherever it leads.
   const competitionItems = (
-    into?: { suffix: string; badge: React.ReactNode; full: (name: string) => string },
+    into?: { resource: 'players' | 'news'; badge: React.ReactNode; full: (name: string) => string },
   ): DialItem[] =>
-    competitions.map((c) => {
+    competitions.filter(c => {
+      if (!into) return true;
+      const season = c.seasons[competitionSeasonId(c, active)];
+      return supportsResource(season, into.resource);
+    }).map((c) => {
       const isActive = active?.competition.id === c.id;
       const seasonId = competitionSeasonId(c, active);
       return {
         key: c.id,
-        href: competitionHref(c, active, prefix) + (into?.suffix ?? ''),
+        href: competitionHref(c, active, prefix) + (into ? '/' + into.resource : ''),
         label: c.shortName,
         full: into?.full(c.shortName),
         badge: into?.badge,
@@ -552,8 +553,8 @@ export default function SiteNav() {
   // it leads to holds the rest.
   const dialItems: DialItem[] =
     section === 'teams' ? letterItems
-    : section === 'news' ? competitionItems({ suffix: '/news', badge: newsIcon, full: (n) => t('nav.newsOf', n) })
-    : section === 'players' ? competitionItems({ suffix: '/players', badge: playersIcon, full: (n) => t('nav.playersOf', n) })
+    : section === 'news' ? competitionItems({ resource: 'news', badge: newsIcon, full: (n) => t('nav.newsOf', n) })
+    : section === 'players' ? competitionItems({ resource: 'players', badge: playersIcon, full: (n) => t('nav.playersOf', n) })
     : competitionItems();
   const dial = (variant: 'rail' | 'wheel') => (
     <NavDial

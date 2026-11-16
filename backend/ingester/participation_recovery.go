@@ -19,14 +19,22 @@ func (r *runner) retryParticipation(ctx context.Context) error {
 	started := r.clock()
 	sweepCtx, cancel := context.WithTimeout(ctx, matchRecoveryBudget)
 	defer cancel()
-	pending, err := r.repo.PendingParticipation(sweepCtx, r.source.Name(), started, participationBatch)
+	scopes, _ := r.workScopes("participation")
+	if len(scopes) == 0 {
+		return nil
+	}
+	pending, err := r.repo.PendingParticipation(sweepCtx, r.source.Name(), started, participationBatch, scopes)
 	if err != nil {
 		r.recordGlobalRun(ctx, "participation_retry", started, errors.New("bookkeeping_failure"))
 		return errors.New("bookkeeping_failure")
 	}
 	competitions := make(map[string]config.Competition, len(r.competitions))
 	for _, comp := range r.competitions {
-		competitions[comp.ID] = comp
+		for _, season := range comp.Seasons {
+			if r.registry.ActiveEdition(comp.ID, season) && season.Supports("participation") {
+				competitions[comp.ID+"/"+season.ID] = comp
+			}
+		}
 	}
 	perCompetition := make(map[string]int)
 	attempts, completed := 0, 0
@@ -35,6 +43,10 @@ func (r *runner) retryParticipation(ctx context.Context) error {
 		if sweepCtx.Err() != nil {
 			failures = append(failures, errors.New("canceled"))
 			break
+		}
+		comp, ok := competitions[item.Identity.CompetitionID+"/"+item.Identity.SeasonID]
+		if !ok {
+			continue
 		}
 		if perCompetition[item.Identity.CompetitionID] >= participationPerCompetition {
 			continue
@@ -50,14 +62,7 @@ func (r *runner) retryParticipation(ctx context.Context) error {
 			continue
 		}
 		attempts++
-		category := ""
-		comp, ok := competitions[item.Identity.CompetitionID]
-		season, knownSeason := comp.Seasons[item.Identity.SeasonID]
-		if !ok || !knownSeason {
-			category = "scope_unavailable"
-		} else {
-			category = r.recoverParticipation(sweepCtx, comp, season, item, attemptedAt)
-		}
+		category := r.recoverParticipation(sweepCtx, comp, comp.Seasons[item.Identity.SeasonID], item, attemptedAt)
 		if category == "" {
 			completed++
 			continue

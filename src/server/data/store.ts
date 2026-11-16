@@ -14,7 +14,7 @@ import type {
   SquadPlayer,
   PlayerProfile,
 } from './types';
-import { COMPETITIONS, type CompetitionSeason } from './competitions';
+import { supportsResource, resolveSeason, type CompetitionSeason } from './competitions';
 import {
   scoreboardUrl,
   standingsUrl,
@@ -42,6 +42,7 @@ import {
   mapSummaryVideos, mapSummaryShootout, mapSummaryShootoutTotals, summaryHeaderFinal, mapSummaryInfo, mapSummaryForm, mapSummaryCommentary, mapSummaryH2H,
 } from './providers/espn-summary';
 import { TtlCache } from './cache';
+import { resourceRead, withEditionResources } from './editionResources';
 import { currentWeekRange, forwardRange, nowWindowRange } from './dateRange';
 import { fetchScoreboardWindow, boundedFetchJson, type ScoreboardFetchJson } from './scoreboardWindow';
 
@@ -143,9 +144,13 @@ export function createDataStore(deps: DataDeps): DataStore {
     rc: CompetitionSeason,
     config: NonNullable<CompetitionSeason['season']['computedTables']>,
   ): Promise<Group[]> {
+    const split = resolveSeason(config.membership.split.competitionId, config.membership.split.seasonId);
+    if (!split || !supportsResource(split.season, 'teams') || !supportsResource(rc.season, 'scores')) {
+      throw new Error('Unavailable edition membership');
+    }
     const [rawPhase, rawSplit] = await Promise.all([
       fetchScoreboardWindow(rc, config.datesRange, deps.fetchJson),
-      deps.fetchJson(teamsUrl(COMPETITIONS[config.membership.split.competitionId].espnSlug)),
+      deps.fetchJson(teamsUrl(split.competition.espnSlug)),
     ]);
     // The configured display names are carried so the view doesn't hardcode them.
     return configuredPhaseTables(mapScoreboard(rawPhase), config, splitLeagueTeamIds(rawSplit));
@@ -169,15 +174,17 @@ export function createDataStore(deps: DataDeps): DataStore {
     deps.onSummaryRequest?.(eventId, homeId, awayId);
     const raw = await deps.fetchJson(summaryUrl(slug(rc), eventId), signal
       ? { signal, maxBytes: 4 * 1024 * 1024 } : undefined);
+    const info = mapSummaryInfo(raw);
+    if (info && !supportsResource(rc.season, 'officials')) info.referee = null;
     const summary: MatchSummaryData = {
       scorers: mapSummaryScorers(raw),
       cards: mapSummaryCards(raw),
       stats: mapSummaryStats(raw, homeId, awayId),
-      winProbability: mapWinProbability(raw, homeId, awayId),
-      lineups: mapSummaryLineups(raw, homeId, awayId),
+      winProbability: supportsResource(rc.season, 'odds') ? mapWinProbability(raw, homeId, awayId) : null,
+      lineups: supportsResource(rc.season, 'participation') ? mapSummaryLineups(raw, homeId, awayId) : null,
       videos: mapSummaryVideos(raw),
       shootoutDetail: mapSummaryShootout(raw, homeId, awayId),
-      info: mapSummaryInfo(raw),
+      info,
       form: mapSummaryForm(raw, homeId, awayId),
       commentary: mapSummaryCommentary(raw),
       h2h: mapSummaryH2H(raw),
@@ -197,7 +204,7 @@ export function createDataStore(deps: DataDeps): DataStore {
     return (await loadSummary(rc, eventId, homeId, awayId, signal)).data;
   }
 
-  return {
+  return withEditionResources({
     getMatchSummary,
 
     async getMatches(rc, range?: string, signal?: AbortSignal): Promise<Match[]> {
@@ -205,6 +212,9 @@ export function createDataStore(deps: DataDeps): DataStore {
       const window = range ?? currentWeekRange(new Date(now()));
       // The range is part of the identity of this result. Without it in the
       // key, the first window fetched is served for every later one.
+      if (!supportsResource(rc.season, 'summary')) {
+        return loadWindow(rc, window, `fixtures:${window}`, 120_000, signal);
+      }
       const k = key(rc, `matches:${window}`);
       const cached = deps.cache.get(k) as Match[] | undefined;
       if (cached) return cached;
@@ -312,9 +322,9 @@ export function createDataStore(deps: DataDeps): DataStore {
         // matches-and-results block has to ask twice.
         const [rawProfile, rawRoster, rawResults, rawFixtures] = await Promise.all([
           deps.fetchJson(teamUrl(slug(rc), teamId)),
-          deps.fetchJson(teamRosterUrl(slug(rc), teamId)).catch(() => null),
-          deps.fetchJson(teamScheduleUrl(slug(rc), teamId, false, rc.season.id)).catch(() => null),
-          deps.fetchJson(teamScheduleUrl(slug(rc), teamId, true, rc.season.id)).catch(() => null),
+          supportsResource(rc.season, 'squad') ? deps.fetchJson(teamRosterUrl(slug(rc), teamId)).catch(() => null) : null,
+          supportsResource(rc.season, 'scores') ? deps.fetchJson(teamScheduleUrl(slug(rc), teamId, false, rc.season.id)).catch(() => null) : null,
+          supportsResource(rc.season, 'scores') ? deps.fetchJson(teamScheduleUrl(slug(rc), teamId, true, rc.season.id)).catch(() => null) : null,
         ]);
 
         const base = mapTeamProfile(rawProfile);
@@ -324,6 +334,7 @@ export function createDataStore(deps: DataDeps): DataStore {
 
         const profile: TeamProfile = {
           ...base,
+          ...(!supportsResource(rc.season, 'standings') && { record: null, standingSummary: null, standing: null }),
           squad: rawRoster ? mapTeamRoster(rawRoster) : [],
           schedule: uniqueTeamMatches([...results.matches, ...upcoming.matches]).reverse(),
           scheduleAvailability: {
@@ -370,8 +381,8 @@ export function createDataStore(deps: DataDeps): DataStore {
       try {
         const [rawProfile, rawOverview, rawBio] = await Promise.all([
           deps.fetchJson(athleteUrl(slug(rc), athleteId)),
-          deps.fetchJson(athleteOverviewUrl(slug(rc), athleteId)).catch(() => null),
-          deps.fetchJson(athleteBioUrl(slug(rc), athleteId)).catch(() => null),
+          supportsResource(rc.season, 'participation') ? deps.fetchJson(athleteOverviewUrl(slug(rc), athleteId)).catch(() => null) : null,
+          supportsResource(rc.season, 'career') ? deps.fetchJson(athleteBioUrl(slug(rc), athleteId)).catch(() => null) : null,
         ]);
 
         const identity = mapAthleteProfile(rawProfile);
@@ -380,6 +391,7 @@ export function createDataStore(deps: DataDeps): DataStore {
         const overview = rawOverview ? mapAthleteOverview(rawOverview) : { label: '', rows: [] };
         const profile: PlayerProfile = {
           ...identity,
+          totals: supportsResource(rc.season, 'squad') ? identity.totals : [],
           gameLogLabel: overview.label,
           gameLog: overview.rows,
           career: rawBio ? mapAthleteBio(rawBio) : [],
@@ -454,7 +466,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       deps.cache.set(k, news, 90_000);
       return news;
     },
-  };
+  });
 }
 
 const espnCache = new TtlCache<unknown>();
@@ -468,8 +480,8 @@ const loadEspnSquad = unstable_cache(
 );
 export const espnDataStore: DataStore = {
   ...createDataStore({ fetchJson: boundedFetchJson, cache: espnCache }),
-  getSquad: (rc, teamId) =>
-    loadEspnSquad({ league: rc.competition.espnSlug, season: rc.season.id }, teamId).catch(() => []),
+  getSquad: resourceRead('squad', (rc, teamId: string) =>
+    loadEspnSquad({ league: rc.competition.espnSlug, season: rc.season.id }, teamId).catch(() => [])),
 };
 export const dataStore: DataStore = configuredDataStore({
   espn: espnDataStore,

@@ -98,8 +98,18 @@ func (r *runner) retryPendingFinalCaptures(
 	season config.Season,
 ) error {
 	started := time.Now()
+	var kinds []string
+	if season.Supports("officials") {
+		kinds = append(kinds, string(store.FinalCaptureOfficials))
+	}
+	if season.Supports("odds") {
+		kinds = append(kinds, string(store.FinalCaptureFixedOdds))
+	}
+	if len(kinds) == 0 {
+		return nil
+	}
 	pending, err := r.repo.PendingFinalCaptures(
-		ctx, comp.ID, season.ID, r.source.Name(), time.Now(), finalCaptureRetryBatch)
+		ctx, comp.ID, season.ID, r.source.Name(), time.Now(), finalCaptureRetryBatch, kinds)
 	if err != nil {
 		r.recordRun(ctx, comp.ID, finalCaptureBacklogRunKind, started, err)
 		return err
@@ -114,11 +124,17 @@ func (r *runner) retryPendingFinalCaptures(
 		identity := store.MatchIdentity{MatchID: capture.MatchID}
 		switch capture.Kind {
 		case store.FinalCaptureOfficials:
+			if !season.Supports("officials") {
+				continue
+			}
 			if err := r.captureOfficials(ctx, comp, identity, capture.SourceID); err != nil {
 				retryErrors = append(retryErrors,
 					fmt.Errorf("officials retry for match %s: %w", capture.SourceID, err))
 			}
 		case store.FinalCaptureFixedOdds:
+			if !season.Supports("odds") {
+				continue
+			}
 			if err := r.captureOdds(ctx, comp, identity, capture.SourceID, oddsCaptureFixedRetry); err != nil {
 				retryErrors = append(retryErrors,
 					fmt.Errorf("fixed odds retry for match %s: %w", capture.SourceID, err))

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { currentWeekRange } from './dateRange';
 import { createDataStore, parseShootout } from './store';
-import { resolveSeason } from './competitions';
+import { resolveSeason, type CompetitionSeason } from './competitions';
 import { TtlCache } from './cache';
 import sb from './__fixtures__/espn-scoreboard.json';
 import summaryFixture from './__fixtures__/espn-summary.json';
@@ -45,6 +45,18 @@ function fakeDeps() {
 }
 
 describe('EspnReadThroughStore', () => {
+  it('keeps a scores-only edition off unsupported provider feeds', async () => {
+    const { deps, urls } = fakeDeps();
+    const store = createDataStore(deps);
+    const scoresOnly = { ...wc, season: { ...wc.season, resources: ['scores' as const] } };
+    await expect(store.getLeaders(scoresOnly)).rejects.toThrow();
+    await expect(store.getSquad(scoresOnly, '123')).rejects.toThrow();
+    expect(urls).toEqual([]);
+    const matches = await store.getMatches(scoresOnly, '20260629-20260630');
+    expect(matches.length).toBeGreaterThan(0);
+    expect(urls.length).toBeGreaterThan(0);
+    expect(urls.every(url => url.includes('/scoreboard?'))).toBe(true);
+  });
   // A rejected table is cached like an accepted one: the standings page, the
   // team index and the player index all read it, and a provider that keeps
   // serving it must not cost one upstream fetch per read.
@@ -108,6 +120,29 @@ describe('EspnReadThroughStore', () => {
     const matches = await createDataStore(deps).getMatches(wc);
     expect(matches.length).toBeGreaterThan(0);
     expect(matches.some((m) => m.scorers.length > 0)).toBe(true);
+  });
+
+  it('keeps season totals off a player identity without squad coverage', async () => {
+    const store = createDataStore({ cache: new TtlCache<unknown>(), fetchJson: async () => athleteRaw });
+    const scope: CompetitionSeason = { ...wc, season: { ...wc.season, resources: ['players'] } };
+    const profile = await store.getPlayer(scope, '42');
+    expect(profile?.totals).toEqual([]);
+  });
+
+  it('omits odds and officials from an admitted summary and its match list', async () => {
+    const deps = {
+      fetchJson: async (url: string) => url.includes('/summary') ? summaryFixture : monthResponse(url),
+      cache: new TtlCache<unknown>(),
+    };
+    const store = createDataStore(deps);
+    const scope: CompetitionSeason = { ...wc, season: { ...wc.season, resources: ['scores', 'summary'] } };
+    const detail = await store.getMatchSummary(scope, '1', '2', '3');
+    expect(detail.info?.venue).toBeTruthy();
+    expect(detail.info?.referee).toBeNull();
+    expect(detail.winProbability).toBeNull();
+    const matches = await store.getMatches(scope);
+    expect(matches.length).toBeGreaterThan(0);
+    expect(matches.every(match => match.winProbability === null)).toBe(true);
   });
 
   it('swallows a summary-fetch failure and returns matches with empty enrichment', async () => {

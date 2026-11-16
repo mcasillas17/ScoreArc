@@ -170,7 +170,7 @@ func TestMatchSnapshotScopeFailuresReleaseBeforeWriting(t *testing.T) {
 	}{
 		{"missing scope", freshnessScope{}, ErrNotFound, 404},
 		{"scope query failure", freshnessScope{}, errors.New("query failed"), 500},
-		{"unregistered stored scope", freshnessScope{Competition: "unknown", Season: "2026"}, nil, 500},
+		{"unregistered stored scope", freshnessScope{Competition: "unknown", Season: "2026"}, nil, 404},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := &fakeReaderStore{summary: &MatchSummary{}}

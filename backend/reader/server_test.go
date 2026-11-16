@@ -568,3 +568,26 @@ func (f *fakeReaderStore) Player(context.Context, string, string, string) (*Play
 	}
 	return f.player, nil
 }
+
+func TestEditionEligibility(t *testing.T) {
+	st := &fakeReaderStore{}
+	a := newTestApp(t, st, &fakeNewsReader{})
+	// The fake match UUID resolves to this edition even when its public status changes.
+	comp, _ := a.registry.Get("world-cup")
+	season := comp.Seasons["2026"]
+	season.Publication = "candidate"
+	comp.Seasons["2026"] = season
+	for _, suffix := range []string{"", "/box-score"} {
+		res := performRequest(a.router(), "GET", "/v1/matches/00000000-0000-4000-8000-000000000001"+suffix)
+		if res.Code != 404 || res.Body.String() != "{\"error\":\"match not found\"}\n" {
+			t.Fatalf("%s: %d %s", suffix, res.Code, res.Body.String())
+		}
+	}
+	season.Publication = "live"
+	season.Resources = []string{"scores"}
+	comp.Seasons["2026"] = season
+	res := performRequest(a.router(), "GET", "/v1/competitions/world-cup/2026/standings")
+	if res.Header().Get(resourcesHeader) == "" || !strings.Contains(res.Header().Get(resourcesHeader), "unavailable") {
+		t.Fatalf("unsupported standings %d %s", res.Code, res.Header())
+	}
+}

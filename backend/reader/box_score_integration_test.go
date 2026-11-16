@@ -127,7 +127,7 @@ func TestBoxScoreParticipationEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	read("pending")
-	items, err := writer.PendingParticipation(ctx, "espn", now.Add(2*time.Hour), 10)
+	items, err := writer.PendingParticipation(ctx, "espn", now.Add(2*time.Hour), 10, []string{"world-cup/2026"})
 	if err != nil || len(items) != 1 {
 		t.Fatalf("pending %+v %v", items, err)
 	}

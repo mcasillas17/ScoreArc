@@ -4,6 +4,6 @@ import { seasonRoute } from '@/app/api/errorResponse';
 
 export const dynamic = 'force-dynamic';
 
-export const GET = seasonRoute('bracket', (rc, signal) =>
+export const GET = seasonRoute('bracket', 'bracket', (rc, signal) =>
   runDataOperation(dataStore, source => source.getBracket(rc), signal),
 );

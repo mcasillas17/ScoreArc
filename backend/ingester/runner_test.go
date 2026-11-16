@@ -74,6 +74,7 @@ type fakeSource struct {
 	currentCalls    int
 	maxCalls        int
 	live            bool
+	summaryInfo     *model.MatchInfo
 	winProbability  *model.WinProbability
 	summaryShootout *model.Shootout
 	summaryFlag     *string
@@ -122,6 +123,7 @@ func (f *fakeSource) Summary(
 		Detail: model.MatchDetail{
 			Scorers:        []model.Scorer{{Player: "Winner"}},
 			WinProbability: f.winProbability,
+			Info:           f.summaryInfo,
 			Shootout:       f.summaryShootout,
 		},
 		WinnerFlagID: f.summaryFlag,
@@ -375,6 +377,7 @@ type fakeRepository struct {
 	finalizeResult    *bool
 	finalizeErr       error
 	lastFinalized     model.Match
+	finalizedDetail   model.MatchDetail
 	lastUpsert        model.Match
 	standingsCalls    int
 	standingsErr      error
@@ -869,7 +872,7 @@ func (f *fakeRepository) PendingFinalCaptures(
 	_ context.Context,
 	_, _, _ string,
 	dueAt time.Time,
-	limit int,
+	limit int, _ []string,
 ) ([]store.PendingFinalCapture, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -940,12 +943,13 @@ func (f *fakeRepository) FinalizeMatch(
 	_ context.Context,
 	identity store.MatchIdentity,
 	match model.Match,
-	_ model.MatchDetail,
+	detail model.MatchDetail,
 ) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.finalizeCalls++
 	f.lastFinalized = match
+	f.finalizedDetail = detail
 	f.lastIdentity = identity
 	if f.finalizeErr != nil {
 		return false, f.finalizeErr
@@ -1059,7 +1063,7 @@ func (f *fakeRepository) PlayersNeedingBio(
 	_ context.Context,
 	_ string,
 	staleBefore time.Time,
-	limit int,
+	limit int, _ []string,
 ) (map[string]uuid.UUID, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -1200,7 +1204,7 @@ func newTestRunnerWithSource(repo *fakeRepository, source *fakeSource) *runner {
 	source.matches = []model.Match{match}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	return testRunner(source, repo, comp)
 }
@@ -1241,7 +1245,7 @@ func TestUnchangedScheduledMatchWritesOnce(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 
@@ -1286,7 +1290,7 @@ func TestFinishedMatchRetriesSummaryBeforeFinalizing(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{"m1": {}}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 
@@ -1315,7 +1319,7 @@ func TestFinishedMatchRetriesSummaryBeforeFinalizing(t *testing.T) {
 func TestDuplicateProviderIDsForOneMatchBecomeOneCandidate(t *testing.T) {
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	round := "Matchday 1"
 	for attempt := range 20 { // map order is randomised per run, so repeat
@@ -1359,7 +1363,7 @@ func TestInitialCycleRunsAndPollingFailurePreservesActivity(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 
@@ -1387,7 +1391,7 @@ func TestParticipationIsWrittenWithCanonicalTeamIDs(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	runner := testRunner(src, repo, config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	})
 
 	runner.runCycle(context.Background(), true)
@@ -1416,7 +1420,7 @@ func TestFinalParticipationIsOwnedByDurableRecovery(t *testing.T) {
 	}
 	runner := testRunner(src, repo, config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	})
 
 	result := runner.runCycle(context.Background(), true)
@@ -1436,7 +1440,7 @@ func TestCommentaryIsWrittenWithTheCanonicalMatchID(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	runner := testRunner(src, repo, config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	})
 
 	runner.runCycle(context.Background(), true)
@@ -1464,7 +1468,7 @@ func TestCommentaryFailureLeavesTheFinishedMatchRetryable(t *testing.T) {
 	}
 	runner := testRunner(src, repo, config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	})
 
 	result := runner.runCycle(context.Background(), true)
@@ -1529,7 +1533,7 @@ func TestCapturePlaysArchivesBeforeWritingTheAnalysableTier(t *testing.T) {
 	runner.capturePlays(
 		context.Background(),
 		config.Competition{ID: "test"},
-		config.Season{ID: "2026"},
+		testEdition("2026"),
 		identity,
 		"m1",
 	)
@@ -1571,7 +1575,7 @@ func TestCapturePlaysArchivesAnEmptyStreamSoBackfillConverges(t *testing.T) {
 	runner.capturePlays(
 		context.Background(),
 		config.Competition{ID: "test"},
-		config.Season{ID: "2026"},
+		testEdition("2026"),
 		store.MatchIdentity{MatchID: fakeMatchID("m1")},
 		"m1",
 	)
@@ -1603,7 +1607,7 @@ func TestFinishedMatchCapturesPlaysOnlyAfterFinalization(t *testing.T) {
 	}
 	runner := testRunner(src, repo, config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	})
 	runner.archive = &fakeArchive{size: 23}
 
@@ -1632,7 +1636,7 @@ func TestCapturePlaysAuditsArchiveFailureButStillStoresRows(t *testing.T) {
 	err := runner.capturePlays(
 		context.Background(),
 		config.Competition{ID: "test"},
-		config.Season{ID: "2026"},
+		testEdition("2026"),
 		store.MatchIdentity{MatchID: fakeMatchID("m1")},
 		"m1",
 	)
@@ -1669,7 +1673,7 @@ func TestCapturePlaysDoesNotLedgerUntilRowsAreDurable(t *testing.T) {
 	err := runner.capturePlays(
 		context.Background(),
 		config.Competition{ID: "test"},
-		config.Season{ID: "2026"},
+		testEdition("2026"),
 		store.MatchIdentity{MatchID: fakeMatchID("m1")},
 		"m1",
 	)
@@ -1700,7 +1704,7 @@ func TestSlowTickRetriesFinalizedMatchMissingPlayArchive(t *testing.T) {
 	}
 	runner := testRunner(src, repo, config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	})
 	runner.archive = &fakeArchive{size: 23}
 
@@ -1741,7 +1745,7 @@ func TestBracketUsesRetryableMatchFinalization(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026", HasBracket: true}},
+		Seasons: map[string]config.Season{"2026": {Publication: "live", Resources: testResources, ID: "2026", HasBracket: true}},
 	}
 	runner := testRunner(src, repo, comp)
 
@@ -1770,7 +1774,7 @@ func TestBracketCandidateCarriesItsShootoutAggregate(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026", HasBracket: true}},
+		Seasons: map[string]config.Season{"2026": {Publication: "live", Resources: testResources, ID: "2026", HasBracket: true}},
 	}
 
 	testRunner(src, repo, comp).runCycle(context.Background(), true)
@@ -1814,7 +1818,7 @@ func TestBracketNoteDecidesFinalizedWinnerOverOpposingFlag(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026", HasBracket: true}},
+		Seasons: map[string]config.Season{"2026": {Publication: "live", Resources: testResources, ID: "2026", HasBracket: true}},
 	}
 
 	testRunner(src, repo, comp).runCycle(context.Background(), true)
@@ -1835,7 +1839,7 @@ func TestFinalizingOneMatchDoesNotHideOtherActiveMatches(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{"m1": {}}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 
@@ -1853,7 +1857,7 @@ func TestCycleBoundsCompetitionConcurrency(t *testing.T) {
 		id := string(rune('a' + index))
 		competitions[index] = config.Competition{
 			ID: id, CurrentSeasonId: "2026",
-			Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+			Seasons: map[string]config.Season{"2026": testEdition("2026")},
 		}
 	}
 	runner := testRunner(src, repo, competitions[0])
@@ -1873,7 +1877,7 @@ func TestSlowTickRetriesDurableUnfinalizedBacklog(t *testing.T) {
 	}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 
@@ -1891,7 +1895,7 @@ func TestSlowTickRetriesBacklogDuringScoreboardFailure(t *testing.T) {
 	}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 
 	result := testRunner(src, repo, comp).runCycle(context.Background(), true)
@@ -1918,7 +1922,7 @@ func TestDuplicateScoreboardAndBracketMatchProcessesOnce(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{"m1": {}}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026", HasBracket: true}},
+		Seasons: map[string]config.Season{"2026": {Publication: "live", Resources: testResources, ID: "2026", HasBracket: true}},
 	}
 	runner := testRunner(src, repo, comp)
 
@@ -1933,7 +1937,7 @@ func TestPollFailureKeepsLastLiveCadenceAndRecordsFailure(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 	runner.active["test/2026"] = activity{known: true, active: true, live: true}
@@ -1958,7 +1962,7 @@ func TestFastTickSkipsKnownDormantCompetition(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 	runner.active["test/2026"] = activity{known: true}
@@ -1974,7 +1978,7 @@ func TestCanceledCycleDoesNotStartProviderWork(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1998,7 +2002,7 @@ func TestCrestOutageCircuitDoesNotBlockMatchPersistence(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 	mirror := &fakeMirror{block: true}
@@ -2014,7 +2018,7 @@ func TestCrestOutageCircuitDoesNotBlockMatchPersistence(t *testing.T) {
 func TestRejectedCrestDoesNotOpenMirrorOutageCircuit(t *testing.T) {
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(
 		&fakeSource{},
@@ -2050,7 +2054,7 @@ func TestBracketFailurePreservesPreviousActivity(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026", HasBracket: true}},
+		Seasons: map[string]config.Season{"2026": {Publication: "live", Resources: testResources, ID: "2026", HasBracket: true}},
 	}
 	runner := testRunner(src, repo, comp)
 	key := "test/2026"
@@ -2072,7 +2076,7 @@ func TestExistingReadFailureKeepsObservedLiveCadence(t *testing.T) {
 	}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 
@@ -2092,7 +2096,7 @@ func TestFinishedBacklogWinsOverScheduledProviderRegression(t *testing.T) {
 	}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 
@@ -2111,7 +2115,7 @@ func TestPruneFailureFailsSlowCycle(t *testing.T) {
 
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 
@@ -2129,7 +2133,7 @@ func TestCanceledPruneIsAuditedAsFailure(t *testing.T) {
 	}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(&fakeSource{}, repo, comp)
 
@@ -2159,7 +2163,7 @@ func TestFinalizedMatchRetriesUnmirroredCrest(t *testing.T) {
 	}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 	mirror := &fakeMirror{}
@@ -2176,7 +2180,7 @@ func TestMixedValidAndInvalidConfigurationCountsFailuresSafely(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	valid := config.Competition{
 		ID: "valid", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	invalid := config.Competition{
 		ID: "invalid", CurrentSeasonId: "missing",
@@ -2195,7 +2199,7 @@ func TestCycleHonorsContextDeadline(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
@@ -2224,7 +2228,7 @@ func TestLeaderCrestMirrorsOnceAcrossRefreshes(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 	mirror := &fakeMirror{}
@@ -2252,7 +2256,7 @@ func TestRefreshLeadersWritesEachCategoryExactlyOnce(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 	runner.mirror = &fakeMirror{}
@@ -2287,7 +2291,7 @@ func TestLeaderCrestOutageUsesSharedCircuit(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 	mirror := &fakeMirror{block: true}
@@ -2321,7 +2325,7 @@ func TestLeaderCrestRecoveryRewritesProviderURL(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	worker := testRunner(src, repo, comp)
 	mirror := &fakeMirror{err: errors.New("mirror outage")}
@@ -2363,7 +2367,7 @@ func TestRefreshLeadersFetchesOnceAndWritesBoth(t *testing.T) {
 	src := &fakeSource{}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 
 	result := testRunner(src, repo, comp).runCycle(context.Background(), true)
@@ -2400,7 +2404,7 @@ func TestEmptyAssistsBoardDoesNotFailTheCycle(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 
 	if result := testRunner(src, repo, comp).runCycle(
@@ -2417,7 +2421,7 @@ func TestSeasonBackfillSkipsScheduledSummaries(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 
@@ -2432,7 +2436,7 @@ func TestEmptyLeaderBoardsPreserveRowsAndRemainRetryable(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 
 	runner := testRunner(src, repo, comp)
@@ -2536,7 +2540,7 @@ func TestFinalizationUsesValidatedSummaryScores(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{"m1": {}}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 
@@ -2556,7 +2560,7 @@ func TestStoredFinishedStateCannotRegressToScheduled(t *testing.T) {
 	}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 
@@ -2571,7 +2575,7 @@ func TestEmptyScoreboardPreservesKnownActiveStateAndCompletesBackfill(t *testing
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 	key := "test/2026"
@@ -2618,7 +2622,7 @@ func TestSlowCycleDrainsFullPruneBatches(t *testing.T) {
 
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 
 	testRunner(src, repo, comp).runCycle(context.Background(), true)
@@ -2636,7 +2640,7 @@ func TestBracketFailureDoesNotAdvanceDormancy(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	season := comp.Seasons[comp.CurrentSeasonId]
 	season.HasBracket = true
@@ -2658,7 +2662,7 @@ func TestFailedBackfillUsesRetryInterval(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 	key := "test/2026"
@@ -2680,7 +2684,7 @@ func TestBracketFailureDefersFinalizationUntilRecovery(t *testing.T) {
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
 		Seasons: map[string]config.Season{
-			"2026": {ID: "2026", HasBracket: true},
+			"2026": {Publication: "live", Resources: testResources, ID: "2026", HasBracket: true},
 		},
 	}
 	runner := testRunner(src, repo, comp)
@@ -2711,7 +2715,7 @@ func TestStoredLiveStateCannotRegressToScheduled(t *testing.T) {
 	}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 
 	result := testRunner(src, repo, comp).runCycle(context.Background(), false)
@@ -2739,7 +2743,7 @@ func TestBracketFailureStillFinalizesNonKnockoutMatch(t *testing.T) {
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
 		Seasons: map[string]config.Season{
-			"2026": {ID: "2026", HasBracket: true},
+			"2026": {Publication: "live", Resources: testResources, ID: "2026", HasBracket: true},
 		},
 	}
 
@@ -2770,7 +2774,7 @@ func TestBracketFailureDefersPersistedKnockoutFinalization(t *testing.T) {
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
 		Seasons: map[string]config.Season{
-			"2026": {ID: "2026", HasBracket: true},
+			"2026": {Publication: "live", Resources: testResources, ID: "2026", HasBracket: true},
 		},
 	}
 
@@ -2829,7 +2833,7 @@ func TestBracketOutagePreservesStoredFieldsButUsesProviderTeamsForSummary(t *tes
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
 		Seasons: map[string]config.Season{
-			"2026": {ID: "2026", HasBracket: true},
+			"2026": {Publication: "live", Resources: testResources, ID: "2026", HasBracket: true},
 		},
 	}
 
@@ -2863,7 +2867,7 @@ func TestChangedTeamDoesNotReuseStoredTeamCrestCache(t *testing.T) {
 	}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 	mirror := &fakeMirror{}
@@ -2887,7 +2891,7 @@ func TestBracketFailureDoesNotHideNewLiveActivity(t *testing.T) {
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
 		Seasons: map[string]config.Season{
-			"2026": {ID: "2026", HasBracket: true},
+			"2026": {Publication: "live", Resources: testResources, ID: "2026", HasBracket: true},
 		},
 	}
 	runner := testRunner(src, repo, comp)
@@ -2907,7 +2911,7 @@ func TestBacklogFailureDoesNotAdvanceEmptyDormancy(t *testing.T) {
 	}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 	key := "test/2026"
@@ -2933,7 +2937,7 @@ func TestBackfillMissingKnockoutBracketRemainsRetryable(t *testing.T) {
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
 		Seasons: map[string]config.Season{
-			"2026": {ID: "2026", HasBracket: true},
+			"2026": {Publication: "live", Resources: testResources, ID: "2026", HasBracket: true},
 		},
 	}
 	runner := testRunner(src, repo, comp)
@@ -2953,7 +2957,7 @@ func TestBackfillUnresolvedBracketClassificationRemainsRetryable(t *testing.T) {
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
 		Seasons: map[string]config.Season{
-			"2026": {ID: "2026", HasBracket: true},
+			"2026": {Publication: "live", Resources: testResources, ID: "2026", HasBracket: true},
 		},
 	}
 	runner := testRunner(src, repo, comp)
@@ -2983,7 +2987,7 @@ func TestNonBracketSeasonIgnoresProviderKnockoutClassification(t *testing.T) {
 	}}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 
@@ -3030,7 +3034,7 @@ func TestFinalizedWinnerFollowsTheSummaryShootoutAggregate(t *testing.T) {
 				match.WinnerID, match.WinnerFlagID = c.derived(match), c.flag(match)
 				src := &fakeSource{matches: []model.Match{match}, summaryShootout: c.shootout}
 				repo := &fakeRepository{existing: map[string]store.MatchRow{}}
-				comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {ID: "2026"}}}
+				comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": testEdition("2026")}}
 
 				testRunner(src, repo, comp).runCycle(context.Background(), false)
 
@@ -3085,7 +3089,7 @@ func TestBacklogFinalizationTakesTheSummaryHeaderFlag(t *testing.T) {
 				observed.WinnerID = &homeID
 				src.matches = []model.Match{observed}
 			}
-			comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {ID: "2026"}}}
+			comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": testEdition("2026")}}
 
 			testRunner(src, repo, comp).runCycle(context.Background(), true)
 
@@ -3138,7 +3142,7 @@ func TestDuplicateProviderIDFinalizesTheObservation(t *testing.T) {
 				matchAlias:  map[string]string{"b-current": "a-older"},
 				teamAlias:   map[string]string{homeAlias: homeID},
 			}
-			comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {ID: "2026"}}}
+			comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": testEdition("2026")}}
 
 			testRunner(src, repo, comp).runCycle(context.Background(), true)
 
@@ -3171,7 +3175,7 @@ func TestStoredNoteIsRestoredBeforeSummary(t *testing.T) {
 	}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 
 	testRunner(src, repo, comp).runCycle(context.Background(), false)
@@ -3193,7 +3197,7 @@ func TestAuthoritativeNoWinnerClearsStoredWinner(t *testing.T) {
 	}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 
 	testRunner(src, repo, comp).runCycle(context.Background(), false)
@@ -3209,7 +3213,7 @@ func TestFailedPollResetsConsecutiveEmptyCount(t *testing.T) {
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
 		Seasons: map[string]config.Season{
-			"2026": {ID: "2026", HasBracket: true},
+			"2026": {Publication: "live", Resources: testResources, ID: "2026", HasBracket: true},
 		},
 	}
 	runner := testRunner(src, repo, comp)
@@ -3235,7 +3239,7 @@ func TestPartialStandingsReplacementIsPreservedAndRemainsRetryable(t *testing.T)
 	}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 
 	runner := testRunner(src, repo, comp)
@@ -3259,7 +3263,7 @@ func TestCanceledMatchFinalizesWithoutSummaryAndBecomesDormant(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{"m1": {}}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 
@@ -3287,7 +3291,7 @@ func TestSuccessfulEmptyBracketDefersKnockoutFinalization(t *testing.T) {
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
 		Seasons: map[string]config.Season{
-			"2026": {ID: "2026", HasBracket: true},
+			"2026": {Publication: "live", Resources: testResources, ID: "2026", HasBracket: true},
 		},
 	}
 
@@ -3312,7 +3316,7 @@ func TestCancellationAfterScoreboardPreservesLiveCadence(t *testing.T) {
 	}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 
@@ -3332,7 +3336,7 @@ func TestBracketFailureKeepsBackfillRetryable(t *testing.T) {
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
 		Seasons: map[string]config.Season{
-			"2026": {ID: "2026", HasBracket: true},
+			"2026": {Publication: "live", Resources: testResources, ID: "2026", HasBracket: true},
 		},
 	}
 	runner := testRunner(src, repo, comp)
@@ -3354,7 +3358,7 @@ func TestLiveMatchCanTransitionToPostponed(t *testing.T) {
 	}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 
 	result := testRunner(src, repo, comp).runCycle(context.Background(), false)
@@ -3377,7 +3381,7 @@ func TestLiveMatchCanTransitionToSuspended(t *testing.T) {
 	}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 
 	result := testRunner(src, repo, comp).runCycle(context.Background(), false)
@@ -3397,7 +3401,7 @@ func TestLiveMatchCanTransitionToSuspended(t *testing.T) {
 func TestWinnerIsTranslatedToACanonicalTeamID(t *testing.T) {
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	cases := []struct {
 		name   string
@@ -3472,7 +3476,7 @@ func TestStandingsAreWrittenWithResolvedTeamIDs(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 
 	testRunner(&fakeSource{}, repo, comp).runCycle(context.Background(), true)
@@ -3485,7 +3489,7 @@ func TestStandingsAreWrittenWithResolvedTeamIDs(t *testing.T) {
 func squadTestCompetition() config.Competition {
 	return config.Competition{
 		ID: "test", ESPNSlug: "mex.1", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 }
 
@@ -3756,7 +3760,7 @@ func TestMergeCandidatePreservesStoredNote(t *testing.T) {
 func newSnapshotTestRunner(repo *fakeRepository) *runner {
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	return testRunner(&fakeSource{}, repo, comp)
 }
@@ -4016,7 +4020,7 @@ func TestUnchangedStandingsAreReplacedOnce(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	worker := testRunner(src, repo, comp)
 
@@ -4039,7 +4043,7 @@ func TestChangedStandingsAreReplacedAgain(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	worker := testRunner(src, repo, comp)
 
@@ -4072,7 +4076,7 @@ func TestFailedStandingsReplacementIsNotMemoised(t *testing.T) {
 	}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	worker := testRunner(src, repo, comp)
 
@@ -4103,7 +4107,7 @@ func TestStandingsMemoIsColdAfterARestart(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 
 	testRunner(src, repo, comp).runCycle(context.Background(), true)
@@ -4125,7 +4129,7 @@ func TestUnchangedLeaderBoardsAreReplacedOnce(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	worker := testRunner(src, repo, comp)
 
@@ -4160,7 +4164,7 @@ func TestMirroredLeaderBoardIsWrittenOnceWithCDNCrests(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	worker := testRunner(src, repo, comp)
 	worker.mirror = &fakeMirror{}
@@ -4200,7 +4204,7 @@ func TestAbsentLeaderBoardIsNeverMemoised(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	worker := testRunner(src, repo, comp)
 
@@ -4250,7 +4254,7 @@ func TestFailedLeaderReplacementIsNotMemoised(t *testing.T) {
 	}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	worker := testRunner(src, repo, comp)
 
@@ -4288,7 +4292,7 @@ func TestSkippedReplacementsStillRecordFreshness(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	worker := testRunner(src, repo, comp)
 
@@ -4750,7 +4754,7 @@ func TestScheduledMatchDoesNotSampleOdds(t *testing.T) {
 	}}
 	worker := testRunner(src, repo, config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	})
 
 	// A fast tick, because the first slow tick of a season is a backfill and a
@@ -4789,7 +4793,7 @@ func TestFinalizedMatchCapturesOfficialsAndFixedOddsAfterFinalization(t *testing
 	}
 	worker := testRunner(src, repo, config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	})
 
 	worker.runCycle(context.Background(), true)
@@ -4831,7 +4835,7 @@ func TestFinishedMatchSkipsFinalCapturesWhenFinalizeMatchDoesNotClaimRow(t *test
 	}
 	worker := testRunner(src, repo, config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	})
 
 	worker.runCycle(context.Background(), true)
@@ -4861,7 +4865,7 @@ func TestFinishedMatchSkipsFinalCapturesWhenFinalizeMatchFails(t *testing.T) {
 	}
 	worker := testRunner(src, repo, config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	})
 
 	result := worker.runCycle(context.Background(), true)
@@ -4895,7 +4899,7 @@ func TestOfficialsAndOddsFailuresDoNotBlockFinalization(t *testing.T) {
 	}
 	worker := testRunner(src, repo, config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	})
 
 	result := worker.runCycle(context.Background(), true)
@@ -4931,7 +4935,7 @@ func TestCommentaryGateAlsoDefersOfficialsAndFixedOdds(t *testing.T) {
 	}
 	worker := testRunner(src, repo, config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	})
 
 	worker.runCycle(context.Background(), true)
@@ -4959,7 +4963,7 @@ func TestCanceledMatchCapturesNoOfficialsOrOdds(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{"m1": {}}}
 	worker := testRunner(src, repo, config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	})
 
 	worker.runCycle(context.Background(), false)
@@ -4987,7 +4991,7 @@ func TestFinalCaptureFetchFailuresRetryAfterRestartAndCadence(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	worker := testRunner(src, repo, comp)
 
@@ -5074,7 +5078,7 @@ func TestFinalCaptureWriteFailuresRetryWithoutAnotherOddsSnapshot(t *testing.T) 
 	}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	worker := testRunner(src, repo, comp)
 
@@ -5138,7 +5142,7 @@ func TestFinalCaptureEmptyResponsesCompleteAndNeverReprocess(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	worker := testRunner(src, repo, comp)
 
@@ -5186,7 +5190,7 @@ func TestFinalCaptureBacklogFindsMatchWithNoStatusRows(t *testing.T) {
 	src := &fakeSource{officials: crewFixture(), odds: oddsFixture()}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	worker := testRunner(src, repo, comp)
 
@@ -5226,7 +5230,7 @@ func TestFinalCaptureBacklogBatchIsBoundedAtTen(t *testing.T) {
 	src := &fakeSource{officialsErr: errors.New("still down"), oddsErr: errors.New("still down")}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	worker := testRunner(src, repo, comp)
 
@@ -5258,7 +5262,7 @@ func TestFinalCaptureBacklogReschedulesFailedRetryThirtyMinutesOut(t *testing.T)
 	src := &fakeSource{officialsErr: errors.New("still down"), oddsErr: errors.New("still down")}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	worker := testRunner(src, repo, comp)
 
@@ -5299,7 +5303,7 @@ func TestFinalCaptureBacklogLogsUnknownKindLoudly(t *testing.T) {
 	src := &fakeSource{}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	worker := testRunner(src, repo, comp)
 
@@ -5597,7 +5601,7 @@ func TestScheduledMatchFarFromKickoffIsNotRefetchedWithinTTL(t *testing.T) {
 	repo := &fakeRepository{existing: map[string]store.MatchRow{"m1": {}}}
 	comp := config.Competition{
 		ID: "test", CurrentSeasonId: "2026",
-		Seasons: map[string]config.Season{"2026": {ID: "2026"}},
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
 	}
 	runner := testRunner(src, repo, comp)
 	// A brand-new runner treats its first slow tick as a full-season backfill,
@@ -5894,5 +5898,61 @@ func TestSquadRefreshPassesAnEmptyIdentityThrough(t *testing.T) {
 	}
 	if repo.squadCalls == 0 {
 		t.Fatal("squad was not written at all -- the missing colour must not block it")
+	}
+}
+
+func TestEditionEligibility(t *testing.T) {
+	for _, state := range []string{"live", "staging", "candidate", "archive"} {
+		t.Run(state, func(t *testing.T) {
+			m := finishedMatch()
+			home, away := 2, 1
+			m.HomeScore, m.AwayScore = &home, &away
+			src, repo := &fakeSource{matches: []model.Match{m}}, &fakeRepository{}
+			season := config.Season{ID: "2026", Publication: state, Resources: []string{"scores"}}
+			r := testRunner(src, repo, config.Competition{ID: "pilot", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": season}})
+			r.runCycle(context.Background(), true)
+			want := 0
+			if state == "live" {
+				want = 1
+			}
+			if repo.finalizeCalls != want {
+				t.Fatalf("state %s finalized %d times, want %d", state, repo.finalizeCalls, want)
+			}
+			if src.scoreboardCall != want || src.summaryCalls+src.statisticsCalls+src.playsCalls+src.officialsCalls+src.oddsCalls != 0 {
+				t.Fatalf("state %s: scoreboard=%d summary=%d statistics=%d", state, src.scoreboardCall, src.summaryCalls, src.statisticsCalls)
+			}
+		})
+	}
+}
+
+var testResources = []string{"scores", "bracket", "standings", "news", "summary", "teams", "players", "squad", "leaders", "participation", "plays", "officials", "odds", "career"}
+
+func testEdition(id string) config.Season {
+	return config.Season{ID: id, Publication: "live", Resources: testResources}
+}
+
+func TestEditionEligibilitySummaryChildrenAndScoreOnlyKnockout(t *testing.T) {
+	for _, summary := range []bool{false, true} {
+		season := config.Season{ID: "2026", Publication: "live", HasBracket: true, Resources: []string{"scores"}}
+		if summary {
+			season.Resources = append(season.Resources, "summary")
+		}
+		m := finishedMatch()
+		home, away := 2, 1
+		m.HomeScore, m.AwayScore = &home, &away
+		requires := true
+		m.BracketRequired = &requires
+		m.Round = "final"
+		venue, ref := "Stadium", "Referee"
+		src := &fakeSource{matches: []model.Match{m}, summaryHome: &home, summaryAway: &away, winProbability: &model.WinProbability{Home: 50}, summaryInfo: &model.MatchInfo{Venue: &venue, Referee: &ref}}
+		repo := &fakeRepository{}
+		r := testRunner(src, repo, config.Competition{ID: "pilot", CurrentSeasonId: season.ID, Seasons: map[string]config.Season{season.ID: season}})
+		r.runCycle(context.Background(), true)
+		if repo.finalizeCalls != 1 {
+			t.Errorf("summary %v: final never sealed", summary)
+		}
+		if summary && (repo.finalizedDetail.Info == nil || repo.finalizedDetail.Info.Venue == nil || repo.finalizedDetail.Info.Referee != nil || repo.finalizedDetail.WinProbability != nil) {
+			t.Errorf("unauthorized summary children %+v", repo.finalizedDetail)
+		}
 	}
 }

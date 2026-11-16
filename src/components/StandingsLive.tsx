@@ -18,6 +18,9 @@ import MatchDetailPopup from './MatchDetailPopup';
 import { toMatchDetailInput } from './upcomingWindow';
 
 interface Props {
+  live?: boolean;
+  hasLeaders?: boolean;
+  hasScores?: boolean;
   initialGroups: Group[];
   initialScorers: StatLeader[];
   initialAssists: StatLeader[];
@@ -50,12 +53,12 @@ interface Props {
 
 const REFRESH_MS = 30_000;
 
-export default function StandingsLive({ initialGroups, initialScorers, initialAssists, apiBase, teamBase, playerBase, playersHref, teamStyle = 'flag', showThirdPlace = true, qualification, zones, rounds }: Props) {
+export default function StandingsLive({ live = true, hasLeaders = true, hasScores = true, initialGroups, initialScorers, initialAssists, apiBase, teamBase, playerBase, playersHref, teamStyle = 'flag', showThirdPlace = true, qualification, zones, rounds }: Props) {
   const t = useTranslations();
   const [groups, setGroups] = useState<Group[]>(initialGroups);
   const [scorers, setScorers] = useState<StatLeader[]>(initialScorers);
   const [assists, setAssists] = useState<StatLeader[]>(initialAssists);
-  const standingsForm = useStandingsForm(apiBase, initialGroups);
+  const standingsForm = useStandingsForm(apiBase, initialGroups, hasScores);
   const formTick = standingsForm.tick;
   const details = useMatchDetails(apiBase, 'standings-form');
   const feedFailures = useRef<Record<string, boolean>>({
@@ -69,6 +72,7 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
   // the two leaderboards read one cached upstream /statistics fetch between
   // them.
   useEffect(() => {
+    if (!live) return;
     let mounted = true;
     // One descriptor per feed, so a third board costs a line rather than
     // another copy of the fetch → track → parse → track sequence.
@@ -80,9 +84,10 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
       { name: 'top-assists', apply: (rows) => setAssists(rows as StatLeader[]) },
     ];
 
+    const activeFeeds = hasLeaders ? feeds : feeds.slice(0, 1);
     async function poll() {
       const responses = await Promise.allSettled(
-        feeds.map((f) => fetch(`${apiBase}/${f.name}`, { cache: 'no-store' })),
+        activeFeeds.map((f) => fetch(`${apiBase}/${f.name}`, { cache: 'no-store' })),
       );
       if (!mounted) return;
       responses.forEach((result, i) => {
@@ -127,7 +132,7 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
       mounted = false;
       clearInterval(id);
     };
-  }, [formTick]);
+  }, [apiBase, live, hasLeaders, formTick]);
 
   // No scorers is a real state for competitions the provider gives no
   // statistics for — the block renders nothing rather than an empty table.
@@ -140,7 +145,7 @@ export default function StandingsLive({ initialGroups, initialScorers, initialAs
   // and nothing is missing before kick-off or on an edition with no form.
   const formShown = Boolean(form?.scope && Object.keys(form.teams).length > 0);
   const tablePlayed = groups.some((group) => group.standings.some((row) => row.played > 0));
-  const formNotice = !tablePlayed || form?.scope === null ? null
+  const formNotice = !hasScores || !tablePlayed || form?.scope === null ? null
     : formStatus === 'stale' && formShown ? 'standings.formStale' as const
     : formStatus === 'stale' || formStatus === 'unavailable' ? 'standings.formUnavailable' as const
     : formStatus === 'updating' && formShown ? 'standings.formUpdating' as const

@@ -14,6 +14,36 @@ import (
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
 )
 
+// The read transaction carries the edition policy into nested profile and identity reads.
+type editionPolicyKey struct{}
+type editionPolicy struct {
+	edition config.Season
+	visible []string
+}
+
+func (a *App) withEdition(ctx context.Context, edition config.Season, identityResource string) context.Context {
+	policy := editionPolicy{edition: edition, visible: []string{}}
+	if identityResource != "" {
+		for _, c := range a.registry.Visible() {
+			for _, s := range c.Seasons {
+				if s.Supports(identityResource) {
+					policy.visible = append(policy.visible, c.ID+"/"+s.ID)
+				}
+			}
+		}
+	}
+	return context.WithValue(ctx, editionPolicyKey{}, policy)
+}
+
+func canRead(ctx context.Context, resource string) bool {
+	p, scoped := ctx.Value(editionPolicyKey{}).(editionPolicy)
+	return !scoped || p.edition.Supports(resource)
+}
+func visibleEntityScopes(ctx context.Context) []string {
+	p, _ := ctx.Value(editionPolicyKey{}).(editionPolicy)
+	return p.visible
+}
+
 type matchReader interface {
 	Identities(context.Context, string, string, identityQuery) ([]IdentityReference, error)
 	Resources(context.Context, resourceScope) (resourceSnapshot, error)
@@ -95,7 +125,7 @@ func (a *App) resolve(competition, season string) (config.Competition, config.Se
 		return config.Competition{}, config.Season{}, false
 	}
 	resolvedSeason, ok := comp.Seasons[season]
-	if !ok {
+	if !ok || !a.registry.Readable(competition, resolvedSeason) {
 		return config.Competition{}, config.Season{}, false
 	}
 	return comp, resolvedSeason, true

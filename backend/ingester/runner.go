@@ -62,6 +62,7 @@ type activity struct {
 }
 
 type runner struct {
+	registry      *config.Registry
 	competitions  []config.Competition
 	source        source.Source
 	repo          repository
@@ -127,6 +128,22 @@ type competitionResult struct {
 	err           error
 }
 
+func (r *runner) workScopes(resource string) ([]string, config.Competition) {
+	var scopes []string
+	var first config.Competition
+	for _, c := range r.competitions {
+		for _, s := range c.Seasons {
+			if r.registry.ActiveEdition(c.ID, s) && s.Supports(resource) {
+				scopes = append(scopes, c.ID+"/"+s.ID)
+				if first.ID == "" {
+					first = c
+				}
+			}
+		}
+	}
+	return scopes, first
+}
+
 func (r *runner) runCycle(ctx context.Context, slowTick bool) cycleResult {
 	limit := r.maxConcurrent
 	if limit <= 0 {
@@ -146,6 +163,9 @@ func (r *runner) runCycle(ctx context.Context, slowTick bool) cycleResult {
 			resultMu.Lock()
 			cycle.failures++
 			resultMu.Unlock()
+			continue
+		}
+		if !season.Supports("scores") || !r.registry.ActiveEdition(comp.ID, season) {
 			continue
 		}
 		key := comp.ID + "/" + season.ID
@@ -307,7 +327,7 @@ func (r *runner) ingestCompSeason(
 	var recovery matchResult
 	var recovered map[uuid.UUID]bool
 	var recoveryErr error
-	if slowTick && ctx.Err() == nil {
+	if slowTick && season.Supports("summary") && ctx.Err() == nil {
 		start := r.clock()
 		recovery, recovered, recoveryErr = r.recoverOverdueMatches(ctx, comp, season)
 		r.recordRun(ctx, comp.ID, "match_recovery", start, recoveryErr)
@@ -328,7 +348,7 @@ func (r *runner) ingestCompSeason(
 
 	var bracketErr error
 	var bracketStart time.Time
-	if season.HasBracket && (len(scoreboard) > 0 || previous.active || slowTick) && ctx.Err() == nil {
+	if season.Supports("bracket") && season.HasBracket && (len(scoreboard) > 0 || previous.active || slowTick) && ctx.Err() == nil {
 		bracketStart = r.clock()
 		var bracket []model.BracketMatch
 		bracket, bracketErr = r.source.Bracket(ctx, comp, season, backfill)
@@ -362,7 +382,7 @@ func (r *runner) ingestCompSeason(
 		}
 		r.recordRun(ctx, comp.ID, "finalization_backlog", start, backlogErr)
 	}
-	if season.HasBracket && backfill && bracketErr == nil {
+	if season.Supports("bracket") && season.HasBracket && backfill && bracketErr == nil {
 		for _, match := range candidates {
 			if requiresBracketConfirmation(match, season) && !match.BracketConfirmed {
 				bracketErr = fmt.Errorf("bracket response missing knockout match %q", match.ID)
@@ -460,16 +480,22 @@ func (r *runner) ingestCompSeason(
 	var refreshErrors []error
 	var playBacklogErr error
 	if slowTick && ctx.Err() == nil {
-		playBacklogErr = r.retryMissingPlayStreams(ctx, comp, season)
+		if season.Supports("plays") {
+			playBacklogErr = r.retryMissingPlayStreams(ctx, comp, season)
+		}
 		// Additive: failures are recorded under finalCaptureBacklogRunKind and
 		// must never affect coreErr/combinedErr or the play backlog above.
-		r.retryPendingFinalCaptures(ctx, comp, season)
+		if season.Supports("officials") || season.Supports("odds") {
+			r.retryPendingFinalCaptures(ctx, comp, season)
+		}
 	}
 	if matchResult.finalized || slowTick {
-		refreshErrors = append(refreshErrors,
-			r.refreshStandings(ctx, comp, season, slowTick, matchResult.finalized),
-			r.refreshLeaders(ctx, comp, season),
-		)
+		if season.Supports("standings") {
+			refreshErrors = append(refreshErrors, r.refreshStandings(ctx, comp, season, slowTick, matchResult.finalized))
+		}
+		if season.Supports("leaders") {
+			refreshErrors = append(refreshErrors, r.refreshLeaders(ctx, comp, season))
+		}
 	}
 	coreErr := errors.Join(
 		scoreboardErr, bracketErr, backlogErr, recoveryErr, resolveErr, processErr, playBacklogErr)
@@ -702,7 +728,7 @@ func (r *runner) refreshStandings(
 		return nil
 	}
 	snapshotErr := r.snapshotStandings(ctx, comp, season, rows, teamIDs, tableChanged)
-	if !slowTick {
+	if !slowTick || !season.Supports("squad") {
 		return snapshotErr
 	}
 	return errors.Join(snapshotErr, r.refreshSquads(ctx, comp, season, teamIDs))

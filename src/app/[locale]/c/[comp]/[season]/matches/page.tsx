@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
-import { resolveSeason } from '@/server/data/competitions';
+import { supportsResource } from '@/server/data/competitions';
+import { resolveResource } from '@/server/data/editionResources';
 import { dataStore } from '@/server/data/store';
 import {
   monthRange,
@@ -34,7 +35,7 @@ export async function generateMetadata({
   const { locale, comp, season } = await params;
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale, comp);
-  const rc = resolveSeason(comp, season);
+  const rc = resolveResource(comp, season, 'scores');
   if (!rc) return { title: t('matches.title') };
   const editionName = `${rc.competition.shortName} ${rc.season.label}`;
   return {
@@ -61,19 +62,20 @@ export default async function MatchesPage({
   const query = searchParams ? await searchParams : undefined;
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale, comp);
-  const rc = resolveSeason(comp, season);
+  const rc = resolveResource(comp, season, 'scores');
   if (!rc) notFound();
 
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
   // Crests in the match views link to the club's page.
-  const teamBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/team`;
-  const playerBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/player`;
+  const teamBase = supportsResource(rc.season, 'teams') ? `/${locale}/c/${rc.competition.id}/${rc.season.id}/team` : undefined;
+  const playerBase = supportsResource(rc.season, 'players') ? `/${locale}/c/${rc.competition.id}/${rc.season.id}/player` : undefined;
+  const hasSummary = supportsResource(rc.season, 'summary');
   const editionName = `${rc.competition.shortName} ${rc.season.label}`;
   const basePath = `/${locale}/c/${rc.competition.id}/${rc.season.id}/matches`;
 
   // "Now" is a live view, so it only makes sense for the season being played.
   // A past edition has nothing live, upcoming or recent by definition.
-  const isCurrentEdition = rc.season.id === rc.competition.currentSeasonId;
+  const isCurrentEdition = rc.season.publication !== 'archive' && rc.season.id === rc.competition.currentSeasonId;
   const nowRange = nowWindowRange(new Date());
   let nowMatches: Match[] = [];
   let nowError: string | null = null;
@@ -153,6 +155,7 @@ export default async function MatchesPage({
 
         {view === 'now' ? (
           <MatchesNow
+            hasSummary={hasSummary}
             teamBase={teamBase}
             playerBase={playerBase}
             initialMatches={nowMatches}
@@ -165,10 +168,12 @@ export default async function MatchesPage({
           />
         ) : (
           <MatchCalendar
+            hasSummary={hasSummary}
             teamBase={teamBase}
             playerBase={playerBase}
             initialMatches={initialMatches}
             initialError={initialError}
+            live={isCurrentEdition}
             initialMonth={initialMonth}
             minMonth={minMonth}
             maxMonth={maxMonth}

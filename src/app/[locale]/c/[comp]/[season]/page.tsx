@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
 import { formatDate } from '@/i18n/format';
-import { resolveSeason } from '@/server/data/competitions';
+import { resolveSeason, supportsResource } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import { isSelectedDataStore, runDataOperation } from '@/server/data/sourceSelection';
 import type { BracketRound, Group } from '@/server/data/types';
@@ -83,13 +83,11 @@ export default async function Workspace({ params }: { params: SeasonParams }) {
   const t = getTranslator(locale, comp);
   const rc = resolveSeason(comp, season);
   if (!rc) notFound();
-  // A league's headline view IS its table, and the table lives at /standings
-  // for every competition — so a season root with nothing of its own
-  // redirects rather than render a second copy of the table. A projected
-  // Liguilla IS something of its own; that branch returns below, after the
-  // shared banner setup.
-  if (!rc.season.format.hasBracket && rc.season.projection !== 'liguilla') {
-    redirect(`/${locale}/c/${rc.competition.id}/${rc.season.id}/standings`);
+  const projection = !rc.season.format.hasBracket && rc.season.projection === 'liguilla' && supportsResource(rc.season, 'standings');
+  if (!(rc.season.format.hasBracket && supportsResource(rc.season, 'bracket')) && !projection) {
+    const suffix = supportsResource(rc.season, 'standings') ? 'standings' : supportsResource(rc.season, 'scores') ? 'matches' : undefined;
+    if (!suffix) notFound();
+    redirect(`/${locale}/c/${comp}/${season}/${suffix}`);
   }
 
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
@@ -98,13 +96,12 @@ export default async function Workspace({ params }: { params: SeasonParams }) {
   const teamBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/team`;
   const { teamStyle } = rc.competition;
   // A finished (non-current) edition is view-only.
-  const readOnly = rc.season.id !== rc.competition.currentSeasonId;
+  const readOnly = rc.season.publication === 'archive' || rc.season.id !== rc.competition.currentSeasonId;
 
   // The band, bracket and its supporting tables share one source attempt.
   const computed = rc.season.computedTables;
-  const projection = !rc.season.format.hasBracket && rc.season.projection === 'liguilla';
   const { feed, groups, bracket, phaseGroups } = await runDataOperation(dataStore, async source => {
-    const feed = await getBannerFeed(rc, source);
+    const feed = !readOnly && supportsResource(rc.season, 'scores') ? await getBannerFeed(rc, source) : { matches: [], weekOnly: false };
     let groups: Group[] = [];
     let bracket: BracketRound[] = [];
     let phaseGroups: Group[] = [];
@@ -116,7 +113,7 @@ export default async function Workspace({ params }: { params: SeasonParams }) {
       try { bracket = await source.getBracket(rc); } catch (error) {
         if (isSelectedDataStore(source)) throw error;
       }
-      if (computed) {
+      if (computed && supportsResource(rc.season, 'standings')) {
         try { phaseGroups = await source.getStandings(rc); } catch (error) {
           if (isSelectedDataStore(source)) throw error;
         }
