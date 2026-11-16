@@ -12,6 +12,7 @@ import (
 
 	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/shared/source"
+	"github.com/mcasillas17/scorearc-backend/shared/store"
 )
 
 const (
@@ -63,6 +64,10 @@ func (r *runner) refreshSquads(
 		err := fmt.Errorf("no edition teams available for squad refresh")
 		r.recordRun(ctx, comp.ID, "squads", start, err)
 		return err
+	}
+	if len(teamIDs) > store.MaxEditionTeams {
+		r.recordRun(ctx, comp.ID, "squads", start, store.ErrEditionTeamsTooLarge)
+		return store.ErrEditionTeamsTooLarge
 	}
 
 	providerTeamIDs := make([]string, 0, len(teamIDs))
@@ -132,10 +137,10 @@ func (r *runner) refreshSquads(
 				recordError(fmt.Errorf("team %s roster identity: %w", providerTeamID, err))
 			}
 			if len(squad.Players) == 0 {
-				err = r.repo.RecordResourceObservation(ctx, comp.ID, season.ID, sourceESPN, "squad", teamIDs[providerTeamID], 0)
+				err = r.repo.RecordResourceObservation(ctx, comp.ID, season.ID, sourceESPN, "squad", teamIDs[providerTeamID], 0, true)
 			} else {
 				err = r.repo.ReplaceSquad(ctx, comp.ID, season.ID, teamIDs[providerTeamID], sourceESPN,
-					squad.Players, make(map[string]uuid.UUID))
+					squad.Players, make(map[string]uuid.UUID), true)
 			}
 			if err != nil {
 				recordError(fmt.Errorf("team %s squad write: %w", providerTeamID, err))

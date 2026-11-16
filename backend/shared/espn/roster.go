@@ -50,8 +50,10 @@ type rawRosterStat struct {
 }
 
 func MapRoster(raw []byte) (model.Squad, error) {
-	if _, err := validateCollection(raw, "athletes"); err != nil {
+	if rows, err := validateCollection(raw, "athletes"); err != nil {
 		return model.Squad{}, err
+	} else if len(rows) > 100 {
+		return model.Squad{}, fmt.Errorf("roster exceeds 100 athletes")
 	}
 	var document rawRosterDocument
 	if err := json.Unmarshal(raw, &document); err != nil {
@@ -60,7 +62,7 @@ func MapRoster(raw []byte) (model.Squad, error) {
 	if document.Status != "success" {
 		return model.Squad{}, fmt.Errorf("roster status is not success")
 	}
-	if document.Team.ID == "" {
+	if !ValidProviderID(string(document.Team.ID)) {
 		return model.Squad{}, fmt.Errorf("roster missing team identity")
 	}
 
@@ -70,14 +72,16 @@ func MapRoster(raw []byte) (model.Squad, error) {
 		Location:     strings.TrimSpace(document.Team.Location),
 		Players:      make([]model.SquadMember, 0, len(document.Athletes)),
 	}
+	seen := make(map[flexibleString]bool, len(document.Athletes))
 	for index, athlete := range document.Athletes {
-		fullName := athlete.FullName
+		fullName := strings.TrimSpace(athlete.FullName)
 		if fullName == "" {
-			fullName = athlete.DisplayName
+			fullName = strings.TrimSpace(athlete.DisplayName)
 		}
-		if athlete.ID == "" || fullName == "" {
-			return model.Squad{}, fmt.Errorf("roster athlete %d missing identity", index)
+		if !ValidProviderID(string(athlete.ID)) || fullName == "" || seen[athlete.ID] {
+			return model.Squad{}, fmt.Errorf("roster athlete %d has invalid or duplicate identity", index)
 		}
+		seen[athlete.ID] = true
 
 		var number *int
 		if parsed, err := strconv.Atoi(athlete.Jersey); err == nil {

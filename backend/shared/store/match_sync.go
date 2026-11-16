@@ -206,11 +206,13 @@ func (s *Store) RecordMatchPoll(ctx context.Context, competitionID, seasonID, so
 	_, err := s.pool.Exec(ctx, `
 INSERT INTO match_poll_status(competition_id,season_id,source,attempted_at,succeeded_at,outcome,event_count)
 VALUES($1,$2,$3,$4,CASE WHEN $5='ok' THEN $4::timestamptz END,$5,$6)
-ON CONFLICT(competition_id,season_id,source) DO UPDATE SET
-	attempted_at=EXCLUDED.attempted_at,
-	succeeded_at=COALESCE(EXCLUDED.succeeded_at,match_poll_status.succeeded_at),
-	outcome=EXCLUDED.outcome,event_count=EXCLUDED.event_count
-WHERE match_poll_status.attempted_at <= EXCLUDED.attempted_at`,
+`+matchPollConflictSQL,
 		competitionID, seasonID, source, attemptedAt, outcome, eventCount)
 	return err
 }
+
+const matchPollConflictSQL = `ON CONFLICT(competition_id,season_id,source) DO UPDATE SET
+	attempted_at=EXCLUDED.attempted_at,
+	succeeded_at=COALESCE(EXCLUDED.succeeded_at,match_poll_status.succeeded_at),
+	outcome=EXCLUDED.outcome,event_count=EXCLUDED.event_count
+WHERE match_poll_status.attempted_at <= EXCLUDED.attempted_at`

@@ -197,7 +197,9 @@ it.each(['getBracket', 'getSquad', 'getLeaders'])('requires explicit provider co
     const result = await evaluate({ ...options, manifest: { version: 1, samples: [{ competition: kind === 'getSquad' ? 'world-cup' : 'leagues-cup', season: '2026', kind, ...(kind === 'getSquad' ? { teamId: '202' } : {}) }] },
       fetch: async url => String(url).startsWith(origin)
         ? kind === 'getBracket' ? reader([], resources as ReaderResources) : Response.json([], { headers: { 'X-ScoreArc-Resources': JSON.stringify(resources) } })
-        : Response.json({ season: { year: 2026 }, status: 'success', team: { id: '202' }, leagues: [{ slug: kind === 'getSquad' ? 'fifa.world' : 'concacaf.leagues.cup' }], [field]: collection }) });
+        : Response.json({ season: { year: 2026 }, status: 'success', team: { id: '202' },
+          ...(kind === 'getSquad' ? { league: { slug: 'fifa.world' } } : { leagues: [{ slug: 'concacaf.leagues.cup' }] }),
+          [field]: collection }) });
     if (collection === empty) expect(result.counts.matched).toBe(1);
     else {
       expect(result.counts.matched).toBe(0);

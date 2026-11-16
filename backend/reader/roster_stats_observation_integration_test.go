@@ -24,11 +24,11 @@ func TestRosterStatsValidationPreservesReaderObservation(t *testing.T) {
 	app.now = func() time.Time { return now }
 	old := now.Add(-26 * time.Hour).Truncate(time.Microsecond)
 	ingest := func(field string) error {
-		squad, err := espn.MapRoster([]byte(`{"status":"success","team":{"id":"227"},"athletes":[{"id":"measured-player","fullName":"Measured Player"` + field + `}]}`))
+		squad, err := espn.MapRoster([]byte(`{"status":"success","team":{"id":"227"},"athletes":[{"id":"9135","fullName":"Measured Player"` + field + `}]}`))
 		if err != nil {
 			return err
 		}
-		return writer.ReplaceSquad(ctx, "world-cup", "2026", "nat-arg", "espn", squad.Players, nil)
+		return writer.ReplaceSquad(ctx, "world-cup", "2026", "nat-arg", "espn", squad.Players, nil, true)
 	}
 	valid := `,"statistics":{"splits":{"categories":[{"name":"general","stats":[{"name":"appearances","value":4},{"name":"totalGoals","value":2}]}]}}`
 	for _, tc := range []struct {

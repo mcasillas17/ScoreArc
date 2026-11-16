@@ -242,3 +242,11 @@ it('reads the scoped team collection, normalizes its canonical IDs and requires 
   await expect(read([team], { availability: 'partial' }).store.getEditionTeams(rc)).rejects.toMatchObject({ reason: 'unavailable' });
   await expect(read([], { availability: 'complete', status: 'fresh' }).store.getEditionTeams(rc)).rejects.toMatchObject({ reason: 'metadata' });
 });
+
+it('never caches a field the local crosswalk cannot identify as empty', async () => {
+  const row = { ...rawMatch.home, id: 'unmapped-real-team' };
+  const { store } = harness(path => path.endsWith('/teams') ? result([row], { editionTeams: 'competition-season' }) : undefined);
+  await expect(store.getEditionTeams(rc)).rejects.toMatchObject({ reason: 'identity' });
+  row.id = rawMatch.home.id;
+  expect((await store.getEditionTeams(rc)).map(t => t.id)).toEqual([providerTeamId(rawMatch.home.id)]);
+});

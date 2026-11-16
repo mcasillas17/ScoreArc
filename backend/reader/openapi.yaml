@@ -294,11 +294,13 @@ paths:
         from accepted provider standings or observed match participants when the
         edition lacks provider tables. Placeholders are excluded. The editionTeams
         resource is derived at competition-season scope. Standings evidence lasts
-        20 minutes. Match membership requires a successful full-season discovery
-        with a matching count of verified matches for complete or empty coverage.
-        A nonempty match season with no identified entrants remains unavailable. Its clock expires after 25 hours. Known entrants can be
-        partial, and missing or failed evidence cannot establish an empty field.
-        An oversized collection fails instead of truncating.
+        20 minutes and requires a table verified for this competition and season.
+        For complete match coverage, every full-season scoreboard partition must
+        be verified and the canonical matches, sides and placeholder flags must
+        agree with the stored match set. That observation expires after 25 hours.
+        Known entrants can be partial. Only verified empty seasons can establish
+        an empty field. The limit is 2,000 matches and 100 identified teams
+        before filtering provisional teams.
       parameters:
         - { $ref: "#/components/parameters/Comp" }
         - { $ref: "#/components/parameters/Season" }
@@ -356,7 +358,9 @@ paths:
         Takes no query parameters. The same rows TeamProfile.squad embeds. As
         there, a failed squad read is served as an empty squad with
         Cache-Control no-store; a failed identity read or a cancelled or
-        timed-out request is a 500.
+        timed-out request is a 500. Current editions and match-derived cups
+        require a roster observation verified for this club, competition and
+        season before the reader serves retained players.
       parameters:
         - { $ref: "#/components/parameters/Comp" }
         - { $ref: "#/components/parameters/Season" }

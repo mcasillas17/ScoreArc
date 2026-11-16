@@ -133,6 +133,7 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
       collectionEvidence(evidence, 'editionTeams', body.length);
       unique(body.map(team => team.id));
       const teams = fromMatches ? body.filter(team => providerTeamId(team.id)) : body;
+      if (body.length && !teams.length) throw new ReaderFailure('identity');
       const ids = await identities.teams(rc, teams.map(team => team.id));
       const members = teams.map(team => mappedTeam(ids, team));
       unique(members.map(team => team.id));

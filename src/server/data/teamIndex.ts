@@ -71,14 +71,17 @@ export async function allTeams(competitions: Competition[] = listCompetitions())
     .map((competition) => resolveSeason(competition.id))
     .filter((rc): rc is CompetitionSeason => rc !== undefined && supportsResource(rc.season, 'teams'));
 
-  const lists = await runDataOperation(dataStore, source =>
-    Promise.all(seasons.map(async rc => {
-      try { return await competitionTeams(rc, source); }
-      catch (error) {
-        if (isSelectedDataStore(source)) throw error;
-        return [];
-      }
-    })));
+  const lists = await runDataOperation(dataStore, async source => {
+    const results: IndexedTeam[][] = [];
+    const read = (rc: CompetitionSeason) => competitionTeams(rc, source).catch(error => {
+      if (isSelectedDataStore(source)) throw error;
+      return [];
+    });
+    for (let i = 0; i < seasons.length; i += 4) {
+      results.push(...await Promise.all(seasons.slice(i, i + 4).map(read)));
+    }
+    return results;
+  });
 
   const merged = new Map<string, IndexedTeam>();
   for (const list of lists) {

@@ -36,6 +36,7 @@ func TestResourceMetadataPostgresScopesSnapshotsAndGrants(t *testing.T) {
 	exec(`INSERT INTO resource_observation(competition_id,season_id,source,resource,subject,observed_at,row_count) VALUES
  ('world-cup','2026','espn','standings','',$1,2),('world-cup','2026','espn','leaders','goals',$1,2),
  ('world-cup','2026','espn','leaders','assists',$2,1),('world-cup','2026','espn','squad','nat-arg',$1,0),
+ ('world-cup','2026','espn-edition-verified','squad','nat-arg',$1,0),
  ('world-cup','1998','espn','standings','',$2,0)`, now, now.Add(-20*time.Minute))
 	queries := &atomic.Int32{}
 	app := newTestApp(t, &fakeReaderStore{}, &fakeNewsReader{})
@@ -66,7 +67,7 @@ func TestResourceMetadataPostgresScopesSnapshotsAndGrants(t *testing.T) {
 		})
 	}
 	var n int
-	if err := reader.db.QueryRow(ctx, `SELECT count(*) FROM resource_observation`).Scan(&n); err != nil || n != 5 {
+	if err := reader.db.QueryRow(ctx, `SELECT count(*) FROM resource_observation`).Scan(&n); err != nil || n != 6 {
 		t.Fatalf("reader evidence grant: %d %v", n, err)
 	}
 	if err := reader.db.QueryRow(ctx, `UPDATE resource_observation SET row_count=7 RETURNING row_count`).Scan(&n); err == nil {
@@ -168,7 +169,7 @@ func TestIndependentPlayerAndParticipationEvidence(t *testing.T) {
 	exec(`INSERT INTO player_external_ref(source,source_id,player_id) VALUES ('espn','p1',$1),('espn','p2',$2)`, testPlayerID, emptyPlayerID)
 	exec(`INSERT INTO squad_membership(competition_id,season_id,team_id,player_id,source) VALUES ('world-cup','2026','nat-arg',$1,'espn'),('world-cup','2026','nat-arg',$2,'espn')`, testPlayerID, emptyPlayerID)
 	exec(`INSERT INTO player_season_stat(competition_id,season_id,player_id,team_id,goals,source,updated_at,observed_at) VALUES ('world-cup','2026',$1,'nat-arg',3,'espn',$2,$2)`, testPlayerID, now.Add(-25*time.Hour))
-	exec(`INSERT INTO resource_observation(competition_id,season_id,source,resource,subject,observed_at,row_count) VALUES ('world-cup','2026','espn','squad','nat-arg',$1,2)`, now)
+	exec(`INSERT INTO resource_observation(competition_id,season_id,source,resource,subject,observed_at,row_count) VALUES ('world-cup','2026','espn','squad','nat-arg',$1,2),('world-cup','2026','espn-edition-verified','squad','nat-arg',$1,2)`, now)
 	exec(`INSERT INTO appearance(match_id,player_id,team_id,starter) VALUES ($1,$2,'nat-arg',true)`, finalMatchID, testPlayerID)
 	app := newTestApp(t, &fakeReaderStore{}, &fakeNewsReader{})
 	app.store = reader

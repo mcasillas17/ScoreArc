@@ -64,6 +64,19 @@ in AGENTS.md first. All three run in CI (`npm test`, `tsc`, `go test ./...`).
 | `getSquad` | `…/teams/{teamId}/squad` (the same rows `getTeam` embeds) | Recorded roster order, ids, jersey, position, nationality, stats, age and headshots; degraded failure |
 | `getPlayer` | `…/players/{playerId}` | Canonical profile, scoped totals and latest five game-log rows; optional-data absence, source-qualified career links, snapshot/query/output bounds and error handling |
 
+For edition team discovery, the ingester verifies the competition and season on
+provider tables. For a cup without a provider table, it reads every scoreboard
+partition in the edition and compares the canonical match IDs, sides and
+placeholder flags with stored observations. A successful rolling poll cannot
+establish a complete directory. A proven empty field returns an empty list.
+With incomplete or failed discovery, callers can distinguish known entrants
+from an unavailable directory using the resource header. Public team links use
+curated identities. Roster refresh and player links use the same edition's
+entrants. For current editions and match-derived cups, a fresh observation must
+verify the roster's club, competition and season before its players appear on
+either team endpoint. A legacy roster can therefore be temporarily unavailable
+after deployment until the ingester verifies it.
+
 Adding or removing a `DataStore` method fails `tsc`: two-way
 `Exclude<keyof DataStore, …>` checks against the inventory, plus a runtime key
 check on the store object. The Go suite requires the inventory routes plus

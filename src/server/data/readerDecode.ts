@@ -1,4 +1,4 @@
-import { MAX_EDITION_TEAMS } from './editionResources';
+import { MAX_EDITION_TEAMS, MAX_SQUAD_PLAYERS } from './editionResources';
 import { isISOInstant } from '@/lib/matchFreshness';
 import type {
   Match, Group, BracketRound, MatchSummaryData, MatchLineups, TeamLineup, LineupPlayer,
@@ -134,7 +134,7 @@ const squadPlayer = object({
   id: providerId, name: text, jersey: nullable(count), position: string, age: nullable(count),
   nationality: nullable(string), headshotUrl: nullable(string), stats: nullable(playerStats),
 });
-export const decodeReaderSquad: Decoder<SquadPlayer[]> = array(squadPlayer, 100);
+export const decodeReaderSquad: Decoder<SquadPlayer[]> = array(squadPlayer, MAX_SQUAD_PLAYERS);
 const scope = object({ competitionId: text, seasonId: text });
 const scheduleAvailability = object({ results: oneOf(['available', 'unavailable'] as const), upcoming: oneOf(['available', 'unavailable'] as const) });
 export type ReaderTeam = TeamProfile & { scheduleAvailability: NonNullable<TeamProfile['scheduleAvailability']> };

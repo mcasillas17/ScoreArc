@@ -1,6 +1,7 @@
 import { unstable_cache } from 'next/cache';
 import { configuredDataStore } from './configuredStore';
 import { ReaderFailure } from './readerTransport';
+import { providerReference } from './readerIdentity';
 import { trackReaderFallback } from '@/lib/telemetry/server';
 import type {
   Match,
@@ -45,7 +46,7 @@ import {
   mapSummaryVideos, mapSummaryShootout, mapSummaryShootoutTotals, summaryHeaderFinal, mapSummaryInfo, mapSummaryForm, mapSummaryCommentary, mapSummaryH2H,
 } from './providers/espn-summary';
 import { TtlCache } from './cache';
-import { matchDerivedMembership, MAX_EDITION_TEAMS, withEditionResources } from './editionResources';
+import { matchDerivedMembership, MAX_EDITION_TEAMS, MAX_SQUAD_PLAYERS, withEditionResources } from './editionResources';
 import { currentWeekRange, editionBounds, forwardRange, nowWindowRange } from './dateRange';
 import { fetchScoreboardWindow, verifyUndatedScoreboard, boundedFetchJson, type ScoreboardFetchJson } from './scoreboardWindow';
 
@@ -99,8 +100,9 @@ async function fetchSquad(rc: CompetitionSeason, teamId: string, fetchJson: Scor
     signal: AbortSignal.timeout(15_000), maxBytes: 4 * 1024 * 1024,
   });
   const count = verifyRosterEdition(raw, rc, teamId);
+  if (count > MAX_SQUAD_PLAYERS) throw new EspnEditionError('partial', 'roster');
   const squad = mapTeamRoster(raw);
-  if (squad.length !== count || squad.some(player => !/^[1-9]\d*$/.test(player.id) || !player.name.trim()) ||
+  if (squad.length !== count || squad.some(player => !providerReference(player.id) || !player.name.trim()) ||
       new Set(squad.map(player => player.id)).size !== count) throw new EspnEditionError('partial', 'roster');
   return squad;
 }
@@ -258,6 +260,15 @@ export function createDataStore(deps: DataDeps): DataStore {
     return groups;
   }
 
+  async function loadSquad(rc: CompetitionSeason, teamId: string): Promise<SquadPlayer[]> {
+    const k = key(rc, `squad:${teamId}`);
+    const cached = deps.cache.get(k) as SquadPlayer[] | undefined;
+    if (cached) return cached;
+    const squad = await (deps.loadSquad ? deps.loadSquad(rc, teamId) : fetchSquad(rc, teamId, deps.fetchJson));
+    deps.cache.set(k, squad, 300_000);
+    return squad;
+  }
+
   async function getEditionTeams(rc: CompetitionSeason): Promise<Team[]> {
     const k = key(rc, 'edition-teams');
     const cached = deps.cache.get(k) as Team[] | undefined;
@@ -284,6 +295,7 @@ export function createDataStore(deps: DataDeps): DataStore {
     const distinct = [...new Map(teams.map(team => [team.id, team])).values()];
     if (distinct.length > MAX_EDITION_TEAMS) throw new Error('Edition membership exceeds team limit');
     const members = fromMatches ? distinct.filter(team => canonicalTeamId(team.id)) : distinct;
+    if (distinct.length && !members.length) throw new EspnEditionError('scope_unverified', 'entrants');
     deps.cache.set(k, members, 60_000);
     return members;
   }
@@ -409,7 +421,7 @@ export function createDataStore(deps: DataDeps): DataStore {
         // matches-and-results block has to ask twice.
         const [rawProfile, squad, rawResults, rawFixtures] = await Promise.all([
           deps.fetchJson(teamUrl(slug(rc), teamId)),
-          supportsResource(rc.season, 'squad') ? store.getSquad(rc, teamId).catch(() => []) : [],
+          supportsResource(rc.season, 'squad') ? loadSquad(rc, teamId).catch(() => null) : [],
           supportsResource(rc.season, 'scores') ? deps.fetchJson(teamScheduleUrl(slug(rc), teamId, false, rc.season)).catch(() => null) : null,
           supportsResource(rc.season, 'scores') ? deps.fetchJson(teamScheduleUrl(slug(rc), teamId, true, rc.season)).catch(() => null) : null,
         ]);
@@ -424,14 +436,14 @@ export function createDataStore(deps: DataDeps): DataStore {
         const profile: TeamProfile = {
           ...base,
           ...((strict || !supportsResource(rc.season, 'standings')) && { record: null, standingSummary: null, standing: null }),
-          squad,
+          squad: squad ?? [],
           schedule: uniqueTeamMatches([...results.matches, ...upcoming.matches]).reverse(),
           scheduleAvailability: {
             results: results.available ? 'available' : 'unavailable',
             upcoming: upcoming.available ? 'available' : 'unavailable',
           },
         };
-        if (!strict || !supportsResource(rc.season, 'scores') || (results.available && upcoming.available)) deps.cache.set(k, profile, 120_000);
+        if (squad !== null && (!strict || !supportsResource(rc.season, 'scores') || (results.available && upcoming.available))) deps.cache.set(k, profile, 120_000);
         return profile;
       } catch (error) {
         if (deps.propagateUnavailable && !(error instanceof ReaderFailure && error.status === 404)) throw error;
@@ -444,13 +456,8 @@ export function createDataStore(deps: DataDeps): DataStore {
     // competition, so the 4-request getTeam would quadruple its cold cost).
     async getSquad(rc, teamId: string): Promise<SquadPlayer[]> {
       if (matchDerivedMembership(rc) && !(await getEditionTeams(rc)).some(team => team.id === teamId)) return [];
-      const k = key(rc, `squad:${teamId}`);
-      const cached = deps.cache.get(k) as SquadPlayer[] | undefined;
-      if (cached) return cached;
       try {
-        const squad = await (deps.loadSquad ? deps.loadSquad(rc, teamId) : fetchSquad(rc, teamId, deps.fetchJson));
-        deps.cache.set(k, squad, 300_000);
-        return squad;
+        return await loadSquad(rc, teamId);
       } catch (error) {
         if (deps.propagateUnavailable) throw error;
         return [];
@@ -542,7 +549,7 @@ const espnCache = new TtlCache<unknown>();
 // function instances. Catch provider failures outside the cache so a retry can recover.
 const loadEspnSquad = unstable_cache(
   (rc: CompetitionSeason, teamId: string) => fetchSquad(rc, teamId, boundedFetchJson),
-  ['espn-squad-v2'],
+  ['espn-squad-v3'],
   { revalidate: 300 },
 );
 export const espnDataStore = createDataStore({ fetchJson: boundedFetchJson, cache: espnCache, loadSquad: loadEspnSquad });

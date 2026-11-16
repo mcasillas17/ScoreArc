@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/shared/source"
 	writerstore "github.com/mcasillas17/scorearc-backend/shared/store"
 )
@@ -28,13 +29,15 @@ type resourceMetadata struct {
 	FinalizedAt  *time.Time `json:"finalizedAt"`
 }
 type resourceEnvelope struct {
-	Version   int                         `json:"version"`
-	Resources map[string]resourceMetadata `json:"resources"`
+	Version        int                         `json:"version"`
+	Resources      map[string]resourceMetadata `json:"resources"`
+	withholdRoster bool
 }
 type resourceScope struct {
 	freshnessScope
 	Route, Metric, PlayerID string
 	MatchMembership         bool
+	RequireRosterProof      bool
 	MemberCount             int
 	Detail                  bool
 	GameIDs                 []string
@@ -110,11 +113,14 @@ func participationResource(now time.Time, e aggregateEvidence, scope string) res
 	return r
 }
 func (a *App) resourceMap(scope resourceScope, snapshot resourceSnapshot) (resourceEnvelope, *matchFreshness, error) {
-	now := a.clock()
 	_, season, ok := a.resolve(scope.Competition, scope.Season)
 	if !ok {
 		return resourceEnvelope{}, nil, errors.New("unknown resource scope")
 	}
+	return editionResourceMap(a.clock(), season, scope, snapshot)
+}
+
+func editionResourceMap(now time.Time, season config.Season, scope resourceScope, snapshot resourceSnapshot) (resourceEnvelope, *matchFreshness, error) {
 	start, end, err := source.SeasonBounds(season)
 	if err != nil {
 		return resourceEnvelope{}, nil, err
@@ -224,6 +230,10 @@ func (a *App) resourceMap(scope resourceScope, snapshot resourceSnapshot) (resou
 	if scope.Route == "squad" || scope.Route == "team" {
 		resources["squad"] = collectionResource(now, snapshot.Squad, 25*time.Hour, "team-season", "current-roster", dormant)
 		resources["seasonStats"] = aggregateResource(now, snapshot.Stats, 25*time.Hour, "team-season", dormant)
+		out.withholdRoster = scope.RequireRosterProof && resources["squad"].Availability == "unavailable"
+		if out.withholdRoster {
+			resources["seasonStats"] = unknownResource("team-season", "direct")
+		}
 		resources["identity"] = identity
 	}
 	if scope.Route == "player" {
@@ -292,8 +302,16 @@ func writeResources(w http.ResponseWriter, envelope resourceEnvelope) error {
 	return nil
 }
 func (a *App) attachResources(w http.ResponseWriter, r *http.Request, reader matchReader, finish func(), scope resourceScope) bool {
+	_, ok := a.attachResourceEvidence(w, r, reader, finish, scope)
+	return ok
+}
+
+func (a *App) attachResourceEvidence(w http.ResponseWriter, r *http.Request, reader matchReader, finish func(), scope resourceScope) (resourceEnvelope, bool) {
 	_, edition, ok := a.resolve(scope.Competition, scope.Season)
 	if ok {
+		if scope.Route == "squad" || scope.Route == "team" {
+			scope.RequireRosterProof = edition.Supports("squad") && (edition.MatchDerivedTeams() || a.registry.ActiveEdition(scope.Competition, edition))
+		}
 		if scope.Degraded == nil {
 			scope.Degraded = map[string]bool{}
 		}
@@ -316,7 +334,7 @@ func (a *App) attachResources(w http.ResponseWriter, r *http.Request, reader mat
 	if err != nil {
 		a.logDependencyError(r, "resource evidence", err, "competition", scope.Competition, "season", scope.Season)
 		writeError(w, 500, "internal error")
-		return false
+		return resourceEnvelope{}, false
 	}
 	if old != nil {
 		w.Header().Set("X-ScoreArc-Freshness", old.Status)
@@ -327,7 +345,7 @@ func (a *App) attachResources(w http.ResponseWriter, r *http.Request, reader mat
 			w.Header().Set("X-ScoreArc-Observed-At", old.ObservedAt.UTC().Format(time.RFC3339Nano))
 		}
 	}
-	return true
+	return envelope, true
 }
 
 // One request-scoped statement: the core projection contains only metadata for
@@ -410,13 +428,19 @@ func (s *Store) Resources(ctx context.Context, scope resourceScope) (resourceSna
 		discovery = resourceSeasonDiscoverySQL
 	}
 	if (scope.Route == "standings" || scope.Route == "team" || (scope.Route == "editionTeams" && !scope.MatchMembership)) && !scope.Degraded["standings"] {
-		standings = resourceStandingsSQL
+		standings = resourceStandingsSQL + ")"
+		if scope.Route == "editionTeams" {
+			standings = resourceStandingsSQL + resourceEditionProofSQL + ")"
+		}
 	}
 	if scope.Route == "leaders" || scope.Route == "top-scorers" {
 		leaders = resourceLeadersSQL
 	}
 	if (scope.Route == "squad" || scope.Route == "team") && !scope.Degraded["squad"] {
-		squad = resourceSquadSQL
+		squad = resourceSquadSQL + ")"
+		if scope.RequireRosterProof {
+			squad = resourceSquadSQL + resourceEditionProofSQL + ")"
+		}
 	}
 	roster, stats, career, detail := "SELECT NULL::uuid AS player_id WHERE false", "SELECT NULL::timestamptz AS observed_at WHERE false", "jsonb_build_object('ObservedAt',null,'Count',0)", "0"
 	if (scope.Route == "squad" || scope.Route == "team") && !scope.Degraded["squad"] {
@@ -456,7 +480,7 @@ const resourceDetailSQL = `(SELECT count(*) FROM match_detail d JOIN core c ON c
 const resourceSeasonDiscoverySQL = `(SELECT jsonb_build_object('ObservedAt',poll.succeeded_at,'RowCount',poll.event_count)
  FROM match_poll_status poll CROSS JOIN LATERAL (
  SELECT count(*) AS n, coalesce(bool_and(verified),true) AS verified
- FROM ( ` + writerstore.EditionMatchFactsSQL + ` LIMIT 2001) matches
+ FROM ( ` + writerstore.EditionMatchFactsSQL + ` ) matches
  ) held WHERE poll.competition_id=$1 AND poll.season_id=$2 AND poll.source='` + writerstore.SeasonScoreboardPoll + `'
  AND poll.outcome='ok' AND poll.succeeded_at BETWEEN timestamptz '0001-01-01' AND now()
  AND held.n<=2000 AND held.n=poll.event_count AND held.verified)`
@@ -465,7 +489,11 @@ const resourceStandingsSQL = `(SELECT jsonb_build_object('ObservedAt',CASE WHEN 
  FROM resource_observation o CROSS JOIN LATERAL (SELECT count(*) AS n,coalesce(bool_and(source='espn'),true) AS owned
  FROM (SELECT source FROM standing WHERE competition_id=$1 AND season_id=$2 LIMIT 10001) facts) actual
  WHERE o.competition_id=$1 AND o.season_id=$2 AND o.source='espn' AND o.resource='standings' AND o.subject=''
- AND actual.n=o.row_count AND actual.n<=10000 AND actual.owned)`
+ AND actual.n=o.row_count AND actual.n<=10000 AND actual.owned`
+const resourceEditionProofSQL = ` AND EXISTS(SELECT 1 FROM resource_observation proof
+ WHERE (proof.competition_id,proof.season_id,proof.resource,proof.subject,proof.observed_at,proof.row_count)=
+ (o.competition_id,o.season_id,o.resource,o.subject,o.observed_at,o.row_count)
+ AND proof.source='` + writerstore.EditionVerifiedSource + `')`
 const resourceLeadersSQL = `(SELECT jsonb_build_object('ObservedAt',CASE WHEN o.observed_at >= timestamptz '0001-01-01 00:00:00Z' AND o.observed_at < timestamptz '10000-01-01 00:00:00Z' THEN o.observed_at END,'RowCount',o.row_count)
  FROM resource_observation o CROSS JOIN LATERAL (SELECT count(*) AS n,coalesce(bool_and(source='espn'),true) AS owned
  FROM (SELECT source FROM top_scorer WHERE competition_id=$1 AND season_id=$2 AND category=$10 LIMIT 31) facts) actual
@@ -475,4 +503,4 @@ const resourceSquadSQL = `(SELECT jsonb_build_object('ObservedAt',CASE WHEN o.ob
  FROM resource_observation o CROSS JOIN LATERAL (SELECT count(*) AS n,coalesce(bool_and(source='espn'),true) AS owned
  FROM (SELECT source FROM squad_membership WHERE competition_id=$1 AND season_id=$2 AND team_id=$4 LIMIT 101) facts) actual
  WHERE o.competition_id=$1 AND o.season_id=$2 AND o.source='espn' AND o.resource='squad' AND o.subject=$4
- AND actual.n=o.row_count AND actual.n<=100 AND actual.owned)`
+ AND actual.n=o.row_count AND actual.n<=100 AND actual.owned`

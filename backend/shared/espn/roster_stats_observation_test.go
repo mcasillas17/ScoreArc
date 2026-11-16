@@ -21,7 +21,7 @@ func TestRosterStatisticsRequireValidatedCollections(t *testing.T) {
 		"duplicate measurement":     `{"splits":{"categories":[{"name":"general","stats":[{"name":"appearances","value":1},{"name":"appearances","value":2}]}]}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			raw := []byte(`{"status":"success","team":{"id":"227"},"athletes":[{"id":"p1","fullName":"Measured Player","statistics":` + statistics + `}]}`)
+			raw := []byte(`{"status":"success","team":{"id":"227"},"athletes":[{"id":"123","fullName":"Measured Player","statistics":` + statistics + `}]}`)
 			if _, err := MapRoster(raw); err == nil {
 				t.Fatal("unvalidated statistics would overwrite retained totals and renew their clock")
 			}
@@ -41,7 +41,7 @@ func TestRosterStatisticsDistinguishOmissionFromValidatedNullableValues(t *testi
 		{"nullable measurement", `,"statistics":{"splits":{"categories":[{"name":"general","stats":[{"name":"appearances","value":0},{"name":"totalGoals","value":null}]}]}}`, true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			squad, err := MapRoster([]byte(`{"status":"success","team":{"id":"227"},"athletes":[{"id":"p1","fullName":"Measured Player"` + tc.field + `}]}`))
+			squad, err := MapRoster([]byte(`{"status":"success","team":{"id":"227"},"athletes":[{"id":"123","fullName":"Measured Player"` + tc.field + `}]}`))
 			if err != nil {
 				t.Fatal(err)
 			}

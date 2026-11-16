@@ -24,6 +24,7 @@ func (s *Store) ReplaceSquad(
 	competitionID, seasonID, teamID, source string,
 	members []model.SquadMember,
 	playerIDs map[string]uuid.UUID,
+	editionVerified ...bool,
 ) error {
 	if len(members) == 0 {
 		return ErrEmptyReplacement
@@ -157,7 +158,7 @@ WHERE competition_id=$1 AND season_id=$2 AND team_id=$3
 	); err != nil {
 		return fmt.Errorf("prune squad membership: %w", err)
 	}
-	if err := recordResourceObservation(opCtx, tx, competitionID, seasonID, source, "squad", teamID, len(members)); err != nil {
+	if err := recordResourceObservation(opCtx, tx, competitionID, seasonID, source, "squad", teamID, len(members), editionVerified...); err != nil {
 		return err
 	}
 	if err := tx.Commit(opCtx); err != nil {

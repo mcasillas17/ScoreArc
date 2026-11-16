@@ -101,6 +101,7 @@ function validateEvent(value: unknown, verifyIds = false): { event: Raw; id: str
   }
   if (!Array.isArray(event.competitions) || event.competitions.length !== 1) throw new Error('Malformed scoreboard competition');
   const competition = object(event.competitions[0]);
+  if (verifyIds && competition.id !== undefined && competition.id !== event.id) throw new EspnEditionError('scope_mismatch', 'scoreboard match');
   if (competition.notes != null && (!Array.isArray(competition.notes) || competition.notes.some(note => {
     const value = object(note).text;
     return value != null && typeof value !== 'string';

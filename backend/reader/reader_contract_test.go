@@ -1572,6 +1572,7 @@ func TestReaderContract(t *testing.T) {
 			}
 		}
 		for _, vector := range vectors.Transport.SuccessCache.Reader {
+			at := time.Now().UTC().Add(-time.Minute)
 			state := espn.MatchStateScheduled
 			if vector.Live {
 				state = espn.MatchStateLive
@@ -1579,7 +1580,8 @@ func TestReaderContract(t *testing.T) {
 			match := Match{ID: vectors.Summary.ReaderMatchID, State: state}
 			bracket := []BracketRound{{Slug: "final", Name: "Final", Matches: []espn.BracketMatch{{State: state}}}}
 			app := newTestApp(t, &fakeReaderStore{
-				matches: []Match{match}, standings: []Group{}, topScorers: []espn.TopScorer{},
+				resources: resourceSnapshot{Squad: &collectionEvidence{ObservedAt: &at}},
+				matches:   []Match{match}, standings: []Group{}, topScorers: []espn.TopScorer{},
 				bracket: bracket, summary: &MatchSummary{},
 				teams: map[string]*TeamProfile{"mex-america": {Squad: []SquadPlayer{}}},
 			}, &fakeNewsReader{})

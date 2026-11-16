@@ -3,6 +3,7 @@ import type { DataStore } from './store';
 
 // Larger fields require paged membership and roster reads before onboarding.
 export const MAX_EDITION_TEAMS = 100;
+export const MAX_SQUAD_PLAYERS = 100;
 
 export function matchDerivedMembership(rc: CompetitionSeason) {
   return !supportsResource(rc.season, 'standings') || !!rc.season.computedTables;

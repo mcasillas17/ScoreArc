@@ -47,12 +47,19 @@ func (a *App) handleEditionTeams(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Store) EditionTeams(ctx context.Context, comp, season string, fromMatches bool) ([]model.Team, error) {
-	members := `SELECT DISTINCT team_id FROM standing WHERE competition_id=$1 AND season_id=$2 AND source='espn'`
+	query := `SELECT t.id,t.name,t.abbr,t.crest_url FROM
+ (SELECT DISTINCT team_id FROM standing WHERE competition_id=$1 AND season_id=$2 AND source='espn' LIMIT $3) members
+ JOIN team t ON t.id=members.team_id ORDER BY t.id`
+	args := []any{comp, season, writerstore.MaxEditionTeams + 1}
 	if fromMatches {
-		members = writerstore.EditionMatchTeamsSQL
+		ids, err := writerstore.MatchEditionMembers(ctx, s.db, comp, season)
+		if err != nil {
+			return nil, err
+		}
+		query = `SELECT id,name,abbr,crest_url FROM team WHERE id=ANY($1) ORDER BY id`
+		args = []any{ids}
 	}
-	rows, err := s.db.Query(ctx, `SELECT t.id,t.name,t.abbr,t.crest_url FROM (`+members+` LIMIT $3) members
- JOIN team t ON t.id=members.team_id ORDER BY t.id`, comp, season, writerstore.MaxEditionTeams+1)
+	rows, err := s.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

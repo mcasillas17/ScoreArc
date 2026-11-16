@@ -57,6 +57,22 @@ describe('competitionTeams', () => {
 describe('allTeams', () => {
   beforeEach(() => vi.restoreAllMocks());
 
+  it('limits simultaneous edition reads across the current registry', async () => {
+    let active = 0;
+    let peak = 0;
+    const read = vi.spyOn(dataStore, 'getEditionTeams').mockImplementation(async () => {
+      active++;
+      peak = Math.max(peak, active);
+      await Promise.resolve();
+      active--;
+      return [AMERICA];
+    });
+    const teams = await allTeams();
+    expect(read.mock.calls.length).toBeGreaterThan(4);
+    expect(teams[0].memberships).toHaveLength(read.mock.calls.length);
+    expect(peak).toBeLessThanOrEqual(4);
+  });
+
   // The design decision this whole page rests on: a club is one identity with
   // one page per competition, because its record differs in each. Two entries
   // with the same name would make the reader pick blind.

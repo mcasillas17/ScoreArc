@@ -85,8 +85,8 @@ func TestESPNRosterRejectsImplausiblyShortSuccess(t *testing.T) {
 				Header:     make(http.Header),
 				Body: io.NopCloser(strings.NewReader(`{
 					"status":"success",
-					"team":{"id":"227"},
-					"athletes":[{"id":"p1","fullName":"Only Player"}]
+					"team":{"id":"227"},"league":{"slug":"mex.1"},"season":{"year":2026},
+					"athletes":[{"id":"123","fullName":"Only Player"}]
 				}`)),
 			}, nil
 		})},
@@ -96,7 +96,7 @@ func TestESPNRosterRejectsImplausiblyShortSuccess(t *testing.T) {
 	if _, err := NewESPN(client).Roster(
 		context.Background(),
 		config.Competition{ESPNSlug: "mex.1"},
-		config.Season{},
+		config.Season{ID: "2026"},
 		"227",
 	); err == nil {
 		t.Fatal("expected implausibly short roster to fail")

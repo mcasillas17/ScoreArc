@@ -381,7 +381,7 @@ func run(bootstrap bool, edition string) error {
 				fetch.standingsErr = err
 				fmt.Fprintf(os.Stderr, "warn: standings %s: %v\n", comp.ID, err)
 			}
-			for _, standing := range standings {
+			for _, standing := range standings.Rows {
 				fetch.teams = append(fetch.teams, standing.Team)
 			}
 		}

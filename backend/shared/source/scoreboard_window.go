@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/mcasillas17/scorearc-backend/config"
@@ -105,7 +106,7 @@ func validateScoreboardEnvelope(raw []byte, slug string, strict bool) (scoreboar
 	return envelope, nil
 }
 
-func (e *ESPN) scoreboardWindow(ctx context.Context, comp config.Competition, season config.Season, start, end time.Time) ([]byte, error) {
+func (e *ESPN) scoreboardWindow(ctx context.Context, comp config.Competition, season config.Season, start, end time.Time, fullMembership bool) ([]byte, error) {
 	months, err := scoreboardMonths(start, end)
 	if err != nil {
 		return nil, err
@@ -119,6 +120,7 @@ func (e *ESPN) scoreboardWindow(ctx context.Context, comp config.Competition, se
 	events := make(map[string]json.RawMessage)
 	seen := make(map[string]json.RawMessage)
 	totalBytes := 0
+	strict := fullMembership || RequiresEditionEvidence(comp, season)
 	for _, month := range months {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -128,10 +130,13 @@ func (e *ESPN) scoreboardWindow(ctx context.Context, comp config.Competition, se
 			return nil, fmt.Errorf("scoreboard month %s: %w", month.Format("200601"), err)
 		}
 		totalBytes += len(raw)
+		if fullMembership && len(raw) > 4<<20 {
+			return nil, fmt.Errorf("edition scoreboard partition exceeds 4 MiB")
+		}
 		if totalBytes > maxScoreboardBytes {
 			return nil, fmt.Errorf("scoreboard window exceeds %d bytes", maxScoreboardBytes)
 		}
-		envelope, err := validateScoreboardEnvelope(raw, comp.ESPNSlug, RequiresEditionEvidence(comp, season))
+		envelope, err := validateScoreboardEnvelope(raw, comp.ESPNSlug, strict)
 		if err != nil {
 			return nil, err
 		}
@@ -141,6 +146,11 @@ func (e *ESPN) scoreboardWindow(ctx context.Context, comp config.Competition, se
 		}
 		retained := false
 		for i, match := range matches {
+			if season.MatchDerivedTeams() && season.Supports("teams") {
+				if err := validateMembershipEvent(envelope.Events[i], match, comp.ESPNSlug); err != nil {
+					return nil, err
+				}
+			}
 			at, err := time.Parse(time.RFC3339, match.Kickoff)
 			if err != nil {
 				return nil, err
@@ -159,8 +169,11 @@ func (e *ESPN) scoreboardWindow(ctx context.Context, comp config.Competition, se
 			}
 			retained = true
 			events[match.ID] = envelope.Events[i]
+			if fullMembership && len(events) > 2000 {
+				return nil, fmt.Errorf("edition exceeds 2000 matches")
+			}
 		}
-		if !retained && RequiresEditionEvidence(comp, season) && month.Before(end) && month.AddDate(0, 1, 0).After(start) && !envelope.Leagues[0].Season.matches(year, phaseOf(comp, season), season.ID) {
+		if !retained && strict && month.Before(end) && month.AddDate(0, 1, 0).After(start) && !envelope.Leagues[0].Season.matches(year, phaseOf(comp, season), season.ID) {
 			return nil, fmt.Errorf("empty scoreboard partition for %s/%s lacks edition evidence", comp.ID, season.ID)
 		}
 	}
@@ -179,6 +192,51 @@ func (e *ESPN) scoreboardWindow(ctx context.Context, comp config.Competition, se
 	}
 	out.WriteString(`]}`)
 	return out.Bytes(), nil
+}
+
+func optionalProviderIDMatches(raw json.RawMessage, id string) bool {
+	return len(raw) == 0 || string(raw) == id || string(raw) == strconv.Quote(id)
+}
+
+// The ordinary mapper reads the first competition. An edition crosswalk needs unambiguous identities.
+func validateMembershipEvent(raw json.RawMessage, match espn.Match, slug string) error {
+	var event struct {
+		League       json.RawMessage
+		Competitions []struct {
+			ID          json.RawMessage
+			Competitors []struct {
+				ID       json.RawMessage
+				HomeAway string
+			}
+		}
+	}
+	if err := json.Unmarshal(raw, &event); err != nil {
+		return err
+	}
+	if len(event.Competitions) != 1 || !espn.ValidProviderID(match.ID) ||
+		!optionalProviderIDMatches(event.Competitions[0].ID, match.ID) {
+		return fmt.Errorf("ambiguous scoreboard competition identity for %q", match.ID)
+	}
+	if len(event.League) != 0 {
+		var league struct{ Slug string }
+		if err := json.Unmarshal(event.League, &league); err != nil || league.Slug != slug {
+			return fmt.Errorf("scoreboard event %q league mismatch", match.ID)
+		}
+	}
+	sides := event.Competitions[0].Competitors
+	if len(sides) != 2 || match.Home.ID == match.Away.ID || !espn.ValidProviderID(match.Home.ID) || !espn.ValidProviderID(match.Away.ID) {
+		return fmt.Errorf("ambiguous scoreboard team identities for %q", match.ID)
+	}
+	for _, side := range sides {
+		id := match.Home.ID
+		if side.HomeAway == "away" {
+			id = match.Away.ID
+		}
+		if !optionalProviderIDMatches(side.ID, id) {
+			return fmt.Errorf("scoreboard event %q competitor ID mismatch", match.ID)
+		}
+	}
+	return nil
 }
 
 func validateScoreboardEventEdition(raw json.RawMessage, id string, year int, phase, publicID string) error {

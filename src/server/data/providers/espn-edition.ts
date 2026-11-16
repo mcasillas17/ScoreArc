@@ -152,6 +152,18 @@ export function verifyRosterEdition(raw: unknown, rc: CompetitionSeason, teamId:
   const doc = verifyLeague(raw, rc);
   if (doc.status !== 'success' || !object(doc.team) || !matchesId(doc.team.id, teamId)) throw new EspnEditionError('scope_mismatch', 'roster');
   requireSeason(doc.season, rc.season);
+  const label = object(doc.season) ? doc.season.displayName : undefined;
+  if (label !== undefined) {
+    const year = providerYear(rc.season);
+    const nextYear = String(year + 1).slice(-2);
+    const name = (rc.competition.espnRosterName ?? rc.competition.name).toLowerCase();
+    if (typeof label !== 'string' || ![`${year} ${name}`, `${year}-${nextYear} ${name}`].includes(label.trim().toLowerCase())) {
+      throw new EspnEditionError('scope_mismatch', 'roster competition');
+    }
+  } else if (!object(doc.league) || (doc.league.slug !== rc.competition.espnSlug &&
+      !(rc.competition.espnScoreboardId && matchesId(doc.league.id, rc.competition.espnScoreboardId)))) {
+    throw new EspnEditionError('scope_unverified', 'roster competition');
+  }
   const rows = completeCollection(doc, 'athletes');
   if (!rows.some(row => object(row) && 'items' in row)) return rows.length;
   return rows.reduce<number>((count, group) => {

@@ -39,6 +39,7 @@ type Competition struct {
 	ShortName        string            `json:"shortName"`
 	ESPNSlug         string            `json:"espnSlug"`
 	ESPNLeagueID     string            `json:"espnLeagueId,omitempty"`
+	ESPNRosterName   string            `json:"espnRosterName,omitempty"`
 	ESPNScoreboardID string            `json:"espnScoreboardId,omitempty"`
 	Kind             string            `json:"kind"`
 	DirectoryGroup   string            `json:"directoryGroup"`

@@ -489,7 +489,8 @@ func TestTeamUnknownCompetitionIs400(t *testing.T) {
 // must serialise as "stats": null, never as a block of zeroes, which would
 // assert they played and did nothing.
 func TestTeamSerialisesUnmeasuredPlayerAsNullStats(t *testing.T) {
-	store := &fakeReaderStore{teams: map[string]*TeamProfile{"arg": {
+	at := time.Now().UTC().Add(-time.Minute)
+	store := &fakeReaderStore{resources: resourceSnapshot{Squad: &collectionEvidence{ObservedAt: &at, RowCount: 1}}, teams: map[string]*TeamProfile{"arg": {
 		Team: espn.Team{ID: "arg", Name: "Argentina", Abbr: "ARG"},
 		Squad: []SquadPlayer{
 			{ID: "p1", Name: "Unplayed", Position: "D"},

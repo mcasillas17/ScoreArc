@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,20 +28,26 @@ func RequiresEditionEvidence(c config.Competition, s config.Season) bool {
 }
 
 type editionSeason struct {
-	Year       int
-	Name, Slug string
-	Type       json.RawMessage
+	DisplayName json.RawMessage
+	Year        int
+	Name, Slug  string
+	Type        json.RawMessage
 }
 
 func phaseOf(c config.Competition, s config.Season) string {
+	if RequiresEditionEvidence(c, s) {
+		return collectionPhase(s)
+	}
+	return ""
+}
+
+func collectionPhase(s config.Season) string {
 	if s.Phase != "" {
 		return s.Phase
 	}
-	if RequiresEditionEvidence(c, s) {
-		for _, phase := range []string{"apertura", "clausura"} {
-			if strings.HasSuffix(s.ID, "-"+phase) {
-				return phase
-			}
+	for _, phase := range []string{"apertura", "clausura"} {
+		if strings.HasSuffix(s.ID, "-"+phase) {
+			return phase
 		}
 	}
 	return ""
@@ -92,13 +100,17 @@ type providerScope struct {
 	ID     json.RawMessage
 	UID    string
 	League struct {
-		Slug string
+		Slug json.RawMessage
 		ID   json.RawMessage
 	}
 	Children []struct {
 		Standings struct {
-			Season     int
+			Season     json.RawMessage
 			SeasonType json.RawMessage
+			Links      []struct {
+				Rel  []string
+				Href string
+			}
 		}
 	}
 	Seasons []struct {
@@ -111,54 +123,96 @@ type providerScope struct {
 	Season editionSeason
 }
 
-func (doc providerScope) standingsPhase(s config.Season, year int, phase string) bool {
-	if doc.Season.Year != year {
-		return false
+func (doc providerScope) verifyLeague(c config.Competition) error {
+	if len(doc.League.Slug) > 0 && string(doc.League.Slug) != strconv.Quote(c.ESPNSlug) {
+		return fmt.Errorf("league slug mismatch for %s", c.ID)
 	}
-	if phase == "" {
-		return true
+	if len(doc.League.ID) > 0 && c.ESPNScoreboardID != "" && strings.Trim(string(doc.League.ID), "\"") != c.ESPNScoreboardID {
+		return fmt.Errorf("league ID mismatch for %s", c.ID)
 	}
-	verified, conflicts := doc.Season.phaseEvidence(phase, s.ID)
-	if conflicts {
-		return false
+	return nil
+}
+
+func standingsEdition(raw []byte, c config.Competition, s config.Season, year int) (bool, error) {
+	var doc providerScope
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return false, err
 	}
-	// A phase listed in the season index belongs to a table only when that table explicitly selects it.
-	if !verified && len(doc.Children) == 0 {
-		return false
+	if err := doc.verifyLeague(c); err != nil {
+		return false, err
+	}
+	if doc.Season.Year != 0 && doc.Season.Year != year {
+		return false, fmt.Errorf("standings season %d does not match %d", doc.Season.Year, year)
+	}
+	strict := RequiresEditionEvidence(c, s) || c.ESPNLeagueID != ""
+	if strict && (c.ESPNLeagueID == "" || strings.Trim(string(doc.ID), "\"") != c.ESPNLeagueID) {
+		return false, fmt.Errorf("standings league not verified for %s", c.ID)
+	}
+	if c.ESPNScoreboardID != "" && doc.UID != "s:600~l:"+c.ESPNScoreboardID {
+		return false, fmt.Errorf("standings league UID not verified for %s", c.ID)
+	}
+
+	phase := collectionPhase(s)
+	topPhase, conflict := doc.Season.phaseEvidence(phase, s.ID)
+	if conflict {
+		return false, fmt.Errorf("standings phase conflicts with %s", s.ID)
+	}
+	verified := doc.Season.Year == year
+	if len(doc.Children) == 0 {
+		verified = verified && (strict || len(doc.League.Slug) > 0) && (phase == "" || topPhase)
 	}
 	for _, child := range doc.Children {
 		table := child.Standings
-		if len(table.SeasonType) == 0 {
-			if !verified {
-				return false
+		tableYearMatches := string(table.Season) == strconv.Itoa(year)
+		if len(table.Season) != 0 && !tableYearMatches {
+			return false, fmt.Errorf("standings contain a different season")
+		}
+		if !strict {
+			matched := len(doc.League.Slug) > 0
+			for _, link := range table.Links {
+				if !slices.Contains(link.Rel, "standings") {
+					continue
+				}
+				if link.Href != "https://www.espn.com/soccer/table/_/league/"+c.ESPNSlug {
+					return false, fmt.Errorf("standings link does not match %s", c.ESPNSlug)
+				}
+				matched = true
 			}
+			verified = verified && matched
+		}
+		if phase == "" {
 			continue
 		}
-		if table.Season != year {
-			return false
+		if len(table.SeasonType) == 0 {
+			verified = verified && topPhase
+			continue
 		}
 		selected := strings.Trim(string(table.SeasonType), "\"")
-		count := 0
+		yearIndexes, selectedTypes := 0, 0
 		for _, edition := range doc.Seasons {
 			if edition.Year != year {
 				continue
 			}
-			for _, option := range edition.Types {
-				if selected == "" || strings.Trim(string(option.ID), "\"") != selected {
+			yearIndexes++
+			for _, opt := range edition.Types {
+				if selected == "" || selected != strings.Trim(string(opt.ID), "\"") {
 					continue
 				}
-				count++
-				label := editionSeason{Year: year, Name: option.Name, Slug: option.Slug}
-				if !label.matches(year, phase, s.ID) {
-					return false
+				selectedTypes++
+				kind := editionSeason{Name: opt.Name, Slug: opt.Slug}
+				match, conflict := kind.phaseEvidence(phase, s.ID)
+				if conflict {
+					return false, fmt.Errorf("standings table phase conflicts with %s", s.ID)
 				}
+				verified = verified && match
 			}
 		}
-		if count != 1 {
-			return false
-		}
+		verified = verified && yearIndexes == 1 && selectedTypes == 1 && tableYearMatches
 	}
-	return true
+	if strict && !verified {
+		return false, fmt.Errorf("standings edition unverified for %s/%s", c.ID, s.ID)
+	}
+	return verified, nil
 }
 
 func validateEditionResource(raw []byte, c config.Competition, s config.Season, year int, resource string) error {
@@ -166,31 +220,30 @@ func validateEditionResource(raw []byte, c config.Competition, s config.Season, 
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return err
 	}
-	if doc.League.Slug != "" && doc.League.Slug != c.ESPNSlug {
-		return fmt.Errorf("%s league slug mismatch", resource)
+	if err := doc.verifyLeague(c); err != nil {
+		return err
 	}
-	if len(doc.League.ID) > 0 && c.ESPNScoreboardID != "" && strings.Trim(string(doc.League.ID), "\"") != c.ESPNScoreboardID {
-		return fmt.Errorf("%s league id mismatch", resource)
-	}
-	if resource == "standings" {
-		for _, child := range doc.Children {
-			if child.Standings.Season != 0 && child.Standings.Season != year {
-				return fmt.Errorf("standings contain a different season")
+	phase := phaseOf(c, s)
+	if resource == "squad" {
+		phase = collectionPhase(s)
+		if len(doc.Season.DisplayName) > 0 {
+			var label string
+			name := c.ESPNRosterName
+			if name == "" {
+				name = c.Name
 			}
+			if err := json.Unmarshal(doc.Season.DisplayName, &label); err != nil || name == "" ||
+				!(strings.EqualFold(strings.TrimSpace(label), fmt.Sprintf("%d %s", year, name)) ||
+					strings.EqualFold(strings.TrimSpace(label), fmt.Sprintf("%d-%02d %s", year, (year+1)%100, name))) {
+				return fmt.Errorf("roster competition label does not match %s", c.ID)
+			}
+		} else if len(doc.League.Slug) == 0 && (c.ESPNScoreboardID == "" || len(doc.League.ID) == 0) {
+			return fmt.Errorf("roster league not verified for %s", c.ID)
 		}
-
-		id := strings.Trim(string(doc.ID), "\"")
-		if c.ESPNLeagueID == "" || id != c.ESPNLeagueID || (c.ESPNScoreboardID != "" && doc.UID != "s:600~l:"+c.ESPNScoreboardID) {
-			return fmt.Errorf("standings league not verified for %s", c.ID)
-		}
-		if !doc.standingsPhase(s, year, phaseOf(c, s)) {
-			return fmt.Errorf("standings phase unverified for %s/%s", c.ID, s.ID)
-		}
-		return nil
-	} else if resource != "squad" && doc.League.Slug != c.ESPNSlug {
+	} else if len(doc.League.Slug) == 0 {
 		return fmt.Errorf("%s league not verified for %s", resource, c.ID)
 	}
-	if !doc.Season.matches(year, phaseOf(c, s), s.ID) {
+	if !doc.Season.matches(year, phase, s.ID) {
 		return fmt.Errorf("%s season not verified for %s/%s", resource, c.ID, s.ID)
 	}
 	return nil

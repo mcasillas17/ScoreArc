@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -555,7 +556,7 @@ func (s *Store) Team(
 	var colour, altColour, tableName *string
 	var rank, played, wins, draws, losses, points, goalDifference *int
 
-	err := s.readTeamIdentity(ctx, teamProfileSQL, []any{teamID, competition, season, visibleEntityScopes(ctx), canRead(ctx, "standings")},
+	err := s.readTeamIdentity(ctx, teamID, competition, season, asOf, teamProfileSQL, []any{canRead(ctx, "standings")},
 		&profile.Team.ID, &profile.Team.Name, &profile.Team.Abbr, &profile.Team.CrestURL,
 		&colour, &altColour, &profile.Location,
 		&rank, &played, &wins, &draws, &losses, &points, &goalDifference, &tableName,
@@ -645,12 +646,37 @@ func (s *Store) child(ctx context.Context, read func(*Store) error) error {
 
 // Most requests name a match or standings participant in the requested edition.
 // That proof remains available even when the optional squad read is degraded.
-func (s *Store) readTeamIdentity(ctx context.Context, query string, args []any, dest ...any) error {
+func (s *Store) readTeamIdentity(ctx context.Context, teamID, comp, season string, asOf time.Time, query string, extra []any, dest ...any) error {
+	args := append([]any{teamID, comp, season, visibleEntityScopes(ctx)}, extra...)
 	if policy, ok := ctx.Value(editionPolicyKey{}).(editionPolicy); ok && policy.edition.MatchDerivedTeams() && policy.edition.Supports("teams") {
-		// This identity is edition-scoped even when another published competition knows the club.
-		members := strings.NewReplacer("$1", "$2", "$2", "$3").Replace(writerstore.EditionMatchTeamsSQL)
-		predicate := "($2::text||'/'||$3::text)=ANY($4::text[]) AND t.id IN (" + members + ")"
-		return s.db.QueryRow(ctx, strings.Replace(query, "{{teamVisibility}}", predicate, 1), args...).Scan(dest...)
+		members, err := writerstore.MatchEditionMembers(ctx, s.db, comp, season)
+		if err != nil {
+			return err
+		}
+		if !slices.Contains(members, teamID) {
+			// An incomplete or expired field cannot prove the visitor's club is absent.
+			scope := resourceScope{
+				freshnessScope:  freshnessScope{Competition: comp, Season: season},
+				Route:           "editionTeams",
+				MatchMembership: true,
+				MemberCount:     len(members),
+				Degraded:        map[string]bool{"participation": !policy.edition.Supports("participation")},
+			}
+			proof, err := s.Resources(ctx, scope)
+			if err != nil {
+				return err
+			}
+			metadata, _, err := editionResourceMap(asOf, policy.edition, scope, proof)
+			if err != nil {
+				return err
+			}
+			field := metadata.Resources["editionTeams"]
+			if (field.Availability != "complete" && field.Availability != "empty") || (field.Status != "fresh" && field.Status != "empty" && field.Status != "dormant") {
+				return errors.New("edition membership unavailable")
+			}
+			return pgx.ErrNoRows
+		}
+		return s.db.QueryRow(ctx, strings.Replace(query, "{{teamVisibility}}", "($2::text||'/'||$3::text)=ANY($4::text[])", 1), args...).Scan(dest...)
 	}
 	const participant = `($2::text||'/'||$3::text)=ANY($4::text[]) AND
  (EXISTS(SELECT 1 FROM match m WHERE m.competition_id=$2 AND m.season_id=$3 AND (m.home_team_id=t.id OR m.away_team_id=t.id))
@@ -668,7 +694,7 @@ func (s *Store) readTeamIdentity(ctx context.Context, query string, args []any, 
 // the profile or matches. ErrNotFound for a team we do not hold.
 func (s *Store) Squad(ctx context.Context, teamID, competition, season string, asOf time.Time) ([]SquadPlayer, error) {
 	var known bool
-	err := s.readTeamIdentity(ctx, `SELECT true FROM team t WHERE t.id=$1 AND {{teamVisibility}}`, []any{teamID, competition, season, visibleEntityScopes(ctx)}, &known)
+	err := s.readTeamIdentity(ctx, teamID, competition, season, asOf, `SELECT true FROM team t WHERE t.id=$1 AND {{teamVisibility}}`, nil, &known)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}

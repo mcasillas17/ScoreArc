@@ -418,11 +418,14 @@ func (a *App) handleTeam(writer http.ResponseWriter, request *http.Request) {
 			}
 		}
 	}
-	if !a.attachResources(writer, request, reader, finish, resourceScope{freshnessScope: freshnessScope{Competition: competition, Season: season, TeamID: teamID}, Route: "team", Degraded: degraded}) {
+	resources, ok := a.attachResourceEvidence(writer, request, reader, finish, resourceScope{freshnessScope: freshnessScope{Competition: competition, Season: season, TeamID: teamID}, Route: "team", Degraded: degraded})
+	if !ok {
 		return
 	}
-	if len(profile.failures) > 0 {
-		// A transient child failure must not be cached as the team's state.
+	if resources.withholdRoster {
+		profile.Squad = []SquadPlayer{}
+	}
+	if len(profile.failures) > 0 || resources.withholdRoster {
 		writer.Header().Set("Cache-Control", "no-store")
 	} else {
 		cacheFor(writer, 120)
@@ -485,8 +488,13 @@ func (a *App) handleSquad(writer http.ResponseWriter, request *http.Request) {
 	if err != nil {
 		degraded["squad"], degraded["seasonStats"] = true, true
 	}
-	if !a.attachResources(writer, request, reader, finish, resourceScope{freshnessScope: freshnessScope{Competition: competition, Season: season, TeamID: teamID}, Route: "squad", Degraded: degraded}) {
+	resources, ok := a.attachResourceEvidence(writer, request, reader, finish, resourceScope{freshnessScope: freshnessScope{Competition: competition, Season: season, TeamID: teamID}, Route: "squad", Degraded: degraded})
+	if !ok {
 		return
+	}
+	if resources.withholdRoster {
+		squad = []SquadPlayer{}
+		writer.Header().Set("Cache-Control", "no-store")
 	}
 	writeJSON(writer, http.StatusOK, squad)
 }

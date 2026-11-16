@@ -25,9 +25,9 @@ func TestRosterExplicitEmptyObservationStillRequiresCompleteMatchingTeam(t *test
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			client := espn.NewWithOptions(espn.Options{MaxAttempts: 1, HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(tc.raw))}, nil
+				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(strings.Replace(tc.raw, `"status":"success"`, `"status":"success","league":{"slug":"mex.1"},"season":{"year":2026,"name":"Torneo Apertura"}`, 1)))}, nil
 			})}})
-			got, err := NewESPN(client).Roster(context.Background(), config.Competition{ESPNSlug: "mex.1"}, config.Season{}, "227")
+			got, err := NewESPN(client).Roster(context.Background(), config.Competition{ESPNSlug: "mex.1"}, config.Season{ID: "2026-apertura"}, "227")
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("squad=%+v err=%v", got, err)
 			}
@@ -85,7 +85,8 @@ func TestKnockoutSquadVerifiesEdition(t *testing.T) {
 		{`"season":{"year":2025}`, false},
 		{`"season":{}`, false},
 		{`"league":{"slug":"other.cup"},"season":{"year":2026}`, false},
-		{`"season":{"year":2026}`, true},
+		{`"season":{"year":2026}`, false},
+		{`"league":{"slug":"test.cup"},"season":{"year":2026}`, true},
 	} {
 		client := espn.NewWithOptions(espn.Options{MaxAttempts: 1, HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"status":"success","team":{"id":"227"},"athletes":[],` + tc.meta + `}`))}, nil

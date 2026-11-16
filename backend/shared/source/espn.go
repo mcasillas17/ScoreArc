@@ -141,7 +141,7 @@ func (e *ESPN) Scoreboard(
 		}
 	}
 	e.mu.Unlock()
-	raw, err := e.scoreboardWindow(ctx, comp, season, start, end)
+	raw, err := e.scoreboardWindow(ctx, comp, season, start, end, backfill && season.MatchDerivedTeams() && season.Supports("teams"))
 	var partial *PartialScoreboardError
 	var fallback scoreboardEnvelope
 	if err != nil {
@@ -183,6 +183,11 @@ func (e *ESPN) Scoreboard(
 		seen := make(map[string]json.RawMessage)
 		unique := make([]model.Match, 0, len(matches))
 		for i, match := range matches {
+			if season.MatchDerivedTeams() && season.Supports("teams") {
+				if err := validateMembershipEvent(fallback.Events[i], match, comp.ESPNSlug); err != nil {
+					return nil, errors.Join(partial.Err, err)
+				}
+			}
 			added, err := mergeScoreboardEvent(seen, match.ID, fallback.Events[i])
 			if err == nil {
 				err = validateScoreboardEventEdition(fallback.Events[i], match.ID, year, phaseOf(comp, season), season.ID)
@@ -225,7 +230,7 @@ func (e *ESPN) Summary(ctx context.Context, comp config.Competition, season conf
 	if err != nil {
 		return SummaryResult{}, err
 	}
-	if RequiresEditionEvidence(comp, season) {
+	if RequiresEditionEvidence(comp, season) || (season.MatchDerivedTeams() && season.Supports("teams")) {
 		year, err := providerYear(season)
 		if err != nil {
 			return SummaryResult{}, err
@@ -256,7 +261,7 @@ func (e *ESPN) RecoverMatch(
 	if err != nil {
 		return model.Match{}, SummaryResult{}, fmt.Errorf("recover match %s: %w", match.ID, err)
 	}
-	if RequiresEditionEvidence(comp, season) {
+	if RequiresEditionEvidence(comp, season) || (season.MatchDerivedTeams() && season.Supports("teams")) {
 		if err := validateSummaryEdition(raw, comp, season, expectedYear); err != nil {
 			return model.Match{}, SummaryResult{}, err
 		}
@@ -335,27 +340,28 @@ func mapSummary(raw []byte, match model.Match, season config.Season) (SummaryRes
 	return result, nil
 }
 
-func (e *ESPN) Standings(ctx context.Context, comp config.Competition, season config.Season) ([]model.Standing, error) {
-	expectedYear, err := providerYear(season)
+func (e *ESPN) Standings(ctx context.Context, comp config.Competition, season config.Season) (StandingResult, error) {
+	year, err := providerYear(season)
 	if err != nil {
-		return nil, err
+		return StandingResult{}, err
 	}
-	raw, err := e.get(ctx, espn.StandingsURL(comp.ESPNSlug, expectedYear))
+	raw, err := e.get(ctx, espn.StandingsURL(comp.ESPNSlug, year))
 	if err != nil {
-		return nil, err
+		return StandingResult{}, err
 	}
-	if RequiresEditionEvidence(comp, season) {
-		if err := validateEditionResource(raw, comp, season, expectedYear, "standings"); err != nil {
-			return nil, err
-		}
+	verified, err := standingsEdition(raw, comp, season, year)
+	if err != nil {
+		return StandingResult{}, err
 	}
-	if err := espn.ValidateStandingsSeason(raw, expectedYear); err != nil {
-		return nil, err
-	}
+	mapRows := espn.MapStandings
 	if season.PlayoffFormat != "" {
-		return espn.MapRankedStandings(raw)
+		mapRows = espn.MapRankedStandings
 	}
-	return espn.MapStandings(raw)
+	rows, err := mapRows(raw)
+	if err != nil {
+		return StandingResult{}, err
+	}
+	return StandingResult{Rows: rows, EditionVerified: verified}, nil
 }
 
 // Statistics returns the raw season response so one fetch can feed every
@@ -393,14 +399,12 @@ func (e *ESPN) Roster(
 	if err != nil {
 		return model.Squad{}, err
 	}
-	if season.MatchDerivedTeams() {
-		year, err := providerYear(season)
-		if err != nil {
-			return model.Squad{}, err
-		}
-		if err := validateEditionResource(raw, comp, season, year, "squad"); err != nil {
-			return model.Squad{}, err
-		}
+	year, err := providerYear(season)
+	if err != nil {
+		return model.Squad{}, err
+	}
+	if err := validateEditionResource(raw, comp, season, year, "squad"); err != nil {
+		return model.Squad{}, err
 	}
 	squad, err := espn.MapRoster(raw)
 	if err != nil {
@@ -613,7 +617,7 @@ func (e *ESPN) Bracket(
 			end = last
 		}
 	}
-	raw, err := e.scoreboardWindow(ctx, comp, season, start, end)
+	raw, err := e.scoreboardWindow(ctx, comp, season, start, end, false)
 	if err != nil {
 		return nil, err
 	}

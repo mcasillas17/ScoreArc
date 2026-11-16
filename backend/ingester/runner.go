@@ -300,6 +300,7 @@ func (r *runner) ingestCompSeason(
 ) (result competitionResult) {
 	scoreboardStart := r.clock()
 	pollOutcome, pollCount := "failed", 0
+	var scoreboard []model.Match
 	defer func() {
 		if errors.Is(ctx.Err(), context.Canceled) {
 			return
@@ -307,7 +308,7 @@ func (r *runner) ingestCompSeason(
 		recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 		defer cancel()
 		if backfill && season.MatchDerivedTeams() && season.Supports("teams") {
-			if err := r.repo.RecordMatchPoll(recordCtx, comp.ID, season.ID, store.SeasonScoreboardPoll, scoreboardStart, pollOutcome, pollCount); err != nil {
+			if err := r.repo.RecordSeasonDiscovery(recordCtx, comp.ID, season.ID, scoreboardStart, pollOutcome, scoreboard); err != nil {
 				result.backfillDone = false
 				result.err = errors.Join(result.err, fmt.Errorf("record edition discovery: %w", err))
 			}
@@ -317,7 +318,8 @@ func (r *runner) ingestCompSeason(
 			result.err = errors.Join(result.err, fmt.Errorf("record match poll: %w", err))
 		}
 	}()
-	scoreboard, scoreboardErr := r.source.Scoreboard(ctx, comp, season, backfill)
+	var scoreboardErr error
+	scoreboard, scoreboardErr = r.source.Scoreboard(ctx, comp, season, backfill)
 	if scoreboardErr != nil {
 		r.recordRun(ctx, comp.ID, "scoreboard_fetch", scoreboardStart, scoreboardErr)
 		if !slowTick && !source.IsPartialScoreboard(scoreboardErr) {
@@ -668,7 +670,8 @@ func (r *runner) refreshStandings(
 		}
 		return err
 	}
-	rows, err := r.source.Standings(ctx, comp, season)
+	collection, err := r.source.Standings(ctx, comp, season)
+	rows := collection.Rows
 	teamIDs := make(map[string]string, len(rows))
 	if err == nil {
 		for _, row := range rows {
@@ -690,12 +693,12 @@ func (r *runner) refreshStandings(
 		scope := standingsScope(comp.ID, season.ID)
 		digest := standingsFingerprint(sourceESPN, rows, teamIDs)
 		if len(rows) == 0 || r.contentUnchanged(scope, len(rows), digest) {
-			err = r.repo.RecordResourceObservation(ctx, comp.ID, season.ID, sourceESPN, "standings", "", len(rows))
+			err = r.repo.RecordResourceObservation(ctx, comp.ID, season.ID, sourceESPN, "standings", "", len(rows), collection.EditionVerified)
 			r.log.Debug("standings unchanged; replacement skipped",
 				"comp", comp.ID, "season", season.ID, "rows", len(rows))
 		} else {
 			err = r.repo.ReplaceStandings(
-				ctx, comp.ID, season.ID, sourceESPN, rows, teamIDs)
+				ctx, comp.ID, season.ID, sourceESPN, rows, teamIDs, collection.EditionVerified)
 			if err == nil {
 				// Only after the transaction committed. A rejected or failed
 				// replacement must leave the memo on the row set that really is
@@ -737,7 +740,7 @@ func (r *runner) refreshStandings(
 		return nil
 	}
 	snapshotErr := r.snapshotStandings(ctx, comp, season, rows, teamIDs, tableChanged)
-	if !slowTick || !season.Supports("squad") || season.MatchDerivedTeams() {
+	if !slowTick || !season.Supports("squad") || season.MatchDerivedTeams() || !collection.EditionVerified {
 		return snapshotErr
 	}
 	return errors.Join(snapshotErr, r.refreshSquads(ctx, comp, season, teamIDs))

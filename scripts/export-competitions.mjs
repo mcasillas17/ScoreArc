@@ -9,6 +9,7 @@ const out = listCompetitionDefinitions().map((c) => ({
   shortName: c.shortName,
   espnSlug: c.espnSlug,
   espnLeagueId: c.espnLeagueId,
+  espnRosterName: c.espnRosterName,
   espnScoreboardId: c.espnScoreboardId,
   kind: c.kind,
   category: c.category,

@@ -14,7 +14,7 @@ type resourceObservationCall struct {
 	count                                   int
 }
 
-func (f *fakeRepository) RecordResourceObservation(_ context.Context, comp, season, source, resource, subject string, count int) error {
+func (f *fakeRepository) RecordResourceObservation(_ context.Context, comp, season, source, resource, subject string, count int, _ ...bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.resourceObservations = append(f.resourceObservations, resourceObservationCall{comp, season, source, resource, subject, count})

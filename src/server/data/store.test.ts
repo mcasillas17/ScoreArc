@@ -636,7 +636,8 @@ it('rejects a Femenil group with an unresolved explicit type even if the top-lev
 });
 
 it('keeps unscoped team table claims out of strict editions while retaining team identity and current squad', async () => {
-  const rc = resolveSeason('nwsl')!;
+  const mx = resolveSeason('liga-mx')!;
+  const rc = { ...mx, season: { ...mx.season, providerYear: 2026 } };
   const store = createDataStore({ cache: new TtlCache<unknown>(), fetchJson: async url => url.includes('/roster') ? teamRosterRaw : teamProfileRaw });
   const profile = await store.getTeam(rc, '227');
   expect(profile?.team.id).toBe('227');
@@ -673,7 +674,7 @@ describe('verified edition teams', () => {
   const events = ['2026-02-01T19:00Z', '2026-10-08T19:00Z', '2026-10-09T19:00Z'].map((date, i) => {
     const event = structuredClone(sb.events[0]);
     event.date = date;
-    event.id = String(100 + i);
+    event.competitions[0].id = event.id = String(100 + i);
     const side = event.competitions[0].competitors[1];
     if (i === 1) {
       side.id = side.team.id = '481';
@@ -731,6 +732,7 @@ describe('verified edition teams', () => {
     for (const invalid of [
       { ...event, competitions: [{ competitors: [home] }] },
       { ...event, competitions: [{ competitors: [home, { ...event.competitions[0].competitors[1], id: '205' }] }] },
+      { ...event, competitions: [{ ...event.competitions[0], id: '987654' }] },
       { ...event, id: 'unidentified' },
       { ...event, league: { slug: 'other.cup' } },
       { ...event, season: { ...event.season, year: 2025 } },
@@ -761,7 +763,7 @@ describe('verified edition teams', () => {
   it('rejects an edition larger than the team bound before dropping uncurated clubs', async () => {
     const events = Array.from({ length: 100 }, (_, i) => {
       const event = structuredClone(sb.events[0]);
-      event.id = String(9000 + i);
+      event.competitions[0].id = event.id = String(9000 + i);
       const away = event.competitions[0].competitors[1];
       away.id = away.team.id = String(900000 + i);
       away.team.displayName = 'New club ' + i;
@@ -783,6 +785,68 @@ describe('verified edition teams', () => {
     const archive = resolveSeason('world-cup', '2022')!;
     await store.getStandings(archive);
     await expect(store.getEditionTeams(archive)).rejects.toThrow();
+  });
+  it('retries an all-uncurated match collection when a public entrant becomes identifiable', async () => {
+    const event = structuredClone(events[0]);
+    const sides = event.competitions[0].competitors;
+    for (const [i, side] of sides.entries()) side.id = side.team.id = String(99000000 + i);
+    const store = createDataStore({ cache: new TtlCache(), fetchJson: async url => ({
+      leagues: board('').leagues, events: url.includes('dates=202602') ? [event] : [],
+    }) });
+    await expect(store.getEditionTeams(cup)).rejects.toThrow();
+    sides[0].id = sides[0].team.id = '205';
+    expect((await store.getEditionTeams(cup)).map(team => team.id)).toEqual(['205']);
+  });
+  it('rejects the same club’s domestic roster on both cup entry points', async () => {
+    const event = structuredClone(lcFixture.events[0]);
+    const side = event.competitions[0].competitors[0];
+    side.id = side.team.id = '227';
+    const cupSeason = { year: 2026, displayName: '2026 Leagues Cup', type: 14115, name: 'Final' };
+    const accepted = { status: 'success', season: cupSeason, team: { id: '227' },
+      athletes: [{ id: '49306', displayName: 'Fernando Tapia' }] };
+    for (const [roster, expectedPlayers] of [
+      [teamRosterRaw, 0],
+      [{ ...teamRosterRaw, league: { slug: lc.competition.espnSlug } }, 0],
+      [{ ...accepted, season: { year: 2026, name: 'Final' } }, 0],
+      [{ ...accepted, season: { ...cupSeason, displayName: '2025 Leagues Cup' } }, 0],
+      [accepted, 1],
+    ] as const) {
+      const store = createDataStore({ cache: new TtlCache(), fetchJson: async url => {
+        if (url.includes('/scoreboard')) return { leagues: [{ slug: lc.competition.espnSlug, season: { year: 2026 } }],
+          events: url.includes('dates=' + event.date.slice(0, 7).replace('-', '')) ? [event] : [] };
+        if (url.endsWith('/roster')) return roster;
+        if (url.includes('/schedule')) return null;
+        return teamProfileRaw;
+      } });
+      expect(await store.getSquad(lc, '227')).toHaveLength(expectedPlayers);
+      expect((await store.getTeam(lc, '227'))?.squad).toHaveLength(expectedPlayers);
+    }
+  });
+  it('retries a roster that exceeded the 100-athlete wire limit, including grouped pages', async () => {
+    const rc = resolveSeason('liga-mx')!;
+    const rows = Array.from({ length: 101 }, (_, i) => ({ id: String(i + 1), displayName: 'Player ' + i }));
+    for (const athletes of [rows, [{ items: rows.slice(0, 60) }, { items: rows.slice(60) }]]) {
+      let roster: unknown = { ...teamRosterRaw, athletes };
+      const store = createDataStore({ cache: new TtlCache(), fetchJson: async url => url.endsWith('/roster') ? roster : teamProfileRaw });
+      expect(await store.getSquad(rc, '227')).toEqual([]);
+      expect((await store.getTeam(rc, '227'))?.squad).toEqual([]);
+      roster = teamRosterRaw;
+      expect(await store.getSquad(rc, '227')).toHaveLength(35);
+      expect((await store.getTeam(rc, '227'))?.squad).toHaveLength(35);
+    }
+  });
+  it('rejects one invalid athlete identity in a complete roster and retries on the next read', async () => {
+    const rc = resolveSeason('liga-mx')!;
+    for (const invalid of [
+      { id: '1'.repeat(33) }, { id: 'unknown' },
+      { id: teamRosterRaw.athletes[1].id }, { displayName: '   ', fullName: ' ' },
+    ]) {
+      let roster = { ...teamRosterRaw, athletes: [{ ...teamRosterRaw.athletes[0], ...invalid }, ...teamRosterRaw.athletes.slice(1)] };
+      const store = createDataStore({ cache: new TtlCache(), fetchJson: async () => roster });
+      expect(await store.getSquad(rc, '227')).toHaveLength(0);
+      roster = teamRosterRaw;
+      expect(await store.getSquad(rc, '227')).toHaveLength(35);
+    }
   });
   it('only uses a roster with the selected club, year, phase and complete collection', async () => {
     const rc = resolveSeason('liga-mx')!;
