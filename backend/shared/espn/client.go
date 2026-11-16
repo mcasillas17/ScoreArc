@@ -183,6 +183,12 @@ func (c *Client) getJSONOnce(ctx context.Context, url string, out any) (time.Dur
 			&HTTPStatusError{URL: url, StatusCode: res.StatusCode, Body: validUTF8Prefix(body, 200)}
 	}
 
+	// Scoreboard window limits count the full response, including outer whitespace.
+	// RawMessage.UnmarshalJSON receives only the JSON value.
+	if raw, ok := out.(*json.RawMessage); ok && raw != nil && json.Valid(body) {
+		*raw = body
+		return 0, false, nil
+	}
 	if err := json.Unmarshal(body, out); err != nil {
 		return 0, false, err
 	}

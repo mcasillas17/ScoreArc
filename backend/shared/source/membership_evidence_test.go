@@ -91,6 +91,7 @@ func TestLeaguesCupFullDiscoveryEvidence(t *testing.T) {
 		{"no year on intersecting empty month", envelope(explicit), monthEnvelope(comp.ESPNSlug), false},
 		{"truncated", strings.Replace(envelope(explicit), `"events"`, `"hasMore":true,"events"`, 1), envelope(""), false},
 		{"oversized partition", strings.Replace(envelope(explicit), `"events"`, `"padding":"`+strings.Repeat("x", 4<<20)+`","events"`, 1), envelope(""), false},
+		{"oversized body with trailing whitespace", envelope(explicit) + strings.Repeat(" ", 4<<20), envelope(""), false},
 		{"different competition id", envelope(strings.Replace(explicit, `"competitions":[{"id":"123"`, `"competitions":[{"id":"999"`, 1)), envelope(""), false},
 		{"two competition objects", envelope(strings.Replace(explicit, `]}]}`, `]},{}]}`, 1)), envelope(""), false},
 		{"different competitor id", envelope(strings.Replace(explicit, `"id":"96","homeAway"`, `"id":"95","homeAway"`, 1)), envelope(""), false},
