@@ -283,7 +283,7 @@ func (r *runner) processMatches(
 				if targetedRecovery {
 					err = fmt.Errorf("recovery match %s lacks its validated summary", match.ID)
 				} else {
-					summary, err = r.source.Summary(ctx, comp, summaryMatch)
+					summary, err = r.source.Summary(ctx, comp, season, summaryMatch)
 				}
 			}
 			if err != nil {

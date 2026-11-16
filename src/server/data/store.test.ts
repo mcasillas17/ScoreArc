@@ -511,3 +511,146 @@ describe('parseShootout winner attribution', () => {
     expect(parseShootout('Somebody advance 4-3 on penalties', 'Germany', 'Paraguay')).toBeNull();
   });
 });
+
+describe('verified edition resources', () => {
+  const nwsl = resolveSeason('nwsl')!;
+  const femenil = resolveSeason('liga-mx-femenil')!;
+  const archive: CompetitionSeason = { competition: { ...nwsl.competition, id: 'womens-world-cup', espnSlug: 'fifa.wwc', espnLeagueId: '123', espnScoreboardId: undefined },
+    season: { ...nwsl.season, id: '2023', providerYear: 2023, publication: 'archive' } };
+  const boards = [{ name: 'goalsLeaders', leaders: [] }, { name: 'assistsLeaders', leaders: [] }];
+  const storeFor = (raw: unknown) => createDataStore({ cache: new TtlCache<unknown>(), fetchJson: async () => raw });
+
+  it('keeps a modern or unidentified table or leaderboard out of a historical edition across repeated reads', async () => {
+    for (const year of [undefined, 2026]) {
+      const store = storeFor({ id: '123', children: [], stats: boards, season: { year }, league: { slug: 'fifa.wwc' } });
+      for (let pass = 0; pass < 2; pass++) {
+        await expect(store.getStandings(archive)).rejects.toThrow();
+        await expect(store.getLeaders(archive)).rejects.toThrow();
+      }
+    }
+  });
+  it('distinguishes identified empty resources from wrong league, wrong year or absent phase', async () => {
+    const scoped = { id: '2323', uid: 's:600~l:8301', league: { slug: 'usa.nwsl' }, season: { year: 2026 }, children: [], stats: boards };
+    await expect(storeFor(scoped).getStandings(nwsl)).resolves.toEqual([]);
+    await expect(storeFor(scoped).getLeaders(nwsl)).resolves.toEqual({ scorers: [], assists: [] });
+    await expect(storeFor({ ...scoped, id: '8301' }).getStandings(nwsl)).rejects.toThrow();
+    await expect(storeFor({ ...scoped, id: '8675309', uid: 's:600~l:23541', league: { slug: 'mex.w.1' } }).getStandings(femenil)).rejects.toThrow();
+    const conflicting = { ...standingsRaw, id: '2323', uid: 's:600~l:8301', children: standingsRaw.children.map(group => ({
+      ...group, standings: { ...group.standings, season: 2025 },
+    })) };
+    await expect(storeFor(conflicting).getStandings(nwsl)).rejects.toThrow();
+  });
+  it('keeps unrelated news unavailable on retry', async () => {
+    const store = storeFor({ articles: [{ headline: 'Manchester United ownership', links: { web: { href: '/story' } } }] });
+    for (let pass = 0; pass < 2; pass++) await expect(store.getNews(nwsl)).rejects.toThrow();
+  });
+  it('rejects a different league, event, side or edition on the direct summary path', async () => {
+    const [home, away] = ['123','456'];
+    const header = { id: '900', league: { slug: 'usa.nwsl' }, season: { year: 2026 },
+      competitions: [{ id: '900', date: '2026-06-10T12:00Z', competitors: [{ homeAway: 'home', id: home }, { homeAway: 'away', id: away }] }] };
+    await expect(storeFor({ header }).getMatchSummary(nwsl, '900', home, away)).resolves.toBeDefined();
+    for (const bad of [{ ...header, id: '901' }, { ...header, league: { slug: 'usa.1' } }, { ...header, season: { year: 2025 } }]) {
+      await expect(storeFor({ header: bad }).getMatchSummary(nwsl, '900', home, away)).rejects.toThrow();
+    }
+    await expect(storeFor({ header }).getMatchSummary(nwsl, '900', away, home)).rejects.toThrow();
+  });
+  it('requires the requested league and edition before certifying an empty schedule', async () => {
+    const empty = { team: { id: '227' }, requestedSeason: { year: 2026 }, events: [] };
+    for (const [response, expected] of [[empty, 'unavailable'], [{ ...empty, league: { slug: 'usa.nwsl' } }, 'available']] as const) {
+      const store = createDataStore({ cache: new TtlCache<unknown>(), fetchJson: async url => url.includes('/schedule') ? response : teamProfileRaw });
+      expect((await store.getTeam(nwsl, '227'))?.scheduleAvailability?.results).toBe(expected);
+    }
+  });
+});
+
+it('resolves every Femenil standings group through its selected season and type', async () => {
+  const rc = resolveSeason('liga-mx-femenil')!;
+  const groups = standingsRaw.children.slice(0, 2);
+  const types = [{ id: '1', name: 'Torneo Apertura' }, { id: '2', name: 'Torneo Clausura' }];
+  const response = { id: '8675309', uid: 's:600~l:23541', season: { year: 2026 }, seasons: [{ year: 2026, types }], children: groups };
+  const read = (raw: unknown) => createDataStore({ cache: new TtlCache<unknown>(), fetchJson: async () => raw }).getStandings(rc);
+  expect(await read(response)).toHaveLength(2);
+  for (const input of [
+    { ...response, children: [] },
+    { ...response, seasons: [{ year: 2025, types }] },
+    { ...response, seasons: [...response.seasons, ...response.seasons] },
+    { ...response, seasons: [{ year: 2026, types: [...types, types[0]] }] },
+    ...[0,2].map(seasonType => ({ ...response, children: [
+      groups[0], { ...groups[1], standings: { ...groups[1].standings, seasonType } },
+    ] })),
+  ]) await expect(read(input)).rejects.toThrow();
+});
+
+describe('strict ESPN collection completeness', () => {
+  const rc = resolveSeason('nwsl')!;
+  const scope = { league: { slug: 'usa.nwsl' }, season: { year: 2026 }, id: '2323', uid: 's:600~l:8301' };
+  const boards = [{ name: 'goalsLeaders', leaders: [] }, { name: 'assistsLeaders', leaders: [] }];
+  const story = { headline: 'NWSL', links: { web: { href: '/news' } }, categories: [{ type: 'league', leagueId: 2323 }] };
+  const group = standingsRaw.children[0];
+
+  it.each([
+    { total: 3 }, { count: null }, { truncated: true }, { totalCount: 1 }, { pageCount: 2 },
+    { hasMore: true }, { next: '/page/2' }, { offset: 1 }, { pageIndex: 2 }, { limit: '1' },
+    { pagination: { pagination: { nextPage: 2 } } },
+  ])('keeps explicitly incomplete empties unavailable across reads (%j)', async metadata => {
+    const store = createDataStore({ cache: new TtlCache<unknown>(), fetchJson: async url => url.includes('/standings')
+      ? { ...scope, children: [], ...metadata } : url.includes('/statistics')
+        ? { ...scope, stats: [boards[0], { ...boards[1], ...metadata }] }
+        : url.includes('/schedule') ? { ...scope, requestedSeason: scope.season, team: { id: '227' }, events: [], ...metadata } : teamProfileRaw });
+    for (let pass = 0; pass < 2; pass++) {
+      await expect(store.getStandings(rc)).rejects.toThrow();
+      await expect(store.getLeaders(rc)).rejects.toThrow();
+      expect((await store.getTeam(rc, '227'))?.scheduleAvailability?.results).toBe('unavailable');
+    }
+  });
+  it('checks news, standings entries and group metadata, and the full statistics page', async () => {
+    for (const rejected of [
+      { children: [{ ...group, standings: { ...group.standings, truncated: true } }] },
+      { children: [{ ...group, pagination: { pageSize: group.standings.entries.length } }] },
+    ]) {
+      const store = createDataStore({ cache: new TtlCache<unknown>(), fetchJson: async () => ({ ...scope, ...rejected }) });
+      await expect(store.getStandings(rc)).rejects.toThrow();
+    }
+    const store = createDataStore({ cache: new TtlCache<unknown>(), fetchJson: async url => url.includes('/news') ?
+      { articles: [story], hasMore: true } : { ...scope, stats: boards, pageSize: boards.length } });
+    await expect(store.getNews(rc)).rejects.toThrow();
+    await expect(store.getLeaders(rc)).rejects.toThrow();
+  });
+  it('accepts a verified complete empty and an explicitly complete full page', async () => {
+    const store = createDataStore({ cache: new TtlCache<unknown>(), fetchJson: async url => url.includes('/standings')
+      ? { ...scope, children: [], pagination: { pageCount: 0, total: 0 } }
+      : { ...scope, stats: boards, pageSize: boards.length, totalCount: boards.length } });
+    await expect(store.getStandings(rc)).resolves.toEqual([]);
+    await expect(store.getLeaders(rc)).resolves.toEqual({ scorers: [], assists: [] });
+  });
+});
+
+it('rejects a Femenil group with an unresolved explicit type even if the top-level season names Apertura', async () => {
+  const rc = resolveSeason('liga-mx-femenil')!;
+  const group = standingsRaw.children[0];
+  const store = createDataStore({ cache: new TtlCache<unknown>(), fetchJson: async () => ({
+    id: '8675309', uid: 's:600~l:23541', season: { year: 2026, name: 'Torneo Apertura' },
+    children: [{ ...group, standings: { ...group.standings, seasonType: 3 } }],
+  }) });
+  for (let pass = 0; pass < 2; pass++) await expect(store.getStandings(rc)).rejects.toThrow();
+});
+
+it('keeps unscoped team table claims out of strict editions while retaining team identity and current squad', async () => {
+  const rc = resolveSeason('nwsl')!;
+  const store = createDataStore({ cache: new TtlCache<unknown>(), fetchJson: async url => url.includes('/roster') ? teamRosterRaw : teamProfileRaw });
+  const profile = await store.getTeam(rc, '227');
+  expect(profile?.team.id).toBe('227');
+  expect(profile?.squad.length).toBeGreaterThan(0);
+  expect(profile).toMatchObject({ record: null, standingSummary: null, standing: null });
+});
+
+it('can immediately recover an identified schedule after a truncated list', async () => {
+  const rc = resolveSeason('nwsl')!;
+  let truncated = true;
+  const store = createDataStore({ cache: new TtlCache<unknown>(), fetchJson: async url => url.includes('/schedule')
+    ? { team: { id: '227' }, requestedSeason: { year: 2026 }, league: { slug: 'usa.nwsl' }, events: [], truncated }
+    : teamProfileRaw });
+  expect((await store.getTeam(rc, '227'))?.scheduleAvailability?.results).toBe('unavailable');
+  truncated = false;
+  expect((await store.getTeam(rc, '227'))?.scheduleAvailability?.results).toBe('available');
+});

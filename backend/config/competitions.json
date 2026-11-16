@@ -685,6 +685,8 @@
     "name": "Women's Super League",
     "shortName": "WSL",
     "espnSlug": "eng.w.1",
+    "espnLeagueId": "2314",
+    "espnScoreboardId": "8097",
     "kind": "club",
     "category": "women",
     "directoryGroup": "domestic",
@@ -712,6 +714,7 @@
           "odds",
           "career"
         ],
+        "providerYear": 2026,
         "hasBracket": false,
         "bracketDatesRange": null,
         "knockoutRounds": null
@@ -723,6 +726,8 @@
     "name": "NWSL",
     "shortName": "NWSL",
     "espnSlug": "usa.nwsl",
+    "espnLeagueId": "2323",
+    "espnScoreboardId": "8301",
     "kind": "club",
     "category": "women",
     "directoryGroup": "domestic",
@@ -750,6 +755,7 @@
           "odds",
           "career"
         ],
+        "providerYear": 2026,
         "hasBracket": true,
         "bracketDatesRange": "20261106-20261130",
         "knockoutRounds": [
@@ -765,6 +771,8 @@
     "name": "Liga MX Femenil",
     "shortName": "Liga MX Femenil",
     "espnSlug": "mex.w.1",
+    "espnLeagueId": "8675309",
+    "espnScoreboardId": "23541",
     "kind": "club",
     "category": "women",
     "directoryGroup": "domestic",
@@ -791,6 +799,8 @@
           "odds",
           "career"
         ],
+        "providerYear": 2026,
+        "phase": "apertura",
         "hasBracket": true,
         "bracketDatesRange": "20261110-20261231",
         "knockoutRounds": [

@@ -137,3 +137,16 @@ func TestMapNewsObservationRequiresCompleteCollection(t *testing.T) {
 		})
 	}
 }
+
+func TestNewsRequiresEditionLeagueTag(t *testing.T) {
+	body := []byte(`{"articles":[{"headline":"NWSL","links":{"web":{"href":"https://example.com/n"}},"categories":[{"type":"league","leagueId":2323}]},{"headline":"Manchester United","links":{"web":{"href":"https://example.com/m"}},"categories":[{"type":"league","id":2323,"leagueId":600}]}]}`)
+	rows, err := MapLeagueNewsObservation(body, "2323")
+	if err != nil || len(rows) != 1 || rows[0].Headline != "NWSL" {
+		t.Fatalf("attributed news = %v, %v", rows, err)
+	}
+	for _, raw := range [][]byte{body, []byte(`{"articles":[]}`)} {
+		if _, err := MapLeagueNewsObservation(raw, "8675309"); err == nil {
+			t.Fatal("unidentified news renewed an observation")
+		}
+	}
+}

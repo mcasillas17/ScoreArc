@@ -1,10 +1,11 @@
 import { createReaderDataStore } from '../apiStore';
 import { TtlCache } from '../cache';
-import { listCompetitions, resolveSeason, type CompetitionSeason } from '../competitions';
+import { listCompetitions, resolveSeason, supportsResource, type CompetitionSeason } from '../competitions';
 import { parseRange, nowWindowRange, forwardRange } from '../dateRange';
 import { createRequestBudget, createReaderTransport, readerOrigin, ReaderFailure, type ReaderResponse } from '../readerTransport';
-import { requireResources } from '../readerPolicy';
+import { requireResources, resourceUsable } from '../readerPolicy';
 import { summaryHeaderFinal } from '../providers/espn-summary';
+import { EspnEditionError, providerYear, requiresEditionEvidence, seasonIssue, verifySummaryEdition } from '../providers/espn-edition';
 import { mapTeamRoster } from '../providers/espn-team';
 import { abortable, validateScoreboardEnvelope, validateScoreboardEvent } from '../scoreboardWindow';
 import type { ReaderResources } from '@/lib/readerResources';
@@ -79,12 +80,14 @@ const round = (n: number) => Math.round(Math.max(0, n) * 100) / 100;
 function failureCode(error: unknown, signal: AbortSignal, caller?: AbortSignal): string {
   if (caller?.aborted) return 'cancelled';
   if (signal.aborted) return signal.reason instanceof ReaderFailure && signal.reason.reason === 'timeout' ? 'timeout' : 'cancelled';
+  if (error instanceof EspnEditionError) return error.issue;
   return error instanceof ReaderFailure ? error.reason : 'dependency';
 }
 function resourceCategories(resources: ReaderResources): string[] {
   const categories: string[] = [];
   for (const [name, resource] of Object.entries(resources.resources)) {
     if (name === 'identity') continue; // Persisted crosswalks intentionally have no observation clock.
+    if (resource.availability === 'empty' && resourceUsable(resource) && (resource.observedAt || resource.finalizedAt)) categories.push('valid_empty');
     if (resource.status === 'stale') categories.push('stale');
     if (resource.availability === 'partial' || resource.availability === 'pending') categories.push('partial');
     if (resource.status === 'unavailable' || resource.availability === 'unavailable') categories.push('unavailable');
@@ -108,6 +111,8 @@ function valueEvidence(value: unknown): { categories: string[]; live: boolean } 
 }
 function supported(sample: Sample, rc: CompetitionSeason | undefined): boolean {
   if (!rc) return false;
+  if (requiresEditionEvidence(rc) && sample.kind === 'getStandings') return supportsResource(rc.season, 'standings');
+  if (requiresEditionEvidence(rc) && sample.kind === 'getLeaders') return supportsResource(rc.season, 'leaders');
   if (['getStandings', 'getLeaders', 'getTeam', 'getSquad', 'getPlayer', 'playerPopup', 'teamSchedule', 'leaderLinks', 'formPopup'].includes(sample.kind) && rc.season.id !== rc.competition.currentSeasonId) return false;
   return true;
 }
@@ -133,8 +138,8 @@ function providerCollections(url: URL, body: unknown, rc: CompetitionSeason): st
   if (!object(body) || !Array.isArray(body[field])) throw new ReaderFailure('body');
   const collection = body[field];
   if (field === 'events' && !url.searchParams.has('dates')) {
-    try { validateScoreboardEnvelope(body, rc.competition.espnSlug).forEach(validateScoreboardEvent); }
-    catch { throw new ReaderFailure('body'); }
+    try { validateScoreboardEnvelope(body, rc).forEach(validateScoreboardEvent); }
+    catch (error) { if (error instanceof EspnEditionError) throw error; throw new ReaderFailure('body'); }
   }
   if (field === 'athletes') {
     const grouped = collection.some(row => object(row) && Object.hasOwn(row, 'items'));
@@ -165,19 +170,27 @@ function summaryLifecycle(body: unknown): RequestEvidence['lifecycle'] {
 /** A non-dated ESPN response must establish its season; request time is not an observation. */
 function espnScopeCategories(url: URL, body: unknown, rc: CompetitionSeason, expectedSides?: { home: string; away: string }): string[] {
   const path = url.pathname;
+  // These resources run the same strict provenance checks inside the ESPN store.
+  // A rejection is classified through EspnEditionError, including on cached reads.
+  if (requiresEditionEvidence(rc) && path.endsWith('/summary') && expectedSides) {
+    // A best-effort match enrichment can swallow this failure after the fetch.
+    verifySummaryEdition(body, rc, url.searchParams.get('event') ?? '', expectedSides.home, expectedSides.away);
+    return [];
+  }
+  if (requiresEditionEvidence(rc) && ['/summary', '/standings', '/statistics', '/scoreboard'].some(suffix => path.endsWith(suffix))) return [];
   if ((path.endsWith('/scoreboard') && url.searchParams.has('dates')) || path.endsWith('/schedule') || path.endsWith('/bio')) return [];
   if (path.endsWith('/scoreboard')) {
     const leagues = object(body) && Array.isArray(body.leagues) ? body.leagues : [];
     if (!leagues.length) return ['scope_unverified'];
     if (leagues.length !== 1 || !object(leagues[0]) || leagues[0].slug !== rc.competition.espnSlug) return ['scope_mismatch'];
     if (object(body) && Array.isArray(body.events) && body.events.some(event =>
-      !object(event) || !object(event.season) || event.season.year !== Number(rc.season.id.slice(0, 4)))) return ['scope_mismatch'];
+      !object(event) || !object(event.season) || event.season.year !== providerYear(rc.season, true))) return ['scope_mismatch'];
   }
   if (path.endsWith('/summary')) {
     const header = object(body) && object(body.header) ? body.header : undefined;
     if (!header) return ['scope_unverified'];
     if (header.id !== url.searchParams.get('event')) return ['scope_mismatch', 'entity'];
-    if (!object(header.league) || header.league.slug !== rc.competition.espnSlug || !object(header.season) || header.season.year !== Number(rc.season.id.slice(0, 4))) return ['scope_mismatch'];
+    if (!object(header.league) || header.league.slug !== rc.competition.espnSlug || !object(header.season) || seasonIssue(header.season, rc.season)) return ['scope_mismatch'];
     if (expectedSides) {
       const game = Array.isArray(header.competitions) ? header.competitions[0] : undefined;
       const sides = object(game) && Array.isArray(game.competitors) ? game.competitors.filter(object) : [];
@@ -188,12 +201,8 @@ function espnScopeCategories(url: URL, body: unknown, rc: CompetitionSeason, exp
   }
   if (path.endsWith('/overview')) return ['scope_unverified']; // The existing overview can mix competitions.
   if (object(body) && object(body.league) && body.league.slug !== rc.competition.espnSlug) return ['scope_mismatch'];
-  const season = object(body) && object(body.season) ? body.season : undefined;
-  if (!season || season.year !== Number(rc.season.id.slice(0, 4))) return [season ? 'scope_mismatch' : 'scope_unverified'];
-  const split = rc.season.id.endsWith('-apertura') ? 'apertura' : rc.season.id.endsWith('-clausura') ? 'clausura' : null;
-  const seasonType = object(season.type) ? season.type : season;
-  if (split && ![seasonType.slug, seasonType.name].some(value => typeof value === 'string' && value.toLowerCase().includes(split))) return ['scope_unverified'];
-  return [];
+  const issue = seasonIssue(object(body) ? body.season : undefined, rc.season);
+  return issue ? [issue] : [];
 }
 
 export async function evaluate(options: {

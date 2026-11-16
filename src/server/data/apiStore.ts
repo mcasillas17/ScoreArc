@@ -3,7 +3,8 @@ import type { DataStore } from './store';
 import { resolveSeason, supportsResource, type CompetitionSeason } from './competitions';
 import type { BracketRound, Group, Match, MatchSummaryData, Team } from './types';
 import { TtlCache } from './cache';
-import { currentWeekRange, forwardRange, nowWindowRange, parseRange, seasonMonthBounds } from './dateRange';
+import { currentWeekRange, forwardRange, nowWindowRange, parseRange, editionBounds } from './dateRange';
+import { datedInEdition, requiresEditionEvidence } from './providers/espn-edition';
 import { utcDate } from './scoreboardWindow';
 import { canonicalTeamId } from './teamIdentity';
 import { deriveReaderStandings } from './derivedStandings';
@@ -64,10 +65,9 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
   }
   function verifyWindow(rc: CompetitionSeason, matches: Match[], range: string, scheduled = false, limit?: number) {
     if (!parseRange(range)) throw new ReaderFailure('scope', false);
-    const bounds = seasonMonthBounds(rc.season.id);
-    const start = Math.max(utcDate(range.slice(0, 8)), Date.parse(`${bounds.minMonth}T00:00:00Z`));
-    const last = new Date(`${bounds.maxMonth}T00:00:00Z`);
-    const end = Math.min(utcDate(range.slice(9)) + 86_400_000, Date.UTC(last.getUTCFullYear(), last.getUTCMonth() + 1, 1));
+    const bounds = editionBounds(rc.season);
+    const start = Math.max(utcDate(range.slice(0, 8)), bounds.start);
+    const end = Math.min(utcDate(range.slice(9)) + 86_400_000, bounds.end);
     unique(matches.map(m => m.id));
     if (limit !== undefined && matches.length > limit) throw new ReaderFailure('body');
     for (const match of matches) {
@@ -167,6 +167,7 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
       const { body, evidence } = await request(`${readerScopePath(rc)}/bracket`, undefined, decodeReaderBracket,
         { bracket: 'competition-season', identity: 'competition-season' }, ['bracket']);
       const matches = body.flatMap(round => round.matches);
+      if (requiresEditionEvidence(rc) && matches.some(m => !datedInEdition(m.kickoff, rc.season))) throw new ReaderFailure('scope', false);
       collectionEvidence(evidence, 'bracket', matches.length); unique(matches.map(m => m.id)); unique(body.map(round => round.slug));
       const [refs, teams] = await Promise.all([identities.lookup(rc, 'match', 'canonical', matches.map(m => m.id)), identities.teams(rc, matches.flatMap(m => [m.home.id, m.away.id]))]);
       // Two-legged ties fold into one, exactly as on the ESPN path.
@@ -220,6 +221,7 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
         { identity: 'team-season', matches: 'team-season', detail: 'team-season', standings: 'competition-season', squad: 'team-season', seasonStats: 'team-season' }, []); }
       catch (error) { if (error instanceof ReaderFailure && error.status === 404) return null; throw error; }
       const { body, evidence } = loaded;
+      if (requiresEditionEvidence(rc) && body.schedule.some(m => !datedInEdition(m.kickoff, rc.season))) throw new ReaderFailure('scope', false);
       if (body.team.id !== canonical || body.schedule.some(m => !m.scope || m.scope.competitionId !== rc.competition.id || m.scope.seasonId !== rc.season.id || (m.home.id !== canonical && m.away.id !== canonical))) throw new ReaderFailure('scope', false);
       const teams = await identities.teams(rc, [canonical]);
       const scheduleAvailable = supportsResource(rc.season, 'scores') && resourceUsable(evidence.resources.matches);

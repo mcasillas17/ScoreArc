@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
+	"github.com/mcasillas17/scorearc-backend/shared/source"
 )
 
 func writeJSON(writer http.ResponseWriter, status int, value any) {
@@ -264,11 +265,11 @@ func (a *App) handleNews(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusBadRequest, "unknown competition")
 		return
 	}
-	if !edition.Supports("news") {
+	if !edition.Supports("news") || (source.RequiresEditionEvidence(comp, edition) && comp.ESPNLeagueID == "") {
 		writeUnavailable(writer, "news")
 		return
 	}
-	articles, observedAt, err := a.news.GetWithObservation(request.Context(), comp.ESPNSlug)
+	articles, observedAt, err := a.news.GetWithObservation(request.Context(), comp.ESPNSlug, comp.ESPNLeagueID)
 	if err != nil {
 		a.logDependencyError(request, "news", err, "competition", competition)
 		writeError(writer, http.StatusBadGateway, "upstream error")

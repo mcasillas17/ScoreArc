@@ -81,6 +81,7 @@ export interface Season {
   resources?: EditionResource[];
   monitored?: boolean;
   providerYear?: number;
+  /** UTC kickoff window, inclusive start and exclusive end. */
   startsAt?: string;
   endsAt?: string;
   phase?: string;
@@ -162,6 +163,8 @@ export interface Competition {
   name: string;
   shortName: string;
   espnSlug: string; // ESPN league slug — durable across seasons
+  espnLeagueId?: string; // ESPN standings and article league categories
+  espnScoreboardId?: string; // ESPN scoreboard and standings UID namespace
   kind: CompetitionKind;
   category: Category;
   directoryGroup?: 'domestic' | 'club-cup' | 'national' | 'youth' | 'college';
@@ -595,6 +598,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     name: 'NWSL',
     shortName: 'NWSL',
     espnSlug: 'usa.nwsl',
+    espnLeagueId: '2323', espnScoreboardId: '8301',
     kind: 'club',
     category: 'women',
     teamStyle: 'crest',
@@ -604,7 +608,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     currentSeasonId: '2026',
     seasons: {
       '2026': {
-        id: '2026',
+        id: '2026', providerYear: 2026,
         label: '2026',
         sections: ['bracket', 'standings', 'scores', 'news'],
         format: { hasBracket: true, hasGroups: true, hasThirdPlaceRace: false },
@@ -634,6 +638,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     name: 'Liga MX Femenil',
     shortName: 'Liga MX Femenil',
     espnSlug: 'mex.w.1',
+    espnLeagueId: '8675309', espnScoreboardId: '23541',
     kind: 'club',
     category: 'women',
     teamStyle: 'crest',
@@ -643,7 +648,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     currentSeasonId: '2026-apertura',
     seasons: {
       '2026-apertura': {
-        id: '2026-apertura',
+        id: '2026-apertura', providerYear: 2026, phase: 'apertura',
         label: 'Apertura 2026',
         sections: ['bracket', 'standings', 'scores'],
         format: { hasBracket: true, hasGroups: true, hasThirdPlaceRace: false },
@@ -755,6 +760,11 @@ const legacyArchives = new Set([
   'world-cup/2018',
   'world-cup/2022',
 ]);
+
+// ESPN identifies the WSL separately in its news/standings and scoreboard APIs.
+COMPETITIONS.wsl.espnLeagueId = '2314';
+COMPETITIONS.wsl.espnScoreboardId = '8097';
+COMPETITIONS.wsl.seasons['2026-27'].providerYear = 2026;
 
 // Existing editions were already public before publication states were introduced.
 for (const competition of Object.values(COMPETITIONS)) {

@@ -28,7 +28,11 @@ type rawNewsArticle struct {
 	Description string          `json:"description"`
 	Published   string          `json:"published"`
 	Byline      string          `json:"byline"`
-	Images      []struct {
+	Categories  []struct {
+		Type     string
+		LeagueID json.RawMessage
+	} `json:"categories"`
+	Images []struct {
 		URL string `json:"url"`
 	} `json:"images"`
 	Links struct {
@@ -45,8 +49,12 @@ func MapNews(raw []byte) ([]NewsArticle, error) {
 		return nil, fmt.Errorf("decode news: %w", err)
 	}
 
-	articles := make([]NewsArticle, 0, len(document.Articles))
-	for _, rawArticle := range document.Articles {
+	return mapNewsArticles(document.Articles), nil
+}
+
+func mapNewsArticles(supplied []rawNewsArticle) []NewsArticle {
+	articles := make([]NewsArticle, 0, len(supplied))
+	for _, rawArticle := range supplied {
 		if rawArticle.Headline == "" || rawArticle.Links.Web.Href == "" {
 			continue
 		}
@@ -66,21 +74,42 @@ func MapNews(raw []byte) ([]NewsArticle, error) {
 			Byline:      rawArticle.Byline,
 		})
 	}
-	return articles, nil
+	return articles
 }
 
 // MapNewsObservation requires a complete, usable articles collection before a
 // successful proxy fetch can renew freshness, including an explicit empty feed.
 func MapNewsObservation(raw []byte) ([]NewsArticle, error) {
-	supplied, err := validateCollection(raw, "articles")
+	return MapLeagueNewsObservation(raw, "")
+}
+
+func MapLeagueNewsObservation(raw []byte, leagueID string) ([]NewsArticle, error) {
+	_, err := validateCollection(raw, "articles")
 	if err != nil {
 		return nil, err
 	}
-	articles, err := MapNews(raw)
+	var doc rawNewsDocument
+	err = json.Unmarshal(raw, &doc)
 	if err != nil {
 		return nil, err
 	}
-	if len(articles) != len(supplied) {
+	if leagueID != "" {
+		tagged := make([]rawNewsArticle, 0, len(doc.Articles))
+		for _, article := range doc.Articles {
+			for _, tag := range article.Categories {
+				if tag.Type == "league" && jsonScalarToString(tag.LeagueID) == leagueID {
+					tagged = append(tagged, article)
+					break
+				}
+			}
+		}
+		if len(tagged) == 0 {
+			return nil, fmt.Errorf("news feed has no verified league attribution")
+		}
+		doc.Articles = tagged
+	}
+	articles := mapNewsArticles(doc.Articles)
+	if len(articles) != len(doc.Articles) {
 		return nil, fmt.Errorf("incomplete news collection")
 	}
 	return articles, nil

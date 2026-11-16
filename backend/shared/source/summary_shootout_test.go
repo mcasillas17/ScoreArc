@@ -59,7 +59,7 @@ func TestESPNSummaryPathsRejectMalformedShootoutTotals(t *testing.T) {
 				for _, state := range []model.MatchState{model.MatchStateScheduled, model.MatchStateLive, model.MatchStateFinished} {
 					input := recoveryMatch()
 					input.State = state
-					result, err := src.Summary(context.Background(), config.Competition{ESPNSlug: "esp.1"}, input)
+					result, err := src.Summary(context.Background(), config.Competition{ESPNSlug: "esp.1"}, config.Season{}, input)
 					if err == nil || !strings.Contains(err.Error(), "shootout") ||
 						result.HomeScore != nil || result.AwayScore != nil || result.Detail.Shootout != nil {
 						t.Errorf("ordinary %s summary accepted malformed %s shootout %s: err=%v", state, side, value, err)
@@ -99,7 +99,7 @@ func TestESPNSummaryPathsPreserveValidAndOptionalShootoutTotals(t *testing.T) {
 			}
 			input := recoveryMatch()
 			input.State = model.MatchStateFinished
-			ordinary, err := src.Summary(context.Background(), config.Competition{ESPNSlug: "esp.1"}, input)
+			ordinary, err := src.Summary(context.Background(), config.Competition{ESPNSlug: "esp.1"}, config.Season{}, input)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -141,7 +141,7 @@ func TestESPNSummaryShootoutPrecedence(t *testing.T) {
 			input.Home.Name, input.Away.Name = "Barcelona", "Real Madrid"
 			input.Note = &note
 			input.Shootout = tc.scoreboard
-			result, err := src.Summary(context.Background(), config.Competition{ESPNSlug: "esp.1"}, input)
+			result, err := src.Summary(context.Background(), config.Competition{ESPNSlug: "esp.1"}, config.Season{}, input)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -176,7 +176,7 @@ func TestESPNSummaryCarriesTheFinalHeaderWinnerFlag(t *testing.T) {
 			})
 			input := recoveryMatch()
 			input.State = tc.state
-			result, err := src.Summary(context.Background(), config.Competition{ESPNSlug: "esp.1"}, input)
+			result, err := src.Summary(context.Background(), config.Competition{ESPNSlug: "esp.1"}, config.Season{}, input)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -159,7 +159,7 @@ func (f *fakeNewsReader) Get(_ context.Context, slug string) ([]espn.NewsArticle
 	return f.articles, f.err
 }
 
-func (f *fakeNewsReader) GetWithObservation(ctx context.Context, slug string) ([]espn.NewsArticle, time.Time, error) {
+func (f *fakeNewsReader) GetWithObservation(ctx context.Context, slug, _ string) ([]espn.NewsArticle, time.Time, error) {
 	articles, err := f.Get(ctx, slug)
 	return articles, time.Time{}, err
 }
