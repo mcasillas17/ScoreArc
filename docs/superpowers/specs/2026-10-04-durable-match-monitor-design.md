@@ -29,7 +29,7 @@ monitor cannot check are a documented operational limitation.
 
 ## Restoration
 
-Bound GitHub JSON requests to 10s/1MiB. Inspect at most three pages of twenty
+Bound GitHub JSON requests to 10s/1MiB. Inspect at most six pages of ten
 workflow runs, validating repository, workflow ID/path, main branch, push SHA,
 allowed schedule/dispatch event and first attempt. Skip only runs proven not to
 have reached preparation. Among state-bearing runs include failed incident runs.

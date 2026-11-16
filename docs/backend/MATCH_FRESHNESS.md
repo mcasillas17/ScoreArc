@@ -305,7 +305,7 @@ Existing acceptance evidence (test names are searchable within the linked files)
 | Missing/corrupt/expired/incompatible newest history blocks rather than falling back or initializing | monitor: `rejects missing, corrupt, incompatible, wrong-origin/scope and rollback state`; state: `does not roll back past an invalid newest artifact`, `fails when the final checkpoint expired`, `treats preparation without upload as a barrier`, `rejects initialization when durable state already exists` |
 | Receiver protocol with the real sender: OPEN, repeat, RESOLVED, recurrence, timeout, wrong acknowledgment, crash, ordering, cap | [receiver tests](../../infra/alert-receiver/worker.test.ts): `real monitor sender against the receiver`, `daily cap` |
 | Not-running check: inert until armed, one down email after 60 minutes, one recovery, at-least-once retries, write floor, token gate; heartbeats from runs with delivery and both checkpoints committed; the cron dispatches one main run, and a missing token, rejected or failed dispatch logs no secret while the check still alerts | receiver: `monitor heartbeat` (`dispatches one monitor run`, `logs no secret`); workflow: `heartbeat` (`pings after dispatched and scheduled runs that delivered`), `disabled job` |
-| Finite queues, history, bytes, attempts and execution | monitor: `backpressure keeps bounded queue`, `reserves attempts before sending ... exhausts at 20`; state: `fails closed at the three-page budget`; watchdog: `uses only configured current seasons`; workflow: job timeout and exact trigger (dispatch only) assertions; state: `skips a run cancelled before it started` |
+| Finite queues, history, bytes, attempts and execution | monitor: `backpressure keeps bounded queue`, `reserves attempts before sending ... exhausts at 20`; state: `fails closed after scanning 60 runs`; watchdog: `uses only configured current seasons`; workflow: job timeout and exact trigger (dispatch only) assertions; state: `skips a run cancelled before it started` |
 
 Retain the focused test summary, full-suite/typecheck/lint results and reviewed
 commit SHA with the later activation record. An expected incident/delivery error
@@ -563,7 +563,7 @@ do not stop production to prove them.
 | Resource | Bound |
 |---|---|
 | Reader | One check per current competition (12 as of November 15), up to 32 sequential scopes. Each allows 10 seconds, 8 MiB and 5,000 matches, with no retries. |
-| GitHub JSON API | At most 3 pages × 20 runs; 2 metadata + 3 run-list + 120 artifact/job reads = 125 requests; 10 seconds / 1 MiB each, no retries; steady state is about 4 per run (~1,150/day). `GITHUB_TOKEN` is limited to 1,000 requests per hour per repository, so twelve degraded full scans an hour (~1,500) would hit that limit; repeated budget failures need intervention, not more runs |
+| GitHub JSON API | At most 6 pages × 10 runs; 2 metadata + 6 run-list + 120 artifact/job reads = 128 requests; 10 seconds / 1 MiB each, no retries; steady state is about 4 per run (~1,150/day). `GITHUB_TOKEN` is limited to 1,000 requests per hour per repository, so twelve degraded full scans an hour (~1,536) would hit that limit; repeated budget failures need intervention, not more runs |
 | Artifact transfer | One selected download, up to two uploads; state 256 KiB, artifact metadata size ceiling 256 KiB; action-internal transfer retries are governed by pinned actions and job timeout |
 | State | 128 pending events, 32 receipts, one current incident ID per scope; 256 KiB |
 | Notifications | At most 16 sequential sends per run (must stay at or above the registry size, so one run carries every scope's transition and its heartbeat; a test guards it), 15 seconds each (the receiver acknowledges only after its email, about 5 seconds), 1 KiB acknowledgment; 20 reserved attempts per event |
@@ -630,7 +630,7 @@ with `gh workflow enable match-freshness.yml`), and also set
 `MATCH_FRESHNESS_ENABLED=false` if the pause must survive an accidental re-enable.
 Setting only the variable is not enough for more than a few hours: dispatched runs
 are still created, and the selector only looks for the newest checkpoint among the
-newest 60 workflow runs (three pages of 20). About five hours of skipped runs at
+newest 60 workflow runs (six pages of 10). About five hours of skipped runs at
 this cadence push it out of that window, so re-enabling fails closed with the
 history-scan budget error. The job gate compares case-insensitively, so `TRUE`
 starts a job whose CLI (exact `true` only) does nothing and whose Prepare step is
