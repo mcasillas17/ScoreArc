@@ -15,7 +15,7 @@ function api(runs = [prior()]) {
   const responses: Record<string, unknown> = {
     [workflowPath]: { id: 7, path: run.workflow, state: 'active' },
     [`${root}/runs/100`]: { ...prior(10), id: 100, status: 'in_progress', conclusion: null, created_at: '2026-10-04T11:30:00Z', updated_at: '2026-10-04T11:30:00Z' },
-    [`${root}/workflows/7/runs?branch=main&per_page=20&page=1`]: { total_count: runs.length, workflow_runs: runs },
+    [`${root}/workflows/7/runs?branch=main&per_page=10&page=1`]: { total_count: runs.length, workflow_runs: runs },
   };
   for (const source of runs) {
     responses[`${root}/runs/${source.id}/artifacts?per_page=10`] = { total_count: 1, artifacts: [artifact(source)] };
@@ -32,6 +32,33 @@ function noArtifacts(responses: Record<string, unknown>, source = prior()) {
 }
 
 describe('trusted state selection', () => {
+  it('restores a checkpoint across pages containing long GitHub commit messages', async () => {
+    const message = 'x'.repeat(65_520);
+    const sources = Array.from({ length: 20 }, (_, index) => ({
+      ...prior(), id: 999 - index, run_number: 99 - index, head_commit: { message },
+    }));
+    const current = { ...run, id: 1000, number: 100 };
+    const { github, responses } = api(sources);
+    responses[`${root}/runs/1000`] = { ...prior(), id: 1000, run_number: 100, created_at: '2026-10-04T11:30:00Z', updated_at: '2026-10-04T11:30:00Z' };
+    const checkpoint = sources[10];
+    for (const source of sources.slice(0, 10)) {
+      noArtifacts(responses, source);
+      responses[`${root}/runs/${source.id}/attempts/1/jobs?per_page=10`] = {
+        total_count: 1, jobs: [{ id: source.id, run_id: source.id, status: 'completed', steps: [] }],
+      };
+    }
+    vi.stubGlobal('fetch', async (href: string) => {
+      const url = new URL(href);
+      if (url.pathname === `${root}/workflows/7/runs`) {
+        const size = Number(url.searchParams.get('per_page'));
+        const start = (Number(url.searchParams.get('page')) - 1) * size;
+        return Response.json({ total_count: sources.length, workflow_runs: sources.slice(start, start + size) });
+      }
+      return Response.json(await github(url.pathname + url.search));
+    });
+    const result = await selectState({ github: githubJSON('test-token'), run: current, now });
+    expect(result?.run.id).toBe(checkpoint.id);
+  });
   it('restores an explicitly reviewed final checkpoint without scanning newer history', async () => {
     const source = prior(8);
     const selected = { ...artifact(source), id: 402 };
@@ -142,7 +169,7 @@ describe('trusted state selection', () => {
   });
   it('accepts the current run in GitHub listings without restoring it', async () => {
     const { github, responses } = api();
-    responses[`${root}/workflows/7/runs?branch=main&per_page=20&page=1`] = { total_count: 2, workflow_runs: [responses[`${root}/runs/100`], prior()] };
+    responses[`${root}/workflows/7/runs?branch=main&per_page=10&page=1`] = { total_count: 2, workflow_runs: [responses[`${root}/runs/100`], prior()] };
     expect((await selectState({ github, run, now }))?.run.id).toBe(99);
   });
   it('does not initialize if GitHub listing fails', async () => {
@@ -251,7 +278,7 @@ describe('trusted state selection', () => {
     { status: 'completed', conclusion: 'cancelled' }, { status: 'completed', conclusion: 'startup_failure' },
   ])('passes over a newer run that never started (%j)', async (change) => {
     const { github, responses } = api();
-    responses[`${root}/workflows/7/runs?branch=main&per_page=20&page=1`] = { total_count: 3, workflow_runs: [newer(change), responses[`${root}/runs/100`], prior()] };
+    responses[`${root}/workflows/7/runs?branch=main&per_page=10&page=1`] = { total_count: 3, workflow_runs: [newer(change), responses[`${root}/runs/100`], prior()] };
     if (change.status === 'completed') responses[`${root}/runs/101/attempts/1/jobs?per_page=10`] = { total_count: 0, jobs: [] };
     expect((await selectState({ github, run, now }))?.run.id).toBe(99);
     expect(github).not.toHaveBeenCalledWith(`${root}/runs/101/artifacts?per_page=10`);
@@ -260,13 +287,13 @@ describe('trusted state selection', () => {
   });
   it('passes over a newer cancelled run whose job lists only runner bookkeeping', async () => {
     const { github, responses } = api();
-    responses[`${root}/workflows/7/runs?branch=main&per_page=20&page=1`] = { total_count: 3, workflow_runs: [newer({ status: 'completed', conclusion: 'cancelled' }), responses[`${root}/runs/100`], prior()] };
+    responses[`${root}/workflows/7/runs?branch=main&per_page=10&page=1`] = { total_count: 3, workflow_runs: [newer({ status: 'completed', conclusion: 'cancelled' }), responses[`${root}/runs/100`], prior()] };
     responses[`${root}/runs/101/attempts/1/jobs?per_page=10`] = { total_count: 1, jobs: [{ id: 2, run_id: 101, run_attempt: 1, status: 'completed', conclusion: 'cancelled', steps: [{ name: 'Set up job', status: 'completed', conclusion: 'success' }, { name: 'Complete job', status: 'completed', conclusion: 'success' }] }] };
     expect((await selectState({ github, run, now }))?.run.id).toBe(99);
   });
   it('rejects a newer cancelled run whose job ran a step', async () => {
     const { github, responses } = api();
-    responses[`${root}/workflows/7/runs?branch=main&per_page=20&page=1`] = { total_count: 3, workflow_runs: [newer({ status: 'completed', conclusion: 'cancelled' }), responses[`${root}/runs/100`], prior()] };
+    responses[`${root}/workflows/7/runs?branch=main&per_page=10&page=1`] = { total_count: 3, workflow_runs: [newer({ status: 'completed', conclusion: 'cancelled' }), responses[`${root}/runs/100`], prior()] };
     responses[`${root}/runs/101/attempts/1/jobs?per_page=10`] = { total_count: 1, jobs: [{ id: 2, run_id: 101, run_attempt: 1, status: 'completed', conclusion: 'cancelled', steps: [{ name: 'Prepare pending state', status: 'completed', conclusion: 'success' }] }] };
     await expect(selectState({ github, run, now })).rejects.toThrow(/started|nonmonotonic|prepar/i);
   });
@@ -305,7 +332,7 @@ describe('trusted state selection', () => {
   // The usual listing while a run is active: N+2 waiting, N+1 cancelled by it, N current.
   it('passes over a waiting and a cancelled newer run together', async () => {
     const { github, responses } = api();
-    responses[`${root}/workflows/7/runs?branch=main&per_page=20&page=1`] = { total_count: 4, workflow_runs: [newer({ id: 102, run_number: 12, status: 'queued', conclusion: null, created_at: '2026-10-04T11:40:00Z', updated_at: '2026-10-04T11:40:00Z' }), newer({ status: 'completed', conclusion: 'cancelled' }), responses[`${root}/runs/100`], prior()] };
+    responses[`${root}/workflows/7/runs?branch=main&per_page=10&page=1`] = { total_count: 4, workflow_runs: [newer({ id: 102, run_number: 12, status: 'queued', conclusion: null, created_at: '2026-10-04T11:40:00Z', updated_at: '2026-10-04T11:40:00Z' }), newer({ status: 'completed', conclusion: 'cancelled' }), responses[`${root}/runs/100`], prior()] };
     responses[`${root}/runs/101/attempts/1/jobs?per_page=10`] = { total_count: 0, jobs: [] };
     expect((await selectState({ github, run, now }))?.run.id).toBe(99);
   });
@@ -313,7 +340,7 @@ describe('trusted state selection', () => {
     [{ id: 101, run_number: 12 }, 'repeated id'], [{ id: 102, run_number: 11 }, 'repeated run number'],
   ])('rejects newer runs that are not strictly ordered (%j, %s)', async (first) => {
     const { github, responses } = api();
-    responses[`${root}/workflows/7/runs?branch=main&per_page=20&page=1`] = { total_count: 4, workflow_runs: [newer({ ...first, status: 'queued', conclusion: null }), newer({ status: 'queued', conclusion: null }), responses[`${root}/runs/100`], prior()] };
+    responses[`${root}/workflows/7/runs?branch=main&per_page=10&page=1`] = { total_count: 4, workflow_runs: [newer({ ...first, status: 'queued', conclusion: null }), newer({ status: 'queued', conclusion: null }), responses[`${root}/runs/100`], prior()] };
     await expect(selectState({ github, run, now })).rejects.toThrow(/nonmonotonic/i);
   });
   it.each([
@@ -321,12 +348,12 @@ describe('trusted state selection', () => {
     { repository: { id: 2, full_name: 'attacker/fork' } }, { head_sha: 'bad' },
   ])('rejects a newer run with untrusted provenance %j', async (change) => {
     const { github, responses } = api();
-    responses[`${root}/workflows/7/runs?branch=main&per_page=20&page=1`] = { total_count: 3, workflow_runs: [newer({ status: 'queued', conclusion: null, ...change }), responses[`${root}/runs/100`], prior()] };
+    responses[`${root}/workflows/7/runs?branch=main&per_page=10&page=1`] = { total_count: 3, workflow_runs: [newer({ status: 'queued', conclusion: null, ...change }), responses[`${root}/runs/100`], prior()] };
     await expect(selectState({ github, run, now })).rejects.toThrow(/provenance/i);
   });
   it('passes over a newer run queued after this process read the clock', async () => {
     const { github, responses } = api();
-    responses[`${root}/workflows/7/runs?branch=main&per_page=20&page=1`] = { total_count: 3, workflow_runs: [newer({ status: 'queued', conclusion: null, created_at: '2026-10-04T12:01:00Z', updated_at: '2026-10-04T12:01:00Z' }), responses[`${root}/runs/100`], prior()] };
+    responses[`${root}/workflows/7/runs?branch=main&per_page=10&page=1`] = { total_count: 3, workflow_runs: [newer({ status: 'queued', conclusion: null, created_at: '2026-10-04T12:01:00Z', updated_at: '2026-10-04T12:01:00Z' }), responses[`${root}/runs/100`], prior()] };
     expect((await selectState({ github, run, now }))?.run.id).toBe(99);
   });
   it.each([
@@ -334,7 +361,7 @@ describe('trusted state selection', () => {
     { status: 'queued', conclusion: null, id: 98 }, { status: 'queued', conclusion: null, created_at: '2026-10-04T11:00:00Z' },
   ])('rejects a newer run that could have run or is out of order (%j)', async (change) => {
     const { github, responses } = api();
-    responses[`${root}/workflows/7/runs?branch=main&per_page=20&page=1`] = { total_count: 3, workflow_runs: [newer(change), responses[`${root}/runs/100`], prior()] };
+    responses[`${root}/workflows/7/runs?branch=main&per_page=10&page=1`] = { total_count: 3, workflow_runs: [newer(change), responses[`${root}/runs/100`], prior()] };
     await expect(selectState({ github, run, now })).rejects.toThrow(/nonmonotonic/i);
   });
   it('does not interpret unknown or unavailable job history as initialization', async () => {
@@ -357,11 +384,11 @@ describe('trusted state selection', () => {
     const { github } = api([prior(8), prior(9)]);
     await expect(selectState({ github, run, now })).rejects.toThrow();
   });
-  it('fails closed at the three-page budget instead of initializing', async () => {
+  it('fails closed after scanning 60 runs instead of initializing', async () => {
     const { github, responses } = api([]);
-    for (let page = 1; page <= 3; page++) {
-      const runs = Array.from({ length: 20 }, (_, i) => ({ ...prior(), id: 999 - (page - 1) * 20 - i, run_number: 99 - (page - 1) * 20 - i }));
-      responses[`${root}/workflows/7/runs?branch=main&per_page=20&page=${page}`] = { total_count: 61, workflow_runs: runs };
+    for (let page = 1; page <= 6; page++) {
+      const runs = Array.from({ length: 10 }, (_, i) => ({ ...prior(), id: 999 - (page - 1) * 10 - i, run_number: 99 - (page - 1) * 10 - i }));
+      responses[`${root}/workflows/7/runs?branch=main&per_page=10&page=${page}`] = { total_count: 61, workflow_runs: runs };
       for (const source of runs) {
         noArtifacts(responses, source);
         responses[`${root}/runs/${source.id}/attempts/1/jobs?per_page=10`] = { total_count: 1, jobs: [{ id: source.id, run_id: source.id, run_attempt: 1, status: 'completed', conclusion: 'skipped', steps: [] }] };
@@ -369,7 +396,7 @@ describe('trusted state selection', () => {
     }
     responses[`${root}/runs/1000`] = { ...prior(), id: 1000, run_number: 100, created_at: '2026-10-04T11:30:00Z', updated_at: '2026-10-04T11:30:00Z' };
     await expect(selectState({ github, run: { ...run, id: 1000, number: 100 }, initialize: true, now })).rejects.toThrow(/bound|budget|history/i);
-    expect(github.mock.calls.filter(([path]) => path.includes('/workflows/7/runs'))).toHaveLength(3);
+    expect(github.mock.calls.filter(([path]) => path.includes('/workflows/7/runs'))).toHaveLength(6);
   });
 });
 
