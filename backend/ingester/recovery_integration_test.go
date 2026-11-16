@@ -72,42 +72,51 @@ func newRecoveryPostgres(t *testing.T) (*store.Store, *pgxpool.Pool, string) {
 }
 
 func TestNationsLeaguePlayInRecoversStoredClassification(t *testing.T) {
+	testRecoverStoredBracketRequirement(t, "nations-league", "2026-27", "espn-nations-league-play-in.json", "401929779")
+}
+
+func TestFemenilRegularSeasonRecoversStoredClassification(t *testing.T) {
+	testRecoverStoredBracketRequirement(t, "liga-mx-femenil", "2026-apertura", "espn-femenil-regular-season.json", "401924354")
+}
+
+func testRecoverStoredBracketRequirement(t *testing.T, compID, seasonID, filename, providerID string) {
+	t.Helper()
 	ctx := context.Background()
 	repo, pool, _ := newRecoveryPostgres(t)
 	registry, err := config.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	comp, ok := registry.Get("nations-league")
+	comp, ok := registry.Get(compID)
 	if !ok {
-		t.Fatal("missing Nations League")
+		t.Fatalf("missing %s", compID)
 	}
-	season := comp.Seasons["2026-27"]
+	season := comp.Seasons[seasonID]
 	if err := repo.ApplyCompetitionSeed(ctx, []config.Competition{comp}); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile("../../src/server/data/__fixtures__/espn-nations-league-play-in.json")
+	raw, err := os.ReadFile(filepath.Join("../../src/server/data/__fixtures__", filename))
 	if err != nil {
 		t.Fatal(err)
 	}
-	matches, err := espn.MapScoreboard(raw)
-	if err != nil || len(matches) != 2 {
+	matches, err := espn.MapSeasonScoreboard(raw, season)
+	if err != nil || len(matches) == 0 || matches[0].ID != providerID {
 		t.Fatalf("matches=%+v err=%v", matches, err)
 	}
-	playIn := matches[0]
+	match := matches[0]
 	src := &fakeSource{
-		matches:     []model.Match{playIn},
-		summaryHome: playIn.HomeScore, summaryAway: playIn.AwayScore,
+		matches:     []model.Match{match},
+		summaryHome: match.HomeScore, summaryAway: match.AwayScore,
 	}
 	r := testRunner(src, &fakeRepository{}, comp)
 	now := time.Date(2026, 11, 15, 6, 0, 0, 0, time.UTC)
 	r.repo, r.now = repo, func() time.Time { return now }
-	id, err := r.resolveMatch(ctx, comp, season.ID, playIn)
+	id, err := r.resolveMatch(ctx, comp, season.ID, match)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Recreate the existing unfinalized row from before this classification was known.
-	stored := playIn
+	stored := match
 	required := true
 	stored.BracketRequired, stored.BracketConfirmed = &required, false
 	if err := repo.UpsertMatch(ctx, id, stored); err != nil {
@@ -120,16 +129,18 @@ func TestNationsLeaguePlayInRecoversStoredClassification(t *testing.T) {
 			t.Fatalf("full=%t season poll failed: %v (backfillDone=%t)", full, result.err, result.backfillDone)
 		}
 		var outcome, state string
-		var bracketRequired bool
+		var bracketRequired, hasDetail, enrolled bool
 		var round, winner *string
 		var homeScore, awayScore int
 		var finalized *time.Time
 		if err := pool.QueryRow(ctx, `SELECT p.outcome, m.state, m.bracket_required,
-			m.round, m.winner_id, m.home_score, m.away_score, m.finalized_at
+			m.round, m.winner_id, m.home_score, m.away_score, m.finalized_at,
+			EXISTS (SELECT 1 FROM match_detail WHERE match_id=m.id),
+			EXISTS (SELECT 1 FROM match_participation_availability WHERE match_id=m.id)
 			FROM match m JOIN match_poll_status p
 			  ON p.competition_id=m.competition_id AND p.season_id=m.season_id AND p.source='espn'
 			WHERE m.id=$1`, id.MatchID).Scan(&outcome, &state, &bracketRequired,
-			&round, &winner, &homeScore, &awayScore, &finalized); err != nil {
+			&round, &winner, &homeScore, &awayScore, &finalized, &hasDetail, &enrolled); err != nil {
 			t.Fatal(err)
 		}
 		if outcome != "ok" || state != "finished" || bracketRequired || round != nil ||
@@ -137,8 +148,11 @@ func TestNationsLeaguePlayInRecoversStoredClassification(t *testing.T) {
 			t.Fatalf("full=%t recovery incomplete: poll=%s state=%s bracket=%t round=%v winner=%v score=%d-%d finalized=%v",
 				full, outcome, state, bracketRequired, round, winner, homeScore, awayScore, finalized)
 		}
+		if !hasDetail || !enrolled {
+			t.Fatalf("full=%t detail=%t participation enrollment=%t", full, hasDetail, enrolled)
+		}
 		if !firstFinalized.IsZero() && !finalized.Equal(firstFinalized) {
-			t.Fatal("subsequent poll rewrote finalized play-in")
+			t.Fatal("subsequent poll rewrote finalized match")
 		}
 		firstFinalized = *finalized
 		now = now.Add(5 * time.Minute)

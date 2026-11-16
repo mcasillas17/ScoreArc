@@ -422,7 +422,17 @@ func TestWomensPlayoffRoundsAndLegs(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		games, err := MapSeasonBracket(body, config.Season{PlayoffFormat: edition.format})
+		season := config.Season{PlayoffFormat: edition.format}
+		scoreboard, err := MapSeasonScoreboard(body, season)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, match := range scoreboard {
+			if match.BracketRequired == nil || !*match.BracketRequired || match.BracketConfirmed {
+				t.Fatalf("scoreboard bypassed knockout confirmation for %s", match.ID)
+			}
+		}
+		games, err := MapSeasonBracket(body, season)
 		if err != nil {
 			t.Fatal(err)
 		}
