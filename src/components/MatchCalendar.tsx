@@ -25,6 +25,8 @@ import { formatDate } from '@/i18n/format';
 const LIVE_REFRESH_MS = 30_000;
 
 interface Props {
+  hasSummary?: boolean;
+  live?: boolean;
   initialMatches: Match[];
   initialError?: string | null;
   initialMonth: string;
@@ -72,6 +74,8 @@ export default function MatchCalendar({
   minMonth,
   maxMonth,
   apiBase,
+  hasSummary = true,
+  live = true,
   teamBase,
   playerBase,
   teamStyle = 'flag',
@@ -188,7 +192,7 @@ export default function MatchCalendar({
   // scheduled time until someone reloaded. Older months are settled history
   // and are deliberately left alone.
   useEffect(() => {
-    if (!today) return;
+    if (!today || !live) return;
     const cursorHasToday =
       cursor.getFullYear() === today.getFullYear() && cursor.getMonth() === today.getMonth();
     if (!cursorHasToday) return;
@@ -227,7 +231,7 @@ export default function MatchCalendar({
       alive = false;
       clearInterval(id);
     };
-  }, [apiBase, cursor, today]);
+  }, [apiBase, cursor, today, live]);
 
   const todayKey = today ? dayKey(today) : null;
   const cursorLabel = monthLabel(cursor, locale) ?? t('common.unavailable');
@@ -280,7 +284,7 @@ export default function MatchCalendar({
                     key={match.id}
                     match={match}
                     teamStyle={teamStyle}
-                    onOpen={() => void openDetails(match)}
+                    onOpen={hasSummary ? () => void openDetails(match) : undefined}
                   />
                 ))}
               </div>

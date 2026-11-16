@@ -1,6 +1,6 @@
 import { dataStore } from '@/server/data/store';
 import { currentWeekRange } from '@/server/data/dateRange';
-import { resolveSeason } from '@/server/data/competitions';
+import { resolveResource } from '@/server/data/editionResources';
 import { parseMatchQuery } from '@/server/data/matchQuery';
 import type { Match } from '@/server/data/types';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
@@ -28,7 +28,7 @@ type RouteParams = Promise<{ comp: string; season: string }>;
  */
 export async function GET(req: Request, { params }: { params: RouteParams }) {
   const { comp, season } = await params;
-  const rc = resolveSeason(comp, season);
+  const rc = resolveResource(comp, season, 'scores');
   if (!rc) {
     return apiError('NOT_FOUND', 404);
   }

@@ -14,7 +14,7 @@ func (s *Store) PlayersNeedingBio(
 	ctx context.Context,
 	source string,
 	staleBefore time.Time,
-	limit int,
+	limit int, scopes []string,
 ) (map[string]uuid.UUID, error) {
 	if source == "" {
 		return nil, fmt.Errorf("bio source is required")
@@ -30,10 +30,10 @@ SELECT r.source_id, p.id
 FROM player p
 JOIN player_external_ref r ON r.player_id = p.id AND r.source = $1
 WHERE (p.bio_fetched_at IS NULL OR p.bio_fetched_at < $2)
-  AND EXISTS (SELECT 1 FROM appearance a WHERE a.player_id = p.id)
+  AND EXISTS (SELECT 1 FROM appearance a JOIN match m ON m.id=a.match_id WHERE a.player_id=p.id AND (m.competition_id || '/' || m.season_id) = ANY($4::text[]))
 ORDER BY p.bio_fetched_at NULLS FIRST
 LIMIT $3`,
-		source, staleBefore, limit,
+		source, staleBefore, limit, scopes,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query players needing bio: %w", err)

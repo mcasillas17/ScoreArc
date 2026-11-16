@@ -79,11 +79,15 @@ const standing = object({
   goalsFor: count, goalsAgainst: count, goalDifference: integer, points: integer, advanced: boolean,
 });
 export const decodeReaderStandings: Decoder<Group[]> = array(object({ id: string, name: string, standings: array(standing, 10000) }));
-const bracketMatch = object({
+const bracketMatchShape = {
   id: uuid, round, kickoff: instant, home: object({ ...teamShape, placeholder: boolean }),
   away: object({ ...teamShape, placeholder: boolean }), homeScore: nullable(count), awayScore: nullable(count),
   state, statusDetail: string, statusName: string, minute: nullable(string), winnerId: nullable(teamId), note: nullable(string),
-});
+};
+const bracketWithPens = object({ ...bracketMatchShape, shootout });
+const bracketWithoutPens = object(bracketMatchShape);
+const bracketMatch: Decoder<BracketRound['matches'][number]> = value =>
+  value && typeof value === 'object' && Object.hasOwn(value, 'shootout') ? bracketWithPens(value) : bracketWithoutPens(value);
 export type ReaderBracketRound = BracketRound & { name: string };
 export const decodeReaderBracket: Decoder<ReaderBracketRound[]> = array(object({ slug: round, name: string, matches: array(bracketMatch) }), 6);
 

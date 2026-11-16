@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { NextRequest } from 'next/server';
 import { dataStore } from '@/server/data/store';
+import * as competitions from '@/server/data/competitions';
 import { currentWeekRange } from '@/server/data/dateRange';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 
@@ -32,6 +33,22 @@ const wc = { comp: 'world-cup', season: '2026' };
 const mx = { comp: 'liga-mx', season: '2026-apertura' };
 const get = async (query: string, params = mx) =>
   (await route()).GET(new Request(`http://x/api/matches${query}`), { params: Promise.resolve(params) });
+
+it('returns the unknown-season response for an unpublished scope or unsupported resource without a source read', async () => {
+  const { GET } = await import('./[comp]/[season]/top-scorers/route');
+  const read = vi.spyOn(dataStore, 'getLeaders');
+  const request = (comp: string, season: string) => GET(new Request('http://x/'), { params: Promise.resolve({ comp, season }) });
+  const missing = await request('missing', '2023');
+  const hidden = await request('womens-world-cup', '2023');
+  const scope = competitions.resolveSeason(wc.comp, wc.season)!;
+  vi.spyOn(competitions, 'resolveSeason').mockReturnValueOnce({ ...scope, season: { ...scope.season, resources: ['scores'] } });
+  const unsupported = await request(wc.comp, wc.season);
+  expect([missing.status, hidden.status, unsupported.status]).toEqual([404, 404, 404]);
+  const unknown = await missing.json();
+  expect(await hidden.json()).toEqual(unknown);
+  expect(await unsupported.json()).toEqual(unknown);
+  expect(read).not.toHaveBeenCalled();
+});
 
 const sensitiveProviderFailure = new Error(
   'upstream unavailable: sensitive provider detail',
@@ -517,6 +534,16 @@ const ogMarkup = async (
 
 describe('GET /api/og — card variants', () => {
   const CREST = 'https://a.espncdn.com/i/teamlogos/soccer/500/227.png';
+
+  it('renders the same generic card for hidden and unknown competitions without loading assets', async () => {
+    const fetchImage = vi.fn(async () => ({ ok: true }));
+    const query = '&subject=Demo&comp=Tournament&crest=' + encodeURIComponent(CREST);
+    const hidden = await ogMarkup('?compId=womens-world-cup' + query, fetchImage);
+    const missing = await ogMarkup('?compId=unknown-competition' + query, fetchImage);
+    expect(hidden).toEqual(missing);
+    expect(hidden.html).not.toContain('Tournament');
+    expect(fetchImage).not.toHaveBeenCalled();
+  });
 
   // A plain-object lookup of a prototype member returned truthy and crashed
   // the accent read — a public, unauthenticated 500 on every prototype key.

@@ -241,8 +241,9 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
 
   // Match-detail popup state (live/finished mode only)
   const {
-    detail, summary, setSummary, loadingDetail, openDetails: handleView, closeDetails,
+    detail, summary, setSummary, loadingDetail, openDetails, closeDetails,
   } = useMatchDetails<BracketMatch>(apiBase, 'bracket');
+  const handleView = (m: BracketMatch) => openDetails(m.detailMatch ?? m);
   const summaryFeedFailedFor = useRef<string | null>(null);
 
   // Radar-ping cues use the client clock ("is this match today?"), so they only
@@ -403,9 +404,10 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           const parents = rings[depth + 1];
           const GRAD = 'url(#conn-grad)';
           return parents.map((parent, k) => {
-            const a = children[2 * k];
-            const b = children[2 * k + 1];
-            if (!a || !b) return null;
+            const feeder = parent.feederIndex ?? k;
+            const a = children[2 * feeder];
+            const b = children[2 * feeder + 1];
+            if (!a || !b || a.pairingPending || b.pairingPending) return null;
             const jA = ellipse(rj, rj, a.angle);
             const jB = ellipse(rj, rj, b.angle);
             const jMid = ellipse(rj, rj, parent.angle);
@@ -592,12 +594,13 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           if (depth < 1) return null;
           const childRing = rings[depth - 1];
           return ring.map((node) => {
-            const cA = childRing[2 * node.index];
-            const cB = childRing[2 * node.index + 1];
+            const feeder = node.feederIndex ?? node.index;
+            const cA = childRing[2 * feeder];
+            const cB = childRing[2 * feeder + 1];
             const upcomingMatch =
               mode !== 'predict' &&
               node.team.placeholder &&
-              cA?.match != null &&
+              cA?.match != null && !cA.match.id.startsWith('proj-') &&
               !cA.team.placeholder &&
               !!cB &&
               !cB.team.placeholder

@@ -172,6 +172,8 @@ export type Group = GroupTable & (
 // ===== Knockout Bracket =====
 
 export interface BracketTeam {
+  /** Final regular-season rank by known overall tiebreakers. Equal values remain unresolved. */
+  overallSeed?: number;
   id: string;
   name: string;
   abbr: string;
@@ -188,6 +190,10 @@ export type KnockoutRoundSlug =
   | 'final';
 
 export interface BracketMatch {
+  legNumber?: number | null;
+  /** The actual leg to open from a two-leg aggregate. */
+  detailMatch?: BracketMatch;
+  shootout?: Shootout;
   id: string;
   round: KnockoutRoundSlug;
   kickoff: string;          // ISO date string

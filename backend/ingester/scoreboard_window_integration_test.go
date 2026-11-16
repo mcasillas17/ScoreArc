@@ -27,8 +27,8 @@ func (s windowPipelineSource) Name() string { return "espn" }
 func (s windowPipelineSource) Scoreboard(ctx context.Context, c config.Competition, season config.Season, backfill bool) ([]model.Match, error) {
 	return s.provider.Scoreboard(ctx, c, season, backfill)
 }
-func (s windowPipelineSource) Summary(ctx context.Context, c config.Competition, match model.Match) (source.SummaryResult, error) {
-	return s.provider.Summary(ctx, c, match)
+func (s windowPipelineSource) Summary(ctx context.Context, c config.Competition, season config.Season, match model.Match) (source.SummaryResult, error) {
+	return s.provider.Summary(ctx, c, season, match)
 }
 func (s windowPipelineSource) RecoverMatch(ctx context.Context, c config.Competition, season config.Season, match model.Match) (model.Match, source.SummaryResult, error) {
 	return s.provider.RecoverMatch(ctx, c, season, match)
@@ -78,7 +78,7 @@ func testMonthlyScoreboardPipeline(t *testing.T, recovery bool) {
 	now := time.Now().UTC().Truncate(time.Second)
 	providerNow := now
 	year := strconv.Itoa(now.Year())
-	season := config.Season{ID: year}
+	season := config.Season{Publication: "live", Resources: testResources, ID: year}
 	comp := config.Competition{
 		ID: "window-test", ESPNSlug: "esp.1", CurrentSeasonId: year,
 		Seasons: map[string]config.Season{year: season},

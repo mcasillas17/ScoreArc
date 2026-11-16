@@ -3,10 +3,12 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/mcasillas17/scorearc-backend/config"
+	"github.com/mcasillas17/scorearc-backend/shared/espn"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
 
@@ -63,21 +65,17 @@ func TestSlugify(t *testing.T) {
 	}
 }
 
-func TestCountryPrefix(t *testing.T) {
-	cases := map[string]string{
-		"eng.1":                "eng",
-		"mex.1":                "mex",
-		"fifa.world":           "fifa",
-		"concacaf.leagues.cup": "concacaf",
-		"nodots":               "nodots",
-		"":                     "x",
-		".1":                   "x",
+func seedCompetition(t *testing.T, id string) config.Competition {
+	t.Helper()
+	registry, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
 	}
-	for in, want := range cases {
-		if got := countryPrefix(in); got != want {
-			t.Errorf("countryPrefix(%q) = %q, want %q", in, got, want)
-		}
+	comp, ok := registry.Get(id)
+	if !ok {
+		t.Fatalf("unknown competition %q", id)
 	}
+	return comp
 }
 
 // A name with no Latin content must not become a bare prefix like "ger-",
@@ -98,7 +96,8 @@ func TestDeriveSlugFallsBackToProvisional(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := deriveSlug("ger", tc.kind, "men", tc.team)
+			comp := config.Competition{Kind: tc.kind, Category: "men", Level: "senior", DirectoryGroup: "domestic", ESPNSlug: "ger.1"}
+			got := proposeTeam(nil, comp, tc.team).ID
 			want := "prov-espn-" + tc.team.ID
 			if got != want {
 				t.Errorf("deriveSlug(%q, %+v) = %q, want %q", tc.kind, tc.team, got, want)
@@ -111,14 +110,14 @@ func TestDeriveSlugFallsBackToProvisional(t *testing.T) {
 }
 
 func TestDeriveSlugNamesTeamsNormally(t *testing.T) {
-	club := deriveSlug("eng", "club", "men", model.Team{ID: "360", Name: "Manchester United", Abbr: "MAN"})
-	if club != "eng-manchester-united" {
+	club := proposeTeam(nil, seedCompetition(t, "liga-mx"), model.Team{ID: "227", Name: "América", Abbr: "AME"}).ID
+	if club != "mex-america" {
 		t.Errorf("club slug = %q", club)
 	}
 	if isProvisional(club) {
 		t.Errorf("%q should not be provisional", club)
 	}
-	national := deriveSlug("fifa", "national", "men", model.Team{ID: "203", Name: "Mexico", Abbr: "MEX"})
+	national := proposeTeam(nil, seedCompetition(t, "world-cup"), model.Team{ID: "203", Name: "Mexico", Abbr: "MEX"}).ID
 	if national != "nat-mex" {
 		t.Errorf("national slug = %q", national)
 	}
@@ -141,7 +140,7 @@ func TestProposeTeamPreservesCuratedIdentity(t *testing.T) {
 	}
 	live := model.Team{ID: "218", Name: "Cruz Azul", Abbr: "CAZ"}
 
-	got := proposeTeam(curated, "concacaf", "club", "men", live)
+	got := proposeTeam(curated, seedCompetition(t, "leagues-cup"), live)
 	if got.ID != "mex-cruz-azul" {
 		t.Errorf("curated slug was re-derived: got %q, want %q", got.ID, "mex-cruz-azul")
 	}
@@ -161,7 +160,7 @@ func TestProposeTeamRefreshesProviderFields(t *testing.T) {
 			Country: "mex", Refs: map[string]string{"espn": "218"},
 		},
 	}
-	got := proposeTeam(curated, "concacaf", "club", "men",
+	got := proposeTeam(curated, seedCompetition(t, "leagues-cup"),
 		model.Team{ID: "218", Name: "Cruz Azul", Abbr: "CAZ", CrestURL: &crest})
 
 	if got.Name != "Cruz Azul" || got.Abbr != "CAZ" {
@@ -189,7 +188,7 @@ func TestProposeTeamPreservesHandSetCrestAndShortName(t *testing.T) {
 			Refs: map[string]string{"espn": "218"},
 		},
 	}
-	got := proposeTeam(curated, "concacaf", "club", "men",
+	got := proposeTeam(curated, seedCompetition(t, "leagues-cup"),
 		model.Team{ID: "218", Name: "Cruz Azul", Abbr: "CAZ", CrestURL: &espnCrest})
 
 	if got.CrestURL == nil || *got.CrestURL != handSet {
@@ -203,13 +202,13 @@ func TestProposeTeamPreservesHandSetCrestAndShortName(t *testing.T) {
 // A team the seed has never seen is the only case that gets a machine slug.
 func TestProposeTeamDerivesUnseenTeams(t *testing.T) {
 	crest := "https://a.espncdn.com/i/teamlogos/soccer/500/227.png"
-	got := proposeTeam(map[string]config.SeedTeam{}, "concacaf", "club", "men",
+	got := proposeTeam(nil, seedCompetition(t, "liga-mx"),
 		model.Team{ID: "227", Name: "América", Abbr: "AME", CrestURL: &crest})
 
-	if got.ID != "concacaf-america" {
+	if got.ID != "mex-america" {
 		t.Errorf("derived slug = %q", got.ID)
 	}
-	if got.Country != "concacaf" || got.Kind != "club" {
+	if got.Country != "mex" || got.Kind != "club" {
 		t.Errorf("country=%q kind=%q", got.Country, got.Kind)
 	}
 	// Neither of these is proposed: a short name duplicating the name is noise,
@@ -229,7 +228,7 @@ func TestProposeTeamDerivesUnseenTeams(t *testing.T) {
 // being proposed they must not reappear as `"crestUrl": null` noise either.
 func TestProposedSeedOmitsUnsetDisplayFields(t *testing.T) {
 	encoded, err := json.Marshal([]config.SeedTeam{
-		proposeTeam(map[string]config.SeedTeam{}, "eng", "club", "men",
+		proposeTeam(nil, seedCompetition(t, "premier-league"),
 			model.Team{ID: "359", Name: "Arsenal", Abbr: "ARS"}),
 	})
 	if err != nil {
@@ -281,13 +280,13 @@ func TestBuildSeedKeepsCuratedTeamsFromACompetitionThatFailed(t *testing.T) {
 	var warnings strings.Builder
 	seed, err := buildSeed(curatedFixture(), []competitionFetch{
 		{
-			compID: "premier-league", prefix: "eng", kind: "club",
+			comp:  seedCompetition(t, "premier-league"),
 			teams: []model.Team{{ID: "359", Name: "Arsenal", Abbr: "ARS"}},
 		},
 		{
 			// Scoreboard down; standings answered but empty, which is exactly
 			// how a partial outage looks.
-			compID: "laliga", prefix: "esp", kind: "club",
+			comp:          seedCompetition(t, "laliga"),
 			scoreboardErr: errors.New("espn: 500"),
 		},
 	}, &warnings)
@@ -314,13 +313,11 @@ func TestBuildSeedRefusesWhenACompetitionIsCompletelyBlind(t *testing.T) {
 	var warnings strings.Builder
 	seed, err := buildSeed(curatedFixture(), []competitionFetch{
 		{
-			compID: "premier-league", prefix: "eng", kind: "club",
+			comp:  seedCompetition(t, "premier-league"),
 			teams: []model.Team{{ID: "359", Name: "Arsenal", Abbr: "ARS"}},
 		},
 		{
-			compID:        "laliga",
-			prefix:        "esp",
-			kind:          "club",
+			comp:          seedCompetition(t, "laliga"),
 			scoreboardErr: errors.New("espn: 500"),
 			standingsErr:  errors.New("espn: 500"),
 		},
@@ -342,7 +339,7 @@ func TestBuildSeedRefusesWhenACompetitionIsCompletelyBlind(t *testing.T) {
 func TestBuildSeedOverlaysFetchedTeamsOntoTheBase(t *testing.T) {
 	var warnings strings.Builder
 	seed, err := buildSeed(curatedFixture(), []competitionFetch{{
-		compID: "laliga", prefix: "esp", kind: "club",
+		comp: seedCompetition(t, "laliga"),
 		teams: []model.Team{
 			{ID: "86", Name: "Real Madrid CF", Abbr: "RMA"},
 			{ID: "9812", Name: "Elche", Abbr: "ELC"},
@@ -416,16 +413,175 @@ func TestMergeBaseRefusesToRegenerateWithoutABase(t *testing.T) {
 }
 
 func TestDeriveSlugNamespacesWomensTeams(t *testing.T) {
-	club := deriveSlug("mex", "club", "women", model.Team{ID: "22415", Name: "América", Abbr: "AME"})
+	club := proposeTeam(nil, seedCompetition(t, "liga-mx-femenil"), model.Team{ID: "22415", Name: "América", Abbr: "AME"}).ID
 	if club != "mex-w-america" {
 		t.Errorf("club slug = %q", club)
 	}
-	national := deriveSlug("fifa", "national", "women", model.Team{ID: "2765", Name: "Mexico", Abbr: "MEX"})
+	national := proposeTeam(nil, seedCompetition(t, "womens-world-cup"), model.Team{ID: "2765", Name: "Mexico", Abbr: "MEX"}).ID
 	if national != "nat-w-mex" {
 		t.Errorf("national slug = %q", national)
 	}
 	// A name that cannot be slugged is still the provisional shape, unsuffixed.
-	if got := deriveSlug("mex", "club", "women", model.Team{ID: "9", Name: "Зенит", Abbr: "ZEN"}); got != "prov-espn-9" {
+	if got := proposeTeam(nil, seedCompetition(t, "liga-mx-femenil"), model.Team{ID: "9", Name: "Зенит", Abbr: "ZEN"}).ID; got != "prov-espn-9" {
 		t.Errorf("provisional slug = %q", got)
+	}
+}
+
+func TestWomensTeamIdentity(t *testing.T) {
+	seed, err := config.LoadTeams()
+	if err != nil {
+		t.Fatal(err)
+	}
+	curated, err := mergeBase(seed, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for ref, want := range map[string]string{
+		"227": "mex-america", "22415": "mex-w-america",
+		"360": "eng-manchester-united", "20061": "eng-w-manchester-united",
+		"203": "nat-mex",
+	} {
+		if row := curated[ref]; row.ID != want {
+			t.Errorf("espn:%s maps to %q, want %q", ref, row.ID, want)
+		}
+	}
+	gotham := model.Team{ID: "15364", Name: "Gotham FC", Abbr: "GFC"}
+	senior := model.Team{ID: "synthetic-senior", Name: "Mexico", Abbr: "MEX"}
+	youth := model.Team{ID: "synthetic-u17", Name: "Mexico", Abbr: "MEX"}
+	fetches := []competitionFetch{
+		{comp: seedCompetition(t, "concacaf-w-champions-cup"), teams: []model.Team{gotham}},
+		{comp: seedCompetition(t, "nwsl"), teams: []model.Team{gotham}},
+		{comp: seedCompetition(t, "womens-world-cup"), teams: []model.Team{senior}},
+		{comp: seedCompetition(t, "fifa-wworld-u17"), teams: []model.Team{youth}},
+	}
+	var warnings strings.Builder
+	rows, err := buildSeed(curated, fetches, &warnings)
+	if err != nil {
+		t.Fatalf("propose women's identities: %v (%s)", err, warnings.String())
+	}
+	byRef, err := mergeBase(rows, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for ref, want := range map[string][2]string{
+		"15364":   {"usa-w-gotham-fc", "usa"},
+		senior.ID: {"nat-w-mex", "mex"},
+		youth.ID:  {"nat-w-u17-mex", "mex"},
+	} {
+		team := byRef[ref]
+		if team.ID != want[0] || team.Country != want[1] {
+			t.Errorf("%s resolved to %s (%s), want %v", ref, team.ID, team.Country, want)
+		}
+	}
+}
+
+func TestSeedNeedsACountryForNewCupEntrants(t *testing.T) {
+	entrant := model.Team{ID: "new", Name: "United", Abbr: "UTD"}
+	fetches := []competitionFetch{{comp: seedCompetition(t, "concacaf-w-champions-cup"), teams: []model.Team{entrant}}}
+	var warnings strings.Builder
+	if rows, err := buildSeed(nil, fetches, &warnings); err == nil || rows != nil {
+		t.Fatalf("cup-only entrant without a country emitted as curated: %v", seedIDs(rows))
+	}
+	secondCup := competitionFetch{comp: seedCompetition(t, "usa-nwsl-cup"), teams: []model.Team{entrant}}
+	league := competitionFetch{comp: seedCompetition(t, "nwsl"), teams: []model.Team{entrant}}
+	for _, order := range [][]competitionFetch{
+		{fetches[0], secondCup, league}, {league, secondCup, fetches[0]},
+	} {
+		rows, err := buildSeed(nil, order, &warnings)
+		if err != nil || len(rows) != 1 || rows[0].ID != "usa-w-united" || rows[0].Country != "usa" {
+			t.Errorf("entrant shared across two cups and its league: %+v, %v", rows, err)
+		}
+	}
+}
+
+func TestSeedEditionSelection(t *testing.T) {
+	t.Setenv("SCOREARC_ENV", "staging")
+	t.Setenv("FLY_APP_NAME", "")
+	t.Setenv("VERCEL_ENV", "")
+	t.Setenv("SCOREARC_STAGING_EDITIONS", "womens-world-cup/example")
+	registry, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cup, _ := registry.Get("womens-world-cup")
+	for _, id := range []string{"example", "unreviewed"} {
+		cup.Seasons[id] = config.Season{ID: id, Publication: "staging", Resources: []string{"scores"}}
+	}
+	got, err := seedEditions(registry, "womens-world-cup/example")
+	if err != nil || len(got) != 1 || got[0].ID != cup.ID || got[0].CurrentSeasonId != "example" {
+		t.Fatalf("reviewed staging edition: %#v, %v", got, err)
+	}
+	for _, scope := range []string{"womens-world-cup/unreviewed", "world-cup/2022", "absent/2026"} {
+		if _, err := seedEditions(registry, scope); err == nil {
+			t.Errorf("admitted ineligible scope %s", scope)
+		}
+	}
+}
+
+func TestSeedRefusesCompetingIdentitiesForAnUncuratedRef(t *testing.T) {
+	team := model.Team{ID: "ambiguous", Name: "United", Abbr: "UTD"}
+	cup := competitionFetch{comp: seedCompetition(t, "concacaf-w-champions-cup"), teams: []model.Team{team}}
+	for _, other := range []string{"mls", "womens-world-cup", "usa-ncaa-w-1"} {
+		otherScope := competitionFetch{comp: seedCompetition(t, other), teams: []model.Team{team}}
+		for _, order := range [][]competitionFetch{{cup, otherScope}, {otherScope, cup}} {
+			t.Run(order[0].comp.ID+"-then-"+order[1].comp.ID, func(t *testing.T) {
+				rows, err := buildSeed(nil, order, &strings.Builder{})
+				if rows != nil || err == nil || !strings.Contains(err.Error(), team.ID) ||
+					!strings.Contains(err.Error(), cup.comp.ID) || !strings.Contains(err.Error(), other) {
+					t.Fatalf("conflicting ref admitted: %v, %v", seedIDs(rows), err)
+				}
+			})
+		}
+	}
+}
+
+func TestSeedOmitsRecordedBracketSlots(t *testing.T) {
+	raw, err := os.ReadFile("../../shared/espn/testdata/espn-bracket.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches, err := espn.MapScoreboard(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetch := competitionFetch{comp: seedCompetition(t, "world-cup")}
+	for _, match := range matches {
+		fetch.teams = append(fetch.teams, match.Home, match.Away)
+	}
+	rows, err := buildSeed(nil, []competitionFetch{fetch}, &strings.Builder{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byRef, err := mergeBase(rows, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if byRef["210"].ID != "nat-par" {
+		t.Fatalf("missing identified opponent of slot 131529: %+v", byRef["210"])
+	}
+	for _, ref := range []string{"5960", "5958", "131529", "131530"} {
+		if row, linked := byRef[ref]; linked {
+			t.Errorf("recorded bracket slot espn:%s was linked to %q", ref, row.ID)
+		}
+	}
+}
+
+func TestSeedDoesNotInferNewMLSClubCountry(t *testing.T) {
+	club := model.Team{ID: "synthetic-canadian-mls", Name: "Canadian Expansion Club", Abbr: "CEC"}
+	mls := competitionFetch{comp: seedCompetition(t, "mls"), teams: []model.Team{club}}
+	if rows, err := buildSeed(nil, []competitionFetch{mls}, &strings.Builder{}); rows != nil || err == nil || !strings.Contains(err.Error(), club.ID) {
+		t.Fatalf("MLS membership alone resolved the club: %v, %v", seedIDs(rows), err)
+	}
+	seed, err := config.LoadTeams()
+	if err != nil {
+		t.Fatal(err)
+	}
+	curated, err := mergeBase(seed, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	toronto := proposeTeam(curated, mls.comp, model.Team{ID: "7318", Name: "Toronto FC", Abbr: "TOR"})
+	if toronto.ID != "can-toronto-fc" || toronto.Country != "can" {
+		t.Fatalf("MLS overwrote curated Toronto identity: %+v", toronto)
 	}
 }

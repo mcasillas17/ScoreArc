@@ -996,7 +996,7 @@ neither E16 cutover nor full T21.2 schema readiness, and T17.1 stays closed.
 
 ### E23 · Global competition onboarding
 
-The [women’s fútbol coverage audit](WOMENS_FOOTBALL_COVERAGE.md) inventories 45 ESPN feeds and tests the NWSL, Liga MX Femenil and WSL against the existing data path. It records candidate batches, identity collisions, playoff rules and service limits for T23.1–T23.4.
+The [women’s fútbol coverage audit](WOMENS_FOOTBALL_COVERAGE.md) inventories 45 ESPN feeds and tests the NWSL, Liga MX Femenil and WSL against the existing data path. The [approved shared matchday design](superpowers/specs/2026-11-15-womens-football-and-shared-matchday-design.md) and [implementation plan](superpowers/plans/2026-11-15-womens-football.md) sequence current coverage first, followed by the 2023 Women’s World Cup and historical editions in waves.
 
 | Task | Outcome and primary surfaces | Failure rule and measurable acceptance | Depends / gate |
 |---|---|---|---|

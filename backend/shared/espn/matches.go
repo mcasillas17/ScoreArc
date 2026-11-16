@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mcasillas17/scorearc-backend/config"
 )
 
 // Port of src/server/data/providers/espn-matches.ts's mapScoreboard, using
@@ -36,6 +38,7 @@ type rawEvent struct {
 type rawCompetition struct {
 	Competitors []rawCompetitor `json:"competitors"`
 	Notes       []rawNote       `json:"notes"`
+	Leg         json.RawMessage `json:"leg"`
 }
 
 type rawNote struct {
@@ -128,6 +131,11 @@ func scoreOf(raw *flexibleString) *int {
 // scoreboard JSON into our domain []Match. Structurally incomplete events reject
 // the payload so a partial provider response cannot silently erase or stale data.
 func MapScoreboard(raw []byte) ([]Match, error) {
+	return MapSeasonScoreboard(raw, config.Season{})
+}
+
+// MapSeasonScoreboard applies edition-specific match semantics to scoreboard events.
+func MapSeasonScoreboard(raw []byte, season config.Season) ([]Match, error) {
 	if err := validateArrayEnvelope(raw, "events"); err != nil {
 		return nil, err
 	}
@@ -176,10 +184,11 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 
 		bracketRequired := bracketRequirement(string(ev.ID), ev.Season.Slug)
 
-		var note *string
-		if len(comp.Notes) > 0 && comp.Notes[0].Text != "" {
-			text := comp.Notes[0].Text
-			note = &text
+		round := bracketRoundSlug(string(ev.ID), ev.Season.Slug)
+		leg := IsFemenilLeg(season, round, nil)
+		note, err := competitionNote(comp.Notes, comp.Leg, leg)
+		if err != nil {
+			return nil, fmt.Errorf("scoreboard event %q: %w", ev.ID, err)
 		}
 
 		flag := flaggedWinnerID(string(home.Team.ID), string(away.Team.ID), home.Winner, away.Winner)
@@ -207,18 +216,20 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 		// both (shared/source). Regulation scores below stay separate.
 		shootout := shootoutTotals(home.ShootoutScore, away.ShootoutScore)
 		if shootout == nil && note != nil {
-			shootout = ParseShootoutNote(*note, homeTeam.Name, awayTeam.Name)
+			shootout = parseMatchShootoutNote(*note, homeTeam.Name, awayTeam.Name, leg)
 		}
-		// A finished match's decisive aggregate names its winner ahead of the
-		// flags, as the bracket mapper's shootout-first rule does.
-		if state == MatchStateFinished {
-			winnerID = ResolveWinner(shootout, homeTeam.ID, awayTeam.ID, winnerID)
-		}
-
 		homeScore, awayScore := scoreOf(home.Score), scoreOf(away.Score)
 		if (home.Score != nil && *home.Score != "" && homeScore == nil) ||
 			(away.Score != nil && *away.Score != "" && awayScore == nil) {
 			return nil, fmt.Errorf("scoreboard event %q has invalid score", ev.ID)
+		}
+		if leg {
+			if state == MatchStateFinished && !terminalMatchStatus(status.Type.Name) && (homeScore == nil || awayScore == nil) {
+				return nil, fmt.Errorf("scoreboard event %q: finished leg lacks scores", ev.ID)
+			}
+			winnerID, flag = LegWinner(status.Type.Name, round, note, homeTeam.ID, awayTeam.ID, homeScore, awayScore), nil
+		} else if state == MatchStateFinished {
+			winnerID = ResolveWinner(shootout, homeTeam.ID, awayTeam.ID, flag)
 		}
 		matches = append(matches, Match{
 			ID:              string(ev.ID),
@@ -232,6 +243,7 @@ func MapScoreboard(raw []byte) ([]Match, error) {
 			HomeScore:       homeScore,
 			AwayScore:       awayScore,
 			WinnerID:        winnerID,
+			WinnerResolved:  leg,
 			WinnerFlagID:    flag,
 			Note:            note,
 			Shootout:        shootout,

@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/mcasillas17/scorearc-backend/config"
+	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
 
 func TestApplyTeamSeedIsIdempotent(t *testing.T) {
@@ -373,6 +374,11 @@ func TestApplyTeamSeedPromotesSquadFactsAsTheIngesterRole(t *testing.T) {
 		t.Fatalf("as %s: squad=%s season stats=%s, want curated team",
 			roleName, membershipTeam, seasonStatTeam)
 	}
+	if got := countRows(t, pool, `
+SELECT count(*) FROM resource_observation
+WHERE resource='squad' AND subject='eng-luton-town' AND row_count=2`); got != 1 {
+		t.Fatalf("as %s: missing accepted squad observation after promotion", roleName)
+	}
 	if got := countRows(t, pool, `SELECT count(*) FROM team WHERE id=$1`, provisional); got != 0 {
 		t.Fatalf("as %s: provisional team survived squad promotion", roleName)
 	}
@@ -382,16 +388,31 @@ func TestApplyTeamSeedPromotesSquadFactsAsTheIngesterRole(t *testing.T) {
 // lifecycle, not an exception: it is auto-created in August and curated in a
 // later pass. The trigger carve-out exists so that promotion still works.
 func TestApplyTeamSeedPromotesAcrossFinalizedMatches(t *testing.T) {
-	store, pool := newIntegrationStore(t)
+	store, pool, dsn := newIntegrationStoreDSN(t)
 	ctx := context.Background()
 	provisional := mustProvisionalWithHistory(t, store, pool)
+	playerID, err := store.Player(ctx, "espn", PlayerRef{SourceID: "synthetic-player", FullName: "Test Player"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+INSERT INTO appearance (match_id, player_id, team_id, starter)
+SELECT id, $2, $1, true FROM match WHERE home_team_id=$1`, provisional, playerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+INSERT INTO match_event (match_id, seq, player_id, team_id, type, minute)
+SELECT id, 1, $2, $1, 'goal', '12' FROM match WHERE home_team_id=$1`, provisional, playerID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := pool.Exec(ctx, `
 UPDATE match SET state='finished', home_score=2, away_score=1, finalized_at=now()
 WHERE home_team_id=$1`, provisional); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := store.ApplyTeamSeed(ctx, lutonSeed); err != nil {
+	writer, _ := newIngesterRoleStore(t, pool, dsn)
+	if err := writer.ApplyTeamSeed(ctx, lutonSeed); err != nil {
 		t.Fatalf("ApplyTeamSeed refused to curate across a finalized match: %v", err)
 	}
 
@@ -412,6 +433,11 @@ WHERE home_team_id=$1`, provisional); err != nil {
 	if home != "eng-luton-town" || winner != "eng-luton-town" || provisionalLeft != 0 {
 		t.Fatalf("finalized match not repointed: home=%s winner=%s provisional=%d",
 			home, winner, provisionalLeft)
+	}
+	if got := countRows(t, pool, `
+SELECT count(*) FROM appearance a JOIN match_event e USING (match_id, player_id, team_id)
+WHERE team_id='eng-luton-town' AND player_id=$1`, playerID); got != 1 {
+		t.Fatalf("curated team has %d joined appearances and goals, want 1", got)
 	}
 	// The RESULT is untouched — the carve-out moves pointers, not history.
 	if homeScore != 2 || awayScore != 1 {
@@ -536,5 +562,41 @@ func TestApplyTeamSeedInvalidatesTheIdentityCache(t *testing.T) {
 	t.Logf("cached resolve in the SAME process = %s", id)
 	if id != "eng-luton-town" {
 		t.Fatalf("resolve after seeding = %q, want eng-luton-town", id)
+	}
+}
+
+// One provider athlete can represent both a club and a national side in the same year.
+func TestWomensTeamIdentitySharesPlayerAcrossClubAndCountry(t *testing.T) {
+	_, pool, dsn := newIntegrationStoreDSN(t)
+	writer, _ := newIngesterRoleStore(t, pool, dsn)
+	ctx := context.Background()
+	club := config.SeedTeam{ID: "usa-w-gotham-fc", Kind: "club", Name: "Gotham FC", Abbr: "GFC", Refs: map[string]string{"espn": "15364"}}
+	national := config.SeedTeam{ID: "nat-w-mex", Kind: "national", Name: "Mexico", Abbr: "MEX", Refs: map[string]string{"espn": "synthetic-senior"}}
+	if err := writer.ApplyTeamSeed(ctx, []config.SeedTeam{club, national}); err != nil {
+		t.Fatal(err)
+	}
+	registry, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	league, _ := registry.Get("nwsl")
+	cup, _ := registry.Get("womens-world-cup")
+	cup.Seasons = map[string]config.Season{"example": {ID: "example", Label: "Example"}}
+	if err := writer.ApplyCompetitionSeed(ctx, []config.Competition{league, cup}); err != nil {
+		t.Fatal(err)
+	}
+	member := []model.SquadMember{{SourceID: "synthetic-athlete", FullName: "Test Player"}}
+	if err := writer.ReplaceSquad(ctx, league.ID, "2026", club.ID, "espn", member, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.ReplaceSquad(ctx, cup.ID, "example", national.ID, "espn", member, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := countRows(t, pool, `
+SELECT count(*) FROM squad_membership c JOIN squad_membership n USING (player_id)
+JOIN player_external_ref r USING (player_id)
+WHERE c.team_id=$1 AND c.competition_id='nwsl' AND n.team_id=$2 AND n.competition_id='womens-world-cup'
+  AND r.source='espn' AND r.source_id='synthetic-athlete'`, club.ID, national.ID); got != 1 {
+		t.Fatalf("shared club and country athlete identities = %d, want 1", got)
 	}
 }

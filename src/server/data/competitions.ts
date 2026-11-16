@@ -9,6 +9,16 @@ export type Category = 'women' | 'men';
 export type View = 'all' | Category;
 export type TeamStyle = 'flag' | 'crest';
 export type Section = 'bracket' | 'standings' | 'scores' | 'news';
+const editionResources = ["scores", "standings", "bracket", "news", "summary", "leaders", "teams", "squad", "players", "participation", "plays", "officials", "odds", "career"] as const;
+export type EditionResource = typeof editionResources[number];
+
+export function supportsResource(season: Season, resource: EditionResource): boolean {
+  return (season.resources?.includes(resource) ?? false) &&
+    (resource !== 'news' || (season.publication !== 'archive' && season.sections.includes('news')));
+}
+
+export type PlayoffFormat = 'nwsl' | 'femenil-apertura';
+
 export type ChampionTitleKey = 'champion.world' | 'champion.competition';
 
 // Fixed official WC2026 R32 leaf order (identity-based). Data, not UI — lives
@@ -69,6 +79,14 @@ export interface Zone {
 // editions, '2025-26' for cross-year leagues, '2026-apertura' / '2026-clausura'
 // for split leagues like Liga MX.
 export interface Season {
+  publication?: 'candidate' | 'staging' | 'live' | 'archive';
+  resources?: EditionResource[];
+  monitored?: boolean;
+  providerYear?: number;
+  /** UTC kickoff window, inclusive start and exclusive end. */
+  startsAt?: string;
+  endsAt?: string;
+  phase?: string;
   id: string;
   label: string; // e.g. 'Apertura 2026', '2026'
   /** The season is over: its final is played, its table is history. A
@@ -89,6 +107,7 @@ export interface Season {
    *  hasBracket: true makes real fixtures win; this flag then only keeps the
    *  nav label. */
   projection?: 'liguilla';
+  playoffFormat?: PlayoffFormat;
   // Leagues only: highlight the top-N qualification cut in the standings view
   // (e.g. Liga MX top 8 → Liguilla). Absent for leagues with no such cut.
   //
@@ -147,8 +166,12 @@ export interface Competition {
   name: string;
   shortName: string;
   espnSlug: string; // ESPN league slug — durable across seasons
+  espnLeagueId?: string; // ESPN standings and article league categories
+  espnScoreboardId?: string; // ESPN scoreboard and standings UID namespace
   kind: CompetitionKind;
   category: Category;
+  directoryGroup?: 'domestic' | 'club-cup' | 'national' | 'youth' | 'college';
+  level?: 'senior' | 'u17' | 'college';
   teamStyle: TeamStyle;
   emblem: string;
   /** The competition's real logo, where the provider has one that is legible
@@ -549,11 +572,7 @@ export const COMPETITIONS: Record<string, Competition> = {
   // on transparent — illegible at the bracket hub. TheSportsDB carries the real
   // tricolor Liga MX mark, same CDN the team crests already use.
   ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', 'https://r2.thesportsdb.com/images/media/league/badge/mav5rx1686157960.png', '2026-apertura', 'Apertura 2026', { base: '#e9edeb', bright: '#ffffff', soft: 'rgba(233,237,235,0.14)' }, { cut: 8, labelKey: 'standings.liguilla' }, undefined, undefined, 'liguilla', '#0b9e52'),
-  // The Women's Super League: fourteen clubs, 26 rounds. Bands mirror ESPN's
-  // standings notes for 2026-27 (checked 2026-11-15) rather than a format
-  // guess: Champions League for the top two, Champions League qualifying for
-  // third, a relegation playoff for twelfth. ESPN marks nothing on 13th and
-  // 14th, so neither do we. Accent is the orange of the league's own mark.
+  // The 2026–27 WSL schedule sends 13th to a survival playoff and relegates 14th.
   ...leagueCompetition(
     'wsl', "Women's Super League", 'WSL', 'eng.w.1', '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
     'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/2314.png', '2026-27', '2026-27',
@@ -563,7 +582,8 @@ export const COMPETITIONS: Record<string, Competition> = {
       { from: 1, to: 1, kind: 'champion', labelKey: 'zone.champion' },
       { from: 2, to: 2, kind: 'ucl', labelKey: 'zone.championsLeague' },
       { from: 3, to: 3, kind: 'ucl', labelKey: 'zone.championsLeagueQualifying' },
-      { from: 12, to: 12, kind: 'relegation-playoff', labelKey: 'zone.relegationPlayoff' },
+      { from: 13, to: 13, kind: 'relegation-playoff', labelKey: 'zone.relegationPlayoff' },
+      { from: 14, to: 14, kind: 'relegation', labelKey: 'zone.relegation' },
     ],
     undefined, undefined, undefined, 26, 'women',
   ),
@@ -578,6 +598,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     name: 'NWSL',
     shortName: 'NWSL',
     espnSlug: 'usa.nwsl',
+    espnLeagueId: '2323', espnScoreboardId: '8301',
     kind: 'club',
     category: 'women',
     teamStyle: 'crest',
@@ -587,7 +608,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     currentSeasonId: '2026',
     seasons: {
       '2026': {
-        id: '2026',
+        id: '2026', providerYear: 2026, playoffFormat: 'nwsl',
         label: '2026',
         sections: ['bracket', 'standings', 'scores', 'news'],
         format: { hasBracket: true, hasGroups: true, hasThirdPlaceRace: false },
@@ -617,6 +638,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     name: 'Liga MX Femenil',
     shortName: 'Liga MX Femenil',
     espnSlug: 'mex.w.1',
+    espnLeagueId: '8675309', espnScoreboardId: '23541',
     kind: 'club',
     category: 'women',
     teamStyle: 'crest',
@@ -626,7 +648,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     currentSeasonId: '2026-apertura',
     seasons: {
       '2026-apertura': {
-        id: '2026-apertura',
+        id: '2026-apertura', providerYear: 2026, phase: 'apertura', playoffFormat: 'femenil-apertura',
         label: 'Apertura 2026',
         sections: ['bracket', 'standings', 'scores'],
         format: { hasBracket: true, hasGroups: true, hasThirdPlaceRace: false },
@@ -712,12 +734,122 @@ function leagueCompetition(
   };
 }
 
+const legacyMonitored = new Set([
+  'world-cup/2026',
+  'leagues-cup/2026',
+  'nations-league/2026-27',
+  'uefa-nations-league/2026-27',
+  'premier-league/2026-27',
+  'laliga/2026-27',
+  'serie-a/2026-27',
+  'bundesliga/2026-27',
+  'ligue-1/2026-27',
+  'super-league-greece/2026-27',
+  'mls/2026',
+  'liga-mx/2026-apertura',
+  'wsl/2026-27',
+  'nwsl/2026',
+  'liga-mx-femenil/2026-apertura',
+]);
+const legacyArchives = new Set([
+  'world-cup/1998',
+  'world-cup/2002',
+  'world-cup/2006',
+  'world-cup/2010',
+  'world-cup/2014',
+  'world-cup/2018',
+  'world-cup/2022',
+]);
+
+// ESPN identifies the WSL separately in its news/standings and scoreboard APIs.
+COMPETITIONS.wsl.espnLeagueId = '2314';
+COMPETITIONS.wsl.espnScoreboardId = '8097';
+COMPETITIONS.wsl.seasons['2026-27'].providerYear = 2026;
+COMPETITIONS.wsl.seasons['2026-27'].resources = editionResources.filter(resource => resource !== 'bracket');
+
+// Existing editions were already public before publication states were introduced.
+for (const competition of Object.values(COMPETITIONS)) {
+  competition.directoryGroup ??= competition.kind === 'national' ? 'national' : competition.id === 'leagues-cup' ? 'club-cup' : 'domestic';
+  competition.level ??= 'senior';
+  for (const season of Object.values(competition.seasons)) {
+    const key = competition.id + '/' + season.id;
+    season.publication ??= legacyMonitored.has(key) ? 'live' : legacyArchives.has(key) ? 'archive' : 'candidate';
+    season.monitored ??= legacyMonitored.has(key);
+    season.resources ??= legacyMonitored.has(key) || legacyArchives.has(key)
+      ? editionResources.filter(r => r !== 'news' || (season.publication !== 'archive' && season.sections.includes('news')))
+      : [];
+  }
+}
+
+export type CompetitionDefinition = Pick<Competition, 'id' | 'name' | 'shortName' | 'espnSlug' | 'kind' | 'category'> & Partial<Omit<Competition, 'id' | 'name' | 'shortName' | 'espnSlug' | 'kind' | 'category' | 'seasons'>> & {
+  directoryGroup: NonNullable<Competition['directoryGroup']>;
+  level: NonNullable<Competition['level']>;
+  currentSeasonId?: string;
+  seasons: Record<string, Season>;
+};
+
+const candidates: CompetitionDefinition[] = [
+  { id: "esp-w-1", name: "Spanish Liga F", shortName: "Spanish Liga F", espnSlug: "esp.w.1", kind: 'club', category: 'women', directoryGroup: 'domestic', level: 'senior', seasons: {} },
+  { id: "fra-w-1", name: "French Première Ligue", shortName: "French Première Ligue", espnSlug: "fra.w.1", kind: 'club', category: 'women', directoryGroup: 'domestic', level: 'senior', seasons: {} },
+  { id: "aus-w-1", name: "Australian A-League Women", shortName: "Australian A-League Women", espnSlug: "aus.w.1", kind: 'club', category: 'women', directoryGroup: 'domestic', level: 'senior', seasons: {} },
+  { id: "can-w-nsl", name: "Northern Super League", shortName: "Northern Super League", espnSlug: "can.w.nsl", kind: 'club', category: 'women', directoryGroup: 'domestic', level: 'senior', seasons: {} },
+  { id: "usa-w-usl-1", name: "USL Super League", shortName: "USL Super League", espnSlug: "usa.w.usl.1", kind: 'club', category: 'women', directoryGroup: 'domestic', level: 'senior', seasons: {} },
+  { id: "ned-w-1", name: "Dutch Vrouwen Eredivisie", shortName: "Dutch Vrouwen Eredivisie", espnSlug: "ned.w.1", kind: 'club', category: 'women', directoryGroup: 'domestic', level: 'senior', seasons: {} },
+  { id: "uefa-wchampions", name: "UEFA Women's Champions League", shortName: "UEFA Women's Champions League", espnSlug: "uefa.wchampions", kind: 'club', category: 'women', directoryGroup: 'club-cup', level: 'senior', seasons: {} },
+  { id: "uefa-wchampions-qual", name: "UEFA Women's Champions League Qualifying", shortName: "UEFA Women's Champions League Qualifying", espnSlug: "uefa.wchampions_qual", kind: 'club', category: 'women', directoryGroup: 'club-cup', level: 'senior', seasons: {} },
+  { id: "uefa-w-europa", name: "UEFA Women's Europa Cup", shortName: "UEFA Women's Europa Cup", espnSlug: "uefa.w.europa", kind: 'club', category: 'women', directoryGroup: 'club-cup', level: 'senior', seasons: {} },
+  { id: "concacaf-w-champions-cup", name: "Concacaf W Champions Cup", shortName: "Concacaf W Champions Cup", espnSlug: "concacaf.w.champions_cup", kind: 'club', category: 'women', directoryGroup: 'club-cup', level: 'senior', seasons: {} },
+  { id: "fifa-w-champions-cup", name: "FIFA Women's Champions Cup", shortName: "FIFA Women's Champions Cup", espnSlug: "fifa.w.champions_cup", kind: 'club', category: 'women', directoryGroup: 'club-cup', level: 'senior', seasons: {} },
+  { id: "usa-nwsl-cup", name: "NWSL Challenge Cup", shortName: "NWSL Challenge Cup", espnSlug: "usa.nwsl.cup", kind: 'club', category: 'women', directoryGroup: 'club-cup', level: 'senior', seasons: {} },
+  { id: "usa-nwsl-summer-cup", name: "NWSL X Liga MX Femenil Summer Cup", shortName: "NWSL X Liga MX Femenil Summer Cup", espnSlug: "usa.nwsl.summer.cup", kind: 'club', category: 'women', directoryGroup: 'club-cup', level: 'senior', seasons: {} },
+  { id: "eng-w-fa", name: "English Women's FA Cup", shortName: "English Women's FA Cup", espnSlug: "eng.w.fa", kind: 'club', category: 'women', directoryGroup: 'club-cup', level: 'senior', seasons: {} },
+  { id: "eng-w-league-cup", name: "English WSL Players Cup", shortName: "English WSL Players Cup", espnSlug: "eng.w.league_cup", kind: 'club', category: 'women', directoryGroup: 'club-cup', level: 'senior', seasons: {} },
+  { id: "eng-w-promotion-relegation", name: "English Women's Super League Promotion/Relegation Playoff", shortName: "English Women's Super League Promotion/Relegation Playoff", espnSlug: "eng.w.promotion.relegation", kind: 'club', category: 'women', directoryGroup: 'club-cup', level: 'senior', seasons: {} },
+  { id: "eng-w-charity", name: "English Women's FA Community Shield", shortName: "English Women's FA Community Shield", espnSlug: "eng.w.charity", kind: 'club', category: 'women', directoryGroup: 'club-cup', level: 'senior', seasons: {} },
+  { id: "esp-copa-de-la-reina", name: "Spanish Copa de la Reina", shortName: "Spanish Copa de la Reina", espnSlug: "esp.copa_de_la_reina", kind: 'club', category: 'women', directoryGroup: 'club-cup', level: 'senior', seasons: {} },
+  { id: "ned-w-knvb-cup", name: "Dutch KNVB Beker Vrouwen", shortName: "Dutch KNVB Beker Vrouwen", espnSlug: "ned.w.knvb_cup", kind: 'club', category: 'women', directoryGroup: 'club-cup', level: 'senior', seasons: {} },
+  { id: "ned-w-eredivisie-cup", name: "Dutch Eredivisie Cup", shortName: "Dutch Eredivisie Cup", espnSlug: "ned.w.eredivisie_cup", kind: 'club', category: 'women', directoryGroup: 'club-cup', level: 'senior', seasons: {} },
+  { id: "global-wchamps-cup", name: "Women's International Champions Cup", shortName: "Women's International Champions Cup", espnSlug: "global.wchamps_cup", kind: 'club', category: 'women', directoryGroup: 'club-cup', level: 'senior', seasons: {} },
+  { id: "womens-world-cup", name: "FIFA Women's World Cup", shortName: "FIFA Women's World Cup", espnSlug: "fifa.wwc", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
+  { id: "fifa-wworldq-uefa", name: "FIFA Women's World Cup Qualifying - UEFA", shortName: "FIFA Women's World Cup Qualifying - UEFA", espnSlug: "fifa.wworldq.uefa", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
+  { id: "fifa-wwcq-ply", name: "FIFA Women's World Cup Qualifying - Playoff Tournament", shortName: "FIFA Women's World Cup Qualifying - Playoff Tournament", espnSlug: "fifa.wwcq.ply", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
+  { id: "fifa-w-olympics", name: "Women's Olympic Soccer Tournament", shortName: "Women's Olympic Soccer Tournament", espnSlug: "fifa.w.olympics", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
+  { id: "fifa-w-concacaf-olympicsq", name: "Concacaf Women's Olympic Qualifying", shortName: "Concacaf Women's Olympic Qualifying", espnSlug: "fifa.w.concacaf.olympicsq", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
+  { id: "fifa-friendly-w", name: "Women's International Friendly", shortName: "Women's International Friendly", espnSlug: "fifa.friendly.w", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
+  { id: "uefa-weuro", name: "UEFA Women's European Championship", shortName: "UEFA Women's European Championship", espnSlug: "uefa.weuro", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
+  { id: "uefa-w-nations", name: "UEFA Women's Nations League", shortName: "UEFA Women's Nations League", espnSlug: "uefa.w.nations", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
+  { id: "concacaf-w-gold", name: "Concacaf W Gold Cup", shortName: "Concacaf W Gold Cup", espnSlug: "concacaf.w.gold", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
+  { id: "concacaf-womens-championship", name: "Concacaf W Championship", shortName: "Concacaf W Championship", espnSlug: "concacaf.womens.championship", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
+  { id: "conmebol-america-femenina", name: "Copa América Femenina", shortName: "Copa América Femenina", espnSlug: "conmebol.america.femenina", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
+  { id: "afc-w-asian-cup", name: "AFC Women's Asian Cup", shortName: "AFC Women's Asian Cup", espnSlug: "afc.w.asian.cup", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
+  { id: "caf-w-nations", name: "Women's Africa Cup of Nations", shortName: "Women's Africa Cup of Nations", espnSlug: "caf.w.nations", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
+  { id: "global-w-finalissima", name: "CONMEBOL-UEFA Women's Cup of Champions", shortName: "CONMEBOL-UEFA Women's Cup of Champions", espnSlug: "global.w.finalissima", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
+  { id: "fifa-shebelieves", name: "SheBelieves Cup", shortName: "SheBelieves Cup", espnSlug: "fifa.shebelieves", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
+  { id: "global-pinatar-cup", name: "Pinatar Cup", shortName: "Pinatar Cup", espnSlug: "global.pinatar_cup", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
+  { id: "global-arnold-clark-cup", name: "Arnold Clark Cup", shortName: "Arnold Clark Cup", espnSlug: "global.arnold.clark_cup", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
+  { id: "global-torneio-inter-feminino", name: "Torneio Internacional de Futebol Feminino", shortName: "Torneio Internacional de Futebol Feminino", espnSlug: "global.torneio_inter_feminino", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
+  { id: "panam-w", name: "Pan Am Women's Soccer", shortName: "Pan Am Women's Soccer", espnSlug: "panam.w", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
+  { id: "fifa-wworld-u17", name: "FIFA Under-17 Women's World Cup", shortName: "FIFA Under-17 Women's World Cup", espnSlug: "fifa.wworld.u17", kind: 'national', category: 'women', directoryGroup: 'youth', level: 'u17', seasons: {} },
+  { id: "usa-ncaa-w-1", name: "NCAA Women's Soccer", shortName: "NCAA Women's Soccer", espnSlug: "usa.ncaa.w.1", kind: 'club', category: 'women', directoryGroup: 'college', level: 'college', seasons: {} },
+];
+
+export function listCompetitionDefinitions(): CompetitionDefinition[] {
+  return [...Object.values(COMPETITIONS).map((competition) => ({ ...competition, directoryGroup: competition.directoryGroup!, level: competition.level! })), ...candidates];
+}
+
 export function getCompetition(id: string): Competition | undefined {
-  return Object.hasOwn(COMPETITIONS, id) ? COMPETITIONS[id] : undefined;
+  return listCompetitions().find((competition) => competition.id === id);
 }
 
 export function listCompetitions(): Competition[] {
-  return Object.values(COMPETITIONS);
+  // next.config embeds only the exact staging scopes admitted for this website build.
+  const staged = new Set((process.env.SCOREARC_WEBSITE_STAGING_EDITIONS ?? '').split(','));
+  return listCompetitionDefinitions().flatMap((competition) => {
+    const seasons = Object.fromEntries(Object.entries(competition.seasons).filter(([, season]) => season.publication === 'live' || season.publication === 'archive' || (season.publication === 'staging' && staged.has(competition.id + '/' + season.id))));
+    const landing = competition.currentSeasonId ?? Object.keys(seasons).filter(id => seasons[id].publication === 'staging').sort()[0];
+    if (!landing || !seasons[landing] || !competition.teamStyle || !competition.emblem || !competition.accent) return [];
+    return [{ ...competition, currentSeasonId: landing, teamStyle: competition.teamStyle, emblem: competition.emblem, accent: competition.accent, seasons }];
+  });
 }
 
 /**
@@ -739,7 +871,8 @@ export function hasBothCategories(competitions: Competition[] = listCompetitions
 
 /** Whether the competition's news can be shown: its current season says so. */
 export function hasNews(competition: Competition): boolean {
-  return competition.seasons[competition.currentSeasonId]?.sections.includes('news') ?? false;
+  const season = competition.seasons[competition.currentSeasonId];
+  return Boolean(season && supportsResource(season, 'news'));
 }
 
 /** `?view=women` for a narrowed view, nothing for All. */
@@ -750,7 +883,7 @@ export function viewQuery(view: View): string {
 /** Competitions whose current season is still being played — the home
  *  digest's universe. Everything else stays browsable, just not promoted. */
 export function ongoingCompetitions(): Competition[] {
-  return listCompetitions().filter((c) => !c.seasons[c.currentSeasonId]?.concluded);
+  return listCompetitions().filter((c) => c.seasons[c.currentSeasonId]?.publication !== 'archive' && !c.seasons[c.currentSeasonId]?.concluded);
 }
 
 // Resolve a (competition, season) pair. `seasonId` defaults to the competition's

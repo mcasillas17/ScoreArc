@@ -2,6 +2,9 @@ const REPOSITORY = 'mcasillas17/ScoreArc';
 const WORKFLOW = '.github/workflows/match-freshness.yml';
 const MAX_STATE_BYTES = 256 * 1024;
 const MAX_API_BYTES = 1024 * 1024;
+// GitHub repeats the head commit message on each run, including long squash messages.
+const RUNS_PER_PAGE = 10;
+const MAX_RUNS = 60;
 const positive = (value) => Number.isSafeInteger(value) && value > 0;
 const sha = (value) => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
 function requireValid(condition, message) {
@@ -157,9 +160,9 @@ export async function selectState({ github, run, initialize = false,
   let enumerated = 0;
   let total;
   const seenIds = new Set();
-  for (let page = 1; page <= 3; page++) {
-    const response = await github(`${root}/workflows/${workflow.id}/runs?branch=main&per_page=20&page=${page}`);
-    const runs = list(response, 'workflow_runs', 20, false);
+  for (let page = 1; page <= MAX_RUNS / RUNS_PER_PAGE; page++) {
+    const response = await github(`${root}/workflows/${workflow.id}/runs?branch=main&per_page=${RUNS_PER_PAGE}&page=${page}`);
+    const runs = list(response, 'workflow_runs', RUNS_PER_PAGE, false);
     total ??= response.total_count;
     requireValid(total === response.total_count && enumerated + runs.length <= total, 'Changing workflow run history');
     // Validate the complete page before accepting an artifact, so reordered results cannot hide a newer run.
@@ -221,7 +224,7 @@ export async function selectState({ github, run, initialize = false,
       requireValid(initialize, 'No durable state; explicit initialization is required');
       return null;
     }
-    requireValid(runs.length === 20, 'Incomplete workflow run history');
+    requireValid(runs.length === RUNS_PER_PAGE, 'Incomplete workflow run history');
   }
   throw new Error('Workflow run history exceeds bounded search budget');
 }

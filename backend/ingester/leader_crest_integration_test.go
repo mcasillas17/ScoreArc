@@ -16,7 +16,7 @@ func TestLeaderCrestsResolveCuratedAndProvisionalTeamsWithPostgres(t *testing.T)
 	ctx := context.Background()
 	repo, pool, _ := newRecoveryPostgres(t)
 	comp := config.Competition{ID: "leader-crests", Name: "Leader Crests", ShortName: "Leader Crests",
-		ESPNSlug: "test.1", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {ID: "2026", Label: "2026"}}}
+		ESPNSlug: "test.1", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {Publication: "live", Resources: testResources, ID: "2026", Label: "2026"}}}
 	if err := repo.ApplyCompetitionSeed(ctx, []config.Competition{comp}); err != nil {
 		t.Fatal(err)
 	}

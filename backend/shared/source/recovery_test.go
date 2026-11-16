@@ -352,3 +352,35 @@ func recoveryResponse(status int, body string) *http.Response {
 		Body:       io.NopCloser(strings.NewReader(body)),
 	}
 }
+
+func TestFemenilRecoverySeparatesLegAndFinalShootout(t *testing.T) {
+	body := strings.NewReplacer(
+		`"slug":"esp.1"`, `"slug":"mex.w.1"`,
+		`"year":2026`, `"year":2026,"name":"Apertura - Final"`,
+		`"score":"0","winner":false`, `"score":"2","winner":false`,
+		`"score":"1","winner":true`, `"score":"0","winner":true`,
+		`"status":`, `"leg":{"value":2},"notes":[{"text":"2nd Leg - Away win 4-3 on penalties"}],"status":`,
+	).Replace(recoverySummary)
+	src := recoverySource(func(*http.Request) (*http.Response, error) { return recoveryResponse(200, body), nil })
+	input := recoveryMatch()
+	input.Round = "final"
+	note := "2nd Leg"
+	input.Note = &note
+	season := config.Season{ID: "2026-apertura", PlayoffFormat: "femenil-apertura", Phase: "apertura"}
+	comp := config.Competition{ID: "liga-mx-femenil", ESPNSlug: "mex.w.1"}
+	got, summary, err := src.RecoverMatch(context.Background(), comp, season, input)
+	if err != nil || got.WinnerID == nil || *got.WinnerID != input.Home.ID || got.WinnerFlagID != nil || !got.WinnerResolved ||
+		summary.WinnerFlagID != nil || summary.Detail.Shootout == nil || summary.Detail.Shootout.HomeScore != 3 || summary.Detail.Shootout.AwayScore != 4 {
+		t.Fatalf("leg result=%+v shootout=%+v err=%v", got, summary.Detail.Shootout, err)
+	}
+	// A newer terminal header cannot freeze a played candidate with its old score.
+	played := got
+	terminal := strings.Replace(body, "STATUS_FULL_TIME", "STATUS_ABANDONED", 1)
+	if _, err := mapSummary([]byte(terminal), played, season); err == nil {
+		t.Fatal("accepted terminal header for a played final leg")
+	}
+	note = "1st Leg"
+	if _, _, err := src.RecoverMatch(context.Background(), comp, season, input); err == nil {
+		t.Fatal("accepted a summary for the wrong leg")
+	}
+}

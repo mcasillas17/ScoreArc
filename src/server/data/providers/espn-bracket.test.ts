@@ -1,4 +1,13 @@
+import playoffGames from '../__fixtures__/womens-playoff-games.json';
+import { projectLiguilla } from '../liguillaProjection';
+import { resolveSeason, supportsResource } from '../competitions';
+import { toBands } from '@/components/zoneBands';
+import { buildRings } from '@/components/radialBracketModel';
+import { bracketShapeFor } from '@/components/bracketShape';
+import type { Group } from '../types';
+
 import { describe, it, expect, expectTypeOf } from 'vitest';
+import { mapScoreboard } from './espn-matches';
 import { mapBracket } from './espn-bracket';
 import type { BracketMatch, KnockoutRoundSlug } from '../types';
 import raw from '../__fixtures__/espn-bracket.json';
@@ -261,5 +270,210 @@ describe('mapBracket two-legged ties', () => {
       leg('1', '2026-11-13T00:30Z', 'post', team('10', 'CUW', '2', true), team('20', 'PAN', '1')),
     ] });
     expect(qf.matches[0]).toMatchObject({ id: '1', homeScore: 2, awayScore: 1, winnerId: '10' });
+  });
+});
+
+describe('edition playoff rules', () => {
+  const nwsl = resolveSeason('nwsl', '2026')!.season;
+  const femenil = resolveSeason('liga-mx-femenil', '2026-apertura')!.season;
+  const wsl = resolveSeason('wsl', '2026-27')!.season;
+  const [gotham, pumasHome, tigresHome] = playoffGames.events;
+  const group = (prefix: string, n = 9, played = 14): Group => ({
+    id: prefix, name: prefix, standings: Array.from({ length: n }, (_, i) => ({
+      team: { id: prefix + i, name: prefix + i, abbr: prefix + i, crestUrl: null },
+      rank: i + 1, points: 36 - i * 3, goalDifference: prefix === 'A' ? 4 : 2, goalsFor: 10, goalsAgainst: 6,
+      played, wins: 0, losses: 0, draws: 0, advanced: false,
+    })),
+  });
+  const groups = [group('A'), group('B')];
+  function tiedSeries(round: string, idA: string, idB: string) {
+    return [pumasHome, tigresHome].map((original, i) => {
+      const e = structuredClone(original);
+      e.season.slug = 'apertura---' + round;
+      for (const side of e.competitions[0].competitors) {
+        side.team.id = side.homeAway === (i === 0 ? 'home' : 'away') ? idA : idB;
+        side.score = side.homeAway === 'home' ? '1' : '0';
+        side.winner = side.homeAway === 'home';
+      }
+      e.competitions[0].notes = [];
+      return e;
+    });
+  }
+
+  it('keeps the real NWSL quarterfinal single and the two Femenil legs one tie', () => {
+    expect(mapBracket({ events: [gotham] }, nwsl.playoffFormat)[0].matches[0]).toMatchObject({
+      id: '401932958', round: 'quarterfinals', winnerId: '15364',
+    });
+    const single = mapBracket({ events: [pumasHome] }, femenil.playoffFormat)[0].matches[0];
+    const drawn = structuredClone(pumasHome);
+    for (const side of drawn.competitions[0].competitors) side.score = '1';
+    expect(mapBracket({ events: [drawn] }, femenil.playoffFormat)[0].matches[0].winnerId).toBeNull();
+    expect(single).toMatchObject({ id: '401932079', round: 'quarterfinals', winnerId: null });
+    expect(mapBracket({ events: [pumasHome, tigresHome] }, femenil.playoffFormat)[0].matches[0]).toMatchObject({
+      id: '401932077', round: 'quarterfinals', homeScore: 7, awayScore: 3, detailMatch: { home: { abbr: 'TIG' }, away: { abbr: 'UNAM' }, homeScore: 0, awayScore: 5 }, winnerId: pumasHome.competitions[0].competitors[0].team.id,
+    });
+  });
+
+  it('uses group rank in the quarters and overall points, GD and goals in the semis', () => {
+    const winner = (round: string, a: string, b: string, tables = groups) =>
+      mapBracket({ events: tiedSeries(round, a, b) }, femenil.playoffFormat, tables)[0].matches[0].winnerId;
+    expect(winner('quarterfinals', 'A1', 'B2')).toBe('A1');
+    expect(winner('semifinals', 'A0', 'B0')).toBe('A0');
+    const tied = structuredClone(groups);
+    tied[1].standings[0].goalDifference = 4;
+    expect(winner('semifinals', 'A0', 'B0', tied)).toBeNull();
+    tied[1].standings[0].goalsFor++;
+    expect(winner('semifinals', 'A0', 'B0', tied)).toBe('B0');
+    tied[0].standings[0].played--;
+    expect(winner('semifinals', 'A0', 'B0', tied)).toBeNull();
+    expect(winner('quarterfinals', 'A1', 'B2', [])).toBeNull();
+  });
+
+  it('waits for two complete legs and requires penalties for a tied final', () => {
+    const events = tiedSeries('final', 'A0', 'B0');
+    const winner = () => mapBracket({ events }, femenil.playoffFormat, groups)[0].matches[0].winnerId;
+    expect(winner()).toBeNull();
+    const sides = events[1].competitions[0].competitors;
+    const legNote = '2nd Leg - ' + sides[0].team.displayName + ' win 5-3 on penalties';
+    events[1].competitions[0].notes = [{ ...tigresHome.competitions[0].notes[0], text: legNote }];
+    expect(winner()).toBe(sides[0].team.id);
+    events[1].competitions[0].notes = [];
+    Object.assign(sides[0], { shootoutScore: '2' });
+    Object.assign(sides[1], { shootoutScore: '4' });
+    expect(winner()).toBe(sides[1].team.id);
+    sides[0].score = '';
+    expect(winner()).toBeNull();
+  });
+
+  it('reseeds four surviving clubs 1–4 and 2–3, holding unresolved overall ties', () => {
+    function semifinalists(tables: Group[]) {
+      const projected = mapBracket({ events: [] }, femenil.playoffFormat, tables);
+      const quarters = projected[0].matches;
+      const picks = Object.fromEntries(quarters.map((m, i) => ['0:' + i, m.home.id]));
+      return buildRings(projected, bracketShapeFor(femenil), picks, 'predict')[1].map(n => n.team);
+    }
+    expect(semifinalists(groups).map(t => t.id)).toEqual(['A0', 'B1', 'B0', 'A1']);
+    const tied = structuredClone(groups);
+    tied[1].standings[0].goalDifference = 4;
+    expect(semifinalists(tied).map(t => t.id)).toEqual(['A0', 'B0', 'A1', 'B1']);
+  });
+
+  it('orders NWSL quarterfinals into fixed halves and crowns a playoff winner distinct from the Shield', () => {
+    const table = group('N', 16, 30);
+    const draw = projectLiguilla([table])!;
+    const qfs = draw[0].matches;
+    const picks = Object.fromEntries(qfs.map((m, i) => ['0:' + i, m.away.id]));
+    Object.assign(picks, { '1:0': 'N7', '1:1': 'N6', '2:0': 'N7' });
+    const rings = buildRings(mapBracket({ events: [] }, nwsl.playoffFormat, [table]), bracketShapeFor(nwsl), picks, 'predict');
+    expect(rings[1].map(n => n.team.id)).toEqual(['N7', 'N4', 'N6', 'N5']);
+    expect(rings[2].find(n => n.isWinner)?.team.id).toBe('N7');
+    expect(toBands(table.standings, nwsl.zones!, nwsl)[0]).toMatchObject({ labelKey: 'zone.nwslShield', standings: [{ team: { id: 'N0' } }] });
+  });
+
+  it('keeps unknown NWSL seeds from forming a fictional semifinal', () => {
+    const draw = projectLiguilla([group('N', 16, 30)])!;
+    const quarters = draw[0].matches.map(m => ({ ...m, winnerId: m.home.id }));
+    const rings = buildRings([{ ...draw[0], matches: quarters }], bracketShapeFor(nwsl));
+    expect(rings[1].map(n => n.team.id)).toEqual(quarters.map(m => m.home.id));
+    expect(rings[1].every(n => !n.clickable && !n.match)).toBe(true);
+  });
+
+  it('uses a published Femenil semifinal draw even when a tied quarterfinal lacks ranks', () => {
+    const draw = projectLiguilla(groups, 'femenil-apertura')!;
+    const quarters = draw[0].matches;
+    draw[1].matches = [{ ...draw[1].matches[0], home: quarters[1].home, away: quarters[3].away }];
+    const rings = buildRings(draw, bracketShapeFor(femenil));
+    expect(rings[1].slice(0, 2).map(n => n.team.id)).toEqual([quarters[1].home.id, quarters[3].away.id]);
+  });
+
+  it.each([
+    [nwsl, [group('N', 16, 30)], ['N0', 'N3', 'N1', 'N2']],
+    [femenil, groups, ['A0', 'B1', 'B0', 'A1']],
+  ] as const)('keeps the other semifinal when just one official tie arrives ($0.playoffFormat)', (season, tables, expected) => {
+    const draw = mapBracket({ events: [] }, season.playoffFormat, [...tables]);
+    const quarters = draw[0].matches;
+    for (const m of quarters) m.winnerId = m.home.id;
+    const teams = new Map(quarters.map(m => [m.home.id, m.home]));
+    // The second semifinal arrives first, with the projected home and away reversed.
+    const official = { ...draw[1].matches[0], id: 'official', home: teams.get(expected[3])!, away: teams.get(expected[2])! };
+    draw[1].matches = [official];
+    const semifinalists = () => buildRings(draw, bracketShapeFor(season))[1];
+    expect(semifinalists().map(n => [n.team.id, n.match?.id])).toEqual([
+      [expected[0], undefined], [expected[1], undefined], [expected[3], 'official'], [expected[2], 'official'],
+    ]);
+    // The other tie has just one known entrant while their opponent's quarterfinal is open.
+    quarters.find(m => m.home.id === expected[1])!.winnerId = null;
+    const others = semifinalists().filter(n => n.match?.id !== 'official');
+    expect(others.filter(n => !n.team.placeholder).map(n => n.team.id)).toEqual([expected[0]]);
+    expect(others.filter(n => n.team.placeholder)).toHaveLength(1);
+  });
+
+  it.each(['STATUS_CANCELED', 'STATUS_POSTPONED', 'STATUS_ABANDONED', 'STATUS_FORFEIT', 'STATUS_FINAL_AET', 'STATUS_FINAL_PEN'])('withholds advancement for %s even if ESPN marks the leg post', status => {
+    for (const index of [0, 1]) {
+      const events = structuredClone([pumasHome, tigresHome]);
+      events[index].status.type.name = status;
+      expect(mapBracket({ events }, femenil.playoffFormat)[0].matches[0].winnerId).toBeNull();
+    }
+  });
+
+  it('requires two distinct, reciprocal, correctly numbered legs in the playoff series', () => {
+    const pair = () => structuredClone([pumasHome, tigresHome]);
+    const winner = (events: ReturnType<typeof pair>) => mapBracket({ events }, femenil.playoffFormat)[0].matches[0].winnerId;
+    const repeated = pair();
+    Object.assign(repeated[1].competitions[0], { leg: { value: 1 } });
+    expect(winner(repeated)).toBeNull();
+    const conflict = pair();
+    conflict[0].competitions[0].notes[0].text = '2nd Leg';
+    expect(winner(conflict)).toBeNull();
+    const notesOnly = pair();
+    for (const event of notesOnly) Reflect.deleteProperty(event.competitions[0], 'leg');
+    expect(winner(notesOnly)).toBe('133981');
+    notesOnly[0].competitions[0].notes = [];
+    expect(winner(notesOnly)).toBeNull();
+    const sameEvent = pair();
+    sameEvent[1].id = sameEvent[0].id;
+    expect(winner(sameEvent)).toBeNull();
+  });
+
+  it.each([
+    ['explicit zero value', { value: 0, displayValue: '2nd Leg' }, ['2nd Leg'], null],
+    ['out-of-range secondary ordinal', { value: 2 }, ['2nd Leg', '3rd Leg'], null],
+    ['out-of-range display ordinal', { value: 2, displayValue: '3rd Leg' }, ['2nd Leg'], null],
+    ['conflicting display value', { value: 2, displayValue: '1st Leg' }, ['2nd Leg'], null],
+    ['conflicting secondary note', { value: 2, displayValue: '2nd Leg' }, ['2nd Leg', '1st Leg'], null],
+    ['secondary note alone', undefined, ['Quarterfinal', '  2ND  Leg - return match'], '133981'],
+    ['display value alone', { displayValue: '2nd Leg' }, ['Quarterfinal'], '133981'],
+  ] as const)('verifies every leg ordinal source: %s', (_label, leg, texts, expected) => {
+    const events = structuredClone([pumasHome, tigresHome]);
+    Object.assign(events[1].competitions[0], { leg, notes: texts.map(text => ({ text })) });
+    expect(mapBracket({ events }, femenil.playoffFormat)[0].matches[0].winnerId).toBe(expected);
+  });
+
+  it('renders the verified final and winner even when a tied semifinal cannot be settled from the table', () => {
+    const draw = projectLiguilla(groups, 'femenil-apertura')!;
+    const q = draw[0].matches;
+    q.forEach(m => { m.winnerId = m.home.id; });
+    draw[1].matches = [
+      { ...draw[1].matches[0], home: q[0].home, away: q[1].home, winnerId: null },
+      { ...draw[1].matches[1], home: q[2].home, away: q[3].home, winnerId: q[2].home.id },
+    ];
+    draw[2].matches[0] = { ...draw[2].matches[0], home: q[0].home, away: q[2].home, winnerId: q[0].home.id };
+    const final = buildRings(draw, bracketShapeFor(femenil))[2];
+    expect(final.map(n => n.team.id)).toEqual([q[0].home.id, q[2].home.id]);
+    expect(final.find(n => n.isWinner)?.team.id).toBe(q[0].home.id);
+  });
+
+  it('awards the WSL title from the final 26-round table and marks places 13 and 14', () => {
+    const bands = toBands(group('W', 14, 26).standings, wsl.zones!, wsl);
+    expect(bands.find(b => b.kind === 'champion')?.standings[0].team.id).toBe('W0');
+    expect(bands.find(b => b.kind === 'relegation-playoff')).toMatchObject({ from: 13, to: 13 });
+    expect(bands.find(b => b.kind === 'relegation')).toMatchObject({ from: 14, to: 14 });
+    // A completed survival match can award a match win to the 13th-placed side.
+    const event = structuredClone(gotham);
+    event.season.slug = 'relegation-playoffs';
+    event.competitions[0].competitors[0].team.id = 'W12';
+    expect(mapScoreboard({ events: [event] })[0]).toMatchObject({ state: 'finished', winnerId: 'W12' });
+    expect(mapBracket({ events: [event] })).toEqual([]);
+    expect(supportsResource(wsl, 'bracket')).toBe(false);
   });
 });

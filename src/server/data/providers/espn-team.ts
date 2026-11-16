@@ -1,8 +1,11 @@
 import type { Match, PlayerSeasonStats, SquadPlayer, Team, TeamProfile, TeamRecord, TeamStanding } from '../types';
 import { mapState } from '../state';
-import type { CompetitionSeason } from '../competitions';
+import type { CompetitionSeason, PlayoffFormat } from '../competitions';
+import { completeCollectionMetadata } from './espn-collection';
+import { datedInEdition, requiresEditionEvidence, seasonIssue } from './espn-edition';
 import { isMatchKickoff } from '../matchKickoff';
-import { flaggedWinnerId, isScoreboardCount, parseShootout, shootoutTotals, shootoutWinnerId } from './espn-matches';
+import { flaggedWinnerId, isScoreboardCount, matchResult, shootoutTotals } from './espn-matches';
+import { femenilLegRound, providerLeg } from './espn-leg';
 
 /** The profile without the two blocks that come from other endpoints. */
 type TeamIdentity = Omit<TeamProfile, 'squad' | 'schedule' | 'scheduleAvailability'>;
@@ -197,7 +200,7 @@ export function mapTeamRoster(raw: unknown): SquadPlayer[] {
  * competitor.score is an object rather than a scalar, so its Number(score)
  * yields NaN where this reads the object's displayValue.
  */
-export function mapTeamSchedule(raw: unknown): Match[] {
+export function mapTeamSchedule(raw: unknown, format?: PlayoffFormat): Match[] {
   try {
     const events: any[] = (raw as any)?.events ?? [];
     const matches = events.flatMap((ev) => {
@@ -210,32 +213,30 @@ export function mapTeamSchedule(raw: unknown): Match[] {
       const status = comp.status ?? ev.status;
       const type = status?.type;
       const state = type ? mapState(type.state, Boolean(type.completed)) : 'scheduled';
-      const homeTeam = mapTeam(home.team);
-      const awayTeam = mapTeam(away.team);
-      const note = comp.notes?.[0]?.text ?? null;
+      const round = femenilLegRound(format, ev.seasonType?.slug ?? ev.seasonType?.name ?? ev.season?.slug);
+      // Team schedules can put the leg and its aggregate result in the event headline.
+      const note = comp.notes?.[0]?.text ?? (round ? comp.notes?.[0]?.headline : null) ?? null;
+      const legNumber = round ? providerLeg(comp.leg, (comp.notes ?? []).flatMap((n: { text?: string; headline?: string }) =>
+        [n, { text: n.headline }])) : null;
       // The scoreboard's shootout tiers and winner rule (T16.2). A lightweight
       // feed never rejects: a malformed structured total is ignored here.
       const structured = isScoreboardCount(home.shootoutScore) && isScoreboardCount(away.shootoutScore)
         ? shootoutTotals(home.shootoutScore, away.shootoutScore) : null;
-      const shootout = structured ?? parseShootout(note, homeTeam.name, awayTeam.name);
-      const flagged = flaggedWinnerId(home, away);
+      const scoreline = {
+        home: mapTeam(home.team), away: mapTeam(away.team),
+        homeScore: score(home.score), awayScore: score(away.score),
+        state, statusName: type?.name ?? '', note,
+      };
 
       return [{
         id: String(ev.id),
         kickoff: ev.date,
-        state,
+        ...scoreline,
         minute: state === 'live' ? status?.displayClock || null : null,
         statusDetail: type?.shortDetail ?? '',
-        statusName: type?.name ?? '',
-        home: homeTeam,
-        away: awayTeam,
-        homeScore: score(home.score),
-        awayScore: score(away.score),
-        winnerId: (state === 'finished' ? shootoutWinnerId(shootout, homeTeam.id, awayTeam.id) : null) ?? flagged,
-        note,
+        ...matchResult(scoreline, structured, flaggedWinnerId(home, away), round, legNumber),
         scorers: [],
         cards: [],
-        shootout,
         shootoutDetail: null,
         stats: null,
         winProbability: null,
@@ -259,11 +260,11 @@ export function mapScopedTeamSchedule(
   raw: unknown, rc: CompetitionSeason, teamId: string,
 ): { matches: Match[]; available: boolean } {
   const payload = raw as any;
-  const year = Number(rc.season.id.slice(0, 4));
-  const split = rc.season.id.endsWith('-apertura') ? 'Torneo Apertura'
-    : rc.season.id.endsWith('-clausura') ? 'Torneo Clausura' : null;
-  if (!payload || !Array.isArray(payload.events) || payload.team?.id !== teamId
-    || payload.requestedSeason?.year !== year || (split && payload.requestedSeason?.name !== split)) {
+  const strict = requiresEditionEvidence(rc);
+  const slug = rc.competition.espnSlug;
+  if (!payload || !Array.isArray(payload.events) || payload.team?.id !== teamId || seasonIssue(payload.requestedSeason, rc.season)
+      || (payload.league?.slug !== undefined && payload.league.slug !== slug)
+      || (strict && (!completeCollectionMetadata(payload, payload.events.length) || (!payload.events.length && payload.league?.slug !== slug)))) {
     return { matches: [], available: false };
   }
   let available = true;
@@ -273,15 +274,15 @@ export function mapScopedTeamSchedule(
     const home = competitors.find((c) => c?.homeAway === 'home')?.team?.id;
     const away = competitors.find((c) => c?.homeAway === 'away')?.team?.id;
     const valid = event?.league?.slug === rc.competition.espnSlug
-      && event?.season?.year === year && (!split || event?.seasonType?.name === split)
+      && !seasonIssue({ ...event?.season, type: event?.seasonType }, rc.season)
       && typeof event.id === 'string' && /^\d+$/.test(event.id)
-      && isMatchKickoff(event.date)
+      && (strict ? datedInEdition(event.date, rc.season) : isMatchKickoff(event.date))
       && typeof home === 'string' && typeof away === 'string' && home !== away
       && (home === teamId || away === teamId);
     if (!valid) available = false;
     return valid;
   });
-  return { available, matches: mapTeamSchedule({ events }).map((match) => ({
+  return { available, matches: mapTeamSchedule({ events }, rc.season.playoffFormat).map((match) => ({
     ...match, scope: { competitionId: rc.competition.id, seasonId: rc.season.id },
   })) };
 }

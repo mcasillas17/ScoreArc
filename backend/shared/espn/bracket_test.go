@@ -1,9 +1,12 @@
 package espn
 
 import (
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/mcasillas17/scorearc-backend/config"
 )
 
 func loadBracketFixture(t *testing.T, name string) []byte {
@@ -395,6 +398,115 @@ func TestNormRoundSlugReadsPhasePrefixedAndHyphenatedRounds(t *testing.T) {
 	} {
 		if got := normRoundSlug(raw); got != want {
 			t.Errorf("normRoundSlug(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+func TestWomensPlayoffRoundsAndLegs(t *testing.T) {
+	raw, err := os.ReadFile("../../../src/server/data/__fixtures__/womens-playoff-games.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sample struct{ Events []json.RawMessage }
+	if err := json.Unmarshal(raw, &sample); err != nil || len(sample.Events) != 3 {
+		t.Fatalf("invalid recorded sample: %v", err)
+	}
+	var legs []BracketMatch
+	for _, edition := range []struct {
+		format string
+		events []json.RawMessage
+	}{
+		{"nwsl", sample.Events[:1]}, {"femenil-apertura", sample.Events[1:]},
+	} {
+		body, err := json.Marshal(map[string]any{"events": edition.events})
+		if err != nil {
+			t.Fatal(err)
+		}
+		games, err := MapSeasonBracket(body, config.Season{PlayoffFormat: edition.format})
+		if err != nil {
+			t.Fatal(err)
+		}
+		legs = append(legs, games...)
+	}
+	want := map[string]string{"401932958": "15364", "401932079": "22413", "401932077": "133981"}
+	if len(legs) != len(want) {
+		t.Fatalf("got %d games", len(legs))
+	}
+	for _, leg := range legs {
+		if leg.Round != "quarterfinals" || leg.WinnerID == nil || *leg.WinnerID != want[leg.ID] {
+			t.Fatalf("incorrect match %s: %+v", leg.ID, leg)
+		}
+		delete(want, leg.ID)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing games: %v", want)
+	}
+	if requirement := bracketRequirement("401924388", "torneo-apertura"); requirement == nil || *requirement {
+		t.Fatal("Apertura regular-season result requires a knockout confirmation")
+	}
+}
+
+func TestFemenilBracketPerLegResult(t *testing.T) {
+	for _, tc := range []struct{ name, round, leg, note, home, away, winner string }{
+		{"drawn first leg with tie flag", "quarterfinals", "1", "1st Leg", `"score":"0","winner":true`, `"score":"0"`, ""},
+		{"drawn second leg with no flag", "quarterfinals", "2", "2nd Leg - Away win 2-0 on aggregate", `"score":"0"`, `"score":"0"`, ""},
+		{"different leg and shootout winners", "final", "2", "Away win 4-3 on penalties", `"score":"2"`, `"score":"0","winner":true`, "h"},
+		{"contradictory ordinal", "semifinals", "1", "2nd Leg", `"score":"1","winner":true`, `"score":"0"`, "error"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+
+			status := "STATUS_FULL_TIME"
+			if tc.round == "final" {
+				status = "STATUS_FINAL_PEN"
+			}
+			raw := []byte(`{"events":[{"id":"1","date":"2026-11-14T23:00Z","season":{"slug":"apertura---` + tc.round + `"},
+			"status":{"type":{"state":"post","completed":true,"name":"` + status + `"}},
+			"competitions":[{"leg":{"value":` + tc.leg + `},"notes":[{"text":"` + tc.note + `"}],"competitors":[
+			{"homeAway":"home","team":{"id":"h","displayName":"Home"},` + tc.home + `},
+			{"homeAway":"away","team":{"id":"a","displayName":"Away"},` + tc.away + `}]}]}]}`)
+			season := config.Season{PlayoffFormat: "femenil-apertura"}
+			bracket, bracketErr := MapSeasonBracket(raw, season)
+			scoreboard, scoreboardErr := MapSeasonScoreboard(raw, season)
+			if tc.winner == "error" {
+				if bracketErr == nil || scoreboardErr == nil {
+					t.Fatalf("contradictory ordinals accepted: %v / %v", bracketErr, scoreboardErr)
+				}
+				return
+			}
+			if bracketErr != nil || scoreboardErr != nil || len(bracket) != 1 || len(scoreboard) != 1 {
+				t.Fatalf("leg rejected: %v / %v", bracketErr, scoreboardErr)
+			}
+			for _, winner := range []*string{bracket[0].WinnerID, scoreboard[0].WinnerID} {
+				if (winner == nil) != (tc.winner == "") || (winner != nil && *winner != tc.winner) {
+					t.Fatalf("leg winner %v, want %q", winner, tc.winner)
+				}
+			}
+			if tc.round == "final" {
+				for _, totals := range []*Shootout{bracket[0].Shootout, scoreboard[0].Shootout} {
+					if totals == nil || totals.HomeScore != 3 || totals.AwayScore != 4 {
+						t.Fatalf("lost final shootout: %v", totals)
+					}
+				}
+				if bracket[0].Note == nil || *bracket[0].Note != "2nd Leg - "+tc.note {
+					t.Fatalf("lost ordinal or original note: %v", bracket[0].Note)
+				}
+			}
+		})
+	}
+}
+
+func TestFemenilBracketOrdinalEvidence(t *testing.T) {
+	for _, tc := range []struct{ leg, copy, secondary, want string }{
+		{`{"displayValue":" 2nd LEG"}`, "Pumas advance", "", "2nd Leg - Pumas advance"},
+		{`null`, "", "1st Leg", "1st Leg"},
+		{`{"value":2}`, "2nd Leg", "1st Leg", ""},
+		{`{"value":2,"displayValue":"1st Leg"}`, "", "", ""},
+		{`{"value":0}`, "1st Leg", "", ""},
+		{`{"value":1}`, "3rd Leg", "", ""},
+	} {
+		note, err := competitionNote([]rawNote{{Text: tc.copy}, {Text: tc.secondary}}, json.RawMessage(tc.leg), true)
+		if (err != nil) != (tc.want == "") || (err == nil && (note == nil || *note != tc.want)) {
+			t.Errorf("ordinal %s %q %q gave %v %v", tc.leg, tc.copy, tc.secondary, note, err)
 		}
 	}
 }

@@ -240,6 +240,20 @@ func (a *App) resourceMap(scope resourceScope, snapshot resourceSnapshot) (resou
 	}
 	return out, old, nil
 }
+
+// A configured omission carries no observed data or freshness clock.
+func writeUnavailable(w http.ResponseWriter, resource string) {
+	name := map[string]string{"scores": "matches", "summary": "detail", "teams": "identity", "players": "identity"}[resource]
+	if name == "" {
+		name = resource
+	}
+	if err := writeResources(w, resourceEnvelope{Version: 1, Resources: map[string]resourceMetadata{name: unknownResource("competition-season", "direct")}}); err != nil {
+		writeError(w, 500, "internal error")
+		return
+	}
+	writeError(w, http.StatusNotFound, "resource unavailable")
+}
+
 func hasCoreResources(route string) bool {
 	return route == "matches" || route == "calendar" || route == "bracket" || route == "team" || route == "summary"
 }
@@ -258,6 +272,17 @@ func writeResources(w http.ResponseWriter, envelope resourceEnvelope) error {
 	return nil
 }
 func (a *App) attachResources(w http.ResponseWriter, r *http.Request, reader matchReader, finish func(), scope resourceScope) bool {
+	_, edition, ok := a.resolve(scope.Competition, scope.Season)
+	if ok {
+		if scope.Degraded == nil {
+			scope.Degraded = map[string]bool{}
+		}
+		for name, resource := range map[string]string{"matches": "scores", "detail": "summary", "standings": "standings", "squad": "squad", "seasonStats": "squad", "career": "career", "gameLog": "participation", "participation": "participation"} {
+			if !edition.Supports(resource) {
+				scope.Degraded[name] = true
+			}
+		}
+	}
 	snapshot, err := reader.Resources(r.Context(), scope)
 	var envelope resourceEnvelope
 	var old *matchFreshness
@@ -305,7 +330,7 @@ SELECT jsonb_build_object(
  'HasUnfinalized',coalesce((SELECT bool_or(has_unfinalized) FROM core),false),
  'Matches',coalesce((SELECT jsonb_agg(jsonb_build_object('Kickoff',kickoff,'State',state,'Status',status_name,'FinalizedAt',finalized_at,'ObservedAt',observed_at)) FROM core WHERE id IS NOT NULL),'[]'::jsonb)),
  'Unresolved',EXISTS(SELECT 1 FROM match m WHERE m.competition_id=$1 AND m.season_id=$2 AND
- (m.finalized_at IS NULL OR (m.state='finished' AND m.status_name NOT IN ('STATUS_CANCELED','STATUS_ABANDONED','STATUS_FORFEIT') AND NOT EXISTS(SELECT 1 FROM match_participation_availability p WHERE p.match_id=m.id AND p.completed)))),
+ (m.finalized_at IS NULL OR ($11 AND m.state='finished' AND m.status_name NOT IN ('STATUS_CANCELED','STATUS_ABANDONED','STATUS_FORFEIT') AND NOT EXISTS(SELECT 1 FROM match_participation_availability p WHERE p.match_id=m.id AND p.completed)))),
  'Standings',{{standings}},
  'Leaders',{{leaders}},
  'Squad',{{squad}},
@@ -339,6 +364,9 @@ func (s *Store) Resources(ctx context.Context, scope resourceScope) (resourceSna
 	if scope.MatchID != "" {
 		games = []string{scope.MatchID}
 	}
+	if scope.Degraded["participation"] {
+		games = nil
+	}
 	for _, raw := range games {
 		id, err := uuid.Parse(raw)
 		if err != nil {
@@ -356,7 +384,7 @@ func (s *Store) Resources(ctx context.Context, scope resourceScope) (resourceSna
 	}
 	var raw []byte
 	standings, leaders, squad := "NULL::jsonb", "NULL::jsonb", "NULL::jsonb"
-	if scope.Route == "standings" || scope.Route == "team" {
+	if (scope.Route == "standings" || scope.Route == "team") && !scope.Degraded["standings"] {
 		standings = resourceStandingsSQL
 	}
 	if scope.Route == "leaders" || scope.Route == "top-scorers" {
@@ -370,13 +398,18 @@ func (s *Store) Resources(ctx context.Context, scope resourceScope) (resourceSna
 		roster, stats = resourceRosterSQL, resourceStatsSQL
 	}
 	if scope.Route == "player" {
-		stats, career = resourceStatsSQL, resourceCareerSQL
+		if !scope.Degraded["seasonStats"] {
+			stats = resourceStatsSQL
+		}
+		if !scope.Degraded["career"] {
+			career = resourceCareerSQL
+		}
 	}
 	if (scope.Route == "summary" || scope.Route == "team" || (scope.Route == "matches" && scope.Detail)) && !scope.Degraded["detail"] {
 		detail = resourceDetailSQL
 	}
 	query := strings.NewReplacer("{{standings}}", standings, "{{leaders}}", leaders, "{{squad}}", squad, "{{roster}}", roster, "{{stats}}", stats, "{{career}}", career, "{{detail}}", detail).Replace(resourceEvidenceSQL)
-	err := s.db.QueryRow(ctx, query, scope.Competition, scope.Season, ids, scope.TeamID, scope.Bracket, bracketRoundOrder, hasCoreResources(scope.Route), playerID, gameIDs, scope.Metric).Scan(&raw)
+	err := s.db.QueryRow(ctx, query, scope.Competition, scope.Season, ids, scope.TeamID, scope.Bracket, bracketRoundOrder, hasCoreResources(scope.Route), playerID, gameIDs, scope.Metric, !scope.Degraded["participation"]).Scan(&raw)
 	if err != nil {
 		return snapshot, err
 	}

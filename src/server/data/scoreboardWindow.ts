@@ -1,5 +1,6 @@
 import type { CompetitionSeason } from './competitions';
-import { parseRange, seasonMonthBounds } from './dateRange';
+import { parseRange, editionBounds } from './dateRange';
+import { EspnEditionError, completeCollection, requireSeason, requiresEditionEvidence, datedInEdition } from './providers/espn-edition';
 import { scoreboardUrl } from './endpoints';
 import { isScoreboardCount } from './providers/espn-matches';
 
@@ -124,17 +125,34 @@ function validateEvent(value: unknown): { event: Raw; id: string; at: number; se
 }
 // Evaluation reuses this validation for the bracket's undated scoreboard path.
 export { validateEvent as validateScoreboardEvent };
-export function validateScoreboardEnvelope(raw: unknown, league: string): unknown[] {
+export function validateScoreboardEnvelope(raw: unknown, rc: CompetitionSeason): unknown[] {
   const envelope = object(raw);
-  if (!Array.isArray(envelope.leagues) || envelope.leagues.length !== 1 || object(envelope.leagues[0]).slug !== league) {
+  if (!Array.isArray(envelope.leagues) || envelope.leagues.length !== 1 || object(envelope.leagues[0]).slug !== rc.competition.espnSlug) {
     throw new Error('Scoreboard league mismatch');
   }
   if (!Array.isArray(envelope.events) || envelope.events.length >= 1000) throw new Error('Scoreboard events missing or truncated');
+  if (requiresEditionEvidence(rc)) return completeCollection(envelope, 'events');
   for (const key of ['count', 'total', 'pageCount']) {
     if (key in envelope && envelope[key] !== (key === 'pageCount' ? 1 : envelope.events.length)) throw new Error('Scoreboard pagination is incomplete');
   }
   return envelope.events;
 }
+// Empty months have no event-level evidence. ESPN also carries the edition on the league.
+function requireScoreboardSeason(envelope: Raw, rc: CompetitionSeason) {
+  const league = object((envelope.leagues as unknown[])[0]);
+  requireSeason(league.season, rc.season, true);
+}
+
+export function verifyUndatedScoreboard(raw: unknown, rc: CompetitionSeason) {
+  const events = validateScoreboardEnvelope(raw, rc);
+  if (!events.length) requireScoreboardSeason(object(raw), rc);
+  for (const value of events) {
+    const { event, season } = validateEvent(value);
+    requireSeason(season, rc.season, true);
+    if (!datedInEdition(event.date, rc.season)) throw new EspnEditionError('scope_mismatch');
+  }
+}
+
 export const utcDate = (compact: string) => Date.UTC(Number(compact.slice(0, 4)), Number(compact.slice(4, 6)) - 1, Number(compact.slice(6, 8)));
 
 /** Monthly provider partitions, one-day calendar guards, then exact UTC/season scope. */
@@ -147,10 +165,7 @@ export async function fetchScoreboardWindow(
 ): Promise<{ events: Raw[] }> {
   signal?.throwIfAborted();
   if (!parseRange(range, maxDays)) throw new Error('Invalid scoreboard range');
-  const bounds = seasonMonthBounds(rc.season.id);
-  const seasonStart = Date.parse(`${bounds.minMonth}T00:00:00Z`);
-  const lastMonth = new Date(`${bounds.maxMonth}T00:00:00Z`);
-  const seasonEnd = Date.UTC(lastMonth.getUTCFullYear(), lastMonth.getUTCMonth() + 1, 1);
+  const { start: seasonStart, end: seasonEnd } = editionBounds(rc.season);
   const start = Math.max(utcDate(range.slice(0, 8)), seasonStart);
   const end = Math.min(utcDate(range.slice(9)) + DAY, seasonEnd);
   if (end <= start) return { events: [] };
@@ -171,12 +186,7 @@ export async function fetchScoreboardWindow(
   const timer = setTimeout(() => controller.abort(new Error('Scoreboard deadline exceeded')), 15_000);
   const seen = new Map<string, Raw>();
   const retained = new Map<string, Raw>();
-  const publicYear = Number(rc.season.id.slice(0, 4));
-  const expectedYear = publicYear - (rc.season.id.endsWith('-clausura') ? 1 : 0);
-  const split = /-(apertura|clausura)$/.exec(rc.season.id)?.[1];
-  // Play-in and knockout phase names vary across editions; the split and
-  // optional public-year suffix establish scope, not an enumeration of rounds.
-  const splitScope = split ? new RegExp(`^(?:torneo-${split}(?:-${publicYear})?|${split}(?:-${publicYear})?---[a-z0-9]+(?:-[a-z0-9]+)*)$`) : null;
+  const strict = requiresEditionEvidence(rc);
   let bytes = 0;
   try {
     for (const monthStart of months) {
@@ -191,8 +201,9 @@ export async function fetchScoreboardWindow(
       const size = responseBytes.get(envelope) ?? new TextEncoder().encode(JSON.stringify(envelope)).byteLength;
       bytes += size;
       if (size > RESPONSE_BYTES || bytes > WINDOW_BYTES) throw new Error('Scoreboard window exceeds bytes budget');
-      const events = validateScoreboardEnvelope(envelope, rc.competition.espnSlug);
+      const events = validateScoreboardEnvelope(envelope, rc);
       const monthEnd = Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1);
+      let identified = false;
       for (const value of events) {
         const { event, id, at, season } = validateEvent(value);
         if (at < monthStart - DAY || at >= monthEnd + DAY) throw new Error('Scoreboard event outside requested month');
@@ -200,11 +211,11 @@ export async function fetchScoreboardWindow(
         if (previous && canonicalJSON(previous) !== canonicalJSON(event)) throw new Error('Conflicting scoreboard duplicate');
         seen.set(id, event);
         if (at < start || at >= end) continue;
-        if (season.year !== expectedYear || (splitScope && !splitScope.test(String(season.slug)))) {
-          throw new Error('Scoreboard event season mismatch');
-        }
+        requireSeason(season, rc.season, true);
+        identified = true;
         retained.set(id, event);
       }
+      if (strict && !identified && monthStart < end && monthEnd > start) requireScoreboardSeason(envelope, rc);
     }
     controller.signal.throwIfAborted();
     return { events: [...retained.values()] };

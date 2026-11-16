@@ -1,6 +1,6 @@
 'use client';
 
-import type { CompetitionSeason } from '@/server/data/competitions';
+import { supportsResource, type CompetitionSeason } from '@/server/data/competitions';
 import type { BannerFeed } from '@/server/data/banner';
 import MatchWheel from './MatchWheel';
 import { useLocale, useTranslations } from '@/i18n/I18nProvider';
@@ -18,8 +18,9 @@ export default function UpcomingBanner({ feed, rc }: { feed: BannerFeed; rc: Com
         {feed.weekOnly ? t('upcoming.thisWeek') : t('upcoming.nextUp')}
       </h2>
       <MatchWheel
-        teamBase={`/${locale}/c/${rc.competition.id}/${rc.season.id}/team`}
-        playerBase={`/${locale}/c/${rc.competition.id}/${rc.season.id}/player`}
+        hasSummary={supportsResource(rc.season, 'summary')}
+        teamBase={supportsResource(rc.season, 'teams') ? `/${locale}/c/${rc.competition.id}/${rc.season.id}/team` : undefined}
+        playerBase={supportsResource(rc.season, 'players') ? `/${locale}/c/${rc.competition.id}/${rc.season.id}/player` : undefined}
         initialMatches={feed.matches}
         apiBase={`/api/${rc.competition.id}/${rc.season.id}`}
         teamStyle={rc.competition.teamStyle}

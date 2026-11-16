@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/mcasillas17/scorearc-backend/config"
 )
 
 // Port of src/server/data/providers/espn-summary.ts. Reads ESPN's per-match
@@ -53,6 +55,7 @@ type rawSummaryHeader struct {
 }
 
 type rawHeaderCompetition struct {
+	Leg         json.RawMessage       `json:"leg"`
 	Competitors []rawHeaderCompetitor `json:"competitors"`
 	ID          flexibleString        `json:"id"`
 	Status      *rawObservationStatus `json:"status"`
@@ -320,14 +323,44 @@ func parseRawSummary(raw []byte, out *rawSummary) error {
 // home/away rather than ESPN's.
 // Shootout mapping is tolerant; persistence callers must first call ValidateSummary.
 func MapSummary(raw []byte) (MatchDetail, error) {
+	detail, _, err := MapSeasonSummary(raw, Match{}, config.Season{})
+	return detail, err
+}
+
+// MapSeasonSummary reconciles a two-legged edition's header ordinal with the stored bracket note.
+func MapSeasonSummary(raw []byte, match Match, season config.Season) (MatchDetail, *string, error) {
 	var rs rawSummary
 	if err := parseRawSummary(raw, &rs); err != nil {
-		return MatchDetail{}, err
+		return MatchDetail{}, nil, err
+	}
+	note := match.Note
+	var headerShootout *Shootout
+	if season.PlayoffFormat == config.FemenilApertura && len(rs.Header.Competitions) > 0 {
+		comp := rs.Header.Competitions[0]
+		notes := comp.Notes
+		if note != nil {
+			notes = append([]rawNote{{Text: *note}}, notes...)
+		}
+		var err error
+		note, err = competitionNote(notes, comp.Leg, true)
+		if err != nil {
+			return MatchDetail{}, nil, err
+		}
+		if IsFemenilLeg(season, match.Round, note) {
+			if match.State == MatchStateFinished && comp.Status != nil && playedLeg(match.StatusName, match.Round, note) != playedLeg(comp.Status.Type.Name, match.Round, note) {
+				return MatchDetail{}, nil, fmt.Errorf("summary leg status %q contradicts %q", comp.Status.Type.Name, match.StatusName)
+			}
+			for _, n := range comp.Notes {
+				if headerShootout = parseMatchShootoutNote(n.Text, match.Home.Name, match.Away.Name, true); headerShootout != nil {
+					break
+				}
+			}
+		}
 	}
 
 	homeID, awayID := headerTeamIDs(rs)
 
-	return MatchDetail{
+	detail := MatchDetail{
 		Scorers:        mapSummaryScorers(rs),
 		Cards:          mapSummaryCards(rs),
 		Shootout:       mapSummaryShootout(rs),
@@ -340,7 +373,17 @@ func MapSummary(raw []byte) (MatchDetail, error) {
 		Form:           mapSummaryForm(rs, homeID, awayID),
 		Commentary:     mapSummaryCommentary(rs),
 		H2H:            mapSummaryH2H(rs),
-	}, nil
+	}
+	if detail.Shootout == nil {
+		detail.Shootout = match.Shootout
+	}
+	if detail.Shootout == nil && note != nil {
+		detail.Shootout = parseMatchShootoutNote(*note, match.Home.Name, match.Away.Name, IsFemenilLeg(season, match.Round, note))
+	}
+	if detail.Shootout == nil {
+		detail.Shootout = headerShootout
+	}
+	return detail, note, nil
 }
 
 // ValidateSummary rejects structurally incomplete payloads before persistence.

@@ -84,7 +84,7 @@ UPDATE match SET
 	minute = $9,
 	status_detail = $10,
 	status_name = $11,
-	winner_id = CASE WHEN $16 THEN $12 ELSE COALESCE($12, match.winner_id) END,
+	winner_id = CASE WHEN $16 OR $19 THEN $12 ELSE COALESCE($12, match.winner_id) END,
 	note = COALESCE($13, match.note),
 	-- A payload that is not bracket-confirmed may SET a placeholder but never
 	-- CLEAR one for the same team: the scoreboard has no idea a leg is still
@@ -157,7 +157,7 @@ func matchArgs(identity MatchIdentity, match model.Match) []any {
 		match.HomeScore, match.AwayScore, match.Minute,
 		match.StatusDetail, match.StatusName, identity.WinnerTeamID, match.Note,
 		match.HomePlaceholder, match.BracketRequired, match.BracketConfirmed,
-		match.AwayPlaceholder, identity.Source,
+		match.AwayPlaceholder, identity.Source, match.WinnerResolved,
 	}
 }
 
@@ -309,17 +309,6 @@ func (s *Store) FinalizeMatch(
 		return false, err
 	}
 
-	var round any
-	if match.Round != "" {
-		round = match.Round
-	}
-	args := []any{
-		identity.MatchID, round, match.Kickoff, string(match.State),
-		identity.HomeTeamID, identity.AwayTeamID, match.HomeScore, match.AwayScore,
-		match.Minute, match.StatusDetail, match.StatusName, identity.WinnerTeamID,
-		match.Note, match.HomePlaceholder, match.BracketRequired, match.BracketConfirmed,
-		match.AwayPlaceholder, identity.Source, match.WinnerResolved,
-	}
 	command, err := tx.Exec(ctx, `
 UPDATE match SET
 	round=CASE
@@ -341,7 +330,7 @@ UPDATE match SET
 		ELSE COALESCE($15, bracket_required)
 	END,
 	source=$18, finalized_at=now(), updated_at=now()
-WHERE id=$1 AND state='finished' AND finalized_at IS NULL`, args...)
+WHERE id=$1 AND state='finished' AND finalized_at IS NULL`, matchArgs(identity, match)...)
 	if err != nil {
 		return false, err
 	}

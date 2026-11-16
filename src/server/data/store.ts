@@ -14,7 +14,7 @@ import type {
   SquadPlayer,
   PlayerProfile,
 } from './types';
-import { COMPETITIONS, type CompetitionSeason } from './competitions';
+import { supportsResource, resolveSeason, type CompetitionSeason } from './competitions';
 import {
   scoreboardUrl,
   standingsUrl,
@@ -33,7 +33,8 @@ import { uniqueTeamMatches } from './teamPerformance';
 import { mapAthleteProfile, mapAthleteOverview, mapAthleteBio } from './providers/espn-athlete';
 import { configuredPhaseTables } from './leaguesCupTables';
 import { computeOverallTable } from './mlsTables';
-import { mapNews } from './providers/espn-news';
+import { EspnEditionError, verifySummaryEdition, verifyStandingsEdition, verifyLeadersEdition, requiresEditionEvidence, providerYear } from './providers/espn-edition';
+import { mapNews, mapAttributedNews } from './providers/espn-news';
 import { mapStandings } from './providers/espn-standings';
 import { mapBracket } from './providers/espn-bracket';
 import { mapLeaders } from './providers/espn-stats';
@@ -42,8 +43,9 @@ import {
   mapSummaryVideos, mapSummaryShootout, mapSummaryShootoutTotals, summaryHeaderFinal, mapSummaryInfo, mapSummaryForm, mapSummaryCommentary, mapSummaryH2H,
 } from './providers/espn-summary';
 import { TtlCache } from './cache';
+import { resourceRead, withEditionResources } from './editionResources';
 import { currentWeekRange, forwardRange, nowWindowRange } from './dateRange';
-import { fetchScoreboardWindow, boundedFetchJson, type ScoreboardFetchJson } from './scoreboardWindow';
+import { fetchScoreboardWindow, verifyUndatedScoreboard, boundedFetchJson, type ScoreboardFetchJson } from './scoreboardWindow';
 
 // The store is keyed on a resolved (competition, season) pair. The ESPN league
 // slug lives on the competition; per-season fetch details (e.g. the bracket
@@ -107,7 +109,9 @@ export function createDataStore(deps: DataDeps): DataStore {
     const k = key(rc, 'leaders');
     const cached = deps.cache.get(k) as { scorers: StatLeader[]; assists: StatLeader[] } | undefined;
     if (cached) return cached;
-    const raw = await deps.fetchJson(statisticsUrl(slug(rc)));
+    const strict = requiresEditionEvidence(rc);
+    const raw = await deps.fetchJson(statisticsUrl(slug(rc), strict ? providerYear(rc.season) : undefined));
+    if (strict) verifyLeadersEdition(raw, rc);
     // Ten is the Golden Boot race; twenty is a list nobody scrolls. The mapper
     // keeps its wider default for any caller that wants the tail.
     const boards = {
@@ -133,7 +137,7 @@ export function createDataStore(deps: DataDeps): DataStore {
     const cached = deps.cache.get(k) as Match[] | undefined;
     if (cached) return cached;
     const raw = await fetchScoreboardWindow(rc, range, deps.fetchJson, signal);
-    const matches = mapScoreboard(raw)
+    const matches = mapScoreboard(raw, rc.season.playoffFormat)
       .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
     deps.cache.set(k, matches, ttlMs);
     return matches;
@@ -143,9 +147,13 @@ export function createDataStore(deps: DataDeps): DataStore {
     rc: CompetitionSeason,
     config: NonNullable<CompetitionSeason['season']['computedTables']>,
   ): Promise<Group[]> {
+    const split = resolveSeason(config.membership.split.competitionId, config.membership.split.seasonId);
+    if (!split || !supportsResource(split.season, 'teams') || !supportsResource(rc.season, 'scores')) {
+      throw new Error('Unavailable edition membership');
+    }
     const [rawPhase, rawSplit] = await Promise.all([
       fetchScoreboardWindow(rc, config.datesRange, deps.fetchJson),
-      deps.fetchJson(teamsUrl(COMPETITIONS[config.membership.split.competitionId].espnSlug)),
+      deps.fetchJson(teamsUrl(split.competition.espnSlug)),
     ]);
     // The configured display names are carried so the view doesn't hardcode them.
     return configuredPhaseTables(mapScoreboard(rawPhase), config, splitLeagueTeamIds(rawSplit));
@@ -169,15 +177,18 @@ export function createDataStore(deps: DataDeps): DataStore {
     deps.onSummaryRequest?.(eventId, homeId, awayId);
     const raw = await deps.fetchJson(summaryUrl(slug(rc), eventId), signal
       ? { signal, maxBytes: 4 * 1024 * 1024 } : undefined);
+    if (requiresEditionEvidence(rc)) verifySummaryEdition(raw, rc, eventId, homeId, awayId);
+    const info = mapSummaryInfo(raw);
+    if (info && !supportsResource(rc.season, 'officials')) info.referee = null;
     const summary: MatchSummaryData = {
       scorers: mapSummaryScorers(raw),
       cards: mapSummaryCards(raw),
       stats: mapSummaryStats(raw, homeId, awayId),
-      winProbability: mapWinProbability(raw, homeId, awayId),
-      lineups: mapSummaryLineups(raw, homeId, awayId),
+      winProbability: supportsResource(rc.season, 'odds') ? mapWinProbability(raw, homeId, awayId) : null,
+      lineups: supportsResource(rc.season, 'participation') ? mapSummaryLineups(raw, homeId, awayId) : null,
       videos: mapSummaryVideos(raw),
       shootoutDetail: mapSummaryShootout(raw, homeId, awayId),
-      info: mapSummaryInfo(raw),
+      info,
       form: mapSummaryForm(raw, homeId, awayId),
       commentary: mapSummaryCommentary(raw),
       h2h: mapSummaryH2H(raw),
@@ -197,7 +208,7 @@ export function createDataStore(deps: DataDeps): DataStore {
     return (await loadSummary(rc, eventId, homeId, awayId, signal)).data;
   }
 
-  return {
+  const store: DataStore = {
     getMatchSummary,
 
     async getMatches(rc, range?: string, signal?: AbortSignal): Promise<Match[]> {
@@ -205,14 +216,17 @@ export function createDataStore(deps: DataDeps): DataStore {
       const window = range ?? currentWeekRange(new Date(now()));
       // The range is part of the identity of this result. Without it in the
       // key, the first window fetched is served for every later one.
+      if (!supportsResource(rc.season, 'summary')) {
+        return loadWindow(rc, window, `fixtures:${window}`, 120_000, signal);
+      }
       const k = key(rc, `matches:${window}`);
       const cached = deps.cache.get(k) as Match[] | undefined;
       if (cached) return cached;
       const deadline = AbortSignal.timeout(15_000);
       const readSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
       const raw = await fetchScoreboardWindow(rc, window, deps.fetchJson, readSignal);
-      const matches = mapScoreboard(raw);
-      const flags = scoreboardWinnerFlags(raw);
+      const matches = mapScoreboard(raw, rc.season.playoffFormat);
+      const shootoutEligible = scoreboardWinnerFlags(raw, rc.season.playoffFormat);
       const summaries: LoadedSummary[] = [];
       // Only retained matches are enriched, four at a time under the same
       // read deadline. Individual provider summary failures remain best effort.
@@ -232,12 +246,13 @@ export function createDataStore(deps: DataDeps): DataStore {
         m.winProbability = data.winProbability;
         m.shootoutDetail = data.shootoutDetail;
         // The header outranks the scoreboard -- for a finished match only once
-        // the header is final too (Go's requireFinal) -- and a finished match's
-        // winner is then the side it names, or ESPN's flag when it is level,
-        // never the winner of the scoreboard aggregate it supersedes.
+        // the header is final too (Go's requireFinal). A series shootout
+        // settles advancement while leaving the individual leg result intact.
         if (shootout && (m.state !== 'finished' || final)) {
           m.shootout = shootout;
-          if (m.state === 'finished') m.winnerId = shootoutWinnerId(shootout, m.home.id, m.away.id) ?? flags.get(m.id) ?? null;
+          if (m.state === 'finished' && shootoutEligible.has(m.id)) {
+            m.winnerId = shootoutWinnerId(shootout, m.home.id, m.away.id) ?? shootoutEligible.get(m.id) ?? null;
+          }
         }
       });
       deps.cache.set(k, matches, 10_000);
@@ -285,7 +300,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       const cached = deps.cache.get(k) as Match[] | undefined;
       if (cached) return cached;
       const raw = await fetchScoreboardWindow(rc, range, deps.fetchJson, signal);
-      const upcoming = mapScoreboard(raw)
+      const upcoming = mapScoreboard(raw, rc.season.playoffFormat)
         .filter((m) => m.state === 'scheduled')
         .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime())
         .slice(0, limit);
@@ -312,9 +327,9 @@ export function createDataStore(deps: DataDeps): DataStore {
         // matches-and-results block has to ask twice.
         const [rawProfile, rawRoster, rawResults, rawFixtures] = await Promise.all([
           deps.fetchJson(teamUrl(slug(rc), teamId)),
-          deps.fetchJson(teamRosterUrl(slug(rc), teamId)).catch(() => null),
-          deps.fetchJson(teamScheduleUrl(slug(rc), teamId, false, rc.season.id)).catch(() => null),
-          deps.fetchJson(teamScheduleUrl(slug(rc), teamId, true, rc.season.id)).catch(() => null),
+          supportsResource(rc.season, 'squad') ? deps.fetchJson(teamRosterUrl(slug(rc), teamId)).catch(() => null) : null,
+          supportsResource(rc.season, 'scores') ? deps.fetchJson(teamScheduleUrl(slug(rc), teamId, false, rc.season)).catch(() => null) : null,
+          supportsResource(rc.season, 'scores') ? deps.fetchJson(teamScheduleUrl(slug(rc), teamId, true, rc.season)).catch(() => null) : null,
         ]);
 
         const base = mapTeamProfile(rawProfile);
@@ -322,8 +337,11 @@ export function createDataStore(deps: DataDeps): DataStore {
         const results = mapScopedTeamSchedule(rawResults, rc, teamId);
         const upcoming = mapScopedTeamSchedule(rawFixtures, rc, teamId);
 
+        // The undated team profile cannot establish a strict edition's table position or record.
+        const strict = requiresEditionEvidence(rc);
         const profile: TeamProfile = {
           ...base,
+          ...((strict || !supportsResource(rc.season, 'standings')) && { record: null, standingSummary: null, standing: null }),
           squad: rawRoster ? mapTeamRoster(rawRoster) : [],
           schedule: uniqueTeamMatches([...results.matches, ...upcoming.matches]).reverse(),
           scheduleAvailability: {
@@ -331,7 +349,7 @@ export function createDataStore(deps: DataDeps): DataStore {
             upcoming: upcoming.available ? 'available' : 'unavailable',
           },
         };
-        deps.cache.set(k, profile, 120_000);
+        if (!strict || !supportsResource(rc.season, 'scores') || (results.available && upcoming.available)) deps.cache.set(k, profile, 120_000);
         return profile;
       } catch (error) {
         if (deps.propagateUnavailable && !(error instanceof ReaderFailure && error.status === 404)) throw error;
@@ -370,8 +388,8 @@ export function createDataStore(deps: DataDeps): DataStore {
       try {
         const [rawProfile, rawOverview, rawBio] = await Promise.all([
           deps.fetchJson(athleteUrl(slug(rc), athleteId)),
-          deps.fetchJson(athleteOverviewUrl(slug(rc), athleteId)).catch(() => null),
-          deps.fetchJson(athleteBioUrl(slug(rc), athleteId)).catch(() => null),
+          supportsResource(rc.season, 'participation') ? deps.fetchJson(athleteOverviewUrl(slug(rc), athleteId)).catch(() => null) : null,
+          supportsResource(rc.season, 'career') ? deps.fetchJson(athleteBioUrl(slug(rc), athleteId)).catch(() => null) : null,
         ]);
 
         const identity = mapAthleteProfile(rawProfile);
@@ -380,6 +398,7 @@ export function createDataStore(deps: DataDeps): DataStore {
         const overview = rawOverview ? mapAthleteOverview(rawOverview) : { label: '', rows: [] };
         const profile: PlayerProfile = {
           ...identity,
+          totals: supportsResource(rc.season, 'squad') ? identity.totals : [],
           gameLogLabel: overview.label,
           gameLog: overview.rows,
           career: rawBio ? mapAthleteBio(rawBio) : [],
@@ -406,15 +425,17 @@ export function createDataStore(deps: DataDeps): DataStore {
         deps.cache.set(k, groups, 60_000);
         return groups;
       }
-      const raw = await deps.fetchJson(standingsUrl(slug(rc)));
+      const strict = requiresEditionEvidence(rc);
+      const raw = await deps.fetchJson(standingsUrl(slug(rc), strict ? providerYear(rc.season) : undefined));
       let groups: Group[];
       try {
-        groups = mapStandings(raw, rc.competition.shortName);
+        if (strict) verifyStandingsEdition(raw, rc);
+        groups = mapStandings(raw, rc.competition.shortName, !!rc.season.playoffFormat);
       } catch (error) {
         // A rejected table is cached like an accepted one: the standings page
         // and the team and player indexes all read it, and a provider that
         // keeps serving it must not cost an upstream fetch per read.
-        deps.cache.set(k, error, 60_000);
+        if (!(error instanceof EspnEditionError)) deps.cache.set(k, error, 60_000);
         throw error;
       }
       // A conference-split league also races for something league-wide that no
@@ -438,7 +459,19 @@ export function createDataStore(deps: DataDeps): DataStore {
         : await deps.fetchJson(scoreboardUrl(slug(rc)), {
           signal: AbortSignal.timeout(15_000), maxBytes: 4 * 1024 * 1024,
         });
-      const rounds = mapBracket(raw);
+      if (!rc.season.bracketDatesRange && requiresEditionEvidence(rc)) verifyUndatedScoreboard(raw, rc);
+      let groups: Group[] = [];
+      if (rc.season.playoffFormat && supportsResource(rc.season, 'standings')) {
+        try {
+          groups = await store.getStandings(rc);
+        } catch (error) {
+          // Published matches stand on their own. A projection requires the table.
+          const published = mapBracket(raw, rc.season.playoffFormat);
+          if (published.length) return published;
+          throw error;
+        }
+      }
+      const rounds = mapBracket(raw, rc.season.playoffFormat, groups);
       deps.cache.set(k, rounds, 8_000);
       return rounds;
     },
@@ -450,11 +483,12 @@ export function createDataStore(deps: DataDeps): DataStore {
       const cached = deps.cache.get(k) as NewsArticle[] | undefined;
       if (cached) return cached;
       const raw = await deps.fetchJson(newsUrl(slug(rc)));
-      const news = mapNews(raw);
+      const news = requiresEditionEvidence(rc) ? mapAttributedNews(raw, rc.competition.espnLeagueId) : mapNews(raw);
       deps.cache.set(k, news, 90_000);
       return news;
     },
   };
+  return withEditionResources(store);
 }
 
 const espnCache = new TtlCache<unknown>();
@@ -468,8 +502,8 @@ const loadEspnSquad = unstable_cache(
 );
 export const espnDataStore: DataStore = {
   ...createDataStore({ fetchJson: boundedFetchJson, cache: espnCache }),
-  getSquad: (rc, teamId) =>
-    loadEspnSquad({ league: rc.competition.espnSlug, season: rc.season.id }, teamId).catch(() => []),
+  getSquad: resourceRead('squad', (rc, teamId: string) =>
+    loadEspnSquad({ league: rc.competition.espnSlug, season: rc.season.id }, teamId).catch(() => [])),
 };
 export const dataStore: DataStore = configuredDataStore({
   espn: espnDataStore,

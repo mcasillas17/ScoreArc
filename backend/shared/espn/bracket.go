@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/mcasillas17/scorearc-backend/config"
 )
 
 // Port of src/server/data/providers/espn-bracket.ts. Brackets come from a
@@ -67,6 +69,7 @@ var nonKnockoutRound = map[string]struct{}{
 	"qualification":       {},
 	"qualifying":          {},
 	"regular-season":      {},
+	"torneo-apertura":     {},
 	"relegation-playoffs": {}, // UEFA Nations League promotion/relegation ties
 }
 
@@ -98,6 +101,11 @@ var eventRoundSlugOverride = map[string]string{
 
 var placeholderNameRe = regexp.MustCompile(`(?i)\b(winner|loser|tbd|to be determined)\b`)
 
+// IsBracketPlaceholder identifies a provider slot before a team has qualified.
+func IsBracketPlaceholder(name string, crest *string) bool {
+	return (crest == nil || *crest == "") && placeholderNameRe.MatchString(name)
+}
+
 // bracketRoundSlug ports espn-bracket.ts's roundSlug: a per-event correction
 // wins over the season-slug alias mapping.
 func bracketRoundSlug(eventID, seasonSlug string) string {
@@ -124,47 +132,6 @@ func bracketRequirement(eventID, seasonSlug string) *bool {
 	return &required
 }
 
-// rawBracketScoreboard mirrors the subset of ESPN's (knockout-filtered)
-// scoreboard JSON the bracket mapper reads.
-type rawBracketScoreboard struct {
-	Events []rawBracketEvent `json:"events"`
-}
-
-type rawBracketEvent struct {
-	ID           flexibleString          `json:"id"`
-	Date         string                  `json:"date"`
-	Season       rawBracketSeason        `json:"season"`
-	Status       *rawObservationStatus   `json:"status"`
-	Competitions []rawBracketCompetition `json:"competitions"`
-}
-
-type rawBracketSeason struct {
-	Slug string `json:"slug"`
-	Year int    `json:"year"`
-}
-
-type rawBracketCompetition struct {
-	Competitors []rawBracketCompetitor `json:"competitors"`
-	Notes       []rawNote              `json:"notes"`
-	Leg         *rawBracketLeg         `json:"leg"`
-}
-
-type rawBracketLeg struct {
-	Value int `json:"value"`
-}
-
-type rawBracketCompetitor struct {
-	HomeAway string          `json:"homeAway"`
-	Winner   bool            `json:"winner"`
-	Score    *flexibleString `json:"score"`
-	// ShootoutScore is deliberately raw JSON: ESPN sends a bare number on
-	// modern payloads and a digit string on older ones. The bracket takes the
-	// scoreboard's rule (scoreboardTotal, TS isScoreboardCount): absent, null,
-	// "", a digit string or a non-negative integer; anything else rejects it.
-	ShootoutScore json.RawMessage `json:"shootoutScore"`
-	Team          rawTeam         `json:"team"`
-}
-
 // mapBracketTeam ports espn-bracket.ts's mapBracketTeam.
 func mapBracketTeam(t rawTeam) BracketTeam {
 	var crest *string
@@ -188,20 +155,20 @@ func mapBracketTeam(t rawTeam) BracketTeam {
 		Name:        name,
 		Abbr:        t.Abbreviation,
 		CrestURL:    crest,
-		Placeholder: crest == nil && placeholderNameRe.MatchString(name),
+		Placeholder: IsBracketPlaceholder(name, crest),
 	}
 }
 
 // mapBracketMatch validates a bracket observation before mapping its facts.
 // Invalid status or incomplete identity must fail the whole bracket response,
 // not become candidates or a successful empty observation.
-func mapBracketMatch(ev rawBracketEvent) (BracketMatch, error) {
+func mapBracketMatch(ev rawEvent, season config.Season) (BracketMatch, error) {
 	if len(ev.Competitions) == 0 {
 		return BracketMatch{}, fmt.Errorf("missing competition")
 	}
 	comp := ev.Competitions[0]
 
-	var home, away *rawBracketCompetitor
+	var home, away *rawCompetitor
 	for i := range comp.Competitors {
 		c := &comp.Competitors[i]
 		switch c.HomeAway {
@@ -230,40 +197,46 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, error) {
 		(away.Score != nil && *away.Score != "" && awayScore == nil) {
 		return BracketMatch{}, fmt.Errorf("invalid score")
 	}
-	var note *string
-	if len(comp.Notes) > 0 && comp.Notes[0].Text != "" {
-		text := comp.Notes[0].Text
-		note = &text
+	round := bracketRoundSlug(string(ev.ID), ev.Season.Slug)
+	leg := IsFemenilLeg(season, round, nil)
+	note, err := competitionNote(comp.Notes, comp.Leg, leg)
+	if err != nil {
+		return BracketMatch{}, err
 	}
 	homeTeam, awayTeam := mapBracketTeam(home.Team), mapBracketTeam(away.Team)
 	// The scoreboard's rule and tiers: a malformed structured total rejects the
 	// bracket; otherwise structured totals, then the anchored note. The
 	// aggregate rides to the ingester's candidate and decides a finished winner.
-	for _, competitor := range []*rawBracketCompetitor{home, away} {
+	for _, competitor := range []*rawCompetitor{home, away} {
 		if !scoreboardTotal(competitor.ShootoutScore) {
 			return BracketMatch{}, fmt.Errorf("invalid shootout score")
 		}
 	}
 	shootout := shootoutTotals(home.ShootoutScore, away.ShootoutScore)
 	if shootout == nil && note != nil {
-		shootout = ParseShootoutNote(*note, homeTeam.Name, awayTeam.Name)
+		shootout = parseMatchShootoutNote(*note, homeTeam.Name, awayTeam.Name, leg)
 	}
-	winnerID, err := shootoutFirstWinnerID(
-		string(home.Team.ID), string(away.Team.ID),
-		shootout, home.Winner, away.Winner, state == MatchStateFinished,
-	)
-	if err != nil {
-		return BracketMatch{}, err
-	}
-	// A completed first leg can legitimately have no winner: the tie is decided
-	// only after leg two. Unpaired matches and completed second legs remain
-	// strict because their missing winner would lose a decided knockout result.
-	firstLeg := comp.Leg != nil && comp.Leg.Value == 1
-	if state == MatchStateFinished && winnerID == nil && !firstLeg &&
-		status.Type.Name != "STATUS_CANCELED" &&
-		status.Type.Name != "STATUS_ABANDONED" &&
-		status.Type.Name != "STATUS_FORFEIT" {
-		return BracketMatch{}, fmt.Errorf("finished knockout match lacks winner")
+	var winnerID, flag *string
+	if leg {
+		winnerID = LegWinner(status.Type.Name, round, note, homeTeam.ID, awayTeam.ID, homeScore, awayScore)
+		if state == MatchStateFinished && !terminalMatchStatus(status.Type.Name) && (homeScore == nil || awayScore == nil) {
+			return BracketMatch{}, fmt.Errorf("finished leg lacks scores")
+		}
+	} else {
+		var legacyLeg struct{ Value int }
+		if len(comp.Leg) != 0 {
+			if err := json.Unmarshal(comp.Leg, &legacyLeg); err != nil {
+				return BracketMatch{}, err
+			}
+		}
+		flag = flaggedWinnerID(homeTeam.ID, awayTeam.ID, home.Winner, away.Winner)
+		winnerID, err = shootoutFirstWinnerID(homeTeam.ID, awayTeam.ID, shootout, home.Winner, away.Winner, state == MatchStateFinished)
+		if err != nil {
+			return BracketMatch{}, err
+		}
+		if state == MatchStateFinished && winnerID == nil && legacyLeg.Value != 1 && !terminalMatchStatus(status.Type.Name) {
+			return BracketMatch{}, fmt.Errorf("finished knockout match lacks winner")
+		}
 	}
 
 	// A live minute is ESPN's display clock; without one it is unknown (nil),
@@ -276,7 +249,7 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, error) {
 
 	return BracketMatch{
 		ID:           string(ev.ID),
-		Round:        bracketRoundSlug(string(ev.ID), ev.Season.Slug),
+		Round:        round,
 		Kickoff:      kickoff.Format(time.RFC3339),
 		Home:         homeTeam,
 		Away:         awayTeam,
@@ -289,7 +262,7 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, error) {
 		WinnerID:     winnerID,
 		Note:         note,
 		Shootout:     shootout,
-		WinnerFlagID: flaggedWinnerID(string(home.Team.ID), string(away.Team.ID), home.Winner, away.Winner),
+		WinnerFlagID: flag,
 	}, nil
 }
 
@@ -301,10 +274,15 @@ func mapBracketMatch(ev rawBracketEvent) (BracketMatch, error) {
 // and `ROUND_ORDER.filter(...)` behavior. Malformed knockout events reject the
 // payload so partial bracket metadata cannot be persisted.
 func MapBracket(raw []byte) ([]BracketMatch, error) {
+	return MapSeasonBracket(raw, config.Season{})
+}
+
+// MapSeasonBracket retains one score and winner per game for two-legged editions.
+func MapSeasonBracket(raw []byte, season config.Season) ([]BracketMatch, error) {
 	if err := validateArrayEnvelope(raw, "events"); err != nil {
 		return nil, err
 	}
-	var sb rawBracketScoreboard
+	var sb rawScoreboard
 	if err := json.Unmarshal(raw, &sb); err != nil {
 		return nil, err
 	}
@@ -317,7 +295,7 @@ func MapBracket(raw []byte) ([]BracketMatch, error) {
 			continue
 		}
 		eligibleEvents++
-		match, err := mapBracketMatch(ev)
+		match, err := mapBracketMatch(ev, season)
 		if err != nil {
 			return nil, fmt.Errorf("ESPN bracket event %q: %w", ev.ID, err)
 		}

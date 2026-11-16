@@ -145,7 +145,7 @@ func recoveryFixture() (config.Competition, *recoveryRepository, *recoverySource
 	fresh.State, fresh.StatusName = model.MatchStateFinished, "STATUS_FULL_TIME"
 	fresh.HomeScore, fresh.AwayScore = &home, &away
 	src := &recoverySource{fakeSource: &fakeSource{}, fresh: fresh}
-	comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {ID: "2026"}}}
+	comp := config.Competition{ID: "test", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": testEdition("2026")}}
 	return comp, repo, src, now
 }
 
@@ -353,7 +353,7 @@ func TestFailedRecoveryDoesNotSuppressValidScoreboardObservation(t *testing.T) {
 func TestFreshBracketCompositionCanRenewObservation(t *testing.T) {
 	comp, repo, src, now := recoveryFixture()
 	repo.pending = nil
-	comp.Seasons["2026"] = config.Season{ID: "2026", HasBracket: true}
+	comp.Seasons["2026"] = config.Season{Publication: "live", Resources: testResources, ID: "2026", HasBracket: true}
 	board := src.fresh
 	board.Home.ID, board.Away.ID = "placeholder-home", "placeholder-away"
 	board.StatusDetail = "FT"
@@ -403,7 +403,7 @@ func TestCycleDeadlineStillRecordsPollingFailure(t *testing.T) {
 func TestBracketObservationUsesInjectedSourceClock(t *testing.T) {
 	comp, repo, src, now := recoveryFixture()
 	repo.pending = nil
-	comp.Seasons["2026"] = config.Season{ID: "2026", HasBracket: true}
+	comp.Seasons["2026"] = config.Season{Publication: "live", Resources: testResources, ID: "2026", HasBracket: true}
 	src.bracket = []model.BracketMatch{{
 		ID: "m1", Kickoff: src.fresh.Kickoff, State: model.MatchStateLive, Round: "final",
 		StatusName: "STATUS_SECOND_HALF",
@@ -430,8 +430,8 @@ type validatedMatchSource struct {
 	provider *source.ESPN
 }
 
-func (s validatedMatchSource) Summary(ctx context.Context, comp config.Competition, match model.Match) (source.SummaryResult, error) {
-	return s.provider.Summary(ctx, comp, match)
+func (s validatedMatchSource) Summary(ctx context.Context, comp config.Competition, season config.Season, match model.Match) (source.SummaryResult, error) {
+	return s.provider.Summary(ctx, comp, season, match)
 }
 
 func (s validatedMatchSource) Bracket(ctx context.Context, comp config.Competition, season config.Season, backfill bool) ([]model.BracketMatch, error) {
@@ -472,7 +472,7 @@ func TestMalformedBracketScoreCannotRenewObservation(t *testing.T) {
 	comp, repo, src, now := recoveryFixture()
 	repo.pending = nil
 	repo.existing["m1"] = store.MatchRow{State: model.MatchStateScheduled}
-	comp.Seasons["2026"] = config.Season{ID: "2026", HasBracket: true}
+	comp.Seasons["2026"] = config.Season{Publication: "live", Resources: testResources, ID: "2026", HasBracket: true}
 	body := `{"events":[{"id":"m1","date":"2026-09-20T18:00:00Z",
 		"season":{"year":2026,"slug":"final"},
 		"status":{"type":{"name":"STATUS_SCHEDULED","state":"pre","completed":false}},

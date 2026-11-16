@@ -162,7 +162,7 @@ func (e *ESPN) Scoreboard(
 		if err != nil {
 			return nil, errors.Join(partial.Err, fmt.Errorf("current-date scoreboard fallback: %w", err))
 		}
-		fallback, err = validateScoreboardEnvelope(raw, comp.ESPNSlug)
+		fallback, err = validateScoreboardEnvelope(raw, comp.ESPNSlug, RequiresEditionEvidence(comp, season))
 		if err != nil {
 			return nil, errors.Join(partial.Err, fmt.Errorf("current-date scoreboard fallback: %w", err))
 		}
@@ -175,7 +175,7 @@ func (e *ESPN) Scoreboard(
 		return nil, err
 	}
 	if partial != nil {
-		year, err := seasonStartYear(season.ID)
+		year, err := providerYear(season)
 		if err != nil {
 			return nil, errors.Join(partial.Err, err)
 		}
@@ -185,7 +185,7 @@ func (e *ESPN) Scoreboard(
 		for i, match := range matches {
 			added, err := mergeScoreboardEvent(seen, match.ID, fallback.Events[i])
 			if err == nil {
-				err = validateScoreboardEventYear(fallback.Events[i], match.ID, year)
+				err = validateScoreboardEventEdition(fallback.Events[i], match.ID, year, phaseOf(comp, season), season.ID)
 			}
 			if err != nil {
 				return nil, errors.Join(partial.Err, fmt.Errorf("current-date scoreboard fallback: %w", err))
@@ -206,7 +206,7 @@ func (e *ESPN) Scoreboard(
 }
 
 func mapScoreboard(raw []byte, season config.Season) ([]model.Match, error) {
-	matches, err := espn.MapScoreboard(raw)
+	matches, err := espn.MapSeasonScoreboard(raw, season)
 	if err != nil {
 		return nil, err
 	}
@@ -220,12 +220,21 @@ func mapScoreboard(raw []byte, season config.Season) ([]model.Match, error) {
 	return matches, nil
 }
 
-func (e *ESPN) Summary(ctx context.Context, comp config.Competition, match model.Match) (SummaryResult, error) {
+func (e *ESPN) Summary(ctx context.Context, comp config.Competition, season config.Season, match model.Match) (SummaryResult, error) {
 	raw, err := e.get(ctx, espn.SummaryURL(comp.ESPNSlug, match.ID))
 	if err != nil {
 		return SummaryResult{}, err
 	}
-	return mapSummary(raw, match)
+	if RequiresEditionEvidence(comp, season) {
+		year, err := providerYear(season)
+		if err != nil {
+			return SummaryResult{}, err
+		}
+		if err := validateSummaryEdition(raw, comp, season, year); err != nil {
+			return SummaryResult{}, err
+		}
+	}
+	return mapSummary(raw, match, season)
 }
 
 func (e *ESPN) RecoverMatch(
@@ -235,17 +244,22 @@ func (e *ESPN) RecoverMatch(
 		match.Away.ID == "" || match.Home.ID == match.Away.ID {
 		return model.Match{}, SummaryResult{}, fmt.Errorf("summary recovery requires league, event and distinct team identities")
 	}
-	expectedYear, err := seasonStartYear(season.ID)
+	expectedYear, err := providerYear(season)
 	if err != nil {
 		return model.Match{}, SummaryResult{}, err
 	}
-	seasonRange, err := fullSeasonRange(season.ID)
+	start, end, err := SeasonBounds(season)
 	if err != nil {
 		return model.Match{}, SummaryResult{}, err
 	}
 	raw, err := e.get(ctx, espn.SummaryURL(comp.ESPNSlug, match.ID))
 	if err != nil {
 		return model.Match{}, SummaryResult{}, fmt.Errorf("recover match %s: %w", match.ID, err)
+	}
+	if RequiresEditionEvidence(comp, season) {
+		if err := validateSummaryEdition(raw, comp, season, expectedYear); err != nil {
+			return model.Match{}, SummaryResult{}, err
+		}
 	}
 	observed, err := espn.MapSummaryObservation(raw, match, comp.ESPNSlug, expectedYear)
 	if err != nil {
@@ -255,20 +269,30 @@ func (e *ESPN) RecoverMatch(
 	if err != nil {
 		return model.Match{}, SummaryResult{}, err
 	}
-	day := kickoff.UTC().Format("20060102")
-	if day < seasonRange[:8] || day > seasonRange[9:] {
+	if kickoff.Before(start) || !kickoff.Before(end) {
 		return model.Match{}, SummaryResult{}, fmt.Errorf("summary event %q kickoff outside season %q", match.ID, season.ID)
 	}
-	result, err := mapSummary(raw, observed)
+	if espn.IsFemenilLeg(season, match.Round, match.Note) && match.Note != nil {
+		observed.Note = match.Note // Reconcile the stored ordinal against the fresh header below.
+	}
+	result, err := mapSummary(raw, observed, season)
 	if err != nil {
 		return model.Match{}, SummaryResult{}, fmt.Errorf("recover match %s detail: %w", match.ID, err)
+	}
+	if result.LegNote != nil {
+		observed.Note = result.LegNote
+	}
+	if espn.IsFemenilLeg(season, observed.Round, observed.Note) {
+		observed.WinnerID = espn.LegWinner(observed.StatusName, observed.Round, observed.Note, observed.Home.ID, observed.Away.ID, observed.HomeScore, observed.AwayScore)
+		observed.WinnerFlagID, observed.WinnerResolved = nil, true
+		observed.Shootout = result.Detail.Shootout
 	}
 	return observed, result, nil
 }
 
 // Both summary paths parse the same fetched body. Final validation follows the
 // observed state for recovery, never the stale candidate's state.
-func mapSummary(raw []byte, match model.Match) (SummaryResult, error) {
+func mapSummary(raw []byte, match model.Match, season config.Season) (SummaryResult, error) {
 	requireFinal := match.State == model.MatchStateFinished
 	switch match.StatusName {
 	case "STATUS_CANCELED", "STATUS_ABANDONED", "STATUS_FORFEIT":
@@ -278,18 +302,9 @@ func mapSummary(raw []byte, match model.Match) (SummaryResult, error) {
 		requireFinal); err != nil {
 		return SummaryResult{}, err
 	}
-	detail, err := espn.MapSummary(raw)
+	detail, note, err := espn.MapSeasonSummary(raw, match, season)
 	if err != nil {
 		return SummaryResult{}, err
-	}
-	// One precedence (T16.2): the summary header's totals, then the observation's
-	// own evidence (scoreboard or bracket: structured totals, else its note), then
-	// the note here for a caller whose match came from neither mapper.
-	if detail.Shootout == nil {
-		detail.Shootout = match.Shootout
-	}
-	if detail.Shootout == nil && match.Note != nil {
-		detail.Shootout = espn.ParseShootoutNote(*match.Note, match.Home.Name, match.Away.Name)
 	}
 	// match here is the caller's provider-shaped copy, so its team ids are the
 	// ones the payload's rosters and events are keyed on.
@@ -304,17 +319,24 @@ func mapSummary(raw []byte, match model.Match) (SummaryResult, error) {
 	result := SummaryResult{
 		Detail: detail, Participation: participation, Commentary: commentary,
 	}
+	leg := espn.IsFemenilLeg(season, match.Round, note)
+	if leg {
+		result.LegNote = note
+	}
 	if requireFinal {
 		result.HomeScore, result.AwayScore, result.WinnerFlagID, err = espn.SummaryFinal(raw, match.Home.ID, match.Away.ID)
 		if err != nil {
 			return SummaryResult{}, err
 		}
 	}
+	if leg {
+		result.WinnerFlagID = nil
+	}
 	return result, nil
 }
 
 func (e *ESPN) Standings(ctx context.Context, comp config.Competition, season config.Season) ([]model.Standing, error) {
-	expectedYear, err := seasonStartYear(season.ID)
+	expectedYear, err := providerYear(season)
 	if err != nil {
 		return nil, err
 	}
@@ -322,8 +344,16 @@ func (e *ESPN) Standings(ctx context.Context, comp config.Competition, season co
 	if err != nil {
 		return nil, err
 	}
+	if RequiresEditionEvidence(comp, season) {
+		if err := validateEditionResource(raw, comp, season, expectedYear, "standings"); err != nil {
+			return nil, err
+		}
+	}
 	if err := espn.ValidateStandingsSeason(raw, expectedYear); err != nil {
 		return nil, err
+	}
+	if season.PlayoffFormat != "" {
+		return espn.MapRankedStandings(raw)
 	}
 	return espn.MapStandings(raw)
 }
@@ -335,7 +365,7 @@ func (e *ESPN) Statistics(
 	comp config.Competition,
 	season config.Season,
 ) ([]byte, error) {
-	expectedYear, err := seasonStartYear(season.ID)
+	expectedYear, err := providerYear(season)
 	if err != nil {
 		return nil, err
 	}
@@ -343,7 +373,12 @@ func (e *ESPN) Statistics(
 	if err != nil {
 		return nil, err
 	}
-	// ESPN's statistics season metadata is not reliably tied to the requested
+	if RequiresEditionEvidence(comp, season) {
+		if err := validateEditionResource(raw, comp, season, expectedYear, "statistics"); err != nil {
+			return nil, err
+		}
+	}
+	// For legacy scopes, ESPN's statistics season metadata is not reliably tied to the requested
 	// league year; the season-scoped URL is the only stable provider contract.
 	return raw, nil
 }
@@ -556,11 +591,23 @@ func (e *ESPN) Bracket(
 		}
 		end = end.AddDate(0, 0, 1)
 	}
+	if season.StartsAt != "" || season.EndsAt != "" {
+		first, last, err := SeasonBounds(season)
+		if err != nil {
+			return nil, err
+		}
+		if start.Before(first) {
+			start = first
+		}
+		if end.After(last) {
+			end = last
+		}
+	}
 	raw, err := e.scoreboardWindow(ctx, comp, season, start, end)
 	if err != nil {
 		return nil, err
 	}
-	return espn.MapBracket(raw)
+	return espn.MapSeasonBracket(raw, season)
 }
 
 var _ Source = (*ESPN)(nil)

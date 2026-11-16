@@ -274,6 +274,8 @@ export const en = {
   'bracket.unavailable': 'Bracket data is unavailable right now.',
   'bracket.startsOn': (date: string) => `The knockout stage begins on ${date}.`,
   'bracket.viewGroups': 'View group standings',
+  'bracket.nwslFormat': 'The top eight play single-elimination playoffs for the NWSL Championship. The regular-season winner earns the Shield.',
+  'bracket.femenilFormat': 'Four teams from each group qualify. Every round has two legs. Quarterfinal ties go to the higher group seed. The overall table reseeds the semifinals and breaks tied semifinal aggregates. A tied final goes to penalties.',
   'bracket.projectionTitle': 'Liguilla today',
   'bracket.projectionNote': 'If the Liguilla started today, seeded from the live table. The real bracket takes over when the draw is published.',
   'bracket.projectionTab': 'Projection',
