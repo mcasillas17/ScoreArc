@@ -137,7 +137,7 @@ export function createDataStore(deps: DataDeps): DataStore {
     const cached = deps.cache.get(k) as Match[] | undefined;
     if (cached) return cached;
     const raw = await fetchScoreboardWindow(rc, range, deps.fetchJson, signal);
-    const matches = mapScoreboard(raw)
+    const matches = mapScoreboard(raw, rc.season.playoffFormat)
       .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
     deps.cache.set(k, matches, ttlMs);
     return matches;
@@ -208,7 +208,7 @@ export function createDataStore(deps: DataDeps): DataStore {
     return (await loadSummary(rc, eventId, homeId, awayId, signal)).data;
   }
 
-  return withEditionResources({
+  const store: DataStore = {
     getMatchSummary,
 
     async getMatches(rc, range?: string, signal?: AbortSignal): Promise<Match[]> {
@@ -225,8 +225,8 @@ export function createDataStore(deps: DataDeps): DataStore {
       const deadline = AbortSignal.timeout(15_000);
       const readSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
       const raw = await fetchScoreboardWindow(rc, window, deps.fetchJson, readSignal);
-      const matches = mapScoreboard(raw);
-      const flags = scoreboardWinnerFlags(raw);
+      const matches = mapScoreboard(raw, rc.season.playoffFormat);
+      const shootoutEligible = scoreboardWinnerFlags(raw, rc.season.playoffFormat);
       const summaries: LoadedSummary[] = [];
       // Only retained matches are enriched, four at a time under the same
       // read deadline. Individual provider summary failures remain best effort.
@@ -246,12 +246,13 @@ export function createDataStore(deps: DataDeps): DataStore {
         m.winProbability = data.winProbability;
         m.shootoutDetail = data.shootoutDetail;
         // The header outranks the scoreboard -- for a finished match only once
-        // the header is final too (Go's requireFinal) -- and a finished match's
-        // winner is then the side it names, or ESPN's flag when it is level,
-        // never the winner of the scoreboard aggregate it supersedes.
+        // the header is final too (Go's requireFinal). A series shootout
+        // settles advancement while leaving the individual leg result intact.
         if (shootout && (m.state !== 'finished' || final)) {
           m.shootout = shootout;
-          if (m.state === 'finished') m.winnerId = shootoutWinnerId(shootout, m.home.id, m.away.id) ?? flags.get(m.id) ?? null;
+          if (m.state === 'finished' && shootoutEligible.has(m.id)) {
+            m.winnerId = shootoutWinnerId(shootout, m.home.id, m.away.id) ?? shootoutEligible.get(m.id) ?? null;
+          }
         }
       });
       deps.cache.set(k, matches, 10_000);
@@ -299,7 +300,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       const cached = deps.cache.get(k) as Match[] | undefined;
       if (cached) return cached;
       const raw = await fetchScoreboardWindow(rc, range, deps.fetchJson, signal);
-      const upcoming = mapScoreboard(raw)
+      const upcoming = mapScoreboard(raw, rc.season.playoffFormat)
         .filter((m) => m.state === 'scheduled')
         .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime())
         .slice(0, limit);
@@ -429,7 +430,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       let groups: Group[];
       try {
         if (strict) verifyStandingsEdition(raw, rc);
-        groups = mapStandings(raw, rc.competition.shortName);
+        groups = mapStandings(raw, rc.competition.shortName, !!rc.season.playoffFormat);
       } catch (error) {
         // A rejected table is cached like an accepted one: the standings page
         // and the team and player indexes all read it, and a provider that
@@ -459,7 +460,18 @@ export function createDataStore(deps: DataDeps): DataStore {
           signal: AbortSignal.timeout(15_000), maxBytes: 4 * 1024 * 1024,
         });
       if (!rc.season.bracketDatesRange && requiresEditionEvidence(rc)) verifyUndatedScoreboard(raw, rc);
-      const rounds = mapBracket(raw);
+      let groups: Group[] = [];
+      if (rc.season.playoffFormat && supportsResource(rc.season, 'standings')) {
+        try {
+          groups = await store.getStandings(rc);
+        } catch (error) {
+          // Published matches stand on their own. A projection requires the table.
+          const published = mapBracket(raw, rc.season.playoffFormat);
+          if (published.length) return published;
+          throw error;
+        }
+      }
+      const rounds = mapBracket(raw, rc.season.playoffFormat, groups);
       deps.cache.set(k, rounds, 8_000);
       return rounds;
     },
@@ -475,7 +487,8 @@ export function createDataStore(deps: DataDeps): DataStore {
       deps.cache.set(k, news, 90_000);
       return news;
     },
-  });
+  };
+  return withEditionResources(store);
 }
 
 const espnCache = new TtlCache<unknown>();

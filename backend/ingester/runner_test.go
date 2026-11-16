@@ -5957,3 +5957,58 @@ func TestEditionEligibilitySummaryChildrenAndScoreOnlyKnockout(t *testing.T) {
 		}
 	}
 }
+
+func TestFemenilFinalizationUsesFinalLegScores(t *testing.T) {
+	for _, tc := range []struct {
+		name                     string
+		summaryHome, summaryAway int
+		shootout                 *model.Shootout
+		want                     string
+	}{
+		{"summary changes a lead to a draw", 0, 0, nil, ""},
+		{"summary reverses the leg", 0, 1, nil, "away"},
+		{"second leg win with opposing final shootout", 2, 0, &model.Shootout{HomeScore: 3, AwayScore: 4}, "home"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			match := finishedMatch()
+			one, zero := 1, 0
+			note := "2nd Leg"
+			match.Round, match.Note = "final", &note
+			match.StatusName = "STATUS_FULL_TIME"
+			if tc.shootout != nil {
+				match.StatusName = "STATUS_FINAL_PEN"
+			}
+			match.FromStorage = true
+			match.HomeScore, match.AwayScore = &one, &zero
+			match.WinnerID = &match.Home.ID
+			src := &fakeSource{summaryHome: &tc.summaryHome, summaryAway: &tc.summaryAway, summaryShootout: tc.shootout, summaryFlag: &match.Away.ID,
+				bracket: []model.BracketMatch{{ID: match.ID, Round: match.Round, State: match.State, StatusName: match.StatusName, Kickoff: match.Kickoff, Note: match.Note, WinnerID: match.WinnerID, HomeScore: match.HomeScore, AwayScore: match.AwayScore, Home: model.BracketTeam{ID: match.Home.ID}, Away: model.BracketTeam{ID: match.Away.ID}}}}
+			repo := &fakeRepository{unfinalized: []model.Match{match}, existing: map[string]store.MatchRow{}}
+			season := config.Season{ID: "2026-apertura", HasBracket: true, Publication: "live", Resources: []string{"scores", "bracket", "summary"}, PlayoffFormat: "femenil-apertura"}
+			comp := config.Competition{ID: "liga-mx-femenil", CurrentSeasonId: season.ID, Seasons: map[string]config.Season{season.ID: season}}
+			testRunner(src, repo, comp).runCycle(context.Background(), true)
+			got := repo.lastFinalized
+			if repo.finalizeCalls != 1 || !got.WinnerResolved || !ptrEqual(got.WinnerID, repo.lastIdentity.WinnerTeamID) || (got.WinnerID == nil) != (tc.want == "") || (got.WinnerID != nil && *got.WinnerID != fakeTeamID(tc.want)) || !ptrEqual(repo.finalizedDetail.Shootout, tc.shootout) {
+				t.Fatalf("finalized=%d winner=%v resolved=%t shootout=%v", repo.finalizeCalls, got.WinnerID, got.WinnerResolved, repo.finalizedDetail.Shootout)
+			}
+		})
+	}
+}
+
+func TestFemenilTerminalLegNeverFreezesScoreLeader(t *testing.T) {
+	for _, status := range []string{"STATUS_CANCELED", "STATUS_ABANDONED", "STATUS_FORFEIT"} {
+		t.Run(status, func(t *testing.T) {
+			match := finishedMatch()
+			home, away := 2, 0
+			note := "2nd Leg"
+			bracket := model.BracketMatch{ID: match.ID, Round: "final", Kickoff: match.Kickoff, State: match.State, StatusName: status, Note: &note,
+				Home: model.BracketTeam{ID: match.Home.ID}, Away: model.BracketTeam{ID: match.Away.ID}, HomeScore: &home, AwayScore: &away}
+			season := config.Season{ID: "2026-apertura", PlayoffFormat: config.FemenilApertura, HasBracket: true, Publication: "live", Resources: []string{"scores", "bracket", "summary"}}
+			src, repo := &fakeSource{bracket: []model.BracketMatch{bracket}}, &fakeRepository{}
+			testRunner(src, repo, config.Competition{ID: "liga-mx-femenil", CurrentSeasonId: season.ID, Seasons: map[string]config.Season{season.ID: season}}).runCycle(context.Background(), true)
+			if repo.finalizeCalls != 1 || repo.lastIdentity.WinnerTeamID != nil || repo.lastFinalized.WinnerID != nil || src.summaryCalls != 0 {
+				t.Fatalf("%s finalization %d winner %v", status, repo.finalizeCalls, repo.lastFinalized.WinnerID)
+			}
+		})
+	}
+}

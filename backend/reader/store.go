@@ -306,18 +306,19 @@ var bracketRoundNames = map[string]string{
 
 const bracketSQL = `
 SELECT m.id, m.round, m.kickoff, m.state, NULLIF(m.minute, ''), m.status_detail, m.status_name,
-       m.home_score, m.away_score, m.winner_id, m.note,
+       m.home_score, m.away_score, m.winner_id, m.note, d.shootout,
        m.home_placeholder, m.away_placeholder,
        ht.id, ht.name, ht.abbr, ht.crest_url,
        at.id, at.name, at.abbr, at.crest_url
 FROM match m
+LEFT JOIN match_detail d ON $3 AND d.match_id = m.id
 JOIN team ht ON ht.id = m.home_team_id
 JOIN team at ON at.id = m.away_team_id
 WHERE m.competition_id = $1 AND m.season_id = $2 AND m.round IS NOT NULL AND m.round <> ''
 ORDER BY m.kickoff, m.id`
 
-func (s *Store) Bracket(ctx context.Context, competition, season string) ([]BracketRound, error) {
-	rows, err := s.db.Query(ctx, bracketSQL, competition, season)
+func (s *Store) Bracket(ctx context.Context, competition, season string, includeShootout bool) ([]BracketRound, error) {
+	rows, err := s.db.Query(ctx, bracketSQL, competition, season, includeShootout)
 	if err != nil {
 		return nil, err
 	}
@@ -334,13 +335,17 @@ func (s *Store) Bracket(ctx context.Context, competition, season string) ([]Brac
 		var awayID, awayName, awayAbbr string
 		var awayCrest *string
 		var homePlaceholder, awayPlaceholder bool
+		var shootout []byte
 		if err := rows.Scan(
 			&id, &match.Round, &kickoff, &state, &match.Minute, &match.StatusDetail,
-			&match.StatusName, &match.HomeScore, &match.AwayScore, &match.WinnerID, &match.Note,
+			&match.StatusName, &match.HomeScore, &match.AwayScore, &match.WinnerID, &match.Note, &shootout,
 			&homePlaceholder, &awayPlaceholder,
 			&homeID, &homeName, &homeAbbr, &homeCrest,
 			&awayID, &awayName, &awayAbbr, &awayCrest,
 		); err != nil {
+			return nil, err
+		}
+		if err := jsonInto(shootout, &match.Shootout); err != nil {
 			return nil, err
 		}
 		match.ID = id.String()

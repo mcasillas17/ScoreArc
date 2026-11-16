@@ -247,6 +247,18 @@ func TestMapStandingsOrdersByCompleteRankStat(t *testing.T) {
 		}
 		return `{"team":{"id":"` + id + `","displayName":"Team ` + id + `","abbreviation":"T` + id + `"},"stats":[` + stats + `]}`
 	}
+	t.Run("playoff qualification requires explicit group ranks", func(t *testing.T) {
+		for _, tc := range []struct {
+			ranks []string
+			ok    bool
+		}{{[]string{"2", "1"}, true}, {[]string{"1", "1"}, false}, {[]string{"", "2"}, false}} {
+			raw := []byte(`{"children":[{"name":"Group A","standings":{"entries":[` + entry("home", tc.ranks[0]) + "," + entry("away", tc.ranks[1]) + `]}}]}`)
+			rows, err := MapRankedStandings(raw)
+			if (err == nil) != tc.ok || (tc.ok && (len(rows) != 2 || rows[0].Team.ID != "away")) {
+				t.Fatalf("ranks %v: %+v, %v", tc.ranks, rows, err)
+			}
+		}
+	})
 	order := func(t *testing.T, ranks ...string) []string {
 		t.Helper()
 		var entries []string

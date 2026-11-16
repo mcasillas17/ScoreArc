@@ -701,7 +701,6 @@
         "resources": [
           "scores",
           "standings",
-          "bracket",
           "news",
           "summary",
           "leaders",
@@ -756,6 +755,7 @@
           "career"
         ],
         "providerYear": 2026,
+        "playoffFormat": "nwsl",
         "hasBracket": true,
         "bracketDatesRange": "20261106-20261130",
         "knockoutRounds": [
@@ -801,6 +801,7 @@
         ],
         "providerYear": 2026,
         "phase": "apertura",
+        "playoffFormat": "femenil-apertura",
         "hasBracket": true,
         "bracketDatesRange": "20261110-20261231",
         "knockoutRounds": [

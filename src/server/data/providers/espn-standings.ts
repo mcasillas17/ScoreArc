@@ -15,12 +15,15 @@ function statMap(stats: any[]): Record<string, number> {
 // supplies a complete 1..n permutation, and fall back to array order when it
 // doesn't — a partial or duplicated `rank` is worse than the index, and dropping
 // or duplicating clubs is never acceptable.
-function inTableOrder(entries: any[]): any[] {
+function inTableOrder(entries: any[], requireRanks: boolean): any[] {
   const n = entries.length;
   const ranks = entries.map((e) => statMap(e.stats).rank);
   const seen = new Set<number>();
   for (const r of ranks) {
-    if (!Number.isInteger(r) || r < 1 || r > n || seen.has(r)) return entries;
+    if (!Number.isInteger(r) || r < 1 || r > n || seen.has(r)) {
+      if (requireRanks) throw new Error('Invalid playoff standings rank');
+      return entries;
+    }
     seen.add(r);
   }
   if (seen.size !== n) return entries;
@@ -59,7 +62,7 @@ export class StandingsStatsError extends Error {
  * `unnamedTable` labels a provider table that has no name -- a single-table
  * competition -- with the competition's short name, as the reader does.
  */
-export function mapStandings(raw: unknown, unnamedTable: string): Group[] {
+export function mapStandings(raw: unknown, unnamedTable: string, requireRanks = false): Group[] {
   const children: unknown = (raw as any)?.children;
   if (!Array.isArray(children)) throw new Error('standings payload has no children array');
   const tableIds = new Set<string>();
@@ -75,7 +78,7 @@ export function mapStandings(raw: unknown, unnamedTable: string): Group[] {
     if (tableIds.has(tableId)) throw new Error(`standings table id "${tableId}" is repeated`);
     tableIds.add(tableId);
     const teamIds = new Set<string>();
-    const rows = inTableOrder(entries).map((entry, i) => {
+    const rows = inTableOrder(entries, requireRanks).map((entry, i) => {
       const team = entry.team ?? {};
       if (team.id == null || String(team.id) === '' || !team.displayName || !team.abbreviation) {
         throw new Error(`standings row ${i} in "${name}" lacks team identity`);

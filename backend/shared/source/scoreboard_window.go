@@ -135,7 +135,7 @@ func (e *ESPN) scoreboardWindow(ctx context.Context, comp config.Competition, se
 		if err != nil {
 			return nil, err
 		}
-		matches, err := espn.MapScoreboard(raw)
+		matches, err := espn.MapSeasonScoreboard(raw, season)
 		if err != nil {
 			return nil, err
 		}

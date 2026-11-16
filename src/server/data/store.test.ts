@@ -654,3 +654,15 @@ it('can immediately recover an identified schedule after a truncated list', asyn
   truncated = false;
   expect((await store.getTeam(rc, '227'))?.scheduleAvailability?.results).toBe('available');
 });
+
+it('rejects a playoff seeding table whose provider ranks repeat', async () => {
+  const rc = resolveSeason('nwsl')!;
+  const g = structuredClone(standingsRaw.children[0]);
+  for (const entry of g.standings.entries) {
+    const rank = entry.stats.find(s => s.name === 'rank');
+    if (rank) rank.value = 1;
+  }
+  const raw = { id: '2323', uid: 's:600~l:8301', season: { year: 2026 }, children: [g] };
+  const store = createDataStore({ cache: new TtlCache<unknown>(), fetchJson: async () => raw });
+  await expect(store.getStandings(rc)).rejects.toThrow(/rank/);
+});

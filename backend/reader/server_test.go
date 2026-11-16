@@ -133,7 +133,7 @@ func (f *fakeReaderStore) Standings(context.Context, string, string, string) ([]
 	f.calls++
 	return f.standings, f.standingsErr
 }
-func (f *fakeReaderStore) Bracket(context.Context, string, string) ([]BracketRound, error) {
+func (f *fakeReaderStore) Bracket(context.Context, string, string, bool) ([]BracketRound, error) {
 	f.calls++
 	return f.bracket, f.bracketErr
 }

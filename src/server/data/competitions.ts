@@ -17,6 +17,8 @@ export function supportsResource(season: Season, resource: EditionResource): boo
     (resource !== 'news' || (season.publication !== 'archive' && season.sections.includes('news')));
 }
 
+export type PlayoffFormat = 'nwsl' | 'femenil-apertura';
+
 export type ChampionTitleKey = 'champion.world' | 'champion.competition';
 
 // Fixed official WC2026 R32 leaf order (identity-based). Data, not UI — lives
@@ -105,6 +107,7 @@ export interface Season {
    *  hasBracket: true makes real fixtures win; this flag then only keeps the
    *  nav label. */
   projection?: 'liguilla';
+  playoffFormat?: PlayoffFormat;
   // Leagues only: highlight the top-N qualification cut in the standings view
   // (e.g. Liga MX top 8 → Liguilla). Absent for leagues with no such cut.
   //
@@ -569,11 +572,7 @@ export const COMPETITIONS: Record<string, Competition> = {
   // on transparent — illegible at the bracket hub. TheSportsDB carries the real
   // tricolor Liga MX mark, same CDN the team crests already use.
   ...leagueCompetition('liga-mx', 'Liga MX', 'Liga MX', 'mex.1', '🇲🇽', 'https://r2.thesportsdb.com/images/media/league/badge/mav5rx1686157960.png', '2026-apertura', 'Apertura 2026', { base: '#e9edeb', bright: '#ffffff', soft: 'rgba(233,237,235,0.14)' }, { cut: 8, labelKey: 'standings.liguilla' }, undefined, undefined, 'liguilla', '#0b9e52'),
-  // The Women's Super League: fourteen clubs, 26 rounds. Bands mirror ESPN's
-  // standings notes for 2026-27 (checked 2026-11-15) rather than a format
-  // guess: Champions League for the top two, Champions League qualifying for
-  // third, a relegation playoff for twelfth. ESPN marks nothing on 13th and
-  // 14th, so neither do we. Accent is the orange of the league's own mark.
+  // The 2026–27 WSL schedule sends 13th to a survival playoff and relegates 14th.
   ...leagueCompetition(
     'wsl', "Women's Super League", 'WSL', 'eng.w.1', '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
     'https://a.espncdn.com/i/leaguelogos/soccer/500-dark/2314.png', '2026-27', '2026-27',
@@ -583,7 +582,8 @@ export const COMPETITIONS: Record<string, Competition> = {
       { from: 1, to: 1, kind: 'champion', labelKey: 'zone.champion' },
       { from: 2, to: 2, kind: 'ucl', labelKey: 'zone.championsLeague' },
       { from: 3, to: 3, kind: 'ucl', labelKey: 'zone.championsLeagueQualifying' },
-      { from: 12, to: 12, kind: 'relegation-playoff', labelKey: 'zone.relegationPlayoff' },
+      { from: 13, to: 13, kind: 'relegation-playoff', labelKey: 'zone.relegationPlayoff' },
+      { from: 14, to: 14, kind: 'relegation', labelKey: 'zone.relegation' },
     ],
     undefined, undefined, undefined, 26, 'women',
   ),
@@ -608,7 +608,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     currentSeasonId: '2026',
     seasons: {
       '2026': {
-        id: '2026', providerYear: 2026,
+        id: '2026', providerYear: 2026, playoffFormat: 'nwsl',
         label: '2026',
         sections: ['bracket', 'standings', 'scores', 'news'],
         format: { hasBracket: true, hasGroups: true, hasThirdPlaceRace: false },
@@ -648,7 +648,7 @@ export const COMPETITIONS: Record<string, Competition> = {
     currentSeasonId: '2026-apertura',
     seasons: {
       '2026-apertura': {
-        id: '2026-apertura', providerYear: 2026, phase: 'apertura',
+        id: '2026-apertura', providerYear: 2026, phase: 'apertura', playoffFormat: 'femenil-apertura',
         label: 'Apertura 2026',
         sections: ['bracket', 'standings', 'scores'],
         format: { hasBracket: true, hasGroups: true, hasThirdPlaceRace: false },
@@ -765,6 +765,7 @@ const legacyArchives = new Set([
 COMPETITIONS.wsl.espnLeagueId = '2314';
 COMPETITIONS.wsl.espnScoreboardId = '8097';
 COMPETITIONS.wsl.seasons['2026-27'].providerYear = 2026;
+COMPETITIONS.wsl.seasons['2026-27'].resources = editionResources.filter(resource => resource !== 'bracket');
 
 // Existing editions were already public before publication states were introduced.
 for (const competition of Object.values(COMPETITIONS)) {

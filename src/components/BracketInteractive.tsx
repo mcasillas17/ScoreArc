@@ -80,7 +80,7 @@ function ThirdPlaceMini({ rounds }: { rounds: BracketRound[] }) {
  * a real knockout never un-finishes a match, so once we've seen a winner we keep
  * it. Matches still in progress take the fresh data (score/state updates).
  */
-function mergeRounds(prev: BracketRound[], next: BracketRound[]): BracketRound[] {
+export function mergeRounds(prev: BracketRound[], next: BracketRound[]): BracketRound[] {
   const decided = new Map<string, BracketMatch>();
   for (const r of prev) {
     for (const m of r.matches) {
@@ -90,7 +90,15 @@ function mergeRounds(prev: BracketRound[], next: BracketRound[]): BracketRound[]
   if (decided.size === 0) return next;
   return next.map((r) => ({
     ...r,
-    matches: r.matches.map((m) => decided.get(m.id) ?? m),
+    matches: r.matches.map(m => {
+      const locked = decided.get(m.id);
+      if (!locked) return m;
+      const updateSeed = (team: BracketTeam) => {
+        const fresh = [m.home, m.away].find(side => side.id === team.id);
+        return fresh?.overallSeed === undefined ? team : { ...team, overallSeed: fresh.overallSeed };
+      };
+      return { ...locked, home: updateSeed(locked.home), away: updateSeed(locked.away) };
+    }),
   }));
 }
 
@@ -216,6 +224,10 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
       const next = { ...prev, [`${depth}:${matchIndex}`]: teamId };
       // Changing a result invalidates every prediction that depended on it —
       // clear only the inward descendant chain of this match.
+      if (shape.playoffFormat === 'femenil-apertura' && depth === 0) {
+        delete next['1:0'];
+        delete next['1:1'];
+      }
       for (let dd = depth + 1; dd <= 4; dd++) {
         const idx = Math.floor(matchIndex / 2 ** (dd - depth));
         delete next[`${dd}:${idx}`];
@@ -224,8 +236,15 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
     });
   }
 
+  const projected = rounds[0]?.matches[0]?.id.startsWith('proj-');
   return (
     <div className="bracket-interactive">
+      {shape.playoffFormat && (
+        <p className="bracket-projection-note">
+          {projected && <strong>{t('bracket.projectionTab')}. </strong>}
+          {t(shape.playoffFormat === 'nwsl' ? 'bracket.nwslFormat' : 'bracket.femenilFormat')}
+        </p>
+      )}
       {/* Past (finished) editions are view-only — no Live/Predict tabs. The
           "Build your bracket" predict mode is also disabled once the tournament
           is over (see PREDICT_ENABLED). */}
@@ -238,7 +257,7 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
             className={`bracket-mode${mode === 'live' ? ' bracket-mode--active' : ''}`}
             onClick={() => setMode('live')}
           >
-            {t(poll ? 'bracket.liveResults' : 'bracket.projectionTab')}
+            {t(poll && !projected ? 'bracket.liveResults' : 'bracket.projectionTab')}
           </button>
           <button
             type="button"

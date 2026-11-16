@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createReaderDataStore } from './apiStore';
 import { resolveSeason } from './competitions';
 import { TtlCache } from './cache';
-import type { ReaderResponse, ReaderTransport } from './readerTransport';
+import { ReaderFailure, type ReaderResponse, type ReaderTransport } from './readerTransport';
 import type { ReaderResource, ReaderResourceName } from '@/lib/readerResources';
 import derived from './contracts/derived-standings.json';
 import vectors from './contracts/reader-contract.json';
@@ -143,6 +143,29 @@ it('maps live, upcoming, bracket, team and squad without enriching lightweight r
   expect(calls.filter(url => url.includes('/matches?')).every(url => !url.includes('detail'))).toBe(true);
 });
 
+it('retains the reader’s verified playoff match when its standings are unavailable', async () => {
+  const scope = { ...rc, season: { ...rc.season, computedTables: undefined, playoffFormat: 'nwsl' as const } };
+  const match = { id: rawMatch.id, round: 'quarterfinals', kickoff: rawMatch.kickoff,
+    home: { ...rawMatch.home, placeholder: false }, away: { ...rawMatch.away, placeholder: false },
+    homeScore: 2, awayScore: 0, state: 'finished', statusDetail: 'FT', statusName: 'STATUS_FULL_TIME',
+    minute: null, winnerId: rawMatch.home.id, note: null };
+  const { store } = harness(path => {
+    if (path.endsWith('/standings')) throw new ReaderFailure('http', true, 503);
+    if (path.endsWith('/bracket')) return result([{ slug: 'quarterfinals', name: 'Quarterfinals', matches: [match] }], { bracket: 'competition-season', identity: 'competition-season' });
+  });
+  const rounds = await store.getBracket(scope);
+  expect(rounds[0].matches[0]).toMatchObject({ id: '401877007', winnerId: providerTeamId(rawMatch.home.id), homeScore: 2 });
+});
+
+it('requests bracket penalty totals only for the Femenil two-leg final rule', async () => {
+  const { store, calls } = harness(path => path.endsWith('/bracket')
+    ? result([], { bracket: 'competition-season', identity: 'competition-season' })
+    : path.endsWith('/standings') ? result([], { standings: 'competition-season', identity: 'competition-season' }) : undefined);
+  await store.getBracket(resolveSeason('liga-mx-femenil')!);
+  await store.getBracket(resolveSeason('nwsl')!);
+  expect(calls.filter(url => url.includes('/bracket?')).map(url => url.split('?')[1])).toEqual(['shootout=true', '']);
+});
+
 it('degrades explicitly unavailable team children without losing validated identity', async () => {
   const team = { team: rawMatch.home, location: 'Home', color: null, altColor: null, record: null, standing: null, standingSummary: null, squad: [], schedule: [], scheduleAvailability: { results: 'unavailable', upcoming: 'unavailable' } };
   const { store } = harness(path => {
@@ -156,4 +179,41 @@ it('degrades explicitly unavailable team children without losing validated ident
   const profile = await store.getTeam(rc, providerTeamId(rawMatch.home.id)!);
   expect(profile?.location).toBe('Home'); expect(profile?.scheduleAvailability?.results).toBe('unavailable');
   expect(profile?.readerResources?.resources.squad?.availability).toBe('unavailable');
+});
+
+it.each([true, false])('separates a Femenil final shootout from both reader match results (drawn legs %s)', async drawn => {
+  const scope = resolveSeason('liga-mx-femenil')!;
+  const clubs = [
+    { ...rawMatch.home, id: 'mex-w-pumas-unam', name: 'Pumas UNAM', abbr: 'UNAM' },
+    { ...rawMatch.away, id: 'mex-w-tigres-uanl', name: 'Tigres UANL', abbr: 'TIG' },
+  ];
+  const rows = clubs.map((home, i) => ({
+    ...rawMatch, id: derived.phaseMatches[i].id, home, away: clubs[1-i],
+    kickoff: i ? '2026-11-14T23:00:00Z' : '2026-11-11T01:00:00Z', homeScore: drawn ? 0 : 1, awayScore: 0,
+    winnerId: drawn ? null : home.id, shootout: i ? { homeScore: 3, awayScore: 4 } : null,
+    note: i ? '2nd Leg' : '1st Leg', statusName: i ? 'STATUS_FINAL_PEN' : 'STATUS_FULL_TIME',
+  }));
+  const providerIds = ['401932079', '401932077'];
+  const { store } = harness((path, query) => {
+    if (path.endsWith('/identities')) return result(query!.ids.split(',').map(id => {
+      const i = rows.findIndex(row => row.id === id);
+      return { id, status: 'resolved', canonicalId: id, providerId: providerIds[i], competitionId: scope.competition.id,
+        seasonId: scope.season.id, homeId: rows[i].home.id, awayId: rows[i].away.id };
+    }), { identity: 'selection' });
+    if (path.endsWith('/standings')) return result([], { standings: 'competition-season', identity: 'competition-season' });
+    if (path.endsWith('/matches')) return result(rows, { matches: 'selection', identity: 'competition-season', ...(query?.detail && { detail: 'competition-season' as const }) });
+    if (path.endsWith('/bracket')) return result([{ slug: 'final', name: 'Final', matches: rows.map(row => ({
+      id: row.id, round: 'final', kickoff: row.kickoff, home: { ...row.home, placeholder: false }, away: { ...row.away, placeholder: false },
+      homeScore: row.homeScore, awayScore: row.awayScore, state: row.state, statusDetail: row.statusDetail, statusName: row.statusName,
+      minute: null, note: row.note, winnerId: row.winnerId, ...(row.shootout && { shootout: row.shootout }),
+    })) }], { bracket: 'competition-season', identity: 'competition-season' });
+  });
+  const range = '20261110-20261115';
+  for (const matches of [await store.getMatches(scope, range), await store.getFixtures(scope, range)]) {
+    expect(matches.map(m => m.winnerId)).toEqual(drawn ? [null, null] : ['133981', '22413']);
+    expect(matches[1].shootout).toEqual({ homeScore: 3, awayScore: 4 });
+  }
+  expect((await store.getBracket(scope))[0].matches[0]).toMatchObject({
+    winnerId: '133981', detailMatch: { id: providerIds[1], winnerId: drawn ? null : '22413', shootout: { homeScore: 3, awayScore: 4 } },
+  });
 });

@@ -22,12 +22,15 @@ type Season struct {
 	StartsAt          string   `json:"startsAt"`
 	EndsAt            string   `json:"endsAt"`
 	Phase             string   `json:"phase"`
+	PlayoffFormat     string   `json:"playoffFormat,omitempty"`
 	ID                string   `json:"id"`
 	Label             string   `json:"label"`
 	HasBracket        bool     `json:"hasBracket"`
 	BracketDatesRange *string  `json:"bracketDatesRange"`
 	KnockoutRounds    []string `json:"knockoutRounds"`
 }
+
+const FemenilApertura = "femenil-apertura"
 
 type Competition struct {
 	ID               string            `json:"id"`
@@ -104,6 +107,9 @@ func parseRegistry(input []byte) (*Registry, error) {
 			return nil, fmt.Errorf("competition %q has invalid level", c.ID)
 		}
 		for id, season := range c.Seasons {
+			if season.PlayoffFormat != "" && (!season.HasBracket || (season.PlayoffFormat != "nwsl" && season.PlayoffFormat != FemenilApertura)) {
+				return nil, fmt.Errorf("invalid playoff format %q for %s/%s", season.PlayoffFormat, c.ID, id)
+			}
 			if c.CurrentSeasonId == "" && (season.Publication == "live" || season.Publication == "archive") {
 				return nil, fmt.Errorf("competition %q missing published landing edition", c.ID)
 			}

@@ -29,7 +29,9 @@ func IsPartialScoreboard(err error) bool {
 }
 
 type SummaryResult struct {
-	Detail model.MatchDetail
+	// LegNote preserves a reconciled bracket ordinal for the match row.
+	LegNote *string
+	Detail  model.MatchDetail
 	// Participation is the people in the match — squads and per-player events —
 	// in provider shape. Nil when the source can't supply it. It is separate
 	// from Detail because Detail is serialized wholesale into match_detail's
