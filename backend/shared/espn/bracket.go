@@ -98,6 +98,11 @@ var eventRoundSlugOverride = map[string]string{
 
 var placeholderNameRe = regexp.MustCompile(`(?i)\b(winner|loser|tbd|to be determined)\b`)
 
+// IsBracketPlaceholder identifies a provider slot before a team has qualified.
+func IsBracketPlaceholder(name string, crest *string) bool {
+	return (crest == nil || *crest == "") && placeholderNameRe.MatchString(name)
+}
+
 // bracketRoundSlug ports espn-bracket.ts's roundSlug: a per-event correction
 // wins over the season-slug alias mapping.
 func bracketRoundSlug(eventID, seasonSlug string) string {
@@ -188,7 +193,7 @@ func mapBracketTeam(t rawTeam) BracketTeam {
 		Name:        name,
 		Abbr:        t.Abbreviation,
 		CrestURL:    crest,
-		Placeholder: crest == nil && placeholderNameRe.MatchString(name),
+		Placeholder: IsBracketPlaceholder(name, crest),
 	}
 }
 
