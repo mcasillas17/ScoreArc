@@ -1184,6 +1184,8 @@ a.sn-item:hover { color: var(--text); }
    sections fanned inside it. Exactly one navigation is ever on screen: the
    wheel covers the bar while it is open, and the desktop tab row is hidden. */
 @media (max-width: 760px) {
+  /* Letter jumps clear the sticky 56px masthead. */
+  [data-team-letter] { scroll-margin-top: 64px; }
   .app-shell { flex-direction: column; }
 
   .sn {
@@ -1435,6 +1437,21 @@ a.sn-item:hover { color: var(--text); }
   .sn-wheel-sections .sn-sec-label { display: block; }
   .sn-wheel-sections .sn-sec-icon svg { width: 18px; height: 18px; }
 
+  .sn-wheel-browse {
+    position: absolute;
+    left: 50%;
+    bottom: min(290px, calc(100% - 44px));
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 14px;
+    border-radius: 8px;
+    background: var(--surface-1);
+    color: var(--text);
+    white-space: nowrap;
+    font-size: 13px;
+  }
   .sn-wheel-hub {
     position: absolute;
     left: 50%;
@@ -3969,6 +3986,10 @@ div.mc-match, div.mw-row { cursor: default; }
 }
 .tsp-card:hover { border-color: var(--hairline); }
 .tsp-card-name { font-size: 13.5px; font-weight: 600; }
+.tsp-grid.ts-search-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); }
+.ts-result { display: flex; align-items: center; border-radius: 10px; background: var(--surface-2); }
+.ts-result .tsp-card { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ts-result .follow-team-button { margin-right: 6px; padding: 4px 10px; font-size: 12px; }
 .tsp-all { margin-top: 22px; font-size: 13px; }
 .tsp-all a { color: var(--accent-bright); text-decoration: none; }
 .tsp-head--row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; }
@@ -4538,6 +4559,11 @@ div.mc-match, div.mw-row { cursor: default; }
    uses the same brand underline — gold is reserved for prizes and
    qualification, and a colour per category would compete with each
    competition's own accent. */
+.vw-browse { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: 12px; margin-bottom: 10px; }
+.footer-matchday { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0 16px; margin-bottom: 8px; font-size: 13px; }
+.vw-browse .vw, .footer-matchday .vw { margin-bottom: 0; }
+.vw-browse .dg-more { min-height: 44px; display: inline-flex; align-items: center; }
+.vw-link:focus-visible, .vw-browse .dg-more:focus-visible, .tsp-card:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .vw { display: flex; gap: 22px; margin: 0 0 10px; }
 .vw-link {
   /* 44px tall: these are the page's primary filter on a phone. */

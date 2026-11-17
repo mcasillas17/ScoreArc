@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { hasBothCategories, inView, listCompetitions, parseView, resolveSeason, supportsResource, viewQuery } from '@/server/data/competitions';
@@ -8,6 +8,7 @@ import type { Competition, CompetitionSeason, EditionResource, View } from '@/se
 import { trackEvent } from '@/lib/telemetry/client';
 import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import type { Locale } from '@/i18n/config';
+import { collectionHref } from '@/i18n/pathnames';
 import { getTranslator } from '@/i18n/translate';
 import CompetitionMark from './CompetitionMark';
 import NavDial, { onPointerRelease, type DialItem } from './NavDial';
@@ -133,8 +134,9 @@ export function accentStyle(pathname: string): React.CSSProperties | undefined {
  * only be exercised by rendering the whole nav, which is why the strict
  * equality below went unnoticed as a locale-prefix hazard.
  */
-export function siteItems(locale: Locale, prefix = '', query = ''): NavItem[] {
+export function siteItems(locale: Locale, prefix = '', view: View = 'all', params = new URLSearchParams()): NavItem[] {
   const t = getTranslator(locale);
+  const href = (path: string) => collectionHref(withLocale(prefix, path), params, view);
   // Exactly this page, or something below it. `startsWith('/news')` would also
   // light News on a hypothetical `/newsletter`.
   const at = (route: string) => (p: string) => {
@@ -142,9 +144,9 @@ export function siteItems(locale: Locale, prefix = '', query = ''): NavItem[] {
     return path === route || path.startsWith(`${route}/`);
   };
   return [
-    { href: withLocale(prefix, '/') + query, label: t('nav.home'), icon: homeIcon, match: (p) => stripLocale(p) === '/' },
-    { href: withLocale(prefix, '/teams') + query, label: t('teams.title'), icon: teamsIcon, match: at('/teams') },
-    { href: withLocale(prefix, '/news') + query, label: t('news.title'), icon: newsIcon, match: at('/news') },
+    { href: href('/'), label: t('nav.home'), icon: homeIcon, match: (p) => stripLocale(p) === '/' },
+    { href: href('/teams'), label: t('teams.title'), icon: teamsIcon, match: at('/teams') },
+    { href: href('/news'), label: t('news.title'), icon: newsIcon, match: at('/news') },
   ];
 }
 
@@ -254,7 +256,7 @@ export interface BottomBarItem {
  * Pure and path-derived, like every other matcher here, so which items a path
  * produces is testable without rendering.
  */
-export function bottomBarItems(pathname: string, locale: Locale, query = ''): BottomBarItem[] {
+export function bottomBarItems(pathname: string, locale: Locale, view: View = 'all', params = new URLSearchParams()): BottomBarItem[] {
   const prefix = localePrefix(pathname);
   const entry = (i: NavItem): BottomBarItem => ({
     key: i.href,
@@ -267,7 +269,7 @@ export function bottomBarItems(pathname: string, locale: Locale, query = ''): Bo
   if (rc) return competitionSections(rc, locale, prefix).map(entry);
   // The page the reader is on is the bar's centre button, so it is not also a
   // tab: the other two pages sit one either side of it.
-  const site = siteItems(locale, prefix, query);
+  const site = siteItems(locale, prefix, view, params);
   return site.filter((i) => !i.match(pathname) || site.every((o) => !o.match(pathname))).map(entry);
 }
 
@@ -332,24 +334,20 @@ export default function SiteNav() {
   const t = useTranslations();
 
   const active = activeCompetition(pathname);
-  const view = navView(active, useSearchParams().getAll('view'));
-  // Narrowed before focus, rest position and keyboard targets are computed,
-  // so the dial never rests on a crest the view has hidden.
-  const competitions = listCompetitions().filter((c) => inView(c, view));
-  // Whatever locale segment the reader is already under, carried onto every
-  // href below so the nav cannot silently return them to English.
+  const search = useSearchParams();
+  const view = navView(active, search.getAll('view'));
+  const route = pathname + viewQuery(view);
   const prefix = localePrefix(pathname);
-  // Home, Teams and News keep the view the reader is in.
-  const items = siteItems(locale, prefix, viewQuery(view));
-  const competitionAt = active ? competitions.findIndex((c) => c.id === active.competition.id) : -1;
-  // Every dial of competitions rests on the open one, else mid-list.
-  const resting = restingFocus(competitionAt, competitions.length);
+  // A competition's own filters belong to that detail page.
+  const params = active ? new URLSearchParams() : search;
+  const items = siteItems(locale, prefix, view, params);
+  const directoryHref = collectionHref(withLocale(prefix, '/competitions'), params, view);
 
   const [pinned, setPinned] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [open, setOpen] = useState(false);
   const [shrunk, setShrunk] = useState(false);
-  const [focus, setFocus] = useState(resting);
+  const [position, setPosition] = useState<number | null>(null);
   // The initials the team list on this page carries, read from it when the
   // wheel opens, and the wheel's own position among them.
   const [letters, setLetters] = useState<string[]>([]);
@@ -358,16 +356,25 @@ export default function SiteNav() {
   // Null is the section the page itself opens on.
   const [picked, setPicked] = useState<DialSection | null>(null);
   // The dial returns to rest, and the wheel closes, on every navigation.
-  const [lastPath, setLastPath] = useState(pathname);
-  if (lastPath !== pathname) {
-    setLastPath(pathname);
-    setFocus(resting);
+  const [lastRoute, setLastRoute] = useState(route);
+  if (lastRoute !== route) {
+    setLastRoute(route);
+    setPosition(null);
     setOpen(false);
     setPicked(null);
   }
 
+  const section = picked ?? pathSection(pathname);
+  const resource = section === 'news' || section === 'players' ? section : null;
+  const competitions = listCompetitions().filter(c => inView(c, view) &&
+    (!resource || supportsResource(c.seasons[competitionSeasonId(c, active)], resource)));
+  const competitionAt = active ? competitions.findIndex(c => c.id === active.competition.id) : -1;
+  const resting = restingFocus(competitionAt, competitions.length);
+  const focus = position ?? resting;
+
   const centreRef = useRef<HTMLButtonElement>(null);
   const wheelRef = useRef<HTMLDivElement>(null);
+  const letterTarget = useRef<HTMLElement | null>(null);
   const swallowClick = useRef(false);
 
   // Named, not linked. The nav is where the site says what it is, and a link
@@ -375,26 +382,32 @@ export default function SiteNav() {
   const soonItems = [
     { label: t('nav.simulate'), icon: simulateIcon },
   ];
-  const barItems = bottomBarItems(pathname, locale, viewQuery(view));
+  const barItems = bottomBarItems(pathname, locale, view, params);
   const [barLeft, barRight] = splitAround(barItems);
 
   const page = centrePage(pathname, locale);
-  const onTeams = page?.href === items[1].href;
+  const onTeams = stripLocale(pathname) === '/teams';
 
-  // On Teams the dial turns the list on the page, by initial. The list marks
-  // the first team under each one; under a search it marks none, and there is
-  // nothing to index. Read from the page, so it is re-read whenever the reader
-  // reaches for the dial.
-  const readLetters = () => {
+  // The directory can stream in or change with a local team search.
+  const readLetters = useCallback(() => {
     const marks = onTeams ? Array.from(document.querySelectorAll<HTMLElement>('[data-team-letter]')) : [];
-    setLetters(marks.map((el) => el.dataset.teamLetter ?? ''));
-    // Rest on the initial the reader has scrolled to.
-    setLetterFocus(Math.max(0, marks.findLastIndex((el) => el.getBoundingClientRect().top < 120)));
-  };
-  useEffect(readLetters, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+    const initials = marks.map(el => el.dataset.teamLetter!);
+    const visible = [...initials].sort((a, b) => a.localeCompare(b, locale));
+    setLetters(visible);
+    const last = marks.findLast(el => el.getBoundingClientRect().top < 120);
+    setLetterFocus(Math.max(0, visible.indexOf(last?.dataset.teamLetter ?? '')));
+  }, [locale, onTeams]);
+  useEffect(() => {
+    readLetters();
+    const content = document.getElementById('app-content');
+    if (!onTeams || !content) return;
+    const observer = new MutationObserver(readLetters);
+    observer.observe(content, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-team-letter'] });
+    return () => observer.disconnect();
+  }, [onTeams, readLetters, view]);
 
   const openWheel = () => {
-    setFocus(resting);
+    setPosition(null);
     readLetters();
     setPicked(null);
     setOpen(true);
@@ -444,12 +457,14 @@ export default function SiteNav() {
       document.removeEventListener('keydown', onKey);
       // Every close path ends here: Escape, the backdrop, a chosen
       // destination, and a path that changed underneath (browser back).
-      centre?.focus();
+      const target = letterTarget.current;
+      letterTarget.current = null;
+      if (target?.isConnected) target.focus({ preventScroll: true });
+      else centre?.focus();
     };
   }, [open]);
 
   // Turning the letter dial scrolls the team list to that initial.
-  const section = picked ?? pathSection(pathname);
   const lettersOn = section === 'teams';
   const turnLetters = (next: number) => {
     const at = (f: number) => Math.round(f) % letters.length;
@@ -464,11 +479,12 @@ export default function SiteNav() {
     if (!lettersOn || hovered || open) return;
     const onScroll = () => {
       const marks = Array.from(document.querySelectorAll<HTMLElement>('[data-team-letter]'));
-      setLetterFocus(Math.max(0, marks.findLastIndex((el) => el.getBoundingClientRect().top < 120)));
+      const last = marks.findLast(el => el.getBoundingClientRect().top < 120);
+      setLetterFocus(Math.max(0, letters.indexOf(last?.dataset.teamLetter ?? '')));
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
-  }, [lettersOn, hovered, open]);
+  }, [lettersOn, hovered, open, letters]);
 
   // The phone bar shrinks while the reader scrolls down and returns when they
   // scroll up. `lastY` only moves on a deliberate scroll, so a slow one adds up
@@ -514,11 +530,7 @@ export default function SiteNav() {
   const competitionItems = (
     into?: { resource: 'players' | 'news'; badge: React.ReactNode; full: (name: string) => string },
   ): DialItem[] =>
-    competitions.filter(c => {
-      if (!into) return true;
-      const season = c.seasons[competitionSeasonId(c, active)];
-      return supportsResource(season, into.resource);
-    }).map((c) => {
+    competitions.map((c) => {
       const isActive = active?.competition.id === c.id;
       const seasonId = competitionSeasonId(c, active);
       return {
@@ -543,6 +555,11 @@ export default function SiteNav() {
   const letterItems: DialItem[] = letters.map((letter) => ({
     key: letter,
     href: `#${teamLetterId(letter)}`,
+    onOpen: () => {
+      const target = document.getElementById(teamLetterId(letter));
+      if (open) letterTarget.current = target;
+      else target?.focus({ preventScroll: true });
+    },
     // The initial is the crest itself; a name under it would say it twice.
     label: '',
     current: false,
@@ -562,7 +579,7 @@ export default function SiteNav() {
       key={section}
       items={dialItems}
       focus={lettersOn ? letterFocus : focus}
-      onFocusChange={lettersOn ? turnLetters : setFocus}
+      onFocusChange={lettersOn ? turnLetters : setPosition}
       variant={variant}
       reach={variant === 'rail' ? RAIL_REACH_EXPANDED : WHEEL_REACH}
       onNavigate={close}
@@ -571,8 +588,7 @@ export default function SiteNav() {
   );
 
   // The inner level: the site's sections. One with a page is a link to it, and
-  // its dial comes with the page; Leagues and Players have no page, so they
-  // only turn the dial. Home has no dial: it is a link and nothing more.
+  // its dial comes with the page. Leagues and Players switch the rim in place.
   const levels: { key: string; label: string; icon: React.ReactNode; href?: string; section?: DialSection }[] = [
     { key: 'home', label: items[0].label, icon: items[0].icon, href: items[0].href },
     { key: 'teams', label: items[1].label, icon: items[1].icon, href: items[1].href, section: 'teams' },
@@ -592,7 +608,7 @@ export default function SiteNav() {
       const pick = (next: DialSection | null) => {
         trackEvent('Section opened', { section: lv.label, surface: 'sitenav' });
         setPicked(next);
-        setFocus(resting);
+        setPosition(null);
       };
       return (
         <div key={lv.key} className="sn-level-slot" style={{ ['--a' as string]: `${fanAngle(i, levels.length, stepDeg)}deg` }}>
@@ -601,21 +617,34 @@ export default function SiteNav() {
               href={lv.href}
               className="sn-sec"
               data-selected={selected ? '' : undefined}
-              aria-current={stripLocale(lv.href) === stripLocale(pathname) ? 'page' : undefined}
+              aria-label={lv.label}
+              aria-current={lv.href.split('?')[0] === pathname ? 'page' : undefined}
               // Its dial is the page's own, so the pick is dropped: on the
               // page already, that turns the dial back to it.
-              onClick={() => pick(null)}
+              onClick={() => { pick(null); close(); }}
             >
               {body}
             </Link>
           ) : (
-            <button type="button" className="sn-sec" data-selected={selected ? '' : undefined} aria-pressed={selected} onClick={() => pick(lv.section ?? null)}>
+            <button type="button" className="sn-sec" aria-label={lv.label} data-selected={selected ? '' : undefined} aria-pressed={selected} onClick={() => pick(lv.section ?? null)}>
               {body}
             </button>
           )}
         </div>
       );
     });
+
+  const browse = (wheel: boolean) => (
+    <Link href={directoryHref} prefetch={false} className={wheel ? 'sn-wheel-browse' : 'sn-item'}
+      aria-label={t('home.digest.browse')} aria-current={stripLocale(pathname) === '/competitions' ? 'page' : undefined}
+      onClick={() => {
+        trackEvent('Section opened', { section: t('nav.competitions'), surface: 'sitenav' });
+        close();
+      }}>
+      {!wheel && <span className="sn-icon">{tableIcon}</span>}
+      <span className={wheel ? undefined : 'sn-label'}>{t('home.digest.browse')}</span>
+    </Link>
+  );
 
   const centreMark = page ? (
     <span className="sn-centre-icon">{page.icon}</span>
@@ -654,7 +683,7 @@ export default function SiteNav() {
         if (e.pointerType === 'touch') return;
         setHovered(false);
         if (!pinned) {
-          setFocus(resting);
+          setPosition(null);
           setPicked(null);
         }
       }}
@@ -662,12 +691,12 @@ export default function SiteNav() {
       // tabbing on into the page would leave it there.
       onBlur={(e) => {
         if (!pinned && !e.currentTarget.contains(e.relatedTarget)) {
-          setFocus(resting);
+          setPosition(null);
           setPicked(null);
         }
       }}
     >
-      <Link href={withLocale(prefix, '/')} className="sn-brand" aria-label={t('common.scoreArcHome')}>
+      <Link href={items[0].href} className="sn-brand" aria-label={t('common.scoreArcHome')}>
         {/* The delivered artwork, used as images: the lockup's kerning and its
             underline arc are the designer's. The wordmark cannot survive a
             96px rail, so CSS shows the mark alone there and the lockup when
@@ -679,6 +708,7 @@ export default function SiteNav() {
       </Link>
 
       <div className="sn-site">
+        {browse(false)}
         {/* No `aria-disabled`: it is ignored on a bare span with no role, so
             it only ever reassured us. The visible "soon" badge is real text
             inside the item, so a screen reader reads "Simulate soon" and the
@@ -781,6 +811,7 @@ export default function SiteNav() {
       >
         <button type="button" className="sn-wheel-backdrop" aria-label={t('nav.closeWheel')} onClick={closeWheel} />
         <div className="sn-wheel-disc" aria-hidden />
+        {browse(true)}
         {dial('wheel')}
         {/* The same two levels as the rail: the sections fan inside the rim. */}
         <div className="sn-wheel-sections">{levelSlots(SECTION_STEP_DEG)}</div>

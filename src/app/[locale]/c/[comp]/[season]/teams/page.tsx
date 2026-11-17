@@ -5,7 +5,7 @@ import { resolveResource } from '@/server/data/editionResources';
 import { competitionTeams } from '@/server/data/teamIndex';
 import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
-import { replacePathLocale } from '@/i18n/pathnames';
+import { collectionHref, replacePathLocale } from '@/i18n/pathnames';
 import TeamBadge from '@/components/TeamBadge';
 import SiteFooter from '@/components/SiteFooter';
 
@@ -49,7 +49,7 @@ export default async function CompetitionTeamsPage({ params }: Params) {
         <h1 className="tsp-title">
           {t('teams.competitionTitle', `${rc.competition.shortName} ${rc.season.label}`)}
         </h1>
-        <Link href={`/${locale}/teams`} className="tsp-link">
+        <Link href={collectionHref(`/${locale}/teams`, new URLSearchParams(), rc.competition.category)} className="tsp-link">
           {t('teams.searchAll')}
         </Link>
       </header>

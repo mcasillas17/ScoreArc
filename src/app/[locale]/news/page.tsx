@@ -1,10 +1,11 @@
 import type { CSSProperties } from 'react';
-import type { Metadata } from 'next';
+import type { Metadata, ResolvingMetadata } from 'next';
 import { notFound } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
 import { collectStoriesByCompetition } from '@/server/data/newsFeed';
-import { inView, listCompetitions, parseView, viewQuery } from '@/server/data/competitions';
+import { inView, listCompetitions, parseView } from '@/server/data/competitions';
+import { collectionMetadata } from '@/lib/collectionMetadata';
 import CompetitionMark from '@/components/CompetitionMark';
 import DigestNews from '@/components/DigestNews';
 import SiteFooter from '@/components/SiteFooter';
@@ -16,20 +17,11 @@ type PageParams = { locale: string } | Promise<{ locale: string }>;
 type PageSearch = SearchParams | Promise<SearchParams>;
 type PageProps = { params: PageParams; searchParams?: PageSearch };
 
-export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps, parent: ResolvingMetadata): Promise<Metadata> {
   const { locale } = await params;
-  // Each valid view is its own page to a crawler and to a share preview.
-  const query = viewQuery(parseView(((await searchParams) ?? {}).view));
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
-  return {
-    title: t('news.directoryTitle'),
-    description: t('news.directoryDescription'),
-    alternates: {
-      canonical: `/${locale}/news${query}`,
-      languages: { en: `/en/news${query}`, es: `/es/news${query}` },
-    },
-  };
+  return collectionMetadata(locale, '/news', parseView((await searchParams)?.view), t('news.directoryTitle'), parent, t('news.directoryDescription'));
 }
 
 /**

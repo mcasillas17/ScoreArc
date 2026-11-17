@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pathLocale, replacePathLocale, stripPathLocale } from './pathnames';
+import { collectionHref, pathLocale, replacePathLocale, stripPathLocale } from './pathnames';
 
 describe('localized pathnames', () => {
   it('reads, adds, and replaces supported locale segments', () => {
@@ -23,5 +23,23 @@ describe('localized pathnames', () => {
     expect(pathLocale('//es/matches')).toBeNull();
     expect(stripPathLocale('//es/matches')).toBe('//es/matches');
     expect(replacePathLocale('//es/matches', 'en')).toBe('/en//es/matches');
+  });
+});
+
+describe('collection links', () => {
+  it('replaces repeated view values while preserving accents and repeated unrelated parameters', () => {
+    const params = new URLSearchParams('q=América&view=men&tag=one&view=women&tag=two');
+    const href = collectionHref('/es/teams', params, 'women');
+    const result = new URL(href, 'https://scorearc.futbol');
+    expect(result.pathname).toBe('/es/teams');
+    expect(result.searchParams.getAll('view')).toEqual(['women']);
+    expect(result.searchParams.get('q')).toBe('América');
+    expect(result.searchParams.getAll('tag')).toEqual(['one', 'two']);
+    expect(params.getAll('view')).toEqual(['men', 'women']);
+  });
+
+  it('omits All, including the question mark when there are no other parameters', () => {
+    expect(collectionHref('/en', new URLSearchParams('view=invalid&view=men'), 'all')).toBe('/en');
+    expect(collectionHref('/es/news', new URLSearchParams('q=futbol&view=all'), 'all')).toBe('/es/news?q=futbol');
   });
 });

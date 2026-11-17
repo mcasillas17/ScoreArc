@@ -328,6 +328,7 @@ describe('Home digest', () => {
       const html = await renderLocalized(await home('women'));
       expect(matchIds(html)).toEqual(['women-early', 'women-late']);
       expect(html).toContain('2 matches live right now.');
+      expect(html).toContain('href="/en/competitions?view=women"');
       expect(html).toContain('href="/en/news?view=women"');
       for (const read of [windows, vi.mocked(dataStore.getLeaders), vi.mocked(dataStore.getNews)]) {
         expect(read.mock.calls.length).toBeGreaterThan(0);

@@ -1,12 +1,13 @@
-import type { Metadata } from 'next';
+import type { Metadata, ResolvingMetadata } from 'next';
 import { notFound } from 'next/navigation';
 import { allTeams } from '@/server/data/teamIndex';
-import { inView, listCompetitions, parseView, viewQuery } from '@/server/data/competitions';
+import { listCompetitions, parseView } from '@/server/data/competitions';
+import { collectionMetadata } from '@/lib/collectionMetadata';
 import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
 import TeamSearch from '@/components/TeamSearch';
 import SiteFooter from '@/components/SiteFooter';
-import ViewLinks, { type SearchParams } from '@/components/ViewLinks';
+import type { SearchParams } from '@/components/ViewLinks';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,20 +15,11 @@ type PageParams = { locale: string } | Promise<{ locale: string }>;
 type PageSearch = SearchParams | Promise<SearchParams>;
 type PageProps = { params: PageParams; searchParams?: PageSearch };
 
-export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps, parent: ResolvingMetadata): Promise<Metadata> {
   const { locale } = await params;
-  // Each valid view is its own page to a crawler and to a share preview.
-  const query = viewQuery(parseView(((await searchParams) ?? {}).view));
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
-  return {
-    title: t('teams.metaTitle'),
-    description: t('teams.metaDescription'),
-    alternates: {
-      canonical: `/${locale}/teams${query}`,
-      languages: { en: `/en/teams${query}`, es: `/es/teams${query}` },
-    },
-  };
+  return collectionMetadata(locale, '/teams', parseView((await searchParams)?.view), t('teams.metaTitle'), parent, t('teams.directoryDescription'));
 }
 
 export default async function TeamsPage({ params, searchParams }: PageProps) {
@@ -36,9 +28,7 @@ export default async function TeamsPage({ params, searchParams }: PageProps) {
   const view = parseView(search.view);
   if (!isLocale(locale)) notFound();
   const t = getTranslator(locale);
-  // Scoped before any membership is loaded: a narrowed directory reads only
-  // its own competitions.
-  const teams = await allTeams(listCompetitions().filter((c) => inView(c, view)));
+  const teams = await allTeams(view);
   // Only competitions that contributed a team get a chip.
   const present = new Set(teams.flatMap((team) => team.memberships.map((m) => m.competitionId)));
   const competitions = listCompetitions()
@@ -64,8 +54,7 @@ export default async function TeamsPage({ params, searchParams }: PageProps) {
           {t('teams.directoryDescription')}
         </p>
       </header>
-      <ViewLinks locale={locale} path="/teams" view={view} params={search} />
-      <TeamSearch teams={teams} competitions={competitions} />
+      <TeamSearch teams={teams} competitions={competitions} view={view} params={search} />
       <SiteFooter />
     </main>
   );
