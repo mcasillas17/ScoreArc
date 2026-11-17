@@ -167,6 +167,7 @@ export interface Competition {
   shortName: string;
   espnSlug: string; // ESPN league slug — durable across seasons
   espnLeagueId?: string; // ESPN standings and article league categories
+  espnRosterName?: string; // When ESPN’s season.displayName uses a different competition name.
   espnScoreboardId?: string; // ESPN scoreboard and standings UID namespace
   kind: CompetitionKind;
   category: Category;
@@ -767,8 +768,24 @@ COMPETITIONS.wsl.espnScoreboardId = '8097';
 COMPETITIONS.wsl.seasons['2026-27'].providerYear = 2026;
 COMPETITIONS.wsl.seasons['2026-27'].resources = editionResources.filter(resource => resource !== 'bracket');
 
+// ESPN's current /roster payloads omit league.slug and name the competition
+// in season.displayName, following the provider season year.
+const rosterNames: Partial<Record<string, string>> = {
+  'world-cup': 'FIFA World Cup',
+  'premier-league': 'English Premier League',
+  laliga: 'Spanish LALIGA',
+  'serie-a': 'Italian Serie A',
+  bundesliga: 'German Bundesliga',
+  'ligue-1': 'French Ligue 1',
+  'super-league-greece': 'Greek Super League',
+  'liga-mx': 'Liga BBVA MX',
+  wsl: "English Women's Super League",
+  'liga-mx-femenil': 'Mexican Liga BBVA MX Femenil',
+};
+
 // Existing editions were already public before publication states were introduced.
 for (const competition of Object.values(COMPETITIONS)) {
+  competition.espnRosterName ??= rosterNames[competition.id];
   competition.directoryGroup ??= competition.kind === 'national' ? 'national' : competition.id === 'leagues-cup' ? 'club-cup' : 'domestic';
   competition.level ??= 'senior';
   for (const season of Object.values(competition.seasons)) {

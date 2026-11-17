@@ -144,9 +144,8 @@ const migratedRouteCases = [
     telemetry: 'player',
     comp: mx.comp,
     season: mx.season,
-    // The slug index is built from standings, so a standings failure is the
-    // player route's provider failure -- it must 502, never 404.
-    rejectProvider: () => vi.spyOn(dataStore, 'getStandings').mockRejectedValueOnce(sensitiveProviderFailure),
+    // Unavailable membership cannot establish that a bookmarked player is absent.
+    rejectProvider: () => vi.spyOn(dataStore, 'getEditionTeams').mockRejectedValueOnce(sensitiveProviderFailure),
     getValid: async () => (await import('./[comp]/[season]/player/[playerSlug]/route')).GET(
       new Request('http://x/api/liga-mx/2026-apertura/player/ali-avila'),
       { params: Promise.resolve({ ...mx, playerSlug: 'ali-avila' }) },
@@ -237,7 +236,7 @@ describe.each(migratedRouteCases)('stable API errors — $name', (routeCase) => 
 
 describe('player route slug resolution', () => {
   it('404s an unknown slug without an athlete request', async () => {
-    vi.spyOn(dataStore, 'getStandings').mockResolvedValueOnce([]);
+    vi.spyOn(dataStore, 'getEditionTeams').mockResolvedValueOnce([]);
     const getPlayer = vi.spyOn(dataStore, 'getPlayer');
     const response = await (await import('./[comp]/[season]/player/[playerSlug]/route')).GET(
       new Request('http://x/api/liga-mx/2026-apertura/player/nobody-here'),
@@ -281,8 +280,8 @@ describe('match summary route — player slug enrichment', () => {
 
   it('fills playerSlug on scorers and lineup players from the roster index', async () => {
     vi.spyOn(dataStore, 'getMatchSummary').mockResolvedValueOnce(summaryFixture as never);
-    vi.spyOn(dataStore, 'getStandings').mockResolvedValueOnce([
-      { id: 'g', name: 'g', standings: [{ team: { id: '222', name: 'QRO', abbr: 'QRO', crestUrl: null } }] },
+    vi.spyOn(dataStore, 'getEditionTeams').mockResolvedValueOnce([
+      { id: '222', name: 'QRO', abbr: 'QRO', crestUrl: null },
     ] as never);
     vi.spyOn(dataStore, 'getSquad').mockImplementation(async (_rc, teamId) =>
       (teamId === '222'
@@ -301,7 +300,7 @@ describe('match summary route — player slug enrichment', () => {
 
   it('degrades to unenriched slugs (never a failed response) when the index cannot build', async () => {
     vi.spyOn(dataStore, 'getMatchSummary').mockResolvedValueOnce(summaryFixture as never);
-    vi.spyOn(dataStore, 'getStandings').mockRejectedValueOnce(new Error('upstream unavailable'));
+    vi.spyOn(dataStore, 'getEditionTeams').mockRejectedValueOnce(new Error('upstream unavailable'));
 
     const response = await (await import('./[comp]/[season]/match/[id]/route')).GET(
       new Request('http://x/api/liga-mx/2026-apertura/match/401?home=222&away=227'),
@@ -322,7 +321,7 @@ describe('match summary route — player slug enrichment', () => {
     try {
       vi.spyOn(dataStore, 'getMatchSummary').mockResolvedValueOnce(summaryFixture as never);
       // Never resolves or rejects -- simulates a hung upstream roster fetch.
-      vi.spyOn(dataStore, 'getStandings').mockReturnValueOnce(new Promise(() => {}) as never);
+      vi.spyOn(dataStore, 'getEditionTeams').mockReturnValueOnce(new Promise(() => {}) as never);
 
       const responsePromise = (await import('./[comp]/[season]/match/[id]/route')).GET(
         new Request('http://x/api/liga-mx/2026-apertura/match/401?home=222&away=227'),

@@ -447,8 +447,8 @@ func TestReaderContract(t *testing.T) {
 	gap := func(id string) { characterized[id] = true }
 
 	t.Run("inventory matches OpenAPI and the router", func(t *testing.T) {
-		if len(vectors.Methods) != 12 {
-			t.Fatalf("DataStore inventory has %d methods, want 12", len(vectors.Methods))
+		if len(vectors.Methods) != 13 {
+			t.Fatalf("DataStore inventory has %d methods, want 13", len(vectors.Methods))
 		}
 		routes := map[string]bool{"/healthz": true}
 		for method, contract := range vectors.Methods {
@@ -889,6 +889,13 @@ func TestReaderContract(t *testing.T) {
 		assertWire(t, "own-goal scorers", actual["scorers"], vector(t, raw, "ownGoal", "reader", "scorers"))
 	})
 
+	t.Run("edition team contract with no accepted membership", func(t *testing.T) {
+		exercise("getEditionTeams")
+		r := performRequest(newTestApp(t, &fakeReaderStore{}, &fakeNewsReader{}).router(), http.MethodGet, "/v1/competitions/world-cup/2026/teams")
+		if r.Code != 200 || strings.TrimSpace(r.Body.String()) != "[]" || resourceHeader(t, r.Header()).Resources["editionTeams"].Availability != "unavailable" {
+			t.Fatalf("uncertified membership: %d %s %s", r.Code, r.Body, r.Header().Get(resourcesHeader))
+		}
+	})
 	t.Run("recorded standings: same values and rank order", func(t *testing.T) {
 		exercise("getStandings")
 		rows, err := espn.MapStandings(contractFixture(t, fixtureName(t, raw, "standings")))
@@ -1565,6 +1572,7 @@ func TestReaderContract(t *testing.T) {
 			}
 		}
 		for _, vector := range vectors.Transport.SuccessCache.Reader {
+			at := time.Now().UTC().Add(-time.Minute)
 			state := espn.MatchStateScheduled
 			if vector.Live {
 				state = espn.MatchStateLive
@@ -1572,7 +1580,8 @@ func TestReaderContract(t *testing.T) {
 			match := Match{ID: vectors.Summary.ReaderMatchID, State: state}
 			bracket := []BracketRound{{Slug: "final", Name: "Final", Matches: []espn.BracketMatch{{State: state}}}}
 			app := newTestApp(t, &fakeReaderStore{
-				matches: []Match{match}, standings: []Group{}, topScorers: []espn.TopScorer{},
+				resources: resourceSnapshot{Squad: &collectionEvidence{ObservedAt: &at}},
+				matches:   []Match{match}, standings: []Group{}, topScorers: []espn.TopScorer{},
 				bracket: bracket, summary: &MatchSummary{},
 				teams: map[string]*TeamProfile{"mex-america": {Squad: []SquadPlayer{}}},
 			}, &fakeNewsReader{})

@@ -147,13 +147,13 @@ func (f *fakeSource) Summary(
 		AwayScore:  f.summaryAway,
 	}, nil
 }
-func (f *fakeSource) Standings(context.Context, config.Competition, config.Season) ([]model.Standing, error) {
+func (f *fakeSource) Standings(context.Context, config.Competition, config.Season) (source.StandingResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.standings != nil || f.standingsErr != nil {
-		return f.standings, f.standingsErr
+		return source.StandingResult{Rows: f.standings, EditionVerified: f.standingsErr == nil}, f.standingsErr
 	}
-	return []model.Standing{{Rank: 1, Team: model.Team{ID: "home"}}}, nil
+	return source.StandingResult{Rows: []model.Standing{{Rank: 1, Team: model.Team{ID: "home"}}}, EditionVerified: true}, nil
 }
 func (f *fakeSource) Statistics(context.Context, config.Competition, config.Season) ([]byte, error) {
 	f.mu.Lock()
@@ -180,6 +180,7 @@ func (f *fakeSource) Bracket(context.Context, config.Competition, config.Season,
 func (f *fakeSource) Roster(
 	ctx context.Context,
 	_ config.Competition,
+	_ config.Season,
 	teamSourceID string,
 ) (model.Squad, error) {
 	f.mu.Lock()
@@ -999,6 +1000,7 @@ func (f *fakeRepository) ReplaceStandings(
 	_, _, _ string,
 	_ []model.Standing,
 	teamIDs map[string]string,
+	_ ...bool,
 ) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -1041,6 +1043,7 @@ func (f *fakeRepository) ReplaceSquad(
 	_, _, teamID, _ string,
 	_ []model.SquadMember,
 	_ map[string]uuid.UUID,
+	_ ...bool,
 ) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -1048,6 +1051,14 @@ func (f *fakeRepository) ReplaceSquad(
 	f.squadTeams = append(f.squadTeams, teamID)
 	return f.squadErrors[teamID]
 }
+func (f *fakeRepository) RecordSeasonDiscovery(context.Context, string, string, time.Time, string, []model.Match) error {
+	return nil
+}
+
+func (f *fakeRepository) MatchSquadTeams(context.Context, string, string) (map[string]string, error) {
+	return nil, nil
+}
+
 func (f *fakeRepository) SetTeamRosterIdentity(_ context.Context, teamID, colour, location string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -3503,6 +3514,27 @@ func squadTestStandings(teamIDs ...string) []model.Standing {
 		})
 	}
 	return rows
+}
+
+func TestSquadRefreshRejectsOversizedStandingsDirectory(t *testing.T) {
+	ids := make([]string, store.MaxEditionTeams+1)
+	for i := range ids {
+		ids[i] = strconv.Itoa(i + 1)
+	}
+	src := &fakeSource{standings: squadTestStandings(ids...)}
+	repo := &fakeRepository{}
+	comp := squadTestCompetition()
+	worker := testRunner(src, repo, comp)
+	refresh := func() error {
+		return worker.refreshStandings(context.Background(), comp, comp.Seasons[comp.CurrentSeasonId], true, false)
+	}
+	if err := refresh(); !errors.Is(err, store.ErrEditionTeamsTooLarge) || len(src.rosterCalls) != 0 || len(repo.standingTeamIDs) != len(ids) {
+		t.Fatalf("oversized field: err=%v roster requests=%d standings=%d", err, len(src.rosterCalls), len(repo.standingTeamIDs))
+	}
+	src.standings = squadTestStandings(ids[:2]...)
+	if err := refresh(); err != nil || len(src.rosterCalls) != 2 {
+		t.Fatalf("bounded retry: err=%v roster requests=%d", err, len(src.rosterCalls))
+	}
 }
 
 // ~180 requests once a day is negligible; on every slow tick it is ~52,000.

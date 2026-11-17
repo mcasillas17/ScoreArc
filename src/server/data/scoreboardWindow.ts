@@ -86,9 +86,9 @@ function timestamp(value: unknown): number {
   }
   return at;
 }
-function validateEvent(value: unknown): { event: Raw; id: string; at: number; season: Raw } {
+function validateEvent(value: unknown, verifyIds = false): { event: Raw; id: string; at: number; season: Raw } {
   const event = object(value);
-  if (!text(event.id)) throw new Error('Malformed scoreboard identity');
+  if (!text(event.id) || (verifyIds && !/^[1-9]\d{0,31}$/.test(event.id))) throw new Error('Malformed scoreboard identity');
   const at = timestamp(event.date);
   const season = object(event.season);
   if (!Number.isInteger(season.year) || !text(season.slug)) throw new Error('Malformed scoreboard season');
@@ -101,6 +101,7 @@ function validateEvent(value: unknown): { event: Raw; id: string; at: number; se
   }
   if (!Array.isArray(event.competitions) || event.competitions.length !== 1) throw new Error('Malformed scoreboard competition');
   const competition = object(event.competitions[0]);
+  if (verifyIds && competition.id !== undefined && competition.id !== event.id) throw new EspnEditionError('scope_mismatch', 'scoreboard match');
   if (competition.notes != null && (!Array.isArray(competition.notes) || competition.notes.some(note => {
     const value = object(note).text;
     return value != null && typeof value !== 'string';
@@ -114,6 +115,9 @@ function validateEvent(value: unknown): { event: Raw; id: string; at: number; se
     if (!['home', 'away'].includes(String(competitor.homeAway)) || !text(team.id) || !text(team.displayName) || !text(team.abbreviation)) {
       throw new Error('Malformed scoreboard team');
     }
+    if (verifyIds && (!/^[1-9]\d{0,31}$/.test(team.id) || (competitor.id !== undefined && competitor.id !== team.id))) {
+      throw new EspnEditionError('scope_mismatch', 'scoreboard team');
+    }
     sides.add(String(competitor.homeAway)); ids.add(team.id);
     for (const key of ['score', 'shootoutScore']) {
       if (!isScoreboardCount(competitor[key])) throw new Error('Malformed scoreboard score');
@@ -124,14 +128,14 @@ function validateEvent(value: unknown): { event: Raw; id: string; at: number; se
   return { event, id: event.id, at, season };
 }
 // Evaluation reuses this validation for the bracket's undated scoreboard path.
-export { validateEvent as validateScoreboardEvent };
-export function validateScoreboardEnvelope(raw: unknown, rc: CompetitionSeason): unknown[] {
+export const validateScoreboardEvent = (value: unknown) => validateEvent(value);
+export function validateScoreboardEnvelope(raw: unknown, rc: CompetitionSeason, strict = requiresEditionEvidence(rc)): unknown[] {
   const envelope = object(raw);
   if (!Array.isArray(envelope.leagues) || envelope.leagues.length !== 1 || object(envelope.leagues[0]).slug !== rc.competition.espnSlug) {
     throw new Error('Scoreboard league mismatch');
   }
   if (!Array.isArray(envelope.events) || envelope.events.length >= 1000) throw new Error('Scoreboard events missing or truncated');
-  if (requiresEditionEvidence(rc)) return completeCollection(envelope, 'events');
+  if (strict) return completeCollection(envelope, 'events');
   for (const key of ['count', 'total', 'pageCount']) {
     if (key in envelope && envelope[key] !== (key === 'pageCount' ? 1 : envelope.events.length)) throw new Error('Scoreboard pagination is incomplete');
   }
@@ -158,13 +162,13 @@ export const utcDate = (compact: string) => Date.UTC(Number(compact.slice(0, 4))
 /** Monthly provider partitions, one-day calendar guards, then exact UTC/season scope. */
 export async function fetchScoreboardWindow(
   rc: CompetitionSeason, range: string, fetchJson: ScoreboardFetchJson, signal?: AbortSignal,
-  // Request ranges keep parseRange's 92 days. A configured bracket window may
-  // span a winter break (Nations League: Nov quarterfinals, March finals); the
-  // six-month partition budget below still bounds what it costs.
-  maxDays?: number,
+  // Public windows keep the 92-day limit. Only trusted config can select a
+  // longer bracket range or one full season for verifying all entrants.
+  rangeLimit?: number | 'edition',
 ): Promise<{ events: Raw[] }> {
   signal?.throwIfAborted();
-  if (!parseRange(range, maxDays)) throw new Error('Invalid scoreboard range');
+  const fullEdition = rangeLimit === 'edition';
+  if (!parseRange(range, fullEdition ? 366 : rangeLimit)) throw new Error('Invalid scoreboard range');
   const { start: seasonStart, end: seasonEnd } = editionBounds(rc.season);
   const start = Math.max(utcDate(range.slice(0, 8)), seasonStart);
   const end = Math.min(utcDate(range.slice(9)) + DAY, seasonEnd);
@@ -176,7 +180,7 @@ export async function fetchScoreboardWindow(
   const month = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), 1));
   const months: number[] = [];
   while (month.getTime() <= end) {
-    if (months.length === 6) throw new Error('Scoreboard range exceeds month budget');
+    if (months.length === (fullEdition ? 14 : 6)) throw new Error('Scoreboard range exceeds month budget');
     months.push(month.getTime());
     month.setUTCMonth(month.getUTCMonth() + 1);
   }
@@ -186,7 +190,7 @@ export async function fetchScoreboardWindow(
   const timer = setTimeout(() => controller.abort(new Error('Scoreboard deadline exceeded')), 15_000);
   const seen = new Map<string, Raw>();
   const retained = new Map<string, Raw>();
-  const strict = requiresEditionEvidence(rc);
+  const strict = fullEdition || requiresEditionEvidence(rc);
   let bytes = 0;
   try {
     for (const monthStart of months) {
@@ -201,19 +205,23 @@ export async function fetchScoreboardWindow(
       const size = responseBytes.get(envelope) ?? new TextEncoder().encode(JSON.stringify(envelope)).byteLength;
       bytes += size;
       if (size > RESPONSE_BYTES || bytes > WINDOW_BYTES) throw new Error('Scoreboard window exceeds bytes budget');
-      const events = validateScoreboardEnvelope(envelope, rc);
+      const events = validateScoreboardEnvelope(envelope, rc, strict);
       const monthEnd = Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1);
       let identified = false;
       for (const value of events) {
-        const { event, id, at, season } = validateEvent(value);
+        const { event, id, at, season } = validateEvent(value, fullEdition);
         if (at < monthStart - DAY || at >= monthEnd + DAY) throw new Error('Scoreboard event outside requested month');
         const previous = seen.get(id);
         if (previous && canonicalJSON(previous) !== canonicalJSON(event)) throw new Error('Conflicting scoreboard duplicate');
         seen.set(id, event);
         if (at < start || at >= end) continue;
+        if (fullEdition && event.league !== undefined && object(event.league).slug !== rc.competition.espnSlug) {
+          throw new EspnEditionError('scope_mismatch', 'scoreboard league');
+        }
         requireSeason(season, rc.season, true);
         identified = true;
         retained.set(id, event);
+        if (fullEdition && retained.size > 2000) throw new Error('Edition exceeds match limit');
       }
       if (strict && !identified && monthStart < end && monthEnd > start) requireScoreboardSeason(envelope, rc);
     }

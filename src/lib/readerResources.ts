@@ -1,6 +1,6 @@
 import { isISOInstant } from './matchFreshness';
 
-const names = ['matches', 'calendar', 'bracket', 'standings', 'leaders', 'identity', 'detail', 'squad', 'seasonStats', 'career', 'gameLog', 'participation', 'news'] as const;
+const names = ['matches', 'calendar', 'editionTeams', 'bracket', 'standings', 'leaders', 'identity', 'detail', 'squad', 'seasonStats', 'career', 'gameLog', 'participation', 'news'] as const;
 const statuses = ['fresh', 'empty', 'stale', 'unavailable', 'dormant'] as const;
 const availabilities = ['complete', 'empty', 'partial', 'pending', 'unavailable'] as const;
 const sources = ['espn', 'mixed'] as const;

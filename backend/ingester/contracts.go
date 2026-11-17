@@ -74,9 +74,10 @@ type repository interface {
 	BeginMatchRecovery(context.Context, uuid.UUID, string, time.Time, time.Time) error
 	CompleteMatchRecovery(context.Context, uuid.UUID, string, time.Time, bool) error
 	RecordMatchObservations(context.Context, []store.MatchObservation) error
+	RecordSeasonDiscovery(context.Context, string, string, time.Time, string, []model.Match) error
 	RecordMatchPoll(context.Context, string, string, string, time.Time, string, int) error
-	RecordResourceObservation(context.Context, string, string, string, string, string, int) error
-	ReplaceStandings(context.Context, string, string, string, []model.Standing, map[string]string) error
+	RecordResourceObservation(context.Context, string, string, string, string, string, int, ...bool) error
+	ReplaceStandings(context.Context, string, string, string, []model.Standing, map[string]string, ...bool) error
 	// WriteStandingSnapshot is the only write here whose absence is
 	// irreversible: ESPN publishes the current table, not yesterday's, so a day
 	// this does not record is gone. It is deliberately separate from
@@ -84,7 +85,8 @@ type repository interface {
 	// replacement actually accepted.
 	WriteStandingSnapshot(context.Context, string, string, []model.Standing, map[string]string, time.Time) (int, error)
 	ReplaceLeaders(context.Context, string, string, string, string, []model.StatLeader) error
-	ReplaceSquad(context.Context, string, string, string, string, []model.SquadMember, map[string]uuid.UUID) error
+	MatchSquadTeams(context.Context, string, string) (map[string]string, error)
+	ReplaceSquad(context.Context, string, string, string, string, []model.SquadMember, map[string]uuid.UUID, ...bool) error
 	SetTeamRosterIdentity(ctx context.Context, teamID, colour, location string) error
 	PlayersNeedingBio(context.Context, string, time.Time, int, []string) (map[string]uuid.UUID, error)
 	ReplaceTeamHistory(context.Context, uuid.UUID, string, []model.TeamHistoryEntry) error

@@ -1,6 +1,7 @@
 import { unstable_cache } from 'next/cache';
 import { configuredDataStore } from './configuredStore';
 import { ReaderFailure } from './readerTransport';
+import { providerReference } from './readerIdentity';
 import { trackReaderFallback } from '@/lib/telemetry/server';
 import type {
   Match,
@@ -10,10 +11,12 @@ import type {
   StatLeader,
   NewsArticle,
   Group,
+  Team,
   TeamProfile,
   SquadPlayer,
   PlayerProfile,
 } from './types';
+import { canonicalTeamId } from './teamIdentity';
 import { supportsResource, resolveSeason, type CompetitionSeason } from './competitions';
 import {
   scoreboardUrl,
@@ -33,18 +36,18 @@ import { uniqueTeamMatches } from './teamPerformance';
 import { mapAthleteProfile, mapAthleteOverview, mapAthleteBio } from './providers/espn-athlete';
 import { configuredPhaseTables } from './leaguesCupTables';
 import { computeOverallTable } from './mlsTables';
-import { EspnEditionError, verifySummaryEdition, verifyStandingsEdition, verifyLeadersEdition, requiresEditionEvidence, providerYear } from './providers/espn-edition';
+import { EspnEditionError, verifyRosterEdition, verifySummaryEdition, verifyStandingsEdition, verifyLeadersEdition, requiresEditionEvidence, providerYear } from './providers/espn-edition';
 import { mapNews, mapAttributedNews } from './providers/espn-news';
-import { mapStandings } from './providers/espn-standings';
-import { mapBracket } from './providers/espn-bracket';
+import { mapStandings, StandingsStatsError } from './providers/espn-standings';
+import { isBracketPlaceholder, mapBracket } from './providers/espn-bracket';
 import { mapLeaders } from './providers/espn-stats';
 import {
   mapSummaryScorers, mapSummaryCards, mapSummaryStats, mapWinProbability, mapSummaryLineups,
   mapSummaryVideos, mapSummaryShootout, mapSummaryShootoutTotals, summaryHeaderFinal, mapSummaryInfo, mapSummaryForm, mapSummaryCommentary, mapSummaryH2H,
 } from './providers/espn-summary';
 import { TtlCache } from './cache';
-import { resourceRead, withEditionResources } from './editionResources';
-import { currentWeekRange, forwardRange, nowWindowRange } from './dateRange';
+import { matchDerivedMembership, MAX_EDITION_TEAMS, MAX_SQUAD_PLAYERS, withEditionResources } from './editionResources';
+import { currentWeekRange, editionBounds, forwardRange, nowWindowRange } from './dateRange';
 import { fetchScoreboardWindow, verifyUndatedScoreboard, boundedFetchJson, type ScoreboardFetchJson } from './scoreboardWindow';
 
 // The store is keyed on a resolved (competition, season) pair. The ESPN league
@@ -55,6 +58,7 @@ export interface DataStore {
   getFixtures(rc: CompetitionSeason, range: string, signal?: AbortSignal): Promise<Match[]>;
   getLiveWindow(rc: CompetitionSeason): Promise<Match[]>;
   getUpcoming(rc: CompetitionSeason, limit?: number, signal?: AbortSignal): Promise<Match[]>;
+  getEditionTeams(rc: CompetitionSeason): Promise<Team[]>;
   getStandings(rc: CompetitionSeason): Promise<Group[]>;
   getBracket(rc: CompetitionSeason): Promise<BracketRound[]>;
   getMatchSummary(rc: CompetitionSeason, eventId: string, homeId: string, awayId: string): Promise<MatchSummaryData>;
@@ -74,6 +78,7 @@ interface DataDeps {
   onSummaryRequest?: (eventId: string, homeId: string, awayId: string) => void;
   /** Enabled-mode fallback must not turn a dependency outage into an entity 404. */
   propagateUnavailable?: boolean;
+  loadSquad?: DataStore['getSquad'];
   fetchJson: ScoreboardFetchJson;
   cache: TtlCache<unknown>;
 }
@@ -90,8 +95,16 @@ function emptySummary(): MatchSummaryData {
   };
 }
 
-async function fetchSquad(league: string, teamId: string, fetchJson: ScoreboardFetchJson) {
-  return mapTeamRoster(await fetchJson(teamRosterUrl(league, teamId)));
+async function fetchSquad(rc: CompetitionSeason, teamId: string, fetchJson: ScoreboardFetchJson) {
+  const raw = await fetchJson(teamRosterUrl(rc.competition.espnSlug, teamId), {
+    signal: AbortSignal.timeout(15_000), maxBytes: 4 * 1024 * 1024,
+  });
+  const count = verifyRosterEdition(raw, rc, teamId);
+  if (count > MAX_SQUAD_PLAYERS) throw new EspnEditionError('partial', 'roster');
+  const squad = mapTeamRoster(raw);
+  if (squad.length !== count || squad.some(player => !providerReference(player.id) || !player.name.trim()) ||
+      new Set(squad.map(player => player.id)).size !== count) throw new EspnEditionError('partial', 'roster');
+  return squad;
 }
 
 export function createDataStore(deps: DataDeps): DataStore {
@@ -208,8 +221,88 @@ export function createDataStore(deps: DataDeps): DataStore {
     return (await loadSummary(rc, eventId, homeId, awayId, signal)).data;
   }
 
+  async function loadStandings(rc: CompetitionSeason, strict = requiresEditionEvidence(rc)): Promise<Group[]> {
+    const k = key(rc, strict ? 'standings:verified' : 'standings');
+    const cached = deps.cache.get(k) as Group[] | Error | undefined;
+    if (cached instanceof Error) throw cached;
+    if (cached) return cached;
+    // Some competitions have no published table at all — ESPN's /standings
+    // returns `{}` for the Leagues Cup even for finished seasons. Compute it
+    // from results instead of returning nothing.
+    const computed = rc.season.computedTables;
+    if (computed) {
+      const groups = await computeTables(rc, computed);
+      deps.cache.set(k, groups, 60_000);
+      return groups;
+    }
+    const raw = await deps.fetchJson(standingsUrl(slug(rc), strict ? providerYear(rc.season) : undefined),
+      strict ? { signal: AbortSignal.timeout(15_000), maxBytes: 4 * 1024 * 1024 } : undefined);
+    let groups: Group[];
+    try {
+      if (strict) verifyStandingsEdition(raw, rc);
+      groups = mapStandings(raw, rc.competition.shortName, !!rc.season.playoffFormat);
+    } catch (error) {
+      // A rejected table is cached like an accepted one: the standings page
+      // and the team and player indexes all read it, and a provider that
+      // keeps serving it must not cost an upstream fetch per read.
+      if (!(error instanceof EspnEditionError)) deps.cache.set(k, error, 60_000);
+      throw error;
+    }
+    // A conference-split league also races for something league-wide that no
+    // provider tabulates — MLS's Supporters' Shield. Merge it here so the view
+    // receives it as one more table and needs no special case.
+    const overall = rc.season.overallTable;
+    if (overall) {
+      const merged = computeOverallTable(groups, overall);
+      if (merged) groups.push(merged);
+    }
+    deps.cache.set(k, groups, 60_000);
+    return groups;
+  }
+
+  async function loadSquad(rc: CompetitionSeason, teamId: string): Promise<SquadPlayer[]> {
+    const k = key(rc, `squad:${teamId}`);
+    const cached = deps.cache.get(k) as SquadPlayer[] | undefined;
+    if (cached) return cached;
+    const squad = await (deps.loadSquad ? deps.loadSquad(rc, teamId) : fetchSquad(rc, teamId, deps.fetchJson));
+    deps.cache.set(k, squad, 300_000);
+    return squad;
+  }
+
+  async function getEditionTeams(rc: CompetitionSeason): Promise<Team[]> {
+    const k = key(rc, 'edition-teams');
+    const cached = deps.cache.get(k) as Team[] | undefined;
+    if (cached) return cached;
+    let teams: Team[];
+    const fromMatches = matchDerivedMembership(rc);
+    if (fromMatches) {
+      if (!supportsResource(rc.season, 'scores')) throw new Error('Unavailable edition membership');
+      const { start, end } = editionBounds(rc.season);
+      const day = (ms: number) => new Date(ms).toISOString().slice(0, 10).replaceAll('-', '');
+      const range = `${day(start)}-${day(end - 1)}`;
+      const raw = await fetchScoreboardWindow(rc, range, deps.fetchJson, undefined, 'edition');
+      teams = mapScoreboard(raw).flatMap(match => [match.home, match.away])
+        .filter(team => !isBracketPlaceholder(team.name, team.crestUrl));
+      if (raw.events.length && !teams.length) throw new EspnEditionError('scope_unverified', 'entrants');
+    } else {
+      try {
+        teams = (await loadStandings(rc, true)).flatMap(group => group.standings.map(row => row.team));
+      } catch (error) {
+        if (!(error instanceof StandingsStatsError)) throw error;
+        teams = error.teams;
+      }
+    }
+    const distinct = [...new Map(teams.map(team => [team.id, team])).values()];
+    if (distinct.length > MAX_EDITION_TEAMS) throw new Error('Edition membership exceeds team limit');
+    const members = fromMatches ? distinct.filter(team => canonicalTeamId(team.id)) : distinct;
+    if (distinct.length && !members.length) throw new EspnEditionError('scope_unverified', 'entrants');
+    deps.cache.set(k, members, 60_000);
+    return members;
+  }
+
   const store: DataStore = {
     getMatchSummary,
+    getEditionTeams,
 
     async getMatches(rc, range?: string, signal?: AbortSignal): Promise<Match[]> {
       signal?.throwIfAborted();
@@ -317,6 +410,7 @@ export function createDataStore(deps: DataDeps): DataStore {
     // empty block -- losing the whole page because the fixture list timed out
     // would be a worse answer than showing the club without it.
     async getTeam(rc, teamId: string): Promise<TeamProfile | null> {
+      if (matchDerivedMembership(rc) && !(await getEditionTeams(rc)).some(team => team.id === teamId)) return null;
       const k = key(rc, `team:${teamId}`);
       const cached = deps.cache.get(k) as TeamProfile | undefined;
       if (cached) return cached;
@@ -325,9 +419,9 @@ export function createDataStore(deps: DataDeps): DataStore {
         // Four requests, not three: the schedule endpoint returns played OR
         // upcoming matches depending on `fixture=true`, never both, so a
         // matches-and-results block has to ask twice.
-        const [rawProfile, rawRoster, rawResults, rawFixtures] = await Promise.all([
+        const [rawProfile, squad, rawResults, rawFixtures] = await Promise.all([
           deps.fetchJson(teamUrl(slug(rc), teamId)),
-          supportsResource(rc.season, 'squad') ? deps.fetchJson(teamRosterUrl(slug(rc), teamId)).catch(() => null) : null,
+          supportsResource(rc.season, 'squad') ? loadSquad(rc, teamId).catch(() => null) : [],
           supportsResource(rc.season, 'scores') ? deps.fetchJson(teamScheduleUrl(slug(rc), teamId, false, rc.season)).catch(() => null) : null,
           supportsResource(rc.season, 'scores') ? deps.fetchJson(teamScheduleUrl(slug(rc), teamId, true, rc.season)).catch(() => null) : null,
         ]);
@@ -342,14 +436,14 @@ export function createDataStore(deps: DataDeps): DataStore {
         const profile: TeamProfile = {
           ...base,
           ...((strict || !supportsResource(rc.season, 'standings')) && { record: null, standingSummary: null, standing: null }),
-          squad: rawRoster ? mapTeamRoster(rawRoster) : [],
+          squad: squad ?? [],
           schedule: uniqueTeamMatches([...results.matches, ...upcoming.matches]).reverse(),
           scheduleAvailability: {
             results: results.available ? 'available' : 'unavailable',
             upcoming: upcoming.available ? 'available' : 'unavailable',
           },
         };
-        if (!strict || !supportsResource(rc.season, 'scores') || (results.available && upcoming.available)) deps.cache.set(k, profile, 120_000);
+        if (squad !== null && (!strict || !supportsResource(rc.season, 'scores') || (results.available && upcoming.available))) deps.cache.set(k, profile, 120_000);
         return profile;
       } catch (error) {
         if (deps.propagateUnavailable && !(error instanceof ReaderFailure && error.status === 404)) throw error;
@@ -361,13 +455,9 @@ export function createDataStore(deps: DataDeps): DataStore {
     // profile or schedule (the player index reads every club in a
     // competition, so the 4-request getTeam would quadruple its cold cost).
     async getSquad(rc, teamId: string): Promise<SquadPlayer[]> {
-      const k = key(rc, `squad:${teamId}`);
-      const cached = deps.cache.get(k) as SquadPlayer[] | undefined;
-      if (cached) return cached;
+      if (matchDerivedMembership(rc) && !(await getEditionTeams(rc)).some(team => team.id === teamId)) return [];
       try {
-        const squad = await fetchSquad(slug(rc), teamId, deps.fetchJson);
-        deps.cache.set(k, squad, 300_000);
-        return squad;
+        return await loadSquad(rc, teamId);
       } catch (error) {
         if (deps.propagateUnavailable) throw error;
         return [];
@@ -411,44 +501,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       }
     },
 
-    async getStandings(rc): Promise<Group[]> {
-      const k = key(rc, 'standings');
-      const cached = deps.cache.get(k) as Group[] | Error | undefined;
-      if (cached instanceof Error) throw cached;
-      if (cached) return cached;
-      // Some competitions have no published table at all — ESPN's /standings
-      // returns `{}` for the Leagues Cup even for finished seasons. Compute it
-      // from results instead of returning nothing.
-      const computed = rc.season.computedTables;
-      if (computed) {
-        const groups = await computeTables(rc, computed);
-        deps.cache.set(k, groups, 60_000);
-        return groups;
-      }
-      const strict = requiresEditionEvidence(rc);
-      const raw = await deps.fetchJson(standingsUrl(slug(rc), strict ? providerYear(rc.season) : undefined));
-      let groups: Group[];
-      try {
-        if (strict) verifyStandingsEdition(raw, rc);
-        groups = mapStandings(raw, rc.competition.shortName, !!rc.season.playoffFormat);
-      } catch (error) {
-        // A rejected table is cached like an accepted one: the standings page
-        // and the team and player indexes all read it, and a provider that
-        // keeps serving it must not cost an upstream fetch per read.
-        if (!(error instanceof EspnEditionError)) deps.cache.set(k, error, 60_000);
-        throw error;
-      }
-      // A conference-split league also races for something league-wide that no
-      // provider tabulates — MLS's Supporters' Shield. Merge it here so the view
-      // receives it as one more table and needs no special case.
-      const overall = rc.season.overallTable;
-      if (overall) {
-        const merged = computeOverallTable(groups, overall);
-        if (merged) groups.push(merged);
-      }
-      deps.cache.set(k, groups, 60_000);
-      return groups;
-    },
+    getStandings: loadStandings,
 
     async getBracket(rc): Promise<BracketRound[]> {
       const k = key(rc, 'bracket');
@@ -495,16 +548,11 @@ const espnCache = new TtlCache<unknown>();
 // A cold player lookup reads every roster. Cache the small mapped squads across
 // function instances. Catch provider failures outside the cache so a retry can recover.
 const loadEspnSquad = unstable_cache(
-  (scope: { league: string; season: string }, teamId: string) =>
-    fetchSquad(scope.league, teamId, boundedFetchJson),
-  ['espn-squad-v1'],
+  (rc: CompetitionSeason, teamId: string) => fetchSquad(rc, teamId, boundedFetchJson),
+  ['espn-squad-v3'],
   { revalidate: 300 },
 );
-export const espnDataStore: DataStore = {
-  ...createDataStore({ fetchJson: boundedFetchJson, cache: espnCache }),
-  getSquad: resourceRead('squad', (rc, teamId: string) =>
-    loadEspnSquad({ league: rc.competition.espnSlug, season: rc.season.id }, teamId).catch(() => [])),
-};
+export const espnDataStore = createDataStore({ fetchJson: boundedFetchJson, cache: espnCache, loadSquad: loadEspnSquad });
 export const dataStore: DataStore = configuredDataStore({
   espn: espnDataStore,
   env: process.env,

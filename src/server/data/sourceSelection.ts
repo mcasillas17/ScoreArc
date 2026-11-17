@@ -69,6 +69,7 @@ export function createSelectedDataStore(deps: SelectionDependencies): DataStore 
     getFixtures: (rc, range, signal) => run(source => source.getFixtures(rc, range, signal), signal),
     getLiveWindow: rc => run(source => source.getLiveWindow(rc)),
     getUpcoming: (rc, limit, signal) => run(source => source.getUpcoming(rc, limit, signal), signal),
+    getEditionTeams: rc => run(source => source.getEditionTeams(rc)),
     getStandings: rc => run(source => source.getStandings(rc)),
     getBracket: rc => run(source => source.getBracket(rc)),
     getMatchSummary: (rc, id, home, away) => run(source => source.getMatchSummary(rc, id, home, away)),

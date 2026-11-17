@@ -16,6 +16,7 @@ func (s *Store) ReplaceStandings(
 	competitionID, seasonID, source string,
 	standings []model.Standing,
 	teamIDs map[string]string,
+	editionVerified ...bool,
 ) error {
 	if len(standings) == 0 {
 		return ErrEmptyReplacement
@@ -74,7 +75,7 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,now())`,
 			return err
 		}
 	}
-	if err := recordResourceObservation(ctx, tx, competitionID, seasonID, source, "standings", "", len(standings)); err != nil {
+	if err := recordResourceObservation(ctx, tx, competitionID, seasonID, source, "standings", "", len(standings), editionVerified...); err != nil {
 		return err
 	}
 	return observationFailure(tx.Commit(ctx))

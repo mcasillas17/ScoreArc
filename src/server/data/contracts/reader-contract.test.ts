@@ -105,7 +105,7 @@ type CSquadPlayer = {
 };
 type CPenaltyKick = { order: number; player: string; scored: boolean };
 type CH2H = { date: string; label: string };
-// The window methods' output: 4 of the 12 methods return Match[].
+// The window methods' output: 4 of the methods return Match[].
 type CMatch = {
   readerResources?: ReaderResources;
   id: string; scope?: { competitionId: string; seasonId: string }; kickoff: string;
@@ -171,7 +171,7 @@ const mx = resolveSeason('liga-mx', '2026-apertura')!;
 
 
 // Executable method coverage: each per-method test records the DataStore method
-// it drives; the closing test demands all 12, so a deleted test fails too.
+// it drives; the closing test demands all methods, so a deleted test fails too.
 const exercised = new Set<string>();
 const exercise = (method: keyof DataStore) => exercised.add(method);
 
@@ -246,7 +246,7 @@ describe('reader contract: inventory', () => {
   it('compile-checks the inventory against DataStore in both directions', () => {
     expectTypeOf<Exclude<keyof DataStore, keyof typeof vectors.methods>>().toEqualTypeOf<never>();
     expectTypeOf<Exclude<keyof typeof vectors.methods, keyof DataStore>>().toEqualTypeOf<never>();
-    expect(Object.keys(vectors.methods)).toHaveLength(12);
+    expect(Object.keys(vectors.methods)).toHaveLength(13);
     expect(Object.keys(dataStore).sort()).toEqual(Object.keys(vectors.methods).sort());
   });
 
@@ -572,9 +572,9 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
   it('links reader scorers to player pages through the same route-layer enrichment', async () => {
     // The frontend's own index (playerIndex.ts), keyed by provider athlete id.
     const real = await load(summaryRaw, s.eventId, s.sides.home.providerId, s.sides.away.providerId);
-    const side = (id: string, abbr: string) => ({ team: { id, name: abbr, abbr, crestUrl: null } });
+    const side = (id: string, abbr: string) => ({ id, name: abbr, abbr, crestUrl: null });
     const index = {
-      getStandings: async () => [{ id: 'g', name: 'g', standings: [side(s.sides.home.providerId, 'CIV'), side(s.sides.away.providerId, 'NOR')] }],
+      getEditionTeams: async () => [side(s.sides.home.providerId, 'CIV'), side(s.sides.away.providerId, 'NOR')],
       getSquad: async (_rc: unknown, teamId: string) => real.scorers.filter(sc => sc.teamId === teamId).map(sc => ({
         id: sc.athleteId, name: sc.player, jersey: null, position: 'F', age: null, nationality: null, headshotUrl: null, stats: null,
       })),
@@ -611,6 +611,14 @@ describe('reader contract: match summary (getMatchSummary, getMatches enrichment
 });
 
 describe('reader contract: standings, bracket, leaders, news', () => {
+  it('reads the recorded World Cup entrants as distinct edition teams', async () => {
+    exercise('getEditionTeams');
+    const teams = await storeOver(() => standingsRaw).store.getEditionTeams(wc);
+    expect(teams).toHaveLength(48);
+    expect(new Set(teams.map(team => team.id)).size).toBe(48);
+    expect(teams.find(team => team.id === '205')?.name).toBe('Brazil');
+  });
+
   it('orders recorded standings by ESPN rank in both contracts', async () => {
     exercise('getStandings');
     const groups = await storeOver(() => standingsRaw).store.getStandings(wc);

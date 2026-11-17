@@ -111,7 +111,7 @@ func TestMapRosterLeavesProviderOmissionsNilInsteadOfZero(t *testing.T) {
 		"status":"success",
 		"team":{"id":"227"},
 		"athletes":[{
-			"id":"p1",
+			"id":"123",
 			"fullName":"Measured Player",
 			"statistics":{"splits":{"categories":[
 				{"name":"general","stats":[{"name":"appearances","value":0}]}
@@ -134,7 +134,7 @@ func TestMapRosterRejectsMalformedBirthDate(t *testing.T) {
 	_, err := MapRoster([]byte(`{
 		"status":"success",
 		"team":{"id":"227"},
-		"athletes":[{"id":"p1","fullName":"Bad Date","dateOfBirth":"03/09/2003"}]
+		"athletes":[{"id":"123","fullName":"Bad Date","dateOfBirth":"03/09/2003"}]
 	}`))
 	if err == nil {
 		t.Fatal("expected malformed non-ISO dateOfBirth to fail")

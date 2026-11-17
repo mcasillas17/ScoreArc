@@ -1,4 +1,4 @@
-import { withEditionResources } from './editionResources';
+import { matchDerivedMembership, withEditionResources } from './editionResources';
 import type { DataStore } from './store';
 import { resolveSeason, supportsResource, type CompetitionSeason } from './competitions';
 import type { BracketRound, Group, Match, MatchSummaryData, Team } from './types';
@@ -6,7 +6,7 @@ import { TtlCache } from './cache';
 import { currentWeekRange, forwardRange, nowWindowRange, parseRange, editionBounds } from './dateRange';
 import { datedInEdition, requiresEditionEvidence } from './providers/espn-edition';
 import { utcDate } from './scoreboardWindow';
-import { canonicalTeamId } from './teamIdentity';
+import { canonicalTeamId, providerTeamId } from './teamIdentity';
 import { deriveReaderStandings } from './derivedStandings';
 import { parseMatchFreshness } from '@/lib/matchFreshness';
 import type { ReaderResource, ReaderResourceName } from '@/lib/readerResources';
@@ -15,7 +15,7 @@ import { collectionEvidence, requireResources, resourceUsable } from './readerPo
 import { createReaderIdentity, providerReference, readerScopePath, type ReaderIdentity } from './readerIdentity';
 import {
   decodeReaderMatches, decodeReaderStandings, decodeReaderBracket, decodeReaderSummary,
-  decodeReaderLeaders, decodeReaderTeam, decodeReaderSquad, decodeReaderPlayer,
+  decodeReaderEditionTeams, decodeReaderLeaders, decodeReaderTeam, decodeReaderSquad, decodeReaderPlayer,
 } from './readerDecode';
 import { buildPlayoffBracket } from './providers/espn-bracket';
 
@@ -41,7 +41,7 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
   const now = deps.now ?? Date.now;
   const identities = createReaderIdentity(deps.read, now);
   async function request<T>(path: string, query: Record<string, string> | undefined, decode: (raw: unknown) => T,
-    scopes: Scopes, required: ReaderResourceName[], ttl = 0) {
+    scopes: Scopes, required: ReaderResourceName[], ttl = 0, maxAge?: Partial<Record<ReaderResourceName, number>>) {
     deps.signal.throwIfAborted();
     const key = `${deps.cacheNamespace}:provider-v1:${path}?${new URLSearchParams(query)}`;
     // Core match clocks aggregate older observations. Revalidate these responses
@@ -49,7 +49,7 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
     const cached = ttl > 0 ? deps.cache.get(key) : undefined;
     const response = cached ?? await deps.read(path, query);
     deps.signal.throwIfAborted();
-    const evidence = requireResources(response.resources, scopes, required, now());
+    const evidence = requireResources(response.resources, scopes, required, now(), maxAge);
     if (required.includes('matches') || required.includes('bracket')) {
       try {
         const core = parseMatchFreshness(response.headers);
@@ -126,6 +126,20 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
     getFixtures: (rc, range, signal) => { signal?.throwIfAborted(); return window(rc, range); },
     getLiveWindow: rc => window(rc, nowWindowRange(new Date(now()))),
     getUpcoming: (rc, limit = 12, signal) => { signal?.throwIfAborted(); return window(rc, forwardRange(new Date(now())), false, true, limit); },
+    async getEditionTeams(rc) {
+      const fromMatches = matchDerivedMembership(rc);
+      const { body, evidence, save } = await request(`${readerScopePath(rc)}/teams`, undefined, decodeReaderEditionTeams,
+        { editionTeams: 'competition-season' }, ['editionTeams'], 15_000, { editionTeams: fromMatches ? 25 * 3_600_000 : 20 * 60_000 });
+      collectionEvidence(evidence, 'editionTeams', body.length);
+      unique(body.map(team => team.id));
+      const teams = fromMatches ? body.filter(team => providerTeamId(team.id)) : body;
+      if (body.length && !teams.length) throw new ReaderFailure('identity');
+      const ids = await identities.teams(rc, teams.map(team => team.id));
+      const members = teams.map(team => mappedTeam(ids, team));
+      unique(members.map(team => team.id));
+      save();
+      return members;
+    },
     async getStandings(rc): Promise<Group[]> {
       const computed = rc.season.computedTables;
       let derived;

@@ -539,7 +539,7 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := writer.ReplaceSquad(ctx, "liga-mx", "2026-apertura", "mex-america", "espn", squad.Players, nil); err != nil {
+		if err := writer.ReplaceSquad(ctx, "liga-mx", "2026-apertura", "mex-america", "espn", squad.Players, nil, true); err != nil {
 			t.Fatal(err)
 		}
 		if err := writer.SetTeamRosterIdentity(ctx, "mex-america", squad.Color, squad.Location); err != nil {
@@ -561,6 +561,9 @@ func TestReaderContractStoreIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 		app.now = func() time.Time { return asOf.Add(23 * time.Hour) }
+		if _, err := pool.Exec(ctx, `UPDATE resource_observation SET observed_at=$1 WHERE competition_id='liga-mx' AND season_id='2026-apertura' AND resource='squad' AND subject='mex-america'`, asOf); err != nil {
+			t.Fatal(err)
+		}
 		t.Cleanup(func() { app.now = nil })
 
 		// Expected: the shared rows plus age and headshot read straight from the

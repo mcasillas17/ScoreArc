@@ -399,6 +399,18 @@ func teamIntegrationApp(t *testing.T, store *Store, logs *bytes.Buffer) *App {
 	return app
 }
 
+func verifyTestLigaSquads(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(), `INSERT INTO resource_observation(competition_id,season_id,source,resource,subject,observed_at,row_count)
+	SELECT 'liga-mx','2026-apertura',src,'squad',club,now()-interval '1 minute',
+	(SELECT count(*) FROM squad_membership WHERE competition_id='liga-mx' AND season_id='2026-apertura' AND team_id=club)
+	FROM unnest(ARRAY['mex-america','mex-empty']) club CROSS JOIN unnest(ARRAY['espn','espn-edition-verified']) src
+	ON CONFLICT (competition_id,season_id,source,resource,subject)
+	DO UPDATE SET observed_at=excluded.observed_at,row_count=excluded.row_count`); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func assertTeamResponse(t *testing.T, response *httptest.ResponseRecorder) TeamProfile {
 	t.Helper()
 	return teamResponse(t, response, "public, max-age=120")
@@ -449,6 +461,7 @@ func assertTeamFailure(t *testing.T, response *httptest.ResponseRecorder, logs *
 func TestTeamProfileIntegration(t *testing.T) {
 	store, pool := newIntegrationStore(t)
 	seedLigaTeam(t, pool)
+	verifyTestLigaSquads(t, pool)
 	if _, err := pool.Exec(context.Background(), `UPDATE team SET color='ffff91', alternate_color='000080' WHERE id='mex-america'`); err != nil {
 		t.Fatal(err)
 	}
@@ -565,6 +578,10 @@ func TestTeamProfileMissingColoursMigration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if profile := teamResponse(t, performRequest(router, "GET", ligaTeamPath), "no-store"); len(profile.Squad) != 0 {
+		t.Fatal("legacy roster became trusted through a schema upgrade")
+	}
+	verifyTestLigaSquads(t, pool)
 	profileAfter := assertTeamResponse(t, performRequest(router, "GET", ligaTeamPath))
 	if profileAfter.Color != nil || profileAfter.AltColor != nil || len(profileAfter.Squad) != 3 || len(profileAfter.Schedule) != 2 {
 		t.Fatalf("profile after migration = %+v", profileAfter)
@@ -578,6 +595,7 @@ func TestTeamProfileMissingColoursMigration(t *testing.T) {
 func TestTeamProfileQueryFailures(t *testing.T) {
 	store, pool := newIntegrationStore(t)
 	seedLigaTeam(t, pool)
+	verifyTestLigaSquads(t, pool)
 	for _, tc := range []struct{ table, operation string }{{"standing", "identity"}, {"squad_membership", "squad"}, {"match_detail", "schedule"}} {
 		t.Run(tc.operation, func(t *testing.T) {
 			// The table name is a fixed test-owned value, never caller input.
@@ -656,6 +674,7 @@ func TestTeamProfileQueryFailures(t *testing.T) {
 	emptyPath := strings.Replace(ligaTeamPath, "mex-america", "mex-empty", 1)
 	t.Run("both blocks are served whole at their row bound", func(t *testing.T) {
 		squadAt(t, 1001, maxSquadRows)
+		verifyTestLigaSquads(t, pool)
 		scheduleAt(t, 2001, maxTeamScheduleRows)
 		router := teamIntegrationApp(t, store, &bytes.Buffer{}).router()
 		profile := assertTeamResponse(t, performRequest(router, "GET", emptyPath))

@@ -25,9 +25,9 @@ func TestRosterExplicitEmptyObservationStillRequiresCompleteMatchingTeam(t *test
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			client := espn.NewWithOptions(espn.Options{MaxAttempts: 1, HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(tc.raw))}, nil
+				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(strings.Replace(tc.raw, `"status":"success"`, `"status":"success","league":{"slug":"mex.1"},"season":{"year":2026,"name":"Torneo Apertura"}`, 1)))}, nil
 			})}})
-			got, err := NewESPN(client).Roster(context.Background(), config.Competition{ESPNSlug: "mex.1"}, "227")
+			got, err := NewESPN(client).Roster(context.Background(), config.Competition{ESPNSlug: "mex.1"}, config.Season{ID: "2026-apertura"}, "227")
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("squad=%+v err=%v", got, err)
 			}
@@ -72,6 +72,28 @@ func TestStatisticsAttestsSelectedProviderYearAndLeague(t *testing.T) {
 		})}})
 		if _, err := NewESPN(client).Statistics(context.Background(), c, s); (err == nil) != tc.ok {
 			t.Fatalf("%s: %v", tc.body, err)
+		}
+	}
+}
+
+func TestKnockoutSquadVerifiesEdition(t *testing.T) {
+	c := config.Competition{ESPNSlug: "test.cup", CurrentSeasonId: "2026", Seasons: map[string]config.Season{"2026": {ID: "2026", Resources: []string{"scores", "teams", "squad"}}}}
+	for _, tc := range []struct {
+		meta string
+		ok   bool
+	}{
+		{`"season":{"year":2025}`, false},
+		{`"season":{}`, false},
+		{`"league":{"slug":"other.cup"},"season":{"year":2026}`, false},
+		{`"season":{"year":2026}`, false},
+		{`"league":{"slug":"test.cup"},"season":{"year":2026}`, true},
+	} {
+		client := espn.NewWithOptions(espn.Options{MaxAttempts: 1, HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"status":"success","team":{"id":"227"},"athletes":[],` + tc.meta + `}`))}, nil
+		})}})
+		_, err := NewESPN(client).Roster(context.Background(), c, c.Seasons["2026"], "227")
+		if (err == nil) != tc.ok {
+			t.Errorf("%s: err=%v", tc.meta, err)
 		}
 	}
 }

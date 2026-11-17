@@ -5,9 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 )
+
+var providerIDPattern = regexp.MustCompile(`^[1-9][0-9]{0,31}$`)
+
+// ValidProviderID identifies positive decimal references supported by the ESPN crosswalk.
+func ValidProviderID(id string) bool { return providerIDPattern.MatchString(id) }
 
 // parseSuppliedShootoutScore preserves absent totals and the existing null/empty
 // zero coercion. Supplied invalid values fail before conversion to model ints.

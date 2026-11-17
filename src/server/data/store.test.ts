@@ -15,7 +15,6 @@ import teamScheduleRaw from './__fixtures__/espn-team-schedule.json';
 import teamFixturesRaw from './__fixtures__/espn-team-fixtures.json';
 import standingsRaw from './__fixtures__/espn-standings.json';
 import { StandingsStatsError } from './providers/espn-standings';
-import { standingTeams } from './teamIndex';
 
 const wc = resolveSeason('world-cup')!;
 const lc = resolveSeason('leagues-cup')!;
@@ -51,6 +50,7 @@ describe('EspnReadThroughStore', () => {
     const scoresOnly = { ...wc, season: { ...wc.season, resources: ['scores' as const] } };
     await expect(store.getLeaders(scoresOnly)).rejects.toThrow();
     await expect(store.getSquad(scoresOnly, '123')).rejects.toThrow();
+    await expect(store.getEditionTeams(scoresOnly)).rejects.toThrow();
     expect(urls).toEqual([]);
     const matches = await store.getMatches(scoresOnly, '20260629-20260630');
     expect(matches.length).toBeGreaterThan(0);
@@ -72,8 +72,8 @@ describe('EspnReadThroughStore', () => {
     const second = await store.getStandings(wc).catch((error: unknown) => error);
     expect(first).toBeInstanceOf(Error);
     expect(second).toBe(first);
-    if (first instanceof StandingsStatsError) expect(await standingTeams(wc, store)).toEqual(first.teams);
     expect(fetches).toBe(1);
+    if (first instanceof StandingsStatsError) expect(await store.getEditionTeams(wc)).toEqual(first.teams);
   });
 
   it("getMatches uses the competition's ESPN slug", async () => {
@@ -636,7 +636,8 @@ it('rejects a Femenil group with an unresolved explicit type even if the top-lev
 });
 
 it('keeps unscoped team table claims out of strict editions while retaining team identity and current squad', async () => {
-  const rc = resolveSeason('nwsl')!;
+  const mx = resolveSeason('liga-mx')!;
+  const rc = { ...mx, season: { ...mx.season, providerYear: 2026 } };
   const store = createDataStore({ cache: new TtlCache<unknown>(), fetchJson: async url => url.includes('/roster') ? teamRosterRaw : teamProfileRaw });
   const profile = await store.getTeam(rc, '227');
   expect(profile?.team.id).toBe('227');
@@ -665,4 +666,199 @@ it('rejects a playoff seeding table whose provider ranks repeat', async () => {
   const raw = { id: '2323', uid: 's:600~l:8301', season: { year: 2026 }, children: [g] };
   const store = createDataStore({ cache: new TtlCache<unknown>(), fetchJson: async () => raw });
   await expect(store.getStandings(rc)).rejects.toThrow(/rank/);
+});
+
+describe('verified edition teams', () => {
+  const cup: CompetitionSeason = { ...wc, season: { ...wc.season, resources: ['teams', 'squad', 'scores'],
+    startsAt: '2026-01-01T00:00:00Z', endsAt: '2026-11-01T00:00:00Z', bracketDatesRange: '20261001-20261010' } };
+  const events = ['2026-02-01T19:00Z', '2026-10-08T19:00Z', '2026-10-09T19:00Z'].map((date, i) => {
+    const event = structuredClone(sb.events[0]);
+    event.date = date;
+    event.competitions[0].id = event.id = String(100 + i);
+    const side = event.competitions[0].competitors[1];
+    if (i === 1) {
+      side.id = side.team.id = '481';
+      side.team.displayName = 'Germany';
+      side.team.abbreviation = 'GER';
+    }
+    if (i === 2) {
+      side.id = side.team.id = '9999999';
+      side.team.displayName = 'Winner semifinal 1';
+      side.team.logo = '';
+    }
+    return event;
+  });
+  const board = (month: string) => ({ leagues: [{ slug: wc.competition.espnSlug, season: { year: 2026 } }],
+    events: events.filter(e => e.date.replaceAll('-', '').startsWith(month)) });
+  it('reads every edition month once, including entrants before the bracket, and excludes unidentified sides', async () => {
+    const fetchJson = vi.fn(async (url: string) => {
+      if (!url.includes('/scoreboard?')) throw new Error('unexpected lookup');
+      return board(new URL(url).searchParams.get('dates')!);
+    });
+    const store = createDataStore({ fetchJson, cache: new TtlCache() });
+    expect((await store.getEditionTeams(cup)).map(t => t.id).sort()).toEqual(['205', '481', '627']);
+    expect(await store.getTeam(cup, '478')).toBeNull();
+    expect(fetchJson.mock.calls).toHaveLength(12);
+    expect(new Set(fetchJson.mock.calls.map(([url]) => url)).size).toBe(12);
+  });
+  it('does not certify entrants or answer a team lookup when any edition month fails', async () => {
+    let fail = true;
+    const store = createDataStore({ cache: new TtlCache(), fetchJson: async url => {
+      const month = new URL(url).searchParams.get('dates')!;
+      if (fail && month === '202608') return { ...board(month), truncated: true };
+      return board(month);
+    } });
+    await expect(store.getEditionTeams(cup)).rejects.toThrow();
+    await expect(store.getTeam(cup, '205')).rejects.toThrow();
+    fail = false;
+    expect(await store.getEditionTeams(cup)).toHaveLength(3);
+  });
+  it('recognizes placeholder slots even with a previously curated team ID, keeping the other side', async () => {
+    const event = structuredClone(events[0]);
+    const slot = event.competitions[0].competitors[1].team;
+    slot.logo = '';
+    slot.displayName = 'Winner semifinal 1';
+    const fetchJson = async (url: string) => ({ leagues: board('').leagues, events: url.includes('dates=202602') ? [event] : [] });
+    const store = createDataStore({ fetchJson, cache: new TtlCache() });
+    expect((await store.getEditionTeams(cup)).map(t => t.id)).toEqual(['205']);
+    event.competitions[0].competitors[0].team.logo = '';
+    event.competitions[0].competitors[0].team.displayName = 'TBD';
+    await expect(createDataStore({ fetchJson, cache: new TtlCache() }).getEditionTeams(cup)).rejects.toThrow();
+    const empty = createDataStore({ cache: new TtlCache(), fetchJson: async () => ({ leagues: board('').leagues, events: [] }) });
+    expect(await empty.getEditionTeams(cup)).toEqual([]);
+  });
+  it('rejects incomplete sides, conflicting IDs and foreign editions before deriving membership', async () => {
+    const event = events[0], home = event.competitions[0].competitors[0];
+    for (const invalid of [
+      { ...event, competitions: [{ competitors: [home] }] },
+      { ...event, competitions: [{ competitors: [home, { ...event.competitions[0].competitors[1], id: '205' }] }] },
+      { ...event, competitions: [{ ...event.competitions[0], id: '987654' }] },
+      { ...event, id: 'unidentified' },
+      { ...event, league: { slug: 'other.cup' } },
+      { ...event, season: { ...event.season, year: 2025 } },
+    ]) {
+      const store = createDataStore({ cache: new TtlCache(), fetchJson: async url => ({
+        leagues: board('').leagues, events: url.includes('dates=202602') ? [invalid] : [],
+      }) });
+      await expect(store.getEditionTeams(cup)).rejects.toThrow();
+    }
+  });
+  it('refuses an edition with more than 2,000 matches across complete monthly pages', async () => {
+    const store = createDataStore({ cache: new TtlCache(), fetchJson: async url => {
+      const month = new URL(url).searchParams.get('dates')!;
+      const inCup = ['202602', '202603', '202604'].includes(month);
+      const events = inCup ? Array.from({ length: 667 }, (_, i) => ({
+        id: String(Number(month) * 1000 + i), date: `2026-${month.slice(4)}-10T19:00Z`,
+        status: { type: { state: 'pre', shortDetail: '', completed: false } },
+        season: { year: 2026, slug: 'regular-season' },
+        competitions: [{ competitors: [
+          { homeAway: 'home', team: { id: '205', displayName: 'Brazil', abbreviation: 'BRA' } },
+          { homeAway: 'away', team: { id: '627', displayName: 'Japan', abbreviation: 'JPN' } },
+        ] }],
+      })) : [];
+      return { leagues: board('').leagues, events };
+    } });
+    await expect(store.getEditionTeams(cup)).rejects.toThrow(/match limit/);
+  });
+  it('rejects an edition larger than the team bound before dropping uncurated clubs', async () => {
+    const events = Array.from({ length: 100 }, (_, i) => {
+      const event = structuredClone(sb.events[0]);
+      event.competitions[0].id = event.id = String(9000 + i);
+      const away = event.competitions[0].competitors[1];
+      away.id = away.team.id = String(900000 + i);
+      away.team.displayName = 'New club ' + i;
+      return event;
+    });
+    const store = createDataStore({ cache: new TtlCache(), fetchJson: async url => ({
+      leagues: board('').leagues, events: url.includes('dates=202606') ? events : [],
+    }) });
+    await expect(store.getEditionTeams(cup)).rejects.toThrow(/team limit/);
+  });
+  it('rejects same-year standings for a different legacy league and unscoped emptiness', async () => {
+    for (const raw of [standingsRaw, { season: { year: 2026 }, children: [] }]) {
+      const store = createDataStore({ cache: new TtlCache(), fetchJson: async () => raw });
+      await expect(store.getEditionTeams(resolveSeason('mls')!)).rejects.toThrow();
+    }
+  });
+  it('rejects an undated legacy table from a different year, even after an ordinary standings read', async () => {
+    const store = createDataStore({ cache: new TtlCache(), fetchJson: async () => standingsRaw });
+    const archive = resolveSeason('world-cup', '2022')!;
+    await store.getStandings(archive);
+    await expect(store.getEditionTeams(archive)).rejects.toThrow();
+  });
+  it('retries an all-uncurated match collection when a public entrant becomes identifiable', async () => {
+    const event = structuredClone(events[0]);
+    const sides = event.competitions[0].competitors;
+    for (const [i, side] of sides.entries()) side.id = side.team.id = String(99000000 + i);
+    const store = createDataStore({ cache: new TtlCache(), fetchJson: async url => ({
+      leagues: board('').leagues, events: url.includes('dates=202602') ? [event] : [],
+    }) });
+    await expect(store.getEditionTeams(cup)).rejects.toThrow();
+    sides[0].id = sides[0].team.id = '205';
+    expect((await store.getEditionTeams(cup)).map(team => team.id)).toEqual(['205']);
+  });
+  it('rejects the same club’s domestic roster on both cup entry points', async () => {
+    const event = structuredClone(lcFixture.events[0]);
+    const side = event.competitions[0].competitors[0];
+    side.id = side.team.id = '227';
+    const cupSeason = { year: 2026, displayName: '2026 Leagues Cup', type: 14115, name: 'Final' };
+    const accepted = { status: 'success', season: cupSeason, team: { id: '227' },
+      athletes: [{ id: '49306', displayName: 'Fernando Tapia' }] };
+    for (const [roster, expectedPlayers] of [
+      [teamRosterRaw, 0],
+      [{ ...teamRosterRaw, league: { slug: lc.competition.espnSlug } }, 0],
+      [{ ...accepted, season: { year: 2026, name: 'Final' } }, 0],
+      [{ ...accepted, season: { ...cupSeason, displayName: '2025 Leagues Cup' } }, 0],
+      [accepted, 1],
+    ] as const) {
+      const store = createDataStore({ cache: new TtlCache(), fetchJson: async url => {
+        if (url.includes('/scoreboard')) return { leagues: [{ slug: lc.competition.espnSlug, season: { year: 2026 } }],
+          events: url.includes('dates=' + event.date.slice(0, 7).replace('-', '')) ? [event] : [] };
+        if (url.endsWith('/roster')) return roster;
+        if (url.includes('/schedule')) return null;
+        return teamProfileRaw;
+      } });
+      expect(await store.getSquad(lc, '227')).toHaveLength(expectedPlayers);
+      expect((await store.getTeam(lc, '227'))?.squad).toHaveLength(expectedPlayers);
+    }
+  });
+  it('retries a roster that exceeded the 100-athlete wire limit, including grouped pages', async () => {
+    const rc = resolveSeason('liga-mx')!;
+    const rows = Array.from({ length: 101 }, (_, i) => ({ id: String(i + 1), displayName: 'Player ' + i }));
+    for (const athletes of [rows, [{ items: rows.slice(0, 60) }, { items: rows.slice(60) }]]) {
+      let roster: unknown = { ...teamRosterRaw, athletes };
+      const store = createDataStore({ cache: new TtlCache(), fetchJson: async url => url.endsWith('/roster') ? roster : teamProfileRaw });
+      expect(await store.getSquad(rc, '227')).toEqual([]);
+      expect((await store.getTeam(rc, '227'))?.squad).toEqual([]);
+      roster = teamRosterRaw;
+      expect(await store.getSquad(rc, '227')).toHaveLength(35);
+      expect((await store.getTeam(rc, '227'))?.squad).toHaveLength(35);
+    }
+  });
+  it('rejects one invalid athlete identity in a complete roster and retries on the next read', async () => {
+    const rc = resolveSeason('liga-mx')!;
+    for (const invalid of [
+      { id: '1'.repeat(33) }, { id: 'unknown' },
+      { id: teamRosterRaw.athletes[1].id }, { displayName: '   ', fullName: ' ' },
+    ]) {
+      let roster = { ...teamRosterRaw, athletes: [{ ...teamRosterRaw.athletes[0], ...invalid }, ...teamRosterRaw.athletes.slice(1)] };
+      const store = createDataStore({ cache: new TtlCache(), fetchJson: async () => roster });
+      expect(await store.getSquad(rc, '227')).toHaveLength(0);
+      roster = teamRosterRaw;
+      expect(await store.getSquad(rc, '227')).toHaveLength(35);
+    }
+  });
+  it('only uses a roster with the selected club, year, phase and complete collection', async () => {
+    const rc = resolveSeason('liga-mx')!;
+    for (const roster of [
+      { ...teamRosterRaw, team: { id: '228' } },
+      { ...teamRosterRaw, season: { year: 2025, name: 'Torneo Apertura' } },
+      { ...teamRosterRaw, season: { year: 2026, name: 'Torneo Clausura' } },
+      { ...teamRosterRaw, truncated: true },
+    ]) {
+      const store = createDataStore({ cache: new TtlCache(), fetchJson: async url => url.endsWith('/roster') ? roster : teamProfileRaw });
+      expect(await store.getSquad(rc, '227')).toEqual([]);
+      expect((await store.getTeam(rc, '227'))?.squad).toEqual([]);
+    }
+  });
 });

@@ -1,23 +1,7 @@
 import { supportsResource, listCompetitions, resolveSeason, type Competition, type CompetitionSeason } from './competitions';
 import { dataStore, type DataStore } from './store';
 import { canonicalTeamId } from './teamIdentity';
-import { StandingsStatsError } from './providers/espn-standings';
-import type { Team } from './types';
 import { isSelectedDataStore, runDataOperation } from './sourceSelection';
-
-/**
- * Every team in a competition season's standings, in table order (repeats
- * included). A table withheld only for a missing stat still names its teams,
- * so membership consumers keep working; any other failure propagates.
- */
-export async function standingTeams(rc: CompetitionSeason, store: DataStore = dataStore): Promise<Team[]> {
-  try {
-    return (await store.getStandings(rc)).flatMap((group) => group.standings.map((standing) => standing.team));
-  } catch (error) {
-    if (error instanceof StandingsStatsError) return error.teams;
-    throw error;
-  }
-}
 
 /** One competition a club appears in, and the page that describes it there. */
 interface TeamMembership {
@@ -49,20 +33,10 @@ export interface IndexedTeam {
 /**
  * The clubs in one competition, alphabetically.
  *
- * Derived from the standings the app already fetches and caches, so this costs
- * nothing extra on a warm cache. Clubs the seed has not curated are dropped:
- * they have no canonical id, so there is no page to send anyone to.
+ * Uncurated teams have no public team URL.
  */
 export async function competitionTeams(rc: CompetitionSeason, store: DataStore = dataStore): Promise<IndexedTeam[]> {
-  let teams: Team[];
-  try {
-    teams = await standingTeams(rc, store);
-  } catch (error) {
-    if (isSelectedDataStore(store)) throw error;
-    // Preserve the ESPN-only directory's best-effort membership policy.
-    return [];
-  }
-
+  const teams = await store.getEditionTeams(rc);
   const byId = new Map<string, IndexedTeam>();
   for (const team of teams) {
     const canonical = canonicalTeamId(team.id);
@@ -97,8 +71,17 @@ export async function allTeams(competitions: Competition[] = listCompetitions())
     .map((competition) => resolveSeason(competition.id))
     .filter((rc): rc is CompetitionSeason => rc !== undefined && supportsResource(rc.season, 'teams'));
 
-  const lists = await runDataOperation(dataStore, source =>
-    Promise.all(seasons.map((rc) => competitionTeams(rc, source))));
+  const lists = await runDataOperation(dataStore, async source => {
+    const results: IndexedTeam[][] = [];
+    const read = (rc: CompetitionSeason) => competitionTeams(rc, source).catch(error => {
+      if (isSelectedDataStore(source)) throw error;
+      return [];
+    });
+    for (let i = 0; i < seasons.length; i += 4) {
+      results.push(...await Promise.all(seasons.slice(i, i + 4).map(read)));
+    }
+    return results;
+  });
 
   const merged = new Map<string, IndexedTeam>();
   for (const list of lists) {

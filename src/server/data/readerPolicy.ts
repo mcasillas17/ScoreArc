@@ -2,14 +2,15 @@ import type { ReaderResource, ReaderResourceName, ReaderResources } from '@/lib/
 import { ReaderFailure } from './readerTransport';
 
 type Scopes = Partial<Record<ReaderResourceName, ReaderResource['scope']>>;
-const derivation: Partial<Record<ReaderResourceName, ReaderResource['derivation']>> = { identity: 'mixed', detail: 'retained', squad: 'current-roster', bracket: 'derived', gameLog: 'derived', participation: 'derived' };
+const derivation: Partial<Record<ReaderResourceName, ReaderResource['derivation']>> = { editionTeams: 'derived', identity: 'mixed', detail: 'retained', squad: 'current-roster', bracket: 'derived', gameLog: 'derived', participation: 'derived' };
 const expiry: Partial<Record<ReaderResourceName, number>> = {
   standings: 20 * 60_000, leaders: 20 * 60_000, squad: 25 * 3_600_000,
   seasonStats: 25 * 3_600_000, career: 32 * 24 * 3_600_000,
 };
 
 /** Re-evaluate clocks even when bytes came from the source-specific cache. */
-export function requireResources(evidence: ReaderResources, scopes: Scopes, required: ReaderResourceName[], now: number): ReaderResources {
+export function requireResources(evidence: ReaderResources, scopes: Scopes, required: ReaderResourceName[], now: number,
+  maxAge: Partial<Record<ReaderResourceName, number>> = {}): ReaderResources {
   const aged: ReaderResources = structuredClone(evidence);
   for (const [name, scope] of Object.entries(scopes) as [ReaderResourceName, ReaderResource['scope']][]) {
     const resource = aged.resources[name];
@@ -17,7 +18,7 @@ export function requireResources(evidence: ReaderResources, scopes: Scopes, requ
     for (const time of [resource.observedAt, resource.finalizedAt]) {
       if (time !== null && (!Number.isFinite(Date.parse(time)) || Date.parse(time) > now)) throw new ReaderFailure('metadata');
     }
-    const ttl = expiry[name];
+    const ttl = maxAge[name] ?? expiry[name];
     if (ttl && (resource.status === 'fresh' || resource.status === 'empty')) {
       if (resource.observedAt === null) throw new ReaderFailure('metadata');
       if (now - Date.parse(resource.observedAt) >= ttl) resource.status = 'stale';

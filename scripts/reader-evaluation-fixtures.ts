@@ -37,6 +37,7 @@ export const OFFLINE_MANIFEST = {
     { ...WORLD, kind: 'playerPopup', playerId: '297287', eventId: '401877007' },
     { ...WORLD, kind: 'teamSchedule', teamId: '202', eventId: '401877007' },
     { ...WORLD, kind: 'leaderLinks' },
+    { ...WORLD, kind: 'getEditionTeams' },
   ],
 };
 
@@ -48,7 +49,7 @@ const indexStandings = { ...standings, children: standings.children.map(group =>
 const syntheticScope = { season: { year: 2026 }, league: { slug: 'fifa.world' } };
 const fixedTime = Date.parse('2026-08-15T12:00:00Z');
 // Only this explicitly synthetic roster uses the preview's Ali Avila/Argentina membership.
-const roster = { ...syntheticScope, athletes: [{ id: '297287', displayName: 'Ali Avila', jersey: '9',
+const roster = { ...syntheticScope, status: 'success', team: { id: '202' }, athletes: [{ id: '297287', displayName: 'Ali Avila', jersey: '9',
   position: { abbreviation: 'F' }, age: 23, citizenship: 'Mexico', headshot: null }] };
 const argentina = { id: '202', displayName: 'Argentina', abbreviation: 'ARG',
   logo: 'https://a.espncdn.com/i/teamlogos/soccer/500/202.png' };
@@ -92,7 +93,7 @@ function providerResponse(url: URL): unknown {
     if (route === 'athletes/297287/overview') return overview;
     if (route === 'athletes/297287/bio') return bio;
     if (route === 'teams/202') return { ...syntheticScope, team: argentina };
-    if (/^teams\/[1-9][0-9]*\/roster$/.test(route)) return route === 'teams/202/roster' ? roster : { ...syntheticScope, athletes: [] };
+    if (/^teams\/[1-9][0-9]*\/roster$/.test(route)) return route === 'teams/202/roster' ? roster : { ...syntheticScope, status: 'success', team: { id: route.split('/')[1] }, athletes: [] };
     if (route === 'teams/202/schedule') return { team: argentina, requestedSeason: { year: 2026 },
       events: url.searchParams.get('fixture') === 'true' ? [] : [scheduleEvent] };
   }
@@ -123,6 +124,11 @@ export async function createOfflineEvaluation() {
         }
         headers.set('X-ScoreArc-Resources', JSON.stringify(evidence));
         if (headers.has('X-ScoreArc-Observed-At')) headers.set('X-ScoreArc-Observed-At', new Date(fixedTime).toISOString());
+      }
+      if (response.ok && url.pathname === '/v1/competitions/world-cup/2026/teams') {
+        const teams = await response.json() as { id: string }[];
+        headers.delete('content-length');
+        return Response.json(teams.filter(team => ['nat-arg', 'nat-fra'].includes(team.id)), { headers });
       }
       if (response.ok && url.pathname === '/v1/competitions/world-cup/2026/standings') {
         const groups = decodeReaderStandings(await response.json()).map(group => ({ ...group,

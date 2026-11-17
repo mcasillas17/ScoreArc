@@ -147,6 +147,7 @@ export const es = {
   'teams.noSearchResult': 'Ningún equipo con ese nombre.',
   'teams.allCompetitions': '← Todas las competiciones',
   'teams.directoryDescription': 'Todos los clubes de todas las competiciones.',
+  'teams.unavailable': 'El directorio de equipos no está disponible por ahora. Inténtalo más tarde.',
   'teams.noSeasonTeams': 'Aún no hay equipos para esta temporada.',
   'teams.searchAll': 'Buscar todos los equipos →',
   'teams.metaTitle': 'Equipos · ScoreArc',

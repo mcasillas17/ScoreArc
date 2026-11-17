@@ -3,7 +3,6 @@ import { competitionPlayerIndex, withPlayerSlugs, withSummaryPlayerSlugs } from 
 import { resolveSeason } from './competitions';
 import { createSelectedDataStore } from './sourceSelection';
 import { ReaderFailure } from './readerTransport';
-import { StandingsStatsError } from './providers/espn-standings';
 import type { DataStore } from './store';
 import type { Group, MatchSummaryData, SquadPlayer, Team } from './types';
 
@@ -19,7 +18,7 @@ function player(id: string, name: string, jersey: number | null = null): SquadPl
 
 function fakeStore(groups: Group[], squads: Record<string, SquadPlayer[]>): DataStore {
   return {
-    getStandings: async () => groups,
+    getEditionTeams: async () => [...new Map(groups.flatMap(g => g.standings.map(({ team }) => [team.id, team] as const))).values()],
     getSquad: async (_rc: unknown, teamId: string) => squads[teamId] ?? [],
   } as unknown as DataStore;
 }
@@ -35,6 +34,20 @@ const groups: Group[] = [
 ];
 
 describe('competitionPlayerIndex', () => {
+  it('links the one verified squad among three knockout entrants without a table', async () => {
+    const edition = resolveSeason('nwsl', '2026')!;
+    const entrants = [team('15364', 'GFC'), team('15365', 'WAS'), team('20907', 'KC')];
+    const source = {
+      getEditionTeams: async () => entrants,
+      getSquad: async (_rc: unknown, id: string) => id === '15364' ? [player('101', 'Cup Player')] : [],
+    } as unknown as DataStore;
+    const index = await competitionPlayerIndex(edition, source);
+    expect(index.directory).toMatchObject({ totalTeams: 3, teamsWithRoster: 1, players: [
+      { slug: 'cup-player', teamId: '15364' },
+    ] });
+    expect(index.bySlug.get('cup-player')?.providerId).toBe('101');
+  });
+
   it('indexes every rostered player by slug and by provider id', async () => {
     const store = fakeStore(groups, {
       '222': [player('297287', 'Alí Ávila')],
@@ -79,22 +92,14 @@ describe('competitionPlayerIndex', () => {
 
   // An index built from zero teams is not knowledge that a player does not
   // exist -- the failure propagates so the route can answer 502, not 404.
-  it('propagates a standings failure', async () => {
+  it('propagates a membership failure', async () => {
     const store = {
-      getStandings: async () => { throw new Error('502'); },
+      getEditionTeams: async () => { throw new Error('502'); },
     } as unknown as DataStore;
     await expect(competitionPlayerIndex(rc, store)).rejects.toThrow();
   });
 
-  // A missing measurement withholds the table, not the competition's clubs:
-  // player pages and links keep working.
-  it('builds from the clubs of a table rejected only for a missing stat', async () => {
-    const store = {
-      getStandings: async () => { throw new StandingsStatsError('invalid points', [team('222', 'QRO')]); },
-      getSquad: async () => [player('297287', 'Alí Ávila')],
-    } as unknown as DataStore;
-    expect((await competitionPlayerIndex(rc, store)).byProvider.get('297287')).toBe('ali-avila');
-  });
+
 });
 
 describe('withPlayerSlugs', () => {
@@ -116,7 +121,7 @@ describe('withPlayerSlugs', () => {
   });
 
   it('returns the input unchanged when the index cannot build', async () => {
-    const broken = { getStandings: async () => { throw new Error('502'); } } as unknown as DataStore;
+    const broken = { getEditionTeams: async () => { throw new Error('502'); } } as unknown as DataStore;
     const leaders: { athleteId: string | null; playerSlug?: string | null }[] = [{ athleteId: '297287' }];
     const out = await withPlayerSlugs(rc, leaders, broken);
     expect(out).toEqual(leaders);
@@ -181,7 +186,7 @@ describe('withSummaryPlayerSlugs', () => {
   });
 
   it('returns the input unchanged when the index cannot build', async () => {
-    const broken = { getStandings: async () => { throw new Error('502'); } } as unknown as DataStore;
+    const broken = { getEditionTeams: async () => { throw new Error('502'); } } as unknown as DataStore;
     const summary: MatchSummaryData = {
       ...emptySummary(),
       scorers: [{ teamId: '222', player: 'Alí Ávila', minute: "10'", penalty: false, shootout: false, ownGoal: false, athleteId: '297287' }],
@@ -247,11 +252,11 @@ describe('player directory', () => {
     expect(onFallback).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['standings', 'squad'])('propagates exhausted %s failures instead of returning an empty directory', async failure => {
+  it.each(['membership', 'squad'])('propagates exhausted %s failures instead of returning an empty directory', async failure => {
     const reader = fakeStore(groups, {});
     reader.getSquad = async () => { throw new ReaderFailure('network'); };
     const fallback = fakeStore(groups, {});
-    if (failure === 'standings') fallback.getStandings = async () => { throw new Error('fallback unavailable'); };
+    if (failure === 'membership') fallback.getEditionTeams = async () => { throw new Error('fallback unavailable'); };
     else fallback.getSquad = async () => { throw new Error('fallback unavailable'); };
     const selected = createSelectedDataStore({ source: 'reader', espn: fallback, reader: () => reader });
     await expect(competitionPlayerIndex(rc, selected)).rejects.toThrow('fallback unavailable');

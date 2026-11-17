@@ -28,6 +28,12 @@ func IsPartialScoreboard(err error) bool {
 	return errors.As(err, &partial)
 }
 
+// StandingResult keeps legacy display rows separate from proof of edition membership.
+type StandingResult struct {
+	Rows            []model.Standing
+	EditionVerified bool
+}
+
 type SummaryResult struct {
 	// LegNote preserves a reconciled bracket ordinal for the match row.
 	LegNote *string
@@ -59,10 +65,10 @@ type Source interface {
 	// RecoverMatch observes fresh provider match fields and detail in one
 	// lookup. Input identities are provider-shaped, not canonical IDs.
 	RecoverMatch(context.Context, config.Competition, config.Season, model.Match) (model.Match, SummaryResult, error)
-	Standings(context.Context, config.Competition, config.Season) ([]model.Standing, error)
+	Standings(context.Context, config.Competition, config.Season) (StandingResult, error)
 	Statistics(context.Context, config.Competition, config.Season) ([]byte, error)
 	Bracket(context.Context, config.Competition, config.Season, bool) ([]model.BracketMatch, error)
-	Roster(context.Context, config.Competition, string) (model.Squad, error)
+	Roster(context.Context, config.Competition, config.Season, string) (model.Squad, error)
 	AthleteBio(context.Context, config.Competition, string) ([]model.TeamHistoryEntry, error)
 	// Plays returns a match's full touch-level stream AND the raw pages that
 	// produced it. The raw bytes are what gets archived: re-serialising our own

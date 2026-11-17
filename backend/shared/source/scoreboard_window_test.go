@@ -84,7 +84,7 @@ func TestMonthlyScoreboardRecordedCalendarBoundary(t *testing.T) {
 	})
 	start := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 	raw, err = src.scoreboardWindow(context.Background(), config.Competition{ESPNSlug: "mex.1"},
-		config.Season{ID: "2026-clausura"}, start, start.AddDate(0, 0, 1))
+		config.Season{ID: "2026-clausura"}, start, start.AddDate(0, 0, 1), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestMonthlyScoreboardGuardIncludesFollowingProviderMonth(t *testing.T) {
 	})
 	start := time.Date(2026, 1, 31, 0, 0, 0, 0, time.UTC)
 	raw, err := src.scoreboardWindow(context.Background(), config.Competition{ESPNSlug: "esp.1"},
-		config.Season{ID: "2026"}, start, start.AddDate(0, 0, 1))
+		config.Season{ID: "2026"}, start, start.AddDate(0, 0, 1), false)
 	if err != nil {
 		t.Fatal(err)
 	}

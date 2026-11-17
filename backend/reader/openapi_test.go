@@ -275,3 +275,16 @@ const (
 	httpStatusTooManyRequests     = 429
 	httpStatusServiceUnavailable  = 503
 )
+
+func TestOpenAPIEditionEligibilityResponses(t *testing.T) {
+	doc := loadOpenAPI(t)
+	for path, item := range doc.Paths.Map() {
+		if path == "/healthz" {
+			continue
+		}
+		r := item.Get.Responses.Status(404)
+		if r == nil || r.Value.Headers["X-ScoreArc-Resources"] == nil {
+			t.Errorf("missing capability 404 evidence on %s", path)
+		}
+	}
+}

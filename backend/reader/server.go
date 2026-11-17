@@ -47,6 +47,7 @@ func visibleEntityScopes(ctx context.Context) []string {
 type matchReader interface {
 	Identities(context.Context, string, string, identityQuery) ([]IdentityReference, error)
 	Resources(context.Context, resourceScope) (resourceSnapshot, error)
+	EditionTeams(context.Context, string, string, bool) ([]espn.Team, error)
 	Standings(context.Context, string, string, string) ([]Group, error)
 	TopScorers(context.Context, string, string) ([]espn.TopScorer, error)
 	Leaders(context.Context, string, string, leaderQuery) ([]espn.StatLeader, error)
@@ -102,6 +103,7 @@ func (a *App) router() http.Handler {
 		router.Get("/competitions/{comp}/{season}/bracket", a.handleBracket)
 		router.Get("/competitions/{comp}/{season}/top-scorers", a.handleTopScorers)
 		router.Get("/competitions/{comp}/{season}/leaders", a.handleLeaders)
+		router.Get("/competitions/{comp}/{season}/teams", a.handleEditionTeams)
 		router.Get("/competitions/{comp}/{season}/teams/{teamId}", a.handleTeam)
 		router.Get("/competitions/{comp}/{season}/teams/{teamId}/squad", a.handleSquad)
 		router.Get("/competitions/{comp}/{season}/players/{playerId}", a.handlePlayer)

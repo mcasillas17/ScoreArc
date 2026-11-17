@@ -1,3 +1,5 @@
+import { renderToStaticMarkup } from 'react-dom/server';
+vi.mock('@/components/SiteFooter', () => ({ default: () => null }));
 import { describe, expect, it, vi } from 'vitest';
 import type { DataStore } from '@/server/data/store';
 import { createSelectedDataStore } from '@/server/data/sourceSelection';
@@ -26,12 +28,12 @@ vi.mock('next/navigation', () => ({
 function emptyStore(): DataStore {
   return {
     getMatches: async () => [], getFixtures: async () => [], getLiveWindow: async () => [], getUpcoming: async () => [],
-    getStandings: async () => [], getBracket: async () => [], getLeaders: async () => ({ scorers: [], assists: [] }),
+    getStandings: async () => [], getEditionTeams: async () => [], getBracket: async () => [], getLeaders: async () => ({ scorers: [], assists: [] }),
     getNews: async () => [], getTeam: async () => null, getSquad: async () => [], getPlayer: async () => null,
     getMatchSummary: async () => { throw new Error('unused summary'); },
   };
 }
-type CollectionMethod = 'getMatches' | 'getUpcoming' | 'getLiveWindow' | 'getStandings' | 'getLeaders' | 'getBracket';
+type CollectionMethod = 'getMatches' | 'getUpcoming' | 'getLiveWindow' | 'getStandings' | 'getEditionTeams' | 'getLeaders' | 'getBracket';
 function scenario(method?: CollectionMethod, readerMode = true) {
   const calls: string[] = [];
   const reader = emptyStore();
@@ -71,8 +73,7 @@ const pages: { name: string; method: CollectionMethod; read: () => Promise<unkno
   { name: 'derived phase tables', method: 'getStandings', read: () => Workspace(season('leagues-cup')) },
   { name: 'home matches', method: 'getLiveWindow', read: () => readHomeSports() },
   { name: 'home leaders', method: 'getLeaders', read: () => readHomeSports() },
-  { name: 'competition directory', method: 'getStandings', read: () => CompetitionTeamsPage(season('world-cup')) },
-  { name: 'all-team directory', method: 'getStandings', read: () => TeamsPage({ params: { locale: 'en' } }) },
+  { name: 'all-team directory', method: 'getEditionTeams', read: () => TeamsPage({ params: { locale: 'en' } }) },
 ];
 
 describe('enabled reader unavailability reaches website consumers', () => {
@@ -105,18 +106,24 @@ describe('enabled reader unavailability reaches website consumers', () => {
     expect(rendered).not.toContain('reader-only');
     expect(espn.getLiveWindow).toHaveBeenCalledTimes(ongoingCompetitions().length);
   });
-  it('repeats every membership in the merged team directory after one table fails', async () => {
+  it('repeats every membership in the merged team directory after one edition read fails', async () => {
     const reader = emptyStore(); const espn = emptyStore();
-    reader.getStandings = async rc => {
+    reader.getEditionTeams = async rc => {
       if (rc.competition.id === listCompetitions()[1].id) throw new ReaderFailure('network');
-      return [group('Reader only')];
+      return [group('Reader only').standings[0].team];
     };
-    espn.getStandings = vi.fn(async () => [group('ESPN only')]);
+    espn.getEditionTeams = vi.fn(async () => [group('ESPN only').standings[0].team]);
     selected.store = createSelectedDataStore({ source: 'reader', espn, reader: () => reader });
     const rendered = JSON.stringify(await TeamsPage({ params: { locale: 'en' } }));
     expect(rendered).toContain('ESPN only');
     expect(rendered).not.toContain('Reader only');
-    expect(espn.getStandings).toHaveBeenCalledTimes(listCompetitions().length);
+    expect(espn.getEditionTeams).toHaveBeenCalledTimes(listCompetitions().length);
+  });
+  it('shows a team directory outage separately from a verified empty edition', async () => {
+    scenario('getEditionTeams');
+    expect(renderToStaticMarkup(await CompetitionTeamsPage(season('world-cup')))).toContain('team directory is unavailable');
+    scenario();
+    expect(renderToStaticMarkup(await CompetitionTeamsPage(season('world-cup')))).toContain('No teams listed');
   });
   it.each(pages)('$name does not render empty data after both sources fail', async ({ method, read }) => {
     const test = scenario(method);
@@ -145,11 +152,10 @@ describe('enabled reader unavailability reaches website consumers', () => {
 
   it.each([
     { name: 'homepage', read: () => readHomeSports(), cold: ongoingCompetitions().length * 4, warm: ongoingCompetitions().length * 2 },
-    { name: 'merged team directory', read: () => TeamsPage({ params: { locale: 'en' } }), cold: listCompetitions().length + 3, warm: 2 },
+    { name: 'merged team directory', read: () => TeamsPage({ params: { locale: 'en' } }), cold: listCompetitions().length, warm: 0 },
   ])('keeps cold and warm $name reads inside the shared transport budget', async ({ read, cold, warm }) => {
     // Synthetic current-scope responses reuse shared contract vectors. This
-    // measures full adapter/transport work, including LC membership inputs,
-    // rather than treating a DataStore method as one upstream call.
+    // measures full adapter/transport work, including all competition reads.
     const now = Date.parse('2026-11-01T09:00:00Z');
     const cache = new TtlCache<ReaderResponse>(() => now);
     const budgets: RequestBudget[] = [];
@@ -162,7 +168,7 @@ describe('enabled reader unavailability reaches website consumers', () => {
         resources.resources[name] = {
           status: identity ? 'unavailable' : body.length ? 'fresh' : 'empty',
           availability: identity ? 'partial' : body.length ? 'complete' : 'empty',
-          source: identity ? 'mixed' : 'espn', derivation: identity ? 'mixed' : 'direct', scope,
+          source: identity ? 'mixed' : 'espn', derivation: identity ? 'mixed' : name === 'editionTeams' ? 'derived' : 'direct', scope,
           observedAt: identity ? null : new Date(now).toISOString(), finalizedAt: null,
         };
       }
@@ -177,6 +183,7 @@ describe('enabled reader unavailability reaches website consumers', () => {
       active--;
       const url = new URL(String(input));
       const [, , , comp, seasonId, endpoint] = url.pathname.split('/');
+      if (endpoint === 'teams') return wire([{ id: 'mex-america', name: 'América', abbr: 'AME', crestUrl: null }], { editionTeams: 'competition-season' });
       if (endpoint === 'standings') return wire(comp === 'mls' ? derived.membership.mls.groups : derived.membership.ligaMx.groups,
         { standings: 'competition-season', identity: 'competition-season' });
       if (endpoint === 'leaders') return wire(vectors.leaders.frontend.scorers.map(row => ({ ...row,

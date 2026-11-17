@@ -47,13 +47,14 @@ func TestStandingsSelectedPhase(t *testing.T) {
 		{"available phases alone", strings.ReplaceAll(doc, `"seasonType":1`, `"seasonType":null`), false},
 		{"different group phase", strings.Replace(doc, `"seasonType":1`, `"seasonType":3`, 1), false},
 		{"conflicting phase index", strings.Replace(doc, `"id":"3"`, `"id":"1"`, 1), false},
+		{"duplicate year index", strings.Replace(doc, `"seasons":[`, `"seasons":[{"year":2026,"types":[]},`, 1), false},
 		{"contradictory explicit phases", strings.Replace(doc, `"season":{"year":2026}`, `"season":{"year":2026,"name":"Torneo Clausura","type":{"name":"Torneo Apertura"}}`, 1), false},
 		{"unresolved selected type", strings.Replace(strings.Replace(doc, `"season":{"year":2026}`, `"season":{"year":2026,"name":"Torneo Apertura"}`, 1), `"seasons":`, `"ignored":`, 1), false},
 		{"different league", strings.Replace(doc, "s:600~l:23541", "s:600~l:606", 1), false},
 		{"modern standings year", strings.ReplaceAll(doc, "2026", "2027"), false},
 	} {
-		err := validateEditionResource([]byte(tc.body), c, s, 2026, "standings")
-		if (err == nil) != tc.accepted {
+		verified, err := standingsEdition([]byte(tc.body), c, s, 2026)
+		if (err == nil && verified) != tc.accepted {
 			t.Errorf("%s: %v", tc.name, err)
 		}
 	}

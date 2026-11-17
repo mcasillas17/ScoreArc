@@ -5,7 +5,7 @@ import { loadStandingsForm } from '../standingsForm';
 import { ReaderFailure } from '../readerTransport';
 import { canonicalTeamId } from '../teamIdentity';
 
-export const METHODS = ['getMatches', 'getFixtures', 'getLiveWindow', 'getUpcoming', 'getStandings', 'getBracket', 'getMatchSummary', 'getLeaders', 'getTeam', 'getSquad', 'getPlayer'] as const;
+export const METHODS = ['getMatches', 'getFixtures', 'getLiveWindow', 'getUpcoming', 'getStandings', 'getEditionTeams', 'getBracket', 'getMatchSummary', 'getLeaders', 'getTeam', 'getSquad', 'getPlayer'] as const;
 export const SCENARIOS = ['listPopup', 'playerPopup', 'teamSchedule', 'leaderLinks', 'formPopup'] as const;
 export type SampleKind = typeof METHODS[number] | typeof SCENARIOS[number];
 export interface Sample {
@@ -15,10 +15,10 @@ export interface Sample {
 export interface ScenarioResult { value: unknown; issues: ('target_missing' | 'broken_link' | 'partial' | 'unsupported_scope')[] }
 
 async function boundedIndex(rc: CompetitionSeason, store: DataStore) {
-  const groups = await store.getStandings(rc);
-  if (new Set(groups.flatMap(group => group.standings.map(row => row.team.id))).size > 64) throw new ReaderFailure('budget');
+  const teams = await store.getEditionTeams(rc);
+  if (teams.length > 64) throw new ReaderFailure('budget');
   const { competitionPlayerIndex } = await import('../playerIndex');
-  return competitionPlayerIndex(rc, { ...store, getStandings: async () => groups });
+  return competitionPlayerIndex(rc, { ...store, getEditionTeams: async () => teams });
 }
 
 export async function runScenario(store: DataStore, sample: Sample, rc: CompetitionSeason, signal: AbortSignal, now: number, source: 'reader' | 'espn'): Promise<ScenarioResult> {
@@ -37,6 +37,7 @@ export async function runScenario(store: DataStore, sample: Sample, rc: Competit
     case 'getFixtures': return result(scoped(await store.getFixtures(rc, sample.range!, signal)));
     case 'getLiveWindow': return result(scoped(await store.getLiveWindow(rc)));
     case 'getUpcoming': return result(scoped(await store.getUpcoming(rc, sample.limit ?? 12, signal)));
+    case 'getEditionTeams': return result(await store.getEditionTeams(rc));
     case 'getStandings': return result(await store.getStandings(rc));
     case 'getBracket': return result(await store.getBracket(rc));
     case 'getMatchSummary': return result(await store.getMatchSummary(rc, sample.eventId!, sample.homeId!, sample.awayId!));

@@ -281,3 +281,11 @@ func TestUEFANationsLeaguePlayoffsDoNotRequireTitleBracketConfirmation(t *testin
 		t.Fatalf("required=%v", required)
 	}
 }
+
+func TestScoreboardMarksEditionMembershipPlaceholder(t *testing.T) {
+	raw := []byte(`{"events":[{"id":"1","date":"2026-01-01T00:00Z","status":{"type":{"state":"pre","completed":false,"name":"STATUS_SCHEDULED"}},"competitions":[{"competitors":[{"homeAway":"home","team":{"id":"227","displayName":"Semifinal Winner"}},{"homeAway":"away","team":{"id":"228","displayName":"Real Club"}}]}]}]}`)
+	m, err := MapScoreboard(raw)
+	if err != nil || len(m) != 1 || !m[0].HomePlaceholder || m[0].AwayPlaceholder {
+		t.Fatalf("placeholder sides: %+v, %v", m, err)
+	}
+}

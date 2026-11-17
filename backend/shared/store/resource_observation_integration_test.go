@@ -265,3 +265,29 @@ func TestObservationFailuresHideDependencyDetailsAndKeepRollback(t *testing.T) {
 		t.Fatalf("lost cancellation classification: %v", err)
 	}
 }
+
+func TestEditionMembershipStandingsProofSurvivesOnlyTheSameAcceptedObservation(t *testing.T) {
+	st, pool := newSeededStore(t)
+	ctx := context.Background()
+	if err := st.ReplaceStandings(ctx, testCompetition, testSeason, testSource, standingsFor(6, 3), snapshotTeamIDs, true); err != nil {
+		t.Fatal(err)
+	}
+	first := resourceClock(t, pool, testSeason, testSource, "standings", "", 2)
+	if stamp := resourceClock(t, pool, testSeason, EditionVerifiedSource, "standings", "", 2); !stamp.Equal(first) {
+		t.Fatalf("edition and ordinary clocks differ: %s/%s", stamp, first)
+	}
+	if err := st.RecordResourceObservation(ctx, testCompetition, testSeason, testSource, "standings", "", 2); err != nil {
+		t.Fatal(err)
+	}
+	legacy := resourceClock(t, pool, testSeason, testSource, "standings", "", 2)
+	if !legacy.After(first) || !resourceClock(t, pool, testSeason, EditionVerifiedSource, "standings", "", 2).Equal(first) {
+		t.Fatal("a renewal without edition proof inherited a verified clock")
+	}
+	if err := st.RecordResourceObservation(ctx, testCompetition, testSeason, testSource, "standings", "", 2, true); err != nil {
+		t.Fatal(err)
+	}
+	renewed := resourceClock(t, pool, testSeason, testSource, "standings", "", 2)
+	if !renewed.After(legacy) || !resourceClock(t, pool, testSeason, EditionVerifiedSource, "standings", "", 2).Equal(renewed) {
+		t.Fatal("validated unchanged facts did not renew their edition proof")
+	}
+}

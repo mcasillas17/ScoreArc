@@ -56,6 +56,10 @@
    "reader": "/v1/competitions/{comp}/news",
    "gaps": ["T16.6-news"]
   },
+  "getEditionTeams": {
+   "reader": "/v1/competitions/{comp}/{season}/teams",
+   "gaps": []
+  },
   "getTeam": {
    "reader": "/v1/competitions/{comp}/{season}/teams/{teamId}",
    "gaps": []
@@ -5613,6 +5617,7 @@
     "identity",
     "leaders"
    ],
+   "/v1/competitions/{comp}/{season}/teams": ["editionTeams"],
    "/v1/competitions/{comp}/{season}/teams/{teamId}": [
     "detail",
     "identity",
