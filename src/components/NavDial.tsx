@@ -97,6 +97,7 @@ export default function NavDial({
   hint,
 }: NavDialProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const focusedCrest = useRef<HTMLAnchorElement | null>(null);
   // `angle` is the pointer's bearing from the dial's centre and `turned` the
   // degrees it has swept since the press; `trail` is the last moments of that,
   // for the speed it is let go at.
@@ -147,6 +148,15 @@ export default function NavDial({
     latest.current = { focus, onFocusChange, n };
     shown.current = focus;
   });
+
+  // Changing the category or team search can remove the focused crest.
+  useEffect(() => {
+    if (!focusedCrest.current || focusedCrest.current.isConnected || document.activeElement !== document.body) return;
+    focusedCrest.current = null;
+    const next = ref.current?.querySelector<HTMLElement>('[data-centre] a')
+      ?? ref.current?.closest('nav, [role="dialog"]')?.querySelector<HTMLElement>('.sn-sec[data-selected]');
+    next?.focus();
+  }, [items]);
 
   // Until the reader has turned a dial once, it rocks on arrival to show that
   // it turns. Set on the element, not in state: the rail is server-rendered
@@ -343,7 +353,11 @@ export default function NavDial({
               // Tabbing turns the dial to the crest. Not while a pointer is
               // down: turning it under a press would move the crest out from
               // under the click that is about to land on it.
-              onFocus={() => {
+              onBlur={e => {
+                if (e.relatedTarget || e.currentTarget.isConnected) focusedCrest.current = null;
+              }}
+              onFocus={e => {
+                focusedCrest.current = e.currentTarget;
                 if (!drag.current) onFocusChange(i);
               }}
               onClick={() => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { viewHref } from './ViewLinks';
+import { renderToStaticMarkup } from 'react-dom/server';
+import ViewLinks from './ViewLinks';
 import {
   COMPETITIONS, hasBothCategories, inView, listCompetitions, parseView, viewQuery,
   type Competition,
@@ -31,12 +32,22 @@ describe('category views', () => {
   });
 
   it('builds shareable links that keep unrelated parameters', () => {
-    expect(viewHref('en', '/', 'all')).toBe('/en');
-    expect(viewHref('es', '/', 'women')).toBe('/es?view=women');
-    expect(viewHref('en', '/teams', 'men', { q: 'america', view: 'women' })).toBe('/en/teams?q=america&view=men');
-    expect(viewHref('en', '/news', 'all', { view: 'women', q: 'x' })).toBe('/en/news?q=x');
+    const html = renderToStaticMarkup(<ViewLinks locale="en" path="/teams" view="women" params={{ q: 'América', view: 'women' }} />);
+    expect(html).toContain('href="/en/teams?q=Am%C3%A9rica"');
+    expect(html).toContain('href="/en/teams?q=Am%C3%A9rica&amp;view=men"');
+    expect(html).toMatch(/<a [^>]*aria-current="page"[^>]*>Women<\/a>/);
     expect(viewQuery('all')).toBe('');
     expect(viewQuery('women')).toBe('?view=women');
+  });
+
+  it('identifies the category on a detail page while linking all three choices to the matchday', () => {
+    const html = renderToStaticMarkup(<ViewLinks locale="es" path="/" view="women" matchday />);
+    expect(html).toContain('aria-label="Jornada"');
+    expect(html).toMatch(/<a [^>]*aria-current="true"[^>]*>Femenil<\/a>/);
+    expect(html).not.toContain('aria-current="page"');
+    expect(html).toContain('href="/es"');
+    expect(html).toContain('href="/es?view=women"');
+    expect(html).toContain('href="/es?view=men"');
   });
 
   it('the nav stays unnarrowed while the registry holds one category', () => {

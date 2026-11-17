@@ -1,13 +1,16 @@
 'use client';
 
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import { replacePathLocale } from '@/i18n/pathnames';
 import type { IndexedTeam } from '@/server/data/teamIndex';
+import { useTeamFollows } from '@/lib/teamFollows';
 import TeamBadge from './TeamBadge';
 import CompetitionMark from './CompetitionMark';
-import type { TeamStyle } from '@/server/data/competitions';
+import { FollowTeamToggle, TeamFollowsNotice } from './FollowTeamButton';
+import ViewLinks, { type SearchParams } from './ViewLinks';
+import type { TeamStyle, View } from '@/server/data/competitions';
 
 /**
  * Fold accents so "america" finds "América".
@@ -39,14 +42,37 @@ export interface DirectoryCompetition {
 export default function TeamSearch({
   teams,
   competitions,
+  view = 'all',
+  params = {},
 }: {
   teams: IndexedTeam[];
   competitions: DirectoryCompetition[];
+  view?: View;
+  params?: SearchParams;
 }) {
   const locale = useLocale();
   const t = useTranslations();
-  const [query, setQuery] = useState('');
+  const initialQuery = (Array.isArray(params.q) ? params.q[0] : params.q) ?? '';
+  const [query, setQuery] = useState(initialQuery);
   const [compId, setCompId] = useState<string | null>(null);
+  const { teams: follows, notice } = useTeamFollows();
+  const searching = Boolean(query.trim());
+
+  useEffect(() => {
+    // Back can restore a cached page whose server props predate the last keystroke.
+    const restore = () => setQuery(new URLSearchParams(window.location.search).get('q') ?? '');
+    restore();
+    window.addEventListener('popstate', restore);
+    return () => window.removeEventListener('popstate', restore);
+  }, [initialQuery]);
+
+  function updateQuery(value: string) {
+    setQuery(value);
+    const url = new URL(window.location.href);
+    if (value) url.searchParams.set('q', value);
+    else url.searchParams.delete('q');
+    window.history.replaceState(null, '', url);
+  }
 
   const folded = useMemo(
     () => teams.map((team) => ({ team, haystack: `${fold(team.name)} ${fold(team.abbr)}` })),
@@ -96,13 +122,16 @@ export default function TeamSearch({
   );
 
   const selected = competitions.find((c) => c.id === compId) ?? null;
+  if (compId !== null && !selected) setCompId(null);
   const shown = new Set(groups.flatMap((g) => g.tiles.map((tile) => tile.team.id))).size;
   const total = compId
     ? teams.filter((tm) => tm.memberships.some((m) => m.competitionId === compId)).length
     : teams.length;
+  const letters = new Set<string>();
 
   return (
     <div className="ts">
+      <ViewLinks locale={locale} path="/teams" view={view} params={{ ...params, q: query || undefined }} />
       {/* The same roundels as the nav dial, on an arc: the selected one is
           ringed in its competition's colour and named in the hollow below. */}
       <div className="ts-arc" style={{ '--n': competitions.length + 1 } as CSSProperties}>
@@ -152,7 +181,7 @@ export default function TeamSearch({
           type="search"
           className="ts-input"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => updateQuery(event.target.value)}
           autoComplete="off"
           placeholder={t('teams.search')}
           aria-describedby="ts-count"
@@ -162,6 +191,7 @@ export default function TeamSearch({
       <p className="ts-count" id="ts-count" aria-live="polite">
         {shown === total ? t('teams.count', total) : t('teams.filteredCount', shown, total)}
       </p>
+      {searching && <TeamFollowsNotice notice={notice} />}
 
       {groups.length === 0 ? (
         <p className="ts-empty">
@@ -176,19 +206,35 @@ export default function TeamSearch({
                 {c.name}
               </h2>
             )}
-            <ul className="tsp-grid">
-              {tiles.map(({ team, pathname }) => (
-                <li key={team.id}>
-                  <Link
-                    href={replacePathLocale(pathname, locale)}
-                    className="tsp-card"
-                    aria-label={shared.has(team.name) ? `${team.name}, ${c.name}` : undefined}
-                  >
-                    <TeamBadge team={team} size={34} style={c.teamStyle} />
-                    <span className="tsp-card-name">{team.name}</span>
-                  </Link>
-                </li>
-              ))}
+            <ul className={searching ? 'tsp-grid ts-search-grid' : 'tsp-grid'}>
+              {tiles.map(({ team, pathname }) => {
+                const initial = fold(team.name).charAt(0).toUpperCase();
+                const letter = initial && !letters.has(initial) ? initial : undefined;
+                letters.add(initial);
+                const label = shared.has(team.name) ? `${team.name}, ${c.name}` : team.name;
+                return (
+                  <li key={team.id} className={searching ? 'ts-result' : undefined}>
+                    <Link
+                      id={letter && `ts-${letter}`}
+                      data-team-letter={letter}
+                      href={replacePathLocale(pathname, locale)}
+                      prefetch={false}
+                      className="tsp-card"
+                      aria-label={label}
+                    >
+                      <TeamBadge team={team} size={34} style={c.teamStyle} />
+                      <span className="tsp-card-name">{team.name}</span>
+                    </Link>
+                    {searching && (
+                      <FollowTeamToggle
+                        team={{ teamId: team.id, name: team.name, competitionId: c.id }}
+                        label={label}
+                        following={follows.some(entry => entry.teamId === team.id)}
+                      />
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </section>
         ))

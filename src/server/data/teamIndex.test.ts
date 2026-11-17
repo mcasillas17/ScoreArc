@@ -57,6 +57,13 @@ describe('competitionTeams', () => {
 describe('allTeams', () => {
   beforeEach(() => vi.restoreAllMocks());
 
+  it.each(['women', 'men'] as const)('reads only %s memberships in a narrowed directory', async view => {
+    const read = vi.spyOn(dataStore, 'getEditionTeams').mockResolvedValue([]);
+    await allTeams(view);
+    expect(read.mock.calls.length).toBeGreaterThan(0);
+    expect(read.mock.calls.filter(([rc]) => rc.competition.category !== view)).toHaveLength(0);
+  });
+
   it('limits simultaneous edition reads across the current registry', async () => {
     let active = 0;
     let peak = 0;

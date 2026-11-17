@@ -1,4 +1,4 @@
-import { supportsResource, listCompetitions, resolveSeason, type Competition, type CompetitionSeason } from './competitions';
+import { inView, supportsResource, listCompetitions, type View, type CompetitionSeason } from './competitions';
 import { dataStore, type DataStore } from './store';
 import { canonicalTeamId } from './teamIdentity';
 import { isSelectedDataStore, runDataOperation } from './sourceSelection';
@@ -66,10 +66,11 @@ export async function competitionTeams(rc: CompetitionSeason, store: DataStore =
  * Competitions are fetched in parallel. In reader mode the whole membership
  * collection falls back together; ESPN-only mode keeps its best-effort index.
  */
-export async function allTeams(competitions: Competition[] = listCompetitions()): Promise<IndexedTeam[]> {
-  const seasons = competitions
-    .map((competition) => resolveSeason(competition.id))
-    .filter((rc): rc is CompetitionSeason => rc !== undefined && supportsResource(rc.season, 'teams'));
+export async function allTeams(view: View = 'all'): Promise<IndexedTeam[]> {
+  const seasons = listCompetitions()
+    .filter(competition => inView(competition, view))
+    .map(competition => ({ competition, season: competition.seasons[competition.currentSeasonId] }))
+    .filter(rc => supportsResource(rc.season, 'teams'));
 
   const lists = await runDataOperation(dataStore, async source => {
     const results: IndexedTeam[][] = [];

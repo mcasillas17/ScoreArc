@@ -5,18 +5,20 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { listCompetitions } from '@/server/data/competitions';
 import SiteNav from './SiteNav';
+import SiteFooter from './SiteFooter';
 
-const path = vi.hoisted(() => ({ current: '/es' }));
+const path = vi.hoisted(() => ({ current: '/es', search: '' }));
 
 vi.mock('next/navigation', () => ({
   usePathname: () => path.current,
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(path.search),
   useRouter: () => ({ push: vi.fn() }),
 }));
 
 vi.mock('@/lib/telemetry/client', () => ({ trackEvent: vi.fn() }));
 
-function renderNav(pathname: string) {
+function renderNav(pathname: string, search = '') {
+  path.search = search;
   path.current = pathname;
   return render(
     <I18nProvider locale="es">
@@ -69,6 +71,89 @@ describe('SiteNav interaction', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(centre.getAttribute('aria-expanded')).toBe('false');
     expect(document.activeElement).toBe(centre);
+  });
+
+  it('links a competition reader directly to the All matchday from its category selector', () => {
+    path.current = '/es/c/liga-mx-femenil/2026-apertura/matches';
+    render(<I18nProvider locale="es"><SiteFooter /></I18nProvider>);
+    const links = within(screen.getByRole('contentinfo')).getAllByRole('link');
+    expect(links.map(a => a.getAttribute('href'))).toEqual(['/es', '/es?view=women', '/es?view=men']);
+    expect(links[1].getAttribute('aria-current')).toBe('true');
+  });
+
+  it('carries the category through the brand and all collection links, including the current page', () => {
+    const { container } = renderNav('/es/teams', 'view=women');
+    const rail = container.querySelector('.sn')!;
+    expect(rail.querySelector('.sn-brand')?.getAttribute('href')).toBe('/es?view=women');
+    expect(Array.from(rail.querySelectorAll('.sn-sec[href]'), a => a.getAttribute('href'))).toEqual([
+      '/es?view=women', '/es/teams?view=women', '/es/news?view=women',
+    ]);
+    expect(within(rail as HTMLElement).getByRole('link', { name: 'Explorar competiciones' }).getAttribute('href')).toBe('/es/competitions?view=women');
+    expect(rail.querySelector('.sn-sec[aria-current="page"]')?.textContent).toBe('Equipos');
+  });
+
+  it('uses the filtered news list for the first keyboard target and closes a wheel on category-only Back', () => {
+    const rendered = renderNav('/es/news', 'view=women');
+    const centre = screen.getByRole('button', { name: 'Abrir navegación' });
+    fireEvent.click(centre);
+    const crests = Array.from(screen.getByRole('dialog').querySelectorAll('.sn-crest'));
+    expect(crests.map(a => a.getAttribute('href'))).toEqual(['/es/c/wsl/2026-27/news', '/es/c/nwsl/2026/news']);
+    expect(document.activeElement).toBe(crests[0]);
+    path.search = 'view=men';
+    rendered.rerender(<I18nProvider locale="es"><SiteNav /></I18nProvider>);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(centre);
+  });
+
+  it('switches from News to the league crests in place and offers a separate directory destination', () => {
+    renderNav('/es/news', 'view=women');
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir navegación' }));
+    const wheel = screen.getByRole('dialog');
+    fireEvent.click(within(wheel).getByRole('button', { name: 'Ligas' }));
+    expect(within(wheel).getByRole('link', { name: 'Explorar competiciones' }).getAttribute('href')).toBe('/es/competitions?view=women');
+    expect(Array.from(wheel.querySelectorAll('.sn-crest'), a => a.getAttribute('href'))).toEqual([
+      '/es/c/wsl/2026-27', '/es/c/nwsl/2026', '/es/c/liga-mx-femenil/2026-apertura',
+    ]);
+  });
+
+  it('moves desktop keyboard focus to an eligible crest if the focused competition disappears', () => {
+    const rendered = renderNav('/es');
+    const rail = rendered.container.querySelector('.sn')!;
+    const crest = rail.querySelector<HTMLElement>('a[href="/es/c/liga-mx/2026-apertura"]')!;
+    act(() => crest.focus());
+    path.search = 'view=women';
+    rendered.rerender(<I18nProvider locale="es"><SiteNav /></I18nProvider>);
+    expect(document.activeElement).toBe(rail.querySelector('[data-centre] a'));
+    expect(document.activeElement?.getAttribute('href')).toContain('/nwsl/');
+  });
+
+  it('updates the Teams dial as search results arrive and disappear in a scoped directory', async () => {
+    const content = document.createElement('main');
+    content.id = 'app-content';
+    document.body.appendChild(content);
+    const rendered = renderNav('/es/teams', 'view=women');
+    try {
+      await act(async () => { content.innerHTML = '<div class="ts"><a data-team-letter="C" id="ts-C">City</a><a data-team-letter="A" id="ts-A">América</a></div>'; });
+      const rail = rendered.container.querySelector('.sn-dial')!;
+      fireEvent.pointerEnter(rendered.container.querySelector('.sn')!);
+      expect(Array.from(rail.querySelectorAll('a'), a => a.getAttribute('href'))).toEqual(['#ts-A', '#ts-C']);
+      await act(async () => { content.querySelector('.ts')!.replaceChildren(); });
+      expect(rail.querySelectorAll('a')).toHaveLength(0);
+    } finally { content.remove(); }
+  });
+
+  it('hands keyboard focus to the chosen team when the letter wheel closes', () => {
+    const content = document.createElement('main');
+    content.id = 'app-content';
+    content.innerHTML = '<div class="ts"><a href="/team/gotham" id="ts-G" data-team-letter="G">Gotham</a></div>';
+    document.body.appendChild(content);
+    try {
+      renderNav('/es/teams', 'view=women');
+      fireEvent.click(screen.getByRole('button', { name: 'Abrir navegación' }));
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('link', { name: 'G' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(document.activeElement).toBe(content.querySelector('#ts-G'));
+    } finally { content.remove(); }
   });
 
   it('closes the wheel from the backdrop', () => {

@@ -5,7 +5,7 @@ import type { Metadata, ResolvingMetadata } from 'next';
 import { notFound } from 'next/navigation';
 import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
-import { inView, ongoingCompetitions, parseView, resolveSeason, viewQuery } from '@/server/data/competitions';
+import { inView, ongoingCompetitions, parseView, resolveSeason } from '@/server/data/competitions';
 import { loadDigestSports } from '@/server/data/homeDigest';
 import { collectDatedStories } from '@/server/data/newsFeed';
 import CompetitionMark from '@/components/CompetitionMark';
@@ -15,7 +15,7 @@ import DigestNews from '@/components/DigestNews';
 import TrackedLink from '@/components/TrackedLink';
 import SiteFooter from '@/components/SiteFooter';
 import YourTeams from '@/components/YourTeams';
-import ViewLinks, { type SearchParams } from '@/components/ViewLinks';
+import ViewLinks, { viewHref, type SearchParams } from '@/components/ViewLinks';
 
 export const dynamic = 'force-dynamic';
 type PageParams = { locale: string } | Promise<{ locale: string }>;
@@ -41,7 +41,6 @@ export default async function Home({ params, searchParams }: HomeProps) {
   // The category narrows the competitions BEFORE the digest picks its headline
   // and its six cards, so a filtered page neither reads nor ranks the rest.
   const view = parseView(search.view);
-  const query = viewQuery(view);
   const edition = view === 'men' ? undefined : resolveSeason('womens-world-cup', '2023');
   const archive = edition?.season.publication === 'archive' ? edition : undefined;
   const ongoing = ongoingCompetitions().filter((c) => inView(c, view));
@@ -58,7 +57,10 @@ export default async function Home({ params, searchParams }: HomeProps) {
         </h1>)}
       </Suspense>
 
-      <ViewLinks locale={locale} path="/" view={view} params={search} />
+      <div className="vw-browse">
+        <ViewLinks locale={locale} path="/" view={view} params={search} />
+        <Link className="dg-more" prefetch={false} href={viewHref(locale, '/competitions', view, search)}>{t('home.digest.browse')}</Link>
+      </div>
 
       <YourTeams view={view} />
 
@@ -69,7 +71,6 @@ export default async function Home({ params, searchParams }: HomeProps) {
               {coverage === 'partial' && <p className="dg-empty" role="status">{t('home.digest.partial')}</p>}
               {shown.length > 0 && <DigestMatches entries={shown} />}
               {!shown.length && coverage === 'complete' && <p className="dg-empty">{t('home.digest.emptyMatches')}</p>}
-              {!shown.length && <Link className="dg-more" prefetch={false} href={`/${locale}/competitions${query}`}>{t('home.digest.browse')}</Link>}
             </>)}
           </Suspense>
         </section>
@@ -90,7 +91,7 @@ export default async function Home({ params, searchParams }: HomeProps) {
             <h2 className="dg-lab">{t('home.digest.news')}</h2>
             <TrackedLink
               className="dg-more"
-              href={`/${locale}/news${query}`}
+              href={viewHref(locale, '/news', view, search)}
               event="Section opened"
               properties={{ section: 'News', surface: 'digest' }}
             >

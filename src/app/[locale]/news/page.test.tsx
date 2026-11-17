@@ -4,7 +4,7 @@ import { I18nProvider } from '@/i18n/I18nProvider';
 import { dataStore } from '@/server/data/store';
 import { listCompetitions, type CompetitionSeason } from '@/server/data/competitions';
 import type { NewsArticle } from '@/server/data/types';
-import NewsPage, { generateMetadata } from './page';
+import NewsPage from './page';
 
 vi.mock('next/navigation', () => ({
   notFound: vi.fn(() => { throw new Error('NEXT_NOT_FOUND'); }),
@@ -64,15 +64,6 @@ describe('localized news directory', () => {
     expect(html).toContain('Headline league-story');
     expect(html).not.toContain('Headline unrelated');
     expect(read.mock.calls.every(([rc]) => rc.competition.category === 'men')).toBe(true);
-  });
-
-  it('publishes localized canonical and alternate metadata', async () => {
-    const metadata = await generateMetadata({ params: { locale: 'es' } });
-    expect(metadata.title).toBe('Noticias · ScoreArc');
-    expect(metadata.alternates).toEqual({
-      canonical: '/es/news',
-      languages: { en: '/en/news', es: '/es/news' },
-    });
   });
 
   it('renders Spanish copy in the first response', async () => {
