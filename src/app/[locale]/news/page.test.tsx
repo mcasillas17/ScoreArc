@@ -56,6 +56,16 @@ describe('localized news directory', () => {
   });
   afterEach(() => vi.useRealTimers());
 
+  it('keeps the matchday category when expanding into the news directory', async () => {
+    const read = vi.spyOn(dataStore, 'getNews').mockImplementation(async (_rc, attributed) =>
+      attributed ? [article('league-story')] : [article('unrelated')]);
+    const page = await NewsPage({ params: { locale: 'en' }, searchParams: { view: 'men' } });
+    const html = renderToStaticMarkup(<I18nProvider locale="en">{page}</I18nProvider>);
+    expect(html).toContain('Headline league-story');
+    expect(html).not.toContain('Headline unrelated');
+    expect(read.mock.calls.every(([rc]) => rc.competition.category === 'men')).toBe(true);
+  });
+
   it('publishes localized canonical and alternate metadata', async () => {
     const metadata = await generateMetadata({ params: { locale: 'es' } });
     expect(metadata.title).toBe('Noticias · ScoreArc');

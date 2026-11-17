@@ -44,6 +44,13 @@ function Card({ entry, lead = false }: { entry: LiveEntry; lead?: boolean }) {
         competition.name,
       ].filter(Boolean).join(', ')}
     >
+      <span className="dg-mmeta">
+        <CompetitionMark logo={competition.logo} logoInvert={competition.logoInvert} emblem={competition.emblem} name={competition.name} size={12} />
+        <span className="dg-mcomp">{competition.name}</span>
+        <span className="dg-mwhen">
+          {status && <span className={`dg-status${match.state === 'live' ? ' dg-status--live' : ''}`}>{status}</span>}
+        </span>
+      </span>
       <span className="dg-mrow">
         <span className="dg-team">
           <Crest url={match.home.crestUrl} name={match.home.name} />
@@ -55,13 +62,6 @@ function Card({ entry, lead = false }: { entry: LiveEntry; lead?: boolean }) {
         <span className="dg-team dg-team--away">
           <span className="dg-abbr">{lead ? match.away.name : match.away.abbr}</span>
           <Crest url={match.away.crestUrl} name={match.away.name} />
-        </span>
-      </span>
-      <span className="dg-mmeta">
-        <CompetitionMark logo={competition.logo} logoInvert={competition.logoInvert} emblem={competition.emblem} name={competition.name} size={12} />
-        <span className="dg-mcomp">{competition.shortName}</span>
-        <span className="dg-mwhen">
-          {status && <span className={`dg-status${match.state === 'live' ? ' dg-status--live' : ''}`}>{status}</span>}
         </span>
       </span>
     </Link>

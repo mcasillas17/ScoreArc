@@ -862,3 +862,13 @@ describe('verified edition teams', () => {
     }
   });
 });
+
+it('keeps tagged competition news separate from general news in a shared cache', async () => {
+  const story = (id: string, league: string) => ({ id, headline: id, links: { web: { href: 'https://www.espn.com/story/' + id } },
+    categories: [{ type: 'league', league: { links: { web: { leagues: { href: 'https://www.espn.com/soccer/league/_/name/' + league } } } } }],
+  });
+  const store = createDataStore({ cache: new TtlCache(), fetchJson: async () => ({ articles: [story('domestic', 'eng.1'), story('wrong', 'eng.w.1')] }) });
+  const rc = resolveSeason('premier-league')!;
+  expect((await store.getNews(rc)).map(a => a.id)).toEqual(['domestic', 'wrong']);
+  expect((await store.getNews(rc, true)).map(a => a.id)).toEqual(['domestic']);
+});

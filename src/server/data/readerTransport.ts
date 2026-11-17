@@ -27,7 +27,7 @@ export interface RequestBudget {
 
 /** One shared budget includes queued reads, response streaming and fallback. */
 export function createRequestBudget(options: {
-  fetch?: typeof fetch; signal: AbortSignal; maxCalls?: number; maxResponseBytes?: number; maxBytes?: number;
+  fetch?: typeof fetch; signal: AbortSignal; maxConcurrent?: number; maxCalls?: number; maxResponseBytes?: number; maxBytes?: number;
 }): RequestBudget {
   const fetcher = options.fetch ?? fetch;
   const maxCalls = options.maxCalls ?? 128;
@@ -37,7 +37,7 @@ export function createRequestBudget(options: {
   const queue: (() => void)[] = [];
   async function acquire(signal: AbortSignal) {
     signal.throwIfAborted();
-    if (active < 4) { active++; return; }
+    if (active < (options.maxConcurrent ?? 4)) { active++; return; }
     let grant!: () => void;
     const pending = new Promise<void>(resolve => { grant = resolve; queue.push(grant); });
     try { await abortable(pending, signal); }

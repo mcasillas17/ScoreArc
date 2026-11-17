@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { loadDigestSports } from './homeDigest';
+import { describe, expect, it, vi } from 'vitest';
 import { createDataStore, type DataStore } from './store';
 import { TtlCache } from './cache';
 import { resolveSeason } from './competitions';
@@ -146,4 +147,46 @@ describe('source-bound frontend operations', () => {
     const espn = stub({ getMatches: async () => { throw new Error('offline'); }, getUpcoming: async () => [match('next', 'scheduled')] });
     expect(await getBannerFeed(rc, espn)).toMatchObject({ weekOnly: false, matches: [{ id: 'next' }] });
   });
+});
+
+it('retries the entire matchday on one source and keeps successful fallback windows', async () => {
+  const women = ['nwsl', 'wsl'].map(id => resolveSeason(id)!.competition);
+  const boardReads: string[] = [];
+  const windows: string[] = [];
+  const reader = stub({
+    getLiveWindow: async scope => {
+      if (scope.competition.id === 'wsl') throw new ReaderFailure('stale');
+      return [match('reader', 'live')];
+    }, getLeaders: async () => ({ scorers: [], assists: [] }),
+  });
+  const espn = stub({
+    getLiveWindow: async scope => {
+      windows.push(scope.competition.id);
+      if (scope.competition.id === 'wsl') throw new Error('offline');
+      return [match('espn', 'live')];
+    }, getLeaders: async scope => { boardReads.push(scope.competition.id); return { scorers: [], assists: [] }; },
+  });
+  const digest = loadDigestSports(women, now, 'en', selected(reader, espn));
+  const [result] = await Promise.all([digest.matches, digest.boards]);
+  expect(result.shown.map(e => e.match.id)).toEqual(['espn']);
+  expect(result.coverage).toBe('partial');
+  expect(windows.sort()).toEqual(['nwsl', 'wsl']);
+  expect(boardReads.sort()).toEqual(['nwsl', 'wsl']);
+});
+
+it('preserves successful fallback reads when another match window outlasts the operation', async () => {
+  vi.useFakeTimers();
+  try {
+    const espn = stub({ getLiveWindow: async scope => scope.competition.id === 'nwsl'
+      ? [match('available', 'live')] : new Promise<Match[]>(() => {}), getLeaders: async () => ({ scorers: [], assists: [] }) });
+    const store = createSelectedDataStore({ source: 'reader', espn, totalTimeoutMs: 100, readerTimeoutMs: 50,
+      reader: () => stub({ getLiveWindow: async () => { throw new ReaderFailure('network'); },
+        getLeaders: async () => ({ scorers: [], assists: [] }) }) });
+    const digest = loadDigestSports(['nwsl', 'wsl'].map(id => resolveSeason(id)!.competition), now, 'en', store);
+    await vi.advanceTimersByTimeAsync(101);
+    const [matches, boards] = await Promise.all([digest.matches, digest.boards]);
+    expect(matches.shown.map(e => e.match.id)).toEqual(['available']);
+    expect(matches.coverage).toBe('partial');
+    expect(boards.coverage).toBe('complete');
+  } finally { vi.useRealTimers(); }
 });
