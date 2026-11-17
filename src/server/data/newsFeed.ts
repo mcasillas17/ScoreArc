@@ -1,3 +1,4 @@
+import { mapConcurrent } from './mapConcurrent';
 import { collectStories, groupStories, type DigestNewsItem } from '@/lib/digest';
 import { formatRelativeTime } from '@/i18n/format';
 import type { Locale } from '@/i18n/config';
@@ -27,23 +28,19 @@ import type { NewsArticle } from './types';
 export async function collectDatedStories(
   now: Date,
   locale: Locale,
-  { perFeed, limit }: { perFeed: number; limit: number },
+  { perFeed, limit, attributedOnly = false }: { perFeed: number; limit: number; attributedOnly?: boolean },
   competitions: Competition[] = listCompetitions(),
 ): Promise<DigestNewsItem[]> {
-  const feeds = await readFeeds(competitions);
+  const feeds = await readFeeds(competitions, 1, attributedOnly);
   return collectStories(feeds, { perFeed, limit }).map((article) => dated(article, now, locale));
 }
 
-function readFeeds(competitions: Competition[]): Promise<NewsArticle[][]> {
-  return Promise.all(
-    competitions.map((comp) => {
-      const rc = resolveSeason(comp.id)!;
-      // A competition with no news section has a feed we cannot attribute to
-      // it, so it contributes nothing here either — and costs no request.
-      if (!supportsResource(rc.season, 'news')) return Promise.resolve<NewsArticle[]>([]);
-      return dataStore.getNews(rc).catch((): NewsArticle[] => []);
-    }),
-  );
+function readFeeds(competitions: Competition[], concurrency: number, attributedOnly = false): Promise<NewsArticle[][]> {
+  return mapConcurrent(competitions, concurrency, async comp => {
+    const rc = resolveSeason(comp.id)!;
+    if (!supportsResource(rc.season, 'news')) return [];
+    return dataStore.getNews(rc, attributedOnly).catch((): NewsArticle[] => []);
+  });
 }
 
 function dated(article: NewsArticle, now: Date, locale: Locale): DigestNewsItem {
@@ -70,10 +67,10 @@ export interface CompetitionStories {
 export async function collectStoriesByCompetition(
   now: Date,
   locale: Locale,
-  { perFeed, maxAgeDays }: { perFeed: number; maxAgeDays: number },
+  { perFeed, maxAgeDays, attributedOnly = false }: { perFeed: number; maxAgeDays: number; attributedOnly?: boolean },
   competitions: Competition[] = listCompetitions(),
 ): Promise<CompetitionStories[]> {
-  const feeds = await readFeeds(competitions);
+  const feeds = await readFeeds(competitions, 4, attributedOnly);
   return groupStories(feeds, { perFeed, maxAgeMs: maxAgeDays * 86_400_000, now }).map(
     ({ feed, articles }) => ({
       competition: competitions[feed],

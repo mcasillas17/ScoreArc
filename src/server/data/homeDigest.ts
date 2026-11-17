@@ -1,7 +1,9 @@
+import { mapConcurrent } from './mapConcurrent';
+import { ReaderFailure } from './readerTransport';
 import type { Locale } from '@/i18n/config';
-import { type Competition, resolveSeason, supportsResource } from '@/server/data/competitions';
+import { type Competition, type CompetitionSeason, resolveSeason, supportsResource } from '@/server/data/competitions';
 import { dataStore, type DataStore } from '@/server/data/store';
-import { isSelectedDataStore, runDataOperation } from '@/server/data/sourceSelection';
+import { isReaderOperationStore, isSelectedDataStore, runDataOperation } from '@/server/data/sourceSelection';
 import { competitionLabel, type LiveEntry } from '@/server/data/liveFeed';
 import { prioritiseBy } from '@/server/data/matchPriority';
 import { chooseWhatsOn, whatsOnHeadline } from '@/lib/digest';
@@ -29,39 +31,62 @@ function dedupeByMatch(entries: LiveEntry[]): LiveEntry[] {
   });
 }
 
-function optionalRows<T>(source: DataStore, read: Promise<T[]>): Promise<T[]> {
-  return isSelectedDataStore(source) ? read : read.catch(() => []);
+type Coverage = 'complete' | 'partial' | 'unavailable';
+
+function readSection<T, R>(
+  source: DataStore, seasons: CompetitionSeason[], limit: number,
+  read: (rc: CompetitionSeason) => Promise<T>, present: (rows: T[], coverage: Coverage) => R,
+) {
+  const completed = new Map<CompetitionSeason, T>();
+  function snapshot() {
+    const rows = seasons.filter(rc => completed.has(rc)).map(rc => completed.get(rc)!);
+    const coverage = rows.length === seasons.length ? 'complete' : rows.length ? 'partial' : 'unavailable';
+    return present(rows, coverage);
+  }
+  const ready = mapConcurrent(seasons, limit, async rc => {
+    try {
+      completed.set(rc, await read(rc));
+    } catch (error) {
+      if (isReaderOperationStore(source) && error instanceof ReaderFailure && error.fallback) throw error;
+    }
+  }).then(snapshot);
+  return { ready, snapshot };
 }
 
-export function loadDigestSports(ongoing: Competition[], now: Date, locale: Locale) {
+export function loadDigestSports(ongoing: Competition[], now: Date, locale: Locale, store = dataStore) {
   const seasons = ongoing.map(comp => resolveSeason(comp.id)!);
   function read(source: DataStore) {
-    const windows = Promise.all(seasons.filter(rc => supportsResource(rc.season, 'scores')).map(async rc => {
+    // Leave one read each for scorers and news so either section can stream
+    // while the two match-window workers are waiting for ESPN.
+    const matches = readSection(source, seasons.filter(rc => supportsResource(rc.season, 'scores')), 2, async rc => {
       const competition = competitionLabel(rc.competition, rc.season.id);
-      const matches = await optionalRows(source, source.getLiveWindow(rc));
-      return matches.map(match => ({ competition, match }));
-    }));
-    const boards = Promise.all(seasons.filter(rc => supportsResource(rc.season, 'leaders')).map(async rc => {
-      const scorers = await optionalRows(source, source.getLeaders(rc).then(leaders => leaders.scorers));
-      return {
-        competition: competitionLabel(rc.competition, rc.season.id),
-        seasonLabel: rc.season.label,
-        leaders: scorers.slice(0, SCORERS_PER_BOARD),
-      };
-    }));
-    return {
-      matches: windows.then(rows => digestMatches(rows.flat(), now, locale)),
-      boards: boards.then(rows => rows.filter(row => row.leaders.length > 0)),
-    };
+      return (await source.getLiveWindow(rc)).map(match => ({ competition, match }));
+    }, (rows, coverage) => ({ ...digestMatches(rows.flat(), now, locale), coverage }));
+    const boards = readSection(source, seasons.filter(rc => supportsResource(rc.season, 'leaders')), 1, async rc => ({
+      competition: competitionLabel(rc.competition, rc.season.id),
+      seasonLabel: rc.season.label,
+      leaders: (await source.getLeaders(rc)).scorers.slice(0, SCORERS_PER_BOARD),
+    }), (rows, coverage) => ({ rows: rows.filter(row => row.leaders.length > 0), coverage }));
+    return { matches, boards };
   }
 
-  if (!isSelectedDataStore(dataStore)) return read(dataStore);
-  // A reader fallback retries both sets together so the two sections share one source.
-  const attempt = runDataOperation(dataStore, async source => {
-    const { matches, boards } = read(source);
-    return Promise.all([matches, boards] as const);
-  });
-  return { matches: attempt.then(([matches]) => matches), boards: attempt.then(([, boards]) => boards) };
+  if (!isSelectedDataStore(store)) {
+    const { matches, boards } = read(store);
+    return { matches: matches.ready, boards: boards.ready };
+  }
+  // Keep only the current attempt's observations. On deadline an unfinished
+  // window or leaderboard cannot erase rows already received on that source.
+  let current: ReturnType<typeof read> | undefined;
+  const attempt = runDataOperation(store, async source => {
+    current = read(source);
+    return Promise.all([current.matches.ready, current.boards.ready] as const);
+  }, undefined, 3); // News streams independently on the fourth wire slot.
+  return {
+    matches: attempt.then(([matches]) => matches, () => current?.matches.snapshot()
+      ?? { ...digestMatches([], now, locale), coverage: 'unavailable' as const }),
+    boards: attempt.then(([, boards]) => boards, () => current?.boards.snapshot()
+      ?? { rows: [], coverage: 'unavailable' as const }),
+  };
 }
 
 function digestMatches(rows: LiveEntry[], now: Date, locale: Locale) {

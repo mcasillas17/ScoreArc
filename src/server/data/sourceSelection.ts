@@ -13,7 +13,7 @@ interface SelectionDependencies {
   totalTimeoutMs?: number;
   onFallback?: (reason: ReaderFailureReason) => void;
 }
-type Runner = <T>(callback: (store: DataStore) => Promise<T>, signal?: AbortSignal) => Promise<T>;
+type Runner = <T>(callback: (store: DataStore) => Promise<T>, signal?: AbortSignal, maxConcurrent?: number) => Promise<T>;
 const operations = new WeakMap<object, Runner>();
 const readerOperations = new WeakSet<object>();
 const selectedAttempts = new WeakSet<object>();
@@ -22,20 +22,20 @@ export const isReaderOperationStore = (store: object): boolean => readerOperatio
 export const isSelectedDataStore = (store: object): boolean => operations.has(store) || selectedAttempts.has(store);
 
 /** A bound store keeps nested helpers in the same attempt and fallback budget. */
-export async function runDataOperation<S extends object, T>(store: S, callback: (source: S) => Promise<T>, signal?: AbortSignal): Promise<T> {
+export async function runDataOperation<S extends object, T>(store: S, callback: (source: S) => Promise<T>, signal?: AbortSignal, maxConcurrent?: number): Promise<T> {
   signal?.throwIfAborted();
   const run = operations.get(store);
-  return run ? run(source => callback(source as S & DataStore), signal) : callback(store);
+  return run ? run(source => callback(source as S & DataStore), signal, maxConcurrent) : callback(store);
 }
 
 export function createSelectedDataStore(deps: SelectionDependencies): DataStore {
   if (deps.source !== 'reader') return deps.espn;
-  const run: Runner = async (callback, caller) => {
+  const run: Runner = async (callback, caller, maxConcurrent) => {
     caller?.throwIfAborted();
     const total = new AbortController();
     const timer = setTimeout(() => total.abort(new ReaderFailure('timeout')), deps.totalTimeoutMs ?? 25_000);
     const signal = caller ? AbortSignal.any([caller, total.signal]) : total.signal;
-    const budget = createRequestBudget({ fetch: deps.fetch, signal });
+    const budget = createRequestBudget({ fetch: deps.fetch, signal, maxConcurrent });
     const attempt = new AbortController();
     const readerTimer = setTimeout(() => attempt.abort(new ReaderFailure('timeout')), deps.readerTimeoutMs ?? 5_000);
     const readerSignal = AbortSignal.any([signal, attempt.signal]);
@@ -75,7 +75,7 @@ export function createSelectedDataStore(deps: SelectionDependencies): DataStore 
     getMatchSummary: (rc, id, home, away) => run(source => source.getMatchSummary(rc, id, home, away)),
     getLeaders: rc => run(source => source.getLeaders(rc)),
     // T16.6 unresolved: reader news is also an ESPN proxy, not owned news.
-    getNews: rc => deps.espn.getNews(rc),
+    getNews: deps.espn.getNews,
     getTeam: (rc, id) => run(source => source.getTeam(rc, id)),
     getSquad: (rc, id) => run(source => source.getSquad(rc, id)),
     getPlayer: (rc, id) => run(source => source.getPlayer(rc, id)),

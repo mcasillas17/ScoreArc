@@ -63,7 +63,7 @@ export interface DataStore {
   getBracket(rc: CompetitionSeason): Promise<BracketRound[]>;
   getMatchSummary(rc: CompetitionSeason, eventId: string, homeId: string, awayId: string): Promise<MatchSummaryData>;
   getLeaders(rc: CompetitionSeason): Promise<{ scorers: StatLeader[]; assists: StatLeader[] }>;
-  getNews(rc: CompetitionSeason): Promise<NewsArticle[]>;
+  getNews(rc: CompetitionSeason, attributedOnly?: boolean): Promise<NewsArticle[]>;
   getTeam(rc: CompetitionSeason, teamId: string): Promise<TeamProfile | null>;
   getSquad(rc: CompetitionSeason, teamId: string): Promise<SquadPlayer[]>;
   getPlayer(rc: CompetitionSeason, athleteId: string): Promise<PlayerProfile | null>;
@@ -531,12 +531,13 @@ export function createDataStore(deps: DataDeps): DataStore {
 
     getLeaders: loadLeaders,
 
-    async getNews(rc): Promise<NewsArticle[]> {
-      const k = key(rc, 'news');
+    async getNews(rc, attributedOnly = false): Promise<NewsArticle[]> {
+      const k = key(rc, attributedOnly ? 'news:attributed' : 'news');
       const cached = deps.cache.get(k) as NewsArticle[] | undefined;
       if (cached) return cached;
       const raw = await deps.fetchJson(newsUrl(slug(rc)));
-      const news = requiresEditionEvidence(rc) ? mapAttributedNews(raw, rc.competition.espnLeagueId) : mapNews(raw);
+      const news = requiresEditionEvidence(rc) || attributedOnly
+        ? mapAttributedNews(raw, rc.competition.espnLeagueId, rc.competition.espnSlug) : mapNews(raw);
       deps.cache.set(k, news, 90_000);
       return news;
     },

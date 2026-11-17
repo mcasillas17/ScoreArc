@@ -58,7 +58,7 @@ export default async function NewsPage({ params, searchParams }: PageProps) {
   const t = getTranslator(locale);
   const groups = await collectStoriesByCompetition(new Date(), locale, {
     perFeed: STORIES_PER_COMPETITION,
-    maxAgeDays: MAX_AGE_DAYS,
+    maxAgeDays: MAX_AGE_DAYS, attributedOnly: view !== 'all',
   }, listCompetitions().filter((c) => inView(c, view)));
 
   return (

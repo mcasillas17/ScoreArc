@@ -1,3 +1,4 @@
+import type { ResolvingMetadata } from 'next';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderToReadableStream } from 'react-dom/server';
 import type { ReactNode } from 'react';
@@ -5,6 +6,7 @@ import { dataStore } from '@/server/data/store';
 import { getCompetition, ongoingCompetitions, resolveSeason, type CompetitionSeason } from '@/server/data/competitions';
 import type { Match, NewsArticle, StatLeader } from '@/server/data/types';
 import Home from './page';
+import * as registry from '@/server/data/competitions';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import type { Locale } from '@/i18n/config';
 
@@ -314,6 +316,110 @@ describe('Home digest', () => {
     expect(html).not.toContain('in about 9 hours');
   });
 
+  describe('matchday category', () => {
+    const home = (view: string | string[]) => Home({ params: { locale: 'en' }, searchParams: { view } });
+    it('ranks and counts unique matches within the selected field before cutting the cards', async () => {
+      const domestic = Array.from({ length: 6 }, (_, i) => match('men-' + i, -3 + i / 10, 'live'));
+      const early = match('women-early', -1, 'live');
+      const late = match('women-late', -0.5, 'live');
+      const windows = vi.spyOn(dataStore, 'getLiveWindow').mockImplementation(byCompetition({
+        'liga-mx': domestic, nwsl: [late, early], wsl: [late],
+      }));
+      const html = await renderLocalized(await home('women'));
+      expect(matchIds(html)).toEqual(['women-early', 'women-late']);
+      expect(html).toContain('2 matches live right now.');
+      expect(html).toContain('href="/en/news?view=women"');
+      for (const read of [windows, vi.mocked(dataStore.getLeaders), vi.mocked(dataStore.getNews)]) {
+        expect(read.mock.calls.length).toBeGreaterThan(0);
+        expect(read.mock.calls.every(([rc]) => rc.competition.category === 'women')).toBe(true);
+      }
+      expect(html.indexOf('class="dg-mcomp"')).toBeLessThan(html.indexOf('class="dg-mrow"'));
+      expect(matchIds(await renderLocalized(await home('men')))).toEqual(domestic.map(m => m.id));
+      expect(matchIds(await renderLocalized(await home(['women', 'men'])))).toEqual(domestic.map(m => m.id));
+    });
+
+    it('shows both América matches in All and the correct club in each filtered matchday', async () => {
+      const americaMatch = (id: string, club: string) => ({
+        ...match(id, 1), home: { ...team(club, 'AME'), name: 'América' },
+      });
+      vi.spyOn(dataStore, 'getLiveWindow').mockImplementation(byCompetition({
+        'liga-mx': [americaMatch('men-america', 'mex-america')],
+        'liga-mx-femenil': [americaMatch('women-america', 'mex-w-america')],
+      }));
+      expect(matchIds(await renderLocalized(await home('all'))).sort()).toEqual(['men-america', 'women-america']);
+      expect(matchIds(await renderLocalized(await home('women')))).toEqual(['women-america']);
+      expect(matchIds(await renderLocalized(await home('men')))).toEqual(['men-america']);
+    });
+
+    it('keeps the good match when one eligible feed fails', async () => {
+      vi.spyOn(dataStore, 'getLiveWindow').mockImplementation(async rc => {
+        if (rc.competition.id === 'wsl') throw new Error('offline');
+        return [match('one', -1, 'live')];
+      });
+      const html = await renderLocalized(await home('women'));
+      expect(matchIds(html)).toEqual(['one']);
+      expect(html).toContain('Some match results are unavailable');
+    });
+
+    it('does not claim there are no live matches while a feed is unavailable', async () => {
+      vi.spyOn(dataStore, 'getLiveWindow').mockImplementation(async rc => {
+        if (rc.competition.id === 'wsl') throw new Error('offline');
+        return [match('next', 2)];
+      });
+      const html = await renderLocalized(await home('women'));
+      expect(matchIds(html)).toEqual(['next']);
+      expect(html).not.toContain('Nothing live right now');
+    });
+
+    it('does not call an incomplete or failed window empty', async () => {
+      const read = vi.spyOn(dataStore, 'getLiveWindow').mockImplementation(async rc => {
+        if (rc.competition.id === 'wsl') throw new Error('offline');
+        return [];
+      });
+      const partial = await renderLocalized(await home('women'));
+      expect(partial).toContain('Some match results are unavailable');
+      expect(partial).not.toContain('window is empty');
+      read.mockRejectedValue(new Error('offline'));
+      const failed = await renderLocalized(await home('women'));
+      expect(failed).toContain('Matches are unavailable right now');
+      expect(failed).not.toContain('window is empty');
+      read.mockResolvedValue([]);
+      const quiet = await renderLocalized(await home('women'));
+      expect(quiet).toContain('No matches in the current window.');
+      expect(quiet).toContain('href="/en/competitions?view=women"');
+    });
+
+    it('offers the 2023 archive in All and Women only after publication, without a feed read', async () => {
+      const read = vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
+      const archiveId = 'womens-world-cup';
+      expect(await renderLocalized(await home('women'))).not.toContain('From the archive');
+      const resolve = registry.resolveSeason;
+      const world = resolve('world-cup', '2022')!;
+      vi.spyOn(registry, 'resolveSeason').mockImplementation((id, season) => id === archiveId && season === '2023'
+        ? { competition: { ...world.competition, id, name: 'FIFA Women’s World Cup', category: 'women' },
+            season: { ...world.season, id: '2023', label: '2023', publication: 'archive' } } : resolve(id, season));
+      for (const view of ['women', 'all']) {
+        const html = await renderLocalized(await home(view));
+        expect(html).toContain('From the archive');
+        expect(html).toContain('href="/en/c/womens-world-cup/2023"');
+      }
+      expect(await renderLocalized(await home('men'))).not.toContain('From the archive');
+      for (const feed of [read, vi.mocked(dataStore.getLeaders), vi.mocked(dataStore.getNews)]) {
+        expect(feed.mock.calls.some(([rc]) => rc.competition.id === archiveId)).toBe(false);
+      }
+    });
+
+    it('keeps at most four feed reads in flight across the entire matchday', async () => {
+      let active = 0, peak = 0;
+      const observe = async () => { peak = Math.max(peak, ++active); await Promise.resolve(); active--; };
+      vi.spyOn(dataStore, 'getLiveWindow').mockImplementation(async () => { await observe(); return []; });
+      vi.mocked(dataStore.getNews).mockImplementation(async () => { await observe(); return []; });
+      vi.mocked(dataStore.getLeaders).mockImplementation(async () => { await observe(); return { scorers: [], assists: [] }; });
+      await renderLocalized(await home('all'));
+      expect(peak).toBeLessThanOrEqual(4);
+    });
+  });
+
   describe('empty states', () => {
     it('says so in every block when nothing is available', async () => {
       vi.spyOn(dataStore, 'getLiveWindow').mockResolvedValue([]);
@@ -434,4 +540,25 @@ describe('Home digest', () => {
       expect(html).toContain('href="/en/news"');
     });
   });
+});
+
+it('the quiet-day destination lists only published competitions in the requested view', async () => {
+  const { default: Directory } = await import('./competitions/page');
+  const html = await renderLocalized(await Directory({ params: { locale: 'es' }, searchParams: { view: 'women' } }), 'es');
+  expect(html).toContain('href="/es/c/liga-mx-femenil/2026-apertura"');
+  expect(html).not.toContain('href="/es/c/liga-mx/2026-apertura"');
+  expect(html).not.toContain('/womens-world-cup/2023');
+});
+
+it('shares the scoped matchday and quiet-day directory with their own titles, URLs and brand image', async () => {
+  const home = await import('./page');
+  const directory = await import('./competitions/page');
+  const parent = Promise.resolve({ openGraph: { images: ['/brand/og.png'] }, twitter: { card: 'summary_large_image', images: ['/brand/og.png'] } }) as unknown as ResolvingMetadata;
+  const props = { params: { locale: 'es' }, searchParams: { view: 'women' } };
+  for (const [page, path] of [[home, '/es?view=women'], [directory, '/es/competitions?view=women']] as const) {
+    const meta = await page.generateMetadata(props, parent);
+    expect(meta.title).toContain('Femenil');
+    expect(meta.openGraph).toMatchObject({ url: path, title: meta.title, images: ['/brand/og.png'] });
+    expect(meta.alternates?.canonical).toBe(path);
+  }
 });

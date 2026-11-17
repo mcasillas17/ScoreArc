@@ -12,6 +12,7 @@ import vectors from '@/server/data/contracts/reader-contract.json';
 import { listCompetitions, ongoingCompetitions, resolveSeason } from '@/server/data/competitions';
 import type { Group, Match } from '@/server/data/types';
 import { getBannerFeed } from '@/server/data/banner';
+import { collectDatedStories } from '@/server/data/newsFeed';
 import { loadDigestSports } from '@/server/data/homeDigest';
 import Workspace from './[locale]/c/[comp]/[season]/page';
 import StandingsPage from './[locale]/c/[comp]/[season]/standings/page';
@@ -71,8 +72,6 @@ const pages: { name: string; method: CollectionMethod; read: () => Promise<unkno
   { name: 'cup bracket', method: 'getBracket', read: () => Workspace(season('world-cup')) },
   { name: 'projected bracket', method: 'getStandings', read: () => Workspace(season('liga-mx', '2026-apertura')) },
   { name: 'derived phase tables', method: 'getStandings', read: () => Workspace(season('leagues-cup')) },
-  { name: 'home matches', method: 'getLiveWindow', read: () => readHomeSports() },
-  { name: 'home leaders', method: 'getLeaders', read: () => readHomeSports() },
   { name: 'all-team directory', method: 'getEditionTeams', read: () => TeamsPage({ params: { locale: 'en' } }) },
 ];
 
@@ -125,6 +124,15 @@ describe('enabled reader unavailability reaches website consumers', () => {
     scenario();
     expect(renderToStaticMarkup(await CompetitionTeamsPage(season('world-cup')))).toContain('No teams listed');
   });
+  it.each(['getLiveWindow', 'getLeaders'] as const)('reports an unavailable Home section after both sources fail for %s', async method => {
+    const { calls, onFallback } = scenario(method);
+    const [matches, boards] = await readHomeSports();
+    expect(matches.coverage).toBe(method === 'getLiveWindow' ? 'unavailable' : 'complete');
+    expect(boards.coverage).toBe(method === 'getLeaders' ? 'unavailable' : 'complete');
+    expect(calls).toContain('reader');
+    expect(calls).toContain('espn');
+    expect(onFallback).toHaveBeenCalledTimes(1);
+  });
   it.each(pages)('$name does not render empty data after both sources fail', async ({ method, read }) => {
     const test = scenario(method);
     await expect(read()).rejects.toBe(test.exhausted);
@@ -151,7 +159,7 @@ describe('enabled reader unavailability reaches website consumers', () => {
   });
 
   it.each([
-    { name: 'homepage', read: () => readHomeSports(), cold: ongoingCompetitions().length * 4, warm: ongoingCompetitions().length * 2 },
+    { name: 'homepage', read: () => Promise.all([readHomeSports(), collectDatedStories(new Date(), 'en', { perFeed: 2, limit: 6 }, ongoingCompetitions())]), cold: ongoingCompetitions().length * 4, warm: ongoingCompetitions().length * 2 },
     { name: 'merged team directory', read: () => TeamsPage({ params: { locale: 'en' } }), cold: listCompetitions().length, warm: 0 },
   ])('keeps cold and warm $name reads inside the shared transport budget', async ({ read, cold, warm }) => {
     // Synthetic current-scope responses reuse shared contract vectors. This
@@ -201,6 +209,12 @@ describe('enabled reader unavailability reaches website consumers', () => {
       throw new Error('Unexpected cost-test route');
     };
     const espn = emptyStore();
+    espn.getNews = async () => {
+      peak = Math.max(peak, ++active);
+      await new Promise(resolve => setTimeout(resolve, 5));
+      active--;
+      return [];
+    };
     const onFallback = vi.fn();
     selected.store = createSelectedDataStore({ source: 'reader', espn, fetch: fetcher, onFallback,
       reader: ({ signal, budget }) => {

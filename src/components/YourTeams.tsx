@@ -14,7 +14,7 @@ export default function YourTeams({ view = 'all' }: { view?: View }) {
   // rest back.
   const teams = followed.filter((team) => {
     const competition = getCompetition(team.competitionId);
-    return !competition || inView(competition, view);
+    return view === 'all' || (competition && inView(competition, view));
   });
   // Following no one is one quiet line, not a heading over a prompt.
   if (teams.length === 0) {
@@ -30,24 +30,24 @@ export default function YourTeams({ view = 'all' }: { view?: View }) {
       <h2 id="your-teams-title">{t('follows.title')}</h2>
       {(notice === null || notice === 'limit') && <p>{t('follows.local')}</p>}
       <ul className="your-teams-list">
-        {teams.map((team) => (
-          <li className="your-teams-item" key={team.teamId}>
-            <Link href={teamFollowHref(team, locale)} prefetch={false}>
-              {team.name}
-              {/* Following both Américas: say which is which. */}
-              {teams.some((other) => other.name === team.name && other.teamId !== team.teamId)
-                && ` · ${getCompetition(team.competitionId)?.shortName ?? ''}`}
-            </Link>
-            <button
-              className="your-teams-remove"
-              type="button"
-              aria-label={t('follows.removeTeam', team.name)}
-              onClick={() => unfollowTeam(team.teamId)}
-            >
-              <span aria-hidden="true">×</span>
-            </button>
-          </li>
-        ))}
+        {teams.map((team) => {
+          const sharedName = teams.some(other => other.name === team.name && other.teamId !== team.teamId);
+          const competition = sharedName && getCompetition(team.competitionId);
+          const label = competition ? `${team.name} · ${competition.shortName}` : team.name;
+          return (
+            <li className="your-teams-item" key={team.teamId}>
+              <Link href={teamFollowHref(team, locale)} prefetch={false}>{label}</Link>
+              <button
+                className="your-teams-remove"
+                type="button"
+                aria-label={t('follows.removeTeam', label)}
+                onClick={() => unfollowTeam(team.teamId)}
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
       <TeamFollowsNotice notice={notice} />
     </section>

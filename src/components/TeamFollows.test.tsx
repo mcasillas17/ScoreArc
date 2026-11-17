@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import FollowTeamButton from './FollowTeamButton';
 import YourTeams from './YourTeams';
-import { TEAM_FOLLOWS_KEY } from '@/lib/teamFollows';
+import { followTeam, TEAM_FOLLOWS_KEY } from '@/lib/teamFollows';
 
 vi.mock('next/navigation', () => ({ usePathname: () => '/en', useRouter: () => ({ push: vi.fn() }) }));
 const america = { teamId: 'mex-america', competitionId: 'liga-mx', name: 'América' };
@@ -65,4 +65,22 @@ it('shows persistence failure while both mounted consumers retain a usable sessi
   expect(screen.getAllByRole('status').every((notice) => notice.textContent?.includes('session'))).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: 'Following América. Unfollow América' }));
   expect(screen.queryByRole('link', { name: 'América' })).toBeNull();
+});
+
+it('switches between the two followed Américas without changing saved follows', () => {
+  const women = { teamId: 'mex-w-america', competitionId: 'liga-mx-femenil', name: 'América' };
+  followTeam(america);
+  followTeam(women);
+  const write = vi.spyOn(Storage.prototype, 'setItem');
+  const show = (view: 'all' | 'men' | 'women') => <I18nProvider locale="en"><YourTeams view={view} /></I18nProvider>;
+  const { rerender } = render(show('all'));
+  expect(screen.getByRole('button', { name: 'Remove América · Liga MX Femenil' })).toBeTruthy();
+  expect(screen.getAllByRole('link')).toHaveLength(2);
+  rerender(show('women'));
+  expect(screen.getByRole('link').getAttribute('href')).toContain('/liga-mx-femenil/');
+  rerender(show('men'));
+  expect(screen.getByRole('link').getAttribute('href')).toContain('/liga-mx/');
+  rerender(show('all'));
+  expect(screen.getAllByRole('link')).toHaveLength(2);
+  expect(write).not.toHaveBeenCalled();
 });

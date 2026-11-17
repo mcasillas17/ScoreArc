@@ -42,6 +42,7 @@ export default function ViewLinks({
       {VIEWS.map(([target, label]) => (
         <Link
           key={target}
+          prefetch={false}
           className="vw-link"
           href={viewHref(locale, path, target, params)}
           aria-current={target === view ? 'page' : undefined}
