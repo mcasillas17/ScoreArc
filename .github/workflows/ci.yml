@@ -15,7 +15,28 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          # jsdom 30 requires Node >=22.22.2; keep CI at or above that floor.
+          node-version: 22.23.2
+          cache: npm
+      - run: npm ci
+      - run: npm run export:competitions
+      - name: Verify generated competition registry
+        run: git diff --exit-code -- backend/config/competitions.json
+      - run: npm run export:teams
+      - name: Verify generated team crosswalk
+        run: git diff --exit-code -- src/server/data/teamCrosswalk.json
+      - run: npm test
+      - run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npm run build
+
+  backend:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -34,26 +55,10 @@ jobs:
       DIRECT_DSN: postgres://postgres:postgres@localhost:5432/scorearc?sslmode=disable
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          # jsdom 30 requires Node >=22.22.2; keep CI at or above that floor.
-          node-version: 22.23.2
-          cache: npm
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
-      - run: npm ci
-      - run: npm run export:competitions
-      - name: Verify generated competition registry
-        run: git diff --exit-code -- backend/config/competitions.json
-      - run: npm run export:teams
-      - name: Verify generated team crosswalk
-        run: git diff --exit-code -- src/server/data/teamCrosswalk.json
-      - run: npm test
-      - run: npx tsc --noEmit
-      - run: npm run lint
-      - run: npm run build
       - name: Apply database migrations
         run: for migration in backend/migrations/*.up.sql; do psql "$DIRECT_DSN" -v ON_ERROR_STOP=1 -f "$migration"; done
       - name: Test Go backend
@@ -64,6 +69,24 @@ jobs:
         run: go vet ./...
       - name: Verify database migration rollback
         run: for migration in $(find backend/migrations -name '*.down.sql' | sort -r); do psql "$DIRECT_DSN" -v ON_ERROR_STOP=1 -f "$migration"; done
+
+  # `test` is the one name branch protection requires and the release policy
+  # (scripts/production-policy.mjs) checks, so it stays as the single gate over
+  # the two halves, which run in parallel.
+  test:
+    needs: [frontend, backend]
+    # Without always(), a failed half leaves this job "skipped", and branch
+    # protection accepts a skipped required check as passing.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the frontend and backend jobs
+        env:
+          FRONTEND: ${{ needs.frontend.result }}
+          BACKEND: ${{ needs.backend.result }}
+        run: |
+          echo "frontend=$FRONTEND backend=$BACKEND"
+          [ "$FRONTEND" = success ] && [ "$BACKEND" = success ]
 
   # PR-time signal: both Fly services require exactly the highest migration, and
   # their release_command refuses an older production schema, so merging before

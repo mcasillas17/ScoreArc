@@ -8,19 +8,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
+	"github.com/mcasillas17/scorearc-backend/shared/pgtest"
 	"github.com/mcasillas17/scorearc-backend/shared/source"
 	"github.com/mcasillas17/scorearc-backend/shared/store"
 )
@@ -28,41 +25,12 @@ import (
 func newRecoveryPostgres(t *testing.T) (*store.Store, *pgxpool.Pool, string) {
 	t.Helper()
 	ctx := context.Background()
-	container, err := postgres.Run(ctx, "postgres:16-alpine",
-		postgres.WithDatabase("recovery"), postgres.WithUsername("postgres"), postgres.WithPassword("postgres"),
-		testcontainers.WithWaitStrategy(wait.ForLog("database system is ready to accept connections").
-			WithOccurrence(2).WithStartupTimeout(time.Minute)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = container.Terminate(ctx) })
-	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatal(err)
-	}
+	dsn := pgtest.New(t)
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
-	files, err := filepath.Glob("../migrations/*.up.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	sort.Strings(files)
-	// golang-migrate creates its ledger before 0001, as production did.
-	if _, err := pool.Exec(ctx, `CREATE TABLE schema_migrations (version bigint NOT NULL PRIMARY KEY, dirty boolean NOT NULL)`); err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range files {
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := pool.Exec(ctx, string(raw)); err != nil {
-			t.Fatalf("apply %s: %v", path, err)
-		}
-	}
 	repo, err := store.New(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)

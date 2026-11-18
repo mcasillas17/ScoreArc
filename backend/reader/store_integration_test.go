@@ -23,6 +23,8 @@ import (
 	postgrescontainer "github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/mcasillas17/scorearc-backend/config"
+	"github.com/mcasillas17/scorearc-backend/migrations"
+	"github.com/mcasillas17/scorearc-backend/shared/pgtest"
 )
 
 func newIntegrationStore(t *testing.T) (*Store, *pgxpool.Pool) {
@@ -30,60 +32,29 @@ func newIntegrationStore(t *testing.T) (*Store, *pgxpool.Pool) {
 	return newIntegrationStoreThrough(t, "")
 }
 
-// An empty lastMigration applies the complete chain. A filename pins a test
-// to a historical schema so it can exercise a forward migration in place.
+// An empty lastMigration applies the complete chain, on a copy of the shared
+// template database. A filename pins a test to a historical schema so it can
+// exercise a forward migration in place; that needs a server of its own,
+// because 0001 creates cluster-wide roles and cannot run twice on one server.
 func newIntegrationStoreThrough(t *testing.T, lastMigration string) (*Store, *pgxpool.Pool) {
 	t.Helper()
 	ctx := context.Background()
-	container, err := postgrescontainer.Run(
-		ctx,
-		"postgres:16-alpine",
-		postgrescontainer.WithDatabase("scorearc"),
-		postgrescontainer.WithUsername("scorearc_admin"),
-		postgrescontainer.WithPassword("scorearc_admin"),
-		postgrescontainer.BasicWaitStrategies(),
-	)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	testcontainers.CleanupContainer(t, container)
-
-	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("postgres connection string: %v", err)
+	var dsn string
+	var applied int
+	if lastMigration == "" {
+		dsn = pgtest.New(t)
+		var err error
+		if applied, err = migrations.Latest(); err != nil {
+			t.Fatalf("latest migration: %v", err)
+		}
+	} else {
+		dsn, applied = historicalPostgres(t, lastMigration)
 	}
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		t.Fatalf("connect postgres: %v", err)
 	}
 	t.Cleanup(pool.Close)
-
-	migrations, err := filepath.Glob("../migrations/*.up.sql")
-	if err != nil {
-		t.Fatalf("list migrations: %v", err)
-	}
-	sort.Strings(migrations)
-	// golang-migrate creates its ledger before 0001, as production did, and
-	// records the last version applied.
-	if _, err := pool.Exec(ctx, `CREATE TABLE schema_migrations (version bigint NOT NULL PRIMARY KEY, dirty boolean NOT NULL)`); err != nil {
-		t.Fatalf("create migration ledger: %v", err)
-	}
-	applied := 0
-	for _, migration := range migrations {
-		if lastMigration != "" && filepath.Base(migration) > lastMigration {
-			break
-		}
-		sql, err := os.ReadFile(migration)
-		if err != nil {
-			t.Fatalf("read migration %s: %v", migration, err)
-		}
-		if _, err := pool.Exec(ctx, string(sql)); err != nil {
-			t.Fatalf("apply migration %s: %v", migration, err)
-		}
-		if applied, err = strconv.Atoi(filepath.Base(migration)[:4]); err != nil {
-			t.Fatalf("migration version %s: %v", migration, err)
-		}
-	}
 	if _, err := pool.Exec(ctx, `INSERT INTO schema_migrations (version, dirty) VALUES ($1, false)`, applied); err != nil {
 		t.Fatalf("record migration version: %v", err)
 	}
@@ -110,6 +81,62 @@ func newIntegrationStoreThrough(t *testing.T, lastMigration string) (*Store, *pg
 		t.Fatalf("ping as reader: %v", err)
 	}
 	return NewStore(readerPool), pool
+}
+
+// historicalPostgres starts a dedicated Postgres and applies the migration
+// chain up to and including lastMigration, returning its DSN and that version.
+func historicalPostgres(t *testing.T, lastMigration string) (string, int) {
+	t.Helper()
+	ctx := context.Background()
+	container, err := postgrescontainer.Run(
+		ctx,
+		"postgres:16-alpine",
+		postgrescontainer.WithDatabase("scorearc"),
+		postgrescontainer.WithUsername("scorearc_admin"),
+		postgrescontainer.WithPassword("scorearc_admin"),
+		postgrescontainer.BasicWaitStrategies(),
+	)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	testcontainers.CleanupContainer(t, container)
+
+	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("postgres connection string: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect postgres: %v", err)
+	}
+	defer pool.Close()
+
+	files, err := filepath.Glob("../migrations/*.up.sql")
+	if err != nil {
+		t.Fatalf("list migrations: %v", err)
+	}
+	sort.Strings(files)
+	// golang-migrate creates its ledger before 0001, as production did.
+	if _, err := pool.Exec(ctx, `CREATE TABLE schema_migrations (version bigint NOT NULL PRIMARY KEY, dirty boolean NOT NULL)`); err != nil {
+		t.Fatalf("create migration ledger: %v", err)
+	}
+	applied := 0
+	for _, file := range files {
+		if filepath.Base(file) > lastMigration {
+			break
+		}
+		sql, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("read migration %s: %v", file, err)
+		}
+		if _, err := pool.Exec(ctx, string(sql)); err != nil {
+			t.Fatalf("apply migration %s: %v", file, err)
+		}
+		if applied, err = strconv.Atoi(filepath.Base(file)[:4]); err != nil {
+			t.Fatalf("migration version %s: %v", file, err)
+		}
+	}
+	return dsn, applied
 }
 
 // Canonical ids throughout: slug-keyed teams with a kind, uuid-keyed matches
