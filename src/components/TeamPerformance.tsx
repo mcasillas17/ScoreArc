@@ -1,7 +1,7 @@
 'use client';
 
 import type { Match, TeamProfile } from '@/server/data/types';
-import type { TeamStyle } from '@/server/data/competitions';
+import { resolveSeason, supportsResource, type TeamStyle } from '@/server/data/competitions';
 import { teamPerformance, type MatchScope, type PerformancePeriod } from '@/server/data/teamPerformance';
 import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import { formatDate } from '@/i18n/format';
@@ -27,6 +27,7 @@ export default function TeamPerformance({ matches, teamId, scope, next, teamStyl
   const locale = useLocale();
   const { recent, previous, eligibleCount, change } = teamPerformance(matches, teamId, scope);
   const base = `/${locale}/c/${scope.competitionId}/${scope.seasonId}`;
+  const edition = resolveSeason(scope.competitionId, scope.seasonId)?.season;
   const details = useMatchDetails(`/api/${scope.competitionId}/${scope.seasonId}`, 'team-page');
   const available = availability?.results === 'available';
   const number = (n: number, signed = false, fractionDigits = 1) => new Intl.NumberFormat(intlLocale(locale), {
@@ -96,6 +97,8 @@ export default function TeamPerformance({ matches, teamId, scope, next, teamStyl
       <p className="tp-definitions">{t('performance.definitions')}</p>
     </details>}
     {details.detail && <MatchDetailPopup match={toMatchDetailInput(details.detail)} summary={details.summary}
-      loading={details.loadingDetail} onClose={details.closeDetails} teamStyle={teamStyle} teamBase={`${base}/team`} playerBase={`${base}/player`} />}
+      loading={details.loadingDetail} onClose={details.closeDetails} teamStyle={teamStyle}
+      teamBase={edition && supportsResource(edition, 'teams') ? `${base}/team` : undefined}
+      playerBase={edition && supportsResource(edition, 'players') ? `${base}/player` : undefined} />}
   </section>;
 }

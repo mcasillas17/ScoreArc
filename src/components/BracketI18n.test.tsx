@@ -7,6 +7,7 @@ import { COMPETITIONS } from '@/server/data/competitions';
 import type { BracketMatch, BracketRound } from '@/server/data/types';
 import BracketInteractive, { mergeRounds } from './BracketInteractive';
 import { bracketShapeFor } from './bracketShape';
+import ChampionCelebration from './ChampionCelebration';
 
 vi.mock('next/navigation', () => ({
   usePathname: () => window.location.pathname,
@@ -125,6 +126,18 @@ describe('bracket localization', () => {
     cleanup();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it.each([
+    ['en', 'WORLD CHAMPIONS', 'Your predicted winner'],
+    ['es', 'CAMPEONAS DEL MUNDO', 'Tus ganadoras previstas'],
+  ] as const)('uses the women’s champion terms in %s', (locale, title, subtitle) => {
+    window.history.replaceState(null, '', `/${locale}/c/liga-mx-femenil/2026-apertura`);
+    render(<I18nProvider locale={locale}><ChampionCelebration
+      team={team('mex-w-america', 'América', 'AME')} emblem="🏆" championTitleKey="champion.world" onClose={() => {}}
+    /></I18nProvider>);
+    expect(screen.getByRole('dialog', { name: `América — ${title}` })).toBeTruthy();
+    expect(screen.getByText(subtitle)).toBeTruthy();
   });
 
   it('labels the Femenil projection and explains two legs in Spanish', () => {

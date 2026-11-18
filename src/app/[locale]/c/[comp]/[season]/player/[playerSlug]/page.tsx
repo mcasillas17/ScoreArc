@@ -6,6 +6,7 @@ import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
 import { ogUrl, shareMetadata } from '@/lib/ogUrl';
 import { resolveResource } from '@/server/data/editionResources';
+import { supportsResource } from '@/server/data/competitions';
 import { loadPlayerBySlug } from '@/server/data/playerIndex';
 import type { PlayerProfile } from '@/server/data/types';
 import PlayerHeader from '@/components/PlayerHeader';
@@ -81,7 +82,7 @@ export default async function PlayerPage({ params }: Params) {
   const player = await loadPlayer(resolvedParams.comp, resolvedParams.season, resolvedParams.playerSlug);
   if (!player) notFound();
 
-  const teamBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/team`;
+  const teamBase = supportsResource(rc.season, 'teams') ? `/${locale}/c/${rc.competition.id}/${rc.season.id}/team` : undefined;
   const playerBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/player`;
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
   const clubHref = player.team ? teamHref(teamBase, player.team) : undefined;

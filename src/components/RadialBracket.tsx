@@ -241,7 +241,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
 
   // Match-detail popup state (live/finished mode only)
   const {
-    detail, summary, setSummary, loadingDetail, openDetails, closeDetails,
+    detail, summary, setSummary, loadingDetail, openDetails, closeDetails, hasSummary,
   } = useMatchDetails<BracketMatch>(apiBase, 'bracket');
   const handleView = (m: BracketMatch) => openDetails(m.detailMatch ?? m);
   const summaryFeedFailedFor = useRef<string | null>(null);
@@ -254,7 +254,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
   // While the popup is open on a LIVE match, quietly refresh its summary every
   // 15s so the score / stats / scorers stay current without blanking the card.
   useEffect(() => {
-    if (!detail || detail.state !== 'live') return;
+    if (!hasSummary || !detail || detail.state !== 'live') return;
     summaryFeedFailedFor.current = null;
     let active = true;
     const id = setInterval(async () => {
@@ -285,7 +285,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
       clearInterval(id);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detail?.id, detail?.state]);
+  }, [detail?.id, detail?.state, hasSummary]);
 
   const handleDiscClick = (node: RingNode) => {
     // Discs only interact in predict mode (pick). Viewing a match's details is

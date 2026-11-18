@@ -21,15 +21,21 @@ export const runtime = 'edge';
 /**
  * Confirm an image URL actually answers before satori embeds it: a rotted
  * crest in a years-old share link must degrade to a card without the crest,
- * not to an empty reply. HEAD, not GET — we only need existence.
+ * not to an empty reply. The local brand asset is embedded for the renderer.
  */
-async function liveImage(url: string | null): Promise<string | null> {
+async function liveImage(url: string | null, inline = false): Promise<string | null> {
   if (!url) return null;
   try {
     // Timeboxed: a slow-but-alive CDN must degrade like a dead one, or it
     // stalls the whole card past a crawler's unfurl patience.
-    const res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(1500) });
-    return res.ok ? url : null;
+    const res = await fetch(url, { method: inline ? 'GET' : 'HEAD', signal: AbortSignal.timeout(1500) });
+    if (!res.ok) return null;
+    if (!inline) return url;
+    if (res.headers.get('content-type')?.split(';')[0] !== 'image/png') return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    // Our 25 KiB brand PNG stays local; Satori rejects loopback URLs in development.
+    if (bytes.length > 65536) return null;
+    return `data:image/png;base64,${btoa(String.fromCharCode(...bytes))}`;
   } catch {
     return null;
   }
@@ -102,8 +108,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const requestedLocale = searchParams.get('locale');
   const locale = isLocale(requestedLocale) ? requestedLocale : DEFAULT_LOCALE;
-  const t = getTranslator(locale);
   const competitionId = searchParams.get('compId');
+  const t = getTranslator(locale, competitionId ?? undefined);
   const competition = getCompetition(competitionId ?? '');
   const generic = competitionId !== null && !competition;
   const champ = generic ? '' : searchParams.get('champ')?.toUpperCase() ?? '';
@@ -129,7 +135,7 @@ export async function GET(req: NextRequest) {
     liveImage(generic ? null : safeCrest(searchParams.get('crest'))),
     liveImage(champ && flagStyle ? flagUrl(champ) : null),
     liveImage(competition?.logo ?? null),
-    liveImage(generic ? null : `${req.nextUrl.origin}/brand/scorearc-mark-512.png`),
+    liveImage(generic ? null : `${req.nextUrl.origin}/brand/scorearc-mark-512.png`, true),
   ]);
 
   return new ImageResponse(

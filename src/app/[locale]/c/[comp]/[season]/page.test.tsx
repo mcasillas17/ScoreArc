@@ -1,9 +1,11 @@
+import { OG_VERSION } from '@/lib/ogUrl';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { redirect } from 'next/navigation';
 import { dataStore } from '@/server/data/store';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import Workspace, { generateMetadata } from './page';
+import * as registry from '@/server/data/competitions';
 
 // The real redirect() aborts rendering by throwing. A no-op mock would let
 // execution fall through into the bracket path and quietly invert the
@@ -15,7 +17,7 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
-afterEach(() => vi.clearAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.clearAllMocks(); });
 
 describe('competition season root', () => {
   // A league's headline view is its table, and the table lives at /standings
@@ -31,7 +33,11 @@ describe('competition season root', () => {
   // Liga MX's root is the projected Liguilla, not a redirect: quarters pair
   // 1v8, 2v7, 3v6, 4v5 (emitted in ring order 1v8/4v5/2v7/3v6) from the live
   // table, semis and final as placeholders.
-  it('renders the projected Liguilla for Liga MX instead of redirecting', async () => {
+  it.each([false, true])('renders the projected Liguilla with predictions limited to live editions (archive %s)', async archive => {
+    if (archive) {
+      const rc = registry.resolveSeason('liga-mx', '2026-apertura')!;
+      vi.spyOn(registry, 'resolveSeason').mockReturnValue({ ...rc, season: { ...rc.season, publication: 'archive' } });
+    }
     vi.spyOn(dataStore, 'getMatches').mockResolvedValue([]);
     vi.spyOn(dataStore, 'getUpcoming').mockResolvedValue([]);
     vi.spyOn(dataStore, 'getStandings').mockResolvedValue([
@@ -52,8 +58,8 @@ describe('competition season root', () => {
     expect(html).toContain('T1');
     // The interactive shell ships with it: predict mode is open on a
     // projection (quarters fully seeded), so the tabs render server-side.
-    expect(html).toContain('Arma tu cuadro');
-    expect(html).toContain('Proyección');
+    expect(html.includes('Arma tu cuadro')).toBe(!archive);
+    expect(html.includes('Proyección')).toBe(!archive);
     expect(html).not.toContain('Resultados en vivo');
   });
 
@@ -138,13 +144,13 @@ describe('competition bracket metadata', () => {
   it.each([
     {
       locale: 'en' as const,
-      title: 'My World Cup champion: México 🏆',
-      description: 'México is my pick to win World Cup. Build your bracket on ScoreArc.',
+      title: 'My Men\'s World Cup champion: México 🏆',
+      description: 'México is my pick to win Men\'s World Cup. Build your bracket on ScoreArc.',
     },
     {
       locale: 'es' as const,
-      title: 'Mi campeón de World Cup: México 🏆',
-      description: 'México es mi elección para ganar World Cup. Arma tu cuadro en ScoreArc.',
+      title: 'Mi campeón de Men\'s World Cup: México 🏆',
+      description: 'México es mi elección para ganar Men\'s World Cup. Arma tu cuadro en ScoreArc.',
     },
   ])('localizes predicted-champion metadata in $locale without changing share URLs', async ({ locale, title, description }) => {
     const metadata = await generateMetadata({
@@ -166,7 +172,7 @@ describe('competition bracket metadata', () => {
         title,
         description,
         images: [{
-          url: `/api/og?champ=MEX&name=M%C3%A9xico&compId=world-cup&comp=World+Cup+2026&locale=${locale}&v=3`,
+          url: `/api/og?champ=MEX&name=M%C3%A9xico&compId=world-cup&comp=Men%27s+World+Cup+2026&locale=${locale}&v=${OG_VERSION}`,
           width: 1200,
           height: 630,
         }],
@@ -175,7 +181,7 @@ describe('competition bracket metadata', () => {
         card: 'summary_large_image',
         title,
         description,
-        images: [`/api/og?champ=MEX&name=M%C3%A9xico&compId=world-cup&comp=World+Cup+2026&locale=${locale}&v=3`],
+        images: [`/api/og?champ=MEX&name=M%C3%A9xico&compId=world-cup&comp=Men%27s+World+Cup+2026&locale=${locale}&v=${OG_VERSION}`],
       },
     });
   });

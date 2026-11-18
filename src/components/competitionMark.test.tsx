@@ -1,13 +1,22 @@
-import { describe, it, expect } from 'vitest';
+// @vitest-environment jsdom
+import { afterEach, describe, it, expect } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import CompetitionMark from './CompetitionMark';
 import { COMPETITIONS, listCompetitions } from '@/server/data/competitions';
+
+afterEach(cleanup);
 
 // ESPN's league logos vary in quality. Measured 2026-08-19 on the 500-dark
 // variant: the Leagues Cup mark is solid black (ink luminance 0) on transparent
 // and vanishes on this background; Greece's only asset bakes in a solid
 // white square. The rule is per competition, not blanket.
 describe('CompetitionMark', () => {
+  it('retains the women’s competition name when its logo fails', () => {
+    render(<CompetitionMark logo="https://example.test/missing.png" emblem="🏆" name="FIFA Women's World Cup" />);
+    fireEvent.error(screen.getByRole('img', { name: "FIFA Women's World Cup" }));
+    expect(screen.getByRole('img', { name: "FIFA Women's World Cup" }).textContent).toBe('🏆');
+  });
   it('renders the logo when there is one', () => {
     const html = renderToStaticMarkup(
       <CompetitionMark logo="https://example.test/l.png" emblem="🏆" name="Test Cup" />,

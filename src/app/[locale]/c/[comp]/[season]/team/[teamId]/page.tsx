@@ -4,6 +4,7 @@ import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
 import { ogUrl, shareMetadata } from '@/lib/ogUrl';
 import { resolveResource } from '@/server/data/editionResources';
+import { supportsResource } from '@/server/data/competitions';
 import { dataStore } from '@/server/data/store';
 import { isReaderOperationStore, runDataOperation } from '@/server/data/sourceSelection';
 import { providerTeamId } from '@/server/data/teamIdentity';
@@ -70,7 +71,7 @@ export default async function TeamPage({ params }: Params) {
   const { profile, playerSlugs } = await runDataOperation(dataStore, async (source) => {
     const profile = await source.getTeam(rc, upstreamId);
     let playerSlugs: Record<string, string> = {};
-    if (profile) {
+    if (profile && supportsResource(rc.season, 'players') && supportsResource(rc.season, 'squad')) {
       try {
         const index = await competitionPlayerIndex(rc, source);
         playerSlugs = Object.fromEntries(index.byProvider);
@@ -134,12 +135,12 @@ export default async function TeamPage({ params }: Params) {
         )}
       </section>
 
-      <section className="tm-section">
+      {supportsResource(rc.season, 'squad') && <section className="tm-section">
         <h2 className="section-label">
           {t('team.squad')}
         </h2>
         <SquadTable squad={profile.squad} playerBase={playerBase} playerSlugs={playerSlugs} />
-      </section>
+      </section>}
 
       <SiteFooter />
     </main>

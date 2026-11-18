@@ -10,6 +10,13 @@ describe('ogUrl', () => {
   it('encodes reserved characters', () => {
     expect(ogUrl({ subject: 'América & Co' })).toContain('subject=Am%C3%A9rica+%26+Co');
   });
+
+  it('keeps category and edition context on same-name team shares', () => {
+    const men = ogUrl({ subject: 'América', compId: 'liga-mx', comp: 'Liga MX Apertura 2026', locale: 'es' });
+    const women = ogUrl({ subject: 'América', compId: 'liga-mx-femenil', comp: 'Liga MX Femenil Apertura 2026', locale: 'es' });
+    expect(men).not.toBe(women);
+    expect(new URL(women, 'https://scorearc.futbol').searchParams.get('comp')).toBe('Liga MX Femenil Apertura 2026');
+  });
 });
 
 describe('shareMetadata', () => {

@@ -129,11 +129,11 @@ export const es = {
   'players.coverage': (count: number, total: number) => `Datos de plantillas de ${count} de ${total} equipos.`,
   'players.noRosters': 'No hay datos de plantillas disponibles por ahora. Inténtalo más tarde.',
   'players.unavailable': 'El directorio de jugadores no está disponible por ahora. Inténtalo más tarde.',
-  'players.historical': 'No hay plantillas históricas disponibles. Consulta el directorio de plantillas actuales.',
+  'players.historical': 'No hay plantillas históricas disponibles para esta edición.',
   'players.currentDirectory': 'Directorio actual de jugadores →',
   'players.metaTitle': (edition: string) => `Jugadores · ${edition}`,
   'players.metaDescription': (edition: string) => `Plantillas actuales de los equipos de ${edition}. Busca jugadores disponibles por nombre o equipo; la cobertura puede ser incompleta.`,
-  'players.historicalMetaDescription': (edition: string) => `No hay plantillas históricas disponibles de ${edition}. Consulta el directorio de plantillas actuales.`,
+  'players.historicalMetaDescription': (edition: string) => `No hay plantillas históricas disponibles de ${edition}.`,
 
   'teams.title': 'Equipos',
   'teams.everyCompetition': 'Todas las competiciones',
@@ -499,6 +499,8 @@ export const es = {
  * everything else falls through to `es`. English needs no such table.
  */
 export const esWomen = {
+  'bracket.predictedWinner': 'Tus ganadoras previstas',
+  'og.predictedChampion': 'MIS CAMPEONAS PRONOSTICADAS',
   'squad.player': 'Jugadora',
   'players.search': 'Buscar jugadoras o equipos',
   'players.count': (count: number, total: number) => `${count} de ${total} jugadoras`,

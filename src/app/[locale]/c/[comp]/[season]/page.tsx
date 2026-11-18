@@ -12,7 +12,6 @@ import { getBannerFeed } from '@/server/data/banner';
 import BracketInteractive from '@/components/BracketInteractive';
 import StandingsLive from '@/components/StandingsLive';
 import PhaseQualifiers from '@/components/PhaseQualifiers';
-import SeasonSwitcher from '@/components/SeasonSwitcher';
 import { bracketShapeFor, knockoutIsReady } from '@/components/bracketShape';
 import SiteFooter from '@/components/SiteFooter';
 import { getTranslator } from '@/i18n/translate';
@@ -54,7 +53,7 @@ export async function generateMetadata({ params, searchParams }: { params: Seaso
   };
   if (!champ) {
     const og = ogUrl({ compId: rc.competition.id, comp: label, locale });
-    const title = t('meta.competition.title', rc.competition.name);
+    const title = t('meta.competition.title', label);
     // Same description the layout builds: this return replaces the layout's
     // openGraph WHOLESALE, so anything left out here (siteName, type,
     // description) silently vanishes from the most-shared URL on the site.
@@ -93,7 +92,7 @@ export default async function Workspace({ params }: { params: SeasonParams }) {
   const apiBase = `/api/${rc.competition.id}/${rc.season.id}`;
   // Crests in the tables below link here. Competition-scoped because a club's
   // record and squad only mean something inside one competition.
-  const teamBase = `/${locale}/c/${rc.competition.id}/${rc.season.id}/team`;
+  const teamBase = supportsResource(rc.season, 'teams') ? `/${locale}/c/${rc.competition.id}/${rc.season.id}/team` : undefined;
   const { teamStyle } = rc.competition;
   // A finished (non-current) edition is view-only.
   const readOnly = rc.season.publication === 'archive' || rc.season.id !== rc.competition.currentSeasonId;
@@ -164,7 +163,8 @@ export default async function Workspace({ params }: { params: SeasonParams }) {
                   logoInvert={rc.competition.logoInvert}
                   championTitleKey={rc.competition.championTitleKey}
                   accent={rc.competition.bracketAccent}
-                  predictionEnabled
+                  predictionEnabled={!readOnly}
+                  readOnly={readOnly}
                   poll={false}
                 />
               </div>
@@ -216,8 +216,11 @@ export default async function Workspace({ params }: { params: SeasonParams }) {
           {/* Below the heading, never above it: the page opens on its title. */}
           {!readOnly && banner}
           <StandingsLive
+            live={!readOnly}
+            hasLeaders={supportsResource(rc.season, 'leaders')}
+            hasScores={supportsResource(rc.season, 'scores')}
             teamBase={teamBase}
-            playerBase={`/${locale}/c/${rc.competition.id}/${rc.season.id}/player`}
+            playerBase={supportsResource(rc.season, 'players') ? `/${locale}/c/${rc.competition.id}/${rc.season.id}/player` : undefined}
             initialGroups={phaseGroups}
             initialScorers={[]}
             initialAssists={[]}
@@ -237,7 +240,7 @@ export default async function Workspace({ params }: { params: SeasonParams }) {
   const predictionEnabled = !readOnly
     && !bracket.some(r => r.slug === 'final' && r.matches.some(m => m.winnerId));
   const start = rc.season.bracketDatesRange && utcDate(rc.season.bracketDatesRange.slice(0, 8));
-  const upcomingKnockoutDate = start && start > Date.now() && rc.season.sections.includes('standings')
+  const upcomingKnockoutDate = start && start > Date.now() && supportsResource(rc.season, 'standings')
     ? formatDate(new Date(start), locale, { dateStyle: 'long', timeZone: 'UTC' })
     : null;
 
@@ -247,7 +250,6 @@ export default async function Workspace({ params }: { params: SeasonParams }) {
         <header className="bracket-head">
           <p className="bracket-eyebrow">{rc.competition.shortName}</p>
           <h1 className="bracket-title">{t('bracket.knockout')}</h1>
-          <SeasonSwitcher competition={rc.competition} activeSeasonId={rc.season.id} />
         </header>
         {bracket.length > 0
           ? <div key={rc.season.id} className="edition-fade"><BracketInteractive rounds={bracket} apiBase={apiBase} teamStyle={teamStyle} compId={rc.competition.id} seasonId={rc.season.id} compShortName={rc.competition.shortName} seasonLabel={rc.season.label} emblem={rc.competition.emblem} logo={rc.competition.logo} logoInvert={rc.competition.logoInvert} trophyImage={rc.competition.trophyImage} championTitleKey={rc.competition.championTitleKey} accent={rc.competition.bracketAccent} shape={bracketShapeFor(rc.season)} readOnly={readOnly} predictionEnabled={predictionEnabled} /></div>

@@ -141,11 +141,11 @@ export const en = {
   'players.coverage': (count: number, total: number) => `Roster data from ${count} of ${total} listed teams.`,
   'players.noRosters': 'No roster data is available right now. Try again later.',
   'players.unavailable': 'The player directory is unavailable right now. Try again later.',
-  'players.historical': 'Historical player rosters are not available. Browse the current roster directory instead.',
+  'players.historical': 'Historical player rosters are not available for this edition.',
   'players.currentDirectory': 'Current player directory →',
   'players.metaTitle': (edition: string) => `Players · ${edition}`,
   'players.metaDescription': (edition: string) => `Current rosters for teams listed in ${edition}. Search available players by name or team; coverage may be incomplete.`,
-  'players.historicalMetaDescription': (edition: string) => `Historical player rosters are not available for ${edition}. Browse the current roster directory.`,
+  'players.historicalMetaDescription': (edition: string) => `Historical player rosters are not available for ${edition}.`,
 
   'teams.title': 'Teams',
   'teams.everyCompetition': 'All competitions',

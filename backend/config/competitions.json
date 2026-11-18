@@ -1,8 +1,8 @@
 [
   {
     "id": "world-cup",
-    "name": "World Cup 2026",
-    "shortName": "World Cup",
+    "name": "Men's World Cup",
+    "shortName": "Men's World Cup",
     "espnSlug": "fifa.world",
     "espnRosterName": "FIFA World Cup",
     "kind": "national",

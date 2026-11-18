@@ -125,7 +125,7 @@ describe('StandingsPage heading', () => {
     await expect(generateMetadata({
       params: { locale: 'es', comp: 'world-cup', season: '2026' },
     })).resolves.toMatchObject({
-      title: 'Clasificación · World Cup 2026',
+      title: "Clasificación · Men's World Cup 2026",
       alternates: {
         canonical: '/es/c/world-cup/2026/standings',
         languages: {
