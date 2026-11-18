@@ -321,8 +321,13 @@ describe('workflow wiring', () => {
 
   it('retains the required test name and gates every production caller on its success', () => {
     const ci = readFileSync('.github/workflows/ci.yml', 'utf8');
-    expect(ci).toContain('  test:');
-    expect(ci).not.toMatch(/  test:\n\s+if:/);
+    // `test` gates on both halves and is never skipped: always() plus an explicit
+    // success check, because a skipped required check passes branch protection.
+    const gate = ci.split('\n  test:\n')[1]?.split('\n\n')[0] ?? '';
+    expect(gate).toContain('needs: [frontend, backend]');
+    expect(gate).toMatch(/^    if: always\(\)$/m);
+    expect(gate).toContain('[ "$FRONTEND" = success ] && [ "$BACKEND" = success ]');
+    expect(ci).not.toMatch(/  (frontend|backend):\n\s+(if|needs):/);
     expect(ci).not.toContain('branches-ignore');
     expect(ci).toContain('needs: test');
     expect(ci).toContain("needs.test.result == 'success'");

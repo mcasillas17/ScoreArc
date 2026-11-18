@@ -41,9 +41,12 @@ for timestamps, bounded live evidence and the still-open governance/acceptance.
 ## Release contract
 
 `CI` validates PRs, branch pushes, main pushes and manual dispatches. The stable
-`test` job includes registry exports, frontend tests/typecheck/lint/build,
-database migration apply/rollback, backend race tests and vet. It is never
-conditionally skipped by a dispatch ref. A feature-branch dispatch can run tests,
+`test` job is the single gate over two jobs that run in parallel: `frontend`
+(registry exports, frontend tests/typecheck/lint/build) and `backend` (database
+migration apply/rollback, backend race tests and vet). `test` runs with
+`if: always()` and fails unless both succeeded, so a failed half can never leave
+the required check skipped. None of the three is conditionally skipped by a
+dispatch ref. A feature-branch dispatch can run tests,
 but cannot release or access production environments.
 
 Production requires `needs: test` and actual success in the **same main run**.
