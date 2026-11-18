@@ -62,10 +62,10 @@ export async function generateMetadata({ params, searchParams }: { params: Seaso
   }
   const championName = name ?? champ;
   const og = ogUrl({ champ, name: championName, crest, compId: rc.competition.id, comp: label, locale });
-  const title = t('meta.predictedChampion.title', rc.competition.shortName, championName);
+  const title = t('meta.predictedChampion.title', label, championName);
   const description = t(
     'meta.predictedChampion.description',
-    rc.competition.shortName,
+    label,
     championName,
   );
   return {

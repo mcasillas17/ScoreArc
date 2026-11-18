@@ -28,14 +28,27 @@ async function liveImage(url: string | null, inline = false): Promise<string | n
   try {
     // Timeboxed: a slow-but-alive CDN must degrade like a dead one, or it
     // stalls the whole card past a crawler's unfurl patience.
-    const res = await fetch(url, { method: inline ? 'GET' : 'HEAD', signal: AbortSignal.timeout(1500) });
+    const res = await fetch(url, { method: inline ? 'GET' : 'HEAD', redirect: inline ? 'error' : 'follow', signal: AbortSignal.timeout(1500) });
     if (!res.ok) return null;
     if (!inline) return url;
-    if (res.headers.get('content-type')?.split(';')[0] !== 'image/png') return null;
-    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (res.headers.get('content-type')?.split(';')[0] !== 'image/png' || !res.body) return null;
     // Our 25 KiB brand PNG stays local; Satori rejects loopback URLs in development.
-    if (bytes.length > 65536) return null;
-    return `data:image/png;base64,${btoa(String.fromCharCode(...bytes))}`;
+    const reader = res.body.getReader();
+    let binary = '';
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (binary.length + value.length > 65536) {
+          await reader.cancel();
+          return null;
+        }
+        binary += String.fromCharCode(...value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    return binary ? `data:image/png;base64,${btoa(binary)}` : null;
   } catch {
     return null;
   }

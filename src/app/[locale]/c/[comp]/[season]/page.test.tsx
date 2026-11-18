@@ -144,13 +144,13 @@ describe('competition bracket metadata', () => {
   it.each([
     {
       locale: 'en' as const,
-      title: 'My Men\'s World Cup champion: México 🏆',
-      description: 'México is my pick to win Men\'s World Cup. Build your bracket on ScoreArc.',
+      title: 'My Men\'s World Cup 2026 champion: México 🏆',
+      description: 'México is my pick to win Men\'s World Cup 2026. Build your bracket on ScoreArc.',
     },
     {
       locale: 'es' as const,
-      title: 'Mi campeón de Men\'s World Cup: México 🏆',
-      description: 'México es mi elección para ganar Men\'s World Cup. Arma tu cuadro en ScoreArc.',
+      title: 'Mi campeón de Men\'s World Cup 2026: México 🏆',
+      description: 'México es mi elección para ganar Men\'s World Cup 2026. Arma tu cuadro en ScoreArc.',
     },
   ])('localizes predicted-champion metadata in $locale without changing share URLs', async ({ locale, title, description }) => {
     const metadata = await generateMetadata({

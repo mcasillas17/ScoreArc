@@ -515,11 +515,12 @@ const ogRoute = () => import('./og/route');
 // custom impl to simulate a dead image).
 const ogMarkup = async (
   query: string,
-  imageFetch: (url: string) => Promise<{ ok: boolean }> = async () => ({ ok: true }),
+  imageFetch: (url: string) => Promise<{ ok: boolean; body?: ReadableStream<Uint8Array> }> = async () => ({ ok: true }),
 ) => {
   // NOTE: unstubAllGlobals below is a blunt reset — a future beforeEach-level
   // stubGlobal in this file would be silently wiped by the first ogMarkup call.
   vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+    body: new Response(new Uint8Array([137, 80, 78, 71])).body,
     ...await imageFetch(String(url)),
     headers: new Headers({ 'content-type': 'image/png' }),
     arrayBuffer: async () => new Uint8Array([137, 80, 78, 71]).buffer,
@@ -542,6 +543,18 @@ describe('GET /api/og — card variants', () => {
     const result = await ogMarkup('?compId=liga-mx');
     expect(result.html).toContain('data:image/png;base64,');
     expect(result.html).not.toContain('http://x/brand/scorearc-mark-512.png');
+  });
+
+  it('stops reading an oversized brand asset and renders without it', async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) { controller.enqueue(new Uint8Array(32769)); },
+      cancel,
+    });
+    const result = await ogMarkup('?compId=liga-mx', async () => ({ ok: true, body }));
+    expect(result.status).toBe(200);
+    expect(result.html).not.toContain('data:image/png;base64,');
+    expect(cancel).toHaveBeenCalledOnce();
   });
 
   it.each([

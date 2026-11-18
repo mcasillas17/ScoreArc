@@ -192,6 +192,22 @@ describe('bracket localization', () => {
     );
   });
 
+  it.each([
+    ["Men's World Cup", '2026', 'MensWorldCup2026'],
+    ['Liga MX Femenil', 'Apertura 2026', 'LigaMXFemenilApertura2026'],
+  ])('shares one valid hashtag for %s %s', (compShortName, seasonLabel, hashtag) => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    render(<I18nProvider locale="es"><BracketInteractive
+      rounds={rounds} apiBase="/api/leagues-cup/2026" compId="leagues-cup" seasonId="2026"
+      compShortName={compShortName} seasonLabel={seasonLabel} emblem="🏆" shape={bracketShapeFor(season)} predictionEnabled
+    /></I18nProvider>);
+    fireEvent.click(screen.getByRole('tab', { name: 'Arma tu cuadro' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Compartir tu cuadro en X' }));
+    const intent = new URL(String(open.mock.calls[0][0]));
+    expect(intent.searchParams.get('hashtags')).toBe(hashtag);
+    expect(intent.searchParams.get('text')).toContain(`${compShortName} ${seasonLabel}`);
+  });
+
   it('localizes champion celebration and canvas accessibility text', async () => {
     const { celebration } = await completeChampionPrediction();
     expect(celebration.textContent).toContain('Tu ganador previsto');

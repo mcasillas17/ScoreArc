@@ -199,7 +199,7 @@ export const en = {
   'player.shotsFaced': 'Shots faced',
   'standings.title': 'Standings',
   'standings.metaTitle': (edition: string) => `Standings · ${edition}`,
-  'standings.metaDescription': (edition: string) => `${edition} table, top scorers and top assists.`,
+  'standings.metaDescription': (edition: string) => `${edition} standings on ScoreArc.`,
   'standings.scorers': 'Scorers',
   'standings.assists': 'Assists',
   'standings.leaders': 'Leaders',
@@ -501,7 +501,7 @@ export const en = {
   'meta.root.imageAlt': 'ScoreArc — Live Football',
   'meta.competition.title': (competition: string) => `ScoreArc · ${competition}`,
   'meta.competition.description': (competition: string, season: string) =>
-    `${competition} ${season} — live scores, standings, and more on ScoreArc.`,
+    `${competition} ${season} — matches and results on ScoreArc.`,
 } as const;
 
 type WidenMessage<T> = T extends (...args: infer Args) => string

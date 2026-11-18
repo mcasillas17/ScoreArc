@@ -187,7 +187,7 @@ export const es = {
   'player.shotsFaced': 'Tiros enfrentados',
   'standings.title': 'Clasificación',
   'standings.metaTitle': (edition: string) => `Clasificación · ${edition}`,
-  'standings.metaDescription': (edition: string) => `Clasificación, máximos goleadores y máximos asistentes de ${edition}.`,
+  'standings.metaDescription': (edition: string) => `Clasificación de ${edition} en ScoreArc.`,
   'standings.scorers': 'Goleadores',
   'standings.assists': 'Asistencias',
   'standings.leaders': 'Líderes',
@@ -489,7 +489,7 @@ export const es = {
   'meta.root.imageAlt': 'ScoreArc — Fútbol en vivo',
   'meta.competition.title': (competition: string) => `ScoreArc · ${competition}`,
   'meta.competition.description': (competition: string, season: string) =>
-    `${competition} ${season} — resultados en vivo, clasificaciones y más en ScoreArc.`,
+    `${competition} ${season} — partidos y resultados en ScoreArc.`,
 } satisfies Messages;
 
 /**

@@ -18,8 +18,8 @@ it('offers the edition switcher throughout the competition workspace', async () 
 
 describe('competition layout metadata', () => {
   it.each([
-    ['en', 'Men\'s World Cup 2026 — live scores, standings, and more on ScoreArc.'],
-    ['es', 'Men\'s World Cup 2026 — resultados en vivo, clasificaciones y más en ScoreArc.'],
+    ['en', 'Men\'s World Cup 2026 — matches and results on ScoreArc.'],
+    ['es', 'Men\'s World Cup 2026 — partidos y resultados en ScoreArc.'],
   ])('localizes the %s description and publishes canonical language alternates', async (locale, description) => {
     const metadata = await generateMetadata({
       params: { locale, comp: 'world-cup', season: '2026' },
@@ -45,7 +45,7 @@ it.each(['en', 'es'])('uses the resolved World Cup edition and category in %s sh
   const men = await generateMetadata({ params: { locale, comp: 'world-cup', season: '1998' } });
   expect(men.title).toBe("ScoreArc · Men's World Cup 1998");
   expect(men.openGraph).toMatchObject({ title: men.title });
-  expect(men.description).not.toContain('2026');
+  expect(men.description).not.toMatch(/2026|live|en vivo|standings|clasificaciones/);
   const candidate = registry.listCompetitionDefinitions().find(c => c.id === 'womens-world-cup')!;
   const season = { ...registry.COMPETITIONS['world-cup'].seasons['2022'], id: '2023', label: '2023' };
   const competition = { ...registry.COMPETITIONS['world-cup'], ...candidate, currentSeasonId: '2023', seasons: { '2023': season } };

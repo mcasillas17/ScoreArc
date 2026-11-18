@@ -215,8 +215,8 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
     });
     const url = `${origin}/${locale}/c/${compId}/${seasonId}?${query}`;
     const text = t('bracket.shareText', champion?.name ?? '', compShortName, seasonLabel, url);
-    const hashtag = `${compShortName.replace(/\s+/g, '')}${seasonLabel}`; // "WorldCup2026" / "LeaguesCup2026"
-    const tweet = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&hashtags=${hashtag}`;
+    const hashtag = `${compShortName}${seasonLabel}`.replace(/[^\p{L}\p{N}_]/gu, '');
+    const tweet = `https://twitter.com/intent/tweet?${new URLSearchParams({ text, hashtags: hashtag })}`;
     window.open(tweet, '_blank', 'noopener,noreferrer');
   }
 
