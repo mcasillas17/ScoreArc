@@ -3,7 +3,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { dataStore } from '@/server/data/store';
 import type { Match, TeamProfile } from '@/server/data/types';
-import TeamPage from './page';
+import { competitionPlayerIndex } from '@/server/data/playerIndex';
+import * as registry from '@/server/data/competitions';
+import TeamPage, { generateMetadata } from './page';
 
 vi.mock('@/server/data/playerIndex', () => ({
   competitionPlayerIndex: vi.fn(async () => ({ byProvider: new Map(), bySlug: new Map() })),
@@ -51,7 +53,29 @@ const profile: TeamProfile = {
   schedule: [nextMatch],
 };
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.clearAllMocks(); });
+
+it.each(['en', 'es'])('gives the two América teams their own edition share and canonical in %s', async locale => {
+  vi.spyOn(dataStore, 'getTeam').mockImplementation(async (_rc, id) => ({ ...profile, team: { ...america, id } }));
+  for (const [comp, teamId] of [['liga-mx', 'mex-america'], ['liga-mx-femenil', 'mex-w-america']]) {
+    const meta = await generateMetadata({ params: { locale, comp, season: '2026-apertura', teamId } });
+    expect(meta.alternates?.canonical).toBe(`/${locale}/c/${comp}/2026-apertura/team/${teamId}`);
+    expect(meta.openGraph?.images).toEqual([expect.objectContaining({ url: expect.stringContaining(`compId=${comp}&`) })]);
+    expect(meta.title).toContain(comp === 'liga-mx' ? 'Liga MX Apertura 2026' : 'Liga MX Femenil Apertura 2026');
+  }
+});
+
+it('renders a supported team without requesting an unsupported player directory or squad', async () => {
+  const scope = registry.resolveSeason('liga-mx', '2026-apertura')!;
+  vi.spyOn(registry, 'resolveSeason').mockReturnValue({ ...scope, season: { ...scope.season, resources: ['teams', 'scores'] } });
+  vi.spyOn(dataStore, 'getTeam').mockResolvedValue(profile);
+  vi.mocked(competitionPlayerIndex).mockRejectedValueOnce(new Error('unsupported'));
+  const node = await TeamPage({ params: { locale: 'es', comp: 'liga-mx', season: '2026-apertura', teamId: 'mex-america' } });
+  const html = renderToStaticMarkup(<I18nProvider locale="es">{node}</I18nProvider>);
+  expect(competitionPlayerIndex).not.toHaveBeenCalled();
+  expect(html).not.toContain('Plantel');
+  expect(html).toContain('América');
+});
 
 describe('Spanish team page', () => {
   it('uses the translated short-versus label for the next match', async () => {

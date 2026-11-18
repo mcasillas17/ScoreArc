@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Match, MatchSummaryData } from '@/server/data/types';
 import { trackEvent } from '@/lib/telemetry/client';
+import { resolveSeason, supportsResource } from '@/server/data/competitions';
 
 type DetailTarget = Pick<Match, 'id'> & { home: { id: string }; away: { id: string } };
 
@@ -10,6 +11,9 @@ type DetailTarget = Pick<Match, 'id'> & { home: { id: string }; away: { id: stri
  *  popup. Generic over the row shape: the bracket and the player log open
  *  their own match types, not a scoreboard `Match`. */
 export function useMatchDetails<T extends DetailTarget = Match>(apiBase: string, surface: string) {
+  const [, , competitionId, seasonId] = apiBase.split('/');
+  const scope = resolveSeason(competitionId, seasonId);
+  const hasSummary = !!scope && supportsResource(scope.season, 'summary');
   const [detail, setDetail] = useState<T | null>(null);
   const [summary, setSummary] = useState<MatchSummaryData | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -25,8 +29,9 @@ export function useMatchDetails<T extends DetailTarget = Match>(apiBase: string,
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
-    setDetail(match); setSummary(null); setLoadingDetail(true);
+    setDetail(match); setSummary(null); setLoadingDetail(hasSummary);
     trackEvent('Match details opened', { surface });
+    if (!hasSummary) return;
     try {
       const query = new URLSearchParams({ home: match.home.id, away: match.away.id });
       const response = await fetch(`${apiBase}/match/${encodeURIComponent(match.id)}?${query}`, {
@@ -44,7 +49,7 @@ export function useMatchDetails<T extends DetailTarget = Match>(apiBase: string,
     } finally {
       if (!controller.signal.aborted) setLoadingDetail(false);
     }
-  }, [apiBase, surface]);
+  }, [apiBase, surface, hasSummary]);
 
-  return { detail, summary, setSummary, loadingDetail, openDetails, closeDetails };
+  return { detail, summary, setSummary, loadingDetail, openDetails, closeDetails, hasSummary };
 }

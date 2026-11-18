@@ -3,7 +3,7 @@
 import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import { useEffect, useRef, useState } from 'react';
 import type { BracketRound, BracketMatch, BracketTeam } from '@/server/data/types';
-import type { ChampionTitleKey } from '@/server/data/competitions';
+import { resolveSeason, supportsResource, type ChampionTitleKey } from '@/server/data/competitions';
 import { flagUrl } from '@/lib/flags';
 import RadialBracket, { type BracketMode } from './RadialBracket';
 import ChampionCelebration from './ChampionCelebration';
@@ -127,6 +127,7 @@ function decodePicks(s: string): Record<string, string> {
 export default function BracketInteractive({
 rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage, logo, logoInvert, championTitleKey, seasonId, compShortName, seasonLabel, shape, predictionEnabled = PREDICT_ENABLED, readOnly = false, accent, poll = true }: Props) {
   const locale = useLocale();
+  const edition = resolveSeason(compId, seasonId)?.season;
   const t = useTranslations();
   const [mode, setMode] = useState<BracketMode>('live');
   const [rounds, setRounds] = useState<BracketRound[]>(initialRounds);
@@ -214,8 +215,8 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
     });
     const url = `${origin}/${locale}/c/${compId}/${seasonId}?${query}`;
     const text = t('bracket.shareText', champion?.name ?? '', compShortName, seasonLabel, url);
-    const hashtag = `${compShortName.replace(/\s+/g, '')}${seasonLabel}`; // "WorldCup2026" / "LeaguesCup2026"
-    const tweet = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&hashtags=${hashtag}`;
+    const hashtag = `${compShortName}${seasonLabel}`.replace(/[^\p{L}\p{N}_]/gu, '');
+    const tweet = `https://twitter.com/intent/tweet?${new URLSearchParams({ text, hashtags: hashtag })}`;
     window.open(tweet, '_blank', 'noopener,noreferrer');
   }
 
@@ -292,8 +293,8 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
       )}
 
       <RadialBracket
-        teamBase={`/${locale}/c/${compId}/${seasonId}/team`}
-        playerBase={`/${locale}/c/${compId}/${seasonId}/player`}
+        teamBase={edition && supportsResource(edition, 'teams') ? `/${locale}/c/${compId}/${seasonId}/team` : undefined}
+        playerBase={edition && supportsResource(edition, 'players') ? `/${locale}/c/${compId}/${seasonId}/player` : undefined}
         rounds={rounds}
         mode={mode}
         picks={picks}

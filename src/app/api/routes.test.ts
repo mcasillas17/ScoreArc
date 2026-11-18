@@ -515,11 +515,16 @@ const ogRoute = () => import('./og/route');
 // custom impl to simulate a dead image).
 const ogMarkup = async (
   query: string,
-  imageFetch: (url: string) => Promise<{ ok: boolean }> = async () => ({ ok: true }),
+  imageFetch: (url: string) => Promise<{ ok: boolean; body?: ReadableStream<Uint8Array> }> = async () => ({ ok: true }),
 ) => {
   // NOTE: unstubAllGlobals below is a blunt reset — a future beforeEach-level
   // stubGlobal in this file would be silently wiped by the first ogMarkup call.
-  vi.stubGlobal('fetch', vi.fn((url: string) => imageFetch(String(url))));
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+    body: new Response(new Uint8Array([137, 80, 78, 71])).body,
+    ...await imageFetch(String(url)),
+    headers: new Headers({ 'content-type': 'image/png' }),
+    arrayBuffer: async () => new Uint8Array([137, 80, 78, 71]).buffer,
+  })));
   try {
     const response = await (await ogRoute()).GET(new NextRequest(`http://x/api/og${query}`));
     return {
@@ -533,6 +538,43 @@ const ogMarkup = async (
 
 describe('GET /api/og — card variants', () => {
   const CREST = 'https://a.espncdn.com/i/teamlogos/soccer/500/227.png';
+
+  it('embeds the brand asset without handing the renderer a local network URL', async () => {
+    const result = await ogMarkup('?compId=liga-mx');
+    expect(result.html).toContain('data:image/png;base64,');
+    expect(result.html).not.toContain('http://x/brand/scorearc-mark-512.png');
+  });
+
+  it('stops reading an oversized brand asset and renders without it', async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) { controller.enqueue(new Uint8Array(32769)); },
+      cancel,
+    });
+    const result = await ogMarkup('?compId=liga-mx', async () => ({ ok: true, body }));
+    expect(result.status).toBe(200);
+    expect(result.html).not.toContain('data:image/png;base64,');
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['en', 'liga-mx', 'MY PREDICTED CHAMPION'],
+    ['en', 'liga-mx-femenil', 'MY PREDICTED CHAMPION'],
+    ['es', 'liga-mx', 'MI CAMPEÓN PRONOSTICADO'],
+    ['es', 'liga-mx-femenil', 'MIS CAMPEONAS PRONOSTICADAS'],
+  ])('renders category-aware champion copy for %s/%s', async (locale, comp, title) => {
+    const { html } = await ogMarkup(`?locale=${locale}&compId=${comp}&champ=AME&name=Am%C3%A9rica`);
+    expect(html).toContain(title);
+  });
+
+  it('keeps the two América cards distinct when neither crest can load', async () => {
+    const men = await ogMarkup('?subject=Am%C3%A9rica&compId=liga-mx&comp=Liga+MX+Apertura+2026', async () => ({ ok: false }));
+    const women = await ogMarkup('?subject=Am%C3%A9rica&compId=liga-mx-femenil&comp=Liga+MX+Femenil+Apertura+2026', async () => ({ ok: false }));
+    expect(men.html).toContain('Liga MX Apertura 2026');
+    expect(women.html).toContain('Liga MX Femenil Apertura 2026');
+    expect(men.html).not.toContain('<img');
+    expect(women.html).not.toContain('<img');
+  });
 
   it('renders the same generic card for hidden and unknown competitions without loading assets', async () => {
     const fetchImage = vi.fn(async () => ({ ok: true }));

@@ -21,15 +21,34 @@ export const runtime = 'edge';
 /**
  * Confirm an image URL actually answers before satori embeds it: a rotted
  * crest in a years-old share link must degrade to a card without the crest,
- * not to an empty reply. HEAD, not GET — we only need existence.
+ * not to an empty reply. The local brand asset is embedded for the renderer.
  */
-async function liveImage(url: string | null): Promise<string | null> {
+async function liveImage(url: string | null, inline = false): Promise<string | null> {
   if (!url) return null;
   try {
     // Timeboxed: a slow-but-alive CDN must degrade like a dead one, or it
     // stalls the whole card past a crawler's unfurl patience.
-    const res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(1500) });
-    return res.ok ? url : null;
+    const res = await fetch(url, { method: inline ? 'GET' : 'HEAD', redirect: inline ? 'error' : 'follow', signal: AbortSignal.timeout(1500) });
+    if (!res.ok) return null;
+    if (!inline) return url;
+    if (res.headers.get('content-type')?.split(';')[0] !== 'image/png' || !res.body) return null;
+    // Our 25 KiB brand PNG stays local; Satori rejects loopback URLs in development.
+    const reader = res.body.getReader();
+    let binary = '';
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (binary.length + value.length > 65536) {
+          await reader.cancel();
+          return null;
+        }
+        binary += String.fromCharCode(...value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    return binary ? `data:image/png;base64,${btoa(binary)}` : null;
   } catch {
     return null;
   }
@@ -102,8 +121,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const requestedLocale = searchParams.get('locale');
   const locale = isLocale(requestedLocale) ? requestedLocale : DEFAULT_LOCALE;
-  const t = getTranslator(locale);
   const competitionId = searchParams.get('compId');
+  const t = getTranslator(locale, competitionId ?? undefined);
   const competition = getCompetition(competitionId ?? '');
   const generic = competitionId !== null && !competition;
   const champ = generic ? '' : searchParams.get('champ')?.toUpperCase() ?? '';
@@ -129,7 +148,7 @@ export async function GET(req: NextRequest) {
     liveImage(generic ? null : safeCrest(searchParams.get('crest'))),
     liveImage(champ && flagStyle ? flagUrl(champ) : null),
     liveImage(competition?.logo ?? null),
-    liveImage(generic ? null : `${req.nextUrl.origin}/brand/scorearc-mark-512.png`),
+    liveImage(generic ? null : `${req.nextUrl.origin}/brand/scorearc-mark-512.png`, true),
   ]);
 
   return new ImageResponse(

@@ -5,6 +5,7 @@ import { isLocale } from '@/i18n/config';
 import { getTranslator } from '@/i18n/translate';
 import { ogUrl, shareMetadata } from '@/lib/ogUrl';
 import { resolveResource } from '@/server/data/editionResources';
+import { supportsResource } from '@/server/data/competitions';
 import { competitionPlayerIndex } from '@/server/data/playerIndex';
 import PlayerSearch from '@/components/PlayerSearch';
 import SiteFooter from '@/components/SiteFooter';
@@ -38,6 +39,8 @@ export default async function PlayersPage({ params }: Params) {
   if (!rc) notFound();
   const t = getTranslator(locale, comp);
   const historical = rc.season.publication === 'archive' || rc.season.id !== rc.competition.currentSeasonId;
+  const current = rc.competition.seasons[rc.competition.currentSeasonId];
+  const currentDirectory = current && current.publication !== 'archive' && current.id !== rc.season.id && supportsResource(current, 'players');
   let directory: Awaited<ReturnType<typeof competitionPlayerIndex>>['directory'] | null = null;
   if (!historical) {
     try { directory = (await competitionPlayerIndex(rc)).directory; }
@@ -55,9 +58,9 @@ export default async function PlayersPage({ params }: Params) {
       {historical ? (
         <div>
           <p className="tsp-empty">{t('players.historical')}</p>
-          <p className="tsp-all"><Link href={`/${locale}/c/${rc.competition.id}/${rc.competition.currentSeasonId}/players`}>
+          {currentDirectory && <p className="tsp-all"><Link href={`/${locale}/c/${rc.competition.id}/${rc.competition.currentSeasonId}/players`}>
             {t('players.currentDirectory')}
-          </Link></p>
+          </Link></p>}
         </div>
       ) : directory === null ? <p className="tsp-empty" role="status">{t('players.unavailable')}</p>
         : directory.totalTeams === 0 ? <p className="tsp-empty">{t('teams.noSeasonTeams')}</p>

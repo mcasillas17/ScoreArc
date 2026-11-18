@@ -4,6 +4,7 @@ import type { PlayerProfile, PlayerSeasonTotal } from '@/server/data/types';
 import type { Translator } from '@/i18n/translate';
 import { teamHref } from './teamHref';
 import TeamBadge from './TeamBadge';
+import PlayerPortrait from './PlayerPortrait';
 
 const APPEARANCES = 'starts-subIns';
 
@@ -48,24 +49,11 @@ export default function PlayerHeader({
   const { lead, rest, apps } = splitTotals(player.totals);
   const label = (f: PlayerSeasonTotal) =>
     f.name === 'totalGoals' ? t('squad.goals') : f.name === 'goalAssists' ? t('squad.assists') : f.label;
-  const initials = player.name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((word) => word[0]!.toUpperCase())
-    .join('');
-
   const clubHref = player.team ? teamHref(teamBase, player.team) : undefined;
 
   return (
     <header className="ph">
-      <div className="ph-portrait" aria-hidden={player.headshotUrl ? undefined : true}>
-        {player.headshotUrl ? (
-          <img className="ph-headshot" src={player.headshotUrl} alt={player.name} />
-        ) : (
-          <span className="ph-initials">{initials}</span>
-        )}
-      </div>
+      <PlayerPortrait name={player.name} src={player.headshotUrl} />
 
       <div className="ph-id">
         <h1 className="ph-name">

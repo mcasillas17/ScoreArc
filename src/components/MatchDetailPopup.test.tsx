@@ -14,6 +14,13 @@ const match: MatchDetailInput = {
   homeScore: 1, awayScore: 2, note: null,
 };
 
+it('explains unavailable match detail while preserving the known score', async () => {
+  render(<I18nProvider locale="en"><MatchDetailPopup match={match} summary={null} loading={false} onClose={vi.fn()} teamStyle="crest" /></I18nProvider>);
+  const dialog = await screen.findByRole('dialog');
+  expect(dialog.textContent).toContain('1–2');
+  expect(dialog.textContent).toContain('No detailed stats available for this match.');
+});
+
 it('shows both club crests instead of interpreting Chicago CHI as Chile', async () => {
   render(<I18nProvider locale="en"><MatchDetailPopup match={match} summary={null} loading={false} onClose={vi.fn()}
     teamStyle="crest" teamBase="/en/c/leagues-cup/2026/team" /></I18nProvider>);

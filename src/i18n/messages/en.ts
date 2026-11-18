@@ -141,11 +141,11 @@ export const en = {
   'players.coverage': (count: number, total: number) => `Roster data from ${count} of ${total} listed teams.`,
   'players.noRosters': 'No roster data is available right now. Try again later.',
   'players.unavailable': 'The player directory is unavailable right now. Try again later.',
-  'players.historical': 'Historical player rosters are not available. Browse the current roster directory instead.',
+  'players.historical': 'Historical player rosters are not available for this edition.',
   'players.currentDirectory': 'Current player directory →',
   'players.metaTitle': (edition: string) => `Players · ${edition}`,
   'players.metaDescription': (edition: string) => `Current rosters for teams listed in ${edition}. Search available players by name or team; coverage may be incomplete.`,
-  'players.historicalMetaDescription': (edition: string) => `Historical player rosters are not available for ${edition}. Browse the current roster directory.`,
+  'players.historicalMetaDescription': (edition: string) => `Historical player rosters are not available for ${edition}.`,
 
   'teams.title': 'Teams',
   'teams.everyCompetition': 'All competitions',
@@ -199,7 +199,7 @@ export const en = {
   'player.shotsFaced': 'Shots faced',
   'standings.title': 'Standings',
   'standings.metaTitle': (edition: string) => `Standings · ${edition}`,
-  'standings.metaDescription': (edition: string) => `${edition} table, top scorers and top assists.`,
+  'standings.metaDescription': (edition: string) => `${edition} standings on ScoreArc.`,
   'standings.scorers': 'Scorers',
   'standings.assists': 'Assists',
   'standings.leaders': 'Leaders',
@@ -501,7 +501,7 @@ export const en = {
   'meta.root.imageAlt': 'ScoreArc — Live Football',
   'meta.competition.title': (competition: string) => `ScoreArc · ${competition}`,
   'meta.competition.description': (competition: string, season: string) =>
-    `${competition} ${season} — live scores, standings, and more on ScoreArc.`,
+    `${competition} ${season} — matches and results on ScoreArc.`,
 } as const;
 
 type WidenMessage<T> = T extends (...args: infer Args) => string

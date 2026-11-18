@@ -277,7 +277,7 @@ export default function MatchDetailPopup({ match, summary, loading, onClose, tea
             <p className="md-empty">{t('matchDetails.previewUnavailable')}</p>
           )}
 
-          {!upcoming && !loading && summary && !hasContent && (
+          {!upcoming && !loading && !hasContent && (
             <p className="md-empty">{t('matchDetails.statsUnavailable')}</p>
           )}
 

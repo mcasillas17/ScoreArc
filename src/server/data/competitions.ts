@@ -220,8 +220,8 @@ export interface CompetitionSeason {
 export const COMPETITIONS: Record<string, Competition> = {
   'world-cup': {
     id: 'world-cup',
-    name: 'World Cup 2026',
-    shortName: 'World Cup',
+    name: "Men's World Cup",
+    shortName: "Men's World Cup",
     espnSlug: 'fifa.world',
     kind: 'national',
     category: 'men',
@@ -827,7 +827,7 @@ const candidates: CompetitionDefinition[] = [
   { id: "ned-w-knvb-cup", name: "Dutch KNVB Beker Vrouwen", shortName: "Dutch KNVB Beker Vrouwen", espnSlug: "ned.w.knvb_cup", kind: 'club', category: 'women', directoryGroup: 'club-cup', level: 'senior', seasons: {} },
   { id: "ned-w-eredivisie-cup", name: "Dutch Eredivisie Cup", shortName: "Dutch Eredivisie Cup", espnSlug: "ned.w.eredivisie_cup", kind: 'club', category: 'women', directoryGroup: 'club-cup', level: 'senior', seasons: {} },
   { id: "global-wchamps-cup", name: "Women's International Champions Cup", shortName: "Women's International Champions Cup", espnSlug: "global.wchamps_cup", kind: 'club', category: 'women', directoryGroup: 'club-cup', level: 'senior', seasons: {} },
-  { id: "womens-world-cup", name: "FIFA Women's World Cup", shortName: "FIFA Women's World Cup", espnSlug: "fifa.wwc", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
+  { id: "womens-world-cup", name: "FIFA Women's World Cup", shortName: "FIFA Women's World Cup", espnSlug: "fifa.wwc", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', championTitleKey: 'champion.world', seasons: {} },
   { id: "fifa-wworldq-uefa", name: "FIFA Women's World Cup Qualifying - UEFA", shortName: "FIFA Women's World Cup Qualifying - UEFA", espnSlug: "fifa.wworldq.uefa", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
   { id: "fifa-wwcq-ply", name: "FIFA Women's World Cup Qualifying - Playoff Tournament", shortName: "FIFA Women's World Cup Qualifying - Playoff Tournament", espnSlug: "fifa.wwcq.ply", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },
   { id: "fifa-w-olympics", name: "Women's Olympic Soccer Tournament", shortName: "Women's Olympic Soccer Tournament", espnSlug: "fifa.w.olympics", kind: 'national', category: 'women', directoryGroup: 'national', level: 'senior', seasons: {} },

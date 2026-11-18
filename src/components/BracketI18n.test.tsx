@@ -7,6 +7,7 @@ import { COMPETITIONS } from '@/server/data/competitions';
 import type { BracketMatch, BracketRound } from '@/server/data/types';
 import BracketInteractive, { mergeRounds } from './BracketInteractive';
 import { bracketShapeFor } from './bracketShape';
+import ChampionCelebration from './ChampionCelebration';
 
 vi.mock('next/navigation', () => ({
   usePathname: () => window.location.pathname,
@@ -127,6 +128,18 @@ describe('bracket localization', () => {
     vi.unstubAllGlobals();
   });
 
+  it.each([
+    ['en', 'WORLD CHAMPIONS', 'Your predicted winner'],
+    ['es', 'CAMPEONAS DEL MUNDO', 'Tus ganadoras previstas'],
+  ] as const)('uses the women’s champion terms in %s', (locale, title, subtitle) => {
+    window.history.replaceState(null, '', `/${locale}/c/liga-mx-femenil/2026-apertura`);
+    render(<I18nProvider locale={locale}><ChampionCelebration
+      team={team('mex-w-america', 'América', 'AME')} emblem="🏆" championTitleKey="champion.world" onClose={() => {}}
+    /></I18nProvider>);
+    expect(screen.getByRole('dialog', { name: `América — ${title}` })).toBeTruthy();
+    expect(screen.getByText(subtitle)).toBeTruthy();
+  });
+
   it('labels the Femenil projection and explains two legs in Spanish', () => {
     const edition = COMPETITIONS['liga-mx-femenil'].seasons['2026-apertura'];
     const projected = [{ ...rounds[0], matches: rounds[0].matches.map(m => ({ ...m, id: 'proj-' + m.id })) }];
@@ -177,6 +190,22 @@ describe('bracket localization', () => {
       'Estoy armando mi cuadro de Leagues Cup 2026 en ScoreArc ⚽ — arma el tuyo: ' +
       'http://localhost:3000/es/c/leagues-cup/2026?b=e30',
     );
+  });
+
+  it.each([
+    ["Men's World Cup", '2026', 'MensWorldCup2026'],
+    ['Liga MX Femenil', 'Apertura 2026', 'LigaMXFemenilApertura2026'],
+  ])('shares one valid hashtag for %s %s', (compShortName, seasonLabel, hashtag) => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    render(<I18nProvider locale="es"><BracketInteractive
+      rounds={rounds} apiBase="/api/leagues-cup/2026" compId="leagues-cup" seasonId="2026"
+      compShortName={compShortName} seasonLabel={seasonLabel} emblem="🏆" shape={bracketShapeFor(season)} predictionEnabled
+    /></I18nProvider>);
+    fireEvent.click(screen.getByRole('tab', { name: 'Arma tu cuadro' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Compartir tu cuadro en X' }));
+    const intent = new URL(String(open.mock.calls[0][0]));
+    expect(intent.searchParams.get('hashtags')).toBe(hashtag);
+    expect(intent.searchParams.get('text')).toContain(`${compShortName} ${seasonLabel}`);
   });
 
   it('localizes champion celebration and canvas accessibility text', async () => {

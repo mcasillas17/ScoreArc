@@ -5,10 +5,24 @@ import { useMatchDetails } from './useMatchDetails';
 import { mapTeamSchedule } from '@/server/data/providers/espn-team';
 import raw from '@/server/data/__fixtures__/espn-team-schedule.json';
 import { trackEvent } from '@/lib/telemetry/client';
+import * as registry from '@/server/data/competitions';
 
 vi.mock('@/lib/telemetry/client', () => ({ trackEvent: vi.fn() }));
 const match = mapTeamSchedule(raw)[0];
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+it('opens known match facts without requesting an unsupported summary', async () => {
+  const scope = registry.resolveSeason('liga-mx', '2026-apertura')!;
+  vi.spyOn(registry, 'resolveSeason').mockReturnValue({ ...scope, season: { ...scope.season, resources: ['scores', 'teams'] } });
+  const fetcher = vi.fn();
+  vi.stubGlobal('fetch', fetcher);
+  const { result } = renderHook(() => useMatchDetails('/api/liga-mx/2026-apertura', 'team-page'));
+  await act(async () => { await result.current.openDetails(match); });
+  expect(result.current.detail).toBe(match);
+  expect(result.current.summary).toBeNull();
+  expect(result.current.loadingDetail).toBe(false);
+  expect(fetcher).not.toHaveBeenCalled();
+});
 
 it('opens the existing summary API only on demand and records existing telemetry', async () => {
   const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ scorers: [] }) });

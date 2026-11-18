@@ -1,13 +1,15 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { I18nProvider } from '@/i18n/I18nProvider';
 import { mapTeamSchedule } from '@/server/data/providers/espn-team';
 import raw from '@/server/data/__fixtures__/espn-team-schedule.json';
 import TeamPerformance from './TeamPerformance';
+import TeamSchedule from './TeamSchedule';
+import * as registry from '@/server/data/competitions';
 
 vi.mock('next/navigation', () => ({ usePathname: () => '/en', useRouter: () => ({ push: vi.fn() }) }));
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 const scope = { competitionId: 'liga-mx', seasonId: '2026-apertura' };
 const base = mapTeamSchedule(raw)[0];
 function view(count: number, locale: 'en' | 'es' = 'en') {
@@ -18,6 +20,20 @@ function view(count: number, locale: 'en' | 'es' = 'en') {
     scope={scope} next={null} teamStyle="crest"
     availability={{ results: 'available', upcoming: 'available' }} /></I18nProvider>);
 }
+
+it.each(['performance', 'schedule'])('keeps %s match facts readable without unsupported entity links', async surface => {
+  const rc = registry.resolveSeason(scope.competitionId, scope.seasonId)!;
+  vi.spyOn(registry, 'resolveSeason').mockReturnValue({ ...rc, season: { ...rc.season, resources: ['scores'] } });
+  const fetcher = vi.fn();
+  vi.stubGlobal('fetch', fetcher);
+  if (surface === 'performance') view(1);
+  else render(<I18nProvider locale="en"><TeamSchedule matches={[base]} competitionId={scope.competitionId} seasonId={scope.seasonId} teamStyle="crest" /></I18nProvider>);
+  fireEvent.click(screen.getAllByRole('button')[0]);
+  const dialog = await screen.findByRole('dialog');
+  expect(dialog.textContent).toContain(base.home.abbr);
+  expect(within(dialog).queryAllByRole('link')).toHaveLength(0);
+  expect(fetcher).not.toHaveBeenCalled();
+});
 
 it('shows recent rates for a small actual sample without a comparison', () => {
   view(4);

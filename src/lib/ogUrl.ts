@@ -4,7 +4,7 @@
  * and friends cache previews by exact URL: bump OG_VERSION whenever the card's
  * rendering changes, or shares keep showing the old art indefinitely.
  */
-export const OG_VERSION = '3';
+export const OG_VERSION = '4';
 
 export function ogUrl(params: Record<string, string | null | undefined>): string {
   const search = new URLSearchParams();

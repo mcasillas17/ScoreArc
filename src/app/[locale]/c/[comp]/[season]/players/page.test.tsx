@@ -1,17 +1,37 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { competitionPlayerIndex } from '@/server/data/playerIndex';
+import * as registry from '@/server/data/competitions';
 import Page, { generateMetadata } from './page';
 vi.mock('@/server/data/playerIndex', () => ({ competitionPlayerIndex: vi.fn() }));
 vi.mock('@/components/PlayerSearch', () => ({ default: () => <div>Search results</div> }));
 vi.mock('@/components/SiteFooter', () => ({ default: () => null }));
-afterEach(() => vi.resetAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.resetAllMocks(); });
 const params = { locale: 'en', comp: 'world-cup', season: '2026' };
 function index(totalTeams: number, teamsWithRoster: number) {
   vi.mocked(competitionPlayerIndex).mockResolvedValue({ bySlug: new Map(), byProvider: new Map(),
     directory: { totalTeams, teamsWithRoster, players: teamsWithRoster ? [{ name: 'Alí Ávila', slug: 'ali-avila', teamName: 'Mexico', teamAbbr: 'MEX', teamId: 'nat-mex', crestUrl: null }] : [] } });
 }
 describe('player directory page', () => {
+  it('does not advertise a current directory for an archive-only competition', async () => {
+    const scope = registry.resolveSeason('world-cup', '2018')!;
+    vi.spyOn(registry, 'resolveSeason').mockReturnValue({ ...scope, competition: { ...scope.competition, currentSeasonId: '2018', seasons: { '2018': scope.season } } });
+    const html = renderToStaticMarkup(await Page({ params: { ...params, season: '2018' } }));
+    expect(competitionPlayerIndex).not.toHaveBeenCalled();
+    expect(html).toContain('Historical player rosters are not available');
+    expect(html).not.toContain('href=');
+    expect(html).not.toContain('current roster');
+    const meta = await generateMetadata({ params: { ...params, season: '2018' } });
+    expect(meta.description).not.toContain('current roster');
+  });
+
+  it('does not link to an unsupported current player directory', async () => {
+    const scope = registry.resolveSeason('world-cup', '2018')!;
+    const current = { ...scope.competition.seasons['2026'], resources: ['scores'] as const };
+    vi.spyOn(registry, 'resolveSeason').mockReturnValue({ ...scope, competition: { ...scope.competition, seasons: { ...scope.competition.seasons, '2026': { ...current, resources: [...current.resources] } } } });
+    const html = renderToStaticMarkup(await Page({ params: { ...params, season: '2018' } }));
+    expect(html).not.toContain('/2026/players');
+  });
   it('does not fetch historical rosters and links to the current localized directory', async () => {
     const html = renderToStaticMarkup(await Page({ params: { ...params, locale: 'es', season: '2018' } }));
     expect(competitionPlayerIndex).not.toHaveBeenCalled();

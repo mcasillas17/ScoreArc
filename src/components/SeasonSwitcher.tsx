@@ -20,17 +20,20 @@ export default function SeasonSwitcher({
   const locale = useLocale();
   const t = useTranslations();
   const editions = Object.values(competition.seasons)
-    .map((s) => ({ id: s.id, label: s.label, year: parseInt(s.id, 10) }))
+    .map((s) => ({ id: s.id, label: s.label, year: parseInt(s.id, 10), startsAt: s.startsAt ?? '' }))
     .filter((s) => Number.isFinite(s.year))
-    .sort((a, b) => a.year - b.year);
+    .sort((a, b) => a.year - b.year || a.startsAt.localeCompare(b.startsAt) || a.id.localeCompare(b.id));
+  const phased = new Set(editions.map(e => e.year)).size < editions.length;
+  // Same-year phases need distinct positions; yearly editions retain their proportional timeline.
+  const positions = editions.map((edition, index) => ({ ...edition, point: phased ? index : edition.year }));
 
-  const min = editions.length ? editions[0].year : 0;
-  const max = editions.length ? editions[editions.length - 1].year : 1;
+  const min = positions[0]?.point ?? 0;
+  const max = positions.at(-1)?.point ?? 1;
   const span = max - min || 1;
   // Newest edition on the LEFT: the max year maps to 0%, the min to 100%.
-  const pos = (year: number) => ((max - year) / span) * 100;
-  const activeYear = editions.find((e) => e.id === activeSeasonId)?.year ?? max;
-  const currentPos = pos(activeYear);
+  const pos = (point: number) => ((max - point) / span) * 100;
+  const activePoint = positions.find((e) => e.id === activeSeasonId)?.point ?? max;
+  const currentPos = pos(activePoint);
 
   const phRef = useRef<HTMLSpanElement>(null);
   const didSlide = useRef(false);
@@ -44,12 +47,12 @@ export default function SeasonSwitcher({
     if (didSlide.current) return; // guard React Strict-Mode double-invoke (dev)
     didSlide.current = true;
     const el = phRef.current;
-    const key = `wc-tl-prev-${competition.id}`;
-    let prevYear: number | null = null;
+    const key = `wc-tl-prev-${competition.id}-${phased ? 'phases' : 'years'}`;
+    let previousPoint: number | null = null;
     try {
       const v = sessionStorage.getItem(key);
-      prevYear = v ? parseInt(v, 10) : null;
-      sessionStorage.setItem(key, String(activeYear));
+      previousPoint = v ? parseInt(v, 10) : null;
+      sessionStorage.setItem(key, String(activePoint));
     } catch {
       /* sessionStorage unavailable */
     }
@@ -57,9 +60,9 @@ export default function SeasonSwitcher({
     const reduce =
       typeof window !== 'undefined' &&
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    if (!reduce && prevYear && prevYear !== activeYear && prevYear >= min && prevYear <= max) {
+    if (!reduce && previousPoint !== null && previousPoint !== activePoint && previousPoint >= min && previousPoint <= max) {
       el.style.transition = 'none';
-      el.style.left = `${pos(prevYear)}%`;
+      el.style.left = `${pos(previousPoint)}%`;
       void el.offsetWidth; // reflow -> commit the start position
       el.style.transition = 'left 0.55s cubic-bezier(0.4, 0, 0.2, 1)';
       el.style.left = `${currentPos}%`;
@@ -76,7 +79,7 @@ export default function SeasonSwitcher({
   const step = editions.slice(1).reduce((m, e, i) => Math.min(m, e.year - editions[i].year), Infinity);
   const present = new Set(editions.map((e) => e.year));
   const gaps: number[] = [];
-  if (Number.isFinite(step) && step > 0) {
+  if (!phased && Number.isFinite(step) && step > 0) {
     for (let y = min + step; y < max; y += step) if (!present.has(y)) gaps.push(y);
   }
 
@@ -91,14 +94,14 @@ export default function SeasonSwitcher({
             <span className="wc-tl-gap-year">{y}</span>
           </span>
         ))}
-        {editions.map((e) => {
+        {positions.map((e) => {
           const isActive = e.id === activeSeasonId;
           return (
             <Link
               key={e.id}
               href={`/${locale}/c/${competition.id}/${e.id}`}
               className={`wc-tl-node${isActive ? ' wc-tl-node--active' : ''}`}
-              style={{ left: `${pos(e.year)}%` }}
+              style={{ left: `${pos(e.point)}%` }}
               aria-current={isActive ? 'page' : undefined}
             >
               <span className="wc-tl-dot" />

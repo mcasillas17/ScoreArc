@@ -74,9 +74,9 @@ describe('MatchesPage', () => {
     });
 
     expect(getFixtures).toHaveBeenCalledWith(expect.anything(), '19980701-19980731');
-    expect(html).toContain('World Cup 1998');
+    expect(html).toContain('Men&#x27;s World Cup 1998');
     expect(html).toContain('July 1998');
-    expect(metadata.title).toBe('Matches · World Cup 1998');
+    expect(metadata.title).toBe("Matches · Men's World Cup 1998");
   });
 
   it('renders calendar navigation and an honest error when the initial fetch fails', async () => {

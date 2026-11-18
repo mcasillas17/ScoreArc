@@ -125,7 +125,7 @@ describe('StandingsPage heading', () => {
     await expect(generateMetadata({
       params: { locale: 'es', comp: 'world-cup', season: '2026' },
     })).resolves.toMatchObject({
-      title: 'Clasificación · World Cup 2026',
+      title: "Clasificación · Men's World Cup 2026",
       alternates: {
         canonical: '/es/c/world-cup/2026/standings',
         languages: {
@@ -145,4 +145,9 @@ describe('StandingsPage heading', () => {
     }));
     expect(html).toContain('href="/es/c/liga-mx/2026-apertura/team/esp-barcelona"');
   });
+});
+
+it('describes women’s standings without promising leaders', async () => {
+  const metadata = await generateMetadata({ params: { locale: 'es', comp: 'liga-mx-femenil', season: '2026-apertura' } });
+  expect(metadata.description).toBe('Clasificación de Liga MX Femenil Apertura 2026 en ScoreArc.');
 });
