@@ -59,7 +59,7 @@ export function loadDigestSports(ongoing: Competition[], now: Date, locale: Loca
     // Leave one read each for scorers and news so either section can stream
     // while the two match-window workers are waiting for ESPN.
     const matches = readSection(source, seasons.filter(rc => supportsResource(rc.season, 'scores')), 2, async rc => {
-      const competition = competitionLabel(rc.competition, rc.season.id);
+      const competition = competitionLabel(rc.competition, rc.season.id, rc.season);
       return (await source.getLiveWindow(rc)).map(match => ({ competition, match }));
     }, (rows, coverage) => ({ ...digestMatches(rows.flat(), now, locale), coverage }));
     const boards = readSection(source, seasons.filter(rc => supportsResource(rc.season, 'leaders')), 1, async rc => ({

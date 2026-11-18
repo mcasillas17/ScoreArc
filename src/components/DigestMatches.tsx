@@ -7,6 +7,9 @@ import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import LocalTime, { localTimeText, useLocalNow } from './LocalTime';
 import { relativeDay } from './matchDays';
 import CompetitionMark from './CompetitionMark';
+import MatchDetailPopup from './MatchDetailPopup';
+import { useMatchDetails } from './useMatchDetails';
+import { toMatchDetailInput } from './upcomingWindow';
 
 function Crest({ url, name }: { url: string | null; name: string }) {
   if (!url) return <span className="dg-crest dg-crest--blank" aria-hidden />;
@@ -19,6 +22,8 @@ function Card({ entry, lead = false }: { entry: LiveEntry; lead?: boolean }) {
   const locale = useLocale();
   const t = useTranslations();
   const now = useLocalNow();
+  const base = `/${locale}/c/${competition.id}/${competition.seasonId}`;
+  const { detail, summary, loadingDetail, openDetails, closeDetails } = useMatchDetails(`/api/${competition.id}/${competition.seasonId}`, 'digest');
   const scheduled = match.state === 'scheduled';
   const status = match.state === 'live'
     ? (match.minute ?? match.statusDetail)
@@ -26,12 +31,20 @@ function Card({ entry, lead = false }: { entry: LiveEntry; lead?: boolean }) {
       ? (match.statusDetail || t('match.fullTimeAbbreviation'))
       : null;
 
-  return (
+  return (<>
     <Link
-      href={`/${locale}/c/${competition.id}/${competition.seasonId}/matches`}
+      href={`${base}/matches`}
       className={`dg-card dg-card--${match.state}${lead ? ' dg-card--lead' : ''}`}
       data-match-id={match.id}
-      onClick={() => trackEvent('Section opened', { section: 'Matches', surface: 'digest' })}
+      onClick={(event) => {
+        // The href stays for a new tab; a plain click opens the match itself.
+        if (!competition.popup || event.metaKey || event.ctrlKey || event.shiftKey) {
+          trackEvent('Section opened', { section: 'Matches', surface: 'digest' });
+          return;
+        }
+        event.preventDefault();
+        void openDetails(match);
+      }}
       aria-label={[
         // "versus" is read aloud, so it is translated like every other word in
         // this label -- an es reader was getting "Marseille versus Strasbourg,
@@ -65,7 +78,25 @@ function Card({ entry, lead = false }: { entry: LiveEntry; lead?: boolean }) {
         </span>
       </span>
     </Link>
-  );
+    {detail && competition.popup && (
+      <MatchDetailPopup
+        teamStyle={competition.popup.teamStyle}
+        teamBase={competition.popup.teams ? `${base}/team` : undefined}
+        playerBase={competition.popup.players ? `${base}/player` : undefined}
+        match={toMatchDetailInput(detail)}
+        summary={summary}
+        loading={loadingDetail}
+        onClose={closeDetails}
+      />
+    )}
+  </>);
+}
+
+/** The first match leads; a second live match leads beside a live first one,
+ *  so two matches in play are never drawn at two sizes. Capped at two. */
+export function isLead(entries: LiveEntry[], e: LiveEntry): boolean {
+  return e === entries[0]
+    || (e === entries[1] && entries[0].match.state === 'live' && e.match.state === 'live');
 }
 
 /**
@@ -97,7 +128,7 @@ export default function DigestMatches({ entries }: { entries: LiveEntry[] }) {
           {g.label && <h2 className="dg-dayh">{g.label}</h2>}
           <div className="dg-mgrid">
             {g.items.map((e) => (
-              <Card key={`${e.competition.id}:${e.match.id}`} entry={e} lead={e === entries[0]} />
+              <Card key={`${e.competition.id}:${e.match.id}`} entry={e} lead={isLead(entries, e)} />
             ))}
           </div>
         </div>
