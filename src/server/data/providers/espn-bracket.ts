@@ -24,6 +24,8 @@ const SLUG_ALIAS: Record<string, KnockoutRoundSlug> = {
   '3rd-place': '3rd-place-match',
   'quarter-finals': 'quarterfinals',
   'semi-finals': 'semifinals',
+  // Liga MX tags its two-legged final `apertura---finals` / `clausura---finals`.
+  finals: 'final',
 };
 const isKnockoutRoundSlug = (slug: string): slug is KnockoutRoundSlug =>
   (ROUND_ORDER as readonly string[]).includes(slug);

@@ -59,6 +59,8 @@ var roundSlugAlias = map[string]string{
 	"3rd-place":      "3rd-place-match",
 	"quarter-finals": "quarterfinals",
 	"semi-finals":    "semifinals",
+	// Liga MX tags its two-legged final `apertura---finals` / `clausura---finals`.
+	"finals": "final",
 }
 
 var nonKnockoutRound = map[string]struct{}{
@@ -74,7 +76,12 @@ var nonKnockoutRound = map[string]struct{}{
 }
 
 // These ties qualify for the Gold Cup, not the Nations League title bracket.
-const goldCupPlayInRound = "gold-cup-play-in-prelims"
+// The 2026-27 edition tags its first stage `-prelims`; 2024-25 used the bare
+// tag, which is what the stage after the prelims is expected to carry.
+const (
+	goldCupPlayInPrelimsRound = "gold-cup-play-in-prelims"
+	goldCupPlayInRound        = "gold-cup-play-in"
+)
 
 // ESPN's actual tag for the UEFA Nations League promotion/relegation ties
 // (`relegation-playoffs` above was a guess made before any were published).
@@ -85,7 +92,8 @@ const uefaPromotionRelegationRound = "promotionrelegation-playoffs"
 // the competition's title bracket. Unlike nonKnockoutRound it also counts as
 // confirmation, so it supersedes an unknown-round requirement already stored.
 func outsideTitleBracket(seasonSlug string) bool {
-	return seasonSlug == goldCupPlayInRound || seasonSlug == uefaPromotionRelegationRound
+	return seasonSlug == goldCupPlayInPrelimsRound || seasonSlug == goldCupPlayInRound ||
+		seasonSlug == uefaPromotionRelegationRound
 }
 
 func normRoundSlug(slug string) string {

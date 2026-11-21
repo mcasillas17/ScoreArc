@@ -386,6 +386,21 @@ func TestMapBracketRejectsFinishedSecondLegWithoutWinner(t *testing.T) {
 	}
 }
 
+// Every tag here was read from the provider: the first two from this
+// edition, `gold-cup-play-in` from the 2024-25 CONCACAF Nations League.
+func TestStagesOutsideTheTitleBracketAreConfirmedNotRequired(t *testing.T) {
+	for _, slug := range []string{"gold-cup-play-in-prelims", "promotionrelegation-playoffs", "gold-cup-play-in"} {
+		required := bracketRequirement(slug, normRoundSlug(slug))
+		if required == nil || *required || !outsideTitleBracket(slug) {
+			t.Errorf("%q: required=%v outside=%t", slug, required, outsideTitleBracket(slug))
+		}
+	}
+	// The guard itself stays: a tag nobody has classified is still required.
+	if required := bracketRequirement("some-new-stage", "some-new-stage"); required == nil || !*required {
+		t.Errorf("unknown stage no longer requires bracket confirmation: %v", required)
+	}
+}
+
 func TestNormRoundSlugReadsPhasePrefixedAndHyphenatedRounds(t *testing.T) {
 	for raw, want := range map[string]string{
 		"playoffs---quarterfinals":  "quarterfinals",
@@ -395,6 +410,8 @@ func TestNormRoundSlugReadsPhasePrefixedAndHyphenatedRounds(t *testing.T) {
 		"semi-finals":               "semifinals",
 		"3rd-place":                 "3rd-place-match",
 		"final":                     "final",
+		"apertura---finals":         "final",
+		"clausura---finals":         "final",
 	} {
 		if got := normRoundSlug(raw); got != want {
 			t.Errorf("normRoundSlug(%q) = %q, want %q", raw, got, want)

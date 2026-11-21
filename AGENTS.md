@@ -145,6 +145,22 @@ Neon Postgres (provisioned via Vercel) + Cloudflare R2**. Full detail:
 
   Verify with `git rev-list --count origin/main..<your-branch>` — it should equal
   the number of commits that are genuinely yours.
+- **A recurring `poll=failed` alert is usually a round tag the ingester has not
+  seen.** ESPN labels each match's stage with a free-text slug, and the ingester
+  fails a whole edition's full-season poll when a knockout-looking match carries
+  one it cannot classify. This paged three times in November 2026 (Gold Cup
+  play-ins #268, Liga MX Femenil regular season #289, UEFA promotion/relegation
+  ties #298). One command names the
+  edition and the matches, read-only and with no database:
+
+  ```bash
+  cd backend && SCOREARC_LIVE_DRIFT=1 go test -v -count=1 ./ingester -run TestLiveProviderDrift
+  ```
+
+  Run it before admitting a competition too. The fix is a line in
+  `backend/shared/espn/bracket.go` (`roundSlugAlias`, `nonKnockoutRound` or
+  `outsideTitleBracket`), mirrored in `src/server/data/providers/espn-bracket.ts`
+  when the tag is a real knockout round.
 - The ingester requires `POOLED_DSN` for normal writes and
   `INGESTER_LEASE_DSN` for a dedicated direct/unpooled advisory-lock session.
   Both must use the least-privilege ingester login; never use the DB owner.
