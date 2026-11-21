@@ -142,6 +142,39 @@ describe('durable match monitor', () => {
     expect(dataIncident).toBe(true);
     expect(pending).toMatchObject([{ status: 'OPEN', observation: { error: 'body-contract' } }]);
   });
+  it('keeps one full-season incident open until the full poll succeeds', async () => {
+    let fullPoll = 'failed';
+    let latestPoll = 'ok';
+    const reader = await endpoint((_req, res) => res.writeHead(200, {
+      'Content-Type': 'application/json', 'X-ScoreArc-Freshness': latestPoll === 'ok' ? 'empty' : 'stale',
+      'X-ScoreArc-Observed-At': '2026-10-04T11:59:00Z',
+      'X-ScoreArc-Poll-Status': latestPoll, 'X-ScoreArc-Stale-Matches': '0', 'X-ScoreArc-Overdue-Matches': '0',
+      'X-ScoreArc-Full-Poll-Status': fullPoll,
+    }).end('[]'));
+    const o = { ...(await options()), baseURL: new URL(reader).origin, check: undefined };
+    await monitor.prepareMonitor(o);
+    const first = await state(o.stateFile);
+    expect(first.pending).toMatchObject([{ status: 'OPEN', observation: { poll: 'failed' } }]);
+
+    const advance = async () => {
+      const previous = (await state(o.stateFile)).run;
+      o.now += 300000;
+      await monitor.prepareMonitor({ ...o, initialize: false, restoredRun: previous,
+        run: { ...previous, id: previous.id + 1, number: previous.number + 1 } });
+      return state(o.stateFile);
+    };
+    expect((await advance()).pending).toMatchObject([{ id: first.pending[0].id, status: 'OPEN' }]);
+    fullPoll = 'partial';
+    expect((await advance()).pending).toHaveLength(1);
+    fullPoll = 'ok';
+    latestPoll = 'failed';
+    expect((await advance()).pending).toHaveLength(1);
+    latestPoll = 'ok';
+    expect((await advance()).pending).toMatchObject([
+      { status: 'OPEN', id: first.pending[0].id },
+      { status: 'RESOLVED', incidentId: first.pending[0].id },
+    ]);
+  });
   it('rejects concurrent preparation and leaves the completed state usable', async () => {
     const o = await options(); let release!: () => void;
     const waiting = new Promise<void>(r => { release = r; });

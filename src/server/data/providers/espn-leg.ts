@@ -8,7 +8,7 @@ export function femenilLegRound(format: PlayoffFormat | undefined, phase: unknow
   const name = phase.toLowerCase().split(/---|\s+-\s+/).at(-1);
   if (name === 'quarterfinals' || name === 'quarter-finals') return 'quarterfinals';
   if (name === 'semifinals' || name === 'semi-finals') return 'semifinals';
-  return name === 'final' ? name : null;
+  return name === 'final' || name === 'finals' ? 'final' : null;
 }
 
 export const legPrefix = /^\s*(\d+(?:st|nd|rd|th))\s+leg\b/i;

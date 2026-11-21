@@ -131,6 +131,9 @@ paths:
         "200":
           description: Matches ordered by kickoff, then id
           headers:
+            X-ScoreArc-Full-Poll-Status:
+              description: Latest full-season match poll outcome, present for scope=season after the first recorded attempt.
+              schema: { type: string, enum: [ok, partial, failed] }
             X-ScoreArc-Resources: { $ref: "#/components/headers/Resources" }
             X-ScoreArc-Freshness: { $ref: "#/components/headers/Freshness" }
             X-ScoreArc-Observed-At: { $ref: "#/components/headers/ObservedAt" }

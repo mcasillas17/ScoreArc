@@ -326,6 +326,12 @@ func (r *runner) ingestCompSeason(
 				result.err = errors.Join(result.err, fmt.Errorf("record edition discovery: %w", err))
 			}
 		}
+		if backfill {
+			if err := r.repo.RecordMatchPoll(recordCtx, comp.ID, season.ID, store.FullMatchPoll, scoreboardStart, pollOutcome, pollCount); err != nil {
+				result.backfillDone = false
+				result.err = errors.Join(result.err, fmt.Errorf("record full match poll: %w", err))
+			}
+		}
 		if err := r.repo.RecordMatchPoll(recordCtx, comp.ID, season.ID, sourceESPN, scoreboardStart, pollOutcome, pollCount); err != nil {
 			r.log.Warn("record match poll", "comp", comp.ID, "season", season.ID, "error_type", fmt.Sprintf("%T", err))
 			result.err = errors.Join(result.err, fmt.Errorf("record match poll: %w", err))

@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,10 +69,7 @@ func TestLiveProviderDrift(t *testing.T) {
 		if !season.Supports("standings") {
 			stErr = nil
 		}
-		_, lsErr := src.Statistics(ctx, comp, season)
-		if !season.Supports("leaders") {
-			lsErr = nil
-		}
+		lsErr := checkProviderLeaderBoards(ctx, src, comp, season)
 		verdict := "OK"
 		if sbErr != nil || brErr != nil || stErr != nil || lsErr != nil || len(unconfirmed) > 0 {
 			verdict = "PROBLEM"
@@ -91,5 +90,37 @@ func TestLiveProviderDrift(t *testing.T) {
 			fmt.Printf("         unconfirmed knockout: %s\n", u)
 		}
 		time.Sleep(300 * time.Millisecond)
+	}
+}
+
+func checkProviderLeaderBoards(ctx context.Context, src source.Source, comp config.Competition, season config.Season) error {
+	if !season.Supports("leaders") {
+		return nil
+	}
+	raw, err := src.Statistics(ctx, comp, season)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for espnName, category := range leaderCategories {
+		if _, err := espn.MapLeadersObservation(raw, espnName, topScorerLimit); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", category, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func TestProviderDriftChecksLeaderBoards(t *testing.T) {
+	ctx := context.Background()
+	comp := config.Competition{ID: "test"}
+	season := config.Season{Resources: []string{"leaders"}}
+	src := &fakeSource{statistics: []byte(`{"stats":[{"name":"goalsLeaders","leaders":[]}]}`)}
+	err := checkProviderLeaderBoards(ctx, src, comp, season)
+	if err == nil || !strings.Contains(err.Error(), "assistsLeaders") {
+		t.Fatalf("missing assists board: got %v", err)
+	}
+	src.statistics = []byte(`{"stats":[{"name":"goalsLeaders","leaders":[]},{"name":"assistsLeaders","leaders":[]}]}`)
+	if err := checkProviderLeaderBoards(ctx, src, comp, season); err != nil {
+		t.Fatalf("complete empty boards: %v", err)
 	}
 }

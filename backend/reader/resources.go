@@ -54,6 +54,7 @@ type aggregateEvidence struct {
 type resourceSnapshot struct {
 	Core                                       freshnessSnapshot
 	CoreFound                                  bool
+	FullPollStatus                             string
 	Unresolved                                 bool
 	Standings, Leaders, Squad, SeasonDiscovery *collectionEvidence
 	Stats, Career, Participation               aggregateEvidence
@@ -336,6 +337,9 @@ func (a *App) attachResourceEvidence(w http.ResponseWriter, r *http.Request, rea
 		writeError(w, 500, "internal error")
 		return resourceEnvelope{}, false
 	}
+	if snapshot.FullPollStatus != "" {
+		w.Header().Set(fullPollStatusHeader, snapshot.FullPollStatus)
+	}
 	if old != nil {
 		w.Header().Set("X-ScoreArc-Freshness", old.Status)
 		w.Header().Set("X-ScoreArc-Poll-Status", old.PollStatus)
@@ -367,6 +371,7 @@ SELECT jsonb_build_object(
  'Core',jsonb_build_object('PollSucceededAt',(SELECT max(succeeded_at) FROM core),'PollStatus',(SELECT max(poll_status) FROM core),
  'HasUnfinalized',coalesce((SELECT bool_or(has_unfinalized) FROM core),false),
  'Matches',coalesce((SELECT jsonb_agg(jsonb_build_object('Kickoff',kickoff,'State',state,'Status',status_name,'FinalizedAt',finalized_at,'ObservedAt',observed_at)) FROM core WHERE id IS NOT NULL),'[]'::jsonb)),
+ 'FullPollStatus',{{fullPoll}},
  'Unresolved',EXISTS(SELECT 1 FROM match m WHERE m.competition_id=$1 AND m.season_id=$2 AND
  (m.finalized_at IS NULL OR ($11 AND m.state='finished' AND m.status_name NOT IN ('STATUS_CANCELED','STATUS_ABANDONED','STATUS_FORFEIT') AND NOT EXISTS(SELECT 1 FROM match_participation_availability p WHERE p.match_id=m.id AND p.completed)))),
  'Standings',{{standings}},
@@ -457,7 +462,11 @@ func (s *Store) Resources(ctx context.Context, scope resourceScope) (resourceSna
 	if (scope.Route == "summary" || scope.Route == "team" || (scope.Route == "matches" && scope.Detail)) && !scope.Degraded["detail"] {
 		detail = resourceDetailSQL
 	}
-	query := strings.NewReplacer("{{discovery}}", discovery, "{{standings}}", standings, "{{leaders}}", leaders, "{{squad}}", squad, "{{roster}}", roster, "{{stats}}", stats, "{{career}}", career, "{{detail}}", detail).Replace(resourceEvidenceSQL)
+	fullPoll := "NULL"
+	if scope.Route == "matches" && !scope.Selected {
+		fullPoll = resourceFullMatchPollSQL
+	}
+	query := strings.NewReplacer("{{fullPoll}}", fullPoll, "{{discovery}}", discovery, "{{standings}}", standings, "{{leaders}}", leaders, "{{squad}}", squad, "{{roster}}", roster, "{{stats}}", stats, "{{career}}", career, "{{detail}}", detail).Replace(resourceEvidenceSQL)
 	err := s.db.QueryRow(ctx, query, scope.Competition, scope.Season, ids, scope.TeamID, scope.Bracket, bracketRoundOrder, hasCoreResources(scope.Route), playerID, gameIDs, scope.Metric, !scope.Degraded["participation"]).Scan(&raw)
 	if err != nil {
 		return snapshot, err
@@ -472,6 +481,9 @@ const resourceStatsSQL = `SELECT CASE WHEN st.observed_at >= timestamptz '0001-0
  AND (($8::uuid IS NOT NULL AND st.player_id=$8) OR ($8::uuid IS NULL AND st.player_id IN (SELECT player_id FROM roster)))`
 
 const resourceCareerSQL = `jsonb_build_object('ObservedAt',(SELECT CASE WHEN bio_observed_at >= timestamptz '0001-01-01 00:00:00Z' AND bio_observed_at < timestamptz '10000-01-01 00:00:00Z' THEN bio_observed_at END FROM player WHERE id=$8),'Count',(SELECT count(*) FROM (SELECT 1 FROM player_team_history WHERE player_id=$8 LIMIT 51) history))`
+
+const resourceFullMatchPollSQL = `(SELECT outcome FROM match_poll_status
+ WHERE competition_id=$1 AND season_id=$2 AND source='` + writerstore.FullMatchPoll + `')`
 
 const resourceDetailSQL = `(SELECT count(*) FROM match_detail d JOIN core c ON c.id=d.match_id)`
 

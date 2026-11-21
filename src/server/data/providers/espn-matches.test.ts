@@ -16,6 +16,19 @@ describe('mapScoreboard', () => {
     expect(m.home.crestUrl).toContain('espncdn.com');
   });
 
+  it('keeps a drawn Femenil first leg winnerless when ESPN tags it finals', () => {
+    const event = {
+      id: '123', date: '2026-12-06T00:00Z', season: { slug: 'apertura---finals' },
+      status: { type: { name: 'STATUS_FULL_TIME', state: 'post', completed: true, shortDetail: 'FT' } },
+      competitions: [{ leg: { value: 1 }, competitors: [
+        { homeAway: 'home', score: '0', winner: true, team: { id: '1', displayName: 'Home' } },
+        { homeAway: 'away', score: '0', winner: false, team: { id: '2', displayName: 'Away' } },
+      ] }],
+    };
+    const [match] = mapScoreboard({ events: [event] }, 'femenil-apertura');
+    expect(match).toMatchObject({ homeScore: 0, awayScore: 0, state: 'finished', winnerId: null });
+  });
+
   it('parses numeric scores', () => {
     const finished = matches.find((m) => m.state === 'finished');
     expect(finished).toBeDefined();

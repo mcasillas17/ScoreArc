@@ -143,6 +143,46 @@ func testRecoverStoredBracketRequirement(t *testing.T, compID, seasonID, filenam
 	}
 }
 
+func TestFullMatchPollFailureSurvivesRollingSuccess(t *testing.T) {
+	ctx := context.Background()
+	repo, pool, _ := newRecoveryPostgres(t)
+	registry, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	comp, _ := registry.Get("uefa-nations-league")
+	season := comp.Seasons[comp.CurrentSeasonId]
+	if err := repo.ApplyCompetitionSeed(ctx, []config.Competition{comp}); err != nil {
+		t.Fatal(err)
+	}
+	src := &fakeSource{bracketErr: errors.New("unclassified bracket stage")}
+	r := testRunner(src, &fakeRepository{}, comp)
+	now := time.Date(2026, 11, 21, 9, 0, 0, 0, time.UTC)
+	r.repo, r.now = repo, func() time.Time { return now }
+
+	for _, step := range []struct {
+		full                 bool
+		bracketErr           error
+		wantLatest, wantFull string
+	}{
+		{true, src.bracketErr, "failed", "failed"},
+		{false, nil, "ok", "failed"},
+		{true, nil, "ok", "ok"},
+	} {
+		src.bracketErr = step.bracketErr
+		r.ingestCompSeason(ctx, comp, season, activity{}, true, step.full)
+		var latest, full string
+		err := pool.QueryRow(ctx, `SELECT
+			coalesce(max(outcome) FILTER (WHERE source='espn'), ''),
+			coalesce(max(outcome) FILTER (WHERE source='espn-full-match-poll'), '')
+			FROM match_poll_status WHERE competition_id=$1 AND season_id=$2`, comp.ID, season.ID).Scan(&latest, &full)
+		if err != nil || latest != step.wantLatest || full != step.wantFull {
+			t.Fatalf("full=%t: latest=%q full=%q err=%v, want %q/%q", step.full, latest, full, err, step.wantLatest, step.wantFull)
+		}
+		now = now.Add(5 * time.Minute)
+	}
+}
+
 func TestRecoveryPipelineWithPostgresAcrossRestart(t *testing.T) {
 	ctx := context.Background()
 	repo, pool, _ := newRecoveryPostgres(t)

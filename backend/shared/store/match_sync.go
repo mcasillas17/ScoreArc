@@ -24,6 +24,9 @@ type RecoveryMatch struct {
 	Attempts int
 }
 
+// FullMatchPoll identifies the season-wide match poll independently of rolling observations.
+const FullMatchPoll = "espn-full-match-poll"
+
 type MatchObservation struct {
 	Identity   MatchIdentity
 	Match      model.Match

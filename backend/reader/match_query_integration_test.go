@@ -350,16 +350,21 @@ func TestMatchQueriesIntegration(t *testing.T) {
 		}
 		base := "/v1/competitions/premier-league/2026-27/matches"
 
+		exec(t, `INSERT INTO match_poll_status (competition_id, season_id, source, attempted_at, outcome, event_count)
+		      VALUES ('premier-league','2026-27','espn-full-match-poll',$1,'failed',380)`, now.Add(-2*time.Minute))
+
 		// Default week (Mon 2026-08-17 .. Sun 2026-08-23): matchday 1 only.
 		code, headers, body := request(base)
 		if code != 200 || len(body) != 10 || body[0].Kickoff != "2026-08-22T14:00:00Z" ||
-			headers.Get("X-ScoreArc-Freshness") != "fresh" || headers.Get("X-ScoreArc-Overdue-Matches") != "0" {
+			headers.Get("X-ScoreArc-Freshness") != "fresh" || headers.Get("X-ScoreArc-Overdue-Matches") != "0" ||
+			headers.Get("X-ScoreArc-Full-Poll-Status") != "" {
 			t.Fatalf("default week: %d %d %v", code, len(body), headers)
 		}
 		// Matchday 0's overdue rows (eight scheduled, one live; one finished)
 		// are outside the window; the season scope reports them.
 		code, headers, all := request(base + "?scope=season")
-		if code != 200 || len(all) != 380 || headers.Get("X-ScoreArc-Freshness") != "stale" || headers.Get("X-ScoreArc-Overdue-Matches") != "9" {
+		if code != 200 || len(all) != 380 || headers.Get("X-ScoreArc-Freshness") != "stale" || headers.Get("X-ScoreArc-Overdue-Matches") != "9" ||
+			headers.Get("X-ScoreArc-Full-Poll-Status") != "failed" || headers.Get("X-ScoreArc-Poll-Status") != "ok" {
 			t.Fatalf("season scope: %d %d %v", code, len(all), headers)
 		}
 		// A limited window's metadata covers exactly the returned rows: live

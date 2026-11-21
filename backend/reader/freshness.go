@@ -9,9 +9,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+const fullPollStatusHeader = "X-ScoreArc-Full-Poll-Status"
+
 var freshnessHeaders = []string{
 	"X-ScoreArc-Freshness", "X-ScoreArc-Observed-At", "X-ScoreArc-Poll-Status",
-	"X-ScoreArc-Stale-Matches", "X-ScoreArc-Overdue-Matches",
+	"X-ScoreArc-Stale-Matches", "X-ScoreArc-Overdue-Matches", fullPollStatusHeader,
 }
 
 // Filters only the returned matches; the poll and unresolved-work checks always

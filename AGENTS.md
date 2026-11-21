@@ -157,7 +157,8 @@ Neon Postgres (provisioned via Vercel) + Cloudflare R2**. Full detail:
   cd backend && SCOREARC_LIVE_DRIFT=1 go test -v -count=1 ./ingester -run TestLiveProviderDrift
   ```
 
-  Run it before admitting a competition too. The fix is a line in
+  The dry run also validates the goals and assists boards for editions that
+  support leaders. Run it before admitting a competition too. The fix is a line in
   `backend/shared/espn/bracket.go` (`roundSlugAlias`, `nonKnockoutRound` or
   `outsideTitleBracket`), mirrored in `src/server/data/providers/espn-bracket.ts`
   when the tag is a real knockout round.
