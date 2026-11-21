@@ -40,14 +40,22 @@ func newRecoveryPostgres(t *testing.T) (*store.Store, *pgxpool.Pool, string) {
 }
 
 func TestNationsLeaguePlayInRecoversStoredClassification(t *testing.T) {
-	testRecoverStoredBracketRequirement(t, "nations-league", "2026-27", "espn-nations-league-play-in.json", "401929779")
+	testRecoverStoredBracketRequirement(t, "nations-league", "2026-27", "espn-nations-league-play-in.json", "401929779", true)
+}
+
+// The sixteen ties ESPN published on 2026-11-21 were stored as unknown-round
+// knockouts before their tag was recognized, and are months from kickoff.
+func TestUEFAPromotionRelegationPlayoffRecoversStoredClassification(t *testing.T) {
+	testRecoverStoredBracketRequirement(t, "uefa-nations-league", "2026-27", "espn-uefa-nations-promotion-relegation.json", "401936083", false)
 }
 
 func TestFemenilRegularSeasonRecoversStoredClassification(t *testing.T) {
-	testRecoverStoredBracketRequirement(t, "liga-mx-femenil", "2026-apertura", "espn-femenil-regular-season.json", "401924354")
+	testRecoverStoredBracketRequirement(t, "liga-mx-femenil", "2026-apertura", "espn-femenil-regular-season.json", "401924354", true)
 }
 
-func testRecoverStoredBracketRequirement(t *testing.T, compID, seasonID, filename, providerID string) {
+// finished says whether the fixture's first match is a played 0-0; otherwise
+// it is still scheduled and only its classification is asserted.
+func testRecoverStoredBracketRequirement(t *testing.T, compID, seasonID, filename, providerID string, finished bool) {
 	t.Helper()
 	ctx := context.Background()
 	repo, pool, _ := newRecoveryPostgres(t)
@@ -110,6 +118,14 @@ func testRecoverStoredBracketRequirement(t *testing.T, compID, seasonID, filenam
 			WHERE m.id=$1`, id.MatchID).Scan(&outcome, &state, &bracketRequired,
 			&round, &winner, &homeScore, &awayScore, &finalized, &hasDetail, &enrolled); err != nil {
 			t.Fatal(err)
+		}
+		if !finished {
+			if outcome != "ok" || state != "scheduled" || bracketRequired || round != nil || finalized != nil {
+				t.Fatalf("full=%t recovery incomplete: poll=%s state=%s bracket=%t round=%v finalized=%v",
+					full, outcome, state, bracketRequired, round, finalized)
+			}
+			now = now.Add(5 * time.Minute)
+			continue
 		}
 		if outcome != "ok" || state != "finished" || bracketRequired || round != nil ||
 			winner != nil || homeScore != 0 || awayScore != 0 || finalized == nil {

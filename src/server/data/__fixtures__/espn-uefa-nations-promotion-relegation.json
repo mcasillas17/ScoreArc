@@ -1,0 +1,125 @@
+{
+  "leagues": [
+    {
+      "slug": "uefa.nations"
+    }
+  ],
+  "events": [
+    {
+      "id": "401936083",
+      "date": "2027-03-25T17:00Z",
+      "season": {
+        "year": 2026,
+        "type": 14103,
+        "slug": "promotionrelegation-playoffs"
+      },
+      "status": {
+        "clock": 0.0,
+        "displayClock": "0'",
+        "period": null,
+        "type": {
+          "id": "1",
+          "name": "STATUS_SCHEDULED",
+          "state": "pre",
+          "completed": false,
+          "description": "Scheduled",
+          "detail": "Thu, March 25th at 1:00 PM EDT",
+          "shortDetail": "Scheduled"
+        }
+      },
+      "competitions": [
+        {
+          "leg": {
+            "value": 1,
+            "displayValue": "1st Leg"
+          },
+          "notes": [
+            {
+              "text": "1st Leg",
+              "headline": "1st Leg",
+              "type": "event"
+            }
+          ],
+          "competitors": [
+            {
+              "homeAway": "home",
+              "score": "0",
+              "team": {
+                "id": "445",
+                "displayName": "Cyprus",
+                "abbreviation": "CYP"
+              }
+            },
+            {
+              "homeAway": "away",
+              "score": "0",
+              "team": {
+                "id": "463",
+                "displayName": "North Macedonia",
+                "abbreviation": "MKD"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "401936102",
+      "date": "2027-03-25T19:45Z",
+      "season": {
+        "year": 2026,
+        "type": 14104,
+        "slug": "quarterfinals"
+      },
+      "status": {
+        "clock": 0.0,
+        "displayClock": "0'",
+        "period": null,
+        "type": {
+          "id": "1",
+          "name": "STATUS_SCHEDULED",
+          "state": "pre",
+          "completed": false,
+          "description": "Scheduled",
+          "detail": "Thu, March 25th at 3:45 PM EDT",
+          "shortDetail": "Scheduled"
+        }
+      },
+      "competitions": [
+        {
+          "leg": {
+            "value": 1,
+            "displayValue": "1st Leg"
+          },
+          "notes": [
+            {
+              "text": "1st Leg",
+              "headline": "1st Leg",
+              "type": "event"
+            }
+          ],
+          "competitors": [
+            {
+              "homeAway": "home",
+              "score": "0",
+              "team": {
+                "id": "459",
+                "displayName": "Belgium",
+                "abbreviation": "BEL"
+              }
+            },
+            {
+              "homeAway": "away",
+              "score": "0",
+              "team": {
+                "id": "481",
+                "displayName": "Germany",
+                "abbreviation": "GER"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

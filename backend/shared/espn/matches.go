@@ -250,7 +250,7 @@ func MapSeasonScoreboard(raw []byte, season config.Season) ([]Match, error) {
 			Shootout:        shootout,
 			BracketRequired: bracketRequired,
 			// These explicit non-knockout tags supersede a stored unknown-round requirement.
-			BracketConfirmed: ev.Season.Slug == goldCupPlayInRound ||
+			BracketConfirmed: outsideTitleBracket(ev.Season.Slug) ||
 				(season.PlayoffFormat == config.FemenilApertura && ev.Season.Slug == "torneo-apertura"),
 		})
 	}
