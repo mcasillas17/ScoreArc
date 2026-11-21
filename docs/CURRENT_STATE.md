@@ -3,6 +3,53 @@
 **Broad inventory baseline:** 2026-09-01, against `main` @ `49bf68d`.
 Unrelated inventory observations below retain their original dates.
 
+### November 20 audit: cutover blockers and first live comparison
+
+**Reader health, 06:00 UTC November 21 (read-only probes):** all 15 ingested
+editions returned `poll=ok` with zero stale or overdue matches, and standings,
+leaders and edition teams reported `fresh/complete`. The watchdog shows data
+incidents on November 14-16 (46, 121 and 125 failed runs) and has been clean
+since November 17 apart from two single-run blips. Four days is not a soak.
+
+**Branch fixes, not yet released** (`fix/reader-cutover-blockers`):
+
+- The reader's per-IP limit goes from 10 req/s, burst 30, to 50 req/s, burst
+  200. One cold page in reader mode is about 36 reader calls from a few shared
+  Vercel egress IPs, so the old limit would have turned every busy render into
+  an ESPN fallback.
+- An idle ingester wakes at the next scheduled kickoff instead of up to five
+  minutes after it, and holds the 20-second cadence for at most 15 minutes
+  while the provider still reports that match as scheduled.
+- The watchdog drops a scope that is no longer configured when it has no open
+  incident and no pending event. Before this, replacing a season (Liga MX
+  Clausura in January) failed state validation on every run.
+
+**First live T16.4 comparison, 06:10 UTC November 21, owner-initiated:** 20
+samples across `liga-mx/2026-apertura`, `premier-league/2026-27`, `nwsl/2026`
+and `leagues-cup/2026`; 38 reader calls and 38 ESPN calls. Result: 0 matched,
+12 mismatched, 8 unavailable. What the differences are:
+
+- **Crest URLs, every sample.** The reader serves `cdn.scorearc.futbol` crests
+  and ESPN serves its own. `reader-evaluation-v1` has no rule for this, so no
+  sample can match until one is added. Fixtures, upcoming, standings and
+  edition teams differ in nothing else for the Premier League and NWSL.
+- **One team name** differs in Liga MX and in the Leagues Cup tables.
+- **Leaders:** ranks and values agree; `playerSlug` differs on all 20 rows per
+  competition.
+- **Match summary (Liga MX 401876908):** the same 21 home players in a
+  different order, the five form results in a different order, and 3 cards
+  against ESPN's 4.
+- **Enriched matches:** possession and passing statistics differ on several
+  finished matches.
+- **Squad and team profile:** squad membership and order differ.
+- **Leagues Cup bracket:** the reader has all four rounds. The ESPN-backed
+  path, which production serves today, returns only the final and the
+  third-place match.
+
+Not done: no cutover, no environment change, no migration. Open before T16.5:
+a crest rule in the evaluator, then the lineup order, form order, missing card,
+late statistics and squad differences above.
+
 ### November 14 match-monitor and Nations League recovery
 
 The production match watchdog's stopped-run incident is **recovered**. Its last
