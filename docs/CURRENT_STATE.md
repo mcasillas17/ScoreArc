@@ -24,7 +24,9 @@ since November 17 apart from two single-run blips. Four days is not a soak.
   incident and no pending event. Before this, replacing a season (Liga MX
   Clausura in January) failed state validation on every run.
 
-**First live T16.4 comparison, 06:10 UTC November 21, owner-initiated:** 20
+**First live T16.4 comparison, 06:10 UTC November 21, run by Claude after the
+owner's go-ahead to fix the audit's cutover blockers (read-only, inside the
+runner's caps):** 20
 samples across `liga-mx/2026-apertura`, `premier-league/2026-27`, `nwsl/2026`
 and `leagues-cup/2026`; 38 reader calls and 38 ESPN calls. Result: 0 matched,
 12 mismatched, 8 unavailable. What the differences are:
