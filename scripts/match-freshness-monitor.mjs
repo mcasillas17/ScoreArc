@@ -1,6 +1,7 @@
 import { mkdir, open, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { checkScope, boundedJSON, origin, scopeKey } from './match-freshness-watchdog.mjs';
+import { assessAlert, newSignal, validSignal } from './match-freshness-policy.mjs';
 import { isISOInstant } from '../src/lib/matchFreshness.ts';
 
 const MAX_STATE = 256 * 1024;
@@ -63,11 +64,14 @@ function validEvent(e, state, keys) {
 }
 export function validateState(state, options) {
   const { base, keys } = config(options);
-  if (!exact(state, 'version origin epoch run sequence updatedAt phase incidents pending delivered reserved dataIncident monitorFailure') ||
-      state.version !== 2 || state.origin !== base || !uuidPattern.test(state.epoch) ||
+  const legacy = state?.version === 2;
+  if (!exact(state, 'version origin epoch run sequence updatedAt phase incidents pending delivered reserved dataIncident monitorFailure' + (legacy ? '' : ' signals')) ||
+      (!legacy && state.version !== 3) || state.origin !== base || !uuidPattern.test(state.epoch) ||
       !Number.isSafeInteger(state.sequence) || state.sequence < 0 || !isISOInstant(state.updatedAt) ||
       Date.parse(state.updatedAt) > options.now || !['pending','final'].includes(state.phase) ||
       !record(state.incidents) || Object.keys(state.incidents).sort().join() !== keys.join() ||
+      (!legacy && (!record(state.signals) || Object.keys(state.signals).sort().join() !== keys.join() ||
+        !Object.values(state.signals).every(s => validSignal(s, Date.parse(state.updatedAt))))) ||
       !Object.values(state.incidents).every(id => id === null || (typeof id === 'string' && eventPattern.test(id) && id.startsWith(state.epoch + ':') && Number(id.split(':')[1]) <= state.sequence)) ||
       !Array.isArray(state.pending) || state.pending.length > MAX_PENDING ||
       !state.pending.every(e => validEvent(e, state, keys)) ||
@@ -136,15 +140,22 @@ async function locked(path, operation) {
 }
 // A competition added to the registry since the last run joins as healthy:
 // it has no history to lose. A removed one (a season replaced by the next) is
-// dropped only when provably quiet: its incident is closed and no undelivered
-// event names it (reserved ids are always pending events; receipts carry no
-// scope). Otherwise it still fails validation, because dropping it would
-// silently discard an open incident or an alert that was never delivered.
+// dropped only when quiet or explicitly retired after verified dormancy, and
+// never with undelivered events. Active deferred failures are not quiet.
 function adoptScopes(state, keys) {
   if (!record(state?.incidents) || !Array.isArray(state.pending)) return state;
-  for (const key of keys) if (!(key in state.incidents)) state.incidents[key] = null;
+  for (const key of keys) if (!(key in state.incidents)) {
+    state.incidents[key] = null;
+    if (state.version === 3 && record(state.signals)) state.signals[key] = newSignal();
+  }
   for (const key of Object.keys(state.incidents)) {
-    if (!keys.includes(key) && state.incidents[key] === null && !state.pending.some(e => e?.scope === key)) delete state.incidents[key];
+    const signal = state.signals?.[key];
+    const quiet = state.incidents[key] === null && !signal?.prior && !Object.keys(signal?.waiting ?? {}).length;
+    if (!keys.includes(key) && (quiet || signal?.dormant) && !state.pending.some(e => e?.scope === key)) {
+      delete state.incidents[key];
+      if (record(state.signals)) delete state.signals[key];
+      state.dataIncident = Object.values(state.incidents).some(Boolean);
+    }
   }
   return state;
 }
@@ -160,29 +171,52 @@ export async function prepareMonitor(options) {
       // Never overwrite existing history even when an operator repeats init.
       try { await open(stateFile, 'r').then(async f => { await f.close(); throw new Error('State already exists'); }); }
       catch (e) { if (e.code !== 'ENOENT') throw e; }
-      state = { version: 2, origin: base, epoch: randomUUID(), run, sequence: 0, updatedAt: new Date(now).toISOString(), phase: 'pending',
+      state = { version: 3, signals: Object.fromEntries(keys.map(k => [k, newSignal()])), origin: base, epoch: randomUUID(), run, sequence: 0, updatedAt: new Date(now).toISOString(), phase: 'pending',
         incidents: Object.fromEntries(keys.map(k => [k, null])), pending: [], delivered: [], reserved: [], dataIncident: false, monitorFailure: null };
     } else {
-      state = validateState(adoptScopes(await load(stateFile), keys), options);
+      state = await load(stateFile);
+      // Validate even the retiring scope before pruning it.
+      if (!record(state?.incidents) || !Object.keys(state.incidents).length) throw new Error('Invalid state incident map');
+      const oldScopes = Object.keys(state.incidents).map(key => {
+        const [competition, season] = key.split('/');
+        return { competition, season };
+      });
+      validateState(state, { ...options, scopes: oldScopes });
+      state = validateState(adoptScopes(state, keys), options);
       if (!equalRun(state.run, restoredRun)) throw new Error('State provenance mismatch');
       if (run.number <= state.run.number || run.id <= state.run.id) throw new Error('State ordering violation');
+      if (state.version === 2) {
+        state.version = 3;
+        state.signals = Object.fromEntries(keys.map(k => [k, newSignal()]));
+        for (const [key, id] of Object.entries(state.incidents)) {
+          if (!id) continue;
+          // A v2 receipt keeps the ID but no diagnostic. In doubt, require
+          // positive full-poll evidence instead of closing on rolling success.
+          const opening = state.pending.find(e => e.id === id);
+          if (!opening || ['partial','failed'].includes(opening.observation.poll)) {
+            state.signals[key].waiting.full = opening?.occurredAt ?? state.updatedAt;
+          }
+        }
+      }
     }
     state.run = run; state.updatedAt = new Date(now).toISOString(); state.phase = 'pending'; state.reserved = []; state.monitorFailure = null;
     // Reserve capacity for one transition per scope before observing anything.
     if (state.pending.length > MAX_PENDING - keys.length) state.monitorFailure = 'queue-full';
     else {
       for (const scope of options.scopes) {
-        const result = await check({ baseURL: base, ...scope });
+        const result = await check({ baseURL: base, ...scope, clock: options.clock ?? (() => now) });
         if (typeof result.ok !== 'boolean' || !count(result.count) || !validObservation(result.observation, result.count) || result.ok !== healthyObservation(result.observation)) throw new Error('Invalid checker result');
         const key = scopeKey(scope); const incident = state.incidents[key];
-        if (!result.ok !== Boolean(incident)) {
+        const { alert, cause, observation } = assessAlert(state.signals[key], result, Boolean(incident), now);
+        options.onObservation?.(scope, result, cause);
+        if (alert !== Boolean(incident)) {
           if (state.sequence >= Number.MAX_SAFE_INTEGER) throw new Error('State sequence exhausted');
           const id = `${state.epoch}:${++state.sequence}`;
-          const incidentId = result.ok ? incident : id;
-          state.pending.push({ id, incidentId, scope: key, status: result.ok ? 'RESOLVED' : 'OPEN', occurredAt: state.updatedAt,
-            runUrl: `https://github.com/${run.repository}/actions/runs/${run.id}`, count: result.count, observation: result.observation,
+          const incidentId = alert ? id : incident;
+          state.pending.push({ id, incidentId, scope: key, status: alert ? 'OPEN' : 'RESOLVED', occurredAt: state.updatedAt,
+            runUrl: `https://github.com/${run.repository}/actions/runs/${run.id}`, count: result.count, observation,
             attempts: 0, nextAttemptAt: state.updatedAt });
-          state.incidents[key] = result.ok ? null : incidentId;
+          state.incidents[key] = alert ? incidentId : null;
         }
       }
     }
@@ -197,7 +231,9 @@ export async function prepareMonitor(options) {
         state.reserved.push(event.id);
       }
     }
-    validateState(state, options); await save(stateFile, state);
+    const finished = Math.max(now, options.clock?.() ?? now);
+    state.updatedAt = new Date(finished).toISOString();
+    validateState(state, { ...options, now: finished }); await save(stateFile, state);
     return outcome(state);
   });
 }
@@ -268,10 +304,12 @@ export async function deliverMonitor(options) {
 
 // The CLI phases mirror the artifact boundaries in match-freshness.yml. A phase
 // writes outputs only after a new validated state has been atomically saved.
-export async function runPhase({ phase, env = process.env, workDir = 'watchdog-state', now = Date.now(), baseURL = 'https://scorearc-reader.fly.dev', github, check = checkScope }) {
+export async function runPhase({ phase, env = process.env, workDir = 'watchdog-state', now, baseURL = 'https://scorearc-reader.fly.dev', github, check = checkScope }) {
   if (env.MATCH_FRESHNESS_ENABLED !== 'true') {
     console.log('Match monitor disabled; no checks or delivery.'); return { exitCode: 0 };
   }
+  const clock = now === undefined ? Date.now : () => now;
+  now = clock();
   const { appendFile, readFile } = await import('node:fs/promises');
   const { currentScopes } = await import('./match-freshness-watchdog.mjs');
   const { githubJSON, selectState } = await import('./match-freshness-state.mjs');
@@ -296,15 +334,13 @@ export async function runPhase({ phase, env = process.env, workDir = 'watchdog-s
   }
   const registry = JSON.parse(await readFile(new URL('../backend/config/competitions.json', import.meta.url), 'utf8'));
   const options = { enabled: true, deliveryEnabled: env.MATCH_FRESHNESS_DELIVERY_ENABLED === 'true',
-    baseURL, scopes: currentScopes(registry), stateFile, run, now };
+    baseURL, scopes: currentScopes(registry), stateFile, run, now, clock };
   if (phase === 'prepare') {
     const selection = JSON.parse(await readFile(selectionFile, 'utf8'));
-    await prepareMonitor({ ...options, initialize: selection === null, restoredRun: selection?.run,
-      check: async scope => {
-        const result = await check(scope);
+    await prepareMonitor({ ...options, initialize: selection === null, restoredRun: selection?.run, check,
+      onObservation: (scope, result, cause) => {
         const name = registry.find(comp => comp.id === scope.competition).name;
-        console.log(`${result.ok ? 'OK' : 'UNHEALTHY'} ${name} | ${result.context}`);
-        return result;
+        console.log(`${cause ? 'UNHEALTHY' : 'OK'} ${name} | ${result.context}${cause ? ` cause=${cause}` : ''}`);
       },
     });
     await output({ state_written: true });
@@ -317,10 +353,8 @@ export async function runPhase({ phase, env = process.env, workDir = 'watchdog-s
     if (!equalRun(state.run, run)) throw new Error('State result provenance mismatch');
     const result = outcome(state);
     console.log(`Match monitor: data_incident=${state.dataIncident} pending=${result.pending} monitor=${result.monitorFailure ?? 'ok'}`);
-    // Data incidents (exit 1) were delivered, so the monitor itself worked, but only once
-    // both checkpoints are committed, and only with delivery on (the workflow also implies
-    // it: the final checkpoint needs the delivery step). Select already admitted only
-    // schedule and dispatch events; the receiver's cron dispatches the regular runs.
+    // A delivered data incident is not a failed job. The receiver already sent
+    // the alert; failing every five-minute run sends unrelated GitHub failure mail.
     if (result.exitCode < 2 && options.deliveryEnabled && env.CHECKPOINT_COMMITTED === 'true') {
       try {
         await sendHeartbeat({ webhookURL: env.MATCH_FRESHNESS_WEBHOOK_URL });
@@ -329,7 +363,8 @@ export async function runPhase({ phase, env = process.env, workDir = 'watchdog-s
         console.error('Match monitor heartbeat not acknowledged; check the alert receiver logs.');
       }
     }
-    return result;
+    return result.exitCode === 1 && options.deliveryEnabled && env.CHECKPOINT_COMMITTED === 'true'
+      ? { ...result, exitCode: 0 } : result;
   } else throw new Error('Invalid monitor phase');
   return { exitCode: 0 };
 }

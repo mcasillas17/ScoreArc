@@ -25,7 +25,12 @@ type RecoveryMatch struct {
 }
 
 // FullMatchPoll identifies the season-wide match poll independently of rolling observations.
-const FullMatchPoll = "espn-full-match-poll"
+const (
+	fullPollSuffix    = "-full-match-poll"
+	rollingPollSuffix = "-rolling-match-poll"
+	FullMatchPoll     = "espn" + fullPollSuffix
+	RollingMatchPoll  = "espn" + rollingPollSuffix
+)
 
 type MatchObservation struct {
 	Identity   MatchIdentity
@@ -40,7 +45,7 @@ func (s *Store) CheckSchemaReady(ctx context.Context) error {
 	ctx, cancel := boundedContext(ctx)
 	defer cancel()
 	return migrations.CheckReady(ctx, s.pool, `SELECT s.observed_at,s.last_attempted_at,s.retry_at,s.attempts,s.last_error,
-		p.attempted_at,p.succeeded_at,p.outcome,p.event_count,
+		p.attempted_at,p.succeeded_at,p.outcome,p.event_count,p.seen_ids,p.absent_ids,p.missing_ids,p.missing_count,
 		r.competition_id,r.season_id,r.source,r.resource,r.subject,r.observed_at,r.row_count,
 		bio.bio_observed_at,stats.observed_at
 		FROM match_sync_status s CROSS JOIN match_poll_status p CROSS JOIN resource_observation r
@@ -206,13 +211,14 @@ func (s *Store) RecordMatchPoll(ctx context.Context, competitionID, seasonID, so
 	}
 	ctx, cancel := boundedContext(ctx)
 	defer cancel()
-	_, err := s.pool.Exec(ctx, `
-INSERT INTO match_poll_status(competition_id,season_id,source,attempted_at,succeeded_at,outcome,event_count)
-VALUES($1,$2,$3,$4,CASE WHEN $5='ok' THEN $4::timestamptz END,$5,$6)
-`+matchPollConflictSQL,
+	_, err := s.pool.Exec(ctx, recordPollSQL,
 		competitionID, seasonID, source, attemptedAt, outcome, eventCount)
 	return err
 }
+
+const recordPollSQL = `INSERT INTO match_poll_status(competition_id,season_id,source,attempted_at,succeeded_at,outcome,event_count)
+VALUES($1,$2,$3,$4,CASE WHEN $5='ok' THEN $4::timestamptz END,$5,$6)
+` + matchPollConflictSQL
 
 const matchPollConflictSQL = `ON CONFLICT(competition_id,season_id,source) DO UPDATE SET
 	attempted_at=EXCLUDED.attempted_at,

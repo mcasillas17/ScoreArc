@@ -1,11 +1,14 @@
 # Production release runbook
 
-**T17.3 migration-before-merge prerequisite:** production is already at 0027 per
-the owner. The additive `0028_resource_observation` migration requires a separate
-authorized apply and exact-head transition before its PR merges. Do not repeat
-0025–0027. Both service probes include the new metadata; no auto-migration,
-owner application credentials or weakened schema gate is introduced. See
-[T17.3 rollout and acceptance](READER_CONTRACT.md#migration-and-production-acceptance).
+**Before merging the scoped-poll change:** the owner previously confirmed 0028.
+Verify that the target ledger is clean at 28, then separately authorize and apply
+`0029_match_poll_evidence` through the normal migration process. Verify clean
+version 29 and the reader/ingester grants before merging. A merge can release
+both Fly services and the frontend; **this change does not migrate production**.
+Coordinate the [exact-head transition](#schema-readiness): old binaries cannot
+restart on the newer ledger. No historical full-poll success is invented.
+For rollback retain the applied migration and checkpoint-v3 reader; do not drop
+the evidence columns under a serving binary or restore an older alert history.
 
 Scope: T21.1 delivery of source code to Fly reader/ingester and Vercel frontend.
 The [decision](../decisions/2026-09-05-ci-production-gates.md) owns the invariant;

@@ -55,6 +55,8 @@ type Match struct {
 	AwayPlaceholder  bool       `json:"-"`
 	BracketRequired  *bool      `json:"-"`
 	BracketConfirmed bool       `json:"-"`
+	// ProviderStage is the original scoreboard label for diagnostics, never a canonical Round.
+	ProviderStage string `json:"-"`
 	// Shootout is the scoreboard's own penalty-shootout evidence (structured
 	// competitor totals, else the note). It is carried to the summary mapper,
 	// where the summary header outranks it; MatchDetail stores the result.

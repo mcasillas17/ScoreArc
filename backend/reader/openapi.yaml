@@ -134,6 +134,14 @@ paths:
             X-ScoreArc-Full-Poll-Status:
               description: Latest full-season match poll outcome, present for scope=season after the first recorded attempt.
               schema: { type: string, enum: [ok, partial, failed] }
+            X-ScoreArc-Poll-Evidence:
+              description: >-
+                Only with scope=season. JSON object keyed by full and rolling. Each present
+                key has at (last attempted timestamp), outcome (ok, partial, failed), and
+                missing (count of provider IDs absent from two complete full reads;
+                retained even on failure, zero for rolling). No key means that kind
+                has not been observed yet.
+              schema: { type: string }
             X-ScoreArc-Resources: { $ref: "#/components/headers/Resources" }
             X-ScoreArc-Freshness: { $ref: "#/components/headers/Freshness" }
             X-ScoreArc-Observed-At: { $ref: "#/components/headers/ObservedAt" }

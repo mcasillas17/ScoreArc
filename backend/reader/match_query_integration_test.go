@@ -351,7 +351,22 @@ func TestMatchQueriesIntegration(t *testing.T) {
 		base := "/v1/competitions/premier-league/2026-27/matches"
 
 		exec(t, `INSERT INTO match_poll_status (competition_id, season_id, source, attempted_at, outcome, event_count)
-		      VALUES ('premier-league','2026-27','espn-full-match-poll',$1,'failed',380)`, now.Add(-2*time.Minute))
+		      VALUES ('premier-league','2026-27','espn-full-match-poll',$1,'failed',380),
+		             ('premier-league','2026-27','espn-rolling-match-poll',$2,'ok',10)`, now.Add(-2*time.Minute), now)
+		exec(t, `UPDATE match_poll_status SET absent_ids=ARRAY['56'],missing_ids=ARRAY['56']
+		        WHERE source='espn-full-match-poll' AND competition_id='premier-league' AND season_id='2026-27'`)
+		_, evidenceHeaders, _ := request(base + "?scope=season")
+		var polls map[string]struct {
+			Outcome string
+			At      time.Time
+			Missing *int
+		}
+		if err := json.Unmarshal([]byte(evidenceHeaders.Get("X-ScoreArc-Poll-Evidence")), &polls); err != nil ||
+			polls["full"].Outcome != "failed" || !polls["full"].At.Equal(now.Add(-2*time.Minute)) ||
+			polls["rolling"].Outcome != "ok" || !polls["rolling"].At.Equal(now) ||
+			polls["full"].Missing == nil || *polls["full"].Missing != 1 || polls["rolling"].Missing == nil || *polls["rolling"].Missing != 0 {
+			t.Fatalf("independent poll evidence: %v (%v)", polls, err)
+		}
 
 		// Default week (Mon 2026-08-17 .. Sun 2026-08-23): matchday 1 only.
 		code, headers, body := request(base)

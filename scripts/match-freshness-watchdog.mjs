@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { isISOInstant, parseMatchFreshness } from '../src/lib/matchFreshness.ts';
+import { parsePollEvidence } from './match-freshness-policy.mjs';
 
 const MAX_SCOPES = 32;
 const MAX_STATE_BYTES = 32768;
@@ -115,7 +116,7 @@ export async function boundedJSON(response, maxBytes) {
   }
 }
 
-export async function checkScope({ baseURL, competition, season, timeoutMs = 10000, maxBytes = MAX_BYTES }) {
+export async function checkScope({ baseURL, competition, season, timeoutMs = 10000, maxBytes = MAX_BYTES, clock = Date.now }) {
   const key = scopeKey({ competition, season });
   const base = origin(baseURL);
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TIMEOUT_MS ||
@@ -138,6 +139,7 @@ export async function checkScope({ baseURL, competition, season, timeoutMs = 100
     const fullPoll = response.headers.get('X-ScoreArc-Full-Poll-Status');
     if (fullPoll !== null && !['ok', 'partial', 'failed'].includes(fullPoll)) throw new Error('Invalid full poll status');
     freshness = parseMatchFreshness(response.headers);
+    const pollEvidence = parsePollEvidence(response.headers.get('X-ScoreArc-Poll-Evidence'), clock());
     const body = await boundedJSON(response, maxBytes);
     if (!Array.isArray(body) || body.length > MAX_MATCHES || !body.every(validMatch) ||
         new Set(body.map(match => match.id)).size !== body.length) throw new Error('body-contract');
@@ -157,12 +159,14 @@ export async function checkScope({ baseURL, competition, season, timeoutMs = 100
       observation.freshness = 'stale';
       observation.poll = fullPoll;
     }
-    return { ok, count, observation, context: `${key} matches=${count} freshness=${freshness.status} poll=${freshness.pollStatus} full-poll=${fullPoll ?? 'unknown'} stale=${freshness.staleMatches} overdue=${freshness.overdueMatches}` };
+    const urgent = body.some(match => match.state === 'live') || freshness.overdueMatches > 0 || count === 0;
+    const evidence = Object.entries(pollEvidence).map(([kind, p]) => ` ${kind}=${p.outcome}@${p.at} missing=${p.missing}`).join('');
+    return { ok, urgent, pollEvidence, fullStatus: fullPoll, count, observation, context: `${key} matches=${count} freshness=${freshness.status} poll=${freshness.pollStatus} full-poll=${fullPoll ?? 'unknown'} stale=${freshness.staleMatches} overdue=${freshness.overdueMatches}${evidence}` };
   } catch (error) {
     // Only constant contract/error categories; never echo URLs or raw fetch errors.
     const message = error instanceof Error ? error.message : '';
     const reason = controller.signal.aborted ? 'timeout' :
-      /^(http-\d{3}|content-type|response-size|body|json|body-contract|counts-contract)$/.test(message) ? message :
+      /^(http-\d{3}|content-type|response-size|body|json|body-contract|counts-contract|headers-contract)$/.test(message) ? message :
         freshness === null && /^(Invalid|Contradictory|Empty requires)/.test(message) ? 'headers-contract' : 'request';
     return { ok: false, count, observation: { freshness: null, poll: null, stale: null, overdue: null, error: reason }, context: `${key} matches=${count ?? 'unknown'} stale=${freshness?.staleMatches ?? 'unknown'} overdue=${freshness?.overdueMatches ?? 'unknown'} error=${reason}` };
   } finally {
