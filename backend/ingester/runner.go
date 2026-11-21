@@ -59,6 +59,8 @@ type activity struct {
 	active     bool
 	live       bool
 	emptyPolls int
+	// kickoffs of the matches the last reliable poll reported as scheduled.
+	kickoffs []time.Time
 }
 
 type runner struct {
@@ -117,6 +119,7 @@ func assetCacheKey(kind, id, sourceURL string) string {
 type cycleResult struct {
 	anyLive  bool
 	failures int
+	kickoffs []time.Time
 }
 
 type competitionResult struct {
@@ -125,6 +128,7 @@ type competitionResult struct {
 	stateReliable bool
 	backfillDone  bool
 	empty         bool
+	kickoffs      []time.Time
 	err           error
 }
 
@@ -220,6 +224,7 @@ func (r *runner) runCycle(ctx context.Context, slowTick bool) cycleResult {
 				r.mu.Lock()
 				next := activity{
 					known: true, active: result.active, live: result.live,
+					kickoffs: result.kickoffs,
 				}
 				if result.empty {
 					next.emptyPolls = previous.emptyPolls + 1
@@ -255,6 +260,14 @@ func (r *runner) runCycle(ctx context.Context, slowTick bool) cycleResult {
 		}(comp, season, key, previous)
 	}
 	wg.Wait()
+
+	// Every competition's last known kickoffs, not only this cycle's: a fast
+	// tick skips dormant competitions and a failed poll learns nothing new.
+	r.mu.Lock()
+	for _, known := range r.active {
+		cycle.kickoffs = append(cycle.kickoffs, known.kickoffs...)
+	}
+	r.mu.Unlock()
 
 	if slowTick && ctx.Err() == nil {
 		if err := r.retryParticipation(ctx); err != nil {
@@ -346,12 +359,18 @@ func (r *runner) ingestCompSeason(
 	observedMatches := make(map[string]model.Match, len(scoreboard))
 	activeCandidate := false
 	liveCandidate := false
+	var kickoffs []time.Time
 	for _, match := range scoreboard {
 		candidates[match.ID] = mergeCandidate(candidates[match.ID], match)
 		observations[match.ID] = scoreboardStart
 		observedMatches[match.ID] = match
 		activeCandidate = activeCandidate || candidateIsActive(match, backfill, time.Now())
 		liveCandidate = liveCandidate || match.State == model.MatchStateLive
+		if match.State == model.MatchStateScheduled && match.StatusName != "STATUS_POSTPONED" {
+			if kickoff, err := time.Parse(time.RFC3339, match.Kickoff); err == nil {
+				kickoffs = append(kickoffs, kickoff)
+			}
+		}
 	}
 
 	var bracketErr error
@@ -536,6 +555,7 @@ func (r *runner) ingestCompSeason(
 			backlogErr == nil && recoveryErr == nil && resolveErr == nil && !processCanceled,
 		backfillDone: coreErr == nil,
 		empty:        scoreboardErr == nil && len(scoreboard) == 0 && !activeCandidate,
+		kickoffs:     kickoffs,
 		err:          combinedErr,
 	}
 }

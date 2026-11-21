@@ -11,11 +11,34 @@ import (
 )
 
 func TestNextInterval(t *testing.T) {
-	if got := nextInterval(true); got != 20*time.Second {
-		t.Fatalf("live interval=%v", got)
+	now := time.Date(2026, 11, 20, 18, 0, 0, 0, time.UTC)
+	at := func(offsets ...time.Duration) []time.Time {
+		kickoffs := make([]time.Time, len(offsets))
+		for i, offset := range offsets {
+			kickoffs[i] = now.Add(offset)
+		}
+		return kickoffs
 	}
-	if got := nextInterval(false); got != 5*time.Minute {
-		t.Fatalf("idle interval=%v", got)
+	for _, tt := range []struct {
+		name     string
+		anyLive  bool
+		kickoffs []time.Time
+		want     time.Duration
+	}{
+		{"live", true, at(2 * time.Hour), fastInterval},
+		{"nothing scheduled", false, nil, slowInterval},
+		{"kickoff in 90s wakes at kickoff", false, at(90 * time.Second), 90 * time.Second},
+		{"kickoff in 5s never sleeps below fast", false, at(5 * time.Second), fastInterval},
+		{"kickoff 3 minutes ago, still scheduled", false, at(-3 * time.Minute), fastInterval},
+		{"kickoff 3 hours ago, still scheduled (postponed)", false, at(-3 * time.Hour), slowInterval},
+		{"kickoff 2 hours away", false, at(2 * time.Hour), slowInterval},
+		{"grace ends", false, at(-kickoffGrace - time.Second), slowInterval},
+		{"earliest upcoming wins over postponed and distant",
+			false, at(-3*time.Hour, 2*time.Hour, 4*time.Minute, 90*time.Second), 90 * time.Second},
+	} {
+		if got := nextInterval(now, tt.anyLive, tt.kickoffs); got != tt.want {
+			t.Errorf("%s: interval=%v, want %v", tt.name, got, tt.want)
+		}
 	}
 }
 
