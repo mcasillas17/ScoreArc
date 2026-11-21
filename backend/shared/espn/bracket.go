@@ -76,6 +76,18 @@ var nonKnockoutRound = map[string]struct{}{
 // These ties qualify for the Gold Cup, not the Nations League title bracket.
 const goldCupPlayInRound = "gold-cup-play-in-prelims"
 
+// ESPN's actual tag for the UEFA Nations League promotion/relegation ties
+// (`relegation-playoffs` above was a guess made before any were published).
+// They decide league membership, not the title.
+const uefaPromotionRelegationRound = "promotionrelegation-playoffs"
+
+// outsideTitleBracket reports a provider stage that is explicitly not part of
+// the competition's title bracket. Unlike nonKnockoutRound it also counts as
+// confirmation, so it supersedes an unknown-round requirement already stored.
+func outsideTitleBracket(seasonSlug string) bool {
+	return seasonSlug == goldCupPlayInRound || seasonSlug == uefaPromotionRelegationRound
+}
+
 func normRoundSlug(slug string) string {
 	// Leagues with a post-season prefix the round with its phase:
 	// `playoffs---quarterfinals` (NWSL), `apertura---quarterfinals` (Liga MX).
@@ -126,7 +138,7 @@ func bracketRequirement(seasonSlug, round string) *bool {
 		required := true
 		return &required
 	}
-	if _, ok := nonKnockoutRound[round]; ok || round == goldCupPlayInRound {
+	if _, ok := nonKnockoutRound[round]; ok || outsideTitleBracket(round) {
 		required := false
 		return &required
 	}

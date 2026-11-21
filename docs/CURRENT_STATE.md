@@ -3,6 +3,27 @@
 **Broad inventory baseline:** 2026-09-01, against `main` @ `49bf68d`.
 Unrelated inventory observations below retain their original dates.
 
+### November 21 UEFA Nations League recurring poll alerts
+
+From 05:55 UTC the watchdog opened and resolved a `uefa-nations-league/2026-27`
+incident about every 30 minutes (05:55, 06:30, 07:05, 07:35, 08:10), each with
+`poll=failed`, 24 stale matches and zero overdue. It began before #296 and #297
+merged and is not caused by them. ESPN had published the 24 March 2027 matches:
+8 quarterfinal legs and 16 ties tagged `promotionrelegation-playoffs`. The
+ingester expected `relegation-playoffs`, so those 16 were stored as unknown-round
+knockouts, the title bracket never confirmed them, and every full-season poll
+failed with `bracket response missing knockout match` and retried 30 minutes
+later, the same shape as the November 15 CONCACAF play-ins.
+
+**Branch fix, not yet released** (`fix/uefa-promotion-relegation-playoffs`):
+that tag is classified outside the title bracket and counts as confirmation, so
+it supersedes the stored requirement. A recorded-payload test and a
+real-Postgres full/rolling/full poll over a stored scheduled row cover it; the
+Postgres test fails with the production error without the change. No monitor
+state reset, threshold change, migration or production write. Acceptance needs
+a normal ingester release and then no UEFA alert across more than one
+30-minute retry interval.
+
 ### November 20 audit: cutover blockers and first live comparison
 
 **Reader health, 06:00 UTC November 21 (read-only probes):** all 15 ingested

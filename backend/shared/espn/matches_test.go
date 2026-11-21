@@ -268,6 +268,34 @@ func TestNationsLeaguePlayInIsExcludedFromTitleBracket(t *testing.T) {
 	}
 }
 
+// ESPN published the March 2027 UEFA ties on 2026-11-21 tagged
+// `promotionrelegation-playoffs`, not the `relegation-playoffs` this package
+// expected. Sixteen unknown-round matches then failed every full-season poll.
+func TestUEFAPromotionRelegationPlayoffIsExcludedFromTitleBracket(t *testing.T) {
+	raw, err := os.ReadFile("../../../src/server/data/__fixtures__/espn-uefa-nations-promotion-relegation.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches, err := MapScoreboard(raw)
+	if err != nil || len(matches) != 2 {
+		t.Fatalf("matches=%+v err=%v", matches, err)
+	}
+	playoff, quarterfinal := matches[0], matches[1]
+	// Confirmed, not merely unrequired: only a confirmed classification
+	// supersedes the unknown-round requirement already stored for these rows.
+	if playoff.ID != "401936083" || playoff.BracketRequired == nil || *playoff.BracketRequired ||
+		!playoff.BracketConfirmed || playoff.Round != "" {
+		t.Fatalf("playoff still requires title bracket confirmation: %+v", playoff)
+	}
+	if quarterfinal.BracketRequired == nil || !*quarterfinal.BracketRequired || quarterfinal.BracketConfirmed {
+		t.Fatalf("title knockout bypassed bracket confirmation: %+v", quarterfinal)
+	}
+	bracket, err := MapBracket(raw)
+	if err != nil || len(bracket) != 1 || bracket[0].ID != "401936102" || bracket[0].Round != "quarterfinals" {
+		t.Fatalf("playoff leaked into title bracket: %+v err=%v", bracket, err)
+	}
+}
+
 func TestGroupStageDoesNotRequireBracketClassification(t *testing.T) {
 	required := bracketRequirement("group-stage", "group-stage")
 	if required == nil || *required {
