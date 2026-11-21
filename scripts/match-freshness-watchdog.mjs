@@ -135,6 +135,8 @@ export async function checkScope({ baseURL, competition, season, timeoutMs = 100
       headers: { Accept: 'application/json', 'Cache-Control': 'no-cache, no-store' },
     });
     if (response.status !== 200) throw new Error(`http-${response.status}`);
+    const fullPoll = response.headers.get('X-ScoreArc-Full-Poll-Status');
+    if (fullPoll !== null && !['ok', 'partial', 'failed'].includes(fullPoll)) throw new Error('Invalid full poll status');
     freshness = parseMatchFreshness(response.headers);
     const body = await boundedJSON(response, maxBytes);
     if (!Array.isArray(body) || body.length > MAX_MATCHES || !body.every(validMatch) ||
@@ -147,9 +149,15 @@ export async function checkScope({ baseURL, competition, season, timeoutMs = 100
         (freshness.status === 'dormant' && unresolved)) throw new Error('counts-contract');
     // Dormancy is established by the reader's season bounds and unresolved-work
     // check. Retained off-season poll failures are visible, not active incidents.
-    const ok = freshness.status === 'dormant' ||
-      (['fresh', 'empty'].includes(freshness.status) && !['partial', 'failed'].includes(freshness.pollStatus));
-    return { ok, count, observation: { freshness: freshness.status, poll: freshness.pollStatus, stale: freshness.staleMatches, overdue: freshness.overdueMatches, error: null }, context: `${key} matches=${count} freshness=${freshness.status} poll=${freshness.pollStatus} stale=${freshness.staleMatches} overdue=${freshness.overdueMatches}` };
+    const rollingHealthy = ['fresh', 'empty'].includes(freshness.status) && freshness.pollStatus === 'ok';
+    const fullPollFailed = fullPoll === 'failed' || fullPoll === 'partial';
+    const ok = freshness.status === 'dormant' || (rollingHealthy && !fullPollFailed);
+    const observation = { freshness: freshness.status, poll: freshness.pollStatus, stale: freshness.staleMatches, overdue: freshness.overdueMatches, error: null };
+    if (rollingHealthy && fullPollFailed) {
+      observation.freshness = 'stale';
+      observation.poll = fullPoll;
+    }
+    return { ok, count, observation, context: `${key} matches=${count} freshness=${freshness.status} poll=${freshness.pollStatus} full-poll=${fullPoll ?? 'unknown'} stale=${freshness.staleMatches} overdue=${freshness.overdueMatches}` };
   } catch (error) {
     // Only constant contract/error categories; never echo URLs or raw fetch errors.
     const message = error instanceof Error ? error.message : '';

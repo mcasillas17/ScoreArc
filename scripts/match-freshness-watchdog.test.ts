@@ -71,6 +71,16 @@ describe('bounded match freshness watchdog', () => {
     expect(result.ok).toBe(true);
     expect(result.count).toBe(1);
   });
+  it('ignores a failed full poll when the reader reports a dormant season', async () => {
+    const headers = { ...validHeaders, 'X-ScoreArc-Freshness': 'dormant', 'X-ScoreArc-Full-Poll-Status': 'failed' };
+    const baseURL = await serve((_req, res) => res.writeHead(200, headers).end(JSON.stringify([{ ...match, state: 'finished' }])));
+    expect((await checkScope({ baseURL, ...scope })).ok).toBe(true);
+  });
+  it('rejects an invalid full-poll outcome as a header contract violation', async () => {
+    const headers = { ...validHeaders, 'X-ScoreArc-Full-Poll-Status': 'ready' };
+    const baseURL = await serve((_req, res) => res.writeHead(200, headers).end(JSON.stringify([match])));
+    expect(await checkScope({ baseURL, ...scope })).toMatchObject({ ok: false, observation: { error: 'headers-contract' } });
+  });
   it('accepts the actual scored-match and shootout detail field names', async () => {
     const populated = {
       ...match,

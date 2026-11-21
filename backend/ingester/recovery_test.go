@@ -87,8 +87,10 @@ func (f *recoveryRepository) UpsertMatch(ctx context.Context, id store.MatchIden
 	}
 	return f.fakeRepository.UpsertMatch(ctx, id, match)
 }
-func (f *recoveryRepository) RecordMatchPoll(_ context.Context, _, _, _ string, _ time.Time, outcome string, _ int) error {
-	f.outcomes = append(f.outcomes, outcome)
+func (f *recoveryRepository) RecordMatchPoll(_ context.Context, _, _, pollSource string, _ time.Time, outcome string, _ int) error {
+	if pollSource == sourceESPN {
+		f.outcomes = append(f.outcomes, outcome)
+	}
 	return nil
 }
 

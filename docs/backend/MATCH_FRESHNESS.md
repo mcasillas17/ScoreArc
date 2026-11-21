@@ -238,6 +238,15 @@ OPEN/RESOLVED transition deduplication. Every unhealthy run still fails, even
 when its transition message is suppressed. Missing/corrupt state fails closed.
 It neither calls ESPN nor writes match data.
 
+The ingester stores the latest full-season match poll independently of the
+rolling poll, using the existing `match_poll_status` table. The season-scoped
+matches response exposes it as `X-ScoreArc-Full-Poll-Status` after the first
+full-season attempt. A failed or partial full-season poll keeps an active
+edition unhealthy until a full-season poll succeeds. Rolling freshness and
+overdue checks still apply on every run. Dormant editions remain quiet.
+An older reader or an edition without a recorded full-season attempt uses
+the existing freshness checks until that evidence is available.
+
 ## Durable match monitor
 
 **Five-minute cadence** accepted by the owner on November 7, 2026 (see the
