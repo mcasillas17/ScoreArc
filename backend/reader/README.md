@@ -121,7 +121,8 @@ curl -i  http://localhost:8080/v1/competitions/world-cup/2026/calendar
 ## Request behavior
 
 - CORS permits public `GET` and preflight requests.
-- A token bucket allows 10 requests/second with a burst of 30 per client. Its
+- A token bucket allows 50 requests/second with a burst of 200 per client,
+  sized for the website's server-side reads from shared Vercel egress IPs. Its
   least-recently-used client table is capped at 10,000 entries.
 - `/healthz` bypasses rate limiting so platform checks remain reliable, but DB
   pings are singleflight-coalesced and cached for two seconds. Responses always
