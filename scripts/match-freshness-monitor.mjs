@@ -135,10 +135,17 @@ async function locked(path, operation) {
   } finally { await rm(`${lock}/owner`, { force: true }); await rmdir(lock); }
 }
 // A competition added to the registry since the last run joins as healthy:
-// it has no history to lose. A removed one still fails validation, because
-// dropping it could silently discard an open incident.
+// it has no history to lose. A removed one (a season replaced by the next) is
+// dropped only when provably quiet: its incident is closed and no undelivered
+// event names it (reserved ids are always pending events; receipts carry no
+// scope). Otherwise it still fails validation, because dropping it would
+// silently discard an open incident or an alert that was never delivered.
 function adoptScopes(state, keys) {
-  if (record(state?.incidents)) for (const key of keys) if (!(key in state.incidents)) state.incidents[key] = null;
+  if (!record(state?.incidents) || !Array.isArray(state.pending)) return state;
+  for (const key of keys) if (!(key in state.incidents)) state.incidents[key] = null;
+  for (const key of Object.keys(state.incidents)) {
+    if (!keys.includes(key) && state.incidents[key] === null && !state.pending.some(e => e?.scope === key)) delete state.incidents[key];
+  }
   return state;
 }
 const outcome = s => ({ exitCode: s.monitorFailure || s.pending.length ? 2 : s.dataIncident ? 1 : 0, pending: s.pending.length, monitorFailure: s.monitorFailure });

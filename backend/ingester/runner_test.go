@@ -1843,6 +1843,31 @@ func TestBracketNoteDecidesFinalizedWinnerOverOpposingFlag(t *testing.T) {
 	}
 }
 
+// The loop sleeps until the next kickoff, so a cycle has to report them: only
+// matches still to be played, and still known after a poll that failed.
+func TestCycleReportsScheduledKickoffsAndKeepsThemThroughAFailedPoll(t *testing.T) {
+	postponed := scheduledNoOpMatch()
+	postponed.ID, postponed.StatusName = "postponed", "STATUS_POSTPONED"
+	finished := finishedMatch()
+	finished.ID = "finished"
+	src := &fakeSource{matches: []model.Match{scheduledNoOpMatch(), postponed, finished}}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	comp := config.Competition{
+		ID: "test", CurrentSeasonId: "2026",
+		Seasons: map[string]config.Season{"2026": testEdition("2026")},
+	}
+	runner := testRunner(src, repo, comp)
+	want := time.Date(2026, 6, 11, 18, 0, 0, 0, time.UTC)
+
+	for _, poll := range []string{"ok", "failed"} {
+		result := runner.runCycle(context.Background(), false)
+		if len(result.kickoffs) != 1 || !result.kickoffs[0].Equal(want) {
+			t.Fatalf("%s poll: kickoffs=%v, want [%v]", poll, result.kickoffs, want)
+		}
+		src.scoreboardErr = errors.New("provider down")
+	}
+}
+
 func TestFinalizingOneMatchDoesNotHideOtherActiveMatches(t *testing.T) {
 	scheduled := finishedMatch()
 	scheduled.ID = "scheduled"

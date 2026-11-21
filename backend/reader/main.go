@@ -88,7 +88,7 @@ func run(logger *slog.Logger) error {
 		registry: registry,
 		logger:   logger,
 		news:     newNewsService(processCtx, espn.New(), defaultNewsTTL),
-		limiter:  newIPRateLimiter(10, 30),
+		limiter:  newIPRateLimiter(clientRequestsPerSecond, clientBurst),
 		health:   newHealthChecker(processCtx, store.Ping),
 	}
 	server := newHTTPServer(runtimeConfig.Port, app.router())

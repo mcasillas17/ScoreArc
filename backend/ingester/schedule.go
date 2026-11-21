@@ -12,6 +12,12 @@ const (
 	slowInterval   = 5 * time.Minute
 	topScorerLimit = 30
 
+	// kickoffGrace is how long past its kickoff a match the provider still
+	// reports as scheduled keeps the fast cadence. Matches flip to live a
+	// little late; a postponed one stays scheduled with a past kickoff
+	// indefinitely, so the window has to end.
+	kickoffGrace = 15 * time.Minute
+
 	// scheduledDetailFarTTL and scheduledDetailMidTTL bound how often a
 	// SCHEDULED match's stored detail (lineups, form, h2h, pre-match win
 	// probability) is worth re-fetching, based on how long until kickoff.
@@ -40,11 +46,23 @@ const (
 	scheduledDetailMidTTL = time.Hour
 )
 
-func nextInterval(anyLive bool) time.Duration {
+// nextInterval is the time from one cycle's start to the next. kickoffs are
+// the kickoff times of the matches the provider last reported as scheduled.
+// With nothing live the next cycle lands on the earliest kickoff still ahead,
+// so a match is seen going live at its kickoff rather than up to slowInterval
+// later. Only the interval changes: a cycle this wakes early is a fast tick,
+// doing exactly what a fast tick does while a match is live.
+func nextInterval(now time.Time, anyLive bool, kickoffs []time.Time) time.Duration {
 	if anyLive {
 		return fastInterval
 	}
-	return slowInterval
+	delay := slowInterval
+	for _, kickoff := range kickoffs {
+		if until := kickoff.Sub(now); until >= -kickoffGrace {
+			delay = min(delay, max(until, fastInterval))
+		}
+	}
+	return delay
 }
 
 // scheduledDetailTTL returns how stale a SCHEDULED match's stored detail is

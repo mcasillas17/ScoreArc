@@ -11,6 +11,17 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// ponytail: one per-IP bucket for every caller, sized so the website's own
+// server-side reads are never throttled into ESPN fallback: a cold home page
+// is ~36 reader calls, 4 at a time, from a few shared Vercel egress IPs
+// (docs/backend/READER_DATASTORE.md). Ceiling: several cold renders at once
+// from one IP. If fallback telemetry shows 429s, give the website a
+// trusted-caller key rather than raising these again.
+const (
+	clientRequestsPerSecond = 50
+	clientBurst             = 200
+)
+
 type clientLimiter struct {
 	limiter  *rate.Limiter
 	lastSeen time.Time

@@ -37,7 +37,7 @@ async function prepareNext(o: Awaited<ReturnType<typeof options>>, result = stal
 }
 
 describe('durable match monitor', () => {
-  it('adopts a competition added to the registry, and still refuses a removed one', async () => {
+  it('adopts a competition added to the registry', async () => {
     const o = await options(); o.check = async () => fresh;
     await monitor.prepareMonitor(o);
     o.scopes = [scopeFor('world-cup'), scopeFor('nations-league')];
@@ -45,8 +45,41 @@ describe('durable match monitor', () => {
     const added = await state(o.stateFile);
     expect(added.incidents).toEqual({ 'nations-league/2026': null, 'world-cup/2026': null });
     expect(added.pending).toEqual([]);
-    o.scopes = [scopeFor('nations-league')];
+  });
+  // Liga MX Apertura gives way to Clausura every January; the old scope leaves the registry.
+  const apertura = { competition: 'liga-mx', season: '2026-apertura' };
+  const clausura = { competition: 'liga-mx', season: '2027-clausura' };
+  it('replaces a season whose old scope is quiet and runs on with the new key set', async () => {
+    const o = await options(); o.scopes = [scopeFor('world-cup'), apertura]; o.check = async () => fresh;
+    await monitor.prepareMonitor(o);
+    o.scopes = [scopeFor('world-cup'), clausura];
+    expect(await prepareNext(o, stale)).toMatchObject({ pending: 2 });
+    const replaced = await state(o.stateFile);
+    expect(Object.keys(replaced.incidents).sort()).toEqual(['liga-mx/2027-clausura', 'world-cup/2026']);
+    expect(replaced.pending.map((e: any) => e.scope)).toEqual(['world-cup/2026', 'liga-mx/2027-clausura']);
+  });
+  it('still refuses a removed scope whose incident is open, even once its alert was delivered', async () => {
+    // A second open incident keeps dataIncident true, so only the scope's own incident can refuse the drop.
+    const o = await options(); o.scopes = [scopeFor('world-cup'), apertura];
+    await monitor.prepareMonitor(o);
+    const fetchImpl = async (_url: unknown, init?: RequestInit) => new Response(
+      JSON.stringify({ eventId: JSON.parse(String(init?.body)).eventId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    await monitor.deliverMonitor({ ...o, webhookURL: 'https://r.example/events/abc', pendingArtifactId: 1, fetchImpl });
+    const open = await state(o.stateFile);
+    expect(open).toMatchObject({ pending: [], reserved: [], incidents: { 'world-cup/2026': expect.any(String), 'liga-mx/2026-apertura': expect.any(String) } });
+    o.scopes = [scopeFor('world-cup'), clausura];
     await expect(prepareNext(o, fresh)).rejects.toThrow(/state/i);
+    expect(await state(o.stateFile)).toEqual(open);
+  });
+  it('still refuses a removed scope that an undelivered event names, though its incident closed', async () => {
+    const o = await options(); o.scopes = [apertura];
+    await monitor.prepareMonitor(o); await prepareNext(o, fresh);
+    const closed = await state(o.stateFile);
+    expect(closed.incidents).toEqual({ 'liga-mx/2026-apertura': null });
+    expect(closed.pending.map((e: any) => e.status)).toEqual(['OPEN', 'RESOLVED']);
+    o.scopes = [clausura];
+    await expect(prepareNext(o, fresh)).rejects.toThrow(/state/i);
+    expect(await state(o.stateFile)).toEqual(closed);
   });
   // GitHub's job-level `github.ref == 'refs/heads/main'` is case-insensitive; this exact check,
   // which runPhase applies before any state, network or webhook work, is the enforcement.

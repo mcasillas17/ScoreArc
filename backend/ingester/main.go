@@ -212,7 +212,7 @@ func run() int {
 			log.Error("ingester lease lost", "err", err)
 			return 1
 		}
-		delay := nextInterval(result.anyLive)
+		delay := nextInterval(cycleStarted, result.anyLive, result.kickoffs)
 		if elapsed := time.Since(cycleStarted); elapsed < delay {
 			delay -= elapsed
 		} else {

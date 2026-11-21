@@ -296,7 +296,11 @@ the seal is the intended single `match_pkey` probe with two shared-buffer hits.
   Normal writes use `POOLED_DSN`; lease health is checked independently during
   each cycle so losing the singleton session cancels work and terminates.
 - Active competitions poll every 20 seconds while any match is live and every
-  five minutes otherwise. Slow cycles reconcile the current season, retry
+  five minutes otherwise, except that an idle ingester wakes at the next
+  scheduled kickoff and keeps the 20-second cadence for up to 15 minutes while
+  the provider still reports that match as scheduled. The bound is what stops
+  a postponed match from holding the fast cadence. Slow cycles still run every
+  five minutes: they reconcile the current season, retry
   failed reconciliation after 30 minutes, and refresh successful reconciliation
   daily. Normal scoreboards use a rolling UTC `-30d/+7d` window clamped to
   season/tournament bounds. Compact monthly selectors replace provider-rejected
