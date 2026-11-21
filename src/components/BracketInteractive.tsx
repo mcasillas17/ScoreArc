@@ -9,6 +9,7 @@ import RadialBracket, { type BracketMode } from './RadialBracket';
 import ChampionCelebration from './ChampionCelebration';
 import type { BracketShape } from './bracketShape';
 import { trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
+import { pollWhileVisible } from '@/lib/pollWhileVisible';
 
 // "Build your bracket" (predict mode) is off unless the page turns it on: the
 // page passes `predictionEnabled` while the current edition's final is
@@ -171,10 +172,10 @@ rounds: initialRounds, apiBase, teamStyle = 'flag', compId, emblem, trophyImage,
         }
       }
     }
-    const id = setInterval(pollBracket, 10_000);
+    const stop = pollWhileVisible(pollBracket, 10_000);
     return () => {
       mounted = false;
-      clearInterval(id);
+      stop();
     };
   }, []);
 

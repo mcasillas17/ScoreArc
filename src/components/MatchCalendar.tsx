@@ -20,6 +20,7 @@ import { toMatchDetailInput } from './upcomingWindow';
 import { useLocale, useTranslations } from '@/i18n/I18nProvider';
 import type { Locale } from '@/i18n/config';
 import { formatDate } from '@/i18n/format';
+import { pollWhileVisible } from '@/lib/pollWhileVisible';
 
 // How often the month containing today re-reads itself.
 const LIVE_REFRESH_MS = 30_000;
@@ -226,10 +227,10 @@ export default function MatchCalendar({
         }
       }
     }
-    const id = setInterval(refresh, LIVE_REFRESH_MS);
+    const stop = pollWhileVisible(refresh, LIVE_REFRESH_MS);
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, [apiBase, cursor, today, live]);
 

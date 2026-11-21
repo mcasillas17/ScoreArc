@@ -646,6 +646,7 @@ export default function SiteNav() {
     </Link>
   );
 
+  const centreLabel = active ? null : page?.label ?? t('nav.competitions');
   const centreMark = page ? (
     <span className="sn-centre-icon">{page.icon}</span>
   ) : active ? (
@@ -791,11 +792,13 @@ export default function SiteNav() {
         className="sn-centre"
         aria-expanded={open}
         aria-controls="sn-wheel"
-        aria-label={t('nav.openWheel')}
+        // The name has to contain the words on the button (WCAG 2.5.3): a
+        // voice user says what they see, and "Open navigation" was not it.
+        aria-label={centreLabel ? `${centreLabel}, ${t('nav.openWheel')}` : t('nav.openWheel')}
         onClick={openWheel}
       >
         <span className="sn-centre-mark">{centreMark}</span>
-        {!active && <span className="sn-centre-label">{page?.label ?? t('nav.competitions')}</span>}
+        {centreLabel && <span className="sn-centre-label">{centreLabel}</span>}
       </button>
       <div className="sn-tabs-group">{barRight.map((tab) => tabLink(tab, 'bottom-bar'))}</div>
     </nav>

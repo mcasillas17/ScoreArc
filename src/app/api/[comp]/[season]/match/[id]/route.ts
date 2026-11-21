@@ -7,6 +7,9 @@ export const dynamic = 'force-dynamic';
 
 type RouteParams = Promise<{ comp: string; season: string; id: string }>;
 
+const REFERENCE = /^[A-Za-z0-9-]{1,64}$/;
+const SIDE = /^[A-Za-z0-9-]{0,64}$/;
+
 export async function GET(req: Request, { params }: { params: RouteParams }) {
   const { comp, season, id } = await params;
   const rc = resolveResource(comp, season, 'summary');
@@ -17,6 +20,9 @@ export async function GET(req: Request, { params }: { params: RouteParams }) {
     const { searchParams } = new URL(req.url);
     const home = searchParams.get('home') ?? '';
     const away = searchParams.get('away') ?? '';
+    // These go into the provider URL and the shared cache key. Every id we
+    // issue is letters, digits and hyphens; anything else is not ours.
+    if (!REFERENCE.test(id) || !SIDE.test(home) || !SIDE.test(away)) return apiError('INVALID_REQUEST', 400);
     const linked = await loadMatchSummaryWithSlugs(rc, id, home, away, undefined, req.signal);
     return Response.json(linked, { headers: { 'Cache-Control': 'no-store, max-age=0' } });
   } catch {

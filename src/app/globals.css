@@ -3009,8 +3009,9 @@ a.sn-item:hover { color: var(--text); }
 .dg-bseason {
   flex: none;
   font-size: 9.5px;
+  /* No opacity here: 0.75 measured 4.08:1 on --surface-2, under AA's 4.5:1.
+     --text-muted on its own is 6.2:1. */
   color: var(--text-muted);
-  opacity: 0.75;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }

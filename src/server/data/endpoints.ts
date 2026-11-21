@@ -7,7 +7,7 @@ export const scoreboardUrl = (slug: string, range?: string) =>
 const seasonQuery = (year?: number) => year === undefined ? '' : '?season=' + year;
 export const standingsUrl = (slug: string, year?: number) =>
   `https://site.api.espn.com/apis/v2/sports/soccer/${slug}/standings${seasonQuery(year)}`;
-export const summaryUrl = (slug: string, event: string) => `${site(slug)}/summary?event=${event}`;
+export const summaryUrl = (slug: string, event: string) => `${site(slug)}/summary?event=${encodeURIComponent(event)}`;
 export const statisticsUrl = (slug: string, year?: number) => `${site(slug)}/statistics${seasonQuery(year)}`;
 export const newsUrl = (slug: string) => `${site(slug)}/news`;
 // Every club in a league. Used to decide which of a cross-league cup's two
