@@ -101,8 +101,9 @@ build/test gate is `cd backend && go build ./... && go test ./...`.
 3. **Postgres migrations** — the canonical schema, the forward history surfaces,
    the active snapshot tables (standings, win-prob, odds), replacement/retention
    grants, and the finalization guards; the migration head is
-   `0028_resource_observation` on this branch: scoped accepted collection
-   observations and reader-safe participation completion time for T17.3.
+   `0029_match_poll_evidence` on this branch: independent full-season and
+   rolling match poll evidence. Its [migration-before-merge gate](docs/backend/RELEASES.md)
+   is separate from `0028_resource_observation`, the T17.3 collection migration.
    **The owner confirms migration 0028 and T17.3 were deployed October 31,
    following Teams/Players/Leaders.** Do not repeat those migrations. T16.3 adds
    no migration; deployment and source activation remain separate gates. See

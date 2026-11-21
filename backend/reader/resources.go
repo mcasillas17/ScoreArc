@@ -52,6 +52,7 @@ type aggregateEvidence struct {
 	ObservedAt, FinalizedAt, LatestAt      *time.Time
 }
 type resourceSnapshot struct {
+	PollEvidence                               json.RawMessage
 	Core                                       freshnessSnapshot
 	CoreFound                                  bool
 	FullPollStatus                             string
@@ -341,6 +342,9 @@ func (a *App) attachResourceEvidence(w http.ResponseWriter, r *http.Request, rea
 		w.Header().Set(fullPollStatusHeader, snapshot.FullPollStatus)
 	}
 	if old != nil {
+		if scope.Route == "matches" && !scope.Selected && len(snapshot.PollEvidence) != 0 {
+			w.Header().Set("X-ScoreArc-Poll-Evidence", string(snapshot.PollEvidence))
+		}
 		w.Header().Set("X-ScoreArc-Freshness", old.Status)
 		w.Header().Set("X-ScoreArc-Poll-Status", old.PollStatus)
 		w.Header().Set("X-ScoreArc-Stale-Matches", strconv.Itoa(old.StaleMatches))
@@ -367,6 +371,7 @@ selected AS MATERIALIZED (
  FROM selected s LEFT JOIN match_participation_availability p ON p.match_id=s.id
 )
 SELECT jsonb_build_object(
+ 'PollEvidence',{{pollEvidence}},
  'CoreFound',(SELECT count(*)>0 FROM core WHERE $10::text IS NOT NULL),
  'Core',jsonb_build_object('PollSucceededAt',(SELECT max(succeeded_at) FROM core),'PollStatus',(SELECT max(poll_status) FROM core),
  'HasUnfinalized',coalesce((SELECT bool_or(has_unfinalized) FROM core),false),
@@ -463,10 +468,14 @@ func (s *Store) Resources(ctx context.Context, scope resourceScope) (resourceSna
 		detail = resourceDetailSQL
 	}
 	fullPoll := "NULL"
+	pollEvidence := "NULL::jsonb"
 	if scope.Route == "matches" && !scope.Selected {
 		fullPoll = resourceFullMatchPollSQL
+		pollEvidence = `(SELECT coalesce(jsonb_object_agg(CASE WHEN source='` + writerstore.FullMatchPoll + `' THEN 'full' ELSE 'rolling' END,
+ jsonb_build_object('at',attempted_at,'outcome',outcome,'missing',missing_count)),'{}'::jsonb)
+ FROM match_poll_status WHERE competition_id=$1 AND season_id=$2 AND source IN ('` + writerstore.FullMatchPoll + `','` + writerstore.RollingMatchPoll + `'))`
 	}
-	query := strings.NewReplacer("{{fullPoll}}", fullPoll, "{{discovery}}", discovery, "{{standings}}", standings, "{{leaders}}", leaders, "{{squad}}", squad, "{{roster}}", roster, "{{stats}}", stats, "{{career}}", career, "{{detail}}", detail).Replace(resourceEvidenceSQL)
+	query := strings.NewReplacer("{{pollEvidence}}", pollEvidence, "{{fullPoll}}", fullPoll, "{{discovery}}", discovery, "{{standings}}", standings, "{{leaders}}", leaders, "{{squad}}", squad, "{{roster}}", roster, "{{stats}}", stats, "{{career}}", career, "{{detail}}", detail).Replace(resourceEvidenceSQL)
 	err := s.db.QueryRow(ctx, query, scope.Competition, scope.Season, ids, scope.TeamID, scope.Bracket, bracketRoundOrder, hasCoreResources(scope.Route), playerID, gameIDs, scope.Metric, !scope.Degraded["participation"]).Scan(&raw)
 	if err != nil {
 		return snapshot, err

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resolveSeason } from './competitions';
 import { boundedFetchJson, fetchScoreboardWindow, verifyUndatedScoreboard } from './scoreboardWindow';
 import recorded from './__fixtures__/scoreboard-window-recorded.json';
+import duplicateVectors from './__fixtures__/espn-scoreboard-duplicates.json';
 
 const mx = resolveSeason('liga-mx', '2026-apertura')!;
 const clausura = { ...mx, season: { ...mx.season, id: '2026-clausura' } };
@@ -52,6 +53,14 @@ describe('explicit scoreboard windows', () => {
     const result = await fetchScoreboardWindow(wc, '20221214-20221218', async () => recorded.samples['world-2022']);
     expect(result.events).toEqual(recorded.samples['world-2022'].events);
   });
+  it('rejects explicit truncation even for a dated legacy bracket without edition membership checks', async () => {
+    const read = (raw: unknown) => fetchScoreboardWindow(wc, '20221214-20221218', async () => raw, undefined, 184);
+    const complete = envelope([], wc.competition.espnSlug);
+    await expect(read(complete)).resolves.toEqual({ events: [] });
+    for (const metadata of [{ hasMore: true }, { truncated: true }, { pagination: { pagination: { total: 2 } } }]) {
+      await expect(read({ ...complete, ...metadata })).rejects.toThrow();
+    }
+  });
   it('returns genuine empty results and skips windows outside a season', async () => {
     await expect(fetchScoreboardWindow(mx, '20260915-20260915', loader())).resolves.toEqual({events: []});
     await expect(fetchScoreboardWindow(mx, '20260101-20260131', loader())).resolves.toEqual({events: []});
@@ -63,9 +72,62 @@ describe('explicit scoreboard windows', () => {
     const result = await fetchScoreboardWindow(mx, '20260930-20261001', loader({202609: envelope([e]),202610: envelope([reordered])}));
     expect(result.events).toEqual([e]);
   });
-  it('rejects inconsistent duplicates even outside the retained window', async () => {
+  it('merges duplicates with unused nested metadata and returns the original event', async () => {
+    const e = {
+      ...event('1', '2026-10-01T01:00Z'), name: 'original caption',
+      season: { year: 2026, slug: 'torneo-apertura', type: { name: 'Apertura' } },
+    };
+    const comp = e.competitions[0];
+    const copy = { ...e, name: 'revised caption',
+      season: { ...e.season, type: { ...e.season.type, abbreviation: 'AP' } },
+      status: { ...e.status, type: { ...e.status.type, description: 'Finished' } },
+      competitions: [{ ...comp, broadcasts: [], competitors: comp.competitors.map(side =>
+        ({ ...side, team: { ...side.team, color: 'ffffff' } })) }],
+    };
+    const result = await fetchScoreboardWindow(mx, '20260930-20261001', loader({ 202609: envelope([e]), 202610: envelope([copy]) }));
+    expect(result.events).toEqual([e]);
+  });
+  it.each(duplicateVectors.cases)('shared duplicate vector: $name', async tc => {
+    const other = structuredClone(duplicateVectors.event);
+    if (tc.path) {
+      const path = tc.path.split('.');
+      let node = other as unknown as Record<string, unknown>;
+      for (const key of path.slice(0, -1)) node = node[key] as Record<string, unknown>;
+      node[path.at(-1)!] = tc.value;
+    }
+    const game = other.competitions[0];
+    if (tc.sides) game.competitors = tc.sides.map(i => game.competitors[i]);
+    const original = tc.both ? other : duplicateVectors.event;
+    const base = resolveSeason('laliga', '2026-27')!;
+    const rc = { ...base, season: { ...base.season, playoffFormat: tc.femenil ? 'femenil-apertura' as const : undefined } };
+    const result = fetchScoreboardWindow(rc, '20260930-20261001', loader({
+      202609: envelope([original], 'esp.1'), 202610: envelope([other, original], 'esp.1'),
+    }));
+    if (tc.accept) expect((await result).events).toEqual([original]);
+    else await expect(result).rejects.toThrow();
+  });
+  it('rejects contradictory match, bracket and membership evidence before filtering A/B/A', async () => {
     const e = event('1', '2026-10-01T01:00Z');
-    await expect(fetchScoreboardWindow(mx, '20260930-20260930', loader({202609: envelope([e]),202610: envelope([{...e,name:'conflict'}])}))).rejects.toThrow(/conflict/i);
+    const comp = e.competitions[0];
+    const home = comp.competitors[0];
+    const conflicts = [
+      { ...e, date: '2026-10-01T02:00Z' },
+      { ...e, league: { slug: 'esp.1' } },
+      { ...e, season: { ...e.season, year: 2025 } },
+      { ...e, season: { ...e.season, slug: 'apertura---final' } },
+      { ...e, season: { ...e.season, type: { name: 'Clausura' } } },
+      { ...e, status: { ...e.status, type: { ...e.status.type, shortDetail: 'FT (P)' } } },
+      { ...e, competitions: [{ ...comp, id: '999' }] },
+      { ...e, competitions: [{ ...comp, leg: { value: 2 } }] },
+      { ...e, competitions: [{ ...comp, notes: [{ text: '2nd Leg' }] }] },
+      ...[{ id: '999' }, { score: '3' }, { shootoutScore: 4 }, { winner: true }, { team: { ...home.team, id: '998' } }]
+        .map(change => ({ ...e, competitions: [{ ...comp, competitors: [{ ...home, ...change }, comp.competitors[1]] }] })),
+    ];
+    for (const different of conflicts) {
+      await expect(fetchScoreboardWindow(mx, '20260930-20260930', loader({
+        202609: envelope([e]), 202610: envelope([different, e]),
+      }))).rejects.toThrow(/conflict/i);
+    }
   });
   it.each([
     ['wrong league', {leagues:[{slug:'esp.1'}], events:[]}],

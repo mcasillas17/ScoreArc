@@ -945,7 +945,8 @@ SELECT/INSERT/UPDATE grants; the participation view exposes only match id,
 completed boolean and completed time. No history is backfilled, no facts are
 changed, and no owner credentials enter application or CI configuration.
 
-Both binaries embed exact head 28. Future schema transitions follow the separately
+The T17.3 release embedded exact head 28; scoped match polling subsequently
+requires migration 0029. Schema transitions follow the separately
 authorized [exact-head transition](RELEASES.md#version-policy-and-its-cost);
 schema gates and release checks remain enforced. Sustained acceptance must verify
 scope-specific observations advance on unchanged payloads, different leader

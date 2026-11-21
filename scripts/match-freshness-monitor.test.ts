@@ -12,7 +12,8 @@ const scopes = [scopeFor('world-cup')];
 const run = { repository: 'mcasillas17/ScoreArc', workflow: '.github/workflows/match-freshness.yml', ref: 'refs/heads/main', id: 100, number: 10, attempt: 1, sha: 'a'.repeat(40) };
 const time = Date.parse('2026-10-04T12:00:00Z');
 const fresh = { ok: true, count: 1, context: '', observation: { freshness: 'fresh', poll: 'ok', stale: 0, overdue: 0, error: null } };
-const stale = { ...fresh, ok: false, observation: { ...fresh.observation, freshness: 'stale', stale: 1 } };
+type CheckResult = typeof fresh & { urgent?: boolean; fullStatus?: string; pollEvidence?: object };
+const stale: CheckResult = { ...fresh, ok: false, urgent: true, observation: { ...fresh.observation, freshness: 'stale', stale: 1 } };
 afterEach(async () => {
   vi.restoreAllMocks();
   for (const server of servers.splice(0)) { server.closeAllConnections(); await new Promise<void>(r => server.close(() => r())); }
@@ -37,6 +38,165 @@ async function prepareNext(o: Awaited<ReturnType<typeof options>>, result = stal
 }
 
 describe('durable match monitor', () => {
+  it('confirms omissions on a healthy reader and resolves only on a newer complete read', async () => {
+    const o = await options();
+    const sample = (minute: number, missing: number) => ({ ...fresh, fullStatus: 'ok', urgent: false,
+      pollEvidence: { full: { at: new Date(time + minute * 60_000).toISOString(), outcome: 'ok', missing } } });
+    o.check = async () => sample(0, 2);
+    await monitor.prepareMonitor(o);
+    expect((await state(o.stateFile)).pending).toEqual([]);
+    await prepareNext(o, sample(0, 2));
+    const [open] = (await state(o.stateFile)).pending;
+    expect(open).toMatchObject({ status: 'OPEN', observation: { freshness: 'stale', poll: 'partial' } });
+    await prepareNext(o, sample(0, 0));
+    expect((await state(o.stateFile)).pending).toHaveLength(1);
+    await prepareNext(o, sample(15, 0));
+    expect((await state(o.stateFile)).pending).toMatchObject([{ id: open.id }, { status: 'RESOLVED', incidentId: open.id }]);
+  });
+  it.each([false, true])('migrates an unresolved v2 poll failure, acknowledged=%s, without trusting stale success', async acknowledged => {
+    const o = await options();
+    o.check = async () => ({ ...stale, observation: { ...stale.observation, poll: 'failed' } });
+    await monitor.prepareMonitor(o);
+    const [open] = (await state(o.stateFile)).pending;
+    if (acknowledged) {
+      await monitor.deliverMonitor({ ...o, webhookURL: 'https://receiver.example/events/token', pendingArtifactId: 1,
+        fetchImpl: async () => Response.json({ eventId: open.id }) });
+    }
+    const legacy = await state(o.stateFile);
+    legacy.version = 2; delete legacy.signals;
+    await writeFile(o.stateFile, JSON.stringify(legacy));
+    await prepareNext(o, fresh);
+    await prepareNext(o, { ...fresh, fullStatus: 'ok' });
+    const full = (at: number) => ({ ...fresh, pollEvidence: { full: { at: new Date(at).toISOString(), outcome: 'ok', missing: 0 } } });
+    await prepareNext(o, full(time - 60_000));
+    expect(await state(o.stateFile)).toMatchObject({ epoch: legacy.epoch, sequence: legacy.sequence, delivered: legacy.delivered,
+      pending: acknowledged ? [] : [{ id: open.id }], incidents: { 'world-cup/2026': open.id } });
+    await prepareNext(o, full(time + 600_000));
+    expect((await state(o.stateFile)).pending).toMatchObject([...(acknowledged ? [] : [{ id: open.id }]), { status: 'RESOLVED', incidentId: open.id }]);
+  });
+  it('does not restart the two-check delay if the unhealthy signal changes kind', async () => {
+    const o = await options();
+    const rolling = (minute: number, outcome: string) => ({ ...stale, urgent: false,
+      pollEvidence: { rolling: { at: new Date(time + minute * 60_000).toISOString(), outcome, missing: 0 } } });
+    o.check = async () => rolling(0, 'failed');
+    await monitor.prepareMonitor(o);
+    await prepareNext(o, rolling(5, 'ok')); // The poll is back but the match data is still stale.
+    expect((await state(o.stateFile)).pending).toMatchObject([{ status: 'OPEN' }]);
+    await prepareNext(o, fresh);
+    expect((await state(o.stateFile)).pending).toMatchObject([{ status: 'OPEN' }, { status: 'RESOLVED' }]);
+  });
+  it('opens urgent episodes immediately and groups repeat flapping after the third burst', async () => {
+    const o = await options(); await monitor.prepareMonitor(o);
+    expect((await state(o.stateFile)).pending).toMatchObject([{ status: 'OPEN' }]);
+    for (let i = 0; i < 3; i++) {
+      await prepareNext(o, fresh); await prepareNext(o, stale);
+    }
+    await prepareNext(o, fresh);
+    expect((await state(o.stateFile)).pending.map((e: { status: string }) => e.status)).toEqual(['OPEN','RESOLVED','OPEN','RESOLVED','OPEN']);
+    await prepareNext(o, fresh, 120 * 60_000);
+    expect((await state(o.stateFile)).pending.at(-1)).toMatchObject({ status: 'RESOLVED' });
+  });
+  it('requires a newer successful full poll, even when a rolling poll or an old reader reports healthy', async () => {
+    const o = await options();
+    const at = (minutes: number) => new Date(time + minutes * 60_000).toISOString();
+    const full = { outcome: 'failed', at: at(0), missing: 0 };
+    const withPolls = (pollEvidence: object) => ({ ...fresh, urgent: false, pollEvidence });
+    const unhealthy = withPolls({ full });
+    o.check = async () => ({ ...stale, urgent: false, pollEvidence: { full } });
+    await monitor.prepareMonitor(o);
+    expect((await state(o.stateFile)).pending).toEqual([]);
+    await prepareNext(o, { ...unhealthy, ...stale, urgent: false, pollEvidence: { full, rolling: { at: at(5), outcome: 'ok', missing: 0 } } });
+    expect((await state(o.stateFile)).pending[0].observation.poll).toBe('failed');
+    await prepareNext(o, fresh); // Legacy/empty evidence is not a recovery.
+    await prepareNext(o, withPolls({ full: { ...full, at: at(-1), outcome: 'ok' } }));
+    expect((await state(o.stateFile)).pending).toMatchObject([{ status: 'OPEN' }]);
+    await prepareNext(o, withPolls({ full: { ...full, at: at(20), outcome: 'ok' } }));
+    const { pending } = await state(o.stateFile);
+    expect(pending).toMatchObject([{ status: 'OPEN' }, { status: 'RESOLVED', incidentId: pending[0].id }]);
+  });
+  it('ignores a short non-live failure, but alerts on the third burst inside two hours', async () => {
+    const o = await options();
+    const nonLive = { ...stale, urgent: false };
+    o.check = async () => nonLive;
+    await monitor.prepareMonitor(o);
+    await prepareNext(o, fresh);
+    await prepareNext(o, nonLive, 121 * 60_000); // First burst expired.
+    await prepareNext(o, fresh);
+    await prepareNext(o, nonLive);
+    await prepareNext(o, fresh);
+    expect((await state(o.stateFile)).pending).toEqual([]);
+    await prepareNext(o, nonLive);
+    const opened = (await state(o.stateFile)).pending[0];
+    // Alternating success/failure is still one incident, not a new pair every ten minutes.
+    for (let i = 0; i < 12; i++) {
+      await prepareNext(o, fresh);
+      await prepareNext(o, nonLive);
+    }
+    await prepareNext(o, fresh, 119 * 60_000);
+    expect((await state(o.stateFile)).pending).toMatchObject([{ status: 'OPEN' }]);
+    await prepareNext(o, fresh, 60_000);
+    expect((await state(o.stateFile)).pending).toMatchObject([{ id: opened.id }, { status: 'RESOLVED', incidentId: opened.id }]);
+  });
+  it('upgrades a queued v2 checkpoint without changing its event or alerting again', async () => {
+    const o = await options(); await monitor.prepareMonitor(o);
+    const legacy = await state(o.stateFile); legacy.version = 2; delete legacy.signals;
+    await writeFile(o.stateFile, JSON.stringify(legacy));
+    await prepareNext(o, fresh);
+    const current = await state(o.stateFile);
+    expect(current.version).toBe(3);
+    expect(current.epoch).toBe(legacy.epoch);
+    expect(current.pending).toMatchObject([{ id: legacy.pending[0].id, status: 'OPEN' },
+      { status: 'RESOLVED', incidentId: legacy.pending[0].id }]);
+  });
+  it('does not drop a deferred active poll failure on removal, or fake recovery when a failed edition retires', async () => {
+    const o = await options();
+    const full = { outcome: 'failed', at: new Date(time).toISOString(), missing: 0 };
+    const failed = { ...stale, urgent: false, pollEvidence: { full } };
+    o.check = async () => failed;
+    await monitor.prepareMonitor(o);
+    const before = await readFile(o.stateFile, 'utf8');
+    o.scopes = [scopeFor('replacement')];
+    await expect(prepareNext(o, fresh)).rejects.toThrow(/state/i);
+    expect(await readFile(o.stateFile, 'utf8')).toBe(before);
+    o.scopes = scopes;
+    await prepareNext(o, failed);
+    const url = await endpoint(async (req, res) => {
+      let body = ''; for await (const chunk of req) body += chunk;
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ eventId: JSON.parse(body).eventId }));
+    });
+    await monitor.deliverMonitor({ ...o, webhookURL: url, pendingArtifactId: 1 });
+    await prepareNext(o, { ...fresh, observation: { ...fresh.observation, freshness: 'dormant' }, pollEvidence: { full } });
+    expect((await state(o.stateFile)).pending).toEqual([]); // Not RESOLVED by a rolling/dormant read.
+    const previous = (await state(o.stateFile)).run;
+    o.run = { ...previous, id: previous.id + 1, number: previous.number + 1 };
+    o.now += 300_000;
+    await monitor.prepareMonitor({ ...o, restoredRun: previous, check: async () => ({ ok: false, count: null, context: '',
+      observation: { freshness: null, poll: null, stale: null, overdue: null, error: 'timeout' } }) });
+    o.scopes = [scopeFor('replacement')];
+    await prepareNext(o, fresh);
+    expect(await state(o.stateFile)).toMatchObject({ sequence: 1, pending: [], dataIncident: false });
+  });
+  it('refuses invalid v3 evidence before checking or delivering', async () => {
+    const o = await options(); await monitor.prepareMonitor(o);
+    const good = await state(o.stateFile);
+    const key = 'world-cup/2026';
+    const check = vi.fn(async () => fresh), send = vi.fn();
+    for (const bad of [
+      { ...good, signals: undefined }, { ...good, version: 2 },
+      ...[{ waiting: { full: '2099-01-01T00:00:00Z' } }, { waiting: { rolling: 'bad' } },
+        { prior: 'other' }, { bursts: { full: [1, 2, 3, 4] } }, { bursts: { other: [] } },
+        { bursts: { full: [3, 2] } }, { bursts: { full: [time + 2] } }].map(m =>
+        ({ ...good, signals: { [key]: { ...good.signals[key], ...m } } })),
+    ]) {
+      const bytes = JSON.stringify(bad);
+      await writeFile(o.stateFile, bytes);
+      await expect(monitor.prepareMonitor({ ...o, initialize: false, restoredRun: run,
+        run: { ...run, id: 101, number: 11 }, check })).rejects.toThrow(/state/i);
+      await expect(monitor.deliverMonitor({ ...o, webhookURL: 'https://receiver.example', pendingArtifactId: 1, fetchImpl: send })).rejects.toThrow(/state/i);
+      expect(await readFile(o.stateFile, 'utf8')).toBe(bytes);
+    }
+    expect(check).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled();
+  });
   it('adopts a competition added to the registry', async () => {
     const o = await options(); o.check = async () => fresh;
     await monitor.prepareMonitor(o);
@@ -143,13 +303,15 @@ describe('durable match monitor', () => {
     expect(pending).toMatchObject([{ status: 'OPEN', observation: { error: 'body-contract' } }]);
   });
   it('keeps one full-season incident open until the full poll succeeds', async () => {
-    let fullPoll = 'failed';
+    let fullPoll: string | null = 'failed';
+    let evidence: string | undefined;
     let latestPoll = 'ok';
     const reader = await endpoint((_req, res) => res.writeHead(200, {
       'Content-Type': 'application/json', 'X-ScoreArc-Freshness': latestPoll === 'ok' ? 'empty' : 'stale',
       'X-ScoreArc-Observed-At': '2026-10-04T11:59:00Z',
       'X-ScoreArc-Poll-Status': latestPoll, 'X-ScoreArc-Stale-Matches': '0', 'X-ScoreArc-Overdue-Matches': '0',
-      'X-ScoreArc-Full-Poll-Status': fullPoll,
+      ...(fullPoll === null ? {} : { 'X-ScoreArc-Full-Poll-Status': fullPoll }),
+      ...(evidence ? { 'X-ScoreArc-Poll-Evidence': evidence } : {}),
     }).end('[]'));
     const o = { ...(await options()), baseURL: new URL(reader).origin, check: undefined };
     await monitor.prepareMonitor(o);
@@ -166,14 +328,31 @@ describe('durable match monitor', () => {
     expect((await advance()).pending).toMatchObject([{ id: first.pending[0].id, status: 'OPEN' }]);
     fullPoll = 'partial';
     expect((await advance()).pending).toHaveLength(1);
+    fullPoll = null; // Rolling success from a reader without the legacy header is not proof of full recovery.
+    expect((await advance()).pending).toHaveLength(1);
+    evidence = JSON.stringify({ full: { at: new Date(time - 60_000).toISOString(), outcome: 'ok', missing: 0 } });
+    expect((await advance()).pending).toHaveLength(1);
+    evidence = JSON.stringify({ full: { at: new Date(o.now).toISOString(), outcome: 'failed', missing: 0 } });
+    expect((await advance()).pending).toHaveLength(1);
     fullPoll = 'ok';
+    evidence = undefined;
+    expect((await advance()).pending).toHaveLength(1); // A legacy OK cannot override a dated failure.
     latestPoll = 'failed';
+    evidence = JSON.stringify({ full: { at: new Date(o.now).toISOString(), outcome: 'ok', missing: 0 } });
     expect((await advance()).pending).toHaveLength(1);
     latestPoll = 'ok';
     expect((await advance()).pending).toMatchObject([
       { status: 'OPEN', id: first.pending[0].id },
       { status: 'RESOLVED', incidentId: first.pending[0].id },
     ]);
+  });
+  it('accepts an undated full recovery for a failure observed through the same legacy header', async () => {
+    const o = await options();
+    o.check = async () => ({ ...stale, fullStatus: 'failed' });
+    await monitor.prepareMonitor(o);
+    const [open] = (await state(o.stateFile)).pending;
+    await prepareNext(o, { ...fresh, fullStatus: 'ok' });
+    expect((await state(o.stateFile)).pending).toMatchObject([{ id: open.id }, { status: 'RESOLVED', incidentId: open.id }]);
   });
   it('rejects concurrent preparation and leaves the completed state usable', async () => {
     const o = await options(); let release!: () => void;
@@ -307,7 +486,8 @@ describe('durable match monitor', () => {
   });
   it('backpressure keeps bounded queue and drains it without interpreting skipped checks as recovery', async () => {
     const o = await options(); o.deliveryEnabled = false; await monitor.prepareMonitor(o);
-    for (let i = 1; i < 131; i++) await prepareNext(o, i % 2 ? fresh : stale);
+    // Separate incidents beyond the burst window so this exercises queue capacity, not flapping.
+    for (let i = 1; i < 131; i++) await prepareNext(o, i % 2 ? fresh : stale, 3 * 3600_000);
     const saved = await state(o.stateFile); expect(saved.pending.length).toBeLessThanOrEqual(128);
     expect(saved.monitorFailure).toBe('queue-full');
     const check = vi.fn(async () => fresh);

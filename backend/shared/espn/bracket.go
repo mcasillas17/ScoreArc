@@ -190,16 +190,7 @@ func mapBracketMatch(ev rawEvent, season config.Season, round string) (BracketMa
 	}
 	comp := ev.Competitions[0]
 
-	var home, away *rawCompetitor
-	for i := range comp.Competitors {
-		c := &comp.Competitors[i]
-		switch c.HomeAway {
-		case "home":
-			home = c
-		case "away":
-			away = c
-		}
-	}
+	home, away := comp.sides()
 	if ev.ID == "" || ev.Date == "" || home == nil || away == nil ||
 		home.Team.ID == "" || away.Team.ID == "" {
 		return BracketMatch{}, fmt.Errorf("incomplete match/team identity")
