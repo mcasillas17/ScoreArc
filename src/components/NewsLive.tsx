@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { NewsArticle } from '@/server/data/types';
 import NewsList from './NewsList';
 import { trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
+import { pollWhileVisible } from '@/lib/pollWhileVisible';
 
 // Refresh headlines periodically (news changes slowly, so a gentle cadence).
 interface Props {
@@ -41,10 +42,10 @@ export default function NewsLive({ initial, apiBase }: Props) {
         }
       }
     }
-    const id = setInterval(poll, 150_000);
+    const stop = pollWhileVisible(poll, 150_000);
     return () => {
       mounted = false;
-      clearInterval(id);
+      stop();
     };
   }, []);
 

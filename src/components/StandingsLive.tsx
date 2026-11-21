@@ -16,6 +16,7 @@ import { useStandingsForm } from './useStandingsForm';
 import { useMatchDetails } from './useMatchDetails';
 import MatchDetailPopup from './MatchDetailPopup';
 import { toMatchDetailInput } from './upcomingWindow';
+import { pollWhileVisible } from '@/lib/pollWhileVisible';
 
 interface Props {
   live?: boolean;
@@ -127,10 +128,10 @@ export default function StandingsLive({ live = true, hasLeaders = true, hasScore
       const standings = parsed[0].status === 'fulfilled' ? parsed[0].value : null;
       formTick(Array.isArray(standings) ? standings as Group[] : undefined);
     }
-    const id = setInterval(poll, REFRESH_MS);
+    const stop = pollWhileVisible(poll, REFRESH_MS);
     return () => {
       mounted = false;
-      clearInterval(id);
+      stop();
     };
   }, [apiBase, live, hasLeaders, formTick]);
 

@@ -30,10 +30,20 @@ function renderNav(pathname: string, search = '') {
 describe('SiteNav interaction', () => {
   afterEach(cleanup);
 
+  // WCAG 2.5.3: a voice user says the word on the button, so the accessible
+  // name has to contain it.
+  it('names the centre button with the label it shows', () => {
+    renderNav('/es');
+    const centre = screen.getByRole('button', { name: /Abrir navegación$/ });
+    const label = centre.querySelector('.sn-centre-label')?.textContent;
+    expect(label).toBeTruthy();
+    expect(centre.getAttribute('aria-label')).toBe(`${label}, Abrir navegación`);
+  });
+
   it('opens the wheel from the centre button and moves focus into it', () => {
     renderNav('/es/c/liga-mx/2026-apertura/standings');
 
-    const centre = screen.getByRole('button', { name: 'Abrir navegación' });
+    const centre = screen.getByRole('button', { name: /Abrir navegación$/ });
     expect(centre.getAttribute('aria-expanded')).toBe('false');
     expect(screen.queryByRole('dialog')).toBeNull();
 
@@ -52,7 +62,7 @@ describe('SiteNav interaction', () => {
   // at rest on the middle of the list rather than turned to its first entry.
   it('moves focus to the centre crest when no competition is open', () => {
     renderNav('/es');
-    fireEvent.click(screen.getByRole('button', { name: 'Abrir navegación' }));
+    fireEvent.click(screen.getByRole('button', { name: /Abrir navegación$/ }));
     const wheel = screen.getByRole('dialog');
     const links = Array.from(wheel.querySelectorAll('.sn-dial a'));
     expect(links.indexOf(document.activeElement as HTMLAnchorElement)).toBe(
@@ -62,7 +72,7 @@ describe('SiteNav interaction', () => {
 
   it('closes the wheel on Escape and returns focus to the centre button', () => {
     renderNav('/es');
-    const centre = screen.getByRole('button', { name: 'Abrir navegación' });
+    const centre = screen.getByRole('button', { name: /Abrir navegación$/ });
     fireEvent.click(centre);
     expect(screen.getByRole('dialog')).toBeTruthy();
 
@@ -94,7 +104,7 @@ describe('SiteNav interaction', () => {
 
   it('uses the filtered news list for the first keyboard target and closes a wheel on category-only Back', () => {
     const rendered = renderNav('/es/news', 'view=women');
-    const centre = screen.getByRole('button', { name: 'Abrir navegación' });
+    const centre = screen.getByRole('button', { name: /Abrir navegación$/ });
     fireEvent.click(centre);
     const crests = Array.from(screen.getByRole('dialog').querySelectorAll('.sn-crest'));
     expect(crests.map(a => a.getAttribute('href'))).toEqual(['/es/c/wsl/2026-27/news', '/es/c/nwsl/2026/news']);
@@ -107,7 +117,7 @@ describe('SiteNav interaction', () => {
 
   it('switches from News to the league crests in place and offers a separate directory destination', () => {
     renderNav('/es/news', 'view=women');
-    fireEvent.click(screen.getByRole('button', { name: 'Abrir navegación' }));
+    fireEvent.click(screen.getByRole('button', { name: /Abrir navegación$/ }));
     const wheel = screen.getByRole('dialog');
     fireEvent.click(within(wheel).getByRole('button', { name: 'Ligas' }));
     expect(within(wheel).getByRole('link', { name: 'Explorar competiciones' }).getAttribute('href')).toBe('/es/competitions?view=women');
@@ -149,7 +159,7 @@ describe('SiteNav interaction', () => {
     document.body.appendChild(content);
     try {
       renderNav('/es/teams', 'view=women');
-      fireEvent.click(screen.getByRole('button', { name: 'Abrir navegación' }));
+      fireEvent.click(screen.getByRole('button', { name: /Abrir navegación$/ }));
       fireEvent.click(within(screen.getByRole('dialog')).getByRole('link', { name: 'G' }));
       expect(screen.queryByRole('dialog')).toBeNull();
       expect(document.activeElement).toBe(content.querySelector('#ts-G'));
@@ -158,14 +168,14 @@ describe('SiteNav interaction', () => {
 
   it('closes the wheel from the backdrop', () => {
     renderNav('/es');
-    fireEvent.click(screen.getByRole('button', { name: 'Abrir navegación' }));
+    fireEvent.click(screen.getByRole('button', { name: /Abrir navegación$/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar navegación' }));
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('brings Tab back into the wheel when focus has fallen out of it', () => {
     renderNav('/es');
-    fireEvent.click(screen.getByRole('button', { name: 'Abrir navegación' }));
+    fireEvent.click(screen.getByRole('button', { name: /Abrir navegación$/ }));
     const wheel = screen.getByRole('dialog');
     (document.activeElement as HTMLElement).blur();
     expect(wheel.contains(document.activeElement)).toBe(false);
@@ -177,7 +187,7 @@ describe('SiteNav interaction', () => {
 
   it('returns focus to the centre button when a path change closes the wheel', () => {
     const view = renderNav('/es');
-    const centre = screen.getByRole('button', { name: 'Abrir navegación' });
+    const centre = screen.getByRole('button', { name: /Abrir navegación$/ });
     fireEvent.click(centre);
     expect(screen.getByRole('dialog')).toBeTruthy();
 
@@ -273,7 +283,7 @@ describe('SiteNav interaction', () => {
   // dial must not read it as its own drag ending.
   it('keeps turning when the drag began on a crest, as a finger does', () => {
     renderNav('/es');
-    fireEvent.click(screen.getByRole('button', { name: 'Abrir navegación' }));
+    fireEvent.click(screen.getByRole('button', { name: /Abrir navegación$/ }));
     const dial = screen.getByRole('dialog').querySelector('.sn-dial') as HTMLElement;
     const slots = Array.from(dial.querySelectorAll('.sn-dial-slot'));
     const centre = () => slots.findIndex((s) => s.hasAttribute('data-centre'));
@@ -294,7 +304,7 @@ describe('SiteNav interaction', () => {
     vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'setTimeout'] });
     try {
       renderNav('/es');
-      fireEvent.click(screen.getByRole('button', { name: 'Abrir navegación' }));
+      fireEvent.click(screen.getByRole('button', { name: /Abrir navegación$/ }));
       const dial = screen.getByRole('dialog').querySelector('.sn-dial') as HTMLElement;
       const slots = Array.from(dial.querySelectorAll<HTMLElement>('.sn-dial-slot'));
       const centre = () => slots.findIndex((s) => s.hasAttribute('data-centre'));

@@ -340,6 +340,23 @@ describe('match summary route — player slug enrichment', () => {
   });
 });
 
+describe('match summary route — rejected input', () => {
+  it.each([
+    ['an event id carrying a second query parameter', '401&lang=xx', 'home=222&away=227'],
+    ['a side id carrying a path', '401', 'home=../x&away=227'],
+  ])('400s %s without a source read', async (_name, id, query) => {
+    const spy = vi.spyOn(dataStore, 'getMatchSummary');
+    const { GET } = await import('./[comp]/[season]/match/[id]/route');
+    const res = await GET(
+      new Request(`http://x/api/liga-mx/2026-apertura/match/${encodeURIComponent(id)}?${query}`),
+      { params: Promise.resolve({ comp: 'liga-mx', season: '2026-apertura', id }) },
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: { code: 'INVALID_REQUEST' } });
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
 describe('team route not-found result', () => {
   it('returns an exact code-only 404 when the provider has no team', async () => {
     vi.spyOn(dataStore, 'getTeam').mockResolvedValueOnce(null);

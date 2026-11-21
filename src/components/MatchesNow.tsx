@@ -13,6 +13,7 @@ import MatchRow from './MatchRow';
 import { toMatchDetailInput } from './upcomingWindow';
 import { groupByDay } from './matchDays';
 import { useLocale, useTranslations } from '@/i18n/I18nProvider';
+import { pollWhileVisible } from '@/lib/pollWhileVisible';
 
 const REFRESH_MS = 30_000;
 
@@ -103,10 +104,10 @@ export default function MatchesNow({
         failing.current = true;
       }
     }
-    const id = setInterval(poll, REFRESH_MS);
+    const stop = pollWhileVisible(poll, REFRESH_MS);
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, [apiBase, range]);
 

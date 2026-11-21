@@ -12,6 +12,7 @@ import LocalTime, { localTimeText, useLocalNow } from './LocalTime';
 import { wheelOrder, initialIndex, scoreChanges } from './matchWheelModel';
 import { trackFeedFailure, trackFeedRecovery } from '@/lib/telemetry/client';
 import { useLocale, useTranslations } from '@/i18n/I18nProvider';
+import { pollWhileVisible } from '@/lib/pollWhileVisible';
 
 interface Props {
   initialMatches: Match[];
@@ -151,10 +152,10 @@ export default function MatchWheel({
       }
     }
     poll();
-    const id = setInterval(poll, POLL_MS);
+    const stop = pollWhileVisible(poll, POLL_MS);
     return () => {
       on = false;
-      clearInterval(id);
+      stop();
       if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
