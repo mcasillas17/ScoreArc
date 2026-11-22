@@ -133,7 +133,7 @@ func (a *App) resolve(competition, season string) (config.Competition, config.Se
 	return comp, resolvedSeason, true
 }
 
-var exposedHeaders = strings.Join(append(append([]string{}, freshnessHeaders...), resourcesHeader), ", ")
+var exposedHeaders = strings.Join(append(append([]string{}, freshnessHeaders...), resourcesHeader, "X-ScoreArc-Poll-Evidence"), ", ")
 
 // corsHeaders opens the read-only API to every origin. A preflight is answered
 // here, before the rate limiter, and never reaches a route.

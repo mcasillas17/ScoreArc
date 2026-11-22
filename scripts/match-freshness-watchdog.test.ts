@@ -49,6 +49,25 @@ async function stateFile() {
 }
 
 describe('bounded match freshness watchdog', () => {
+  it('reads independent poll evidence and distinguishes non-live from urgent stale data', async () => {
+    const evidence = { full: { at: '2026-09-19T07:00:00.123456+00:00', outcome: 'failed', missing: 1 } };
+    const headers = { ...validHeaders, 'X-ScoreArc-Poll-Evidence': JSON.stringify(evidence),
+      'X-ScoreArc-Freshness': 'stale', 'X-ScoreArc-Stale-Matches': '1' };
+    let row = { ...match, state: 'scheduled' };
+    const url = await serve((_req, res) => res.writeHead(200, headers).end(JSON.stringify([row])));
+    expect(await checkScope({ baseURL: url, ...scope })).toMatchObject({ urgent: false, pollEvidence: evidence });
+    row = match;
+    expect(await checkScope({ baseURL: url, ...scope })).toMatchObject({ urgent: true });
+    headers['X-ScoreArc-Poll-Evidence'] = '{"full":{"outcome":"ok"}}';
+    expect(await checkScope({ baseURL: url, ...scope })).toMatchObject({ ok: false, observation: { error: 'headers-contract' } });
+    headers['X-ScoreArc-Poll-Evidence'] = JSON.stringify({ full: { ...evidence.full, at: '2099-01-01T00:00:00Z', outcome: 'ok' } });
+    expect(await checkScope({ baseURL: url, ...scope })).toMatchObject({ ok: false, observation: { error: 'headers-contract' } });
+  });
+  it('does not debounce a failed full poll when a successful rolling poll returned no matches', async () => {
+    const baseURL = await serve((_req, res) => res.writeHead(200, { ...validHeaders, 'X-ScoreArc-Freshness': 'empty',
+      'X-ScoreArc-Poll-Evidence': '{"full":{"at":"2026-09-19T07:00:00Z","outcome":"failed","missing":0}}' }).end('[]'));
+    expect(await checkScope({ baseURL, ...scope })).toMatchObject({ count: 0, urgent: true });
+  });
   it('declares the installed YAML parser directly rather than relying on transitive hoisting', async () => {
     const installed = createRequire(import.meta.url)('js-yaml/package.json') as { version: string };
     const manifest = JSON.parse(await readFile('package.json', 'utf8')) as { devDependencies: Record<string, string> };

@@ -136,7 +136,7 @@ const freshnessSchemaProbe = `
 SELECT sync.match_id, sync.source, sync.observed_at,
        poll.competition_id, poll.season_id, poll.source, poll.succeeded_at, poll.outcome,
  obs.competition_id,obs.season_id,obs.source,obs.resource,obs.subject,obs.observed_at,obs.row_count,
- participation.completed_at, player.bio_observed_at, season_stats.observed_at
+ participation.completed_at, player.bio_observed_at, season_stats.observed_at, poll.missing_count
 FROM match_sync_status sync CROSS JOIN match_poll_status poll
  CROSS JOIN resource_observation obs CROSS JOIN match_participation_availability participation
  CROSS JOIN player CROSS JOIN player_season_stat season_stats

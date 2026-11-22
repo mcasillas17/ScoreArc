@@ -41,6 +41,20 @@ type rawCompetition struct {
 	Leg         json.RawMessage `json:"leg"`
 }
 
+func (c rawCompetition) sides() (home, away *rawCompetitor) {
+	if len(c.Competitors) != 2 {
+		return nil, nil
+	}
+	home, away = &c.Competitors[0], &c.Competitors[1]
+	if home.HomeAway == "away" {
+		home, away = away, home
+	}
+	if home.HomeAway != "home" || away.HomeAway != "away" || home.Team.ID == away.Team.ID {
+		return nil, nil
+	}
+	return home, away
+}
+
 type rawNote struct {
 	Text string `json:"text"`
 }
@@ -151,16 +165,7 @@ func MapSeasonScoreboard(raw []byte, season config.Season) ([]Match, error) {
 		}
 		comp := ev.Competitions[0]
 
-		var home, away *rawCompetitor
-		for i := range comp.Competitors {
-			c := &comp.Competitors[i]
-			switch c.HomeAway {
-			case "home":
-				home = c
-			case "away":
-				away = c
-			}
-		}
+		home, away := comp.sides()
 		if ev.ID == "" || ev.Date == "" || home == nil || away == nil ||
 			home.Team.ID == "" || away.Team.ID == "" {
 			return nil, fmt.Errorf("scoreboard contains event with incomplete identity")
@@ -249,6 +254,7 @@ func MapSeasonScoreboard(raw []byte, season config.Season) ([]Match, error) {
 			Note:            note,
 			Shootout:        shootout,
 			BracketRequired: bracketRequired,
+			ProviderStage:   ev.Season.Slug,
 			// These explicit non-knockout tags supersede a stored unknown-round requirement.
 			BracketConfirmed: outsideTitleBracket(ev.Season.Slug) ||
 				(season.PlayoffFormat == config.FemenilApertura && ev.Season.Slug == "torneo-apertura"),

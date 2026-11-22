@@ -32,7 +32,7 @@ func (f *fakeRepository) BeginMatchRecovery(context.Context, uuid.UUID, string, 
 func (f *fakeRepository) CompleteMatchRecovery(context.Context, uuid.UUID, string, time.Time, bool) error {
 	return nil
 }
-func (f *fakeRepository) RecordMatchPoll(context.Context, string, string, string, time.Time, string, int) error {
+func (f *fakeRepository) RecordScopedMatchPoll(context.Context, string, string, string, time.Time, bool, string, []model.Match) error {
 	return nil
 }
 
@@ -43,6 +43,9 @@ type recoveryRepository struct {
 	observations        []time.Time
 	observedMatches     []model.Match
 	outcomes            []string
+	pollKinds           []bool
+	pollIDs             []string
+	writePollErr        error
 	observationBatches  int
 	claimErr            error
 	observeErr          error
@@ -87,11 +90,14 @@ func (f *recoveryRepository) UpsertMatch(ctx context.Context, id store.MatchIden
 	}
 	return f.fakeRepository.UpsertMatch(ctx, id, match)
 }
-func (f *recoveryRepository) RecordMatchPoll(_ context.Context, _, _, pollSource string, _ time.Time, outcome string, _ int) error {
-	if pollSource == sourceESPN {
-		f.outcomes = append(f.outcomes, outcome)
+func (f *recoveryRepository) RecordScopedMatchPoll(_ context.Context, _, _, _ string, _ time.Time, full bool, outcome string, matches []model.Match) error {
+	f.outcomes = append(f.outcomes, outcome)
+	f.pollKinds = append(f.pollKinds, full)
+	f.pollIDs = f.pollIDs[:0]
+	for _, m := range matches {
+		f.pollIDs = append(f.pollIDs, m.ID)
 	}
-	return nil
+	return f.writePollErr
 }
 
 func (f *fakeRepository) RecordMatchObservations(context.Context, []store.MatchObservation) error {
@@ -386,6 +392,44 @@ func TestGracefulCancellationPreservesPreviousPollingOutcome(t *testing.T) {
 	r.ingestCompSeason(ctx, comp, comp.Seasons["2026"], activity{}, false, false)
 	if len(repo.outcomes) != 0 {
 		t.Fatalf("graceful cancellation replaced previous outcome: %v", repo.outcomes)
+	}
+}
+
+func TestPollEvidenceUsesOnlyOriginalScoreboardAndActualAttemptKind(t *testing.T) {
+	for _, tc := range []struct{ slow, full bool }{{false, false}, {true, false}, {true, true}} {
+		comp, repo, src, now := recoveryFixture()
+		repo.pending = nil
+		season := comp.Seasons["2026"]
+		season.HasBracket = true
+		notRequired := false
+		board := src.fresh
+		board.BracketRequired = &notRequired
+		src.matches = []model.Match{board}
+		backlog := board
+		backlog.ID = "stored-only"
+		repo.unfinalized = []model.Match{backlog}
+		src.bracket = []model.BracketMatch{{ID: "bracket-only", Kickoff: board.Kickoff, State: board.State, Round: "final",
+			Home: model.BracketTeam{ID: "home", Name: "Home"}, Away: model.BracketTeam{ID: "away", Name: "Away"}}}
+		r := testRunner(src.fakeSource, repo.fakeRepository, comp)
+		r.repo, r.source, r.now = repo, src, func() time.Time { return now }
+		r.ingestCompSeason(t.Context(), comp, season, activity{}, tc.slow, tc.full)
+		if len(repo.pollKinds) != 1 || repo.pollKinds[0] != tc.full || len(repo.pollIDs) != 1 || repo.pollIDs[0] != board.ID {
+			t.Fatalf("slow=%t full=%t: recorded kind=%v IDs=%v", tc.slow, tc.full, repo.pollKinds, repo.pollIDs)
+		}
+	}
+	comp, repo, src, _ := recoveryFixture()
+	repo.pending = nil
+	r := testRunner(src.fakeSource, repo.fakeRepository, comp)
+	r.repo = repo
+	for _, tc := range []struct {
+		err  error
+		done bool
+	}{{errors.New("persist failed"), false}, {store.ErrPollEvidenceBudget, true}} {
+		repo.writePollErr = tc.err
+		got := r.ingestCompSeason(t.Context(), comp, comp.Seasons["2026"], activity{}, true, true)
+		if !errors.Is(got.err, tc.err) || got.backfillDone != tc.done {
+			t.Fatalf("recording %v: err=%v backfillDone=%t", tc.err, got.err, got.backfillDone)
+		}
 	}
 }
 

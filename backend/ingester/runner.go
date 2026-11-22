@@ -312,7 +312,7 @@ func (r *runner) ingestCompSeason(
 	backfill bool,
 ) (result competitionResult) {
 	scoreboardStart := r.clock()
-	pollOutcome, pollCount := "failed", 0
+	pollOutcome := "failed"
 	var scoreboard []model.Match
 	defer func() {
 		if errors.Is(ctx.Err(), context.Canceled) {
@@ -326,13 +326,10 @@ func (r *runner) ingestCompSeason(
 				result.err = errors.Join(result.err, fmt.Errorf("record edition discovery: %w", err))
 			}
 		}
-		if backfill {
-			if err := r.repo.RecordMatchPoll(recordCtx, comp.ID, season.ID, store.FullMatchPoll, scoreboardStart, pollOutcome, pollCount); err != nil {
+		if err := r.repo.RecordScopedMatchPoll(recordCtx, comp.ID, season.ID, sourceESPN, scoreboardStart, backfill, pollOutcome, scoreboard); err != nil {
+			if !errors.Is(err, store.ErrPollEvidenceBudget) {
 				result.backfillDone = false
-				result.err = errors.Join(result.err, fmt.Errorf("record full match poll: %w", err))
 			}
-		}
-		if err := r.repo.RecordMatchPoll(recordCtx, comp.ID, season.ID, sourceESPN, scoreboardStart, pollOutcome, pollCount); err != nil {
 			r.log.Warn("record match poll", "comp", comp.ID, "season", season.ID, "error_type", fmt.Sprintf("%T", err))
 			result.err = errors.Join(result.err, fmt.Errorf("record match poll: %w", err))
 		}
@@ -350,7 +347,6 @@ func (r *runner) ingestCompSeason(
 	} else {
 		r.recordRun(ctx, comp.ID, "scoreboard_fetch", scoreboardStart, nil)
 	}
-	pollCount = len(scoreboard)
 	var recovery matchResult
 	var recovered map[uuid.UUID]bool
 	var recoveryErr error

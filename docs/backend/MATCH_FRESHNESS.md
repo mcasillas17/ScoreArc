@@ -66,8 +66,8 @@ identity/date/status/score data. Event dates must fit the queried month's
 one-day calendar envelope; retained events must match the configured season
 year. Exact UTC bounds separate apertura/clausura and padding seasons.
 Duplicate conflicts are checked **before** window filtering, including a
-reschedule with one copy outside the window. Identical duplicates merge in
-deterministic provider-ID order.
+reschedule with one copy outside the window. Duplicate copies may differ in
+unused provider metadata, but must agree on consumed match, edition and bracket facts.
 
 Only a completely validated set can establish an empty window, successful poll
 or completed reconciliation. Truncation, malformed data or any failed month
@@ -79,8 +79,21 @@ establish completeness, even when empty. Targeted summary recovery remains indep
 
 The endpoint publishes no authoritative total or pagination cursor. This
 coverage claim means every required selector passed the observed contract,
-**not** proof that ESPN knows every real-world match. Silent omissions below the
-cap remain a limitation; compare representative dates/events after release.
+**not** proof that ESPN knows every real-world match. We cannot detect a match
+ESPN never published. Migration 0029 detects previously seen IDs missing from
+two complete full-season reads; a partial, failed or rolling read neither
+confirms nor clears an omission. Reappearance in a complete read clears it.
+No match is deleted, canceled or unfinalized. The two ID sets together are
+bounded at 5,000 per edition; exceeding that budget records a partial attempt
+without advancing the baseline or accelerating the normal full-poll cadence.
+`missing_ids` names the confirmed omissions and is a subset of `absent_ids`.
+An operator can inspect the full row for that edition. If ESPN permanently
+retired an ID (for example, a verified alias), obtain separate approval before
+removing that **one ID** from `absent_ids` and `missing_ids` in the same update,
+scoped to competition, season, `source='espn-full-match-poll'`, the reviewed `attempted_at`,
+and `id = ANY(missing_ids)`. Verify one row changed; otherwise re-read it. Never
+edit match facts or `attempted_at` to close an alert. A new successful full poll
+confirms the correction and can close the incident.
 Do not turn cap failures into success, widen freshness thresholds, or scan every
 day of a season to make the signal green.
 
@@ -234,8 +247,9 @@ reads each current season's complete `/matches?scope=season&detail=summary` read
 with stored detail (the parameterless default is one lightweight week since
 T10.1), fails for stale/unavailable data,
 active partial/failed polling, HTTP errors and invalid contracts, and persists
-OPEN/RESOLVED transition deduplication. Every unhealthy run still fails, even
-when its transition message is suppressed. Missing/corrupt state fails closed.
+OPEN/RESOLVED transition deduplication. The standalone checker still exits
+nonzero for unhealthy data; the durable workflow separates an acknowledged data
+incident from an operational failure. Missing/corrupt state fails closed.
 It neither calls ESPN nor writes match data.
 
 The ingester stores the latest full-season match poll independently of the
@@ -258,7 +272,36 @@ for the separately owned T17.3 contract to settle; reader contract-registry,
 news and safe-logging gaps remain with their owners. Production migration 0027
 is already applied per the owner's October 30 report; this slice needs no reader schema
 or release operation. The receiver's [not-running check](#not-running-check) (D1
-migration `0002`) was deployed on November 7.
+migration `0002`) was deployed on November 7. The subsequent scoped evidence
+change requires the separately authorized [0029 migration](RELEASES.md).
+
+### When an email is actionable
+
+A known non-live problem opens after two consecutive unhealthy monitor observations
+of the edition, or on the third distinct burst of the same kind in two hours.
+After three bursts, a recurring incident needs two hours without another unhealthy
+observation before sending RESOLVED. An isolated sustained incident needs only
+the successful matching check, not that additional quiet period.
+Live matches, overdue matches, an unreadable response or an unhealthy empty
+response (unknown impact) bypass the delay. The five-minute cadence and reader
+freshness thresholds are unchanged. A short failure with no OPEN sends no recovery.
+
+`X-ScoreArc-Poll-Evidence` on the complete season response reports full and
+rolling poll attempts independently, including the count of repeatedly missing
+provider match IDs. A known failed kind stays open until **that kind** has a
+newer successful attempt with no confirmed omissions. A rolling success,
+missing header or stale success cannot close a full-season incident. The
+reader's ordinary freshness and match counts remain unchanged. Check the
+linked run for the affected kind, time and omission count. There is no extra
+ESPN request, email sender, or scheduled job.
+
+A verified dormant season (outside its bounds with no unresolved matches)
+does not open a data incident. If it already had a scoped failure, dormancy
+does not send a false RESOLVED. An explicit registry removal may retire that
+dormant scope once all queued mail is acknowledged; its prior events remain in
+the checkpoint history. An active scope with even a deferred failure cannot
+be silently removed. When the last check was healthy and there is no incident
+or pending mail, explicitly removing the edition also retires its burst counters.
 
 The workflow has one trigger, `workflow_dispatch`. Once the
 [Worker dispatch](#worker-dispatch-november-8-2026) is deployed, the receiver's cron
@@ -297,7 +340,7 @@ Tests clean up their listeners and temporary files. No variables/secrets,
 production reader or real notification destination are needed.
 
 Do not use the standalone v1 watchdog CLI as a dry run: it defaults to the
-production reader and is not governed by the v2 monitor's enablement variables.
+production reader and is not governed by the durable monitor's enablement variables.
 Do not dispatch the production workflow to test code. A passing local suite
 proves neither live delivery nor scheduled monitoring nor human receipt.
 
@@ -307,7 +350,7 @@ Existing acceptance evidence (test names are searchable within the linked files)
 |---|---|
 | Absent/false enablement: zero monitor checks and webhook sends (an armed not-running check still emails once unless paused); delivery-only disablement retains events | [workflow tests](../../scripts/match-freshness-workflow.test.ts): `disabled ... CLI`, `disabled job`, `delivery gate`; [monitor tests](../../scripts/match-freshness-monitor.test.ts): `is disabled before filesystem, production checks or sends` |
 | Healthy, genuinely empty and dormant do not open false incidents; invalid emptiness stays unhealthy | [watchdog tests](../../scripts/match-freshness-watchdog.test.ts): `uses existing scoped matches route`, `accepts explicit empty and dormant`, `suppresses expected dormant scope`, `rejects count contradictions`; monitor: `opens no incident for valid T16.2 nulls` |
-| OPEN, repeat failure, RESOLVED and recurrence retain FIFO and deduplication | monitor: `preserves pending OPEN through recovery and orders recurrence with stable identifiers`; watchdog: `deduplicates openings, resolves once and reopens recurrence`; workflow: `executes checks and delivery only after successful pending upload` |
+| OPEN, repeat failure, RESOLVED and recurrence retain FIFO and deduplication | monitor: `preserves pending OPEN through recovery and orders recurrence with stable identifiers`; watchdog: `deduplicates openings, resolves once and reopens recurrence`; workflow: `sends one incident notification` |
 | Timeout, 429, redirect and wrong acknowledgment fail; reader/API/ack body sizes and body deadlines stay bounded | monitor: `retains retryable state for HTTP`, `rejects ... acknowledgment within the delivery bounds`; watchdog: `bounds response bytes`, `does not follow redirects`; [state tests](../../scripts/match-freshness-state.test.ts): `bounded GitHub JSON transport` |
 | Acceptance followed by loss of the local acknowledged state replays the same event ID | monitor: `retries a successful-but-uncheckpointed acknowledgment with the same ID` simulates the crash boundary by restoring the pre-send checkpoint; workflow: `failed final upload restores pending and retries stable IDs after backoff` |
 | Pending upload failure prevents sends; final upload failure preserves replay | workflow: `failed pending upload prohibits sends and blocks silent rollback`, `failed final upload restores pending` |
@@ -333,7 +376,7 @@ typecheck includes the Worker.
 | `GITHUB_DISPATCH_TOKEN` | Receiver Worker secret (`npx wrangler@4.123.0 secret put GITHUB_DISPATCH_TOKEN` from `infra/alert-receiver`, interactive prompt). Fine-grained personal access token for this repository only with the **Actions: write** permission, nothing else; the Worker uses it only to dispatch `match-freshness.yml` on `main`. It never reaches the workflow. GitHub cannot narrow it to one workflow: the same permission can dispatch any workflow here (including `ci.yml`'s release input, whose production environments only require `main`), cancel or re-run runs, delete artifacts and disable workflows, and the runbook treats a re-run, a cancelled Prepare or a deleted checkpoint as a halt needing manual recovery. Keep it only in the Worker secret, give it the shortest expiry you will maintain, and revoke it in GitHub at once if it may have leaked. The owner accepted this reach on November 8, 2026 (the token is the owner's, expiry the owner's choice). When it expires or is revoked, dispatches are rejected and the not-running check emails; create a new one and replace the secret. |
 | `initialize_state` | Sole manual input, boolean, default false. True only for proven first history; never a repair flag. |
 | Run identity and API access | Actions supplies `GITHUB_*` provenance and its token with `contents: read` / `actions: read`. Do not substitute another repository/ref/run identity or a personal token to bypass validation. |
-| Reader and scopes | Fixed CLI origin `https://scorearc-reader.fly.dev`; exact current seasons from `backend/config/competitions.json`. No workflow input overrides these. A changed origin requires a reviewed state migration, not initialization. A competition added to the registry joins the restored state as healthy on the next run. A scope removed from it (a season replaced by the next) is dropped on the next run only when it is quiet: its incident is closed and no undelivered event names it. Otherwise the run is still refused, since dropping the scope would discard an open incident or an alert the owner never received; keep the old season monitored until it has recovered and its events are delivered, then replace it. |
+| Reader and scopes | Fixed CLI origin `https://scorearc-reader.fly.dev`; monitored editions come from `backend/config/competitions.json`. A changed origin requires a reviewed migration, not initialization. A new scope has no prior incident. Before removing an old scope, wait for recovery or verified dormancy and for all its transitions to be delivered; see [when an email is actionable](#when-an-email-is-actionable). |
 
 The **Prepare pending state** log lists the competition name, scope and result
 of each completed reader check. For a newly added competition, compare an
@@ -355,7 +398,14 @@ as the independent observer.
 
 ### State restoration and ordering
 
-The version-2 envelope binds repository, workflow, main ref, run ID/number/attempt,
+The version-3 envelope adds per-edition poll and debounce evidence to the
+version-2 envelope. Prepare validates and upgrades v2 in place, preserving the
+epoch, sequence, open incident IDs, pending FIFO and delivery receipts. Never
+reinitialize. A queued v2 poll failure requires a successful full attempt newer
+than the opening; for an already acknowledged opening whose diagnostic is gone,
+the last v2 checkpoint is the conservative cutoff. Rolling success and undated
+evidence cannot clear either. A v2-only reader cannot restore a written v3 checkpoint; retain
+v3 support on rollback. The envelope binds repository, workflow, main ref, run ID/number/attempt,
 SHA, reader origin, exact scope set, epoch, monotonically increasing event sequence
 and timestamps. It separates active incidents, FIFO pending events and the most
 recent 32 acknowledged event IDs. Recurrence has a new incident ID; recovery
@@ -521,7 +571,7 @@ updating both secrets together; deliveries fail and retry in between.
 
 A monitor that never starts cannot report its own absence, so the receiver watches
 for it. After each run whose checks, delivery and both checkpoint uploads
-worked, including a data incident (exit 1), the result step posts to `/heartbeat/<token>` at the same
+worked, including a delivered data incident, the result step posts to `/heartbeat/<token>` at the same
 host and token as the webhook, expecting 204. A monitor failure (exit 2) or delivery
 switched off sends no heartbeat, and a failed heartbeat only logs
 a line without changing the run's result. A manual dispatch counts like the
@@ -556,7 +606,7 @@ drop an alert.
 
 | Item | Decision |
 |---|---|
-| Arming | No row means no check. The first heartbeat arms it (it was armed on November 8, 2026), and it cannot alarm until a qualifying run (exit 0 or 1, delivery on, both checkpoints committed) first sends one: runs that never start, or all fail or run with delivery off from the start, are silent apart from GitHub's failure emails. After deleting the row, confirm a run appears and the heartbeat row exists again (acceptance command below) within about an hour. |
+| Arming | No row means no check. The first heartbeat arms it (it was armed on November 8, 2026); it needs a working monitor run with delivery on and both checkpoints committed. Runs that never start, or all fail or run with delivery off from the start, are silent apart from GitHub's failure emails. After deleting the row, confirm a run appears and the heartbeat row exists again (acceptance command below) within about an hour. |
 | Pausing | To stop the monitor on purpose, disable the workflow (`gh workflow disable match-freshness.yml`, see [disable and recover](#disable-and-recover-without-losing-history)) and let any running job finish, then within 60 minutes of its last heartbeat run `npx wrangler@4.123.0 d1 execute scorearc-alert-receiver --remote --command "DELETE FROM monitor_heartbeat"` from `infra/alert-receiver`. Deleting first lets a run still in flight re-arm the check. Without the delete, one "not running" email follows, which is the correct signal for an unplanned stop. While the workflow is disabled the Worker's dispatches are rejected and logged; that is expected. The next heartbeat after re-enabling re-arms it. |
 | Independence | It catches GitHub not running or failing the monitor, as it caught GitHub skipping its schedule on November 8, and a rejected Worker dispatch (expired or revoked token, or a disabled workflow; recover with `gh workflow enable match-freshness.yml`). The dispatcher and this check are the same cron in the same Worker, so a Cloudflare outage, or the cron stopping, stops runs and silences the alarm together; nothing else reports that. Anyone holding the webhook token can also keep it quiet by sending heartbeats; rotating the token restores it. |
 | Owner | The owner is the incident owner and recipient. Deadline: 60 minutes without a heartbeat. |
@@ -611,8 +661,10 @@ cost, approved with that copy but not yet incurred because it is not built.
 If there is not room for one transition per scope, preparation pauses all checks
 and drains the existing queue; it does not report skipped observations as healthy.
 Events occurring entirely while monitoring is blocked cannot be reconstructed.
-Data incidents alone exit **1**; monitor/state/config/API/persistence/queue or
-pending/delivery failures exit **2**; clean healthy completion exits **0**.
+Delivered data incidents are logged as `data_incident=true` and the workflow
+exits **0** once both checkpoints committed; the receiver is the data alert
+channel. Without committed delivery the internal data result remains **1**.
+Monitor/state/config/API/persistence/queue or pending/delivery failures exit **2**.
 Upload failure independently fails Actions even when the final status step is
 healthy. Local stale locks fail closed; verify no process runs before repair.
 
@@ -625,10 +677,9 @@ execution first and validate the latest envelope against the rollback version;
 never choose an older state just because its code can read it. A monitor cannot
 detect its own permanent stoppage: the receiver's
 [not-running check](#not-running-check) covers that. Native Actions failure
-notifications may repeat and are not this transition transport: GitHub emails the
-user who triggered each failed run (for dispatched runs, the token's owner), so a sustained incident (exit 1 or 2) adds about 12 undeduplicated emails an
-hour beside the single OPEN. Turn them off under GitHub Settings > Notifications >
-Actions if the receiver's emails are enough. **Never use GitHub's "Re-run" on a
+notifications may still repeat for operational failures, but a delivered,
+checkpointed data incident no longer fails the workflow every five minutes.
+**Never use GitHub's "Re-run" on a
 monitor run** (failure emails link to it): see the re-run row below.
 
 ### Disable and recover without losing history
@@ -659,7 +710,7 @@ growth active, so it is not the full kill switch.
 
 | Observed failure | Recovery boundary |
 |---|---|
-| Reader incident, exit 1 after delivery | Investigate competition/season/run context using the existing diagnostics. Do not modify scores or thresholds to clear it. Repeated failure stays nonzero without another OPEN. |
+| Reader incident, `data_incident=true` | Investigate the edition, poll kind and diagnostic run from the OPEN. Acknowledged delivery does not fail Actions. Do not modify scores or thresholds to clear it. |
 | Delivery failure, exit 2, valid retained checkpoint | Fix the approved receiver/configuration. The next run replays the pending head automatically once its backoff passes; a manual dispatch only hastens it. Retain IDs and let FIFO replay the head before later events. Do not rerun the old attempt or send a replacement event manually. |
 | Final upload failure or crash after receiver acceptance | Preserve the pending snapshot and receiver acceptance ledger. The selector may replay it only with proven failed/skipped final upload; receiver deduplication must tolerate the same ID. A successful/ambiguous/cancelled final-upload record with missing state blocks automatic recovery. |
 | Prepare failed or was cancelled after it started (no checkpoint) | Attempted preparation without a checkpoint is a barrier: every later run fails at selection until owner-reviewed recovery that preserves the newest checkpoint (last row). Investigate the Prepare error first. |
