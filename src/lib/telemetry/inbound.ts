@@ -1,9 +1,9 @@
-import { comparisonHealthEnabled, emitHttpHealth, withHealthContext } from './http';
+import { httpHealthEnabled, emitHttpHealth, withHealthContext } from './http';
 
 const responseErrors = new WeakMap<Response, string>();
 
 export function markApiError(response: Response, code: string): Response {
-  if (comparisonHealthEnabled()) responseErrors.set(response, code);
+  if (httpHealthEnabled()) responseErrors.set(response, code);
   return response;
 }
 
@@ -47,7 +47,7 @@ function observeImageBody(response: Response, finish: (outcome: string, bytes: n
 export function observeApiRoute<R extends Request, Args extends unknown[]>(endpoint: string,
   handler: (request: R, ...args: Args) => Promise<Response>) {
   return async (request: R, ...args: Args): Promise<Response> => {
-    if (!comparisonHealthEnabled()) return handler(request, ...args);
+    if (!httpHealthEnabled()) return handler(request, ...args);
     const requestId = crypto.randomUUID();
     const started = performance.now();
     function emit(status: number | null, outcome: string, appError?: string, bytes?: number) {

@@ -40,7 +40,9 @@ One disagreement or reader error returns the full logical operation from ESPN. R
 
 ### Health telemetry and dashboard data
 
-Frontend compare mode emits two JSON log families. `scorearc_reader_comparison` describes logical calls, agreements, differences, inconclusive results and which source served the operation. `scorearc_http` describes individual handler executions and outgoing requests. A single match popup may need several logical reads, and a cached read can make zero HTTP calls. Use the denominator for the question being asked.
+Set the server-only `SCOREARC_HTTP_TELEMETRY=1` on the frontend to monitor handlers and upstream fetches independently of the experiment. With the default ESPN source, `espn`, or a zero comparison percentage, the frontend uses its ordinary ESPN store and emits only HTTP health events. A server-rendered page or API request records ESPN fetches when it needs the network. Cache hits add zero outbound events. Remove the flag and redeploy to turn off standalone monitoring.
+
+Frontend compare mode automatically emits two JSON log families. `scorearc_reader_comparison` describes logical calls, agreements, differences, inconclusive results and which source served the operation. `scorearc_http` describes individual handler executions and outgoing requests. A single match popup may need several logical reads, and a cached read can make zero HTTP calls. Use the denominator for the question being asked.
 
 | Measurement | Coverage and denominator |
 |---|---|
@@ -49,7 +51,9 @@ Frontend compare mode emits two JSON log families. `scorearc_reader_comparison` 
 | Go reader and ingester | On each participating Go process, `SCOREARC_HTTP_TELEMETRY=1` enables the HTTP event schema. The reader records incoming API requests and health probes. The ingester and reader record their ESPN dependencies, with a separate record per retry or redirect hop. The operator CLI service labels separate manual activity from the regular ingester. |
 | Edge and CDN traffic | Optional Vercel proxy-log input counts unique observed API requests, including cache hits, framework method responses and unmatched API paths. Use the separate `platformApi` section for this boundary. Application handlers cannot measure browser-direct asset hits, requests answered upstream of them, or Satori’s internal image fetches. |
 
-The sampled reader and reference transports reject redirects. Measured ESPN control reads can follow redirects on their origin and the configured ESPN API hosts. Share-card CDN probes follow redirects to recognized asset hosts. Each followed or refused hop contributes an HTTP event.
+Standalone monitoring keeps native fetch redirect behavior for ordinary ESPN reads and share-card probes and records one event with the terminal outcome of each fetch. Intermediate redirects are not visible in this mode.
+
+The sampled reader and reference transports reject redirects. In compare mode, measured ESPN control reads can follow redirects on their origin and the configured ESPN API hosts. Share-card CDN probes follow redirects to recognized asset hosts. Each followed or refused hop contributes an HTTP event.
 
 The frontend emits timestamp, environment and revision when available. Request, operation, sampled-read and reader-generated request identifiers correlate individual events during diagnosis. The report groups by bounded route names and dimensions, never by those identifiers. Applications omit raw request paths, query parameters, client addresses, participant IDs, response bodies, and dependency error text from health events. Vercel proxy input can contain sensitive fields; the report retains only bounded route, method, response, cache and time dimensions.
 

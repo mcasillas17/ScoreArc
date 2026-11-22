@@ -1,4 +1,5 @@
 import { parseReaderResources, type ReaderResources } from '@/lib/readerResources';
+import { healthContext } from '@/lib/telemetry/http';
 import { startOutboundHttp } from './httpHealth';
 import { isFetchRedirect } from '@/lib/telemetry/redirects';
 import { abortable } from './scoreboardWindow';
@@ -24,7 +25,7 @@ export interface RequestBudget {
   readonly signal: AbortSignal;
   readonly calls: number;
   readonly bytes: number;
-  json(url: string, signal?: AbortSignal): Promise<{ body: unknown; headers: Headers }>;
+  json(url: string, signal?: AbortSignal, dependency?: 'espn' | 'reader'): Promise<{ body: unknown; headers: Headers }>;
 }
 
 /** One shared budget includes queued reads, response streaming and fallback. */
@@ -60,7 +61,7 @@ export function createRequestBudget(options: {
     signal: options.signal,
     get calls() { return calls; },
     get bytes() { return bytes; },
-    async json(url, requestSignal) {
+    async json(url, requestSignal, dependency = options.dependency) {
       const signal = requestSignal ? AbortSignal.any([options.signal, requestSignal]) : options.signal;
       signal.throwIfAborted();
       if (admitted >= maxCalls || bytes >= maxBytes) throw new ReaderFailure('budget');
@@ -74,15 +75,16 @@ export function createRequestBudget(options: {
         signal.throwIfAborted();
         if (calls >= maxCalls || bytes >= maxBytes) throw new ReaderFailure('budget');
         calls++;
-        if (options.dependency) finish = startOutboundHttp(options.dependency, url, signal);
+        if (dependency) finish = startOutboundHttp(dependency, url, signal);
+        const observeRedirects = Boolean(finish && healthContext().onHttp);
         try {
-          response = await abortable(fetcher(url, { signal, cache: 'no-store', redirect: finish ? 'manual' : 'error', headers: { Accept: 'application/json', 'User-Agent': 'scorearc' } }), signal);
+          response = await abortable(fetcher(url, { signal, cache: 'no-store', redirect: observeRedirects ? 'manual' : 'error', headers: { Accept: 'application/json', 'User-Agent': 'scorearc' } }), signal);
         } catch (error) {
           signal.throwIfAborted();
           if (error instanceof ReaderFailure) throw error;
           throw new ReaderFailure('network');
         }
-        if (finish && isFetchRedirect(response.status)) {
+        if (observeRedirects && isFetchRedirect(response.status)) {
           // A native redirect:error rejects with a network error before exposing the 3xx.
           void response.body?.cancel().catch(() => {});
           throw new ReaderFailure('network');
@@ -146,7 +148,7 @@ export function createReaderTransport(origin: string, budget: RequestBudget, sig
     const url = new URL(path, origin);
     if (url.origin !== origin) throw new ReaderFailure('scope', false);
     for (const [name, value] of Object.entries(query ?? {})) url.searchParams.set(name, value);
-    const { body, headers } = await budget.json(url.href, signal);
+    const { body, headers } = await budget.json(url.href, signal, 'reader');
     let resources: ReaderResources;
     try { resources = parseReaderResources(headers); }
     catch { throw new ReaderFailure('metadata'); }

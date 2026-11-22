@@ -1,6 +1,6 @@
 import { fetchObservedRedirects } from '@/lib/telemetry/redirects';
 import { observeApiRoute } from '@/lib/telemetry/inbound';
-import { comparisonHealthEnabled, emitHttpHealth } from '@/lib/telemetry/http';
+import { comparisonHealthEnabled, emitHttpHealth, httpHealthEnabled } from '@/lib/telemetry/http';
 import { ImageResponse } from 'next/og';
 import type { NextRequest } from 'next/server';
 import { flagUrl } from '@/lib/flags';
@@ -35,7 +35,7 @@ async function liveImage(url: string | null, endpoint: 'og-crest' | 'og-flag' | 
   if (!url) return null;
   const inline = endpoint === 'og-mark';
   const method = inline ? 'GET' : 'HEAD';
-  const measuring = comparisonHealthEnabled();
+  const measuring = httpHealthEnabled();
   let started = measuring ? performance.now() : 0;
   let measuredUrl: string | undefined = measuring ? url : undefined;
   const timeout = AbortSignal.timeout(1500);
@@ -51,7 +51,7 @@ async function liveImage(url: string | null, endpoint: 'og-crest' | 'og-flag' | 
   try {
     // Timeboxed: a slow-but-alive CDN must degrade like a dead one, or it
     // stalls the whole card past a crawler's unfurl patience.
-    const res = measuring
+    const res = comparisonHealthEnabled()
       ? await fetchObservedRedirects(url, address => fetch(address, { method, redirect: 'manual', signal: timeout }),
         inline ? undefined : target => target.protocol === 'https:' && !target.port && assetHosts.has(target.hostname), (redirect, next) => {
           recordHop(redirect.status, next ? 'success' : 'redirect', 0);

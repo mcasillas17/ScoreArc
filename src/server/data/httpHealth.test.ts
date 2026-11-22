@@ -22,7 +22,7 @@ const collector = () => {
   const run = <T>(read: () => Promise<T>) => withHealthContext({ requestId: 'request', operationId: 'operation', onHttp: e => events.push(e) }, read);
   return { events, run };
 };
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe('outbound HTTP health', () => {
   it('maps every frontend ESPN builder and every reader route to bounded, separate endpoint families', () => {
@@ -77,6 +77,34 @@ describe('outbound HTTP health', () => {
       ['news',200,'success',undefined],['bio',429,'http_error',undefined],['team',null,'network',undefined],['summary',null,'timeout',undefined],
     ]);
     expect(JSON.stringify(events)).not.toMatch(/private-test-id|secret-provider-body|test\.league/);
+  });
+
+  it('keeps native cross-origin redirects in monitoring-only mode and records one completed fetch', async () => {
+    vi.stubEnv('SCOREARC_HTTP_TELEMETRY', '1');
+    vi.stubEnv('SCOREARC_DATA_SOURCE', 'espn');
+    const logs = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const target = createServer((_req, res) => { res.end('{"ok":true}'); });
+    const origin = createServer((_req, res) => {
+      const binding = target.address();
+      if (!binding || typeof binding === 'string') throw new Error('no target binding');
+      res.writeHead(302, { location: 'http://127.0.0.1:' + binding.port + '/final' }).end();
+    });
+    target.listen(0, '127.0.0.1'); origin.listen(0, '127.0.0.1');
+    try {
+      await Promise.all([once(target, 'listening'), once(origin, 'listening')]);
+      const binding = origin.address();
+      if (!binding || typeof binding === 'string') throw new Error('no origin binding');
+      const url = 'http://127.0.0.1:' + binding.port + '/apis/site/v2/sports/soccer/league/news';
+      await expect(boundedFetchJson(url)).resolves.toEqual({ ok: true });
+      expect(logs).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(logs.mock.calls[0][0])).toMatchObject({ dependency: 'espn', endpoint: 'news', status: 200, outcome: 'success' });
+      vi.stubEnv('SCOREARC_HTTP_TELEMETRY', undefined);
+      await expect(boundedFetchJson(url)).resolves.toEqual({ ok: true });
+      expect(logs).toHaveBeenCalledTimes(1);
+    } finally {
+      origin.closeAllConnections(); target.closeAllConnections();
+      await Promise.all([new Promise<void>(resolve => origin.close(() => resolve())), new Promise<void>(resolve => target.close(() => resolve()))]);
+    }
   });
 
   it('counts real redirect hops for ordinary ESPN reads and rejects sampled redirects without following', async () => {
@@ -135,7 +163,9 @@ describe('outbound HTTP health', () => {
 });
 
 
-it('links control and news wire events to their reads and excludes warm-cache repeats from wire counts', async () => {
+it('links control and news wire events to reads once when both telemetry settings apply', async () => {
+  vi.stubEnv('SCOREARC_HTTP_TELEMETRY', '1');
+  const defaultEmitter = vi.spyOn(console, 'info').mockImplementation(() => {});
   const events: ComparisonEvent[] = [], hits: FrontendHttpFields[] = [];
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ articles: [], stats: [] })));
   const upstream = createDataStore({ fetchJson: boundedFetchJson, cache: new TtlCache<unknown>() });
@@ -150,6 +180,7 @@ it('links control and news wire events to their reads and excludes warm-cache re
   });
   expect(hits.map(event => [event.cohort, event.endpoint])).toEqual([['news', 'news'], ['control', 'statistics']]);
   expect(events.filter(event => event.type === 'read')).toHaveLength(4);
+  expect(defaultEmitter).not.toHaveBeenCalled();
   for (const hit of hits) {
     expect(events.find(e => e.type === 'read' && e.readId === hit.readId)).toMatchObject({
       requestId: 'test-request', operationId: hit.operationId, endpoint: hit.logicalEndpoint, cohort: hit.cohort,

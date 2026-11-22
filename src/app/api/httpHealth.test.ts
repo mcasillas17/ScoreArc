@@ -18,6 +18,7 @@ const params = Promise.resolve({ comp: 'private-invalid-competition', season: 'p
 const healthEvents = () => vi.mocked(console.info).mock.calls.map(([msg]) => JSON.parse(msg as string)).filter(log => log.event === 'scorearc_http');
 
 beforeEach(() => {
+  vi.stubEnv('SCOREARC_HTTP_TELEMETRY', undefined);
   vi.stubEnv('SCOREARC_DATA_SOURCE', 'compare');
   vi.stubEnv('SCOREARC_READER_ORIGIN', 'https://reader.example');
   vi.stubEnv('SCOREARC_READER_COMPARE_PERCENT', '10');
@@ -71,6 +72,70 @@ describe('API request health', () => {
     await (await GET(new NextRequest('https://example.test/api/og?compId=world-cup'))).arrayBuffer();
     expect(fetchAsset).toHaveBeenCalled();
     expect(healthEvents()).toEqual([]);
+  });
+
+  it.each([[undefined, undefined], ['espn', '10'], ['compare', '0']])(
+    'records ESPN-only handler and SSR fetches without comparison in source %s at %s percent', async (source, percent) => {
+      vi.stubEnv('SCOREARC_DATA_SOURCE', source);
+      vi.stubEnv('SCOREARC_READER_COMPARE_PERCENT', percent);
+      vi.stubEnv('SCOREARC_READER_ORIGIN', undefined);
+      vi.stubEnv('SCOREARC_HTTP_TELEMETRY', '1');
+      vi.resetModules();
+      const { GET } = await import('./[comp]/[season]/top-scorers/route');
+      const { dataStore, espnDataStore } = await import('@/server/data/store');
+      const { resolveSeason } = await import('@/server/data/competitions');
+      expect(dataStore).toBe(espnDataStore);
+      const fetchESPN = vi.fn(async () => Response.json({ stats: [], articles: [] }));
+      vi.stubGlobal('fetch', fetchESPN);
+      const rc = resolveSeason('premier-league', '2026-27')!;
+      const scope = { params: Promise.resolve({ comp: rc.competition.id, season: rc.season.id }) };
+      for (let i = 0; i < 2; i++) expect((await GET(new Request('https://example.test/'), scope)).status).toBe(200);
+      await dataStore.getNews(rc);
+      await dataStore.getNews(rc);
+      expect(fetchESPN).toHaveBeenCalledTimes(2);
+      const events = healthEvents();
+      expect(events.map(e => [e.direction, e.endpoint])).toEqual([
+        ['outbound', 'statistics'], ['inbound', 'top-scorers'], ['inbound', 'top-scorers'], ['outbound', 'news'],
+      ]);
+      expect(events[0].requestId).toBe(events[1].requestId);
+      expect(events[3].requestId).toBeUndefined();
+      expect(events.every(e => e.sampleId === undefined && e.dependency !== 'reader')).toBe(true);
+      expect(vi.mocked(console.info).mock.calls.some(([s]) => String(s).includes('scorearc_reader_comparison'))).toBe(false);
+    },
+  );
+
+  it('attributes the shared reader-first budget to the selected provider and its ESPN fallback', async () => {
+    vi.stubEnv('SCOREARC_HTTP_TELEMETRY', '1');
+    vi.stubEnv('SCOREARC_DATA_SOURCE', 'reader');
+    vi.resetModules();
+    const { GET } = await import('./[comp]/[season]/top-scorers/route');
+    const fetcher = vi.fn(async (url: string, _options: RequestInit) => url.startsWith('https://reader.example/')
+      ? new Response(null, { status: 503 }) : Response.json({ stats: [] }));
+    vi.stubGlobal('fetch', fetcher);
+    const scope = { params: Promise.resolve({ comp: 'premier-league', season: '2026-27' }) };
+    expect((await GET(new Request('https://example.test'), scope)).status).toBe(200);
+    expect(fetcher.mock.calls.map(([, options]) => options.redirect)).toEqual(['error', 'error', 'error']);
+    expect(healthEvents().filter(e => e.direction === 'outbound').map(e => [e.dependency, e.endpoint, e.status])).toEqual([
+      ['reader', '/v1/competitions/{comp}/{season}/leaders', 503],
+      ['reader', '/v1/competitions/{comp}/{season}/leaders', 503],
+      ['espn', 'statistics', 200],
+    ]);
+  });
+
+  it('observes OG assets in monitoring-only mode while preserving the existing native redirect policy', async () => {
+    vi.stubEnv('SCOREARC_HTTP_TELEMETRY', '1');
+    vi.stubEnv('SCOREARC_DATA_SOURCE', 'espn');
+    const policies: RequestRedirect[] = [];
+    vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
+      policies.push(init.redirect!);
+      return new Response(null, { status: 404 });
+    });
+    const { GET } = await import('./og/route');
+    await (await GET(new NextRequest('https://example.test/api/og?compId=world-cup&champ=MEX'))).arrayBuffer();
+    expect(policies).toContain('follow');
+    expect(policies).not.toContain('manual');
+    expect(healthEvents().filter(e => e.direction === 'outbound')).toHaveLength(policies.length);
+    expect(healthEvents().filter(e => e.direction === 'inbound')).toHaveLength(1);
   });
 
   it('records successful JSON and automatic HEAD with fresh request IDs', async () => {

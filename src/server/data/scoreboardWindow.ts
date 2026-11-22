@@ -1,3 +1,4 @@
+import { healthContext } from '@/lib/telemetry/http';
 import { startOutboundHttp } from './httpHealth';
 import { fetchObservedRedirects } from '@/lib/telemetry/redirects';
 import type { CompetitionSeason, PlayoffFormat } from './competitions';
@@ -28,6 +29,8 @@ export function abortable<T>(pending: Promise<T>, signal: AbortSignal): Promise<
 /** Existing generic fetch behavior stays unchanged unless a bounded read is requested. */
 export async function boundedFetchJson(url: string, options?: FetchOptions): Promise<unknown> {
   options?.signal.throwIfAborted();
+  // Only the experiment observes individual redirects. Ordinary ESPN reads retain native fetch redirect handling.
+  const observeRedirects = Boolean(healthContext().onHttp);
   let finish = startOutboundHttp('espn', url, options?.signal);
   let response: Response | undefined;
   let outcome = 'network';
@@ -36,11 +39,11 @@ export async function boundedFetchJson(url: string, options?: FetchOptions): Pro
     const fetchHop = (address: string) => {
       const request = fetch(address, {
         headers: { 'User-Agent': 'scorearc' }, cache: 'no-store', signal: options?.signal,
-        ...(finish && { redirect: 'manual' as const }),
+        ...(observeRedirects && { redirect: 'manual' as const }),
       });
       return options ? abortable(request, options.signal) : request;
     };
-    if (finish) {
+    if (observeRedirects) {
       const origin = new URL(url).origin;
       response = await fetchObservedRedirects(url, fetchHop, target => target.origin === origin ||
         target.origin === 'https://site.api.espn.com' || target.origin === 'https://site.web.api.espn.com', (redirect, next) => {
