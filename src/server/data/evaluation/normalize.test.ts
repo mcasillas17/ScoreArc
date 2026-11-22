@@ -92,13 +92,15 @@ describe('reader evaluation semantic policy', () => {
     expect(compare({ playerSlug: null }, {}, 'unknown').differences).toContainEqual({ path: '$.playerSlug', category: 'link' });
   });
 
-  it('compares lineups as a set of players and leaves reader-only lineup evidence out', () => {
+  it('leaves reader-only lineup evidence out but keeps lineup order', () => {
     const player = (athleteId: string, number: number) => ({ athleteId, number, starter: true });
     const espn = { lineups: { home: { formation: '4-4-2', players: [player('1', 1), player('2', 4)] } } };
-    const reader = { lineups: { availability: 'complete', home: { teamId: '226', formation: '4-4-2', players: [player('2', 4), player('1', 1)] } } };
-    const result = compare(reader, espn, 'getMatchSummary');
+    const reader = (players: unknown[]) => ({ lineups: { availability: 'complete', home: { teamId: '226', formation: '4-4-2', players } } });
+    const result = compare(reader([player('1', 1), player('2', 4)]), espn, 'getMatchSummary');
     expect(result.differences).toEqual([]);
-    expect(result.normalizers).toEqual(expect.arrayContaining(['lineup-set-order-v1', 'reader-lineup-evidence-v1']));
+    expect(result.normalizers).toContain('reader-lineup-evidence-v1');
+    // The Lineups tab shows the starting eleven as given, so a different order is a real difference.
+    expect(compare(reader([player('2', 4), player('1', 1)]), espn, 'getMatchSummary').differences).toContainEqual({ path: '$.lineups.home.players[0].athleteId', category: 'entity' });
     // A different player, a different shirt and incomplete reader coverage still show.
     expect(compare({ lineups: { home: { players: [player('3', 1)] } } }, { lineups: { home: { players: [player('1', 1)] } } }, 'getMatchSummary').differences).toContainEqual({ path: '$.lineups.home.players[0].athleteId', category: 'entity' });
     expect(compare({ lineups: { home: { players: [player('1', 9)] } } }, { lineups: { home: { players: [player('1', 1)] } } }, 'getMatchSummary').differences).toContainEqual({ path: '$.lineups.home.players[0].number', category: 'value' });

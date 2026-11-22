@@ -117,7 +117,6 @@ or fallback registration is necessary.
 | `bracket-round-display-v1` | Reader-only round display name; slug/order/event membership still compare |
 | `mirrored-crest-v1` | `crestUrl`/`teamCrestUrl` only: the reader's mirrored crest (`cdn.scorearc.futbol/teams/<canonical id>`) and ESPN's club crest (`teamlogos/soccer/500/<provider id>.png`) are equal when the team crosswalk maps both to one team. Another team's crest, a missing crest and a team outside the crosswalk stay differences |
 | `unresolved-player-slug-v1` | Leader and lineup rows only: a null reader `playerSlug` against an absent provider one. A null against a real slug is still a `link` difference |
-| `lineup-set-order-v1` | Lineup rows sorted by provider athlete ID; the page orders them itself. Players, shirt numbers, positions and statistics still compare |
 | `reader-lineup-evidence-v1` | Reader-only lineup `teamId`, and lineup `availability` only when it is `complete`, where the provider has no such field |
 | `team-schedule-detail-superset-v1` | Scorers, cards, statistics and win probability on a team-schedule match only where the provider's value is empty or null. Provider detail that disagrees still compares |
 | `standing-competition-display-v1` | A team profile's `standing.competition` and `standingSummary`: the reader uses the site's competition name. `standing.rank` still compares |

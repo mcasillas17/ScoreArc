@@ -12,12 +12,14 @@ unavailable**. The Premier League and NWSL samples all match.
 
 Changed on this branch:
 
-- **Evaluator policy `reader-evaluation-v2`.** Six new named rules, each with
+- **Evaluator policy `reader-evaluation-v2`.** Five new named rules, each with
   its boundary in `docs/backend/READER_EVALUATION.md`: the mirrored crest and
   the provider crest of one team, a null reader player slug against an absent
-  provider one, lineup rows as a set, reader-only lineup evidence, reader
-  detail on a team schedule where the provider has none, and the site's name
-  for the competition in a team's standing line.
+  provider one, reader-only lineup evidence, reader detail on a team schedule
+  where the provider has none, and the site's name for the competition in a
+  team's standing line. The sampled compare mode (`SCOREARC_DATA_SOURCE=compare`,
+  #303) uses the same comparator, so these rules also decide when a sampled
+  read is served from the reader. That mode is not enabled in production.
 - **Leagues Cup bracket.** The 2026 edition had no `bracketDatesRange`, so the
   ESPN-backed path read the default scoreboard and production showed only the
   final and the third-place match. It now reads 25 August to 7 September and
@@ -42,6 +44,14 @@ Still different, each one a decision for the owner rather than a patch:
   and the participation guard (0025) reject it, and the ingester role has no
   way around them. Fixing it needs a migration and a deliberate exception to
   "a finalized record is immutable".
+- **Lineup order.** ESPN lists a lineup goalkeeper first, then by position.
+  The reader lists starters by shirt number (`box_score.go`), and the Lineups
+  tab shows the starting eleven in the order given, so the same eleven reads
+  in a different order. The stored lineup keeps ESPN's order; the box score
+  that replaces it in `summaryLineups` does not. An earlier draft of this
+  branch ignored lineup order in the evaluator; that rule was removed because
+  the difference is visible. It changes no count: both affected samples were
+  already `unavailable`.
 - **Player names are written once.** `resolvePlayer` sets `full_name` when the
   player is first seen and never again; one of 34 Atlante players differs
   (`Maximiliano Garcia` against `García`).

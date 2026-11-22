@@ -146,12 +146,11 @@ export function compareSemantic(kind: string, reader: unknown, espn: unknown): {
     return value;
   }
   function ordered(values: unknown[], role: Role): unknown[] {
-    // Lineup rows: the page sorts them itself (starters, then shirt number).
-    if (role !== 'matches' && role !== 'groups' && role !== 'teams' && role !== 'lineupPlayers') return values;
-    normalizers.add({ matches: 'match-set-order-v1', groups: 'group-set-order-v1', teams: 'team-set-order-v1', lineupPlayers: 'lineup-set-order-v1' }[role]);
-    const id = role === 'lineupPlayers' ? 'athleteId' : 'id';
+    // Lineup rows are not in this list: the Lineups tab shows the starting eleven in the order given.
+    if (role !== 'matches' && role !== 'groups' && role !== 'teams') return values;
+    normalizers.add({ matches: 'match-set-order-v1', groups: 'group-set-order-v1', teams: 'team-set-order-v1' }[role]);
     const key = (value: unknown) => object(value)
-      ? `${typeof value[id] === 'string' ? value[id] : ''}\0${role === 'groups' && typeof value.name === 'string' ? value.name : ''}` : '';
+      ? `${typeof value.id === 'string' ? value.id : ''}\0${role === 'groups' && typeof value.name === 'string' ? value.name : ''}` : '';
     return [...values].sort((a, b) => lexicographic(key(a), key(b)));
   }
   function visit(a: unknown, b: unknown, role: Role, path: string, key: string, parent: Role, depth: number) {
