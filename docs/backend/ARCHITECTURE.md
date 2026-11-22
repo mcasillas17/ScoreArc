@@ -123,7 +123,8 @@ colours, `0023_match_sync.*.sql` adding observation/retry bookkeeping, and
 `0024_standing_table_membership.*.sql` keying standings by provider table (T16.2),
 `0025`/`0026` adding participation recovery and the T10.2 reader contracts, and
 `0027_team_squad_contract.*.sql` adding team location, player headshots and
-squad roster order (T10.3) as the current source head. The old pre-launch `0003`/`0004` were folded into `0001` before
+squad roster order (T10.3), `0028` recording scoped resource observations,
+and `0029` tracking full and rolling match polls independently. The old pre-launch `0003`/`0004` were folded into `0001` before
 deployment; the current migrations bearing those numbers are newer forward
 migrations. Which of these are applied in a given environment is tracked by
 [`../CURRENT_STATE.md`](../CURRENT_STATE.md), not this inventory.
@@ -175,6 +176,13 @@ Migration 0023 adds bookkeeping separate from immutable match facts:
   A current-date fallback cannot establish full-window emptiness or completed
   season reconciliation. Both tables are reader-SELECT/ingester-write
   bookkeeping, not an exception to finalized-fact seals.
+- **Scoped poll evidence** (0029) extends `match_poll_status`: sources
+  `espn-full-match-poll` and `espn-rolling-match-poll` each retain their own attempt time and outcome.
+  Accepted full polls retain current provider IDs, absences, and the subset missing
+  for two complete polls. Partial/failed/rolling reads never advance those sets.
+  The reader gets the confirmed count in the same match-list snapshot, not the IDs.
+  Reader SELECT; ingester SELECT/INSERT/UPDATE. See the [5,000-ID budget and
+  correction procedure](MATCH_FRESHNESS.md#complete-window-source-contract).
 - **match**(id PK `uuid` v7, competition_id, season_id, round, kickoff, **kickoff_date** (generated, UTC date), state[`scheduled|live|finished`], home_team_id→team, away_team_id→team, home_score, away_score, minute, status_detail, status_name, winner_id→team, note, home_placeholder, away_placeholder, bracket_required, **finalized_at**, source, updated_at) — FK to `season(competition_id,id)`; **UNIQUE (competition_id, season_id, home_team_id, away_team_id, kickoff_date)** is the natural key that makes the same match from a second source resolve to one row; indexes on `(competition_id,season_id,kickoff)`, `state`, and unfinalized history. `updated_at` records the last persisted content change: an ingest that resolves to the same row does not refresh it.
 - **match_detail**(match_id PK→match, scorers jsonb, cards jsonb, stats jsonb, win_probability jsonb, shootout jsonb, shootout_detail jsonb, lineups jsonb, videos jsonb, info jsonb, form jsonb, h2h jsonb, commentary jsonb, updated_at)
 - **match_commentary**(PK (match_id→match, **seq** = ESPN's `sequence`), period, clock_value, clock_display, play_type, play_type_text, wallclock, text) — minute-by-minute commentary **with the structure `match_detail.commentary` drops** (T7.11). That jsonb column is unchanged and remains the reader's `MatchSummaryData.commentary` contract; it keeps `{minute, text}` only. This table adds guaranteed order (`sequence`), a numeric clock (`play.clock.value`, falling back to `time.value`; the recorded pre-match, kickoff, and match-end entries have an empty `time.displayValue`), the machine play type (`play.type.type`, so consumers need not regex English prose), and mutability (`match_detail` is frozen by `protect_finalized_detail` once a match finalizes). Rows are upserted and then tail-pruned like `match_event`; an **empty payload is a no-op, not a delete**, because commentary coverage varies by competition and has been observed at zero. Missing numeric provider fields remain SQL `NULL`, distinct from a measured zero. A failed write leaves a finished match unfinalized so the next cycle retries before freezing its detail. **Nothing here is parsed** — E6's shot-log parser is downstream and gated on T6.1's coverage probe.

@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -10,6 +12,102 @@ import (
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
 
+func TestScopedPollsRetainFailuresAndDetectRepeatedOmissions(t *testing.T) {
+	st, db := newSeededStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 11, 21, 0, 0, 0, 0, time.UTC)
+	sealed := resolveFixture(t, st, "11", at.Add(-time.Hour))
+	fact := fixtureMatch(sealed, "11", at.Add(-time.Hour))
+	home, away := 2, 1
+	fact.StatusName, fact.HomeScore, fact.AwayScore = "STATUS_FULL_TIME", &home, &away
+	if err := st.UpsertMatch(ctx, sealed, fact); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := st.FinalizeMatch(ctx, sealed, fact, model.MatchDetail{}); err != nil || !ok {
+		t.Fatalf("seal test match: %v, %v", ok, err)
+	}
+	poll := func(minutes int, full bool, outcome string, ids ...string) {
+		t.Helper()
+		var matches []model.Match
+		for _, id := range ids {
+			matches = append(matches, model.Match{ID: id})
+		}
+		if err := st.RecordScopedMatchPoll(ctx, testCompetition, testSeason, testSource, at.Add(time.Duration(minutes)*time.Minute), full, outcome, matches); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := func(outcome string, missing int) {
+		t.Helper()
+		var got string
+		var n int
+		if err := db.QueryRow(ctx, `SELECT outcome, missing_count FROM match_poll_status WHERE competition_id=$1 AND season_id=$2 AND source=$3`, testCompetition, testSeason, FullMatchPoll).Scan(&got, &n); err != nil || got != outcome || n != missing {
+			t.Fatalf("full poll = %q, %d, %v; want %q, %d", got, n, err, outcome, missing)
+		}
+	}
+	poll(0, true, "ok", "10", "11")
+	poll(10, true, "ok", "10", "12") // Same size, different IDs. First absence alone is not conclusive.
+	check("ok", 0)
+	poll(15, true, "failed")
+	poll(20, false, "ok", "10")
+	check("failed", 0)
+	st = &Store{pool: db}
+	poll(25, true, "partial", "11") // A partial read cannot confirm or erase an omission.
+	check("partial", 0)
+	poll(30, true, "ok", "10", "12")
+	check("ok", 1)
+	var missing []string
+	if err := db.QueryRow(ctx, `SELECT missing_ids FROM match_poll_status WHERE source=$1`, FullMatchPoll).Scan(&missing); err != nil || !slices.Equal(missing, []string{"11"}) {
+		t.Fatalf("confirmed missing IDs: %v, %v", missing, err)
+	}
+	poll(30, true, "ok", "10", "11", "12") // A replay cannot advance or heal evidence.
+	poll(5, true, "ok", "11")
+	check("ok", 1)
+	poll(31, true, "partial", "11")
+	check("partial", 1)
+	poll(32, true, "failed")
+	check("failed", 1)
+	poll(35, true, "ok", "10", "11", "12")
+	check("ok", 0)
+	poll(40, true, "ok", "10", "12")
+	poll(45, true, "ok", "10", "12")
+	// An operator has verified that this provider ID really was retired.
+	if _, err := db.Exec(ctx, `UPDATE match_poll_status SET absent_ids=array_remove(absent_ids,'11'), missing_ids=array_remove(missing_ids,'11')
+WHERE competition_id=$1 AND season_id=$2 AND source=$3 AND '11'=ANY(missing_ids)`, testCompetition, testSeason, FullMatchPoll); err != nil {
+		t.Fatal(err)
+	}
+	poll(50, true, "ok", "10", "12")
+	check("ok", 0)
+	var intact bool
+	if err := db.QueryRow(ctx, `SELECT finalized_at IS NOT NULL AND home_score=2 AND away_score=1 AND state='finished' FROM match WHERE id=$1`, sealed.MatchID).Scan(&intact); err != nil || !intact {
+		t.Fatalf("omission bookkeeping changed a finalized result: %v %v", intact, err)
+	}
+}
+
+func TestPollEvidenceBudgetRecordsPartialWithoutLosingTheBaseline(t *testing.T) {
+	st, db := newSeededStore(t)
+	ctx := context.Background()
+	at := time.Now().UTC()
+	all := make([]model.Match, 5000)
+	for i := range all {
+		all[i].ID = strconv.Itoa(1 + i)
+	}
+	if err := st.RecordScopedMatchPoll(ctx, testCompetition, testSeason, testSource, at, true, "ok", all); err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range [][]model.Match{append(slices.Clone(all), model.Match{ID: "5001"}), {{ID: "5001"}}, {{ID: ""}}} {
+		at = at.Add(time.Minute)
+		err := st.RecordScopedMatchPoll(ctx, testCompetition, testSeason, testSource, at, true, "ok", invalid)
+		var status string
+		var retained int
+		var attempted time.Time
+		if !errors.Is(err, ErrPollEvidenceBudget) {
+			t.Fatalf("expected a deterministic evidence refusal, got %v", err)
+		}
+		if err := db.QueryRow(ctx, `SELECT outcome, cardinality(seen_ids), attempted_at FROM match_poll_status WHERE source=$1`, FullMatchPoll).Scan(&status, &retained, &attempted); err != nil || retained != 5000 || status != "partial" || !attempted.Equal(at.Truncate(time.Microsecond)) {
+			t.Fatalf("budget refusal hidden or IDs lost: %s %d %v", status, retained, err)
+		}
+	}
+}
 func TestMatchSyncSchemaIsSeparateFromFinalizedFacts(t *testing.T) {
 	_, pool := newSeededStore(t)
 	var observation, polling *string
@@ -141,6 +239,9 @@ func TestMatchSyncLeastPrivilegeAndFinalization(t *testing.T) {
 	if err := st.RecordMatchPoll(ctx, testCompetition, testSeason, testSource, now, "ok", 1); err != nil {
 		t.Fatal(err)
 	}
+	if err := st.RecordScopedMatchPoll(ctx, testCompetition, testSeason, testSource, now, true, "ok", []model.Match{{ID: "123"}}); err != nil {
+		t.Fatalf("record scoped poll as ingester: %v", err)
+	}
 	if _, err := pool.Exec(ctx, `UPDATE match SET home_score=9 WHERE id=$1`, id.MatchID); err == nil {
 		t.Fatalf("finalized facts lost immutability: %v", err)
 	}
@@ -166,6 +267,7 @@ func TestIngesterSchemaGateRunsAsTheIngesterRole(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ table, column string }{
+		{"match_poll_status", "absent_ids"},
 		{"match_sync_status", "last_error"},
 		{"resource_observation", "row_count"},
 		{"resource_observation", "observed_at"},

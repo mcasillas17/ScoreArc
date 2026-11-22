@@ -180,7 +180,7 @@ func (e *ESPN) Scoreboard(
 			return nil, errors.Join(partial.Err, err)
 		}
 		day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-		seen := make(map[string]json.RawMessage)
+		seen := make(map[string]scoreboardCopy)
 		unique := make([]model.Match, 0, len(matches))
 		for i, match := range matches {
 			if season.MatchDerivedTeams() && season.Supports("teams") {
@@ -188,7 +188,7 @@ func (e *ESPN) Scoreboard(
 					return nil, errors.Join(partial.Err, err)
 				}
 			}
-			added, err := mergeScoreboardEvent(seen, match.ID, fallback.Events[i])
+			added, err := mergeScoreboardEvent(seen, match, fallback.Events[i])
 			if err == nil {
 				err = validateScoreboardEventEdition(fallback.Events[i], match.ID, year, phaseOf(comp, season), season.ID)
 			}

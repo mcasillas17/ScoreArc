@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -190,6 +191,44 @@ func TestMonthlyScoreboardFailsClosed(t *testing.T) {
 	}
 }
 
+func TestLegacyFullScoreboardRequiresCompletePartitions(t *testing.T) {
+	const slug = "esp.1"
+	for _, tc := range []struct{ name, metadata string }{
+		{"complete", ""},
+		{"has more", `"hasMore":true,`},
+		{"truncated", `"truncated":true,`},
+		{"nested pagination", `"pagination":{"pagination":{"nextPage":"2"}},`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			src := recoverySource(func(req *http.Request) (*http.Response, error) {
+				month := req.URL.Query().Get("dates")
+				if len(month) != 6 {
+					t.Fatalf("unexpected fallback after incomplete collection: %s", month)
+				}
+				if month == "202609" {
+					return recoveryResponse(200, monthEnvelope(slug, windowEvent("legacy", "2026-09-15T19:30Z", 2026))), nil
+				}
+				// Neither membership IDs nor edition labels on intersecting empty months
+				// are required to accept complete reads of legacy editions.
+				body := monthEnvelope(slug)
+				if month == "202610" {
+					body = "{" + tc.metadata + body[1:]
+				}
+				return recoveryResponse(200, body), nil
+			})
+			season := config.Season{ID: "2026", Resources: []string{"scores", "teams", "standings"}}
+			rows, err := src.Scoreboard(t.Context(), config.Competition{ESPNSlug: slug}, season, true)
+			if tc.metadata == "" {
+				if err != nil || len(rows) != 1 || rows[0].ID != "legacy" {
+					t.Fatalf("complete legacy read: rows=%v err=%v", rows, err)
+				}
+			} else if err == nil || IsPartialScoreboard(err) || rows != nil {
+				t.Fatalf("incomplete full read returned %d rows, err=%v", len(rows), err)
+			}
+		})
+	}
+}
+
 func TestMonthlyScoreboardConflictsAcrossWindowEdges(t *testing.T) {
 	for _, tc := range []struct{ name, august, september string }{
 		{"inside first", "", windowEvent("moved", "2026-09-15T12:00Z", 2026) + "," + windowEvent("moved", "2026-09-30T12:00Z", 2026)},
@@ -209,6 +248,140 @@ func TestMonthlyScoreboardConflictsAcrossWindowEdges(t *testing.T) {
 			matches, err := src.Scoreboard(context.Background(), config.Competition{ESPNSlug: "esp.1"}, config.Season{ID: "2026"}, false)
 			if matches != nil || err == nil || !strings.Contains(err.Error(), "conflicting") {
 				t.Fatalf("conflicting reschedule was accepted: matches=%v err=%v", matches, err)
+			}
+		})
+	}
+}
+
+func TestMonthlyScoreboardDuplicateEvidence(t *testing.T) {
+	const event = `{"id":"42","date":"2026-10-01T01:00Z","name":"original caption",
+		"season":{"year":2026,"slug":"playoffs---quarterfinals","type":{"name":"Apertura"}},
+		"league":{"slug":"esp.1"},"status":{"type":{"state":"in","name":"STATUS_IN_PROGRESS","completed":false}},
+		"competitions":[{"id":"42","leg":{"value":1,"displayValue":"1st Leg"},"notes":[{"text":"first meeting"}],
+		"competitors":[{"id":"9007199254740992","homeAway":"home","score":"1","shootoutScore":2,"winner":false,
+		"team":{"id":9007199254740992,"displayName":"Home","logos":[{"href":"home.png"}]}},
+		{"id":"94","homeAway":"away","team":{"id":"94","displayName":"Away"}}]}]}`
+	window := func(days int, october ...string) ([]byte, error) {
+		src := recoverySource(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Query().Get("dates") == "202609" {
+				return recoveryResponse(200, monthEnvelope("esp.1", event)), nil
+			}
+			return recoveryResponse(200, monthEnvelope("esp.1", october...)), nil
+		})
+		start := time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)
+		return src.scoreboardWindow(t.Context(), config.Competition{ESPNSlug: "esp.1"},
+			config.Season{ID: "2026"}, start, start.AddDate(0, 0, days), false)
+	}
+	t.Run("unused nested metadata", func(t *testing.T) {
+		other := strings.NewReplacer(`"original caption"`, `"updated caption"`,
+			`"name":"Apertura"`, `"id":7,"name":"Apertura"`, `"slug":"esp.1"`, `"links":[],"slug":"esp.1"`,
+			`"value":1`, `"value":1,"label":"away leg"`, `"text":"first meeting"`, `"kind":"preview","text":"first meeting"`,
+			`"href":"home.png"`, `"width":500,"href":"home.png"`).Replace(event)
+		raw, err := window(2, other)
+		if err != nil || string(raw) != `{"events":[`+event+`]}` {
+			t.Fatalf("wanted one original, unprojected event; got %s err=%v", raw, err)
+		}
+	})
+	// Both copies fall outside the retained UTC day. A/B/A must still fail on B;
+	// several of these changes produce identical mapped Match values.
+	for _, tc := range []struct{ name, from, to string }{
+		{"season year", `"year":2026`, `"year":2025`},
+		{"original stage", `playoffs---quarterfinals`, `other---quarterfinals`},
+		{"edition phase", `"name":"Apertura"`, `"name":"Clausura"`},
+		{"event league", `"slug":"esp.1"`, `"slug":"eng.1"`},
+		{"competition identity", `"id":"42","leg"`, `"id":"43","leg"`},
+		{"competitor identity", `"id":"94","homeAway"`, `"id":"95","homeAway"`},
+		{"team identity", `"id":9007199254740992`, `"id":9007199254740993`},
+		{"status", `STATUS_IN_PROGRESS`, `STATUS_FIRST_HALF`},
+		{"score", `"score":"1"`, `"score":"2"`},
+		{"one-sided shootout", `"shootoutScore":2`, `"shootoutScore":3`},
+		{"winner flag", `"winner":false`, `"winner":true`},
+		{"leg ordinal", `"value":1`, `"value":2`},
+		{"leg label", `1st Leg`, `2nd Leg`},
+		{"note", `first meeting`, `return match`},
+		{"crest", `home.png`, `away.png`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := window(1, strings.Replace(event, tc.from, tc.to, 1), event)
+			if raw != nil || err == nil || !strings.Contains(err.Error(), "conflicting scoreboard event") {
+				t.Fatalf("wanted a conflict before filtering; got %s err=%v", raw, err)
+			}
+		})
+	}
+}
+
+func TestSharedScoreboardDuplicateVectors(t *testing.T) {
+	raw, err := os.ReadFile("../../../src/server/data/__fixtures__/espn-scoreboard-duplicates.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vectors struct {
+		Event json.RawMessage
+		Cases []struct {
+			Name, Path            string
+			Value                 any
+			Sides                 []int
+			Accept, Femenil, Both bool
+		}
+	}
+	if err := json.Unmarshal(raw, &vectors); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range vectors.Cases {
+		t.Run(tc.Name, func(t *testing.T) {
+			var event map[string]any
+			if err := json.Unmarshal(vectors.Event, &event); err != nil {
+				t.Fatal(err)
+			}
+			if tc.Path != "" {
+				var node any = event
+				path := strings.Split(tc.Path, ".")
+				for _, key := range path[:len(path)-1] {
+					if i, err := strconv.Atoi(key); err == nil {
+						node = node.([]any)[i]
+					} else {
+						node = node.(map[string]any)[key]
+					}
+				}
+				node.(map[string]any)[path[len(path)-1]] = tc.Value
+			}
+			if tc.Sides != nil {
+				comp := event["competitions"].([]any)[0].(map[string]any)
+				sides := comp["competitors"].([]any)
+				var reordered []any
+				for _, i := range tc.Sides {
+					reordered = append(reordered, sides[i])
+				}
+				comp["competitors"] = reordered
+			}
+			other, err := json.Marshal(event)
+			if err != nil {
+				t.Fatal(err)
+			}
+			original := string(vectors.Event)
+			// Invalid side layouts must fail even when both copies are identical.
+			if tc.Both {
+				original = string(other)
+			}
+			src := recoverySource(func(req *http.Request) (*http.Response, error) {
+				body := monthEnvelope("esp.1", original)
+				if req.URL.Query().Get("dates") == "202610" {
+					body = monthEnvelope("esp.1", string(other), original)
+				}
+				return recoveryResponse(200, body), nil
+			})
+			season := config.Season{ID: "2026"}
+			if tc.Femenil {
+				season.PlayoffFormat = config.FemenilApertura
+			}
+			start := time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)
+			result, err := src.scoreboardWindow(t.Context(), config.Competition{ESPNSlug: "esp.1"}, season, start, start.AddDate(0, 0, 2), false)
+			if tc.Accept {
+				if err != nil || string(result) != `{"events":[`+original+`]}` {
+					t.Fatalf("expected original event, err=%v", err)
+				}
+			} else if err == nil || result != nil {
+				t.Fatalf("accepted invalid or conflicting evidence")
 			}
 		})
 	}
@@ -248,6 +421,7 @@ func TestMonthlyScoreboardFallbackScopeAndDuplicates(t *testing.T) {
 		valid        bool
 	}{
 		{"identical copies", other + "," + valid + "," + valid, true},
+		{"unused nested metadata", other + "," + valid + "," + strings.Replace(valid, `"displayName":"Home"`, `"displayName":"Home","links":[{"href":"recap"}]`, 1), true},
 		{"conflict ABA", valid + "," + conflict + "," + valid, false},
 		{"missing year", strings.Replace(valid, `"year":2026`, `"unknown":2026`, 1), false},
 		{"wrong provider day", windowEvent("a", "2026-09-17T12:00Z", 2026), false},

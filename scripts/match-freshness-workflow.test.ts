@@ -196,7 +196,7 @@ describe('enabled workflow artifact boundaries', () => {
     expect(registry.find(c => c.id === 'nations-league')?.name).toBe('CONCACAF Nations League');
     h.missingScopes.add(`/v1/competitions/${uefa.id}/${uefa.currentSeasonId}/matches`);
     const first = await h.run({ initialize: true });
-    expect(first.steps.result.outcome).toBe('failure');
+    expect(first.steps.result.outcome).toBe('success');
     for (const comp of registry.filter(c => c.seasons[c.currentSeasonId]?.monitored)) {
       const status = comp === uefa ? 'UNHEALTHY' : 'OK';
       expect(log).toHaveBeenCalledWith(expect.stringContaining(`${status} ${comp.name} | ${comp.id}/${comp.currentSeasonId} `));
@@ -232,13 +232,13 @@ describe('enabled workflow artifact boundaries', () => {
     const next = await h.run(); expect(next.steps.restore.outcome).toBe('success');
     expect(next.steps.final.outcome).toBe('success'); expect(h.notifications).toHaveLength(SCOPES);
   });
-  it('executes checks and delivery only after successful pending upload, preserving failed incident runs', async () => {
+  it('sends one incident notification, not a failed Actions job after successful delivery', async () => {
     const h = await harness();
     const first = await h.run({ initialize: true });
     expect(first.steps.prepare.outcome).toBe('success'); expect(first.steps.pending.outcome).toBe('success');
     expect(first.steps.deliver.outcome).toBe('success'); expect(first.steps.final.outcome).toBe('success');
-    expect(first.steps.result.outcome).toBe('failure'); expect(h.notifications).toHaveLength(SCOPES);
-    const continued = await h.run(); expect(continued.steps.restore.outcome).toBe('success'); expect(h.notifications).toHaveLength(SCOPES);
+    expect(first.steps.result.outcome).toBe('success'); expect(h.notifications).toHaveLength(SCOPES);
+    const continued = await h.run(); expect(continued.steps.restore.outcome).toBe('success'); expect(continued.steps.result.outcome).toBe('success'); expect(h.notifications).toHaveLength(SCOPES);
     h.healthy(); const recovered = await h.run(); expect(recovered.steps.result.outcome).toBe('success');
     expect(h.notifications.slice(SCOPES).every(e => e.status === 'RESOLVED')).toBe(true);
   });
@@ -298,10 +298,10 @@ describe('heartbeat', () => {
   it('pings after dispatched and scheduled runs that delivered, including data incidents', async () => {
     const h = await harness();
     // The receiver's cron dispatches the regular runs, so a dispatched run counts.
-    const dispatched = await h.run({ initialize: true }); expect(dispatched.steps.result.outcome).toBe('failure');
+    const dispatched = await h.run({ initialize: true }); expect(dispatched.steps.result.outcome).toBe('success');
     expect(h.heartbeats).toEqual([`/heartbeat/${'t'.repeat(40)}`]);
     // A scheduled run from before November 8 still pings, and the next run selects its checkpoint.
-    const incident = await h.run({ event: 'schedule' }); expect(incident.steps.result.outcome).toBe('failure');
+    const incident = await h.run({ event: 'schedule' }); expect(incident.steps.result.outcome).toBe('success');
     expect(h.heartbeats).toHaveLength(2);
     const next = await h.run(); expect(next.steps.restore.outcome).toBe('success'); expect(next.steps.prepare.outcome).toBe('success');
     expect(next.steps.select.outputs.run_id).toBe(String(incident.id));
