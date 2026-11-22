@@ -668,8 +668,8 @@ one, which reads like a per-competition bug and is not.
 
 Every reader response carries an `X-Request-Id`, and each request is logged as
 one structured JSON line on stdout (`fly logs --app scorearc-reader`).
-Successful `/healthz` probes are deliberately not logged — Fly polls it every
-15s — but failing ones are.
+The default access log omits successful Fly health probes and records failed probes.
+When `SCOREARC_HTTP_TELEMETRY=1`, the [HTTP health stream](READER_DATASTORE.md#health-telemetry-and-dashboard-data) includes every reader route and health probe.
 
 ### 7.6 CI/CD and permissions
 

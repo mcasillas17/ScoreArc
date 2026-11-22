@@ -1,8 +1,12 @@
-import type { CompetitionSeason } from './competitions';
+import { healthContext } from '@/lib/telemetry/http';
+import { startOutboundHttp } from './httpHealth';
+import { fetchObservedRedirects } from '@/lib/telemetry/redirects';
+import type { CompetitionSeason, PlayoffFormat } from './competitions';
 import { parseRange, editionBounds } from './dateRange';
 import { EspnEditionError, completeCollection, requireSeason, requiresEditionEvidence, datedInEdition } from './providers/espn-edition';
 import { scoreboardUrl } from './endpoints';
 import { isScoreboardCount } from './providers/espn-matches';
+import { femenilLegRound, noteLeg, providerLeg } from './providers/espn-leg';
 
 interface FetchOptions { signal: AbortSignal; maxBytes: number }
 export type ScoreboardFetchJson = (url: string, options?: FetchOptions) => Promise<unknown>;
@@ -25,47 +29,117 @@ export function abortable<T>(pending: Promise<T>, signal: AbortSignal): Promise<
 /** Existing generic fetch behavior stays unchanged unless a bounded read is requested. */
 export async function boundedFetchJson(url: string, options?: FetchOptions): Promise<unknown> {
   options?.signal.throwIfAborted();
-  const request = fetch(url, {
-    headers: { 'User-Agent': 'scorearc' }, cache: 'no-store', signal: options?.signal,
-  });
-  const response = options ? await abortable(request, options.signal) : await request;
-  if (!response.ok) {
-    void response.body?.cancel().catch(() => {});
-    throw new Error(`fetch ${url} -> ${response.status}`);
-  }
-  if (!options) return response.json();
-  const { signal, maxBytes } = options;
-  if (Number(response.headers.get('content-length')) > maxBytes) {
-    void response.body?.cancel().catch(() => {});
-    throw new Error('Scoreboard response exceeds bytes budget');
-  }
-  if (!response.body) throw new Error('Scoreboard response body missing');
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  const decoder = new TextDecoder('utf-8', { fatal: true });
-  let bytes = 0;
-  let complete = false;
+  // Only the experiment observes individual redirects. Ordinary ESPN reads retain native fetch redirect handling.
+  const observeRedirects = Boolean(healthContext().onHttp);
+  let finish = startOutboundHttp('espn', url, options?.signal);
+  let response: Response | undefined;
+  let outcome = 'network';
+  let bytes: number | undefined;
   try {
-    while (true) {
-      signal.throwIfAborted();
-      const part = await abortable(reader.read(), signal);
-      signal.throwIfAborted();
-      if (part.done) { complete = true; break; }
-      bytes += part.value.byteLength;
-      if (bytes > maxBytes) throw new Error('Scoreboard response exceeds bytes budget');
-      chunks.push(part.value);
+    const fetchHop = (address: string) => {
+      const request = fetch(address, {
+        headers: { 'User-Agent': 'scorearc' }, cache: 'no-store', signal: options?.signal,
+        ...(observeRedirects && { redirect: 'manual' as const }),
+      });
+      return options ? abortable(request, options.signal) : request;
+    };
+    if (observeRedirects) {
+      const origin = new URL(url).origin;
+      response = await fetchObservedRedirects(url, fetchHop, target => target.origin === origin ||
+        target.origin === 'https://site.api.espn.com' || target.origin === 'https://site.web.api.espn.com', (redirect, next) => {
+        finish?.(redirect, next ? 'success' : 'redirect');
+        finish = next ? startOutboundHttp('espn', next, options?.signal) : undefined;
+      });
+    } else response = await fetchHop(url);
+    if (!response.ok) {
+      outcome = 'http_error';
+      void response.body?.cancel().catch(() => {});
+      throw Object.assign(new Error(`fetch ${url} -> ${response.status}`), { status: response.status });
     }
-    const raw: unknown = JSON.parse(chunks.map((chunk, index) => decoder.decode(chunk, { stream: index < chunks.length - 1 })).join(''));
-    if (raw !== null && typeof raw === 'object') responseBytes.set(raw, bytes);
-    return raw;
+    outcome = 'body';
+    if (!options) {
+      const raw: unknown = await response.json();
+      outcome = 'success';
+      return raw;
+    }
+    const { signal, maxBytes } = options;
+    if (Number(response.headers.get('content-length')) > maxBytes) {
+      outcome = 'budget';
+      void response.body?.cancel().catch(() => {});
+      throw new Error('Scoreboard response exceeds bytes budget');
+    }
+    if (!response.body) throw new Error('Scoreboard response body missing');
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    const decoder = new TextDecoder('utf-8', { fatal: true });
+    bytes = 0;
+    let complete = false;
+    try {
+      while (true) {
+        signal.throwIfAborted();
+        const part = await abortable(reader.read(), signal);
+        signal.throwIfAborted();
+        if (part.done) { complete = true; break; }
+        bytes += part.value.byteLength;
+        if (bytes > maxBytes) {
+          outcome = 'budget';
+          throw new Error('Scoreboard response exceeds bytes budget');
+        }
+        chunks.push(part.value);
+      }
+      const raw: unknown = JSON.parse(chunks.map((chunk, index) => decoder.decode(chunk, { stream: index < chunks.length - 1 })).join(''));
+      if (raw !== null && typeof raw === 'object') responseBytes.set(raw, bytes);
+      outcome = 'success';
+      return raw;
+    } finally {
+      if (!complete) void reader.cancel().catch(() => {});
+      reader.releaseLock();
+    }
   } finally {
-    if (!complete) void reader.cancel().catch(() => {});
-    reader.releaseLock();
+    finish?.(response, outcome, bytes);
   }
 }
 
 type Raw = Record<string, unknown>;
-// JSON objects ignore key order, while array order and every value remain significant.
+// Keep opaque text IDs exact; an unsafe JSON number has already lost its identity.
+const wireId = (v: unknown): unknown => typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? String(v) : v;
+// Inputs to scoreboard/bracket mapping and edition/membership validation, before
+// coercion (as in shared/source/scoreboard_window.go). Return untouched raw events.
+function selected(value: unknown, ...fields: string[]): unknown {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
+  const raw = value as Raw;
+  return Object.fromEntries(fields.filter(key => Object.hasOwn(raw, key)).map(key => [key, raw[key]]));
+}
+function eventEvidence(event: Raw, format?: PlayoffFormat): string {
+  const season = object(event.season), status = object(event.status);
+  const game = object((event.competitions as unknown[])[0]);
+  const notes = game.notes as { text?: string }[] | undefined;
+  const leg = game.leg as Parameters<typeof providerLeg>[0];
+  const sides = (game.competitors as Raw[]).map(side => {
+    const team = object(side.team);
+    return {
+      side: { id: wireId(side.id), homeAway: side.homeAway },
+      winner: side.winner === true,
+      score: side.score == null || side.score === '' ? null : String(side.score),
+      shootoutScore: typeof side.shootoutScore === 'number' ? String(side.shootoutScore) : side.shootoutScore,
+      team: { id: wireId(team.id), displayName: team.displayName, abbreviation: team.abbreviation, logo: team.logo },
+      crest: team.logo || (team.logos as { href?: unknown }[] | undefined)?.[0]?.href || null,
+    };
+  });
+  if ((game.competitors as Raw[])[0].homeAway === 'away') sides.reverse();
+  return canonicalJSON({
+    id: wireId(event.id), date: event.date, league: selected(event.league, 'slug'),
+    season: selected(season, 'year', 'slug', 'name'), seasonType: selected(season.type, 'name', 'slug'),
+    clock: status.displayClock, status: selected(status.type, 'state', 'completed', 'name', 'shortDetail'),
+    competition: wireId(game.id), sides, leg: selected(leg, 'value', 'displayValue'),
+    notes: notes?.slice(0, 1).map(n => selected(n, 'text')) ?? game.notes,
+    // Secondary notes can affect only a two-legged match's ordinal. If it
+    // cannot be reconciled, don't equate conflicting evidence with no evidence.
+    ordinal: femenilLegRound(format, season.slug)
+      ? providerLeg(leg, notes ?? []) ?? notes?.slice(1).map(n => noteLeg(n.text)).filter(n => n !== undefined)
+      : undefined,
+  });
+}
 const canonicalJSON = (value: unknown) => JSON.stringify(value, (_key, item) =>
   item && typeof item === 'object' && !Array.isArray(item)
     ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
@@ -88,7 +162,8 @@ function timestamp(value: unknown): number {
 }
 function validateEvent(value: unknown, verifyIds = false): { event: Raw; id: string; at: number; season: Raw } {
   const event = object(value);
-  if (!text(event.id) || (verifyIds && !/^[1-9]\d{0,31}$/.test(event.id))) throw new Error('Malformed scoreboard identity');
+  const id = wireId(event.id);
+  if (!text(id) || (verifyIds && !/^[1-9]\d{0,31}$/.test(id))) throw new Error('Malformed scoreboard identity');
   const at = timestamp(event.date);
   const season = object(event.season);
   if (!Number.isInteger(season.year) || !text(season.slug)) throw new Error('Malformed scoreboard season');
@@ -101,7 +176,7 @@ function validateEvent(value: unknown, verifyIds = false): { event: Raw; id: str
   }
   if (!Array.isArray(event.competitions) || event.competitions.length !== 1) throw new Error('Malformed scoreboard competition');
   const competition = object(event.competitions[0]);
-  if (verifyIds && competition.id !== undefined && competition.id !== event.id) throw new EspnEditionError('scope_mismatch', 'scoreboard match');
+  if (verifyIds && competition.id !== undefined && wireId(competition.id) !== id) throw new EspnEditionError('scope_mismatch', 'scoreboard match');
   if (competition.notes != null && (!Array.isArray(competition.notes) || competition.notes.some(note => {
     const value = object(note).text;
     return value != null && typeof value !== 'string';
@@ -112,20 +187,21 @@ function validateEvent(value: unknown, verifyIds = false): { event: Raw; id: str
   for (const value of competition.competitors) {
     const competitor = object(value);
     const team = object(competitor.team);
-    if (!['home', 'away'].includes(String(competitor.homeAway)) || !text(team.id) || !text(team.displayName) || !text(team.abbreviation)) {
+    const teamId = wireId(team.id);
+    if (!['home', 'away'].includes(String(competitor.homeAway)) || !text(teamId) || !text(team.displayName) || !text(team.abbreviation)) {
       throw new Error('Malformed scoreboard team');
     }
-    if (verifyIds && (!/^[1-9]\d{0,31}$/.test(team.id) || (competitor.id !== undefined && competitor.id !== team.id))) {
+    if (verifyIds && (!/^[1-9]\d{0,31}$/.test(teamId) || (competitor.id !== undefined && wireId(competitor.id) !== teamId))) {
       throw new EspnEditionError('scope_mismatch', 'scoreboard team');
     }
-    sides.add(String(competitor.homeAway)); ids.add(team.id);
+    sides.add(String(competitor.homeAway)); ids.add(teamId);
     for (const key of ['score', 'shootoutScore']) {
       if (!isScoreboardCount(competitor[key])) throw new Error('Malformed scoreboard score');
     }
     if (competitor.winner != null && typeof competitor.winner !== 'boolean') throw new Error('Malformed scoreboard winner');
   }
   if (sides.size !== 2 || ids.size !== 2) throw new Error('Malformed scoreboard teams');
-  return { event, id: event.id, at, season };
+  return { event, id, at, season };
 }
 // Evaluation reuses this validation for the bracket's undated scoreboard path.
 export const validateScoreboardEvent = (value: unknown) => validateEvent(value);
@@ -135,11 +211,12 @@ export function validateScoreboardEnvelope(raw: unknown, rc: CompetitionSeason, 
     throw new Error('Scoreboard league mismatch');
   }
   if (!Array.isArray(envelope.events) || envelope.events.length >= 1000) throw new Error('Scoreboard events missing or truncated');
-  if (strict) return completeCollection(envelope, 'events');
-  for (const key of ['count', 'total', 'pageCount']) {
-    if (key in envelope && envelope[key] !== (key === 'pageCount' ? 1 : envelope.events.length)) throw new Error('Scoreboard pagination is incomplete');
+  if (!strict) {
+    for (const key of ['count', 'total', 'pageCount']) {
+      if (key in envelope && envelope[key] !== (key === 'pageCount' ? 1 : envelope.events.length)) throw new Error('Scoreboard pagination is incomplete');
+    }
   }
-  return envelope.events;
+  return completeCollection(envelope, 'events');
 }
 // Empty months have no event-level evidence. ESPN also carries the edition on the league.
 function requireScoreboardSeason(envelope: Raw, rc: CompetitionSeason) {
@@ -212,15 +289,15 @@ export async function fetchScoreboardWindow(
         const { event, id, at, season } = validateEvent(value, fullEdition);
         if (at < monthStart - DAY || at >= monthEnd + DAY) throw new Error('Scoreboard event outside requested month');
         const previous = seen.get(id);
-        if (previous && canonicalJSON(previous) !== canonicalJSON(event)) throw new Error('Conflicting scoreboard duplicate');
-        seen.set(id, event);
+        if (previous && eventEvidence(previous, rc.season.playoffFormat) !== eventEvidence(event, rc.season.playoffFormat)) throw new Error('Conflicting scoreboard duplicate');
+        if (!previous) seen.set(id, event);
         if (at < start || at >= end) continue;
         if (fullEdition && event.league !== undefined && object(event.league).slug !== rc.competition.espnSlug) {
           throw new EspnEditionError('scope_mismatch', 'scoreboard league');
         }
         requireSeason(season, rc.season, true);
         identified = true;
-        retained.set(id, event);
+        retained.set(id, previous ?? event);
         if (fullEdition && retained.size > 2000) throw new Error('Edition exceeds match limit');
       }
       if (strict && !identified && monthStart < end && monthEnd > start) requireScoreboardSeason(envelope, rc);

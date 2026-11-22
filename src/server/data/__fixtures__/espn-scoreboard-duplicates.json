@@ -1,0 +1,53 @@
+{
+  "event": {
+    "id": "42", "date": "2026-10-01T01:00Z", "name": "provider caption",
+    "league": { "slug": "esp.1" },
+    "season": { "year": 2026, "slug": "apertura---quarterfinals", "type": { "name": "Apertura" } },
+    "status": { "displayClock": "55'", "type": { "state": "in", "name": "STATUS_IN_PROGRESS", "completed": false, "shortDetail": "55'" } },
+    "competitions": [{
+      "id": "42", "leg": {},
+      "notes": [{ "text": "First meeting" }, { "text": "1st Leg - regional coverage" }],
+      "competitors": [
+        { "id": "11", "homeAway": "home", "winner": false, "score": "1", "shootoutScore": 2,
+          "team": { "id": "11", "displayName": "Home", "abbreviation": "H", "logos": [{ "href": "home.png" }, { "href": "home-dark.png" }] } },
+        { "id": "12", "homeAway": "away", "score": "0", "team": { "id": "12", "displayName": "Away", "abbreviation": "A", "logo": "away.png", "logos": [{ "href": "unused.png" }] } }
+      ]
+    }]
+  },
+  "cases": [
+    { "name": "numeric event ID", "path": "id", "value": 42, "accept": true },
+    { "name": "numeric competition ID", "path": "competitions.0.id", "value": 42, "accept": true },
+    { "name": "numeric competitor ID", "path": "competitions.0.competitors.0.id", "value": 11, "accept": true },
+    { "name": "numeric team ID", "path": "competitions.0.competitors.0.team.id", "value": 11, "accept": true },
+    { "name": "unused fallback team name", "path": "competitions.0.competitors.0.team.name", "value": "Another legacy name", "accept": true },
+    { "name": "equivalent regulation score", "path": "competitions.0.competitors.0.score", "value": 1, "accept": true },
+    { "name": "equivalent shootout score", "path": "competitions.0.competitors.0.shootoutScore", "value": "2", "accept": true },
+    { "name": "explicit non-winner", "path": "competitions.0.competitors.1.winner", "value": false, "accept": true },
+    { "name": "reversed sides", "sides": [1, 0], "accept": true },
+    { "name": "duplicate home", "sides": [0, 0], "both": true, "accept": false },
+    { "name": "third side", "sides": [0, 1, 0], "both": true, "accept": false },
+    { "name": "alternate crest", "path": "competitions.0.competitors.0.team.logos.1.href", "value": "larger-home.png", "accept": true },
+    { "name": "unused first crest underneath explicit logo", "path": "competitions.0.competitors.1.team.logos.0.href", "value": "another.png", "accept": true },
+    { "name": "selected fallback crest", "path": "competitions.0.competitors.0.team.logos.0.href", "value": "other-home.png", "accept": false },
+    { "name": "selected explicit crest", "path": "competitions.0.competitors.1.team.logo", "value": "other-away.png", "accept": false },
+    { "name": "ordinary secondary note including ordinal", "path": "competitions.0.notes.1.text", "value": "2nd Leg - later broadcast", "accept": true },
+    { "name": "femenil secondary copy with same ordinal", "femenil": true, "path": "competitions.0.notes.1.text", "value": "1st Leg - national coverage", "accept": true },
+    { "name": "femenil extra secondary prose", "femenil": true, "path": "competitions.0.notes", "value": [{ "text": "First meeting" }, { "text": "1st Leg" }, { "text": "Watch on TV" }], "accept": true },
+    { "name": "femenil contradictory secondary ordinal", "femenil": true, "path": "competitions.0.notes.1.text", "value": "2nd Leg", "accept": false },
+    { "name": "femenil invalid secondary ordinal", "femenil": true, "path": "competitions.0.notes.1.text", "value": "3rd Leg", "accept": false },
+    { "name": "malformed secondary note", "path": "competitions.0.notes.1.text", "value": 42, "accept": false },
+    { "name": "first note", "path": "competitions.0.notes.0.text", "value": "Return match", "accept": false },
+    { "name": "leg", "path": "competitions.0.leg.value", "value": 2, "accept": false },
+    { "name": "original stage", "path": "season.slug", "value": "playoffs---quarterfinals", "accept": false },
+    { "name": "phase evidence", "path": "season.type.name", "value": "Clausura", "accept": false },
+    { "name": "league evidence", "path": "league.slug", "value": "eng.1", "accept": false },
+    { "name": "competition identity", "path": "competitions.0.id", "value": "43", "accept": false },
+    { "name": "competitor identity", "path": "competitions.0.competitors.0.id", "value": "13", "accept": false },
+    { "name": "same team on both sides", "path": "competitions.0.competitors.1.team.id", "value": "11", "both": true, "accept": false },
+    { "name": "winner flag after reordering", "sides": [1, 0], "path": "competitions.0.competitors.0.winner", "value": true, "accept": false },
+    { "name": "one-sided shootout", "path": "competitions.0.competitors.0.shootoutScore", "value": 3, "accept": false },
+    { "name": "regulation score", "path": "competitions.0.competitors.1.score", "value": "1", "accept": false },
+    { "name": "status", "path": "status.type.name", "value": "STATUS_SECOND_HALF", "accept": false },
+    { "name": "kickoff", "path": "date", "value": "2026-10-01T02:00Z", "accept": false }
+  ]
+}

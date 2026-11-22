@@ -1,4 +1,7 @@
 import { parseReaderResources, type ReaderResources } from '@/lib/readerResources';
+import { healthContext } from '@/lib/telemetry/http';
+import { startOutboundHttp } from './httpHealth';
+import { isFetchRedirect } from '@/lib/telemetry/redirects';
 import { abortable } from './scoreboardWindow';
 
 export type ReaderFailureReason = 'network' | 'http' | 'timeout' | 'metadata' | 'body' | 'stale' | 'unavailable' | 'identity' | 'scope' | 'budget';
@@ -22,11 +25,13 @@ export interface RequestBudget {
   readonly signal: AbortSignal;
   readonly calls: number;
   readonly bytes: number;
-  json(url: string, signal?: AbortSignal): Promise<{ body: unknown; headers: Headers }>;
+  json(url: string, signal?: AbortSignal, dependency?: 'espn' | 'reader'): Promise<{ body: unknown; headers: Headers }>;
 }
 
 /** One shared budget includes queued reads, response streaming and fallback. */
 export function createRequestBudget(options: {
+  dependency?: 'espn' | 'reader';
+  onFailure?: (error: unknown) => void;
   fetch?: typeof fetch; signal: AbortSignal; maxConcurrent?: number; maxCalls?: number; maxResponseBytes?: number; maxBytes?: number;
 }): RequestBudget {
   const fetcher = options.fetch ?? fetch;
@@ -56,22 +61,32 @@ export function createRequestBudget(options: {
     signal: options.signal,
     get calls() { return calls; },
     get bytes() { return bytes; },
-    async json(url, requestSignal) {
+    async json(url, requestSignal, dependency = options.dependency) {
       const signal = requestSignal ? AbortSignal.any([options.signal, requestSignal]) : options.signal;
       signal.throwIfAborted();
       if (admitted >= maxCalls || bytes >= maxBytes) throw new ReaderFailure('budget');
       admitted++;
       await acquire(signal);
+      let finish: ReturnType<typeof startOutboundHttp>;
+      let response: Response | undefined;
+      let received: number | undefined;
+      let outcome = 'success';
       try {
         signal.throwIfAborted();
         if (calls >= maxCalls || bytes >= maxBytes) throw new ReaderFailure('budget');
         calls++;
-        let response: Response;
+        if (dependency) finish = startOutboundHttp(dependency, url, signal);
+        const observeRedirects = Boolean(finish && healthContext().onHttp);
         try {
-          response = await abortable(fetcher(url, { signal, cache: 'no-store', redirect: 'error', headers: { Accept: 'application/json', 'User-Agent': 'scorearc' } }), signal);
+          response = await abortable(fetcher(url, { signal, cache: 'no-store', redirect: observeRedirects ? 'manual' : 'error', headers: { Accept: 'application/json', 'User-Agent': 'scorearc' } }), signal);
         } catch (error) {
           signal.throwIfAborted();
           if (error instanceof ReaderFailure) throw error;
+          throw new ReaderFailure('network');
+        }
+        if (observeRedirects && isFetchRedirect(response.status)) {
+          // A native redirect:error rejects with a network error before exposing the 3xx.
+          void response.body?.cancel().catch(() => {});
           throw new ReaderFailure('network');
         }
         if (response.redirected || (response.status >= 300 && response.status < 400)) {
@@ -89,15 +104,16 @@ export function createRequestBudget(options: {
         if (!response.body) throw new ReaderFailure('body');
         const stream = response.body.getReader();
         const decoder = new TextDecoder('utf-8', { fatal: true });
-        let text = '', size = 0, complete = false;
+        let text = '', complete = false;
+        received = 0;
         try {
           while (true) {
             const part = await abortable(stream.read(), signal);
             signal.throwIfAborted();
             if (part.done) { complete = true; break; }
-            size += part.value.byteLength;
+            received += part.value.byteLength;
             bytes += part.value.byteLength;
-            if (size > maxResponseBytes || bytes > maxBytes) throw new ReaderFailure('budget');
+            if (received > maxResponseBytes || bytes > maxBytes) throw new ReaderFailure('budget');
             text += decoder.decode(part.value, { stream: true });
           }
           text += decoder.decode();
@@ -111,7 +127,15 @@ export function createRequestBudget(options: {
           if (!complete) void stream.cancel().catch(() => {});
           stream.releaseLock();
         }
-      } finally { release(); }
+      } catch (error) {
+        outcome = error instanceof ReaderFailure ? (error.reason === 'http' ? 'http_error' : error.reason) : 'network';
+        if (response && isFetchRedirect(response.status)) outcome = 'redirect';
+        options.onFailure?.(error);
+        throw error;
+      } finally {
+        release();
+        finish?.(response, outcome, received);
+      }
     },
   };
 }
@@ -124,7 +148,7 @@ export function createReaderTransport(origin: string, budget: RequestBudget, sig
     const url = new URL(path, origin);
     if (url.origin !== origin) throw new ReaderFailure('scope', false);
     for (const [name, value] of Object.entries(query ?? {})) url.searchParams.set(name, value);
-    const { body, headers } = await budget.json(url.href, signal);
+    const { body, headers } = await budget.json(url.href, signal, 'reader');
     let resources: ReaderResources;
     try { resources = parseReaderResources(headers); }
     catch { throw new ReaderFailure('metadata'); }

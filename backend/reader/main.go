@@ -18,6 +18,7 @@ import (
 	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/migrations"
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
+	"github.com/mcasillas17/scorearc-backend/shared/httphealth"
 )
 
 func main() {
@@ -82,12 +83,14 @@ func run(logger *slog.Logger) error {
 	processCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	httpLog := httphealth.Logger(logger, "reader")
 	store := NewStore(pool)
 	app := &App{
 		store:    store,
 		registry: registry,
 		logger:   logger,
-		news:     newNewsService(processCtx, espn.New(), defaultNewsTTL),
+		httpLog:  httpLog,
+		news:     newNewsService(processCtx, espn.NewWithOptions(espn.Options{HTTPLog: httpLog}), defaultNewsTTL),
 		limiter:  newIPRateLimiter(clientRequestsPerSecond, clientBurst),
 		health:   newHealthChecker(processCtx, store.Ping),
 	}
@@ -136,7 +139,7 @@ const freshnessSchemaProbe = `
 SELECT sync.match_id, sync.source, sync.observed_at,
        poll.competition_id, poll.season_id, poll.source, poll.succeeded_at, poll.outcome,
  obs.competition_id,obs.season_id,obs.source,obs.resource,obs.subject,obs.observed_at,obs.row_count,
- participation.completed_at, player.bio_observed_at, season_stats.observed_at
+ participation.completed_at, player.bio_observed_at, season_stats.observed_at, poll.missing_count
 FROM match_sync_status sync CROSS JOIN match_poll_status poll
  CROSS JOIN resource_observation obs CROSS JOIN match_participation_availability participation
  CROSS JOIN player CROSS JOIN player_season_stat season_stats

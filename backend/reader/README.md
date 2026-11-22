@@ -40,10 +40,8 @@ from appearing. Missing identities never produce guessed player links.
 
 See [the T10.2 contract](../../docs/backend/READER_CONTRACT.md#t102-leaders-statistics-and-participation-contract)
 for null/percentage rules and query bounds. The binaries require the **exact
-embedded schema head, 28 with T17.3**. The owner reports 0027 and the team/player/
-leader contracts already deployed; do not repeat their rollout. Apply 0028 only
-under separate authorization before merging the dependent binary; see
-[resource freshness rollout](../../docs/backend/READER_CONTRACT.md#migration-and-production-acceptance).
+embedded schema head, 29 with scoped match polling**. Migration 0028 was
+previously deployed; see the [0029 release prerequisite](../../docs/backend/RELEASES.md).
 
 ## Players (T10.4)
 
@@ -76,7 +74,7 @@ deadline, the reader runs the shared schema-readiness gate
 (`migrations.CheckReady`, [policy and failure matrix](../../docs/backend/RELEASES.md#schema-readiness)):
 the golang-migrate ledger must hold one clean row at exactly the migration head
 this binary embeds, and a column-specific `SELECT ... WHERE false` against
-`match_sync_status` and `match_poll_status` must succeed as the reader role.
+the freshness and poll-evidence tables must succeed as the reader role.
 Any other state — missing/empty/malformed/dirty ledger, behind or ahead,
 missing columns, tables or SELECT grants, timeout — exits without listening.
 The logged `reader stopped` error carries only category, expected/applied
@@ -279,9 +277,10 @@ exit **2**. State is persisted before messages are printed, so this is bounded
 incident deduplication, **not an exactly-once delivered notification service**.
 No actual messages are sent to external notification services.
 
-The Actions workflow now uses a **separate version-2 durable outbox** around this
+The Actions workflow now uses a **separate version-3 durable outbox** around this
 same checker; the version-1 local CLI above retains its console-only behavior.
-Both reject missing/corrupt/incompatible state. Do not feed a v1 file to the v2
+The durable monitor upgrades valid v2 checkpoints without losing queued events.
+Both reject missing/corrupt/incompatible state. Do not feed a v1 file to the durable
 monitor or bootstrap over it: migration requires an owner-reviewed preservation
 of active incidents and pending delivery history.
 
@@ -333,6 +332,23 @@ check and every non-health request emits an access record with `request_id`,
 request id, method, path, route, and stack trace. Healthy `/healthz` probes are
 intentionally omitted to keep application traffic visible. Ingester logs
 similarly record each cycle's live state, failure count, duration, and sleep.
+
+With `SCOREARC_HTTP_TELEMETRY=1`, the reader writes the `scorearc_http` dashboard
+format for each incoming request, including successful health checks and rejected
+methods. The endpoint is a registered route template or `unmatched`. Rows contain
+the service, direction, dependency, method, HTTP status, outcome, response bytes,
+duration in milliseconds, timestamp and generated request ID. The dashboard
+format omits concrete paths and client IPs.
+
+The same opt-in flag on the ingester and reader records outgoing ESPN HTTP
+attempts, including retries, redirect responses, core API pagination, reader news
+refreshes and the ingester's ESPN CDN crest downloads. A status of null means
+no response headers arrived. Body errors include malformed upstream JSON and
+size-limit failures; semantic mapper validation occurs after the HTTP exchange.
+The download duration excludes the subsequent R2 write. Cache hits issue no
+HTTP event. For singleflight news refreshes, the initiating request's ID is
+the correlation ID. The seed-teams, play-backfill and play-retention commands
+emit their own service labels to stderr when the flag is set.
 
 Matches, standings, bracket, top-scorers, news and match-summary dependency
 failures log `request_id`, `operation`, validated scope, `error_type` and

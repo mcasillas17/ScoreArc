@@ -8,11 +8,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mcasillas17/scorearc-backend/shared/httphealth"
 )
 
 // site is the base for the ESPN "site API" soccer endpoints (scoreboard,
@@ -81,6 +85,7 @@ const (
 
 // Options configures the ESPN client.
 type Options struct {
+	HTTPLog     *slog.Logger
 	HTTP        *http.Client
 	MaxAttempts int
 	BaseDelay   time.Duration
@@ -88,6 +93,7 @@ type Options struct {
 
 // Client is a bounded, retrying keyless HTTP client for ESPN's public API.
 type Client struct {
+	httpLog     *slog.Logger
 	HTTP        *http.Client
 	maxAttempts int
 	baseDelay   time.Duration
@@ -123,6 +129,7 @@ func NewWithOptions(opts Options) *Client {
 	}
 	return &Client{
 		HTTP:        opts.HTTP,
+		httpLog:     opts.HTTPLog,
 		maxAttempts: opts.MaxAttempts,
 		baseDelay:   opts.BaseDelay,
 	}
@@ -134,7 +141,7 @@ func (c *Client) GetJSON(ctx context.Context, url string, out any) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		retryAfter, retry, err := c.getJSONOnce(ctx, url, out)
+		retryAfter, retry, err := c.getJSONOnce(ctx, url, out, attempt)
 		if err == nil {
 			return nil
 		}
@@ -159,18 +166,30 @@ func (c *Client) GetJSON(ctx context.Context, url string, out any) error {
 	return fmt.Errorf("espn %s: attempts exhausted", url)
 }
 
-func (c *Client) getJSONOnce(ctx context.Context, url string, out any) (time.Duration, bool, error) {
+func endpointFamily(url *url.URL) string {
+	switch family := path.Base(url.Path); family {
+	case "scoreboard", "standings", "summary", "statistics", "roster", "bio", "plays", "officials", "odds", "news":
+		return family
+	default:
+		return "other"
+	}
+}
+
+func (c *Client) getJSONOnce(ctx context.Context, url string, out any, attempt int) (after time.Duration, retryable bool, resultErr error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return 0, false, err
 	}
-	res, err := c.HTTP.Do(req)
+	res, observation, err := httphealth.Do(c.HTTP, req, c.httpLog, endpointFamily(req.URL), attempt)
+	size := -1
+	defer func() { observation.Finish(size, resultErr) }()
 	if err != nil {
 		return 0, true, err
 	}
 	defer res.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(res.Body, maxResponseBytes+1))
+	size = len(body)
 	if err != nil {
 		return 0, true, err
 	}

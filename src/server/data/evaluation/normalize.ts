@@ -77,13 +77,14 @@ function category(key: string, role: Role): Difference['category'] {
 
 /** Compare the common DTO contract; evidence is classified separately by the runner. */
 export function compareSemantic(kind: string, reader: unknown, espn: unknown): {
-  differences: Difference[]; truncated: boolean; normalizers: string[]; excluded: string[];
+  differences: Difference[]; unequal: boolean; truncated: boolean; normalizers: string[]; excluded: string[];
 } {
   const differences: Difference[] = [];
   const normalizers = new Set<string>();
   const excluded = new Set<string>();
-  let truncated = false, visits = 0;
-  function difference(path: string, type: Difference['category']) {
+  let truncated = false, unequal = false, visits = 0;
+  function difference(path: string, type: Difference['category'], proven = true) {
+    if (proven) unequal = true;
     const item = { path: path.slice(0, 160), category: type };
     if (path.length > 160) truncated = true;
     if (differences.length < 64) { differences.push(item); return; }
@@ -156,13 +157,13 @@ export function compareSemantic(kind: string, reader: unknown, espn: unknown): {
   function visit(a: unknown, b: unknown, role: Role, path: string, key: string, parent: Role, depth: number) {
     if (++visits > 100_000 || depth > 32) {
       truncated = true;
-      difference(path, 'coverage');
+      difference(path, 'coverage', false);
       return;
     }
     a = scalar(a, parent, key); b = scalar(b, parent, key);
     if (Object.is(a, b)) return;
     if (Array.isArray(a) && Array.isArray(b)) {
-      if (a.length > 100_000 || b.length > 100_000) { truncated = true; difference(path, 'coverage'); return; }
+      if (a.length > 100_000 || b.length > 100_000) { truncated = true; difference(path, 'coverage', false); return; }
       if (a.length !== b.length) difference(`${path}.length`, 'coverage');
       const left = ordered(a, role), right = ordered(b, role);
       for (let i = 0; i < Math.min(left.length, right.length) && visits <= 100_000; i++) visit(left[i], right[i], rows[role] ?? 'generic', `${path}[${i}]`, '', role, depth + 1);
@@ -170,10 +171,10 @@ export function compareSemantic(kind: string, reader: unknown, espn: unknown): {
     }
     if (object(a) && object(b)) {
       const leftKeys = Object.keys(a), rightKeys = Object.keys(b);
-      if (leftKeys.length > 100_000 || rightKeys.length > 100_000) { truncated = true; difference(path, 'coverage'); return; }
+      if (leftKeys.length > 100_000 || rightKeys.length > 100_000) { truncated = true; difference(path, 'coverage', false); return; }
       const keys = [...new Set([...leftKeys, ...rightKeys])].sort(lexicographic);
       for (const name of keys) {
-        if (++visits > 100_000) { truncated = true; difference(path, 'coverage'); break; }
+        if (++visits > 100_000) { truncated = true; difference(path, 'coverage', false); break; }
         const map = role === 'links' || role === 'formTeams';
         const segment = map ? '<key>' : fields.has(name) ? name : '<field>';
         const next = `${path}.${segment}`;
@@ -186,5 +187,5 @@ export function compareSemantic(kind: string, reader: unknown, espn: unknown): {
     difference(path, category(key, parent));
   }
   visit(reader, espn, roots[kind] ?? 'generic', '$', '', 'generic', 0);
-  return { differences, truncated, normalizers: [...normalizers].sort(), excluded: [...excluded].sort() };
+  return { differences, unequal, truncated, normalizers: [...normalizers].sort(), excluded: [...excluded].sort() };
 }

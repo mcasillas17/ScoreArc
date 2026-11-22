@@ -10,6 +10,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
+	"github.com/mcasillas17/scorearc-backend/shared/httphealth"
 )
 
 type espnJSONClient interface {
@@ -91,6 +92,9 @@ func (s *newsService) GetWithObservation(ctx context.Context, slug, leagueID str
 
 		fetchCtx, cancel := context.WithTimeout(s.serviceCtx, s.fetchTimeout)
 		defer cancel()
+		if id, ok := ctx.Value(requestIDKey).(string); ok {
+			fetchCtx = httphealth.WithRequestID(fetchCtx, id)
+		}
 		var raw json.RawMessage
 		if err := s.client.GetJSON(fetchCtx, espn.NewsURL(slug), &raw); err != nil {
 			return nil, fmt.Errorf("fetch ESPN news: %w", err)

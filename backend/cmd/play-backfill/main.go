@@ -26,6 +26,7 @@ import (
 	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/shared/assets"
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
+	"github.com/mcasillas17/scorearc-backend/shared/httphealth"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 	"github.com/mcasillas17/scorearc-backend/shared/source"
 	"github.com/mcasillas17/scorearc-backend/shared/store"
@@ -140,7 +141,7 @@ func run(args []string) int {
 		log.Error("R2_RAW_BUCKET and R2 credentials are required")
 		return 1
 	}
-	provider := source.NewESPN(espn.New())
+	provider := source.NewESPN(espn.NewWithOptions(espn.Options{HTTPLog: httphealth.CommandLogger("play-backfill")}))
 
 	competitions := registry.Active("plays")
 	if !options.all {

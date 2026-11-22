@@ -1,3 +1,4 @@
+import { markApiError, observeApiRoute } from '@/lib/telemetry/inbound';
 import type { CompetitionSeason, EditionResource } from '@/server/data/competitions';
 import { resolveResource } from '@/server/data/editionResources';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
@@ -5,7 +6,7 @@ import { trackAPIRequestFailure } from '@/lib/telemetry/server';
 export type ApiErrorCode = 'INVALID_REQUEST' | 'NOT_FOUND' | 'UPSTREAM_UNAVAILABLE';
 
 export function apiError(code: ApiErrorCode, status: number): Response {
-  return Response.json({ error: { code } }, { status });
+  return markApiError(Response.json({ error: { code } }, { status }), code);
 }
 
 /**
@@ -18,7 +19,7 @@ export function seasonRoute<T>(
   resource: EditionResource | EditionResource[],
   load: (rc: CompetitionSeason, signal: AbortSignal) => Promise<T>,
 ) {
-  return async (req: Request, { params }: { params: Promise<{ comp: string; season: string }> }) => {
+  return observeApiRoute(endpoint, async (req: Request, { params }: { params: Promise<{ comp: string; season: string }> }) => {
     const { comp, season } = await params;
     const rc = resolveResource(comp, season, ...(Array.isArray(resource) ? resource : [resource]));
     if (!rc) {
@@ -31,5 +32,5 @@ export function seasonRoute<T>(
       if (!req.signal.aborted || error !== req.signal.reason) await trackAPIRequestFailure(endpoint, 502, comp, season);
       return apiError('UPSTREAM_UNAVAILABLE', 502);
     }
-  };
+  });
 }

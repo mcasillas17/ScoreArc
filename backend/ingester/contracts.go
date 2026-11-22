@@ -75,7 +75,7 @@ type repository interface {
 	CompleteMatchRecovery(context.Context, uuid.UUID, string, time.Time, bool) error
 	RecordMatchObservations(context.Context, []store.MatchObservation) error
 	RecordSeasonDiscovery(context.Context, string, string, time.Time, string, []model.Match) error
-	RecordMatchPoll(context.Context, string, string, string, time.Time, string, int) error
+	RecordScopedMatchPoll(context.Context, string, string, string, time.Time, bool, string, []model.Match) error
 	RecordResourceObservation(context.Context, string, string, string, string, string, int, ...bool) error
 	ReplaceStandings(context.Context, string, string, string, []model.Standing, map[string]string, ...bool) error
 	// WriteStandingSnapshot is the only write here whose absence is
