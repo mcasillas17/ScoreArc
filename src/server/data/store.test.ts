@@ -98,7 +98,7 @@ describe('EspnReadThroughStore', () => {
     await store.getBracket(wc);
     expect(urls.filter(u => u.includes('/scoreboard')).map(u => new URL(u).searchParams.get('dates'))).toEqual(['202606', '202607']);
     urls.length = 0;
-    await store.getBracket(lc);
+    await store.getBracket({ ...lc, season: { ...lc.season, bracketDatesRange: undefined } });
     expect(urls.some((u) => u.includes('concacaf.leagues.cup/scoreboard') && !u.includes('?dates'))).toBe(true);
   });
 

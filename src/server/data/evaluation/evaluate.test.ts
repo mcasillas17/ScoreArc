@@ -5,6 +5,18 @@ import { createDataStore } from '../store';
 import { TtlCache } from '../cache';
 import type { ReaderResources } from '@/lib/readerResources';
 
+// No configured bracket is undated any more (the Leagues Cup got its date range
+// in November 2026), but the undated path still ships. Strip the range here so
+// these tests keep covering it.
+vi.mock('../competitions', async importOriginal => {
+  const actual = await importOriginal<typeof import('../competitions')>();
+  const resolveSeason: typeof actual.resolveSeason = (...args) => {
+    const rc = actual.resolveSeason(...args);
+    return rc?.competition.id === 'leagues-cup' ? { ...rc, season: { ...rc.season, bracketDatesRange: undefined } } : rc;
+  };
+  return { ...actual, resolveSeason };
+});
+
 const clock = Date.parse('2026-08-10T12:00:00Z');
 const sample = { competition: 'world-cup', season: '2026', kind: 'getFixtures', range: '20260801-20260802' };
 const manifest = { version: 1, samples: [sample] };

@@ -15,7 +15,7 @@ describe('reader evaluation semantic policy', () => {
     const result = compare(reader, original);
     expect(result.differences).toEqual([]);
     expect(result.normalizers).toEqual(expect.arrayContaining(['instant-v1', 'match-set-order-v1']));
-    expect(NORMALIZATION_VERSION).toBe('reader-evaluation-v1');
+    expect(NORMALIZATION_VERSION).toBe('reader-evaluation-v2');
     expect(original[0].kickoff).toBe('2026-06-29T17:00Z');
   });
 
@@ -70,6 +70,52 @@ describe('reader evaluation semantic policy', () => {
     const lineup = { lineups: { home: { players: [{ athleteId: '777', starter: null }] } } };
     const canonical = { lineups: { home: { players: [{ athleteId: '777', starter: null, playerId: 'canonical' }] } } };
     expect(compare(canonical, lineup, 'getMatchSummary').differences).toEqual([]);
+  });
+
+  it('treats the mirrored crest and the provider crest of one team as equal, and no other pair', () => {
+    const mirrored = 'https://cdn.scorearc.futbol/teams/mex-toluca', provider = 'https://a.espncdn.com/i/teamlogos/soccer/500/223.png';
+    const row = (crestUrl: string | null) => [{ ...match(), home: { id: '223', name: 'Toluca', crestUrl } }];
+    const same = compare(row(mirrored), row(provider));
+    expect(same.differences).toEqual([]);
+    expect(same.normalizers).toContain('mirrored-crest-v1');
+    // Another team's crest, a missing crest and a team outside the crosswalk stay visible.
+    expect(compare(row('https://cdn.scorearc.futbol/teams/mex-tijuana'), row(provider)).differences).toContainEqual({ path: '$[0].home.crestUrl', category: 'value' });
+    expect(compare(row(null), row(provider)).differences).toContainEqual({ path: '$[0].home.crestUrl', category: 'value' });
+    expect(compare(row('https://cdn.scorearc.futbol/teams/not-a-team'), row('https://a.espncdn.com/i/teamlogos/soccer/500/99999999.png')).differences).toContainEqual({ path: '$[0].home.crestUrl', category: 'value' });
+  });
+
+  it('treats a null reader slug and an absent provider slug as the same unresolved link', () => {
+    const leader = { athleteId: '777', rank: 1, value: 2 };
+    const result = compare({ scorers: [{ ...leader, playerSlug: null }], assists: [] }, { scorers: [leader], assists: [] }, 'getLeaders');
+    expect(result.differences).toEqual([]);
+    expect(result.normalizers).toContain('unresolved-player-slug-v1');
+    expect(compare({ playerSlug: null }, {}, 'unknown').differences).toContainEqual({ path: '$.playerSlug', category: 'link' });
+  });
+
+  it('compares lineups as a set of players and leaves reader-only lineup evidence out', () => {
+    const player = (athleteId: string, number: number) => ({ athleteId, number, starter: true });
+    const espn = { lineups: { home: { formation: '4-4-2', players: [player('1', 1), player('2', 4)] } } };
+    const reader = { lineups: { availability: 'complete', home: { teamId: '226', formation: '4-4-2', players: [player('2', 4), player('1', 1)] } } };
+    const result = compare(reader, espn, 'getMatchSummary');
+    expect(result.differences).toEqual([]);
+    expect(result.normalizers).toEqual(expect.arrayContaining(['lineup-set-order-v1', 'reader-lineup-evidence-v1']));
+    // A different player, a different shirt and incomplete reader coverage still show.
+    expect(compare({ lineups: { home: { players: [player('3', 1)] } } }, { lineups: { home: { players: [player('1', 1)] } } }, 'getMatchSummary').differences).toContainEqual({ path: '$.lineups.home.players[0].athleteId', category: 'entity' });
+    expect(compare({ lineups: { home: { players: [player('1', 9)] } } }, { lineups: { home: { players: [player('1', 1)] } } }, 'getMatchSummary').differences).toContainEqual({ path: '$.lineups.home.players[0].number', category: 'value' });
+    expect(compare({ lineups: { availability: 'partial' } }, { lineups: {} }, 'getMatchSummary').differences).toContainEqual({ path: '$.lineups.availability', category: 'coverage' });
+  });
+
+  it('accepts reader detail on a team schedule only where the provider has none, and the site name for the competition', () => {
+    const bare = { ...match(), cards: [], stats: null, winProbability: null };
+    const rich = { ...match(), scorers: [{ athleteId: '777' }], cards: [{ athleteId: '778' }], stats: { home: { shots: 3 } }, winProbability: { home: 50 } };
+    const profile = (schedule: unknown[], competition: string) => ({ schedule, standing: { rank: 16, competition }, standingSummary: `16th in ${competition}` });
+    const result = compare(profile([rich], 'Liga MX'), profile([bare], 'Mexican Liga BBVA MX'), 'getTeam');
+    expect(result.differences).toEqual([]);
+    expect(result.normalizers).toEqual(expect.arrayContaining(['team-schedule-detail-superset-v1', 'standing-competition-display-v1']));
+    // Provider detail that disagrees, the rank, and a match list outside a team schedule still compare.
+    expect(compare(profile([rich], 'x'), profile([{ ...bare, scorers: [{ athleteId: '1' }] }], 'x'), 'getTeam').differences).toContainEqual({ path: '$.schedule[0].scorers[0].athleteId', category: 'entity' });
+    expect(compare({ standing: { rank: 15 } }, { standing: { rank: 16 } }, 'getTeam').differences).toContainEqual({ path: '$.standing.rank', category: 'value' });
+    expect(compare([rich], [bare]).differences.length).toBeGreaterThan(0);
   });
 
   it('normalizes only the documented nationality empty-to-null writer representation', () => {
