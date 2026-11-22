@@ -333,6 +333,23 @@ request id, method, path, route, and stack trace. Healthy `/healthz` probes are
 intentionally omitted to keep application traffic visible. Ingester logs
 similarly record each cycle's live state, failure count, duration, and sleep.
 
+With `SCOREARC_HTTP_TELEMETRY=1`, the reader writes the `scorearc_http` dashboard
+format for each incoming request, including successful health checks and rejected
+methods. The endpoint is a registered route template or `unmatched`. Rows contain
+the service, direction, dependency, method, HTTP status, outcome, response bytes,
+duration in milliseconds, timestamp and generated request ID. The dashboard
+format omits concrete paths and client IPs.
+
+The same opt-in flag on the ingester and reader records outgoing ESPN HTTP
+attempts, including retries, redirect responses, core API pagination, reader news
+refreshes and the ingester's ESPN CDN crest downloads. A status of null means
+no response headers arrived. Body errors include malformed upstream JSON and
+size-limit failures; semantic mapper validation occurs after the HTTP exchange.
+The download duration excludes the subsequent R2 write. Cache hits issue no
+HTTP event. For singleflight news refreshes, the initiating request's ID is
+the correlation ID. The seed-teams, play-backfill and play-retention commands
+emit their own service labels to stderr when the flag is set.
+
 Matches, standings, bracket, top-scorers, news and match-summary dependency
 failures log `request_id`, `operation`, validated scope, `error_type` and
 `sqlstate`, never the dependency's text. SQLSTATE is extracted through wrapped

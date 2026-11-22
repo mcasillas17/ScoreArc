@@ -1,3 +1,4 @@
+import { observeApiRoute } from '@/lib/telemetry/inbound';
 import { resolveResource } from '@/server/data/editionResources';
 import { loadPlayerBySlug } from '@/server/data/playerIndex';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
@@ -7,10 +8,10 @@ export const dynamic = 'force-dynamic';
 
 type RouteParams = Promise<{ comp: string; season: string; playerSlug: string }>;
 
-export async function GET(
+export const GET = observeApiRoute('player', async (
   req: Request,
   { params }: { params: RouteParams },
-) {
+) => {
   const { comp, season, playerSlug } = await params;
   const rc = resolveResource(comp, season, 'players');
   if (!rc) {
@@ -26,4 +27,4 @@ export async function GET(
     await trackAPIRequestFailure('player', 502, comp, season);
     return apiError('UPSTREAM_UNAVAILABLE', 502);
   }
-}
+});

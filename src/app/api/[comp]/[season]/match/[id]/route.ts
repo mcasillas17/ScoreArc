@@ -1,3 +1,4 @@
+import { observeApiRoute } from '@/lib/telemetry/inbound';
 import { loadMatchSummaryWithSlugs } from '@/server/data/playerIndex';
 import { resolveResource } from '@/server/data/editionResources';
 import { trackAPIRequestFailure } from '@/lib/telemetry/server';
@@ -10,7 +11,7 @@ type RouteParams = Promise<{ comp: string; season: string; id: string }>;
 const REFERENCE = /^[A-Za-z0-9-]{1,64}$/;
 const SIDE = /^[A-Za-z0-9-]{0,64}$/;
 
-export async function GET(req: Request, { params }: { params: RouteParams }) {
+export const GET = observeApiRoute('match-summary', async (req: Request, { params }: { params: RouteParams }) => {
   const { comp, season, id } = await params;
   const rc = resolveResource(comp, season, 'summary');
   if (!rc) {
@@ -29,4 +30,4 @@ export async function GET(req: Request, { params }: { params: RouteParams }) {
     await trackAPIRequestFailure('match-summary', 502, comp, season);
     return apiError('UPSTREAM_UNAVAILABLE', 502);
   }
-}
+});

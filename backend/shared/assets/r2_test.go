@@ -1,10 +1,15 @@
 package assets
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -289,5 +294,42 @@ func TestFromEnvBuildsConfiguredPublicMirror(t *testing.T) {
 	}
 	if mirror.bucket != "assets" || mirror.BaseURL() != "https://cdn.example" {
 		t.Fatalf("mirror bucket/base = %q/%q", mirror.bucket, mirror.BaseURL())
+	}
+}
+
+func TestCrestHTTPHealthIsIndependentOfStorageAndValidation(t *testing.T) {
+	var buf bytes.Buffer
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/ok":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = io.WriteString(w, "png")
+		default:
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = io.WriteString(w, "private-body")
+		}
+	}))
+	defer server.Close()
+	mirror := &Mirror{http: server.Client(), HTTPLog: slog.New(slog.NewJSONHandler(&buf, nil))}
+	for _, tc := range []struct{ path, outcome string }{{"/ok", "success"}, {"/private-id", "body"}} {
+		buf.Reset()
+		u, err := url.Parse(server.URL + tc.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, _, err := mirror.download(context.Background(), u)
+		if tc.outcome == "success" && (err != nil || string(data) != "png") {
+			t.Fatalf("data=%q err=%v", data, err)
+		}
+		if tc.outcome == "body" && !errors.Is(err, ErrAssetRejected) {
+			t.Fatalf("want original error, got %v", err)
+		}
+		var record map[string]any
+		if err := json.Unmarshal(buf.Bytes(), &record); err != nil {
+			t.Fatal(err)
+		}
+		if record["dependency"] != "espn" || record["endpoint"] != "crest" || record["status"] != float64(200) || record["outcome"] != tc.outcome || strings.Contains(buf.String(), "private") {
+			t.Fatalf("event %s", buf.String())
+		}
 	}
 }

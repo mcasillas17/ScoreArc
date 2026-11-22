@@ -1,3 +1,4 @@
+import { observeApiRoute } from '@/lib/telemetry/inbound';
 import { dataStore } from '@/server/data/store';
 import { currentWeekRange } from '@/server/data/dateRange';
 import { resolveResource } from '@/server/data/editionResources';
@@ -26,7 +27,7 @@ type RouteParams = Promise<{ comp: string; season: string }>;
  * The three windows keep their own store methods and their own cache TTLs —
  * live scores go stale in seconds, a calendar month does not.
  */
-export async function GET(req: Request, { params }: { params: RouteParams }) {
+export const GET = observeApiRoute('matches', async (req: Request, { params }: { params: RouteParams }) => {
   const { comp, season } = await params;
   const rc = resolveResource(comp, season, 'scores');
   if (!rc) {
@@ -58,4 +59,4 @@ export async function GET(req: Request, { params }: { params: RouteParams }) {
     await trackAPIRequestFailure('matches', 502, comp, season);
     return apiError('UPSTREAM_UNAVAILABLE', 502);
   }
-}
+});

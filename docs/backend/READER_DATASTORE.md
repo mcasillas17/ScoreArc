@@ -8,15 +8,16 @@ an ESPN proxy.
 
 ## Configuration and rollback
 
-Both settings are server-only. Do not use `NEXT_PUBLIC` variants.
+The source settings are server-only. Do not use `NEXT_PUBLIC` variants.
 
 | Setting | Behavior |
 |---|---|
 | `SCOREARC_DATA_SOURCE` absent, empty, or `espn` | Returns the existing ESPN store directly; constructs no reader client and sends zero reader requests, including health/shadow requests |
 | `SCOREARC_DATA_SOURCE=reader` | Selects the joined group of all eleven non-news methods; an eligible failure retries the whole logical operation once on ESPN |
-| `SCOREARC_READER_ORIGIN` | Required only in reader mode; origin only, no credentials, path prefix, query, or fragment; HTTPS required in production |
+| `SCOREARC_DATA_SOURCE=compare` | Samples joined operations for comparison. The default sample is 10%. |
+| `SCOREARC_READER_ORIGIN` | Required when reader or compare mode makes reader calls; origin only, no credentials, path prefix, query, or fragment; HTTPS required in production |
 
-Unknown source values fail configuration. HTTP is allowed only for loopback
+The opt-in sampled mode is described below. Unknown source values fail configuration. HTTP is allowed only for loopback
 origins outside production; production also rejects HTTPS loopback origins. Redirects are rejected. Request callers supply
 identities and typed queries, never an upstream URL. Rollback is to unset the
 source setting or set it to `espn`, then restart/release the frontend through the
@@ -28,6 +29,47 @@ include this PR's additive `/identities` route. It uses existing tables, indexes
 and SELECT grants, with no migration. The owner confirms migration 0028 and
 T17.3 were deployed October 31; this task did not independently inspect or change
 production. Do not repeat those migrations.
+
+## Sampled reader trial
+
+Set server-only `SCOREARC_DATA_SOURCE=compare` and `SCOREARC_READER_ORIGIN` to opt in. `SCOREARC_READER_COMPARE_PERCENT` accepts an integer from 0 through 100 and defaults to 10. At zero the frontend returns its ordinary ESPN store. With comparison disabled, no comparison logs or reader calls are generated.
+
+The sampling unit is a logical operation, including its joined reads. With the default, about 90% use ESPN only. Each sampled read starts both sources in parallel using independent request budgets. The reader gets up to five seconds and the sampled operation up to 25 seconds total. The same method-specific semantic comparator used by the offline evaluator checks IDs, scores, cards, coverage and other fields. Unproven equality selects ESPN. Differences can reflect feed timing, a crest URL or more complete reader data. The mismatch rate measures disagreement with ESPN. It does not establish which source is factually wrong.
+
+One disagreement or reader error returns the full logical operation from ESPN. Reassembly reuses the original ESPN promises for the same method, arguments and scope. An ESPN error makes the comparison inconclusive and preserves the ESPN error path. A sampled operation with an observed dependency failure cannot promote the reader. News remains ESPN-only.
+
+### Health telemetry and dashboard data
+
+Frontend compare mode emits two JSON log families. `scorearc_reader_comparison` describes logical calls, agreements, differences, inconclusive results and which source served the operation. `scorearc_http` describes individual handler executions and outgoing requests. A single match popup may need several logical reads, and a cached read can make zero HTTP calls. Use the denominator for the question being asked.
+
+| Measurement | Coverage and denominator |
+|---|---|
+| Website API health | Every implemented Next.js API handler, including news, match detail, standings form and the Edge share-card route. Handler events include successful responses, validation failures and exceptions. The share card observes the streamed PNG to completion and records its explicit asset probes. |
+| Reader and ESPN dependency health | Frontend outbound attempts from sampled, ESPN-only control and news reads. Both successful and failed calls count, including optional dependencies whose callers recover. Use the source, endpoint, status, outcome and latency to distinguish an HTTP 429 from a malformed HTTP 200 response or a timeout without a response. |
+| Go reader and ingester | On each participating Go process, `SCOREARC_HTTP_TELEMETRY=1` enables the HTTP event schema. The reader records incoming API requests and health probes. The ingester and reader record their ESPN dependencies, with a separate record per retry or redirect hop. The operator CLI service labels separate manual activity from the regular ingester. |
+| Edge and CDN traffic | Optional Vercel proxy-log input counts unique observed API requests, including cache hits, framework method responses and unmatched API paths. Use the separate `platformApi` section for this boundary. Application handlers cannot measure browser-direct asset hits, requests answered upstream of them, or Satori’s internal image fetches. |
+
+The sampled reader and reference transports reject redirects. Measured ESPN control reads can follow redirects on their origin and the configured ESPN API hosts. Share-card CDN probes follow redirects to recognized asset hosts. Each followed or refused hop contributes an HTTP event.
+
+The frontend emits timestamp, environment and revision when available. Request, operation, sampled-read and reader-generated request identifiers correlate individual events during diagnosis. The report groups by bounded route names and dimensions, never by those identifiers. Applications omit raw request paths, query parameters, client addresses, participant IDs, response bodies, and dependency error text from health events. Vercel proxy input can contain sensitive fields; the report retains only bounded route, method, response, cache and time dimensions.
+
+**Run the report** on a bounded window of newline-delimited JSON. Combine the app’s Vercel logs, Go JSON logs from Fly and optionally Vercel proxy records for the same period. Raw JSON events and envelopes whose `message` is a JSON event are supported.
+
+```sh
+npx tsx scripts/reader-comparison-report.ts /path/to/window.jsonl > health-report.json
+```
+
+The output includes:
+
+- `operationIntervals` for five-minute cohort, decision and source-served counts.
+- `reads`, `endpoints` and `comparisonIntervals` for semantic results. Disagreement divides mismatches by matched plus mismatched reads. Inconclusive and reader-failure rates use all sampled reads. Only a completed ESPN comparison can establish disagreement. News is ESPN-only and contributes no parity samples.
+- `http.byEndpoint` and `http.intervals` for HTTP health, with five-minute UTC buckets, HTTP status counts, failure outcomes, application codes, measured bytes, total latency and mergeable latency histograms. Dashboard failure rate divides failures by successes plus failures. Cancellations are counted separately. A rejected redirect is a failure; an accepted redirect hop retains its 3xx status. The p95 estimate is an inclusive bucket upper bound; a null estimate in a populated row means the percentile exceeds 60 seconds. Bytes coverage counts only requests with measured bytes.
+- `platformApi` for Vercel proxy records with a terminal status and a request identifier. Duplicate observations count once within the input window. Conflicting records and records without a usable ID are counted separately. This requires provider-side collection with the needed sources and sampling enabled; a cache-only hit usually produces no application event. See the [Vercel log-drain schema](https://vercel.com/docs/drains/reference/logs).
+- `malformedComparisonEvents` and `http.rejectedEvents` for recognized events that fail validation. Zero denominators yield `null`. Use a complete export for traffic rates, and keep origins, retries and frontend handler counts separate.
+
+**Storage today.** In Neon, `ingest_run` records job kind, competition, start and finish times, success and error. `match_poll_status` records the latest poll result and event count per competition and season. `match_sync_status` records match observation time, attempts, retry time and the last recovery error. This PR writes new HTTP and comparison telemetry to process logs, collected by Vercel and Fly on deployments with the instrumentation enabled. The report writes the aggregates to the chosen local file. There is no application write to Neon for each API hit.
+
+**Proposed admin-portal storage.** A collector should read the two providers’ log streams, deduplicate deliveries using provider log IDs, checkpoint only after committing, and upsert complete five-minute buckets into a private Neon operations schema. Keys should include time bucket, environment, release, source, route, cohort and comparison policy where applicable. Keep the originating deployment environment and revision when collecting logs. Store counts, byte sums and latency histograms so longer-window rates and percentiles can be recomputed. The authenticated portal server would query aggregates with a read-only role and use ingestion audit/freshness tables for poll history. Collector identity, retention, migrations, drains and portal access are a separate implementation and production decision. No new database, drain or portal is provisioned by this PR.
 
 ## Identity and source operations
 

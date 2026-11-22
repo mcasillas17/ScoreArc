@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { currentWeekRange } from './dateRange';
+import { withHealthContext } from '@/lib/telemetry/http';
 import { createDataStore, parseShootout } from './store';
 import { resolveSeason, type CompetitionSeason } from './competitions';
 import { TtlCache } from './cache';
@@ -110,6 +111,22 @@ describe('EspnReadThroughStore', () => {
     expect(first).toBe(2);
     await store.getMatches(wc);
     expect(urls.filter((u) => u.includes('/scoreboard')).length).toBe(first);
+  });
+
+  it('retains an optional summary error on the cached match list', async () => {
+    const fetchJson = vi.fn(async (url: string) => {
+      if (url.includes('/summary')) throw Object.assign(new Error(), { status: 502 });
+      return monthResponse(url);
+    });
+    const deps = { cache: new TtlCache<unknown>(), fetchJson };
+    const matches = await createDataStore(deps).getMatches(wc, '20260629-20260630');
+    expect(matches.length).toBeGreaterThan(0);
+    fetchJson.mockClear();
+    const onDependencyFailure = vi.fn();
+    const warm = await withHealthContext({ onDependencyFailure }, () => createDataStore(deps).getMatches(wc, '20260629-20260630'));
+    expect(warm).toBe(matches);
+    expect(fetchJson).not.toHaveBeenCalled();
+    expect(onDependencyFailure).toHaveBeenCalledExactlyOnceWith('espn', { code: 'http', status: 502 });
   });
 
   it('enriches matches with scorers from the summary feed', async () => {
@@ -371,6 +388,26 @@ describe('getTeam', () => {
 
     await store.getTeam(ligaMx, '227');
     expect(urls).toHaveLength(4); // served from cache
+  });
+
+  it('retains a schedule failure only on the cached profile, keeping the healthy squad comparable', async () => {
+    const { deps } = teamDeps();
+    const fetchJson = vi.fn(async (url: string) => {
+      if (url.includes('fixture=true')) throw Object.assign(new Error(), { status: 503 });
+      return deps.fetchJson(url);
+    });
+    const store = createDataStore({ ...deps, fetchJson });
+    const team = await store.getTeam(ligaMx, '227');
+    expect(team?.scheduleAvailability?.upcoming).toBe('unavailable');
+    fetchJson.mockClear();
+    const onDependencyFailure = vi.fn();
+    await withHealthContext({ onDependencyFailure }, async () => {
+      expect(await store.getSquad(ligaMx, '227')).toHaveLength(35);
+      expect(onDependencyFailure).not.toHaveBeenCalled();
+      expect(await store.getTeam(ligaMx, '227')).toBe(team);
+    });
+    expect(fetchJson).not.toHaveBeenCalled();
+    expect(onDependencyFailure).toHaveBeenCalledExactlyOnceWith('espn', { code: 'http', status: 503 });
   });
 
   it('caches per team id, not per competition', async () => {

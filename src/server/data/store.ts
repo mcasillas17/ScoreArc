@@ -1,5 +1,7 @@
 import { unstable_cache } from 'next/cache';
 import { configuredDataStore } from './configuredStore';
+import { healthContext, type DependencyFault } from '@/lib/telemetry/http';
+import { comparisonFault } from './readerComparison';
 import { ReaderFailure } from './readerTransport';
 import { providerReference } from './readerIdentity';
 import { trackReaderFallback } from '@/lib/telemetry/server';
@@ -105,6 +107,32 @@ async function fetchSquad(rc: CompetitionSeason, teamId: string, fetchJson: Scor
   if (squad.length !== count || squad.some(player => !providerReference(player.id) || !player.name.trim()) ||
       new Set(squad.map(player => player.id)).size !== count) throw new EspnEditionError('partial', 'roster');
   return squad;
+}
+
+// The control and sampled stores share their ESPN cache. Keep optional failures
+// with the exact cached object, including across stores, until it is evicted.
+const partialEspnValues = new WeakMap<object, DependencyFault>();
+
+function cachedEspnValue<T extends object>(cache: TtlCache<unknown>, key: string): T | undefined {
+  const value = cache.get(key) as T | undefined;
+  const failure = value && partialEspnValues.get(value);
+  if (failure) healthContext().onDependencyFailure?.('espn', failure);
+  return value;
+}
+
+function optionalEspnDependencies(cache: TtlCache<unknown>, key: string) {
+  let failure: DependencyFault | undefined;
+  return {
+    unavailable(error: unknown) {
+      failure ??= comparisonFault(error);
+      healthContext().onDependencyFailure?.('espn', failure);
+      return null;
+    },
+    cacheValue<T extends object>(value: T, ttlMs: number) {
+      if (failure) partialEspnValues.set(value, failure);
+      cache.set(key, value, ttlMs);
+    },
+  };
 }
 
 export function createDataStore(deps: DataDeps): DataStore {
@@ -313,8 +341,9 @@ export function createDataStore(deps: DataDeps): DataStore {
         return loadWindow(rc, window, `fixtures:${window}`, 120_000, signal);
       }
       const k = key(rc, `matches:${window}`);
-      const cached = deps.cache.get(k) as Match[] | undefined;
+      const cached = cachedEspnValue<Match[]>(deps.cache, k);
       if (cached) return cached;
+      const optional = optionalEspnDependencies(deps.cache, k);
       const deadline = AbortSignal.timeout(15_000);
       const readSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
       const raw = await fetchScoreboardWindow(rc, window, deps.fetchJson, readSignal);
@@ -327,7 +356,10 @@ export function createDataStore(deps: DataDeps): DataStore {
         readSignal.throwIfAborted();
         summaries.push(...await Promise.all(matches.slice(i, i + 4).map(m =>
           loadSummary(rc, m.id, m.home.id, m.away.id, readSignal)
-            .catch((): LoadedSummary => ({ data: emptySummary(), shootout: null, final: false })),
+            .catch((error): LoadedSummary => {
+              optional.unavailable(error);
+              return { data: emptySummary(), shootout: null, final: false };
+            }),
         )));
       }
       readSignal.throwIfAborted();
@@ -348,7 +380,7 @@ export function createDataStore(deps: DataDeps): DataStore {
           }
         }
       });
-      deps.cache.set(k, matches, 10_000);
+      optional.cacheValue(matches, 10_000);
       return matches;
     },
 
@@ -412,8 +444,9 @@ export function createDataStore(deps: DataDeps): DataStore {
     async getTeam(rc, teamId: string): Promise<TeamProfile | null> {
       if (matchDerivedMembership(rc) && !(await getEditionTeams(rc)).some(team => team.id === teamId)) return null;
       const k = key(rc, `team:${teamId}`);
-      const cached = deps.cache.get(k) as TeamProfile | undefined;
+      const cached = cachedEspnValue<TeamProfile>(deps.cache, k);
       if (cached) return cached;
+      const optional = optionalEspnDependencies(deps.cache, k);
 
       try {
         // Four requests, not three: the schedule endpoint returns played OR
@@ -421,9 +454,9 @@ export function createDataStore(deps: DataDeps): DataStore {
         // matches-and-results block has to ask twice.
         const [rawProfile, squad, rawResults, rawFixtures] = await Promise.all([
           deps.fetchJson(teamUrl(slug(rc), teamId)),
-          supportsResource(rc.season, 'squad') ? loadSquad(rc, teamId).catch(() => null) : [],
-          supportsResource(rc.season, 'scores') ? deps.fetchJson(teamScheduleUrl(slug(rc), teamId, false, rc.season)).catch(() => null) : null,
-          supportsResource(rc.season, 'scores') ? deps.fetchJson(teamScheduleUrl(slug(rc), teamId, true, rc.season)).catch(() => null) : null,
+          supportsResource(rc.season, 'squad') ? loadSquad(rc, teamId).catch(optional.unavailable) : [],
+          supportsResource(rc.season, 'scores') ? deps.fetchJson(teamScheduleUrl(slug(rc), teamId, false, rc.season)).catch(optional.unavailable) : null,
+          supportsResource(rc.season, 'scores') ? deps.fetchJson(teamScheduleUrl(slug(rc), teamId, true, rc.season)).catch(optional.unavailable) : null,
         ]);
 
         const base = mapTeamProfile(rawProfile);
@@ -443,11 +476,13 @@ export function createDataStore(deps: DataDeps): DataStore {
             upcoming: upcoming.available ? 'available' : 'unavailable',
           },
         };
-        if (squad !== null && (!strict || !supportsResource(rc.season, 'scores') || (results.available && upcoming.available))) deps.cache.set(k, profile, 120_000);
+        if (squad !== null && (!strict || !supportsResource(rc.season, 'scores') || (results.available && upcoming.available))) {
+          optional.cacheValue(profile, 120_000);
+        }
         return profile;
       } catch (error) {
         if (deps.propagateUnavailable && !(error instanceof ReaderFailure && error.status === 404)) throw error;
-        return null;
+        return optional.unavailable(error);
       }
     },
 
@@ -460,6 +495,7 @@ export function createDataStore(deps: DataDeps): DataStore {
         return await loadSquad(rc, teamId);
       } catch (error) {
         if (deps.propagateUnavailable) throw error;
+        healthContext().onDependencyFailure?.('espn', comparisonFault(error));
         return [];
       }
     },
@@ -472,14 +508,15 @@ export function createDataStore(deps: DataDeps): DataStore {
     // never called -- /overview and /bio are the only sources.
     async getPlayer(rc, athleteId: string): Promise<PlayerProfile | null> {
       const k = key(rc, `player:${athleteId}`);
-      const cached = deps.cache.get(k) as PlayerProfile | undefined;
+      const cached = cachedEspnValue<PlayerProfile>(deps.cache, k);
       if (cached) return cached;
+      const optional = optionalEspnDependencies(deps.cache, k);
 
       try {
         const [rawProfile, rawOverview, rawBio] = await Promise.all([
           deps.fetchJson(athleteUrl(slug(rc), athleteId)),
-          supportsResource(rc.season, 'participation') ? deps.fetchJson(athleteOverviewUrl(slug(rc), athleteId)).catch(() => null) : null,
-          supportsResource(rc.season, 'career') ? deps.fetchJson(athleteBioUrl(slug(rc), athleteId)).catch(() => null) : null,
+          supportsResource(rc.season, 'participation') ? deps.fetchJson(athleteOverviewUrl(slug(rc), athleteId)).catch(optional.unavailable) : null,
+          supportsResource(rc.season, 'career') ? deps.fetchJson(athleteBioUrl(slug(rc), athleteId)).catch(optional.unavailable) : null,
         ]);
 
         const identity = mapAthleteProfile(rawProfile);
@@ -493,11 +530,11 @@ export function createDataStore(deps: DataDeps): DataStore {
           gameLog: overview.rows,
           career: rawBio ? mapAthleteBio(rawBio) : [],
         };
-        deps.cache.set(k, profile, 120_000);
+        optional.cacheValue(profile, 120_000);
         return profile;
       } catch (error) {
         if (deps.propagateUnavailable && !(error instanceof ReaderFailure && error.status === 404)) throw error;
-        return null;
+        return optional.unavailable(error);
       }
     },
 
@@ -520,7 +557,10 @@ export function createDataStore(deps: DataDeps): DataStore {
         } catch (error) {
           // Published matches stand on their own. A projection requires the table.
           const published = mapBracket(raw, rc.season.playoffFormat);
-          if (published.length) return published;
+          if (published.length) {
+            healthContext().onDependencyFailure?.('espn', comparisonFault(error));
+            return published;
+          }
           throw error;
         }
       }
@@ -558,6 +598,7 @@ export const dataStore: DataStore = configuredDataStore({
   espn: espnDataStore,
   env: process.env,
   onFallback: reason => trackReaderFallback(reason),
+  onComparison: event => console.info(JSON.stringify({ event: 'scorearc_reader_comparison', ...event })),
   fallback: ({ signal, budget }) => createDataStore({
     propagateUnavailable: true,
     cache: espnCache,

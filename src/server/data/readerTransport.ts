@@ -1,4 +1,6 @@
 import { parseReaderResources, type ReaderResources } from '@/lib/readerResources';
+import { startOutboundHttp } from './httpHealth';
+import { isFetchRedirect } from '@/lib/telemetry/redirects';
 import { abortable } from './scoreboardWindow';
 
 export type ReaderFailureReason = 'network' | 'http' | 'timeout' | 'metadata' | 'body' | 'stale' | 'unavailable' | 'identity' | 'scope' | 'budget';
@@ -27,6 +29,8 @@ export interface RequestBudget {
 
 /** One shared budget includes queued reads, response streaming and fallback. */
 export function createRequestBudget(options: {
+  dependency?: 'espn' | 'reader';
+  onFailure?: (error: unknown) => void;
   fetch?: typeof fetch; signal: AbortSignal; maxConcurrent?: number; maxCalls?: number; maxResponseBytes?: number; maxBytes?: number;
 }): RequestBudget {
   const fetcher = options.fetch ?? fetch;
@@ -62,16 +66,25 @@ export function createRequestBudget(options: {
       if (admitted >= maxCalls || bytes >= maxBytes) throw new ReaderFailure('budget');
       admitted++;
       await acquire(signal);
+      let finish: ReturnType<typeof startOutboundHttp>;
+      let response: Response | undefined;
+      let received: number | undefined;
+      let outcome = 'success';
       try {
         signal.throwIfAborted();
         if (calls >= maxCalls || bytes >= maxBytes) throw new ReaderFailure('budget');
         calls++;
-        let response: Response;
+        if (options.dependency) finish = startOutboundHttp(options.dependency, url, signal);
         try {
-          response = await abortable(fetcher(url, { signal, cache: 'no-store', redirect: 'error', headers: { Accept: 'application/json', 'User-Agent': 'scorearc' } }), signal);
+          response = await abortable(fetcher(url, { signal, cache: 'no-store', redirect: finish ? 'manual' : 'error', headers: { Accept: 'application/json', 'User-Agent': 'scorearc' } }), signal);
         } catch (error) {
           signal.throwIfAborted();
           if (error instanceof ReaderFailure) throw error;
+          throw new ReaderFailure('network');
+        }
+        if (finish && isFetchRedirect(response.status)) {
+          // A native redirect:error rejects with a network error before exposing the 3xx.
+          void response.body?.cancel().catch(() => {});
           throw new ReaderFailure('network');
         }
         if (response.redirected || (response.status >= 300 && response.status < 400)) {
@@ -89,15 +102,16 @@ export function createRequestBudget(options: {
         if (!response.body) throw new ReaderFailure('body');
         const stream = response.body.getReader();
         const decoder = new TextDecoder('utf-8', { fatal: true });
-        let text = '', size = 0, complete = false;
+        let text = '', complete = false;
+        received = 0;
         try {
           while (true) {
             const part = await abortable(stream.read(), signal);
             signal.throwIfAborted();
             if (part.done) { complete = true; break; }
-            size += part.value.byteLength;
+            received += part.value.byteLength;
             bytes += part.value.byteLength;
-            if (size > maxResponseBytes || bytes > maxBytes) throw new ReaderFailure('budget');
+            if (received > maxResponseBytes || bytes > maxBytes) throw new ReaderFailure('budget');
             text += decoder.decode(part.value, { stream: true });
           }
           text += decoder.decode();
@@ -111,7 +125,15 @@ export function createRequestBudget(options: {
           if (!complete) void stream.cancel().catch(() => {});
           stream.releaseLock();
         }
-      } finally { release(); }
+      } catch (error) {
+        outcome = error instanceof ReaderFailure ? (error.reason === 'http' ? 'http_error' : error.reason) : 'network';
+        if (response && isFetchRedirect(response.status)) outcome = 'redirect';
+        options.onFailure?.(error);
+        throw error;
+      } finally {
+        release();
+        finish?.(response, outcome, received);
+      }
     },
   };
 }

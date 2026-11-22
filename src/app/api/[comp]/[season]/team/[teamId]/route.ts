@@ -1,3 +1,4 @@
+import { observeApiRoute } from '@/lib/telemetry/inbound';
 import { dataStore } from '@/server/data/store';
 import { runDataOperation } from '@/server/data/sourceSelection';
 import { resolveResource } from '@/server/data/editionResources';
@@ -9,10 +10,10 @@ export const dynamic = 'force-dynamic';
 
 type RouteParams = Promise<{ comp: string; season: string; teamId: string }>;
 
-export async function GET(
+export const GET = observeApiRoute('team', async (
   req: Request,
   { params }: { params: RouteParams },
-) {
+) => {
   const { comp, season, teamId } = await params;
   const rc = resolveResource(comp, season, 'teams');
   if (!rc) {
@@ -37,4 +38,4 @@ export async function GET(
     if (!req.signal.aborted || error !== req.signal.reason) await trackAPIRequestFailure('team', 502, comp, season);
     return apiError('UPSTREAM_UNAVAILABLE', 502);
   }
-}
+});

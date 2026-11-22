@@ -1,3 +1,5 @@
+import { startOutboundHttp } from './httpHealth';
+import { fetchObservedRedirects } from '@/lib/telemetry/redirects';
 import type { CompetitionSeason, PlayoffFormat } from './competitions';
 import { parseRange, editionBounds } from './dateRange';
 import { EspnEditionError, completeCollection, requireSeason, requiresEditionEvidence, datedInEdition } from './providers/espn-edition';
@@ -26,42 +28,72 @@ export function abortable<T>(pending: Promise<T>, signal: AbortSignal): Promise<
 /** Existing generic fetch behavior stays unchanged unless a bounded read is requested. */
 export async function boundedFetchJson(url: string, options?: FetchOptions): Promise<unknown> {
   options?.signal.throwIfAborted();
-  const request = fetch(url, {
-    headers: { 'User-Agent': 'scorearc' }, cache: 'no-store', signal: options?.signal,
-  });
-  const response = options ? await abortable(request, options.signal) : await request;
-  if (!response.ok) {
-    void response.body?.cancel().catch(() => {});
-    throw new Error(`fetch ${url} -> ${response.status}`);
-  }
-  if (!options) return response.json();
-  const { signal, maxBytes } = options;
-  if (Number(response.headers.get('content-length')) > maxBytes) {
-    void response.body?.cancel().catch(() => {});
-    throw new Error('Scoreboard response exceeds bytes budget');
-  }
-  if (!response.body) throw new Error('Scoreboard response body missing');
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  const decoder = new TextDecoder('utf-8', { fatal: true });
-  let bytes = 0;
-  let complete = false;
+  let finish = startOutboundHttp('espn', url, options?.signal);
+  let response: Response | undefined;
+  let outcome = 'network';
+  let bytes: number | undefined;
   try {
-    while (true) {
-      signal.throwIfAborted();
-      const part = await abortable(reader.read(), signal);
-      signal.throwIfAborted();
-      if (part.done) { complete = true; break; }
-      bytes += part.value.byteLength;
-      if (bytes > maxBytes) throw new Error('Scoreboard response exceeds bytes budget');
-      chunks.push(part.value);
+    const fetchHop = (address: string) => {
+      const request = fetch(address, {
+        headers: { 'User-Agent': 'scorearc' }, cache: 'no-store', signal: options?.signal,
+        ...(finish && { redirect: 'manual' as const }),
+      });
+      return options ? abortable(request, options.signal) : request;
+    };
+    if (finish) {
+      const origin = new URL(url).origin;
+      response = await fetchObservedRedirects(url, fetchHop, target => target.origin === origin ||
+        target.origin === 'https://site.api.espn.com' || target.origin === 'https://site.web.api.espn.com', (redirect, next) => {
+        finish?.(redirect, next ? 'success' : 'redirect');
+        finish = next ? startOutboundHttp('espn', next, options?.signal) : undefined;
+      });
+    } else response = await fetchHop(url);
+    if (!response.ok) {
+      outcome = 'http_error';
+      void response.body?.cancel().catch(() => {});
+      throw Object.assign(new Error(`fetch ${url} -> ${response.status}`), { status: response.status });
     }
-    const raw: unknown = JSON.parse(chunks.map((chunk, index) => decoder.decode(chunk, { stream: index < chunks.length - 1 })).join(''));
-    if (raw !== null && typeof raw === 'object') responseBytes.set(raw, bytes);
-    return raw;
+    outcome = 'body';
+    if (!options) {
+      const raw: unknown = await response.json();
+      outcome = 'success';
+      return raw;
+    }
+    const { signal, maxBytes } = options;
+    if (Number(response.headers.get('content-length')) > maxBytes) {
+      outcome = 'budget';
+      void response.body?.cancel().catch(() => {});
+      throw new Error('Scoreboard response exceeds bytes budget');
+    }
+    if (!response.body) throw new Error('Scoreboard response body missing');
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    const decoder = new TextDecoder('utf-8', { fatal: true });
+    bytes = 0;
+    let complete = false;
+    try {
+      while (true) {
+        signal.throwIfAborted();
+        const part = await abortable(reader.read(), signal);
+        signal.throwIfAborted();
+        if (part.done) { complete = true; break; }
+        bytes += part.value.byteLength;
+        if (bytes > maxBytes) {
+          outcome = 'budget';
+          throw new Error('Scoreboard response exceeds bytes budget');
+        }
+        chunks.push(part.value);
+      }
+      const raw: unknown = JSON.parse(chunks.map((chunk, index) => decoder.decode(chunk, { stream: index < chunks.length - 1 })).join(''));
+      if (raw !== null && typeof raw === 'object') responseBytes.set(raw, bytes);
+      outcome = 'success';
+      return raw;
+    } finally {
+      if (!complete) void reader.cancel().catch(() => {});
+      reader.releaseLock();
+    }
   } finally {
-    if (!complete) void reader.cancel().catch(() => {});
-    reader.releaseLock();
+    finish?.(response, outcome, bytes);
   }
 }
 

@@ -40,8 +40,9 @@ func (a *App) requestID(next http.Handler) http.Handler {
 // without altering the response.
 type statusRecorder struct {
 	http.ResponseWriter
-	status int
-	bytes  int
+	status   int
+	bytes    int
+	panicked bool
 }
 
 func (r *statusRecorder) WriteHeader(status int) {
@@ -60,20 +61,26 @@ func (r *statusRecorder) Write(data []byte) (int, error) {
 	return written, err
 }
 
-// requestLogging emits one structured slog line per request: method, path,
-// status, response size, latency, client IP, and the request id. This is the
-// reader's observability surface; Fly.io scrapes stdout.
-//
-// Successful /healthz probes are deliberately not logged. Fly polls that route
-// every 15s for the lifetime of every machine, which would bury real traffic in
-// thousands of identical lines a day. Nothing is lost: a FAILING health check
-// is still logged, by handleHealthz itself, and Fly reports check state
-// independently. Every other route — including /healthz returning non-200 — is
-// logged exactly once.
+// requestLogging emits the trial event when enabled. The normal access log
+// suppresses successful /healthz probes to control steady-state Fly log volume.
 func (a *App) requestLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		start := time.Now()
 		recorder := &statusRecorder{ResponseWriter: writer}
+		if a.httpLog != nil {
+			defer func() {
+				p := recover()
+				if p != nil && p != http.ErrAbortHandler {
+					recorder.panicked = true
+				}
+				a.dashboardAccess(request, recorder, start, p == http.ErrAbortHandler)
+				if p != nil {
+					panic(p)
+				}
+			}()
+			next.ServeHTTP(recorder, request)
+			return
+		}
 		next.ServeHTTP(recorder, request)
 		status := recorder.status
 		if status == 0 {
@@ -99,6 +106,43 @@ func (a *App) requestLogging(next http.Handler) http.Handler {
 			"client_ip", clientIP(request),
 		)
 	})
+}
+
+func (a *App) dashboardAccess(request *http.Request, recorder *statusRecorder, start time.Time, aborted bool) {
+	rctx := chi.RouteContext(request.Context())
+	endpoint := rctx.RoutePattern()
+	if endpoint == "" || endpoint == "/v1/*" {
+		endpoint = rctx.Routes.Find(chi.NewRouteContext(), http.MethodGet, request.URL.EscapedPath())
+	}
+	if endpoint == "" {
+		endpoint = "unmatched"
+	}
+	method := request.Method
+	switch method {
+	case "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE", "CONNECT":
+	default:
+		method = "other"
+	}
+	id, _ := request.Context().Value(requestIDKey).(string)
+	outcome := "success"
+	status := recorder.status
+	if recorder.panicked {
+		outcome = "exception"
+	} else if aborted || request.Context().Err() != nil {
+		outcome = "cancelled"
+	} else if status >= 400 {
+		outcome = "http_error"
+	} else if status == 0 {
+		status = http.StatusOK
+	}
+	var responseStatus any
+	if status != 0 {
+		responseStatus = status
+	}
+	a.httpLog.Info("request",
+		"event", "scorearc_http", "direction", "inbound", "dependency", "self",
+		"endpoint", endpoint, "method", method, "status", responseStatus, "outcome", outcome,
+		"durationMs", time.Since(start).Milliseconds(), "bytes", recorder.bytes, "request_id", id)
 }
 
 func requestOutcome(status int) string {

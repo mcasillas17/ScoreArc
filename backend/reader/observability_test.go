@@ -7,8 +7,11 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // newObservedApp returns a test App whose logger writes JSON into the returned
@@ -230,5 +233,119 @@ func TestHealthzLoggingIsQuietWhenHealthyAndLoudWhenNot(t *testing.T) {
 	}
 	if got := records[0]["status"]; got != float64(http.StatusServiceUnavailable) {
 		t.Fatalf("logged status = %v, want 503", got)
+	}
+}
+
+func TestDashboardAccessEventsIncludeHealthAndRedactUnknownRoutes(t *testing.T) {
+	app, buf := newObservedApp(t, &fakeReaderStore{})
+	app.httpLog = app.logger.With("service", "reader")
+	router := app.router()
+	for _, test := range []struct {
+		method, path, endpoint string
+		status                 int
+	}{{"GET", "/healthz", "/healthz", 200}, {"GET", "/v1/competitions/private-comp/2026/matches", "/v1/competitions/{comp}/{season}/matches", 400}, {"GET", "/private-token?auth=private", "unmatched", 404}, {"PRIVATE-VERB", "/v1/competitions/private-comp/2026/matches", "/v1/competitions/{comp}/{season}/matches", 405}} {
+		buf.Reset()
+		w := performRequest(router, test.method, test.path)
+		rows := logRecords(t, buf)
+		if w.Code != test.status || len(rows) != 1 {
+			t.Fatalf("%d %s", w.Code, buf)
+		}
+		r := rows[0]
+		if r["event"] != "scorearc_http" || r["dependency"] != "self" || r["direction"] != "inbound" || r["endpoint"] != test.endpoint || r["durationMs"] == nil || r["status"] != float64(test.status) || r["request_id"] != w.Header().Get("X-Request-Id") {
+			t.Fatalf("event: %s", buf)
+		}
+		if strings.Contains(strings.ToLower(buf.String()), "private") || r["client_ip"] != nil {
+			t.Fatalf("unsafe dimensions: %s", buf)
+		}
+	}
+}
+
+func TestDashboardAccessCountsAbortedHandlerWithoutPublishingAStatus(t *testing.T) {
+	app, buf := newObservedApp(t, &fakeReaderStore{})
+	app.httpLog = app.logger.With("service", "reader")
+	r := chi.NewRouter()
+	r.Use(app.requestLogging)
+	r.Get("/aborted", func(http.ResponseWriter, *http.Request) { panic(http.ErrAbortHandler) })
+	func() {
+		defer func() {
+			if recover() != http.ErrAbortHandler {
+				t.Fatal("handler did not propagate abort")
+			}
+		}()
+		performRequest(r, "GET", "/aborted")
+	}()
+	records := logRecords(t, buf)
+	if len(records) != 1 || records[0]["outcome"] != "cancelled" || records[0]["status"] != nil {
+		t.Fatalf("abort events: %s", buf)
+	}
+}
+
+func TestDashboardAccessReportsPanicsAndPreservesResponse(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		recoverJSON bool
+		committed   bool
+		wantStatus  any
+	}{
+		{"unhandled before headers", false, false, nil},
+		{"unhandled after headers", false, true, float64(202)},
+		{"recovered before headers", true, false, float64(500)},
+		{"recovered after headers", true, true, float64(202)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			app, buf := newObservedApp(t, &fakeReaderStore{})
+			app.httpLog = app.logger.With("service", "reader")
+			r := chi.NewRouter()
+			r.Use(app.requestLogging)
+			if tt.recoverJSON {
+				r.Use(app.recoverJSON)
+			}
+			r.Get("/panic", func(w http.ResponseWriter, _ *http.Request) {
+				if tt.committed {
+					w.WriteHeader(http.StatusAccepted)
+				}
+				panic("test panic")
+			})
+			var caught any
+			func() {
+				defer func() { caught = recover() }()
+				w := performRequest(r, http.MethodGet, "/panic")
+				if float64(w.Code) != tt.wantStatus {
+					t.Errorf("response status = %d, want %v", w.Code, tt.wantStatus)
+				}
+			}()
+			if tt.recoverJSON && caught != nil || !tt.recoverJSON && caught != "test panic" {
+				t.Fatalf("caught panic = %v", caught)
+			}
+			records := logRecords(t, buf)
+			if len(records) != 1 || records[0]["outcome"] != "exception" || records[0]["status"] != tt.wantStatus {
+				t.Fatalf("access events = %v, want one exception with status %v", records, tt.wantStatus)
+			}
+		})
+	}
+}
+
+func TestDashboardCoversEveryRegisteredReaderEndpoint(t *testing.T) {
+	app, buf := newObservedApp(t, &fakeReaderStore{})
+	app.httpLog = app.logger.With("service", "reader")
+	router := app.router().(chi.Router)
+	routes := 0
+	err := chi.Walk(router, func(method, pattern string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		if method != http.MethodGet {
+			return nil
+		}
+		routes++
+		buf.Reset()
+		// Reject before the handler; a 405 still belongs to the addressed route.
+		path := regexp.MustCompile(`\{[^}]+\}`).ReplaceAllString(pattern, "private-id")
+		performRequest(router, http.MethodPost, path)
+		records := logRecords(t, buf)
+		if len(records) != 1 || records[0]["endpoint"] != pattern || records[0]["status"] != float64(405) {
+			t.Errorf("route %s: %s", pattern, buf)
+		}
+		return nil
+	})
+	if err != nil || routes == 0 {
+		t.Fatalf("routes=%d err=%v", routes, err)
 	}
 }
