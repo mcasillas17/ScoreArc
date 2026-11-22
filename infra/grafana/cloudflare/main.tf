@@ -10,6 +10,11 @@ terraform {
 variable "account_id" { type = string }
 variable "zone_id" { type = string }
 variable "team_name" { type = string }
+# Compose uses service DNS. The dedicated Fly Machine binds admin services to loopback.
+variable "fly_origin" {
+  type    = bool
+  default = true
+}
 variable "operator_emails" {
   type = set(string)
   validation {
@@ -52,15 +57,15 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "operations" {
     ingress = [
       {
         hostname = local.grafana
-        service  = "http://grafana:3000"
+        service  = var.fly_origin ? "http://127.0.0.1:3000" : "http://grafana:3000"
         origin_request = { access = {
           required  = true
           team_name = var.team_name
           aud_tag   = [cloudflare_zero_trust_access_application.grafana.aud]
         } }
       },
-      { hostname = local.ingest, path = "^/vercel$", service = "http://receiver:8080" },
-      { hostname = local.ingest, path = "^/fly$", service = "http://receiver:8081" },
+      { hostname = local.ingest, path = "^/vercel$", service = var.fly_origin ? "http://127.0.0.1:8080" : "http://receiver:8080" },
+      { hostname = local.ingest, path = "^/fly$", service = var.fly_origin ? "http://127.0.0.1:8081" : "http://receiver:8081" },
       { service = "http_status:404" }
     ]
   }

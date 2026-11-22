@@ -1,0 +1,14 @@
+**
+!Dockerfile
+!fly-entrypoint.sh
+!fly/
+!fly/shipper.yaml
+!loki.yaml
+!vector.yaml
+!dashboards/
+!dashboards/*.json
+!provisioning/
+!provisioning/dashboards/
+!provisioning/dashboards/*.yml
+!provisioning/datasources/
+!provisioning/datasources/*.yaml
