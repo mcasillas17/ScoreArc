@@ -16,7 +16,7 @@ Both settings are server-only. Do not use `NEXT_PUBLIC` variants.
 | `SCOREARC_DATA_SOURCE=reader` | Selects the joined group of all eleven non-news methods; an eligible failure retries the whole logical operation once on ESPN |
 | `SCOREARC_READER_ORIGIN` | Required only in reader mode; origin only, no credentials, path prefix, query, or fragment; HTTPS required in production |
 
-Unknown source values fail configuration. HTTP is allowed only for loopback
+The opt-in sampled mode is described below. Unknown source values fail configuration. HTTP is allowed only for loopback
 origins outside production; production also rejects HTTPS loopback origins. Redirects are rejected. Request callers supply
 identities and typed queries, never an upstream URL. Rollback is to unset the
 source setting or set it to `espn`, then restart/release the frontend through the
@@ -28,6 +28,26 @@ include this PR's additive `/identities` route. It uses existing tables, indexes
 and SELECT grants, with no migration. The owner confirms migration 0028 and
 T17.3 were deployed October 31; this task did not independently inspect or change
 production. Do not repeat those migrations.
+
+## Sampled reader trial
+
+Set server-only `SCOREARC_DATA_SOURCE=compare` and `SCOREARC_READER_ORIGIN` to opt in. `SCOREARC_READER_COMPARE_PERCENT` accepts an integer from 0 through 100 and defaults to 10. At zero the frontend returns its ordinary ESPN store. With comparison disabled, no comparison logs or reader calls are generated.
+
+The sampling unit is a logical operation, including its joined reads. With the default, about 90% use ESPN only. Each sampled read starts both sources in parallel using independent request budgets. The reader gets up to five seconds and the sampled operation up to 25 seconds total. The same method-specific semantic comparator used by the offline evaluator checks IDs, scores, cards, coverage and other fields. Unproven equality selects ESPN. Differences can reflect feed timing, a crest URL or more complete reader data. The mismatch rate measures disagreement with ESPN. It does not establish which source is factually wrong.
+
+One disagreement or reader error returns the full logical operation from ESPN. Reassembly reuses the original ESPN promises for the same method, arguments and scope. An ESPN error makes the comparison inconclusive and preserves the ESPN error path. A sampled operation with an observed dependency failure cannot promote the reader. News remains ESPN-only.
+
+### Telemetry
+
+Server runtime logs emit JSON events named `scorearc_reader_comparison`. Sampled read, operation and upstream-error records share a random `sampleId`. Read records carry the logical endpoint, competition, season, outcomes, source timings, bounded schema differences, error reasons and available HTTP status codes. Upstream failures identify the source and route family, such as `reader/identities/http/429`. Events omit request URLs, query parameters, participant IDs, raw bodies and provider error text.
+
+Run the report against a local log file or pipe JSON runtime logs to stdin:
+
+```sh
+npx tsx scripts/reader-comparison-report.ts /path/to/preview.log
+```
+
+The report gives the observed traffic split, operation decisions and sources served, mean operation latency, overall and per-endpoint counts and rates, repeated difference paths and upstream error codes. Disagreement uses `mismatched / (matched + mismatched)`; reader failures and inconclusive results use all sampled reads. Zero denominators yield `null`. HTTP errors from both dependencies are retained even when ESPN's failure makes the comparison inconclusive. Control reads record surfaced ESPN errors. Cached reads may make zero upstream HTTP requests. The report represents the supplied log window; use complete runtime logs when calculating rollout rates.
 
 ## Identity and source operations
 
