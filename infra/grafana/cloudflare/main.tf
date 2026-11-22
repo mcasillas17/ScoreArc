@@ -30,6 +30,13 @@ locals {
   ingest  = "telemetry.scorearc.futbol"
 }
 
+resource "cloudflare_zero_trust_access_policy" "operators" {
+  account_id = var.account_id
+  name       = "ScoreArc operators"
+  decision   = "allow"
+  include    = [for email in sort(tolist(var.operator_emails)) : { email = { email = email } }]
+}
+
 resource "cloudflare_zero_trust_access_application" "grafana" {
   account_id       = var.account_id
   name             = "ScoreArc operations"
@@ -37,10 +44,8 @@ resource "cloudflare_zero_trust_access_application" "grafana" {
   domain           = local.grafana
   session_duration = "8h"
   policies = [{
-    name       = "ScoreArc operators"
-    decision   = "allow"
+    id         = cloudflare_zero_trust_access_policy.operators.id
     precedence = 1
-    include    = [for email in sort(tolist(var.operator_emails)) : { email = { email = email } }]
   }]
 }
 

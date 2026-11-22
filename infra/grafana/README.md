@@ -28,7 +28,7 @@ From `infra/grafana`, create app `scorearc-observability` in the same Fly organi
 
 ## Cloudflare Access
 
-The files under [cloudflare](cloudflare/main.tf) manage a self-hosted Access application, an explicit email allowlist, a named tunnel and two proxied DNS records. Complete Zero Trust onboarding and enable an email-capable login method (one-time PIN or an existing identity provider). Supply the account and zone IDs, the exact Zero Trust team name, and the operator email set in a private tfvars file. Supply a scoped Cloudflare API token through `CLOUDFLARE_API_TOKEN` with Access application/policy, Tunnel and zone DNS edit permissions. Use the following from a protected deployment copy of the cloudflare directory.
+The files under [cloudflare](cloudflare/main.tf) manage a self-hosted Access application, an explicit email allowlist, a named tunnel and two proxied DNS records. Complete Zero Trust onboarding and use an identity provider that verifies the operator email. The production app uses Cloudflare account sign-in. Supply the account and zone IDs, the exact Zero Trust team name, and the operator email set in a private tfvars file. Supply a scoped Cloudflare API token through `CLOUDFLARE_API_TOKEN` with Access application/policy, Tunnel and zone DNS edit permissions. Use the following from a protected deployment copy of the cloudflare directory.
 
 ```sh
 umask 077
@@ -36,6 +36,8 @@ tofu init
 tofu plan -out=operations.tfplan
 tofu apply operations.tfplan
 ```
+
+For an existing deployment, import any resources originally created in the Cloudflare dashboard into the deployment state before applying. Import the reusable policy (`cloudflare_zero_trust_access_policy.operators`, `<account_id>/<policy_id>`), the application (`cloudflare_zero_trust_access_application.grafana`, `accounts/<account_id>/<app_id>`) and each `cloudflare_dns_record.operations["<hostname>"]` (`<zone_id>/<record_id>`). Use the provider's read/write token to refresh and review the resulting plan.
 
 Review the proposed records against existing DNS and Access applications. Keep state, plans and operator addresses outside version control. For Fly, set the connector token as the `TUNNEL_TOKEN` secret on `scorearc-observability`. Its entrypoint enables Grafana proxy authentication only when the connector starts. For a Compose host, explicitly set `fly_origin = false` in the private tfvars and put the connector token in the origin's `.env`. From the Compose origin directory run:
 
