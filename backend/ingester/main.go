@@ -16,6 +16,7 @@ import (
 	"github.com/mcasillas17/scorearc-backend/migrations"
 	"github.com/mcasillas17/scorearc-backend/shared/assets"
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
+	"github.com/mcasillas17/scorearc-backend/shared/httphealth"
 	"github.com/mcasillas17/scorearc-backend/shared/source"
 	"github.com/mcasillas17/scorearc-backend/shared/store"
 )
@@ -111,11 +112,13 @@ func run() int {
 		return 1
 	}
 
+	httpLog := httphealth.Logger(log, "ingester")
 	var mirror crestMirror
 	if configured, ok, err := assets.FromEnv(); err != nil {
 		log.Error("configure R2 mirror", "err", err)
 		return 1
 	} else if ok {
+		configured.HTTPLog = httpLog
 		mirror = configured
 	} else {
 		log.Warn("R2 mirror disabled; incomplete R2 configuration")
@@ -136,7 +139,7 @@ func run() int {
 	worker := &runner{
 		registry:          registry,
 		competitions:      registry.Active("scores"),
-		source:            source.NewESPN(espn.New()),
+		source:            source.NewESPN(espn.NewWithOptions(espn.Options{HTTPLog: httpLog})),
 		repo:              repo,
 		mirror:            mirror,
 		archive:           archive,

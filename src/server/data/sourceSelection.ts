@@ -1,4 +1,4 @@
-import { bindDataReads, compareOperation, type ComparisonOptions } from './readerComparison';
+import { bindDataReads, compareOperation, comparisonNews, type ComparisonOptions } from './readerComparison';
 import type { DataStore } from './store';
 import { abortable } from './scoreboardWindow';
 import { createRequestBudget, ReaderFailure, type ReaderFailureReason, type RequestBudget } from './readerTransport';
@@ -65,7 +65,8 @@ export function createSelectedDataStore(deps: SelectionDependencies): DataStore 
       attempt.abort(); total.abort();
     }
   };
-  const store = bindDataReads((_method, _scope, _args, read, signal) => run(read, signal), deps.espn.getNews);
+  const store = bindDataReads((_method, _scope, _args, read, signal) => run(read, signal),
+    deps.source === 'compare' ? comparisonNews(deps) : deps.espn.getNews);
   operations.set(store, run);
   return store;
 }

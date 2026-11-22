@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,6 +21,7 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 
 	"github.com/mcasillas17/scorearc-backend/shared/cdnurl"
+	"github.com/mcasillas17/scorearc-backend/shared/httphealth"
 )
 
 const (
@@ -88,6 +90,7 @@ type Mirror struct {
 	bucket  string
 	baseURL string
 	http    httpDoer
+	HTTPLog *slog.Logger
 }
 
 func FromEnv() (*Mirror, bool, error) {
@@ -158,46 +161,9 @@ func (m *Mirror) Mirror(ctx context.Context, kind, id, sourceURL string) (string
 	if err := validateAssetURL(parsedSource); err != nil {
 		return "", err
 	}
-	downloadCtx, cancelDownload := context.WithTimeout(ctx, assetOperationTimeout)
-	defer cancelDownload()
-	request, err := http.NewRequestWithContext(downloadCtx, http.MethodGet, parsedSource.String(), nil)
+	body, contentType, err := m.download(ctx, parsedSource)
 	if err != nil {
 		return "", err
-	}
-	response, err := m.http.Do(request)
-	if err != nil {
-		return "", fmt.Errorf("download asset: %w", err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		if response.StatusCode >= 400 && response.StatusCode < 500 &&
-			response.StatusCode != http.StatusRequestTimeout &&
-			response.StatusCode != http.StatusTooEarly &&
-			response.StatusCode != http.StatusTooManyRequests {
-			return "", fmt.Errorf(
-				"%w: download asset: status %d",
-				ErrAssetRejected,
-				response.StatusCode,
-			)
-		}
-		return "", fmt.Errorf("download asset: status %d", response.StatusCode)
-	}
-	contentType := strings.ToLower(strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0]))
-	switch contentType {
-	case "image/png", "image/jpeg", "image/webp", "image/gif":
-	default:
-		return "", fmt.Errorf(
-			"%w: download asset: unsupported content type %q",
-			ErrAssetRejected,
-			contentType,
-		)
-	}
-	body, err := io.ReadAll(io.LimitReader(response.Body, maxAsset+1))
-	if err != nil {
-		return "", fmt.Errorf("read asset: %w", err)
-	}
-	if len(body) > maxAsset {
-		return "", fmt.Errorf("%w: download asset exceeds %d bytes", ErrAssetRejected, maxAsset)
 	}
 
 	putCtx, cancelPut := context.WithTimeout(ctx, assetOperationTimeout)
@@ -214,6 +180,54 @@ func (m *Mirror) Mirror(ctx context.Context, kind, id, sourceURL string) (string
 	}
 
 	return cdnURL, nil
+}
+
+func (m *Mirror) download(ctx context.Context, parsedSource *url.URL) (body []byte, contentType string, resultErr error) {
+	downloadCtx, cancelDownload := context.WithTimeout(ctx, assetOperationTimeout)
+	defer cancelDownload()
+	request, err := http.NewRequestWithContext(downloadCtx, http.MethodGet, parsedSource.String(), nil)
+	if err != nil {
+		return nil, "", err
+	}
+	response, observation, err := httphealth.Do(m.http, request, m.HTTPLog, "crest", 1)
+	size := -1
+	defer func() { observation.Finish(size, resultErr) }()
+	if err != nil {
+		return nil, "", fmt.Errorf("download asset: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		if response.StatusCode >= 400 && response.StatusCode < 500 &&
+			response.StatusCode != http.StatusRequestTimeout &&
+			response.StatusCode != http.StatusTooEarly &&
+			response.StatusCode != http.StatusTooManyRequests {
+			return nil, "", fmt.Errorf(
+				"%w: download asset: status %d",
+				ErrAssetRejected,
+				response.StatusCode,
+			)
+		}
+		return nil, "", fmt.Errorf("download asset: status %d", response.StatusCode)
+	}
+	contentType = strings.ToLower(strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0]))
+	switch contentType {
+	case "image/png", "image/jpeg", "image/webp", "image/gif":
+	default:
+		return nil, "", fmt.Errorf(
+			"%w: download asset: unsupported content type %q",
+			ErrAssetRejected,
+			contentType,
+		)
+	}
+	body, err = io.ReadAll(io.LimitReader(response.Body, maxAsset+1))
+	size = len(body)
+	if err != nil {
+		return nil, "", fmt.Errorf("read asset: %w", err)
+	}
+	if len(body) > maxAsset {
+		return nil, "", fmt.Errorf("%w: download asset exceeds %d bytes", ErrAssetRejected, maxAsset)
+	}
+	return body, contentType, nil
 }
 
 func validateAssetURL(candidate *url.URL) error {

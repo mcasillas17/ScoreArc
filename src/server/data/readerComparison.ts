@@ -1,3 +1,4 @@
+import { correlationFields, healthContext, healthMetadata, withHealthContext, type DependencyFault, type FrontendHttpFields } from '@/lib/telemetry/http';
 import type { CompetitionSeason } from './competitions';
 import type { DataStore } from './store';
 import type { SourceContext } from './sourceSelection';
@@ -12,11 +13,11 @@ type Source = 'reader' | 'espn';
 type Decision = 'control' | 'agreement' | 'mismatch' | 'reader_error' | 'inconclusive';
 export type ComparisonEvent = (
   | { type: 'operation'; cohort: Cohort; served: Source | 'error' | 'cancelled'; decision: Decision; durationMs: number }
-  | { type: 'read'; endpoint: Endpoint; outcome: 'control' | 'control_error' | 'match' | 'mismatch' | 'reader_error' | 'inconclusive';
+  | { type: 'read'; endpoint: keyof DataStore; outcome: 'control' | 'control_error' | 'match' | 'mismatch' | 'reader_error' | 'inconclusive';
       competition: string; season: string; espnMs?: number; readerMs?: number; readerError?: string; readerStatus?: number;
       espnError?: string; espnStatus?: number; differences?: Difference[]; truncated?: boolean }
   | { type: 'upstream_error'; source: Source; endpoint: string; code: string; status?: number }
-) & { sampleId?: string; policy?: string };
+) & ReturnType<typeof correlationFields> & Partial<ReturnType<typeof healthMetadata>> & { policy?: string };
 type Emit = (event: ComparisonEvent) => void;
 type Read = <T>(method: Endpoint, rc: CompetitionSeason, args: (string | number | undefined)[],
   load: (source: DataStore) => Promise<T>, signal?: AbortSignal) => Promise<T>;
@@ -40,7 +41,7 @@ export function bindDataReads(read: Read, news: DataStore['getNews']): DataStore
   };
 }
 
-function fault(error: unknown): {code: string; status?: number} {
+export function comparisonFault(error: unknown): DependencyFault {
   if (error instanceof EspnEditionError) return { code: error.issue };
   if (error instanceof ReaderFailure) return { code: error.reason, status: error.status };
   if (error instanceof Error && 'status' in error && typeof error.status === 'number') return { code: 'http', status: error.status };
@@ -63,36 +64,58 @@ export interface ComparisonOptions {
   comparePercent?: number;
   sample?: () => number;
   onComparison?: Emit;
+  onHttp?: (event: FrontendHttpFields) => void;
 }
 
-function comparisonOutcome(espnFailed: boolean, readerFailed: boolean, dependencyFailed: boolean,
+function comparisonOutcome(espnFailed: boolean, readerFailed: boolean,
   comparison: ReturnType<typeof compareSemantic> | undefined) {
   if (espnFailed) return 'inconclusive';
   if (readerFailed) return 'reader_error';
-  if (dependencyFailed || !comparison) return 'inconclusive';
+  if (!comparison) return 'inconclusive';
   if (comparison.unequal) return 'mismatch';
   return comparison.truncated ? 'inconclusive' : 'match';
 }
 
-export async function compareOperation<T>(options: ComparisonOptions, callback: (source: DataStore) => Promise<T>,
-  markReader: (source: DataStore) => void, caller?: AbortSignal, maxConcurrent?: number): Promise<T> {
+function emitComparison(options: ComparisonOptions, event: ComparisonEvent) {
+  options.onComparison?.({ ...healthMetadata(), policy: NORMALIZATION_VERSION, ...correlationFields(), ...event });
+}
+
+function controlRead<T>(options: ComparisonOptions, endpoint: keyof DataStore, rc: CompetitionSeason, load: (store: DataStore) => Promise<T>) {
+  let partial: DependencyFault | undefined;
+  return withHealthContext({ readId: crypto.randomUUID(), logicalEndpoint: endpoint,
+    onDependencyFailure: (_source, problem) => { partial ??= problem; } }, async () => {
+    const result = await observe(() => load(options.espn));
+    const problem = result.ok ? partial : comparisonFault(result.error);
+    emitComparison(options, { type: 'read', endpoint, competition: rc.competition.id, season: rc.season.id,
+      outcome: result.ok ? 'control' : 'control_error', espnMs: result.ms, espnError: problem?.code, espnStatus: problem?.status });
+    if (!result.ok) throw result.error;
+    return result.value;
+  });
+}
+
+export function comparisonNews(options: ComparisonOptions): DataStore['getNews'] {
+  return (rc, attributedOnly) => withHealthContext({
+    cohort: 'news', operationId: crypto.randomUUID(), sampleId: undefined, onHttp: options.onHttp,
+  }, () => controlRead(options, 'getNews', rc, source => source.getNews(rc, attributedOnly)));
+}
+
+export function compareOperation<T>(options: ComparisonOptions, callback: (source: DataStore) => Promise<T>,
+  markReader: (source: DataStore) => void, caller?: AbortSignal, maxConcurrent?: number) {
   caller?.throwIfAborted();
-  const started = Date.now();
   const cohort = (options.sample ?? Math.random)() * 100 < (options.comparePercent ?? 10) ? 'sample' : 'control';
-  const sampleId = cohort === 'sample' ? crypto.randomUUID() : undefined;
-  const emit: Emit = event => options.onComparison?.({ ...event, sampleId, policy: NORMALIZATION_VERSION });
+  const operationId = crypto.randomUUID();
+  return withHealthContext({ operationId, cohort, sampleId: cohort === 'sample' ? operationId : undefined, onHttp: options.onHttp },
+    () => runComparison(options, cohort, callback, markReader, caller, maxConcurrent));
+}
+
+async function runComparison<T>(options: ComparisonOptions, cohort: Cohort, callback: (source: DataStore) => Promise<T>,
+  markReader: (source: DataStore) => void, caller?: AbortSignal, maxConcurrent?: number): Promise<T> {
+  const started = Date.now();
   let served: Source | 'error' = 'error';
   let decision: Decision = cohort === 'control' ? 'control' : 'inconclusive';
   try {
     if (cohort === 'control') {
-      const source = bindDataReads(async (endpoint, rc, _args, load) => {
-        const result = await observe(() => load(options.espn));
-        const problem = result.ok ? undefined : fault(result.error);
-        emit({ type: 'read', endpoint, competition: rc.competition.id, season: rc.season.id, outcome: result.ok ? 'control' : 'control_error',
-          espnMs: result.ms, espnError: problem?.code, espnStatus: problem?.status });
-        if (!result.ok) throw result.error;
-        return result.value;
-      }, options.espn.getNews);
+      const source = bindDataReads((endpoint, rc, _args, load) => controlRead(options, endpoint, rc, load), comparisonNews(options));
       const pending = callback(source);
       const result = await (caller ? abortable(pending, caller) : pending);
       served = 'espn';
@@ -108,53 +131,66 @@ export async function compareOperation<T>(options: ComparisonOptions, callback: 
     try {
       let upstreamFailures = 0;
       function budget(source: Source, signal: AbortSignal) {
-        return createRequestBudget({ signal, fetch: options.fetch, maxConcurrent, onFailure: (endpoint, error) => {
+        return createRequestBudget({ signal, fetch: options.fetch, dependency: source, maxConcurrent, onFailure: error => {
           if (signal.aborted && !(signal.reason instanceof ReaderFailure)) return;
-          const problem = fault(error);
           upstreamFailures++;
-          emit({ type: 'upstream_error', source, endpoint, ...problem });
+          healthContext().onDependencyFailure?.(source, comparisonFault(error));
         } });
       }
       const espn = options.fallback?.({ signal, budget: budget('espn', signal) }) ?? options.espn;
       const reader = options.reader({ signal: readerSignal, budget: budget('reader', readerSignal) });
       const answers = new Map<string, Promise<unknown>>();
-      const baseline = bindDataReads(<V>(endpoint: Endpoint, rc: CompetitionSeason, args: (string | number | undefined)[],
+      const partialAnswers = new Map<string, DependencyFault>();
+      const baseline = bindDataReads(async <V>(endpoint: Endpoint, rc: CompetitionSeason, args: (string | number | undefined)[],
         load: (source: DataStore) => Promise<V>, requestSignal?: AbortSignal) => {
         signal.throwIfAborted();
         requestSignal?.throwIfAborted();
         const key = JSON.stringify([endpoint, rc.competition.id, rc.season.id, ...args]);
         let pending = answers.get(key);
-        if (!pending) { pending = load(espn); answers.set(key, pending); }
-        // Each key includes the typed method and all its selection arguments.
-        return pending as Promise<V>;
+        const notify = healthContext().onDependencyFailure;
+        if (!pending) {
+          pending = withHealthContext({ logicalEndpoint: endpoint, readId: healthContext().readId ?? crypto.randomUUID(),
+            onDependencyFailure: (_source, problem) => { if (!partialAnswers.has(key)) partialAnswers.set(key, problem); } }, () => load(espn));
+          answers.set(key, pending);
+        }
+        try {
+          // Each key includes the typed method and all its selection arguments.
+          return await pending as V;
+        } finally {
+          const problem = partialAnswers.get(key);
+          if (problem) notify?.('espn', problem);
+        }
       }, espn.getNews);
       let agreed = true;
       let reads = 0;
       let finished = 0;
-      const paired = bindDataReads(async (endpoint, rc, _args, load) => {
-        reads++;
-        const before = upstreamFailures;
-        const [reference, candidate] = await Promise.all([
-          observe(() => abortable(load(baseline), signal)),
-          observe(() => { readerSignal.throwIfAborted(); return abortable(load(reader), readerSignal); }),
-        ]);
-        finished++;
-        caller?.throwIfAborted();
-        const espnFault = reference.ok ? undefined : fault(reference.error);
-        const readerFault = candidate.ok ? undefined : fault(candidate.error);
-        const comparison = reference.ok && candidate.ok ? compareSemantic(endpoint, candidate.value, reference.value) : undefined;
-        const outcome = comparisonOutcome(!reference.ok, !candidate.ok, upstreamFailures !== before, comparison);
-        emit({ type: 'read', endpoint, competition: rc.competition.id, season: rc.season.id, outcome,
-          espnMs: reference.ms, readerMs: candidate.ms, espnError: espnFault?.code, espnStatus: espnFault?.status,
-          readerError: readerFault?.code, readerStatus: readerFault?.status,
-          differences: comparison?.differences.length ? comparison.differences.slice(0, 8) : undefined, truncated: (comparison && (comparison.truncated || comparison.differences.length > 8)) || undefined });
-        if (outcome !== 'match') {
-          if (agreed || outcome === 'inconclusive') decision = outcome;
-          agreed = false;
-        }
-        if (!reference.ok) throw reference.error;
-        return candidate.ok && outcome === 'match' ? candidate.value : reference.value;
-      }, espn.getNews);
+      const paired = bindDataReads((endpoint, rc, _args, load) => {
+        const partial: Partial<Record<Source, DependencyFault>> = {};
+        return withHealthContext({ readId: crypto.randomUUID(), logicalEndpoint: endpoint,
+          onDependencyFailure: (source, problem) => { partial[source] ??= problem; } }, async () => {
+          reads++;
+          const [reference, candidate] = await Promise.all([
+            observe(() => abortable(load(baseline), signal)),
+            observe(() => { readerSignal.throwIfAborted(); return abortable(load(reader), readerSignal); }),
+          ]);
+          finished++;
+          caller?.throwIfAborted();
+          const espnFault = reference.ok ? partial.espn : comparisonFault(reference.error);
+          const readerFault = candidate.ok ? partial.reader : comparisonFault(candidate.error);
+          const comparison = reference.ok && candidate.ok && !espnFault && !readerFault ? compareSemantic(endpoint, candidate.value, reference.value) : undefined;
+          const outcome = comparisonOutcome(!!espnFault, !candidate.ok, comparison);
+          emitComparison(options, { type: 'read', endpoint, competition: rc.competition.id, season: rc.season.id, outcome,
+            espnMs: reference.ms, readerMs: candidate.ms, espnError: espnFault?.code, espnStatus: espnFault?.status,
+            readerError: readerFault?.code, readerStatus: readerFault?.status,
+            differences: comparison?.differences.length ? comparison.differences.slice(0, 8) : undefined, truncated: (comparison && (comparison.truncated || comparison.differences.length > 8)) || undefined });
+          if (outcome !== 'match') {
+            if (agreed || outcome === 'inconclusive') decision = outcome;
+            agreed = false;
+          }
+          if (!reference.ok) throw reference.error;
+          return candidate.ok && outcome === 'match' ? candidate.value : reference.value;
+        });
+      }, comparisonNews(options));
       markReader(paired);
       const candidate = await observe(() => abortable(callback(paired), signal));
       signal.throwIfAborted();
@@ -172,6 +208,6 @@ export async function compareOperation<T>(options: ComparisonOptions, callback: 
       attempt.abort(); total.abort();
     }
   } finally {
-    emit({ type: 'operation', cohort, decision, served: caller?.aborted ? 'cancelled' : served, durationMs: Date.now() - started });
+    emitComparison(options, { type: 'operation', cohort, decision, served: caller?.aborted ? 'cancelled' : served, durationMs: Date.now() - started });
   }
 }

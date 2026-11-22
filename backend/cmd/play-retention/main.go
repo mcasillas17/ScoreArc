@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
+	"github.com/mcasillas17/scorearc-backend/shared/httphealth"
 )
 
 // touchTier is the vocabulary ESPN prunes. Verified 2026-08-15: event 740722
@@ -45,7 +46,7 @@ func main() {
 	months := flag.Int("months", 12, "how far back to sample")
 	flag.Parse()
 
-	client := espn.New()
+	client := espn.NewWithOptions(espn.Options{HTTPLog: httphealth.CommandLogger("play-retention")})
 	ctx := context.Background()
 	now := time.Now().UTC()
 

@@ -1,3 +1,6 @@
+import { fetchObservedRedirects } from '@/lib/telemetry/redirects';
+import { observeApiRoute } from '@/lib/telemetry/inbound';
+import { comparisonHealthEnabled, emitHttpHealth } from '@/lib/telemetry/http';
 import { ImageResponse } from 'next/og';
 import type { NextRequest } from 'next/server';
 import { flagUrl } from '@/lib/flags';
@@ -18,19 +21,48 @@ export const runtime = 'edge';
 // WHOLE render when any <img> URL fails to fetch, which is why every image
 // below goes through liveImage() first.
 
+const assetHosts = new Map([
+  ['a.espncdn.com', 'espn_cdn'], ['cdn.scorearc.futbol', 'scorearc_cdn'],
+  ['r2.thesportsdb.com', 'thesportsdb_cdn'], ['flagcdn.com', 'flagcdn'],
+]);
+
 /**
  * Confirm an image URL actually answers before satori embeds it: a rotted
  * crest in a years-old share link must degrade to a card without the crest,
  * not to an empty reply. The local brand asset is embedded for the renderer.
  */
-async function liveImage(url: string | null, inline = false): Promise<string | null> {
+async function liveImage(url: string | null, endpoint: 'og-crest' | 'og-flag' | 'og-logo' | 'og-mark'): Promise<string | null> {
   if (!url) return null;
+  const inline = endpoint === 'og-mark';
+  const method = inline ? 'GET' : 'HEAD';
+  const measuring = comparisonHealthEnabled();
+  let started = measuring ? performance.now() : 0;
+  let measuredUrl: string | undefined = measuring ? url : undefined;
+  const timeout = AbortSignal.timeout(1500);
+  let status: number | null = null;
+  let outcome = 'network';
+  let bytes = 0;
+  function recordHop(status: number | null, outcome: string, bytes: number) {
+    if (!measuredUrl) return;
+    const host = URL.canParse(measuredUrl) ? new URL(measuredUrl).hostname : '';
+    emitHttpHealth({ direction: 'outbound', endpoint, dependency: inline ? 'site_asset' : assetHosts.get(host) ?? 'other_asset',
+      method, status, outcome, durationMs: Math.max(0, Math.round(performance.now() - started)), bytes });
+  }
   try {
     // Timeboxed: a slow-but-alive CDN must degrade like a dead one, or it
     // stalls the whole card past a crawler's unfurl patience.
-    const res = await fetch(url, { method: inline ? 'GET' : 'HEAD', redirect: inline ? 'error' : 'follow', signal: AbortSignal.timeout(1500) });
-    if (!res.ok) return null;
-    if (!inline) return url;
+    const res = measuring
+      ? await fetchObservedRedirects(url, address => fetch(address, { method, redirect: 'manual', signal: timeout }),
+        inline ? undefined : target => target.protocol === 'https:' && !target.port && assetHosts.has(target.hostname), (redirect, next) => {
+          recordHop(redirect.status, next ? 'success' : 'redirect', 0);
+          measuredUrl = next;
+          started = performance.now();
+        })
+      : await fetch(url, { method, redirect: inline ? 'error' : 'follow', signal: timeout });
+    status = res.status;
+    if (!res.ok) { outcome = 'http_error'; return null; }
+    if (!inline) { outcome = 'success'; return url; }
+    outcome = 'body';
     if (res.headers.get('content-type')?.split(';')[0] !== 'image/png' || !res.body) return null;
     // Our 25 KiB brand PNG stays local; Satori rejects loopback URLs in development.
     const reader = res.body.getReader();
@@ -39,7 +71,8 @@ async function liveImage(url: string | null, inline = false): Promise<string | n
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        if (binary.length + value.length > 65536) {
+        bytes += value.length;
+        if (bytes > 65536) {
           await reader.cancel();
           return null;
         }
@@ -48,9 +81,15 @@ async function liveImage(url: string | null, inline = false): Promise<string | n
     } finally {
       reader.releaseLock();
     }
-    return binary ? `data:image/png;base64,${btoa(binary)}` : null;
+    if (!binary) return null;
+    const result = `data:image/png;base64,${btoa(binary)}`;
+    outcome = 'success';
+    return result;
   } catch {
+    if (timeout.aborted) outcome = 'timeout';
     return null;
+  } finally {
+    recordHop(status, outcome, bytes);
   }
 }
 
@@ -117,7 +156,7 @@ function BigNameCard({
  * predicted champion — a national flag only where the competition is played
  * by nations, else the ?crest= (host-checked) club badge.
  */
-export async function GET(req: NextRequest) {
+export const GET = observeApiRoute('og', async (req: NextRequest) => {
   const { searchParams } = req.nextUrl;
   const requestedLocale = searchParams.get('locale');
   const locale = isLocale(requestedLocale) ? requestedLocale : DEFAULT_LOCALE;
@@ -145,10 +184,10 @@ export async function GET(req: NextRequest) {
   // mark would turn every card on that deployment into an aborted render.
   // The 1.5s timeout bounds what the self-round-trip can cost.
   const [crest, flag, cardLogo, mark] = await Promise.all([
-    liveImage(generic ? null : safeCrest(searchParams.get('crest'))),
-    liveImage(champ && flagStyle ? flagUrl(champ) : null),
-    liveImage(competition?.logo ?? null),
-    liveImage(generic ? null : `${req.nextUrl.origin}/brand/scorearc-mark-512.png`, true),
+    liveImage(generic ? null : safeCrest(searchParams.get('crest')), 'og-crest'),
+    liveImage(champ && flagStyle ? flagUrl(champ) : null, 'og-flag'),
+    liveImage(competition?.logo ?? null, 'og-logo'),
+    liveImage(generic ? null : `${req.nextUrl.origin}/brand/scorearc-mark-512.png`, 'og-mark'),
   ]);
 
   return new ImageResponse(
@@ -244,4 +283,4 @@ export async function GET(req: NextRequest) {
     ),
     { width: 1200, height: 630 }
   );
-}
+});

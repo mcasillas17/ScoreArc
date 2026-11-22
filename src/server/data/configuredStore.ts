@@ -1,3 +1,4 @@
+import { emitHttpHealth } from '@/lib/telemetry/http';
 import type { ComparisonEvent } from './readerComparison';
 import type { DataStore } from './store';
 import { TtlCache } from './cache';
@@ -24,7 +25,7 @@ export function configuredDataStore(options: {
   const origin = readerOrigin(options.env.SCOREARC_READER_ORIGIN, options.env.NODE_ENV === 'production');
   const cache = new TtlCache<ReaderResponse>(options.now);
   return createSelectedDataStore({
-    source, comparePercent: Number(percent), espn: options.espn, fallback: options.fallback, fetch: options.fetch, onFallback: options.onFallback, onComparison: options.onComparison,
+    source, comparePercent: Number(percent), espn: options.espn, fallback: options.fallback, fetch: options.fetch, onFallback: options.onFallback, onComparison: options.onComparison, onHttp: emitHttpHealth,
     reader: ({ signal, budget }) => createReaderDataStore({
       read: createReaderTransport(origin, budget, signal), cache, cacheNamespace: origin,
       now: options.now, signal, news: options.espn.getNews,

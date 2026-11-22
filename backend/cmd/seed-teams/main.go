@@ -47,6 +47,7 @@ import (
 
 	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
+	"github.com/mcasillas17/scorearc-backend/shared/httphealth"
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 	"github.com/mcasillas17/scorearc-backend/shared/source"
 )
@@ -349,7 +350,7 @@ func run(bootstrap bool, edition string) error {
 	if err != nil {
 		return err
 	}
-	src := source.NewESPN(espn.New())
+	src := source.NewESPN(espn.NewWithOptions(espn.Options{HTTPLog: httphealth.CommandLogger("seed-teams")}))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 

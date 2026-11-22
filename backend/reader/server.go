@@ -78,6 +78,7 @@ type App struct {
 	store    readerStore
 	registry *config.Registry
 	logger   *slog.Logger
+	httpLog  *slog.Logger
 	news     newsReader
 	limiter  *ipRateLimiter
 	health   *healthChecker
@@ -87,8 +88,12 @@ type App struct {
 func (a *App) router() http.Handler {
 	router := chi.NewRouter()
 	router.Use(a.requestID)
-	router.Use(a.recoverJSON)
-	router.Use(a.requestLogging)
+	if a.httpLog == nil {
+		router.Use(a.recoverJSON, a.requestLogging)
+	} else {
+		// Observe the 500 written by recovery and disconnects rethrown by it.
+		router.Use(a.requestLogging, a.recoverJSON)
+	}
 	router.Use(corsHeaders)
 	router.Use(a.securityHeaders)
 	router.Use(a.rateLimit)
@@ -166,6 +171,10 @@ func (a *App) recoverJSON(next http.Handler) http.Handler {
 			if recovered := recover(); recovered != nil {
 				if recovered == http.ErrAbortHandler {
 					panic(recovered)
+				}
+				if recorder, ok := writer.(*statusRecorder); ok {
+					// Recovery can write a 500 only if the handler has not committed a response.
+					recorder.panicked = true
 				}
 				id, _ := request.Context().Value(requestIDKey).(string)
 				route := request.URL.Path

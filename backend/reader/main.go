@@ -18,6 +18,7 @@ import (
 	"github.com/mcasillas17/scorearc-backend/config"
 	"github.com/mcasillas17/scorearc-backend/migrations"
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
+	"github.com/mcasillas17/scorearc-backend/shared/httphealth"
 )
 
 func main() {
@@ -82,12 +83,14 @@ func run(logger *slog.Logger) error {
 	processCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	httpLog := httphealth.Logger(logger, "reader")
 	store := NewStore(pool)
 	app := &App{
 		store:    store,
 		registry: registry,
 		logger:   logger,
-		news:     newNewsService(processCtx, espn.New(), defaultNewsTTL),
+		httpLog:  httpLog,
+		news:     newNewsService(processCtx, espn.NewWithOptions(espn.Options{HTTPLog: httpLog}), defaultNewsTTL),
 		limiter:  newIPRateLimiter(clientRequestsPerSecond, clientBurst),
 		health:   newHealthChecker(processCtx, store.Ping),
 	}
