@@ -603,6 +603,6 @@ export const dataStore: DataStore = configuredDataStore({
     propagateUnavailable: true,
     cache: espnCache,
     fetchJson: async (url, options) => (await budget.json(url, options
-      ? AbortSignal.any([signal, options.signal]) : signal)).body,
+      ? AbortSignal.any([signal, options.signal]) : signal, 'espn')).body,
   }),
 });

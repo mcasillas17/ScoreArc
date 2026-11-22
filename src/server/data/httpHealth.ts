@@ -1,4 +1,4 @@
-import { correlationFields, healthContext } from '@/lib/telemetry/http';
+import { correlationFields, emitHttpHealth, healthContext } from '@/lib/telemetry/http';
 
 type Dependency = 'reader' | 'espn';
 
@@ -23,7 +23,7 @@ export function buildOutboundEndpoint(dependency: Dependency, address: string): 
 }
 
 export function startOutboundHttp(dependency: Dependency, url: string, signal?: AbortSignal) {
-  const { onHttp } = healthContext();
+  const onHttp = healthContext().onHttp ?? (process.env.SCOREARC_HTTP_TELEMETRY === '1' ? emitHttpHealth : undefined);
   if (!onHttp) return;
   const fields = correlationFields();
   const started = performance.now();

@@ -1,0 +1,17 @@
+app = "scorearc-telemetry-shipper"
+primary_region = "iad"
+
+[build]
+  image = "timberio/vector:0.62.0-debian"
+
+[[files]]
+  guest_path = "/etc/vector/vector.yaml"
+  local_path = "shipper.yaml"
+
+[[files]]
+  guest_path = "/etc/vector/shipper-credentials.json"
+  secret_name = "SHIPPER_CREDENTIALS"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

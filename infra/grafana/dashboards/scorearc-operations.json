@@ -1,0 +1,587 @@
+{
+  "uid": "scorearc-operations",
+  "title": "ScoreArc operations",
+  "tags": [
+    "scorearc"
+  ],
+  "editable": false,
+  "timezone": "utc",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Sampled operations",
+      "description": "Count of observed operations selected for dual reads in the chosen period.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, cohort | __error__=\"\" | type=\"operation\" | cohort=\"sample\" [$__range])) or vector(0)",
+          "queryType": "instant",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Comparable reads",
+      "description": "Reads that returned sufficiently complete results from both providers to establish agreement or disagreement.",
+      "gridPos": {
+        "x": 9,
+        "y": 0,
+        "w": 5,
+        "h": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, outcome | __error__=\"\" | type=\"read\" | outcome=~\"match|mismatch\" [$__range])) or vector(0)",
+          "queryType": "instant",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Disagreement with ESPN",
+      "description": "Mismatched reads divided by matched plus mismatched reads. An empty result means there were no comparable reads.",
+      "gridPos": {
+        "x": 14,
+        "y": 0,
+        "w": 5,
+        "h": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (sum(count_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, outcome | __error__=\"\" | type=\"read\" | outcome=\"mismatch\" [$__range])) or vector(0)) / (sum(count_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, outcome | __error__=\"\" | type=\"read\" | outcome=~\"match|mismatch\" [$__range])) > 0)",
+          "queryType": "instant",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "ESPN fallbacks",
+      "description": "Sampled operations ultimately served by ESPN in the chosen period.",
+      "gridPos": {
+        "x": 19,
+        "y": 0,
+        "w": 5,
+        "h": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, cohort, served | __error__=\"\" | type=\"operation\" | cohort=\"sample\" | served=\"espn\" [$__range])) or vector(0)",
+          "queryType": "instant",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Sampling rate",
+      "description": "Sampled operations as a percentage of sampled plus control operations. News runs outside the experiment.",
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 5,
+        "h": 4
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * (sum(count_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, cohort | __error__=\"\" | type=\"operation\" | cohort=\"sample\" [$__range])) or vector(0)) / (sum(count_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, cohort | __error__=\"\" | type=\"operation\" | cohort=~\"control|sample\" [$__range])) > 0)",
+          "queryType": "instant",
+          "legendFormat": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Sampled read outcomes by endpoint",
+      "description": "Count per interval. An ESPN failure makes the comparison inconclusive. News and control reads do not contribute.",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (endpoint, outcome) (count_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, endpoint, outcome | __error__=\"\" | type=\"read\" | outcome=~\"match|mismatch|reader_error|inconclusive\" [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{endpoint}} · {{outcome}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "interval": "1m"
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Operations by cohort and source served",
+      "description": "Each joined operation counts once. The decision explains why an operation fell back or failed.",
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (cohort, served, decision) (count_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, cohort, served, decision | __error__=\"\" | type=\"operation\" [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{cohort}} · {{served}} · {{decision}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "interval": "1m"
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Sampled read errors by provider",
+      "description": "Logical provider failures per interval with error category and available HTTP status. A read can record evidence from both providers.",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 6
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (endpoint, readerError, readerStatus) (count_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, outcome, endpoint, readerError, readerStatus | __error__=\"\" | type=\"read\" | outcome=~\"reader_error|inconclusive\" | readerError!=\"\" [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "reader · {{endpoint}} · {{readerError}} {{readerStatus}}"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (endpoint, espnError, espnStatus) (count_over_time({job=\"scorearc\",event=\"scorearc_reader_comparison\",service=\"frontend\"} | json type, outcome, endpoint, espnError, espnStatus | __error__=\"\" | type=\"read\" | outcome=~\"reader_error|inconclusive\" | espnError!=\"\" [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "espn · {{endpoint}} · {{espnError}} {{espnStatus}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "interval": "1m"
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Endpoint failure rate",
+      "description": "Failed HTTP attempts divided by completed attempts at each boundary. Cancellations are excluded; HTTP 200 responses with body failures count as failures.",
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * avg_over_time({job=\"scorearc\",event=\"scorearc_http\"} | json direction, dependency, method, endpoint, outcome | outcome!=\"\" | outcome!=\"cancelled\" | label_format failure=`{{ if eq .outcome \"success\" }}0{{ else }}1{{ end }}` | unwrap failure | __error__=\"\" [$__interval]) by (service, direction, dependency, method, endpoint)",
+          "queryType": "range",
+          "legendFormat": "{{service}} {{direction}} · {{dependency}} {{method}} {{endpoint}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "interval": "1m"
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Endpoint errors by status and cause",
+      "description": "Failed attempts per interval with the observed HTTP status, failure type, and application code when available.",
+      "gridPos": {
+        "x": 12,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service, direction, dependency, method, endpoint, status, outcome, appError) (count_over_time({job=\"scorearc\",event=\"scorearc_http\"} | json direction, dependency, method, endpoint, outcome, status, appError | __error__=\"\" | outcome!=\"\" | outcome!=\"success\" | outcome!=\"cancelled\" | label_format status=`{{ if .status }}{{ .status }}{{ else }}no_response{{ end }}` [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{service}} {{direction}} · {{dependency}} {{method}} {{endpoint}} · {{status}} {{outcome}} {{appError}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "interval": "1m"
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Endpoint latency · p95",
+      "description": "95th percentile of recorded request durations at each boundary, including failed and cancelled attempts.",
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "quantile_over_time(0.95, {job=\"scorearc\",event=\"scorearc_http\"} | json direction, dependency, method, endpoint, durationMs | unwrap durationMs | __error__=\"\" [$__interval]) by (service, direction, dependency, method, endpoint)",
+          "queryType": "range",
+          "legendFormat": "{{service}} {{direction}} · {{dependency}} {{method}} {{endpoint}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "interval": "1m"
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Endpoint request volume",
+      "description": "Observed HTTP attempts per interval, including cancellations and retries. Frontend and Go service boundaries are separate series.",
+      "gridPos": {
+        "x": 12,
+        "y": 26,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "scorearc-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service, direction, dependency, method, endpoint, outcome) (count_over_time({job=\"scorearc\",event=\"scorearc_http\"} | json direction, dependency, method, endpoint, outcome | __error__=\"\"  [$__interval]))",
+          "queryType": "range",
+          "legendFormat": "{{service}} {{direction}} · {{dependency}} {{method}} {{endpoint}} · {{outcome}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "interval": "1m"
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Ingester · latest match polls",
+      "description": "Current latest poll per competition and season, across rolling and full polls. This snapshot stays visible when the ingester stops.",
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "scorearc-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "SELECT competition_id AS \"Competition\", season_id AS \"Season\", outcome AS \"Latest result\",\n       attempted_at AS \"Last attempt\", succeeded_at AS \"Last success\", event_count AS \"Matches\"\nFROM public.match_poll_status\nWHERE source = 'espn'\nORDER BY succeeded_at ASC NULLS FIRST, competition_id, season_id"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Ingester · recent runs",
+      "description": "Latest 100 runs starting inside the selected time range. Open runs have no completion time.",
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 16,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "scorearc-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "SELECT started_at AS \"Started\", competition_id AS \"Competition\", kind AS \"Job\",\n       CASE WHEN ok THEN 'ok' WHEN ok IS FALSE THEN 'failed' ELSE 'open' END AS \"Result\",\n       round(extract(epoch FROM finished_at - started_at)::numeric, 2) AS \"Duration (s)\"\nFROM public.ingest_run\nWHERE $__timeFilter(started_at)\nORDER BY started_at DESC\nLIMIT 100"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Ingester · unresolved match recovery",
+      "description": "Current pending or failed recovery records by provider, including how many have reached their next retry time.",
+      "gridPos": {
+        "x": 16,
+        "y": 42,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "scorearc-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "SELECT source AS \"Provider\", last_error AS \"State\", count(*) AS \"Matches\",\n       count(*) FILTER (WHERE retry_at <= now()) AS \"Retry due\",\n       min(last_attempted_at) AS \"Oldest attempt\"\nFROM public.match_sync_status\nWHERE last_error IN ('pending', 'recovery_failed')\nGROUP BY source, last_error\nORDER BY \"Retry due\" DESC, source, last_error"
+        }
+      ]
+    }
+  ]
+}

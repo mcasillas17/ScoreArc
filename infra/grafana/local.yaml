@@ -1,0 +1,8 @@
+# Only local testing publishes host sockets. Production uses the named tunnel.
+services:
+  grafana:
+    ports: ["127.0.0.1:${GRAFANA_LOCAL_PORT:-3432}:3000"]
+  receiver:
+    ports:
+      - "127.0.0.1:${GRAFANA_RECEIVER_LOCAL_PORT:-3433}:8080"
+      - "127.0.0.1:${GRAFANA_FLY_LOCAL_PORT:-3434}:8081"

@@ -1,0 +1,19 @@
+app = "scorearc-observability"
+primary_region = "iad"
+kill_signal = "SIGTERM"
+kill_timeout = "30s"
+
+[build]
+  dockerfile = "Dockerfile"
+
+# Cloudflare Tunnel connects outbound. This Machine has no Fly Proxy services.
+[[mounts]]
+  source = "operations_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "2gb"
+
+[[restart]]
+  policy = "always"

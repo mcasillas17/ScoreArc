@@ -1,0 +1,35 @@
+tests:
+  - name: Project known reader route without IP, request ID or raw path
+    inputs:
+      - insert_at: application_health
+        type: vrl
+        source: |
+          row = {"msg":"request", "route":"/v1/matches/{id}", "path":"/v1/matches/private", "method":"GET", "status":200, "bytes":50, "duration_ms":23, "client_ip":"private", "request_id":"private", "time":"2026-11-22T12:00:00Z"}
+          .message = encode_json({"fly":{"app":{"name":"scorearc-reader"}},"message":encode_json(row)})
+    outputs:
+      - extract_from: application_health
+        conditions:
+          - type: vrl
+            source: |
+              row = parse_json!(string!(.message))
+              assert_eq!(row.endpoint, "/v1/matches/{id}")
+              assert_eq!(row.outcome, "success")
+              assert_eq!(row.durationMs, 23)
+              assert!(!contains(string!(.message), "private"))
+  - name: Bucket unmatched routes and unrecognized methods
+    inputs:
+      - insert_at: application_health
+        type: vrl
+        source: |
+          row = {"msg":"request", "route":"/private", "method":"private", "status":404, "duration_ms":4, "time":"2026-11-22T12:00:00Z"}
+          .message = encode_json({"fly":{"app":{"name":"scorearc-reader"}},"message":encode_json(row)})
+    outputs:
+      - extract_from: application_health
+        conditions:
+          - type: vrl
+            source: |
+              row = parse_json!(string!(.message))
+              assert_eq!(row.endpoint, "unmatched")
+              assert_eq!(row.method, "other")
+              assert_eq!(row.outcome, "http_error")
+              assert!(!contains(string!(.message), "private"))

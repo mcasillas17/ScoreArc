@@ -1,0 +1,82 @@
+data_dir: /var/lib/vector
+secret:
+  tokens: {type: directory, path: /run/secrets, remove_trailing_whitespace: true}
+sources:
+  vercel:
+    type: http_server
+    address: 0.0.0.0:8080
+    path: /vercel
+    strict_path: true
+    decoding: {codec: json}
+    auth: {strategy: bearer, token: "SECRET[tokens.vercel_token]"}
+  fly:
+    type: http_server
+    address: 0.0.0.0:8081
+    path: /fly
+    strict_path: true
+    decoding: {codec: json}
+    auth: {strategy: bearer, token: "SECRET[tokens.fly_token]"}
+transforms:
+  vercel_app:
+    type: remap
+    inputs: [vercel]
+    drop_on_abort: true
+    drop_on_error: true
+    source: |
+      if .projectId != get_env_var!("VERCEL_PROJECT") || .environment != "production" { abort }
+      id = string!(.id)
+      row = object!(parse_json!(string!(.message)))
+      . = row
+      .service = "frontend"
+      .delivery = sha2(id, variant: "SHA-256")
+  vercel_unique:
+    type: dedupe
+    inputs: [vercel_app]
+    fields: {match: [delivery]}
+  fly_app:
+    type: remap
+    inputs: [fly]
+    drop_on_abort: true
+    drop_on_error: true
+    source: |
+      app = string!(.fly.app.name)
+      if !includes(["scorearc-reader", "scorearc-ingester"], app) { abort }
+      row = object!(parse_json!(string!(.message)))
+      if (app == "scorearc-reader" && row.service != "reader") || (app == "scorearc-ingester" && row.service != "ingester") { abort }
+      . = row
+  health:
+    type: remap
+    inputs: [vercel_unique, fly_app]
+    drop_on_abort: true
+    drop_on_error: true
+    source: |
+      if .event == "scorearc_http" {
+        if !includes(["inbound", "outbound"], .direction) || !is_integer(.durationMs) { abort }
+      } else if .event == "scorearc_reader_comparison" {
+        if .service != "frontend" || !includes(["operation", "read"], .type) { abort }
+      } else { abort }
+      stamp = parse_timestamp!(string(.timestamp) ?? string!(.time), format: "%+")
+      fields = {}
+      for_each(["event", "service", "type", "cohort", "decision", "served", "endpoint", "direction", "dependency", "method", "outcome", "appError", "readerError", "espnError", "policy", "delivery"]) -> |_i, key| {
+        v = get!(., [key])
+        if is_string(v) && match(string!(v), r'^[A-Za-z0-9_{}./:-]{1,180}$') { fields = set!(fields, [key], v) }
+      }
+      for_each(["status", "readerStatus", "espnStatus", "durationMs", "readerMs", "espnMs", "bytes", "attempt"]) -> |_i, key| {
+        v = get!(., [key])
+        if is_integer(v) && int!(v) >= 0 { fields = set!(fields, [key], v) }
+      }
+      . = fields
+      .timestamp = stamp
+sinks:
+  loki:
+    type: loki
+    inputs: [health]
+    endpoint: http://loki:3100
+    labels: {job: scorearc, event: "{{ event }}", service: "{{ service }}"}
+    encoding: {codec: json}
+    acknowledgements: {enabled: true}
+    out_of_order_action: accept
+    buffer:
+      type: disk
+      max_size: 268435488
+      when_full: block

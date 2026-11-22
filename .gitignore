@@ -14,3 +14,6 @@ build/
 # Cloudflare Worker local state and secrets
 .wrangler/
 .dev.vars
+
+# Private Grafana operator and writable OpenTofu state files
+infra/grafana/.env

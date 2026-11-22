@@ -1,0 +1,61 @@
+name: scorearc-observability
+
+services:
+  grafana:
+    image: grafana/grafana:13.3.1
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?required}
+      GF_SECURITY_SECRET_KEY: ${GRAFANA_SECRET_KEY:?required}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_USERS_VIEWERS_CAN_EDIT: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/scorearc-operations.json
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3432}
+      PGHOST: ${GRAFANA_PGHOST:?required}
+      PGDATABASE: ${GRAFANA_PGDATABASE:?required}
+      PGUSER: ${GRAFANA_PGUSER:?required}
+      PGPASSWORD: ${GRAFANA_PGPASSWORD:?required}
+      PGSSLMODE: ${GRAFANA_PGSSLMODE:-verify-full}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./dashboards:/var/lib/grafana/dashboards:ro
+      - ./provisioning:/etc/grafana/provisioning:ro
+    networks: [telemetry]
+  loki:
+    image: grafana/loki:3.7.10
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/scorearc.yaml"]
+    volumes:
+      - ./loki.yaml:/etc/loki/scorearc.yaml:ro
+      - loki-data:/loki
+    networks: [telemetry]
+  receiver:
+    image: timberio/vector:0.62.0-debian
+    restart: unless-stopped
+    environment:
+      VERCEL_PROJECT: ${VERCEL_PROJECT:?required}
+    secrets: [vercel_token, fly_token]
+    volumes:
+      - ./vector.yaml:/etc/vector/vector.yaml:ro
+      - receiver-data:/var/lib/vector
+    networks: [telemetry]
+  tunnel:
+    image: cloudflare/cloudflared:2026.11.1
+    profiles: [tunnel]
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    networks: [telemetry]
+
+secrets:
+  vercel_token: {environment: VERCEL_DRAIN_TOKEN}
+  fly_token: {environment: FLY_SHIPPER_TOKEN}
+networks:
+  telemetry: {}
+volumes:
+  grafana-data: {}
+  loki-data: {}
+  receiver-data: {}

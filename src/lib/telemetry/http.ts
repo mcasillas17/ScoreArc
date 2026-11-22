@@ -51,6 +51,10 @@ export function comparisonHealthEnabled() {
   return process.env.SCOREARC_DATA_SOURCE === 'compare' && process.env.SCOREARC_READER_COMPARE_PERCENT !== '0';
 }
 
+export function httpHealthEnabled() {
+  return process.env.SCOREARC_HTTP_TELEMETRY === '1' || comparisonHealthEnabled();
+}
+
 export function healthMetadata() {
   const env = process.env.VERCEL_ENV ?? process.env.NODE_ENV;
   const revision = process.env.VERCEL_GIT_COMMIT_SHA;
