@@ -12,7 +12,7 @@ COPY provisioning /etc/grafana/provisioning
 COPY loki.yaml vector.yaml fly/shipper.yaml /etc/scorearc/
 # The Fly services share loopback and one persistent volume. Compose uses service DNS.
 RUN sed -i -e 's|/loki|/data/loki|g' -e '/http_listen_port:/a\  http_listen_address: 127.0.0.1\n  grpc_listen_address: 127.0.0.1' /etc/scorearc/loki.yaml \
- && sed -i -e 's|/var/lib/vector|/data/vector|' -e 's|0.0.0.0:8081|127.0.0.1:8081|' -e 's|http://loki:3100|http://127.0.0.1:3100|' /etc/scorearc/vector.yaml /etc/grafana/provisioning/datasources/scorearc.yaml \
+ && sed -i -e 's|/var/lib/vector|/data/vector|' -e 's|0\.0\.0\.0:808|127.0.0.1:808|' -e 's|http://loki:3100|http://127.0.0.1:3100|' /etc/scorearc/vector.yaml /etc/grafana/provisioning/datasources/scorearc.yaml \
  && sed -i -e 's|/etc/vector/shipper-credentials.json|/etc/vector-shipper.json|' -e 's|https://telemetry.scorearc.futbol/fly|http://127.0.0.1:8081/fly|' /etc/scorearc/shipper.yaml \
  && sed -i 's|/var/lib/grafana/dashboards|/etc/scorearc/dashboards|' /etc/grafana/provisioning/dashboards/scorearc.yml
 ENV GF_SERVER_HTTP_ADDR=127.0.0.1 GF_SERVER_ROOT_URL=https://grafana.scorearc.futbol \
