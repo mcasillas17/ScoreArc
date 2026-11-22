@@ -1,0 +1,43 @@
+secret:
+  shipper: {type: file, path: /etc/vector/shipper-credentials.json}
+sources:
+  reader:
+    type: nats
+    url: "nats://[fdaa::3]:4223"
+    subject: "logs.scorearc-reader.>"
+    connection_name: scorearc-grafana-reader
+    queue: scorearc-grafana
+    auth: &auth
+      strategy: user_password
+      user_password:
+        user: "SECRET[shipper.org]"
+        password: "SECRET[shipper.fly]"
+  ingester:
+    type: nats
+    url: "nats://[fdaa::3]:4223"
+    subject: "logs.scorearc-ingester.>"
+    connection_name: scorearc-grafana-ingester
+    queue: scorearc-grafana
+    auth: *auth
+transforms:
+  application_health:
+    type: remap
+    inputs: [reader, ingester]
+    drop_on_abort: true
+    drop_on_error: true
+    source: |
+      envelope = object!(parse_json!(string!(.message)))
+      app = string!(envelope.fly.app.name)
+      row = object!(parse_json!(string!(envelope.message)))
+      if row.event != "scorearc_http" || !includes(["scorearc-reader", "scorearc-ingester"], app) { abort }
+      . = {"fly": {"app": {"name": app}}, "message": encode_json(row)}
+sinks:
+  collector:
+    type: http
+    inputs: [application_health]
+    uri: "https://telemetry.scorearc.futbol/fly"
+    encoding: {codec: json}
+    auth:
+      strategy: bearer
+      token: "SECRET[shipper.receiver]"
+    healthcheck: {enabled: false}
