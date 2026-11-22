@@ -39,7 +39,7 @@ One disagreement or reader error returns the full logical operation from ESPN. R
 
 ### Telemetry
 
-Server runtime logs emit JSON events named `scorearc_reader_comparison`. Sampled read, operation and upstream-error records share a random `sampleId`. Read records carry the logical endpoint, competition, season, outcomes, source timings, bounded schema differences, error reasons and available HTTP status codes. Upstream failures identify the source and route family, such as `reader/identities/http/429`. Events omit request URLs, query parameters, participant IDs, raw bodies and provider error text.
+Server runtime logs emit JSON events named `scorearc_reader_comparison`. Events identify the semantic comparison policy version. Sampled read, operation and upstream-error records share a random `sampleId`. Read records carry the logical endpoint, competition, season, outcomes, source timings, bounded schema differences, error reasons and available HTTP status codes. Upstream failures identify the source and route family, such as `reader/identities/http/429`. Events omit request URLs, query parameters, participant IDs, raw bodies and provider error text.
 
 Run the report against a local log file or pipe JSON runtime logs to stdin:
 

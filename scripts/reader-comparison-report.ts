@@ -23,6 +23,7 @@ export function comparisonReport() {
   const total = endpointCounts();
   const elapsedMs = { control: 0, sample: 0 };
   const decisions: Record<string, number> = {};
+  const samplesByPolicy: Record<string, number> = {};
   const served = { reader: 0, espn: 0, error: 0, cancelled: 0 };
   const endpoints = new Map<string, ReturnType<typeof endpointCounts>>();
   const upstreamErrors: Record<string, number> = {};
@@ -33,6 +34,7 @@ export function comparisonReport() {
         elapsedMs[event.cohort] += event.durationMs;
         served[event.served]++;
         increment(decisions, event.decision);
+        if (event.cohort === 'sample') increment(samplesByPolicy, event.policy ?? 'unrecorded');
         return;
       }
       if (event.type === 'upstream_error') {
@@ -53,7 +55,7 @@ export function comparisonReport() {
       for (const path of new Set(event.differences?.map(diff => diff.path.replace(/\[\d+\]/g, '[]')))) increment(counts.differencePaths, path);
     },
     result() {
-      return { operations, sampledPct: rate(operations.sample, operations.control + operations.sample), served, decisions, upstreamErrors,
+      return { operations, sampledPct: rate(operations.sample, operations.control + operations.sample), served, decisions, samplesByPolicy, upstreamErrors,
         reads: { matched: total.match, mismatched: total.mismatch, readerErrors: total.readerFailures,
           inconclusive: total.inconclusive, ...rates(total) },
         meanOperationMs: { control: operations.control ? Math.round(elapsedMs.control / operations.control) : null,

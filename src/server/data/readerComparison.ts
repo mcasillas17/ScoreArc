@@ -1,7 +1,7 @@
 import type { CompetitionSeason } from './competitions';
 import type { DataStore } from './store';
 import type { SourceContext } from './sourceSelection';
-import { compareSemantic, type Difference } from './evaluation/normalize';
+import { compareSemantic, NORMALIZATION_VERSION, type Difference } from './evaluation/normalize';
 import { EspnEditionError } from './providers/espn-edition';
 import { abortable } from './scoreboardWindow';
 import { createRequestBudget, ReaderFailure } from './readerTransport';
@@ -16,7 +16,7 @@ export type ComparisonEvent = (
       competition: string; season: string; espnMs?: number; readerMs?: number; readerError?: string; readerStatus?: number;
       espnError?: string; espnStatus?: number; differences?: Difference[]; truncated?: boolean }
   | { type: 'upstream_error'; source: Source; endpoint: string; code: string; status?: number }
-) & { sampleId?: string };
+) & { sampleId?: string; policy?: string };
 type Emit = (event: ComparisonEvent) => void;
 type Read = <T>(method: Endpoint, rc: CompetitionSeason, args: (string | number | undefined)[],
   load: (source: DataStore) => Promise<T>, signal?: AbortSignal) => Promise<T>;
@@ -80,7 +80,7 @@ export async function compareOperation<T>(options: ComparisonOptions, callback: 
   const started = Date.now();
   const cohort = (options.sample ?? Math.random)() * 100 < (options.comparePercent ?? 10) ? 'sample' : 'control';
   const sampleId = cohort === 'sample' ? crypto.randomUUID() : undefined;
-  const emit: Emit = event => options.onComparison?.({ ...event, sampleId });
+  const emit: Emit = event => options.onComparison?.({ ...event, sampleId, policy: NORMALIZATION_VERSION });
   let served: Source | 'error' = 'error';
   let decision: Decision = cohort === 'control' ? 'control' : 'inconclusive';
   try {

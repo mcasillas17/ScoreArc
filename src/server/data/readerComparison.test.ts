@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { NORMALIZATION_VERSION } from './evaluation/normalize';
 import { configuredDataStore } from './configuredStore';
 import { resolveSeason } from './competitions';
 import type { DataStore } from './store';
@@ -121,6 +122,7 @@ it('records swallowed upstream errors by route and HTTP status without leaking a
   expect(events).toContainEqual(expect.objectContaining({ type: 'read', endpoint: 'getEditionTeams', outcome: 'inconclusive' }));
   expect(events).toContainEqual(expect.objectContaining({ type: 'operation', served: 'espn', decision: 'inconclusive' }));
   expect(new Set(events.map(e => e.sampleId)).size).toBe(1);
+  expect(events.every(e => e.policy === NORMALIZATION_VERSION)).toBe(true);
   expect(JSON.stringify(events)).not.toContain('private-id');
 });
 
