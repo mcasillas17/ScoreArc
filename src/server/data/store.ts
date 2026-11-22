@@ -558,6 +558,7 @@ export const dataStore: DataStore = configuredDataStore({
   espn: espnDataStore,
   env: process.env,
   onFallback: reason => trackReaderFallback(reason),
+  onComparison: event => console.info(JSON.stringify({ event: 'scorearc_reader_comparison', ...event })),
   fallback: ({ signal, budget }) => createDataStore({
     propagateUnavailable: true,
     cache: espnCache,

@@ -1,16 +1,11 @@
+import { bindDataReads, compareOperation, type ComparisonOptions } from './readerComparison';
 import type { DataStore } from './store';
 import { abortable } from './scoreboardWindow';
 import { createRequestBudget, ReaderFailure, type ReaderFailureReason, type RequestBudget } from './readerTransport';
 
 export interface SourceContext { signal: AbortSignal; budget: RequestBudget }
-interface SelectionDependencies {
-  espn: DataStore;
-  source?: 'espn' | 'reader';
-  reader: (context: SourceContext) => DataStore;
-  fallback?: (context: SourceContext) => DataStore;
-  fetch?: typeof fetch;
-  readerTimeoutMs?: number;
-  totalTimeoutMs?: number;
+interface SelectionDependencies extends ComparisonOptions {
+  source?: 'espn' | 'reader' | 'compare';
   onFallback?: (reason: ReaderFailureReason) => void;
 }
 type Runner = <T>(callback: (store: DataStore) => Promise<T>, signal?: AbortSignal, maxConcurrent?: number) => Promise<T>;
@@ -29,8 +24,14 @@ export async function runDataOperation<S extends object, T>(store: S, callback: 
 }
 
 export function createSelectedDataStore(deps: SelectionDependencies): DataStore {
-  if (deps.source !== 'reader') return deps.espn;
+  if (deps.source !== 'reader' && deps.source !== 'compare') return deps.espn;
   const run: Runner = async (callback, caller, maxConcurrent) => {
+    if (deps.source === 'compare') {
+      return compareOperation(deps, callback, source => {
+        readerOperations.add(source);
+        selectedAttempts.add(source);
+      }, caller, maxConcurrent);
+    }
     caller?.throwIfAborted();
     const total = new AbortController();
     const timer = setTimeout(() => total.abort(new ReaderFailure('timeout')), deps.totalTimeoutMs ?? 25_000);
@@ -64,22 +65,7 @@ export function createSelectedDataStore(deps: SelectionDependencies): DataStore 
       attempt.abort(); total.abort();
     }
   };
-  const store: DataStore = {
-    getMatches: (rc, range, signal) => run(source => source.getMatches(rc, range, signal), signal),
-    getFixtures: (rc, range, signal) => run(source => source.getFixtures(rc, range, signal), signal),
-    getLiveWindow: rc => run(source => source.getLiveWindow(rc)),
-    getUpcoming: (rc, limit, signal) => run(source => source.getUpcoming(rc, limit, signal), signal),
-    getEditionTeams: rc => run(source => source.getEditionTeams(rc)),
-    getStandings: rc => run(source => source.getStandings(rc)),
-    getBracket: rc => run(source => source.getBracket(rc)),
-    getMatchSummary: (rc, id, home, away) => run(source => source.getMatchSummary(rc, id, home, away)),
-    getLeaders: rc => run(source => source.getLeaders(rc)),
-    // T16.6 unresolved: reader news is also an ESPN proxy, not owned news.
-    getNews: deps.espn.getNews,
-    getTeam: (rc, id) => run(source => source.getTeam(rc, id)),
-    getSquad: (rc, id) => run(source => source.getSquad(rc, id)),
-    getPlayer: (rc, id) => run(source => source.getPlayer(rc, id)),
-  };
+  const store = bindDataReads((_method, _scope, _args, read, signal) => run(read, signal), deps.espn.getNews);
   operations.set(store, run);
   return store;
 }

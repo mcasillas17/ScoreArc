@@ -31,7 +31,7 @@ export async function boundedFetchJson(url: string, options?: FetchOptions): Pro
   const response = options ? await abortable(request, options.signal) : await request;
   if (!response.ok) {
     void response.body?.cancel().catch(() => {});
-    throw new Error(`fetch ${url} -> ${response.status}`);
+    throw Object.assign(new Error(`fetch ${url} -> ${response.status}`), { status: response.status });
   }
   if (!options) return response.json();
   const { signal, maxBytes } = options;

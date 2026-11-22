@@ -25,8 +25,12 @@ export interface RequestBudget {
   json(url: string, signal?: AbortSignal): Promise<{ body: unknown; headers: Headers }>;
 }
 
+const observedRoutes = ['matches', 'calendar', 'bracket', 'standings', 'identities', 'teams', 'squad', 'players', 'leaders',
+  'box-score', 'scoreboard', 'roster', 'summary', 'statistics', 'schedule', 'athletes', 'overview', 'bio'];
+
 /** One shared budget includes queued reads, response streaming and fallback. */
 export function createRequestBudget(options: {
+  onFailure?: (endpoint: string, error: unknown) => void;
   fetch?: typeof fetch; signal: AbortSignal; maxConcurrent?: number; maxCalls?: number; maxResponseBytes?: number; maxBytes?: number;
 }): RequestBudget {
   const fetcher = options.fetch ?? fetch;
@@ -111,6 +115,12 @@ export function createRequestBudget(options: {
           if (!complete) void stream.cancel().catch(() => {});
           stream.releaseLock();
         }
+      } catch (error) {
+        if (options.onFailure) {
+          const endpoint = new URL(url).pathname.split('/').reverse().find(part => observedRoutes.includes(part)) ?? 'other';
+          options.onFailure(endpoint, error);
+        }
+        throw error;
       } finally { release(); }
     },
   };
