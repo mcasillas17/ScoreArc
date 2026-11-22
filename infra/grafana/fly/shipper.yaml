@@ -29,7 +29,27 @@ transforms:
       envelope = object!(parse_json!(string!(.message)))
       app = string!(envelope.fly.app.name)
       row = object!(parse_json!(string!(envelope.message)))
-      if row.event != "scorearc_http" || !includes(["scorearc-reader", "scorearc-ingester"], app) { abort }
+      if !includes(["scorearc-reader", "scorearc-ingester"], app) { abort }
+      if row.event != "scorearc_http" {
+        if app != "scorearc-reader" || row.msg != "request" || exists(row.event) { abort }
+        # In the normal access log, unmatched routes can contain the raw path.
+        route = string!(row.route)
+        known = ["/healthz", "/v1/matches/{id}", "/v1/matches/{id}/box-score", "/v1/competitions/{comp}/news",
+          "/v1/competitions/{comp}/{season}/matches", "/v1/competitions/{comp}/{season}/identities",
+          "/v1/competitions/{comp}/{season}/calendar", "/v1/competitions/{comp}/{season}/standings",
+          "/v1/competitions/{comp}/{season}/bracket", "/v1/competitions/{comp}/{season}/top-scorers",
+          "/v1/competitions/{comp}/{season}/leaders", "/v1/competitions/{comp}/{season}/teams",
+          "/v1/competitions/{comp}/{season}/teams/{teamId}", "/v1/competitions/{comp}/{season}/teams/{teamId}/squad",
+          "/v1/competitions/{comp}/{season}/players/{playerId}"]
+        if !includes(known, route) { route = "unmatched" }
+        method = if includes(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE", "CONNECT"], row.method) { row.method } else { "other" }
+        status = int!(row.status)
+        if status < 100 || status > 599 || !is_integer(row.duration_ms) { abort }
+        outcome = if status >= 400 { "http_error" } else { "success" }
+        row = {"event": "scorearc_http", "service": "reader", "direction": "inbound", "dependency": "self",
+          "endpoint": route, "method": method, "status": status, "outcome": outcome,
+          "time": row.time, "durationMs": row.duration_ms, "bytes": row.bytes}
+      }
       . = {"fly": {"app": {"name": app}}, "message": encode_json(row)}
 sinks:
   collector:

@@ -8,6 +8,9 @@ export VERCEL_PROJECT=test-project VERCEL_DRAIN_TOKEN=test-vercel FLY_SHIPPER_TO
 project="scorearc-grafana-smoke-$$"
 dc() { docker compose -p "$project" --project-directory "$run_dir" -f "$run_dir/compose.yaml" -f "$work/ports.yaml" "$@"; }
 trap 'dc down -v >/dev/null 2>&1; rm -f "$work/ports.yaml"; rmdir "$work"' EXIT
+docker run --rm --entrypoint sh -v "$run_dir/fly/shipper.yaml:/etc/vector/shipper.yaml:ro" \
+  -v "$run_dir/tests/shipper.yaml:/etc/vector/test.yaml:ro" timberio/vector:0.62.0-debian \
+  -c 'echo "{\"org\":\"test\",\"fly\":\"test\",\"receiver\":\"test\"}" > /etc/vector/shipper-credentials.json; vector test /etc/vector/shipper.yaml /etc/vector/test.yaml'
 dc up -d loki receiver
 loki="http://$(dc port loki 3100)"
 for n in $(seq 1 60); do if curl -fsS "$loki/ready" >/dev/null 2>&1; then break; fi; sleep 1; done
