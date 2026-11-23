@@ -1,6 +1,14 @@
 import { canonicalTeamId } from '../teamIdentity';
 
-export const NORMALIZATION_VERSION = 'reader-evaluation-v2';
+export const NORMALIZATION_VERSION = 'reader-evaluation-v3';
+
+// These ESPN asset URLs have no team ID. Each default PNG was verified
+// byte-for-byte against this team's ScoreArc mirror before adding the pair.
+const verifiedEspnCrests = new Map<string, string>([
+  ['https://a.espncdn.com/guid/e31f8ff9-6644-3f93-a2e8-f42f1a2d66b0/logos/default.png', 'mex-w-necaxa'],
+  ['https://a.espncdn.com/guid/ab74d4f3-29af-3edf-a0ac-d1cb6d4499e1/logos/default.png', 'mex-w-atlas'],
+  ['https://a.espncdn.com/guid/171df7da-9a24-3606-a2f8-ac7798c78a76/logos/default.png', 'mex-w-atletico-de-san-luis'],
+]);
 
 export type Difference = {
   path: string;
@@ -140,7 +148,7 @@ export function compareSemantic(kind: string, reader: unknown, espn: unknown): {
       // team outside the crosswalk keeps its raw URL and stays a difference.
       const team = value.match(/^https:\/\/cdn\.scorearc\.futbol\/teams\/([a-z0-9-]+)$/)?.[1]
         ?? value.match(/^https:\/\/a\.espncdn\.com\/i\/teamlogos\/soccer\/500\/(\d+)\.png$/)?.[1];
-      const canonical = canonicalTeamId(team);
+      const canonical = canonicalTeamId(team ?? verifiedEspnCrests.get(value));
       if (canonical) { normalizers.add('mirrored-crest-v1'); return `crest:${canonical}`; }
     }
     return value;

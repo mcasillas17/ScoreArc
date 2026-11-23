@@ -15,7 +15,7 @@ describe('reader evaluation semantic policy', () => {
     const result = compare(reader, original);
     expect(result.differences).toEqual([]);
     expect(result.normalizers).toEqual(expect.arrayContaining(['instant-v1', 'match-set-order-v1']));
-    expect(NORMALIZATION_VERSION).toBe('reader-evaluation-v2');
+    expect(NORMALIZATION_VERSION).toBe('reader-evaluation-v3');
     expect(original[0].kickoff).toBe('2026-06-29T17:00Z');
   });
 
@@ -82,6 +82,19 @@ describe('reader evaluation semantic policy', () => {
     expect(compare(row('https://cdn.scorearc.futbol/teams/mex-tijuana'), row(provider)).differences).toContainEqual({ path: '$[0].home.crestUrl', category: 'value' });
     expect(compare(row(null), row(provider)).differences).toContainEqual({ path: '$[0].home.crestUrl', category: 'value' });
     expect(compare(row('https://cdn.scorearc.futbol/teams/not-a-team'), row('https://a.espncdn.com/i/teamlogos/soccer/500/99999999.png')).differences).toContainEqual({ path: '$[0].home.crestUrl', category: 'value' });
+  });
+
+  it.each([
+    ['mex-w-necaxa', 'e31f8ff9-6644-3f93-a2e8-f42f1a2d66b0'],
+    ['mex-w-atlas', 'ab74d4f3-29af-3edf-a0ac-d1cb6d4499e1'],
+    ['mex-w-atletico-de-san-luis', '171df7da-9a24-3606-a2f8-ac7798c78a76'],
+  ])('recognizes the verified ESPN logo for %s', (id, guid) => {
+    const mirror = { id, crestUrl: `https://cdn.scorearc.futbol/teams/${id}` };
+    const provider = { id, crestUrl: `https://a.espncdn.com/guid/${guid}/logos/default.png` };
+    const compareTeams = (left: typeof mirror, right: typeof mirror) => compare([left], [right], 'getEditionTeams');
+    expect(compareTeams(mirror, provider).unequal).toBe(false);
+    expect(compareTeams({ ...mirror, crestUrl: 'https://cdn.scorearc.futbol/teams/mex-toluca' }, provider).unequal).toBe(true);
+    expect(compareTeams(mirror, { ...provider, crestUrl: provider.crestUrl.replace('default.png', 'away.png') }).unequal).toBe(true);
   });
 
   it('treats a null reader slug and an absent provider slug as the same unresolved link', () => {

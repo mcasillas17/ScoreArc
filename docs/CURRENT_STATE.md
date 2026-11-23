@@ -19,7 +19,8 @@ Changed on this branch:
   where the provider has none, and the site's name for the competition in a
   team's standing line. The sampled compare mode (`SCOREARC_DATA_SOURCE=compare`,
   #303) uses the same comparator, so these rules also decide when a sampled
-  read is served from the reader. That mode is not enabled in production.
+  read is served from the reader. Production enabled the trial at 1% at
+  22:32 UTC on November 22, initially using policy v1.
 - **Leagues Cup bracket.** The 2026 edition had no `bracketDatesRange`, so the
   ESPN-backed path read the default scoreboard and production showed only the
   final and the third-place match. It now reads 25 August to 7 September and
