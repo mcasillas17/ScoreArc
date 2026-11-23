@@ -3,6 +3,67 @@
 **Broad inventory baseline:** 2026-09-01, against `main` @ `49bf68d`.
 Unrelated inventory observations below retain their original dates.
 
+### November 22 reader comparison: what was noise and what is real
+
+Second live T16.4 run, 07:16 UTC November 22, same 20-sample manifest as
+November 21 (read-only, inside the runner's caps). Before this branch: 0
+matched, 12 mismatched, 8 unavailable. With it: **10 matched, 2 mismatched, 8
+unavailable**. The Premier League and NWSL samples all match.
+
+Changed on this branch:
+
+- **Evaluator policy `reader-evaluation-v2`.** Five new named rules, each with
+  its boundary in `docs/backend/READER_EVALUATION.md`: the mirrored crest and
+  the provider crest of one team, a null reader player slug against an absent
+  provider one, reader-only lineup evidence, reader detail on a team schedule
+  where the provider has none, and the site's name for the competition in a
+  team's standing line. The sampled compare mode (`SCOREARC_DATA_SOURCE=compare`,
+  #303) uses the same comparator, so these rules also decide when a sampled
+  read is served from the reader. That mode is not enabled in production.
+- **Leagues Cup bracket.** The 2026 edition had no `bracketDatesRange`, so the
+  ESPN-backed path read the default scoreboard and production showed only the
+  final and the third-place match. It now reads 25 August to 7 September and
+  shows all four rounds. The ingester dry run (`TestLiveProviderDrift`) reads
+  62 matches and 8 bracket matches for the edition with no unclassified stage.
+- **FC Juárez.** The seed spelled the men's club `FC Juarez`; ESPN and the
+  women's club carry the accent. This is the only difference left in the two
+  mismatched samples and clears once the ingester has re-applied the seed.
+
+Still different, each one a decision for the owner rather than a patch:
+
+- **Match detail is saved before the provider has finished the match.** The
+  ingester fetches the summary once, at the moment the scoreboard reports the
+  match finished, and finalization seals it. ESPN's summary lags its scoreboard
+  and its statistics are corrected afterwards. Liga MX 401876908: the reader
+  has 3 cards and 110 commentary lines ending at 90'+3'; ESPN has 4 cards (a
+  red card at 90'+5') and 114 lines. Team statistics differ slightly on all six
+  finished matches sampled. The form list differs for the same reason. The box
+  score is captured about five minutes later and sealed the same way (one
+  player's red card is missing). A later re-read cannot be written today:
+  `protect_finalized_detail` (0001), `protect_final_match_commentary` (0021)
+  and the participation guard (0025) reject it, and the ingester role has no
+  way around them. Fixing it needs a migration and a deliberate exception to
+  "a finalized record is immutable".
+- **Lineup order.** ESPN lists a lineup goalkeeper first, then by position.
+  The reader lists starters by shirt number (`box_score.go`), and the Lineups
+  tab shows the starting eleven in the order given, so the same eleven reads
+  in a different order. The stored lineup keeps ESPN's order; the box score
+  that replaces it in `summaryLineups` does not. An earlier draft of this
+  branch ignored lineup order in the evaluator; that rule was removed because
+  the difference is visible. It changes no count: both affected samples were
+  already `unavailable`.
+- **Player names are written once.** `resolvePlayer` sets `full_name` when the
+  player is first seen and never again; one of 34 Atlante players differs
+  (`Maximiliano Garcia` against `García`).
+- **The reader has no alternate team colour** (`altColor` is null). The team
+  header uses it only when the primary colour is unusable.
+- **Evidence the evaluator cannot have.** The reader reports match detail as
+  `retained` with no observation time, and ESPN's Liga MX and Leagues Cup
+  table and team responses do not state their season, so those samples stay
+  `unavailable` however closely the values agree.
+
+Not done: no cutover, no environment change, no migration.
+
 ### November 21 UEFA Nations League recurring poll alerts
 
 From 05:55 UTC the watchdog opened and resolved a `uefa-nations-league/2026-27`

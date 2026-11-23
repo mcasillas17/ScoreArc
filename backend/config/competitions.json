@@ -281,7 +281,7 @@
         ],
         "computedTables": true,
         "hasBracket": true,
-        "bracketDatesRange": null,
+        "bracketDatesRange": "20260825-20260907",
         "knockoutRounds": [
           "quarterfinals",
           "semifinals",

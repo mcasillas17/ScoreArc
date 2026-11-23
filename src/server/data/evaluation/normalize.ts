@@ -1,4 +1,6 @@
-export const NORMALIZATION_VERSION = 'reader-evaluation-v1';
+import { canonicalTeamId } from '../teamIdentity';
+
+export const NORMALIZATION_VERSION = 'reader-evaluation-v2';
 
 export type Difference = {
   path: string;
@@ -12,7 +14,7 @@ type Role =
   | 'boards' | 'leaders' | 'leader' | 'teamProfile' | 'squad' | 'squadPlayer'
   | 'player' | 'logs' | 'log' | 'career' | 'stint' | 'totals' | 'total'
   | 'scorers' | 'scorer' | 'cards' | 'card' | 'h2h' | 'h2hRow'
-  | 'form' | 'formTeams' | 'formTeam' | 'formResults' | 'formResult' | 'links';
+  | 'form' | 'formTeams' | 'formTeam' | 'formResults' | 'formResult' | 'links' | 'standingRef';
 
 const roots: Record<string, Role> = {
   getMatches: 'matches', getFixtures: 'matches', getLiveWindow: 'matches', getUpcoming: 'orderedMatches',
@@ -50,7 +52,7 @@ function childRole(role: Role, key: string): Role {
   if (role === 'formTeams') return 'formTeam';
   if (role === 'formTeam' && key === 'results') return 'formResults';
   if (role === 'links') return 'links';
-  if (role === 'teamProfile') return ({ schedule: 'matches', squad: 'squad' } as Record<string, Role>)[key] ?? 'generic';
+  if (role === 'teamProfile') return ({ schedule: 'matches', squad: 'squad', standing: 'standingRef' } as Record<string, Role>)[key] ?? 'generic';
   if (role === 'player') return ({ gameLog: 'logs', career: 'career', totals: 'totals' } as Record<string, Role>)[key] ?? 'generic';
   if (role === 'group' && key === 'standings') return 'standings';
   if (role === 'round' && key === 'matches') return 'matches';
@@ -96,12 +98,24 @@ export function compareSemantic(kind: string, reader: unknown, espn: unknown): {
       if (index >= 0) differences[index] = item;
     }
   }
-  function policy(role: Role, key: string, path: string) {
+  function policy(role: Role, key: string, path: string, reader: Record<string, unknown>, espn: Record<string, unknown>) {
     let normalizer: string | undefined;
+    const empty = (value: unknown) => value === null || (Array.isArray(value) && value.length === 0);
     if (key === 'readerResources' && ['match', 'group', 'summary', 'teamProfile', 'player'].includes(role)) normalizer = 'resource-evidence-v1';
     if (key === 'readerDerivation' && role === 'group') normalizer = 'resource-evidence-v1';
     if (key === 'playerId' && (role === 'leader' || role === 'lineupPlayer')) normalizer = 'qualified-canonical-player-ref-v1';
     if (key === 'name' && role === 'round') normalizer = 'bracket-round-display-v1';
+    // The reader contract always sends a null slug and ESPN's DTO has no such
+    // field; pages resolve the public link from the player index either way.
+    if (key === 'playerSlug' && (role === 'leader' || role === 'lineupPlayer') && (reader[key] ?? null) === null && (espn[key] ?? null) === null) normalizer = 'unresolved-player-slug-v1';
+    // Reader-only lineup evidence with nothing on the ESPN side to compare.
+    if (!Object.hasOwn(espn, key) && ((role === 'lineups' && key === 'availability' && reader[key] === 'complete') || (role === 'lineup' && key === 'teamId'))) normalizer = 'reader-lineup-evidence-v1';
+    // ESPN's team schedule carries no match detail; the reader's does.
+    if (role === 'match' && /(?:^\$|\.team)\.schedule\[\d+\]$/.test(path) && ['scorers', 'cards', 'stats', 'winProbability'].includes(key) && empty(espn[key])) normalizer = 'team-schedule-detail-superset-v1';
+    // The reader names the competition as the site does; ESPN uses its own
+    // label. The rank beside it still compares.
+    if (role === 'teamProfile' && key === 'standingSummary') normalizer = 'standing-competition-display-v1';
+    if (role === 'standingRef' && key === 'competition') normalizer = 'standing-competition-display-v1';
     if (!normalizer) return false;
     normalizers.add(normalizer);
     excluded.add(`${path.replace(/\[\d+\]/g, '[]')}.${key}`.slice(0, 160));
@@ -120,9 +134,19 @@ export function compareSemantic(kind: string, reader: unknown, espn: unknown): {
         return `${Math.floor(Date.parse(value) / 1000)}.${fraction}`;
       }
     }
+    if ((key === 'crestUrl' || key === 'teamCrestUrl') && typeof value === 'string') {
+      // The reader serves the ingester's mirror, keyed by canonical team id;
+      // ESPN serves its own file, keyed by its id. Same team, same crest. A
+      // team outside the crosswalk keeps its raw URL and stays a difference.
+      const team = value.match(/^https:\/\/cdn\.scorearc\.futbol\/teams\/([a-z0-9-]+)$/)?.[1]
+        ?? value.match(/^https:\/\/a\.espncdn\.com\/i\/teamlogos\/soccer\/500\/(\d+)\.png$/)?.[1];
+      const canonical = canonicalTeamId(team);
+      if (canonical) { normalizers.add('mirrored-crest-v1'); return `crest:${canonical}`; }
+    }
     return value;
   }
   function ordered(values: unknown[], role: Role): unknown[] {
+    // Lineup rows are not in this list: the Lineups tab shows the starting eleven in the order given.
     if (role !== 'matches' && role !== 'groups' && role !== 'teams') return values;
     normalizers.add({ matches: 'match-set-order-v1', groups: 'group-set-order-v1', teams: 'team-set-order-v1' }[role]);
     const key = (value: unknown) => object(value)
@@ -153,7 +177,7 @@ export function compareSemantic(kind: string, reader: unknown, espn: unknown): {
         const map = role === 'links' || role === 'formTeams';
         const segment = map ? '<key>' : fields.has(name) ? name : '<field>';
         const next = `${path}.${segment}`;
-        if (policy(role, name, path)) continue;
+        if (policy(role, name, path, a, b)) continue;
         if (!Object.hasOwn(a, name) || !Object.hasOwn(b, name)) difference(next, map ? 'coverage' : category(name, role));
         else visit(a[name], b[name], childRole(role, name), next, name, role, depth + 1);
       }

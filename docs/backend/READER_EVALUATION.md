@@ -103,7 +103,7 @@ Optional enrichment helpers can swallow failures or race an 800 ms timer; the
 runner uses the strict awaited index instead. No private selected-store marker
 or fallback registration is necessary.
 
-## Named normalization policy: `reader-evaluation-v1`
+## Named normalization policy: `reader-evaluation-v2`
 
 | Rule | Exact boundary |
 |---|---|
@@ -115,19 +115,25 @@ or fallback registration is necessary.
 | `resource-evidence-v1` | `readerResources` and group `readerDerivation` are evaluated as evidence, not equal to an absent ESPN envelope |
 | `qualified-canonical-player-ref-v1` | Only leader/lineup `playerId` is a reader-qualified canonical reference; provider athlete ID and public `playerSlug` still compare |
 | `bracket-round-display-v1` | Reader-only round display name; slug/order/event membership still compare |
+| `mirrored-crest-v1` | `crestUrl`/`teamCrestUrl` only: the reader's mirrored crest (`cdn.scorearc.futbol/teams/<canonical id>`) and ESPN's club crest (`teamlogos/soccer/500/<provider id>.png`) are equal when the team crosswalk maps both to one team. Another team's crest, a missing crest and a team outside the crosswalk stay differences |
+| `unresolved-player-slug-v1` | Leader and lineup rows only: a null reader `playerSlug` against an absent provider one. A null against a real slug is still a `link` difference |
+| `reader-lineup-evidence-v1` | Reader-only lineup `teamId`, and lineup `availability` only when it is `complete`, where the provider has no such field |
+| `team-schedule-detail-superset-v1` | Scorers, cards, statistics and win probability on a team-schedule match only where the provider's value is empty or null. Provider detail that disagrees still compares |
+| `standing-competition-display-v1` | A team profile's `standing.competition` and `standingSummary`: the reader uses the site's competition name. `standing.rank` still compares |
 
 Each sample lists rules applied and excluded schema paths. There is no recursive
 null coalescing, numeric coercion, case folding, tolerance for scores, row
 intersection or dropping unknown fields. Absent/undefined/null/empty/zero/false
-stay distinct except the one named nationality rule. Paths use a fixed schema
+stay distinct except the named nationality rule and the named player-slug rule. Paths use a fixed schema
 vocabulary; dynamic keys/IDs and raw values are not dumped.
 
 Documented held-player projections (five scoped logs, fifty held career stints,
 fifteen stored totals, null flags/headshots and stored display labels) do not
 establish full provider parity. This version conservatively retains those
 payload differences and their partial/scope evidence rather than discarding
-scores or silently intersecting rows. Likewise team sponsor/competition wording
-can remain a `value` difference. A future accepted field projection needs a new
+scores or silently intersecting rows. Likewise team sponsor wording can remain
+a `value` difference (competition wording in a team's standing line has had
+its own named rule since v2). A future accepted field projection needs a new
 named rule, regression and policy version; it cannot waive entity/side/score/link
 criteria. No held-subset result is declared full profile parity.
 
