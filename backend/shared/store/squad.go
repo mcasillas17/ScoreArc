@@ -83,9 +83,10 @@ UPDATE player SET
   birth_date   = COALESCE($2, birth_date),
   nationality  = COALESCE(NULLIF($3, ''), nationality),
   headshot_url = COALESCE(NULLIF($4, ''), headshot_url),
+  full_name    = COALESCE(NULLIF($5, ''), full_name),
   updated_at   = now()
 WHERE id=$1`,
-			row.playerID, row.member.BirthDate, row.member.Nationality, row.member.HeadshotURL,
+			row.playerID, row.member.BirthDate, row.member.Nationality, row.member.HeadshotURL, row.member.FullName,
 		); err != nil {
 			return fmt.Errorf("update squad player demographics: %w", err)
 		}
