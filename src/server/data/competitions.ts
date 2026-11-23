@@ -290,6 +290,11 @@ export const COMPETITIONS: Record<string, Competition> = {
           },
           nextRound: { round: 'quarterfinals', startDate: '2026-08-25', endDate: '2026-08-27' },
         },
+        // Quarterfinals (25 August) to the final (6 September, the 7th in UTC).
+        // Without this the bracket read ESPN's default scoreboard, which only
+        // holds the latest matchday: once the final was played the page showed
+        // the final and the third-place match and no other round.
+        bracketDatesRange: '20260825-20260907',
         // Its knockout starts at the quarterfinals. Without this the bracket
         // inherits the World Cup's five rounds, whose leaf is `round-of-32` —
         // a round the Leagues Cup never plays — and `buildRings` lays out from
