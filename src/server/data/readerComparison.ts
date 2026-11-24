@@ -18,6 +18,10 @@ export type ComparisonEvent = (
       espnError?: string; espnStatus?: number; differences?: Difference[]; truncated?: boolean }
   | { type: 'upstream_error'; source: Source; endpoint: string; code: string; status?: number }
 ) & ReturnType<typeof correlationFields> & Partial<ReturnType<typeof healthMetadata>> & { policy?: string };
+// Both views of a sampled operation use the same strict ESPN reads.
+const sampledStores = new WeakSet<DataStore>();
+export function isSampledComparisonStore(store: DataStore) { return sampledStores.has(store); }
+
 type Emit = (event: ComparisonEvent) => void;
 type Read = <T>(method: Endpoint, rc: CompetitionSeason, args: (string | number | undefined)[],
   load: (source: DataStore) => Promise<T>, signal?: AbortSignal) => Promise<T>;
@@ -37,7 +41,7 @@ export function bindDataReads(read: Read, news: DataStore['getNews']): DataStore
     getNews: news,
     getTeam: (rc, id) => read('getTeam', rc, [id], s => s.getTeam(rc, id)),
     getSquad: (rc, id) => read('getSquad', rc, [id], s => s.getSquad(rc, id)),
-    getPlayer: (rc, id) => read('getPlayer', rc, [id], s => s.getPlayer(rc, id)),
+    getPlayer: (rc, id, rosterTeamId) => read('getPlayer', rc, [id, rosterTeamId], s => s.getPlayer(rc, id, rosterTeamId)),
   };
 }
 
@@ -191,6 +195,8 @@ async function runComparison<T>(options: ComparisonOptions, cohort: Cohort, call
           return candidate.ok && outcome === 'match' ? candidate.value : reference.value;
         });
       }, comparisonNews(options));
+      sampledStores.add(paired);
+      sampledStores.add(baseline);
       markReader(paired);
       const candidate = await observe(() => abortable(callback(paired), signal));
       signal.throwIfAborted();

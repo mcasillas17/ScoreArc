@@ -27,8 +27,8 @@ export const teamUrl = (slug: string, teamId: string) =>
 // for a complete squad stat table, not one per player. Note that not every
 // athlete carries a statistics block: 7 of 35 on the recorded fixture have
 // none at all, because they have not played.
-export const teamRosterUrl = (slug: string, teamId: string) =>
-  `${site(slug)}/teams/${encodeURIComponent(teamId)}/roster`;
+export const teamRosterUrl = (slug: string, teamId: string, year?: number) =>
+  `${site(slug)}/teams/${encodeURIComponent(teamId)}/roster${seasonQuery(year)}`;
 
 // The club's schedule -- results by default, upcoming matches with
 // `fixture=true` (ESPN's parameter name, not ours). It is one or the other, never both: verified 2026-08-19,

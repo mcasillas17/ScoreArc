@@ -2,6 +2,8 @@ import { supportsResource, type CompetitionSeason } from './competitions';
 import type { MatchSummaryData, PlayerProfile, SquadPlayer, Team } from './types';
 import { dataStore, type DataStore } from './store';
 import { buildSlugMap, type ResolvedPlayer, type SlugEntry } from './playerIdentity';
+import { ReaderFailure } from './readerTransport';
+import { isSampledComparisonStore } from './readerComparison';
 import { isReaderOperationStore, runDataOperation } from './sourceSelection';
 
 export interface DirectoryPlayer {
@@ -29,9 +31,28 @@ export function loadPlayerBySlug(
   signal?: AbortSignal,
 ): Promise<PlayerProfile | null> {
   return runDataOperation(store, async (source) => {
-    const index = await competitionPlayerIndex(rc, source);
+    // A missing squad cannot invalidate a player found on a verified roster. If
+    // the slug is absent, an unavailable squad could still contain that player.
+    let unavailable: { error: unknown } | undefined;
+    const index = await competitionPlayerIndex(rc, source, signal, error => {
+      signal?.throwIfAborted();
+      if (!isSampledComparisonStore(source)) throw error;
+      if (error instanceof ReaderFailure) {
+        if (error.reason === 'budget' || error.reason === 'timeout') throw error;
+        if (error.status === 404) return;
+      }
+      unavailable ??= { error };
+    });
     const resolved = index.bySlug.get(slug);
-    return resolved ? source.getPlayer(rc, resolved.providerId) : null;
+    if (!resolved) {
+      if (unavailable) throw unavailable.error;
+      return null;
+    }
+    if (rc.season.publication === 'archive') {
+      const teamId = index.directory.players.find(player => player.slug === slug)?.teamId;
+      return source.getPlayer(rc, resolved.providerId, teamId);
+    }
+    return source.getPlayer(rc, resolved.providerId);
   }, signal);
 }
 
@@ -81,13 +102,18 @@ export async function competitionPlayerIndex(
   rc: CompetitionSeason,
   store: DataStore = dataStore,
   signal?: AbortSignal,
+  onSquadError?: (error: unknown) => void,
 ): Promise<PlayerIndex> {
   return runDataOperation(store, async (source) => {
     const teams = await source.getEditionTeams(rc);
     const squads: { team: Team; squad: SquadPlayer[] }[] = [];
     for (let i = 0; i < teams.length; i += 4) {
       squads.push(...await Promise.all(teams.slice(i, i + 4).map(async team => ({
-        team, squad: await source.getSquad(rc, team.id),
+        team, squad: await source.getSquad(rc, team.id).catch(error => {
+          if (!onSquadError) throw error;
+          onSquadError(error);
+          return [];
+        }),
       }))));
     }
 
