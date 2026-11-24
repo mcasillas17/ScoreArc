@@ -45,14 +45,13 @@ Still different, each one a decision for the owner rather than a patch:
   and the participation guard (0025) reject it, and the ingester role has no
   way around them. Fixing it needs a migration and a deliberate exception to
   "a finalized record is immutable".
-- **Lineup order.** ESPN lists a lineup goalkeeper first, then by position.
-  The reader lists starters by shirt number (`box_score.go`), and the Lineups
-  tab shows the starting eleven in the order given, so the same eleven reads
-  in a different order. The stored lineup keeps ESPN's order; the box score
-  that replaces it in `summaryLineups` does not. An earlier draft of this
-  branch ignored lineup order in the evaluator; that rule was removed because
-  the difference is visible. It changes no count: both affected samples were
-  already `unavailable`.
+- **Lineup order (fixed November 24).** ESPN lists a lineup goalkeeper first,
+  then by position; the reader listed it by shirt number, and the Lineups tab
+  shows the starting eleven in the order given. `summaryLineups` now sorts the
+  held box-score rows into the stored provider lineup's order
+  (`keepProviderOrder`); rows the stored lineup does not name follow in held
+  order. On the two affected samples all 21 players per side then match
+  ESPN's order.
 - **Player names are written once.** `resolvePlayer` sets `full_name` when the
   player is first seen and never again; one of 34 Atlante players differs
   (`Maximiliano Garcia` against `García`).

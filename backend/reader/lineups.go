@@ -1,8 +1,10 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
@@ -74,6 +76,7 @@ func (s *Store) summaryLineups(ctx context.Context, id string, stored *model.Mat
 			}
 		}
 		if len(pair.held.Players) > 0 || box.Availability == "complete" {
+			keepProviderOrder(pair.held.Players, pair.stored.Players)
 			pair.stored.Players = pair.held.Players
 			for i := range pair.stored.Players {
 				p := &pair.stored.Players[i]
@@ -88,4 +91,28 @@ func (s *Store) summaryLineups(ctx context.Context, id string, stored *model.Mat
 		stored.Availability = "partial"
 	}
 	return stored, nil
+}
+
+// keepProviderOrder sorts held rows into the stored provider lineup's order
+// (goalkeeper first, then by position), because the Lineups tab shows the
+// starting eleven as given and the held rows come by shirt number. Rows the
+// stored lineup does not name keep their held order, after the named ones.
+func keepProviderOrder(held, stored []model.LineupPlayer) {
+	rank := map[string]int{}
+	for i, p := range stored {
+		if p.AthleteID != nil {
+			if _, seen := rank[*p.AthleteID]; !seen {
+				rank[*p.AthleteID] = i
+			}
+		}
+	}
+	at := func(p model.LineupPlayer) int {
+		if p.AthleteID != nil {
+			if i, ok := rank[*p.AthleteID]; ok {
+				return i
+			}
+		}
+		return len(stored)
+	}
+	slices.SortStableFunc(held, func(a, b model.LineupPlayer) int { return cmp.Compare(at(a), at(b)) })
 }
