@@ -206,6 +206,30 @@ func TestReplaceSquadAsTheIngesterRole(t *testing.T) {
 	}
 }
 
+func TestReplaceSquadRefreshesExistingPlayerName(t *testing.T) {
+	owner, pool, dsn := newIntegrationStoreDSN(t)
+	mustSeedTwoTeams(t, owner)
+	mustSeedSeason(t, pool)
+	s, _ := newIngesterRoleStore(t, pool, dsn)
+	ctx := context.Background()
+	id, err := s.Player(ctx, "espn", PlayerRef{SourceID: "250707", FullName: "Nicolo Casale"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	members := []model.SquadMember{{SourceID: "250707", FullName: "Nicoló Casale"}}
+	ids := map[string]uuid.UUID{"250707": id}
+	if err := s.ReplaceSquad(ctx, "premier-league", "2026-27", "eng-arsenal", "espn", members, ids); err != nil {
+		t.Fatal(err)
+	}
+	var name string
+	if err := pool.QueryRow(ctx, "SELECT full_name FROM player WHERE id=$1", id).Scan(&name); err != nil {
+		t.Fatal(err)
+	}
+	if name != members[0].FullName {
+		t.Fatalf("stored name = %q, want %q", name, members[0].FullName)
+	}
+}
+
 // Roster order and headshots are stored per membership/player, and a later
 // payload without a headshot keeps the one already held. Team location and
 // colour follow the same never-blank rule.
