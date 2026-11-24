@@ -13,6 +13,13 @@ current directory; their metadata carries the same limitation. Even for a
 concluded competition's configured current season, these are current rosters,
 not a historical record of every player who participated.
 
+A direct player URL in an archived World Cup resolves against that edition's
+verified ESPN rosters. The profile uses the tournament team, shirt number and
+available roster totals. ESPN's athlete feed reports the player's current club
+and recent matches even when supplied a historical year. A slug missing from
+the available rosters can return 404, including for editions with little roster
+coverage.
+
 The directory reports teams with a nonempty roster out of distinct listed teams.
 That count does not certify completeness. No listed teams, no roster data,
 partial roster coverage, no search matches and failed directory loads are distinct

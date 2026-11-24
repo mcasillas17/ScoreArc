@@ -1,4 +1,5 @@
-import type { CareerStint, GameLogRow, PlayerProfile, PlayerSeasonTotal, Team } from '../types';
+import type { CompetitionSeason } from '../competitions';
+import type { CareerStint, GameLogRow, PlayerProfile, PlayerSeasonTotal, SquadPlayer, Team } from '../types';
 
 /** Profile without the blocks that come from the other two endpoints. */
 type AthleteIdentity = Omit<PlayerProfile, 'gameLog' | 'gameLogLabel' | 'career' | 'news'>;
@@ -6,6 +7,25 @@ type AthleteIdentity = Omit<PlayerProfile, 'gameLog' | 'gameLogLabel' | 'career'
 function num(v: unknown): number | null {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+// The athlete endpoints return today's club and recent matches even with a season query.
+export function archiveRosterProfile(rc: CompetitionSeason, team: Team, player: SquadPlayer): PlayerProfile {
+  const totals: PlayerSeasonTotal[] = [];
+  for (const [name, label] of [['totalGoals', 'Goals'], ['goalAssists', 'Assists']] as const) {
+    const value = player.stats?.[name];
+    if (value != null) totals.push({ name, label, display: String(value), value });
+  }
+  const { appearances, subIns } = player.stats ?? {};
+  if (appearances != null && subIns != null && appearances >= subIns) {
+    const starts = appearances - subIns;
+    totals.push({ name: 'starts-subIns', label: 'Starts (Subs)', display: `${starts} (${subIns})`, value: starts });
+  }
+  return {
+    id: player.id, name: player.name, team, position: player.position, jersey: player.jersey?.toString() ?? null,
+    nationality: player.nationality, headshotUrl: player.headshotUrl, age: null, flagUrl: null,
+    seasonLabel: `${rc.season.label} ${rc.competition.shortName}`, totals, gameLogLabel: '', gameLog: [], career: [],
+  };
 }
 
 /**

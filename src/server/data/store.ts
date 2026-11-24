@@ -35,7 +35,7 @@ import {
 import { mapScoreboard, scoreboardWinnerFlags, shootoutWinnerId } from './providers/espn-matches';
 import { mapTeamProfile, mapTeamRoster, mapScopedTeamSchedule, splitLeagueTeamIds } from './providers/espn-team';
 import { uniqueTeamMatches } from './teamPerformance';
-import { mapAthleteProfile, mapAthleteOverview, mapAthleteBio } from './providers/espn-athlete';
+import { archiveRosterProfile, mapAthleteProfile, mapAthleteOverview, mapAthleteBio } from './providers/espn-athlete';
 import { configuredPhaseTables } from './leaguesCupTables';
 import { computeOverallTable } from './mlsTables';
 import { EspnEditionError, verifyRosterEdition, verifySummaryEdition, verifyStandingsEdition, verifyLeadersEdition, requiresEditionEvidence, providerYear } from './providers/espn-edition';
@@ -68,7 +68,7 @@ export interface DataStore {
   getNews(rc: CompetitionSeason, attributedOnly?: boolean): Promise<NewsArticle[]>;
   getTeam(rc: CompetitionSeason, teamId: string): Promise<TeamProfile | null>;
   getSquad(rc: CompetitionSeason, teamId: string): Promise<SquadPlayer[]>;
-  getPlayer(rc: CompetitionSeason, athleteId: string): Promise<PlayerProfile | null>;
+  getPlayer(rc: CompetitionSeason, athleteId: string, rosterTeamId?: string): Promise<PlayerProfile | null>;
 }
 
 // How many scorers the Golden Boot table shows.
@@ -98,7 +98,8 @@ function emptySummary(): MatchSummaryData {
 }
 
 async function fetchSquad(rc: CompetitionSeason, teamId: string, fetchJson: ScoreboardFetchJson) {
-  const raw = await fetchJson(teamRosterUrl(rc.competition.espnSlug, teamId), {
+  const year = rc.season.publication === 'archive' ? providerYear(rc.season) : undefined;
+  const raw = await fetchJson(teamRosterUrl(rc.competition.espnSlug, teamId, year), {
     signal: AbortSignal.timeout(15_000), maxBytes: 4 * 1024 * 1024,
   });
   const count = verifyRosterEdition(raw, rc, teamId);
@@ -506,7 +507,17 @@ export function createDataStore(deps: DataDeps): DataStore {
     // empty rather than taking the page down. The two optional payloads'
     // sibling endpoints (/gamelog, /splits, /stats) are dead upstream and are
     // never called -- /overview and /bio are the only sources.
-    async getPlayer(rc, athleteId: string): Promise<PlayerProfile | null> {
+    async getPlayer(rc, athleteId: string, rosterTeamId?: string): Promise<PlayerProfile | null> {
+      if (rc.season.publication === 'archive') {
+        if (!supportsResource(rc.season, 'teams') || !supportsResource(rc.season, 'squad')) return null;
+        const teams = await getEditionTeams(rc);
+        for (const team of teams) {
+          if (rosterTeamId !== undefined && team.id !== rosterTeamId) continue;
+          const player = (await loadSquad(rc, team.id)).find(row => row.id === athleteId);
+          if (player) return archiveRosterProfile(rc, team, player);
+        }
+        return null;
+      }
       const k = key(rc, `player:${athleteId}`);
       const cached = cachedEspnValue<PlayerProfile>(deps.cache, k);
       if (cached) return cached;
