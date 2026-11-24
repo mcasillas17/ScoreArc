@@ -59,6 +59,7 @@ it('serves the verified archive player despite an unrelated ESPN roster outage a
   const rosters = s.fetcher.mock.calls.map(([input]) => new URL(String(input))).filter(url => url.pathname.endsWith('/roster'));
   expect(rosters.map(url => url.search)).toEqual(['?season=2022', '?season=2022']);
   expect(s.events).toContainEqual(expect.objectContaining({ endpoint: 'getSquad', outcome: 'inconclusive', espnStatus: 503 }));
+  expect(s.events).toContainEqual(expect.objectContaining({ endpoint: 'getPlayer', outcome: 'inconclusive', espnError: 'partial' }));
   expect(s.events).toContainEqual(expect.objectContaining({ type: 'operation', served: 'espn', decision: 'inconclusive' }));
 });
 

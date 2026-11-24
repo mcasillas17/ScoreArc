@@ -514,7 +514,14 @@ export function createDataStore(deps: DataDeps): DataStore {
         for (const team of teams) {
           if (rosterTeamId !== undefined && team.id !== rosterTeamId) continue;
           const player = (await loadSquad(rc, team.id)).find(row => row.id === athleteId);
-          if (player) return archiveRosterProfile(rc, team, player);
+          if (player) {
+            // A roster proves tournament membership and totals. It cannot
+            // verify that the player's match log or career is actually empty.
+            if (supportsResource(rc.season, 'participation') || supportsResource(rc.season, 'career')) {
+              healthContext().onDependencyFailure?.('espn', { code: 'partial' });
+            }
+            return archiveRosterProfile(rc, team, player);
+          }
         }
         return null;
       }

@@ -18,7 +18,8 @@ verified ESPN rosters. The profile uses the tournament team, shirt number and
 available roster totals. ESPN's athlete feed reports the player's current club
 and recent matches even when supplied a historical year. A slug missing from
 the available rosters can return 404, including for editions with little roster
-coverage.
+coverage. A roster-only profile has partial evidence for comparison whenever
+the edition also advertises a match log or career.
 
 The directory reports teams with a nonempty roster out of distinct listed teams.
 That count does not certify completeness. No listed teams, no roster data,
