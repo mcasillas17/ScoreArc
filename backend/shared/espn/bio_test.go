@@ -34,7 +34,7 @@ func TestMapAthleteBioPreservesRecordedHistoryOrder(t *testing.T) {
 		t.Fatalf("team history entries = %d, want 4", len(entries))
 	}
 	if entries[0].TeamSourceID != "222" || entries[0].TeamName != "Querétaro" ||
-		entries[0].Seasons != "2025-CURRENT" {
+		entries[0].Seasons != "2025-CURRENT" || entries[0].CrestURL != "https://a.espncdn.com/i/teamlogos/soccer/500/222.png" {
 		t.Fatalf("first team history entry = %+v", entries[0])
 	}
 	if entries[3].TeamSourceID != "5379" || entries[3].TeamName != "Mexico U17" {

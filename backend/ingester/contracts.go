@@ -30,6 +30,7 @@ type repository interface {
 
 	// facts
 	SetTeamCrest(context.Context, string, string) error
+	SetScoreboardTeamColours(context.Context, string, []model.Match) error
 	UpsertMatch(context.Context, store.MatchIdentity, model.Match) error
 	UpsertMatchDetail(context.Context, uuid.UUID, model.MatchDetail) error
 	FinalizeMatch(context.Context, store.MatchIdentity, model.Match, model.MatchDetail) (bool, error)
@@ -89,6 +90,7 @@ type repository interface {
 	ReplaceSquad(context.Context, string, string, string, string, []model.SquadMember, map[string]uuid.UUID, ...bool) error
 	SetTeamRosterIdentity(ctx context.Context, teamID, colour, location string) error
 	PlayersNeedingBio(context.Context, string, time.Time, int, []string) (map[string]uuid.UUID, error)
+	DeferBioRetries(context.Context, []uuid.UUID, time.Time) error
 	ReplaceTeamHistory(context.Context, uuid.UUID, string, []model.TeamHistoryEntry) error
 	LogIngestRun(context.Context, *string, string, time.Time, time.Time, bool, string) error
 	PruneIngestRuns(context.Context, time.Time) (int64, error)

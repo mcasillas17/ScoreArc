@@ -108,6 +108,10 @@ paths:
           in: query
           description: Only scheduled matches. Without range, the forward feed.
           schema: { type: string, enum: [scheduled] }
+        - name: order
+          in: query
+          description: With state=scheduled, break simultaneous kickoffs by canonical home and away team IDs before applying the limit.
+          schema: { type: string, enum: [teams] }
         - name: detail
           in: query
           description: >-
@@ -811,6 +815,10 @@ components:
           description: Whole years since the stored birth date, on the request's UTC date.
         nationality: { type: [string, "null"] }
         headshotUrl: { type: [string, "null"], description: "An https image URL on the providers CDN (espncdn.com); anything else is dropped at ingest." }
+        statsRetained:
+          type: boolean
+          const: true
+          description: Present when the totals were retained from a different roster observation. The latest accepted roster for this club omitted them.
         stats:
           description: Null when the player has no season statistics at all, which is not the same as every stat being null.
           oneOf:
@@ -897,8 +905,8 @@ components:
         position: { type: string }
         jersey: { type: [string, "null"], description: "Jersey from the latest scoped squad membership, or null." }
         nationality: { type: [string, "null"] }
-        flagUrl: { type: [string, "null"], description: "Null because no player flag URL is held in the current schema." }
-        headshotUrl: { type: [string, "null"], description: "Always null: player.headshot_url (migration 0027) is served on SquadPlayer, not yet here." }
+        flagUrl: { type: [string, "null"], description: "Nationality flag supplied by the roster, or null when unknown." }
+        headshotUrl: { type: [string, "null"], description: "Portrait supplied by the roster, or null when unknown." }
         team:
           description: Canonical season-stat team, falling back to the latest scoped squad membership; null when absent.
           oneOf:
@@ -910,6 +918,7 @@ components:
           maxItems: 15
           description: Up to 15 named stored season measurements by default; empty without a scoped aggregate row. Unknown values remain null and measured zero remains zero.
           items: { $ref: "#/components/schemas/PlayerSeasonTotal" }
+        totalsRetained: { type: boolean, enum: [true], description: "Present when the aggregate predates the latest selected membership or belongs to another team or source." }
         gameLogLabel: { type: string, enum: ["Last 5 Matches"] }
         gameLog:
           type: array
@@ -976,7 +985,7 @@ components:
       properties:
         teamId: { type: [string, "null"], description: "Canonical team id resolved through the source-qualified crosswalk; null for unresolved teams." }
         teamName: { type: string, description: Stored team name retained even when identity is unresolved. }
-        crestUrl: { type: [string, "null"], description: "Canonical team's crest, or null when the team is unresolved or the crest is absent." }
+        crestUrl: { type: [string, "null"], description: "Observed career crest, falling back to the canonical team's crest when available. A crest does not establish a link." }
         seasons: { type: string }
     Scorer:
       type: object

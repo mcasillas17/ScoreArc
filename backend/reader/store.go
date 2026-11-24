@@ -73,14 +73,25 @@ LEFT JOIN match_detail d ON d.match_id = m.id`
 // match_comp_season_idx -- and only its rows are joined to teams and detail.
 // A LIMIT subquery is never flattened, so the detail columns and correlated
 // lookups cannot run for rows the limit discards. NULL limit is no limit.
-const matchPageSQL = `
-FROM (SELECT * FROM match m
+const matchWindowSQL = `SELECT * FROM match m
       WHERE m.competition_id = $1 AND m.season_id = $2
         AND m.kickoff >= $3 AND m.kickoff < $4
-        AND ($5::text IS NULL OR m.state = $5)
+        AND ($5::text IS NULL OR m.state = $5)`
+
+const matchPageSQL = `
+FROM (` + matchWindowSQL + `
       ORDER BY m.kickoff, m.id
       LIMIT $6) m` + matchJoins + `
 ORDER BY m.kickoff, m.id`
+
+// Include every match at the cutoff kickoff before breaking ties by canonical
+// team IDs. Only the selected page reaches the team/detail joins.
+const upcomingOrder = `m.kickoff, m.home_team_id COLLATE "C", m.away_team_id COLLATE "C"`
+const upcomingPageSQL = `
+FROM (SELECT * FROM (` + matchWindowSQL + `
+      ORDER BY m.kickoff FETCH FIRST ($6) ROWS WITH TIES) m
+      ORDER BY ` + upcomingOrder + ` LIMIT $6) m` + matchJoins + `
+ORDER BY ` + upcomingOrder
 
 var (
 	negativeInfinity = pgtype.Timestamptz{InfinityModifier: pgtype.NegativeInfinity, Valid: true}
@@ -111,7 +122,11 @@ func matchesStatement(competition, season string, query matchQuery) (string, []a
 		scheduled := string(espn.MatchStateScheduled)
 		state = &scheduled
 	}
-	return columns + matchPageSQL, []any{competition, season, from, to, state, limit}
+	page := matchPageSQL
+	if query.TeamOrder {
+		page = upcomingPageSQL
+	}
+	return columns + page, []any{competition, season, from, to, state, limit}
 }
 
 var errSeasonTooLarge = errors.New("season exceeds the reader's row bound")
@@ -499,6 +514,11 @@ const (
 
 var errTeamBlockTooLarge = errors.New("team block exceeds the reader's row bound")
 
+// ReplaceSquad writes membership and any supplied measurements in one
+// transaction. Both updated_at values use its fixed now().
+const rosterStatsRetainedSQL = `st.player_id IS NOT NULL AND
+  (st.team_id IS DISTINCT FROM sm.team_id OR st.source <> sm.source OR st.updated_at <> sm.updated_at)`
+
 // The squad join is LEFT: a player in the squad with no player_season_stat row
 // has never been measured, and must still appear. An INNER join would silently
 // drop exactly the players the "has not appeared" row exists to show.
@@ -516,7 +536,8 @@ SELECT ref.source_id, COALESCE(p.known_as, p.full_name), sm.shirt_number, COALES
        st.appearances, st.sub_ins, st.goals, st.assists, st.shots, st.shots_on_target,
        st.offsides, st.fouls_committed, st.fouls_suffered, st.yellow_cards,
        st.red_cards, st.own_goals, st.saves, st.shots_faced, st.goals_conceded,
-       (st.player_id IS NOT NULL) AS has_stats
+       (st.player_id IS NOT NULL) AS has_stats,
+       ` + rosterStatsRetainedSQL + ` AS stats_retained
 FROM squad_membership sm
 JOIN player p ON p.id = sm.player_id
 LEFT JOIN LATERAL (
@@ -739,7 +760,7 @@ func (s *Store) teamSquad(
 			&stats.TotalShots, &stats.ShotsOnTarget, &stats.Offsides,
 			&stats.FoulsCommitted, &stats.FoulsSuffered, &stats.YellowCards,
 			&stats.RedCards, &stats.OwnGoals, &stats.Saves, &stats.ShotsFaced,
-			&stats.GoalsConceded, &hasStats,
+			&stats.GoalsConceded, &hasStats, &player.StatsRetained,
 		); err != nil {
 			return nil, err
 		}
@@ -802,6 +823,13 @@ func (s *Store) teamSchedule(
 	scope := MatchScope{CompetitionID: competition, SeasonID: season}
 	scheduled := make([]TeamMatch, 0, len(matches))
 	for _, match := range matches {
+		// The scoreboard represents an ordinary unplayed match as 0–0. The
+		// team schedule has no score yet. Keep every live or final zero and
+		// exceptional scheduled score exactly as observed.
+		if match.State == "scheduled" && match.StatusName == "STATUS_SCHEDULED" &&
+			match.HomeScore != nil && *match.HomeScore == 0 && match.AwayScore != nil && *match.AwayScore == 0 {
+			match.HomeScore, match.AwayScore = nil, nil
+		}
 		scheduled = append(scheduled, TeamMatch{Match: match, Scope: scope})
 	}
 	return scheduled, nil

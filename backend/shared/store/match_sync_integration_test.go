@@ -272,6 +272,9 @@ func TestIngesterSchemaGateRunsAsTheIngesterRole(t *testing.T) {
 		{"resource_observation", "row_count"},
 		{"resource_observation", "observed_at"},
 		{"player", "bio_observed_at"},
+		{"player", "bio_retry_after"},
+		{"player", "flag_url"},
+		{"player_team_history", "crest_url"},
 		{"player_season_stat", "observed_at"},
 	} {
 		if _, err := pool.Exec(ctx, `ALTER TABLE `+tc.table+` RENAME COLUMN `+tc.column+` TO hidden_column`); err != nil {

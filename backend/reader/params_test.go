@@ -27,6 +27,7 @@ func TestParseMatchQueryAccepts(t *testing.T) {
 		{"detail=summary", matchQuery{From: day("2026-06-29"), To: day("2026-07-06"), Detail: true}},
 		// The forward feed: today through 28 days ahead, scheduled only, 12 rows.
 		{"state=scheduled", matchQuery{From: day("2026-07-01"), To: day("2026-07-30"), ScheduledOnly: true, Limit: 12}},
+		{"state=scheduled&limit=2&order=teams", matchQuery{From: day("2026-07-01"), To: day("2026-07-30"), ScheduledOnly: true, TeamOrder: true, Limit: 2}},
 		{"state=scheduled&limit=2", matchQuery{From: day("2026-07-01"), To: day("2026-07-30"), ScheduledOnly: true, Limit: 2}},
 		{"range=20260701-20260701", matchQuery{From: day("2026-07-01"), To: day("2026-07-02")}},
 		{"range=20260628-20260705&state=scheduled&limit=1", matchQuery{From: day("2026-06-28"), To: day("2026-07-06"), ScheduledOnly: true, Limit: 1}},
@@ -100,6 +101,7 @@ func TestParseMatchQueryRejects(t *testing.T) {
 		// The season scope takes no filter, window or cap; only detail.
 		"scope=", "scope=all", "scope=season&range=20260701-20260701", "scope=season&state=scheduled",
 		"scope=season&limit=5", "scope=season&scope=season", "scope=season&detail=", "scope=season&detail=all",
+		"order=teams", "state=scheduled&order=unknown", "scope=season&order=teams",
 		"scope=season&detail=summary&limit=1",
 	} {
 		if got, err := parseMatchQuery(raw, paramsNow); err == nil {

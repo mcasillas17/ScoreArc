@@ -38,6 +38,9 @@ func TestMapRosterKeepsPlayersWhoHaveNotPlayed(t *testing.T) {
 	if squad.TeamSourceID != "227" {
 		t.Fatalf("team source id = %q, want 227", squad.TeamSourceID)
 	}
+	if squad.Players[0].FlagURL != "https://a.espncdn.com/i/teamlogos/countries/500/mex.png" {
+		t.Fatalf("missing roster nationality flag: %v", squad.Players[0])
+	}
 	if len(squad.Players) != 35 {
 		t.Fatalf("players = %d, want 35", len(squad.Players))
 	}

@@ -126,8 +126,8 @@ export default async function PlayerPage({ params }: Params) {
           <ul className="pl-career">
             {player.career.map((stint) => (
               <li key={`${stint.teamId ?? stint.teamName}:${stint.seasons}`} className="pl-stint">
-                {stint.teamId !== null && <TeamBadge
-                  team={{ id: stint.teamId, name: stint.teamName, abbr: stint.teamName, crestUrl: stint.crestUrl }}
+                {(stint.teamId !== null || stint.crestUrl) && <TeamBadge
+                  team={{ id: stint.teamId ?? stint.teamName, name: stint.teamName, abbr: stint.teamName, crestUrl: stint.crestUrl }}
                   size={18}
                   style="crest"
                 />}

@@ -20,8 +20,7 @@ type rawRosterDocument struct {
 		ID flexibleString `json:"id"`
 		// The club's primary colour, six hex digits with no '#'. Present on
 		// the roster payload the ingester already fetches, so capturing it
-		// costs no extra request. alternateColor is NOT here -- it appears
-		// only on /teams/{id}, which this ingester does not call.
+		// costs no extra request. The full scoreboard supplies alternateColor.
 		Color    string `json:"color"`
 		Location string `json:"location"`
 	} `json:"team"`
@@ -38,7 +37,10 @@ type rawRosterAthlete struct {
 	} `json:"position"`
 	DateOfBirth string `json:"dateOfBirth"`
 	Citizenship string `json:"citizenship"`
-	Headshot    struct {
+	Flag        struct {
+		Href string `json:"href"`
+	} `json:"flag"`
+	Headshot struct {
 		Href string `json:"href"`
 	} `json:"headshot"`
 	Statistics json.RawMessage `json:"statistics"`
@@ -105,7 +107,8 @@ func MapRoster(raw []byte) (model.Squad, error) {
 			Position:    athlete.Position.Abbreviation,
 			BirthDate:   birthDate,
 			Nationality: athlete.Citizenship,
-			HeadshotURL: headshotURL(athlete.Headshot.Href),
+			HeadshotURL: providerMediaURL(athlete.Headshot.Href),
+			FlagURL:     providerMediaURL(athlete.Flag.Href),
 		}
 		values, err := rosterStatValues(athlete.Statistics)
 		if err != nil {
@@ -186,9 +189,9 @@ func rosterStatValues(raw json.RawMessage) (map[string]*int, error) {
 	return values, nil
 }
 
-// headshotURL returns value when it is provider CDN media (cdnurl), else "".
+// providerMediaURL returns value when it is provider CDN media (cdnurl), else "".
 // The reader serves it to browsers as an image source.
-func headshotURL(value string) string {
+func providerMediaURL(value string) string {
 	parsed, err := url.Parse(value)
 	if err != nil || !cdnurl.ProviderMedia(parsed) {
 		return ""

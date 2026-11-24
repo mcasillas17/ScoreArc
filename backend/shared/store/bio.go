@@ -30,8 +30,12 @@ SELECT r.source_id, p.id
 FROM player p
 JOIN player_external_ref r ON r.player_id = p.id AND r.source = $1
 WHERE (p.bio_fetched_at IS NULL OR p.bio_fetched_at < $2)
-  AND EXISTS (SELECT 1 FROM appearance a JOIN match m ON m.id=a.match_id WHERE a.player_id=p.id AND (m.competition_id || '/' || m.season_id) = ANY($4::text[]))
-ORDER BY p.bio_fetched_at NULLS FIRST
+  AND (p.bio_retry_after IS NULL OR p.bio_retry_after <= now())
+  AND (EXISTS (SELECT 1 FROM appearance a JOIN match m ON m.id=a.match_id
+               WHERE a.player_id=p.id AND (m.competition_id || '/' || m.season_id) = ANY($4::text[]))
+    OR EXISTS (SELECT 1 FROM squad_membership sm WHERE sm.player_id=p.id AND sm.source=$1
+               AND (sm.competition_id || '/' || sm.season_id) = ANY($4::text[])))
+ORDER BY GREATEST(p.bio_retry_after, p.bio_fetched_at) NULLS FIRST, p.id, r.source_id
 LIMIT $3`,
 		source, staleBefore, limit, scopes,
 	)
@@ -53,6 +57,19 @@ LIMIT $3`,
 		return nil, fmt.Errorf("iterate players needing bio: %w", err)
 	}
 	return candidates, nil
+}
+
+// DeferBioRetries moves failed players behind other eligible work without
+// changing their last successful fetch, accepted observation or career rows.
+func (s *Store) DeferBioRetries(ctx context.Context, ids []uuid.UUID, until time.Time) error {
+	opCtx, cancel := boundedContext(ctx)
+	defer cancel()
+	_, err := s.pool.Exec(opCtx, `UPDATE player SET bio_retry_after=GREATEST(bio_retry_after,$2)
+WHERE id=ANY($1::uuid[])`, ids, until)
+	if err != nil {
+		return fmt.Errorf("defer bio retries: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) ReplaceTeamHistory(
@@ -88,13 +105,14 @@ func (s *Store) ReplaceTeamHistory(
 	for index, entry := range entries {
 		if _, err := tx.Exec(opCtx, `
 INSERT INTO player_team_history
-  (player_id, team_source_id, team_name, seasons, ord, source)
-VALUES ($1,$2,$3,$4,$5,$6)
+  (player_id, team_source_id, team_name, seasons, ord, source, crest_url)
+VALUES ($1,$2,$3,$4,$5,$6,NULLIF($7,''))
 ON CONFLICT (player_id, team_source_id, seasons) DO UPDATE SET
   team_name = EXCLUDED.team_name,
+  crest_url = EXCLUDED.crest_url,
   ord       = EXCLUDED.ord,
   source    = EXCLUDED.source`,
-			playerID, entry.TeamSourceID, entry.TeamName, entry.Seasons, index, source,
+			playerID, entry.TeamSourceID, entry.TeamName, entry.Seasons, index, source, entry.CrestURL,
 		); err != nil {
 			return fmt.Errorf("upsert player team history: %w", err)
 		}

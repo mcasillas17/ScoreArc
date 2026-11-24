@@ -1,6 +1,8 @@
 # Production release runbook
 
-**Before merging the scoped-poll change:** the owner previously confirmed 0028.
+**Player profile media requires migration `0030_player_profile_media` before merging.** Verify the target is clean at 29. Coordinate the normal owner-authorized migration and the reader/ingester release using the [schema readiness procedure](#schema-readiness). Confirm clean version 30 before merging. The migration adds nullable media and bio retry-scheduling columns without rewriting existing rows. Flags populate on accepted roster refreshes and career crests on regular bio refreshes. Roll back the columns only after retiring binaries that read or write them.
+
+**Earlier scoped-poll release:** the owner previously confirmed 0028.
 Verify that the target ledger is clean at 28, then separately authorize and apply
 `0029_match_poll_evidence` through the normal migration process. Verify clean
 version 29 and the reader/ingester grants before merging. A merge can release

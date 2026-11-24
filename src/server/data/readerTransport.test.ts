@@ -27,6 +27,16 @@ describe('reader transport', () => {
     controller.abort(new Error('caller left'));
     await expect(read).rejects.toThrow('caller left');
   });
+  it('enforces the smaller endpoint or operation body limit on headers and streaming responses', async () => {
+    for (const headers of [new Headers({ 'content-length': '24' }), new Headers()]) {
+      const budget = createRequestBudget({ signal: new AbortController().signal, maxResponseBytes: 20,
+        fetch: async () => new Response(JSON.stringify('1234567890'), { headers }) });
+      await expect(budget.json('https://site.api.espn.com', undefined, 'espn', 8)).rejects.toMatchObject({ reason: 'budget' });
+    }
+    const budget = createRequestBudget({ signal: new AbortController().signal, maxResponseBytes: 8,
+      fetch: async () => Response.json('1234567890') });
+    await expect(budget.json('https://site.api.espn.com', undefined, 'espn', 20)).rejects.toMatchObject({ reason: 'budget' });
+  });
   it('rejects oversized streaming bodies and missing metadata', async () => {
     const signal = new AbortController().signal;
     const budget = createRequestBudget({ fetch: async () => response('x'.repeat(100)), signal, maxResponseBytes: 32 });

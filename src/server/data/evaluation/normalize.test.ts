@@ -15,7 +15,7 @@ describe('reader evaluation semantic policy', () => {
     const result = compare(reader, original);
     expect(result.differences).toEqual([]);
     expect(result.normalizers).toEqual(expect.arrayContaining(['instant-v1', 'match-set-order-v1']));
-    expect(NORMALIZATION_VERSION).toBe('reader-evaluation-v3');
+    expect(NORMALIZATION_VERSION).toBe('reader-evaluation-v4');
     expect(original[0].kickoff).toBe('2026-06-29T17:00Z');
   });
 
@@ -95,6 +95,27 @@ describe('reader evaluation semantic policy', () => {
     expect(compareTeams(mirror, provider).unequal).toBe(false);
     expect(compareTeams({ ...mirror, crestUrl: 'https://cdn.scorearc.futbol/teams/mex-toluca' }, provider).unequal).toBe(true);
     expect(compareTeams(mirror, { ...provider, crestUrl: provider.crestUrl.replace('default.png', 'away.png') }).unequal).toBe(true);
+  });
+
+  it.each([
+    ['mex', 'mex'], ['kor', 'kors'], ['cod', 'rdc'], ['mtq', 'marq'],
+    ['bvi', 'bvr'], ['smn', 'stm'], ['srb', 'sba'], ['kos', 'kosovo'],
+    ['rou', 'rom'], ['arm', 'fifa.armenia'], ['mne', 'mtg'],
+  ])('recognizes only the verified ESPN country image for nat-%s', (team, filename) => {
+    const mirror = { crestUrl: `https://cdn.scorearc.futbol/teams/nat-${team}` };
+    const provider = { crestUrl: `https://a.espncdn.com/i/teamlogos/countries/500/${filename}.png` };
+    const same = compare([mirror], [provider], 'getEditionTeams');
+    expect(same.unequal).toBe(false);
+    expect(same.normalizers).toContain('mirrored-crest-v1');
+    for (const other of [
+      provider.crestUrl.replace('/500/', '/500-dark/'),
+      provider.crestUrl.replace('a.espncdn.com', 'example.org'),
+      'https://a.espncdn.com/i/teamlogos/countries/500/arg.png',
+      // ESPN uses kors.png for the Korean team. Its canonical code alone is insufficient.
+      'https://a.espncdn.com/i/teamlogos/countries/500/kor.png',
+    ]) {
+      expect(compare([mirror], [{ crestUrl: other }], 'getEditionTeams').unequal).toBe(true);
+    }
   });
 
   it('treats a null reader slug and an absent provider slug as the same unresolved link', () => {

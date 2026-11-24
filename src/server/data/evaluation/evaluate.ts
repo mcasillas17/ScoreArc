@@ -1,3 +1,4 @@
+import { withHealthContext } from '@/lib/telemetry/http';
 import { createReaderDataStore } from '../apiStore';
 import { TtlCache } from '../cache';
 import { listCompetitions, resolveSeason, supportsResource, type CompetitionSeason } from '../competitions';
@@ -6,6 +7,7 @@ import { createRequestBudget, createReaderTransport, readerOrigin, ReaderFailure
 import { requireResources, resourceUsable } from '../readerPolicy';
 import { summaryHeaderFinal } from '../providers/espn-summary';
 import { EspnEditionError, providerYear, requiresEditionEvidence, seasonIssue, verifySummaryEdition } from '../providers/espn-edition';
+import { buildOutboundEndpoint } from '../httpHealth';
 import { mapTeamRoster } from '../providers/espn-team';
 import { abortable, validateScoreboardEnvelope, validateScoreboardEvent } from '../scoreboardWindow';
 import type { ReaderResources } from '@/lib/readerResources';
@@ -117,15 +119,15 @@ function supported(sample: Sample, rc: CompetitionSeason | undefined): boolean {
   if (['getStandings', 'getLeaders', 'getTeam', 'getSquad', 'getPlayer', 'playerPopup', 'teamSchedule', 'leaderLinks', 'formPopup'].includes(sample.kind) && rc.season.id !== rc.competition.currentSeasonId) return false;
   return true;
 }
-const knownRoutes = ['matches', 'standings', 'bracket', 'identities', 'leaders', 'teams', 'squad', 'players', 'scoreboard', 'statistics', 'summary', 'roster', 'schedule', 'athletes', 'overview', 'bio'] as const;
+const knownRoutes = ['matches', 'standings', 'bracket', 'identities', 'leaders', 'teams', 'squad', 'players', 'scoreboard', 'statistics', 'summary', 'roster', 'schedule', 'athletes', 'overview', 'eventlog', 'bio'] as const;
 function routeInfo(url: URL, requested: CompetitionSeason): Pick<RequestEvidence, 'route' | 'competition' | 'season' | 'query'> {
   const parts = url.pathname.split('/');
-  const route = [...parts].reverse().find(p => knownRoutes.some(route => route === p)) ?? 'unknown';
+  const route = url.hostname === 'sports.core.api.espn.com' ? buildOutboundEndpoint('espn', url.href) : [...parts].reverse().find(p => knownRoutes.some(route => route === p)) ?? 'unknown';
   const offset = parts.indexOf('competitions');
   const provider = listCompetitions().find(competition => parts.includes(competition.espnSlug));
   const rc = offset < 0 ? provider?.id === requested.competition.id ? requested : provider && resolveSeason(provider.id) : resolveSeason(parts[offset + 1], parts[offset + 2]);
   const query: Record<string, string> = {};
-  for (const key of ['range', 'dates', 'metric', 'limit', 'season', 'seasontype', 'fixture', 'detail', 'state', 'kind', 'from']) {
+  for (const key of ['range', 'dates', 'metric', 'limit', 'season', 'seasontype', 'fixture', 'detail', 'state', 'order', 'kind', 'from']) {
     const value = url.searchParams.get(key);
     if (value && /^[a-z0-9-]{1,24}$/.test(value)) query[key] = value;
   }
@@ -179,7 +181,8 @@ function espnScopeCategories(url: URL, body: unknown, rc: CompetitionSeason, exp
     return [];
   }
   if (requiresEditionEvidence(rc) && ['/summary', '/standings', '/statistics', '/scoreboard'].some(suffix => path.endsWith(suffix))) return [];
-  if ((path.endsWith('/scoreboard') && url.searchParams.has('dates')) || path.endsWith('/schedule') || path.endsWith('/bio')) return [];
+  if (url.hostname === 'sports.core.api.espn.com' && buildOutboundEndpoint('espn', url.href) === 'player-lineup-entry') return [];
+  if ((path.endsWith('/scoreboard') && url.searchParams.has('dates')) || path.endsWith('/schedule') || path.endsWith('/bio') || path.endsWith('/eventlog')) return [];
   if (path.endsWith('/scoreboard')) {
     const leagues = object(body) && Array.isArray(body.leagues) ? body.leagues : [];
     if (!leagues.length) return ['scope_unverified'];
@@ -200,7 +203,10 @@ function espnScopeCategories(url: URL, body: unknown, rc: CompetitionSeason, exp
     }
     return [];
   }
-  if (path.endsWith('/overview')) return ['scope_unverified']; // The existing overview can mix competitions.
+  // An athlete identity is global. Overview teams are only candidates until
+  // the requested edition's roster confirms membership. A log fallback or
+  // unverified identity is reported by the store through onDependencyFailure.
+  if (path.endsWith('/overview') || buildOutboundEndpoint('espn', url.href) === 'athlete') return [];
   if (object(body) && object(body.league) && body.league.slug !== rc.competition.espnSlug) return ['scope_mismatch'];
   const issue = seasonIssue(object(body) ? body.season : undefined, rc.season);
   return issue ? [issue] : [];
@@ -286,9 +292,9 @@ export async function evaluate(options: {
             fetchJson: (raw, fetchOptions) => {
               const url = new URL(raw);
               // Fixed provider builders only. Prevent a future fixture/config error from becoming an arbitrary fetch.
-              if (!['site.api.espn.com', 'site.web.api.espn.com'].includes(url.hostname) || url.protocol !== 'https:') throw new ReaderFailure('scope', false);
+              if (!['site.api.espn.com', 'site.web.api.espn.com', 'sports.core.api.espn.com'].includes(url.hostname) || url.protocol !== 'https:') throw new ReaderFailure('scope', false);
               return tracked(url, async request => {
-                const response = await budget.json(raw, fetchOptions ? AbortSignal.any([signal, fetchOptions.signal]) : signal);
+                const response = await budget.json(raw, fetchOptions ? AbortSignal.any([signal, fetchOptions.signal]) : signal, 'espn', fetchOptions?.maxBytes);
                 categories.push(...espnScopeCategories(url, response.body, rc!, summarySides.get(url.searchParams.get('event') ?? '')));
                 categories.push(...providerCollections(url, response.body, rc!));
                 if (url.pathname.endsWith('/summary')) {
@@ -299,7 +305,9 @@ export async function evaluate(options: {
               });
             },
           });
-          result = await abortable(runScenario(store, sample, rc!, signal, sampleNow, source), signal);
+          result = await withHealthContext({
+            onDependencyFailure: (_source, fault) => { categories.push(fault.code); },
+          }, () => abortable(runScenario(store, sample, rc!, signal, sampleNow, source), signal));
           categories.push(...result.issues, ...valueEvidence(result.value).categories);
           if (result.value === null) categories.push('target_missing');
         } catch (error) {

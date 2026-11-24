@@ -350,10 +350,10 @@ export function mapSummaryStats(
     const homeEntry = teams.find((t: any) => String(t.team?.id) === homeId);
     const awayEntry = teams.find((t: any) => String(t.team?.id) === awayId);
     if (!homeEntry || !awayEntry) return null;
-    return {
-      home: buildTeamStats(homeEntry.statistics ?? []),
-      away: buildTeamStats(awayEntry.statistics ?? []),
-    };
+    const home = buildTeamStats(homeEntry.statistics ?? []);
+    const away = buildTeamStats(awayEntry.statistics ?? []);
+    if (Object.values(home).every(value => value === null) && Object.values(away).every(value => value === null)) return null;
+    return { home, away };
   } catch {
     return null;
   }

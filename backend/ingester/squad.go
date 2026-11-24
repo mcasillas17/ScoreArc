@@ -26,6 +26,17 @@ const (
 	squadRetryInterval = 30 * time.Minute
 )
 
+// A newly completed game can change its participants' roster totals between
+// daily reads. Recheck just those clubs on the next eligible slow tick;
+// existing per-team retry backoff still applies.
+func (r *runner) markMatchSquadsPending(competitionID, seasonID, homeID, awayID string) {
+	prefix := competitionID + "/" + seasonID + "/"
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.squadsRefreshed, prefix+homeID)
+	delete(r.squadsRefreshed, prefix+awayID)
+}
+
 // ESPN's roster is current. A past or future cup cannot borrow today's squad.
 func (r *runner) refreshMatchSquads(ctx context.Context, comp config.Competition, season config.Season) error {
 	start, end, err := source.SeasonBounds(season)

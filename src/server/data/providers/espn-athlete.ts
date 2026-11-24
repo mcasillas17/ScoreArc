@@ -1,3 +1,5 @@
+import { completeCollectionMetadata } from './espn-collection';
+import { datedInEdition, object } from './espn-edition';
 import type { CompetitionSeason } from '../competitions';
 import type { CareerStint, GameLogRow, PlayerProfile, PlayerSeasonTotal, SquadPlayer, Team } from '../types';
 
@@ -138,4 +140,45 @@ export function mapAthleteBio(raw: unknown): CareerStint[] {
       crestUrl: t.logo ?? null,
       seasons: t.seasons ?? '',
     }));
+}
+
+/** Only an explicit empty history or a provider not-found can establish absence. */
+export function completeAthleteBio(raw: unknown): boolean {
+  if (!object(raw)) return false;
+  const rows = raw.teamHistory;
+  if (raw.code === 404 && rows == null) return completeCollectionMetadata(raw, 0);
+  if (raw.code !== undefined && raw.code !== 0 && raw.code !== 404) return false;
+  if (!Array.isArray(rows) || !completeCollectionMetadata(raw, rows.length) || (raw.code === 404 && rows.length)) return false;
+  const seen = new Set<string>();
+  return rows.every(row => {
+    if (!object(row) || !['number', 'string'].includes(typeof row.id) || !String(row.id).trim() ||
+        typeof row.displayName !== 'string' || !row.displayName.trim() || typeof row.seasons !== 'string' || !row.seasons.trim()) return false;
+    const key = JSON.stringify([String(row.id), row.seasons]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** The overview is athlete-wide. Only display rows with an explicit league
+ * identifier and a kickoff inside this edition when the scoped log is down. */
+export function mapScopedAthleteOverview(raw: unknown, rc: CompetitionSeason): GameLogRow[] {
+  const context = object(raw) && object(raw.gameLog) && object(raw.gameLog.events) ? raw.gameLog.events : {};
+  return mapAthleteOverview(raw).rows.filter(row => {
+    const event = context[row.eventId];
+    if (!object(event) || !Array.isArray(event.links) || !datedInEdition(row.date, rc.season)) return false;
+    const leagueLinks = event.links.filter(link => object(link) && Array.isArray(link.rel) && link.rel.includes('standings'));
+    return leagueLinks.length > 0 && leagueLinks.every(link => {
+      if (!object(link) || typeof link.href !== 'string') return false;
+      const url = URL.parse(link.href);
+      return url?.origin === 'https://www.espn.com' && ['soccer', 'football'].some(sport =>
+        url.pathname === `/${sport}/table/_/league/${rc.competition.espnSlug}`);
+    });
+  }).slice(0, 5);
+}
+
+export function overviewRosterTeams(raw: unknown, rc: CompetitionSeason): string[] {
+  const splits = object(raw) && object(raw.statistics) && Array.isArray(raw.statistics.splits) ? raw.statistics.splits : [];
+  return [...new Set(splits.filter(object).filter(split => split.leagueSlug === rc.competition.espnSlug)
+    .map(split => split.teamId).filter((id): id is string => typeof id === 'string' && /^[1-9]\d*$/.test(id)))];
 }

@@ -48,11 +48,8 @@ export function loadPlayerBySlug(
       if (unavailable) throw unavailable.error;
       return null;
     }
-    if (rc.season.publication === 'archive') {
-      const teamId = index.directory.players.find(player => player.slug === slug)?.teamId;
-      return source.getPlayer(rc, resolved.providerId, teamId);
-    }
-    return source.getPlayer(rc, resolved.providerId);
+    const teamId = index.directory.players.find(player => player.slug === slug)?.teamId;
+    return source.getPlayer(rc, resolved.providerId, teamId);
   }, signal);
 }
 

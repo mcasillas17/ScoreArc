@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mcasillas17/scorearc-backend/shared/espn"
+	"github.com/mcasillas17/scorearc-backend/shared/model"
 	writerstore "github.com/mcasillas17/scorearc-backend/shared/store"
 )
 
@@ -91,5 +92,40 @@ func TestRosterStatsValidationPreservesReaderObservation(t *testing.T) {
 	metadata := resourceHeader(t, response.Header()).Resources["seasonStats"]
 	if metadata.Status != "fresh" || metadata.Availability != "complete" || metadata.ObservedAt == nil || !metadata.ObservedAt.After(old) {
 		t.Fatalf("validated nullable observation=%+v", metadata)
+	}
+}
+
+func TestSquadMarksStatisticsRetainedFromAnEarlierRoster(t *testing.T) {
+	ctx := context.Background()
+	reader, owner := newIntegrationStore(t)
+	writer, err := writerstore.New(ctx, owner.Config().ConnString())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(writer.Close)
+	measured := []model.SquadMember{{SourceID: "98761", FullName: "Current"}, {SourceID: "98762", FullName: "Retained"}}
+	goals := 3
+	for i := range measured {
+		measured[i].Stats = &model.PlayerSeasonStats{Goals: &goals}
+	}
+	write := func() {
+		t.Helper()
+		if err := writer.ReplaceSquad(ctx, "world-cup", "2026", "nat-arg", "espn", measured, nil, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write()
+	measured[1].Stats = nil
+	write()
+	rows, err := reader.Squad(ctx, "nat-arg", "world-cup", "2026", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].Stats == nil || rows[1].Stats == nil ||
+		rows[1].Stats.TotalGoals == nil || *rows[1].Stats.TotalGoals != goals {
+		t.Fatalf("raw reader must retain both players' totals: %+v", rows)
+	}
+	if rows[0].StatsRetained || !rows[1].StatsRetained {
+		t.Fatalf("want only second player's totals marked retained: %+v", rows)
 	}
 }

@@ -32,7 +32,8 @@ describe('outbound HTTP health', () => {
       newsUrl: [espn.newsUrl(rc), 'news'], teamsUrl: [espn.teamsUrl(rc), 'teams'], teamUrl: [espn.teamUrl(rc, id), 'team'],
       teamRosterUrl: [espn.teamRosterUrl(rc, id), 'roster'], teamScheduleUrl: [espn.teamScheduleUrl(rc, id), 'schedule-results'],
       athleteUrl: [espn.athleteUrl(rc, id), 'athlete'], athleteOverviewUrl: [espn.athleteOverviewUrl(rc, id), 'overview'],
-      athleteBioUrl: [espn.athleteBioUrl(rc, id), 'bio'],
+      athleteLineupEntryUrl: [espn.athleteLineupEntryUrl(rc, id, id, id), 'player-lineup-entry'],
+      athleteBioUrl: [espn.athleteBioUrl(rc, id), 'bio'], athleteEventLogUrl: [espn.athleteEventLogUrl(rc, 2026, id), 'eventlog'],
     };
     for (const [url, route] of Object.values(builders)) expect(buildOutboundEndpoint('espn', url), url).toBe(route);
     expect(buildOutboundEndpoint('espn', espn.teamScheduleUrl(rc, id, true))).toBe('schedule-upcoming');

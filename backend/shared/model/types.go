@@ -32,6 +32,8 @@ type Team struct {
 	Name     string  `json:"name"`
 	Abbr     string  `json:"abbr"`
 	CrestURL *string `json:"crestUrl"`
+	// AlternateColor is observed on scoreboard sides and stored on the team profile.
+	AlternateColor string `json:"-"`
 }
 
 // Match is the ESPN-mapped subset of types.ts's Match that the scoreboard

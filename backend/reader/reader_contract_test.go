@@ -1412,7 +1412,7 @@ func TestReaderContract(t *testing.T) {
 				parameters[parameter.Value.Name] = true
 			}
 		}
-		if !reflect.DeepEqual(parameters, map[string]bool{"range": true, "state": true, "detail": true, "limit": true, "scope": true}) {
+		if !reflect.DeepEqual(parameters, map[string]bool{"range": true, "state": true, "detail": true, "limit": true, "scope": true, "order": true}) {
 			t.Fatalf("OpenAPI documents query parameters %v", parameters)
 		}
 	})

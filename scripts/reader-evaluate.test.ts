@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseEvaluationArgs, readEvaluationManifest, runEvaluationCLI } from './reader-evaluate';
+import { evaluate } from '../src/server/data/evaluation/evaluate';
 import { createOfflineEvaluation, OFFLINE_MANIFEST } from './reader-evaluation-fixtures';
 
 const temp: string[] = [];
@@ -73,6 +74,22 @@ describe('offline fixture boundary', () => {
     expect(kinds).not.toContain('getNews');
     expect(OFFLINE_MANIFEST.samples.length).toBeLessThanOrEqual(32);
     expect(new Set(OFFLINE_MANIFEST.samples.map(sample => `${sample.competition}/${sample.season}`)).size).toBeLessThanOrEqual(4);
+  });
+
+  it('uses verified roster evidence for overview candidates and records a malformed optional bio', async () => {
+    const offline = await createOfflineEvaluation();
+    try {
+      const result = await evaluate({ ...offline, enabled: true, offline: true,
+        manifest: { version: 1, samples: [{ competition: 'world-cup', season: '2026', kind: 'getPlayer', playerId: '297287' }] },
+        fetch: async (input, init) => new URL(String(input)).pathname.endsWith('/bio')
+          ? Response.json(null) : offline.fetch(input, init),
+      });
+      const sample = result.samples[0];
+      expect(sample.espn.requests.map(request => request.route)).toContain('overview');
+      expect(sample.categories).not.toContain('scope_unverified');
+      expect(sample.categories).toContain('partial');
+      expect(result.counts.comparable).toBe(0);
+    } finally { await offline.close(); }
   });
 
   it('serves provider fixtures without external fetches and rejects unknown destinations', async () => {

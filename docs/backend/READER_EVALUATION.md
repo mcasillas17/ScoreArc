@@ -103,7 +103,7 @@ Optional enrichment helpers can swallow failures or race an 800 ms timer; the
 runner uses the strict awaited index instead. No private selected-store marker
 or fallback registration is necessary.
 
-## Named normalization policy: `reader-evaluation-v3`
+## Named normalization policy: `reader-evaluation-v4`
 
 | Rule | Exact boundary |
 |---|---|
@@ -115,7 +115,7 @@ or fallback registration is necessary.
 | `resource-evidence-v1` | `readerResources` and group `readerDerivation` are evaluated as evidence, not equal to an absent ESPN envelope |
 | `qualified-canonical-player-ref-v1` | Only leader/lineup `playerId` is a reader-qualified canonical reference; provider athlete ID and public `playerSlug` still compare |
 | `bracket-round-display-v1` | Reader-only round display name; slug/order/event membership still compare |
-| `mirrored-crest-v1` | For `crestUrl` and `teamCrestUrl`, resolve the ScoreArc mirror and ESPN's numeric club crest through the team crosswalk. Version 3 also recognizes three exact ESPN default PNG URLs verified byte-for-byte against the Necaxa, Atlas and Atlético de San Luis women's team mirrors. Unknown GUIDs, alternate files and another team's crest stay distinct. |
+| `mirrored-crest-v1` | For `crestUrl` and `teamCrestUrl`, resolve the ScoreArc mirror and ESPN's numeric club crest through the team crosswalk. Version 3 also recognizes three exact ESPN default PNG URLs verified byte-for-byte against the Necaxa, Atlas and Atlético de San Luis women's team mirrors. Version 4 includes exact national flag PNGs verified against the matching national-team mirrors. Unknown GUIDs, alternate files and another team's crest stay distinct. |
 | `unresolved-player-slug-v1` | Leader and lineup rows only: a null reader `playerSlug` against an absent provider one. A null against a real slug is still a `link` difference |
 | `reader-lineup-evidence-v1` | Reader-only lineup `teamId`, and lineup `availability` only when it is `complete`, where the provider has no such field |
 | `team-schedule-detail-superset-v1` | Scorers, cards, statistics and win probability on a team-schedule match only where the provider's value is empty or null. Provider detail that disagrees still compares |
@@ -128,7 +128,7 @@ stay distinct except the named nationality rule and the named player-slug rule. 
 vocabulary; dynamic keys/IDs and raw values are not dumped.
 
 Documented held-player projections (five scoped logs, fifty held career stints,
-fifteen stored totals, null flags/headshots and stored display labels) do not
+fifteen stored totals and stored display labels) do not
 establish full provider parity. This version conservatively retains those
 payload differences and their partial/scope evidence rather than discarding
 scores or silently intersecting rows. Likewise team sponsor wording can remain

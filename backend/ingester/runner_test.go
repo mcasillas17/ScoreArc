@@ -401,6 +401,7 @@ type fakeRepository struct {
 	bioQueryLimits    []int
 	bioStaleBefore    []time.Time
 	bioIgnoreLimit    bool
+	bioRetryAt        map[uuid.UUID]time.Time
 	bioWriteCalls     int
 	bioWriteErrors    map[uuid.UUID]error
 	unfinalized       []model.Match
@@ -468,6 +469,8 @@ type fakeRepository struct {
 	// entirely, for constructing edge cases (like an unrecognised kind) that
 	// the real store could return but the fake's own bookkeeping never would.
 	pendingFinalCapturesOverride []store.PendingFinalCapture
+
+	scoreboardColourCalls int
 }
 
 // finalCaptureCandidate is one match/provider-id pair the fake's FinalizeMatch
@@ -601,6 +604,12 @@ func (f *fakeRepository) ApplyCompetitionSeed(context.Context, []config.Competit
 	return nil
 }
 func (f *fakeRepository) SetTeamCrest(context.Context, string, string) error {
+	return nil
+}
+func (f *fakeRepository) SetScoreboardTeamColours(context.Context, string, []model.Match) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.scoreboardColourCalls++
 	return nil
 }
 func (f *fakeRepository) UpsertMatch(
@@ -1090,6 +1099,17 @@ func (f *fakeRepository) PlayersNeedingBio(
 		selected[sourceID] = playerID
 	}
 	return selected, nil
+}
+func (f *fakeRepository) DeferBioRetries(_ context.Context, ids []uuid.UUID, until time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.bioRetryAt == nil {
+		f.bioRetryAt = make(map[uuid.UUID]time.Time)
+	}
+	for _, id := range ids {
+		f.bioRetryAt[id] = until
+	}
+	return nil
 }
 func (f *fakeRepository) ReplaceTeamHistory(
 	_ context.Context,
@@ -2466,6 +2486,13 @@ func TestSeasonBackfillSkipsScheduledSummaries(t *testing.T) {
 	if src.summaryCalls != 0 {
 		t.Fatalf("summary calls=%d", src.summaryCalls)
 	}
+	if repo.scoreboardColourCalls != 1 {
+		t.Fatalf("full scoreboard colour writes = %d, want 1", repo.scoreboardColourCalls)
+	}
+	runner.runCycle(context.Background(), true)
+	if repo.scoreboardColourCalls != 1 {
+		t.Fatalf("rolling poll repeated the season's colour write")
+	}
 }
 
 func TestEmptyLeaderBoardsPreserveRowsAndRemainRetryable(t *testing.T) {
@@ -3578,6 +3605,30 @@ func TestSquadRefreshRunsOncePerDay(t *testing.T) {
 	}
 }
 
+// A game changes its two clubs' season totals after the daily roster read.
+func TestSquadRefreshAfterFinalRechecksOnlyBothSides(t *testing.T) {
+	ctx := context.Background()
+	src := &fakeSource{standings: squadTestStandings("home", "away", "idle")}
+	repo := &fakeRepository{existing: map[string]store.MatchRow{}}
+	worker := testRunner(src, repo, squadTestCompetition())
+	worker.runCycle(ctx, true)
+	for key := range worker.squadAttempted {
+		worker.squadAttempted[key] = time.Now().Add(-time.Hour)
+	}
+	src.matches = []model.Match{finishedMatch()}
+	worker.runCycle(ctx, true)
+	if repo.finalizeCalls != 1 {
+		t.Fatalf("expected one finalization, got %d", repo.finalizeCalls)
+	}
+	calls := map[string]int{}
+	for _, team := range src.rosterCalls {
+		calls[team]++
+	}
+	if calls["home"] != 2 || calls["away"] != 2 || calls["idle"] != 1 {
+		t.Fatalf("roster reads after the match: %v, want home and away twice, idle once", calls)
+	}
+}
+
 // One club's roster failing must not stop the other nineteen.
 func TestSquadRefreshContinuesPastOneFailure(t *testing.T) {
 	src := &fakeSource{
@@ -3758,6 +3809,20 @@ func TestBioRefreshRunsOnlyOnSlowTicksAndOnceGlobally(t *testing.T) {
 	if repo.bioQueryCalls != 1 {
 		t.Fatalf("two-competition slow tick bio queries = %d, want one global query",
 			repo.bioQueryCalls)
+	}
+}
+
+func TestBioRefreshDefersFetchAndWriteFailuresOnly(t *testing.T) {
+	noHistory, rejected, valid := uuid.New(), uuid.New(), uuid.New()
+	repo := &fakeRepository{bioCandidates: map[string]uuid.UUID{"100": noHistory, "101": rejected, "102": valid},
+		bioWriteErrors: map[uuid.UUID]error{rejected: errors.New("history write unavailable")}}
+	worker := testRunner(&fakeSource{bioErrors: map[string]error{"100": errors.New("missing teamHistory")}}, repo, squadTestCompetition())
+	start := time.Now()
+	if err := worker.refreshBios(context.Background()); err == nil {
+		t.Fatal("missing history and failed writes must still report a failed batch")
+	}
+	if len(repo.bioRetryAt) != 2 || !repo.bioRetryAt[noHistory].After(start) || !repo.bioRetryAt[rejected].After(start) {
+		t.Fatalf("retry deadlines = %v, want both failed players", repo.bioRetryAt)
 	}
 }
 

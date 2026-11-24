@@ -1,6 +1,6 @@
 import { canonicalTeamId } from '../teamIdentity';
 
-export const NORMALIZATION_VERSION = 'reader-evaluation-v3';
+export const NORMALIZATION_VERSION = 'reader-evaluation-v4';
 
 // These ESPN asset URLs have no team ID. Each default PNG was verified
 // byte-for-byte against this team's ScoreArc mirror before adding the pair.
@@ -9,6 +9,23 @@ const verifiedEspnCrests = new Map<string, string>([
   ['https://a.espncdn.com/guid/ab74d4f3-29af-3edf-a0ac-d1cb6d4499e1/logos/default.png', 'mex-w-atlas'],
   ['https://a.espncdn.com/guid/171df7da-9a24-3606-a2f8-ac7798c78a76/logos/default.png', 'mex-w-atletico-de-san-luis'],
 ]);
+
+// These exact default country PNGs matched the mirror bytes in the 2026
+// World Cup and the 2026–27 CONCACAF and UEFA Nations League team lists.
+const countryLogoBase = 'https://a.espncdn.com/i/teamlogos/countries/500/';
+const verifiedCountryCodes = `
+  aia alb alg and arg aru atg aus aut aze bah bel ber bih blr blz boe bra brb bul can cay civ col cpv
+  crc cro cub cyp cze den dma dom ecu egy eng esp est fin fra fro gdl geo ger gha gib gre grn gua guy
+  hai hon hun irl irn irq isl isr ita jam jor jpn kaz ksa lca lie ltu lux lva mar mda mex mkd mlt msr
+  nca ned nir nor nzl pan par pol por qat rsa sco sen skn slv sma smr sui sur svk svn swe tca tri tun
+  tur ukr uru usa uzb vin vir wal
+`.trim().split(/\s+/);
+for (const code of verifiedCountryCodes) verifiedEspnCrests.set(`${countryLogoBase}${code}.png`, `nat-${code}`);
+// Some ESPN filenames differ from the canonical country code.
+for (const [filename, code] of Object.entries({
+  kors: 'kor', rdc: 'cod', marq: 'mtq', bvr: 'bvi', stm: 'smn', sba: 'srb',
+  kosovo: 'kos', rom: 'rou', 'fifa.armenia': 'arm', mtg: 'mne',
+})) verifiedEspnCrests.set(`${countryLogoBase}${filename}.png`, `nat-${code}`);
 
 export type Difference = {
   path: string;

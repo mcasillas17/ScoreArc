@@ -175,10 +175,10 @@ const mx = resolveSeason('liga-mx', '2026-apertura')!;
 const exercised = new Set<string>();
 const exercise = (method: keyof DataStore) => exercised.add(method);
 
-function storeOver(responses: (url: string) => unknown) {
+function storeOver(responses: (url: string) => unknown, now?: () => number) {
   const urls: string[] = [];
   const store = createDataStore({
-    cache: new TtlCache(),
+    now, cache: new TtlCache(),
     fetchJson: async (url: string) => { urls.push(url); return responses(url); },
   });
   return { store, urls };
@@ -803,7 +803,7 @@ describe('reader contract: standings, bracket, leaders, news', () => {
 describe('reader contract: squad and player', () => {
   it('pins roster order, null versus measured statistics and identity', async () => {
     exercise('getSquad');
-    const squad = await storeOver(() => rosterRaw).store.getSquad(mx, '227');
+    const squad = await storeOver(() => rosterRaw, () => Date.parse(vectors.squad.asOf)).store.getSquad(mx, '227');
     expect(squad.map(p => p.id)).toEqual(vectors.squad.players.map(p => p.id));
     // Fully pinned players: the shared row plus age and headshot, which the reader serves from the same roster facts (go-db).
     expect(squad.filter(p => vectors.squad.frontend.some(v => v.id === p.id)))
@@ -879,7 +879,11 @@ describe('reader contract: squad and player', () => {
     const player = await storeOver(url =>
       url.includes('/overview') ? overviewRaw : url.includes('/bio') ? bioRaw : athleteRaw).store.getPlayer(mx, '297287');
     const p = vectors.player.frontend;
-    expect(player).toEqual({ ...p.identity, gameLogLabel: p.gameLogLabel, gameLog: p.gameLog, career: p.career });
+    // The synthetic transport supplies no scoped roster or core log. Preserve global
+    // identity and career, and only fallback rows attributed to Liga MX.
+    expect(player).toEqual({ ...p.identity, team: null, jersey: null, totals: [], seasonLabel: 'Apertura 2026 Liga MX Stats',
+      gameLogLabel: p.gameLogLabel, gameLog: p.gameLog.slice(0, 2), career: p.career.map(row =>
+        row.teamName === 'Mexico U17' ? { ...row, teamId: null } : row) });
   });
 
   it('pins the canonical reader player shape and store-scoped match translation', async () => {
@@ -914,15 +918,15 @@ describe('reader contract: squad and player', () => {
     expect(reader.totals.find(s => s.name === 'saves')!.value).toBeNull();
   });
 
-  it('keeps a game-log row whose match context is missing, with null context', async () => {
+  it('drops fallback game-log rows without evidence that they belong to the requested edition', async () => {
     const m = vectors.player.missingContext;
     const events = { ...overviewRaw.gameLog.events } as Record<string, unknown>;
     delete events[m.eventId];
     const overview = { ...overviewRaw, gameLog: { ...overviewRaw.gameLog, events } };
     const player = await storeOver(url =>
       url.includes('/overview') ? overview : url.includes('/bio') ? bioRaw : athleteRaw).store.getPlayer(mx, '297287');
-    expect(player!.gameLog.map(r => r.eventId)).toEqual(vectors.player.frontend.gameLog.map(r => r.eventId));
-    expect(player!.gameLog.find(r => r.eventId === m.eventId)).toEqual(m.row);
+    expect(player!.gameLog.map(r => r.eventId)).toEqual(['401877007']);
+    expect(player!.gameLog.find(r => r.eventId === m.eventId)).toBeUndefined();
   });
 });
 

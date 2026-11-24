@@ -7,6 +7,7 @@ import { currentWeekRange, forwardRange, nowWindowRange, parseRange, editionBoun
 import { datedInEdition, requiresEditionEvidence } from './providers/espn-edition';
 import { utcDate } from './scoreboardWindow';
 import { canonicalTeamId, providerTeamId } from './teamIdentity';
+import { profileTotals, websiteCareer } from './playerProfile';
 import { deriveReaderStandings } from './derivedStandings';
 import { parseMatchFreshness } from '@/lib/matchFreshness';
 import type { ReaderResource, ReaderResourceName } from '@/lib/readerResources';
@@ -100,7 +101,10 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
         (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1 || limit > 100))) throw new ReaderFailure('scope', false);
     const query: Record<string, string> = { range };
     if (summary) query.detail = 'summary';
-    if (scheduled) query.state = 'scheduled';
+    if (scheduled) {
+      query.state = 'scheduled';
+      query.order = 'teams';
+    }
     if (limit !== undefined) query.limit = String(limit);
     const { body, evidence } = await request(`${readerScopePath(rc)}/matches`, query, decodeReaderMatches,
       { ...matchScopes, ...(summary ? { detail: 'competition-season' as const } : {}) }, ['matches']);
@@ -267,7 +271,7 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
       save();
       return body;
     },
-    async getPlayer(rc, athleteId) {
+    async getPlayer(rc, athleteId, rosterTeamId) {
       const identity = (await identities.lookup(rc, 'player', 'espn', [athleteId], 'addressed')).get(athleteId)!;
       let loaded;
       try { loaded = await request(`${readerScopePath(rc)}/players/${encodeURIComponent(identity.canonicalId)}`, undefined, decodeReaderPlayer,
@@ -283,8 +287,14 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
         identities.teams(rc, [body.team?.id ?? null, ...gameLog.flatMap(row => [row.homeTeamId, row.awayTeamId, row.teamId, row.opponent?.id ?? null])]),
         identities.teams(rc, career.map(row => row.teamId), 'optional-team'),
       ]);
-      const profile = { ...body, totals: supportsResource(rc.season, 'squad') ? body.totals : [], id: athleteId, readerResources: evidence, team: body.team && mappedTeam(teams, body.team),
-        career: career.map(row => ({ ...row, teamId: row.teamId === null ? null : careerTeams.get(row.teamId) ?? null })),
+      const team = body.team && mappedTeam(teams, body.team);
+      if (rosterTeamId && team?.id !== rosterTeamId) throw new ReaderFailure('scope');
+      const { playerSlug, ...fields } = body;
+      void playerSlug; // The public slug comes from the roster index.
+      const profile = { ...fields, totals: supportsResource(rc.season, 'squad')
+        ? profileTotals(Object.fromEntries(body.totals.map(row => [row.name, row.value])), body.position) : [],
+        gameLogLabel: gameLog.length ? body.gameLogLabel : '', id: athleteId, readerResources: evidence, team,
+        career: career.map(row => websiteCareer({ ...row, teamId: row.teamId === null ? null : careerTeams.get(row.teamId) ?? null })),
         gameLog: gameLog.map(row => {
           const match = refs.get(row.eventId)!;
           if ((row.homeTeamId !== null && row.homeTeamId !== match.homeId) || (row.awayTeamId !== null && row.awayTeamId !== match.awayId) ||

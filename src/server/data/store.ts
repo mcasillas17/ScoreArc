@@ -19,6 +19,7 @@ import type {
   PlayerProfile,
 } from './types';
 import { canonicalTeamId } from './teamIdentity';
+import { compareUpcomingMatches } from './upcomingOrder';
 import { supportsResource, resolveSeason, type CompetitionSeason } from './competitions';
 import {
   scoreboardUrl,
@@ -33,9 +34,11 @@ import {
   athleteUrl, athleteOverviewUrl, athleteBioUrl,
 } from './endpoints';
 import { mapScoreboard, scoreboardWinnerFlags, shootoutWinnerId } from './providers/espn-matches';
-import { mapTeamProfile, mapTeamRoster, mapScopedTeamSchedule, splitLeagueTeamIds } from './providers/espn-team';
+import { mapTeamProfile, mapTeamRoster, mapScopedTeamSchedule, splitLeagueTeamIds, teamStandingFromTables } from './providers/espn-team';
 import { uniqueTeamMatches } from './teamPerformance';
-import { archiveRosterProfile, mapAthleteProfile, mapAthleteOverview, mapAthleteBio } from './providers/espn-athlete';
+import { profileTotals, websiteCareer } from './playerProfile';
+import { loadPlayerGameLog } from './providers/espn-player-log';
+import { archiveRosterProfile, mapAthleteProfile, mapScopedAthleteOverview, overviewRosterTeams, mapAthleteBio, completeAthleteBio } from './providers/espn-athlete';
 import { configuredPhaseTables } from './leaguesCupTables';
 import { computeOverallTable } from './mlsTables';
 import { EspnEditionError, verifyRosterEdition, verifySummaryEdition, verifyStandingsEdition, verifyLeadersEdition, requiresEditionEvidence, providerYear } from './providers/espn-edition';
@@ -50,7 +53,7 @@ import {
 import { TtlCache } from './cache';
 import { matchDerivedMembership, MAX_EDITION_TEAMS, MAX_SQUAD_PLAYERS, withEditionResources } from './editionResources';
 import { currentWeekRange, editionBounds, forwardRange, nowWindowRange } from './dateRange';
-import { fetchScoreboardWindow, verifyUndatedScoreboard, boundedFetchJson, type ScoreboardFetchJson } from './scoreboardWindow';
+import { abortable, fetchScoreboardWindow, verifyUndatedScoreboard, boundedFetchJson, type ScoreboardFetchJson } from './scoreboardWindow';
 
 // The store is keyed on a resolved (competition, season) pair. The ESPN league
 // slug lives on the competition; per-season fetch details (e.g. the bracket
@@ -80,7 +83,7 @@ interface DataDeps {
   onSummaryRequest?: (eventId: string, homeId: string, awayId: string) => void;
   /** Enabled-mode fallback must not turn a dependency outage into an entity 404. */
   propagateUnavailable?: boolean;
-  loadSquad?: DataStore['getSquad'];
+  loadSquad?: (rc: CompetitionSeason, teamId: string, asOfDate: string | undefined) => Promise<SquadPlayer[]>;
   fetchJson: ScoreboardFetchJson;
   cache: TtlCache<unknown>;
 }
@@ -97,14 +100,14 @@ function emptySummary(): MatchSummaryData {
   };
 }
 
-async function fetchSquad(rc: CompetitionSeason, teamId: string, fetchJson: ScoreboardFetchJson) {
+async function fetchSquad(rc: CompetitionSeason, teamId: string, fetchJson: ScoreboardFetchJson, asOfDate: string | undefined, signal?: AbortSignal) {
   const year = rc.season.publication === 'archive' ? providerYear(rc.season) : undefined;
   const raw = await fetchJson(teamRosterUrl(rc.competition.espnSlug, teamId, year), {
-    signal: AbortSignal.timeout(15_000), maxBytes: 4 * 1024 * 1024,
+    signal: signal ?? AbortSignal.timeout(15_000), maxBytes: 4 * 1024 * 1024,
   });
   const count = verifyRosterEdition(raw, rc, teamId);
   if (count > MAX_SQUAD_PLAYERS) throw new EspnEditionError('partial', 'roster');
-  const squad = mapTeamRoster(raw);
+  const squad = mapTeamRoster(raw, asOfDate);
   if (squad.length !== count || squad.some(player => !providerReference(player.id) || !player.name.trim()) ||
       new Set(squad.map(player => player.id)).size !== count) throw new EspnEditionError('partial', 'roster');
   return squad;
@@ -124,6 +127,7 @@ function cachedEspnValue<T extends object>(cache: TtlCache<unknown>, key: string
 function optionalEspnDependencies(cache: TtlCache<unknown>, key: string) {
   let failure: DependencyFault | undefined;
   return {
+    get failed() { return failure !== undefined; },
     unavailable(error: unknown) {
       failure ??= comparisonFault(error);
       healthContext().onDependencyFailure?.('espn', failure);
@@ -164,6 +168,13 @@ export function createDataStore(deps: DataDeps): DataStore {
     return boards;
   }
 
+  // All three callers map the window returned by fetchScoreboardWindow, after
+  // its competition, season and date checks.
+  function scopedScoreboard(rc: CompetitionSeason, raw: unknown): Match[] {
+    const scope = { competitionId: rc.competition.id, seasonId: rc.season.id };
+    return mapScoreboard(raw, rc.season.playoffFormat).map(match => ({ ...match, scope }));
+  }
+
   // One unenriched scoreboard read. Shared by getFixtures and getLiveWindow,
   // which differ only in cache key and TTL — a calendar month is settled for
   // two minutes, a live scoreline is not.
@@ -179,7 +190,7 @@ export function createDataStore(deps: DataDeps): DataStore {
     const cached = deps.cache.get(k) as Match[] | undefined;
     if (cached) return cached;
     const raw = await fetchScoreboardWindow(rc, range, deps.fetchJson, signal);
-    const matches = mapScoreboard(raw, rc.season.playoffFormat)
+    const matches = scopedScoreboard(rc, raw)
       .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
     deps.cache.set(k, matches, ttlMs);
     return matches;
@@ -187,15 +198,15 @@ export function createDataStore(deps: DataDeps): DataStore {
 
   async function computeTables(
     rc: CompetitionSeason,
-    config: NonNullable<CompetitionSeason['season']['computedTables']>,
+    config: NonNullable<CompetitionSeason['season']['computedTables']>, signal?: AbortSignal,
   ): Promise<Group[]> {
     const split = resolveSeason(config.membership.split.competitionId, config.membership.split.seasonId);
     if (!split || !supportsResource(split.season, 'teams') || !supportsResource(rc.season, 'scores')) {
       throw new Error('Unavailable edition membership');
     }
     const [rawPhase, rawSplit] = await Promise.all([
-      fetchScoreboardWindow(rc, config.datesRange, deps.fetchJson),
-      deps.fetchJson(teamsUrl(split.competition.espnSlug)),
+      fetchScoreboardWindow(rc, config.datesRange, deps.fetchJson, signal),
+      deps.fetchJson(teamsUrl(split.competition.espnSlug), signal ? { signal, maxBytes: 4 * 1024 * 1024 } : undefined),
     ]);
     // The configured display names are carried so the view doesn't hardcode them.
     return configuredPhaseTables(mapScoreboard(rawPhase), config, splitLeagueTeamIds(rawSplit));
@@ -208,18 +219,18 @@ export function createDataStore(deps: DataDeps): DataStore {
   // fields are mapped for them, and the public match route passes its query's
   // sides through unchecked. `final` records whether the header itself had
   // finished: a summary read mid-shootout must not resolve a finished match.
-  type LoadedSummary = { data: MatchSummaryData; shootout: Shootout | null; final: boolean };
+  type LoadedSummary = { data: MatchSummaryData; shootout: Shootout | null; final: boolean; editionVerified: boolean };
   async function loadSummary(
-    rc: CompetitionSeason, eventId: string, homeId: string, awayId: string, signal?: AbortSignal,
+    rc: CompetitionSeason, eventId: string, homeId: string, awayId: string, signal?: AbortSignal, verifyEdition = requiresEditionEvidence(rc),
   ): Promise<LoadedSummary> {
     const k = key(rc, `summary:${eventId}:${homeId}:${awayId}`);
     const cached = deps.cache.get(k) as LoadedSummary | undefined;
-    if (cached) return cached;
+    if (cached && (!verifyEdition || cached.editionVerified)) return cached;
     signal?.throwIfAborted();
     deps.onSummaryRequest?.(eventId, homeId, awayId);
     const raw = await deps.fetchJson(summaryUrl(slug(rc), eventId), signal
       ? { signal, maxBytes: 4 * 1024 * 1024 } : undefined);
-    if (requiresEditionEvidence(rc)) verifySummaryEdition(raw, rc, eventId, homeId, awayId);
+    if (verifyEdition) verifySummaryEdition(raw, rc, eventId, homeId, awayId);
     const info = mapSummaryInfo(raw);
     if (info && !supportsResource(rc.season, 'officials')) info.referee = null;
     const summary: MatchSummaryData = {
@@ -238,7 +249,7 @@ export function createDataStore(deps: DataDeps): DataStore {
     const loaded = {
       data: summary,
       shootout: mapSummaryShootoutTotals(raw, eventId, homeId, awayId),
-      final: summaryHeaderFinal(raw),
+      final: summaryHeaderFinal(raw), editionVerified: verifyEdition,
     };
     deps.cache.set(k, loaded, 12_000);
     return loaded;
@@ -250,7 +261,7 @@ export function createDataStore(deps: DataDeps): DataStore {
     return (await loadSummary(rc, eventId, homeId, awayId, signal)).data;
   }
 
-  async function loadStandings(rc: CompetitionSeason, strict = requiresEditionEvidence(rc)): Promise<Group[]> {
+  async function loadStandings(rc: CompetitionSeason, strict = requiresEditionEvidence(rc), signal?: AbortSignal): Promise<Group[]> {
     const k = key(rc, strict ? 'standings:verified' : 'standings');
     const cached = deps.cache.get(k) as Group[] | Error | undefined;
     if (cached instanceof Error) throw cached;
@@ -260,12 +271,12 @@ export function createDataStore(deps: DataDeps): DataStore {
     // from results instead of returning nothing.
     const computed = rc.season.computedTables;
     if (computed) {
-      const groups = await computeTables(rc, computed);
+      const groups = await computeTables(rc, computed, signal);
       deps.cache.set(k, groups, 60_000);
       return groups;
     }
     const raw = await deps.fetchJson(standingsUrl(slug(rc), strict ? providerYear(rc.season) : undefined),
-      strict ? { signal: AbortSignal.timeout(15_000), maxBytes: 4 * 1024 * 1024 } : undefined);
+      strict || signal ? { signal: signal ?? AbortSignal.timeout(15_000), maxBytes: 4 * 1024 * 1024 } : undefined);
     let groups: Group[];
     try {
       if (strict) verifyStandingsEdition(raw, rc);
@@ -289,16 +300,20 @@ export function createDataStore(deps: DataDeps): DataStore {
     return groups;
   }
 
-  async function loadSquad(rc: CompetitionSeason, teamId: string): Promise<SquadPlayer[]> {
-    const k = key(rc, `squad:${teamId}`);
+  // Historical rosters keep the provider's age for that edition. Current
+  // roster ages roll over together at midnight UTC, including cached pages.
+  const rosterDate = (rc: CompetitionSeason) => rc.season.publication === 'archive' ? undefined : new Date(now()).toISOString().slice(0, 10);
+  async function loadSquad(rc: CompetitionSeason, teamId: string, asOfDate = rosterDate(rc), signal?: AbortSignal): Promise<SquadPlayer[]> {
+    const k = key(rc, `squad:${teamId}:${asOfDate ?? 'archive'}`);
     const cached = deps.cache.get(k) as SquadPlayer[] | undefined;
     if (cached) return cached;
-    const squad = await (deps.loadSquad ? deps.loadSquad(rc, teamId) : fetchSquad(rc, teamId, deps.fetchJson));
+    const pending = deps.loadSquad ? deps.loadSquad(rc, teamId, asOfDate) : fetchSquad(rc, teamId, deps.fetchJson, asOfDate, signal);
+    const squad = await (signal ? abortable(pending, signal) : pending);
     deps.cache.set(k, squad, 300_000);
     return squad;
   }
 
-  async function getEditionTeams(rc: CompetitionSeason): Promise<Team[]> {
+  async function getEditionTeams(rc: CompetitionSeason, signal?: AbortSignal): Promise<Team[]> {
     const k = key(rc, 'edition-teams');
     const cached = deps.cache.get(k) as Team[] | undefined;
     if (cached) return cached;
@@ -309,13 +324,13 @@ export function createDataStore(deps: DataDeps): DataStore {
       const { start, end } = editionBounds(rc.season);
       const day = (ms: number) => new Date(ms).toISOString().slice(0, 10).replaceAll('-', '');
       const range = `${day(start)}-${day(end - 1)}`;
-      const raw = await fetchScoreboardWindow(rc, range, deps.fetchJson, undefined, 'edition');
+      const raw = await fetchScoreboardWindow(rc, range, deps.fetchJson, signal, 'edition');
       teams = mapScoreboard(raw).flatMap(match => [match.home, match.away])
         .filter(team => !isBracketPlaceholder(team.name, team.crestUrl));
       if (raw.events.length && !teams.length) throw new EspnEditionError('scope_unverified', 'entrants');
     } else {
       try {
-        teams = (await loadStandings(rc, true)).flatMap(group => group.standings.map(row => row.team));
+        teams = (await loadStandings(rc, true, signal)).flatMap(group => group.standings.map(row => row.team));
       } catch (error) {
         if (!(error instanceof StandingsStatsError)) throw error;
         teams = error.teams;
@@ -348,7 +363,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       const deadline = AbortSignal.timeout(15_000);
       const readSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
       const raw = await fetchScoreboardWindow(rc, window, deps.fetchJson, readSignal);
-      const matches = mapScoreboard(raw, rc.season.playoffFormat);
+      const matches = scopedScoreboard(rc, raw);
       const shootoutEligible = scoreboardWinnerFlags(raw, rc.season.playoffFormat);
       const summaries: LoadedSummary[] = [];
       // Only retained matches are enriched, four at a time under the same
@@ -359,7 +374,7 @@ export function createDataStore(deps: DataDeps): DataStore {
           loadSummary(rc, m.id, m.home.id, m.away.id, readSignal)
             .catch((error): LoadedSummary => {
               optional.unavailable(error);
-              return { data: emptySummary(), shootout: null, final: false };
+              return { data: emptySummary(), shootout: null, final: false, editionVerified: false };
             }),
         )));
       }
@@ -426,9 +441,9 @@ export function createDataStore(deps: DataDeps): DataStore {
       const cached = deps.cache.get(k) as Match[] | undefined;
       if (cached) return cached;
       const raw = await fetchScoreboardWindow(rc, range, deps.fetchJson, signal);
-      const upcoming = mapScoreboard(raw, rc.season.playoffFormat)
+      const upcoming = scopedScoreboard(rc, raw)
         .filter((m) => m.state === 'scheduled')
-        .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime())
+        .sort(compareUpcomingMatches)
         .slice(0, limit);
       deps.cache.set(k, upcoming, 60_000);
       return upcoming;
@@ -444,7 +459,8 @@ export function createDataStore(deps: DataDeps): DataStore {
     // would be a worse answer than showing the club without it.
     async getTeam(rc, teamId: string): Promise<TeamProfile | null> {
       if (matchDerivedMembership(rc) && !(await getEditionTeams(rc)).some(team => team.id === teamId)) return null;
-      const k = key(rc, `team:${teamId}`);
+      const asOfDate = rosterDate(rc);
+      const k = key(rc, `team:${teamId}:${asOfDate ?? 'archive'}`);
       const cached = cachedEspnValue<TeamProfile>(deps.cache, k);
       if (cached) return cached;
       const optional = optionalEspnDependencies(deps.cache, k);
@@ -455,7 +471,7 @@ export function createDataStore(deps: DataDeps): DataStore {
         // matches-and-results block has to ask twice.
         const [rawProfile, squad, rawResults, rawFixtures] = await Promise.all([
           deps.fetchJson(teamUrl(slug(rc), teamId)),
-          supportsResource(rc.season, 'squad') ? loadSquad(rc, teamId).catch(optional.unavailable) : [],
+          supportsResource(rc.season, 'squad') ? loadSquad(rc, teamId, asOfDate).catch(optional.unavailable) : [],
           supportsResource(rc.season, 'scores') ? deps.fetchJson(teamScheduleUrl(slug(rc), teamId, false, rc.season)).catch(optional.unavailable) : null,
           supportsResource(rc.season, 'scores') ? deps.fetchJson(teamScheduleUrl(slug(rc), teamId, true, rc.season)).catch(optional.unavailable) : null,
         ]);
@@ -464,12 +480,20 @@ export function createDataStore(deps: DataDeps): DataStore {
         if (!base || base.team.id !== teamId) return null;
         const results = mapScopedTeamSchedule(rawResults, rc, teamId);
         const upcoming = mapScopedTeamSchedule(rawFixtures, rc, teamId);
+        if (!optional.failed && supportsResource(rc.season, 'scores') && (!results.available || !upcoming.available)) {
+          optional.unavailable(new EspnEditionError('partial', 'team schedule'));
+        }
 
-        // The undated team profile cannot establish a strict edition's table position or record.
         const strict = requiresEditionEvidence(rc);
+        // The undated team endpoint can return a different competition's rank
+        // (Haiti's Nations League rank on its World Cup page), or a league-wide
+        // rank instead of the team's conference. Use the edition's own table.
+        const tableSupported = supportsResource(rc.season, 'standings');
+        const needsTable = strict || rc.competition.kind === 'national' || rc.season.computedTables || rc.season.overallTable;
+        const tables = tableSupported && needsTable ? await loadStandings(rc, true).catch(optional.unavailable) : null;
         const profile: TeamProfile = {
           ...base,
-          ...((strict || !supportsResource(rc.season, 'standings')) && { record: null, standingSummary: null, standing: null }),
+          ...((!tableSupported || needsTable) && teamStandingFromTables(tables ?? [], teamId, rc.competition.name)),
           squad: squad ?? [],
           schedule: uniqueTeamMatches([...results.matches, ...upcoming.matches]).reverse(),
           scheduleAvailability: {
@@ -501,52 +525,91 @@ export function createDataStore(deps: DataDeps): DataStore {
       }
     },
 
-    // A player within one competition. Same failure split as getTeam:
-    // identity is what the page is, so a failed profile is null and the route
-    // 404s; the game log and career are blocks on that page and degrade to
-    // empty rather than taking the page down. The two optional payloads'
-    // sibling endpoints (/gamelog, /splits, /stats) are dead upstream and are
-    // never called -- /overview and /bio are the only sources.
-    async getPlayer(rc, athleteId: string, rosterTeamId?: string): Promise<PlayerProfile | null> {
-      if (rc.season.publication === 'archive') {
-        if (!supportsResource(rc.season, 'teams') || !supportsResource(rc.season, 'squad')) return null;
-        const teams = await getEditionTeams(rc);
-        for (const team of teams) {
-          if (rosterTeamId !== undefined && team.id !== rosterTeamId) continue;
-          const player = (await loadSquad(rc, team.id)).find(row => row.id === athleteId);
-          if (player) {
-            // A roster proves tournament membership and totals. It cannot
-            // verify that the player's match log or career is actually empty.
-            if (supportsResource(rc.season, 'participation') || supportsResource(rc.season, 'career')) {
-              healthContext().onDependencyFailure?.('espn', { code: 'partial' });
-            }
-            return archiveRosterProfile(rc, team, player);
-          }
-        }
-        return null;
-      }
-      const k = key(rc, `player:${athleteId}`);
+    async getPlayer(rc, athleteId, rosterTeamId): Promise<PlayerProfile | null> {
+      const k = key(rc, `player:${athleteId}:${rosterTeamId ?? ''}`);
       const cached = cachedEspnValue<PlayerProfile>(deps.cache, k);
       if (cached) return cached;
       const optional = optionalEspnDependencies(deps.cache, k);
-
+      const archive = rc.season.publication === 'archive';
+      const rosterSupported = supportsResource(rc.season, 'teams') && supportsResource(rc.season, 'squad');
+      const participation = supportsResource(rc.season, 'participation');
+      const career = supportsResource(rc.season, 'career');
+      const deadline = AbortSignal.timeout(4_000);
+      const bounded = (ms: number) => AbortSignal.any([deadline, AbortSignal.timeout(ms)]);
+      let overview: Promise<unknown> | undefined;
+      const loadOverview = () => overview ??= deps.fetchJson(athleteOverviewUrl(slug(rc), athleteId), {
+        signal: bounded(1_500), maxBytes: 1024 * 1024,
+      }).catch(optional.unavailable);
+      let profileRequest: Promise<unknown> | undefined;
+      const loadIdentity = () => profileRequest ??= deps.fetchJson(athleteUrl(slug(rc), athleteId), {
+        signal: bounded(2_000), maxBytes: 1024 * 1024,
+      });
+      async function findMembership() {
+        if (!rosterSupported) return null;
+        // Slug requests already know the team. Direct current-profile reads
+        // narrow the lookup to the overview’s league-qualified team candidates.
+        let candidates = rosterTeamId ? [rosterTeamId] : undefined;
+        if (!candidates && !archive) {
+          const [raw, overview] = await Promise.all([loadIdentity().catch(optional.unavailable), loadOverview()]);
+          const identity = mapAthleteProfile(raw);
+          candidates = overviewRosterTeams(overview, rc);
+          if (identity?.id === athleteId && identity.team?.id && !candidates.includes(identity.team.id)) candidates.push(identity.team.id);
+        }
+        if (candidates && (candidates.length === 0 || candidates.length > 4)) return null;
+        const signal = archive ? undefined : bounded(2_000);
+        const teams = await getEditionTeams(rc, signal);
+        for (const team of teams) {
+          if (candidates && !candidates.includes(team.id)) continue;
+          signal?.throwIfAborted();
+          const player = (await loadSquad(rc, team.id, rosterDate(rc), signal)).find(row => row.id === athleteId);
+          if (player) return { team, player };
+        }
+        return null;
+      }
+      // The profile's team, shirt and totals must belong to this edition.
+      // Even current national-team URLs return the athlete's domestic club.
+      if (archive) {
+        const membership = await findMembership();
+        if (!membership) return null;
+        if (participation || career) healthContext().onDependencyFailure?.('espn', { code: 'partial' });
+        return archiveRosterProfile(rc, membership.team, membership.player);
+      }
+      const membership = await findMembership().catch(optional.unavailable);
       try {
-        const [rawProfile, rawOverview, rawBio] = await Promise.all([
-          deps.fetchJson(athleteUrl(slug(rc), athleteId)),
-          supportsResource(rc.season, 'participation') ? deps.fetchJson(athleteOverviewUrl(slug(rc), athleteId)).catch(optional.unavailable) : null,
-          supportsResource(rc.season, 'career') ? deps.fetchJson(athleteBioUrl(slug(rc), athleteId)).catch(optional.unavailable) : null,
+        const [rawProfile, rawBio, log] = await Promise.all([
+          loadIdentity().catch(error => {
+            if (!membership) throw error;
+            return optional.unavailable(error);
+          }),
+          career ? deps.fetchJson(athleteBioUrl(slug(rc), athleteId), { signal: bounded(2_000), maxBytes: 1024 * 1024 }).catch(optional.unavailable) : null,
+          participation ? loadPlayerGameLog(rc, athleteId, deps.fetchJson, membership && { teamId: membership.team.id,
+            appearances: membership.player.stats?.appearances ?? null }, async (scope, event, home, away, signal) =>
+            (await loadSummary(scope, event, home, away, signal, true)).data, bounded(3_000)).catch(optional.unavailable) : [],
         ]);
-
         const identity = mapAthleteProfile(rawProfile);
-        if (!identity) return null;
-
-        const overview = rawOverview ? mapAthleteOverview(rawOverview) : { label: '', rows: [] };
+        if (identity && identity.id !== athleteId) throw new EspnEditionError('scope_mismatch', 'athlete');
+        if (!identity) {
+          optional.unavailable(new EspnEditionError('partial', 'athlete'));
+          if (!membership) return null;
+        }
+        const player = membership?.player;
+        if (rosterSupported && !membership) optional.unavailable(new EspnEditionError('partial', 'player membership'));
+        // Keep verified recent appearances if the full edition index is unavailable.
+        const gameLog = log ?? mapScopedAthleteOverview(
+          await loadOverview(), rc);
+        if (participation && log && player?.stats?.appearances != null && gameLog.length < Math.min(5, player.stats.appearances)) {
+          optional.unavailable(new EspnEditionError('partial', 'player log'));
+        }
+        if (career && !completeAthleteBio(rawBio)) optional.unavailable(new EspnEditionError('partial', 'career'));
         const profile: PlayerProfile = {
-          ...identity,
-          totals: supportsResource(rc.season, 'squad') ? identity.totals : [],
-          gameLogLabel: overview.label,
-          gameLog: overview.rows,
-          career: rawBio ? mapAthleteBio(rawBio) : [],
+          id: athleteId, name: player?.name ?? identity!.name,
+          age: player?.age ?? identity?.age ?? null, nationality: player?.nationality ?? identity?.nationality ?? null,
+          flagUrl: identity?.flagUrl ?? null, headshotUrl: player?.headshotUrl ?? identity?.headshotUrl ?? null,
+          team: membership?.team ?? null, jersey: player?.jersey?.toString() ?? null, position: player?.position ?? identity?.position ?? '',
+          seasonLabel: `${rc.season.label} ${rc.competition.shortName} Stats`,
+          totals: profileTotals(player?.stats ?? null, player?.position ?? ''),
+          gameLogLabel: gameLog.length ? 'Last 5 Matches' : '', gameLog,
+          career: rawBio ? mapAthleteBio(rawBio).map(websiteCareer) : [],
         };
         optional.cacheValue(profile, 120_000);
         return profile;
@@ -607,8 +670,8 @@ const espnCache = new TtlCache<unknown>();
 // A cold player lookup reads every roster. Cache the small mapped squads across
 // function instances. Catch provider failures outside the cache so a retry can recover.
 const loadEspnSquad = unstable_cache(
-  (rc: CompetitionSeason, teamId: string) => fetchSquad(rc, teamId, boundedFetchJson),
-  ['espn-squad-v3'],
+  (rc: CompetitionSeason, teamId: string, asOfDate: string | undefined) => fetchSquad(rc, teamId, boundedFetchJson, asOfDate),
+  ['espn-squad-v4'],
   { revalidate: 300 },
 );
 export const espnDataStore = createDataStore({ fetchJson: boundedFetchJson, cache: espnCache, loadSquad: loadEspnSquad });
@@ -621,6 +684,6 @@ export const dataStore: DataStore = configuredDataStore({
     propagateUnavailable: true,
     cache: espnCache,
     fetchJson: async (url, options) => (await budget.json(url, options
-      ? AbortSignal.any([signal, options.signal]) : signal, 'espn')).body,
+      ? AbortSignal.any([signal, options.signal]) : signal, 'espn', options?.maxBytes)).body,
   }),
 });

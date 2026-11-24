@@ -1,4 +1,5 @@
-import type { Match, PlayerSeasonStats, SquadPlayer, Team, TeamProfile, TeamRecord, TeamStanding } from '../types';
+import type { Group, Match, PlayerSeasonStats, SquadPlayer, Team, TeamProfile, TeamRecord, TeamStanding } from '../types';
+import { en } from '@/i18n/messages/en';
 import { mapState } from '../state';
 import type { CompetitionSeason, PlayoffFormat } from '../competitions';
 import { completeCollectionMetadata } from './espn-collection';
@@ -9,6 +10,26 @@ import { femenilLegRound, providerLeg } from './espn-leg';
 
 /** The profile without the two blocks that come from other endpoints. */
 type TeamIdentity = Omit<TeamProfile, 'squad' | 'schedule' | 'scheduleAvailability'>;
+
+/** Group/conference ranks use the edition's original table. A synthetic
+ * league-wide table (such as the Supporters' Shield) is a separate ranking. */
+export function teamStandingFromTables(groups: Group[], teamId: string, leagueName: string): Pick<TeamProfile, 'record' | 'standing' | 'standingSummary'> {
+  const tables = groups.filter(group => group.name !== undefined);
+  // A team can appear in several provider tables. Use the reader's table order.
+  const byName = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
+  tables.sort((a, b) => byName(a.name, b.name) || byName(a.id, b.id));
+  for (const table of tables) {
+    const row = table.standings.find(row => row.team.id === teamId);
+    if (!row) continue;
+    const competition = tables.length > 1 ? table.name : leagueName;
+    return {
+      record: { summary: `${row.wins}-${row.draws}-${row.losses}`, gamesPlayed: row.played, points: row.points, goalDifference: row.goalDifference },
+      standing: competition ? { rank: row.rank, competition } : null,
+      standingSummary: competition ? en['team.standingIn'](row.rank, competition) : null,
+    };
+  }
+  return { record: null, standing: null, standingSummary: null };
+}
 
 const STANDING_SUMMARY_PATTERN = /^([1-9]\d*)(?:st|nd|rd|th) in (.{1,160})$/;
 
@@ -160,13 +181,23 @@ export function mapTeamProfile(raw: unknown): TeamIdentity | null {
   }
 }
 
+// Roster DOBs include a provider-local midnight. A birthday is a calendar
+// date: the reader counts whole years on the request's UTC date.
+function rosterAge(athlete: { dateOfBirth?: unknown; age?: unknown }, asOfDate?: string): number | null {
+  if (!asOfDate || !isMatchKickoff(athlete.dateOfBirth)) return num(athlete.age);
+  const birthday = athlete.dateOfBirth.slice(0, 10);
+  if (birthday > asOfDate) return null;
+  const years = Number(asOfDate.slice(0, 4)) - Number(birthday.slice(0, 4));
+  return asOfDate.slice(5) < birthday.slice(5) ? years - 1 : years;
+}
+
 /**
  * The squad, with each player's season totals.
  *
  * Athletes arrive flat on this payload, but the same endpoint groups them under
  * athletes[].items[] for some competitions, so both shapes are accepted.
  */
-export function mapTeamRoster(raw: unknown): SquadPlayer[] {
+export function mapTeamRoster(raw: unknown, asOfDate?: string): SquadPlayer[] {
   try {
     const top: any[] = (raw as any)?.athletes ?? [];
     const athletes: any[] = top.some((entry) => Array.isArray(entry?.items))
@@ -177,10 +208,10 @@ export function mapTeamRoster(raw: unknown): SquadPlayer[] {
       if (!athlete?.id) return [];
       return [{
         id: String(athlete.id),
-        name: athlete.displayName ?? athlete.fullName ?? '',
+        name: (athlete.displayName ?? athlete.fullName ?? '').trim(),
         jersey: num(athlete.jersey),
         position: athlete.position?.abbreviation ?? athlete.position?.displayName ?? '',
-        age: num(athlete.age),
+        age: rosterAge(athlete, asOfDate),
         nationality: athlete.citizenship ?? null,
         headshotUrl: athlete.headshot?.href ?? null,
         stats: seasonStats(athlete),
@@ -227,13 +258,18 @@ export function mapTeamSchedule(raw: unknown, format?: PlayoffFormat): Match[] {
         homeScore: score(home.score), awayScore: score(away.score),
         state, statusName: type?.name ?? '', note,
       };
+      const unplayed = state === 'scheduled' && type?.name === 'STATUS_SCHEDULED';
+      if (unplayed && scoreline.homeScore === 0 && scoreline.awayScore === 0) {
+        scoreline.homeScore = null;
+        scoreline.awayScore = null;
+      }
 
       return [{
         id: String(ev.id),
         kickoff: ev.date,
         ...scoreline,
         minute: state === 'live' ? status?.displayClock || null : null,
-        statusDetail: type?.shortDetail ?? '',
+        statusDetail: unplayed ? scheduledDetail(type?.shortDetail ?? '', ev.date) : type?.shortDetail ?? '',
         ...matchResult(scoreline, structured, flaggedWinnerId(home, away), round, legNumber),
         scorers: [],
         cards: [],
@@ -249,6 +285,18 @@ export function mapTeamSchedule(raw: unknown, format?: PlayoffFormat): Match[] {
   } catch {
     return [];
   }
+}
+
+// ESPN's schedule sometimes spells the kickoff out in US Eastern time in the
+// status field. Keep TBD, postponements and any clock that disagrees with kickoff.
+function scheduledDetail(detail: string, kickoff: string): string {
+  const zone = detail.match(/ (EST|EDT)$/)?.[1];
+  if (!zone || !isMatchKickoff(kickoff)) return detail;
+  const local = new Date(Date.parse(kickoff) - (zone === 'EST' ? 5 : 4) * 3_600_000);
+  const hours = local.getUTCHours();
+  const minutes = String(local.getUTCMinutes()).padStart(2, '0');
+  const expected = `${local.getUTCMonth() + 1}/${local.getUTCDate()} - ${hours % 12 || 12}:${minutes} ${hours < 12 ? 'AM' : 'PM'} ${zone}`;
+  return detail === expected ? 'Scheduled' : detail;
 }
 
 /** Verify each event's source scope before it can become performance evidence.
