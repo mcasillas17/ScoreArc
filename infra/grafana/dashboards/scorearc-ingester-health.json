@@ -1,0 +1,105 @@
+{
+  "uid": "scorearc-ingester-health",
+  "title": "Ingester health",
+  "tags": [
+    "scorearc",
+    "scorearc-operations-suite",
+    "scorearc-operations-detail"
+  ],
+  "editable": false,
+  "timezone": "utc",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "links": [
+    {
+      "type": "dashboards",
+      "tags": [
+        "scorearc-operations-suite"
+      ],
+      "asDropdown": false,
+      "keepTime": true,
+      "targetBlank": false
+    }
+  ],
+  "panels": [
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Ingester · latest match polls",
+      "description": "Current latest poll per competition and season, across rolling and full polls. This snapshot stays visible when the ingester stops.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "scorearc-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "SELECT competition_id AS \"Competition\", season_id AS \"Season\", outcome AS \"Latest result\",\n       attempted_at AS \"Last attempt\", succeeded_at AS \"Last success\", event_count AS \"Matches\"\nFROM public.match_poll_status\nWHERE source = 'espn'\nORDER BY succeeded_at ASC NULLS FIRST, competition_id, season_id"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Ingester · recent runs",
+      "description": "Latest 100 runs starting inside the selected time range. Open runs have no completion time.",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 16,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "scorearc-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "SELECT started_at AS \"Started\", competition_id AS \"Competition\", kind AS \"Job\",\n       CASE WHEN ok THEN 'ok' WHEN ok IS FALSE THEN 'failed' ELSE 'open' END AS \"Result\",\n       round(extract(epoch FROM finished_at - started_at)::numeric, 2) AS \"Duration (s)\"\nFROM public.ingest_run\nWHERE $__timeFilter(started_at)\nORDER BY started_at DESC\nLIMIT 100"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Ingester · unresolved match recovery",
+      "description": "Current pending or failed recovery records by provider, including how many have reached their next retry time.",
+      "gridPos": {
+        "x": 16,
+        "y": 8,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "scorearc-postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "SELECT source AS \"Provider\", last_error AS \"State\", count(*) AS \"Matches\",\n       count(*) FILTER (WHERE retry_at <= now()) AS \"Retry due\",\n       min(last_attempted_at) AS \"Oldest attempt\"\nFROM public.match_sync_status\nWHERE last_error IN ('pending', 'recovery_failed')\nGROUP BY source, last_error\nORDER BY \"Retry due\" DESC, source, last_error"
+        }
+      ]
+    }
+  ]
+}

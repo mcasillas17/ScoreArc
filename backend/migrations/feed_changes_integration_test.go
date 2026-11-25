@@ -22,11 +22,30 @@ func TestFeedChangeMigrationAndGrafanaBootstrap(t *testing.T) {
 	dashboard := loginAs(t, owner, dsn, "dashboard_login", "scorearc_grafana_read")
 	reader := loginAs(t, owner, dsn, "reader_login", "scorearc_reader")
 	writer := loginAs(t, owner, dsn, "writer_login", "scorearc_ingester")
-	query := feedChangesPanelSQL(t)
+	query := grafanaPanelSQL(t, "scorearc-espn-data-quality", 20)
+	newChanges := grafanaPanelSQL(t, "scorearc-operations", 24)
+	failedRuns := grafanaPanelSQL(t, "scorearc-operations", 23)
+	if _, err := owner.Exec(ctx, `INSERT INTO ingest_run (kind, ok, started_at) VALUES
+		('test', true, now()), ('test', NULL, now()), ('test', false, now()), ('test', false, now() - interval '2 hours')`); err != nil {
+		t.Fatal(err)
+	}
+	var failures int
+	if err := dashboard.QueryRow(ctx, failedRuns).Scan(&failures); err != nil || failures != 1 {
+		t.Fatalf("failed ingester runs: count=%d err=%v", failures, err)
+	}
 	check := func() {
 		t.Helper()
 		if _, err := writer.Exec(ctx, `INSERT INTO espn_feed_change (endpoint,kind,path,detail,first_competition,example) VALUES ('roster','new_field','$.new','string','first','"v"')`); err != nil {
 			t.Fatal(err)
+		}
+		if _, err := owner.Exec(ctx, `INSERT INTO espn_feed_change
+			(endpoint,kind,path,detail,first_competition,example,first_seen_at,last_seen_at)
+			VALUES ('roster','new_field','$.old','string','first','"earlier"',now()-interval '2 days',now()-interval '5 minutes')`); err != nil {
+			t.Fatal(err)
+		}
+		var discoveries int
+		if err := dashboard.QueryRow(ctx, newChanges).Scan(&discoveries); err != nil || discoveries != 1 {
+			t.Fatalf("new ESPN changes: count=%d err=%v", discoveries, err)
 		}
 		var example string
 		if err := dashboard.QueryRow(ctx, `SELECT "First example" FROM (`+query+`) AS panel`).Scan(&example); err != nil || example != `"v"` {
@@ -61,9 +80,9 @@ func TestFeedChangeMigrationAndGrafanaBootstrap(t *testing.T) {
 	check()
 }
 
-func feedChangesPanelSQL(t *testing.T) string {
+func grafanaPanelSQL(t *testing.T, uid string, panelID int) string {
 	t.Helper()
-	raw, err := os.ReadFile("../../infra/grafana/dashboards/scorearc-operations.json")
+	raw, err := os.ReadFile("../../infra/grafana/dashboards/" + uid + ".json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,11 +99,11 @@ func feedChangesPanelSQL(t *testing.T) string {
 		t.Fatal(err)
 	}
 	for _, panel := range dashboard.Panels {
-		if panel.ID == 20 {
+		if panel.ID == panelID {
 			for _, target := range panel.Targets {
 				if target.RefID == "A" {
 					query := target.RawSQL
-					for _, column := range []string{"first_seen_at", "last_seen_at"} {
+					for _, column := range []string{"first_seen_at", "last_seen_at", "started_at"} {
 						query = strings.ReplaceAll(query, "$__timeFilter("+column+")", column+" BETWEEN now() - interval '1 hour' AND now()")
 					}
 					return query
@@ -92,6 +111,6 @@ func feedChangesPanelSQL(t *testing.T) string {
 			}
 		}
 	}
-	t.Fatal("missing feed changes panel query")
+	t.Fatalf("missing query in %s panel %d", uid, panelID)
 	return ""
 }

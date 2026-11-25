@@ -431,7 +431,7 @@ separate operator action. The command has no experiment settings.
    one start and one substitute appearance. The edition's `/players` page
    reports the number of teams with roster coverage and searches those players.
 
-4. In [Grafana](https://grafana.scorearc.futbol/d/scorearc-operations), watch
+4. In Grafana’s [Reader comparisons](https://grafana.scorearc.futbol/d/scorearc-reader-comparisons) dashboard, watch
    reader attempts and resource evidence for `getEditionTeams`, `getSquad`
    and `getPlayer`. Use the sampled frontend event's competition and season
    to isolate `world-cup/2002`. A known player can resolve from an accepted
