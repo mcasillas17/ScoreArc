@@ -89,33 +89,19 @@ func TestMapOddsAcceptsNoProviders(t *testing.T) {
 	}
 }
 
-func TestMapOddsSkipsProviderWithoutID(t *testing.T) {
-	providers, err := MapOdds([]byte(`{"items":[
-		{"provider":{"name":"No id"}},
-		{"provider":{"id":"100","name":"DraftKings"}}
-	]}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(providers) != 1 || providers[0].ProviderID != "100" {
-		t.Fatalf("providers = %#v, want only provider 100", providers)
-	}
-}
-
-func TestMapOddsSkipsProvidersWithoutIDOrName(t *testing.T) {
-	providers, err := MapOdds([]byte(`{"items":[
-		{"provider":{"name":"No id"}},
-		{"provider":{"id":"200","name":"   "}},
-		{"provider":{"id":"100","name":"DraftKings"}}
-	]}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(providers) != 1 {
-		t.Fatalf("providers = %#v, want only DraftKings", providers)
-	}
-	if providers[0].ProviderID != "100" || providers[0].ProviderName != "DraftKings" {
-		t.Fatalf("providers = %#v, want only DraftKings", providers)
+func TestMapOddsRejectsUnidentifiableOrDuplicateProviders(t *testing.T) {
+	for name, bad := range map[string]string{
+		"missing id": `{"provider":{"name":"Book"}}`,
+		"blank name": `{"provider":{"id":"200","name":" "}}`,
+		"padded id":  `{"provider":{"id":" 200","name":"Book"}}`,
+		"duplicate":  `{"provider":{"id":"100","name":"Another book"}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			providers, err := MapOdds([]byte(`{"items":[{"provider":{"id":"100","name":"Book"}},` + bad + `]}`))
+			if err == nil || len(providers) != 0 {
+				t.Fatalf("providers=%v err=%v, want rejected capture", providers, err)
+			}
+		})
 	}
 }
 

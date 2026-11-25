@@ -1,7 +1,6 @@
 package espn
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"strconv"
@@ -9,10 +8,6 @@ import (
 
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
-
-type rawOddsPage struct {
-	Items []rawProviderOdds `json:"items"`
-}
 
 type rawProviderOdds struct {
 	Provider     rawOddsProvider `json:"provider"`
@@ -75,15 +70,16 @@ const maxOddsDecimal = 999.99
 // closing lines as supplied, and prefers flattened current values while falling
 // back to their equivalent nested current phase. Prop-bet refs are not fetched.
 func MapOdds(raw []byte) ([]model.ProviderOdds, error) {
-	var page rawOddsPage
-	if err := json.Unmarshal(raw, &page); err != nil {
+	items, err := decodeCoreSinglePage[rawProviderOdds](raw)
+	if err != nil {
 		return nil, fmt.Errorf("decode odds: %w", err)
 	}
 
-	providers := make([]model.ProviderOdds, 0, len(page.Items))
-	for _, item := range page.Items {
-		if item.Provider.ID == "" || strings.TrimSpace(item.Provider.Name) == "" {
-			continue
+	providers := make([]model.ProviderOdds, 0, len(items))
+	seen := make(map[string]bool, len(items))
+	for i, item := range items {
+		if err := recordCoreIdentity(seen, item.Provider.ID, item.Provider.Name); err != nil {
+			return nil, fmt.Errorf("decode odds item %d: %w", i, err)
 		}
 		providers = append(providers, model.ProviderOdds{
 			ProviderID:   item.Provider.ID,

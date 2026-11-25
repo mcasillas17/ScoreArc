@@ -675,7 +675,8 @@ func TestPlaysFollowsEveryPage(t *testing.T) {
 		if page == "2" {
 			items = `{"id":"b","type":{"id":"2","text":"Goal","type":"goal"},"period":{"number":2},"clock":{"value":60,"displayValue":"60'"},"scoringPlay":true}`
 		}
-		fmt.Fprintf(w, `{"count":2,"pageIndex":%s,"pageSize":1000,"pageCount":2,"items":[%s]}`, page, items)
+		fmt.Fprintf(w, `{"count":2,"pageIndex":%[1]s,"pageSize":1000,"pageCount":2,
+			"total":2,"pagination":{"count":2,"totalCount":2,"pageIndex":%[1]s,"pageSize":1000,"pageCount":2,"limit":1000},"items":[%[2]s]}`, page, items)
 	}))
 	defer server.Close()
 
@@ -698,6 +699,25 @@ func TestPlaysFollowsEveryPage(t *testing.T) {
 	}
 	if len(raw) == 0 {
 		t.Fatal("no raw bytes returned; there would be nothing to archive")
+	}
+}
+
+func TestPlaysWithholdsArchiveOnConflictingPagination(t *testing.T) {
+	for _, claim := range []string{
+		`"pagination":{"count":2,"pageCount":2}`, `"total":2`, `"totalCount":2`,
+		`"pagination":{"pageIndex":2}`, `"pagination":{"pageSize":25}`, `"pagination":{"limit":25}`,
+		`"offset":1`, `"pagination":{"offset":1}`, `"total":null`, `"pagination":null`, `"pagination":[]`,
+	} {
+		t.Run(claim, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				fmt.Fprint(w, `{"count":1,"pageIndex":1,"pageSize":1000,"pageCount":1,`+claim+`,"items":[{"id":"123"}]}`)
+			}))
+			defer server.Close()
+			stream, archive, err := NewESPNWithBase(espnprovider.New(), server.URL).Plays(context.Background(), config.Competition{ESPNSlug: "mex.1"}, "1")
+			if err == nil || len(archive) != 0 || len(stream.Plays) != 0 {
+				t.Fatalf("unverified metadata produced %d plays, %d archive bytes, err %v", len(stream.Plays), len(archive), err)
+			}
+		})
 	}
 }
 

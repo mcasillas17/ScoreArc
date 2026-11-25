@@ -1,15 +1,10 @@
 package espn
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/mcasillas17/scorearc-backend/shared/model"
 )
-
-type rawOfficialsPage struct {
-	Items []rawCoreOfficial `json:"items"`
-}
 
 type rawCoreOfficial struct {
 	ID       string                  `json:"id"`
@@ -24,18 +19,18 @@ type rawCoreOfficialPosition struct {
 }
 
 // MapOfficials maps the variable-size officiating crew embedded in the core
-// API response. Crew members without a provider id or name cannot be resolved
-// and are deliberately ignored.
+// API response. Every member needs a resolvable identity before capture completes.
 func MapOfficials(raw []byte) ([]model.MatchOfficial, error) {
-	var page rawOfficialsPage
-	if err := json.Unmarshal(raw, &page); err != nil {
+	items, err := decodeCoreSinglePage[rawCoreOfficial](raw)
+	if err != nil {
 		return nil, fmt.Errorf("decode officials: %w", err)
 	}
 
-	officials := make([]model.MatchOfficial, 0, len(page.Items))
-	for _, item := range page.Items {
-		if item.ID == "" || item.FullName == "" {
-			continue
+	officials := make([]model.MatchOfficial, 0, len(items))
+	seen := make(map[string]bool, len(items))
+	for i, item := range items {
+		if err := recordCoreIdentity(seen, item.ID, item.FullName); err != nil {
+			return nil, fmt.Errorf("decode officials item %d: %w", i, err)
 		}
 		officials = append(officials, model.MatchOfficial{
 			SourceID: item.ID,
