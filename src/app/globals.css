@@ -4593,3 +4593,118 @@ div.mc-match, div.mw-row { cursor: default; }
 @media (max-width: 680px) {
   .dg-matchday-archive { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Liga MX's two-leg scorecard shares the arc's canvas on wide screens. */
+.liguilla-bracket { container-type: inline-size; }
+.liguilla-bracket .bracket-modes { border-color: var(--border); background: var(--surface-1); }
+.liguilla-bracket .bracket-mode--active { background: var(--text); color: var(--bg); box-shadow: none; }
+.liguilla-bracket .bracket-controls { justify-content: center; flex-wrap: wrap; }
+.liguilla-layout {
+  display: grid;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(12px, 2cqw, 24px);
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+}
+.liguilla-layout:has(.liguilla-card) { grid-template-columns: minmax(0, 1fr) minmax(268px, 33%); }
+.liguilla-stage { min-width: 0; text-align: center; }
+.liguilla-stage .radial-bracket-wrap { max-width: 528px; }
+.liguilla-stage > p { margin: 0; font-size: 13px; line-height: 1.4; color: var(--text-muted); }
+.liguilla-semifinals { margin: 20px auto 0; text-align: center; }
+.liguilla-semifinals span { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.liguilla-semifinals button { min-height: 44px; padding: 6px 12px; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 14px; cursor: pointer; }
+.liguilla-semifinals button:hover { text-decoration: underline; }
+.liguilla-card {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+  padding: clamp(14px, 1.8cqw, 20px);
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--brand-deep);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  color: var(--text);
+  text-align: left;
+  scroll-margin: 84px;
+}
+.liguilla-card:focus-visible,
+.liguilla-bracket button:focus-visible,
+.liguilla-card input:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.liguilla-round {
+  margin: 0 32px 4px 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  line-height: 1.4;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.liguilla-card h3 { margin: 0 14px 14px 0; font-size: clamp(19px, 2.4cqw, 24px); line-height: 1.2; letter-spacing: -.035em; }
+.liguilla-close {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 24px;
+  cursor: pointer;
+}
+.liguilla-close:hover { color: var(--text); }
+.liguilla-card table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.liguilla-card th, .liguilla-card td { padding: 7px 2px; text-align: center; vertical-align: middle; }
+.liguilla-card tr > :first-child { width: 34%; text-align: left; padding-left: 0; overflow-wrap: anywhere; }
+.liguilla-card tr > :last-child { width: 17%; padding-right: 0; }
+.liguilla-card thead { border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-muted); }
+.liguilla-card thead th { vertical-align: top; }
+.liguilla-card tbody th { font-weight: 600; line-height: 1.25; }
+.liguilla-card abbr { text-decoration: none; }
+.liguilla-card small { display: block; color: var(--text-muted); font-size: 11px; font-weight: 400; line-height: 1.35; }
+.liguilla-card .liguilla-status { font-weight: 600; }
+.liguilla-card .liguilla-status[data-live=true] { color: var(--live-red); }
+.liguilla-score { font-size: 17px; font-weight: 600; }
+.liguilla-total { font-size: 19px; font-weight: 700; }
+.liguilla-card input {
+  width: min(100%, 46px);
+  height: 40px;
+  border: 1px solid color-mix(in srgb, var(--text-muted) 45%, var(--bg));
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  text-align: center;
+  font: inherit;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.liguilla-note, .liguilla-verdict p { margin: 4px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
+.liguilla-shootout { margin: 10px 0 0; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.liguilla-shootout legend { padding: 0 4px; color: var(--text-muted); font-size: 12px; }
+.liguilla-shootout > div { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 3px 0; font-size: 14px; }
+.liguilla-shootout > div > span { flex: 1; }
+.liguilla-verdict { margin-top: 8px; padding-top: 13px; border-top: 1px solid var(--border); min-height: 46px; display: flex; align-items: center; gap: 8px; }
+.liguilla-verdict .mc-crest { width: 30px; height: 30px; flex-shrink: 0; object-fit: contain; }
+.liguilla-verdict strong { color: var(--brand-bright); font-size: 14px; font-weight: 650; }
+.liguilla-verdict p { margin-top: 2px; }
+@container (max-width: 650px) {
+  .liguilla-layout:has(.liguilla-card) { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .liguilla-stage .radial-bracket-wrap { max-width: 425px; }
+  .liguilla-arc-score { font-size: 38px; }
+  .liguilla-stage .bracket-disc > circle[vector-effect="non-scaling-stroke"] { stroke-width: 30px; }
+  /* Keep the zoom buttons clear of the lower crests' touch targets. */
+  .liguilla-stage .bz-controls { position: static; justify-content: flex-end; }
+  .liguilla-card { max-width: 480px; margin-inline: auto; }
+  .liguilla-card h3 { margin-bottom: 8px; }
+  .liguilla-card input { height: 44px; }
+}
+@container (max-width: 360px) {
+  .liguilla-arc-score { font-size: 44px; }
+}
+@media (pointer: coarse) {
+  .liguilla-bracket .bracket-mode, .liguilla-card input { min-height: 44px; }
+}

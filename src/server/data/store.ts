@@ -633,7 +633,7 @@ export function createDataStore(deps: DataDeps): DataStore {
       let groups: Group[] = [];
       if (rc.season.playoffFormat && supportsResource(rc.season, 'standings')) {
         try {
-          groups = await store.getStandings(rc);
+          groups = rc.season.playoffFormat === 'liga-mx-apertura' ? await loadStandings(rc, true) : await store.getStandings(rc);
         } catch (error) {
           // Published matches stand on their own. A projection requires the table.
           const published = mapBracket(raw, rc.season.playoffFormat);

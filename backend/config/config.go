@@ -33,6 +33,11 @@ type Season struct {
 }
 
 const FemenilApertura = "femenil-apertura"
+const LigaMXApertura = "liga-mx-apertura"
+
+func (s Season) HasLiguillaLegs() bool {
+	return s.PlayoffFormat == FemenilApertura || s.PlayoffFormat == LigaMXApertura
+}
 
 type Competition struct {
 	ID               string            `json:"id"`
@@ -110,7 +115,7 @@ func parseRegistry(input []byte) (*Registry, error) {
 			return nil, fmt.Errorf("competition %q has invalid level", c.ID)
 		}
 		for id, season := range c.Seasons {
-			if season.PlayoffFormat != "" && (!season.HasBracket || (season.PlayoffFormat != "nwsl" && season.PlayoffFormat != FemenilApertura)) {
+			if season.PlayoffFormat != "" && (!season.HasBracket || (season.PlayoffFormat != "nwsl" && !season.HasLiguillaLegs())) {
 				return nil, fmt.Errorf("invalid playoff format %q for %s/%s", season.PlayoffFormat, c.ID, id)
 			}
 			if c.CurrentSeasonId == "" && (season.Publication == "live" || season.Publication == "archive") {

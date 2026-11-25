@@ -195,7 +195,7 @@ func MapSeasonScoreboard(raw []byte, season config.Season) ([]Match, error) {
 
 		round := bracketRoundSlug(string(ev.ID), ev.Season.Slug, season)
 		bracketRequired := bracketRequirement(ev.Season.Slug, round)
-		leg := IsFemenilLeg(season, round, nil)
+		leg := IsLiguillaLeg(season, round, nil)
 		note, err := competitionNote(comp.Notes, comp.Leg, leg)
 		if err != nil {
 			return nil, fmt.Errorf("scoreboard event %q: %w", ev.ID, err)
@@ -237,7 +237,7 @@ func MapSeasonScoreboard(raw []byte, season config.Season) ([]Match, error) {
 			if state == MatchStateFinished && !terminalMatchStatus(status.Type.Name) && (homeScore == nil || awayScore == nil) {
 				return nil, fmt.Errorf("scoreboard event %q: finished leg lacks scores", ev.ID)
 			}
-			winnerID, flag = LegWinner(status.Type.Name, round, note, homeTeam.ID, awayTeam.ID, homeScore, awayScore), nil
+			winnerID, flag = LegWinner(season, status.Type.Name, round, note, homeTeam.ID, awayTeam.ID, homeScore, awayScore), nil
 		} else if state == MatchStateFinished {
 			winnerID = ResolveWinner(shootout, homeTeam.ID, awayTeam.ID, flag)
 		}
@@ -263,7 +263,7 @@ func MapSeasonScoreboard(raw []byte, season config.Season) ([]Match, error) {
 			ProviderStage:   ev.Season.Slug,
 			// These explicit non-knockout tags supersede a stored unknown-round requirement.
 			BracketConfirmed: outsideTitleBracket(ev.Season.Slug) ||
-				(season.PlayoffFormat == config.FemenilApertura && ev.Season.Slug == "torneo-apertura"),
+				(season.HasLiguillaLegs() && ev.Season.Slug == "torneo-apertura"),
 		})
 	}
 	if len(sb.Events) > 0 && len(matches) == 0 {

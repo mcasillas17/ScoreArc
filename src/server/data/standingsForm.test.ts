@@ -255,13 +255,13 @@ describe('standings form upstream budget', () => {
     const fetchJson = vi.fn(async (url: string) => (url.includes('/standings')
       ? { children: (rc.competition.id === 'world-cup' ? ['a', 'b'] : ['a']).map((id, i) => ({ id: String(i + 1), name: `t${i}`, standings: { entries: [{
         team: { id, displayName: id, abbreviation: id },
-        stats: ['gamesPlayed', 'wins', 'ties', 'losses', 'pointsFor', 'pointsAgainst', 'pointDifferential', 'points'].map((name) => ({ name, value: 9 })) }] } })) }
+        stats: ['gamesPlayed', 'wins', 'ties', 'losses', 'pointsFor', 'pointsAgainst', 'pointDifferential', 'points', 'rank'].map((name) => ({ name, value: name === 'rank' ? 1 : 9 })) }] } })) }
       : { leagues: [{ slug: rc.competition.espnSlug }], events: url.includes('/scoreboard') && rc.season.computedTables ? [phaseEvent] : [] }));
     return { fetchJson, store: createDataStore({ fetchJson, cache: new TtlCache() }) };
   };
   it.each([
     ['mls', '2026', '2026-12-31T12:00:00Z', 19],
-    ['liga-mx', '2026-apertura', '2026-12-31T12:00:00Z', 10],
+    ['liga-mx', '2026-apertura', '2026-12-31T12:00:00Z', 7],
     ['laliga', '2026-27', '2027-06-30T12:00:00Z', 17],
     ['world-cup', '2026', '2026-10-30T12:00:00Z', 8],
     ['leagues-cup', '2026', '2026-10-30T12:00:00Z', 2],
@@ -318,6 +318,15 @@ describe('standings form table scope', () => {
     ]), drawn, undefined, october);
     expect(form.scope).toBe('regular-season');
     expect(results(form, 'a')).toEqual(['1:W']);
+  });
+  it('keeps a played Liguilla leg out of regular-season form even when a regular result is missing', async () => {
+    const held = store([table('general', row('a', 2), row('b', 2))], [
+      game('regular', '2026-11-20T12:00:00Z', 'a', 'b'), game('ida', '2026-11-26T01:00:00Z', 'a', 'b'),
+    ]);
+    const form = await loadStandingsForm(held, ligaMx, undefined, new Date('2026-11-28T12:00:00Z'));
+    expect(form.scope).toBe('regular-season');
+    expect(held.getFixtures.mock.calls[0][1]).toMatch(/-20261124$/);
+    expect(results(form, 'a')).toBe('unavailable');
   });
   it('keeps a single-table league on season scope and window when it gains a bracket', async () => {
     const drawn: CompetitionSeason = { ...laliga, season: { ...laliga.season, bracketDatesRange: '20261001-20261015',

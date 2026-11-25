@@ -70,7 +70,7 @@ const pages: { name: string; method: CollectionMethod; read: () => Promise<unkno
   { name: 'standings', method: 'getStandings', read: () => StandingsPage(season('world-cup')) },
   { name: 'standings leaders', method: 'getLeaders', read: () => StandingsPage(season('world-cup')) },
   { name: 'cup bracket', method: 'getBracket', read: () => Workspace(season('world-cup')) },
-  { name: 'projected bracket', method: 'getStandings', read: () => Workspace(season('liga-mx', '2026-apertura')) },
+  { name: 'Liga MX bracket', method: 'getBracket', read: () => Workspace(season('liga-mx', '2026-apertura')) },
   { name: 'derived phase tables', method: 'getStandings', read: () => Workspace(season('leagues-cup')) },
   { name: 'all-team directory', method: 'getEditionTeams', read: () => TeamsPage({ params: { locale: 'en' } }) },
 ];

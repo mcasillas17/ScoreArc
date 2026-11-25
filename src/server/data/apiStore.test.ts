@@ -250,3 +250,32 @@ it('never caches a field the local crosswalk cannot identify as empty', async ()
   row.id = rawMatch.home.id;
   expect((await store.getEditionTeams(rc)).map(t => t.id)).toEqual([providerTeamId(rawMatch.home.id)]);
 });
+
+it('restores missing Liguilla quarterfinal legs from scoped match rows before the reader has indexed the round', async () => {
+  const rc = resolveSeason('liga-mx', '2026-apertura')!;
+  const table = structuredClone(derived.membership.ligaMx.groups[0]);
+  table.standings.forEach(row => { row.played = 17; });
+  const [high, low, unpaired] = [0, 7, 4].map(i => table.standings[i].team);
+  const rows = [
+    { ...rawMatch, home: low, away: high, note: '1st Leg' },
+    { ...rawMatch, home: high, away: low, note: '2nd Leg' },
+    { ...rawMatch, home: high, away: unpaired, note: '1st Leg' },
+    { ...rawMatch, home: high, away: low, note: null },
+  ].map((m, i) => ({ ...m, id: derived.phaseMatches[i].id, winnerId: null, state: 'scheduled', statusName: 'STATUS_SCHEDULED',
+    homeScore: 0, awayScore: 0, kickoff: new Date(Date.UTC(2026,10,26+i)).toISOString() }));
+  const {store, calls} = harness((path, query) => {
+    if (path.endsWith('/bracket')) return result([], {bracket:'competition-season',identity:'competition-season'});
+    if (path.endsWith('/standings')) return result([table], {standings:'competition-season',identity:'competition-season'});
+    if (path.endsWith('/matches')) return result(rows, {matches:'selection',identity:'competition-season'});
+    if (path.endsWith('/identities')) return result(query!.ids.split(',').map(id => {
+      const i = rows.findIndex(m => m.id === id), row = rows[i];
+      return { id, status:'resolved', canonicalId:id, providerId:String(i + 100), competitionId:rc.competition.id,
+        seasonId:rc.season.id, homeId:row.home.id, awayId:row.away.id };
+    }), {identity:'selection'});
+  });
+  const quarters = (await store.getBracket(rc))[0].matches;
+  expect(quarters).toHaveLength(4);
+  expect(quarters.flatMap(m => m.legs ?? []).map(m => [m.id, m.legNumber])).toEqual([['100',1],['101',2]]);
+  expect(quarters[0]).toMatchObject({ homeScore:null, awayScore:null, winnerId:null });
+  expect(calls).toContain('/v1/competitions/liga-mx/2026-apertura/matches?range=20261125-20261130');
+});

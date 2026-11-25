@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { buildPlayoffBracket } from './providers/espn-bracket';
+import { liguillaTieKey } from '@/lib/liguilla';
 import { projectLiguilla } from './liguillaProjection';
-import type { Group, Standing, Team } from './types';
+import type { BracketMatch, Group, Standing, Team } from './types';
 
 function team(id: string, abbr: string): Team {
   return { id, name: `Club ${abbr}`, abbr, crestUrl: null };
@@ -97,5 +99,46 @@ describe('Apertura 2026 Femenil', () => {
     expect(projectLiguilla(groups.slice(0, 1), 'femenil-apertura')).toBeNull();
     groups[1].standings[2].team = groups[0].standings[2].team;
     expect(projectLiguilla(groups, 'femenil-apertura')).toBeNull();
+  });
+});
+
+describe("men's Apertura 2026", () => {
+  const groups = [table(18)];
+  groups[0].standings.forEach(row => { row.played = 17; });
+  const format = 'liga-mx-apertura';
+  const project = () => buildPlayoffBracket([], format, groups);
+  const leg = (ordinal: number): BracketMatch => {
+    const { home, away } = project()[0].matches[0];
+    return {
+      ...project()[0].matches[0], id: 'event-' + ordinal,
+      home: ordinal === 1 ? away : home, away: ordinal === 1 ? home : away,
+      kickoff: ordinal === 1 ? '2026-11-26T01:00:00Z' : '2026-11-29T01:00:00Z',
+      state: 'finished', statusName: 'STATUS_FULL_TIME', homeScore: 2, awayScore: 1,
+      note: ordinal === 1 ? '1st Leg' : '2nd Leg', winnerId: 'ignored',
+    };
+  };
+  const build = (matches: BracketMatch[]) => buildPlayoffBracket([{ slug: 'quarterfinals', matches }], format, groups)[0].matches;
+
+  it('seeds the eight clubs from the general table and retains unpublished slots in a partial draw', () => {
+    expect(project()[0].matches.map(m => [m.home.overallSeed, m.away.overallSeed])).toEqual([[1,8],[4,5],[2,7],[3,6]]);
+    const matches = build([leg(2)]);
+    expect(matches).toHaveLength(4);
+    const actual = matches.find(m => m.legs?.length)!;
+    expect(actual.legs?.map(m => [m.id, m.legNumber])).toEqual([['event-2', 2]]);
+    expect(actual.winnerId).toBeNull();
+    expect(matches.filter(m => m.id.startsWith('proj-'))).toHaveLength(3);
+  });
+
+  it('groups reciprocal legs by club, keeps their actual IDs and resolves a level aggregate by final seed', () => {
+    const tie = build([leg(2), leg(1)]).find(m => m.legs?.length)!;
+    expect(tie.legs?.map(m => m.id)).toEqual(['event-1', 'event-2']);
+    expect(tie.home.overallSeed).toBe(1);
+    expect([tie.homeScore, tie.awayScore, tie.winnerId]).toEqual([3, 3, tie.home.id]);
+    expect(tie.id).toBe('event-2');
+    for (const ordinal of [1, 2]) {
+      const partial = build([leg(ordinal)]).find(m => m.legs?.length)!;
+      expect(partial.id).toBe('event-' + ordinal);
+      expect(liguillaTieKey(partial)).toBe(liguillaTieKey(tie));
+    }
   });
 });

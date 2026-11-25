@@ -335,7 +335,7 @@ func MapSeasonSummary(raw []byte, match Match, season config.Season) (MatchDetai
 	}
 	note := match.Note
 	var headerShootout *Shootout
-	if season.PlayoffFormat == config.FemenilApertura && len(rs.Header.Competitions) > 0 {
+	if season.HasLiguillaLegs() && len(rs.Header.Competitions) > 0 {
 		comp := rs.Header.Competitions[0]
 		notes := comp.Notes
 		if note != nil {
@@ -346,8 +346,8 @@ func MapSeasonSummary(raw []byte, match Match, season config.Season) (MatchDetai
 		if err != nil {
 			return MatchDetail{}, nil, err
 		}
-		if IsFemenilLeg(season, match.Round, note) {
-			if match.State == MatchStateFinished && comp.Status != nil && playedLeg(match.StatusName, match.Round, note) != playedLeg(comp.Status.Type.Name, match.Round, note) {
+		if IsLiguillaLeg(season, match.Round, note) {
+			if match.State == MatchStateFinished && comp.Status != nil && playedLeg(season, match.StatusName, match.Round, note) != playedLeg(season, comp.Status.Type.Name, match.Round, note) {
 				return MatchDetail{}, nil, fmt.Errorf("summary leg status %q contradicts %q", comp.Status.Type.Name, match.StatusName)
 			}
 			for _, n := range comp.Notes {
@@ -378,7 +378,7 @@ func MapSeasonSummary(raw []byte, match Match, season config.Season) (MatchDetai
 		detail.Shootout = match.Shootout
 	}
 	if detail.Shootout == nil && note != nil {
-		detail.Shootout = parseMatchShootoutNote(*note, match.Home.Name, match.Away.Name, IsFemenilLeg(season, match.Round, note))
+		detail.Shootout = parseMatchShootoutNote(*note, match.Home.Name, match.Away.Name, IsLiguillaLeg(season, match.Round, note))
 	}
 	if detail.Shootout == nil {
 		detail.Shootout = headerShootout

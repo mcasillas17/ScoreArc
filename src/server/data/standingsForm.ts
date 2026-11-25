@@ -42,7 +42,8 @@ const compactDate = (ms: number) => new Date(ms).toISOString().slice(0, 10).repl
 
 function offersNoForm({ competition, season }: CompetitionSeason, now: Date) {
   if (!season.sections.includes('standings') || season.id !== competition.currentSeasonId) return true;
-  return !season.computedTables && !season.format.hasBracket && now.getTime() >= editionBounds(season).end;
+  const singleTableLeague = !season.format.hasBracket || season.playoffFormat === 'liga-mx-apertura';
+  return !season.computedTables && singleTableLeague && now.getTime() >= editionBounds(season).end;
 }
 
 function tableScope(rc: CompetitionSeason, now: Date, tables: number) {
@@ -65,8 +66,9 @@ function tableScope(rc: CompetitionSeason, now: Date, tables: number) {
   }
   // A single-table league with a bracket only reaches this after its table is read.
   if (now.getTime() >= editionBounds(season).end) return null;
-  return { scope: laterPhase ? 'regular-season' as const : 'season' as const,
-    start: seasonStart, end: today };
+  const end = season.playoffFormat === 'liga-mx-apertura' && season.bracketDatesRange
+    ? Math.min(today, utcDate(season.bracketDatesRange.slice(0, 8)) - DAY) : today;
+  return { scope: laterPhase ? 'regular-season' as const : 'season' as const, start: seasonStart, end };
 }
 
 export function loadStandingsForm(

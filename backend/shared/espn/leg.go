@@ -72,9 +72,9 @@ func competitionNote(notes []rawNote, raw json.RawMessage, twoLegged bool) (*str
 	return &text, nil
 }
 
-// IsFemenilLeg also recognizes a stored ordinal when recovery has no confirmed round yet.
-func IsFemenilLeg(season config.Season, round string, note *string) bool {
-	if season.PlayoffFormat != config.FemenilApertura {
+// IsLiguillaLeg also recognizes a stored ordinal when recovery has no confirmed round yet.
+func IsLiguillaLeg(season config.Season, round string, note *string) bool {
+	if !season.HasLiguillaLegs() {
 		return false
 	}
 	switch round {
@@ -94,13 +94,16 @@ func parseMatchShootoutNote(note, homeName, awayName string, twoLegged bool) *Sh
 	return ParseShootoutNote(note, homeName, awayName)
 }
 
-func playedLeg(status, round string, note *string) bool {
-	return status == "STATUS_FULL_TIME" || (status == "STATUS_FINAL_PEN" && round == "final" && note != nil && noteLeg(*note) == 2)
+func playedLeg(season config.Season, status, round string, note *string) bool {
+	if round == "final" && note != nil && noteLeg(*note) == 2 {
+		return status == "STATUS_FULL_TIME" || status == "STATUS_FINAL_PEN" || (season.PlayoffFormat == config.LigaMXApertura && status == "STATUS_FINAL_AET")
+	}
+	return status == "STATUS_FULL_TIME"
 }
 
 // LegWinner is the result of the individual game. A final's penalties decide the tie separately.
-func LegWinner(status, round string, note *string, homeID, awayID string, homeScore, awayScore *int) *string {
-	if !playedLeg(status, round, note) || homeScore == nil || awayScore == nil || *homeScore == *awayScore {
+func LegWinner(season config.Season, status, round string, note *string, homeID, awayID string, homeScore, awayScore *int) *string {
+	if !playedLeg(season, status, round, note) || homeScore == nil || awayScore == nil || *homeScore == *awayScore {
 		return nil
 	}
 	if *homeScore > *awayScore {

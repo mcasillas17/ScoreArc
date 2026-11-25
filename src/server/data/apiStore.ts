@@ -20,6 +20,7 @@ import {
   decodeReaderEditionTeams, decodeReaderLeaders, decodeReaderTeam, decodeReaderSquad, decodeReaderPlayer,
 } from './readerDecode';
 import { buildPlayoffBracket } from './providers/espn-bracket';
+import { restoreQuarterfinalLegs } from './ligaMxBracket';
 
 export interface ReaderDataDependencies {
   read: ReaderTransport;
@@ -183,7 +184,8 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
         standings: group.standings.map(row => ({ ...row, team: mappedTeam(teams, row.team) })) }));
     },
     async getBracket(rc): Promise<BracketRound[]> {
-      const query = rc.season.playoffFormat === 'femenil-apertura' ? { shootout: 'true' } : undefined;
+      const format = rc.season.playoffFormat;
+      const query = format === 'femenil-apertura' || format === 'liga-mx-apertura' ? { shootout: 'true' } : undefined;
       const { body, evidence } = await request(`${readerScopePath(rc)}/bracket`, query, decodeReaderBracket,
         { bracket: 'competition-season', identity: 'competition-season' }, ['bracket']);
       const matches = body.flatMap(round => round.matches);
@@ -205,7 +207,12 @@ export function createReaderDataStore(deps: ReaderDataDependencies): DataStore {
           if (!matches.length) throw error;
         }
       }
-      return buildPlayoffBracket(rounds, rc.season.playoffFormat, groups);
+      const quarterfinals = rounds.find(r => r.slug === 'quarterfinals');
+      if (format === 'liga-mx-apertura' && rc.season.quarterfinalDatesRange && (quarterfinals?.matches.length ?? 0) < 8) {
+        const games = await store.getFixtures(rc, rc.season.quarterfinalDatesRange);
+        return buildPlayoffBracket(restoreQuarterfinalLegs(rounds, games, groups), format, groups);
+      }
+      return buildPlayoffBracket(rounds, format, groups);
     },
     async getMatchSummary(rc, eventId, homeId, awayId): Promise<MatchSummaryData> {
       const identity = (await identities.lookup(rc, 'match', 'espn', [eventId], 'addressed')).get(eventId)!;

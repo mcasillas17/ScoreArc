@@ -23,6 +23,12 @@ interface Props {
   mode?: BracketMode;
   picks?: Record<string, string>;
   onPick?: (depth: number, matchIndex: number, teamId: string) => void;
+  tieControls?: {
+    open: (match: BracketMatch) => void;
+    selectedId?: string;
+    aggregateLabel?: string;
+    liveLeaders: ReadonlyMap<string, string>;
+  };
   onChampion?: (team: BracketTeam | null) => void;
   teamStyle: TeamStyle;
   apiBase: string;
@@ -168,7 +174,7 @@ function arcTextPath(cx: number, cy: number, r: number, startDeg: number, endDeg
   return `M ${x1} ${y1} A ${r} ${r} 0 ${large} ${sweep} ${x2} ${y2}`;
 }
 
-export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, onChampion, teamStyle, apiBase, teamBase, playerBase, shape: shapeProp, emblem, trophyImage, logo, logoInvert, championTitleKey = 'champion.competition', accent }: Props) {
+export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPick, tieControls, onChampion, teamStyle, apiBase, teamBase, playerBase, shape: shapeProp, emblem, trophyImage, logo, logoInvert, championTitleKey = 'champion.competition', accent }: Props) {
   const t = useTranslations();
   const tint = accentTint(accent);
   const shape = shapeProp ?? DEFAULT_SHAPE;
@@ -243,7 +249,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
   const {
     detail, summary, setSummary, loadingDetail, openDetails, closeDetails, hasSummary,
   } = useMatchDetails<BracketMatch>(apiBase, 'bracket');
-  const handleView = (m: BracketMatch) => openDetails(m.detailMatch ?? m);
+  const handleView = (m: BracketMatch) => tieControls ? tieControls.open(m) : openDetails(m.detailMatch ?? m);
   const summaryFeedFailedFor = useRef<string | null>(null);
 
   // Radar-ping cues use the client clock ("is this match today?"), so they only
@@ -288,6 +294,10 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
   }, [detail?.id, detail?.state, hasSummary]);
 
   const handleDiscClick = (node: RingNode) => {
+    if (tieControls && node.match) {
+      tieControls.open(node.match);
+      return;
+    }
     // Discs only interact in predict mode (pick). Viewing a match's details is
     // done by clicking the RESULT DOT on the connector, not a country's flag.
     if (mode === 'predict' && node.clickable && onPick) {
@@ -301,7 +311,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
       <svg
         viewBox="-70 -70 1140 1140"
         aria-label={bracketLabel}
-        role="img"
+        role={tieControls ? 'group' : 'img'}
         style={{
           width: '100%',
           height: 'auto',
@@ -414,7 +424,9 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             const pPar = ellipse(rp, rp, parent.angle);
             const sweep = b.angle > a.angle ? 1 : 0;
             // The team that actually advances from this match (if decided).
-            const win = a.isWinner ? a : b.isWinner ? b : null;
+            const leader = a.match && tieControls?.liveLeaders.get(a.match.id);
+            const provisional = !a.isWinner && !b.isWinner && !!leader;
+            const win = a.isWinner ? a : b.isWinner ? b : leader === a.team.id ? a : leader === b.team.id ? b : null;
             const winColor = win ? colorFor(win.team, tint('#e8b84b')) : null;
             const jWin = win ? (win === a ? jA : jB) : null;
             const arcSweep = win && win.angle < parent.angle ? 1 : 0;
@@ -429,8 +441,9 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                     in from child to parent as the winner's flag hops through it
                     — same path + 1.25s ease as the flag's offset-path, so the
                     flag appears to paint the line. Gated on the round playing. */}
-                {win && jWin && winColor && simRound >= depth + 1 && (() => {
+                {win && jWin && winColor && (provisional || simRound >= depth + 1) && (() => {
                   const d = `M ${win.x} ${win.y} L ${jWin.x} ${jWin.y} A ${rj} ${rj} 0 0 ${arcSweep} ${jMid.x} ${jMid.y} L ${pPar.x} ${pPar.y}`;
+                  if (provisional) return <path d={d} fill="none" stroke={winColor} strokeWidth={4} strokeDasharray="7 6" />;
                   return (
                     <>
                       {/* luminous underlay */}
@@ -468,13 +481,15 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
           const inner = ellipse(30, 30, node.angle);
           // Champion's line to the trophy colours in once the final has played.
           const championLine = node.isWinner && simRound >= geom.length;
+          const leading = node.match && tieControls?.liveLeaders.get(node.match.id) === node.team.id;
           return (
             <g key={`final-${node.index}`}>
               <path
                 d={`M ${node.x} ${node.y} L ${inner.x} ${inner.y}`}
                 fill="none"
-                stroke="url(#conn-grad)"
-                strokeWidth={1.4}
+                stroke={leading ? tint('#e8b84b') : 'url(#conn-grad)'}
+                strokeWidth={leading ? 4 : 1.4}
+                strokeDasharray={leading ? '7 6' : undefined}
                 strokeLinecap="round"
               />
               {championLine && (
@@ -697,7 +712,8 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
               tint={tint}
               mode={mode}
               clickable={node.clickable}
-              viewable={false}
+              viewable={!!tieControls && !!node.match && !node.team.placeholder}
+              label={tieControls && node.match ? `${node.team.name} · ${t(roundLabelKey(node.match.round))} · ${t('bracket.liguillaOpenTie', node.match.home.name, node.match.away.name)}` : undefined}
               // R32 badges start colored; losers grey once round 1 has played.
               greyed={node.eliminated && simRound >= 1}
               crestGreyed={crestGreyed}
@@ -725,6 +741,7 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
                 geom={geom}
                 greyed={greyed}
                 mode={mode}
+                openTie={tieControls?.open}
                 teamStyle={teamStyle}
                 onView={(m) => handleView(m)}
                 onPick={(node) => handleDiscClick(node)}
@@ -732,6 +749,24 @@ export default function RadialBracket({ rounds, mode = 'live', picks = {}, onPic
             );
           }),
         )}
+
+        {tieControls?.selectedId && rings.flatMap(ring => ring.filter(n => n.match?.id === tieControls.selectedId && !n.team.placeholder).map(n => (
+          <circle key={`selected-${n.depth}-${n.index}`} cx={n.x} cy={n.y} r={n.discR + 8} fill="none"
+            stroke={tint('#f0c873')} strokeWidth={2.5} pointerEvents="none" />
+        )))}
+        {tieControls?.aggregateLabel && (() => {
+          // Anchor the label to the junction for this pair, including a re-seeded feeder.
+          for (let d = 0; d < rings.length; d++) {
+            const side = rings[d].find(n => n.match?.id === tieControls.selectedId);
+            if (!side) continue;
+            const parent = rings[d + 1]?.find(n => (n.feederIndex ?? n.index) === Math.floor(side.index / 2));
+            const x = parent?.x ?? C.x;
+            const y = parent ? parent.y + parent.discR + 40 : C.y + 90;
+            return <text className="liguilla-arc-score" x={x} y={y} textAnchor="middle" fill="var(--text)" stroke="var(--bg)" strokeWidth={6}
+              paintOrder="stroke" fontSize={25} fontWeight={650} pointerEvents="none">{tieControls.aggregateLabel}</text>;
+          }
+          return null;
+        })()}
 
         {/* (1b) Center emblem on top. The World Cup gets the real trophy; every
             other competition gets its own emblem, because /trophy.png IS the
@@ -925,6 +960,7 @@ function OuterTeam({
   mode,
   clickable,
   viewable,
+  label,
   greyed,
   crestGreyed,
   onClick,
@@ -935,6 +971,7 @@ function OuterTeam({
   mode: BracketMode;
   clickable: boolean;
   viewable: boolean;
+  label?: string;
   greyed: boolean;
   crestGreyed: boolean;
   onClick: () => void;
@@ -954,7 +991,7 @@ function OuterTeam({
 
   return (
     <g
-      aria-label={team.name}
+      aria-label={label ?? team.name}
       className={`${interactive ? 'bracket-disc bracket-disc--clickable' : 'bracket-disc'}${
         greyed ? ' bracket-disc--eliminated' : ''
       }`}
@@ -963,6 +1000,7 @@ function OuterTeam({
       tabIndex={interactive ? 0 : undefined}
       role={interactive ? 'button' : undefined}
     >
+      {label && <circle cx={node.x} cy={node.y} r={node.discR} fill="transparent" stroke="transparent" strokeWidth={24} vectorEffect="non-scaling-stroke" />}
       {teamStyle === 'crest' ? (
         /* Club style: single crest disc — meet fit on a light background */
         (() => {
@@ -1065,6 +1103,7 @@ function InnerHop({
   geom,
   greyed,
   mode,
+  openTie,
   teamStyle,
   onView,
   onPick,
@@ -1075,11 +1114,13 @@ function InnerHop({
   geom: RingGeom[];
   greyed: boolean;
   mode: BracketMode;
+  openTie?: (match: BracketMatch) => void;
   teamStyle: TeamStyle;
   onView: (m: BracketMatch) => void;
   onPick: (node: RingNode) => void;
   tint: (hex: string) => string;
 }) {
+  const t = useTranslations();
   const { node } = stop;
   const { team, isWinner, discR: r } = node;
   // Clean disc — thin gold ring for a winner, dark hairline otherwise. Colour
@@ -1094,7 +1135,8 @@ function InnerHop({
   const wonMatch = from.node.match;
   const viewable = mode !== 'predict' && wonMatch != null;
   const clickable = mode === 'predict' && node.clickable;
-  const interactive = viewable || clickable;
+  const tie = openTie && (node.match ?? wonMatch);
+  const interactive = !!tie || viewable || clickable;
 
   // Motion path = the connector's winner route between the two rings: radial
   // stub in to the join radius, tangential arc to the node's angle, radial stub
@@ -1132,7 +1174,8 @@ function InnerHop({
   const cls = `bracket-disc bracket-hop${interactive ? ' bracket-disc--clickable' : ''}${greyed ? ' bracket-disc--eliminated' : ''}`;
 
   const handleClick = () => {
-    if (clickable) onPick(node);
+    if (openTie && tie) openTie(tie);
+    else if (clickable) onPick(node);
     else if (viewable && wonMatch) onView(wonMatch);
   };
 
@@ -1140,12 +1183,13 @@ function InnerHop({
     <g
       className={cls}
       style={motionStyle}
-      aria-label={team.name}
+      aria-label={tie ? `${team.name} · ${t(roundLabelKey(tie.round))} · ${t('bracket.liguillaOpenTie', tie.home.name, tie.away.name)}` : team.name}
       onClick={interactive ? handleClick : undefined}
       onKeyDown={interactive ? activate(handleClick) : undefined}
       tabIndex={interactive ? 0 : undefined}
       role={interactive ? 'button' : undefined}
     >
+      {tie && <circle cx={0} cy={0} r={r} fill="transparent" stroke="transparent" strokeWidth={24} vectorEffect="non-scaling-stroke" />}
       {disc}
     </g>
   );

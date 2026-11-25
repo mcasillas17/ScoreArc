@@ -286,7 +286,7 @@ func (e *ESPN) RecoverMatch(
 	if kickoff.Before(start) || !kickoff.Before(end) {
 		return model.Match{}, SummaryResult{}, fmt.Errorf("summary event %q kickoff outside season %q", match.ID, season.ID)
 	}
-	if espn.IsFemenilLeg(season, match.Round, match.Note) && match.Note != nil {
+	if espn.IsLiguillaLeg(season, match.Round, match.Note) && match.Note != nil {
 		observed.Note = match.Note // Reconcile the stored ordinal against the fresh header below.
 	}
 	result, err := mapSummary(raw, observed, season)
@@ -296,8 +296,8 @@ func (e *ESPN) RecoverMatch(
 	if result.LegNote != nil {
 		observed.Note = result.LegNote
 	}
-	if espn.IsFemenilLeg(season, observed.Round, observed.Note) {
-		observed.WinnerID = espn.LegWinner(observed.StatusName, observed.Round, observed.Note, observed.Home.ID, observed.Away.ID, observed.HomeScore, observed.AwayScore)
+	if espn.IsLiguillaLeg(season, observed.Round, observed.Note) {
+		observed.WinnerID = espn.LegWinner(season, observed.StatusName, observed.Round, observed.Note, observed.Home.ID, observed.Away.ID, observed.HomeScore, observed.AwayScore)
 		observed.WinnerFlagID, observed.WinnerResolved = nil, true
 		observed.Shootout = result.Detail.Shootout
 	}
@@ -333,7 +333,7 @@ func mapSummary(raw []byte, match model.Match, season config.Season) (SummaryRes
 	result := SummaryResult{
 		Detail: detail, Participation: participation, Commentary: commentary,
 	}
-	leg := espn.IsFemenilLeg(season, match.Round, note)
+	leg := espn.IsLiguillaLeg(season, match.Round, note)
 	if leg {
 		result.LegNote = note
 	}

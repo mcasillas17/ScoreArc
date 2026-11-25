@@ -680,8 +680,9 @@
           "odds",
           "career"
         ],
-        "hasBracket": false,
-        "bracketDatesRange": null,
+        "playoffFormat": "liga-mx-apertura",
+        "hasBracket": true,
+        "bracketDatesRange": "20261125-20261231",
         "knockoutRounds": [
           "quarterfinals",
           "semifinals",

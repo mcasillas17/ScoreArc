@@ -210,7 +210,7 @@ func mapBracketMatch(ev rawEvent, season config.Season, round string) (BracketMa
 		(away.Score != nil && *away.Score != "" && awayScore == nil) {
 		return BracketMatch{}, fmt.Errorf("invalid score")
 	}
-	leg := IsFemenilLeg(season, round, nil)
+	leg := IsLiguillaLeg(season, round, nil)
 	note, err := competitionNote(comp.Notes, comp.Leg, leg)
 	if err != nil {
 		return BracketMatch{}, err
@@ -230,7 +230,7 @@ func mapBracketMatch(ev rawEvent, season config.Season, round string) (BracketMa
 	}
 	var winnerID, flag *string
 	if leg {
-		winnerID = LegWinner(status.Type.Name, round, note, homeTeam.ID, awayTeam.ID, homeScore, awayScore)
+		winnerID = LegWinner(season, status.Type.Name, round, note, homeTeam.ID, awayTeam.ID, homeScore, awayScore)
 		if state == MatchStateFinished && !terminalMatchStatus(status.Type.Name) && (homeScore == nil || awayScore == nil) {
 			return BracketMatch{}, fmt.Errorf("finished leg lacks scores")
 		}
